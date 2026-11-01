@@ -9,6 +9,7 @@ import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.CountDownLatch;
 
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -65,13 +66,35 @@ public class CgPipelineListTest {
     @Test
     public void aRequestIsReadyOnceWhatItNamedIsBuilt() {
         CgPipelineList pipelines = list(new Fake());
-        CgPipelinePrecache.Request move = new CgPipelinePrecache.Request();
-        pipelines.collect(p -> p.add(manifest()), move);
+        CgPipelinePrecache.Request move = new CgPipelinePrecache.Request("move", null, List.of(p -> p.add(manifest())));
+        pipelines.start(move);
         assertEquals(2, pipelines.size());
         assertFalse("its first poll starts them", pipelines.ready(move));
         assertTrue(pipelines.ready(move));
         pipelines.collect(p -> p.add(manifest()), null);
         assertEquals("a second manifest naming them shares the materials", 2, pipelines.size());
+    }
+
+    @Test
+    public void aRequestCollectsNothingUntilItsWorkerPhaseIsDone() throws InterruptedException {
+        CgPipelineList pipelines = list(new Fake());
+        CountDownLatch release = new CountDownLatch(1);
+        CgPipelinePrecache.Request move = new CgPipelinePrecache.Request("move", () -> {
+            try {
+                release.await();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }, List.of(p -> p.add(manifest()), p -> p.add(manifest())));
+        pipelines.start(move);
+        assertEquals("held for its worker phase", 0, pipelines.size());
+        assertFalse(pipelines.ready(move));
+        release.countDown();
+        move.ahead.join();
+        assertFalse("its steps collected, its entries started", pipelines.ready(move));
+        assertTrue(move.collected());
+        assertEquals(2, pipelines.size());
+        assertTrue(pipelines.ready(move));
     }
 
     @Test

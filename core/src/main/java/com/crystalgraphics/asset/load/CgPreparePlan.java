@@ -4,6 +4,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.BooleanSupplier;
 
+import com.crystalgraphics.render.world.CgPipelinePrecache;
+
 /** One asset's prepare: its steps in order, run a frame's budget at a time. */
 final class CgPreparePlan implements CgAssetPreparer.Plan {
 
@@ -48,6 +50,29 @@ final class CgPreparePlan implements CgAssetPreparer.Plan {
             boolean done = attempt.getAsBoolean();
             budget.warmed(System.nanoTime() - t);
             return done;
+        });
+        return this;
+    }
+
+    @Override
+    public CgAssetPreparer.Plan preload(CgPreload.Collector collector) {
+        CgPreload.Request[] request = {null};
+        steps.add(budget -> {
+            if (request[0] == null) request[0] = CgPreload.request(collector);
+            return request[0].ready();
+        });
+        return this;
+    }
+
+    @Override
+    public CgAssetPreparer.Plan pipelines(CgPipelinePrecache.Collector collector) {
+        CgPipelinePrecache.Request[] request = {null};
+        steps.add(budget -> {
+            if (request[0] == null) {
+                if (!budget.warmAllows()) return false;
+                request[0] = CgPipelinePrecache.request(collector);
+            }
+            return request[0].ready();
         });
         return this;
     }

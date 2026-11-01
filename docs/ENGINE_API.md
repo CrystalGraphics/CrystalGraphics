@@ -238,6 +238,11 @@ lights.add(x, y, z, 4f, 0xFFFFC080, 10f, 0f).shadowed(false);                   
 
   CgPipelinePrecache.Request scene = CgPipelinePrecache.request(p -> p.add(FLOOR, false));   // when it is known
   if (scene.ready()) draw();                                            // each frame until true
+
+  CgPipelinePrecache.Request move = CgPipelinePrecache.steps("mymod:move")   // too big for one frame
+          .ahead(() -> CgKernel.ahead(MyOps::precache))                 // CPU-only work on a worker, first
+          .step(p -> p.add(BEAM, true)).step(p -> p.kernels(MyOps::precache))   // each while the budget lasts
+          .start();
   ```
 
   - A material entry covers each pass of its chain, its depth, Emissive and Distortion passes, the multi-draw form of
@@ -245,6 +250,9 @@ lights.add(x, y, z, 4f, 0xFFFFC080, 10f, 0f).shadowed(false);                   
     resolve and composite). `add(material, half, true)` is a skinned mesh's forms; `CgAnimInstance.material` requests
     them itself.
   - `addPass(shader, keywords...)` is a renderer's own full-screen pass: its Forward program alone.
+  - Textures, meshes and other files are `CgPreload`'s (`asset.load`): `CgPreload.request(l -> l.texture(t).mesh(path))`,
+    read on a worker, `ready()` once read. A scene waits on both; an asset's preparer names both as plan steps
+    (`plan.preload`, `plan.pipelines`).
   - A set nothing names compiles at its first draw, counted as `pipeline.missed`
     (`-Dcrystalgraphics.pipeline.logMisses=true` names it), and `material.compile-waits` if the frame waited.
 - **GPU time by group**: under `crystalgraphics.gpu.groups` a pass's GPU time lands per material

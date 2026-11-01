@@ -207,6 +207,45 @@ public final class CgPipelineList {
         for (CgKernel k : CgKernel.collect(precache)) add(k);
     }
 
+    /** Requests with steps still to collect, in the order they started. */
+    private final List<CgPipelinePrecache.Request> collecting = new ArrayList<>();
+
+    /** Keeps {@code request} and collects what of it this frame's budget allows. */
+    void start(CgPipelinePrecache.Request request) {
+        if (advance(request)) return;
+        collecting.add(request);
+    }
+
+    /**
+     * Collects {@code request}'s steps in order while the warm budget lasts, once its worker phase is done; whether every
+     * step is collected. A step that throws is logged and skipped.
+     */
+    private boolean advance(CgPipelinePrecache.Request request) {
+        if (request.ahead != null) {
+            if (!request.ahead.isDone()) return false;
+            request.ahead = null;
+        }
+        while (!request.steps.isEmpty() && CgWarmBudget.allows()) {
+            CgPipelinePrecache.Collector step = request.steps.poll();
+            long start = System.nanoTime();
+            try {
+                collect(step, request);
+            } catch (RuntimeException e) {
+                CgPipelinePrecache.LOGGER.error("precache {}: a step failed and is skipped", request.name, e);
+            }
+            CgWarmBudget.spend(System.nanoTime() - start);
+        }
+        return request.steps.isEmpty();
+    }
+
+    /** Advances every request still collecting, oldest first. */
+    private void advanceAll() {
+        for (int i = 0; i < collecting.size(); ) {
+            if (advance(collecting.get(i))) collecting.remove(i);
+            else i++;
+        }
+    }
+
     /** Runs {@code collector} into the list, recording what it names in {@code into} where given. */
     void collect(CgPipelinePrecache.Collector collector, CgPipelinePrecache.Request into) {
         CgPipelinePrecache.Request outer = capturing;
@@ -220,6 +259,10 @@ public final class CgPipelineList {
 
     /** Whether every entry {@code request} named is built under the settings in force, polling those still building. */
     boolean ready(CgPipelinePrecache.Request request) {
+        if (!request.collected()) {
+            if (!advance(request)) return false;
+            collecting.remove(request);
+        }
         Settings settings = warmedFor != null ? warmedFor : requested.get();
         boolean ready = true;
         for (int i = 0; i < request.materials.size(); i++) {
@@ -262,9 +305,13 @@ public final class CgPipelineList {
      */
     int await(Settings settings, long timeoutNanos) {
         CgPipelinePrecache.collect(this);
+        long end = System.nanoTime() + timeoutNanos;
+        while (!collecting.isEmpty() && System.nanoTime() < end) {
+            advanceAll();
+            if (!collecting.isEmpty()) LockSupport.parkNanos(200_000L);
+        }
         warmedFor = settings;
         for (CgMaterial m : list) pending.put(m, Boolean.TRUE);
-        long end = System.nanoTime() + timeoutNanos;
         while (true) {
             for (int i = 0; i < list.size(); i++) {
                 CgMaterial m = list.get(i);
@@ -277,9 +324,9 @@ public final class CgPipelineList {
         return pending();
     }
 
-    /** How many materials, passes and kernels are not yet built under the settings in force. */
+    /** How many materials, passes and kernels are not yet built under the settings in force, and requests still collecting. */
     int pending() {
-        return pending.size() + unbuilt.size() + passesUnbuilt.size();
+        return pending.size() + unbuilt.size() + passesUnbuilt.size() + collecting.size();
     }
 
     /** How many materials, passes and kernels it keeps built. */
@@ -293,6 +340,7 @@ public final class CgPipelineList {
      */
     boolean frame(Settings requested, Settings applied) {
         CgPipelinePrecache.collect(this);
+        if (!collecting.isEmpty()) advanceAll();
         if ((!unbuilt.isEmpty() || !passesUnbuilt.isEmpty()) && CgWarmBudget.allows()) pollKernels();
         if (!requested.equals(warmedFor)) {
             warmedFor = requested;

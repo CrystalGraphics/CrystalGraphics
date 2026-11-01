@@ -1,16 +1,23 @@
 package com.crystalgraphics.render.world;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Queue;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicInteger;
+
+import javax.annotation.Nullable;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.compute.CgKernel;
+import com.crystalgraphics.job.CgJob;
+import com.crystalgraphics.job.CgJobLane;
+import com.crystalgraphics.render.CgWarmBudget;
 import com.github.bsideup.jabel.Desugar;
 
 /**
@@ -32,15 +39,27 @@ import com.github.bsideup.jabel.Desugar;
  * CgPipelinePrecache.Request scene = CgPipelinePrecache.request(pipelines -> {
  *     pipelines.add(FLOOR, false);
  *     pipelines.add(ARMOUR, false, true);                               // a material a skinned mesh draws
- *     pipelines.kernels(MyOps::precache);                                // every kernel it precaches
+ *     pipelines.kernels(MyOps::precache);                               // every kernel it precaches
  * });
  * if (scene.ready()) draw();                                            // each frame until true
+ * }</pre>
+ *
+ * <p>A request too big for one frame names its work in steps, each collected while the frame's {@link CgWarmBudget}
+ * lasts, after an optional worker phase that does its CPU-only half (parsing, generating sources):
+ *
+ * <pre>{@code
+ * CgPipelinePrecache.Request move = CgPipelinePrecache.steps("mymod:move")
+ *         .ahead(() -> CgKernel.ahead(MyOps::precache))                 // on a worker, first
+ *         .step(p -> p.add(BEAM, true))
+ *         .step(p -> p.kernels(MyOps::precache))                        // a later frame, if the budget ran out
+ *         .start();
  * }</pre>
  *
  * <p><b>When a collector runs</b>: at the graphics start (the first {@code CgEngineLifecycle.ensureGraphicsContext}, in
  * Minecraft's loading screen), every one registered by then is collected and built in parallel, and the start waits for
  * them. One registered later is collected at the next world frame and built over frames inside the warm budget, its
- * draws held until built. A request is collected at once: before the start it joins the start's build.
+ * draws held until built. A request's steps are collected from the frame it starts, each while the budget lasts, and
+ * every frame after until the last: before the start, the budget is unlimited and a request joins the start's build.
  *
  * <p><b>When to register</b>: in pre-init or init ({@code CgEngineLifecycle.preInit}/{@code init}: a mod's constructor
  * or common setup, or a static initialiser they reach). On a client post-init runs after the graphics start, so a
@@ -51,8 +70,9 @@ import com.github.bsideup.jabel.Desugar;
  *       counted as {@code pipeline.missed} and logged under {@code crystalgraphics.pipeline.logMisses}.</li>
  *   <li>Name what draws, not every file: a shader's base variant is rarely the one a draw binds (keywords, skinned,
  *       half size, multi-draw), and every variant of a directory is thousands of programs.</li>
+ *   <li>A step that throws is logged under its request's name and skipped; the request goes on with the rest.</li>
  *   <li>An effect's look requests its own through {@code CgVfxOwner.precache}; a skinned mesh's materials are requested
- *       by its {@code CgAnimInstance} as they are set.</li>
+ *       by its {@code CgAnimInstance} as they are set. Textures and meshes are {@code CgPreload}'s, not this.</li>
  * </ul>
  */
 public final class CgPipelinePrecache {
@@ -64,24 +84,81 @@ public final class CgPipelinePrecache {
     }
 
     /**
-     * What one {@link #request} named, built in the background: {@link #ready()} once every entry is built under the
-     * settings in force. A setting changing makes it not ready again until its entries are rebuilt under it.
+     * What one request named, built in the background: {@link #ready()} once every step is collected and every entry is
+     * built under the settings in force. A setting changing makes it not ready again until its entries are rebuilt.
      */
     public static final class Request {
         final List<CgMaterial> materials = new ArrayList<>();
         final List<CgKernel> kernels = new ArrayList<>();
         final List<CgMaterial> passes = new ArrayList<>();
+        final String name;
+        final Queue<Collector> steps;
+        /** Its worker phase, null once done or when it has none. */
+        @Nullable CompletableFuture<Void> ahead;
 
-        Request() {
+        Request(String name, @Nullable Runnable ahead, List<Collector> steps) {
+            this.name = name;
+            this.steps = new ArrayDeque<>(steps);
+            if (ahead != null) {
+                this.ahead = CompletableFuture.runAsync(() -> {
+                    try {
+                        ahead.run();
+                    } catch (RuntimeException e) {
+                        // left for the step that reaches the same work, which reports it
+                        LOGGER.debug("precache {}: worker phase failed: {}", name, e.toString());
+                    }
+                }, CgJob.executor(CgJobLane.LATENCY));
+            }
         }
 
-        /** Whether everything it named is built, polling what is still building. Render thread. */
+        /** Whether every step is collected and everything it named is built, collecting and polling the rest. Render thread. */
         public boolean ready() {
             return CgWorldRenderer.get().pipelines().ready(this);
         }
+
+        /** Whether its steps are all collected: what it names is final, though not yet built. */
+        public boolean collected() {
+            return ahead == null && steps.isEmpty();
+        }
     }
 
-    private static final Logger LOGGER = LogManager.getLogger("CgPipelinePrecache");
+    /**
+     * A request named in steps: an optional worker phase, then each step collected while a frame's warm budget lasts.
+     *
+     * <pre>{@code
+     * CgPipelinePrecache.steps("mymod:arena").step(p -> p.add(FLOOR, false)).step(p -> p.add(SKY, false)).start();
+     * }</pre>
+     */
+    public static final class Steps {
+        private final String name;
+        private final List<Collector> steps = new ArrayList<>();
+        @Nullable private Runnable ahead;
+
+        private Steps(String name) {
+            this.name = name;
+        }
+
+        /** CPU-only work run on a worker before the first step: sources generated and parsed, nothing built. */
+        public Steps ahead(Runnable work) {
+            this.ahead = work;
+            return this;
+        }
+
+        /** The next step, collected on the render thread in order. */
+        public Steps step(Collector step) {
+            steps.add(step);
+            return this;
+        }
+
+        /** Starts it: the worker phase now, the steps from this frame on. Render thread. */
+        public Request start() {
+            Request request = new Request(name, ahead, steps);
+            CgWorldRenderer.get().pipelines().start(request);
+            return request;
+        }
+    }
+
+    static final Logger LOGGER = LogManager.getLogger("CgPipelinePrecache");
     private static final Queue<Collector> PENDING = new ConcurrentLinkedQueue<>();
 
     private CgPipelinePrecache() {
@@ -104,13 +181,17 @@ public final class CgPipelinePrecache {
     }
 
     /**
-     * Collects {@code collector} now and starts what it names, answering a handle to poll: what is known only at
-     * runtime. Render thread; what it names is kept built for the session, as a registered collector's.
+     * Starts {@code collector} as a request of one step: collected now unless this frame's warm budget is spent, then
+     * built in the background. What is known only at runtime. Render thread; what it names is kept built for the
+     * session, as a registered collector's.
      */
     public static Request request(Collector collector) {
-        Request request = new Request();
-        CgWorldRenderer.get().pipelines().collect(collector, request);
-        return request;
+        return steps("request").step(collector).start();
+    }
+
+    /** A request of several steps named {@code name} in a failure's log, started with {@link Steps#start()}. */
+    public static Steps steps(String name) {
+        return new Steps(name);
     }
 
     /** The most collectors waiting to be collected. */
