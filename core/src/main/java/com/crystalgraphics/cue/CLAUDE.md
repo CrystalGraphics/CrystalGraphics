@@ -10,7 +10,7 @@ What a gameplay moment plays, routed by tag. Usage: `docs/vfx/networking.md` § 
 | `CgCueDefinition` | The compiled `cue` asset: phases as effects blocks, events, `writes` bound to user parameters, the networked settings; its Java `Builder` writes the file's tree |
 | `CgCueCompiler` | The kind's compiler, registered by `CgBuiltInCompilers` on both sides |
 | `CgCueManager` | A world's router in `PLAYS` (`UGameplayCueManager`, `UGameplayCueSet`): tag to cue with parent fallback, the queue, bursts, pooled looping plays, spawn conditions |
-| `CgCuePlaying`, `CgCueParameters` | A looping play's handle (`writes` providers, events, removal); what a cue is played with (`FGameplayCueParameters`) |
+| `CgCuePlaying`, `CgCueParameters` | A looping play's handle (`writes` providers, events, removal); what a cue is played with (`FGameplayCueParameters`), and the `writes` values a play starts with (a burst's per-hit values, sent in the `writes` slots under the `written` mask) |
 | `CgCueEffects` | The seam a client fills to draw and sound: `vfx.system.CgVfxCueEffects` plays the systems |
 | `CgCueNet` | Every cue on the wire: one type, `crystalgraphics:cue`, declared at network init; slot banks for a cue's `writes` and `fields`; the client view and the replicas (`interpolate`, `goal`, `snap`) |
 

@@ -62,6 +62,8 @@ public final class CgCueNet {
             TARGET = CgNetField.ofInt("target").fallback(-1).initialOnly();
     static final CgNetField<Float> MAGNITUDE = CgNetField.ofFloat("magnitude"), NORMALIZED = CgNetField.ofFloat("normalized");
     static final CgNetField<String> SURFACE = CgNetField.of("surface", CgCodecs.STRING).initialOnly();
+    /** Which of the cue's {@code writes}, by place, the play started with a value for: the rest keep the systems' defaults. */
+    static final CgNetField<Integer> WRITTEN = CgNetField.ofInt("written").initialOnly();
     static final List<CgNetField<Float>> W = new ArrayList<>();
     static final List<CgNetField<Double>> V = new ArrayList<>();
     static final List<CgNetField<String>> T = new ArrayList<>();
@@ -83,7 +85,7 @@ public final class CgCueNet {
     public static final CgNetType TYPE;
 
     static {
-        List<CgNetField<?>> fields = new ArrayList<>(List.of(CUE, SEED, X, Y, Z, NX, NY, NZ, INSTIGATOR, TARGET, MAGNITUDE, NORMALIZED, SURFACE));
+        List<CgNetField<?>> fields = new ArrayList<>(List.of(CUE, SEED, X, Y, Z, NX, NY, NZ, INSTIGATOR, TARGET, MAGNITUDE, NORMALIZED, SURFACE, WRITTEN));
         for (int i = 0; i < WRITES * 4; i++) W.add(CgNetField.ofFloat("w" + i));
         for (int i = 0; i < VALUES; i++) V.add(CgNetField.ofDouble("v" + i));
         for (int i = 0; i < TEXTS; i++) T.add(CgNetField.of("t" + i, CgCodecs.STRING));
@@ -140,7 +142,32 @@ public final class CgCueNet {
                 .setInt(INSTIGATOR, entity(at.instigator())).setInt(TARGET, entity(at.target()))
                 .setFloat(MAGNITUDE, at.magnitude()).setFloat(NORMALIZED, at.normalizedMagnitude());
         if (at.surface() != null) obj.set(SURFACE, at.surface());
+        if (at.writes() == 0) return obj;
+        int written = 0, w = 0;
+        for (String name : cue.writes().keySet()) {
+            int i = at.writeIndex(name);
+            if (i >= 0) {
+                for (int k = 0; k < 4; k++) obj.setFloat(W.get(w * 4 + k), at.writeValue(i, k));
+                written |= 1 << w;
+            }
+            w++;
+        }
+        if (written != 0) obj.setInt(WRITTEN, written);
         return obj;
+    }
+
+    /** The {@code writes} values {@code obj}'s play started with, into {@code into}, by {@code cue}'s names. */
+    static void readWrites(CgNetObject obj, CgCueDefinition cue, CgCueParameters into) {
+        int written = obj.getInt(WRITTEN), w = 0;
+        if (written == 0) return;
+        for (String name : cue.writes().keySet()) {
+            if ((written & 1 << w) != 0) {
+                int b = w * 4;
+                into.write(name, obj.getFloat(W.get(b)), obj.getFloat(W.get(b + 1)), obj.getFloat(W.get(b + 2)),
+                        obj.getFloat(W.get(b + 3)));
+            }
+            w++;
+        }
     }
 
     /** Sets {@code obj}'s slot for {@code cue}'s field {@code name}: a number into the value bank, a string into the text bank. */

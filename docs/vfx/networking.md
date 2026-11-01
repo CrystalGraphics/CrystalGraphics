@@ -181,6 +181,34 @@ writes:
 
 A beam's length as `goal` never slides back through an obstacle that stops it, as an interpolated one would.
 
+#### Per-hit values: a play's own writes
+
+A burst has no frames to write in, so the values a play starts with go on its parameters, by name: a hit spark's size,
+the attacker's colour. Every system the play spawns, a burst's or a looping cue's in any phase, starts with them, and
+they reach every viewer with the play.
+
+```yaml
+# assets/mymod/cues/hit_spark.yaml
+_v: 1
+tag: mymod:cue.hit_spark
+kind: burst
+burst: { particles: [ { system: mymod:hit_spark } ] }     # its system's user: declares size and tint
+writes: { size: the spark's size in blocks, tint: the attacker's ki colour }
+```
+
+```java
+CgCueParameters hit = new CgCueParameters().at(x, y, z).target(victim).anchor(CgAnchor.on(victim))
+        .write("size", 1.5f)                         // a float
+        .write("tint", 0xFF66CCFF, 2f);              // a colour, 0xAARRGGBB, its rgb times 2
+cues.execute(MYMOD_CUE_HIT_SPARK, hit);
+```
+
+- `write(name, x, y, z)` gives a vec3 or position, `write(name, x, y, z, w)` any four floats.
+- A name the play leaves out keeps each system's own default; a name the cue does not declare reaches nothing and is
+  warned of once.
+- A looping play starts with them, then its providers (`beam.writes(...)`) take over each frame.
+- At most 16 names a play, as a cue declares.
+
 ### What fails at load
 
 - a `tag` nobody declared;

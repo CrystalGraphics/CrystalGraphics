@@ -3,6 +3,7 @@ package com.crystalgraphics.cue;
 import javax.annotation.Nullable;
 
 import com.crystalgraphics.net.object.CgAnchor;
+import com.crystalgraphics.vfx.look.CgVfxParam;
 import com.crystalgraphics.world.CgAttachment;
 
 /**
@@ -14,7 +15,17 @@ import com.crystalgraphics.world.CgAttachment;
  * cues.execute(MYMOD_CUE_HIT, hit);              // copied into the queue: reuse hit at once
  * }</pre>
  *
+ * <p>Per-hit values reach the systems the cue plays as its {@code writes} names, which they bind as {@code user.<name>}:
+ *
+ * <pre>{@code
+ * # cues/hit_spark.yaml:   writes: { size: the spark's size in blocks, tint: the attacker's ki colour }
+ * hit.write("size", 1.5f).write("tint", 0xFF66CCFF, 2f);
+ * cues.execute(MYMOD_CUE_HIT, hit);              // every viewer's spark plays at that size and colour
+ * }</pre>
+ *
  * <ul>
+ *   <li>A name the cue does not write is ignored, with a warning; a system the cue plays that binds no write keeps its
+ *       own default.</li>
  *   <li>The manager copies it when queued, so one instance can be refilled for every call.</li>
  *   <li>{@link #seed} rolls each entry's {@code chance}: the same seed plays the same entries on every viewer.</li>
  *   <li>{@link #surface} is the physical surface hit, matched against an entry's {@code surfaces}; null for none.</li>
@@ -31,6 +42,10 @@ public final class CgCueParameters {
     private String surface;
     @Nullable
     private CgAnchor anchor;
+    private static final int WRITES = CgCueNet.WRITES;
+    private final String[] writeNames = new String[WRITES];
+    private final float[] writeValues = new float[WRITES * 4];
+    private int writes;
 
     public CgCueParameters at(double x, double y, double z) {
         this.x = x;
@@ -95,6 +110,65 @@ public final class CgCueParameters {
         return anchor;
     }
 
+    /**
+     * This play's value of the cue's {@code writes} name {@code name}: a float, set on every system the cue plays that
+     * binds it. A burst's per-hit values go here; a looping play starts with them.
+     */
+    public CgCueParameters write(String name, float value) {
+        return write(name, value, 0f, 0f, 0f);
+    }
+
+    /** A vec3 or position {@code writes} value. */
+    public CgCueParameters write(String name, float x, float y, float z) {
+        return write(name, x, y, z, 0f);
+    }
+
+    /** A colour {@code writes} value, {@code 0xAARRGGBB}, its rgb times {@code intensity}: past white where above 1. */
+    public CgCueParameters write(String name, int argb, float intensity) {
+        return write(name, CgVfxParam.Color.red(argb) * intensity, CgVfxParam.Color.green(argb) * intensity,
+                CgVfxParam.Color.blue(argb) * intensity, CgVfxParam.Color.alpha(argb));
+    }
+
+    /**
+     * A {@code writes} value as its four floats, replacing one written before under {@code name}.
+     *
+     * @throws IllegalStateException past {@link CgCueNet#WRITES} names, the most a cue declares
+     */
+    public CgCueParameters write(String name, float x, float y, float z, float w) {
+        int i = writeIndex(name);
+        if (i < 0) {
+            if (writes == WRITES) throw new IllegalStateException("a play writes at most " + WRITES + " names: " + name);
+            i = writes++;
+            writeNames[i] = name;
+        }
+        writeValues[i * 4] = x;
+        writeValues[i * 4 + 1] = y;
+        writeValues[i * 4 + 2] = z;
+        writeValues[i * 4 + 3] = w;
+        return this;
+    }
+
+    /** How many {@code writes} values it carries. */
+    public int writes() {
+        return writes;
+    }
+
+    /** The name of its {@code i}th {@code writes} value. */
+    public String writeName(int i) {
+        return writeNames[i];
+    }
+
+    /** Float {@code k} of its {@code i}th {@code writes} value. */
+    public float writeValue(int i, int k) {
+        return writeValues[i * 4 + k];
+    }
+
+    /** The place of its value for {@code name}; -1 for none. */
+    public int writeIndex(String name) {
+        for (int i = 0; i < writes; i++) if (writeNames[i].equals(name)) return i;
+        return -1;
+    }
+
     /** Becomes a copy of {@code other}. */
     public CgCueParameters set(CgCueParameters other) {
         x = other.x;
@@ -110,6 +184,10 @@ public final class CgCueParameters {
         seed = other.seed;
         surface = other.surface;
         anchor = other.anchor;
+        System.arraycopy(other.writeNames, 0, writeNames, 0, other.writes);
+        System.arraycopy(other.writeValues, 0, writeValues, 0, other.writes * 4);
+        for (int i = other.writes; i < writes; i++) writeNames[i] = null;
+        writes = other.writes;
         return this;
     }
 
@@ -123,6 +201,8 @@ public final class CgCueParameters {
         seed = 0;
         surface = null;
         anchor = null;
+        for (int i = 0; i < writes; i++) writeNames[i] = null;
+        writes = 0;
         return this;
     }
 

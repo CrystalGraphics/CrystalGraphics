@@ -188,7 +188,8 @@ public class CgCueNetTest {
         write(ns, "sequences/beam.yaml", "_v: 1\ntick_resolution: 1000\ndisplay_rate: 50\nrange: [0, 6000]\n"
                 + "roles:\n  - { id: b1, name: caster, kind: caster }\ntracks:\n"
                 + "  - { id: t1, kind: event, side: ours, binding: { role: caster }, sections: [ { id: a, keys: [[100, cuenet:glow]] } ] }\n");
-        write(ns, "cues/spark.yaml", "_v: 1\ntag: cuenet:cue.spark\nkind: burst\nburst: { sounds: [ { sound: cuenet:pop } ] }\n");
+        write(ns, "cues/spark.yaml", "_v: 1\ntag: cuenet:cue.spark\nkind: burst\nburst: { sounds: [ { sound: cuenet:pop } ] }\n"
+                + "writes: { size: the spark's size in blocks, tint: the attacker's colour }\n");
         CgAssetRegistry registry = new CgAssetRegistry();
         registry.registerEngine();
         registry.scanResources(tmp.getRoot());
@@ -246,6 +247,21 @@ public class CgCueNetTest {
         ticks(20, () -> false);
         assertEquals("fired: a later viewer never sees it", 1, seen.bursts);
         assertFalse(server.lateDropped() > 0);
+    }
+
+    /** A burst's per-hit values travel with it: a write it was given reaches the viewer, one it was not stays unset. */
+    @Test
+    public void aBurstCarriesItsWritesToEveryViewer() throws InterruptedException, IOException {
+        start(beamKit(), 1, false);
+        ready("cuenet:spark");
+        server.execute(CgTagRegistry.global().require("cuenet:cue.spark"),
+                new CgCueParameters().at(0, 64, 0).anchor(rig.at(0, 64, 0)).write("size", 2.5f));
+        ticks(20, () -> seen.bursts >= 1);
+        assertEquals(1, seen.bursts);
+        int size = seen.lastAt.writeIndex("size");
+        assertTrue("its size arrived", size >= 0);
+        assertEquals(2.5f, seen.lastAt.writeValue(size, 0), 0f);
+        assertEquals("a write it was not given keeps the systems' default", -1, seen.lastAt.writeIndex("tint"));
     }
 
     @Test

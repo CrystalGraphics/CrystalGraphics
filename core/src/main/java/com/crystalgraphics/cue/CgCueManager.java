@@ -4,8 +4,10 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.IntFunction;
 import java.util.function.Predicate;
@@ -161,6 +163,7 @@ public final class CgCueManager extends CgWorldSubsystem {
     private SequenceStarter sequences;
     private double now;
     private long lateDropped, unrouted;
+    private final Set<String> warnedWrites = new HashSet<>();
     private volatile boolean routesDirty = true;
     @Nullable
     private CgTickFunction tick;
@@ -445,6 +448,16 @@ public final class CgCueManager extends CgWorldSubsystem {
         return p;
     }
 
+    /** Warns once per cue and name of a value {@code at} writes that {@code cue}'s {@code writes} does not name. */
+    private void undeclaredWrites(CgCueDefinition cue, CgCueParameters at) {
+        for (int i = 0; i < at.writes(); i++) {
+            String name = at.writeName(i);
+            if (!cue.writes().containsKey(name) && warnedWrites.add(cue.id() + "#" + name)) {
+                LOGGER.warn("{} writes no {}: its value reaches no system", cue.id(), name);
+            }
+        }
+    }
+
     /** The sequence the play of the cue object {@code id} runs as its timeline here; null until it starts. */
     @Nullable
     CgSequencePlayer sequenceOfCue(int id) {
@@ -572,6 +585,8 @@ public final class CgCueManager extends CgWorldSubsystem {
             boolean server = world().server();
             double age = now - c.arrival;
             if (burst) {
+                if (c.net != null) CgCueNet.readWrites(c.net, cue, c.params);
+                undeclaredWrites(cue, c.params);
                 if (server) {
                     CgNetObject sent = CgCueNet.spawn(cue, c.params);
                     if (sent != null) sent.fire();
@@ -596,6 +611,7 @@ public final class CgCueManager extends CgWorldSubsystem {
                 p.object = CgCueNet.predict(cue, p.params, this, p, p.key);
                 if (p.object != null) p.object.start();
             } else if (c.net != null) {
+                CgCueNet.readWrites(c.net, cue, p.params);
                 p.object = c.net;
                 if (cue.authoritative()) {
                     int i = 0;
@@ -604,6 +620,7 @@ public final class CgCueManager extends CgWorldSubsystem {
                     for (int i = 0; i < networked.size(); i++) networked.get(i).accept(p);
                 }
             }
+            undeclaredWrites(cue, p.params);
             lasting.start(p.params, (float) age);
             if (sequence != null) {
                 CgSequencePlayer player = sequences.start(cue, sequence.loaded(), p.params);

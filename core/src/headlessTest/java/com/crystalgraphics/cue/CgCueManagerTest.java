@@ -49,12 +49,14 @@ public class CgCueManagerTest {
     static final class Recorder implements CgCueEffects {
         int bursts;
         float lastAge;
+        final CgCueParameters lastAt = new CgCueParameters();
         final List<Held> made = new ArrayList<>();
 
         @Override
         public void burst(CgCueDefinition cue, Effects block, CgCueParameters at, float age) {
             bursts++;
             lastAge = age;
+            lastAt.set(at);
         }
 
         @Override

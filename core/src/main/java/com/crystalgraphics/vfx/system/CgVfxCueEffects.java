@@ -45,8 +45,9 @@ import com.crystalgraphics.world.CgWorldQueries;
 
 /**
  * Plays a cue's systems, sounds, shake and lens on a client: the VFX engine's {@link CgCueEffects}. Each entry is placed as its
- * {@code placement} says on the cue's target, if its {@code spawn_condition} passes for this viewer; a looping play's
- * {@code writes} reach the user parameters of the systems it is playing.
+ * {@code placement} says on the cue's target, if its {@code spawn_condition} passes for this viewer. Its {@code writes}
+ * reach the user parameters of the systems it plays: the values a play starts with
+ * ({@link CgCueParameters#write}, a burst's per-hit values), then a looping play's each frame.
  *
  * <pre>{@code
  * CgVfxCueEffects.installClient(CgVfx.world());   // the engine's, as a client starts: the client world's manager wired
@@ -146,7 +147,7 @@ public final class CgVfxCueEffects implements CgCueEffects {
         List<Particles> particles = block.particles();
         for (int i = 0; i < particles.size(); i++) {
             Particles p = particles.get(i);
-            if (p.definition() != null && cues.spawns(p.where().condition(), at, i)) spawn(p, at, age);
+            if (p.definition() != null && cues.spawns(p.where().condition(), at, i)) spawn(cue, p, at, age);
         }
         List<Sound> sounds = block.sounds();
         for (int i = 0; i < sounds.size(); i++) {
@@ -275,14 +276,32 @@ public final class CgVfxCueEffects implements CgCueEffects {
         return falloff(Math.sqrt(dx * dx + dy * dy + dz * dz), lens.inner(), lens.outer(), 1f) > 0f;
     }
 
-    /** Plays {@code p}, {@code age} seconds into its life. */
-    private CgVfxSystemInstance<?> spawn(Particles p, CgCueParameters at, float age) {
+    /** Plays {@code p}, {@code age} seconds into its life, with the {@code writes} values {@code at} carries. */
+    private CgVfxSystemInstance<?> spawn(CgCueDefinition cue, Particles p, CgCueParameters at, float age) {
         CgVfxSystemInstance<?> made = place(p, at);
+        for (int i = 0; i < at.writes(); i++) {
+            Write w = cue.writes().get(at.writeName(i));
+            if (w == null) continue;
+            List<Slot> slots = w.slots();
+            for (int s = 0; s < slots.size(); s++) {
+                Slot slot = slots.get(s);
+                if (slot.definition() == p.definition()) {
+                    set(made, slot.param(), at.writeValue(i, 0), at.writeValue(i, 1), at.writeValue(i, 2), at.writeValue(i, 3));
+                }
+            }
+        }
         // Its component's CustomTimeDilation and WarmupTime: simulated that far before it is first shown
         if (p.timeDilation() != 1f) made.timeDilation(p.timeDilation());
         if (age + p.warmup() > 0f) made.startAt(age + p.warmup());
         vfx.play(made);
         return made;
+    }
+
+    /** A {@code writes} value into the user parameter {@code param} of {@code e}, as many of its floats as it holds. */
+    private static void set(CgVfxSystemInstance<?> e, CgVfxParam param, float x, float y, float z, float w) {
+        if (param instanceof CgVfxParam.Scalar sc) e.set(sc, x);
+        else if (param instanceof CgVfxParam.Vector v) e.set(v, x, y, z);
+        else if (param instanceof CgVfxParam.Color c) e.set(c, x, y, z, w);
     }
 
     private CgVfxSystemInstance<?> place(Particles p, CgCueParameters at) {
@@ -400,7 +419,7 @@ public final class CgVfxCueEffects implements CgCueEffects {
                     old.kill();
                 }
             }
-            CgVfxSystemInstance<?> made = spawn(p, at, age - p.delay());
+            CgVfxSystemInstance<?> made = spawn(cue, p, at, age - p.delay());
             alive.add(made);
             sockets.add(socket);
             if (loop) loops.add(made);
@@ -439,11 +458,7 @@ public final class CgVfxCueEffects implements CgCueEffects {
                 Slot slot = slots.get(s);
                 for (int i = 0; i < alive.size(); i++) {
                     CgVfxSystemInstance<?> e = alive.get(i);
-                    if (e.definition() != slot.definition()) continue;
-                    CgVfxParam param = slot.param();
-                    if (param instanceof CgVfxParam.Scalar sc) e.set(sc, value[0]);
-                    else if (param instanceof CgVfxParam.Vector v) e.set(v, value[0], value[1], value[2]);
-                    else if (param instanceof CgVfxParam.Color c) e.set(c, value[0], value[1], value[2], value[3]);
+                    if (e.definition() == slot.definition()) set(e, slot.param(), value[0], value[1], value[2], value[3]);
                 }
             }
         }
