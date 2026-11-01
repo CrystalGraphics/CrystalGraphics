@@ -30,7 +30,9 @@ final class CgShakeRuntime {
     private static final float PUNCH_ANGLE = 5f, PUNCH_SHIFT = 0.35f;
     private static final int WAITING = 16, KICKS = 8, PUNCHES = 8;
 
-    static final CgShakeModel MODEL = new CgShakeModel(CgFrameClock::seconds);
+    /** The shakes' own seconds: still while the game is paused, as Unreal updates no camera then. */
+    private static double time;
+    static final CgShakeModel MODEL = new CgShakeModel(() -> time);
 
     // Per waiting play: start time, x, y, z, direction (NaN: away from the point), scale.
     private static final int WAIT_STRIDE = 8;
@@ -76,7 +78,7 @@ final class CgShakeRuntime {
         if (scheduled) return;
         scheduled = true;
         CgWorld.client().schedule().add(CgTickGroup.SHAKE, "crystalgraphics:shake", dt -> {
-            if (installed) frame(CgRenderStage.WORLD_OPAQUE.host());
+            if (installed) frame(CgRenderStage.WORLD_OPAQUE.host(), CgWorld.client().paused());
         }).whilePaused(true);
     }
 
@@ -111,7 +113,7 @@ final class CgShakeRuntime {
         }
         int k = waiting < WAITING ? waiting++ : 0, i = k * WAIT_STRIDE;
         WAIT_SHAKE[k] = shake;
-        WAIT[i] = CgFrameClock.seconds();
+        WAIT[i] = time;
         WAIT[i + 1] = x;
         WAIT[i + 2] = y;
         WAIT[i + 3] = z;
@@ -124,7 +126,7 @@ final class CgShakeRuntime {
     /** Every part of {@code shake}, felt from now. */
     private static void fire(CgCameraShake shake, double x, double y, double z, double dx, double dy, double dz, float scale) {
         float inner = shake.inner * scale, outer = Math.max(shake.outer * scale, inner + 1e-3f);
-        double now = CgFrameClock.seconds();
+        double now = time;
         if (shake.trauma > 0f) MODEL.add(x, y, z, shake.trauma, inner, outer, shake.falloff);
         if (shake.tremor > 0f) MODEL.tremor(x, y, z, shake.tremor, shake.tremorSeconds, inner, outer);
         if (shake.punch > 0f) {
@@ -161,11 +163,16 @@ final class CgShakeRuntime {
         cz = view.z() + ORIGIN.z;
     }
 
-    /** Steps every shake against this frame's camera and hands the offset to the host for its next frame. */
-    private static void frame(CgHostFrame host) {
-        double now = CgFrameClock.seconds();
-        float dt = Double.isNaN(lastFrame) ? 0f : (float) Math.max(0.0, Math.min(now - lastFrame, 0.1));
-        lastFrame = now;
+    /**
+     * Steps every shake against this frame's camera and hands the offset to the host for its next frame. Paused, the
+     * shakes' clock stands still, so the same offset is handed again.
+     */
+    private static void frame(CgHostFrame host, boolean paused) {
+        double wall = CgFrameClock.seconds();
+        float dt = paused || Double.isNaN(lastFrame) ? 0f : (float) Math.max(0.0, Math.min(wall - lastFrame, 0.1));
+        lastFrame = wall;
+        time += dt;
+        double now = time;
         if (MODEL.still() && waiting == 0 && kicks == 0 && punches == 0 && plays == 0 && !moving) return;
         CgHostEnvironment world = host.environment();
         eye(host.view());
