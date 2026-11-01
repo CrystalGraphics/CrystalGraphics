@@ -135,6 +135,11 @@ public final class CgVfxRange {
     private static boolean counting;
     private static int visibleCount;
     /**
+     * Whether {@link #visible} holds zeros since a frame with no particle zeroed it: kept so until a frame counts into it
+     * again. A fill each idle frame cost 0.8 ms on NVIDIA's threaded driver, which waits for its queue at a clear.
+     */
+    private static boolean visibleZeroed;
+    /**
      * The frame and target of each count in flight, oldest first: readbacks land in the order recorded. A frame fires
      * Range once a view (a second viewport culls what the first draws), so its count is its largest, not the last to
      * land, and a target's is its own views'.
@@ -394,6 +399,7 @@ public final class CgVfxRange {
             if (visible != null) RETIRED.add(visible);
             visible = CgGraphBuffer.persistent("vfx.range.visible",
                     CgBufferDesc.elements(sizeClass(need), 4, CgBufferUsage.STORAGE, CgBufferUsage.COPY));
+            visibleZeroed = false;
         }
         return visible;
     }
@@ -587,11 +593,15 @@ public final class CgVfxRange {
                 CgVfxRibbonGeneration ribbons = CgVfxRibbonGeneration.existing(ALL.get(i).pool);
                 if (ribbons != null) ribbons.skip(recording);
             }
-            recording.fill(visible, 0);
+            if (!visibleZeroed) {
+                recording.fill(visible, 0);
+                visibleZeroed = true;
+            }
             visibleCount = 0;
             clearSorted();
             return;
         }
+        visibleZeroed = false;
         CgTrace.Zone uploading = CgTrace.zone(CgChannels.WORLD, REC_UPLOAD);
         uploadSlots(recording, view, allSlots);
         for (int i = 0, slotFirst = 0; i < ALL.size(); i++) {
