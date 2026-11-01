@@ -1,6 +1,7 @@
 package com.crystalgraphics.vfx.system;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -11,6 +12,7 @@ import javax.annotation.Nullable;
 import org.joml.Quaternionf;
 
 import com.crystalgraphics.asset.camera.CgCameraShakeDefinition;
+import com.crystalgraphics.audio.CgActiveSounds;
 import com.crystalgraphics.audio.CgAudioEngine;
 import com.crystalgraphics.audio.CgSoundClass;
 import com.crystalgraphics.cue.CgCueDefinition;
@@ -65,7 +67,8 @@ import com.crystalgraphics.world.CgWorldQueries;
  *       as it starts; otherwise at {@code scale} on the target's own machine alone. A looping block's shake blends out
  *       at removal. A cue's magnitude scales none of it, as in Unreal: a stronger hit is another cue.</li>
  *   <li>{@code attach_to_target} follows the target's socket where the target is an entity, else the target itself;
- *       {@code do_not_attach} spawns at the socket and stays.</li>
+ *       {@code do_not_attach} spawns at the socket and stays. A sound does the same, a burst's one-shot included,
+ *       for as long as it plays.</li>
  * </ul>
  */
 public final class CgVfxCueEffects implements CgCueEffects {
@@ -75,6 +78,11 @@ public final class CgVfxCueEffects implements CgCueEffects {
     private final double[] point = new double[3];
     private final double[] viewer = new double[3];
     private final Quaternionf turn = new Quaternionf();
+    /** Sounds attached to their target, each moved with it while it plays. */
+    private long[] followIds = new long[16];
+    private CgAttachment[] followTargets = new CgAttachment[16];
+    private String[] followSockets = new String[16];
+    private int following;
 
     public CgVfxCueEffects(CgVfxSystem vfx, CgCueManager cues) {
         this.vfx = vfx;
@@ -177,13 +185,52 @@ public final class CgVfxCueEffects implements CgCueEffects {
     private long sound(Sound s, CgCueParameters at, boolean loop) {
         CgAudioEngine audio = CgWorld.client().subsystem(CgAudioEngine.class);
         if (audio == null || !audio.active()) return 0;
-        soundPoint(s, at);
-        return audio.play(s.sound(), CgSoundClass.SFX, point[0], point[1], point[2], 1f, 1f, loop, Double.NaN, at.seed());
+        Placement placement = s.where().placement();
+        placedPoint(placement, at);
+        long id = audio.play(s.sound(), CgSoundClass.SFX, point[0], point[1], point[2], 1f, 1f, loop, Double.NaN, at.seed());
+        // SpawnSoundAttached for attach_to_target, one-shot or looping; otherwise it stays where it started
+        if (id != 0 && at.target() != null && placement.attach() == Placement.Attach.ATTACH_TO_TARGET) {
+            follow(id, at.target(), placement.socket());
+        }
+        return id;
     }
 
-    /** Where {@code s} sounds now, into {@link #point}. */
-    private void soundPoint(Sound s, CgCueParameters at) {
-        placedPoint(s.where().placement(), at);
+    private void follow(long id, CgAttachment target, @Nullable String socket) {
+        if (following == followIds.length) {
+            followIds = Arrays.copyOf(followIds, following * 2);
+            followTargets = Arrays.copyOf(followTargets, following * 2);
+            followSockets = Arrays.copyOf(followSockets, following * 2);
+        }
+        followIds[following] = id;
+        followTargets[following] = target;
+        followSockets[following] = socket;
+        following++;
+    }
+
+    /** Each attached sound moved to its target's socket, else the target; one that ended is dropped. */
+    @Override
+    public void update(float dt) {
+        if (following == 0) return;
+        CgAudioEngine audio = CgWorld.client().subsystem(CgAudioEngine.class);
+        CgActiveSounds sounds = audio == null ? null : audio.activeSounds();
+        int kept = 0;
+        for (int i = 0; i < following; i++) {
+            long id = followIds[i];
+            if (sounds == null || !sounds.playing(id)) continue;
+            CgAttachment target = followTargets[i];
+            String socket = followSockets[i];
+            // A target that has gone leaves the sound where it last was
+            if (socket != null && target.point(socket, point) || target.place(point, null)) {
+                sounds.at(id, point[0], point[1], point[2]);
+            }
+            followIds[kept] = id;
+            followTargets[kept] = target;
+            followSockets[kept] = socket;
+            kept++;
+        }
+        Arrays.fill(followTargets, kept, following, null);
+        Arrays.fill(followSockets, kept, following, null);
+        following = kept;
     }
 
     /** Where {@code placement} puts an entry on the cue's target now (its socket, else the target), else the cue's point. */
@@ -312,7 +359,7 @@ public final class CgVfxCueEffects implements CgCueEffects {
             if (l != null && cues.spawns(l.where().condition(), at, 0) && lensPlays(l, at)) lens = openLens(CgPostStack.get(), l);
         }
 
-        /** {@code block}'s sounds: looping ones kept to follow their target and fade at removal. */
+        /** {@code block}'s sounds: looping ones kept to fade at removal. */
         private void playSounds(Effects block, CgCueParameters at, boolean loop) {
             List<Sound> sounds = block.sounds();
             for (int i = 0; i < sounds.size(); i++) {
@@ -362,14 +409,6 @@ public final class CgVfxCueEffects implements CgCueEffects {
         @Override
         public void update(float dt) {
             age += dt;
-            CgAudioEngine audio = loopSounds.isEmpty() ? null : CgWorld.client().subsystem(CgAudioEngine.class);
-            if (audio != null && at != null) {
-                // SpawnSoundAttached: the sound moves with its target.
-                for (int i = 0; i < loopSounds.size(); i++) {
-                    soundPoint(loopSoundEntries.get(i), at);
-                    audio.activeSounds().at(loopSounds.get(i), point[0], point[1], point[2]);
-                }
-            }
             for (int i = 0; i < waiting.size(); ) {
                 Particles p = waiting.get(i);
                 if (p.delay() > age) {

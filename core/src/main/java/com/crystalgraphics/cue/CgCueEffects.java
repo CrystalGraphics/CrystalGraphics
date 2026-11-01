@@ -27,6 +27,13 @@ public interface CgCueEffects {
     /** A new holder of one looping play of {@code cue}'s effects; the manager pools it per definition. */
     Lasting lasting(CgCueDefinition cue);
 
+    /**
+     * Once a frame, after the manager's queue and its looping plays: what a burst left playing that still moves, such
+     * as a sound attached to its target.
+     */
+    default void update(float dt) {
+    }
+
     /** One looping play's effects: {@code AGameplayCueNotify_Looping}'s, reused across plays after {@link #reset}. */
     interface Lasting {
         /** {@code application} plays and {@code looping} starts, {@code age} seconds in. */

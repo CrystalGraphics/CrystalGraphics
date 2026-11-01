@@ -378,7 +378,10 @@ public final class CgCueManager extends CgWorldSubsystem {
         return playing.size();
     }
 
-    /** The frame's work, in {@code PLAYS}: the queue played in order, then each looping play's {@code writes}. */
+    /**
+     * The frame's work, in {@code PLAYS}: the queue played in order, then each looping play's {@code writes}, then the
+     * effects' own {@link CgCueEffects#update}.
+     */
     public void update(float dt) {
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, UPDATE_ZONE)) {
             if (routesDirty) rebuildRoutes();
@@ -412,6 +415,7 @@ public final class CgCueManager extends CgWorldSubsystem {
                     end(i, p);
                 }
             }
+            effects.update(dt);
         }
     }
 
