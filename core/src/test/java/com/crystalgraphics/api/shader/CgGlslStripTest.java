@@ -28,6 +28,11 @@ public class CgGlslStripTest {
             "#else",
             "float driver() { return 2.0; }",
             "#endif",
+            "#ifdef VULKAN",
+            "#define DRAW_INSTANCE gl_InstanceIndex",
+            "#else",
+            "#define DRAW_INSTANCE gl_InstanceID",
+            "#endif",
             "float viaMacro(float x) { return x; }",
             "float helper(float x);",
             "float helper(float x) { return x * picked(); }",
@@ -37,7 +42,7 @@ public class CgGlslStripTest {
             "}",
             "layout(std430) buffer Out { float values[]; };",
             "void main() {",
-            "    values[0] = helper(2.0) + driver() + CALLS_VIA_MACRO(1.0);",
+            "    values[0] = helper(2.0) + driver() + CALLS_VIA_MACRO(1.0) + float(DRAW_INSTANCE);",
             "}",
             "");
 
@@ -52,6 +57,7 @@ public class CgGlslStripTest {
         assertFalse("the branch its macros decide against", out.contains("dropped()") || out.contains("#else\nfloat picked"));
         assertTrue(out.contains("float picked() { return 1.0; }"));
         assertTrue("a driver macro's branches", out.contains("#ifdef GL_KHR_shader_subgroup_basic") && out.contains("return 2.0"));
+        assertTrue("shaderc's VULKAN, both branches", out.contains("gl_InstanceIndex") && out.contains("gl_InstanceID"));
         assertFalse("a function nothing reaches", out.contains("dead("));
         assertFalse("a macro nothing names", out.contains("UNUSED_MACRO"));
         assertTrue("reached through a macro", out.contains("float viaMacro(float x)"));

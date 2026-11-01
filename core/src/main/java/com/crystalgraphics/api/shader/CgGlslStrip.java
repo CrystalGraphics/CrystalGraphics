@@ -25,7 +25,7 @@ import java.util.regex.Pattern;
  *
  * <ul>
  *   <li>A conditional it cannot decide stays whole, every branch and everything in them: one naming a macro the driver
- *       defines ({@code GL_*}, {@code __*}), a function-like macro, or a macro defined inside another undecided one.</li>
+ *       defines ({@code GL_*}, {@code __*}, shaderc's {@code VULKAN}), a function-like macro, or a macro defined inside another undecided one.</li>
  *   <li>Token pasting ({@code ##}) in any macro, or text it cannot scan, keeps every function and macro: the
  *       conditionals and comments still go.</li>
  *   <li>Off under {@code -Dcrystalgraphics.shader.strip=false}, for reading a capture's source with its comments.</li>
@@ -334,9 +334,14 @@ final class CgGlslStrip {
             this.tokens = expand(tokens, 0);
         }
 
+        /** A macro the compiler may define: GL's and the driver's, and shaderc's {@code VULKAN} under Vulkan. */
+        static boolean compilerDefines(String name) {
+            return name.startsWith("GL_") || name.startsWith("__") || name.equals("VULKAN");
+        }
+
         static Boolean defined(String name, Map<String, Macro> macros) {
             Macro m = macros.get(name);
-            if (m == null) return name.startsWith("GL_") || name.startsWith("__") ? null : Boolean.FALSE;
+            if (m == null) return compilerDefines(name) ? null : Boolean.FALSE;
             if (m == UNKNOWN) return null;
             return m != UNDEFINED;
         }
