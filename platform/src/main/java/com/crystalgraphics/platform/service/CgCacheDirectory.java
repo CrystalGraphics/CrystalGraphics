@@ -44,6 +44,12 @@ public final class CgCacheDirectory {
 
     private static final Logger LOG = LogManager.getLogger("CrystalGraphics");
 
+    /**
+     * A pruned cache's bounds: past {@code MOST} bytes, down to {@code KEEP}. A player's set (a few hundred to about
+     * 2,000 programs, 10 to 75 MB of GL binaries) stays under it; a cap below the set would recompile it every launch.
+     */
+    public static final long MOST = 128L << 20, KEEP = 96L << 20;
+
     private CgCacheDirectory() {}
 
     /** {@code name}'s folder under the cache root, made if missing; null where caching is off or it cannot be made. */
@@ -61,15 +67,15 @@ public final class CgCacheDirectory {
     }
 
     /**
-     * Bounds a folder of entries named by what made them: once its files pass {@code most} bytes, the least recently
-     * used go until it holds {@code keep}. A content-addressed cache needs it: every source change is a new key and the
+     * Bounds a folder of entries named by what made them: once its files pass {@link #MOST} bytes, the least recently
+     * used go until it holds {@link #KEEP}. A content-addressed cache needs it: every source change is a new key and the
      * old entry is never read again. Runs on a daemon thread; the folder's subfolders are included.
      *
      * <pre>{@code
      * Path dir = CgCacheDirectory.of("glprogram");
-     * if (dir != null) CgCacheDirectory.prune(dir, 512L << 20, 384L << 20);   // once, as the cache opens
+     * if (dir != null) CgCacheDirectory.prune(dir);   // once, as the cache opens
      * ...
-     * CgCacheDirectory.used(file);                                         // at every hit
+     * CgCacheDirectory.used(file);                    // at every hit
      * }</pre>
      *
      * <ul>
@@ -78,8 +84,8 @@ public final class CgCacheDirectory {
      *   <li>A file deleted while a load races it reads as missing: the caller compiles, as on any miss.</li>
      * </ul>
      */
-    public static void prune(Path dir, long most, long keep) {
-        Thread pruning = new Thread(() -> pruneNow(dir, most, keep), "crystalgraphics-cache-prune");
+    public static void prune(Path dir) {
+        Thread pruning = new Thread(() -> pruneNow(dir, MOST, KEEP), "crystalgraphics-cache-prune");
         pruning.setDaemon(true);
         pruning.setPriority(Thread.MIN_PRIORITY);
         pruning.start();
