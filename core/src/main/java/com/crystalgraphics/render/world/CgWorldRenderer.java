@@ -44,7 +44,7 @@ import com.crystalgraphics.platform.world.CgWorldBegin;
 import javax.annotation.Nullable;
 import com.crystalgraphics.render.mesh.CgMeshStore;
 import com.crystalgraphics.platform.gl.CgCapabilities;
-import com.crystalgraphics.render.CgPrecache;
+import com.crystalgraphics.render.CgPipelinePrecache;
 import com.crystalgraphics.render.CgViewFrustum;
 import com.crystalgraphics.render.draw.CgBufferHandle;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
@@ -460,7 +460,7 @@ public final class CgWorldRenderer {
         CgRenderStage.WORLD_TRANSPARENT.register(ORDER, this::recordTransparent);
         parsePassesAhead();
         // The renderer's own programs no material brings in: the GPU cull's depth pyramid, and text, on screen and as labels.
-        CgPrecache.register("crystalgraphics:world", list -> {
+        CgPipelinePrecache.register("crystalgraphics:world", list -> {
             list.add(PYRAMID_SHADER);
             list.add(TEXT_SHADER);
             list.add(TEXT_SHADER, "MSDF_MODE");

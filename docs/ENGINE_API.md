@@ -223,13 +223,22 @@ lights.add(x, y, z, 4f, 0xFFFFC080, 10f, 0f).shadowed(false);                   
   material brings in too: the distortion apply for a Distortion pass, and with `prepare(material, true)`, for a draw
   marked `.halfResolution()`, the half-size upsample and the volume resolve and composite. A program a draw had to
   wait for anyway is counted, `CgMaterialShader.compileWaits()` and the trace counter `material.compile-waits`.
-- **Built while loading: `CgPrecache`** (Unreal's global PSO collectors). Whatever a renderer draws or dispatches
+  A material a skinned mesh draws is warmed in its skinned forms, `prepare(material, half, true, settings)`;
+  `CgAnimInstance.material` registers that with `CgPipelinePrecache` itself.
+- **A draw whose programs are not built is held** (`world.skipUnready`, on; Unreal's proxy delay): skipped and counted
+  (`world.unready-draws`), its programs started, drawn in the frame they finish. A `CgPostMaterial` is held the same
+  way, until every pass is built. A gate that checks pixels from its first frames turns it off:
+
+  ```java
+  CgWorldRenderer.get().skipUnready(false);   // compile at the draw; the frame waits, but draws what it was given
+  ```
+- **Built while loading: `CgPipelinePrecache`** (Unreal's global PSO collectors). Whatever a renderer draws or dispatches
   outside a material's own warm-up (a pass of its own, a keyword set a setting switches to, a kernel) is registered as
   a collector, the engine's and a mod's alike, before the graphics start; the start builds all of it at once, in
   parallel, inside the host's loading screen, and the world renderer keeps it built under every setting after.
 
   ```java
-  CgPrecache.register("mymod:runes", programs -> {                    // a mod's constructor
+  CgPipelinePrecache.register("mymod:runes", programs -> {                    // a mod's constructor
       programs.add("mymod:shaders/rune.shader", "GLOW");               // a shader and a keyword set
       programs.add(RUNE_MATERIAL, false);                              // a material, every pass the world draws it with
       programs.add(CgCompute.load("mymod:shaders/runes.compute").kernel("Step"));

@@ -11,7 +11,7 @@ import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgMaterialManifest;
 import com.crystalgraphics.api.material.CgMaterialPermutation;
 import com.crystalgraphics.compute.CgKernel;
-import com.crystalgraphics.render.CgPrecache;
+import com.crystalgraphics.render.CgPipelinePrecache;
 import com.crystalgraphics.render.CgWarmBudget;
 import com.github.bsideup.jabel.Desugar;
 
@@ -192,7 +192,7 @@ public final class CgWorldPrograms {
      * Render thread, before {@code CgWarmBudget.start()}: nothing here is budgeted.
      */
     int await(Settings settings, long timeoutNanos) {
-        CgPrecache.collect(this);
+        CgPipelinePrecache.collect(this);
         warmedFor = settings;
         for (CgMaterial m : list) pending.put(m, Boolean.TRUE);
         long end = System.nanoTime() + timeoutNanos;
@@ -223,7 +223,7 @@ public final class CgWorldPrograms {
      * was warmed for. Answers whether {@code requested} may apply: the list is built under it, or the wait is spent.
      */
     boolean frame(Settings requested, Settings applied) {
-        CgPrecache.collect(this);
+        CgPipelinePrecache.collect(this);
         if (!unbuilt.isEmpty() && CgWarmBudget.allows()) pollKernels();
         if (!requested.equals(warmedFor)) {
             warmedFor = requested;

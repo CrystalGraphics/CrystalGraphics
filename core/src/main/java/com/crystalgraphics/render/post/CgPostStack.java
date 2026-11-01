@@ -1,7 +1,7 @@
 package com.crystalgraphics.render.post;
 
 import com.crystalgraphics.api.material.CgMaterial;
-import com.crystalgraphics.render.CgPrecache;
+import com.crystalgraphics.render.CgPipelinePrecache;
 import com.crystalgraphics.render.post.bloom.CgBloom;
 import com.crystalgraphics.render.post.composite.CgCompositeFeature;
 import com.crystalgraphics.render.post.composite.CgPostComposite;
@@ -94,7 +94,7 @@ public final class CgPostStack {
         CgRenderStage.WORLD_OPAQUE.register(DEMAND_ORDER, this::demandSubject);
         CgRenderStage.WORLD_TRANSPARENT.register(DEMAND_ORDER, this::demand);
         CgRenderStage.WORLD_TRANSPARENT.register(ORDER, this::record);
-        CgPrecache.register("crystalgraphics:post", CgPostStack::warmVariants);
+        CgPipelinePrecache.register("crystalgraphics:post", CgPostStack::warmVariants);
     }
 
     /**

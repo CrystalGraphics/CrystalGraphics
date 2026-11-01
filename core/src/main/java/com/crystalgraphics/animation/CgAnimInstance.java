@@ -1,6 +1,6 @@
 package com.crystalgraphics.animation;
 
-import com.crystalgraphics.render.CgPrecache;
+import com.crystalgraphics.render.CgPipelinePrecache;
 import com.crystalgraphics.api.animation.CgAnimSection;
 import com.crystalgraphics.api.animation.CgAnimSequence;
 import com.crystalgraphics.api.animation.CgPose;
@@ -386,7 +386,7 @@ public final class CgAnimInstance {
      * its vertex factory (Unreal's {@code PrecachePSOs}): whatever is set while loading is built there.
      */
     private static void precache(@Nullable CgMaterial material) {
-        if (material != null) CgPrecache.register("crystalgraphics:anim", programs -> programs.add(material, false, true));
+        if (material != null) CgPipelinePrecache.register("crystalgraphics:anim", programs -> programs.add(material, false, true));
     }
 
     /** Submesh {@code slot}'s material, or null where none is set. */
