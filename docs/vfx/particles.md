@@ -878,7 +878,9 @@ renderers:
 | `up_vector_step_size` | 1 turns the whole beam to the eye by its first segment, 0 each segment |
 
 - **A beam's material is drawn as a ribbon's** (`usage: [ribbons]`): any particle program draws it, placed by the
-  engine's strip factory; U runs along the beam, V across it.
+  engine's strip factory; U runs along the beam, V across it. Its material compiles with `FX_STRIP_BEAM` (an anim
+  trail's with `FX_STRIP_ANIM`, a ribbon's with neither), so each program holds the one strip it draws, as Unreal
+  compiles its beam-and-trail and ribbon vertex factories apart. A shader never declares either.
 - **Width is the particle's size**, times its x scale: `size` and `scale_sprite_size` shape it as for a sprite.
 - **Speed, range scale and tangent strength roll each frame**, as Cascade reads them at its emitter's time: a range
   on one is a flicker shared by the emitter's beams, not a value a beam.

@@ -125,6 +125,13 @@ public final class CgMaterialShaderCompiler {
     public static final String STRIP = "FX_ON_RIBBONS";
 
     /**
+     * Beside {@link #STRIP}, which strip the factory compiles, each undeclared as it is: a beam renderer's
+     * ({@code FX_STRIP_BEAM}) or an anim trail's ({@code FX_STRIP_ANIM}); a ribbon's takes neither. One program for
+     * every kind cost NVIDIA 0.5 to 2 s a link.
+     */
+    public static final String STRIP_BEAM = "FX_STRIP_BEAM", STRIP_ANIM = "FX_STRIP_ANIM";
+
+    /**
      * The engine's keyword for the skinned vertex factory's variant of any pass of a {@code #type spatial} shader: the
      * vertex is skinned by its draw's bone palette ({@code env/buffer/bones.glsl}) before the material's code runs, which
      * reads it as {@code cg_Position} and {@code cg_Normal}, as Unreal compiles a material for its GPU skin vertex

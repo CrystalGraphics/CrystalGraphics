@@ -119,7 +119,7 @@ public class EngineOnTrackedBackendTest {
             CgParsedPass forward = parsed.getPassByLightMode(CgRenderPassVariant.FORWARD.lightModeName());
             List<String> multiDrawn = new ArrayList<>();
             for (CgParsedPass pass : parsed.passes()) {
-                List<Set<String>> variants = pass == forward ? subsets(parsed.featureNames()) : List.of(Set.of());
+                List<Set<String>> variants = pass == forward ? variants(parsed.featureNames()) : List.of(Set.of());
                 for (Set<String> keywords : variants) {
                     programs++;
                     if (shader.getOrCompile(pass.name(), keywords) == null)
@@ -519,6 +519,29 @@ public class EngineOnTrackedBackendTest {
                     .filter(n -> n.endsWith(".shader") && !n.equals(DOCUMENTATION_ONLY))
                     .sorted().map(n -> "crystalgraphics:shaders/" + n).toList();
         }
+    }
+
+    /**
+     * Every subset of a pass's keywords but the strip kinds; then each strip kind with the strip alone and with each
+     * other keyword. A kind swaps only the vertex factory and excludes the other, so its every subset would quadruple
+     * a particle shader's programs past the test's heap.
+     */
+    private static List<Set<String>> variants(List<String> names) {
+        List<String> kinds = List.of(CgMaterialShaderCompiler.STRIP_BEAM, CgMaterialShaderCompiler.STRIP_ANIM);
+        List<String> plain = new ArrayList<>(names);
+        plain.removeAll(kinds);
+        List<Set<String>> out = subsets(plain);
+        if (!plain.contains(CgMaterialShaderCompiler.STRIP)) return out;
+        for (String kind : kinds) {
+            if (!names.contains(kind)) continue;
+            out.add(new LinkedHashSet<>(List.of(CgMaterialShaderCompiler.STRIP, kind)));
+            for (String other : plain) {
+                if (!other.equals(CgMaterialShaderCompiler.STRIP)) {
+                    out.add(new LinkedHashSet<>(List.of(CgMaterialShaderCompiler.STRIP, kind, other)));
+                }
+            }
+        }
+        return out;
     }
 
     private static List<Set<String>> subsets(List<String> names) {

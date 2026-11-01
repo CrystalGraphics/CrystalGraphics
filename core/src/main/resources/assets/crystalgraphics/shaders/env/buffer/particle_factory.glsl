@@ -138,6 +138,10 @@ void _cg_dynamics(int n, int drawn, inout CgMaterialParticle p) {
 #include "crystalgraphics:shaders/lib/vfx/fx_particle.glsl"
 #endif
 #if defined(CG_VERTEX_STAGE) && defined(FX_ON_RIBBONS)
+// One strip kind a program: a beam renderer's material compiles with FX_STRIP_BEAM, an anim trail's with
+// FX_STRIP_ANIM, any other ribbon's with neither, as Unreal compiles its beam/trail and ribbon vertex factories apart.
+// Every kind in one program cost NVIDIA 0.5-2 s a link.
+#ifdef FX_STRIP_BEAM
 #define FX_BEAM_RUN(at) CG_PARTICLE_BEAM(at)
 #include "crystalgraphics:shaders/lib/vfx/fx_beam.glsl"
 
@@ -203,6 +207,11 @@ void _cg_beam(float cameraOffset, float drawnBits, out CgMaterialVertex v, out C
     p.record = i;
     _cg_dynamics(i, drawn, p);
 }
+
+void _cg_strip(float cameraOffset, float drawnBits, out CgMaterialVertex v, out CgMaterialParticle p) {
+    _cg_beam(cameraOffset, drawnBits, v, p);
+}
+#else
 
 // A ribbon draw (CgVfxRibbonGeneration): CUSTOM0.w is -1 - its mode, its run at PARTICLE_BEAMS.
 //   CUSTOM0  its pool's first place in Range's order, its slot's record in the run, the renderer's size, -1 - mode
@@ -327,7 +336,8 @@ void _cg_ribbon(float cameraOffset, float drawnBits, out CgMaterialVertex v, out
     vec2 uv0, uv1;
     vec4 color = mix(CG_PARTICLE_COLOR(n0), CG_PARTICLE_COLOR(n1), alpha);
     float opacity = mix(CG_PARTICLE_OPACITY(n0), CG_PARTICLE_OPACITY(n1), alpha);
-    if ((mode & 256) != 0) {
+#ifdef FX_STRIP_ANIM
+    {
         // Cascade's anim trail (FAnimTrailParticleRenderData::CalcVertexData): a centripetal Catmull-Rom through the
         // samples either side, from the older (its Curr) toward the newer (its Prev); its edge either side.
         int first = int(r0.w + 0.5), last = int(r1.w + 0.5);
@@ -377,7 +387,9 @@ void _cg_ribbon(float cameraOffset, float drawnBits, out CgMaterialVertex v, out
         uv0 = vec2(u0, second ? 1.0 : 0.0) * vec2(r0.x, CG_OBJECT_CUSTOM2.x) + vec2(r0.y, CG_OBJECT_CUSTOM2.y);
         // Tex_U2: the tiled U where it tiles by distance, else U.
         uv1 = vec2((mode & 128) != 0 ? tiled : uv0.x, uv0.y);
-    } else if (trail) {
+    }
+#else
+    if (trail) {
         // Cascade walks from the older particle (its Curr) to the newer (its Prev), t 0 at the older.
         here = origin + _cg_ribbon_cubic(p1, b0.xyz, p0, a0.xyz, 1.0 - alpha, 1.0);
         direction = _cg_ribbon_unit(mix(a0.xyz, b0.xyz, alpha), vec3(1.0, 0.0, 0.0));
@@ -424,6 +436,7 @@ void _cg_ribbon(float cameraOffset, float drawnBits, out CgMaterialVertex v, out
         uv0 = vec2(u0, sliceV) * vec2(r0.x, CG_OBJECT_CUSTOM2.x) + vec2(r0.y, CG_OBJECT_CUSTOM2.y);
         uv1 = vec2(u1, sliceV) * vec2(r1.x, CG_OBJECT_CUSTOM2.z) + vec2(r1.y, CG_OBJECT_CUSTOM2.w);
     }
+#endif
     here += _cg_toward_eye(here, eye, cameraOffset);
 
     v.worldPosition = live ? here + offset : origin;
@@ -450,24 +463,31 @@ void _cg_ribbon(float cameraOffset, float drawnBits, out CgMaterialVertex v, out
     _cg_dynamics(i, drawn, p);
 }
 
-// A strip draw: a ribbon's (CUSTOM0.w below 0) or a beam's.
 void _cg_strip(float cameraOffset, float drawnBits, out CgMaterialVertex v, out CgMaterialParticle p) {
-    if (CG_OBJECT_CUSTOM0.w < 0.0) _cg_ribbon(cameraOffset, drawnBits, v, p);
-    else _cg_beam(cameraOffset, drawnBits, v, p);
+    _cg_ribbon(cameraOffset, drawnBits, v, p);
+}
+#endif
+
+// The vertex placed once for both halves: a program reading cg_material_vertex() and cg_material_particle() compiles
+// the factory once, not once a call, the second call's placement dead once the first ran.
+CgMaterialVertex _cg_strip_v;
+CgMaterialParticle _cg_strip_p;
+bool _cg_strip_placed = false;
+
+void _cg_strip_once(float cameraOffset, float drawnBits) {
+    if (_cg_strip_placed) return;
+    _cg_strip_placed = true;
+    _cg_strip(cameraOffset, drawnBits, _cg_strip_v, _cg_strip_p);
 }
 
 CgMaterialVertex _cg_strip_vertex(float cameraOffset, float drawnBits) {
-    CgMaterialVertex v;
-    CgMaterialParticle p;
-    _cg_strip(cameraOffset, drawnBits, v, p);
-    return v;
+    _cg_strip_once(cameraOffset, drawnBits);
+    return _cg_strip_v;
 }
 
 CgMaterialParticle _cg_strip_particle(float cameraOffset, float drawnBits) {
-    CgMaterialVertex v;
-    CgMaterialParticle p;
-    _cg_strip(cameraOffset, drawnBits, v, p);
-    return p;
+    _cg_strip_once(cameraOffset, drawnBits);
+    return _cg_strip_p;
 }
 
 #define cg_material_vertex() _cg_strip_vertex(_cg_CameraOffset, _cg_Drawn)
@@ -531,24 +551,34 @@ void _cg_sprite(float facing, vec4 facingVector, vec4 alignmentVector, float str
     _cg_dynamics(i, drawn, p);
 }
 
+// Placed once for both halves, as the strip factory is.
+CgMaterialVertex _cg_sprite_v;
+CgMaterialParticle _cg_sprite_p;
+bool _cg_sprite_placed = false;
+
+void _cg_sprite_once(float facing, vec4 facingVector, vec4 alignmentVector, float stretch, float maxStretch,
+                     float cameraOffset, float rotationBias, vec4 subImage, vec4 subUv, sampler2D subImages,
+                     float drawnBits, vec4 pivot) {
+    if (_cg_sprite_placed) return;
+    _cg_sprite_placed = true;
+    _cg_sprite(facing, facingVector, alignmentVector, stretch, maxStretch, cameraOffset, rotationBias, subImage, subUv,
+               subImages, drawnBits, pivot, _cg_sprite_v, _cg_sprite_p);
+}
+
 CgMaterialVertex _cg_sprite_vertex(float facing, vec4 facingVector, vec4 alignmentVector, float stretch,
                                    float maxStretch, float cameraOffset, float rotationBias, vec4 subImage, vec4 subUv,
                                    sampler2D subImages, float drawnBits, vec4 pivot) {
-    CgMaterialVertex v;
-    CgMaterialParticle p;
-    _cg_sprite(facing, facingVector, alignmentVector, stretch, maxStretch, cameraOffset, rotationBias, subImage, subUv,
-               subImages, drawnBits, pivot, v, p);
-    return v;
+    _cg_sprite_once(facing, facingVector, alignmentVector, stretch, maxStretch, cameraOffset, rotationBias, subImage,
+                    subUv, subImages, drawnBits, pivot);
+    return _cg_sprite_v;
 }
 
 CgMaterialParticle _cg_sprite_particle(float facing, vec4 facingVector, vec4 alignmentVector, float stretch,
                                        float maxStretch, float cameraOffset, float rotationBias, vec4 subImage,
                                        vec4 subUv, sampler2D subImages, float drawnBits, vec4 pivot) {
-    CgMaterialVertex v;
-    CgMaterialParticle p;
-    _cg_sprite(facing, facingVector, alignmentVector, stretch, maxStretch, cameraOffset, rotationBias, subImage, subUv,
-               subImages, drawnBits, pivot, v, p);
-    return p;
+    _cg_sprite_once(facing, facingVector, alignmentVector, stretch, maxStretch, cameraOffset, rotationBias, subImage,
+                    subUv, subImages, drawnBits, pivot);
+    return _cg_sprite_p;
 }
 
 #define CG_PARTICLE_LOCAL_TO_WORLD _cg_quat_mat3(_cg_SystemTurn)

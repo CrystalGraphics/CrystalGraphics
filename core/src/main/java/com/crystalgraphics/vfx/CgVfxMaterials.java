@@ -25,6 +25,9 @@ import com.crystalgraphics.vfx.particle.renderer.CgVfxDynamicParameterIndex;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxMeshRendererProperties;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxSequenceRendererProperties;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxRendererProperties;
+import com.crystalgraphics.vfx.particle.renderer.CgVfxBeamRendererProperties;
+import com.crystalgraphics.vfx.particle.renderer.CgVfxRibbonRendererProperties;
+import com.crystalgraphics.gl.material.parse.CgMaterialShaderCompiler;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxLightRendererProperties;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxRenderers;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxSpriteRendererProperties;
@@ -523,6 +526,13 @@ final class CgVfxMaterials {
         boolean byKind = usage == null || !material.declaredKeywords().contains(usage) || kind == CgVfxSlot.Kind.SEQUENCE;
         if (byKind && material.declaredKeywords().contains(kind.keyword())) {
             material.enableKeyword(kind.keyword());
+        }
+        // The strip factory compiles the one strip kind its renderer draws.
+        CgVfxRendererProperties renderer = r.placed.renderer();
+        if (renderer instanceof CgVfxBeamRendererProperties) {
+            material.enableKeyword(CgMaterialShaderCompiler.STRIP_BEAM);
+        } else if (renderer instanceof CgVfxRibbonRendererProperties ribbon && ribbon.anim() != null) {
+            material.enableKeyword(CgMaterialShaderCompiler.STRIP_ANIM);
         }
         if (kind == CgVfxSlot.Kind.SEQUENCE && !material.isKeywordEnabled(kind.keyword())) {
             throw new IllegalStateException(r.definition.id() + " draws a part a clip plays, but its shader declares no "
