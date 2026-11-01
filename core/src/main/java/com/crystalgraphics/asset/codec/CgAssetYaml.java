@@ -1,9 +1,13 @@
 package com.crystalgraphics.asset.codec;
 
+import java.io.IOException;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.math.MathContext;
 import java.math.RoundingMode;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -104,6 +108,45 @@ public final class CgAssetYaml {
             }
         }
         return null;
+    }
+
+    /**
+     * Where {@code kind}'s asset {@code id} is read from under a resource root:
+     * {@code <resources>/assets/<namespace>/<folder>/<path>.yaml}.
+     *
+     * <pre>{@code
+     * CgAssetYaml.file(Paths.get("src/main/resources"), CgParticleKinds.SYSTEM, "mymod:hit/fire");
+     * // src/main/resources/assets/mymod/vfx/systems/hit/fire.yaml
+     * }</pre>
+     *
+     * @throws IllegalArgumentException for an id with no namespace
+     */
+    public static Path file(Path resources, CgType kind, String id) {
+        int colon = id.indexOf(':');
+        if (colon <= 0) throw new IllegalArgumentException(id + " has no namespace");
+        return resources.resolve("assets").resolve(id.substring(0, colon)).resolve(kind.folder())
+                .resolve(id.substring(colon + 1) + ".yaml");
+    }
+
+    /**
+     * Writes {@code tree} as {@code kind}'s asset {@code id} under a resource root ({@link #file}), making its folders,
+     * through the one writer. Its file.
+     *
+     * <pre>{@code
+     * CgAssetYaml.save(resources, CgParticleKinds.EMITTER, "mymod:sparks", CgVfxEmitterAssets.write(SPARKS));
+     * }</pre>
+     *
+     * <ul>
+     *   <li>A file already there is replaced.</li>
+     *   <li>A texture or mesh made in code ({@link CgBinaryAsset}) has no file form: the writer refuses it, naming it.</li>
+     * </ul>
+     */
+    public static Path save(Path resources, CgType kind, String id, Map<?, ?> tree) throws IOException {
+        Path file = file(resources, kind, id);
+        String text = write(tree, kind);
+        Files.createDirectories(file.getParent());
+        Files.write(file, text.getBytes(StandardCharsets.UTF_8));
+        return file;
     }
 
     // ── The writer's rules ───────────────────────────────────────────────────────────────

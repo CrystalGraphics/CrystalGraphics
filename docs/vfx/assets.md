@@ -252,6 +252,29 @@ CgVfxSystemDefinition back = CgVfxSystemAssets.compile(                         
   back, it is inline.
 - Curves, palettes and shakes are not `user` parameters yet: a schema's are kept in code and left out of the file.
 
+### Exporting what you built in Java
+
+`export` writes a system as every file it needs, under a resource root: its system file, and a material file for each
+material its renderers made from `shader(...)` in code, at the id that file names.
+
+```java
+List<Path> files = CgVfxSystemAssets.export(PUFF, Paths.get("src/main/resources"), null);
+// src/main/resources/assets/mymod/vfx/systems/puff.yaml
+// src/main/resources/assets/mymod/materials/puff/sparks.yaml        (a renderer's shader(...) material, if it has one)
+
+// With a behaviour: register it first, and pass the same factory constant
+CgVfxSystemAssets.effect("mymod:spark", Spark.FACTORY, Spark.CONTRACT);
+CgVfxSystemAssets.export(new CgVfxSystemDefinition("mymod:spark/fire", Spark.FIRE, Spark.FACTORY), resources,
+        CgVfxAssets.instance().registry());   // materials that already have a file are named, not written again
+```
+
+- **One file, by its kind and id**: `CgAssetYaml.save(resources, kind, id, tree)` writes any kind's tree where the
+  registry reads it (`CgAssetYaml.file`), through the one writer: a cue's `CgCueDefinition.Builder.tree()`, an
+  emitter's `CgVfxEmitterAssets.write`, a prefab's `CgVfxPrefabAssets.write`.
+- A behaviour's own slot renderers are its contract's, so neither they nor their materials are written.
+- **A texture or mesh made in code has no file form**: the writer refuses it, naming it. Make it a texture or mesh
+  asset first.
+
 ### What an emitter file carries
 
 Every builder field is written through the format's modules (`CgVfxEmitterAssets`), so an emitter compiled from its

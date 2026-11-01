@@ -1,5 +1,7 @@
 package com.crystalgraphics.vfx.system;
 
+import java.io.IOException;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -13,9 +15,13 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import javax.annotation.Nullable;
 
+import com.crystalgraphics.api.material.CgMaterialDefinition;
+import com.crystalgraphics.asset.codec.CgAssetYaml;
 import com.crystalgraphics.asset.kind.CgFieldKinds;
+import com.crystalgraphics.asset.kind.CgLookKinds;
 import com.crystalgraphics.asset.kind.CgParticleKinds;
 import com.crystalgraphics.asset.load.CgAssetCompiler;
+import com.crystalgraphics.asset.registry.CgAssetRegistry;
 import com.crystalgraphics.asset.tree.CgAssetData;
 import com.crystalgraphics.object.value.CgQuantity;
 import com.crystalgraphics.object.value.CgUnits;
@@ -36,6 +42,8 @@ import com.crystalgraphics.vfx.particle.CgVfxSockets;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEvent;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxShape;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxMacroUv;
+import com.crystalgraphics.vfx.particle.renderer.CgVfxMeshRendererProperties;
+import com.crystalgraphics.vfx.particle.renderer.CgVfxRendererProperties;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawnFrom;
 import com.crystalgraphics.vfx.render.CgVfxSlotRenderer;
 import com.crystalgraphics.vfx.prefab.CgVfxPrefab;
@@ -60,6 +68,7 @@ import com.crystalgraphics.vfx.prefab.CgVfxPrefab;
  * <pre>{@code
  * Map<String, Object> tree = CgVfxSystemAssets.write(PUFF);     // effect, user, emitters inline
  * Files.write(path, CgAssetYaml.write(tree, CgParticleKinds.SYSTEM).getBytes(StandardCharsets.UTF_8));
+ * CgVfxSystemAssets.export(PUFF, resources, null);              // or its file and every material it made, under assets/
  * }</pre>
  *
  * <ul>
@@ -228,6 +237,67 @@ public final class CgVfxSystemAssets {
         }
         if (!definition.macroUv().equals(CgVfxMacroUv.DEFAULT)) tree.put("macro_uv", definition.macroUv().tree());
         return tree;
+    }
+
+    /**
+     * Writes {@code definition} under a resource root as the files that load it ({@code assets/<ns>/...}, through
+     * {@link CgAssetYaml#save}): its system file ({@link #write}), then a material file for each material it names that
+     * has no asset yet, such as one a slot renderer or a renderer made from {@code shader(...)}. A look built in Java,
+     * on disk.
+     *
+     * <pre>{@code
+     * CgVfxSystemAssets.effect("mymod:spark", Spark.FACTORY, Spark.CONTRACT);              // at init
+     * CgVfxSystemDefinition fire = new CgVfxSystemDefinition("mymod:spark/fire", Spark.FIRE, Spark.FACTORY);
+     * List<Path> files = CgVfxSystemAssets.export(fire, Paths.get("src/main/resources"), CgVfxAssets.instance().registry());
+     * }</pre>
+     *
+     * <p>Particles alone, with no behaviour:</p>
+     * <pre>{@code
+     * CgVfxSystemAssets.export(CgVfxSystemDefinition.of("mymod:puff", PUFF_LOOK), resources, null);   // every material written
+     * }</pre>
+     *
+     * <ul>
+     *   <li>A material {@code known} has an asset for is named, not written; with {@code known} null every one is written.</li>
+     *   <li>A behaviour's own slot renderers are its contract's: neither they nor their materials are written.</li>
+     *   <li>A texture or mesh made in code has no file form, and the writer refuses it, naming it: give it an asset.</li>
+     *   <li>A behaviour is written by the id it was registered under, matched by its factory object: pass the same
+     *       factory constant, never a fresh {@code Spark::new}.</li>
+     * </ul>
+     *
+     * @return every file written, the system's first
+     */
+    public static List<Path> export(CgVfxSystemDefinition definition, Path resources, @Nullable CgAssetRegistry known)
+            throws IOException {
+        List<Path> files = new ArrayList<>();
+        files.add(CgAssetYaml.save(resources, CgParticleKinds.SYSTEM, definition.name(), write(definition)));
+        for (CgMaterialDefinition m : materials(definition).values()) {
+            if (known != null && known.entry(CgLookKinds.MATERIAL, m.id()) != null) continue;
+            files.add(CgAssetYaml.save(resources, CgLookKinds.MATERIAL, m.id(), m.resolved()));
+        }
+        return files;
+    }
+
+    /** Every material {@code definition}'s file names, by id: its own slot renderers', then its emitters' renderers'. */
+    private static Map<String, CgMaterialDefinition> materials(CgVfxSystemDefinition definition) {
+        Map<String, CgMaterialDefinition> out = new LinkedHashMap<>();
+        CgVfxBehaviour.Contract contract = null;
+        for (Effect e : EFFECTS.values()) if (definition.behaviour() != null && e.factory() == definition.behaviour()) contract = e.contract();
+        List<CgVfxLook.Placed> inherited = contract == null ? List.of() : contract.look().slotted();
+        for (CgVfxLook.Placed placed : definition.look().slotted()) {
+            boolean theirs = false;
+            for (CgVfxLook.Placed c : inherited) theirs |= c.slotRenderer() == placed.slotRenderer();
+            if (!theirs) for (CgMaterialDefinition d : placed.definitions()) out.putIfAbsent(d.id(), d);
+        }
+        for (CgVfxEmitter e : definition.emitters()) {
+            for (CgVfxRendererProperties r : e.renderers()) {
+                CgMaterialDefinition d = r.common().definition();
+                if (d != null) out.putIfAbsent(d.id(), d);
+                if (r instanceof CgVfxMeshRendererProperties mesh) {
+                    for (CgMaterialDefinition o : mesh.overrideDefinitions()) if (o != null) out.putIfAbsent(o.id(), o);
+                }
+            }
+        }
+        return out;
     }
 
     /** Whether {@code look} holds {@code p} as {@code base} does. */
