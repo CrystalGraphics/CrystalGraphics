@@ -162,6 +162,30 @@ Map<String, Object> cut = Map.of("id", "s1", "range", List.of(0, 240), "clip", "
 
 - On a dedicated server the notify sequence plays its `rpg` events on the clip's time too: no clip need load.
 
+### Subsequences
+
+A `subsequence` section plays another sequence inside this one, with the same roles. Its keys land on this
+sequence's time as Unreal's subsequence sections place them:
+
+```yaml
+# mymod:sequences/combo.yaml, at 1,000 ticks a second
+tracks:
+  - id: t1
+    kind: subsequence
+    sections:
+      - { id: s1, range: [200, 1200], sequence: mymod:swing }                          # swing's 0 at 0.2 s
+      - { id: s2, range: [1200, 2200], sequence: mymod:swing, start_offset: 2400, time_scale: 2 }
+      - { id: s3, range: [0, 2000], sequence: mymod:aura, loop: true }                  # again each lap
+```
+
+- **Inner time** = (time − the section's start) × `time_scale`, in the inner sequence's ticks, plus its range's start
+  and `start_offset`. The two sequences may have different tick resolutions.
+- **`loop: true`** wraps the inner time over its range less `start_offset` and `end_offset`, again each lap, until
+  the section ends. Without it, the inner sequence plays on past its end and holds there.
+- **`time_scale` is a number.** A curve that changes the rate over the section fails at load, naming the path.
+- **Nested subsequences compose**: a key three deep lands where each section's start and scale put it.
+- **On a server** the inner sequence's `rpg` events fire as play crosses them, like any of the outer's.
+
 ### A GeckoLib clip's markers
 
 A GeckoLib animation keeps its markers in its own Bedrock file, which GeckoLib and Blockbench still read. As the file

@@ -109,6 +109,10 @@ public final class CgSequencePlayer {
     /** A notify sequence's: the clip its parent's section plays, the seconds it plays to, and whether it wrapped. */
     @Nullable
     private String drivenClip;
+    /** Let go by its parent's stop to play to its own end alone, then stop: a clip's {@code notify=} key. */
+    private boolean playsOut;
+    /** Its jump is play entering it: the tick it lands on fires ({@link #enterAt}). */
+    private boolean entering;
     private double drivenTo;
     private boolean drivenWraps;
 
@@ -316,6 +320,15 @@ public final class CgSequencePlayer {
         this.finished = false;
         this.resumes = false;
         return this;
+    }
+
+    /**
+     * As {@link #jumpTo}, but a one-shot on the tick it lands on fires: play entering a subsequence part-way into its
+     * inner time, whose first range starts there inclusive, as Unreal's does.
+     */
+    void enterAt(double seconds) {
+        jumpTo(seconds);
+        entering = true;
     }
 
     /** How long before a seek's point a one-shot still fires: a hit spark later than this is wrong, and is dropped. */
@@ -584,6 +597,7 @@ public final class CgSequencePlayer {
         for (int i = 0; i < notifies.length; i++) {
             if (notifies[i] != null) {
                 if (killed) notifies[i].kill();
+                else if (releasesOnStop() && keyed(definition.children().get(i))) notifies[i].playOut();
                 else notifies[i].stop();
             }
             notifies[i] = null;
@@ -605,6 +619,12 @@ public final class CgSequencePlayer {
      */
     public boolean releasesOnStop() {
         return drivenClip != null && stopped && !killed;
+    }
+
+    /** Whether child {@code c} is a key's subsequence, which plays out, rather than a span's, which ends with its clip. */
+    private boolean keyed(CgSequenceDefinition.Child c) {
+        CgSequenceTrack track = definition.tracks().get(c.track());
+        return track.kind().equals("subsequence") && !Boolean.TRUE.equals(track.sections().get(c.section()).fields().get("loop"));
     }
 
     /** Whether spawnable {@code i} is a key's: every section driving it leaves it running at its end ({@code end: none}). */
@@ -729,7 +749,8 @@ public final class CgSequencePlayer {
             passEnd = seconds;
             passRemaining = 0;
             int now = CgFrameTime.frame(r.current());
-            oneShotFrom = seek ? now - (int) Math.round(ONE_SHOT_WINDOW / definition.seconds(1)) + 1 : now + 1;
+            oneShotFrom = seek ? now - (int) Math.round(ONE_SHOT_WINDOW / definition.seconds(1)) + 1 : entering ? now : now + 1;
+            entering = false;
             seek = false;
             composite = compositeAt(now);
         } else if (drivenClip != null) {
@@ -738,7 +759,14 @@ public final class CgSequencePlayer {
             r = play(seconds + dt * rate);
         }
         driveNotifies();
+        if (playsOut && finished) stop();
         return r;
+    }
+
+    /** Lets it play to its own end on its own clock, then stop: what a stopped clip's {@code notify=} key started. */
+    void playOut() {
+        drivenClip = null;
+        playsOut = true;
     }
 
     /** A looping clip passed its end this frame: played to the end, the rest from its start in a pass of its own. */
@@ -768,7 +796,8 @@ public final class CgSequencePlayer {
         for (int i = 0; i < notifies.length; i++) {
             CgSequenceDefinition.Child c = children.get(i);
             CgSequenceTrack track = definition.tracks().get(c.track());
-            if (!track.kind().equals("animation")) continue;
+            boolean sub = track.kind().equals("subsequence");
+            if (!sub && !track.kind().equals("animation")) continue;
             CgSequenceSection s = track.sections().get(c.section());
             boolean in = !stopped && !track.muted() && (s.from() == CgSequenceSection.OPEN_START || now >= s.from())
                     && (s.to() == CgSequenceSection.OPEN_END || now < s.to());
@@ -779,6 +808,10 @@ public final class CgSequencePlayer {
                 continue;
             }
             int from = s.from() == CgSequenceSection.OPEN_START ? definition.start() : s.from();
+            if (sub) {
+                driveSubsequence(i, c, track, s, tick, from);
+                continue;
+            }
             double rate = s.fields().get("play_rate") instanceof Number n ? n.doubleValue() : 1.0;
             double offset = s.fields().get("start_offset") instanceof Number n ? definition.seconds(n.intValue()) : 0.0;
             double raw = offset + definition.seconds(1) * (tick - from) * rate;
@@ -816,6 +849,52 @@ public final class CgSequencePlayer {
         }
     }
 
+    /**
+     * Subsequence section {@code s}'s child, played on Unreal's outer-to-inner time
+     * ({@code FMovieSceneSectionTimingParametersFrames::MakeTransform}): the section's start subtracted, its
+     * {@code time_scale}, the two tick resolutions, the inner playback start plus {@code start_offset} (and
+     * {@code first_loop_start_offset} while it loops), then wrapped over the inner range less both offsets if it loops.
+     */
+    private void driveSubsequence(int i, CgSequenceDefinition.Child c, CgSequenceTrack track, CgSequenceSection s, float tick, int from) {
+        CgSequenceDefinition inner = c.definition();
+        Map<?, ?> f = s.fields();
+        boolean loop = Boolean.TRUE.equals(f.get("loop"));
+        double scale = (f.get("time_scale") instanceof Number n ? n.doubleValue() : 1.0)
+                * inner.tickResolution().asDecimal() / definition.tickResolution().asDecimal();
+        double startOffset = f.get("start_offset") instanceof Number n ? n.doubleValue() : 0;
+        double endOffset = f.get("end_offset") instanceof Number n ? n.doubleValue() : 0;
+        double firstLoop = loop && f.get("first_loop_start_offset") instanceof Number n ? n.doubleValue() : 0;
+        double startTime = inner.start() + startOffset;
+        double raw = (tick - from) * scale + startTime + firstLoop;
+        double at = raw;
+        boolean wraps = false;
+        if (loop) {
+            double duration = inner.end() - endOffset - startTime;
+            if (duration > 0) {
+                long lap = (long) Math.floor((raw - startTime) / duration);
+                at = raw - lap * duration;
+                wraps = !jumped && notifies[i] != null && lap > (long) Math.floor((notifiesAt[i] - startTime) / duration);
+            }
+        }
+        double seconds = (at - inner.start()) / inner.tickResolution().asDecimal();
+        CgSequencePlayer p = notifies[i];
+        if (p == null) {
+            p = startNotifies(c, track, s);
+            if (p == null) return;
+            notifies[i] = p;
+            // Entered by play from its first inner time, that tick included; entered by a jump it lands where the section is.
+            if (!jumped && seconds > 0) p.enterAt(seconds);
+        }
+        notifiesAt[i] = raw;
+        if (jumped) {
+            if (sought) p.seek(seconds);
+            else p.jumpTo(seconds);
+        } else {
+            p.drivenTo = seconds;
+            p.drivenWraps = wraps;
+        }
+    }
+
     /** A notify sequence's player for section {@code s}, its roles as the child fills them; null where its target is not here. */
     @Nullable
     private CgSequencePlayer startNotifies(CgSequenceDefinition.Child c, CgSequenceTrack track, CgSequenceSection s) {
@@ -832,7 +911,9 @@ public final class CgSequencePlayer {
             if (t == null && from == CgSequenceDefinition.Child.SECTION) return null;
             if (t != null) filled.put(c.definition().roles().get(r).name(), t);
         }
-        return sequencer.playNotifies(c.definition(), filled, String.valueOf(s.fields().get("clip")));
+        // A subsequence plays its child whole; a clip's notifies skip the clip, which its section plays
+        String clip = s.fields().get("clip") instanceof String name ? name : "";
+        return sequencer.playNotifies(c.definition(), filled, clip);
     }
 
     /** Whether a montage section handed play on this frame: the sequencer runs a pass for the rest. */

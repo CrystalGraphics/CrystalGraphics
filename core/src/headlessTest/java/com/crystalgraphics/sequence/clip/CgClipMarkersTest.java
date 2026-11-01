@@ -107,6 +107,41 @@ public class CgClipMarkersTest {
                 CgClipMarkers.translate("rpgcore:core/melee/melee_6", "melee.animation.json", json, ALL), deps);
     }
 
+    /** As {@link #clip}, its named sequences each firing an event of its own name 0.05 s in. */
+    private static CgSequenceDefinition clipWithEvents(String json) {
+        String events = "tracks:\n  - { id: t1, kind: event, side: rpg, binding: { role: caster }, sections: [ { id: a, keys: [[50, %s]] } ] }\n";
+        Map<String, Object> deps = Map.of(
+                "rpgcore:charge", compile("rpgcore:charge", (Map<?, ?>) CgAssetYaml.read(SHORT + String.format(events, "charge")), Map.of()),
+                "rpgcore:swing_trail", compile("rpgcore:swing_trail", (Map<?, ?>) CgAssetYaml.read(SHORT + String.format(events, "trail")), Map.of()));
+        return compile("rpgcore:core/melee/melee_6",
+                CgClipMarkers.translate("rpgcore:core/melee/melee_6", "melee.animation.json", json, ALL), deps);
+    }
+
+    /**
+     * Interrupted at 0.275 s: the {@code notify=} key started at 0.25 s plays out, firing at 0.3 s after the stop, while
+     * the {@code begin}/{@code end} span from 0.1 s, a 0.1 s sequence looping, ends with the clip.
+     */
+    @Test
+    public void anInterruptedClipLetsItsKeyPlayOutAndCutsItsSpan() {
+        CgSequencer s = new CgWorld(true).add(new CgSequencer());
+        List<String> heard = new ArrayList<>();
+        double[] now = {0};
+        s.listen(Side.RPG, (p, phase, event, args) -> heard.add(event + "@" + Math.round(now[0] * 1000)));
+        CgSequencePlayer notifies = s.playClip(clipWithEvents(CLIP), CASTER, "rpgcore:core/melee/melee_6");
+        while (now[0] < 0.275 - 1e-9) {
+            now[0] += 0.025;
+            notifies.drive(now[0], false);
+            s.evaluate(0.025f);
+        }
+        notifies.stop();
+        while (now[0] < 0.5 - 1e-9) {
+            now[0] += 0.025;
+            s.evaluate(0.025f);
+        }
+        assertEquals("the span's laps until the stop, the key's sequence after it, no hit",
+                List.of("charge@150", "charge@250", "trail@300"), heard);
+    }
+
     @Test
     public void eachMarkerBecomesItsSectionByTheTable() {
         CgSequenceDefinition d = clip(CLIP);

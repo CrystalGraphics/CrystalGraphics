@@ -678,6 +678,10 @@ final class CgSequenceCompiler {
     private Child child(CgSequenceTrack track, CgSequenceSection s) {
         String path = "tracks." + track.id() + ".sections." + s.id();
         if (!(s.fields().get("sequence") instanceof String ref)) return null;
+        Object timeScale = s.fields().get("time_scale");
+        if (timeScale != null && !(timeScale instanceof Number)) {
+            throw fail(path + ".time_scale", "a time_scale that changes over the section is not played: a constant only");
+        }
         if (!(deps.definition(CgSequenceKinds.SEQUENCE, ref) instanceof CgSequenceDefinition child)) {
             // A definition compiled without its dependencies (a test, a tool) has no children to resolve.
             return null;
