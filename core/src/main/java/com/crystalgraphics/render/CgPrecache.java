@@ -2,6 +2,7 @@ package com.crystalgraphics.render;
 
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -31,7 +32,8 @@ import com.github.bsideup.jabel.Desugar;
  *       counted as {@code pipeline.missed} and logged under {@code crystalgraphics.pipeline.logMisses}.</li>
  *   <li>A collector registered after the graphics start is collected at the next world frame and built over frames,
  *       inside the warm budget: register before it.</li>
- *   <li>Effects are prepared by their looks ({@code CgVfxOwner.prepare}), not here.</li>
+ *   <li>Effects are prepared by their looks ({@code CgVfxOwner.prepare}), not here; a skinned mesh's materials by its
+ *       {@code CgAnimInstance}, as they are set.</li>
  * </ul>
  */
 public final class CgPrecache {
@@ -48,14 +50,33 @@ public final class CgPrecache {
     private CgPrecache() {
     }
 
-    /** Registers {@code collector}, named {@code name} in a failure's log, to be collected once. Any thread. */
+    /**
+     * Registers {@code collector}, named {@code name} in a failure's log, to be collected once. Any thread. Past
+     * {@link #MAX_PENDING} uncollected it is dropped: a dedicated server, which never collects, holds no more.
+     */
     public static void register(String name, Collector collector) {
+        if (PENDING_COUNT.get() >= MAX_PENDING) {
+            if (!warnedFull) {
+                warnedFull = true;
+                LOGGER.warn("precache queue full ({} uncollected; nothing draws here?): {} and later dropped", MAX_PENDING, name);
+            }
+            return;
+        }
+        PENDING_COUNT.incrementAndGet();
         PENDING.add(new Named(name, collector));
     }
 
+    /** The most collectors waiting to be collected. */
+    public static final int MAX_PENDING = 4096;
+    private static final AtomicInteger PENDING_COUNT = new AtomicInteger();
+    private static volatile boolean warnedFull;
+
     /** Collects every collector registered since the last call into {@code programs}. The world renderer's. */
     public static void collect(CgWorldPrograms programs) {
-        for (Collector c; (c = PENDING.poll()) != null; ) c.collect(programs);
+        for (Collector c; (c = PENDING.poll()) != null; ) {
+            PENDING_COUNT.decrementAndGet();
+            c.collect(programs);
+        }
     }
 
     @Desugar

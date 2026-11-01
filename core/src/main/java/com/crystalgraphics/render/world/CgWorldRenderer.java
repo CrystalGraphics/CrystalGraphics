@@ -954,30 +954,41 @@ public final class CgWorldRenderer {
      * behind a transparent draw ({@code emissionOccluder}). What {@link CgWorldPrograms} re-warms a toggle by.
      */
     public boolean prepare(CgMaterial material, boolean halfResolution, CgWorldPrograms.Settings settings) {
+        return prepare(material, halfResolution, false, settings);
+    }
+
+    /**
+     * {@link #prepare(CgMaterial, boolean, CgWorldPrograms.Settings)} for a material a skinned mesh draws: every form
+     * in its skinned vertex factory ({@code CgPipeline.skinned()}), the precache key's vertex factory as Unreal's.
+     */
+    public boolean prepare(CgMaterial material, boolean halfResolution, boolean skinned, CgWorldPrograms.Settings settings) {
         boolean joins = settings.joins();
         boolean ready = true;
         for (CgMaterial link = material; link != null; link = link.getNextPass()) {
-            ready &= prepared(link.pipeline(CgInstanceKind.OBJECT), joins);
-            if (link.hasDepthPass()) ready &= prepared(link.pipeline(CgRenderPassVariant.DEPTH, CgInstanceKind.OBJECT), joins);
+            ready &= preparedAs(skinned, link.pipeline(CgInstanceKind.OBJECT), joins);
+            if (link.hasDepthPass()) ready &= preparedAs(skinned, link.pipeline(CgRenderPassVariant.DEPTH, CgInstanceKind.OBJECT), joins);
             CgPipeline forward = link.pipeline(CgInstanceKind.OBJECT);
-            if (forward != null) ready &= prepared(forward.depthPrepass(), joins);
-            if (forward != null && link.getRenderQueue() < CgRenderQueue.TRANSPARENT_THRESHOLD && pointLights.wantsNormals()) {
-                ready &= prepared(forward.normalTarget(), joins);
+            if (forward != null) ready &= preparedAs(skinned, forward.depthPrepass(), joins);
+            // The normals and custom data an opaque draw writes whenever the lights or a post material ask: warm
+            // whether or not they ask now, so the frame that starts asking compiles nothing.
+            if (forward != null && link.getRenderQueue() < CgRenderQueue.TRANSPARENT_THRESHOLD) {
+                ready &= preparedAs(skinned, forward.normalTarget(), joins);
+                if (link.writesCustomData()) ready &= preparedAs(skinned, forward.customDataTarget(), joins);
             }
             if (link.hasEmissivePass()) {
-                ready &= prepared(link.pipeline(CgRenderPassVariant.EMISSIVE, CgInstanceKind.OBJECT), joins);
+                ready &= preparedAs(skinned, link.pipeline(CgRenderPassVariant.EMISSIVE, CgInstanceKind.OBJECT), joins);
                 if (forward != null && settings.mergeEmission()) {
-                    ready &= prepared(settings.hdrScene() ? forward.sceneFold() : forward.emissionTarget(), joins);
+                    ready &= preparedAs(skinned, settings.hdrScene() ? forward.sceneFold() : forward.emissionTarget(), joins);
                 }
             }
             if (forward != null && !settings.hdrScene() && link.getRenderQueue() >= CgRenderQueue.TRANSPARENT_THRESHOLD) {
                 // The merged emission's cover; the occluder where the emission is drawn on its own, which a host
                 // framebuffer taking no second attachment falls back to as well.
-                if (settings.mergeEmission()) ready &= prepared(forward.emissionCover(), joins);
-                ready &= prepared(forward.emissionOccluder(), joins);
+                if (settings.mergeEmission()) ready &= preparedAs(skinned, forward.emissionCover(), joins);
+                ready &= preparedAs(skinned, forward.emissionOccluder(), joins);
             }
             if (link.hasDistortionPass()) {
-                ready &= prepared(link.pipeline(CgRenderPassVariant.DISTORTION, CgInstanceKind.OBJECT), joins);
+                ready &= preparedAs(skinned, link.pipeline(CgRenderPassVariant.DISTORTION, CgInstanceKind.OBJECT), joins);
                 ready &= distortion.prepare();
             }
         }
@@ -992,6 +1003,11 @@ public final class CgWorldRenderer {
         ready &= prepared(upsample.pipeline(CgInstanceKind.OBJECT), false);
         ready &= prepared(resolve.pipeline(CgInstanceKind.OBJECT), false);
         return prepared(composite.pipeline(CgInstanceKind.OBJECT), false) & ready;
+    }
+
+    /** {@link #prepared} of {@code pipeline}'s skinned form where {@code skinned}. */
+    private static boolean preparedAs(boolean skinned, @Nullable CgPipeline pipeline, boolean joins) {
+        return prepared(pipeline == null || !skinned ? pipeline : pipeline.skinned(), joins);
     }
 
     /** {@code pipeline} and, where draws join, its multi-draw form, both started; whether both are built. */
@@ -2014,7 +2030,7 @@ public final class CgWorldRenderer {
             for (CgMaterial link = materials[i]; link != null; link = link.getNextPass()) {
                 if (!link.hasDistortionPass()) continue;
                 CgPipeline pipeline = link.pipeline(CgRenderPassVariant.DISTORTION, CgInstanceKind.OBJECT);
-                if (pipeline == null || unready(pipeline)) continue;
+                if (pipeline == null || unready(pipeline, i)) continue;
                 if (sets[i] != null) {
                     drawSet(chunks, pipeline, bindingOf(link, recording), i);
                     continue;
@@ -2422,7 +2438,7 @@ public final class CgWorldRenderer {
 
     /** Draw {@code i} through {@code pipeline} into the emission pass, sorted by its key. */
     private void emissionDraw(CgChunkBuilder chunks, CgPipeline pipeline, CgMaterial link, CgRecording recording, int i) {
-        if (unready(pipeline)) return;
+        if (unready(pipeline, i)) return;
         if (sets[i] != null) {
             drawSet(chunks, pipeline, bindingOf(link, recording), i);
             return;
@@ -2535,7 +2551,7 @@ public final class CgWorldRenderer {
             model.normal(normal);
             for (CgMaterial link = materials[i]; link != null; link = link.getNextPass()) {
                 CgPipeline pipeline = link.pipeline(CgInstanceKind.OBJECT);
-                if (pipeline == null || unready(pipeline)) continue;
+                if (pipeline == null || unready(pipeline, i)) continue;
                 if (sets[i] != null) {
                     drawSet(chunks, pipeline, bindingOf(link, recording), i);
                     continue;
@@ -2615,7 +2631,7 @@ public final class CgWorldRenderer {
                 if (pipeline == null) continue;
                 CgPipeline folded = volumeFolds && link.hasEmissivePass() ? pipeline.sceneFold() : null;
                 CgPipeline marching = (folded != null ? folded : pipeline).volumeTarget();
-                if (marching == null || unready(marching)) continue;
+                if (marching == null || unready(marching, i)) continue;
                 if (sets[i] != null) {
                     drawSet(chunks, marching, bindingOf(link, recording), i);
                     continue;
@@ -2905,8 +2921,10 @@ public final class CgWorldRenderer {
      * Whether a draw through {@code pipeline} is skipped, its program not built while {@link #skipUnready} is on: counted,
      * and its compile started. Every pass a material draws in asks it: forward, emission, distortion, half size, volumes.
      */
-    private boolean unready(CgPipeline pipeline) {
+    private boolean unready(CgPipeline pipeline, int i) {
         if (!skipUnready) return false;
+        // The form the draw runs: a skinned mesh draws every pass skinned (CgChunkBuilder.draw).
+        if (skinnedDraw(i)) pipeline = pipeline.skinned();
         // Its joined form too: a draw that joins a multi-draw runs that program.
         boolean joins = applied != null && applied.joins();
         if (pipeline.isPrepared() && (!joins || pipeline.multiDraw().isPrepared())) return false;
@@ -2915,6 +2933,12 @@ public final class CgWorldRenderer {
         unreadyDraws++;
         CgTrace.add(CgChannels.GL, UNREADY_DRAWS, 1);
         return true;
+    }
+
+    /** Whether draw {@code i}'s mesh is skinned, which picks every pipeline's skinned form. */
+    private boolean skinnedDraw(int i) {
+        CgMesh m = lods[i] != null ? lods[i].finest() : meshes[i];
+        return m != null && m.format().isSkinned();
     }
 
     /** Pipelines a held draw asked for, polled once a frame until built: Unreal's precache requests. */
@@ -2935,7 +2959,7 @@ public final class CgWorldRenderer {
 
     /** Draw {@code i} through {@code pipeline} into a world pass, at its key and within its screen rect. */
     private void passDraw(CgChunkBuilder chunks, CgPipeline pipeline, CgMaterial link, CgRecording recording, int i) {
-        if (unready(pipeline)) return;
+        if (unready(pipeline, i)) return;
         if (sets[i] != null) {
             drawSet(chunks, pipeline, bindingOf(link, recording), i);
             return;

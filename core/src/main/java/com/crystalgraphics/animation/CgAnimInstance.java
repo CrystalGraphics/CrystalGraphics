@@ -1,5 +1,6 @@
 package com.crystalgraphics.animation;
 
+import com.crystalgraphics.render.CgPrecache;
 import com.crystalgraphics.api.animation.CgAnimSection;
 import com.crystalgraphics.api.animation.CgAnimSequence;
 import com.crystalgraphics.api.animation.CgPose;
@@ -336,6 +337,7 @@ public final class CgAnimInstance {
     public CgAnimInstance material(int slot, @Nullable CgMaterial material) {
         materials[slot] = material;
         own[slot] = false;
+        precache(material);
         scalarDefaults.clear();
         vectorDefaults.clear();
         return this;
@@ -353,6 +355,7 @@ public final class CgAnimInstance {
     public CgAnimInstance material(int slot, CgMaterialDefinition definition) {
         materials[slot] = CgMaterial.newInstance(definition, null);
         own[slot] = true;
+        precache(materials[slot]);
         scalarDefaults.clear();
         vectorDefaults.clear();
         return this;
@@ -376,6 +379,14 @@ public final class CgAnimInstance {
     public CgAnimLayer layer(String slot) {
         for (int i = 0; i < layers.size(); i++) if (layers.get(i).slot().equals(slot)) return layers.get(i);
         return null;
+    }
+
+    /**
+     * Queues {@code material}'s skinned forms to be built before it draws, as a component precaches its materials with
+     * its vertex factory (Unreal's {@code PrecachePSOs}): whatever is set while loading is built there.
+     */
+    private static void precache(@Nullable CgMaterial material) {
+        if (material != null) CgPrecache.register("crystalgraphics:anim", programs -> programs.add(material, false, true));
     }
 
     /** Submesh {@code slot}'s material, or null where none is set. */

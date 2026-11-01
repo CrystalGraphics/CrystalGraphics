@@ -54,7 +54,7 @@ public final class CgWorldPrograms {
     /** Starts or polls a material's pipelines under settings; whether all are built. */
     @FunctionalInterface
     interface Preparer {
-        boolean prepare(CgMaterial material, boolean half, Settings settings);
+        boolean prepare(CgMaterial material, boolean half, boolean skinned, Settings settings);
     }
 
     /** A manifest's materials being warmed: {@link #ready()} once every one is built under the settings in force. */
@@ -75,6 +75,8 @@ public final class CgWorldPrograms {
     private final Preparer preparer;
     private final List<CgMaterial> list = new ArrayList<>();
     private final Map<CgMaterial, Boolean> halves = new IdentityHashMap<>();
+    /** Materials a skinned mesh draws: their skinned forms are warmed too. */
+    private final Map<CgMaterial, Boolean> skinned = new IdentityHashMap<>();
     /** Materials not yet built under {@link #warmedFor}. */
     private final Map<CgMaterial, Boolean> pending = new IdentityHashMap<>();
     private final Map<CgMaterialManifest.Use, CgMaterial> probes = new HashMap<>();
@@ -114,10 +116,24 @@ public final class CgWorldPrograms {
 
     /** Keeps {@code material} warm from now on, its half-size passes too where {@code half}. */
     public void add(CgMaterial material, boolean half) {
+        add(material, half, false);
+    }
+
+    /**
+     * Keeps {@code material} warm from now on as a skinned mesh draws it too where {@code skinnedMesh}: every form in
+     * its skinned vertex factory as well.
+     *
+     * <pre>{@code
+     * programs.add(cellTone, false, true);   // Goku's body: skinned
+     * }</pre>
+     */
+    public void add(CgMaterial material, boolean half, boolean skinnedMesh) {
         Boolean had = halves.get(material);
         if (had == null) list.add(material);
-        if (had == null || (half && !had)) {
-            halves.put(material, half);
+        boolean wasSkinned = skinned.containsKey(material);
+        if (had == null || (half && !had) || (skinnedMesh && !wasSkinned)) {
+            halves.put(material, had != null && had || half);
+            if (skinnedMesh) skinned.put(material, Boolean.TRUE);
             pending.put(material, Boolean.TRUE);
         }
     }
@@ -183,7 +199,7 @@ public final class CgWorldPrograms {
         while (true) {
             for (int i = 0; i < list.size(); i++) {
                 CgMaterial m = list.get(i);
-                if (pending.containsKey(m) && preparer.prepare(m, halves.get(m), settings)) pending.remove(m);
+                if (pending.containsKey(m) && preparer.prepare(m, halves.get(m), skinned.containsKey(m), settings)) pending.remove(m);
             }
             boolean kernelsBuilt = pollKernels();
             if (pending.isEmpty() && kernelsBuilt || System.nanoTime() > end) break;
@@ -216,7 +232,7 @@ public final class CgWorldPrograms {
         if (!pending.isEmpty()) {
             for (int i = 0; i < list.size(); i++) {
                 CgMaterial m = list.get(i);
-                if (pending.containsKey(m) && preparer.prepare(m, halves.get(m), requested)) pending.remove(m);
+                if (pending.containsKey(m) && preparer.prepare(m, halves.get(m), skinned.containsKey(m), requested)) pending.remove(m);
             }
         }
         if (requested.equals(applied)) {
