@@ -28,7 +28,7 @@ public final class CgGraphicsSettings {
 
     public static final CgSetting.Choice<CgQuality> QUALITY = FILE.choice("effects", "quality", "Quality",
             "How much each effect draws. Low drops distortion and optional layers, draws a cheaper bloom, and halves optional"
-                    + " particles.",
+                    + " particles. Minecraft's Particles caps it: Medium on Decreased, Low on Minimal.",
             CgQuality.ULTRA);
 
     public static final CgSetting.Toggle HDR = FILE.toggle("effects", "hdr", "HDR lighting",

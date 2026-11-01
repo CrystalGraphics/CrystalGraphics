@@ -173,6 +173,11 @@ VFX.play(new Aura(LOOK, x, y, z)).scalability(CgVfxScalability.HERO);   // one e
   quarter at most ([below](#the-cpus-budget)). Counters `vfx.culled`, `vfx.asleep`.
 - **Particles never thin by GPU time**, as Niagara's budget is the game thread's: an effect spawns what it asks, at
   the player's density, on every device. Their GPU cost is the quality tier's and scalability's to bound.
+- **Minecraft's Particles setting caps the quality tier**, as Unreal's effects quality sets the level Niagara's
+  renderers, emitters and systems are enabled at: Medium on Decreased, Low on Minimal, below the player's own tier. So
+  a renderer or slot renderer marked `quality: medium` is gone on Minimal, and an `optional` emitter halves: mark the
+  detail, and never read the setting in your effect. With *Follow Minecraft's Particles* on, its share also thins every
+  emitter's spawns (50% on Decreased, 15% on Minimal).
 - Asleep past `MAX_SLEEP_SECONDS` (120) an effect is killed, so a one-off culled for good never lingers.
 - A server's copy of an authoritative effect is never culled.
 

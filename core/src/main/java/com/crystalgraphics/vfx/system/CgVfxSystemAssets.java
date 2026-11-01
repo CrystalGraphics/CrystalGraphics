@@ -66,7 +66,7 @@ import com.crystalgraphics.vfx.prefab.CgVfxPrefab;
  *   <li>The engine's own behaviour, {@code crystalgraphics:energy_wave} ({@link CgEnergyWave}), is registered here.</li>
  *   <li>An input the asset leaves out takes the default {@code modules.yaml} declares; with none declared it fails
  *       naming the emitter, as do a module the reader does not know and an {@code effect} nothing registered.</li>
- *   <li>Renderers are not layers yet: a compiled system simulates its emitters and draws none of them.</li>
+ *   <li>Each emitter draws through its own {@code renderers:} (sprite, mesh, ribbon and the rest), as a look's emitters do.</li>
  *   <li>Runs on a worker: reads only the asset and its dependencies.</li>
  *   <li>{@link #write} writes a contracted system's values only where they differ from its contract's look, and its
  *       contract's required names always: the file is the delta. Emitters are written inline. Curves, palettes and

@@ -109,7 +109,8 @@ import java.util.function.IntConsumer;
  *   <li>Every mesh the package draws is made here, so a change to how meshes are made is one edit.</li>
  *   <li>{@link #air} is the wind every effect's particles move through; set it once, or change it while playing.</li>
  *   <li>It applies the player's settings ({@link CgGraphicsSettings}) to every effect: particle density and the
- *       quality tier, read once an update. Its clock stops while the game is paused or {@code /tick freeze} holds the
+ *       quality tier, read once an update. The host's particles setting caps the tier: Medium on Decreased, Low on
+ *       Minimal, so what a look marks as detail drops there. Its clock stops while the game is paused or {@code /tick freeze} holds the
  *       world, and runs at the world's tick rate.</li>
  * </ul>
  */
@@ -837,7 +838,17 @@ public final class CgVfxSystem {
     private void readSettings(CgHostEnvironment world) {
         density = CgGraphicsSettings.DENSITY.get();
         if (CgGraphicsSettings.FOLLOW_MINECRAFT_PARTICLES.get()) density *= world.particleShare();
-        quality = CgGraphicsSettings.QUALITY.get();
+        quality = capped(CgGraphicsSettings.QUALITY.get(), world.particles());
+    }
+
+    /**
+     * The host's particles setting as a ceiling on the tier, as Unreal's effects quality ({@code sg.EffectsQuality})
+     * sets the level Niagara's platform sets enable by: Medium on Decreased, Low on Minimal.
+     */
+    static CgQuality capped(CgQuality tier, int particles) {
+        CgQuality ceiling = particles == CgHostEnvironment.PARTICLES_MINIMAL ? CgQuality.LOW
+                : particles == CgHostEnvironment.PARTICLES_DECREASED ? CgQuality.MEDIUM : CgQuality.ULTRA;
+        return tier.ordinal() <= ceiling.ordinal() ? tier : ceiling;
     }
 
     /** Simulated seconds per real second for {@code world}: 0 while paused or frozen, the tick rate over 20 otherwise. */
