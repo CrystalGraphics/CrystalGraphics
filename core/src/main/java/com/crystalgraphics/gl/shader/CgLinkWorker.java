@@ -122,6 +122,8 @@ public final class CgLinkWorker {
     private final LinkedBlockingDeque<Job> queue = new LinkedBlockingDeque<>();
     private final Thread thread;
     private volatile boolean stopping;
+    /** Links handed to the driver and not yet finished: while any is, the driver holds what the render thread would ask. */
+    private volatile int inFlightCount;
 
     private CgLinkWorker(CgGLWorkerContext context, boolean parallel) {
         this.context = context;
@@ -143,6 +145,16 @@ public final class CgLinkWorker {
     /** Whether fresh links go to the worker. */
     public static boolean on() {
         return running != null;
+    }
+
+    /**
+     * Whether the worker has links with the driver or waiting: while it has, NVIDIA makes a program call on the render
+     * thread (a uniform query, a block's wiring) wait for the link in progress, up to hundreds of milliseconds. Work that
+     * can wait for a frame between links does. Any thread.
+     */
+    public static boolean linking() {
+        CgLinkWorker worker = running;
+        return worker != null && (worker.inFlightCount > 0 || !worker.queue.isEmpty());
     }
 
     /** Hands {@code job} to the worker; false where there is none, and the caller links on its own thread. */
@@ -193,6 +205,7 @@ public final class CgLinkWorker {
                     else inFlight.add(next);
                     next = inFlight.size() < MAX_IN_FLIGHT ? queue.poll() : null;
                 }
+                inFlightCount = inFlight.size();
                 for (int i = inFlight.size() - 1; i >= 0; i--) {
                     Job job = inFlight.get(i);
                     if (parallel && !stopping && !job.linked()) continue;
@@ -200,6 +213,7 @@ public final class CgLinkWorker {
                     finished.add(job);
                     inFlight.remove(i);
                 }
+                inFlightCount = inFlight.size();
                 if (!finished.isEmpty()) {
                     publish(finished);
                     finished.clear();

@@ -31,6 +31,7 @@ import com.crystalgraphics.gl.material.parse.CgParsedPass;
 import com.crystalgraphics.gl.material.parse.CgParsedShader;
 import com.crystalgraphics.gl.material.parse.CgShaderParseException;
 import com.crystalgraphics.gl.material.parse.CgShaderParser;
+import com.crystalgraphics.gl.shader.CgLinkWorker;
 import com.crystalgraphics.gl.shader.CgShaderFactory;
 import com.crystalgraphics.job.CgJob;
 import com.crystalgraphics.job.CgJobLane;
@@ -787,6 +788,8 @@ public final class CgMaterialShader implements CgReloadable {
         for (CgShader shader : pending.programs().values()) {
             if (!shader.isReady()) return false;
         }
+        // Committed between links: during one, NVIDIA makes the commit's program calls wait for it (material.commit).
+        if (CgLinkWorker.linking()) return false;
         pendingCommit = null;
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "material.commit")) {
             finish(pending);
@@ -946,7 +949,7 @@ public final class CgMaterialShader implements CgReloadable {
         if (programCache.containsKey(key) || failedVariants.containsKey(key)) return true;
         CgShader submitted = pendingVariants.get(key);
         if (submitted != null) {
-            if (!submitted.isReady()) return false;
+            if (!submitted.isReady() || CgLinkWorker.linking()) return false;
             keepVariant(key, pendingVariants.remove(key));
             return true;
         }

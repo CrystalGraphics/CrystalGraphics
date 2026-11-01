@@ -12,6 +12,7 @@ import com.crystalgraphics.compute.program.CgComputeCheck;
 import com.crystalgraphics.compute.program.CgKernelProgram;
 import com.crystalgraphics.compute.source.CgComputeSource;
 import com.crystalgraphics.compute.source.CgKernelDecl;
+import com.crystalgraphics.gl.shader.CgLinkWorker;
 import com.crystalgraphics.gl.buffer.CgBufferReadback;
 import com.crystalgraphics.mc.CgAssetReloader;
 import com.crystalgraphics.mc.CgReloadable;
@@ -218,14 +219,27 @@ public final class CgCompute implements CgReloadable {
         }
     }
 
-    /** Whether {@code kernel}'s program is linked or done linking, starting it if nothing has. Render thread. */
+    /**
+     * Whether {@code kernel}'s program is built, so a dispatch takes it as it is: starting it if nothing has, and
+     * finishing it here once linked while the link worker is between links. Render thread.
+     */
     synchronized boolean isReady(CgKernel kernel) {
         String key = kernel.programKey;
         CgKernelProgram program = programs.get(key);
         if (program != null && !program.isDeleted()) return true;
         if (!preparing.containsKey(key)) prepare(kernel);
         CgKernelProgram.Pending pending = preparing.get(key);
-        return pending == null || pending.isDone();
+        if (pending == null) return true;
+        // Finished only between links: during one, NVIDIA makes its program calls wait for it (compute.finishPrepared).
+        if (!pending.isDone() || CgLinkWorker.linking()) return false;
+        preparing.remove(key);
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, FINISH)) {
+            programs.put(key, pending.finish());
+        } catch (IllegalStateException e) {
+            // Its dispatch builds it again, and throws there with the log.
+            LOGGER.warn("[{}] a prepared kernel failed: {}", path, e.getMessage());
+        }
+        return true;
     }
 
     /** Starts {@code kernel}'s program without waiting, unless it is compiled or started. Render thread. */
@@ -392,7 +406,8 @@ public final class CgCompute implements CgReloadable {
      * program, up to 1.6 ms each. Without it the first dispatch of each pays that. Render thread, between frames.
      */
     public static void finishPrepared() {
-        if (PREPARING.isEmpty()) return;
+        // Between links only: during one, NVIDIA makes the finish's program calls wait for it, up to half a second.
+        if (PREPARING.isEmpty() || CgLinkWorker.linking()) return;
         long start = System.nanoTime();
         // Inside the frame's warm budget, with a floor so finishing never starves while warming spends it.
         long until = start + Math.max(FINISH_LEAST, Math.min(FINISH_NANOS, CgWarmBudget.remaining()));
