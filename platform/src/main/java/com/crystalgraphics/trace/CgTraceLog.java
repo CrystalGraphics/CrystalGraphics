@@ -17,6 +17,7 @@ import java.util.concurrent.BlockingQueue;
 import java.util.stream.Stream;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.regex.Pattern;
 
 /**
  * A run's own output directory, written by one daemon thread that is never the frame thread.
@@ -66,6 +67,8 @@ public final class CgTraceLog {
 
     private static final DateTimeFormatter RUN_ID =
             DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss").withZone(ZoneOffset.UTC);
+    /** A rotated run's folder: its {@link #RUN_ID}, or {@code unnamed}. */
+    private static final Pattern ROTATED = Pattern.compile("\\d{8}-\\d{6}|unnamed");
 
     private static final String POISON = new String("\u0000stop");
 
@@ -214,12 +217,12 @@ public final class CgTraceLog {
         Files.move(latest, target, StandardCopyOption.ATOMIC_MOVE);
     }
 
-    /** Deletes all but the newest {@link #KEEP_RUNS} rotated runs. */
+    /** Deletes all but the newest {@link #KEEP_RUNS} rotated runs; a folder not named as a run is somebody's copy, kept. */
     private static void prune(Path root) throws IOException {
         List<Path> runs = new ArrayList<>();
         try (Stream<Path> children = Files.list(root)) {
             children.filter(Files::isDirectory)
-                    .filter(each -> !LATEST.equals(each.getFileName().toString()))
+                    .filter(each -> ROTATED.matcher(each.getFileName().toString()).matches())
                     .forEach(runs::add);
         }
         if (runs.size() <= KEEP_RUNS) return;
