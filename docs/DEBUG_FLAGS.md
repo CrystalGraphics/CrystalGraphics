@@ -288,6 +288,12 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 | `crystalgraphics.trace.zones` | 1 to 268435456 | `65536` | Zones a thread keeps at most, for each of the newest and the first frames; raise it when a report warns of dropped zones. Read at launch. |
 | `crystalgraphics.trace.zonesAhead` | true, false | `false` | The frame thread's zones grown to their ceiling at a frame's start, rather than doubled while it records: a doubling is tens of MB in one frame. Read at launch. |
 
+## `crystalgraphics.tracker`
+
+| Variable | Takes | Default | |
+|---|---|---|---|
+| `crystalgraphics.tracker.logPipelines` | true, false | `false` | Log each pipeline the device built at a draw (tracker.pipelines-built), with its program and how long it took. |
+
 ## `crystalgraphics.uploads`
 
 | Variable | Takes | Default | |

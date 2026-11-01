@@ -5,6 +5,7 @@ import com.crystalgraphics.platform.device.CgDeviceObject;
 import com.crystalgraphics.platform.device.format.CgAttribFormat;
 import com.crystalgraphics.platform.device.pipeline.CgBindingLayout;
 import com.crystalgraphics.platform.device.pipeline.CgComputePipeline;
+import com.crystalgraphics.platform.device.pipeline.CgPipeline;
 import com.crystalgraphics.platform.device.pipeline.CgPipelineDesc;
 import com.crystalgraphics.platform.device.shader.CgGlslCompiler;
 import com.crystalgraphics.platform.device.shader.CgShaderModule;
@@ -84,6 +85,8 @@ public final class TrackedPrograms {
         /** A link whose shaderc runs on the worker; the first use of the program finishes it. */
         Future<CgGlslCompiler.Reflection> pending;
         String pendingLabel;
+        /** The pending link's key, written by its worker before its result: one array a link, so a relink never races it. */
+        long[] pendingKey;
         /** A kernel's device objects the worker built for the pending link, where the device allows it. */
         Prebuilt prebuilt;
 
@@ -220,7 +223,7 @@ public final class TrackedPrograms {
                 return;
             }
             String source = cs.source;
-            compile(p, label, () -> compiler.compileCompute(source, label));
+            compile(p, label, new long[1], () -> compiler.compileCompute(source, label));
             return;
         }
         if (vs == null || fs == null) {
@@ -229,14 +232,18 @@ public final class TrackedPrograms {
         }
         String vertex = vs.source, fragment = fs.source;
         Map<String, Integer> attribs = new HashMap<>(p.attribBindings);
-        compile(p, label, () -> compiler.compile(vertex, fragment, attribs, label));
+        long[] key = new long[1];
+        compile(p, label, key, () -> {
+            key[0] = CgTrackedProgram.key(vertex, fragment, attribs);
+            return compiler.compile(vertex, fragment, attribs, label);
+        });
     }
 
     /**
      * shaderc on the worker, finished at the program's next use; at once without a worker, or for the program in use,
      * whose draws read it directly.
      */
-    private void compile(Program p, String label, Callable<CgGlslCompiler.Reflection> spirv) {
+    private void compile(Program p, String label, long[] key, Callable<CgGlslCompiler.Reflection> spirv) {
         if (worker == null || p == current) {
             CgGlslCompiler.Reflection t;
             try (CgTrace.Zone ignored = CgTrace.zone(GL, SPIRV)) {
@@ -247,7 +254,7 @@ public final class TrackedPrograms {
             } catch (Exception e) {
                 throw new IllegalStateException(e);
             }
-            install(p, t, label, null);
+            install(p, t, label, null, key[0]);
             return;
         }
         Prebuilt pre = device.createsOnAnyThread() ? new Prebuilt() : null;
@@ -258,20 +265,43 @@ public final class TrackedPrograms {
                 t = spirv.call();
             }
             if (pre != null && t instanceof CgGlslCompiler.ComputeProgram kernel) pre.build(device, kernel, label);
+            if (pre != null && t instanceof CgGlslCompiler.Program graphics) pre.build(device, tracker, graphics, label, key[0]);
             return t;
         });
         p.pendingLabel = label;
+        p.pendingKey = key;
     }
 
     /**
-     * A kernel's binding layout, module and pipeline made on the compile worker, so the frame that takes the link only
-     * installs them (render-shader-compile K4). A link dropped first releases whatever it made.
+     * What the compile worker makes for a link, so the frame that takes it only installs: a kernel's binding layout,
+     * module and pipeline (render-shader-compile K4); a graphics program's layout and modules, and its recorded
+     * pipelines started on the tracker's builders, which the link waits for before it says it is complete. A link
+     * dropped first releases whatever it made.
      */
     private static final class Prebuilt {
         private CgBindingLayout layout;
         private CgShaderModule module;
         private CgComputePipeline pipeline;
+        private CgTrackedProgram graphics;
+        private Map<CgPipelineDesc, Future<CgPipeline>> builds;
         private boolean dropped;
+
+        synchronized void build(CgDevice device, CgTracker tracker, CgGlslCompiler.Program t, String label, long key) {
+            if (dropped) return;
+            CgBindingLayout l = device.createBindingLayout(label, t.slots());
+            CgShaderModule vertexGl = device.createShaderModule(CgShaderModule.Stage.VERTEX, t.vertexGlDepth(), label);
+            CgShaderModule vertexZero = device.createShaderModule(CgShaderModule.Stage.VERTEX, t.vertexZeroToOne(), label);
+            CgShaderModule fragment = device.createShaderModule(CgShaderModule.Stage.FRAGMENT, t.fragment(), label);
+            graphics = new CgTrackedProgram(label, l, vertexGl, vertexZero, fragment, key);
+            builds = tracker.startRecorded(graphics);
+        }
+
+        /** Whether every recorded pipeline it started has finished building. */
+        synchronized boolean built() {
+            if (builds == null) return true;
+            for (Future<CgPipeline> f : builds.values()) if (!f.isDone()) return false;
+            return true;
+        }
 
         synchronized void build(CgDevice device, CgGlslCompiler.ComputeProgram t, String label) {
             if (dropped) return;
@@ -290,6 +320,12 @@ public final class TrackedPrograms {
         /** The link will never install: what was made is released. */
         synchronized void drop(CgTracker tracker) {
             dropped = true;
+            if (graphics != null) {
+                tracker.orphan(builds.values());
+                tracker.release(graphics.layout());
+                for (CgShaderModule m : graphics.modules()) tracker.release(m);
+                graphics = null;
+            }
             if (pipeline != null) {
                 tracker.release(pipeline);
                 tracker.release(module);
@@ -304,6 +340,8 @@ public final class TrackedPrograms {
         Future<CgGlslCompiler.Reflection> pending = p.pending;
         String label = p.pendingLabel;
         Prebuilt pre = p.prebuilt;
+        long[] key = p.pendingKey;
+        p.pendingKey = null;
         p.pending = null;
         p.pendingLabel = null;
         p.prebuilt = null;
@@ -320,7 +358,7 @@ public final class TrackedPrograms {
             Thread.currentThread().interrupt();
             throw new IllegalStateException(label + ": interrupted waiting for shaderc", e);
         }
-        install(p, t, label, pre);
+        install(p, t, label, pre, key[0]);
     }
 
     /** A link nobody will finish: superseded by another, or the program deleted. */
@@ -333,10 +371,11 @@ public final class TrackedPrograms {
         p.pending.cancel(false);
         p.pending = null;
         p.pendingLabel = null;
+        p.pendingKey = null;
     }
 
     /** The device's half of a link: the binding layout, the modules and, for a kernel, its pipeline. */
-    private void install(Program p, CgGlslCompiler.Reflection reflection, String label, Prebuilt pre) {
+    private void install(Program p, CgGlslCompiler.Reflection reflection, String label, Prebuilt pre, long key) {
         releaseLinked(p);
         if (reflection instanceof CgGlslCompiler.ComputeProgram t) {
             CgBindingLayout layout;
@@ -357,12 +396,19 @@ public final class TrackedPrograms {
             p.fragmentData = null;
         } else {
             CgGlslCompiler.Program t = (CgGlslCompiler.Program) reflection;
-            CgBindingLayout layout = device.createBindingLayout(label, t.slots());
-            CgShaderModule vertexGl = device.createShaderModule(CgShaderModule.Stage.VERTEX, t.vertexGlDepth(), label);
-            CgShaderModule vertexZero = device.createShaderModule(CgShaderModule.Stage.VERTEX, t.vertexZeroToOne(), label);
-            CgShaderModule fragment = device.createShaderModule(CgShaderModule.Stage.FRAGMENT, t.fragment(), label);
-            p.objects.addAll(List.of(vertexGl, vertexZero, fragment, layout));
-            p.tracked = new CgTrackedProgram(label, layout, vertexGl, vertexZero, fragment);
+            if (pre != null && pre.graphics != null) {
+                p.tracked = pre.graphics;
+                tracker.adoptAhead(pre.builds);
+            } else {
+                CgBindingLayout layout = device.createBindingLayout(label, t.slots());
+                CgShaderModule vertexGl = device.createShaderModule(CgShaderModule.Stage.VERTEX, t.vertexGlDepth(), label);
+                CgShaderModule vertexZero = device.createShaderModule(CgShaderModule.Stage.VERTEX, t.vertexZeroToOne(), label);
+                CgShaderModule fragment = device.createShaderModule(CgShaderModule.Stage.FRAGMENT, t.fragment(), label);
+                p.tracked = new CgTrackedProgram(label, layout, vertexGl, vertexZero, fragment, key);
+                tracker.adoptAhead(tracker.startRecorded(p.tracked));
+            }
+            p.objects.add(p.tracked.layout());
+            p.objects.addAll(p.tracked.modules());
             p.vertexData = uniformBlock(t.vertexUniformBinding(), t.vertexUniformSize());
             p.fragmentData = uniformBlock(t.fragmentUniformBinding(), t.fragmentUniformSize());
         }
@@ -416,7 +462,10 @@ public final class TrackedPrograms {
     public int programi(int program, int pname) {
         if (pname == CgGL.GL_COMPLETION_STATUS_KHR) {
             Program pending = lookup(program);
-            return pending.pending == null || pending.pending.isDone() ? CgGL.GL_TRUE : CgGL.GL_FALSE;
+            // Complete once shaderc is done and the pipelines recorded for it are built: a draw held until then
+            // finds them built (Unreal's proxy creation waiting on its PSOs).
+            return pending.pending == null || pending.pending.isDone() && (pending.prebuilt == null || pending.prebuilt.built())
+                    ? CgGL.GL_TRUE : CgGL.GL_FALSE;
         }
         Program p = program(program);
         CgGlslCompiler.Reflection t = p.table;
