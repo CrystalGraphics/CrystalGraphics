@@ -163,10 +163,17 @@ void _cg_beam(float cameraOffset, float drawnBits, out CgMaterialVertex v, out C
     // How many of its segments this beam fills: the rest fold onto its last point.
     vec4 tag = FX_BEAM_RUN(at + FX_BEAM_TAG);
     int noisePoints = int(CG_OBJECT_CUSTOM1.w + 0.5), filled = fx_beam_filled(at, noisePoints, segments);
-    vec3 here = origin + fx_beam_point(at, min(k, filled), filled, noisePoints, end, c2);
-    int from = (flags & 2) != 0 ? 0 : max(min(k, filled) - 1, 0), to = (flags & 2) != 0 ? 1 : max(min(k, filled), 1);
-    vec3 location = origin + fx_beam_point(at, from, filled, noisePoints, end, c2);
-    vec3 right = fx_beam_unit(location - (origin + fx_beam_point(at, to, filled, noisePoints, end, c2)), vec3(1.0, 0.0, 0.0));
+    int hereAt = min(k, filled);
+    int from = (flags & 2) != 0 ? 0 : max(hereAt - 1, 0), to = (flags & 2) != 0 ? 1 : max(hereAt, 1);
+    // Its points in a loop the data sizes, so fx_beam_point is compiled once (fx_beam.glsl). Turned segment by
+    // segment, its own point is from's or to's; turned as a whole it needs a third.
+    int index[3] = int[3](from, to, hereAt);
+    vec3 points[3];
+    int count = (flags & 2) != 0 ? 3 : 2;
+    for (int n = 0; n < count; n++) points[n] = origin + fx_beam_point(at, index[n], filled, noisePoints, end, c2);
+    vec3 location = points[0];
+    vec3 here = count == 3 ? points[2] : hereAt == to ? points[1] : points[0];
+    vec3 right = fx_beam_unit(location - points[1], vec3(1.0, 0.0, 0.0));
     vec3 up = fx_beam_unit(cross(right, location - eye), vec3(cg_ViewMatrix[0][1], cg_ViewMatrix[1][1], cg_ViewMatrix[2][1]));
     if (sheet > 0) {
         float angle = 3.14159265 / float(sheets) * float(sheet);

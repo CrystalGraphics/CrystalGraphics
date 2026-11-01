@@ -95,9 +95,11 @@ vec3 fx_beam_draw(int at, int j, int steps, float points, float frequency, bool 
     if (points > 0.0) {
         float stepSize = points / float(steps), frac = fract(stepSize);
         int index = int(stepSize), s0 = (j - 1) * index, last = int(points + 0.5) - 1;
-        vec3 a = fx_beam_curve(at, float(min(s0, last) + 1) / points);
-        vec3 b = j == steps ? t : fx_beam_curve(at, float(min(s0 + 1, last) + 1) / points);
-        line = a * (1.0 - frac) + b * frac;
+        // A loop the data sizes, so the curve is compiled once (see fx_beam_point).
+        vec3 c[2];
+        int curves = j == steps ? 1 : 2;
+        for (int i = 0; i < curves; i++) c[i] = fx_beam_curve(at, float(min(s0 + i, last) + 1) / points);
+        line = c[0] * (1.0 - frac) + (j == steps ? t : c[1]) * frac;
     } else {
         line = s + (t - s) * (float(j) / float(steps + 1));
     }
@@ -119,14 +121,20 @@ vec3 fx_beam_point(int at, int k, int segments, int noisePoints, vec3 end, vec4 
     int steps = int(FX_BEAM_RUN(at + FX_BEAM_TARGET).w + 0.5), tess = max(int(tag.z + 0.5), 1);
     bool targetNoise = (int(c2.y + 0.5) & 1) != 0;
     int j = min(k / tess, steps + 1), within = k - j * tess;
-    vec3 a = fx_beam_draw(at, j, steps, c2.x, c2.w, targetNoise);
-    if (within == 0 || tess <= 1 || j > steps) return a;
-    vec3 b = fx_beam_draw(at, j + 1, steps, c2.x, c2.w, targetNoise);
+    // Draw points j-1 to j+2 in a loop the data sizes, so the compiler keeps one copy of fx_beam_draw: four inlined
+    // (and three points a vertex, _cg_beam) cost NVIDIA about 0.7 s a link. One past either end reads harmlessly.
+    bool between = within != 0 && tess > 1 && j <= steps;
+    vec3 d[4];
+    int from = between ? -1 : 0, to = between ? 2 : 0;
+    for (int n = from; n <= to; n++) d[n + 1] = fx_beam_draw(at, j + n, steps, c2.x, c2.w, targetNoise);
+    vec3 a = d[1];
+    if (!between) return a;
+    vec3 b = d[2];
     vec4 turn = FX_BEAM_RUN(at + FX_BEAM_TURN);
     vec3 ta = j == 0 ? fx_beam_tangent(FX_BEAM_RUN(at + FX_BEAM_SOURCE_TANGENT), turn)
-            : fx_beam_unit(b - fx_beam_draw(at, j - 1, steps, c2.x, c2.w, targetNoise), vec3(0.0)) * tag.w;
+            : fx_beam_unit(b - d[0], vec3(0.0)) * tag.w;
     vec3 tb = j + 1 > steps ? fx_beam_unit(FX_BEAM_RUN(at + FX_BEAM_TARGET_TANGENT).xyz, vec3(0.0)) * FX_BEAM_RUN(at + FX_BEAM_TARGET_TANGENT).w
-            : fx_beam_unit(fx_beam_draw(at, j + 2, steps, c2.x, c2.w, targetNoise) - a, vec3(0.0)) * tag.w;
+            : fx_beam_unit(d[3] - a, vec3(0.0)) * tag.w;
     return fx_beam_cubic(a, ta, b, tb, float(within) / float(tess));
 }
 
