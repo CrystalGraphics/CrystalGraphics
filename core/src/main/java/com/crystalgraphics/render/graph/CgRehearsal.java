@@ -6,6 +6,8 @@ import com.crystalgraphics.render.CgWarmBudget;
 import com.crystalgraphics.trace.CgGpuTrace;
 import com.crystalgraphics.variable.CgVar;
 
+import javax.annotation.Nullable;
+
 import java.lang.management.ClassLoadingMXBean;
 import java.lang.management.CompilationMXBean;
 import java.lang.management.ManagementFactory;
@@ -95,6 +97,8 @@ public final class CgRehearsal {
     private int passes, quiet;
     private long compiledMillis = -1, loadedClasses = -1, lastPassNanos;
     private boolean done;
+    @Nullable
+    private RuntimeException failure;
 
     private CgRehearsal(Act act) {
         this.act = act;
@@ -126,17 +130,31 @@ public final class CgRehearsal {
         return this;
     }
 
-    /** Runs passes while this frame's warm budget allows, at least one; true once it is done. Render thread. */
+    /**
+     * Runs passes while this frame's warm budget allows, at least one; true once it is done. A pass that throws ends
+     * it, kept as {@link #failure()}. Render thread.
+     */
     public boolean step() {
         if (done) return true;
         do {
             long start = System.nanoTime();
-            pass();
+            try {
+                pass();
+            } catch (RuntimeException e) {
+                failure = e;
+                done = true;
+            }
             lastPassNanos = System.nanoTime() - start;
             CgWarmBudget.spend(lastPassNanos);
-            if (settled()) done = true;
+            if (!done && settled()) done = true;
         } while (!done && CgWarmBudget.allows());
         return done;
+    }
+
+    /** What ended it, if a pass threw; null otherwise. */
+    @Nullable
+    public RuntimeException failure() {
+        return failure;
     }
 
     /** Runs it to the end at once: for a test, or a loading screen with no frame to keep. */

@@ -103,6 +103,35 @@ vector-field Steps halve, its Steps 3.9 s cold rather than 4.8.
 - **Precache definitions that differ only in their textures together** to share a pool; past four sets, the next opens
   a pool of the same shape beside it, its kernel already compiled.
 
+## First plays: warming the JIT
+
+With every program built and every texture loaded, a look's first play still ran cold Java: classes loaded, then the
+interpreter until the JIT compiled each path. A hit spark's first frame was 57 ms where its later ones were 10. So
+before a first play the engine rehearses it: played in a hidden system ahead of the camera, its pools stepped and the
+world stages drawn into a scratch target, until a pass loads no class and compiles nothing. Nothing reaches the screen,
+the lights, the post stack or the camera.
+
+| What | Rehearsed |
+|---|---|
+| Every precached `CgVfxRegistry` entry (a cue's look included) | from the first frame, the title screen's, in one rehearsal |
+| A system asset of a bundle loaded to `READY` | before it turns `READY`, with the bundle's other systems |
+
+- 60 passes at least (`crystalgraphics.vfx.rehearsalPasses`), 500 at most, within `crystalgraphics.warmBudget` a
+  frame: a second or two of a loading screen. `-Dcrystalgraphics.vfx.rehearse=false` turns it off, to compare.
+- A rehearsal waits for the system's precache, and one asked for while another runs waits behind it.
+- A pass that throws ends it, logged: that first play then warms as it plays.
+
+A move of your own, played as it will be:
+
+```java
+Vector3d at = new Vector3d();
+CgRehearsal move = CgVfx.rehearse(CgVfx.world(), hidden -> {   // again each time its effects end
+    CgVfx.rehearsalPoint(at, null);
+    hidden.play(new KiBlast(KiBlast.LOOK, at.x, at.y, at.z));
+});
+if (move == null || move.done()) castable = true;             // each frame; null while rehearsals are off
+```
+
 ## Scalability: what is too far, too many or out of view
 
 Every look has a `CgVfxScalability`, `DEFAULT` unless it names one: when its effects are culled, drawn lower or put to

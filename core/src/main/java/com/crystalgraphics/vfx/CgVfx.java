@@ -30,9 +30,20 @@ import com.crystalgraphics.render.post.volume.CgPostVolumePreparer;
 import com.crystalgraphics.asset.kind.CgParticleKinds;
 import com.crystalgraphics.asset.load.CgVfxAssets;
 import com.crystalgraphics.world.CgWorldQueries;
+import com.crystalgraphics.render.stage.CgHostView;
+import com.crystalgraphics.variable.CgVar;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import com.crystalgraphics.render.graph.CgRehearsal;
+import org.joml.Vector3d;
+import org.joml.Vector3f;
+
+import javax.annotation.Nullable;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 /**
@@ -64,6 +75,17 @@ public final class CgVfx {
     private static CgVfxSystem world;
     private static boolean installed;
     private static int epoch;
+
+    private static final Logger LOGGER = LogManager.getLogger("CgVfx");
+    private static final CgVar.Bool REHEARSE = CgVar.bool("crystalgraphics.vfx.rehearse", true, CgVar.DEV | CgVar.RESTART,
+            "Plays every precached registered effect, from the first frame, and every system asset before it is READY in a "
+                    + "hidden system, so their first play runs no cold Java (class loading, first runs).");
+    private static final CgVar.Int REHEARSAL_PASSES = CgVar.integer("crystalgraphics.vfx.rehearsalPasses", 60, 1, 20_000,
+            CgVar.DEV | CgVar.RESTART, "Hidden frames a rehearsal runs at least (500 at most); it stops at the first one "
+                    + "after them that loads no class and compiles nothing.");
+    /** How far ahead of the camera the hidden effects play: in view, so culling keeps their draw paths. */
+    private static final double REHEARSAL_AHEAD = 6.0;
+    private static boolean rehearsalStarted;
 
     private CgVfx() {
     }
@@ -139,6 +161,8 @@ public final class CgVfx {
             public void onFrame(long frame) {
                 if (world != null) followLevel();
                 precachePending();
+                // From the first frame, the title screen's: done before a world's first play.
+                if (!rehearsalStarted) rehearseRegistry(world());
             }
         });
         // What mods declared and asked for at init, built with the graphics start's own, inside the loading screen.
@@ -176,6 +200,70 @@ public final class CgVfx {
 
     private static void submit() {
         world().submit(CgWorldRenderer.get());
+    }
+
+    /**
+     * The engine's rehearsal, once, from the first frame (the title screen's): every registered effect precached plays
+     * in a hidden system ahead of the camera, drawn into a scratch target, a few frames a frame under the warm budget
+     * once their precache is done, until a frame past {@link #REHEARSAL_PASSES} loads no class and compiles nothing.
+     * Their first real play then runs no class loading and no first run of the engine's paths: what was a 50-70 ms
+     * hitch.
+     */
+    private static void rehearseRegistry(CgVfxSystem vfx) {
+        rehearsalStarted = true;
+        List<CgVfxRegistry.Entry> entries = new ArrayList<>();
+        for (CgVfxRegistry.Entry entry : CgVfxRegistry.entries()) if (entry.precached()) entries.add(entry);
+        if (entries.isEmpty()) return;
+        Vector3d at = new Vector3d();
+        Vector3f forward = new Vector3f();
+        rehearse(vfx, hidden -> {
+            rehearsalPoint(at, forward);
+            for (int i = entries.size() - 1; i >= 0; i--) {
+                CgVfxRegistry.Entry entry = entries.get(i);
+                try {
+                    hidden.play(entry.spawn(entry.look(), at.x, at.y, at.z, at.x + forward.x, at.y + forward.y, at.z + forward.z));
+                } catch (RuntimeException e) {
+                    // One effect that cannot play out of context costs only its own warm-up.
+                    LOGGER.warn("[CgVfx] '{}' cannot be rehearsed; its first play warms as it plays", entry.id(), e);
+                    entries.remove(i);
+                }
+            }
+        });
+    }
+
+    /**
+     * Asks {@code vfx} for a rehearsal of {@code cast} at the engine's length ({@code crystalgraphics.vfx.rehearsalPasses}
+     * at least, 500 at most, ending at the first pass that loads no class and compiles nothing); nothing while
+     * {@code crystalgraphics.vfx.rehearse} is off. What the registry's effects and a system asset's preparer warm the
+     * JIT with before their first play. Render thread.
+     *
+     * <pre>{@code
+     * Vector3d at = new Vector3d();
+     * CgRehearsal r = CgVfx.rehearse(vfx, hidden -> {   // again each time its effects end
+     *     CgVfx.rehearsalPoint(at, null);
+     *     hidden.spawn(ref, at.x, at.y, at.z);
+     * });
+     * if (r == null || r.done()) play();                // each frame
+     * }</pre>
+     *
+     * @return the rehearsal it ran in or joined ({@link CgVfxSystem#rehearse}); null while rehearsals are off
+     */
+    @Nullable
+    public static CgRehearsal rehearse(CgVfxSystem vfx, Consumer<CgVfxSystem> cast) {
+        if (!REHEARSE.get()) return null;
+        int passes = REHEARSAL_PASSES.get();
+        return vfx.rehearse(cast).minPasses(passes).maxPasses(Math.max(passes, 500)).window(1);
+    }
+
+    /**
+     * Where a rehearsal plays: six blocks ahead of the world's camera as of its latest frame, so
+     * no scalability culls it; {@code forward} (if given) its view direction. Answers {@code at}.
+     */
+    public static Vector3d rehearsalPoint(Vector3d at, @Nullable Vector3f forward) {
+        CgHostView view = CgRenderStage.WORLD_OPAQUE.host().view();
+        Vector3f f = forward != null ? forward : new Vector3f();
+        view.view().positiveZ(f).negate();
+        return at.set(view.x() + f.x * REHEARSAL_AHEAD, view.y() + f.y * REHEARSAL_AHEAD, view.z() + f.z * REHEARSAL_AHEAD);
     }
 
     /** Clears the world's system when the level changed; when there is none any more, what waits to play too. */

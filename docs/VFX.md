@@ -238,6 +238,8 @@ VFX.precache(SPIRAL, SHOCKWAVE, FLASH);   // every look a move plays, before the
 - A precached look's first frames compile and load nothing: `CgMaterialShader.compileWaits()` (the trace counter
   `material.compile-waits`) counts every program a draw had to wait for; `--mode=vfx-precache` holds a move to 0, and
   `--mode=vfx-declared` a look only declared.
+- **Its Java is warmed too**: precached registry entries and system assets are rehearsed out of sight before their
+  first play ([`vfx/performance.md`](vfx/performance.md) § *First plays: warming the JIT*).
 - On a dedicated server, or a client with no world yet, `play` plays nothing.
 
 ### Ending an effect

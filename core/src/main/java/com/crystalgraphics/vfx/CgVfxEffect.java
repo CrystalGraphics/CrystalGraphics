@@ -608,6 +608,11 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
         return self();
     }
 
+    /** Whether what it shows the player goes nowhere: on a server, or in a rehearsal's hidden system. */
+    private boolean detached() {
+        return authority != null || system != null && system.rehearsing;
+    }
+
     /**
      * Whether it runs on a server ({@link CgVfxAuthority}): there it decides what gameplay hears, where it goes and what
      * it strikes, while each client draws it. Its shakes, post volumes, particles and moments do nothing there. Guard
@@ -857,8 +862,8 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
      * </ul>
      */
     protected final CgPostVolume openVolume(int priority, CgPostSettings settings, float x, float y, float z) {
-        // On a server, one no stack applies: the effect weighs it as on a client.
-        CgPostVolume volume = (authority != null ? new CgPostVolume(priority, settings, v -> { })
+        // On a server or in a rehearsal, one no stack applies: the effect weighs it as on a client.
+        CgPostVolume volume = (detached() ? new CgPostVolume(priority, settings, v -> { })
                 : CgPostStack.get().volume(priority, settings)).at(originX + x, originY + y, originZ + z).weight(0f);
         volumes = volumes == null ? new CgPostVolume[1] : Arrays.copyOf(volumes, volumes.length + 1);
         volumes[volumes.length - 1] = volume;
@@ -1128,12 +1133,12 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
 
     /** Plays the shake {@code param} at a point relative to its origin, its radii in units of {@code scale} blocks. */
     protected final void playShake(CgVfxParam.Shake param, float x, float y, float z, float scale) {
-        if (!seeking && authority == null) values.shake(param).play(originX + x, originY + y, originZ + z, scale);
+        if (!seeking && !detached()) values.shake(param).play(originX + x, originY + y, originZ + z, scale);
     }
 
     /** As {@link #playShake(CgVfxParam.Shake, float, float, float, float)}, its punch shoving along {@code (dx, dy, dz)}. */
     protected final void playShake(CgVfxParam.Shake param, float x, float y, float z, float dx, float dy, float dz, float scale) {
-        if (!seeking && authority == null) values.shake(param).play(originX + x, originY + y, originZ + z, dx, dy, dz, scale);
+        if (!seeking && !detached()) values.shake(param).play(originX + x, originY + y, originZ + z, dx, dy, dz, scale);
     }
 
     /**
@@ -1141,7 +1146,7 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
      * while it lasts. Left unset for a quarter second, it lapses.
      */
     protected final void holdShake(CgVfxParam.Shake param, float x, float y, float z, float scale, float level) {
-        if (seeking || authority != null) return;
+        if (seeking || detached()) return;
         CgCameraShake shake = values.shake(param);
         int slot = 0;
         if (heldParams == null) {
