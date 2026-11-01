@@ -175,7 +175,8 @@ public final class CgSequenceSoundEvaluator implements CgSequenceEvaluator {
         for (int i = live.size() - 1; i >= 0; i--) {
             Playing p = live.get(i);
             if (p.player != player) continue;
-            if (audio != null) audio.activeSounds().stop(p.id);
+            // A clip's point notify plays until finished past its clip's stop: fired and forgotten
+            if (audio != null && !(p.untilFinished && player.releasesOnStop())) audio.activeSounds().stop(p.id);
             live.remove(i);
         }
     }

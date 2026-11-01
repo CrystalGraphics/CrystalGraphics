@@ -5,6 +5,7 @@ import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.look.CgVfxSchema;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxMacroUv;
+import com.crystalgraphics.vfx.particle.spawn.CgVfxLoopBehavior;
 
 import javax.annotation.Nullable;
 import java.lang.ref.WeakReference;
@@ -170,6 +171,17 @@ public record CgVfxSystemDefinition(String name, CgVfxLook look, @Nullable CgVfx
     public CgVfxSystemDefinition(String name, CgVfxLook look, @Nullable CgVfxBehaviour.Factory behaviour,
                                  List<CgVfxEmitter> emitters, int poolPrimeSize, int maxPoolSize) {
         this(name, look, behaviour, emitters, poolPrimeSize, maxPoolSize, List.of());
+    }
+
+    /**
+     * Whether it plays for ever: an emitter of it loops without end, as Cascade's {@code UParticleSystem::IsLooping}
+     * counts one. A clip's particle key refuses such a system, which nothing would ever end.
+     */
+    public boolean loops() {
+        for (CgVfxEmitter e : emitters) {
+            if (e.state().loopBehavior() == CgVfxLoopBehavior.INFINITE) return true;
+        }
+        return false;
     }
 
     /**

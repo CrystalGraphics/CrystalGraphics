@@ -180,7 +180,7 @@ is scanned, each animation becomes a notify sequence under the clip's id: the fi
 
 | Marker | In the notify sequence |
 |---|---|
-| `notify=<sequence>;` | that sequence, played once from the key |
+| `notify=<sequence>;` | that sequence from the key, for its whole playback range |
 | `begin=<sequence>;` … `end=<sequence>;` | that sequence looping over the span; a `begin` pairs with the next `end` of its id |
 | `particle_effects` `{ effect, locator }` | the system, attached at the caster's socket `locator`, activated at the key |
 | `sound_effects` `{ effect }` | the sound, on the caster at the key |
@@ -199,9 +199,14 @@ is scanned, each animation becomes a notify sequence under the clip's id: the fi
   ```
 
 - An id with no namespace is in the clip file's. The named sequences are ordinary ones, binding `{ role: caster }`.
+- **A key fires and forgets; a span ends with the clip.** When the clip stops, however it stops, its notifies are
+  stopped, never killed: a particle key's system, a sound key and a `notify=` sequence play out to their own end, as
+  Unreal's point notifies spawn and forget. A `begin`/`end` span ends there, as Unreal ends open notify states.
+  `kill()` ends everything at once.
 - **What fails at load**, naming the file, the animation, the key's time and the id: an id no asset holds, an `end`
-  with no `begin` open, a `begin` still open at the clip's end. A `sequences/` file at a clip's id fails the scan,
-  naming both files.
+  with no `begin` open, a `begin` still open at the clip's end, a `notify=` sequence with no length, and a looping
+  system on a particle key, which nothing would end (Cascade's notify refuses one): put it in a `begin=` … `end=`
+  span instead. A `sequences/` file at a clip's id fails the scan, naming both files.
 - Presentation only: each viewer translates its own playback, and nothing is sent. A span over a looping clip's end
   ends and begins again each loop, so pass `looped` when the clip passes its end.
 

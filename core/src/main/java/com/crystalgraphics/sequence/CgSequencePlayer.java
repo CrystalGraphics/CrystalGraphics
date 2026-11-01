@@ -589,8 +589,35 @@ public final class CgSequencePlayer {
             notifies[i] = null;
         }
         for (int i = 0; i < spawnables.length; i++) {
-            if (spawnables[i] instanceof CgSequenceSpawned obj) despawn(i, obj, !killed);
+            if (!(spawnables[i] instanceof CgSequenceSpawned obj)) continue;
+            if (releasesOnStop() && firedAndForgotten(i)) {
+                obj.release();
+                spawnables[i] = null;
+            } else {
+                despawn(i, obj, !killed);
+            }
         }
+    }
+
+    /**
+     * Whether its stop lets what its keys fired play out: a clip's notify sequence stopped, never killed, as Unreal's
+     * point notifies spawn and forget (its spans still end, as {@code EndNotifyStates} ends them).
+     */
+    public boolean releasesOnStop() {
+        return drivenClip != null && stopped && !killed;
+    }
+
+    /** Whether spawnable {@code i} is a key's: every section driving it leaves it running at its end ({@code end: none}). */
+    private boolean firedAndForgotten(int i) {
+        boolean any = false;
+        for (CgSequenceTrack t : definition.tracks()) {
+            if (t.binding().subject() != CgSequenceBinding.Subject.SPAWNABLE || t.binding().index() != i) continue;
+            for (CgSequenceSection s : t.sections()) {
+                if (!"none".equals(s.fields().get("end"))) return false;
+                any = true;
+            }
+        }
+        return any;
     }
 
     /** Each spawned object's {@link CgSequenceSpawned#update}, after the frame's tracks are applied. */

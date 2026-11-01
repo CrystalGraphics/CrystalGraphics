@@ -315,6 +315,12 @@ public final class CgVfxSystemSpawner implements CgSequenceSpawner {
             instance = null;
         }
 
+        /** Its instance plays to its own completion, as Niagara's auto-destroying notify system does. */
+        @Override
+        public void release() {
+            instance = null;
+        }
+
         @Override
         public String toString() {
             return "system " + ref;

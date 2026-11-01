@@ -20,6 +20,7 @@ import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
 import com.crystalgraphics.asset.codec.CgAssetYaml;
+import com.crystalgraphics.asset.kind.CgParticleKinds;
 import com.crystalgraphics.asset.kind.CgSequenceKinds;
 import com.crystalgraphics.asset.load.CgAssetCompiler;
 import com.crystalgraphics.asset.load.CgAssetRef;
@@ -31,11 +32,14 @@ import com.crystalgraphics.asset.tree.CgAssetException;
 import com.crystalgraphics.frame.CgWorld;
 import com.crystalgraphics.job.CgJobLoop;
 import com.crystalgraphics.object.CgType;
+import com.crystalgraphics.vfx.system.CgVfxSystemAssets;
+import com.crystalgraphics.world.CgAttachment;
 import com.crystalgraphics.sequence.CgSequencePlayer;
-import com.crystalgraphics.sequence.CgSequenceTarget;
 import com.crystalgraphics.sequence.CgSequencer;
+import com.crystalgraphics.sequence.binding.CgSequenceRole;
 import com.crystalgraphics.sequence.definition.CgSequenceDefinition;
 import com.crystalgraphics.sequence.definition.CgSequenceTrack;
+import com.crystalgraphics.sequence.spawn.CgSequenceSystem;
 import com.crystalgraphics.sequence.event.CgSequenceEventListener.Side;
 
 /** A GeckoLib clip's markers become its notify sequence, played inside a sequence or on the library's own playback. */
@@ -43,6 +47,9 @@ public class CgClipMarkersTest {
 
     @Rule
     public TemporaryFolder tmp = new TemporaryFolder();
+
+    /** The system compiler's types, declared before any load here freezes them. */
+    private static final CgAssetCompiler<?> SYSTEMS = CgVfxSystemAssets.COMPILER;
 
     private static final String CLIP = "{ \"format_version\": \"1.8.0\", \"animations\": { \"melee_6\": {\n"
             + "  \"animation_length\": 0.5, \"loop\": true,\n"
@@ -55,15 +62,27 @@ public class CgClipMarkersTest {
 
     private static final CgClipMarkers.Known ALL = new CgClipMarkers.Known() {
         @Override public boolean sequence(String id) {
-            return Set.of("rpgcore:charge", "rpgcore:swing_trail").contains(id);
+            return Set.of("rpgcore:charge", "rpgcore:swing_trail", "rpgcore:open").contains(id);
         }
 
         @Override public boolean system(String id) {
             return id.equals("rpgcore:slash");
         }
+
+        @Override public double length(String id) {
+            return id.equals("rpgcore:open") ? Double.NaN : 0.1;
+        }
     };
 
-    private static final CgSequenceTarget CASTER = new CgSequenceTarget() {
+    private static final CgSequenceRole CASTER = new CgSequenceRole() {
+        @Override public CgAttachment attachment(String socket) {
+            return (point, turn) -> {
+                point[0] = point[1] = point[2] = 0;
+                if (turn != null) turn.identity();
+                return true;
+            };
+        }
+
         @Override public int slot(String name) {
             return 0;
         }
@@ -117,6 +136,76 @@ public class CgClipMarkersTest {
         fails(CLIP.replace("begin=charge;", ""), "at 0.4000s: rpgcore:charge ends with no begin open");
         fails(CLIP.replace("end=charge;", ""), "at 0.1000s: rpgcore:charge begins and is still open at the clip's end");
         fails(CLIP.replace("\"slash\"", "\"rpgcore:nothing\""), "at 0.3000s: rpgcore:nothing names no system");
+        fails(CLIP.replace("notify=swing_trail", "notify=open"), "at 0.2500s: rpgcore:open has no length to play for");
+    }
+
+    /** A spawned system that records whether its play let it go or ended it. */
+    private static final class Fired implements CgSequenceSystem {
+        boolean active, released, destroyed, graceful;
+
+        @Override public void activate(boolean reset) {
+            active = true;
+        }
+
+        @Override public void deactivate() {
+            active = false;
+        }
+
+        @Override public void kill() {
+            active = false;
+        }
+
+        @Override public void detach() {
+        }
+
+        @Override public boolean active() {
+            return active;
+        }
+
+        @Override public void age(float seconds) {
+        }
+
+        @Override public void destroy(boolean graceful) {
+            destroyed = true;
+            this.graceful = graceful;
+        }
+
+        @Override public void release() {
+            released = true;
+        }
+    }
+
+    private static final String KEY = "{ \"animations\": { \"melee_6\": { \"animation_length\": 0.5,"
+            + "  \"particle_effects\": { \"0.1\": { \"effect\": \"slash\", \"locator\": \"hand_r\" } } } } }";
+
+    private static Fired interrupted(boolean kill) {
+        CgSequencer s = new CgWorld().add(new CgSequencer());
+        List<Fired> made = new ArrayList<>();
+        s.spawner("system", (player, spawnable, at) -> {
+            Fired f = new Fired();
+            made.add(f);
+            return f;
+        });
+        CgSequencePlayer notifies = s.playClip(clip(KEY), CASTER, "rpgcore:core/melee/melee_6");
+        for (double clip = 0.025; clip < 0.2; clip += 0.025) {
+            notifies.drive(clip, false);
+            s.evaluate(0.025f);
+        }
+        assertEquals("the key fired", 1, made.size());
+        assertTrue(made.get(0).active);
+        if (kill) notifies.kill();
+        else notifies.stop();
+        s.evaluate(0.025f);
+        return made.get(0);
+    }
+
+    @Test
+    public void aKeysSystemOutlivesAnInterruptedClip_butAKilledOneEndsAtOnce() {
+        Fired stopped = interrupted(false);
+        assertTrue("let go to play out, as Unreal's notify spawns and forgets", stopped.released);
+        assertTrue("never ended by the clip's stop", !stopped.destroyed);
+        Fired killed = interrupted(true);
+        assertTrue("a kill ends it at once", killed.destroyed && !killed.graceful && !killed.released);
     }
 
     @Test
@@ -187,6 +276,35 @@ public class CgClipMarkersTest {
         assertTrue("loaded: " + move.failure(), move.ready());
         assertEquals("its section plays the clip's notifies", 1, move.loaded().children().size());
         assertEquals("rpgcore:core/melee/melee_6", move.loaded().children().get(0).definition().id());
+    }
+
+    /** Cascade's particle notify suppresses a looping system, which nothing would end; here it fails at load. */
+    @Test
+    public void aLoopingSystemOnAParticleKeyFailsAtLoadNamingTheKey() throws IOException, InterruptedException {
+        Path ns = kit();
+        // No emitter_state: Niagara's default, looping for ever
+        write(ns, "vfx/systems/slash.yaml", "_v: 1\nemitters:\n  - id: h1\n    name: glow\n    emitter:\n"
+                + "      properties: { capacity: 4 }\n"
+                + "      emitter_update:\n        - { id: s1, module: crystalgraphics:spawn_rate, inputs: { rate: 10 } }\n");
+        CgAssetCompiler<?> was = CgAssetCompiler.of(CgParticleKinds.SYSTEM);
+        CgAssetCompiler.register(CgParticleKinds.SYSTEM, SYSTEMS);
+        try {
+            CgAssetRegistry registry = new CgAssetRegistry();
+            registry.registerEngine();
+            registry.scanResources(tmp.getRoot());
+            CgVfxAssets assets = new CgVfxAssets(registry, CgJobLoop.create("clip-markers-loop"));
+            CgAssetRef<CgSequenceDefinition> clip = assets.declare(CgSequenceKinds.SEQUENCE, "rpgcore:core/melee/melee_6");
+            clip.request(CgLoadPriority.MOVE);
+            for (int i = 0; i < 3000 && !clip.ready() && clip.failure() == null; i++) {
+                assets.drain();
+                assets.publish();
+                Thread.sleep(1);
+            }
+            assertNotNull("refused", clip.failure());
+            assertTrue(clip.failure(), clip.failure().contains("animation melee_6 at 0.3000s: rpgcore:slash loops for ever"));
+        } finally {
+            CgAssetCompiler.register(CgParticleKinds.SYSTEM, was);
+        }
     }
 
     @Test

@@ -1,5 +1,6 @@
 package com.crystalgraphics.asset.load;
 
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.ArrayList;
@@ -32,6 +33,7 @@ import com.crystalgraphics.object.CgValueType;
 import com.crystalgraphics.object.validate.CgValidation;
 import com.crystalgraphics.object.value.CgUnits;
 import com.crystalgraphics.sequence.clip.CgClipMarkers;
+import com.crystalgraphics.vfx.system.CgVfxSystemDefinition;
 import com.crystalgraphics.asset.kind.CgAssetKinds;
 import com.crystalgraphics.object.CgTypes;
 
@@ -117,6 +119,11 @@ public final class CgAssetPipeline {
                     @Override
                     public boolean system(String ref) {
                         return registry.entry(CgParticleKinds.SYSTEM, ref) != null;
+                    }
+
+                    @Override
+                    public double length(String ref) {
+                        return sequenceLength(ref, 0);
                     }
                 });
             }
@@ -251,6 +258,43 @@ public final class CgAssetPipeline {
         }
     }
 
+    /** Sequence {@code id}'s playback range in seconds from its file, its parents' where it has none; NaN for none. */
+    private double sequenceLength(String id, int depth) {
+        CgAssetEntry e = registry.entry(CgSequenceKinds.SEQUENCE, id);
+        if (e == null || e.file() == null || depth > 8) return Double.NaN;
+        try {
+            String text = new String(Files.readAllBytes(e.file()), StandardCharsets.UTF_8);
+            if (e.file().toString().endsWith(CgClipMarkers.SUFFIX)) return CgClipMarkers.length(id, text);
+            if (!(CgAssetYaml.read(text) instanceof Map<?, ?> tree)) return Double.NaN;
+            if (tree.get("range") instanceof List<?> range && range.size() == 2 && range.get(0) instanceof Number from
+                    && range.get(1) instanceof Number to) {
+                double ticks = tree.get("tick_resolution") instanceof Number t ? t.doubleValue() : Double.NaN;
+                return (to.doubleValue() - from.doubleValue()) / ticks;
+            }
+            return tree.get(CgType.PARENT) instanceof String parent ? sequenceLength(parent, depth + 1) : Double.NaN;
+        } catch (IOException ex) {
+            return Double.NaN;
+        }
+    }
+
+    /**
+     * A clip's notify sequence whose particle key names a system that plays for ever fails, naming the file, the
+     * animation, the key's time and the system: Cascade's particle notify suppresses one, which nothing would end.
+     */
+    private void loopingKeys(CgAssetLoad load, CgAssetCompiler.Dependencies deps) {
+        CgAssetEntry e = registry.entry(load.kind(), load.id());
+        if (e == null || e.file() == null || !e.file().toString().endsWith(CgClipMarkers.SUFFIX)) return;
+        if (!(load.asset.resolved().get("spawnables") instanceof List<?> spawnables)) return;
+        String animation = load.id().substring(load.id().lastIndexOf('/') + 1);
+        for (Object o : spawnables) {
+            if (!(o instanceof Map<?, ?> s) || !(s.get("system") instanceof String system)) continue;
+            if (deps.definition(CgParticleKinds.SYSTEM, system) instanceof CgVfxSystemDefinition d && d.loops()) {
+                throw new CgAssetException(e.file() + ": animation " + animation + " at " + s.get("name") + ": " + system
+                        + " loops for ever, which a key never ends: use begin= ... end=");
+            }
+        }
+    }
+
     private void dependencies(CgAssetLoad load, List<CgAssetReferences.Reference> hard) {
         Map<String, CgAssetLoad> deps = new LinkedHashMap<>();
         for (CgAssetReferences.Reference ref : hard) {
@@ -288,7 +332,10 @@ public final class CgAssetPipeline {
                 return units;
             }
         };
-        start(load, () -> compiler.compile(asset, answers), definition -> {
+        start(load, () -> {
+            if (load.kind() == CgSequenceKinds.SEQUENCE) loopingKeys(load, answers);
+            return compiler.compile(asset, answers);
+        }, definition -> {
             load.definition = definition;
             advance(load, CgAssetState.COMPILED);
         }, "does not compile");

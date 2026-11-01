@@ -30,7 +30,7 @@ import com.crystalgraphics.serialization.format.CgFormats;
  *
  * <table>
  *   <tr><th>Marker</th><th>In the sequence</th></tr>
- *   <tr><td>{@code notify=<sequence>;}</td><td>a {@code subsequence} section from the key, playing it once through</td></tr>
+ *   <tr><td>{@code notify=<sequence>;}</td><td>a {@code subsequence} section from the key, as long as the sequence</td></tr>
  *   <tr><td>{@code begin=<sequence>;} … {@code end=<sequence>;}</td><td>a looping {@code subsequence} over the span</td></tr>
  *   <tr><td>{@code particle_effects} {@code { effect, locator }}</td><td>a {@code system} spawnable at the caster's socket, activated at the key</td></tr>
  *   <tr><td>{@code sound_effects} {@code { effect }}</td><td>a {@code sound} section on the caster at the key</td></tr>
@@ -41,7 +41,10 @@ import com.crystalgraphics.serialization.format.CgFormats;
  *   <li>An id with no namespace is in the clip file's.</li>
  *   <li>A {@code begin} pairs with the next {@code end} of the same id; an {@code end} with none open, a {@code begin}
  *       still open at the clip's end, or an id no asset holds fails, naming the file, the animation, the key's time
- *       and the id.</li>
+ *       and the id; so do a {@code notify=} sequence with no length, and a looping system on a particle key (Unreal
+ *       spawns nothing for one: use {@code begin=} … {@code end=}).</li>
+ *   <li>A key fires and forgets: when its clip stops, never killed, what a particle, sound or {@code notify=} key started
+ *       plays out to its own end. A {@code begin}/{@code end} span ends with the clip.</li>
  *   <li>Its one role is {@code caster}: the role playing the clip, which the named sequences bind too.</li>
  * </ul>
  */
@@ -59,6 +62,9 @@ public final class CgClipMarkers {
 
         /** Whether a {@code system} asset of {@code id} is registered. */
         boolean system(String id);
+
+        /** Sequence {@code id}'s playback range in seconds; NaN where it has none (an open end). */
+        double length(String id);
     }
 
     /** One animation of the file: its length and its marker channels, each keyed by time; the rest unread. */
@@ -95,6 +101,12 @@ public final class CgClipMarkers {
         List<String> ids = new ArrayList<>();
         for (String key : read(rel, json).animations().keySet()) ids.add(namespace + ":" + stem + "/" + key);
         return ids;
+    }
+
+    /** Clip {@code id}'s length in seconds, {@code json} its file's text: its {@code animation_length}, else its latest key. */
+    public static double length(String id, String json) {
+        Clip clip = read(id, json).animations().get(id.substring(id.lastIndexOf('/') + 1));
+        return clip == null ? Double.NaN : Float.isNaN(clip.length()) ? latest(clip) : clip.length();
     }
 
     /**
@@ -216,7 +228,13 @@ public final class CgClipMarkers {
             String name = eq < 0 ? instruction : instruction.substring(0, eq).trim();
             String value = eq < 0 ? null : instruction.substring(eq + 1).trim();
             switch (name) {
-                case "notify" -> subsequence(sequence(value, at), at, -1, false);
+                case "notify" -> {
+                    // As long as the sequence, as Sequencer sizes a new subsequence section to its playback range
+                    String id = sequence(value, at);
+                    double seconds = known.length(id);
+                    if (!(seconds > 0)) throw fail(at, id, "has no length to play for");
+                    subsequence(id, at, ticks(at) + (int) Math.round(seconds * TICKS), false);
+                }
                 case "begin" -> {
                     String id = sequence(value, at);
                     if (open.containsKey(id)) throw fail(at, id, "begins again while its begin at " + seconds(open.get(id)) + " is open");
@@ -241,16 +259,19 @@ public final class CgClipMarkers {
             if (e.get("locator") != null && !String.valueOf(e.get("locator")).isEmpty()) place.put("socket", String.valueOf(e.get("locator")));
             Map<String, Object> s = new LinkedHashMap<>();
             s.put("id", spawnable);
+            s.put("name", seconds(at));   // its key's time, which a load failure names
             s.put("at", place);
             s.put("system", system);
             spawnables.add(s);
             tracks.add(track("ps" + particles, "system", Map.of("spawnable", spawnable),
-                    section(0, null, "keys", List.of(List.of(ticks(at), "activate")))));
+                    keyed(section(0, null, "keys", List.of(List.of(ticks(at), "activate"))))));
         }
 
         void sound(Map<?, ?> e, float at) {
             String sound = qualify(e.get("effect") == null ? null : String.valueOf(e.get("effect")), at);
-            tracks.add(track("sn" + ++sounds, "sound", Map.of("role", "caster"), section(ticks(at), null, "sound", sound)));
+            Map<String, Object> section = section(ticks(at), null, "sound", sound);
+            section.put("play_until_finished", true);   // fired and forgotten: it outlives an interrupted clip
+            tracks.add(track("sn" + ++sounds, "sound", Map.of("role", "caster"), section));
         }
 
         void subsequence(String id, float from, int to, boolean loop) {
@@ -272,6 +293,12 @@ public final class CgClipMarkers {
 
         CgAssetException fail(float at, String id, String why) {
             return new CgAssetException(file + ": animation " + animation + " at " + seconds(at) + ": " + id + " " + why);
+        }
+
+        /** A key's system: left running at its section's end, so its clip's stop lets it play out. */
+        private static Map<String, Object> keyed(Map<String, Object> section) {
+            section.put("end", "none");
+            return section;
         }
 
         private static Map<String, Object> section(int from, @Nullable Integer to, String key, Object value) {

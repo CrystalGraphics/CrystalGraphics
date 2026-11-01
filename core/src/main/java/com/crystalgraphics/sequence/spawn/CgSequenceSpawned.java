@@ -25,6 +25,14 @@ public interface CgSequenceSpawned extends CgSequenceTarget {
     /** Ends it: gracefully, or at once. */
     void destroy(boolean graceful);
 
+    /**
+     * Let go as its play stops, to end its own way, nothing touching it again: what a clip's point notify spawned,
+     * which Unreal's notify spawns and forgets. A graceful {@link #destroy} unless it can play on alone.
+     */
+    default void release() {
+        destroy(true);
+    }
+
     /** Once a frame, after its tracks are applied: where it follows its place, it takes it now. */
     default void update() {
     }
