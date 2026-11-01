@@ -159,7 +159,7 @@ public final class CgVfxSystem {
             WARM_ZONE = CgTrace.name("vfx.warm"), EFFECT_ZONE = CgTrace.name("vfx.effect.submit"),
             PATHS_ZONE = CgTrace.name("vfx.paths.upload"), PARTICLES_ZONE = CgTrace.name("vfx.frame.particles"),
             FRAME_END_ZONE = CgTrace.name("vfx.frame.end"), ROWS_ZONE = CgTrace.name("vfx.rows.upload"), MATERIALS_ZONE = CgTrace.name("vfx.precache.materials"),
-            EMITTER_ZONE = CgTrace.name("vfx.precache.emitter"),
+            EMITTER_ZONE = CgTrace.name("vfx.precache.emitter"), MESHES_ZONE = CgTrace.name("vfx.meshes"),
             ALLOCATE_ZONE = CgTrace.name("vfx.warm.allocate"), POLL_ZONE = CgTrace.name("vfx.warm.poll"),
             CULLED = CgTrace.name("vfx.culled"), ASLEEP = CgTrace.name("vfx.asleep"),
             TICKS = CgTrace.name("vfx.ticks"), CAPPED = CgTrace.name("vfx.ticks.capped"), HELD = CgTrace.name("vfx.ticks.held"),
@@ -879,8 +879,10 @@ public final class CgVfxSystem {
         }
     }
 
-    private void submitTimed(CgWorldRenderer world) {
-        if (tubeMesh == null) {
+    /** The meshes every slot draws on, built once: by {@link #precache}, else at the first submit with effects. */
+    private void buildMeshes() {
+        if (tubeMesh != null) return;
+        try (CgTrace.Zone ignored = CgTrace.zone(CgVfxTrace.CHANNEL, MESHES_ZONE)) {
             tubeMesh = CgVfxTube.mesh(false);
             closedTubeMesh = CgVfxTube.mesh(true);
             ribbonMesh = CgVfxRibbons.mesh();
@@ -889,6 +891,10 @@ public final class CgVfxSystem {
             volumeMesh = COARSE_VOLUMES.get()
                     ? CgMesh.build(CgVertexFormat.SPATIAL, m -> CgMeshShapes.sphere(m, 12, 24, 1.05f)) : sphereMesh;
         }
+    }
+
+    private void submitTimed(CgWorldRenderer world) {
+        buildMeshes();
         try (CgTrace.Zone ignored = CgTrace.zone(CgVfxTrace.CHANNEL, SUBMIT_ZONE)) {
             try (CgTrace.Zone warming = CgTrace.zone(CgVfxTrace.CHANNEL, WARM_ZONE)) {
                 warm();
@@ -972,6 +978,7 @@ public final class CgVfxSystem {
      * }</pre>
      */
     public void precache(CgVfxLook... looks) {
+        buildMeshes();
         // Its emitters join the loaded shapes first, so they warm as they will play: raised where coalescing raises them.
         Map<CgVfxEmitter, Integer> tiers = new LinkedHashMap<>();
         for (CgVfxLook look : looks) {

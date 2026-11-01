@@ -950,17 +950,7 @@ public final class CgWorldLights {
                 warm();
                 return false;
             }
-            if (list == null) {
-                list = CgGraphBuffer.persistent("cg_world_lights",
-                        CgBufferDesc.of((long) CAPACITY * FLOATS * 4, CgBufferUsage.STORAGE, CgBufferUsage.COPY));
-                count = CgGraphBuffer.persistent("cg_world_lights.count",
-                        CgBufferDesc.of(16, CgBufferUsage.STORAGE, CgBufferUsage.COPY));
-                staging = ByteBuffer.allocateDirect(CAPACITY * FLOATS * 4).order(ByteOrder.nativeOrder());
-                viewed = CgGraphBuffer.persistent("cg_world_lights.view",
-                        CgBufferDesc.elements(CAPACITY, 80, CgBufferUsage.STORAGE, CgBufferUsage.COPY));
-                alloc = CgGraphBuffer.persistent("cg_world_lights.alloc",
-                        CgBufferDesc.elements(4, 4, CgBufferUsage.STORAGE, CgBufferUsage.COPY));
-            }
+            allocateList();
             listed = Math.min(cpu, CAPACITY);
             long cpuDropped = cpu - listed;
             blockCount = Math.min(blockCount, CAPACITY - listed);
@@ -1571,9 +1561,24 @@ public final class CgWorldLights {
      */
     private void warm() {
         if (warmed) return;
+        allocateList();
         binKernels();
         volumeKernel();
         warmed = applyBuilt();
+    }
+
+    /** The list's buffers and its 6 MB staging, made while no light is up: the first light's frame took them. */
+    private void allocateList() {
+        if (list != null) return;
+        list = CgGraphBuffer.persistent("cg_world_lights",
+                CgBufferDesc.of((long) CAPACITY * FLOATS * 4, CgBufferUsage.STORAGE, CgBufferUsage.COPY));
+        count = CgGraphBuffer.persistent("cg_world_lights.count",
+                CgBufferDesc.of(16, CgBufferUsage.STORAGE, CgBufferUsage.COPY));
+        staging = ByteBuffer.allocateDirect(CAPACITY * FLOATS * 4).order(ByteOrder.nativeOrder());
+        viewed = CgGraphBuffer.persistent("cg_world_lights.view",
+                CgBufferDesc.elements(CAPACITY, 80, CgBufferUsage.STORAGE, CgBufferUsage.COPY));
+        alloc = CgGraphBuffer.persistent("cg_world_lights.alloc",
+                CgBufferDesc.elements(4, 4, CgBufferUsage.STORAGE, CgBufferUsage.COPY));
     }
 
     /** The translucency volume's fill kernel, made and started once. */
