@@ -161,6 +161,50 @@ Map<String, Object> cut = Map.of("id", "s1", "range", List.of(0, 240), "clip", "
 ```
 
 - On a dedicated server the notify sequence plays its `rpg` events on the clip's time too: no clip need load.
+
+### A GeckoLib clip's markers
+
+A GeckoLib animation keeps its markers in its own Bedrock file, which GeckoLib and Blockbench still read. As the file
+is scanned, each animation becomes a notify sequence under the clip's id: the file's path under `animations/` without
+`.animation.json`, then `/` and the animation's key.
+
+```json
+// assets/mymod/animations/hero/melee.animation.json: its animation "swing" is the clip mymod:hero/melee/swing
+"swing": {
+  "animation_length": 0.5,
+  "timeline":         { "0.1": "begin=charge;", "0.25": "notify=trail;", "0.4": "end=charge;hit" },
+  "particle_effects": { "0.3": { "effect": "slash", "locator": "hand_r" } },
+  "sound_effects":    { "0.3": { "effect": "mymod:swing" } }
+}
+```
+
+| Marker | In the notify sequence |
+|---|---|
+| `notify=<sequence>;` | that sequence, played once from the key |
+| `begin=<sequence>;` … `end=<sequence>;` | that sequence looping over the span; a `begin` pairs with the next `end` of its id |
+| `particle_effects` `{ effect, locator }` | the system, attached at the caster's socket `locator`, activated at the key |
+| `sound_effects` `{ effect }` | the sound, on the caster at the key |
+| any other instruction (`hit`) | an `rpg` event of that name, for your mod |
+
+- **Inside a sequence**, an `animation` section playing the clip with no `notifies` of its own plays it:
+  `{ id: s1, range: [0, 120], clip: mymod:hero/melee/swing }`.
+- **On your own playback**, outside any sequence, your mod drives it on the client, as Unreal's anim instance fires a
+  clip's notifies from its own playback:
+
+  ```java
+  CgClipNotifies.request("mymod:hero/melee/swing");                                  // at load: nothing loads at a play
+  CgSequencePlayer notifies = CgClipNotifies.start(sequencer, role, "mymod:hero/melee/swing");   // the clip starts
+  if (notifies != null) notifies.drive(clipSeconds, loopedSinceLastFrame);         // each frame
+  if (notifies != null) notifies.stop();                                           // it stops, however it stops
+  ```
+
+- An id with no namespace is in the clip file's. The named sequences are ordinary ones, binding `{ role: caster }`.
+- **What fails at load**, naming the file, the animation, the key's time and the id: an id no asset holds, an `end`
+  with no `begin` open, a `begin` still open at the clip's end. A `sequences/` file at a clip's id fails the scan,
+  naming both files.
+- Presentation only: each viewer translates its own playback, and nothing is sent. A span over a looping clip's end
+  ends and begins again each loop, so pass `looped` when the clip passes its end.
+
 - **A role's outline colour** (the material contract's `outline`, a `material` track keying `colours.outline` on the
   role) is a `CgRoleOutline` the role answers the slot through: a keyed colour sets the role's slot on its own materials
   (`CgAnimInstance.scalar`) and writes the colour into the outline post's slot; `restore_state` puts the materials' own

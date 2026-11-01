@@ -131,6 +131,15 @@ public final class CgSequencer extends CgWorldSubsystem {
         return start(new CgSequencePlayer(this, definition, roles).drivenFor(clip));
     }
 
+    /**
+     * A clip's notify sequence driven by the library playing the clip outside any sequence: the caller hands it the
+     * clip's time each frame ({@link CgSequencePlayer#drive}) and stops it when the clip stops, however it stops. Its
+     * one role, {@code caster}, is {@code role}. Client side; {@code clip} is the clip's id.
+     */
+    public CgSequencePlayer playClip(CgSequenceDefinition notifies, CgSequenceTarget role, String clip) {
+        return playNotifies(notifies, Map.of("caster", role), clip);
+    }
+
     private CgSequencePlayer start(CgSequencePlayer player) {
         CgSequenceDefinition definition = player.definition();
         if (!server()) {

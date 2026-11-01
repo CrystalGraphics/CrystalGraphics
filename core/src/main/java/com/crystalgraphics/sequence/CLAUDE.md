@@ -20,6 +20,7 @@ root; a new track kind is a subpackage of its own when it brings types besides i
 | `sequence.animation` | The `animation` kind: `CgSequenceAnimationEvaluator`, `CgSequenceSkeletal` (a target playing clips) |
 | `sequence.event` | The `event` kind and triggered sections: `CgSequenceEventEvaluator`, `CgSequenceEventListener` (sides `rpg`, `ours`), `CgEventChannel` (the sweep), `CgEventTrigger` |
 | `sequence.notify` | Notify kinds a mod registers: `CgNotifyKind`, `CgNotifyContext`, `CgNotifyEvaluator` |
+| `sequence.clip` | A library's own clip markers: `CgClipMarkers` (a GeckoLib `.animation.json`'s markers translated into each animation's notify sequence, registered at scan under the clip's id and compiled as any sequence), `CgClipNotifies` (the provider's start, then `CgSequencePlayer.drive` each frame, then stop, on its own playback) |
 | `sequence.camera` | The camera kinds, installed by `CgSequenceCameras`: the `camera` spawnable as `CgCineCamera` (its keyed pose) or `CgRigCamera` (a rig in a context of its own, keyed by `rig.<name>`), `CgCameraCutEvaluator` (`camera_cut`: the viewer looks through one for its section), `CgCameraAnimationEvaluator` (`camera_animation`, an additive modifier on the viewer's camera); the camera system is `camera`'s |
 | `sequence.net` | A play over the network: `CgSequenceNet` (the type `crystalgraphics:sequence`: its state sent on each `revision()`, viewers corrected to it, an owner's predicted jumps under a key) |
 

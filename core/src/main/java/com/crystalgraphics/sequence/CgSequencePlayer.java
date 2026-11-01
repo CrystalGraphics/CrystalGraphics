@@ -183,6 +183,20 @@ public final class CgSequencePlayer {
         return drivenClip != null;
     }
 
+    /**
+     * A clip's notify sequence advanced to the clip's time, {@code seconds} into the clip, as the library playing it
+     * outside any sequence says each frame ({@link CgSequencer#playClip}); {@code looped} when the clip passed its end
+     * since the last frame, so what spans its end ends and begins again. Applied at the next evaluation.
+     *
+     * @throws IllegalStateException on a player no clip drives
+     */
+    public CgSequencePlayer drive(double seconds, boolean looped) {
+        if (drivenClip == null) throw new IllegalStateException(definition.id() + " is no clip's notify sequence");
+        drivenTo = seconds;
+        drivenWraps |= looped;
+        return this;
+    }
+
     /** Makes it a clip's notify sequence, driven by its parent's section; its own tracks of {@code clip} are not played. */
     CgSequencePlayer drivenFor(String clip) {
         drivenClip = clip;

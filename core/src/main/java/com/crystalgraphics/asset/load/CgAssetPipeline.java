@@ -17,6 +17,8 @@ import javax.annotation.Nullable;
 
 import com.crystalgraphics.asset.codec.CgAssetVersions;
 import com.crystalgraphics.asset.codec.CgAssetYaml;
+import com.crystalgraphics.asset.kind.CgParticleKinds;
+import com.crystalgraphics.asset.kind.CgSequenceKinds;
 import com.crystalgraphics.asset.registry.CgAssetEntry;
 import com.crystalgraphics.asset.registry.CgAssetRegistry;
 import com.crystalgraphics.asset.tree.CgAssetData;
@@ -24,10 +26,12 @@ import com.crystalgraphics.asset.tree.CgAssetException;
 import com.crystalgraphics.asset.tree.CgAssetReferences;
 import com.crystalgraphics.job.CgJob;
 import com.crystalgraphics.job.CgJobLoop;
+import com.crystalgraphics.object.CgPropertyPath;
 import com.crystalgraphics.object.CgType;
 import com.crystalgraphics.object.CgValueType;
 import com.crystalgraphics.object.validate.CgValidation;
 import com.crystalgraphics.object.value.CgUnits;
+import com.crystalgraphics.sequence.clip.CgClipMarkers;
 import com.crystalgraphics.asset.kind.CgAssetKinds;
 import com.crystalgraphics.object.CgTypes;
 
@@ -101,7 +105,22 @@ public final class CgAssetPipeline {
         }
         CgAssetLoad reading = load;
         start(load, () -> {
-            Map<?, ?> tree = (Map<?, ?>) CgAssetYaml.read(new String(Files.readAllBytes(entry.file()), StandardCharsets.UTF_8));
+            String text = new String(Files.readAllBytes(entry.file()), StandardCharsets.UTF_8);
+            if (kind == CgSequenceKinds.SEQUENCE && entry.file().toString().endsWith(CgClipMarkers.SUFFIX)) {
+                // A GeckoLib clip's notify sequence, translated from the clip's own file
+                return CgClipMarkers.translate(id, entry.file().toString(), text, new CgClipMarkers.Known() {
+                    @Override
+                    public boolean sequence(String ref) {
+                        return registry.entry(CgSequenceKinds.SEQUENCE, ref) != null;
+                    }
+
+                    @Override
+                    public boolean system(String ref) {
+                        return registry.entry(CgParticleKinds.SYSTEM, ref) != null;
+                    }
+                });
+            }
+            Map<?, ?> tree = (Map<?, ?>) CgAssetYaml.read(text);
             return CgAssetVersions.upgrade(tree, kind);
         }, tree -> read(reading, (Map<?, ?>) tree), "unreadable");
         return load;
@@ -195,6 +214,7 @@ public final class CgAssetPipeline {
                 for (CgAssetReferences.Reference ref : CgAssetReferences.of(asset)) {
                     if (ref.strength() == CgValueType.Strength.HARD) r.hard.add(ref);
                 }
+                if (load.kind() == CgSequenceKinds.SEQUENCE) clipNotifies(asset, r.hard);
             }
             return r;
         }, done -> {
@@ -209,6 +229,26 @@ public final class CgAssetPipeline {
             advance(load, CgAssetState.RESOLVED);
             dependencies(load, r.hard);
         }, "does not resolve");
+    }
+
+    /**
+     * A sequence's {@code animation} sections playing a clip with no {@code notifies} of their own take the clip's
+     * notify sequence where one is registered (a GeckoLib clip's), so it compiles first, as a hard dependency.
+     */
+    private void clipNotifies(CgAssetData asset, List<CgAssetReferences.Reference> hard) {
+        if (!(asset.resolved().get("tracks") instanceof List<?> tracks)) return;
+        for (Object t : tracks) {
+            if (!(t instanceof Map<?, ?> track) || !"animation".equals(track.get("kind"))) continue;
+            if (!(track.get("sections") instanceof List<?> sections)) continue;
+            for (Object s : sections) {
+                if (!(s instanceof Map<?, ?> section) || section.get("notifies") != null) continue;
+                if (!(section.get("clip") instanceof String clip)) continue;
+                CgAssetEntry e = registry.entry(CgSequenceKinds.SEQUENCE, clip);
+                if (e == null || e.file() == null || !e.file().toString().endsWith(CgClipMarkers.SUFFIX)) continue;
+                hard.add(new CgAssetReferences.Reference(CgSequenceKinds.SEQUENCE, clip, CgValueType.Strength.HARD,
+                        CgPropertyPath.of(asset.id())));
+            }
+        }
     }
 
     private void dependencies(CgAssetLoad load, List<CgAssetReferences.Reference> hard) {

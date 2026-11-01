@@ -698,12 +698,14 @@ final class CgSequenceCompiler {
 
     /**
      * An animation section's clip notifies: its notify sequence, each role filled by name; one left over that must be
-     * bound takes the section's own target, and a second fails.
+     * bound takes the section's own target, and a second fails. With no {@code notifies}, the clip's own notify
+     * sequence (a GeckoLib clip's markers), which the pipeline made a dependency where one is registered.
      */
     @Nullable
     private Child notifies(CgSequenceTrack track, CgSequenceSection s) {
         String path = "tracks." + track.id() + ".sections." + s.id() + ".notifies";
-        if (!(s.fields().get("notifies") instanceof String ref)) return null;
+        Object named = s.fields().get("notifies") != null ? s.fields().get("notifies") : s.fields().get("clip");
+        if (!(named instanceof String ref)) return null;
         if (!(deps.definition(CgSequenceKinds.SEQUENCE, ref) instanceof CgSequenceDefinition child)) return null;
         int[] filled = new int[child.roles().size()];
         boolean sectionUsed = false;

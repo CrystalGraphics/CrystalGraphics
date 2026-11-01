@@ -37,6 +37,7 @@ import com.crystalgraphics.asset.codec.CgAssetYaml;
 import com.crystalgraphics.asset.kind.CgAssetKinds;
 import com.crystalgraphics.asset.kind.CgModuleTypes;
 import com.crystalgraphics.asset.kind.CgParticleKinds;
+import com.crystalgraphics.asset.kind.CgSequenceKinds;
 import com.crystalgraphics.asset.tree.CgAssetException;
 import com.crystalgraphics.asset.tree.CgAssetReferences;
 import com.crystalgraphics.job.CgJob;
@@ -46,6 +47,7 @@ import com.crystalgraphics.object.CgPropertyPath;
 import com.crystalgraphics.object.CgType;
 import com.crystalgraphics.object.CgValueType;
 import com.crystalgraphics.object.value.CgUnits;
+import com.crystalgraphics.sequence.clip.CgClipMarkers;
 import com.crystalgraphics.tag.CgTagRegistry;
 
 import org.apache.logging.log4j.LogManager;
@@ -161,11 +163,18 @@ public final class CgAssetRegistry {
                 }
 
                 @Override
-                public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
+                public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
                     String rel = root.relativize(file).toString().replace('\\', '/');
                     long modified = attrs.lastModifiedTime().toMillis();
                     CgType kind = rel.endsWith(".yaml") ? kindOf(rel) : null;
-                    if (kind != null) {
+                    if (CgClipMarkers.isClipFile(rel)) {
+                        // A GeckoLib clip's markers: a sequence per animation, the file left as the library reads it
+                        String json = new String(Files.readAllBytes(file), StandardCharsets.UTF_8);
+                        for (String id : CgClipMarkers.ids(namespace, rel, json)) {
+                            found.add(new CgAssetEntry(id, CgSequenceKinds.SEQUENCE, source, file, null, null,
+                                    Collections.emptyList(), modified, Collections.emptyMap()));
+                        }
+                    } else if (kind != null) {
                         String id = namespace + ":" + rel.substring(kind.folder().length() + 1, rel.length() - ".yaml".length());
                         yaml.add(new Listed(id, kind, file, modified));
                     } else if (isBinary(rel)) {
@@ -194,6 +203,12 @@ public final class CgAssetRegistry {
         if (failed.get() != null) throw failed.get();
         Collections.addAll(found, gathered);
         found.sort((a, b) -> a.id().compareTo(b.id()));
+        for (int i = 1; i < found.size(); i++) {
+            CgAssetEntry a = found.get(i - 1), b = found.get(i);
+            if (a.kind() == b.kind() && a.id().equals(b.id())) {
+                throw new CgAssetException(key(b.kind(), b.id()) + " is registered twice: " + where(a) + " and " + where(b));
+            }
+        }
 
         for (CgAssetEntry e : found) {
             CgAssetEntry was = entries.get(key(e.kind(), e.id()));
