@@ -8,6 +8,7 @@ import com.crystalgraphics.compute.ops.CgGpuOpsCheck;
 import com.crystalgraphics.compute.program.CgComputeCheck;
 import com.crystalgraphics.frame.CgFrameBoundary;
 import com.crystalgraphics.render.CgFrameClock;
+import com.crystalgraphics.loading.CgLoadingScreen;
 import com.crystalgraphics.render.CgWarmBudget;
 import com.crystalgraphics.demo.CgRenderDemo;
 import com.crystalgraphics.gpu.CgUploads;
@@ -214,6 +215,7 @@ public final class CgGraphicsLifecycle {
                 CgJob.run(() -> { for (String kind : CgCacheDirectory.PRUNED) CgCacheDirectory.prune(kind); });
                 // From here warm-ups spread over frames: the demo's first scene took the first frame 0.7-10 s on 1.7.10.
                 CgWarmBudget.start();
+                CgLoadingScreen.install();
 
                 initialized = true;
                 destroyed = false;   // an explicit init is what makes a context live again
@@ -377,6 +379,7 @@ public final class CgGraphicsLifecycle {
 
         CgFrameClock.advance();
         CgWarmBudget.nextFrame();   // first: the finishers below charge this frame's budget
+        if (initialized) CgLoadingScreen.frame();   // sets that budget
 
         CgGlCensus.at("frame");
         CgGL.fromHost();

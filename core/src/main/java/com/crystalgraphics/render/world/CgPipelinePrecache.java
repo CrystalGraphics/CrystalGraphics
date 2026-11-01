@@ -201,6 +201,16 @@ public final class CgPipelinePrecache {
     private static final AtomicInteger PENDING_COUNT = new AtomicInteger();
     private static volatile boolean warnedFull;
 
+    /** Pipelines not yet built under the settings in force, and collectors not yet collected: the loading screen's. */
+    public static int remaining() {
+        return CgWorldRenderer.get().pipelines().pending() + PENDING_COUNT.get();
+    }
+
+    /** Every pipeline kept built, and collectors not yet collected: {@link #remaining()}'s whole. */
+    public static int total() {
+        return CgWorldRenderer.get().pipelines().size() + PENDING_COUNT.get();
+    }
+
     /** Collects every collector registered since the last call into {@code pipelines}. */
     static void collect(CgPipelineList pipelines) {
         for (Collector c; (c = PENDING.poll()) != null; ) {

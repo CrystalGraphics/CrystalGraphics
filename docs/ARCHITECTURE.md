@@ -175,6 +175,7 @@ Every package guide (`CLAUDE.md`) under `src/main/java/com/crystalgraphics/`. Re
 | `serialization/CLAUDE.md` | Codecs and decoding into a live object; `format`: files in binary, JSON and YAML, and the NBT bridge (`format.file`, `format.nbt`); imports `docs/SERIALIZATION.md` |
 | `job/CLAUDE.md` | Work off the caller's thread: `CgJob` handed back at its loop's drain, keyed and debounced, by lane; `CgJobLoop`; `forEach` across threads; `CgReply` answers and `CgProgress`; imports `docs/JOBS.md` |
 | `lifecycle/CLAUDE.md` | The engine's start on both sides: `CgEngineLifecycle`'s pre-init (mods' assets mounted), init (the network) and post-init (what was mounted loads), so a host only says when each phase is |
+| `loading/CLAUDE.md` | The loading screen (Lyra's): processes and tasks it waits on, the hold, its view (the logo over a bar), and what a host does each frame |
 | `collision/CLAUDE.md` | Worlds and queries, hits, hitboxes and hitbox types, the entity and block tables behind snapshots and batches, the debug show; imports `docs/COLLISION.md` |
 | `shape/CLAUDE.md` | Shapes, poses, boxes and the exact tests between them (Jolt's GJK and EPA); imports `docs/COLLISION.md` |
 

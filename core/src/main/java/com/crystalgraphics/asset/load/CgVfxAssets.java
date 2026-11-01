@@ -412,6 +412,11 @@ public final class CgVfxAssets {
         return swaps.size() + compiling;
     }
 
+    /** Assets still loading or preparing: the loading screen's. */
+    public int inFlight() {
+        return loading.size() + preparing.size();
+    }
+
     /** How many {@link CgAssetRef#get()} calls loaded synchronously: {@code asset.sync-loads}, 0 in a benchmark. */
     public long syncLoads() {
         return syncLoads;

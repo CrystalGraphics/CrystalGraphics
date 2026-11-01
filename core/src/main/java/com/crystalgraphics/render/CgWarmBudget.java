@@ -29,10 +29,12 @@ public final class CgWarmBudget {
 
     private static final CgVar.Num MILLIS = CgVar.number("crystalgraphics.warmBudget", 4f, 0f, 1000f, CgVar.DEV,
             "Milliseconds a frame may spend starting programs, kernels and meshes ahead of their first use; 0 for no limit.");
+    private static final CgVar.Num LOADING_MILLIS = CgVar.number("crystalgraphics.warmBudget.loading", 50f, 0f, 1000f,
+            CgVar.DEV, "The warm budget while the loading screen shows, as Unity's High background priority; 0 for no limit.");
 
     private static final int SPENT = CgTrace.name("warm.spent-us"), REFUSED = CgTrace.name("warm.refused");
 
-    private static boolean started;
+    private static boolean started, loading;
     private static long spent;
     private static int refused;
     /** What a start costs: the largest lately, decaying by an eighth a frame, so many small starts never hide a large one. */
@@ -43,7 +45,7 @@ public final class CgWarmBudget {
     /** Whether a warm-up start may run this frame. */
     public static boolean allows() {
         if (!started || spent == 0) return true;
-        float millis = MILLIS.get();
+        float millis = millis();
         if (millis <= 0f || spent + estimate <= (long) (millis * 1_000_000L)) return true;
         refused++;
         return false;
@@ -51,7 +53,7 @@ public final class CgWarmBudget {
 
     /** What is left of this frame's budget, in nanoseconds: 0 once it is spent, unlimited before a context starts it. */
     public static long remaining() {
-        float millis = MILLIS.get();
+        float millis = millis();
         if (!started || millis <= 0f) return Long.MAX_VALUE;
         return Math.max(0L, (long) (millis * 1_000_000L) - spent);
     }
@@ -70,6 +72,15 @@ public final class CgWarmBudget {
      */
     public static void spendAfter(long nanos) {
         spent += Math.max(nanos, 1L);
+    }
+
+    /** Whether the loading screen shows: its frames warm at {@code crystalgraphics.warmBudget.loading}. Its own. */
+    public static void loading(boolean shown) {
+        loading = shown;
+    }
+
+    private static float millis() {
+        return loading ? LOADING_MILLIS.get() : MILLIS.get();
     }
 
     /** A context started: warming is budgeted from now on. The lifecycle's. */

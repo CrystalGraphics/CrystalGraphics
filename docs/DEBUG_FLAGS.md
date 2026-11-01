@@ -141,6 +141,16 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 | `crystalgraphics.job.forEachThreads` | 0 to 256 | `0` | Threads CgJob.forEach and effects' emitters run on, the caller one of them; 0 for two fewer than the cores, 1 for all on the caller. Read at launch. |
 | `crystalgraphics.job.threads` | 0 to 256 | `0` | Threads jobs' work runs on; 0 for half the cores past two, at least one. Read at launch. |
 
+## `crystalgraphics.loading`
+
+| Variable | Takes | Default | |
+|---|---|---|---|
+| `crystalgraphics.loading.holdFrames` | 0 to 100000 | `30` | Frames in a row with no first-use work the loading screen holds for once nothing loads, before it hides. |
+| `crystalgraphics.loading.logEveryFrame` | true, false | `false` | Log why the loading screen shows on every frame it shows. |
+| `crystalgraphics.loading.maxHoldSeconds` | 0.0 to 600.0 | `10.0` | The longest the loading screen holds once nothing loads, however much first-use work goes on. |
+| `crystalgraphics.loading.maxSeconds` | 0.0 to 3600.0 | `120.0` | The longest the loading screen shows for a process still loading before it holds anyway, warning which. |
+| `crystalgraphics.loading.screen` | auto, never, always | `auto` | The loading screen: AUTO while anything loads, NEVER (a scene that measures its own loading), ALWAYS (to look at it). |
+
 ## `crystalgraphics.material`
 
 | Variable | Takes | Default | |
@@ -348,6 +358,7 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 | Variable | Takes | Default | |
 |---|---|---|---|
 | `crystalgraphics.warmBudget` | 0.0 to 1000.0 | `4.0` | Milliseconds a frame may spend starting programs, kernels and meshes ahead of their first use; 0 for no limit. |
+| `crystalgraphics.warmBudget.loading` | 0.0 to 1000.0 | `50.0` | The warm budget while the loading screen shows, as Unity's High background priority; 0 for no limit. |
 
 ## `crystalgraphics.world`
 

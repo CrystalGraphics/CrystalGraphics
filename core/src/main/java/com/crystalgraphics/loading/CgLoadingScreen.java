@@ -1,0 +1,383 @@
+package com.crystalgraphics.loading;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.Consumer;
+
+import javax.annotation.Nullable;
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
+import com.crystalgraphics.asset.load.CgVfxAssets;
+import com.crystalgraphics.gl.material.CgMaterialShader;
+import com.crystalgraphics.gl.texture.CgTextureAbstract;
+import com.crystalgraphics.render.CgWarmBudget;
+import com.crystalgraphics.render.draw.CgPipeline;
+import com.crystalgraphics.render.world.CgPipelinePrecache;
+import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.util.trace.CgChannels;
+import com.crystalgraphics.variable.CgVar;
+import com.crystalgraphics.vfx.CgVfx;
+import com.crystalgraphics.vfx.CgVfxSystem;
+
+/**
+ * The engine's one loading screen, Lyra's {@code ULoadingScreenManager}: shown while any {@link CgLoadingProcess} is
+ * still loading, then held until a span of frames passes with no first-use work (no pipeline built at its draw, no
+ * program waited for, no texture or asset loaded at its first use), then hidden. Every host has it from launch.
+ *
+ * <pre>{@code
+ * CgLoadingScreen.add(() -> arena.ready() ? null : "building the arena");   // a process: "still loading, because"
+ * CgLoadingScreen.Task join = CgLoadingScreen.task("joining the world");    // work started and ended in code
+ * join.close();
+ * CgLoadingScreen.onVisibility(shown -> { if (!shown) startClock(); });    // a harness scene's frame 1 at the hide
+ *
+ * // a host, each frame, on the render thread:
+ * if (CgLoadingScreen.loading()) skipWorld();                // the world is not drawn while it loads
+ * CgLoadingScreen.draw(width, height);                       // over everything, while shown or fading out
+ * }</pre>
+ *
+ * <ul>
+ *   <li><b>The engine's own processes</b> (pipelines being built, assets loading, effects warming and rehearsing) keep a
+ *       showing screen up but never raise a hidden one: a look precached at runtime spreads over frames under the
+ *       warm budget, it does not bring the screen back. A process added with {@link #add} raises it.</li>
+ *   <li><b>While shown, warming runs at loading-screen budgets</b> ({@link CgWarmBudget#loading}), as Unreal's PSO
+ *       cache goes to its fast batch mode.</li>
+ *   <li><b>Why it shows is always logged</b>, at each change of reason and at the hide with how long it took;
+ *       {@code crystalgraphics.loading.logEveryFrame} logs it every frame.</li>
+ *   <li>Its frames are marked in the trace: {@code loading.show} and {@code loading.hide} markers, and the counter
+ *       {@code loading.shown} on each frame it shows, so a profile tells loading from steady state.</li>
+ *   <li>What it draws is a {@link CgLoadingView}: the engine's logo over a load bar unless {@link #view} replaces it.
+ *       On Minecraft the host keeps its own screen up while this one would show, and draws none.</li>
+ *   <li>Render thread.</li>
+ * </ul>
+ */
+public final class CgLoadingScreen {
+
+    /** Whether the screen shows: as its processes ask, never, or until the run ends. */
+    public enum Mode { AUTO, NEVER, ALWAYS }
+
+    private static final CgVar.Choice<Mode> MODE = CgVar.choice("crystalgraphics.loading.screen", Mode.AUTO,
+            "The loading screen: AUTO while anything loads, NEVER (a scene that measures its own loading), ALWAYS (to look at it).");
+    private static final CgVar.Bool LOG_EVERY_FRAME = CgVar.bool("crystalgraphics.loading.logEveryFrame", false,
+            CgVar.DEV, "Log why the loading screen shows on every frame it shows.");
+    private static final CgVar.Int HOLD_FRAMES = CgVar.integer("crystalgraphics.loading.holdFrames", 30, 0, 100_000,
+            "Frames in a row with no first-use work the loading screen holds for once nothing loads, before it hides.");
+    private static final CgVar.Num MAX_HOLD = CgVar.number("crystalgraphics.loading.maxHoldSeconds", 10f, 0f, 600f,
+            "The longest the loading screen holds once nothing loads, however much first-use work goes on.");
+    private static final CgVar.Num MAX_LOADING = CgVar.number("crystalgraphics.loading.maxSeconds", 120f, 0f, 3600f,
+            "The longest the loading screen shows for a process still loading before it holds anyway, warning which.");
+    /** How long the screen takes to fade out after it hides, as Minecraft's loading overlay fades. */
+    private static final long FADE_NANOS = 1_000_000_000L;
+
+    private static final Logger LOGGER = LogManager.getLogger(CgLoadingScreen.class);
+    private static final int SHOWN = CgTrace.name("loading.shown");
+
+    private static final List<CgLoadingProcess> RAISING = new CopyOnWriteArrayList<>();
+    private static final List<CgLoadingProcess> ENGINE = new CopyOnWriteArrayList<>();
+    private static final List<Consumer<Boolean>> LISTENERS = new CopyOnWriteArrayList<>();
+
+    /** Shown, held or hidden. */
+    private enum State { LOADING, HOLDING, HIDDEN }
+
+    private static State state = State.LOADING;
+    @Nullable private static String reason = "starting";
+    private static long shownAt = System.nanoTime(), holdingAt, hiddenAt, lastFrame;
+    private static int framesShown, quietFrames;
+    private static long lastFirstUse = -1;
+    private static float shownProgress, targetProgress;
+    private static boolean installed;
+    /** The engine's processes outlasted {@code maxSeconds}: they no longer keep this showing up. */
+    private static boolean gaveUp;
+    private static CgLoadingView view = new CgLogoLoadingView();
+
+    private CgLoadingScreen() {
+    }
+
+    /** Adds {@code process}: while it is loading the screen shows, raised again if it had hidden. Any thread. */
+    public static void add(CgLoadingProcess process) {
+        RAISING.add(process);
+    }
+
+    /** Removes a process {@link #add}ed. Any thread. */
+    public static void remove(CgLoadingProcess process) {
+        RAISING.remove(process);
+    }
+
+    /**
+     * Work started and ended in code, Lyra's {@code ULoadingProcessTask}: the screen shows until it is closed.
+     *
+     * <pre>{@code
+     * try (CgLoadingScreen.Task task = CgLoadingScreen.task("joining the world")) {
+     *     ...   // or keep it, and close() when the join completes
+     * }
+     * }</pre>
+     */
+    public static Task task(String reason) {
+        Task task = new Task(reason);
+        RAISING.add(task);
+        return task;
+    }
+
+    /** Hears {@code true} when the screen shows and {@code false} when it hides. Render thread. */
+    public static void onVisibility(Consumer<Boolean> listener) {
+        LISTENERS.add(listener);
+    }
+
+    /** Stops {@code listener} hearing. */
+    public static void removeVisibilityListener(Consumer<Boolean> listener) {
+        LISTENERS.remove(listener);
+    }
+
+    /** Replaces what the screen draws: a consumer's look. Render thread. */
+    public static void view(CgLoadingView replacement) {
+        view = replacement;
+    }
+
+    /** Whether the screen covers the frame: loading, or holding once loaded. */
+    public static boolean shown() {
+        return state != State.HIDDEN;
+    }
+
+    /** Whether a process is still loading: the world is not drawn behind the screen until it holds. */
+    public static boolean loading() {
+        return state == State.LOADING;
+    }
+
+    /** Why it shows: the first process still loading, "holding" while it holds, or null hidden. */
+    @Nullable
+    public static String reason() {
+        return reason;
+    }
+
+    /** The bar: 0 to 1, smoothed, never backwards. */
+    public static float progress() {
+        return shownProgress;
+    }
+
+    /** The engine's own processes, added once at the graphics start. The lifecycle's. */
+    public static void install() {
+        if (installed) return;
+        installed = true;
+        LOGGER.info("[loading] shown: {}", reason);
+        ENGINE.add(new CgLoadingProcess() {
+            @Override
+            public String loading() {
+                int left = CgPipelinePrecache.remaining();
+                return left > 0 ? "building pipelines" : null;
+            }
+
+            @Override
+            public float progress() {
+                int total = CgPipelinePrecache.total();
+                return total == 0 ? Float.NaN : 1f - CgPipelinePrecache.remaining() / (float) total;
+            }
+        });
+        ENGINE.add(() -> {
+            CgVfxAssets assets = CgVfxAssets.instance();
+            return assets != null && assets.inFlight() > 0 ? "loading assets" : null;
+        });
+        ENGINE.add(() -> {
+            CgVfxSystem vfx = CgVfx.world();
+            return vfx != null && !vfx.ready() ? "warming effects" : null;
+        });
+    }
+
+    /**
+     * Once a frame, before what it draws: asks the processes, steps the hold, and sets the warm budget. Every host's
+     * frame tick runs it. Render thread.
+     */
+    public static void frame() {
+        long now = System.nanoTime();
+        float dt = lastFrame == 0L ? 0f : Math.min(0.25f, (now - lastFrame) / 1e9f);
+        lastFrame = now;
+        Mode mode = MODE.get();
+        String raised = first(RAISING), asked = raised != null ? raised : shown() && !gaveUp ? first(ENGINE) : null;
+        if (mode == Mode.ALWAYS) asked = asked != null ? asked : "always shown";
+        if (mode == Mode.NEVER) asked = null;
+        switch (state) {
+            case HIDDEN -> {
+                if (raised != null && mode != Mode.NEVER || mode == Mode.ALWAYS) show(asked, now);
+            }
+            case HOLDING -> {
+                if (asked != null) {
+                    toLoading(asked, now);
+                } else if (heldEnough(now) || mode == Mode.NEVER) {
+                    hide(now);
+                }
+            }
+            case LOADING -> {
+                if (asked != null && raised == null && (now - shownAt) / 1e9f >= MAX_LOADING.get()) {
+                    LOGGER.warn("[loading] still {} after {} s; holding anyway", asked, MAX_LOADING.get());
+                    gaveUp = true;
+                    asked = null;
+                }
+                if (asked == null) {
+                    hold(now);
+                } else if (!asked.equals(reason)) {
+                    reason = asked;
+                    LOGGER.info("[loading] {}", asked);
+                }
+            }
+        }
+        if (shown()) {
+            framesShown++;
+            CgTrace.counter(CgChannels.MISC, SHOWN, 1);
+            if (LOG_EVERY_FRAME.get()) LOGGER.info("[loading] frame {}: {}", framesShown, reason);
+        }
+        CgWarmBudget.loading(shown());
+        targetProgress = state == State.LOADING ? Math.max(targetProgress, progressOf()) : 1f;
+        // Minecraft's overlay eases toward the reload's progress: 0.95 of the last plus 0.05 of the new, a frame at 60.
+        float k = 1f - (float) Math.pow(0.95, dt * 60f);
+        shownProgress = Math.max(shownProgress, shownProgress + (targetProgress - shownProgress) * k);
+    }
+
+    /**
+     * Draws the screen over the frame at {@code width} x {@code height} pixels, while it shows and through its fade-out,
+     * into whatever target is bound. A host calls it last each frame. Render thread.
+     */
+    public static void draw(int width, int height) {
+        float alpha;
+        if (shown()) {
+            alpha = 1f;
+        } else {
+            long since = System.nanoTime() - hiddenAt;
+            if (hiddenAt == 0L || since >= FADE_NANOS) return;
+            alpha = 1f - since / (float) FADE_NANOS;
+        }
+        view.draw(width, height, shownProgress, alpha, reason);
+    }
+
+    /** Whether the hold has seen enough quiet frames, or run as long as it may. */
+    private static boolean heldEnough(long now) {
+        long work = firstUseWork();
+        if (work != lastFirstUse) {
+            lastFirstUse = work;
+            quietFrames = 0;
+        } else {
+            quietFrames++;
+        }
+        if (quietFrames >= HOLD_FRAMES.get()) return true;
+        if ((now - holdingAt) / 1e9f >= MAX_HOLD.get()) {
+            LOGGER.warn("[loading] hidden after holding {} s: first-use work never stopped", MAX_HOLD.get());
+            return true;
+        }
+        return false;
+    }
+
+    /** Every first use the engine counts: what a hold waits to stop. */
+    private static long firstUseWork() {
+        CgVfxAssets assets = CgVfxAssets.instance();
+        return CgPipeline.misses() + CgMaterialShader.compileWaits() + CgTextureAbstract.loads()
+                + (assets == null ? 0L : assets.syncLoads());
+    }
+
+    /** The mean of the processes' known progress, 0 when none says. */
+    private static float progressOf() {
+        progressSum = 0f;
+        progressCount = 0;
+        sumProgress(RAISING);
+        sumProgress(ENGINE);
+        return progressCount == 0 ? 0f : progressSum / progressCount;
+    }
+
+    private static float progressSum;
+    private static int progressCount;
+
+    private static void sumProgress(List<CgLoadingProcess> list) {
+        for (int i = 0; i < list.size(); i++) {
+            float p = list.get(i).progress();
+            if (!Float.isNaN(p)) {
+                progressSum += Math.min(1f, Math.max(0f, p));
+                progressCount++;
+            }
+        }
+    }
+
+    @Nullable
+    private static String first(List<CgLoadingProcess> list) {
+        for (int i = 0; i < list.size(); i++) {
+            String why;
+            try {
+                why = list.get(i).loading();
+            } catch (RuntimeException e) {
+                LOGGER.error("[loading] a process threw; it is dropped", e);
+                list.remove(i--);
+                continue;
+            }
+            if (why != null) return why;
+        }
+        return null;
+    }
+
+    private static void show(String why, long now) {
+        state = State.LOADING;
+        reason = why;
+        shownAt = now;
+        gaveUp = false;
+        framesShown = 0;
+        shownProgress = targetProgress = 0f;
+        LOGGER.info("[loading] shown: {}", why);
+        CgTrace.marker(CgChannels.MISC, "loading.show", why);
+        tell(true);
+    }
+
+    private static void toLoading(String why, long now) {
+        state = State.LOADING;
+        reason = why;
+        LOGGER.info("[loading] {} (after {} ms held)", why, (now - holdingAt) / 1_000_000L);
+    }
+
+    private static void hold(long now) {
+        state = State.HOLDING;
+        holdingAt = now;
+        quietFrames = 0;
+        lastFirstUse = firstUseWork();
+        reason = "holding";
+        LOGGER.info("[loading] loaded after {} ms; holding", (now - shownAt) / 1_000_000L);
+    }
+
+    private static void hide(long now) {
+        state = State.HIDDEN;
+        hiddenAt = now;
+        reason = null;
+        LOGGER.info("[loading] hidden after {} ms, {} frames ({} ms held)", (now - shownAt) / 1_000_000L, framesShown,
+                (now - holdingAt) / 1_000_000L);
+        CgTrace.marker(CgChannels.MISC, "loading.hide", framesShown + " frames");
+        tell(false);
+    }
+
+    private static void tell(boolean shown) {
+        List<Consumer<Boolean>> listeners = new ArrayList<>(LISTENERS);
+        for (Consumer<Boolean> l : listeners) {
+            try {
+                l.accept(shown);
+            } catch (RuntimeException e) {
+                LOGGER.error("[loading] a visibility listener threw", e);
+            }
+        }
+    }
+
+    /** Work started and ended in code: loading until {@link #close()}d. */
+    public static final class Task implements CgLoadingProcess, AutoCloseable {
+        private final String reason;
+        private volatile boolean done;
+
+        private Task(String reason) {
+            this.reason = reason;
+        }
+
+        @Override
+        public String loading() {
+            return done ? null : reason;
+        }
+
+        /** Ends it; any thread, more than once. */
+        @Override
+        public void close() {
+            done = true;
+            RAISING.remove(this);
+        }
+    }
+}
