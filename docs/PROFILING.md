@@ -575,6 +575,7 @@ same 9 ms moved to the thumbnails'. Switch the suspect off and see where the tim
 | `-Dcrystalgraphics.trace.dir=<path>` | where the runs go (`<game>/crystalgraphics/cache/trace/`) |
 | `-Dcrystalgraphics.trace.hitchDumpMs=<ms>` | each frame slower than this: the 240 frames before it to `latest/hitch-<frame>/` (off) |
 | `-Dcrystalgraphics.trace.hitchDumps=<n>` | hitch dumps a run at most (5) |
+| `-Dcrystalgraphics.trace.frameAt=<marker>[,...]` | on exit, `at-<marker>.txt`: the first 5 frames holding each marker, each in full (a first play: `vfx.cue.arrive`) |
 | `-Dcrystalgraphics.harness.profile=<frames>` | harness: warm up, record that many, write `profile-harness-<n>f/`, stop |
 | `-Dcrystalgraphics.harness.profile.json=true` | also write `trace.json` for ui.perfetto.dev |
 | `-Dcrystalgraphics.harness.repoRoot=<dir>` | where report sources are made relative to (the outermost Gradle build) |

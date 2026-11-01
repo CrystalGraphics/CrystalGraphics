@@ -85,6 +85,7 @@ public final class CgVfxCueClient {
         @Override
         public void spawned(CgNetObject obj, float age) {
             try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.VFX, ZONE_ARRIVE)) {
+                CgTrace.marker(CgChannels.VFX, "vfx.cue.arrive", cue.id());
                 play = CgVfxCue.Play.read(cue, obj);
                 play.age = age * CgVfxCueAuthority.SERVER_TICK;
                 effect = play(play);

@@ -282,9 +282,17 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 |---|---|---|---|
 | `crystalgraphics.trace.channels` | text | empty | Comma-separated channel prefixes recorded from the first frame, as enable takes them; a later value adds its channels, never removes one. |
 | `crystalgraphics.trace.countersPerFrame` | 32 to 1048576 | `1024` | Counter values a frame may hold: a ceiling, the store growing as it is written. Read at launch. |
+| `crystalgraphics.trace.dir` | text | empty | Where trace runs go; empty for the engine's cache (<game>/crystalgraphics/cache/trace/). Read at launch. |
 | `crystalgraphics.trace.firstFrames` | 0 to 1048576 | `0` | Frames kept from the start of a recording, never overwritten: startup and first opens. Read at launch. |
+| `crystalgraphics.trace.frameAt` | text | empty | Markers, comma-separated: on exit, at-<marker>.txt holds the first frames holding each, in full. |
 | `crystalgraphics.trace.frames` | 0 to 1048576 | `600` | Newest frames the trace keeps, overwriting the oldest; 0 stops once the first are full. Read at launch. |
+| `crystalgraphics.trace.hitchDumpMs` | 0 to 60000 | `0` | Each frame of play slower than this many milliseconds: the frames before it written to the run's hitch-<frame>/; 0 for none. Read at launch. |
+| `crystalgraphics.trace.hitchDumps` | 0 to 1000 | `5` | Hitch dumps a run at most. Read at launch. |
+| `crystalgraphics.trace.hitchZonesPerFrame` | 1 to 16777216 | `16384` | Zones a frame the ring holds while hitch dumps are on. Read at launch. |
 | `crystalgraphics.trace.jvm` | true, false | `true` | Stream the JVM's compilations, deoptimisations, safepoints and class loads when the trace records its first frame; explicit startJvmEvents calls work either way. |
+| `crystalgraphics.trace.report` | text | empty | The tier report.txt is written at on exit: verdict, breakdown (empty) or full. |
+| `crystalgraphics.trace.splitAt` | text | empty | A marker: on exit, the run either side of its first burst as report-before.txt, -after and -compare. |
+| `crystalgraphics.trace.splitFrames` | 1 to 1048576 | `300` | Frames each side of a splitAt split at most. |
 | `crystalgraphics.trace.zones` | 1 to 268435456 | `65536` | Zones a thread keeps at most, for each of the newest and the first frames; raise it when a report warns of dropped zones. Read at launch. |
 | `crystalgraphics.trace.zonesAhead` | true, false | `false` | The frame thread's zones grown to their ceiling at a frame's start, rather than doubled while it records: a doubling is tens of MB in one frame. Read at launch. |
 

@@ -9,6 +9,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.DoubleSupplier;
 
 import com.crystalgraphics.platform.service.CgCacheDirectory;
+import com.crystalgraphics.variable.CgVar;
 
 /**
  * A run's trace files on disk, for any host of the engine: the run directory ({@code <game>/crystalgraphics/cache/
@@ -44,9 +45,24 @@ public final class CgTraceRun {
 
     /** Frames a hitch dump holds, the hitch the last but one. */
     public static final int HITCH_FRAMES = 240;
-    private static final long HITCH_NANOS = Long.getLong("crystalgraphics.trace.hitchDumpMs", 0L) * 1_000_000L;
-    private static final int HITCH_DUMPS = Integer.getInteger("crystalgraphics.trace.hitchDumps", 5);
-    private static final int ZONES_PER_FRAME = Integer.getInteger("crystalgraphics.trace.hitchZonesPerFrame", 16_384);
+    private static final CgVar.Int HITCH_MS = CgVar.integer("crystalgraphics.trace.hitchDumpMs", 0, 0, 60_000,
+            CgVar.DEV | CgVar.RESTART, "Each frame of play slower than this many milliseconds: the frames before it written to"
+                    + " the run's hitch-<frame>/; 0 for none.");
+    private static final CgVar.Int HITCH_DUMPS = CgVar.integer("crystalgraphics.trace.hitchDumps", 5, 0, 1_000,
+            CgVar.DEV | CgVar.RESTART, "Hitch dumps a run at most.");
+    private static final CgVar.Int ZONES_PER_FRAME = CgVar.integer("crystalgraphics.trace.hitchZonesPerFrame", 16_384, 1,
+            1 << 24, CgVar.DEV | CgVar.RESTART, "Zones a frame the ring holds while hitch dumps are on.");
+    private static final CgVar.Text DIR = CgVar.text("crystalgraphics.trace.dir", "", CgVar.DEV | CgVar.RESTART,
+            "Where trace runs go; empty for the engine's cache (<game>/crystalgraphics/cache/trace/).");
+    private static final CgVar.Text FRAME_AT = CgVar.text("crystalgraphics.trace.frameAt", "", CgVar.DEV,
+            "Markers, comma-separated: on exit, at-<marker>.txt holds the first frames holding each, in full.");
+    private static final CgVar.Text REPORT = CgVar.text("crystalgraphics.trace.report", "", CgVar.DEV,
+            "The tier report.txt is written at on exit: verdict, breakdown (empty) or full.");
+    private static final CgVar.Text SPLIT_AT = CgVar.text("crystalgraphics.trace.splitAt", "", CgVar.DEV,
+            "A marker: on exit, the run either side of its first burst as report-before.txt, -after and -compare.");
+    private static final CgVar.Int SPLIT_FRAMES = CgVar.integer("crystalgraphics.trace.splitFrames", 300, 1, 1 << 20,
+            CgVar.DEV, "Frames each side of a splitAt split at most.");
+    private static final long HITCH_NANOS = HITCH_MS.get() * 1_000_000L;
     /** Frames without the marker that must come before the one a split is made at: a new burst, not one going on. */
     private static final int SPLIT_QUIET = 60;
 
@@ -78,7 +94,7 @@ public final class CgTraceRun {
         }
         if (HITCH_NANOS > 0L) {
             // Twice a dump: the frames it copies off-thread are not overwritten while it copies them.
-            CgTrace.configure(0, 2 * HITCH_FRAMES, ZONES_PER_FRAME);
+            CgTrace.configure(0, 2 * HITCH_FRAMES, ZONES_PER_FRAME.get());
             CgTrace.stopAfterHitch(0L, 0);
             if (CgTrace.enabledNames().isEmpty()) CgTrace.enable("crystalgraphics");
         }
@@ -86,8 +102,8 @@ public final class CgTraceRun {
 
     /** Where the runs go: {@code -Dcrystalgraphics.trace.dir}, else the engine's cache; null for nowhere. */
     public static Path root() {
-        String dir = System.getProperty("crystalgraphics.trace.dir");
-        if (dir != null && !dir.isEmpty()) return Paths.get(dir);
+        String dir = DIR.get();
+        if (!dir.isEmpty()) return Paths.get(dir);
         return CgCacheDirectory.of("trace");
     }
 
@@ -113,7 +129,7 @@ public final class CgTraceRun {
      * are on.
      */
     public static void frame() {
-        if (HITCH_NANOS <= 0L || hitchDumps >= HITCH_DUMPS || CgTraceLog.dir() == null) return;
+        if (HITCH_NANOS <= 0L || hitchDumps >= HITCH_DUMPS.get() || CgTraceLog.dir() == null) return;
         long now = System.nanoTime(), took = lastFrameNanos == 0L ? 0L : now - lastFrameNanos;
         lastFrameNanos = now;
         long frame = CgTrace.currentFrameIndex();
@@ -201,12 +217,33 @@ public final class CgTraceRun {
         CgTraceReport report = CgTraceReport.of(play).budget(budget.getAsDouble());
         CgTraceLog.write("play-report.txt", report.render(tier()));
         CgTraceLog.write("slow.txt", report.worst(20));
+        writeFramesAt(CgTraceReport.of(CgTrace.snapshot()).budget(budget.getAsDouble()));
     }
+
+    /**
+     * {@code -Dcrystalgraphics.trace.frameAt=<marker>[,...]}: the first {@value #FRAMES_AT} frames holding each marker,
+     * each in full, as {@code at-<marker>.txt}. A first play is rarely among the slowest frames of a run.
+     */
+    private static void writeFramesAt(CgTraceReport report) {
+        String asked = FRAME_AT.get();
+        if (asked.isEmpty()) return;
+        CgTraceSnapshot snap = CgTrace.snapshot();
+        for (String marker : asked.split(",")) {
+            long[] at = snap.markerFrames(marker.trim());
+            StringBuilder out = new StringBuilder(4096);
+            out.append(at.length).append(" frames hold ").append(marker.trim()).append("; the first ")
+                    .append(Math.min(at.length, FRAMES_AT)).append(":\n\n");
+            for (int i = 0; i < Math.min(at.length, FRAMES_AT); i++) out.append(report.frame(at[i])).append('\n');
+            CgTraceLog.write("at-" + marker.trim() + ".txt", out.toString());
+        }
+    }
+
+    private static final int FRAMES_AT = 5;
 
     /** The tier {@code -Dcrystalgraphics.trace.report} names: the breakdown unless it names another. */
     private static CgTraceReport.Tier tier() {
-        String asked = System.getProperty("crystalgraphics.trace.report");
-        if (asked == null || asked.isEmpty()) return CgTraceReport.Tier.BREAKDOWN;
+        String asked = REPORT.get();
+        if (asked.isEmpty()) return CgTraceReport.Tier.BREAKDOWN;
         for (CgTraceReport.Tier tier : CgTraceReport.Tier.values()) if (tier.name().equalsIgnoreCase(asked)) return tier;
         return CgTraceReport.Tier.VERDICT;
     }
@@ -225,9 +262,9 @@ public final class CgTraceRun {
      * per-zone {@code report-compare.txt}; {@code -Dcrystalgraphics.trace.splitFrames} (300) frames each at most.
      */
     private static void writeSplitIfAsked() {
-        String marker = System.getProperty("crystalgraphics.trace.splitAt");
-        if (marker == null || marker.isEmpty()) return;
-        int most = Integer.getInteger("crystalgraphics.trace.splitFrames", 300);
+        String marker = SPLIT_AT.get();
+        if (marker.isEmpty()) return;
+        int most = SPLIT_FRAMES.get();
         CgTraceSnapshot snap = CgTrace.snapshot();
         List<CgFrameRecord> frames = snap.frames();
         if (frames.isEmpty()) return;
