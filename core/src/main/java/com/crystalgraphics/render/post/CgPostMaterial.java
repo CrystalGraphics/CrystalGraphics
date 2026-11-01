@@ -21,6 +21,7 @@ import com.crystalgraphics.render.graph.CgRasterPass;
 import com.crystalgraphics.render.graph.CgRecording;
 import com.crystalgraphics.render.graph.CgTextureDesc;
 import com.crystalgraphics.render.stage.CgFrameKeys;
+import com.crystalgraphics.render.world.CgWorldRenderer;
 
 import java.util.IdentityHashMap;
 import java.util.List;
@@ -163,8 +164,8 @@ public final class CgPostMaterial implements CgPostEffect {
         // too (multi-draw, depth, normals), compiled for nothing at a cut that spawns it.
         if (!warm && material.prepare() && resolve()) warm = prepareAll();
         // Held until every pass is built, as Unreal skips a draw whose PSO is not (r.SkipDrawOnPSOPrecaching): a
-        // fade raised the frame it is added would otherwise compile at its draw.
-        return warm && weight > 0f;
+        // fade raised the frame it is added would otherwise compile at its draw. The world's hold switch is this one too.
+        return (warm || !CgWorldRenderer.get().skipUnready()) && weight > 0f;
     }
 
     /** Starts or polls every pipeline it draws, each pass's and the last's; whether all are built. */
