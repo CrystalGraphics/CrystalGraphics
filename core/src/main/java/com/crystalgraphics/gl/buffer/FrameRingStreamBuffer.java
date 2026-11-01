@@ -155,19 +155,25 @@ final class FrameRingStreamBuffer extends CgStreamBuffer {
         int need = alignUp(sizeBytes);
         if (need > regionBytes) {
             regionBytes = alignUp(Math.max(need, Math.min(regionBytes * 2, MAX_REGION_BYTES)));
+            overflowed();
             allocate();
         } else if (cursor + need > regionBytes) {
             // Doubled now, not only at the next frame: a block uploaded per draw from a small start would
             // otherwise take fresh storage at every upload that overflows, all frame long.
-            CgTrace.add(CgChannels.GL, "frameRing.overflow", 1);
             regionBytes = alignUp(Math.min(regionBytes * 2, Math.max(regionBytes, MAX_REGION_BYTES)));
-            if (CgTrace.isEnabled(CgChannels.GL)) {
-                CgTrace.marker(CgChannels.GL, "frameRing.overflow", target + " to " + regionBytes + " B a region");
-            }
+            overflowed();
             allocate();
         }
 
         mappedAt = regionBase + cursor;
+    }
+
+    /** Counted and marked: new storage waits for a threaded driver to drain its queue, so each is a stall to name. */
+    private void overflowed() {
+        CgTrace.add(CgChannels.GL, "frameRing.overflow", 1);
+        if (CgTrace.isEnabled(CgChannels.GL)) {
+            CgTrace.marker(CgChannels.GL, "frameRing.overflow", target + " to " + regionBytes + " B a region");
+        }
     }
 
     @Override
