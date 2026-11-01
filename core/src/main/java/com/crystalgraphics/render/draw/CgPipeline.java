@@ -10,6 +10,7 @@ import com.crystalgraphics.gl.material.CgMaterialShader;
 import com.crystalgraphics.gl.material.parse.CgMaterialShaderCompiler;
 import com.crystalgraphics.gl.material.parse.CgParsedPass;
 import com.crystalgraphics.gl.material.parse.CgParsedShader;
+import com.crystalgraphics.gl.material.parse.CgPermutationDomain;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.render.CgWarmBudget;
 import com.crystalgraphics.trace.CgTrace;
@@ -21,6 +22,7 @@ import org.apache.logging.log4j.Logger;
 import javax.annotation.Nullable;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.TreeSet;
@@ -120,6 +122,32 @@ public final class CgPipeline {
     private int programRevision = -1;
     /** The shader revision {@link #precache} last answered true at: a built pipeline spends no warming budget. */
     private int builtRevision = -1;
+    /** Whether a miss of a shader with a permutation domain was logged: once a pipeline. */
+    private boolean domainWarned;
+
+    /**
+     * A shader declaring a permutation domain owns its precache: a miss means nobody added the shader, or the draw binds
+     * a set its domain does not span. Logged once, whatever {@code logMisses} says.
+     */
+    private void warnOutsideDomain() {
+        if (domainWarned) return;
+        CgParsedShader parsed = shader.ensureParsed();
+        CgPermutationDomain domain = parsed == null ? CgPermutationDomain.EMPTY : parsed.permutations();
+        if (domain.dimensions().isEmpty()) return;
+        domainWarned = true;
+        for (List<String> d : domain.dimensions()) {
+            int on = 0;
+            for (String k : d) if (keywords.contains(k)) on++;
+            if (on > 1) {
+                LOGGER.error("pipeline {}: binds {} together, outside its #pragma cg_permutation {}", this, keywords,
+                        String.join("|", d));
+                return;
+            }
+        }
+        LOGGER.warn("pipeline {}: missed at its draw; its shader declares #pragma cg_permutation, so add the shader to a "
+                + "precache collector (CgPipelineList.add or addPass)", this);
+    }
+
     /** The shader revision {@link #precache} was last asked at: a draw finding it unbuilt is too late, not missed. */
     private int requestedRevision = -1;
     private int instanceBaseLocation = UNRESOLVED, vertexBaseLocation = UNRESOLVED;
@@ -697,6 +725,7 @@ public final class CgPipeline {
             else missed++;
             CgTrace.add(CgChannels.GL, asked ? TOO_LATE : MISSED, 1);
             if (LOG_MISSES.get()) LOGGER.warn("pipeline {}: {} at its draw, {} ms", asked ? "too late" : "missed", this, took / 1_000_000);
+            else if (!asked) warnOutsideDomain();
         }
         if (took > HITCH_NANOS) {
             hitches++;

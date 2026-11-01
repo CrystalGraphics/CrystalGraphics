@@ -3,6 +3,7 @@
 // block. One triangle over the half-size target. CgBloomChain draws it.
 #type none
 #pragma cg_feature KARIS
+#pragma cg_permutation KARIS
 #include "crystalgraphics:shaders/lib/post/bloom.glsl"
 
 Tags { "RenderType" = "Opaque" "Lighting" = "Unlit" "Fog" = "Off" "ColorSpace" = "Linear" }

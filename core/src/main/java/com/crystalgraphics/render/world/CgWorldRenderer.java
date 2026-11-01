@@ -460,13 +460,11 @@ public final class CgWorldRenderer {
         CgRenderStage.WORLD_OPAQUE.register(ORDER, this::recordOpaque);
         CgRenderStage.WORLD_TRANSPARENT.register(ORDER, this::recordTransparent);
         parsePassesAhead();
-        // The renderer's own programs no material brings in: the GPU cull's depth pyramid, and text, on screen and as labels.
+        // The renderer's own programs no material brings in: the GPU cull's depth pyramid, and text in every form its
+        // permutation domain names (on screen and as labels, bitmap and MSDF).
         CgPipelinePrecache.register("crystalgraphics:world", list -> {
             list.add(PYRAMID_SHADER);
             list.add(TEXT_SHADER);
-            list.add(TEXT_SHADER, "MSDF_MODE");
-            list.add(TEXT_SHADER, "WORLD_LABEL");
-            list.add(TEXT_SHADER, "WORLD_LABEL", "MSDF_MODE");
         });
     }
 

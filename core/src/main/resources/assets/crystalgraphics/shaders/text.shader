@@ -45,6 +45,7 @@
 // A retained world label's glyphs (CgWorldText), drawn as OBJECT instances: each record is in its label's own space,
 // and its node is the label's object record, whose model matrix places it under the firing's view.
 #pragma cg_feature WORLD_LABEL
+#pragma cg_permutation MSDF_MODE WORLD_LABEL   // the text renderer switches both: four programs precached
 
 #include "crystalgraphics:shaders/lib/texel.glsl"
 #include "crystalgraphics:shaders/lib/rect_blur.glsl"

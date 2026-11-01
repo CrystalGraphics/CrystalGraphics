@@ -4,6 +4,7 @@
 // instead of the tent. One triangle over the level. CgBloomChain draws it.
 #type none
 #pragma cg_feature CHEAP
+#pragma cg_permutation CHEAP
 #include "crystalgraphics:shaders/lib/post/bloom.glsl"
 
 Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" "Fog" = "Off" "ColorSpace" = "Linear" }

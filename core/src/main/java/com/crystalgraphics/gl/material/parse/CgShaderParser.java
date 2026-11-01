@@ -248,6 +248,7 @@ public final class CgShaderParser {
             }
             featureNames = Collections.unmodifiableList(withStrip);
         }
+        CgPermutationDomain permutations = CgPermutationDomain.parse(source, featureNames, resourcePath);
         validateEngineBufferUsage(source, engineBuffers, resourcePath);
         noteGeneratedReads(engineBuffers);
         List<CgMaterialProperty> props = withEngineProperties(CgPropertiesParser.parse(source, resourcePath), engineBuffers);
@@ -523,7 +524,7 @@ public final class CgShaderParser {
         if (emissionInput != null) requireSampler(props, emissionInput, "the \"Emission\" tag names", resourcePath);
 
         // ── Step 8: return assembled parsed shader ─────────────────────────
-        return new CgParsedShader(shaderType, props, featureNames, engineBuffers, renderQueue,
+        return new CgParsedShader(shaderType, props, featureNames, permutations, engineBuffers, renderQueue,
                 renderType, sceneColorMargin, "Unlit".equals(lighting), "Surface".equals(lighting), handedLights, handedSun,
                 handedScene, writesCustomData,
                 "Off".equals(fog),

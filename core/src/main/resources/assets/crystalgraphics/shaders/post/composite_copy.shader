@@ -32,6 +32,8 @@
 #pragma cg_feature FADE
 #pragma cg_feature TONEMAP
 #pragma cg_feature GRADE
+// What the frame switches: the HDR scene, bloom and a fade. The looks (FLASH to GRADE) are a volume's, precached with it.
+#pragma cg_permutation SCENE BLOOM FADE
 #include "crystalgraphics:shaders/lib/post/impact.glsl"
 
 Tags { "RenderType" = "Transparent" "SceneColorMargin" = "0.02" "Lighting" = "Unlit" "Fog" = "Off" "ColorSpace" = "Linear" }

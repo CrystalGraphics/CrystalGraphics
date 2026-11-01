@@ -1,6 +1,7 @@
 package com.crystalgraphics.render.world;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
@@ -10,12 +11,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.locks.LockSupport;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgMaterialManifest;
 import com.crystalgraphics.api.material.CgMaterialPermutation;
 import com.crystalgraphics.compute.CgKernel;
+import com.crystalgraphics.gl.material.parse.CgPermutationDomain;
 import com.crystalgraphics.render.CgWarmBudget;
 import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.render.draw.CgPipeline;
@@ -32,7 +35,7 @@ import com.github.bsideup.jabel.Desugar;
  * CgPipelinePrecache.request(pipelines -> {
  *     pipelines.add(BEAM, true);                 // a material, its half-size passes too
  *     pipelines.add(GOKU_BODY, false, true);     // a material a skinned mesh draws
- *     pipelines.add("mymod:shaders/rune.shader", "GLOW");
+ *     pipelines.add("mymod:shaders/rune.shader");   // every combination of its permutation domain
  *     pipelines.add(manifest);                   // an asset bundle's permutations
  *     pipelines.add(stepKernel);
  *     pipelines.kernels(MyOps::precache);         // every kernel it precaches
@@ -114,38 +117,56 @@ public final class CgPipelineList {
     }
 
     /**
-     * Keeps {@code shader}'s program for {@code keywords} built: a pass of a renderer's own whose keywords follow a
-     * setting (bloom's {@code CHEAP} by the tier, the composite's form by the HDR scene). A program is the shader's and
-     * its keywords', so a probe material builds the pass's own.
+     * Keeps {@code shader} built in every form the world draws it, for every combination of its permutation domain
+     * ({@code #pragma cg_permutation}: the keywords its renderer switches), each with {@code keywords} added. A program is
+     * the shader's and its keywords', so a probe material builds each.
+     *
+     * <pre>{@code
+     * pipelines.add("crystalgraphics:shaders/text.shader");            // MSDF_MODE x WORLD_LABEL: four programs
+     * pipelines.add("mymod:shaders/rune.shader", "GLOW");              // its domain's combinations, each with GLOW
+     * }</pre>
      */
     public void add(String shader, String... keywords) {
-        String key = shader + String.join(",", keywords);
-        CgMaterial m = variants.get(key);
-        if (m == null) {
-            m = CgMaterial.newInstance(shader);
-            for (String k : keywords) m.enableKeyword(k);
-            variants.put(key, m);
-        }
-        add(m, false);
+        forEachVariant(variants, shader, keywords, m -> add(m, false));
     }
 
     /**
-     * Keeps {@code shader}'s own pass built for {@code keywords}, as a full-screen pass draws it: its Forward pipeline
-     * alone, none of the world's forms (a post pass, bloom, the composite). A probe material builds the pass's program.
+     * Keeps {@code shader}'s own pass built as a full-screen pass draws it, its Forward pipeline alone and none of the
+     * world's forms (a post pass, bloom, the composite): for every combination of its permutation domain, each with
+     * {@code keywords} added.
      *
      * <pre>{@code
-     * pipelines.addPass("crystalgraphics:shaders/post/composite.shader", "BLOOM");
+     * pipelines.addPass("crystalgraphics:shaders/post/composite.shader");               // FADE x BLOOM
+     * pipelines.addPass("crystalgraphics:shaders/post/composite_copy.shader", "GRADE"); // a look's own, over each
      * }</pre>
      */
     public void addPass(String shader, String... keywords) {
-        String key = shader + String.join(",", keywords);
-        CgMaterial m = passProbes.get(key);
+        forEachVariant(passProbes, shader, keywords, this::addPass);
+    }
+
+    /** A probe material per keyword set of {@code shader}'s domain with {@code keywords} added, made once each. */
+    private static void forEachVariant(Map<String, CgMaterial> probes, String shader, String[] keywords,
+                                       Consumer<CgMaterial> sink) {
+        CgMaterial base = probe(probes, shader, Arrays.asList(keywords));
+        CgPermutationDomain domain = base.permutations();
+        if (domain.dimensions().isEmpty()) {
+            sink.accept(base);
+            return;
+        }
+        domain.forEach(Arrays.asList(keywords), set -> sink.accept(probe(probes, shader, set)));
+    }
+
+    private static CgMaterial probe(Map<String, CgMaterial> probes, String shader, List<String> keywords) {
+        String[] sorted = keywords.toArray(new String[0]);
+        Arrays.sort(sorted);
+        String key = shader + '|' + String.join(",", sorted);
+        CgMaterial m = probes.get(key);
         if (m == null) {
             m = CgMaterial.newInstance(shader);
-            for (String k : keywords) m.enableKeyword(k);
-            passProbes.put(key, m);
+            for (String k : sorted) m.enableKeyword(k);
+            probes.put(key, m);
         }
-        addPass(m);
+        return m;
     }
 
     /** Keeps {@code material}'s own Forward pass built as it is, none of the world's forms: a material drawn over the screen. */

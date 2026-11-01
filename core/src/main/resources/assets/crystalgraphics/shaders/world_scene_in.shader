@@ -3,6 +3,7 @@
 // depth into the scene's own, under a depth state the caller sets. CgSceneTarget draws it; nothing else should.
 #type none
 #pragma cg_feature DEPTH
+#pragma cg_permutation DEPTH
 #include "crystalgraphics:shaders/lib/post/composite.glsl"
 
 Tags { "RenderType" = "Opaque" "Lighting" = "Unlit" "Fog" = "Off" "ColorSpace" = "Linear" "SceneColorMargin" = "0.001" }

@@ -24,6 +24,7 @@ import com.crystalgraphics.gl.material.CgMaterialProperty;
 import com.crystalgraphics.gl.material.CgMaterialShader;
 import com.crystalgraphics.gl.material.CgMaterialShaderRegistry;
 import com.crystalgraphics.gl.material.parse.CgParsedPass;
+import com.crystalgraphics.gl.material.parse.CgPermutationDomain;
 import com.crystalgraphics.gl.material.parse.CgParsedShader;
 import com.crystalgraphics.gl.texture.CgSamplers;
 import com.crystalgraphics.platform.gl.CgCapabilities;
@@ -691,6 +692,16 @@ public final class CgMaterial {
         checkNotDeleted();
         if (cgMaterialShader != null) cgMaterialShader.ensureParsed();
         return getDeclaredFeatureNames();
+    }
+
+    /**
+     * The keywords a renderer switches on its shader at runtime ({@code #pragma cg_permutation}), from the parse alone:
+     * every combination a precache of the shader builds.
+     */
+    public CgPermutationDomain permutations() {
+        checkNotDeleted();
+        CgParsedShader parsed = cgMaterialShader == null ? null : cgMaterialShader.ensureParsed();
+        return parsed == null ? CgPermutationDomain.EMPTY : parsed.permutations();
     }
 
     /**

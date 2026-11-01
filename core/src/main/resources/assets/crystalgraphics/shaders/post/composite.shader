@@ -8,6 +8,7 @@
 #type none
 #pragma cg_feature BLOOM
 #pragma cg_feature FADE
+#pragma cg_permutation BLOOM FADE
 #include "crystalgraphics:shaders/lib/post/composite.glsl"
 
 Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" "Fog" = "Off" "ColorSpace" = "Linear" }

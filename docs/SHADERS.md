@@ -352,6 +352,35 @@ material.disableKeyword("FOG_ON");
 boolean on = material.isKeywordEnabled("NORMAL_MAP"); // false by default
 ```
 
+### Keywords a renderer switches: `#pragma cg_permutation`
+
+A keyword your renderer turns on and off at runtime (a tier's cheap filter, the HDR scene, a fade) is part of the
+shader's **permutation domain**, Unreal's `FShaderPermutationDomain`. Declare it beside the shader, and a precache of
+the shader builds every combination, so nothing lists variants by hand:
+
+```glsl
+#pragma cg_feature KARIS
+#pragma cg_feature CHEAP
+#pragma cg_feature FADE
+#pragma cg_permutation KARIS|CHEAP   // a one-of: none, KARIS or CHEAP, never both
+#pragma cg_permutation FADE          // a bool: off or on
+```
+
+```java
+pipelines.addPass("mymod:shaders/post/blur.shader");             // all six combinations
+pipelines.add("mymod:shaders/rune.shader", "GLOW");              // each combination with the material's own GLOW
+```
+
+- **Only what a renderer switches.** A keyword set once on a material (a look's feature, a VFX slot kind) is the
+  material's: precaching the material covers it.
+- Every keyword named is a `cg_feature` of the shader, in one dimension at most; a domain spans at most 256
+  combinations (`CgPermutationDomain.MAX_VARIANTS`). Each is refused at parse.
+- A keyword passed to `add` or `addPass` pins its dimension: `addPass(shader, "CHEAP")` builds only the combinations
+  with `CHEAP`.
+- A draw of a shader with a domain that still misses its pipeline is logged once whatever
+  `crystalgraphics.pipeline.logMisses` says: the shader was never added, or the draw binds two keywords of one one-of.
+- `#pragma cg_permutation` lines never reach GLSL, so declaring a domain changes no program.
+
 ---
 
 ### Engine Buffers — `#pragma cg_use`

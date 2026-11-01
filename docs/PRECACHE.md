@@ -29,8 +29,8 @@ Read this before drawing with a shader of your own, adding a shader to the engin
 |---|---|
 | A material of your own, drawn through `CgWorldRenderer` or at a render stage | `pipelines.add(material, half)`: every pass the world draws it with |
 | A material on a skinned mesh you draw yourself | `pipelines.add(material, half, true)` |
-| A keyword set a setting or a state switches to | `pipelines.add("mymod:shaders/rune.shader", "GLOW")`: every set a draw can bind, not only today's |
-| A full-screen pass of your own renderer | `pipelines.addPass(shader, keywords...)` |
+| A shader whose keywords your renderer switches at runtime | declare them in the shader as `#pragma cg_permutation` ([`SHADERS.md`](SHADERS.md) § *Keywords a renderer switches*), then `pipelines.add(shader)`: every combination, none typed by hand |
+| A full-screen pass of your own renderer | `pipelines.addPass(shader)`, its permutation domain included |
 | A `.compute` kernel | `pipelines.add(kernel)`, or `pipelines.kernels(MyOps::precache)` for a set |
 | A VFX look known only at runtime (a summoned move, a pack loaded later) | `VFX.precache(LOOK)` on the render thread, then poll `VFX.ready()` |
 
@@ -40,7 +40,7 @@ in parallel, while the host's loading screen shows:
 ```java
 CgPipelinePrecache.register("mymod:runes", pipelines -> {
     pipelines.add(RUNE_MATERIAL, false);                              // a material, every pass the world draws it with
-    pipelines.add("mymod:shaders/rune.shader", "GLOW");               // a keyword set a setting switches to
+    pipelines.add("mymod:shaders/rune.shader");                       // every combination its cg_permutation names
     pipelines.add(CgCompute.load("mymod:shaders/runes.compute").kernel("Step"));
 });
 ```
@@ -76,7 +76,9 @@ Textures, meshes and sounds are not pipelines: read them ahead with `CgPreload`
   size, multi-draw), and every variant of a folder is thousands of programs.
 - **A collector registered in post-init is late on a client**: post-init runs after the graphics start, so it builds
   over frames and its draws are held meanwhile.
-- **A keyword set nobody named compiles at its first draw.** Name every set a setting can switch to.
+- **Never list keyword combinations by hand.** A keyword a renderer switches goes in the shader's
+  `#pragma cg_permutation`, and a combination outside it compiles at its first draw. A shader with a domain that still
+  misses is logged, whatever `logMisses` says.
 
 ## Checking that nothing was missed
 

@@ -41,6 +41,9 @@ import java.util.Objects;
  * @param featureNames
  *     Ordered feature flag names from {@code #pragma cg_feature} declarations.
  *     Always {@link java.util.Collections#emptyList()} if none declared.
+ * @param permutations
+ *     The keywords a renderer switches at runtime, from {@code #pragma cg_permutation}: every combination a precache of
+ *     the shader builds. {@link CgPermutationDomain#EMPTY} if none declared.
  * @param renderQueue
  *     Numeric render queue priority parsed from the optional {@code Queue = "..."} keyword.
  *     Defaults to {@link CgRenderQueue#GEOMETRY} value (2000) when absent.
@@ -112,7 +115,8 @@ import java.util.Objects;
  */
 @Desugar
 public record CgParsedShader(String shaderType, List<CgMaterialProperty> properties,
-                              List<String> featureNames, List<String> engineBuffers, int renderQueue,
+                              List<String> featureNames, CgPermutationDomain permutations,
+                              List<String> engineBuffers, int renderQueue,
                               String renderType, float sceneColorMargin, boolean unlit, boolean surfaceLit,
                               boolean handedLights, boolean handedSun, boolean handedScene, boolean writesCustomData,
                               boolean unfogged, boolean linearColor, boolean unmediated, boolean emissiveOpacity,
@@ -233,7 +237,7 @@ public record CgParsedShader(String shaderType, List<CgMaterialProperty> propert
             out.add(rs == pass.renderState() ? pass : new CgParsedPass(pass.lightMode(), pass.name(), rs,
                     pass.v2fStructBody(), pass.globalDecls(), pass.vertexBody(), pass.fragmentBody(), pass.fragOutput()));
         }
-        return new CgParsedShader(shaderType, properties, featureNames, engineBuffers, renderQueue, renderType,
+        return new CgParsedShader(shaderType, properties, featureNames, permutations, engineBuffers, renderQueue, renderType,
                 sceneColorMargin, unlit, surfaceLit, handedLights, handedSun, handedScene, writesCustomData,
                 unfogged, linearColor, unmediated, emissiveOpacity,
                 state.clip() ? DepthMode.CLIP : unclip ? DepthMode.NONE : depthMode, tube, Collections.unmodifiableList(out),

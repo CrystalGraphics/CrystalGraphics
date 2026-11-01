@@ -97,40 +97,26 @@ public final class CgPostStack {
     }
 
     /**
-     * Every keyword set of bloom's and the composite's passes a setting can switch to: the tier's {@code CHEAP} filters,
-     * Karis on the first step, the composite's blend form (the HDR scene off) and copy form with {@code SCENE} (on), each
-     * with bloom and a fade or without; the HDR scene's way in, with depth and without; and the bend bloom's emission
-     * takes through the distortion, which a tier below Medium never draws. The looks' keywords follow volumes, not
-     * settings: a volume's preparer requests them ({@link #lookPasses}).
+     * Bloom's and the composite's passes, each in every keyword set a setting can switch to, as its shader's permutation
+     * domain names them (the tier's {@code CHEAP}, Karis, the HDR scene, bloom, a fade); the HDR scene's way in; and the
+     * bend bloom's emission takes through the distortion, which a tier below Medium never draws. The looks' keywords
+     * follow volumes, not settings: a volume's preparer requests them ({@link #lookPasses}).
      */
     private static void warmVariants(CgPipelineList pipelines) {
         String bloom = "crystalgraphics:shaders/post/bloom/", post = "crystalgraphics:shaders/post/";
         pipelines.addPass(bloom + "down.shader");
-        pipelines.addPass(bloom + "down.shader", "CHEAP");
-        pipelines.addPass(bloom + "down.shader", "KARIS");
         pipelines.addPass(bloom + "up.shader");
-        pipelines.addPass(bloom + "up.shader", "CHEAP");
         pipelines.addPass(bloom + "prefilter.shader");
-        pipelines.addPass(bloom + "prefilter.shader", "KARIS");
         pipelines.addPass(bloom + "excess.shader");
         pipelines.addPass("crystalgraphics:shaders/world_scene_in.shader");
-        pipelines.addPass("crystalgraphics:shaders/world_scene_in.shader", "DEPTH");
         pipelines.addPass(post + "distortion_bend.shader");
-        for (String fade : new String[] {null, "FADE"}) {
-            pipelines.addPass(post + "composite.shader", with(fade));
-            pipelines.addPass(post + "composite.shader", with(fade, "BLOOM"));
-            pipelines.addPass(post + "composite_copy.shader", with(fade, "SCENE"));
-            pipelines.addPass(post + "composite_copy.shader", with(fade, "SCENE", "BLOOM"));
-            pipelines.addPass(post + "composite_copy.shader", with(fade, "BLOOM"));
-        }
+        pipelines.addPass(post + "composite.shader");
+        pipelines.addPass(post + "composite_copy.shader");
     }
 
-    /** The composite's keyword sets a look is laid over: bloom and the HDR scene each on and off, as warmed above. */
-    private static final String[][] LOOK_BASES = {{}, {"BLOOM"}, {"SCENE"}, {"SCENE", "BLOOM"}};
-
     /**
-     * Adds the composite passes a volume of {@code settings} draws with: its looks over each keyword set
-     * {@link #warmVariants} keeps built. A preparer requests them before the volume plays, so the frame it turns a look on
+     * Adds the composite passes a volume of {@code settings} draws with: its looks, in every keyword set of the
+     * composite's permutation domain. A preparer requests them before the volume plays, so the frame it turns a look on
      * compiles nothing; nothing for settings that switch no look on.
      *
      * <pre>{@code
@@ -140,20 +126,10 @@ public final class CgPostStack {
     public void lookPasses(CgPostSettings settings, CgPipelineList pipelines) {
         EnumSet<CgCompositeFeature> on = CgPostLooks.features(settings);
         if (on.isEmpty()) return;
-        boolean subject = looks.drawsImpact(settings);
-        for (String[] base : LOOK_BASES) {
-            List<String> keywords = new ArrayList<>(Arrays.asList(base));
-            for (CgCompositeFeature f : on) keywords.add(f.keyword());
-            if (subject) keywords.add("SUBJECT");
-            pipelines.addPass("crystalgraphics:shaders/post/composite_copy.shader", keywords.toArray(new String[0]));
-        }
-    }
-
-    private static String[] with(String extra, String... keywords) {
-        if (extra == null) return keywords;
-        String[] all = Arrays.copyOf(keywords, keywords.length + 1);
-        all[keywords.length] = extra;
-        return all;
+        List<String> keywords = new ArrayList<>();
+        for (CgCompositeFeature f : on) keywords.add(f.keyword());
+        if (looks.drawsImpact(settings)) keywords.add("SUBJECT");
+        pipelines.addPass("crystalgraphics:shaders/post/composite_copy.shader", keywords.toArray(new String[0]));
     }
 
     /** Before the world renderer: where the volumes blend, so it knows whether bloom will read the emission. */

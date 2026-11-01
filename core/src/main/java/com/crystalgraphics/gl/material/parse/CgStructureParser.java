@@ -428,6 +428,7 @@ final class CgStructureParser {
             if (line.startsWith("#")) {
                 if (line.startsWith("#pragma cg_feature")) continue;
                 if (line.startsWith("#pragma cg_use")) continue;
+                if (line.startsWith(CgPermutationDomain.PRAGMA)) continue;
                 if (result.length() > 0) result.append('\n');
                 result.append(line);
             }

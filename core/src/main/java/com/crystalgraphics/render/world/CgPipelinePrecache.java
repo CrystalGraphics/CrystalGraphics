@@ -31,7 +31,7 @@ import com.github.bsideup.jabel.Desugar;
  * // at load: built with the engine's own, inside the loading screen
  * CgPipelinePrecache.register("mymod:runes", pipelines -> {
  *     pipelines.add(RUNE_MATERIAL, false);                              // a material, every pass the world draws it with
- *     pipelines.add("mymod:shaders/rune.shader", "GLOW");               // a keyword set a setting switches to
+ *     pipelines.add("mymod:shaders/rune.shader");                       // every keyword set its cg_permutation names
  *     pipelines.add(CgCompute.load("mymod:shaders/runes.compute").kernel("Step"));
  * });
  *
@@ -66,8 +66,10 @@ import com.github.bsideup.jabel.Desugar;
  * collector registered there is a late one. Registering on a dedicated server is harmless: nothing collects there.
  *
  * <ul>
- *   <li>Name every keyword set a setting can switch to, not only today's: a set not named compiles at its first draw,
- *       counted as {@code pipeline.missed} and logged under {@code crystalgraphics.pipeline.logMisses}.</li>
+ *   <li>Keywords a renderer switches at runtime are the shader's permutation domain ({@code #pragma cg_permutation},
+ *       Unreal's {@code FShaderPermutationDomain}): {@code add(shader)} then builds every combination, never a list typed
+ *       here. A set nothing covers compiles at its first draw, counted as {@code pipeline.missed} and logged under
+ *       {@code crystalgraphics.pipeline.logMisses}.</li>
  *   <li>Name what draws, not every file: a shader's base variant is rarely the one a draw binds (keywords, skinned,
  *       half size, multi-draw), and every variant of a directory is thousands of programs.</li>
  *   <li>A step that throws is logged under its request's name and skipped; the request goes on with the rest.</li>
