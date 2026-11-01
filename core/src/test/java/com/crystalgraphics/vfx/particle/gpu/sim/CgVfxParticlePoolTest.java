@@ -277,7 +277,8 @@ public class CgVfxParticlePoolTest {
         CgVfxShape a = CgVfxShape.of(new Def("a", CgVfxDrawLayout.QUADS, new Pull(9.8f), new Swirl(0.12)));
         CgVfxShape b = CgVfxShape.of(new Def("b", CgVfxDrawLayout.QUADS, new Pull(1f), new Swirl(3.0)));
         assertEquals(a, b);
-        assertEquals("QUADS|pull:1|swirl:1:IVEC4,VEC4", a.key());
+        // Last, the spawn kinds its Step places by: a point's alone.
+        assertEquals("QUADS|pull:1|swirl:1:IVEC4,VEC4|place:1", a.key());
         assertNotEquals(a, CgVfxShape.of(new Def("c", CgVfxDrawLayout.QUADS, new Swirl(0.12), new Pull(9.8f))));
         assertNotEquals(a, CgVfxShape.of(new Def("d", CgVfxDrawLayout.MESHES, new Pull(9.8f), new Swirl(0.12))));
         assertSame(CgVfxParticlePool.of(OWNER, new Def("a", CgVfxDrawLayout.QUADS, new Pull(9.8f), new Swirl(0.12))),

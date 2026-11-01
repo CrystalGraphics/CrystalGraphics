@@ -82,6 +82,16 @@ are 34 stacked; cold, they compile in 5.8 s rather than 8.5 on the reference mac
   beams.
 - `-Dcrystalgraphics.vfx.stackShapes=false` keeps every stack its own kernel, to compare.
 
+## A Step compiles only its spawn shapes
+
+Where a particle is born (`shape(...)`: a sphere, a box, a cone and so on) is Niagara's Shape Location, whose shape is a
+static switch: an emitter compiles only its own. A pool's Step compiles the shapes its definitions are born on, every
+definition sharing the pool placing by all of them (`CgVfxShape.placeKinds`, the key's last part, `|place:` and a bit a
+kind). One shape where four were costs `vfx-modules`' Steps 4.8 s cold rather than 5.8.
+
+- **A shape a user parameter sets** may be any, so that definition's Step compiles all of them.
+- **Two definitions alike but for their spawn shapes still share a pool** and stack: their shapes join after.
+
 ## Scalability: what is too far, too many or out of view
 
 Every look has a `CgVfxScalability`, `DEFAULT` unless it names one: when its effects are culled, drawn lower or put to

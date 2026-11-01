@@ -44,6 +44,9 @@ import java.util.WeakHashMap;
  * always run and doing nothing where the emitter's parameters leave it off. It draws the same particles
  * ({@code --mode=vfx-stack}), and each stack is one kernel to compile and one pool a frame instead of several.</p>
  *
+ * <p>Last, every definition sharing a pool places by all their spawn shapes ({@link CgVfxShape#placeKinds}), its Step
+ * compiling only those: Niagara's Shape Location takes its shape as a static switch.</p>
+ *
  * <p>Raising has no Unreal counterpart: Niagara dispatches each stateful emitter instance on its own and has no pools to
  * share.</p>
  *
@@ -132,6 +135,7 @@ public final class CgVfxShapeCoalescing {
         for (Group g : touched) g.plan();
         choose();
         if (STACK.get()) stack();
+        place();
         shapes.clear();
         List<CgVfxGpuEmitter> changed = new ArrayList<>();
         for (Map.Entry<Member, String> was : before.entrySet()) {
@@ -240,7 +244,9 @@ public final class CgVfxShapeCoalescing {
         for (Group g : groups.values()) {
             for (Member m : g.members) {
                 m.stacked = null;
-                byKey.computeIfAbsent(m.unstacked().key(), k -> new ArrayList<>()).add(m);
+                m.stack = null;
+                // Alike but for their spawn kinds, which join after (place).
+                byKey.computeIfAbsent(CgVfxShape.unplaced(m.unstacked().key()), k -> new ArrayList<>()).add(m);
             }
         }
         Map<String, String[]> sigs = new HashMap<>();
@@ -279,20 +285,54 @@ public final class CgVfxShapeCoalescing {
                 if (at == null) continue;
                 for (Member m : byKey.get(k)) {
                     CgVfxShape s = stacked(m, prototypes, at);
-                    if (s == null || !s.key().equals(ownerStacked.key())) continue;
+                    if (s == null || !CgVfxShape.unplaced(s.key()).equals(CgVfxShape.unplaced(ownerStacked.key()))) continue;
                     m.stacked = s;
+                    m.stack = new CgVfxShape.Stack(prototypes, at);
                     if (!k.equals(target)) joined++;
                 }
             }
             // Nothing joined: the owner keeps its own shape, no mask to read.
-            if (joined == 0) for (Member m : byKey.get(target)) m.stacked = null;
+            if (joined == 0) {
+                for (Member m : byKey.get(target)) {
+                    m.stacked = null;
+                    m.stack = null;
+                }
+            }
+        }
+    }
+
+    /**
+     * Every definition sharing a pool places by the spawn kinds of them all, and its Step compiles only those: Niagara's
+     * Shape Location takes its shape as a static switch, each emitter compiling its own.
+     */
+    private void place() {
+        Map<String, Integer> unions = new HashMap<>();
+        for (Group g : groups.values()) {
+            for (Member m : g.members) {
+                CgVfxShape s = m.unplacedShape();
+                unions.merge(CgVfxShape.unplaced(s.key()), s.ownPlaces(), (a, b) -> a | b);
+            }
+        }
+        for (Group g : groups.values()) {
+            for (Member m : g.members) {
+                m.placed = null;
+                CgVfxShape s = m.unplacedShape();
+                int union = unions.get(CgVfxShape.unplaced(s.key()));
+                if (union != s.placeKinds()) m.placed = built(m, m.stack, union);
+            }
         }
     }
 
     /** {@code m}'s shape over {@code prototypes}, its modules at {@code at}; cached; null where it cannot be. */
     private static CgVfxShape stacked(Member m, List<? extends CgVfxGpuModule> prototypes, int[] at) {
+        return built(m, new CgVfxShape.Stack(prototypes, at), 0);
+    }
+
+    /** {@code m}'s shape, its forms as raised, over {@code stack} where given, placing by {@code places} too; cached; null where it cannot be. */
+    private static CgVfxShape built(Member m, CgVfxShape.Stack stack, int places) {
         CgVfxShape from = m.unstacked();
-        String key = m.tier + "|" + from.key() + "|" + Arrays.toString(at) + "|" + System.identityHashCode(prototypes);
+        String key = m.tier + "|" + from.key() + "|" + (stack == null ? "-" : Arrays.toString(stack.at()) + "|"
+                + System.identityHashCode(stack.modules())) + "|" + places;
         synchronized (STACKED) {
             CgVfxShape known = STACKED.computeIfAbsent(m.emitter, k -> new HashMap<>()).get(key);
             if (known != null) return known;
@@ -303,7 +343,7 @@ public final class CgVfxShapeCoalescing {
         for (int f = 0; f < from.spawnForms(); f++) spawns.add(from.spawnForm(f));
         CgVfxShape shape;
         try {
-            shape = new CgVfxShape(m.emitter, m.tier, forms, spawns, new CgVfxShape.Stack(prototypes, at));
+            shape = new CgVfxShape(m.emitter, m.tier, forms, spawns, stack, places);
         } catch (RuntimeException refused) {
             return null;
         }
@@ -339,7 +379,7 @@ public final class CgVfxShapeCoalescing {
         String[] parts = s.key().split("\\|");
         StringBuilder out = new StringBuilder(parts[0]);
         for (int p = 1 + s.modules(); p < parts.length; p++) {
-            if (parts[p].startsWith("form:") || parts[p].startsWith("user:")) continue;
+            if (parts[p].startsWith("form:") || parts[p].startsWith("user:") || parts[p].startsWith("place:")) continue;
             out.append('|').append(parts[p]);
         }
         return out.toString();
@@ -392,7 +432,7 @@ public final class CgVfxShapeCoalescing {
     static String formFree(String key) {
         StringBuilder out = new StringBuilder();
         for (String part : key.split("\\|")) {
-            if (part.startsWith("form:") || part.startsWith("spawn:")) continue;
+            if (part.startsWith("form:") || part.startsWith("spawn:") || part.startsWith("place:")) continue;
             if (out.length() > 0) out.append('|');
             out.append(part);
         }
@@ -497,8 +537,9 @@ public final class CgVfxShapeCoalescing {
         CgVfxShape raised;
         /** The group's choices its raised shape was made under: the same choices make the same shape. */
         String raisedUnder;
-        /** Its shape stacked into a wider one ({@link #stack}), or null. */
-        CgVfxShape stacked;
+        /** Its shape stacked into a wider one ({@link #stack}) and the stack, or null; placing by its pool's spawn kinds ({@link #place}), or null. */
+        CgVfxShape stacked, placed;
+        CgVfxShape.Stack stack;
         private int[] spawnWords;
         private float[] curveRow;
 
@@ -510,6 +551,11 @@ public final class CgVfxShapeCoalescing {
         }
 
         CgVfxShape shape() {
+            return placed != null ? placed : unplacedShape();
+        }
+
+        /** Its shape stacked where stacked, before its pool's spawn kinds join. */
+        CgVfxShape unplacedShape() {
             return stacked != null ? stacked : unstacked();
         }
 
@@ -548,7 +594,7 @@ public final class CgVfxShapeCoalescing {
         /** Each member's raised shape and how many shapes the group takes either way. */
         void plan() {
             Set<String> base = new HashSet<>();
-            for (Member m : members) base.add(m.base.key());
+            for (Member m : members) base.add(CgVfxShape.unplaced(m.base.key()));
             baseKeys = base.size();
             // Every input any member gives a form, and each member's value of it: its form, or its Step's without one.
             Map<String, Map<Member, CgVfxFormInput>> inputs = new TreeMap<>();
@@ -608,7 +654,7 @@ public final class CgVfxShapeCoalescing {
                     }
                     m.raisedUnder = under;
                 }
-                raisedSet.add(m.raised.key());
+                raisedSet.add(CgVfxShape.unplaced(m.raised.key()));
             }
             raisedKeys = raisedSet.size();
         }

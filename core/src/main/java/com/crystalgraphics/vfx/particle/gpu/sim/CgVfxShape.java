@@ -21,6 +21,7 @@ import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuModule;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxLane;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxModuleWords;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxUserBinding;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxWords;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxDrawLayout;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxDrawnChannel;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawning;
@@ -45,7 +46,7 @@ import java.util.regex.Pattern;
  * it. A module's textures are part of it too, so each sampled texture has a pool of its own; its kernels are keyed by
  * {@link #kernelKey()}, which names only whether each is 2D or 3D. Past the pool budget, definitions differing only in
  * how their inputs are given share one, each input raised to a form every one of them can take
- * ({@link CgVfxShapeCoalescing}).
+ * ({@link CgVfxShapeCoalescing}). Its key ends in the spawn kinds its Step places by ({@link #placeKinds}).
  *
  * <pre>{@code
  * CgVfxShape shape = CgVfxShape.of(EMBERS);
@@ -80,6 +81,8 @@ public final class CgVfxShape {
     /** Each stack module's place among its emitter's own, -1 where it lacks it; which it runs, a bit each; the mask's vec4. */
     private final int[] ownModule;
     private final int presentMask, stackAt;
+    /** The spawn kinds its Step compiles, and its own definition's: {@link #placeKinds()}. */
+    private final int placeKinds, ownPlaces;
     private final CgTexture[][] textures;
     private final boolean[][] volumes;
     private final CgVfxDrawLayout drawLayout;
@@ -172,6 +175,15 @@ public final class CgVfxShape {
     /** As above, its modules placed in {@code stack} where given. */
     CgVfxShape(CgVfxGpuEmitter emitter, int tier, List<CgVfxModuleForm> moduleForms, List<CgVfxSpawnForm> givenSpawnForms,
                @Nullable Stack stack) {
+        this(emitter, tier, moduleForms, givenSpawnForms, stack, 0);
+    }
+
+    /**
+     * As above, its Step placing spawns in {@code places} as well as its own spawn shape: the spawn kinds
+     * ({@code CgVfxSpawnShape}'s codes, a bit each) of every definition sharing its pool, which coalescing passes.
+     */
+    CgVfxShape(CgVfxGpuEmitter emitter, int tier, List<CgVfxModuleForm> moduleForms, List<CgVfxSpawnForm> givenSpawnForms,
+               @Nullable Stack stack, int places) {
         if (tier < 0 || tier >= TIERS) throw new IllegalArgumentException(emitter.name() + " at feed tier " + tier);
         this.tier = tier;
         List<? extends CgVfxGpuModule> own = emitter.modules();
@@ -497,7 +509,40 @@ public final class CgVfxShape {
             throw new IllegalArgumentException(emitter.name() + " publishes its particles at the last feed tier, which no reader can follow");
         }
         if (publishes) key.append("|publishes");
+        // Its spawn shape, as Niagara's Shape Location is a static switch: a Step compiles only the kinds its pool's
+        // definitions place by. A kind a user parameter sets may be any. Last in its key: unplaced(key) drops it.
+        int[] spawn = new int[CgVfxGpuEmitter.SPAWN_VECTORS * 4];
+        CgVfxWords words = new CgVfxWords();
+        words.target(spawn, 0, CgVfxGpuEmitter.SPAWN_VECTORS, emitter.name());
+        emitter.writeSpawn(words);
+        int kind = (int) Float.intBitsToFloat(spawn[PLACE_KIND_WORD]);
+        boolean kindBound = false;
+        for (int w : userWords) kindBound |= w == PLACE_KIND_WORD;
+        ownPlaces = kindBound || kind < 0 || kind > 8 ? ALL_PLACES : 1 << kind;
+        placeKinds = ownPlaces | places;
+        key.append("|place:").append(Integer.toHexString(placeKinds));
         this.key = key.toString();
+    }
+
+    /** The spawn row's word holding its spawn shape's kind ({@code CgVfxSpawnShape.write}: vec4 6, x). */
+    static final int PLACE_KIND_WORD = 24;
+    /** Every spawn kind, {@code CgVfxSpawnShape}'s POINT to TRIANGLE. */
+    static final int ALL_PLACES = 0x1FF;
+
+    /** The spawn kinds its Step places by, a bit each: its own and every one sharing its pool. */
+    public int placeKinds() {
+        return placeKinds;
+    }
+
+    /** Its own definition's spawn kinds, a bit each: one, or every kind where a user parameter sets it. */
+    public int ownPlaces() {
+        return ownPlaces;
+    }
+
+    /** {@code key} less its spawn kinds: what decides whether two shapes may share a pool, before their kinds join. */
+    public static String unplaced(String key) {
+        int at = key.lastIndexOf("|place:");
+        return at < 0 ? key : key.substring(0, at);
     }
 
     /** What its particles are born on ({@link CgVfxSpawnFrom}), read from the tier before or its own; null for none. */
