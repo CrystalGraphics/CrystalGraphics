@@ -2,17 +2,15 @@ package com.crystalgraphics.vfx.system;
 
 import java.util.function.Supplier;
 
-import com.crystalgraphics.api.material.CgMaterialDefinition;
 import com.crystalgraphics.asset.load.CgAssetPreparer;
 import com.crystalgraphics.asset.load.CgAssetRef;
-import com.crystalgraphics.asset.load.CgPreload;
 import com.crystalgraphics.vfx.CgVfxSystem;
 import com.crystalgraphics.vfx.look.CgVfxLook;
 
 /**
- * A system asset's GPU work before it is {@code READY}: its layers' textures decoded on a worker
- * ({@code plan.preload}), then its look precached on a VFX system ({@link CgVfxSystem#precache}: kernels, pools, slot
- * meshes, every program its draws take), and its pool there primed ({@link CgVfxSystem#pool}). A system played once its bundle is ready then uploads
+ * A system asset's GPU work before it is {@code READY}: its look precached on a VFX system
+ * ({@link CgVfxSystem#precache}: kernels, pools, slot meshes, every program its draws take, its textures and meshes
+ * read ahead), and its pool there primed ({@link CgVfxSystem#pool}). A system played once its bundle is ready then uploads
  * and compiles nothing, and {@link CgVfxSystem#spawn} takes a primed instance.
  *
  * <pre>{@code
@@ -52,7 +50,6 @@ public final class CgVfxSystemPreparer implements CgAssetPreparer {
      * @param refuseBounds whether a material reading the drawer's bounds fails: a system's without fixed bounds
      */
     public static void planLook(String name, CgVfxLook look, boolean refuseBounds, Supplier<CgVfxSystem> system, Plan plan) {
-        plan.preload(l -> textures(look, l));
         boolean[] started = {false};
         plan.warm("look of " + name, () -> {
             CgVfxSystem vfx = system.get();
@@ -84,14 +81,5 @@ public final class CgVfxSystemPreparer implements CgAssetPreparer {
             system.get().pool(systemRef).prime(prime);
             return true;
         });
-    }
-
-    /** A look's layers' textures, each the registry's for its binding's path, which a renderer's material samples. */
-    private static void textures(CgVfxLook look, CgPreload.Loads into) {
-        for (CgVfxLook.Placed placed : look.placed()) {
-            for (CgMaterialDefinition d : placed.definitions()) {
-                for (CgMaterialDefinition.Texture t : d.textures().values()) into.texture(t.resolve());
-            }
-        }
     }
 }

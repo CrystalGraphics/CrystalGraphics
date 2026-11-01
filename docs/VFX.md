@@ -220,16 +220,24 @@ VFX.stop();             // every effect of this mod, gracefully: nothing new spa
 VFX.clear();            // every effect of this mod at once, particles and all
 VFX.enabled(false);     // a dev switch: ends them, and play() does nothing until enabled again
 VFX.playing();          // how many of this mod's effects are alive
-VFX.precache(LOOK);      // builds a look's shaders, meshes and kernels ahead of its first play
+VFX.precache(LOOK);      // its pipelines, kernels, pools, textures and meshes, ahead of its first play
 VFX.precache(SPIRAL, SHOCKWAVE, FLASH);   // every look a move plays, before the move
 ```
 
 - **An effect plays once.** Playing the same object again, or into a second system, throws. Make a new one.
 - **An effect that throws is killed and logged under your mod**; every other effect keeps playing.
-- A look played cold compiles on its first frame and can hitch: `precache` spreads the work over frames within
-  `crystalgraphics.warmBudget`, and `VFX.ready()` says when it is done. Once it is, the looks' first frames compile
-  nothing: `CgMaterialShader.compileWaits()` (the trace counter `material.compile-waits`) counts every program a draw
-  had to wait for, and `--mode=vfx-precache` holds a move to 0.
+- **Precache every look you play**, or its first play builds what it draws and can hitch for hundreds of
+  milliseconds. Three ways, from least to most code:
+  - **Declare it, and it is done**: a look a cue plays (`VFX.cue(...)`, `VFX.register(cue, look, ...)`) or that
+    `CgVfxRegistry` registers is precached at the graphics start, inside the loading screen.
+    `.precache(false)` on the cue's builder or the registry entry opts out one you play rarely.
+  - **`VFX.precache(looks)` at your mod's init**, from any thread: built at the graphics start too. Every look you play
+    without a cue (a hit spark, a trail, a projectile) goes here.
+  - **`VFX.precache(looks)` on the render thread later**, for a look known only then: built over frames within
+    `crystalgraphics.warmBudget`, and `VFX.ready()` says when it is done.
+- A precached look's first frames compile and load nothing: `CgMaterialShader.compileWaits()` (the trace counter
+  `material.compile-waits`) counts every program a draw had to wait for; `--mode=vfx-precache` holds a move to 0, and
+  `--mode=vfx-declared` a look only declared.
 - On a dedicated server, or a client with no world yet, `play` plays nothing.
 
 ### Ending an effect

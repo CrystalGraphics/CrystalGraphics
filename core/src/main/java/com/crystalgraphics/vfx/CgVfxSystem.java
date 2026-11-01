@@ -995,7 +995,7 @@ public final class CgVfxSystem {
     /**
      * {@code look}'s precache request: on a worker its shaders parsed and its Step sources generated, then a step for
      * each placed draw's materials, one for its clips' parts, Range's kernels in the first look a system requests, and
-     * a step per emitter (its kernels, its pools expected, its slot mesh); and its meshes read ahead.
+     * a step per emitter (its kernels, its pools expected, its slot mesh); and its meshes and textures read ahead.
      */
     private void request(CgVfxLook look) {
         List<CgMaterialShader> shaders = new ArrayList<>();
@@ -1028,7 +1028,10 @@ public final class CgVfxSystem {
             if (readsWorld(e)) steps.step(p -> p.kernels(CgWorldVoxelWindow.get()::precache));
         }
         lookRequests.add(steps.start());
-        preloads.add(CgPreload.request(l -> meshes(look, l)));
+        preloads.add(CgPreload.request(l -> {
+            meshes(look, l);
+            textures(look, l);
+        }));
     }
 
     /** An emitter's step: its kernels, children's included, named while it sizes its pools and slot meshes. */
@@ -1061,6 +1064,18 @@ public final class CgVfxSystem {
         for (int e = 0; e < emitter.events().size(); e++) {
             CgVfxEmitter child = (CgVfxEmitter) emitter.events().get(e).child();
             if (child != null) loadAhead(child, tier + 1);
+        }
+    }
+
+    /**
+     * {@code look}'s draws' textures, each the registry's for its binding's path, which a renderer's material samples:
+     * decoded ahead, or its first draw decodes it on the render thread.
+     */
+    private static void textures(CgVfxLook look, CgPreload.Loads into) {
+        for (CgVfxLook.Placed placed : look.placed()) {
+            for (CgMaterialDefinition d : placed.definitions()) {
+                for (CgMaterialDefinition.Texture t : d.textures().values()) into.texture(t.resolve());
+            }
         }
     }
 

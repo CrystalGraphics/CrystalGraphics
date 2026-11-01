@@ -6,12 +6,15 @@ import com.crystalgraphics.vfx.effect.beam.CgEnergyWave;
 import com.crystalgraphics.vfx.element.CgVfxBlast;
 import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.net.CgVfxCue;
-
-import java.util.Collections;
-import java.util.List;
-import java.util.concurrent.CopyOnWriteArrayList;
 import com.crystalgraphics.vfx.system.CgVfxSystemDefinition;
 import com.crystalgraphics.vfx.system.CgVfxSystemInstance;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
  * Every effect a tool can list, spawn and tweak by name: an id, a display name, the category a tool groups it under, a
@@ -28,6 +31,8 @@ import com.crystalgraphics.vfx.system.CgVfxSystemInstance;
  *
  * <ul>
  *   <li>An id is registered once; a second registration under it throws.</li>
+ *   <li>Its look is precached on the client world's system at the graphics start, or at the next frame if registered
+ *       after: its first play compiles and loads nothing. {@link Entry#precache(boolean)} opts one out.</li>
  *   <li>The factory takes the look to play, so a tool can hand it a variant built from {@code look().toBuilder()}.</li>
  *   <li>The target is where a beam homes and blasts: one without a target never hits, and never blasts. An effect
  *       that only faces takes the direction to it; one with neither ignores it.</li>
@@ -54,6 +59,7 @@ public final class CgVfxRegistry {
         private final CgVfxLook look;
         private final Factory factory;
         private final CueFactory cueFactory;
+        private volatile boolean precached = true;
 
         Entry(String id, String name, String category, CgVfxLook look, Factory factory, CueFactory cueFactory) {
             this.id = id;
@@ -78,6 +84,23 @@ public final class CgVfxRegistry {
 
         public CgVfxLook look() {
             return look;
+        }
+
+        /**
+         * Whether its look is precached on the client world's system at the graphics start (true unless told): an
+         * effect a mod plays rarely may opt out at its declaration, and then warms at its first play, a beat late.
+         *
+         * <pre>{@code
+         * CgVfxRegistry.register("mymod:rare", "Rare", "Misc", RARE, factory).precache(false);
+         * }</pre>
+         */
+        public Entry precache(boolean on) {
+            precached = on;
+            return this;
+        }
+
+        public boolean precached() {
+            return precached;
         }
 
         public CgVfxEffect<?> spawn(CgVfxLook look, double x, double y, double z, double tx, double ty, double tz) {
@@ -109,19 +132,22 @@ public final class CgVfxRegistry {
     public static final double CUE_REACH = 64;
 
     private static final List<Entry> ENTRIES = new CopyOnWriteArrayList<>();
+    /** Entries registered and not yet precached: taken on the render thread by {@code CgVfx}. */
+    private static final Queue<Entry> TO_PRECACHE = new ConcurrentLinkedQueue<>();
 
     static {
         wave("crystalgraphics:kamehameha", "Kamehameha", CgEnergyWave.kamehameha());
         wave("crystalgraphics:final_flash", "Final Flash", CgEnergyWave.finalFlash());
         wave("crystalgraphics:galick_gun", "Galick Gun", CgEnergyWave.galickGun());
         wave("crystalgraphics:kamehameha_toon", "Kamehameha (toon)", CgEnergyWave.toon());
+        // The engine's own are samples a consumer may never play: they warm at their first play.
         register("crystalgraphics:explosion", "Explosion", "Bursts",
                 CgVfxLook.builder(CgVfxSystemDefinition.SCHEMA).with(CgVfxBlast.EXPLOSION.kit()).build(),
-                (look, x, y, z, tx, ty, tz) -> new CgVfxSystemInstance<>(look, x, y, z));
+                (look, x, y, z, tx, ty, tz) -> new CgVfxSystemInstance<>(look, x, y, z)).precache(false);
         register("crystalgraphics:heat_haze", "Heat haze", "Air", CgVfxHeatHaze.standard(),
-                (look, x, y, z, tx, ty, tz) -> new CgVfxHeatHaze(look, x, y, z));
+                (look, x, y, z, tx, ty, tz) -> new CgVfxHeatHaze(look, x, y, z)).precache(false);
         register("crystalgraphics:smoke_grenade", "Smoke grenade", "Gas", CgSmokeGrenade.LOOK,
-                (look, x, y, z, tx, ty, tz) -> new CgSmokeGrenade(look, x, y, z));
+                (look, x, y, z, tx, ty, tz) -> new CgSmokeGrenade(look, x, y, z)).precache(false);
     }
 
     private CgVfxRegistry() {
@@ -156,7 +182,16 @@ public final class CgVfxRegistry {
             if (get(id) != null) throw new IllegalArgumentException("VFX '" + id + "' is already registered");
             ENTRIES.add(entry);
         }
+        TO_PRECACHE.add(entry);
         return entry;
+    }
+
+    /** The looks of entries registered since the last call that still want precaching. Render thread. */
+    static List<CgVfxLook> takePrecache() {
+        if (TO_PRECACHE.isEmpty()) return List.of();
+        List<CgVfxLook> looks = new ArrayList<>();
+        for (Entry e; (e = TO_PRECACHE.poll()) != null; ) if (e.precached()) looks.add(e.look);
+        return looks;
     }
 
     /** Every entry, in registration order. */
@@ -171,7 +206,7 @@ public final class CgVfxRegistry {
     }
 
     private static void wave(String id, String name, CgVfxLook look) {
-        add(new Entry(id, name, "Beams", look, CgVfxRegistry::wave, CgEnergyWave::fromCue));
+        add(new Entry(id, name, "Beams", look, CgVfxRegistry::wave, CgEnergyWave::fromCue)).precache(false);
     }
 
     private static CgVfxEffect<?> wave(CgVfxLook look, double x, double y, double z, double tx, double ty, double tz) {

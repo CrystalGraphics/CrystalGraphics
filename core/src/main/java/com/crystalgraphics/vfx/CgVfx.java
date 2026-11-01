@@ -7,6 +7,7 @@ import com.crystalgraphics.lifecycle.CgGraphicsLifecycle;
 import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.lifecycle.CgLifecycleListener;
 import com.crystalgraphics.net.object.CgCharacterClockNet;
+import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.world.CgWorldQuery;
 import com.crystalgraphics.render.CgFrameClock;
 import com.crystalgraphics.render.world.CgPipelinePrecache;
@@ -14,6 +15,7 @@ import com.crystalgraphics.vfx.particle.gpu.draw.CgVfxRange;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.vfx.camera.CgCameraShake;
+import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.net.CgVfxCueClient;
 import com.crystalgraphics.vfx.prefab.CgVfxPrefabAssets;
 import com.crystalgraphics.vfx.prefab.CgVfxPrefabPreparer;
@@ -28,6 +30,7 @@ import com.crystalgraphics.render.post.volume.CgPostVolumePreparer;
 import com.crystalgraphics.asset.kind.CgParticleKinds;
 import com.crystalgraphics.asset.load.CgVfxAssets;
 import com.crystalgraphics.world.CgWorldQueries;
+import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Supplier;
@@ -130,13 +133,31 @@ public final class CgVfx {
         preparers(CgVfxAssets.instance(), CgVfx::world);
         // The client world's cue manager: what the server's cues and gameplay's tags play through
         CgVfxCueEffects.installClient(world());
-        // Every frame's end, the title screen's too: a logout clears before the next world.
+        // Every frame's end, the title screen's too: a logout clears before the next world; looks declared since precache.
         CgEngineLifecycle.addListener(new CgLifecycleListener() {
             @Override
             public void onFrame(long frame) {
                 if (world != null) followLevel();
+                precachePending();
             }
         });
+        // What mods declared and asked for at init, built with the graphics start's own, inside the loading screen.
+        precachePending();
+    }
+
+    /** Whether a precache may run here and now: the engine installed, on the thread that drives the device. */
+    static boolean mayPrecache() {
+        return installed && CgGL.mayIssueGl();
+    }
+
+    /**
+     * Precaches what was declared or asked for before it could be: every look a cue or {@link CgVfxRegistry} entry
+     * plays (unless it opted out), on the world's system, and every owner's queued {@code precache}. Render thread.
+     */
+    static void precachePending() {
+        CgVfxOwner.precachePending();
+        List<CgVfxLook> looks = CgVfxRegistry.takePrecache();
+        if (!looks.isEmpty()) world().precache(looks.toArray(new CgVfxLook[0]));
     }
 
     /** Frees the world's system with the context; the next one makes another. */

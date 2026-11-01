@@ -168,6 +168,7 @@ public final class CgVfxCue {
         private final List<CgNetField<?>> fields = new ArrayList<>();
         private float range = DEFAULT_RANGE;
         private boolean authoritative, persisted;
+        private boolean precache = true;
 
         private Builder(String id, @Nullable CgVfxLook look, @Nullable CgVfxRegistry.CueFactory factory) {
             if (id.indexOf(':') < 0) throw new IllegalArgumentException("a cue id is namespace:path: '" + id + "'");
@@ -225,6 +226,19 @@ public final class CgVfxCue {
             return this;
         }
 
+        /**
+         * Whether the look it plays is precached at the graphics start, so its first play compiles and loads nothing:
+         * true unless told. A cue played rarely may opt out and warm at its first play, a beat late.
+         *
+         * <pre>{@code
+         * VFX.cue("rare_burst", RARE, RareBurst::fromCue).precache(false).build();
+         * }</pre>
+         */
+        public Builder precache(boolean on) {
+            precache = on;
+            return this;
+        }
+
         public CgVfxCue build() {
             if (authoritative && persisted) throw new IllegalStateException("cue '" + id + "': an authoritative cue cannot persist");
             if (authoritative && factory == null) {
@@ -241,7 +255,7 @@ public final class CgVfxCue {
             if (persisted) type.persisted();
             CgVfxCue cue = new CgVfxCue(this, type.build());
             cue.type.onEvent(HIT, cue::confirmed);
-            if (factory != null) CgVfxRegistry.register(cue, look, factory);
+            if (factory != null) CgVfxRegistry.register(cue, look, factory).precache(precache);
             CUES.put(id, cue);
             CgVfxCueClient.declared(cue);
             return cue;

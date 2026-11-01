@@ -3,11 +3,13 @@ package com.crystalgraphics.vfx;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.net.CgVfxCue;
+import com.github.bsideup.jabel.Desugar;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -237,16 +239,44 @@ public final class CgVfxOwner {
     }
 
     /**
-     * Warms what {@code looks} draw and simulate before they first play (as {@link CgVfxSystem#precache}): one look, or
-     * every look a move plays. Render thread.
+     * Warms what {@code looks} draw and simulate before they first play (as {@link CgVfxSystem#precache}): their
+     * pipelines, kernels, pools, textures and meshes. Any thread: at a mod's init, before graphics exist, they are
+     * built at the graphics start, inside the loading screen; later, on the render thread, from now over frames.
+     *
+     * <pre>{@code
+     * public static final CgVfxOwner VFX = CgVfx.owner("mymod");
+     * VFX.precache(HIT_SPARK, KI_BLAST);              // a mod's init: built while the game loads
+     *
+     * VFX.precache(SPIRAL, SHOCKWAVE, FLASH);         // a move known later, on the render thread
+     * if (!VFX.ready()) return;                       // each frame until it is
+     * }</pre>
+     *
+     * <ul>
+     *   <li>A look a cue plays or {@code CgVfxRegistry} registers is precached already, unless it opted out.</li>
+     *   <li>On a dedicated server it does nothing: nothing draws there.</li>
+     * </ul>
      */
     public void precache(CgVfxLook... looks) {
-        system().precache(looks);
+        if (CgVfx.mayPrecache()) system().precache(looks);
+        else PENDING.add(new Pending(this, looks.clone()));
     }
 
     /** Whether every look precached or played has built (as {@link CgVfxSystem#ready}). Render thread. */
     public boolean ready() {
-        return system().ready();
+        if (CgVfx.mayPrecache()) CgVfx.precachePending();
+        return PENDING.isEmpty() && system().ready();
+    }
+
+    /** Looks an owner was asked to precache before it could: built by {@link #precachePending()}. */
+    private static final Queue<Pending> PENDING = new ConcurrentLinkedQueue<>();
+
+    @Desugar
+    private record Pending(CgVfxOwner owner, CgVfxLook[] looks) {
+    }
+
+    /** Precaches every look queued before it could be. Render thread, graphics started. */
+    static void precachePending() {
+        for (Pending p; (p = PENDING.poll()) != null; ) p.owner.system().precache(p.looks);
     }
 
     /**
