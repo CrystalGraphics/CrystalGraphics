@@ -26,7 +26,6 @@ import com.crystalgraphics.render.stage.CgStageFrame;
 import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.trace.CgGpuTrace;
 import com.crystalgraphics.trace.CgTrace;
-import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.vfx.CgVfxTrace;
 import com.crystalgraphics.vfx.grid.CgVfxGrid3D;
 import com.crystalgraphics.vfx.grid.CgVfxGridAtlas;
@@ -204,9 +203,6 @@ public final class CgVfxParticlePool {
     private static CgGraphBuffer reportStream, reportCounts, unfed;
     /** Every stepping pool's instance rows and shared spawn rows, this recording's (uploadRows), and their staging. */
     private static CgGraphBuffer sharedRows;
-    private static final boolean FUSE_LOOK = CgVar.bool("crystalgraphics.vfx.fuseLook", true, CgVar.DEV,
-            "On compute, each particle a Step keeps writes its drawn part as it appends it, the Look stage no dispatch of its "
-                    + "own; false keeps the two dispatches, as below compute.").get();
     /**
      * Every pool's live count, an entry of {@link #COUNT_STRIDE} bytes each, as Niagara's count manager keeps every
      * emitter's in one buffer: a step appends into an entry it took zeroed and gives back the one it read, and the
@@ -384,8 +380,6 @@ public final class CgVfxParticlePool {
 
     // The GPU half: made at the first recording, grown as slots open.
     private CgKernel step, look, gridKeys, gridRuns;
-    /** The Step with the Look stage in it (CgVfxEmitterCompiler's StepLook): on compute, unless forced apart. */
-    private CgKernel stepLook;
     /** Its beams' noise points, where its shape draws beams with noise. */
     @Nullable
     private final CgVfxBeams beams;
@@ -499,13 +493,8 @@ public final class CgVfxParticlePool {
 
     /** The kernels a pool of {@code shape} dispatches, started. */
     private static void prepare(CgVfxShape shape) {
-        CgKernel stepLook = fusedLook(shape);
-        if (stepLook != null) {
-            stepLook.prepare();   // what its steps dispatch: Step and Look alone are never run
-        } else {
-            CgVfxEmitterCompiler.compile(shape).kernel("Step").prepare();
-            CgCompute.load(LOOK_KERNELS).kernel("Look").prepare();
-        }
+        CgVfxEmitterCompiler.compile(shape).kernel("Step").prepare();
+        CgCompute.load(LOOK_KERNELS).kernel("Look").prepare();
         CgGpuOps.prepareFill();
         CgCompute.load(COUNT_KERNELS).kernel("Clear").prepare();   // the first slot given back clears its count
         if (shape.spawns() || shape.publishes()) {
@@ -1153,8 +1142,7 @@ public final class CgVfxParticlePool {
         int next = takeCount();
         boolean children = feeds > 0 && spawnRows > 0;
         int live = Math.min(storage, stepCapacity[s]);
-        boolean fused = fusesLook();
-        CgDispatch stepping = pass.dispatch(fused ? stepLook : step, live + stepSpawned[s] + (children ? spawnRows * childMax : 0))
+        CgDispatch stepping = pass.dispatch(step, live + stepSpawned[s] + (children ? spawnRows * childMax : 0))
                 .bind("IN", records).bind("OUT", records).counter("OUT", countBuffer, (long) next * COUNT_STRIDE)
                 .bind("LIVE", countBuffer, liveOffset(), 16).skipBarrier("LIVE", STEP_GROUP).skipCountBarrier("OUT", STEP_GROUP)
                 .bind("PARAMS", paramBuffer).bind("INSTANCES", sharedRows).bind("SPAWNS", spawnRows())
@@ -1163,8 +1151,7 @@ public final class CgVfxParticlePool {
                 .set("_SpawnRows", stepSpawnRows[s]).set("_Spawned", stepSpawned[s]).set("_PoolId", id)
                 .set("_ChildRows", children ? spawnRows : 0).set("_ChildMax", children ? childMax : 0)
                 .set("_Feeds", children ? feeds : 0);
-        if (shape.turnLifeAt() >= 0 || fused) stepping.bind("CURVES", curveBuffer);
-        if (fused) lookValues(stepping.bind("DRAWN", drawn));
+        if (shape.turnLifeAt() >= 0) stepping.bind("CURVES", curveBuffer);
         if (shape.trails()) stepping.bind("TRAILS", trailBuffer).set("_TrailAt", stepTrailAt[s] / 4);
         if (shape.heads()) stepping.bind("HEADS", headBuffer).set("_HeadVecs", headVecs());
         int tier = shape.tier();
@@ -1216,31 +1203,16 @@ public final class CgVfxParticlePool {
 
     /** Step {@code s}'s last stages, after {@link #dispatchStep}: the drawn record and the neighbour grid. */
     private void finishStep(CgComputePass pass, int s) {
-        // What draws read, written into the drawn buffer at each live record's index: the Step's own where fused.
-        if (!fusesLook()) {
-            lookValues(pass.dispatch(look, storage * shape.drawnStride()).bind("IN", records).bind("DRAWN", drawn)
-                    .bind("LIVE", countBuffer, liveOffset(), 16).bind("INSTANCES", sharedRows).bind("CURVES", curveBuffer)
-                    .set("_InstanceAt", instanceAt(s)));
-        }
+        // What draws read, written into the drawn buffer at each live record's index. One Look kernel serves every
+        // shape: fused into each Step it cost a large compile per shape and saved no measurable frame time.
+        lookValues(pass.dispatch(look, storage * shape.drawnStride()).bind("IN", records).bind("DRAWN", drawn)
+                .bind("LIVE", countBuffer, liveOffset(), 16).bind("INSTANCES", sharedRows).bind("CURVES", curveBuffer)
+                .set("_InstanceAt", instanceAt(s)));
         List<CgVfxDataInterface> interfaces = shape.dataInterfaces();
         for (int d = 0; d < interfaces.size(); d++) interfaces.get(d).afterStep(pass, this);
     }
 
-    /** Whether its Step writes its drawn parts itself: StepLook runs here, and nothing forces the two apart. */
-    private boolean fusesLook() {
-        if (!FUSE_LOOK) return false;
-        if (stepLook == null) stepLook = CgVfxEmitterCompiler.compile(shape).kernel("StepLook");
-        return stepLook.runs();
-    }
-
-    /** {@code shape}'s StepLook where its steps run it ({@link #fusesLook}), else null: what {@link #prepare} builds. */
-    private static @Nullable CgKernel fusedLook(CgVfxShape shape) {
-        if (!FUSE_LOOK) return null;
-        CgKernel stepLook = CgVfxEmitterCompiler.compile(shape).kernel("StepLook");
-        return stepLook.runs() ? stepLook : null;
-    }
-
-    /** The Look stage's values, the Look kernel's or the fused Step's: this shape's layout and the voxel window. */
+    /** The Look kernel's values: this shape's layout and the voxel window. */
     private void lookValues(CgDispatch d) {
         CgVfxRecord record = shape.record();
         CgWorldVoxelWindow.get().bindBlocks(d

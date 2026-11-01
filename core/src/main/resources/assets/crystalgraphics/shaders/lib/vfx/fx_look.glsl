@@ -1,5 +1,5 @@
-// A GPU particle's drawn part from its record, after its step: Look's (look.compute), and the Step's own where the
-// two run as one dispatch (CgVfxEmitterCompiler's StepLook). Its look over life or speed from its row's curves, its
+// A GPU particle's drawn part from its record, after its step: the Look kernel's (look.compute), one for every
+// shape. Its look over life or speed from its row's curves, its
 // starts rolled per channel from its seed (Niagara's non-uniform ranges), its light from the voxel window at its
 // block, and the floor under it; then its drawn slots, each channel a value over life rolled between two as its row
 // says; then its light, its colour scale and brightness (Cascade's Light module).
@@ -7,8 +7,7 @@
 // The includer defines LOOK_IN(k), the particle's record vector k, and declares FxDrawn, the properties look.compute
 // declares, and CURVES and INSTANCES:
 //
-//     #define LOOK_IN(k) IN(look_e + (k))       // Look: the record in the pool's records
-//     #define LOOK_IN(k) look_rec[k]            // StepLook: the record it just packed
+//     #define LOOK_IN(k) IN(look_e + (k))       // the record in the pool's records
 //     FxDrawn d = look_part(part);              // part 0 the drawn part, 1 its slots, 2 its light; zero past those
 
 vec4 look_instance(int at) {
