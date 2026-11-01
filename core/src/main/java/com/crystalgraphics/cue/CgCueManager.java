@@ -163,6 +163,8 @@ public final class CgCueManager extends CgWorldSubsystem {
     private SequenceStarter sequences;
     private double now;
     private long lateDropped, unrouted;
+    /** The cues whose failed load was logged: once each, so a broken cue tags loudly and never floods. */
+    private final Set<String> failedLogged = new HashSet<>();
     private final Set<String> warnedWrites = new HashSet<>();
     private volatile boolean routesDirty = true;
     @Nullable
@@ -553,6 +555,7 @@ public final class CgCueManager extends CgWorldSubsystem {
             }
             CgAssetRef<CgCueDefinition> ref = r.ref();
             if (ref.state() == CgAssetState.FAILED) {
+                if (failedLogged.add(ref.id())) LOGGER.warn("{} failed to load, so it plays nothing: {}", ref.id(), ref.failure());
                 c.route = next(r);
                 continue;
             }

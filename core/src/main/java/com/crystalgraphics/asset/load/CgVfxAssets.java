@@ -118,12 +118,16 @@ public final class CgVfxAssets {
         this.pipeline = new CgAssetPipeline(registry, loop);
     }
 
-    /** The process's assets, made over an empty registry on first ask. */
+    /** The process's assets, made on first ask over a registry holding the engine's own assets. */
     public static CgVfxAssets instance() {
         CgVfxAssets a = instance;
         if (a != null) return a;
         synchronized (CgVfxAssets.class) {
-            if (instance == null) install(new CgVfxAssets(new CgAssetRegistry()));
+            if (instance == null) {
+                CgAssetRegistry registry = new CgAssetRegistry();
+                registry.registerEngine();      // the built-in modules every emitter file names
+                install(new CgVfxAssets(registry));
+            }
             return instance;
         }
     }
