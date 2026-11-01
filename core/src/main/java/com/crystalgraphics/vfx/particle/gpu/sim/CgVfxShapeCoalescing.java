@@ -303,36 +303,50 @@ public final class CgVfxShapeCoalescing {
 
     /**
      * Every definition sharing a pool places by the spawn kinds of them all, and its Step compiles only those: Niagara's
-     * Shape Location takes its shape as a static switch, each emitter compiling its own.
+     * Shape Location takes its shape as a static switch, each emitter compiling its own. Its table holds as many sets of
+     * a textured kind's textures as they sample, the Step compiling the kind once a set: Niagara binds each emitter's
+     * textures per dispatch, one copy of the module.
      */
     private void place() {
         Map<String, Integer> unions = new HashMap<>();
+        Map<String, List<Set<List<Integer>>>> sets = new HashMap<>();
         for (Group g : groups.values()) {
             for (Member m : g.members) {
                 CgVfxShape s = m.unplacedShape();
-                unions.merge(CgVfxShape.unplaced(s.key()), s.ownPlaces(), (a, b) -> a | b);
+                String key = CgVfxShape.unplaced(s.key());
+                unions.merge(key, s.ownPlaces(), (a, b) -> a | b);
+                List<Set<List<Integer>>> perModule = sets.computeIfAbsent(key, k -> new ArrayList<>());
+                for (int i = 0; i < s.modules(); i++) {
+                    while (perModule.size() <= i) perModule.add(new HashSet<>());
+                    if (s.textureCount(i) == 0 || s.ownModule(i) < 0) continue;   // a module it lacks takes no entry
+                    List<Integer> textures = new ArrayList<>();
+                    for (int t = 0; t < s.textureCount(i); t++) textures.add(System.identityHashCode(s.texture(i, t)));
+                    perModule.get(i).add(textures);
+                }
             }
         }
         for (Group g : groups.values()) {
             for (Member m : g.members) {
                 m.placed = null;
                 CgVfxShape s = m.unplacedShape();
-                int union = unions.get(CgVfxShape.unplaced(s.key()));
-                if (union != s.placeKinds()) m.placed = built(m, m.stack, union);
+                String key = CgVfxShape.unplaced(s.key());
+                int union = unions.get(key), textureSets = 1;
+                for (Set<List<Integer>> used : sets.get(key)) textureSets = Math.max(textureSets, used.size());
+                if (union != s.placeKinds() || textureSets != s.textureSets()) m.placed = built(m, m.stack, union, textureSets);
             }
         }
     }
 
     /** {@code m}'s shape over {@code prototypes}, its modules at {@code at}; cached; null where it cannot be. */
     private static CgVfxShape stacked(Member m, List<? extends CgVfxGpuModule> prototypes, int[] at) {
-        return built(m, new CgVfxShape.Stack(prototypes, at), 0);
+        return built(m, new CgVfxShape.Stack(prototypes, at), 0, 0);
     }
 
     /** {@code m}'s shape, its forms as raised, over {@code stack} where given, placing by {@code places} too; cached; null where it cannot be. */
-    private static CgVfxShape built(Member m, CgVfxShape.Stack stack, int places) {
+    private static CgVfxShape built(Member m, CgVfxShape.Stack stack, int places, int textureSets) {
         CgVfxShape from = m.unstacked();
         String key = m.tier + "|" + from.key() + "|" + (stack == null ? "-" : Arrays.toString(stack.at()) + "|"
-                + System.identityHashCode(stack.modules())) + "|" + places;
+                + System.identityHashCode(stack.modules())) + "|" + places + "|" + textureSets;
         synchronized (STACKED) {
             CgVfxShape known = STACKED.computeIfAbsent(m.emitter, k -> new HashMap<>()).get(key);
             if (known != null) return known;
@@ -343,7 +357,7 @@ public final class CgVfxShapeCoalescing {
         for (int f = 0; f < from.spawnForms(); f++) spawns.add(from.spawnForm(f));
         CgVfxShape shape;
         try {
-            shape = new CgVfxShape(m.emitter, m.tier, forms, spawns, stack, places);
+            shape = new CgVfxShape(m.emitter, m.tier, forms, spawns, stack, places, textureSets);
         } catch (RuntimeException refused) {
             return null;
         }
@@ -379,7 +393,7 @@ public final class CgVfxShapeCoalescing {
         String[] parts = s.key().split("\\|");
         StringBuilder out = new StringBuilder(parts[0]);
         for (int p = 1 + s.modules(); p < parts.length; p++) {
-            if (parts[p].startsWith("form:") || parts[p].startsWith("user:") || parts[p].startsWith("place:")) continue;
+            if (parts[p].startsWith("form:") || parts[p].startsWith("user:") || parts[p].startsWith("tex:") || parts[p].startsWith("place:")) continue;
             out.append('|').append(parts[p]);
         }
         return out.toString();
@@ -432,7 +446,7 @@ public final class CgVfxShapeCoalescing {
     static String formFree(String key) {
         StringBuilder out = new StringBuilder();
         for (String part : key.split("\\|")) {
-            if (part.startsWith("form:") || part.startsWith("spawn:") || part.startsWith("place:")) continue;
+            if (part.startsWith("form:") || part.startsWith("spawn:") || part.startsWith("tex:") || part.startsWith("place:")) continue;
             if (out.length() > 0) out.append('|');
             out.append(part);
         }

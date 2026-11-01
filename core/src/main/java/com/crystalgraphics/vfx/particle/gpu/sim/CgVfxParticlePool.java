@@ -150,8 +150,9 @@ public final class CgVfxParticlePool {
     /** Every pool, by owner and shape key, and in the order made; and those released since the last recording. */
     private static final Map<Object, Map<String, List<CgVfxParticlePool>>> POOLS = new IdentityHashMap<>();
     /**
-     * The textures a pool keeps per kind sampling them: a slot names its entry, so emitters differing only in their
-     * textures share a pool, up to this many distinct ones; past it a pool of the same shape is made beside it.
+     * The most sets of a textured kind's textures a pool keeps: a slot names its entry, so emitters differing only in
+     * their textures share a pool. A pool keeps as many as its prepared definitions sample ({@link CgVfxShape#textureSets},
+     * one for a definition never prepared); past them a pool of the same shape is made beside it, its kernel the same.
      */
     public static final int TEXTURE_ENTRIES = 4;
     private static final List<CgVfxParticlePool> RELEASED = new ArrayList<>();
@@ -410,8 +411,8 @@ public final class CgVfxParticlePool {
         textureUses = new int[shape.modules()][];
         for (int i = 0; i < shape.modules(); i++) {
             if (shape.textureCount(i) == 0) continue;
-            textureEntries[i] = new CgTexture[TEXTURE_ENTRIES][];
-            textureUses[i] = new int[TEXTURE_ENTRIES];
+            textureEntries[i] = new CgTexture[shape.textureSets()][];
+            textureUses[i] = new int[shape.textureSets()];
         }
         String name = "vfx.pool[" + shape.key() + "]" + (group > 0 ? "#" + group : "");
         passName = name + ".step";
@@ -1191,8 +1192,8 @@ public final class CgVfxParticlePool {
         for (int i = 0; i < shape.modules(); i++) {
             if (textureEntries[i] == null) continue;
             CgTexture[] any = shape.textures(i);
-            for (int e = 0; e < TEXTURE_ENTRIES; e++) if (textureEntries[i][e] != null) any = textureEntries[i][e];
-            for (int e = 0; e < TEXTURE_ENTRIES; e++) {
+            for (int e = 0; e < shape.textureSets(); e++) if (textureEntries[i][e] != null) any = textureEntries[i][e];
+            for (int e = 0; e < shape.textureSets(); e++) {
                 CgTexture[] entry = textureEntries[i][e] != null ? textureEntries[i][e] : any;   // an empty entry: one bound
                 for (int t = 0; t < entry.length; t++) {
                     if (entry[t] != null) stepping.texture(CgVfxEmitterCompiler.texture(i, t, e), entry[t]);   // null: no slot gave one
@@ -1494,7 +1495,7 @@ public final class CgVfxParticlePool {
     /** Module {@code i}'s entry holding {@code own}'s textures, by identity; -1 for none. */
     private int entryOf(int i, CgVfxShape own) {
         CgTexture[][] entries = textureEntries[i];
-        for (int e = 0; e < TEXTURE_ENTRIES; e++) {
+        for (int e = 0; e < entries.length; e++) {
             if (entries[e] == null) continue;
             boolean same = true;
             for (int t = 0; t < entries[e].length && same; t++) same = entries[e][t] == own.texture(i, t);
@@ -1504,7 +1505,7 @@ public final class CgVfxParticlePool {
     }
 
     private int freeEntry(int i) {
-        for (int e = 0; e < TEXTURE_ENTRIES; e++) if (textureEntries[i][e] == null) return e;
+        for (int e = 0; e < textureEntries[i].length; e++) if (textureEntries[i][e] == null) return e;
         return -1;
     }
 
@@ -1803,6 +1804,11 @@ public final class CgVfxParticlePool {
             words.target(instances, at + shape.lanesAt(i) * 4, lanes, who, shape.kind(i));
             emitter.modules().get(own.ownModule(i)).writeInstance(view, words);
             words.finish("its instance lanes");
+        }
+        // Each textured kind's entry in the table, which its Step's call is chosen by; 0 where its definition lacks it.
+        for (int i = 0; i < shape.modules(); i++) {
+            int word = shape.textureEntryWord(i);
+            if (word >= 0) instances[at + word] = Math.max(slotTexture[slot * shape.modules() + i], 0);
         }
         int bound = shape.userBindings();
         if (bound > 0) {

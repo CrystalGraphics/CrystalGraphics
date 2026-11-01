@@ -362,7 +362,7 @@ public final class CgVfxEmitterCompiler {
         for (CgVfxDataInterface di : shape.dataInterfaces()) s.append(di.properties());
         for (int i = 0; i < shape.modules(); i++) {
             for (int t = 0; t < shape.textureCount(i); t++) {
-                for (int e = 0; e < CgVfxParticlePool.TEXTURE_ENTRIES; e++) {
+                for (int e = 0; e < shape.textureSets(); e++) {
                     s.append("    ").append(texture(i, t, e)).append(" (\"fx_").append(shape.kind(i)).append("'s texture ").append(t)
                             .append(", entry ").append(e).append("\", ").append(shape.volume(i, t) ? "sampler3D" : "sampler2D")
                             .append(") = \"black\"\n");
@@ -1092,10 +1092,17 @@ public final class CgVfxEmitterCompiler {
             out.append("    ").append(on).append(s).append(");\n");
             return;
         }
+        // One set of textures: one call. Past one, the kind once a set, chosen by the slot's entry.
+        if (shape.textureSets() == 1) {
+            out.append("    ").append(on).append(s);
+            for (int t = 0; t < textures; t++) out.append(", ").append(texture(i, t, 0));
+            out.append(");\n");
+            return;
+        }
         int word = shape.textureEntryWord(i);
         out.append("    ").append(on).append("switch (int(INSTANCES(inst + ").append(word / 4).append(").")
                 .append(XYZW.charAt(word % 4)).append(")) {\n");
-        for (int e = 0; e < CgVfxParticlePool.TEXTURE_ENTRIES; e++) {
+        for (int e = 0; e < shape.textureSets(); e++) {
             out.append(e == 0 ? "    default: " : "    case " + e + ": ").append(s);
             for (int t = 0; t < textures; t++) out.append(", ").append(texture(i, t, e));
             out.append("); break;\n");

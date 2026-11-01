@@ -92,6 +92,17 @@ kind). One shape where four were costs `vfx-modules`' Steps 4.8 s cold rather th
 - **A shape a user parameter sets** may be any, so that definition's Step compiles all of them.
 - **Two definitions alike but for their spawn shapes still share a pool** and stack: their shapes join after.
 
+## A Step compiles a textured module once a texture set
+
+A module sampling textures (a vector field, a heightfield) is compiled once for each set of textures its pool holds,
+since each call takes fixed samplers; Niagara binds each emitter's textures per dispatch and compiles the module once. A
+pool holds as many sets as the definitions prepared into it sample (`CgVfxShape.textureSets`, the key's `|tex:` part),
+at most four; one never prepared holds its own alone. The usual pool of one set compiles one call: `vfx-modules`'
+vector-field Steps halve, its Steps 3.9 s cold rather than 4.8.
+
+- **Prepare definitions that differ only in their textures together** to share a pool; past four sets, the next opens
+  a pool of the same shape beside it, its kernel already compiled.
+
 ## Scalability: what is too far, too many or out of view
 
 Every look has a `CgVfxScalability`, `DEFAULT` unless it names one: when its effects are culled, drawn lower or put to

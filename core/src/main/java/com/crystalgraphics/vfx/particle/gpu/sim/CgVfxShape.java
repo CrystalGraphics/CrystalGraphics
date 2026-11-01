@@ -82,7 +82,7 @@ public final class CgVfxShape {
     private final int[] ownModule;
     private final int presentMask, stackAt;
     /** The spawn kinds its Step compiles, and its own definition's: {@link #placeKinds()}. */
-    private final int placeKinds, ownPlaces;
+    private final int placeKinds, ownPlaces, textureSets;
     private final CgTexture[][] textures;
     private final boolean[][] volumes;
     private final CgVfxDrawLayout drawLayout;
@@ -175,15 +175,16 @@ public final class CgVfxShape {
     /** As above, its modules placed in {@code stack} where given. */
     CgVfxShape(CgVfxGpuEmitter emitter, int tier, List<CgVfxModuleForm> moduleForms, List<CgVfxSpawnForm> givenSpawnForms,
                @Nullable Stack stack) {
-        this(emitter, tier, moduleForms, givenSpawnForms, stack, 0);
+        this(emitter, tier, moduleForms, givenSpawnForms, stack, 0, 0);
     }
 
     /**
-     * As above, its Step placing spawns in {@code places} as well as its own spawn shape: the spawn kinds
-     * ({@code CgVfxSpawnShape}'s codes, a bit each) of every definition sharing its pool, which coalescing passes.
+     * As above, its Step placing spawns in {@code places} as well as its own spawn shape (the spawn kinds,
+     * {@code CgVfxSpawnShape}'s codes a bit each, of every definition sharing its pool) and its pool's table holding
+     * {@code textureSets} sets of a textured kind's textures (at least one): what coalescing passes.
      */
     CgVfxShape(CgVfxGpuEmitter emitter, int tier, List<CgVfxModuleForm> moduleForms, List<CgVfxSpawnForm> givenSpawnForms,
-               @Nullable Stack stack, int places) {
+               @Nullable Stack stack, int places, int textureSets) {
         if (tier < 0 || tier >= TIERS) throw new IllegalArgumentException(emitter.name() + " at feed tier " + tier);
         this.tier = tier;
         List<? extends CgVfxGpuModule> own = emitter.modules();
@@ -520,6 +521,10 @@ public final class CgVfxShape {
         for (int w : userWords) kindBound |= w == PLACE_KIND_WORD;
         ownPlaces = kindBound || kind < 0 || kind > 8 ? ALL_PLACES : 1 << kind;
         placeKinds = ownPlaces | places;
+        // Its pool's table: as many sets of a textured kind's textures as its definitions sample, its Step compiling
+        // the kind once a set (each call takes fixed samplers), as Niagara binds each emitter's per dispatch.
+        this.textureSets = Math.max(1, Math.min(textureSets, CgVfxParticlePool.TEXTURE_ENTRIES));
+        if (textured > 0) key.append("|tex:").append(this.textureSets);
         key.append("|place:").append(Integer.toHexString(placeKinds));
         this.key = key.toString();
     }
@@ -539,10 +544,19 @@ public final class CgVfxShape {
         return ownPlaces;
     }
 
-    /** {@code key} less its spawn kinds: what decides whether two shapes may share a pool, before their kinds join. */
+    /**
+     * {@code key} less its texture sets and spawn kinds: what decides whether two shapes may share a pool, before what
+     * its definitions sample and are born on joins.
+     */
     public static String unplaced(String key) {
-        int at = key.lastIndexOf("|place:");
+        int at = key.lastIndexOf("|tex:");
+        if (at < 0) at = key.lastIndexOf("|place:");
         return at < 0 ? key : key.substring(0, at);
+    }
+
+    /** How many sets of a textured kind's textures its pool's table holds, a copy of the kind's call a set: at least one. */
+    public int textureSets() {
+        return textureSets;
     }
 
     /** What its particles are born on ({@link CgVfxSpawnFrom}), read from the tier before or its own; null for none. */
@@ -598,8 +612,8 @@ public final class CgVfxShape {
 
     /**
      * One string naming the shape: equal for definitions that share a pool and its kernels. Which textures a kind samples
-     * is not part of it: a pool keeps a table of them ({@link CgVfxParticlePool#TEXTURE_ENTRIES} a kind), each slot
-     * naming its entry.
+     * is not part of it, only how many sets its pool's table holds ({@link #textureSets}, at most
+     * {@link CgVfxParticlePool#TEXTURE_ENTRIES}), each slot naming its entry.
      */
     public String key() {
         return key;

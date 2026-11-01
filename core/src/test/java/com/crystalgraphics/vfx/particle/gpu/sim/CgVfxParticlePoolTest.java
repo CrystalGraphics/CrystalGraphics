@@ -21,6 +21,7 @@ import com.crystalgraphics.vfx.particle.gpu.CgVfxDataInterface;
 import org.junit.After;
 import org.junit.Test;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
@@ -237,25 +238,31 @@ public class CgVfxParticlePoolTest {
     }
 
     @Test
-    public void emittersDifferingOnlyInTheirTextureShareAPool() {
+    public void emittersDifferingOnlyInTheirTextureShareAPoolOncePrepared() {
         CgFrameBufferFormat r32f = CgFrameBufferFormat.builder("fields").color(0, CgTextureType.R32F).build();
         CgTexture[] fields = new CgTexture[CgVfxParticlePool.TEXTURE_ENTRIES + 1];
         for (int i = 0; i < fields.length; i++) fields[i] = CgGraphTexture.transientTexture("field" + i, new CgTextureDesc(8, 8, r32f));
         Def a = new Def("a", CgVfxDrawLayout.QUADS, new Sampled(fields[0]));
         Def b = new Def("b", CgVfxDrawLayout.QUADS, new Sampled(fields[1]));
+        Def again = new Def("a again", CgVfxDrawLayout.QUADS, new Sampled(fields[0]));
+        List<Def> prepared = new ArrayList<>(List.of(a, b, again));
+        for (int i = 2; i <= CgVfxParticlePool.TEXTURE_ENTRIES; i++) prepared.add(new Def("d" + i, CgVfxDrawLayout.QUADS, new Sampled(fields[i])));
+        // Prepared together, the table holds a set each, at most TEXTURE_ENTRIES: five sets, four entries.
+        CgVfxShapeCoalescing.loaded().include(prepared);
         assertEquals(CgVfxShape.of(a).key(), CgVfxShape.of(b).key());
+        assertEquals(CgVfxParticlePool.TEXTURE_ENTRIES, CgVfxShape.of(a).textureSets());
         CgVfxParticlePool pool = CgVfxParticlePool.of(OWNER, a);
         assertSame(pool, CgVfxParticlePool.of(OWNER, b));
         pool.open(a, 10);
         pool.open(b, 10);
-        pool.open(new Def("a again", CgVfxDrawLayout.QUADS, new Sampled(fields[0])), 10);   // shares a's entry
+        pool.open(again, 10);   // shares a's entry
         for (int i = 2; i < CgVfxParticlePool.TEXTURE_ENTRIES; i++) {
-            Def d = new Def("d" + i, CgVfxDrawLayout.QUADS, new Sampled(fields[i]));
+            Def d = prepared.get(i + 1);
             assertSame(pool, CgVfxParticlePool.of(OWNER, d));
             pool.open(d, 1);
         }
         // the table is full: the next texture opens in a pool of the same shape beside it
-        Def past = new Def("past", CgVfxDrawLayout.QUADS, new Sampled(fields[CgVfxParticlePool.TEXTURE_ENTRIES]));
+        Def past = prepared.get(prepared.size() - 1);
         assertNotSame(pool, CgVfxParticlePool.of(OWNER, past));
         try {
             pool.open(past, 1);
@@ -265,6 +272,11 @@ public class CgVfxParticlePoolTest {
         String glsl = CgVfxEmitterCompiler.source(CgVfxShape.of(a));
         assertTrue(glsl, glsl.contains("case 1: fx_sampled(") && glsl.contains("_Texture0_0_3"));
         CgVfxEmitterCompiler.compile(CgVfxShape.of(a)).kernel("Step").check();
+        // Never prepared: its own set alone, one call and no switch.
+        Def solo = new Def("solo", CgVfxDrawLayout.QUADS, new Sampled(fields[0]));
+        assertEquals(1, CgVfxShape.of(solo).textureSets());
+        String own = CgVfxEmitterCompiler.source(CgVfxShape.of(solo));
+        assertTrue(own, own.contains("fx_sampled(") && !own.contains("switch (int(INSTANCES") && !own.contains("_Texture0_0_1"));
     }
 
     @After
