@@ -23,6 +23,7 @@ public class CgVfxRendererMaterialsTest {
     private static final String SPRITE = "crystalgraphics:shaders/vfx/particle/sprite.shader";
     private static final CgVfxSchema SCHEMA = CgVfxSchema.of("test:renderer_materials");
     private static final CgVfxParam.Color EMBER = SCHEMA.color("ember", 0xFFFF8040, 2f);
+    private static final CgVfxParam.Scalar SIZE = SCHEMA.length("size", 0.5f);
 
     private static CgMaterialDefinition spark;
 
@@ -66,6 +67,17 @@ public class CgVfxRendererMaterialsTest {
                 materials.material(facing, CgVfxSlot.Kind.PARTICLES));
         assertNotEquals(aligned.slots.get("_Color"), aligned.slots.get("_cg_Facing"));
         assertEquals("one row layout for both", aligned.signature, facing.signature);
+    }
+
+    @Test
+    public void aBoundSizeIsReadFromTheValuesAndTakesNoRow() {
+        CgVfxEmitter sparks = CgVfxEmitter.builder("sparks")
+                .renderer(CgVfxRenderers.sprite("r1").material(spark).bind("_cg_Size", "user.size").build()).build();
+        CgVfxLook look = CgVfxLook.builder(SCHEMA).emitter(sparks).build();
+        CgVfxMaterials.Resolved r = new CgVfxMaterials().resolve(look, look.renderers(sparks)[0]);
+        assertEquals(look.layout().offset(SIZE), r.sizeSource);
+        assertEquals(1f, r.sizeFactor, 0f);
+        assertTrue("no shader reads the size, so it is no row", !r.slots.containsKey("_cg_Size"));
     }
 
     @Test

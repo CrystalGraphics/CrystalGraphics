@@ -78,6 +78,9 @@ final class CgVfxMaterials {
         final CgMaterialDefinition definition;
         /** Its size: a slot renderer's, or an emitter renderer's {@code _cg_Size}. */
         final float size;
+        /** Where a bound {@code _cg_Size} reads in the effect's values, and its scale; -1 when it is a constant. */
+        int sizeSource = -1;
+        float sizeFactor = 1f;
         /** What its materials are made from, for their batch keys: the material asset. */
         final String source0;
         /**
@@ -263,6 +266,8 @@ final class CgVfxMaterials {
         CgVfxLayout layout = look.layout();
         Map<String, CgVfxParam> bound = new HashMap<>();
         Map<String, Float> factors = new HashMap<>();
+        int sizeSource = -1;
+        float sizeFactor = 1f;
         for (Map.Entry<String, Object> b : binds.entrySet()) {
             Object form = b.getValue();
             String from = String.valueOf(form instanceof Map<?, ?> m ? m.get("bind") : form);
@@ -272,6 +277,13 @@ final class CgVfxMaterials {
             if (param == null) {
                 throw new IllegalStateException(who + " binds " + b.getKey() + " to " + from + ", which its look does not"
                         + " declare: its user parameters are " + names(layout));
+            }
+            if (b.getKey().equals(DRAW_SIZE) && placed.slotRenderer() == null) {
+                // The drawn extent is the draw's size, read on the CPU (size()), never a row a shader reads
+                if (!(param instanceof CgVfxParam.Scalar)) throw new IllegalStateException(who + " binds _cg_Size to " + from + ", which is not a number");
+                sizeSource = layout.offset(param);
+                sizeFactor = scale;
+                continue;
             }
             material.requireRow(b.getKey(), who);
             bound.put(b.getKey(), param);
@@ -322,7 +334,10 @@ final class CgVfxMaterials {
             factor[i] = entryFactors.get(i);
             fixed[i] = entryFixed.get(i);
         }
-        return new Resolved(placed, material, source, floats, factor, fixed, vec4s, slots, signature.toString());
+        Resolved resolved = new Resolved(placed, material, source, floats, factor, fixed, vec4s, slots, signature.toString());
+        resolved.sizeSource = sizeSource;
+        resolved.sizeFactor = sizeFactor;
+        return resolved;
     }
 
     /**
@@ -593,9 +608,9 @@ final class CgVfxMaterials {
         return all;
     }
 
-    /** {@code r}'s size for {@code effect}. */
+    /** {@code r}'s size for {@code effect}: its constant, or the effect's own value of the parameter {@code _cg_Size} binds. */
     static float size(CgVfxEffect<?> effect, Resolved r) {
-        return r.size;
+        return r.sizeSource < 0 ? r.size : effect.values().raw(r.sizeSource) * r.sizeFactor;
     }
 
     /** Starts a frame's rows. */
