@@ -39,7 +39,7 @@ public class CgWorldProgramsTest {
         boolean never;
 
         @Override
-        public boolean prepare(CgMaterial material, boolean half, CgWorldPrograms.Settings settings) {
+        public boolean prepare(CgMaterial material, boolean half, boolean skinned, CgWorldPrograms.Settings settings) {
             asked.add(settings);
             return !never && !seen.add(Arrays.asList(material, settings));
         }
