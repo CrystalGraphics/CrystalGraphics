@@ -226,8 +226,9 @@ VFX.precache(SPIRAL, SHOCKWAVE, FLASH);   // every look a move plays, before the
 
 - **An effect plays once.** Playing the same object again, or into a second system, throws. Make a new one.
 - **An effect that throws is killed and logged under your mod**; every other effect keeps playing.
-- **Precache every look you play**, or its first play builds what it draws and can hitch for hundreds of
-  milliseconds. Three ways, from least to most code:
+- **Precache every look you play**, or its first play draws late, its pipelines building while it plays. Most looks
+  are precached for you; what a mod precaches by hand, VFX or not, is [`PRECACHE.md`](PRECACHE.md). Three ways, from
+  least to most code:
   - **Declare it, and it is done**: a look a cue plays (`VFX.cue(...)`, `VFX.register(cue, look, ...)`) or that
     `CgVfxRegistry` registers is precached at the graphics start, inside the loading screen.
     `.precache(false)` on the cue's builder or the registry entry opts out one you play rarely.

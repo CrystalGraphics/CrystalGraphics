@@ -153,8 +153,9 @@ Fabric's dev mod is `tasks.jar` bundling each module's `downgradedJar` —
 
 | I need to… | Read | Primary package guide |
 |---|---|---|
-| Write or load a `.shader` material | [`docs/SHADERS.md`](docs/SHADERS.md) | `api/material/CLAUDE.md` |
-| Write or run a kernel (`.compute`) | [`docs/SHADERS.md`](docs/SHADERS.md) § *Compute* | `compute/CLAUDE.md` |
+| Write or load a `.shader` material | [`docs/SHADERS.md`](docs/SHADERS.md), then **[`docs/PRECACHE.md`](docs/PRECACHE.md)** | `api/material/CLAUDE.md` |
+| Write or run a kernel (`.compute`) | [`docs/SHADERS.md`](docs/SHADERS.md) § *Compute*, then **[`docs/PRECACHE.md`](docs/PRECACHE.md)** | `compute/CLAUDE.md` |
+| Draw anything new: a material, a keyword set, a renderer pass, a kernel, a look | **[`docs/PRECACHE.md`](docs/PRECACHE.md)**: what is precached for you, and what you must precache | `render/world/CLAUDE.md` |
 | Write an effect, a particle emitter or a particle module | [`docs/VFX.md`](docs/VFX.md) | `vfx/CLAUDE.md` |
 | Work on the VFX rewrite toward Unreal parity (`vfx-aaa`) | `plan/crystalgraphics/vfx-aaa/aaa-rules.md` first: binding | `vfx/CLAUDE.md` § *AAA parity* |
 | Build a GPU-driven pipeline: kernels writing what draws, indirect and multi-draw draws, GPU culling | **[`docs/GPU_DRIVEN_RENDERING.md`](docs/GPU_DRIVEN_RENDERING.md)** | `compute/CLAUDE.md`, `render/graph/CLAUDE.md` |
@@ -184,6 +185,18 @@ it, and never change one through the shell that you have not Read**: a shell edi
 ## Global Coding Rules
 
 These rules apply everywhere. All agents must internalize them.
+
+**Precache every pipeline** — every shader variant and kernel a frame uses is named to `CgPipelinePrecache` before
+it draws. VFX looks behind a cue, the registry or a kit, skinned materials and the engine's passes are already. A new
+material, keyword set, renderer pass or kernel is not until you add it to a collector (the renderer's own, as
+`CgWorldRenderer`'s `crystalgraphics:world` and `CgPostStack`'s `crystalgraphics:post` do) or a request. Unprecached, it
+draws late and counts `pipeline.missed`; check new content with `-Dcrystalgraphics.pipeline.logMisses=true`.
+**[`docs/PRECACHE.md`](docs/PRECACHE.md)** has both lists.
+
+**The shipped pipeline list goes stale with every engine shader edit** — `pipelines/recorded.txt` is keyed by each
+program's source hash, so an edited `.shader`, `.glsl` or `.compute` builds its Vulkan pipelines at their draws until
+the list is refreshed. Refresh it before a release (`docs/PRECACHE.md` § *The shipped pipeline list*, and
+`docs/CGUI_BUILD.md` § *Releasing* in CrystalGUI); when you change a shipped shader, say so in your report.
 
 **Public API first** — always use the highest abstraction layer available. `CgMaterial.load()` not `CgShaderFactory.fromSource()`; `CgMeshLoader.load()` not `GL15.glGenBuffers()`. Check package guides to find what already exists before writing raw GL.
 

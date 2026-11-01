@@ -221,7 +221,8 @@ lights.add(x, y, z, 4f, 0xFFFFC080, 10f, 0f).shadowed(false);                   
   ```java
   CgWorldRenderer.get().skipUnready(false);   // compile at the draw; the frame waits, but draws what it was given
   ```
-- **Built ahead of use: `CgPipelinePrecache`** (Unreal's PSO precaching), the one way to warm pipelines. What is always
+- **Built ahead of use: `CgPipelinePrecache`** (Unreal's PSO precaching), the one way to warm pipelines.
+  **[`PRECACHE.md`](PRECACHE.md) first**: what the engine precaches for you, what you must, and how to check. What is always
   known registers a collector at load (its global collectors), built at the graphics start, in parallel, inside the
   host's loading screen. What is known later (a scene, a look, an asset bundle) requests at runtime (a component's
   `PrecachePSOs`): started at once and built over frames inside `CgWarmBudget` (`crystalgraphics.warmBudget`, a few

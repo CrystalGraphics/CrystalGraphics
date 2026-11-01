@@ -2,6 +2,11 @@
 
 Moved from [`AGENTS.md`](../AGENTS.md), which keeps the rules every session needs. Loads itself, imported by the `CLAUDE.md` of the packages it describes: `api/material`, `api/shader`, `gl/material`, `gl/shader`, `mc/shader` and `compute`. Nothing under `resources/` loads it, since all of it ships: read it before touching a `.shader`, `.compute` or `.glsl` file.
 
+> **A shader you draw must be precached.** Name every material, keyword set, pass and kernel you add to
+> `CgPipelinePrecache`, or its first draw shows late and counts `pipeline.missed`. VFX looks, kits and cues, skinned
+> materials and the engine's own passes are precached for you. **[`PRECACHE.md`](PRECACHE.md)** says which is which.
+> Editing a shipped shader also stales the shipped pipeline list (`PRECACHE.md` § *The shipped pipeline list*).
+
 ## CrystalShader Material Pipeline
 
 The primary authoring surface of this repo. Most feature work touches these systems.

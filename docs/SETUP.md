@@ -170,6 +170,13 @@ CgRenderStage.Registration drawing = CgRenderStage.WORLD_OPAQUE.register(0, fram
 drawing.close();   // stops it
 ```
 
+- **Precache what you draw**: a material of yours compiles at its first draw and shows late unless you register it
+  with `CgPipelinePrecache` in your mod's constructor. Your VFX looks behind a cue or the registry need nothing.
+  [`PRECACHE.md`](PRECACHE.md) says which is which.
+
+  ```java
+  CgPipelinePrecache.register("mymod:runes", pipelines -> pipelines.add(RUNE_MATERIAL, false));
+  ```
 - Every host fires the world stages, on every version; a stage whose renderers record nothing costs one empty frame.
 - Register from any thread; a renderer runs on the render thread, in ascending `order`, ties in registration order.
 - `frame.callback(name, body)` runs `body` at its place in the stage with GL state restored after, for drawing not
