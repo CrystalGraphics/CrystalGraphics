@@ -1016,7 +1016,7 @@ called here. **Call these and nothing else** — do not free individual registri
 
 ```java
 // At each frame's end, and before drawing outside a world pass — a menu, a title screen, any GUI (GL thread):
-// the graphics start once, then the engine's post-init; a resize if the viewport moved; nothing after destroyContext()
+// the graphics start once, then the engine's post-init; a resize if the viewport moved; nothing after shutdown()
 CgEngineLifecycle.ensureGraphicsContext(viewportWidth, viewportHeight);
 // Initialises: CgBindingPoints, CgFrameBufferRegistry, CgFallbackTextures, and installs CgWorldRenderer
 
@@ -1025,7 +1025,7 @@ CgGraphicsLifecycle.onResize(newWidth, newHeight);
 // Triggers recreation of all screen-sized FBOs in CgFrameBufferRegistry
 
 // On GL context destruction (GL thread):
-CgEngineLifecycle.destroyContext();
+CgEngineLifecycle.shutdown();
 // Runs the canonical teardown sequence (see below)
 ```
 
@@ -1038,7 +1038,7 @@ CgEngineLifecycle.destroyContext();
 > `Screen` that paints through this engine calls it first; `CgRenderStage.fire` calls the same method, so
 > there is one definition rather than two.
 
-**Canonical teardown order** (enforced inside `destroyContext()`):
+**Canonical teardown order** (enforced inside `shutdown()`, on the thread that owns the context):
 
 | Step | What | Why |
 |------|------|-----|
@@ -1059,7 +1059,7 @@ CgEngineLifecycle.destroyContext();
 
 > A slab deletes its VAO **before** its buffers: a VAO naming deleted buffers is stale GPU state.
 
-> **The backend closes last, and not in `destroyContext()`.** Every deletion above goes through it, and a
+> **The backend closes last, and not in `shutdown()`.** Every deletion above goes through it, and a
 > device releases memory when its frames retire, so whoever built a device-backed backend closes it after:
 > the harness closes `CgVulkanDevice`, then its `OwnedVulkanHost` (`PlatformServiceHarness.shutdown`). A GL
 > context dies with its window.

@@ -3,8 +3,9 @@
 `CgEngineLifecycle` is the engine's lifecycle and the one place a host starts and stops it. On both sides, in pre-init,
 init and post-init: pre-init mounts every mod's assets (`asset.load.CgAssetMounts`), init installs the network
 (`net.CgNetwork`), post-init (the engine's own, at its first client graphics start or server start) loads what was
-mounted. Then the graphics context: `ensureGraphicsContext` (the one way to start it), `destroyContext` and `shutdown` issue
-`CgGraphicsLifecycle`'s, whose own versions are not public.
+mounted. Then the graphics context: `ensureGraphicsContext` (the one way to start it) and `shutdown` (the one way to stop it: it frees
+the context on the thread that owns it, then stands the engine down) issue `CgGraphicsLifecycle`'s, whose own versions
+are not public. `stopped()` writes the trace run's exit files (`trace.CgTraceRun`).
 
 - **Core's starting work goes here**, never into a host: a host registers the platform, fills its slots, and calls the
   phases (`docs/MINECRAFT_INTEGRATION.md`).

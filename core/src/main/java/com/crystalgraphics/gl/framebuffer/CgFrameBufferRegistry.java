@@ -17,7 +17,7 @@ import java.util.Map;
  * remains valid and can be cached safely.</p>
  *
  * <p>All owned FBOs are deleted by {@link #deleteAll()}, called from
- * {@code CgEngineLifecycle.destroyContext()}.</p>
+ * {@code CgEngineLifecycle.shutdown()}.</p>
  *
  * @see CgFrameBuffer#create(String, int, int, CgFrameBufferFormat)
  * @see CgFrameBuffer#createScreenSized(String, CgFrameBufferFormat)
@@ -97,7 +97,7 @@ public final class CgFrameBufferRegistry {
 
     /**
      * Deletes all owned FBOs and clears the registry.
-     * Called by {@code CgEngineLifecycle.destroyContext()}.
+     * Called by {@code CgEngineLifecycle.shutdown()}.
      */
     public void deleteAll() {
         for (CgFrameBuffer fbo : framebuffers.values())

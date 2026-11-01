@@ -101,7 +101,7 @@ CgQuadIndexBuffer (global singleton)
 2. **Per-frame upload**: `map(size)` → write into the returned `ByteBuffer` → `commit(usedBytes)` → draw at
    the returned offset. `afterSubmit()` is a no-op kept for existing callers.
 3. **Cleanup**: stream buffers are deleted by their owners; `CgQuadIndexBuffer.freeAll()` and
-   `CgFrameRing.reset()` run in `CgEngineLifecycle.destroyContext()`.
+   `CgFrameRing.reset()` run in `CgEngineLifecycle.shutdown()`.
 
 ## Relationship to Other Packages
 
@@ -120,7 +120,7 @@ CgQuadIndexBuffer (global singleton)
 | `MapAndOrphanStreamBuffer.java` | The orphan tier: per upload, offset 0, small-write path. |
 | `SubDataStreamBuffer.java` | The subdata tier: CPU staging + `glBufferSubData`. |
 | `CgQuadIndexBuffer.java` | Global shared quad IBO. Pattern `[0,1,2,2,3,0,...]`. Max 16384 quads. Doubling growth. |
-| `CgBufferTextures.java` | One buffer texture per texture unit, pointed at whatever buffer a material or a lowered kernel reads there; 0 reads 16 zero bytes. Freed by `CgEngineLifecycle.destroyContext()`. |
+| `CgBufferTextures.java` | One buffer texture per texture unit, pointed at whatever buffer a material or a lowered kernel reads there; 0 reads 16 zero bytes. Freed by `CgEngineLifecycle.shutdown()`. |
 | `CgReadback.java` | A buffer range, a framebuffer region or a 3D texture's box (`slices`, each slice attached in turn to one framebuffer bound for reading) read back without a stall: copied on the GPU into pooled staging, handed to a sink from `poll()` in `tickFrame` once `CgFrameRing` has retired the frame it was issued in (its own fence is queried only where the host has ended no frame: a query of a young fence waits for a threaded driver to drain). On the `PERSISTENT` tier the staging is mapped once, coherent, and read with no GL call; below it each delivery maps it, which on a threaded driver waits for the queue to drain. What `CgRecording.readback` and `CgPixelReadback` use. In-flight reads are dropped at teardown, beside `CgBufferTextures` |
 | `CgBufferReadback.java` | A buffer's words read now, a stall: for a count a draw needs this frame (G33) and the CPU tier's copies |
 

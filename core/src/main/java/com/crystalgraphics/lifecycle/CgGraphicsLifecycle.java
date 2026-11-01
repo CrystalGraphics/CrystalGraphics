@@ -50,6 +50,7 @@ import com.crystalgraphics.NativeLoader;
 import com.crystalgraphics.text.render.CgTextRenderer;
 import com.crystalgraphics.text.render.CgTextRendererRegistry;
 import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.trace.CgTraceRun;
 import com.crystalgraphics.util.trace.CgChannels;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -440,6 +441,7 @@ public final class CgGraphicsLifecycle {
             CgTrace.frameBegin();
         }
         traceFramed = CgTrace.currentFrameIndex();
+        CgTraceRun.frame();
     }
 
     /** The trace frame index as {@link #tickFrame()} last left it. */
@@ -470,13 +472,9 @@ public final class CgGraphicsLifecycle {
      * giving every latching singleton a real reset path first; until then, treat this as terminal.</p>
      */
     static void destroyContext() {
-        // Nothing was ever built, and the sweeps below would call into nothing: a stood-down host has no GL
-        // context, and with no backend installed no host section ever opened, as on a client quitting
-        // before its first frame.
-        if (stoodDown || !CgGL.isInstalled()) {
-            shutdown();
-            return;
-        }
+        // Freed once: the engine stops right after, and a second shutdown finds it stopped. Nothing was ever built
+        // where the host stood down or no backend was installed (a client quitting before its first frame).
+        if (destroyed || stoodDown || !CgGL.isInstalled()) return;
 
         // Step 0: External listeners, BEFORE the engine frees anything.
         //
@@ -574,20 +572,11 @@ public final class CgGraphicsLifecycle {
         // (initialized was cleared at the top of this method.)
         currentWidth = -1;
         currentHeight = -1;
-        
-        shutdown();
     }
 
     /**
-     * Stops the engine without freeing anything — for a host that is <b>still rendering</b>.
-     *
-     * <p>Every entry point below becomes a no-op, and nothing is released: at process exit the OS
-     * reclaims it regardless, and releasing early is what leaves the engine half-dead while frames are
-     * still arriving. Minecraft dispatches render stages after its shutdown signal, which is that
-     * case exactly.</p>
-     *
-     * <p>Prefer {@link #destroyContext()} where rendering has definitively stopped and the resources
-     * should be released. Both are terminal: neither supports a later {@link #init}.</p>
+     * Stops the engine: every entry point becomes a no-op, so a host still dispatching frames after its shutdown
+     * signal (Minecraft) reaches nothing freed. {@code CgEngineLifecycle.shutdown} frees first, where it may. Terminal.
      */
     static void shutdown() {
         boolean first = !destroyed;

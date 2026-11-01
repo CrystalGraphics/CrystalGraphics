@@ -34,6 +34,79 @@ com/crystalgraphics/platform/CgService
   method public toString ()Ljava/lang/String;
   method public,static declared ()Ljava/util/List;
   method public,static of (Ljava/lang/String;Ljava/lang/Object;)Lcom/crystalgraphics/platform/CgService;
+com/crystalgraphics/platform/audio/CgAudioDecoder
+  access public,abstract,interface
+  extends java/lang/Object
+  field public,static,final NONE Lcom/crystalgraphics/platform/audio/CgAudioDecoder;
+  field public,static,final SERVICE Lcom/crystalgraphics/platform/CgService;
+  method public,abstract open (Ljava/nio/ByteBuffer;)Lcom/crystalgraphics/platform/audio/CgAudioDecoder$Stream;
+com/crystalgraphics/platform/audio/CgAudioDecoder$Stream
+  access public,abstract,interface
+  extends java/lang/Object
+  implements java/lang/AutoCloseable
+  method public,abstract channels ()I
+  method public,abstract close ()V
+  method public,abstract frames ()J
+  method public,abstract read ([FII)I
+  method public,abstract sampleRate ()I
+  method public,abstract seek (J)V
+com/crystalgraphics/platform/audio/CgAudioOutput
+  access public,abstract,interface
+  extends java/lang/Object
+  field public,static,final NONE Lcom/crystalgraphics/platform/audio/CgAudioOutput;
+  field public,static,final SERVICE Lcom/crystalgraphics/platform/CgService;
+  method public,abstract open (Lcom/crystalgraphics/platform/audio/CgAudioOutput$Format;)Lcom/crystalgraphics/platform/audio/CgAudioStream;
+com/crystalgraphics/platform/audio/CgAudioOutput$Format
+  access public,final,record
+  extends java/lang/Record
+  method public <init> (IIII)V
+  method public bufferSeconds ()D
+  method public buffers ()I
+  method public channels ()I
+  method public frames ()I
+  method public sampleRate ()I
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
+com/crystalgraphics/platform/audio/CgAudioStream
+  access public,abstract,interface
+  extends java/lang/Object
+  implements java/lang/AutoCloseable
+  method public,abstract close ()V
+  method public,abstract free ()I
+  method public,abstract latency ()D
+  method public,abstract underruns ()I
+  method public,abstract write ([F)Z
+com/crystalgraphics/platform/audio/CgHostDuck
+  access public,abstract,interface
+  extends java/lang/Object
+  field public,static,final FLOOR F
+  field public,static,final NONE Lcom/crystalgraphics/platform/audio/CgHostDuck;
+  field public,static,final SERVICE Lcom/crystalgraphics/platform/CgService;
+  method public factor (Lcom/crystalgraphics/platform/audio/CgHostVolume$Category;)F
+  method public,abstract duck (Lcom/crystalgraphics/platform/audio/CgHostVolume$Category;F)V
+com/crystalgraphics/platform/audio/CgHostVolume
+  access public,abstract,interface
+  extends java/lang/Object
+  field public,static,final NONE Lcom/crystalgraphics/platform/audio/CgHostVolume;
+  field public,static,final SERVICE Lcom/crystalgraphics/platform/CgService;
+  method public,abstract category (Lcom/crystalgraphics/platform/audio/CgHostVolume$Category;)F
+  method public,abstract master ()F
+com/crystalgraphics/platform/audio/CgHostVolume$Category
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final AMBIENT Lcom/crystalgraphics/platform/audio/CgHostVolume$Category;
+  field public,static,final BLOCKS Lcom/crystalgraphics/platform/audio/CgHostVolume$Category;
+  field public,static,final HOSTILE Lcom/crystalgraphics/platform/audio/CgHostVolume$Category;
+  field public,static,final MUSIC Lcom/crystalgraphics/platform/audio/CgHostVolume$Category;
+  field public,static,final NEUTRAL Lcom/crystalgraphics/platform/audio/CgHostVolume$Category;
+  field public,static,final PLAYERS Lcom/crystalgraphics/platform/audio/CgHostVolume$Category;
+  field public,static,final RECORDS Lcom/crystalgraphics/platform/audio/CgHostVolume$Category;
+  field public,static,final UI Lcom/crystalgraphics/platform/audio/CgHostVolume$Category;
+  field public,static,final VOICE Lcom/crystalgraphics/platform/audio/CgHostVolume$Category;
+  field public,static,final WEATHER Lcom/crystalgraphics/platform/audio/CgHostVolume$Category;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/platform/audio/CgHostVolume$Category;
+  method public,static values ()[Lcom/crystalgraphics/platform/audio/CgHostVolume$Category;
 com/crystalgraphics/platform/device/CgDevice
   access public,abstract,interface
   extends java/lang/Object
@@ -965,6 +1038,7 @@ com/crystalgraphics/platform/gl/CgCapabilities
   extends java/lang/Object
   field public,static,final BC7 Lcom/crystalgraphics/variable/CgVar$Bool;
   field public,static,final COMPUTE_TIER Lcom/crystalgraphics/variable/CgVar$Text;
+  field public,static,final DSA Lcom/crystalgraphics/variable/CgVar$Bool;
   field public,static,final MULTI_DRAW Lcom/crystalgraphics/variable/CgVar$Bool;
   field public,static,final SHADER_BUFFER_TIER Lcom/crystalgraphics/variable/CgVar$Text;
   field public,static,final STREAM_TIER Lcom/crystalgraphics/variable/CgVar$Text;
@@ -978,6 +1052,7 @@ com/crystalgraphics/platform/gl/CgCapabilities
   method public bindless ()Z
   method public compute ()Z
   method public computeTier ()Lcom/crystalgraphics/platform/gl/CgCapabilities$ComputeTier;
+  method public directStateAccess ()Z
   method public drawIndirect ()Z
   method public drawParameters ()Z
   method public feedbackCount ()Z
@@ -1495,15 +1570,23 @@ com/crystalgraphics/platform/gl/CgGL
   field public,static,final GL_WRITE_ONLY I
   field public,static,final GL_ZERO I
   method public,static assertNoGlError (Ljava/lang/String;)V
+  method public,static blitsByName ()Z
   method public,static cgBeginAsync ()V
+  method public,static cgBeginBarriers ()V
   method public,static cgBeginTransfer ()V
+  method public,static cgBindTexture (III)V
+  method public,static cgBlitNamedFramebuffer (IIIIIIIIIIII)V
   method public,static cgBufferBarrier (III)V
   method public,static cgEndAsync ()J
+  method public,static cgEndBarriers ()V
   method public,static cgEndTransfer ()V
   method public,static cgFillBuffer (IJJI)V
+  method public,static cgForgetSamplers ()V
   method public,static cgImageBarrier (III)V
+  method public,static cgParksLazily ()Z
   method public,static cgWaitAsync (J)V
   method public,static checkSource (Ljava/lang/CharSequence;)Ljava/lang/CharSequence;
+  method public,static createWorkerContext ()Lcom/crystalgraphics/platform/gl/CgGLWorkerContext;
   method public,static drainErrors ()Ljava/util/List;
   method public,static enterGlFree (Ljava/lang/String;)V
   method public,static exitGlFree ()V
@@ -1619,6 +1702,7 @@ com/crystalgraphics/platform/gl/CgGL
   method public,static glLineWidth (F)V
   method public,static glLinkProgram (I)V
   method public,static glMapBufferRange (IJJILjava/nio/ByteBuffer;)Ljava/nio/ByteBuffer;
+  method public,static glMaxShaderCompilerThreads (I)V
   method public,static glMemoryBarrier (I)V
   method public,static glMultiDrawArraysIndirect (IJII)V
   method public,static glMultiDrawArraysIndirectCount (IJJII)V
@@ -1698,11 +1782,15 @@ com/crystalgraphics/platform/gl/CgGLBackend
   field public,static,final KEEP_HOST_DEBUG_OUTPUT Lcom/crystalgraphics/variable/CgVar$Bool;
   method protected,final fillBySubData (IJJI)V
   method public <init> ()V
+  method public blitNamedFramebuffer (IIIIIIIIIIII)V
+  method public blitsByName ()Z
   method public cgBeginAsync ()V
+  method public cgBeginBarriers ()V
   method public cgBeginTransfer ()V
   method public cgBufferBarrier (III)V
   method public cgClipZeroToOne (Z)V
   method public cgEndAsync ()J
+  method public cgEndBarriers ()V
   method public cgEndTransfer ()V
   method public cgImageBarrier (III)V
   method public cgWaitAsync (J)V
@@ -1713,6 +1801,7 @@ com/crystalgraphics/platform/gl/CgGLBackend
   method public,abstract blitFramebuffer (IIIIIIIIII)V
   method public,abstract cgFillBuffer (IJJI)V
   method public,abstract checkFramebufferStatus (I)I
+  method public,abstract createWorkerContext ()Lcom/crystalgraphics/platform/gl/CgGLWorkerContext;
   method public,abstract deleteFramebuffers (I)V
   method public,abstract drawBuffers (Ljava/nio/IntBuffer;)V
   method public,abstract framebufferTexture2D (IIIII)V
@@ -1820,6 +1909,7 @@ com/crystalgraphics/platform/gl/CgGLBackend
   method public,abstract glLineWidth (F)V
   method public,abstract glLinkProgram (I)V
   method public,abstract glMapBufferRange (IJJILjava/nio/ByteBuffer;)Ljava/nio/ByteBuffer;
+  method public,abstract glMaxShaderCompilerThreads (I)V
   method public,abstract glMemoryBarrier (I)V
   method public,abstract glMultiDrawArraysIndirect (IJII)V
   method public,abstract glMultiDrawArraysIndirectCount (IJJII)V
@@ -1890,6 +1980,7 @@ com/crystalgraphics/platform/gl/CgGLContext
   method public,abstract GL_ARB_bindless_texture ()Z
   method public,abstract GL_ARB_buffer_storage ()Z
   method public,abstract GL_ARB_compute_shader ()Z
+  method public,abstract GL_ARB_direct_state_access ()Z
   method public,abstract GL_ARB_draw_indirect ()Z
   method public,abstract GL_ARB_explicit_attrib_location ()Z
   method public,abstract GL_ARB_indirect_parameters ()Z
@@ -1917,6 +2008,18 @@ com/crystalgraphics/platform/gl/CgGLContext
   method public,abstract mappingIsFree ()Z
   method public,abstract parallelShaderCompile ()Z
   method public,abstract probe ()V
+com/crystalgraphics/platform/gl/CgGLWorkerContext
+  access public,abstract,interface
+  extends java/lang/Object
+  method public,abstract destroy ()V
+  method public,abstract makeCurrent ()V
+  method public,abstract release ()V
+com/crystalgraphics/platform/gl/CgGlCallSites
+  access public,final
+  extends java/lang/Object
+  field public,static,final ON Z
+  method public,static reset ()V
+  method public,static write (Ljava/io/File;J)V
 com/crystalgraphics/platform/gl/CgGlRecording
   access public,final
   extends java/lang/Object
@@ -1936,6 +2039,8 @@ com/crystalgraphics/platform/gl/CgGlStateManager
   field public,static,final ROUND_TRIP Lcom/crystalgraphics/variable/CgVar$Bool;
   method public <init> (Lcom/crystalgraphics/platform/gl/state/CgGlStateProvider;)V
   method public activeTextureChanged (I)Z
+  method public activeUnit ()I
+  method public adoptCapturedPoints ()V
   method public alphaFuncChanged (IF)Z
   method public baselineFor (Lcom/crystalgraphics/platform/gl/state/CgGlSlot;)Lcom/crystalgraphics/platform/gl/state/CgGlStateShadow;
   method public blendEquationChanged (II)Z
@@ -1946,6 +2051,7 @@ com/crystalgraphics/platform/gl/CgGlStateManager
   method public colorMaskChanged (ZZZZ)Z
   method public colorMaskiChanged (IZZZZ)Z
   method public cullFaceChanged (I)Z
+  method public dedups ()Z
   method public depth ()I
   method public depthFuncChanged (I)Z
   method public depthMaskChanged (Z)Z
@@ -1955,6 +2061,7 @@ com/crystalgraphics/platform/gl/CgGlStateManager
   method public framebufferDeleted (I)V
   method public frontFaceChanged (I)Z
   method public handOver ([Lcom/crystalgraphics/platform/gl/state/CgGlSlot;)Lcom/crystalgraphics/platform/gl/state/CgGlScope;
+  method public holds (III)Z
   method public hostForeign (Ljava/lang/Runnable;[Lcom/crystalgraphics/platform/gl/state/CgGlSlot;)V
   method public hostForeign ([Lcom/crystalgraphics/platform/gl/state/CgGlSlot;)Lcom/crystalgraphics/platform/gl/state/CgGlScope;
   method public imageBindingChanged (IIIIII)Z
@@ -1967,6 +2074,7 @@ com/crystalgraphics/platform/gl/CgGlStateManager
   method public pointSizeChanged (F)Z
   method public polygonModeChanged (II)Z
   method public polygonOffsetChanged (FF)Z
+  method public program ()I
   method public programChanged (I)Z
   method public programDeleted (I)V
   method public save ([Lcom/crystalgraphics/platform/gl/state/CgGlSlot;)Lcom/crystalgraphics/platform/gl/state/CgGlScope;
@@ -2228,6 +2336,7 @@ com/crystalgraphics/platform/gl/tracked/CgTrackedGLBackend
   method public checkFramebufferStatus (I)I
   method public compileInBackground ()Lcom/crystalgraphics/platform/gl/tracked/CgTrackedGLBackend;
   method public copyImageSubData (IIIIIIIIIIIIIII)V
+  method public createWorkerContext ()Lcom/crystalgraphics/platform/gl/CgGLWorkerContext;
   method public deleteFramebuffers (I)V
   method public device ()Lcom/crystalgraphics/platform/device/CgDevice;
   method public drawBuffers (Ljava/nio/IntBuffer;)V
@@ -2338,6 +2447,7 @@ com/crystalgraphics/platform/gl/tracked/CgTrackedGLBackend
   method public glLineWidth (F)V
   method public glLinkProgram (I)V
   method public glMapBufferRange (IJJILjava/nio/ByteBuffer;)Ljava/nio/ByteBuffer;
+  method public glMaxShaderCompilerThreads (I)V
   method public glMemoryBarrier (I)V
   method public glMultiDrawArraysIndirect (IJII)V
   method public glMultiDrawArraysIndirectCount (IJJII)V
@@ -2413,6 +2523,7 @@ com/crystalgraphics/platform/gl/tracked/CgTrackedGLContext
   method public GL_ARB_bindless_texture ()Z
   method public GL_ARB_buffer_storage ()Z
   method public GL_ARB_compute_shader ()Z
+  method public GL_ARB_direct_state_access ()Z
   method public GL_ARB_draw_indirect ()Z
   method public GL_ARB_explicit_attrib_location ()Z
   method public GL_ARB_indirect_parameters ()Z
@@ -2705,6 +2816,8 @@ com/crystalgraphics/platform/gl/tracked/gl/TrackedVertexArrays$Vao
 com/crystalgraphics/platform/gl/tracked/memory/CgAllocation
   access public,final
   extends java/lang/Object
+  field public dispatchedAt J
+  field public dispatchedOn I
   field public lastUse J
   field public,final buffer Lcom/crystalgraphics/platform/device/resource/CgGpuBuffer;
   field public,final offset J
@@ -2778,6 +2891,30 @@ com/crystalgraphics/platform/gl/tracked/tracker/CgDrawState
   method public texture (ILcom/crystalgraphics/platform/device/resource/CgTextureView;Lcom/crystalgraphics/platform/device/resource/CgGpuSampler;)Lcom/crystalgraphics/platform/gl/tracked/tracker/CgDrawState;
   method public uniform (ILcom/crystalgraphics/platform/gl/tracked/memory/CgAllocation;JJ)Lcom/crystalgraphics/platform/gl/tracked/tracker/CgDrawState;
   method public vertexBuffer (ILcom/crystalgraphics/platform/gl/tracked/memory/CgAllocation;J)V
+com/crystalgraphics/platform/gl/tracked/tracker/CgPipelineRecipes
+  access public,final
+  extends java/lang/Object
+  field public,static,final SHIPPED Ljava/lang/String;
+  method public of (J)Ljava/util/List;
+  method public record (JLcom/crystalgraphics/platform/gl/tracked/tracker/CgPipelineRecipes$Recipe;)V
+  method public,static load (Ljava/nio/file/Path;Ljava/util/concurrent/Executor;)Lcom/crystalgraphics/platform/gl/tracked/tracker/CgPipelineRecipes;
+com/crystalgraphics/platform/gl/tracked/tracker/CgPipelineRecipes$Recipe
+  access public,final,record
+  extends java/lang/Record
+  method public <init> (ZLjava/util/List;Lcom/crystalgraphics/platform/device/pipeline/CgPipelineDesc$Topology;Lcom/crystalgraphics/platform/device/pipeline/CgPipelineDesc$Raster;Lcom/crystalgraphics/platform/device/pipeline/CgPipelineDesc$DepthStencil;Ljava/util/List;Lcom/crystalgraphics/platform/device/format/CgFormat;I)V
+  method public colorTargets ()Ljava/util/List;
+  method public depthFormat ()Lcom/crystalgraphics/platform/device/format/CgFormat;
+  method public depthStencil ()Lcom/crystalgraphics/platform/device/pipeline/CgPipelineDesc$DepthStencil;
+  method public desc (Lcom/crystalgraphics/platform/gl/tracked/tracker/CgTrackedProgram;)Lcom/crystalgraphics/platform/device/pipeline/CgPipelineDesc;
+  method public raster ()Lcom/crystalgraphics/platform/device/pipeline/CgPipelineDesc$Raster;
+  method public samples ()I
+  method public topology ()Lcom/crystalgraphics/platform/device/pipeline/CgPipelineDesc$Topology;
+  method public vertexBuffers ()Ljava/util/List;
+  method public zeroToOne ()Z
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
+  method public,static of (Lcom/crystalgraphics/platform/device/pipeline/CgPipelineDesc;Z)Lcom/crystalgraphics/platform/gl/tracked/tracker/CgPipelineRecipes$Recipe;
 com/crystalgraphics/platform/gl/tracked/tracker/CgTarget
   access public,final,record
   extends java/lang/Record
@@ -2796,14 +2933,18 @@ com/crystalgraphics/platform/gl/tracked/tracker/CgTrackedProgram
   extends java/lang/Object
   field public,final layout Lcom/crystalgraphics/platform/device/pipeline/CgBindingLayout;
   method public <init> (Ljava/lang/String;Lcom/crystalgraphics/platform/device/pipeline/CgBindingLayout;Lcom/crystalgraphics/platform/device/shader/CgShaderModule;Lcom/crystalgraphics/platform/device/shader/CgShaderModule;Lcom/crystalgraphics/platform/device/shader/CgShaderModule;)V
+  method public <init> (Ljava/lang/String;Lcom/crystalgraphics/platform/device/pipeline/CgBindingLayout;Lcom/crystalgraphics/platform/device/shader/CgShaderModule;Lcom/crystalgraphics/platform/device/shader/CgShaderModule;Lcom/crystalgraphics/platform/device/shader/CgShaderModule;J)V
   method public label ()Ljava/lang/String;
   method public layout ()Lcom/crystalgraphics/platform/device/pipeline/CgBindingLayout;
+  method public modules ()Ljava/util/List;
+  method public,static key (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;)J
 com/crystalgraphics/platform/gl/tracked/tracker/CgTracker
   access public,final
   extends java/lang/Object
   field public,final state Lcom/crystalgraphics/platform/gl/tracked/tracker/CgDrawState;
   field public,final stats Lcom/crystalgraphics/platform/gl/tracked/tracker/CgTrackerStats;
   method public <init> (Lcom/crystalgraphics/platform/device/CgDevice;Z)V
+  method public adoptAhead (Ljava/util/Map;)V
   method public allocate (JZZLjava/lang/String;)Lcom/crystalgraphics/platform/gl/tracked/memory/CgAllocation;
   method public allocateStreamed (JLjava/lang/String;)Lcom/crystalgraphics/platform/gl/tracked/memory/CgAllocation;
   method public beginAsync ()V
@@ -2829,9 +2970,11 @@ com/crystalgraphics/platform/gl/tracked/tracker/CgTracker
   method public imageBarrier (Lcom/crystalgraphics/platform/device/resource/CgGpuTexture;II)V
   method public markUsed (Lcom/crystalgraphics/platform/gl/tracked/memory/CgAllocation;)V
   method public memoryBarrier (II)V
+  method public orphan (Ljava/util/Collection;)V
   method public release (Lcom/crystalgraphics/platform/device/CgDeviceObject;)V
   method public setClearPrograms (Ljava/util/function/IntFunction;)V
   method public setZeroToOneClip (Z)V
+  method public startRecorded (Lcom/crystalgraphics/platform/gl/tracked/tracker/CgTrackedProgram;)Ljava/util/Map;
   method public stats ()Lcom/crystalgraphics/platform/gl/tracked/tracker/CgTrackerStats;
   method public target ()Lcom/crystalgraphics/platform/gl/tracked/tracker/CgTarget;
   method public toHost ()V
@@ -2843,6 +2986,7 @@ com/crystalgraphics/platform/gl/tracked/tracker/CgTrackerStats
   access public,final
   extends java/lang/Object
   field public asyncSections J
+  field public barriersCovered J
   field public clearsAsLoadOps J
   field public clearsInPass J
   field public computePasses J
@@ -3079,7 +3223,12 @@ com/crystalgraphics/platform/service/CgCacheDirectory
   extends java/lang/Object
   field public,static,final DIR Lcom/crystalgraphics/variable/CgVar$Text;
   field public,static,final ENABLED Lcom/crystalgraphics/variable/CgVar$Bool;
+  field public,static,final KEEP J
+  field public,static,final MOST J
+  field public,static,final PRUNED [Ljava/lang/String;
   method public,static of (Ljava/lang/String;)Ljava/nio/file/Path;
+  method public,static prune (Ljava/lang/String;)V
+  method public,static used (Ljava/nio/file/Path;)V
 com/crystalgraphics/platform/service/CgCursorService
   access public,abstract,interface
   extends java/lang/Object
@@ -3108,6 +3257,13 @@ com/crystalgraphics/platform/service/CgGameDirectory
   field public,static,final NONE Lcom/crystalgraphics/platform/service/CgGameDirectory;
   field public,static,final SERVICE Lcom/crystalgraphics/platform/CgService;
   method public,abstract get ()Ljava/nio/file/Path;
+com/crystalgraphics/platform/service/CgHostI18n
+  access public,abstract,interface
+  extends java/lang/Object
+  field public,static,final NONE Lcom/crystalgraphics/platform/service/CgHostI18n;
+  field public,static,final SERVICE Lcom/crystalgraphics/platform/CgService;
+  method public language ()Ljava/lang/String;
+  method public,abstract translate (Ljava/lang/String;)Ljava/lang/String;
 com/crystalgraphics/platform/service/CgInputService
   access public,abstract,interface
   extends java/lang/Object
@@ -3123,9 +3279,39 @@ com/crystalgraphics/platform/service/CgLifecycleService
   access public,abstract,interface
   extends java/lang/Object
   method public,abstract onContextDestroy ()V
-  method public,abstract onContextInit (II)V
   method public,abstract onFrameRendered ()V
   method public,abstract onResize (II)V
+com/crystalgraphics/platform/service/CgModLoader
+  access public,final
+  extends java/lang/Object
+  field public,static,final HOST Lcom/crystalgraphics/platform/CgService;
+  method public,static development ()Z
+  method public,static isLoaded (Ljava/lang/String;)Z
+  method public,static mod (Ljava/lang/String;)Lcom/crystalgraphics/platform/service/CgModLoader$Mod;
+  method public,static mods ()Ljava/util/List;
+  method public,static name ()Ljava/lang/String;
+  method public,static roots ()Ljava/util/List;
+  method public,static version ()Ljava/lang/String;
+com/crystalgraphics/platform/service/CgModLoader$Host
+  access public,abstract,interface
+  extends java/lang/Object
+  field public,static,final NONE Lcom/crystalgraphics/platform/service/CgModLoader$Host;
+  method public roots ()Ljava/util/List;
+  method public,abstract development ()Z
+  method public,abstract mods ()Ljava/util/List;
+  method public,abstract name ()Ljava/lang/String;
+  method public,abstract version ()Ljava/lang/String;
+com/crystalgraphics/platform/service/CgModLoader$Mod
+  access public,final,record
+  extends java/lang/Record
+  method public <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;)V
+  method public id ()Ljava/lang/String;
+  method public name ()Ljava/lang/String;
+  method public roots ()Ljava/util/List;
+  method public version ()Ljava/lang/String;
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
 com/crystalgraphics/platform/service/CgNetworkChannel
   access public,abstract,interface
   extends java/lang/Object
@@ -3155,6 +3341,8 @@ com/crystalgraphics/platform/service/CgRenderingService
 com/crystalgraphics/platform/service/CgResourceService
   access public,abstract,interface
   extends java/lang/Object
+  method public,abstract namespaces ()Ljava/util/Set;
+  method public,abstract openStack (Ljava/lang/String;Ljava/lang/String;)Ljava/util/List;
   method public,abstract openStream (Ljava/lang/String;Ljava/lang/String;)Ljava/io/InputStream;
 com/crystalgraphics/platform/service/CgSoundService
   access public,abstract,interface
@@ -3236,16 +3424,44 @@ com/crystalgraphics/platform/world/CgEntityQuery
   method public,abstract pose (IF[D)Z
   method public,abstract rootVehicle (I)I
   method public,abstract within (DDDDDDLjava/util/function/IntConsumer;)V
+com/crystalgraphics/platform/world/CgHeldCamera
+  access public,final
+  extends java/lang/Object
+  field public flags I
+  field public fov F
+  field public pitch F
+  field public roll F
+  field public x D
+  field public y D
+  field public yaw F
+  field public z D
+  field public,static,final TIMEOUT_NANOS J
+  method public <init> ()V
+  method public expired ()Z
+  method public held ()Z
+  method public hidesHud ()Z
+  method public hidesPlayer ()Z
+  method public hold (DDDFFFFI)Z
+  method public live ()Z
+  method public release ()Z
 com/crystalgraphics/platform/world/CgHostCamera
   access public,abstract,interface
   extends java/lang/Object
   field public,static,final FOV I
+  field public,static,final HIDES_PLAYER I
+  field public,static,final HIDE_HUD I
+  field public,static,final HIDE_PLAYER I
+  field public,static,final LOCK I
   field public,static,final NONE Lcom/crystalgraphics/platform/world/CgHostCamera;
+  field public,static,final POSITION I
   field public,static,final ROLL I
   field public,static,final ROTATION I
   field public,static,final SERVICE Lcom/crystalgraphics/platform/CgService;
+  field public,static,final TRANSLATION I
   method public applied ()I
   method public capabilities ()I
+  method public hold (DDDFFFFI)V
+  method public release ()V
   method public,abstract offset (FFFFFFF)V
 com/crystalgraphics/platform/world/CgHostDebug
   access public,abstract,interface
@@ -3298,6 +3514,17 @@ com/crystalgraphics/platform/world/CgPlayerQuery
   method public,abstract playerId (Ljava/lang/Object;)Ljava/util/UUID;
   method public,abstract trackingChunk (Ljava/lang/Object;IILjava/util/function/Consumer;)V
   method public,abstract trackingEntity (Ljava/lang/Object;Ljava/util/function/Consumer;)V
+com/crystalgraphics/platform/world/CgWorldBegin
+  access public,final
+  extends java/lang/Object
+  method public,static atStage ()V
+  method public,static fire (F)V
+  method public,static isAtStage ()Z
+  method public,static listen (Lcom/crystalgraphics/platform/world/CgWorldBegin$Listener;)V
+com/crystalgraphics/platform/world/CgWorldBegin$Listener
+  access public,abstract,interface
+  extends java/lang/Object
+  method public,abstract begin (F)V
 com/crystalgraphics/platform/world/CgWorldEvents
   access public,final
   extends java/lang/Object
@@ -3381,17 +3608,14 @@ com/crystalgraphics/platform/world/CgWorldQuery
   method public,abstract tint (III)I
   method public,static blockLight (I)I
   method public,static skyLight (I)I
-com/crystalgraphics/platform/world/CgWorldSound
-  access public,abstract,interface
-  extends java/lang/Object
-  field public,static,final NONE Lcom/crystalgraphics/platform/world/CgWorldSound;
-  field public,static,final SERVICE Lcom/crystalgraphics/platform/CgService;
-  method public,abstract play (Ljava/lang/String;DDDFF)V
 com/crystalgraphics/platform/world/CgWorldStimulus
   access public,abstract,interface
   extends java/lang/Object
   field public,static,final NONE Lcom/crystalgraphics/platform/world/CgWorldStimulus;
   field public,static,final SERVICE Lcom/crystalgraphics/platform/CgService;
+  method public jumpDown ()Z
+  method public pressJump ()Z
+  method public turnLook (F)Z
   method public,abstract breakBlock (III)Z
   method public,abstract clear (DDDD)Z
   method public,abstract dragon (DDD)Z
@@ -3627,6 +3851,7 @@ com/crystalgraphics/trace/CgTrace
   method public,static markersIn (Lcom/crystalgraphics/trace/CgFrameRecord;)Ljava/util/List;
   method public,static name (Ljava/lang/String;)I
   method public,static newestFrames ()I
+  method public,static openZones (Ljava/lang/StringBuilder;Ljava/lang/String;)V
   method public,static pendingGcNotifications ()J
   method public,static resetForTesting ()V
   method public,static setEnabled (Lcom/crystalgraphics/trace/CgTraceChannel;Z)V
@@ -3776,6 +4001,7 @@ com/crystalgraphics/trace/CgTraceReport
   method public sources (Ljava/util/function/Function;)Lcom/crystalgraphics/trace/CgTraceReport;
   method public verdict ()Ljava/lang/String;
   method public worst (I)Ljava/lang/String;
+  method public worstGpu (I)Ljava/lang/String;
   method public zone (Ljava/lang/String;)Ljava/lang/String;
   method public,static of (Lcom/crystalgraphics/trace/CgTraceSnapshot;)Lcom/crystalgraphics/trace/CgTraceReport;
 com/crystalgraphics/trace/CgTraceReport$Tier
@@ -3791,6 +4017,19 @@ com/crystalgraphics/trace/CgTraceResult
   extends java/lang/Object
   field public,static,final VERSION I
   method public,static toJson (Lcom/crystalgraphics/trace/CgTraceSnapshot;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;J)Ljava/lang/String;
+com/crystalgraphics/trace/CgTraceRun
+  access public,final
+  extends java/lang/Object
+  field public,static,final HITCH_FRAMES I
+  method public,static budget (Ljava/util/function/DoubleSupplier;)V
+  method public,static dump (Ljava/lang/String;JJ)Ljava/nio/file/Path;
+  method public,static frame ()V
+  method public,static open ()V
+  method public,static resetForTesting ()V
+  method public,static root ()Ljava/nio/file/Path;
+  method public,static writeExitFiles ()V
+  method public,static writeMeta ()V
+  method public,static writeReport (Lcom/crystalgraphics/trace/CgTraceReport$Tier;)Ljava/nio/file/Path;
 com/crystalgraphics/trace/CgTraceSnapshot
   access public,final
   extends java/lang/Object

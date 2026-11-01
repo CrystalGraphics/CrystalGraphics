@@ -34,7 +34,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  *
  * <h3>Teardown</h3>
  *
- * <p>{@link #deleteAll()} is called from {@code CgEngineLifecycle.destroyContext()}: a target's storage is made by
+ * <p>{@link #deleteAll()} is called from {@code CgEngineLifecycle.shutdown()}: a target's storage is made by
  * the executor outside any registry, so <b>no registry sweeps it</b>, and the context frees it because the context
  * owns it.</p>
  */

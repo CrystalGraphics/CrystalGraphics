@@ -496,9 +496,9 @@ public final class LifecycleModern {
     /**
      * The game is closing.
      *
-     * <p>Stops the engine and frees nothing: Minecraft keeps dispatching render stages after its
-     * shutdown signal. Under Vulkan our device then closes from Blaze3D's destroy queue, before Minecraft's
-     * own device goes. @see CgEngineLifecycle#shutdown</p>
+     * <p>Frees what the engine holds, from the render thread with the context whole, then stops it: the render
+     * stages Minecraft keeps dispatching after its shutdown signal reach nothing. Under Vulkan our device then closes
+     * from Blaze3D's destroy queue, before Minecraft's own device goes. @see CgEngineLifecycle#shutdown</p>
      */
     public static void shutdown() {
         CgEngineLifecycle.shutdown();

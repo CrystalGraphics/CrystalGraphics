@@ -12,7 +12,7 @@ public final class LifecycleService implements CgLifecycleService {
 
     @Override
     public void onContextDestroy() {
-        CgEngineLifecycle.destroyContext();
+        CgEngineLifecycle.shutdown();
     }
 
     @Override

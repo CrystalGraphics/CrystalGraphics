@@ -135,12 +135,14 @@ public final class CgTraceLog {
         return false;
     }
 
-    /** Writes {@code content} into the run directory under {@code name}, on the calling thread. */
+    /** Writes {@code content} into the run directory under {@code name} (a relative path), on the calling thread. */
     public static void write(String name, String content) {
         Path dir = directory;
         if (dir == null) return;
         try {
-            Files.write(dir.resolve(name), content.getBytes(StandardCharsets.UTF_8));
+            Path file = dir.resolve(name);
+            Files.createDirectories(file.getParent());
+            Files.write(file, content.getBytes(StandardCharsets.UTF_8));
         } catch (IOException ignored) {
             // As above: a diagnostic that cannot write stays quiet rather than failing a frame.
         }

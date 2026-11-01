@@ -86,7 +86,7 @@ CgTexture getOrCreate(String key, CgTextureSpec spec, Supplier<CgTexture> maker)
 CgTexture2D getOrCreate(String path, CgTextureSpec spec);                       // CgTexture2D.create; fallback for no path
 CgTexture2D getFallback();                                                       // the shared CgTexture2D.missing()
 void reloadAll();                                                                // a resource reload
-void freeAll();                                                                  // CgEngineLifecycle.destroyContext()
+void freeAll();                                                                  // CgEngineLifecycle.shutdown()
 ```
 
 - **Keyed by the paths and the spec**: the paths joined by `\0`, then `CgTextureSpec` by value. One image sampled two

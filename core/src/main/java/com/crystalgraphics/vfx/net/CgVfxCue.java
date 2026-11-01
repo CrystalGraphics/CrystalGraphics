@@ -227,7 +227,7 @@ public final class CgVfxCue {
         }
 
         /**
-         * Whether the look it plays is precached at the graphics start, so its first play compiles and loads nothing:
+         * Whether the look it plays is precached at the graphics context start, so its first play compiles and loads nothing:
          * true unless told. A cue played rarely may opt out and warm at its first play, a beat late.
          *
          * <pre>{@code

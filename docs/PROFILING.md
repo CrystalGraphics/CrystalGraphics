@@ -233,10 +233,19 @@ the game:
     -Dcrystalgraphics.trace.channels=crystalgraphics.world,crystalgraphics.gl,gpu
 ```
 
-On an installed client, put the same `-D` in the instance's JVM arguments. A host that gives the trace a
-run directory (CrystalGUI's desktop does) writes `report.txt` and `meta.json` into
-`<game>/crystalgui/cache/trace/latest/` on exit; CrystalGraphics alone writes nothing to disk, and a mod on
-it reads `CgTraceReport.of(CgTrace.snapshot())` itself. **Profile world rendering in the game**, not the
+On an installed client, put the same `-D` in the instance's JVM arguments. ModDevGradle and Loom do not forward
+Gradle's `-D`: a consumer mod's dev run sets them in its run config (`runs { client { systemProperty ... } }`).
+
+Every run writes `<game>/crystalgraphics/cache/trace/latest/` (`CgTraceRun`, opened by the engine's pre-init; the
+previous runs rotate beside it): `trace.log` as it goes, `meta.json` and `report.txt` at shutdown.
+`-Dcrystalgraphics.trace.dir=<path>` moves it; with the cache off and no dir, nothing is written.
+
+**A hitch you cannot script** — the first hit of a move, a stutter on entering a chunk:
+`-Dcrystalgraphics.trace.hitchDumpMs=50` writes, for each frame slower than that after the run's first 240,
+`latest/hitch-<frame>/` with the 240 frames before it: `report.txt` (the breakdown), `report-full.txt` and
+`slow.txt` (the 20 slowest, each in full; the hitch is the first). At most `-Dcrystalgraphics.trace.hitchDumps` (5)
+a run, one per burst; it sizes the ring itself and records `crystalgraphics` if no channel is named.
+`CgTraceRun.dump(label, from, to)` writes any range of one's own. **Profile world rendering in the game**, not the
 harness: the world passes only exist there.
 
 Unattended, a demo scene in a world (`CgRenderDemo`): `-Dcrystalgraphics.demo.profile=<frames>` warms up
@@ -554,7 +563,10 @@ same 9 ms moved to the thumbnails'. Switch the suspect off and see where the tim
 | `-Dcrystalgraphics.trace.firstFrames=<n>` | first frames kept for good (0) |
 | `-Dcrystalgraphics.trace.zones=<n>` | zones per thread at most (65,536) |
 | `-Dcrystalgraphics.trace.countersPerFrame=<n>` | ceiling on counter values a frame may hold before the store wraps (1,024) |
-| `-Dcrystalgraphics.trace.report=verdict\|breakdown\|full` | the tier CrystalGUI's run directory writes on exit (breakdown) |
+| `-Dcrystalgraphics.trace.report=verdict\|breakdown\|full` | the tier `report.txt` is written at on exit (breakdown) |
+| `-Dcrystalgraphics.trace.dir=<path>` | where the runs go (`<game>/crystalgraphics/cache/trace/`) |
+| `-Dcrystalgraphics.trace.hitchDumpMs=<ms>` | each frame slower than this: the 240 frames before it to `latest/hitch-<frame>/` (off) |
+| `-Dcrystalgraphics.trace.hitchDumps=<n>` | hitch dumps a run at most (5) |
 | `-Dcrystalgraphics.harness.profile=<frames>` | harness: warm up, record that many, write `profile-harness-<n>f/`, stop |
 | `-Dcrystalgraphics.harness.profile.json=true` | also write `trace.json` for ui.perfetto.dev |
 | `-Dcrystalgraphics.harness.repoRoot=<dir>` | where report sources are made relative to (the outermost Gradle build) |

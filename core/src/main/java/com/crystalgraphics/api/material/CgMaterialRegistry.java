@@ -347,7 +347,7 @@ public final class CgMaterialRegistry {
     /**
      * Deletes all tracked material instances (freeing per-instance property UBOs), then
      * cascades to {@link CgMaterialShaderRegistry#deleteAll()} to release GL shader programs.
-     * Idempotent. Must be called before {@code CgEngineLifecycle.destroyContext()}.
+     * Idempotent. Must be called before {@code CgEngineLifecycle.shutdown()}.
      *
      * <p>Material instances must be deleted before shader assets so that property UBOs
      * are freed while the GL context is still valid.</p>

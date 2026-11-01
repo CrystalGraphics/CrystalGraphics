@@ -39,7 +39,7 @@ The class is intentionally organized in pipeline order. Read it top-to-bottom.
 the shared default-config instance — matching `CgTextureManager`, `CgMaterialRegistry`
 and every other GPU-resource registry in this codebase. The no-arg
 constructor is private; only `get()` and the two public `(atlasSize[, config])`
-constructors remain. `CgEngineLifecycle.destroyContext()` calls
+constructors remain. `CgEngineLifecycle.shutdown()` calls
 `CgFontRegistry.get().releaseAll()` to tear it down, exactly like
 `CgTextureManager.get().freeAll()`/`CgMaterialRegistry.get().deleteAll()`.
 
@@ -150,7 +150,7 @@ The authoritative path is:
   harness testing of custom atlas sizes/configs.
 - Do not call `.releaseAll()` on the shared `get()` instance from an individual consumer's
   dispose/delete method — that would tear down the registry for every other consumer
-  still using it. Only `CgEngineLifecycle.destroyContext()` should call it on the
+  still using it. Only `CgEngineLifecycle.shutdown()` should call it on the
   singleton. (Non-singleton test instances constructed via the parameterized
   constructors are fine to release themselves — they're not shared.)
 - Do not make `glyphGenerationExecutor` `final` again — `releaseAll()` needs to replace

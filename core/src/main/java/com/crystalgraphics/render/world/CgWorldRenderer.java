@@ -31,6 +31,7 @@ import com.crystalgraphics.gl.material.CgMaterialShader;
 import com.crystalgraphics.gl.material.CgMaterialShaderRegistry;
 import com.crystalgraphics.job.CgJob;
 import com.crystalgraphics.job.CgJobLane;
+import com.crystalgraphics.lifecycle.CgGraphicsLifecycle;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.animation.CgAnimInstance;
 import com.crystalgraphics.gl.buffer.CgReadback;
@@ -507,6 +508,8 @@ public final class CgWorldRenderer {
      * camera is still last frame's, and the client world up to its shakes, once a ring frame.
      */
     private void worldBegin(float partialTick) {
+        // Minecraft runs its camera hook for a frame or two after the engine has shut down.
+        if (CgGraphicsLifecycle.isContextDestroyed() || CgGraphicsLifecycle.isStoodDown()) return;
         CgHostFrame host = CgRenderStage.WORLD_OPAQUE.host();
         host.set(partialTick, host.width(), host.height(), host.mainFramebuffer());
         CgWorld.client().begin(host.view(), CgFrameRing.frame());

@@ -43,8 +43,8 @@ The engine starts in `FrameHooks.endFrame` once `LifecycleModern.reload()` has s
 finish: on the title screen, so a world's first frame compiles almost nothing. `LifecycleModern.opaquePass`
 and `transparentPass`, from the loader's world-render hooks, fire `CgRenderStage.WORLD_OPAQUE` and
 `WORLD_TRANSPARENT`. At shutdown the loaders call
-`CgEngineLifecycle.shutdown()` (through `LifecycleModern.shutdown`), which stops the engine and frees nothing: Minecraft dispatches render
-stages for a frame or two after its shutdown signal. `destroyContext()` is for a host where rendering
-has definitively stopped.
+`CgEngineLifecycle.shutdown()` (through `LifecycleModern.shutdown`), which frees from the render thread and stops the
+engine. Minecraft dispatches render stages and its camera hook for a frame or two after its shutdown signal, so
+every engine entry is a no-op after it.
 
 A GUI-only frame ends no CrystalGraphics frame today — `runtime/mc/modern/common/CLAUDE.md` § *Open*.

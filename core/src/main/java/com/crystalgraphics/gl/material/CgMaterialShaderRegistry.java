@@ -147,7 +147,7 @@ public final class CgMaterialShaderRegistry {
      * <p>Must be called after all {@code CgMaterial} instances have been deleted, so that
      * per-material property UBOs are freed before the GL programs are released.</p>
      *
-     * <p>Called automatically by {@code CgEngineLifecycle.destroyContext()}. Do not call directly.</p>
+     * <p>Called automatically by {@code CgEngineLifecycle.shutdown()}. Do not call directly.</p>
      */
     public void deleteAll() {
         if (!deleted) {

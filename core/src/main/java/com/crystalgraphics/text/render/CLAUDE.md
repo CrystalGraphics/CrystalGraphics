@@ -141,7 +141,7 @@ Every `create()`/`createManualSized()` call registers with the singleton
   `createManualSized()` instead — its dimensions come from `UIWindow`'s own independent
   resize path, with no proven lockstep guarantee, so it still manually calls
   `textRenderer.context().updateOrtho(...)` in `beginFrame(w, h)`.
-- `deleteAll()` (called from `CgEngineLifecycle.destroyContext()`, before the
+- `deleteAll()` (called from `CgEngineLifecycle.shutdown()`, before the
   VAO/VBO bulk sweep) deletes any renderer still alive as a backstop — individual
   owners (`CgUiPaintContext`, `HUDRenderer`, harness scenes) remain responsible for
   calling `delete()` promptly; this registry does not change that expectation.

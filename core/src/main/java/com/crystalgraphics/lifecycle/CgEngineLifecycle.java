@@ -13,6 +13,8 @@ import com.crystalgraphics.asset.load.CgAssetMounts;
 import com.crystalgraphics.net.CgNetwork;
 import com.crystalgraphics.platform.service.CgNetworkChannel;
 import com.crystalgraphics.render.CgFrameClock;
+import com.crystalgraphics.platform.gl.CgGL;
+import com.crystalgraphics.trace.CgTraceRun;
 import com.crystalgraphics.world.CgPlayers;
 
 /**
@@ -63,6 +65,7 @@ public final class CgEngineLifecycle {
     public static synchronized void preInit() {
         if (preInit) return;
         preInit = true;
+        CgTraceRun.open();
         CgAssetMounts.mount();
         listeners.dispatch("onPreInit", CgLifecycleListener::onPreInit);
     }
@@ -97,7 +100,7 @@ public final class CgEngineLifecycle {
      * }</pre>
      *
      * <ul>
-     *   <li>Does nothing after {@link #destroyContext} or {@link #shutdown}, or once the engine stood down.</li>
+     *   <li>Does nothing after {@link #shutdown}, or once the engine stood down.</li>
      *   <li>Post-init follows the graphics start on a client because what loads is precached by the effects it installs.</li>
      * </ul>
      */
@@ -108,29 +111,25 @@ public final class CgEngineLifecycle {
     }
 
     /**
-     * Frees every GL resource the engine holds, listeners' first, then stops it: for a host whose rendering has stopped
-     * for good. Terminal: no context starts again in this process. GL thread only.
+     * Stops the engine for good, the one way a host does: on the thread that owns the context it first frees every
+     * resource the engine holds, listeners' first ({@code onContextDestroy}), then listeners hear {@code onShutdown}
+     * and the run's trace files are written. Terminal; a second call does nothing.
      *
      * <pre>{@code
-     * CgEngineLifecycle.destroyContext();   // the game window closing
+     * CgEngineLifecycle.shutdown();   // the game is closing, from its render thread with the context still whole
      * }</pre>
-     */
-    public static void destroyContext() {
-        CgGraphicsLifecycle.destroyContext();
-    }
-
-    /**
-     * Stops the engine and frees nothing: for a host still dispatching frames after its shutdown signal, as Minecraft
-     * does. Every engine entry becomes a no-op; listeners hear {@code onShutdown} once. Terminal.
      *
-     * <pre>{@code
-     * CgEngineLifecycle.shutdown();   // the game is closing
-     * }</pre>
+     * <ul>
+     *   <li>Called off that thread, it frees nothing: the OS reclaims it at exit.</li>
+     *   <li>A host still dispatching frames after it (Minecraft does) reaches nothing: every engine entry is a no-op
+     *       from here.</li>
+     * </ul>
      */
     public static void shutdown() {
+        if (CgGL.mayIssueGl()) CgGraphicsLifecycle.destroyContext();
         CgGraphicsLifecycle.shutdown();
     }
-    
+
     // -- The game's ticks, and its server's start and stop ---------------------------------------------------------
 
     private static final List<Runnable> SERVER_TICK = new CopyOnWriteArrayList<>(), CLIENT_TICK = new CopyOnWriteArrayList<>();
@@ -258,6 +257,8 @@ public final class CgEngineLifecycle {
 
     static void stopped() {
         listeners.dispatch("onShutdown", CgLifecycleListener::onShutdown);
+        // After the listeners, while the mod loader's classes still load: the JVM's exit is too late for that.
+        CgTraceRun.writeExitFiles();
     }
 
     // Non-capturing, so a frame's dispatch allocates nothing.

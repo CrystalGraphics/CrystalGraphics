@@ -15,7 +15,7 @@ import com.crystalgraphics.platform.service.CgLifecycleService;
  */
 public final class LifecycleService1710 implements CgLifecycleService {
 
-    @Override public void onContextDestroy()          { CgEngineLifecycle.destroyContext(); }
+    @Override public void onContextDestroy()          { CgEngineLifecycle.shutdown(); }
     @Override public void onResize(int w, int h)      { CgGraphicsLifecycle.onResize(w, h); }
     @Override public void onFrameRendered()           { CgGraphicsLifecycle.tickFrame(); }
 }

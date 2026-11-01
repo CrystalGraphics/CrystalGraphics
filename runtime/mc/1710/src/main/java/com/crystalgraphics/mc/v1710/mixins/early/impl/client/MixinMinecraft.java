@@ -35,7 +35,7 @@ public class MixinMinecraft {
      * <b>Frees the GL context's resources at game exit.</b>
      *
      * <p>{@code onContextDestroy} was implemented on every loader's lifecycle service and <b>called by
-     * none of them</b>, so {@code CgEngineLifecycle.destroyContext()} never ran on 1.7.10 — every
+     * none of them</b>, so {@code CgEngineLifecycle.shutdown()} never ran on 1.7.10 — every
      * registry's {@code deleteAll}, every glyph atlas, every framebuffer, and CrystalGUI's own
      * {@code UiGpu.destroy()} with its {@code createOwned} targets that no registry sweep can
      * reach. The process was exiting anyway, which is why nobody noticed; that is a reason it did not

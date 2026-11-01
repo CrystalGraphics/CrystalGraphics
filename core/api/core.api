@@ -7372,7 +7372,6 @@ com/crystalgraphics/lifecycle/CgEngineLifecycle
   extends java/lang/Object
   method public,static addListener (Lcom/crystalgraphics/lifecycle/CgLifecycleListener;)V
   method public,static clientTick ()V
-  method public,static destroyContext ()V
   method public,static ensureGraphicsContext (II)V
   method public,static init (Lcom/crystalgraphics/platform/service/CgNetworkChannel;)V
   method public,static onClientTick (Ljava/lang/Runnable;)V

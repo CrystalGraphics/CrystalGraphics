@@ -11,7 +11,7 @@ import java.nio.ByteBuffer;
  *
  * <p>Must be initialised once on the GL thread via {@link #init()} (typically called from
  * {@code CgEngineLifecycle.ensureGraphicsContext()}), and freed via {@link #destroy()} during
- * context teardown (called automatically by {@code CgEngineLifecycle.destroyContext()}).</p>
+ * context teardown (called automatically by {@code CgEngineLifecycle.shutdown()}).</p>
  *
  * <p>Fields are {@code null} before {@link #init()} and after {@link #destroy()}.</p>
  */
@@ -63,7 +63,7 @@ public final class CgFallbackTextures {
 
     /**
      * Frees the fallback textures and sets the fields to {@code null}.
-     * Called automatically by {@code CgEngineLifecycle.destroyContext()}.
+     * Called automatically by {@code CgEngineLifecycle.shutdown()}.
      */
     public static void destroy() {
         deleteAndNull(WHITE_1x1);

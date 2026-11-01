@@ -39,7 +39,7 @@ import java.util.Map;
  * {@link CgBufferLifetime}: two lifetimes at one binding is a conflict, and throws.</p>
  *
  * <p>All registered buffers are deleted by {@link #deleteAll()}, which is called from
- * {@code CgEngineLifecycle.destroyContext()}.</p>
+ * {@code CgEngineLifecycle.shutdown()}.</p>
  */
 public final class CgShaderBufferRegistry {
 
@@ -225,7 +225,7 @@ public final class CgShaderBufferRegistry {
 
     /**
      * Deletes all registered buffers and clears both caches.
-     * Called by {@code CgEngineLifecycle.destroyContext()}.
+     * Called by {@code CgEngineLifecycle.shutdown()}.
      * Must be called on the GL thread.
      */
     public void deleteAll() {

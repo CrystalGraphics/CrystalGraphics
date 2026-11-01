@@ -17,7 +17,7 @@ import java.util.Set;
  * {@code CgFontDemo}, harness scenes, etc.) remain responsible for calling
  * {@link CgTextRenderer#delete()} promptly when they're done with a renderer — this
  * registry is a <strong>backstop</strong>, not the primary release path. {@link #deleteAll()}
- * (called from {@code CgEngineLifecycle.destroyContext()})
+ * (called from {@code CgEngineLifecycle.shutdown()})
  * sweeps any renderer still alive at GL context teardown, exactly like every other
  * GPU-resource registry in this codebase.</p>
  *
@@ -92,7 +92,7 @@ public final class CgTextRendererRegistry {
      * {@link CgTextRenderer#delete()} themselves — then clears all tracking. Safe to
      * call even when every renderer was already deleted by its owner ({@code delete()}
      * is idempotent). Called by
-     * {@code CgEngineLifecycle.destroyContext()}.
+     * {@code CgEngineLifecycle.shutdown()}.
      */
     public void deleteAll() {
         // Copy first: CgTextRenderer.delete() calls back into unregister(), which would
