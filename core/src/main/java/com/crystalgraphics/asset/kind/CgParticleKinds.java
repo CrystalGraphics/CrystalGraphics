@@ -55,6 +55,15 @@ public final class CgParticleKinds {
             .validator(CgParticleKinds::builtInModule)
             .register();
 
+    /**
+     * {@code shape_location}'s {@code add_velocity}: the spec declares it a struct and names its members in
+     * {@code modules.md}, so they are declared here, before the types freeze.
+     */
+    public static final CgType SHAPE_ADD_VELOCITY = CgTypes.struct("crystalgraphics:shape_location.add_velocity")
+            .property("outward", FLOAT)
+            .property("radial", BOOL)
+            .register();
+
     static final CgType DETERMINISM = CgTypes.struct("crystalgraphics:determinism")
             .property("seed", INT)
             .register();
