@@ -10,6 +10,8 @@ Queue = "Transparent"
 
 Properties {
     _ValueNoise ("Value noise", sampler3D) = "cg_value_noise"
+    _StarLayers ("Star layers, up to 3", float) = 3.0
+    _Moons ("Moons, up to 2", float) = 2.0
 }
 
 struct v2f { vec3 dir; };
@@ -45,6 +47,6 @@ Pass {
         float fogStart = range - clamp(range * 0.1, 4.0, 64.0);
         float fade = smoothstep(fogStart - range * 0.3, fogStart, reach);
         if (fade <= 0.0) discard;
-        fragColor = vec4(vfx_sky(_ValueNoise, d, CG_TIME, pixel), fade);
+        fragColor = vec4(vfx_sky(_ValueNoise, d, CG_TIME, pixel, int(_StarLayers), int(_Moons)), fade);
     }
 }

@@ -95,7 +95,9 @@ vec3 sky_moon(int k, float t, vec3 planetDir, float planetSize, vec3 ringU, vec3
 #define VFX_SKY_FAR_Z(w) ((w) * (cg_DepthParams.x > 0.5 ? (cg_DepthParams.y > 0.5 ? 1.0e-5 : -1.0 + 1.0e-5) : 1.0 - 1.0e-5))
 
 // The sky toward {@code d}, a unit vector, at {@code t} seconds, a pixel {@code pixel} radians across; tone mapped.
-vec3 vfx_sky(sampler3D noise, vec3 d, float t, float pixel) {
+// starLayers (up to 3) and moons (up to 2) come from material properties: loops a property bounds are not unrolled,
+// so the stars and the moons compile once each rather than once a layer and a moon (NVIDIA ~0.3 s a link).
+vec3 vfx_sky(sampler3D noise, vec3 d, float t, float pixel, int starLayers, int moons) {
     const vec3 KEY_COLOR = vec3(3.0, 2.55, 1.8);
     const vec3 RIM_COLOR = vec3(1.2, 1.7, 3.2);
     const vec3 FILL_COLOR = vec3(2.4, 0.35, 0.55);
@@ -134,9 +136,12 @@ vec3 vfx_sky(sampler3D noise, vec3 d, float t, float pixel) {
     float hidden = clamp(dust * 0.8 + rift * 0.85, 0.0, 0.95);
 
     // Stars: a fine dense layer, thickest in the band, a middle one, and a few bright ones with spikes.
-    vec3 stars = sky_stars(d, 260.0, 0.75 - 0.35 * band, pixel, 0.0, 1.0, t) * (0.5 + band)
-            + sky_stars(d, 70.0, 0.88, pixel, 0.0, 2.0, t)
-            + sky_stars(d, 16.0, 0.82, pixel, 0.55, 3.0, t);
+    vec3 stars = vec3(0.0);
+    for (int k = 0; k < min(starLayers, 3); k++) {
+        float density = k == 0 ? 260.0 : k == 1 ? 70.0 : 16.0;
+        float keep = k == 0 ? 0.75 - 0.35 * band : k == 1 ? 0.88 : 0.82;
+        stars += sky_stars(d, density, keep, pixel, k == 2 ? 0.55 : 0.0, float(k + 1), t) * (k == 0 ? 0.5 + band : 1.0);
+    }
     color = (color + stars) * (1.0 - hidden);
 
     // The key: a white-gold star, blazing, with a starburst of rays turning slowly.
@@ -213,7 +218,7 @@ vec3 vfx_sky(sampler3D noise, vec3 d, float t, float pixel) {
     // The moons: the nearer one the ray meets, and its lit face.
     float moonT = 1.0e9;
     vec3 moonColor = vec3(0.0);
-    for (int k = 0; k < 2; k++) {
+    for (int k = 0; k < min(moons, 2); k++) {
         float moonR;
         vec3 m = sky_moon(k, t, planetDir, planetSize, ringU, ringW, spin, moonR);
         float mb = dot(d, m);
@@ -253,7 +258,7 @@ vec3 vfx_sky(sampler3D noise, vec3 d, float t, float pixel) {
         float sun = max(dot(normal, VFX_KEY_DIR), 0.0);
         // Where a moon passes between the planet and the key sun, its shadow falls on the clouds.
         vec3 onPlanet = d * planetT;
-        for (int k = 0; k < 2; k++) {
+        for (int k = 0; k < min(moons, 2); k++) {
             float moonR;
             vec3 m = sky_moon(k, t, planetDir, planetSize, ringU, ringW, spin, moonR);
             float toward = dot(m - onPlanet, VFX_KEY_DIR);
