@@ -45,8 +45,8 @@ import java.util.stream.Stream;
  *   <li>{@link #key} is null where nothing is kept: the driver lists no binary formats (macOS, the tracked backend),
  *       {@code -Dcrystalgraphics.shader.binaryCache=false}, or {@code -Dcrystalgraphics.cache=false}.</li>
  *   <li>A binary the driver refuses is deleted, and the program compiles as if there had been none.</li>
- *   <li>Every source change is a new key, so the folder is bounded: as it opens, the least recently loaded go
- *       past {@code CgCacheDirectory.MOST} ({@code CgCacheDirectory.prune}).</li>
+ *   <li>Every source change is a new key, so the folder is bounded: the engine prunes it once a launch
+ *       ({@code CgCacheDirectory.prune}), and a loaded binary is marked used.</li>
  * </ul>
  */
 public final class CgProgramBinaryCache {
@@ -165,7 +165,6 @@ public final class CgProgramBinaryCache {
             return null;
         }
         CgJob.run(() -> deleteOthers(root, driver));
-        CgCacheDirectory.prune(dir);
         return dir;
     }
 

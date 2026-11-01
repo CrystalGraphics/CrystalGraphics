@@ -16,6 +16,8 @@ import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Where CrystalGraphics keeps what it can rebuild — compiled shaders, pipeline caches — under the game directory's
@@ -67,28 +69,34 @@ public final class CgCacheDirectory {
     }
 
     /**
-     * Bounds a folder of entries named by what made them: once its files pass {@link #MOST} bytes, the least recently
-     * used go until it holds {@link #KEEP}. A content-addressed cache needs it: every source change is a new key and the
-     * old entry is never read again. Runs on a daemon thread; the folder's subfolders are included.
+     * The kinds keyed by what made their entries, which {@link #prune} bounds: every source change is a new key, and the
+     * old entry is never read again. A kind of one file a driver ({@code vulkan}, {@code pipelines}) needs none.
+     */
+    public static final String[] PRUNED = {"glprogram", "spirv"};
+
+    private static final Set<String> PRUNED_ALREADY = ConcurrentHashMap.newKeySet();
+
+    /**
+     * Bounds kind {@code name}'s folder, subfolders included: past {@link #MOST} bytes, the least recently used go until
+     * it holds {@link #KEEP}. Synchronous, so run it on a worker; once a process for each kind, later calls doing
+     * nothing. The engine prunes {@link #PRUNED} once the graphics start has built its programs, when this session's
+     * entries have been used.
      *
      * <pre>{@code
-     * Path dir = CgCacheDirectory.of("glprogram");
-     * if (dir != null) CgCacheDirectory.prune(dir);   // once, as the cache opens
-     * ...
-     * CgCacheDirectory.used(file);                    // at every hit
+     * CgJob.run(() -> { for (String kind : CgCacheDirectory.PRUNED) CgCacheDirectory.prune(kind); });
+     * CgCacheDirectory.used(file);   // a cache, at every hit
      * }</pre>
      *
      * <ul>
-     *   <li>"Used" is the file's modified time: call {@link #used} at every hit, or an entry read every launch ages
-     *       out as if never read.</li>
-     *   <li>A file deleted while a load races it reads as missing: the caller compiles, as on any miss.</li>
+     *   <li>"Used" is the file's modified time: a cache calls {@link #used} at every hit, or an entry read every launch
+     *       ages out as if never read.</li>
+     *   <li>A file deleted while a load races it reads as missing: the cache compiles, as on any miss.</li>
      * </ul>
      */
-    public static void prune(Path dir) {
-        Thread pruning = new Thread(() -> pruneNow(dir, MOST, KEEP), "crystalgraphics-cache-prune");
-        pruning.setDaemon(true);
-        pruning.setPriority(Thread.MIN_PRIORITY);
-        pruning.start();
+    public static void prune(String name) {
+        if (!PRUNED_ALREADY.add(name)) return;
+        Path dir = of(name);
+        if (dir != null) pruneNow(dir, MOST, KEEP);
     }
 
     /** Marks {@code file} used now, for {@link #prune}. A failure is ignored: the entry only ages sooner. */

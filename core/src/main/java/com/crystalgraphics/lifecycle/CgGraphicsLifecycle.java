@@ -18,7 +18,9 @@ import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.gl.state.CgGlCensus;
 import com.crystalgraphics.platform.gl.state.CgGlScope;
 import com.crystalgraphics.platform.gl.state.CgGlState;
+import com.crystalgraphics.platform.service.CgCacheDirectory;
 import com.crystalgraphics.platform.service.CgLifecycleService;
+import com.crystalgraphics.job.CgJob;
 import com.crystalgraphics.api.material.CgMaterialRegistry;
 import com.crystalgraphics.render.post.CgPostStack;
 import com.crystalgraphics.render.world.CgWorldRenderer;
@@ -207,6 +209,8 @@ public final class CgGraphicsLifecycle {
                 CgWorldProbe.installIfEnabled();
                 // The engine's own passes, built together now rather than each at its first draw.
                 CgWorldRenderer.get().awaitPrograms();
+                // After the boot used this session's binaries, so the prune keeps them; a worker's, beside the frames.
+                CgJob.run(() -> { for (String kind : CgCacheDirectory.PRUNED) CgCacheDirectory.prune(kind); });
                 // From here warm-ups spread over frames: the demo's first scene took the first frame 0.7-10 s on 1.7.10.
                 CgWarmBudget.start();
 

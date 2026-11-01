@@ -26,7 +26,7 @@ import java.security.NoSuchAlgorithmException;
  * }</pre>
  *
  * <ul>
- *   <li>Over {@code CgCacheDirectory.MOST} bytes when opened, the least recently read go ({@code CgCacheDirectory.prune}).</li>
+ *   <li>Bounded by the engine's prune, once a launch ({@code CgCacheDirectory.prune}); a read marks its file used.</li>
  *   <li>A file that is not SPIR-V is a miss, and the compile after it writes it again.</li>
  *   <li>Any I/O failure is a miss or an unkept module, logged once: never an error.</li>
  * </ul>
@@ -51,7 +51,6 @@ final class SpirvCache {
         } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException(e);
         }
-        CgCacheDirectory.prune(dir);
     }
 
     /** The module compiled from {@code source} as {@code kind} by a launch before, or null. */
