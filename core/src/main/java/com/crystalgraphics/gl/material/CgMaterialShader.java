@@ -18,6 +18,7 @@ import com.crystalgraphics.api.material.CgRenderQueue;
 import com.crystalgraphics.api.shader.CgPreprocessorException;
 import com.crystalgraphics.api.shader.CgShader;
 import com.crystalgraphics.api.shader.CgShaderPreprocessor;
+import com.crystalgraphics.api.shader.CgShaderProgram;
 import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.compute.lower.CgLoweredEmitter;
 import com.crystalgraphics.compute.source.CgBufferDecl;
@@ -636,7 +637,7 @@ public final class CgMaterialShader implements CgReloadable {
                 processedFrag = new CgShaderPreprocessor().process(compiled.fragmentSource(), resourcePath);
             }
 
-            CgShader newShader = build(processedVert, processedFrag, compiled.vertexFormat());
+            CgShader newShader = build(processedVert, processedFrag, compiled.vertexFormat(), pass.name());
             if (!deferring && !newShader.isCompiled()) {
                 String err = newShader.getLastCompileError();
                 newShader.delete();
@@ -847,9 +848,10 @@ public final class CgMaterialShader implements CgReloadable {
     }
 
     /** A program from sources already preprocessed: submitted while {@link #deferring}, compiled otherwise. */
-    private CgShader build(String vert, String frag, CgVertexFormat format) {
+    private CgShader build(String vert, String frag, CgVertexFormat format, String pass) {
         CgTrace.marker(CgChannels.GL, "material.compile", resourcePath);   // which program a frame compiled
-        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, deferring ? "material.glSubmit" : "material.glCompile")) {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, deferring ? "material.glSubmit" : "material.glCompile");
+             CgShaderProgram.Labelled named = CgShaderProgram.labelled(resourcePath + " " + pass)) {
             return deferring ? CgShaderFactory.submit(vert, frag, format) : CgShaderFactory.fromSource(vert, frag, format);
         }
     }
@@ -921,7 +923,9 @@ public final class CgMaterialShader implements CgReloadable {
         waited(key);
         String processedVert = new CgShaderPreprocessor().process(compiled.vertexSource(), resourcePath);
         String processedFrag = new CgShaderPreprocessor().process(compiled.fragmentSource(), resourcePath);
-        return keepVariant(key, CgShaderFactory.fromSource(processedVert, processedFrag, compiled.vertexFormat()));
+        try (CgShaderProgram.Labelled named = CgShaderProgram.labelled(resourcePath + " " + key)) {
+            return keepVariant(key, CgShaderFactory.fromSource(processedVert, processedFrag, compiled.vertexFormat()));
+        }
     }
 
     /**
@@ -962,7 +966,8 @@ public final class CgMaterialShader implements CgReloadable {
                     && ahead.buffers().equals(attachedBuffers)) {
                 for (String read : ahead.reads()) CgIO.noteRead(read);
                 CgTrace.marker(CgChannels.GL, "material.compile", resourcePath + " " + key.keywords());
-                try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "material.glSubmit")) {
+                try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "material.glSubmit");
+                     CgShaderProgram.Labelled named = CgShaderProgram.labelled(resourcePath + " " + key)) {
                     pendingVariants.put(key, CgShaderFactory.submit(made.vertex(), made.fragment(),
                             made.compiled().vertexFormat()));
                 }
@@ -976,7 +981,8 @@ public final class CgMaterialShader implements CgReloadable {
             return true;
         }
         CgTrace.marker(CgChannels.GL, "material.compile", resourcePath + " " + key.keywords());
-        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "material.glSubmit")) {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "material.glSubmit");
+             CgShaderProgram.Labelled named = CgShaderProgram.labelled(resourcePath + " " + key)) {
             String vert = new CgShaderPreprocessor().process(compiled.vertexSource(), resourcePath);
             String frag = new CgShaderPreprocessor().process(compiled.fragmentSource(), resourcePath);
             pendingVariants.put(key, CgShaderFactory.submit(vert, frag, compiled.vertexFormat()));
@@ -1770,7 +1776,7 @@ public final class CgMaterialShader implements CgReloadable {
         String depthVert = new CgShaderPreprocessor().process(depthCompiled.vertexSource(), resourcePath);
         String depthFrag = new CgShaderPreprocessor().process(depthCompiled.fragmentSource(), resourcePath);
 
-        CgShader depthShader = build(depthVert, depthFrag, depthCompiled.vertexFormat());
+        CgShader depthShader = build(depthVert, depthFrag, depthCompiled.vertexFormat(), "Depth");
         if (!deferring && !depthShader.isCompiled()) {
             String err = depthShader.getLastCompileError();
             depthShader.delete();

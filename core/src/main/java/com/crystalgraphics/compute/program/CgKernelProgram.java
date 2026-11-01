@@ -139,7 +139,9 @@ public final class CgKernelProgram {
     /** {@link #submit(CgComputeSource, CgKernelDecl, Set, CgKernelTarget)} from sources made already, on a worker. */
     public static Pending submit(Sources made, CgKernelDecl kernel, Set<String> keywords) {
         CgShaderProgram program = CgShaderProgram.create();
-        program.submitComputeLink(made.expanded());
+        try (CgShaderProgram.Labelled named = CgShaderProgram.labelled(made.source().path() + " " + kernel.name() + keywords)) {
+            program.submitComputeLink(made.expanded());
+        }
         return new Pending(made.source(), kernel, keywords, made.glsl(), made.expanded(), program, made.target().checked());
     }
 

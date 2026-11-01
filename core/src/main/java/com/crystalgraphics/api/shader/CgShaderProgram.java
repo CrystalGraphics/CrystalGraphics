@@ -72,6 +72,30 @@ public final class CgShaderProgram {
     private static final int LINK_WAIT = CgTrace.name("shader.linkWait"), LINK_WAITS = CgTrace.name("shader.link-waits"),
             STRIP = CgTrace.name("shader.strip");
 
+    private static final ThreadLocal<String> LABEL = new ThreadLocal<>();
+
+    /** A scope naming the links this thread submits, closed to restore the name before. */
+    public interface Labelled extends AutoCloseable {
+        @Override
+        void close();
+    }
+
+    /**
+     * Names every link this thread submits until the scope closes: the {@code shader.link.size} marker carries it, so a
+     * trace says which program a slow link was.
+     *
+     * <pre>{@code
+     * try (CgShaderProgram.Labelled ignored = CgShaderProgram.labelled(path + " " + pass + keywords)) {
+     *     shader = CgShaderFactory.submit(vertex, fragment, format);
+     * }
+     * }</pre>
+     */
+    public static Labelled labelled(String label) {
+        String before = LABEL.get();
+        LABEL.set(label);
+        return () -> LABEL.set(before);
+    }
+
     /** 0 until a link on the {@link CgLinkWorker} lands: the worker makes the program. */
     private int programId;
     private boolean deleted;
@@ -412,6 +436,8 @@ public final class CgShaderProgram {
         @Nullable private final String vertex, fragment, compute;
         @Nullable private final String[] attributes;
         @Nullable private final String key;
+        /** {@link #labelled}'s name when it was submitted, or null. */
+        @Nullable private final String label = LABEL.get();
         private int vert, frag, comp;
         /** The stripped sources' length, for the {@code shader.link.size} marker. */
         private int chars;
@@ -486,7 +512,7 @@ public final class CgShaderProgram {
                     CgGL.glDeleteShader(shader);
                 }
                 CgTrace.marker(CgChannels.GL, "shader.link.size", (compute != null ? "c " : "vf ") + chars
-                        + " ms " + (System.nanoTime() - began) / 1_000_000);
+                        + " ms " + (System.nanoTime() - began) / 1_000_000 + (label != null ? " " + label : ""));
             }
         }
 
