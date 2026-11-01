@@ -299,6 +299,14 @@ public final class CgRenderStage {
     public void rehearse() {
         if (renderers.isEmpty() || !CgGraphicsLifecycle.isInitialized()) return;
         if (!CgRehearsal.active()) throw new IllegalStateException(path + " rehearses only inside a rehearsal's pass");
+        if (host.width() <= 0 || host.height() <= 0) {
+            // Never fired (a loading screen): the window's size, and a camera at the origin looking down -Z, which the
+            // next real firing replaces.
+            int w = CgGraphicsLifecycle.getCurrentWidth(), h = CgGraphicsLifecycle.getCurrentHeight();
+            if (w <= 0 || h <= 0) return;
+            host.set(0f, w, h, host.mainFramebuffer()).view().set(0d, 0d, 0d, REHEARSAL_VIEW,
+                    REHEARSAL_PROJECTION.setPerspective((float) Math.toRadians(70.0), (float) w / h, 0.05f, 512f));
+        }
         int hostTarget = host.mainFramebuffer();
         if (rehearsalTarget == null || rehearsalTarget.isDeleted() || hostTarget != rehearsedHost) {
             // The host's depth type: copies of the current target are cached by it, so the cast reuses the rehearsal's.
@@ -318,6 +326,8 @@ public final class CgRenderStage {
     }
 
     private static final int REHEARSE = CgTrace.name("stage.rehearse");
+    /** A stage that never fired is rehearsed under these: identity at the origin, and a 70-degree perspective. */
+    private static final Matrix4f REHEARSAL_VIEW = new Matrix4f(), REHEARSAL_PROJECTION = new Matrix4f();
     /** What a rehearsal draws into: the host target's colour and depth, hidden; and the host target it is shaped by. */
     @Nullable
     private static CgFrameBuffer rehearsalTarget;

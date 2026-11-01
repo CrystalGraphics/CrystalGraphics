@@ -1762,7 +1762,10 @@ public final class CgWorldRenderer {
         try {
             recordFiring(stage, which);
         } finally {
-            if (which == TRANSPARENT) clear();
+            if (which == TRANSPARENT) {
+                clear();
+                pointLights.dropRehearsed();
+            }
         }
     }
 

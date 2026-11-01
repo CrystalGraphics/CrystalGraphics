@@ -560,6 +560,8 @@ public final class CgWorldLights {
     private float[] light = new float[FLOATS * 64];
     private int added;
     private long addedFrame = -1;
+    /** Where a rehearsal's lights start in this frame's list, or -1: {@link #dropRehearsed} cuts them off. */
+    private int rehearsedFrom = -1;
     private CgGraphBuffer list, count;
     private ByteBuffer staging;
     private final int[] start = new int[4];
@@ -595,6 +597,13 @@ public final class CgWorldLights {
                 SRGB[argb & 0xFF] * scale, exponent);
     }
 
+    /** Drops the lights a rehearsal's pass added, after its firings: they are the hidden system's, not the frame's. */
+    void dropRehearsed() {
+        if (rehearsedFrom < 0) return;
+        if (addedFrame == CgFrameRing.frame()) added = rehearsedFrom;
+        rehearsedFrom = -1;
+    }
+
     /**
      * As {@link #add(double, double, double, float, int, float, float)}, its colour linear already, times its
      * intensity: what a light worked out in code adds, the VFX engine's light renderers included.
@@ -605,6 +614,7 @@ public final class CgWorldLights {
             addedFrame = frame;
             added = 0;
         }
+        if (rehearsedFrom < 0 && CgRehearsal.active()) rehearsedFrom = added;
         if (added * 3 == at.length) {
             at = Arrays.copyOf(at, at.length * 2);
             light = Arrays.copyOf(light, light.length * 2);
