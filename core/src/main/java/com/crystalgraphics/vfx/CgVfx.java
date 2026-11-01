@@ -252,7 +252,10 @@ public final class CgVfx {
     public static CgRehearsal rehearse(CgVfxSystem vfx, Consumer<CgVfxSystem> cast) {
         if (!REHEARSE.get()) return null;
         int passes = REHEARSAL_PASSES.get();
-        return vfx.rehearse(cast).minPasses(passes).maxPasses(Math.max(passes, 500)).window(1);
+        CgRehearsal rehearsal = vfx.rehearse(cast);
+        // Counted from now: a cast joining a running rehearsal gets its own passes.
+        int from = rehearsal.passes();
+        return rehearsal.minPasses(from + passes).maxPasses(from + Math.max(passes, 500)).window(1);
     }
 
     /**

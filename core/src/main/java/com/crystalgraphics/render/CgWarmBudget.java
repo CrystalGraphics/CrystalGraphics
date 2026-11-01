@@ -63,6 +63,15 @@ public final class CgWarmBudget {
         estimate = Math.max(n, estimate);
     }
 
+    /**
+     * Charges {@code nanos} of work that runs after the frame's warm starts (a rehearsal's passes) to this frame alone:
+     * unlike {@link #spend}, it leaves the estimate of what a start costs, which a 20 ms pass would otherwise raise until
+     * every start after a frame's first was refused.
+     */
+    public static void spendAfter(long nanos) {
+        spent += Math.max(nanos, 1L);
+    }
+
     /** A context started: warming is budgeted from now on. The lifecycle's. */
     public static void start() {
         started = true;

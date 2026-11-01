@@ -145,7 +145,7 @@ public final class CgRehearsal {
                 done = true;
             }
             lastPassNanos = System.nanoTime() - start;
-            CgWarmBudget.spend(lastPassNanos);
+            CgWarmBudget.spendAfter(lastPassNanos);
             if (!done && settled()) done = true;
         } while (!done && CgWarmBudget.allows());
         return done;

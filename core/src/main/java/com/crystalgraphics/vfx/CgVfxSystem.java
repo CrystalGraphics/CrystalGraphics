@@ -1159,16 +1159,16 @@ public final class CgVfxSystem {
      *
      * <ul>
      *   <li>{@code cast} plays what the real cast will, with its definitions: the JIT inlines for the types it sees.</li>
-     *   <li>One asked for while another runs waits behind it; one asked for before the last waiting one starts joins
-     *       it, played beside its casts, and answers its {@link CgRehearsal}: a bundle's systems turning ready together
-     *       rehearse as one.</li>
+     *   <li>One asked for while another waits or runs joins it, played beside its casts from their next replay, and
+     *       answers its {@link CgRehearsal}: a bundle's systems turning ready over a few frames rehearse as one. Joining
+     *       a running one, count its passes from {@link CgRehearsal#passes()} ({@code CgVfx.rehearse} does).</li>
      *   <li>A pass that throws ends it ({@link CgRehearsal#failure()}, logged): first plays then warm as they play.</li>
      *   <li>Render thread.</li>
      * </ul>
      */
     public CgRehearsal rehearse(Consumer<CgVfxSystem> cast) {
         Rehearsal last = rehearsals.peekLast();
-        if (last == null || last.hidden != null) rehearsals.addLast(last = new Rehearsal());
+        if (last == null || last.rehearsal.done()) rehearsals.addLast(last = new Rehearsal());
         last.casts.add(cast);
         if (rehearsalStep == null) {
             rehearsalStep = CgFrameBoundary.add(CgFrameBoundary.Phase.DRAIN, "crystalgraphics:vfx-rehearsal", this::stepRehearsal);
@@ -1190,11 +1190,15 @@ public final class CgVfxSystem {
         if (head.hidden == null) {
             head.start();
             LOGGER.info("[CgVfx] rehearsing {} cast(s), the precache done", head.casts.size());
+            CgTrace.marker(CgChannels.VFX, "vfx.rehearse.start", Integer.toString(head.casts.size()));
         }
-        if (!head.rehearsal.step()) return;
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.VFX, REHEARSE_ZONE)) {
+            if (!head.rehearsal.step()) return;
+        }
         RuntimeException failure = head.rehearsal.failure();
         if (failure != null) LOGGER.warn("[CgVfx] a rehearsal failed; its first plays warm as they play", failure);
         else LOGGER.info("[CgVfx] rehearsed {} cast(s) in {} passes", head.casts.size(), head.rehearsal.passes());
+        CgTrace.marker(CgChannels.VFX, "vfx.rehearse.end", Integer.toString(head.rehearsal.passes()));
         rehearsals.pollFirst().end();
     }
 
@@ -1205,6 +1209,8 @@ public final class CgVfxSystem {
         @Nullable
         CgVfxSystem hidden;
         double clock;
+        /** Casts played since the hidden system last emptied: one that joined since plays at the next pass. */
+        int played;
 
         void start() {
             CgVfxSystem h = new CgVfxSystem();
@@ -1227,8 +1233,12 @@ public final class CgVfxSystem {
             CgVfxParticlePool.rehearsing(true);
             CgVfxRange.rehearsing(true);
             try {
-                if (h.effects.isEmpty()) {
-                    for (int i = 0; i < casts.size(); i++) casts.get(i).accept(h);
+                if (h.effects.isEmpty()) played = 0;
+                if (played < casts.size()) {
+                    // Looks precached since it started, shared before a joined cast plays them.
+                    h.precachedLooks.addAll(precachedLooks);
+                    h.readyLooks.addAll(readyLooks);
+                    while (played < casts.size()) casts.get(played++).accept(h);
                 }
                 h.update(clock += REHEARSAL_STEP);
                 h.submit(CgWorldRenderer.get());
@@ -1251,6 +1261,8 @@ public final class CgVfxSystem {
         }
     }
 
+    /** A frame's passes of the rehearsal running. */
+    private static final int REHEARSE_ZONE = CgTrace.name("vfx.rehearse");
     /** A rehearsal's clock step: a frame at 60 a second. */
     private static final double REHEARSAL_STEP = 1.0 / 60.0;
     /** Rehearsals asked for, the running one first. */

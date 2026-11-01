@@ -118,7 +118,11 @@ the lights, the post stack or the camera.
 
 - 60 passes at least (`crystalgraphics.vfx.rehearsalPasses`), 500 at most, within `crystalgraphics.warmBudget` a
   frame: a second or two of a loading screen. `-Dcrystalgraphics.vfx.rehearse=false` turns it off, to compare.
-- A rehearsal waits for the system's precache, and one asked for while another runs waits behind it.
+- A rehearsal waits for the system's precache, and one asked for while another runs joins it, with passes of its own:
+  a bundle's systems rehearse as one. Its passes take only what the frame's other warm-ups left, so loading beside it
+  goes on. Skinned-play's 20 kit systems: one rehearsal of about 65 passes, under a second of its load.
+- Draw what does not need the systems as soon as its own assets are ready (a character once its materials are), not
+  once the whole bundle is: a bundle is ready only after its systems are rehearsed.
 - A pass that throws ends it, logged: that first play then warms as it plays.
 
 A move of your own, played as it will be:
