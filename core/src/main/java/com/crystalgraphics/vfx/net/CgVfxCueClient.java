@@ -3,6 +3,8 @@ package com.crystalgraphics.vfx.net;
 import com.crystalgraphics.net.object.CgNetBehaviour;
 import com.crystalgraphics.net.object.CgNetField;
 import com.crystalgraphics.net.object.CgNetObject;
+import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.util.trace.CgChannels;
 import com.crystalgraphics.vfx.CgVfx;
 import com.crystalgraphics.vfx.CgVfxEffect;
 import com.crystalgraphics.vfx.CgVfxRegistry;
@@ -23,6 +25,8 @@ public final class CgVfxCueClient {
     private static final Logger LOGGER = LogManager.getLogger("CgVfx");
     /** Ids a play missed, warned once each. */
     private static final Set<String> MISSED = ConcurrentHashMap.newKeySet();
+    /** A cue arriving: its play read and its effect built and played. */
+    private static final int ZONE_ARRIVE = CgTrace.name("vfx.cue.arrive");
 
     private static volatile boolean installed;
 
@@ -80,9 +84,11 @@ public final class CgVfxCueClient {
 
         @Override
         public void spawned(CgNetObject obj, float age) {
-            play = CgVfxCue.Play.read(cue, obj);
-            play.age = age * CgVfxCueAuthority.SERVER_TICK;
-            effect = play(play);
+            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.VFX, ZONE_ARRIVE)) {
+                play = CgVfxCue.Play.read(cue, obj);
+                play.age = age * CgVfxCueAuthority.SERVER_TICK;
+                effect = play(play);
+            }
         }
 
         @Override

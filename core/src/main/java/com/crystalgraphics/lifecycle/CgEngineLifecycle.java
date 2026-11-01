@@ -14,7 +14,9 @@ import com.crystalgraphics.net.CgNetwork;
 import com.crystalgraphics.platform.service.CgNetworkChannel;
 import com.crystalgraphics.render.CgFrameClock;
 import com.crystalgraphics.platform.gl.CgGL;
+import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.trace.CgTraceRun;
+import com.crystalgraphics.util.trace.CgChannels;
 import com.crystalgraphics.world.CgPlayers;
 
 /**
@@ -133,6 +135,8 @@ public final class CgEngineLifecycle {
     // -- The game's ticks, and its server's start and stop ---------------------------------------------------------
 
     private static final List<Runnable> SERVER_TICK = new CopyOnWriteArrayList<>(), CLIENT_TICK = new CopyOnWriteArrayList<>();
+    private static final int ZONE_CLIENT_TICK = CgTrace.name("client.tick"),
+            ZONE_CLIENT_LISTENERS = CgTrace.name("client.tick.listeners"), ZONE_CLIENT_NET = CgTrace.name("net.client.tick");
     private static volatile long serverTicks;
 
     /**
@@ -185,9 +189,16 @@ public final class CgEngineLifecycle {
 
     /** The client's tick has run: the tick's listeners, then what arrived. At its end, on the client thread. */
     public static void clientTick() {
-        CgNetwork.tickStarted(CgNetwork.Side.CLIENT);
-        run(CLIENT_TICK, "client");
-        CgNetwork.clientTick();
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.MISC, ZONE_CLIENT_TICK)) {
+            CgNetwork.tickStarted(CgNetwork.Side.CLIENT);
+            try (CgTrace.Zone listeners = CgTrace.zone(CgChannels.MISC, ZONE_CLIENT_LISTENERS)) {
+                run(CLIENT_TICK, "client");
+            }
+            // What arrived: a cue's effect is built and played here.
+            try (CgTrace.Zone arrivals = CgTrace.zone(CgChannels.NET, ZONE_CLIENT_NET)) {
+                CgNetwork.clientTick();
+            }
+        }
     }
 
     private static void run(List<Runnable> listeners, String side) {
