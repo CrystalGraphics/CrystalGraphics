@@ -145,11 +145,31 @@ Clips of their own, in a file of clips alone (an animation exported without its 
 List<CgAnimSequence> moves = CgMeshLoader.sequences("mymod:anims/moves.glb");
 ```
 
+From a GeckoLib model, the Bedrock files Blockbench writes. The geometry bakes into a skinned mesh, each cube
+following its bone, and each animation becomes a keyed clip of that model that plays exactly as GeckoLib plays it:
+
+```java
+CgGeckoModel saiyan = CgGeckoModel.load("rpgcore:geo/model.geo.json");      // CgMeshLoader.skeletal reads it too
+CgSkeletalMesh body = saiyan.mesh();                                        // its locators are its sockets
+for (CgGeckoAnimation a : saiyan.animations("rpgcore:animations/core/styles/default/idle.animation.json")) {
+    CgAnimSequence clip = a.sequence();                                     // keyed: every easing as GeckoLib's
+    CgGeckoAnimation.Loop loop = a.loop();                                  // PLAY_ONCE, LOOP, HOLD_ON_LAST_FRAME
+}
+```
+
+- **A clip is its model's**: GeckoLib adds a clip's rotations to each bone's rest angles, so convert it for the model
+  it plays on. A bone the model lacks is skipped, as GeckoLib skips it.
+- **What fails at load**, naming the file, the animation, the bone and the channel: an easing GeckoLib does not name,
+  a molang value (a constant only), keys out of time order, a bone whose parent is not in the file, a poly mesh.
+- **The files are read as they are, never rewritten**: put them under `geo/` and `animations/` as GeckoLib does. Their
+  markers are the clip's notifies ([`sequences.md`](sequences.md) § *A GeckoLib clip's markers*).
+
 | Type | What it is | Unreal |
 |---|---|---|
 | `CgSkeletalMesh` | the geometry, its skeleton, the bind pose tying them, its materials, morph targets and clips | `USkeletalMesh` |
 | `CgSkeleton` | bones by name, each with a parent and a rest pose; one root, parents before children | `FReferenceSkeleton` |
-| `CgAnimSequence` | each animated bone's translation, rotation and scale at evenly spaced frames, and float curves | `UAnimSequence` |
+| `CgAnimSequence` | each animated bone's translation, rotation and scale at evenly spaced frames, and float curves; or, keyed, each channel a curve with keys at their own times (a GeckoLib clip) | `UAnimSequence` |
+| `CgGeckoModel`, `CgGeckoAnimation` | a GeckoLib model baked into a skinned mesh, and its clips converted for it | none |
 | `CgMorphTargets` | named per-vertex offsets mixed in by weight | `UMorphTarget` |
 
 ## Building one in Java

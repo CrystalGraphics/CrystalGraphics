@@ -1,5 +1,6 @@
 package com.crystalgraphics.api.mesh;
 
+import com.crystalgraphics.api.mesh.geckolib.CgGeckoModel;
 import com.crystalgraphics.api.animation.CgAnimSequence;
 import com.crystalgraphics.api.animation.CgCookedAnimation;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
@@ -130,7 +131,8 @@ public final class CgMeshLoader {
     }
 
     /**
-     * The skinned mesh in {@code path}: a glTF or GLB, or a cooked {@code .cgmesh} with the {@code .cganim} beside it
+     * The skinned mesh in {@code path}: a glTF or GLB, a GeckoLib {@code .geo.json} ({@code CgGeckoModel}), or a cooked
+     * {@code .cgmesh} with the {@code .cganim} beside it
      * if there is one. Loaded once and shared.
      *
      * @throws UncheckedIOException if it cannot be read, or holds no skinned mesh
@@ -189,6 +191,7 @@ public final class CgMeshLoader {
     }
 
     private static CgSkeletalMesh readSkeletal(String path) {
+        if (path.endsWith(".geo.json")) return CgGeckoModel.load(path).mesh();
         try (CgTrace.Zone zone = CgTrace.zone(CgChannels.GL, "mesh.load"); InputStream in = CgIO.openStream(path)) {
             if (in == null) throw new IOException("not found: " + path);
             if (CgCookedMesh.is(path)) {

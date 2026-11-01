@@ -495,11 +495,21 @@ public final class CgRichCurve {
         }
     }
 
-    /** GeckoLib's step: the share floored to {@code count} steps and capped at {@code (count - 1) / count}. */
+    /**
+     * GeckoLib's step (EasingType.java:347-380), its binary search kept: capped at {@code (count - 1) / count} past
+     * that share, and one step lower at exactly it, where the search never tests the last step.
+     */
     private static double steps(int count, double u) {
         if (u < 0) return 0;
         double length = 1.0 / count, last = (count - 1) * length;
-        return u > last ? last : Math.floor(u / length) * length;
+        if (u > last) return last;
+        int left = 0, right = count - 1;
+        while (right - left != 1) {
+            int test = left + (right - left) / 2;
+            if (u >= test * length) left = test;
+            else right = test;
+        }
+        return left * length;
     }
 
     /** GeckoLib's {@code CatmullRomEasing.getPointOnSpline}. */

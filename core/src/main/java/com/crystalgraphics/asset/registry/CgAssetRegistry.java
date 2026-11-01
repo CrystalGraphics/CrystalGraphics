@@ -106,6 +106,7 @@ public final class CgAssetRegistry {
 
     static {
         BINARIES.put("models/", Arrays.asList(".glb", ".gltf"));
+        BINARIES.put("geo/", Collections.singletonList(".geo.json"));
         BINARIES.put("textures/", Collections.singletonList(".png"));
         BINARIES.put("fields/", Collections.singletonList(".fga"));
         BINARIES.put("sounds/", Collections.singletonList(".ogg"));

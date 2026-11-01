@@ -77,6 +77,30 @@ tint: { argb: 0xFF1858FF, intensity: 1.6 }  # a colour, HDR by its intensity
 
 A key that takes no form (a name, a flag, a list of ids) takes only itself.
 
+### Curves and their easings
+
+A curve's keys are `[time, value]`, then how the segment starting at that key runs: `constant`, `linear`, `cubic`
+(Unreal's curve with its tangents) or an easing, with its argument after it where it takes one:
+
+```yaml
+curve: { keys: [[0, 0, back_out, 1.5], [0.4, 10, steps, 4], [1, 2]] }   # overshoots to 10, then down in 4 steps
+curve: { keys: [[0, 0, sin_in_out], [1, 1]] }                         # slow at both ends
+curve: { keys: [[0, 0, catmull_rom], [1, 4, catmull_rom], [2, 2]] }   # through each key
+```
+
+| Easing | Argument |
+|---|---|
+| `sin_*`, `quad_*`, `cubic_*`, `quart_*`, `quint_*`, `circ_*`, `expo_*`, `expo_unclamped_*` | none |
+| `back_*`, `elastic_*`, `bounce_*` | their strength: 1.70158 times it, 1, 0.5 when absent |
+| `steps` | how many: 2 when absent, at least 2 |
+| `catmull_rom` | none: it passes through the key after its end |
+
+- **`_in`, `_out` and `_in_out` of each family**: `out` is `in` mirrored, `in_out` half of each.
+- **They compute GeckoLib's curves**, so a GeckoLib animation plays exactly as GeckoLib plays it: `back`, `elastic` and
+  `bounce` are GeckoLib's formulas, not Penner's (`CgEasings`); `expo` is Unreal's, 0 at its start, and
+  `expo_unclamped` GeckoLib's. `steps` reaches its key's value only at the segment's end.
+- **An interpolation the format does not name fails at load**, naming it.
+
 ### Units
 
 An asset's numbers are in its `units:` block, or its namespace's `units.yaml`, so a file exported from another

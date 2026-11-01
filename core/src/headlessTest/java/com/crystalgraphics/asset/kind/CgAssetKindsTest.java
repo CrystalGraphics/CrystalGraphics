@@ -81,7 +81,7 @@ public class CgAssetKindsTest {
         CgAssetKinds.register();
         assertEquals(Arrays.asList("sprite", "mesh", "ribbon", "beam", "light", "system", "sequence", "anim_trail", "arc"),
                 Arrays.asList(CgParticleKinds.RENDERERS.members().keySet().toArray()));
-        assertEquals(23, CgSequenceKinds.TRACKS.members().size());
+        assertEquals(24, CgSequenceKinds.TRACKS.members().size());
         assertEquals(20, CgCameraKinds.NODES.members().size());
         assertEquals(Arrays.asList("perlin", "wave", "composite", "sequence", "trauma", "sample_hold"),
                 Arrays.asList(CgCameraKinds.PATTERNS.members().keySet().toArray()));

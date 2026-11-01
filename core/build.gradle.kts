@@ -176,6 +176,8 @@ val headlessTestTask = tasks.register<Test>("headlessTest") {
     providers.gradleProperty("censusMaterials").orNull?.let { systemProperty("crystalgraphics.census.materials", it) }
     // The kits' binaries (a field's FGA) read as a game reads them: -PkitRoots=<a folder holding assets/<kit>>
     providers.gradleProperty("kitRoots").orNull?.let { systemProperty("crystalgraphics.resourceOverrideDirs", it) }
+    // GeckoLib models and animations, each folder's geo/ and animations/ loaded and converted: -PgeckoAssets=<dir>;...
+    providers.gradleProperty("geckoAssets").orNull?.let { systemProperty("crystalgraphics.geckoAssets", it) }
     // The kits' shading models, registered before their materials compile: -PkitShading=<namespace>=<kit dir>;...
     providers.gradleProperty("kitShading").orNull?.let { systemProperty("crystalgraphics.kits.shading", it) }
     // A move's materials, every one required to compile: -PkitMaterials=<file of ids, one a line>
