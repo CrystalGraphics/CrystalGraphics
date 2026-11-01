@@ -161,11 +161,21 @@ public final class CgPostMaterial implements CgPostEffect {
         // Built while it waits at 0, within the warm budget: a darkening first raised at a cut compiles nothing there.
         // The shader first, then the one full-screen pipeline it draws: the world's prepare would build its draw forms
         // too (multi-draw, depth, normals), compiled for nothing at a cut that spawns it.
-        if (!warm && material.prepare()) {
+        if (!warm && material.prepare() && resolve()) warm = prepareAll();
+        // Held until every pass is built, as Unreal skips a draw whose PSO is not (r.SkipDrawOnPSOPrecaching): a
+        // fade raised the frame it is added would otherwise compile at its draw.
+        return warm && weight > 0f;
+    }
+
+    /** Starts or polls every pipeline it draws, each pass's and the last's; whether all are built. */
+    private boolean prepareAll() {
+        boolean ready = true;
+        if (pipelines.length == 0) {
             CgPipeline p = material.pipeline(CgInstanceKind.OBJECT);
-            warm = p == null || p.prepare();
+            return p == null || p.prepare();
         }
-        return weight > 0f;
+        for (CgPipeline p : pipelines) ready &= p.prepare();
+        return over.prepare() & ready;
     }
 
     @Override
