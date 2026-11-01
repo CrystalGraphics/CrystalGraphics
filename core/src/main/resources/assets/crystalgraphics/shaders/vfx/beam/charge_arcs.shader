@@ -76,12 +76,15 @@ Pass {
         vec4 f = fx_hash41(boltSeed + part * 5.9);
         vec3 fork = vec3(0.2 + 0.5 * f.x, 0.25 + 0.35 * f.y, f.z < 0.5 ? -1.0 : 1.0);
         bool present = part < 0.5 || f.w < (part < 1.5 ? 0.75 : 0.4);
-        vec3 p = strand(part, along, a, b, lift, boltSeed, fork);
-        vec3 ahead = strand(part, min(along + 1.0 / 32.0, 1.0), a, b, lift, boltSeed, fork);
-        vec3 behind = strand(part, max(along - 1.0 / 32.0, 0.0), a, b, lift, boltSeed, fork);
-        vec3 world = (CG_OBJECT_TO_WORLD * vec4(p, 1.0)).xyz;
-        vec3 tangent = mat3(CG_OBJECT_TO_WORLD) * (ahead - behind);
         bool drawn = bolt < _Count && fract(e.z * 13.7) < _Chance && present;
+        // Its point, then one either side for its direction, in a loop the data sizes so strand is compiled once; a bolt
+        // not drawn has no width, so no direction.
+        float at[3] = float[3](along, min(along + 1.0 / 32.0, 1.0), max(along - 1.0 / 32.0, 0.0));
+        vec3 q[3];
+        int count = drawn ? 3 : 1;
+        for (int n = 0; n < count; n++) q[n] = strand(part, at[n], a, b, lift, boltSeed, fork);
+        vec3 world = (CG_OBJECT_TO_WORLD * vec4(q[0], 1.0)).xyz;
+        vec3 tangent = drawn ? mat3(CG_OBJECT_TO_WORLD) * (q[1] - q[2]) : vec3(0.0);
         // A channel fades in at its two ends; a fork thins and dims toward its tip.
         float taper = part < 0.5 ? 1.0 : 1.0 - 0.75 * along;
         float halfWidth = drawn ? CG_OBJECT_CUSTOM1.x * _Width * taper : 0.0;

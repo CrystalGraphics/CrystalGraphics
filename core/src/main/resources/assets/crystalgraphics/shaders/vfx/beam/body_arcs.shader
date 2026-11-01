@@ -84,10 +84,14 @@ Pass {
         vec3 fork = vec3(0.2 + 0.5 * f.x, 0.3 + 0.35 * f.y, (f.z - 0.5) * 2.2);
         bool present = part < 0.5 || f.w < (part < 1.5 ? 0.75 : 0.4);
         vec3 origin = CG_OBJECT_TO_WORLD[3].xyz - CG_OBJECT_CUSTOM1.xyz;
-        vec3 p = origin + strand(row, header, part, along, bolt, lift, boltSeed, fork);
-        vec3 ahead = strand(row, header, part, min(along + 1.0 / 32.0, 1.0), bolt, lift, boltSeed, fork);
-        vec3 behind = strand(row, header, part, max(along - 1.0 / 32.0, 0.0), bolt, lift, boltSeed, fork);
         bool drawn = boltIndex < _Count && fract(e.w * 17.3) < _Chance && pathLength > span && present;
+        // Its point, then one either side for its direction, in a loop the data sizes so strand is compiled once (three
+        // inlined cost NVIDIA ~0.5 s a link); a bolt not drawn has no width, so no direction.
+        float at[3] = float[3](along, min(along + 1.0 / 32.0, 1.0), max(along - 1.0 / 32.0, 0.0));
+        vec3 q[3];
+        int count = drawn ? 3 : 1;
+        for (int n = 0; n < count; n++) q[n] = strand(row, header, part, at[n], bolt, lift, boltSeed, fork);
+        vec3 p = origin + q[0], ahead = drawn ? q[1] : q[0], behind = drawn ? q[2] : q[0];
         float taper = part < 0.5 ? 1.0 : 1.0 - 0.75 * along;
         vec3 world = fx_ribbon_vertex(p, ahead - behind, FX_CAMERA, drawn ? _Width * taper : 0.0, side);
         float ends = part < 0.5 ? smoothstep(0.0, 0.05, along) * smoothstep(1.0, 0.95, along)
