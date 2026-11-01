@@ -1,6 +1,7 @@
 package com.crystalgraphics.asset.curve;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -21,9 +22,16 @@ import java.util.Map;
  *
  * CgRichCurve s = CgRichCurve.decode(Map.of("samples", Map.of("range", List.of(0, 1), "values", List.of(0, 2, 1))));
  * s.eval(0.25f);                                     // 1: linear between samples, clamped outside
+ *
+ * // an easing on the segment its key starts, an argument after it where the easing takes one
+ * CgRichCurve e = CgRichCurve.decode(Map.of("keys", List.of(List.of(0, 0, "back_out", 1.5), List.of(1, 10))));
+ * CgRichCurve stairs = CgRichCurve.decode(Map.of("keys", List.of(List.of(0, 0, "steps", 4), List.of(1, 8))));
  * }</pre>
  *
  * <ul>
+ *   <li>The easings are GeckoLib's ({@link #ease}), {@code expo} Unreal's; {@code catmull_rom} takes the segment's
+ *       start twice and the key after its end, as GeckoLib does. An interpolation the format does not name fails at
+ *       decode.</li>
  *   <li>A key written without tangents in {@code auto} (the default) gets Unreal's auto tangent, flat at the ends;
  *       stored tangents are evaluated as stored. {@code smart_auto} is {@code FRichCurve}'s: as stored where written
  *       (its {@code AutoSetTangents} never recomputes one), else as {@code auto}, as its curve editor treats it.
@@ -36,6 +44,16 @@ public final class CgRichCurve {
 
     /** A segment's interpolation, by its first key. */
     public static final int CONSTANT = 0, LINEAR = 1, CUBIC = 2;
+    /**
+     * The easings, each {@code lerp(v1, v2, f(u))} over its segment, as GeckoLib 4.8's {@code EasingType}: a family's
+     * {@code _in}, {@code _out} and {@code _in_out} at {@code EASED + family * 3 + mode}. A key's argument, where given,
+     * is {@code back}'s, {@code elastic}'s and {@code bounce}'s, and {@code steps}' count.
+     */
+    public static final int EASED = 3, STEPS = EASED + 33, CATMULL_ROM = STEPS + 1;
+    private static final String[] FAMILIES = {"sin", "quad", "cubic", "quart", "quint", "expo", "circ", "back", "elastic", "bounce",
+            "expo_unclamped"};
+    private static final String[] MODES = {"_in", "_out", "_in_out"};
+    private static final int BACK = 7, ELASTIC = 8, BOUNCE = 9, EXPO_UNCLAMPED = 10;
     /** Tangent modes. */
     public static final int AUTO = 0, SMART_AUTO = 1, USER = 2, BREAK = 3;
     /** Weight modes: bit 1 arrive, bit 2 leave. */
@@ -56,6 +74,8 @@ public final class CgRichCurve {
     }
 
     private final float[] times, values, arrive, leave, arriveWeight, leaveWeight;
+    /** Per key, its easing's argument; NaN where it gives none. */
+    private final float[] easeArg;
     private final int[] interp, tangentMode, weightMode;
     /** Keys whose tangents were not written: recomputed as auto. */
     private final boolean[] autoTangent;
@@ -76,6 +96,8 @@ public final class CgRichCurve {
         leave = new float[n];
         arriveWeight = new float[n];
         leaveWeight = new float[n];
+        easeArg = new float[n];
+        Arrays.fill(easeArg, Float.NaN);
         interp = new int[n];
         tangentMode = new int[n];
         weightMode = new int[n];
@@ -112,8 +134,34 @@ public final class CgRichCurve {
         return c;
     }
 
-    private static int interp(String s) {
-        return s.equals("constant") ? CONSTANT : s.equals("linear") ? LINEAR : CUBIC;
+    /**
+     * The interpolation named {@code s}: {@code constant}, {@code linear}, {@code cubic}, an easing
+     * ({@code sin_in} ... {@code bounce_in_out}, {@code expo_unclamped_in} ...), {@code steps} or {@code catmull_rom}.
+     *
+     * @throws IllegalArgumentException for any other name
+     */
+    public static int interp(String s) {
+        switch (s) {
+            case "constant": return CONSTANT;
+            case "linear": return LINEAR;
+            case "cubic": return CUBIC;
+            case "steps": return STEPS;
+            case "catmull_rom": return CATMULL_ROM;
+            default:
+                int mode = s.endsWith(MODES[2]) ? 2 : s.endsWith(MODES[1]) ? 1 : s.endsWith(MODES[0]) ? 0 : -1;
+                int family = mode < 0 ? -1 : Arrays.asList(FAMILIES).indexOf(s.substring(0, s.length() - MODES[mode].length()));
+                if (family >= 0) return EASED + family * 3 + mode;
+                throw new IllegalArgumentException("no interpolation '" + s + "'");
+        }
+    }
+
+    /** Every interpolation's name, as {@link #interp(String)} reads them: what a declaration's enum lists. */
+    public static String[] interpNames() {
+        List<String> names = new ArrayList<>(Arrays.asList("constant", "linear", "cubic"));
+        for (String family : FAMILIES) for (String mode : MODES) names.add(family + mode);
+        names.add("steps");
+        names.add("catmull_rom");
+        return names.toArray(new String[0]);
     }
 
     private void readKey(int i, List<?> key, int all) {
@@ -126,6 +174,11 @@ public final class CgRichCurve {
         if (key.size() > at && key.get(at) instanceof String s) {
             interp[i] = interp(s);
             at++;
+            if (interp[i] >= EASED && key.size() > at && key.get(at) instanceof Number arg) {
+                easeArg[i] = arg.floatValue();
+                if (interp[i] == STEPS && !(easeArg[i] >= 2f)) throw new IllegalArgumentException("steps of " + easeArg[i] + ": at least 2");
+                at++;
+            }
             if (interp[i] == CUBIC && key.size() > at && key.get(at) instanceof String mode) {
                 tangentMode[i] = mode.equals("smart_auto") ? SMART_AUTO : mode.equals("user") ? USER : mode.equals("break") ? BREAK : AUTO;
                 at++;
@@ -314,6 +367,16 @@ public final class CgRichCurve {
         if (interp[a] == CONSTANT) return time < times[b] ? values[a] : values[b];
         float alpha = (time - times[a]) / dt, p0 = values[a], p3 = values[b];
         if (interp[a] == LINEAR) return p0 + alpha * (p3 - p0);
+        if (interp[a] >= EASED) {
+            // GeckoLib reaches the segment's end value exactly at its end (EasingType.apply), steps included
+            if (time >= times[b]) return p3;
+            if (interp[a] == CATMULL_ROM) {
+                // GeckoLib's points (BakedAnimationsAdapter.addSplineArgs): the start twice, then the next key's value
+                float after = b + 1 < times.length ? values[b + 1] : p3;
+                return (float) catmullRom(alpha, p0, p0, p3, after);
+            }
+            return (float) (p0 + (p3 - p0) * ease(interp[a], easeArg[a], alpha));
+        }
         boolean leaveWeighted = (weightMode[a] & WEIGHT_LEAVE) != 0, arriveWeighted = (weightMode[b] & WEIGHT_ARRIVE) != 0;
         if (!leaveWeighted && !arriveWeighted) {
             float third = 1f / 3f;
@@ -380,6 +443,68 @@ public final class CgRichCurve {
             if (r >= -1e-8 && r <= 1 + 1e-8 && (best < 0.0 || r > best)) best = r;
         }
         return best == Double.NEGATIVE_INFINITY ? 0.0 : best;
+    }
+
+    /** Key {@code key}'s easing argument, NaN where it gives none. */
+    public float easeArg(int key) {
+        return easeArg[key];
+    }
+
+    /**
+     * An easing's share of its segment at {@code u}, 0 to 1: {@code interp} one of {@link #EASED}'s or {@link #STEPS},
+     * {@code arg} its argument or NaN. GeckoLib 4.8's {@code EasingType} (MIT), but {@code expo} is Unreal's, 0 at 0: {@code in} is the family's function,
+     * {@code out} {@code 1 - f(1 - u)}, {@code in_out} {@code f(2u) / 2} below a half and {@code 1 - f(2(1 - u)) / 2}
+     * above. Catmull-Rom is the curve's alone, from its neighbours.
+     */
+    public static double ease(int interp, float arg, double u) {
+        if (interp == STEPS) return steps(Float.isNaN(arg) ? 2 : (int) arg, u);
+        int family = (interp - EASED) / 3, mode = (interp - EASED) % 3;
+        if (mode == 0) return base(family, arg, u);
+        if (mode == 1) return 1 - base(family, arg, 1 - u);
+        return u < 0.5 ? base(family, arg, u * 2) / 2 : 1 - base(family, arg, (1 - u) * 2) / 2;
+    }
+
+    /** A family's {@code in} function (EasingType.java:196-347). */
+    private static double base(int family, float arg, double n) {
+        switch (family) {
+            case 0: return 1 - Math.cos(n * Math.PI / 2f);
+            case 1: return n * n;
+            case 2: return n * n * n;
+            case 3: return n * n * n * n;
+            case 4: return n * n * n * n * n;
+            case 5: return n == 0 ? 0 : Math.pow(2, 10 * (n - 1));      // Unreal's InterpExpoIn (UnrealMathUtility.h:1350)
+            case EXPO_UNCLAMPED: return Math.pow(2, 10 * (n - 1));       // GeckoLib's: 2^-10 at 0
+            case 6: return 1 - Math.sqrt(1 - n * n);
+            case BACK: {
+                double s = Float.isNaN(arg) ? 1.70158 : arg * 1.70158;
+                return n * n * ((s + 1) * n - s);
+            }
+            case ELASTIC: {
+                double k = Float.isNaN(arg) ? 1 : arg;
+                return 1 - Math.pow(Math.cos(n * Math.PI / 2f), 3) * Math.cos(n * k * Math.PI);
+            }
+            case BOUNCE: {
+                double k = Float.isNaN(arg) ? 0.5 : arg;
+                double one = 121f / 16f * n * n;
+                double two = 121f / 4f * k * Math.pow(n - 6f / 11f, 2) + 1 - k;
+                double three = 121 * k * k * Math.pow(n - 9f / 11f, 2) + 1 - k * k;
+                double four = 484 * k * k * k * Math.pow(n - 10.5f / 11f, 2) + 1 - k * k * k;
+                return Math.min(Math.min(one, two), Math.min(three, four));
+            }
+            default: throw new IllegalStateException("no easing family " + family);
+        }
+    }
+
+    /** GeckoLib's step: the share floored to {@code count} steps and capped at {@code (count - 1) / count}. */
+    private static double steps(int count, double u) {
+        if (u < 0) return 0;
+        double length = 1.0 / count, last = (count - 1) * length;
+        return u > last ? last : Math.floor(u / length) * length;
+    }
+
+    /** GeckoLib's {@code CatmullRomEasing.getPointOnSpline}. */
+    private static double catmullRom(double u, double p0, double p1, double p2, double p3) {
+        return 0.5 * (2 * p1 + (p2 - p0) * u + (2 * p0 - 5 * p1 + 4 * p2 - p3) * u * u + (3 * p1 - p0 - 3 * p2 + p3) * u * u * u);
     }
 
     private static float bezier(float p0, float p1, float p2, float p3, float t) {

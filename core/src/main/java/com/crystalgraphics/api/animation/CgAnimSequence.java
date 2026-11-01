@@ -3,6 +3,8 @@ package com.crystalgraphics.api.animation;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
 
+import com.crystalgraphics.asset.curve.CgRichCurve;
+
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -40,6 +42,26 @@ import java.util.Map;
  *       to know: a held channel answers the same for every frame.</li>
  *   <li>Frames, not seconds: sampling between frames is the player's.</li>
  * </ul>
+ *
+ * <p><b>Keyed</b>, a sequence holds each channel as a curve with keys at their own times instead, as a GeckoLib or
+ * Blockbench animation keeps them: a bone's translation, its rotation as Euler angles composed {@code Rz·Ry·Rx}, and
+ * its scale, nine {@link CgRichCurve}s, each eased as its keys say. It samples exactly at any time, with no frames:</p>
+ *
+ * <pre>{@code
+ * CgRichCurve still = CgRichCurve.decode(Map.of("keys", List.of(List.of(0, 0))));
+ * CgRichCurve one = CgRichCurve.decode(Map.of("keys", List.of(List.of(0, 1))));
+ * CgRichCurve swing = CgRichCurve.decode(Map.of("keys", List.of(List.of(0, 0, "sin_in_out"), List.of(0.5, 1.2))));
+ * CgAnimSequence wave = CgAnimSequence.keyed("wave", 0.5f)
+ *         .track("elbow", still, still, still,   swing, still, still,   one, one, one)
+ *         .build();
+ * wave.sample(pose, 0.25f);                                              // the elbow halfway through its ease
+ * }</pre>
+ *
+ * <ul>
+ *   <li>A keyed sequence has no frames: {@link #frameRate()} and {@link #frameCount()} are 0, the per-frame reads and
+ *       {@link #withCurve} throw, and it is never cooked: its file is read as it is.</li>
+ *   <li>Every channel of a keyed track is given; a still one is a single key.</li>
+ * </ul>
  */
 public final class CgAnimSequence {
 
@@ -66,9 +88,20 @@ public final class CgAnimSequence {
     final float[][] curves;
     final int[] curveDrives;
     private final Map<String, Integer> trackIndex = new HashMap<>(), curveIndex = new HashMap<>();
+    /** A keyed sequence's channels, nine a track (translation, Euler rotation, scale, each x y z); null when framed. */
+    final CgRichCurve[][] keys;
+    private final float keyedDuration;
 
     CgAnimSequence(String name, double frameRate, int frameCount, String[] trackBones, float[][] translations,
                    float[][] rotations, float[][] scales, String[] curveNames, float[][] curves, int[] curveDrives) {
+        this(name, frameRate, frameCount, trackBones, translations, rotations, scales, curveNames, curves, curveDrives, null, 0f);
+    }
+
+    private CgAnimSequence(String name, double frameRate, int frameCount, String[] trackBones, float[][] translations,
+                           float[][] rotations, float[][] scales, String[] curveNames, float[][] curves, int[] curveDrives,
+                           CgRichCurve[][] keys, float keyedDuration) {
+        this.keys = keys;
+        this.keyedDuration = keyedDuration;
         this.curveDrives = curveDrives;
         this.name = name;
         this.frameRate = frameRate;
@@ -92,6 +125,31 @@ public final class CgAnimSequence {
         return new Builder(name, frameRate, frameCount);
     }
 
+    /**
+     * A keyed sequence {@code duration} seconds long, built track by track: each bone's nine channels as curves.
+     *
+     * @param duration its length, at least 0: how long a section playing it runs, not where its keys stop
+     */
+    public static KeyedBuilder keyed(String name, float duration) {
+        return new KeyedBuilder(name, duration);
+    }
+
+    /** Whether its channels are curves with keys at their own times ({@link #keyed}), rather than frames. */
+    public boolean isKeyed() {
+        return keys != null;
+    }
+
+    /**
+     * A keyed track's channel: {@code channel} 0-2 its translation's x, y, z, 3-5 its Euler rotation's in radians, 6-8
+     * its scale's.
+     *
+     * @throws IllegalStateException on a framed sequence
+     */
+    public CgRichCurve channel(int track, int channel) {
+        if (keys == null) throw new IllegalStateException(name + " is framed, not keyed");
+        return keys[track][channel];
+    }
+
     public String name() {
         return name;
     }
@@ -106,9 +164,9 @@ public final class CgAnimSequence {
         return frameCount;
     }
 
-    /** Seconds from the first key to the last. */
+    /** Seconds from the first key to the last; a keyed sequence's, the length it was given. */
     public float duration() {
-        return (float) ((frameCount - 1) / frameRate);
+        return keys != null ? keyedDuration : (float) ((frameCount - 1) / frameRate);
     }
 
     public int trackCount() {
@@ -128,6 +186,7 @@ public final class CgAnimSequence {
 
     /** Frame {@code frame}'s translation of the track's bone, local to its parent. */
     public Vector3f translation(int track, int frame, Vector3f out) {
+        framed();
         float[] k = translations[track];
         int at = k.length == 3 ? 0 : frame * 3;
         return out.set(k[at], k[at + 1], k[at + 2]);
@@ -135,6 +194,7 @@ public final class CgAnimSequence {
 
     /** Frame {@code frame}'s rotation of the track's bone, local to its parent, unit length. */
     public Quaternionf rotation(int track, int frame, Quaternionf out) {
+        framed();
         float[] k = rotations[track];
         int at = k.length == 4 ? 0 : frame * 4;
         return out.set(k[at], k[at + 1], k[at + 2], k[at + 3]);
@@ -142,6 +202,7 @@ public final class CgAnimSequence {
 
     /** Frame {@code frame}'s scale of the track's bone. */
     public Vector3f scale(int track, int frame, Vector3f out) {
+        framed();
         float[] k = scales[track];
         int at = k.length == 3 ? 0 : frame * 3;
         return out.set(k[at], k[at + 1], k[at + 2]);
@@ -149,6 +210,7 @@ public final class CgAnimSequence {
 
     /** Whether the track's translation, rotation and scale each hold one key for the whole sequence. */
     public boolean held(int track) {
+        framed();
         return translations[track].length == 3 && rotations[track].length == 4 && scales[track].length == 3;
     }
 
@@ -184,6 +246,7 @@ public final class CgAnimSequence {
      * @throws IllegalArgumentException as {@link Builder#curve(String, float[], int)} does
      */
     public CgAnimSequence withCurve(String curve, float[] keys, int drives) {
+        framed();
         if (curveIndex.containsKey(curve)) throw new IllegalArgumentException(name + " has curve " + curve + " twice");
         Builder b = new Builder(name, frameRate, frameCount);
         for (int c = 0; c < curveNames.length; c++) b.curve(curveNames[c], curves[c], curveDrives[c]);
@@ -224,6 +287,10 @@ public final class CgAnimSequence {
      */
     public void sample(CgPose pose, float time) {
         int[] bones = bind(pose.skeleton());
+        if (keys != null) {
+            sampleKeyed(bones, pose.local, time);
+            return;
+        }
         int a, b;
         float alpha;
         if (frameCount < 2 || time <= 0f) {
@@ -247,6 +314,32 @@ public final class CgAnimSequence {
             nlerp(rotations[t], a, b, alpha, out, at + 3);
             lerp(scales[t], 3, a, b, alpha, out, at + 7);
         }
+    }
+
+    /** Each keyed track's nine curves at {@code time}, its Euler angles composed {@code Rz·Ry·Rx} into a unit quaternion. */
+    private void sampleKeyed(int[] bones, float[] out, float time) {
+        for (int t = 0; t < bones.length; t++) {
+            int bone = bones[t];
+            if (bone < 0) continue;
+            CgRichCurve[] c = keys[t];
+            int at = bone * CgSkeleton.REST;
+            out[at] = c[0].eval(time);
+            out[at + 1] = c[1].eval(time);
+            out[at + 2] = c[2].eval(time);
+            double hx = c[3].eval(time) * 0.5, hy = c[4].eval(time) * 0.5, hz = c[5].eval(time) * 0.5;
+            double sx = Math.sin(hx), cx = Math.cos(hx), sy = Math.sin(hy), cy = Math.cos(hy), sz = Math.sin(hz), cz = Math.cos(hz);
+            out[at + 3] = (float) (cz * cy * sx - sz * sy * cx);
+            out[at + 4] = (float) (cz * sy * cx + sz * cy * sx);
+            out[at + 5] = (float) (sz * cy * cx - cz * sy * sx);
+            out[at + 6] = (float) (cz * cy * cx + sz * sy * sx);
+            out[at + 7] = c[6].eval(time);
+            out[at + 8] = c[7].eval(time);
+            out[at + 9] = c[8].eval(time);
+        }
+    }
+
+    private void framed() {
+        if (keys != null) throw new IllegalStateException(name + " is keyed: it has no frames, sample it by time");
     }
 
     /** A channel's value between keys {@code a} and {@code b}: a held channel's one key, else the lerp. */
@@ -315,7 +408,8 @@ public final class CgAnimSequence {
                 && Arrays.equals(trackBones, s.trackBones) && Arrays.deepEquals(translations, s.translations)
                 && Arrays.deepEquals(rotations, s.rotations) && Arrays.deepEquals(scales, s.scales)
                 && Arrays.equals(curveNames, s.curveNames) && Arrays.deepEquals(curves, s.curves)
-                && Arrays.equals(curveDrives, s.curveDrives);
+                && Arrays.equals(curveDrives, s.curveDrives) && Arrays.deepEquals(keys, s.keys)
+                && keyedDuration == s.keyedDuration;
     }
 
     @Override
@@ -325,6 +419,7 @@ public final class CgAnimSequence {
 
     @Override
     public String toString() {
+        if (keys != null) return "CgAnimSequence{" + name + ", keyed over " + keyedDuration + " s, " + trackBones.length + " tracks}";
         return "CgAnimSequence{" + name + ", " + frameCount + " keys at " + frameRate + "/s, " + trackBones.length
                 + " tracks, " + curveNames.length + " curves}";
     }
@@ -423,6 +518,45 @@ public final class CgAnimSequence {
                 if (error > ROTATION_THRESHOLD) return keys;
             }
             return Arrays.copyOf(keys, 4);
+        }
+    }
+
+    /** Builds a keyed {@link CgAnimSequence}: curves are shared, not copied, being immutable once decoded. */
+    public static final class KeyedBuilder {
+
+        private final String name;
+        private final float duration;
+        private final List<String> bones = new ArrayList<>();
+        private final List<CgRichCurve[]> tracks = new ArrayList<>();
+
+        private KeyedBuilder(String name, float duration) {
+            if (name == null) throw new IllegalArgumentException("a sequence has a name");
+            if (!(duration >= 0f) || Float.isInfinite(duration)) throw new IllegalArgumentException(name + ": duration " + duration);
+            this.name = name;
+            this.duration = duration;
+        }
+
+        /**
+         * The bone named {@code bone}'s nine channels, local to its parent: translation x, y, z; rotation x, y, z in
+         * radians, composed {@code Rz·Ry·Rx}; scale x, y, z.
+         */
+        public KeyedBuilder track(String bone, CgRichCurve tx, CgRichCurve ty, CgRichCurve tz, CgRichCurve rx,
+                                  CgRichCurve ry, CgRichCurve rz, CgRichCurve sx, CgRichCurve sy, CgRichCurve sz) {
+            if (bones.contains(bone)) throw new IllegalArgumentException(name + " animates " + bone + " twice");
+            CgRichCurve[] c = {tx, ty, tz, rx, ry, rz, sx, sy, sz};
+            for (int i = 0; i < c.length; i++) {
+                if (c[i] == null) throw new IllegalArgumentException(name + ": " + bone + "'s channel " + i + " is missing");
+            }
+            bones.add(bone);
+            tracks.add(c);
+            return this;
+        }
+
+        public CgAnimSequence build() {
+            int n = bones.size();
+            float[][] none = new float[n][];
+            return new CgAnimSequence(name, 0, 0, bones.toArray(new String[0]), none, none, none, new String[0],
+                    new float[0][], new int[0], tracks.toArray(new CgRichCurve[0][]), duration);
         }
     }
 }

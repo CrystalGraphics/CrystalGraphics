@@ -44,6 +44,7 @@ public final class CgCookedAnimation {
         CgCookedBytes.Writer out = new CgCookedBytes.Writer();
         out.magic("CGAN").u16(VERSION).u16(0).u32(sequences.size());
         for (CgAnimSequence s : sequences) {
+            if (s.isKeyed()) throw new IllegalArgumentException(s.name() + " is keyed: its source file is read as it is, never cooked");
             out.string(s.name()).f64(s.frameRate()).u32(s.frameCount()).u32(s.trackCount()).u32(s.curveCount());
             for (int t = 0; t < s.trackCount(); t++) {
                 float[] tr = s.translations[t], ro = s.rotations[t], sc = s.scales[t];

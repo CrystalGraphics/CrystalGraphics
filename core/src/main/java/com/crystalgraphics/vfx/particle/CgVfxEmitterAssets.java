@@ -2776,6 +2776,15 @@ public final class CgVfxEmitterAssets {
                 k.to(t1, v1, CgEasings.LINEAR);
             } else if (interp == CgRichCurve.CONSTANT) {
                 k.to(t1, v0, CgEasings.LINEAR).to(t1, v1, CgEasings.LINEAR);
+            } else if (interp >= CgRichCurve.EASED && interp != CgRichCurve.CATMULL_ROM) {
+                float arg = c.easeArg(i - 1);
+                k.to(t1, v1, u -> CgRichCurve.ease(interp, arg, u));
+            } else if (interp == CgRichCurve.CATMULL_ROM) {
+                // Its shape depends on the keys round it, which no easing carries: straight pieces
+                for (int j = 1; j <= EASE_STEPS; j++) {
+                    float t = t0 + (t1 - t0) * j / EASE_STEPS;
+                    k.to(t, j == EASE_STEPS ? v1 : c.eval(t), CgEasings.LINEAR);
+                }
             } else if (v1 != v0) {
                 float span = t1 - t0, rise = v1 - v0;
                 boolean hermite = !c.weighted(i - 1) && !c.weighted(i);

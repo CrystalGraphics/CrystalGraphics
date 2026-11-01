@@ -4,6 +4,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
+import com.crystalgraphics.asset.curve.CgRichCurve;
 import com.crystalgraphics.object.CgProperty;
 import com.crystalgraphics.object.CgPropertyFlag;
 import com.crystalgraphics.object.CgPropertyPath;
@@ -315,7 +316,7 @@ public final class CgSequenceKinds {
             .property("default", VALUE)
             .property("pre", STRING)
             .property("post", STRING)
-            .property("interp", CgValueType.enumOf("constant", "linear", "cubic"))
+            .property("interp", CgValueType.enumOf(CgRichCurve.interpNames()))
             .property("keys", CgValueType.ARRAY)
             .property("samples", CgValueType.struct(CgCommonStructs.CURVE_SAMPLES_RANGE))
             .property("x", CgValueType.SELF)
