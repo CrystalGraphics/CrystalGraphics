@@ -2149,7 +2149,10 @@ public final class CgVfxParticlePool {
         return countBuffer;
     }
 
-    /** Where this pool's count is in {@link #liveBuffer()}, in bytes: a whole 256, so a binding may start there. */
+    /**
+     * Where this pool's count is in {@link #liveBuffer()}, in bytes: a whole 256, so a binding may start there.
+     * Negative until its first step: a prepared pool holds its records before it counts anything.
+     */
     public long liveOffset() {
         return (long) liveEntry * COUNT_STRIDE;
     }
