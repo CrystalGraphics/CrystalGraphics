@@ -682,6 +682,9 @@ final class CgSequenceCompiler {
         if (timeScale != null && !(timeScale instanceof Number)) {
             throw fail(path + ".time_scale", "a time_scale that changes over the section is not played: a constant only");
         }
+        for (String unplayed : new String[] {"bias", "state", "origin"}) {
+            if (s.fields().get(unplayed) != null) throw fail(path + "." + unplayed, "a subsequence's " + unplayed + " is not played yet");
+        }
         if (!(deps.definition(CgSequenceKinds.SEQUENCE, ref) instanceof CgSequenceDefinition child)) {
             // A definition compiled without its dependencies (a test, a tool) has no children to resolve.
             return null;

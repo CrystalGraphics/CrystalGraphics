@@ -184,6 +184,7 @@ tracks:
 - **`loop: true`** wraps the inner time over its range less `start_offset` and `end_offset`, again each lap, until
   the section ends. Without it, the inner sequence plays on past its end and holds there.
 - **`time_scale` is a number.** A curve that changes the rate over the section fails at load, naming the path.
+- **`bias`, `state` and `origin` are not played yet**: a section that writes one fails at load, naming the path.
 - **A `roles` key the inner sequence has no role for fails at load**, as does a parent role this one lacks.
 - **Nested subsequences compose**: a key three deep lands where each section's start and scale put it.
 - **On a server** the inner sequence's `rpg` events fire as play crosses them, like any of the outer's.

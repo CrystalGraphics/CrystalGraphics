@@ -121,4 +121,16 @@ public class CgSequenceSubsequenceTest {
             assertTrue(e.getMessage(), e.getMessage().contains("sections.s1.time_scale"));
         }
     }
+
+    @Test
+    public void anUnplayedBiasStateOrOriginFailsAtLoadNamingIt() {
+        for (String field : new String[] {"bias: 1", "state: restore", "origin: { x: 1 }"}) {
+            try {
+                outer("range: [0, 1000], " + field);
+                fail("compiled " + field);
+            } catch (CgAssetException e) {
+                assertTrue(e.getMessage(), e.getMessage().contains("sections.s1." + field.substring(0, field.indexOf(':'))));
+            }
+        }
+    }
 }
