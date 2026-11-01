@@ -1,6 +1,8 @@
 package com.crystalgraphics.lwjgl3;
 
 import com.crystalgraphics.platform.gl.CgGLBackend;
+import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.trace.CgTraceChannel;
 import org.lwjgl.opengl.GL;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL43;
@@ -30,6 +32,8 @@ final class GlDebugStacks {
 
     private static final int LIMIT = CgGLBackend.DEBUG_STACKS_LIMIT.get();
     private static final boolean PERF = CgGLBackend.DEBUG_PERF.get();
+    /** Each driver message under {@link #PERF} as a marker named by its id. */
+    private static final CgTraceChannel DEBUG = CgTrace.channel("crystalgraphics.gl.debug");
 
     /** Held: the driver keeps only a native pointer, and a collected callback crashes the next error. */
     private static GLDebugMessageCallback callback;
@@ -54,6 +58,9 @@ final class GlDebugStacks {
                 new Throwable("[crystalgraphics] GL error " + id + " (" + reported + " of " + LIMIT + "): "
                         + GLDebugMessageCallback.getMessage(length, message)).printStackTrace();
             } else if (PERF && severity != GL43.GL_DEBUG_SEVERITY_NOTIFICATION) {
+                // In the frame it fired in: a profile lists it beside that frame's GPU time. Not notifications:
+                // NVIDIA sends one per buffer operation, which fills the marker ring.
+                CgTrace.marker(DEBUG, "gl.debug." + id, GLDebugMessageCallback.getMessage(length, message));
                 int[] count = PERF_SEEN.computeIfAbsent(id, k -> new int[1]);
                 if (count[0]++ == 0) {
                     new Throwable("[crystalgraphics] GL " + typeName(type) + " " + id + ": "
