@@ -69,7 +69,8 @@ public final class CgShaderProgram {
     /** Links submitted where the driver links on the calling thread: each is a stall of that thread. */
     private static final int BLOCKING_LINKS = CgTrace.name("shader.blocking-links");
 
-    private static final int LINK_WAIT = CgTrace.name("shader.linkWait"), LINK_WAITS = CgTrace.name("shader.link-waits");
+    private static final int LINK_WAIT = CgTrace.name("shader.linkWait"), LINK_WAITS = CgTrace.name("shader.link-waits"),
+            STRIP = CgTrace.name("shader.strip");
 
     /** 0 until a link on the {@link CgLinkWorker} lands: the worker makes the program. */
     private int programId;
@@ -161,7 +162,7 @@ public final class CgShaderProgram {
 
     private static int stage(int type, String source, String name) {
         int shader = CgGL.glCreateShader(type);
-        CgGL.glShaderSource(shader, source);
+        CgGL.glShaderSource(shader, CgGlslStrip.forDriver(source));
         CgGL.glCompileShader(shader);
         if (CgGL.glGetShaderi(shader, CgGL.GL_COMPILE_STATUS) != CgGL.GL_TRUE) {
             String log = CgGL.glGetShaderInfoLog(shader, 4096);
@@ -254,10 +255,10 @@ public final class CgShaderProgram {
         pendingKey = key;
 
         pendingVert = CgGL.glCreateShader(CgGL.GL_VERTEX_SHADER);
-        CgGL.glShaderSource(pendingVert, vertexSource);
+        CgGL.glShaderSource(pendingVert, CgGlslStrip.forDriver(vertexSource));
         CgGL.glCompileShader(pendingVert);
         pendingFrag = CgGL.glCreateShader(CgGL.GL_FRAGMENT_SHADER);
-        CgGL.glShaderSource(pendingFrag, fragmentSource);
+        CgGL.glShaderSource(pendingFrag, CgGlslStrip.forDriver(fragmentSource));
         CgGL.glCompileShader(pendingFrag);
 
         CgGL.glAttachShader(programId, pendingVert);
@@ -280,7 +281,7 @@ public final class CgShaderProgram {
         if (key != null && CgProgramBinaryCache.load(programId, key)) return;
         pendingKey = key;
         pendingCompute = CgGL.glCreateShader(CgGL.GL_COMPUTE_SHADER);
-        CgGL.glShaderSource(pendingCompute, computeSource);
+        CgGL.glShaderSource(pendingCompute, CgGlslStrip.forDriver(computeSource));
         CgGL.glCompileShader(pendingCompute);
         CgGL.glAttachShader(programId, pendingCompute);
         CgProgramBinaryCache.retrievable(programId, key);
@@ -412,6 +413,8 @@ public final class CgShaderProgram {
         @Nullable private final String[] attributes;
         @Nullable private final String key;
         private int vert, frag, comp;
+        /** The stripped sources' length, for the {@code shader.link.size} marker. */
+        private int chars;
         /** Read by the render thread once {@link #isDone()}. */
         private int program;
         @Nullable private String error;
@@ -444,7 +447,12 @@ public final class CgShaderProgram {
 
         private int shader(int type, String source) {
             int shader = CgGL.glCreateShader(type);
-            CgGL.glShaderSource(shader, source);
+            String stripped;
+            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, STRIP)) {
+                stripped = CgGlslStrip.forDriver(source);
+            }
+            chars += stripped.length();
+            CgGL.glShaderSource(shader, stripped);
             CgGL.glCompileShader(shader);
             CgGL.glAttachShader(program, shader);
             return shader;
@@ -477,8 +485,8 @@ public final class CgShaderProgram {
                     CgGL.glDetachShader(program, shader);
                     CgGL.glDeleteShader(shader);
                 }
-                CgTrace.marker(CgChannels.GL, "shader.link.size", (compute != null ? "c " + compute.length()
-                        : "v " + vertex.length() + " f " + fragment.length()) + " ms " + (System.nanoTime() - began) / 1_000_000);
+                CgTrace.marker(CgChannels.GL, "shader.link.size", (compute != null ? "c " : "vf ") + chars
+                        + " ms " + (System.nanoTime() - began) / 1_000_000);
             }
         }
 

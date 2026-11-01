@@ -73,6 +73,7 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 |---|---|---|---|
 | `crystalgraphics.demo` | text | empty | false draws no world demo; a scene's name (blasts, beams, modules, fluid, blast, collision, lights, shadows) starts on it; empty on blasts. Read at launch. |
 | `crystalgraphics.demo.blasts` | 1 to 100000 | `120` | Blasts in the demo's blasts scene; 120 keep about 360,000 particles alive. Read at launch. |
+| `crystalgraphics.demo.blasts.fields` | true, false | `false` | Every burst places a radial pull its particles read through physics_field, all in one group. Read at launch. |
 | `crystalgraphics.demo.capture` | text | empty | A PNG path: the world, with no GUI over it, written there captureAt world frames after the demo was placed. Read at launch. |
 | `crystalgraphics.demo.captureAt` | 1 to 2147483647 | `300` | World frames after the demo was placed that its capture is written. Read at launch. |
 | `crystalgraphics.demo.modules.only` | text | empty | The modules demo shows only the stations whose names start with one of these, comma-separated. |
@@ -93,21 +94,18 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 
 | Variable | Takes | Default | |
 |---|---|---|---|
+| `crystalgraphics.gl.callSites` | true, false | `false` | Tallies every GL call by function, caller and open trace zones, for gl-calls.txt: very slow. Read at launch. |
+| `crystalgraphics.gl.countCalls` | true, false | `false` | Counts gl.calls and gl.state-sets each frame: slow, a thread-local add per GL call. Read at launch. |
 | `crystalgraphics.gl.debugPerf` | true, false | `false` | Each distinct driver performance message once, with the stack of the call it came on, and counts: names a CPU stall (pixel transfer is synchronized). The harness asks for a debug context under it. Read at launch. |
 | `crystalgraphics.gl.debugStacks` | true, false | `false` | Log the Java stack of the first GL errors, so a debug message names the call (LWJGL 3 hosts on a debug context: every dev client has one). Read at launch. |
 | `crystalgraphics.gl.debugStacks.limit` | 1 to 1048576 | `5` | GL errors debugStacks logs a stack for. Read at launch. |
 | `crystalgraphics.gl.disableExtensions` | text | empty | Extensions treated as absent, by name, separated by commas or spaces: a driver whose implementation misbehaves, and the harness's downlevel contexts. A feature core in the context's version stays; force a tier for that. Read at launch. |
+| `crystalgraphics.gl.dsa` | true, false | `true` | Blits between framebuffers by name where the context has direct state access, binding neither; false binds them. |
+| `crystalgraphics.gl.gatherBarriers` | true, false | `true` | Joins the barriers between cgBeginBarriers and cgEndBarriers into one glMemoryBarrier on GL; off, one each. Read at launch. |
 | `crystalgraphics.gl.keepHostDebugOutput` | true, false | `false` | Keep the GL debug output Minecraft enables at its default glDebugVerbosity; modern GL nodes turn it off at the first host section (on NVIDIA it slowed every call several times). debugStacks and debugPerf keep it too. Read at launch. |
-| `crystalgraphics.gl.countCalls` | true, false | `false` | Counts each frame's calls to the GL backend (`gl.calls`) and state setters asked of the shadow (`gl.state-sets`) as trace counters on `crystalgraphics.gl`. Slow: a thread-local add per call, as much again as a busy frame. Read at launch. |
-| `crystalgraphics.gl.dsa` | true, false | `true` | Blits between framebuffers by name (`glBlitNamedFramebuffer`) where a GL driver has 4.5 or `GL_ARB_direct_state_access`, binding neither (`CgGL.blitsByName`); `false` binds them and restores the binding, as before. |
-| `crystalgraphics.graph.keepComposed` | true, false | `true` | Keeps a composed framebuffer's attachments (`CgComposedTargets`) across an execution's passes, attaching only what differs; `false` attaches each pass and detaches after, as before, to compare. Read at launch. |
-| `crystalgraphics.gl.gatherBarriers` | true, false | `true` | Joins the barriers an executor step or a dispatch asks into one `glMemoryBarrier` on GL (`CgGL.cgBeginBarriers`); `false` issues one each, as before, to compare. A device records each either way. Read at launch. |
-| `crystalgraphics.gl.uniformShadow` | true, false | `true` | Skips a `glUniform1i` or `glUniform1` setting what that program's uniform already holds (`CgGlUniforms`, Unreal's `FOpenGLShaderParameterCache`); `false` issues every set, to tell the shadow from a regression. Read at launch. |
-| `crystalgraphics.texture.skipHeld` | true, false | `true` | A texture bound to a unit that holds it issues nothing, its unit switch included (`CgGL.cgBindTexture`); `false` switches and binds every time. Read at launch. |
-| `crystalgraphics.graph.keepVertexArray` | true, false | `true` | Raster passes in a row keep the slab's vertex array bound, unbound before any other step and at the execution's end; `false` unbinds it after every pass. Read at launch. |
-| `crystalgraphics.gl.lazySamplerPark` | true, false | `true` | A stage's park (`CgHostSamplers`) only forgets each unit's sampler, and a unit is unbound at our first texture bind there; `false` unbinds the first 16 units at every park. Read at launch. |
-| `crystalgraphics.gl.callSites` | true, false | `false` | Tallies every GL call by function, by the engine code that made it and by the trace zones open at the call, and every shadow setter by function (`CgGlCallSites`); the harness writes a profile range's as `gl-calls.txt` beside its report. Very slow: a stack walk per call, so the range's times mean nothing. Read at launch. |
+| `crystalgraphics.gl.lazySamplerPark` | true, false | `true` | A stage's park clears a unit's sampler at our first texture bind there, not all 16 at once. Read at launch. |
 | `crystalgraphics.gl.threadCheck` | true, false | `false` | Log each CgGL call site inside a GL-free section (a UI paint recording) or off the context's thread, once, with its stack; every site and its count to stderr at exit. Read at launch. |
+| `crystalgraphics.gl.uniformShadow` | true, false | `true` | Skips a uniform set to what that program's uniform already holds. Read at launch. |
 
 ## `crystalgraphics.graph`
 
@@ -115,6 +113,8 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 |---|---|---|---|
 | `crystalgraphics.graph.asyncAll` | true, false | `false` | Every compute pass that can go async does, as if marked async(): a check of the waits, which the compute scenes must pass under synchronization validation. Read at launch. |
 | `crystalgraphics.graph.barriers` | true, false | `true` | Barriers where a kernel takes part; false keeps the bookkeeping and issues none: what synchronization validation must catch on --mode=compute-graph. |
+| `crystalgraphics.graph.keepComposed` | true, false | `true` | Keeps a composed framebuffer's attachments across an execution's passes; off, attached each pass. Read at launch. |
+| `crystalgraphics.graph.keepVertexArray` | true, false | `true` | Raster passes in a row keep the vertex array bound; off, each unbinds it. Read at launch. |
 
 ## `crystalgraphics.host`
 
@@ -137,6 +137,7 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 
 | Variable | Takes | Default | |
 |---|---|---|---|
+| `crystalgraphics.job.forEachPriority` | 1 to 10 | `4` | The frame's forEach helpers' Java thread priority: below normal leaves the GL driver's thread its core. Read at launch. |
 | `crystalgraphics.job.forEachThreads` | 0 to 256 | `0` | Threads CgJob.forEach and effects' emitters run on, the caller one of them; 0 for two fewer than the cores, 1 for all on the caller. Read at launch. |
 | `crystalgraphics.job.threads` | 0 to 256 | `0` | Threads jobs' work runs on; 0 for half the cores past two, at least one. Read at launch. |
 
@@ -189,6 +190,12 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 |---|---|---|---|
 | `crystalgraphics.noise.size` | 16 to 256 | `64` | Texels a side of each engine noise volume: 64 (2 MB a volume) or 128. Read at launch. |
 
+## `crystalgraphics.pipeline`
+
+| Variable | Takes | Default | |
+|---|---|---|---|
+| `crystalgraphics.pipeline.logMisses` | true, false | `false` | Log each pipeline a draw found unbuilt (pipeline.missed, pipeline.too-late), with its shader, pass and keywords. |
+
 ## `crystalgraphics.post`
 
 | Variable | Takes | Default | |
@@ -227,7 +234,9 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 |---|---|---|---|
 | `crystalgraphics.shader.binaryCache` | true, false | `true` | Keep linked GL programs' binaries across launches where the driver gives them; false compiles every program from source. |
 | `crystalgraphics.shader.devmode` | true, false | `false` | #line directives around each include in preprocessed shader source, so a compiler's line numbers name the file. Read at launch. |
+| `crystalgraphics.shader.linkWorker` | true, false | `true` | Compile and link programs on a worker thread in a shared GL context; false links on the render thread. Read at launch. |
 | `crystalgraphics.shader.parallelCompile` | true, false | `true` | Materials compile ahead of their first bind where the driver links on its own threads; false compiles at the first bind: for a driver that misreports completion. Read at launch. |
+| `crystalgraphics.shader.strip` | true, false | `true` | Strip comments, decided #if branches, unreached functions and unused macros from GLSL before the driver compiles it; false hands it the source as written. Read at launch. |
 
 ## `crystalgraphics.shaderBuffer`
 
@@ -264,7 +273,8 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 | Variable | Takes | Default | |
 |---|---|---|---|
 | `crystalgraphics.texture.bc7` | true, false | `true` | Cooked BC7 textures uploaded as their blocks where the context has BPTC; false decodes them to RGBA8 as they load. Taken at each context's capability probe. |
-| `crystalgraphics.texture.logFirstUse` | true, false | `false` | Log each texture from files loaded at its first use: its source, the thread that paid for it and how long. On the render thread, a texture nothing loaded ahead. |
+| `crystalgraphics.texture.logFirstUse` | true, false | `false` | Log each texture from files loaded at its first use: its source, the thread that paid for it and how long. |
+| `crystalgraphics.texture.skipHeld` | true, false | `true` | Binding a texture to a unit that holds it switches no unit; off, as before. Read at launch. |
 
 ## `crystalgraphics.trace`
 
@@ -276,6 +286,7 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 | `crystalgraphics.trace.frames` | 0 to 1048576 | `600` | Newest frames the trace keeps, overwriting the oldest; 0 stops once the first are full. Read at launch. |
 | `crystalgraphics.trace.jvm` | true, false | `true` | Stream the JVM's compilations, deoptimisations, safepoints and class loads when the trace records its first frame; explicit startJvmEvents calls work either way. |
 | `crystalgraphics.trace.zones` | 1 to 268435456 | `65536` | Zones a thread keeps at most, for each of the newest and the first frames; raise it when a report warns of dropped zones. Read at launch. |
+| `crystalgraphics.trace.zonesAhead` | true, false | `false` | The frame thread's zones grown to their ceiling at a frame's start, rather than doubled while it records: a doubling is tens of MB in one frame. Read at launch. |
 
 ## `crystalgraphics.uploads`
 
@@ -295,7 +306,6 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 | `crystalgraphics.vfx.budget.debug.frameTime` | -1.0 to 1000.0 | `-1.0` | At 0 or more, the frame line's measured milliseconds, to see what the scalabilities do under it. |
 | `crystalgraphics.vfx.budget.frameMs` | 0.0 to 1000.0 | `0.0` | CPU milliseconds a frame every effect's frame-thread work may take before the scalabilities scale down; 0 for the quality tier's. |
 | `crystalgraphics.vfx.coarseVolumes` | true, false | `false` | Measurement: volume layers on a 12 x 24 sphere instead of 48 x 96. Read at launch. |
-| `crystalgraphics.vfx.fuseLook` | true, false | `true` | On compute, each particle a Step keeps writes its drawn part as it appends it, the Look stage no dispatch of its own; false keeps the two dispatches, as below compute. |
 | `crystalgraphics.vfx.mergeParticlesFrom` | 0 to 2147483647 | `64` | Effects playing from which GPU particles draw one draw a pool and layer (indirectEach), sorted as one group; below it a slot a draw, each effect sorted whole. Stops at three quarters of it. 0 always merges. |
 | `crystalgraphics.vfx.orderedTies` | true, false | `false` | Break ties in the particle draw order by spawn id, so a capture repeats byte for byte: a dispatch per pool and a sort a frame. Capture runs only, beside crystalgraphics.fixedSeed. |
 | `crystalgraphics.vfx.parallelBooks` | 1 to 2147483647 | `4096` | Effects with emitters due a tick past which their books run on the workers, in batches of one simulation's effects; fewer book on the render thread alone. |
@@ -355,7 +365,7 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 | `crystalgraphics.world.mediaPixels` | 4 to 32 | `16` | Pixels of the screen a froxel of the air's grid spans across: Unreal's High 16, Epic 8 (four times the froxels). |
 | `crystalgraphics.world.mergeEmission` | true, false | `true` | What a new world renderer starts with: a transparent draw's codeless Emissive pass written by its Forward draw beside the target; false draws every Emissive pass on its own (mergeEmission(boolean) live). |
 | `crystalgraphics.world.meshFieldFloats` | 65536 to 67108864 | `8388608` | Floats our meshes' distance fields share on the GPU; the least recently used are dropped past it. Read at launch. |
-| `crystalgraphics.world.skipUnready` | true, false | `false` | Skips a draw whose program is not built yet, counting it as world.unready-draws, rather than compiling at the draw (skipUnready(boolean) live). |
+| `crystalgraphics.world.skipUnready` | true, false | `true` | Holds a draw whose programs are not built yet, starting them and counting it as world.unready-draws; false compiles at the draw (skipUnready(boolean) live). |
 | `crystalgraphics.world.sunCasterReach` | 0.0 to 128.0 | `48.0` | Blocks toward the sun past each shadow cascade its casters are taken from: their longest shadow. |
 | `crystalgraphics.world.sunShadowCascades` | 1 to 4 | `4` | Cascades of the sun's shadow map drawn, each 3 times the depth of the last. |
 | `crystalgraphics.world.sunShadowDistance` | 8.0 to 512.0 | `96.0` | Blocks from the eye the sun's shadow map reaches, in four cascades: Unreal's DynamicShadowDistanceMovableLight. |

@@ -78,6 +78,9 @@ Missing uniforms: warn-once per program ID, not per frame.
 ### `CgShaderProgram`
 Low-level compiled program handle. Used by `CgShader` internally. Direct callers should prefer `CgShader`. Methods: `bind()`, `unbind()`, `getUniformLocation(String)`, `setUniform1f/1i/2f/3f/4f/mat3/mat4(loc, ...)`, `isDeleted()`, `delete()`, `getActiveUniforms()`, `relink`, and `submitLink`/`isLinkDone`/`finishLink` to link without waiting. One concrete class; its javadoc has the usage.
 
+### `CgGlslStrip`
+Package-private. What every stage's source becomes before `glShaderSource`, applied by `CgShaderProgram` (on the link worker where one runs): comments, the `#if` branches the source's own macros decide, functions nothing reaches from `main` and macros nothing names removed, blank lines dropped, a `#line` wherever lines went so the driver's line numbers still name the source given. Undecidable conditionals (driver macros, function-like macros) stay whole; `##` in any macro keeps every function. It shrinks text, not compile time: NVIDIA's cost is optimising what is reached, measured the same stripped or not. `-Dcrystalgraphics.shader.strip=false` hands the driver the source as written.
+
 ### `CgActiveUniform`
 Immutable `@Value` descriptor of one active uniform as reported by `glGetActiveUniform` / `glGetActiveUniformARB`. Fields:
 - `name` — uniform name (e.g. `"u_time"`, `"myArray[0]"`)
