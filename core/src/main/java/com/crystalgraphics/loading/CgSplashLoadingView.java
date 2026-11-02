@@ -18,7 +18,7 @@ public final class CgSplashLoadingView implements CgLoadingView {
     private final CgLoadingCanvas canvas;
 
     public CgSplashLoadingView() {
-        this(CgLogoLoadingView.LOGO);
+        this(CgLoadingCanvas.LOCKUP);
     }
 
     /** {@code logo}, a square image's path, on the engine's look. */
@@ -35,7 +35,7 @@ public final class CgSplashLoadingView implements CgLoadingView {
         // Settling from 3% larger as it comes in, 4% larger as it fades out
         float grow = 1f + 0.04f * (1f - alpha) + 0.03f * (1f - intro);
 
-        canvas.hero(alpha, shown, width / 2f, height * 0.47f, Math.min(width, height) * 0.26f * grow);
+        canvas.hero(alpha, shown, width / 2f, height * 0.47f, Math.min(width, height) * 0.12f * grow);
 
         int textPx = Math.max(15, Math.round(height / 45f));
         float margin = Math.round(height * 0.04f), spinner = Math.round(textPx * 1.5f);

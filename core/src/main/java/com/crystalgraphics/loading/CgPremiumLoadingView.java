@@ -3,14 +3,17 @@ package com.crystalgraphics.loading;
 import javax.annotation.Nullable;
 
 /**
- * The engine's loading screen in the light, minimal-premium style of HoYoverse's start screens: the logo over pastel
- * blobs of its own colours with prismatic light falling across them, a light sweeping across it, and a bar in the logo's gradient
- * over a quiet line saying what loads. It eases in, and eases out a little larger as the screen fades.
+ * The engine's loading screen in the minimal-premium style of HoYoverse's start screens: the logo and its wordmark, a
+ * light sweeping across the logo, over a view up at the ocean's surface from below; Minecraft's white outlined load bar,
+ * made smooth, over a line saying what loads. It eases in, and eases out a little larger as the screen fades.
  *
  * <pre>{@code
  * CgLoadingScreen.view(new CgPremiumLoadingView());                                  // the default
- * CgLoadingScreen.view(new CgPremiumLoadingView("mymod:textures/gui/splash.png"));    // a mod's logo on the same look
+ * CgLoadingScreen.view(new CgPremiumLoadingView("mymod:textures/gui/lockup.png"));    // a mod's lockup on the same look
  * }</pre>
+ *
+ * A mod's lockup is laid out as the engine's: its icon 64 / 92 of the image's height, 14 / 486.8 of its width padding
+ * each side (the plan repository's tools/logo/export_lockup.py makes one).
  */
 public final class CgPremiumLoadingView implements CgLoadingView {
 
@@ -19,12 +22,12 @@ public final class CgPremiumLoadingView implements CgLoadingView {
     private final CgLoadingCanvas canvas;
 
     public CgPremiumLoadingView() {
-        this(CgLogoLoadingView.LOGO);
+        this(CgLoadingCanvas.LOCKUP);
     }
 
-    /** {@code logo}, a square image's path, on the engine's look. */
-    public CgPremiumLoadingView(String logo) {
-        canvas = new CgLoadingCanvas(logo);
+    /** {@code lockup}, an icon and wordmark image's path, on the engine's look. */
+    public CgPremiumLoadingView(String lockup) {
+        canvas = new CgLoadingCanvas(lockup);
     }
 
     @Override
@@ -37,10 +40,10 @@ public final class CgPremiumLoadingView implements CgLoadingView {
         // 4% larger as it fades out, as a game's splash leaves for its menu; settling from 3% larger as it comes in
         float grow = 1f + 0.04f * (1f - alpha) + 0.03f * (1f - intro);
         float cx = width / 2f;
-        float barWidth = Math.round(Math.min(width * 0.30f, height * 0.62f)), barX = Math.round(cx - barWidth / 2f);
-        float barHeight = Math.max(4f, Math.round(height / 135f)), barY = Math.round(height * 0.66f);
-
-        canvas.hero(alpha, shown, cx, height * 0.44f, Math.min(width, height) * 0.22f * grow);
+        // The bar spans the logo and its wordmark, so the three read as one block
+        float lockup = canvas.hero(alpha, shown, cx, height * 0.45f, Math.min(width, height) * 0.10f * grow);
+        float barWidth = Math.round(lockup), barX = Math.round(cx - barWidth / 2f);
+        float barHeight = Math.max(8f, Math.round(height / 60f)), barY = Math.round(height * 0.58f);
         canvas.bar(barX, barY, barWidth, barHeight, progress, shown);
         int textPx = Math.max(16, Math.round(height / 42f));
         String status = canvas.status(reason, progress, "   ·   ");

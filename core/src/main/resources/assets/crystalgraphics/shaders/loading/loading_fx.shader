@@ -7,8 +7,7 @@
 //   2 an image (the logo) with a light sweeping across it every few seconds, z its strength (0 for none)
 //   3 a flat colour
 //   4 a spinner: a ring with a turning bright arc
-//   5 the load bar: a pill in the logo's gradient with a glow and a sheen, z how full
-// =============================================================================
+//   5 the load bar: Minecraft's white outline and fill, made smooth, z how full// =============================================================================
 
 #type none
 #pragma cg_use quad
@@ -48,13 +47,6 @@ Pass {
     vec3 blob(vec3 dst, vec2 p, vec2 c, float r, vec3 col, float w) {
         vec2 d = p - c;
         return mix(dst, col, w * exp(-dot(d, d) / (r * r)));
-    }
-
-    // The logo's own gradient, cyan to magenta, at u (0 to 1)
-    vec3 logoGradient(float u) {
-        vec3 c = mix(vec3(0.13, 0.80, 0.95), vec3(0.25, 0.42, 0.98), smoothstep(0.00, 0.35, u));
-        c = mix(c, vec3(0.56, 0.32, 0.96), smoothstep(0.35, 0.70, u));
-        return mix(c, vec3(0.86, 0.30, 0.76), smoothstep(0.70, 1.00, u));
     }
 
     // A cell grid `density` to the screen's height, rising `speed` cells a second (screen-down uv, so adding time
@@ -116,8 +108,12 @@ Pass {
         col = mix(col, surfaceFromBelow(view, t), smoothstep(HORIZON + 0.06, HORIZON - 0.04, uv.y));
         col = mix(col, vec3(0.55, 0.88, 1.00), exp(-pow((uv.y - HORIZON) / 0.035, 2.0)) * 0.28);
 
-        // The sun above the surface: a soft glow overhead, which the shafts fan out from
-        vec2 sun = vec2(0.10, -0.70);
+        // A calm column behind the logo, bar and status: fewer shafts and specks, the water a little deeper
+        float column = exp(-pow(centred.x / 0.42, 2.0)) * smoothstep(HORIZON - 0.05, HORIZON + 0.10, uv.y);
+        col *= 1.0 - 0.10 * column;
+
+        // The sun above the surface, off to the left: a soft glow, which the shafts fan out from
+        vec2 sun = vec2(-0.70, -0.72);
         vec2 toSun = centred - sun;
         col += vec3(0.62, 0.90, 1.00) * exp(-dot(toSun, toSun) / 0.10) * 0.20;
 
@@ -125,7 +121,7 @@ Pass {
         float angle = atan(toSun.x, toSun.y);
         float shafts = value_noise(vec2(angle * 14.0, t * 0.25)) * value_noise(vec2(angle * 31.0 + 4.0, t * 0.4));
         shafts = smoothstep(0.12, 0.6, shafts) * smoothstep(HORIZON - 0.1, HORIZON + 0.1, uv.y) * exp(-(uv.y - HORIZON) * 2.0);
-        col += vec3(0.40, 0.80, 1.00) * shafts * 0.42;
+        col += vec3(0.40, 0.80, 1.00) * shafts * 0.42 * (1.0 - 0.65 * column);
 
         // Specks drifting up: small and faint far off, a few large and soft close by, faster
         for (int layer = 0; layer < 2; layer++) {
@@ -135,7 +131,7 @@ Pass {
             vec2 d = g.xy - (h - 0.5) * 0.6 - vec2(sin(t * 0.8 + h.y * 6.2832) * 0.1, 0.0);
             float size = far ? 0.0020 : 0.012;
             float speck = exp(-dot(d, d) / size) * step(far ? 0.80 : 0.86, hash12(g.zw + 64.7 + float(layer)))
-                    * (far ? 0.30 + 0.25 * h.x : 0.14 + 0.08 * h.x);
+                    * (far ? 0.30 + 0.25 * h.x : 0.14 + 0.08 * h.x) * (1.0 - 0.7 * column);
             col = mix(col, vec3(0.88, 0.96, 1.00), speck);
         }
         return col;
@@ -150,35 +146,36 @@ Pass {
         return vec4(rgb * a, a) + dst * (1.0 - a);
     }
 
-    // A pill b pixels tall in a quad 4b tall and 3b wider than it, so its glow has room; filled to `fill` (0 to 1)
-    vec4 bar(vec2 uv, float t, float fill, float alpha) {
+    // Signed distance from q to a box of half-size e with corners rounded by r
+    float roundBox(vec2 q, vec2 e, float r) {
+        vec2 a = abs(q) - (e - r);
+        return length(max(a, 0.0)) + min(max(a.x, a.y), 0.0) - r;
+    }
+
+    // Minecraft's load bar made smooth: a white outline, a gap, then a solid white fill to `fill` (0 to 1), over a
+    // dark track. b pixels tall, centred in a quad 4b tall and 3b wider than it.
+    vec4 bar(vec2 uv, float fill, float alpha) {
         vec2 size = 1.0 / max(fwidth(uv), vec2(1.0e-6));
         vec2 p = uv * size, c = size * 0.5;
-        float b = size.y * 0.25, r = b * 0.5;
-        vec2 extent = vec2(size.x * 0.5 - 1.5 * b, r);
-        float d = length(max(abs(p - c) - (extent - r), 0.0)) - r;
-        float inside = 1.0 - smoothstep(-0.5, 0.5, d);
-        float u = clamp((p.x - 1.5 * b) / (size.x - 3.0 * b), 0.0, 1.0);
-        float edge = 1.5 * b + fill * (size.x - 3.0 * b);
+        float b = size.y * 0.25, r = b * 0.22, line = max(1.5, b * 0.12);
+        vec2 extent = vec2(size.x * 0.5 - 1.5 * b, b * 0.5);
+        float d = roundBox(p - c, extent, r);
+        float x0 = 1.5 * b + 2.0 * line, x1 = size.x - 1.5 * b - 2.0 * line;
+        float edge = x0 + fill * (x1 - x0);
         float filled = 1.0 - smoothstep(edge - 0.5, edge + 0.5, p.x);
-        vec3 tint = logoGradient(u);
 
-        // A soft shadow under the pill, so it lifts off water bright or deep
-        vec2 below = p - c - vec2(0.0, b * 0.35);
-        float ds = length(max(abs(below) - (extent - r), 0.0)) - r;
         vec4 pm = vec4(0.0);
-        pm = over(pm, vec3(0.04, 0.03, 0.18), exp(-max(ds, 0.0) / (b * 0.6)) * 0.45 * step(0.0, d));
-        pm = over(pm, tint, filled * exp(-max(d, 0.0) / (b * 0.7)) * 0.45 * step(0.0, d));
-        // A frosted track with a slate rim
-        pm = over(pm, vec3(1.0), inside * 0.55);
-        pm = over(pm, vec3(0.16, 0.12, 0.40), (1.0 - smoothstep(0.0, 1.0, abs(d + 0.5))) * 0.35);
-        float top = 1.0 - (p.y - (c.y - r)) / b;
-        float sheen = exp(-pow((u - (fract(t * 0.35) * 1.5 - 0.25)) / 0.06, 2.0)) * 0.45;
-        pm = over(pm, tint * (0.95 + 0.35 * top) + sheen, inside * filled);
-        // A tight pip at the fill's end; a wide white falloff smears on the light track
-        float head = exp(-pow(length(p - vec2(edge - r, c.y)) / (r * 0.75), 2.0)) * 0.85 * step(0.002, fill);
-        pm = over(pm, vec3(1.0), head);
+        pm = over(pm, vec3(0.04, 0.04, 0.16), (1.0 - smoothstep(-0.5, 0.5, d)) * 0.30);
+        pm = over(pm, vec3(1.0), (smoothstep(-line - 0.5, -line + 0.5, d) - smoothstep(-0.5, 0.5, d)) * 0.95);
+        pm = over(pm, vec3(1.0), (1.0 - smoothstep(-0.5, 0.5, d + 2.0 * line)) * filled * 0.97);
         return vec4(pm.rgb / max(pm.a, 1.0e-4), pm.a * alpha);
+    }
+
+    // A diagonal band crossing an image in 1.2 s, every 4.5 s
+    float sweep(vec2 uv, float t) {
+        float phase = mod(t, 4.5) / 1.2;
+        float across = (uv.x + (1.0 - uv.y) * 0.6) / 1.6;
+        return phase < 1.3 ? exp(-pow((across - (phase * 1.6 - 0.3)) / 0.07, 2.0)) : 0.0;
     }
 
     void vertex(out v2f o) {
@@ -199,11 +196,7 @@ Pass {
             fragColor = vec4(i.color.rgb, i.color.a * exp(-r * r * 3.0) * (1.0 - smoothstep(0.55, 1.0, r)));
         } else if (mode == 2) {
             vec4 image = texture(_MainTex, i.uv) * i.color;
-            // A diagonal band crossing the image in 1.2 s, every 4.5 s
-            float phase = mod(t, 4.5) / 1.2;
-            float across = (i.uv.x + (1.0 - i.uv.y) * 0.6) / 1.6;
-            float band = phase < 1.3 ? exp(-pow((across - (phase * 1.6 - 0.3)) / 0.07, 2.0)) : 0.0;
-            image.rgb += vec3(0.55 * band * i.params.z);
+            image.rgb += vec3(0.55 * sweep(i.uv, t) * i.params.z);
             fragColor = image;
         } else if (mode == 4) {
             vec2 d = i.uv * 2.0 - 1.0;
@@ -212,7 +205,7 @@ Pass {
             float head = fract(atan(d.y, d.x) / 6.2832 + t * 0.9);
             fragColor = vec4(i.color.rgb, i.color.a * ring * (0.12 + 0.88 * smoothstep(0.35, 1.0, head)));
         } else if (mode == 5) {
-            fragColor = bar(i.uv, t, i.params.z, i.color.a);
+            fragColor = bar(i.uv, i.params.z, i.color.a);
         } else {
             fragColor = i.color;
         }

@@ -9,6 +9,9 @@ import com.crystalgraphics.api.font.CgSystemFontFace;
 import com.crystalgraphics.api.font.CgSystemFonts;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.text.CgTextLayout;
+import com.crystalgraphics.api.texture.CgMipmapConfig;
+import com.crystalgraphics.api.texture.CgTextureSpec;
+import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.api.texture.CgTextures;
 import com.crystalgraphics.gl.render.CgQuadRenderer;
 import com.crystalgraphics.gl.texture.CgTexture2D;
@@ -24,7 +27,7 @@ import com.crystalgraphics.text.render.CgTextRenderer;
  * <pre>{@code
  * canvas.begin(width, height);
  * canvas.quads().quad(0, 0, width, height, 0xFFFFFFFF, CgLoadingCanvas.BACKDROP).end();
- * canvas.logo(x, y, size, 0xFFFFFFFF, 1f);
+ * float lockupWidth = canvas.hero(1f, 1f, width / 2f, height * 0.45f, height * 0.10f);
  * canvas.text(1, "Building pipelines", width / 2f, y, 18, 0x99FFFFFF, 0.5f);
  * }</pre>
  */
@@ -33,8 +36,18 @@ final class CgLoadingCanvas {
     static final String FX = "crystalgraphics:shaders/loading/loading_fx.shader";
     /** {@code loading_fx.shader}'s modes. */
     static final int BACKDROP = 0, GLOW = 1, IMAGE = 2, FLAT = 3, SPINNER = 4, BAR = 5;
-    // A light halo and a deep shadow lift the logo off the bright water behind it
-    private static final int HERO_GLOW = 0xFFDDF2FF, HERO_SHADOW = 0xFF120C48;
+    /**
+     * The engine's lockup, its icon and "Crystal Graphics" beside it, shadows included: exported by the plan
+     * repository's tools/logo/export_lockup.py, which {@link #ICON_SHARE} and {@link #SIDE_PAD} follow.
+     */
+    static final String LOCKUP = "crystalgraphics:textures/gui/lockup.png";
+    /** The icon's height against the lockup image's, and each side's padding against its width (64 / 92, 14 / 486.8). */
+    private static final float ICON_SHARE = 64f / 92f, SIDE_PAD = 14f / 486.8f;
+    // A light halo lifts the lockup off the bright water behind it
+    private static final int HERO_GLOW = 0xFFDDF2FF;
+    // Drawn at about a quarter of its size: without mips its strokes alias
+    private static final CgTextureSpec MIPMAPPED = CgTextureSpec.builder().type(CgTextureType.RGBA8)
+            .mipmaps(CgMipmapConfig.TRILINEAR).build();
 
     private final String logoPath;
     private final long started = System.nanoTime();
@@ -62,7 +75,7 @@ final class CgLoadingCanvas {
     void begin(int width, int height) {
         if (image == null) {
             image = CgQuadRenderer.create().useMaterial(CgMaterial.load(FX));
-            logo = CgTextures.of(logoPath);
+            logo = CgTextures.of(logoPath, MIPMAPPED);
         }
         nextBatch = 0;
         seconds = (System.nanoTime() - started) / 1e9f;
@@ -93,17 +106,18 @@ final class CgLoadingCanvas {
     }
 
     /**
-     * The engine's look behind everything else: the drifting backdrop at {@code alpha}, then the logo, {@code size}
-     * square and centred on {@code cx}, {@code cy}, with its breathing glow and light sweep, at {@code shown}.
+     * The engine's look behind everything else: the backdrop at {@code alpha}, then the lockup, its icon {@code icon}
+     * tall, centred on {@code cx}, {@code cy}, with a breathing halo and a light sweep, at {@code shown}. Returns the
+     * lockup's visible width, its padding left out.
      */
-    void hero(float alpha, float shown, float cx, float cy, float size) {
-        float glow = size * 2.6f, breath = 0.40f + 0.08f * (float) Math.sin(seconds * 1.6);
-        float shadow = size * 1.45f, drop = size * 0.09f;
+    float hero(float alpha, float shown, float cx, float cy, float icon) {
+        float h = icon / ICON_SHARE, w = h * logo.getWidth() / logo.getHeight();
+        float glow = w * 1.3f, breath = 0.30f + 0.06f * (float) Math.sin(seconds * 1.6);
         quads().quad(0f, 0f, width, height, argb(alpha, 0xFFFFFFFF), BACKDROP)
                 .quad(cx - glow / 2f, cy - glow / 2f, glow, glow, argb(shown * breath, HERO_GLOW), GLOW)
-                .quad(cx - shadow / 2f, cy - shadow / 2f + drop, shadow, shadow, argb(shown * 0.55f, HERO_SHADOW), GLOW)
                 .end();
-        logo(Math.round(cx - size / 2f), Math.round(cy - size / 2f), size, argb(shown, 0xFFFFFFFF), 1f);
+        draw(image, logo, Math.round(cx - w / 2f), Math.round(cy - h / 2f), w, h, argb(shown, 0xFFFFFFFF), 1f);
+        return w * (1f - 2f * SIDE_PAD);
     }
 
     /** The load bar, {@code w} x {@code h} with its top left at {@code x}, {@code y}, {@code fill} of it full (0 to 1). */
@@ -119,14 +133,14 @@ final class CgLoadingCanvas {
         quads().quad(x, y, size, size, argb, SPINNER).end();
     }
 
-    /** The logo, a square of {@code size} at {@code x}, {@code y}, a light sweeping across it at {@code sweep} (0 for none). */
-    void logo(float x, float y, float size, int argb, float sweep) {
-        image.useMaterial(CgMaterial.load(FX));
-        image.bindTexture(0, logo);
-        image.begin();
-        image.quad().at(x, y).size(size, size).uv(0f, 0f, 1f, 1f).color(argb).custom0(seconds, aspect, sweep, IMAGE).submit();
-        image.flush();
-        image.end();
+    /** {@code texture} over {@code w} x {@code h} at {@code x}, {@code y} through its own renderer, a light sweeping across it at {@code sweep} (0 for none). */
+    private void draw(CgQuadRenderer renderer, CgTexture2D texture, float x, float y, float w, float h, int argb, float sweep) {
+        renderer.useMaterial(CgMaterial.load(FX));
+        renderer.bindTexture(0, texture);
+        renderer.begin();
+        renderer.quad().at(x, y).size(w, h).uv(0f, 0f, 1f, 1f).color(argb).custom0(seconds, aspect, sweep, IMAGE).submit();
+        renderer.flush();
+        renderer.end();
     }
 
     /**
