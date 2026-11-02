@@ -1,6 +1,8 @@
 package com.crystalgraphics.vfx.system;
 
 import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -9,6 +11,8 @@ import java.util.Objects;
 
 import javax.annotation.Nullable;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
 
@@ -75,7 +79,11 @@ import com.crystalgraphics.world.CgWorldQueries;
  */
 public final class CgVfxCueEffects implements CgCueEffects {
 
+    private static final Logger LOGGER = LogManager.getLogger("CgCue");
+
     private final CgVfxSystem vfx;
+    /** The systems logged as compiled to nothing here: once each. */
+    private final Set<String> undrawnLogged = new HashSet<>();
     private final CgCueManager cues;
     private final double[] point = new double[3];
     private final double[] viewer = new double[3];
@@ -144,12 +152,19 @@ public final class CgVfxCueEffects implements CgCueEffects {
         return a;
     }
 
+    /** Whether {@code p}'s system compiled to something that plays; warns once a system where it did not. */
+    private boolean drawable(CgCueDefinition cue, Particles p) {
+        if (p.definition() != null) return true;
+        if (undrawnLogged.add(p.system())) LOGGER.warn("{}: {} compiled to no system here, so it plays nothing", cue.id(), p.system());
+        return false;
+    }
+
     @Override
     public void burst(CgCueDefinition cue, Effects block, CgCueParameters at, float age) {
         List<Particles> particles = block.particles();
         for (int i = 0; i < particles.size(); i++) {
             Particles p = particles.get(i);
-            if (p.definition() != null && cues.spawns(p.where().condition(), at, i)) spawn(cue, p, at, age);
+            if (drawable(cue, p) && cues.spawns(p.where().condition(), at, i)) spawn(cue, p, at, age);
         }
         List<Sound> sounds = block.sounds();
         for (int i = 0; i < sounds.size(); i++) {
@@ -417,7 +432,7 @@ public final class CgVfxCueEffects implements CgCueEffects {
             List<Particles> particles = block.particles();
             for (int i = 0; i < particles.size(); i++) {
                 Particles p = particles.get(i);
-                if (p.definition() == null || !cues.spawns(p.where().condition(), at, i)) continue;
+                if (!drawable(cue, p) || !cues.spawns(p.where().condition(), at, i)) continue;
                 if (p.delay() > age) {
                     waiting.add(p);
                     waitingLoops.add(loop);

@@ -166,6 +166,9 @@ public final class CgCueManager extends CgWorldSubsystem {
     /** The cues whose failed load was logged: once each, so a broken cue tags loudly and never floods. */
     private final Set<String> failedLogged = new HashSet<>();
     private final Set<String> warnedWrites = new HashSet<>();
+    /** The cues whose late burst, and the tags whose unrouted play, were logged: once each. */
+    private final Set<String> lateLogged = new HashSet<>();
+    private final Set<CgGameplayTag> unroutedLogged = new HashSet<>();
     private volatile boolean routesDirty = true;
     @Nullable
     private CgTickFunction tick;
@@ -547,6 +550,9 @@ public final class CgCueManager extends CgWorldSubsystem {
             if (r == null) {
                 unrouted++;
                 CgTrace.counter(CgChannels.MISC, UNROUTED, unrouted);
+                if (unroutedLogged.add(c.tag)) {
+                    LOGGER.warn("no {} cue answers {} or a parent of it, so it plays nothing", burst ? "burst" : "looping", c.tag);
+                }
                 if (p != null) {
                     p.clear();
                     handles.push(p);
@@ -597,6 +603,7 @@ public final class CgCueManager extends CgWorldSubsystem {
                 if (age > ONE_SHOT_WINDOW) {
                     lateDropped++;
                     CgTrace.counter(CgChannels.MISC, LATE_DROPPED, lateDropped);
+                    lateDrop(cue, age);
                 } else {
                     effects.burst(cue, cue.burst(), c.params, (float) age);
                 }
@@ -640,6 +647,14 @@ public final class CgCueManager extends CgWorldSubsystem {
         }
     }
 
+    /** Warns, once a cue, that a burst of {@code cue} played {@code age} seconds after it arrived, and was dropped. */
+    private void lateDrop(CgCueDefinition cue, double age) {
+        if (lateLogged.add(cue.id())) {
+            LOGGER.warn("{}: a burst was ready {} s after it arrived, past the {} s window, so it plays nothing (was it "
+                    + "still loading? precache it)", cue.id(), String.format("%.3f", age), ONE_SHOT_WINDOW);
+        }
+    }
+
     private boolean burstOn(Command c) {
         CgCuePlaying p = c.playing;
         if (p.state == CgCuePlaying.State.PENDING) return false;
@@ -652,6 +667,7 @@ public final class CgCueManager extends CgWorldSubsystem {
         if (age > ONE_SHOT_WINDOW) {
             lateDropped++;
             CgTrace.counter(CgChannels.MISC, LATE_DROPPED, lateDropped);
+            lateDrop(cue, age);
             return true;
         }
         if (c.op == Op.RECUR) {
