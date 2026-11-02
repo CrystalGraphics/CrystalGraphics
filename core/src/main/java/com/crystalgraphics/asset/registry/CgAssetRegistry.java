@@ -537,13 +537,21 @@ public final class CgAssetRegistry {
         CgAssetRegistryCache.Record r = records.find(key, f.modified(), f.kind());
         if (r == null) {
             r = read(f);
-            records.put(key, r);
+            if (r != null) {
+                records.put(key, r);
+            } else {
+                // Uncached, so every scan names it until it is fixed.
+                r = new CgAssetRegistryCache.Record(f.modified(), f.kind().id(), null, Collections.emptyList(), Collections.emptyMap());
+            }
         }
         return new CgAssetEntry(f.id(), f.kind(), source, f.file(), r.redirect(), null, r.references(), f.modified(),
                 r.searchable());
     }
 
-    /** What {@code f} says of itself: a redirect, hard on where it points as Unreal's redirector is, or its references. */
+    /**
+     * What {@code f} says of itself: a redirect, hard on where it points as Unreal's redirector is, or its references;
+     * null, logged by file, when it does not parse.
+     */
     private static CgAssetRegistryCache.Record read(Listed f) {
         String text;
         try {
@@ -564,10 +572,14 @@ public final class CgAssetRegistry {
                 return new CgAssetRegistryCache.Record(f.modified(), f.kind().id(), null,
                         Collections.unmodifiableList(CgAssetReferences.ofFile(f.id(), f.kind(), file)), searchable(f.kind(), file));
             }
+            // A cue is found by the tag read here, so one that never parses is never loaded to fail by name.
+            LOGGER.error("{} {} ({}) is not a YAML map, so nothing finds it by what it declares",
+                    f.kind().id(), f.id(), f.file());
         } catch (RuntimeException unreadable) {
-            // validation names it when the asset loads
+            LOGGER.error("{} {} ({}) does not parse, so nothing finds it by what it declares: {}",
+                    f.kind().id(), f.id(), f.file(), unreadable.getMessage());
         }
-        return new CgAssetRegistryCache.Record(f.modified(), f.kind().id(), null, Collections.emptyList(), Collections.emptyMap());
+        return null;
     }
 
     /** {@code kind}'s {@code SEARCHABLE} properties as {@code file} writes them: Unreal's asset registry tags. */
