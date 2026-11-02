@@ -268,6 +268,8 @@ public final class CgVfxSystem {
     private final Set<CgVfxLook> precachedLooks = Collections.newSetFromMap(new WeakHashMap<>());
     private double clock = Double.NaN;
     private float owed, simulated;
+    /** How far the GPU's particle time runs ahead of the booked ticks, 0 to a tick: it steps to the clock every frame. */
+    private float gpuLead;
     private float density = 1f;
     private CgQuality quality = CgQuality.HIGH;
     private final CgVfxCulling culling = new CgVfxCulling();
@@ -500,18 +502,13 @@ public final class CgVfxSystem {
                         for (int i = 0; i < booking.size(); i++) booking.get(i).clearDue();
                         booking.clear();
                     }
-                    gpuSteps.book(ticks * TICK);
+                    // Its births where they fall in the frame's step: before its start by what the GPU ran ahead
+                    gpuSteps.book(ticks * TICK - gpuLead);
                 }
                 simulated += TICK;
                 owed -= TICK;
                 ticks++;
                 overBudget = System.nanoTime() - start >= budget;
-            }
-        }
-        if (ticks > 0) {
-            // One GPU step over the update's particle time; each tick's births at their offsets within it.
-            try (CgTrace.Zone steps = CgTrace.zone(CgVfxTrace.CHANNEL, GPU_STEPS_ZONE)) {
-                gpuSteps.step(ticks * TICK, air);
             }
         }
         CgVfxTrace.count(TICKS, ticks);
@@ -521,6 +518,16 @@ public final class CgVfxSystem {
         if (owed >= TICK) {
             CgVfxTrace.count(CAPPED, 1);
             owed = Math.min(owed, TICK);
+        }
+        // One GPU step a frame, to the clock rather than to the last whole tick, as Niagara steps a GPU emitter by the
+        // frame's DeltaTime: stepped only on frames owing a tick, a display faster than 120 Hz redraws the same step and
+        // the particles beat. The books stay on the tick; the GPU leads them by the owed remainder.
+        float dt = ticks * TICK + owed - gpuLead;
+        if (ticks > 0 || dt > 0f) {
+            try (CgTrace.Zone steps = CgTrace.zone(CgVfxTrace.CHANNEL, GPU_STEPS_ZONE)) {
+                gpuSteps.step(Math.max(dt, 0f), air);
+            }
+            gpuLead = owed;
         }
         removeDead();
         for (int i = 0; i < owners.size(); i++) {
@@ -1309,6 +1316,7 @@ public final class CgVfxSystem {
         frame.clear();
         clock = Double.NaN;
         owed = 0f;
+        gpuLead = 0f;
     }
 
     /** The window's first use starts its kernels and its filling: at play, not on the first landing. */

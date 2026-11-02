@@ -1927,7 +1927,8 @@ public final class CgVfxParticlePool {
      * Queues one CPU tick's spawns for {@code slot} this step: {@code candidates} spawn indices from {@code firstSpawn},
      * the first {@code bursts} born at {@code bornFrom} seconds into the step where the source was as the tick began
      * ({@code from}), the rest spread from there to {@code bornFrom + tickSeconds} and the source at its end ({@code to}),
-     * each stepped for the rest of the step; its loop's seconds run from {@code loopFrom} to {@code loopTo} across it, what
+     * each stepped for the rest of the step ({@code bornFrom} may be up to a tick before the step's start, each then
+     * stepped for longer); its loop's seconds run from {@code loopFrom} to {@code loopTo} across it, what
      * a spawn form by the loop reads. {@code startTime} is the tick's rate spawns' seconds since birth at its end under
      * Cascade's legacy spawning ({@link CgVfxSpawning#CASCADE_LEGACY}); 0 otherwise. After the slot's {@link #instance} row; a row
      * per tick that spawned.
@@ -1943,7 +1944,9 @@ public final class CgVfxParticlePool {
                       float startTime) {
         inStep("spawn");
         openSlot(slot, "spawn");
-        if (firstSpawn < 0 || candidates < 0 || bursts < 0 || bursts > candidates || !(tickSeconds > 0f) || !(bornFrom >= 0f)) {
+        // A birth up to a tick before the step: the GPU's clock runs ahead of the booked ticks, and the Step ages a spawn
+        // for the step less its birth
+        if (firstSpawn < 0 || candidates < 0 || bursts < 0 || bursts > candidates || !(tickSeconds > 0f) || !(bornFrom >= -tickSeconds)) {
             throw new IllegalArgumentException("spawn " + firstSpawn + " + " + candidates + ", " + bursts + " bursts at "
                     + bornFrom + " for " + tickSeconds + " s");
         }

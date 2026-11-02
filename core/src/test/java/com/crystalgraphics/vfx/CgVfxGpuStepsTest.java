@@ -1,5 +1,7 @@
 package com.crystalgraphics.vfx;
 
+import com.crystalgraphics.vfx.look.CgVfxLook;
+import com.crystalgraphics.vfx.look.CgVfxSchema;
 import com.crystalgraphics.vfx.particle.CgVfxAir;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.CgVfxEmitterInstance;
@@ -30,6 +32,45 @@ public class CgVfxGpuStepsTest {
     private static final CgVfxEmitter EMBERS = CgVfxEmitter.builder("embers").state(CgVfxEmitterState.once(0.5f))
             .capacity(400).rate(200f)
             .life(0.3f, 0.6f).speed(1f, 2f).module(new CgVfxModule.Drag(1f, 0f)).build();
+
+    private static final CgVfxLook LOOK = CgVfxLook.builder(CgVfxSchema.of("test:gpu_steps")).build();
+
+    /** Embers for half a second, stepped by its effect every tick. */
+    static final class Embering extends CgVfxEffect<Embering> {
+        final CgVfxEmitterInstance embers = new CgVfxEmitterInstance(EMBERS, 0.2f);
+
+        Embering() {
+            super(LOOK, 0, 64, 0);
+            embers.start(0f, 1f, 0f);
+        }
+
+        @Override
+        protected void tick(float dt) {
+            tick(embers, dt);
+        }
+
+        @Override
+        protected void submit(CgVfxFrame frame) {
+        }
+    }
+
+    @Test
+    public void everyFrameStepsTheParticlesEvenWhenItOwesNoWholeTick() {
+        CgVfxSystem vfx = new CgVfxSystem();
+        vfx.play(new Embering());
+        vfx.update(0.0);
+        int frames = 0, stepped = 0;
+        // 600 frames a second: a fifth of a tick each, so four frames in five owe no tick. Counted from its slot's first
+        // step, at the first tick: before it there is nothing to step.
+        for (int f = 1; f <= 120; f++) {
+            vfx.update(f / 600.0);
+            CgVfxParticlePool pool = CgVfxParticlePool.of(vfx.gpuSteps(), EMBERS);
+            if (pool.queuedSteps() > 0) stepped++;
+            if (stepped > 0) frames++;
+            vfx.gpuSteps().discardQueued();
+        }
+        assertEquals("a step every frame, not every tick", frames, stepped);
+    }
 
     @Test
     public void aSlotLastsUntilItsInstanceFinishes() {
