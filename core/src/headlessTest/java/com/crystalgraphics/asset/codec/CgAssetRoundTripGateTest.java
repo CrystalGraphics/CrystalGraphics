@@ -234,6 +234,40 @@ public class CgAssetRoundTripGateTest {
         System.out.println(report);
     }
 
+    /**
+     * The kits' whole load timed as a game pays it: the scan, then every asset requested of one pipeline on the engine's
+     * job pool until each is COMPILED or failed. {@code -Dcrystalgraphics.kits.timed=true}; written to
+     * {@code build/kit-gates/kitsLoadTimed.txt}.
+     */
+    @Test
+    public void kitsLoadTimed() throws InterruptedException {
+        Assume.assumeTrue(Boolean.getBoolean("crystalgraphics.kits.timed"));
+        long t0 = System.nanoTime();
+        CgAssetRegistry registry = new CgAssetRegistry();
+        String cache = System.getProperty("crystalgraphics.kits.cache");   // a registry cache: the warm launch's scan
+        if (cache != null && !cache.isEmpty()) registry.cache(Paths.get(cache));
+        registry.registerEngine();
+        for (Map.Entry<String, Path> kit : KITS.entrySet()) registry.scan(kit.getKey(), kit.getValue(), CgAssetSource.DEV);
+        long t1 = System.nanoTime();
+        CgAssetPipeline pipeline = new CgAssetPipeline(registry, CgJobLoop.create("assets-timed"));
+        List<CgAssetLoad> asked = new ArrayList<>();
+        for (String key : FILES.keySet()) asked.add(pipeline.request(KINDS.get(key), IDS.get(key)));
+        while (!pipeline.idle()) {
+            pipeline.drain();
+            Thread.sleep(0, 200_000);
+        }
+        pipeline.drain();
+        long t2 = System.nanoTime();
+        int compiled = 0;
+        for (CgAssetLoad l : asked) if (l.state() == CgAssetState.COMPILED) compiled++;
+        Runtime rt = Runtime.getRuntime();
+        String report = String.format("kits %s: scan %.1f s, compile %.1f s, total %.1f s; %d compiled, %d failed; heap %d MB",
+                KITS.keySet(), (t1 - t0) / 1e9, (t2 - t1) / 1e9, (t2 - t0) / 1e9, compiled, asked.size() - compiled,
+                (rt.totalMemory() - rt.freeMemory()) >> 20);
+        System.out.println(report);
+        holds(report, true);
+    }
+
     /** Every asset that resolves validates with no error; the report counts them by code, then lists the first. */
     @Test
     public void everyAssetValidates() throws IOException {

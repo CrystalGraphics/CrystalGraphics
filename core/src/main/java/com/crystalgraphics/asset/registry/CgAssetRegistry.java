@@ -22,6 +22,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicReference;
@@ -41,6 +42,10 @@ import com.crystalgraphics.asset.kind.CgSequenceKinds;
 import com.crystalgraphics.asset.tree.CgAssetException;
 import com.crystalgraphics.asset.tree.CgAssetReferences;
 import com.crystalgraphics.job.CgJob;
+import com.crystalgraphics.job.CgJobLane;
+import com.crystalgraphics.job.reply.CgPendingReply;
+import com.crystalgraphics.job.reply.CgReply;
+import com.crystalgraphics.job.reply.CgReplyError;
 import com.crystalgraphics.object.CgProperty;
 import com.crystalgraphics.object.CgPropertyFlag;
 import com.crystalgraphics.object.CgPropertyPath;
@@ -49,6 +54,8 @@ import com.crystalgraphics.object.CgValueType;
 import com.crystalgraphics.object.value.CgUnits;
 import com.crystalgraphics.sequence.clip.CgClipMarkers;
 import com.crystalgraphics.tag.CgTagRegistry;
+import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.util.trace.CgChannels;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -127,7 +134,8 @@ public final class CgAssetRegistry {
     private final List<Consumer<List<CgAssetRegistryEvent>>> batchListeners = new CopyOnWriteArrayList<>();
     private final Set<String> warned = ConcurrentHashMap.newKeySet();
     @Nullable private Path cacheFile;
-    @Nullable private CgAssetRegistryCache cache;
+    /** The cache, read from {@link #cacheFile} on a background worker; a scan waits for it, its caller does not. */
+    @Nullable private CompletableFuture<CgAssetRegistryCache> cache;
 
     // ── Filling it ───────────────────────────────────────────────────────────────────────
 
@@ -152,9 +160,60 @@ public final class CgAssetRegistry {
      */
     public synchronized void scan(String namespace, Path root, CgAssetSource source) {
         CgAssetKinds.register();
+        commit(gather(namespace, root, source, cacheLoad()));
+        saveCache();
+    }
+
+    /**
+     * {@link #scan} with its reading on a worker: the listing walked and every YAML file read there, then registered and
+     * announced on this thread at its job loop's next drain, as Unreal's gatherer hands its results to the game thread's
+     * tick. A loading screen keeps drawing meanwhile.
+     *
+     * <pre>{@code
+     * registry.scanAsync("mykit", kitFolder, CgAssetSource.DEV)
+     *         .then(() -> assets.load(refs, CgLoadPriority.MOVE))       // its ids are registered now
+     *         .onError(e -> LOGGER.warn("mykit: {}", e.detail()));      // a collision or an unreadable file
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Start it on a thread that drains its job loop (Minecraft's client thread, the harness's frame).</li>
+     *   <li>Nothing of the namespace is registered until it settles: declare refs to it in {@code then}.</li>
+     * </ul>
+     */
+    public CgReply<Void> scanAsync(String namespace, Path root, CgAssetSource source) {
+        CgAssetKinds.register();
+        CompletableFuture<CgAssetRegistryCache> records;
+        synchronized (this) {
+            records = cacheLoad();
+        }
+        CgPendingReply<Void> scanned = new CgPendingReply<>(null);
+        CgJob.run(() -> gather(namespace, root, source, records)).named("asset scan " + namespace)
+                .then(gathered -> {
+                    try {
+                        synchronized (this) {
+                            commit(gathered);
+                        }
+                        saveCacheLater();
+                        scanned.resolve(null);
+                    } catch (RuntimeException e) {
+                        scanned.fail(CgReplyError.failed(e));
+                    }
+                })
+                .onError(scanned::fail);
+        return scanned;
+    }
+
+    /** What a scan read of one namespace: every entry, its content index and units, nothing registered yet. */
+    private record Gathered(String namespace, Path root, List<CgAssetEntry> found, String[] keys,
+                            Map<String, List<String>> links, @Nullable Map<String, String> index, @Nullable CgUnits units) {
+    }
+
+    /** The listing walked and each YAML file read, on the workers: touches nothing of the registry's but strays. */
+    private Gathered gather(String namespace, Path root, CgAssetSource source, CompletableFuture<CgAssetRegistryCache> cache) {
+        // The walk needs no cache: it runs while the cache file is still being read
         List<Listed> yaml = new ArrayList<>();
         List<CgAssetEntry> found = new ArrayList<>();
-        try {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.MISC, SCAN_WALK)) {
             Files.walkFileTree(root, new SimpleFileVisitor<Path>() {
                 @Override
                 public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
@@ -191,16 +250,19 @@ public final class CgAssetRegistry {
             throw new UncheckedIOException("scanning " + namespace + " at " + root, e);
         }
 
-        CgAssetRegistryCache records = cache();
+        CgAssetRegistryCache records = awaited(cache);
+        records.scanning(root);
         CgAssetEntry[] gathered = new CgAssetEntry[yaml.size()];
         AtomicReference<RuntimeException> failed = new AtomicReference<>();
-        CgJob.forEach(yaml.size(), i -> {
-            try {
-                gathered[i] = gather(yaml.get(i), source, records);
-            } catch (RuntimeException e) {
-                failed.compareAndSet(null, e);
-            }
-        });
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.MISC, SCAN_READ)) {
+            CgJob.forEach(yaml.size(), i -> {
+                try {
+                    gathered[i] = gather(yaml.get(i), source, records);
+                } catch (RuntimeException e) {
+                    failed.compareAndSet(null, e);
+                }
+            });
+        }
         if (failed.get() != null) throw failed.get();
         Collections.addAll(found, gathered);
         found.sort((a, b) -> a.id().compareTo(b.id()));
@@ -210,44 +272,90 @@ public final class CgAssetRegistry {
                 throw new CgAssetException(key(b.kind(), b.id()) + " is registered twice: " + where(a) + " and " + where(b));
             }
         }
-
-        for (CgAssetEntry e : found) {
-            CgAssetEntry was = entries.get(key(e.kind(), e.id()));
-            if (was != null) {
-                throw new CgAssetException(key(e.kind(), e.id()) + " is registered twice: " + where(was) + " and " + where(e));
+        // Each entry's key and the reverse links its references add, built here so the commit only merges them
+        String[] keys = new String[found.size()];
+        Map<String, List<String>> links = new HashMap<>();
+        for (int i = 0; i < keys.length; i++) {
+            CgAssetEntry e = found.get(i);
+            keys[i] = key(e.kind(), e.id());
+            for (CgAssetReferences.Reference r : e.references()) {
+                links.computeIfAbsent(key(r.kind(), r.id()), k -> new ArrayList<>()).add(keys[i]);
             }
         }
-        Path index = root.resolve("content.yaml");
-        if (Files.isRegularFile(index)) contentIndex.put(namespace, readIndex(index));
-        Path unitsFile = root.resolve("units.yaml");
-        if (Files.isRegularFile(unitsFile)) units.put(namespace, readUnits(unitsFile));
-        // Before any cue compiles: a cue's tag must be declared.
-        CgTagRegistry.global().registerKit(namespace, root);
-        // Before any cue or sequence compiles: a game's cue name resolves through its kit's table.
-        CgKitSounds.registerKit(root);
-        // And a subtitle section's text through its kit's string tables.
-        CgKitStrings.registerKit(namespace, root);
-        CgSubtitleStyle.registerKit(namespace, root);
-        List<CgAssetRegistryEvent> added = new ArrayList<>(found.size());
-        for (CgAssetEntry e : found) {
-            entries.put(key(e.kind(), e.id()), e);
-            link(e, true);
-            added.add(new CgAssetRegistryEvent(CgAssetRegistryEvent.Type.ADDED, namespace, e, null));
+        // The kit's tables, read here as each registry is safe on any thread: before any cue or sequence compiles, a
+        // cue's tag must be declared, a game's cue name resolves through its sound table, a subtitle through its strings
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.MISC, SCAN_TABLES)) {
+            CgTagRegistry.global().registerKit(namespace, root);
+            CgKitSounds.registerKit(root);
+            CgKitStrings.registerKit(namespace, root);
+            CgSubtitleStyle.registerKit(namespace, root);
         }
-        saveCache();
-        broadcast(added);
-        broadcast(Collections.singletonList(new CgAssetRegistryEvent(CgAssetRegistryEvent.Type.SCANNED, namespace, null, null)));
+        Path index = root.resolve("content.yaml"), unitsFile = root.resolve("units.yaml");
+        return new Gathered(namespace, root, found, keys, links, Files.isRegularFile(index) ? readIndex(index) : null,
+                Files.isRegularFile(unitsFile) ? readUnits(unitsFile) : null);
     }
+
+    private static final int SCAN_WALK = CgTrace.name("registry.scan.walk"), SCAN_READ = CgTrace.name("registry.scan.read"),
+            SCAN_TABLES = CgTrace.name("registry.scan.tables");
+    private static final int COMMIT = CgTrace.name("registry.commit"), COMMIT_ADD = CgTrace.name("registry.commit.add"), COMMIT_BROADCAST = CgTrace.name("registry.commit.broadcast");
+
+    /** A gathered namespace registered and announced: all of it, or nothing where an id is taken. Registry's lock held. */
+    private void commit(Gathered g) {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.MISC, COMMIT)) {
+            String namespace = g.namespace();
+            Path root = g.root();
+            List<CgAssetEntry> found = g.found();
+            String[] keys = g.keys();
+            for (int i = 0; i < keys.length; i++) {
+                CgAssetEntry was = entries.get(keys[i]);
+                if (was != null) throw new CgAssetException(keys[i] + " is registered twice: " + where(was) + " and " + where(found.get(i)));
+            }
+            if (g.index() != null) contentIndex.put(namespace, g.index());
+            if (g.units() != null) units.put(namespace, g.units());
+            List<CgAssetRegistryEvent> added = new ArrayList<>(found.size());
+            try (CgTrace.Zone z = CgTrace.zone(CgChannels.MISC, COMMIT_ADD)) {
+                for (int i = 0; i < keys.length; i++) {
+                    entries.put(keys[i], found.get(i));
+                    added.add(new CgAssetRegistryEvent(CgAssetRegistryEvent.Type.ADDED, namespace, found.get(i), null));
+                }
+                for (Map.Entry<String, List<String>> l : g.links().entrySet()) {
+                    referencers.computeIfAbsent(l.getKey(), k -> ConcurrentHashMap.newKeySet()).addAll(l.getValue());
+                }
+            }
+            try (CgTrace.Zone z = CgTrace.zone(CgChannels.MISC, COMMIT_BROADCAST)) {
+                broadcast(added);
+                broadcast(Collections.singletonList(new CgAssetRegistryEvent(CgAssetRegistryEvent.Type.SCANNED, namespace, null, null)));
+            }
+        }
+    }
+
+    /** The cache written on a background worker: what the commit's frame need not wait for. One write at a time. */
+    private void saveCacheLater() {
+        if (cacheFile == null) return;
+        CgJob.executor(CgJobLane.BACKGROUND).execute(() -> {
+            synchronized (CACHE_WRITE) {
+                saveCache();
+            }
+        });
+    }
+
+    private static final Object CACHE_WRITE = new Object();
 
     /**
      * Keeps what a scan reads in {@code file}, so the next run reads only the files that changed: Unreal's
      * {@code CachedAssetRegistry.bin}. Set it before the first scan; without one, the cache lasts as long as the
-     * registry.
+     * registry. Returns at once: the file is read on a background worker, and the first scan waits for it.
      */
     public synchronized void cache(Path file) {
         cacheFile = Objects.requireNonNull(file);
-        cache = CgAssetRegistryCache.load(file);
+        cache = CompletableFuture.supplyAsync(() -> {
+            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.MISC, CACHE_READ)) {
+                return CgAssetRegistryCache.load(file);
+            }
+        }, CgJob.executor(CgJobLane.BACKGROUND));
     }
+
+    private static final int CACHE_READ = CgTrace.name("registry.cacheRead"), CACHE_WAIT = CgTrace.name("registry.cacheWait");
 
     /**
      * Registers a builder's asset, which has no file.
@@ -497,7 +605,18 @@ public final class CgAssetRegistry {
     }
 
     private CgAssetRegistryCache cache() {
-        if (cache == null) cache = CgAssetRegistryCache.load(null);
+        return awaited(cacheLoad());
+    }
+
+    private static CgAssetRegistryCache awaited(CompletableFuture<CgAssetRegistryCache> load) {
+        if (load.isDone()) return load.join();
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.MISC, CACHE_WAIT)) {
+            return load.join();
+        }
+    }
+
+    private CompletableFuture<CgAssetRegistryCache> cacheLoad() {
+        if (cache == null) cache = CompletableFuture.completedFuture(CgAssetRegistryCache.load(null));
         return cache;
     }
 
@@ -533,7 +652,7 @@ public final class CgAssetRegistry {
 
     /** A YAML file's entry: its redirect and references from the cache while its file is unchanged, else read. */
     private static CgAssetEntry gather(Listed f, CgAssetSource source, CgAssetRegistryCache records) {
-        String key = f.file().toAbsolutePath().toString();
+        String key = f.file().toAbsolutePath().normalize().toString();   // one key a file, however its root was spelled
         CgAssetRegistryCache.Record r = records.find(key, f.modified(), f.kind());
         if (r == null) {
             r = read(f);

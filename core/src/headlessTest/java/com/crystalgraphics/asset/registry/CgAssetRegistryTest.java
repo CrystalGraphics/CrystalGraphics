@@ -175,6 +175,35 @@ public class CgAssetRegistryTest {
         assertEquals("a new time: read again", "[]", refs(third.entry(SYSTEM, "mymod:kamehameha/charge")));
     }
 
+    @Test
+    public void aScanOfOneKitKeepsAnotherKitsRecordsAndDropsDeletedFiles() throws IOException {
+        Path cache = tmp.getRoot().toPath().resolve("cache/registry.bin");
+        Path other = tmp.newFolder("other").toPath();
+        Path otherFile = other.resolve("vfx/systems/kamehameha/charge.yaml");
+        Files.createDirectories(otherFile.getParent());
+        Files.copy(ns.resolve("vfx/systems/kamehameha/charge.yaml"), otherFile);
+        FileTime time = Files.getLastModifiedTime(otherFile);
+        CgAssetRegistry both = new CgAssetRegistry();
+        both.cache(cache);
+        both.scan("mymod", ns, CgAssetSource.DEV);
+        both.scan("other", other, CgAssetSource.DEV);
+
+        CgAssetRegistry mine = new CgAssetRegistry();   // a run scanning mymod alone, its stray file deleted
+        mine.cache(cache);
+        Files.delete(ns.resolve("vfx/systems/kamehameha/old_charge.yaml"));
+        mine.scan("mymod", ns, CgAssetSource.DEV);
+
+        Files.write(otherFile, "_v: 1\n".getBytes(StandardCharsets.UTF_8));
+        Files.setLastModifiedTime(otherFile, time);
+        CgAssetRegistry next = new CgAssetRegistry();
+        next.cache(cache);
+        next.scan("other", other, CgAssetSource.DEV);
+        assertEquals("other's record outlived a run that scanned mymod alone",
+                "[crystalgraphics:emitter mymod:kamehameha/core HARD]", refs(next.entry(SYSTEM, "other:kamehameha/charge")));
+        String saved = new String(Files.readAllBytes(cache), StandardCharsets.ISO_8859_1);
+        assertTrue("a deleted file's record is dropped", !saved.contains("old_charge.yaml"));
+    }
+
     private static String refs(CgAssetEntry e) {
         List<String> out = new ArrayList<>();
         for (CgAssetReferences.Reference r : e.references()) out.add(r.kind().id() + " " + r.id() + " " + r.strength());

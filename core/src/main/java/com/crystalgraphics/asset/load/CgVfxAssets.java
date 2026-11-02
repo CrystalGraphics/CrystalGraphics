@@ -26,6 +26,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import com.crystalgraphics.asset.codec.CgAssetVersions;
+import com.crystalgraphics.platform.service.CgCacheDirectory;
 import com.crystalgraphics.asset.codec.CgAssetYaml;
 import com.crystalgraphics.asset.registry.CgAssetEntry;
 import com.crystalgraphics.asset.registry.CgAssetRegistry;
@@ -78,7 +79,9 @@ public final class CgVfxAssets {
 
     private static final Logger LOGGER = LogManager.getLogger("CgVfxAssets");
     private static final int SYNC_LOADS = CgTrace.name("asset.sync-loads"), LOADING = CgTrace.name("asset.loading"),
-            PREPARING = CgTrace.name("asset.preparing");
+            PREPARING = CgTrace.name("asset.preparing"), SETTLE = CgTrace.name("assets.settle"),
+            PREPARE = CgTrace.name("assets.prepare"), PIPELINE = CgTrace.name("assets.pipeline"),
+            HANDLES = CgTrace.name("assets.handles");
     private static final long SYNC_TIMEOUT_NANOS = TimeUnit.SECONDS.toNanos(30);
     private static final CgLoadPriority[] PRIORITIES = CgLoadPriority.values();
 
@@ -125,6 +128,9 @@ public final class CgVfxAssets {
         synchronized (CgVfxAssets.class) {
             if (instance == null) {
                 CgAssetRegistry registry = new CgAssetRegistry();
+                // Unreal's CachedAssetRegistry.bin: a launch reads only the files that changed since the last
+                Path cacheDir = CgCacheDirectory.of("assets");
+                if (cacheDir != null) registry.cache(cacheDir.resolve("asset-registry.bin"));
                 registry.registerEngine();      // the built-in modules every emitter file names
                 install(new CgVfxAssets(registry));
             }
@@ -251,9 +257,13 @@ public final class CgVfxAssets {
         if (!saved.isEmpty()) {
             for (String id; (id = saved.poll()) != null; ) reread(id);
         }
-        pipeline.drain();
-        for (int i = loading.size() - 1; i >= 0; i--) {
-            if (settle(loading.get(i))) removeAt(loading, i);
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.MISC, PIPELINE)) {
+            pipeline.drain();
+        }
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.MISC, SETTLE)) {   // each compiled asset's preparer plans here
+            for (int i = loading.size() - 1; i >= 0; i--) {
+                if (settle(loading.get(i))) removeAt(loading, i);
+            }
         }
         budget.begin();
         for (int i = 0, n = swaps.size(); i < n; i++) {   // a change waits on nothing but its own GPU work
@@ -263,17 +273,21 @@ public final class CgVfxAssets {
             for (int k = 0; k < s.plans.size() && done; k++) done = s.plans.get(k).advance(budget);
             s.prepared = done;
         }
-        for (CgLoadPriority p : PRIORITIES) {
-            for (int i = 0; i < preparing.size(); ) {
-                CgAssetRef<?> r = preparing.get(i);
-                if (r.priority == p && prepare(r)) preparing.remove(i);
-                else i++;
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.MISC, PREPARE)) {
+            for (CgLoadPriority p : PRIORITIES) {
+                for (int i = 0; i < preparing.size(); ) {
+                    CgAssetRef<?> r = preparing.get(i);
+                    if (r.priority == p && prepare(r)) preparing.remove(i);
+                    else i++;
+                }
             }
         }
-        for (int i = handles.size() - 1; i >= 0; i--) {
-            CgLoadHandle h = handles.get(i);
-            if (!h.planned) markPlanned(h);
-            if (h.fireIfReady()) removeAt(handles, i);
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.MISC, HANDLES)) {
+            for (int i = handles.size() - 1; i >= 0; i--) {
+                CgLoadHandle h = handles.get(i);
+                if (!h.planned) markPlanned(h);
+                if (h.fireIfReady()) removeAt(handles, i);
+            }
         }
         CgTrace.counter(CgChannels.MISC, LOADING, loading.size());
         CgTrace.counter(CgChannels.MISC, PREPARING, preparing.size());
