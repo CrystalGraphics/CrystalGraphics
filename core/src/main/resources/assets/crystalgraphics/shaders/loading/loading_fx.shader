@@ -1,0 +1,220 @@
+// =============================================================================
+// CrystalShader -- loading/loading_fx.shader
+// The loading screen's looks, one quad material for every part (CgPremiumLoadingView, CgSplashLoadingView). Each quad
+// says what it is in custom0: x the screen's seconds, y the screen's aspect, w the mode:
+//   0 the backdrop: under the ocean looking up at the surface, with shafts of light, specks, and grain
+//   1 a soft glow: a gaussian over the quad, in the quad's colour
+//   2 an image (the logo) with a light sweeping across it every few seconds, z its strength (0 for none)
+//   3 a flat colour
+//   4 a spinner: a ring with a turning bright arc
+//   5 the load bar: a pill in the logo's gradient with a glow and a sheen, z how full
+// =============================================================================
+
+#type none
+#pragma cg_use quad
+#include "crystalgraphics:shaders/lib/noise.glsl"
+
+Tags {
+    "RenderType" = "Transparent"
+}
+
+Queue = "Overlay"
+
+Properties {
+    _MainTex ("Image", sampler2D) = "white"
+}
+
+struct v2f {
+    vec2 uv;
+    vec4 color;
+    vec4 params;
+};
+
+Pass {
+    Tags {
+        "LightMode" = "Forward"
+        "Name"      = "Loading"
+    }
+
+    RenderState {
+        Blend SRC_ALPHA ONE_MINUS_SRC_ALPHA, ONE ONE_MINUS_SRC_ALPHA
+        Cull OFF
+        DepthTest ALWAYS
+        DepthWrite OFF
+    }
+
+    // Helpers before vertex(): a pass keeps what it declares ahead of its entry points
+    // A soft blob of `col` at c, radius r, mixed in by w
+    vec3 blob(vec3 dst, vec2 p, vec2 c, float r, vec3 col, float w) {
+        vec2 d = p - c;
+        return mix(dst, col, w * exp(-dot(d, d) / (r * r)));
+    }
+
+    // The logo's own gradient, cyan to magenta, at u (0 to 1)
+    vec3 logoGradient(float u) {
+        vec3 c = mix(vec3(0.13, 0.80, 0.95), vec3(0.25, 0.42, 0.98), smoothstep(0.00, 0.35, u));
+        c = mix(c, vec3(0.56, 0.32, 0.96), smoothstep(0.35, 0.70, u));
+        return mix(c, vec3(0.86, 0.30, 0.76), smoothstep(0.70, 1.00, u));
+    }
+
+    // A cell grid `density` to the screen's height, rising `speed` cells a second (screen-down uv, so adding time
+    // rises): xy the point in its cell, centred; zw the cell
+    vec4 rising(vec2 uv, float t, float aspect, float density, float speed) {
+        vec2 p = vec2(uv.x * aspect, uv.y) * density + vec2(0.0, t * speed);
+        return vec4(fract(p) - 0.5, floor(p));
+    }
+
+    // The surface's slope at s (surface units): seven waves from long to short, spread by the golden angle, moving at
+    // deep water's speed (slowed), each as steep as the next
+    vec2 waveSlope(vec2 s, float t) {
+        vec2 g = vec2(0.0);
+        for (int i = 0; i < 7; i++) {
+            float fi = float(i);
+            float a = 0.3 + fi * 2.39996, k = 6.2832 / (1.4 * pow(0.68, fi));
+            vec2 d = vec2(cos(a), sin(a));
+            g += d * 0.11 * cos(dot(d, s) * k + t * sqrt(9.8 * k) * 0.35 + fi * 1.7);
+        }
+        return g;
+    }
+
+    // The surface seen from below along d (y up): the sky through Snell's window, where light leaves the water, with
+    // the sun glinting off ripples; past the window's edge, total internal reflection mirrors the deep water
+    vec3 surfaceFromBelow(vec3 d, float t) {
+        vec2 s = d.xz / d.y * 0.8;
+        float dist = length(s);
+        // Ripples calm with distance, or the horizon shimmers
+        vec2 g = waveSlope(s + vec2(0.0, t * 0.04), t) / (1.0 + dist * 0.25);
+        vec3 n = normalize(vec3(-g.x, 1.0, -g.y));
+        float cosI = clamp(dot(d, n), 0.0, 1.0);
+        float sinT2 = 1.7689 * (1.0 - cosI * cosI);     // 1.33^2: water to air
+        // Stylised, not physical: a wide soft blend from window to mirror, and a mirror in the backdrop's light azure,
+        // so the surface stays as airy as the rest of the screen
+        float reflected = smoothstep(0.55, 1.05, sinT2);
+        vec3 toSky = refract(d, -n, 1.33);
+        vec3 sky = mix(vec3(0.42, 0.84, 1.00), vec3(0.78, 0.96, 1.00), clamp(toSky.y, 0.0, 1.0));
+        sky += vec3(1.0, 0.98, 0.92) * pow(max(dot(toSky, normalize(vec3(0.15, 1.0, 0.35))), 0.0), 120.0) * 0.9;
+        vec3 mirror = vec3(0.20, 0.52, 1.00) * (0.92 + 0.25 * g.x);
+        vec3 col = mix(sky, mirror, reflected);
+        // The window's edge, where the whole sky is squeezed into a bright ring
+        col += vec3(0.70, 0.92, 1.00) * exp(-pow((sinT2 - 0.95) / 0.10, 2.0)) * 0.18;
+        // Fine bright lines where the ripples cross one angle: the light lines seen looking up from a pool
+        col += vec3(0.88, 0.98, 1.00) * exp(-pow((sinT2 - 0.75) / 0.03, 2.0)) * 0.32 / (1.0 + dist * 0.4);
+        return mix(col, vec3(0.22, 0.60, 1.00), 1.0 - exp(-dist * 0.16));
+    }
+
+    // Under the ocean looking up: the surface from below in perspective down to a hazy horizon, light focused into
+    // wavy lines across it, shafts falling into water that deepens to indigo, and specks drifting up
+    vec3 backdrop(vec2 uv, float t, float aspect) {
+        const float HORIZON = 0.40;
+        vec2 centred = vec2((uv.x - 0.5) * aspect, uv.y - 0.5);
+        vec3 col = mix(vec3(0.10, 0.50, 1.00), vec3(0.19, 0.12, 0.53), smoothstep(HORIZON - 0.05, 1.02, uv.y));
+        col = blob(col, centred, vec2(-0.85, 0.55), 0.62, vec3(0.30, 0.19, 0.70), 0.65);
+        col = blob(col, centred, vec2( 0.85, 0.55), 0.62, vec3(0.52, 0.19, 0.64), 0.65);
+
+        // The surface overhead: rows above the horizon look up at it, steeper toward the top
+        vec3 view = normalize(vec3(centred.x, max(HORIZON - uv.y, 0.002) * 4.0, 1.0));
+        col = mix(col, surfaceFromBelow(view, t), smoothstep(HORIZON + 0.06, HORIZON - 0.04, uv.y));
+        col = mix(col, vec3(0.55, 0.88, 1.00), exp(-pow((uv.y - HORIZON) / 0.035, 2.0)) * 0.28);
+
+        // The sun above the surface: a soft glow overhead, which the shafts fan out from
+        vec2 sun = vec2(0.10, -0.70);
+        vec2 toSun = centred - sun;
+        col += vec3(0.62, 0.90, 1.00) * exp(-dot(toSun, toSun) / 0.10) * 0.20;
+
+        // Shafts falling from the surface, shifting slowly
+        float angle = atan(toSun.x, toSun.y);
+        float shafts = value_noise(vec2(angle * 14.0, t * 0.25)) * value_noise(vec2(angle * 31.0 + 4.0, t * 0.4));
+        shafts = smoothstep(0.12, 0.6, shafts) * smoothstep(HORIZON - 0.1, HORIZON + 0.1, uv.y) * exp(-(uv.y - HORIZON) * 2.0);
+        col += vec3(0.40, 0.80, 1.00) * shafts * 0.42;
+
+        // Specks drifting up: small and faint far off, a few large and soft close by, faster
+        for (int layer = 0; layer < 2; layer++) {
+            bool far = layer == 0;
+            vec4 g = rising(uv, t, aspect, far ? 18.0 : 6.0, far ? 0.10 : 0.30);
+            vec2 h = hash22(g.zw + 61.0 + float(layer) * 13.0);
+            vec2 d = g.xy - (h - 0.5) * 0.6 - vec2(sin(t * 0.8 + h.y * 6.2832) * 0.1, 0.0);
+            float size = far ? 0.0020 : 0.012;
+            float speck = exp(-dot(d, d) / size) * step(far ? 0.80 : 0.86, hash12(g.zw + 64.7 + float(layer)))
+                    * (far ? 0.30 + 0.25 * h.x : 0.14 + 0.08 * h.x);
+            col = mix(col, vec3(0.88, 0.96, 1.00), speck);
+        }
+        return col;
+    }
+
+    float grain(vec2 pixel, float t, float amount) {
+        return (hash12(pixel + fract(t * 7.13) * 113.0) - 0.5) * amount;
+    }
+
+    // Straight-alpha `src` over premultiplied `dst`
+    vec4 over(vec4 dst, vec3 rgb, float a) {
+        return vec4(rgb * a, a) + dst * (1.0 - a);
+    }
+
+    // A pill b pixels tall in a quad 4b tall and 3b wider than it, so its glow has room; filled to `fill` (0 to 1)
+    vec4 bar(vec2 uv, float t, float fill, float alpha) {
+        vec2 size = 1.0 / max(fwidth(uv), vec2(1.0e-6));
+        vec2 p = uv * size, c = size * 0.5;
+        float b = size.y * 0.25, r = b * 0.5;
+        vec2 extent = vec2(size.x * 0.5 - 1.5 * b, r);
+        float d = length(max(abs(p - c) - (extent - r), 0.0)) - r;
+        float inside = 1.0 - smoothstep(-0.5, 0.5, d);
+        float u = clamp((p.x - 1.5 * b) / (size.x - 3.0 * b), 0.0, 1.0);
+        float edge = 1.5 * b + fill * (size.x - 3.0 * b);
+        float filled = 1.0 - smoothstep(edge - 0.5, edge + 0.5, p.x);
+        vec3 tint = logoGradient(u);
+
+        // A soft shadow under the pill, so it lifts off water bright or deep
+        vec2 below = p - c - vec2(0.0, b * 0.35);
+        float ds = length(max(abs(below) - (extent - r), 0.0)) - r;
+        vec4 pm = vec4(0.0);
+        pm = over(pm, vec3(0.04, 0.03, 0.18), exp(-max(ds, 0.0) / (b * 0.6)) * 0.45 * step(0.0, d));
+        pm = over(pm, tint, filled * exp(-max(d, 0.0) / (b * 0.7)) * 0.45 * step(0.0, d));
+        // A frosted track with a slate rim
+        pm = over(pm, vec3(1.0), inside * 0.55);
+        pm = over(pm, vec3(0.16, 0.12, 0.40), (1.0 - smoothstep(0.0, 1.0, abs(d + 0.5))) * 0.35);
+        float top = 1.0 - (p.y - (c.y - r)) / b;
+        float sheen = exp(-pow((u - (fract(t * 0.35) * 1.5 - 0.25)) / 0.06, 2.0)) * 0.45;
+        pm = over(pm, tint * (0.95 + 0.35 * top) + sheen, inside * filled);
+        // A tight pip at the fill's end; a wide white falloff smears on the light track
+        float head = exp(-pow(length(p - vec2(edge - r, c.y)) / (r * 0.75), 2.0)) * 0.85 * step(0.002, fill);
+        pm = over(pm, vec3(1.0), head);
+        return vec4(pm.rgb / max(pm.a, 1.0e-4), pm.a * alpha);
+    }
+
+    void vertex(out v2f o) {
+        gl_Position = cg_ProjMatrix * vec4(CG_QUAD_WORLD_POS, 1.0);
+        o.uv     = CG_QUAD_UV;
+        o.color  = CG_QUAD_COLOR;
+        o.params = CG_QUAD_CUSTOM0;
+    }
+
+    void fragment(in v2f i, out vec4 fragColor) {
+        int mode = int(i.params.w + 0.5);
+        float t = i.params.x, aspect = i.params.y;
+        if (mode == 0) {
+            fragColor = vec4(backdrop(i.uv, t, aspect) + grain(gl_FragCoord.xy, t, 0.010), i.color.a);
+        } else if (mode == 1) {
+            // Round, and at zero before the quad's edge, or the edge shows as a square
+            float r = length(i.uv * 2.0 - 1.0);
+            fragColor = vec4(i.color.rgb, i.color.a * exp(-r * r * 3.0) * (1.0 - smoothstep(0.55, 1.0, r)));
+        } else if (mode == 2) {
+            vec4 image = texture(_MainTex, i.uv) * i.color;
+            // A diagonal band crossing the image in 1.2 s, every 4.5 s
+            float phase = mod(t, 4.5) / 1.2;
+            float across = (i.uv.x + (1.0 - i.uv.y) * 0.6) / 1.6;
+            float band = phase < 1.3 ? exp(-pow((across - (phase * 1.6 - 0.3)) / 0.07, 2.0)) : 0.0;
+            image.rgb += vec3(0.55 * band * i.params.z);
+            fragColor = image;
+        } else if (mode == 4) {
+            vec2 d = i.uv * 2.0 - 1.0;
+            float r = length(d), aa = fwidth(r);
+            float ring = 1.0 - smoothstep(0.09 - aa, 0.09 + aa, abs(r - 0.78));
+            float head = fract(atan(d.y, d.x) / 6.2832 + t * 0.9);
+            fragColor = vec4(i.color.rgb, i.color.a * ring * (0.12 + 0.88 * smoothstep(0.35, 1.0, head)));
+        } else if (mode == 5) {
+            fragColor = bar(i.uv, t, i.params.z, i.color.a);
+        } else {
+            fragColor = i.color;
+        }
+    }
+}

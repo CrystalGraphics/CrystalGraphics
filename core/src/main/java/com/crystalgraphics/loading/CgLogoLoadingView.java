@@ -22,7 +22,7 @@ public final class CgLogoLoadingView implements CgLoadingView {
     public static final String LOGO = "crystalgraphics:textures/gui/logo.png";
     /** A deep indigo, the dark end of the logo's own gradient. */
     public static final int BACKGROUND = 0xFF15142C;
-    private static final String IMAGE = "crystalgraphics:shaders/hud_image.shader";
+    static final String IMAGE = "crystalgraphics:shaders/hud_image.shader";
 
     private final int background;
     private final String logoPath;
