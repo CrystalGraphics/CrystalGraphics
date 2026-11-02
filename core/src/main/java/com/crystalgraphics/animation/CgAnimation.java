@@ -39,6 +39,8 @@ import org.joml.Matrix4f;
  *
  * <ul>
  *   <li>Add, remove and change instances on the world's thread, outside its posing.</li>
+ *   <li>An instance {@linkplain CgAnimInstance#attachTo attached} to another is posed after it, from its socket this
+ *       frame, as Unreal's tick prerequisite orders an attached component.</li>
  *   <li>While the game is paused every instance holds its time and is still posed, so a paused frame draws.</li>
  *   <li>A new level or dimension drops the client's instances: what follows their sockets stops.</li>
  *   <li>{@code crystalgraphics.animation.parallelAt} (8): the instances from which evaluation fans out; fewer run on
@@ -56,6 +58,14 @@ public final class CgAnimation extends CgWorldSubsystem {
     private final IntConsumer evaluateEach = i -> instances.get(i).evaluate();
     private CgTickFunction pose;
     private int levelEpoch;
+    /** The attachment depth {@link #evaluateAtDepth} poses this pass. */
+    private int depth;
+    private final IntConsumer evaluateAtDepth = i -> {
+        CgAnimInstance instance = instances.get(i);
+        if (instance.depth != depth) return;
+        instance.follow();
+        instance.evaluate();
+    };
 
     /** The client world's, added on first use. */
     public static CgAnimation client() {
@@ -109,17 +119,31 @@ public final class CgAnimation extends CgWorldSubsystem {
 
     private void advanceAndEvaluate(float dt) {
         int n = instances.size();
-        if (!world().paused()) {
-            for (int i = 0; i < n; i++) {
-                CgAnimInstance instance = instances.get(i);
-                if (instance.playing()) instance.advance(dt);
-            }
+        int deepest = 0;
+        boolean paused = world().paused();
+        for (int i = 0; i < n; i++) {
+            CgAnimInstance instance = instances.get(i);
+            if (!paused && instance.playing()) instance.advance(dt);
+            deepest = Math.max(deepest, instance.depthFromParents());
         }
         try (CgTrace.Zone z = CgTrace.zone(CgChannels.WORLD, EVALUATE)) {
-            if (n >= PARALLEL_AT) {
-                CgJob.forEach(n, evaluateEach);
+            if (deepest == 0) {
+                if (n >= PARALLEL_AT) {
+                    CgJob.forEach(n, evaluateEach);
+                } else {
+                    for (int i = 0; i < n; i++) instances.get(i).evaluate();
+                }
             } else {
-                for (int i = 0; i < n; i++) instances.get(i).evaluate();
+                // Parents before children, as Unreal's tick prerequisite orders them: each depth placed from the
+                // sockets the one above just posed, then evaluated.
+                for (int d = 0; d <= deepest; d++) {
+                    depth = d;
+                    if (n >= PARALLEL_AT) {
+                        CgJob.forEach(n, evaluateAtDepth);
+                    } else {
+                        for (int i = 0; i < n; i++) evaluateAtDepth.accept(i);
+                    }
+                }
             }
         }
     }

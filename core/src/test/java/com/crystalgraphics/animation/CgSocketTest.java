@@ -152,6 +152,60 @@ public class CgSocketTest {
         }
     }
 
+    /**
+     * An instance attached to a posed palm stands there the frame the palm moves, offset by its relative place in the
+     * palm's space, though it was added to the world before its parent.
+     */
+    @Test
+    public void anAttachedInstanceRidesItsParentsSocketTheSameFrame() {
+        CgSkeletalMesh mesh = arm();
+        try (CgWorld world = new CgWorld()) {
+            CgAnimation animation = world.add(new CgAnimation());
+            CgAnimInstance hat = animation.add(new CgAnimInstance(mesh));
+            CgAnimInstance arm = animation.add(playing(mesh));
+            hat.attachTo(arm, "palm").place(0, 1, 0, new Matrix4f().scaling(0.5f));
+            CgAnimInstance reference = playing(mesh);
+            int palm = reference.socket("palm");
+            double[] point = new double[3];
+            Quaternionf turn = new Quaternionf();
+            Vector3f offset = new Vector3f(), scale = new Vector3f();
+            for (int f = 0; f < 30; f++) {
+                CgFrameClock.set(f / 60.0);
+                world.frame(null);
+                reference.seek(arm.time()).evaluate().socket(palm, point, turn);
+                // The palm's world place plus the offset turned and scaled by the palm (scale 2 from the arm's place)
+                turn.normalize().transform(offset.set(0, 2, 0));
+                assertEquals("frame " + f, point[0] + offset.x, hat.x(), 1e-5);
+                assertEquals("frame " + f, point[1] + offset.y, hat.y(), 1e-5);
+                assertEquals("frame " + f, point[2] + offset.z, hat.z(), 1e-5);
+                assertEquals(1f, hat.transform().getScale(scale).x, 1e-5f);
+            }
+
+            hat.detach();
+            double x = hat.x();
+            world.frame(null);
+            assertEquals("detached, it stays where it stood", x, hat.x(), 0);
+        }
+    }
+
+    @Test
+    public void anAttachmentIntoACycleOrOntoAMissingSocketIsRefused() {
+        CgSkeletalMesh mesh = arm();
+        CgAnimInstance a = new CgAnimInstance(mesh), b = new CgAnimInstance(mesh).attachTo(a, null);
+        try {
+            a.attachTo(b, "palm");
+            throw new AssertionError("a cycle was taken");
+        } catch (IllegalArgumentException expected) {
+            assertTrue(expected.getMessage().contains("itself"));
+        }
+        try {
+            b.attachTo(a, "tail");
+            throw new AssertionError("a missing socket was taken");
+        } catch (IllegalArgumentException expected) {
+            assertTrue(expected.getMessage().contains("tail"));
+        }
+    }
+
     @Test
     public void socketsOnBonesTheSkeletonLacksAreRefused() {
         CgSkeletalMesh mesh = arm();

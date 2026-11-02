@@ -69,6 +69,17 @@ public final class CgAnimInstance {
     private double x, y, z;
     private final Matrix4f transform = new Matrix4f();
     private final Matrix4f socketScratch = new Matrix4f(), relativeScratch = new Matrix4f();
+    /** What it is attached to, and where on it; null when it stands on its own. */
+    @Nullable
+    private CgAnimInstance parent;
+    private int parentSocket = NO_SOCKET;
+    /** While attached, {@link #place}'s offset and turn in the parent socket's space: Unreal's relative transform. */
+    private double relX, relY, relZ;
+    private final Matrix4f relative = new Matrix4f();
+    /** Read by {@link #follow} alone, so children of one parent follow it from several workers at once. */
+    private final Matrix4f followScratch = new Matrix4f(), followRelative = new Matrix4f();
+    /** 0 standing alone, else its parent's plus one: the order {@code CgAnimation} poses in. */
+    int depth;
     private long paletteFrame = -1;
     private boolean posed;
     private final List<CgAnimSection> sections = new ArrayList<>();
@@ -500,8 +511,21 @@ public final class CgAnimInstance {
     /**
      * Stands it at absolute {@code (x, y, z)}, turned and scaled by {@code transform} about that point: Unreal's
      * component-to-world. Where it is drawn ({@code CgWorldRenderer.draw(instance, material)}) and where its sockets are.
+     * While {@link #attachTo attached}, the offset, turn and scale in the parent socket's space instead, applied from
+     * the next {@code POSE}.
      */
     public CgAnimInstance place(double x, double y, double z, Matrix4fc transform) {
+        if (parent != null) {
+            relX = x;
+            relY = y;
+            relZ = z;
+            relative.set(transform);
+            return this;
+        }
+        return stand(x, y, z, transform);
+    }
+
+    private CgAnimInstance stand(double x, double y, double z, Matrix4fc transform) {
         this.x = x;
         this.y = y;
         this.z = z;
@@ -852,16 +876,104 @@ public final class CgAnimInstance {
     }
 
     private Matrix4f socketMatrix(int socket) {
-        Matrix4f m = socketScratch.set(transform);
+        return socketMatrix(socket, socketScratch, relativeScratch);
+    }
+
+    /** Where it stands × bone × socket into {@code out}, relative to {@code (x, y, z)}; {@code scratch} for the socket's own. */
+    private Matrix4f socketMatrix(int socket, Matrix4f out, Matrix4f scratch) {
+        Matrix4f m = out.set(transform);
         if (socket != NO_SOCKET) {
             if ((socket & SOCKET) != 0) {
                 CgSocket s = mesh.sockets().get(socket & ~SOCKET);
-                m.mul(pose.component(mesh.skeleton().indexOfIgnoringCase(s.bone()))).mul(s.relative(relativeScratch));
+                m.mul(pose.component(mesh.skeleton().indexOfIgnoringCase(s.bone()))).mul(s.relative(scratch));
             } else {
                 m.mul(pose.component(socket));
             }
         }
         return m;
+    }
+
+    // ---- attached to another instance
+
+    /**
+     * Attaches it to {@code parent}'s socket: from the next {@code POSE} it stands there, posed after the parent, so it
+     * follows the socket the frame the parent moves. Unreal's {@code AttachToComponent} keeping the relative transform:
+     * {@link #place} now sets the offset, turn and scale in the socket's space, identity until set. For what hangs from
+     * a body's bone and is drawn as its own mesh: hair, a tail, a hat.
+     *
+     * <pre>{@code
+     * CgAnimInstance hair = CgAnimation.client().add(new CgAnimInstance(hairMesh));
+     * hair.attachTo(body, "head");                     // a socket of the body's mesh, else its bone, ignoring case
+     * hair.place(0, 0.1, 0, new Matrix4f());           // optional: a tenth of a block up the head bone
+     * // each frame before POSE: strand.rotation(REPLACE, PARENT, sway), strand = hair.write("strand_0") kept from setup
+     * // in SUBMIT: world.draw(hair);
+     * }</pre>
+     *
+     * <ul>
+     *   <li>{@code socket} null attaches to where the parent stands. A name the parent's mesh has neither as a socket
+     *       nor a bone is refused, never placed at the parent's feet.</li>
+     *   <li>Attaching to itself or to anything attached below it is refused.</li>
+     *   <li>Both are posed by {@code CgAnimation}; a parent posed by nothing is read as it last stood.</li>
+     *   <li>Hiding the parent's bone does not hide it: hide it from its owner by its own
+     *       {@code hideFromOwner(root, Hide.BRANCH)}, as Unreal's attached components keep their own visibility.</li>
+     * </ul>
+     */
+    public CgAnimInstance attachTo(CgAnimInstance parent, @Nullable String socket) {
+        Objects.requireNonNull(parent, "parent");
+        for (CgAnimInstance p = parent; p != null; p = p.parent) {
+            if (p == this) throw new IllegalArgumentException(this + " cannot attach to " + parent + ": it would attach to itself");
+        }
+        int handle = NO_SOCKET;
+        if (socket != null) {
+            handle = parent.socket(socket);
+            if (handle == NO_SOCKET) throw new IllegalArgumentException(parent.mesh + " has no socket or bone '" + socket + "'");
+        }
+        if (this.parent == null) {
+            relX = relY = relZ = 0;
+            relative.identity();
+        }
+        this.parent = parent;
+        this.parentSocket = handle;
+        return this;
+    }
+
+    /** Stops following its parent, standing where it last stood: Unreal's {@code KeepWorldTransform} detach. */
+    public CgAnimInstance detach() {
+        parent = null;
+        parentSocket = NO_SOCKET;
+        depth = 0;
+        return this;
+    }
+
+    /** What it is attached to, or null. */
+    @Nullable
+    public CgAnimInstance attachParent() {
+        return parent;
+    }
+
+    /** Recomputes {@link #depth} from its parents. */
+    int depthFromParents() {
+        int d = 0;
+        for (CgAnimInstance p = parent; p != null; p = p.parent) d++;
+        return depth = d;
+    }
+
+    /**
+     * Stands it at its parent's socket, as posed, times its relative transform: Unreal's
+     * {@code CalcNewComponentToWorld_GeneralCase}. {@code CgAnimation} calls it once the parent is evaluated.
+     */
+    void follow() {
+        CgAnimInstance p = parent;
+        if (p == null) return;
+        Matrix4f m = p.socketMatrix(parentSocket, followScratch, followRelative);
+        double ox = m.m30(), oy = m.m31(), oz = m.m32();
+        // The relative offset lands in the socket's space; the parent's absolute place stays in doubles.
+        float ax = (float) relX, ay = (float) relY, az = (float) relZ;
+        double wx = p.x + ox + m.m00() * ax + m.m10() * ay + m.m20() * az;
+        double wy = p.y + oy + m.m01() * ax + m.m11() * ay + m.m21() * az;
+        double wz = p.z + oz + m.m02() * ax + m.m12() * ay + m.m22() * az;
+        m.setTranslation(0, 0, 0).mul(relative);
+        stand(wx, wy, wz, m);
     }
 
     /**

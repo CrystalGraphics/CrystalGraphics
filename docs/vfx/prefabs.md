@@ -322,6 +322,39 @@ body.socket(hand, point, turn);                // this frame's, after POSE: abso
   entity's freshest mark included, so what draws at a point sits on it as it is drawn (Unreal's late update).
 - A loaded file carries no sockets: they come from the skeleton asset (`withSockets`) or `CgSkeletalMesh.Builder.socket`.
 
+### Attaching one skinned mesh to another
+
+Hair, a tail, a hat or an ear is its own mesh hung from a body's bone: attach its instance to the body's socket
+(Unreal's `AttachToComponent`). It is posed after the body every frame and stands where the socket is that frame.
+
+```java
+CgAnimInstance body = CgAnimation.client().add(new CgAnimInstance(bodyMesh)).place(x, y, z, turnAndScale);
+CgAnimInstance hair = CgAnimation.client().add(new CgAnimInstance(hairMesh)).attachTo(body, "head");
+
+hair.write("strand_0").rotation(CgBoneWrite.Mode.REPLACE, CgBoneWrite.Space.PARENT, sway);   // its own bones, as usual
+world.draw(body);                                                                            // SUBMIT
+world.draw(hair);
+```
+
+A part that sits off the bone takes a relative place: while attached, `place` is the offset, turn and scale in the
+socket's space.
+
+```java
+CgAnimInstance hat = CgAnimation.client().add(new CgAnimInstance(hatMesh))
+        .attachTo(body, "head")
+        .place(0, 0.45, 0, new Matrix4f().rotateY((float) Math.PI).scale(1.1f));   // up the head, turned round
+hat.detach();                                                                      // stays where it last stood
+```
+
+- **A name the body has neither as a socket nor a bone is refused**, rather than placing the part at the body's feet;
+  `attachTo(body, null)` attaches to where the body stands.
+- **Attachments chain** (a ribbon on the hat on the head), parents always posed first. Attaching into a loop is
+  refused.
+- **Hiding the body's bone does not hide what hangs from it**: hide the part itself, for instance from its owner in
+  first person with `hair.hideFromOwner("root", Hide.BRANCH)`.
+- Both instances are added to `CgAnimation`; `x()`, `y()`, `z()` and `transform()` answer where the part stood at the
+  last `POSE`.
+
 ## Drawing one
 
 A posed instance draws itself, each submesh in its slot's material, as Unreal's skinned mesh component draws its
