@@ -143,6 +143,28 @@ looping:     { particles: [ { system: mymod:beam/body, placement: { socket: root
 removal:     { particles: [ { system: mymod:beam/end, placement: { socket: root }, replace: true } ] }   # the body ends as it starts
 ```
 
+A block may also play **sequences**, each once from its start, as a game's master sequence plays its spark, its
+screen flash and its shake together:
+
+```yaml
+# assets/mymod/cues/hit_heavy.yaml
+_v: 1
+tag: mymod:cue.hit.heavy
+kind: burst
+burst: { sequences: [ { sequence: mymod:hit/heavy } ] }
+```
+
+```java
+CgCueDefinition.builder("mymod:hit_heavy").tag("mymod:cue.hit.heavy").burst(e -> e.sequence("mymod:hit/heavy"));
+```
+
+- **It plays at its placement**: the play's origin ([sequences](sequences.md) § *The engine's sequencer, and where a
+  play stands*) rides the target's socket where the entry attaches, else stands fixed where the socket was as the cue
+  played. Its unattached spawnables stand there.
+- **Its sequences load before the cue first plays**, as its other assets do; one that fails is logged once, by name,
+  and the rest of the block plays.
+- Its roles are not bound: a sequence a cue plays names none, or `absent: skip` ones.
+
 ### Where an effect goes, and who sees it
 
 Every entry (a system, a sound, a shake) has a **placement** and a **spawn condition**: its own, else its block's,

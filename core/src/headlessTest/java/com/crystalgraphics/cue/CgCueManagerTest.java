@@ -16,6 +16,7 @@ import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
 import com.crystalgraphics.asset.kind.CgGameplayKinds;
+import com.crystalgraphics.asset.kind.CgSequenceKinds;
 import com.crystalgraphics.asset.load.CgAssetRef;
 import com.crystalgraphics.asset.load.CgLoadPriority;
 import com.crystalgraphics.asset.load.CgVfxAssets;
@@ -26,12 +27,16 @@ import com.crystalgraphics.cue.CgCueDefinition.Write;
 import com.crystalgraphics.frame.CgWorld;
 import com.crystalgraphics.job.CgJobLoop;
 import com.crystalgraphics.net.object.CgPredictionKey;
+import com.crystalgraphics.sequence.CgSequencePlayer;
+import com.crystalgraphics.sequence.CgSequencer;
+import com.crystalgraphics.sequence.definition.CgSequenceDefinition;
 import com.crystalgraphics.tag.CgGameplayTag;
 import com.crystalgraphics.tag.CgTagRegistry;
 import com.crystalgraphics.world.CgAttachment;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
@@ -44,7 +49,8 @@ public class CgCueManagerTest {
     private CgVfxAssets assets;
     private CgCueManager cues;
     private final Recorder effects = new Recorder();
-    private CgGameplayTag hit, crit, aura, none;
+    private CgGameplayTag hit, crit, aura, none, flash;
+    private CgWorld world;
 
     /** Counts what the manager asks of its effects, allocating nothing. */
     static final class Recorder implements CgCueEffects {
@@ -115,20 +121,50 @@ public class CgCueManagerTest {
     @Before
     public void kit() throws IOException {
         Path ns = tmp.newFolder("assets", "cuemgr").toPath();
-        write(ns, "tags.yaml", "_v: 1\ntags: [ cuemgr:cue.hit.crit, cuemgr:cue.aura, cuemgr:cue.none ]\n");
+        write(ns, "tags.yaml", "_v: 1\ntags: [ cuemgr:cue.hit.crit, cuemgr:cue.aura, cuemgr:cue.none, cuemgr:cue.flash ]\n");
         write(ns, "cues/hit.yaml", "_v: 1\ntag: cuemgr:cue.hit\nkind: burst\nburst: { sounds: [ { sound: cuemgr:boom } ] }\n");
         write(ns, "cues/aura.yaml", "_v: 1\ntag: cuemgr:cue.aura\nkind: looping\n"
                 + "application: { sounds: [ { sound: cuemgr:start } ] }\nrecurring: { sounds: [ { sound: cuemgr:pulse } ] }\n"
                 + "events: [ { id: e1, event: hit_world, sounds: [ { sound: cuemgr:hit } ] } ]\n");
+        write(ns, "cues/flash.yaml", String.join("\n", "_v: 1", "tag: cuemgr:cue.flash", "kind: burst",
+                "burst: { sequences: [ { sequence: cuemgr:flash } ] }", ""));
+        write(ns, "sequences/flash.yaml", String.join("\n", "_v: 1", "tick_resolution: 20", "display_rate: 20", "range: [0, 20]", ""));
         CgAssetRegistry registry = new CgAssetRegistry();
         registry.scanResources(tmp.getRoot());
         assets = new CgVfxAssets(registry, CgJobLoop.create("cue-manager-test"));
-        cues = new CgWorld().add(new CgCueManager(assets)).effects(effects);
+        world = new CgWorld();
+        cues = world.add(new CgCueManager(assets)).effects(effects);
         CgTagRegistry tags = CgTagRegistry.global();
         hit = tags.require("cuemgr:cue.hit");
         crit = tags.require("cuemgr:cue.hit.crit");
         aura = tags.require("cuemgr:cue.aura");
         none = tags.require("cuemgr:cue.none");
+        flash = tags.require("cuemgr:cue.flash");
+    }
+
+    /**
+     * A burst whose block plays a sequence waits for the sequence too, then plays it in the world's sequencer at the
+     * origin its effects give: Unreal's level sequence actor at the hit.
+     */
+    @Test
+    public void aBurstsSequenceLoadsWithItThenPlaysAtItsOrigin() throws InterruptedException {
+        CgSequencer sequencer = world.add(new CgSequencer());
+        cues.execute(flash, new CgCueParameters().at(1, 2, 3));
+        frames(0f, () -> effects.bursts == 1);
+        CgAssetRef<CgSequenceDefinition> sequence = assets.declare(CgSequenceKinds.SEQUENCE, "cuemgr:flash");
+        assertTrue("loaded before the burst played", sequence.ready());
+        CgCueDefinition cue = assets.<CgCueDefinition>declare(CgGameplayKinds.CUE, "cuemgr:flash").loaded();
+        CgSequencePlayer player = cues.playSequence(cue, cue.burst().sequences().get(0), (point, turn) -> {
+            point[0] = 1;
+            point[1] = 2;
+            point[2] = 3;
+            return true;
+        });
+        assertNotNull(player);
+        assertEquals(1, sequencer.players().size());
+        double[] at = new double[3];
+        assertTrue(player.origin().place(at, null));
+        assertEquals(3, at[2], 0);
     }
 
     /** Frames of {@code dt} with loads running between them, until {@code done}. */

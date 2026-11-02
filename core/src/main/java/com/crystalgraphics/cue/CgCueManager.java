@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -34,6 +35,7 @@ import com.crystalgraphics.frame.CgWorldSubsystem;
 import com.crystalgraphics.net.object.CgNetObject;
 import com.crystalgraphics.net.object.CgPredictionKey;
 import com.crystalgraphics.sequence.CgSequencePlayer;
+import com.crystalgraphics.sequence.CgSequencer;
 import com.crystalgraphics.sequence.net.CgSequenceNet;
 import com.crystalgraphics.sequence.definition.CgSequenceDefinition;
 import com.crystalgraphics.tag.CgGameplayTag;
@@ -76,6 +78,8 @@ import com.crystalgraphics.world.CgAttachment;
  *       play's age. Gameplay binds a non-authoritative cue's {@code writes} on each client, from
  *       {@link #onNetworked}.</li>
  *   <li>A looping cue's {@code sequence} starts with it, through {@link #sequences}, sought to its age.</li>
+ *   <li>An effects block's {@code sequences} load before the cue first plays, and each plays once from its start
+ *       through the world's sequencer ({@link #playSequence}), placed at its entry's placement.</li>
  *   <li>Once warm (its pools grown, {@link #prewarm}), it allocates nothing per call or per frame.</li>
  * </ul>
  */
@@ -166,6 +170,11 @@ public final class CgCueManager extends CgWorldSubsystem {
     /** The cues whose failed load was logged: once each, so a broken cue tags loudly and never floods. */
     private final Set<String> failedLogged = new HashSet<>();
     private final Set<String> warnedWrites = new HashSet<>();
+    /** Each cue's effects blocks' sequences, declared as it is first routed; the declared refs by id. */
+    private final Map<CgCueDefinition, List<CgAssetRef<CgSequenceDefinition>>> blockSequences = new IdentityHashMap<>();
+    private final Map<String, CgAssetRef<CgSequenceDefinition>> sequenceRefs = new HashMap<>();
+    /** The sequences whose failure was logged: once each. */
+    private final Set<String> sequencesLogged = new HashSet<>();
     /** The cues whose late burst, and the tags whose unrouted play, were logged: once each. */
     private final Set<String> lateLogged = new HashSet<>();
     private final Set<CgGameplayTag> unroutedLogged = new HashSet<>();
@@ -600,6 +609,7 @@ public final class CgCueManager extends CgWorldSubsystem {
                 c.route = next(r);
                 continue;
             }
+            if (!blockSequencesReady(cue)) return false;
             CgAssetRef<CgSequenceDefinition> sequence = null;
             if (!burst && cue.sequence() != null && sequences != null) {
                 sequence = assets.declare(CgSequenceKinds.SEQUENCE, cue.sequence());
@@ -717,6 +727,74 @@ public final class CgCueManager extends CgWorldSubsystem {
         }
         p.clear();
         handles.push(p);
+    }
+
+    /**
+     * Whether every sequence {@code cue}'s effects blocks play is loaded, or failed (logged once); requests them the
+     * first time. A server plays none.
+     */
+    private boolean blockSequencesReady(CgCueDefinition cue) {
+        if (world().server()) return true;
+        List<CgAssetRef<CgSequenceDefinition>> refs = blockSequences.get(cue);
+        if (refs == null) {
+            refs = new ArrayList<>();
+            for (CgCueDefinition.Effects block : blocks(cue)) {
+                for (CgCueDefinition.SequenceEntry e : block.sequences()) {
+                    CgAssetRef<CgSequenceDefinition> s = sequenceRefs.computeIfAbsent(e.sequence(),
+                            id -> assets.declare(CgSequenceKinds.SEQUENCE, id));
+                    refs.add(s);
+                    s.request(CgLoadPriority.MOVE);
+                }
+            }
+            blockSequences.put(cue, refs);
+        }
+        boolean all = true;
+        for (int i = 0; i < refs.size(); i++) {
+            CgAssetRef<CgSequenceDefinition> s = refs.get(i);
+            if (s.state() == CgAssetState.FAILED) {
+                if (sequencesLogged.add(s.id())) LOGGER.warn("{}: its sequence {} failed, and plays nothing: {}", cue.id(), s.id(), s.failure());
+            } else if (!ready(s)) {
+                all = false;
+            }
+        }
+        return all;
+    }
+
+    private static List<CgCueDefinition.Effects> blocks(CgCueDefinition cue) {
+        List<CgCueDefinition.Effects> out = new ArrayList<>(List.of(cue.burst(), cue.application(), cue.looping(),
+                cue.recurring(), cue.removal()));
+        for (Event e : cue.events()) out.add(e.effects());
+        return out;
+    }
+
+    /**
+     * Plays {@code entry} of one of {@code cue}'s effects blocks once from its start, its unattached spawnables and
+     * locators under {@code origin}: Unreal's level sequence actor spawned where the cue plays. Through this world's
+     * {@link CgSequencer}, its roles unbound. What a {@link CgCueEffects} calls for each entry whose spawn condition
+     * passes; null where it plays nothing, which is logged once a sequence, naming why.
+     *
+     * <pre>{@code
+     * for (CgCueDefinition.SequenceEntry s : block.sequences()) {
+     *     if (cues.spawns(s.where().condition(), at, i)) cues.playSequence(cue, s, hitPoint);
+     * }
+     * }</pre>
+     */
+    @Nullable
+    public CgSequencePlayer playSequence(CgCueDefinition cue, CgCueDefinition.SequenceEntry entry, CgAttachment origin) {
+        CgAssetRef<CgSequenceDefinition> ref = sequenceRefs.get(entry.sequence());
+        CgSequenceDefinition definition = ref == null ? null : ref.loaded();
+        if (definition == null) return null;
+        CgSequencer sequencer = world().subsystem(CgSequencer.class);
+        if (sequencer == null) {
+            if (sequencesLogged.add(entry.sequence())) LOGGER.warn("{}: its sequence {} plays nothing: this world has no sequencer", cue.id(), entry.sequence());
+            return null;
+        }
+        try {
+            return sequencer.play(definition, Map.of(), origin);
+        } catch (RuntimeException e) {
+            if (sequencesLogged.add(entry.sequence())) LOGGER.warn("{}: its sequence {} plays nothing: {}", cue.id(), entry.sequence(), e.getMessage());
+            return null;
+        }
     }
 
     private boolean ready(CgAssetRef<?> ref) {

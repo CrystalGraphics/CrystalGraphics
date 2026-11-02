@@ -25,6 +25,7 @@ import com.crystalgraphics.cue.CgCueDefinition.Effects;
 import com.crystalgraphics.cue.CgCueDefinition.Lens;
 import com.crystalgraphics.cue.CgCueDefinition.Particles;
 import com.crystalgraphics.cue.CgCueDefinition.Placement;
+import com.crystalgraphics.cue.CgCueDefinition.SequenceEntry;
 import com.crystalgraphics.cue.CgCueDefinition.Shake;
 import com.crystalgraphics.cue.CgCueDefinition.Slot;
 import com.crystalgraphics.cue.CgCueDefinition.Write;
@@ -72,6 +73,9 @@ import com.crystalgraphics.world.CgWorldQueries;
  *       {@code in_world}, on this viewer at {@code scale} times Unreal's falloff from where it is placed, taken once
  *       as it starts; otherwise at {@code scale} on the target's own machine alone. A looping block's shake blends out
  *       at removal. A cue's magnitude scales none of it, as in Unreal: a stronger hit is another cue.</li>
+ *   <li>Each {@code sequences} entry plays once from its start through the client world's sequencer
+ *       ({@link CgCueManager#playSequence}), its unattached spawnables under where its placement puts it: riding the
+ *       target's socket where it attaches, else fixed at the socket's transform as the cue starts.</li>
  *   <li>{@code attach_to_target} follows the target's socket where the target is an entity, else the target itself;
  *       {@code do_not_attach} spawns at the socket and stays. A sound does the same, a burst's one-shot included,
  *       for as long as it plays.</li>
@@ -174,6 +178,50 @@ public final class CgVfxCueEffects implements CgCueEffects {
             if (cues.spawns(s.where().condition(), at, particles.size() + i)) sound(s, at, false);
         }
         shake(block, at);
+        sequences(cue, block, at);
+    }
+
+    /** Each of {@code block}'s sequences that spawns here, played once from its start where its placement puts it. */
+    private void sequences(CgCueDefinition cue, Effects block, CgCueParameters at) {
+        List<SequenceEntry> entries = block.sequences();
+        int base = block.particles().size() + block.sounds().size() + 1;
+        for (int i = 0; i < entries.size(); i++) {
+            SequenceEntry e = entries.get(i);
+            if (cues.spawns(e.where().condition(), at, base + i)) cues.playSequence(cue, e, origin(e.where().placement(), at));
+        }
+    }
+
+    /**
+     * Where a sequence entry's placement stands its play: riding the target's socket (else the target) where it
+     * attaches, else fixed where FindSpawnTransform puts it, its turn included.
+     */
+    private CgAttachment origin(Placement placement, CgCueParameters at) {
+        CgAttachment target = at.target();
+        if (target != null && placement.attach() == Placement.Attach.ATTACH_TO_TARGET) {
+            return placement.socket() == null ? target : target.atSocket(placement.socket());
+        }
+        double x = at.x(), y = at.y(), z = at.z();
+        Quaternionf q = new Quaternionf();
+        if (target != null) {
+            point[0] = x;
+            point[1] = y;
+            point[2] = z;
+            boolean turned = placement.socket() != null ? target.point(placement.socket(), point, q) : target.place(point, q);
+            if (!turned && placement.socket() != null) target.place(point, null);
+            if (!turned) q.identity();
+            x = point[0];
+            y = point[1];
+            z = point[2];
+        }
+        if (placement.rotation() != null) q.set(placement.rotation());
+        double fx = x, fy = y, fz = z;
+        return (p, turn) -> {
+            p[0] = fx;
+            p[1] = fy;
+            p[2] = fz;
+            if (turn != null) turn.set(q);
+            return true;
+        };
     }
 
     /** {@code block}'s shake, started if it plays on this machine; null where it does not. */
@@ -411,6 +459,8 @@ public final class CgVfxCueEffects implements CgCueEffects {
             playSounds(cue.looping(), at, true);
             shake(cue.application(), at);
             loopShake = shake(cue.looping(), at);
+            sequences(cue, cue.application(), at);
+            sequences(cue, cue.looping(), at);
             Lens l = cue.looping().lens();
             if (l != null && cues.spawns(l.where().condition(), at, 0) && lensPlays(l, at)) lens = openLens(CgPostStack.get(), l);
         }
@@ -518,6 +568,7 @@ public final class CgVfxCueEffects implements CgCueEffects {
             play(cue.removal(), at, false);
             playSounds(cue.removal(), at, false);
             shake(cue.removal(), at);
+            sequences(cue, cue.removal(), at);
         }
 
         /** Whether a removal entry that starts at once replaces what plays on {@code socket}. */
