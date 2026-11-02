@@ -604,6 +604,26 @@ particle_update:
 - **Each slot carried costs the pool a second drawn element a particle**, and only emitters carrying the same slots
   share a pool.
 
+## Flung across the screen: a cone about the camera
+
+A cone's axis can follow the viewer's camera, each client its own, as Niagara feeds the camera query's vectors into
+Add Velocity in Cone. About the forward vector with both angles at 180 (each a full apex angle), the cone is its rim:
+the plane facing the eye, so every particle crosses the screen at its full length and none flies at the viewer.
+
+```yaml
+particle_spawn:
+  - { module: crystalgraphics:add_velocity, inputs: { mode: in_cone, cone_axis: { bind: camera.forward },
+      cone_angle: 180, inner_cone: 180, speed: { range: [6, 10] } } }
+```
+
+```java
+CgVfxEmitter.builder("lines").directionFromCamera(CgVfxUserBinding.Camera.FORWARD, 90f, 90f).speed(6f, 10f)...
+```
+
+- `camera.right` and `camera.up` are the others. The camera is read each step, so a spawn flies across the screen as
+  the view stood at its birth; what is already flying keeps its heading.
+- It is the world camera's; spawns of an emitter that events spawn are turned by the event's normal too.
+
 ## Moving slower than it is pushed: velocity scale
 
 Cascade's Velocity Over Lifetime scales how fast a particle moves while its velocity keeps what forces give it, so a

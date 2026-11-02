@@ -20,6 +20,8 @@ import com.crystalgraphics.asset.kind.CgAssetKinds;
 import com.crystalgraphics.asset.kind.CgParticleKinds;
 import com.crystalgraphics.asset.load.CgAssetCompiler;
 import com.crystalgraphics.asset.tree.CgAssetData;
+import com.crystalgraphics.object.validate.CgValidation;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxUserBinding;
 import com.crystalgraphics.easing.CgEasings;
 import com.crystalgraphics.easing.CgKeyframes;
 import com.crystalgraphics.object.CgType;
@@ -315,6 +317,31 @@ public class CgVfxEmitterAssetsTest {
                 .filter(m -> "crystalgraphics:shape_location".equals(((Map<?, ?>) m).get("module"))).findFirst().orElseThrow();
         assertEquals(Map.of("outward", Map.of("range", List.of(2.0, 5.0)), "radial", true),
                 ((Map<?, ?>) place.get("inputs")).get("add_velocity"));
+    }
+
+    @Test
+    public void aConeAxisBoundToTheCameraReadsItEachStepAndWritesBack() {
+        Map<String, Object> tree = new LinkedHashMap<>();
+        tree.put("_v", 1);
+        tree.put("properties", Map.of("capacity", 4));
+        tree.put("emitter_update", List.of(Map.of("id", "state", "module", "crystalgraphics:emitter_state",
+                "inputs", Map.of("loop", "once", "duration", 1.0))));
+        Map<String, Object> velocity = Map.of("mode", "in_cone", "cone_axis", Map.of("bind", "camera.forward"),
+                "cone_angle", 180.0, "inner_cone", 180.0);
+        tree.put("particle_spawn", List.of(Map.of("id", "fling", "module", "crystalgraphics:add_velocity", "inputs", velocity)));
+        CgVfxEmitter e = CgVfxEmitterAssets.compile("flung", tree, null);
+        assertEquals(3, e.userBindings().size());
+        for (int axis = 0; axis < 3; axis++) {
+            assertEquals(CgVfxUserBinding.camera(20 + axis, CgVfxUserBinding.Camera.FORWARD, axis), e.userBindings().get(axis));
+        }
+        Map<?, ?> fling = (Map<?, ?>) ((List<?>) CgVfxEmitterAssets.write(e).get("particle_spawn")).stream()
+                .filter(m -> "crystalgraphics:add_velocity".equals(((Map<?, ?>) m).get("module"))).findFirst().orElseThrow();
+        assertEquals(Map.of("bind", "camera.forward"), ((Map<?, ?>) fling.get("inputs")).get("cone_axis"));
+        assertEquals("a rebuilt emitter binds the camera once", 3, e.toBuilder().build().userBindings().size());
+        CgAssetKinds.register();
+        CgValidation v = CgAssetData.of("test:vfx/emitters/flung", CgParticleKinds.EMITTER, CgVfxEmitterAssets.write(e), null)
+                .validate(CgValidation.Usecase.LOAD);
+        assertTrue(String.valueOf(v.issues()), v.valid());
     }
 
     /** A sprite_size wider than tall keeps its height, as the start scale's y; a per-channel range rolls each axis. */

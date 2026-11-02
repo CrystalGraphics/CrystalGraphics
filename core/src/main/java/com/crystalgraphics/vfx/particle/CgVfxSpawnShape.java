@@ -11,6 +11,7 @@ import com.crystalgraphics.shape.primitive.CgCylinder;
 import com.crystalgraphics.shape.primitive.CgRing;
 import com.crystalgraphics.shape.primitive.CgShell;
 import com.crystalgraphics.shape.primitive.CgSphere;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxUserBinding;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxWords;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxSpawnMeshes;
 import org.joml.Quaternionf;
@@ -167,6 +168,8 @@ final class CgVfxSpawnShape {
         String meshPath;
         /** A cone's axis, and the least and most angle from it, radians: Niagara's inner and outer half angles. */
         float dirX, dirY = 1f, dirZ, innerSpread, spread;
+        /** The camera vector the cone's axis follows, this viewer's, in place of its own; null for none. */
+        CgVfxUserBinding.Camera coneCamera;
         /** The shape's own axis and middle, in its own space; where it is pointed (NaN for its own); where it sits. */
         float axisX, axisY = 1f, axisZ, midX, midY, midZ;
         float pointX = Float.NaN, pointY, pointZ, atX, atY, atZ;
@@ -347,6 +350,7 @@ final class CgVfxSpawnShape {
             dirZ = s.dirZ;
             innerSpread = s.innerSpread;
             spread = s.spread;
+            coneCamera = s.coneCamera;
             axisX = s.axisX;
             axisY = s.axisY;
             axisZ = s.axisZ;

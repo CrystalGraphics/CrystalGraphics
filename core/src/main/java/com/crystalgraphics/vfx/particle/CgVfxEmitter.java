@@ -303,7 +303,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         playRate = b.playRate;
         ownEvents = b.events.size();
         handlers = List.copyOf(b.handlers);
-        userBindings = List.copyOf(b.userBindings);
+        userBindings = withCamera(b.userBindings, spawn.given());
         forms = List.copyOf(b.forms);
         for (CgVfxModuleForm f : forms) {
             if (f.module() >= modules.size()) throw new IllegalStateException(name + " gives module " + f.module() + " a form; it has " + modules.size());
@@ -544,6 +544,17 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
     public List<CgVfxEventHandler> handlers() {
         return handlers;
     }
+
+    /** {@code bound}, and the spawn words of a cone's axis where it follows the camera: x, y and z of the direction. */
+    private static List<CgVfxUserBinding> withCamera(List<CgVfxUserBinding> bound, CgVfxSpawnShape.Builder spawn) {
+        if (spawn.coneCamera == null || spawn.mode != CgVfxSpawnShape.DIRECTION) return List.copyOf(bound);
+        List<CgVfxUserBinding> out = new ArrayList<>(bound);
+        for (int axis = 0; axis < 3; axis++) out.add(CgVfxUserBinding.camera(CONE_AXIS_WORD + axis, spawn.coneCamera, axis));
+        return List.copyOf(out);
+    }
+
+    /** The spawn word of a cone's axis x: the spawn numbers' four vec4s, then the shape's second. */
+    private static final int CONE_AXIS_WORD = 5 * 4;
 
     /** Its own events, without its clip's: what a file writes as handlers. */
     public List<CgVfxEvent> ownEvents() {
@@ -1022,7 +1033,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
             moduleIds.addAll(Arrays.asList(e.moduleIds));
             events.addAll(e.events.subList(0, e.ownEvents));
             handlers.addAll(e.handlers);
-            userBindings.addAll(e.userBindings);
+            for (CgVfxUserBinding u : e.userBindings) if (u.camera() == null) userBindings.add(u);
             forms.addAll(e.forms);
             clip = e.clip;
             playRate = e.playRate;
@@ -1508,6 +1519,25 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
          */
         public Builder direction(float x, float y, float z, float innerDegrees, float spreadDegrees) {
             spawn.direction(x, y, z, innerDegrees, spreadDegrees, name);
+            spawn.coneCamera = null;
+            return this;
+        }
+
+        /**
+         * Launched between {@code innerDegrees} and {@code spreadDegrees} of this viewer's {@code camera} vector, each
+         * client its own: Niagara's cone with its axis from the camera query. At 90 and 90 about the forward vector,
+         * the plane facing the eye, so every launch crosses the screen at its full length:
+         *
+         * <pre>{@code
+         * .directionFromCamera(CgVfxUserBinding.Camera.FORWARD, 90f, 90f)   // flung across the screen
+         * }</pre>
+         *
+         * The camera is the world's, at each step: spawns of an emitter that events spawn are turned by the event's
+         * normal as well.
+         */
+        public Builder directionFromCamera(CgVfxUserBinding.Camera camera, float innerDegrees, float spreadDegrees) {
+            spawn.direction(0f, 1f, 0f, innerDegrees, spreadDegrees, name);
+            spawn.coneCamera = camera;
             return this;
         }
 
@@ -1833,7 +1863,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
             clip = t.clip;
             playRate = t.playRate;
             userBindings.clear();
-            userBindings.addAll(t.userBindings);
+            for (CgVfxUserBinding u : t.userBindings) if (u.camera() == null) userBindings.add(u);
             return this;
         }
 

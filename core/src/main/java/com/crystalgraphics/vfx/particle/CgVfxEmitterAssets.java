@@ -44,6 +44,7 @@ import com.crystalgraphics.object.CgPropertyFlag;
 import com.crystalgraphics.object.value.CgQuantity;
 import com.crystalgraphics.vfx.look.CgVfxFlipbook;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxDrawnChannel;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxUserBinding;
 import com.crystalgraphics.object.value.CgUnits;
 import com.crystalgraphics.shape.primitive.CgPlane;
 import com.crystalgraphics.shape.primitive.CgBox;
@@ -409,7 +410,9 @@ public final class CgVfxEmitterAssets {
             case CgVfxSpawnShape.INWARD -> in.put("mode", "inward");
             case CgVfxSpawnShape.DIRECTION -> {
                 in.put("mode", "in_cone");
-                in.put("cone_axis", list(s.dirX, s.dirY, s.dirZ));
+                in.put("cone_axis", s.coneCamera != null
+                        ? Map.of("bind", "camera." + s.coneCamera.name().toLowerCase(Locale.ROOT))
+                        : list(s.dirX, s.dirY, s.dirZ));
                 // Unreal's cone angles are apex angles: twice the half angles drawn between.
                 in.put("cone_angle", written(e, CgVfxSpawnInput.CONE_ANGLE, 2.0 * s.spread));
                 if (s.innerSpread != 0f) in.put("inner_cone", 2.0 * s.innerSpread);
@@ -1304,6 +1307,24 @@ public final class CgVfxEmitterAssets {
         }
     }
 
+    /**
+     * A cone axis bound to the camera, {@code { bind: camera.forward | camera.right | camera.up }}: Niagara's camera
+     * query read into the cone's axis, each viewer's own. Null for any other form.
+     */
+    @Nullable
+    private static CgVfxUserBinding.Camera coneCamera(String name, Object axis) {
+        if (!(axis instanceof Map<?, ?> form) || !(form.get("bind") instanceof String bind) || !bind.startsWith("camera.")) {
+            return null;
+        }
+        return switch (bind) {
+            case "camera.forward" -> CgVfxUserBinding.Camera.FORWARD;
+            case "camera.right" -> CgVfxUserBinding.Camera.RIGHT;
+            case "camera.up" -> CgVfxUserBinding.Camera.UP;
+            default -> throw new IllegalArgumentException(name + ": add_velocity's cone_axis binds " + bind
+                    + ": camera.forward, camera.right or camera.up");
+        };
+    }
+
     private static void velocity(String name, CgVfxEmitter.Builder b, Map<?, ?> in, String element) {
         CgVfxSpawnShape.Builder s = b.spawn();
         String mode = String.valueOf(in.get("mode"));
@@ -1311,8 +1332,9 @@ public final class CgVfxEmitterAssets {
             case "outward" -> s.mode = CgVfxSpawnShape.OUTWARD;
             case "inward" -> s.mode = CgVfxSpawnShape.INWARD;
             case "in_cone" -> {
-                float[] axis = vec(in.get("cone_axis"), 3);
                 s.mode = CgVfxSpawnShape.DIRECTION;
+                s.coneCamera = coneCamera(name, in.get("cone_axis"));
+                float[] axis = s.coneCamera != null ? new float[] {0f, 1f, 0f} : vec(in.get("cone_axis"), 3);
                 s.dirX = axis[0];
                 s.dirY = axis[1];
                 s.dirZ = axis[2];

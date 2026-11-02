@@ -53,6 +53,7 @@ import com.crystalgraphics.render.world.CgWorldVoxelWindow;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxDrawLayout;
 import com.crystalgraphics.vfx.scalability.CgVfxBudget;
 import org.joml.Matrix4f;
+import org.joml.Matrix4fc;
 
 import javax.annotation.Nullable;
 
@@ -1821,7 +1822,8 @@ public final class CgVfxParticlePool {
             int base = at + shape.userAt() * 4, end = base + CgVfxShape.userLanes(bound) * 4;
             for (int b = 0; b < bound; b++) {
                 CgVfxUserBinding u = bindings.get(b);
-                instances[base + b] = Float.floatToRawIntBits(u.apply(view.user(u.param())));
+                float value = u.camera() != null ? cameraAxis(u.camera(), u.axis(), view) : u.apply(view.user(u.param()));
+                instances[base + b] = Float.floatToRawIntBits(value);
             }
             for (int w = base + bound; w < end; w++) instances[w] = 0;
         }
@@ -2935,5 +2937,26 @@ public final class CgVfxParticlePool {
 
     private void inStep(String call) {
         if (!inStep) throw new IllegalStateException(call + " outside a step");
+    }
+    /**
+     * Component {@code axis} of this viewer's camera vector, turned into {@code view}'s frame: a launch direction the Step
+     * turns back by the instance's rotation (Niagara's camera query, read on the CPU once a step).
+     */
+    private static float cameraAxis(CgVfxUserBinding.Camera camera, int axis, CgVfxInstanceView view) {
+        Matrix4fc m = CgRenderStage.WORLD_OPAQUE.host().view().view();
+        float vx, vy, vz;
+        switch (camera) {
+            case RIGHT -> { vx = m.m00(); vy = m.m10(); vz = m.m20(); }
+            case UP -> { vx = m.m01(); vy = m.m11(); vz = m.m21(); }
+            default -> { vx = -m.m02(); vy = -m.m12(); vz = -m.m22(); }
+        }
+        // by the rotation's conjugate: v + w t + q x t, t = 2 q x v, q its vector part negated
+        float qx = -view.rotationX(), qy = -view.rotationY(), qz = -view.rotationZ(), qw = view.rotationW();
+        float tx = 2f * (qy * vz - qz * vy), ty = 2f * (qz * vx - qx * vz), tz = 2f * (qx * vy - qy * vx);
+        return switch (axis) {
+            case 0 -> vx + qw * tx + (qy * tz - qz * ty);
+            case 1 -> vy + qw * ty + (qz * tx - qx * tz);
+            default -> vz + qw * tz + (qx * ty - qy * tx);
+        };
     }
 }

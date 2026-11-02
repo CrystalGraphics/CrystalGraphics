@@ -25,17 +25,25 @@ import com.crystalgraphics.vfx.look.CgVfxParam;
  *   <li>Which words are bound is part of the shape ({@code CgVfxShape}): definitions binding different words step in
  *       different pools. The parameter's value never recompiles anything.</li>
  *   <li>An input the module's kind does not declare in its words throws as the shape is made, naming both.</li>
+ *   <li>A {@link #camera} binding reads this viewer's camera instead of a parameter (Niagara's camera query): a spawn
+ *       word of a launch direction, written turned into the instance's frame. An emitter's spawn shape makes them
+ *       from {@code add_velocity}'s {@code cone_axis: { bind: camera.forward }}.</li>
  * </ul>
  *
  * @param module {@link #SPAWN} for the spawn numbers ({@link CgVfxGpuEmitter#writeSpawn}), else the module's index in the stack
  * @param input  the module's input by its declared name; null for the spawn numbers
  * @param index  the input's component; for the spawn numbers, the float from their start
- * @param param  the user parameter read
+ * @param param  the user parameter read; null for a camera binding
  * @param scale  its value's multiplier
  * @param offset added after
+ * @param camera the camera vector read instead of {@code param}, Niagara's {@code ENiagara_CameraVectors}; null for none
+ * @param axis   the camera vector's component, 0 to 2
  */
-public record CgVfxUserBinding(int module, @Nullable String input, int index, CgVfxParam.Scalar param, float scale,
-                               float offset) {
+public record CgVfxUserBinding(int module, @Nullable String input, int index, @Nullable CgVfxParam.Scalar param, float scale,
+                               float offset, @Nullable Camera camera, int axis) {
+
+    /** A camera vector, in the world: where it looks, its right and its up. */
+    public enum Camera { FORWARD, RIGHT, UP }
 
     /** {@link #module} for the spawn numbers. */
     public static final int SPAWN = -1;
@@ -44,19 +52,26 @@ public record CgVfxUserBinding(int module, @Nullable String input, int index, Cg
         if (module < SPAWN) throw new IllegalArgumentException("module " + module);
         if (index < 0) throw new IllegalArgumentException("index " + index);
         if ((module == SPAWN) != (input == null)) throw new IllegalArgumentException("a module's input is named; the spawn numbers' never");
-        if (param == null) throw new IllegalArgumentException("a binding needs a parameter");
+        if ((param == null) == (camera == null)) throw new IllegalArgumentException("a binding reads a parameter or the camera");
+        if (axis < 0 || axis > 2) throw new IllegalArgumentException("axis " + axis);
     }
 
     /** Spawn word {@code word} bound to {@code param}. */
     public static CgVfxUserBinding spawn(int word, CgVfxParam.Scalar param, float scale, float offset) {
         if (word >= CgVfxGpuEmitter.SPAWN_VECTORS * 4) throw new IllegalArgumentException("spawn word " + word);
-        return new CgVfxUserBinding(SPAWN, null, word, param, scale, offset);
+        return new CgVfxUserBinding(SPAWN, null, word, param, scale, offset, null, 0);
+    }
+
+    /** Spawn word {@code word} reading component {@code axis} of this viewer's {@code camera} vector. */
+    public static CgVfxUserBinding camera(int word, Camera camera, int axis) {
+        if (word >= CgVfxGpuEmitter.SPAWN_VECTORS * 4) throw new IllegalArgumentException("spawn word " + word);
+        return new CgVfxUserBinding(SPAWN, null, word, null, 1f, 0f, camera, axis);
     }
 
     /** Component {@code component} of module {@code module}'s input {@code input} bound to {@code param}. */
     public static CgVfxUserBinding module(int module, String input, int component, CgVfxParam.Scalar param, float scale,
                                           float offset) {
-        return new CgVfxUserBinding(module, input, component, param, scale, offset);
+        return new CgVfxUserBinding(module, input, component, param, scale, offset, null, 0);
     }
 
     /** Module {@code module}'s scalar input {@code input} bound to {@code param}. */
