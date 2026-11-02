@@ -31,8 +31,10 @@ import java.util.function.Function;
 
 import javax.annotation.Nullable;
 
+import com.crystalgraphics.asset.curve.CgCurveDefinition;
 import com.crystalgraphics.asset.curve.CgRichCurve;
 import com.crystalgraphics.asset.kind.CgFieldKinds;
+import com.crystalgraphics.asset.kind.CgLookKinds;
 import com.crystalgraphics.asset.kind.CgSequenceKinds;
 import com.crystalgraphics.asset.kind.CgModuleTypes;
 import com.crystalgraphics.asset.load.CgAssetCompiler;
@@ -431,9 +433,68 @@ public final class CgVfxEmitterAssets {
         return compile(name, tree, template, null);
     }
 
+    /**
+     * {@code value} with every curve asset it names in place of its id: {@code { curve: <id> }} takes a float asset's
+     * channel, or a vector's or colour's as {@code curves}; each id in {@code curves: [...]} a float asset's. Before units,
+     * so the input's quantity converts the asset's values as it would inline ones. The same object where it names none.
+     */
+    private static Object curveAssets(String name, Object value, @Nullable CgAssetCompiler.Dependencies deps) {
+        if (value instanceof List<?> list) {
+            List<Object> out = null;
+            for (int i = 0; i < list.size(); i++) {
+                Object v = list.get(i), w = curveAssets(name, v, deps);
+                if (w != v && out == null) out = new ArrayList<>(list);
+                if (out != null) out.set(i, w);
+            }
+            return out != null ? out : list;
+        }
+        if (!(value instanceof Map<?, ?> map)) return value;
+        Map<Object, Object> out = null;
+        for (Map.Entry<?, ?> e : map.entrySet()) {
+            Object v = e.getValue(), w;
+            if ("curve".equals(e.getKey()) && v instanceof String id) {
+                CgCurveDefinition d = curveAsset(name, id, deps);
+                if (d.channels() == 1) {
+                    w = d.written(0);
+                } else {
+                    List<Object> channels = new ArrayList<>();
+                    for (int c = 0; c < d.channels(); c++) channels.add(d.written(c));
+                    if (out == null) out = new LinkedHashMap<>(map);
+                    out.remove("curve");
+                    out.put("curves", channels);
+                    continue;
+                }
+            } else if ("curves".equals(e.getKey()) && v instanceof List<?> list && list.stream().anyMatch(String.class::isInstance)) {
+                List<Object> channels = new ArrayList<>(list);
+                for (int c = 0; c < channels.size(); c++) {
+                    if (!(channels.get(c) instanceof String id)) continue;
+                    CgCurveDefinition d = curveAsset(name, id, deps);
+                    if (d.channels() != 1) {
+                        throw new IllegalArgumentException(name + ": curves[" + c + "] names " + id + ", a " + d.type().name()
+                                .toLowerCase(Locale.ROOT) + " curve: an axis of curves takes a float curve");
+                    }
+                    channels.set(c, d.written(0));
+                }
+                w = channels;
+            } else {
+                w = curveAssets(name, v, deps);
+            }
+            if (w != v && out == null) out = new LinkedHashMap<>(map);
+            if (out != null) out.put(e.getKey(), w);
+        }
+        return out != null ? out : map;
+    }
+
+    private static CgCurveDefinition curveAsset(String name, String id, @Nullable CgAssetCompiler.Dependencies deps) {
+        Object d = deps == null ? null : deps.definition(CgLookKinds.CURVE_KIND, id);
+        if (d instanceof CgCurveDefinition curve) return curve;
+        throw new IllegalArgumentException(name + ": no curve " + id + (deps == null ? " (compiled without its dependencies)" : ""));
+    }
+
     /** As {@link #compile(String, Map, CgVfxEmitter)}, {@code deps} answering its renderers' materials. */
     public static CgVfxEmitter compile(String name, Map<?, ?> tree, @Nullable CgVfxEmitter template,
                                        @Nullable CgAssetCompiler.Dependencies deps) {
+        tree = (Map<?, ?>) curveAssets(name, tree, deps);
         tree = toHost(tree, deps == null ? CgUnits.HOST : deps.units());
         CgVfxEmitter.Builder b = CgVfxEmitter.builder(name);
         if (template != null) b.carry(template);

@@ -77,6 +77,27 @@ tint: { argb: 0xFF1858FF, intensity: 1.6 }  # a colour, HDR by its intensity
 
 A key that takes no form (a name, a flag, a list of ids) takes only itself.
 
+### A curve shared by many inputs
+
+A curve used in many places lives in `curves/` and is named by its id, read as if its keys were written inline:
+
+```yaml
+# assets/mymod/curves/growth.yaml
+_v: 1
+type: float                                  # float, vector (three curves) or colour (four)
+curves: [ { keys: [[0, 0.2], [0.3, 1.1, cubic_out], [1, 1]] } ]
+```
+
+```yaml
+scale: { curve: mymod:growth, by: age }                          # any input taking a curve
+scale: { curves: [mymod:growth, mymod:grow_y, mymod:growth], by: age }   # one float curve an axis
+```
+
+- **One curve fills every axis** of a vector input: `{ curve: c, by: age }` on a vec3 is `{ curves: [c, c, c] }`.
+  A `vector` asset named by `curve:` gives each axis its own channel.
+- The input's unit converts the asset's values, as it would inline ones.
+- The id is a hard reference: the curve loads with the asset naming it, and a missing one fails it at load, by name.
+
 ### Curves and their easings
 
 A curve's keys are `[time, value]`, then how the segment starting at that key runs: `constant`, `linear`, `cubic`

@@ -40,14 +40,17 @@ public final class CgCurveDefinition implements CgPatchable {
     private final String id;
     private final Type type;
     private final CgRichCurve[] curves;
+    /** Each channel as its file writes it: what a module input naming this asset takes in its place. */
+    private final List<?> written;
     private final CgPatchTable patches;
     /** Per slot: the curve, then the key. */
     private final int[] slotCurve, slotKey;
 
-    private CgCurveDefinition(String id, Type type, CgRichCurve[] curves) {
+    private CgCurveDefinition(String id, Type type, CgRichCurve[] curves, List<?> written) {
         this.id = id;
         this.type = type;
         this.curves = curves;
+        this.written = List.copyOf(written);
         int n = 0;
         for (CgRichCurve c : curves) n += c.size();
         slotCurve = new int[n];
@@ -85,7 +88,15 @@ public final class CgCurveDefinition implements CgPatchable {
             if (c instanceof String ref) throw new IllegalArgumentException(asset.id() + ": curves[" + i + "] names " + ref + "; a curve asset's channels are inline");
             curves[i] = CgRichCurve.decode(c);
         }
-        return new CgCurveDefinition(asset.id(), type, curves);
+        return new CgCurveDefinition(asset.id(), type, curves, list);
+    }
+
+    /**
+     * Channel {@code channel} as its file writes it ({@code { keys: [...] }} or its samples): what a module input
+     * naming this asset ({@code { curve: <id>, by: age }}) reads in its place, converted by the input's own quantity.
+     */
+    public Object written(int channel) {
+        return written.get(channel);
     }
 
     public String id() {

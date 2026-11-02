@@ -634,7 +634,8 @@ particle slowed to a crawl by a curve speeds up again as the curve rises; `absol
 ```
 
 ```yaml
-- { module: crystalgraphics:scale_velocity, inputs: { scale: { curves: [...], by: age } } }
+- { module: crystalgraphics:scale_velocity, inputs: { scale: { curve: { keys: [[0, 1], [1, 0.1]] }, by: age } } }   # every axis
+- { module: crystalgraphics:scale_velocity, inputs: { scale: { curves: [<x>, <y>, <z>], by: age } } }             # each its own
 ```
 
 - Collisions, alignment and stretch read the velocity, not the scaled motion.

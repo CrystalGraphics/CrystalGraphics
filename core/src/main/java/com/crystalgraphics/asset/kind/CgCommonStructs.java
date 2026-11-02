@@ -184,7 +184,7 @@ public final class CgCommonStructs {
             .register();
 
     /** A curve as a file writes it: an asset's id, its keys or its samples. */
-    public static final CgValueType CURVE = CgValueType.oneOf(STRING, CgValueType.struct(CURVE_KEYS),
+    public static final CgValueType CURVE = CgValueType.oneOf(hard("curve"), CgValueType.struct(CURVE_KEYS),
             CgValueType.struct(CURVE_SAMPLES));
 
     private static CgType form(String key, CgValueType value) {

@@ -27,7 +27,8 @@ import com.crystalgraphics.object.CgValueType;
  *   <li>Only asset references: a binary ({@code .png}, {@code .glb}) is a file, not an asset to compile.</li>
  *   <li>An {@code unreal:} id is listed as written; the host's alias table resolves it.</li>
  *   <li>A reference is found only where a declaration types it: a value kept as written ({@code TREE}, {@code VALUE})
- *       is not searched, but for a value in the field form, {@code { field: <id> }}: a hard reference to that field.</li>
+ *       is not searched, but for a value in the field form, {@code { field: <id> }}, and a curve asset a value's form
+ *       names, {@code { curve: <id>, by: age }}: hard references to that field or curve.</li>
  * </ul>
  */
 public final class CgAssetReferences {
@@ -112,6 +113,7 @@ public final class CgAssetReferences {
                     CgType kind = CgTypes.get("crystalgraphics:field");
                     if (kind != null) out.add(new Reference(kind, field, CgValueType.Strength.HARD, at.key("field")));
                 }
+                curves(v, at);
                 return;
             }
             case ONE_OF: {
@@ -124,6 +126,28 @@ public final class CgAssetReferences {
                 return;
             }
             default:
+        }
+    }
+
+    /** The curve assets a value's forms name, nested ones too: {@code { curve: <id> }}, {@code { curves: [<id>, ...] }}. */
+    private void curves(Object v, CgPropertyPath at) {
+        if (v instanceof List<?> l) {
+            for (int i = 0; i < l.size(); i++) curves(l.get(i), at.index(i));
+            return;
+        }
+        if (!(v instanceof Map<?, ?> m)) return;
+        CgType kind = CgTypes.get("crystalgraphics:curve");
+        for (Map.Entry<?, ?> e : m.entrySet()) {
+            String key = String.valueOf(e.getKey());
+            if (kind != null && key.equals("curve") && e.getValue() instanceof String id) {
+                out.add(new Reference(kind, id, CgValueType.Strength.HARD, at.key(key)));
+            } else if (kind != null && key.equals("curves") && e.getValue() instanceof List<?> l) {
+                for (int i = 0; i < l.size(); i++) {
+                    if (l.get(i) instanceof String id) out.add(new Reference(kind, id, CgValueType.Strength.HARD, at.key(key).index(i)));
+                }
+            } else {
+                curves(e.getValue(), at.key(key));
+            }
         }
     }
 

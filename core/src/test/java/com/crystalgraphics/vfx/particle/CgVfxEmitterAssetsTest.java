@@ -16,15 +16,19 @@ import java.util.Map;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
+import com.crystalgraphics.asset.curve.CgCurveDefinition;
 import com.crystalgraphics.asset.kind.CgAssetKinds;
+import com.crystalgraphics.asset.kind.CgLookKinds;
 import com.crystalgraphics.asset.kind.CgParticleKinds;
 import com.crystalgraphics.asset.load.CgAssetCompiler;
 import com.crystalgraphics.asset.tree.CgAssetData;
+import com.crystalgraphics.asset.tree.CgAssetReferences;
 import com.crystalgraphics.object.validate.CgValidation;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxUserBinding;
 import com.crystalgraphics.easing.CgEasings;
 import com.crystalgraphics.easing.CgKeyframes;
 import com.crystalgraphics.object.CgType;
+import com.crystalgraphics.object.CgValueType;
 import com.crystalgraphics.object.value.CgUnits;
 import com.crystalgraphics.shape.primitive.CgBox;
 import com.crystalgraphics.shape.primitive.CgCapsule;
@@ -801,6 +805,67 @@ public class CgVfxEmitterAssetsTest {
         e.writeCurves(ca, 0, CgVfxGpuEmitter.CURVE_TEXELS);
         back.writeCurves(cb, 0, CgVfxGpuEmitter.CURVE_TEXELS);
         for (int i = 0; i < length; i++) near(n + " curve word " + i, ca[i], cb[i]);
+    }
+
+    /** A vec3 input's one curve is the same curve on every axis: the uniform form beside {@code curves: [x, y, z]}. */
+    @Test
+    public void aVec3InputTakesOneCurveForEveryAxis() {
+        Map<String, Object> slow = Map.of("keys", List.of(List.of(0.0, 1.0), List.of(1.0, 0.2)));
+        Map<String, Object> one = scaleVelocityTree(Map.of("curve", slow, "by", "age"));
+        Map<String, Object> three = scaleVelocityTree(Map.of("curves", List.of(slow, slow, slow), "by", "age"));
+        CgVfxEmitter uniform = CgVfxEmitterAssets.compile("uniform", one, null);
+        CgVfxEmitter each = CgVfxEmitterAssets.compile("each", three, null);
+        assertArrayEquals(each.moduleWords(), uniform.moduleWords());
+        int length = 4 * (2 * CgVfxGpuEmitter.CURVE_TEXELS + CgVfxGpuEmitter.CURVE_STARTS);
+        float[] a = new float[length], b = new float[length];
+        each.writeCurves(a, 0, CgVfxGpuEmitter.CURVE_TEXELS);
+        uniform.writeCurves(b, 0, CgVfxGpuEmitter.CURVE_TEXELS);
+        assertArrayEquals(a, b, 0f);
+        assertEquals(each.moduleForms().size(), uniform.moduleForms().size());
+        CgAssetKinds.register();
+        CgValidation v = CgAssetData.of("test:vfx/emitters/slow", CgParticleKinds.EMITTER, one, null)
+                .validate(CgValidation.Usecase.LOAD);
+        assertTrue(String.valueOf(v.issues()), v.valid());
+    }
+
+    /** A module input naming a curve asset reads its keys as if written inline, and the id is a hard reference. */
+    @Test
+    public void aModuleInputNamingACurveAssetReadsItsKeys() {
+        CgAssetKinds.register();
+        Map<String, Object> keys = Map.of("keys", List.of(List.of(0.0, 0.2), List.of(1.0, 1.0)));
+        Map<String, Object> growth = Map.of("_v", 1, "type", "float", "curves", List.of(keys));
+        CgCurveDefinition curve = CgCurveDefinition.compile(CgAssetData.of("test:growth", CgLookKinds.CURVE_KIND, growth, null));
+        CgAssetCompiler.Dependencies deps = (kind, id) -> kind == CgLookKinds.CURVE_KIND && id.equals("test:growth") ? curve : null;
+        Map<String, Object> named = scaleVelocityTree(Map.of("curve", "test:growth", "by", "age"));
+        CgVfxEmitter inline = CgVfxEmitterAssets.compile("inline", scaleVelocityTree(Map.of("curve", keys, "by", "age")), null);
+        CgVfxEmitter byId = CgVfxEmitterAssets.compile("byId", named, null, deps);
+        assertArrayEquals(inline.moduleWords(), byId.moduleWords());
+        int length = 4 * (2 * CgVfxGpuEmitter.CURVE_TEXELS + CgVfxGpuEmitter.CURVE_STARTS);
+        float[] a = new float[length], b = new float[length];
+        inline.writeCurves(a, 0, CgVfxGpuEmitter.CURVE_TEXELS);
+        byId.writeCurves(b, 0, CgVfxGpuEmitter.CURVE_TEXELS);
+        assertArrayEquals(a, b, 0f);
+        Map<String, Object> each = scaleVelocityTree(Map.of("curves", List.of("test:growth", "test:growth", "test:growth"), "by", "age"));
+        assertArrayEquals(inline.moduleWords(), CgVfxEmitterAssets.compile("each", each, null, deps).moduleWords());
+        assertTrue(CgAssetReferences.ofFile("test:slow", CgParticleKinds.EMITTER, named).stream().anyMatch(r ->
+                r.kind() == CgLookKinds.CURVE_KIND && r.id().equals("test:growth") && r.strength() == CgValueType.Strength.HARD));
+        try {
+            CgVfxEmitterAssets.compile("missing", named, null);
+            fail("compiled");
+        } catch (IllegalArgumentException e) {
+            assertTrue(e.getMessage(), e.getMessage().startsWith("missing: no curve test:growth"));
+        }
+    }
+
+    private static Map<String, Object> scaleVelocityTree(Object scale) {
+        Map<String, Object> tree = new LinkedHashMap<>();
+        tree.put("_v", 1);
+        tree.put("properties", Map.of("capacity", 64));
+        tree.put("emitter_update", List.of(Map.of("id", "state", "module", "crystalgraphics:emitter_state",
+                "inputs", Map.of("loop", "once", "duration", 1.0))));
+        tree.put("particle_update", List.of(Map.of("id", "slow", "module", "crystalgraphics:scale_velocity",
+                "inputs", Map.of("scale", scale))));
+        return tree;
     }
 
     private static List<?> stack(CgVfxEmitter e, String name) {
