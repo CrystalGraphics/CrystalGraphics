@@ -3,8 +3,8 @@ import java.io.File as JFile
 
 // runtime/lwjgl/sdl — tier 1 for a host windowed by SDL3 rather than GLFW: key and mouse state, the clipboard
 // and the cursor, with no Minecraft type. Minecraft 26.3 ships SDL3 and no GLFW at all, so this is what a 26.3
-// node registers where an older one registers runtime/lwjgl/3's GLFW services. The GL backend is unaffected:
-// Lwjgl3GLBackend's calls are GL's, not GLFW's.
+// node registers where an older one registers runtime/lwjgl/3's GLFW services. The GL backend's calls are GL's, but
+// its shader-link worker's shared context is made by the windowing library: SdlWorkerContext on SDL3.
 //
 // PINNED TO dep.lwjgl3.sdl (3.4.3), the oldest LWJGL a client with SDL3 ships, as runtime/lwjgl/vulkan is
 // pinned to the oldest with Vulkan: compileOnly, since hosted it runs on Minecraft's copy.
@@ -30,6 +30,7 @@ dependencies {
     compileOnly(project(":platform"))
     compileOnly("org.lwjgl:lwjgl:$lwjglSdl")
     compileOnly("org.lwjgl:lwjgl-sdl:$lwjglSdl")
+    compileOnly("org.lwjgl:lwjgl-opengl:$lwjglSdl")
 }
 
 tasks.withType<JavaCompile>().configureEach {

@@ -24,6 +24,10 @@ import org.lwjgl.opengl.GL13;
 //? if >=1.19.2 <1.21.5 {
 import com.mojang.blaze3d.vertex.BufferUploader;
 //?}
+//? if >=26.3 {
+/*import com.crystalgraphics.platform.gl.CgGLWorkerContext;
+import com.crystalgraphics.sdl.SdlWorkerContext;
+*///?}
 
 /**
  * {@link Lwjgl3GLBackend} plus the one thing tier 1 cannot do: <b>telling Minecraft what we changed.</b>
@@ -91,6 +95,14 @@ public final class Blaze3dGLBackend extends Lwjgl3GLBackend {
                     + "(-Dcrystalgraphics.gl.keepHostDebugOutput=true keeps it)");
         }
     }
+
+    // 26.3 ships SDL3 and no GLFW: its GL context (as Iris forces) shares with an SDL window's.
+    //? if >=26.3 {
+    /*@Override
+    public CgGLWorkerContext createWorkerContext() {
+        return SdlWorkerContext.create();
+    }
+    *///?}
 
     // HostStateModern answers the vertex input as Minecraft's no longer: it binds its own before each draw, but
     // remembers its immediate buffer's array, so that record goes when the frame goes back.
