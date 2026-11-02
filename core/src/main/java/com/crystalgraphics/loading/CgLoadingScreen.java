@@ -18,6 +18,10 @@ import com.crystalgraphics.asset.load.CgVfxAssets;
 import com.crystalgraphics.gl.framebuffer.CgFrameBuffer;
 import com.crystalgraphics.gl.material.CgMaterialShader;
 import com.crystalgraphics.gl.texture.CgTextureAbstract;
+import com.crystalgraphics.platform.gl.CgGL;
+import com.crystalgraphics.platform.gl.state.CgGlScope;
+import com.crystalgraphics.platform.gl.state.CgGlSlot;
+import com.crystalgraphics.platform.gl.state.CgGlState;
 import com.crystalgraphics.render.CgWarmBudget;
 import com.crystalgraphics.render.draw.CgPipeline;
 import com.crystalgraphics.render.stage.CgRenderStage;
@@ -320,14 +324,23 @@ public final class CgLoadingScreen {
     public static void draw(int width, int height) {
         float alpha;
         if (shown()) {
-            if (!worldFired) warmFrame();
+            if (!worldFired) {
+                // Its firing binds the warm target and viewport; the host's target is what this draws over
+                try (CgGlScope ignored = CgGlState.save(CgGlSlot.FBO, CgGlSlot.VIEWPORT)) {
+                    warmFrame();
+                }
+            }
             alpha = 1f;
         } else {
             long since = System.nanoTime() - hiddenAt;
             if (hiddenAt == 0L || since >= FADE_NANOS) return;
             alpha = 1f - since / (float) FADE_NANOS;
         }
-        view.draw(width, height, shownProgress, alpha, reason);
+        // A host binding its target may leave the last pass's viewport (legacy Forge's bindFramebuffer(false))
+        try (CgGlScope ignored = CgGlState.save(CgGlSlot.VIEWPORT)) {
+            CgGL.glViewport(0, 0, width, height);
+            view.draw(width, height, shownProgress, alpha, reason);
+        }
     }
 
     /**
