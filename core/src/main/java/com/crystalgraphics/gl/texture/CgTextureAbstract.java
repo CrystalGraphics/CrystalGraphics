@@ -161,7 +161,7 @@ public abstract class CgTextureAbstract implements CgTexture, CgReloadable {
     }
 
     private static final int LOADS = CgTrace.name("texture.loads");
-    private static final Logger LOGGER = LogManager.getLogger("CgTexture");
+    private static final Logger LOGGER = LogManager.getLogger(CgTextureAbstract.class);
     private static final CgVar.Bool LOG_FIRST_USE = CgVar.bool("crystalgraphics.texture.logFirstUse", false, CgVar.DEV,
             "Log each texture from files loaded at its first use: its source, the thread that paid for it and how long.");
 

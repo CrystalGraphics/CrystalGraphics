@@ -10,7 +10,9 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import javax.annotation.Nullable;
 
+import com.crystalgraphics.api.texture.CgTextures;
 import com.crystalgraphics.asset.codec.CgAssetYaml;
+import com.crystalgraphics.asset.load.CgPreload;
 import com.crystalgraphics.asset.kind.CgKitFiles;
 import com.crystalgraphics.asset.tree.CgAssetData;
 import com.crystalgraphics.object.validate.CgValidation;
@@ -130,7 +132,11 @@ public record CgSubtitleStyle(float referenceHeight, float uiScale, int lines, T
     public static void registerKit(String namespace, Path folder) {
         Path file = folder.resolve(FILE);
         if (!Files.isRegularFile(file)) return;
-        BY_KIT.put(namespace, read(file));
+        CgSubtitleStyle style = read(file);
+        BY_KIT.put(namespace, style);
+        // Read now, at the kit's registration: the first subtitle drawn is mid-move
+        Underline underline = style.name() == null ? null : style.name().underline();
+        if (underline != null) CgPreload.request(l -> l.texture(CgTextures.of(underline.image())));
     }
 
     /** {@code file}, validated against {@link CgKitFiles#SUBTITLE_STYLE}. */
