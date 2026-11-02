@@ -310,7 +310,9 @@ public final class CgVfxRenderers {
         if (m.lockedAxis() != null || m.facingUp() != null || m.rollAbout() != null) return "a prefab with a locked axis, facing_up or roll_about";
         if (m.preRotation() != null) return "a prefab with pre_rotation";
         if (m.sort() != CgVfxSpriteRendererProperties.Sort.NONE) return "a prefab with sort " + m.sort();
-        if (m.subImage() != null || m.cameraDistance() != null || m.castShadows()) return "a prefab with sub_image, camera_distance or cast_shadows";
+        if (m.subImage() != null || m.cameraDistance() != null || m.castShadows() || !Float.isNaN(m.softDepth())) {
+            return "a prefab with sub_image, camera_distance, cast_shadows or soft_depth";
+        }
         if (m.common().material() != null) return "a prefab with a material of its own";
         return null;
     }
@@ -423,7 +425,8 @@ public final class CgVfxRenderers {
                 tree.get("roll_about") == null ? null : choice(who, tree, "roll_about", CgVfxMeshRendererProperties.RollAbout.class, null),
                 tree.get("pre_rotation"),
                 sort(who, tree), flipbook(who, tree.get("sub_image")), floats(tree.get("camera_distance"), 2),
-                Boolean.TRUE.equals(tree.get("cast_shadows")));
+                Boolean.TRUE.equals(tree.get("cast_shadows")),
+                tree.get("soft_depth") instanceof Number n ? n.floatValue() : Float.NaN);
     }
 
     private static CgVfxSpriteRendererProperties.Sort sort(String who, Map<String, Object> tree) {
@@ -709,7 +712,7 @@ public final class CgVfxRenderers {
         }
 
         /**
-         * A sprite's soft edge: the blocks over which it fades into what is behind it, set as its material's
+         * A sprite's or mesh's soft edge: the blocks over which it fades into what is behind it, set as its material's
          * {@code _SoftDistance}; a material declaring none fails at load. 0 is a hard edge.
          *
          * <pre>{@code

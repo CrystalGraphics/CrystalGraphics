@@ -222,12 +222,14 @@ final class CgVfxMaterials {
                 material.requireRow(PIVOT, who);
                 rowValues.put(PIVOT, floats(new float[]{pivot[0], pivot[1], 0f, 0f}));
             }
-            if (!Float.isNaN(sprite.softDepth())) {
-                // Unreal's DepthFade is the material's: soft_depth sets the distance its material fades over, so a
-                // material with no _SoftDistance fails here rather than drawing hard-edged.
-                material.requireRow(SOFT_DISTANCE, who);
-                rowValues.put(SOFT_DISTANCE, sprite.softDepth());
-            }
+        }
+        float soft = renderer instanceof CgVfxSpriteRendererProperties sprite ? sprite.softDepth()
+                : renderer instanceof CgVfxMeshRendererProperties mesh ? mesh.softDepth() : Float.NaN;
+        if (!Float.isNaN(soft)) {
+            // Unreal's DepthFade is the material's: soft_depth sets the distance its material fades over, so a
+            // material with no _SoftDistance fails here rather than drawing hard-edged.
+            material.requireRow(SOFT_DISTANCE, who);
+            rowValues.put(SOFT_DISTANCE, soft);
         }
         CgVfxFlipbook flipbook = renderer instanceof CgVfxSpriteRendererProperties sprite ? sprite.subImage()
                 : renderer instanceof CgVfxMeshRendererProperties mesh ? mesh.subImage() : null;

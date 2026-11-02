@@ -238,6 +238,7 @@ public final class CgParticleKinds {
             .property("sub_image", CgValueType.struct(SUB_IMAGE))
             .property("camera_distance", VEC2).quantity(CgQuantity.LENGTH)
             .property("cast_shadows", BOOL).defaultValue(false)
+            .property("soft_depth", FLOAT).quantity(CgQuantity.LENGTH)
             .register();
 
     static final CgType RIBBON = renderer("ribbon")

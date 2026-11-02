@@ -30,6 +30,7 @@ import java.util.Map;
  * @param subImage          its flipbook, null for none
  * @param cameraDistance    the camera distances it draws between, null for any
  * @param castShadows       whether it casts shadows
+ * @param softDepth         the depth it fades into what is behind it over, blocks; NaN for its material's
  */
 public record CgVfxMeshRendererProperties(Common common, Map<String, Object> tree, List<Map<String, Object>> meshes,
                                           @Nullable String prefab, @Nullable String meshBinding,
@@ -38,7 +39,8 @@ public record CgVfxMeshRendererProperties(Common common, Map<String, Object> tre
                                           @Nullable Map<String, Object> lockedAxis, @Nullable FacingUp facingUp,
                                           @Nullable RollAbout rollAbout, @Nullable Object preRotation,
                                           CgVfxSpriteRendererProperties.Sort sort, @Nullable CgVfxFlipbook subImage,
-                                          @Nullable float[] cameraDistance, boolean castShadows)
+                                          @Nullable float[] cameraDistance, boolean castShadows,
+                                          float softDepth)
         implements CgVfxRendererProperties {
 
     /** {@code ENiagaraMeshFacingMode}. */

@@ -3408,7 +3408,7 @@ public final class CgVfxEmitterAssets {
             }
             out.put(stack, converted);
         }
-        // A beam renderer's speed and lengths and a sprite's soft depth, which the renderer's own compile takes as written.
+        // A beam renderer's speed and lengths and a sprite's or mesh's soft depth, which the renderer's own compile takes as written.
         if (tree.get("renderers") instanceof List<?> renderers) {
             List<Object> converted = new ArrayList<>(renderers.size());
             for (Object r : renderers) {
@@ -3419,7 +3419,8 @@ public final class CgVfxEmitterAssets {
                         if (m.get(k) instanceof Number) host.put(k, units.toHost(m.get(k), CgQuantity.LENGTH));
                     }
                     r = host;
-                } else if (r instanceof Map<?, ?> m && "sprite".equals(m.get("kind")) && m.get("soft_depth") instanceof Number) {
+                } else if (r instanceof Map<?, ?> m && m.get("soft_depth") instanceof Number
+                        && ("sprite".equals(m.get("kind")) || "mesh".equals(m.get("kind")))) {
                     Map<Object, Object> host = new LinkedHashMap<>(m);
                     host.put("soft_depth", units.toHost(m.get("soft_depth"), CgQuantity.LENGTH));
                     r = host;
