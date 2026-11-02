@@ -289,7 +289,8 @@ public final class CgLoadingScreen {
                 }
             }
             case LOADING -> {
-                if (asked != null && raised == null && (now - shownAt) / 1e9f >= MAX_LOADING.get()) {
+                // ALWAYS asks again every frame: giving up on it would flip to holding and back each frame
+                if (asked != null && raised == null && mode != Mode.ALWAYS && (now - shownAt) / 1e9f >= MAX_LOADING.get()) {
                     LOGGER.warn("[loading] still {} after {} s; holding anyway", asked, MAX_LOADING.get());
                     gaveUp = true;
                     asked = null;
