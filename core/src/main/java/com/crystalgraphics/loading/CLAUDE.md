@@ -21,7 +21,12 @@ first-use work.
   host fired none. A host draws nothing of its own world while loading and calls `draw` inside its frame, never from
   the frame tick: a world firing from `tickFrame` lands between the effects' steps.
 - **While shown, warming takes `crystalgraphics.warmBudget.loading`** (50 ms a frame) through `CgWarmBudget.loading`.
-- **No Minecraft host draws it**: Minecraft has its own screens. The state still runs there, so warming takes the
-  loading budget until it hides.
+- **In Minecraft it shows once, between the loader's screen and the first menu** (the user, 2026-11-02): a node mixin
+  at the game's opening of its first screen (`FirstScreenHook`; Forge 1.20.1 so far) hands that opening to
+  `holdUntilHidden` and puts up `HeldFirstScreen`, an empty screen, since Minecraft with no screen and no level reads
+  keys for a player it has not made. `LifecycleModern.frameEnd` draws the screen over the GUI and runs the held opening
+  once it hides, so the title screen and Quick Play follow as they were. Nothing raises it after that, in menus or the
+  world. A version not hooked yet shows nothing, and its state still runs, warming at the loading budget.
+- **Anything that stands the engine down hides it** (`hideNow`), so a held opening never waits forever.
 - Every change of reason is logged (`[loading] ...`); its frames carry the counter `loading.shown` and the markers
   `loading.show`/`loading.hide`, so a profile tells loading from steady state.

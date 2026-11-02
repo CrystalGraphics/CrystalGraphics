@@ -10,6 +10,7 @@ import com.crystalgraphics.mc.modern.platform.world.WorldEventsModern;
 import com.crystalgraphics.lifecycle.CgGraphicsLifecycle;
 import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.lifecycle.CgLifecycleListener;
+import com.crystalgraphics.loading.CgLoadingScreen;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.state.CgGlScope;
@@ -218,17 +219,33 @@ public final class LifecycleModern {
      * }</pre>
      */
     public static void frameEnd() {
-        if (!canRender()) return;
-        // Before onFrame's listeners, which draw over everything (CrystalGUI's desktop on 26.1+).
-        if (hudAtFrameEnd) {
-            hudAtFrameEnd = false;
-            fireOverlay(CgRenderStage.HUD);
+        if (canRender()) {
+            // Before onFrame's listeners, which draw over everything (CrystalGUI's desktop on 26.1+).
+            if (hudAtFrameEnd) {
+                hudAtFrameEnd = false;
+                fireOverlay(CgRenderStage.HUD);
+            }
+            if (screenAtFrameEnd) {
+                screenAtFrameEnd = false;
+                fireOverlay(CgRenderStage.SCREEN);
+            }
+            if (CgLoadingScreen.hostDraws() && CgGraphicsLifecycle.isInitialized()) drawLoadingScreen();
+            FrameHooks.endFrame();
         }
-        if (screenAtFrameEnd) {
-            screenAtFrameEnd = false;
-            fireOverlay(CgRenderStage.SCREEN);
+        // Outside the check: an engine that stood down hid the screen, and the first menu must still open
+        CgLoadingScreen.runHeld();
+    }
+
+    /** Our loading screen over the frame, in a host section of its own on the main target. */
+    private static void drawLoadingScreen() {
+        Minecraft mc = Minecraft.getInstance();
+        CgGL.fromHost();
+        try {
+            bindMainTarget(mc);
+            CgLoadingScreen.draw(Windows.of(mc).getWidth(), Windows.of(mc).getHeight());
+        } finally {
+            CgGL.toHost();
         }
-        FrameHooks.endFrame();
     }
 
     /**

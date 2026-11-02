@@ -140,6 +140,8 @@ public final class CgGraphicsLifecycle {
         stoodDown = true;
         initialized = false;
         LOGGER.log(Level.WARNING, "CrystalGraphics stands down for this session: " + reason);
+        // Nothing would ever hide it: what a host held behind it goes on now
+        CgLoadingScreen.hideNow("the engine stood down");
     }
 
     /** Whether {@link #standDown} was called. */

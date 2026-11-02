@@ -44,6 +44,15 @@ import com.crystalgraphics.vfx.CgVfxSystem;
  * CgLoadingScreen.draw(width, height);                       // over everything, while shown or fading out
  * }</pre>
  *
+ * <p>A host whose own first screen must wait (Minecraft's first menu, or its Quick Play) holds it behind this one:</p>
+ *
+ * <pre>{@code
+ * if (CgLoadingScreen.holdUntilHidden(() -> openFirstScreen())) return;   // where the host opens it: skipped for now
+ * // each frame:
+ * if (CgLoadingScreen.hostDraws()) CgLoadingScreen.draw(width, height);   // after the host's GUI
+ * CgLoadingScreen.runHeld();                                               // after the frame's tick: opens it once hidden
+ * }</pre>
+ *
  * <ul>
  *   <li><b>The engine's own processes</b> (pipelines being built, assets loading, effects warming and rehearsing) keep a
  *       showing screen up but never raise a hidden one: a look precached at runtime spreads over frames under the
@@ -54,8 +63,8 @@ import com.crystalgraphics.vfx.CgVfxSystem;
  *       {@code crystalgraphics.loading.logEveryFrame} logs it every frame.</li>
  *   <li>Its frames are marked in the trace: {@code loading.show} and {@code loading.hide} markers, and the counter
  *       {@code loading.shown} on each frame it shows, so a profile tells loading from steady state.</li>
- *   <li>What it draws is a {@link CgLoadingView}: the engine's logo over a load bar unless {@link #view} replaces it.
- *       On Minecraft the host keeps its own screen up while this one would show, and draws none.</li>
+ *   <li>What it draws is a {@link CgLoadingView}: the engine's logo over a load bar unless {@link #view} replaces it.</li>
+ *   <li>A held opening runs once the screen hides, and at once if the engine stands down: nothing is held forever.</li>
  *   <li>Render thread.</li>
  * </ul>
  */
@@ -97,6 +106,10 @@ public final class CgLoadingScreen {
     /** The engine's processes outlasted {@code maxSeconds}: they no longer keep this showing up. */
     private static boolean gaveUp;
     private static CgLoadingView view = new CgLogoLoadingView();
+    /** The host's opening held behind the screen, or null. */
+    @Nullable private static Runnable held;
+    /** A host held its opening here, so it draws the screen until the fade ends. */
+    private static boolean hostDraws;
 
     /** Whether a host fired a world stage since the last {@link #frame()}: if none did, the screen fires its own. */
     private static boolean worldFired;
@@ -150,6 +163,51 @@ public final class CgLoadingScreen {
     /** Replaces what the screen draws: a consumer's look. Render thread. */
     public static void view(CgLoadingView replacement) {
         view = replacement;
+    }
+
+    /**
+     * Holds {@code open}, the host's own first screen, until this one hides; false, holding nothing, if it is not
+     * showing. The host skips its opening when this returns true. Render thread.
+     */
+    public static boolean holdUntilHidden(Runnable open) {
+        if (!shown() || MODE.get() == Mode.NEVER) {
+            // The held opening's own call, once released, passes through here again
+            if (!releasing) LOGGER.info("[loading] the host's first screen opens at once: {}", shown() ? "the screen is off" : "loaded already");
+            return false;
+        }
+        held = open;
+        hostDraws = true;
+        LOGGER.info("[loading] the host's first screen waits for the hide");
+        return true;
+    }
+
+    /** Whether the host draws this screen itself: from a {@link #holdUntilHidden} until its fade-out ends. */
+    public static boolean hostDraws() {
+        if (hostDraws && held == null && !shown() && System.nanoTime() - hiddenAt >= FADE_NANOS) hostDraws = false;
+        return hostDraws;
+    }
+
+    /** Opens the held screen once this one has hidden; nothing otherwise. The host's frame end, after the tick. */
+    public static void runHeld() {
+        Runnable open = held;
+        if (open == null || shown()) return;
+        held = null;
+        releasing = true;
+        try {
+            open.run();
+        } finally {
+            releasing = false;
+        }
+    }
+
+    /** Inside {@link #runHeld}: the held opening is running. */
+    private static boolean releasing;
+
+    /** Hides it now, whatever loads: the engine stood down, and nothing would hide it. */
+    public static void hideNow(String why) {
+        if (!shown()) return;
+        LOGGER.warn("[loading] hidden: {}", why);
+        hide(System.nanoTime());
     }
 
     /** Whether the screen covers the frame: loading, or holding once loaded. */
