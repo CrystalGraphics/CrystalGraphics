@@ -287,6 +287,29 @@ public final class CgCueManager extends CgWorldSubsystem {
         return this;
     }
 
+    /**
+     * The cue a play of {@code tag} plays: its own route, else its nearest ancestor's, as a play finds one; null for
+     * none. On either side, for gameplay asking what a cue declares before it plays it.
+     *
+     * <pre>{@code
+     * CgAssetRef<CgCueDefinition> ref = CgCueManager.server().cue(MYMOD_CUE_HIT_HEAVY);
+     * CgCueDefinition cue = ref == null ? null : ref.get();          // loads it now if it has not compiled
+     * if (cue != null && cue.writes().containsKey("ki_colour")) at.write("ki_colour", r, g, b, 1f);
+     * }</pre>
+     *
+     * <ul>
+     *   <li>On the world's thread, outside {@code PLAYS}.</li>
+     *   <li>{@code get()} loads synchronously and may stall: ask once and keep the answer, or use {@code loaded()},
+     *       null until it compiles.</li>
+     * </ul>
+     */
+    @Nullable
+    public CgAssetRef<CgCueDefinition> cue(CgGameplayTag tag) {
+        if (routesDirty) rebuildRoutes();
+        Route r = resolve(tag);
+        return r == null ? null : r.ref();
+    }
+
     /** Plays {@code tag}'s burst cue once: GAS's {@code Execute}. On a server, {@code at} must name an anchor. */
     public void execute(CgGameplayTag tag, CgCueParameters at) {
         if (world().server()) requireAnchor(tag, at);

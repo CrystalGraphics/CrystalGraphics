@@ -206,9 +206,12 @@ cues.execute(MYMOD_CUE_HIT_SPARK, hit);
 
 - `write(name, x, y, z)` gives a vec3 or position, `write(name, x, y, z, w)` any four floats.
 - A name the play leaves out keeps each system's own default; a name the cue does not declare reaches nothing and is
-  warned of once.
+  warned of once. To write only what a tag's cue declares, ask it first:
+  `cues.cue(MYMOD_CUE_HIT_SPARK).get().writes().containsKey("tint")`, on either side (`cue(tag)` resolves as a play
+  does, through the tag's parents, and answers null for no cue). Ask once and keep the answer: `get()` loads the cue
+  now if it has not compiled.
 - A looping play starts with them, then its providers (`beam.writes(...)`) take over each frame.
-- At most 16 names a play, as a cue declares.
+- At most 32 names a play, as a cue declares.
 
 ### What fails at load
 

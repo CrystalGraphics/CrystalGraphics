@@ -32,6 +32,7 @@ import com.crystalgraphics.world.CgAttachment;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 
@@ -162,6 +163,10 @@ public class CgCueManagerTest {
         cues.update(0f);
         assertFalse(wrong.active());
         assertEquals(2, cues.unrouted());
+        // Asked before playing, a tag answers the cue a play of it plays
+        assertEquals("cuemgr:hit", cues.cue(crit).id());
+        assertEquals("cuemgr:hit", cues.cue(hit).get().id());
+        assertNull(cues.cue(none));
     }
 
     @Test
