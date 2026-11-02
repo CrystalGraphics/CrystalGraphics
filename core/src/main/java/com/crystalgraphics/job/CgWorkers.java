@@ -68,9 +68,12 @@ final class CgWorkers {
     }
 
     private static final class EachThread extends ForkJoinWorkerThread implements CgWorkerThread {
+        /** Numbered here: the pool assigns {@code getPoolIndex()} only once the thread registers, after this constructor. */
+        private static final AtomicInteger NUMBER = new AtomicInteger();
+
         EachThread(ForkJoinPool pool, String prefix, int priority) {
             super(pool);
-            setName(prefix + getPoolIndex());
+            setName(prefix + NUMBER.getAndIncrement());
             setDaemon(true);
             setPriority(priority);
         }
