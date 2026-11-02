@@ -82,6 +82,7 @@ public final class CgVfxModuleTypes {
     private static final CgValueType TANGENT = CgValueType.enumOf("direct", "user_set", "distribution");
     private static final CgValueType ROTATION_MODE = CgValueType.enumOf("add", "scale");
     private static final CgValueType WINDOW = CgValueType.enumOf("circle", "rectangle");
+    private static final CgValueType SOURCE = CgValueType.enumOf("depth", "blocks");
     private static final String[] MODIFIER_FLAGS = {"modify_position", "scale_position", "modify_tangent", "scale_tangent",
             "modify_strength", "scale_strength"};
     private static final Map<String, Kind<?>> BY_ID = new LinkedHashMap<>();
@@ -374,16 +375,19 @@ public final class CgVfxModuleTypes {
                         r.f("reach")));
         // Niagara's Occlusion data interface, its defaults its own (NiagaraDataInterfaceOcclusion.cpp:117-119).
         kind("occlusion", CgVfxModule.Occlusion.class,
-                t -> { t.property("window", WINDOW).defaultValue("circle"); fl(t, "diameter");
+                t -> { t.property("window", WINDOW).defaultValue("circle"); t.property("source", SOURCE).defaultValue("depth");
+                    fl(t, "diameter");
                     t.property("rings", CgValueType.INT).defaultValue(1).property("samples_per_ring", CgValueType.INT).defaultValue(1);
                     t.property("center_sample", CgValueType.BOOL).defaultValue(true); fl(t, "width", "height");
                     t.property("steps_per_line", CgValueType.INT).defaultValue(1); },
                 (m, in) -> in.e("window", m.window() == CgVfxModule.Occlusion.Window.CIRCLE ? "circle" : "rectangle")
+                        .e("source", m.source() == CgVfxModule.Occlusion.Source.BLOCKS ? "blocks" : "depth")
                         .f("diameter", m.diameter()).i("rings", m.rings()).i("samples_per_ring", m.samplesPerRing())
                         .b("center_sample", m.centerSample()).f("width", m.width()).f("height", m.height())
                         .i("steps_per_line", m.stepsPerLine()),
                 r -> new CgVfxModule.Occlusion(r.i("window") == 0 ? CgVfxModule.Occlusion.Window.CIRCLE
-                        : CgVfxModule.Occlusion.Window.RECTANGLE, r.f("diameter"), r.i("rings"), r.i("samples_per_ring"),
+                        : CgVfxModule.Occlusion.Window.RECTANGLE, r.i("source") == 1 ? CgVfxModule.Occlusion.Source.BLOCKS
+                        : CgVfxModule.Occlusion.Source.DEPTH, r.f("diameter"), r.i("rings"), r.i("samples_per_ring"),
                         r.b("center_sample"), r.f("width"), r.f("height"), r.i("steps_per_line")));
         kind("collide_entities", CgVfxModule.CollideEntities.class,
                 t -> { fl(t, "bounce", "friction", "rest", "size"); response(t); t.property("keeps_count", CgValueType.BOOL);

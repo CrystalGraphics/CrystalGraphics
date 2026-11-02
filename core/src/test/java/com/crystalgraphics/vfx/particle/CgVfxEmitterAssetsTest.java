@@ -740,11 +740,15 @@ public class CgVfxEmitterAssetsTest {
         tree.put("particle_update", List.of(
                 Map.of("id", "core", "module", "crystalgraphics:occlusion", "inputs", Map.of("diameter", 0.4)),
                 Map.of("id", "streak", "module", "crystalgraphics:occlusion", "inputs", Map.of("window", "rectangle",
-                        "width", 1.2, "height", 0.3, "steps_per_line", 4))));
+                        "width", 1.2, "height", 0.3, "steps_per_line", 4)),
+                Map.of("id", "walls", "module", "crystalgraphics:occlusion", "inputs", Map.of("source", "blocks",
+                        "diameter", 0.5, "samples_per_ring", 8))));
         CgVfxEmitter e = CgVfxEmitterAssets.compile("occluded", tree, null);
         List<CgVfxModule> modules = e.modules();
         assertEquals(CgVfxModule.Occlusion.circle(0.4f), modules.get(0));
         assertEquals(CgVfxModule.Occlusion.rectangle(1.2f, 0.3f, 4), modules.get(1));
+        assertEquals(CgVfxModule.Occlusion.circle(0.5f, 1, 8, true).blocks(), modules.get(2));
+        assertEquals("occlusion_blocks", modules.get(2).gpuKind());
         assertEquals(modules, CgVfxEmitterAssets.compile("occluded", CgVfxEmitterAssets.write(e), null).modules());
     }
 

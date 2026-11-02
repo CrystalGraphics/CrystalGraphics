@@ -1780,17 +1780,21 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
      * CgVfxModule.Occlusion.circle(0.4f)                       // the spark's core: its centre and one sample round it
      * CgVfxModule.Occlusion.circle(0.4f, 2, 8, true)           // 17 samples: a softer fade at an edge
      * CgVfxModule.Occlusion.rectangle(1.2f, 0.3f, 4)           // a wide streak, a 4x4 grid across it
+     * CgVfxModule.Occlusion.circle(0.5f).blocks()              // hidden by walls and floors, never by a character
      * }</pre>
      *
      * <ul>
      *   <li>Size the window to what must be seen, not the whole sprite: samples low on a sprite standing in the floor
      *       meet the floor in front of it and count as covered.</li>
-     *   <li>What covers it is the scene's depth at the opaque pass: blocks and entities, not glass or water.</li>
+     *   <li>What covers it is the scene's depth at the opaque pass, blocks and entities, so in a third-person fight the
+     *       attacker's own body covers its hit. {@link Source#BLOCKS} traces the blocks round the camera alone (the voxel
+     *       window): walls and floors hide it, characters never do, and past the window it is seen.</li>
      *   <li>Off screen, or where the stage hands no depth, it is seen whole.</li>
      *   <li>Each particle reads every sample each step: a few for thousands of particles, more only for a few.</li>
      * </ul>
      *
      * @param window       {@link Window#CIRCLE} or {@link Window#RECTANGLE}
+     * @param source       what covers it: {@link Source#DEPTH}, Niagara's, or {@link Source#BLOCKS}
      * @param diameter     a circle's width, blocks
      * @param rings        a circle's rings of samples, inside it
      * @param samplesPerRing each ring's samples
@@ -1799,12 +1803,20 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
      * @param height       its height
      * @param stepsPerLine a rectangle's samples a side: steps squared in all
      */
-    record Occlusion(Window window, float diameter, int rings, int samplesPerRing, boolean centerSample,
+    record Occlusion(Window window, Source source, float diameter, int rings, int samplesPerRing, boolean centerSample,
                      float width, float height, int stepsPerLine) implements CgVfxModule {
         private static final CgVfxDataInterface[] DEPTH = {CgVfxDataInterfaces.DEPTH};
+        // The depth for the eye and the view's axes, the voxel window for the blocks.
+        private static final CgVfxDataInterface[] BLOCKS = {CgVfxDataInterfaces.DEPTH, CgVfxDataInterfaces.WORLD_DISTANCE};
 
         /** Where it samples, as Niagara's two queries. */
         public enum Window { CIRCLE, RECTANGLE }
+
+        /**
+         * What covers it: the scene's depth (Niagara's), or the blocks round the camera alone, since Minecraft's depth
+         * holds every entity and a fighter's own body would cover each hit it lands.
+         */
+        public enum Source { DEPTH, BLOCKS }
 
         public Occlusion {
             if (window == Window.CIRCLE && !(diameter > 0f && rings >= 0 && samplesPerRing >= 0)) {
@@ -1826,11 +1838,16 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         }
 
         public static Occlusion circle(float diameter, int rings, int samplesPerRing, boolean centerSample) {
-            return new Occlusion(Window.CIRCLE, diameter, rings, samplesPerRing, centerSample, 0f, 0f, 1);
+            return new Occlusion(Window.CIRCLE, Source.DEPTH, diameter, rings, samplesPerRing, centerSample, 0f, 0f, 1);
         }
 
         public static Occlusion rectangle(float width, float height, int stepsPerLine) {
-            return new Occlusion(Window.RECTANGLE, 0f, 1, 1, true, width, height, stepsPerLine);
+            return new Occlusion(Window.RECTANGLE, Source.DEPTH, 0f, 1, 1, true, width, height, stepsPerLine);
+        }
+
+        /** The same window, covered by blocks alone: {@link Source#BLOCKS}. */
+        public Occlusion blocks() {
+            return new Occlusion(window, Source.BLOCKS, diameter, rings, samplesPerRing, centerSample, width, height, stepsPerLine);
         }
 
         @Override
@@ -1840,12 +1857,12 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
 
         @Override
         public String gpuKind() {
-            return "occlusion";
+            return source == Source.BLOCKS ? "occlusion_blocks" : "occlusion";
         }
 
         @Override
         public CgVfxDataInterface[] dataInterfaces() {
-            return DEPTH;
+            return source == Source.BLOCKS ? BLOCKS : DEPTH;
         }
     }
 

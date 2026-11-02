@@ -746,16 +746,19 @@ particle_update:
   - { module: crystalgraphics:occlusion, inputs: { diameter: 40 } }                        # its centre and one ring
   - { module: crystalgraphics:occlusion, inputs: { diameter: 40, rings: 2, samples_per_ring: 8 } }   # 17: softer at an edge
   - { module: crystalgraphics:occlusion, inputs: { window: rectangle, width: 120, height: 30, steps_per_line: 4 } }
+  - { module: crystalgraphics:occlusion, inputs: { source: blocks, diameter: 50, samples_per_ring: 8 } }   # never a character
 ```
 
 ```java
 CgVfxEmitter.builder("sparks").module(CgVfxModule.Occlusion.circle(0.4f))...              // blocks
 CgVfxEmitter.builder("streaks").module(CgVfxModule.Occlusion.rectangle(1.2f, 0.3f, 4))...
+CgVfxEmitter.builder("hits").module(CgVfxModule.Occlusion.circle(0.5f, 1, 8, true).blocks())...
 ```
 
 | Input | Means |
 |---|---|
 | `window` | `circle` (the default) or `rectangle`, Niagara's two queries |
+| `source` | what covers it: `depth` (the default, Niagara's: the scene's depth, entities included) or `blocks` |
 | `diameter` | a circle's width, a length: required |
 | `rings`, `samples_per_ring` | its rings of samples and each ring's count, 1 and 1 unless given |
 | `center_sample` | whether it samples its centre too, true unless given |
@@ -763,7 +766,11 @@ CgVfxEmitter.builder("streaks").module(CgVfxModule.Occlusion.rectangle(1.2f, 0.3
 
 - **Size the window to what must be seen**, the spark's core rather than the whole sprite: samples low on a sprite
   standing in the floor meet the floor in front of it and count as covered.
-- **What covers a particle** is the scene's depth at the opaque pass: blocks and entities, not glass or water.
+- **What covers a particle** is the scene's depth at the opaque pass by default: blocks and entities, not glass or
+  water. In a third-person fight the attacker's own body stands between the camera and every hit it lands, so a hit
+  spark takes `source: blocks`: each sample is traced from the eye through the blocks round the camera alone (the voxel
+  window, 64 blocks out and 48 up and down), so walls, floors and terrain hide it and no character ever does. Past the
+  window it is seen. This is ours, not Niagara's: Minecraft's depth holds every entity.
 - **Off screen, or with no depth from the stage**, a particle is seen whole.
 - **It decides per particle**: a particle whose window an edge splits fades by the share covered, and one large
   particle (a wave's mesh) fades whole by its one window.

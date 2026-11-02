@@ -263,6 +263,7 @@ modules:
   # occlusion: Niagara's Occlusion data interface (NiagaraDataInterfaceOcclusion); no stock module
   - { id: occlusion, groups: [particle_update], inputs: [
       { name: window, type: enum, values: [circle, rectangle], default: circle },
+      { name: source, type: enum, values: [depth, blocks], default: depth },
       { name: diameter, type: float, quantity: length, visible_when: { window: circle } },
       { name: rings, type: int, default: 1, visible_when: { window: circle } }, { name: samples_per_ring, type: int, default: 1, visible_when: { window: circle } },
       { name: center_sample, type: bool, default: true, visible_when: { window: circle } },

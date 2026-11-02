@@ -73,6 +73,7 @@ public class VfxStepKernelSpirvTest {
     private static final CgVfxEmitter OCCLUDED = CgVfxEmitter.builder("occluded").state(CgVfxEmitterState.ONCE)
             .capacity(64).burst(0f, 64).life(1f, 2f).module(new CgVfxModule.CollideDepth(0.3f, 0.2f, 0.2f, 0.5f))
             .module(CgVfxModule.Occlusion.circle(0.4f, 2, 8, true)).module(CgVfxModule.Occlusion.rectangle(1.2f, 0.3f, 4))
+            .module(CgVfxModule.Occlusion.circle(0.5f, 1, 8, true).blocks())
             .build();
 
     /** A clip's particles firing at its nodes, their children spawning grandchildren: one shape a feed tier. */
