@@ -62,6 +62,9 @@ import com.crystalgraphics.platform.audio.CgHostVolume;
 import com.crystalgraphics.platform.world.CgWorldStimulus;
 
 import net.minecraft.client.Minecraft;
+
+import java.nio.file.Path;
+import java.nio.file.Paths;
 //? if >=26.2 {
 /*import com.crystalgraphics.mc.modern.platform.vulkan.Blaze3dVulkanHost;
 *///?}
@@ -123,6 +126,12 @@ public final class PlatformServiceModern implements CgPlatformService {
      * levels and players, the camera, debug view, audio, language, stimulus, game directory and cursor. They name client
      * and LWJGL classes a dedicated server does not ship, so nothing on a server path may call it.
      */
+    /** Minecraft's, or before Minecraft exists (NeoForge constructs mods first) the launcher's working directory. */
+    private static Path gameDirectory() {
+        Minecraft mc = Minecraft.getInstance();
+        return mc != null ? mc.gameDirectory.toPath() : Paths.get("").toAbsolutePath();
+    }
+
     public static void installClient() {
         ClientModern.install();
         CgPlatform.provide(CgHostCamera.SERVICE, new HostCameraModern());
@@ -134,7 +143,7 @@ public final class PlatformServiceModern implements CgPlatformService {
         CgPlatform.provide(CgHostI18n.SERVICE, new HostI18nModern());
         CgPlatform.provide(CgAudioDecoder.SERVICE, new StbVorbisDecoder());
         CgPlatform.provide(CgWorldStimulus.SERVICE, new WorldStimulusModern());
-        CgPlatform.provide(CgGameDirectory.SERVICE, () -> Minecraft.getInstance().gameDirectory.toPath());
+        CgPlatform.provide(CgGameDirectory.SERVICE, PlatformServiceModern::gameDirectory);
         // What WorldEventsModern.poll reports; the explosion and the broken block are the loaders' mixins'.
         //? if >=1.14 {
         CgWorldEvents.declare(CgWorldEvents.ENTITY_HURT | CgWorldEvents.ENTITY_DIED);
