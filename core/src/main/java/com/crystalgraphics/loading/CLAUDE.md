@@ -16,9 +16,10 @@ first-use work.
 
 - **The engine's processes (pipelines, assets, effects warming) keep a showing screen up but never raise a hidden
   one.** A look precached at runtime spreads under the warm budget instead. Only `add`/`task` raise it.
-- **Warming advances only where a world stage fires** (`CgWorldRenderer.settle`, the world schedule's effects). A host
-  that hides its world while loading still fires the world stages (the harness: `HarnessWorld.fire` with no scene
-  content), or the screen waits on work that never runs, until `maxSeconds`.
+- **Warming advances only where a world stage fires** (`CgWorldRenderer.settle`, the world schedule's effects), so
+  `draw` fires the world stages itself, into a 256-pixel offscreen target under a fixed camera, on a frame where the
+  host fired none. A host draws nothing of its own world while loading and calls `draw` inside its frame, never from
+  the frame tick: a world firing from `tickFrame` lands between the effects' steps.
 - **While shown, warming takes `crystalgraphics.warmBudget.loading`** (50 ms a frame) through `CgWarmBudget.loading`.
 - **No Minecraft host draws it**: Minecraft has its own screens. The state still runs there, so warming takes the
   loading budget until it hides.
