@@ -243,8 +243,7 @@ public final class LifecycleModern {
         Minecraft mc = Minecraft.getInstance();
         CgGL.fromHost();
         try {
-            bindMainTarget(mc);
-            CgLoadingScreen.draw(Windows.of(mc).getWidth(), Windows.of(mc).getHeight());
+            CgLoadingScreen.draw(bindMainTarget(mc), Windows.of(mc).getWidth(), Windows.of(mc).getHeight());
         } finally {
             CgGL.toHost();
         }

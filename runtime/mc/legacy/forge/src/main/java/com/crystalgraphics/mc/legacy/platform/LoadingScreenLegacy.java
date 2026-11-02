@@ -6,6 +6,7 @@ import com.crystalgraphics.platform.gl.CgGL;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiMainMenu;
 import net.minecraft.client.gui.GuiScreen;
+import net.minecraft.client.renderer.OpenGlHelper;
 import net.minecraftforge.client.event.GuiOpenEvent;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 
@@ -53,8 +54,8 @@ public final class LoadingScreenLegacy {
         if (!CgLoadingScreen.hostDraws() || !CgGraphicsLifecycle.isInitialized()) return;
         CgGL.fromHost();
         try {
-            mc.getFramebuffer().bindFramebuffer(false);
-            CgLoadingScreen.draw(mc.displayWidth, mc.displayHeight);
+            int fbo = OpenGlHelper.isFramebufferEnabled() ? mc.getFramebuffer().framebufferObject : 0;
+            CgLoadingScreen.draw(fbo, mc.displayWidth, mc.displayHeight);
         } finally {
             CgGL.toHost();
         }

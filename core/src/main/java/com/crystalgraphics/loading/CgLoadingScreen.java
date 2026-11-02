@@ -45,7 +45,7 @@ import com.crystalgraphics.vfx.CgVfxSystem;
  *
  * // a host, each frame, on the render thread:
  * if (CgLoadingScreen.loading()) skipWorld();                // the world is not drawn while it loads
- * CgLoadingScreen.draw(width, height);                       // over everything, while shown or fading out
+ * CgLoadingScreen.draw(framebuffer, width, height);          // over everything, while shown or fading out
  * }</pre>
  *
  * <p>A host whose own first screen must wait (Minecraft's first menu, or its Quick Play) holds it behind this one:</p>
@@ -53,7 +53,7 @@ import com.crystalgraphics.vfx.CgVfxSystem;
  * <pre>{@code
  * if (CgLoadingScreen.holdUntilHidden(() -> openFirstScreen())) return;   // where the host opens it: skipped for now
  * // each frame:
- * if (CgLoadingScreen.hostDraws()) CgLoadingScreen.draw(width, height);   // after the host's GUI
+ * if (CgLoadingScreen.hostDraws()) CgLoadingScreen.draw(fbo, width, height);   // after the host's GUI
  * CgLoadingScreen.runHeld();                                               // after the frame's tick: opens it once hidden
  * }</pre>
  *
@@ -317,27 +317,31 @@ public final class CgLoadingScreen {
     }
 
     /**
-     * Draws the screen over the frame at {@code width} x {@code height} pixels, while it shows and through its fade-out,
-     * into whatever target is bound. A host calls it last each frame, inside the frame. Where the host fired no world
+     * Draws the screen over {@code framebuffer} at {@code width} x {@code height} pixels, while it shows and through its
+     * fade-out. A host calls it last each frame, inside the frame, inside a host section. Where the host fired no world
      * stage this frame, it fires its own first. Render thread.
+     *
+     * <pre>{@code
+     * CgLoadingScreen.draw(mainFramebuffer, width, height);   // the host's target; 0 for the window's
+     * }</pre>
+     *
+     * <p>The framebuffer is named, not taken as bound: a host binding its own with its own calls (Minecraft's
+     * {@code bindWrite}) is unseen by the state shadow, and the warm frame's firing binds a target of its own.</p>
      */
-    public static void draw(int width, int height) {
+    public static void draw(int framebuffer, int width, int height) {
         float alpha;
+        boolean warm = false;
         if (shown()) {
-            if (!worldFired) {
-                // Its firing binds the warm target and viewport; the host's target is what this draws over
-                try (CgGlScope ignored = CgGlState.save(CgGlSlot.FBO, CgGlSlot.VIEWPORT)) {
-                    warmFrame();
-                }
-            }
+            warm = !worldFired;
             alpha = 1f;
         } else {
             long since = System.nanoTime() - hiddenAt;
             if (hiddenAt == 0L || since >= FADE_NANOS) return;
             alpha = 1f - since / (float) FADE_NANOS;
         }
-        // A host binding its target may leave the last pass's viewport (legacy Forge's bindFramebuffer(false))
-        try (CgGlScope ignored = CgGlState.save(CgGlSlot.VIEWPORT)) {
+        try (CgGlScope ignored = CgGlState.save(CgGlSlot.FBO, CgGlSlot.VIEWPORT)) {
+            if (warm) warmFrame();
+            CgGL.glBindFramebuffer(CgGL.GL_FRAMEBUFFER, framebuffer);
             CgGL.glViewport(0, 0, width, height);
             view.draw(width, height, shownProgress, alpha, reason);
         }
