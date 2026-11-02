@@ -164,7 +164,9 @@ public final class CgVfxCueEffects implements CgCueEffects {
         List<Particles> particles = block.particles();
         for (int i = 0; i < particles.size(); i++) {
             Particles p = particles.get(i);
-            if (drawable(cue, p) && cues.spawns(p.where().condition(), at, i)) spawn(cue, p, at, age);
+            // Fresh, at its warmup alone, however late it arrived: GAS's burst spawns its systems unaged
+            // (GameplayCueNotify_Burst.cpp:19-37, GameplayCueNotifyTypes.cpp:434-446). Lateness only drops it.
+            if (drawable(cue, p) && cues.spawns(p.where().condition(), at, i)) spawn(cue, p, at, 0f);
         }
         List<Sound> sounds = block.sounds();
         for (int i = 0; i < sounds.size(); i++) {

@@ -21,7 +21,10 @@ import com.crystalgraphics.cue.CgCueDefinition.Write;
  */
 public interface CgCueEffects {
 
-    /** Plays {@code block} once and forgets it: a burst, an event, a recurrence. {@code age} is how late it is. */
+    /**
+     * Plays {@code block} once and forgets it: a burst, an event, a recurrence. {@code age} is how late it is; a burst
+     * still plays from its start, as GAS's does (a 0.2 s spark shows whole), so most implementations ignore it.
+     */
     void burst(CgCueDefinition cue, Effects block, CgCueParameters at, float age);
 
     /** A new holder of one looping play of {@code cue}'s effects; the manager pools it per definition. */

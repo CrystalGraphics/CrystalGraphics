@@ -323,8 +323,10 @@ CgCueManager.client().onNetworked(play -> play.writes("BeamLength", ...));   // 
 - **Who sees it** is the anchor's: the players tracking what it is on, or everyone within the cue's `range` of a point
   (64 blocks unwritten). `CgAnchor.on(entity)` for an actor, `CgAnchor.at(level, x, y, z)` for a place; a client's
   `predict` needs one too, since the server is asked through it.
-- **A burst** reaches whoever sees it as it plays; a player arriving later never sees it. **A looping cue** reaches a
-  player arriving later too, started at its age, with its sequence sought there.
+- **A burst** reaches whoever sees it as it plays, and its systems start fresh however long the trip took, as GAS
+  plays one: a 0.2 s spark shows whole. One that arrives past the one-shot window plays nothing. A player arriving
+  later never sees it. **A looping cue** reaches a player arriving later too, started at its age, with its sequence
+  sought there.
 - **An authoritative cue's `writes`** are the server's: computed there and sent each tick in their `replication`
   mode. Any other cue's are each player's own.
 - **A cue's `sequence`** starts with it through `cues.sequences((cue, sequence, at) -> ...)`, where the host binds the
