@@ -41,9 +41,9 @@ import com.crystalgraphics.vfx.element.CgVfxExplosion;
 import com.crystalgraphics.vfx.field.CgFieldDefinition;
 import com.crystalgraphics.vfx.field.CgFieldWorld;
 import com.crystalgraphics.vfx.particle.form.CgVfxFormCompiler;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxDrawnChannel;
 import com.crystalgraphics.vfx.particle.form.CgVfxSpawnForm;
 import com.crystalgraphics.vfx.particle.form.CgVfxSpawnInput;
-import com.crystalgraphics.vfx.particle.gpu.CgVfxDrawnChannel;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxWords;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxRecord;
@@ -707,6 +707,28 @@ public class CgVfxEmitterAssetsTest {
             assertEquals(e.lifeRolls.get(i).picks(), back.lifeRolls.get(i).picks());
             assertArrayEquals(e.lifeRolls.get(i).to(), back.lifeRolls.get(i).to(), 0f);
         }
+    }
+
+    /** A direct sub-UV frame bound to a user parameter: one frame a play, every particle holding it, written back alike. */
+    @Test
+    public void aBoundSubUvFrameRoundTrips() {
+        Map<String, Object> tree = new LinkedHashMap<>();
+        tree.put("_v", 1);
+        tree.put("properties", Map.of("capacity", 16));
+        tree.put("particle_update", List.of(Map.of("id", "frames", "module", "crystalgraphics:sub_uv_animation", "inputs", Map.of(
+                "mode", "direct", "frame", Map.of("bind", "user.swirl_frame", "default", 0.0,
+                        "remap", Map.of("in", List.of(0.0, 1.0), "out", List.of(0.0, 8.0)))))));
+        CgVfxEmitter e = CgVfxEmitterAssets.compile("frames", tree, null);
+        CgVfxDrawnChannel frame = e.drawn(CgVfxDrawnChannel.SPRITE, CgVfxDrawnChannel.SUB_IMAGE);
+        assertEquals(CgVfxDrawnChannel.Roll.BIND, frame.roll());
+        assertEquals("user.swirl_frame", frame.bind().path());
+        assertEquals(4f, frame.bind().apply(0.5f, 0), 1e-5f);
+
+        CgVfxDrawnChannel back = CgVfxEmitterAssets.compile("frames", CgVfxEmitterAssets.write(e), null)
+                .drawn(CgVfxDrawnChannel.SPRITE, CgVfxDrawnChannel.SUB_IMAGE);
+        assertEquals(CgVfxDrawnChannel.Roll.BIND, back.roll());
+        assertEquals("user.swirl_frame", back.bind().path());
+        assertEquals(frame.bind().apply(0.25f, 0), back.bind().apply(0.25f, 0), 1e-5f);
     }
 
     private static void refuses(Map<String, Object> tree, String why) {

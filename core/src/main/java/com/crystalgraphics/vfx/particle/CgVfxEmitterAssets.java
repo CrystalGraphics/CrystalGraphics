@@ -733,7 +733,7 @@ public final class CgVfxEmitterAssets {
                     continue;
                 }
                 case "sub_uv_animation" -> {
-                    subUv(name, b, inputs(entry));
+                    subUv(name, b, inputs(entry), forms, idOf(entry, id));
                     continue;
                 }
                 case "dynamic_material_parameters" -> {
@@ -1088,7 +1088,7 @@ public final class CgVfxEmitterAssets {
      * Cascade's SubUV, each particle's frame its curve over life (ParticleModules.cpp:2209-2230); loop is SubUVMovie at a
      * rate (:2393-2421), each particle starting at a frame of its own from {@code start_frame} 0 (:2373-2376).
      */
-    private static void subUv(String name, CgVfxEmitter.Builder b, Map<?, ?> in) {
+    private static void subUv(String name, CgVfxEmitter.Builder b, Map<?, ?> in, CgVfxFormCompiler forms, String element) {
         // Emitter time only picks where SubUVMovie samples its frame rate (ParticleModules.cpp:2367, :2397): a constant
         // rate reads the same either way.
         if (Boolean.TRUE.equals(in.get("use_emitter_time")) && !(in.get("frame_rate") == null || in.get("frame_rate") instanceof Number)) {
@@ -1114,8 +1114,17 @@ public final class CgVfxEmitterAssets {
             case "random" -> b.subUv(CgVfxSubUvAnimation.random(rate));
             case "direct" -> {
                 b.subUv(CgVfxSubUvAnimation.direct());
-                CgVfxDrawnChannel frame = drawnChannel(name, "sub_uv_animation's frame",
-                        in.get("frame") == null ? 0.0 : in.get("frame"), false);
+                CgVfxDrawnChannel frame;
+                if (in.get("frame") instanceof Map<?, ?> form && form.get("bind") != null) {
+                    // Cascade's SubImageIndex as a particle parameter distribution (ParticleModules_Parameter.cpp:138-167):
+                    // its instance's user parameter, remapped, so every particle of a play holds the frame it picked.
+                    if (!(forms.compile(element, channelProperty(), form) instanceof CgVfxFormInput.Binding bound)) {
+                        throw new IllegalArgumentException(name + ": sub_uv_animation's frame " + form + " is not a binding");
+                    }
+                    frame = CgVfxDrawnChannel.bound(bound);
+                } else {
+                    frame = drawnChannel(name, "sub_uv_animation's frame", in.get("frame") == null ? 0.0 : in.get("frame"), false);
+                }
                 b.drawn(CgVfxDrawnChannel.SPRITE, CgVfxDrawnChannel.SUB_IMAGE, realTime ? frame.inRealTime() : frame);
             }
             case "loop" -> {

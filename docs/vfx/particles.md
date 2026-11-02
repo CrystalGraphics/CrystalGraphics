@@ -574,6 +574,13 @@ particle_update:
 
 - **A range rolls every step unless `spawn_only`**, as Cascade's distributions roll on every update: a flicker, not a
   value per particle. `spawn_only` holds a curve at its value at birth.
+- **A direct frame bound to a user parameter holds one frame a play**, every particle of it alike, for an effect that
+  picks its frame when it starts:
+
+  ```yaml
+  - { module: crystalgraphics:sub_uv_animation, inputs: { mode: direct,
+      frame: { bind: user.swirl_frame, remap: { in: [0, 1], out: [0, 8] } } } }   # the play sets swirl_frame from 0 to 1
+  ```
 - **A constant camera offset or one bound to a user parameter is its renderers'** (`_cg_CameraOffset`); only one that
   differs per particle is carried by each.
 - **A camera offset makes a particle look bigger**: it is nearer the eye. `keep_size: true` shrinks it by
