@@ -37,7 +37,12 @@ public final class CgPostVolumePreparer implements CgAssetPreparer {
         if (!(definition instanceof CgSequenceDefinition sequence)) return;
         Set<CgMaterialDefinition> materials = Collections.newSetFromMap(new IdentityHashMap<>());
         List<CgPostSettings> looks = new ArrayList<>();
-        collect(sequence, materials, looks, Collections.newSetFromMap(new IdentityHashMap<>()));
+        List<String[]> regions = new ArrayList<>();
+        collect(sequence, materials, looks, regions, Collections.newSetFromMap(new IdentityHashMap<>()));
+        // Each colour region's program: a flash first shown at its hit compiled there.
+        if (!regions.isEmpty()) plan.pipelines(p -> {
+            for (String[] keywords : regions) p.addPass(CgColourRegion.SHADER, keywords);
+        });
         // The composite's variant for each volume's looks: a chromatic fringe first shown at its cut compiled there.
         if (!looks.isEmpty()) plan.pipelines(p -> {
             for (CgPostSettings s : looks) CgPostStack.get().lookPasses(s, p);
@@ -58,15 +63,19 @@ public final class CgPostVolumePreparer implements CgAssetPreparer {
      * it plays, once each.
      */
     private static void collect(CgSequenceDefinition sequence, Set<CgMaterialDefinition> into, List<CgPostSettings> looks,
-                                Set<CgSequenceDefinition> seen) {
+                                List<String[]> regions, Set<CgSequenceDefinition> seen) {
         if (!seen.add(sequence)) return;
         for (CgSequenceDefinition.Spawnable s : sequence.spawnables()) {
             if (s.tree().get("post") instanceof Map<?, ?> block) looks.add(CgPostBlock.settings(block));
+            if (s.tree().get("colour_region") instanceof Map<?, ?> region) {
+                String[] keywords = CgColourRegion.keywords(region);
+                if (keywords != null) regions.add(keywords);
+            }
             if (!(s.definition() instanceof List<?> blendables)) continue;
             for (Object o : blendables) {
                 if (o instanceof CgSequenceDefinition.Blendable b && b.material() != null) into.add(b.material());
             }
         }
-        for (CgSequenceDefinition.Child c : sequence.children()) collect(c.definition(), into, looks, seen);
+        for (CgSequenceDefinition.Child c : sequence.children()) collect(c.definition(), into, looks, regions, seen);
     }
 }

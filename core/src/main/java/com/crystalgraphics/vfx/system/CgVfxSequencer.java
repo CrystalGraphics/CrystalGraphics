@@ -8,6 +8,7 @@ import com.crystalgraphics.asset.kind.CgSequenceKinds;
 import com.crystalgraphics.asset.load.CgVfxAssets;
 import com.crystalgraphics.camera.CgCameraSystem;
 import com.crystalgraphics.frame.CgWorld;
+import com.crystalgraphics.render.post.volume.CgColourRegionSpawner;
 import com.crystalgraphics.render.post.volume.CgPostVolumeSpawner;
 import com.crystalgraphics.sequence.CgSequencer;
 import com.crystalgraphics.sequence.camera.CgSequenceCameras;
@@ -18,9 +19,9 @@ import com.crystalgraphics.vfx.prefab.CgVfxPrefabSpawner;
 
 /**
  * A world's sequencer with the engine's kinds, so a sequence plays the same wherever it plays: in Minecraft, the
- * harness or a tool. Its {@code system} and {@code prefab} spawnables play on a VFX system, its {@code post}
- * spawnables on the post stack, its {@code shake} tracks on the camera, and with a camera system its cameras, cuts
- * and camera animations.
+ * harness or a tool. Its {@code system} and {@code prefab} spawnables play on a VFX system, its {@code post} and
+ * {@code colour_region} spawnables on the post stack, its {@code shake} tracks on the camera, and with a camera system
+ * its cameras, cuts and camera animations.
  *
  * <pre>{@code
  * CgSequencer sequencer = CgVfxSequencer.install(CgWorld.client(), CgVfx.world());   // the engine's, as a client starts
@@ -65,6 +66,7 @@ public final class CgVfxSequencer {
         sequencer.spawner("system", systems);
         sequencer.spawner("prefab", new CgVfxPrefabSpawner(vfx, systems));
         CgPostVolumeSpawner.install(sequencer, cameras);
+        CgColourRegionSpawner.install(sequencer);
         CgCameraShakeTrackEvaluator.install(sequencer);
         if (cameras != null && !sequencer.evaluates("camera_cut")) {
             CgSequenceCameras.install(sequencer, cameras, cameraSequences != null ? cameraSequences

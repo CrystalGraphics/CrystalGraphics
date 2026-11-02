@@ -57,6 +57,16 @@ public final class CgFilmLut {
             -0.0085287, 0.0400428, 0.9684867};
     static final double[] SRGB_TO_AP1 = mul(XYZ_TO_AP1, mul(D65_TO_D60, SRGB_TO_XYZ));
     static final double[] AP1_TO_SRGB = mul(XYZ_TO_SRGB, mul(D60_TO_D65, AP1_TO_XYZ));
+    /** Linear sRGB to ACEScg, row-major: Unreal's {@code WorkingColorSpace.ToAP1} for an sRGB working space. A copy. */
+    public static double[] srgbToAp1() {
+        return SRGB_TO_AP1.clone();
+    }
+
+    /** ACEScg to linear sRGB, row-major: {@code WorkingColorSpace.FromAP1}. A copy. */
+    public static double[] ap1ToSrgb() {
+        return AP1_TO_SRGB.clone();
+    }
+
     /** The log encoding's range in stops, its grey and where grey sits (Unreal's LogToLin). */
     private static final double RANGE = 14, GREY = 0.18, GREY_AT = 444.0 / 1023.0;
 

@@ -334,6 +334,39 @@ spawnables:
   `animation` on the play's time, each bone answering `at: { spawnable, node }`, so a light or a system rides it.
   Clip `ns:path/name` is looked for in `<the model's namespace>:models/path/name.glb`, then in the model's own file;
   a host with clips elsewhere installs its own finder. It draws nothing yet: a puppet naming `meshes` fails.
+- **A `colour_region` spawnable grades the world inside a shape** (`CgColourRegionSpawner`, which `CgVfxSequencer`
+  installs; Unreal 5.1's `AColorCorrectRegion`): every pixel whose world point is inside its sphere, box, cylinder or
+  cone mixed toward the scene graded (saturation, contrast, gamma, gain, offset; for the whole as `colour` and per
+  `shadows`, `midtones`, `highlights`), by its shape's alpha from `inner` to `outer` raised to its `falloff`, times its
+  `intensity`. It draws on the HDR scene before bloom and every look, lowest `priority` first. Its scale sizes it: at 1
+  its shape is half a block each way (Unreal's 50 cm), so a `transform` track's scale 6 makes a sphere 3 blocks round.
+  A `property` track keys any field: `colour_region.colour.gain` with its components `value: { r, g, b, a }`.
+  `affected` (per-actor regions) and a white-balance or colour temperature away from 6500 K fail as the play starts,
+  naming them: not played yet. The legacy temperature plays.
+
+```yaml
+spawnables:
+  - { id: s2, name: flash, colour_region: { priority: 1, falloff: 0.2, colour: { gain: [2, 2, 2, 1] } } }
+tracks:
+  - { id: t1, kind: transform, binding: { spawnable: s2 }, sections: [ { id: x0, range: [null, null],
+      scale: [{ default: 6, keys: [] }, { default: 6, keys: [] }, { default: 6, keys: [] }] } ] }
+  - id: t2
+    kind: property
+    binding: { spawnable: s2 }
+    property: colour_region.colour.gain
+    sections:
+      - { id: x1, range: [0, 18000], value: { a: { keys: [[0, 2.0], [18000, 1.0]] } } }   # twice as bright, easing back
+```
+
+```java
+// The same region from Java, outside any sequence: shown until closed.
+CgColourRegion flash = new CgColourRegion().falloff(0.2f)
+        .grade(CgColourRegion.Range.GLOBAL, CgColourRegion.Control.GAIN, 2f, 2f, 2f, 1f);
+CgRenderStage.Registration on = flash.show();
+flash.place(x, y, z, new Quaternionf(), 6f, 6f, 6f);   // each frame it moves
+on.close();
+```
+
 - **What a play cannot make fails as it starts**, naming the spawnable: a kind no spawner here makes, a puppet whose
   model or clip does not load, in the sequence or in any it plays (a clip's notifies). Never mid-frame.
 
