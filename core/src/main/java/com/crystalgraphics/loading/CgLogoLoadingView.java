@@ -83,8 +83,10 @@ public final class CgLogoLoadingView implements CgLoadingView {
         quad(back, 0f, 0f, width, height, argb(alpha, 0xFFFFFFFF), 0f, BACKDROP);
         quad(back, cx - glow / 2f, cy - glow / 2f, glow, glow, argb(shown * breath, HALO), 0f, GLOW);
         end(back);
+        // Bound after the material: setting one drops the textures bound before it
+        image.useMaterial(CgMaterial.load(FX));
         image.bindTexture(0, texture);
-        begin(image);
+        image.begin();
         quad(image, Math.round(cx - w / 2f), Math.round(cy - h / 2f), w, h, argb(shown, 0xFFFFFFFF), 1f, IMAGE);
         end(image);
 
