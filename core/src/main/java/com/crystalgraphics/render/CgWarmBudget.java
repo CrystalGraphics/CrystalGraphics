@@ -29,7 +29,8 @@ public final class CgWarmBudget {
 
     private static final CgVar.Num MILLIS = CgVar.number("crystalgraphics.warmBudget", 4f, 0f, 1000f, CgVar.DEV,
             "Milliseconds a frame may spend starting programs, kernels and meshes ahead of their first use; 0 for no limit.");
-    private static final CgVar.Num LOADING_MILLIS = CgVar.number("crystalgraphics.warmBudget.loading", 50f, 0f, 1000f,
+    // 12 holds the screen near 60 fps: at 50 it warmed only a little faster, at 20 fps
+    private static final CgVar.Num LOADING_MILLIS = CgVar.number("crystalgraphics.warmBudget.loading", 12f, 0f, 1000f,
             CgVar.DEV, "The warm budget while the loading screen shows, as Unity's High background priority; 0 for no limit.");
 
     private static final int SPENT = CgTrace.name("warm.spent-us"), REFUSED = CgTrace.name("warm.refused");

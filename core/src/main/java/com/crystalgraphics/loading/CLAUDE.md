@@ -20,7 +20,7 @@ first-use work.
   `draw` fires the world stages itself, into a 256-pixel offscreen target under a fixed camera, on a frame where the
   host fired none. A host draws nothing of its own world while loading and calls `draw` inside its frame, never from
   the frame tick: a world firing from `tickFrame` lands between the effects' steps.
-- **While shown, warming takes `crystalgraphics.warmBudget.loading`** (50 ms a frame) through `CgWarmBudget.loading`.
+- **While shown, warming takes `crystalgraphics.warmBudget.loading`** (12 ms a frame: the screen near 60 fps) through `CgWarmBudget.loading`.
 - **In Minecraft it shows once, between the loader's screen and the first menu** (the user, 2026-11-02): each host
   hands the game's opening of its first screen to `holdUntilHidden` and puts up an empty screen, since Minecraft with
   no screen and no level reads keys for a player it has not made. The host draws it over the GUI at its frame end and

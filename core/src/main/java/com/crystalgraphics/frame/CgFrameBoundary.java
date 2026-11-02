@@ -52,12 +52,15 @@ public final class CgFrameBoundary {
         final Phase phase;
         final String name;
         final Runnable body;
+        /** Its trace zone, {@code boundary/<name>}. */
+        final int zone;
         boolean disabled;
 
         Function(Phase phase, String name, Runnable body) {
             this.phase = phase;
             this.name = name;
             this.body = body;
+            this.zone = CgTrace.name("boundary/" + name);
         }
 
         public String name() {
@@ -155,7 +158,7 @@ public final class CgFrameBoundary {
     private static void runAll(Function[] functions) {
         for (Function f : functions) {
             if (f.disabled) continue;
-            try {
+            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, f.zone)) {
                 f.body.run();
             } catch (Throwable t) {
                 if (t instanceof VirtualMachineError) throw (VirtualMachineError) t;

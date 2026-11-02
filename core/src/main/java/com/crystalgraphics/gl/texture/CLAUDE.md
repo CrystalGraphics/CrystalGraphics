@@ -26,7 +26,8 @@ via the singleton `CgTextureManager`.
 
 An upload has a CPU half (bytes into memory the GPU can copy from) and a GPU half (the copy). Off the render thread
 the first is the producer's and the second lands at the render thread's next deferral apply, before the frame's
-first pass (plan `render-async-uploads`):
+first pass (plan `render-async-uploads`), within `crystalgraphics.deferral.budget` (4 ms) a frame: a burst of textures
+lands over frames, and one bound sooner lands at its bind (`CgDeferral.spreadOverFrames`):
 
 ```java
 // A worker that makes the bytes writes them straight into a lease: no copy anywhere else

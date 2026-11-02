@@ -659,6 +659,7 @@ public void aBurstOfEditsParsesOnce() {
 |---|---|---|
 | `crystalgraphics.job.threads` | half the cores past two, at least one | threads jobs' work runs on |
 | `crystalgraphics.job.forEachThreads` | two fewer than the cores | threads `forEach` and effects' emitters run on, your thread one of them; 1 runs all on your thread |
+| `crystalgraphics.job.backgroundThreads` | half the cores | threads background work holds at once: the job workers and a job's `forEach` helpers together, so a load behind a loading screen never takes the whole machine |
 
 Both are read at launch (`-Dcrystalgraphics.job.threads=4`; [`DEBUG_FLAGS.md`](DEBUG_FLAGS.md)).
 

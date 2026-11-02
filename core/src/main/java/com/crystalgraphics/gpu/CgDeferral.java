@@ -6,6 +6,7 @@ import com.crystalgraphics.platform.gl.state.CgGlSlot;
 import com.crystalgraphics.platform.gl.state.CgGlState;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
+import com.crystalgraphics.variable.CgVar;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -62,11 +63,17 @@ public final class CgDeferral {
     /** Objects with queued work, oldest first. Guarded by itself. */
     private static final Set<CgDeferral> SCHEDULED = new LinkedHashSet<>();
 
+    private static final CgVar.Num SPREAD_MILLIS = CgVar.number("crystalgraphics.deferral.budget", 4f, 0f, 1000f,
+            CgVar.DEV, "Milliseconds a frame lands queued work of objects that land their own before each use (textures);"
+                    + " the rest waits a frame. 0 for no limit.");
+
     /** Guarded by this. */
     private final ArrayDeque<Runnable> queue = new ArrayDeque<>();
 
     /** What each piece of work is scoped to restore; empty for none. */
     private final CgGlSlot[] restores;
+    /** Whether its work may land over frames: its owner flushes it before every use. */
+    private boolean spread;
 
     /** Work that leaves GL state as it found it, or restores it itself. */
     public CgDeferral() {
@@ -76,6 +83,17 @@ public final class CgDeferral {
     /** Work restoring {@code restores} when each piece is done. */
     public CgDeferral(CgGlSlot... restores) {
         this.restores = restores;
+    }
+
+    /**
+     * Lets {@link #applyAll()} land this object's work over several frames, within {@code crystalgraphics.deferral.budget}
+     * each, as Unreal's texture streaming caps its uploads a frame: a kit's textures decoded together no longer land in
+     * one frame. Only for an owner that {@link #flush()}es before every use (a texture's bind and {@code getId}), so
+     * nothing ever draws what has not landed. Answers this.
+     */
+    public CgDeferral spreadOverFrames() {
+        spread = true;
+        return this;
     }
 
     /** Whether {@link #run} would do its work now: this thread may drive the device and nothing is waiting. */
@@ -155,7 +173,11 @@ public final class CgDeferral {
         }
     }
 
-    /** Does every object's queued work, oldest object first. Render thread; the executor calls it before each frame. */
+    /**
+     * Does every object's queued work, oldest object first: all of it, except that objects {@linkplain #spreadOverFrames()
+     * spread over frames} stop once the frame's budget is spent, the first always landing, the rest kept first in line for
+     * the next frame. Render thread; the executor calls it before each frame.
+     */
     public static void applyAll() {
         CgDeferral[] work;
         synchronized (SCHEDULED) {
@@ -164,7 +186,28 @@ public final class CgDeferral {
             SCHEDULED.clear();
         }
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, APPLY)) {
-            for (CgDeferral deferral : work) deferral.flush();
+            long budget = (long) (SPREAD_MILLIS.get() * 1_000_000L), start = System.nanoTime();
+            boolean spent = false;
+            int kept = 0;
+            for (CgDeferral deferral : work) {
+                if (deferral.spread && spent) {
+                    work[kept++] = deferral;
+                    continue;
+                }
+                deferral.flush();
+                if (deferral.spread && budget > 0 && System.nanoTime() - start >= budget) spent = true;
+            }
+            if (kept > 0) requeue(work, kept);
+        }
+    }
+
+    /** {@code work[0, kept)} back in line, ahead of what was scheduled since: oldest first still. */
+    private static void requeue(CgDeferral[] work, int kept) {
+        synchronized (SCHEDULED) {
+            Set<CgDeferral> since = new LinkedHashSet<>(SCHEDULED);
+            SCHEDULED.clear();
+            for (int i = 0; i < kept; i++) if (work[i].pending()) SCHEDULED.add(work[i]);
+            SCHEDULED.addAll(since);
         }
     }
 }

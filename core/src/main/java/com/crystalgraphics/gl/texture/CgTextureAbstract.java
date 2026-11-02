@@ -48,8 +48,11 @@ public abstract class CgTextureAbstract implements CgTexture, CgReloadable {
     // ── Instance state ──────────────────────────────────────────────
     /** GL texture object id: 0 until made, and again once deleted. Written only by {@link #gpu}'s work. */
     protected int textureId;
-    /** This texture's GL work, in order, each piece handing back the binding it moved. */
-    protected final CgDeferral gpu = new CgDeferral(CgGlSlot.TEXTURES);
+    /**
+     * This texture's GL work, in order, each piece handing back the binding it moved. Spread over frames: {@code bind} and
+     * {@code getId} land it first, so a burst of decoded textures lands within a frame's budget unless one is used.
+     */
+    protected final CgDeferral gpu = new CgDeferral(CgGlSlot.TEXTURES).spreadOverFrames();
     /** Width of the texture at mip level 0, in pixels; 0 until a texture from files loads. */
     protected int width;
     /** Height of the texture at mip level 0, in pixels; 0 until a texture from files loads. */

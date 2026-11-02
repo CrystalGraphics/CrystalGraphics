@@ -58,12 +58,20 @@ final class CgWorkers {
                 p -> new EachThread(p, "crystalgraphics-each-", PRIORITY.get()), null, false);
     }
 
+    private static final CgVar.Int BACKGROUND_VAR = CgVar.integer("crystalgraphics.job.backgroundThreads", 0, 0, 256,
+            CgVar.DEV | CgVar.RESTART, "Threads background work may hold at once, the job workers and their forEach"
+                    + " helpers together; 0 for half the cores.");
+    /** What background work may hold at once: half the machine, so a load never drains it (at least one helper). */
+    static final int BACKGROUND = BACKGROUND_VAR.get() > 0 ? BACKGROUND_VAR.get()
+            : Math.max(2, Runtime.getRuntime().availableProcessors() / 2);
+
     /**
      * A job worker's helpers, below normal as the job is: background work split with {@code forEach} never takes the
-     * frame's helpers nor outranks the frame (T10: three distance fields on the frame's pool held all 8 cores).
+     * frame's helpers nor outranks the frame (T10: three distance fields on the frame's pool held all 8 cores). Sized
+     * so the job workers and these together hold {@link #BACKGROUND} threads.
      */
     private static final class BackgroundPool {
-        static final ForkJoinPool POOL = new ForkJoinPool(Math.max(1, THREADS - 1),
+        static final ForkJoinPool POOL = new ForkJoinPool(Math.max(1, BACKGROUND - CgJobPool.THREADS),
                 p -> new EachThread(p, "crystalgraphics-each-bg-", Thread.NORM_PRIORITY - 1), null, false);
     }
 
