@@ -618,7 +618,8 @@ public final class CgSequencePlayer {
             // A section whose condition fails spawns nothing: relation self keeps a lens effect off another's screen.
             if (!s.active() || !s.contains(tick) || !conditionHolds(track, s)) continue;
             CgSequenceChannel c = s.channel("spawned");
-            return c != null && c.bool(tick);
+            // No channel: spawned for its whole range, UMovieSceneSpawnSection's BoolCurve defaulting to true
+            return c == null || c.bool(tick);
         }
         return false;
     }

@@ -163,6 +163,24 @@ public class CgSequenceSpawnTest {
         assertEquals(2, p[1], 1e-5);
     }
 
+    /** A spawn section with no keys spawns for its whole range: Unreal's spawn section defaults to true. */
+    @Test
+    public void aSpawnSectionWithNoKeysSpawnsForItsRange() {
+        String yaml = "_v: 1\ntick_resolution: 20\ndisplay_rate: 20\nrange: [0, 40]\n"
+                + "spawnables:\n  - { id: s1, name: spark, system: mymod:spark }\n"
+                + "tracks:\n  - id: t1\n    kind: spawned\n    binding: { spawnable: s1 }\n    sections:\n"
+                + "      - { id: x1, completion: keep_state }\n"
+                + "  - id: t2\n    kind: system\n    binding: { spawnable: s1 }\n    sections:\n"
+                + "      - { id: x2, keys: [[0, trigger]], completion: keep_state }\n";
+        CgSequenceDefinition d = CgSequenceDefinition.compile(CgAssetData.of("mymod:hit", CgSequenceKinds.SEQUENCE,
+                (Map<?, ?>) CgAssetYaml.read(yaml), null));
+        CgSequencer sequencer = sequencer(false);
+        sequencer.play(d, Map.of());
+        sequencer.evaluate(0.05f);
+        assertEquals(1, made.size());
+        assertTrue("its trigger at tick 0 fires the frame it is made", made.get(0).active);
+    }
+
     /** A stopped play's systems end their own way, as an interrupted montage's; a killed one's at once. */
     @Test
     public void aStoppedPlayEndsItsSystemsGracefullyAKilledOneAtOnce() {
