@@ -162,6 +162,49 @@ Map<String, Object> cut = Map.of("id", "s1", "range", List.of(0, 240), "clip", "
 
 - On a dedicated server the notify sequence plays its `rpg` events on the clip's time too: no clip need load.
 
+### The engine's sequencer, and where a play stands
+
+The client world has one already: the engine installs it as a client starts, with the engine's kinds. A scene or a
+tool of your own installs the same, so a sequence plays alike in the game, the harness and an editor:
+
+```java
+CgSequencer sequencer = CgVfxSequencer.install(CgWorld.client(), CgVfx.world());   // what the engine does
+CgSequencer mine = CgVfxSequencer.install(world, vfx, cameras, id -> kit.cameraSequence(id));   // with cameras
+```
+
+- **What it plays**: `system` and `prefab` spawnables on the VFX system, `post` spawnables on the post stack, `shake`
+  tracks on the camera, and, given a camera system, `camera` spawnables, cuts and camera animations. A kind of your own
+  is registered on what it returns.
+- **Without a camera system** (the game's, today) a `camera` spawnable fails as the play starts, naming it.
+
+A play may stand somewhere: its **origin**, Unreal's transform origin of a level sequence actor. A spawnable with no
+`at` and a locator with no parent stand under it each frame, their keyed transforms relative to it; what is placed on
+a role or on another binding is not moved by it, and its scale is ignored.
+
+```java
+sequencer.play(spark, Map.of(), hitPoint);                          // a one-shot at a hit: no roles
+sequencer.play(aura, Map.of("caster", goku), goku.attachment(null)); // riding the caster
+```
+
+```yaml
+spawnables:
+  - { id: s1, name: spark, system: mymod:hit/spark }        # no at: under the origin
+tracks:
+  - id: t1
+    kind: transform                                          # its transform, relative to the origin
+    binding: { spawnable: s1 }
+    sections:
+      - { id: x1, range: [null, null], translation: [{ default: 0, keys: [] }, { default: 0.5, keys: [] }, { default: 0, keys: [] }] }
+```
+
+- **A spawnable's `transform` track keys its own transform** under where its `at` puts it, Sequencer's relative
+  transform: its `at` offset and rotation are the rest it starts from. A spawned system follows it each frame and takes
+  its scale.
+- **A `shake` track** starts its shake as play crosses each section's start, at its `scale` and `space`, felt
+  everywhere; a shake that outlasts its section, or never ends, runs for the section and blends out inside it, and
+  leaving the section ends it unless it keeps its state (`MovieSceneCameraShakeSystem`).
+- A cue's `sequences` entry plays this way, at the entry's placement ([networking](networking.md) § *Cues*).
+
 ### Subsequences
 
 A `subsequence` section plays another sequence inside this one. Its roles are this one's of the same name, or those its

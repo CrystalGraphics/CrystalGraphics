@@ -29,6 +29,7 @@ public final class CgShakePlay {
     double x, y, z;
     float scale, inner, outer, falloff;
     boolean world, live;
+    private int starts;
 
     public CgShakePlay(CgShakeSource source, CgShakePattern pattern, CgCameraShakeState state) {
         this.source = source;
@@ -54,6 +55,7 @@ public final class CgShakePlay {
         this.outer = outer;
         this.falloff = falloff;
         this.world = world;
+        starts++;
         state.start();
         if (!live) {
             live = true;
@@ -69,6 +71,30 @@ public final class CgShakePlay {
 
     public boolean playing() {
         return live;
+    }
+
+    /** How many times it has started: a pooled play's holder keeps it to tell its own start from a later one's. */
+    public int starts() {
+        return starts;
+    }
+
+    /** Its pattern's own duration in seconds, 0 or less for endless. */
+    public float duration() {
+        return state.duration();
+    }
+
+    /**
+     * Runs it for {@code seconds} from its start rather than its own duration, blending out before then, as a
+     * Sequencer section caps a shake to its length. Call after it starts.
+     *
+     * <pre>{@code
+     * CgShakePlay play = definition.play(x, y, z, 0.5f, seed);
+     * if (play.duration() <= 0f || play.duration() > section) play.durationOverride(section);
+     * }</pre>
+     */
+    public CgShakePlay durationOverride(float seconds) {
+        state.durationOverride(seconds);
+        return this;
     }
 
     /** {@code source}'s play running, or null: a single-instance shake restarts it rather than starting another. */

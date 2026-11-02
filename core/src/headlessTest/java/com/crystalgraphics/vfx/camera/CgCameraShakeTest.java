@@ -25,6 +25,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
@@ -186,5 +187,16 @@ public class CgCameraShakeTest {
             assertEquals("no roll", 0f, out[CgShakePattern.ROLL], 0f);
         }
         System.out.println("[shakes] " + loads.size() + " kit shakes compiled");
+    }
+    /** A section's cap runs a shake for the section alone, blending out inside it; a restart clears it. */
+    @Test
+    public void aDurationOverrideEndsAShakeInsideItsSection() {
+        CgCameraShakeState state = new CgCameraShakeState(0f, 0.5f, 0f).start().durationOverride(1f);
+        assertEquals(1f, state.update(0.4f), 1e-6f);
+        assertEquals("blending out over its last half second", 0.6f, state.update(0.3f), 1e-5f);
+        state.update(0.4f);
+        assertFalse(state.playing());
+        state.start().update(5f);
+        assertTrue("its own duration again: endless", state.playing());
     }
 }

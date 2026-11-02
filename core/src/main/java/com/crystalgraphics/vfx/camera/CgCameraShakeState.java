@@ -21,13 +21,15 @@ public final class CgCameraShakeState {
 
     private final float blendIn, blendOut, duration;
     private final boolean hasBlendIn, hasBlendOut;
+    /** The duration this play runs for: its own, or a play site's override. */
+    private float lasts;
     private float elapsed, blendInTime, blendOutTime;
     private boolean blendingIn, blendingOut, playing;
 
     public CgCameraShakeState(float blendIn, float blendOut, float duration) {
         this.blendIn = blendIn;
         this.blendOut = blendOut;
-        this.duration = duration;
+        this.duration = this.lasts = duration;
         hasBlendIn = blendIn > 0f;
         hasBlendOut = blendOut > 0f;
     }
@@ -35,6 +37,7 @@ public final class CgCameraShakeState {
     /** Starts playing from its beginning. */
     public CgCameraShakeState start() {
         elapsed = blendInTime = blendOutTime = 0f;
+        lasts = duration;
         blendingIn = hasBlendIn;
         blendingOut = false;
         playing = true;
@@ -47,12 +50,12 @@ public final class CgCameraShakeState {
         elapsed += dt;
         if (blendingIn) blendInTime += dt;
         if (blendingOut) blendOutTime += dt;
-        if (duration > 0f) {
-            if (elapsed < 0f || elapsed >= duration) {
+        if (lasts > 0f) {
+            if (elapsed < 0f || elapsed >= lasts) {
                 playing = false;
                 return 0f;
             }
-            float remaining = duration - elapsed;
+            float remaining = lasts - elapsed;
             if (hasBlendOut && !blendingOut && remaining < blendOut) {
                 blendingOut = true;
                 blendOutTime = blendOut - remaining;
@@ -97,5 +100,19 @@ public final class CgCameraShakeState {
 
     public boolean playing() {
         return playing;
+    }
+
+    /** Its own duration, 0 or less for endless. */
+    public float duration() {
+        return duration;
+    }
+
+    /**
+     * Runs this play for {@code seconds} instead of its own duration, blending out before it ends: Unreal's
+     * {@code FCameraShakeBaseStartParams::DurationOverride}. After {@link #start}, which clears it.
+     */
+    public CgCameraShakeState durationOverride(float seconds) {
+        lasts = seconds;
+        return this;
     }
 }

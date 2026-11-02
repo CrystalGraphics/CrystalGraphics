@@ -132,6 +132,37 @@ public class CgSequenceSpawnTest {
         return CgSequenceDefinition.compile(CgAssetData.of("mymod:nova", CgSequenceKinds.SEQUENCE, (Map<?, ?>) CgAssetYaml.read(SEQUENCE), null));
     }
 
+    private static final String AT_ORIGIN = "_v: 1\ntick_resolution: 20\ndisplay_rate: 20\nrange: [0, 40]\n"
+            + "spawnables:\n  - { id: s1, name: spark, system: mymod:spark }\n"
+            + "tracks:\n  - id: t1\n    kind: transform\n    binding: { spawnable: s1 }\n    sections:\n"
+            + "      - { id: x1, range: [null, null], translation: [{ default: 1.0, keys: [] }, { default: 2.0, keys: [] },"
+            + " { default: 0.0, keys: [] }] }\n";
+
+    /**
+     * An unattached spawnable's keyed transform is relative to the play's origin, Unreal's transform origin: a hit
+     * spark played at a cue's point. Without one it is the world's.
+     */
+    @Test
+    public void anUnattachedSpawnablesTransformIsRelativeToThePlaysOrigin() {
+        CgSequenceDefinition d = CgSequenceDefinition.compile(CgAssetData.of("mymod:hit", CgSequenceKinds.SEQUENCE,
+                (Map<?, ?>) CgAssetYaml.read(AT_ORIGIN), null));
+        CgSequencer sequencer = sequencer(false);
+        sequencer.play(d, Map.of(), new Caster().attachment(null));
+        sequencer.play(d, Map.of());
+        sequencer.evaluate(0.05f);
+        double[] p = new double[3];
+        Quaternionf turn = new Quaternionf();
+        assertTrue(made.get(0).at.place(p, turn));
+        // (1, 2, 0) turned a quarter about +Y is (0, 2, -1), from the origin at (10, 64, 0)
+        assertEquals(10, p[0], 1e-5);
+        assertEquals(66, p[1], 1e-5);
+        assertEquals(-1, p[2], 1e-5);
+        assertEquals(new Quaternionf().rotateY((float) Math.toRadians(90)).w, turn.w, 1e-5);
+        assertTrue(made.get(1).at.place(p, null));
+        assertEquals(1, p[0], 1e-5);
+        assertEquals(2, p[1], 1e-5);
+    }
+
     /** A stopped play's systems end their own way, as an interrupted montage's; a killed one's at once. */
     @Test
     public void aStoppedPlayEndsItsSystemsGracefullyAKilledOneAtOnce() {

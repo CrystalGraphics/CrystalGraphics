@@ -69,4 +69,19 @@ public final class CgSequencePlacement implements CgAttachment {
         if (out != null) parentTurn.mul(local, out);
         return true;
     }
+
+    /** Its parent's scale times what its transform track keys: a spawnable's component scale. */
+    @Override
+    public Vector3f scale(@Nullable String name, Vector3f out) {
+        CgAttachment p = parent.get();
+        if (p == null) out.set(1f);
+        else p.scale(null, out);
+        if (locator != null) out.mul(locator.scale()[0], locator.scale()[1], locator.scale()[2]);
+        return out;
+    }
+
+    /** Whether its transform is keyed and can move each frame: what is spawned at it must follow it. */
+    public boolean live() {
+        return locator != null;
+    }
 }

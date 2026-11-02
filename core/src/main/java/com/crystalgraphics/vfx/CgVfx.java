@@ -21,6 +21,7 @@ import com.crystalgraphics.vfx.net.CgVfxCueClient;
 import com.crystalgraphics.vfx.prefab.CgVfxPrefabAssets;
 import com.crystalgraphics.vfx.prefab.CgVfxPrefabPreparer;
 import com.crystalgraphics.vfx.system.CgVfxCueEffects;
+import com.crystalgraphics.vfx.system.CgVfxSequencer;
 import com.crystalgraphics.vfx.system.CgVfxSystemAssets;
 import com.crystalgraphics.vfx.system.CgVfxSystemPreparer;
 import com.crystalgraphics.api.material.CgMaterialPreparer;
@@ -159,7 +160,8 @@ public final class CgVfx {
         CgVfxPrefabAssets.register();
         // and are READY once the world's system has warmed what they draw: nothing compiles or uploads at a play
         preparers(CgVfxAssets.instance(), CgVfx::world);
-        // The client world's cue manager: what the server's cues and gameplay's tags play through
+        // The client world's sequencer, then its cue manager: what the server's cues and gameplay's tags play through
+        CgVfxSequencer.install(CgWorld.client(), world());
         CgVfxCueEffects.installClient(world());
         // Every frame's end, the title screen's too: a logout clears before the next world; looks declared since precache.
         CgEngineLifecycle.addListener(new CgLifecycleListener() {

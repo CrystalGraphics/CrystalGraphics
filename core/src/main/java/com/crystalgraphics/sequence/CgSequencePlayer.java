@@ -65,6 +65,14 @@ public final class CgSequencePlayer {
     private final CgSequencePlaybackPosition position;
     private final CgSequenceTarget[] roles, spawnables;
     private final CgSequenceLocator[] locators;
+    /** Per spawnable, the transform its {@code transform} track keys under its parent, else null: its own is its {@code at}. */
+    private final CgSequenceLocator[] spawnableTransforms;
+    /**
+     * What a binding placed under nothing stands under: Unreal's transform origin, a level sequence actor's instance
+     * data, scale dropped. Null places it at the world's origin.
+     */
+    @Nullable
+    private CgAttachment origin;
     /** Per spawnable, its {@code spawned} track's index, or -1 for one that lives for the whole play. */
     private final int[] spawnedTrack;
     private final CgSequencePlacement[] spawnablePlaces, locatorPlaces;
@@ -148,6 +156,19 @@ public final class CgSequencePlayer {
         Arrays.fill(spawnedTrack, -1);
         for (CgSequenceTrack t : definition.tracks()) {
             if (t.kind().equals("spawned") && !t.muted() && t.binding().subject() == CgSequenceBinding.Subject.SPAWNABLE) spawnedTrack[t.binding().index()] = t.index();
+        }
+        this.spawnableTransforms = new CgSequenceLocator[spawnables.length];
+        for (CgSequenceTrack t : definition.tracks()) {
+            CgSequenceBinding b = t.binding();
+            if (!t.kind().equals("transform") || b.subject() != CgSequenceBinding.Subject.SPAWNABLE
+                    || b.part() != CgSequenceBinding.Part.WHOLE || spawnableTransforms[b.index()] != null) continue;
+            CgSequenceDefinition.Spawnable s = definition.spawnables().get(b.index());
+            Map<?, ?> at = s.tree().get("at") instanceof Map<?, ?> m ? m : Map.of();
+            CgSequenceLocator own = new CgSequenceLocator(s.id());
+            if ("quaternion".equals(units.rotation())) own.restTurn(units.rotationToHost(at.get("rotation"), new Quaternionf()));
+            own.rest(vector(units, at.get("offset"), CgQuantity.OFFSET, 0f), vector(units, at.get("rotation"), CgQuantity.ROTATION, 0f),
+                    new float[]{1f, 1f, 1f});
+            spawnableTransforms[b.index()] = own;
         }
         this.spawnablePlaces = new CgSequencePlacement[spawnables.length];
         this.locatorPlaces = new CgSequencePlacement[locators.length];
@@ -487,6 +508,11 @@ public final class CgSequencePlayer {
         CgSequencePlacement p = spawnablePlaces[index];
         if (p != null) return p;
         CgSequenceDefinition.Spawnable s = definition.spawnables().get(index);
+        if (spawnableTransforms[index] != null) {
+            // Its transform track keys its relative transform, its at's offset and turn the rest it starts from
+            return spawnablePlaces[index] = new CgSequencePlacement(parent(s.at(), "spawnables." + s.id() + ".at"), definition,
+                    spawnableTransforms[index]);
+        }
         Map<?, ?> at = s.tree().get("at") instanceof Map<?, ?> m ? m : Map.of();
         CgUnits units = definition.units();
         Quaternionf turn = units.rotationToHost(at.get("rotation"), new Quaternionf());
@@ -538,9 +564,26 @@ public final class CgSequencePlayer {
                 return () -> spawnables[index] instanceof CgSequenceSpawned s ? (node == null ? placement(index) : s.attachment(node)) : null;
             }
             default -> {
-                return () -> null;
+                // Unattached: under the transform origin (MovieSceneTransformOriginSystem's FAssignTransformOrigin)
+                return () -> origin;
             }
         }
+    }
+
+    /**
+     * Plays it under {@code origin}: what a binding placed under nothing (a spawnable with no {@code at}, a locator with
+     * no parent) stands under each frame, Unreal's transform origin. Set before it starts: {@link CgSequencer#play}.
+     */
+    CgSequencePlayer origin(@Nullable CgAttachment origin) {
+        // Its place and turn alone: Sequencer never applies the origin's scale
+        this.origin = origin == null ? null : origin::place;
+        return this;
+    }
+
+    /** What its unattached bindings stand under; null for the world's origin. */
+    @Nullable
+    public CgAttachment origin() {
+        return origin;
     }
 
     private static float[] vector(CgUnits units, @Nullable Object v, CgQuantity q, float fill) {
@@ -717,6 +760,10 @@ public final class CgSequencePlayer {
     @Nullable
     public CgSequenceTarget target(CgSequenceTrack track) {
         CgSequenceBinding b = track.binding();
+        if (b.subject() == CgSequenceBinding.Subject.SPAWNABLE && b.part() == CgSequenceBinding.Part.WHOLE
+                && track.kind().equals("transform") && spawnableTransforms[b.index()] != null) {
+            return spawnableTransforms[b.index()];
+        }
         CgSequenceTarget object = switch (b.subject()) {
             case ROLE -> roles[b.index()];
             case LOCATOR -> locators[b.index()];
@@ -913,7 +960,7 @@ public final class CgSequencePlayer {
         }
         // A subsequence plays its child whole; a clip's notifies skip the clip, which its section plays
         String clip = s.fields().get("clip") instanceof String name ? name : "";
-        return sequencer.playNotifies(c.definition(), filled, clip);
+        return sequencer.playNotifies(c.definition(), filled, clip, origin);
     }
 
     /** Whether a montage section handed play on this frame: the sequencer runs a pass for the rest. */

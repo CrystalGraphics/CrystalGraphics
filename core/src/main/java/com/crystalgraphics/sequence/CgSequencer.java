@@ -31,6 +31,7 @@ import com.crystalgraphics.sequence.sound.CgSequenceSubtitleEvaluator;
 import com.crystalgraphics.sequence.spawn.CgSequenceSystemEvaluator;
 import com.crystalgraphics.sequence.state.CgSequenceBlender;
 import com.crystalgraphics.sequence.state.CgSequenceStateEvaluator;
+import com.crystalgraphics.world.CgAttachment;
 
 /**
  * A world's sequences: every playing {@link CgSequencePlayer} and one evaluator a track kind, run over all of them
@@ -120,15 +121,32 @@ public final class CgSequencer extends CgWorldSubsystem {
      * now: a slot a target lacks throws here, naming both.
      */
     public CgSequencePlayer play(CgSequenceDefinition definition, Map<String, ? extends CgSequenceTarget> roles) {
-        return start(new CgSequencePlayer(this, definition, roles));
+        return play(definition, roles, null);
+    }
+
+    /**
+     * {@link #play(CgSequenceDefinition, Map)} at {@code origin}: Unreal's level sequence actor with its transform
+     * origin. A spawnable with no {@code at} and a locator with no parent stand under it each frame, their keyed
+     * transforms relative to it; what is placed on a role or another binding is not moved by it. Its scale is ignored.
+     *
+     * <pre>{@code
+     * CgAttachment hit = (point, turn) -> { point[0] = x; point[1] = y; point[2] = z; if (turn != null) turn.identity(); return true; };
+     * sequencer.play(spark, Map.of(), hit);            // a one-shot at a hit point, no roles
+     * sequencer.play(move, Map.of("caster", goku), goku.attachment(null));   // riding the caster
+     * }</pre>
+     */
+    public CgSequencePlayer play(CgSequenceDefinition definition, Map<String, ? extends CgSequenceTarget> roles,
+                                 @Nullable CgAttachment origin) {
+        return start(new CgSequencePlayer(this, definition, roles).origin(origin));
     }
 
     /**
      * A clip's notify sequence, played on the clock its parent's animation section drives, skipping its own animation
-     * tracks of {@code clip}: the section already plays that clip. Its parent's.
+     * tracks of {@code clip}: the section already plays that clip. Its parent's, under its parent's origin.
      */
-    CgSequencePlayer playNotifies(CgSequenceDefinition definition, Map<String, ? extends CgSequenceTarget> roles, String clip) {
-        return start(new CgSequencePlayer(this, definition, roles).drivenFor(clip));
+    CgSequencePlayer playNotifies(CgSequenceDefinition definition, Map<String, ? extends CgSequenceTarget> roles, String clip,
+                                  @Nullable CgAttachment origin) {
+        return start(new CgSequencePlayer(this, definition, roles).drivenFor(clip).origin(origin));
     }
 
     /**
@@ -137,7 +155,7 @@ public final class CgSequencer extends CgWorldSubsystem {
      * one role, {@code caster}, is {@code role}. Client side; {@code clip} is the clip's id.
      */
     public CgSequencePlayer playClip(CgSequenceDefinition notifies, CgSequenceTarget role, String clip) {
-        return playNotifies(notifies, Map.of("caster", role), clip);
+        return playNotifies(notifies, Map.of("caster", role), clip, null);
     }
 
     private CgSequencePlayer start(CgSequencePlayer player) {
@@ -206,6 +224,11 @@ public final class CgSequencer extends CgWorldSubsystem {
     }
 
     /** Adds {@code evaluator} for its kind; a kind already evaluated throws. */
+    /** Whether a {@code kind} track has an evaluator here: what an installer asks before it registers one. */
+    public boolean evaluates(String kind) {
+        return registered(kind) >= 0;
+    }
+
     public void register(CgSequenceEvaluator evaluator) {
         if (registered(evaluator.kind()) >= 0) throw new IllegalStateException("the " + evaluator.kind() + " kind already has an evaluator");
         evaluators.add(evaluator);

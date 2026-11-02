@@ -9,6 +9,7 @@ import java.util.Set;
 import javax.annotation.Nullable;
 
 import org.joml.Quaternionf;
+import org.joml.Vector3f;
 
 import com.crystalgraphics.asset.kind.CgParticleKinds;
 import com.crystalgraphics.asset.load.CgAssetRef;
@@ -17,6 +18,7 @@ import com.crystalgraphics.asset.tree.CgAssetException;
 import com.crystalgraphics.sequence.definition.CgSequenceBinding;
 import com.crystalgraphics.sequence.definition.CgSequenceDefinition;
 import com.crystalgraphics.sequence.CgSequencePlayer;
+import com.crystalgraphics.sequence.binding.CgSequencePlacement;
 import com.crystalgraphics.sequence.spawn.CgSequenceSpawned;
 import com.crystalgraphics.sequence.spawn.CgSequenceSpawner;
 import com.crystalgraphics.sequence.spawn.CgSequenceSystem;
@@ -49,8 +51,8 @@ import com.crystalgraphics.world.CgAttachment;
  * <ul>
  *   <li>Every system one play spawns sorts as one group ({@link CgVfxSortGroup}), so their layers keep the order their
  *       files give them, wherever each stands.</li>
- *   <li>Its instance follows its place where the spawnable follows ({@code at}'s {@code follow}), else is placed and
- *       turned once as it activates.</li>
+ *   <li>Its instance follows its place where the spawnable follows ({@code at}'s {@code follow}) or a {@code transform}
+ *       track keys it, else is placed and turned once as it activates; it takes its place's scale either way.</li>
  *   <li>A desired age further than a sequence tick from the instance's own plays it again from that age
  *       ({@code startAt}): Niagara's reset and seek in {@code DesiredAge} mode.</li>
  *   <li>A track naming a {@code handle} drives that emitter alone: it waits, stopped, until its track activates it,
@@ -123,7 +125,9 @@ public final class CgVfxSystemSpawner implements CgSequenceSpawner {
         for (Map.Entry<String, CgSequenceBinding> b : spawnable.binds().entrySet()) {
             points[i++] = player.attachment(b.getValue(), "spawnables." + spawnable.id() + ".bind." + b.getKey());
         }
-        return new Spawned(vfx, CgVfxAssets.ref(CgParticleKinds.SYSTEM, id), at, spawnable.follow(),
+        // A keyed transform moves its component each frame, as Sequencer's transform track does
+        boolean follow = spawnable.follow() || at instanceof CgSequencePlacement p && p.live();
+        return new Spawned(vfx, CgVfxAssets.ref(CgParticleKinds.SYSTEM, id), at, follow,
                 (float) player.definition().seconds(1), group(player), held, params, points);
     }
 
@@ -144,6 +148,7 @@ public final class CgVfxSystemSpawner implements CgSequenceSpawner {
         private final float seekDelta;
         private final double[] point = new double[3];
         private final Quaternionf turn = new Quaternionf();
+        private final Vector3f scale = new Vector3f();
         private final Set<String> held;
         private final Map<String, Emitter> emitters = new HashMap<>();
         /** Its binds: each position parameter and the point it is set to. */
@@ -181,6 +186,8 @@ public final class CgVfxSystemSpawner implements CgSequenceSpawner {
             CgVfxSystemInstance<?> made = new CgVfxSystemInstance<>(ref, point[0], point[1], point[2]);
             if (follow) made.follow(at);
             else made.orient(turn);
+            Vector3f s = at.scale(null, scale);
+            if (s.x != 1f || s.y != 1f || s.z != 1f) made.scale(s.x, s.y, s.z);
             if (age > 0f) made.startAt(age);
             made.sortGroup(group);
             bind(made);
