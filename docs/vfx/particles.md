@@ -576,6 +576,18 @@ particle_update:
   value per particle. `spawn_only` holds a curve at its value at birth.
 - **A constant camera offset or one bound to a user parameter is its renderers'** (`_cg_CameraOffset`); only one that
   differs per particle is carried by each.
+- **A camera offset makes a particle look bigger**: it is nearer the eye. `keep_size: true` shrinks it by
+  `(d - offset) / d`, `d` its distance from the eye before the push, so it covers the screen it would where it is: a
+  hit spark pushed out of the body it struck, at the size it was struck at. Not Unreal's (Niagara leaves size to a
+  module); in Java it is the renderer's `_cg_KeepSize`:
+
+  ```yaml
+  - { module: crystalgraphics:camera_offset, inputs: { offset: 0.8, keep_size: true } }
+  ```
+
+  ```java
+  CgVfxRenderers.sprite("spark").material(SPARK).value("_cg_CameraOffset", 0.8f).value("_cg_KeepSize", 1f).build()
+  ```
 - **Each slot carried costs the pool a second drawn element a particle**, and only emitters carrying the same slots
   share a pool.
 

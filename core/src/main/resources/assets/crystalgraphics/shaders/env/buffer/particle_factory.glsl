@@ -98,6 +98,13 @@ vec3 _cg_toward_eye(vec3 centre, vec3 eye, float offset) {
     return toEye / d * offset * (d > offset ? 1.0 : 1.0e6);
 }
 
+// What _cg_KeepSize scales a particle moved by the camera offset by: its distance after over before, so it covers the
+// screen it would where it is. Not Unreal's: Niagara leaves the size to a module.
+float _cg_offset_scale(vec3 centre, vec3 eye, float offset, float keepSize) {
+    float d = max(length(eye - centre), 1.0e-4);
+    return keepSize > 0.5 && d > offset ? (d - offset) / d : 1.0;
+}
+
 #ifdef CG_VERTEX_STAGE
 // Particle n's dynamic parameters into p, those the renderer's drawn bits name.
 void _cg_dynamics(int n, int drawn, inout CgMaterialParticle p) {
@@ -505,7 +512,7 @@ CgMaterialParticle _cg_strip_particle(float cameraOffset, float drawnBits) {
 
 // One quad corner of the draw's particle: the placement every sprite of the vfx engine shares.
 void _cg_sprite(float facing, vec4 facingVector, vec4 alignmentVector, float stretch, float maxStretch,
-                float cameraOffset, float rotationBias, vec4 subImage, vec4 subUv, sampler2D subImages, float drawnBits,
+                float cameraOffset, float keepSize, float rotationBias, vec4 subImage, vec4 subUv, sampler2D subImages, float drawnBits,
                 vec4 pivot, out CgMaterialVertex v, out CgMaterialParticle p) {
     int drawn = int(drawnBits + 0.5);
     int n = fx_particle_index(FX_QUAD_INDEX, CG_OBJECT_CUSTOM0.x, CG_OBJECT_CUSTOM0.y);
@@ -520,6 +527,7 @@ void _cg_sprite(float facing, vec4 facingVector, vec4 alignmentVector, float str
     vec3 centre = origin + CG_PARTICLE_POSITION(i);
     vec2 spriteDrawn = (drawn & (_CG_DRAWN_SUB_IMAGE | _CG_DRAWN_CAMERA_OFFSET)) != 0 ? CG_PARTICLE_DRAWN(i).color.xy : vec2(0.0);
     if ((drawn & _CG_DRAWN_CAMERA_OFFSET) != 0) cameraOffset = spriteDrawn.y;
+    float kept = _cg_offset_scale(centre, eye, cameraOffset, keepSize);
     centre += _cg_toward_eye(centre, eye, cameraOffset);
     int mode = int(facing + 0.5), alignment = mode / 8;
     vec3 right, up;
@@ -527,7 +535,7 @@ void _cg_sprite(float facing, vec4 facingVector, vec4 alignmentVector, float str
                        eyeRight, eyeUp, right, up);
     bool aligned = alignment == FX_ALIGN_VELOCITY;
     float length_ = aligned ? clamp(1.0 + length(velocity) * stretch, 1.0, maxStretch) : 1.0;
-    vec2 extent = size * CG_PARTICLE_SCALE(i).xy * vec2(1.0, length_);
+    vec2 extent = kept * size * CG_PARTICLE_SCALE(i).xy * vec2(1.0, length_);
     float spin = aligned ? 0.0 : CG_PARTICLE_SPIN(i) + rotationBias;
     float a, b, blend;
     fx_subuv_frames(subUv, subImage, CG_PARTICLE_AGE(i), CG_PARTICLE_PROGRESS(i), CG_PARTICLE_SEED(i), spriteDrawn.x, a, b,
@@ -564,43 +572,44 @@ CgMaterialParticle _cg_sprite_p;
 bool _cg_sprite_placed = false;
 
 void _cg_sprite_once(float facing, vec4 facingVector, vec4 alignmentVector, float stretch, float maxStretch,
-                     float cameraOffset, float rotationBias, vec4 subImage, vec4 subUv, sampler2D subImages,
+                     float cameraOffset, float keepSize, float rotationBias, vec4 subImage, vec4 subUv, sampler2D subImages,
                      float drawnBits, vec4 pivot) {
     if (_cg_sprite_placed) return;
     _cg_sprite_placed = true;
-    _cg_sprite(facing, facingVector, alignmentVector, stretch, maxStretch, cameraOffset, rotationBias, subImage, subUv,
+    _cg_sprite(facing, facingVector, alignmentVector, stretch, maxStretch, cameraOffset, keepSize, rotationBias, subImage, subUv,
                subImages, drawnBits, pivot, _cg_sprite_v, _cg_sprite_p);
 }
 
 CgMaterialVertex _cg_sprite_vertex(float facing, vec4 facingVector, vec4 alignmentVector, float stretch,
-                                   float maxStretch, float cameraOffset, float rotationBias, vec4 subImage, vec4 subUv,
+                                   float maxStretch, float cameraOffset, float keepSize, float rotationBias, vec4 subImage, vec4 subUv,
                                    sampler2D subImages, float drawnBits, vec4 pivot) {
-    _cg_sprite_once(facing, facingVector, alignmentVector, stretch, maxStretch, cameraOffset, rotationBias, subImage,
+    _cg_sprite_once(facing, facingVector, alignmentVector, stretch, maxStretch, cameraOffset, keepSize, rotationBias, subImage,
                     subUv, subImages, drawnBits, pivot);
     return _cg_sprite_v;
 }
 
 CgMaterialParticle _cg_sprite_particle(float facing, vec4 facingVector, vec4 alignmentVector, float stretch,
-                                       float maxStretch, float cameraOffset, float rotationBias, vec4 subImage,
+                                       float maxStretch, float cameraOffset, float keepSize, float rotationBias, vec4 subImage,
                                        vec4 subUv, sampler2D subImages, float drawnBits, vec4 pivot) {
-    _cg_sprite_once(facing, facingVector, alignmentVector, stretch, maxStretch, cameraOffset, rotationBias, subImage,
+    _cg_sprite_once(facing, facingVector, alignmentVector, stretch, maxStretch, cameraOffset, keepSize, rotationBias, subImage,
                     subUv, subImages, drawnBits, pivot);
     return _cg_sprite_p;
 }
 
 #define CG_PARTICLE_LOCAL_TO_WORLD _cg_quat_mat3(_cg_SystemTurn)
-#define cg_material_vertex() _cg_sprite_vertex(_cg_Facing, _cg_FacingVector, _cg_AlignmentVector, _cg_Stretch,         _cg_MaxStretch, _cg_CameraOffset, _cg_RotationBias, _cg_SubImage, _cg_SubUV, _cg_SubImages, _cg_Drawn, _cg_Pivot)
-#define cg_material_particle() _cg_sprite_particle(_cg_Facing, _cg_FacingVector, _cg_AlignmentVector, _cg_Stretch,         _cg_MaxStretch, _cg_CameraOffset, _cg_RotationBias, _cg_SubImage, _cg_SubUV, _cg_SubImages, _cg_Drawn, _cg_Pivot)
+#define cg_material_vertex() _cg_sprite_vertex(_cg_Facing, _cg_FacingVector, _cg_AlignmentVector, _cg_Stretch,         _cg_MaxStretch, _cg_CameraOffset, _cg_KeepSize, _cg_RotationBias, _cg_SubImage, _cg_SubUV, _cg_SubImages, _cg_Drawn, _cg_Pivot)
+#define cg_material_particle() _cg_sprite_particle(_cg_Facing, _cg_FacingVector, _cg_AlignmentVector, _cg_Stretch,         _cg_MaxStretch, _cg_CameraOffset, _cg_KeepSize, _cg_RotationBias, _cg_SubImage, _cg_SubUV, _cg_SubImages, _cg_Drawn, _cg_Pivot)
 #elif defined(CG_VERTEX_STAGE) && defined(CG_TYPE_SPATIAL)
 // The mesh factory: a particle's mesh, drawn an instance a particle from Range's object records (CgVfxRange.objects):
 // the model its place, turn and size; custom0 its velocity and age; custom1 its progress, seed, opacity and heat;
 // custom2 its colour and its place in the order. As Unreal's MeshParticleVertexFactory.ush, the vertex colour and UVs
 // are the mesh's and the particle's colour is the particle's alone.
-CgMaterialVertex _cg_mesh_vertex(float cameraOffset, float drawnBits) {
+CgMaterialVertex _cg_mesh_vertex(float cameraOffset, float keepSize, float drawnBits) {
     CgMaterialVertex v;
     if ((int(drawnBits + 0.5) & _CG_DRAWN_CAMERA_OFFSET) != 0) cameraOffset = CG_PARTICLE_DRAWN(int(CG_OBJECT_CUSTOM2.w)).color.y;
-    v.worldPosition = (CG_OBJECT_TO_WORLD * vec4(cg_Position, 1.0)).xyz
-            + _cg_toward_eye(CG_OBJECT_TO_WORLD[3].xyz, _CG_EYE, cameraOffset);
+    vec3 centre = CG_OBJECT_TO_WORLD[3].xyz;
+    float kept = _cg_offset_scale(centre, _CG_EYE, cameraOffset, keepSize);
+    v.worldPosition = centre + kept * mat3(CG_OBJECT_TO_WORLD) * cg_Position + _cg_toward_eye(centre, _CG_EYE, cameraOffset);
     v.texCoords[0] = cg_TexCoord0;
     v.texCoords[1] = cg_TexCoord1;
     v.texCoords[2] = cg_TexCoord2;
@@ -638,7 +647,7 @@ CgMaterialParticle _cg_mesh_particle(vec4 subImage, vec4 subUv, sampler2D subIma
     return p;
 }
 
-#define cg_material_vertex() _cg_mesh_vertex(_cg_CameraOffset, _cg_Drawn)
+#define cg_material_vertex() _cg_mesh_vertex(_cg_CameraOffset, _cg_KeepSize, _cg_Drawn)
 // A mesh particle's local space is its own, as Unreal's mesh particle factory's is: its instance's turn and size.
 #define CG_PARTICLE_LOCAL_TO_WORLD mat3(CG_OBJECT_TO_WORLD)
 #define cg_material_particle() _cg_mesh_particle(_cg_SubImage, _cg_SubUV, _cg_SubImages, _cg_Drawn)

@@ -87,6 +87,7 @@ public final class CgEngineBufferRegistry {
                     _cg_MaxStretch ("ALIGNED facing: longest, in widths", float) = 4.0
                     _cg_Size ("The drawn extent, a sprite's or a strip's width, times this; never the simulated size", float) = 1
                     _cg_CameraOffset ("Drawn this many blocks toward the eye, Niagara's Particles.CameraOffset", float) = 0
+                    _cg_KeepSize ("1: the camera offset shrinks it by (d - offset) / d, so it looks the size it would where it is", float) = 0
                     _cg_RotationBias ("Radians added to each sprite's rotation: Cascade's axis lock bias", float) = 0
                     _cg_Pivot ("Niagara's pivot in UV space: the point of the quad on the particle, and turned about", vec4) = (0.5, 0.5, 0, 0)
                     _cg_Drawn ("Drawn slots its pool writes: dynamic parameters 0-3 a bit each, 32 sub-image, 64 camera offset, 128 every index reads the first, 256 Cascade's GPU sprites reading 0", float) = 0

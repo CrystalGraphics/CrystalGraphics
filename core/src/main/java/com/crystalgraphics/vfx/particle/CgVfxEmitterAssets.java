@@ -875,7 +875,8 @@ public final class CgVfxEmitterAssets {
     /**
      * {@code camera_offset}: Cascade's CameraOffset, a particle drawn {@code offset} blocks toward the eye
      * (ParticleModules_Camera.cpp:71-130; ParticleSystemRender.cpp:150-193). Sprites and meshes move by it (:473,
-     * :1434-1445); Cascade's trails and beams never read it, nor do ours.
+     * :1434-1445); Cascade's trails and beams never read it, nor do ours. {@code keep_size: true} shrinks it by
+     * {@code (d - offset) / d}, which neither engine does ({@code _cg_KeepSize}).
      */
     private static void cameraOffset(String name, Map<String, Object> renderer, Map<?, ?> in, Map<String, Object> values,
                                      Map<String, Object> binds, CgUnits units) {
@@ -895,6 +896,11 @@ public final class CgVfxEmitterAssets {
             binds.put("_cg_CameraOffset", Map.of("bind", form.get("bind"), "scale", units.toHost(1.0, CgQuantity.LENGTH)));
         }
         // Any other form is each particle's own: a drawn channel, set on the emitter.
+        Object keep = in.get("keep_size");
+        if (keep != null && !(keep instanceof Boolean)) {
+            throw new IllegalArgumentException(name + ": camera_offset's keep_size is " + keep + ", not true or false");
+        }
+        if (Boolean.TRUE.equals(keep)) values.put("_cg_KeepSize", 1.0);
     }
 
     /**
