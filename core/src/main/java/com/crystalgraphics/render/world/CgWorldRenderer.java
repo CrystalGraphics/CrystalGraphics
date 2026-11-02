@@ -39,9 +39,9 @@ import com.crystalgraphics.gl.buffer.shader.CgBonePalettes;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgMeshLods;
 import com.crystalgraphics.api.mesh.CgMeshTopology;
-import com.crystalgraphics.mc.compat.CgIrisCompat;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.world.CgWorldBegin;
+import com.crystalgraphics.platform.service.CgShaderPacks;
 import javax.annotation.Nullable;
 import com.crystalgraphics.render.mesh.CgMeshStore;
 import com.crystalgraphics.platform.gl.CgCapabilities;
@@ -1783,9 +1783,9 @@ public final class CgWorldRenderer {
             }
             return;
         }
-        if (!irisWarned && CgIrisCompat.isShaderPackActive()) {
+        if (!irisWarned && CgShaderPacks.packInUse()) {
             irisWarned = true;
-            LOGGER.warn("An Iris/Oculus shader pack is active: the world renderer draws into the main framebuffer, "
+            LOGGER.warn("A shader pack is active in " + CgShaderPacks.mod() + ": the world renderer draws into the main framebuffer, "
                     + "outside its deferred G-buffer, so its geometry is unlit under a deferred pack. cg_DepthBuffer "
                     + "remains valid.");
         }

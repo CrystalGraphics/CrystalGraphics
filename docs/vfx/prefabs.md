@@ -444,7 +444,7 @@ any mob, in both passes.
 
 ```java
 // MyHeroRenderer.render(entity, yaw, partialTick, poseStack, buffers, light), 1.20.1
-if (CgIrisCompat.isShaderPackActive()) {
+if (CgShaderPacks.packInUse()) {
     PoseStack.Pose pose = poseStack.last();
     int overlay = LivingEntityRenderer.getOverlayCoords(entity, 0f);          // the hurt flash, as vanilla's
     for (int s = 0; s < hero.materialSlots(); s++) {
@@ -461,7 +461,7 @@ if (CgIrisCompat.isShaderPackActive()) {
   renderer's pose stack stands (the entity's interpolated position), and the stack adds the camera.
 - **Each call writes quads**, as entity render types draw them; the pack fills in its tangents and texture centres
   per quad.
-- `CgIrisCompat.isRenderingShadowPass()` says the renderer is being called for the shadow map: skip what should cast
+- `CgShaderPacks.renderingShadowPass()` says the renderer is being called for the shadow map: skip what should cast
   no shadow (a glow layer).
 - Under a pack, the engine's entity material is not used: a tint is yours to multiply into `argb`, and the hurt flash
   is the overlay, as above.

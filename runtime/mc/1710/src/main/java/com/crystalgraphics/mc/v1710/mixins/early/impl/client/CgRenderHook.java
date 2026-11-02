@@ -86,7 +86,6 @@ public class CgRenderHook {
     private void onAfterTranslucentContent(float partialTicks, long finishTimeNano,
                                             CallbackInfo ci) {
         // Note: CG geometry renders outside Angelica/Iris's GBuffer chain.
-        // See CgIrisCompat for detection API if Iris-specific behaviour is needed.
         crystalgraphics$fire(CgRenderStage.WORLD_TRANSPARENT, Minecraft.getMinecraft(), partialTicks);
     }
 

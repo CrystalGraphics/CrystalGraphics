@@ -267,7 +267,7 @@ which also covers 26.1's own main-target framebuffer and 26.2 under Vulkan.
 
 **Iris/Oculus**: with a shader pack active, CrystalGraphics geometry renders into the main FBO **outside**
 Iris's deferred GBuffer chain and appears unlit under deferred pipelines; `cg_DepthBuffer` stays valid.
-`CgIrisCompat.isShaderPackActive()` detects it, and `CgWorldRenderer` warns once.
+`CgShaderPacks.packInUse()` (`platform.service`, provided from Iris's public API by the modern hosts for Iris and Oculus and by 1.7.10's for Angelica; legacy Forge has none) detects it, and `CgWorldRenderer` warns once.
 
 **Mixin policy**: prefer a native loader event, or a GLFW callback for input; a mixin only where neither
 exists.

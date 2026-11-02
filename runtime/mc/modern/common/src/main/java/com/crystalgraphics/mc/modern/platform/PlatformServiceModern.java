@@ -43,6 +43,7 @@ import com.crystalgraphics.platform.service.CgInputService;
 import com.crystalgraphics.platform.service.CgLifecycleService;
 import com.crystalgraphics.platform.service.CgModLoader;
 import com.crystalgraphics.platform.service.CgReloadService;
+import com.crystalgraphics.platform.service.CgShaderPacks;
 import com.crystalgraphics.platform.service.CgRenderingService;
 import com.crystalgraphics.platform.service.CgResourceService;
 import com.crystalgraphics.platform.service.CgSoundService;
@@ -144,6 +145,7 @@ public final class PlatformServiceModern implements CgPlatformService {
         CgPlatform.provide(CgAudioDecoder.SERVICE, new StbVorbisDecoder());
         CgPlatform.provide(CgWorldStimulus.SERVICE, new WorldStimulusModern());
         CgPlatform.provide(CgGameDirectory.SERVICE, PlatformServiceModern::gameDirectory);
+        CgPlatform.provide(CgShaderPacks.HOST, CgShaderPacks.irisApi());   // Iris, Oculus
         // What WorldEventsModern.poll reports; the explosion and the broken block are the loaders' mixins'.
         //? if >=1.14 {
         CgWorldEvents.declare(CgWorldEvents.ENTITY_HURT | CgWorldEvents.ENTITY_DIED);

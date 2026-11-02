@@ -169,6 +169,7 @@ public final class PlatformService1710 implements CgPlatformService {
         // server that never fills it is the supported case rather than a degraded one.
         if (client) {
             CgPlatform.provide(CgCursorService.SERVICE, new Lwjgl2CursorService());
+            CgPlatform.provide(CgShaderPacks.HOST, CgShaderPacks.irisApi());   // Angelica
             // The client's levels and player, client only for the same reason.
             Client1710.install();
             CgPlatform.provide(CgHostCamera.SERVICE, new HostCamera1710());

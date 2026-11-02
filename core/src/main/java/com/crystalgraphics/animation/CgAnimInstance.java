@@ -504,7 +504,7 @@ public final class CgAnimInstance {
      *
      * <pre>{@code
      * // in the entity renderer, after POSE, once per material slot, under a pack:
-     * if (CgIrisCompat.isShaderPackActive()) {
+     * if (CgShaderPacks.packInUse()) {
      *     for (int s = 0; s < body.materialSlots(); s++) {
      *         VertexConsumer out = buffers.getBuffer(RenderType.entityCutoutNoCull(textures[s]));
      *         body.cpuSkin(s, firstPerson, (x, y, z, u, v, argb, nx, ny, nz) -> ...);   // see CgPosedVertexSink

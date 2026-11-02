@@ -115,8 +115,8 @@ public final class LifecycleModern {
      * Fabric from {@code WorldRenderEvents.LAST} and a node mixin from 1.21.10. The full table is
      * {@code docs/MINECRAFT_INTEGRATION.md} § <i>The world passes</i>.</p>
      *
-     * <p>Engine geometry lands in the main FBO, outside Iris's GBuffer chain; {@code CgIrisCompat} is
-     * the detection API if that ever needs handling.</p>
+     * <p>Engine geometry lands in the main FBO, outside Iris's GBuffer chain; {@code CgShaderPacks} says
+     * whether a pack is in use.</p>
      */
     public static void transparentPass() {
         if (!canRender()) return;
