@@ -83,6 +83,7 @@ public final class CgVfxEmitterCompiler {
         int turnState = record.word(CgVfxRecord.Tail.TURN_STATE);
         int ribbon = record.word(CgVfxRecord.Tail.RIBBON);
         int field = record.word(CgVfxRecord.Tail.FIELD);
+        int visibility = record.word(CgVfxRecord.Tail.VISIBILITY);
         s.append("\nFxParticle step_unpack(FxRecord r) {\n    FxParticle p;\n");
         unpack(s, "position", "uintBitsToFloat", CgVfxRecord.POSITION, 3);
         unpack(s, "age", "uintBitsToFloat", CgVfxRecord.AGE, 1);
@@ -131,6 +132,8 @@ public final class CgVfxEmitterCompiler {
         } else {
             s.append("    p.fieldTurn = vec3(0.0);\n    p.fieldScale = vec3(1.0);\n    p.speedScale = 1.0;\n");
         }
+        if (visibility >= 0) unpack(s, "visibility", "uintBitsToFloat", visibility, 1);
+        else s.append("    p.visibility = 1.0;\n");
         if (ribbon >= 0) {
             unpack(s, "trailTangent", "uintBitsToFloat", ribbon, 4);
             unpack(s, "trailUp", "uintBitsToFloat", ribbon + 4, 4);
@@ -182,6 +185,7 @@ public final class CgVfxEmitterCompiler {
             pack(w, "p.fieldScale", field + 3, 3);
             pack(w, "p.speedScale", field + 6, 1);
         }
+        if (visibility >= 0) pack(w, "p.visibility", visibility, 1);
         if (ribbon >= 0) {
             pack(w, "p.trailTangent", ribbon, 4);
             pack(w, "p.trailUp", ribbon + 4, 4);
@@ -238,7 +242,8 @@ public final class CgVfxEmitterCompiler {
             Pattern.compile("\\bp\\.turn(Base|Scale)\\s*([-+*]?=(?!=))"),
             Pattern.compile("\\bp\\.orbit(Offset|Turn|Rate)\\s*([-+*]?=(?!=))"),
             Pattern.compile("\\bp\\.trail(Tangent|Up|Extra)\\s*([-+*]?=(?!=))"),
-            Pattern.compile("\\bp\\.(fieldTurn|fieldScale|speedScale)\\s*([-+*]?=(?!=))")};
+            Pattern.compile("\\bp\\.(fieldTurn|fieldScale|speedScale)\\s*([-+*]?=(?!=))"),
+            Pattern.compile("\\bp\\.visibility\\s*([-+*]?=(?!=))")};
     /** The {@code BEAM} tail's vec4s, in order: {@code FxParticle}'s fields. */
     private static final String[] BEAM_FIELDS = {"beamSource", "beamSourceTangent", "beamTarget", "beamTargetTangent", "beamNoise", "beamTurn"};
     private static final Pattern INCLUDE = Pattern.compile("#include\\s+\"([^\"]+)\"");
@@ -640,6 +645,7 @@ public final class CgVfxEmitterCompiler {
                     p.fieldTurn = vec3(0.0);
                     p.fieldScale = vec3(1.0);
                     p.speedScale = 1.0;
+                    p.visibility = 1.0;
                     p.resting = false;
                     p.state = 0u;
                     p.turnBase = vec3(0.0);

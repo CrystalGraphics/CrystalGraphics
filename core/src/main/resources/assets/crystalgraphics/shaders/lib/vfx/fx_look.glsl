@@ -230,6 +230,8 @@ FxDrawn look_part(int part) {
             color = vec4(born.rgb, born.a < 0.0 ? color.a : born.a);
         }
         color *= tint;
+        // Niagara's Occlusion data interface, as its module applies it: alpha times the step's visibility fraction.
+        if (_VisibilityAt >= 0) color.a *= look_word(_VisibilityAt);
         d.place = vec4(position, size * shape.w);
         d.motion = vec4(velocity, t);
         // A field's turn: its y a sprite's screen angle, which Range takes back out for a mesh.

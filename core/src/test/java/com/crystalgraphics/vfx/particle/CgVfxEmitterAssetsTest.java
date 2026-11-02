@@ -731,6 +731,23 @@ public class CgVfxEmitterAssetsTest {
         assertEquals(frame.bind().apply(0.25f, 0), back.bind().apply(0.25f, 0), 1e-5f);
     }
 
+    /** Niagara's Occlusion data interface as a module, a circle with its defaults and a rectangle, written back alike. */
+    @Test
+    public void occlusionRoundTrips() {
+        Map<String, Object> tree = new LinkedHashMap<>();
+        tree.put("_v", 1);
+        tree.put("properties", Map.of("capacity", 16));
+        tree.put("particle_update", List.of(
+                Map.of("id", "core", "module", "crystalgraphics:occlusion", "inputs", Map.of("diameter", 0.4)),
+                Map.of("id", "streak", "module", "crystalgraphics:occlusion", "inputs", Map.of("window", "rectangle",
+                        "width", 1.2, "height", 0.3, "steps_per_line", 4))));
+        CgVfxEmitter e = CgVfxEmitterAssets.compile("occluded", tree, null);
+        List<CgVfxModule> modules = e.modules();
+        assertEquals(CgVfxModule.Occlusion.circle(0.4f), modules.get(0));
+        assertEquals(CgVfxModule.Occlusion.rectangle(1.2f, 0.3f, 4), modules.get(1));
+        assertEquals(modules, CgVfxEmitterAssets.compile("occluded", CgVfxEmitterAssets.write(e), null).modules());
+    }
+
     private static void refuses(Map<String, Object> tree, String why) {
         try {
             CgVfxEmitterAssets.compile("orbits", tree, null);

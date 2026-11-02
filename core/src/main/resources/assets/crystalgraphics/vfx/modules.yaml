@@ -260,6 +260,14 @@ modules:
       { name: offset, type: float, quantity: length, by: [age], default: 0 },
       { name: update, type: enum, values: [direct, additive, scalar], default: direct }, { name: spawn_only, type: bool, default: false },
       { name: keep_size, type: bool, default: false }, { name: owner_scale, type: bool, default: false } ] }
+  # occlusion: Niagara's Occlusion data interface (NiagaraDataInterfaceOcclusion); no stock module
+  - { id: occlusion, groups: [particle_update], inputs: [
+      { name: window, type: enum, values: [circle, rectangle], default: circle },
+      { name: diameter, type: float, quantity: length, visible_when: { window: circle } },
+      { name: rings, type: int, default: 1, visible_when: { window: circle } }, { name: samples_per_ring, type: int, default: 1, visible_when: { window: circle } },
+      { name: center_sample, type: bool, default: true, visible_when: { window: circle } },
+      { name: width, type: float, quantity: length, visible_when: { window: rectangle } }, { name: height, type: float, quantity: length, visible_when: { window: rectangle } },
+      { name: steps_per_line, type: int, visible_when: { window: rectangle } } ] }
   - { id: dynamic_material_parameters, groups: [particle_update], seeded: true, analytic: true, unreal: { niagara: DynamicMaterialParameters, cascade: [ParameterDynamic] }, inputs: [
       { name: dynamic_0, type: struct, default: null }, { name: dynamic_1, type: struct, default: null }, { name: dynamic_2, type: struct, default: null }, { name: dynamic_3, type: struct, default: null },
       { name: use_emitter_time, type: bool, default: false } ] }

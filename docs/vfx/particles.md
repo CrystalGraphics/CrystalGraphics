@@ -732,6 +732,43 @@ collisions and what the last one does.
 - **A frozen particle still ages and dies**, and its colour keeps playing over its life.
 - **Damping or freezing the turn of a mesh whose rotation rate changes over life** fails at load: not built yet.
 
+## Over the floor, hidden behind walls: occlusion
+
+A hit spark bursting at a fighter's chest reaches the floor, and the floor's depth cuts it on a hard line. Unreal's
+answer is two parts: its material drawn with no depth test (`state: { depth_test: false }`, [materials](materials.md)),
+so the floor no longer cuts it, and `crystalgraphics:occlusion`, Niagara's Occlusion data interface, so it still fades
+out behind a wall or a character. Each step the module samples the scene's depth in a window round each particle,
+compares every sample with the particle's own depth, and multiplies its drawn alpha by the share of the samples on
+screen that nothing covers.
+
+```yaml
+particle_update:
+  - { module: crystalgraphics:occlusion, inputs: { diameter: 40 } }                        # its centre and one ring
+  - { module: crystalgraphics:occlusion, inputs: { diameter: 40, rings: 2, samples_per_ring: 8 } }   # 17: softer at an edge
+  - { module: crystalgraphics:occlusion, inputs: { window: rectangle, width: 120, height: 30, steps_per_line: 4 } }
+```
+
+```java
+CgVfxEmitter.builder("sparks").module(CgVfxModule.Occlusion.circle(0.4f))...              // blocks
+CgVfxEmitter.builder("streaks").module(CgVfxModule.Occlusion.rectangle(1.2f, 0.3f, 4))...
+```
+
+| Input | Means |
+|---|---|
+| `window` | `circle` (the default) or `rectangle`, Niagara's two queries |
+| `diameter` | a circle's width, a length: required |
+| `rings`, `samples_per_ring` | its rings of samples and each ring's count, 1 and 1 unless given |
+| `center_sample` | whether it samples its centre too, true unless given |
+| `width`, `height`, `steps_per_line` | a rectangle's size across the screen and its samples a side (squared in all): all required |
+
+- **Size the window to what must be seen**, the spark's core rather than the whole sprite: samples low on a sprite
+  standing in the floor meet the floor in front of it and count as covered.
+- **What covers a particle** is the scene's depth at the opaque pass: blocks and entities, not glass or water.
+- **Off screen, or with no depth from the stage**, a particle is seen whole.
+- **It decides per particle**: a particle whose window an edge splits fades by the share covered, and one large
+  particle (a wave's mesh) fades whole by its one window.
+- **Its cost is its samples**: each particle reads every sample each step. The defaults' two are cheap for any count.
+
 ## Events: one emitter's particles spawning another's
 
 An event fires where a particle is born, dies, collides or each tick, and spawns another emitter's particles there.

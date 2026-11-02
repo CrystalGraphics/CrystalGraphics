@@ -96,7 +96,12 @@ public final class CgVfxRecord {
          * mesh turn, its scale per axis from 1 (none drawn at or below 0) and its speed scale from 1 (floored at 0), which
          * multiplies the solve's motion.
          */
-        FIELD(7);
+        FIELD(7),
+        /**
+         * Its share not covered by the scene this step, 0 to 1 ({@code CgVfxModule.Occlusion}, Niagara's Occlusion data
+         * interface): Look multiplies its drawn alpha by it. Set each step, never compounded.
+         */
+        VISIBILITY(1);
 
         private final int components;
 

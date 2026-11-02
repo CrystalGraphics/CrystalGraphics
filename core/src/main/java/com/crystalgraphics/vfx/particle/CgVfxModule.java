@@ -1770,6 +1770,86 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
     }
 
     /**
+     * Fades a particle by how much of it the scene covers, Niagara's Occlusion data interface
+     * ({@code NiagaraDataInterfaceOcclusion}'s {@code QueryOcclusionFactorWithCircle} and {@code WithRectangle}): the
+     * scene's depth sampled in a window round it, each sample against its own depth, and its drawn alpha times the
+     * share of the samples on screen nothing covers. With a material whose {@code depth_test} is off, a hit spark draws
+     * whole over the floor it bursts on and fades out behind a wall or a character. Runs after the solver.
+     *
+     * <pre>{@code
+     * CgVfxModule.Occlusion.circle(0.4f)                       // the spark's core: its centre and one sample round it
+     * CgVfxModule.Occlusion.circle(0.4f, 2, 8, true)           // 17 samples: a softer fade at an edge
+     * CgVfxModule.Occlusion.rectangle(1.2f, 0.3f, 4)           // a wide streak, a 4x4 grid across it
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Size the window to what must be seen, not the whole sprite: samples low on a sprite standing in the floor
+     *       meet the floor in front of it and count as covered.</li>
+     *   <li>What covers it is the scene's depth at the opaque pass: blocks and entities, not glass or water.</li>
+     *   <li>Off screen, or where the stage hands no depth, it is seen whole.</li>
+     *   <li>Each particle reads every sample each step: a few for thousands of particles, more only for a few.</li>
+     * </ul>
+     *
+     * @param window       {@link Window#CIRCLE} or {@link Window#RECTANGLE}
+     * @param diameter     a circle's width, blocks
+     * @param rings        a circle's rings of samples, inside it
+     * @param samplesPerRing each ring's samples
+     * @param centerSample whether a circle samples its centre too
+     * @param width        a rectangle's width across the screen, blocks
+     * @param height       its height
+     * @param stepsPerLine a rectangle's samples a side: steps squared in all
+     */
+    record Occlusion(Window window, float diameter, int rings, int samplesPerRing, boolean centerSample,
+                     float width, float height, int stepsPerLine) implements CgVfxModule {
+        private static final CgVfxDataInterface[] DEPTH = {CgVfxDataInterfaces.DEPTH};
+
+        /** Where it samples, as Niagara's two queries. */
+        public enum Window { CIRCLE, RECTANGLE }
+
+        public Occlusion {
+            if (window == Window.CIRCLE && !(diameter > 0f && rings >= 0 && samplesPerRing >= 0)) {
+                throw new IllegalArgumentException("an occlusion circle of " + diameter + " blocks, " + rings + " rings of "
+                        + samplesPerRing + " samples");
+            }
+            if (window == Window.CIRCLE && !centerSample && rings * samplesPerRing == 0) {
+                throw new IllegalArgumentException("an occlusion circle with no sample");
+            }
+            if (window == Window.RECTANGLE && !(width > 0f && height > 0f && stepsPerLine >= 1)) {
+                throw new IllegalArgumentException("an occlusion rectangle of " + width + " by " + height + " blocks, "
+                        + stepsPerLine + " steps a line");
+            }
+        }
+
+        /** A circle of {@code diameter} blocks, its centre and one ring of one sample: Niagara's defaults. */
+        public static Occlusion circle(float diameter) {
+            return circle(diameter, 1, 1, true);
+        }
+
+        public static Occlusion circle(float diameter, int rings, int samplesPerRing, boolean centerSample) {
+            return new Occlusion(Window.CIRCLE, diameter, rings, samplesPerRing, centerSample, 0f, 0f, 1);
+        }
+
+        public static Occlusion rectangle(float width, float height, int stepsPerLine) {
+            return new Occlusion(Window.RECTANGLE, 0f, 1, 1, true, width, height, stepsPerLine);
+        }
+
+        @Override
+        public boolean afterSolve() {
+            return true;
+        }
+
+        @Override
+        public String gpuKind() {
+            return "occlusion";
+        }
+
+        @Override
+        public CgVfxDataInterface[] dataInterfaces() {
+            return DEPTH;
+        }
+    }
+
+    /**
      * The entities round the camera (mobs, players; not items or projectiles), with {@link Collide}'s response at the
      * face of the box a particle entered, on screen or not. A particle strikes a box only on entering it, so one born
      * inside its caster flies out; its collision events carry the entity ({@code CgVfxEventRows.entity}). Runs after the

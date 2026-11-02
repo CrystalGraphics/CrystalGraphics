@@ -38,6 +38,8 @@ struct FxParticle {
     // its speed scale from 1. Those defaults unless a field writes them.
     vec3 fieldTurn, fieldScale;
     float speedScale;
+    // Its share the scene does not cover this step (CgVfxRecord.Tail.VISIBILITY): 1 unless an occlusion kind writes it.
+    float visibility;
     uint id, slot, collisions, hitEntity;
     vec4 hit;
 };

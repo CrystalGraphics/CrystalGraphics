@@ -1253,6 +1253,7 @@ public final class CgVfxParticlePool {
                 .set("_TurnAt", record.word(CgVfxRecord.Tail.TURN)).set("_TurnRateAt", record.word(CgVfxRecord.Tail.TURN_RATE))
                 .set("_TurnStateAt", record.word(CgVfxRecord.Tail.TURN_STATE)).set("_OrbitAt", record.word(CgVfxRecord.Tail.ORBIT))
                 .set("_FieldAt", record.word(CgVfxRecord.Tail.FIELD))
+                .set("_VisibilityAt", record.word(CgVfxRecord.Tail.VISIBILITY))
                 .set("_InstanceRow", shape.instanceRowVectors()).set("_Floors", shape.floors() ? 1 : 0)
                 .set("_Texels", CgVfxGpuEmitter.CURVE_TEXELS));
     }
