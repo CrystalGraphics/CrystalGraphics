@@ -161,6 +161,108 @@ public final class CgPose {
         return this;
     }
 
+    /**
+     * Mirrors the pose across {@code table}'s axis, each pair swapping sides: Unreal's {@code FAnimationRuntime::MirrorPose}
+     * (AnimationRuntime.cpp:1432-1530). A bone's translation and rotation are taken into the skeleton's space through
+     * the rest pose's rotations, mirrored, corrected for the two bones' rest rotations, and brought into the target's
+     * parent; scale is kept. A bone the table leaves out stays as it is.
+     *
+     * <pre>{@code
+     * swing.sample(pose.rest(), t);
+     * pose.mirror(mirror);   // the right arm's swing, on the left
+     * }</pre>
+     */
+    public CgPose mirror(CgMirrorTable table) {
+        if (table.skeleton() != skeleton && !table.skeleton().equals(skeleton)) {
+            throw new IllegalArgumentException(table + " is of another skeleton");
+        }
+        int[] source = table.source;
+        float[] ref = table.restRotation;
+        CgMirrorTable.Axis axis = table.axis();
+        if (source.length > 0 && source[0] >= 0) {
+            // The root, in place (AnimationRuntime.cpp:1490-1508)
+            Vector3f t = translation(0, mirrorT);
+            mirror(t, axis);
+            Quaternionf q = mirror(rotation(0, mirrorQ), axis);
+            Quaternionf rest = mirrorRest.set(ref[0], ref[1], ref[2], ref[3]);
+            q.mul(mirror(mirrorTmp.set(rest), axis).invert()).mul(rest);
+            write(0, t, q, local, 0);
+        }
+        for (int target = 1; target < source.length; target++) {
+            int from = source[target];
+            if (from == target) {
+                mirrorBone(table, target, target, mirrorA);
+                System.arraycopy(mirrorA, 0, local, target * REST, REST);
+            } else if (from > target) {
+                mirrorBone(table, from, target, mirrorA);
+                mirrorBone(table, target, from, mirrorB);
+                System.arraycopy(mirrorA, 0, local, target * REST, REST);
+                System.arraycopy(mirrorB, 0, local, from * REST, REST);
+            }
+        }
+        return this;
+    }
+
+    private final Vector3f mirrorT = new Vector3f();
+    private final Quaternionf mirrorQ = new Quaternionf(), mirrorRest = new Quaternionf(), mirrorTmp = new Quaternionf(),
+            mirrorParent = new Quaternionf();
+    private final float[] mirrorA = new float[REST], mirrorB = new float[REST];
+
+    /** Unreal's {@code MirrorTransform}: bone {@code from}'s local transform as bone {@code to}'s, into {@code out}. */
+    private void mirrorBone(CgMirrorTable table, int from, int to, float[] out) {
+        float[] ref = table.restRotation;
+        CgMirrorTable.Axis axis = table.axis();
+        int fromParent = skeleton.parent(from), toParent = skeleton.parent(to);
+        Quaternionf sourceParent = mirrorParent.set(ref[fromParent * 4], ref[fromParent * 4 + 1], ref[fromParent * 4 + 2], ref[fromParent * 4 + 3]);
+        Vector3f t = sourceParent.transform(translation(from, mirrorT));
+        Quaternionf q = sourceParent.mul(rotation(from, mirrorQ), mirrorQ);
+        mirror(t, axis);
+        mirror(q, axis);
+        Quaternionf sourceBone = mirror(mirrorRest.set(ref[from * 4], ref[from * 4 + 1], ref[from * 4 + 2], ref[from * 4 + 3]), axis).invert();
+        q.mul(sourceBone).mul(mirrorTmp.set(ref[to * 4], ref[to * 4 + 1], ref[to * 4 + 2], ref[to * 4 + 3]));
+        Quaternionf targetParentInverse = mirrorParent.set(ref[toParent * 4], ref[toParent * 4 + 1], ref[toParent * 4 + 2], ref[toParent * 4 + 3]).invert();
+        targetParentInverse.transform(t);
+        targetParentInverse.mul(q, q);
+        write(from, t, q, out, -1);
+    }
+
+    /** Bone {@code scaleOf}'s scale with {@code t} and {@code q} into {@code out} at bone {@code at} (-1: at 0 of a bone's own array). */
+    private void write(int scaleOf, Vector3f t, Quaternionf q, float[] out, int at) {
+        int o = at < 0 ? 0 : at * REST;
+        int s = scaleOf * REST + 7;
+        float s0 = local[s], s1 = local[s + 1], s2 = local[s + 2];
+        out[o] = t.x;
+        out[o + 1] = t.y;
+        out[o + 2] = t.z;
+        q.normalize();
+        out[o + 3] = q.x;
+        out[o + 4] = q.y;
+        out[o + 5] = q.z;
+        out[o + 6] = q.w;
+        out[o + 7] = s0;
+        out[o + 8] = s1;
+        out[o + 9] = s2;
+    }
+
+    /** Unreal's {@code MirrorVector}: the axis's coordinate negated. */
+    private static void mirror(Vector3f v, CgMirrorTable.Axis axis) {
+        switch (axis) {
+            case X -> v.x = -v.x;
+            case Y -> v.y = -v.y;
+            case Z -> v.z = -v.z;
+        }
+    }
+
+    /** Unreal's {@code MirrorQuat} (AnimationRuntime.cpp:1396-1430): the two other axes' parts negated. */
+    private static Quaternionf mirror(Quaternionf q, CgMirrorTable.Axis axis) {
+        switch (axis) {
+            case X -> q.set(q.x, -q.y, -q.z, q.w);
+            case Y -> q.set(-q.x, q.y, -q.z, q.w);
+            case Z -> q.set(-q.x, -q.y, q.z, q.w);
+        }
+        return q;
+    }
+
     /** Each bone's transform in the skeleton's space from the local pose, parents first (FillUpComponentSpaceTransforms). */
     public CgPose resolve() {
         for (int b = 0; b < component.length; b++) {

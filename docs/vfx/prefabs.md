@@ -239,6 +239,61 @@ goku.slot(roar, 0.4f, 1f);      // this pose: roar at 0.4 s over whatever his se
   across workers.
 - `--mode=skinned-play` shows them: Goku and Kurama, Tab to pick, N/B clips, P pause, `,` `.` a frame, I/O rate,
   K a Kamehameha charging on its right hand.
+- **While the game is paused** every instance holds its time and is still posed, so it still draws. A new level or
+  dimension drops the client's instances.
+
+## Layers, bone writes, mirroring and hiding
+
+What plays on part of the body, what code moves after the clips, a clip played on the other side, and bones not
+drawn. In the order a frame applies them: sections and the slot, then each layer, then each bone write, then hiding.
+
+```java
+// A layer over part of the body: branches (each ramping in over its depth), or a weight per bone
+CgAnimLayer arms = role.addLayer("Arms").branch("right_arm", 0).branch("left_arm", 0);
+CgAnimLayer lean = role.addLayer("Lean").bone("body", 0.5f).bone("head", 0.25f);
+arms.slot(holdSword, 0f, 1f);       // this frame, over the arms
+arms.weight(0.6f);                  // the whole layer's weight, scaling its mask
+
+// Code after the clips: Unreal's Transform (Modify) Bone
+CgBoneWrite look = role.write("head");
+look.rotation(CgBoneWrite.Mode.ADD, CgBoneWrite.Space.COMPONENT, yawPitch);   // each frame
+CgBoneWrite drop = role.write("model");
+drop.translation(CgBoneWrite.Mode.ADD, CgBoneWrite.Space.COMPONENT, 0f, -0.125f, 0f).alpha(crouch);
+
+// A clip authored for the right side, played on the left
+CgMirrorTable mirror = CgMirrorTable.byName(mesh.skeleton(), CgMirrorTable.Axis.X).self("body").build();
+role.slot(swing, phase, 1f, mirror);
+
+// Bones not drawn: their skinning collapses, never their pose
+role.hide("head", CgAnimInstance.Hide.BONE);          // the head's own vertices; a hat on a child bone stays
+role.hide("left_arm", CgAnimInstance.Hide.BRANCH);    // the arm and all below it, as Unreal's HideBone
+role.hideFromOwner("head", CgAnimInstance.Hide.BRANCH);
+world.draw(role, skin).bones(role.palette(ownerView)).submit();   // the owner's palette has the head collapsed
+```
+
+- **A layer's mask** is Unreal's layered blend per bone: a branch gives a bone `d` levels below it `(d + 1) / depth`
+  (0 for the whole branch at once), and branches add up to 1; `bone(name, w)` sets one bone's weight alone (a blend
+  mask entry). Each bone then takes the layer's pose by its mask weight times the layer's `weight`. With nothing
+  playing, a layer leaves the body as it is.
+- **A bone write** applies scale, then rotation, then translation, each ignored, replaced or added to (an added
+  rotation is `q * current`) in its own space: `COMPONENT` (the mesh's), `PARENT` (the bone's own local transform) or
+  `BONE` (relative to where the bone is). Writes apply in the order made; a write in another space sees earlier writes.
+  `alpha` blends it over the pose. A whole pose composed elsewhere is written bone by bone with `REPLACE` in `PARENT`.
+- **Mirroring** is Unreal's mirror data table: pairs by name (`r_`/`l_`, `_l`/`_r`, `right`/`left`, ...), centre
+  bones (`spine`, `root`, `pelvis`, `neck`, `head` ...) onto themselves, and anything else left as it is, so name your
+  other centre bones with `self(name)`. Sections, slot entries and layer entries each take a table.
+- **Hiding** keeps sockets and the bones below moving. `hideFromOwner` costs a second palette only while a bone is
+  hidden from the owner.
+
+### On a dedicated server
+
+The server poses its instances each game tick, for their bones and sockets, and draws nothing:
+
+```java
+CgAnimInstance body = CgAnimation.server().add(new CgAnimInstance(mesh));   // CgMeshLoader.skeletal reads headless
+body.play(CgAnimSection.of(mesh.sequence("swing")).build());
+body.socket(body.socket("hand_r"), point, turn);   // this tick's pose
+```
 
 ## Sockets: attaching to a posed bone
 

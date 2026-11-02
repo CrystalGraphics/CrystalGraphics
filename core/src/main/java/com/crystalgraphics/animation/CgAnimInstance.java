@@ -3,6 +3,7 @@ package com.crystalgraphics.animation;
 import com.crystalgraphics.render.world.CgPipelinePrecache;
 import com.crystalgraphics.api.animation.CgAnimSection;
 import com.crystalgraphics.api.animation.CgAnimSequence;
+import com.crystalgraphics.api.animation.CgMirrorTable;
 import com.crystalgraphics.api.animation.CgPose;
 import com.crystalgraphics.api.animation.CgSocket;
 import com.crystalgraphics.api.material.CgMaterial;
@@ -70,12 +71,23 @@ public final class CgAnimInstance {
     private long paletteFrame = -1;
     private boolean posed;
     private final List<CgAnimSection> sections = new ArrayList<>();
+    private final List<CgMirrorTable> sectionMirrors = new ArrayList<>();
     private final CgPose pose;
     private final Matrix4f[] skinning;
+    /** The owner's view's skinning, where a bone is hidden from it; null until one is. */
+    @Nullable
+    private Matrix4f[] ownerSkinning;
+    /** Per bone, how it is hidden in every view and in the owner's alone; and which bones collapse in each. */
+    private final Hide[] hidden, hiddenFromOwner;
+    private final boolean[] collapsed, collapsedForOwner, branchHidden;
+    private boolean visibilityDirty, anyHidden, anyHiddenFromOwner;
+    private int ownerPalette = -1;
+    private final List<CgBoneWrite> writes = new ArrayList<>();
     private CgPose[] scratch = new CgPose[0];
     private float[] weights = new float[0];
     /** This frame's slot entries, cleared by {@link #evaluate()}: Unreal's montage slot. */
     private CgAnimSequence[] slotClips = new CgAnimSequence[0];
+    private CgMirrorTable[] slotMirrors = new CgMirrorTable[0];
     private float[] slotTimes = new float[0], slotWeights = new float[0];
     private int slotCount;
     private double time;
@@ -117,6 +129,13 @@ public final class CgAnimInstance {
         this.pose = new CgPose(mesh.skeleton());
         this.skinning = new Matrix4f[mesh.skeleton().boneCount()];
         for (int b = 0; b < skinning.length; b++) skinning[b] = new Matrix4f();
+        this.hidden = new Hide[skinning.length];
+        this.hiddenFromOwner = new Hide[skinning.length];
+        Arrays.fill(hidden, Hide.NONE);
+        Arrays.fill(hiddenFromOwner, Hide.NONE);
+        this.collapsed = new boolean[skinning.length];
+        this.collapsedForOwner = new boolean[skinning.length];
+        this.branchHidden = new boolean[skinning.length];
         pose.resolve();
         pose.skinning(mesh, skinning);
         reserve();
@@ -128,7 +147,19 @@ public final class CgAnimInstance {
 
     /** Adds a section to its timeline. */
     public CgAnimInstance play(CgAnimSection section) {
+        return play(section, null);
+    }
+
+    /**
+     * Adds a section whose pose is mirrored by {@code mirror}, null for as authored: Unreal's mirror node over it.
+     *
+     * <pre>{@code
+     * body.play(CgAnimSection.of(swingRight).build(), mirror);   // authored for the right arm, swung with the left
+     * }</pre>
+     */
+    public CgAnimInstance play(CgAnimSection section, @Nullable CgMirrorTable mirror) {
         sections.add(Objects.requireNonNull(section, "section"));
+        sectionMirrors.add(mirror);
         reserve();
         return this;
     }
@@ -148,13 +179,20 @@ public final class CgAnimInstance {
      * both count.
      */
     public CgAnimInstance slot(CgAnimSequence clip, float position, float weight) {
+        return slot(clip, position, weight, null);
+    }
+
+    /** As {@link #slot(CgAnimSequence, float, float)}, the clip's pose mirrored by {@code mirror} (null for as authored). */
+    public CgAnimInstance slot(CgAnimSequence clip, float position, float weight, @Nullable CgMirrorTable mirror) {
         if (slotCount == slotClips.length) {
             int n = Math.max(2, slotCount * 2);
             slotClips = Arrays.copyOf(slotClips, n);
+            slotMirrors = Arrays.copyOf(slotMirrors, n);
             slotTimes = Arrays.copyOf(slotTimes, n);
             slotWeights = Arrays.copyOf(slotWeights, n);
         }
         slotClips[slotCount] = Objects.requireNonNull(clip, "clip");
+        slotMirrors[slotCount] = mirror;
         slotTimes[slotCount] = position;
         slotWeights[slotCount++] = weight;
         reserve();
@@ -173,13 +211,18 @@ public final class CgAnimInstance {
     }
 
     public CgAnimInstance remove(CgAnimSection section) {
-        sections.remove(section);
+        int at = sections.indexOf(section);
+        if (at >= 0) {
+            sections.remove(at);
+            sectionMirrors.remove(at);
+        }
         return this;
     }
 
     /** Takes every section off its timeline, leaving its time. */
     public CgAnimInstance clear() {
         sections.clear();
+        sectionMirrors.clear();
         return this;
     }
 
@@ -242,6 +285,7 @@ public final class CgAnimInstance {
                 if (w <= 0f) continue;
                 float at = section.animationTime(time);
                 section.sequence().sample(scratch[n].rest(), at);
+                if (sectionMirrors.get(s) != null) scratch[n].mirror(sectionMirrors.get(s));
                 sampledClips[n] = section.sequence();
                 sampledTimes[n] = at;
                 weights[n++] = w;
@@ -259,6 +303,7 @@ public final class CgAnimInstance {
         for (int i = 0; i < slotCount; i++) {
             if (slotWeights[i] <= 0f) continue;
             slotClips[i].sample(scratch[n].rest(), slotTimes[i]);
+            if (slotMirrors[i] != null) scratch[n].mirror(slotMirrors[i]);
             sampledClips[n] = slotClips[i];
             sampledTimes[n] = slotTimes[i];
             weights[n++] = slotWeights[i] * scale;
@@ -268,6 +313,7 @@ public final class CgAnimInstance {
         for (int i = 0; i < n; i++) if (sampledClips[i] != null) curves.add(sampledClips[i], sampledTimes[i], weights[i]);
         Arrays.fill(sampledClips, 0, n, null);
         Arrays.fill(slotClips, 0, slotCount, null);
+        Arrays.fill(slotMirrors, 0, slotCount, null);
         slotCount = 0;
         if (n == 0) {
             pose.rest();
@@ -275,9 +321,136 @@ public final class CgAnimInstance {
             pose.blend(scratch, weights, n);
         }
         for (int i = 0; i < layers.size(); i++) layers.get(i).apply(time, pose, curves);
+        for (int i = 0; i < writes.size(); i++) {
+            CgBoneWrite write = writes.get(i);
+            if (write.needsComponent()) pose.resolve();
+            write.apply(pose);
+        }
         pose.resolve();
         pose.skinning(mesh, skinning);
+        collapse();
         return this;
+    }
+
+    /**
+     * Collapses the hidden bones' skinning matrices to a point, never their pose: sockets and children still read the
+     * bone. The owner's view collapses every view's hidden bones and its own.
+     */
+    private void collapse() {
+        if (visibilityDirty) rebuildVisibility();
+        if (anyHiddenFromOwner) {
+            for (int b = 0; b < skinning.length; b++) {
+                ownerSkinning[b].set(skinning[b]);
+                if (collapsedForOwner[b]) ownerSkinning[b].scale(0f);
+            }
+        }
+        if (anyHidden) for (int b = 0; b < skinning.length; b++) if (collapsed[b]) skinning[b].scale(0f);
+    }
+
+    /**
+     * Unreal's {@code RebuildVisibilityArray} (SkinnedMeshComponent.cpp:2124-2166): a bone hidden with its branch hides
+     * every bone below it; one hidden alone hides only its own vertices.
+     */
+    private void rebuildVisibility() {
+        visibilityDirty = false;
+        anyHidden = rebuild(hidden, null, collapsed);
+        boolean fromOwner = false;
+        for (Hide h : hiddenFromOwner) fromOwner |= h != Hide.NONE;
+        anyHiddenFromOwner = fromOwner && rebuild(hiddenFromOwner, hidden, collapsedForOwner);
+        if (anyHiddenFromOwner && ownerSkinning == null) {
+            ownerSkinning = new Matrix4f[skinning.length];
+            for (int b = 0; b < skinning.length; b++) ownerSkinning[b] = new Matrix4f();
+        }
+    }
+
+    /** Fills {@code out} from {@code hide} and, where not null, {@code also}; whether any bone collapses. */
+    private boolean rebuild(Hide[] hide, @Nullable Hide[] also, boolean[] out) {
+        boolean any = false;
+        for (int b = 0; b < out.length; b++) {
+            int parent = mesh.skeleton().parent(b);
+            Hide h = hide[b];
+            Hide a = also != null ? also[b] : Hide.NONE;
+            branchHidden[b] = (parent >= 0 && branchHidden[parent]) || h == Hide.BRANCH || a == Hide.BRANCH;
+            out[b] = branchHidden[b] || h == Hide.BONE || a == Hide.BONE;
+            any |= out[b];
+        }
+        return any;
+    }
+
+    // ---- what code changes after the clips
+
+    /** How a bone is hidden: Unreal's {@code HideBone}, or GeckoLib's own-cubes toggle. */
+    public enum Hide {
+        /** Drawn. */
+        NONE,
+        /** Only the bone's own vertices: what is below it still draws (GeckoLib's {@code setHidden}). */
+        BONE,
+        /** The bone and every bone below it (Unreal's {@code HideBone}). */
+        BRANCH
+    }
+
+    /**
+     * Hides bone {@code name} in every view, by {@code how}: its skinning matrix collapses, never its pose, so its
+     * sockets and the bones below it still move. Unreal's {@code HideBoneByName} for {@link Hide#BRANCH}.
+     *
+     * <pre>{@code
+     * role.hide("head", CgAnimInstance.Hide.BONE);        // the head's cubes go, a hat on a child bone stays
+     * role.hide("left_arm", CgAnimInstance.Hide.BRANCH);  // the arm and everything below it
+     * role.hide("head", CgAnimInstance.Hide.NONE);        // drawn again
+     * }</pre>
+     *
+     * @throws IllegalArgumentException where the skeleton has no {@code name}
+     */
+    public CgAnimInstance hide(String name, Hide how) {
+        hidden[bone(name)] = Objects.requireNonNull(how, "how");
+        visibilityDirty = true;
+        return this;
+    }
+
+    /**
+     * Hides bone {@code name} in its owner's view alone (Unreal's {@code bOwnerNoSee}, a bone at a time): drawn for
+     * every other view. While one is set, {@code POSE} writes a second palette, {@link #palette(boolean)}'s.
+     *
+     * <pre>{@code
+     * role.hideFromOwner("head", CgAnimInstance.Hide.BRANCH);   // the player does not see their own head
+     * world.draw(role, skin).bones(role.palette(ownerView)).submit();
+     * }</pre>
+     */
+    public CgAnimInstance hideFromOwner(String name, Hide how) {
+        hiddenFromOwner[bone(name)] = Objects.requireNonNull(how, "how");
+        visibilityDirty = true;
+        return this;
+    }
+
+    public Hide hidden(String name) {
+        return hidden[bone(name)];
+    }
+
+    /**
+     * A bone write on {@code name}, applied every frame after the clips and layers in the order made ({@link
+     * CgBoneWrite}, Unreal's modify bone). It does nothing until one of its parts is set.
+     *
+     * <pre>{@code
+     * CgBoneWrite drop = role.write("model");
+     * drop.translation(CgBoneWrite.Mode.ADD, CgBoneWrite.Space.COMPONENT, 0f, -crouch, 0f);   // each frame
+     * }</pre>
+     */
+    public CgBoneWrite write(String name) {
+        CgBoneWrite write = new CgBoneWrite(bone(name));
+        writes.add(write);
+        return write;
+    }
+
+    /** Stops applying {@code write}. */
+    public CgAnimInstance remove(CgBoneWrite write) {
+        writes.remove(write);
+        return this;
+    }
+
+    private int bone(String name) {
+        int b = mesh.skeleton().indexOfIgnoringCase(name);
+        if (b < 0) throw new IllegalArgumentException(this + ": the skeleton has no bone " + name);
+        return b;
     }
 
     /** The pose {@link #evaluate()} last made: local and, resolved, in the mesh's space. */
@@ -295,9 +468,25 @@ public final class CgAnimInstance {
         return paletteFrame == CgFrameRing.frame() ? palette : -1;
     }
 
-    void palette(int base) {
+    /**
+     * The palette for its owner's view when {@code ownerView}, with the bones {@link #hideFromOwner} hid collapsed; the
+     * one every view takes otherwise, and wherever no bone is hidden from its owner. -1 as {@link #palette()}.
+     */
+    public int palette(boolean ownerView) {
+        if (!ownerView || ownerPalette < 0) return palette();
+        return paletteFrame == CgFrameRing.frame() ? ownerPalette : -1;
+    }
+
+    void palette(int base, int ownerBase) {
         palette = base;
+        ownerPalette = ownerBase;
         paletteFrame = CgFrameRing.frame();
+    }
+
+    /** The owner's view's skinning matrices, or null where no bone is hidden from it: a second palette's. */
+    @Nullable
+    Matrix4f[] ownerSkinning() {
+        return anyHiddenFromOwner ? ownerSkinning : null;
     }
 
     // ---- where it stands, and its sockets
@@ -368,8 +557,23 @@ public final class CgAnimInstance {
      * @throws IllegalArgumentException where the skeleton has no {@code bone}, or a layer of that slot exists
      */
     public CgAnimLayer layer(String slot, String bone, int blendDepth) {
+        bone(bone);   // before the layer is added
+        return addLayer(slot).branch(bone, blendDepth);
+    }
+
+    /**
+     * A slot named {@code slot} with an empty mask, blended over the layers before it: give it branches or bone weights.
+     *
+     * <pre>{@code
+     * CgAnimLayer arms = role.addLayer("Arms").branch("right_arm", 0).branch("left_arm", 0);
+     * CgAnimLayer lean = role.addLayer("Lean").bone("body", 0.5f).bone("head", 0.25f);
+     * }</pre>
+     *
+     * @throws IllegalArgumentException where a layer of that slot exists
+     */
+    public CgAnimLayer addLayer(String slot) {
         if (layer(slot) != null) throw new IllegalArgumentException(this + " has a layer " + slot + " already");
-        CgAnimLayer layer = new CgAnimLayer(mesh.skeleton(), slot, bone, blendDepth);
+        CgAnimLayer layer = new CgAnimLayer(mesh.skeleton(), slot);
         layers.add(layer);
         return layer;
     }
