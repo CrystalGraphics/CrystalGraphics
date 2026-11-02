@@ -27,6 +27,10 @@ import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+
+import javax.annotation.Nullable;
 
 /**
  * The post-processing stack: what runs after the world renderer has drawn the scene, on the same stage firing. Every
@@ -100,7 +104,8 @@ public final class CgPostStack {
      * Bloom's and the composite's passes, each in every keyword set a setting can switch to, as its shader's permutation
      * domain names them (the tier's {@code CHEAP}, Karis, the HDR scene, bloom, a fade); the HDR scene's way in; and the
      * bend bloom's emission takes through the distortion, which a tier below Medium never draws. The looks' keywords
-     * follow volumes, not settings: a volume's preparer requests them ({@link #lookPasses}).
+     * follow volumes, not settings: each volume registers its own as it is made, and an asset's preparer requests them
+     * ahead of it ({@link #lookPasses}).
      */
     private static void warmVariants(CgPipelineList pipelines) {
         String bloom = "crystalgraphics:shaders/post/bloom/", post = "crystalgraphics:shaders/post/";
@@ -124,12 +129,32 @@ public final class CgPostStack {
      * }</pre>
      */
     public void lookPasses(CgPostSettings settings, CgPipelineList pipelines) {
+        String[] keywords = lookKeywords(settings);
+        if (keywords != null) pipelines.addPass(COMPOSITE_COPY, keywords);
+    }
+
+    private static final String COMPOSITE_COPY = "crystalgraphics:shaders/post/composite_copy.shader";
+
+    /** The composite's look keywords {@code settings} switch on; null for none. */
+    @Nullable
+    private String[] lookKeywords(CgPostSettings settings) {
         EnumSet<CgCompositeFeature> on = CgPostLooks.features(settings);
-        if (on.isEmpty()) return;
+        if (on.isEmpty()) return null;
         List<String> keywords = new ArrayList<>();
         for (CgCompositeFeature f : on) keywords.add(f.keyword());
         if (looks.drawsImpact(settings)) keywords.add("SUBJECT");
-        pipelines.addPass("crystalgraphics:shaders/post/composite_copy.shader", keywords.toArray(new String[0]));
+        return keywords.toArray(new String[0]);
+    }
+
+    /** The look sets a volume has registered for precaching: each once a session. */
+    private final Set<String> lookSets = ConcurrentHashMap.newKeySet();
+
+    /** A volume's look, built ahead as Unreal precaches a component's pipelines when it registers. */
+    private void precacheLook(CgPostSettings settings) {
+        String[] keywords = lookKeywords(settings);
+        if (keywords == null) return;
+        String key = String.join(",", keywords);
+        if (lookSets.add(key)) CgPipelinePrecache.register("crystalgraphics:post volume " + key, p -> p.addPass(COMPOSITE_COPY, keywords));
     }
 
     /** Before the world renderer: where the volumes blend, so it knows whether bloom will read the emission. */
@@ -217,11 +242,13 @@ public final class CgPostStack {
 
     /**
      * A volume applying {@code settings} at {@code priority} (a higher blends over a lower), everywhere at full weight
-     * until placed, sized or weighed. Close it to stop it.
+     * until placed, sized or weighed. Close it to stop it. The look {@code settings} switch on now is precached; one
+     * switched on later by changing them is not, and its owner requests it ({@link #lookPasses}).
      */
     public CgPostVolume volume(int priority, CgPostSettings settings) {
         Objects.requireNonNull(settings, "settings");
         CgPostVolume volume = new CgPostVolume(priority, settings, this::remove);
+        precacheLook(settings);
         synchronized (this) {
             CgPostVolume[] next = Arrays.copyOf(volumes, volumes.length + 1);
             next[next.length - 1] = volume;
