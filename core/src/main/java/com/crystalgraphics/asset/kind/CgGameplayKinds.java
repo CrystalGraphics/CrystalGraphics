@@ -44,7 +44,7 @@ public final class CgGameplayKinds {
             .property("attach", CgValueType.enumOf("do_not_attach", "attach_to_target"))
             .property("rule", CgValueType.enumOf("keep_relative", "keep_world", "snap_to_target"))
             .property("rotation", CgValueType.ROTATION).quantity(CgQuantity.ROTATION)
-            .property("scale", CgValueType.VEC3).quantity(CgQuantity.SCALE)
+            .property("scale", CgValueType.oneOf(CgValueType.VEC3, CgValueType.enumOf("inherit"))).quantity(CgQuantity.SCALE)
             .register();
 
     private static CgType.Builder entry(String id) {

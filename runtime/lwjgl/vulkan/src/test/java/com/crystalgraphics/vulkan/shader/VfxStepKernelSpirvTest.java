@@ -14,6 +14,7 @@ import com.crystalgraphics.vfx.particle.gpu.CgVfxEvent;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxEmitterCompiler;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxShape;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxEmitterState;
+import com.crystalgraphics.vfx.particle.spawn.CgVfxOwnerScale;
 import com.crystalgraphics.vfx.prefab.CgVfxPrefab;
 import com.crystalgraphics.vfx.sequence.CgVfxNodeClip;
 import org.junit.AfterClass;
@@ -42,6 +43,9 @@ public class VfxStepKernelSpirvTest {
             .module(new CgVfxModule.Current(2f, 0.3f, 2f, 2.5f))
             .module(new CgVfxModule.Ground(0.3f, 0.5f, 0.8f))
             .module(new CgVfxModule.Spin(0.5f))
+            .module(new CgVfxModule.Force(0f, 1f, 0f, true))
+            .module(new CgVfxModule.ScaleVelocity(0.5f, 0.5f, 0.5f, false, true))
+            .ownerScale(CgVfxOwnerScale.SPRITE_SIZE, CgVfxOwnerScale.SHAPE, CgVfxOwnerScale.VELOCITY)
             .build();
     /** Spawning on a mesh, whose kernel reads the spawn meshes. */
     private static final CgVfxEmitter ON_MESH = CgVfxEmitter.builder("on_mesh").state(CgVfxEmitterState.ONCE)

@@ -57,6 +57,7 @@ import com.crystalgraphics.vfx.particle.form.CgVfxFormCompiler;
 import com.crystalgraphics.vfx.particle.form.CgVfxFormInput;
 import com.crystalgraphics.vfx.particle.form.CgVfxModuleForm;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxEmitterState;
+import com.crystalgraphics.vfx.particle.spawn.CgVfxOwnerScale;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxInactiveResponse;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxLoopBehavior;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawnBurst;
@@ -114,6 +115,7 @@ public final class CgVfxEmitterAssets {
         Map<String, Object> props = new LinkedHashMap<>();
         props.put("capacity", e.capacity);
         props.put("local_space", e.local);
+        if (!e.localSpaceScale) props.put("local_space_scale", false);
         if (e.spawning.key() != null) props.put("spawning", e.spawning.key());
         if (e.legacyEmitterTime) props.put("legacy_emitter_time", true);
         if (e.randomSeed != null) props.put("determinism", map("seed", e.randomSeed));
@@ -161,8 +163,14 @@ public final class CgVfxEmitterAssets {
         for (CgVfxSpawnInput stored : new CgVfxSpawnInput[]{CgVfxSpawnInput.COLOR, CgVfxSpawnInput.MESH_SCALE}) {
             for (CgVfxSpawnForm form : e.spawnForms()) if (form.target() == stored) init.put(stored.input(), form.value());
         }
+        List<Object> sized = new ArrayList<>();
+        for (CgVfxOwnerScale s : e.ownerScale()) {
+            if (s != CgVfxOwnerScale.SHAPE && s != CgVfxOwnerScale.VELOCITY) sized.add(s.name().toLowerCase(Locale.ROOT));
+        }
+        if (!sized.isEmpty()) init.put("owner_scale", sized);
         spawn.add(entry(e.id("init"), "initialize_particle", init));
         Map<String, Object> shape = shape(e);
+        if (shape != null && e.ownerScale().contains(CgVfxOwnerScale.SHAPE)) shape.put("owner_scale", true);
         if (e.spawnFrom != null && e.spawnFrom.placeAfter()) spawn.add(spawnFromEntry(e));
         if (shape != null) spawn.add(entry(e.id("shape"), "shape_location", shape));
         if (e.spawnFrom != null && !e.spawnFrom.placeAfter()) spawn.add(spawnFromEntry(e));
@@ -193,7 +201,9 @@ public final class CgVfxEmitterAssets {
             if (e.sockets.inherit() != 0f) socket.put("inherit_velocity", (double) e.sockets.inherit());
             spawn.add(entry(e.id("socket"), "socket_location", socket));
         }
-        spawn.add(entry(e.id("velocity"), "add_velocity", velocity(e)));
+        Map<String, Object> launch = velocity(e);
+        if (e.ownerScale().contains(CgVfxOwnerScale.VELOCITY)) launch.put("owner_scale", true);
+        spawn.add(entry(e.id("velocity"), "add_velocity", launch));
         tree.put("particle_spawn", spawn);
 
         List<Object> modules = new ArrayList<>();
@@ -503,6 +513,7 @@ public final class CgVfxEmitterAssets {
         Map<?, ?> props = tree.get("properties") instanceof Map<?, ?> p ? p : Map.of();
         if (props.get("capacity") instanceof Number c) b.capacity(c.intValue());
         b.local(Boolean.TRUE.equals(props.get("local_space")));
+        b.localSpaceScale(!Boolean.FALSE.equals(props.get("local_space_scale")));
         b.spawning(CgVfxSpawning.of(props.get("spawning"))).legacyEmitterTime(Boolean.TRUE.equals(props.get("legacy_emitter_time")));
         if (props.get("scalability") != null) b.optional(halvedAtLow(name, props.get("scalability")));
         b.determinism(props.get("determinism") instanceof Map<?, ?> d && d.get("seed") instanceof Number n ? n.intValue() : null);
@@ -540,9 +551,11 @@ public final class CgVfxEmitterAssets {
         boolean meshesAlone = drawsMeshesAlone(name, tree);
         if (meshesAlone) b.size(1f, 1f);
         List<Map<?, ?>> spawnStack = entries(tree, "particle_spawn");
+        int owned = 0;
         for (Map<?, ?> entry : spawnStack) {
             if (Boolean.FALSE.equals(entry.get("enabled"))) continue;
             Map<?, ?> in = inputs(entry);
+            owned |= ownerScale(name, moduleId(entry), in);
             switch (moduleId(entry)) {
                 case "beam_source", "beam_target" -> beamEnds.add(entry);
                 case "initialize_particle" -> initialize(name, b, in, spawnId(b, entry, "init"), meshesAlone);
@@ -559,6 +572,7 @@ public final class CgVfxEmitterAssets {
                 default -> throw new IllegalArgumentException(name + ": particle_spawn has no " + entry.get("module"));
             }
         }
+        b.ownerScale(CgVfxOwnerScale.of(owned).toArray(new CgVfxOwnerScale[0]));
         // A file's mesh particles are unturned without an orientation module, as Unreal's are.
         if (b.meshRotation() == null && drawsMeshes(tree)) b.meshRotation(CgVfxMeshRotation.NONE);
         CgVfxFormCompiler forms = new CgVfxFormCompiler(new CgVfxCurveBlock(), id -> null);
@@ -693,10 +707,23 @@ public final class CgVfxEmitterAssets {
                 }
                 case "camera_offset" -> {
                     Map<?, ?> in = inputs(entry);
-                    if (in.get("offset") instanceof Map<?, ?> form && form.get("bind") == null) {
+                    Object offsetOwned = in.get("owner_scale");
+                    if (offsetOwned != null && !(offsetOwned instanceof Boolean)) {
+                        throw new IllegalArgumentException(name + ": camera_offset's owner_scale is " + offsetOwned + ", not true or false");
+                    }
+                    boolean scaled = Boolean.TRUE.equals(offsetOwned);
+                    Object offset = in.get("offset");
+                    if (offset instanceof Map<?, ?> form && form.get("bind") == null) {
                         // Per particle: its own channel, which the factories read in place of the renderer's.
+                        CgVfxDrawnChannel ch = drawnChannel(name, "camera_offset's offset", form, Boolean.TRUE.equals(in.get("spawn_only")));
+                        b.drawn(CgVfxDrawnChannel.SPRITE, CgVfxDrawnChannel.CAMERA_OFFSET, scaled ? ch.ownerScaled() : ch);
+                    } else if (scaled && offset instanceof Map<?, ?>) {
+                        throw new IllegalArgumentException(name + ": camera_offset's owner_scale over a bound offset is not read yet");
+                    } else if (scaled) {
+                        // The renderer's one offset for every particle, as a channel: Look scales it by its instance's.
+                        float o = offset instanceof Number n ? n.floatValue() : 0f;
                         b.drawn(CgVfxDrawnChannel.SPRITE, CgVfxDrawnChannel.CAMERA_OFFSET,
-                                drawnChannel(name, "camera_offset's offset", form, Boolean.TRUE.equals(in.get("spawn_only"))));
+                                CgVfxDrawnChannel.over(CgKeyframes.constant(o)).ownerScaled());
                     }
                     drawn.add(entry);
                     continue;
@@ -1955,6 +1982,7 @@ public final class CgVfxEmitterAssets {
         switch (kind) {
             case "force" -> {
                 give(out, names, "acceleration", in, "force");
+                if (Boolean.TRUE.equals(in.get("owner_scale"))) out.put("owner_scale", true);
                 return new Mapped("acceleration", out, Set.of(), names);
             }
             case "collide", "collide_world", "collide_depth", "collide_entities" -> {
@@ -2164,6 +2192,7 @@ public final class CgVfxEmitterAssets {
             case "acceleration" -> {
                 kind = "force";
                 take(in, read, out, names, "acceleration", "force");
+                take(in, read, out, names, "owner_scale", "owner_scale");
                 // A force is in the world's axes: Cascade's bAlwaysInWorldSpace (ParticleModules.cpp:2880-2885).
                 if ("world".equals(in.get("space"))) read.add("space");
             }
@@ -2288,6 +2317,7 @@ public final class CgVfxEmitterAssets {
                 kind = "scale_velocity";
                 take(in, read, out, names, "scale", "scale");
                 take(in, read, out, names, "absolute", "absolute");
+                take(in, read, out, names, "owner_scale", "owner_scale");
                 // The engine's frame is the world's: Cascade's bInWorldSpace.
                 if ("world".equals(in.get("space"))) read.add("space");
             }
@@ -2487,6 +2517,38 @@ public final class CgVfxEmitterAssets {
     }
 
     /**
+     * A spawn module's {@code owner_scale} as {@link CgVfxOwnerScale} bits: {@code initialize_particle}'s list of the
+     * sizes it sets, {@code shape_location}'s and {@code add_velocity}'s flag. Refused by name where nothing reads it.
+     */
+    private static int ownerScale(String name, String module, Map<?, ?> in) {
+        Object o = in.get("owner_scale");
+        if (o == null || Boolean.FALSE.equals(o) || o instanceof List<?> l && l.isEmpty()) return 0;
+        switch (module) {
+            case "initialize_particle": {
+                if (!(o instanceof List<?> list)) throw new IllegalArgumentException(name + ": initialize_particle's owner_scale is a list, not " + o);
+                int bits = 0;
+                for (Object v : list) {
+                    CgVfxOwnerScale s = switch (String.valueOf(v)) {
+                        case "sprite_size" -> CgVfxOwnerScale.SPRITE_SIZE;
+                        case "mesh_scale" -> CgVfxOwnerScale.MESH_SCALE;
+                        case "ribbon_width" -> CgVfxOwnerScale.RIBBON_WIDTH;
+                        default -> throw new IllegalArgumentException(name + ": initialize_particle's owner_scale names " + v
+                                + ": sprite_size, mesh_scale or ribbon_width");
+                    };
+                    bits |= s.bit();
+                }
+                return bits;
+            }
+            case "shape_location":
+                return CgVfxOwnerScale.SHAPE.bit();
+            case "add_velocity":
+                return CgVfxOwnerScale.VELOCITY.bit();
+            default:
+                return 0;   // a module of the stacks reads its own (unread() refuses one that does not)
+        }
+    }
+
+    /**
      * Fails for an input {@code entry} gives that nothing read and that is not {@code modules.yaml}'s default: one the
      * spec declares and the engine does not take yet (Unreal's {@code curl_noise.bias}) reads at its default alone.
      */
@@ -2494,8 +2556,7 @@ public final class CgVfxEmitterAssets {
         CgModuleTypes.Module declared = CgModuleTypes.builtIn().get(moduleId(entry));
         for (Map.Entry<?, ?> e : in.entrySet()) {
             String key = String.valueOf(e.getKey());
-            // An effect has no scale of its own, so Unreal's owner scale (its component's) is 1 whichever is chosen.
-            if (read.contains(key) || key.equals("owner_scale")) continue;
+            if (read.contains(key)) continue;
             Object fallback = null;
             if (declared != null) {
                 for (CgProperty p : declared.inputs().properties()) {
@@ -2704,6 +2765,7 @@ public final class CgVfxEmitterAssets {
         if (offset != null) {
             Map<String, Object> in = map("offset", drawnForm(e.name, offset), "update", "direct");
             if (offset.roll() == CgVfxDrawnChannel.Roll.SPAWN) in.put("spawn_only", true);
+            if (offset.ownerScale()) in.put("owner_scale", true);
             modules.add(entry("camera_offset", "camera_offset", in));
         }
         if (e.light != null) {

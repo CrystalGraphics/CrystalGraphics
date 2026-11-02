@@ -120,10 +120,11 @@ public final class CgVfxParticlePool {
      * blocks, 0)}, {@code vec4(origin within its block, 0)}, {@code vec4(the followed entity's box's centre from the source, its loop's
      * seconds)},
      * {@code vec4(its half extents, 0)}, {@code vec4(its rotation, a quaternion)}, {@code vec4(its rotation's change since
-     * the last step, the identity unless local)}: the fourth and fifth place a particle in the world's blocks; spawns turn
-     * by the eighth, and a local slot's live particles by the ninth.
+     * the last step, the identity unless local)}, {@code vec4(its effect's world scale, 0)}: the fourth and fifth place a
+     * particle in the world's blocks; spawns turn by the eighth, a local slot's live particles by the ninth, and what opts
+     * into its owner's scale multiplies by the tenth.
      */
-    public static final int INSTANCE_HEADER = 9;
+    public static final int INSTANCE_HEADER = 10;
     /**
      * A spawn row's words: {@code uvec4(slot, first spawn, candidates, first element)}, {@code vec4(born from, born to,
      * bursts, tick seconds)}, {@code vec4(source at the tick's start, its loop's seconds then)}, {@code vec4(source at its
@@ -1800,7 +1801,8 @@ public final class CgVfxParticlePool {
                 .vec4(view.boxX(), view.boxY(), view.boxZ(), view.loopSeconds())
                 .vec4(view.boxHalfX(), view.boxHalfY(), view.boxHalfZ(), 0f)
                 .vec4(view.rotationX(), view.rotationY(), view.rotationZ(), view.rotationW())
-                .vec4(view.turnX(), view.turnY(), view.turnZ(), view.turnW());
+                .vec4(view.turnX(), view.turnY(), view.turnZ(), view.turnW())
+                .vec4(view.scaleX(), view.scaleY(), view.scaleZ(), 0f);
         words.finish("its instance row's header");
         slotFresh[slot] = false;
         CgVfxShape own = slotShape[slot];
@@ -2557,8 +2559,8 @@ public final class CgVfxParticlePool {
                 out[at + 4 * i + c] = ch == null ? 0f : ch.from().at(progress);
                 out[high + 4 * i + c] = ch == null ? 0f : ch.to().at(progress);
             }
-            // Its roll, plus 10 on the viewer's clock (Look reads both).
-            out[rolls + c] = ch == null ? 0f : ch.roll().ordinal() + (ch.realTime() ? 10f : 0f);
+            // Its roll, plus 10 on the viewer's clock, plus 20 times its owner's scale (Look reads all three).
+            out[rolls + c] = ch == null ? 0f : ch.roll().ordinal() + (ch.realTime() ? 10f : 0f) + (ch.ownerScale() ? 20f : 0f);
         }
     }
 

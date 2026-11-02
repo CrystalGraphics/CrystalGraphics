@@ -28,6 +28,7 @@ import com.crystalgraphics.vfx.particle.gpu.CgVfxUserBinding;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxWords;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxDataInterfaces;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxEmitterState;
+import com.crystalgraphics.vfx.particle.spawn.CgVfxOwnerScale;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawnBurst;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawnFrom;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawning;
@@ -44,6 +45,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -114,6 +116,8 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
     /** Whether its beam refills every step its loops run ({@code always_on}), not only where nothing else spawns. */
     final boolean beamAlwaysOn;
     final boolean optional, local;
+    /** A local emitter's particles placed at its effect's scale ({@link Builder#localSpaceScale}). */
+    final boolean localSpaceScale;
     /** Its fixed seed ({@link Builder#determinism}); null for its system's. */
     @Nullable
     final Integer randomSeed;
@@ -159,6 +163,8 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
     @Nullable
     final CgVfxSubUvAnimation subUv;
     final float sizeMin, sizeMax, spinMin, spinMax, spinBack, heat;
+    /** What it sets at birth that takes its effect's scale: {@link CgVfxOwnerScale} bits. */
+    final int ownerScale;
     /** Its spawn values given in a form, one a target; how far a radius form moves its birth out at most. */
     final List<CgVfxSpawnForm> spawnForms;
     @Nullable
@@ -222,6 +228,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         drawLayout = drawLayout(b.name, renderers, b.clip);
         optional = b.optional;
         local = b.local;
+        localSpaceScale = b.localSpaceScale;
         randomSeed = b.randomSeed;
         spawning = b.spawning;
         legacyEmitterTime = b.legacyEmitterTime;
@@ -290,6 +297,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         spinMax = b.spinMax;
         spinBack = b.spinBack;
         heat = b.heat;
+        ownerScale = b.ownerScale;
         modules = Collections.unmodifiableList(new ArrayList<>(b.modules));
         moduleWords = CgVfxModuleTypes.words(modules);
         boolean feeds = false, splats = false;
@@ -662,8 +670,21 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         out.vec4(speedMin, speedMax, lifeMin, lifeMax)
            .vec4(sizeMin, sizeMax, 0f, heat)
            .vec4(spinMin, spinMax, inherit, spinBack)
-           .vec4(0f, 0f, 0f, 0f);
+           .vec4(ownerScale | (local && localSpaceScale ? LOCAL_SCALE : 0), 0f, 0f, 0f);
         spawn.write(out);
+    }
+
+    /** The spawn row's owner-scale bit past {@link CgVfxOwnerScale}'s: a local emitter born at its effect's scale. */
+    private static final int LOCAL_SCALE = 32;
+
+    /** Whether a local emitter's particles are born at its effect's scale ({@link Builder#localSpaceScale}). */
+    public boolean localSpaceScale() {
+        return localSpaceScale;
+    }
+
+    /** What it sets at birth that takes its effect's world scale ({@link Builder#ownerScale}). */
+    public Set<CgVfxOwnerScale> ownerScale() {
+        return CgVfxOwnerScale.of(ownerScale);
     }
 
     @Override
@@ -971,6 +992,8 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         private float sizeMin = 1f, sizeMax = 1f;
         private float spinMin, spinMax, spinBack;
         private float heat;
+        private int ownerScale;
+        private boolean localSpaceScale = true;
         private final List<CgVfxModule> modules = new ArrayList<>();
         private final List<CgVfxEvent> events = new ArrayList<>();
         private final List<CgVfxEventHandler> handlers = new ArrayList<>();
@@ -993,6 +1016,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
             renderers.addAll(e.renderers);
             optional = e.optional;
             local = e.local;
+            localSpaceScale = e.localSpaceScale;
             randomSeed = e.randomSeed;
             spawning = e.spawning;
             legacyEmitterTime = e.legacyEmitterTime;
@@ -1029,6 +1053,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
             spinMax = e.spinMax;
             spinBack = e.spinBack;
             heat = e.heat;
+            ownerScale = e.ownerScale;
             modules.addAll(e.modules);
             moduleIds.addAll(Arrays.asList(e.moduleIds));
             events.addAll(e.events.subList(0, e.ownEvents));
@@ -1789,6 +1814,20 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
             return this;
         }
 
+        /**
+         * What it sets at birth that takes its effect's world scale, Niagara's owner scale: none unless given. Replaces
+         * what was given before.
+         *
+         * <pre>{@code
+         * .ownerScale(CgVfxOwnerScale.SPRITE_SIZE, CgVfxOwnerScale.VELOCITY)   // a bigger character's sparks, bigger and faster
+         * }</pre>
+         */
+        public Builder ownerScale(CgVfxOwnerScale... what) {
+            ownerScale = 0;
+            for (CgVfxOwnerScale s : what) ownerScale |= s.bit();
+            return this;
+        }
+
         public Builder module(CgVfxModule module) {
             return module(module, null);
         }
@@ -1829,6 +1868,25 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         /** Rides the effect or not, as an asset's {@code local_space} says. */
         Builder local(boolean local) {
             this.local = local;
+            return this;
+        }
+
+        /**
+         * Whether a {@link #local()} emitter's particles are born at its effect's world scale ({@code
+         * CgVfxEffect.worldScale()}), where in its shape and how fast, as Niagara places local space by the system's
+         * whole transform: true unless told. False is Cascade's local space, which leaves the scale out.
+         *
+         * <pre>{@code
+         * CgVfxEmitter.builder("aura").local().localSpaceScale(false)...   // the same size on a scaled effect
+         * }</pre>
+         *
+         * <ul>
+         *   <li>Read at birth: a particle alive when its effect's scale changes keeps the place it was born to.</li>
+         *   <li>A world emitter ignores it.</li>
+         * </ul>
+         */
+        public Builder localSpaceScale(boolean scaled) {
+            this.localSpaceScale = scaled;
             return this;
         }
 

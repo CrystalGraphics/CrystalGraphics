@@ -44,7 +44,8 @@ modules:
       { name: sprite_size, type: vec2, quantity: length, default: [50, 50] }, { name: uniform, type: bool, default: false },
       { name: mesh_scale, type: vec3, quantity: scale, rolls: draw, default: [1, 1, 1] }, { name: per_axis, type: bool, default: true },
       { name: sprite_rotation, type: float, quantity: angle, default: 0 },
-      { name: mass, type: float, default: 1 }, { name: heat, type: float, default: 0 } ] }
+      { name: mass, type: float, default: 1 }, { name: heat, type: float, default: 0 },
+      { name: owner_scale, type: array, default: [] } ] }
   - { id: shape_location, groups: [particle_spawn], seeded: true, order: spawn_place, analytic: true, unreal: { niagara: ShapeLocation, cascade: [Location, LocationWorldOffset, LocationPrimitiveSphere, LocationPrimitiveCylinder, LocationPrimitiveTriangle] }, inputs: [
       { name: shape, type: enum, values: [point, sphere, box, cylinder, ring, cone, capsule, plane, triangle, torus, mesh], default: sphere },
       { name: sphere_radius, type: float, quantity: length, default: 100, visible_when: { shape: sphere } },
@@ -68,7 +69,8 @@ modules:
       { name: offset, type: vec3, quantity: offset, by: [loop], default: [0, 0, 0] },
       { name: space, type: enum, values: [emitter, world], default: emitter },
       { name: mesh, type: mesh, forms: [data], visible_when: { shape: mesh } }, { name: vertices, type: bool, default: false, visible_when: { shape: mesh } },
-      { name: add_velocity, type: struct, default: { outward: 0, radial: false } } ] }
+      { name: add_velocity, type: struct, default: { outward: 0, radial: false } },
+      { name: owner_scale, type: bool, default: false } ] }
   - { id: socket_location, groups: [particle_spawn], order: spawn_place, unreal: { niagara: SkeletalMeshLocation, cascade: [LocationBoneSocket] }, inputs: [
       { name: points, type: array, default: [] }, { name: source, type: enum, values: [sockets, bones], default: sockets },
       { name: mesh, type: struct, forms: [constant, binding], default: { bind: user.BoneSocketActor } },
@@ -257,7 +259,7 @@ modules:
   - { id: camera_offset, groups: [particle_update], analytic: true, unreal: { niagara: CameraOffset, cascade: [CameraOffset] }, inputs: [
       { name: offset, type: float, quantity: length, by: [age], default: 0 },
       { name: update, type: enum, values: [direct, additive, scalar], default: direct }, { name: spawn_only, type: bool, default: false },
-      { name: keep_size, type: bool, default: false } ] }
+      { name: keep_size, type: bool, default: false }, { name: owner_scale, type: bool, default: false } ] }
   - { id: dynamic_material_parameters, groups: [particle_update], seeded: true, analytic: true, unreal: { niagara: DynamicMaterialParameters, cascade: [ParameterDynamic] }, inputs: [
       { name: dynamic_0, type: struct, default: null }, { name: dynamic_1, type: struct, default: null }, { name: dynamic_2, type: struct, default: null }, { name: dynamic_3, type: struct, default: null },
       { name: use_emitter_time, type: bool, default: false } ] }

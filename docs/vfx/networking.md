@@ -153,6 +153,7 @@ Unreal: an entry that writes `placement: { socket: head }` is not attached, even
 |---|---|
 | `attach` | `do_not_attach`: spawned at the socket, then left there. Write `attach_to_target` to follow it |
 | `rule` | `keep_world` |
+| `scale` | 1. `scale: inherit` spawns at the scale of where it spawns: the target's socket (`CgAttachment.scale`, a bigger character's sockets are scaled), 1 at a point. Attached, it follows the socket's scale as it changes, `keep_world` and `snap_to_target` from the scale it spawned at, as Unreal's `SpawnSystemAttached`. What the scale reaches is each module's `owner_scale` ([`particles.md`](particles.md) § *Sized by its owner*) |
 | `policy` | `always`: every viewer. `local_only` is the controlling player alone, `not_local` everyone else |
 | `chance` | 1 |
 | a sound's `fade_out`, `fade_volume` | 0.5 seconds, to silence |

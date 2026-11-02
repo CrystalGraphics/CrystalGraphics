@@ -308,9 +308,9 @@ public final class CgVfxModuleTypes {
                 t -> { t.property("channel", CgValueType.INT); fl(t, "strength"); },
                 (m, in) -> in.i("channel", m.channel()).f("strength", m.strength()),
                 r -> new CgVfxModule.Gradient(r.i("channel"), r.f("strength")));
-        kind("force", CgVfxModule.Force.class, t -> v3(t, "force"),
-                (m, in) -> in.v3("force", m.x(), m.y(), m.z()),
-                r -> new CgVfxModule.Force(r.f("force", 0), r.f("force", 1), r.f("force", 2)));
+        kind("force", CgVfxModule.Force.class, t -> { v3(t, "force"); t.property("owner_scale", CgValueType.BOOL); },
+                (m, in) -> in.v3("force", m.x(), m.y(), m.z()).b("owner_scale", m.ownerScale()),
+                r -> new CgVfxModule.Force(r.f("force", 0), r.f("force", 1), r.f("force", 2), r.b("owner_scale")));
         kind("vector_field", CgVfxModule.VectorField.class,
                 t -> { t.property("field", CgValueType.FIELD); v3(t, "volume"); t.property("tiles", CgValueType.INT);
                     fl(t, "strength", "attenuation", "tightness"); v3(t, "pivot"); offset(t); },
@@ -328,9 +328,10 @@ public final class CgVfxModuleTypes {
                 r -> new CgVfxModule.SetPosition(r.f("position", 0), r.f("position", 1), r.f("position", 2),
                         r.f("offset", 0), r.f("offset", 1), r.f("offset", 2), r.f("scale", 0)));
         kind("scale_velocity", CgVfxModule.ScaleVelocity.class,
-                t -> { v3(t, "scale"); t.property("absolute", CgValueType.BOOL); },
-                (m, in) -> in.v3("scale", m.x(), m.y(), m.z()).b("absolute", m.absolute()),
-                r -> new CgVfxModule.ScaleVelocity(r.f("scale", 0), r.f("scale", 1), r.f("scale", 2), r.b("absolute")));
+                t -> { v3(t, "scale"); t.property("absolute", CgValueType.BOOL); t.property("owner_scale", CgValueType.BOOL); },
+                (m, in) -> in.v3("scale", m.x(), m.y(), m.z()).b("absolute", m.absolute()).b("owner_scale", m.ownerScale()),
+                r -> new CgVfxModule.ScaleVelocity(r.f("scale", 0), r.f("scale", 1), r.f("scale", 2), r.b("absolute"),
+                        r.b("owner_scale")));
         kind("sprite_rotation", CgVfxModule.SpriteRotation.class,
                 t -> { fl(t, "rotation"); t.property("mode", ROTATION_MODE).defaultValue("add"); },
                 (m, in) -> in.f("rotation", m.radians()).o("mode", m.scales() ? "scale" : "add"),

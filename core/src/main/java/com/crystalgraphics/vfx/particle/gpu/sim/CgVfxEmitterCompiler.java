@@ -588,6 +588,12 @@ public final class CgVfxEmitterCompiler {
                     vec4 s0 = step_vector(row, inst, 0), s1 = step_vector(row, inst, 1), s2 = step_vector(row, inst, 2);
                     vec4 s4 = step_vector(row, inst, 4);
                     vec4 q = step_vector(row, inst, 8);
+                    // What it sets at birth that takes its effect's world scale (CgVfxOwnerScale bits), and that scale.
+                    int ownerScale = int(step_vector(row, inst, 3).x);
+                    vec3 owner = step_instance(inst + 9).xyz;
+                    // A local emitter's place and launch at its system's scale (CgVfxEmitter.LOCAL_SCALE), Niagara's local space.
+                    vec3 localScale = (ownerScale & 32) != 0 ? owner : vec3(1.0);
+                    vec3 launchScale = ((ownerScale & 16) != 0 ? owner : vec3(1.0)) * localScale;
                     vec3 local, way;
                     step_place(seed, k, row, inst, @HALF_HEIGHT@, local, way);
                     vec3 outward = step_rotate(q, way), dir;
@@ -602,11 +608,11 @@ public final class CgVfxEmitterCompiler {
                         float st = sin(angle);
                         dir = step_orient(vec3(st * cos(phi), cos(angle), st * sin(phi)), step_vector(row, inst, 5).xyz);
                     }
-                    vec3 place = step_rotate(q, local) + @OFFSET@;
+                    vec3 place = (step_rotate(q, local) * ((ownerScale & 8) != 0 ? owner : vec3(1.0)) + @OFFSET@) * localScale;
                     float speed = @SPEED@;
                     p.position = at + step_orient(step_rotate(turn, place + outward * front), n);
                     p.previous = p.position;
-                    p.velocity = step_orient(step_rotate(turn, dir), n) * speed@VELOCITY@@SHAPE_VELOCITY@;
+                    p.velocity = step_orient(step_rotate(turn, dir * launchScale), n) * speed@VELOCITY@@SHAPE_VELOCITY@;
                     p.age = 0.0;
                     {
                         // Its life and size rolled as spawn lifeK's: a Cascade trail's first particle's, every one of its
@@ -623,6 +629,8 @@ public final class CgVfxEmitterCompiler {
                     p.heat = s1.w;
                     p.color = @COLOR@;
                     p.scale = @SCALE@;
+                    if ((ownerScale & 5) != 0) p.size *= owner.x;
+                    if ((ownerScale & 2) != 0) p.scale *= owner;
                     p.turn = @TURN@;
                     p.turnRate = @TURN_RATE@;
                     p.light = @LIGHT@;
@@ -683,7 +691,7 @@ public final class CgVfxEmitterCompiler {
                 .replace("@CONE@", spawnValue(shape, CgVfxSpawnInput.CONE_ANGLE, null, "s4.y", "0.5 * "))
                 .replace("@OFFSET@", spawnValue(shape, CgVfxSpawnInput.OFFSET, null, "step_vector(row, inst, 9).xyz", ""))
                 .replace("@VELOCITY@", shape.spawnFormOf(CgVfxSpawnInput.VELOCITY) < 0 ? ""
-                        : " + step_orient(step_rotate(turn, " + spawnValue(shape, CgVfxSpawnInput.VELOCITY, null, null, "") + "), n)")
+                        : " + step_orient(step_rotate(turn, launchScale * " + spawnValue(shape, CgVfxSpawnInput.VELOCITY, null, null, "") + "), n)")
                 // Cascade's location bVelocity: the place from the shape's middle times a rate, its axis left out
                 // where s4.z says radial (ParticleModules_Location.cpp:1116-1132, 1366-1376).
                 .replace("@SHAPE_VELOCITY@", shape.spawnFormOf(CgVfxSpawnInput.SHAPE_VELOCITY) < 0 ? ""
@@ -891,6 +899,7 @@ public final class CgVfxEmitterCompiler {
                     // the part of the step after its birth.
                     s.dt = max(_Step.x - born, 0.0) * step_instance(inst + 2).z;
                     s.wind = _Step.yzw;
+                    s.ownerScale = step_instance(inst + 9).xyz;
                     FxForces f;
                     f.accel = vec3(0.0);
                     f.drag = 0.0;

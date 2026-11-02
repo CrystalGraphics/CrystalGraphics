@@ -106,7 +106,7 @@ public class CgCueDefinitionTest {
         Placement hands = Placement.attached("hands");
         assertEquals(hands, cue.application().particles().get(0).where().placement());
         // An entry's own placement replaces the default whole: it is not attached, as Unreal's default.
-        assertEquals(new Placement("head", Placement.Attach.DO_NOT_ATTACH, Placement.Rule.KEEP_WORLD, null, null),
+        assertEquals(new Placement("head", Placement.Attach.DO_NOT_ATTACH, Placement.Rule.KEEP_WORLD, null, null, false),
                 cue.application().particles().get(1).where().placement());
         // A block's condition is its entries', with the cue's placement.
         assertEquals(SpawnCondition.Policy.LOCAL_ONLY, cue.looping().particles().get(0).where().condition().policy());
@@ -168,6 +168,7 @@ public class CgCueDefinitionTest {
     public void failsAtLoadByName() {
         failsAt(BEAM.replace("tag: cuetest:cue.beam", "tag: cuetest:cue.undeclared"), "tag");
         failsAt(BEAM.replace("kind: looping", "kind: burst"), "application");
+        failsAt(BEAM.replace("rule: keep_relative }", "rule: keep_relative, scale: big }"), "scale");
         failsAt("_v: 1\nkind: looping\nburst: { particles: [ { system: cuetest:x } ] }\n", "burst");
         failsAt("_v: 1\nkind: burst\nburst: { particles: [ { cast_shadow: true } ] }\n", "system");
         failsAt("_v: 1\nkind: burst\nburst: { lens: { post: { vignette: 0.5 } } }\n", "burst.lens");
@@ -176,12 +177,12 @@ public class CgCueDefinitionTest {
     @Test
     public void aCueBuiltInJavaIsItsFile() {
         CgCueDefinition.Builder beam = CgCueDefinition.builder("cuetest:beam").tag("cuetest:cue.beam").looping()
-                .defaultPlacement(Placement.attached("hands"))
+                .defaultPlacement(Placement.attached("hands").inheritingScale())
                 .defaultSpawnCondition(new SpawnCondition(SpawnCondition.Source.TARGET, SpawnCondition.Policy.NOT_LOCAL,
                         0.5f, List.of(), List.of("water")))
                 .application(e -> e.particles("cuetest:beam/start")
                         .particles("cuetest:beam/flash", new Placement("head", Placement.Attach.ATTACH_TO_TARGET,
-                                Placement.Rule.SNAP_TO_TARGET, new Quaternionf().rotateY(0.5f), new Vector3f(2, 2, 2))))
+                                Placement.Rule.SNAP_TO_TARGET, new Quaternionf().rotateY(0.5f), new Vector3f(2, 2, 2), false)))
                 .looping(e -> e.particles("cuetest:beam/body").sound("cuetest:beam_loop").shake("cuetest:rumble"))
                 .removal(e -> e.particles("cuetest:beam/end").decal("cuetest:scorch").sequence("cuetest:beam_end"))
                 .event("e1", "hit_world", e -> e.particles("cuetest:beam/hit"))
@@ -194,6 +195,8 @@ public class CgCueDefinitionTest {
         CgCueDefinition loaded = CgCueDefinition.compile(CgAssetData.of("cuetest:beam", CgGameplayKinds.CUE, (Map<?, ?>) CgAssetYaml.read(yaml), null));
         assertEquals(yaml, beam.build(), loaded);
         assertEquals(new Quaternionf().rotateY(0.5f), loaded.application().particles().get(1).where().placement().rotation());
+        assertTrue("scale: inherit reads back", loaded.application().particles().get(0).where().placement().inheritScale());
+        assertTrue(yaml, yaml.contains("scale: inherit"));
     }
 
     /** {@code -Pkits}: every kit cue compiles, its tag declared by the kit's {@code tags.yaml}, or fails naming its path. */

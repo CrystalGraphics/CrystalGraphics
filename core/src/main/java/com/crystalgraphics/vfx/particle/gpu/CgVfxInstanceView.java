@@ -107,6 +107,19 @@ public interface CgVfxInstanceView {
         return 1f;
     }
 
+    /** Its effect's world scale on x: what {@code owner_scale} inputs multiply by; 1 unless scaled. */
+    default float scaleX() {
+        return 1f;
+    }
+
+    default float scaleY() {
+        return 1f;
+    }
+
+    default float scaleZ() {
+        return 1f;
+    }
+
     /**
      * Its rotation's change over the step, a unit quaternion, by which a {@code local()} instance's live particles turn
      * about its origin; the identity for one that is not local, or did not turn.

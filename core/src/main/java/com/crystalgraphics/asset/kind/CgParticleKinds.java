@@ -82,6 +82,7 @@ public final class CgParticleKinds {
     static final CgType EMITTER_PROPERTIES = CgTypes.struct("crystalgraphics:emitter.properties")
             .property("capacity", INT).flags(CgPropertyFlag.STRUCTURAL).range(0, null)
             .property("local_space", BOOL).defaultValue(false).flags(CgPropertyFlag.STRUCTURAL)
+            .property("local_space_scale", BOOL).defaultValue(true)
             .property("simulation", CgValueType.enumOf("gpu", "analytic")).defaultValue("gpu").flags(CgPropertyFlag.STRUCTURAL)
             .property("bounds", CgValueType.oneOf(CgValueType.enumOf("dynamic"), CgValueType.struct(FIXED_BOUNDS))).defaultValue("dynamic")
             .property("interpolated_spawn", BOOL)
@@ -283,6 +284,7 @@ public final class CgParticleKinds {
             .property("specular_scale", FLOAT)
             .property("volumetric_scattering", FLOAT)
             .property("affects_translucency", BOOL)
+            .property("owner_scale", BOOL)
             .register();
 
     static final CgType SYSTEM_RENDERER = renderer("system")

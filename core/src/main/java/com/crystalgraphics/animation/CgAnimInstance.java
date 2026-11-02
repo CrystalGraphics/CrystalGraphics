@@ -17,6 +17,7 @@ import com.crystalgraphics.world.CgAttachment;
 import org.joml.Matrix4f;
 import org.joml.Matrix4fc;
 import org.joml.Quaternionf;
+import org.joml.Vector3f;
 
 import javax.annotation.Nullable;
 
@@ -832,6 +833,25 @@ public final class CgAnimInstance {
      * from the pose {@link #evaluate()} last made: {@code where it stands × bone × socket}.
      */
     public void socket(int socket, @Nullable double[] point, @Nullable Quaternionf turn) {
+        Matrix4f m = socketMatrix(socket);
+        if (point != null) {
+            point[0] = x + m.m30();
+            point[1] = y + m.m31();
+            point[2] = z + m.m32();
+        }
+        // Unnormalized: the placement scales the columns, which getNormalizedRotation assumes unit.
+        if (turn != null) m.getUnnormalizedRotation(turn);
+    }
+
+    /**
+     * Socket {@code socket}'s world scale into {@code out}, from the same pose: the scale of Unreal's
+     * {@code GetSocketTransform}, which a cue placed with {@code scale: inherit} spawns at.
+     */
+    public Vector3f socketScale(int socket, Vector3f out) {
+        return socketMatrix(socket).getScale(out);
+    }
+
+    private Matrix4f socketMatrix(int socket) {
         Matrix4f m = socketScratch.set(transform);
         if (socket != NO_SOCKET) {
             if ((socket & SOCKET) != 0) {
@@ -841,13 +861,7 @@ public final class CgAnimInstance {
                 m.mul(pose.component(socket));
             }
         }
-        if (point != null) {
-            point[0] = x + m.m30();
-            point[1] = y + m.m31();
-            point[2] = z + m.m32();
-        }
-        // Unnormalized: the placement scales the columns, which getNormalizedRotation assumes unit.
-        if (turn != null) m.getUnnormalizedRotation(turn);
+        return m;
     }
 
     /**
@@ -883,6 +897,12 @@ public final class CgAnimInstance {
                 if (!posed || s == NO_SOCKET) return false;
                 socket(s, out, turn);
                 return true;
+            }
+
+            @Override
+            public Vector3f scale(@Nullable String other, Vector3f out) {
+                int s = other == null ? handle : socket(other);
+                return posed ? socketScale(s, out) : out.set(1f);
             }
         };
     }

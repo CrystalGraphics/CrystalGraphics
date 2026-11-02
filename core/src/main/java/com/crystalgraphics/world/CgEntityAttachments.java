@@ -11,6 +11,8 @@ import org.joml.Quaternionf;
 import org.joml.Vector3dc;
 import org.joml.Vector3f;
 
+import javax.annotation.Nullable;
+
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -87,6 +89,23 @@ public final class CgEntityAttachments {
          * coordinates. {@code pose} is the entity's {@link CgEntityQuery#pose} at that partial tick.
          */
         boolean point(int entity, int point, float partialTick, double[] pose, double[] out);
+
+        /**
+         * Writes entity {@code entity}'s drawn world scale into {@code out}, the scale every one of its points carries:
+         * what a cue placed with {@code scale: inherit} spawns at. False for an entity it does not scale, which is 1.
+         *
+         * <pre>{@code
+         * @Override public boolean scale(int entity, Vector3f out) {
+         *     Model m = models.get(entity);
+         *     if (m == null) return false;
+         *     out.set(m.drawnScale());
+         *     return true;
+         * }
+         * }</pre>
+         */
+        default boolean scale(int entity, Vector3f out) {
+            return false;
+        }
     }
 
     /** A provider registered with {@link #provide}; closing it unregisters it. */
@@ -429,6 +448,16 @@ public final class CgEntityAttachments {
             if (drawn()) CgEntityAttachments.point(entity, which, partialTick, pose, out);
             else CgEntityAttachments.point(which, pose, out);
             return true;
+        }
+
+        @Override
+        public Vector3f scale(@Nullable String name, Vector3f out) {
+            out.set(1f);
+            if (!drawn()) return out;
+            for (Provider p : providers) {
+                if (p.scale(entity, out)) return out;
+            }
+            return out.set(1f);
         }
 
         @Override

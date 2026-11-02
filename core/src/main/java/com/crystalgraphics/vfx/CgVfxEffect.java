@@ -34,6 +34,8 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.joml.Quaternionf;
 import org.joml.Quaternionfc;
+import org.joml.Vector3f;
+import org.joml.Vector3fc;
 
 import javax.annotation.Nullable;
 
@@ -125,6 +127,8 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
     final Quaternionf followTurn = new Quaternionf();
     /** Its own turn ({@link #orient}), and the two together: its orientation in the world. */
     private final Quaternionf ownTurn = new Quaternionf(), orientation = new Quaternionf();
+    /** The point it follows's world scale, its own ({@link #scale(float, float, float)}), and the two: its world scale. */
+    private final Vector3f followScale = new Vector3f(1f), ownScale = new Vector3f(1f), worldScale = new Vector3f(1f);
     /** Seconds into its life it starts at, for its system's first update to fast-forward to; 0 once there. */
     float startAge;
     /** Fast-forwarding to its start age: shakes and moments are not played. */
@@ -443,6 +447,38 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
     /** The point it follows is turned by {@code turn} this frame. */
     final void turnToFollowed(Quaternionfc turn) {
         followTurn.set(turn).mul(ownTurn, orientation);
+    }
+
+    /**
+     * Scales it by {@code (x, y, z)}, after the point it follows: Unreal's component scale, a socket's times its own
+     * relative one. What reaches its particles is opted into per attribute by its emitters' modules and renderers
+     * ({@code owner_scale}), and a {@code local_space} emitter's positions; nothing else changes. One unless given.
+     *
+     * <pre>{@code
+     * VFX.play(new CgVfxSystemInstance<>(SPARK, x, y, z).scale(2f, 2f, 2f));               // twice the size, where opted in
+     * VFX.play(new CgVfxSystemInstance<>(AURA, x, y, z).follow(socket).scale(1f, 1f, 1f));  // the socket's scale alone
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Following an attachment, the world scale is the attachment's ({@code CgAttachment.scale}) times this, each
+     *       frame, as an attached component's is.</li>
+     *   <li>Read once a step by its emitters: a change reaches what spawns or updates after it.</li>
+     * </ul>
+     */
+    public final E scale(float x, float y, float z) {
+        ownScale.set(x, y, z);
+        followScale.mul(ownScale, worldScale);
+        return self();
+    }
+
+    /** Its scale in the world: what it follows times its own ({@link #scale(float, float, float)}). One unless scaled. */
+    public final Vector3fc worldScale() {
+        return worldScale;
+    }
+
+    /** The point it follows is at world scale {@code scale} this frame. */
+    final void scaleToFollowed(Vector3fc scale) {
+        followScale.set(scale).mul(ownScale, worldScale);
     }
 
     /** As {@link #follow(int, int)}, at the entity's feet. */
@@ -808,6 +844,9 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
         followTurn.identity();
         ownTurn.identity();
         orientation.identity();
+        followScale.set(1f);
+        ownScale.set(1f);
+        worldScale.set(1f);
         startAge = 0f;
         seeking = false;
         failure = null;
@@ -1257,6 +1296,7 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
             emitter.books().entityBox((float) (followBoxX - originX), (float) (followBoxY - originY), (float) (followBoxZ - originZ),
                     followHalfX, followHalfY, followHalfZ);
             emitter.books().orientation(orientation.x, orientation.y, orientation.z, orientation.w);
+            emitter.books().scale(worldScale.x, worldScale.y, worldScale.z);
             emitter.books().sockets(sockets);
             emitter.books().values(values);
             emitter.books().schedule(dueDts[i], originX, originY, originZ);

@@ -10,6 +10,7 @@ import java.util.Objects;
 import javax.annotation.Nullable;
 
 import org.joml.Quaternionf;
+import org.joml.Vector3f;
 
 import com.crystalgraphics.asset.camera.CgCameraShakeDefinition;
 import com.crystalgraphics.audio.CgActiveSounds;
@@ -79,6 +80,7 @@ public final class CgVfxCueEffects implements CgCueEffects {
     private final double[] point = new double[3];
     private final double[] viewer = new double[3];
     private final Quaternionf turn = new Quaternionf();
+    private final Vector3f spawnScale = new Vector3f(), parentScale = new Vector3f();
     /** Sounds attached to their target, each moved with it while it plays. */
     private long[] followIds = new long[16];
     private CgAttachment[] followTargets = new CgAttachment[16];
@@ -335,7 +337,25 @@ public final class CgVfxCueEffects implements CgCueEffects {
         }
         if (placement.rotation() != null) made.orient(turn.set(placement.rotation()));
         else if (turned) made.orient(turn);
+        // FindSpawnTransform's scale: the target socket's where the transform is its (bOverrideScale false), else 1
+        Vector3f s = spawnScale.set(1f);
+        if (placement.inheritScale()) {
+            if (target != null && !attach) target.scale(placement.socket(), s);
+        } else if (placement.scale() != null) {
+            s.set(placement.scale());
+        }
+        if (attach && placement.rule() != Placement.Rule.KEEP_RELATIVE) {
+            // SpawnSystemAttached: keep_world and snap_to_target keep the spawn scale as the world's, over the parent's
+            Vector3f parent = target.scale(placement.socket(), parentScale);
+            s.set(safeOver(s.x, parent.x), safeOver(s.y, parent.y), safeOver(s.z, parent.z));
+        }
+        if (s.x != 1f || s.y != 1f || s.z != 1f) made.scale(s.x, s.y, s.z);
         return made;
+    }
+
+    /** {@code value / by}, 0 for a vanishing {@code by}: FTransform's GetSafeScaleReciprocal. */
+    private static float safeOver(float value, float by) {
+        return Math.abs(by) <= 1e-8f ? 0f : value / by;
     }
 
     /**

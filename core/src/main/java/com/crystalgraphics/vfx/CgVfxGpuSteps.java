@@ -203,6 +203,9 @@ final class CgVfxGpuSteps {
         public float rotationY() { return of.books().rotationY(); }
         public float rotationZ() { return of.books().rotationZ(); }
         public float rotationW() { return of.books().rotationW(); }
+        public float scaleX() { return of.books().scaleX(); }
+        public float scaleY() { return of.books().scaleY(); }
+        public float scaleZ() { return of.books().scaleZ(); }
         public float turnX() { return tenant.turnX; }
         public float turnY() { return tenant.turnY; }
         public float turnZ() { return tenant.turnZ; }

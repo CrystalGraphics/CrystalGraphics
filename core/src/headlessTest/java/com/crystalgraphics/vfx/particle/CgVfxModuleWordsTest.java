@@ -61,7 +61,7 @@ public class CgVfxModuleWordsTest {
             {1.0f, -2.0f, 3.0f, 0.0f},   // force
             {2.0f, 3.0f, 4.0f, 7.0f, 5.0f, 0.5f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f},   // vector_field, tiling on every axis
             {2.0f, 0.0f, 0.0f, 0.0f},   // damping
-            {0.5f, 1.0f, 2.0f, 1.0f},   // scale_velocity: the scale, then absolute
+            {0.5f, 1.0f, 2.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f},   // scale_velocity: the scale, absolute, then owner scale
             {1.0f, 2.0f, 3.0f, 0.0f, 0.5f, 0.0f, 0.0f, 0.0f, 0.25f, 1.0f, 1.0f, 0.0f},   // set_position: position, offset, scale
             {1.0f, 2.0f, 3.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 25.0f, 1.0f, 1.0f, 0.0f},   // beam_source: point, tangent, strength and locks
             {8.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.5f, 10.0f, 0.0f, 0.0f},   // beam_target

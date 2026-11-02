@@ -3,6 +3,7 @@ package com.crystalgraphics.world;
 import javax.annotation.Nullable;
 
 import org.joml.Quaternionf;
+import org.joml.Vector3f;
 
 /**
  * Something that rides something else: where it stands this frame, and its named points. Unreal's single
@@ -46,9 +47,35 @@ public interface CgAttachment {
         return place(out, turn) && point(name, out);
     }
 
+    /**
+     * The world scale at its point named {@code name}, or its own for null, into {@code out}: the scale of Unreal's
+     * {@code GetSocketTransform}, so a bigger character's sockets are scaled. What a cue placed with
+     * {@code scale: inherit} spawns at. One unless overridden.
+     *
+     * <pre>{@code
+     * @Override public Vector3f scale(@Nullable String name, Vector3f out) {
+     *     return out.set(model.scale());            // a model drawn at its owner's size
+     * }
+     * }</pre>
+     */
+    default Vector3f scale(@Nullable String name, Vector3f out) {
+        return out.set(1f);
+    }
+
     /** It seen from its point named {@code name}: what a system attached to that socket follows. */
     default CgAttachment atSocket(String name) {
-        return (out, turn) -> point(name, out, turn);
+        CgAttachment of = this;
+        return new CgAttachment() {
+            @Override
+            public boolean place(double[] point, @Nullable Quaternionf turn) {
+                return of.point(name, point, turn);
+            }
+
+            @Override
+            public Vector3f scale(@Nullable String other, Vector3f out) {
+                return of.scale(other == null ? name : other, out);
+            }
+        };
     }
 
     /**

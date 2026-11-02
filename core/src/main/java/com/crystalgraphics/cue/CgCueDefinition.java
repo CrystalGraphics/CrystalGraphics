@@ -178,21 +178,29 @@ public record CgCueDefinition(String id, @Nullable CgGameplayTag tag, Kind kind,
      *
      * <pre>{@code
      * CgCueDefinition.Placement.attached("hands")         // follows the hands socket
-     * new CgCueDefinition.Placement("hands", Attach.DO_NOT_ATTACH, Rule.KEEP_WORLD, null, null)   // spawns there, stays
+     * new CgCueDefinition.Placement("hands", Attach.DO_NOT_ATTACH, Rule.KEEP_WORLD, null, null, false)   // spawns there, stays
+     * CgCueDefinition.Placement.attached("hands").inheritingScale()   // and at the hands' scale: a bigger body, bigger
      * }</pre>
      *
-     * @param socket   a socket of the target, or null for its root
-     * @param rotation a turn in the host's axes, or null for none
-     * @param scale    or null for one
+     * @param socket       a socket of the target, or null for its root
+     * @param rotation     a turn in the host's axes, or null for none
+     * @param scale        or null for one; unread when {@code inheritScale}
+     * @param inheritScale its systems spawn at the scale of the transform it spawns at ({@code bOverrideScale} false):
+     *                     the target's at its socket ({@code CgAttachment.scale}), 1 at a point
      */
     public record Placement(@Nullable String socket, Attach attach, Rule rule, @Nullable Quaternionf rotation,
-                            @Nullable Vector3f scale) {
+                            @Nullable Vector3f scale, boolean inheritScale) {
         /** Unreal's default: not attached, keeping world. */
-        public static final Placement DEFAULT = new Placement(null, Attach.DO_NOT_ATTACH, Rule.KEEP_WORLD, null, null);
+        public static final Placement DEFAULT = new Placement(null, Attach.DO_NOT_ATTACH, Rule.KEEP_WORLD, null, null, false);
 
         /** Attached to {@code socket}, keeping its offset relative. */
         public static Placement attached(@Nullable String socket) {
-            return new Placement(socket, Attach.ATTACH_TO_TARGET, Rule.KEEP_RELATIVE, null, null);
+            return new Placement(socket, Attach.ATTACH_TO_TARGET, Rule.KEEP_RELATIVE, null, null, false);
+        }
+
+        /** This, spawning at the scale of the transform it spawns at: {@code scale: inherit}. */
+        public Placement inheritingScale() {
+            return new Placement(socket, attach, rule, rotation, null, true);
         }
 
         /** Whether it follows its target. */

@@ -985,6 +985,54 @@ The harness's `vfx-modules` shows both side by side at its fourth row's far end 
 - **An event's children launch about the event's normal**, not the effect's orientation; their parent was turned.
 - **Its own drawing is its code's**: `orient` turns its particles alone, never its tubes or meshes.
 
+## Sized by its owner: owner scale
+
+An effect has a world **scale**, as a Niagara component does: the point it follows (`CgAttachment.scale`, a bigger
+character's sockets are scaled) times its own (`scale(x, y, z)`). One unless something sets it. A cue placed with
+`scale: inherit` spawns at its target socket's ([`networking.md`](networking.md) § *Where an effect goes*).
+
+That scale reaches a particle **only where the module or renderer setting a value opts in**, Niagara's rule:
+
+```yaml
+particle_spawn:
+  - { module: crystalgraphics:initialize_particle, inputs: { sprite_size: [20, 20], owner_scale: [sprite_size, mesh_scale] } }
+  - { module: crystalgraphics:shape_location, inputs: { shape: sphere, sphere_radius: 40, owner_scale: true } }   # the shape
+  - { module: crystalgraphics:add_velocity, inputs: { mode: outward, speed: 300, owner_scale: true } }            # the launch
+particle_update:
+  - { module: crystalgraphics:acceleration, inputs: { acceleration: [0, 0, 980], owner_scale: true } }
+  - { module: crystalgraphics:scale_velocity, inputs: { scale: [0.5, 0.5, 0.5], owner_scale: true } }
+  - { module: crystalgraphics:camera_offset, inputs: { offset: 20, owner_scale: true } }
+```
+
+```java
+static final CgVfxEmitter SPARKS = CgVfxEmitter.builder("sparks")
+        .ownerScale(CgVfxOwnerScale.SPRITE_SIZE, CgVfxOwnerScale.SHAPE, CgVfxOwnerScale.VELOCITY)
+        .module(new CgVfxModule.Force(0f, 9.8f, 0f, true))
+        ...build();
+VFX.play(new CgVfxSystemInstance<>(SPARK_LOOK, x, y, z).scale(2f, 2f, 2f));   // twice the size where opted in
+```
+
+| Opts in | What takes the scale |
+|---|---|
+| `initialize_particle`'s `owner_scale: [sprite_size, mesh_scale, ribbon_width]` | the sizes it sets at birth: a sprite's and a ribbon's by its x, a mesh's per axis |
+| `shape_location`'s `owner_scale` | where in its shape a particle is born |
+| `add_velocity`'s `owner_scale` | the launch |
+| `acceleration`'s and `scale_velocity`'s `owner_scale` | the force, the scale |
+| `camera_offset`'s `owner_scale` | the offset, by the scale's x |
+
+**Positions**: a world emitter's never take it. A `local_space` emitter's particles are born at it, where in the shape
+and how fast, as Niagara places local space by the system's whole transform; `local_space_scale: false` leaves it out,
+Cascade's local space (`CgVfxEmitter.Builder.localSpaceScale(false)`).
+
+### Easy to get wrong
+
+- **Read at birth**: a particle keeps the size, place and launch it was born with when its effect's scale changes after.
+  Forces and the camera offset read it each step.
+- **A size a gameplay picks** (a bigger hit, a charged blast) is a user parameter the cue writes, not a scale: Unreal's
+  cues have no scale of their own per play.
+- **Not read yet, refused at load by name**: the light renderer's `owner_scale`, and `camera_offset`'s over a bound
+  offset.
+
 ## Ending an emitter: let it finish, or kill it
 
 An instance ends one of two ways, as a Niagara emitter does:

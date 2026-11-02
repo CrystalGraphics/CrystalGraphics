@@ -36,12 +36,18 @@ import javax.annotation.Nullable;
  * @param bind     its instance's user parameter, remapped, where {@code roll} is {@link Roll#BIND}; else null
  * @param realTime whether its life runs on the viewer's clock, as Cascade's SubUV {@code bUseRealTime} divides its
  *                 relative time by the time dilation: slow motion does not slow it
+ * @param ownerScale whether it is times its effect's world scale on x, an {@code owner_scale} input's (a camera offset)
  */
 public record CgVfxDrawnChannel(CgKeyframes from, CgKeyframes to, Roll roll, @Nullable CgVfxFormInput.Binding bind,
-                                boolean realTime) {
+                                boolean realTime, boolean ownerScale) {
 
     public CgVfxDrawnChannel(CgKeyframes from, CgKeyframes to, Roll roll) {
-        this(from, to, roll, null, false);
+        this(from, to, roll, null, false, false);
+    }
+
+    public CgVfxDrawnChannel(CgKeyframes from, CgKeyframes to, Roll roll, @Nullable CgVfxFormInput.Binding bind,
+                             boolean realTime) {
+        this(from, to, roll, bind, realTime, false);
     }
 
     /** Where a particle's draws read a slot: Niagara's {@code DynamicMaterialParameter} to {@code _3}, then the sprite's. */
@@ -101,7 +107,12 @@ public record CgVfxDrawnChannel(CgKeyframes from, CgKeyframes to, Roll roll, @Nu
 
     /** This channel on the viewer's clock: its life read as Cascade's {@code bUseRealTime} reads it. */
     public CgVfxDrawnChannel inRealTime() {
-        return new CgVfxDrawnChannel(from, to, roll, bind, true);
+        return new CgVfxDrawnChannel(from, to, roll, bind, true, ownerScale);
+    }
+
+    /** This channel times its effect's world scale on x ({@code CgVfxEffect.worldScale()}): Niagara's owner scale. */
+    public CgVfxDrawnChannel ownerScaled() {
+        return new CgVfxDrawnChannel(from, to, roll, bind, realTime, true);
     }
 
     /** Between {@code min} and {@code max}, rolled again each step. */

@@ -948,8 +948,21 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         }
     }
 
-    /** A constant push, blocks a second squared: Niagara's acceleration force, {@link Gravity} in any direction. */
-    record Force(float x, float y, float z) implements CgVfxModule {
+    /**
+     * A constant push, blocks a second squared: Niagara's acceleration force, {@link Gravity} in any direction. With
+     * {@code ownerScale}, times its effect's world scale ({@code CgVfxEffect.worldScale()}), Cascade's
+     * {@code bApplyOwnerScale}.
+     *
+     * <pre>{@code
+     * new CgVfxModule.Force(0f, 4f, 0f)          // up, whatever the effect's size
+     * new CgVfxModule.Force(0f, 4f, 0f, true)    // up, twice as hard on an effect scaled twice
+     * }</pre>
+     */
+    record Force(float x, float y, float z, boolean ownerScale) implements CgVfxModule {
+
+        public Force(float x, float y, float z) {
+            this(x, y, z, false);
+        }
 
         @Override
         public float pull(float heat) {
@@ -1291,7 +1304,12 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
      *   <li>Collisions and what reads the velocity see the stored velocity, not the scaled motion.</li>
      * </ul>
      */
-    record ScaleVelocity(float x, float y, float z, boolean absolute) implements CgVfxModule {
+    record ScaleVelocity(float x, float y, float z, boolean absolute, boolean ownerScale) implements CgVfxModule {
+
+        /** Not taking its effect's scale; {@code ownerScale} multiplies the vector by it, Cascade's {@code bApplyOwnerScale}. */
+        public ScaleVelocity(float x, float y, float z, boolean absolute) {
+            this(x, y, z, absolute, false);
+        }
 
         @Override
         public String gpuKind() {

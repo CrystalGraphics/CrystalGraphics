@@ -75,4 +75,5 @@ struct FxForces {
 struct FxStep {
     float dt;
     vec3 wind;
+    vec3 ownerScale;   // its effect's world scale: what an owner_scale input multiplies by
 };

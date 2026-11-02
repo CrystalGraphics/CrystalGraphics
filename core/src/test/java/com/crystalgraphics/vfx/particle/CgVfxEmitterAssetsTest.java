@@ -10,6 +10,7 @@ import static org.junit.Assert.fail;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.Arrays;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
 
@@ -47,6 +48,7 @@ import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxWords;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxRecord;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxShape;
+import com.crystalgraphics.vfx.particle.spawn.CgVfxOwnerScale;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxLightRendererProperties;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxEmitterState;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawnBurst;
@@ -855,6 +857,54 @@ public class CgVfxEmitterAssetsTest {
         } catch (IllegalArgumentException e) {
             assertTrue(e.getMessage(), e.getMessage().startsWith("missing: no curve test:growth"));
         }
+    }
+
+    /** Every owner_scale opt-in is read, carried in the spawn row and the modules, and written back. */
+    @Test
+    public void ownerScaleOptInsReadAndWriteBack() {
+        CgAssetKinds.register();
+        Map<String, Object> tree = new LinkedHashMap<>();
+        tree.put("_v", 1);
+        tree.put("properties", Map.of("capacity", 64, "local_space", true, "local_space_scale", false));
+        tree.put("emitter_update", List.of(Map.of("id", "state", "module", "crystalgraphics:emitter_state",
+                "inputs", Map.of("loop", "once", "duration", 1.0))));
+        tree.put("particle_spawn", List.of(
+                Map.of("id", "init", "module", "crystalgraphics:initialize_particle",
+                        "inputs", Map.of("lifetime", 1.0, "owner_scale", List.of("sprite_size", "mesh_scale"))),
+                Map.of("id", "shape", "module", "crystalgraphics:shape_location",
+                        "inputs", Map.of("shape", "sphere", "sphere_radius", 40.0, "owner_scale", true)),
+                Map.of("id", "velocity", "module", "crystalgraphics:add_velocity",
+                        "inputs", Map.of("mode", "outward", "speed", 100.0, "owner_scale", true))));
+        tree.put("particle_update", List.of(
+                Map.of("id", "push", "module", "crystalgraphics:acceleration",
+                        "inputs", Map.of("acceleration", List.of(0.0, 0.0, 100.0), "owner_scale", true)),
+                Map.of("id", "slow", "module", "crystalgraphics:scale_velocity",
+                        "inputs", Map.of("scale", List.of(0.5, 0.5, 0.5), "owner_scale", true)),
+                Map.of("id", "near", "module", "crystalgraphics:camera_offset",
+                        "inputs", Map.of("offset", 20.0, "owner_scale", true))));
+        tree.put("renderers", List.of(Map.of("id", "r", "kind", "sprite")));
+        CgVfxEmitter e = CgVfxEmitterAssets.compile("owned", tree, null);
+        assertEquals(EnumSet.of(CgVfxOwnerScale.SPRITE_SIZE, CgVfxOwnerScale.MESH_SCALE, CgVfxOwnerScale.SHAPE,
+                CgVfxOwnerScale.VELOCITY), e.ownerScale());
+        assertTrue(!e.localSpaceScale());
+        assertEquals("the spawn row's mask, no local bit", 1 | 2 | 8 | 16, (int) spawn(e)[12]);
+        assertTrue(((CgVfxModule.Force) e.modules().get(0)).ownerScale());
+        assertTrue(((CgVfxModule.ScaleVelocity) e.modules().get(1)).ownerScale());
+        CgVfxDrawnChannel offset = e.drawn(CgVfxDrawnChannel.SPRITE, CgVfxDrawnChannel.CAMERA_OFFSET);
+        assertTrue(offset != null && offset.ownerScale());
+        Map<String, Object> written = CgVfxEmitterAssets.write(e);
+        CgVfxEmitter back = CgVfxEmitterAssets.compile("owned", written, null);
+        assertEquals(e.ownerScale(), back.ownerScale());
+        assertEquals(e.localSpaceScale(), back.localSpaceScale());
+        assertArrayEquals(e.moduleWords(), back.moduleWords());
+        assertTrue(back.drawn(CgVfxDrawnChannel.SPRITE, CgVfxDrawnChannel.CAMERA_OFFSET).ownerScale());
+        CgValidation v = CgAssetData.of("test:vfx/emitters/owned", CgParticleKinds.EMITTER, written, null)
+                .validate(CgValidation.Usecase.LOAD);
+        assertTrue(String.valueOf(v.issues()), v.valid());
+        Map<String, Object> lit = new LinkedHashMap<>(tree);
+        lit.put("renderers", List.of(Map.of("id", "r", "kind", "light", "owner_scale", true)));
+        IllegalArgumentException refused = assertThrows(IllegalArgumentException.class, () -> CgVfxEmitterAssets.compile("lit", lit, null));
+        assertTrue(refused.getMessage(), refused.getMessage().contains("owner_scale is not read yet"));
     }
 
     private static Map<String, Object> scaleVelocityTree(Object scale) {

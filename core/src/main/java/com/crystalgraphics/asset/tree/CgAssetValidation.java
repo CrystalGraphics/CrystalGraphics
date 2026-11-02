@@ -263,6 +263,8 @@ final class CgAssetValidation {
                 return v instanceof Integer || v instanceof Long;
             case FLOAT:
                 return v instanceof Number;
+            case VEC2: case VEC3: case VEC4: case COLOUR: case ROTATION: case POSITION:
+                return v instanceof List || v instanceof Number || v instanceof Map;
             case NULL:
                 return false;   // a null never reaches here
             default:

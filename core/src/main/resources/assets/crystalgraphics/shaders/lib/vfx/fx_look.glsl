@@ -31,18 +31,22 @@ vec4 look_curve(int at, float t) {
 // A block of four channels at vec4 block, a drawn slot's or a light's: its low and high ends over life, mixed by each
 // channel's roll (0 the low end alone; 1 by the seed, fixed for its life; 2 rolled again each step, keyed by its age;
 // 3 its instance's bound user parameter, from instance vec4 bound), plus 10 on the viewer's clock: its life over the
-// instance's time rate, as Cascade's SubUV bUseRealTime divides its relative time by the time dilation. b salts its rolls.
+// instance's time rate, as Cascade's SubUV bUseRealTime divides its relative time by the time dilation; plus 20 times
+// the instance's world scale on x (an owner_scale input's). b salts its rolls.
 vec4 look_block(int block, int b, float t, uint bits, float age, int bound, int inst) {
     vec4 rolls = CURVES(block + 2 * _Texels), mixed, value;
     float rate = look_instance(inst + 2).z;
     for (int c = 0; c < 4; c++) {
-        bool real = rolls[c] > 9.5;
-        float roll = real ? rolls[c] - 10.0 : rolls[c];
+        bool owned = rolls[c] > 19.5;
+        float coded = owned ? rolls[c] - 20.0 : rolls[c];
+        bool real = coded > 9.5;
+        float roll = real ? coded - 10.0 : coded;
         float u = real ? (rate > 0.0 ? min(t / rate, 1.0) : 1.0) : t;
         uint key = roll > 1.5 ? bits ^ floatBitsToUint(age) : bits;
         float m = roll > 0.5 && roll < 2.5 ? fx_rand(key, uint(b), 40u + uint(c)) : 0.0;
         value[c] = mix(look_curve(block, u)[c], look_curve(block + _Texels, u)[c], m);
         if (roll > 2.5 && bound >= 0) value[c] = look_instance(bound)[c];
+        if (owned) value[c] *= look_instance(inst + 9).x;
     }
     return value;
 }

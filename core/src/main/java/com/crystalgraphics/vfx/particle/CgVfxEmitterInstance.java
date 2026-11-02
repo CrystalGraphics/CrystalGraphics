@@ -112,6 +112,8 @@ public final class CgVfxEmitterInstance {
      * local instance: unit quaternions, the identity unless turned. {@code turned} once a step has been taken at one.
      */
     private float rotX, rotY, rotZ, rotW = 1f, lastRotX, lastRotY, lastRotZ, lastRotW = 1f, turnX, turnY, turnZ, turnW = 1f;
+    /** Its effect's world scale ({@code CgVfxEffect.worldScale()}). */
+    private float scaleX = 1f, scaleY = 1f, scaleZ = 1f;
     private boolean turned;
     /**
      * What is alive, by when each dies, in buckets of {@link #BUCKET} seconds round a ring: null unless its capacity can
@@ -251,6 +253,7 @@ public final class CgVfxEmitterInstance {
         boxX = boxY = boxZ = boxHalfX = boxHalfY = boxHalfZ = 0f;
         rotX = rotY = rotZ = lastRotX = lastRotY = lastRotZ = turnX = turnY = turnZ = 0f;
         rotW = lastRotW = turnW = 1f;
+        scaleX = scaleY = scaleZ = 1f;
         if (dying != null) Arrays.fill(dying, 0);
         alive = 0;
         retired = 0;
@@ -591,6 +594,9 @@ public final class CgVfxEmitterInstance {
             child.rotY = rotY;
             child.rotZ = rotZ;
             child.rotW = rotW;
+            child.scaleX = scaleX;
+            child.scaleY = scaleY;
+            child.scaleZ = scaleZ;
             child.turnX = turnX;
             child.turnY = turnY;
             child.turnZ = turnZ;
@@ -932,6 +938,31 @@ public final class CgVfxEmitterInstance {
             rotY = y;
             rotZ = z;
             rotW = w;
+        }
+
+        /**
+         * Its effect's world scale: the effect sets it each tick it steps this instance, from
+         * {@code CgVfxEffect.worldScale()}. What its modules and renderers opt into ({@code owner_scale}) reads it.
+         */
+        public void scale(float x, float y, float z) {
+            scaleX = x;
+            scaleY = y;
+            scaleZ = z;
+        }
+
+        @Override
+        public float scaleX() {
+            return scaleX;
+        }
+
+        @Override
+        public float scaleY() {
+            return scaleY;
+        }
+
+        @Override
+        public float scaleZ() {
+            return scaleZ;
         }
 
         @Override

@@ -108,11 +108,16 @@ public final class CgVfxRenderers {
             case "system" -> throw new IllegalArgumentException(who + ": a system renderer places analytic emitters, which are not built yet");
             case "anim_trail" -> animTrail(who, common, tree);
             case "beam" -> beam(who, common, tree);
-            case "light" -> new CgVfxLightRendererProperties(common, tree, !Boolean.FALSE.equals(tree.get("inverse_squared_falloff")),
+            case "light" -> {
+                if (Boolean.TRUE.equals(tree.get("owner_scale"))) {
+                    throw new IllegalArgumentException(who + ": the light renderer's owner_scale is not read yet");
+                }
+                yield new CgVfxLightRendererProperties(common, tree, !Boolean.FALSE.equals(tree.get("inverse_squared_falloff")),
                     tree.get("intensity_scale") instanceof Number n ? n.floatValue() : 1f, tree.get("spawn_fraction") instanceof Number n ? n.floatValue() : 1f,
                     Boolean.TRUE.equals(tree.get("affects_translucency")),
                     tree.get("volumetric_scattering") instanceof Number n ? n.floatValue() : 0f,
                     Boolean.TRUE.equals(tree.get("allow_mega_lights")));
+            }
             default -> throw new IllegalArgumentException(who + " has no kind '" + kind + "'");
         };
         built(who, r);

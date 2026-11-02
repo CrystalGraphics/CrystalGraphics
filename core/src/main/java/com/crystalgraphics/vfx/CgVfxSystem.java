@@ -65,6 +65,7 @@ import com.crystalgraphics.vfx.particle.gpu.CgVfxDrawLayout;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.joml.Quaternionf;
+import org.joml.Vector3f;
 
 import javax.annotation.Nullable;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawnFrom;
@@ -259,6 +260,7 @@ public final class CgVfxSystem {
     private final List<CgVfxOwner> owners = new ArrayList<>();
     private final double[] point = new double[3], box = new double[6];
     private final Quaternionf turn = new Quaternionf();
+    private final Vector3f followScale = new Vector3f();
     /** The world whose time dilation scales every effect's time; null for a system that runs on real pace alone. */
     private CgWorld world;
     private final CgVfxGpuSteps gpuSteps = new CgVfxGpuSteps();
@@ -675,6 +677,7 @@ public final class CgVfxSystem {
             }
             effect.moveToFollowed(point[0], point[1], point[2]);
             effect.turnToFollowed(turn);
+            effect.scaleToFollowed(attachment.scale(null, followScale));
             if (attachment.bounds(box)) {
                 effect.followBoxX = box[0];
                 effect.followBoxY = box[1];

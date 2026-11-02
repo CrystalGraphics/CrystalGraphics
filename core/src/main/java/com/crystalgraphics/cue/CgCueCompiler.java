@@ -250,13 +250,17 @@ final class CgCueCompiler {
             }
         }
         Vector3f scale = null;
+        boolean inherit = "inherit".equals(p.get("scale"));
         if (p.get("scale") instanceof List<?> s) {
             List<?> host = (List<?>) units.toHost(s, CgQuantity.SCALE);
             scale = new Vector3f(number(host.get(0), 1f), number(host.get(1), 1f), number(host.get(2), 1f));
+        } else if (p.get("scale") != null && !inherit) {
+            throw fail(path + ".scale", "[x, y, z] or inherit, not " + p.get("scale"));
         }
         return new Placement(p.get("socket") instanceof String s ? s : null,
                 p.get("attach") == null ? Placement.Attach.DO_NOT_ATTACH : Placement.Attach.valueOf(upper(p.get("attach"))),
-                p.get("rule") == null ? Placement.Rule.KEEP_WORLD : Placement.Rule.valueOf(upper(p.get("rule"))), rotation, scale);
+                p.get("rule") == null ? Placement.Rule.KEEP_WORLD : Placement.Rule.valueOf(upper(p.get("rule"))), rotation,
+                scale, inherit);
     }
 
     private float length(@Nullable Object v, float otherwise) {
@@ -322,7 +326,9 @@ final class CgCueCompiler {
             Quaternionf r = p.rotation();
             t.put("rotation", new ArrayList<>(List.of((double) r.x, (double) r.y, (double) r.z, (double) r.w)));
         }
-        if (p.scale() != null) {
+        if (p.inheritScale()) {
+            t.put("scale", "inherit");
+        } else if (p.scale() != null) {
             Vector3f s = p.scale();
             t.put("scale", new ArrayList<>(List.of((double) s.x, (double) s.y, (double) s.z)));
         }
