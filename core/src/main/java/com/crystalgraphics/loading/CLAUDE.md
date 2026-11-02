@@ -10,7 +10,7 @@ first-use work.
 | `CgLoadingScreen` | The state machine: LOADING (a process answers a reason), HOLDING (none does; `holdFrames` quiet frames of `CgPipeline.misses`, `compileWaits`, texture loads and sync asset loads, at most `maxHoldSeconds`), HIDDEN. Starts LOADING at launch. `frame()` runs in `CgGraphicsLifecycle.tickFrame`; a host calls `draw(w, h)` last each frame, and reads `loading()` to skip its world |
 | `CgLoadingProcess` | Lyra's `ILoadingProcessInterface`: asked each frame for a reason, or null once done; `progress()` for the bar |
 | `CgLoadingScreen.Task` | Lyra's `ULoadingProcessTask`: work started and ended in code (`task(reason)` ... `close()`) |
-| `CgLoadingView` / `CgLogoLoadingView` | What it draws: the engine's logo over a white outlined bar on indigo, laid out as Minecraft's loading overlay |
+| `CgLoadingView` / `CgLogoLoadingView` | What it draws: the engine's lockup (`textures/gui/lockup.png`, the logo and "Crystal Graphics") over a view up at the ocean's surface (`shaders/loading/loading_fx.shader`), Minecraft's white outlined bar under it. No text: what loads is in the log. `warm` loads its texture at the graphics start (`CgLoadingScreen.warm`, which `install` calls) |
 
 ## Rules
 

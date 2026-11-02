@@ -27,4 +27,11 @@ public interface CgLoadingView {
      * @param reason   why it shows (the first process still loading, or "holding"); null in the fade-out
      */
     void draw(int width, int height, float progress, float alpha, @Nullable String reason);
+
+    /**
+     * Starts building what the first {@link #draw} at {@code width} x {@code height} needs (its textures, its glyphs),
+     * so it draws whole. Called once at the graphics start, before the first draw; nothing by default. Render thread.
+     */
+    default void warm(int width, int height) {
+    }
 }

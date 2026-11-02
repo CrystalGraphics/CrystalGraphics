@@ -1,13 +1,12 @@
 // =============================================================================
 // CrystalShader -- loading/loading_fx.shader
-// The loading screen's looks, one quad material for every part (CgPremiumLoadingView, CgSplashLoadingView). Each quad
-// says what it is in custom0: x the screen's seconds, y the screen's aspect, w the mode:
+// The loading screen's look, one quad material for every part (CgLogoLoadingView). Each quad says what it is in
+// custom0: x the screen's seconds, y the screen's aspect, w the mode:
 //   0 the backdrop: under the ocean looking up at the surface, with shafts of light, specks, and grain
 //   1 a soft glow: a gaussian over the quad, in the quad's colour
-//   2 an image (the logo) with a light sweeping across it every few seconds, z its strength (0 for none)
-//   3 a flat colour
-//   4 a spinner: a ring with a turning bright arc
-//   5 the load bar: Minecraft's white outline and fill, made smooth, z how full// =============================================================================
+//   2 an image (the lockup) with a light sweeping across it every few seconds, z its strength (0 for none)
+//   3 the load bar: Minecraft's white outline and fill, made smooth, z how full
+// =============================================================================
 
 #type none
 #pragma cg_use quad
@@ -198,16 +197,8 @@ Pass {
             vec4 image = texture(_MainTex, i.uv) * i.color;
             image.rgb += vec3(0.55 * sweep(i.uv, t) * i.params.z);
             fragColor = image;
-        } else if (mode == 4) {
-            vec2 d = i.uv * 2.0 - 1.0;
-            float r = length(d), aa = fwidth(r);
-            float ring = 1.0 - smoothstep(0.09 - aa, 0.09 + aa, abs(r - 0.78));
-            float head = fract(atan(d.y, d.x) / 6.2832 + t * 0.9);
-            fragColor = vec4(i.color.rgb, i.color.a * ring * (0.12 + 0.88 * smoothstep(0.35, 1.0, head)));
-        } else if (mode == 5) {
-            fragColor = bar(i.uv, i.params.z, i.color.a);
         } else {
-            fragColor = i.color;
+            fragColor = bar(i.uv, i.params.z, i.color.a);
         }
     }
 }

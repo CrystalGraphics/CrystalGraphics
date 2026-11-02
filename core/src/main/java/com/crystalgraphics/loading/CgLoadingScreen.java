@@ -88,13 +88,6 @@ public final class CgLoadingScreen {
             "The longest the loading screen holds once nothing loads, however much first-use work goes on.");
     private static final CgVar.Num MAX_LOADING = CgVar.number("crystalgraphics.loading.maxSeconds", 120f, 0f, 3600f,
             "The longest the loading screen shows for a process still loading before it holds anyway, warning which.");
-    /** The engine's own looks, until a consumer sets a {@link #view} of its own. */
-    public enum Style { PREMIUM, SPLASH, CLASSIC }
-
-    private static final CgVar.Choice<Style> STYLE = CgVar.choice("crystalgraphics.loading.style", Style.PREMIUM,
-            "The loading screen's look: PREMIUM (the logo over an underwater view up at the surface), SPLASH (the same look, a turning ring"
-                    + " and the status at the bottom right in place of the bar),"
-                    + " CLASSIC (the logo over an outlined bar). A consumer's own view replaces all three.");
     /** How long the screen takes to fade out after it hides, as Minecraft's loading overlay fades. */
     private static final long FADE_NANOS = 1_000_000_000L;
 
@@ -117,10 +110,8 @@ public final class CgLoadingScreen {
     private static boolean installed;
     /** The engine's processes outlasted {@code maxSeconds}: they no longer keep this showing up. */
     private static boolean gaveUp;
-    /** A consumer's view, or null for the engine's own in {@link #STYLE}. */
-    @Nullable private static CgLoadingView view;
-    @Nullable private static CgLoadingView styled;
-    @Nullable private static Style styledAs;
+    /** What it draws: the engine's look until a consumer sets its own. */
+    private static CgLoadingView view = new CgLogoLoadingView();
     /** The host's opening held behind the screen, or null. */
     @Nullable private static Runnable held;
     /** A host held its opening here, so it draws the screen until the fade ends. */
@@ -141,11 +132,8 @@ public final class CgLoadingScreen {
     }
 
     static {
-        // The screen's own looks, built at the graphics start with the engine's passes, before its first frame draws
-        CgPipelinePrecache.register("crystalgraphics:loading", pipelines -> {
-            pipelines.addPass(CgLoadingCanvas.FX, CgInstanceKind.QUAD);
-            pipelines.addPass(CgLogoLoadingView.IMAGE, CgInstanceKind.QUAD);
-        });
+        // The screen's own look, built at the graphics start with the engine's passes, before its first frame draws
+        CgPipelinePrecache.register("crystalgraphics:loading", pipelines -> pipelines.addPass(CgLogoLoadingView.FX, CgInstanceKind.QUAD));
     }
 
     /** Adds {@code process}: while it is loading the screen shows, raised again if it had hidden. Any thread. */
@@ -186,21 +174,6 @@ public final class CgLoadingScreen {
     /** Replaces what the screen draws: a consumer's look. Render thread. */
     public static void view(CgLoadingView replacement) {
         view = replacement;
-    }
-
-    /** The consumer's view, else the engine's in the style asked for, made again when the style changes. */
-    private static CgLoadingView current() {
-        if (view != null) return view;
-        Style style = STYLE.get();
-        if (styled == null || style != styledAs) {
-            styledAs = style;
-            styled = switch (style) {
-                case PREMIUM -> new CgPremiumLoadingView();
-                case SPLASH -> new CgSplashLoadingView();
-                case CLASSIC -> new CgLogoLoadingView();
-            };
-        }
-        return styled;
     }
 
     /**
@@ -269,10 +242,20 @@ public final class CgLoadingScreen {
         return shownProgress;
     }
 
-    /** The engine's own processes, added once at the graphics start. The lifecycle's. */
-    public static void install() {
+    /**
+     * Starts building what the screen's first frame draws at {@code width} x {@code height}, so it appears whole rather
+     * than glyph by glyph: its view's {@link CgLoadingView#warm}. At the graphics start for the engine's own looks; a
+     * consumer replacing the view after it calls it again. Render thread.
+     */
+    public static void warm(int width, int height) {
+        if (width > 0 && height > 0) view.warm(width, height);
+    }
+
+    /** The engine's own processes, added once at the graphics start, and the view warmed. The lifecycle's. */
+    public static void install(int width, int height) {
         if (installed) return;
         installed = true;
+        warm(width, height);
         LOGGER.info("[loading] shown: {}", reason);
         // First of the stage: a host's own world firing this frame means the screen need not fire one.
         CgRenderStage.WORLD_OPAQUE.register(Integer.MIN_VALUE, frame -> worldFired = true);
@@ -378,7 +361,7 @@ public final class CgLoadingScreen {
             if (warm) warmFrame();
             CgGL.glBindFramebuffer(CgGL.GL_FRAMEBUFFER, framebuffer);
             CgGL.glViewport(0, 0, width, height);
-            current().draw(width, height, shownProgress, alpha, reason);
+            view.draw(width, height, shownProgress, alpha, reason);
         }
     }
 

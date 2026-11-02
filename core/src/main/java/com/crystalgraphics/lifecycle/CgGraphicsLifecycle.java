@@ -217,7 +217,7 @@ public final class CgGraphicsLifecycle {
                 CgJob.run(() -> { for (String kind : CgCacheDirectory.PRUNED) CgCacheDirectory.prune(kind); });
                 // From here warm-ups spread over frames: the demo's first scene took the first frame 0.7-10 s on 1.7.10.
                 CgWarmBudget.start();
-                CgLoadingScreen.install();
+                CgLoadingScreen.install(width, height);
 
                 initialized = true;
                 destroyed = false;   // an explicit init is what makes a context live again
