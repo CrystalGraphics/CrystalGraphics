@@ -10,6 +10,7 @@ package com.crystalgraphics.mc.shared;
 public final class CrystalGraphicsNeoForgeMixins extends VariantMixins {
 
     public CrystalGraphicsNeoForgeMixins() {
-        super("crystalgraphics", new String[]{"ChunkWriteHook"}, "LevelViewHook", "ExplosionHook", "LevelEventHook", "CameraHook", "SoundVolumeHook");
+        super("crystalgraphics", new String[]{"ChunkWriteHook"}, "LevelViewHook", "ExplosionHook", "LevelEventHook", "CameraHook", "SoundVolumeHook",
+                "FirstScreenHook");
     }
 }

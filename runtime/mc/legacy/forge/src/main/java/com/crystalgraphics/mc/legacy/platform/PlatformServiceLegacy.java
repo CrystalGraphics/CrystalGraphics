@@ -128,6 +128,7 @@ public final class PlatformServiceLegacy implements CgPlatformService {
         FMLCommonHandler.instance().bus().register(new WorldEventsLegacy.Ticks());
         FMLCommonHandler.instance().bus().register(new HostCameraLegacy.Ticks());
         MinecraftForge.EVENT_BUS.register(new OverlayStagesLegacy());
+        MinecraftForge.EVENT_BUS.register(new LoadingScreenLegacy());
     }
 
     @Override public CgGLBackend gl() {

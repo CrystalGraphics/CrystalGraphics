@@ -280,6 +280,30 @@ exists.
 > the Minecraft method is the more stable choice, and is what 1.7.10 and legacy Forge have always done.
 > Forge 1.21.3+ is where it had to happen: those node mixins run Mojang names, so they need no refmap.
 
+### The loading screen — `CgLoadingScreen`
+
+**It shows once, after Mojang's, Forge's or Fabric's loading screen and before the first menu**, and never again
+(the user, 2026-11-02; `core/.../loading/CLAUDE.md`). Each host holds the game's opening of its first screen with
+`CgLoadingScreen.holdUntilHidden`, puts up an empty screen meanwhile (with no screen and no level Minecraft reads keys
+for a player it has not made), draws ours over the GUI at its frame end before the frame tick, and runs the held
+opening after the tick once it hides (`runHeld`). The title screen and Quick Play then follow as they would have.
+
+| Era | Where the first screen opens | Hook |
+|---|---|---|
+| 1.7.10, Forge 1.8.9–1.12.2 | `startGame` opens `GuiMainMenu` once Forge's splash ends | `GuiOpenEvent`: the first main menu swapped (`LoadingScreen1710`, `LoadingScreenLegacy`) |
+| Forge 1.13.2–1.19.4 | `Minecraft`'s startup sets the title screen, before Mojang's overlay (1.14.3 on) | the screen-open event: `GuiOpenEvent` to 1.17.1, `ScreenOpenEvent` 1.18.2, `ScreenEvent.Opening` 1.19.x; `HeldFirstScreen.instead` |
+| Fabric 1.14.4–1.19.4 | the same | node mixin `FirstScreenHook`: `setScreen`'s argument (`method_1507`), the first title screen swapped |
+| Forge, Fabric 1.20.1 | `setInitialScreen(realms, reload, quickPlay)` in the initial reload's completion | `FirstScreenHook` at its head (`m_278684_`, `method_51251`) |
+| 1.20.2–26.3, every loader | `onGameLoadFinished` runs the `Runnable` it builds (`buildInitialScreens`, `gui.buildInitialScreens` on 26.2) | `FirstScreenHook` redirects that `run()` (`m_286052_` on Forge and NeoForge to 1.20.4, `method_51736` on Fabric) |
+
+- **Only the title screen is held where it is made early** (1.7.10 to 1.19.4): a connect screen (a server on the
+  command line) connects as it is made, so it opens at once. A screen something opens meanwhile (Forge's mod-loading
+  warnings) stays: the held menu opens only over our empty screen.
+- **Under Mojang's overlay** (1.14.3–1.19.4, where the hold starts before it) ours is not drawn until the overlay
+  goes (`HeldFirstScreen.overHostLoading`).
+- **Forge 1.20.1 skips `setInitialScreen` when mod loading warned** (its `LoadingErrorScreen`; a mod pack with no
+  `pack.mcmeta` is one): nothing holds, and the screen does not show.
+
 ### Hot reload — `CgAssetReloader`
 
 `core/src/main/java/com/crystalgraphics/mc/CgAssetReloader`, reached through each host's

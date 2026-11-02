@@ -1,7 +1,9 @@
 package com.crystalgraphics.mc.legacy.mixin;
 
 import com.crystalgraphics.render.stage.CgRenderStage;
+import com.crystalgraphics.loading.CgLoadingScreen;
 import com.crystalgraphics.mc.legacy.platform.HostViewLegacy;
+import com.crystalgraphics.mc.legacy.platform.LoadingScreenLegacy;
 import com.crystalgraphics.mc.legacy.platform.world.EnvironmentLegacy;
 import com.crystalgraphics.mc.legacy.platform.world.TexturesLegacy;
 import com.crystalgraphics.mc.legacy.platform.world.WorldEventsLegacy;
@@ -64,6 +66,8 @@ public abstract class CgRenderHook {
         // The engine starts on the first frame, the title screen's, so its shaders compile before a world exists.
         Minecraft mc = Minecraft.getMinecraft();
         CgEngineLifecycle.ensureGraphicsContext(mc.displayWidth, mc.displayHeight);
+        LoadingScreenLegacy.draw(mc);
         CgPlatform.lifecycle().onFrameRendered();
+        CgLoadingScreen.runHeld();
     }
 }

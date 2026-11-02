@@ -229,7 +229,9 @@ public final class LifecycleModern {
                 screenAtFrameEnd = false;
                 fireOverlay(CgRenderStage.SCREEN);
             }
-            if (CgLoadingScreen.hostDraws() && CgGraphicsLifecycle.isInitialized()) drawLoadingScreen();
+            if (CgLoadingScreen.hostDraws() && CgGraphicsLifecycle.isInitialized() && !HeldFirstScreen.overHostLoading()) {
+                drawLoadingScreen();
+            }
             FrameHooks.endFrame();
         }
         // Outside the check: an engine that stood down hid the screen, and the first menu must still open

@@ -187,6 +187,7 @@ public final class PlatformService1710 implements CgPlatformService {
             FMLCommonHandler.instance().bus().register(new HostCamera1710.Ticks());
             MinecraftForge.EVENT_BUS.register(new HostCamera1710.Renders());
             MinecraftForge.EVENT_BUS.register(new OverlayStages1710());
+            MinecraftForge.EVENT_BUS.register(new LoadingScreen1710());
         }
 
         // Prefer Angelica's mirror over the driver for GL state reads.

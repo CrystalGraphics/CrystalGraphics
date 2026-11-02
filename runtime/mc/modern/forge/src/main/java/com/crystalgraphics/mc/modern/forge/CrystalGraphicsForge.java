@@ -94,6 +94,15 @@ import net.minecraftforge.client.event.ScreenEvent;
 //?} else {
 /*import net.minecraftforge.client.event.GuiScreenEvent;
 *///?}
+//? if <1.18 {
+/*import net.minecraftforge.client.event.GuiOpenEvent;
+*///?} elif <1.19 {
+/*import net.minecraftforge.client.event.ScreenOpenEvent;
+*///?}
+//? if <1.20.1 {
+/*import com.crystalgraphics.mc.modern.platform.HeldFirstScreen;
+import net.minecraft.client.gui.screens.Screen;
+*///?}
 //? if >=1.17 {
 import net.minecraftforge.fml.CrashReportCallables;
 //?} else {
@@ -310,6 +319,11 @@ public final class CrystalGraphicsForge implements VariantEntry {
             MinecraftForge.EVENT_BUS.addListener(Events::onRenderGui);
             MinecraftForge.EVENT_BUS.addListener(Events::onScreenRender);
             //?}
+            // The first screen held behind our loading screen: set in Minecraft's constructor below 1.20.1, swapped as
+            // it opens. From 1.20.1 the FirstScreenHook node mixin holds it once the load finishes.
+            //? if <1.20.1 {
+            /*MinecraftForge.EVENT_BUS.addListener(Events::onScreenOpen);
+            *///?}
             // Forge 53 (1.21.3) removed the render-stage event; from there the passes are a mixin's.
             // @see com.crystalgraphics.mc.modern.forge.mixin.OpaquePassHook
             //? if >=1.21.3 {
@@ -351,6 +365,23 @@ public final class CrystalGraphicsForge implements VariantEntry {
         private static void onRenderWorldLast(RenderWorldLastEvent event) {
             LifecycleModern.opaquePass(event.getPartialTicks());
             LifecycleModern.transparentPass();
+        }
+        *///?}
+
+        //? if <1.18 {
+        /*private static void onScreenOpen(GuiOpenEvent event) {
+            Screen instead = HeldFirstScreen.instead(event.getGui());
+            if (instead != null) event.setGui(instead);
+        }
+        *///?} elif <1.19 {
+        /*private static void onScreenOpen(ScreenOpenEvent event) {
+            Screen instead = HeldFirstScreen.instead(event.getScreen());
+            if (instead != null) event.setScreen(instead);
+        }
+        *///?} elif <1.20.1 {
+        /*private static void onScreenOpen(ScreenEvent.Opening event) {
+            Screen instead = HeldFirstScreen.instead(event.getNewScreen());
+            if (instead != null) event.setNewScreen(instead);
         }
         *///?}
 

@@ -1,7 +1,9 @@
 package com.crystalgraphics.mc.v1710.mixins.early.impl.client;
 
 import com.crystalgraphics.render.stage.CgRenderStage;
+import com.crystalgraphics.loading.CgLoadingScreen;
 import com.crystalgraphics.mc.v1710.platform.HostView1710;
+import com.crystalgraphics.mc.v1710.platform.LoadingScreen1710;
 import com.crystalgraphics.mc.v1710.platform.world.Environment1710;
 import com.crystalgraphics.mc.v1710.platform.world.Textures1710;
 import com.crystalgraphics.mc.v1710.platform.world.WorldEvents1710;
@@ -118,6 +120,8 @@ public class CgRenderHook {
         // The engine starts on the first frame, the title screen's, so its shaders compile before a world exists.
         Minecraft mc = Minecraft.getMinecraft();
         CgEngineLifecycle.ensureGraphicsContext(mc.displayWidth, mc.displayHeight);
+        LoadingScreen1710.draw(mc);
         CgPlatform.lifecycle().onFrameRendered();
+        CgLoadingScreen.runHeld();
     }
 }
