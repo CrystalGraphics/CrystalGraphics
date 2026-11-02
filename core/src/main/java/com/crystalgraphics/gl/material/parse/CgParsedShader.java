@@ -236,8 +236,9 @@ public record CgParsedShader(String shaderType, List<CgMaterialProperty> propert
             CgRenderState rs = pass.renderState();
             if (CgParsedPass.LIGHT_MODE_FORWARD.equals(pass.lightMode())) {
                 rs = forwardUnder(rs, state, unclip);
-            } else if (!state.depthTested() && CgParsedPass.LIGHT_MODE_EMISSIVE.equals(pass.lightMode())) {
-                // Unreal's bDisableDepthTest is the material's: its glow is not hidden by the scene either.
+            } else if (!state.depthTested() && (CgParsedPass.LIGHT_MODE_EMISSIVE.equals(pass.lightMode())
+                    || CgParsedPass.LIGHT_MODE_DISTORTION.equals(pass.lightMode()))) {
+                // Unreal's bDisableDepthTest is the material's: its glow and its bend are not hidden by the scene either.
                 rs = rs.withDepth(UNTESTED);
             } else if (CgParsedPass.LIGHT_MODE_EMISSIVE.equals(pass.lightMode()) && authored != null
                     && pass.fragmentBody() == firstForward.fragmentBody()) {

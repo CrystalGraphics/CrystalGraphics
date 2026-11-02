@@ -237,6 +237,12 @@ public class CgMaterialStateTest {
                 null, CgMaterialShaderCompiler.CompileConfig.DEFAULT).fragmentSource();
         assertTrue("the authored glow is hidden by the scene", authoredGlow.contains("CG_EMISSIVE_DEPTH_SLACK"));
         assertFalse(glow.contains("CG_EMISSIVE_DEPTH_SLACK"));
+        String hazy = STATELESS + "Pass { Tags { \"LightMode\" = \"Distortion\" }\n"
+                + "    void fragment(in v2f i, out vec4 offset) { offset = CG_DISTORTION(i.uv * 0.01, 0.0, 1.0); }\n}\n";
+        CgParsedShader bending = CgShaderParser.parse(hazy, "test").withState(spark, "test");
+        String bend = CgMaterialShaderCompiler.compile(bending, bending.getPassByLightMode("Distortion"), NO_BUFFERS, null,
+                CgMaterialShaderCompiler.CompileConfig.DEFAULT).fragmentSource();
+        assertFalse("its bend is not hidden by the scene either", bend.contains("CG_EMISSIVE_DEPTH_SLACK"));
     }
 
     @Test

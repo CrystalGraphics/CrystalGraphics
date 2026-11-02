@@ -947,8 +947,8 @@ CgMaterial ink = CgMaterial.newInstance("mymod:shaders/fx/ink.shader",
   masked master cuts nothing.
 - Refused at parse: `depthWrite` under a `"Depth"` tag (unless a blend without `clip()` dropped it) or with `clip()`;
   `clip()` on a `"Prepass"` shader.
-- **`disableDepthTest()`** (Unreal's `bDisableDepthTest`, a file's `depth_test: false`) gives the Forward and Emissive
-  passes `DepthTest ALWAYS` with no write, so the draw and its glow show over what is in front. It compiles, since an
+- **`disableDepthTest()`** (Unreal's `bDisableDepthTest`, a file's `depth_test: false`) gives the Forward, Emissive and
+  Distortion passes `DepthTest ALWAYS` with no write, so the draw, its glow and its bend show over what is in front. It compiles, since an
   Emissive pass's scene test is compiled. Translucent only: refused with an opaque blend, a clip, a depth write, on a
   `"Prepass"` shader or an opaque-queue shader with no blend of its own.
 - The queue stays the shader's, except under `separateTranslucency()` (Unreal's separate translucency): a translucent

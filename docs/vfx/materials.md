@@ -49,7 +49,9 @@ CgMaterialDefinition slow = CgMaterialDefinitions.derive(sparks, Map.of("values"
 - `depth_test: false` (Unreal's `bDisableDepthTest`, `.depthTest(false)`) draws it over whatever is in front: a hit
   spark the floor would otherwise cut. Its glow is not hidden by the scene either. Translucent blends only: on
   `opaque` or `masked` it fails at load. It then shows through walls too, so give its particles
-  `crystalgraphics:occlusion` ([particles](particles.md)) to fade them out where something covers them.
+  `crystalgraphics:occlusion` ([particles](particles.md)) to fade them out where something covers them. **Give it no
+  depth fade** (`CG_DEPTH_FADE`, soft particles): behind the floor the scene is nearer than the fragment, so the fade is 0
+  there at any distance, 0 included, and cuts the draw on the very line the depth test would have.
 
   ```yaml
   state: { blend: additive, depth_test: false }
