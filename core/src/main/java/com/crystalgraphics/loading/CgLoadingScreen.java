@@ -10,11 +10,17 @@ import javax.annotation.Nullable;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import org.joml.Matrix4f;
+
+import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
+import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.asset.load.CgVfxAssets;
+import com.crystalgraphics.gl.framebuffer.CgFrameBuffer;
 import com.crystalgraphics.gl.material.CgMaterialShader;
 import com.crystalgraphics.gl.texture.CgTextureAbstract;
 import com.crystalgraphics.render.CgWarmBudget;
 import com.crystalgraphics.render.draw.CgPipeline;
+import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.world.CgPipelinePrecache;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
@@ -92,6 +98,17 @@ public final class CgLoadingScreen {
     private static boolean gaveUp;
     private static CgLoadingView view = new CgLogoLoadingView();
 
+    /** Whether a host fired a world stage since the last {@link #frame()}: if none did, the screen fires its own. */
+    private static boolean worldFired;
+    /** The world frame's target while no host draws a world: small, since nobody sees it. */
+    private static final int WARM_SIZE = 256;
+    private static final CgFrameBufferFormat WARM_FORMAT = CgFrameBufferFormat.builder("cg_loading_world")
+            .color(0, CgTextureType.RGBA8).depth(CgTextureType.DEPTH24_STENCIL8).build();
+    private static final CgRenderStage[] WORLD = {CgRenderStage.WORLD_OPAQUE, CgRenderStage.WORLD_TRANSPARENT};
+    private static final Matrix4f WARM_VIEW = new Matrix4f(),
+            WARM_PROJECTION = new Matrix4f().perspective((float) Math.toRadians(70), 1f, 0.05f, 512f);
+    private static CgFrameBuffer warmTarget;
+
     private CgLoadingScreen() {
     }
 
@@ -161,6 +178,8 @@ public final class CgLoadingScreen {
         if (installed) return;
         installed = true;
         LOGGER.info("[loading] shown: {}", reason);
+        // First of the stage: a host's own world firing this frame means the screen need not fire one.
+        CgRenderStage.WORLD_OPAQUE.register(Integer.MIN_VALUE, frame -> worldFired = true);
         ENGINE.add(new CgLoadingProcess() {
             @Override
             public String loading() {
@@ -227,6 +246,7 @@ public final class CgLoadingScreen {
             if (LOG_EVERY_FRAME.get()) LOGGER.info("[loading] frame {}: {}", framesShown, reason);
         }
         CgWarmBudget.loading(shown());
+        worldFired = false;
         targetProgress = state == State.LOADING ? Math.max(targetProgress, progressOf()) : 1f;
         // Minecraft's overlay eases toward the reload's progress: 0.95 of the last plus 0.05 of the new, a frame at 60.
         float k = 1f - (float) Math.pow(0.95, dt * 60f);
@@ -235,11 +255,13 @@ public final class CgLoadingScreen {
 
     /**
      * Draws the screen over the frame at {@code width} x {@code height} pixels, while it shows and through its fade-out,
-     * into whatever target is bound. A host calls it last each frame. Render thread.
+     * into whatever target is bound. A host calls it last each frame, inside the frame. Where the host fired no world
+     * stage this frame, it fires its own first. Render thread.
      */
     public static void draw(int width, int height) {
         float alpha;
         if (shown()) {
+            if (!worldFired) warmFrame();
             alpha = 1f;
         } else {
             long since = System.nanoTime() - hiddenAt;
@@ -247,6 +269,19 @@ public final class CgLoadingScreen {
             alpha = 1f - since / (float) FADE_NANOS;
         }
         view.draw(width, height, shownProgress, alpha, reason);
+    }
+
+    /**
+     * Fires the world stages into a target of its own: pipelines settle and effects warm and rehearse only in a world
+     * frame, and behind the screen a host may draw none (Minecraft's menus, a harness scene not started).
+     */
+    private static void warmFrame() {
+        if (warmTarget == null) warmTarget = CgFrameBuffer.create("cg_loading_world", WARM_SIZE, WARM_SIZE, WARM_FORMAT);
+        for (CgRenderStage stage : WORLD) {
+            stage.host().set(0f, WARM_SIZE, WARM_SIZE, warmTarget.getId()).view().set(0, 0, 0, WARM_VIEW, WARM_PROJECTION);
+            stage.fire();
+        }
+        worldFired = false;
     }
 
     /** Whether the hold has seen enough quiet frames, or run as long as it may. */
