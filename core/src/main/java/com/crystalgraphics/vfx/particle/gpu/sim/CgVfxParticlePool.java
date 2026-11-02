@@ -23,6 +23,7 @@ import com.crystalgraphics.render.graph.CgRecording;
 import com.crystalgraphics.render.stage.CgHostView;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.stage.CgStageFrame;
+import com.crystalgraphics.render.world.CgPipelinePrecache;
 import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.trace.CgGpuTrace;
 import com.crystalgraphics.trace.CgTrace;
@@ -487,6 +488,24 @@ public final class CgVfxParticlePool {
      */
     public static void loadAhead(CgVfxGpuEmitter emitter, int tier) {
         CgKernel.ahead(() -> precache(emitter, tier));
+    }
+
+    /**
+     * {@link #precache(CgVfxGpuEmitter, int)} of each, without holding a frame: their kernels generated and parsed on a
+     * worker ({@link #loadAhead}), then started in a step after. What a scene or a loading screen calls; the request's
+     * {@code ready()} says when they are built, and a showing loading screen waits for it.
+     *
+     * <pre>{@code
+     * CgVfxParticlePool.precacheAhead("mymod:arena", List.of(DEBRIS, SPARKS), 0);
+     * }</pre>
+     */
+    public static CgPipelinePrecache.Request precacheAhead(String name, List<? extends CgVfxGpuEmitter> emitters, int tier) {
+        List<CgVfxGpuEmitter> each = new ArrayList<>(emitters);
+        return CgPipelinePrecache.steps(name).ahead(() -> {
+            for (CgVfxGpuEmitter e : each) loadAhead(e, tier);
+        }).step(pipelines -> {
+            for (CgVfxGpuEmitter e : each) precache(e, tier);
+        }).start();
     }
 
     /** As {@link #precache(CgVfxGpuEmitter)}, for {@code emitter} spawned at feed {@code tier}. */

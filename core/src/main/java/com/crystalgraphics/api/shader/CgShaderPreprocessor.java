@@ -73,8 +73,8 @@ public final class CgShaderPreprocessor {
     private final TreeMap<String, String> defines;
 
     /**
-     * Whether caching is enabled. Caching is disabled when the resource
-     * override directory property is set (hotswap dev mode).
+     * Whether caching is enabled: off where the resource override directory property is set and hot reload is off,
+     * since nothing would evict an edited include.
      */
     private final boolean cachingEnabled;
 
@@ -94,7 +94,8 @@ public final class CgShaderPreprocessor {
         if (defines != null) {
             this.defines.putAll(defines);
         }
-        this.cachingEnabled = !CgIO.OVERRIDE_DIRS.isSet() || CgHotReload.watching();
+        // From launch where hot reload is on: before, every program compiled ahead of its watchers read each include from disk
+        this.cachingEnabled = !CgIO.OVERRIDE_DIRS.isSet() || CgHotReload.watches();
     }
 
     public CgShaderPreprocessor(Map<String, String> defines) {

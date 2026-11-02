@@ -25,6 +25,7 @@ import java.util.TreeMap;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
@@ -43,6 +44,8 @@ import com.crystalgraphics.asset.tree.CgAssetException;
 import com.crystalgraphics.asset.tree.CgAssetReferences;
 import com.crystalgraphics.job.CgJob;
 import com.crystalgraphics.job.CgJobLane;
+import com.crystalgraphics.loading.task.CgLoadPlan;
+import com.crystalgraphics.loading.task.CgLoadTask;
 import com.crystalgraphics.job.reply.CgPendingReply;
 import com.crystalgraphics.job.reply.CgReply;
 import com.crystalgraphics.job.reply.CgReplyError;
@@ -160,7 +163,7 @@ public final class CgAssetRegistry {
      */
     public synchronized void scan(String namespace, Path root, CgAssetSource source) {
         CgAssetKinds.register();
-        commit(gather(namespace, root, source, cacheLoad()));
+        commit(gather(namespace, root, source, cacheLoad(), null));
         saveCache();
     }
 
@@ -187,7 +190,9 @@ public final class CgAssetRegistry {
             records = cacheLoad();
         }
         CgPendingReply<Void> scanned = new CgPendingReply<>(null);
-        CgJob.run(() -> gather(namespace, root, source, records)).named("asset scan " + namespace)
+        // The loading screen's record names the kit scanning, and its progress is the walk's and the reads'
+        CgLoadTask task = CgLoadPlan.get().track(namespace + ":scan", scanned);
+        CgJob.run(() -> gather(namespace, root, source, records, task)).named("asset scan " + namespace)
                 .then(gathered -> {
                     try {
                         synchronized (this) {
@@ -209,10 +214,12 @@ public final class CgAssetRegistry {
     }
 
     /** The listing walked and each YAML file read, on the workers: touches nothing of the registry's but strays. */
-    private Gathered gather(String namespace, Path root, CgAssetSource source, CompletableFuture<CgAssetRegistryCache> cache) {
+    private Gathered gather(String namespace, Path root, CgAssetSource source, CompletableFuture<CgAssetRegistryCache> cache,
+                            @Nullable CgLoadTask task) {
         // The walk needs no cache: it runs while the cache file is still being read
         List<Listed> yaml = new ArrayList<>();
         List<CgAssetEntry> found = new ArrayList<>();
+        int[] lastTime = {0};   // the files the last scan read under root, once the cache is in; -1 for none
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.MISC, SCAN_WALK)) {
             Files.walkFileTree(root, new SimpleFileVisitor<Path>() {
                 @Override
@@ -237,6 +244,7 @@ public final class CgAssetRegistry {
                     } else if (kind != null) {
                         String id = namespace + ":" + rel.substring(kind.folder().length() + 1, rel.length() - ".yaml".length());
                         yaml.add(new Listed(id, kind, file, modified));
+                        if (task != null && (yaml.size() & 255) == 0) walked(task, cache, root, yaml.size(), lastTime);
                     } else if (isBinary(rel)) {
                         found.add(new CgAssetEntry(namespace + ":" + rel, null, source, file, null, null,
                                 Collections.emptyList(), modified, Collections.emptyMap()));
@@ -252,8 +260,10 @@ public final class CgAssetRegistry {
 
         CgAssetRegistryCache records = awaited(cache);
         records.scanning(root);
+        if (task != null) task.progress(SCAN_WALKED);
         CgAssetEntry[] gathered = new CgAssetEntry[yaml.size()];
         AtomicReference<RuntimeException> failed = new AtomicReference<>();
+        AtomicInteger read = new AtomicInteger();
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.MISC, SCAN_READ)) {
             CgJob.forEach(yaml.size(), i -> {
                 try {
@@ -261,6 +271,8 @@ public final class CgAssetRegistry {
                 } catch (RuntimeException e) {
                     failed.compareAndSet(null, e);
                 }
+                int n = read.incrementAndGet();
+                if (task != null && (n & 255) == 0) task.progress(SCAN_WALKED + (1f - SCAN_WALKED) * n / yaml.size());
             });
         }
         if (failed.get() != null) throw failed.get();
@@ -293,6 +305,21 @@ public final class CgAssetRegistry {
         Path index = root.resolve("content.yaml"), unitsFile = root.resolve("units.yaml");
         return new Gathered(namespace, root, found, keys, links, Files.isRegularFile(index) ? readIndex(index) : null,
                 Files.isRegularFile(unitsFile) ? readUnits(unitsFile) : null);
+    }
+
+    /** The share of a scan its walk takes: 1.2 s of Kakarot's 1.7. */
+    private static final float SCAN_WALKED = 0.6f;
+
+    /** The walk's progress: YAML files listed against those the last scan read under {@code root}, once the cache is in. */
+    private static void walked(CgLoadTask task, CompletableFuture<CgAssetRegistryCache> cache, Path root, int listed,
+                               int[] lastTime) {
+        if (lastTime[0] == 0) {
+            CgAssetRegistryCache c = cache.getNow(null);
+            if (c == null) return;
+            int n = c.countUnder(root);
+            lastTime[0] = n > 0 ? n : -1;
+        }
+        if (lastTime[0] > 0) task.progress(SCAN_WALKED * Math.min(1f, listed / (float) lastTime[0]));
     }
 
     private static final int SCAN_WALK = CgTrace.name("registry.scan.walk"), SCAN_READ = CgTrace.name("registry.scan.read"),
@@ -491,6 +518,14 @@ public final class CgAssetRegistry {
     public List<CgAssetEntry> entries(String namespace) {
         List<CgAssetEntry> out = new ArrayList<>();
         for (CgAssetEntry e : entries.values()) if (e.namespace().equals(namespace)) out.add(e);
+        out.sort((a, b) -> a.id().compareTo(b.id()));
+        return out;
+    }
+
+    /** Every entry of {@code kind} in every namespace, by id: one pass, sorting only those. */
+    public List<CgAssetEntry> entries(CgType kind) {
+        List<CgAssetEntry> out = new ArrayList<>();
+        for (CgAssetEntry e : entries.values()) if (e.kind() == kind) out.add(e);
         out.sort((a, b) -> a.id().compareTo(b.id()));
         return out;
     }

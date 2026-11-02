@@ -1,5 +1,6 @@
-package com.crystalgraphics.loading;
+package com.crystalgraphics.loading.view;
 
+import com.crystalgraphics.loading.CgLoadingScreen;
 import javax.annotation.Nullable;
 
 /**

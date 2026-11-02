@@ -1,5 +1,6 @@
 package com.crystalgraphics.mc.v1710.platform;
 
+import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.lwjgl2.JOrbisDecoder;
 import com.crystalgraphics.lwjgl2.Lwjgl2AudioOutput;
 import com.crystalgraphics.lwjgl2.Lwjgl2CursorService;
@@ -189,6 +190,8 @@ public final class PlatformService1710 implements CgPlatformService {
             MinecraftForge.EVENT_BUS.register(new HostCamera1710.Renders());
             MinecraftForge.EVENT_BUS.register(new OverlayStages1710());
             MinecraftForge.EVENT_BUS.register(new LoadingScreen1710());
+            // The graphics start's GL-free work, begun behind mod loading rather than at the first frame
+            CgEngineLifecycle.clientStarting();
         }
 
         // Prefer Angelica's mirror over the driver for GL state reads.

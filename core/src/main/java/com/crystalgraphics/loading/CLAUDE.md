@@ -1,21 +1,37 @@
-# loading — the loading screen
+# loading — the loading screen, and what loads behind it
 
 > Root guide: [`CrystalGraphics/AGENTS.md`](../../../../../../../AGENTS.md)
 
 Lyra's `ULoadingScreenManager`, ported: one screen, shown while anything loads, then held until the engine stops doing
-first-use work.
+first-use work. What loads behind it is orchestrated and tracked here too (plan `vfx-aaa/steps/A15.md`): Forge's
+parallel mod loading with its `enqueueWork`, Unreal's slow-task progress and its game-thread hitch heartbeat.
 
-| Type | Role |
+| Package / type | Role |
 |------|------|
-| `CgLoadingScreen` | The state machine: LOADING (a process answers a reason), HOLDING (none does; `holdFrames` quiet frames of `CgPipeline.misses`, `compileWaits`, texture loads and sync asset loads, at most `maxHoldSeconds`), HIDDEN. Starts LOADING at launch. `frame()` runs in `CgGraphicsLifecycle.tickFrame`; a host calls `draw(w, h)` last each frame, and reads `loading()` to skip its world |
-| `CgLoadingProcess` | Lyra's `ILoadingProcessInterface`: asked each frame for a reason, or null once done; `progress()` for the bar |
+| `CgLoadingScreen` | The state machine: LOADING (a process answers a reason, or a plan task runs), HOLDING (none does; `holdFrames` quiet frames of `CgPipeline.misses`, `compileWaits`, texture loads and sync asset loads, at most `maxHoldSeconds`), HIDDEN. Starts LOADING at launch. `frame()` runs in `CgGraphicsLifecycle.tickFrame`; a host calls `draw(w, h)` last each frame, and reads `loading()` to skip its world |
+| `CgLoadingProcess` | Lyra's `ILoadingProcessInterface`: asked each frame for a reason, or null once done; `progress()` for its share. Each reason given becomes a tracked task (`loading:<reason>`, the engine's `crystalgraphics:<reason>`) |
 | `CgLoadingScreen.Task` | Lyra's `ULoadingProcessTask`: work started and ended in code (`task(reason)` ... `close()`) |
-| `CgLoadingView` / `CgLogoLoadingView` | What it draws: the engine's lockup (`textures/gui/lockup.png`, the logo and "Crystal Graphics") over a view up at the ocean's surface (`shaders/loading/loading_fx.shader`), Minecraft's white outlined bar under it. No text: what loads is in the log. `warm` loads its texture at the graphics start (`CgLoadingScreen.warm`, which `install` calls) |
+| `task/` | `CgLoadPlan` (named tasks: `task(id).after(...).work(...).render(step).start()`, `track(id, reply)`, `begin(id)`; listeners get it in `onLoad`; its `frame()` runs in the frame tick's host section, starting tasks whose `after` ended and running render parts within `crystalgraphics.loading.renderBudget`), `CgLoadTask` (one task: id `<owner>:<name>`, state, `after`, start and end, reported progress and detail), `CgLoadStep` (a render part, a slice a call), `CgLoadTracker` (every task of this load: `running()`, `progress(now)` for the bar, history per `key`, the timeline logged at the hide) |
+| `watchdog/` | `CgLoadWatchdog`: Unreal's `FGameThreadHitchHeartBeatThreaded`. The frame beats; a thread polls every 8 ms, samples the render thread's stack each poll once a frame is held past `crystalgraphics.loading.stallMs` (100), and reports the hold when it ends: how long, the render thread's CPU time over it, and where its samples landed (the lifecycle callback, else the first stack frame outside the JDK and the engine's plumbing). A hold whose samples sit mostly in a GL call, a swap, a fence or a sleep is a **wait** (the driver or GPU catching up); any other is **work**, a read from disk included. The hide logs both counts; `loading.strict` fails the run when work held it |
+| `view/` | `CgLoadingView` / `CgLogoLoadingView`: what it draws: the engine's lockup (`textures/gui/lockup.png`) over a view up at the ocean's surface (`shaders/loading/loading_fx.shader`), Minecraft's white outlined bar under it; under `crystalgraphics.loading.showTasks` the running tasks a line each under the bar, owner, name, percent (a system sans-serif). `warm` loads its texture at the graphics start |
 
 ## Rules
 
-- **The engine's processes (pipelines, assets, effects warming) keep a showing screen up but never raise a hidden
-  one.** A look precached at runtime spreads under the warm budget instead. Only `add`/`task` raise it.
+- **Loading is named, never done in a callback.** A listener's `onLoad(plan)` names tasks and returns; work goes on
+  workers (`work`), GL in slices (`render`). Lifecycle callbacks are timed and marked for the watchdog: one over 50 ms
+  while the screen shows is logged with the listener's name.
+- **Kits name themselves**: `CgAssetRegistry.scanAsync` is `<namespace>:scan` (its progress the YAML files listed
+  against those the last scan read there, then the reads), `CgVfxAssets.load` is `<namespace>:load` (its handles'
+  progress by bytes, ended once every asset settled), and the engine's start is `crystalgraphics:start`.
+- **A task that can report progress does** (`task.progress(f)`, any thread): the bar trusts it over last load's time,
+  which a busy machine or a cold cache can double.
+  The timeline at the hide shows what overlapped: tasks whose spans overlap ran in parallel.
+- **The bar is time done over time expected** (`CgLoadTracker.progress`): ended tasks count what they took, waiting ones
+  and those of the last load not seen yet what they took then, running ones their time so far against the whole their
+  own progress implies, or with none their last time (once past it, their time so far plus the overrun again: the bar
+  holds rather than racing). The host keys the history (`CgLoadTracker.key`: the harness's scene).
+- **The engine's processes (pipelines, assets, effects warming) and plan tasks keep a showing screen up but never raise
+  a hidden one.** A look precached at runtime spreads under the warm budget instead. Only `add`/`task` raise it.
 - **Warming advances only where a world stage fires** (`CgWorldRenderer.settle`, the world schedule's effects), so
   `draw` fires the world stages itself, into a 256-pixel offscreen target under a fixed camera, on a frame where the
   host fired none. A host draws nothing of its own world while loading and calls `draw` inside its frame, never from
@@ -27,5 +43,6 @@ first-use work.
   runs the held opening once it hides, so the title screen and Quick Play follow as they were. Nothing raises it after
   that, in menus or the world. Each era's hook: `docs/MINECRAFT_INTEGRATION.md` § *The loading screen*.
 - **Anything that stands the engine down hides it** (`hideNow`), so a held opening never waits forever.
-- Every change of reason is logged (`[loading] ...`); its frames carry the counter `loading.shown` and the markers
-  `loading.show`/`loading.hide`, so a profile tells loading from steady state.
+- Every change of reason is logged (`[loading] ...`); `crystalgraphics.loading.logProgress` logs the bar and the running
+  tasks once a second. Its frames carry the counter `loading.shown` and the markers `loading.show`/`loading.hide`, so a
+  profile tells loading from steady state.

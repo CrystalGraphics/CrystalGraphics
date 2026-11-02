@@ -10,7 +10,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.locks.LockSupport;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -87,6 +86,8 @@ public final class CgPipelineList {
     private final Set<CgKernel> unbuilt = Collections.newSetFromMap(new LinkedHashMap<>());
     private Settings warmedFor;
     private int waited;
+    /** Where the last frame's poll of pending materials stopped. */
+    private int cursor = -1;
     /** The request whose collector is adding, which records what it names. */
     private CgPipelinePrecache.Request capturing;
 
@@ -326,42 +327,22 @@ public final class CgPipelineList {
         return ready;
     }
 
-    /** Polls the unbuilt kernels and passes, each started if nothing has; whether all are built. */
+    /**
+     * Polls the unbuilt kernels and passes, each started if nothing has, while the warm budget lasts: finishing a linked
+     * program costs up to 11 ms on NVIDIA, and a boot finds dozens linked at once. Whether all are built.
+     */
     private boolean pollKernels() {
-        for (Iterator<CgKernel> it = unbuilt.iterator(); it.hasNext(); ) {
+        for (Iterator<CgKernel> it = unbuilt.iterator(); it.hasNext() && CgWarmBudget.allows(); ) {
+            long start = System.nanoTime();
             if (it.next().isReady()) it.remove();
+            CgWarmBudget.spend(System.nanoTime() - start);
         }
-        for (Iterator<CgMaterial> it = passesUnbuilt.iterator(); it.hasNext(); ) {
+        for (Iterator<CgMaterial> it = passesUnbuilt.iterator(); it.hasNext() && CgWarmBudget.allows(); ) {
+            long start = System.nanoTime();
             if (passBuilt(it.next())) it.remove();
+            CgWarmBudget.spend(System.nanoTime() - start);
         }
         return unbuilt.isEmpty() && passesUnbuilt.isEmpty();
-    }
-
-    /**
-     * Requests everything on the list under {@code settings} and waits until it is built or {@code timeoutNanos} pass:
-     * the graphics start's, so the engine's own passes compile in parallel before the first frame rather than one by one
-     * at their draws (Unreal's global PSO collectors, waited for while loading). Answers how many are still pending.
-     * Render thread, before {@code CgWarmBudget.start()}: nothing here is budgeted.
-     */
-    int await(Settings settings, long timeoutNanos) {
-        CgPipelinePrecache.collect(this);
-        long end = System.nanoTime() + timeoutNanos;
-        while (!collecting.isEmpty() && System.nanoTime() < end) {
-            advanceAll();
-            if (!collecting.isEmpty()) LockSupport.parkNanos(200_000L);
-        }
-        warmedFor = settings;
-        for (CgMaterial m : list) pending.put(m, Boolean.TRUE);
-        while (true) {
-            for (int i = 0; i < list.size(); i++) {
-                CgMaterial m = list.get(i);
-                if (pending.containsKey(m) && precacher.precache(m, halves.get(m), skinned.containsKey(m), settings)) pending.remove(m);
-            }
-            boolean kernelsBuilt = pollKernels();
-            if (pending.isEmpty() && kernelsBuilt || System.nanoTime() > end) break;
-            LockSupport.parkNanos(200_000L);
-        }
-        return pending();
     }
 
     /** How many materials, passes and kernels are not yet built under the settings in force, and requests still collecting. */
@@ -387,9 +368,15 @@ public final class CgPipelineList {
             for (CgMaterial m : list) pending.put(m, Boolean.TRUE);
         }
         if (!pending.isEmpty()) {
-            for (int i = 0; i < list.size(); i++) {
-                CgMaterial m = list.get(i);
-                if (pending.containsKey(m) && precacher.precache(m, halves.get(m), skinned.containsKey(m), requested)) pending.remove(m);
+            // Polled while the warm budget lasts, from where the last frame stopped: a kit's hundreds of materials
+            // polled whole each frame held a loading frame 100 ms and more
+            int n = list.size();
+            for (int k = 0; k < n && CgWarmBudget.allows(); k++) {
+                CgMaterial m = list.get(cursor = (cursor + 1) % n);
+                if (!pending.containsKey(m)) continue;
+                long start = System.nanoTime();
+                if (precacher.precache(m, halves.get(m), skinned.containsKey(m), requested)) pending.remove(m);
+                CgWarmBudget.spend(System.nanoTime() - start);
             }
         }
         if (requested.equals(applied)) {

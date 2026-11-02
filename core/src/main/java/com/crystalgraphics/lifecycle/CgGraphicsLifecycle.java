@@ -9,6 +9,7 @@ import com.crystalgraphics.compute.program.CgComputeCheck;
 import com.crystalgraphics.frame.CgFrameBoundary;
 import com.crystalgraphics.render.CgFrameClock;
 import com.crystalgraphics.loading.CgLoadingScreen;
+import com.crystalgraphics.loading.task.CgLoadPlan;
 import com.crystalgraphics.render.CgWarmBudget;
 import com.crystalgraphics.demo.CgRenderDemo;
 import com.crystalgraphics.gpu.CgUploads;
@@ -22,6 +23,13 @@ import com.crystalgraphics.platform.gl.state.CgGlState;
 import com.crystalgraphics.platform.service.CgCacheDirectory;
 import com.crystalgraphics.platform.service.CgLifecycleService;
 import com.crystalgraphics.job.CgJob;
+import com.crystalgraphics.job.CgJobLane;
+import com.crystalgraphics.vfx.CgVfxRegistry;
+import com.crystalgraphics.vfx.effect.CgSmokeGrenade;
+import com.crystalgraphics.vfx.effect.beam.CgEnergyWave;
+import com.crystalgraphics.vfx.element.CgVfxBlast;
+import com.crystalgraphics.vfx.prefab.CgVfxPrefabAssets;
+import com.crystalgraphics.vfx.system.CgVfxSystemAssets;
 import com.crystalgraphics.api.material.CgMaterialRegistry;
 import com.crystalgraphics.render.post.CgPostStack;
 import com.crystalgraphics.render.world.CgWorldRenderer;
@@ -48,11 +56,13 @@ import com.crystalgraphics.gl.texture.CgTextureManager;
 import com.crystalgraphics.settings.CgSettings;
 import com.crystalgraphics.text.cache.CgFontRegistry;
 import com.crystalgraphics.NativeLoader;
-import com.crystalgraphics.text.render.CgTextRenderer;
 import com.crystalgraphics.text.render.CgTextRendererRegistry;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.trace.CgTraceRun;
 import com.crystalgraphics.util.trace.CgChannels;
+import java.util.concurrent.CompletableFuture;
+
+import javax.annotation.Nullable;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import lombok.Getter;
@@ -113,7 +123,7 @@ public final class CgGraphicsLifecycle {
     // ── Canonical per-frame tick ────────────────────────────────────────────
     private static final int SETTINGS = CgTrace.name("lifecycle.settings"), CHECK = CgTrace.name("lifecycle.computeCheck"),
             READBACK = CgTrace.name("lifecycle.readback"), UPLOADS = CgTrace.name("lifecycle.uploads"),
-            BUDGET = CgTrace.name("lifecycle.budget"), HOT_RELOAD = CgTrace.name("lifecycle.hotReload"), LISTENERS = CgTrace.name("lifecycle.listeners"),
+            BUDGET = CgTrace.name("lifecycle.budget"), HOT_RELOAD = CgTrace.name("lifecycle.hotReload"), LISTENERS = CgTrace.name("lifecycle.listeners"), LOAD_PLAN = CgTrace.name("lifecycle.loadPlan"),
             SELF_TESTS = CgTrace.name("lifecycle.selfTests"), RING = CgTrace.name("lifecycle.frameRing");
 
     /** Whether a GL context is currently initialised: what {@code CgEngineLifecycle.addListener} catches a listener up to. */
@@ -175,7 +185,12 @@ public final class CgGraphicsLifecycle {
      */
     private static void init(int width, int height) {
         if (stoodDown) return;
+        CgStartSteps.begin();
+        // What the start needs that touches no GL, on a worker beside the render thread's own steps below: begun at the
+        // host's client start where it said so (CgEngineLifecycle.clientStarting), else now
+        CompletableFuture<Void> ahead = startAhead();
         CgPlatform.gl().initContext();
+        CgStartSteps.step("context");
 
         // Probe capabilities here, on the render thread with a live context, so CgGL.CORE is set
         // before anything can paint. Its guards read the field rather than calling detect() per GL
@@ -185,9 +200,11 @@ public final class CgGraphicsLifecycle {
         // Before the first link: without it NVIDIA links on its driver thread, and the next query of any program
         // waits for the whole link (cold vfx-modules 113 s -> 58 s).
         if (CgCapabilities.detect().isParallelShaderCompile()) CgGL.glMaxShaderCompilerThreads(0xFFFFFFFF);
+        CgStartSteps.step("capabilities");
         // Links on a shared context of their own: under a threaded driver, every status query on this one waits for
         // the compiles queued before it.
         CgLinkWorker.start();
+        CgStartSteps.step("link worker");
 
         CgGL.fromHost();
         try {
@@ -200,24 +217,39 @@ public final class CgGraphicsLifecycle {
                     resizeTargets(width, height);
                     CgBindingPoints.init(CgCapabilities.detect());
                     CgFallbackTextures.init();
+                    CgStartSteps.step("targets and fallbacks");
                     CgNoiseVolumes.install();
                     CgWaveletNoise.install();
-                    warmUpDeferredStartupCosts();
+                    CgStartSteps.step("noise");
                 }
+                // Before the first install that may reach what the worker initializes: two threads initializing classes
+                // that name each other would deadlock
+                try {
+                    ahead.join();
+                } catch (RuntimeException e) {
+                    LOGGER.log(Level.WARNING, "The start's work ahead failed; it runs at first use instead", e);
+                }
+                CgStartSteps.step("waiting for the work ahead");
                 CgWorldRenderer.get().install();
+                CgStartSteps.step("world renderer");
                 CgPostStack.get().install();
                 CgRenderDemo.INSTANCE.install();
+                CgStartSteps.step("post and demo");
                 // The demo plays in PLAYS, ahead of the VFX system's EFFECTS: what it plays starts the same frame.
                 CgVfx.install();
+                CgStartSteps.step("vfx");
                 CgCollisionDebug.install();
                 CgWorldProbe.installIfEnabled();
-                // The engine's own passes, built together now rather than each at its first draw.
-                CgWorldRenderer.get().awaitPrograms();
+                // The engine's own passes, built together behind the loading screen rather than each at its first draw;
+                // no world stage fires until they are
+                CgWorldRenderer.get().beginBoot();
+                CgLoadPlan.get().task("crystalgraphics:programs").render(task -> CgWorldRenderer.get().bootStep()).start();
                 // After the boot used this session's binaries, so the prune keeps them; a worker's, beside the frames.
                 CgJob.run(() -> { for (String kind : CgCacheDirectory.PRUNED) CgCacheDirectory.prune(kind); });
                 // From here warm-ups spread over frames: the demo's first scene took the first frame 0.7-10 s on 1.7.10.
                 CgWarmBudget.start();
                 CgLoadingScreen.install(width, height);
+                CgStartSteps.step("loading screen");
 
                 initialized = true;
                 destroyed = false;   // an explicit init is what makes a context live again
@@ -226,6 +258,7 @@ public final class CgGraphicsLifecycle {
                 // engine just brought up (pipeline, fallback textures, capability probes), and may call back
                 // into isInitialized().
                 CgEngineLifecycle.contextInitialized(width, height);
+                CgStartSteps.step("listeners' onContextInit");
             });
         } finally {
             CgGL.toHost();
@@ -248,43 +281,44 @@ public final class CgGraphicsLifecycle {
     }
 
     /**
-     * Pays lazily-triggered one-time costs here, where no frame is being rendered yet.
-     *
-     * <p>Several startup costs are lazy, so whichever frame happens to touch them first absorbs the
-     * whole thing. Measured on the CJK warmup that produced two separate visible stalls: **frame 1
-     * spent ~130 ms** inside the first {@code CgFont.load} (the JNI library load, charged to
-     * whichever native call ran first), and **frame 2 spent ~134 ms** in {@code material.doBind}
-     * compiling the text shader's first variant. Neither is avoidable work — but neither has to
-     * land on a frame the user is watching.
-     *
-     * <p>This does not make startup faster. It moves the cost to init, where a stall is expected
-     * and invisible, instead of appearing as two dropped frames after rendering has begun. Total
-     * time to first *usable* frame is unchanged; time to first *smooth* frame improves.
-     *
-     * <p>Failures are logged and swallowed rather than propagated. Everything here is an
-     * optimisation — if a platform cannot pre-warm something, the lazy path still works exactly as
-     * it did before, and refusing to boot over a failed warmup would be strictly worse than the
-     * hitch it was trying to avoid.
+     * The start's work that touches no GL, on a worker, begun once: the text library's natives (about 130 ms charged to
+     * whichever thread first touched a font), the built-in effects' classes (their static definitions: materials, kits,
+     * YAML read from the jar, which a dedicated server initializes too, so they hold no GL). Never a texture: until the
+     * render thread's first GL call claims the context, any thread passes {@code CgGL.mayIssueGl}, and a worker loading
+     * one would issue GL with no context. The text material is not warmed here: the world renderer's collector builds
+     * {@code text.shader} with the engine's programs. A failure is logged and its work happens at first use instead.
      */
-    private static void warmUpDeferredStartupCosts() {
-        // The JNI library backing FreeType/HarfBuzz/msdfgen. Not GL work, but it is the single
-        // largest deferred cost and it lands on whichever thread first touches a font.
+    static synchronized CompletableFuture<Void> startAhead() {
+        if (ahead == null) ahead = CompletableFuture.runAsync(CgGraphicsLifecycle::workAhead, CgJob.executor(CgJobLane.BACKGROUND));
+        return ahead;
+    }
+
+    @Nullable private static CompletableFuture<Void> ahead;
+
+    private static void workAhead() {
+        long begun = System.nanoTime();
         try {
             NativeLoader.ensureLoaded();
         } catch (Throwable t) {
-            LOGGER.log(Level.WARNING, "Native text library pre-load failed; "
-                    + "it will load lazily on first use instead", t);
+            LOGGER.log(Level.WARNING, "Native text library pre-load failed; it will load lazily on first use instead", t);
         }
-
-        // The text material's first bind compiles its shader variant. Doing it here means the
-        // first drawn string does not.
-        try {
-            CgTextRenderer.warmUpMaterial();
-        } catch (Throwable t) {
-            LOGGER.log(Level.WARNING, "Text material pre-warm failed; "
-                    + "the shader will compile on first text draw instead", t);
+        StringBuilder took = new StringBuilder("[start] ahead, on a worker: natives ")
+                .append((System.nanoTime() - begun) / 1_000_000L);
+        for (Class<?> c : AHEAD) {
+            long at = System.nanoTime();
+            try {
+                Class.forName(c.getName(), true, c.getClassLoader());
+            } catch (Throwable t) {
+                LOGGER.log(Level.WARNING, "Initializing " + c.getName() + " ahead failed; it initializes at first use", t);
+            }
+            took.append(", ").append(c.getSimpleName()).append(' ').append((System.nanoTime() - at) / 1_000_000L);
         }
+        LOGGER.info(took.toString());
     }
+
+    /** Classes whose static definitions are the start's largest CPU cost (CgVfx.install's 540 ms, mostly these). */
+    private static final Class<?>[] AHEAD = {CgVfxSystemAssets.class, CgVfxPrefabAssets.class, CgVfxRegistry.class,
+            CgEnergyWave.class, CgVfxBlast.class, CgSmokeGrenade.class};
 
     /**
      * Notifies CrystalGraphics that the window has been resized.
@@ -417,6 +451,12 @@ public final class CgGraphicsLifecycle {
             }
             try (CgTrace.Zone z = CgTrace.zone(CgChannels.MISC, LISTENERS)) {
                 CgEngineLifecycle.frame();
+            }
+            if (initialized) {
+                // Inside the host section: a load task's render part may compile, upload and bind
+                try (CgTrace.Zone z = CgTrace.zone(CgChannels.MISC, LOAD_PLAN)) {
+                    CgLoadPlan.get().frame();
+                }
             }
             if (initialized) {
                 try (CgTrace.Zone z = CgTrace.zone(CgChannels.MISC, SELF_TESTS)) {

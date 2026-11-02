@@ -1,5 +1,6 @@
 package com.crystalgraphics.mc.modern.platform;
 
+import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.mc.modern.platform.gl.Blaze3dGLBackend;
 import com.crystalgraphics.mc.modern.platform.gl.HostStateModern;
 // 26.3 ships SDL3 and no GLFW, so a 26.3 node cannot even load the GLFW pair.
@@ -164,6 +165,8 @@ public final class PlatformServiceModern implements CgPlatformService {
         CgPlatform.provide(CgCursorService.SERVICE,
                 new GlfwCursorService(PlatformServiceModern::windowHandle));
         //?}
+        // The graphics start's GL-free work, begun behind mod loading rather than at the first frame
+        CgEngineLifecycle.clientStarting();
     }
 
     // BUILT ON DEMAND, and typed as the SPI interfaces rather than the implementations.

@@ -67,6 +67,13 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 | `crystalgraphics.compute.selfTest` | true, false | `false` | At the first frames, run a kernel of every shape and every GPU op on this context and check each result against Java; logs [crystalgraphics] compute self-test <tier>: PASS\|FAIL, which prodSmoke gathers. |
 | `crystalgraphics.compute.tier` | text | empty | V, G43, G40 or G33: kernels run as that tier would, where the context has what it needs, refused naming what is missing where not; empty for the best. Taken at each context's capability probe. |
 
+## `crystalgraphics.deferral`
+
+| Variable | Takes | Default | |
+|---|---|---|---|
+| `crystalgraphics.deferral.budget` | 0.0 to 1000.0 | `4.0` | Milliseconds a frame lands queued work of objects that land their own before each use (textures); the rest waits a frame. 0 for no limit. |
+| `crystalgraphics.deferral.megabytes` | 0.0 to 4096.0 | `4.0` | Megabytes of upload leases a frame lands for objects that land their own before each use (textures): the GPU's copy and mips of a kit's 17 MB in one frame took 156 ms. 0 for no limit. |
+
 ## `crystalgraphics.demo`
 
 | Variable | Takes | Default | |
@@ -137,9 +144,9 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 
 | Variable | Takes | Default | |
 |---|---|---|---|
+| `crystalgraphics.job.backgroundThreads` | 0 to 256 | `0` | Threads background work may hold at once, the job workers and their forEach helpers together; 0 for half the cores. Read at launch. |
 | `crystalgraphics.job.forEachPriority` | 1 to 10 | `4` | The frame's forEach helpers' Java thread priority: below normal leaves the GL driver's thread its core. Read at launch. |
 | `crystalgraphics.job.forEachThreads` | 0 to 256 | `0` | Threads CgJob.forEach and effects' emitters run on, the caller one of them; 0 for two fewer than the cores, 1 for all on the caller. Read at launch. |
-| `crystalgraphics.job.backgroundThreads` | 0 to 256 | `0` | Threads background work may hold at once, the job workers and their forEach helpers together; 0 for half the cores. Read at launch. |
 | `crystalgraphics.job.threads` | 0 to 256 | `0` | Threads jobs' work runs on; 0 for half the cores past two, at least one. Read at launch. |
 
 ## `crystalgraphics.loading`
@@ -148,9 +155,14 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 |---|---|---|---|
 | `crystalgraphics.loading.holdFrames` | 0 to 100000 | `30` | Frames in a row with no first-use work the loading screen holds for once nothing loads, before it hides. |
 | `crystalgraphics.loading.logEveryFrame` | true, false | `false` | Log why the loading screen shows on every frame it shows. |
+| `crystalgraphics.loading.logProgress` | true, false | `false` | Log the bar and the running load tasks once a second while the loading screen shows. |
 | `crystalgraphics.loading.maxHoldSeconds` | 0.0 to 600.0 | `10.0` | The longest the loading screen holds once nothing loads, however much first-use work goes on. |
 | `crystalgraphics.loading.maxSeconds` | 0.0 to 3600.0 | `120.0` | The longest the loading screen shows for a process still loading before it holds anyway, warning which. |
+| `crystalgraphics.loading.renderBudget` | 0.0 to 1000.0 | `6.0` | Milliseconds a frame load tasks' render-thread parts take; one slice always runs. 0 for one slice a frame. |
 | `crystalgraphics.loading.screen` | auto, never, always | `auto` | The loading screen: AUTO while anything loads, NEVER (a scene that measures its own loading), ALWAYS (to look at it). |
+| `crystalgraphics.loading.showTasks` | true, false | `false` | List what loads under the loading screen's bar: each running task, its owner and how far along, a line each. |
+| `crystalgraphics.loading.stallMs` | 0 to 600000 | `100` | Milliseconds the render thread may go without a frame while the loading screen shows before the watchdog names who held it; 0 turns it off. |
+| `crystalgraphics.loading.strict` | true, false | `false` | Fail the run at the loading screen's hide when the watchdog saw the render thread held by work. |
 
 ## `crystalgraphics.material`
 
@@ -359,7 +371,6 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 | Variable | Takes | Default | |
 |---|---|---|---|
 | `crystalgraphics.warmBudget` | 0.0 to 1000.0 | `4.0` | Milliseconds a frame may spend starting programs, kernels and meshes ahead of their first use; 0 for no limit. |
-| `crystalgraphics.deferral.budget` | 0.0 to 1000.0 | `4.0` | Milliseconds a frame lands queued work of objects that land their own before each use (textures); the rest waits a frame. 0 for no limit. |
 | `crystalgraphics.warmBudget.loading` | 0.0 to 1000.0 | `12.0` | The warm budget while the loading screen shows, as Unity's High background priority; 0 for no limit. |
 
 ## `crystalgraphics.world`

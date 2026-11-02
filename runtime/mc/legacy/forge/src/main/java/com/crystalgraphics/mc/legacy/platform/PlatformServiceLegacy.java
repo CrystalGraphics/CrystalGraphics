@@ -1,5 +1,6 @@
 package com.crystalgraphics.mc.legacy.platform;
 
+import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.lwjgl2.JOrbisDecoder;
 import com.crystalgraphics.lwjgl2.Lwjgl2AudioOutput;
 import com.crystalgraphics.lwjgl2.Lwjgl2CursorService;
@@ -129,6 +130,8 @@ public final class PlatformServiceLegacy implements CgPlatformService {
         FMLCommonHandler.instance().bus().register(new HostCameraLegacy.Ticks());
         MinecraftForge.EVENT_BUS.register(new OverlayStagesLegacy());
         MinecraftForge.EVENT_BUS.register(new LoadingScreenLegacy());
+        // The graphics start's GL-free work, begun behind mod loading rather than at the first frame
+        CgEngineLifecycle.clientStarting();
     }
 
     @Override public CgGLBackend gl() {

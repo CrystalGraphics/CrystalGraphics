@@ -10,6 +10,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import com.crystalgraphics.asset.load.CgAssetMounts;
+import com.crystalgraphics.loading.task.CgLoadPlan;
 import com.crystalgraphics.net.CgNetwork;
 import com.crystalgraphics.platform.service.CgNetworkChannel;
 import com.crystalgraphics.render.CgFrameClock;
@@ -63,6 +64,23 @@ public final class CgEngineLifecycle {
     private CgEngineLifecycle() {
     }
 
+    /**
+     * The host is a client, and knows it now: the graphics start's work that touches no GL (the text natives, the
+     * built-in effects' definitions) begins on a worker, so the start that comes later only joins it. Optional; any
+     * thread; once.
+     *
+     * <pre>{@code
+     * PlatformServiceModern.install(ModLoaderForge.INSTANCE);
+     * if (FMLEnvironment.dist == Dist.CLIENT) CgEngineLifecycle.clientStarting();   // seconds of mod loading to hide behind
+     * CgEngineLifecycle.preInit();
+     * }</pre>
+     *
+     * <p>Never on a dedicated server: it initializes classes only a client draws with.</p>
+     */
+    public static void clientStarting() {
+        CgGraphicsLifecycle.startAhead();
+    }
+
     /** The platform registered and its both-sides slots filled, every mod discovered: mods' assets mounted. */
     public static synchronized void preInit() {
         if (preInit) return;
@@ -107,9 +125,31 @@ public final class CgEngineLifecycle {
      * </ul>
      */
     public static void ensureGraphicsContext(int width, int height) {
-        boolean was = CgGraphicsLifecycle.isInitialized();
-        CgGraphicsLifecycle.ensureContext(width, height);
-        if (!was && CgGraphicsLifecycle.isInitialized()) postInit();
+        if (CgGraphicsLifecycle.isInitialized()) {
+            CgGraphicsLifecycle.ensureContext(width, height);
+            return;
+        }
+        // The graphics start and post-init are loading too: tracked, so the timeline has no gap before the first task
+        try (CgLoadPlan.Span start = CgLoadPlan.get().begin("crystalgraphics:start")) {
+            CgGraphicsLifecycle.ensureContext(width, height);
+            if (CgGraphicsLifecycle.isInitialized()) {
+                postInit();
+                CgStartSteps.step("post-init");
+                load();
+                CgStartSteps.step("onLoad");
+            }
+            CgStartSteps.end();
+        }
+    }
+
+    private static boolean loaded;
+
+    /** Every listener names what it loads into the plan, which runs behind the loading screen. Client, once. */
+    private static synchronized void load() {
+        if (loaded) return;
+        loaded = true;
+        listeners.dispatch("onLoad", l -> l.onLoad(CgLoadPlan.get()));
+        CgLoadPlan.get().seal();
     }
 
     /**
@@ -245,6 +285,7 @@ public final class CgEngineLifecycle {
             int w = CgGraphicsLifecycle.getCurrentWidth(), h = CgGraphicsLifecycle.getCurrentHeight();
             listeners.fire(listener, "onContextInit", l -> l.onContextInit(w, h));
         }
+        if (loaded) listeners.fire(listener, "onLoad", l -> l.onLoad(CgLoadPlan.get()));
     }
 
     /** Unregisters {@code listener}. Safe from inside a callback. */

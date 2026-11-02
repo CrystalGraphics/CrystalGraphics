@@ -1,5 +1,7 @@
 package com.crystalgraphics.mc;
 
+import com.crystalgraphics.job.CgJob;
+import com.crystalgraphics.job.CgJobLane;
 import com.crystalgraphics.util.io.CgDirectoryWatcher;
 import com.crystalgraphics.util.io.CgIO;
 import com.crystalgraphics.variable.CgVar;
@@ -27,8 +29,8 @@ import java.util.List;
  *   <li>A file counts once its writes have been quiet for {@link #QUIET_MILLIS}: a save is several events.</li>
  *   <li>A shader or kernel that no longer compiles keeps drawing with its last good program; the log names the file
  *       and the error. Fix it and save again.</li>
- *   <li>While it watches, the shader preprocessor caches includes again (each edited one is evicted), so a compile
- *       does not re-read every library from disk.</li>
+ *   <li>While it is on, the shader preprocessor caches includes again (each edited one is evicted), so a compile
+ *       does not re-read every library from disk: from launch, its watchers opening on a worker.</li>
  *   <li>Lost events (the platform's queue overflowed) reload everything, as F3+T does.</li>
  *   <li>{@code -Dcrystalgraphics.hotReload=false} keeps the override roots without watching them;
  *       {@code -Dcrystalgraphics.resourceOverrideDirs=<dirs>} adds folders the run does not load from;
@@ -61,6 +63,14 @@ public final class CgHotReload {
     }
 
     /**
+     * Whether edits reach the engine through the watch, from launch: what lets the shader preprocessor cache includes
+     * while its watchers are still opening, since an edit before they open goes unseen either way.
+     */
+    public static boolean watches() {
+        return ENABLED;
+    }
+
+    /**
      * Polls the watchers and applies every queued change. Render thread, once a frame:
      * {@code CgGraphicsLifecycle.tickFrame}. With nothing edited it allocates nothing and makes no system call: a poll
      * reads the queue the JDK's own watch thread fills.
@@ -76,9 +86,18 @@ public final class CgHotReload {
         CgAssetReloader.applyChanges();
     }
 
+    /** Opens the watchers on a worker: walking the roots' trees to register them holds a frame 100 ms and more. */
     private static void start() {
         started = true;
         if (!ENABLED) return;
+        CgJob.lane(CgJobLane.BACKGROUND).named("hot reload watch").run(CgHotReload::open).then(roots -> {
+            ROOTS.addAll(roots);
+            watching = !ROOTS.isEmpty();
+        });
+    }
+
+    private static List<Root> open() {
+        List<Root> roots = new ArrayList<>();
         List<Path> unwatched = new ArrayList<>();
         for (String dir : UNWATCHED.get().split(File.pathSeparator)) {
             if (!dir.trim().isEmpty()) unwatched.add(new File(dir.trim()).getAbsoluteFile().toPath().normalize());
@@ -92,13 +111,13 @@ public final class CgHotReload {
             }
             try {
                 CgDirectoryWatcher watcher = CgDirectoryWatcher.open(assets.toPath(), QUIET_MILLIS);
-                ROOTS.add(new Root(watcher));
+                roots.add(new Root(watcher));
                 LOGGER.info("[hot reload] watching {} ({} directories)", assets, watcher.watchedDirectories());
             } catch (IOException | RuntimeException e) {
                 LOGGER.warn("[hot reload] cannot watch {}: {}", assets, e.toString());
             }
         }
-        watching = !ROOTS.isEmpty();
+        return roots;
     }
 
     /** One watched {@code assets/} directory. */

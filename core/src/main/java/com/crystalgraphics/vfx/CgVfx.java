@@ -10,6 +10,7 @@ import com.crystalgraphics.net.object.CgCharacterClockNet;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.world.CgWorldQuery;
 import com.crystalgraphics.render.CgFrameClock;
+import com.crystalgraphics.compute.CgKernel;
 import com.crystalgraphics.render.world.CgPipelinePrecache;
 import com.crystalgraphics.vfx.particle.gpu.draw.CgVfxRange;
 import com.crystalgraphics.render.stage.CgRenderStage;
@@ -148,8 +149,10 @@ public final class CgVfx {
                 .after(effects).whilePaused(true);
         CgVfxCueClient.install();
         CgCameraShake.schedule();
-        // Range and Place draw every pool's particles: built while loading, not at the first burst.
-        CgPipelinePrecache.register("crystalgraphics:vfx", pipelines -> pipelines.kernels(CgVfxRange::precache));
+        // Range and Place draw every pool's particles: built while loading, not at the first burst. Their files parsed
+        // and their sources made on a worker first: on the render thread that held a loading frame 100 ms and more.
+        CgPipelinePrecache.steps("crystalgraphics:vfx").ahead(() -> CgKernel.ahead(CgVfxRange::precache))
+                .step(pipelines -> pipelines.kernels(CgVfxRange::precache)).start();
         // Characters' clocks the server sends, kept on the level's tick: the effects following them hold and slow.
         CgCharacterClockNet.install(() -> CgRenderStage.WORLD_OPAQUE.host().environment().gameTime());
         CgVfxSystemAssets.register();   // system assets compile to playable definitions

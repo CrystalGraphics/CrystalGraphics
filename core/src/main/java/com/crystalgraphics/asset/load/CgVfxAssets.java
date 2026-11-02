@@ -9,6 +9,7 @@ import java.util.Collections;
 import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -27,6 +28,7 @@ import org.apache.logging.log4j.Logger;
 
 import com.crystalgraphics.asset.codec.CgAssetVersions;
 import com.crystalgraphics.platform.service.CgCacheDirectory;
+import com.crystalgraphics.loading.task.CgLoadPlan;
 import com.crystalgraphics.asset.codec.CgAssetYaml;
 import com.crystalgraphics.asset.registry.CgAssetEntry;
 import com.crystalgraphics.asset.registry.CgAssetRegistry;
@@ -208,7 +210,53 @@ public final class CgVfxAssets {
         for (CgAssetRef<?> a : assets) start(a, priority);
         CgLoadHandle h = new CgLoadHandle(new ArrayList<>(primaries), assets, priority);
         handles.add(h);
+        String owner = primaries.isEmpty() ? "assets" : namespace(primaries.get(0).id());
+        tracked.computeIfAbsent(owner, ns -> new Tracked(CgLoadPlan.get().begin(ns + ":load"))).handles.add(h);
         return h;
+    }
+
+    /** Each namespace's loads as one load task, so the screen and its record name the kit loading. */
+    private final Map<String, Tracked> tracked = new HashMap<>();
+
+    private record Tracked(CgLoadPlan.Span span, List<CgLoadHandle> handles) {
+        Tracked(CgLoadPlan.Span span) {
+            this(span, new ArrayList<>());
+        }
+    }
+
+    private static String namespace(String id) {
+        int colon = id.indexOf(':');
+        return colon > 0 ? id.substring(0, colon) : "assets";
+    }
+
+    /** Each namespace's task: its handles' progress, ended once all are ready or one failed. */
+    private void track() {
+        if (tracked.isEmpty()) return;
+        for (Iterator<Tracked> it = tracked.values().iterator(); it.hasNext(); ) {
+            Tracked t = it.next();
+            float sum = 0f;
+            boolean settled = true, failed = false;
+            for (CgLoadHandle h : t.handles()) {
+                sum += h.progress();
+                if (h.fired) continue;
+                // A failed asset fails the handle, but the rest of its bundle still loads: ended once all have
+                for (CgAssetRef<?> a : h.assets()) {
+                    if (a.state() == CgAssetState.FAILED) failed = true;
+                    else if (!a.ready) settled = false;
+                }
+            }
+            t.span().task().progress(sum / t.handles().size());
+            if (!settled) continue;
+            if (failed) t.span().fail(String.join("; ", failuresOf(t.handles())));
+            else t.span().close();
+            it.remove();
+        }
+    }
+
+    private static List<String> failuresOf(List<CgLoadHandle> handles) {
+        List<String> out = new ArrayList<>();
+        for (CgLoadHandle h : handles) out.addAll(h.failures());
+        return out.size() > 5 ? out.subList(0, 5) : out;
     }
 
     /** Every asset {@code primaries} reach through hard and soft references, primaries first. */
@@ -288,6 +336,7 @@ public final class CgVfxAssets {
                 if (!h.planned) markPlanned(h);
                 if (h.fireIfReady()) removeAt(handles, i);
             }
+            track();
         }
         CgTrace.counter(CgChannels.MISC, LOADING, loading.size());
         CgTrace.counter(CgChannels.MISC, PREPARING, preparing.size());

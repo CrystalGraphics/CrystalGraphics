@@ -686,6 +686,24 @@ Both are read at launch (`-Dcrystalgraphics.job.threads=4`; [`DEBUG_FLAGS.md`](D
 | A loop finished faster, inside this tick | `CgJob.forEach` |
 | Work nobody waits for | `CgJob.executor(lane).execute` |
 
+### Work behind the loading screen?
+
+Name it to the load plan, in your lifecycle listener's `onLoad`: the screen shows it as a task, the bar counts it, and
+its GL part runs in slices so the screen keeps its frame rate. A job you already started is tracked by id.
+
+```java
+@Override public void onLoad(CgLoadPlan plan) {                        // CgLifecycleListener, render thread
+    plan.task("mymod:atlas").work(ctx -> bakeAtlas(ctx))              // a worker, as a CgJob.Work
+        .render(task -> uploadAtlasSlice())                           // render thread, a slice a frame: true when done
+        .start();
+    plan.track("mymod:index", CgJob.run(() -> buildIndex()));        // a job of your own, named
+}
+```
+
+- **Never do the work in the callback itself**: every lifecycle callback is timed while the screen shows, and the
+  watchdog names one holding the render thread (`loading/CLAUDE.md`).
+- `after("other:task")` starts a task once another has ended: tasks without one run in parallel.
+
 ### Can my work read Minecraft's world?
 
 No: copy it first. A collision snapshot covers blocks and entities; anything else (an inventory, a block entity's data)

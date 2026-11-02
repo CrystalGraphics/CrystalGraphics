@@ -45,7 +45,7 @@ final class CgJvmEvents {
     private static volatile int mask;
     /** Set by any explicit start or stop: a host's start with the trace never overrides a caller's choice. */
     private static boolean chosen;
-    private static boolean autoTried;
+    private static volatile boolean autoTried;
 
     private CgJvmEvents() {
     }
@@ -81,13 +81,23 @@ final class CgJvmEvents {
      * stream takes hundreds of milliseconds to open and the frame thread must not wait for it.
      */
     static void autoStart() {
+        // Read before the lock: the starter holds it while the stream opens, and the next frame would wait on it
+        if (autoTried) return;
         synchronized (LOCK) {
             if (autoTried) return;
             autoTried = true;
         }
         Thread starter = new Thread(() -> {
+            Stream opened = open();   // outside the lock: opening takes hundreds of milliseconds
             synchronized (LOCK) {
-                if (!chosen && stream == null && !fallbackOn) startLocked();
+                if (chosen || stream != null || fallbackOn) {
+                    if (opened != null) opened.close();
+                } else if (opened != null) {
+                    stream = opened;
+                    mask = ALL;
+                } else {
+                    beginFallbackLocked();
+                }
             }
         }, "cg-jvm-events");
         starter.setDaemon(true);

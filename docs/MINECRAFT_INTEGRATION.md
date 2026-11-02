@@ -10,6 +10,11 @@ assets mounted, their tags declared), and `init(channel)` where it registers its
 provided first (the network installed). Post-init is the engine's own, at its first client graphics start or server
 start. Anything core must load or start as the game starts goes into the lifecycle, never into a host.
 
+**A client says so early**: `CgEngineLifecycle.clientStarting()`, at the end of each era's client install
+(`PlatformServiceModern.installClient`, `PlatformService1710.install(true)`, `PlatformServiceLegacy.install(true)`),
+starts the graphics start's GL-free work (the text natives, the built-in effects' definitions) on a worker behind mod
+loading, so the graphics start only joins it. Never on a dedicated server.
+
 The layer that wires CrystalGraphics into each Minecraft. Read it when debugging frame timing, hot
 reload, or GL state shared with Minecraft and other mods. Each host's classes: its own `CLAUDE.md`.
 

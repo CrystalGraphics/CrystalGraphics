@@ -6,6 +6,10 @@ import java.util.function.Consumer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import com.crystalgraphics.loading.task.CgLoadPlan;
+import com.crystalgraphics.loading.watchdog.CgLoadWatchdog;
+import com.crystalgraphics.loading.CgLoadingScreen;
+
 /**
  * Hears the engine's lifecycle from outside CrystalGraphics: its start on both sides, then its graphics context's.
  * For a consuming library (CrystalGUI), a mod's own renderer or a harness scene, which need the same moments but must
@@ -84,6 +88,26 @@ public interface CgLifecycleListener {
      * @param height viewport height in pixels
      */
     default void onContextInit(int width, int height) {
+    }
+
+    /**
+     * What loads behind the loading screen, named into {@code plan}: the graphics start, render thread, after
+     * {@link #onContextInit} and {@link #onPostInit}. Name the work as tasks here and return; do none of it here.
+     *
+     * <pre>{@code
+     * @Override public void onLoad(CgLoadPlan plan) {
+     *     plan.task("mymod:atlas").work(ctx -> bakeAtlas(ctx)).render(task -> uploadNextPage()).start();
+     *     plan.task("mymod:recipes").after("mymod:atlas").work(this::indexRecipes).start();
+     * }
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Every task is tracked by name: the screen keeps showing until it ends, the bar counts it, and the screen can
+     *       list it. Work done in a callback instead holds the screen still, and the watchdog names the callback.</li>
+     *   <li>Client only: a dedicated server has no screen, so its loading stays in {@link #onPostInit}.</li>
+     * </ul>
+     */
+    default void onLoad(CgLoadPlan plan) {
     }
 
     /**
@@ -185,13 +209,26 @@ public interface CgLifecycleListener {
          * @param what name of the callback, for the log message only
          */
         public void fire(CgLifecycleListener listener, String what, Consumer<CgLifecycleListener> action) {
+            // Marked for the loading watchdog, and timed: a callback holding a loading screen is named
+            Object was = CgLoadWatchdog.enter(listener, what);
+            long start = System.nanoTime();
             try {
                 action.accept(listener);
             } catch (Throwable t) {
                 LOGGER.log(Level.WARNING, "CgLifecycleListener." + what + " failed for "
                         + listener.getClass().getName(), t);
+            } finally {
+                CgLoadWatchdog.exit(was);
+            }
+            long ms = (System.nanoTime() - start) / 1_000_000L;
+            if (ms >= SLOW_CALLBACK_MS && CgLoadingScreen.shown()) {
+                LOGGER.log(Level.WARNING, "[loading] " + listener.getClass().getName() + "." + what + " took " + ms
+                        + " ms on its thread while the loading screen shows: name the work in onLoad (CgLoadPlan)");
             }
         }
+
+        /** A callback this long while the screen shows is reported: three frames at 60. */
+        private static final long SLOW_CALLBACK_MS = 50L;
 
         /** Dispatches to every listener in registration order. */
         public void dispatch(String what, Consumer<CgLifecycleListener> action) {

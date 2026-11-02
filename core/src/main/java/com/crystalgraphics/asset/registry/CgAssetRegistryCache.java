@@ -51,6 +51,14 @@ final class CgAssetRegistryCache {
         scanned.add(root.toAbsolutePath().normalize().toString());
     }
 
+    /** How many files under {@code root} the last scan read: what a scan's progress is measured against. */
+    int countUnder(Path root) {
+        String prefix = root.toAbsolutePath().normalize().toString();
+        int n = 0;
+        for (String key : records.keySet()) if (key.startsWith(prefix)) n++;
+        return n;
+    }
+
     /** The record for the file at {@code key}, if it still holds: the same modification time and kind. */
     @Nullable
     Record find(String key, long modified, CgType kind) {

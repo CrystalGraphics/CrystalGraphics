@@ -48,7 +48,7 @@ GLSL source preprocessor. Handles `#include`, `#pragma once`, `#define` injectio
 
 **`#line` directives:** Emitted around includes when `crystalgraphics.shader.devmode` is on.
 
-**Source cache:** Per-instance, shared across calls. Disabled when `crystalgraphics.resourceOverrideDirs` is set (`CgIO.OVERRIDE_DIRS`). Call `invalidateCache()` after a resource reload.
+**Source cache:** One for every instance. Disabled when `crystalgraphics.resourceOverrideDirs` is set (`CgIO.OVERRIDE_DIRS`) and hot reload is off; with hot reload on it caches from launch, its watchers evicting each edited include. Call `invalidateCache()` after a resource reload.
 
 ```java
 CgShaderPreprocessor pp = new CgShaderPreprocessor();

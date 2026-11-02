@@ -750,17 +750,15 @@ public final class CgCueManager extends CgWorldSubsystem {
         resolved.clear();
         CgAssetRegistry registry = assets.registry();
         CgTagRegistry tags = CgTagRegistry.global();
-        for (String ns : registry.namespaces()) {
-            for (CgAssetEntry e : registry.entries(ns)) {
-                if (e.kind() != CgGameplayKinds.CUE || e.redirect() != null) continue;
-                String name = e.searchable().get("tag");
-                if (name == null) continue;
-                CgGameplayTag tag = tags.find(name);
-                // An undeclared tag fails the cue at load, by name; routing it would only defer that.
-                if (tag == null) continue;
-                Route was = fromFiles.put(tag, new Route(tag, assets.declare(CgGameplayKinds.CUE, e.id())));
-                if (was != null) LOGGER.warn("cue tag {} is declared by both {} and {}: {} plays", name, was.ref().id(), e.id(), e.id());
-            }
+        for (CgAssetEntry e : registry.entries(CgGameplayKinds.CUE)) {
+            if (e.redirect() != null) continue;
+            String name = e.searchable().get("tag");
+            if (name == null) continue;
+            CgGameplayTag tag = tags.find(name);
+            // An undeclared tag fails the cue at load, by name; routing it would only defer that.
+            if (tag == null) continue;
+            Route was = fromFiles.put(tag, new Route(tag, assets.declare(CgGameplayKinds.CUE, e.id())));
+            if (was != null) LOGGER.warn("cue tag {} is declared by both {} and {}: {} plays", name, was.ref().id(), e.id(), e.id());
         }
     }
 

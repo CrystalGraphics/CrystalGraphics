@@ -1,8 +1,24 @@
-package com.crystalgraphics.loading;
+package com.crystalgraphics.loading.view;
+
+import java.util.List;
 
 import javax.annotation.Nullable;
 
+import com.crystalgraphics.api.font.CgFont;
+import com.crystalgraphics.api.font.CgFontStyle;
+import com.crystalgraphics.api.font.CgGenericFamily;
+import com.crystalgraphics.api.font.CgSystemFontFace;
+import com.crystalgraphics.api.font.CgSystemFonts;
 import com.crystalgraphics.api.material.CgMaterial;
+import com.crystalgraphics.api.text.CgTextAlign;
+import com.crystalgraphics.api.text.CgTextLayout;
+import com.crystalgraphics.job.CgJob;
+import com.crystalgraphics.job.CgJobLane;
+import com.crystalgraphics.job.reply.CgReply;
+import com.crystalgraphics.loading.task.CgLoadTask;
+import com.crystalgraphics.loading.task.CgLoadTracker;
+import com.crystalgraphics.text.render.CgTextRenderer;
+import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.api.texture.CgMipmapConfig;
 import com.crystalgraphics.api.texture.CgTextureSpec;
 import com.crystalgraphics.api.texture.CgTextureType;
@@ -29,7 +45,8 @@ public final class CgLogoLoadingView implements CgLoadingView {
 
     /** The engine's lockup, its shadows included, exported by tools/logo/export_lockup.py. */
     public static final String LOCKUP = "crystalgraphics:textures/gui/lockup.png";
-    static final String FX = "crystalgraphics:shaders/loading/loading_fx.shader";
+    /** Its shader, which the screen precaches with the engine's passes. */
+    public static final String FX ="crystalgraphics:shaders/loading/loading_fx.shader";
     /** {@code loading_fx.shader}'s modes. */
     private static final int BACKDROP = 0, GLOW = 1, IMAGE = 2, BAR = 3;
     /** The icon's height against the lockup image's, and each side's padding against its width. */
@@ -105,19 +122,97 @@ public final class CgLogoLoadingView implements CgLoadingView {
         quad(bar, barX - 1.5f * barHeight, barY - 1.5f * barHeight, barWidth + 3f * barHeight, 4f * barHeight,
                 argb(shown, 0xFFFFFFFF), Math.min(1f, Math.max(0f, progress)), BAR);
         end(bar);
+        if (SHOW_TASKS.get()) tasks(barX, barY + 2.5f * barHeight, barWidth, barHeight, shown);
     }
 
-    /** Loads the lockup now, at the graphics start, rather than at the first frame. */
+    private static final CgVar.Bool SHOW_TASKS = CgVar.bool("crystalgraphics.loading.showTasks", false,
+            "List what loads under the loading screen's bar: each running task, its owner and how far along, a line each.");
+    /** At most this many lines; the oldest running first. */
+    private static final int MAX_LINES = 6;
+    @Nullable private CgTextRenderer text;
+    @Nullable private CgFont font;
+    private int fontPx;
+    private boolean noFont;
+    @Nullable private String lines;
+    @Nullable private CgTextLayout layout;
+
+    /** The running load tasks, a line each under the bar: several lines are tasks loading in parallel. */
+    private void tasks(float x, float y, float width, float barHeight, float alpha) {
+        String now = lines();
+        if (now.isEmpty() || noFont) return;
+        int px = Math.max(12, Math.round(barHeight * 0.8f));
+        if (font == null || px != fontPx) {
+            font = sansSerif(px);
+            if (font == null) return;
+            fontPx = px;
+            layout = null;
+        }
+        if (layout == null || !now.equals(lines)) {
+            lines = now;
+            layout = CgTextLayout.of(now, font).maxWidth(width).align(CgTextAlign.CENTER).build();
+        }
+        if (text == null) text = CgTextRenderer.create();
+        int ink = argb(alpha * 0.9f, 0xFFFFFFFF), edge = argb(alpha * 0.6f, 0xFF0A2A40);
+        text.beginBatch();
+        text.draw().layout(layout).font(font).at(x, y).color(ink).shadowCount(4)
+                .shadow(0, -1f, -1f, 0f, 0f, edge, false).shadow(1, 1f, -1f, 0f, 0f, edge, false)
+                .shadow(2, -1f, 1f, 0f, 0f, edge, false).shadow(3, 1f, 1f, 0f, 0f, edge, false).submit();
+        text.endBatch();
+    }
+
+    /** {@code owner  task  42%}, a line per running task. */
+    private static String lines() {
+        List<CgLoadTask> running = CgLoadTracker.running();
+        StringBuilder s = new StringBuilder();
+        for (int i = 0; i < Math.min(MAX_LINES, running.size()); i++) {
+            CgLoadTask t = running.get(i);
+            if (s.length() > 0) s.append('\n');
+            String name = t.id().substring(t.owner().length() + 1);
+            s.append(t.owner()).append("  ").append(name);
+            float p = t.reported();
+            if (!Float.isNaN(p)) s.append("  ").append(Math.round(p * 100f)).append('%');
+            String detail = t.detail();
+            if (detail != null) s.append("  ").append(detail);
+        }
+        if (running.size() > MAX_LINES) s.append("\n+").append(running.size() - MAX_LINES).append(" more");
+        return s.toString();
+    }
+
+    /** The system's sans-serif, looked up on a worker: indexing the installed fonts takes 100 ms and more. */
+    @Nullable
+    private CgReply<CgSystemFontFace> face;
+
+    /** The sans-serif at {@code px}; null while its lookup runs, and with {@link #noFont} set where there is none. */
+    @Nullable
+    private CgFont sansSerif(int px) {
+        if (face == null) lookUpFace();
+        if (!face.isDone()) return null;
+        CgSystemFontFace found = face.result();
+        if (found == null) {
+            noFont = true;
+            return null;
+        }
+        return CgSystemFonts.get().load(found, CgFontStyle.REGULAR, px);
+    }
+
+    private void lookUpFace() {
+        if (face == null) {
+            face = CgJob.lane(CgJobLane.BACKGROUND).named("loading screen font")
+                    .run(() -> CgSystemFonts.get().generic(CgGenericFamily.SANS_SERIF, CgFontStyle.REGULAR));
+        }
+    }
+
+    /** Loads the lockup now, at the graphics start, rather than at the first frame, and starts the lines' font. */
     @Override
     public void warm(int width, int height) {
         texture().getWidth();
+        if (SHOW_TASKS.get()) lookUpFace();
     }
 
     private CgTexture2D texture() {
         if (lockup == null) lockup = CgTextures.of(lockupPath, MIPMAPPED);
         return lockup;
     }
-
     private static void begin(CgQuadRenderer renderer) {
         renderer.useMaterial(CgMaterial.load(FX));
         renderer.begin();

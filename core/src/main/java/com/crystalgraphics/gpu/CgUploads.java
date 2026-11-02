@@ -200,8 +200,16 @@ public final class CgUploads {
 
     // ── a lease's end ───────────────────────────────────────────────────────────────────────────────────────
 
+    /** Bytes of every lease landed since launch: what {@link CgDeferral} holds a frame's landing to. Render thread. */
+    private static long landedBytes;
+
+    static long landedBytes() {
+        return landedBytes;
+    }
+
     /** Render thread: the lease's upload was issued, so its block is read by this frame. */
     static void landed(CgUploadLease lease) {
+        landedBytes += lease.size();
         synchronized (LOCK) {
             Block b = lease.block;
             if (b.generation == generation) {

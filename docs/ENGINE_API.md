@@ -987,7 +987,8 @@ CgAssetReloader.addListener(new CgReloadListener() {        // or a cache keyed 
   it. A cache answering without reading calls `CgIO.noteRead`, or its files go unrecorded.
 - The index holds assets weakly; `untrack` one that is deleted while still held.
 - **A file counts once its writes are quiet for 120 ms**: a save is several events. Editors' scratch files are ignored.
-- While it watches, the shader preprocessor caches includes again, evicting each edited one.
+- While it is on, the shader preprocessor caches includes again, evicting each edited one; its watchers open on a
+  worker, so the first frame never waits for a tree's walk.
 - A texture made with `createDirect` is not cached, so no change finds it.
 - Per frame, with nothing edited, it allocates nothing and makes no system call. On macOS the JDK's watcher polls and
   can miss a change faster than its interval; Ctrl+R (harness) or F3+T reloads everything.

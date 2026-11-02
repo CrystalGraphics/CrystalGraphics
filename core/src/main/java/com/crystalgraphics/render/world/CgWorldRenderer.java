@@ -461,10 +461,12 @@ public final class CgWorldRenderer {
         CgRenderStage.WORLD_TRANSPARENT.register(ORDER, this::recordTransparent);
         parsePassesAhead();
         // The renderer's own programs no material brings in: the GPU cull's depth pyramid, and text in every form its
-        // permutation domain names (on screen and as labels, bitmap and MSDF).
+        // permutation domain names (on screen and as labels, bitmap and MSDF), on the world's instances and on the
+        // quads CgTextRenderer draws: the loading screen's own lines and a HUD's missed it at their first draw.
         CgPipelinePrecache.register("crystalgraphics:world", list -> {
             list.add(PYRAMID_SHADER);
             list.add(TEXT_SHADER);
+            list.addPass(TEXT_SHADER, CgInstanceKind.QUAD);
         });
     }
 
@@ -474,19 +476,38 @@ public final class CgWorldRenderer {
     private static final long BOOT_TIMEOUT_NANOS = 60_000_000_000L;
 
     /**
-     * Builds the program list (the engine's own passes, and anything added before) under the settings asked for, in
-     * parallel, waiting for all of it: the graphics start's, before the first frame draws, so no frame compiles a pass
-     * of the engine's. Logs what is left after a minute and goes on. The lifecycle's.
+     * Builds the program list (the engine's own passes, and anything added before) under the settings asked for, behind
+     * the loading screen: from now until {@link #bootStep} answers true, no world stage should fire, or a pass draws
+     * before it is built. Logs what is left after a minute and goes on. The lifecycle's.
      */
-    public void awaitPrograms() {
-        long start = System.nanoTime();
-        int left;
-        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, BOOT_ZONE)) {
-            left = pipelines.await(requestedSettings(), BOOT_TIMEOUT_NANOS);
-        }
-        LOGGER.info("{} engine programs built in {} ms{}", pipelines.size(), (System.nanoTime() - start) / 1_000_000,
-                left > 0 ? ", " + left + " still compiling" : "");
+    public void beginBoot() {
+        booting = true;
+        bootStarted = System.nanoTime();
     }
+
+    /**
+     * One frame of the boot: what every collector named collected, and each program not built started or polled, in
+     * parallel, never waited for. True once all of it is built. Render thread, outside a stage firing.
+     */
+    public boolean bootStep() {
+        if (!booting) return true;
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, BOOT_ZONE)) {
+            settle();
+        }
+        if (pipelines.pending() > 0 && System.nanoTime() - bootStarted < BOOT_TIMEOUT_NANOS) return false;
+        booting = false;
+        LOGGER.info("{} engine programs built in {} ms{}", pipelines.size(), (System.nanoTime() - bootStarted) / 1_000_000,
+                pipelines.pending() > 0 ? ", " + pipelines.pending() + " still compiling" : "");
+        return true;
+    }
+
+    /** Whether the engine's programs are still building behind the loading screen: a world stage must not fire yet. */
+    public boolean booting() {
+        return booting;
+    }
+
+    private boolean booting;
+    private long bootStarted;
 
     /**
      * The renderer's own passes a material brings in (half size, volumes, the distortion apply), parsed on a worker now:

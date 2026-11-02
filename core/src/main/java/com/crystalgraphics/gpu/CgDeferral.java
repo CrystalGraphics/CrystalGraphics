@@ -66,6 +66,9 @@ public final class CgDeferral {
     private static final CgVar.Num SPREAD_MILLIS = CgVar.number("crystalgraphics.deferral.budget", 4f, 0f, 1000f,
             CgVar.DEV, "Milliseconds a frame lands queued work of objects that land their own before each use (textures);"
                     + " the rest waits a frame. 0 for no limit.");
+    private static final CgVar.Num SPREAD_MEGABYTES = CgVar.number("crystalgraphics.deferral.megabytes", 4f, 0f, 4096f,
+            CgVar.DEV, "Megabytes of upload leases a frame lands for objects that land their own before each use (textures):"
+                    + " the GPU's copy and mips of a kit's 17 MB in one frame took 156 ms. 0 for no limit.");
 
     /** Guarded by this. */
     private final ArrayDeque<Runnable> queue = new ArrayDeque<>();
@@ -87,7 +90,7 @@ public final class CgDeferral {
 
     /**
      * Lets {@link #applyAll()} land this object's work over several frames, within {@code crystalgraphics.deferral.budget}
-     * each, as Unreal's texture streaming caps its uploads a frame: a kit's textures decoded together no longer land in
+     * milliseconds and {@code .megabytes} each, as Unreal's texture streaming caps its uploads a frame: a kit's textures decoded together no longer land in
      * one frame. Only for an owner that {@link #flush()}es before every use (a texture's bind and {@code getId}), so
      * nothing ever draws what has not landed. Answers this.
      */
@@ -187,6 +190,7 @@ public final class CgDeferral {
         }
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, APPLY)) {
             long budget = (long) (SPREAD_MILLIS.get() * 1_000_000L), start = System.nanoTime();
+            long bytes = (long) (SPREAD_MEGABYTES.get() * (1 << 20)), landedAt = CgUploads.landedBytes();
             boolean spent = false;
             int kept = 0;
             for (CgDeferral deferral : work) {
@@ -195,7 +199,8 @@ public final class CgDeferral {
                     continue;
                 }
                 deferral.flush();
-                if (deferral.spread && budget > 0 && System.nanoTime() - start >= budget) spent = true;
+                if (deferral.spread && (budget > 0 && System.nanoTime() - start >= budget
+                        || bytes > 0 && CgUploads.landedBytes() - landedAt >= bytes)) spent = true;
             }
             if (kept > 0) requeue(work, kept);
         }

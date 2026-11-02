@@ -97,7 +97,10 @@ public final class CgPostStack {
         CgRenderStage.WORLD_OPAQUE.register(DEMAND_ORDER, this::demandSubject);
         CgRenderStage.WORLD_TRANSPARENT.register(DEMAND_ORDER, this::demand);
         CgRenderStage.WORLD_TRANSPARENT.register(ORDER, this::record);
-        CgPipelinePrecache.register("crystalgraphics:post", CgPostStack::warmVariants);
+        // A step a shader: each reads and parses its file to name its permutations, together 100 ms and more of a frame
+        CgPipelinePrecache.Steps steps = CgPipelinePrecache.steps("crystalgraphics:post");
+        for (String pass : WARMED) steps.step(pipelines -> pipelines.addPass(pass));
+        steps.start();
     }
 
     /**
@@ -107,17 +110,11 @@ public final class CgPostStack {
      * follow volumes, not settings: each volume registers its own as it is made, and an asset's preparer requests them
      * ahead of it ({@link #lookPasses}).
      */
-    private static void warmVariants(CgPipelineList pipelines) {
-        String bloom = "crystalgraphics:shaders/post/bloom/", post = "crystalgraphics:shaders/post/";
-        pipelines.addPass(bloom + "down.shader");
-        pipelines.addPass(bloom + "up.shader");
-        pipelines.addPass(bloom + "prefilter.shader");
-        pipelines.addPass(bloom + "excess.shader");
-        pipelines.addPass("crystalgraphics:shaders/world_scene_in.shader");
-        pipelines.addPass(post + "distortion_bend.shader");
-        pipelines.addPass(post + "composite.shader");
-        pipelines.addPass(post + "composite_copy.shader");
-    }
+    private static final String[] WARMED = {
+            "crystalgraphics:shaders/post/bloom/down.shader", "crystalgraphics:shaders/post/bloom/up.shader",
+            "crystalgraphics:shaders/post/bloom/prefilter.shader", "crystalgraphics:shaders/post/bloom/excess.shader",
+            "crystalgraphics:shaders/world_scene_in.shader", "crystalgraphics:shaders/post/distortion_bend.shader",
+            "crystalgraphics:shaders/post/composite.shader", "crystalgraphics:shaders/post/composite_copy.shader"};
 
     /**
      * Adds the composite passes a volume of {@code settings} draws with: its looks, in every keyword set of the

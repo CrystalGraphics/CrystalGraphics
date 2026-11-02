@@ -1,7 +1,12 @@
 package com.crystalgraphics.loading;
 
 import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
 
@@ -18,6 +23,12 @@ import com.crystalgraphics.asset.load.CgVfxAssets;
 import com.crystalgraphics.gl.framebuffer.CgFrameBuffer;
 import com.crystalgraphics.gl.material.CgMaterialShader;
 import com.crystalgraphics.gl.texture.CgTextureAbstract;
+import com.crystalgraphics.loading.task.CgLoadPlan;
+import com.crystalgraphics.loading.task.CgLoadTask;
+import com.crystalgraphics.loading.task.CgLoadTracker;
+import com.crystalgraphics.loading.view.CgLoadingView;
+import com.crystalgraphics.loading.view.CgLogoLoadingView;
+import com.crystalgraphics.loading.watchdog.CgLoadWatchdog;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.state.CgGlScope;
 import com.crystalgraphics.platform.gl.state.CgGlSlot;
@@ -27,6 +38,7 @@ import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.render.draw.CgPipeline;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.world.CgPipelinePrecache;
+import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 import com.crystalgraphics.variable.CgVar;
@@ -82,6 +94,9 @@ public final class CgLoadingScreen {
             "The loading screen: AUTO while anything loads, NEVER (a scene that measures its own loading), ALWAYS (to look at it).");
     private static final CgVar.Bool LOG_EVERY_FRAME = CgVar.bool("crystalgraphics.loading.logEveryFrame", false,
             CgVar.DEV, "Log why the loading screen shows on every frame it shows.");
+    private static final CgVar.Bool LOG_PROGRESS = CgVar.bool("crystalgraphics.loading.logProgress", false,
+            CgVar.DEV, "Log the bar and the running load tasks once a second while the loading screen shows.");
+    private static long lastProgressLog;
     private static final CgVar.Int HOLD_FRAMES = CgVar.integer("crystalgraphics.loading.holdFrames", 30, 0, 100_000,
             "Frames in a row with no first-use work the loading screen holds for once nothing loads, before it hides.");
     private static final CgVar.Num MAX_HOLD = CgVar.number("crystalgraphics.loading.maxHoldSeconds", 10f, 0f, 600f,
@@ -288,10 +303,14 @@ public final class CgLoadingScreen {
      */
     public static void frame() {
         long now = System.nanoTime();
+        CgLoadWatchdog.beat();
         float dt = lastFrame == 0L ? 0f : Math.min(0.25f, (now - lastFrame) / 1e9f);
         lastFrame = now;
         Mode mode = MODE.get();
-        String raised = first(RAISING), asked = raised != null ? raised : shown() && !gaveUp ? first(ENGINE) : null;
+        reasons.clear();
+        String raised = collect(RAISING, "loading:"), asked = raised != null ? raised : shown() && !gaveUp ? collect(ENGINE, "crystalgraphics:") : null;
+        trackReasons(now);
+        if (asked == null && shown() && !gaveUp && CgLoadPlan.get().busy()) asked = planReason();
         if (mode == Mode.ALWAYS) asked = asked != null ? asked : "always shown";
         if (mode == Mode.NEVER) asked = null;
         switch (state) {
@@ -321,14 +340,23 @@ public final class CgLoadingScreen {
             }
         }
         if (shown()) {
+            if (framesShown == 0) CgLoadTracker.since(now);   // the bar starts with the first frame anyone sees
             framesShown++;
             CgTrace.counter(CgChannels.MISC, SHOWN, 1);
             if (LOG_EVERY_FRAME.get()) LOGGER.info("[loading] frame {}: {}", framesShown, reason);
         }
         reportAfterHide(now);
         CgWarmBudget.loading(shown());
+        CgLoadWatchdog.arm(shown());
         worldFired = false;
-        targetProgress = state == State.LOADING ? Math.max(targetProgress, progressOf()) : 1f;
+        targetProgress = state == State.LOADING ? Math.max(targetProgress, CgLoadTracker.progress(now)) : 1f;
+        if (shown() && LOG_PROGRESS.get() && now - lastProgressLog >= 1_000_000_000L) {
+            lastProgressLog = now;
+            StringBuilder s = new StringBuilder("[loading] ").append((now - shownAt) / 1_000_000L).append(" ms: bar ")
+                    .append(Math.round(targetProgress * 100f)).append("%, running");
+            for (CgLoadTask t : CgLoadTracker.running()) s.append(' ').append(t.id());
+            LOGGER.info(s.toString());
+        }
         // Minecraft's overlay eases toward the reload's progress: 0.95 of the last plus 0.05 of the new, a frame at 60.
         float k = 1f - (float) Math.pow(0.95, dt * 60f);
         shownProgress = Math.max(shownProgress, shownProgress + (targetProgress - shownProgress) * k);
@@ -350,7 +378,8 @@ public final class CgLoadingScreen {
         float alpha;
         boolean warm = false;
         if (shown()) {
-            warm = !worldFired;
+            // Not while the engine's programs build behind it: a world firing would draw passes not built yet
+            warm = !worldFired && !CgWorldRenderer.get().booting();
             alpha = 1f;
         } else {
             long since = System.nanoTime() - hiddenAt;
@@ -429,42 +458,52 @@ public final class CgLoadingScreen {
                 + (assets == null ? 0L : assets.syncLoads());
     }
 
-    /** The mean of the processes' known progress, 0 when none says. */
-    private static float progressOf() {
-        progressSum = 0f;
-        progressCount = 0;
-        sumProgress(RAISING);
-        sumProgress(ENGINE);
-        return progressCount == 0 ? 0f : progressSum / progressCount;
-    }
+    /** This frame's reasons, as task ids, each with its process's progress (NaN when it gives none). */
+    private static final Map<String, Float> reasons = new LinkedHashMap<>();
+    /** The reason tasks running: each ends the frame its reason is no longer given. */
+    private static final Set<String> openReasons = new HashSet<>();
 
-    private static float progressSum;
-    private static int progressCount;
-
-    private static void sumProgress(List<CgLoadingProcess> list) {
-        for (int i = 0; i < list.size(); i++) {
-            float p = list.get(i).progress();
-            if (!Float.isNaN(p)) {
-                progressSum += Math.min(1f, Math.max(0f, p));
-                progressCount++;
-            }
-        }
-    }
-
+    /** Every reason {@code list}'s processes give, into {@link #reasons} under {@code prefix}; the first, or null. */
     @Nullable
-    private static String first(List<CgLoadingProcess> list) {
+    private static String collect(List<CgLoadingProcess> list, String prefix) {
+        String first = null;
         for (int i = 0; i < list.size(); i++) {
+            CgLoadingProcess p = list.get(i);
             String why;
+            float progress;
             try {
-                why = list.get(i).loading();
+                why = p.loading();
+                progress = why == null ? Float.NaN : p.progress();
             } catch (RuntimeException e) {
                 LOGGER.error("[loading] a process threw; it is dropped", e);
                 list.remove(i--);
                 continue;
             }
-            if (why != null) return why;
+            if (why == null) continue;
+            if (first == null) first = why;
+            reasons.putIfAbsent(prefix + why, progress);
         }
-        return null;
+        return first;
+    }
+
+    /** Each reason given is a task while it is given: the tracker's record and the bar see processes as they see plans. */
+    private static void trackReasons(long now) {
+        for (Map.Entry<String, Float> r : reasons.entrySet()) {
+            CgLoadTracker.reason(r.getKey(), r.getValue(), now);
+            openReasons.add(r.getKey());
+        }
+        for (Iterator<String> it = openReasons.iterator(); it.hasNext(); ) {
+            String id = it.next();
+            if (reasons.containsKey(id)) continue;
+            CgLoadTracker.reasonEnded(id, now);
+            it.remove();
+        }
+    }
+
+    /** Why it shows while only plan tasks run: the oldest running, or waiting. */
+    private static String planReason() {
+        List<CgLoadTask> running = CgLoadTracker.running();
+        return running.isEmpty() ? "loading" : running.get(0).id();
     }
 
     private static void show(String why, long now) {
@@ -474,6 +513,7 @@ public final class CgLoadingScreen {
         gaveUp = false;
         framesShown = 0;
         shownProgress = targetProgress = 0f;
+        CgLoadTracker.shown(now);
         LOGGER.info("[loading] shown: {}", why);
         CgTrace.marker(CgChannels.MISC, "loading.show", why);
         tell(true);
@@ -502,7 +542,16 @@ public final class CgLoadingScreen {
                 (now - holdingAt) / 1_000_000L);
         CgTrace.marker(CgChannels.MISC, "loading.hide", framesShown + " frames");
         atHide = firstUseCounts();
+        for (String id : openReasons) CgLoadTracker.reasonEnded(id, now);
+        openReasons.clear();
+        CgLoadTracker.hidden(now);
         tell(false);
+        LOGGER.info("[loading] the render thread was held by work {} times and waited {} times",
+                CgLoadWatchdog.stalls(), CgLoadWatchdog.waits());
+        if (CgLoadWatchdog.strict() && CgLoadWatchdog.stalls() > 0) {
+            throw new IllegalStateException("[loading] the render thread was held by work " + CgLoadWatchdog.stalls()
+                    + " times while loading (crystalgraphics.loading.strict): see the watchdog's reports");
+        }
     }
 
     private static void tell(boolean shown) {
