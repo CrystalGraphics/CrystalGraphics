@@ -610,7 +610,7 @@ public final class CgVfxFrame {
                     ribbon(effect, emitter, rd, size, row, pool, range, slot, ox, oy, oz);
                 }
                 case MESHES -> {
-                    if (!rd.unsorted && blendsInOrder(rd.material)) range.sorted(slot, rd.sort);
+                    if (blendsInOrder(rd.material)) range.sorted(slot, rd.order());
                     // One record set for every layer: the cull stamps each draw's customs and scale onto it, leaving
                     // custom 0, Range's velocity.
                     reach = Math.max(reach, size * rd.meshRadius);
@@ -627,7 +627,7 @@ public final class CgVfxFrame {
                     placeParticles(draw, rd.placed, effect).submit();
                 }
                 case MERGED -> {
-                    if (!rd.unsorted && blendsInOrder(rd.material)) range.sorted(slot, rd.sort);
+                    if (blendsInOrder(rd.material)) range.sorted(slot, rd.order());
                     reach = Math.max(reach, Math.max(size, 1f) * 4f);
                     int f = rd.proxy.add(this, capacity, ox + cx, oy + cy, oz + cz, word);
                     float[] c = rd.proxy.custom;
@@ -644,7 +644,7 @@ public final class CgVfxFrame {
                     c[f + 15] = effect.presence();
                 }
                 case SINGLE -> {
-                    if (!rd.unsorted && blendsInOrder(rd.material)) range.sorted(slot, rd.sort);
+                    if (blendsInOrder(rd.material)) range.sorted(slot, rd.order());
                     reach = Math.max(reach, Math.max(size, 1f) * 4f);
                     CgWorldRenderer.Draw draw = world.draw(slotMesh(def.drawLayout(), capacity), rd.material)
                             .buffer(CgBindingPoints.PARTICLES, pool.drawn()).buffer(CgBindingPoints.PARTICLE_ORDER, range.order())
@@ -941,8 +941,17 @@ public final class CgVfxFrame {
         /** {@code MESHES} and {@code SEQUENCE}: what it draws per particle (a part with none, the sphere), its radius. */
         CgMeshLods mesh;
         float meshRadius;
-        /** A renderer sorting none: drawn in the order Range keeps, however it blends. */
+        /** A renderer sorting none: drawn in spawn order where it blends, never the order the GPU's appends leave. */
         boolean unsorted;
+
+        /**
+         * How Range orders its particles where it blends: its sort, or with none, spawn order with the newest on top, as
+         * an unsorted buffer appends them. The Step's survivors come back in a new order each step, so an unsorted
+         * layer of soft sprites swapped which lay in front every frame.
+         */
+        CgVfxRange.Sort order() {
+            return unsorted ? CgVfxRange.Sort.NEWEST_FIRST : sort;
+        }
         /** {@code MESHES}: the section it draws, -1 for the whole mesh. */
         int submesh = -1;
         /** How it sorts its particles when it blends them. */

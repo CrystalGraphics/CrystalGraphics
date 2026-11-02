@@ -52,7 +52,7 @@ static final CgVfxRendererProperties SPARKS = CgVfxRenderers.sprite("sparks")
 
 | Kind | Draws | Its emitter |
 |---|---|---|
-| `sprite` | a quad a particle: `alignment` (`unaligned`, `velocity`), `facing` (`camera`, `camera_plane`, `camera_position`), `sort` (`none`, `view_depth`), `sub_image` (a grid flipbook) | quads |
+| `sprite` | a quad a particle: `alignment` (`unaligned`, `velocity`), `facing` (`camera`, `camera_plane`, `camera_position`), `sort` (`none`, `view_depth`; a layer with `none` that blends over what is behind it draws in spawn order, the newest on top), `sub_image` (a grid flipbook) | quads |
 | `mesh` | one mesh a particle (`meshes: [{ mesh: <path>, rotation, scale }]`), the unit sphere with none; `facing`, `locked_axis`, `facing_up`, `roll_about`, `pre_rotation` ([below](#mesh-particles-that-face-something)); or a prefab a particle (`meshes: { prefab: <id> }`), its parts at rest, turned by the particle's mesh orientation and sized by its size and scale | `MESHES`; a prefab's, a clip |
 | `ribbon` | one strip through an instance's particles, newest first; with a `trail`, Cascade's trail ([below](#ribbons-and-trails-strips-through-particles)) | quads |
 | `anim_trail` | a sheet swept by an edge between two points the effect moves ([below](#cascades-anim-trail)) | quads |
