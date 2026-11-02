@@ -303,6 +303,7 @@ public final class CgLoadingScreen {
             CgTrace.counter(CgChannels.MISC, SHOWN, 1);
             if (LOG_EVERY_FRAME.get()) LOGGER.info("[loading] frame {}: {}", framesShown, reason);
         }
+        reportAfterHide(now);
         CgWarmBudget.loading(shown());
         worldFired = false;
         targetProgress = state == State.LOADING ? Math.max(targetProgress, progressOf()) : 1f;
@@ -357,6 +358,33 @@ public final class CgLoadingScreen {
             return true;
         }
         return false;
+    }
+
+    /** How long after the hide the first-use report waits: the done-when's first minute in the world. */
+    private static final long AFTER_HIDE_NANOS = 60_000_000_000L;
+    /** Each first-use counter at the hide, for the report a minute after; null once reported. */
+    @Nullable private static long[] atHide;
+
+    /** Each first-use counter: pipelines missed at their draw, compile waits, texture loads, sync asset loads. */
+    private static long[] firstUseCounts() {
+        CgVfxAssets assets = CgVfxAssets.instance();
+        return new long[]{CgPipeline.misses(), CgMaterialShader.compileWaits(), CgTextureAbstract.loads(),
+                assets == null ? 0L : assets.syncLoads()};
+    }
+
+    /** A minute after the hide: what first-use work the screen let through, which should be none. */
+    private static void reportAfterHide(long now) {
+        if (atHide == null || state != State.HIDDEN || now - hiddenAt < AFTER_HIDE_NANOS) return;
+        long[] c = firstUseCounts();
+        long missed = c[0] - atHide[0], waits = c[1] - atHide[1], textures = c[2] - atHide[2], sync = c[3] - atHide[3];
+        atHide = null;
+        if (missed + waits + textures + sync == 0) {
+            LOGGER.info("[loading] the minute after the hide did no first-use work");
+        } else {
+            LOGGER.warn("[loading] the minute after the hide: {} pipelines built at their draw, {} compile waits, {} textures"
+                    + " loaded, {} assets loaded at their use (crystalgraphics.pipeline.logMisses names the pipelines)",
+                    missed, waits, textures, sync);
+        }
     }
 
     /** Every first use the engine counts: what a hold waits to stop. */
@@ -438,6 +466,7 @@ public final class CgLoadingScreen {
         LOGGER.info("[loading] hidden after {} ms, {} frames ({} ms held)", (now - shownAt) / 1_000_000L, framesShown,
                 (now - holdingAt) / 1_000_000L);
         CgTrace.marker(CgChannels.MISC, "loading.hide", framesShown + " frames");
+        atHide = firstUseCounts();
         tell(false);
     }
 
