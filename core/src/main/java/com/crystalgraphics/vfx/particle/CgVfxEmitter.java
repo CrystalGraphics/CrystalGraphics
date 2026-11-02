@@ -2,6 +2,7 @@ package com.crystalgraphics.vfx.particle;
 
 import com.crystalgraphics.vfx.CgVfxSystem;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxArcRendererProperties;
+import com.crystalgraphics.vfx.particle.renderer.CgVfxSpriteRendererProperties;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxBeamRendererProperties;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxLightRendererProperties;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxMeshFacing;
@@ -1052,6 +1053,12 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
          */
         public Builder renderer(CgVfxRendererProperties renderer) {
             renderers.add(renderer);
+            // Niagara's PivotOffsetBinding: a sprite pivot by age is each particle's own
+            if (renderer instanceof CgVfxSpriteRendererProperties && renderer.tree().get("pivot") instanceof Map<?, ?> form) {
+                CgKeyframes[] uv = CgVfxEmitterAssets.pivotOverLife(name + "'s renderer pivot", form);
+                drawn[CgVfxDrawnChannel.SPRITE][CgVfxDrawnChannel.PIVOT_X] = CgVfxDrawnChannel.over(uv[0]);
+                drawn[CgVfxDrawnChannel.SPRITE][CgVfxDrawnChannel.PIVOT_Y] = CgVfxDrawnChannel.over(uv[1]);
+            }
             return this;
         }
 

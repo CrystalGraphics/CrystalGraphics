@@ -79,11 +79,13 @@ vec4 _cg_macro_uv(vec4 system, vec4 override) {
 #define cg_dynamic_parameter(p, i, d) ((((p).dynamics >> (i)) & 1) != 0 ? (p).dynamicParameters[i] : (d))
 
 // The renderer's _cg_Drawn: bits 0 to 3 the dynamic parameters its particles carry, then the sprite's sub-image index
-// and camera offset, then every index reading the first, then Cascade's GPU sprites, whose every index reads 0.
+// and camera offset, then every index reading the first, then Cascade's GPU sprites, whose every index reads 0, then the
+// sprite's pivot (Niagara's Particles.PivotOffset).
 #define _CG_DRAWN_SUB_IMAGE 32
 #define _CG_DRAWN_CAMERA_OFFSET 64
 #define _CG_DRAWN_FIRST_DYNAMIC 128
 #define _CG_DRAWN_GPU_SPRITES 256
+#define _CG_DRAWN_PIVOT 512
 
 #define cg_material_project(v) (cg_ProjMatrix * cg_ViewMatrix * vec4((v).worldPosition, 1.0))
 
@@ -527,6 +529,7 @@ void _cg_sprite(float facing, vec4 facingVector, vec4 alignmentVector, float str
     vec3 centre = origin + CG_PARTICLE_POSITION(i);
     vec2 spriteDrawn = (drawn & (_CG_DRAWN_SUB_IMAGE | _CG_DRAWN_CAMERA_OFFSET)) != 0 ? CG_PARTICLE_DRAWN(i).color.xy : vec2(0.0);
     if ((drawn & _CG_DRAWN_CAMERA_OFFSET) != 0) cameraOffset = spriteDrawn.y;
+    if ((drawn & _CG_DRAWN_PIVOT) != 0) pivot.xy = CG_PARTICLE_DRAWN(i).color.zw;
     float kept = _cg_offset_scale(centre, eye, cameraOffset, keepSize);
     centre += _cg_toward_eye(centre, eye, cameraOffset);
     int mode = int(facing + 0.5), alignment = mode / 8;

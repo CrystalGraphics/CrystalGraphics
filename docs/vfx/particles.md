@@ -65,7 +65,7 @@ static final CgVfxRendererProperties SPARKS = CgVfxRenderers.sprite("sparks")
 - **Values on a property the material reads per draw** are constants of the row; **keywords and other values** make a
   child material, shared by every renderer with the same overrides.
 - **What is not drawn yet fails at load by name**, rather than drawing as something else: the `system` kind, a
-  material named by a user parameter, and fields such as a `camera_distance_blend` facing, a pivot off the middle, a
+  material named by a user parameter, and fields such as a `camera_distance_blend` facing, a
   rect-table `sub_image`, a mesh's `pivot_offset`, a prefab with any other mesh field (`facing`, `sort`, overrides, a
   material of its own), a ribbon's `shape: custom` or its `max_ribbons`.
 - **Its renderers decide its draw layout**: a mesh renderer lays its particles out as meshes (a prefab's and a
@@ -587,6 +587,19 @@ particle_update:
 
   ```java
   CgVfxRenderers.sprite("spark").material(SPARK).value("_cg_CameraOffset", 0.8f).value("_cg_KeepSize", 1f).build()
+  ```
+- **A sprite's pivot can be each particle's**, Niagara's `PivotOffsetBinding` onto `Particles.PivotOffset`: the sprite
+  renderer's `pivot` as two curves by age, in UV space (0.5 the middle, past 0 or 1 off the quad), each particle's own
+  over its life. A streak reaching out from a ring rides its pivot out as the ring grows:
+
+  ```yaml
+  renderers:
+    - { id: r1, kind: sprite, material: mymod:materials/streak,
+        pivot: { curves: [{ keys: [[0, 0.5, linear], [1, -1.5, linear]] }, { keys: [[0, 0.5, linear], [1, 0.5, linear]] }], by: age } }
+  ```
+
+  ```java
+  CgVfxRenderers.sprite("r1").material(STREAK).field("pivot", Map.of("curves", List.of(u, v), "by", "age")).build()
   ```
 - **Each slot carried costs the pool a second drawn element a particle**, and only emitters carrying the same slots
   share a pool.

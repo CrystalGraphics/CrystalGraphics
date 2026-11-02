@@ -2847,6 +2847,14 @@ public final class CgVfxEmitterAssets {
     }
 
     /** {@code { curves: [...] }} as one keyframes an axis; {@code { curve }} the same on every axis. */
+    /** A sprite renderer's {@code pivot} by age, {@code { curves: [u, v], by: age }}, as a curve a channel. */
+    static CgKeyframes[] pivotOverLife(String name, Map<?, ?> form) {
+        if (!(form.get("curves") instanceof List<?>) || form.get("by") != null && !"age".equals(form.get("by"))) {
+            throw new IllegalArgumentException(name + " is " + form + ": a pivot per particle is { curves: [u, v], by: age }");
+        }
+        return axes(name, form, 2);
+    }
+
     private static CgKeyframes[] axes(String name, Object value, int n) {
         CgKeyframes[] out = new CgKeyframes[n];
         if (value instanceof Map<?, ?> form && form.get("curves") instanceof List<?> list) {

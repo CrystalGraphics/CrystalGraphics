@@ -429,12 +429,13 @@ final class CgVfxMaterials {
     /**
      * The factory's {@code _cg_Drawn} for {@code emitter}'s renderers: its dynamic parameter slots a bit each, then 32
      * where it sets a sub-image index and 64 a camera offset; the renderer adds 128 for every index reading the first,
-     * and 256 where those are Cascade's GPU sprites, which read 0.
+     * and 256 where those are Cascade's GPU sprites, which read 0; 512 where its sprites' pivot is each particle's.
      */
     private static int drawnBits(CgVfxEmitter emitter) {
         int bits = CgVfxGpuEmitter.drawnMask(emitter) & 15;
         if (emitter.drawn(CgVfxDrawnChannel.SPRITE, CgVfxDrawnChannel.SUB_IMAGE) != null) bits |= 32;
         if (emitter.drawn(CgVfxDrawnChannel.SPRITE, CgVfxDrawnChannel.CAMERA_OFFSET) != null) bits |= 64;
+        if (emitter.drawn(CgVfxDrawnChannel.SPRITE, CgVfxDrawnChannel.PIVOT_X) != null) bits |= 512;
         return bits;
     }
 

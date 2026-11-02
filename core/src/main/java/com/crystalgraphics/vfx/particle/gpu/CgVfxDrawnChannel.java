@@ -65,8 +65,11 @@ public record CgVfxDrawnChannel(CgKeyframes from, CgKeyframes to, Roll roll, @Nu
     /** The {@link #LIGHT} element's channels: Cascade's colour scale, then its brightness. */
     public static final int LIGHT_RED = 0, LIGHT_GREEN = 1, LIGHT_BLUE = 2, LIGHT_BRIGHTNESS = 3;
 
-    /** The {@link #SPRITE} slot's channels: its frame of the renderer's sub-images, and blocks drawn toward the eye. */
-    public static final int SUB_IMAGE = 0, CAMERA_OFFSET = 1;
+    /**
+     * The {@link #SPRITE} slot's channels: its frame of the renderer's sub-images, blocks drawn toward the eye, and its
+     * pivot in UV space (Niagara's Particles.PivotOffset), which the sprite renderer's {@code pivot} sets by age.
+     */
+    public static final int SUB_IMAGE = 0, CAMERA_OFFSET = 1, PIVOT_X = 2, PIVOT_Y = 3;
 
     /** How a channel's two ends mix. */
     public enum Roll {

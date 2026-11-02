@@ -91,7 +91,9 @@ public final class CgVfxRenderers {
                     choice(who, tree, "alignment", CgVfxSpriteRendererProperties.Alignment.class, "unaligned"),
                     choice(who, tree, "facing", CgVfxSpriteRendererProperties.Facing.class, "camera"),
                     floats(tree.get("facing_blend"), 2), sort(who, tree),
-                    tree.get("pivot") != null ? vector(who, "pivot", tree.get("pivot"), 2) : new float[] {0.5f, 0.5f},
+                    // a pivot by age is each particle's, set on its emitter's drawn channels
+                    tree.get("pivot") instanceof Map<?, ?> ? new float[] {0.5f, 0.5f}
+                            : tree.get("pivot") != null ? vector(who, "pivot", tree.get("pivot"), 2) : new float[] {0.5f, 0.5f},
                     flipbook(who, tree.get("sub_image")), floats(tree.get("camera_distance"), 2),
                     Boolean.TRUE.equals(tree.get("cast_shadows")),
                     tree.get("soft_depth") instanceof Number n ? n.floatValue() : Float.NaN);

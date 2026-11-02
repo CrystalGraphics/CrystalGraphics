@@ -12,6 +12,7 @@ import com.crystalgraphics.settings.CgQuality;
 import com.crystalgraphics.vfx.look.CgVfxFlipbook;
 import com.crystalgraphics.vfx.particle.CgVfxSubUvAnimation;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxDrawnChannel;
 import com.crystalgraphics.vfx.particle.CgVfxEmitterAssets;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawning;
 import org.junit.Test;
@@ -188,6 +189,26 @@ public class CgVfxRenderersTest {
         CgValidation v = CgAssetData.of("test:vfx/emitters/sparks", CgParticleKinds.EMITTER, file, null)
                 .validate(CgValidation.Usecase.LOAD);
         assertTrue(v.toString(), v.valid());
+    }
+
+    @Test
+    public void aPivotByAgeIsEachParticlesAndRoundTrips() {
+        Map<String, Object> pivot = Map.of("curves", List.of(
+                Map.of("keys", List.of(List.of(0.0, 0.5, "linear"), List.of(1.0, -1.5, "linear"))),
+                Map.of("keys", List.of(List.of(0.0, 0.5, "linear"), List.of(1.0, 0.5, "linear")))), "by", "age");
+        CgVfxEmitter built = CgVfxEmitter.builder("streaks")
+                .renderer(CgVfxRenderers.sprite("r1").material("test:materials/spark").field("pivot", pivot).build()).build();
+        CgVfxDrawnChannel u = built.drawn(CgVfxDrawnChannel.SPRITE, CgVfxDrawnChannel.PIVOT_X);
+        assertEquals(-0.5f, u.from().at(0.5f), 1e-5f);
+        assertEquals(0.5f, built.drawn(CgVfxDrawnChannel.SPRITE, CgVfxDrawnChannel.PIVOT_Y).from().at(1f), 1e-5f);
+        Map<String, Object> file = CgVfxEmitterAssets.write(built);
+        CgVfxEmitter loaded = CgVfxEmitterAssets.compile("streaks", file, null);
+        assertEquals(built.renderers().get(0).tree(), loaded.renderers().get(0).tree());
+        assertEquals(-0.5f, loaded.drawn(CgVfxDrawnChannel.SPRITE, CgVfxDrawnChannel.PIVOT_X).from().at(0.5f), 1e-5f);
+        CgAssetKinds.register();
+        CgValidation v = CgAssetData.of("test:vfx/emitters/streaks", CgParticleKinds.EMITTER, file, null)
+                .validate(CgValidation.Usecase.LOAD);
+        assertTrue(String.valueOf(v.issues()), v.valid());
     }
 
     @Test

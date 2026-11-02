@@ -217,7 +217,7 @@ public final class CgParticleKinds {
             .property("facing", CgValueType.enumOf("camera", "camera_plane", "camera_position", "custom", "camera_distance_blend")).defaultValue("camera")
             .property("facing_blend", VEC2).quantity(CgQuantity.LENGTH)
             .property("sort", SORT).defaultValue("none")
-            .property("pivot", VEC2)
+            .property("pivot", VEC2).forms(CgValueForm.CONSTANT, CgValueForm.CURVE)
             .property("sub_image", CgValueType.struct(SUB_IMAGE))
             .property("camera_distance", VEC2).quantity(CgQuantity.LENGTH)
             .property("cast_shadows", BOOL).defaultValue(false)
