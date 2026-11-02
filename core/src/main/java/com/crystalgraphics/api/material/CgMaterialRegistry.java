@@ -266,9 +266,6 @@ public final class CgMaterialRegistry {
     }
 
     static CgMaterial make(CgMaterialDefinition d, @Nullable String drawKeyword) {
-        if (Boolean.FALSE.equals(d.draw().depthTest())) {
-            throw new IllegalStateException(d.id() + " turns depth_test off, which no material state carries yet");
-        }
         CgMaterial m = CgMaterial.newInstance(d.permutation().shader(), d.state());
         for (String k : d.permutation().keywords()) m.enableKeyword(k);
         if (drawKeyword != null && m.declaredKeywords().contains(drawKeyword)) m.enableKeyword(drawKeyword);

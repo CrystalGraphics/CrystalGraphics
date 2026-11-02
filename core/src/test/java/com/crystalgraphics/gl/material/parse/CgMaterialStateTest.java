@@ -6,6 +6,7 @@ import com.crystalgraphics.api.material.CgMaterialState;
 import com.crystalgraphics.api.state.CgCullState;
 import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.platform.gl.CgCapabilities;
+import com.crystalgraphics.platform.gl.CgGL;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -216,6 +217,40 @@ public class CgMaterialStateTest {
         CgParsedShader prepass = CgShaderParser.parse(shader("\"Depth\" = \"Prepass\"", "DepthWrite OFF", ""), "test");
         assertThrows(CgShaderParseException.class, () -> prepass.withState(CgMaterialState.builder().clip().build(), "test"));
         assertThrows(IllegalStateException.class, () -> CgMaterialState.builder().clip().depthWrite(true).build());
+    }
+
+    @Test
+    public void noDepthTestPassesAlwaysAndItsGlowIsNotHiddenByTheScene() {
+        CgMaterialState spark = CgMaterialState.builder().blend(CgBlendMode.ADDITIVE).disableDepthTest().build();
+        assertTrue(spark.changesProgram());
+        assertEquals("blend=ADDITIVE;nodepth", spark.programKey());
+        CgParsedShader authored = CgShaderParser.parse(STATELESS, "test");
+        CgParsedShader stated = authored.withState(spark, "test");
+        CgRenderState forward = stated.getPassByLightMode("Forward").renderState();
+        assertTrue(forward.getDepth().test());
+        assertFalse("it writes no depth", forward.getDepth().write());
+        assertEquals(CgGL.GL_ALWAYS, forward.getDepth().compareFunc());
+        CgParsedPass emissive = stated.getPassByLightMode("Emissive");
+        String glow = CgMaterialShaderCompiler.compile(stated, emissive, NO_BUFFERS, null,
+                CgMaterialShaderCompiler.CompileConfig.DEFAULT).fragmentSource();
+        String authoredGlow = CgMaterialShaderCompiler.compile(authored, authored.getPassByLightMode("Emissive"), NO_BUFFERS,
+                null, CgMaterialShaderCompiler.CompileConfig.DEFAULT).fragmentSource();
+        assertTrue("the authored glow is hidden by the scene", authoredGlow.contains("CG_EMISSIVE_DEPTH_SLACK"));
+        assertFalse(glow.contains("CG_EMISSIVE_DEPTH_SLACK"));
+    }
+
+    @Test
+    public void noDepthTestIsTranslucentOnly() {
+        CgParsedShader prepass = CgShaderParser.parse(shader("\"Depth\" = \"Prepass\"", "DepthWrite OFF", ""), "test");
+        CgMaterialState untested = CgMaterialState.builder().disableDepthTest().build();
+        assertThrows(CgShaderParseException.class, () -> prepass.withState(untested, "test"));
+        CgParsedShader opaque = CgShaderParser.parse(shader("", "DepthWrite OFF", "").replace("Queue = \"Transparent\"",
+                "Queue = \"Geometry\""), "test");
+        assertThrows(CgShaderParseException.class, () -> opaque.withState(untested, "test"));
+        assertThrows(IllegalStateException.class,
+                () -> CgMaterialState.builder().blend(CgBlendMode.OPAQUE).disableDepthTest().build());
+        assertThrows(IllegalStateException.class, () -> CgMaterialState.builder().clip().disableDepthTest().build());
+        assertThrows(IllegalStateException.class, () -> CgMaterialState.builder().depthWrite(true).disableDepthTest().build());
     }
 
     @Test

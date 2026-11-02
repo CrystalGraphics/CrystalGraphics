@@ -100,6 +100,7 @@ public record CgMaterialDefinition(String id, @Nullable String parent, CgMateria
         CgMaterialState p = permutation.state();
         CgMaterialState.Builder b = CgMaterialState.builder();
         if (p.blend() != null) b.blend(p.blend());
+        if (!p.depthTested()) b.disableDepthTest();
         if (p.clip()) b.clip();
         else if (draw.depthWrite() != null) b.depthWrite(draw.depthWrite());
         else if (p.depthWrite() != null) b.depthWrite(p.depthWrite());

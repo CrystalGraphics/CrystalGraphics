@@ -46,7 +46,14 @@ CgMaterialDefinition slow = CgMaterialDefinitions.derive(sparks, Map.of("values"
 
 - A name the shader does not declare fails at `build()`, or at load for a file, naming the material and the property.
 - A texture is a 2D image, its path the image's (`<namespace>:textures/....png`).
-- `depth_test: false` fails when it draws: no material state carries it yet.
+- `depth_test: false` (Unreal's `bDisableDepthTest`, `.depthTest(false)`) draws it over whatever is in front: a hit
+  spark the floor would otherwise cut. Its glow is not hidden by the scene either. Translucent blends only: on
+  `opaque` or `masked` it fails at load. It then shows through walls too, so give its particles
+  `crystalgraphics:occlusion` ([particles](particles.md)) to fade them out where something covers them.
+
+  ```yaml
+  state: { blend: additive, depth_test: false }
+  ```
 - `separate_translucency: true` (Unreal's `bEnableSeparateTranslucency`, `.separateTranslucency()`) draws a translucent
   material after every other translucent draw, unbent by their distortion and still tested against the scene's depth:
   it sorts in `CgRenderQueue.AFTER_DISTORTION` and up, in `CgSortLayer.SEPARATE_TRANSLUCENCY` or a later layer.

@@ -32,12 +32,22 @@ import java.util.Objects;
  * CgMaterialState specks = CgMaterialState.builder().blend(CgBlendMode.ADDITIVE).separateTranslucency().build();
  * }</pre>
  *
+ * <p>Drawn over what is in front of it, as Unreal's {@code bDisableDepthTest}: a hit spark the floor would cut.
+ * Translucent blends only:</p>
+ *
+ * <pre>{@code
+ * CgMaterialState spark = CgMaterialState.builder().blend(CgBlendMode.ADDITIVE).disableDepthTest().build();
+ * }</pre>
+ *
  * <ul>
- *   <li><b>A blend or clip compiles</b>: the generated fragment {@code main} is built from the blend (fog, the HDR
+ *   <li><b>A blend, a clip or no depth test compiles</b>: the generated fragment {@code main} is built from the blend (fog, the HDR
  *       scene's decode, smoke dimming, the Emissive merge), so each blend mode is a program of its own, made on first
  *       use. Cull and depth write are pipeline state alone: they share the program.</li>
  *   <li><b>Refused at load</b>, naming the shader: {@code depthWrite} with {@code clip()}, or on a shader whose
- *       {@code "Depth"} tag owns its depth; {@code clip()} on a {@code "Prepass"} shader.</li>
+ *       {@code "Depth"} tag owns its depth; {@code clip()} on a {@code "Prepass"} shader; {@code disableDepthTest()}
+ *       on an opaque or clipped draw, a {@code "Prepass"} shader, or with a depth write.</li>
+ *   <li>Without a depth test it shows through walls too: pair it with an occlusion test of its own (a particle's
+ *       {@code crystalgraphics:occlusion} module).</li>
  *   <li>The queue stays the shader's: an additive mode on an opaque-queue shader still draws in the opaque pass.</li>
  *   <li>Separate translucency orders a translucent draw only: on an opaque-queue shader it does nothing.</li>
  * </ul>
@@ -45,7 +55,7 @@ import java.util.Objects;
 public final class CgMaterialState {
 
     /** Everything as the shader authors it. */
-    public static final CgMaterialState SHADER = new CgMaterialState(null, false, null, null, false);
+    public static final CgMaterialState SHADER = new CgMaterialState(null, false, null, null, false, true);
 
     @Nullable
     private final CgBlendMode blend;
@@ -55,14 +65,16 @@ public final class CgMaterialState {
     @Nullable
     private final Boolean depthWrite;
     private final boolean separateTranslucency;
+    private final boolean depthTested;
 
     private CgMaterialState(@Nullable CgBlendMode blend, boolean clip, @Nullable CgCullState cull,
-                            @Nullable Boolean depthWrite, boolean separateTranslucency) {
+                            @Nullable Boolean depthWrite, boolean separateTranslucency, boolean depthTested) {
         this.blend = blend;
         this.clip = clip;
         this.cull = cull;
         this.depthWrite = depthWrite;
         this.separateTranslucency = separateTranslucency;
+        this.depthTested = depthTested;
     }
 
     public static Builder builder() {
@@ -100,15 +112,23 @@ public final class CgMaterialState {
         return separateTranslucency;
     }
 
-    /** Whether it changes what is compiled: a blend or a clip. Cull, depth write and separate translucency never do. */
-    public boolean changesProgram() {
-        return blend != null || clip;
+    /** Whether it is tested against the scene's depth: false is Unreal's {@code bDisableDepthTest}. */
+    public boolean depthTested() {
+        return depthTested;
     }
 
-    /** What a shader asset compiled under it is told apart by: its blend and clip; empty for the shader's. */
+    /**
+     * Whether it changes what is compiled: a blend, a clip, or no depth test (an Emissive pass's scene test is
+     * compiled). Cull, depth write and separate translucency never do.
+     */
+    public boolean changesProgram() {
+        return blend != null || clip || !depthTested;
+    }
+
+    /** What a shader asset compiled under it is told apart by: its blend, clip and depth test; empty for the shader's. */
     public String programKey() {
         if (!changesProgram()) return "";
-        return (blend == null ? "" : "blend=" + blend.name()) + (clip ? ";clip" : "");
+        return (blend == null ? "" : "blend=" + blend.name()) + (clip ? ";clip" : "") + (depthTested ? "" : ";nodepth");
     }
 
     /**
@@ -133,12 +153,12 @@ public final class CgMaterialState {
         if (!(o instanceof CgMaterialState)) return false;
         CgMaterialState s = (CgMaterialState) o;
         return clip == s.clip && blend == s.blend && Objects.equals(cull, s.cull) && Objects.equals(depthWrite, s.depthWrite)
-                && separateTranslucency == s.separateTranslucency;
+                && separateTranslucency == s.separateTranslucency && depthTested == s.depthTested;
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(blend, clip, cull, depthWrite, separateTranslucency);
+        return Objects.hash(blend, clip, cull, depthWrite, separateTranslucency, depthTested);
     }
 
     @Override
@@ -146,7 +166,8 @@ public final class CgMaterialState {
         if (equals(SHADER)) return "CgMaterialState{shader's}";
         return "CgMaterialState{" + (blend == null ? "" : "blend " + blend) + (clip ? " clip" : "")
                 + (cull == null ? "" : " cull " + (cull.enabled() ? cull.face() : "none"))
-                + (depthWrite == null ? "" : " depthWrite " + depthWrite) + (separateTranslucency ? " separate" : "") + "}";
+                + (depthWrite == null ? "" : " depthWrite " + depthWrite) + (separateTranslucency ? " separate" : "")
+                + (depthTested ? "" : " noDepthTest") + "}";
     }
 
     /** Builds a {@link CgMaterialState}; anything unset stays the shader's. */
@@ -156,6 +177,7 @@ public final class CgMaterialState {
         private CgCullState cull;
         private Boolean depthWrite;
         private boolean separateTranslucency;
+        private boolean depthTested = true;
 
         private Builder() {}
 
@@ -197,11 +219,24 @@ public final class CgMaterialState {
             return this;
         }
 
+        /**
+         * Not tested against the scene's depth: drawn over everything in front of it, Unreal's {@code bDisableDepthTest}.
+         * Translucent blends only, and it writes no depth.
+         */
+        public Builder disableDepthTest() {
+            this.depthTested = false;
+            return this;
+        }
+
         public CgMaterialState build() {
             if (clip && depthWrite != null) {
                 throw new IllegalStateException("A clipped material writes depth where it draws: drop depthWrite");
             }
-            CgMaterialState state = new CgMaterialState(blend, clip, cull, depthWrite, separateTranslucency);
+            if (!depthTested && (clip || blend == CgBlendMode.OPAQUE || Boolean.TRUE.equals(depthWrite))) {
+                throw new IllegalStateException("A material with no depth test is translucent and writes no depth: "
+                        + "drop clip, an opaque blend or depthWrite");
+            }
+            CgMaterialState state = new CgMaterialState(blend, clip, cull, depthWrite, separateTranslucency, depthTested);
             return state.equals(SHADER) ? SHADER : state;
         }
     }

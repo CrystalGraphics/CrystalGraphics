@@ -55,7 +55,7 @@ public class CgPipelineListTest {
     }
 
     private static CgMaterialManifest manifest() {
-        CgMaterialPermutation p = CgMaterialPermutation.of(shader, Arrays.asList("FOG_ON"), "opaque", false, null);
+        CgMaterialPermutation p = CgMaterialPermutation.of(shader, Arrays.asList("FOG_ON"), "opaque", false, true, null);
         return CgMaterialManifest.builder().add(p, null, false).add(p, null, false).add(p, "NORMAL_MAP", true).build();
     }
 

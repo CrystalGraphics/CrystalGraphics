@@ -5,6 +5,7 @@ import com.crystalgraphics.api.material.CgBlendMode;
 import com.crystalgraphics.api.material.CgMaterialState;
 import com.crystalgraphics.api.material.CgRenderPassVariant;
 import com.crystalgraphics.api.material.CgRenderQueue;
+import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.api.state.CgDepthState;
 import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.compute.source.CgBufferDecl;
@@ -216,6 +217,16 @@ public record CgParsedShader(String shaderType, List<CgMaterialProperty> propert
             throw new CgShaderParseException("[" + resourcePath + "] A \"Depth\" = \"Prepass\" shader draws its depth "
                     + "first; a material state may not clip it");
         }
+        if (!state.depthTested()) {
+            if (depthMode == DepthMode.PREPASS) {
+                throw new CgShaderParseException("[" + resourcePath + "] A \"Depth\" = \"Prepass\" shader draws its depth "
+                        + "first; a material state may not turn its depth test off");
+            }
+            if (state.blend() == null && renderQueue < CgRenderQueue.TRANSPARENT_THRESHOLD) {
+                throw new CgShaderParseException("[" + resourcePath + "] An opaque-queue shader is depth tested: only a "
+                        + "translucent blend may turn the depth test off");
+            }
+        }
         if (!state.changesProgram()) return this;
         CgParsedPass firstForward = getPassByLightMode(CgParsedPass.LIGHT_MODE_FORWARD);
         CgRenderState authored = firstForward == null ? null : firstForward.renderState();
@@ -225,6 +236,9 @@ public record CgParsedShader(String shaderType, List<CgMaterialProperty> propert
             CgRenderState rs = pass.renderState();
             if (CgParsedPass.LIGHT_MODE_FORWARD.equals(pass.lightMode())) {
                 rs = forwardUnder(rs, state, unclip);
+            } else if (!state.depthTested() && CgParsedPass.LIGHT_MODE_EMISSIVE.equals(pass.lightMode())) {
+                // Unreal's bDisableDepthTest is the material's: its glow is not hidden by the scene either.
+                rs = rs.withDepth(UNTESTED);
             } else if (CgParsedPass.LIGHT_MODE_EMISSIVE.equals(pass.lightMode()) && authored != null
                     && pass.fragmentBody() == firstForward.fragmentBody()) {
                 // A codeless pass copied the Forward pass's state where it authored none: what it copied follows.
@@ -248,8 +262,16 @@ public record CgParsedShader(String shaderType, List<CgMaterialProperty> propert
      * A Forward pass's {@code rs} under {@code state}'s blend, and with its clip writing depth as the parser makes it;
      * {@code unclip}, the shader's clip dropped, writing depth only under an opaque blend, as Unreal's blend modes do.
      */
+    /**
+     * No depth test: passing always and writing nothing, Unreal's {@code CF_Always} for a {@code bDisableDepthTest}
+     * translucent draw. Tested at {@code ALWAYS} rather than off, so the compiler knows its Emissive pass has no scene
+     * test to make.
+     */
+    private static final CgDepthState UNTESTED = new CgDepthState(true, false, CgGL.GL_ALWAYS);
+
     private static CgRenderState forwardUnder(CgRenderState rs, CgMaterialState state, boolean unclip) {
         if (state.blend() != null) rs = rs.withBlend(state.blend().state());
+        if (!state.depthTested()) return rs.withDepth(UNTESTED);
         if (state.clip() || unclip) {
             CgDepthState depth = rs.getDepth() != null ? rs.getDepth() : CgDepthState.TEST_WRITE;
             rs = rs.withDepth(new CgDepthState(depth.test(), state.clip() || state.blend() == CgBlendMode.OPAQUE,

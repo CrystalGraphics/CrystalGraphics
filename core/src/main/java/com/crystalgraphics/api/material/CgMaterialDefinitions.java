@@ -120,8 +120,13 @@ public final class CgMaterialDefinitions {
             throw new CgAssetException(id + " has a post block, but " + shader + " is a "
                     + domain.name().toLowerCase(Locale.ROOT) + " archetype: a post material's is tagged \"Domain\" = \"Post\"");
         }
+        boolean depthTest = state == null || !Boolean.FALSE.equals(state.get("depth_test"));
+        if (!depthTest && ("opaque".equals(blend) || "masked".equals(blend))) {
+            throw new CgAssetException(id + " turns depth_test off on a " + blend + " blend: only a translucent blend may"
+                    + " (Unreal's bDisableDepthTest)");
+        }
         CgMaterialPermutation permutation = CgMaterialPermutation.of(archetypes.resolve(shader),
-                new TreeSet<>(keywords), blend, "masked".equals(blend), shading);
+                new TreeSet<>(keywords), blend, "masked".equals(blend), depthTest, shading);
 
         Map<String, float[]> constants = new LinkedHashMap<>();
         Map<String, Object> forms = new LinkedHashMap<>();

@@ -13,7 +13,7 @@ import com.github.bsideup.jabel.Desugar;
 
 /**
  * What of a material changes its programs: its archetype, its keywords, and its state's program-changing fields (blend
- * class, clip, shading). Everything else is a parameter. The pass and instance kind a draw adds complete a program's
+ * class, clip, depth test, shading). Everything else is a parameter. The pass and instance kind a draw adds complete a program's
  * key; the world renderer's settings complete a pipeline's.
  *
  * <p>Interned: two definitions with equal permutations hold the same instance, so an instance that overrides only
@@ -22,8 +22,8 @@ import com.github.bsideup.jabel.Desugar;
  * {@code bHasStaticPermutationResource}, {@code Public/Materials/MaterialInstance.h:681}).</p>
  *
  * <pre>{@code
- * CgMaterialPermutation p = CgMaterialPermutation.of("mymod:shaders/fx.shader", List.of("SOFT"), "additive", false, null);
- * p == CgMaterialPermutation.of("mymod:shaders/fx.shader", List.of("SOFT"), "additive", false, null);   // true
+ * CgMaterialPermutation p = CgMaterialPermutation.of("mymod:shaders/fx.shader", List.of("SOFT"), "additive", false, true, null);
+ * p == CgMaterialPermutation.of("mymod:shaders/fx.shader", List.of("SOFT"), "additive", false, true, null);   // true
  * }</pre>
  *
  * @param shader   the archetype's path
@@ -31,31 +31,33 @@ import com.github.bsideup.jabel.Desugar;
  * @param blend    the format's blend class: {@code opaque}, {@code masked}, {@code translucent}, {@code additive},
  *                 {@code modulate}, {@code premultiplied}, {@code subtract}; null for its archetype's own {@code Blend}
  * @param clip     whether it clips ({@code masked})
+ * @param depthTest whether it is tested against the scene's depth ({@code depth_test}; false is Unreal's bDisableDepthTest)
  * @param shading  the shading model it names, null for its archetype's own
  */
 @Desugar
 public record CgMaterialPermutation(String shader, List<String> keywords, @Nullable String blend, boolean clip,
-                                    @Nullable String shading) {
+                                    boolean depthTest, @Nullable String shading) {
 
     private static final Map<CgMaterialPermutation, CgMaterialPermutation> INTERNED = new ConcurrentHashMap<>();
 
     /** The interned permutation of these parts; keywords in any order. */
     public static CgMaterialPermutation of(String shader, Collection<String> keywords, @Nullable String blend,
-                                           boolean clip, @Nullable String shading) {
+                                           boolean clip, boolean depthTest, @Nullable String shading) {
         List<String> sorted = new ArrayList<>(keywords);
         Collections.sort(sorted);
         CgMaterialPermutation p = new CgMaterialPermutation(shader, Collections.unmodifiableList(sorted), blend, clip,
-                shading);
+                depthTest, shading);
         CgMaterialPermutation had = INTERNED.putIfAbsent(p, p);
         return had != null ? had : p;
     }
 
     /**
-     * The engine's state for it: blend, clip and depth write; a shading model is not state. An archetype with a
-     * {@code "Depth"} tag refuses the depth write: give it none. With no blend class it is the archetype's own state.
+     * The engine's state for it: blend, clip, depth write and depth test; a shading model is not state. An archetype
+     * with a {@code "Depth"} tag refuses the depth write: give it none. With no blend class it is the archetype's own.
      */
     public CgMaterialState state() {
         CgMaterialState.Builder b = CgMaterialState.builder();
+        if (!depthTest) b.disableDepthTest();
         if (blend == null) return b.build();
         switch (blend) {
             case "opaque":

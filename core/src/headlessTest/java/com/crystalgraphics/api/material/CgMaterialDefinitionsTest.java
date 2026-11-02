@@ -18,6 +18,7 @@ import com.crystalgraphics.gl.material.parse.CgShaderParser;
 
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotSame;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
@@ -163,6 +164,19 @@ public class CgMaterialDefinitionsTest {
         fails("test:shaders/missing.shader", asset("test:f", tree("shader", "test:shaders/missing.shader"), null));
     }
 
+    @Test
+    public void depthTestOffIsATranslucentMaterialsOwnPermutation() {
+        CgMaterialDefinition spark = CgMaterialDefinitions.compile(asset("test:spark", tree("shader", FX,
+                "state", map("blend", "additive", "depth_test", false)), null), ARCHETYPES);
+        assertFalse(spark.permutation().depthTest());
+        assertFalse(spark.state().depthTested());
+        CgMaterialDefinition tested = CgMaterialDefinitions.compile(asset("test:tested", tree("shader", FX,
+                "state", map("blend", "additive")), null), ARCHETYPES);
+        assertNotSame("its programs are its own", tested.permutation(), spark.permutation());
+        fails("depth_test", asset("test:solid", tree("shader", FX, "state", map("blend", "opaque", "depth_test", false)), null));
+        fails("depth_test", asset("test:masked", tree("shader", FX, "state", map("blend", "masked", "depth_test", false)), null));
+    }
+
     private static void fails(String naming, CgAssetData asset) {
         try {
             CgMaterialDefinitions.compile(asset, ARCHETYPES);
@@ -269,7 +283,7 @@ public class CgMaterialDefinitionsTest {
 
     @Test
     public void permutationsIntern() {
-        assertSame(CgMaterialPermutation.of(FX, Arrays.asList("B", "A"), "opaque", false, null),
-                CgMaterialPermutation.of(FX, Arrays.asList("A", "B"), "opaque", false, null));
+        assertSame(CgMaterialPermutation.of(FX, Arrays.asList("B", "A"), "opaque", false, true, null),
+                CgMaterialPermutation.of(FX, Arrays.asList("A", "B"), "opaque", false, true, null));
     }
 }
