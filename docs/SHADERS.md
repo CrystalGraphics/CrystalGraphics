@@ -189,6 +189,7 @@ in both stages unless said:
 |---|---|
 | `CG_DIRECTIONAL_LIGHT_DIRECTION`, `CG_DIRECTIONAL_LIGHT_COLOR` | the directional light, toward it (`CG_SUN_DIRECTION`: the sun, or the moon while the sun is down); its colour, the sun's part of the lightmap at the draw's light |
 | `CG_SKY_LIGHT_COLOR` | the sky light's colour: the ambient, the lightmap at the draw's light less the directional's |
+| `CG_ENTITY_LIGHT0`, `CG_ENTITY_LIGHT1` | Minecraft's two fixed lights on entities, in world axes, normalised; the second from below where the host says the dimension lights entities as the Nether does (`CgHostEnvironment.netherLighting()`). Vanilla's shading is `min(1, (max(0, n·L0) + max(0, n·L1)) * 0.6 + 0.4)` |
 | `CG_DRAW_POINT_LIGHT_POSITION(i)`, `_COLOR(i)`, `_PARAMS(i)` | the four point lights nearest the draw's origin, `i` 0 to 3, nearest first, camera-relative; `COLOR` is linear times intensity, and `PARAMS` is (1, inner radius, radius, falloff: 0 linear, 1 inverse square); `PARAMS.x` 0 where there are fewer |
 | `int cg_NearestLights(vec3 p, out int idx[4])` | the same at any camera-relative `p`, as indices for `cg_LightPosition(i)`, `cg_LightColor(i)`, `cg_LightInnerRadius(i)`, `cg_LightRadius(i)` and `cg_LightFalloff(i)` (0 inverse square, else Unreal's exponent); answers how many, the rest of `idx` -1 |
 | `CG_DIRECTIONAL_SHADOW(p)`, `_COLOR`, `_WRAP` | fragment only: the casting directional's visibility at `p`, 1 lit; the colour a shadow tints toward; a wrap of N.L |

@@ -13,6 +13,11 @@ import net.minecraft.world.effect.MobEffects;
 /*import net.minecraft.world.attribute.EnvironmentAttributeSystem;
 import net.minecraft.world.attribute.EnvironmentAttributes;
 *///?}
+//? if >=26.1 {
+/*import net.minecraft.world.level.CardinalLighting;
+*///?} elif >=1.21.11 {
+/*import net.minecraft.world.level.dimension.DimensionType;
+*///?}
 //? if >=1.15 {
 import net.minecraft.client.multiplayer.ClientLevel;
 //?} else {
@@ -130,6 +135,14 @@ public final class EnvironmentModern {
         /*if (level.dimensionType().cloudHeight().isPresent()) clouds = level.dimensionType().cloudHeight().get();
         *///?}
         out.sky(hasSky, hasCeiling, ultraWarm, red, green, blue, clouds);
+        // Which two lights shade entities: LevelRenderer's setupNetherLevel against setupLevel. None before 1.16.5.
+        //? if >=26.1 {
+        /*out.cardinalLighting(level.dimensionType().cardinalLightType() == CardinalLighting.Type.NETHER);
+        *///?} elif >=1.21.11 {
+        /*out.cardinalLighting(level.dimensionType().cardinalLightType() == DimensionType.CardinalLightType.NETHER);
+        *///?} elif >=1.16.5 {
+        out.cardinalLighting(level.effects().constantAmbientLight());
+        //?}
 
         //? if >=1.17 <1.21.3 {
         float[] fog = RenderSystem.getShaderFogColor();

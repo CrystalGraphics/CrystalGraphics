@@ -83,7 +83,7 @@ public final class CgPassConstants {
     private float fogRed, fogGreen, fogBlue, fogStart, fogEnd;
     private boolean fog;
     private int frameIndex;
-    private boolean historyValid;
+    private boolean historyValid, netherLighting;
 
     private final float[] packed = new float[FLOATS];
     private final Vector3f eye = new Vector3f();
@@ -193,6 +193,15 @@ public final class CgPassConstants {
         return this;
     }
 
+    /**
+     * Which two directions light an entity-look material ({@code CG_ENTITY_LIGHT0}, {@code CG_ENTITY_LIGHT1}): the
+     * Nether's, or the level's (the default).
+     */
+    public CgPassConstants entityLights(boolean nether) {
+        netherLighting = nether;
+        return this;
+    }
+
     /** No fog. */
     public CgPassConstants noFog() {
         fog = false;
@@ -245,6 +254,7 @@ public final class CgPassConstants {
         previous.set(block, at + 64);
         frameIndex = (int) block[at + 80];
         historyValid = block[at + 81] != 0f;
+        netherLighting = block[at + 82] != 0f;
         return this;
     }
 
@@ -297,7 +307,7 @@ public final class CgPassConstants {
         previous.get(out, at + 64);
         out[at + 80] = frameIndex & 0xFFFF;
         out[at + 81] = historyValid ? 1f : 0f;
-        out[at + 82] = 0f;
+        out[at + 82] = netherLighting ? 1f : 0f;
         out[at + 83] = 0f;
     }
 

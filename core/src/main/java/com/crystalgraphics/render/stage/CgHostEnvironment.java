@@ -42,7 +42,7 @@ public final class CgHostEnvironment {
     private float celestialAngle, starBrightness, skyBrightness;
     private int moonPhase;
     private float rain, thunder, flash;
-    private boolean hasSky, hasCeiling, ultraWarm;
+    private boolean hasSky, hasCeiling, ultraWarm, netherLighting;
     private float skyRed, skyGreen, skyBlue, cloudHeight;
     private float fogRed, fogGreen, fogBlue, fogStart, fogEnd;
     private int cameraFluid, perspective;
@@ -299,6 +299,23 @@ public final class CgHostEnvironment {
         return this;
     }
 
+    /**
+     * Host side: whether the dimension lights entities with the Nether's two directions (Minecraft's
+     * {@code setupNetherLevel}: the second from below) rather than the level's. False where the host has no such set.
+     */
+    public CgHostEnvironment cardinalLighting(boolean nether) {
+        netherLighting = nether;
+        return this;
+    }
+
+    /**
+     * Whether entities here are lit by the Nether's two directions: {@code (0.2, 1, -0.7)} and {@code (-0.2, -1, 0.7)}
+     * rather than the level's {@code (0.2, 1, -0.7)} and {@code (-0.2, 1, 0.7)}. False with no level.
+     */
+    public boolean netherLighting() {
+        return netherLighting;
+    }
+
     /** Host side: this frame's fog, where the host keeps it on the CPU. */
     public CgHostEnvironment fog(float red, float green, float blue, float start, float end) {
         fogRed = red;
@@ -356,6 +373,7 @@ public final class CgHostEnvironment {
     public CgHostEnvironment set(CgHostEnvironment o) {
         sun(o.celestialAngle, o.moonPhase, o.starBrightness, o.skyBrightness).weather(o.rain, o.thunder, o.flash)
                 .sky(o.hasSky, o.hasCeiling, o.ultraWarm, o.skyRed, o.skyGreen, o.skyBlue, o.cloudHeight)
+                .cardinalLighting(o.netherLighting)
                 .fog(o.fogRed, o.fogGreen, o.fogBlue, o.fogStart, o.fogEnd)
                 .camera(o.cameraFluid, o.perspective, o.fov, o.renderDistance, o.guiHidden).screen(o.screenOpen)
                 .sight(o.nightVision, o.blindness, o.darkness)
@@ -366,7 +384,7 @@ public final class CgHostEnvironment {
     /** Host side: nothing known, as with no level. Call before filling a frame. */
     public CgHostEnvironment clear() {
         float n = Float.NaN;
-        sun(n, -1, n, n).weather(n, n, n).sky(false, false, false, n, n, n, n).fog(n, n, n, n, n)
+        sun(n, -1, n, n).weather(n, n, n).sky(false, false, false, n, n, n, n).cardinalLighting(false).fog(n, n, n, n, n)
                 .camera(-1, -1, n, n, false).screen(false).sight(n, n, n).settings(-1, -1, n, n);
         return time(-1L, -1L, false, n, false);
     }

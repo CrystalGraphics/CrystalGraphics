@@ -371,6 +371,37 @@ CgMesh posed = CgSkinning.skin(kurama.mesh(), skinning);      // the same pose o
 - About 0.1 ns a vertex a pass (RTX 4070 SUPER, Vulkan): a 30,000-vertex character costs microseconds.
 - `--mode=skinned-mesh` is the gate (the GPU's skinning against `CgSkinning`'s); `--mode=skinned-bench` measures it.
 
+### In Minecraft's entity look
+
+A character drawn into Minecraft looks like the game's own entities with the engine's entity materials: vanilla's
+`rendertype_entity_cutout` and `rendertype_eyes`, the same formula on every version.
+
+```java
+static final CgMaterialDefinition BODY = CgMaterialDefinition.of("mymod:materials/hero",
+        "crystalgraphics:shaders/role/entity.shader")
+        .texture("_MainTex", "mymod:hero", CgSampler.Filter.NEAREST, CgSampler.Address.CLAMP).build();   // a texture asset
+static final CgMaterialDefinition EYES = CgMaterialDefinition.of("mymod:materials/hero_eyes",
+        "crystalgraphics:shaders/role/entity_emissive.shader")
+        .texture("_MainTex", "mymod:hero_eyes", CgSampler.Filter.NEAREST, CgSampler.Address.CLAMP).build();
+
+hero.material(0, BODY).material(1, EYES);
+world.draw(hero);
+```
+
+- **`role/entity.shader`**: Minecraft's two fixed lights on the normal (`CG_ENTITY_LIGHT0`, `CG_ENTITY_LIGHT1`, the
+  Nether's where the host says so), cutout below `_Cutoff` (0.1), the lightmap at the draw's light and the world's
+  fog. Translucent or double-sided is its `CgMaterialState`.
+- **`role/entity_emissive.shader`**: the glowing layer, eyes and glowmasks: no shading and no lightmap, added over
+  what is behind, faded by the fog.
+- **The material contract** rides on top: `_Tint` multiplies by its alpha, `_Flash` is the overlay mixed over the
+  texture by its alpha (the hurt flash is red at 0.3), and `_RimColor`, `_RimStrength`, `_RimPower` add a rim. A
+  sequence's `material` track keys them through the role's bindings:
+
+  ```java
+  CgRoleFlash flash = new CgRoleFlash(hero, "_Tint", null, "_Flash", null);         // tint, flash and their strengths
+  CgRoleRim rim = new CgRoleRim(hero, "_RimStrength", "_RimPower", "_RimColor");     // rim_strength, rim_power, rim
+  ```
+
 ## Cooked
 
 A release ships meshes cooked: `.cgmesh` holds the vertices as the engine lays them out, read in one copy, and

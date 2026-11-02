@@ -38,7 +38,7 @@ public final class CgWorldAtmosphere {
     public static CgPassConstants apply(CgHostEnvironment world, CgPassConstants constants) {
         sun(world, constants);
         fog(world, constants);
-        return constants;
+        return constants.entityLights(world.netherLighting());
     }
 
     private static void sun(CgHostEnvironment world, CgPassConstants constants) {

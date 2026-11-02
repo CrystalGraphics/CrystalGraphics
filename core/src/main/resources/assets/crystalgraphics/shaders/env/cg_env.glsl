@@ -17,7 +17,8 @@ layout(std140) uniform CgFrameBlock {
     vec4 cg_FogColor;     // the host's fog colour; a 1 while there is fog, 0 for none
     vec4 cg_FogParams;    // x where the fog starts, y where it is whole, in blocks from the camera; z CG_SUN_SHARE
     mat4 cg_PrevViewProj; // this pass's camera-relative points to last frame's clip space: cg_PreviousClip
-    vec4 cg_FrameParams;  // x the host frame's index, 0 to 65535; y 1 while last frame is one of this view
+    vec4 cg_FrameParams;  // x the host frame's index, 0 to 65535; y 1 while last frame is one of this view;
+                          // z 1 where entities take the Nether's two lights (CG_ENTITY_LIGHT1)
 };
 
 // -- Per-Instance Object Data (SSBO path: GL 4.3+/ARB) ----------------------
@@ -350,6 +351,11 @@ vec3 cg_DirectionalLightColor(vec2 light) {
 vec4 cg_PreviousClip(vec3 worldPos) {
     return cg_PrevViewProj * vec4(worldPos, 1.0);
 }
+
+// Minecraft's two directional lights on entities, in world axes (Lighting.DIFFUSE_LIGHT_0 and _1, normalised); the
+// Nether's second comes from below (NETHER_DIFFUSE_LIGHT_1).
+#define CG_ENTITY_LIGHT0 vec3(0.1616904, 0.8084521, -0.5659165)
+#define CG_ENTITY_LIGHT1 vec3(-0.1616904, cg_FrameParams.z > 0.5 ? -0.8084521 : 0.8084521, 0.5659165)
 
 // How much of the host's fog lies between the camera and a point this far from it: 0 to 1, 0 with no fog.
 float cg_FogAmount(float distance) {
