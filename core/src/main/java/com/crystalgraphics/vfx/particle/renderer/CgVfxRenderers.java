@@ -280,7 +280,6 @@ public final class CgVfxRenderers {
             else if (s.subImage() != null && s.subImage().isTable()) unbuilt = "a rect-table sub_image";
             else if (s.cameraDistance() != null) unbuilt = "camera_distance";
             else if (s.castShadows()) unbuilt = "cast_shadows";
-            else if (!Float.isNaN(s.softDepth())) unbuilt = "soft_depth";
         } else if (r instanceof CgVfxMeshRendererProperties m && m.prefab() != null) {
             // A prefab a particle draws as a clip at rest: what turns and sizes it is the particle's alone.
             unbuilt = prefabWith(m);
@@ -707,6 +706,18 @@ public final class CgVfxRenderers {
         /** A sprite's or mesh's facing, by its file name. */
         public Builder facing(String facing) {
             return field("facing", facing);
+        }
+
+        /**
+         * A sprite's soft edge: the blocks over which it fades into what is behind it, set as its material's
+         * {@code _SoftDistance}; a material declaring none fails at load. 0 is a hard edge.
+         *
+         * <pre>{@code
+         * CgVfxRenderers.sprite("smoke").material(smoke).softDepth(0.5f).build();
+         * }</pre>
+         */
+        public Builder softDepth(float blocks) {
+            return field("soft_depth", (double) blocks);
         }
 
         /** A sprite's or mesh's flipbook, its {@code sub_image} map. */

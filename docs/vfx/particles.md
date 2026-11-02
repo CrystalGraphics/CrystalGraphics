@@ -68,6 +68,17 @@ static final CgVfxRendererProperties SPARKS = CgVfxRenderers.sprite("sparks")
   material named by a user parameter, and fields such as a `camera_distance_blend` facing, a
   rect-table `sub_image`, a mesh's `pivot_offset`, a prefab with any other mesh field (`facing`, `sort`, overrides, a
   material of its own), a ribbon's `shape: custom` or its `max_ribbons`.
+- **A sprite's soft edge** is `soft_depth`, the length it fades into what is behind it over, in the asset's lengths
+  (`softDepth(blocks)` in Java). It sets its material's `_SoftDistance`, Unreal's DepthFade distance; a material
+  declaring none fails at load, naming it. 0 is a hard edge.
+
+  ```yaml
+  - { id: r1, kind: sprite, material: mymod:materials/fx/smoke, soft_depth: 30 }   # 30 cm where units.yaml says cm
+  ```
+
+  On a mesh renderer, set the material's fade directly: `values: { _SoftDistance: 0.3 }`, in blocks. A material of
+  your own fades with `CG_DEPTH_FADE` (`docs/SHADERS.md` § *Unreal's material expressions*): an additive one scales its
+  colour by it, since its blend ignores alpha.
 - **Its renderers decide its draw layout**: a mesh renderer lays its particles out as meshes (a prefab's and a
   `sequence` renderer's as a clip), an arc renderer as arcs, every other kind as quads, and an emitter whose renderers
   need two layouts fails at build.

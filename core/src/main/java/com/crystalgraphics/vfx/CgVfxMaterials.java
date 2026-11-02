@@ -222,6 +222,12 @@ final class CgVfxMaterials {
                 material.requireRow(PIVOT, who);
                 rowValues.put(PIVOT, floats(new float[]{pivot[0], pivot[1], 0f, 0f}));
             }
+            if (!Float.isNaN(sprite.softDepth())) {
+                // Unreal's DepthFade is the material's: soft_depth sets the distance its material fades over, so a
+                // material with no _SoftDistance fails here rather than drawing hard-edged.
+                material.requireRow(SOFT_DISTANCE, who);
+                rowValues.put(SOFT_DISTANCE, sprite.softDepth());
+            }
         }
         CgVfxFlipbook flipbook = renderer instanceof CgVfxSpriteRendererProperties sprite ? sprite.subImage()
                 : renderer instanceof CgVfxMeshRendererProperties mesh ? mesh.subImage() : null;
@@ -424,7 +430,7 @@ final class CgVfxMaterials {
     private static final int FROM_SYSTEM_TURN = -5;
     private final Vector3f turned = new Vector3f();
     private static final String FACING = "_cg_Facing", SUB_IMAGE = "_cg_SubImage", SUB_UV = "_cg_SubUV", DRAWN = "_cg_Drawn",
-            PIVOT = "_cg_Pivot";
+            PIVOT = "_cg_Pivot", SOFT_DISTANCE = "_SoftDistance";
 
     /**
      * The factory's {@code _cg_Drawn} for {@code emitter}'s renderers: its dynamic parameter slots a bit each, then 32

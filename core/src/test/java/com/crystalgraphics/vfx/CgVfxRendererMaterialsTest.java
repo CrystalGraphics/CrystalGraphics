@@ -81,6 +81,29 @@ public class CgVfxRendererMaterialsTest {
     }
 
     @Test
+    public void aSoftDepthIsItsMaterialsFadeDistanceInTheRow() {
+        CgVfxEmitter puffs = CgVfxEmitter.builder("puffs")
+                .renderer(CgVfxRenderers.sprite("r1").material(spark).softDepth(0.3f).build()).build();
+        CgVfxLook look = CgVfxLook.builder(SCHEMA).emitter(puffs).build();
+        CgVfxMaterials.Resolved r = new CgVfxMaterials().resolve(look, look.renderers(puffs)[0]);
+        int at = r.slots.get("_SoftDistance");
+        assertEquals("a constant of the row", -1, r.source[at]);
+        assertEquals(0.3f, r.fixed[at][0], 0f);
+    }
+
+    @Test
+    public void aSoftDepthOnAMaterialWithoutAFadeFailsNamingIt() {
+        CgMaterialDefinition ray = CgMaterialDefinition.of("test:materials/ray", "crystalgraphics:shaders/vfx/particle/ray.shader")
+                .usage(CgMaterialUsage.SPRITES).build();
+        CgVfxEmitter rays = CgVfxEmitter.builder("rays")
+                .renderer(CgVfxRenderers.sprite("r1").material(ray).softDepth(0.3f).build()).build();
+        CgVfxLook look = CgVfxLook.builder(SCHEMA).emitter(rays).build();
+        RuntimeException e = assertThrows(RuntimeException.class,
+                () -> new CgVfxMaterials().resolve(look, look.renderers(rays)[0]));
+        assertTrue(e.getMessage(), e.getMessage().contains("_SoftDistance"));
+    }
+
+    @Test
     public void aBindToAParameterTheLookLacksFailsNamingIt() {
         CgVfxEmitter sparks = CgVfxEmitter.builder("sparks")
                 .renderer(CgVfxRenderers.sprite("r1").material(spark).bind("_Color", "user.nope").build()).build();
