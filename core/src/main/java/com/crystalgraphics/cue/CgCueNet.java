@@ -42,7 +42,7 @@ import com.crystalgraphics.world.CgAttachment;
 public final class CgCueNet {
 
     /** Writes a cue may send, four floats each. */
-    public static final int WRITES = 16;
+    public static final int WRITES = 32;
     /** Its own {@code int}, {@code float}, {@code double} and {@code bool} fields. */
     public static final int VALUES = 8;
     /** Its own {@code string} fields. */

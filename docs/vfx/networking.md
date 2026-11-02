@@ -363,4 +363,4 @@ CgSequenceNet.acceptJumps((player, section) -> !player.section().equals("recover
   corrects a simulated montage. **The owner** keeps its own jumps and is never pulled back by the trip's delay.
 - **Stopping** the server's play ends every viewer's copy.
 - Time is in the server's game ticks, so it agrees across viewers. A viewer's copy trails the server by the trip there.
-- A cue sends at most 16 `writes`, 8 number or bool `fields` and 4 string ones.
+- A cue sends at most 32 `writes`, 8 number or bool `fields` and 4 string ones.
