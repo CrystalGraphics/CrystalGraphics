@@ -73,11 +73,18 @@ public final class CgLogoLoadingView implements CgLoadingView {
         float intro = smooth(Math.min(1f, seconds / 0.9f)), shown = intro * alpha;
         // 4% larger as it fades out, as a game's splash leaves for its menu; settling from 3% larger as it comes in
         float grow = 1f + 0.04f * (1f - alpha) + 0.03f * (1f - intro);
-        float cx = width / 2f, cy = height * 0.47f, icon = Math.min(width, height) * 0.10f;
-
-        // The lockup, centred, its image padded around the icon's height
+        // Vanilla LoadingOverlay's sizes, so the hand-off from Mojang's screen keeps its scale: the lockup as wide as its
+        // logo, min(0.75 width, height), and a bar as wide
+        float cx = width / 2f, logoWidth = Math.min(width * 0.75f, height);
         CgTexture2D texture = texture();
-        float h = icon * grow / ICON_SHARE, w = h * texture.getWidth() / texture.getHeight();
+        float baseW = logoWidth / (1f - 2f * SIDE_PAD), icon = baseW * texture.getHeight() / texture.getWidth() * ICON_SHARE;
+        // Its thickness a share of its width, never vanilla's GUI scale: that steps, heavier at 1440p than at 1080p
+        float barHeight = Math.max(6f, Math.round(logoWidth * (32f / 1080f))), gap = icon * 0.36f;
+        // The lockup and the bar a third of the icon below it, centred together
+        float cy = Math.round(height / 2f - (gap + barHeight) / 2f);
+
+        // The lockup, its visible width the logo's, its image padded around that
+        float w = baseW * grow, h = w * texture.getHeight() / texture.getWidth();
         float glow = w * 1.3f, breath = 0.30f + 0.06f * (float) Math.sin(seconds * 1.6);
         begin(back);
         quad(back, 0f, 0f, width, height, argb(alpha, 0xFFFFFFFF), 0f, BACKDROP);
@@ -91,8 +98,8 @@ public final class CgLogoLoadingView implements CgLoadingView {
         end(image);
 
         // The bar spans the lockup a third of the icon below it, so the two read as one block
-        float barWidth = Math.round(w * (1f - 2f * SIDE_PAD)), barX = Math.round(cx - barWidth / 2f);
-        float barHeight = Math.max(8f, Math.round(height / 60f)), barY = Math.round(cy + icon * 0.86f);
+        float barWidth = Math.round(logoWidth), barX = Math.round(cx - barWidth / 2f);
+        float barY = Math.round(cy + icon / 2f + gap);
         begin(bar);
         // The quad is 4 bars tall and 3 wider, the shader's room around the pill
         quad(bar, barX - 1.5f * barHeight, barY - 1.5f * barHeight, barWidth + 3f * barHeight, 4f * barHeight,
