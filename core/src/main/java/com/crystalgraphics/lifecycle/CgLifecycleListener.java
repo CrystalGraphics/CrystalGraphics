@@ -13,8 +13,27 @@ import com.crystalgraphics.loading.CgLoadingScreen;
 /**
  * Hears the engine's lifecycle from outside CrystalGraphics: its start on both sides, then its graphics context's.
  * For a consuming library (CrystalGUI), a mod's own renderer or a harness scene, which need the same moments but must
- * not be hard-wired into the engine. Registered with {@link CgEngineLifecycle#addListener}, which dispatches every
- * moment.
+ * not be hard-wired into the engine. A mod declares it, and the engine finds it in every loaded mod, as Fabric finds a
+ * mod's entrypoints:
+ *
+ * <pre>{@code
+ * # src/main/resources/META-INF/crystalgraphics/listeners -- one "<side> <class>" a line
+ * common com.example.mymod.MyModLifecycle        # both sides, registered at pre-init
+ * client com.example.mymod.client.MyRenderer     # a client only, before its graphics start
+ * }</pre>
+ *
+ * <pre>{@code
+ * public final class MyRenderer implements CgLifecycleListener {
+ *     public static final MyRenderer INSTANCE = new MyRenderer();   // used as is; else a public no-arg constructor
+ *     @Override public void onContextInit(int width, int height) { ... }
+ * }
+ * }</pre>
+ *
+ * <ul>
+ *   <li>A declared listener that is also a {@code CgReloadListener} hears asset reloads too.</li>
+ *   <li>A {@code client} class is never loaded on a dedicated server: keep anything only a client has behind one.</li>
+ *   <li>{@link CgEngineLifecycle#addListener} registers one by hand, from code that already runs.</li>
+ * </ul>
  *
  * <pre>{@code
  * CgEngineLifecycle.addListener(new CgLifecycleListener() {

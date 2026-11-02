@@ -1010,6 +1010,78 @@ The checkerboard drawn for a texture that will not load is `CgTexture2D.missing(
 
 ## Lifecycle & Registries
 
+### Hearing the engine's lifecycle — `CgLifecycleListener`
+
+A mod hears the engine's moments by declaring a `CgLifecycleListener` in a file in its jar. The engine finds the file
+in every loaded mod and registers the listener for you, as Fabric reads a mod's entrypoints from its
+`fabric.mod.json`. No host, loader event or mod constructor calls anything.
+
+**1. The listener**, one class per side it runs on:
+
+```java
+package com.example.mymod.client;
+
+public final class MyRenderer implements CgLifecycleListener {
+    public static final MyRenderer INSTANCE = new MyRenderer();   // used as is when present
+
+    @Override public void onContextInit(int width, int height) {
+        glow = CgFrameBuffer.createOwned("mymod:glow", width, height, CgFrameBufferFormat.RGBA8_WITH_DEPTH);
+    }
+    @Override public void onLoad(CgLoadPlan plan) {                 // built behind the loading screen
+        plan.task("mymod:runes").work(ctx -> Runes.bake(ctx)).start();
+    }
+    @Override public void onContextDestroy() { glow.delete(); }
+}
+```
+
+**2. The file**, `src/main/resources/META-INF/crystalgraphics/listeners`: one `<side> <class>` a line.
+
+```
+# mymod's lifecycle listeners
+common com.example.mymod.MyModLifecycle
+client com.example.mymod.client.MyRenderer
+```
+
+**3. Check it was found**: the log names every listener it registered, and the file it came from.
+
+```
+[crystalgraphics] listeners: client com.example.mymod.client.MyRenderer (from .../mymod-1.0.jar)
+```
+
+| Side | Registered | Runs on |
+|---|---|---|
+| `common` | at pre-init (`CgEngineLifecycle.preInit`), before any listener hears it | client and dedicated server |
+| `client` | as the client starts (`clientStarting`), or at the graphics start where a host does not say so earlier | a client only: never loaded on a server |
+
+Every moment it can hear, in order. Each fires exactly once: a listener registered late hears what it missed at once.
+
+| Moment | When | Thread |
+|---|---|---|
+| `onPreInit` | every mod discovered, its assets mounted | the loader's |
+| `onInit` | the network installed: register ticks (`CgEngineLifecycle.onServerTick`) here | the loader's |
+| `onPostInit` | every mod initialised, every tag declared | the loader's |
+| `onContextInit(w, h)` | a client's graphics context built: make GPU objects here | render |
+| `onLoad(plan)` | what loads behind the loading screen, named as tasks ([`JOBS.md`](JOBS.md)) | render |
+| `onFrame(frame)` | each frame, after the engine's own tick | render |
+| `onContextDestroy` | before the engine frees anything: free your GPU objects here | render |
+| `onShutdown` | the engine stood down, at exit: a report written, nothing drawn (a JVM shutdown hook runs after the loader's classloader closed) | the one shutting down |
+
+- **The class**: a `public static final INSTANCE` of the listener's type is used when it has one, else a public
+  no-argument constructor makes it. A class that is no `CgLifecycleListener`, or will not load, is logged and skipped;
+  the rest still register.
+- **A listener that is also a `CgReloadListener`** hears asset reloads (F3+T, a resource pack change) too.
+- **Keep client code behind a `client` line.** A `common` listener loads on a dedicated server, so it must not name a
+  class only a client has; split it into two listeners, one a side.
+- **Keep a listener's class cheap to load.** It is loaded as the engine starts, before most of the game; heavy work
+  goes in its moments, and work behind the loading screen in `onLoad`.
+- **One file per jar**, as many lines as you like. A class named twice (a dev run sees its source folder and its jar)
+  is one listener.
+- **The file is read from each mod's root** (`CgModLoader.roots()`) and from the engine's classpath, which covers a
+  dev run and the harness, never through `ServiceLoader`. Its classes load through the engine's classloader, then the
+  mod-loading thread's where the engine's cannot see them (NeoForge dev runs put the engine in a layer below the mods).
+- **Registering by hand** still works, from code that already runs: `CgEngineLifecycle.addListener(listener)`, which
+  delivers the moments already past. Prefer the file: nothing has to remember to call it.
+
 ### CgGraphicsLifecycle
 
 The engine's graphics context: what it builds once a context is current, the frame tick, resize, and the teardown.

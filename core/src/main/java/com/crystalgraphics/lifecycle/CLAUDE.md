@@ -16,6 +16,10 @@ are not public. `stopped()` writes the trace run's exit files (`trace.CgTraceRun
 - `CgGraphicsLifecycle` does the graphics work: what a context builds, the teardown order, and the two calls a host
   makes on it directly, `tickFrame` and `onResize` (through `CgLifecycleService`).
 - On a client, post-init follows the graphics start: what loads is precached by the effects it installs.
+- **Mods declare their listeners; nothing hard-wires a consumer.** `CgListenerDiscovery` reads
+  `META-INF/crystalgraphics/listeners` (`<common|client> <class>` a line) from every `CgModLoader` root and the engine's
+  classpath: `common` ones register at `preInit`, `client` ones at `clientStarting` or else the graphics start. A host
+  never calls a consumer's lifecycle; CrystalGUI is declared this way.
 - **One listener registry, `CgEngineLifecycle`'s.** Code outside the engine hears every moment through a
   `CgLifecycleListener` added with `CgEngineLifecycle.addListener`: `onPreInit`/`onInit`/`onPostInit`, then
   `onContextInit`/`onLoad`/`onFrame`/`onContextDestroy`/`onShutdown`. A late listener is caught up, so each fires once, and a

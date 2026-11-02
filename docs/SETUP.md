@@ -144,6 +144,30 @@ yourself — CrystalGraphics' own are the pattern ([`singlejar-logic/README.md`]
 
 ---
 
+## Hearing the engine's lifecycle
+
+Declare your `CgLifecycleListener`s in `src/main/resources/META-INF/crystalgraphics/listeners`, one `<side> <class>`
+a line, and the engine finds and registers them in every loaded mod, as Fabric reads entrypoints from
+`fabric.mod.json`. Nothing in your mod's constructor or a loader event calls them.
+
+```
+common com.example.mymod.MyModLifecycle        # client and server, registered at pre-init
+client com.example.mymod.client.MyRenderer     # a client only, never loaded on a server
+```
+
+```java
+public final class MyRenderer implements CgLifecycleListener {
+    public static final MyRenderer INSTANCE = new MyRenderer();   // else a public no-arg constructor
+    @Override public void onContextInit(int width, int height) { /* GPU objects */ }
+    @Override public void onContextDestroy() { /* free them */ }
+}
+```
+
+The log confirms each one (`[crystalgraphics] listeners: client com.example.mymod.client.MyRenderer (from ...)`). Every
+moment, its thread and the rules: [`ENGINE_API.md`](ENGINE_API.md) § *Hearing the engine's lifecycle*.
+
+---
+
 ## Drawing from your mod
 
 Your renderer draws at a **render stage**: a point in Minecraft's frame that a host fires, where every registered

@@ -1,6 +1,8 @@
 package com.crystalgraphics.lifecycle;
 
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
 
@@ -11,6 +13,8 @@ import org.apache.logging.log4j.Logger;
 
 import com.crystalgraphics.asset.load.CgAssetMounts;
 import com.crystalgraphics.loading.task.CgLoadPlan;
+import com.crystalgraphics.mc.CgAssetReloader;
+import com.crystalgraphics.mc.CgReloadListener;
 import com.crystalgraphics.net.CgNetwork;
 import com.crystalgraphics.platform.service.CgNetworkChannel;
 import com.crystalgraphics.render.CgFrameClock;
@@ -78,15 +82,20 @@ public final class CgEngineLifecycle {
      * <p>Never on a dedicated server: it initializes classes only a client draws with.</p>
      */
     public static void clientStarting() {
+        addDiscovered(CgListenerDiscovery.Side.CLIENT);
         CgGraphicsLifecycle.startAhead();
     }
 
-    /** The platform registered and its both-sides slots filled, every mod discovered: mods' assets mounted. */
+    /**
+     * The platform registered and its both-sides slots filled, every mod discovered: mods' assets mounted, and the
+     * {@code common} listeners every mod declares registered.
+     */
     public static synchronized void preInit() {
         if (preInit) return;
         preInit = true;
         CgTraceRun.open();
         CgAssetMounts.mount();
+        addDiscovered(CgListenerDiscovery.Side.COMMON);
         listeners.dispatch("onPreInit", CgLifecycleListener::onPreInit);
     }
 
@@ -130,6 +139,8 @@ public final class CgEngineLifecycle {
             return;
         }
         // The graphics start and post-init are loading too: tracked, so the timeline has no gap before the first task
+        // A host that never said it is a client says so here: the client listeners hear the context start
+        addDiscovered(CgListenerDiscovery.Side.CLIENT);
         try (CgLoadPlan.Span start = CgLoadPlan.get().begin("crystalgraphics:start")) {
             CgGraphicsLifecycle.ensureContext(width, height);
             if (CgGraphicsLifecycle.isInitialized()) {
@@ -172,6 +183,27 @@ public final class CgEngineLifecycle {
         CgGraphicsLifecycle.shutdown();
     }
 
+    private static List<CgListenerDiscovery.Entry> discovered;
+    private static final EnumSet<CgListenerDiscovery.Side> sidesAdded = EnumSet.noneOf(CgListenerDiscovery.Side.class);
+
+    /**
+     * Registers the listeners mods declare for {@code side}, once: each hears every phase already run as
+     * {@link #addListener} delivers it, and a {@link CgReloadListener} among them hears reloads too.
+     */
+    private static synchronized void addDiscovered(CgListenerDiscovery.Side side) {
+        if (!sidesAdded.add(side)) return;
+        if (discovered == null) discovered = CgListenerDiscovery.find();
+        for (CgListenerDiscovery.Entry entry : discovered) {
+            if (entry.side() != side) continue;
+            CgLifecycleListener listener = CgListenerDiscovery.instantiate(entry);
+            if (listener == null) continue;
+            addListener(listener);
+            if (listener instanceof CgReloadListener reload) CgAssetReloader.addListener(reload);
+            LOGGER.info("[crystalgraphics] listeners: {} {} (from {})", side.name().toLowerCase(Locale.ROOT),
+                    entry.className(), entry.from());
+        }
+    }
+    
     // -- The game's ticks, and its server's start and stop ---------------------------------------------------------
 
     private static final List<Runnable> SERVER_TICK = new CopyOnWriteArrayList<>(), CLIENT_TICK = new CopyOnWriteArrayList<>();
