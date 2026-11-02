@@ -18,7 +18,7 @@ Read this before drawing with a shader of your own, adding a shader to the engin
 | A VFX system asset, from a kit or a mounted pack | precached and rehearsed before it is READY | nothing |
 | A skinned mesh's material (`CgAnimInstance.material`) | requested as it is set | nothing |
 | A `CgPostMaterial` | built when first active, drawn once built (a few frames late) | nothing; add it at load if it must show on its first frame |
-| A CrystalGUI widget's paint material | precached at paint, drawn once built | nothing |
+| A CrystalGUI widget's paint material | registered at client init (`CgUiPaintContext.precache`), built behind the loading screen | nothing |
 | The engine's own passes: the world renderer's, the post stack, bloom, text, the depth pyramid, the VFX kernels | registered by the engine, built at the graphics start | nothing |
 
 **Everything else is yours to precache.**
@@ -31,6 +31,7 @@ Read this before drawing with a shader of your own, adding a shader to the engin
 | A material on a skinned mesh you draw yourself | `pipelines.add(material, half, true)` |
 | A shader whose keywords your renderer switches at runtime | declare them in the shader as `#pragma cg_permutation` ([`SHADERS.md`](SHADERS.md) § *Keywords a renderer switches*), then `pipelines.add(shader)`: every combination, none typed by hand |
 | A full-screen pass of your own renderer | `pipelines.addPass(shader)`, its permutation domain included |
+| A screen-space quad or curve material (a UI's, through `CgQuadRenderer` or `CgVectorRenderer`) | `pipelines.addPass(shader, CgInstanceKind.QUAD)` or `CURVE`, its permutation domain included |
 | A `.compute` kernel | `pipelines.add(kernel)`, or `pipelines.kernels(MyOps::precache)` for a set |
 | A VFX look known only at runtime (a summoned move, a pack loaded later) | `VFX.precache(LOOK)` on the render thread, then poll `VFX.ready()` |
 

@@ -141,7 +141,20 @@ public final class CgPipelineList {
      * }</pre>
      */
     public void addPass(String shader, String... keywords) {
-        forEachVariant(passProbes, shader, keywords, this::addPass);
+        addPass(shader, CgInstanceKind.OBJECT, keywords);
+    }
+
+    /**
+     * As {@link #addPass(String, String...)}, for a shader drawn on {@code kind}'s instances: a screen-space quad or curve
+     * material (a UI's), drawn through {@code CgQuadRenderer} or {@code CgVectorRenderer}.
+     *
+     * <pre>{@code
+     * pipelines.addPass("mymod:shaders/gui_panel.shader", CgInstanceKind.QUAD);        // its domain's combinations
+     * pipelines.addPass("mymod:shaders/gui_wire.shader", CgInstanceKind.CURVE);
+     * }</pre>
+     */
+    public void addPass(String shader, CgInstanceKind kind, String... keywords) {
+        forEachVariant(passProbes, shader, keywords, m -> addPass(m, kind));
     }
 
     /** A probe material per keyword set of {@code shader}'s domain with {@code keywords} added, made once each. */
@@ -171,21 +184,27 @@ public final class CgPipelineList {
 
     /** Keeps {@code material}'s own Forward pass built as it is, none of the world's forms: a material drawn over the screen. */
     public void addPass(CgMaterial material) {
+        addPass(material, CgInstanceKind.OBJECT);
+    }
+
+    /** As {@link #addPass(CgMaterial)}, for a material drawn on {@code kind}'s instances. */
+    public void addPass(CgMaterial material, CgInstanceKind kind) {
         if (capturing != null) capturing.passes.add(material);
         if (passes.containsKey(material)) return;
-        passes.put(material, Boolean.TRUE);
+        passes.put(material, kind);
         passesUnbuilt.add(material);
     }
 
     private final Map<String, CgMaterial> passProbes = new HashMap<>();
-    private final Map<CgMaterial, Boolean> passes = new IdentityHashMap<>();
+    /** Each pass and the instances it is drawn on. */
+    private final Map<CgMaterial, CgInstanceKind> passes = new IdentityHashMap<>();
     /** Passes not yet built. */
     private final Set<CgMaterial> passesUnbuilt = Collections.newSetFromMap(new LinkedHashMap<>());
 
     /** Its program committed, then its Forward pipeline built: a pass's program follows no setting. */
-    private static boolean passBuilt(CgMaterial material) {
+    private boolean passBuilt(CgMaterial material) {
         if (!material.precache()) return false;
-        CgPipeline p = material.pipeline(CgInstanceKind.OBJECT);
+        CgPipeline p = material.pipeline(passes.get(material));
         return p == null || p.precache();
     }
 
