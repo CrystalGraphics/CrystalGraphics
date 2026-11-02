@@ -78,6 +78,8 @@ public final class CgAnimInstance {
     private final Matrix4f relative = new Matrix4f();
     /** Read by {@link #follow} alone, so children of one parent follow it from several workers at once. */
     private final Matrix4f followScratch = new Matrix4f(), followRelative = new Matrix4f();
+    @Nullable
+    private CgCpuSkin cpuSkin;
     /** 0 standing alone, else its parent's plus one: the order {@code CgAnimation} poses in. */
     int depth;
     private long paletteFrame = -1;
@@ -493,6 +495,35 @@ public final class CgAnimInstance {
         palette = base;
         ownerPalette = ownerBase;
         paletteFrame = CgFrameRing.frame();
+    }
+
+    /**
+     * Writes submesh {@code submesh} as {@code POSE} posed it into {@code sink}, skinned on the CPU, a quad at a time:
+     * Unreal's CPU skinning ({@code FSkeletalMeshObjectCPUSkin}). For a host that must draw the vertices through its
+     * own path, as a shader pack lights, fogs and shadows a Minecraft entity only when its renderer writes them.
+     *
+     * <pre>{@code
+     * // in the entity renderer, after POSE, once per material slot, under a pack:
+     * if (CgIrisCompat.isShaderPackActive()) {
+     *     for (int s = 0; s < body.materialSlots(); s++) {
+     *         VertexConsumer out = buffers.getBuffer(RenderType.entityCutoutNoCull(textures[s]));
+     *         body.cpuSkin(s, firstPerson, (x, y, z, u, v, argb, nx, ny, nz) -> ...);   // see CgPosedVertexSink
+     *     }
+     * }
+     * }</pre>
+     *
+     * <ul>
+     *   <li>{@code ownerView}: the bones {@link #hideFromOwner} hid collapse, as {@link #palette(boolean)}'s.</li>
+     *   <li>Positions are relative to where it stands, turned and scaled by {@link #place}'s transform.</li>
+     *   <li>Its mesh must keep its CPU copy: never {@code dropCpuCopy()} a mesh drawn this way.</li>
+     *   <li>The mesh is decoded once and kept while its revision holds; a call allocates nothing after the first.</li>
+     *   <li>On the render thread, after {@code POSE}: not while it is being posed.</li>
+     * </ul>
+     */
+    public void cpuSkin(int submesh, boolean ownerView, CgPosedVertexSink sink) {
+        if (cpuSkin == null) cpuSkin = new CgCpuSkin();
+        Matrix4f[] bones = ownerView && anyHiddenFromOwner ? ownerSkinning : skinning;
+        cpuSkin.skin(mesh.mesh(), submesh, bones, transform, sink);
     }
 
     /** The owner's view's skinning matrices, or null where no bone is hidden from it: a second palette's. */

@@ -435,6 +435,38 @@ world.draw(hero);
   CgRoleRim rim = new CgRoleRim(hero, "_RimStrength", "_RimPower", "_RimColor");     // rim_strength, rim_power, rim
   ```
 
+### Under a shader pack
+
+A shader pack (Iris, Oculus) lights, fogs and shadows only what goes through Minecraft's own entity render types, and
+it draws the shadow map by calling each entity's renderer a second time. So while a pack is on, a character is skinned
+on the CPU and its vertices written into the render type, from inside the entity's renderer: the pack treats it as
+any mob, in both passes.
+
+```java
+// MyHeroRenderer.render(entity, yaw, partialTick, poseStack, buffers, light), 1.20.1
+if (CgIrisCompat.isShaderPackActive()) {
+    PoseStack.Pose pose = poseStack.last();
+    int overlay = LivingEntityRenderer.getOverlayCoords(entity, 0f);          // the hurt flash, as vanilla's
+    for (int s = 0; s < hero.materialSlots(); s++) {
+        VertexConsumer out = buffers.getBuffer(RenderType.entityCutoutNoCull(TEXTURES[s]));
+        hero.cpuSkin(s, false, (x, y, z, u, v, argb, nx, ny, nz) -> out.vertex(pose.pose(), x, y, z)
+                .color(argb).uv(u, v).overlayCoords(overlay).uv2(light).normal(pose.normal(), nx, ny, nz).endVertex());
+    }
+} else {
+    world.draw(hero);                                // no pack: the engine's own skinned draw, in SUBMIT
+}
+```
+
+- **Positions are relative to where the instance stands**, turned and scaled by its placement: place it where the
+  renderer's pose stack stands (the entity's interpolated position), and the stack adds the camera.
+- **Each call writes quads**, as entity render types draw them; the pack fills in its tangents and texture centres
+  per quad.
+- `CgIrisCompat.isRenderingShadowPass()` says the renderer is being called for the shadow map: skip what should cast
+  no shadow (a glow layer).
+- Under a pack, the engine's entity material is not used: a tint is yours to multiply into `argb`, and the hurt flash
+  is the overlay, as above.
+- Its mesh must keep its CPU copy (never `dropCpuCopy()` it). The mesh is decoded once; each call allocates nothing.
+
 ## Cooked
 
 A release ships meshes cooked: `.cgmesh` holds the vertices as the engine lays them out, read in one copy, and

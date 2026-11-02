@@ -1,55 +1,81 @@
 package com.crystalgraphics.mc.compat;
 
+import javax.annotation.Nullable;
+
 import java.lang.reflect.Method;
 
 /**
- * Fail-open Iris/Oculus shader pack detection.
+ * What the shader mod says, when there is one: whether a pack is in use, and whether its shadow pass is drawing now.
+ * Asked through Iris's public API ({@code net.irisshaders.iris.api.v0.IrisApi}), which Iris on Fabric and NeoForge and
+ * Oculus on Forge both ship under that name; mods older than it fall back to their {@code Iris.isPackInUseQuick}.
+ * With no shader mod, both answer false.
  *
- * <p>When an Iris or Oculus shader pack is active, CG renders outside Iris's deferred
- * GBuffer chain. CG geometry will appear unlit under shader packs with deferred pipelines.
- * The depth texture IS shared, so {@code cg_DepthBuffer} works correctly regardless.</p>
+ * <pre>{@code
+ * if (CgIrisCompat.isShaderPackActive()) {
+ *     body.cpuSkin(slot, ownerView, sink);          // through the host's entity render type: the pack draws it
+ * } else {
+ *     world.draw(body);                             // our own skinned draw
+ * }
+ * boolean shadow = CgIrisCompat.isRenderingShadowPass();   // inside an entity renderer the pack calls again for shadows
+ * }</pre>
  *
- * <p>Covers all supported loaders: Iris on Fabric (1.20.x), Oculus on Forge/NeoForge (1.20.x),
- * and Angelica on Forge (1.7.10, which ships Iris as its shader pipeline).</p>
- *
- * <p>Detection is fail-open: if no compatible shader mod is on the classpath,
- * returns {@code false} without throwing. Class and method lookups are cached at
- * class-init time so per-frame calls incur no repeated reflection overhead.</p>
+ * <ul>
+ *   <li>Lookups are made once, at class load; a call is one reflective invoke.</li>
+ *   <li>A mod whose API throws answers false, never fails the frame.</li>
+ * </ul>
  */
 public final class CgIrisCompat {
     private CgIrisCompat() {}
 
-    private static final Method IRIS_IS_PACK_IN_USE = resolveMethod("net.irisshaders.iris.Iris", "isPackInUseQuick");
-    private static final Method OCULUS_IS_PACK_IN_USE = resolveMethod("net.coderbot.iris.Iris", "isPackInUseQuick");
+    private static final String API_TYPE = "net.irisshaders.iris.api.v0.IrisApi";
+    @Nullable
+    private static final Object API = api();
+    // From the interface: the instance's own class need not be public.
+    @Nullable
+    private static final Method API_PACK_IN_USE = API == null ? null : publicMethod(API_TYPE, "isShaderPackInUse");
+    @Nullable
+    private static final Method API_SHADOW_PASS = API == null ? null : publicMethod(API_TYPE, "isRenderingShadowPass");
+    // Before the public API: Iris and Angelica's own class, then Oculus's older package.
+    @Nullable
+    private static final Method IRIS_IS_PACK_IN_USE = publicMethod("net.irisshaders.iris.Iris", "isPackInUseQuick");
+    @Nullable
+    private static final Method OCULUS_IS_PACK_IN_USE = publicMethod("net.coderbot.iris.Iris", "isPackInUseQuick");
 
-    /** Returns true if Iris (Fabric / Angelica 1.7.10) has an active shader pack. */
-    public static boolean isIrisPackActive() {
-        return invoke(IRIS_IS_PACK_IN_USE);
-    }
-
-    /** Returns true if Oculus (Forge/NeoForge port of Iris) has an active shader pack. */
-    public static boolean isOculusPackActive() {
-        return invoke(OCULUS_IS_PACK_IN_USE);
-    }
-
-    /** Returns true if any compatible shader mod has an active pack. */
+    /** Whether a shader pack is in use now. */
     public static boolean isShaderPackActive() {
-        return isIrisPackActive() || isOculusPackActive();
+        if (API_PACK_IN_USE != null) return invoke(API_PACK_IN_USE, API);
+        return invoke(IRIS_IS_PACK_IN_USE, null) || invoke(OCULUS_IS_PACK_IN_USE, null);
     }
 
-    private static Method resolveMethod(String className, String methodName) {
+    /** Whether the pack's shadow pass is drawing now: an entity renderer called inside it is drawing into the shadow map. */
+    public static boolean isRenderingShadowPass() {
+        return API_SHADOW_PASS != null && invoke(API_SHADOW_PASS, API);
+    }
+
+    @Nullable
+    private static Object api() {
         try {
-            return Class.forName(className).getMethod(methodName);
-        } catch (Exception e) {
+            return Class.forName(API_TYPE).getMethod("getInstance").invoke(null);
+        } catch (Throwable e) {
             return null;
         }
     }
 
-    private static boolean invoke(Method method) {
+    /** {@code className}'s public method {@code name} with no parameters, static or not; null if absent. */
+    @Nullable
+    private static Method publicMethod(String className, String name) {
+        try {
+            return Class.forName(className).getMethod(name);
+        } catch (Throwable e) {
+            return null;
+        }
+    }
+
+    private static boolean invoke(@Nullable Method method, @Nullable Object target) {
         if (method == null) return false;
         try {
-            return (boolean) method.invoke(null);
-        } catch (Exception e) {
+            return (boolean) method.invoke(target);
+        } catch (Throwable e) {
             return false;
         }
     }
