@@ -101,7 +101,8 @@ Pass {
         }
         if (alpha < 0.00001 && invert < 0.5) discard;
         // Graded in linear light: the scene as it is, or the host's colour decoded where there is no HDR scene
-        vec3 scene = CG_SCENE_COLOR(i.uv).rgb;
+        vec4 read = CG_SCENE_COLOR(i.uv);
+        vec3 scene = read.rgb;
         if (!CG_LINEAR_SCENE) scene = cg_SceneDecode(scene);
         vec3 c = vec3(dot(_ToAp10.xyz, scene), dot(_ToAp11.xyz, scene), dot(_ToAp12.xyz, scene));
         vec3 basic = region_grade(c, _G0, _G1, _G2, _G3, _G4);
@@ -130,6 +131,7 @@ Pass {
         float weight = mix(falloff, 1.0 - falloff, invert) * _Shape.w * POST_WEIGHT;
         // Mixed here, in linear light as Unreal blends it, and written whole: an 8-bit target would mix encoded values
         vec3 mixed = mix(scene, max(rgb, vec3(0.0)), clamp(weight, 0.0, 1.0));
-        fragColor = vec4(CG_LINEAR_SCENE ? mixed : cg_SceneEncode(mixed), 1.0);
+        // Its alpha kept: a graded layer's coverage, which it grades too (CgPostMaterial.recordOver)
+        fragColor = vec4(CG_LINEAR_SCENE ? mixed : cg_SceneEncode(mixed), read.a);
     }
 }

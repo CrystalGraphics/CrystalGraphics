@@ -24,6 +24,7 @@ import com.crystalgraphics.render.post.CgPostStack;
 import com.crystalgraphics.render.post.look.CgFilmLut;
 import com.crystalgraphics.render.stage.CgHostView;
 import com.crystalgraphics.render.stage.CgRenderStage;
+import com.crystalgraphics.render.world.CgGradeLayers;
 
 /**
  * Grades the world's pixels inside a shape: Unreal 5.1's {@code AColorCorrectRegion}. Its shape's alpha at each pixel's
@@ -258,6 +259,12 @@ public final class CgColourRegion implements CgPostEffect {
         }
         material.applyProperties(write);
         draw.record(post);
+        // The light a graded layer holds is graded too: Unreal grades the scene before bloom, effects' light with it
+        CgGradeLayers layers = post.resources().get(CgGradeLayers.KEY);
+        if (layers == null) return;
+        for (int k = 0; k < CgGradeLayers.MAX; k++) {
+            if (layers.look(k) != null) draw.recordOver(post, layers.layer(k));
+        }
     }
 
     private void write(CgShaderBindings b) {

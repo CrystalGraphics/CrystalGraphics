@@ -212,18 +212,35 @@ public final class CgPostMaterial implements CgPostEffect {
             if (into == null || into.getWidth() != w || into.getHeight() != h) {
                 textures[t] = into = CgGraphTexture.transientTexture("cg_post_pass_" + t, new CgTextureDesc(w, h, TARGET, 1));
             }
-            draw(recording, into, CgLoad.clear(0f, 0f, 0f, 0f), post, pipelines[t]);
+            draw(recording, into, CgLoad.clear(0f, 0f, 0f, 0f), post, pipelines[t], screen);
             bind(target.property(), into);
         }
-        draw(recording, screen, CgLoad.load(), post, pipeline);
+        draw(recording, screen, CgLoad.load(), post, pipeline, screen);
     }
 
-    private void draw(CgRecording recording, CgGraphTexture into, CgLoad load, CgPostContext post, CgPipeline pipeline) {
+    /**
+     * Draws its one pass over {@code over} as it draws over the scene, reading {@code over}'s colour where it reads the
+     * scene's: a grade over a graded layer as well as the frame ({@code CgColourRegion}), the light the layer holds
+     * graded as the scene around it is. The scene's depth is read as ever.
+     *
+     * <ul>
+     *   <li>Its shader keeps the alpha it reads, or {@code over}'s alpha is lost.</li>
+     *   <li>A material of several passes draws nothing here.</li>
+     * </ul>
+     */
+    public void recordOver(CgPostContext post, CgGraphTexture over) {
+        if (!resolve() || textures.length > 0) return;
+        CgPipeline pipeline = material.pipeline(CgInstanceKind.OBJECT);
+        if (pipeline != null) draw(post.recording(), over, CgLoad.load(), post, pipeline, over);
+    }
+
+    private void draw(CgRecording recording, CgGraphTexture into, CgLoad load, CgPostContext post, CgPipeline pipeline,
+                      CgGraphTexture colourOf) {
         CgRasterPass pass = recording.raster(into, load, post.constants(), null, CgOrder.SORTED);
         // A pass into a target of its own reads the scene's colour and depth, not the target it clears.
         CgGraphTexture screen = post.target();
-        if (material.readsSceneColor() && into == screen) pass.sceneColor(CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT);
-        else if (material.readsSceneColor()) pass.sceneColor(CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT, screen);
+        if (material.readsSceneColor() && into == colourOf) pass.sceneColor(CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT);
+        else if (material.readsSceneColor()) pass.sceneColor(CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT, colourOf);
         if (material.readsSceneDepth() && into == screen) pass.sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT);
         else if (material.readsSceneDepth()) pass.sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT, screen);
         CgChunkBuilder chunks = recording.chunks().begin();
