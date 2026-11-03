@@ -439,6 +439,31 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
         return self();
     }
 
+    /**
+     * Scales the light its draws give by {@code exposure}: a {@code "ColorSpace" = "Linear"} draw's colour and glow, and
+     * an sRGB draw's glow where it is drawn apart (its Emissive pass, or merged into the emission target). A game's effects authored under its own exposure play under ours this way (a kit's look sets
+     * it for every effect of the kit).
+     *
+     * <pre>{@code
+     * VFX.play(new HitSpark(look, x, y, z).exposure(0.2f));   // authored for a camera exposed at 0.2
+     * }</pre>
+     *
+     * <ul>
+     *   <li>An sRGB colour (the engine's own looks) is not scaled, nor its glow folded into the HDR scene.</li>
+     * </ul>
+     */
+    public final E exposure(float exposure) {
+        this.exposure = exposure;
+        return self();
+    }
+
+    /** What its draws' light is scaled by ({@link #exposure(float)}): 1 unless set. */
+    public final float exposure() {
+        return exposure;
+    }
+
+    private float exposure = 1f;
+
     /** How it is turned in the world: what it follows times its own ({@link #orient}). The identity unless turned. */
     public final Quaternionfc orientation() {
         return orientation;

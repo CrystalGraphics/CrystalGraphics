@@ -26,6 +26,7 @@ import com.crystalgraphics.gl.material.CgMaterialShaderRegistry;
 import com.crystalgraphics.gl.material.parse.CgParsedPass;
 import com.crystalgraphics.gl.material.parse.CgPermutationDomain;
 import com.crystalgraphics.gl.material.parse.CgParsedShader;
+import com.crystalgraphics.gl.material.parse.CgShaderParser;
 import com.crystalgraphics.gl.texture.CgSamplers;
 import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.render.CgWarmBudget;
@@ -1482,6 +1483,21 @@ public final class CgMaterial {
         if (cgMaterialShader == null) return false;
         CgParsedShader parsed = cgMaterialShader.ensureParsed();
         return parsed != null && parsed.getPassByLightMode(CgRenderPassVariant.EMISSIVE.lightModeName()) != null;
+    }
+
+    /**
+     * Whether its light follows the draw's exposure ({@code _cg_Exposure}): a {@code cg_use rows} shader whose Forward
+     * colour is {@code "ColorSpace" = "Linear"}, or that has an Emissive pass. A parse, never a compile.
+     *
+     * <pre>{@code
+     * if (material.readsExposure()) material.definition().requireRow("_cg_Exposure", who);   // written per draw
+     * }</pre>
+     */
+    public boolean readsExposure() {
+        if (cgMaterialShader == null) return false;
+        CgParsedShader parsed = cgMaterialShader.ensureParsed();
+        return parsed != null && parsed.engineBuffers().contains(CgShaderParser.ROWS) && (parsed.linearLight()
+                || parsed.getPassByLightMode(CgRenderPassVariant.EMISSIVE.lightModeName()) != null);
     }
 
     /**

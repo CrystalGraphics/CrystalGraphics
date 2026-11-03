@@ -264,6 +264,11 @@ final class CgVfxMaterials {
             material.requireRow(SYSTEM_TURN, who);
             rowValues.put(SYSTEM_TURN, SYSTEM_TURN);
         }
+        if (probe.readsExposure()) {
+            // Its effect's exposure, written per effect: a kit's look sets it for each of its effects.
+            material.requireRow(EXPOSURE, who);
+            rowValues.put(EXPOSURE, EXPOSURE);
+        }
         if (placed.slotRenderer() == null && probe.names(MACRO_UV)) {
             // Its system's macro UVs and its renderer's override, written per effect: each effect stands and turns apart.
             material.requireRow(MACRO_SYSTEM, who);
@@ -318,9 +323,10 @@ final class CgVfxMaterials {
                 entryFactors.add(factors.get(p.getName()));
                 entryFixed.add(null);
                 vec4s += param instanceof CgVfxParam.Palette ? ((CgVfxParam.Palette) param).count() : 1;
-            } else if (constant == BOUNDS || constant == MACRO_SYSTEM || constant == MACRO_OVERRIDE || constant == SYSTEM_TURN) {
+            } else if (constant == BOUNDS || constant == MACRO_SYSTEM || constant == MACRO_OVERRIDE || constant == SYSTEM_TURN
+                    || constant == EXPOSURE) {
                 entries.add(new int[] {constant == BOUNDS ? FROM_BOUNDS : constant == MACRO_SYSTEM ? FROM_MACRO_SYSTEM
-                        : constant == MACRO_OVERRIDE ? FROM_MACRO_OVERRIDE : FROM_SYSTEM_TURN, 4});
+                        : constant == MACRO_OVERRIDE ? FROM_MACRO_OVERRIDE : constant == SYSTEM_TURN ? FROM_SYSTEM_TURN : FROM_EXPOSURE, 4});
                 entryFactors.add(1f);
                 entryFixed.add(null);
                 vec4s += 1;
@@ -430,6 +436,9 @@ final class CgVfxMaterials {
     /** The factory's system turn, and the name that reads it: the effect's orientation, written per effect. */
     private static final String SYSTEM_TURN = "_cg_SystemTurn", LOCAL_TO_WORLD = "CG_PARTICLE_LOCAL_TO_WORLD";
     private static final int FROM_SYSTEM_TURN = -5;
+    /** The effect's exposure ({@code CgVfxEffect.exposure}), read by a Linear or glowing rows shader. */
+    private static final String EXPOSURE = "_cg_Exposure";
+    private static final int FROM_EXPOSURE = -6;
     private final Vector3f turned = new Vector3f();
     private static final String FACING = "_cg_Facing", SUB_IMAGE = "_cg_SubImage", SUB_UV = "_cg_SubUV", DRAWN = "_cg_Drawn",
             PIVOT = "_cg_Pivot", SOFT_DISTANCE = "_SoftDistance";
@@ -659,6 +668,10 @@ final class CgVfxMaterials {
                 rows[write + 1] = q.y();
                 rows[write + 2] = q.z();
                 rows[write + 3] = q.w();
+                write += 4;
+            } else if (r.source[i] == FROM_EXPOSURE) {
+                rows[write] = effect.exposure();
+                rows[write + 1] = rows[write + 2] = rows[write + 3] = 0f;
                 write += 4;
             } else if (r.source[i] == FROM_MACRO_SYSTEM || r.source[i] == FROM_MACRO_OVERRIDE) {
                 writeMacroUv(effect, r, r.source[i] == FROM_MACRO_OVERRIDE, write);

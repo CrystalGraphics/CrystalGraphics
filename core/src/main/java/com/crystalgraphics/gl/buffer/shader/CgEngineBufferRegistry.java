@@ -73,9 +73,12 @@ public final class CgEngineBufferRegistry {
         register("particle_order", CgParticleOrderBuffer::buffer, CgParticleOrderBuffer.MACRO_NAME, null);
         // A beam draw's noise points, for the strip factory a particle program gets beside its own.
         register("particle_beams", CgParticleBeamBuffer::buffer, CgParticleBeamBuffer.MACRO_NAME, null);
-        // Bound by each draw: the tracked backend's draws read none an upload left bound.
+        // Bound by each draw: the tracked backend's draws read none an upload left bound. _cg_Exposure is what the
+        // generated main scales linear light by, written per effect.
         put(new Provider("rows", CgPropertyRows::buffer, CgPropertyRows.MACRO_NAME,
-                "crystalgraphics:shaders/env/buffer/rows.glsl", List.of(), null, true, null));
+                "crystalgraphics:shaders/env/buffer/rows.glsl", List.of(), null, true, """
+                    _cg_Exposure ("Its effect's exposure: a Linear colour and every glow times this; written per effect", float) = 1
+                    """));
         // The sprite factory's settings, the renderer's to set per draw: a port never declares them, and the rows that
         // carry them per draw come with the particle.
         registerWithProperties("particle", CgParticleBuffer::buffer, CgParticleBuffer.MACRO_NAME,

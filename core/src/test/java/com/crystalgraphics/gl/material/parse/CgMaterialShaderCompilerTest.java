@@ -275,6 +275,12 @@ public class CgMaterialShaderCompilerTest {
                 .fragmentSource();
         assertFalse(linear.contains("cg_SceneDecode"));
         assertTrue("linear light encoded onto the host's target", linear.contains("if (CG_ENCODED_TARGET) _cg_fragColor.rgb = cg_SceneEncode("));
+        assertFalse("no exposure without rows", linear.contains("_cg_Exposure"));
+        String exposed = CgMaterialShaderCompiler.compile(parse(MINIMAL.replace("#type spatial\n",
+                "#type spatial\n#pragma cg_use rows\nTags { \"ColorSpace\" = \"Linear\" }\n")), NO_BUFFERS).fragmentSource();
+        assertTrue("a rows draw's linear light times its exposure, before the encode",
+                exposed.indexOf("_cg_fragColor.rgb *= _cg_Exposure;") >= 0
+                        && exposed.indexOf("_cg_fragColor.rgb *= _cg_Exposure;") < exposed.indexOf("if (CG_ENCODED_TARGET)"));
         String target = CgMaterialShaderCompiler.compile(
                 parse(MINIMAL.replace("#type spatial\n", "#type spatial\nTags { \"ColorSpace\" = \"Target\" }\n")), NO_BUFFERS)
                 .fragmentSource();

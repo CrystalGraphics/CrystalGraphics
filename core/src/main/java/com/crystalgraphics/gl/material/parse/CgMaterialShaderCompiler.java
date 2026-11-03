@@ -1332,6 +1332,13 @@ public final class CgMaterialShaderCompiler {
                 sb.append("  _cg_fragColor.rgb += _cg_glow.rgb;\n");
             }
             if ((forward || emissive) && dimsInMedia(shader, pass)) appendMediaDim(sb, pass, emissive, merge);
+            // The draw's exposure scales linear light: a Linear colour, an Emissive pass, a merged glow
+            if (!cover && shader.engineBuffers().contains(CgShaderParser.ROWS)) {
+                if (emissive || forward && shader.linearLight()) sb.append("  _cg_fragColor.rgb *= _cg_Exposure;\n");
+                if (forward && (merge == EmissionMerge.SAME_BLEND || merge == EmissionMerge.ADDED)) {
+                    sb.append("  _cg_emission.rgb *= _cg_Exposure;\n");
+                }
+            }
             if (forward && shader.linearLight() && !cover) appendTargetEncode(sb, pass);
         } else {
             sb.append("  ").append(pass.fragOutput().mrtStructName()).append(" _cg_mrtOut;\n");

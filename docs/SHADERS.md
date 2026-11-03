@@ -506,6 +506,10 @@ fragColor = _Color * _Bands(1);    // read as always: the row's value where boun
 - **An array** is `color[n]` or `vec4[n]`, n at most 256 (past 16 read a chunk of 16 at a time), its default each element's in order; read as `_Name(i)` in
   every shader, with `rows` or without.
 - The VFX engine is the binder: a renderer's `bind` ([`vfx/effects.md`](vfx/effects.md) § *Constants, binds and keywords*).
+- **`_cg_Exposure`** is every rows shader's, 1 by default: the generated `main` multiplies a `"ColorSpace" = "Linear"`
+  Forward colour (its folded glow with it), an Emissive pass and a merged emission by it, before the encode. The VFX engine
+  writes its effect's `exposure(...)` there for a shader that reads it (`CgMaterial.readsExposure()`): a game's effect
+  authored under that game's camera exposure.
 
 #### Global parameters: `cg_use globals`
 
