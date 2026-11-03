@@ -5,7 +5,6 @@ import com.crystalgraphics.api.font.CgFontStyle;
 import com.crystalgraphics.api.font.CgGenericFamily;
 import com.crystalgraphics.api.font.CgSystemFontFace;
 import com.crystalgraphics.api.font.CgSystemFonts;
-import com.crystalgraphics.api.material.CgMaterialArchetypes;
 import com.crystalgraphics.api.text.CgTextLayout;
 import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.collision.CgCollisionWorld;
@@ -34,7 +33,6 @@ import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.text.render.CgTextRenderer;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.trace.CgTraceReport;
-import com.crystalgraphics.util.io.CgIO;
 import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.vfx.CgVfx;
 import com.crystalgraphics.vfx.CgVfxOwner;
@@ -268,26 +266,14 @@ public final class CgRenderDemo {
             });
         }
         // The shown scene alone: building all three cost the first world frame a quarter second (26.2, Vulkan). The rest
-        // are prewarmed behind the loading screen, one a slice, once a worker has parsed the archetypes their materials
-        // compile from: parsed at the build, modules held the render thread 190 ms (1.20.1).
+        // are prewarmed behind the loading screen, one a slice of a tracked task.
         build(wanted);
         CgEngineLifecycle.addListener(new CgLifecycleListener() {
             @Override
             public void onLoad(CgLoadPlan plan) {
-                plan.task("crystalgraphics:demo").work(CgRenderDemo::parseArchetypes).render(task -> warmAhead(task)).start();
+                plan.task("crystalgraphics:demo").render(task -> warmAhead(task)).start();
             }
         });
-    }
-
-    /** Every VFX shader the scenes' materials may name, parsed into the archetype cache. A worker: it touches no GL. */
-    private static void parseArchetypes() {
-        for (String path : CgIO.list("crystalgraphics", "shaders/vfx", ".shader")) {
-            try {
-                CgMaterialArchetypes.FILES.parse(path);
-            } catch (RuntimeException e) {
-                LOGGER.debug("[CgRenderDemo] {} parses at its first use instead: {}", path, e.getMessage());
-            }
-        }
     }
 
     /** Builds scene {@code i} and starts warming it: its textures, meshes, programs and kernels. */
