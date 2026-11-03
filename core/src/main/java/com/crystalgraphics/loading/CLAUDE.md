@@ -45,7 +45,9 @@ parallel mod loading with its `enqueueWork`, Unreal's slow-task progress and its
 - **In Minecraft it shows once, between the loader's screen and the first menu** (the user, 2026-11-02): each host
   hands the game's opening of its first screen to `holdUntilHidden` and puts up an empty screen, since Minecraft with
   no screen and no level reads keys for a player it has not made. The host draws it over the GUI at its frame end and
-  runs the held opening once it hides, so the title screen and Quick Play follow as they were. Nothing raises it after
+  runs the held opening once it has hidden and faded out, so the title screen and Quick Play follow as they were. After
+  the fade, not at the hide: Quick Play blocks the client thread seconds reading the world, and the frame left up
+  meanwhile would be ours, frozen at its end; that freeze is vanilla's to show (the user, 2026-11-03). Nothing raises it after
   that, in menus or the world. Each era's hook: `docs/MINECRAFT_INTEGRATION.md` § *The loading screen*.
 - **Anything that stands the engine down hides it** (`hideNow`), so a held opening never waits forever.
 - Every change of reason is logged (`[loading] ...`); `crystalgraphics.loading.logProgress` logs the bar and the running

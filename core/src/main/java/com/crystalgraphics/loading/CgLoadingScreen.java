@@ -209,14 +209,18 @@ public final class CgLoadingScreen {
 
     /** Whether the host draws this screen itself: from a {@link #holdUntilHidden} until its fade-out ends. */
     public static boolean hostDraws() {
-        if (hostDraws && held == null && !shown() && System.nanoTime() - hiddenAt >= FADE_NANOS) hostDraws = false;
+        if (hostDraws && !shown() && System.nanoTime() - hiddenAt >= FADE_NANOS) hostDraws = false;
         return hostDraws;
     }
 
-    /** Opens the held screen once this one has hidden; nothing otherwise. The host's frame end, after the tick. */
+    /**
+     * Opens the held screen once this one has hidden and faded out; nothing otherwise. The host's frame end, after the
+     * tick. After the fade, because a held Quick Play blocks the client thread seconds reading the world, and the
+     * frame left up meanwhile would be this screen, frozen at its end (the user: the freeze is vanilla's to show).
+     */
     public static void runHeld() {
         Runnable open = held;
-        if (open == null || shown()) return;
+        if (open == null || shown() || System.nanoTime() - hiddenAt < FADE_NANOS) return;
         held = null;
         releasing = true;
         try {

@@ -291,7 +291,7 @@ exists.
 (the user, 2026-11-02; `core/.../loading/CLAUDE.md`). Each host holds the game's opening of its first screen with
 `CgLoadingScreen.holdUntilHidden`, puts up an empty screen meanwhile (with no screen and no level Minecraft reads keys
 for a player it has not made), draws ours over the GUI at its frame end before the frame tick, and runs the held
-opening after the tick once it hides (`runHeld`). The title screen and Quick Play then follow as they would have.
+opening after the tick once it has hidden and faded out (`runHeld`). The title screen and Quick Play then follow as they would have.
 
 | Era | Where the first screen opens | Hook |
 |---|---|---|
