@@ -15,6 +15,8 @@ import org.joml.Vector3f;
 import org.joml.Vector4f;
 
 import javax.annotation.Nullable;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.util.ArrayList;
@@ -470,10 +472,25 @@ public final class CgShaderProgram {
             this.key = key;
         }
 
+        /** Isolated: what {@link #finish} read of the program it compiled apart, for {@link #land}; else null. */
+        @Nullable private ByteBuffer binary;
+        private int binaryFormat;
+        /** Isolated: the program was compiled on the worker's own context, and {@link #land} loads it on the shared one. */
+        private boolean isolated;
+
         @Override
         protected boolean start() {
+            isolated = CgLinkWorker.isolated();
+            // Isolated, a kept binary loads on the shared context in land(), which needs no compile here
+            if (isolated && key != null && CgProgramBinaryCache.has(key)) return true;
             program = CgGL.glCreateProgram();
-            if (key != null && CgProgramBinaryCache.load(program, key)) return true;
+            if (!isolated && key != null && CgProgramBinaryCache.load(program, key)) return true;
+            compileAndLink();
+            return false;
+        }
+
+        /** Compiles the sources into {@link #program} and starts its link. */
+        private void compileAndLink() {
             if (compute != null) {
                 comp = shader(CgGL.GL_COMPUTE_SHADER, compute);
             } else {
@@ -482,9 +499,34 @@ public final class CgShaderProgram {
                 // The parts after the two sources are the attribute names, in location order.
                 for (int i = 2; i < attributes.length; i++) CgGL.glBindAttribLocation(program, i - 2, attributes[i]);
             }
-            CgProgramBinaryCache.retrievable(program, key);
+            if (isolated) CgGL.glProgramParameteri(program, CgGL.GL_PROGRAM_BINARY_RETRIEVABLE_HINT, CgGL.GL_TRUE);
+            else CgProgramBinaryCache.retrievable(program, key);
             CgGL.glLinkProgram(program);
-            return false;
+        }
+
+        /**
+         * Isolated: the program into the shared context, from the binary {@link #finish} read or the one kept under its
+         * key. A binary the driver refuses is linked from source here, as the shared worker would have.
+         */
+        @Override
+        protected void land() {
+            if (!isolated || error != null) return;
+            program = CgGL.glCreateProgram();
+            if (binary == null) {
+                if (CgProgramBinaryCache.load(program, key)) return;
+                // Refused (a driver update): compiled here into the same program, as the shared worker would have
+                isolated = false;
+                compileAndLink();
+                finish();
+                return;
+            }
+            CgGL.glProgramBinary(program, binaryFormat, binary);
+            if (CgGL.glGetProgrami(program, CgGL.GL_LINK_STATUS) != CgGL.GL_TRUE) {
+                error = "Shader program binary refused: " + CgGL.glGetProgramInfoLog(program, 4096);
+            } else {
+                CgProgramBinaryCache.store(key, binaryFormat, binary);
+            }
+            binary = null;
         }
 
         private int shader(int type, String source) {
@@ -518,6 +560,11 @@ public final class CgShaderProgram {
                 } else if (CgGL.glGetProgrami(program, CgGL.GL_LINK_STATUS) != CgGL.GL_TRUE) {
                     error = (comp != 0 ? "Compute program" : "Shader program") + " link failed: "
                             + CgGL.glGetProgramInfoLog(program, 4096);
+                } else if (isolated) {
+                    int length = CgGL.glGetProgrami(program, CgGL.GL_PROGRAM_BINARY_LENGTH);
+                    binary = ByteBuffer.allocateDirect(Math.max(length, 0)).order(ByteOrder.nativeOrder());
+                    binaryFormat = length > 0 ? CgGL.glGetProgramBinary(program, binary) : 0;
+                    if (length <= 0) error = "Shader program gave no binary to move to the render thread's context";
                 } else {
                     CgProgramBinaryCache.store(program, key);
                 }
@@ -526,6 +573,11 @@ public final class CgShaderProgram {
                     if (shader == 0) continue;
                     CgGL.glDetachShader(program, shader);
                     CgGL.glDeleteShader(shader);
+                }
+                if (isolated) {
+                    CgGL.cgDeleteIsolatedProgram(program);   // this context's name; land() makes the shared one
+                    program = 0;
+                    vert = frag = comp = 0;
                 }
                 CgTrace.marker(CgChannels.GL, "shader.link.size", (compute != null ? "c " : "vf ") + chars
                         + " ms " + (System.nanoTime() - began) / 1_000_000 + (label != null ? " " + label : ""));

@@ -214,6 +214,38 @@ public class Lwjgl2GLBackend extends CgGLBackend {
         }
     }
 
+    /** A 1x1 {@link Pbuffer} with a context of its own, sharing nothing. Null before the Display exists. */
+    @Override
+    public CgGLWorkerContext createIsolatedWorkerContext() {
+        if (!Display.isCreated() || (Pbuffer.getCapabilities() & Pbuffer.PBUFFER_SUPPORTED) == 0) return null;
+        try {
+            Pbuffer own = new Pbuffer(1, 1, new PixelFormat(), null);
+            return new CgGLWorkerContext() {
+                @Override public void makeCurrent() {
+                    try {
+                        own.makeCurrent();
+                    } catch (LWJGLException e) {
+                        throw new IllegalStateException("isolated worker context not made current", e);
+                    }
+                }
+
+                @Override public void release() {
+                    try {
+                        own.releaseContext();
+                    } catch (LWJGLException ignored) {
+                        // Destroyed next.
+                    }
+                }
+
+                @Override public void destroy() {
+                    own.destroy();
+                }
+            };
+        } catch (LWJGLException e) {
+            return null;
+        }
+    }
+
     @Override
     public int glGetProgramBinary(int program, ByteBuffer binary) {
         GL41.glGetProgramBinary(program, PROGRAM_BINARY_LENGTH, PROGRAM_BINARY_FORMAT, binary);

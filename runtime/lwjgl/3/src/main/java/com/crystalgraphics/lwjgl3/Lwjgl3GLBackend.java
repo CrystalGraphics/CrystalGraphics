@@ -209,6 +209,11 @@ public class Lwjgl3GLBackend extends CgGLBackend {
     }
 
     @Override
+    public CgGLWorkerContext createIsolatedWorkerContext() {
+        return Lwjgl3WorkerContext.create(false);
+    }
+
+    @Override
     public int glGetProgramBinary(int program, ByteBuffer binary) {
         GL41C.glGetProgramBinary(program, (int[]) null, PROGRAM_BINARY_FORMAT, binary);
         return PROGRAM_BINARY_FORMAT[0];

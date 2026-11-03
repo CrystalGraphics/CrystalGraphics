@@ -1479,6 +1479,11 @@ particles.kernel("Simulate").withKeywords("WIND").precache();
   one, NVIDIA makes the render thread's program calls wait for it, up to half a second. `kernel.isReady()` answers
   true only once that is done, so a precached kernel a pool waits for never finishes at its dispatch. A material's
   commit and its variants keep the same rule.
+- **The worker compiles in a context sharing nothing with the render thread's** where the driver gives program
+  binaries (`CgLinkWorker.isolated()`, `-Dcrystalgraphics.shader.isolatedCompile`): each program linked there is moved
+  to the shared context as a binary (`glProgramBinary`, milliseconds). Compiled on a shared context, NVIDIA held the
+  render thread's GL calls while it compiled, whatever the call: a cold 1.7.10 launch's loading screen held 7.6 s in
+  all, 1.2 s compiled apart. macOS lists no binary format, so it compiles shared.
 - A lowered kernel's passes are built at once; a Java body needs nothing.
 - On a Vulkan device a host keeps shaderc's output and the pipeline cache across launches
   (`CgCacheDirectory`, `crystalgraphics/cache/` under the game directory): a second launch compiles roughly half as

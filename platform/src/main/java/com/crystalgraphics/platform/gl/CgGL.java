@@ -919,6 +919,15 @@ public final class CgGL {
         return gl().createWorkerContext();
     }
 
+    /**
+     * A context sharing nothing with the current one, at its version and profile: a program compiled there holds nothing
+     * the render thread's calls wait on, and reaches the render thread's objects as a binary. Null where the backend
+     * makes none. Render thread, its context current.
+     */
+    public static CgGLWorkerContext createIsolatedWorkerContext() {
+        return gl().createIsolatedWorkerContext();
+    }
+
     public static String glGetProgramInfoLog(int program, int maxLength) {
         return gl().glGetProgramInfoLog(program, maxLength);
     }
@@ -963,6 +972,14 @@ public final class CgGL {
         CgGlUniforms.forget(program);
         gl().glDeleteProgram(program);
         state().programDeleted(program);
+    }
+
+    /**
+     * Deletes a program of an {@link #createIsolatedWorkerContext isolated} context, current on the calling thread: its
+     * name is that context's, so the render thread's shadow and uniform cache, which a name of theirs may match, are left.
+     */
+    public static void cgDeleteIsolatedProgram(int program) {
+        gl().glDeleteProgram(program);
     }
 
     public static int glGetUniformLocation(int program, CharSequence name) {

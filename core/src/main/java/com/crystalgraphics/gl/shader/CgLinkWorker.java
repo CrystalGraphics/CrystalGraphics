@@ -7,6 +7,10 @@ import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 import com.crystalgraphics.variable.CgVar;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
+import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -50,9 +54,11 @@ public final class CgLinkWorker {
      * Links handed to the driver at once. NVIDIA compiles them one after another, on one context or several (measured:
      * 2 and 4 worker contexts, no faster cold), so more in flight only lengthens what a {@link #boost}ed one waits behind.
      */
-    private static final int MAX_IN_FLIGHT = 4;
+    private static final int MAX_IN_FLIGHT = CgVar.integer("crystalgraphics.shader.linksInFlight", 4, 1, 16,
+            CgVar.DEV | CgVar.RESTART, "Links the worker hands the GL driver at once.").get();
 
     private static volatile CgLinkWorker running;
+    private static final Logger LOG = LogManager.getLogger("CrystalGraphics");
 
     /**
      * A link the worker carries out. Its three steps run on the worker, in order: {@link #start} once, {@link #linked}
@@ -76,6 +82,13 @@ public final class CgLinkWorker {
 
         /** Reads its status and frees what the link no longer needs. Worker. */
         protected abstract void finish();
+
+        /**
+         * Where the worker compiles on a context of its own ({@link #isolated()}): moves what {@link #finish} made into the
+         * render thread's objects, with the shared context current. Nothing by default. Worker.
+         */
+        protected void land() {
+        }
 
         /** The program it made, 0 for none: what the render thread deletes when nobody took it. */
         protected abstract int program();
@@ -118,6 +131,8 @@ public final class CgLinkWorker {
     }
 
     private final CgGLWorkerContext context;
+    /** A context sharing nothing, where the worker compiles; null where it compiles on {@link #context}. */
+    @Nullable private final CgGLWorkerContext isolatedContext;
     private final boolean parallel;
     private final LinkedBlockingDeque<Job> queue = new LinkedBlockingDeque<>();
     private final Thread thread;
@@ -125,26 +140,44 @@ public final class CgLinkWorker {
     /** Links handed to the driver and not yet finished: while any is, the driver holds what the render thread would ask. */
     private volatile int inFlightCount;
 
-    private CgLinkWorker(CgGLWorkerContext context, boolean parallel) {
+    private CgLinkWorker(CgGLWorkerContext context, @Nullable CgGLWorkerContext isolatedContext, boolean parallel) {
         this.context = context;
+        this.isolatedContext = isolatedContext;
         this.parallel = parallel;
         this.thread = new Thread(this::run, "crystalgraphics-link");
         thread.setDaemon(true);
     }
+
+    private static final CgVar.Bool ISOLATED = CgVar.bool("crystalgraphics.shader.isolatedCompile", true,
+            CgVar.DEV | CgVar.RESTART, "Compile programs in a context sharing nothing with the render thread's, each"
+                    + " moved over as a binary: NVIDIA holds the render thread's calls while a shared context compiles.");
 
     /** Starts the worker, where the backend gives a worker context. Render thread, its context current. */
     public static void start() {
         if (running != null || !ENABLED.get()) return;
         CgGLWorkerContext context = CgGL.createWorkerContext();
         if (context == null) return;
-        CgLinkWorker worker = new CgLinkWorker(context, CgCapabilities.detect().isParallelShaderCompile());
+        CgCapabilities caps = CgCapabilities.detect();
+        // A binary is how a program compiled apart reaches the render thread's objects: none where the driver lists no
+        // format (macOS)
+        CgGLWorkerContext isolated = ISOLATED.get() && caps.getProgramBinaryFormats() > 0
+                ? CgGL.createIsolatedWorkerContext() : null;
+        CgLinkWorker worker = new CgLinkWorker(context, isolated, caps.isParallelShaderCompile());
         worker.thread.start();
         running = worker;
+        LOG.info("[cg] link worker: compiles {}", isolated != null ? "in a context of its own, moved over as binaries"
+                : "in a context sharing the render thread's");
     }
 
     /** Whether fresh links go to the worker. */
     public static boolean on() {
         return running != null;
+    }
+
+    /** Whether the worker compiles on a context of its own, each job {@link Job#land landing} its program after. */
+    public static boolean isolated() {
+        CgLinkWorker worker = running;
+        return worker != null && worker.isolatedContext != null;
     }
 
     /**
@@ -188,12 +221,16 @@ public final class CgLinkWorker {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
-        if (!worker.thread.isAlive()) worker.context.destroy();
+        if (!worker.thread.isAlive()) {
+            worker.context.destroy();
+            if (worker.isolatedContext != null) worker.isolatedContext.destroy();
+        }
         reap();
     }
 
     private void run() {
-        context.makeCurrent();
+        CgGLWorkerContext compiling = isolatedContext != null ? isolatedContext : context;
+        compiling.makeCurrent();
         try {
             if (parallel) CgGL.glMaxShaderCompilerThreads(0xFFFFFFFF);
             List<Job> inFlight = new ArrayList<>(), finished = new ArrayList<>();
@@ -215,7 +252,12 @@ public final class CgLinkWorker {
                 }
                 inFlightCount = inFlight.size();
                 if (!finished.isEmpty()) {
+                    if (isolatedContext != null) {
+                        context.makeCurrent();
+                        for (int i = 0; i < finished.size(); i++) landJob(finished.get(i));
+                    }
                     publish(finished);
+                    if (isolatedContext != null) isolatedContext.makeCurrent();
                     finished.clear();
                 } else if (!inFlight.isEmpty()) {
                     try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, POLL)) {
@@ -224,7 +266,15 @@ public final class CgLinkWorker {
                 }
             }
         } finally {
-            context.release();
+            compiling.release();
+        }
+    }
+
+    private static void landJob(Job job) {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, LAND)) {
+            job.land();
+        } catch (RuntimeException e) {
+            job.failure = "link failed to land: " + e;
         }
     }
 
@@ -237,7 +287,8 @@ public final class CgLinkWorker {
     }
 
     private static final int IDLE = CgTrace.waitName("shader.link.idle"), START = CgTrace.name("shader.link.start"),
-            FINISH = CgTrace.name("shader.link.finish"), POLL = CgTrace.waitName("shader.link.poll");
+            FINISH = CgTrace.name("shader.link.finish"), POLL = CgTrace.waitName("shader.link.poll"),
+            LAND = CgTrace.name("shader.link.land");
 
     private static boolean startJob(Job job) {
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, START)) {

@@ -149,6 +149,14 @@ public abstract class CgGLBackend {
     /** A context sharing this one's objects for a worker, or null where the backend has none. @see CgGL#createWorkerContext */
     public abstract CgGLWorkerContext createWorkerContext();
 
+    /**
+     * A context sharing nothing with this one, at its version and profile, or null where the backend makes none (the
+     * default: a device backend links on its own workers). @see CgGL#createIsolatedWorkerContext
+     */
+    public CgGLWorkerContext createIsolatedWorkerContext() {
+        return null;
+    }
+
     /** GL 4.1 or {@code ARB_get_program_binary}. @see CgGL#glGetProgramBinary */
     public abstract int glGetProgramBinary(int program, ByteBuffer binary);
     /** GL 4.1 or {@code ARB_get_program_binary}. @see CgGL#glProgramBinary */

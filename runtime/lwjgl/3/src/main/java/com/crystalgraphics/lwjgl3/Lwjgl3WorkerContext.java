@@ -3,6 +3,7 @@ package com.crystalgraphics.lwjgl3;
 import com.crystalgraphics.platform.gl.CgGLWorkerContext;
 import org.lwjgl.glfw.GLFW;
 import org.lwjgl.opengl.GL;
+import org.lwjgl.opengl.GLCapabilities;
 
 /**
  * A hidden 1x1 GLFW window whose context shares the render thread's objects: Dolphin's shared-context shader
@@ -19,6 +20,11 @@ final class Lwjgl3WorkerContext implements CgGLWorkerContext {
 
     /** One sharing the current context, at its version and profile; null where there is none or GLFW refuses. */
     static Lwjgl3WorkerContext create() {
+        return create(true);
+    }
+
+    /** As {@link #create()}; {@code share} false makes one that shares nothing, at the same version and profile. */
+    static Lwjgl3WorkerContext create(boolean share) {
         long main = GLFW.glfwGetCurrentContext();
         if (main == 0L) return null;
         // Hints are global: set from the main window's own, and put back to GLFW's defaults after.
@@ -32,7 +38,7 @@ final class Lwjgl3WorkerContext implements CgGLWorkerContext {
         GLFW.glfwWindowHint(GLFW.GLFW_OPENGL_FORWARD_COMPAT, GLFW.glfwGetWindowAttrib(main, GLFW.GLFW_OPENGL_FORWARD_COMPAT));
         long window;
         try {
-            window = GLFW.glfwCreateWindow(1, 1, "crystalgraphics-link", 0L, main);
+            window = GLFW.glfwCreateWindow(1, 1, "crystalgraphics-link", 0L, share ? main : 0L);
         } finally {
             GLFW.glfwDefaultWindowHints();
         }
@@ -42,8 +48,12 @@ final class Lwjgl3WorkerContext implements CgGLWorkerContext {
     @Override
     public void makeCurrent() {
         GLFW.glfwMakeContextCurrent(window);
-        GL.createCapabilities();
+        // Made once: a worker switching between two contexts would build them at every switch
+        if (capabilities == null) capabilities = GL.createCapabilities();
+        else GL.setCapabilities(capabilities);
     }
+
+    private GLCapabilities capabilities;
 
     @Override
     public void release() {

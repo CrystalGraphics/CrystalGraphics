@@ -107,6 +107,22 @@ public final class CgProgramBinaryCache {
         return true;
     }
 
+    /** Whether a binary is kept under {@code key}: a file check, no GL. */
+    public static boolean has(String key) {
+        Path at = dir;
+        return at != null && Files.isRegularFile(at.resolve(key));
+    }
+
+    /** Keeps {@code binary} (a program's, in {@code format}) under {@code key}, where it is not null; written on a worker. */
+    public static void store(@Nullable String key, int format, ByteBuffer binary) {
+        Path at = dir;
+        if (key == null || at == null) return;
+        byte[] bytes = new byte[4 + binary.remaining()];
+        ByteBuffer.wrap(bytes, 0, 4).putInt(format);
+        binary.duplicate().get(bytes, 4, bytes.length - 4);
+        CgJob.run(() -> write(at, key, bytes));
+    }
+
     /** Asks the driver to keep {@code program}'s binary: before its link, where {@code key} is not null. */
     public static void retrievable(int program, @Nullable String key) {
         if (key != null) CgGL.glProgramParameteri(program, CgGL.GL_PROGRAM_BINARY_RETRIEVABLE_HINT, CgGL.GL_TRUE);
