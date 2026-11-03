@@ -212,9 +212,10 @@ public final class CgRenderDemo {
     private CgHostFrame captured;
     private final Runnable capture = () -> capture(captured.mainFramebuffer(), captured.width(), captured.height());
 
-    // The HUD: HUDRenderer's lines and look, 14 px where the window's shorter side is 600 pixels, in proportion above.
+    // The HUD: HUDRenderer's lines and look, 14 px where the window's shorter side is 600 pixels, in proportion up to
+    // 1080, the harness's window, and held there: a 1440p game draws it at the harness's size.
     private static final int HUD_COLOR = 0xFFFF0000, HUD_OUTLINE = 0xFF000000, HUD_PX = 14;
-    private static final float HUD_SIDE = 600f, HUD_OUTLINE_EM = 0f;
+    private static final float HUD_SIDE = 600f, HUD_MAX_SIDE = 1080f, HUD_OUTLINE_EM = 0f;
     private static final long SAMPLE_WINDOW_NANOS = 500_000_000L;
     /** The demo's keys, then the scenes' own. */
     private static final int[] KEYS = keys(new int[]{CgKeyCodes.KEY_H, CgKeyCodes.KEY_N, CgKeyCodes.KEY_C,
@@ -885,7 +886,7 @@ public final class CgRenderDemo {
             hudDirty = true;
         }
         try {
-            int px = Math.round(HUD_PX * Math.max(1f, hudSide / HUD_SIDE));
+            int px = Math.round(HUD_PX * Math.max(1f, Math.min(hudSide, HUD_MAX_SIDE) / HUD_SIDE));
             if (px != hudPx) {
                 // The engine's default font, as the harness HUD: shared, so never disposed
                 hudFont = CgDefaultFont.regular(px);
