@@ -78,6 +78,10 @@ Textures, meshes and sounds are not pipelines: read them ahead with `CgPreload`
   size, multi-draw), and every variant of a folder is thousands of programs.
 - **A collector registered in post-init is late on a client**: post-init runs after the graphics start, so it builds
   over frames and its draws are held meanwhile.
+- **Collecting a shader parses it, on the render thread.** For a collector naming many `.shader` files, parse them on a
+  worker from the graphics start, and the collect finds them parsed:
+  `CgPipelinePrecache.parseAhead("mymod:shaders/a.shader", ...)` from `onContextInit` (CrystalGUI's took 93 ms of a
+  loading frame without it). A kernel's sources the same way: `CgKernel.ahead(MyOps::precache)` on a worker.
 - **Never list keyword combinations by hand.** A keyword a renderer switches goes in the shader's
   `#pragma cg_permutation`, and a combination outside it compiles at its first draw. A shader with a domain that still
   misses is logged, whatever `logMisses` says.

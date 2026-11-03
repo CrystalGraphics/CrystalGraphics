@@ -298,6 +298,14 @@ public final class CgShaderProgram {
 
     /** {@link #submitLink} for a compute program: one compute shader, linked alone. */
     public void submitComputeLink(String computeSource) {
+        submitComputeLink(computeSource, null);
+    }
+
+    /**
+     * {@link #submitComputeLink(String)} with the source as the driver gets it made already ({@link #forDriver}), on a
+     * worker: stripping a large kernel took 30-40 ms of the render thread. Null strips it here.
+     */
+    public void submitComputeLink(String computeSource, @Nullable String driverSource) {
         finishPendingQuietly();
         String key = CgProgramBinaryCache.key(computeSource);
         if (onWorker(new WorkerLink(null, null, computeSource, null, key))) return;
@@ -305,12 +313,20 @@ public final class CgShaderProgram {
         if (key != null && CgProgramBinaryCache.load(programId, key)) return;
         pendingKey = key;
         pendingCompute = CgGL.glCreateShader(CgGL.GL_COMPUTE_SHADER);
-        CgGL.glShaderSource(pendingCompute, CgGlslStrip.forDriver(computeSource));
+        CgGL.glShaderSource(pendingCompute, driverSource != null ? driverSource : CgGlslStrip.forDriver(computeSource));
         CgGL.glCompileShader(pendingCompute);
         CgGL.glAttachShader(programId, pendingCompute);
         CgProgramBinaryCache.retrievable(programId, key);
         CgGL.glLinkProgram(programId);
         countBlocking();
+    }
+
+    /**
+     * {@code source} as the driver is handed it: comments, decided branches and unreached code stripped. CPU only, any
+     * thread: what a worker making a kernel's sources ahead runs, for {@link #submitComputeLink(String, String)}.
+     */
+    public static String forDriver(String source) {
+        return CgGlslStrip.forDriver(source);
     }
 
     private static void countBlocking() {

@@ -48,6 +48,9 @@ import org.joml.Vector3f;
 import org.joml.Vector4f;
 
 import javax.annotation.Nullable;
+
+import com.crystalgraphics.job.CgJob;
+import com.crystalgraphics.job.CgJobLane;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Arrays;
@@ -407,6 +410,8 @@ public final class CgWorldLights {
     private CgKernel fill, scatterKernel;
     /** Whether {@link #warm} has built what the first light records. */
     private boolean warmed;
+    /** Its kernels parsed, emitted and stripped on a worker, which {@link #warm} waits for: 85-115 ms on the render thread. */
+    @Nullable private CgJob<Void> parse;
     /** The air lit, this firing's and the last's, swapped each firing: each froxel's light scattered toward the eye. */
     private final CgGraphTexture[] air = new CgGraphTexture[2];
     private int airNewest;
@@ -1049,13 +1054,19 @@ public final class CgWorldLights {
         cell = kernels.kernel("Cell");
         countCells = kernels.kernel("Count");
         writeCells = kernels.kernel("Write");
-        view.precache();
-        if (coarse.runs()) {
-            coarse.precache();
-            cell.precache();
+        precacheBin();
+    }
+
+    /** Every light-grid kernel a bin dispatches; inside {@link CgKernel#ahead}, their sources on a worker. */
+    private static void precacheBin() {
+        CgCompute kernels = CgCompute.load(KERNELS);
+        kernels.kernel("View").precache();
+        if (kernels.kernel("Coarse").runs()) {
+            kernels.kernel("Coarse").precache();
+            kernels.kernel("Cell").precache();
         } else {
-            countCells.precache();
-            writeCells.precache();
+            kernels.kernel("Count").precache();
+            kernels.kernel("Write").precache();
             CgGpuOps.precacheScan(CgGpuOps.Scan.EXCLUSIVE, CgGpuOps.Fold.SUM, CgGpuOps.Element.UINT);
         }
     }
@@ -1574,6 +1585,14 @@ public final class CgWorldLights {
      */
     private void warm() {
         if (warmed) return;
+        if (parse == null) {
+            // Parsed, emitted and stripped there, so the render thread's precache below only submits
+            parse = CgJob.lane(CgJobLane.BACKGROUND).named("light kernels").run(() -> CgKernel.ahead(() -> {
+                precacheBin();
+                CgCompute.load(VOLUME_KERNELS).kernel("Fill").precache();
+            }));
+        }
+        if (!parse.isDone()) return;
         allocateList();
         binKernels();
         volumeKernel();

@@ -140,7 +140,7 @@ public final class CgKernelProgram {
     public static Pending submit(Sources made, CgKernelDecl kernel, Set<String> keywords) {
         CgShaderProgram program = CgShaderProgram.create();
         try (CgShaderProgram.Labelled named = CgShaderProgram.labelled(made.source().path() + " " + kernel.name() + keywords)) {
-            program.submitComputeLink(made.expanded());
+            program.submitComputeLink(made.expanded(), made.driver());
         }
         return new Pending(made.source(), kernel, keywords, made.glsl(), made.expanded(), program, made.target().checked());
     }
@@ -149,11 +149,11 @@ public final class CgKernelProgram {
      * A kernel's GLSL for a target, emitted and with its includes expanded: what {@link #submit} hands the driver. CPU
      * only, so a worker makes it ahead of the frame that submits.
      */
-    public record Sources(CgComputeSource source, CgKernelTarget target, String glsl, String expanded) {
+    public record Sources(CgComputeSource source, CgKernelTarget target, String glsl, String expanded, String driver) {
         public static Sources of(CgComputeSource source, CgKernelDecl kernel, Set<String> keywords, CgKernelTarget target) {
             String glsl = CgKernelEmitter.emit(source, kernel, keywords, target);
             String expanded = CgGL.checkSource(new CgShaderPreprocessor().process(glsl, source.path())).toString();
-            return new Sources(source, target, glsl, expanded);
+            return new Sources(source, target, glsl, expanded, CgShaderProgram.forDriver(expanded));
         }
     }
 
