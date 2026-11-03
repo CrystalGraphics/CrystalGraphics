@@ -30,7 +30,8 @@ import com.crystalgraphics.render.world.CgGradeLayers;
  * Grades the world's pixels inside a shape: Unreal 5.1's {@code AColorCorrectRegion}. Its shape's alpha at each pixel's
  * world point mixes the HDR scene toward the scene graded in ACEScg (saturation, contrast, gamma, gain and offset, for
  * the whole and per shadows, midtones and highlights), before bloom and every look, as
- * {@code FColorCorrectRegionsSceneViewExtension::PrePostProcessPass_RenderThread} draws it.
+ * {@code FColorCorrectRegionsSceneViewExtension::PrePostProcessPass_RenderThread} draws it. So an effect in separate
+ * translucency, laid over the scene after it, is never graded.
  *
  * <pre>{@code
  * CgColourRegion flash = new CgColourRegion().shape(CgColourRegion.Shape.SPHERE)
@@ -93,7 +94,7 @@ public final class CgColourRegion implements CgPostEffect {
     private final Vector3f scale = new Vector3f(1f);
 
     private final CgMaterial material = CgMaterial.newInstance(SHADER);
-    private final CgPostMaterial draw = CgPostMaterial.of(material, CgPostPoint.AFTER_WORLD, 0);
+    private final CgPostMaterial draw = CgPostMaterial.of(material, CgPostPoint.BEFORE_SEPARATE_TRANSLUCENCY, 0);
     private final Matrix3f toLocal = new Matrix3f();
     private final float[] rows = new float[12], half = new float[3];
     private final Consumer<CgShaderBindings> write = this::write;
@@ -225,7 +226,7 @@ public final class CgColourRegion implements CgPostEffect {
 
     @Override
     public CgPostPoint point() {
-        return CgPostPoint.AFTER_WORLD;
+        return CgPostPoint.BEFORE_SEPARATE_TRANSLUCENCY;
     }
 
     @Override

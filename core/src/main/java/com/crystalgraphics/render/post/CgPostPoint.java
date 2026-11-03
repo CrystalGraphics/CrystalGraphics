@@ -18,6 +18,12 @@ public enum CgPostPoint {
      * records with {@link #AFTER_WORLD}.
      */
     BEFORE_TRANSLUCENCY,
+    /**
+     * Onto the scene before separate translucency is laid over it (Unreal's {@code PrePostProcessPass}, where its colour
+     * correct regions grade): what draws here never touches an effect whose material says {@code separate_translucency}.
+     * Without the HDR scene that translucency is in the scene already.
+     */
+    BEFORE_SEPARATE_TRANSLUCENCY,
     /** After the world, before anything of the stack's: a pass that reads the scene (its colour or depth). */
     AFTER_WORLD,
     /** Effects that make the composite's inputs: bloom's chain, a flash's level. */

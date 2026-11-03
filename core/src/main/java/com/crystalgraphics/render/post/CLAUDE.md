@@ -10,6 +10,8 @@ and Godot's tonemap pass compose bloom.
 ```
 CgWorldRenderer (ORDER 1000)  draws the scene, then the emission target ──► frame.resources(): EMISSION
 CgPostStack     (ORDER 2000)
+  BEFORE_SEPARATE_TRANSLUCENCY  colour regions: the scene before separate translucency
+  translucency      CgTranslucencyComposition: CgSeparateTranslucency over the scene and its graded layers
   AFTER_WORLD       effects that read the scene
   BEFORE_COMPOSITE  effects that make the composite's inputs: bloom's chain
   composite         one full-screen pass: every active CgCompositeFeature

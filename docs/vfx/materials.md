@@ -58,7 +58,9 @@ CgMaterialDefinition slow = CgMaterialDefinitions.derive(sparks, Map.of("values"
   ```
 - `separate_translucency: true` (Unreal's `bEnableSeparateTranslucency`, `.separateTranslucency()`) draws a translucent
   material after every other translucent draw, unbent by their distortion and still tested against the scene's depth:
-  it sorts in `CgRenderQueue.AFTER_DISTORTION` and up, in `CgSortLayer.SEPARATE_TRANSLUCENCY` or a later layer.
+  it sorts in `CgRenderQueue.AFTER_DISTORTION` and up, in `CgSortLayer.SEPARATE_TRANSLUCENCY` or a later layer. Under
+  the HDR scene it draws into a target of its own, laid over the scene after the colour regions, as Unreal composites
+  it after its `PrePostProcessPass`: a `colour_region` never grades it. A blend that multiplies stays in the scene.
 
 ## A particle's material: the vertex factory
 

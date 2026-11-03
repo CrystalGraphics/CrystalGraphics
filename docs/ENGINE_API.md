@@ -276,8 +276,9 @@ events and modules: [`VFX.md`](VFX.md).
 ### The post stack — what runs after the world
 
 `CgPostStack` (`render/post`, its own guide) records on `WORLD_TRANSPARENT` after the world renderer: every active
-`CgPostEffect` at its `CgPostPoint` (`AFTER_WORLD`, `BEFORE_COMPOSITE`, `AFTER_COMPOSITE`), and between the last two
-one composite pass laying the firing's looks over the target. Bloom is its built-in effect.
+`CgPostEffect` at its `CgPostPoint` (`BEFORE_SEPARATE_TRANSLUCENCY`, `AFTER_WORLD`, `BEFORE_COMPOSITE`,
+`AFTER_COMPOSITE`), separate translucency laid over the scene after the first, and between the last two one composite
+pass laying the firing's looks over the target. Bloom is its built-in effect.
 
 ```java
 CgPostStack.get().bloom().intensity(1.5f);                          // 1 by default; 0 for none

@@ -972,7 +972,8 @@ CgMaterial ink = CgMaterial.newInstance("mymod:shaders/fx/ink.shader",
   `"Prepass"` shader or an opaque-queue shader with no blend of its own.
 - The queue stays the shader's, except under `separateTranslucency()` (Unreal's separate translucency): a translucent
   draw of it is lifted to `AFTER_DISTORTION` and the `SEPARATE_TRANSLUCENCY` sort layer, so it draws after every other
-  translucent draw, still depth-tested. It compiles nothing.
+  translucent draw, still depth-tested. It compiles nothing. Under the HDR scene it draws apart, into
+  `CgSeparateTranslucency`, which the post stack lays over the scene after `BEFORE_SEPARATE_TRANSLUCENCY`.
 - In a look: a material asset's `state` ([`vfx/effects.md`](vfx/effects.md)).
 
 ### GLSL Standard Library

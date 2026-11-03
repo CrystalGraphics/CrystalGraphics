@@ -15,7 +15,7 @@
 | `CgMeshDistanceFields` | Unreal's mesh distance fields: one per mesh and submesh, built off the render thread on first ask (16 voxels a block, at most 48 an axis), in one R32F atlas 1024 floats a row. Static meshes only, as Unreal's: a skinned mesh has none. `CgWorldLights.caster` takes each opaque draw as a caster of its field, so our meshes shadow off screen too. `CgMeshDistanceFieldsTest` holds the field |
 | `CgWorldEntityBoxes` | The living entities nearest the camera, at most 64 within 64 blocks, gathered from `CgEntityQuery` at most once a frame a camera: the lights' shadow rays take each as a capsule, particle steps collide with them (`ENTITIES`). Items and projectiles are left out |
 | `CgSortKey` | Filament's key layout with a log-quantised distance: slot, sort layer, then opaque order, material, distance, mesh, or transparent group distance, solid bit, order, distance. No far plane |
-| `CgSortLayer` | Named sort layers, Unity's: a later one draws after an earlier whatever the distance. Built in `BACKGROUND`, `DEFAULT`, `EFFECTS`, `SEPARATE_TRANSLUCENCY` (where `add` lifts a translucent draw whose material state says `separateTranslucency`, its queue to `AFTER_DISTORTION` at least), `OVERLAY`; a mod defines its own `before`/`after` one in a static field; at most 128 |
+| `CgSortLayer` | Named sort layers, Unity's: a later one draws after an earlier whatever the distance. Built in `BACKGROUND`, `DEFAULT`, `EFFECTS`, `SEPARATE_TRANSLUCENCY` (where `add` lifts a translucent draw whose material state says `separateTranslucency`, its queue to `AFTER_DISTORTION` at least; under the HDR scene drawn apart, § *Separate translucency*), `OVERLAY`; a mod defines its own `before`/`after` one in a static field; at most 128 |
 
 ## Rules
 
@@ -165,6 +165,14 @@
   alpha it writes, tested against the depth it wrote (an effect material's vertex stage is `invariant gl_Position`); the
   layers record in every transparent firing under the scene, transparent draws or none. At most `CgGradeLayers.MAX`
   looks a frame, each keeping its slot while it draws; published as `CgGradeLayers.KEY`, which the post stack blooms
-  and tones by each look alone. A host lending no depth to share gets none, warned once.
+  and tones by each look alone. A host lending no depth to share gets none, warned once. A graded separate draw goes
+  into its look's `cg_grade_apart<k>` instead, laid over the layer with the scene's separate translucency.
+- **Separate translucency** (`recordSeparate`, after the after-distortion pass, under the HDR scene where the host lends
+  its depth): a draw sorted after distortion whose material state says `separateTranslucency` takes phase `APART`. It
+  is left out of the passes and the distortion and drawn into `cg_separate_translucency`, an RGBA16F beside the depth,
+  cleared, through `layered(pipeline)`: rgb the light it adds, a its coverage. Published as `CgSeparateTranslucency.KEY`;
+  the post stack lays it over the scene after its colour regions (Unreal's `FTranslucencyComposition` after
+  `PrePostProcessPass`). A blend that multiplies has no layer form, so it stays in the scene, warned once. GPU zone
+  `world.separateTranslucency`.
 - **The emissive state is ONE ONE, never `CgBlendState.ADDITIVE`** (SRC_ALPHA ONE): emission is written with an
   alpha of 0, which ADDITIVE multiplies away.

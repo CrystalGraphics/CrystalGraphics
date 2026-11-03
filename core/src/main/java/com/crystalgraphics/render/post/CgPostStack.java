@@ -70,6 +70,7 @@ public final class CgPostStack {
     private final CgBloom bloom = new CgBloom();
     private final CgPostLooks looks = new CgPostLooks();
     private final CgPostCrossfade crossfade = new CgPostCrossfade();
+    private final CgTranslucencyComposition translucency = new CgTranslucencyComposition();
     /** {@code -Dcrystalgraphics.post.debug}'s view; null when unset. */
     private final CgPostDebug debug = CgPostDebug.fromProperty();
     /** Every effect, by point then order then when it was added: replaced whole, so recording reads a snapshot. */
@@ -115,7 +116,7 @@ public final class CgPostStack {
             "crystalgraphics:shaders/post/bloom/prefilter.shader", "crystalgraphics:shaders/post/bloom/excess.shader",
             "crystalgraphics:shaders/post/bloom/gaussian.shader",
             "crystalgraphics:shaders/world_scene_in.shader", "crystalgraphics:shaders/world_scene_out.shader",
-            "crystalgraphics:shaders/post/distortion_bend.shader",
+            "crystalgraphics:shaders/post/distortion_bend.shader", CgTranslucencyComposition.SHADER,
             "crystalgraphics:shaders/post/composite.shader", "crystalgraphics:shaders/post/composite_copy.shader"};
 
     /**
@@ -303,6 +304,8 @@ public final class CgPostStack {
                 i = recordAt(CgPostPoint.BEFORE_TRANSLUCENCY, current, 0);
             }
             recordedBefore = false;
+            i = recordAt(CgPostPoint.BEFORE_SEPARATE_TRANSLUCENCY, current, i);
+            translucency.record(context);
             i = recordAt(CgPostPoint.AFTER_WORLD, current, i);
             i = recordAt(CgPostPoint.BEFORE_COMPOSITE, current, i);
             CgGraphTexture scene = stage.resources().get(CgFrameKeys.SCENE);
