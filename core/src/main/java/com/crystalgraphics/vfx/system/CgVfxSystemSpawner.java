@@ -25,6 +25,7 @@ import com.crystalgraphics.sequence.spawn.CgSequenceSystem;
 import com.crystalgraphics.sequence.definition.CgSequenceTrack;
 import com.crystalgraphics.sequence.CgSequencer;
 import com.crystalgraphics.vfx.CgVfx;
+import com.crystalgraphics.vfx.CgVfxEffect;
 import com.crystalgraphics.vfx.CgVfxSystem;
 import com.crystalgraphics.vfx.look.CgVfxParam;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
@@ -54,7 +55,9 @@ import com.crystalgraphics.world.CgAttachment;
  *   <li>Its instance follows its place where the spawnable follows ({@code at}'s {@code follow}) or a {@code transform}
  *       track keys it, else is placed and turned once as it activates; it takes its place's scale either way.</li>
  *   <li>A desired age further than a sequence tick from the instance's own plays it again from that age
- *       ({@code startAt}): Niagara's reset and seek in {@code DesiredAge} mode.</li>
+ *       ({@code startAt}): Niagara's reset and seek in {@code DesiredAge} mode. Every instance a spawnable plays after
+ *       its first keeps that one's seed, where Niagara's reset rolls a new one, so a step back shows the frame play
+ *       showed; a new play of the sequence draws new seeds.</li>
  *   <li>A track naming a {@code handle} drives that emitter alone: it waits, stopped, until its track activates it,
  *       and starts the system if it is not playing.</li>
  *   <li>Its system's asset loads at its first activation if it has not: load the sequence's bundle ahead.</li>
@@ -157,6 +160,8 @@ public final class CgVfxSystemSpawner implements CgSequenceSpawner {
         private final double[] bound = new double[3];
         @Nullable
         private CgVfxSystemInstance<?> instance;
+        /** The seed its first instance drew, which every instance after it in this play takes; NaN until it plays. */
+        private float seed = Float.NaN;
 
         Spawned(CgVfxSystem vfx, CgAssetRef<CgVfxSystemDefinition> ref, CgAttachment at, boolean follow, float seekDelta,
                 CgVfxSortGroup group, Set<String> held, CgVfxParam.Vector[] params, CgAttachment[] points) {
@@ -183,7 +188,13 @@ public final class CgVfxSystemSpawner implements CgSequenceSpawner {
                 point[0] = point[1] = point[2] = 0;
                 turn.identity();
             }
-            CgVfxSystemInstance<?> made = new CgVfxSystemInstance<>(ref, point[0], point[1], point[2]);
+            // Played again (a seek, a reset) it keeps the seed it first drew, so a step back shows the frame play
+            // showed: a departure from Niagara, whose reset rolls a new one unless the system is deterministic
+            double x = point[0], y = point[1], z = point[2];
+            CgVfxSystemInstance<?> made = !Float.isNaN(seed)
+                    ? CgVfxEffect.seeded(seed, () -> new CgVfxSystemInstance<>(ref, x, y, z))
+                    : new CgVfxSystemInstance<>(ref, x, y, z);
+            if (Float.isNaN(seed)) seed = made.seed();
             if (follow) made.follow(at);
             else made.orient(turn);
             Vector3f s = at.scale(null, scale);

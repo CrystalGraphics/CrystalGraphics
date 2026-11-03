@@ -89,6 +89,11 @@ public final class CgSequenceSystemEvaluator implements CgSequenceEvaluator {
                     keys.animated()[s.index()] = true;
                     keys.wasActive()[s.index()] = system.active();
                 }
+                if (player.sought() && keys.emitter() == null) {
+                    soughtKeys(system, channel, now, player);
+                    keys.applied()[s.index()] = lastKeyBefore(channel, now + 1);
+                    continue;
+                }
                 if (backwards) {
                     system.deactivate();
                     continue;
@@ -121,6 +126,25 @@ public final class CgSequenceSystemEvaluator implements CgSequenceEvaluator {
                 continue;
             }
             spawnSection(system, s, range, now, player, keyFrom, keyEnd);
+        }
+    }
+
+    /**
+     * A seek landing in a keyed section: the system as play left it there. After an activate or a trigger it plays from
+     * its age since that key, as a desired-age spawn section seeks; after a deactivate, or before any key, it stops.
+     * A departure from Unreal's particle track, which only deactivates when play is not going forwards: a scrub back
+     * here lands on the frame play showed, the system keeping its seed.
+     */
+    private static void soughtKeys(CgSequenceSystem system, CgSequenceChannel channel, int now, CgSequencePlayer player) {
+        int last = lastKeyBefore(channel, now + 1);
+        CgSequenceChannel.Particle op = last < 0 ? null : CgSequenceChannel.Particle.values()[channel.intValue(last)];
+        if (op == CgSequenceChannel.Particle.ACTIVATE || op == CgSequenceChannel.Particle.TRIGGER) {
+            system.activate(false);
+            system.age((float) player.definition().seconds(now - channel.tick(last)));
+        } else if (op == CgSequenceChannel.Particle.KILL) {
+            system.kill();
+        } else if (system.active()) {
+            system.deactivate();
         }
     }
 

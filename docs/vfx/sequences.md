@@ -535,6 +535,16 @@ CgSequencePlayer late = sequencer.play(definition, roles).seek(serverSeconds);  
 - `nextSection` and a jump are this play's alone; the file keeps its links.
 - A section's `next` is followed forwards only; played backwards, play crosses sections as the timeline lays them.
 - One emitter of a system (`handle`) a seek lands inside starts from its beginning, not its age.
+- **A seek scrubs a keyed system too**, backwards as well as forwards: after an `activate` or a `trigger` key it plays
+  from its age since that key, fast-forwarded in the same frame, even with the world paused; before any key, or after a
+  `deactivate`, it stops. Unreal's particle track only deactivates when play goes back; ours lands on the frame play
+  showed.
+- **A system a seek plays again keeps its seed**, the one its first instance in that play drew, so stepping back and
+  forth shows the same particles. A new play of the sequence draws new seeds.
+
+```java
+player.seek(player.seconds() - 1 / 60.0);   // one frame back, drawn this frame, the same sparks as when it played
+```
 - **A jump predicted for an input** goes back where it jumped from if its key is refused:
   `player.jumpToSection("fire", key)`. Over the network, `CgSequenceNet.jump` also asks the server
   ([networking](networking.md#a-sequence-over-the-network)).

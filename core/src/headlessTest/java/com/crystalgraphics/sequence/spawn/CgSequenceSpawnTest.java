@@ -70,6 +70,8 @@ public class CgSequenceSpawnTest {
     /** A stand-in system recording what its track asks of it. */
     private static final class System implements CgSequenceSystem {
         final List<String> calls = new ArrayList<>();
+        /** Each desired age a track asked for, in seconds. */
+        final List<Float> ages = new ArrayList<>();
         final CgAttachment at;
         boolean active, destroyed, graceful;
 
@@ -101,6 +103,7 @@ public class CgSequenceSpawnTest {
         }
 
         @Override public void age(float seconds) {
+            ages.add(seconds);
         }
 
         @Override public void destroy(boolean graceful) {
@@ -179,6 +182,49 @@ public class CgSequenceSpawnTest {
         sequencer.evaluate(0.05f);
         assertEquals(1, made.size());
         assertTrue("its trigger at tick 0 fires the frame it is made", made.get(0).active);
+    }
+
+    private static final String TRIGGERED = "_v: 1\ntick_resolution: 20\ndisplay_rate: 20\nrange: [2, 42]\n"
+            + "spawnables:\n  - { id: s1, name: spark, system: mymod:spark }\n"
+            + "tracks:\n  - id: t1\n    kind: system\n    binding: { spawnable: s1 }\n    sections:\n"
+            + "      - { id: x1, range: [2, 42], keys: [[4, trigger]], completion: keep_state }\n";
+
+    /**
+     * A seek, forwards or back, plays a keyed section's system from its age since the key it passed, as a desired-age
+     * spawn section seeks: a step back lands on the frame play showed. A seek before the key stops it; a jump, as
+     * Unreal's particle track evaluates one, fires nothing it skips and asks no age.
+     */
+    @Test
+    public void aSeekPlaysAKeyedSystemFromItsAgeSinceTheKeyAJumpAsksNone() {
+        CgSequenceDefinition d = CgSequenceDefinition.compile(CgAssetData.of("mymod:hit", CgSequenceKinds.SEQUENCE,
+                (Map<?, ?>) CgAssetYaml.read(TRIGGERED), null));
+        CgSequencer sequencer = sequencer(false);
+        CgSequencePlayer p = sequencer.play(d, Map.of());
+        for (int i = 0; i < 10; i++) sequencer.evaluate(0.05f);          // tick 12: triggered at 4, playing on
+        System spark = made.get(0);
+        assertTrue(spark.active);
+        assertTrue("forward play asks no age", spark.ages.isEmpty());
+
+        p.seek(0.3);                                                     // back to tick 8: 4 ticks past the key
+        sequencer.evaluate(0f);
+        assertEquals(List.of(0.2f), spark.ages);
+        assertTrue(spark.active);
+
+        p.seek(0.5);                                                     // forward to tick 12
+        sequencer.evaluate(0f);
+        assertEquals(0.4f, spark.ages.get(1), 1e-6f);
+
+        p.seek(0.05);                                                    // tick 3, before the key: stopped
+        sequencer.evaluate(0f);
+        assertEquals(2, spark.ages.size());
+        assertFalse(spark.active);
+
+        p.seek(0.5);
+        sequencer.evaluate(0f);
+        p.jumpTo(0.3);                                                   // a jump back: no age, its state kept
+        sequencer.evaluate(0f);
+        assertEquals(3, spark.ages.size());
+        assertTrue(spark.active);
     }
 
     /** A stopped play's systems end their own way, as an interrupted montage's; a killed one's at once. */

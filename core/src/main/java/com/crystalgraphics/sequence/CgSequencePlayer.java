@@ -326,6 +326,14 @@ public final class CgSequencePlayer {
         return this;
     }
 
+    /**
+     * Whether this evaluation lands a {@link #seek}, a scrub or a late joiner, rather than a {@link #jumpTo}: what a
+     * track evaluator asks to start what lasts at its age.
+     */
+    public boolean sought() {
+        return sought;
+    }
+
     /** Whether it has reached its range's end and holds there. */
     public boolean finished() {
         return finished;
