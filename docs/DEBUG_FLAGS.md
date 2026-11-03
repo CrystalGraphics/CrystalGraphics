@@ -333,6 +333,7 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 
 | Variable | Takes | Default | |
 |---|---|---|---|
+| `crystalgraphics.uploads.ahead` | 0 to 2147483647 | `33554432` | Bytes of upload blocks made at the first frame, before a load needs them. Read at launch. |
 | `crystalgraphics.uploads.block` | 65536 to 1073741824 | `8388608` | Bytes in an upload block; a lease over half a block gets one of its own. Read at launch. |
 | `crystalgraphics.uploads.cap` | 0 to 2147483647 | `134217728` | Bytes the unpack pool grows to: past it a lease finding no room takes direct memory, and direct blocks are not pooled. Read at launch. |
 | `crystalgraphics.uploads.tier` | unpack, direct | `unpack` | unpack: leases from a persistently mapped unpack buffer where the context has persistent mapping. direct: from direct memory, the driver copying at the call, as a context without it does (macOS 4.1, 3.3). Read at launch. |

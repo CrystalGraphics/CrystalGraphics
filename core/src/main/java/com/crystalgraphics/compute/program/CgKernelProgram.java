@@ -71,7 +71,11 @@ public final class CgKernelProgram {
     private final IntBuffer dispatch = CgBufferUtils.createIntBuffer(6);
     private final CgMaterialProperties properties;
     private final List<CgMaterialProperty> samplers = new ArrayList<>();
-    private final CgUniformBuffer propertyBlock;
+    /**
+     * Its own values' block, made at the first direct dispatch: a graph binds every block itself, and making one maps new
+     * storage, which waits for a threaded driver's queue (734 ms behind the loading screen, Forge 1.20.1).
+     */
+    private CgUniformBuffer propertyBlock;
     private CgUniformBuffer frameBlock;
     private float[] frameValues;
 
@@ -84,10 +88,6 @@ public final class CgKernelProgram {
         this.program = program;
         this.properties = new CgMaterialProperties(copies(source.properties()));
         for (CgMaterialProperty p : properties.all()) if (p.getType().isSampler()) samplers.add(p);
-        this.propertyBlock = properties.hasUboProps()
-                ? new CgUniformBuffer(CgKernelEmitter.PROPERTY_BLOCK, properties.buildUboFormat(),
-                        CgBindingPoints.MATERIAL_PROPERTIES_UBO, CgBufferLifetime.FRAME)
-                : null;
         this.counterPoints = new int[source.buffers().size()];
         this.counterWords = new int[source.buffers().size()];
         int next = source.buffers().size();
@@ -390,6 +390,10 @@ public final class CgKernelProgram {
     }
 
     private void prepare() {
+        if (propertyBlock == null && properties.hasUboProps()) {
+            propertyBlock = new CgUniformBuffer(CgKernelEmitter.PROPERTY_BLOCK, properties.buildUboFormat(),
+                    CgBindingPoints.MATERIAL_PROPERTIES_UBO, CgBufferLifetime.FRAME);
+        }
         if (propertyBlock != null) {
             properties.writeUboProps(propertyBlock.writer());
             propertyBlock.endRecord();

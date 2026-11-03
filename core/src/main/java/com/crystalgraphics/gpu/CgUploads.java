@@ -51,6 +51,12 @@ public final class CgUploads {
     private static final long CAP = CgVar.integer("crystalgraphics.uploads.cap", 128 << 20, 0, Integer.MAX_VALUE,
             CgVar.DEV | CgVar.RESTART, "Bytes the unpack pool grows to: past it a lease finding no room takes direct memory,"
                     + " and direct blocks are not pooled.").get();
+    /**
+     * What the first tick makes, ahead of a load's uploads: each new block's mapping waits for a threaded driver's queue,
+     * deepest behind the loading screen's compiles (two blocks grown mid-load held it 478 and 392 ms, Forge 1.20.1).
+     */
+    private static final long AHEAD = CgVar.integer("crystalgraphics.uploads.ahead", 32 << 20, 0, Integer.MAX_VALUE,
+            CgVar.DEV | CgVar.RESTART, "Bytes of upload blocks made at the first frame, before a load needs them.").get();
     private static final boolean FORCE_DIRECT = CgVar.choice("crystalgraphics.uploads.tier", Tier.UNPACK,
             CgVar.DEV | CgVar.RESTART, "unpack: leases from a persistently mapped unpack buffer where the context has"
                     + " persistent mapping. direct: from direct memory, the driver copying at the call, as a context without"
@@ -290,10 +296,10 @@ public final class CgUploads {
         return new Block(buffer, mapped.order(ByteOrder.nativeOrder()), capacity, generation);
     }
 
-    /** Blocks covering what missed, each as big as the largest miss; the first frame makes one. */
+    /** Blocks covering what missed, each as big as the largest miss; the first frame makes {@link #AHEAD}. */
     private static void grow() {
         int size = Math.max(BLOCK, missedLargest);
-        long want = Math.max(missedBytes, 1);
+        long want = Math.max(missedBytes, unpackBytes == 0 ? AHEAD : 1);
         while (want > 0) {
             Block b = create(true, size);
             if (b == null) break;
