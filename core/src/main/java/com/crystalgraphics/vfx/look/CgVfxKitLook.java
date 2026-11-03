@@ -14,15 +14,13 @@ import com.crystalgraphics.asset.kind.CgKitFiles;
 import com.crystalgraphics.asset.tree.CgAssetData;
 import com.crystalgraphics.object.validate.CgValidation;
 import com.crystalgraphics.object.value.CgUnits;
-import com.crystalgraphics.render.post.CgPostStack;
 import com.crystalgraphics.render.post.volume.CgPostBlock;
-import com.crystalgraphics.render.world.CgPipelinePrecache;
 import com.crystalgraphics.render.post.volume.CgPostSettings;
 
 /**
- * A kit's own look, its {@code look.yaml}: the post its effects play under (the game's tonemapper, bloom and grading),
- * the exposure of its own draws, and how far round each of its effects that post reaches. Read as the kit registers;
- * a system of the kit opens its volume where it plays, and takes its exposure ({@code CgVfxSystemInstance}).
+ * A kit's own look, its {@code look.yaml}: the exposure of its own draws, and the post its game grades them with (the
+ * game's tonemapper, bloom and grading). Read as the kit registers; a system of the kit takes its exposure
+ * ({@code CgVfxSystemInstance}).
  *
  * <pre>{@code
  * CgVfxKitLook look = CgVfxKitLook.of("spzero_kit");                  // null: the kit has no look of its own
@@ -30,8 +28,8 @@ import com.crystalgraphics.render.post.volume.CgPostSettings;
  * }</pre>
  *
  * <ul>
- *   <li>The host's world keeps the engine's default: only the volume's reach is under the game's post, and only the
- *       kit's own draws take its exposure.</li>
+ *   <li>Its post is read and validated but not yet applied: a screen-wide volume graded the host's world and every other
+ *       kit's effects with it, so the frame keeps the engine's look.</li>
  *   <li>A file that does not validate throws as the kit registers, naming the file.</li>
  * </ul>
  *
@@ -59,10 +57,7 @@ public record CgVfxKitLook(CgPostSettings settings, float exposure, float radius
             BY_KIT.remove(namespace);
             return;
         }
-        CgVfxKitLook look = read(file, units);
-        BY_KIT.put(namespace, look);
-        // Its composite look built with the kit, not on the frame its first effect opens the volume
-        CgPipelinePrecache.register(namespace + ":look", p -> CgPostStack.get().lookPasses(look.settings(), p));
+        BY_KIT.put(namespace, read(file, units));
     }
 
     /** {@code file}, validated against {@link CgKitFiles#LOOK}, its lengths from {@code units} into blocks. */
