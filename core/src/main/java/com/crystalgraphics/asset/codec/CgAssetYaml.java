@@ -67,10 +67,15 @@ public final class CgAssetYaml {
      */
     public static Object read(String text) {
         text = text.replace("\r\n", "\n");
+        // No '#', no comment: an imported kit's files have none, and placing them (with every key's line kept for it)
+        // was a quarter of a kit's compile
+        if (text.indexOf('#') < 0) {
+            Object root = YamlDocument.tree(text);
+            return root == null ? new LinkedHashMap<>() : root;
+        }
         YamlDocument doc = YamlDocument.parse(text);
         Object root = doc.root() == null ? new LinkedHashMap<>() : doc.root();
-        // No '#', no comment: an imported kit's files have none, and placing them was a quarter of a kit's compile
-        if (root instanceof Map && text.indexOf('#') >= 0) CgAssetComments.place(text, doc, map(root));
+        if (root instanceof Map) CgAssetComments.place(text, doc, map(root));
         return root;
     }
 

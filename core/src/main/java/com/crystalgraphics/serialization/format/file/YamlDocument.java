@@ -15,6 +15,7 @@ import org.yaml.snakeyaml.error.YAMLException;
 import org.yaml.snakeyaml.nodes.MappingNode;
 import org.yaml.snakeyaml.nodes.Node;
 import org.yaml.snakeyaml.nodes.NodeTuple;
+import org.yaml.snakeyaml.nodes.ScalarNode;
 import org.yaml.snakeyaml.nodes.SequenceNode;
 import org.yaml.snakeyaml.nodes.Tag;
 import org.yaml.snakeyaml.representer.Representer;
@@ -90,22 +91,41 @@ public final class YamlDocument {
      * @throws CgCodecException if it is not YAML
      */
     public static YamlDocument parse(String text) {
-        LoaderOptions options = new LoaderOptions();
-        // A kit's baked curves pass SnakeYAML's 3 MB default.
-        options.setCodePointLimit(Integer.MAX_VALUE);
-        Scalars scalars = new Scalars(options);
-        DumperOptions dump = new DumperOptions();
-        Yaml yaml = new Yaml(scalars, new Representer(dump), dump, options, new NoTimestamps());
-        Node node;
-        try {
-            node = yaml.compose(new StringReader(text));
-        } catch (YAMLException e) {
-            throw new CgCodecException("Not YAML: " + e.getMessage(), e);
-        }
+        Scalars scalars = scalars();
+        Node node = compose(scalars, text);
         List<Key> keys = new ArrayList<>();
         List<Element> elements = new ArrayList<>();
         Object root = node == null ? null : convert(scalars, node, Collections.emptyList(), keys, elements);
         return new YamlDocument(root, keys, elements);
+    }
+
+    /**
+     * {@code text}'s tree alone, with no lines: what a reader that places no comments needs, at a fraction of
+     * {@link #parse}'s allocation (no key, path or element record). Null for an empty document.
+     *
+     * @throws CgCodecException if it is not YAML
+     */
+    public static Object tree(String text) {
+        Scalars scalars = scalars();
+        Node node = compose(scalars, text);
+        return node == null ? null : convert(scalars, node, null, null, null);
+    }
+
+    private static Scalars scalars() {
+        LoaderOptions options = new LoaderOptions();
+        // A kit's baked curves pass SnakeYAML's 3 MB default.
+        options.setCodePointLimit(Integer.MAX_VALUE);
+        return new Scalars(options);
+    }
+
+    private static Node compose(Scalars scalars, String text) {
+        DumperOptions dump = new DumperOptions();
+        Yaml yaml = new Yaml(scalars, new Representer(dump), dump, scalars.options(), new NoTimestamps());
+        try {
+            return yaml.compose(new StringReader(text));
+        } catch (YAMLException e) {
+            throw new CgCodecException("Not YAML: " + e.getMessage(), e);
+        }
     }
 
     /** The tree: maps ({@link LinkedHashMap}), lists, strings, numbers, booleans and null. */
@@ -123,15 +143,19 @@ public final class YamlDocument {
         return elements;
     }
 
+    /** Lines are recorded when {@code keys} is not null; {@link #tree} passes null for all three. */
     private static Object convert(Scalars scalars, Node node, List<Object> path, List<Key> keys, List<Element> elements) {
         if (node instanceof MappingNode) {
-            Map<Object, Object> map = new LinkedHashMap<>();
             List<NodeTuple> tuples = ((MappingNode) node).getValue();
+            Map<Object, Object> map = new LinkedHashMap<>(Math.max(4, (int) (tuples.size() / 0.75f) + 1));
             for (int i = 0; i < tuples.size(); i++) {
                 NodeTuple t = tuples.get(i);
                 Object key = scalars.construct(t.getKeyNode());
-                List<Object> at = append(path, key);
-                keys.add(new Key(t.getKeyNode().getStartMark().getLine(), at, i == 0));
+                List<Object> at = null;
+                if (keys != null) {
+                    at = append(path, key);
+                    keys.add(new Key(t.getKeyNode().getStartMark().getLine(), at, i == 0));
+                }
                 map.put(key, convert(scalars, t.getValueNode(), at, keys, elements));
             }
             return map;
@@ -141,9 +165,9 @@ public final class YamlDocument {
             List<Object> list = new ArrayList<>(items.size());
             for (int i = 0; i < items.size(); i++) {
                 Node item = items.get(i);
-                List<Object> at = append(path, i);
+                List<Object> at = keys == null ? null : append(path, i);
                 Object value = convert(scalars, item, at, keys, elements);
-                if (value instanceof Map) {
+                if (keys != null && value instanceof Map) {
                     int start = item.getStartMark().getLine();
                     // A block map ends at the next token, often column 0 of the line after its last.
                     int end = item.getEndMark().getLine() - (item.getEndMark().getColumn() == 0 ? 1 : 0);
@@ -166,8 +190,15 @@ public final class YamlDocument {
 
     /** SafeConstructor's scalars, one node at a time. */
     private static final class Scalars extends SafeConstructor {
+        private final LoaderOptions options;
+
         Scalars(LoaderOptions options) {
             super(options);
+            this.options = options;
+        }
+
+        LoaderOptions options() {
+            return options;
         }
 
         /**
@@ -176,6 +207,8 @@ public final class YamlDocument {
          * quarter of a kit's compile.
          */
         Object construct(Node node) {
+            // A string is its text: compose resolved the tag already, so the dispatch is skipped for the commonest scalar
+            if (node instanceof ScalarNode s && Tag.STR.equals(s.getTag())) return s.getValue();
             return getConstructor(node).construct(node);
         }
     }
