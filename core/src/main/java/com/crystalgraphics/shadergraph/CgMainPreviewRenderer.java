@@ -118,6 +118,8 @@ public final class CgMainPreviewRenderer {
     /** The flat-white stand-in, built on first failure and kept. @see #drawFallback */
     @Nullable
     private CgMaterial fallback;
+    /** The compiles recorded for {@link #fallback}; it draws once one answers. */
+    private final CgRequests fallbackCompiles = new CgRequests();
     private float renderedYaw = Float.NaN;
     private float renderedPitch = Float.NaN;
     private float renderedZoom = Float.NaN;
@@ -332,6 +334,14 @@ public final class CgMainPreviewRenderer {
     private CgGraphTexture drawFallback(CgPreviewMesh mesh, float yaw, float pitch, float zoom, float aspect) {
         CgTrace.add(CgChannels.SHADERGRAPH, "mainPreview.fallback", 1);
         try {
+            // Compiled as the graph's own material is, without the frame waiting: until it answers, the last
+            // picture stays.
+            if (!fallbackCompiles.done()) {
+                if (!fallbackCompiles.failed()) {
+                    fallbackCompiles.add(recording.compile(fallbackMaterial().pipeline(CgInstanceKind.OBJECT)));
+                }
+                return currentTexture();
+            }
             // INSIDE the guard: creating the target reads the context's capabilities, and every failure route in
             // this class comes through here. This is already the failure path.
             drawInto(targets.acquire(key), fallbackMaterial(), mesh, yaw, pitch, zoom, aspect);
@@ -568,6 +578,7 @@ public final class CgMainPreviewRenderer {
         // Borrowed from CgMaterialRegistry, never owned here -- dropping the reference is the whole of it,
         // and deleting it would be a double free when the registry sweeps at context teardown.
         fallback = null;
+        fallbackCompiles.clear();
         deleted = true;
     }
 }
