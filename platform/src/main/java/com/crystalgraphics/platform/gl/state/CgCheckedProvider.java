@@ -8,6 +8,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import java.util.concurrent.Callable;
+import java.util.function.BooleanSupplier;
 
 /**
  * A provider that answers from the host's own GL state cache instead of {@code glGet}, so a scope opening at a host
@@ -119,7 +120,22 @@ public abstract class CgCheckedProvider extends CgGlGetProvider {
             return;
         }
         answer(slot, t);
-        if (checked[slot.ordinal()] < CHECKS) check(slot, t, -1);
+        if (checked[slot.ordinal()] < CHECKS && !deferChecks.getAsBoolean()) check(slot, t, -1);
+    }
+
+    private static volatile BooleanSupplier deferChecks = () -> false;
+
+    /**
+     * While {@code defer} answers true, reads are answered from the cache unchecked and the checks wait: a check's
+     * {@code glGet} waits behind every link a worker context has with the driver (NVIDIA, 100-250 ms on a cold
+     * start), and a start's first reads fall in its links. Render thread, once.
+     *
+     * <pre>{@code
+     * CgCheckedProvider.deferChecksWhile(CgLinkWorker::linking);
+     * }</pre>
+     */
+    public static void deferChecksWhile(BooleanSupplier defer) {
+        deferChecks = defer;
     }
 
     @Override
@@ -129,7 +145,7 @@ public abstract class CgCheckedProvider extends CgGlGetProvider {
             return super.readTextureUnits(t, units);
         }
         answerTextures(t, units);
-        if (checked[CgGlSlot.TEXTURES.ordinal()] < CHECKS) check(CgGlSlot.TEXTURES, t, units);
+        if (checked[CgGlSlot.TEXTURES.ordinal()] < CHECKS && !deferChecks.getAsBoolean()) check(CgGlSlot.TEXTURES, t, units);
         return units;
     }
 

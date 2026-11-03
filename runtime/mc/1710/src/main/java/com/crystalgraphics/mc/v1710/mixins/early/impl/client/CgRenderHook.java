@@ -9,7 +9,9 @@ import com.crystalgraphics.mc.v1710.platform.world.Textures1710;
 import com.crystalgraphics.mc.v1710.platform.world.WorldEvents1710;
 import com.crystalgraphics.render.stage.CgHostFrame;
 import com.crystalgraphics.lifecycle.CgEngineLifecycle;
+import com.crystalgraphics.lifecycle.CgGraphicsLifecycle;
 import com.crystalgraphics.platform.CgPlatform;
+import com.crystalgraphics.platform.gl.CgGL;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.EntityRenderer;
 import org.spongepowered.asm.mixin.Mixin;
@@ -118,9 +120,17 @@ public class CgRenderHook {
     private void onFrameRendered(float partialTicks, CallbackInfo ci) {
         // The engine starts on the first frame, the title screen's, so its shaders compile before a world exists.
         Minecraft mc = Minecraft.getMinecraft();
-        CgEngineLifecycle.ensureGraphicsContext(mc.displayWidth, mc.displayHeight);
-        LoadingScreen1710.draw(mc);
-        CgPlatform.lifecycle().onFrameRendered();
+        CgEngineLifecycle.advanceGraphicsContext(mc.displayWidth, mc.displayHeight);
+        // One host section for both: each section reads the host's state back with glGet, which waits for the
+        // driver's queue (1.7.10 has no state cache), and a loading frame's queue is deep
+        boolean section = CgGraphicsLifecycle.isInitialized();
+        if (section) CgGL.fromHost();
+        try {
+            LoadingScreen1710.draw(mc);
+            CgPlatform.lifecycle().onFrameRendered();
+        } finally {
+            if (section) CgGL.toHost();
+        }
         CgLoadingScreen.runHeld();
     }
 }

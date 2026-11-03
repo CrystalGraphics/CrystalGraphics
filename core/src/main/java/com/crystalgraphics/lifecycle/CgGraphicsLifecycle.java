@@ -17,6 +17,7 @@ import com.crystalgraphics.probe.CgWorldProbe;
 import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.CgPlatform;
+import com.crystalgraphics.platform.gl.state.CgCheckedProvider;
 import com.crystalgraphics.platform.gl.state.CgGlCensus;
 import com.crystalgraphics.platform.gl.state.CgGlScope;
 import com.crystalgraphics.platform.gl.state.CgGlState;
@@ -185,32 +186,61 @@ public final class CgGraphicsLifecycle {
      * before any material or fallback-texture usage.
      */
     private static void init(int width, int height) {
+        while (!stoodDown && !initialized) startStage(width, height);
+    }
+
+    /** The next of the start's stages: the one {@link #startStage} runs. */
+    private static int stage;
+
+    /**
+     * Runs the start's next stage: one a frame from a host's frame end, so its frames go on between them (the whole start
+     * at once held 1.7.10's 0.6 s and 1.20.1's 0.3 s). The last sets {@link #initialized}. Render thread.
+     */
+    private static void startStage(int width, int height) {
         if (stoodDown) return;
-        CgStartSteps.begin();
-        // What the start needs that touches no GL, on a worker beside the render thread's own steps below: begun at the
-        // host's client start where it said so (CgEngineLifecycle.clientStarting), else now
-        CompletableFuture<Void> ahead = startAhead();
-        CgPlatform.gl().initContext();
-        CgStartSteps.step("context");
-
-        // Probe capabilities here, on the render thread with a live context, so CgGL.CORE is set
-        // before anything can paint. Its guards read the field rather than calling detect() per GL
-        // call, and a fixed-function call that beat the first probe would see false and reach a
-        // backend that refuses it. Cached, so this costs one probe.
-        CgCapabilities.detect();
-        // Before the first link: without it NVIDIA links on its driver thread, and the next query of any program
-        // waits for the whole link (cold vfx-modules 113 s -> 58 s).
-        if (CgCapabilities.detect().isParallelShaderCompile()) CgGL.glMaxShaderCompilerThreads(0xFFFFFFFF);
-        CgStartSteps.step("capabilities");
-        // Links on a shared context of their own: under a threaded driver, every status query on this one waits for
-        // the compiles queued before it.
-        CgLinkWorker.start();
-        CgStartSteps.step("link worker");
-
+        int at = stage++;
+        if (at == 0) {
+            CgStartSteps.begin();
+            // What the start needs that touches no GL, on a worker beside the render thread's own steps below: begun at
+            // the host's client start where it said so (CgEngineLifecycle.clientStarting), else now
+            startAhead();
+            CgPlatform.gl().initContext();
+            CgStartSteps.step("context");
+            // Probe capabilities here, on the render thread with a live context, so CgGL.CORE is set
+            // before anything can paint. Its guards read the field rather than calling detect() per GL
+            // call, and a fixed-function call that beat the first probe would see false and reach a
+            // backend that refuses it. Cached, so this costs one probe.
+            CgCapabilities.detect();
+            // Before the first link: without it NVIDIA links on its driver thread, and the next query of any program
+            // waits for the whole link (cold vfx-modules 113 s -> 58 s).
+            if (CgCapabilities.detect().isParallelShaderCompile()) CgGL.glMaxShaderCompilerThreads(0xFFFFFFFF);
+            CgStartSteps.step("capabilities");
+            // Links on a shared context of their own: under a threaded driver, every status query on this one waits for
+            // the compiles queued before it.
+            CgLinkWorker.start();
+            // While links run or the loading screen shows: a check's glGet waits for the driver's queue, deepest then
+            CgCheckedProvider.deferChecksWhile(() -> CgLinkWorker.linking() || CgLoadingScreen.hostDraws());
+            CgStartSteps.step("link worker");
+            // Before anything queues: a name generated later waits for the driver's queue, deepest while loading
+            CgGlNames.fill();
+            CgStartSteps.step("names");
+            CgStartSteps.pause();
+            return;
+        }
+        CgStartSteps.resume();
         CgGL.fromHost();
         try {
-            CgGlState.manager().adoptCapturedPoints();   // the queue is short here; a first compute pass mid-frame is not
-            inOwnDepthConvention(() -> {
+            if (at == 1) CgGlState.manager().adoptCapturedPoints();   // the queue is short here; a first compute pass mid-frame is not
+            inOwnDepthConvention(() -> startStage(at, width, height));
+        } finally {
+            CgGL.toHost();
+        }
+        if (!initialized) CgStartSteps.pause();
+    }
+
+    private static void startStage(int at, int width, int height) {
+        switch (at) {
+            case 1 -> {
                 // One scope for everything built below: pipeline targets, fallback textures, the text
                 // material's first bind. It runs inside the host's world pass, and left its bindings and
                 // render state behind.
@@ -223,55 +253,67 @@ public final class CgGraphicsLifecycle {
                     CgWaveletNoise.install();
                     CgStartSteps.step("noise");
                 }
+            }
+            case 2 -> {
                 // Before the first install that may reach what the worker initializes: two threads initializing classes
                 // that name each other would deadlock
                 try {
-                    ahead.join();
+                    startAhead().join();
                 } catch (RuntimeException e) {
                     LOGGER.log(Level.WARNING, "The start's work ahead failed; it runs at first use instead", e);
                 }
                 CgStartSteps.step("waiting for the work ahead");
                 // The loading screen's own look before anything else compiles: it shows nothing until built, and queued
-                // behind the engine's programs it left the host's first screen up two seconds
+                // behind the engine's programs it left the host's first screen up two seconds. Its link runs while the
+                // stages below take their frames.
                 CgLoadingScreen.warm(width, height);
+                CgStartSteps.step("loading view");
+            }
+            case 3 -> {
                 CgWorldRenderer.get().install();
                 CgStartSteps.step("world renderer");
+            }
+            case 4 -> {
                 CgPostStack.get().install();
                 CgRenderDemo.INSTANCE.install();
                 CgStartSteps.step("post and demo");
+            }
+            case 5 -> {
                 // The demo plays in PLAYS, ahead of the VFX system's EFFECTS: what it plays starts the same frame.
                 CgVfx.install();
                 CgStartSteps.step("vfx");
-                CgCollisionDebug.install();
-                CgWorldProbe.installIfEnabled();
-                // The engine's own passes, built together behind the loading screen rather than each at its first draw;
-                // no world stage fires until they are
-                CgWorldRenderer.get().beginBoot();
-                CgLoadPlan.get().task("crystalgraphics:programs").render(task -> {
-                    boolean done = CgWorldRenderer.get().bootStep();
-                    int total = CgPipelinePrecache.total();
-                    if (total > 0) task.progress(1f - CgPipelinePrecache.remaining() / (float) total);
-                    return done;
-                }).start();
-                // After the boot used this session's binaries, so the prune keeps them; a worker's, beside the frames.
-                CgJob.run(() -> { for (String kind : CgCacheDirectory.PRUNED) CgCacheDirectory.prune(kind); });
-                // From here warm-ups spread over frames: the demo's first scene took the first frame 0.7-10 s on 1.7.10.
-                CgWarmBudget.start();
-                CgLoadingScreen.install(width, height);
-                CgStartSteps.step("loading screen");
-
-                initialized = true;
-                destroyed = false;   // an explicit init is what makes a context live again
-
-                // Last, and after `initialized` is set: a listener may legitimately touch anything the
-                // engine just brought up (pipeline, fallback textures, capability probes), and may call back
-                // into isInitialized().
-                CgEngineLifecycle.contextInitialized(width, height);
-                CgStartSteps.step("listeners' onContextInit");
-            });
-        } finally {
-            CgGL.toHost();
+            }
+            default -> finishStart(width, height);
         }
+    }
+
+    private static void finishStart(int width, int height) {
+        CgCollisionDebug.install();
+        CgWorldProbe.installIfEnabled();
+        // The engine's own passes, built together behind the loading screen rather than each at its first draw;
+        // no world stage fires until they are
+        CgWorldRenderer.get().beginBoot();
+        CgLoadPlan.get().task("crystalgraphics:programs").render(task -> {
+            boolean done = CgWorldRenderer.get().bootStep();
+            int total = CgPipelinePrecache.total();
+            if (total > 0) task.progress(1f - CgPipelinePrecache.remaining() / (float) total);
+            return done;
+        }).start();
+        // After the boot used this session's binaries, so the prune keeps them; a worker's, beside the frames.
+        CgJob.run(() -> { for (String kind : CgCacheDirectory.PRUNED) CgCacheDirectory.prune(kind); });
+        // From here warm-ups spread over frames: the demo's first scene took the first frame 0.7-10 s on 1.7.10.
+        CgWarmBudget.start();
+        CgLoadingScreen.install(width, height);
+        CgStartSteps.step("loading screen");
+
+        initialized = true;
+        destroyed = false;   // an explicit init is what makes a context live again
+
+        // Last, and after `initialized` is set: a listener may legitimately touch anything the
+        // engine just brought up (pipeline, fallback textures, capability probes), and may call back
+        // into isInitialized().
+        CgEngineLifecycle.contextInitialized(width, height);
+        CgStartSteps.step("listeners' onContextInit");
     }
 
     /**
@@ -389,9 +431,16 @@ public final class CgGraphicsLifecycle {
      * nothing at all after {@link #destroyContext()}. GL thread only, like everything else here.</p>
      */
     static void ensureContext(int w, int h) {
+        ensureContext(w, h, false);
+    }
+
+    /** As {@link #ensureContext(int, int)}; {@code oneStage} runs only the start's next stage. */
+    static void ensureContext(int w, int h, boolean oneStage) {
         if (destroyed || stoodDown) return;
-        if (!initialized) init(w, h);
-        else if (w != currentWidth || h != currentHeight) onResize(w, h);
+        if (!initialized) {
+            if (oneStage) startStage(w, h);
+            else init(w, h);
+        } else if (w != currentWidth || h != currentHeight) onResize(w, h);
     }
 
     /**

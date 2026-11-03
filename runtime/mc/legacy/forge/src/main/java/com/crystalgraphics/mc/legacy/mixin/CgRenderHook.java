@@ -65,7 +65,7 @@ public abstract class CgRenderHook {
     private void cg$frameRendered(float partialTicks, long nanoTime, CallbackInfo ci) {
         // The engine starts on the first frame, the title screen's, so its shaders compile before a world exists.
         Minecraft mc = Minecraft.getMinecraft();
-        CgEngineLifecycle.ensureGraphicsContext(mc.displayWidth, mc.displayHeight);
+        CgEngineLifecycle.advanceGraphicsContext(mc.displayWidth, mc.displayHeight);
         LoadingScreenLegacy.draw(mc);
         CgPlatform.lifecycle().onFrameRendered();
         CgLoadingScreen.runHeld();

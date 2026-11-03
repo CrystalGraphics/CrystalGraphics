@@ -28,11 +28,12 @@ public final class CgGlNames {
      * Names of each kind kept in hand at first; a kind a frame ran short of keeps twice the shortfall more. A move's first
      * frames make about 90 buffers (the Kamehameha's pools and range): at 256 that leaves the reserve above half, so a
      * move plays with no refill at all, and the refill waits for play to settle (a refill behind a few queued frames of
-     * a move still cost 13-29 ms).
+     * a move still cost 13-29 ms). The engine's start takes about 300, and its loading frames have the deepest queues of
+     * all (a refill there waited 346 ms): 1024 lasts through them. A name with no storage costs the driver nothing.
      */
-    public static final int RESERVE = 256;
+    public static final int RESERVE = 1024;
     /** The most of a kind it will keep in hand. */
-    public static final int MAX_RESERVE = 512;
+    public static final int MAX_RESERVE = 2048;
 
     private static final int REFILL = CgTrace.name("gl.names"), SHORT = CgTrace.name("gl.names-short");
     private static final int BUFFERS = 0, TEXTURES = 1, FRAMEBUFFERS = 2;
@@ -79,6 +80,15 @@ public final class CgGlNames {
                 && 8 * held[FRAMEBUFFERS] >= reserve[FRAMEBUFFERS].length) return;   // a quieter frame refills
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, REFILL)) {
             // Back to back: the first drains the queue, the rest find it empty.
+            for (int kind = 0; kind < 3; kind++) {
+                while (held[kind] < reserve[kind].length) reserve[kind][held[kind]++] = generate(kind);
+            }
+        }
+    }
+
+    /** Fills every kind to what it keeps, now: the engine's start, while the driver's queue is short. Render thread. */
+    public static synchronized void fill() {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, REFILL)) {
             for (int kind = 0; kind < 3; kind++) {
                 while (held[kind] < reserve[kind].length) reserve[kind][held[kind]++] = generate(kind);
             }

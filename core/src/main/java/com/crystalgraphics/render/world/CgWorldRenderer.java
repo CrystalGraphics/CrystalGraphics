@@ -517,8 +517,9 @@ public final class CgWorldRenderer {
      * the warm-up that first needs one finds it parsed rather than parsing on its frame.
      */
     private static void parsePassesAhead() {
+        // text.shader with them: its collector above parsed it on the render thread (109 ms on 1.7.10)
         CgPipelinePrecache.parseAhead(UPSAMPLE_SHADER, RESOLVE_SHADER, COMPOSITE_SHADER, CgWorldDistortion.APPLY_SHADER,
-                CgWorldLights.APPLY_SHADER);
+                CgWorldLights.APPLY_SHADER, CgTextRenderer.TEXT_SHADER);
     }
 
     /**

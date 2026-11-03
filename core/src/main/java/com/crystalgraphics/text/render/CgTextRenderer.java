@@ -176,7 +176,7 @@ public class CgTextRenderer {
     //  CgMaterial SETUP
     // ══════════════════════════════════════════════════════════════════════════════════════════
 
-    private static final String TEXT_SHADER = "crystalgraphics:shaders/text.shader";
+    public static final String TEXT_SHADER = "crystalgraphics:shaders/text.shader";
 
     /**
      * The shader every renderer draws with, cached per path so it takes part in hot reload (F3+T) and teardown.

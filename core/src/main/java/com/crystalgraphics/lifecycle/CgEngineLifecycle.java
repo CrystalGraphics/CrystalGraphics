@@ -134,22 +134,47 @@ public final class CgEngineLifecycle {
      * </ul>
      */
     public static void ensureGraphicsContext(int width, int height) {
+        graphicsContext(width, height, false);
+    }
+
+    /**
+     * {@link #ensureGraphicsContext}, the graphics start a stage a call: a host's frame end calls it, so the host's frames
+     * keep drawing while the engine starts rather than holding for all of it. Once started, the same.
+     *
+     * <pre>{@code
+     * // a host, at each frame's end
+     * CgEngineLifecycle.advanceGraphicsContext(window.getWidth(), window.getHeight());
+     * }</pre>
+     */
+    public static void advanceGraphicsContext(int width, int height) {
+        graphicsContext(width, height, true);
+    }
+
+    /** The start's span, open from its first stage to its last: tracked, so the timeline has no gap before the first task. */
+    @Nullable private static CgLoadPlan.Span starting;
+
+    private static void graphicsContext(int width, int height, boolean oneStage) {
         if (CgGraphicsLifecycle.isInitialized()) {
             CgGraphicsLifecycle.ensureContext(width, height);
             return;
         }
-        // The graphics start and post-init are loading too: tracked, so the timeline has no gap before the first task
-        // A host that never said it is a client says so here: the client listeners hear the context start
-        addDiscovered(CgListenerDiscovery.Side.CLIENT);
-        try (CgLoadPlan.Span start = CgLoadPlan.get().begin("crystalgraphics:start")) {
-            CgGraphicsLifecycle.ensureContext(width, height);
-            if (CgGraphicsLifecycle.isInitialized()) {
-                postInit();
-                CgStartSteps.step("post-init");
-                load();
-                CgStartSteps.step("onLoad");
-            }
+        if (starting == null) {
+            // A host that never said it is a client says so here: the client listeners hear the context start
+            addDiscovered(CgListenerDiscovery.Side.CLIENT);
+            starting = CgLoadPlan.get().begin("crystalgraphics:start");
+        }
+        CgGraphicsLifecycle.ensureContext(width, height, oneStage);
+        boolean started = CgGraphicsLifecycle.isInitialized();
+        if (started) {
+            postInit();
+            CgStartSteps.step("post-init");
+            load();
+            CgStartSteps.step("onLoad");
             CgStartSteps.end();
+        }
+        if (started || CgGraphicsLifecycle.isStoodDown()) {
+            starting.close();
+            starting = null;
         }
     }
 

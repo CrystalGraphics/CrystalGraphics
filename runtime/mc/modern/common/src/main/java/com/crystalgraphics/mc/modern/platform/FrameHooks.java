@@ -31,7 +31,7 @@ public final class FrameHooks {
             // Starts the engine on the title screen rather than in the first world frame, so its shaders compile
             // before a world exists; after the first reload, since a material read mid-reload compiles twice.
             boolean start = LifecycleModern.resourcesLoaded() || CgGraphicsLifecycle.isInitialized();
-            if (width > 0 && height > 0 && start) CgEngineLifecycle.ensureGraphicsContext(width, height);
+            if (width > 0 && height > 0 && start) CgEngineLifecycle.advanceGraphicsContext(width, height);
         }
         CgGraphicsLifecycle.tickFrame();
         // Under Vulkan our frame closes here, after everything drawn in it and before Minecraft's submit.

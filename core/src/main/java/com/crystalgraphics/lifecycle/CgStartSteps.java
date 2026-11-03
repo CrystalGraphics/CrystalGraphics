@@ -36,10 +36,29 @@ final class CgStartSteps {
         last = now;
     }
 
+    /** The host draws a frame before the next stage: that time is the host's, not a step's. */
+    static void pause() {
+        paused = System.nanoTime();
+    }
+
+    /** The next stage begins. */
+    static void resume() {
+        if (paused == 0L) return;
+        long away = System.nanoTime() - paused;
+        begun += away;
+        last += away;
+        paused = 0L;
+        stages++;
+    }
+
+    private static long paused;
+    private static int stages = 1;
+
     /** The start ended: its line logged. */
     static void end() {
         if (begun == 0L) return;
-        LOGGER.info("[start] {} ms: {}", (System.nanoTime() - begun) / 1_000_000L, LINE);
+        LOGGER.info("[start] {} ms over {} frames: {}", (System.nanoTime() - begun) / 1_000_000L, stages, LINE);
         begun = 0L;
+        stages = 1;
     }
 }

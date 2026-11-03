@@ -29,7 +29,10 @@ are not public. `stopped()` writes the trace run's exit files (`trace.CgTraceRun
   one over 50 ms while the screen shows is logged with the listener's name. The graphics start is the tracked task
   `crystalgraphics:start`; the plan steps in `tickFrame`'s host section (`loading/CLAUDE.md`).
 - **The graphics start is short, and logs its steps** (`CgStartSteps`: one `[start]` line, each step's ms): the screen
-  cannot draw until it ends. Its GL-free work runs ahead on a worker (`CgEngineLifecycle.clientStarting`, which a
+  cannot draw until it ends. **A host's frame end runs it a stage a frame** (`advanceGraphicsContext`: context and link
+  worker, targets, the loading view, the world renderer, post, VFX, the rest), so the host's frames go on between: run
+  whole it held 1.7.10 0.6 s and 1.20.1 0.3 s. `ensureGraphicsContext` runs what is left at once, for a caller that
+  draws next (the harness, CrystalGUI's desktop). A new step goes in a stage of its own if it costs tens of ms. Its GL-free work runs ahead on a worker (`CgEngineLifecycle.clientStarting`, which a
   client host calls at its install; else at the start itself), joined before the first install that may reach the same
   classes, since two threads initializing classes that name each other deadlock. Never a texture ahead: until the
   render thread's first GL call claims the context, `CgGL.mayIssueGl` passes on any thread. The engine's programs build
