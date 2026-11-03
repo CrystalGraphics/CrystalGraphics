@@ -63,6 +63,9 @@ parallel mod loading with its `enqueueWork`, Unreal's slow-task progress and its
 - **The fades run on frames, not the clock**: each frame moves them a 30th of a second at most, so a held frame shows
   every stage of them rather than skipping to the end. The fade-out is over 5 s after the hide whatever was drawn, so
   a host that stops drawing still gets its opening.
+- **`draw` saves and restores every GL slot** (`CgGlState.saveAll`): a view binds its program and sets its render
+  state, and 1.7.10 draws with fixed function through whatever program is left bound. Saving only the target and
+  viewport left `loading_fx` bound: 1.7.10's menu drew black, and the view itself without blending.
 - **The world frame the screen fires draws as the host's world does** (`hostWorld(depth, reversed, zeroToOne)`, from
   the host before its first draw): on a Vulkan device a pipeline is built for its target's formats and depth test, and
   one built for a target the world never uses is a compile wasted on the render thread. Minecraft 26.2+ passes

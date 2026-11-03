@@ -31,7 +31,6 @@ import com.crystalgraphics.loading.view.CgLogoLoadingView;
 import com.crystalgraphics.loading.watchdog.CgLoadWatchdog;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.state.CgGlScope;
-import com.crystalgraphics.platform.gl.state.CgGlSlot;
 import com.crystalgraphics.platform.gl.state.CgGlState;
 import com.crystalgraphics.render.CgWarmBudget;
 import com.crystalgraphics.render.draw.CgInstanceKind;
@@ -469,7 +468,9 @@ public final class CgLoadingScreen {
             fadeFrames++;
             fadeLastLeave = Math.min(1f, left / FADE_OUT);
         }
-        try (CgGlScope ignored = CgGlState.save(CgGlSlot.FBO, CgGlSlot.VIEWPORT)) {
+        // Every slot: the view binds its program and sets its render state, and a host drawing with fixed function
+        // (1.7.10) draws through whatever program is left bound
+        try (CgGlScope ignored = CgGlState.saveAll()) {
             if (warm) warmFrame();
             if (!viewReady) return;
             CgGL.glBindFramebuffer(CgGL.GL_FRAMEBUFFER, framebuffer);
