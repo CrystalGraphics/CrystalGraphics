@@ -770,17 +770,18 @@ public final class CgCueManager extends CgWorldSubsystem {
     /**
      * Plays {@code entry} of one of {@code cue}'s effects blocks once from its start, its unattached spawnables and
      * locators under {@code origin}: Unreal's level sequence actor spawned where the cue plays. Through this world's
-     * {@link CgSequencer}, its roles unbound. What a {@link CgCueEffects} calls for each entry whose spawn condition
+     * {@link CgSequencer}, its roles unbound, scaled by {@code scale} (the play's {@link CgCueParameters#scale()}). What a {@link CgCueEffects} calls for each entry whose spawn condition
      * passes; null where it plays nothing, which is logged once a sequence, naming why.
      *
      * <pre>{@code
      * for (CgCueDefinition.SequenceEntry s : block.sequences()) {
-     *     if (cues.spawns(s.where().condition(), at, i)) cues.playSequence(cue, s, hitPoint);
+     *     if (cues.spawns(s.where().condition(), at, i)) cues.playSequence(cue, s, hitPoint, at.scale());
      * }
      * }</pre>
      */
     @Nullable
-    public CgSequencePlayer playSequence(CgCueDefinition cue, CgCueDefinition.SequenceEntry entry, CgAttachment origin) {
+    public CgSequencePlayer playSequence(CgCueDefinition cue, CgCueDefinition.SequenceEntry entry, CgAttachment origin,
+                                         float scale) {
         CgAssetRef<CgSequenceDefinition> ref = sequenceRefs.get(entry.sequence());
         CgSequenceDefinition definition = ref == null ? null : ref.loaded();
         if (definition == null) return null;
@@ -790,7 +791,7 @@ public final class CgCueManager extends CgWorldSubsystem {
             return null;
         }
         try {
-            return sequencer.play(definition, Map.of(), origin);
+            return sequencer.play(definition, Map.of(), origin, scale);
         } catch (RuntimeException e) {
             if (sequencesLogged.add(entry.sequence())) LOGGER.warn("{}: its sequence {} plays nothing: {}", cue.id(), entry.sequence(), e.getMessage());
             return null;

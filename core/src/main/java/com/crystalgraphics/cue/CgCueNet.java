@@ -57,7 +57,7 @@ public final class CgCueNet {
     static final CgNetField<Double> X = CgNetField.ofDouble("x").initialOnly(), Y = CgNetField.ofDouble("y").initialOnly(),
             Z = CgNetField.ofDouble("z").initialOnly();
     static final CgNetField<Float> NX = CgNetField.ofFloat("nx").initialOnly(), NY = CgNetField.ofFloat("ny").initialOnly(),
-            NZ = CgNetField.ofFloat("nz").initialOnly();
+            NZ = CgNetField.ofFloat("nz").initialOnly(), SCALE = CgNetField.ofFloat("scale").fallback(1f).initialOnly();
     static final CgNetField<Integer> INSTIGATOR = CgNetField.ofInt("instigator").fallback(-1).initialOnly(),
             TARGET = CgNetField.ofInt("target").fallback(-1).initialOnly();
     static final CgNetField<Float> MAGNITUDE = CgNetField.ofFloat("magnitude"), NORMALIZED = CgNetField.ofFloat("normalized");
@@ -85,7 +85,7 @@ public final class CgCueNet {
     public static final CgNetType TYPE;
 
     static {
-        List<CgNetField<?>> fields = new ArrayList<>(List.of(CUE, SEED, X, Y, Z, NX, NY, NZ, INSTIGATOR, TARGET, MAGNITUDE, NORMALIZED, SURFACE, WRITTEN));
+        List<CgNetField<?>> fields = new ArrayList<>(List.of(CUE, SEED, X, Y, Z, NX, NY, NZ, SCALE, INSTIGATOR, TARGET, MAGNITUDE, NORMALIZED, SURFACE, WRITTEN));
         for (int i = 0; i < WRITES * 4; i++) W.add(CgNetField.ofFloat("w" + i));
         for (int i = 0; i < VALUES; i++) V.add(CgNetField.ofDouble("v" + i));
         for (int i = 0; i < TEXTS; i++) T.add(CgNetField.of("t" + i, CgCodecs.STRING));
@@ -138,7 +138,7 @@ public final class CgCueNet {
     private static CgNetObject fill(CgNetObject obj, CgCueDefinition cue, CgCueParameters at) {
         obj.set(CUE, cue.id()).setInt(SEED, (int) at.seed())
                 .setDouble(X, at.x()).setDouble(Y, at.y()).setDouble(Z, at.z())
-                .setFloat(NX, at.nx()).setFloat(NY, at.ny()).setFloat(NZ, at.nz())
+                .setFloat(NX, at.nx()).setFloat(NY, at.ny()).setFloat(NZ, at.nz()).setFloat(SCALE, at.scale())
                 .setInt(INSTIGATOR, entity(at.instigator())).setInt(TARGET, entity(at.target()))
                 .setFloat(MAGNITUDE, at.magnitude()).setFloat(NORMALIZED, at.normalizedMagnitude());
         if (at.surface() != null) obj.set(SURFACE, at.surface());
@@ -194,7 +194,7 @@ public final class CgCueNet {
     /** {@code obj}'s parameters into {@code into}, its entities through {@code entities}. */
     static void read(CgNetObject obj, CgCueParameters into, CgCueManager entities) {
         into.reset().at(obj.getDouble(X), obj.getDouble(Y), obj.getDouble(Z))
-                .normal(obj.getFloat(NX), obj.getFloat(NY), obj.getFloat(NZ))
+                .normal(obj.getFloat(NX), obj.getFloat(NY), obj.getFloat(NZ)).scale(obj.getFloat(SCALE))
                 .instigator(entities.entity(obj.getInt(INSTIGATOR))).target(entities.entity(obj.getInt(TARGET)))
                 .magnitude(obj.getFloat(MAGNITUDE)).normalizedMagnitude(obj.getFloat(NORMALIZED))
                 .seed(obj.getInt(SEED)).surface(obj.get(SURFACE));

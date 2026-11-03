@@ -187,13 +187,14 @@ public final class CgVfxCueEffects implements CgCueEffects {
         int base = block.particles().size() + block.sounds().size() + 1;
         for (int i = 0; i < entries.size(); i++) {
             SequenceEntry e = entries.get(i);
-            if (cues.spawns(e.where().condition(), at, base + i)) cues.playSequence(cue, e, origin(e.where().placement(), at));
+            if (cues.spawns(e.where().condition(), at, base + i)) cues.playSequence(cue, e, origin(e.where().placement(), at), at.scale());
         }
     }
 
     /**
      * Where a sequence entry's placement stands its play: riding the target's socket (else the target) where it
-     * attaches, else fixed where FindSpawnTransform puts it, its turn included.
+     * attaches, else fixed where FindSpawnTransform puts it (the cue's location facing its normal, else the target's
+     * socket), its turn included.
      */
     private CgAttachment origin(Placement placement, CgCueParameters at) {
         CgAttachment target = at.target();
@@ -202,7 +203,9 @@ public final class CgVfxCueEffects implements CgCueEffects {
         }
         double x = at.x(), y = at.y(), z = at.z();
         Quaternionf q = new Quaternionf();
-        if (target != null) {
+        if (located(at)) {
+            facing(at, q);
+        } else if (target != null) {
             point[0] = x;
             point[1] = y;
             point[2] = z;
@@ -222,6 +225,26 @@ public final class CgVfxCueEffects implements CgCueEffects {
             if (turn != null) turn.set(q);
             return true;
         };
+    }
+
+    /** Whether the cue names a location: FindSpawnTransform's {@code !CueParameters.Location.IsZero()}. */
+    private static boolean located(CgCueParameters at) {
+        return at.x() != 0 || at.y() != 0 || at.z() != 0;
+    }
+
+    /**
+     * {@code out} as Unreal's {@code Normal.Rotation()}: x turned along the normal by a yaw about up and a pitch, no
+     * roll. Unreal's (x, y, z) are our (x, z, y). False, and the identity, for a zero normal.
+     */
+    static boolean facing(CgCueParameters at, Quaternionf out) {
+        float nx = at.nx(), ny = at.ny(), nz = at.nz();
+        float level = (float) Math.sqrt(nx * nx + nz * nz);
+        if (level == 0f && ny == 0f) {
+            out.identity();
+            return false;
+        }
+        out.rotationY((float) Math.atan2(-nz, nx)).rotateZ((float) Math.atan2(ny, level));
+        return true;
     }
 
     /** {@code block}'s shake, started if it plays on this machine; null where it does not. */
@@ -378,8 +401,11 @@ public final class CgVfxCueEffects implements CgCueEffects {
         point[1] = at.y();
         point[2] = at.z();
         boolean attach = target != null && placement.attach() == Placement.Attach.ATTACH_TO_TARGET;
-        boolean turned = false;
-        if (target != null && !attach) {
+        boolean located = located(at), turned = false;
+        if (located) {
+            // FindSpawnTransform: the cue's location facing its normal, kept in the world where it attaches
+            turned = (!attach || placement.rule() == Placement.Rule.KEEP_WORLD) && facing(at, turn);
+        } else if (target != null && !attach) {
             // FindSpawnTransform: the target's socket transform, its turn included
             turned = placement.socket() != null ? target.point(placement.socket(), point, turn) : target.place(point, turn);
             if (!turned && placement.socket() != null) target.place(point, null);
@@ -405,10 +431,11 @@ public final class CgVfxCueEffects implements CgCueEffects {
         // FindSpawnTransform's scale: the target socket's where the transform is its (bOverrideScale false), else 1
         Vector3f s = spawnScale.set(1f);
         if (placement.inheritScale()) {
-            if (target != null && !attach) target.scale(placement.socket(), s);
+            if (target != null && !attach && !located) target.scale(placement.socket(), s);
         } else if (placement.scale() != null) {
             s.set(placement.scale());
         }
+        s.mul(at.scale());
         if (attach && placement.rule() != Placement.Rule.KEEP_RELATIVE) {
             // SpawnSystemAttached: keep_world and snap_to_target keep the spawn scale as the world's, over the parent's
             Vector3f parent = target.scale(placement.socket(), parentScale);

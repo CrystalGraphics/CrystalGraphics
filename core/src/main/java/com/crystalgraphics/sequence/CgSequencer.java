@@ -137,7 +137,20 @@ public final class CgSequencer extends CgWorldSubsystem {
      */
     public CgSequencePlayer play(CgSequenceDefinition definition, Map<String, ? extends CgSequenceTarget> roles,
                                  @Nullable CgAttachment origin) {
-        return start(new CgSequencePlayer(this, definition, roles).origin(origin));
+        return play(definition, roles, origin, 1f);
+    }
+
+    /**
+     * {@link #play(CgSequenceDefinition, Map, CgAttachment)} scaled by {@code scale}: every spawnable and locator
+     * standing under {@code origin} is scaled by it, as under a scaled attach parent. A cue's per-play scale.
+     *
+     * <pre>{@code
+     * sequencer.play(spark, Map.of(), hit, 2f);       // the spark, twice its size
+     * }</pre>
+     */
+    public CgSequencePlayer play(CgSequenceDefinition definition, Map<String, ? extends CgSequenceTarget> roles,
+                                 @Nullable CgAttachment origin, float scale) {
+        return start(new CgSequencePlayer(this, definition, roles).origin(origin, scale));
     }
 
     /**
@@ -146,7 +159,7 @@ public final class CgSequencer extends CgWorldSubsystem {
      */
     CgSequencePlayer playNotifies(CgSequenceDefinition definition, Map<String, ? extends CgSequenceTarget> roles, String clip,
                                   @Nullable CgAttachment origin) {
-        return start(new CgSequencePlayer(this, definition, roles).drivenFor(clip).origin(origin));
+        return start(new CgSequencePlayer(this, definition, roles).drivenFor(clip).parentOrigin(origin));
     }
 
     /**

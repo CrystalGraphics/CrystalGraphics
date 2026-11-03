@@ -235,6 +235,25 @@ cues.execute(MYMOD_CUE_HIT_SPARK, hit);
 - A looping play starts with them, then its providers (`beam.writes(...)`) take over each frame.
 - At most 32 names a play, as a cue declares.
 
+### Where a play stands, which way it faces, how big it is
+
+Unreal's `FindSpawnTransform`: a play stands at the cue's location facing its normal, or at its target's socket
+where the location is the origin. A play's scale multiplies every system's spawn scale and every sequence it plays.
+
+```java
+CgCueParameters hit = new CgCueParameters().at(x, y, z).target(victim)
+        .normal(dx, 0f, dz)                          // its x along the attack, kept level: yaw alone
+        .scale(1.6f);                                // every system and sequence it plays, 1.6 times
+cues.execute(MYMOD_CUE_HIT_SPARK, hit);
+```
+
+- **The normal turns x along it**, yaw then pitch, never roll (`Normal.Rotation()`). A zero normal, the default, turns
+  nothing. A placement's `rotation` replaces it.
+- **A location wins over the target's socket** for where it stands, as Unreal's does: leave `at` at the origin to stand
+  on the socket. An attached play rides its target either way, turned by the normal only under `keep_world`.
+- **The scale** multiplies a placement's `scale` (or `inherit`ed one) and reaches a sequence's spawnables and locators
+  as their origin's scale. It travels with the play to every viewer.
+
 ### What fails at load
 
 - a `tag` nobody declared;

@@ -11,7 +11,7 @@ import com.crystalgraphics.world.CgAttachment;
  * {@code FGameplayCueParameters}.
  *
  * <pre>{@code
- * CgCueParameters hit = new CgCueParameters().at(x, y, z).normal(0, 1, 0).instigator(caster).target(victim).magnitude(12);
+ * CgCueParameters hit = new CgCueParameters().at(x, y, z).normal(dx, 0, dz).instigator(caster).target(victim).magnitude(12);
  * cues.execute(MYMOD_CUE_HIT, hit);              // copied into the queue: reuse hit at once
  * }</pre>
  *
@@ -29,11 +29,19 @@ import com.crystalgraphics.world.CgAttachment;
  *   <li>The manager copies it when queued, so one instance can be refilled for every call.</li>
  *   <li>{@link #seed} rolls each entry's {@code chance}: the same seed plays the same entries on every viewer.</li>
  *   <li>{@link #surface} is the physical surface hit, matched against an entry's {@code surfaces}; null for none.</li>
+ *   <li>A play stands at {@link #at} facing {@link #normal} where {@code at} is not the origin, else at its target's
+ *       socket: Unreal's {@code FindSpawnTransform}. A zero normal faces the world's axes.</li>
  * </ul>
+ *
+ * <p>Sized by what it strikes, a continuous scale over every system and sequence it plays:
+ *
+ * <pre>{@code
+ * hit.scale(Math.max(0.75f, Math.min(4f, struckHeight / 1.8f)));   // the same spark, as big as the body it hits
+ * }</pre>
  */
 public final class CgCueParameters {
     private double x, y, z;
-    private float nx, ny = 1, nz;
+    private float nx, ny, nz, scale = 1;
     @Nullable
     private CgAttachment instigator, target;
     private float magnitude, normalizedMagnitude;
@@ -54,12 +62,29 @@ public final class CgCueParameters {
         return this;
     }
 
-    /** The surface's normal at {@link #x}; up by default. */
+    /**
+     * The way its plays face: each turns its x axis along it, yaw and pitch, no roll, as Unreal's
+     * {@code Normal.Rotation()}. Zero by default, which turns nothing. Read only where {@link #at} is not the origin.
+     */
     public CgCueParameters normal(float nx, float ny, float nz) {
         this.nx = nx;
         this.ny = ny;
         this.nz = nz;
         return this;
+    }
+
+    /**
+     * What every system and sequence it plays is scaled by, times its placement's own scale: Unreal's spawn transform
+     * scale. 1 by default.
+     */
+    public CgCueParameters scale(float scale) {
+        this.scale = scale;
+        return this;
+    }
+
+    /** What its plays are scaled by ({@link #scale(float)}): 1 unless set. */
+    public float scale() {
+        return scale;
     }
 
     /** Who caused it: whose local control a {@code source: instigator} spawn condition tests. */
@@ -177,6 +202,7 @@ public final class CgCueParameters {
         nx = other.nx;
         ny = other.ny;
         nz = other.nz;
+        scale = other.scale;
         instigator = other.instigator;
         target = other.target;
         magnitude = other.magnitude;
@@ -194,8 +220,8 @@ public final class CgCueParameters {
     /** Back to a fresh instance's values, dropping its references. */
     public CgCueParameters reset() {
         x = y = z = 0;
-        nx = nz = 0;
-        ny = 1;
+        nx = ny = nz = 0;
+        scale = 1;
         instigator = target = null;
         magnitude = normalizedMagnitude = 0;
         seed = 0;

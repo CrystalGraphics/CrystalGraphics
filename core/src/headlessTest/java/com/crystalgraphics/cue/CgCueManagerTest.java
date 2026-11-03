@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.function.BooleanSupplier;
 
 import com.sun.management.ThreadMXBean;
+import org.joml.Vector3f;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -159,8 +160,9 @@ public class CgCueManagerTest {
             point[1] = 2;
             point[2] = 3;
             return true;
-        });
+        }, 2f);
         assertNotNull(player);
+        assertEquals("the play's scale, under its origin", 2f, player.origin().scale(null, new Vector3f()).x, 0f);
         assertEquals(1, sequencer.players().size());
         double[] at = new double[3];
         assertTrue(player.origin().place(at, null));

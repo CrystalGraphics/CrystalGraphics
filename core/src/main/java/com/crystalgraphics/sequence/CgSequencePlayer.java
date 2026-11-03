@@ -11,6 +11,7 @@ import java.util.Objects;
 import javax.annotation.Nullable;
 
 import org.joml.Quaternionf;
+import org.joml.Vector3f;
 
 import com.crystalgraphics.net.object.CgPredictionKey;
 import com.crystalgraphics.asset.tree.CgAssetException;
@@ -572,11 +573,33 @@ public final class CgSequencePlayer {
 
     /**
      * Plays it under {@code origin}: what a binding placed under nothing (a spawnable with no {@code at}, a locator with
-     * no parent) stands under each frame, Unreal's transform origin. Set before it starts: {@link CgSequencer#play}.
+     * no parent) stands under each frame, Unreal's transform origin, scaled by {@code scale}. Set before it starts:
+     * {@link CgSequencer#play}.
      */
-    CgSequencePlayer origin(@Nullable CgAttachment origin) {
-        // Its place and turn alone: Sequencer never applies the origin's scale
-        this.origin = origin == null ? null : origin::place;
+    CgSequencePlayer origin(@Nullable CgAttachment origin, float scale) {
+        // Its place and turn alone: Sequencer never applies the origin's scale. The play's own is the spawn scale a cue
+        // gives what it plays, inherited as an attach parent's.
+        if (origin == null || scale == 1f) {
+            this.origin = origin == null ? null : origin::place;
+        } else {
+            this.origin = new CgAttachment() {
+                @Override
+                public boolean place(double[] point, @Nullable Quaternionf turn) {
+                    return origin.place(point, turn);
+                }
+
+                @Override
+                public Vector3f scale(@Nullable String name, Vector3f out) {
+                    return out.set(scale);
+                }
+            };
+        }
+        return this;
+    }
+
+    /** Its parent play's {@link #origin()}, as that play stands it: a notify sequence's. */
+    CgSequencePlayer parentOrigin(@Nullable CgAttachment origin) {
+        this.origin = origin;
         return this;
     }
 
