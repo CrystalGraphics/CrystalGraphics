@@ -117,6 +117,8 @@ public final class CgLoadingScreen {
     private static long lastDrawn;
     /** The view answered {@link CgLoadingView#ready}: it draws, and its fade-in runs. */
     private static boolean viewReady;
+    /** See {@link #covers}. */
+    private static boolean covers;
     /** How long past the fade the watchdog still names what holds the render thread. */
     private static final long WATCH_AFTER_FADE_NANOS = 2_000_000_000L;
 
@@ -236,12 +238,23 @@ public final class CgLoadingScreen {
         return hostDraws;
     }
 
+    /**
+     * Whether the view's backdrop must be opaque from its first frame: the host's first screen opened before the view
+     * drew, so no loading screen of the host's is left to cross from and fading in over that screen would show it. Its
+     * lockup and the like still fade in whole over that backdrop. Render thread.
+     *
+     * <pre>{@code
+     * float backdrop = CgLoadingScreen.covers() ? 1f : ease(appear);
+     * }</pre>
+     */
+    public static boolean covers() {
+        return covers;
+    }
+
     /** Asks the view whether it draws whole yet, until it does: each ask advances its build a step. */
     private static void askView(long now) {
         if (viewReady || !(viewReady = view.ready())) return;
-        // Its first half crosses from the host's loading screen: once the host's first screen opened that is gone, and
-        // fading in over that screen would show it
-        if (held != null) appeared = Math.max(appeared, FADE_IN / 2f);
+        covers = held != null;
         LOGGER.info("[loading] the view is ready after {} ms{}", (now - shownAt) / 1_000_000L,
                 held == null ? ", under the host's loading screen" : ", after the host's first screen opened");
     }

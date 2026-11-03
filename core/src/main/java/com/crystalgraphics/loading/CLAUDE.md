@@ -56,9 +56,10 @@ parallel mod loading with its `enqueueWork`, Unreal's slow-task progress and its
   the graphics start, before the engine's programs queue, and asked from then on at each frame and draw.
 - **The screen draws from the engine's start, over the host's own loading screen** (`hostDraws()` while shown), so
   its fade-in crosses from that screen. Once the host's first screen has opened (Minecraft's menu panorama), a view not
-  yet ready is finished at the draw (`finish()`, the frame held rather than the menu shown), and the fade-in starts
-  half done: there is no loading screen left to cross from. Minecraft 26.2 opens its first screen right after its
-  language load, which can hold the render thread 2 s just after the engine starts.
+  yet ready is finished at the draw (`finish()`, the frame held rather than the menu shown), and `covers()` answers
+  true: the view's backdrop is opaque from its first frame, its lockup and bar still fading in whole. Minecraft 26.2
+  opens its first screen right after its language load, which can hold the render thread 2 s just after the engine
+  starts; Forge 1.20.1 as its loading overlay starts fading out, before the engine starts.
 - **The fades run on frames, not the clock**: each frame moves them a 30th of a second at most, so a held frame shows
   every stage of them rather than skipping to the end. The fade-out is over 5 s after the hide whatever was drawn, so
   a host that stops drawing still gets its opening.
