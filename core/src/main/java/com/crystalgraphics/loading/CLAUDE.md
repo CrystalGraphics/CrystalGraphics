@@ -1,6 +1,7 @@
 # loading — the loading screen, and what loads behind it
 
-> Root guide: [`CrystalGraphics/AGENTS.md`](../../../../../../../AGENTS.md)
+> Root guide: [`CrystalGraphics/AGENTS.md`](../../../../../../../AGENTS.md). How and when anything loads, for a mod:
+> [`docs/LOADING.md`](../../../../../../../docs/LOADING.md)
 
 Lyra's `ULoadingScreenManager`, ported: one screen, shown while anything loads, then held until the engine stops doing
 first-use work. What loads behind it is orchestrated and tracked here too (plan `vfx-aaa/steps/A15.md`): Forge's

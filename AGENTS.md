@@ -171,6 +171,7 @@ Fabric's dev mod is `tasks.jar` bundling each module's `downgradedJar` —
 | Send between client and server, or keep state in sync on the clients that see it | [`docs/NETWORKING.md`](docs/NETWORKING.md) | `net/CLAUDE.md` |
 | Write a codec, save to a file (binary, JSON, TOML, YAML) or NBT, or decode into a live object | [`docs/SERIALIZATION.md`](docs/SERIALIZATION.md) | `serialization/CLAUDE.md` |
 | Ask what a shape hits, give something a hitbox, test shapes against each other | [`docs/COLLISION.md`](docs/COLLISION.md) | `collision/CLAUDE.md`, `shape/CLAUDE.md` |
+| Load anything (files, textures, meshes, shaders, a kit), behind the loading screen or during play | **[`docs/LOADING.md`](docs/LOADING.md)** | `loading/CLAUDE.md`, `lifecycle/CLAUDE.md` |
 | Run work off the game's thread, or split it across cores | [`docs/JOBS.md`](docs/JOBS.md) | `job/CLAUDE.md` |
 | Wire anything into Minecraft | [`docs/MINECRAFT_INTEGRATION.md`](docs/MINECRAFT_INTEGRATION.md) | each host's `CLAUDE.md` |
 | Diagnose with a JVM flag | [`docs/DEBUG_FLAGS.md`](docs/DEBUG_FLAGS.md) | — |

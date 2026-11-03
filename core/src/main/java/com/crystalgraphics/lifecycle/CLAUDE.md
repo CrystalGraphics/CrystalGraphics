@@ -27,7 +27,8 @@ are not public. `stopped()` writes the trace run's exit files (`trace.CgTraceRun
 - **What loads behind the loading screen is named in `onLoad(CgLoadPlan)`** (client, after the graphics start and
   post-init), never done in a callback: every dispatch is timed and marked for `loading.watchdog.CgLoadWatchdog`, and
   one over 50 ms while the screen shows is logged with the listener's name. The graphics start is the tracked task
-  `crystalgraphics:start`; the plan steps in `tickFrame`'s host section (`loading/CLAUDE.md`).
+  `crystalgraphics:start`; the plan steps in `tickFrame`'s host section (`loading/CLAUDE.md`; for a mod,
+  `docs/LOADING.md`).
 - **The graphics start is short, and logs its steps** (`CgStartSteps`: one `[start]` line, each step's ms): the screen
   cannot draw until it ends. **A host's frame end runs it a stage a frame** (`advanceGraphicsContext`: context and link
   worker, targets, the loading view, the world renderer, post, VFX, the rest), so the host's frames go on between: run

@@ -257,7 +257,9 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 |---|---|---|---|
 | `crystalgraphics.shader.binaryCache` | true, false | `true` | Keep linked GL programs' binaries across launches where the driver gives them; false compiles every program from source. |
 | `crystalgraphics.shader.devmode` | true, false | `false` | #line directives around each include in preprocessed shader source, so a compiler's line numbers name the file. Read at launch. |
+| `crystalgraphics.shader.isolatedCompile` | true, false | `true` | Compile programs in a context sharing nothing with the render thread's, each moved over as a binary: NVIDIA holds the render thread's calls while a shared context compiles. Read at launch. |
 | `crystalgraphics.shader.linkWorker` | true, false | `true` | Compile and link programs on a worker thread in a shared GL context; false links on the render thread. Read at launch. |
+| `crystalgraphics.shader.linksInFlight` | 1 to 16 | `4` | Links the worker hands the GL driver at once. Read at launch. |
 | `crystalgraphics.shader.parallelCompile` | true, false | `true` | Materials compile ahead of their first bind where the driver links on its own threads; false compiles at the first bind: for a driver that misreports completion. Read at launch. |
 | `crystalgraphics.shader.strip` | true, false | `true` | Strip comments, decided #if branches, unreached functions and unused macros from GLSL before the driver compiles it; false hands it the source as written. Read at launch. |
 
@@ -407,6 +409,7 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 | `crystalgraphics.world.mediaPixels` | 4 to 32 | `16` | Pixels of the screen a froxel of the air's grid spans across: Unreal's High 16, Epic 8 (four times the froxels). |
 | `crystalgraphics.world.mergeEmission` | true, false | `true` | What a new world renderer starts with: a transparent draw's codeless Emissive pass written by its Forward draw beside the target; false draws every Emissive pass on its own (mergeEmission(boolean) live). |
 | `crystalgraphics.world.meshFieldFloats` | 65536 to 67108864 | `8388608` | Floats our meshes' distance fields share on the GPU; the least recently used are dropped past it. Read at launch. |
+| `crystalgraphics.world.opaqueScene` | true, false | `true` | Under the HDR scene, our opaque draws into a linear scene of their own, so a colour past white reaches bloom; false draws them onto the host's 8-bit target, clamped, for the comparison. |
 | `crystalgraphics.world.skipUnready` | true, false | `true` | Holds a draw whose programs are not built yet, starting them and counting it as world.unready-draws; false compiles at the draw (skipUnready(boolean) live). |
 | `crystalgraphics.world.sunCasterReach` | 0.0 to 128.0 | `48.0` | Blocks toward the sun past each shadow cascade its casters are taken from: their longest shadow. |
 | `crystalgraphics.world.sunShadowCascades` | 1 to 4 | `4` | Cascades of the sun's shadow map drawn, each 3 times the depth of the last. |

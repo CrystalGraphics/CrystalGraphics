@@ -703,6 +703,8 @@ its GL part runs in slices so the screen keeps its frame rate. A job you already
 - **Never do the work in the callback itself**: every lifecycle callback is timed while the screen shows, and the
   watchdog names one holding the render thread (`loading/CLAUDE.md`).
 - `after("other:task")` starts a task once another has ended: tasks without one run in parallel.
+- When each kind of thing should load, and what keeps loading frames and gameplay frames smooth:
+  [`LOADING.md`](LOADING.md).
 
 ### Can my work read Minecraft's world?
 

@@ -24,7 +24,9 @@ import java.util.concurrent.locks.LockSupport;
  * (OpenGLShaders.cpp:2743, "precaching on the RHIT will cause severe hitching"). Under a threaded driver every status
  * query waits for the whole of its context's command queue, so a link submitted on the render thread makes its next
  * query, and every query after it, wait for every compile queued before. Here they queue on the worker's context, and
- * the render thread asks only a flag.
+ * the render thread asks only a flag. Where the driver gives program binaries it compiles in a second context sharing
+ * nothing ({@link #isolated()}) and moves each program over as a binary: NVIDIA holds the render thread's GL calls
+ * while a context sharing its objects compiles.
  *
  * <pre>{@code
  * CgLinkWorker.start();                       // the graphics start, render thread
