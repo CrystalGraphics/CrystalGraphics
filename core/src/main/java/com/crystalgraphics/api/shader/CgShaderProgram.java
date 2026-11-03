@@ -577,7 +577,7 @@ public final class CgShaderProgram {
                     else if (storage) names.storageBlock(block, CgGL.glGetProgramResourceIndex(program, CgGL.GL_SHADER_STORAGE_BLOCK, block));
                 }
             }
-            CgGL.cgProgramNames(program, names.complete());
+            CgGL.cgProgramNames(program, names.complete(storage));
         }
 
         private int shader(int type, String source) {

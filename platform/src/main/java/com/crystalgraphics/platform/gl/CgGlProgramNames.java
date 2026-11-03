@@ -14,7 +14,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * CgGlProgramNames.Names names = new CgGlProgramNames.Names();   // on the link worker, the program linked
  * names.uniform("_Color", CgGL.glGetUniformLocation(program, "_Color"));
  * names.uniformBlock("CgFrameBlock", CgGL.glGetUniformBlockIndex(program, "CgFrameBlock"));
- * CgGL.cgProgramNames(program, names.complete());               // every active uniform listed: an unlisted one is -1
+ * CgGL.cgProgramNames(program, names.complete(true));           // everything listed: an unlisted name is inactive
  * }</pre>
  *
  * A link, a binary load or a deletion forgets the program, as {@link CgGlUniforms} does.
@@ -29,7 +29,7 @@ public final class CgGlProgramNames {
     public static final class Names {
         private final Map<String, Integer> uniforms = new HashMap<>(), blocks = new HashMap<>(),
                 storage = new HashMap<>();
-        private boolean complete;
+        private boolean complete, storageListed;
 
         /** A uniform's location; an array's first element is also its bare name. */
         public Names uniform(String name, int location) {
@@ -48,9 +48,14 @@ public final class CgGlProgramNames {
             return this;
         }
 
-        /** Every active uniform is listed: a uniform not listed is inactive, -1, with no driver call. */
-        public Names complete() {
+        /**
+         * Every active uniform and every block the source declares is listed: one not listed is inactive, -1 or
+         * {@code GL_INVALID_INDEX}, with no driver call. {@code storageListed}: the storage blocks were looked up too
+         * (a context with them), else asked of the driver.
+         */
+        public Names complete(boolean storageListed) {
             complete = true;
+            this.storageListed = storageListed;
             return this;
         }
     }
@@ -75,9 +80,11 @@ public final class CgGlProgramNames {
         return at != null || !n.complete ? at : -1;
     }
 
-    /** A block's index, or null to ask the driver: blocks are listed as the source declares them, never complete. */
+    /** A block's index, or null to ask the driver. */
     static Integer block(int program, CharSequence name, boolean storage) {
         Names n = PROGRAMS.get(program);
-        return n == null ? null : (storage ? n.storage : n.blocks).get(name.toString());
+        if (n == null) return null;
+        Integer at = (storage ? n.storage : n.blocks).get(name.toString());
+        return at != null || !n.complete || storage && !n.storageListed ? at : CgGL.GL_INVALID_INDEX;
     }
 }
