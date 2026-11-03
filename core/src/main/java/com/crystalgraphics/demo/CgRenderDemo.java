@@ -4,6 +4,7 @@ import com.crystalgraphics.api.font.CgFont;
 import com.crystalgraphics.api.font.CgFontStyle;
 import com.crystalgraphics.api.font.CgGenericFamily;
 import com.crystalgraphics.api.font.CgSystemFontFace;
+import com.crystalgraphics.api.font.CgDefaultFont;
 import com.crystalgraphics.api.font.CgSystemFonts;
 import com.crystalgraphics.api.text.CgTextLayout;
 import com.crystalgraphics.api.texture.CgTextureType;
@@ -890,7 +891,8 @@ public final class CgRenderDemo {
         try {
             int px = Math.round(HUD_PX * Math.max(1f, hudSide / HUD_SIDE));
             if (px != hudPx) {
-                hudFont = sansSerif(px);
+                // Outfit, as the harness HUD: the engine's default font, shared, so never disposed
+                hudFont = CgDefaultFont.regular(px);
                 hudPx = px;
                 hudDirty = true;
             }
@@ -941,7 +943,7 @@ public final class CgRenderDemo {
         CgSystemFonts fonts = CgSystemFonts.get();
         CgSystemFontFace face = fonts.generic(CgGenericFamily.SANS_SERIF, CgFontStyle.REGULAR);
         if (face == null) {
-            LOGGER.warn("[CgRenderDemo] no sans-serif font installed: no HUD or labels");
+            LOGGER.warn("[CgRenderDemo] no sans-serif font installed: no labels");
             return null;
         }
         return fonts.load(face, CgFontStyle.REGULAR, px);
