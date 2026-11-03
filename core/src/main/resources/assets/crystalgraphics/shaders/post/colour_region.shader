@@ -51,7 +51,7 @@ struct v2f { vec2 uv; };
 
 Pass {
     Tags { "LightMode" = "Forward" }
-    RenderState { Blend SRC_ALPHA ONE_MINUS_SRC_ALPHA DepthTest ALWAYS DepthWrite OFF Cull OFF }
+    RenderState { Blend OFF DepthTest ALWAYS DepthWrite OFF Cull OFF }
 
     // ComposureColorGradePerRange: each control's xyz times its w, offset's added. Before vertex(), where a pass's
     // helpers reach both stages.
@@ -100,7 +100,9 @@ Pass {
             alpha = 1.0 - s;
         }
         if (alpha < 0.00001 && invert < 0.5) discard;
+        // Graded in linear light: the scene as it is, or the host's colour decoded where there is no HDR scene
         vec3 scene = CG_SCENE_COLOR(i.uv).rgb;
+        if (!CG_LINEAR_SCENE) scene = cg_SceneDecode(scene);
         vec3 c = vec3(dot(_ToAp10.xyz, scene), dot(_ToAp11.xyz, scene), dot(_ToAp12.xyz, scene));
         vec3 basic = region_grade(c, _G0, _G1, _G2, _G3, _G4);
         vec3 graded = basic;
@@ -126,6 +128,8 @@ Pass {
 #endif
         float falloff = pow(max(alpha, 0.0), _Shape.z);
         float weight = mix(falloff, 1.0 - falloff, invert) * _Shape.w * POST_WEIGHT;
-        fragColor = vec4(max(rgb, vec3(0.0)), clamp(weight, 0.0, 1.0));
+        // Mixed here, in linear light as Unreal blends it, and written whole: an 8-bit target would mix encoded values
+        vec3 mixed = mix(scene, max(rgb, vec3(0.0)), clamp(weight, 0.0, 1.0));
+        fragColor = vec4(CG_LINEAR_SCENE ? mixed : cg_SceneEncode(mixed), 1.0);
     }
 }
