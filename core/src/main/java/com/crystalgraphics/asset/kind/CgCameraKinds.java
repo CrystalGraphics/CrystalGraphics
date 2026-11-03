@@ -59,6 +59,36 @@ public final class CgCameraKinds {
             .property("tint", VEC4)
             .register();
 
+    /** One of Unreal's six Gaussian bloom layers: its size, a percent of the screen, and its tint. */
+    static final CgType BLOOM_LAYER = CgTypes.struct("crystalgraphics:post.bloom_layer")
+            .property("size", FLOAT)
+            .property("tint", VEC3)
+            .register();
+
+    /** CyberConnect2's bloom: its knee, and four levels' weights and sizes. */
+    static final CgType BLOOM_CC2 = CgTypes.struct("crystalgraphics:post.bloom_cc2")
+            .property("knee", FLOAT)
+            .property("weights", CgValueType.listOf(FLOAT))
+            .property("levels", CgValueType.listOf(FLOAT))
+            .register();
+
+    /** Unreal 4.20 and later's filmic tonemapper ({@code FilmSlope} to {@code FilmWhiteClip}). */
+    static final CgType FILM = CgTypes.struct("crystalgraphics:post.film")
+            .property("slope", FLOAT)
+            .property("toe", FLOAT)
+            .property("shoulder", FLOAT)
+            .property("black_clip", FLOAT)
+            .property("white_clip", FLOAT)
+            .register();
+
+    /** Unreal's legacy film curve ({@code FilmContrast}, {@code FilmDynamicRange}, {@code FilmToeAmount}, {@code FilmHealAmount}). */
+    static final CgType FILM_LEGACY = CgTypes.struct("crystalgraphics:post.film_legacy")
+            .property("contrast", FLOAT)
+            .property("dynamic_range", FLOAT)
+            .property("toe_amount", FLOAT)
+            .property("heal_amount", FLOAT)
+            .register();
+
     static final CgType MOTION_BLUR = CgTypes.struct("crystalgraphics:post.motion_blur")
             .property("amount", FLOAT)
             .property("max", FLOAT)
@@ -102,6 +132,15 @@ public final class CgCameraKinds {
     public static final CgType POST = CgTypes.struct("crystalgraphics:post").open()
             .property("bloom", FLOAT).flags(CgPropertyFlag.KEYABLE)
             .property("bloom_threshold", FLOAT).flags(CgPropertyFlag.KEYABLE)
+            .property("bloom1", CgValueType.struct(BLOOM_LAYER))
+            .property("bloom2", CgValueType.struct(BLOOM_LAYER))
+            .property("bloom3", CgValueType.struct(BLOOM_LAYER))
+            .property("bloom4", CgValueType.struct(BLOOM_LAYER))
+            .property("bloom5", CgValueType.struct(BLOOM_LAYER))
+            .property("bloom6", CgValueType.struct(BLOOM_LAYER))
+            .property("bloom_size_scale", FLOAT)
+            .property("bloom_method", CgValueType.enumOf("sog", "fft", "cc2"))
+            .property("bloom_cc2", CgValueType.struct(BLOOM_CC2))
             .property("exposure", CgValueType.struct(EXPOSURE))
             .property("vignette", FLOAT).flags(CgPropertyFlag.KEYABLE)
             .property("chromatic", FLOAT).flags(CgPropertyFlag.KEYABLE)
@@ -113,6 +152,11 @@ public final class CgCameraKinds {
             .property("lut", CgValueType.binaryRef("textures"))
             .property("grading_intensity", FLOAT).flags(CgPropertyFlag.KEYABLE)
             .property("tone_curve", FLOAT).flags(CgPropertyFlag.KEYABLE)
+            .property("blue_correction", FLOAT).flags(CgPropertyFlag.KEYABLE)
+            .property("display_gamma", FLOAT)
+            .property("tonemapper", CgValueType.enumOf("film", "legacy"))
+            .property("film", CgValueType.struct(FILM))
+            .property("film_legacy", CgValueType.struct(FILM_LEGACY))
             .property("expand_gamut", FLOAT).flags(CgPropertyFlag.KEYABLE)
             .property("film_grain", FLOAT).flags(CgPropertyFlag.KEYABLE)
             .property("motion_blur", CgValueType.struct(MOTION_BLUR))
