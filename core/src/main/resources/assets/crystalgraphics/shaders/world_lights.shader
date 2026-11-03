@@ -25,7 +25,7 @@
 // particle lights, as Unreal compiles a deferred light's shader per type.
 #pragma cg_feature CG_LIGHTS_SHAPED
 
-Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" "Fog" = "Off" "ColorSpace" = "Linear" "Media" = "Off" "SceneColorMargin" = "0.01" }
+Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" "Fog" = "Off" "ColorSpace" = "Target" "Media" = "Off" "SceneColorMargin" = "0.01" }
 Queue = "Transparent"
 
 Properties {
