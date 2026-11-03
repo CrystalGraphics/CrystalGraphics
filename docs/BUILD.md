@@ -111,11 +111,20 @@ python singlejar-logic/mcapi.py <Class> [member]                       # any nod
 
 `serverSmoke`, `prodSmoke` and useful dev runs are driven from CrystalGUI: this mod alone draws nothing.
 
-**`-PcgRenderDoc`** on a modern dev client (`runClient`, ModDevGradle or Loom) loads RenderDoc into the game before
-its window exists, through a one-class Java agent the node builds: F12 captures, and RenderDoc's File > Attach to
-Running Instance lists them. `-PcgRenderDoc=<renderdoc.dll>` for an install outside `C:/Program Files/RenderDoc`. GL
-captures need Minecraft 1.17 or later (a core context); 26.x's Vulkan goes through RenderDoc's layer. Frames run 2-4x
-slower attached. `cgbuildlogic.renderDocRun`.
+**RenderDoc in any client**: a one-class Java agent loads `renderdoc.dll` before the game's window exists (a mod is
+too late: Forge and NeoForge make the context in their early window). `./gradlew renderDocAgent` here writes it to
+`~/.crystalgraphics/renderdoc-agent.jar`; then any project's client, built against this one or not:
+
+```bash
+-javaagent:C:/Users/<you>/.crystalgraphics/renderdoc-agent.jar                      # VM options of a run config
+-javaagent:C:/Users/<you>/.crystalgraphics/renderdoc-agent.jar=D:/rd/renderdoc.dll  # an install elsewhere
+JAVA_TOOL_OPTIONS=-javaagent:C:/Users/<you>/.crystalgraphics/renderdoc-agent.jar ./gradlew runClient   # no build change
+```
+
+Our own modern dev clients take `-PcgRenderDoc[=<renderdoc.dll>]` instead (`cgbuildlogic.renderDocRun`). F12 captures;
+RenderDoc's File > Attach to Running Instance lists them. GL captures need Minecraft 1.17 or later (a core context);
+26.x's Vulkan goes through RenderDoc's layer. Frames run 2-4x slower attached. `JAVA_TOOL_OPTIONS` also loads it into
+Gradle's own JVMs, where it hooks nothing.
 
 ## Publishing
 

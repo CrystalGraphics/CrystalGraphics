@@ -75,19 +75,41 @@ fun Project.renderDocDevRun(): List<String> {
 
 private const val RENDERDOC_AGENT_TASK = "renderDocAgent"
 
+/**
+ * Where the agent jar goes: one place per user, so a project that does not build against CrystalGraphics names it
+ * in its run's VM options.
+ */
+val RENDERDOC_AGENT_JAR = File(System.getProperty("user.home"), ".crystalgraphics/renderdoc-agent.jar")
+
 /** The environment a Vulkan device needs for RenderDoc's layer: empty without `-PcgRenderDoc`. */
 fun Project.renderDocEnvironment(): Map<String, String> =
     if (renderDocLibrary() == null) emptyMap() else mapOf("ENABLE_VULKAN_RENDERDOC_CAPTURE" to "1")
 
-private fun Project.renderDocAgentTask(): TaskProvider<RenderDocAgentJar> =
+/**
+ * Registers `renderDocAgent`, which writes [RENDERDOC_AGENT_JAR]. CrystalGraphics' root has it, for any project's run:
+ *
+ * ```bash
+ * ./gradlew renderDocAgent        # in CrystalGraphics, once
+ * # then in any client run's VM options, Minecraft or not:
+ * -javaagent:C:/Users/<you>/.crystalgraphics/renderdoc-agent.jar
+ * -javaagent:C:/Users/<you>/.crystalgraphics/renderdoc-agent.jar=D:/rd/renderdoc.dll
+ * ```
+ */
+fun Project.registerRenderDocAgent(): TaskProvider<RenderDocAgentJar> =
     if (RENDERDOC_AGENT_TASK in tasks.names) tasks.named(RENDERDOC_AGENT_TASK, RenderDocAgentJar::class.java)
     else tasks.register(RENDERDOC_AGENT_TASK, RenderDocAgentJar::class.java) {
-        jar.set(layout.buildDirectory.file("renderdoc/cg-renderdoc-agent.jar"))
+        group = "crystalgraphics"
+        description = "Writes the Java agent that loads RenderDoc into a JVM before its window: $RENDERDOC_AGENT_JAR"
+        jar.set(RENDERDOC_AGENT_JAR)
+        // Outside the build: always rewritten, never trusted as up to date
+        outputs.upToDateWhen { false }
     }
 
+private fun Project.renderDocAgentTask() = registerRenderDocAgent()
+
 /**
- * Builds the one-class agent jar: its `premain` loads the library its argument names. Compiled for Java 8, so one jar
- * serves every node's JVM.
+ * Builds the one-class agent jar: its `premain` loads the library its argument names, or the default install's
+ * ([RENDERDOC_DEFAULT_DLL]) with none. Compiled for Java 8, so one jar serves every JVM from 1.7.10's on.
  */
 abstract class RenderDocAgentJar : DefaultTask() {
 
@@ -119,7 +141,8 @@ abstract class RenderDocAgentJar : DefaultTask() {
     private companion object {
         val AGENT_SOURCE = """
             public final class CgRenderDocAgent {
-                public static void premain(String library) {
+                public static void premain(String argument) {
+                    String library = argument == null || argument.isEmpty() ? "$RENDERDOC_DEFAULT_DLL" : argument;
                     System.load(library);
                     System.out.println("[renderdoc] attached: " + library + " (F12 captures; File > Attach to Running Instance lists them)");
                 }

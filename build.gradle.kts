@@ -1,6 +1,7 @@
 import cgbuildlogic.Licence
 import cgbuildlogic.publishedModule
 import cgbuildlogic.registerCheckAllTargets
+import cgbuildlogic.registerRenderDocAgent
 plugins {
     idea
     // One idea-ext for the whole build. gtnhgradle and ModDevGradle request it under different Maven
@@ -62,3 +63,6 @@ if (tasks.findByName("processIdeaSettings") == null) {
 // Every node of the 1.20.x tree compiled, every source set -- a change is compiled against every
 // Minecraft version before it is committed, not only the IDE's active node. @see ModernConventions
 registerCheckAllTargets()
+
+// ~/.crystalgraphics/renderdoc-agent.jar: any project's client loads RenderDoc with one VM option. @see RenderDocDevRun
+registerRenderDocAgent()
