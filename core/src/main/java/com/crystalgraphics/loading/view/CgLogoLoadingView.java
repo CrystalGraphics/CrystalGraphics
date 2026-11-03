@@ -32,7 +32,8 @@ import com.crystalgraphics.render.draw.CgInstanceKind;
 /**
  * The engine's loading screen: its lockup (the logo and "Crystal Graphics") over a view up at the ocean's surface from
  * below, with a breathing halo and a light sweeping across it, and Minecraft's white outlined load bar under it,
- * spanning it. It comes in in stages, the backdrop, the lockup, then the bar, and fades out whole.
+ * spanning it. In and out it moves in stages: the backdrop, the lockup, then the bar coming in; the bar, the lockup
+ * lifting away larger, then the backdrop going out.
  *
  * <pre>{@code
  * // the default; a mod's own lockup on the same look:
@@ -89,12 +90,14 @@ public final class CgLogoLoadingView implements CgLoadingView {
         CgImmediate.constants().view.identity();
         CgImmediate.constants().projection.setOrtho(0f, width, height, 0f, -1f, 1f);
 
-        // In, staged: the backdrop over the host's screen (opaque at once when that is the host's menu), then the lockup
-        // settling from 3% larger, then the bar rising into place. Out, everything fades together
+        // Staged, each part on its own eased window. In: the backdrop over the host's screen (opaque at once when that is
+        // the host's menu), then the lockup settling from 3% larger, then the bar rising into place. Out, the reverse:
+        // the bar first, the lockup lifting away 6% larger as a game's splash leaves for its menu, the backdrop last
         float backdropIn = CgLoadingScreen.covers() ? 1f : stage(appear, 0f, 0.5f);
-        float lockupIn = stage(appear, 0.2f, 0.85f), barIn = stage(appear, 0.45f, 1f), out = 1f - stage(leave, 0f, 1f);
-        float alpha = backdropIn * out, shown = lockupIn * out, barShown = barIn * out;
-        float grow = 1f + 0.03f * (1f - lockupIn);
+        float lockupIn = stage(appear, 0.2f, 0.85f), barIn = stage(appear, 0.45f, 1f);
+        float barOut = stage(leave, 0f, 0.3f), lockupOut = stage(leave, 0.1f, 0.7f), backdropOut = stage(leave, 0.35f, 1f);
+        float alpha = backdropIn * (1f - backdropOut), shown = lockupIn * (1f - lockupOut), barShown = barIn * (1f - barOut);
+        float grow = 1f + 0.06f * stage(leave, 0.1f, 0.8f) + 0.03f * (1f - lockupIn);
         // Vanilla LoadingOverlay's sizes, so the hand-off from Mojang's screen keeps its scale: the lockup as wide as its
         // logo, min(0.75 width, height), and a bar as wide
         float cx = width / 2f, logoWidth = Math.min(width * 0.75f, height);
@@ -104,8 +107,8 @@ public final class CgLogoLoadingView implements CgLoadingView {
         float barHeight = Math.max(6f, Math.round(logoWidth * (32f / 1080f))), gap = icon * 0.36f;
         // The lockup and the bar a third of the icon below it, centred together
         float cy = Math.round(height / 2f - (gap + barHeight) / 2f);
-        // Sinking into place as it comes in: a few percent of the screen
-        float lift = height * 0.015f * (1f - lockupIn);
+        // Sinking into place as it comes in, lifting as it leaves: a few percent of the screen
+        float lift = height * (0.015f * (1f - lockupIn) - 0.02f * stage(leave, 0.1f, 0.7f));
         cy += lift;
 
         // The lockup, its visible width the logo's, its image padded around that
@@ -119,7 +122,10 @@ public final class CgLogoLoadingView implements CgLoadingView {
         image.useMaterial(CgMaterial.load(FX));
         image.bindTexture(0, texture);
         image.begin();
-        quad(image, Math.round(cx - w / 2f), Math.round(cy - h / 2f), w, h, argb(shown, 0xFFFFFFFF), 1f, IMAGE);
+        // Pixel-snapped only at rest: snapping its corner while its size moves jumps its edges a pixel back and forth
+        boolean still = grow == 1f && lift == 0f;
+        float x = cx - w / 2f, y = cy - h / 2f;
+        quad(image, still ? Math.round(x) : x, still ? Math.round(y) : y, w, h, argb(shown, 0xFFFFFFFF), 1f, IMAGE);
         end(image);
 
         // The bar spans the lockup a third of the icon below it, so the two read as one block
