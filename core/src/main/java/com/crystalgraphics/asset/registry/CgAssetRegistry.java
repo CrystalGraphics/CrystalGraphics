@@ -259,8 +259,10 @@ public final class CgAssetRegistry {
         }
 
         CgAssetRegistryCache records = awaited(cache);
+        // Read from the cache, the reads are cheap and the walk was most of it; with nothing cached they are nearly all
+        float walkShare = records.countUnder(root) > 0 ? SCAN_WALKED : SCAN_WALKED_COLD;
         records.scanning(root);
-        if (task != null) task.progress(SCAN_WALKED);
+        if (task != null) task.progress(walkShare);
         CgAssetEntry[] gathered = new CgAssetEntry[yaml.size()];
         AtomicReference<RuntimeException> failed = new AtomicReference<>();
         AtomicInteger read = new AtomicInteger();
@@ -272,7 +274,7 @@ public final class CgAssetRegistry {
                     failed.compareAndSet(null, e);
                 }
                 int n = read.incrementAndGet();
-                if (task != null && (n & 255) == 0) task.progress(SCAN_WALKED + (1f - SCAN_WALKED) * n / yaml.size());
+                if (task != null && (n & 255) == 0) task.progress(walkShare + (1f - walkShare) * n / yaml.size());
             });
         }
         if (failed.get() != null) throw failed.get();
@@ -309,6 +311,8 @@ public final class CgAssetRegistry {
 
     /** The share of a scan its walk takes: 1.2 s of Kakarot's 1.7. */
     private static final float SCAN_WALKED = 0.6f;
+    /** The same with nothing cached under the root: every file is read, and Kakarot's scan grows from 1.7 s to 13.8. */
+    private static final float SCAN_WALKED_COLD = 0.1f;
 
     /** The walk's progress: YAML files listed against those the last scan read under {@code root}, once the cache is in. */
     private static void walked(CgLoadTask task, CompletableFuture<CgAssetRegistryCache> cache, Path root, int listed,
