@@ -143,8 +143,19 @@ float stroke_coverage(vec2 p, vec2 a, vec2 b, vec2 c,
     //
     // Only when the caller took the default filter. A wider authored feather is a glow, and a glow
     // is already too soft to bead.
-    if (ramp <= CG_STROKE_AA_FILTER) {
-        ramp *= max(1.0, (CG_STROKE_AA_FILTER * 0.5) / max(halfWidth, 1.0e-4));
+    //
+    // The widening stops at 2x (a quarter-pixel half-width), and the coverage is scaled so the ink
+    // across the line stays 2 * halfWidth, as Skia modulates a thin stroke's alpha. Unbounded, a
+    // 0.05px stroke smeared over 10px at half coverage: thin facet outlines drew as a solid block.
+    float ink = 1.0;
+    if (ramp <= CG_STROKE_AA_FILTER && halfWidth < CG_STROKE_AA_FILTER * 0.5) {
+        float shaped = max(halfWidth, CG_STROKE_AA_FILTER * 0.25);
+        ramp *= (CG_STROKE_AA_FILTER * 0.5) / shaped;
+        float drawn = shaped < ramp * 0.5
+                ? (shaped + ramp * 0.5) * (shaped + ramp * 0.5) / ramp
+                : 2.0 * shaped;
+        ink = 2.0 * max(halfWidth, 0.0) / drawn;
+        halfWidth = shaped;
     }
 
     // SIGNED FIRST. Intersecting the cap half-plane against the raw unsigned distance compares two
@@ -234,7 +245,7 @@ float stroke_coverage(vec2 p, vec2 a, vec2 b, vec2 c,
     // and measured to change nothing -- fwidth never exceeded the feather -- and it would cost this
     // function its freedom from derivative builtins, and the note above about needing no
     // CG_VERTEX_STAGE guard with it.
-    return clamp(0.5 - signedDist / ramp, 0.0, 1.0);
+    return ink * clamp(0.5 - signedDist / ramp, 0.0, 1.0);
 }
 
 // Antialiased coverage of a FILLED triangle p0->p1->p2 at point `p`, in [0,1]. `cornerRadius`
