@@ -111,6 +111,12 @@ python singlejar-logic/mcapi.py <Class> [member]                       # any nod
 
 `serverSmoke`, `prodSmoke` and useful dev runs are driven from CrystalGUI: this mod alone draws nothing.
 
+**`-PcgRenderDoc`** on a modern dev client (`runClient`, ModDevGradle or Loom) loads RenderDoc into the game before
+its window exists, through a one-class Java agent the node builds: F12 captures, and RenderDoc's File > Attach to
+Running Instance lists them. `-PcgRenderDoc=<renderdoc.dll>` for an install outside `C:/Program Files/RenderDoc`. GL
+captures need Minecraft 1.17 or later (a core context); 26.x's Vulkan goes through RenderDoc's layer. Frames run 2-4x
+slower attached. `cgbuildlogic.renderDocRun`.
+
 ## Publishing
 
 ### Releasing

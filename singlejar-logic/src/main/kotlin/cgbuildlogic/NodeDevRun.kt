@@ -34,6 +34,7 @@ val DEV_DESCRIPTORS = listOf("META-INF/mods.toml", "META-INF/neoforge.mods.toml"
  * - Registers nothing in stub mode: requesting a run task is what makes a node real.
  * - Every `-D` system property on the Gradle command line starting with one of [forwardProperties] reaches
  *   the game.
+ * - `-PcgRenderDoc[=<renderdoc.dll>]` loads RenderDoc into the client before its window exists: [renderDocDevRun].
  * - The mods it depends on are the caller's to put on the run: `com.crystalgui` puts CrystalGUI's and
  *   CrystalGraphics' there. On Forge that includes CrystalGraphics' mixin config: [graphicsDevMixinArgs].
  * - On Forge this node's own mixin config is passed as `--mixin.config`, which a manifest carries in a jar.
@@ -66,6 +67,12 @@ fun Project.registerNodeDevRun(descriptor: ModDescriptor, bundled: List<Project>
             forwarded.forEach { (key, value) ->
                 javaClass.getMethod("property", String::class.java, String::class.java).invoke(this, key, value)
             }
+            if (javaClass.getMethod("getName").invoke(this) == "client") {
+                renderDocDevRun().forEach { javaClass.getMethod("vmArg", String::class.java).invoke(this, it) }
+                renderDocEnvironment().forEach { (key, value) ->
+                    javaClass.getMethod("environmentVariable", String::class.java, Any::class.java).invoke(this, key, value)
+                }
+            }
         }
         return
     }
@@ -85,6 +92,7 @@ fun Project.registerNodeDevRun(descriptor: ModDescriptor, bundled: List<Project>
             gameDirectory.set(layout.projectDirectory.dir("runs/$side"))
             forwarded.forEach { (key, value) -> systemProperty(key, value) }
             programArguments.addAll(mixinArgs)
+            if (side == "client") renderDocRun(this)
         }
     }
 }

@@ -19,6 +19,7 @@ import cgbuildlogic.commonNode
 import cgbuildlogic.graphicsDevMixinArgs
 import cgbuildlogic.devRunSourceSet
 import cgbuildlogic.registerSrgReobf
+import cgbuildlogic.renderDocRun
 import cgbuildlogic.registerThinRename
 import cgbuildlogic.stubMode
 import cgbuildlogic.useForgeApi
@@ -87,6 +88,7 @@ legacyForge?.apply {
         create("client") {
             client()
             gameDirectory = project.file("runs/client")
+            renderDocRun(this)
         }
         create("server") {
             server()

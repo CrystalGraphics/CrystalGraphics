@@ -8,6 +8,7 @@
 
 import cgbuildlogic.commonNode
 import cgbuildlogic.devRunSourceSet
+import cgbuildlogic.renderDocRun
 import cgbuildlogic.stubMode
 import cgbuildlogic.useNeoForgeApi
 import net.neoforged.moddevgradle.dsl.NeoForgeExtension
@@ -61,6 +62,7 @@ if (!stubMode) configure<NeoForgeExtension> {
             System.getProperties().stringPropertyNames()
                     .filter { it.startsWith("crystalgraphics.") }
                     .forEach { systemProperty(it, System.getProperty(it)) }
+            renderDocRun(this)
         }
     }
 
