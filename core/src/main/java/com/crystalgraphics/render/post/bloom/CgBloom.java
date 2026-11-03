@@ -70,10 +70,12 @@ public final class CgBloom implements CgPostEffect {
     public static final float INTENSITY = 1f;
 
     private final CgBloomChain chain = new CgBloomChain();
+    private final CgGaussianBloom gaussian = new CgGaussianBloom();
     private float intensity = INTENSITY, tintR = 1f, tintG = 1f, tintB = 1f, threshold = 1f;
     private CgMaterial excessMaterial;
     private CgGraphTexture excess, boundScene;
     private float boundThreshold = Float.NaN;
+    private boolean boundSetup;
     private final CgPassConstants excessConstants = new CgPassConstants();
     private final float[] block = new float[CgPassConstants.FLOATS];
     private Mode mode = Mode.ADDITIVE;
@@ -148,8 +150,20 @@ public final class CgBloom implements CgPostEffect {
     @Override
     public void record(CgPostContext post) {
         CgGraphTexture scene = post.resources().get(CgFrameKeys.SCENE);
+        if (post.settings().bloomsGaussian()) {
+            // Unreal's layers: the setup on the half-size scene, or the emission halved; their tints carry the intensity
+            CgGraphTexture half = scene != null ? excess(post, scene, true, post.settings().bloomThreshold())
+                    : excess(post, post.distorted(post.resources().get(CgFrameKeys.EMISSION)), true, -1f);
+            CgGraphTexture glow = half == null ? null : gaussian.record(post.recording(), half, post.settings(), post.constants());
+            if (glow == null) return;
+            post.resources().put(CHAIN, glow);
+            post.composite().bloom(glow, intensity, tintR, tintG, tintB, mode == Mode.ENERGY_CONSERVING);
+            if (linear) post.composite().linear();
+            return;
+        }
         // Bent as the scene beneath was, or the glow sits unbent over every haze; the scene is bent already.
-        CgGraphTexture emission = scene != null ? excess(post, scene) : post.distorted(post.resources().get(CgFrameKeys.EMISSION));
+        CgGraphTexture emission = scene != null ? excess(post, scene, false, threshold)
+                : post.distorted(post.resources().get(CgFrameKeys.EMISSION));
         if (emission == null) return;
         CgGraphTexture glow = chain.record(post.recording(), emission, post.constants(), CgGraphicsSettings.QUALITY.get());
         if (glow == null) return;
@@ -159,18 +173,23 @@ public final class CgBloom implements CgPostEffect {
         if (linear) post.composite().linear();
     }
 
-    /** The scene's light past the threshold, at half its size; null while the pass's program is not ready. */
-    private CgGraphTexture excess(CgPostContext post, CgGraphTexture scene) {
+    /**
+     * The scene's light past {@code threshold}, at half its size, or with {@code unreal} Unreal's bloom setup on its
+     * 2x2 average (whole at -1); null while the pass's program is not ready.
+     */
+    private CgGraphTexture excess(CgPostContext post, CgGraphTexture scene, boolean unreal, float threshold) {
         int w = Math.max(1, scene.getWidth() / 2), h = Math.max(1, scene.getHeight() / 2);
         if (excess == null || excess.getWidth() != w || excess.getHeight() != h) {
             excess = CgGraphTexture.transientTexture("cg_bloom_excess", new CgTextureDesc(w, h, EXCESS_FORMAT));
         }
         if (excessMaterial == null) excessMaterial = CgMaterial.newInstance(EXCESS);
-        if (scene != boundScene || threshold != boundThreshold) {
+        if (scene != boundScene || threshold != boundThreshold || unreal != boundSetup) {
             float t = threshold;
+            excessMaterial.toggleKeyword("UNREAL_SETUP", unreal);
             excessMaterial.applyProperties(b -> b.sampler("_Scene", 0, scene).set1f("_Threshold", t));
             boundScene = scene;
             boundThreshold = t;
+            boundSetup = unreal;
         }
         CgPipeline pipeline = excessMaterial.pipeline(CgInstanceKind.OBJECT);
         if (pipeline == null) return null;
@@ -189,6 +208,7 @@ public final class CgBloom implements CgPostEffect {
     /** Forgets what it made on the GPU. At context teardown, through the stack. */
     public void release() {
         chain.release();
+        gaussian.release();
         excessMaterial = null;
         excess = boundScene = null;
         boundThreshold = Float.NaN;

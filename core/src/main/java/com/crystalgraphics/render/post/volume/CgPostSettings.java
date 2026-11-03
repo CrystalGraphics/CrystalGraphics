@@ -33,7 +33,14 @@ public final class CgPostSettings {
             FILM_HEAL = 1 << 11, FILM_SATURATION = 1 << 12, WHITE_BALANCE = 1 << 13, FILMIC = 1 << 14,
             TONE_CURVE = 1 << 15, FILM_SLOPE = 1 << 16, FILM_CURVE_TOE = 1 << 17, FILM_SHOULDER = 1 << 18,
             FILM_BLACK_CLIP = 1 << 19, FILM_WHITE_CLIP = 1 << 20, BLUE_CORRECTION = 1 << 21, EXPAND_GAMUT = 1 << 22,
-            DISPLAY_GAMMA = 1 << 23;
+            DISPLAY_GAMMA = 1 << 23, GAUSSIAN = 1 << 24, BLOOM_THRESHOLD = 1 << 25, BLOOM_SIZE_SCALE = 1 << 26;
+
+    /** Unreal's Gaussian bloom layers, {@code Bloom1} to {@code Bloom6}. */
+    public static final int BLOOM_LAYERS = 6;
+    /** Unreal 5.1's layer sizes, percent of the screen's width ({@code FPostProcessSettings}, Scene.cpp). */
+    private static final float[] LAYER_SIZES = {0.3f, 1f, 2f, 10f, 30f, 64f};
+    /** And its layer tints, grey each. */
+    private static final float[] LAYER_TINTS = {0.3465f, 0.138f, 0.1176f, 0.066f, 0.066f, 0.061f};
 
     /** Where a grade applies: Unreal's global controls, then its Shadows, Midtones and Highlights. */
     public enum Region { GLOBAL, SHADOWS, MIDTONES, HIGHLIGHTS }
@@ -70,6 +77,12 @@ public final class CgPostSettings {
     /** How much of the picture the tonemapper takes, 0 to 1; the rest is the roll to white. */
     volatile float tonemapWeight;
     volatile float whiteTemp = 6500f, whiteTint;
+    /** Unreal's {@code BloomThreshold} (-1, no setup pass) and {@code BloomSizeScale}. */
+    volatile float bloomThreshold = -1f, bloomSizeScale = 4f;
+    /** Each layer's size, then its tint's r, g, b: {@code layer * 4}. */
+    final float[] bloomLayers = neutralLayers();
+    /** Per layer, bit {@code 2 * layer} its size overridden, the next its tint. */
+    volatile int layerOverrides;
     volatile int gradeOverrides;
     /** Each region's controls, {@code (region * 5 + control) * 4}: r, g, b, then the scalar. */
     final float[] grade = neutralGrade();
@@ -238,6 +251,82 @@ public final class CgPostSettings {
         filmSaturation = saturation;
         overrides |= FILM_SATURATION;
         return this;
+    }
+
+    /**
+     * Draws the bloom as Unreal's Gaussian layers ({@code BloomMethod} Standard): the scene halved down to a 64th, each
+     * of six layers a Gaussian of {@code size} percent of the screen's width (times {@link #bloomSizeScale}) and a tint,
+     * summed from the widest in, times {@link #bloom} over six. The engine's own chain unless asked.
+     *
+     * <pre>{@code
+     * new CgPostSettings().gaussianBloom().bloom(1.25f).bloomSizeScale(4f).bloomLayer(1, 0.3f, 0.3466f, 0.3466f, 0.3466f);
+     * }</pre>
+     *
+     * <ul>
+     *   <li>A layer of size 0 is skipped, as Unreal skips it.</li>
+     *   <li>Under the HDR scene, its source is Unreal's bloom setup on the half-size scene ({@link #bloomThreshold}).</li>
+     * </ul>
+     */
+    public CgPostSettings gaussianBloom() {
+        overrides |= GAUSSIAN;
+        return this;
+    }
+
+    /**
+     * {@code BloomThreshold}: light whose luminance passes it blooms, by {@code saturate((luminance - t) / 2)}; -1 (the
+     * default) or less blooms the whole scene, Unreal running no setup pass. The Gaussian bloom's alone.
+     */
+    public CgPostSettings bloomThreshold(float threshold) {
+        bloomThreshold = threshold;
+        overrides |= BLOOM_THRESHOLD;
+        return this;
+    }
+
+    /** {@code BloomSizeScale} (default 4): every layer's size times it. */
+    public CgPostSettings bloomSizeScale(float scale) {
+        bloomSizeScale = Math.max(0f, scale);
+        overrides |= BLOOM_SIZE_SCALE;
+        return this;
+    }
+
+    /**
+     * Layer {@code layer} (1 to 6, {@code Bloom1Size}/{@code Bloom1Tint} to {@code Bloom6}): its Gaussian's size in
+     * percent of the screen's width and its tint. Unreal's defaults otherwise.
+     */
+    public CgPostSettings bloomLayer(int layer, float size, float r, float g, float b) {
+        return bloomSize(layer, size).bloomTint(layer, r, g, b);
+    }
+
+    /** Layer {@code layer}'s size alone, its tint kept: {@link #bloomLayer}. */
+    public CgPostSettings bloomSize(int layer, float size) {
+        int at = layerAt(layer);
+        bloomLayers[at] = Math.max(0f, size);
+        layerOverrides |= 1 << 2 * (layer - 1);
+        return this;
+    }
+
+    /** Layer {@code layer}'s tint alone: {@link #bloomLayer}. */
+    public CgPostSettings bloomTint(int layer, float r, float g, float b) {
+        int at = layerAt(layer);
+        bloomLayers[at + 1] = r;
+        bloomLayers[at + 2] = g;
+        bloomLayers[at + 3] = b;
+        layerOverrides |= 2 << 2 * (layer - 1);
+        return this;
+    }
+
+    private static int layerAt(int layer) {
+        if (layer < 1 || layer > BLOOM_LAYERS) throw new IllegalArgumentException("bloom layer " + layer + ": 1 to 6");
+        return (layer - 1) * 4;
+    }
+
+    private static float[] neutralLayers() {
+        float[] l = new float[BLOOM_LAYERS * 4];
+        for (int i = 0; i < BLOOM_LAYERS; i++) {
+            l[i * 4] = LAYER_SIZES[i];
+            l[i * 4 + 1] = l[i * 4 + 2] = l[i * 4 + 3] = LAYER_TINTS[i];
+        }
+        return l;
     }
 
     /** Unreal's white balance: {@code WhiteTemp} in kelvin (6500 is none) and {@code WhiteTint} (-1 to 1). */
@@ -495,6 +584,35 @@ public final class CgPostSettings {
         return tintB;
     }
 
+    /** Whether the bloom is Unreal's Gaussian layers ({@link #gaussianBloom()}), not the engine's chain. */
+    public boolean bloomsGaussian() {
+        return (overrides & GAUSSIAN) != 0;
+    }
+
+    public float bloomThreshold() {
+        return bloomThreshold;
+    }
+
+    public float bloomSizeScale() {
+        return bloomSizeScale;
+    }
+
+    /** Layer {@code layer}'s (1 to 6) size, percent of the screen's width. */
+    public float bloomSize(int layer) {
+        return bloomLayers[layerAt(layer)];
+    }
+
+    /** Component {@code c} (0 r, 1 g, 2 b) of layer {@code layer}'s tint. */
+    public float bloomTint(int layer, int c) {
+        return bloomLayers[layerAt(layer) + 1 + c];
+    }
+
+    /** Whether it overrides layer {@code layer}'s size ({@code tint} false) or tint. */
+    public boolean overridesLayer(int layer, boolean tint) {
+        layerAt(layer);
+        return (layerOverrides & (tint ? 2 : 1) << 2 * (layer - 1)) != 0;
+    }
+
     /** Whether the grade, the white balance or the tint is anything but neutral: what turns the composite's grade on. */
     public boolean grades() {
         if (whiteTemp != 6500f || whiteTint != 0f || tintR != 1f || tintG != 1f || tintB != 1f) return true;
@@ -535,7 +653,13 @@ public final class CgPostSettings {
         gradeOverrides = 0;
         for (int i = 0; i < GRADE_FLOATS; i++) grade[i] = CONTROLS[i / 4 % 5].neutral;
         tintR = tintG = tintB = 1f;
+        bloomThreshold = -1f;
+        bloomSizeScale = 4f;
+        layerOverrides = 0;
+        System.arraycopy(NEUTRAL_LAYERS, 0, bloomLayers, 0, bloomLayers.length);
     }
+
+    private static final float[] NEUTRAL_LAYERS = neutralLayers();
 
     /**
      * Moves each value {@code from} overrides {@code weight} (0 to 1) of the way to it; a look takes the heavier's, and
@@ -562,6 +686,18 @@ public final class CgPostSettings {
         if ((o & BLUE_CORRECTION) != 0) blueCorrection += (from.blueCorrection - blueCorrection) * weight;
         if ((o & EXPAND_GAMUT) != 0) expandGamut += (from.expandGamut - expandGamut) * weight;
         if ((o & DISPLAY_GAMMA) != 0) displayGamma += (from.displayGamma - displayGamma) * weight;
+        if ((o & BLOOM_THRESHOLD) != 0) bloomThreshold += (from.bloomThreshold - bloomThreshold) * weight;
+        if ((o & BLOOM_SIZE_SCALE) != 0) bloomSizeScale += (from.bloomSizeScale - bloomSizeScale) * weight;
+        int lo = from.layerOverrides;
+        if (lo != 0) {
+            for (int l = 0; l < BLOOM_LAYERS; l++) {
+                if ((lo & 1 << 2 * l) != 0) bloomLayers[l * 4] += (from.bloomLayers[l * 4] - bloomLayers[l * 4]) * weight;
+                if ((lo & 2 << 2 * l) != 0) {
+                    for (int k = l * 4 + 1; k < l * 4 + 4; k++) bloomLayers[k] += (from.bloomLayers[k] - bloomLayers[k]) * weight;
+                }
+            }
+            layerOverrides |= lo;
+        }
         if ((o & WHITE_BALANCE) != 0) {
             whiteTemp += (from.whiteTemp - whiteTemp) * weight;
             whiteTint += (from.whiteTint - whiteTint) * weight;
