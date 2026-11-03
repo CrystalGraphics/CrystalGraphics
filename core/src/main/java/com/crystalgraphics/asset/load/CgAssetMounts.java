@@ -2,6 +2,7 @@ package com.crystalgraphics.asset.load;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryStream;
 import java.nio.file.FileSystem;
 import java.nio.file.FileSystems;
@@ -10,13 +11,17 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import com.crystalgraphics.asset.codec.CgAssetYaml;
 import com.crystalgraphics.asset.kind.CgAssetKinds;
+import com.crystalgraphics.asset.kind.CgGameplayKinds;
 import com.crystalgraphics.asset.registry.CgAssetRegistry;
 import com.crystalgraphics.asset.registry.CgAssetSource;
 import com.crystalgraphics.object.CgType;
@@ -35,7 +40,7 @@ import com.crystalgraphics.util.io.CgIO;
  * <pre>{@code
  * // CgEngineLifecycle, never a host:
  * CgAssetMounts.mount();      // pre-init: every mod's cues, shakes, systems and tags.yaml, before anything compiles
- * CgAssetMounts.loadAhead();  // post-init: all of it starts loading
+ * CgAssetMounts.loadAhead();  // post-init: every cue, and what each preload.yaml declares, starts loading
  *
  * // a tool or a test, over a registry of its own:
  * CgAssetMounts.Result r = CgAssetMounts.mount(registry, List.of(sourceFolder), List.of(modJar));
@@ -43,7 +48,7 @@ import com.crystalgraphics.util.io.CgIO;
  *
  * <ul>
  *   <li>A namespace mounts only where it holds the format's content: {@code tags.yaml}, {@code units.yaml},
- *       {@code content.yaml}, or a kind's folder other than {@code textures} and {@code models}, which every
+ *       {@code content.yaml}, {@code preload.yaml}, or a kind's folder other than {@code textures} and {@code models}, which every
  *       Minecraft namespace has. Unreal mounts only plugins that can contain content.</li>
  *   <li>A namespace mounts from the first source that has it, so a dev run's source folder wins over its own build
  *       output, and edits there reload.</li>
@@ -54,12 +59,15 @@ import com.crystalgraphics.util.io.CgIO;
 public final class CgAssetMounts {
 
     private static final Logger LOGGER = LogManager.getLogger("CrystalGraphics");
-    private static final Set<String> ROOT_FILES = new HashSet<>(Arrays.asList("tags.yaml", "units.yaml", "content.yaml"));
+    private static final String PRELOAD = "preload.yaml";
+    private static final Set<String> ROOT_FILES = new HashSet<>(Arrays.asList("tags.yaml", "units.yaml", "content.yaml", PRELOAD));
     /** Kind folders Minecraft's own namespaces use too: holding one says nothing. */
     private static final Set<String> SHARED = new HashSet<>(Arrays.asList("textures", "models"));
 
     private static boolean mounted, loaded;
     private static List<String> namespaces = List.of();
+    /** Each mounted namespace's folder, where its {@code preload.yaml} is read. */
+    private static final Map<String, Path> ROOTS = new LinkedHashMap<>();
 
     private CgAssetMounts() {
     }
@@ -78,20 +86,111 @@ public final class CgAssetMounts {
     }
 
     /**
-     * Loads every asset {@link #mount} mounted ahead ({@link CgVfxAssets#prefetch}): asked from any thread, started at the
-     * asset loop's next drain. Once.
+     * Loads ahead ({@link CgVfxAssets#prefetch}) what the game can play, behind the loading screen: every mounted
+     * namespace's cues, and what each namespace's {@code preload.yaml} declares. Never whole namespaces by default: a
+     * game's kit retains gigabytes compiled, and what nothing declared loads at its first play, counted
+     * ({@code asset.unplanned-loads}). Asked from any thread, started at the asset loop's next drain. Once.
+     *
+     * <pre>{@code
+     * # assets/mymod/preload.yaml: what mymod's gameplay plays, from any namespace
+     * cue: [mymod:kamehameha, kakarot_kit:Blueprints/Battle/Skill/C001A/*]   # an id, or every id under a prefix
+     * sequence: [spzero_kit:SS/InGameComp/Skill/0000/*]
+     * all: true                                                              # optional: every asset of mymod itself
+     * }</pre>
      */
     public static synchronized void loadAhead() {
         if (loaded) return;
         loaded = true;
         CgVfxAssets assets = CgVfxAssets.instance();
+        CgAssetRegistry registry = assets.registry();
+        Set<String> seen = new HashSet<>();
         List<CgAssetRef<?>> ahead = new ArrayList<>();
+        int cues = 0, declared = 0;
         for (String ns : namespaces) {
-            for (CgAssetEntry e : assets.registry().entries(ns)) {
-                if (!e.binary() && e.redirect() == null) ahead.add(CgVfxAssets.ref(e.kind(), e.id()));
+            Path root = ROOTS.get(ns);
+            Preload preload = root == null ? Preload.NONE : Preload.read(root.resolve(PRELOAD));
+            for (CgAssetEntry e : registry.entries(ns)) {
+                if (e.binary() || e.redirect() != null || !(preload.all() || e.kind() == CgGameplayKinds.CUE)) continue;
+                if (add(ahead, seen, e)) cues++;
+            }
+            for (Map.Entry<CgType, List<String>> d : preload.declared().entrySet()) {
+                for (String id : d.getValue()) {
+                    int before = ahead.size();
+                    if (id.endsWith("*")) {
+                        String prefix = id.substring(0, id.length() - 1);
+                        for (CgAssetEntry e : registry.entries(d.getKey())) {
+                            if (e.id().startsWith(prefix) && e.redirect() == null) add(ahead, seen, e);
+                        }
+                    } else {
+                        CgAssetEntry e = registry.entry(d.getKey(), id);
+                        if (e != null) add(ahead, seen, e);
+                    }
+                    if (ahead.size() == before && !seenAny(seen, d.getKey(), id)) {
+                        LOGGER.warn("[crystalgraphics] assets: {}'s preload.yaml names {} {}, which is not mounted", ns,
+                                d.getKey().id(), id);
+                    }
+                    declared += ahead.size() - before;
+                }
             }
         }
+        LOGGER.info("[crystalgraphics] assets ahead: {} primaries ({} of the namespaces' own, {} declared), with what they reach",
+                ahead.size(), cues, declared);
         assets.prefetch(ahead);
+    }
+
+    private static boolean add(List<CgAssetRef<?>> ahead, Set<String> seen, CgAssetEntry e) {
+        if (!seen.add(e.kind().id() + "|" + e.id())) return false;
+        ahead.add(CgVfxAssets.ref(e.kind(), e.id()));
+        return true;
+    }
+
+    /** Whether a declaration added nothing because what it names was added already (an id named twice). */
+    private static boolean seenAny(Set<String> seen, CgType kind, String id) {
+        if (!id.endsWith("*")) return seen.contains(kind.id() + "|" + id);
+        String prefix = kind.id() + "|" + id.substring(0, id.length() - 1);
+        for (String s : seen) if (s.startsWith(prefix)) return true;
+        return false;
+    }
+
+    /** A namespace's {@code preload.yaml}: each kind's ids and prefixes, and whether all its own assets load. */
+    record Preload(boolean all, Map<CgType, List<String>> declared) {
+        static final Preload NONE = new Preload(false, Map.of());
+
+        /** The file at {@code file}, or {@link #NONE} where there is none. A kind it names that is not one warns. */
+        static Preload read(Path file) {
+            if (!Files.isRegularFile(file)) return NONE;
+            Object tree;
+            try {
+                tree = CgAssetYaml.read(new String(Files.readAllBytes(file), StandardCharsets.UTF_8));
+            } catch (IOException | RuntimeException e) {
+                LOGGER.warn("[crystalgraphics] assets: cannot read {}: {}", file, e.toString());
+                return NONE;
+            }
+            if (!(tree instanceof Map<?, ?> map)) return NONE;
+            boolean all = Boolean.TRUE.equals(map.get("all"));
+            Map<CgType, List<String>> declared = new LinkedHashMap<>();
+            for (Map.Entry<?, ?> e : map.entrySet()) {
+                String key = String.valueOf(e.getKey());
+                if (key.equals("all") || key.equals(CgType.EDITOR)) continue;
+                CgType kind = kindNamed(key);
+                if (kind == null) {
+                    LOGGER.warn("[crystalgraphics] assets: {} names {}, which is no kind", file, key);
+                    continue;
+                }
+                List<String> ids = new ArrayList<>();
+                if (e.getValue() instanceof List<?> list) for (Object id : list) ids.add(String.valueOf(id));
+                else if (e.getValue() != null) ids.add(String.valueOf(e.getValue()));
+                declared.computeIfAbsent(kind, k -> new ArrayList<>()).addAll(ids);
+            }
+            return new Preload(all, declared);
+        }
+
+        /** {@code cue} or {@code crystalgraphics:cue}. */
+        private static CgType kindNamed(String key) {
+            String id = key.indexOf(':') >= 0 ? key : "crystalgraphics:" + key;
+            for (CgType kind : CgTypes.kinds()) if (kind.id().equals(id)) return kind;
+            return null;
+        }
     }
 
     /**
@@ -137,6 +236,9 @@ public final class CgAssetMounts {
                 seen.add(name);
                 registry.scan(name, ns, source);
                 mounted.add(name);
+                synchronized (CgAssetMounts.class) {
+                    ROOTS.put(name, ns);
+                }
             }
         } catch (IOException e) {
             LOGGER.warn("[crystalgraphics] assets: cannot list {}: {}", assets, e.toString());

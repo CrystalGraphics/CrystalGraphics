@@ -106,7 +106,7 @@ import org.apache.logging.log4j.Logger;
 public final class CgAssetRegistry {
 
     /** A namespace's files that are not assets: its units, content index and tags. */
-    private static final Set<String> ROOT_FILES = new HashSet<>(Arrays.asList("units.yaml", "content.yaml", "tags.yaml",
+    private static final Set<String> ROOT_FILES = new HashSet<>(Arrays.asList("units.yaml", "content.yaml", "tags.yaml", "preload.yaml",
             "carried.json", "ruled.json", "subtitle_style.yaml", "look.yaml"));
     /** A namespace's folders that hold no assets: an importer's reports, a game's data kept for gameplay. */
     private static final Set<String> NOT_ASSETS = new HashSet<>(Arrays.asList("import", "roles", "strings", "fonts"));

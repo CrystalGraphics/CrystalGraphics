@@ -42,7 +42,22 @@ emitters:
 
 Put the files in your mod's jar under `assets/<your namespace>/`, by kind folder, and register nothing. As the game
 starts, on the client and on the server, the engine looks at every loaded mod, mounts each namespace that holds
-assets of the format, and starts loading all of them, so a cue gameplay plays a minute later is already there.
+assets of the format, and loads every **cue** of each behind the loading screen, with everything the cue reaches, so a
+cue gameplay plays a minute later is already there. Anything else your gameplay plays directly (a sequence, a system
+played by id, another namespace's assets such as a game's kit) you declare in `preload.yaml`:
+
+```yaml
+# assets/rpgcore/preload.yaml: loaded behind the loading screen, with everything each reaches
+sequence: [rpgcore:moves/kamehameha, kakarot_kit:Blueprints/Battle/C001A/*]   # an id, or every id under a prefix
+cue: kakarot_kit:Blueprints/Battle/Skill/C001A/GC_Kamehameha
+all: true                                                                    # optional: every asset of rpgcore
+```
+
+- **Never a whole kit by default**: both games' kits compiled retain about 4 GB of heap. Declare the moves you play.
+- **What nothing declared loads at its first play**, in game time, and is counted and logged by id
+  (`asset.unplanned-loads`, `asset … loaded in play … declare it in its namespace's preload.yaml`): add it to the file.
+- A kind is named short (`cue`) or whole (`crystalgraphics:cue`); a name that is no kind, or an id nothing mounted
+  holds, warns.
 
 ```
 assets/rpgcore/tags.yaml                        # _v: 1, then tags: [ rpgcore:cue.ground_break ]
@@ -54,7 +69,7 @@ assets/rpgcore/cameras/shakes/ground_break.yaml
 CgCueManager.server().execute(TAGS.require("rpgcore:cue.ground_break"), new CgCueParameters().at(x, y, z));
 ```
 
-- **A namespace counts** where it holds `tags.yaml`, `units.yaml` or `content.yaml`, or a kind's folder other than
+- **A namespace counts** where it holds `tags.yaml`, `units.yaml`, `content.yaml` or `preload.yaml`, or a kind's folder other than
   `textures` and `models`, which every Minecraft namespace has. A mod with only Minecraft's own assets is left alone.
 - **In a dev run** your source folder (`src/main/resources`) is mounted instead of the built copy, so a saved edit
   reloads while the game runs.

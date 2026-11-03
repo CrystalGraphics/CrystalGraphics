@@ -397,6 +397,7 @@ public final class CgLoadingScreen {
         }
         reportAfterHide(now);
         CgWarmBudget.loading(shown());
+        CgVfxAssets.inPlay(!shown() && hiddenAt != 0L);   // a load from here on compiles in game time
         // From the engine's start, not the first draw: a host draws nothing of it while its own loading screen is up,
         // and a view first asked then showed the host's first screen for half a second as it built
         if (shown()) askView(now);

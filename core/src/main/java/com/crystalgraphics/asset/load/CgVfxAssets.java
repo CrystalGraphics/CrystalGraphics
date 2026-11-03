@@ -83,7 +83,7 @@ public final class CgVfxAssets {
     private static final int SYNC_LOADS = CgTrace.name("asset.sync-loads"), LOADING = CgTrace.name("asset.loading"),
             PREPARING = CgTrace.name("asset.preparing"), SETTLE = CgTrace.name("assets.settle"),
             PREPARE = CgTrace.name("assets.prepare"), PIPELINE = CgTrace.name("assets.pipeline"),
-            HANDLES = CgTrace.name("assets.handles");
+            HANDLES = CgTrace.name("assets.handles"), UNPLANNED = CgTrace.name("asset.unplanned-loads");
     private static final long SYNC_TIMEOUT_NANOS = TimeUnit.SECONDS.toNanos(30);
     private static final CgLoadPriority[] PRIORITIES = CgLoadPriority.values();
 
@@ -207,12 +207,43 @@ public final class CgVfxAssets {
      */
     public CgLoadHandle load(List<? extends CgAssetRef<?>> primaries, CgLoadPriority priority) {
         List<CgAssetRef<?>> assets = bundle(primaries);
-        for (CgAssetRef<?> a : assets) start(a, priority);
+        for (CgAssetRef<?> a : assets) {
+            if (a.load == null && inPlay) unplanned(a, primaries);
+            start(a, priority);
+        }
         CgLoadHandle h = new CgLoadHandle(new ArrayList<>(primaries), assets, priority);
         handles.add(h);
         String owner = primaries.isEmpty() ? "assets" : namespace(primaries.get(0).id());
         tracked.computeIfAbsent(owner, ns -> new Tracked(CgLoadPlan.get().begin(ns + ":load"))).handles.add(h);
         return h;
+    }
+
+    /**
+     * Whether the game is in play: the loading screen has shown and hidden, so a load now compiles in game time. The
+     * loading screen sets it each frame; a dedicated server, with no screen, never does.
+     */
+    public static void inPlay(boolean playing) {
+        inPlay = playing;
+    }
+
+    private static volatile boolean inPlay;
+    /** At most this many unplanned loads are logged by name; the counter keeps counting. */
+    private static final int UNPLANNED_LOGGED = 20;
+    private long unplanned;
+
+    /** Loads begun in play: {@code asset.unplanned-loads}. 0 once the game declares all it plays (`preload.yaml`). */
+    public long unplannedLoads() {
+        return unplanned;
+    }
+
+    private void unplanned(CgAssetRef<?> a, List<? extends CgAssetRef<?>> primaries) {
+        unplanned++;
+        CgTrace.counter(CgChannels.MISC, UNPLANNED, unplanned);
+        if (unplanned <= UNPLANNED_LOGGED) {
+            String by = primaries.isEmpty() || primaries.get(0) == a ? "" : ", reached by " + primaries.get(0).id();
+            LOGGER.warn("{} {} loaded in play{}: compiled in game time; declare it in its namespace's preload.yaml",
+                    a.kind().id(), a.id(), by);
+        }
     }
 
     /** Each namespace's loads as one load task, so the screen and its record name the kit loading. */

@@ -48,7 +48,7 @@ public final class CgAssetYaml {
 
     /** Root files of a namespace: no kind, and no {@code editor}. */
     private static final List<String> ROOT_FILES = Collections.unmodifiableList(Arrays.asList(
-            "units.yaml", "content.yaml", "tags.yaml"));
+            "units.yaml", "content.yaml", "tags.yaml", "preload.yaml"));
     private static final int WIDTH = 120;
     private static final Pattern PLAIN = Pattern.compile("[A-Za-z_][A-Za-z0-9_.:/@-]*");
     private static final String[] RESERVED = {"true", "false", "yes", "no", "on", "off", "y", "n", "null"};

@@ -25,7 +25,8 @@ Pick the first row that fits.
 |---|---|---|---|
 | A pipeline every session draws (your material, kernel, pass) | registered at mod load, built at the graphics start | the link worker / shaderc workers | `CgPipelinePrecache.register` in pre-init or init ([`PRECACHE.md`](PRECACHE.md)) |
 | A VFX look your mod plays | named at mod load, built and rehearsed at the graphics start | as above | `VFX.precache(LOOK)` (a `CgVfxOwner`), or a cue / `CgVfxRegistry`: automatic |
-| Files every session needs: an atlas, an index, a model set, a kit | behind the loading screen | job workers, GL in budgeted slices | a task in `onLoad(CgLoadPlan)` (§3) |
+| Assets of the format your gameplay plays: cues, moves (sequences), a kit's effects | behind the loading screen, with all they reach | the asset workers, GPU work in the warm budget | cues load by themselves; the rest named in `assets/<ns>/preload.yaml` ([`vfx/assets.md`](vfx/assets.md) § *Shipping them in your mod*) |
+| Files every session needs: an atlas, an index, a model set | behind the loading screen | job workers, GL in budgeted slices | a task in `onLoad(CgLoadPlan)` (§3) |
 | GPU objects sized to the window (a framebuffer, a target) | at the graphics start | render thread, cheap creates only | `onContextInit(w, h)`: create, never fill |
 | Something a gameplay moment needs (an arena, a move, a pack) | as soon as the moment is known, ahead of its first frame | workers, then the warm budget | `CgPipelinePrecache.request`, `CgPreload.request`, `VFX.precache`, then hold until `ready()` (§5) |
 | Work beside the game with an answer later (a search, a bake) | whenever asked | a job worker, answered on the asking thread | `CgJob` ([`JOBS.md`](JOBS.md)) |
@@ -70,7 +71,7 @@ You do nothing for these; they are tasks or processes the bar counts.
 | `crystalgraphics:start` | the graphics start, its stages |
 | `crystalgraphics:programs` | the engine's own programs and pipelines (world renderer, post, bloom, text, the loading view's) |
 | `crystalgraphics:<reason>` | the engine's processes: pipelines building, VFX looks warming, asset loads |
-| `<namespace>:scan`, `<namespace>:load` | a kit's YAML scan, then its assets (`CgAssetRegistry.scanAsync`, `CgVfxAssets.load`) |
+| `<namespace>:scan`, `<namespace>:load` | a kit's YAML scan, then its assets: every namespace's cues and each `preload.yaml`'s declarations, with what they reach (`CgAssetMounts.loadAhead`) |
 | `crystalgui:start`, `crystalgui:paint` | CrystalGUI's styles, themes and widget kinds on a worker; then its fonts and paint shaders |
 | `loading:<reason>` | each reason a `CgLoadingProcess` gives |
 
@@ -270,6 +271,7 @@ CgLoadingScreen.add(() -> arena.ready() ? null : "building the arena");         
 | `-Dcrystalgraphics.loading.showTasks=true` | list the running tasks under the bar, owner, name and percent |
 | `-Dcrystalgraphics.loading.logProgress=true` | log the bar and running tasks once a second |
 | `-Dcrystalgraphics.pipeline.logMisses=true` | log every pipeline drawn that nothing precached |
+| (always on) `asset.unplanned-loads` | an asset loaded after the loading screen hid, compiled in game time: logged by id with what reached it; declare it in `preload.yaml` |
 | `-Dcrystalgraphics.loading.screen=never` / `always` | load with no screen (to measure the load itself), or keep it up to look at it |
 
 **Read in the log:**
