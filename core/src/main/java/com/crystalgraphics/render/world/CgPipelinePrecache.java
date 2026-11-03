@@ -15,6 +15,8 @@ import org.apache.logging.log4j.Logger;
 
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.compute.CgKernel;
+import com.crystalgraphics.gl.material.CgMaterialShader;
+import com.crystalgraphics.gl.material.CgMaterialShaderRegistry;
 import com.crystalgraphics.job.CgJob;
 import com.crystalgraphics.job.CgJobLane;
 import com.crystalgraphics.render.CgWarmBudget;
@@ -164,6 +166,24 @@ public final class CgPipelinePrecache {
     private static final Queue<Collector> PENDING = new ConcurrentLinkedQueue<>();
 
     private CgPipelinePrecache() {
+    }
+
+    /**
+     * Parses {@code shaders} on a worker now, so the collect or warm-up that first names one finds it parsed: a parse
+     * there is the render thread's, up to 100 ms of a loading frame. From the graphics start (a listener's
+     * {@code onContextInit}), once the host's resources are readable. Any thread.
+     *
+     * <pre>{@code
+     * CgPipelinePrecache.parseAhead("mymod:shaders/rune.shader", "mymod:shaders/glow.shader");
+     * }</pre>
+     */
+    public static void parseAhead(String... shaders) {
+        CgMaterialShaderRegistry registry = CgMaterialShaderRegistry.get();
+        List<CgMaterialShader> found = new ArrayList<>(shaders.length);
+        for (String shader : shaders) found.add(registry.getOrCreate(shader));
+        CgJob.executor(CgJobLane.LATENCY).execute(() -> {
+            for (CgMaterialShader shader : found) shader.ensureParsed();
+        });
     }
 
     /**

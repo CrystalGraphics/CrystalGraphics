@@ -27,10 +27,6 @@ import com.crystalgraphics.compute.ops.CgCullSets;
 import com.crystalgraphics.compute.ops.CgGpuCount;
 import com.crystalgraphics.compute.ops.CgGpuOps;
 import com.crystalgraphics.frame.CgWorld;
-import com.crystalgraphics.gl.material.CgMaterialShader;
-import com.crystalgraphics.gl.material.CgMaterialShaderRegistry;
-import com.crystalgraphics.job.CgJob;
-import com.crystalgraphics.job.CgJobLane;
 import com.crystalgraphics.lifecycle.CgGraphicsLifecycle;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.animation.CgAnimInstance;
@@ -52,6 +48,7 @@ import com.crystalgraphics.render.draw.CgDrawChunk;
 import com.crystalgraphics.render.draw.CgIndirect;
 import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.render.draw.CgOrder;
+import com.crystalgraphics.text.render.CgTextRenderer;
 import com.crystalgraphics.render.draw.CgPassConstants;
 import com.crystalgraphics.render.draw.CgPipeline;
 import com.crystalgraphics.render.graph.CgBufferDesc;
@@ -468,13 +465,11 @@ public final class CgWorldRenderer {
         // quads CgTextRenderer draws: the loading screen's own lines and a HUD's missed it at their first draw.
         CgPipelinePrecache.register("crystalgraphics:world", list -> {
             list.add(PYRAMID_SHADER);
-            list.add(TEXT_SHADER);
-            list.addPass(TEXT_SHADER, CgInstanceKind.QUAD);
+            CgTextRenderer.precache(list);
         });
     }
 
-    private static final String PYRAMID_SHADER = "crystalgraphics:shaders/depth_pyramid.shader",
-            TEXT_SHADER = "crystalgraphics:shaders/text.shader";
+    private static final String PYRAMID_SHADER = "crystalgraphics:shaders/depth_pyramid.shader";
     private static final int BOOT_ZONE = CgTrace.name("world.programs.boot");
     private static final long BOOT_TIMEOUT_NANOS = 60_000_000_000L;
 
@@ -517,13 +512,8 @@ public final class CgWorldRenderer {
      * the warm-up that first needs one finds it parsed rather than parsing on its frame.
      */
     private static void parsePassesAhead() {
-        CgMaterialShaderRegistry registry = CgMaterialShaderRegistry.get();
-        List<CgMaterialShader> shaders = List.of(registry.getOrCreate(UPSAMPLE_SHADER), registry.getOrCreate(RESOLVE_SHADER),
-                registry.getOrCreate(COMPOSITE_SHADER), registry.getOrCreate(CgWorldDistortion.APPLY_SHADER),
-                registry.getOrCreate(CgWorldLights.APPLY_SHADER));
-        CgJob.executor(CgJobLane.LATENCY).execute(() -> {
-            for (CgMaterialShader shader : shaders) shader.ensureParsed();
-        });
+        CgPipelinePrecache.parseAhead(UPSAMPLE_SHADER, RESOLVE_SHADER, COMPOSITE_SHADER, CgWorldDistortion.APPLY_SHADER,
+                CgWorldLights.APPLY_SHADER);
     }
 
     /**

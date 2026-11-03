@@ -32,6 +32,7 @@ import com.crystalgraphics.render.draw.CgChunkSink;
 import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.render.draw.CgPipeline;
 import com.crystalgraphics.render.property.CgPalette;
+import com.crystalgraphics.render.world.CgPipelineList;
 import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.text.atlas.CgGlyphAtlas;
 import com.crystalgraphics.text.cache.CgFontRegistry;
@@ -183,6 +184,20 @@ public class CgTextRenderer {
      * {@link #textMaterial}, which shares the compiled programs.
      */
     public static final CgMaterial TEXT_MATERIAL = CgMaterial.load(TEXT_SHADER);
+
+    /**
+     * Names {@code text.shader} to a precache list in every form a draw takes: on screen and as labels, bitmap and
+     * MSDF, on the world's instances and on quads. Through this class, so its {@code TextData} block is attached first:
+     * the shader compiled without it fails to link.
+     *
+     * <pre>{@code
+     * CgPipelinePrecache.register("crystalgraphics:world", CgTextRenderer::precache);
+     * }</pre>
+     */
+    public static void precache(CgPipelineList list) {
+        list.add(TEXT_SHADER);
+        list.addPass(TEXT_SHADER, CgInstanceKind.QUAD);
+    }
 
     /**
      * Text-only per-renderer uniform data — currently just {@code u_Projection}: a renderer's projection is its own
