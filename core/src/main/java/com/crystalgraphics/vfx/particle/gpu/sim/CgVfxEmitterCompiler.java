@@ -699,9 +699,10 @@ public final class CgVfxEmitterCompiler {
                 .replace("@VELOCITY@", shape.spawnFormOf(CgVfxSpawnInput.VELOCITY) < 0 ? ""
                         : " + step_orient(step_rotate(turn, launchScale * " + spawnValue(shape, CgVfxSpawnInput.VELOCITY, null, null, "") + "), n)")
                 // Cascade's location bVelocity: the place from the shape's middle times a rate, its axis left out
-                // where s4.z says radial (ParticleModules_Location.cpp:1116-1132, 1366-1376).
+                // where s4.z says radial (ParticleModules_Location.cpp:1116-1132, 1366-1376). The place takes its
+                // rolled radius's front: a range from 0 left the shape at radius 0, and every spawn at rest.
                 .replace("@SHAPE_VELOCITY@", shape.spawnFormOf(CgVfxSpawnInput.SHAPE_VELOCITY) < 0 ? ""
-                        : "\n                            + step_orient(step_rotate(turn, step_rotate(q, local * vec3(1.0, 1.0 - s4.z, 1.0)) * "
+                        : "\n                            + step_orient(step_rotate(turn, step_rotate(q, (local + way * front) * vec3(1.0, 1.0 - s4.z, 1.0)) * "
                         + spawnValue(shape, CgVfxSpawnInput.SHAPE_VELOCITY, null, null, "") + "), n)")
                 .replace("@COLOR@", colorStart(shape))
                 .replace("@HALF_HEIGHT@", spawnValue(shape, CgVfxSpawnInput.CYLINDER_HEIGHT, null, "step_vector(row, inst, 7).z", "0.5 * "))
