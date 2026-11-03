@@ -8,6 +8,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -237,7 +238,9 @@ public class CgAssetRoundTripGateTest {
     /**
      * The kits' whole load timed as a game pays it: the scan, then every asset requested of one pipeline on the engine's
      * job pool until each is COMPILED or failed. {@code -Dcrystalgraphics.kits.timed=true}; written to
-     * {@code build/kit-gates/kitsLoadTimed.txt}.
+     * {@code build/kit-gates/kitsLoadTimed.txt}. {@code -Dcrystalgraphics.kits.primaries=cue} loads only those kinds'
+     * assets and what they reach, hard and soft, as {@code CgVfxAssets.bundle} does: a game loading what it plays. The
+     * heap is read twice: as the load leaves it, and retained (after a collection, the loads still held).
      */
     @Test
     public void kitsLoadTimed() throws InterruptedException {
@@ -249,9 +252,12 @@ public class CgAssetRoundTripGateTest {
         registry.registerEngine();
         for (Map.Entry<String, Path> kit : KITS.entrySet()) registry.scan(kit.getKey(), kit.getValue(), CgAssetSource.DEV);
         long t1 = System.nanoTime();
+        Map<String, CgType> wanted = closure(registry, System.getProperty("crystalgraphics.kits.primaries", ""));
         CgAssetPipeline pipeline = new CgAssetPipeline(registry, CgJobLoop.create("assets-timed"));
         List<CgAssetLoad> asked = new ArrayList<>();
-        for (String key : FILES.keySet()) asked.add(pipeline.request(KINDS.get(key), IDS.get(key)));
+        for (Map.Entry<String, CgType> w : wanted.entrySet()) {
+            asked.add(pipeline.request(w.getValue(), w.getKey().substring(w.getKey().indexOf('|') + 1)));
+        }
         while (!pipeline.idle()) {
             pipeline.drain();
             Thread.sleep(0, 200_000);
@@ -261,11 +267,58 @@ public class CgAssetRoundTripGateTest {
         int compiled = 0;
         for (CgAssetLoad l : asked) if (l.state() == CgAssetState.COMPILED) compiled++;
         Runtime rt = Runtime.getRuntime();
-        String report = String.format("kits %s: scan %.1f s, compile %.1f s, total %.1f s; %d compiled, %d failed; heap %d MB",
-                KITS.keySet(), (t1 - t0) / 1e9, (t2 - t1) / 1e9, (t2 - t0) / 1e9, compiled, asked.size() - compiled,
-                (rt.totalMemory() - rt.freeMemory()) >> 20);
+        long left = (rt.totalMemory() - rt.freeMemory()) >> 20;
+        for (int i = 0; i < 3; i++) System.gc();
+        long retained = (rt.totalMemory() - rt.freeMemory()) >> 20;
+        Map<String, Integer> byKind = new TreeMap<>();
+        for (CgType k : wanted.values()) byKind.merge(k.id(), 1, Integer::sum);
+        String report = String.format("kits %s%s: %d of %d assets; scan %.1f s, compile %.1f s, total %.1f s; %d compiled,"
+                        + " %d failed; heap %d MB as left, %d MB retained%n  by kind: %s",
+                KITS.keySet(), wanted.size() == FILES.size() ? "" : " (primaries " + System.getProperty("crystalgraphics.kits.primaries") + ")",
+                wanted.size(), FILES.size(), (t1 - t0) / 1e9, (t2 - t1) / 1e9, (t2 - t0) / 1e9, compiled,
+                asked.size() - compiled, left, retained, byKind);
         System.out.println(report);
-        holds(report, true);
+        holds(report, asked.size() > 0);
+    }
+
+    /**
+     * {@code kind|id} of what to load: every asset when {@code primaries} is empty, else every asset of those kinds
+     * (comma-separated kind ids) and the closure of their hard and soft references.
+     */
+    private static Map<String, CgType> closure(CgAssetRegistry registry, String primaries) {
+        Map<String, CgType> out = new LinkedHashMap<>();
+        if (primaries.isEmpty()) {
+            for (String key : FILES.keySet()) out.put(KINDS.get(key).id() + "|" + IDS.get(key), KINDS.get(key));
+            return out;
+        }
+        Set<String> kinds = new HashSet<>(List.of(primaries.split(",")));
+        ArrayDeque<CgType> openKinds = new ArrayDeque<>();
+        ArrayDeque<String> openIds = new ArrayDeque<>();
+        for (String key : FILES.keySet()) {
+            if (!kinds.contains(KINDS.get(key).id())) continue;
+            if (out.put(KINDS.get(key).id() + "|" + IDS.get(key), KINDS.get(key)) == null) {
+                openKinds.add(KINDS.get(key));
+                openIds.add(IDS.get(key));
+            }
+        }
+        while (!openIds.isEmpty()) {
+            CgType kind = openKinds.poll();
+            String id = openIds.poll();
+            CgAssetEntry e;
+            try {
+                e = registry.resolve(kind, id);
+            } catch (RuntimeException missing) {
+                continue;
+            }
+            for (var r : e.references()) {
+                if (r.id().startsWith("unreal:")) continue;
+                if (out.put(r.kind().id() + "|" + r.id(), r.kind()) == null) {
+                    openKinds.add(r.kind());
+                    openIds.add(r.id());
+                }
+            }
+        }
+        return out;
     }
 
     /** Every asset that resolves validates with no error; the report counts them by code, then lists the first. */
