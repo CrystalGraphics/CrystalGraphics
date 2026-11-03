@@ -42,30 +42,43 @@ emitters:
 
 Put the files in your mod's jar under `assets/<your namespace>/`, by kind folder, and register nothing. As the game
 starts, on the client and on the server, the engine looks at every loaded mod, mounts each namespace that holds
-assets of the format, and loads every **cue** of each behind the loading screen, with everything the cue reaches, so a
-cue gameplay plays a minute later is already there. Anything else your gameplay plays directly (a sequence, a system
-played by id, another namespace's assets such as a game's kit) you declare in `preload.yaml`:
+assets of the format, and **loads all of it behind the loading screen**, so a move gameplay plays a minute later is
+already compiled.
 
-```yaml
-# assets/rpgcore/preload.yaml: loaded behind the loading screen, with everything each reaches.
-# An id, or a glob over ids: * matches within one folder, ** across folders.
-sequence:
-  # Kakarot: Goku's Kamehameha, one folder and one name stem for the charge, shot, cut and every variant (23)
-  - kakarot_kit:Blueprints/Character/C001A/BTL/SKL/AM_C001A_S_SKL001*
-  # Sparking! Zero: Goku (0000, form 00)'s actSPM2, its montage, pieces, camera and sounds in five folders (26)
-  - spzero_kit:SS/**_0000_00_actSPM2*
-cue:
-  - kakarot_kit:Blueprints/Character/C001A/BTL/SKL/BP_Projectile_C001A_S_SKL001*   # its beam, a cue a variant (12)
-all: true                                                                          # optional: every asset of rpgcore
-```
+> **⚠ Important: everything you ship is compiled at startup, and held in memory.** That is what you want for a mod
+> whose assets are the moves it plays (RPG-Core's `kk` and `s0`: 997 assets, 6 s behind the screen). It is **not**
+> what you want for a large library you only play part of: a game's whole kit compiled retains about 4 GB of heap,
+> enough to stop Minecraft. **A namespace too large to load whole says so in `preload.yaml`**, and names what it
+> plays:
+>
+> ```yaml
+> # assets/mylibrary/preload.yaml
+> all: false        # compile only my cues at startup, not every asset I hold
+> # ...plus exactly what is played, from this namespace or any other. An id, or a glob over ids:
+> # * matches within one folder, ** across folders.
+> sequence:
+>   # Kakarot: Goku's Kamehameha, one folder and one name stem for the charge, shot, cut and every variant (23)
+>   - kakarot_kit:Blueprints/Character/C001A/BTL/SKL/AM_C001A_S_SKL001*
+>   # Sparking! Zero: Goku (0000, form 00)'s actSPM2, its montage, pieces, camera and sounds in five folders (26)
+>   - spzero_kit:SS/**_0000_00_actSPM2*
+> cue:
+>   - kakarot_kit:Blueprints/Character/C001A/BTL/SKL/BP_Projectile_C001A_S_SKL001*   # its beam, a cue a variant (12)
+> ```
 
-- **Never a whole kit by default**: both games' kits compiled retain about 4 GB of heap. Declare the moves you play.
-- **What nothing declared loads at its first play**, in game time, and is counted and logged by id
-  (`asset.unplanned-loads`, `asset … loaded in play … declare it in its namespace's preload.yaml`): add it to the file.
+| Your namespace | `preload.yaml` | Compiled behind the loading screen |
+|---|---|---|
+| A mod's own assets: the moves it plays | **none needed** | everything |
+| A mod that also plays another namespace's assets | the globs, no `all:` | everything of its own, and what it names |
+| A large library played in part | `all: false` and the globs | its cues, and what it names |
+
+- **What nothing loads ahead loads at its first play, in game time**: a hitch the first time a move is used. Each is
+  counted and logged by id, `asset.unplanned-loads` and `… loaded in play: compiled in game time; declare it in its
+  namespace's preload.yaml`. Add what it names to the file.
 - **A move is its files' shared name**, which each kit spells its own way: Kakarot's one folder and stem, Sparking!
-  Zero's character, form and act code in the middle of names in several folders.
+  Zero's character, form and act code in the middle of names in several folders. Everything those files reference
+  (systems, materials, fields) loads with them.
 - A kind is named short (`cue`) or whole (`crystalgraphics:cue`); a name that is no kind, or an id or glob that
-  matches nothing mounted, warns.
+  matches nothing mounted, warns. The log line `[crystalgraphics] assets ahead: N primaries (...)` says what was loaded.
 
 ```
 assets/rpgcore/tags.yaml                        # _v: 1, then tags: [ rpgcore:cue.ground_break ]

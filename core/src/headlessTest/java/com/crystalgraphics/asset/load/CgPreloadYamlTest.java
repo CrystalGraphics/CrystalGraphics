@@ -41,15 +41,15 @@ public class CgPreloadYamlTest {
     public void kindsByShortOrFullNameEachTheirIds() throws IOException {
         CgAssetMounts.Preload p = read("cue: [mymod:hit, kakarot_kit:Blueprints/C001A/*]\n"
                 + "crystalgraphics:sequence: spzero_kit:SS/Skill/0000/*\n");
-        assertFalse(p.all());
+        assertTrue("declaring adds; its own namespace still loads whole", p.all());
         assertEquals(List.of("mymod:hit", "kakarot_kit:Blueprints/C001A/*"), p.declared().get(CgGameplayKinds.CUE));
         assertEquals(List.of("spzero_kit:SS/Skill/0000/*"), p.declared().get(CgSequenceKinds.SEQUENCE));
     }
 
     @Test
-    public void allLoadsTheNamespacesOwnAndAKindThatIsNoneIsSkipped() throws IOException {
-        CgAssetMounts.Preload p = read("all: true\nnot_a_kind: [x:y]\n");
-        assertTrue(p.all());
+    public void allFalseOptsOutAndAKindThatIsNoneIsSkipped() throws IOException {
+        CgAssetMounts.Preload p = read("all: false\nnot_a_kind: [x:y]\n");
+        assertFalse("a library: its cues alone", p.all());
         assertTrue(p.declared().isEmpty());
     }
 
@@ -70,7 +70,9 @@ public class CgPreloadYamlTest {
     }
 
     @Test
-    public void noFileDeclaresNothing() {
-        assertSame(CgAssetMounts.Preload.NONE, CgAssetMounts.Preload.read(folder.getRoot().toPath().resolve("preload.yaml")));
+    public void noFileLoadsEverything() {
+        CgAssetMounts.Preload p = CgAssetMounts.Preload.read(folder.getRoot().toPath().resolve("preload.yaml"));
+        assertSame(CgAssetMounts.Preload.NONE, p);
+        assertTrue("a mod with no file loads every asset, as before", p.all());
     }
 }

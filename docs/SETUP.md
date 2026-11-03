@@ -168,6 +168,20 @@ moment, its thread and the rules: [`ENGINE_API.md`](ENGINE_API.md) § *Hearing t
 
 ---
 
+## Shipping effects, cues and moves
+
+Files of the format under `src/main/resources/assets/<your namespace>/` (cues, systems, sequences, materials) are
+found and mounted with no registration.
+
+> **⚠ Important: every asset you ship is compiled at startup, behind the loading screen, and held in memory.** For a
+> mod whose assets are the moves it plays, that is exactly right: nothing compiles in game time. **For a large
+> library you only play part of, it is not**: a game's whole kit compiled retains about 4 GB of heap. Opt such a
+> namespace out with `all: false` in its `assets/<ns>/preload.yaml` and name what you play:
+> [`vfx/assets.md`](vfx/assets.md) § *Shipping them in your mod*. Anything played that nothing loaded ahead compiles at
+> its first play (a hitch) and is logged by id: `asset.unplanned-loads`.
+
+---
+
 ## Drawing from your mod
 
 Your renderer draws at a **render stage**: a point in Minecraft's frame that a host fires, where every registered

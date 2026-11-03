@@ -41,7 +41,7 @@ import com.crystalgraphics.util.io.CgIO;
  * <pre>{@code
  * // CgEngineLifecycle, never a host:
  * CgAssetMounts.mount();      // pre-init: every mod's cues, shakes, systems and tags.yaml, before anything compiles
- * CgAssetMounts.loadAhead();  // post-init: every cue, and what each preload.yaml declares, starts loading
+ * CgAssetMounts.loadAhead();  // post-init: everything mounted (less what a preload.yaml opts out), starts loading
  *
  * // a tool or a test, over a registry of its own:
  * CgAssetMounts.Result r = CgAssetMounts.mount(registry, List.of(sourceFolder), List.of(modJar));
@@ -87,19 +87,19 @@ public final class CgAssetMounts {
     }
 
     /**
-     * Loads ahead ({@link CgVfxAssets#prefetch}) what the game can play, behind the loading screen: every mounted
-     * namespace's cues, and what each namespace's {@code preload.yaml} declares. Never whole namespaces by default: a
-     * game's kit retains gigabytes compiled, and what nothing declared loads at its first play, counted
-     * ({@code asset.unplanned-loads}). Asked from any thread, started at the asset loop's next drain. Once.
+     * Loads ahead ({@link CgVfxAssets#prefetch}) what the game can play, behind the loading screen: every asset of
+     * every mounted namespace, unless its {@code preload.yaml} says {@code all: false} (then its cues alone), and what
+     * each {@code preload.yaml} declares from any namespace. What none of it reaches loads at its first play, in game
+     * time, counted ({@code asset.unplanned-loads}). Asked from any thread, started at the asset loop's next drain. Once.
      *
      * <pre>{@code
-     * # assets/mymod/preload.yaml: what mymod's gameplay plays, from any namespace. An id, or a glob over ids:
-     * # * matches within one folder, ** across folders
+     * # assets/mymod/preload.yaml, for a namespace too large to compile whole (a library):
+     * all: false                                                                  # only my cues, and what follows
+     * # An id, or a glob over ids: * within one folder, ** across folders
      * sequence:
      *   - kakarot_kit:Blueprints/Character/C001A/BTL/SKL/AM_C001A_S_SKL001*      # Goku's Kamehameha, every variant
      *   - spzero_kit:SS/**_0000_00_actSPM2*                                       # a move whose files span folders
      * cue: [kakarot_kit:Blueprints/Character/C001A/BTL/SKL/BP_Projectile_C001A_S_SKL001*]
-     * all: true                                                                   # optional: every asset of mymod itself
      * }</pre>
      */
     public static synchronized void loadAhead() {
@@ -109,13 +109,13 @@ public final class CgAssetMounts {
         CgAssetRegistry registry = assets.registry();
         Set<String> seen = new HashSet<>();
         List<CgAssetRef<?>> ahead = new ArrayList<>();
-        int cues = 0, declared = 0;
+        int own = 0, declared = 0;
         for (String ns : namespaces) {
             Path root = ROOTS.get(ns);
             Preload preload = root == null ? Preload.NONE : Preload.read(root.resolve(PRELOAD));
             for (CgAssetEntry e : registry.entries(ns)) {
                 if (e.binary() || e.redirect() != null || !(preload.all() || e.kind() == CgGameplayKinds.CUE)) continue;
-                if (add(ahead, seen, e)) cues++;
+                if (add(ahead, seen, e)) own++;
             }
             for (Map.Entry<CgType, List<String>> d : preload.declared().entrySet()) {
                 for (String id : d.getValue()) {
@@ -143,7 +143,7 @@ public final class CgAssetMounts {
             }
         }
         LOGGER.info("[crystalgraphics] assets ahead: {} primaries ({} of the namespaces' own, {} declared), with what they reach",
-                ahead.size(), cues, declared);
+                ahead.size(), own, declared);
         assets.prefetch(ahead);
     }
 
@@ -169,9 +169,10 @@ public final class CgAssetMounts {
         return Pattern.compile(re.toString());
     }
 
-    /** A namespace's {@code preload.yaml}: each kind's ids and globs, and whether all its own assets load. */
+    /** A namespace's {@code preload.yaml}: each kind's ids and globs, and whether all its own assets load (unless {@code all: false}). */
     record Preload(boolean all, Map<CgType, List<String>> declared) {
-        static final Preload NONE = new Preload(false, Map.of());
+        /** No file: every asset of the namespace, as a mod expects. */
+        static final Preload NONE = new Preload(true, Map.of());
 
         /** The file at {@code file}, or {@link #NONE} where there is none. A kind it names that is not one warns. */
         static Preload read(Path file) {
@@ -184,7 +185,7 @@ public final class CgAssetMounts {
                 return NONE;
             }
             if (!(tree instanceof Map<?, ?> map)) return NONE;
-            boolean all = Boolean.TRUE.equals(map.get("all"));
+            boolean all = !Boolean.FALSE.equals(map.get("all"));   // everything unless it says false
             Map<CgType, List<String>> declared = new LinkedHashMap<>();
             for (Map.Entry<?, ?> e : map.entrySet()) {
                 String key = String.valueOf(e.getKey());
