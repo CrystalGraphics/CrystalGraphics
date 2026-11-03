@@ -45,6 +45,7 @@ public class CgCueNetTest {
     private CgNetTestRig rig;
     private CgVfxAssets assets;
     private CgCueManager server, client;
+    private CgWorld clientWorld;
     private final CgCueManagerTest.Recorder seen = new CgCueManagerTest.Recorder();
     private final List<CgSequencePlayer> sequences = new ArrayList<>();
 
@@ -65,7 +66,8 @@ public class CgCueNetTest {
             return p;
         };
         server = new CgWorld(true).add(new CgCueManager(assets)).sequences(starter);
-        client = new CgWorld().add(new CgCueManager(assets)).effects(seen).sequences(starter);
+        clientWorld = new CgWorld();
+        client = clientWorld.add(new CgCueManager(assets)).effects(seen).sequences(starter);
         CgCueNet.client(obj -> client);
     }
 
@@ -253,11 +255,13 @@ public class CgCueNetTest {
     @Test
     public void aBurstCarriesItsWritesToEveryViewer() throws InterruptedException, IOException {
         start(beamKit(), 1, false);
+        CgCueInspector inspector = clientWorld.add(new CgCueInspector());
         ready("cuenet:spark");
         server.execute(CgTagRegistry.global().require("cuenet:cue.spark"),
                 new CgCueParameters().at(0, 64, 0).anchor(rig.at(0, 64, 0)).write("size", 2.5f));
         ticks(20, () -> seen.bursts >= 1);
         assertEquals(1, seen.bursts);
+        assertEquals("the inspector follows a server's burst", CgTagRegistry.global().require("cuenet:cue.spark"), inspector.current());
         int size = seen.lastAt.writeIndex("size");
         assertTrue("its size arrived", size >= 0);
         assertEquals(2.5f, seen.lastAt.writeValue(size, 0), 0f);

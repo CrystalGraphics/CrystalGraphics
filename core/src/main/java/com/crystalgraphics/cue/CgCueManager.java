@@ -641,7 +641,7 @@ public final class CgCueManager extends CgWorldSubsystem {
                     CgTrace.counter(CgChannels.MISC, LATE_DROPPED, lateDropped);
                     lateDrop(cue, age);
                 } else {
-                    if (inspector != null && !server) inspector.started(c.tag, c.params);
+                    if (inspector != null && !server) inspector.started(c.tag != null ? c.tag : cue.tag(), c.params);   // a server's arrives by id
                     effects.burst(cue, cue.burst(), c.params, (float) age);
                 }
                 return true;
