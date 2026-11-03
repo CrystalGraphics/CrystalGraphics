@@ -11,7 +11,6 @@ import javax.annotation.Nullable;
 
 import org.joml.Vector4f;
 
-import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.shader.CgShaderBindings;
 import com.crystalgraphics.asset.tree.CgAssetException;
 import com.crystalgraphics.camera.CgCameraSystem;
@@ -19,7 +18,6 @@ import com.crystalgraphics.gl.material.CgMaterialProperty;
 import com.crystalgraphics.object.value.CgQuantity;
 import com.crystalgraphics.object.value.CgUnits;
 import com.crystalgraphics.render.post.CgPostMaterial;
-import com.crystalgraphics.render.post.CgPostPoint;
 import com.crystalgraphics.render.post.CgPostStack;
 import com.crystalgraphics.render.stage.CgHostView;
 import com.crystalgraphics.render.stage.CgRenderStage;
@@ -116,9 +114,9 @@ public final class CgPostVolumeSpawner implements CgSequenceSpawner {
         List<Blend> blends = new ArrayList<>();
         if (spawnable.definition() instanceof List<?> list) {
             for (Object o : list) {
-                CgSequenceDefinition.Blendable b = (CgSequenceDefinition.Blendable) o;
+                CgPostBlendable b = (CgPostBlendable) o;
                 if (b.material() == null) continue;
-                CgPostMaterial post = CgPostMaterial.of(CgMaterial.newInstance(b.material(), null), point(b.material().post()), (int) priority);
+                CgPostMaterial post = b.draw((int) priority);
                 CgAttachment screen = b.screen() == null ? null
                         : player.attachment(b.screen(), path + ".post.materials." + b.name() + ".screen_point.target");
                 blends.add(new Blend(b, post, stack.add(post), screen));
@@ -131,19 +129,6 @@ public final class CgPostVolumeSpawner implements CgSequenceSpawner {
                 !bound && !camera);
         spawned.weigh();
         return spawned;
-    }
-
-    /**
-     * Where a post material's {@code post.stage} draws (11 § post materials, after 4.27 PostProcessing.cpp's chains):
-     * before translucency onto the lit opaque scene, before tonemapping after the transparent passes, the rest after
-     * the composite. Unreal's default is after tonemapping. {@code replacing_tonemapper} draws after the composite until
-     * the composite takes one.
-     */
-    private static CgPostPoint point(@Nullable Map<?, ?> post) {
-        Object stage = post == null ? null : post.get("stage");
-        if ("before_translucency".equals(stage)) return CgPostPoint.BEFORE_TRANSLUCENCY;
-        if ("before_tonemapping".equals(stage)) return CgPostPoint.AFTER_WORLD;
-        return CgPostPoint.AFTER_COMPOSITE;
     }
 
     private static float length(CgUnits units, Object v) {
@@ -242,7 +227,7 @@ public final class CgPostVolumeSpawner implements CgSequenceSpawner {
      * through the world's camera into screen UV, written each frame.
      */
     private static final class Blend implements CgSequenceTarget, Consumer<CgShaderBindings> {
-        final CgSequenceDefinition.Blendable blendable;
+        final CgPostBlendable blendable;
         private int writing;
         final CgPostMaterial post;
         final CgRenderStage.Registration registration;
@@ -256,7 +241,7 @@ public final class CgPostVolumeSpawner implements CgSequenceSpawner {
         private final Vector4f clip = new Vector4f();
         private final float[] uv = new float[4];
 
-        Blend(CgSequenceDefinition.Blendable blendable, CgPostMaterial post, CgRenderStage.Registration registration,
+        Blend(CgPostBlendable blendable, CgPostMaterial post, CgRenderStage.Registration registration,
               @Nullable CgAttachment screen) {
             this.blendable = blendable;
             this.post = post;

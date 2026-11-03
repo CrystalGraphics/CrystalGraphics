@@ -36,6 +36,7 @@ emitters:
 | `mesh` | `models` | | `shake` | `cameras/shakes` |
 | `parameters` | `parameters` | | `field` | `fields` |
 | `curve` | `curves` | | `cue` | `cues` |
+| | | | `stage` | `stages` |
 
 ### Shipping them in your mod
 

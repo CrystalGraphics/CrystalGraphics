@@ -5,7 +5,6 @@ import java.util.Map;
 
 import javax.annotation.Nullable;
 
-import com.crystalgraphics.api.material.CgMaterialDefinition;
 import com.crystalgraphics.asset.kind.CgSequenceKinds;
 import com.crystalgraphics.asset.load.CgAssetCompiler;
 import com.crystalgraphics.asset.tree.CgAssetData;
@@ -90,29 +89,13 @@ public record CgSequenceDefinition(String id, CgFrameRate tickResolution, CgFram
      * @param follow     whether it follows {@code at} every frame, or is placed and left
      * @param tree       its keys as written
      * @param definition the asset it names, compiled (a {@code CgVfxPrefab}, a system's definition), or for a
-     *                   {@code post} its post materials ({@code List<Blendable>}); null where it
+     *                   {@code post} its post materials ({@code List<CgPostBlendable>}); null where it
      *                   names none or writes it inline
      * @param binds      its {@code bind} block's points by the user parameter each sets every frame (a system's
      *                   {@code position} parameters), in the order written; empty for none
      */
     public record Spawnable(String id, @Nullable String name, String kind, CgSequenceBinding at, boolean follow,
                             Map<?, ?> tree, @Nullable Object definition, Map<String, CgSequenceBinding> binds) {
-    }
-
-    /**
-     * A {@code post} spawnable's post material ({@code post.materials}, Unreal's weighted blendable): its name (what a
-     * {@code material} track's binding names), the material compiled, its weight and whether it draws, and the parameters
-     * a bound thing's place on screen writes each frame ({@code screen_point}).
-     *
-     * @param material      the material compiled, or null where materials have no compiler (a dedicated server)
-     * @param screen        what {@code screen_point} follows, or null for none
-     * @param screenVector  the vector parameter whose xy take the point, or null
-     * @param screenX       the scalar taking x, or null
-     * @param screenY       the scalar taking y, or null
-     */
-    public record Blendable(String name, @Nullable CgMaterialDefinition material, float weight, boolean enabled,
-                            @Nullable CgSequenceBinding screen, @Nullable String screenVector, @Nullable String screenX,
-                            @Nullable String screenY, boolean screenClamp) {
     }
 
     /** A montage's named range, {@code [from, to)}, and the section it plays next: an index, or -1 for none. */

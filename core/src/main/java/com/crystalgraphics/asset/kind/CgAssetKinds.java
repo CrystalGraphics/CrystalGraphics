@@ -7,7 +7,7 @@ import java.util.List;
 import com.crystalgraphics.object.CgType;
 
 /**
- * The format's 20 asset kinds ({@code docs/vfx/assets.md} § The kinds), each declared once with its structs, elements
+ * The format's 21 asset kinds ({@code docs/vfx/assets.md} § The kinds), each declared once with its structs, elements
  * and dispatch families, read by the codec, validation, the editor and replication alike.
  *
  * <pre>{@code
@@ -42,15 +42,16 @@ public final class CgAssetKinds {
         CgFieldKinds.register();
         CgModuleTypes.register();
         CgKitFiles.register();
+        CgStageKinds.register();
         all = Collections.unmodifiableList(Arrays.asList(
                 CgParticleKinds.SYSTEM, CgParticleKinds.EMITTER, CgParticleKinds.MODULE, CgParticleKinds.EFFECT_TYPE,
                 CgParticleKinds.ENDING, CgFieldKinds.FIELD, CgLookKinds.MATERIAL, CgLookKinds.TEXTURE, CgLookKinds.MESH,
                 CgLookKinds.PARAMETERS, CgLookKinds.CURVE_KIND, CgBodyKinds.PREFAB, CgBodyKinds.SKELETON,
                 CgBodyKinds.SPRINGS, CgBodyKinds.RIG, CgBodyKinds.RETARGETER, CgSequenceKinds.SEQUENCE,
-                CgCameraKinds.CAMERA_RIG, CgCameraKinds.SHAKE, CgGameplayKinds.CUE));
+                CgCameraKinds.CAMERA_RIG, CgCameraKinds.SHAKE, CgGameplayKinds.CUE, CgStageKinds.STAGE));
     }
 
-    /** The 20 kinds, particles first. */
+    /** The 21 kinds, particles first. */
     public static List<CgType> all() {
         register();
         return all;

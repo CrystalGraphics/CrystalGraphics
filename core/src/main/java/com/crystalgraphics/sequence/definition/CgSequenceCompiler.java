@@ -12,7 +12,6 @@ import java.util.TreeSet;
 
 import javax.annotation.Nullable;
 
-import com.crystalgraphics.api.material.CgMaterialDefinition;
 import com.crystalgraphics.api.material.CgParameterCollection;
 import com.crystalgraphics.asset.camera.CgCameraRigDefinition;
 import com.crystalgraphics.asset.curve.CgRichCurve;
@@ -40,6 +39,7 @@ import com.crystalgraphics.sequence.definition.CgSequenceDefinition.SectionRef;
 import com.crystalgraphics.sequence.definition.CgSequenceDefinition.Spawnable;
 import com.crystalgraphics.sequence.time.CgFrameRate;
 import com.crystalgraphics.sequence.notify.CgNotifyKind;
+import com.crystalgraphics.render.post.volume.CgPostBlendable;
 
 /** Compiles a resolved, validated {@code sequence} into its {@link CgSequenceDefinition}. One per compile. */
 final class CgSequenceCompiler {
@@ -159,23 +159,13 @@ final class CgSequenceCompiler {
     }
 
     /** A post block's {@code materials}, each material a hard reference compiled before the sequence. */
-    private List<CgSequenceDefinition.Blendable> blendables(Map<?, ?> post, String path) {
+    private List<CgPostBlendable> blendables(Map<?, ?> post, String path) {
         if (!(post.get("materials") instanceof List<?> list)) return List.of();
-        List<CgSequenceDefinition.Blendable> out = new ArrayList<>();
+        List<CgPostBlendable> out = new ArrayList<>();
         for (int i = 0; i < list.size(); i++) {
-            Map<?, ?> m = asMap(list.get(i), path + ".materials[" + i + "]");
             String at = path + ".materials[" + i + "]";
-            String id = (String) m.get("material");
-            Object d = deps.definition(CgLookKinds.MATERIAL, id);
-            if (d == null) throw fail(at + ".material", "no material " + id);
-            // Null where materials have no compiler (a dedicated server, a headless gate): it draws nothing there
-            CgMaterialDefinition material = d instanceof CgMaterialDefinition m2 ? m2 : null;
-            Map<?, ?> screen = m.get("screen_point") instanceof Map<?, ?> s && !Boolean.FALSE.equals(s.get("enabled")) ? s : null;
-            out.add(new CgSequenceDefinition.Blendable(m.get("name") instanceof String n ? n : id, material,
-                    m.get("weight") instanceof Number w ? w.floatValue() : 1f, !Boolean.FALSE.equals(m.get("enabled")),
-                    screen == null ? null : binding(screen.get("target"), at + ".screen_point.target"),
-                    screen == null ? null : (String) screen.get("vector"), screen == null ? null : (String) screen.get("x"),
-                    screen == null ? null : (String) screen.get("y"), screen != null && Boolean.TRUE.equals(screen.get("clamp"))));
+            Map<?, ?> m = asMap(list.get(i), at);
+            out.add(CgPostBlendable.of(m, id + ": " + at, deps, target -> binding(target, at + ".screen_point.target")));
         }
         return List.copyOf(out);
     }

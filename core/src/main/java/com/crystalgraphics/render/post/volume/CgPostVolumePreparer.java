@@ -73,7 +73,7 @@ public final class CgPostVolumePreparer implements CgAssetPreparer {
             }
             if (!(s.definition() instanceof List<?> blendables)) continue;
             for (Object o : blendables) {
-                if (o instanceof CgSequenceDefinition.Blendable b && b.material() != null) into.add(b.material());
+                if (o instanceof CgPostBlendable b && b.material() != null) into.add(b.material());
             }
         }
         for (CgSequenceDefinition.Child c : sequence.children()) collect(c.definition(), into, looks, regions, seen);
