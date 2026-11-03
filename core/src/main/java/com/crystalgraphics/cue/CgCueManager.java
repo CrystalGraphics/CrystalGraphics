@@ -160,6 +160,9 @@ public final class CgCueManager extends CgWorldSubsystem {
     private Command[] queue = new Command[64];
     private int queued;
     private CgCueEffects effects = CgCueEffects.NONE;
+    /** Told of each burst played here and its sequences, once a dev tool asks for one ({@link CgCueInspector#client}). */
+    @Nullable
+    CgCueInspector inspector;
     private Predicate<CgAttachment> localControl = a -> false;
     private Viewer viewer = out -> false;
     private IntFunction<CgAttachment> entities = id -> null;
@@ -638,6 +641,7 @@ public final class CgCueManager extends CgWorldSubsystem {
                     CgTrace.counter(CgChannels.MISC, LATE_DROPPED, lateDropped);
                     lateDrop(cue, age);
                 } else {
+                    if (inspector != null && !server) inspector.started(c.tag, c.params);
                     effects.burst(cue, cue.burst(), c.params, (float) age);
                 }
                 return true;
@@ -791,7 +795,9 @@ public final class CgCueManager extends CgWorldSubsystem {
             return null;
         }
         try {
-            return sequencer.play(definition, Map.of(), origin, scale);
+            CgSequencePlayer played = sequencer.play(definition, Map.of(), origin, scale);
+            if (inspector != null) inspector.played(played);
+            return played;
         } catch (RuntimeException e) {
             if (sequencesLogged.add(entry.sequence())) LOGGER.warn("{}: its sequence {} plays nothing: {}", cue.id(), entry.sequence(), e.getMessage());
             return null;

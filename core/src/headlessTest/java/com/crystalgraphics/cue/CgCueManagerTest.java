@@ -169,6 +169,47 @@ public class CgCueManagerTest {
         assertEquals(3, at[2], 0);
     }
 
+    /**
+     * The inspector follows the last burst and its sequences: steps back seek, wrapping from 0 to the end less a frame;
+     * forward from that comes round to 0, and from 0 queues a simulated frame; a pause holds the world's clock and puts
+     * it back; a refire ends the hit it followed.
+     */
+    @Test
+    public void theInspectorStepsTheLastBurstRoundItsFramesAndPausesTheClock() throws InterruptedException {
+        CgSequencer sequencer = world.add(new CgSequencer());
+        CgCueInspector inspector = world.add(new CgCueInspector());
+        world.timeDilation(0.5f);
+        cues.execute(flash, new CgCueParameters().at(1, 2, 3));
+        frames(0f, () -> effects.bursts == 1);
+        assertEquals(flash, inspector.current());
+        CgCueDefinition cue = assets.<CgCueDefinition>declare(CgGameplayKinds.CUE, "cuemgr:flash").loaded();
+        CgSequencePlayer player = cues.playSequence(cue, cue.burst().sequences().get(0), (point, turn) -> true, 1f);
+        assertEquals(1.0, inspector.duration(), 1e-9);
+        for (int i = 0; i < 25; i++) sequencer.evaluate(0.05f);     // played out, held at its end
+        assertEquals(1.0, inspector.age(), 1e-6);
+        double last = 1.0 - CgCueInspector.STEP;
+
+        inspector.step(-1);                                         // from the end: the last frame
+        assertTrue(inspector.paused());
+        assertEquals(0f, world.timeDilation(), 0f);
+        assertEquals(last, inspector.age(), 1e-6);
+        inspector.step(1);                                          // from the last frame: round to 0
+        assertEquals(0, inspector.age(), 1e-6);
+        inspector.step(-1);                                         // from 0: the last frame
+        assertEquals(last, inspector.age(), 1e-6);
+        inspector.step(-2);
+        assertEquals(last - 2 * CgCueInspector.STEP, inspector.age(), 1e-6);
+        inspector.step(1);                                          // queued, simulated in the next frames
+        assertEquals("a forward step waits for its frame", last - 2 * CgCueInspector.STEP, inspector.age(), 1e-6);
+
+        inspector.setPaused(false);
+        assertEquals("the speed it had", 0.5f, world.timeDilation(), 0f);
+        inspector.refire();
+        sequencer.evaluate(0f);
+        assertTrue("the hit it followed ends at once", player.stopped());
+        assertEquals(0, inspector.duration(), 0);
+    }
+
     /** Frames of {@code dt} with loads running between them, until {@code done}. */
     private void frames(float dt, BooleanSupplier done) throws InterruptedException {
         for (int i = 0; i < 3000 && !done.getAsBoolean(); i++) {

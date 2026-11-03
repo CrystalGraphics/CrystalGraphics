@@ -348,6 +348,25 @@ beam.remove();                                                // removal plays; 
 
 A handle is reused once `active()` is false: drop it then.
 
+### Stepping through a hit, for your dev tools
+
+`CgCueInspector.client()` follows the last burst this client played, a server's included: pause it, step it a frame
+either way, fire it again, and show where it stands. Bind your own keys and draw its lines in your own HUD.
+
+```java
+CgCueInspector inspector = CgCueInspector.client();
+inspector.setPaused(!inspector.paused());    // holds the client world's clock, and puts its speed back
+inspector.step(1);                           // a frame forward, simulated
+inspector.step(-1);                          // a frame back, drawn this frame: the same particles play showed
+inspector.refire();                          // the last cue again where it played, with new seeds
+for (String line : inspector.lines(new CgCueInspector.Keys("N/B", "R", "P", ", .", "X"))) hud.draw(line);
+```
+
+- Frames run from 0 to the hit's duration less a frame and round again, either way; every step back keeps the hit's
+  seeds, and only a fire draws new ones.
+- Call `step` once per key repeat: steps forward queue, one simulated a frame.
+- It follows bursts alone, never a looping cue, and only on a client.
+
 ### Over the network
 
 A server's `CgCueManager` sends every play to the players who see it, and each player's own manager plays what it is
