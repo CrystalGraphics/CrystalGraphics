@@ -153,8 +153,8 @@ Pass {
 
     // Minecraft's load bar made smooth: a white outline, a gap, then a solid white fill to `fill` (0 to 1), over a
     // dark track. b pixels tall, centred in a quad 4b tall and 3b wider than it.
-    vec4 bar(vec2 uv, float fill, float alpha) {
-        vec2 size = 1.0 / max(fwidth(uv), vec2(1.0e-6));
+    // `size` is the quad in pixels, 1 / fwidth(uv), taken by the fragment: a helper here reaches the vertex stage too
+    vec4 bar(vec2 uv, vec2 size, float fill, float alpha) {
         vec2 p = uv * size, c = size * 0.5;
         float b = size.y * 0.25, r = b * 0.22, line = max(1.5, b * 0.12);
         vec2 extent = vec2(size.x * 0.5 - 1.5 * b, b * 0.5);
@@ -198,7 +198,7 @@ Pass {
             image.rgb += vec3(0.55 * sweep(i.uv, t) * i.params.z);
             fragColor = image;
         } else {
-            fragColor = bar(i.uv, i.params.z, i.color.a);
+            fragColor = bar(i.uv, 1.0 / max(fwidth(i.uv), vec2(1.0e-6)), i.params.z, i.color.a);
         }
     }
 }
