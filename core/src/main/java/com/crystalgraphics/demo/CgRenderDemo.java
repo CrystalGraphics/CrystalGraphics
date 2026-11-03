@@ -1,11 +1,8 @@
 package com.crystalgraphics.demo;
 
-import javax.annotation.Nullable;
-
 import com.crystalgraphics.api.font.CgFont;
 import com.crystalgraphics.api.font.CgDefaultFont;
 import com.crystalgraphics.api.text.CgTextLayout;
-import com.crystalgraphics.asset.load.CgPreload;
 import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.collision.CgCollisionWorld;
 import com.crystalgraphics.demo.collision.CgCollisionDemo;
@@ -14,6 +11,7 @@ import com.crystalgraphics.frame.CgWorld;
 import com.crystalgraphics.gl.buffer.CgReadback;
 import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.lifecycle.CgLifecycleListener;
+import com.crystalgraphics.loading.CgLoadingScreen;
 import com.crystalgraphics.loading.task.CgLoadPlan;
 import com.crystalgraphics.loading.watchdog.CgLoadWatchdog;
 import com.crystalgraphics.platform.service.CgProcessExit;
@@ -215,10 +213,9 @@ public final class CgRenderDemo {
     private CgHostFrame captured;
     private final Runnable capture = () -> capture(captured.mainFramebuffer(), captured.width(), captured.height());
 
-    // The HUD: HUDRenderer's lines and look, 14 px where the window's shorter side is 600 pixels, in proportion up to
-    // 1080, the harness's window, and held there: a 1440p game draws it at the harness's size.
-    private static final int HUD_COLOR = 0xFFFFFFFF, HUD_OUTLINE = 0xFF000000, HUD_PX = 14;
-    private static final float HUD_SIDE = 600f, HUD_MAX_SIDE = 1080f, HUD_OUTLINE_EM = 0.12f;
+    // The HUD: HUDRenderer's lines and look, 14 px where the window's shorter side is 600 pixels, in proportion above.
+    private static final int HUD_COLOR = 0xFFFFD23F, HUD_OUTLINE = 0xFF000000, HUD_PX = 14;
+    private static final float HUD_SIDE = 600f, HUD_OUTLINE_EM = 0.12f;
     private static final long SAMPLE_WINDOW_NANOS = 500_000_000L;
     /** The demo's keys, then the scenes' own. */
     private static final int[] KEYS = keys(new int[]{CgKeyCodes.KEY_H, CgKeyCodes.KEY_N, CgKeyCodes.KEY_C,
@@ -261,7 +258,10 @@ public final class CgRenderDemo {
             CgHostEnvironment world = frame.host().environment();
             keys(world.screenOpen());
             if (world.guiHidden() || !hudShown) return;
-            hudSide = Math.min(frame.host().width(), frame.host().height());
+            // Behind the loading screen the stage draws into its 256-pixel target: the window's size warms the real one
+            hudSide = CgLoadingScreen.shown() && CgLoadingScreen.windowHeight() > 0
+                    ? Math.min(CgLoadingScreen.windowWidth(), CgLoadingScreen.windowHeight())
+                    : Math.min(frame.host().width(), frame.host().height());
             frame.callback("demo.hud", drawHud);
         });
         if (!CAPTURE.isEmpty()) {
@@ -278,26 +278,9 @@ public final class CgRenderDemo {
         CgEngineLifecycle.addListener(new CgLifecycleListener() {
             @Override
             public void onLoad(CgLoadPlan plan) {
-                fonts = preloadFonts();
                 plan.task("crystalgraphics:demo").render(task -> warmAhead(task)).start();
             }
         });
-    }
-
-    /** {@link #preloadFonts}' request; the load task ends only once it is ready. */
-    @Nullable private CgPreload.Request fonts;
-
-    /**
-     * Every size the HUD can take opened, with its ASCII glyphs, and the labels' distance field: the warm frames'
-     * 256-pixel target draws the HUD at 14 px alone, so the world's first frames made its size and glyphs.
-     */
-    private static CgPreload.Request preloadFonts() {
-        int top = Math.round(HUD_PX * HUD_MAX_SIDE / HUD_SIDE);
-        int[] sizes = new int[top - HUD_PX + 1];
-        for (int i = 0; i < sizes.length; i++) sizes[i] = HUD_PX + i;
-        return CgPreload.request(l -> l.read(() -> {
-            for (int px : sizes) CgDefaultFont.regular(px);
-        }).font(() -> CgDefaultFont.regular(HUD_PX), sizes).font(() -> CgDefaultFont.regular(48)));
     }
 
     /** Builds scene {@code i} and starts warming it: its textures, meshes, programs and kernels. */
@@ -721,7 +704,6 @@ public final class CgRenderDemo {
                 prewarming = i;
                 return false;
             }
-            if (fonts != null && !fonts.ready()) return false;
             return allWarm = rehearsed();
         }
     }
@@ -907,7 +889,7 @@ public final class CgRenderDemo {
             hudDirty = true;
         }
         try {
-            int px = Math.round(HUD_PX * Math.max(1f, Math.min(hudSide, HUD_MAX_SIDE) / HUD_SIDE));
+            int px = Math.round(HUD_PX * Math.max(1f, hudSide / HUD_SIDE));
             if (px != hudPx) {
                 // The engine's default font, as the harness HUD: shared, so never disposed
                 hudFont = CgDefaultFont.regular(px);
