@@ -4,7 +4,6 @@ import com.crystalgraphics.object.CgPropertyFlag;
 import com.crystalgraphics.object.CgType;
 import com.crystalgraphics.object.CgTypes;
 import com.crystalgraphics.object.CgValueType;
-import com.crystalgraphics.object.value.CgQuantity;
 
 import static com.crystalgraphics.object.CgValueType.BOOL;
 import static com.crystalgraphics.object.CgValueType.COLOUR;
@@ -85,17 +84,11 @@ public final class CgKitFiles {
             .property("fade_out", CgValueType.struct(FADE))
             .register();
 
-    static final CgType LOOK_VOLUME = CgTypes.struct("crystalgraphics:look.volume")
-            .property("radius", FLOAT).required().quantity(CgQuantity.LENGTH)
-            .property("blend", FLOAT).quantity(CgQuantity.LENGTH)
-            .register();
-
-    /** {@code look.yaml}: the post a game's effects play under, the exposure of its own draws, and where it applies. */
+    /** {@code look.yaml}: the post a game's effects are graded by, and the exposure of its own draws. */
     public static final CgType LOOK = CgTypes.struct("crystalgraphics:look")
             .property(CgType.VERSION, INT).required()
             .property("post", CgValueType.struct(CgCameraKinds.POST)).required()
             .property("effect_exposure", FLOAT).defaultValue(1.0)
-            .property("volume", CgValueType.struct(LOOK_VOLUME)).required()
             .property(CgType.UNSUPPORTED, TREE)
             .property(CgType.EDITOR, TREE).flags(CgPropertyFlag.EDITOR_ONLY)
             .register();

@@ -307,7 +307,7 @@ public final class CgAssetRegistry {
         }
         Path index = root.resolve("content.yaml"), unitsFile = root.resolve("units.yaml");
         CgUnits kitUnits = Files.isRegularFile(unitsFile) ? readUnits(unitsFile) : null;
-        CgVfxKitLook.registerKit(namespace, root, kitUnits == null ? CgUnits.HOST : kitUnits);
+        CgVfxKitLook.registerKit(namespace, root);
         return new Gathered(namespace, root, found, keys, links, Files.isRegularFile(index) ? readIndex(index) : null,
                 kitUnits);
     }

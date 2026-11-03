@@ -492,7 +492,6 @@ post:                                   # a post block: the keys a cue's lens an
   bloom2: { size: 1, tint: [0.1382, 0.1382, 0.1382] }
   vignette: 0.4
 effect_exposure: 0.2                    # what the kit's own draws' light is scaled by; 1 unless given
-volume: { radius: 1500, blend: 500 }    # required; read, not applied
 ```
 
 In Java, a play takes another kit's look, or the engine's default, and any effect takes a grade of its own:

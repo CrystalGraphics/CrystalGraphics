@@ -16,10 +16,9 @@ import org.junit.BeforeClass;
 import org.junit.Test;
 
 import com.crystalgraphics.asset.kind.CgAssetKinds;
-import com.crystalgraphics.object.value.CgUnits;
 import com.crystalgraphics.render.post.volume.CgPostSettings;
 
-/** A kit's look: read and validated against its declaration, its lengths in the kit's units, registered by namespace. */
+/** A kit's look: read and validated against its declaration, registered by namespace. */
 public class CgVfxKitLookTest {
 
     /** Unreal 5's film chain and Gaussian layers, with an exposure of its own draws. */
@@ -34,7 +33,6 @@ public class CgVfxKitLookTest {
               bloom6: { size: 64, tint: [0.0149, 0.0149, 0.0149] }
               vignette: 0.4
             effect_exposure: 0.2
-            volume: { radius: 1500, blend: 500 }
             editor:
               note: "read from captures"
             """;
@@ -46,7 +44,6 @@ public class CgVfxKitLookTest {
               tonemapper: legacy
               bloom_threshold: 1
               bloom1: { size: 1, tint: [0.5, 0.5, 0.5] }
-            volume: { radius: 20 }
             unsupported:
               - what: "two glow masks the bloom setup adds"
             """;
@@ -57,8 +54,8 @@ public class CgVfxKitLookTest {
     }
 
     @Test
-    public void aFilmLookCarriesItsPostItsExposureAndItsReachInBlocks() throws IOException {
-        CgVfxKitLook look = CgVfxKitLook.read(file(FILM), CgUnits.UNREAL);
+    public void aFilmLookCarriesItsPostAndItsExposure() throws IOException {
+        CgVfxKitLook look = CgVfxKitLook.read(file(FILM));
         CgPostSettings post = look.settings();
         assertTrue(post.bloomsGaussian());
         assertEquals(1.25f, post.bloom(), 1e-6f);
@@ -67,25 +64,21 @@ public class CgVfxKitLookTest {
         assertEquals(64f, post.bloomSize(6), 1e-6f);
         assertEquals(0.4f, post.vignette(), 1e-6f);
         assertEquals(0.2f, look.exposure(), 1e-6f);
-        assertEquals("centimetres to blocks", 15f, look.radius(), 1e-4f);
-        assertEquals(5f, look.blend(), 1e-4f);
     }
 
     @Test
     public void aLookListingWhatItLeavesOutStillReadsAndDefaultsItsExposure() throws IOException {
-        CgVfxKitLook look = CgVfxKitLook.read(file(LEGACY), CgUnits.HOST);
+        CgVfxKitLook look = CgVfxKitLook.read(file(LEGACY));
         assertEquals(1f, look.exposure(), 0f);
         assertEquals(1f, look.settings().bloomThreshold(), 1e-6f);
-        assertEquals(20f, look.radius(), 0f);
-        assertEquals(0f, look.blend(), 0f);
     }
 
     @Test
-    public void aLookWithNoVolumeIsRefusedNamingItsFile() throws IOException {
-        Path file = file("_v: 1\npost: { bloom: 1 }\n");
+    public void aLookWithNoPostIsRefusedNamingItsFile() throws IOException {
+        Path file = file("_v: 1\neffect_exposure: 1\n");
         try {
-            CgVfxKitLook.read(file, CgUnits.HOST);
-            fail("a look with no volume was read");
+            CgVfxKitLook.read(file);
+            fail("a look with no post was read");
         } catch (IllegalArgumentException e) {
             assertTrue(e.getMessage(), e.getMessage().contains(file.toString()));
         }
@@ -95,13 +88,13 @@ public class CgVfxKitLookTest {
     public void aKitRegistersItsLookAndLosesItWhenTheFileGoes() throws IOException {
         Path kit = Files.createTempDirectory("kitlook");
         Files.write(kit.resolve(CgVfxKitLook.FILE), FILM.getBytes(StandardCharsets.UTF_8));
-        CgVfxKitLook.registerKit("lookkit", kit, CgUnits.UNREAL);
+        CgVfxKitLook.registerKit("lookkit", kit);
         CgVfxKitLook look = CgVfxKitLook.of("lookkit");
         assertNotNull(look);
         assertEquals(0.2f, look.exposure(), 1e-6f);
         assertNull("another kit has none", CgVfxKitLook.of("otherkit"));
         Files.delete(kit.resolve(CgVfxKitLook.FILE));
-        CgVfxKitLook.registerKit("lookkit", kit, CgUnits.UNREAL);
+        CgVfxKitLook.registerKit("lookkit", kit);
         assertNull(CgVfxKitLook.of("lookkit"));
         assertFalse(Files.exists(kit.resolve(CgVfxKitLook.FILE)));
     }

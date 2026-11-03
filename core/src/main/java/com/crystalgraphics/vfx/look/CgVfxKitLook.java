@@ -13,7 +13,6 @@ import com.crystalgraphics.asset.codec.CgAssetYaml;
 import com.crystalgraphics.asset.kind.CgKitFiles;
 import com.crystalgraphics.asset.tree.CgAssetData;
 import com.crystalgraphics.object.validate.CgValidation;
-import com.crystalgraphics.object.value.CgUnits;
 import com.crystalgraphics.render.post.volume.CgPostBlock;
 import com.crystalgraphics.render.post.volume.CgPostSettings;
 
@@ -30,17 +29,15 @@ import com.crystalgraphics.render.post.volume.CgPostSettings;
  *
  * <ul>
  *   <li>Only its tonemapper, grade and bloom are applied: a vignette, flash or impact frame in its post would grade the
- *       whole screen and is left out. Its {@code volume} is read and not applied.</li>
+ *       whole screen and is left out.</li>
  *   <li>It needs the HDR scene: without it the kit's draws keep the frame's look, its exposure still theirs.</li>
  *   <li>A file that does not validate throws as the kit registers, naming the file.</li>
  * </ul>
  *
  * @param settings the {@code post} block
  * @param exposure {@code effect_exposure}: what the kit's draws' light is scaled by
- * @param radius   its {@code volume}'s radius, in blocks: read, not applied
- * @param blend    its {@code volume}'s blend, in blocks: read, not applied
  */
-public record CgVfxKitLook(CgPostSettings settings, float exposure, float radius, float blend) {
+public record CgVfxKitLook(CgPostSettings settings, float exposure) {
 
     /** The file at a kit's root. */
     public static final String FILE = "look.yaml";
@@ -52,18 +49,18 @@ public record CgVfxKitLook(CgPostSettings settings, float exposure, float radius
         return namespace == null ? null : BY_KIT.get(namespace);
     }
 
-    /** Reads {@code folder}'s look, its lengths in {@code units}, as the asset registry registers the kit. */
-    public static void registerKit(String namespace, Path folder, CgUnits units) {
+    /** Reads {@code folder}'s look as the asset registry registers the kit. */
+    public static void registerKit(String namespace, Path folder) {
         Path file = folder.resolve(FILE);
         if (!Files.isRegularFile(file)) {
             BY_KIT.remove(namespace);
             return;
         }
-        BY_KIT.put(namespace, read(file, units));
+        BY_KIT.put(namespace, read(file));
     }
 
-    /** {@code file}, validated against {@link CgKitFiles#LOOK}, its lengths from {@code units} into blocks. */
-    public static CgVfxKitLook read(Path file, CgUnits units) {
+    /** {@code file}, validated against {@link CgKitFiles#LOOK}. */
+    public static CgVfxKitLook read(Path file) {
         Map<?, ?> root;
         try {
             Object tree = CgAssetYaml.read(new String(Files.readAllBytes(file), StandardCharsets.UTF_8));
@@ -74,10 +71,7 @@ public record CgVfxKitLook(CgPostSettings settings, float exposure, float radius
         }
         CgValidation v = CgAssetData.validate(file.toString(), CgKitFiles.LOOK, root, CgValidation.Usecase.LOAD);
         if (!v.valid()) throw new IllegalArgumentException(file + ": " + v.issues());
-        Map<?, ?> volume = (Map<?, ?>) root.get("volume");
-        float metres = (float) units.metres();
-        return new CgVfxKitLook(CgPostBlock.settings((Map<?, ?>) root.get("post")), number(root.get("effect_exposure"), 1f),
-                number(volume.get("radius"), 0f) * metres, number(volume.get("blend"), 0f) * metres);
+        return new CgVfxKitLook(CgPostBlock.settings((Map<?, ?>) root.get("post")), number(root.get("effect_exposure"), 1f));
     }
 
     private static float number(@Nullable Object v, float fallback) {
