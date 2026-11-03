@@ -149,6 +149,32 @@ public class CgFont {
         return load(fontData, logicalName, style, Collections.<CgFontVariation>emptyList());
     }
 
+    /**
+     * {@code fontData} at a CSS weight, unsized: a variable font instanced at {@code weight} (clamped to its range), a
+     * static one as it is. A variable font loaded without one draws its default instance, which may be its thinnest.
+     *
+     * <pre>{@code
+     * CgFont regular = CgFont.loadAtWeight(bytes, "mymod:fonts/Brand.ttf", 400).atSize(16);
+     * CgFont bold = CgFont.loadAtWeight(bytes, "mymod:fonts/Brand.ttf", 700).atSize(16);
+     * }</pre>
+     */
+    /** Whether {@code fontData} is a single variable font with a weight axis: one {@link #loadAtWeight} instances. */
+    public static boolean hasWeightAxis(byte[] fontData) {
+        return Sfnt.weightAxis(fontData) != null;
+    }
+
+    public static CgFont loadAtWeight(byte[] fontData, String logicalName, int weight) {
+        float[] axis = Sfnt.weightAxis(fontData);
+        CgFontStyle style = weight >= 600 ? CgFontStyle.BOLD : CgFontStyle.REGULAR;
+        if (axis == null) {
+            return load(fontData, logicalName, style);
+        }
+        float at = Math.max(axis[0], Math.min(axis[2], weight));
+        List<CgFontVariation> variations = at == axis[1] ? Collections.<CgFontVariation>emptyList()
+                : Collections.singletonList(new CgFontVariation("wght", at));
+        return load(fontData, logicalName, style, variations);
+    }
+
     public static CgFont load(byte[] fontData,
                               String logicalName,
                               CgFontStyle style,

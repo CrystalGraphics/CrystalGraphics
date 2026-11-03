@@ -203,7 +203,8 @@ CgPipelinePrecache.Request arena = CgPipelinePrecache.request(p -> {
     p.add(FLOOR, false);
     p.add(ARMOUR, false, true);                     // a material a skinned mesh draws
 });
-CgPreload.Request files = CgPreload.request(l -> l.texture(FLOOR_TEXTURE).mesh("mymod:models/arena.glb"));
+CgPreload.Request files = CgPreload.request(l -> l.texture(FLOOR_TEXTURE).mesh("mymod:models/arena.glb")
+        .font(() -> CgDefaultFont.unsized(700), 24, 48));    // a title font, its ASCII at the sizes it draws
 
 if (arena.ready() && files.ready()) openArena();   // each frame until both are
 ```
@@ -312,7 +313,7 @@ carry the counter `loading.shown` and the markers `loading.show` / `loading.hide
 | `loading.watchdog.CgLoadWatchdog` | Unreal's game-thread hitch heartbeat: names who held the render thread |
 | `lifecycle.CgEngineLifecycle`, `CgGraphicsLifecycle`, `CgStartSteps`, `CgListenerDiscovery` | the start and its stages, listeners |
 | `render.world.CgPipelinePrecache`, `render.CgWarmBudget` | pipelines ahead, and the frame's share for building them |
-| `asset.load.CgPreload` | textures and meshes read ahead |
+| `asset.load.CgPreload` | textures, meshes and fonts read ahead (`font(...)` opens one and queues its ASCII glyphs) |
 | `gl.shader.CgLinkWorker`, `CgProgramBinaryCache` | GL compiles off the render thread, binaries across launches |
 | `gpu.CgDeferral`, `CgUploads` | textures and buffers from any thread, landed under a budget |
 | `job.CgJob` | work beside the game |

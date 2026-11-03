@@ -68,7 +68,7 @@ CgPipelinePrecache.Request move = CgPipelinePrecache.steps("mymod:move")
         .start();
 ```
 
-Textures, meshes and sounds are not pipelines: read them ahead with `CgPreload`
+Textures, meshes, fonts and sounds are not pipelines: read them ahead with `CgPreload`
 (`CgPreload.request(l -> l.texture(t).mesh(path))`), beside a pipeline request. The full API is
 [`ENGINE_API.md`](ENGINE_API.md) § *CgWorldRenderer* and `CgPipelinePrecache`'s javadoc.
 

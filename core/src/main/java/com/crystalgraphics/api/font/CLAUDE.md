@@ -96,6 +96,15 @@ Provides:
 
 This is the granularity at which fallback resolution reasons about “one candidate font”.
 
+### `CgDefaultFont`
+
+The engine's default font: Outfit (SIL OFL), shipped at `assets/crystalgraphics/fonts/Outfit-wght.ttf`, opened at 400
+and 700 on the start's GL-free worker (`CgGraphicsLifecycle.workAhead`). `regular(px)`, `bold(px)`, `at(weight, px)`.
+
+- A variable font whose default instance is Thin: load it through `CgDefaultFont` or `CgFont.loadAtWeight`, never
+  `CgFont.load` on its bytes.
+- CrystalGUI keeps IBM Plex Sans as its own default; this is CrystalGraphics' (the loading screen's task lines).
+
 ### `CgSystemFonts` · `CgSystemFontFace` · `CgGenericFamily` · `CgFontFallback`
 
 The installed fonts: found by name with CSS weight/italic matching, CSS's generic families per

@@ -5,10 +5,7 @@ import java.util.List;
 import javax.annotation.Nullable;
 
 import com.crystalgraphics.api.font.CgFont;
-import com.crystalgraphics.api.font.CgFontStyle;
-import com.crystalgraphics.api.font.CgGenericFamily;
-import com.crystalgraphics.api.font.CgSystemFontFace;
-import com.crystalgraphics.api.font.CgSystemFonts;
+import com.crystalgraphics.api.font.CgDefaultFont;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.text.CgTextAlign;
 import com.crystalgraphics.api.text.CgTextLayout;
@@ -157,7 +154,7 @@ public final class CgLogoLoadingView implements CgLoadingView {
         if (now.isEmpty() || noFont) return;
         int px = Math.max(12, Math.round(barHeight * 0.8f));
         if (font == null || px != fontPx) {
-            font = sansSerif(px);
+            font = defaultFont(px);
             if (font == null) return;
             fontPx = px;
             layout = null;
@@ -193,27 +190,26 @@ public final class CgLogoLoadingView implements CgLoadingView {
         return s.toString();
     }
 
-    /** The system's sans-serif, looked up on a worker: indexing the installed fonts takes 100 ms and more. */
+    /** The engine's default font, regular, asked on a worker: the start opens it ahead, and no frame waits if not yet. */
     @Nullable
-    private CgReply<CgSystemFontFace> face;
+    private CgReply<CgFont> face;
 
-    /** The sans-serif at {@code px}; null while its lookup runs, and with {@link #noFont} set where there is none. */
+    /** The default font at {@code px}; null while it opens, and with {@link #noFont} set where it failed to. */
     @Nullable
-    private CgFont sansSerif(int px) {
+    private CgFont defaultFont(int px) {
         if (face == null) lookUpFace();
         if (!face.isDone()) return null;
-        CgSystemFontFace found = face.result();
+        CgFont found = face.result();
         if (found == null) {
             noFont = true;
             return null;
         }
-        return CgSystemFonts.get().load(found, CgFontStyle.REGULAR, px);
+        return found.atSize(px);
     }
 
     private void lookUpFace() {
         if (face == null) {
-            face = CgJob.lane(CgJobLane.BACKGROUND).named("loading screen font")
-                    .run(() -> CgSystemFonts.get().generic(CgGenericFamily.SANS_SERIF, CgFontStyle.REGULAR));
+            face = CgJob.lane(CgJobLane.BACKGROUND).named("loading screen font").run(() -> CgDefaultFont.unsized(400));
         }
     }
 

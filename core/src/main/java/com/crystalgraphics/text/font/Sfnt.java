@@ -100,6 +100,44 @@ public final class Sfnt {
     }
 
     /**
+     * A single font's weight axis, {@code {min, default, max}}, or null when it has none: a static font, a collection,
+     * or data too short to hold the axis it names.
+     */
+    public static float[] weightAxis(byte[] data) {
+        if (data == null || data.length < 12 || isCollection(data)) {
+            return null;
+        }
+        ByteBuffer in = ByteBuffer.wrap(data);
+        int tables = u16(in, 4);
+        for (int i = 0; i < tables; i++) {
+            int record = 12 + 16 * i;
+            if (record + 16 > data.length) {
+                return null;
+            }
+            if (in.getInt(record) != FVAR) {
+                continue;
+            }
+            int fvar = (int) u32(in, record + 8);
+            if (fvar < 0 || fvar + 16 > data.length) {
+                return null;
+            }
+            int axesOffset = u16(in, fvar + 4), axisCount = u16(in, fvar + 8), axisSize = u16(in, fvar + 10);
+            for (int a = 0; a < axisCount; a++) {
+                int axis = fvar + axesOffset + a * axisSize;
+                if (axis + 16 > data.length) {
+                    return null;
+                }
+                if (in.getInt(axis) == WGHT) {
+                    return new float[] {in.getInt(axis + 4) / 65536f, in.getInt(axis + 8) / 65536f,
+                            in.getInt(axis + 12) / 65536f};
+                }
+            }
+            return null;
+        }
+        return null;
+    }
+
+    /**
      * Face {@code faceIndex} of a font file as a standalone font. A single-face file comes back as
      * the same array when {@code faceIndex} is 0.
      *

@@ -7,17 +7,20 @@ import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.Supplier;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import com.crystalgraphics.api.font.CgFont;
 import com.crystalgraphics.api.mesh.CgMeshLoader;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.job.CgJob;
 import com.crystalgraphics.job.CgJobLane;
+import com.crystalgraphics.text.cache.CgFontRegistry;
 
 /**
- * Textures, meshes and other files read ahead of their first use: Unreal's
+ * Textures, meshes, fonts and other files read ahead of their first use: Unreal's
  * {@code FStreamableManager::RequestAsyncLoad} for what is not an asset of its own. A request names them, a worker
  * decodes each texture (queuing its upload, which lands before the next frame executes) and reads each mesh file, and
  * {@link Request#ready()} says when all of it is done. Pipelines are {@code CgPipelinePrecache}'s; a scene waits on both.
@@ -67,6 +70,26 @@ public final class CgPreload {
         /** A mesh file read, by path, as {@code CgMeshLoader.resolve} reads it; a mesh made in code is skipped. */
         public Loads mesh(Object mesh) {
             if (mesh instanceof String path && paths.add(path)) reads.add(() -> CgMeshLoader.resolve(path));
+            return this;
+        }
+
+        /**
+         * A font opened on the worker and its ASCII glyphs queued to the glyph workers at {@code effectivePx}, the sizes
+         * it is drawn at after the pose's scale (none: the distance field alone). The request is ready once the font is
+         * open; the glyphs land over the next frames in which nothing on screen waits for one.
+         *
+         * <pre>{@code
+         * CgPreload.request(l -> l.font(() -> CgDefaultFont.unsized(700), 24, 48));   // a title at 1x and 2x
+         * }</pre>
+         */
+        public Loads font(Supplier<CgFont> font, int... effectivePx) {
+            int[] sizes = effectivePx.clone();
+            reads.add(() -> {
+                CgFont f = font.get();
+                if (f == null) return;
+                // The warmer keys by a size-bound font; the distance field keys by its own scale whatever the size
+                CgFontRegistry.get().warmAscii(f.atSize(sizes.length > 0 ? sizes[0] : 32), sizes);
+            });
             return this;
         }
 

@@ -31,6 +31,7 @@ import com.crystalgraphics.vfx.effect.beam.CgEnergyWave;
 import com.crystalgraphics.vfx.element.CgVfxBlast;
 import com.crystalgraphics.vfx.prefab.CgVfxPrefabAssets;
 import com.crystalgraphics.vfx.system.CgVfxSystemAssets;
+import com.crystalgraphics.api.font.CgDefaultFont;
 import com.crystalgraphics.api.material.CgMaterialRegistry;
 import com.crystalgraphics.render.post.CgPostStack;
 import com.crystalgraphics.render.world.CgPipelinePrecache;
@@ -355,6 +356,13 @@ public final class CgGraphicsLifecycle {
         }
         StringBuilder took = new StringBuilder("[start] ahead, on a worker: natives ")
                 .append((System.nanoTime() - begun) / 1_000_000L);
+        long font = System.nanoTime();
+        try {
+            CgDefaultFont.ahead();
+        } catch (Throwable t) {
+            LOGGER.log(Level.WARNING, "Opening the default font ahead failed; it opens at first use instead", t);
+        }
+        took.append(", default font ").append((System.nanoTime() - font) / 1_000_000L);
         for (Class<?> c : AHEAD) {
             long at = System.nanoTime();
             try {
