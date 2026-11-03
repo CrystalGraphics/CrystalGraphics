@@ -244,6 +244,12 @@ public final class CgCueManager extends CgWorldSubsystem {
         return this;
     }
 
+    /** The world's {@link CgCueInspector}, which the effects hand each system a burst spawns; null unless asked for. */
+    @Nullable
+    public CgCueInspector inspector() {
+        return inspector;
+    }
+
     /** Whether an attachment is controlled on this machine: what {@code local_only} and {@code not_local} test. */
     public CgCueManager localControl(Predicate<CgAttachment> localControl) {
         this.localControl = localControl;

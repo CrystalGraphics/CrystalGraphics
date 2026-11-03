@@ -365,7 +365,12 @@ for (String line : inspector.lines(new CgCueInspector.Keys("N/B", "R", "P", ", .
 - Frames run from 0 to the hit's duration less a frame and round again, either way; every step back keeps the hit's
   seeds, and only a fire draws new ones.
 - Call `step` once per key repeat: steps forward queue, one simulated a frame.
+- It steps a burst's sequences and the systems its `particles` spawn. A sequence's length is known as it starts, a
+  system's only once it completes: until then `duration()` is NaN and the age line reads `0.200 / ? s`, steps forward
+  simulate on, and a step back from 0 stays at 0. Once it has played out it wraps as a sequence does.
 - It follows bursts alone, never a looping cue, and only on a client.
+- A `CgCueEffects` of your own hands each system it spawns for a burst to `cues.inspector().spawned(part)`, a
+  `CgCueInspector.Part` that can play it again at an age with its seed; `CgVfxCueEffects` does.
 
 ### Over the network
 

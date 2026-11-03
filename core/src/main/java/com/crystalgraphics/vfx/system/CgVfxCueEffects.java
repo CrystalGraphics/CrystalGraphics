@@ -1,5 +1,6 @@
 package com.crystalgraphics.vfx.system;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Set;
@@ -31,6 +32,7 @@ import com.crystalgraphics.cue.CgCueDefinition.Slot;
 import com.crystalgraphics.cue.CgCueDefinition.Write;
 import com.crystalgraphics.cue.CgCueDefinition.Sound;
 import com.crystalgraphics.cue.CgCueEffects;
+import com.crystalgraphics.cue.CgCueInspector;
 import com.crystalgraphics.cue.CgCueManager;
 import com.crystalgraphics.cue.CgCueNet;
 import com.crystalgraphics.cue.CgCueParameters;
@@ -42,6 +44,7 @@ import com.crystalgraphics.render.post.CgPostStack;
 import com.crystalgraphics.render.post.volume.CgPostBlock;
 import com.crystalgraphics.render.post.volume.CgPostVolume;
 import com.crystalgraphics.vfx.look.CgVfxKitLook;
+import com.crystalgraphics.vfx.CgVfxEffect;
 import com.crystalgraphics.vfx.CgVfxSystem;
 import com.crystalgraphics.vfx.camera.CgShakePlay;
 import com.crystalgraphics.vfx.look.CgVfxParam;
@@ -99,6 +102,8 @@ public final class CgVfxCueEffects implements CgCueEffects {
     private CgAttachment[] followTargets = new CgAttachment[16];
     private String[] followSockets = new String[16];
     private int following;
+    /** The inspector's parts it has released, for the next bursts it follows. */
+    private final ArrayDeque<Inspected> spareParts = new ArrayDeque<>();
 
     public CgVfxCueEffects(CgVfxSystem vfx, CgCueManager cues) {
         this.vfx = vfx;
@@ -171,7 +176,7 @@ public final class CgVfxCueEffects implements CgCueEffects {
             Particles p = particles.get(i);
             // Fresh, at its warmup alone, however late it arrived: GAS's burst spawns its systems unaged
             // (GameplayCueNotify_Burst.cpp:19-37, GameplayCueNotifyTypes.cpp:434-446). Lateness only drops it.
-            if (drawable(cue, p) && cues.spawns(p.where().condition(), at, i)) spawn(cue, p, at, 0f);
+            if (drawable(cue, p) && cues.spawns(p.where().condition(), at, i)) inspect(cue, p, at, spawn(cue, p, at, 0f));
         }
         List<Sound> sounds = block.sounds();
         for (int i = 0; i < sounds.size(); i++) {
@@ -388,6 +393,71 @@ public final class CgVfxCueEffects implements CgCueEffects {
         if (age + p.warmup() > 0f) made.startAt(age + p.warmup());
         vfx.play(made);
         return made;
+    }
+
+    /** {@code made} handed to the world's inspector, where a dev tool asked for one. */
+    private void inspect(CgCueDefinition cue, Particles p, CgCueParameters at, CgVfxSystemInstance<?> made) {
+        CgCueInspector inspector = cues.inspector();
+        if (inspector == null) return;
+        Inspected part = spareParts.isEmpty() ? new Inspected() : spareParts.pop();
+        inspector.spawned(part.set(cue, p, at, made));
+    }
+
+    /** A burst's system as the inspector steps it: spawned again as it first was, at an age, its seed kept. */
+    private final class Inspected implements CgCueInspector.Part {
+        private final CgCueParameters at = new CgCueParameters();
+        private CgCueDefinition cue;
+        private Particles entry;
+        private CgVfxSystemInstance<?> playing;
+        private float seed;
+        private double completed = Double.NaN;
+
+        Inspected set(CgCueDefinition cue, Particles entry, CgCueParameters at, CgVfxSystemInstance<?> made) {
+            this.cue = cue;
+            this.entry = entry;
+            this.at.set(at);
+            playing = made;
+            seed = made.seed();
+            completed = Double.NaN;
+            return this;
+        }
+
+        /** The cue's seconds per second of its own clock: its component's CustomTimeDilation. */
+        private float rate() {
+            return entry.timeDilation() > 0f ? entry.timeDilation() : 1f;
+        }
+
+        @Override
+        public double seconds() {
+            return Math.max(0f, playing.age() - entry.warmup()) / rate();
+        }
+
+        @Override
+        public double duration() {
+            if (Double.isNaN(completed) && playing.state() == CgVfxEffect.State.DEAD) completed = seconds();
+            return completed;
+        }
+
+        @Override
+        public void seek(double seconds) {
+            playing.kill();
+            float age = (float) (seconds * rate());
+            playing = CgVfxEffect.seeded(seed, () -> spawn(cue, entry, at, age));
+        }
+
+        @Override
+        public void kill() {
+            playing.kill();
+        }
+
+        @Override
+        public void release() {
+            cue = null;
+            entry = null;
+            playing = null;
+            at.reset();
+            spareParts.push(this);
+        }
     }
 
     /** A {@code writes} value into the user parameter {@code param} of {@code e}, as many of its floats as it holds. */

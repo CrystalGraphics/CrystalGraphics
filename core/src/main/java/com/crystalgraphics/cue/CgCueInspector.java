@@ -39,7 +39,11 @@ import com.crystalgraphics.tag.CgGameplayTag;
  * }</pre>
  *
  * <ul>
- *   <li>Client only, on the render thread. It follows a burst played here, a server's included, and no looping cue.</li>
+ *   <li>Client only, on the render thread. It follows a burst played here, a server's included, and no looping cue:
+ *       its sequences and the systems its particles spawn.</li>
+ *   <li>A sequence's length is known as it starts; a system's once it completes (Niagara's complete). Until every
+ *       system has, {@link #duration} is NaN and the HUD shows {@code ?}: forward steps simulate on, and back from 0
+ *       stays at 0.</li>
  *   <li>Pausing sets the client world's time dilation to 0, and unpausing puts back what it was. A speed set while
  *       paused is overwritten each frame: set it after unpausing.</li>
  *   <li>The frames run from 0 to the duration less a frame and round again: forward from the last comes to 0, from a
@@ -68,7 +72,38 @@ public final class CgCueInspector extends CgWorldSubsystem {
         public static final Keys DEFAULT = new Keys("N/B", "R", "P", ", .", "X");
     }
 
+    /**
+     * A particle system a followed burst spawned, as the cue's effects hand it to {@link #spawned}: played again at an
+     * age as a seek lands, its seed kept.
+     *
+     * <pre>{@code
+     * // in a CgCueEffects, after spawning a burst's system
+     * CgCueInspector inspector = cues.inspector();
+     * if (inspector != null) inspector.spawned(part);   // a pooled Part over the system and what spawned it
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Its seconds are the cue's: its warmup and its time dilation taken out.</li>
+     *   <li>{@link #release} is the inspector's: the part is done with and may go back to its pool.</li>
+     * </ul>
+     */
+    public interface Part {
+        /** Its seconds since the burst started. */
+        double seconds();
+
+        /** The seconds it completed at, Niagara's complete: every emitter done; NaN until it first has. */
+        double duration();
+
+        /** Played again from {@code seconds} into the burst, seed kept: this frame, the one play showed there. */
+        void seek(double seconds);
+
+        void kill();
+
+        void release();
+    }
+
     private final List<CgSequencePlayer> players = new ArrayList<>();
+    private final List<Part> parts = new ArrayList<>();
     private final CgCueParameters at = new CgCueParameters();
     private final List<String> lines = new ArrayList<>(4);
     @Nullable
@@ -116,6 +151,7 @@ public final class CgCueInspector extends CgWorldSubsystem {
         current = tag;
         at.set(params);
         players.clear();
+        releaseParts();
         steps = 0;
     }
 
@@ -124,18 +160,37 @@ public final class CgCueInspector extends CgWorldSubsystem {
         if (player != null && current != null) players.add(player);
     }
 
+    /** A particle system the burst just spawned, from the cue's effects; released at once before any burst. */
+    public void spawned(Part part) {
+        if (current != null) parts.add(part);
+        else part.release();
+    }
+
+    private void releaseParts() {
+        for (int i = 0; i < parts.size(); i++) parts.get(i).release();
+        parts.clear();
+    }
+
     /** The cue followed, the last burst played here; null before any. */
     @Nullable
     public CgGameplayTag current() {
         return current;
     }
 
-    /** Its length in seconds, its longest sequence's; 0 before any, or for one that plays no sequence. */
+    /**
+     * Its length in seconds: its longest sequence's, or the age its last system completed at. NaN while a system
+     * has yet to complete; 0 before any burst, or for one that plays nothing.
+     */
     public double duration() {
         double d = 0;
         for (int i = 0; i < players.size(); i++) {
             CgSequenceDefinition s = players.get(i).definition();
             d = Math.max(d, s.seconds(s.end() - s.start()));
+        }
+        for (int i = 0; i < parts.size(); i++) {
+            double p = parts.get(i).duration();
+            if (Double.isNaN(p)) return Double.NaN;
+            d = Math.max(d, p);
         }
         return d;
     }
@@ -144,7 +199,9 @@ public final class CgCueInspector extends CgWorldSubsystem {
     public double age() {
         double age = 0;
         for (int i = 0; i < players.size(); i++) age = Math.max(age, players.get(i).seconds());
-        return Math.min(age, duration());
+        for (int i = 0; i < parts.size(); i++) age = Math.max(age, parts.get(i).seconds());
+        double d = duration();
+        return Double.isNaN(d) ? age : Math.min(age, d);
     }
 
     public boolean paused() {
@@ -170,26 +227,31 @@ public final class CgCueInspector extends CgWorldSubsystem {
      * at once. Round from either end, as the class says.
      */
     public CgCueInspector step(int frames) {
-        double d = duration();
-        if (frames == 0 || d <= 0) return this;
+        if (frames == 0 || players.isEmpty() && parts.isEmpty()) return this;
         setPaused(true);
         for (int n = Math.abs(frames); n > 0; n--) {
+            // A system yet to complete has no end: forward simulates on, back from 0 stays there
+            double d = duration();
+            boolean ends = !Double.isNaN(d) && d > 0;
             double from = age() + steps * STEP;
             if (frames > 0) {
-                if (from >= d - EPSILON) seek(STEP);
-                else if (from >= d - STEP - EPSILON) seek(0);
+                if (ends && from >= d - EPSILON) seek(STEP);
+                else if (ends && from >= d - STEP - EPSILON) seek(0);
                 else steps++;
+            } else if (from <= EPSILON || ends && from >= d - EPSILON) {
+                seek(ends ? d - STEP : 0);
             } else {
-                seek(from >= d - EPSILON || from <= EPSILON ? d - STEP : from - STEP);
+                seek(from - STEP);
             }
         }
         return this;
     }
 
-    /** Each of its sequences at {@code seconds}, as a scrub lands: its systems drawn there this frame, seeds kept. */
+    /** Each of its sequences and systems at {@code seconds}, as a scrub lands: drawn there this frame, seeds kept. */
     private void seek(double seconds) {
         steps = 0;
         for (int i = 0; i < players.size(); i++) players.get(i).seek(seconds);
+        for (int i = 0; i < parts.size(); i++) parts.get(i).seek(seconds);
     }
 
     /** The cue followed again, from its start where it last played, with new seeds; nothing before any. */
@@ -201,7 +263,9 @@ public final class CgCueInspector extends CgWorldSubsystem {
     /** {@code tag}'s burst where the last cue played (the world's origin before any), ending that one at once. */
     public CgCueInspector fire(CgGameplayTag tag) {
         for (int i = 0; i < players.size(); i++) players.get(i).kill();
+        for (int i = 0; i < parts.size(); i++) parts.get(i).kill();
         players.clear();
+        releaseParts();
         steps = 0;
         CgCueManager.of(world()).execute(tag, at);
         return this;
@@ -226,7 +290,8 @@ public final class CgCueInspector extends CgWorldSubsystem {
         lines.clear();
         lines.add("Cue [" + keys.cue() + "]: " + (current == null ? "none" : current.name()) + " | Fire [" + keys.fire() + "]");
         lines.add("Pause [" + keys.pause() + "]: " + (paused ? "paused" : "playing") + " | Step [" + keys.step() + "]");
-        lines.add(String.format(Locale.ROOT, "Age: %.3f / %.3f s", age(), d));
+        lines.add(Double.isNaN(d) ? String.format(Locale.ROOT, "Age: %.3f / ? s", age())
+                : String.format(Locale.ROOT, "Age: %.3f / %.3f s", age(), d));
         lines.add("Kit grades [" + keys.grades() + "]: " + (gradesEnabled() ? "on" : "off"));
         return lines;
     }

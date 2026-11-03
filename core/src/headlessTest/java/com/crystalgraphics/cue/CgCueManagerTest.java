@@ -210,6 +210,51 @@ public class CgCueManagerTest {
         assertEquals(0, inspector.duration(), 0);
     }
 
+    /**
+     * A burst of particles alone is stepped through the systems it spawned: no length until they complete, so a step
+     * back from 0 stays there; once complete, it wraps as a sequence does; a refire ends and releases them.
+     */
+    @Test
+    public void theInspectorStepsTheSystemsABurstSpawnedOnceTheyComplete() throws InterruptedException {
+        CgCueInspector inspector = world.add(new CgCueInspector());
+        cues.execute(flash, new CgCueParameters().at(1, 2, 3));
+        frames(0f, () -> effects.bursts == 1);
+        Part system = new Part();
+        inspector.spawned(system);
+        system.seconds = 0.2;
+
+        assertTrue("no length before it completes", Double.isNaN(inspector.duration()));
+        assertEquals("Age: 0.200 / ? s", inspector.lines(CgCueInspector.Keys.DEFAULT).get(2));
+        inspector.step(-1);
+        assertEquals(0.2 - CgCueInspector.STEP, system.seconds, 1e-9);
+        system.seconds = 0;
+        inspector.step(-1);
+        assertEquals("from 0 with no end: stays", 0, system.seconds, 1e-9);
+
+        system.seconds = system.completed = 0.5;                    // played out
+        assertEquals(0.5, inspector.duration(), 1e-9);
+        inspector.step(-1);
+        assertEquals("from the end: the last frame", 0.5 - CgCueInspector.STEP, system.seconds, 1e-9);
+        inspector.step(1);
+        assertEquals("round to 0", 0, system.seconds, 1e-9);
+
+        inspector.refire();
+        assertTrue(system.killed);
+        assertTrue(system.released);
+    }
+
+    /** A system a burst spawned, as the cue's effects would hand it over. */
+    private static final class Part implements CgCueInspector.Part {
+        double seconds, completed = Double.NaN;
+        boolean killed, released;
+
+        @Override public double seconds() { return seconds; }
+        @Override public double duration() { return completed; }
+        @Override public void seek(double s) { seconds = s; }
+        @Override public void kill() { killed = true; }
+        @Override public void release() { released = true; }
+    }
+
     /** Frames of {@code dt} with loads running between them, until {@code done}. */
     private void frames(float dt, BooleanSupplier done) throws InterruptedException {
         for (int i = 0; i < 3000 && !done.getAsBoolean(); i++) {
