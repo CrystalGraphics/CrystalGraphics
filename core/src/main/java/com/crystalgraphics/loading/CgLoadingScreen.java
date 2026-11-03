@@ -143,7 +143,7 @@ public final class CgLoadingScreen {
     private static CgLoadingView view = new CgLogoLoadingView();
     /** The host's opening held behind the screen, or null. */
     @Nullable private static Runnable held;
-    /** A host held its opening here, so it draws the screen until the fade ends. */
+    /** The host drew the screen or held its opening here, so it draws it until the fade ends. */
     private static boolean hostDraws;
 
     /** Whether a host fired a world stage since the last {@link #frame()}: if none did, the screen fires its own. */
@@ -220,12 +220,18 @@ public final class CgLoadingScreen {
         held = open;
         clearedFrame = false;
         hostDraws = true;
-        LOGGER.info("[loading] the host's first screen waits for the hide");
+        LOGGER.info("[loading] the host's first screen waits for the hide, the fade-in {}% in",
+                Math.round(Math.min(1f, appeared / FADE_IN) * 100f));
         return true;
     }
 
-    /** Whether the host draws this screen itself: from a {@link #holdUntilHidden} until its fade-out ends. */
+    /**
+     * Whether the host draws this screen: while it shows, from the engine's start, and until its fade-out ends. Over
+     * the host's own loading screen too, so the fade-in crosses from it: begun only once the host opened its first
+     * screen, Minecraft's menu showed through the whole fade-in.
+     */
     public static boolean hostDraws() {
+        if (shown()) return true;
         if (hostDraws && fadedOut(System.nanoTime())) hostDraws = false;
         return hostDraws;
     }
@@ -233,6 +239,9 @@ public final class CgLoadingScreen {
     /** Asks the view whether it draws whole yet, until it does: each ask advances its build a step. */
     private static void askView(long now) {
         if (viewReady || !(viewReady = view.ready())) return;
+        // Its first half crosses from the host's loading screen: once the host's first screen opened that is gone, and
+        // fading in over that screen would show it
+        if (held != null) appeared = Math.max(appeared, FADE_IN / 2f);
         LOGGER.info("[loading] the view is ready after {} ms{}", (now - shownAt) / 1_000_000L,
                 held == null ? ", under the host's loading screen" : ", after the host's first screen opened");
     }
@@ -434,7 +443,13 @@ public final class CgLoadingScreen {
             // Nothing of its own until the view draws whole: the host's screen shows meanwhile. Asked here too, not
             // only in frame(): each ask advances its build a step, and the workers had the frame's GUI since
             askView(now);
+            if (!viewReady && held != null) {
+                // The host's own loading screen is gone and its first screen would show through: wait for the view here
+                view.finish();
+                askView(now);
+            }
             if (viewReady) appeared += step;
+            hostDraws = true;   // its fade-out is drawn too, held opening or not
         } else {
             if (hiddenAt == 0L || !viewReady || fadedOut(now)) return;
             left += step;

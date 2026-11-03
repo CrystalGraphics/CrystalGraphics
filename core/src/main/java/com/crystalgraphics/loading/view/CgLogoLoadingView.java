@@ -236,6 +236,14 @@ public final class CgLogoLoadingView implements CgLoadingView {
         return ready = fx && lockupLoad.isDone();
     }
 
+    /** Builds its shader's program and loads the lockup here, waiting for what is left of either. */
+    @Override
+    public void finish() {
+        CgMaterial.load(FX).pipeline(CgInstanceKind.QUAD).program();
+        texture().getWidth();
+        ready = true;
+    }
+
     private void loadLockup() {
         if (lockupLoad != null) return;
         CgTexture2D t = texture();

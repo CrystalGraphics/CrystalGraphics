@@ -56,4 +56,12 @@ public interface CgLoadingView {
     default boolean ready() {
         return true;
     }
+
+    /**
+     * Makes {@link #ready} true now, waiting for whatever it still builds or loads: the screen calls it when the host's
+     * first screen has opened behind a view not ready, since a frame held on the last one shown is better than that
+     * screen showing through. Nothing by default. Render thread.
+     */
+    default void finish() {
+    }
 }

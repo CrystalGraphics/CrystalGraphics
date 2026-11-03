@@ -231,6 +231,9 @@ public final class CgGraphicsLifecycle {
                     LOGGER.log(Level.WARNING, "The start's work ahead failed; it runs at first use instead", e);
                 }
                 CgStartSteps.step("waiting for the work ahead");
+                // The loading screen's own look before anything else compiles: it shows nothing until built, and queued
+                // behind the engine's programs it left the host's first screen up two seconds
+                CgLoadingScreen.warm(width, height);
                 CgWorldRenderer.get().install();
                 CgStartSteps.step("world renderer");
                 CgPostStack.get().install();
