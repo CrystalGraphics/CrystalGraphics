@@ -35,7 +35,7 @@ import com.crystalgraphics.tag.CgGameplayTag;
  * <pre>{@code
  * // a dev HUD, under its own lines, each frame
  * for (String line : inspector.lines(CgCueInspector.Keys.DEFAULT)) draw(line);
- * for (String line : inspector.lines(new CgCueInspector.Keys("[ ]", "R", "K", ", .", "X"))) draw(line);   // its own keys
+ * for (String line : inspector.lines(new CgCueInspector.Keys("[ ]", "R", "K", "Z X", "C"))) draw(line);   // its own keys
  * }</pre>
  *
  * <ul>
@@ -68,8 +68,8 @@ public final class CgCueInspector extends CgWorldSubsystem {
      * @param grades {@link #setGrades}
      */
     public record Keys(String cue, String fire, String pause, String step, String grades) {
-        /** N/B, R, P, {@code , .} and X: the GL debug harness's. */
-        public static final Keys DEFAULT = new Keys("N/B", "R", "P", ", .", "X");
+        /** N/B, R, P, Z X and C: the GL debug harness's. */
+        public static final Keys DEFAULT = new Keys("N/B", "R", "P", "Z X", "C");
     }
 
     /**
@@ -292,7 +292,7 @@ public final class CgCueInspector extends CgWorldSubsystem {
         lines.add("Pause [" + keys.pause() + "]: " + (paused ? "paused" : "playing") + " | Step [" + keys.step() + "]");
         lines.add(Double.isNaN(d) ? String.format(Locale.ROOT, "Age: %.3f / ? s", age())
                 : String.format(Locale.ROOT, "Age: %.3f / %.3f s", age(), d));
-        lines.add("Kit grades [" + keys.grades() + "]: " + (gradesEnabled() ? "on" : "off"));
+        lines.add("Kit colour grade [" + keys.grades() + "]: " + (gradesEnabled() ? "on" : "off"));
         return lines;
     }
 }

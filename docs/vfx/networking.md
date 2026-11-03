@@ -359,7 +359,7 @@ inspector.setPaused(!inspector.paused());    // holds the client world's clock, 
 inspector.step(1);                           // a frame forward, simulated
 inspector.step(-1);                          // a frame back, drawn this frame: the same particles play showed
 inspector.refire();                          // the last cue again where it played, with new seeds
-for (String line : inspector.lines(new CgCueInspector.Keys("N/B", "R", "P", ", .", "X"))) hud.draw(line);
+for (String line : inspector.lines(new CgCueInspector.Keys("N/B", "R", "P", "Z X", "C"))) hud.draw(line);
 ```
 
 - Frames run from 0 to the hit's duration less a frame and round again, either way; every step back keeps the hit's
