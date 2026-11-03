@@ -10,6 +10,7 @@ import com.crystalgraphics.compute.source.CgImageDimension;
 import com.crystalgraphics.gl.buffer.CgReadback;
 import com.crystalgraphics.platform.device.command.CgAccess;
 import com.crystalgraphics.platform.gl.CgCapabilities;
+import com.crystalgraphics.gl.CgGlNames;
 import com.crystalgraphics.platform.gl.CgGL;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -116,7 +117,7 @@ public final class CgComputeCheck {
         int align = Math.max(4, CgCapabilities.detect().storageOffsetAlignment());
         stride = (WORDS * 4 + align - 1) / align * align;
         long bytes = (long) SLOTS * stride;
-        buffer = CgGL.glGenBuffers();
+        buffer = CgGlNames.buffer();
         CgGL.glBindBuffer(CgGL.GL_COPY_WRITE_BUFFER, buffer);
         if (CgCapabilities.detect().isBufferStorageSupported()) CgGL.glBufferStorage(CgGL.GL_COPY_WRITE_BUFFER, bytes, 0);
         else CgGL.glBufferData(CgGL.GL_COPY_WRITE_BUFFER, bytes, CgGL.GL_DYNAMIC_COPY);

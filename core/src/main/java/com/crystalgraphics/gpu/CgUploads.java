@@ -3,6 +3,7 @@ package com.crystalgraphics.gpu;
 import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.platform.gl.CgCapabilities;
+import com.crystalgraphics.gl.CgGlNames;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.CgBufferUtils;
@@ -272,7 +273,7 @@ public final class CgUploads {
             return new Block(0, CgBufferUtils.createByteBuffer(capacity), capacity, generation);
         }
         if (unpackBytes + capacity > CAP) return null;
-        int buffer = CgGL.glGenBuffers();
+        int buffer = CgGlNames.buffer();
         ByteBuffer mapped;
         CgGL.glBindBuffer(CgGL.GL_PIXEL_UNPACK_BUFFER, buffer);
         try {

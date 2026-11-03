@@ -1,6 +1,7 @@
 package com.crystalgraphics.compute.lower;
 
 import com.crystalgraphics.api.texture.CgTextureType;
+import com.crystalgraphics.gl.CgGlNames;
 import com.crystalgraphics.platform.gl.CgGL;
 
 import java.nio.ByteBuffer;
@@ -33,13 +34,13 @@ public final class CgTexelTarget {
     public static CgTexelTarget create(CgTextureType type, int width, int height) {
         // Made mid-dispatch, after the sampler properties are bound: the active unit's texture is put back.
         int bound = CgGL.glGetInteger(CgGL.GL_TEXTURE_BINDING_2D);
-        int texture = CgGL.glGenTextures();
+        int texture = CgGlNames.texture();
         CgGL.glBindTexture(CgGL.GL_TEXTURE_2D, texture);
         CgGL.glTexImage2D(CgGL.GL_TEXTURE_2D, 0, type.glInternalFormat, width, height, 0, type.glBaseFormat, type.glType, (ByteBuffer) null);
         CgGL.glTexParameteri(CgGL.GL_TEXTURE_2D, CgGL.GL_TEXTURE_MIN_FILTER, CgGL.GL_NEAREST);
         CgGL.glTexParameteri(CgGL.GL_TEXTURE_2D, CgGL.GL_TEXTURE_MAG_FILTER, CgGL.GL_NEAREST);
         CgGL.glBindTexture(CgGL.GL_TEXTURE_2D, bound);
-        int framebuffer = CgGL.glGenFramebuffers();
+        int framebuffer = CgGlNames.framebuffer();
         CgGL.glBindFramebuffer(CgGL.GL_FRAMEBUFFER, framebuffer);
         CgGL.glFramebufferTexture2D(CgGL.GL_FRAMEBUFFER, CgGL.GL_COLOR_ATTACHMENT0, CgGL.GL_TEXTURE_2D, texture, 0);
         int status = CgGL.glCheckFramebufferStatus(CgGL.GL_FRAMEBUFFER);

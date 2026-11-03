@@ -182,7 +182,7 @@ public final class CgReadback {
         if (gpu) CgGpuTrace.begin(GPU_COPY);
         try (CgGlScope ignored = CgGlState.save(FBO)) {
             // Read through a framebuffer bound for reading alone: a slice of a 3D image is no draw target on a device.
-            if (sliceReader == 0) sliceReader = CgGL.glGenFramebuffers();
+            if (sliceReader == 0) sliceReader = CgGlNames.framebuffer();
             CgGL.glBindFramebuffer(CgGL.GL_READ_FRAMEBUFFER, sliceReader);
             CgGL.glBindBuffer(CgGL.GL_PIXEL_PACK_BUFFER, r.buffer);
             boolean unaligned = (row & 3) != 0;

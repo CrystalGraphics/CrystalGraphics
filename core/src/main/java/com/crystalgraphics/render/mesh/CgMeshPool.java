@@ -3,6 +3,7 @@ package com.crystalgraphics.render.mesh;
 import com.crystalgraphics.api.vertex.CgVertexAttribute;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
 import com.crystalgraphics.gl.buffer.CgStreamBuffer;
+import com.crystalgraphics.gl.CgGlNames;
 import com.crystalgraphics.platform.gl.CgGL;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -48,7 +49,7 @@ final class CgMeshPool {
             vao = genVertexArray();
             CgGL.glBindVertexArray(vao);
             if (format.getStride() > 0) {
-                vertexBuffer = CgGL.glGenBuffers();
+                vertexBuffer = CgGlNames.buffer();
                 CgGL.glBindBuffer(CgGL.GL_ARRAY_BUFFER, vertexBuffer);
                 CgGL.glBufferData(CgGL.GL_ARRAY_BUFFER, (long) vertexCapacity * format.getStride(), CgGL.GL_STATIC_DRAW);
                 for (int i = 0; i < format.getAttributeCount(); i++) {
@@ -58,7 +59,7 @@ final class CgMeshPool {
             } else {
                 vertexBuffer = 0;   // CgVertexFormat.NONE: the shader places every vertex
             }
-            indexBuffer = CgGL.glGenBuffers();
+            indexBuffer = CgGlNames.buffer();
             CgGL.glBindBuffer(CgGL.GL_ELEMENT_ARRAY_BUFFER, indexBuffer);   // captured by the vertex array
             CgGL.glBufferData(CgGL.GL_ELEMENT_ARRAY_BUFFER, (long) indexCapacity * 4, CgGL.GL_STATIC_DRAW);
             CgGL.glBindVertexArray(0);
@@ -164,7 +165,7 @@ final class CgMeshPool {
     }
 
     private static int genVertexArray() {
-        int id = CgGL.glGenVertexArrays();
+        int id = CgGlNames.vertexArray();
         if (!LIVE_VERTEX_ARRAYS.add(id)) {
             // A name this process still holds means a second context: vertex arrays are not shared between contexts,
             // so the second owner reconfigures the first's, whose draws then rasterise nothing and raise no error.

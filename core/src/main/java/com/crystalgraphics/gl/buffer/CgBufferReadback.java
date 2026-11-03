@@ -1,5 +1,6 @@
 package com.crystalgraphics.gl.buffer;
 
+import com.crystalgraphics.gl.CgGlNames;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
@@ -37,7 +38,7 @@ public final class CgBufferReadback {
         CgTrace.add(CgChannels.GL, READBACKS, 1);
         CgTrace.add(CgChannels.GL, READBACK_BYTES, bytes);
         if (bytes > size) {
-            if (buffer == 0) buffer = CgGL.glGenBuffers();
+            if (buffer == 0) buffer = CgGlNames.buffer();
             size = Math.max(bytes, size * 2);
             CgGL.glBindBuffer(CgGL.GL_COPY_WRITE_BUFFER, buffer);
             CgGL.glBufferData(CgGL.GL_COPY_WRITE_BUFFER, size, CgGL.GL_STREAM_READ);

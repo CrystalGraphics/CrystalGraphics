@@ -172,8 +172,7 @@ public final class CgProgramBinaryCache {
         if (!ENABLED.get() || caps.getProgramBinaryFormats() <= 0) return null;
         Path root = CgCacheDirectory.of("glprogram");
         if (root == null) return null;
-        String driver = hex(sha1(CgGL.glGetString(CgGL.GL_RENDERER), CgGL.glGetString(CgGL.GL_VENDOR),
-                CgGL.glGetString(CgGL.GL_VERSION))).substring(0, 16);
+        String driver = CgCacheDirectory.driver();
         try {
             dir = Files.createDirectories(root.resolve(driver));
         } catch (IOException e) {

@@ -249,6 +249,8 @@ public final class CgGraphicsLifecycle {
                     resizeTargets(width, height);
                     CgBindingPoints.init(CgCapabilities.detect());
                     CgFallbackTextures.init();
+                    // A frame's execution and the immediate draws nested in its callbacks (a HUD's text)
+                    CgExecutor.ahead(2);
                     CgStartSteps.step("targets and fallbacks");
                     CgNoiseVolumes.install();
                     CgWaveletNoise.install();

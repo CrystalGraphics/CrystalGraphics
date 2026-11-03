@@ -241,6 +241,16 @@ public final class CgFrameBufferFormat {
                 && depthType == o.depthType;
     }
 
+    /** What {@link #sameAttachments} compares, as text: equal for two formats exactly when it answers true. */
+    public String attachmentKey() {
+        StringBuilder s = new StringBuilder();
+        for (int i = 0; i < colorSlots.length; i++) {
+            s.append(colorSlots[i] == null ? "-" : colorSlots[i].name()).append(colorRenderbuffer[i] ? "r" : "").append(',');
+        }
+        return s.append(depthType == null ? "-" : depthType.name()).append(depthRenderbuffer ? "r" : "")
+                .append(',').append(samples).append(maxSamples ? "max" : "").toString();
+    }
+
     @Override
     public int hashCode() {
         int h = name.hashCode();

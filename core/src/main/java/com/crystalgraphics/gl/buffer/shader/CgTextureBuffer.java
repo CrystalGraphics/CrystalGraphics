@@ -5,6 +5,7 @@ import com.crystalgraphics.api.buffer.CgBufferFormat;
 import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.api.shader.CgShader;
 import com.crystalgraphics.api.texture.CgTexture;
+import com.crystalgraphics.gl.CgGlNames;
 import com.crystalgraphics.platform.gl.CgGL;
 import org.apache.logging.log4j.Logger;
 import org.apache.logging.log4j.LogManager;
@@ -55,7 +56,7 @@ public final class CgTextureBuffer extends CgShaderBuffer {
         super(name, format, CgGL.GL_ARRAY_BUFFER, bindingLocation);
         this.path = CgCapabilities.ShaderBufferPath.TBO;
         gpu.run(() -> {
-            tboTexId = CgGL.glGenTextures();
+            tboTexId = CgGlNames.texture();
             attachTextureToBuffer();
         });
     }

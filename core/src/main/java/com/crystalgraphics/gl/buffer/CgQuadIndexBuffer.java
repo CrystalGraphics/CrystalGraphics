@@ -1,6 +1,7 @@
 package com.crystalgraphics.gl.buffer;
 
 import com.crystalgraphics.util.CgBufferUtils;
+import com.crystalgraphics.gl.CgGlNames;
 import com.crystalgraphics.platform.gl.CgGL;
 
 import java.nio.ShortBuffer;
@@ -35,7 +36,7 @@ public final class CgQuadIndexBuffer {
      * at least {@code neededQuads} worth of indices. Grows if necessary.
      */
     public void bindAndEnsureCapacity(int neededQuads) {
-        if (glBuffer == 0) glBuffer = CgGL.glGenBuffers();
+        if (glBuffer == 0) glBuffer = CgGlNames.buffer();
         
         bind();
         if (neededQuads > currentCapacityQuads) grow(neededQuads);

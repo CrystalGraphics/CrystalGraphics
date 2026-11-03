@@ -330,6 +330,15 @@ public final class CgExecutor {
      * Frees every executor's ring, the transient pools and every persistent or history buffer's storage still held. At
      * context teardown, before the framebuffer sweep.
      */
+    /**
+     * Makes the executors of the first {@code depths} nesting depths now. Each maps a ring and an indirect-args table,
+     * and a map waits for a threaded driver's queue, deepest while loading: an immediate draw's first nested execution
+     * held the loading screen 117 ms (1.20.1). At the engine's start, after {@code CgBindingPoints.init}. Render thread.
+     */
+    public static void ahead(int depths) {
+        while (BY_DEPTH.size() < depths) BY_DEPTH.add(new CgExecutor(BY_DEPTH.size()));
+    }
+
     /** The host's targets are read again at their next composed bind: at a window resize, which may remake them. */
     public static void forgetHostTargets() {
         COMPOSED.forgetHost();

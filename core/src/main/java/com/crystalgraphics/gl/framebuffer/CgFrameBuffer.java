@@ -18,9 +18,7 @@ import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.CgBufferUtils;
 import com.crystalgraphics.util.trace.CgChannels;
 import java.nio.IntBuffer;
-import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.List;
 import java.util.TreeMap;
 import javax.annotation.Nullable;
 import lombok.Getter;
@@ -625,23 +623,20 @@ public class CgFrameBuffer {
 
     /** Which framebuffer of a format a completeness check was for: the base, a mip level's, an array layer's. */
     private static final int BASE = 0, LEVEL = 1, LAYER = 2;
-    /** Formats found complete, by {@link #BASE}, {@link #LEVEL} and {@link #LAYER}. Render thread. */
-    @SuppressWarnings("unchecked")
-    private static final List<CgFrameBufferFormat>[] COMPLETE = new List[] {new ArrayList<>(), new ArrayList<>(), new ArrayList<>()};
 
     /**
-     * Throws unless the bound framebuffer is complete, checked once a format's attachments (and once each for its levels
-     * and layers): completeness rests on the attachments' formats alone, and on a threaded driver each
-     * {@code glCheckFramebufferStatus} drains its queue, a frame graph's first use of a transient taking milliseconds.
+     * Throws unless the bound framebuffer is complete, checked once per driver for a format's attachments (and once each
+     * for its levels and layers, {@link CgFrameBufferLayouts}): completeness rests on the attachments' formats alone,
+     * and on a threaded driver each {@code glCheckFramebufferStatus} drains its queue.
      */
     private void requireComplete(CgFrameBufferFormat fmt, int kind, String which) {
-        List<CgFrameBufferFormat> checked = COMPLETE[kind];
-        for (int i = 0; i < checked.size(); i++) if (checked.get(i).sameAttachments(fmt)) return;
+        String key = kind + "|" + fmt.attachmentKey();
+        if (CgFrameBufferLayouts.complete(key)) return;
         int status = doCheckFramebufferStatus();
         if (status != CgGL.GL_FRAMEBUFFER_COMPLETE) {
             throw new IllegalStateException("FBO '" + name + "'" + which + " incomplete: 0x" + Integer.toHexString(status));
         }
-        checked.add(fmt);
+        CgFrameBufferLayouts.found(key);
     }
 
     /**
@@ -1119,7 +1114,7 @@ public class CgFrameBuffer {
      * The renderbuffer is left bound after this call.
      */
     protected int doGenRenderbuffer() {
-        return CgGL.glGenRenderbuffers();
+        return CgGlNames.renderbuffer();
     }
 
     /**

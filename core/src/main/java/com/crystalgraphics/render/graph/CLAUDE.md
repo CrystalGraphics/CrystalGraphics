@@ -30,8 +30,10 @@ its bytes when recorded; its `float[]` form reads the caller's array when the fr
 every frame, so that array must not change until then.
 `resize(buffer, desc)` is copies of each version into a new handle and a release of the old: a pool outgrowing its
 capacity. A persistent or history buffer's storage is made at its first use, unless `CgExecutor.makeStorage(buffer)`
-made it ahead (a precache, so the frame that first uses it allocates nothing). Buffer, texture and framebuffer names
-come from `gl.CgGlNames`, refilled between frames, since each `glGen*` waits for a threaded driver to drain its queue.
+made it ahead (a precache, so the frame that first uses it allocates nothing). Every GL name the engine makes
+(buffers, textures, framebuffers, vertex arrays, renderbuffers) comes from `gl.CgGlNames`, refilled between frames,
+since each `glGen*` waits for a threaded driver to drain its queue. The executors of the first two nesting depths are
+made at the engine's start (`CgExecutor.ahead`): each maps a ring, and a map waits the same way.
 
 ```java
 CgGraphBuffer state = CgGraphBuffer.history("particles", CgBufferDesc.elements(n, 32, CgBufferUsage.STORAGE));

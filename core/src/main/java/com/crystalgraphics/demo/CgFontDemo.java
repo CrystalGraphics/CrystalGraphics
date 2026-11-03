@@ -11,6 +11,7 @@ import com.crystalgraphics.gl.shader.CgShaderFactory;
 import com.crystalgraphics.platform.gl.state.CgGlScope;
 import com.crystalgraphics.platform.gl.state.CgGlState;
 import com.crystalgraphics.platform.CgPlatform;
+import com.crystalgraphics.gl.CgGlNames;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.text.atlas.CgGlyphAtlasPage;
 import com.crystalgraphics.text.cache.CgFontRegistry;
@@ -220,8 +221,8 @@ public final class CgFontDemo {
             1.0f, 1.0f, 1.0f, 1.0f
         };
 
-        diagAtlasVao = CgGL.glGenVertexArrays();
-        diagAtlasVbo = CgGL.glGenBuffers();
+        diagAtlasVao = CgGlNames.vertexArray();
+        diagAtlasVbo = CgGlNames.buffer();
 
         CgGL.glBindVertexArray(diagAtlasVao);
         CgGL.glBindBuffer(CgGL.GL_ARRAY_BUFFER, diagAtlasVbo);

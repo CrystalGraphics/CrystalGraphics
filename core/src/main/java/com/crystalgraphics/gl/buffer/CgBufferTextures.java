@@ -1,5 +1,6 @@
 package com.crystalgraphics.gl.buffer;
 
+import com.crystalgraphics.gl.CgGlNames;
 import com.crystalgraphics.platform.gl.CgGL;
 
 import java.nio.ByteBuffer;
@@ -33,7 +34,7 @@ public final class CgBufferTextures {
         if (unit >= textures.length) {
             int had = textures.length;
             textures = Arrays.copyOf(textures, unit + 1);
-            for (int i = had; i <= unit; i++) textures[i] = CgGL.glGenTextures();
+            for (int i = had; i <= unit; i++) textures[i] = CgGlNames.texture();
         }
         CgGL.glActiveTexture(CgGL.GL_TEXTURE0 + unit);
         CgGL.glBindTexture(CgGL.GL_TEXTURE_BUFFER, textures[unit]);
@@ -43,7 +44,7 @@ public final class CgBufferTextures {
     /** Sixteen zero bytes: what an unbound buffer texture reads. */
     private static int empty() {
         if (empty == 0) {
-            empty = CgGL.glGenBuffers();
+            empty = CgGlNames.buffer();
             CgGL.glBindBuffer(CgGL.GL_COPY_WRITE_BUFFER, empty);
             CgGL.glBufferData(CgGL.GL_COPY_WRITE_BUFFER, ByteBuffer.allocateDirect(16).order(ByteOrder.nativeOrder()),
                     CgGL.GL_STATIC_DRAW);

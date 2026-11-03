@@ -1,6 +1,7 @@
 package com.crystalgraphics.gl.texture;
 
 import com.crystalgraphics.platform.gl.CgCapabilities;
+import com.crystalgraphics.gl.CgGlNames;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.state.CgGlScope;
 import com.crystalgraphics.platform.gl.state.CgGlSlot;
@@ -164,8 +165,8 @@ public final class CgTextureCopy {
     }
 
     private static void ensureScratchFramebuffers() {
-        if (scratchReadFbo == 0) scratchReadFbo = CgGL.glGenFramebuffers();
-        if (scratchDrawFbo == 0) scratchDrawFbo = CgGL.glGenFramebuffers();
+        if (scratchReadFbo == 0) scratchReadFbo = CgGlNames.framebuffer();
+        if (scratchDrawFbo == 0) scratchDrawFbo = CgGlNames.framebuffer();
     }
 
     /**

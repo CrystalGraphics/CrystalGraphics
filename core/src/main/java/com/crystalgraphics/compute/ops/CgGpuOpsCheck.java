@@ -14,6 +14,7 @@ import com.crystalgraphics.compute.ops.CgGpuOps.Order;
 import com.crystalgraphics.compute.ops.CgGpuOps.Scan;
 import com.crystalgraphics.gl.framebuffer.CgFrameBuffer;
 import com.crystalgraphics.platform.gl.CgCapabilities;
+import com.crystalgraphics.gl.CgGlNames;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.state.CgGlScope;
 import com.crystalgraphics.platform.gl.state.CgGlState;
@@ -625,7 +626,7 @@ public final class CgGpuOpsCheck {
         ByteBuffer data = ByteBuffer.allocateDirect(words.length * 4).order(ByteOrder.nativeOrder());
         for (int w : words) data.putInt(w);
         data.flip();
-        int buffer = CgGL.glGenBuffers();
+        int buffer = CgGlNames.buffer();
         CgGL.glBindBuffer(CgGL.GL_COPY_WRITE_BUFFER, buffer);
         CgGL.glBufferData(CgGL.GL_COPY_WRITE_BUFFER, data, CgGL.GL_DYNAMIC_DRAW);
         CgGL.glBindBuffer(CgGL.GL_COPY_WRITE_BUFFER, 0);

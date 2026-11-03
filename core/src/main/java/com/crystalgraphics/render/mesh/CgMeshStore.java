@@ -7,6 +7,7 @@ import com.crystalgraphics.api.mesh.CgMeshTopology;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.gl.buffer.CgStreamBuffer;
+import com.crystalgraphics.gl.CgGlNames;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.render.draw.CgPipeline;
 import com.crystalgraphics.trace.CgTrace;
@@ -461,7 +462,7 @@ public final class CgMeshStore {
         ByteBuffer indices = CgBufferUtils.createByteBuffer(length * 4);
         for (int i = 0; i < length; i++) indices.putInt(i);
         indices.flip();
-        if (sequence == 0) sequence = CgGL.glGenBuffers();
+        if (sequence == 0) sequence = CgGlNames.buffer();
         CgGL.glBindBuffer(CgGL.GL_COPY_WRITE_BUFFER, sequence);   // not the element binding, which a vertex array owns
         CgGL.glBufferData(CgGL.GL_COPY_WRITE_BUFFER, indices, CgGL.GL_STATIC_DRAW);
         sequenceLength = length;

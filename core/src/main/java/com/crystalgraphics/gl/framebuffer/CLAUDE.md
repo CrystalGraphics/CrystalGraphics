@@ -33,7 +33,7 @@ CgFrameBufferRegistry       → single source of truth for all owned FBOs;
 |---------|----------|
 | Instance fields (`fboId`, `width`, `height`, `name`, `format`, `owned`, `deleted`, `screenSized`) | `CgFrameBuffer` |
 | `colorAttachments` (TreeMap<Integer, Attachment>) + `depthAttachment` | `CgFrameBuffer` |
-| `initGl(w, h, format)` — allocates textures/renderbuffers, checks completeness | `CgFrameBuffer` |
+| `initGl(w, h, format)` — allocates textures/renderbuffers, checks completeness once per attachment layout per driver (`CgFrameBufferLayouts`, kept in `crystalgraphics/cache/framebuffer/<driver>.txt`: each `glCheckFramebufferStatus` waits for a threaded driver's queue) | `CgFrameBuffer` |
 | `bind/bindDraw/bindRead/unbind` — route through `CrossApiTransition` | `CgFrameBuffer` |
 | `drawBuffers(int... slotIds)` — slot indices 0,1,2 → GL_COLOR_ATTACHMENT0+n | `CgFrameBuffer` |
 | `reattachColor/reattachColorRaw/reattachDepth` | `CgFrameBuffer` |

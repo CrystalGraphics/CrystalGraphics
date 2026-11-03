@@ -1,6 +1,7 @@
 package com.crystalgraphics.gl.buffer;
 
 import com.crystalgraphics.api.buffer.CgObjectBuffer;
+import com.crystalgraphics.gl.CgGlNames;
 import com.crystalgraphics.gpu.CgUploadLease;
 import lombok.Getter;
 import com.crystalgraphics.platform.gl.CgCapabilities;
@@ -109,7 +110,7 @@ public abstract class CgStreamBuffer implements CgObjectBuffer {
      * @param capacityBytes initial allocated size in bytes
      */
     protected CgStreamBuffer(int target, int capacityBytes) {
-        this.glBuffer = CgGL.glGenBuffers();
+        this.glBuffer = CgGlNames.buffer();
         this.target = target;
         this.capacityBytes = capacityBytes;
         this.writeOffset = 0;

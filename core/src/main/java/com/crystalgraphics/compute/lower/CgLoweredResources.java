@@ -3,6 +3,7 @@ package com.crystalgraphics.compute.lower;
 import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.compute.CgDispatchBindings;
 import com.crystalgraphics.compute.cpu.CgCpuMirrors;
+import com.crystalgraphics.gl.CgGlNames;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.state.CgGlScope;
 import com.crystalgraphics.platform.gl.state.CgGlSlot;
@@ -61,7 +62,7 @@ public final class CgLoweredResources {
             freeScratchSize[i] = freeScratchSize[freeScratchCount];
             return buffer;
         }
-        int buffer = CgGL.glGenBuffers();
+        int buffer = CgGlNames.buffer();
         CgGL.glBindBuffer(CgGL.GL_COPY_WRITE_BUFFER, buffer);
         CgGL.glBufferData(CgGL.GL_COPY_WRITE_BUFFER, size, CgGL.GL_DYNAMIC_COPY);
         CgGL.glBindBuffer(CgGL.GL_COPY_WRITE_BUFFER, 0);
@@ -108,13 +109,13 @@ public final class CgLoweredResources {
 
     /** An empty vertex array, for draws whose stages read no attributes. */
     public static int vertexArray() {
-        if (vertexArray == 0) vertexArray = CgGL.glGenVertexArrays();
+        if (vertexArray == 0) vertexArray = CgGlNames.vertexArray();
         return vertexArray;
     }
 
     /** A framebuffer images are attached to, a level or a layer at a time. */
     public static int framebuffer() {
-        if (framebuffer == 0) framebuffer = CgGL.glGenFramebuffers();
+        if (framebuffer == 0) framebuffer = CgGlNames.framebuffer();
         return framebuffer;
     }
 
@@ -123,7 +124,7 @@ public final class CgLoweredResources {
      * attachments. The caller detaches what it attached.
      */
     public static void bindOutputs(int targets) {
-        if (outputs == 0) outputs = CgGL.glGenFramebuffers();
+        if (outputs == 0) outputs = CgGlNames.framebuffer();
         CgGL.glBindFramebuffer(CgGL.GL_FRAMEBUFFER, outputs);
         if (outputsDrawn == targets) return;
         if (DRAW_BUFFERS[targets] == null) {
