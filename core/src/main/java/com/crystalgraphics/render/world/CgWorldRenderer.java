@@ -377,6 +377,7 @@ public final class CgWorldRenderer {
     private boolean mergeEmission = MERGE_EMISSION.get();
     /** What {@link #mergeEmission(boolean)} asked for; applied once the program list is warm under it. */
     private boolean mergeRequested = mergeEmission;
+    private volatile boolean gradeDraws = true;
     /** The HDR scene as drawn: {@link #hdrScene()}, once the program list is warm under it. */
     private boolean hdrApplied;
     @Nullable
@@ -772,6 +773,25 @@ public final class CgWorldRenderer {
     /** What {@link #mergeEmission(boolean)} asked for; drawn so once the program list is warm under it. */
     public boolean mergeEmission() {
         return mergeRequested;
+    }
+
+    /**
+     * Whether a draw given a look of its own ({@link Draw#grade}) is graded by it, on by default. Off, every draw takes
+     * the frame's look, from the next draw submitted: a before and after of a kit's grade.
+     *
+     * <pre>{@code
+     * CgWorldRenderer.get().gradeDraws(false);   // every kit's effects under the frame's look
+     * }</pre>
+     *
+     * Its exposure is the draw's own and stays.
+     */
+    public CgWorldRenderer gradeDraws(boolean on) {
+        gradeDraws = on;
+        return this;
+    }
+
+    public boolean gradeDraws() {
+        return gradeDraws;
     }
 
     /** How many draws the last transparent firing recorded with their glow in their own draw: for gates and readouts. */
@@ -1639,7 +1659,7 @@ public final class CgWorldRenderer {
         culledOnGpu[count] = d.onGpu;
         gpuGroups[count] = d.gpuGroup;
         subjects[count] = d.subject;
-        grades[count] = d.grade;
+        grades[count] = gradeDraws ? d.grade : null;
         customDepths[count] = d.customDepth;
         queues[count] = d.queue;
         orders[count] = d.order;

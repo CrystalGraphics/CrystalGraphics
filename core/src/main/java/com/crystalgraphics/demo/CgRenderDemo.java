@@ -73,6 +73,7 @@ import java.util.function.Supplier;
  * C    camera shake on or off (CgCameraShake.enabled: the saved setting is untouched)
  * L    bloom in the target's encoding, in linear light, then off
  * G    the HDR scene on or off
+ * X    kit looks on or off: each kit's effects graded by their game's post, or by the frame's
  * [ ]  the HDR scene's glow gain down or up a quarter;  - =  bloom's intensity
  * O    every world shadow off or on (crystalgraphics.world.lightsShadows), to compare
  * K J U  the shadows' temporal accumulation, their spatial filter, their rays' screen trace, off or on
@@ -214,7 +215,7 @@ public final class CgRenderDemo {
     private static final int[] KEYS = keys(new int[]{CgKeyCodes.KEY_H, CgKeyCodes.KEY_N, CgKeyCodes.KEY_C,
             CgKeyCodes.KEY_L, CgKeyCodes.KEY_V, CgKeyCodes.KEY_G, CgKeyCodes.KEY_LBRACKET, CgKeyCodes.KEY_RBRACKET,
             CgKeyCodes.KEY_MINUS, CgKeyCodes.KEY_EQUALS, CgKeyCodes.KEY_O, CgKeyCodes.KEY_K, CgKeyCodes.KEY_J,
-            CgKeyCodes.KEY_U, CgKeyCodes.KEY_M, CgKeyCodes.KEY_R, CgKeyCodes.KEY_Z},
+            CgKeyCodes.KEY_U, CgKeyCodes.KEY_M, CgKeyCodes.KEY_R, CgKeyCodes.KEY_Z, CgKeyCodes.KEY_X},
             CgVfxDemoControls.KEYS);
     private final boolean[] held = new boolean[KEYS.length];
     private static float bloomIntensity = 1f;
@@ -716,6 +717,7 @@ public final class CgRenderDemo {
             case CgKeyCodes.KEY_C -> CgCameraShake.enabled(!CgCameraShake.enabled());
             case CgKeyCodes.KEY_L -> cycleBloom();
             case CgKeyCodes.KEY_G -> CgWorldRenderer.get().hdrScene(!CgWorldRenderer.get().hdrScene());
+            case CgKeyCodes.KEY_X -> CgWorldRenderer.get().gradeDraws(!CgWorldRenderer.get().gradeDraws());
             // A quarter down or up, as the harness's.
             case CgKeyCodes.KEY_LBRACKET -> CgWorldRenderer.get().sceneEmission(CgWorldRenderer.get().sceneEmission() / 1.25f);
             case CgKeyCodes.KEY_RBRACKET -> CgWorldRenderer.get().sceneEmission(CgWorldRenderer.get().sceneEmission() * 1.25f);
@@ -816,6 +818,7 @@ public final class CgRenderDemo {
                 : "\n\nShake [C]: off")
                 + "\nHDR [G]: " + (CgWorldRenderer.get().hdrScene() ? "on" : "off")
                 + String.format(Locale.ROOT, " | Glow [ ]: %.2f", CgWorldRenderer.get().sceneEmission())
+                + " | Kit looks [X]: " + (CgWorldRenderer.get().gradeDraws() ? "on" : "off")
                 + "\nBloom [L]: " + (bloom.intensity() == 0f ? "off" : bloom.linear() ? "linear" : "blend")
                 + String.format(Locale.ROOT, " | Intensity [- =]: %.2f", bloom.intensity())
                 + "\n" + CgVfxDemoControls.get().hudLines(waves);
