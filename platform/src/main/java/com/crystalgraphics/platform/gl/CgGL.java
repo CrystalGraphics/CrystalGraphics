@@ -51,6 +51,7 @@ public final class CgGL {
     public static void init(CgGLBackend dispatch){
         backend = dispatch;
         CgGlUniforms.reset();
+        CgGlProgramNames.reset();
         CgGlSamplers.forget();
     }
 
@@ -890,6 +891,7 @@ public final class CgGL {
 
     public static void glLinkProgram(int program) {
         CgGlUniforms.forget(program);
+        CgGlProgramNames.forget(program);
         gl().glLinkProgram(program);
     }
 
@@ -952,6 +954,7 @@ public final class CgGL {
      */
     public static void glProgramBinary(int program, int binaryFormat, ByteBuffer binary) {
         CgGlUniforms.forget(program);
+        CgGlProgramNames.forget(program);
         gl().glProgramBinary(program, binaryFormat, binary);
     }
 
@@ -970,6 +973,7 @@ public final class CgGL {
 
     public static void glDeleteProgram(int program) {
         CgGlUniforms.forget(program);
+        CgGlProgramNames.forget(program);
         gl().glDeleteProgram(program);
         state().programDeleted(program);
     }
@@ -982,8 +986,22 @@ public final class CgGL {
         gl().glDeleteProgram(program);
     }
 
+    /** Links a program of an {@link #createIsolatedWorkerContext isolated} context, leaving the render thread's caches as {@link #cgDeleteIsolatedProgram} does. */
+    public static void cgLinkIsolatedProgram(int program) {
+        gl().glLinkProgram(program);
+    }
+
     public static int glGetUniformLocation(int program, CharSequence name) {
-        return gl().glGetUniformLocation(program, name);
+        Integer known = CgGlProgramNames.uniform(program, name);
+        return known != null ? known : gl().glGetUniformLocation(program, name);
+    }
+
+    /**
+     * Hands over what {@code program}'s names resolve to, read on the thread that linked it: the queries above answer
+     * from them and never wait on the driver. Its use is {@link CgGlProgramNames}'s javadoc.
+     */
+    public static void cgProgramNames(int program, CgGlProgramNames.Names names) {
+        CgGlProgramNames.put(program, names);
     }
 
     public static void glUniform1i(int location, int v0) {
@@ -1017,6 +1035,8 @@ public final class CgGL {
     }
 
     public static int glGetProgramResourceIndex(int program, int programInterface, CharSequence name) {
+        Integer known = programInterface == GL_SHADER_STORAGE_BLOCK ? CgGlProgramNames.block(program, name, true) : null;
+        if (known != null) return known;
         return gl().glGetProgramResourceIndex(program, programInterface, name);
     }
 
@@ -1025,6 +1045,8 @@ public final class CgGL {
     }
 
     public static int glGetUniformBlockIndex(int program, CharSequence uniformBlockName) {
+        Integer known = CgGlProgramNames.block(program, uniformBlockName, false);
+        if (known != null) return known;
         return gl().glGetUniformBlockIndex(program, uniformBlockName);
     }
 

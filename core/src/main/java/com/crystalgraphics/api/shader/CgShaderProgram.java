@@ -5,6 +5,7 @@ import com.crystalgraphics.gl.shader.CgLinkWorker;
 import com.crystalgraphics.gl.shader.CgProgramBinaryCache;
 import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.platform.gl.CgGL;
+import com.crystalgraphics.platform.gl.CgGlProgramNames;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.CgBufferUtils;
 import com.crystalgraphics.util.trace.CgChannels;
@@ -22,6 +23,8 @@ import java.nio.IntBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import static com.crystalgraphics.gl.shader.CgShaderFactory.JOML_BUFFER;
 
@@ -451,6 +454,8 @@ public final class CgShaderProgram {
      * status and log read there. Vertex and fragment sources, or a compute source.
      */
     private static final class WorkerLink extends CgLinkWorker.Job {
+        /** A uniform or storage block's declaration: "uniform Name {", "readonly buffer Name {". */
+        private static final Pattern BLOCK = Pattern.compile("\\b(uniform|buffer)\\s+([A-Za-z_]\\w*)\\s*\\{");
         @Nullable private final String vertex, fragment, compute;
         @Nullable private final String[] attributes;
         @Nullable private final String key;
@@ -477,6 +482,8 @@ public final class CgShaderProgram {
         private int binaryFormat;
         /** Isolated: the program was compiled on the worker's own context, and {@link #land} loads it on the shared one. */
         private boolean isolated;
+        /** Whether the context has storage blocks to look up: asked when made, on the render thread. */
+        private final boolean storage = CgCapabilities.detect().shaderBufferPath() != CgCapabilities.ShaderBufferPath.TBO;
 
         @Override
         protected boolean start() {
@@ -484,7 +491,10 @@ public final class CgShaderProgram {
             // Isolated, a kept binary loads on the shared context in land(), which needs no compile here
             if (isolated && key != null && CgProgramBinaryCache.has(key)) return true;
             program = CgGL.glCreateProgram();
-            if (!isolated && key != null && CgProgramBinaryCache.load(program, key)) return true;
+            if (!isolated && key != null && CgProgramBinaryCache.load(program, key)) {
+                names();
+                return true;
+            }
             compileAndLink();
             return false;
         }
@@ -499,9 +509,13 @@ public final class CgShaderProgram {
                 // The parts after the two sources are the attribute names, in location order.
                 for (int i = 2; i < attributes.length; i++) CgGL.glBindAttribLocation(program, i - 2, attributes[i]);
             }
-            if (isolated) CgGL.glProgramParameteri(program, CgGL.GL_PROGRAM_BINARY_RETRIEVABLE_HINT, CgGL.GL_TRUE);
-            else CgProgramBinaryCache.retrievable(program, key);
-            CgGL.glLinkProgram(program);
+            if (isolated) {
+                CgGL.glProgramParameteri(program, CgGL.GL_PROGRAM_BINARY_RETRIEVABLE_HINT, CgGL.GL_TRUE);
+                CgGL.cgLinkIsolatedProgram(program);
+            } else {
+                CgProgramBinaryCache.retrievable(program, key);
+                CgGL.glLinkProgram(program);
+            }
         }
 
         /**
@@ -513,7 +527,10 @@ public final class CgShaderProgram {
             if (!isolated || error != null) return;
             program = CgGL.glCreateProgram();
             if (binary == null) {
-                if (CgProgramBinaryCache.load(program, key)) return;
+                if (CgProgramBinaryCache.load(program, key)) {
+                    names();
+                    return;
+                }
                 // Refused (a driver update): compiled here into the same program, as the shared worker would have
                 isolated = false;
                 compileAndLink();
@@ -525,8 +542,42 @@ public final class CgShaderProgram {
                 error = "Shader program binary refused: " + CgGL.glGetProgramInfoLog(program, 4096);
             } else {
                 CgProgramBinaryCache.store(key, binaryFormat, binary);
+                names();
             }
             binary = null;
+        }
+
+        /**
+         * Every active uniform's location, each array element's included, and each block the sources declare, read here
+         * so the render thread's lookups never wait on the driver. The program as the render thread will hold it. Worker.
+         */
+        private void names() {
+            CgGlProgramNames.Names names = new CgGlProgramNames.Names();
+            int count = CgGL.glGetProgrami(program, CgGL.GL_ACTIVE_UNIFORMS);
+            int maxLength = Math.max(CgGL.glGetProgrami(program, CgGL.GL_ACTIVE_UNIFORM_MAX_LENGTH), 256);
+            IntBuffer sizeType = CgBufferUtils.createIntBuffer(2);
+            for (int i = 0; i < count; i++) {
+                sizeType.clear();
+                String name = CgGL.glGetActiveUniform(program, i, maxLength, sizeType);
+                if (name == null) continue;
+                names.uniform(name, CgGL.glGetUniformLocation(program, name));
+                int size = sizeType.get(0);
+                if (size <= 1 || !name.endsWith("[0]")) continue;
+                String base = name.substring(0, name.length() - 3);
+                for (int k = 1; k < size; k++) {
+                    String element = base + "[" + k + "]";
+                    names.uniform(element, CgGL.glGetUniformLocation(program, element));
+                }
+            }
+            for (String source : new String[]{vertex, fragment, compute}) {
+                if (source == null) continue;
+                for (Matcher m = BLOCK.matcher(source); m.find(); ) {
+                    String block = m.group(2);
+                    if (m.group(1).equals("uniform")) names.uniformBlock(block, CgGL.glGetUniformBlockIndex(program, block));
+                    else if (storage) names.storageBlock(block, CgGL.glGetProgramResourceIndex(program, CgGL.GL_SHADER_STORAGE_BLOCK, block));
+                }
+            }
+            CgGL.cgProgramNames(program, names.complete());
         }
 
         private int shader(int type, String source) {
@@ -567,6 +618,7 @@ public final class CgShaderProgram {
                     if (length <= 0) error = "Shader program gave no binary to move to the render thread's context";
                 } else {
                     CgProgramBinaryCache.store(program, key);
+                    names();
                 }
             } finally {
                 for (int shader : new int[]{vert, frag, comp}) {
