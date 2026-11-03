@@ -50,6 +50,7 @@ Properties {
 struct v2f { vec2 uv; };
 
 Pass {
+    Tags { "LightMode" = "Forward" }
     RenderState { Blend SRC_ALPHA ONE_MINUS_SRC_ALPHA DepthTest ALWAYS DepthWrite OFF Cull OFF }
 
     // ComposureColorGradePerRange: each control's xyz times its w, offset's added. Before vertex(), where a pass's
