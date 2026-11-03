@@ -69,7 +69,8 @@ public final class CgAssetYaml {
         text = text.replace("\r\n", "\n");
         YamlDocument doc = YamlDocument.parse(text);
         Object root = doc.root() == null ? new LinkedHashMap<>() : doc.root();
-        if (root instanceof Map) CgAssetComments.place(text, doc, map(root));
+        // No '#', no comment: an imported kit's files have none, and placing them was a quarter of a kit's compile
+        if (root instanceof Map && text.indexOf('#') >= 0) CgAssetComments.place(text, doc, map(root));
         return root;
     }
 

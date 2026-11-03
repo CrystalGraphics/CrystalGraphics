@@ -170,8 +170,13 @@ public final class YamlDocument {
             super(options);
         }
 
+        /**
+         * One scalar, by its type's construct. Never {@code constructObject}: its memo of every node built (for anchors,
+         * which a scalar never needs) grows over the document, and its lookups chained into {@code Node.equals} took a
+         * quarter of a kit's compile.
+         */
         Object construct(Node node) {
-            return constructObject(node);
+            return getConstructor(node).construct(node);
         }
     }
 
