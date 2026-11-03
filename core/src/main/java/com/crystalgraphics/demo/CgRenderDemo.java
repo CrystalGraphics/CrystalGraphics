@@ -1,8 +1,11 @@
 package com.crystalgraphics.demo;
 
+import javax.annotation.Nullable;
+
 import com.crystalgraphics.api.font.CgFont;
 import com.crystalgraphics.api.font.CgDefaultFont;
 import com.crystalgraphics.api.text.CgTextLayout;
+import com.crystalgraphics.asset.load.CgPreload;
 import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.collision.CgCollisionWorld;
 import com.crystalgraphics.demo.collision.CgCollisionDemo;
@@ -275,9 +278,26 @@ public final class CgRenderDemo {
         CgEngineLifecycle.addListener(new CgLifecycleListener() {
             @Override
             public void onLoad(CgLoadPlan plan) {
+                fonts = preloadFonts();
                 plan.task("crystalgraphics:demo").render(task -> warmAhead(task)).start();
             }
         });
+    }
+
+    /** {@link #preloadFonts}' request; the load task ends only once it is ready. */
+    @Nullable private CgPreload.Request fonts;
+
+    /**
+     * Every size the HUD can take opened, with its ASCII glyphs, and the labels' distance field: the warm frames'
+     * 256-pixel target draws the HUD at 14 px alone, so the world's first frames made its size and glyphs.
+     */
+    private static CgPreload.Request preloadFonts() {
+        int top = Math.round(HUD_PX * HUD_MAX_SIDE / HUD_SIDE);
+        int[] sizes = new int[top - HUD_PX + 1];
+        for (int i = 0; i < sizes.length; i++) sizes[i] = HUD_PX + i;
+        return CgPreload.request(l -> l.read(() -> {
+            for (int px : sizes) CgDefaultFont.regular(px);
+        }).font(() -> CgDefaultFont.regular(HUD_PX), sizes).font(() -> CgDefaultFont.regular(48)));
     }
 
     /** Builds scene {@code i} and starts warming it: its textures, meshes, programs and kernels. */
@@ -701,6 +721,7 @@ public final class CgRenderDemo {
                 prewarming = i;
                 return false;
             }
+            if (fonts != null && !fonts.ready()) return false;
             return allWarm = rehearsed();
         }
     }
