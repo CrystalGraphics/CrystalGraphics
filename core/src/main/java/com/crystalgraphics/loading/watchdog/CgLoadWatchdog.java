@@ -38,7 +38,8 @@ import com.crystalgraphics.variable.CgVar;
  *   <li>Armed only while the screen shows: in play a slow frame is the profiler's business.</li>
  *   <li>A hold is a <b>wait</b> when most of its samples sit in a GL call, a swap, a fence or a sleep: the driver or
  *       GPU catching up, or when the render thread barely ran and was in no read: the machine had it descheduled.
- *       Else it is <b>work</b>, a read from disk included. {@link #stalls()} counts the work;
+ *       Else it is <b>work</b>, a read from disk included, and so is a pipeline built or linked at its draw (a
+ *       driver call or a wait on a worker's build), reported as one to precache. {@link #stalls()} counts the work;
  *       {@link #waits()} the rest.</li>
  *   <li>{@code crystalgraphics.loading.strict} fails the run at the hide when work stalled: for gates and dev runs
  *       that must not regress.</li>
@@ -156,7 +157,7 @@ public final class CgLoadWatchdog {
         final Map<String, StackTraceElement[]> stacks = new HashMap<>();
         /** The places that are waits, never named as the work. */
         final Set<String> waits = new HashSet<>();
-        int samples, waiting, reading;
+        int samples, waiting, blocked;
 
         Hold(long beat, long cpuAtBeat) {
             this.beat = beat;
@@ -165,20 +166,23 @@ public final class CgLoadWatchdog {
 
         void sample(StackTraceElement[] stack, @Nullable Object who, @Nullable String what) {
             samples++;
-            String wait = who == null ? waitIn(stack) : null;
+            String compile = who == null ? compileIn(stack) : null;
+            String wait = who == null && compile == null ? waitIn(stack) : null;
             if (wait != null) waiting++;
-            if (wait == null && readsIn(stack)) reading++;
-            String place = who != null ? who.getClass().getName() + "." + what : wait != null ? wait : culprit(stack);
+            // A compile is the render thread's own work however little of it ran on its CPU
+            if (wait == null && (compile != null || readsIn(stack))) blocked++;
+            String place = who != null ? who.getClass().getName() + "." + what : compile != null ? compile
+                    : wait != null ? wait : culprit(stack);
             if (wait != null) waits.add(place);
             places.merge(place, 1, Integer::sum);
             stacks.putIfAbsent(place, stack);
         }
 
         void report(long heldMs, long cpuMs) {
-            // By where its samples sit, never its CPU time alone: a read from disk is ours though it waits. A thread
-            // that barely ran with no read in hand was descheduled, wherever its samples stopped.
+            // By where its samples sit, never its CPU time alone: a read from disk or a compile is ours though it
+            // waits. A thread that barely ran with neither in hand was descheduled, wherever its samples stopped.
             boolean ran = cpuMs < 0 || cpuMs >= heldMs * RAN;
-            boolean work = waiting * 2 < samples && (ran || reading > 0);
+            boolean work = waiting * 2 < samples && (ran || blocked > 0);
             (work ? STALLS : WAITS).incrementAndGet();
             List<Map.Entry<String, Integer>> ranked = new ArrayList<>(places.entrySet());
             ranked.sort((a, b) -> b.getValue() - a.getValue());
@@ -191,7 +195,10 @@ public final class CgLoadWatchdog {
                     break;
                 }
             }
-            if (work) {
+            if (work && named.startsWith(COMPILE)) {
+                s.append(" by ").append(named)
+                        .append(": precache it (CgPipelinePrecache), or hold the draw until it is built");
+            } else if (work) {
                 s.append(" by ").append(named)
                         .append(": its work belongs in a load task (CgLoadPlan), off the render thread or in render slices");
             } else if (waiting * 2 < samples) {
@@ -207,6 +214,26 @@ public final class CgLoadWatchdog {
             for (int i = 0; i < Math.min(STACK_LINES, stack.length); i++) s.append("\n    at ").append(stack[i]);
             LOGGER.warn(s.toString());
         }
+    }
+
+    /** How a place that is a pipeline built at its draw begins: work, but its fix is a precache, not a load task. */
+    private static final String COMPILE = "a pipeline built at its draw, ";
+
+    /**
+     * The pipeline build or program link the stack's top frames sit in, or null: a driver call, or a wait on a worker's
+     * build, that is still a compile the frame asked for (Unreal's PSO hitch), never the driver catching up.
+     */
+    @Nullable
+    private static String compileIn(StackTraceElement[] stack) {
+        for (int i = 0; i < Math.min(12, stack.length); i++) {
+            String m = stack[i].getMethodName(), c = stack[i].getClassName();
+            if (m.contains("CreateGraphicsPipelines") || m.contains("CreateComputePipelines") || m.contains("LinkProgram")
+                    || m.contains("CompileShader") || m.equals("takeAhead")
+                    || m.equals("await") && c.endsWith("CgLinkWorker$Job")) {
+                return COMPILE + "in " + c.substring(c.lastIndexOf('.') + 1) + "." + m;
+            }
+        }
+        return null;
     }
 
     /**
