@@ -173,10 +173,11 @@ moment, its thread and the rules: [`ENGINE_API.md`](ENGINE_API.md) § *Hearing t
 Files of the format under `src/main/resources/assets/<your namespace>/` (cues, systems, sequences, materials) are
 found and mounted with no registration.
 
-> **⚠ Important: every asset you ship is compiled at startup, behind the loading screen, and held in memory.** For a
-> mod whose assets are the moves it plays, that is exactly right: nothing compiles in game time. **For a large
-> library you only play part of, it is not**: a game's whole kit compiled retains about 4 GB of heap. Opt such a
-> namespace out with `all: false` in its `assets/<ns>/preload.yaml` and name what you play:
+> **⚠ Important: every asset you ship is compiled at startup, behind the loading screen, and held in memory.** For an
+> ordinary mod that is exactly right, and you do nothing: RPG-Core's 997 assets load in 6 s, and nothing compiles in
+> game time. **It matters only for a namespace of thousands of assets of which you play a few**, such as a full export
+> of a game's assets (Kakarot's and Sparking! Zero's 25,000 retain about 4 GB compiled). Opt such a namespace out with `all: false` in its
+> `assets/<ns>/preload.yaml` and name what you play:
 > [`vfx/assets.md`](vfx/assets.md) § *Shipping them in your mod*. Anything played that nothing loaded ahead compiles at
 > its first play (a hitch) and is logged by id: `asset.unplanned-loads`.
 

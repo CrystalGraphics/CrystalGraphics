@@ -45,11 +45,12 @@ starts, on the client and on the server, the engine looks at every loaded mod, m
 assets of the format, and **loads all of it behind the loading screen**, so a move gameplay plays a minute later is
 already compiled.
 
-> **⚠ Important: everything you ship is compiled at startup, and held in memory.** That is what you want for a mod
-> whose assets are the moves it plays (RPG-Core's `kk` and `s0`: 997 assets, 6 s behind the screen). It is **not**
-> what you want for a large library you only play part of: a game's whole kit compiled retains about 4 GB of heap,
-> enough to stop Minecraft. **A namespace too large to load whole says so in `preload.yaml`**, and names what it
-> plays:
+> **⚠ Important: everything you ship is compiled at startup, and held in memory.** For an ordinary mod that is
+> exactly right, and you do nothing: RPG-Core's 997 assets load in 6 s behind the screen, and nothing compiles in game
+> time. It only matters when a namespace holds **thousands of assets of which you play a few**: a full export of a
+> game's assets, every character's every move: Kakarot's and Sparking! Zero's, 25,000 assets together, retain about
+> 4 GB of heap compiled, which can stop Minecraft. **Only a namespace like that needs a
+> `preload.yaml`**, saying to load just what it names:
 >
 > ```yaml
 > # assets/mylibrary/preload.yaml
@@ -69,7 +70,7 @@ already compiled.
 |---|---|---|
 | A mod's own assets: the moves it plays | **none needed** | everything |
 | A mod that also plays another namespace's assets | the globs, no `all:` | everything of its own, and what it names |
-| A large library played in part | `all: false` and the globs | its cues, and what it names |
+| Thousands of assets played in part (a game's full asset export) | `all: false` and the globs | its cues, and what it names |
 
 - **What nothing loads ahead loads at its first play, in game time**: a hitch the first time a move is used. Each is
   counted and logged by id, `asset.unplanned-loads` and `… loaded in play: compiled in game time; declare it in its

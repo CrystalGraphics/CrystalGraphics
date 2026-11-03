@@ -42,8 +42,8 @@ edited there with undo, validated, and written back by one writer. The 21 kinds 
   (`asset.sync-loads`) and refused inside a firing.
 - **The startup load is every mounted namespace, whole, unless its `preload.yaml` says `all: false`** (A14):
   `CgAssetMounts.loadAhead` loads each namespace's every asset, or only its cues under `all: false`, plus what any
-  `preload.yaml` names (an id or a glob, `*` within a folder and `**` across, per kind), with their bundles. A whole
-  game kit compiled retains about 4 GB: a library played in part must opt out. A load begun once the loading screen
+  `preload.yaml` names (an id or a glob, `*` within a folder and `**` across, per kind), with their bundles. A
+  game's full asset export (Kakarot's and Sparking! Zero's 25,000 assets retain about 4 GB compiled) played in part must opt out; an ordinary mod needs nothing. A load begun once the loading screen
   has hidden is counted, `asset.unplanned-loads`, and logged by id: the screen sets `CgVfxAssets.inPlay` each frame,
   which a dedicated server never does.
 - Gates: `CgVfxAssetsTest`, `CgAssetBundleTest`, `CgAssetPublishTest`, `CgAssetHotReloadTest`, `CgAssetYamlTest`, `CgAssetDataTest`, `CgAssetEditTest`, `CgAssetValidationTest`, `CgAssetRegistryTest`,
