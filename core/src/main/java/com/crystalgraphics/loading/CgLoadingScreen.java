@@ -452,14 +452,10 @@ public final class CgLoadingScreen {
         // (1.7.10) draws through whatever program is left bound
         try (CgGlScope ignored = CgGlState.saveAll()) {
             if (warm) warmFrame();
-            // The host's own loading screen is gone and its first screen would show: covered with no program until the
-            // view draws, which fades in over the cover. Waiting for the view's build here held the frame 220 ms cold
-            boolean cover = shown() && held != null && appeared < FADE_IN;
-            if (!viewReady && !cover) return;
+            // Never wait for the view's build here: it held the frame 220 ms cold
+            if (!viewReady) return;
             CgGL.glBindFramebuffer(CgGL.GL_FRAMEBUFFER, framebuffer);
             CgGL.glViewport(0, 0, width, height);
-            if (cover) view.cover(width, height);
-            if (!viewReady) return;
             view.draw(width, height, shownProgress, Math.min(1f, appeared / FADE_IN),
                     shown() ? 0f : Math.min(1f, left / FADE_OUT), shown() ? reason : null);
         }

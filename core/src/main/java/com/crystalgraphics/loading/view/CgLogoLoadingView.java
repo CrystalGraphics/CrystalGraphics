@@ -12,7 +12,6 @@ import com.crystalgraphics.api.text.CgTextLayout;
 import com.crystalgraphics.job.CgJob;
 import com.crystalgraphics.job.CgJobLane;
 import com.crystalgraphics.job.reply.CgReply;
-import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.loading.task.CgLoadTask;
 import com.crystalgraphics.loading.task.CgLoadTracker;
 import com.crystalgraphics.text.render.CgTextRenderer;
@@ -87,8 +86,7 @@ public final class CgLogoLoadingView implements CgLoadingView {
         CgImmediate.constants().view.identity();
         CgImmediate.constants().projection.setOrtho(0f, width, height, 0f, -1f, 1f);
 
-        // Staged, each part on its own eased window. In: the backdrop over the host's screen (or over the cover, where that
-        // is the host's menu), then the lockup settling from 3% larger, then the bar rising into place. Out, the reverse:
+        // Staged, each part on its own eased window. In: the backdrop over the host's screen, then the lockup settling from 3% larger, then the bar rising into place. Out, the reverse:
         // the bar first, the lockup lifting away 6% larger as a game's splash leaves for its menu, the backdrop last
         float backdropIn = stage(appear, 0f, 0.5f);
         float lockupIn = stage(appear, 0.2f, 0.85f), barIn = stage(appear, 0.45f, 1f);
@@ -235,34 +233,6 @@ public final class CgLogoLoadingView implements CgLoadingView {
         loadLockup();
         boolean fx = CgMaterial.load(FX).pipeline(CgInstanceKind.QUAD).precache();
         return ready = fx && lockupLoad.isDone();
-    }
-
-    /** The backdrop's colours at its top, middle and bottom, sampled from it: what {@link #cover} bands between. */
-    private static final int[] COVER_STOPS = {0x4EA4FF, 0x3C74EB, 0x552FA3};
-    private static final int COVER_BANDS = 32;
-
-    /** The backdrop's vertical gradient in scissored clears, for the backdrop to fade in over. */
-    @Override
-    public void cover(int width, int height) {
-        CgGL.glColorMask(true, true, true, true);
-        CgGL.glEnable(CgGL.GL_SCISSOR_TEST);
-        for (int band = 0; band < COVER_BANDS; band++) {
-            int top = band * height / COVER_BANDS, bottom = (band + 1) * height / COVER_BANDS;
-            if (bottom <= top) continue;
-            // 0 at the top: GL's scissor counts from the bottom
-            float t = (band + 0.5f) / COVER_BANDS * (COVER_STOPS.length - 1);
-            int at = Math.min((int) t, COVER_STOPS.length - 2);
-            float f = t - at;
-            int a = COVER_STOPS[at], b = COVER_STOPS[at + 1];
-            CgGL.glScissor(0, height - bottom, width, bottom - top);
-            CgGL.glClearColor(mix(a >> 16, b >> 16, f), mix(a >> 8, b >> 8, f), mix(a, b, f), 1f);
-            CgGL.glClear(CgGL.GL_COLOR_BUFFER_BIT);
-        }
-        CgGL.glDisable(CgGL.GL_SCISSOR_TEST);
-    }
-
-    private static float mix(int a, int b, float f) {
-        return ((a & 0xFF) + ((b & 0xFF) - (a & 0xFF)) * f) / 255f;
     }
 
     private void loadLockup() {
