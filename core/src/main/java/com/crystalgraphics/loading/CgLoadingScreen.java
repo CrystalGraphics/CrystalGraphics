@@ -116,8 +116,6 @@ public final class CgLoadingScreen {
     private static long lastDrawn;
     /** The view answered {@link CgLoadingView#ready}: it draws, and its fade-in runs. */
     private static boolean viewReady;
-    /** See {@link #covers}. */
-    private static boolean covers;
     /** How long past the fade the watchdog still names what holds the render thread. */
     private static final long WATCH_AFTER_FADE_NANOS = 2_000_000_000L;
 
@@ -237,23 +235,9 @@ public final class CgLoadingScreen {
         return hostDraws;
     }
 
-    /**
-     * Whether the view's backdrop must be opaque from its first frame: the host's first screen opened before the view
-     * drew, so no loading screen of the host's is left to cross from and fading in over that screen would show it. Its
-     * lockup and the like still fade in whole over that backdrop. Render thread.
-     *
-     * <pre>{@code
-     * float backdrop = CgLoadingScreen.covers() ? 1f : ease(appear);
-     * }</pre>
-     */
-    public static boolean covers() {
-        return covers;
-    }
-
     /** Asks the view whether it draws whole yet, until it does: each ask advances its build a step. */
     private static void askView(long now) {
         if (viewReady || !(viewReady = view.ready())) return;
-        covers = held != null;
         LOGGER.info("[loading] the view is ready after {} ms{}", (now - shownAt) / 1_000_000L,
                 held == null ? ", under the host's loading screen" : ", after the host's first screen opened");
     }
@@ -455,11 +439,6 @@ public final class CgLoadingScreen {
             // Nothing of its own until the view draws whole: the host's screen shows meanwhile. Asked here too, not
             // only in frame(): each ask advances its build a step, and the workers had the frame's GUI since
             askView(now);
-            if (!viewReady && held != null) {
-                // The host's own loading screen is gone and its first screen would show through: wait for the view here
-                view.finish();
-                askView(now);
-            }
             if (viewReady) appeared += step;
             hostDraws = true;   // its fade-out is drawn too, held opening or not
         } else {
@@ -472,9 +451,14 @@ public final class CgLoadingScreen {
         // (1.7.10) draws through whatever program is left bound
         try (CgGlScope ignored = CgGlState.saveAll()) {
             if (warm) warmFrame();
-            if (!viewReady) return;
+            // The host's own loading screen is gone and its first screen would show: covered with no program until the
+            // view draws, which fades in over the cover. Waiting for the view's build here held the frame 220 ms cold
+            boolean cover = shown() && held != null && appeared < FADE_IN;
+            if (!viewReady && !cover) return;
             CgGL.glBindFramebuffer(CgGL.GL_FRAMEBUFFER, framebuffer);
             CgGL.glViewport(0, 0, width, height);
+            if (cover) view.cover(width, height);
+            if (!viewReady) return;
             view.draw(width, height, shownProgress, Math.min(1f, appeared / FADE_IN),
                     shown() ? 0f : Math.min(1f, left / FADE_OUT), shown() ? reason : null);
         }

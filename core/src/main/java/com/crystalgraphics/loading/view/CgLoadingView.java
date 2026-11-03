@@ -1,6 +1,7 @@
 package com.crystalgraphics.loading.view;
 
 import com.crystalgraphics.loading.CgLoadingScreen;
+import com.crystalgraphics.platform.gl.CgGL;
 import javax.annotation.Nullable;
 
 /**
@@ -44,8 +45,8 @@ public interface CgLoadingView {
 
     /**
      * Whether {@link #draw} would draw whole now, building and waiting for nothing: its shaders built, its textures
-     * loaded. Until it answers true the screen draws none of itself and its fade-in does not start, so the host's own
-     * loading screen stays up. Polled once a frame until true; true by default. Render thread.
+     * loaded. Until it answers true the screen draws none of itself (but its {@link #cover}) and its fade-in does not
+     * start, so the host's own loading screen stays up. Polled once a frame until true; true by default. Render thread.
      *
      * <pre>{@code
      * public boolean ready() {
@@ -58,10 +59,19 @@ public interface CgLoadingView {
     }
 
     /**
-     * Makes {@link #ready} true now, waiting for whatever it still builds or loads: the screen calls it when the host's
-     * first screen has opened behind a view not ready, since a frame held on the last one shown is better than that
-     * screen showing through. Nothing by default. Render thread.
+     * Covers the whole target with no program, once the host's first screen has opened behind the screen: every frame
+     * until {@link #ready}, then under the fade-in, which {@link #draw} crosses from it. Clears only, so nothing waits on
+     * a compile: a solid colour, or scissored bands of one. Black by default. Render thread, the target bound.
+     *
+     * <pre>{@code
+     * public void cover(int width, int height) {
+     *     CgGL.glClearColor(0.24f, 0.46f, 0.92f, 1f);
+     *     CgGL.glClear(CgGL.GL_COLOR_BUFFER_BIT);
+     * }
+     * }</pre>
      */
-    default void finish() {
+    default void cover(int width, int height) {
+        CgGL.glClearColor(0f, 0f, 0f, 1f);
+        CgGL.glClear(CgGL.GL_COLOR_BUFFER_BIT);
     }
 }

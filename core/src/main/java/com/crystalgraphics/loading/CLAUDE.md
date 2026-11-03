@@ -13,7 +13,7 @@ parallel mod loading with its `enqueueWork`, Unreal's slow-task progress and its
 | `CgLoadingScreen.Task` | Lyra's `ULoadingProcessTask`: work started and ended in code (`task(reason)` ... `close()`) |
 | `task/` | `CgLoadPlan` (named tasks: `task(id).after(...).work(...).render(step).start()`, `track(id, reply)`, `begin(id)`; listeners get it in `onLoad`; its `frame()` runs in the frame tick's host section, starting tasks whose `after` ended and running render parts within `crystalgraphics.loading.renderBudget`), `CgLoadTask` (one task: id `<owner>:<name>`, state, `after`, start and end, reported progress and detail), `CgLoadStep` (a render part, a slice a call), `CgLoadTracker` (every task of this load: `running()`, `progress(now)` for the bar, history per `key`, the timeline logged at the hide) |
 | `watchdog/` | `CgLoadWatchdog`: Unreal's `FGameThreadHitchHeartBeatThreaded`. The frame beats; a thread polls every 8 ms, samples the render thread's stack each poll once a frame is held past `crystalgraphics.loading.stallMs` (100), and reports the hold when it ends: how long, the render thread's CPU time over it, and where its samples landed (the lifecycle callback, else the first stack frame outside the JDK and the engine's plumbing). A hold whose samples sit mostly in a GL call, a swap, a fence or a sleep is a **wait** (the driver or GPU catching up), and so is one where the render thread barely ran and was in no read (the machine had it descheduled); any other is **work**, a read from disk included. A pipeline built or linked at its draw (`vkCreate*Pipelines`, the tracker's `takeAhead`, a link wait) is work named as one to precache, never a wait. The hide logs both counts; `loading.strict` fails the run when work held it |
-| `view/` | `CgLoadingView` / `CgLogoLoadingView`: what it draws: the engine's lockup (`textures/gui/lockup.png`) over a view up at the ocean's surface (`shaders/loading/loading_fx.shader`), Minecraft's white outlined bar under it; under `crystalgraphics.loading.showTasks` the running tasks a line each under the bar, owner, name, percent (a system sans-serif). `warm` starts its lockup decoding on a worker at the graphics start; `ready` answers once that and its shader's pipeline are built |
+| `view/` | `CgLoadingView` / `CgLogoLoadingView`: what it draws: the engine's lockup (`textures/gui/lockup.png`) over a view up at the ocean's surface (`shaders/loading/loading_fx.shader`), Minecraft's white outlined bar under it; under `crystalgraphics.loading.showTasks` the running tasks a line each under the bar, owner, name, percent (a system sans-serif). `warm` starts its lockup decoding on a worker at the graphics start; `ready` answers once that and its shader's pipeline are built; `cover` draws what hides the host's first screen until then, in clears |
 
 ## Rules
 
@@ -55,11 +55,12 @@ parallel mod loading with its `enqueueWork`, Unreal's slow-task progress and its
   built `loading_fx` at the draw and waited half a second on its pipelines (26.2, Vulkan). The view is warmed first in
   the graphics start, before the engine's programs queue, and asked from then on at each frame and draw.
 - **The screen draws from the engine's start, over the host's own loading screen** (`hostDraws()` while shown), so
-  its fade-in crosses from that screen. Once the host's first screen has opened (Minecraft's menu panorama), a view not
-  yet ready is finished at the draw (`finish()`, the frame held rather than the menu shown), and `covers()` answers
-  true: the view's backdrop is opaque from its first frame, its lockup and bar still fading in whole. Minecraft 26.2
-  opens its first screen right after its language load, which can hold the render thread 2 s just after the engine
-  starts; Forge 1.20.1 as its loading overlay starts fading out, before the engine starts.
+  its fade-in crosses from that screen. Once the host's first screen has opened (Minecraft's menu panorama), the view's
+  `cover(w, h)` hides it with no program (`CgLogoLoadingView`: the backdrop's gradient in scissored clears) every frame
+  until the view is ready and under its fade-in, which crosses from the cover. Never wait for the view at the draw:
+  building it there held the frame 220 ms cold (1.20.1). Minecraft 26.2 opens its first screen right after its
+  language load, which can hold the render thread 2 s just after the engine starts; Forge 1.20.1 as its loading overlay
+  starts fading out, before the engine starts.
 - **The fades run on frames, not the clock**: each frame moves them a 30th of a second at most, so a held frame shows
   every stage of them rather than skipping to the end. The fade-out is over 5 s after the hide whatever was drawn, so
   a host that stops drawing still gets its opening.
