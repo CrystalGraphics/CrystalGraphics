@@ -9,7 +9,7 @@
 #pragma cg_feature TEMPERATURE_LEGACY
 #include "crystalgraphics:shaders/lib/post/post_material.glsl"
 
-Tags { "RenderType" = "Transparent" "SceneColorMargin" = "0.001" "Lighting" = "Unlit" "Fog" = "Off" "ColorSpace" = "Linear" }
+Tags { "RenderType" = "Transparent" "SceneColorMargin" = "0.001" "Lighting" = "Unlit" "Fog" = "Off" "ColorSpace" = "Target" }
 Queue = "Overlay"
 
 Properties {

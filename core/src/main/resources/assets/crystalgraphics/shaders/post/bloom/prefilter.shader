@@ -6,7 +6,7 @@
 #pragma cg_permutation KARIS
 #include "crystalgraphics:shaders/lib/post/bloom.glsl"
 
-Tags { "RenderType" = "Opaque" "Lighting" = "Unlit" "Fog" = "Off" "ColorSpace" = "Linear" }
+Tags { "RenderType" = "Opaque" "Lighting" = "Unlit" "Fog" = "Off" "ColorSpace" = "Target" }
 Queue = "Overlay"
 
 Properties {

@@ -220,8 +220,11 @@ without `clip()` dropping a Clip tag, Unreal's Masked override). A Prepass mater
 A single-output Forward pass, not overdraw, cover or merged, ends its generated `main` with
 `if (CG_LINEAR_SCENE) _cg_fragColor.rgb = cg_SceneDecode(...)`, after light and fog: unpremultiplied under
 `ONE ONE_MINUS_SRC_ALPHA`. In a material with an Emissive pass it then clamps the colour to 1, so a fold or its own
-Emissive draw adds the glow over white, not over an excess. `"ColorSpace" = "Linear"` (`CgParsedShader.linearColor`)
-leaves it out.
+Emissive draw adds the glow over white, not over an excess. `"ColorSpace" = "Linear"` or `"Target"`
+(`CgParsedShader.linearColor`) leaves it out. `"Linear"` alone (`linearLight`) ends it instead with
+`if (CG_ENCODED_TARGET) _cg_fragColor.rgb = cg_SceneEncode(...)` (`appendTargetEncode`, unpremultiplied under
+`ONE ONE_MINUS_SRC_ALPHA`), after the media dim: linear light encoded where the pass draws onto the host's own target,
+which `CgRasterPass` marks in its copy of the constants.
 
 ## Dimmed by the media
 

@@ -39,7 +39,8 @@ a saturated glow at 2x still three quarters its colour), clamps, and writes a va
 over returns byte for byte. `AFTER_WORLD` and `BEFORE_COMPOSITE` effects draw into the scene; `AFTER_COMPOSITE` into the
 host. Bloom's source is then the scene's light past `CgBloom.threshold` (`excess.shader`: half size, R11G11B10F, each
 texel's excess soft-capped at 32 before the 2x2 average), already bent, rather than the emission. A shader drawing into
-the scene with linear colour is tagged `"ColorSpace" = "Linear"`, as every one here is, or the compiler decodes it.
+the scene or over the picture with the colour it read is tagged `"ColorSpace" = "Target"`, as every one here is: the
+compiler neither decodes it into the scene nor encodes it onto the host.
 
 ## Rules
 

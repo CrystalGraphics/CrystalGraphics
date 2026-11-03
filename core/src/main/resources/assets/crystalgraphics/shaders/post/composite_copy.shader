@@ -36,7 +36,7 @@
 #pragma cg_permutation SCENE BLOOM FADE
 #include "crystalgraphics:shaders/lib/post/impact.glsl"
 
-Tags { "RenderType" = "Transparent" "SceneColorMargin" = "0.02" "Lighting" = "Unlit" "Fog" = "Off" "ColorSpace" = "Linear" }
+Tags { "RenderType" = "Transparent" "SceneColorMargin" = "0.02" "Lighting" = "Unlit" "Fog" = "Off" "ColorSpace" = "Target" }
 Queue = "Overlay"
 
 Properties {

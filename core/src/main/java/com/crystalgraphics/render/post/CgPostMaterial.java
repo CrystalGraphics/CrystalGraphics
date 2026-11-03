@@ -45,7 +45,7 @@ import java.util.function.Consumer;
  * <pre>{@code
  * #type none
  * #include "crystalgraphics:shaders/lib/post/post_material.glsl"
- * Tags { "RenderType" = "Transparent" "SceneColorMargin" = "0.001" "Lighting" = "Unlit" "Fog" = "Off" "ColorSpace" = "Linear" }
+ * Tags { "RenderType" = "Transparent" "SceneColorMargin" = "0.001" "Lighting" = "Unlit" "Fog" = "Off" "ColorSpace" = "Target" }
  * Queue = "Overlay"
  * struct v2f { vec2 uv; };
  * Pass {
@@ -79,7 +79,7 @@ import java.util.function.Consumer;
  *       {@code AFTER_COMPOSITE} draws over the final picture, in the target's encoding. {@code BEFORE_COMPOSITE} is
  *       refused: it feeds the composite.</li>
  *   <li>A shader reading {@code cg_SceneColor} or {@code cg_DepthBuffer} gets the target as it stands; tag it
- *       {@code "ColorSpace" = "Linear"} so its colour is written as read, and with the {@code "SceneColorMargin"} it
+ *       {@code "ColorSpace" = "Target"} so its colour is written as read, and with the {@code "SceneColorMargin"} it
  *       samples past its own pixel (0.001 for its own alone). A pass into a target reads the scene the same way.</li>
  *   <li>The weight is per draw ({@code POST_WEIGHT}), so animating it leaves the material's properties alone.</li>
  *   <li>A pass's target is RGBA16F, cleared before it draws. {@code CG_RESOLUTION} is still the screen's: a pass

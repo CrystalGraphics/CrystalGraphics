@@ -53,13 +53,6 @@ vec3 cg_default_lit_light(vec3 diffuse, vec3 f0, float roughness, vec3 n, vec3 v
     return (diffuse + 3.14159265 * specular) * color * nol;
 }
 
-// Linear light to the encoding of the target it is written into, past white unchanged: cg_SceneDecode's inverse.
-vec3 cg_default_lit_encode(vec3 c) {
-    vec3 s = clamp(c, 0.0, 1.0);
-    vec3 enc = mix(s * 12.92, 1.055 * pow(s, vec3(1.0 / 2.4)) - 0.055, step(vec3(0.0031308), s));
-    return enc + max(c - 1.0, 0.0);
-}
-
 // In a fragment stage, into radiance: base colour, metallic, specular (Unreal's, 0.5 its default), roughness and
 // occlusion (the sky's alone), world normal n and camera-relative position p. Macros, so they expand where they are
 // called: the lights they read are declared after a material's includes. Roughness is kept above 0.02, where D_GGX's
@@ -84,5 +77,5 @@ vec3 cg_default_lit_encode(vec3 c) {
         radiance += cg_default_lit_light(dlDiffuse, dlF0, dlRough, dlN, dlV, normalize(dlAt - dlP), cg_LightColor(dlI) * dlFall); \
     } }
 
-// What a "ColorSpace" = "Linear" fragment writes: the radiance as it is into the HDR scene, encoded into any other.
-#define CG_DEFAULT_LIT_OUTPUT(radiance) (CG_LINEAR_SCENE ? (radiance) : cg_default_lit_encode(radiance))
+// What a "ColorSpace" = "Linear" fragment writes: the radiance, which the generated main encodes onto the host's target.
+#define CG_DEFAULT_LIT_OUTPUT(radiance) (radiance)

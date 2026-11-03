@@ -2,7 +2,7 @@
 #type none
 #include "crystalgraphics:shaders/lib/post/post_material.glsl"
 
-Tags { "RenderType" = "Transparent" "SceneColorMargin" = "0.001" "Lighting" = "Unlit" "Fog" = "Off" "ColorSpace" = "Linear" }
+Tags { "RenderType" = "Transparent" "SceneColorMargin" = "0.001" "Lighting" = "Unlit" "Fog" = "Off" "ColorSpace" = "Target" }
 Queue = "Overlay"
 
 struct v2f { vec2 uv; };

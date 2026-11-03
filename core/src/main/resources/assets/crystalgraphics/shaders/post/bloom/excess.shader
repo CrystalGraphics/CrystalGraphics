@@ -3,7 +3,7 @@
 // texel cannot flicker the glow. One triangle over the half-size target. CgBloom draws it.
 #type none
 
-Tags { "RenderType" = "Opaque" "Lighting" = "Unlit" "Fog" = "Off" "ColorSpace" = "Linear" }
+Tags { "RenderType" = "Opaque" "Lighting" = "Unlit" "Fog" = "Off" "ColorSpace" = "Target" }
 Queue = "Overlay"
 
 Properties {

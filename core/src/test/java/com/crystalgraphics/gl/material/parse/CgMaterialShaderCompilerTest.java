@@ -274,6 +274,14 @@ public class CgMaterialShaderCompilerTest {
                 parse(MINIMAL.replace("#type spatial\n", "#type spatial\nTags { \"ColorSpace\" = \"Linear\" }\n")), NO_BUFFERS)
                 .fragmentSource();
         assertFalse(linear.contains("cg_SceneDecode"));
+        assertTrue("linear light encoded onto the host's target", linear.contains("if (CG_ENCODED_TARGET) _cg_fragColor.rgb = cg_SceneEncode("));
+        String target = CgMaterialShaderCompiler.compile(
+                parse(MINIMAL.replace("#type spatial\n", "#type spatial\nTags { \"ColorSpace\" = \"Target\" }\n")), NO_BUFFERS)
+                .fragmentSource();
+        assertFalse("the target's own encoding, never decoded", target.contains("cg_SceneDecode"));
+        assertFalse("nor encoded", target.contains("cg_SceneEncode("));
+        assertThrows(CgShaderParseException.class,
+                () -> parse(MINIMAL.replace("#type spatial\n", "#type spatial\nTags { \"ColorSpace\" = \"Gamma\" }\n")));
     }
 
     @Test

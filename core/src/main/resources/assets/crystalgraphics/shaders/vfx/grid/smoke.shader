@@ -18,7 +18,7 @@
 #include "crystalgraphics:shaders/lib/vfx/fx_scatter.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_grid.glsl"
 
-Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" "ColorSpace" = "Linear" }
+Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" "ColorSpace" = "Target" }
 Queue = "Transparent"
 
 Properties {

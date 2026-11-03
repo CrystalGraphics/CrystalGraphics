@@ -4,7 +4,7 @@
 // the scene's coverage remap, made for smoke over a bright world, turns a faint tint over a dark one nearly opaque.
 #type spatial
 
-Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" "Fog" = "Off" "ColorSpace" = "Linear" }
+Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" "Fog" = "Off" "ColorSpace" = "Target" }
 Queue = "Transparent"
 
 struct v2f { vec4 color; };

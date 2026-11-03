@@ -7,7 +7,7 @@
 #pragma cg_permutation CHEAP
 #include "crystalgraphics:shaders/lib/post/bloom.glsl"
 
-Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" "Fog" = "Off" "ColorSpace" = "Linear" }
+Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" "Fog" = "Off" "ColorSpace" = "Target" }
 Queue = "Overlay"
 
 Properties {

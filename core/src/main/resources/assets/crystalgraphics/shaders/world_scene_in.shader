@@ -10,7 +10,7 @@
 #pragma cg_permutation KEEP
 #include "crystalgraphics:shaders/lib/post/composite.glsl"
 
-Tags { "RenderType" = "Opaque" "Lighting" = "Unlit" "Fog" = "Off" "ColorSpace" = "Linear" "SceneColorMargin" = "0.001" }
+Tags { "RenderType" = "Opaque" "Lighting" = "Unlit" "Fog" = "Off" "ColorSpace" = "Target" "SceneColorMargin" = "0.001" }
 Queue = "Overlay"
 
 Properties {

@@ -306,8 +306,8 @@ public final class CgShaderParser {
             throw new CgShaderParseException("[" + resourcePath + "] Media is \"On\" or \"Off\", not \"" + media + "\"");
         }
         String colorSpace = topTags.getOrDefault("ColorSpace", "sRGB");
-        if (!"sRGB".equals(colorSpace) && !"Linear".equals(colorSpace)) {
-            throw new CgShaderParseException("[" + resourcePath + "] ColorSpace is \"sRGB\" or \"Linear\", not \""
+        if (!"sRGB".equals(colorSpace) && !"Linear".equals(colorSpace) && !"Target".equals(colorSpace)) {
+            throw new CgShaderParseException("[" + resourcePath + "] ColorSpace is \"sRGB\", \"Linear\" or \"Target\", not \""
                     + colorSpace + "\"");
         }
         String output = topTags.getOrDefault("Output", "Color");
@@ -528,7 +528,8 @@ public final class CgShaderParser {
                 renderType, sceneColorMargin, "Unlit".equals(lighting), "Surface".equals(lighting), handedLights, handedSun,
                 handedScene, writesCustomData,
                 "Off".equals(fog),
-                "Linear".equals(colorSpace), "Off".equals(media), "EmissiveOpacity".equals(output), depthMode, tube,
+                !"sRGB".equals(colorSpace), "Linear".equals(colorSpace), "Off".equals(media),
+                "EmissiveOpacity".equals(output), depthMode, tube,
                 Collections.unmodifiableList(passes),
                 buffers.buffers(),
                 buffers.structs(),

@@ -7,7 +7,7 @@
 #pragma cg_permutation KARIS|CHEAP   // the tier picks one, or neither
 #include "crystalgraphics:shaders/lib/post/bloom.glsl"
 
-Tags { "RenderType" = "Opaque" "Lighting" = "Unlit" "Fog" = "Off" "ColorSpace" = "Linear" }
+Tags { "RenderType" = "Opaque" "Lighting" = "Unlit" "Fog" = "Off" "ColorSpace" = "Target" }
 Queue = "Overlay"
 
 Properties {

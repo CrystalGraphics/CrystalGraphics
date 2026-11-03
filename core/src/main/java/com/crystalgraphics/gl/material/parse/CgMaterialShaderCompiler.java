@@ -1197,6 +1197,24 @@ public final class CgMaterialShaderCompiler {
     }
 
     /**
+     * Encodes a {@code "ColorSpace" = "Linear"} Forward colour, linear light, where the pass draws onto the host's own
+     * sRGB-encoded target ({@code CG_ENCODED_TARGET}), as Unreal encodes its scene at the end; alpha untouched. A
+     * premultiplied colour is encoded unpremultiplied.
+     */
+    private static void appendTargetEncode(StringBuilder sb, CgParsedPass pass) {
+        CgBlendState blend = pass.renderState().getBlend();
+        boolean premultiplied = blend != null && blend.enabled() && blend.srcRgb() == CgGL.GL_ONE
+                && blend.dstRgb() == CgGL.GL_ONE_MINUS_SRC_ALPHA;
+        if (premultiplied) {
+            sb.append("  if (CG_ENCODED_TARGET) _cg_fragColor.rgb = _cg_fragColor.a > 0.0")
+              .append(" ? cg_SceneEncode(_cg_fragColor.rgb / _cg_fragColor.a) * _cg_fragColor.a")
+              .append(" : cg_SceneEncode(_cg_fragColor.rgb);\n");
+        } else {
+            sb.append("  if (CG_ENCODED_TARGET) _cg_fragColor.rgb = cg_SceneEncode(_cg_fragColor.rgb);\n");
+        }
+    }
+
+    /**
      * Whether a pass is dimmed by the smoke and gas in front of it ({@code cg_Media}): a transparent world material's
      * ({@link CgParsedShader#mediated}), not a volume's, which is the smoke itself.
      */
@@ -1314,6 +1332,7 @@ public final class CgMaterialShaderCompiler {
                 sb.append("  _cg_fragColor.rgb += _cg_glow.rgb;\n");
             }
             if ((forward || emissive) && dimsInMedia(shader, pass)) appendMediaDim(sb, pass, emissive, merge);
+            if (forward && shader.linearLight() && !cover) appendTargetEncode(sb, pass);
         } else {
             sb.append("  ").append(pass.fragOutput().mrtStructName()).append(" _cg_mrtOut;\n");
             sb.append("  fragment(_v2f_local, _cg_mrtOut);\n");

@@ -4,7 +4,7 @@
 // marched is to its own, the nearest in depth where none agrees), then blended over what is behind it.
 #type none
 
-Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" "Fog" = "Off" "ColorSpace" = "Linear" "Media" = "Off" }
+Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" "Fog" = "Off" "ColorSpace" = "Target" "Media" = "Off" }
 Queue = "Transparent"
 
 Properties {

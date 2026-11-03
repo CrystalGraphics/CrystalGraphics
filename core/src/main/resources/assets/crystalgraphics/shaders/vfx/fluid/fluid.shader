@@ -19,7 +19,7 @@
 #include "crystalgraphics:shaders/lib/vfx/fx_wavelet.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_fluid.glsl"
 
-Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" "ColorSpace" = "Linear" }
+Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" "ColorSpace" = "Target" }
 Queue = "Transparent"
 
 Properties {

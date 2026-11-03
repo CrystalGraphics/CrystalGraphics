@@ -3,7 +3,7 @@
 // into a texture where a shader samples it on GL (CustomDepthRendering.cpp:436-450); no device here samples a stencil.
 #type none
 
-Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" "Fog" = "Off" "ColorSpace" = "Linear" "Media" = "Off" }
+Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" "Fog" = "Off" "ColorSpace" = "Target" "Media" = "Off" }
 Queue = "Transparent"
 
 struct v2f { vec2 uv; };

@@ -15,7 +15,8 @@ layout(std140) uniform CgFrameBlock {
     vec4 cg_WorldOrigin; // where world space's origin is in absolute coordinates: the camera, in a world pass
     vec4 cg_SunDirection; // xyz toward the sun, or the moon while the sun is down; w the daylight, 0 to 1
     vec4 cg_FogColor;     // the host's fog colour; a 1 while there is fog, 0 for none
-    vec4 cg_FogParams;    // x where the fog starts, y where it is whole, in blocks from the camera; z CG_SUN_SHARE
+    vec4 cg_FogParams;    // x where the fog starts, y where it is whole, in blocks from the camera; z CG_SUN_SHARE;
+                          // w 1 when the target is the host's own, its colour sRGB-encoded (CG_ENCODED_TARGET)
     mat4 cg_PrevViewProj; // this pass's camera-relative points to last frame's clip space: cg_PreviousClip
     vec4 cg_FrameParams;  // x the host frame's index, 0 to 65535; y 1 while last frame is one of this view;
                           // z 1 where entities take the Nether's two lights (CG_ENTITY_LIGHT1)
@@ -309,8 +310,11 @@ vec3 cg_LocalLightDirectional(vec3 p) {
 #define CG_DISTORTION(offset, split, eyeDepth) vec4((offset), (split), 1.0 / max((eyeDepth), 0.01))
 #define CG_DEPTH_REVERSED      (cg_DepthParams.x > 0.5)
 // Whether this pass draws into the linear HDR scene. A Forward pass's colour is authored as sRGB, so the generated
-// main decodes it there (cg_SceneDecode), unless the shader is tagged "ColorSpace" = "Linear".
+// main decodes it there (cg_SceneDecode), unless the shader is tagged "ColorSpace" = "Linear" or "Target".
 #define CG_LINEAR_SCENE        (cg_DepthParams.z > 0.5)
+// Whether this pass draws onto the host's own target, its colour sRGB-encoded. A "ColorSpace" = "Linear" Forward
+// pass's colour is linear light, so the generated main encodes it there (cg_SceneEncode).
+#define CG_ENCODED_TARGET      (cg_FogParams.w > 0.5)
 // What a glow drawn into the scene is multiplied by (CgWorldRenderer.sceneEmission): 1 anywhere else.
 #define CG_SCENE_GLOW          (CG_LINEAR_SCENE ? cg_DepthParams.w : 1.0)
 // A material's value for each path, e.g. CG_HDR(0.4, 1.0): one program, picked at runtime.
@@ -320,6 +324,12 @@ vec3 cg_SceneDecode(vec3 c) {
     vec3 s = clamp(c, 0.0, 1.0);
     vec3 lin = mix(s / 12.92, pow((s + 0.055) / 1.055, vec3(2.4)), step(vec3(0.04045), s));
     return lin + max(c - 1.0, 0.0);
+}
+// Linear light to sRGB up to 1; above it the excess passes unchanged: cg_SceneDecode's inverse.
+vec3 cg_SceneEncode(vec3 c) {
+    vec3 s = clamp(c, 0.0, 1.0);
+    vec3 enc = mix(s * 12.92, 1.055 * pow(s, vec3(1.0 / 2.4)) - 0.055, step(vec3(0.0031308), s));
+    return enc + max(c - 1.0, 0.0);
 }
 // A blend's coverage as it reads in the scene: what lets through (1 - a) decoded, so a dark blend darkens linear
 // light as much as it darkened the encoded picture, and smoke keeps the density it was tuned at.

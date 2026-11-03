@@ -138,6 +138,8 @@ public final class CgRasterPass extends CgPass {
         this.layer = layer;
         this.load = load;
         constants.write(this.constants, 0);
+        // CG_ENCODED_TARGET: the host's own colour is sRGB-encoded, every texture of ours holds what is written
+        this.constants[CgPassConstants.ENCODED_TARGET] = target.kind() == CgGraphTexture.Kind.CURRENT ? 1f : 0f;
         this.state = state;
         this.order = order;
         gpuZone = -1;

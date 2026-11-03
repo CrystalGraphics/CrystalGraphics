@@ -4,7 +4,7 @@
 // Full screen, before the transparent passes, so what draws over it covers it.
 #type none
 
-Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" "Fog" = "Off" "ColorSpace" = "Linear" "Media" = "Off" }
+Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" "Fog" = "Off" "ColorSpace" = "Target" "Media" = "Off" }
 Queue = "Overlay"
 
 struct v2f { vec2 uv; };

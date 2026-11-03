@@ -85,8 +85,12 @@ import java.util.Objects;
  *     {@code true} for {@code "Fog" = "Off"}: its Forward colour is not put behind the host's fog, as such a material's
  *     otherwise is, lit or not.
  * @param linearColor
- *     {@code true} for {@code "ColorSpace" = "Linear"}: its Forward colour is linear already (a post pass, a copy of
- *     the scene), so it is not decoded from sRGB when drawn into the HDR scene ({@code CG_LINEAR_SCENE}).
+ *     {@code true} for {@code "ColorSpace" = "Linear"} or {@code "Target"}: its Forward colour is not authored in sRGB,
+ *     so it is not decoded when drawn into the HDR scene ({@code CG_LINEAR_SCENE}).
+ * @param linearLight
+ *     {@code true} for {@code "ColorSpace" = "Linear"} alone: its Forward colour is linear light, as Unreal's material
+ *     output is, so it is encoded when drawn onto the host's own target ({@code CG_ENCODED_TARGET}). {@code "Target"}
+ *     is a colour in the target's own encoding already (a post pass, a copy of the scene) and is never transformed.
  * @param unmediated
  *     {@code true} for {@code "Media" = "Off"}: a transparent pass is not dimmed by the smoke and gas in front of it
  *     ({@code cg_Media}), as a transparent world material's otherwise is: the engine's own composites, already dimmed.
@@ -120,7 +124,8 @@ public record CgParsedShader(String shaderType, List<CgMaterialProperty> propert
                               List<String> engineBuffers, int renderQueue,
                               String renderType, float sceneColorMargin, boolean unlit, boolean surfaceLit,
                               boolean handedLights, boolean handedSun, boolean handedScene, boolean writesCustomData,
-                              boolean unfogged, boolean linearColor, boolean unmediated, boolean emissiveOpacity,
+                              boolean unfogged, boolean linearColor, boolean linearLight, boolean unmediated,
+                              boolean emissiveOpacity,
                               DepthMode depthMode, @Nullable Tube tube,
                               List<CgParsedPass> passes, List<CgBufferDecl> buffers, String bufferStructs,
                               List<PostTarget> postTargets, @Nullable String emissionInput) {
@@ -254,7 +259,7 @@ public record CgParsedShader(String shaderType, List<CgMaterialProperty> propert
         }
         return new CgParsedShader(shaderType, properties, featureNames, permutations, engineBuffers, renderQueue, renderType,
                 sceneColorMargin, unlit, surfaceLit, handedLights, handedSun, handedScene, writesCustomData,
-                unfogged, linearColor, unmediated, emissiveOpacity,
+                unfogged, linearColor, linearLight, unmediated, emissiveOpacity,
                 state.clip() ? DepthMode.CLIP : unclip ? DepthMode.NONE : depthMode, tube, Collections.unmodifiableList(out),
                 buffers, bufferStructs, postTargets, emissionInput);
     }

@@ -139,9 +139,23 @@ void fragment(in v2f i, out vec4 fragColor) {
   has an Emissive pass: then it is held at white, as the 8-bit target holds it, and its glow carries the light past
   white rather than adding to an excess that already blooms. A blend over what is
   behind (`... ONE_MINUS_SRC_ALPHA`) also has its alpha remapped (`cg_SceneCoverage`: `1 - decode(1 - a)`), so smoke
-  hides as much as it did in the encoded picture rather than thinning out in linear light. `"ColorSpace" =
-  "Linear"` (default `"sRGB"`) opts out, for a shader whose colour is linear already: a post pass, a copy of the scene.
-  An Emissive pass is linear always.
+  hides as much as it did in the encoded picture rather than thinning out in linear light. An Emissive pass is linear
+  always. The `"ColorSpace"` tag says what else a Forward colour is:
+
+  | `"ColorSpace"` | The colour is | Into the HDR scene | Onto the host's own target | Into a texture of ours |
+  |---|---|---|---|---|
+  | `"sRGB"` (default) | authored as Minecraft's are | decoded | as written | as written |
+  | `"Linear"` | linear light, as Unreal's material output is: a port | as written | encoded (`CG_ENCODED_TARGET`) | as written |
+  | `"Target"` | already in its target's encoding: a post pass, a copy of the scene | as written | as written | as written |
+
+  ```glsl
+  Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" "ColorSpace" = "Linear" }   // a ported effect: (150, 5, 0.5)
+  Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" "ColorSpace" = "Target" }   // a post pass reading cg_SceneColor
+  ```
+
+  The host's own target is what a raster pass into `CgGraphTexture.current()` draws onto; every texture of ours holds
+  what is written. A premultiplied `"Linear"` colour is encoded unpremultiplied, its alpha untouched. Any other value
+  fails to parse.
 - **A value tuned per path** is `CG_HDR(off, on)`: `on` under the scene, `off` without it, picked at runtime in one
   program. The decode shrinks a dim colour (0.3 becomes about 0.07), so faint light that adds, a light pool's falloff,
   reads dimmer under the scene:

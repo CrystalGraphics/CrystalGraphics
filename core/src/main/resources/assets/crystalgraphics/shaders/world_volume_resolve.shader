@@ -5,7 +5,7 @@
 // Temporal Supersampling" (2014), and Salvi, "An Excursion in Temporal Supersampling" (2016).
 #type none
 
-Tags { "RenderType" = "Opaque" "Lighting" = "Unlit" "Fog" = "Off" "ColorSpace" = "Linear" }
+Tags { "RenderType" = "Opaque" "Lighting" = "Unlit" "Fog" = "Off" "ColorSpace" = "Target" }
 Queue = "Overlay"
 
 Properties {

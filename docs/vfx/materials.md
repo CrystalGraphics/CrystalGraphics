@@ -244,8 +244,8 @@ Pass {
 
 - `CG_DEFAULT_LIT(out, baseColor, metallic, specular, roughness, occlusion, n, p)`: linear base colour, Unreal's
   specular (0.5 its default), occlusion of the sky's light alone, world normal and camera-relative position.
-- **Tag it `"ColorSpace" = "Linear"`** and write `CG_DEFAULT_LIT_OUTPUT`: linear into the HDR scene, encoded into any
-  other target.
+- **Tag it `"ColorSpace" = "Linear"`** and write `CG_DEFAULT_LIT_OUTPUT`: linear light, which the engine writes as it
+  is into the HDR scene and encodes onto the host's own target.
 - It does not cast shadows yet: only opaque draws are casters.
 
 ### Easy to get wrong

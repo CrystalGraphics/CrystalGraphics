@@ -74,7 +74,10 @@ public final class CgPassConstants {
     private float cameraZ;
     private boolean depthReversed;
     private boolean depthZeroToOne;
-    private boolean linearScene;
+    /** Where {@link #encodedTarget} sits in the block: {@code cg_FogParams.w}. */
+    public static final int ENCODED_TARGET = 63;
+
+    private boolean linearScene, encodedTarget;
     private float sceneGlow = 1f;
     private float originX;
     private float originY;
@@ -131,6 +134,16 @@ public final class CgPassConstants {
      */
     public CgPassConstants linearScene(boolean linear) {
         this.linearScene = linear;
+        return this;
+    }
+
+    /**
+     * Whether the target holds its colour sRGB-encoded, as the host's own does ({@code CG_ENCODED_TARGET}): a
+     * {@code "ColorSpace" = "Linear"} Forward pass's colour is then encoded as it is written. {@code CgRecording.raster}
+     * sets it in a pass's copy from its target: true for the host's, false for every texture of ours.
+     */
+    public CgPassConstants encodedTarget(boolean encoded) {
+        this.encodedTarget = encoded;
         return this;
     }
 
@@ -251,6 +264,7 @@ public final class CgPassConstants {
         fogStart = block[at + 60];
         fogEnd = block[at + 61];
         sunShare = block[at + 62];
+        encodedTarget = block[at + ENCODED_TARGET] != 0f;
         previous.set(block, at + 64);
         frameIndex = (int) block[at + 80];
         historyValid = block[at + 81] != 0f;
@@ -303,7 +317,7 @@ public final class CgPassConstants {
         out[at + 60] = fogStart;
         out[at + 61] = fogEnd;
         out[at + 62] = sunShare;
-        out[at + 63] = 0f;
+        out[at + ENCODED_TARGET] = encodedTarget ? 1f : 0f;
         previous.get(out, at + 64);
         out[at + 80] = frameIndex & 0xFFFF;
         out[at + 81] = historyValid ? 1f : 0f;
