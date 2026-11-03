@@ -41,6 +41,7 @@ import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.post.CgPostStack;
 import com.crystalgraphics.render.post.volume.CgPostBlock;
 import com.crystalgraphics.render.post.volume.CgPostVolume;
+import com.crystalgraphics.vfx.look.CgVfxKitLook;
 import com.crystalgraphics.vfx.CgVfxSystem;
 import com.crystalgraphics.vfx.camera.CgShakePlay;
 import com.crystalgraphics.vfx.look.CgVfxParam;
@@ -369,6 +370,8 @@ public final class CgVfxCueEffects implements CgCueEffects {
     /** Plays {@code p}, {@code age} seconds into its life, with the {@code writes} values {@code at} carries. */
     private CgVfxSystemInstance<?> spawn(CgCueDefinition cue, Particles p, CgCueParameters at, float age) {
         CgVfxSystemInstance<?> made = place(p, at);
+        // A cue's look: another kit's, or the engine's default; else the system's own kit's
+        if (cue.look() != null) made.kitLook("none".equals(cue.look()) ? null : CgVfxKitLook.of(cue.look()));
         for (int i = 0; i < at.writes(); i++) {
             Write w = cue.writes().get(at.writeName(i));
             if (w == null) continue;

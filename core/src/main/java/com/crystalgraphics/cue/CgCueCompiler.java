@@ -117,7 +117,8 @@ final class CgCueCompiler {
                 List.copyOf(events), Map.of(), List.of(), length(tree.get("range"), Float.NaN),
                 Boolean.TRUE.equals(tree.get("authoritative")), Boolean.TRUE.equals(tree.get("persisted")),
                 tree.get("prediction") == null ? Prediction.NONE : Prediction.valueOf(upper(tree.get("prediction"))),
-                List.copyOf(fields), tree.get("sequence") instanceof String s ? s : null);
+                List.copyOf(fields), tree.get("sequence") instanceof String s ? s : null,
+                tree.get("look") instanceof String l ? l : null);
         return writes(partial, tree.get("writes"));
     }
 
@@ -150,7 +151,7 @@ final class CgCueCompiler {
         if (!unbound.isEmpty()) LOGGER.warn("{}: writes {} that no system it plays binds", id, unbound);
         return new CgCueDefinition(cue.id(), cue.tag(), cue.kind(), cue.burst(), cue.application(), cue.looping(),
                 cue.recurring(), cue.removal(), cue.events(), writes, List.copyOf(unbound), cue.range(),
-                cue.authoritative(), cue.persisted(), cue.prediction(), cue.fields(), cue.sequence());
+                cue.authoritative(), cue.persisted(), cue.prediction(), cue.fields(), cue.sequence(), cue.look());
     }
 
     private Effects effects(@Nullable Object block, String path, Where defaults) {

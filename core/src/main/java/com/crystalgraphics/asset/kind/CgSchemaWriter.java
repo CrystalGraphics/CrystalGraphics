@@ -96,7 +96,8 @@ public final class CgSchemaWriter {
 
     private static Object property(CgType owner, CgProperty p) {
         String n = p.name();
-        if (owner.kind() == CgTypeKind.KIND) {
+        // A file's root: a kind, or a kit file declaring its version
+        if (owner.kind() == CgTypeKind.KIND || owner.property(CgType.VERSION) != null) {
             if (n.equals(CgType.UNSUPPORTED)) return ref("unsupported");
             if (n.equals(CgType.EDITOR)) return ref("editor");
             if (n.equals(CgType.REMOVE)) return map("type", "array", "items", string(CgValueType.LOCAL_ID_PATTERN));

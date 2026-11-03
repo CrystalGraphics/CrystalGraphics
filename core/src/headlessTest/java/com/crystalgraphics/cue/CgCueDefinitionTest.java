@@ -190,13 +190,14 @@ public class CgCueDefinitionTest {
                 .writes("Glow", "how bright")
                 .range(40).authoritative(true).prediction(CgCueDefinition.Prediction.ONE_OFF)
                 .field("charge", CgCueDefinition.Field.Type.FLOAT, 0.0)
-                .sequence("cuetest:beam_loop");
+                .sequence("cuetest:beam_loop").look("otherkit");
         String yaml = CgAssetYaml.write(beam.tree(), CgGameplayKinds.CUE);
         CgCueDefinition loaded = CgCueDefinition.compile(CgAssetData.of("cuetest:beam", CgGameplayKinds.CUE, (Map<?, ?>) CgAssetYaml.read(yaml), null));
         assertEquals(yaml, beam.build(), loaded);
         assertEquals(new Quaternionf().rotateY(0.5f), loaded.application().particles().get(1).where().placement().rotation());
         assertTrue("scale: inherit reads back", loaded.application().particles().get(0).where().placement().inheritScale());
         assertTrue(yaml, yaml.contains("scale: inherit"));
+        assertEquals("another kit's look, by namespace", "otherkit", loaded.look());
     }
 
     /** {@code -Pkits}: every kit cue compiles, its tag declared by the kit's {@code tags.yaml}, or fails naming its path. */

@@ -472,6 +472,44 @@ CgVfxSlotRenderer lamp = CgVfxSlotRenderer.light("lamp", LAMP)               // 
   lightmap: Minecraft keeps neither for its world. A particle's own light (a light renderer) takes its drawn radius as
   its source's.
 
+## A kit's own look: tonemapper, bloom and exposure
+
+A game's effects were tuned under its own post: its tonemapper, its bloom, the exposure its frames ran at. A kit says
+so in `look.yaml` at its root, and every system of the kit plays under it: a post volume opened round each one where it
+plays, and the kit's exposure on its own draws. The world around keeps the engine's look beyond the volume's reach.
+
+```yaml
+# assets/mymod/look.yaml
+_v: 1
+post:                                   # a post block: the keys a cue's lens and a sequence's post take
+  tonemapper: film
+  film: { slope: 0.88, toe: 0.55, shoulder: 0.26, black_clip: 0, white_clip: 0.04 }
+  bloom: 1.25
+  bloom_threshold: -1
+  bloom1: { size: 0.3, tint: [0.3466, 0.3466, 0.3466] }   # Unreal's Gaussian layers, 1 to 6
+  bloom2: { size: 1, tint: [0.1382, 0.1382, 0.1382] }
+  vignette: 0.4
+effect_exposure: 0.2                    # what the kit's own draws' light is scaled by; 1 unless given
+volume: { radius: 1500, blend: 500 }    # how far round each effect, then how far it fades, in the kit's units
+```
+
+In Java, a play takes another kit's look, or the engine's default:
+
+```java
+VFX.play(new CgVfxSystemInstance<>(ref, x, y, z).kitLook(CgVfxKitLook.of("otherkit")));   // another kit's
+VFX.play(new CgVfxSystemInstance<>(ref, x, y, z).kitLook(null));                           // the engine's look
+effect.exposure(0.5f);                                                                      // one effect's draws alone
+```
+
+A cue does the same with `look:` ([`networking.md`](networking.md) § *Cues: what a gameplay moment plays*).
+
+- **It is read as the kit registers**, its lengths in the kit's `units`; a file that does not validate throws there,
+  naming it. Its composite pipelines build with the kit, so the first effect under it compiles nothing.
+- **The exposure reaches only materials that scale by it**: an emissive or linear-light shader on a rows-drawn draw
+  (`_cg_Exposure`, [`SHADERS.md`](../SHADERS.md)). Lit, sRGB surfaces are left as they are.
+- **The volume closes when its effect dies**, and an effect run on the server opens none.
+- **Each effect opens its own volume**: several playing together blend as volumes do, by priority and weight.
+
 ## Easy to get wrong
 
 - **The mode is not the shader's queue.** A shader in the opaque queue drawn `ADDITIVE` still draws with the opaque

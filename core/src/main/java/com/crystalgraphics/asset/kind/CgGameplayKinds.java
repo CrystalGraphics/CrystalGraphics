@@ -11,6 +11,7 @@ import static com.crystalgraphics.asset.kind.CgCommonStructs.soft;
 import static com.crystalgraphics.object.CgValueType.BOOL;
 import static com.crystalgraphics.object.CgValueType.FLOAT;
 import static com.crystalgraphics.object.CgValueType.STRING;
+import static com.crystalgraphics.object.CgValueType.TREE;
 import static com.crystalgraphics.object.CgValueType.VALUE;
 
 /**
@@ -153,6 +154,8 @@ public final class CgGameplayKinds {
             .property("prediction", CgValueType.enumOf("none", "one_off", "keyed")).flags(CgPropertyFlag.HEADLESS)
             .property("fields", CgValueType.listOf(CgValueType.struct(FIELD))).flags(CgPropertyFlag.HEADLESS, CgPropertyFlag.STRUCTURAL)
             .property("sequence", soft("sequence")).flags(CgPropertyFlag.HEADLESS)
+            .property(CgType.UNSUPPORTED, TREE)
+            .property("look", CgValueType.string("^(none|[a-z0-9_]+)$"))
             .register();
 
     static void register() {

@@ -57,6 +57,7 @@ public class CgSchemaGenerationTest {
         Map<String, Integer> byShape = new TreeMap<>();
         List<CgType> declared = new ArrayList<>(CgAssetKinds.all());
         declared.add(CgKitFiles.SUBTITLE_STYLE);
+        declared.add(CgKitFiles.LOOK);
         for (CgType kind : declared) {
             String name = kind.id().substring(kind.id().indexOf(':') + 1);
             Map<String, Object> generated = CgSchemaWriter.kind(kind);

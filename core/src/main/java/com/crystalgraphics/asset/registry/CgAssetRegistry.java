@@ -34,6 +34,7 @@ import javax.annotation.Nullable;
 
 import com.crystalgraphics.audio.CgKitSounds;
 import com.crystalgraphics.audio.CgSubtitleStyle;
+import com.crystalgraphics.vfx.look.CgVfxKitLook;
 import com.crystalgraphics.i18n.CgKitStrings;
 import com.crystalgraphics.asset.codec.CgAssetYaml;
 import com.crystalgraphics.asset.kind.CgAssetKinds;
@@ -106,7 +107,7 @@ public final class CgAssetRegistry {
 
     /** A namespace's files that are not assets: its units, content index and tags. */
     private static final Set<String> ROOT_FILES = new HashSet<>(Arrays.asList("units.yaml", "content.yaml", "tags.yaml",
-            "carried.json", "ruled.json", "subtitle_style.yaml"));
+            "carried.json", "ruled.json", "subtitle_style.yaml", "look.yaml"));
     /** A namespace's folders that hold no assets: an importer's reports, a game's data kept for gameplay. */
     private static final Set<String> NOT_ASSETS = new HashSet<>(Arrays.asList("import", "roles", "strings", "fonts"));
     /** Binary folders and the extensions they hold. */
@@ -305,8 +306,10 @@ public final class CgAssetRegistry {
             CgSubtitleStyle.registerKit(namespace, root);
         }
         Path index = root.resolve("content.yaml"), unitsFile = root.resolve("units.yaml");
+        CgUnits kitUnits = Files.isRegularFile(unitsFile) ? readUnits(unitsFile) : null;
+        CgVfxKitLook.registerKit(namespace, root, kitUnits == null ? CgUnits.HOST : kitUnits);
         return new Gathered(namespace, root, found, keys, links, Files.isRegularFile(index) ? readIndex(index) : null,
-                Files.isRegularFile(unitsFile) ? readUnits(unitsFile) : null);
+                kitUnits);
     }
 
     /** The share of a scan its walk takes: 1.2 s of Kakarot's 1.7. */

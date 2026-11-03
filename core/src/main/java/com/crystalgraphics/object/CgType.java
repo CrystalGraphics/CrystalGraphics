@@ -409,7 +409,8 @@ public final class CgType {
         public CgType register() {
             if (kind == CgTypeKind.KIND) {
                 if (folder == null || version == 0) throw new IllegalStateException(id + ": a kind needs a folder and a version");
-                property(UNSUPPORTED, CgValueType.TREE);
+                // A kind may place unsupported itself, where its schema orders a key after it
+                if (!declares(UNSUPPORTED)) property(UNSUPPORTED, CgValueType.TREE);
                 property(EDITOR, CgValueType.TREE).flags(CgPropertyFlag.EDITOR_ONLY);
                 property(REMOVE, CgValueType.listOf(CgValueType.STRING));
             } else if (kind == CgTypeKind.ELEMENT && !declares(EDITOR)) {

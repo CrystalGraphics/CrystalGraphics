@@ -91,11 +91,14 @@ import com.crystalgraphics.vfx.system.CgVfxSystemDefinition;
  * @param prediction    how a client may predict it
  * @param fields        its own networked values, beyond what it plays
  * @param sequence      a looping cue's timeline, by id, started with {@code application}; or null
+ * @param look          the kit whose look its plays take ({@code CgVfxKitLook}): {@code none} for the engine's default,
+ *                      a namespace for another kit's; null for each played system's own kit
  */
 public record CgCueDefinition(String id, @Nullable CgGameplayTag tag, Kind kind, Effects burst, Effects application,
                               Effects looping, Effects recurring, Effects removal, List<Event> events,
                               Map<String, Write> writes, List<String> unbound, float range, boolean authoritative,
-                              boolean persisted, Prediction prediction, List<Field> fields, @Nullable String sequence) {
+                              boolean persisted, Prediction prediction, List<Field> fields, @Nullable String sequence,
+                              @Nullable String look) {
 
     /** The cue kind's compiler. */
     public static final CgAssetCompiler<CgCueDefinition> COMPILER = CgCueCompiler::compile;
@@ -422,6 +425,12 @@ public record CgCueDefinition(String id, @Nullable CgGameplayTag tag, Kind kind,
         /** A looping cue's timeline. */
         public Builder sequence(String sequence) {
             tree.put("sequence", sequence);
+            return this;
+        }
+
+        /** The kit whose look its plays take: {@code "none"} for the engine's default, or another kit's namespace. */
+        public Builder look(String look) {
+            tree.put("look", look);
             return this;
         }
 
