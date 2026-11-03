@@ -475,9 +475,8 @@ CgVfxSlotRenderer lamp = CgVfxSlotRenderer.light("lamp", LAMP)               // 
 ## A kit's own look: tonemapper, bloom and exposure
 
 A game's effects were tuned under its own post: its tonemapper, its bloom, the exposure its frames ran at. A kit says
-so in `look.yaml` at its root. Every system of the kit takes the kit's exposure on its own draws. Its post is read and
-validated, but not yet applied: grading the whole screen with it graded Minecraft's world and every other kit's effects
-too, so the frame keeps the engine's look until each kit's effects can be graded on their own.
+so in `look.yaml` at its root, and every system of the kit plays under it: a post volume opened round each one where it
+plays, and the kit's exposure on its own draws. The world around keeps the engine's look beyond the volume's reach.
 
 ```yaml
 # assets/mymod/look.yaml
@@ -491,7 +490,7 @@ post:                                   # a post block: the keys a cue's lens an
   bloom2: { size: 1, tint: [0.1382, 0.1382, 0.1382] }
   vignette: 0.4
 effect_exposure: 0.2                    # what the kit's own draws' light is scaled by; 1 unless given
-volume: { radius: 1500, blend: 500 }    # required; read with the post, in the kit's units, not yet applied
+volume: { radius: 1500, blend: 500 }    # how far round each effect, then how far it fades, in the kit's units
 ```
 
 In Java, a play takes another kit's look, or the engine's default:
@@ -505,9 +504,11 @@ effect.exposure(0.5f);                                                          
 A cue does the same with `look:` ([`networking.md`](networking.md) § *Cues: what a gameplay moment plays*).
 
 - **It is read as the kit registers**, its lengths in the kit's `units`; a file that does not validate throws there,
-  naming it.
+  naming it. Its composite pipelines build with the kit, so the first effect under it compiles nothing.
 - **The exposure reaches only materials that scale by it**: an emissive or linear-light shader on a rows-drawn draw
   (`_cg_Exposure`, [`SHADERS.md`](../SHADERS.md)). Lit, sRGB surfaces are left as they are.
+- **The volume closes when its effect dies**, and an effect run on the server opens none.
+- **Each effect opens its own volume**: several playing together blend as volumes do, by priority and weight.
 
 ## Easy to get wrong
 
