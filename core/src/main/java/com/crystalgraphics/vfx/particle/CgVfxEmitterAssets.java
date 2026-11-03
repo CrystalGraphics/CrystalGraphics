@@ -587,41 +587,54 @@ public final class CgVfxEmitterAssets {
             stacked++;
             b.module((CgVfxModule) kind.compile(m.inputs), idOf(entry, m.module));
         }
+        // The size modules compose in their order, as Cascade's: a set restarts from the spawn size (SizeScale), a
+        // multiply multiplies what came before (SizeMultiplyLife). A uniform sprite scale runs beside the per-axis one.
+        SizeRun sizes = new SizeRun(name);
         for (Map<?, ?> entry : entries(tree, "particle_update")) {
             if (Boolean.FALSE.equals(entry.get("enabled"))) continue;
             String id = moduleId(entry);
             switch (id) {   // over life by age, and the grid's density: the builder's fields, not modules
                 case "scale_sprite_size" -> {
                     Object scale = inputs(entry).get("scale");
+                    boolean set = sizes.set(entry);
                     CgVfxLifeRoll between = curveRoll(CgVfxLifeRoll.Target.MESH_SCALE, name, scale, 2);
                     if (lifeBind(name, entry, "scale", CgVfxLifeBind.Target.SPRITE_SIZE, forms, b)) {
+                        sizes.multiplier(set, entry);
                         continue;
                     } else if (between != null) {
+                        sizes.multiplier(set, entry);
                         b.lifeRoll(between);
                     } else if (CgVfxLifeRoll.rolled(scale) && scale instanceof Map<?, ?> m) {
+                        sizes.multiplier(set, entry);
                         b.lifeRoll(CgVfxLifeRoll.of(CgVfxLifeRoll.Target.MESH_SCALE, m, 2));
                     } else if (scale instanceof Map<?, ?> m && m.get("curves") != null) {
                         CgKeyframes[] xy = axes(name, scale, 2);
-                        b.scaleOverLife(xy[0], xy[1], CgKeyframes.constant(1f));
+                        sizes.axes(set, entry, xy[0], xy[1], CgKeyframes.constant(1f), b);
                     } else {
-                        b.size(keyframes(name, uniform(scale), "age"));
+                        sizes.uniform(set, entry, keyframes(name, uniform(scale), "age"), b);
                     }
                     continue;
                 }
                 case "scale_mesh_size" -> {
                     Object scale = inputs(entry).get("scale");
-                    if (lifeBind(name, entry, "scale", CgVfxLifeBind.Target.MESH_SCALE, forms, b)) continue;
+                    boolean set = sizes.set(entry);
+                    if (lifeBind(name, entry, "scale", CgVfxLifeBind.Target.MESH_SCALE, forms, b)) {
+                        sizes.multiplier(set, entry);
+                        continue;
+                    }
                     CgVfxLifeRoll between = curveRoll(CgVfxLifeRoll.Target.MESH_SCALE, name, scale, 3);
                     if (between != null) {
+                        sizes.multiplier(set, entry);
                         b.lifeRoll(between);
                         continue;
                     }
                     if (CgVfxLifeRoll.rolled(scale) && scale instanceof Map<?, ?> m) {
+                        sizes.multiplier(set, entry);
                         b.lifeRoll(CgVfxLifeRoll.of(CgVfxLifeRoll.Target.MESH_SCALE, m, 3));
                         continue;
                     }
                     CgKeyframes[] xyz = axes(name, scale, 3);
-                    b.scaleOverLife(xyz[0], xyz[1], xyz[2]);
+                    sizes.axes(set, entry, xyz[0], xyz[1], xyz[2], b);
                     continue;
                 }
                 case "scale_color" -> {
@@ -3028,6 +3041,94 @@ public final class CgVfxEmitterAssets {
         CgKeyframes one = keyframes(name, uniform(value), "age");
         Arrays.fill(out, one);
         return out;
+    }
+
+    /**
+     * One emitter's size modules, composed in their order: Cascade's SizeScale sets the size to the spawn size times its
+     * scale each tick, dropping what the size modules before it did, and SizeMultiplyLife multiplies (4.21
+     * ParticleModules_Size.cpp, UParticleModuleSizeScale::Update). A rolled or bound multiplier stands apart from the
+     * curves, so a set after one is refused by name.
+     */
+    private static final class SizeRun {
+        private final String name;
+        @Nullable
+        private CgKeyframes uniform;
+        @Nullable
+        private CgKeyframes[] axes;
+        private boolean multiplied;
+
+        SizeRun(String name) {
+            this.name = name;
+        }
+
+        /** Whether {@code entry}'s mode is set; anything but multiply or set throws. */
+        boolean set(Map<?, ?> entry) {
+            Object mode = inputs(entry).get("mode");
+            if (mode != null && !"set".equals(mode) && !"multiply".equals(mode)) {
+                throw new IllegalArgumentException(name + ": " + entry.get("module") + ".inputs.mode is " + mode
+                        + ", not multiply or set");
+            }
+            return "set".equals(mode);
+        }
+
+        /** A rolled or bound multiplier: one that sets may only come first. */
+        void multiplier(boolean set, Map<?, ?> entry) {
+            if (set && (uniform != null || axes != null || multiplied)) refuse(entry);
+            multiplied = true;
+        }
+
+        void uniform(boolean set, Map<?, ?> entry, CgKeyframes k, CgVfxEmitter.Builder b) {
+            if (set) restart(entry, b);
+            uniform = times(uniform, k);
+            b.size(uniform);
+        }
+
+        void axes(boolean set, Map<?, ?> entry, CgKeyframes x, CgKeyframes y, CgKeyframes z, CgVfxEmitter.Builder b) {
+            if (set) restart(entry, b);
+            axes = axes == null ? new CgKeyframes[]{x, y, z}
+                    : new CgKeyframes[]{times(axes[0], x), times(axes[1], y), times(axes[2], z)};
+            b.scaleOverLife(axes[0], axes[1], axes[2]);
+        }
+
+        private void restart(Map<?, ?> entry, CgVfxEmitter.Builder b) {
+            if (multiplied) refuse(entry);
+            CgKeyframes one = CgKeyframes.constant(1f);
+            uniform = null;
+            axes = null;
+            b.size(one);
+            b.scaleOverLife(one, one, one);
+        }
+
+        private void refuse(Map<?, ?> entry) {
+            throw new IllegalArgumentException(name + ": " + entry.get("module") + " sets the size after a rolled or bound"
+                    + " size multiplier, which a set cannot drop: put the set first");
+        }
+
+        /** {@code run} times {@code k}; {@code k} alone where nothing ran before. Exact where either holds one value. */
+        private static CgKeyframes times(@Nullable CgKeyframes run, CgKeyframes k) {
+            if (run == null) return k;
+            if (flat(run)) return scaled(k, run.value(0));
+            if (flat(k)) return scaled(run, k.value(0));
+            // Two curves: their product over a life, linear between samples
+            CgKeyframes.Builder out = CgKeyframes.start(0f, run.at(0f) * k.at(0f));
+            for (int i = 1; i <= EXTRAPOLATED_STEPS; i++) {
+                float t = i / (float) EXTRAPOLATED_STEPS;
+                out.to(t, run.at(t) * k.at(t), CgEasings.LINEAR);
+            }
+            return out.build();
+        }
+
+        private static boolean flat(CgKeyframes k) {
+            for (int i = 1; i < k.size(); i++) if (k.value(i) != k.value(0)) return false;
+            return true;
+        }
+
+        /** Every key's value times {@code f}, its times and easings kept: the same curve scaled, exactly. */
+        private static CgKeyframes scaled(CgKeyframes k, float f) {
+            CgKeyframes.Builder out = CgKeyframes.start(k.time(0), k.value(0) * f);
+            for (int i = 1; i < k.size(); i++) out.to(k.time(i), k.value(i) * f, k.easing(i));
+            return out.build();
+        }
     }
 
     /** A vec2's uniform form, {@code { curves: [c, c] }}, as {@code { curve: c }}. */

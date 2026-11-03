@@ -306,6 +306,40 @@ public class CgVfxEmitterAssetsTest {
         assertArrayEquals(new float[]{1f, 50f, 40f}, roll.to(), 0f);
     }
 
+    /** Size modules compose in their order: a set restarts from the spawn size (Cascade's SizeScale), a multiply multiplies. */
+    @Test
+    public void sizeModulesComposeInOrderByTheirMode() {
+        Object lifeCurve = Map.of("curves", List.of(curve(1.0, 1.5), curve(1.0, 1.5), curve(1.0, 1.5)), "by", "age");
+        Object setScale = Map.of("scale", List.of(2.5, 2.5, 2.5), "mode", "set");
+        CgVfxEmitter core = CgVfxEmitterAssets.compile("core", sized(setScale, Map.of("scale", lifeCurve, "mode", "multiply")), null);
+        assertEquals("SizeScale then SizeMultiplyLife: 2.5 at birth", 2.5f, core.scaleX.at(0f), 1e-5f);
+        assertEquals("and 2.5 x 1.5 at death", 3.75f, core.scaleZ.at(1f), 1e-5f);
+
+        CgVfxEmitter reset = CgVfxEmitterAssets.compile("reset", sized(Map.of("scale", lifeCurve), Map.of("scale", List.of(2.0, 2.0, 2.0), "mode", "set")), null);
+        assertEquals("a set drops the curve before it", 2f, reset.scaleY.at(1f), 0f);
+
+        Object rolled = Map.of("scale", Map.of("range", List.of(List.of(1.0, 1.0, 1.0), List.of(2.0, 2.0, 2.0))));
+        IllegalArgumentException refused = assertThrows(IllegalArgumentException.class,
+                () -> CgVfxEmitterAssets.compile("rolled", sized(rolled, setScale), null));
+        assertTrue(refused.getMessage(), refused.getMessage().contains("rolled") && refused.getMessage().contains("scale_mesh_size"));
+    }
+
+    private static Map<String, Object> curve(double from, double to) {
+        return Map.of("samples", Map.of("range", List.of(0.0, 1.0), "values", List.of(from, to)));
+    }
+
+    /** An emitter whose update stack is two scale_mesh_size modules with these inputs, in order. */
+    private static Map<String, Object> sized(Object first, Object second) {
+        Map<String, Object> tree = new LinkedHashMap<>();
+        tree.put("_v", 1);
+        tree.put("properties", Map.of("capacity", 4));
+        tree.put("emitter_update", List.of(Map.of("id", "state", "module", "crystalgraphics:emitter_state",
+                "inputs", Map.of("loop", "once", "duration", 1.0))));
+        tree.put("particle_update", List.of(Map.of("id", "a", "module", "crystalgraphics:scale_mesh_size", "inputs", first),
+                Map.of("id", "b", "module", "crystalgraphics:scale_mesh_size", "inputs", second)));
+        return tree;
+    }
+
     /** shape_location's add_velocity is read into the launch, not dropped, and written back as it was. */
     @Test
     public void aShapesAddVelocityIsReadAndWrittenBack() {
