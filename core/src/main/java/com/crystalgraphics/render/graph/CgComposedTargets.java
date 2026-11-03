@@ -35,8 +35,12 @@ final class CgComposedTargets {
      * Our formats checked complete beside the host's attachments as read, by ordinal; cleared with each read. Completeness
      * follows formats and sizes, not names, so a pooled texture handed back under another name needs no check.
      */
-    private final boolean[] checked = new boolean[CgTextureType.values().length];
+    private static final int TYPES = CgTextureType.values().length;
+    /** By our slot 0's ordinal and our slot 1's (0 for none, else its ordinal plus 1). */
+    private final boolean[] checked = new boolean[TYPES * (TYPES + 1)];
     private final IntBuffer drawBuffers = ByteBuffer.allocateDirect(8).order(ByteOrder.nativeOrder()).asIntBuffer();
+    /** In the form without the host's colour, how many draw buffers its framebuffer was given: 1, GL's default. */
+    private int drawn = 1;
     /**
      * The host framebuffer and size whose attachments {@link #hostAttachments} holds, 0 for none. Kept until either
      * changes or the window resizes: a glGet waits for a threaded driver to drain its queue, which held the frame's
@@ -75,6 +79,15 @@ final class CgComposedTargets {
      * nothing of ours, why {@code host} takes none. Binds {@code host} itself where it must read its attachments.
      */
     String bind(int host, int width, int height, int texture, CgTextureType type) {
+        return bind(host, width, height, texture, type, 0, null);
+    }
+
+    /**
+     * As {@link #bind(int, int, int, int, CgTextureType)}; in the form without the host's colour, {@code second} (of
+     * {@code secondType}) at colour attachment 1 where it is not 0: a pass into a texture beside the host's depth that
+     * takes a second attachment too.
+     */
+    String bind(int host, int width, int height, int texture, CgTextureType type, int second, CgTextureType secondType) {
         if (host == 0) return "the default framebuffer lends no attachment to a framebuffer of ours";
         if (!KEEP) CgGL.glBindFramebuffer(CgGL.GL_FRAMEBUFFER, host);
         if (readHost != host || readWidth != width || readHeight != height) {
@@ -116,8 +129,18 @@ final class CgComposedTargets {
         if (hostColor) {
             point(COLOR1, CgGL.GL_COLOR_ATTACHMENT1, GL_TEXTURE, texture, 0, false);
             if (made) CgGL.glDrawBuffers(drawBuffers);
+        } else {
+            point(COLOR1, CgGL.GL_COLOR_ATTACHMENT1, second != 0 ? GL_TEXTURE : CgGL.GL_NONE, second, 0, false);
+            int buffers = second != 0 ? 2 : 1;
+            if (buffers != drawn) {
+                drawBuffers.limit(buffers);
+                CgGL.glDrawBuffers(drawBuffers);
+                drawBuffers.limit(2);
+                drawn = buffers;
+            }
         }
-        if (checked[type.ordinal()]) return null;
+        int check = type.ordinal() * (TYPES + 1) + (second != 0 ? secondType.ordinal() + 1 : 0);
+        if (checked[check]) return null;
         int status;
         try (CgTrace.Zone z = CgTrace.zone(CgChannels.GL_DETAIL, CHECK)) {
             status = CgGL.glCheckFramebufferStatus(CgGL.GL_FRAMEBUFFER);
@@ -128,7 +151,7 @@ final class CgComposedTargets {
             return "framebuffer " + host + "'s attachments beside ours are incomplete (0x"
                     + Integer.toHexString(status) + "): a multisampled host target lends none";
         }
-        checked[type.ordinal()] = true;
+        checked[check] = true;
         return null;
     }
 
@@ -196,6 +219,7 @@ final class CgComposedTargets {
     void delete() {
         if (fbo != 0) CgGL.glDeleteFramebuffers(fbo);
         fbo = 0;
+        drawn = 1;
         Arrays.fill(attached, 0L);
         readHost = 0;
         REFUSED.clear();

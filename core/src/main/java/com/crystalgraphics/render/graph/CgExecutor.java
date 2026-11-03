@@ -1335,10 +1335,13 @@ public final class CgExecutor {
     private void rasterBegin(CgFrame frame, CgRasterPass pass, CgFrame.Raster packed, @Nullable int[] damage) {
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, RASTER_TARGET)) {
             try (CgTrace.Zone c = CgTrace.zone(CgChannels.GL_DETAIL, RASTER_COMPOSED)) {
-                composed = pass.attachment() != null && bindComposed(pass);
+                // Beside the current depth, a second attachment is ours too: the host's colour stays out
+                composed = pass.attachment() != null && !(pass.target != null && pass.target.drawsBesideCurrentDepth())
+                        && bindComposed(pass);
             }
             try (CgTrace.Zone b = CgTrace.zone(CgChannels.GL_DETAIL, RASTER_BESIDE)) {
-                beside = !composed && pass.target != null && pass.target.drawsBesideCurrentDepth() && bindBeside(pass.target);
+                beside = !composed && pass.target != null && pass.target.drawsBesideCurrentDepth()
+                        && bindBeside(pass.target, pass.attachment());
             }
             try (CgTrace.Zone t = CgTrace.zone(CgChannels.GL_DETAIL, RASTER_OWN)) {
                 if (!composed && !beside) bindTarget(pass.target, pass.level, pass.layer);
@@ -1995,8 +1998,18 @@ public final class CgExecutor {
      * target alone.
      */
     private boolean bindBeside(CgGraphTexture target) {
+        return bindBeside(target, null);
+    }
+
+    /** As {@link #bindBeside(CgGraphTexture)}, with {@code second} at colour attachment 1 where given. */
+    private boolean bindBeside(CgGraphTexture target, @Nullable CgGraphTexture second) {
         CgFrameBuffer scene = storage(target);
+        CgFrameBuffer extra = second != null ? storage(second) : null;
         int x = startViewport.get(0), y = startViewport.get(1), w = startViewport.get(2), h = startViewport.get(3);
+        if (extra != null && (extra.getWidth() != scene.getWidth() || extra.getHeight() != scene.getHeight())) {
+            throw new IllegalStateException(second + " is " + extra.getWidth() + "x" + extra.getHeight() + ", beside "
+                    + target + " of " + scene.getWidth() + "x" + scene.getHeight());
+        }
         if (x != 0 || y != 0 || scene.getWidth() != w || scene.getHeight() != h) {
             // A recorder sizing it from a stale size, as across a resize: this pass alone, not the framebuffer, refused.
             long sizes = (long) scene.getWidth() << 48 | (long) scene.getHeight() << 32 | (long) w << 16 | h;
@@ -2007,7 +2020,10 @@ public final class CgExecutor {
             }
             return false;
         }
-        String refused = BESIDE.bind(startFramebuffer, w, h, scene.getColorTexture(0).getId(), scene.getFormat().getColorSlot(0));
+        String refused = extra == null
+                ? BESIDE.bind(startFramebuffer, w, h, scene.getColorTexture(0).getId(), scene.getFormat().getColorSlot(0))
+                : BESIDE.bind(startFramebuffer, w, h, scene.getColorTexture(0).getId(), scene.getFormat().getColorSlot(0),
+                        extra.getColorTexture(0).getId(), extra.getFormat().getColorSlot(0));
         if (refused != null) {
             if (!CgComposedTargets.refused(startFramebuffer)) LOGGER.warn("{} draws without the host's depth: {}", target, refused);
             CgComposedTargets.refuse(startFramebuffer);

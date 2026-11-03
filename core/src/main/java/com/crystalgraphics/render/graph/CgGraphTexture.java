@@ -184,6 +184,31 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
         return texture;
     }
 
+    /**
+     * As {@link #besideCurrentDepth}, its storage kept until released as a {@link #requested} texture's is: a scene drawn
+     * in one stage's firing and read in a later one.
+     *
+     * <pre>{@code
+     * CgGraphTexture opaque = CgGraphTexture.requestedBesideCurrentDepth("scene", new CgTextureDesc(w, h, rgba16f));
+     * // opaque firing: drawn into, beside the host's depth; transparent firing: sampled
+     * recording.release(opaque);   // at a resize, before a new one is made
+     * }</pre>
+     *
+     * <ul>
+     *   <li>A pass into it may take a second attachment ({@link CgRasterPass#attachment}): ours, at slot 1, with the
+     *       host's colour left out.</li>
+     * </ul>
+     */
+    public static CgGraphTexture requestedBesideCurrentDepth(String name, CgTextureDesc desc) {
+        if (desc.format().hasDepth() || desc.format().colorSlotCount() != 1 || desc.levels() != 1 || desc.isArray()
+                || desc.isVolume()) {
+            throw new IllegalArgumentException(name + ": a texture beside the current depth is one level of colour alone");
+        }
+        CgGraphTexture texture = new CgGraphTexture(Kind.REQUESTED, name, desc, null, null);
+        texture.currentDepth = true;
+        return texture;
+    }
+
     /** Whether framebuffer {@code framebuffer} lends its depth to a {@link #besideCurrentDepth} texture. */
     public static boolean takesCurrentDepth(int framebuffer) {
         return framebuffer != 0 && !CgComposedTargets.refused(framebuffer);

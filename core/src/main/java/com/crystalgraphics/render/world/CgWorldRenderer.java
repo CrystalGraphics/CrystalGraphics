@@ -156,6 +156,9 @@ public final class CgWorldRenderer {
     private static final CgVar.Text HDR_SCENE = CgVar.text("crystalgraphics.world.hdrScene", "", CgVar.DEV,
             "true or false forces the HDR scene for the run over the player's HDR setting, unsaved; empty follows the"
                     + " setting (G in the harness, hdrScene(boolean) live).");
+    private static final CgVar.Bool OPAQUE_SCENE = CgVar.bool("crystalgraphics.world.opaqueScene", true, CgVar.DEV,
+            "Under the HDR scene, our opaque draws into a linear scene of their own, so a colour past white reaches bloom;"
+                    + " false draws them onto the host's 8-bit target, clamped, for the comparison.");
     private static final CgVar.Bool SKIP_UNREADY = CgVar.bool("crystalgraphics.world.skipUnready", true, CgVar.DEV,
             "Holds a draw whose programs are not built yet, starting them and counting it as world.unready-draws; false"
                     + " compiles at the draw (skipUnready(boolean) live).");
@@ -1874,6 +1877,10 @@ public final class CgWorldRenderer {
             // Before the opaque pass: its depth then holds the host's world and none of the draws below.
             Integer subjectKey = which == OPAQUE ? stage.resources().get(CgFrameKeys.SUBJECT_READ) : null;
             if (subjectKey != null && subjectKey != 0) recordOwnedSubject(stage, recording, view, subjectKey);
+            // Our opaque draws into a linear scene of their own, as Unreal's base pass into SceneColor: past white kept
+            boolean opaqueScene = which == OPAQUE && drawn > 0 && hdrSceneDrawn() && OPAQUE_SCENE.get()
+                    && sceneTarget.recordOpaqueIn(stage);
+            if (opaqueScene) constants = stage.constants().sceneGlow(sceneEmission);
             int distorting = 0;
             if (drawn > 0 && which == TRANSPARENT) {
                 if (distorts.length < meshes.length) distorts = new boolean[meshes.length];
@@ -1940,6 +1947,7 @@ public final class CgWorldRenderer {
                 if (afterDrawn > 0) recordPass(stage, recording, constants, TRANSPARENT_STATE, false, true, view, emission, scene);
                 passes.close();
             }
+            if (opaqueScene) sceneTarget.recordOpaqueOut(stage);
             CgTrace.Zone after = CgTrace.zone(CgChannels.WORLD, REC_AFTER);
             if (which == TRANSPARENT && !scene) recordEmission(stage, recording, view, emission, emission != null ? EMIT_AFTER : EMIT_ALL);
             if (which == TRANSPARENT && stage.resources().has(CgFrameKeys.SUBJECT_READ)) {

@@ -160,6 +160,10 @@ recording.raster(scene, CgLoad.load(), constants, null, CgOrder.SORTED)
 
 - Framebuffer 0 and a multisampled host lend no depth: `takesCurrentDepth(fb)` says so, and the recorder gives its
   texture a depth of its own. A refusal at execution draws that pass without depth, logged once.
+- `requestedBesideCurrentDepth` is the same, kept until released: drawn in one firing, read in a later one (the
+  world's opaque scene).
+- A pass into one may take a second attachment (`attachment(texture)`): ours at slot 1 beside ours at 0 and the host's
+  depth, the host's colour left out (`CgComposedTargets` without host colour, two draw buffers).
 - `sceneColor(unit, from)` is `sceneDepth(unit, from)`'s twin: another target's colour, copied whole when the pass
   begins, RGBA8 for the current target.
 

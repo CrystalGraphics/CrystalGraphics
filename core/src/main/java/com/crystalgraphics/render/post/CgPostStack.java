@@ -113,7 +113,8 @@ public final class CgPostStack {
     private static final String[] WARMED = {
             "crystalgraphics:shaders/post/bloom/down.shader", "crystalgraphics:shaders/post/bloom/up.shader",
             "crystalgraphics:shaders/post/bloom/prefilter.shader", "crystalgraphics:shaders/post/bloom/excess.shader",
-            "crystalgraphics:shaders/world_scene_in.shader", "crystalgraphics:shaders/post/distortion_bend.shader",
+            "crystalgraphics:shaders/world_scene_in.shader", "crystalgraphics:shaders/world_scene_out.shader",
+            "crystalgraphics:shaders/post/distortion_bend.shader",
             "crystalgraphics:shaders/post/composite.shader", "crystalgraphics:shaders/post/composite_copy.shader"};
 
     /**
