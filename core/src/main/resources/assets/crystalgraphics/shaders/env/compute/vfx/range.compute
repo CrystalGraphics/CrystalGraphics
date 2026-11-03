@@ -244,7 +244,8 @@ mat3 range_facing(int lo, vec3 toEye, vec3 velocity, float spin, mat3 own, vec3 
     mat3 facing = mat3(1.0);
     vec3 faced = worldX, locked = vec3(0.0);
     if (mode != 0) {
-        faced = mode == 1 ? (dot(velocity, velocity) > 0.0 ? normalize(velocity) : up)
+        // At rest, Cascade's turn to the velocity is the identity: Normalize leaves it zero, FindBetweenNormals answers W 1
+        faced = mode == 1 ? (dot(velocity, velocity) > 0.0 ? normalize(velocity) : upMode == 3 ? worldX : up)
                 : mode == 2 ? eye : -normalize(_CamForward.xyz);
         if (f0.w > 0.5) {
             locked = f1.w > 0.5 ? range_quat(ORIGINS(lo).turn) * f1.xyz : f1.xyz;

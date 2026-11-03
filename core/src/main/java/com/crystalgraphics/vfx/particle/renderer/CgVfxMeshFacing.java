@@ -141,7 +141,9 @@ public record CgVfxMeshFacing(float[] words) {
         Matrix3f facing = new Matrix3f();
         Vector3f faced = null, locked = null;
         if (mode != 0) {
-            faced = mode == 1 ? (velocity.lengthSquared() > 0f ? new Vector3f(velocity).normalize() : new Vector3f(worldUp))
+            // At rest, Cascade's turn to the velocity is the identity: Normalize leaves it zero, FindBetweenNormals answers W 1
+            faced = mode == 1 ? (velocity.lengthSquared() > 0f ? new Vector3f(velocity).normalize()
+                    : new Vector3f(upMode == 3 ? worldX : worldUp))
                     : mode == 2 ? new Vector3f(eye) : new Vector3f(forward).normalize().negate();
             if (words[3] != 0f) {
                 locked = new Vector3f(words[4], words[5], words[6]);
