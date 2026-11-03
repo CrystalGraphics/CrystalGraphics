@@ -41,7 +41,7 @@ edited there with undo, validated, and written back by one writer. The 21 kinds 
 - **Nothing uploads or compiles on first use**: request ahead; `CgAssetRef.get` before a load is counted
   (`asset.sync-loads`) and refused inside a firing.
 - **The startup load is declared, never whole** (A14): `CgAssetMounts.loadAhead` loads every namespace's cues and what
-  its `preload.yaml` names (an id or a prefix ending in `*`, per kind; `all: true` for the namespace's own), with their
+  its `preload.yaml` names (an id or a glob, `*` within a folder and `**` across, per kind; `all: true` for the namespace's own), with their
   bundles. A load begun once the loading screen has hidden is counted, `asset.unplanned-loads`, and logged by id: the
   screen sets `CgVfxAssets.inPlay` each frame, which a dedicated server never does.
 - Gates: `CgVfxAssetsTest`, `CgAssetBundleTest`, `CgAssetPublishTest`, `CgAssetHotReloadTest`, `CgAssetYamlTest`, `CgAssetDataTest`, `CgAssetEditTest`, `CgAssetValidationTest`, `CgAssetRegistryTest`,

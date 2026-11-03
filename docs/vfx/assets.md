@@ -47,17 +47,25 @@ cue gameplay plays a minute later is already there. Anything else your gameplay 
 played by id, another namespace's assets such as a game's kit) you declare in `preload.yaml`:
 
 ```yaml
-# assets/rpgcore/preload.yaml: loaded behind the loading screen, with everything each reaches
-sequence: [rpgcore:moves/kamehameha, kakarot_kit:Blueprints/Battle/C001A/*]   # an id, or every id under a prefix
-cue: kakarot_kit:Blueprints/Battle/Skill/C001A/GC_Kamehameha
-all: true                                                                    # optional: every asset of rpgcore
+# assets/rpgcore/preload.yaml: loaded behind the loading screen, with everything each reaches.
+# An id, or a glob over ids: * matches within one folder, ** across folders.
+sequence:
+  # Kakarot: Goku's Kamehameha, one folder and one name stem for the charge, shot, cut and every variant (23)
+  - kakarot_kit:Blueprints/Character/C001A/BTL/SKL/AM_C001A_S_SKL001*
+  # Sparking! Zero: Goku (0000, form 00)'s actSPM2, its montage, pieces, camera and sounds in five folders (26)
+  - spzero_kit:SS/**_0000_00_actSPM2*
+cue:
+  - kakarot_kit:Blueprints/Character/C001A/BTL/SKL/BP_Projectile_C001A_S_SKL001*   # its beam, a cue a variant (12)
+all: true                                                                          # optional: every asset of rpgcore
 ```
 
 - **Never a whole kit by default**: both games' kits compiled retain about 4 GB of heap. Declare the moves you play.
 - **What nothing declared loads at its first play**, in game time, and is counted and logged by id
   (`asset.unplanned-loads`, `asset … loaded in play … declare it in its namespace's preload.yaml`): add it to the file.
-- A kind is named short (`cue`) or whole (`crystalgraphics:cue`); a name that is no kind, or an id nothing mounted
-  holds, warns.
+- **A move is its files' shared name**, which each kit spells its own way: Kakarot's one folder and stem, Sparking!
+  Zero's character, form and act code in the middle of names in several folders.
+- A kind is named short (`cue`) or whole (`crystalgraphics:cue`); a name that is no kind, or an id or glob that
+  matches nothing mounted, warns.
 
 ```
 assets/rpgcore/tags.yaml                        # _v: 1, then tags: [ rpgcore:cue.ground_break ]

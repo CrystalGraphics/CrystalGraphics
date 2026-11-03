@@ -15,6 +15,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -92,10 +93,13 @@ public final class CgAssetMounts {
      * ({@code asset.unplanned-loads}). Asked from any thread, started at the asset loop's next drain. Once.
      *
      * <pre>{@code
-     * # assets/mymod/preload.yaml: what mymod's gameplay plays, from any namespace
-     * cue: [mymod:kamehameha, kakarot_kit:Blueprints/Battle/Skill/C001A/*]   # an id, or every id under a prefix
-     * sequence: [spzero_kit:SS/InGameComp/Skill/0000/*]
-     * all: true                                                              # optional: every asset of mymod itself
+     * # assets/mymod/preload.yaml: what mymod's gameplay plays, from any namespace. An id, or a glob over ids:
+     * # * matches within one folder, ** across folders
+     * sequence:
+     *   - kakarot_kit:Blueprints/Character/C001A/BTL/SKL/AM_C001A_S_SKL001*      # Goku's Kamehameha, every variant
+     *   - spzero_kit:SS/**_0000_00_actSPM2*                                       # a move whose files span folders
+     * cue: [kakarot_kit:Blueprints/Character/C001A/BTL/SKL/BP_Projectile_C001A_S_SKL001*]
+     * all: true                                                                   # optional: every asset of mymod itself
      * }</pre>
      */
     public static synchronized void loadAhead() {
@@ -115,19 +119,24 @@ public final class CgAssetMounts {
             }
             for (Map.Entry<CgType, List<String>> d : preload.declared().entrySet()) {
                 for (String id : d.getValue()) {
-                    int before = ahead.size();
-                    if (id.endsWith("*")) {
-                        String prefix = id.substring(0, id.length() - 1);
+                    int before = ahead.size(), matched = 0;
+                    if (id.indexOf('*') >= 0) {
+                        Pattern glob = glob(id);
                         for (CgAssetEntry e : registry.entries(d.getKey())) {
-                            if (e.id().startsWith(prefix) && e.redirect() == null) add(ahead, seen, e);
+                            if (e.redirect() != null || !glob.matcher(e.id()).matches()) continue;
+                            matched++;
+                            add(ahead, seen, e);
                         }
                     } else {
                         CgAssetEntry e = registry.entry(d.getKey(), id);
-                        if (e != null) add(ahead, seen, e);
+                        if (e != null) {
+                            matched++;
+                            add(ahead, seen, e);
+                        }
                     }
-                    if (ahead.size() == before && !seenAny(seen, d.getKey(), id)) {
-                        LOGGER.warn("[crystalgraphics] assets: {}'s preload.yaml names {} {}, which is not mounted", ns,
-                                d.getKey().id(), id);
+                    if (matched == 0) {
+                        LOGGER.warn("[crystalgraphics] assets: {}'s preload.yaml names {} {}, which matches nothing mounted",
+                                ns, d.getKey().id(), id);
                     }
                     declared += ahead.size() - before;
                 }
@@ -144,15 +153,23 @@ public final class CgAssetMounts {
         return true;
     }
 
-    /** Whether a declaration added nothing because what it names was added already (an id named twice). */
-    private static boolean seenAny(Set<String> seen, CgType kind, String id) {
-        if (!id.endsWith("*")) return seen.contains(kind.id() + "|" + id);
-        String prefix = kind.id() + "|" + id.substring(0, id.length() - 1);
-        for (String s : seen) if (s.startsWith(prefix)) return true;
-        return false;
+    /** An id glob as a pattern: {@code **} any characters, {@code *} any but {@code /}, the rest literal. */
+    static Pattern glob(String id) {
+        StringBuilder re = new StringBuilder();
+        int literal = 0;
+        for (int i = 0; i < id.length(); i++) {
+            if (id.charAt(i) != '*') continue;
+            if (i > literal) re.append(Pattern.quote(id.substring(literal, i)));
+            boolean deep = i + 1 < id.length() && id.charAt(i + 1) == '*';
+            re.append(deep ? ".*" : "[^/]*");
+            if (deep) i++;
+            literal = i + 1;
+        }
+        if (literal < id.length()) re.append(Pattern.quote(id.substring(literal)));
+        return Pattern.compile(re.toString());
     }
 
-    /** A namespace's {@code preload.yaml}: each kind's ids and prefixes, and whether all its own assets load. */
+    /** A namespace's {@code preload.yaml}: each kind's ids and globs, and whether all its own assets load. */
     record Preload(boolean all, Map<CgType, List<String>> declared) {
         static final Preload NONE = new Preload(false, Map.of());
 
