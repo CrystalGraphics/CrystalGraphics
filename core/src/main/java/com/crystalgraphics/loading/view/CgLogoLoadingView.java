@@ -30,7 +30,8 @@ import com.crystalgraphics.render.CgImmediate;
 /**
  * The engine's loading screen: its lockup (the logo and "Crystal Graphics") over a view up at the ocean's surface from
  * below, with a breathing halo and a light sweeping across it, and Minecraft's white outlined load bar under it,
- * spanning it. It eases in, and eases out a little larger as the screen fades.
+ * spanning it. In and out it moves in stages: the backdrop, the lockup, then the bar coming in; the bar, the lockup
+ * lifting away larger, then the backdrop going out.
  *
  * <pre>{@code
  * // the default; a mod's own lockup on the same look:
@@ -75,7 +76,7 @@ public final class CgLogoLoadingView implements CgLoadingView {
     }
 
     @Override
-    public void draw(int width, int height, float progress, float alpha, @Nullable String reason) {
+    public void draw(int width, int height, float progress, float appear, float leave, @Nullable String reason) {
         if (width <= 0 || height <= 0) return;
         if (back == null) {
             back = CgQuadRenderer.create();
@@ -87,9 +88,13 @@ public final class CgLogoLoadingView implements CgLoadingView {
         CgImmediate.constants().view.identity();
         CgImmediate.constants().projection.setOrtho(0f, width, height, 0f, -1f, 1f);
 
-        float intro = smooth(Math.min(1f, seconds / 0.9f)), shown = intro * alpha;
-        // 4% larger as it fades out, as a game's splash leaves for its menu; settling from 3% larger as it comes in
-        float grow = 1f + 0.04f * (1f - alpha) + 0.03f * (1f - intro);
+        // Staged, each part on its own eased window. In: the backdrop over the host's screen, then the lockup settling
+        // from 3% larger, then the bar rising into place. Out, the reverse: the bar first, the lockup lifting away 6%
+        // larger as a game's splash leaves for its menu, the backdrop last
+        float backdropIn = stage(appear, 0f, 0.5f), lockupIn = stage(appear, 0.2f, 0.85f), barIn = stage(appear, 0.45f, 1f);
+        float barOut = stage(leave, 0f, 0.3f), lockupOut = stage(leave, 0.1f, 0.7f), backdropOut = stage(leave, 0.35f, 1f);
+        float alpha = backdropIn * (1f - backdropOut), shown = lockupIn * (1f - lockupOut), barShown = barIn * (1f - barOut);
+        float grow = 1f + 0.06f * stage(leave, 0.1f, 0.8f) + 0.03f * (1f - lockupIn);
         // Vanilla LoadingOverlay's sizes, so the hand-off from Mojang's screen keeps its scale: the lockup as wide as its
         // logo, min(0.75 width, height), and a bar as wide
         float cx = width / 2f, logoWidth = Math.min(width * 0.75f, height);
@@ -99,6 +104,9 @@ public final class CgLogoLoadingView implements CgLoadingView {
         float barHeight = Math.max(6f, Math.round(logoWidth * (32f / 1080f))), gap = icon * 0.36f;
         // The lockup and the bar a third of the icon below it, centred together
         float cy = Math.round(height / 2f - (gap + barHeight) / 2f);
+        // Sinking into place as it comes in, lifting as it leaves: a few percent of the screen
+        float lift = height * (0.015f * (1f - lockupIn) - 0.02f * stage(leave, 0.1f, 0.7f));
+        cy += lift;
 
         // The lockup, its visible width the logo's, its image padded around that
         float w = baseW * grow, h = w * texture.getHeight() / texture.getWidth();
@@ -116,13 +124,14 @@ public final class CgLogoLoadingView implements CgLoadingView {
 
         // The bar spans the lockup a third of the icon below it, so the two read as one block
         float barWidth = Math.round(logoWidth), barX = Math.round(cx - barWidth / 2f);
-        float barY = Math.round(cy + icon / 2f + gap);
+        // Below the lockup's settled place, not its lift, and rising a bar's height into it as it comes in
+        float barY = Math.round(cy - lift + icon / 2f + gap + barHeight * (1f - barIn));
         begin(bar);
         // The quad is 4 bars tall and 3 wider, the shader's room around the pill
         quad(bar, barX - 1.5f * barHeight, barY - 1.5f * barHeight, barWidth + 3f * barHeight, 4f * barHeight,
-                argb(shown, 0xFFFFFFFF), Math.min(1f, Math.max(0f, progress)), BAR);
+                argb(barShown, 0xFFFFFFFF), Math.min(1f, Math.max(0f, progress)), BAR);
         end(bar);
-        if (SHOW_TASKS.get()) tasks(barX, barY + 2.5f * barHeight, barWidth, barHeight, shown);
+        if (SHOW_TASKS.get()) tasks(barX, barY + 2.5f * barHeight, barWidth, barHeight, barShown);
     }
 
     private static final CgVar.Bool SHOW_TASKS = CgVar.bool("crystalgraphics.loading.showTasks", false,
@@ -230,6 +239,11 @@ public final class CgLogoLoadingView implements CgLoadingView {
 
     private static float smooth(float x) {
         return x * x * (3f - 2f * x);
+    }
+
+    /** {@code t}'s eased place in the window from {@code from} to {@code to}: 0 before it, 1 after. */
+    private static float stage(float t, float from, float to) {
+        return smooth(Math.min(1f, Math.max(0f, (t - from) / (to - from))));
     }
 
     /** {@code argb} with its alpha times {@code alpha}. */

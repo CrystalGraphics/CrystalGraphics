@@ -103,8 +103,12 @@ public final class CgLoadingScreen {
             "The longest the loading screen holds once nothing loads, however much first-use work goes on.");
     private static final CgVar.Num MAX_LOADING = CgVar.number("crystalgraphics.loading.maxSeconds", 120f, 0f, 3600f,
             "The longest the loading screen shows for a process still loading before it holds anyway, warning which.");
-    /** How long the screen takes to fade out after it hides, as Minecraft's loading overlay fades. */
-    private static final long FADE_NANOS = 1_000_000_000L;
+    /** How long the screen takes to fade out after it hides: its parts leave in turn (CgLogoLoadingView). */
+    private static final long FADE_NANOS = 1_400_000_000L;
+    /** How long it takes to fade in from its first frame, over the host's own loading screen. */
+    private static final long FADE_IN_NANOS = 900_000_000L;
+    /** When the first frame of it was drawn: the fade-in's start. */
+    private static long firstDrawnAt;
     /** How long past the fade the watchdog still names what holds the render thread. */
     private static final long WATCH_AFTER_FADE_NANOS = 2_000_000_000L;
 
@@ -228,7 +232,7 @@ public final class CgLoadingScreen {
         // logo, and the frame the window keeps through a blocking open is the last one presented
         if (!clearedFrame) {
             clearedFrame = true;
-            LOGGER.info("[loading] faded out over {} frames, the last at {}% opacity", fadeFrames, Math.round(fadeLastAlpha * 100f));
+            LOGGER.info("[loading] faded out over {} frames, the last {}% through", fadeFrames, Math.round(fadeLastLeave * 100f));
             return;
         }
         held = null;
@@ -246,7 +250,7 @@ public final class CgLoadingScreen {
     private static boolean clearedFrame;
     /** The fade-out's frames drawn, and the last one's opacity: logged as the held opening runs. */
     private static int fadeFrames;
-    private static float fadeLastAlpha;
+    private static float fadeLastLeave;
 
     /** Hides it now, whatever loads: the engine stood down, and nothing would hide it. */
     public static void hideNow(String why) {
@@ -395,24 +399,26 @@ public final class CgLoadingScreen {
      * {@code bindWrite}) is unseen by the state shadow, and the warm frame's firing binds a target of its own.</p>
      */
     public static void draw(int framebuffer, int width, int height) {
-        float alpha;
+        long now = System.nanoTime();
+        float leave = 0f;
         boolean warm = false;
         if (shown()) {
             // Not while the engine's programs build behind it: a world firing would draw passes not built yet
             warm = !worldFired && !CgWorldRenderer.get().booting();
-            alpha = 1f;
         } else {
-            long since = System.nanoTime() - hiddenAt;
+            long since = now - hiddenAt;
             if (hiddenAt == 0L || since >= FADE_NANOS) return;
-            alpha = 1f - since / (float) FADE_NANOS;
+            leave = since / (float) FADE_NANOS;
             fadeFrames++;
-            fadeLastAlpha = alpha;
+            fadeLastLeave = leave;
         }
+        if (firstDrawnAt == 0L) firstDrawnAt = now;
+        float appear = Math.min(1f, (now - firstDrawnAt) / (float) FADE_IN_NANOS);
         try (CgGlScope ignored = CgGlState.save(CgGlSlot.FBO, CgGlSlot.VIEWPORT)) {
             if (warm) warmFrame();
             CgGL.glBindFramebuffer(CgGL.GL_FRAMEBUFFER, framebuffer);
             CgGL.glViewport(0, 0, width, height);
-            view.draw(width, height, shownProgress, alpha, reason);
+            view.draw(width, height, shownProgress, appear, leave, shown() ? reason : null);
         }
     }
 

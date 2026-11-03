@@ -8,16 +8,20 @@ import javax.annotation.Nullable;
  * logo over a load bar. A consumer replaces it with {@link CgLoadingScreen#view}.
  *
  * <pre>{@code
- * CgLoadingScreen.view((width, height, progress, alpha, reason) -> {
+ * CgLoadingScreen.view((width, height, progress, appear, leave, reason) -> {
  *     CgImmediate.constants().projection.setOrtho(0, width, height, 0, -1, 1);
+ *     float alpha = appear * (1f - leave);           // the plainest fade; ease and stagger as the look wants
  *     myRenderer.drawSplash(width, height, progress, alpha);
  * });
  * }</pre>
  *
  * <ul>
- *   <li>Called on the render thread into whatever target is bound, over the whole frame; draw every pixel at
- *       {@code alpha} 1, since the world behind is not drawn while a process still loads.</li>
- *   <li>{@code alpha} below 1 is the fade-out after the hide: the scene shows through it.</li>
+ *   <li>Called on the render thread into whatever target is bound, over the whole frame; once {@code appear} is 1
+ *       and {@code leave} 0 draw every pixel opaque, since the world behind is not drawn while a process still loads.</li>
+ *   <li>{@code appear} runs 0 to 1 over the fade-in, from the first frame drawn: the host's own loading screen shows
+ *       through until it ends.</li>
+ *   <li>{@code leave} runs 0 to 1 over the fade-out after the hide: what opens next shows through. Both are linear in
+ *       time; the view eases them.</li>
  * </ul>
  */
 @FunctionalInterface
@@ -25,9 +29,11 @@ public interface CgLoadingView {
 
     /**
      * @param progress 0 to 1, smoothed and never backwards
+     * @param appear   0 to 1 over the fade-in, linear in time; 1 once it has ended
+     * @param leave    0 to 1 over the fade-out, linear in time; 0 until the screen hides
      * @param reason   why it shows (the first process still loading, or "holding"); null in the fade-out
      */
-    void draw(int width, int height, float progress, float alpha, @Nullable String reason);
+    void draw(int width, int height, float progress, float appear, float leave, @Nullable String reason);
 
     /**
      * Starts building what the first {@link #draw} at {@code width} x {@code height} needs (its textures, its glyphs),
