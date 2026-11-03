@@ -86,6 +86,7 @@ public final class CgPipeline {
     private final boolean overdraw;
     private final boolean emission;
     private final boolean cover;
+    private final boolean solid;
     private final boolean fold;
     private final boolean depth;
     private final boolean volume;
@@ -110,6 +111,7 @@ public final class CgPipeline {
     private CgPipeline volumed;
     @Nullable
     private CgPipeline normalled;
+    private CgPipeline solidified;
     @Nullable
     private CgPipeline skinnedTwin;
     @Nullable
@@ -169,6 +171,7 @@ public final class CgPipeline {
         this.overdraw = (key.flags & OVERDRAW) != 0;
         this.emission = (key.flags & EMISSION) != 0;
         this.cover = (key.flags & COVER) != 0;
+        this.solid = (key.flags & SOLID) != 0;
         this.fold = (key.flags & FOLD) != 0;
         this.depth = (key.flags & DEPTH) != 0;
         this.volume = (key.flags & VOLUME) != 0;
@@ -176,7 +179,7 @@ public final class CgPipeline {
         this.skinned = (key.flags & SKINNED) != 0;
         this.customData = (key.flags & CUSTOM_DATA) != 0;
         Set<String> passKeywords = takesKeywords(pass) ? keywords : Collections.emptySet();
-        if (multiDraw || overdraw || emission || cover || fold || depth || volume || normals || skinned || customData) {
+        if (multiDraw || overdraw || emission || cover || fold || depth || volume || normals || skinned || customData || solid) {
             Set<String> more = new TreeSet<>(passKeywords);
             if (multiDraw) more.add(CgMaterialShaderCompiler.MULTI_DRAW);
             if (overdraw) more.add(CgMaterialShaderCompiler.DEBUG_OVERDRAW);
@@ -188,6 +191,7 @@ public final class CgPipeline {
             if (normals) more.add(CgMaterialShaderCompiler.NORMAL_TARGET);
             if (skinned) more.add(CgMaterialShaderCompiler.SKINNED);
             if (customData) more.add(CgMaterialShaderCompiler.CUSTOM_DATA_TARGET);
+            if (solid) more.add(CgMaterialShaderCompiler.SOLID_COVER);
             passKeywords = Collections.unmodifiableSet(more);
         }
         this.compiled = passKeywords;
@@ -220,12 +224,12 @@ public final class CgPipeline {
     }
 
     private static final int MULTI = 1, OVERDRAW = 2, EMISSION = 4, COVER = 8, FOLD = 16, DEPTH = 32, VOLUME = 64,
-            NORMALS = 128, SKINNED = 256, CUSTOM_DATA = 512;
+            NORMALS = 128, SKINNED = 256, CUSTOM_DATA = 512, SOLID = 1024;
 
     private int flags() {
         return (multiDraw ? MULTI : 0) | (overdraw ? OVERDRAW : 0) | (emission ? EMISSION : 0) | (cover ? COVER : 0)
                 | (fold ? FOLD : 0) | (depth ? DEPTH : 0) | (volume ? VOLUME : 0) | (normals ? NORMALS : 0)
-                | (skinned ? SKINNED : 0) | (customData ? CUSTOM_DATA : 0);
+                | (skinned ? SKINNED : 0) | (customData ? CUSTOM_DATA : 0) | (solid ? SOLID : 0);
     }
 
     /**
@@ -509,6 +513,25 @@ public final class CgPipeline {
                     .depth(CgDepthState.NONE).cull(state.getCull()).colorMask(CgColorMask.ALL).build();
             made = INTERNED.computeIfAbsent(new Key(shader, pass, passName, keywords, covering, kind, flags() | COVER), CgPipeline::register);
             occluding = made;
+        }
+        return made;
+    }
+
+    /**
+     * This Forward pipeline writing full coverage, alpha 1, whatever its fragment wrote
+     * ({@link CgMaterialShaderCompiler#SOLID_COVER}): an opaque or masked draw redrawn into a graded layer, which hides
+     * all that is behind it there as it does in the scene. Null for another pass or an MRT output. Any thread.
+     */
+    @Nullable
+    public CgPipeline solidCover() {
+        if (solid) return this;
+        if (pass != CgRenderPassVariant.FORWARD || overdraw || emission || cover || fold || depth || volume || normals) return null;
+        CgPipeline made = solidified;
+        if (made == null) {
+            CgParsedPass own = ownPass(shader.ensureParsed());
+            if (own == null || own.fragOutput().isMrt()) return null;
+            made = INTERNED.computeIfAbsent(new Key(shader, pass, passName, keywords, state, kind, flags() | SOLID), CgPipeline::register);
+            solidified = made;
         }
         return made;
     }

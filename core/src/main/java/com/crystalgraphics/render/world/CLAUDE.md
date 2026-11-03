@@ -160,7 +160,10 @@
   marked `Draw.grade(look)` is drawn again into an RGBA16F layer of its look's beside the host's depth, cleared, tested at
   LEQUAL and unwritten, through the programs the transparent pass drew it with (folded or with its glow), under
   `layered(pipeline)`: its colour blend kept, its alpha the coverage (over for a blend that covers, nothing for one that
-  adds); a multiply has no layer form and keeps the frame's look, as half-size draws do. At most `CgGradeLayers.MAX`
+  adds); a multiply has no layer form and keeps the frame's look, as half-size draws do. A graded opaque or masked draw
+  (drawn in the opaque firing) is drawn into its layer too, as its `CgPipeline.solidCover()` form, coverage 1 whatever
+  alpha it writes, tested against the depth it wrote (an effect material's vertex stage is `invariant gl_Position`); the
+  layers record in every transparent firing under the scene, transparent draws or none. At most `CgGradeLayers.MAX`
   looks a frame, each keeping its slot while it draws; published as `CgGradeLayers.KEY`, which the post stack blooms
   and tones by each look alone. A host lending no depth to share gets none, warned once.
 - **The emissive state is ONE ONE, never `CgBlendState.ADDITIVE`** (SRC_ALPHA ONE): emission is written with an

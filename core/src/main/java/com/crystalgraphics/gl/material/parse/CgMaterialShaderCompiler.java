@@ -168,6 +168,12 @@ public final class CgMaterialShaderCompiler {
     public static final String SCENE_FOLD = "CG_SCENE_FOLD";
 
     /**
+     * The engine's keyword for a Forward pass writing full coverage, alpha 1, whatever its fragment wrote: an opaque or
+     * masked draw redrawn into a graded layer, where it hides all that is behind it.
+     */
+    public static final String SOLID_COVER = "CG_SOLID_COVER";
+
+    /**
      * The engine's keyword for a {@code "Depth" = "Prepass"} material's Forward pass drawn into depth alone: its
      * fragment runs until {@code cg_Clip}, which discards below the threshold and otherwise returns there.
      */
@@ -659,8 +665,10 @@ public final class CgMaterialShaderCompiler {
         appendGlobalDecls(sb, codeLines);
 
         // Its prepass and its colour are two programs over one vertex body: invariance lands them on the same depth.
-        // A custom-data writer's redraw is tested against its colour draw's depth, so it needs the same.
-        if (shader.depthMode() == CgParsedShader.DepthMode.PREPASS || shader.writesCustomData()) {
+        // A custom-data writer's redraw is tested against its colour draw's depth, so it needs the same, as does an
+        // effect's (rows) opaque or masked draw redrawn into its graded layer.
+        if (shader.depthMode() == CgParsedShader.DepthMode.PREPASS || shader.writesCustomData()
+                || shader.engineBuffers().contains(CgShaderParser.ROWS)) {
             sb.append("invariant gl_Position;\n");
         }
 
@@ -789,6 +797,11 @@ public final class CgMaterialShaderCompiler {
                     + "  float _cg_eye = cg_LinearEyeDepth(gl_FragCoord.z);\n"
                     + "  _cg_normalOut = dot(_cg_n, _cg_n) > 1.0e-12 ? vec4(normalize(gl_FrontFacing ? _cg_n : -_cg_n) * 0.5 + 0.5, _cg_eye)"
                     + " : vec4(0.0, 0.0, 0.0, -_cg_eye);\n");
+        }
+        if (config.activeKeywords().contains(SOLID_COVER) && !normals && !volume && !cover
+                && CgParsedPass.LIGHT_MODE_FORWARD.equals(pass.lightMode()) && !pass.fragOutput().isMrt()) {
+            int close = sb.lastIndexOf("}");
+            sb.insert(close, "  _cg_fragColor.a = 1.0;\n");
         }
         if (config.activeKeywords().contains(CUSTOM_DATA_TARGET) && !normals && !volume && merge == EmissionMerge.NONE
                 && CgParsedPass.LIGHT_MODE_FORWARD.equals(pass.lightMode()) && !pass.fragOutput().isMrt()) {

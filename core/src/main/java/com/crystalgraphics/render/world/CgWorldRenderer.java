@@ -987,6 +987,14 @@ public final class CgWorldRenderer {
                 if (settings.mergeEmission()) ready &= builtAs(skinned, forward.emissionCover(), joins);
                 ready &= builtAs(skinned, forward.emissionOccluder(), joins);
             }
+            if (forward != null && settings.hdrScene() && link.getRenderQueue() < CgRenderQueue.TRANSPARENT_THRESHOLD
+                    && link.readsExposure()) {
+                // An effect's opaque or masked draw graded: its Forward pass covering its layer, and its glow
+                ready &= builtAs(skinned, layered(forward.solidCover()), joins);
+                if (link.hasEmissivePass()) {
+                    ready &= builtAs(skinned, layered(link.pipeline(CgRenderPassVariant.EMISSIVE, CgInstanceKind.OBJECT)), joins);
+                }
+            }
             if (forward != null && settings.hdrScene() && link.getRenderQueue() >= CgRenderQueue.TRANSPARENT_THRESHOLD) {
                 // A graded draw's layer: its Forward pass, folded or with its glow, under the layer's blend
                 ready &= builtAs(skinned, layered(forward), joins);
@@ -1995,9 +2003,10 @@ public final class CgWorldRenderer {
                 }
                 if (distorting > 0) distortion.recordFinal(stage, recording, hazes);
                 if (afterDrawn > 0) recordPass(stage, recording, constants, TRANSPARENT_STATE, false, true, view, emission, scene);
-                if (scene) recordGradeLayers(stage, recording, view, constants);
                 passes.close();
             }
+            // With nothing transparent too: a graded opaque or masked draw has its layer all the same
+            if (scene) recordGradeLayers(stage, recording, view, constants);
             if (opaqueScene) sceneTarget.recordOpaqueOut(stage);
             CgTrace.Zone after = CgTrace.zone(CgChannels.WORLD, REC_AFTER);
             if (which == TRANSPARENT && !scene) recordEmission(stage, recording, view, emission, emission != null ? EMIT_AFTER : EMIT_ALL);
@@ -2961,6 +2970,8 @@ public final class CgWorldRenderer {
     /** Each slot's look, kept while it draws so its baked table stays baked; and whether it drew this firing. */
     private final CgPostSettings[] gradeSlots = new CgPostSettings[CgGradeLayers.MAX];
     private final boolean[] gradeSeen = new boolean[CgGradeLayers.MAX];
+    /** Per draw this firing, whether it goes into its look's layer; grown with the draws. */
+    private boolean[] inLayer = new boolean[64];
     private final CgGraphTexture[] gradeTargets = new CgGraphTexture[CgGradeLayers.MAX];
     private final int[] gradeSizes = new int[CgGradeLayers.MAX * 2];
     /** Each pipeline's layer form; itself where it has none (a multiply), so the answer is asked once. */
@@ -2973,14 +2984,21 @@ public final class CgWorldRenderer {
      */
     private void recordGradeLayers(CgStageFrame stage, CgRecording recording, CgHostView view, CgPassConstants constants) {
         Arrays.fill(gradeSeen, false);
+        if (inLayer.length < count) inLayer = new boolean[Math.max(count, inLayer.length * 2)];
+        // This firing's transparent draws, and the opaque and masked ones the opaque firing drew: each hides what is
+        // behind it in the scene, so its layer holds it too
+        for (int i = 0; i < count; i++) {
+            inLayer[i] = grades[i] != null && (phase[i] != SKIP ? !halfSize(i)
+                    : queues[i] < CgRenderQueue.TRANSPARENT_THRESHOLD && classify(i, OPAQUE, view) != SKIP);
+        }
         boolean any = false;
         for (int i = 0; i < count; i++) {
-            if (grades[i] == null || phase[i] == SKIP || halfSize(i)) continue;
+            if (!inLayer[i]) continue;
             for (int k = 0; k < CgGradeLayers.MAX; k++) if (gradeSlots[k] == grades[i]) gradeSeen[k] = any = true;
         }
         for (int i = 0; i < count; i++) {
             CgPostSettings g = grades[i];
-            if (g == null || phase[i] == SKIP || halfSize(i) || slotOf(g) >= 0) continue;
+            if (!inLayer[i] || slotOf(g) >= 0) continue;
             int free = -1;
             for (int k = 0; k < CgGradeLayers.MAX && free < 0; k++) if (!gradeSeen[k]) free = k;
             if (free < 0) {
@@ -3016,13 +3034,23 @@ public final class CgWorldRenderer {
             mediated(pass);
             CgChunkBuilder chunks = recording.chunks().begin();
             for (int i = 0; i < count; i++) {
-                if (grades[i] != gradeSlots[k] || phase[i] == SKIP || halfSize(i)) continue;
+                if (!inLayer[i] || grades[i] != gradeSlots[k]) continue;
                 modelOf(i, view);
                 model.normal(normal);
                 boolean glows = emissions[i] > 0f && queues[i] < CgRenderQueue.OVERLAY_THRESHOLD;
+                boolean solid = queues[i] < CgRenderQueue.TRANSPARENT_THRESHOLD;
                 for (CgMaterial link = materials[i]; link != null; link = link.getNextPass()) {
                     CgPipeline pipeline = link.pipeline(CgInstanceKind.OBJECT);
                     if (pipeline == null) continue;
+                    if (solid) {
+                        // It covers what is behind it whatever alpha its fragment writes; its glow adds, as before
+                        // the transparent pass, into the scene
+                        layerDraw(chunks, pipeline.solidCover(), link, recording, i);
+                        if (glows && link.hasEmissivePass()) {
+                            layerDraw(chunks, link.pipeline(CgRenderPassVariant.EMISSIVE, CgInstanceKind.OBJECT), link, recording, i);
+                        }
+                        continue;
+                    }
                     // The same programs the transparent pass drew it with, so the layer holds what it added there
                     if (glows && link.hasEmissivePass()) {
                         CgPipeline folded = mergeEmission ? pipeline.sceneFold() : null;
