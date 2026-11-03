@@ -1345,9 +1345,12 @@ public final class CgMaterialShaderCompiler {
                 sb.append("  _cg_fragColor.rgb += _cg_glow.rgb;\n");
             }
             if ((forward || emissive) && dimsInMedia(shader, pass)) appendMediaDim(sb, pass, emissive, merge);
-            // The draw's exposure scales linear light: a Linear colour, an Emissive pass, a merged glow
+            // The draw's exposure scales linear light: a Linear colour, an Emissive pass, a merged glow. Never a modulate
+            // factor, which is no light (BasePassPixelShader.usf skips PreExposure under MATERIALBLENDING_MODULATE)
             if (!cover && shader.engineBuffers().contains(CgShaderParser.ROWS)) {
-                if (emissive || forward && shader.linearLight()) sb.append("  _cg_fragColor.rgb *= _cg_Exposure;\n");
+                if (emissive || forward && shader.linearLight() && fogMode(pass) != 3) {
+                    sb.append("  _cg_fragColor.rgb *= _cg_Exposure;\n");
+                }
                 if (forward && (merge == EmissionMerge.SAME_BLEND || merge == EmissionMerge.ADDED)) {
                     sb.append("  _cg_emission.rgb *= _cg_Exposure;\n");
                 }

@@ -281,6 +281,10 @@ public class CgMaterialShaderCompilerTest {
         assertTrue("a rows draw's linear light times its exposure, before the encode",
                 exposed.indexOf("_cg_fragColor.rgb *= _cg_Exposure;") >= 0
                         && exposed.indexOf("_cg_fragColor.rgb *= _cg_Exposure;") < exposed.indexOf("if (CG_ENCODED_TARGET)"));
+        String modulate = CgMaterialShaderCompiler.compile(parse(MINIMAL.replace("#type spatial\n",
+                "#type spatial\n#pragma cg_use rows\nTags { \"ColorSpace\" = \"Linear\" }\n")
+                .replace("Pass {\n", "Pass {\n    RenderState { Blend DST_COLOR ZERO }\n")), NO_BUFFERS).fragmentSource();
+        assertFalse("a modulate factor is no light: never exposed", modulate.contains("_cg_fragColor.rgb *= _cg_Exposure;"));
         String target = CgMaterialShaderCompiler.compile(
                 parse(MINIMAL.replace("#type spatial\n", "#type spatial\nTags { \"ColorSpace\" = \"Target\" }\n")), NO_BUFFERS)
                 .fragmentSource();

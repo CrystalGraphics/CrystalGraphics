@@ -507,7 +507,8 @@ fragColor = _Color * _Bands(1);    // read as always: the row's value where boun
   every shader, with `rows` or without.
 - The VFX engine is the binder: a renderer's `bind` ([`vfx/effects.md`](vfx/effects.md) § *Constants, binds and keywords*).
 - **`_cg_Exposure`** is every rows shader's, 1 by default: the generated `main` multiplies a `"ColorSpace" = "Linear"`
-  Forward colour (its folded glow with it), an Emissive pass and a merged emission by it, before the encode. The VFX engine
+  Forward colour (its folded glow with it), an Emissive pass and a merged emission by it, before the encode; never a
+  modulate blend's colour, a factor rather than light (Unreal's pre-exposure skips it the same way). The VFX engine
   writes its effect's `exposure(...)` there for a shader that reads it (`CgMaterial.readsExposure()`): a game's effect
   authored under that game's camera exposure.
 
