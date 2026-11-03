@@ -187,8 +187,8 @@ public final class CgRenderDemo {
 
     private boolean installed;
     private final Scene[] scenes = new Scene[kinds.length];
-    /** Frames each scene has waited for its programs since it was built; -1 once warmed. */
-    private final int[] warmFrames = new int[kinds.length];
+    /** When each scene was built, in nanoseconds; -1 once warmed. Polled many times a frame, so timed, not counted. */
+    private final long[] warmFrom = new long[kinds.length];
     private int current = -1, wanted;
     /** The scene {@link #prewarm} built and is waiting on, or -1; {@code allWarm} once every scene is warmed. */
     private int prewarming = -1;
@@ -281,7 +281,7 @@ public final class CgRenderDemo {
         long start = System.nanoTime();
         scenes[i] = kinds[i].make().get();
         scenes[i].precache();
-        warmFrames[i] = 0;
+        warmFrom[i] = System.nanoTime();
         LOGGER.info("[CgRenderDemo] {} built in {} ms", kinds[i].name(), (System.nanoTime() - start) / 1_000_000);
     }
 
@@ -592,15 +592,12 @@ public final class CgRenderDemo {
         scenes[current].submit(CgWorldRenderer.get(), view, anchorX + 0.5, anchorY, anchorZ + 0.5, seconds);
     }
 
-    /** Whether scene {@code i}'s programs are built, polling them and counting the frames it waits. */
+    /** Whether scene {@code i}'s programs are built, polling them. */
     private boolean warm(int i) {
-        if (warmFrames[i] < 0) return true;
-        if (!scenes[i].ready()) {
-            warmFrames[i]++;
-            return false;
-        }
-        LOGGER.info("[CgRenderDemo] {} warmed after {} frames", kinds[i].name(), warmFrames[i]);
-        warmFrames[i] = -1;
+        if (warmFrom[i] < 0) return true;
+        if (!scenes[i].ready()) return false;
+        LOGGER.info("[CgRenderDemo] {} warmed {} ms after its build", kinds[i].name(), (System.nanoTime() - warmFrom[i]) / 1_000_000);
+        warmFrom[i] = -1;
         return true;
     }
 
