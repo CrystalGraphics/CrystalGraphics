@@ -105,6 +105,8 @@ public final class CgLoadingScreen {
             "The longest the loading screen shows for a process still loading before it holds anyway, warning which.");
     /** How long the screen takes to fade out after it hides, as Minecraft's loading overlay fades. */
     private static final long FADE_NANOS = 1_000_000_000L;
+    /** How long past the fade the watchdog still names what holds the render thread. */
+    private static final long WATCH_AFTER_FADE_NANOS = 2_000_000_000L;
 
     private static final Logger LOGGER = LogManager.getLogger(CgLoadingScreen.class);
     private static final int SHOWN = CgTrace.name("loading.shown");
@@ -351,7 +353,8 @@ public final class CgLoadingScreen {
         }
         reportAfterHide(now);
         CgWarmBudget.loading(shown());
-        CgLoadWatchdog.arm(shown());
+        // Through the fade-out and a little after: a hold there freezes the screen as it leaves
+        CgLoadWatchdog.arm(shown() || hiddenAt != 0L && now - hiddenAt < FADE_NANOS + WATCH_AFTER_FADE_NANOS);
         worldFired = false;
         targetProgress = state == State.LOADING ? Math.max(targetProgress, CgLoadTracker.progress(now)) : 1f;
         if (shown() && LOG_PROGRESS.get() && now - lastProgressLog >= 1_000_000_000L) {
