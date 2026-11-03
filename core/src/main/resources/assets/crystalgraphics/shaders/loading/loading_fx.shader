@@ -89,7 +89,9 @@ Pass {
         // The window's edge, where the whole sky is squeezed into a bright ring
         col += vec3(0.70, 0.92, 1.00) * exp(-pow((sinT2 - 0.95) / 0.10, 2.0)) * 0.18;
         // Fine bright lines where the ripples cross one angle: the light lines seen looking up from a pool
-        col += vec3(0.88, 0.98, 1.00) * exp(-pow((sinT2 - 0.75) / 0.03, 2.0)) * 0.32 / (1.0 + dist * 0.4);
+        // Wider toward the horizon, keeping their light, or the far ones stack into horizontal stripes
+        float lineWidth = 0.03 * (1.0 + dist * 0.5);
+        col += vec3(0.88, 0.98, 1.00) * exp(-pow((sinT2 - 0.75) / lineWidth, 2.0)) * 0.32 / (1.0 + dist * 0.4);
         return mix(col, vec3(0.22, 0.60, 1.00), 1.0 - exp(-dist * 0.16));
     }
 
