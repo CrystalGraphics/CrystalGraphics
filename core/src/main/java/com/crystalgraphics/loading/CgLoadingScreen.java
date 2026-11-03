@@ -230,6 +230,13 @@ public final class CgLoadingScreen {
         return hostDraws;
     }
 
+    /** Asks the view whether it draws whole yet, until it does: each ask advances its build a step. */
+    private static void askView(long now) {
+        if (viewReady || !(viewReady = view.ready())) return;
+        LOGGER.info("[loading] the view is ready after {} ms{}", (now - shownAt) / 1_000_000L,
+                held == null ? ", under the host's loading screen" : ", after the host's first screen opened");
+    }
+
     /** Hidden and its fade-out over: drawn to the end, or out of time. */
     private static boolean fadedOut(long now) {
         return !shown() && hiddenAt != 0L && (left >= FADE_OUT || now - hiddenAt >= FADE_OUT_LATEST_NANOS);
@@ -385,6 +392,9 @@ public final class CgLoadingScreen {
         }
         reportAfterHide(now);
         CgWarmBudget.loading(shown());
+        // From the engine's start, not the first draw: a host draws nothing of it while its own loading screen is up,
+        // and a view first asked then showed the host's first screen for half a second as it built
+        if (shown()) askView(now);
         // Through the fade-out and a little after: a hold there freezes the screen as it leaves
         CgLoadWatchdog.arm(shown() || hiddenAt != 0L && (!fadedOut(now) || now - hiddenAt < (long) (FADE_OUT * 1e9f) + WATCH_AFTER_FADE_NANOS));
         worldFired = false;
@@ -421,8 +431,9 @@ public final class CgLoadingScreen {
         if (shown()) {
             // Not while the engine's programs build behind it: a world firing would draw passes not built yet
             warm = !worldFired && !CgWorldRenderer.get().booting();
-            // Nothing of its own until the view draws whole: the host's screen shows meanwhile
-            if (!viewReady) viewReady = view.ready();
+            // Nothing of its own until the view draws whole: the host's screen shows meanwhile. Asked here too, not
+            // only in frame(): each ask advances its build a step, and the workers had the frame's GUI since
+            askView(now);
             if (viewReady) appeared += step;
         } else {
             if (hiddenAt == 0L || !viewReady || fadedOut(now)) return;

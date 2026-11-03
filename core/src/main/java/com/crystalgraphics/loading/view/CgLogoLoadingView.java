@@ -216,10 +216,14 @@ public final class CgLogoLoadingView implements CgLoadingView {
     @Nullable private CgJob<Integer> lockupLoad;
     private boolean ready;
 
-    /** Starts the lockup decoding on a worker and the lines' font's lookup. */
+    /**
+     * Starts its shader building and the lockup decoding, ahead of the engine's own boot list, and the lines' font's
+     * lookup: until both are done the host's first screen shows where this screen will be.
+     */
     @Override
     public void warm(int width, int height) {
         loadLockup();
+        ready = CgMaterial.load(FX).pipeline(CgInstanceKind.QUAD).precache() && lockupLoad.isDone();
         if (SHOW_TASKS.get()) lookUpFace();
     }
 
@@ -235,7 +239,7 @@ public final class CgLogoLoadingView implements CgLoadingView {
     private void loadLockup() {
         if (lockupLoad != null) return;
         CgTexture2D t = texture();
-        lockupLoad = CgJob.lane(CgJobLane.BACKGROUND).named("loading screen lockup").run(() -> t.getWidth());
+        lockupLoad = CgJob.lane(CgJobLane.LATENCY).named("loading screen lockup").run(() -> t.getWidth());
     }
 
     private CgTexture2D texture() {

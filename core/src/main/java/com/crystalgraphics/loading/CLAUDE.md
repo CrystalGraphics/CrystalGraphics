@@ -52,7 +52,9 @@ parallel mod loading with its `enqueueWork`, Unreal's slow-task progress and its
 - **Anything that stands the engine down hides it** (`hideNow`), so a held opening never waits forever.
 - **The screen draws nothing of its own until its view is `ready()`** (its shaders built, its textures loaded): the
   host's own loading screen stays up meanwhile, and the fade-in starts at the first frame drawn whole. Its first frame
-  built `loading_fx` at the draw and waited half a second on its pipelines (26.2, Vulkan).
+  built `loading_fx` at the draw and waited half a second on its pipelines (26.2, Vulkan). The view starts its build
+  in `warm` and is asked from the engine's start and again at each draw, each ask a step of it: asked only at the
+  first draw, which a host makes once its own loading screen ends, its first screen showed half a second first.
 - **The fades run on frames, not the clock**: each frame moves them a 30th of a second at most, so a held frame shows
   every stage of them rather than skipping to the end. The fade-out is over 5 s after the hide whatever was drawn, so
   a host that stops drawing still gets its opening.
