@@ -59,9 +59,25 @@ public class CgMaterialDefinitionsTest {
             "    void fragment(in v2f i, out vec4 fragColor) { fragColor = vec4(_Clip); }",
             "}");
 
+    private static final String MESH_SPECK = "test:shaders/mesh_speck.shader", SPRITE = "test:shaders/sprite.shader";
+
+    /** A particle program with no usage keyword: {@code #type} decides which factory places it. */
+    private static String particle(String type) {
+        return String.join("\n",
+                "#type " + type,
+                "#pragma cg_use particle",
+                "Queue = \"Transparent\"",
+                "Pass {",
+                "    void vertex(out v2f o) { gl_Position = cg_material_project(cg_material_vertex()); }",
+                "    void fragment(in v2f i, out vec4 fragColor) { fragColor = vec4(1.0); }",
+                "}");
+    }
+
     static final CgMaterialArchetypes ARCHETYPES = new CgMaterialArchetypes() {
         @Override
         public CgParsedShader parse(String path) {
+            if (path.equals(MESH_SPECK)) return CgShaderParser.parse(particle("spatial"), path);
+            if (path.equals(SPRITE)) return CgShaderParser.parse(particle("none"), path);
             if (path.equals(FX) || path.equals(POST)) return CgShaderParser.parse(SOURCE, path);
             if (path.equals(DECAL)) return CgShaderParser.parse(DECAL_SOURCE, path);
             throw new IllegalArgumentException(path + " is not a shader");
@@ -103,6 +119,15 @@ public class CgMaterialDefinitionsTest {
     }
 
     @Test
+    public void aParticleProgramWithNoUsageKeywordIsDrawnByEachFactory() {
+        // A #type spatial one drawn as sprites once read vertex data the quads have none of, and drew nothing
+        CgMaterialDefinitions.compile(asset("test:speck", tree("shader", MESH_SPECK, "usage",
+                Arrays.asList("sprites", "mesh_particles", "ribbons")), null), ARCHETYPES);
+        assertTrue(ARCHETYPES.parse(MESH_SPECK).implicitFeatures().contains("FX_ON_SPRITES"));
+        CgMaterialDefinitions.compile(asset("test:sprite", tree("shader", SPRITE, "usage", Arrays.asList("sprites", "ribbons")), null), ARCHETYPES);
+    }
+
+    @Test
     public void aRootCompilesItsKeyConstantsTexturesAndRows() {
         CgMaterialDefinition d = CgMaterialDefinitions.compile(root(), ARCHETYPES);
         assertEquals(FX, d.permutation().shader());
@@ -114,7 +139,8 @@ public class CgMaterialDefinitionsTest {
         assertEquals(0, d.rows().slot("_Color"));
         assertEquals(1, d.rows().slot("_Bands"));
         assertEquals(4, d.rows().slot("_Speed"));
-        assertEquals(5, d.rows().vec4s());
+        assertEquals("every rows shader's exposure", 5, d.rows().slot("_cg_Exposure"));
+        assertEquals(6, d.rows().vec4s());
         assertEquals(-1, d.rows().slot("_MainTex"));
     }
 

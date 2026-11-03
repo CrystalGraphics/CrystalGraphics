@@ -207,18 +207,20 @@ public final class CgMaterialDefinitions {
         if (usage.isEmpty()) usage.add(CgMaterialUsage.STATIC_MESH);
         Set<CgMaterialUsage> serves = EnumSet.noneOf(CgMaterialUsage.class);
         for (CgMaterialUsage u : CgMaterialUsage.values()) {
-            // Every particle program takes FX_ON_RIBBONS undeclared (CgMaterialShaderCompiler.STRIP): it says nothing.
-            if (u.keyword() != null && u != CgMaterialUsage.RIBBONS && parsed.featureNames().contains(u.keyword())) serves.add(u);
+            // What a particle program takes undeclared (CgParsedShader.implicitFeatures) says nothing of what it serves
+            String k = u.keyword();
+            if (k != null && parsed.featureNames().contains(k) && !parsed.implicitFeatures().contains(k)) serves.add(u);
         }
         boolean particles = parsed.engineBuffers().contains("particle");
+        // With no usage keyword a particle program is placed by each particle factory
         if (!serves.isEmpty()) serves.add(CgMaterialUsage.STATIC_MESH);
         else if (particles) serves.addAll(EnumSet.of(CgMaterialUsage.SPRITES, CgMaterialUsage.MESH_PARTICLES, CgMaterialUsage.RIBBONS));
         else serves.addAll(EnumSet.of(CgMaterialUsage.STATIC_MESH, CgMaterialUsage.SKELETAL_MESH));
         for (CgMaterialUsage u : usage) {
             if (!serves.contains(u)) {
-                throw new CgAssetException(id + " is used with " + u.fileName() + ", which " + shader + " is not compiled"
-                        + " for: " + (u.keyword() == null ? "it is a particle program (#pragma cg_use particle)"
-                        : "it declares no #pragma cg_feature " + u.keyword()));
+                String why = u.keyword() == null ? "it is a particle program (#pragma cg_use particle)"
+                        : "it declares no #pragma cg_feature " + u.keyword();
+                throw new CgAssetException(id + " is used with " + u.fileName() + ", which " + shader + " is not compiled for: " + why);
             }
         }
         return Collections.unmodifiableSet(usage);

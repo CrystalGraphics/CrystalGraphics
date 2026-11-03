@@ -26,7 +26,9 @@ import java.util.Locale;
  *
  * <ul>
  *   <li>An archetype declaring no usage keyword is drawn by one kind alone: by particles (sprites, mesh particles,
- *       ribbons) when it declares {@code #pragma cg_use particle}, else by meshes.</li>
+ *       ribbons) when it declares {@code #pragma cg_use particle}, else by meshes. Such a particle program takes
+ *       {@code FX_ON_SPRITES} undeclared, as it takes the strips', so its sprites are placed by the sprite factory
+ *       whatever its {@code #type}.</li>
  *   <li>A usage its archetype cannot serve fails the material at load; a draw outside its usages fails the drawer at
  *       load ({@link CgMaterialDefinition#requireUsage}).</li>
  * </ul>

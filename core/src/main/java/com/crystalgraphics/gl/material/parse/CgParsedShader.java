@@ -116,7 +116,10 @@ import java.util.Objects;
  *     its last tagged {@code "Target"} and {@code "Scale"}. Empty for any other shader.
  * @param emissionInput
  *     The {@code sampler2D} property a post material reads what glows through, by its material-level
- *     {@code "Emission"} tag; null when absent.
+ *     {@code "Emission"} tag; null when absent. * @param implicitFeatures
+ *     The keywords in {@link #featureNames} it was given undeclared: every particle program takes each vertex factory's
+ *     (the strips, and the sprites' where it declares no usage keyword), as Unreal compiles a material once per factory
+ *     it is used with. What it serves is judged by the rest.
  */
 @Desugar
 public record CgParsedShader(String shaderType, List<CgMaterialProperty> properties,
@@ -128,7 +131,8 @@ public record CgParsedShader(String shaderType, List<CgMaterialProperty> propert
                               boolean emissiveOpacity,
                               DepthMode depthMode, @Nullable Tube tube,
                               List<CgParsedPass> passes, List<CgBufferDecl> buffers, String bufferStructs,
-                              List<PostTarget> postTargets, @Nullable String emissionInput) {
+                              List<PostTarget> postTargets, @Nullable String emissionInput,
+                              List<String> implicitFeatures) {
 
     /**
      * A post material's pass drawing into a texture of its own: {@code scale} of the post target on each side, bound to
@@ -261,7 +265,7 @@ public record CgParsedShader(String shaderType, List<CgMaterialProperty> propert
                 sceneColorMargin, unlit, surfaceLit, handedLights, handedSun, handedScene, writesCustomData,
                 unfogged, linearColor, linearLight, unmediated, emissiveOpacity,
                 state.clip() ? DepthMode.CLIP : unclip ? DepthMode.NONE : depthMode, tube, Collections.unmodifiableList(out),
-                buffers, bufferStructs, postTargets, emissionInput);
+                buffers, bufferStructs, postTargets, emissionInput, implicitFeatures);
     }
 
     /**

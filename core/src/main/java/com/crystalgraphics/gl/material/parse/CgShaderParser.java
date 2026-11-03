@@ -1,6 +1,7 @@
 package com.crystalgraphics.gl.material.parse;
 
 import com.github.bsideup.jabel.Desugar;
+import com.crystalgraphics.api.material.CgMaterialUsage;
 import com.crystalgraphics.api.material.CgRenderQueue;
 import com.crystalgraphics.api.shader.CgShaderPreprocessor;
 import com.crystalgraphics.api.state.CgBlendState;
@@ -239,14 +240,25 @@ public final class CgShaderParser {
         List<String> featureNames      = CgStructureParser.parseFeaturePragmas(source, resourcePath);
         List<String> engineBuffers     = CgEngineBufferRegistry.withRequirements(
                 CgStructureParser.parseUsePragmas(source, resourcePath));
-        // Every particle program takes the strip variant, undeclared: a beam draws a ported material through it.
+        // Every particle program takes the strip variant, undeclared: a beam draws a ported material through it. One
+        // declaring no usage keyword takes the sprite factory's too, which a #type spatial one would otherwise never get.
+        List<String> implicitFeatures = List.of();
         if (engineBuffers.contains("particle")) {
-            List<String> withStrip = new ArrayList<>(featureNames);
-            for (String strip : new String[]{CgMaterialShaderCompiler.STRIP, CgMaterialShaderCompiler.STRIP_BEAM,
-                    CgMaterialShaderCompiler.STRIP_ANIM}) {
-                if (!withStrip.contains(strip)) withStrip.add(strip);
+            List<String> withStrip = new ArrayList<>(featureNames), implicit = new ArrayList<>();
+            List<String> added = new ArrayList<>(List.of(CgMaterialShaderCompiler.STRIP, CgMaterialShaderCompiler.STRIP_BEAM,
+                    CgMaterialShaderCompiler.STRIP_ANIM));
+            boolean usageKeyword = false;
+            for (CgMaterialUsage u : CgMaterialUsage.values()) {
+                if (u.keyword() != null && u != CgMaterialUsage.RIBBONS && featureNames.contains(u.keyword())) usageKeyword = true;
+            }
+            if (!usageKeyword) added.add(CgMaterialUsage.SPRITES.keyword());
+            for (String k : added) {
+                if (withStrip.contains(k)) continue;
+                withStrip.add(k);
+                implicit.add(k);
             }
             featureNames = Collections.unmodifiableList(withStrip);
+            implicitFeatures = Collections.unmodifiableList(implicit);
         }
         CgPermutationDomain permutations = CgPermutationDomain.parse(source, featureNames, resourcePath);
         validateEngineBufferUsage(source, engineBuffers, resourcePath);
@@ -534,7 +546,7 @@ public final class CgShaderParser {
                 buffers.buffers(),
                 buffers.structs(),
                 Collections.unmodifiableList(postTargets),
-                emissionInput);
+                emissionInput, implicitFeatures);
     }
 
     /**
