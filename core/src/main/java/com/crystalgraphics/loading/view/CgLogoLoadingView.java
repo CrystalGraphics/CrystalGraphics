@@ -26,6 +26,7 @@ import com.crystalgraphics.api.texture.CgTextures;
 import com.crystalgraphics.gl.render.CgQuadRenderer;
 import com.crystalgraphics.gl.texture.CgTexture2D;
 import com.crystalgraphics.render.CgImmediate;
+import com.crystalgraphics.render.draw.CgInstanceKind;
 
 /**
  * The engine's loading screen: its lockup (the logo and "Crystal Graphics") over a view up at the ocean's surface from
@@ -211,11 +212,30 @@ public final class CgLogoLoadingView implements CgLoadingView {
         }
     }
 
-    /** Loads the lockup now, at the graphics start, rather than at the first frame, and starts the lines' font. */
+    /** The lockup's decode, on a worker: its upload lands at the next frame. */
+    @Nullable private CgJob<Integer> lockupLoad;
+    private boolean ready;
+
+    /** Starts the lockup decoding on a worker and the lines' font's lookup. */
     @Override
     public void warm(int width, int height) {
-        texture().getWidth();
+        loadLockup();
         if (SHOW_TASKS.get()) lookUpFace();
+    }
+
+    /** Its shader's pipeline built and the lockup loaded. */
+    @Override
+    public boolean ready() {
+        if (ready) return true;
+        loadLockup();
+        boolean fx = CgMaterial.load(FX).pipeline(CgInstanceKind.QUAD).precache();
+        return ready = fx && lockupLoad.isDone();
+    }
+
+    private void loadLockup() {
+        if (lockupLoad != null) return;
+        CgTexture2D t = texture();
+        lockupLoad = CgJob.lane(CgJobLane.BACKGROUND).named("loading screen lockup").run(() -> t.getWidth());
     }
 
     private CgTexture2D texture() {

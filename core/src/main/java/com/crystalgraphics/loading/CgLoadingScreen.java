@@ -103,12 +103,20 @@ public final class CgLoadingScreen {
             "The longest the loading screen holds once nothing loads, however much first-use work goes on.");
     private static final CgVar.Num MAX_LOADING = CgVar.number("crystalgraphics.loading.maxSeconds", 120f, 0f, 3600f,
             "The longest the loading screen shows for a process still loading before it holds anyway, warning which.");
-    /** How long the screen takes to fade out after it hides: its parts leave in turn (CgLogoLoadingView). */
-    private static final long FADE_NANOS = 1_400_000_000L;
-    /** How long it takes to fade in from its first frame, over the host's own loading screen. */
-    private static final long FADE_IN_NANOS = 900_000_000L;
-    /** When the first frame of it was drawn: the fade-in's start. */
-    private static long firstDrawnAt;
+    /** Seconds the screen takes to fade out after it hides: its parts leave in turn (CgLogoLoadingView). */
+    private static final float FADE_OUT = 1.4f;
+    /** Seconds it takes to fade in from its first frame, over the host's own loading screen. */
+    private static final float FADE_IN = 0.9f;
+    /** The most a frame moves either fade: a held frame advances it one frame's worth, never skips it. */
+    private static final float FADE_STEP = 1f / 30f;
+    /** The fade-out is over this long after the hide whatever was drawn: a host that stops drawing it still opens. */
+    private static final long FADE_OUT_LATEST_NANOS = 5_000_000_000L;
+    /** The fade-in's and the fade-out's seconds so far, on frames drawn. */
+    private static float appeared, left;
+    /** The last {@link #draw}'s time, for the fades' steps. */
+    private static long lastDrawn;
+    /** The view answered {@link CgLoadingView#ready}: it draws, and its fade-in runs. */
+    private static boolean viewReady;
     /** How long past the fade the watchdog still names what holds the render thread. */
     private static final long WATCH_AFTER_FADE_NANOS = 2_000_000_000L;
 
@@ -142,12 +150,14 @@ public final class CgLoadingScreen {
     private static boolean worldFired;
     /** The world frame's target while no host draws a world: small, since nobody sees it. */
     private static final int WARM_SIZE = 256;
-    private static final CgFrameBufferFormat WARM_FORMAT = CgFrameBufferFormat.builder("cg_loading_world")
-            .color(0, CgTextureType.RGBA8).depth(CgTextureType.DEPTH24_STENCIL8).build();
     private static final CgRenderStage[] WORLD = {CgRenderStage.WORLD_OPAQUE, CgRenderStage.WORLD_TRANSPARENT};
+    private static final float WARM_FOV = (float) Math.toRadians(70), WARM_NEAR = 0.05f, WARM_FAR = 512f;
     private static final Matrix4f WARM_VIEW = new Matrix4f(),
-            WARM_PROJECTION = new Matrix4f().perspective((float) Math.toRadians(70), 1f, 0.05f, 512f);
+            WARM_PROJECTION = new Matrix4f().perspective(WARM_FOV, 1f, WARM_NEAR, WARM_FAR);
     private static CgFrameBuffer warmTarget;
+    /** The host's world, as {@link #hostWorld} described it: the world frame draws as it does. */
+    private static CgTextureType worldDepth = CgTextureType.DEPTH24_STENCIL8;
+    private static boolean worldReversed, worldZeroToOne;
 
     private CgLoadingScreen() {
     }
@@ -216,8 +226,13 @@ public final class CgLoadingScreen {
 
     /** Whether the host draws this screen itself: from a {@link #holdUntilHidden} until its fade-out ends. */
     public static boolean hostDraws() {
-        if (hostDraws && !shown() && System.nanoTime() - hiddenAt >= FADE_NANOS) hostDraws = false;
+        if (hostDraws && fadedOut(System.nanoTime())) hostDraws = false;
         return hostDraws;
+    }
+
+    /** Hidden and its fade-out over: drawn to the end, or out of time. */
+    private static boolean fadedOut(long now) {
+        return !shown() && hiddenAt != 0L && (left >= FADE_OUT || now - hiddenAt >= FADE_OUT_LATEST_NANOS);
     }
 
     /**
@@ -227,9 +242,9 @@ public final class CgLoadingScreen {
      */
     public static void runHeld() {
         Runnable open = held;
-        if (open == null || shown() || System.nanoTime() - hiddenAt < FADE_NANOS) return;
-        // A frame without the screen shown first: the fade is timed by the clock, so its last frame may still hold the
-        // logo, and the frame the window keeps through a blocking open is the last one presented
+        if (open == null || !fadedOut(System.nanoTime())) return;
+        // A frame without the screen shown first: the frame the window keeps through a blocking open is the last one
+        // presented, and the fade's last frame still holds the logo faintly
         if (!clearedFrame) {
             clearedFrame = true;
             LOGGER.info("[loading] faded out over {} frames, the last {}% through", fadeFrames, Math.round(fadeLastLeave * 100f));
@@ -371,7 +386,7 @@ public final class CgLoadingScreen {
         reportAfterHide(now);
         CgWarmBudget.loading(shown());
         // Through the fade-out and a little after: a hold there freezes the screen as it leaves
-        CgLoadWatchdog.arm(shown() || hiddenAt != 0L && now - hiddenAt < FADE_NANOS + WATCH_AFTER_FADE_NANOS);
+        CgLoadWatchdog.arm(shown() || hiddenAt != 0L && (!fadedOut(now) || now - hiddenAt < (long) (FADE_OUT * 1e9f) + WATCH_AFTER_FADE_NANOS));
         worldFired = false;
         targetProgress = state == State.LOADING ? Math.max(targetProgress, CgLoadTracker.progress(now)) : 1f;
         if (shown() && LOG_PROGRESS.get() && now - lastProgressLog >= 1_000_000_000L) {
@@ -400,25 +415,28 @@ public final class CgLoadingScreen {
      */
     public static void draw(int framebuffer, int width, int height) {
         long now = System.nanoTime();
-        float leave = 0f;
+        float step = lastDrawn == 0L ? 0f : Math.min(FADE_STEP, (now - lastDrawn) / 1e9f);
+        lastDrawn = now;
         boolean warm = false;
         if (shown()) {
             // Not while the engine's programs build behind it: a world firing would draw passes not built yet
             warm = !worldFired && !CgWorldRenderer.get().booting();
+            // Nothing of its own until the view draws whole: the host's screen shows meanwhile
+            if (!viewReady) viewReady = view.ready();
+            if (viewReady) appeared += step;
         } else {
-            long since = now - hiddenAt;
-            if (hiddenAt == 0L || since >= FADE_NANOS) return;
-            leave = since / (float) FADE_NANOS;
+            if (hiddenAt == 0L || !viewReady || fadedOut(now)) return;
+            left += step;
             fadeFrames++;
-            fadeLastLeave = leave;
+            fadeLastLeave = Math.min(1f, left / FADE_OUT);
         }
-        if (firstDrawnAt == 0L) firstDrawnAt = now;
-        float appear = Math.min(1f, (now - firstDrawnAt) / (float) FADE_IN_NANOS);
         try (CgGlScope ignored = CgGlState.save(CgGlSlot.FBO, CgGlSlot.VIEWPORT)) {
             if (warm) warmFrame();
+            if (!viewReady) return;
             CgGL.glBindFramebuffer(CgGL.GL_FRAMEBUFFER, framebuffer);
             CgGL.glViewport(0, 0, width, height);
-            view.draw(width, height, shownProgress, appear, leave, shown() ? reason : null);
+            view.draw(width, height, shownProgress, Math.min(1f, appeared / FADE_IN),
+                    shown() ? 0f : Math.min(1f, left / FADE_OUT), shown() ? reason : null);
         }
     }
 
@@ -427,12 +445,44 @@ public final class CgLoadingScreen {
      * frame, and behind the screen a host may draw none (Minecraft's menus, a harness scene not started).
      */
     private static void warmFrame() {
-        if (warmTarget == null) warmTarget = CgFrameBuffer.create("cg_loading_world", WARM_SIZE, WARM_SIZE, WARM_FORMAT);
-        for (CgRenderStage stage : WORLD) {
-            stage.host().set(0f, WARM_SIZE, WARM_SIZE, warmTarget.getId()).view().set(0, 0, 0, WARM_VIEW, WARM_PROJECTION);
-            stage.fire();
+        if (warmTarget == null) {
+            warmTarget = CgFrameBuffer.create("cg_loading_world", WARM_SIZE, WARM_SIZE, CgFrameBufferFormat
+                    .builder("cg_loading_world").color(0, CgTextureType.RGBA8).depth(worldDepth).build());
+        }
+        if (worldReversed) CgGL.setDepthReversed(true, worldZeroToOne);
+        try {
+            for (CgRenderStage stage : WORLD) {
+                stage.host().set(0f, WARM_SIZE, WARM_SIZE, warmTarget.getId()).view().set(0, 0, 0, WARM_VIEW, WARM_PROJECTION);
+                stage.fire();
+            }
+        } finally {
+            if (worldReversed) CgGL.setDepthReversed(false, worldZeroToOne);
         }
         worldFired = false;
+    }
+
+    /**
+     * How the host draws its world: its target's depth format and its depth convention. The world frame the screen
+     * fires while no world draws then draws as the world will, so what it builds is what the world draws with: on a
+     * Vulkan device a pipeline is built for its target's formats and its depth test. The host's, once, before the
+     * first {@link #draw}; GL's standard depth into {@code DEPTH24_STENCIL8} otherwise. Render thread.
+     *
+     * <pre>{@code
+     * CgLoadingScreen.hostWorld(CgTextureType.DEPTH32F, true, true);   // Minecraft 26.2: reversed, 0..1, D32_FLOAT
+     * }</pre>
+     */
+    public static void hostWorld(CgTextureType depth, boolean reversed, boolean zeroToOne) {
+        if (depth == worldDepth && reversed == worldReversed && zeroToOne == worldZeroToOne) return;
+        worldDepth = depth;
+        worldReversed = reversed;
+        worldZeroToOne = zeroToOne;
+        // A projection built for the pass is built reversed under a reversed convention (CgGL.setDepthReversed)
+        if (reversed) WARM_PROJECTION.setPerspective(WARM_FOV, 1f, WARM_FAR, WARM_NEAR, zeroToOne);
+        else WARM_PROJECTION.setPerspective(WARM_FOV, 1f, WARM_NEAR, WARM_FAR, zeroToOne);
+        if (warmTarget != null) {
+            warmTarget.delete();
+            warmTarget = null;
+        }
     }
 
     /** Whether the hold has seen enough quiet frames, or run as long as it may. */
@@ -565,6 +615,9 @@ public final class CgLoadingScreen {
     private static void hide(long now) {
         state = State.HIDDEN;
         hiddenAt = now;
+        left = 0f;
+        // Never drawn: nothing to fade
+        if (!viewReady) left = FADE_OUT;
         reason = null;
         LOGGER.info("[loading] hidden after {} ms, {} frames ({} ms held)", (now - shownAt) / 1_000_000L, framesShown,
                 (now - holdingAt) / 1_000_000L);

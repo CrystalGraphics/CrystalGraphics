@@ -21,7 +21,7 @@ import javax.annotation.Nullable;
  *   <li>{@code appear} runs 0 to 1 over the fade-in, from the first frame drawn: the host's own loading screen shows
  *       through until it ends.</li>
  *   <li>{@code leave} runs 0 to 1 over the fade-out after the hide: what opens next shows through. Both are linear in
- *       time; the view eases them.</li>
+ *       time, each frame moving them a 30th of a second at most, so a held frame never skips one; the view eases them.</li>
  * </ul>
  */
 @FunctionalInterface
@@ -29,8 +29,8 @@ public interface CgLoadingView {
 
     /**
      * @param progress 0 to 1, smoothed and never backwards
-     * @param appear   0 to 1 over the fade-in, linear in time; 1 once it has ended
-     * @param leave    0 to 1 over the fade-out, linear in time; 0 until the screen hides
+     * @param appear   0 to 1 over the fade-in, linear in frame time; 1 once it has ended
+     * @param leave    0 to 1 over the fade-out, linear in frame time; 0 until the screen hides
      * @param reason   why it shows (the first process still loading, or "holding"); null in the fade-out
      */
     void draw(int width, int height, float progress, float appear, float leave, @Nullable String reason);
@@ -40,5 +40,20 @@ public interface CgLoadingView {
      * so it draws whole. Called once at the graphics start, before the first draw; nothing by default. Render thread.
      */
     default void warm(int width, int height) {
+    }
+
+    /**
+     * Whether {@link #draw} would draw whole now, building and waiting for nothing: its shaders built, its textures
+     * loaded. Until it answers true the screen draws none of itself and its fade-in does not start, so the host's own
+     * loading screen stays up. Polled once a frame until true; true by default. Render thread.
+     *
+     * <pre>{@code
+     * public boolean ready() {
+     *     return CgMaterial.load(FX).pipeline(CgInstanceKind.QUAD).precache() && splash.isDone();
+     * }
+     * }</pre>
+     */
+    default boolean ready() {
+        return true;
     }
 }

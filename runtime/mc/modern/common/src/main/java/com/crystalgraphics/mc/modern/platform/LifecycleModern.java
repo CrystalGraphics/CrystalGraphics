@@ -10,6 +10,7 @@ import com.crystalgraphics.mc.modern.platform.world.WorldEventsModern;
 import com.crystalgraphics.lifecycle.CgGraphicsLifecycle;
 import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.lifecycle.CgLifecycleListener;
+import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.loading.CgLoadingScreen;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.gl.CgGL;
@@ -241,6 +242,12 @@ public final class LifecycleModern {
     /** Our loading screen over the frame, in a host section of its own on the main target. */
     private static void drawLoadingScreen() {
         Minecraft mc = Minecraft.getInstance();
+        // The world frame it fires draws as the world will: 26.2's reversed 0..1 depth into D32_FLOAT, so a Vulkan
+        // pipeline it builds is the world's
+        //? if >=26.2 {
+        /*CgLoadingScreen.hostWorld(CgTextureType.DEPTH32F, true,
+                RenderSystem.getDevice().getDeviceInfo().isZZeroToOne());
+        *///?}
         CgGL.fromHost();
         try {
             CgLoadingScreen.draw(bindMainTarget(mc), Windows.of(mc).getWidth(), Windows.of(mc).getHeight());
