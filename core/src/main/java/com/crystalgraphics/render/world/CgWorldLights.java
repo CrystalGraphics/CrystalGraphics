@@ -1242,7 +1242,10 @@ public final class CgWorldLights {
             applyShaped.enableKeyword("CG_LIGHTS_SHAPED");
             gbufferPass = CgMaterial.newInstance(GBUFFER_SHADER);
         }
-        return applyPoints.precache() & applyShaped.precache() & gbufferPass.precache();
+        // The pipelines the draws bind: a material's precache answered for a program its pipeline still waited on.
+        CgPipeline points = applyPoints.pipeline(CgInstanceKind.OBJECT), shaped = applyShaped.pipeline(CgInstanceKind.OBJECT);
+        if (points == null || shaped == null) return false;
+        return points.precache() & shaped.precache() & gbufferPass.precache();
     }
 
     void apply(CgStageFrame stage, CgRecording recording, boolean transparents, boolean directional) {
