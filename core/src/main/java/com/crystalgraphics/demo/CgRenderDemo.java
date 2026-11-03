@@ -1,11 +1,7 @@
 package com.crystalgraphics.demo;
 
 import com.crystalgraphics.api.font.CgFont;
-import com.crystalgraphics.api.font.CgFontStyle;
-import com.crystalgraphics.api.font.CgGenericFamily;
-import com.crystalgraphics.api.font.CgSystemFontFace;
 import com.crystalgraphics.api.font.CgDefaultFont;
-import com.crystalgraphics.api.font.CgSystemFonts;
 import com.crystalgraphics.api.text.CgTextLayout;
 import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.collision.CgCollisionWorld;
@@ -374,7 +370,7 @@ public final class CgRenderDemo {
     }
 
     private Scene fluid() {
-        if (labelFont == null) labelFont = sansSerif(48);
+        if (labelFont == null) labelFont = CgDefaultFont.regular(48);
         CgVfxFluidDemo fluid = new CgVfxFluidDemo(labelFont, VFX);
         return new Scene() {
             @Override
@@ -405,7 +401,7 @@ public final class CgRenderDemo {
     }
 
     private Scene modules() {
-        if (labelFont == null) labelFont = sansSerif(48);
+        if (labelFont == null) labelFont = CgDefaultFont.regular(48);
         // Built a station a poll: built whole, it held the loading screen 200 ms and more
         CgVfxModules modules = CgVfxModules.stepped(labelFont, VFX);
         return new Scene() {
@@ -891,7 +887,7 @@ public final class CgRenderDemo {
         try {
             int px = Math.round(HUD_PX * Math.max(1f, hudSide / HUD_SIDE));
             if (px != hudPx) {
-                // Outfit, as the harness HUD: the engine's default font, shared, so never disposed
+                // The engine's default font, as the harness HUD: shared, so never disposed
                 hudFont = CgDefaultFont.regular(px);
                 hudPx = px;
                 hudDirty = true;
@@ -936,17 +932,6 @@ public final class CgRenderDemo {
                 + "\nBloom [L]: " + (bloom.intensity() == 0f ? "off" : bloom.linear() ? "linear" : "blend")
                 + String.format(Locale.ROOT, " | Intensity [- =]: %.2f", bloom.intensity())
                 + "\n" + CgVfxDemoControls.get().hudLines(waves);
-    }
-
-    /** The installed sans-serif at {@code px}, or null, logged, when there is none. */
-    private static CgFont sansSerif(int px) {
-        CgSystemFonts fonts = CgSystemFonts.get();
-        CgSystemFontFace face = fonts.generic(CgGenericFamily.SANS_SERIF, CgFontStyle.REGULAR);
-        if (face == null) {
-            LOGGER.warn("[CgRenderDemo] no sans-serif font installed: no labels");
-            return null;
-        }
-        return fonts.load(face, CgFontStyle.REGULAR, px);
     }
 
     // ── capture ───────────────────────────────────────────────────────────────

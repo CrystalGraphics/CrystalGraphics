@@ -207,7 +207,7 @@ public final class CgLogoLoadingView implements CgLoadingView {
 
     private void lookUpFace() {
         if (face == null) {
-            face = CgJob.lane(CgJobLane.BACKGROUND).named("loading screen font").run(() -> CgDefaultFont.unsized(400));
+            face = CgJob.lane(CgJobLane.BACKGROUND).named("loading screen font").run(() -> CgDefaultFont.regular(16));
         }
     }
 

@@ -206,7 +206,7 @@ CgPipelinePrecache.Request arena = CgPipelinePrecache.request(p -> {
     p.add(ARMOUR, false, true);                     // a material a skinned mesh draws
 });
 CgPreload.Request files = CgPreload.request(l -> l.texture(FLOOR_TEXTURE).mesh("mymod:models/arena.glb")
-        .font(() -> CgDefaultFont.unsized(700), 24, 48));    // a title font, its ASCII at the sizes it draws
+        .font(() -> CgDefaultFont.bold(24), 24, 48));    // a title font, its ASCII at the sizes it draws
 
 if (arena.ready() && files.ready()) openArena();   // each frame until both are
 ```

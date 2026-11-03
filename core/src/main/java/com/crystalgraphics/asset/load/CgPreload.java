@@ -79,7 +79,7 @@ public final class CgPreload {
          * open; the glyphs land over the next frames in which nothing on screen waits for one.
          *
          * <pre>{@code
-         * CgPreload.request(l -> l.font(() -> CgDefaultFont.unsized(700), 24, 48));   // a title at 1x and 2x
+         * CgPreload.request(l -> l.font(() -> CgDefaultFont.bold(24), 24, 48));   // a title at 1x and 2x
          * }</pre>
          */
         public Loads font(Supplier<CgFont> font, int... effectivePx) {
