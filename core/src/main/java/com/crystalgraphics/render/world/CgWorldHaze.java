@@ -25,6 +25,11 @@ public final class CgWorldHaze implements CgWorldMedia.Injector {
 
     private static final String KERNELS = "crystalgraphics:shaders/env/compute/media_haze.compute";
 
+    /** Its kernel, for the world's collector: compiled at the first haze otherwise. */
+    static void precacheKernels() {
+        CgCompute.load(KERNELS).kernel("Haze").precache();
+    }
+
     private double minX, minY, minZ, maxX, maxY, maxZ;
     private float density, edge = 1f;
     private CgKernel kernel;

@@ -127,6 +127,12 @@ public final class CgWorldMedia {
     /** What reaches the eye: the light scattered toward it, then what gets through. */
     private static final CgFrameBufferFormat TRANSMIT = CgFrameBufferFormat.builder("cg_world_media.transmit")
             .color(0, CgTextureType.RGBA16F).build();
+    /** Its integration kernel, for the world's collector: compiled at the first smoke otherwise. */
+    static void precacheKernels() {
+        CgKernel columns = CgCompute.load(KERNELS).kernel("IntegrateColumns");
+        (columns.runs() ? columns : CgCompute.load(KERNELS).kernel("Integrate")).precache();
+    }
+
     static final String LIGHT_SHADER = "crystalgraphics:shaders/world_media_light.shader";
     private static final int GPU_LIGHT = CgGpuTrace.name("world.mediaLight");
     private static final CgMesh FULLSCREEN = CgMesh.vertices(3, CgMeshTopology.TRIANGLES);

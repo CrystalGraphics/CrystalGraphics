@@ -112,6 +112,15 @@ public final class CgVfxGridAtlas {
 
     private static final String KERNELS = "crystalgraphics:shaders/env/compute/vfx/grid.compute";
     private static final String MEDIA_KERNELS = "crystalgraphics:shaders/env/compute/vfx/media.compute";
+
+    /** Every kernel a grid dispatches, its media injection's included: what VFX's collector builds while loading. */
+    public static void precacheKernels() {
+        CgCompute file = CgCompute.load(KERNELS);
+        for (String k : new String[] {"Splat", "Rasterize", "Wanted", "Step", "Shade", "Light", "Occupancy", "Coarsen"}) {
+            file.kernel(k).precache();
+        }
+        CgCompute.load(MEDIA_KERNELS).kernel("Grid").precache();
+    }
     private static final int GPU_ZONE = CgGpuTrace.name("vfx.grid");
     private static final int TILE = CgVfxTiles.TILE, LAYER = CgVfxTiles.LAYER, APRON_TILE = CgVfxTiles.APRON_TILE,
             PAGE_TABLE = CgVfxTiles.PAGES * CgVfxTiles.PAGES * CgVfxTiles.PAGES;
@@ -259,8 +268,9 @@ public final class CgVfxGridAtlas {
                 lightKernel = file.kernel("Light");
                 occupancyKernel = file.kernel("Occupancy");
                 coarsenKernel = file.kernel("Coarsen");
+                mediaKernel = CgCompute.load(MEDIA_KERNELS).kernel("Grid");
                 for (CgKernel k : new CgKernel[] {splat, rasterize, wantedKernel, step, shade, lightKernel, occupancyKernel,
-                        coarsenKernel}) {
+                        coarsenKernel, mediaKernel}) {
                     k.precache();
                 }
             }

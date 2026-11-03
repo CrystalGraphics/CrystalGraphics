@@ -23,6 +23,7 @@ import com.crystalgraphics.api.text.CgTextLayout;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.gl.framebuffer.CgFrameBuffer;
+import com.crystalgraphics.compute.CgKernel;
 import com.crystalgraphics.compute.ops.CgCull;
 import com.crystalgraphics.compute.ops.CgCullSets;
 import com.crystalgraphics.compute.ops.CgGpuCount;
@@ -471,7 +472,18 @@ public final class CgWorldRenderer {
         CgPipelinePrecache.register("crystalgraphics:world", list -> {
             list.add(PYRAMID_SHADER);
             CgTextRenderer.precache(list);
+            list.addPass(CgWorldMedia.LIGHT_SHADER);
         });
+        // What the first light, smoke or haze dispatches, compiled at a scene's first frame otherwise; their files parsed
+        // on a worker first: in the collectors' frame they held the loading screen 170 ms
+        CgPipelinePrecache.steps("crystalgraphics:world-kernels").ahead(() -> CgKernel.ahead(CgWorldRenderer::precacheKernels))
+                .step(list -> list.kernels(CgWorldRenderer::precacheKernels)).start();
+    }
+
+    private static void precacheKernels() {
+        CgWorldLights.precacheKernels();
+        CgWorldMedia.precacheKernels();
+        CgWorldHaze.precacheKernels();
     }
 
     private static final String PYRAMID_SHADER = "crystalgraphics:shaders/depth_pyramid.shader";

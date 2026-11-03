@@ -117,6 +117,17 @@ public final class CgVfxFluidAtlas {
 
     private static final String KERNELS = "crystalgraphics:shaders/env/compute/vfx/fluid.compute";
     private static final String MEDIA_KERNELS = "crystalgraphics:shaders/env/compute/vfx/media.compute";
+
+    /** Every kernel a fluid dispatches, its media injection's included: what VFX's collector builds while loading. */
+    public static void precacheKernels() {
+        CgCompute file = CgCompute.load(KERNELS);
+        for (String k : new String[] {"Solids", "AdvectDensity1", "AdvectDensity2", "EmitDensity", "AdvectVelocity1",
+                "AdvectVelocity2", "EmitVelocity", "Vorticity1", "Vorticity2", "Divergence", "Jacobi", "Subtract", "Rest",
+                "Shade", "Detail", "Occupancy", "Deposit"}) {
+            file.kernel(k).precache();
+        }
+        CgCompute.load(MEDIA_KERNELS).kernel("Gas").precache();
+    }
     private static final int GPU_ZONE = CgGpuTrace.name("vfx.fluid");
     private static final CgFrameBufferFormat RGBA16F = format("vfx.fluid.rgba16f", CgTextureType.RGBA16F),
             RG16F = format("vfx.fluid.rg16f", CgTextureType.RG16F), R8 = format("vfx.fluid.r8", CgTextureType.R8);
@@ -381,9 +392,11 @@ public final class CgVfxFluidAtlas {
         detailKernel = file.kernel("Detail");
         occupancyKernel = file.kernel("Occupancy");
         depositKernel = file.kernel("Deposit");
+        // Its smoke in the world's media too: compiled at the first fluid's first frame otherwise
+        mediaKernel = CgCompute.load(MEDIA_KERNELS).kernel("Gas");
         for (CgKernel k : new CgKernel[] {solids, advectDensity1, advectDensity2, emitDensity, advectVelocity1, advectVelocity2,
                 emitVelocity, vorticity1, vorticity2, divergence, jacobi, subtract, restKernel, shadeKernel, detailKernel,
-                occupancyKernel, depositKernel}) {
+                occupancyKernel, depositKernel, mediaKernel}) {
             k.precache();
         }
     }

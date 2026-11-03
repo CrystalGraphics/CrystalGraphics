@@ -1060,6 +1060,13 @@ public final class CgWorldLights {
     }
 
     /** Every light-grid kernel a bin dispatches; inside {@link CgKernel#ahead}, their sources on a worker. */
+    /** Every kernel a lit firing dispatches, for the world's collector: the bin's, the volume's and the air's. */
+    static void precacheKernels() {
+        precacheBin();
+        CgCompute.load(VOLUME_KERNELS).kernel("Fill").precache();
+        CgCompute.load(VOLUME_KERNELS).kernel("Scatter").precache();
+    }
+
     private static void precacheBin() {
         CgCompute kernels = CgCompute.load(KERNELS);
         kernels.kernel("View").precache();
@@ -1590,8 +1597,7 @@ public final class CgWorldLights {
         if (parse == null) {
             // Parsed, emitted and stripped there, so the render thread's precache below only submits
             parse = CgJob.lane(CgJobLane.BACKGROUND).named("light kernels").run(() -> CgKernel.ahead(() -> {
-                precacheBin();
-                CgCompute.load(VOLUME_KERNELS).kernel("Fill").precache();
+                precacheKernels();
             }));
         }
         if (!parse.isDone()) return;
@@ -1626,6 +1632,9 @@ public final class CgWorldLights {
         if (fill != null) return;
         fill = CgCompute.load(VOLUME_KERNELS).kernel("Fill");
         fill.precache();
+        // The air's: lit at the first light while anything is in it, compiled there otherwise
+        scatterKernel = CgCompute.load(VOLUME_KERNELS).kernel("Scatter");
+        scatterKernel.precache();
     }
 
     private void recordVolume(CgStageFrame stage, CgRecording recording, boolean directional) {

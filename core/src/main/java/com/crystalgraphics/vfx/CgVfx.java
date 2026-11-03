@@ -12,6 +12,8 @@ import com.crystalgraphics.platform.world.CgWorldQuery;
 import com.crystalgraphics.render.CgFrameClock;
 import com.crystalgraphics.compute.CgKernel;
 import com.crystalgraphics.render.world.CgPipelinePrecache;
+import com.crystalgraphics.vfx.fluid.CgVfxFluidAtlas;
+import com.crystalgraphics.vfx.grid.CgVfxGridAtlas;
 import com.crystalgraphics.vfx.particle.gpu.draw.CgVfxRange;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.world.CgWorldRenderer;
@@ -139,6 +141,13 @@ public final class CgVfx {
         assets.preparer(CgLookKinds.MATERIAL, new CgMaterialPreparer());
     }
 
+    /** Every kernel the world's system dispatches whatever plays: Range and Place, the grids' and the fluids'. */
+    private static void precacheKernels() {
+        CgVfxRange.precache();
+        CgVfxGridAtlas.precacheKernels();
+        CgVfxFluidAtlas.precacheKernels();
+    }
+
     /** Updates and draws the world's system each world frame from now on, and clears it with the level. Once. */
     public static void install() {
         if (installed) return;
@@ -155,8 +164,11 @@ public final class CgVfx {
         CgCameraShake.schedule();
         // Range and Place draw every pool's particles: built while loading, not at the first burst. Their files parsed
         // and their sources made on a worker first: on the render thread that held a loading frame 100 ms and more.
-        CgPipelinePrecache.steps("crystalgraphics:vfx").ahead(() -> CgKernel.ahead(CgVfxRange::precache))
-                .step(pipelines -> pipelines.kernels(CgVfxRange::precache)).start();
+        // The grids' and fluids' kernels too: an atlas is made at its first element, in a scene's first frame
+        CgPipelinePrecache.steps("crystalgraphics:vfx").ahead(() -> CgKernel.ahead(CgVfx::precacheKernels))
+                .step(pipelines -> pipelines.kernels(CgVfxRange::precache))
+                .step(pipelines -> pipelines.kernels(CgVfxGridAtlas::precacheKernels))
+                .step(pipelines -> pipelines.kernels(CgVfxFluidAtlas::precacheKernels)).start();
         // Characters' clocks the server sends, kept on the level's tick: the effects following them hold and slow.
         CgCharacterClockNet.install(() -> CgRenderStage.WORLD_OPAQUE.host().environment().gameTime());
         CgVfxSystemAssets.register();   // system assets compile to playable definitions
