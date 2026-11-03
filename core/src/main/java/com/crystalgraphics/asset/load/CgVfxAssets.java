@@ -231,9 +231,25 @@ public final class CgVfxAssets {
     private static final int UNPLANNED_LOGGED = 20;
     private long unplanned;
 
-    /** Loads begun in play: {@code asset.unplanned-loads}. 0 once the game declares all it plays (`preload.yaml`). */
+    /** Loads begun in play: {@code asset.unplanned-loads}. 0 when all a game plays is mounted, or declared in a {@code preload.yaml}. */
     public long unplannedLoads() {
         return unplanned;
+    }
+
+    /**
+     * What the asset table holds now, for a log line: ready, failed and still loading, the loads begun in play, and the
+     * heap in use (garbage included: an upper bound on what the assets retain). The asset loop's thread.
+     */
+    public String summary() {
+        int ready = 0, failed = 0, pending = 0;
+        for (CgAssetRef<?> r : refs.values()) {
+            if (r.ready) ready++;
+            else if (r.load != null && r.load.state() == CgAssetState.FAILED) failed++;
+            else if (r.load != null) pending++;
+        }
+        Runtime rt = Runtime.getRuntime();
+        return ready + " ready, " + failed + " failed, " + pending + " still loading, " + unplanned + " loaded in play; heap "
+                + ((rt.totalMemory() - rt.freeMemory()) >> 20) + " MB in use of " + (rt.maxMemory() >> 20);
     }
 
     private void unplanned(CgAssetRef<?> a, List<? extends CgAssetRef<?>> primaries) {

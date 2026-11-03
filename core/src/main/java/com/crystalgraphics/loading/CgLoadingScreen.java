@@ -646,6 +646,7 @@ public final class CgLoadingScreen {
         reason = null;
         LOGGER.info("[loading] hidden after {} ms, {} frames ({} ms held)", (now - shownAt) / 1_000_000L, framesShown,
                 (now - holdingAt) / 1_000_000L);
+        LOGGER.info("[loading] assets at the hide: {}", CgVfxAssets.instance().summary());
         CgTrace.marker(CgChannels.MISC, "loading.hide", framesShown + " frames");
         atHide = firstUseCounts();
         for (String id : openReasons) CgLoadTracker.reasonEnded(id, now);
