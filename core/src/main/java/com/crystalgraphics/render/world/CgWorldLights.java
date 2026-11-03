@@ -961,7 +961,9 @@ public final class CgWorldLights {
                 window.emitters(gatherBlock);
             }
             rayReach = appenders.isEmpty() ? 0f : KERNEL_REACH;
-            if (cpu == 0 && blockCount == 0 && appenders.isEmpty()) {
+            // Lights wait for their kernels as the apply waits for its programs: a dispatch taking one still linking
+            // held the loading screen 100 ms
+            if (cpu == 0 && blockCount == 0 && appenders.isEmpty() || !kernelsBuilt()) {
                 warm();
                 return false;
             }
@@ -1611,6 +1613,12 @@ public final class CgWorldLights {
                 CgBufferDesc.elements(CAPACITY, 80, CgBufferUsage.STORAGE, CgBufferUsage.COPY));
         alloc = CgGraphBuffer.persistent("cg_world_lights.alloc",
                 CgBufferDesc.elements(4, 4, CgBufferUsage.STORAGE, CgBufferUsage.COPY));
+    }
+
+    /** Whether every kernel a lit firing dispatches is built: the bin's and the volume's. Flags, no GL. */
+    private boolean kernelsBuilt() {
+        if (view == null || fill == null || !view.isReady() || !fill.isReady()) return false;
+        return coarse.runs() ? coarse.isReady() && cell.isReady() : countCells.isReady() && writeCells.isReady();
     }
 
     /** The translucency volume's fill kernel, made and started once. */
