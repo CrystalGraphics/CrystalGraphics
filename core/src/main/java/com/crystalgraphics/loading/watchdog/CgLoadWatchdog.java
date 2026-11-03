@@ -15,6 +15,7 @@ import javax.annotation.Nullable;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import com.crystalgraphics.platform.service.CgModLoader;
 import com.crystalgraphics.variable.CgVar;
 
 /**
@@ -52,6 +53,8 @@ public final class CgLoadWatchdog {
             "Milliseconds the render thread may go without a frame while the loading screen shows before the watchdog names who held it; 0 turns it off.");
     private static final CgVar.Bool STRICT = CgVar.bool("crystalgraphics.loading.strict", false, CgVar.DEV,
             "Fail the run at the loading screen's hide when the watchdog saw the render thread held by work.");
+    private static final CgVar.Bool LOG_HOLDS = CgVar.bool("crystalgraphics.loading.logHolds", false, CgVar.DEV,
+            "Log each hold of the render thread while the loading screen shows; always in a dev environment. On in prodSmoke and the harness.");
     private static final Logger LOGGER = LogManager.getLogger(CgLoadWatchdog.class);
     private static final int STACK_LINES = 24, PLACES = 3;
     /** Below this share of a hold on the CPU, the render thread was not running: a wait. */
@@ -212,7 +215,8 @@ public final class CgLoadWatchdog {
             }
             StackTraceElement[] stack = stacks.get(named);
             for (int i = 0; i < Math.min(STACK_LINES, stack.length); i++) s.append("\n    at ").append(stack[i]);
-            LOGGER.warn(s.toString());
+            // Counted always (the hide's summary); named only for developers
+            if (CgModLoader.development() || LOG_HOLDS.get()) LOGGER.warn(s.toString());
         }
     }
 

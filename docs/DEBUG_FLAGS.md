@@ -155,6 +155,7 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 |---|---|---|---|
 | `crystalgraphics.loading.holdFrames` | 0 to 100000 | `30` | Frames in a row with no first-use work the loading screen holds for once nothing loads, before it hides. |
 | `crystalgraphics.loading.logEveryFrame` | true, false | `false` | Log why the loading screen shows on every frame it shows. |
+| `crystalgraphics.loading.logHolds` | true, false | `false` | Log each hold of the render thread while the loading screen shows; always in a dev environment. On in prodSmoke and the harness. |
 | `crystalgraphics.loading.logProgress` | true, false | `false` | Log the bar and the running load tasks once a second while the loading screen shows. |
 | `crystalgraphics.loading.maxHoldSeconds` | 0.0 to 600.0 | `10.0` | The longest the loading screen holds once nothing loads, however much first-use work goes on. |
 | `crystalgraphics.loading.maxSeconds` | 0.0 to 3600.0 | `120.0` | The longest the loading screen shows for a process still loading before it holds anyway, warning which. |

@@ -138,8 +138,9 @@ task.detail("Goku's mesh");               // shown beside its name with showTask
 ## 4. Keeping the loading screen smooth
 
 Every rule here comes from a hold the watchdog found. While the screen shows, the render thread beats once a frame;
-a frame held past `crystalgraphics.loading.stallMs` (100 ms) is sampled and logged as **work** (your code ran) or a
-**wait** (a driver call, swap, fence or sleep).
+a frame held past `crystalgraphics.loading.stallMs` (100 ms) is sampled and classed as **work** (your code ran) or a
+**wait** (a driver call, swap, fence or sleep). Each hold is logged in a dev environment, the harness and prodSmoke
+(`crystalgraphics.loading.logHolds` elsewhere); a player's log keeps only the counts and the timeline at the hide.
 
 **Never on the render thread while loading:**
 
@@ -267,6 +268,7 @@ CgLoadingScreen.add(() -> arena.ready() ? null : "building the arena");         
 | Flag | Use it to |
 |---|---|
 | `-Dcrystalgraphics.loading.stallMs=100` | the watchdog's threshold (0 turns it off); each hold is logged with its CPU time and where it was |
+| `-Dcrystalgraphics.loading.logHolds=true` | log each hold on a player's client; always on in a dev environment, the harness and prodSmoke |
 | `-Dcrystalgraphics.loading.strict=true` | fail the run at the hide when work held the render thread: a gate for CI or a harness |
 | `-Dcrystalgraphics.loading.showTasks=true` | list the running tasks under the bar, owner, name and percent |
 | `-Dcrystalgraphics.loading.logProgress=true` | log the bar and running tasks once a second |
