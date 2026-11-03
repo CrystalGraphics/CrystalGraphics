@@ -53,7 +53,8 @@ import com.crystalgraphics.sequence.spawn.CgSequenceSpawned;
  *       skipped.</li>
  *   <li>A spawnable's tracks wait for {@link #spawnable} to say what it is.</li>
  *   <li>At its range's end it holds its last frame ({@link #finished()}) until stopped.</li>
- *   <li>Its time is its own: the seconds the sequencer has advanced it, times its rate, never dilated by what it keys.</li>
+ *   <li>Its time is its own: the seconds the sequencer has advanced it, on its world's dilated time
+ *       ({@code CgWorld.timeDilation}), times its rate, never dilated by what it keys.</li>
  *   <li>An {@code animation} section naming its clip's {@code notifies} plays that sequence while it plays, on the
  *       clip's time, as Unreal fires a montage segment's notifies: started and ended with the section, sought with
  *       it, its own tracks of that clip skipped. It is a player of its own in the sequencer.</li>

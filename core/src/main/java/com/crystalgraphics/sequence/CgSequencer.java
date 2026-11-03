@@ -106,9 +106,15 @@ public final class CgSequencer extends CgWorldSubsystem {
 
     @Override
     protected void initialize() {
-        // On a server, headless evaluation each game tick (AUTHORITY); on a client, each frame.
-        tick = server() ? world().schedule().add(CgTickGroup.AUTHORITY, "crystalgraphics:sequencer", this::evaluate).onServer(true)
-                : world().schedule().add(CgTickGroup.SEQUENCES, "crystalgraphics:sequencer", this::evaluate);
+        // On a server, headless evaluation each game tick (AUTHORITY); on a client, each frame. On the world's dilated
+        // time, as Unreal's players advance (MovieSceneSequencePlayer.cpp: DeltaSeconds already times the effective
+        // time dilation).
+        tick = server() ? world().schedule().add(CgTickGroup.AUTHORITY, "crystalgraphics:sequencer", this::evaluateDilated).onServer(true)
+                : world().schedule().add(CgTickGroup.SEQUENCES, "crystalgraphics:sequencer", this::evaluateDilated);
+    }
+
+    private void evaluateDilated(float dt) {
+        evaluate(dt * world().timeDilation());
     }
 
     @Override
