@@ -114,6 +114,8 @@ public final class CgLoadingScreen {
     private static float appeared, left;
     /** The last {@link #draw}'s time, for the fades' steps. */
     private static long lastDrawn;
+    /** The last {@link #draw}'s size: the host's window. */
+    private static int windowWidth, windowHeight;
     /** The view answered {@link CgLoadingView#ready}: it draws, and its fade-in runs. */
     private static boolean viewReady;
     /** How long past the fade the watchdog still names what holds the render thread. */
@@ -291,6 +293,25 @@ public final class CgLoadingScreen {
         return state != State.HIDDEN;
     }
 
+    /**
+     * The host's window, as it last drew the screen; 0 before. A world stage the screen fires draws into a 256-pixel
+     * target, so anything sized from the window (a HUD's text) reads it here to warm at its real size.
+     *
+     * <pre>{@code
+     * int side = CgLoadingScreen.shown() && CgLoadingScreen.windowHeight() > 0
+     *         ? Math.min(CgLoadingScreen.windowWidth(), CgLoadingScreen.windowHeight())
+     *         : Math.min(frame.host().width(), frame.host().height());
+     * }</pre>
+     */
+    public static int windowWidth() {
+        return windowWidth;
+    }
+
+    /** See {@link #windowWidth}. */
+    public static int windowHeight() {
+        return windowHeight;
+    }
+
     /** Whether a process is still loading: the world is not drawn behind the screen until it holds. */
     public static boolean loading() {
         return state == State.LOADING;
@@ -433,6 +454,8 @@ public final class CgLoadingScreen {
         long now = System.nanoTime();
         float step = lastDrawn == 0L ? 0f : Math.min(FADE_STEP, (now - lastDrawn) / 1e9f);
         lastDrawn = now;
+        windowWidth = width;
+        windowHeight = height;
         boolean warm = false;
         if (shown()) {
             // Not while the engine's programs build behind it: a world firing would draw passes not built yet
