@@ -1989,7 +1989,7 @@ public final class CgWorldRenderer {
             if (which == TRANSPARENT) beforeTranslucency(stage);
             if (drawn > 0) {
                 try (CgTrace.Zone z = CgTrace.zone(CgChannels.WORLD, REC_CULL)) {
-                    cullSets(stage, recording, view, false);
+                    cullSets(stage, recording, view, CULL_PASSES);
                 }
                 CgTrace.Zone passes = CgTrace.zone(CgChannels.WORLD, REC_PASSES);
                 if (prepass) recordPass(stage, recording, constants, OPAQUE_STATE, true, false, view, null, false);
@@ -2407,7 +2407,7 @@ public final class CgWorldRenderer {
      * {@code merged} (the transparent passes already wrote into it); drawn apart, each transparent surface covers them too.
      */
     private void recordGlows(CgStageFrame stage, CgRecording recording, CgHostView view, CgGraphTexture into, boolean merged) {
-        cullSets(stage, recording, view, true);
+        cullSets(stage, recording, view, CULL_EMITTING);
         stage.constants().write(constantsBlock, 0);
         emissionConstants.read(constantsBlock, 0).resolution(into.getWidth(), into.getHeight());
 
@@ -2471,7 +2471,7 @@ public final class CgWorldRenderer {
      */
     private void recordSceneGlows(CgStageFrame stage, CgRecording recording, CgHostView view) {
         if (markGlows(view, null, EMIT_BEFORE) == 0) return;
-        cullSets(stage, recording, view, true);
+        cullSets(stage, recording, view, CULL_EMITTING);
         CgRasterPass glow = recording.raster(stage.target(), CgLoad.load(), stage.constants().sceneGlow(sceneEmission),
                         EMISSIVE_STATE, CgOrder.SORTED)
                 .sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT).timed(GPU_EMISSION);
@@ -3018,6 +3018,8 @@ public final class CgWorldRenderer {
             gradeDepthWarned = true;
             return;
         }
+        // A set the opaque firing drew draws its culled records: cull it here too, as the passes' are
+        cullSets(stage, recording, view, CULL_LAYERS);
         CgGraphTexture scene = stage.resources().get(CgFrameKeys.SCENE);
         int w = Math.max(1, Math.round(targetWidth)), h = Math.max(1, Math.round(targetHeight));
         for (int k = 0; k < CgGradeLayers.MAX; k++) {
@@ -3183,16 +3185,19 @@ public final class CgWorldRenderer {
         writeInstance(chunks, i);
     }
 
+    /** What {@link #cullSets} culls: the sets the stage's passes draw, those its bloom draws, those its graded layers draw. */
+    private static final int CULL_PASSES = 0, CULL_EMITTING = 1, CULL_LAYERS = 2;
+
     /**
-     * Culls on the GPU every set this stage draws that it has not culled yet, all at once: those the stage's passes
-     * draw, or with {@code emitting}, those its bloom draws. The first asks for the stage's depth pyramid.
+     * Culls on the GPU every set this stage draws that it has not culled yet, all at once: those {@code which} names.
+     * The first asks for the stage's depth pyramid.
      */
-    private void cullSets(CgStageFrame stage, CgRecording recording, CgHostView view, boolean emitting) {
+    private void cullSets(CgStageFrame stage, CgRecording recording, CgHostView view, int which) {
         int k = -1;
         CgCullSets batch = null;
         for (int i = 0; i < count; i++) {
             cullHandles[i] = -1;
-            if (!culls(i, emitting)) continue;
+            if (!culls(i, which)) continue;
             if (batch == null) {
                 k = cullPasses++;
                 if (k == cullOut.length) {
@@ -3229,8 +3234,9 @@ public final class CgWorldRenderer {
     }
 
     /** Whether this {@link #cullSets} culls draw {@code i}: a set not culled yet that the stage, or its bloom, draws. */
-    private boolean culls(int i, boolean emitting) {
-        return sets[i] != null && culled[i] == null && (emitting ? emits[i] : phase[i] != SKIP);
+    private boolean culls(int i, int which) {
+        if (sets[i] == null || culled[i] != null) return false;
+        return which == CULL_EMITTING ? emits[i] : which == CULL_LAYERS ? inLayer[i] : phase[i] != SKIP;
     }
 
     /** The cull set to draw {@code i}'s set: its mesh, placed by its model, its pad, light, scale and customs. */
