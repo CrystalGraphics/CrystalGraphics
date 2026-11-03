@@ -32,6 +32,7 @@ import com.crystalgraphics.vfx.prefab.CgVfxPrefabAssets;
 import com.crystalgraphics.vfx.system.CgVfxSystemAssets;
 import com.crystalgraphics.api.material.CgMaterialRegistry;
 import com.crystalgraphics.render.post.CgPostStack;
+import com.crystalgraphics.render.world.CgPipelinePrecache;
 import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.vfx.CgVfx;
 import com.crystalgraphics.api.CgBindingPoints;
@@ -243,7 +244,12 @@ public final class CgGraphicsLifecycle {
                 // The engine's own passes, built together behind the loading screen rather than each at its first draw;
                 // no world stage fires until they are
                 CgWorldRenderer.get().beginBoot();
-                CgLoadPlan.get().task("crystalgraphics:programs").render(task -> CgWorldRenderer.get().bootStep()).start();
+                CgLoadPlan.get().task("crystalgraphics:programs").render(task -> {
+                    boolean done = CgWorldRenderer.get().bootStep();
+                    int total = CgPipelinePrecache.total();
+                    if (total > 0) task.progress(1f - CgPipelinePrecache.remaining() / (float) total);
+                    return done;
+                }).start();
                 // After the boot used this session's binaries, so the prune keeps them; a worker's, beside the frames.
                 CgJob.run(() -> { for (String kind : CgCacheDirectory.PRUNED) CgCacheDirectory.prune(kind); });
                 // From here warm-ups spread over frames: the demo's first scene took the first frame 0.7-10 s on 1.7.10.

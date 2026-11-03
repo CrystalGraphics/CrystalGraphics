@@ -29,8 +29,8 @@ public class CgLoadPlanTest {
         CgLoadTask load = CgLoadTracker.add("kit:load", List.of());
         load.started(t0 + 1000 * ms);
         load.progress(0.5f);
-        // half done in 4 s: its own 8 s weighed half against last time's 9, a whole of 8.5
-        assertEquals(5000f / 9500f, CgLoadTracker.progress(t0 + 5000 * ms), 1e-4f);
+        // half done in 4 s: its own 8 s weighed by 4/9 (the share of last time's 9 s gone), a whole of 8.56
+        assertEquals(5000f / (1000f + 9000f - 1000f * 4f / 9f), CgLoadTracker.progress(t0 + 5000 * ms), 1e-4f);
         // still at half after 11 s: its own 22 s weighed half, 15.5, so the bar slows rather than pegging
         assertEquals(12000f / 16500f, CgLoadTracker.progress(t0 + 12000 * ms), 1e-4f);
 
@@ -47,6 +47,17 @@ public class CgLoadPlanTest {
         assertEquals(0.5f, CgLoadTracker.progress(t0 + 500 * ms), 1e-4f);
         // three times its last second: taken as half done, not nine tenths
         assertEquals(0.6f, CgLoadTracker.progress(t0 + 3000 * ms), 1e-4f);
+    }
+
+    @Test
+    public void aLoadRunningSlowerThanTheLastScalesWhatIsStillToCome() {
+        CgLoadTracker.resetForTesting(Map.of("kit:scan", 1500L, "kit:load", 8000L));
+        long t0 = System.nanoTime(), ms = 1_000_000L;
+        CgLoadTask scan = CgLoadTracker.add("kit:scan", List.of());
+        scan.started(t0);
+        scan.ended(true, t0 + 3500 * ms);
+        // the scan took 3.5 s against 1.5 s: with the half-second prior, a pace of 2, so the load is taken as 16 s
+        assertEquals(3500f / 19500f, CgLoadTracker.progress(t0 + 3500 * ms), 1e-4f);
     }
 
     @Test

@@ -116,12 +116,18 @@ public final class CgLoadTracker {
      */
     public static float progress(long now) {
         Map<String, Long> past = history();
+        List<CgLoadTask> tasks = all();
+        double pace = pace(tasks, past, now);
         double total = 0, done = 0;
-        for (CgLoadTask t : all()) {
+        for (CgLoadTask t : tasks) {
             // Ended before the screen's first frame: nobody saw a bar move for it
             if (t.done() && t.endedAt() < shownAt) continue;
             Long ms = past.get(t.id());
-            double expected = Math.max(1, ms != null ? ms : DEFAULT_MILLIS), elapsed = t.elapsedMillis(now);
+            float own = t.reported();
+            boolean reports = !Float.isNaN(own) && own > 0.05f;
+            // Scaled by the pace only with no progress of its own: that progress is its pace already
+            double expected = Math.max(1, ms != null ? ms * (reports ? 1 : pace) : DEFAULT_MILLIS);
+            double elapsed = t.elapsedMillis(now);
             switch (t.state()) {
                 case DONE, FAILED -> {          // what it took this time
                     total += Math.max(1, elapsed);
@@ -133,9 +139,10 @@ public final class CgLoadTracker {
                     // after a cold one would otherwise lag. Without one, running longer than last time stretches the
                     // total, so the bar slows rather than pegging
                     // Past its last time with no report, it is taken as half done: the bar holds rather than racing
-                    float own = t.reported();
-                    double whole = !Float.isNaN(own) && own > 0.05f
-                            ? expected + (elapsed / own - expected) * Math.min(1f, own)
+                    // Trusted no further than its share of the time expected: a total still growing (pipelines asked
+                    // for as assets load) reads half done a few milliseconds in
+                    double whole = reports
+                            ? expected + (elapsed / own - expected) * Math.min(Math.min(1f, own), elapsed / expected)
                             : Math.max(elapsed / UNREPORTED_CAP, elapsed <= expected ? expected : 2 * elapsed - expected);
                     total += Math.max(elapsed / UNREPORTED_CAP, whole);
                     done += elapsed;
@@ -143,10 +150,41 @@ public final class CgLoadTracker {
             }
         }
         for (Map.Entry<String, Long> e : past.entrySet()) {
-            if (!TASKS.containsKey(e.getKey())) total += Math.max(1, e.getValue());
+            if (!TASKS.containsKey(e.getKey())) total += Math.max(1, e.getValue() * pace);
         }
         return total == 0 ? 0f : (float) Math.min(1.0, done / total);
     }
+
+    /**
+     * How much slower than last load this one runs: the time this load's ended tasks took over their last times (the
+     * engine's start among them, before the screen shows), and a running task reporting progress its time so far over
+     * that share of its last time, drawn toward 1 by {@link #PACE_PRIOR_MILLIS} of evidence. A busy machine slows every
+     * task alike, so what is still to come is scaled by it. A running task's overrun with no progress is its own
+     * estimate's, not this.
+     */
+    static double pace(List<CgLoadTask> tasks, Map<String, Long> past, long now) {
+        double took = PACE_PRIOR_MILLIS, expected = PACE_PRIOR_MILLIS;
+        for (CgLoadTask t : tasks) {
+            Long ms = past.get(t.id());
+            if (ms == null || t.state() == CgLoadTask.State.WAITING) continue;
+            if (t.done()) {
+                took += t.elapsedMillis(now);
+                expected += ms;
+                continue;
+            }
+            // Running with progress of its own: what its share took against that share of last time
+            float own = t.reported();
+            if (!Float.isNaN(own) && own > 0.05f) {
+                took += t.elapsedMillis(now);
+                expected += ms * Math.min(1f, own);
+            }
+        }
+        return Math.max(1.0 / MAX_PACE, Math.min(MAX_PACE, took / expected));
+    }
+
+    /** How much evidence of last load's pace {@link #pace} starts from, in milliseconds. */
+    private static final double PACE_PRIOR_MILLIS = 500;
+    private static final double MAX_PACE = 3;
 
     // -- Written by the plan and the screen -----------------------------------------------------------------------
 
@@ -199,9 +237,13 @@ public final class CgLoadTracker {
     public static void hidden(long now) {
         List<CgLoadTask> tasks = all();
         logTimeline(tasks, now);
-        Map<String, Long> times = new LinkedHashMap<>();
+        // Each time averaged with the last, so one cold or busy load moves the next one's bar halfway, not all the way
+        Map<String, Long> past = history(), times = new LinkedHashMap<>();
         for (CgLoadTask t : tasks) {
-            if (t.done()) times.put(t.id(), Math.max(1L, t.elapsedMillis(now)));
+            if (!t.done()) continue;
+            long took = Math.max(1L, t.elapsedMillis(now));
+            Long before = past.get(t.id());
+            times.put(t.id(), before == null ? took : (before + took + 1) / 2);
         }
         if (times.isEmpty()) return;
         String name = key;
