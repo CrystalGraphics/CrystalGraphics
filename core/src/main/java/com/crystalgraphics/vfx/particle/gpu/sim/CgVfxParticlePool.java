@@ -1,6 +1,7 @@
 package com.crystalgraphics.vfx.particle.gpu.sim;
 
 import com.crystalgraphics.render.world.CgWorldEntityBoxes;
+import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.form.CgVfxCurveBlock;
 import com.crystalgraphics.vfx.particle.form.CgVfxFormInput;
 import com.crystalgraphics.vfx.particle.form.CgVfxSpawnForm;
@@ -293,6 +294,8 @@ public final class CgVfxParticlePool {
     /** Per slot: its instance's rotation as its last step gave it, a quaternion: what a SEQUENCE particle's clip turns by. */
     private float[] slotTurn = new float[0];
     private float[] slotScale = new float[0];
+    /** Each slot's mesh particles' drawn scale per axis: its effect's world scale for a local emitter, else 1. */
+    private float[] slotDrawScale = new float[0];
     /** Each open slot's opening, numbered from 1 in the pool's order; 0 once closed. */
     private long[] slotOpened = new long[0];
     private long openings;
@@ -1806,6 +1809,12 @@ public final class CgVfxParticlePool {
         slotTurn[slot * 4 + 2] = view.rotationZ();
         slotTurn[slot * 4 + 3] = view.rotationW();
         slotGround[slot] = groundY;
+        // A local emitter's meshes draw under its system's whole transform, scale included (Niagara's
+        // NiagaraMeshParticleUtils.ush, Cascade's ProxyLocalToWorld); a world-space one's take it only by owner_scale.
+        boolean scaled = emitter instanceof CgVfxEmitter e && e.local() && e.localSpaceScale();
+        slotDrawScale[slot * 3] = scaled ? view.scaleX() : 1f;
+        slotDrawScale[slot * 3 + 1] = scaled ? view.scaleY() : 1f;
+        slotDrawScale[slot * 3 + 2] = scaled ? view.scaleZ() : 1f;
         slotLoop[slot] = view.loopSeconds();
         slotGrid[slot] = emitter.rasterized() != null ? view.grid() : null;
         int at = stepInstanceAt[s] + slot * instanceWords;
@@ -2303,6 +2312,15 @@ public final class CgVfxParticlePool {
     public float rotation(int slot, int i) {
         openSlot(slot, "rotation");
         return slotTurn[slot * 4 + i];
+    }
+
+    /**
+     * Axis {@code axis} of what {@code slot}'s mesh particles are drawn scaled by, as its last step gave it: its effect's
+     * world scale for a local emitter ({@code CgVfxEmitter.localSpaceScale}), else 1.
+     */
+    public float drawScale(int slot, int axis) {
+        openSlot(slot, "drawScale");
+        return slotDrawScale[slot * 3 + axis];
     }
 
     /** {@code slot}'s ground as its last step gave it, relative to its origin; NaN for none. */
@@ -2929,6 +2947,9 @@ public final class CgVfxParticlePool {
         slotTurn = Arrays.copyOf(slotTurn, size * 4);
         for (int s = was; s < size; s++) slotTurn[s * 4 + 3] = 1f;
         slotScale = Arrays.copyOf(slotScale, size);
+        int scaledWas = slotDrawScale.length;
+        slotDrawScale = Arrays.copyOf(slotDrawScale, size * 3);
+        Arrays.fill(slotDrawScale, scaledWas, slotDrawScale.length, 1f);
         slotBindScale = Arrays.copyOf(slotBindScale, size);
         slotOpened = Arrays.copyOf(slotOpened, size);
         slotFresh = Arrays.copyOf(slotFresh, size);

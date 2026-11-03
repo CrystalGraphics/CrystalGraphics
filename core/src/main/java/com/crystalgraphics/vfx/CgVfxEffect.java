@@ -477,7 +477,7 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
     /**
      * Scales it by {@code (x, y, z)}, after the point it follows: Unreal's component scale, a socket's times its own
      * relative one. What reaches its particles is opted into per attribute by its emitters' modules and renderers
-     * ({@code owner_scale}), and a {@code local_space} emitter's positions; nothing else changes. One unless given.
+     * ({@code owner_scale}), and a {@code local_space} emitter's positions and drawn meshes; nothing else changes. One unless given.
      *
      * <pre>{@code
      * VFX.play(new CgVfxSystemInstance<>(SPARK, x, y, z).scale(2f, 2f, 2f));               // twice the size, where opted in

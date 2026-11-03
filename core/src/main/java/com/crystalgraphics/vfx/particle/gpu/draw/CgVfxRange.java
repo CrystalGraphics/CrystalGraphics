@@ -109,8 +109,8 @@ public final class CgVfxRange {
         last[0] = c;
         return c;
     }
-    /** A slot's ORIGINS entry: its block, where within it with its ground, its rotation. */
-    private static final int ORIGIN_BYTES = 48;
+    /** A slot's ORIGINS entry: its block, where within it with its ground, its rotation, its meshes' drawn scale. */
+    private static final int ORIGIN_BYTES = 64;
     /** A slot's FACINGS entry. */
     private static final int FACING_BYTES = CgVfxMeshFacing.VECTORS * 16;
     /** Every real pool's slots and records as a precache sized them ({@link #ahead}): a floor under the shared buffers. */
@@ -850,6 +850,7 @@ public final class CgVfxRange {
                 }
                 staging.putFloat(o + 28, p.isOpen(s) ? p.ground(s) : Float.NaN);
                 for (int c = 0; c < 4; c++) staging.putFloat(o + 32 + c * 4, p.isOpen(s) ? p.rotation(s, c) : c == 3 ? 1f : 0f);
+                for (int c = 0; c < 3; c++) staging.putFloat(o + 48 + c * 4, p.isOpen(s) ? p.drawScale(s, c) : 1f);
             }
         }
         staging.limit(allSlots * ORIGIN_BYTES);

@@ -1083,8 +1083,9 @@ VFX.play(new CgVfxSystemInstance<>(SPARK_LOOK, x, y, z).scale(2f, 2f, 2f));   //
 | `camera_offset`'s `owner_scale` | the offset, by the scale's x |
 
 **Positions**: a world emitter's never take it. A `local_space` emitter's particles are born at it, where in the shape
-and how fast, as Niagara places local space by the system's whole transform; `local_space_scale: false` leaves it out,
-Cascade's local space (`CgVfxEmitter.Builder.localSpaceScale(false)`).
+and how fast, as Niagara places local space by the system's whole transform, and its mesh particles are drawn at it each
+frame, as Niagara's mesh renderer draws local space (its sprites keep their size); `local_space_scale: false` leaves all
+of it out, Cascade's local space (`CgVfxEmitter.Builder.localSpaceScale(false)`).
 
 ### Easy to get wrong
 

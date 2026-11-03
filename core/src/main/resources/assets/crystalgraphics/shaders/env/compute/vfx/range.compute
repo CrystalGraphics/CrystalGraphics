@@ -69,7 +69,8 @@ struct FxDrawn { vec4 place; vec4 motion; vec4 state; vec4 light; vec4 color; ve
 
 // A slot's origin, absolute: its whole blocks, and where in that block; within.w its ground from there, NaN for none;
 // and its instance's rotation, a quaternion.
-struct FxOrigin { ivec4 block; vec4 within; vec4 turn; };
+// scale: its meshes' drawn scale, a local emitter's effect's world scale (CgVfxParticlePool.drawScale), else 1.
+struct FxOrigin { ivec4 block; vec4 within; vec4 turn; vec4 scale; };
 
 // A particle as a mesh draws it: CgInstanceKind.OBJECT's record.
 struct FxObject {
@@ -319,7 +320,7 @@ void Objects() {
                 : faces ? mat3(1.0) : range_turn(turn * 1.7, turn * 2.3, turn);
         // A mesh orientation's quaternion already holds the field's turn (Look).
         if (_FieldAt >= 0 && (_Drawn & 32) == 0) turned = turned * range_quat(range_rotator(fieldTurn));
-        vec3 size = r.place.w * r.scale.xyz * fieldScale;
+        vec3 size = r.place.w * r.scale.xyz * fieldScale * ORIGINS(lo).scale.xyz;
         mat3 model = _Sequence != 0 ? turned * mat3(vec3(size.x, 0.0, 0.0), vec3(0.0, size.y, 0.0), vec3(0.0, 0.0, size.z))
                 : range_facing(lo, -(SLOTS(lo).xyz + r.place.xyz), r.motion.xyz, spin, turned, size,
                         RECORDS(e * _RecordVectors + FX_RECORD_LIFE_SEED).y);
