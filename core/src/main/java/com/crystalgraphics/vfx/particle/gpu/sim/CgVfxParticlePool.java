@@ -402,6 +402,11 @@ public final class CgVfxParticlePool {
     /** Its entry in {@link #countBuffer}: how many records the newest version holds; -1 before its storage. */
     private int liveEntry = -1;
     private int storage;
+    /** Records {@link #drawn} holds: ahead of {@link #storage} from {@link #drawn()} until the step grows the records. */
+    private int drawnStorage;
+    /** The drawn buffer {@link #drawn()} outgrew, its bytes copied into the new one at the stage's start. */
+    @Nullable
+    private CgGraphBuffer outgrown;
     private ByteBuffer staging = ByteBuffer.allocate(0);
     private boolean released;
     /** Per textured module, its table: each entry's textures and the open slots naming it; each slot's entry per module. */
@@ -632,7 +637,8 @@ public final class CgVfxParticlePool {
     };
 
     private void forgetStorage() {
-        records = drawn = paramBuffer = curveBuffer = spawnBuffer = feedBuffer = null;
+        records = drawn = outgrown = paramBuffer = curveBuffer = spawnBuffer = feedBuffer = null;
+        drawnStorage = 0;
         lightSlots = trailBuffer = headBuffer = null;
         headsStale = true;
         cellKeys = cellValues = cellRuns = null;
@@ -706,6 +712,8 @@ public final class CgVfxParticlePool {
     static void recordAll(CgRecording recording) {
         for (int i = 0; i < RELEASED.size(); i++) RELEASED.get(i).releaseStorage(recording);
         RELEASED.clear();
+        // Before any hold: a drawn buffer grown this frame is what its draws read, stepped or not.
+        for (int i = 0; i < ALL.size(); i++) ALL.get(i).fillOutgrown(recording);
         // A pool whose kernels are still linking holds every pool's steps, so no dispatch waits for a link: the steps
         // stay queued and the systems hold their effects meanwhile, as they do while a step is unrecorded.
         for (int i = 0; i < ALL.size(); i++) {
@@ -1396,10 +1404,11 @@ public final class CgVfxParticlePool {
     private void releaseStorage(CgRecording recording) {
         giveBack(liveEntry);
         liveEntry = -1;
-        CgGraphBuffer[] owned = {records, drawn, paramBuffer, curveBuffer, spawnBuffer,
+        CgGraphBuffer[] owned = {records, drawn, outgrown, paramBuffer, curveBuffer, spawnBuffer,
                 cellKeys, cellValues, cellRuns, lightSlots, trailBuffer, headBuffer};
         for (CgGraphBuffer buffer : owned) if (buffer != null) recording.release(buffer);
-        records = drawn = paramBuffer = curveBuffer = spawnBuffer = null;
+        records = drawn = outgrown = paramBuffer = curveBuffer = spawnBuffer = null;
+        drawnStorage = 0;
         lightSlots = trailBuffer = headBuffer = null;
         headsStale = true;
         cellKeys = cellValues = cellRuns = null;
@@ -2156,10 +2165,36 @@ public final class CgVfxParticlePool {
 
     /**
      * What draws read of every particle, {@link CgVfxRecord#DRAWN_BYTES} each at its record's index
-     * ({@code CgParticleBuffer}'s record): written by the step's last stage. Null and renewed as {@link #records()}.
+     * ({@code CgParticleBuffer}'s record): written by the step's last stage. Null before the first step; a new handle
+     * once the slots open outgrow it, made by this call, so ask each frame and bind what it answers.
      */
     public CgGraphBuffer drawn() {
+        // Draws take this handle as effects submit, before the stage's step grows the records. Grown here to what that
+        // step reserves, a growing frame's draws read the parts its Look writes, in the order Range keys from its records.
+        int want = sizeClass(Math.max(capacity, expectedCapacity));
+        if (drawn != null && want > drawnStorage) growDrawn(want);
         return drawn;
+    }
+
+    /**
+     * A new {@link #drawn} for {@code records}; the old, if no stage has filled one yet, waits in {@link #outgrown}. A
+     * handle grown twice between stages was never recorded, so the one before it holds the bytes.
+     */
+    private void growDrawn(int records) {
+        if (outgrown == null) outgrown = drawn;
+        drawn = CgGraphBuffer.persistent(drawnName, drawnDesc(records * shape.drawnStride()));
+        drawnStorage = records;
+    }
+
+    /**
+     * The outgrown drawn buffer's parts into the new one, then released: a frame whose steps are held reads them in
+     * the layout its records still have.
+     */
+    private void fillOutgrown(CgRecording recording) {
+        if (outgrown == null) return;
+        recording.copy(outgrown, 0, drawn, 0, outgrown.size());
+        recording.release(outgrown);
+        outgrown = null;
     }
 
     /** Its records' layout: its shape's ({@link CgVfxShape#record()}). */
@@ -2437,8 +2472,10 @@ public final class CgVfxParticlePool {
             if (want <= storage) return;
             CgExecutor.freeStorage(records);
             CgExecutor.freeStorage(drawn);
+            if (outgrown != null) CgExecutor.freeStorage(outgrown);
+            outgrown = null;
         }
-        storage = want;
+        storage = drawnStorage = want;
         records = CgGraphBuffer.history(recordsName, recordsDesc(storage));
         drawn = CgGraphBuffer.persistent(drawnName, drawnDesc(storage * shape.drawnStride()));
         CgExecutor.makeStorage(records);
@@ -2465,6 +2502,7 @@ public final class CgVfxParticlePool {
             storage = sizeClass(need);
             records = CgGraphBuffer.history(recordsName, recordsDesc(storage));
             drawn = CgGraphBuffer.persistent(drawnName, drawnDesc(storage * shape.drawnStride()));
+            drawnStorage = storage;
         }
         if (liveEntry < 0) {
             fitCounts(recording, 1);
@@ -2473,11 +2511,10 @@ public final class CgVfxParticlePool {
         if (need > storage) {
             storage = sizeClass(need);
             records = recording.resize(records, recordsDesc(storage));
-            // The step's last stage rewrites every live particle's drawn part before a draw reads it.
-            recording.release(drawn);
-            drawn = CgGraphBuffer.persistent(drawnName, drawnDesc(storage * shape.drawnStride()));
             CgVfxTrace.count(STORAGE_GROWS, 1);
         }
+        if (storage > drawnStorage) growDrawn(storage);
+        fillOutgrown(recording);
     }
 
     /** This frame's instance and spawn rows, and the parameter table when a row was written since the last. */
