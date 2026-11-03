@@ -3,9 +3,11 @@
 // texel cannot flicker the glow. One triangle over the half-size target. CgBloom draws it.
 // UNREAL_SETUP is Unreal's instead (PostProcessBloom.usf's BloomSetup on the half-size scene): the 2x2 average kept
 // saturate((luminance - _Threshold) / 2) of, or whole at a threshold of -1 or less, where Unreal runs no setup.
+// LAYERS reads the scene less the light of graded layers (_Layer0, _Layer1, by _Layers.xy), which bloom by their own.
 #type none
 #pragma cg_feature UNREAL_SETUP
-#pragma cg_permutation UNREAL_SETUP
+#pragma cg_feature LAYERS
+#pragma cg_permutation UNREAL_SETUP LAYERS
 
 Tags { "RenderType" = "Opaque" "Lighting" = "Unlit" "Fog" = "Off" "ColorSpace" = "Target" }
 Queue = "Overlay"
@@ -14,6 +16,9 @@ Properties {
     _Scene     ("The linear HDR scene", sampler2D) = "black"
     _Threshold ("Light past this blooms", float) = 1.0
     _Highlight ("Where an excess is held to", float) = 32.0
+    _Layer0    ("A graded layer: rgb the light it added", sampler2D) = "black"
+    _Layer1    ("A second graded layer", sampler2D) = "black"
+    _Layers    ("xy: 1 where layer 0 or 1 is read", vec4) = (0, 0, 0, 0)
 }
 
 struct v2f { vec2 uv; };
@@ -27,8 +32,17 @@ Pass {
         Cull OFF
     }
 
+    vec3 at(ivec2 p, ivec2 size) {
+        ivec2 q = min(p, size - 1);
+        vec3 c = texelFetch(_Scene, q, 0).rgb;
+#ifdef LAYERS
+        c -= texelFetch(_Layer0, q, 0).rgb * _Layers.x + texelFetch(_Layer1, q, 0).rgb * _Layers.y;
+#endif
+        return max(c, vec3(0.0));
+    }
+
     vec3 excess(ivec2 p, ivec2 size) {
-        vec3 c = max(texelFetch(_Scene, min(p, size - 1), 0).rgb - _Threshold, 0.0);
+        vec3 c = max(at(p, size) - _Threshold, 0.0);
         return c / (1.0 + max(c.r, max(c.g, c.b)) / _Highlight);
     }
 
@@ -42,8 +56,7 @@ Pass {
         ivec2 size = textureSize(_Scene, 0);
         ivec2 p = ivec2(gl_FragCoord.xy) * 2;
 #ifdef UNREAL_SETUP
-        vec3 c = 0.25 * (texelFetch(_Scene, min(p, size - 1), 0).rgb + texelFetch(_Scene, min(p + ivec2(1, 0), size - 1), 0).rgb
-                + texelFetch(_Scene, min(p + ivec2(0, 1), size - 1), 0).rgb + texelFetch(_Scene, min(p + ivec2(1, 1), size - 1), 0).rgb);
+        vec3 c = 0.25 * (at(p, size) + at(p + ivec2(1, 0), size) + at(p + ivec2(0, 1), size) + at(p + ivec2(1, 1), size));
         // Luminance() is dot(rgb, (0.3, 0.59, 0.11)) in Unreal's Common.ush
         if (_Threshold > -1.0) c *= clamp((dot(c, vec3(0.3, 0.59, 0.11)) - _Threshold) * 0.5, 0.0, 1.0);
         fragColor = vec4(max(c, vec3(0.0)), 1.0);

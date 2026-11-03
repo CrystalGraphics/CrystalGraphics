@@ -464,6 +464,35 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
 
     private float exposure = 1f;
 
+    /**
+     * Grades its draws as {@code look} grades them, apart from the rest of the frame ({@code CgWorldRenderer.Draw.grade}):
+     * the game its looks were authored under, its tonemapper and its bloom, on its own light alone. A kit's look sets it
+     * for every effect of the kit.
+     *
+     * <pre>{@code
+     * VFX.play(new HitSpark(look, x, y, z).grade(CgVfxKitLook.of("kakarot_kit").settings()));
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Effects sharing one look object share its layer: pass the same object, not a copy.</li>
+     *   <li>Past {@code crystalgraphics.vfx.mergeParticlesFrom} effects, GPU particles merged across effects keep the
+     *       frame's look.</li>
+     * </ul>
+     */
+    public final E grade(@Nullable CgPostSettings look) {
+        grade = look;
+        return self();
+    }
+
+    /** Its grade ({@link #grade(CgPostSettings)}); null for the frame's. */
+    @Nullable
+    public final CgPostSettings grade() {
+        return grade;
+    }
+
+    @Nullable
+    private CgPostSettings grade;
+
     /** How it is turned in the world: what it follows times its own ({@link #orient}). The identity unless turned. */
     public final Quaternionfc orientation() {
         return orientation;

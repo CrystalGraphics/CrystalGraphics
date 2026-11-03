@@ -199,7 +199,8 @@ public final class CgVfxFrame {
      * in its effect's group otherwise.
      */
     private CgWorldRenderer.Draw placeParticles(CgWorldRenderer.Draw draw, CgVfxLook.Placed placed, CgVfxEffect<?> effect) {
-        return merged ? CgVfxSystem.place(draw, placed, groupX, groupY, groupZ) : CgVfxSystem.place(draw, placed, effect);
+        return merged ? CgVfxSystem.place(draw, placed, groupX, groupY, groupZ).grade(effect.grade())
+                : CgVfxSystem.place(draw, placed, effect);
     }
 
     /** {@link CgVfxParticlePool#releases()} when its proxies were last checked for a released pool. */

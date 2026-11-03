@@ -1605,6 +1605,7 @@ public final class CgVfxSystem {
      */
     public static CgWorldRenderer.Draw place(CgWorldRenderer.Draw draw, CgVfxLook.Placed placed, CgVfxEffect<?> effect) {
         CgVfxSortGroup group = effect.sortGroup();
+        draw.grade(effect.grade());
         if (group == null) return place(draw, placed, effect.originX, effect.originY, effect.originZ);
         long frame = CgFrameRing.frame();
         place(draw, placed, group.x(frame), group.y(frame), group.z(frame));

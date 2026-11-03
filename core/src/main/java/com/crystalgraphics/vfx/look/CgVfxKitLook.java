@@ -14,15 +14,14 @@ import com.crystalgraphics.asset.kind.CgKitFiles;
 import com.crystalgraphics.asset.tree.CgAssetData;
 import com.crystalgraphics.object.validate.CgValidation;
 import com.crystalgraphics.object.value.CgUnits;
-import com.crystalgraphics.render.post.CgPostStack;
 import com.crystalgraphics.render.post.volume.CgPostBlock;
-import com.crystalgraphics.render.world.CgPipelinePrecache;
 import com.crystalgraphics.render.post.volume.CgPostSettings;
 
 /**
- * A kit's own look, its {@code look.yaml}: the post its effects play under (the game's tonemapper, bloom and grading),
- * the exposure of its own draws, and how far round each of its effects that post reaches. Read as the kit registers;
- * a system of the kit opens its volume where it plays, and takes its exposure ({@code CgVfxSystemInstance}).
+ * A kit's own look, its {@code look.yaml}: the game's tonemapper, grade and bloom its effects were authored under, and
+ * the exposure of its own draws. Read as the kit registers; a system of the kit takes both
+ * ({@code CgVfxSystemInstance}): its light is graded by the kit's post apart from the frame ({@code CgVfxEffect.grade}),
+ * and only what it adds is laid over the frame, so the host's world keeps its own look.
  *
  * <pre>{@code
  * CgVfxKitLook look = CgVfxKitLook.of("spzero_kit");                  // null: the kit has no look of its own
@@ -30,15 +29,16 @@ import com.crystalgraphics.render.post.volume.CgPostSettings;
  * }</pre>
  *
  * <ul>
- *   <li>The host's world keeps the engine's default: only the volume's reach is under the game's post, and only the
- *       kit's own draws take its exposure.</li>
+ *   <li>Only its tonemapper, grade and bloom are applied: a vignette, flash or impact frame in its post would grade the
+ *       whole screen and is left out. Its {@code volume} is read and not applied.</li>
+ *   <li>It needs the HDR scene: without it the kit's draws keep the frame's look, its exposure still theirs.</li>
  *   <li>A file that does not validate throws as the kit registers, naming the file.</li>
  * </ul>
  *
  * @param settings the {@code post} block
  * @param exposure {@code effect_exposure}: what the kit's draws' light is scaled by
- * @param radius   the volume's radius, in blocks
- * @param blend    how far past it the volume fades out, in blocks
+ * @param radius   its {@code volume}'s radius, in blocks: read, not applied
+ * @param blend    its {@code volume}'s blend, in blocks: read, not applied
  */
 public record CgVfxKitLook(CgPostSettings settings, float exposure, float radius, float blend) {
 
@@ -59,10 +59,7 @@ public record CgVfxKitLook(CgPostSettings settings, float exposure, float radius
             BY_KIT.remove(namespace);
             return;
         }
-        CgVfxKitLook look = read(file, units);
-        BY_KIT.put(namespace, look);
-        // Its composite look built with the kit, not on the frame its first effect opens the volume
-        CgPipelinePrecache.register(namespace + ":look", p -> CgPostStack.get().lookPasses(look.settings(), p));
+        BY_KIT.put(namespace, read(file, units));
     }
 
     /** {@code file}, validated against {@link CgKitFiles#LOOK}, its lengths from {@code units} into blocks. */

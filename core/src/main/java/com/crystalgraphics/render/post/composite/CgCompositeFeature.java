@@ -22,7 +22,9 @@ public enum CgCompositeFeature {
     /** Unreal 4.21's tonemapper over the scene ({@link CgPostComposite#tonemap}): it replaces the encode. */
     TONEMAP("TONEMAP", false),
     /** Unreal's colour grading of the HDR scene before the roll ({@link CgPostComposite#grade}): it reads the picture. */
-    GRADE("GRADE", false);
+    GRADE("GRADE", false),
+    /** Graded layers' light, each toned and bloomed by its own look ({@link CgPostComposite#layer}): with the HDR scene. */
+    LAYERS("LAYERS", false);
 
     final String keyword;
     final boolean blend;

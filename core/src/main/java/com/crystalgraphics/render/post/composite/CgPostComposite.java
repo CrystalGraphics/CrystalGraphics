@@ -84,7 +84,17 @@ public final class CgPostComposite {
                 .vec4("_Fade", inputs.fadeR, inputs.fadeG, inputs.fadeB, inputs.fade);
         float[] g = inputs.grade;
         for (int i = 0; i < GRADE.length; i++) b.vec4(GRADE[i], g[i * 4], g[i * 4 + 1], g[i * 4 + 2], g[i * 4 + 3]);
+        for (int k = 0; k < LAYER_SLOTS; k++) {
+            if (inputs.layers[k] != null) b.sampler(LAYER[k], 0, inputs.layers[k]);
+            if (inputs.layerBlooms[k] != null) b.sampler(LAYER_BLOOM[k], 0, inputs.layerBlooms[k]);
+            if (inputs.layerLuts[k] != null) b.sampler(LAYER_LUT[k], 0, inputs.layerLuts[k]);
+            b.vec4(LAYER_PARAMS[k], inputs.layers[k] != null ? 1f : 0f, inputs.layerBlooms[k] != null ? inputs.layerIntensity[k] : 0f,
+                    inputs.layerLuts[k] != null ? 1f : 0f, 0f);
+        }
     };
+    private static final int LAYER_SLOTS = 2;
+    private static final String[] LAYER = {"_Layer0", "_Layer1"}, LAYER_BLOOM = {"_Layer0Bloom", "_Layer1Bloom"},
+            LAYER_LUT = {"_Layer0Lut", "_Layer1Lut"}, LAYER_PARAMS = {"_LayerParams0", "_LayerParams1"};
 
     /** What the composite's properties hold. */
     private static final class Inputs {
@@ -98,9 +108,13 @@ public final class CgPostComposite {
         CgImpactFrame frame = CgImpactFrame.NEGATIVE;
         int seed;
         final float[] grade = new float[GRADE.length * 4];
+        final CgGraphTexture[] layers = new CgGraphTexture[LAYER_SLOTS], layerBlooms = new CgGraphTexture[LAYER_SLOTS];
+        final CgTexture3D[] layerLuts = new CgTexture3D[LAYER_SLOTS];
+        final float[] layerIntensity = new float[LAYER_SLOTS];
 
         boolean same(Inputs o) {
-            return scene == o.scene && bloom == o.bloom && subject == o.subject && lut == o.lut && intensity == o.intensity && r == o.r && g == o.g
+            return Arrays.equals(layers, o.layers) && Arrays.equals(layerBlooms, o.layerBlooms) && Arrays.equals(layerLuts, o.layerLuts)
+                    && Arrays.equals(layerIntensity, o.layerIntensity) && scene == o.scene && bloom == o.bloom && subject == o.subject && lut == o.lut && intensity == o.intensity && r == o.r && g == o.g
                     && b == o.b && conserve == o.conserve && exposure == o.exposure && vignette == o.vignette
                     && tonemapWeight == o.tonemapWeight && filmic == o.filmic
                     && chromatic == o.chromatic && impact == o.impact && frame == o.frame && seed == o.seed
@@ -133,6 +147,17 @@ public final class CgPostComposite {
             fadeG = o.fadeG;
             fadeB = o.fadeB;
             System.arraycopy(o.grade, 0, grade, 0, grade.length);
+            System.arraycopy(o.layers, 0, layers, 0, LAYER_SLOTS);
+            System.arraycopy(o.layerBlooms, 0, layerBlooms, 0, LAYER_SLOTS);
+            System.arraycopy(o.layerLuts, 0, layerLuts, 0, LAYER_SLOTS);
+            System.arraycopy(o.layerIntensity, 0, layerIntensity, 0, LAYER_SLOTS);
+        }
+
+        void clearLayers() {
+            Arrays.fill(layers, null);
+            Arrays.fill(layerBlooms, null);
+            Arrays.fill(layerLuts, null);
+            Arrays.fill(layerIntensity, 0f);
         }
     }
 
@@ -144,6 +169,7 @@ public final class CgPostComposite {
         inputs.bloom = null;
         inputs.subject = null;
         inputs.lut = null;
+        inputs.clearLayers();
     }
 
     /**
@@ -245,6 +271,28 @@ public final class CgPostComposite {
         return on(CgCompositeFeature.GRADE);
     }
 
+    /**
+     * Lays graded layer {@code k}'s light ({@code CgGradeLayers}) over the frame's look as its own look tones it: by
+     * {@code lut} ({@code CgFilmLut}), or with none by the roll to white, adding only what it contributes. Wants the HDR
+     * scene ({@link #scene}). Its bloom is {@link #layerBloom}.
+     *
+     * <pre>{@code
+     * post.composite().layer(k, layers.layer(k), lut.texture(layers.look(k)));   // at BEFORE_COMPOSITE
+     * }</pre>
+     */
+    public CgPostComposite layer(int k, CgGraphTexture layer, @Nullable CgTexture3D lut) {
+        inputs.layers[k] = layer;
+        inputs.layerLuts[k] = lut;
+        return on(CgCompositeFeature.LAYERS);
+    }
+
+    /** Graded layer {@code k}'s own bloom, {@code glow} times {@code intensity}, toned with its light ({@link #layer}). */
+    public CgPostComposite layerBloom(int k, CgGraphTexture glow, float intensity) {
+        inputs.layerBlooms[k] = glow;
+        inputs.layerIntensity[k] = intensity;
+        return this;
+    }
+
     /** Composites this firing in linear light ({@link CgCompositeForm#COPY}), at the cost of a copy of the target. */
     public CgPostComposite linear() {
         copy = true;
@@ -311,6 +359,7 @@ public final class CgPostComposite {
             set[f].bloom = null;
             set[f].subject = null;
             set[f].lut = null;
+            set[f].clearLayers();
             set[f].intensity = Float.NaN;
         }
     }

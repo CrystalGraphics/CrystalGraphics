@@ -1,6 +1,7 @@
 package com.crystalgraphics.render.world;
 
 import com.crystalgraphics.render.post.debug.CgPostDebug;
+import com.crystalgraphics.render.post.volume.CgPostSettings;
 import com.crystalgraphics.shape.CgShape;
 import com.crystalgraphics.shape.bounds.CgAABB;
 import com.crystalgraphics.shape.bounds.CgAABBc;
@@ -169,6 +170,8 @@ public final class CgWorldRenderer {
 
     private static final CgRenderState OPAQUE_STATE = CgRenderState.builder()
             .depth(CgDepthState.TEST_WRITE).blend(CgBlendState.DISABLED).build();
+    private static final CgFrameBufferFormat GRADE_FORMAT = CgFrameBufferFormat.builder("cg_grade_layer")
+            .color(0, CgTextureType.RGBA16F).build();
     private static final CgRenderState TRANSPARENT_STATE = CgRenderState.builder()
             .depth(CgDepthState.TEST_ONLY).blend(CgBlendState.ALPHA).build();
     /**
@@ -283,6 +286,7 @@ public final class CgWorldRenderer {
     private String[] gpuGroups = new String[64];
     /** Per draw: the impact frame subject it belongs to ({@link Draw#subject}), 0 for none. */
     private int[] subjects = new int[64];
+    private CgPostSettings[] grades = new CgPostSettings[64];
     /** Per draw: drawn into CustomDepth ({@link Draw#customDepth}), its stencil value and its write mask << 8; -1 for not. */
     private int[] customDepths = new int[64];
     private int[] queues = new int[64];
@@ -963,6 +967,14 @@ public final class CgWorldRenderer {
                 if (settings.mergeEmission()) ready &= builtAs(skinned, forward.emissionCover(), joins);
                 ready &= builtAs(skinned, forward.emissionOccluder(), joins);
             }
+            if (forward != null && settings.hdrScene() && link.getRenderQueue() >= CgRenderQueue.TRANSPARENT_THRESHOLD) {
+                // A graded draw's layer: its Forward pass, folded or with its glow, under the layer's blend
+                ready &= builtAs(skinned, layered(forward), joins);
+                if (link.hasEmissivePass()) {
+                    if (settings.mergeEmission()) ready &= builtAs(skinned, layered(forward.sceneFold()), joins);
+                    ready &= builtAs(skinned, layered(link.pipeline(CgRenderPassVariant.EMISSIVE, CgInstanceKind.OBJECT)), joins);
+                }
+            }
             if (link.hasDistortionPass()) {
                 ready &= builtAs(skinned, link.pipeline(CgRenderPassVariant.DISTORTION, CgInstanceKind.OBJECT), joins);
                 ready &= distortion.precache();
@@ -1035,6 +1047,8 @@ public final class CgWorldRenderer {
         private boolean half, onGpu;
         private String gpuGroup;
         private int subject;
+        @Nullable
+        private CgPostSettings grade;
         private int customDepth;
         /** Where its palette starts in the frame's bones; -1 for none. */
         private int bones;
@@ -1071,6 +1085,7 @@ public final class CgWorldRenderer {
             onGpu = false;
             gpuGroup = null;
             subject = 0;
+            grade = null;
             customDepth = -1;
             bones = -1;
             return this;
@@ -1134,6 +1149,29 @@ public final class CgWorldRenderer {
          */
         public Draw subject(int key) {
             subject = key;
+            return this;
+        }
+
+        /**
+         * Grades its light as {@code look} grades it, apart from the rest of the frame: under the HDR scene the light it
+         * adds is drawn again into a layer of its look's, and the post stack tones and blooms that layer by {@code look}
+         * alone ({@link CgGradeLayers}), adding only what it contributes over the frame's own look. Draws of one look
+         * object share a layer. Null, the default, is the frame's look.
+         *
+         * <pre>{@code
+         * world.draw(sphere, glow).at(x, y, z).grade(kitLook.settings()).submit();
+         * }</pre>
+         *
+         * <ul>
+         *   <li>Only its tonemapper, grade and bloom are its own: a look's vignette, flash or impact frame grades the
+         *       whole screen and is left out.</li>
+         *   <li>A draw that multiplies what is behind it, or draws at half size, keeps the frame's look.</li>
+         *   <li>At most {@link CgGradeLayers#MAX} looks a frame; without the HDR scene, or where the host lends no depth,
+         *       every draw keeps the frame's look.</li>
+         * </ul>
+         */
+        public Draw grade(@Nullable CgPostSettings look) {
+            grade = look;
             return this;
         }
 
@@ -1601,6 +1639,7 @@ public final class CgWorldRenderer {
         culledOnGpu[count] = d.onGpu;
         gpuGroups[count] = d.gpuGroup;
         subjects[count] = d.subject;
+        grades[count] = d.grade;
         customDepths[count] = d.customDepth;
         queues[count] = d.queue;
         orders[count] = d.order;
@@ -1685,6 +1724,7 @@ public final class CgWorldRenderer {
         culledOnGpu = Arrays.copyOf(culledOnGpu, n);
         gpuGroups = Arrays.copyOf(gpuGroups, n);
         subjects = Arrays.copyOf(subjects, n);
+        grades = Arrays.copyOf(grades, n);
         customDepths = Arrays.copyOf(customDepths, n);
         queues = Arrays.copyOf(queues, n);
         orders = Arrays.copyOf(orders, n);
@@ -1935,6 +1975,7 @@ public final class CgWorldRenderer {
                 }
                 if (distorting > 0) distortion.recordFinal(stage, recording, hazes);
                 if (afterDrawn > 0) recordPass(stage, recording, constants, TRANSPARENT_STATE, false, true, view, emission, scene);
+                if (scene) recordGradeLayers(stage, recording, view, constants);
                 passes.close();
             }
             if (opaqueScene) sceneTarget.recordOpaqueOut(stage);
@@ -2892,6 +2933,146 @@ public final class CgWorldRenderer {
         }
         pass.add(chunks.end());
         pass.end();
+    }
+
+    private static final CgLoad CLEAR_LAYER = CgLoad.clear(0f, 0f, 0f, 0f);
+    private static final int GPU_GRADE = CgGpuTrace.name("world.gradeLayers");
+    private final CgGradeLayers gradeLayers = new CgGradeLayers();
+    /** Each slot's look, kept while it draws so its baked table stays baked; and whether it drew this firing. */
+    private final CgPostSettings[] gradeSlots = new CgPostSettings[CgGradeLayers.MAX];
+    private final boolean[] gradeSeen = new boolean[CgGradeLayers.MAX];
+    private final CgGraphTexture[] gradeTargets = new CgGraphTexture[CgGradeLayers.MAX];
+    private final int[] gradeSizes = new int[CgGradeLayers.MAX * 2];
+    /** Each pipeline's layer form; itself where it has none (a multiply), so the answer is asked once. */
+    private final IdentityHashMap<CgPipeline, CgPipeline> layerForms = new IdentityHashMap<>();
+    private boolean gradesWarned, gradeDepthWarned;
+
+    /**
+     * Each look's draws again into its layer, cleared, tested against the scene's depth and writing none: what they add
+     * premultiplied, and in alpha how much of what is behind them they cover. Published as {@link CgGradeLayers#KEY}.
+     */
+    private void recordGradeLayers(CgStageFrame stage, CgRecording recording, CgHostView view, CgPassConstants constants) {
+        Arrays.fill(gradeSeen, false);
+        boolean any = false;
+        for (int i = 0; i < count; i++) {
+            if (grades[i] == null || phase[i] == SKIP || halfSize(i)) continue;
+            for (int k = 0; k < CgGradeLayers.MAX; k++) if (gradeSlots[k] == grades[i]) gradeSeen[k] = any = true;
+        }
+        for (int i = 0; i < count; i++) {
+            CgPostSettings g = grades[i];
+            if (g == null || phase[i] == SKIP || halfSize(i) || slotOf(g) >= 0) continue;
+            int free = -1;
+            for (int k = 0; k < CgGradeLayers.MAX && free < 0; k++) if (!gradeSeen[k]) free = k;
+            if (free < 0) {
+                if (!gradesWarned) LOGGER.warn("More than {} graded looks in one frame: the rest keep the frame's look", CgGradeLayers.MAX);
+                gradesWarned = true;
+                continue;
+            }
+            gradeSlots[free] = g;
+            gradeSeen[free] = any = true;
+        }
+        for (int k = 0; k < CgGradeLayers.MAX; k++) gradeLayers.looks[k] = null;
+        if (!any) return;
+        int fb = stage.host().mainFramebuffer();
+        if (!CgGraphTexture.takesCurrentDepth(fb)) {
+            // A layer is tested against the scene's depth: a host lending none keeps one look
+            if (!gradeDepthWarned) LOGGER.warn("The host's framebuffer lends no depth to share: graded draws keep the frame's look");
+            gradeDepthWarned = true;
+            return;
+        }
+        CgGraphTexture scene = stage.resources().get(CgFrameKeys.SCENE);
+        int w = Math.max(1, Math.round(targetWidth)), h = Math.max(1, Math.round(targetHeight));
+        for (int k = 0; k < CgGradeLayers.MAX; k++) {
+            if (!gradeSeen[k]) continue;
+            if (gradeTargets[k] == null || gradeSizes[k * 2] != w || gradeSizes[k * 2 + 1] != h) {
+                gradeTargets[k] = CgGraphTexture.besideCurrentDepth("cg_grade_layer" + k, new CgTextureDesc(w, h, GRADE_FORMAT));
+                gradeSizes[k * 2] = w;
+                gradeSizes[k * 2 + 1] = h;
+            }
+            CgRasterPass pass = recording.raster(gradeTargets[k], CLEAR_LAYER, constants, null, CgOrder.SORTED).timed(GPU_GRADE)
+                    .sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT)
+                    .texture(CgBindingPoints.LIGHTMAP_TEXTURE_UNIT, stage.host().textures().lightmapTexture());
+            if (scene != null) pass.sceneColor(CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT, scene);
+            mediated(pass);
+            CgChunkBuilder chunks = recording.chunks().begin();
+            for (int i = 0; i < count; i++) {
+                if (grades[i] != gradeSlots[k] || phase[i] == SKIP || halfSize(i)) continue;
+                modelOf(i, view);
+                model.normal(normal);
+                boolean glows = emissions[i] > 0f && queues[i] < CgRenderQueue.OVERLAY_THRESHOLD;
+                for (CgMaterial link = materials[i]; link != null; link = link.getNextPass()) {
+                    CgPipeline pipeline = link.pipeline(CgInstanceKind.OBJECT);
+                    if (pipeline == null) continue;
+                    // The same programs the transparent pass drew it with, so the layer holds what it added there
+                    if (glows && link.hasEmissivePass()) {
+                        CgPipeline folded = mergeEmission ? pipeline.sceneFold() : null;
+                        if (folded != null) {
+                            layerDraw(chunks, folded, link, recording, i);
+                            continue;
+                        }
+                        if (!pipeline.state().writesNothing()) layerDraw(chunks, pipeline, link, recording, i);
+                        CgPipeline glow = link.pipeline(CgRenderPassVariant.EMISSIVE, CgInstanceKind.OBJECT);
+                        if (glow != null) layerDraw(chunks, glow, link, recording, i);
+                        continue;
+                    }
+                    if (!pipeline.state().writesNothing()) layerDraw(chunks, pipeline, link, recording, i);
+                }
+            }
+            pass.add(chunks.end());
+            pass.end();
+            gradeLayers.layers[k] = gradeTargets[k];
+            gradeLayers.looks[k] = gradeSlots[k];
+        }
+        stage.resources().put(CgGradeLayers.KEY, gradeLayers);
+    }
+
+    private int slotOf(CgPostSettings look) {
+        for (int k = 0; k < CgGradeLayers.MAX; k++) if (gradeSlots[k] == look && gradeSeen[k]) return k;
+        return -1;
+    }
+
+    private void layerDraw(CgChunkBuilder chunks, CgPipeline pipeline, CgMaterial link, CgRecording recording, int i) {
+        CgPipeline layer = layered(pipeline);
+        if (layer != null) passDraw(chunks, layer, link, recording, i);
+    }
+
+    /**
+     * {@code pipeline} drawing into a graded layer: its colour blend kept, its alpha the coverage (over what is behind for
+     * a blend that covers, nothing for one that adds), depth tested at LEQUAL and unwritten. Null for no pipeline, or one
+     * whose blend multiplies, which a layer of added light cannot hold.
+     */
+    @Nullable
+    private CgPipeline layered(@Nullable CgPipeline pipeline) {
+        if (pipeline == null) return null;
+        CgPipeline made = layerForms.get(pipeline);
+        if (made == null) {
+            CgRenderState state = layerState(pipeline.state());
+            made = state == null ? pipeline : pipeline.withState(state);
+            layerForms.put(pipeline, made);
+        }
+        return made == pipeline ? null : made;
+    }
+
+    @Nullable
+    private static CgRenderState layerState(CgRenderState own) {
+        // Unset is the transparent pass's alpha blend.
+        CgBlendState b = own.getBlend() != null ? own.getBlend() : CgBlendState.ALPHA;
+        CgBlendState blend;
+        if (!b.enabled()) {
+            blend = CgBlendState.DISABLED;
+        } else if (b.blendEquationRgb() != CgGL.GL_FUNC_ADD) {
+            return null;
+        } else if (b.dstRgb() == CgGL.GL_ONE_MINUS_SRC_ALPHA) {
+            blend = CgBlendState.of(true, b.srcRgb(), b.dstRgb(), CgGL.GL_ONE, CgGL.GL_ONE_MINUS_SRC_ALPHA);
+        } else if (b.dstRgb() == CgGL.GL_ONE) {
+            blend = CgBlendState.of(true, b.srcRgb(), CgGL.GL_ONE, CgGL.GL_ZERO, CgGL.GL_ONE);
+        } else {
+            return null;
+        }
+        CgDepthState depth = own.getDepth();
+        return CgRenderState.builder().blend(blend)
+                .depth(depth == null || depth.test() ? CgDepthState.TEST_ONLY : CgDepthState.NONE)
+                .cull(own.getCull()).colorMask(CgColorMask.ALL).build();
     }
 
     /** {@code pass} reading this firing's media, where anything is in the air. */

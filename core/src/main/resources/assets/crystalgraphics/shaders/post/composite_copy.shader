@@ -22,6 +22,9 @@
 //   SCENE      reads the linear HDR scene (_Scene) instead of the target, past white rolled toward white keeping its
 //              hue, then clamped; a value within 0.1 of an 8-bit code
 //              is what the scene decoded from the host, written back exact rather than dithered
+//   LAYERS     with SCENE, graded layers (CgGradeLayers): each layer's light, toned by its own table (_Layer0Lut) with
+//              its own bloom, added over the frame's look as only what it contributes: its tone of the scene less its
+//              tone of what is behind it, less the frame's tone of the same. A pixel no layer reaches is unchanged
 #type none
 #pragma cg_feature SCENE
 #pragma cg_feature BLOOM
@@ -33,8 +36,10 @@
 #pragma cg_feature FADE
 #pragma cg_feature TONEMAP
 #pragma cg_feature GRADE
-// What the frame switches: the HDR scene, bloom and a fade. The looks (FLASH to GRADE) are a volume's, precached with it.
-#pragma cg_permutation SCENE BLOOM FADE
+#pragma cg_feature LAYERS
+// What the frame switches: the HDR scene, bloom, a fade and graded layers. The looks (FLASH to GRADE) are a volume's,
+// precached with it.
+#pragma cg_permutation SCENE BLOOM FADE LAYERS
 #include "crystalgraphics:shaders/lib/post/impact.glsl"
 
 Tags { "RenderType" = "Transparent" "SceneColorMargin" = "0.02" "Lighting" = "Unlit" "Fog" = "Off" "ColorSpace" = "Target" }
@@ -82,6 +87,14 @@ Properties {
     _GradeH4   ("Highlights: offset", vec4) = (0, 0, 0, 0)
     _GradeRange ("x: where shadows end; y: where highlights begin", vec4) = (0.09, 0.5, 0, 0)
     _GradeTint ("The scene tint, after the roll", vec4) = (1, 1, 1, 0)
+    _Layer0      ("Graded layer 0: rgb the light it added, a its cover", sampler2D) = "black"
+    _Layer1      ("Graded layer 1", sampler2D) = "black"
+    _Layer0Bloom ("Layer 0's own bloom", sampler2D) = "black"
+    _Layer1Bloom ("Layer 1's own bloom", sampler2D) = "black"
+    _Layer0Lut   ("Layer 0's tonemapper table", sampler3D) = "black"
+    _Layer1Lut   ("Layer 1's tonemapper table", sampler3D) = "black"
+    _LayerParams0 ("Layer 0: x 1 where drawn; y its bloom's strength; z 1 where its table tones it", vec4) = (0, 0, 0, 0)
+    _LayerParams1 ("Layer 1, as layer 0", vec4) = (0, 0, 0, 0)
 }
 
 struct v2f { vec2 uv; };
@@ -93,6 +106,72 @@ Pass {
         DepthTest ALWAYS
         DepthWrite OFF
         Cull OFF
+    }
+
+    // LinToLog(c + LogToLin(0)), to the table's cell centres: where a colour reads a tonemapper table.
+    vec3 post_lut_at(vec3 c) {
+        float zero = exp2(-444.0 / 1023.0 * 14.0) * 0.18;
+        return clamp(log2(max(c, 0.0) + zero) / 14.0 - log2(0.18) / 14.0 + 444.0 / 1023.0, 0.0, 1.0) * (31.0 / 32.0) + 0.5 / 32.0;
+    }
+
+    // Past white, the hue is kept and goes toward white the further past: a hot core with a coloured fringe, where a
+    // clamp per channel bands. At or below 1 nothing changes. Halfway to white at 4x white.
+    vec3 post_roll(vec3 c) {
+        float peak = max(c.r, max(c.g, c.b));
+        return peak > 1.0 ? mix(c / peak, vec3(1.0), (peak - 1.0) / (peak + 2.0)) : c;
+    }
+
+    // The frame's look, encoded: the volumes' looks over c, the engine's bloom b (tinted) added in their order.
+    vec3 frame_tone(vec3 c, vec3 b, vec2 uv) {
+#ifdef TONEMAP
+        if (_Tonemap.y > 0.5) {
+            // 5.1's PostProcessTonemap.usf: the exposure scales the scene, then the bloom is added.
+#ifdef FLASH
+            c *= _Exposure;
+#endif
+            c += b * _Intensity;
+        } else {
+            // 4.21's: the bloom is added to the scene, then the exposure scales both.
+            c += b * _Intensity;
+#ifdef FLASH
+            c *= _Exposure;
+#endif
+        }
+#ifdef VIGNETTE
+        c *= post_vignette(uv, CG_RESOLUTION, _Vignette);
+#endif
+        vec3 encoded = textureLod(_FilmLut, post_lut_at(c), 0.0).rgb * 1.05;
+        // A volume's weight fades the tonemapper in over the roll to white
+        if (_Tonemap.x < 1.0) encoded = mix(post_encode_srgb(post_roll(c)), encoded, _Tonemap.x);
+        return encoded;
+#else
+#ifdef FLASH
+        c *= _Exposure;
+#endif
+#ifdef BLOOM
+        c = _Conserve > 0.5 ? mix(c, b, clamp(_Intensity, 0.0, 1.0)) : c + b * _Intensity;
+#endif
+#ifdef VIGNETTE
+        c *= post_vignette(uv, CG_RESOLUTION, _Vignette);
+#endif
+#ifdef GRADE
+        // Unreal grades the balanced colour in ACEScg (CombineLUTsCommon): each region corrected, weighted by luma.
+        vec3 ap1 = vec3(dot(_GradeIn0.xyz, c), dot(_GradeIn1.xyz, c), dot(_GradeIn2.xyz, c));
+        float luma = dot(ap1, POST_AP1_Y);
+        vec2 w = post_grade_weights(luma, _GradeRange.xy);
+        ap1 = post_correct(ap1, luma, _GradeS0.xyz, _GradeS1.xyz, _GradeS2.xyz, _GradeS3.xyz, _GradeS4.xyz) * w.x
+            + post_correct(ap1, luma, _GradeM0.xyz, _GradeM1.xyz, _GradeM2.xyz, _GradeM3.xyz, _GradeM4.xyz) * (1.0 - w.x - w.y)
+            + post_correct(ap1, luma, _GradeH0.xyz, _GradeH1.xyz, _GradeH2.xyz, _GradeH3.xyz, _GradeH4.xyz) * w.y;
+        c = vec3(dot(_GradeOut0.xyz, ap1), dot(_GradeOut1.xyz, ap1), dot(_GradeOut2.xyz, ap1));
+#endif
+#ifdef SCENE
+        c = post_roll(c);
+#endif
+#ifdef GRADE
+        c *= _GradeTint.rgb;
+#endif
+        return post_encode_srgb(c);
+#endif
     }
 
     void vertex(out v2f o) {
@@ -126,69 +205,37 @@ Pass {
         vec3 c = post_decode_srgb(scene.rgb);
 #endif
 #endif
-#ifdef TONEMAP
-        if (_Tonemap.y > 0.5) {
-            // 5.1's PostProcessTonemap.usf: the exposure scales the scene, then the bloom is added.
-#ifdef FLASH
-            c *= _Exposure;
-#endif
 #ifdef BLOOM
-            c += textureLod(_Bloom, i.uv, 0.0).rgb * _Tint.rgb * _Intensity;
-#endif
-        } else {
-            // 4.21's: the bloom is added to the scene, then the exposure scales both.
-#ifdef BLOOM
-            c += textureLod(_Bloom, i.uv, 0.0).rgb * _Tint.rgb * _Intensity;
-#endif
-#ifdef FLASH
-            c *= _Exposure;
-#endif
-        }
-#ifdef VIGNETTE
-        c *= post_vignette(i.uv, CG_RESOLUTION, _Vignette);
-#endif
-        // LinToLog(c + LogToLin(0)), to the table's cell centres.
-        float zero = exp2(-444.0 / 1023.0 * 14.0) * 0.18;
-        vec3 at = clamp(log2(max(c, 0.0) + zero) / 14.0 - log2(0.18) / 14.0 + 444.0 / 1023.0, 0.0, 1.0) * (31.0 / 32.0) + 0.5 / 32.0;
-        vec3 encoded = textureLod(_FilmLut, at, 0.0).rgb * 1.05;
-        if (_Tonemap.x < 1.0) {
-            // A volume's weight fades the tonemapper in over the roll to white
-            float peak = max(c.r, max(c.g, c.b));
-            vec3 rolled = peak > 1.0 ? mix(c / peak, vec3(1.0), (peak - 1.0) / (peak + 2.0)) : c;
-            encoded = mix(post_encode_srgb(rolled), encoded, _Tonemap.x);
-        }
+        vec3 b = textureLod(_Bloom, i.uv, 0.0).rgb * _Tint.rgb;
 #else
-#ifdef FLASH
-        c *= _Exposure;
+        vec3 b = vec3(0.0);
 #endif
-#ifdef BLOOM
-        vec3 bloom = textureLod(_Bloom, i.uv, 0.0).rgb * _Tint.rgb;
-        c = _Conserve > 0.5 ? mix(c, bloom, clamp(_Intensity, 0.0, 1.0)) : c + bloom * _Intensity;
-#endif
-#ifdef VIGNETTE
-        c *= post_vignette(i.uv, CG_RESOLUTION, _Vignette);
-#endif
-#ifdef GRADE
-        // Unreal grades the balanced colour in ACEScg (CombineLUTsCommon): each region corrected, weighted by luma.
-        vec3 ap1 = vec3(dot(_GradeIn0.xyz, c), dot(_GradeIn1.xyz, c), dot(_GradeIn2.xyz, c));
-        float luma = dot(ap1, POST_AP1_Y);
-        vec2 w = post_grade_weights(luma, _GradeRange.xy);
-        ap1 = post_correct(ap1, luma, _GradeS0.xyz, _GradeS1.xyz, _GradeS2.xyz, _GradeS3.xyz, _GradeS4.xyz) * w.x
-            + post_correct(ap1, luma, _GradeM0.xyz, _GradeM1.xyz, _GradeM2.xyz, _GradeM3.xyz, _GradeM4.xyz) * (1.0 - w.x - w.y)
-            + post_correct(ap1, luma, _GradeH0.xyz, _GradeH1.xyz, _GradeH2.xyz, _GradeH3.xyz, _GradeH4.xyz) * w.y;
-        c = vec3(dot(_GradeOut0.xyz, ap1), dot(_GradeOut1.xyz, ap1), dot(_GradeOut2.xyz, ap1));
-#endif
-#ifdef SCENE
-        // Past white, the hue is kept and goes toward white the further past: a hot core with a coloured fringe, where
-        // a clamp per channel bands. At or below 1 nothing changes, so the host's own pixels come back exact. Halfway
-        // to white at 4x white: a saturated glow at 2x stays three quarters its colour (1 - 1 / peak washed it out).
-        float peak = max(c.r, max(c.g, c.b));
-        if (peak > 1.0) c = mix(c / peak, vec3(1.0), (peak - 1.0) / (peak + 2.0));
-#endif
-#ifdef GRADE
-        c *= _GradeTint.rgb;
-#endif
-        vec3 encoded = post_encode_srgb(c);
+        vec3 encoded = frame_tone(c, b, i.uv);
+#if defined(LAYERS) && defined(SCENE)
+        // Each graded layer adds what it contributes as its own look tones it, in place of how the frame's tones it:
+        // its look over the scene, less its look over what is behind it, less the frame's two of the same.
+        vec3 framed = encoded;
+        if (_LayerParams0.x > 0.5) {
+            vec4 e = texelFetch(_Layer0, ivec2(gl_FragCoord.xy), 0);
+            float a = clamp(e.a, 0.0, 0.999);
+            vec3 bg = max((c - e.rgb) / (1.0 - a), vec3(0.0));
+            vec3 lit = c + textureLod(_Layer0Bloom, i.uv, 0.0).rgb * _LayerParams0.y;
+            vec3 own = _LayerParams0.z > 0.5
+                    ? (textureLod(_Layer0Lut, post_lut_at(lit), 0.0).rgb - textureLod(_Layer0Lut, post_lut_at(bg), 0.0).rgb * (1.0 - a)) * 1.05
+                    : post_encode_srgb(post_roll(lit)) - post_encode_srgb(post_roll(bg)) * (1.0 - a);
+            encoded += own - (framed - frame_tone(bg, b, i.uv) * (1.0 - a));
+        }
+        if (_LayerParams1.x > 0.5) {
+            vec4 e = texelFetch(_Layer1, ivec2(gl_FragCoord.xy), 0);
+            float a = clamp(e.a, 0.0, 0.999);
+            vec3 bg = max((c - e.rgb) / (1.0 - a), vec3(0.0));
+            vec3 lit = c + textureLod(_Layer1Bloom, i.uv, 0.0).rgb * _LayerParams1.y;
+            vec3 own = _LayerParams1.z > 0.5
+                    ? (textureLod(_Layer1Lut, post_lut_at(lit), 0.0).rgb - textureLod(_Layer1Lut, post_lut_at(bg), 0.0).rgb * (1.0 - a)) * 1.05
+                    : post_encode_srgb(post_roll(lit)) - post_encode_srgb(post_roll(bg)) * (1.0 - a);
+            encoded += own - (framed - frame_tone(bg, b, i.uv) * (1.0 - a));
+        }
+        encoded = max(encoded, vec3(0.0));
 #endif
 #ifdef IMPACT
         vec3 impact;

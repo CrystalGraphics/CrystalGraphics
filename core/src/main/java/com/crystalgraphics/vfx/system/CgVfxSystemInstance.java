@@ -73,10 +73,6 @@ public final class CgVfxSystemInstance<B extends CgVfxBehaviour> extends CgVfxEf
     /** The standing request's source: the lowest until something asks. */
     private CgVfxExecutionSource source = CgVfxExecutionSource.SCALABILITY;
     private boolean grounded;
-    /** Its kit's look, its definition's namespace's unless a play set it ({@link #kitLook}); placed at its first tick. */
-    @Nullable
-    private CgVfxKitLook kitLook;
-    private boolean kitLookSet, looked;
     /** Its definition's fields as placed, from its first tick; null before. */
     @Nullable
     private CgFieldWorld.Instance[] fields;
@@ -105,8 +101,7 @@ public final class CgVfxSystemInstance<B extends CgVfxBehaviour> extends CgVfxEf
         if (definition.randomSeed() != null) seed = CgRandom.unit(definition.randomSeed());
         emitters = emittersOf(definition);
         behaviour = definition.behaviour() == null ? null : (B) definition.behaviour().make(this);
-        kitLook = CgVfxKitLook.of(namespace(definition.name()));
-        if (kitLook != null) exposure(kitLook.exposure());
+        kitLook(CgVfxKitLook.of(namespace(definition.name())));
     }
 
     /**
@@ -119,9 +114,8 @@ public final class CgVfxSystemInstance<B extends CgVfxBehaviour> extends CgVfxEf
      * }</pre>
      */
     public CgVfxSystemInstance<B> kitLook(@Nullable CgVfxKitLook look) {
-        kitLook = look;
-        kitLookSet = true;
         exposure(look == null ? 1f : look.exposure());
+        grade(look == null ? null : look.settings());
         return this;
     }
 
@@ -168,9 +162,7 @@ public final class CgVfxSystemInstance<B extends CgVfxBehaviour> extends CgVfxEf
         requested = CgVfxExecutionState.ACTIVE;
         source = CgVfxExecutionSource.SCALABILITY;
         grounded = false;
-        looked = kitLookSet = false;
-        kitLook = CgVfxKitLook.of(namespace(definition.name()));
-        exposure(kitLook == null ? 1f : kitLook.exposure());
+        kitLook(CgVfxKitLook.of(namespace(definition.name())));
         if (definition.randomSeed() != null) seed = CgRandom.unit(definition.randomSeed());
         for (int i = 0; i < emitters.length; i++) {
             emitters[i].reuse(emitterSeed(definition.emitters().get(i), i));
@@ -408,13 +400,6 @@ public final class CgVfxSystemInstance<B extends CgVfxBehaviour> extends CgVfxEf
         if (!grounded) {
             grounded = true;
             for (CgVfxEmitterInstance e : emitters) e.ground(groundHeight());
-        }
-        if (!looked) {
-            looked = true;
-            // Its kit's post where it plays, as the game's own frame was: closed when it dies
-            if (kitLook != null && !authoritative()) {
-                openVolume(0, kitLook.settings(), 0f, 0f, 0f).radius(kitLook.radius()).blend(kitLook.blend()).weight(1f);
-            }
         }
         // Fields are presentation: a server places none.
         if (!authoritative()) placeFields();

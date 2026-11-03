@@ -315,7 +315,7 @@ beam.remove();                                                // removal plays; 
   With `in_world` it plays where the viewer stands within `outer` of the cue's point (within `inner` where `outer` is
   not past it; anywhere where neither is set): `cues.viewer(out -> ...)` gives the local player's position, or the
   camera's. Without `in_world` it plays only on the machine that controls the cue's target (`localControl`).
-- **`look:` picks the post its systems play under**: another kit's namespace, or `none` for the engine's own.
+- **`look:` picks the look its systems are graded by**: another kit's namespace, or `none` for the engine's own.
   Unset, each system plays under its own kit's `look.yaml` ([`effects.md`](effects.md) § *A kit's own look*).
 - **A shake plays its shake asset** ([`camera.md`](camera.md) § *Shakes*) where its placement puts it, in `space`
   (`camera_local`, unless it says `world`). With `in_world` every viewer within `outer` feels it at `scale` times its

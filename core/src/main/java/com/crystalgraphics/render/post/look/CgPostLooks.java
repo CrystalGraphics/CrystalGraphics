@@ -8,6 +8,7 @@ import com.crystalgraphics.render.post.composite.CgCompositeFeature;
 import com.crystalgraphics.render.post.composite.CgPostComposite;
 import com.crystalgraphics.render.post.volume.CgPostSettings;
 import com.crystalgraphics.render.stage.CgFrameKeys;
+import com.crystalgraphics.render.world.CgGradeLayers;
 import com.crystalgraphics.settings.CgGraphicsSettings;
 
 import java.util.EnumSet;
@@ -30,6 +31,8 @@ import java.util.EnumSet;
 public final class CgPostLooks implements CgPostEffect {
 
     private final CgFilmLut lut = new CgFilmLut();
+    /** Each graded layer's table, kept for its slot: a slot keeps its look while it draws, so it bakes once. */
+    private final CgFilmLut[] layerLuts = {new CgFilmLut(), new CgFilmLut()};
     private final CgColorGrade grading = new CgColorGrade();
 
     @Override
@@ -42,7 +45,7 @@ public final class CgPostLooks implements CgPostEffect {
         CgPostSettings s = post.settings();
         float flashes = CgGraphicsSettings.FLASHES.get();
         return s.flash() * flashes != 0f || s.vignette() > 0f || s.chromatic() > 0f || s.impact() * flashes > 0f
-                || s.fade() > 0f || s.tonemaps() || s.grades();
+                || s.fade() > 0f || s.tonemaps() || s.grades() || post.resources().has(CgGradeLayers.KEY);
     }
 
     /**
@@ -88,5 +91,12 @@ public final class CgPostLooks implements CgPostEffect {
         if (s.fade() > 0f) composite.fade(s.fade(), s.fadeR(), s.fadeG(), s.fadeB());
         if (s.tonemaps()) composite.tonemap(lut.texture(s), s.tonemapWeight(), s.tonemapsFilmic());
         else if (s.grades()) composite.grade(grading.constants(s));
+        CgGradeLayers layers = post.resources().get(CgGradeLayers.KEY);
+        if (layers == null || !post.resources().has(CgFrameKeys.SCENE)) return;
+        for (int k = 0; k < CgGradeLayers.MAX; k++) {
+            CgPostSettings look = layers.look(k);
+            // Its tonemapper and grade alone: a vignette, flash or impact frame would grade the whole screen
+            if (look != null) composite.layer(k, layers.layer(k), look.tonemaps() ? layerLuts[k].texture(look) : null);
+        }
     }
 }
