@@ -5,6 +5,7 @@ import com.crystalgraphics.api.font.CgFontStyle;
 import com.crystalgraphics.api.font.CgGenericFamily;
 import com.crystalgraphics.api.font.CgSystemFontFace;
 import com.crystalgraphics.api.font.CgSystemFonts;
+import com.crystalgraphics.api.material.CgMaterialArchetypes;
 import com.crystalgraphics.api.text.CgTextLayout;
 import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.collision.CgCollisionWorld;
@@ -14,6 +15,8 @@ import com.crystalgraphics.frame.CgWorld;
 import com.crystalgraphics.gl.buffer.CgReadback;
 import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.lifecycle.CgLifecycleListener;
+import com.crystalgraphics.loading.task.CgLoadPlan;
+import com.crystalgraphics.loading.task.CgLoadTask;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.state.CgGlScope;
@@ -31,6 +34,7 @@ import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.text.render.CgTextRenderer;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.trace.CgTraceReport;
+import com.crystalgraphics.util.io.CgIO;
 import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.vfx.CgVfx;
 import com.crystalgraphics.vfx.CgVfxOwner;
@@ -264,14 +268,26 @@ public final class CgRenderDemo {
             });
         }
         // The shown scene alone: building all three cost the first world frame a quarter second (26.2, Vulkan). The rest
-        // are prewarmed a frame each, after it, from every frame's end: the title screen's too, so a world finds them warm.
+        // are prewarmed behind the loading screen, one a slice, once a worker has parsed the archetypes their materials
+        // compile from: parsed at the build, modules held the render thread 190 ms (1.20.1).
         build(wanted);
         CgEngineLifecycle.addListener(new CgLifecycleListener() {
             @Override
-            public void onFrame(long frame) {
-                warmAhead();
+            public void onLoad(CgLoadPlan plan) {
+                plan.task("crystalgraphics:demo").work(CgRenderDemo::parseArchetypes).render(task -> warmAhead(task)).start();
             }
         });
+    }
+
+    /** Every VFX shader the scenes' materials may name, parsed into the archetype cache. A worker: it touches no GL. */
+    private static void parseArchetypes() {
+        for (String path : CgIO.list("crystalgraphics", "shaders/vfx", ".shader")) {
+            try {
+                CgMaterialArchetypes.FILES.parse(path);
+            } catch (RuntimeException e) {
+                LOGGER.debug("[CgRenderDemo] {} parses at its first use instead: {}", path, e.getMessage());
+            }
+        }
     }
 
     /** Builds scene {@code i} and starts warming it: its textures, meshes, programs and kernels. */
@@ -603,25 +619,29 @@ public final class CgRenderDemo {
     }
 
     /**
-     * At each frame's end: warms the scene to show, then builds the others one at a time, each after the last has
-     * warmed, so a first switch to one waits on nothing and no frame builds more than one.
+     * The load task's render part: warms the scene to show, then builds the others one at a time, each after the last
+     * has warmed, so a first switch to one waits on nothing and no slice builds more than one. True once all are warm.
      */
-    private void warmAhead() {
-        if (allWarm || scenes[wanted] == null) return;
+    private boolean warmAhead(CgLoadTask task) {
+        if (allWarm) return true;
+        if (scenes[wanted] == null) return false;
         // The tick leaves state to the host; a compile commit may bind.
         try (CgGlScope ignored = CgGlState.saveAll()) {
-            if (!warm(wanted)) return;
+            if (!warm(wanted)) return false;
             if (prewarming >= 0) {
-                if (!warm(prewarming)) return;
+                if (!warm(prewarming)) return false;
                 prewarming = -1;
             }
+            int built = 0;
+            for (Scene s : scenes) if (s != null) built++;
+            task.progress(built / (float) kinds.length);
             for (int i = 0; i < kinds.length; i++) {
                 if (scenes[i] != null) continue;
                 build(i);
                 prewarming = i;
-                return;
+                return false;
             }
-            allWarm = true;
+            return allWarm = true;
         }
     }
 
