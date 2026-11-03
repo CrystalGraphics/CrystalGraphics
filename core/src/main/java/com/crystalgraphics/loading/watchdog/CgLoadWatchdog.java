@@ -37,7 +37,8 @@ import com.crystalgraphics.variable.CgVar;
  * <ul>
  *   <li>Armed only while the screen shows: in play a slow frame is the profiler's business.</li>
  *   <li>A hold is a <b>wait</b> when most of its samples sit in a GL call, a swap, a fence or a sleep: the driver or
- *       GPU catching up. Else it is <b>work</b>, a read from disk included. {@link #stalls()} counts the work;
+ *       GPU catching up, or when the render thread barely ran and was in no read: the machine had it descheduled.
+ *       Else it is <b>work</b>, a read from disk included. {@link #stalls()} counts the work;
  *       {@link #waits()} the rest.</li>
  *   <li>{@code crystalgraphics.loading.strict} fails the run at the hide when work stalled: for gates and dev runs
  *       that must not regress.</li>
@@ -155,7 +156,7 @@ public final class CgLoadWatchdog {
         final Map<String, StackTraceElement[]> stacks = new HashMap<>();
         /** The places that are waits, never named as the work. */
         final Set<String> waits = new HashSet<>();
-        int samples, waiting;
+        int samples, waiting, reading;
 
         Hold(long beat, long cpuAtBeat) {
             this.beat = beat;
@@ -166,6 +167,7 @@ public final class CgLoadWatchdog {
             samples++;
             String wait = who == null ? waitIn(stack) : null;
             if (wait != null) waiting++;
+            if (wait == null && readsIn(stack)) reading++;
             String place = who != null ? who.getClass().getName() + "." + what : wait != null ? wait : culprit(stack);
             if (wait != null) waits.add(place);
             places.merge(place, 1, Integer::sum);
@@ -173,9 +175,10 @@ public final class CgLoadWatchdog {
         }
 
         void report(long heldMs, long cpuMs) {
-            // By where its samples sit, never its CPU time alone: a read from disk is ours though it waits
+            // By where its samples sit, never its CPU time alone: a read from disk is ours though it waits. A thread
+            // that barely ran with no read in hand was descheduled, wherever its samples stopped.
             boolean ran = cpuMs < 0 || cpuMs >= heldMs * RAN;
-            boolean work = waiting * 2 < samples;
+            boolean work = waiting * 2 < samples && (ran || reading > 0);
             (work ? STALLS : WAITS).incrementAndGet();
             List<Map.Entry<String, Integer>> ranked = new ArrayList<>(places.entrySet());
             ranked.sort((a, b) -> b.getValue() - a.getValue());
@@ -191,6 +194,8 @@ public final class CgLoadWatchdog {
             if (work) {
                 s.append(" by ").append(named)
                         .append(": its work belongs in a load task (CgLoadPlan), off the render thread or in render slices");
+            } else if (waiting * 2 < samples) {
+                s.append(", waiting: the machine kept the render thread off the CPU, in no GL call or read");
             } else {
                 s.append(", waiting: the GPU or driver is behind on work handed it earlier")
                         .append(ran ? "" : " (the render thread barely ran: a busy machine adds to it)");
@@ -226,6 +231,17 @@ public final class CgLoadWatchdog {
             }
         }
         return null;
+    }
+
+    /** Whether the stack is in a read: a file, a jar or a resource. */
+    private static boolean readsIn(StackTraceElement[] stack) {
+        for (StackTraceElement e : stack) {
+            String c = e.getClassName();
+            if (c.startsWith("java.io.") || c.startsWith("java.nio.") || c.startsWith("sun.nio.")
+                    || c.startsWith("java.util.zip.") || c.startsWith("java.util.jar.")
+                    || c.equals("com.crystalgraphics.util.io.CgIO")) return true;
+        }
+        return false;
     }
 
     /** The first frame of the stack outside the JDK and the engine's own plumbing: whose code it is in. */
