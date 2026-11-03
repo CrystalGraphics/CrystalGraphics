@@ -86,7 +86,7 @@ public final class CgPostLooks implements CgPostEffect {
                     subject != null ? post.distorted(subject) : null);
         }
         if (s.fade() > 0f) composite.fade(s.fade(), s.fadeR(), s.fadeG(), s.fadeB());
-        if (s.tonemaps()) composite.tonemap(lut.texture(s));
+        if (s.tonemaps()) composite.tonemap(lut.texture(s), s.tonemapWeight(), s.tonemapsFilmic());
         else if (s.grades()) composite.grade(grading.constants(s));
     }
 }

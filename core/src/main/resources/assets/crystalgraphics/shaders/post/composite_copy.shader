@@ -9,8 +9,9 @@
 //   BLOOM      the bloom chain's level 0, tinted, added in linear light; or mixed in, energy-conserving
 //   VIGNETTE   Unreal's vignette at _Vignette, its VignetteIntensity
 //   GRADE      Unreal's white balance and colour grading, in ACEScg, before the roll; its scene tint after (CgColorGrade)
-//   TONEMAP    Unreal 4.21's tonemap pass over the scene: bloom added, then exposure and the vignette, then _FilmLut, its
-//              combined colour table (CgFilmLut), read through the log shaper and scaled by 1.05, already encoded
+//   TONEMAP    Unreal's tonemap pass over the scene, 4.21's (bloom added, then exposure) or 5.1's (exposure, then bloom)
+//              by _Tonemap.y; then the vignette, then _FilmLut, its combined colour table (CgFilmLut), read through the
+//              log shaper and scaled by 1.05, already encoded; mixed _Tonemap.x of the way from the roll to white
 //   IMPACT     _Impact.x of the way to an impact frame, a CgImpactFrame: _Impact.y its kind (negative, black and white,
 //              lines over the picture, drawn), .z its seed, .w 1 on light paper; _ImpactDraw the subject filled in
 //              ink, focus lines, hatching's length, the star's size; _ImpactMore the cross and the jitter in pixels;
@@ -57,6 +58,7 @@ Properties {
     _Focus     ("xy: where aberration and focus lines centre, 0 to 1", vec4) = (0.5, 0.5, 0, 0)
     _Fade      ("rgb: the colour it fades to, in the target's encoding; a: how far", vec4) = (0, 0, 0, 0)
     _FilmLut   ("The tonemapper's colour table, 32 a side: sRGB / 1.05 at each log-encoded corner", sampler3D) = "black"
+    _Tonemap   ("x: how much the tonemapper takes over the roll to white; y: 1 for 5.1's order of exposure and bloom", vec4) = (1, 0, 0, 0)
     _GradeIn0  ("Linear sRGB to white-balanced ACEScg, row 0", vec4) = (1, 0, 0, 0)
     _GradeIn1  ("Row 1", vec4) = (0, 1, 0, 0)
     _GradeIn2  ("Row 2", vec4) = (0, 0, 1, 0)
@@ -125,13 +127,23 @@ Pass {
 #endif
 #endif
 #ifdef TONEMAP
-        // 4.21's PostProcessTonemap.usf: the bloom is added to the scene, then the exposure and the vignette scale both.
+        if (_Tonemap.y > 0.5) {
+            // 5.1's PostProcessTonemap.usf: the exposure scales the scene, then the bloom is added.
+#ifdef FLASH
+            c *= _Exposure;
+#endif
 #ifdef BLOOM
-        c += textureLod(_Bloom, i.uv, 0.0).rgb * _Tint.rgb * _Intensity;
+            c += textureLod(_Bloom, i.uv, 0.0).rgb * _Tint.rgb * _Intensity;
+#endif
+        } else {
+            // 4.21's: the bloom is added to the scene, then the exposure scales both.
+#ifdef BLOOM
+            c += textureLod(_Bloom, i.uv, 0.0).rgb * _Tint.rgb * _Intensity;
 #endif
 #ifdef FLASH
-        c *= _Exposure;
+            c *= _Exposure;
 #endif
+        }
 #ifdef VIGNETTE
         c *= post_vignette(i.uv, CG_RESOLUTION, _Vignette);
 #endif
@@ -139,6 +151,12 @@ Pass {
         float zero = exp2(-444.0 / 1023.0 * 14.0) * 0.18;
         vec3 at = clamp(log2(max(c, 0.0) + zero) / 14.0 - log2(0.18) / 14.0 + 444.0 / 1023.0, 0.0, 1.0) * (31.0 / 32.0) + 0.5 / 32.0;
         vec3 encoded = textureLod(_FilmLut, at, 0.0).rgb * 1.05;
+        if (_Tonemap.x < 1.0) {
+            // A volume's weight fades the tonemapper in over the roll to white
+            float peak = max(c.r, max(c.g, c.b));
+            vec3 rolled = peak > 1.0 ? mix(c / peak, vec3(1.0), (peak - 1.0) / (peak + 2.0)) : c;
+            encoded = mix(post_encode_srgb(rolled), encoded, _Tonemap.x);
+        }
 #else
 #ifdef FLASH
         c *= _Exposure;

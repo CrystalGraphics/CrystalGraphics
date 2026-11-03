@@ -70,6 +70,7 @@ public final class CgPostComposite {
         if (inputs.bloom != null) b.sampler("_Bloom", 0, inputs.bloom);   // a look without bloom leaves it unread
         if (inputs.subject != null) b.sampler("_Subject", 0, inputs.subject);
         if (inputs.lut != null) b.sampler("_FilmLut", 0, inputs.lut);
+        b.vec4("_Tonemap", inputs.tonemapWeight, inputs.filmic ? 1f : 0f, 0f, 0f);
         CgImpactFrame f = inputs.frame;
         b.set1f("_Intensity", inputs.intensity).vec4("_Tint", inputs.r, inputs.g, inputs.b, 1f)
                 .set1f("_Conserve", inputs.conserve ? 1f : 0f).set1f("_Exposure", inputs.exposure)
@@ -90,7 +91,8 @@ public final class CgPostComposite {
         CgGraphTexture scene, bloom, subject;
         CgTexture3D lut;
         float intensity = Float.NaN, r, g, b;
-        boolean conserve;
+        float tonemapWeight = 1f;
+        boolean conserve, filmic;
         float exposure = 1f, vignette, chromatic, impact, focusX = 0.5f, focusY = 0.5f;
         float fade, fadeR, fadeG, fadeB;
         CgImpactFrame frame = CgImpactFrame.NEGATIVE;
@@ -100,6 +102,7 @@ public final class CgPostComposite {
         boolean same(Inputs o) {
             return scene == o.scene && bloom == o.bloom && subject == o.subject && lut == o.lut && intensity == o.intensity && r == o.r && g == o.g
                     && b == o.b && conserve == o.conserve && exposure == o.exposure && vignette == o.vignette
+                    && tonemapWeight == o.tonemapWeight && filmic == o.filmic
                     && chromatic == o.chromatic && impact == o.impact && frame == o.frame && seed == o.seed
                     && focusX == o.focusX && focusY == o.focusY && fade == o.fade && fadeR == o.fadeR
                     && fadeG == o.fadeG && fadeB == o.fadeB && Arrays.equals(grade, o.grade);
@@ -117,6 +120,8 @@ public final class CgPostComposite {
             g = o.g;
             b = o.b;
             conserve = o.conserve;
+            tonemapWeight = o.tonemapWeight;
+            filmic = o.filmic;
             exposure = o.exposure;
             vignette = o.vignette;
             chromatic = o.chromatic;
@@ -218,12 +223,15 @@ public final class CgPostComposite {
     }
 
     /**
-     * Tonemaps the scene as Unreal 4.21's tonemap pass does: bloom added, then the exposure and the vignette, then
-     * {@code lut} ({@code CgFilmLut}) read through the log shaper, already in the target's encoding. Wants the HDR
-     * scene ({@link #scene}).
+     * Tonemaps the scene as Unreal's tonemap pass does: 4.21's (bloom added, then the exposure) or with {@code filmic}
+     * 5.1's (the exposure, then bloom added), then the vignette, then {@code lut} ({@code CgFilmLut}) read through the
+     * log shaper, already in the target's encoding; mixed {@code weight} (0 to 1) of the way from the roll to white.
+     * Wants the HDR scene ({@link #scene}).
      */
-    public CgPostComposite tonemap(CgTexture3D lut) {
+    public CgPostComposite tonemap(CgTexture3D lut, float weight, boolean filmic) {
         inputs.lut = lut;
+        inputs.tonemapWeight = Math.max(0f, Math.min(1f, weight));
+        inputs.filmic = filmic;
         return on(CgCompositeFeature.TONEMAP);
     }
 

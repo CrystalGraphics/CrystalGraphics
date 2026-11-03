@@ -11,9 +11,10 @@ import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.render.post.volume.CgPostSettings;
 
 /**
- * The tonemapper's colour table: Unreal 4.21's combined LUT (its {@code PostProcessCombineLUTs}) with the legacy film
- * curve, 32 cells a side, baked on the CPU whenever the settings change and held as a 3D texture. The composite reads
- * it through Unreal's log shaper ({@link #shape}) and scales what it reads by {@link #SCALE}.
+ * The tonemapper's colour table: Unreal's combined LUT (its {@code PostProcessCombineLUTs}), 4.21's with the legacy
+ * film curve or with {@code filmic()} 5.1's with its ACES-fitted film curve, 32 cells a side, baked on the CPU whenever
+ * the settings change and held as a 3D texture. The composite reads it through Unreal's log shaper ({@link #shape}) and
+ * scales what it reads by {@link #SCALE}.
  *
  * <pre>{@code
  * CgFilmLut lut = new CgFilmLut();
@@ -27,7 +28,9 @@ import com.crystalgraphics.render.post.volume.CgPostSettings;
  *   <li>Each cell is the log-encoded colour at its corner, decoded, white-balanced, graded in ACEScg
  *       ({@link CgColorGrade}) and taken back, through the legacy film curve, tinted, sRGB-encoded and divided by
  *       1.05, as 4.21's combine writes it.</li>
- *   <li>The ACES film tonemapper ({@code r.TonemapperFilm 1}) is not baked yet: only the legacy curve is.</li>
+ *   <li>5.1's table ({@link CgPostSettings#filmic()}): white balance, expand gamut, the grade, blue correction around
+ *       {@code FilmToneMap} taken {@code ToneCurveAmount} of the way, the tint, {@code 2.2 / DisplayGamma}, sRGB / 1.05.
+ *       At a tone curve of 0 HDR clips at 1 per channel. Its {@code MappingPolynomial} is the identity, as by default.</li>
  *   <li>Colour science constants are the ACES and sRGB standards' (Academy aces-dev; IEC 61966-2-1), Bradford's and the
  *       legacy curve's construction as 4.21's renderer computes them.</li>
  * </ul>
@@ -72,7 +75,7 @@ public final class CgFilmLut {
 
     private final float[] cells = new float[CELLS * 3];
     private final ByteBuffer upload = ByteBuffer.allocateDirect(CELLS * 16).order(ByteOrder.nativeOrder());
-    private final float[] baked = new float[5];
+    private final float[] baked = new float[15], now = new float[15];
     private final CgColorGrade grading = new CgColorGrade();
     private final double[] bakedGrade = new double[CgColorGrade.PACKED];
     private CgTexture3D texture;
@@ -80,12 +83,9 @@ public final class CgFilmLut {
     /** The table for {@code s}'s film settings and grade: rebaked and uploaded when they changed. Render thread. */
     public CgTexture3D texture(CgPostSettings s) {
         double[] grade = grading.update(s);
-        if (texture != null && same(s, grade)) return texture;
-        baked[0] = s.filmContrast();
-        baked[1] = s.filmDynamicRange();
-        baked[2] = s.filmToe();
-        baked[3] = s.filmHeal();
-        baked[4] = s.filmSaturation();
+        film(s, now);
+        if (texture != null && Arrays.equals(now, baked) && Arrays.equals(grade, bakedGrade)) return texture;
+        System.arraycopy(now, 0, baked, 0, now.length);
         System.arraycopy(grade, 0, bakedGrade, 0, grade.length);
         bake(s, cells);
         FloatBuffer f = upload.clear().asFloatBuffer();
@@ -95,9 +95,23 @@ public final class CgFilmLut {
         return texture;
     }
 
-    private boolean same(CgPostSettings s, double[] grade) {
-        return baked[0] == s.filmContrast() && baked[1] == s.filmDynamicRange() && baked[2] == s.filmToe()
-                && baked[3] == s.filmHeal() && baked[4] == s.filmSaturation() && Arrays.equals(grade, bakedGrade);
+    /** What of {@code s} the table is baked from, besides the grade, into {@code out}. */
+    private static void film(CgPostSettings s, float[] out) {
+        out[0] = s.filmContrast();
+        out[1] = s.filmDynamicRange();
+        out[2] = s.filmToe();
+        out[3] = s.filmHeal();
+        out[4] = s.filmSaturation();
+        out[5] = s.tonemapsFilmic() ? 1f : 0f;
+        out[6] = s.toneCurve();
+        out[7] = s.filmSlope();
+        out[8] = s.filmCurveToe();
+        out[9] = s.filmShoulder();
+        out[10] = s.filmBlackClip();
+        out[11] = s.filmWhiteClip();
+        out[12] = s.blueCorrection();
+        out[13] = s.expandGamut();
+        out[14] = s.displayGamma();
     }
 
     /** Frees the table; the next {@link #texture} makes it again. */
@@ -143,6 +157,10 @@ public final class CgFilmLut {
     public static void bake(CgPostSettings s, float[] out) {
         double[] grade = new double[CgColorGrade.PACKED];
         CgColorGrade.pack(s, grade);
+        if (s.tonemapsFilmic()) {
+            bakeFilmic(s, grade, out);
+            return;
+        }
         Curve curve = new Curve(s.filmContrast(), s.filmDynamicRange(), s.filmToe(), s.filmHeal(), s.filmSaturation());
         double[] c = new double[3], t = new double[3];
         double zero = logToLin(0);
@@ -161,6 +179,176 @@ public final class CgFilmLut {
                     }
                 }
             }
+        }
+    }
+
+    // Unreal 5.1's ACES.ush and PostProcessCombineLUTs.usf constants, row-major.
+    private static final double[] AP0_TO_XYZ = {0.9525523959, 0, 0.0000936786, 0.3439664498, 0.7281660966, -0.0721325464,
+            0, 0, 1.0088251844};
+    private static final double[] XYZ_TO_AP0 = {1.0498110175, 0, -0.0000974845, -0.4959030231, 1.3733130458, 0.0982400361,
+            0, 0, 0.9912520182};
+    private static final double[] AP0_TO_AP1 = {1.4514393161, -0.2365107469, -0.2149285693, -0.0765537734, 1.1762296998,
+            -0.0996759264, 0.0083161484, -0.0060324498, 0.9977163014};
+    private static final double[] AP1_TO_AP0 = mul(XYZ_TO_AP0, AP1_TO_XYZ);
+    private static final double[] BLUE_CORRECT = {0.9404372683, -0.0183068787, 0.0778696104, 0.0083786969, 0.8286599939,
+            0.1629613092, 0.0005471261, -0.0008833746, 1.0003362486};
+    private static final double[] BLUE_CORRECT_INV = {1.06318, 0.0233956, -0.0865726, -0.0106337, 1.20632, -0.19569,
+            -0.000590887, 0.00105248, 0.999538};
+    private static final double[] AP0_TO_AP1_CAT = mul(XYZ_TO_AP1, AP0_TO_XYZ);
+    private static final double[] BLUE_CORRECT_AP1 = mul(AP0_TO_AP1_CAT, mul(BLUE_CORRECT, AP1_TO_AP0));
+    private static final double[] BLUE_CORRECT_INV_AP1 = mul(AP0_TO_AP1_CAT, mul(BLUE_CORRECT_INV, AP1_TO_AP0));
+    /** sRGB expanded toward P3 (between P3 and AP1), for ExpandGamut. */
+    private static final double[] WIDE_TO_XYZ = {0.5441691, 0.2395926, 0.1666943, 0.2394656, 0.7021530, 0.0583814,
+            -0.0023439, 0.0361834, 1.0552183};
+    private static final double[] EXPAND = mul(mul(XYZ_TO_AP1, WIDE_TO_XYZ), AP1_TO_SRGB);
+    private static final double AP1_Y_R = 0.2722287168, AP1_Y_G = 0.6740817658, AP1_Y_B = 0.0536895174;
+
+    /**
+     * 5.1's table ({@code CombineLUTsCommon}, sRGB output device): white-balanced into ACEScg, its gamut expanded, graded,
+     * blue-corrected around {@code FilmToneMap} taken {@code ToneCurveAmount} of the way, back to sRGB, tinted, raised to
+     * {@code 2.2 / DisplayGamma}, encoded and divided by 1.05, clipped as its 10-bit table stores it.
+     */
+    private static void bakeFilmic(CgPostSettings s, double[] grade, float[] out) {
+        FilmCurve curve = new FilmCurve(s.filmSlope(), s.filmCurveToe(), s.filmShoulder(), s.filmBlackClip(), s.filmWhiteClip());
+        double amount = s.toneCurve(), blue = s.blueCorrection(), expand = s.expandGamut();
+        double gamma = 2.2 / s.displayGamma();
+        double[] c = new double[3], ap1 = new double[3], t = new double[3], m = new double[3];
+        double zero = logToLin(0);
+        for (int b = 0; b < SIZE; b++) {
+            for (int g = 0; g < SIZE; g++) {
+                for (int r = 0; r < SIZE; r++) {
+                    c[0] = logToLin(r / (SIZE - 1.0)) - zero;
+                    c[1] = logToLin(g / (SIZE - 1.0)) - zero;
+                    c[2] = logToLin(b / (SIZE - 1.0)) - zero;
+                    // The grade's IN rows are the white balance into ACEScg (WorkingColorSpace.ToAP1)
+                    for (int k = 0; k < 3; k++) {
+                        ap1[k] = grade[CgColorGrade.IN + k * 4] * c[0] + grade[CgColorGrade.IN + k * 4 + 1] * c[1]
+                                + grade[CgColorGrade.IN + k * 4 + 2] * c[2];
+                    }
+                    double luma = ap1[0] * AP1_Y_R + ap1[1] * AP1_Y_G + ap1[2] * AP1_Y_B;
+                    if (expand > 0 && luma > 0) {
+                        double d2 = 0;
+                        for (int k = 0; k < 3; k++) d2 += (ap1[k] / luma - 1) * (ap1[k] / luma - 1);
+                        double share = (1 - Math.pow(2, -4 * d2)) * (1 - Math.pow(2, -4 * expand * luma * luma));
+                        apply(EXPAND, ap1, m);
+                        for (int k = 0; k < 3; k++) ap1[k] += (m[k] - ap1[k]) * share;
+                    }
+                    CgColorGrade.correctAll(grade, ap1[0], ap1[1], ap1[2], t);
+                    System.arraycopy(t, 0, ap1, 0, 3);
+                    apply(BLUE_CORRECT_AP1, ap1, m);
+                    for (int k = 0; k < 3; k++) ap1[k] += (m[k] - ap1[k]) * blue;
+                    if (amount > 0) {
+                        curve.apply(ap1, m);
+                        for (int k = 0; k < 3; k++) ap1[k] += (m[k] - ap1[k]) * amount;
+                    }
+                    apply(BLUE_CORRECT_INV_AP1, ap1, m);
+                    for (int k = 0; k < 3; k++) ap1[k] += (m[k] - ap1[k]) * blue;
+                    apply(AP1_TO_SRGB, ap1, t);
+                    int at = 3 * (r + SIZE * (g + SIZE * b));
+                    for (int k = 0; k < 3; k++) {
+                        double film = Math.max(0, t[k]) * grade[CgColorGrade.TINT + k];
+                        out[at + k] = (float) Math.max(0, Math.min(1, srgb(Math.pow(film, gamma)) / SCALE));
+                    }
+                }
+            }
+        }
+    }
+
+    /** 5.1's {@code FilmToneMap} (TonemapCommon.ush): ACES' glow and red modifier, then the fitted toe, line and shoulder. */
+    static final class FilmCurve {
+        final double slope, toe, shoulder, black, white, toeScale, shoulderScale, toeMatch, shoulderMatch;
+
+        FilmCurve(double slope, double toe, double shoulder, double black, double white) {
+            this.slope = slope;
+            this.toe = toe;
+            this.shoulder = shoulder;
+            this.black = black;
+            this.white = white;
+            toeScale = 1 + black - toe;
+            shoulderScale = 1 + white - shoulder;
+            double inMatch = 0.18, outMatch = 0.18, tm;
+            if (toe > 0.8) {
+                tm = (1 - toe - outMatch) / slope + Math.log10(inMatch);
+            } else {
+                double bt = (outMatch + black) / toeScale - 1;
+                tm = Math.log10(inMatch) - 0.5 * Math.log((1 + bt) / (1 - bt)) * (toeScale / slope);
+            }
+            toeMatch = tm;
+            double straightMatch = (1 - toe) / slope - toeMatch;
+            shoulderMatch = shoulder / slope - straightMatch;
+        }
+
+        /** ACEScg {@code ap1} through the curve into {@code out}, positive ACEScg. */
+        void apply(double[] ap1, double[] out) {
+            double[] ap0 = new double[3];
+            CgFilmLut.apply(AP1_TO_AP0, ap1, ap0);
+            double sat = saturation(ap0);
+            double s = sigmoid((sat - 0.4) / 0.2);
+            double glow = 1 + glow(yc(ap0), 0.05 * s, 0.08);
+            for (int k = 0; k < 3; k++) ap0[k] *= glow;
+            double centred = centreHue(hue(ap0));
+            double w = smoothstep(1 - Math.abs(2 * centred / 135));
+            w *= w;
+            ap0[0] += w * sat * (0.03 - ap0[0]) * (1 - 0.82);
+            double[] work = new double[3];
+            CgFilmLut.apply(AP0_TO_AP1, ap0, work);
+            for (int k = 0; k < 3; k++) work[k] = Math.max(0, work[k]);
+            double y = work[0] * AP1_Y_R + work[1] * AP1_Y_G + work[2] * AP1_Y_B;
+            for (int k = 0; k < 3; k++) work[k] = y + (work[k] - y) * 0.96;
+            double straightMatch = (1 - toe) / slope - toeMatch;
+            for (int k = 0; k < 3; k++) {
+                double log = Math.log10(work[k]);
+                double straight = slope * (log + straightMatch);
+                double toeColour = -black + 2 * toeScale / (1 + Math.exp(-2 * slope / toeScale * (log - toeMatch)));
+                double shoulderColour = 1 + white - 2 * shoulderScale / (1 + Math.exp(2 * slope / shoulderScale * (log - shoulderMatch)));
+                if (!(log < toeMatch)) toeColour = straight;
+                if (!(log > shoulderMatch)) shoulderColour = straight;
+                double t = Math.max(0, Math.min(1, (log - toeMatch) / (shoulderMatch - toeMatch)));
+                if (Double.isNaN(t)) t = 0;
+                if (shoulderMatch < toeMatch) t = 1 - t;
+                t = (3 - 2 * t) * t * t;
+                // t at an end takes that end alone: a black channel's straight line is minus infinity
+                out[k] = t <= 0 ? toeColour : t >= 1 ? shoulderColour : toeColour + (shoulderColour - toeColour) * t;
+            }
+            double ty = out[0] * AP1_Y_R + out[1] * AP1_Y_G + out[2] * AP1_Y_B;
+            for (int k = 0; k < 3; k++) out[k] = Math.max(0, ty + (out[k] - ty) * 0.93);
+        }
+
+        private static double saturation(double[] c) {
+            double min = Math.min(c[0], Math.min(c[1], c[2])), max = Math.max(c[0], Math.max(c[1], c[2]));
+            return (Math.max(max, 1e-10) - Math.max(min, 1e-10)) / Math.max(max, 1e-2);
+        }
+
+        private static double yc(double[] c) {
+            double chroma = Math.sqrt(Math.max(0, c[2] * (c[2] - c[1]) + c[1] * (c[1] - c[0]) + c[0] * (c[0] - c[2])));
+            return (c[2] + c[1] + c[0] + 1.75 * chroma) / 3;
+        }
+
+        private static double sigmoid(double x) {
+            double t = Math.max(1 - Math.abs(0.5 * x), 0);
+            return 0.5 * (1 + Math.signum(x) * (1 - t * t));
+        }
+
+        private static double glow(double yc, double gain, double mid) {
+            if (yc <= 2.0 / 3.0 * mid) return gain;
+            if (yc >= 2 * mid) return 0;
+            return gain * (mid / yc - 0.5);
+        }
+
+        private static double hue(double[] c) {
+            if (c[0] == c[1] && c[1] == c[2]) return 0;
+            double h = Math.toDegrees(Math.atan2(Math.sqrt(3) * (c[1] - c[2]), 2 * c[0] - c[1] - c[2]));
+            if (h < 0) h += 360;
+            return clamp(h, 0, 360);
+        }
+
+        private static double centreHue(double hue) {
+            return hue < -180 ? hue + 360 : hue > 180 ? hue - 360 : hue;
+        }
+
+        private static double smoothstep(double x) {
+            double t = clamp(x, 0, 1);
+            return t * t * (3 - 2 * t);
         }
     }
 

@@ -39,6 +39,42 @@ public class CgFilmLutTest {
         assertEquals(-0.226833, c.ch2, 1e-6);
     }
 
+    /**
+     * Unreal 5.1's table with its tone curve at 0, as Sparking! Zero sets it: linear, white-balanced at 6500 K, raised to
+     * 2.2 / 2.7 for its display gamma and encoded, each channel clipped at 1. A hit spark's core times its exposure
+     * keeps its hue: (30, 1, 0.1) at 0.2 is red clipped, green and blue as they were.
+     */
+    @Test
+    public void withNoToneCurveHdrClipsEachChannelAtOne() {
+        CgPostSettings sz = new CgPostSettings().filmic().toneCurve(0f).blueCorrection(0f).expandGamut(0f).displayGamma(2.7f);
+        float[] lut = new float[CgFilmLut.CELLS * 3];
+        CgFilmLut.bake(sz, lut);
+        double[] out = new double[3];
+        double gamma = 2.2 / 2.7;
+        CgFilmLut.tonemap(lut, 6.0, 0.2, 0.02, out);
+        // The cell holds 1, read times 1.05 as 5.1 reads it: the 8-bit target clips it to 1
+        assertEquals("red past white clips", CgFilmLut.SCALE, out[0], 0.01);
+        assertEquals(CgFilmLut.srgb(Math.pow(0.2, gamma)), out[1], 0.01);
+        assertEquals(CgFilmLut.srgb(Math.pow(0.02, gamma)), out[2], 0.01);
+        CgFilmLut.tonemap(lut, 0.18, 0.18, 0.18, out);
+        for (double c : out) assertEquals("grey stays grey", CgFilmLut.srgb(Math.pow(0.18, gamma)), c, 0.01);
+    }
+
+    /** 5.1's defaults: its film curve holds middle grey at 0.18 and rolls past white into the shoulder, short of 1. */
+    @Test
+    public void theFilmCurveHoldsGreyAndRollsWhite() {
+        float[] lut = new float[CgFilmLut.CELLS * 3];
+        CgFilmLut.bake(new CgPostSettings().filmic(), lut);
+        double[] out = new double[3];
+        CgFilmLut.tonemap(lut, 0.18, 0.18, 0.18, out);
+        for (double c : out) assertEquals("0.18 in, 0.18 out", CgFilmLut.srgb(0.18), c, 0.03);
+        CgFilmLut.tonemap(lut, 4, 4, 4, out);
+        for (double c : out) assertTrue("4x white under its shoulder: " + c, c > 0.9 && c < 1.0);
+        double[] curved = new double[3];
+        new CgFilmLut.FilmCurve(0.88, 0.55, 0.26, 0, 0.04).apply(new double[] {0, 0, 0}, curved);
+        for (double c : curved) assertEquals("black stays black", 0, c, 1e-6);
+    }
+
     @Test
     public void aFramesPixelsComeOutAsTheGameDrewThem() {
         float[] lut = new float[CgFilmLut.CELLS * 3];

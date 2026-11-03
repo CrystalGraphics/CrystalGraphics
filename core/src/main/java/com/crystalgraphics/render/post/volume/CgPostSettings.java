@@ -30,7 +30,10 @@ public final class CgPostSettings {
 
     public static final int BLOOM = 1, FLASH = 1 << 1, VIGNETTE = 1 << 2, CHROMATIC = 1 << 3, IMPACT = 1 << 4, FOCUS = 1 << 5,
             FADE = 1 << 6, TONEMAP = 1 << 7, FILM_CONTRAST = 1 << 8, FILM_DYNAMIC_RANGE = 1 << 9, FILM_TOE = 1 << 10,
-            FILM_HEAL = 1 << 11, FILM_SATURATION = 1 << 12, WHITE_BALANCE = 1 << 13;
+            FILM_HEAL = 1 << 11, FILM_SATURATION = 1 << 12, WHITE_BALANCE = 1 << 13, FILMIC = 1 << 14,
+            TONE_CURVE = 1 << 15, FILM_SLOPE = 1 << 16, FILM_CURVE_TOE = 1 << 17, FILM_SHOULDER = 1 << 18,
+            FILM_BLACK_CLIP = 1 << 19, FILM_WHITE_CLIP = 1 << 20, BLUE_CORRECTION = 1 << 21, EXPAND_GAMUT = 1 << 22,
+            DISPLAY_GAMMA = 1 << 23;
 
     /** Where a grade applies: Unreal's global controls, then its Shadows, Midtones and Highlights. */
     public enum Region { GLOBAL, SHADOWS, MIDTONES, HIGHLIGHTS }
@@ -61,6 +64,11 @@ public final class CgPostSettings {
     volatile int impactSeed, impactSubject;
     volatile float focusX = 0.5f, focusY = 0.5f;
     volatile float filmContrast = 0.03f, filmDynamicRange = 4f, filmToe = 1f, filmHeal = 1f, filmSaturation = 1f;
+    /** Unreal 5.1's film settings ({@code FPostProcessSettings}' defaults), its tone curve's amount and gamut controls. */
+    volatile float toneCurve = 1f, filmSlope = 0.88f, filmCurveToe = 0.55f, filmShoulder = 0.26f, filmBlackClip,
+            filmWhiteClip = 0.04f, blueCorrection = 0.6f, expandGamut = 1f, displayGamma = 2.2f;
+    /** How much of the picture the tonemapper takes, 0 to 1; the rest is the roll to white. */
+    volatile float tonemapWeight;
     volatile float whiteTemp = 6500f, whiteTint;
     volatile int gradeOverrides;
     /** Each region's controls, {@code (region * 5 + control) * 4}: r, g, b, then the scalar. */
@@ -136,6 +144,73 @@ public final class CgPostSettings {
      */
     public CgPostSettings tonemap() {
         overrides |= TONEMAP;
+        tonemapWeight = 1f;
+        return this;
+    }
+
+    /**
+     * Turns on Unreal 5.1's tonemapper over the HDR scene: its combined colour table with the ACES-fitted film curve
+     * ({@code FilmToneMap}) taken {@link #toneCurve} of the way, then the sRGB encode, clipping each channel at 1.
+     * Exposure scales the scene, bloom is added after, then the vignette, as 5.1's tonemap pass orders them.
+     *
+     * <pre>{@code
+     * new CgPostSettings().filmic();                                  // Unreal 5.1's default look
+     * new CgPostSettings().filmic().toneCurve(0f).blueCorrection(0f).expandGamut(0f);   // no curve: HDR clips at 1
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Over a volume asking for 4.21's {@link #tonemap()}, this one's curve is drawn: one table a firing.</li>
+     *   <li>A volume's weight fades the tonemapper in over the roll to white, rather than switching it.</li>
+     * </ul>
+     */
+    public CgPostSettings filmic() {
+        overrides |= TONEMAP | FILMIC;
+        tonemapWeight = 1f;
+        return this;
+    }
+
+    /** {@code ToneCurveAmount}, 0 to 1: how much of 5.1's film curve the table takes; 0 leaves it linear, clipped at 1. */
+    public CgPostSettings toneCurve(float amount) {
+        toneCurve = clamp(amount);
+        overrides |= TONE_CURVE;
+        return this;
+    }
+
+    /**
+     * 5.1's film curve: {@code FilmSlope} (default 0.88), {@code FilmToe} (0.55), {@code FilmShoulder} (0.26),
+     * {@code FilmBlackClip} (0) and {@code FilmWhiteClip} (0.04).
+     */
+    public CgPostSettings filmCurve(float slope, float toe, float shoulder, float blackClip, float whiteClip) {
+        filmSlope = slope;
+        filmCurveToe = toe;
+        filmShoulder = shoulder;
+        filmBlackClip = blackClip;
+        filmWhiteClip = whiteClip;
+        overrides |= FILM_SLOPE | FILM_CURVE_TOE | FILM_SHOULDER | FILM_BLACK_CLIP | FILM_WHITE_CLIP;
+        return this;
+    }
+
+    /** {@code BlueCorrection}, 0 to 1 (default 0.6): bright blues kept from turning purple through the curve. */
+    public CgPostSettings blueCorrection(float amount) {
+        blueCorrection = clamp(amount);
+        overrides |= BLUE_CORRECTION;
+        return this;
+    }
+
+    /**
+     * The display gamma 5.1's table encodes for (the render target's {@code GetDisplayGamma}, 2.2 by default): the
+     * graded colour is raised to {@code 2.2 / gamma} before the sRGB encode, so a game set to 2.7 is brighter.
+     */
+    public CgPostSettings displayGamma(float gamma) {
+        displayGamma = Math.max(0.1f, gamma);
+        overrides |= DISPLAY_GAMMA;
+        return this;
+    }
+
+    /** {@code ExpandGamut}, 0 to 1 (default 1): bright saturated colours pushed past sRGB's gamut toward P3. */
+    public CgPostSettings expandGamut(float amount) {
+        expandGamut = clamp(amount);
+        overrides |= EXPAND_GAMUT;
         return this;
     }
 
@@ -338,6 +413,53 @@ public final class CgPostSettings {
         return filmSaturation;
     }
 
+    /** Whether the tonemapper's curve is 5.1's ({@link #filmic}) rather than 4.21's legacy one. */
+    public boolean tonemapsFilmic() {
+        return (overrides & FILMIC) != 0;
+    }
+
+    /** How much of the picture the tonemapper takes over the roll to white, 0 to 1: its volumes' blended weight. */
+    public float tonemapWeight() {
+        return tonemapWeight;
+    }
+
+    public float toneCurve() {
+        return toneCurve;
+    }
+
+    public float filmSlope() {
+        return filmSlope;
+    }
+
+    /** 5.1's {@code FilmToe}; {@link #filmToe()} is the legacy curve's {@code FilmToeAmount}. */
+    public float filmCurveToe() {
+        return filmCurveToe;
+    }
+
+    public float filmShoulder() {
+        return filmShoulder;
+    }
+
+    public float filmBlackClip() {
+        return filmBlackClip;
+    }
+
+    public float filmWhiteClip() {
+        return filmWhiteClip;
+    }
+
+    public float blueCorrection() {
+        return blueCorrection;
+    }
+
+    public float expandGamut() {
+        return expandGamut;
+    }
+
+    public float displayGamma() {
+        return displayGamma;
+    }
+
     public float whiteTemp() {
         return whiteTemp;
     }
@@ -398,6 +520,16 @@ public final class CgPostSettings {
         filmContrast = 0.03f;
         filmDynamicRange = 4f;
         filmToe = filmHeal = filmSaturation = 1f;
+        toneCurve = 1f;
+        filmSlope = 0.88f;
+        filmCurveToe = 0.55f;
+        filmShoulder = 0.26f;
+        filmBlackClip = 0f;
+        filmWhiteClip = 0.04f;
+        blueCorrection = 0.6f;
+        expandGamut = 1f;
+        displayGamma = 2.2f;
+        tonemapWeight = 0f;
         whiteTemp = 6500f;
         whiteTint = 0f;
         gradeOverrides = 0;
@@ -420,6 +552,16 @@ public final class CgPostSettings {
         if ((o & FILM_TOE) != 0) filmToe += (from.filmToe - filmToe) * weight;
         if ((o & FILM_HEAL) != 0) filmHeal += (from.filmHeal - filmHeal) * weight;
         if ((o & FILM_SATURATION) != 0) filmSaturation += (from.filmSaturation - filmSaturation) * weight;
+        if ((o & TONEMAP) != 0) tonemapWeight += (from.tonemapWeight - tonemapWeight) * weight;
+        if ((o & TONE_CURVE) != 0) toneCurve += (from.toneCurve - toneCurve) * weight;
+        if ((o & FILM_SLOPE) != 0) filmSlope += (from.filmSlope - filmSlope) * weight;
+        if ((o & FILM_CURVE_TOE) != 0) filmCurveToe += (from.filmCurveToe - filmCurveToe) * weight;
+        if ((o & FILM_SHOULDER) != 0) filmShoulder += (from.filmShoulder - filmShoulder) * weight;
+        if ((o & FILM_BLACK_CLIP) != 0) filmBlackClip += (from.filmBlackClip - filmBlackClip) * weight;
+        if ((o & FILM_WHITE_CLIP) != 0) filmWhiteClip += (from.filmWhiteClip - filmWhiteClip) * weight;
+        if ((o & BLUE_CORRECTION) != 0) blueCorrection += (from.blueCorrection - blueCorrection) * weight;
+        if ((o & EXPAND_GAMUT) != 0) expandGamut += (from.expandGamut - expandGamut) * weight;
+        if ((o & DISPLAY_GAMMA) != 0) displayGamma += (from.displayGamma - displayGamma) * weight;
         if ((o & WHITE_BALANCE) != 0) {
             whiteTemp += (from.whiteTemp - whiteTemp) * weight;
             whiteTint += (from.whiteTint - whiteTint) * weight;

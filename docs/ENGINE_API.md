@@ -302,6 +302,16 @@ CgPostStack.get().volume(20, new CgPostSettings().impact(CgImpact.LINES, 1f));  
   ```java
   CgPostStack.get().volume(0, new CgPostSettings().tonemap().filmHeal(0.18f).vignette(0.5f));   // a stage's look
   ```
+
+  Unreal 5.1's is `filmic()`: its ACES-fitted film curve (`filmCurve(slope, toe, shoulder, blackClip, whiteClip)`, at
+  5.1's defaults) taken `toneCurve(amount)` of the way, blue correction and expand gamut, a display gamma, and 5.1's
+  order (exposure, then bloom). At a tone curve of 0 HDR clips at 1 per channel, a game that switched its curve off. A
+  volume's weight fades the tonemapper in over the roll to white rather than switching it:
+
+  ```java
+  CgPostVolume look = CgPostStack.get().volume(5, new CgPostSettings().filmic().toneCurve(0f).blueCorrection(0f)
+          .expandGamut(0f).displayGamma(2.7f)).at(x, y, z).radius(24f).blend(8f);   // around an effect alone
+  ```
 - **Unreal's colour grading**: saturation, contrast, gamma, gain and offset for the whole picture and for its shadows,
   midtones and highlights, the white balance, and the scene tint, graded in ACEScg as Unreal's combined LUT grades
   (`CgColorGrade`). Without the tonemapper the composite grades before the roll to white; with it, the table holds the
