@@ -15,6 +15,8 @@ import com.crystalgraphics.gl.buffer.CgReadback;
 import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.lifecycle.CgLifecycleListener;
 import com.crystalgraphics.loading.task.CgLoadPlan;
+import com.crystalgraphics.loading.watchdog.CgLoadWatchdog;
+import com.crystalgraphics.platform.service.CgProcessExit;
 import com.crystalgraphics.loading.task.CgLoadTask;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.gl.CgGL;
@@ -33,6 +35,7 @@ import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.text.render.CgTextRenderer;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.trace.CgTraceReport;
+import com.crystalgraphics.trace.CgTraceRun;
 import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.vfx.CgVfx;
 import com.crystalgraphics.vfx.CgVfxOwner;
@@ -127,7 +130,10 @@ public final class CgRenderDemo {
     private static final int PROFILE = CgVar.integer("crystalgraphics.demo.profile", 0, 0, Integer.MAX_VALUE,
             CgVar.DEV | CgVar.RESTART, "Frames of the demo's scene to profile, written to"
                     + " crystalgraphics/profile-<scene>-<n>f/ in the game directory; 0 for none.").get();
-    private static final int PROFILE_WARMUP = CgVar.integer("crystalgraphics.demo.profile.warmup", 600, 0, Integer.MAX_VALUE,
+    private static final int CYCLE = CgVar.integer("crystalgraphics.demo.cycle", 0, 0, 3600, CgVar.DEV | CgVar.RESTART,
+            "Seconds a scene before the demo moves to the next, twice round every scene, with the loading watchdog armed"
+                    + " to name what holds a frame (crystalgraphics.loading.stallMs), then exits the process; 0 stays on one.").get();
+    private static final int PROFILE_WARMUP =CgVar.integer("crystalgraphics.demo.profile.warmup", 600, 0, Integer.MAX_VALUE,
             CgVar.DEV | CgVar.RESTART, "Frames on the ground before the demo's profile starts.").get();
     private static final int BLASTS = CgVar.integer("crystalgraphics.demo.blasts", 120, 1, 100_000, CgVar.DEV | CgVar.RESTART,
             "Blasts in the demo's blasts scene; 120 keep about 360,000 particles alive.").get();
@@ -572,6 +578,7 @@ public final class CgRenderDemo {
     // ── frame ─────────────────────────────────────────────────────────────────
 
     private void frame(CgHostView view) {
+        if (CYCLE > 0 && grounded) cycle();
         // Here, before the pools record: a key is read mid-frame, after they have.
         if (wanted != current) {
             if (current >= 0) scenes[current].clear();
@@ -598,7 +605,71 @@ public final class CgRenderDemo {
         // The scenes play on the world's system, which keeps the host's clock: the time switch reaches it as a scale.
         CgWorld.client().timeDilation(CgVfxDemoControls.get().speed());
         scenes[current].submit(CgWorldRenderer.get(), view, anchorX + 0.5, anchorY, anchorZ + 0.5, seconds);
+        shownFrames++;
     }
+
+    /**
+     * Under {@code crystalgraphics.demo.cycle}: every scene in turn, {@link #CYCLE} seconds each, twice round, with the
+     * watchdog armed, so a switch that hitches is logged with what held the frame; then the process exits.
+     */
+    private void cycle() {
+        long now = System.nanoTime();
+        if (cycleFrom == 0L) {
+            cycleFrom = now;
+            firstSwitch[current] = CgTrace.currentFrameIndex();
+            CgLoadWatchdog.arm(true);
+            LOGGER.info("[CgRenderDemo] cycle: {} s a scene, twice round", CYCLE);
+            return;
+        }
+        if (cycled < 0) return;
+        // Frame times: the first 2 s after a switch against the scene's last 2 s, its steady state
+        if (lastCycleFrame != 0L) {
+            float ms = (now - lastCycleFrame) / 1.0e6f;
+            long into = now - cycleFrom;
+            if (into < 2_000_000_000L) {
+                earlyMax = Math.max(earlyMax, ms);
+                earlySum += ms;
+                earlyFrames++;
+                if (ms > 2f * Math.max(lateMean, 4f)) earlySlow++;
+            } else if (into > (CYCLE - 2) * 1_000_000_000L) {
+                lateSum += ms;
+                lateFrames++;
+            }
+        }
+        lastCycleFrame = now;
+        if (now - cycleFrom < CYCLE * 1_000_000_000L) return;
+        lateMean = lateFrames > 0 ? lateSum / lateFrames : 0f;
+        LOGGER.info(String.format(Locale.ROOT, "[CgRenderDemo] cycle %s: first 2 s %d frames, mean %.1f ms, worst %.1f ms, %d over twice"
+                        + " steady; steady %.1f ms", kinds[current].name(), earlyFrames, earlyFrames > 0 ? earlySum / earlyFrames : 0f,
+                earlyMax, earlySlow, lateMean));
+        earlyMax = earlySum = lateSum = 0f;
+        earlyFrames = earlySlow = lateFrames = 0;
+        cycleFrom = now;
+        if (++cycled > 2 * kinds.length) {
+            cycled = -1;
+            CgLoadWatchdog.arm(false);
+            LOGGER.info("[CgRenderDemo] cycle done");
+            // Each first switch's frames, from the trace's ring once nothing is measured: written during the cycle,
+            // a dump's reports took the frames they were meant to show
+            for (int i = 0; i < kinds.length; i++) {
+                if (firstSwitch[i] > 0) CgTraceRun.dump("switch-" + kinds[i].name(), firstSwitch[i], firstSwitch[i] + 300);
+            }
+            // A diagnostic run: it ends itself, so nothing has to find and stop the client
+            CgPlatform.get(CgProcessExit.SERVICE).halt(0);
+            return;
+        }
+        wanted = (current + 1) % kinds.length;
+        if (cycled <= kinds.length && firstSwitch[wanted] == 0L) firstSwitch[wanted] = CgTrace.currentFrameIndex();
+    }
+
+    /** The trace frame each scene was first switched to by the cycle, 0 for none. */
+    private final long[] firstSwitch = new long[kinds.length];
+    private long cycleFrom, lastCycleFrame;
+    /** Switches the cycle made; -1 once done. */
+    private int cycled;
+    /** The current scene's frame times: its first 2 s and its last; the last scene's steady mean, what counts as slow. */
+    private float earlyMax, earlySum, lateSum, lateMean;
+    private int earlyFrames, earlySlow, lateFrames;
 
     /** Whether scene {@code i}'s programs are built, polling them. */
     private boolean warm(int i) {
@@ -625,16 +696,46 @@ public final class CgRenderDemo {
             }
             int built = 0;
             for (Scene s : scenes) if (s != null) built++;
-            task.progress(built / (float) kinds.length);
+            task.progress((built + Math.max(rehearsal, 0)) / (2f * kinds.length));
             for (int i = 0; i < kinds.length; i++) {
                 if (scenes[i] != null) continue;
                 build(i);
                 prewarming = i;
                 return false;
             }
-            return allWarm = true;
+            return allWarm = rehearsed();
         }
     }
+
+    /**
+     * Every scene shown behind the loading screen for {@link #REHEARSE_FRAMES} frames, which it draws into its world
+     * frame: each scene's meshes placed, its effects' renderers and materials made, its labels captured and its Java
+     * through the JIT, all of which a first switch in the world otherwise did at once (modules: 250 ms). Then the scene
+     * it started on again. True once done; polled by the load task, advanced by {@link #frame}'s frames.
+     */
+    private boolean rehearsed() {
+        if (rehearsal >= kinds.length) return true;
+        if (rehearsal < 0) {
+            home = wanted;
+            rehearsal = 0;
+        } else if (current != rehearsal || shownFrames < REHEARSE_FRAMES) {
+            return false;
+        } else if (++rehearsal >= kinds.length) {
+            wanted = home;
+            LOGGER.info("[CgRenderDemo] every scene rehearsed");
+            return true;
+        }
+        wanted = rehearsal;
+        shownFrames = 0;
+        return false;
+    }
+
+    /** Frames a scene is shown behind the loading screen before the next: enough for its first plays' one-time work. */
+    private static final int REHEARSE_FRAMES = 40;
+    /** The scene being rehearsed, -1 before, {@code kinds.length} once done; the scene to go back to after. */
+    private int rehearsal = -1, home;
+    /** Frames the scene showing has submitted since it was switched to. */
+    private int shownFrames;
 
     /** Counts the frames since the scene stood on the ground, and writes the profile once its frames are in. */
     private void profile() {

@@ -83,6 +83,7 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 | `crystalgraphics.demo.blasts.fields` | true, false | `false` | Every burst places a radial pull its particles read through physics_field, all in one group. Read at launch. |
 | `crystalgraphics.demo.capture` | text | empty | A PNG path: the world, with no GUI over it, written there captureAt world frames after the demo was placed. Read at launch. |
 | `crystalgraphics.demo.captureAt` | 1 to 2147483647 | `300` | World frames after the demo was placed that its capture is written. Read at launch. |
+| `crystalgraphics.demo.cycle` | 0 to 3600 | `0` | Seconds a scene before the demo moves to the next, twice round every scene, with the loading watchdog armed to name what holds a frame (crystalgraphics.loading.stallMs), then exits the process; 0 stays on one. Read at launch. |
 | `crystalgraphics.demo.modules.only` | text | empty | The modules demo shows only the stations whose names start with one of these, comma-separated. |
 | `crystalgraphics.demo.profile` | 0 to 2147483647 | `0` | Frames of the demo's scene to profile, written to crystalgraphics/profile-<scene>-<n>f/ in the game directory; 0 for none. Read at launch. |
 | `crystalgraphics.demo.profile.warmup` | 0 to 2147483647 | `600` | Frames on the ground before the demo's profile starts. Read at launch. |
