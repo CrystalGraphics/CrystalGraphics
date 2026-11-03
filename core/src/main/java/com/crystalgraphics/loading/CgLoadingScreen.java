@@ -204,6 +204,7 @@ public final class CgLoadingScreen {
             return false;
         }
         held = open;
+        clearedFrame = false;
         hostDraws = true;
         LOGGER.info("[loading] the host's first screen waits for the hide");
         return true;
@@ -223,6 +224,13 @@ public final class CgLoadingScreen {
     public static void runHeld() {
         Runnable open = held;
         if (open == null || shown() || System.nanoTime() - hiddenAt < FADE_NANOS) return;
+        // A frame without the screen shown first: the fade is timed by the clock, so its last frame may still hold the
+        // logo, and the frame the window keeps through a blocking open is the last one presented
+        if (!clearedFrame) {
+            clearedFrame = true;
+            LOGGER.info("[loading] faded out over {} frames, the last at {}% opacity", fadeFrames, Math.round(fadeLastAlpha * 100f));
+            return;
+        }
         held = null;
         releasing = true;
         try {
@@ -234,6 +242,11 @@ public final class CgLoadingScreen {
 
     /** Inside {@link #runHeld}: the held opening is running. */
     private static boolean releasing;
+    /** A frame has ended past the fade, drawing none of this screen: the held opening runs at the next. */
+    private static boolean clearedFrame;
+    /** The fade-out's frames drawn, and the last one's opacity: logged as the held opening runs. */
+    private static int fadeFrames;
+    private static float fadeLastAlpha;
 
     /** Hides it now, whatever loads: the engine stood down, and nothing would hide it. */
     public static void hideNow(String why) {
@@ -392,6 +405,8 @@ public final class CgLoadingScreen {
             long since = System.nanoTime() - hiddenAt;
             if (hiddenAt == 0L || since >= FADE_NANOS) return;
             alpha = 1f - since / (float) FADE_NANOS;
+            fadeFrames++;
+            fadeLastAlpha = alpha;
         }
         try (CgGlScope ignored = CgGlState.save(CgGlSlot.FBO, CgGlSlot.VIEWPORT)) {
             if (warm) warmFrame();
