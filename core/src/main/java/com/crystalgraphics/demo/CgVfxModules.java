@@ -61,6 +61,7 @@ import org.joml.Quaternionf;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -280,6 +281,40 @@ public final class CgVfxModules {
 
     /** As {@link #CgVfxModules(CgFont)}, played by {@code owner}: the world's system, which the engine updates and draws. */
     public CgVfxModules(CgFont font, CgVfxOwner owner) {
+        this(font, owner, true);
+    }
+
+    /**
+     * As {@link #CgVfxModules(CgFont, CgVfxOwner)}, its stations built one a {@link #build()} call: a loading screen's
+     * render slices, where the whole build held the render thread hundreds of milliseconds.
+     *
+     * <pre>{@code
+     * CgVfxModules modules = CgVfxModules.stepped(font, owner);
+     * if (modules.build()) modules.precache();      // each slice until true, then once
+     * }</pre>
+     */
+    public static CgVfxModules stepped(CgFont font, CgVfxOwner owner) {
+        return new CgVfxModules(font, owner, false);
+    }
+
+    /** Builds the next station; true once every one is, and from then on. Render thread. */
+    public boolean build() {
+        Runnable next = pending.poll();
+        if (next == null) return floors != null;
+        next.run();
+        if (!pending.isEmpty()) return false;
+        String only = ONLY.get();
+        if (!only.isEmpty()) stations.removeIf(s -> Arrays.stream(only.split(",")).noneMatch(s.name()::startsWith));
+        floors = new float[stations.size()];
+        for (Station s : stations) LOG.info("[vfx-modules] {} at x {}, z {}", s.name(), s.x(), s.z());
+        LOG.info("[vfx-modules] every station replays every {}s; a simulation switch reaches it from the next", PERIOD);
+        return true;
+    }
+
+    /** Stations still to build, in order. */
+    private final ArrayDeque<Runnable> pending = new ArrayDeque<>();
+
+    private CgVfxModules(CgFont font, CgVfxOwner owner, boolean whole) {
         drives = owner == null;
         vfx = drives ? CgVfx.owner("crystalgraphics", new CgVfxSystem()) : owner;
         this.font = font;
@@ -297,44 +332,40 @@ public final class CgVfxModules {
         CgTexture2D shard = sheet(1, 1, 64, (f, u, v, out) -> shard(u, v, out));
         fillSheets();
 
-        gather(COLUMNS[0], ROWS[0]);
-        tornado(COLUMNS[1], ROWS[0], smokeSheet);
-        field(COLUMNS[2], ROWS[0], dot, ring);
+        pending.add(() -> gather(COLUMNS[0], ROWS[0]));
+        pending.add(() -> tornado(COLUMNS[1], ROWS[0], smokeSheet));
+        pending.add(() -> field(COLUMNS[2], ROWS[0], dot, ring));
         // The uncapped fountain in limit sprays far: it stands in a corner.
-        limit(COLUMNS[3], ROWS[0]);
-        boulder(COLUMNS[0], ROWS[1]);
-        cage(COLUMNS[1], ROWS[1]);
-        slope(COLUMNS[2], ROWS[1], shard, smokeSheet);
-        block(COLUMNS[3], ROWS[1], dot, ring);
+        pending.add(() -> limit(COLUMNS[3], ROWS[0]));
+        pending.add(() -> boulder(COLUMNS[0], ROWS[1]));
+        pending.add(() -> cage(COLUMNS[1], ROWS[1]));
+        pending.add(() -> slope(COLUMNS[2], ROWS[1], shard, smokeSheet));
+        pending.add(() -> block(COLUMNS[3], ROWS[1], dot, ring));
         // Past the last column: the course runs ten blocks along x.
-        obstacles(COLUMNS[3] + 15f, ROWS[1]);
-        dampingAndDrag(COLUMNS[0], ROWS[2]);
-        shield(COLUMNS[1], ROWS[2], dot);
-        flipbooks(COLUMNS[2], ROWS[2], smokeSheet, fireSheet);
-        facings(COLUMNS[3], ROWS[2], star, rune, wispSheet, dot, ring);
-        shapes(COLUMNS[0], ROWS[3]);
-        moving(COLUMNS[1], ROWS[3]);
-        wake(COLUMNS[2], ROWS[3]);
-        meshes(COLUMNS[3], ROWS[3]);
-        aura(COLUMNS[3] + 15f, ROWS[3]);
+        pending.add(() -> obstacles(COLUMNS[3] + 15f, ROWS[1]));
+        pending.add(() -> dampingAndDrag(COLUMNS[0], ROWS[2]));
+        pending.add(() -> shield(COLUMNS[1], ROWS[2], dot));
+        pending.add(() -> flipbooks(COLUMNS[2], ROWS[2], smokeSheet, fireSheet));
+        pending.add(() -> facings(COLUMNS[3], ROWS[2], star, rune, wispSheet, dot, ring));
+        pending.add(() -> shapes(COLUMNS[0], ROWS[3]));
+        pending.add(() -> moving(COLUMNS[1], ROWS[3]));
+        pending.add(() -> wake(COLUMNS[2], ROWS[3]));
+        pending.add(() -> meshes(COLUMNS[3], ROWS[3]));
+        pending.add(() -> aura(COLUMNS[3] + 15f, ROWS[3]));
         // Past the aura, the row's far end.
-        turning(COLUMNS[3] + 30f, ROWS[3]);
-        dash(COLUMNS[0], ROWS[4], smokeSheet);
-        rush(COLUMNS[1], ROWS[4]);
-        volley(COLUMNS[2], ROWS[4], smokeSheet);
-        anime(COLUMNS[3], ROWS[4]);
-        storm(COLUMNS[0], ROWS[5]);
-        meteor(COLUMNS[1] + 4f, ROWS[5], smokeSheet);
-        sparks(COLUMNS[2] + 6f, ROWS[5]);
-        streams(COLUMNS[3] + 10f, ROWS[5]);
-        flocks(COLUMNS[0], ROWS[6]);
+        pending.add(() -> turning(COLUMNS[3] + 30f, ROWS[3]));
+        pending.add(() -> dash(COLUMNS[0], ROWS[4], smokeSheet));
+        pending.add(() -> rush(COLUMNS[1], ROWS[4]));
+        pending.add(() -> volley(COLUMNS[2], ROWS[4], smokeSheet));
+        pending.add(() -> anime(COLUMNS[3], ROWS[4]));
+        pending.add(() -> storm(COLUMNS[0], ROWS[5]));
+        pending.add(() -> meteor(COLUMNS[1] + 4f, ROWS[5], smokeSheet));
+        pending.add(() -> sparks(COLUMNS[2] + 6f, ROWS[5]));
+        pending.add(() -> streams(COLUMNS[3] + 10f, ROWS[5]));
+        pending.add(() -> flocks(COLUMNS[0], ROWS[6]));
         // A row of its own past the flocks.
-        fields(COLUMNS[0], ROWS[6] + 18f);
-        String only = ONLY.get();
-        if (!only.isEmpty()) stations.removeIf(s -> Arrays.stream(only.split(",")).noneMatch(s.name()::startsWith));
-        floors = new float[stations.size()];
-        for (Station s : stations) LOG.info("[vfx-modules] {} at x {}, z {}", s.name(), s.x(), s.z());
-        LOG.info("[vfx-modules] every station replays every {}s; a simulation switch reaches it from the next", PERIOD);
+        pending.add(() -> fields(COLUMNS[0], ROWS[6] + 18f));
+        if (whole) while (!build()) { }
     }
 
     // ── stations ──────────────────────────────────────────────────────────────

@@ -399,20 +399,28 @@ public final class CgRenderDemo {
 
     private Scene modules() {
         if (labelFont == null) labelFont = sansSerif(48);
-        CgVfxModules modules = new CgVfxModules(labelFont, VFX);
+        // Built a station a poll: built whole, it held the loading screen 200 ms and more
+        CgVfxModules modules = CgVfxModules.stepped(labelFont, VFX);
         return new Scene() {
+            private boolean precached;
+
             @Override
             public void submit(CgWorldRenderer world, CgHostView view, double x, double y, double z, double seconds) {
-                modules.submit(world, x, y, z, seconds);
+                if (precached) modules.submit(world, x, y, z, seconds);
             }
 
             @Override
             public void precache() {
-                modules.precache();
+                // At the first ready() past its last station
             }
 
             @Override
             public boolean ready() {
+                if (!modules.build()) return false;
+                if (!precached) {
+                    modules.precache();
+                    precached = true;
+                }
                 return modules.ready();
             }
 
