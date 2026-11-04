@@ -155,9 +155,6 @@ public final class CgWorldRenderer {
     private static final CgVar.Text HDR_SCENE = CgVar.text("crystalgraphics.world.hdrScene", "", CgVar.DEV,
             "true or false forces the HDR scene for the run over the player's HDR setting, unsaved; empty follows the"
                     + " setting (G in the harness, hdrScene(boolean) live).");
-    private static final CgVar.Bool OPAQUE_SCENE = CgVar.bool("crystalgraphics.world.opaqueScene", true, CgVar.DEV,
-            "Under the HDR scene, our opaque draws into a linear scene of their own, so a colour past white reaches bloom;"
-                    + " false draws them onto the host's 8-bit target, clamped, for the comparison.");
     private static final CgVar.Bool SKIP_UNREADY = CgVar.bool("crystalgraphics.world.skipUnready", true, CgVar.DEV,
             "Holds a draw whose programs are not built yet, starting them and counting it as world.unready-draws; false"
                     + " compiles at the draw (skipUnready(boolean) live).");
@@ -1959,8 +1956,7 @@ public final class CgWorldRenderer {
             step.close();
             step = CgTrace.zone(CgChannels.GL_DETAIL, TOP_OPAQUE_SCENE);
             // Our opaque draws into a linear scene of their own, as Unreal's base pass into SceneColor: past white kept
-            boolean opaqueScene = which == OPAQUE && drawn > 0 && hdrSceneDrawn() && OPAQUE_SCENE.get()
-                    && sceneTarget.recordOpaqueIn(stage);
+            boolean opaqueScene = which == OPAQUE && drawn > 0 && hdrSceneDrawn() && sceneTarget.recordOpaqueIn(stage);
             if (opaqueScene) constants = stage.constants().sceneGlow(sceneEmission);
             step.close();
             step = CgTrace.zone(CgChannels.GL_DETAIL, TOP_DISTORTION);

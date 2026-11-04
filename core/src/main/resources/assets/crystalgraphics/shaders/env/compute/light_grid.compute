@@ -7,10 +7,8 @@
 // cell's lights from every light, an exclusive scan of the counts places each list (CgGpuOps.scan, since an atomic
 // there answers nothing), and Write writes them: the same lists.
 // A cell's list has no cap of its own: the cells share one budget of CG_LIGHT_PER_CELL a cell on average (Unreal's
-// linked lists, MaxCulledLightsPerCell), and what passes it is dropped and counted. A cell is a cell's view-space box
-// from its tile's edges at its slice's near and far depth, culled where it lies past the scene's farthest depth over its
-// tiles and its far edge pulled in to it (Unreal's HZB cull, LightGridInjection.usf:870-905); a light reaches it as
-// cg_light_reaches says. Each cell's list is in index order within each light's run (CG_LIGHT_RUN), the runs in order,
+// linked lists, MaxCulledLightsPerCell), and what passes it is dropped and counted. A cell is the view-space box of its
+// tile's edges at its slice's near and far depth; a light reaches it as cg_light_reaches says. Each cell's list is in index order within each light's run (CG_LIGHT_RUN), the runs in order,
 // and its header says where each starts, so a pass reads its own lights alone (LightGridCommon.ush's NumMegaLights).
 #pragma kernel View map
 #pragma kernel Coarse 64 general
@@ -41,14 +39,10 @@ Properties {
     _ToView0  ("Camera-relative world to the bobbed view, the first row, its shift in w", vec4) = (1, 0, 0, 0)
     _ToView1  ("The second row",                                      vec4) = (0, 1, 0, 0)
     _ToView2  ("The third row",                                       vec4) = (0, 0, 1, 0)
-    _Pyramid  ("The scene's farthest eye depth, a pyramid",            sampler2D) = "black"
-    _Hzb      ("Cull by the pyramid (1), unused, its slack, its last level", vec4) = (0, 0, 0, 0)
     _MinScreen ("r.MinScreenRadiusForLights; 0 keeps every light",     float) = 0
     _DayFade  ("A light's strength under a full day's open sky; 1 for never fading", float) = 0.1
     _Lightmap ("The host's lightmap",                                 sampler2D) = "white"
     _AirSpread ("How far past its cone the lit air widens a spot at eye depth z: z * x + y", vec4) = (0, 0, 0, 0)
-    _HostDepth ("The host projection's m22, m32, m23 and m33: what the pyramid's depth was linearised by", vec4) = (1, 0, -1, 0)
-    _Depth    ("The bob-free perspective's m22, m32, m23 and m33",        vec4) = (1, 0, -1, 0)
 }
 
 Buffers {
@@ -119,59 +113,6 @@ void cell_box(ivec3 lo, ivec3 hi, out vec3 centre, out vec3 extent) {
     vec2 a = min(min(r0 * d0, r1 * d0), min(r0 * d1, r1 * d1)), b = max(max(r0 * d0, r1 * d0), max(r0 * d1, r1 * d1));
     centre = vec3(a + b, -d0 - d1) * 0.5;
     extent = vec3(b - a, d1 - d0) * 0.5;
-}
-
-// The pyramid's eye depth (cg_LinearEyeDepth under the host's projection, its view bob and all) as the grid's: back
-// to the window depth through the host's projection, then out through the bob-free perspective. Both rise with depth,
-// so the farthest stays the farthest.
-float grid_depth(float hostDepth) {
-    if (hostDepth > 1.0e30) return 3.4e38;
-    float ndc;
-    if (_HostDepth.z == 0.0) {
-        ndc = _HostDepth.y - hostDepth * _HostDepth.x;
-    } else {
-        float p22 = -_HostDepth.x / _HostDepth.z, p32 = _HostDepth.y + p22 * _HostDepth.w;
-        ndc = p32 / hostDepth - p22;
-    }
-    return _Depth.z == 0.0 ? (_Depth.y - ndc) / _Depth.x
-            : (_Depth.y - _Depth.x / _Depth.z * _Depth.w) / (ndc - _Depth.x / _Depth.z);
-}
-
-// The scene's farthest eye depth over tiles [lo, hi), with slack; past every depth where there is no pyramid. A texel's
-// share of the target is its level's size against the base's, and a texel more each side keeps it conservative where
-// odd sizes do not halve evenly (IsVisibleHZB samples 4x4 for the same reason).
-float tiles_farthest(ivec2 lo, ivec2 hi) {
-    if (_Hzb.x < 0.5) return 3.4e38;
-    vec2 base = vec2(textureSize(_Pyramid, 0));
-    vec2 p0 = vec2(lo) * _Tile.xy * base, p1 = min(vec2(hi) * _Tile.xy * base, base) - 1.0;
-    float span = max(max(p1.x - p0.x, p1.y - p0.y), 1.0);
-    int level = min(int(ceil(log2(span))), int(_Hzb.w));
-    ivec2 size = textureSize(_Pyramid, level);
-    vec2 scale = vec2(size) / base;
-    ivec2 a = max(ivec2(floor(p0 * scale)) - 1, ivec2(0)), b = min(ivec2(floor(p1 * scale)) + 1, size - 1);
-    float farthest = 0.0;
-    for (int y = a.y; y <= b.y; y++) {
-        for (int x = a.x; x <= b.x; x++) farthest = max(farthest, texelFetch(_Pyramid, ivec2(x, y), level).r);
-    }
-    return grid_depth(farthest) * (1.0 + _Hzb.z);
-}
-
-// The box of tiles [lo, hi) and slices [lo.z, hi.z), its far edge at the scene's farthest depth; false where the scene
-// is nearer than its near edge everywhere, so nothing it holds is lit.
-bool culled_box(ivec3 lo, ivec3 hi, out vec3 centre, out vec3 extent) {
-    float near = cg_light_slice_depth(lo.z, _ZParams.xyz), farthest = tiles_farthest(lo.xy, hi.xy);
-    cell_box(lo, hi, centre, extent);
-    if (near > farthest) return false;
-    float far = cg_light_slice_depth(hi.z, _ZParams.xyz);
-    if (farthest < far) {
-        // Tightened as Unreal's MaxTileZ: the same box, its far depth the scene's.
-        vec2 r0 = mix(_Rays.xy, _Rays.zw, vec2(lo.xy) * _Tile.xy), r1 = mix(_Rays.xy, _Rays.zw, vec2(hi.xy) * _Tile.xy);
-        vec2 a = min(min(r0 * near, r1 * near), min(r0 * farthest, r1 * farthest));
-        vec2 b = max(max(r0 * near, r1 * near), max(r0 * farthest, r1 * farthest));
-        centre = vec3(a + b, -near - farthest) * 0.5;
-        extent = vec3(b - a, farthest - near) * 0.5;
-    }
-    return true;
 }
 
 // A spot is listed out to where the lit air's froxels widen its cone (light_volume.compute's Scatter), at the cell's far
@@ -245,8 +186,8 @@ void Coarse() {
     ivec3 p = ivec3(CG_GROUP_ID), grid = ivec3(_Grid.xyz), parents = ivec3(_Parent.xyz);
     int factor = int(_Parent.w);
     vec3 centre, extent;
-    bool seen = culled_box(p * factor, min((p + 1) * factor, grid), centre, extent);
-    uint lights = seen ? min(COUNT(0), uint(_Grid.w)) : 0u, e = uint((p.z * parents.y + p.y) * parents.x + p.x);
+    cell_box(p * factor, min((p + 1) * factor, grid), centre, extent);
+    uint lights = min(COUNT(0), uint(_Grid.w)), e = uint((p.z * parents.y + p.y) * parents.x + p.x);
     if (local == 0u) groupCount = 0u;
     barrier();
     uint mine = 0u;
@@ -305,7 +246,7 @@ void Count() {
     bool parented;
     candidates(CG_ELEMENT, cell, n, from, parented);
     vec3 centre, extent;
-    if (!culled_box(cell, cell + 1, centre, extent)) n = 0u;
+    cell_box(cell, cell + 1, centre, extent);
     uint count = 0u;
     for (uint k = 0u; k < n; k++) {
         if (viewed_reaches(parented ? PARENT_INDICES(int(from + k)) : k, centre, extent)) count++;
@@ -322,7 +263,7 @@ void Write() {
     bool parented;
     candidates(e, cell, n, from, parented);
     vec3 centre, extent;
-    if (!culled_box(cell, cell + 1, centre, extent)) n = 0u;
+    cell_box(cell, cell + 1, centre, extent);
     uint start = STARTS(e), budget = uint(_Budget.y);
     uint counts[5] = uint[5](0u, 0u, 0u, 0u, 0u);
     for (uint k = 0u; k < n; k++) {
@@ -359,7 +300,7 @@ void Cell() {
     bool parented;
     candidates(e, cell, n, from, parented);
     vec3 centre, extent;
-    if (!culled_box(cell, cell + 1, centre, extent)) n = 0u;
+    cell_box(cell, cell + 1, centre, extent);
     if (local < 5u) runCount[local] = 0u;
     barrier();
     uint mine[5] = uint[5](0u, 0u, 0u, 0u, 0u);

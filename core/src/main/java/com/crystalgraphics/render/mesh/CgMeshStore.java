@@ -1,6 +1,5 @@
 package com.crystalgraphics.render.mesh;
 
-import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgMeshChanges;
 import com.crystalgraphics.api.mesh.CgMeshTopology;
@@ -59,8 +58,7 @@ import java.util.Map;
  *       ever reads what it wrote itself.</li>
  *   <li>A {@link CgMesh.Usage#FRAME} mesh takes no slab: each frame it is placed, its bytes are written straight into
  *       a page of the frame ring ({@link CgMeshRing}), and it draws from there with base-vertex calls. It holds
- *       nothing between frames, so it needs no release, and is forgotten after a frame it is not drawn in.
- *       {@code -Dcrystalgraphics.mesh.frameRing=false} places it in a slab as any other.</li>
+ *       nothing between frames, so it needs no release, and is forgotten after a frame it is not drawn in.</li>
  *   <li>Render thread only.</li>
  * </ul>
  */
@@ -85,10 +83,6 @@ public final class CgMeshStore {
 
     /** Consecutive frames of edits after which a mesh that is not FRAME is reported. */
     private static final int EVERY_FRAME = 60;
-
-    private static final boolean FRAME_RING = CgVar.bool("crystalgraphics.mesh.frameRing", true, CgVar.DEV | CgVar.RESTART,
-            "FRAME meshes written into the frame ring; false places them in slab ranges as any other: one build, both"
-                    + " paths, for comparing them.").get();
 
     private long drawing, drawn, calls;
     private boolean multiDraw = true;
@@ -191,7 +185,7 @@ public final class CgMeshStore {
     /** Makes {@code mesh} drawable this frame: placed, and its bytes staged if it is new or changed. */
     public void place(CgMesh mesh) {
         beginFrame();
-        if (FRAME_RING && mesh.usage() == CgMesh.Usage.FRAME) {
+        if (mesh.usage() == CgMesh.Usage.FRAME) {
             placeOnRing(mesh);
             return;
         }

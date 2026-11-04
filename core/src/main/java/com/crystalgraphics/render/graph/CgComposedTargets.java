@@ -5,7 +5,6 @@ import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
-import com.crystalgraphics.variable.CgVar;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -55,9 +54,6 @@ final class CgComposedTargets {
      * threaded driver an attach costs about 2 µs and a framebuffer bind 4 (T11 P0.3), and a frame made ~50 of them.
      */
     private final long[] attached = new long[4];
-    /** Off: every bind attaches everything and each pass detaches, as before T11, to compare. */
-    static final boolean KEEP = CgVar.bool("crystalgraphics.graph.keepComposed", true, CgVar.DEV | CgVar.RESTART,
-            "Keeps a composed framebuffer's attachments across an execution's passes; off, attached each pass.").get();
 
     /** With {@code hostColor}, the host's colour at slot 0 and ours at 1; without, ours at 0 and no host colour. */
     CgComposedTargets(boolean hostColor) {
@@ -89,7 +85,6 @@ final class CgComposedTargets {
      */
     String bind(int host, int width, int height, int texture, CgTextureType type, int second, CgTextureType secondType) {
         if (host == 0) return "the default framebuffer lends no attachment to a framebuffer of ours";
-        if (!KEEP) CgGL.glBindFramebuffer(CgGL.GL_FRAMEBUFFER, host);
         if (readHost != host || readWidth != width || readHeight != height) {
             CgGL.glBindFramebuffer(CgGL.GL_FRAMEBUFFER, host);
             try (CgTrace.Zone z = CgTrace.zone(CgChannels.GL_DETAIL, READ)) {
@@ -181,7 +176,7 @@ final class CgComposedTargets {
     private void point(int slot, int point, int type, int name, int level, boolean depthStencil) {
         long key = type == GL_TEXTURE || type == CgGL.GL_RENDERBUFFER
                 ? (long) type << 40 | (long) level << 32 | name & 0xFFFFFFFFL | (depthStencil ? 1L << 62 : 0) : 0;
-        if (KEEP && attached[slot] == key) return;
+        if (attached[slot] == key) return;
         attached[slot] = key;
         if (type == CgGL.GL_RENDERBUFFER) CgGL.glFramebufferRenderbuffer(CgGL.GL_FRAMEBUFFER, point, CgGL.GL_RENDERBUFFER, name);
         else CgGL.glFramebufferTexture2D(CgGL.GL_FRAMEBUFFER, point, CgGL.GL_TEXTURE_2D, type == GL_TEXTURE ? name : 0, level);

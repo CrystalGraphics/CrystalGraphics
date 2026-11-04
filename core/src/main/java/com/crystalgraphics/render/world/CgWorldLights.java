@@ -302,7 +302,7 @@ public final class CgWorldLights {
     private final List<Appender> appenders = new CopyOnWriteArrayList<>();
     private final Vector3f eye = new Vector3f();
     private final Matrix4f unproject = new Matrix4f(), toView = new Matrix4f(), perspective = new Matrix4f(),
-            bob = new Matrix4f(), host = new Matrix4f();
+            bob = new Matrix4f();
     private final Vector4f corner = new Vector4f();
     /** The grid this firing: cells across and up, unit-depth rays at the target's edges, the slices' B, O and S. */
     private int gridX, gridY;
@@ -310,9 +310,6 @@ public final class CgWorldLights {
     /** How far past a spot's cone the lit air widens it: CgWorldMedia.spread's. */
     private final float[] airSpread = new float[2];
     private CgGraphBuffer cells, indices, viewed, alloc, parentCells, parentIndices, counts, starts;
-    private CgGraphTexture pyramid;
-    /** The pyramid's slack: its eye depth is linearised under the host's projection, bob and all. */
-    private static final float HZB_MARGIN = 0.02f;
     /** Unreal's r.MinScreenRadiusForLights: a light whose bound is smaller on screen is not drawn. */
     private static final CgVar.Num MIN_SCREEN = CgVar.number("crystalgraphics.world.lightsMinScreenRadius", 0.03f, 0f, 1f,
             CgVar.DEV, "A light whose bounding sphere is smaller than this share of the screen is not drawn; 0 keeps all.");
@@ -333,11 +330,6 @@ public final class CgWorldLights {
     /** Unreal's r.DistanceFieldShadowing: our meshes' distance fields in the lights' shadow rays. */
     private static final CgVar.Bool MESH_SHADOWS = CgVar.bool("crystalgraphics.world.lightsMeshShadows", true, CgVar.DEV,
             "Our meshes withhold the lights through their distance fields; off, only blocks, entities and the screen do.");
-    /** Unreal's r.MegaLights.Temporal.MaxFramesAccumulated. */
-    private static final CgVar.Int SAMPLE_SKIP = CgVar.integer("crystalgraphics.world.lightsSampleSkip", 0, 0, 127, CgVar.DEV,
-            "Parts of the shadow rays left out, to measure what each costs: 1 the sun, 2 Minecraft's block light, 4 the "
-                    + "lights, 8 our meshes, 16 the screen trace, 32 the blocks, 64 the entities.");
-
     private static final CgVar.Int SAMPLES = CgVar.integer("crystalgraphics.world.lightsSamplesPerPixel", 1, 1, 4, CgVar.DEV,
             "Unreal's r.MegaLights.NumSamplesPerPixel: 1, 2 or 4 shadow rays a pixel (or a downsampled one). Unreal's 4 "
                     + "fall on a 2x2 downsampled pixel, a ray a screen pixel; 1 at full resolution is the same budget.");
@@ -375,12 +367,6 @@ public final class CgWorldLights {
     /** Where the sun's cascade rows start in the casters' texture: world_lights_sample.shader's SUN_ROWS_AT. */
     private static final int SUN_ROWS_AT = MOST_CASTERS * CASTER_FLOATS / 4;
     private static final float CASTER_REACH = 96f;
-    /**
-     * Unreal's r.Forward.LightGridHZBCull. Off: in Minecraft 1.20.1 it cut the lit air into the grid's 64-pixel squares (the harness never shows it), and in
-     * the lights demo at 2560x1440 it saved 0.02 ms.
-     */
-    private static final CgVar.Bool HZB = CgVar.bool("crystalgraphics.world.lightsHzb", false, CgVar.DEV,
-            "The light grid skips cells behind the scene and pulls each cell's far edge in to it.");
     private CgKernel view, coarse, cell, countCells, writeCells;
     /** The tier {@link #quality} last set. */
     private static CgQuality appliedTier;
@@ -1006,8 +992,6 @@ public final class CgWorldLights {
             recording.update(alloc, 0, zeros, 0, 4);
             boolean appended = false;
             for (Appender a : appenders) a.upload(recording, this);
-            // The scene's farthest depth per tile, for Unreal's HZB cull: built before the passes that read it open.
-            pyramid = frame.depthPyramid();
             CgComputePass pass = recording.compute("world.lights", stage).timed(GPU_ZONE);
             for (Appender a : appenders) {
                 if (!a.append(pass, this)) continue;
@@ -1165,7 +1149,6 @@ public final class CgWorldLights {
         // The grid lives in the bobbed view: a host folding its camera's bob into the projection (Minecraft 1.17-1.21.5)
         // keeps a pure perspective over it, so the rays and the depth come from that and the lights go through the bob.
         splitPerspective(projection, perspective, bob);
-        host.set(projection);
         perspective.invert(unproject);
         for (int c = 0; c < 2; c++) {
             float ndc = c == 0 ? -1f : 1f;
@@ -1184,12 +1167,6 @@ public final class CgWorldLights {
 
     /** The grid's values onto one of its kernels' dispatches. */
     private void grid(CgDispatch dispatch, int gx, int gy, int px, int py, int pz, int factor, int budget, int parentBudget) {
-        if (dispatch.kernel() != view) {
-            int side = Math.max(pyramid.getWidth(), pyramid.getHeight());
-            dispatch.texture("_Pyramid", pyramid).set("_Hzb", HZB.get() ? 1f : 0f, 0f, HZB_MARGIN, 31 - Integer.numberOfLeadingZeros(side))
-                    .set("_HostDepth", host.m22(), host.m32(), host.m23(), host.m33())
-                    .set("_Depth", perspective.m22(), perspective.m32(), perspective.m23(), perspective.m33());
-        }
         dispatch.set("_Grid", gx, gy, SLICES, CAPACITY).set("_Parent", px, py, pz, factor)
                 .set("_Budget", parentBudget, budget, 0f, 0f)
                 .set("_Tile", tileU, tileV, 0f, 0f)
@@ -1533,9 +1510,9 @@ public final class CgWorldLights {
         }
     }
 
-    /** What the shadow rays leave out: {@link #SAMPLE_SKIP}'s parts, and our meshes without {@link #MESH_SHADOWS}. */
+    /** What the shadow rays leave out: our meshes without {@link #MESH_SHADOWS}. */
     private static int skip() {
-        return SAMPLE_SKIP.get() | (MESH_SHADOWS.get() ? 0 : 8);
+        return MESH_SHADOWS.get() ? 0 : 8;
     }
 
     /** The casters' rows, then the sun's cascades' ({@link #SUN_ROWS_AT}): made once. */

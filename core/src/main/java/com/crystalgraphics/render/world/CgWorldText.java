@@ -1,7 +1,5 @@
 package com.crystalgraphics.render.world;
 
-import com.crystalgraphics.variable.CgVar;
-import com.crystalgraphics.api.PoseStack;
 import com.crystalgraphics.api.font.CgFont;
 import com.crystalgraphics.api.font.CgFontFamily;
 import com.crystalgraphics.api.text.CgTextLayout;
@@ -47,9 +45,6 @@ public final class CgWorldText {
 
     /** Where a label's point sits on it: the middle of the block, its top or its bottom. */
     private static final float CENTRE = 0.5f;
-    private static final boolean RETAINED = CgVar.bool("crystalgraphics.text.retainedLabels", true, CgVar.DEV | CgVar.RESTART,
-            "World labels captured once and kept on the GPU; false draws every label every frame as any text: the"
-                    + " comparison for the retained path.").get();
 
     private static final int RECORD = CgQuadRenderer.Record.FLOATS;
     private static final int NODE = CgQuadRenderer.Record.NODE;
@@ -65,12 +60,9 @@ public final class CgWorldText {
     private int count;
     private final Consumer<CgTextRenderer.Draw> queue = this::submitted;
     private final CgPassRecorder recorder = new CgPassRecorder();
-    private final PoseStack pose = new PoseStack();
     private final Matrix4f projection = new Matrix4f();
     private final Matrix4f place = new Matrix4f();
     private final Vector3f eye = new Vector3f();
-    /** The immediate path's draw order: squared distance bits over the label's index. */
-    private long[] order = new long[0];
     private final Quaternionf facing = new Quaternionf();
     private CgTextRenderer renderer;
 
@@ -111,11 +103,11 @@ public final class CgWorldText {
     /**
      * Places the frame's labels and draws their text into {@code stage}'s depth, before the stage's transparent draws and
      * glows, so a glow behind a label is hidden from bloom as from the picture. {@link #record} then draws their colour.
-     * Retained labels only. Render thread.
+     * Render thread.
      */
     void recordDepth(CgStageFrame stage, CgHostView view) {
         depthDrawn = false;
-        if (!RETAINED || count == 0 && keptCount == 0) return;
+        if (count == 0 && keptCount == 0) return;
         begin(stage, view);
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, "world.text")) {
             prepareRetained(stage, view);
@@ -129,33 +121,12 @@ public final class CgWorldText {
         if (count == 0 && keptCount == 0) return;
         begin(stage, view);
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, "world.text")) {
-            if (RETAINED) {
-                if (!depthDrawn) {
-                    prepareRetained(stage, view);
-                    drawRetained(stage, true);
-                }
-                depthDrawn = false;
-                drawRetained(stage, false);
-                return;
+            if (!depthDrawn) {
+                prepareRetained(stage, view);
+                drawRetained(stage, true);
             }
-            recorder.recordInto(stage.recording(), stage.target(), CgLoad.load(), stage.constants());
-            renderer.sink(recorder);
-            try {
-                // Far to near, so a nearer label's text covers a farther one's: labels write no depth here.
-                if (order.length < count) order = new long[count * 2];
-                for (int i = 0; i < count; i++) {
-                    Label l = labels.get(i);
-                    double dx = l.x - view.x(), dy = l.y - view.y(), dz = l.z - view.z();
-                    order[i] = (long) Float.floatToIntBits((float) (dx * dx + dy * dy + dz * dz)) << 32 | i;
-                }
-                Arrays.sort(order, 0, count);
-                renderer.beginBatch();
-                for (int i = count - 1; i >= 0; i--) draw(labels.get((int) order[i]), view);
-                renderer.endBatch();
-            } finally {
-                renderer.sink(null);
-                recorder.stop();
-            }
+            depthDrawn = false;
+            drawRetained(stage, false);
         }
     }
 
@@ -163,17 +134,6 @@ public final class CgWorldText {
         int w = Math.max(1, stage.host().width()), h = Math.max(1, stage.host().height());
         projection.set(view.projection());
         renderer.context().updateProjection(projection, w, h);
-    }
-
-    private void draw(Label label, CgHostView view) {
-        CgTextRenderer.Draw d = label.draw.pose(null);
-        int px = d.basePx();
-        if (px <= 0) return;
-        CgTextLayout layout = d.measure();
-        Matrix4f m = pose.last().pose();
-        placement(m, label, view, layout, px);
-        renderer.context().updateProjectedSize(m, projection, px);
-        renderer.drawQueued(d.pose(pose));
     }
 
     /** Into {@code m}: view, the label's offset from the eye, its turn or the view's undone, its size and anchor. */

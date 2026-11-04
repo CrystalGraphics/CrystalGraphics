@@ -166,7 +166,7 @@ world.text(sign).at(x, y, z).rotation(facingSouth).anchor(0f, 0f).family(family)
   it is written (`docs/SHADERS.md` § *Lighting and fog*). Our opaque draws go into a linear scene too, as Unreal's
   base pass writes SceneColor: encoded back into the host's colour after the opaque stage, so what the host draws
   before the transparent stage blends over them as before, and kept wherever the host drew nothing over them, so an
-  unlit colour past white reaches bloom (`-Dcrystalgraphics.world.opaqueScene=false` clamps it, to compare). Glows add into the scene itself, with no emission target, and
+  unlit colour past white reaches bloom. Glows add into the scene itself, with no emission target, and
   bloom takes the scene's light past `CgPostStack.get().bloom().threshold(t)` (1). Flipped live, it takes effect at the next firing: the harness and the demo bind it to G.
 - **Half resolution**: a transparent draw marked `.halfResolution()` draws into a half-size target before the
   transparent pass, at a quarter of the pixels. Soft light that adds (`Blend ONE ONE`: a glow) is added over the target

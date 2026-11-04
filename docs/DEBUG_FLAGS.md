@@ -121,8 +121,6 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 |---|---|---|---|
 | `crystalgraphics.graph.asyncAll` | true, false | `false` | Every compute pass that can go async does, as if marked async(): a check of the waits, which the compute scenes must pass under synchronization validation. Read at launch. |
 | `crystalgraphics.graph.barriers` | true, false | `true` | Barriers where a kernel takes part; false keeps the bookkeeping and issues none: what synchronization validation must catch on --mode=compute-graph. |
-| `crystalgraphics.graph.keepComposed` | true, false | `true` | Keeps a composed framebuffer's attachments across an execution's passes; off, attached each pass. Read at launch. |
-| `crystalgraphics.graph.keepVertexArray` | true, false | `true` | Raster passes in a row keep the vertex array bound; off, each unbinds it. Read at launch. |
 
 ## `crystalgraphics.host`
 
@@ -179,7 +177,6 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 | Variable | Takes | Default | |
 |---|---|---|---|
 | `crystalgraphics.mesh.editStacks` | true, false | `false` | Each mesh edit records its stack, which the [cg-mesh] report of a mesh edited every frame prints. |
-| `crystalgraphics.mesh.frameRing` | true, false | `true` | FRAME meshes written into the frame ring; false places them in slab ranges as any other: one build, both paths, for comparing them. Read at launch. |
 | `crystalgraphics.mesh.multiDraw` | true, false | `true` | Runs of draws sharing pipeline, bindings and a slab joined into one multi-draw; false draws a call a draw, for a picture that must not change. Taken at each context's capability probe. |
 
 ## `crystalgraphics.mirror`
@@ -227,12 +224,6 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 |---|---|---|---|
 | `crystalgraphics.post.bloom.linear` | true, false | `false` | Bloom starts composited in linear light (the copy form), to compare with the default blend form; L cycles blend, linear and off in any harness scene with a 3D camera. |
 | `crystalgraphics.post.debug` | text | empty | emission: the emission target over the frame. level<N>: a level of bloom's chain, 0 the glow the composite reads. overdraw: transparent fragments per pixel as a heat ramp (blue 1, green 4, red 16, white 32). distortion: the distortion target, \|offset\| x 50 in red and green, the split in blue. |
-
-## `crystalgraphics.recorder`
-
-| Variable | Takes | Default | |
-|---|---|---|---|
-| `crystalgraphics.recorder.lookback` | true, false | `true` | A recorder's passes move a draw back past draws it does not overlap; false joins neighbouring draws only, in submission order: rules lookback out of a wrong picture. |
 
 ## `crystalgraphics.recording`
 
@@ -292,7 +283,6 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 |---|---|---|---|
 | `crystalgraphics.text.deterministicGlyphs` | true, false | `false` | Every glyph job runs on the thread that asks for it, in the order asked, so the atlas fills the same way every run: for pixel comparisons of text, never for play. Read at launch. |
 | `crystalgraphics.text.gamma` | true, false | `true` | What a new text renderer starts with: Skia's text gamma and contrast; false draws coverage exactly as rasterised, for comparing. |
-| `crystalgraphics.text.retainedLabels` | true, false | `true` | World labels captured once and kept on the GPU; false draws every label every frame as any text: the comparison for the retained path. Read at launch. |
 | `crystalgraphics.text.traceQuadLoop` | true, false | `false` | Time every iteration of text's quad-submission loop and report the slowest: tells a blocking call inside the loop from the render thread being descheduled. Costs a fifth of the loop. Read at launch. |
 
 ## `crystalgraphics.texture`
@@ -394,10 +384,8 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 | `crystalgraphics.world.lightsDayFade` | 0.0 to 1.0 | `0.1` | A light's strength under a full day's open sky, where an eye adapted to the sun sees it faint; full at night and where no sky reaches. 1 never fades. |
 | `crystalgraphics.world.lightsDownsample` | 0.0 to 2.0 | `2.0` | Unreal's r.MegaLights.DownsampleMode: 0 traces every pixel, 1 every other (2x1), 2 a quarter (2x2), Unreal's default. In the lights demo at 2560x1440 in game the sample pass took 1.9 ms at 0, 0.65 at 2. |
 | `crystalgraphics.world.lightsEntityTiles` | true, false | `true` | A shadow ray tests only the entities its 16x16 tile can meet; off, every tile keeps every entity. |
-| `crystalgraphics.world.lightsHzb` | true, false | `false` | The light grid skips cells behind the scene and pulls each cell's far edge in to it. |
 | `crystalgraphics.world.lightsMeshShadows` | true, false | `true` | Our meshes withhold the lights through their distance fields; off, only blocks, entities and the screen do. |
 | `crystalgraphics.world.lightsMinScreenRadius` | 0.0 to 1.0 | `0.03` | A light whose bounding sphere is smaller than this share of the screen is not drawn; 0 keeps all. |
-| `crystalgraphics.world.lightsSampleSkip` | 0 to 127 | `0` | Parts of the shadow rays left out, to measure what each costs: 1 the sun, 2 Minecraft's block light, 4 the lights, 8 our meshes, 16 the screen trace, 32 the blocks, 64 the entities. |
 | `crystalgraphics.world.lightsSamplesPerPixel` | 1 to 4 | `1` | Unreal's r.MegaLights.NumSamplesPerPixel: 1, 2 or 4 shadow rays a pixel (or a downsampled one). Unreal's 4 fall on a 2x2 downsampled pixel, a ray a screen pixel; 1 at full resolution is the same budget. |
 | `crystalgraphics.world.lightsScreenSteps` | 4 to 64 | `24` | Steps a shadow ray takes across the screen's depth. |
 | `crystalgraphics.world.lightsScreenTrace` | 0.0 to 64.0 | `1.0` | Blocks a shadow ray is followed across the screen's depth before the world trace takes over: Unreal's r.MegaLights.ScreenTraces.MaxDistance, 100 cm. |
@@ -413,7 +401,6 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 | `crystalgraphics.world.mediaPixels` | 4 to 32 | `16` | Pixels of the screen a froxel of the air's grid spans across: Unreal's High 16, Epic 8 (four times the froxels). |
 | `crystalgraphics.world.mergeEmission` | true, false | `true` | What a new world renderer starts with: a transparent draw's codeless Emissive pass written by its Forward draw beside the target; false draws every Emissive pass on its own (mergeEmission(boolean) live). |
 | `crystalgraphics.world.meshFieldFloats` | 65536 to 67108864 | `8388608` | Floats our meshes' distance fields share on the GPU; the least recently used are dropped past it. Read at launch. |
-| `crystalgraphics.world.opaqueScene` | true, false | `true` | Under the HDR scene, our opaque draws into a linear scene of their own, so a colour past white reaches bloom; false draws them onto the host's 8-bit target, clamped, for the comparison. |
 | `crystalgraphics.world.skipUnready` | true, false | `true` | Holds a draw whose programs are not built yet, starting them and counting it as world.unready-draws; false compiles at the draw (skipUnready(boolean) live). |
 | `crystalgraphics.world.sunCasterReach` | 0.0 to 128.0 | `48.0` | Blocks toward the sun past each shadow cascade its casters are taken from: their longest shadow. |
 | `crystalgraphics.world.sunShadowCascades` | 1 to 4 | `4` | Cascades of the sun's shadow map drawn, each 3 times the depth of the last. |

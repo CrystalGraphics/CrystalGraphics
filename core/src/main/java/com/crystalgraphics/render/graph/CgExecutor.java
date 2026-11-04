@@ -1345,10 +1345,6 @@ public final class CgExecutor {
         }
         if (stencilled) CgStencilState.DISABLED.apply();
         stencilled = false;
-        if (!CgComposedTargets.KEEP) {
-            if (composed) COMPOSED.detach();
-            if (beside) BESIDE.detach();
-        }
         composed = beside = false;   // detached at the execution's end: an attach a pass cost 2 µs on a threaded driver
     }
 
@@ -1602,7 +1598,6 @@ public final class CgExecutor {
             if (pass.colorFromCopy() != null) pass.colorFromCopy().release(POOL);
         }
         vaoHeld = true;
-        if (!KEEP_VAO) releaseVertexArray();
     }
 
     /** Unbinds what {@link #vaoHeld} says a raster pass left bound. */
@@ -1611,9 +1606,6 @@ public final class CgExecutor {
         vaoHeld = false;
         CgGL.glBindVertexArray(0);
     }
-
-    private static final boolean KEEP_VAO = CgVar.bool("crystalgraphics.graph.keepVertexArray", true,
-            CgVar.DEV | CgVar.RESTART, "Raster passes in a row keep the vertex array bound; off, each unbinds it.").get();
 
     private static final int BATCH_PIPELINE = CgTrace.name("graph.batch.pipeline"),
             BATCH_BINDINGS = CgTrace.name("graph.batch.bindings"), BATCH_DRAW = CgTrace.name("graph.batch.draw"),

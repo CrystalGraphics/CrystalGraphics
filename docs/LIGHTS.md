@@ -129,9 +129,8 @@ sun sees it:
 
 Lights are binned into Unreal 5's light grid before the pass: 64-pixel tiles, 32 depth slices. A parent grid four
 cells a side is culled first, then each cell from its parent's list, a work group a cell where compute runs. Unreal's
-HZB cull, skipping cells behind the scene by its depth pyramid, is off (`-Dcrystalgraphics.world.lightsHzb=true` turns
-it on): in Minecraft 1.20.1 it cut the lit air into the grid's 64-pixel squares, which the harness never shows, and in
-the lights demo it saved 0.02 ms. A spot is listed out past its outer cone by as much as the lit air's froxels widen
+HZB cull, skipping cells behind the scene by its depth pyramid, is not built: in Minecraft 1.20.1 it cut the lit air
+into the grid's 64-pixel squares, and in the lights demo it saved 0.02 ms (removed by T12). A spot is listed out past its outer cone by as much as the lit air's froxels widen
 it (`cg_light_reaches_by`, about half a froxel's diagonal at the cell's far depth): else a softened beam edge in a cell
 that does not list it was cut along the cell's side, in 64-pixel steps. Each cell's list is whole, from a budget shared by every cell that grows when a frame overflows it.
 Its lights are in runs by kind (`CG_LIGHT_RUN`): shaded exactly, those in the air either side of the middle, sampled,
@@ -244,11 +243,8 @@ lights.add(x, y, z, 2f, 0xFFFFE080, 4f, 0f).shadowed(false).sampled(false);   //
 - The gate is `--mode=lights-shadow`: a wall of blocks between a light and the floor, the light behind it gone and in the
   open the same as unshadowed. GPU zones `world.sunShadow`, `world.lightsTiles`, `world.lightsSample`,
   `world.lightsShade`, `world.lightsTemporal`, `world.lightsDenoise`.
-- **What a ray's parts cost, in game**: `-Dcrystalgraphics.demo=shadows -Dcrystalgraphics.demo.shadowsBisect=true
-  -Dcrystalgraphics.trace.channels=gpu` leaves each part out in turn (`crystalgraphics.world.lightsSampleSkip`: 1 the
-  sun, 2 block light, 4 the lights, 8 our meshes, 16 the screen trace, 32 the blocks, 64 the entities) while the player
-  stands over a shadow, and logs `[shadows-bisect]` the sample pass's GPU time without each. `--mode=lights-shadows-bench`
-  is the harness's version of that view (animals, eye height and the sun's angle by `-D`).
+- **What the shadow rays cost**: `--mode=lights-shadows-bench` (animals, eye height and the sun's angle by `-D`), with
+  `-Dcrystalgraphics.trace.channels=gpu`: the zones above.
 
 ## 8. On transparent surfaces and particles
 
