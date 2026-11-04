@@ -202,9 +202,11 @@ public final class CgCompute implements CgReloadable {
         String key = kernel.programKey;
         CgComputeSource now = source;
         CgKernelDecl decl = now.kernel(kernel.name());
-        if (decl == null || ahead.containsKey(key)) return;
+        // No context's capabilities yet, or none since teardown: the render thread's precache makes its own
+        CgKernelTarget target = CgKernelTarget.detected();
+        if (decl == null || target == null || ahead.containsKey(key)) return;
         try (CgIO.Reads reads = CgIO.recordReads()) {
-            CgKernelProgram.Sources made = CgKernelProgram.Sources.of(now, decl, kernel.keywords(), CgKernelTarget.current());
+            CgKernelProgram.Sources made = CgKernelProgram.Sources.of(now, decl, kernel.keywords(), target);
             ahead.put(key, new Ahead(made, new HashSet<>(reads.paths())));
         }
     }

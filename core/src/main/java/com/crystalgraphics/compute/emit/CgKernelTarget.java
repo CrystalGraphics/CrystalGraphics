@@ -3,6 +3,8 @@ package com.crystalgraphics.compute.emit;
 import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.platform.gl.CgCapabilities;
 
+import javax.annotation.Nullable;
+
 /**
  * What a kernel is emitted for: the GLSL the device compiles, its subgroup operations and float atomics, and the
  * limits a kernel is checked against. {@link #current()} on the render thread; a constant in a test.
@@ -39,7 +41,20 @@ public record CgKernelTarget(boolean arb, int subgroupOperations, boolean floatA
 
     /** The current context's. */
     public static CgKernelTarget current() {
-        CgCapabilities caps = CgCapabilities.detect();
+        return of(CgCapabilities.detect());
+    }
+
+    /**
+     * The current context's if its capabilities are already detected, else null: for a job thread, which must never be
+     * the one to probe GL (after teardown it has no context, and the driver aborts the process).
+     */
+    @Nullable
+    public static CgKernelTarget detected() {
+        CgCapabilities caps = CgCapabilities.detected();
+        return caps == null ? null : of(caps);
+    }
+
+    private static CgKernelTarget of(CgCapabilities caps) {
         if (!caps.compute()) {
             throw new IllegalStateException("this context runs no compute shaders: kernels run at tier "
                     + caps.computeTier());
