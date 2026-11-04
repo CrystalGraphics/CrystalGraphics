@@ -33,11 +33,15 @@ import com.crystalgraphics.object.CgValueType;
 final class CgAssetRegistryCache {
 
     /** Bump with any change to what a scan reads from a file (references, redirects, searchable values) or to its keys. */
-    private static final int VERSION = 3;
+    private static final int VERSION = 4;
 
-    /** One file's gathered data. */
+    /** One file's gathered data: its own asset's, then each child it writes inline. */
     record Record(long modified, String kind, @Nullable String redirect, List<CgAssetReferences.Reference> references,
-                  Map<String, String> searchable) {
+                  Map<String, String> searchable, List<Child> children) {
+    }
+
+    /** A child a file writes inline, by its full id. */
+    record Child(String id, List<CgAssetReferences.Reference> references, Map<String, String> searchable) {
     }
 
     private final Map<String, Record> records = new ConcurrentHashMap<>();
@@ -98,20 +102,12 @@ final class CgAssetRegistryCache {
                 long modified = in.readLong();
                 String kind = in.readUTF();
                 String redirect = in.readBoolean() ? in.readUTF() : null;
-                int refs = in.readInt();
-                List<CgAssetReferences.Reference> list = new ArrayList<>(refs);
-                for (int j = 0; j < refs; j++) {
-                    CgType refKind = CgTypes.get(in.readUTF());
-                    String id = in.readUTF();
-                    CgValueType.Strength strength = in.readBoolean() ? CgValueType.Strength.HARD : CgValueType.Strength.SOFT;
-                    CgPropertyPath at = CgPropertyPath.parse(in.readUTF());
-                    if (refKind != null) list.add(new CgAssetReferences.Reference(refKind, id, strength, at));
-                }
-                int values = in.readInt();
-                Map<String, String> searchable = values == 0 ? Collections.emptyMap() : new LinkedHashMap<>();
-                for (int j = 0; j < values; j++) searchable.put(in.readUTF(), in.readUTF());
-                cache.records.put(key, new Record(modified, kind, redirect, Collections.unmodifiableList(list),
-                        Collections.unmodifiableMap(searchable)));
+                List<CgAssetReferences.Reference> list = readReferences(in);
+                Map<String, String> searchable = readSearchable(in);
+                int n2 = in.readInt();
+                List<Child> children = n2 == 0 ? Collections.emptyList() : new ArrayList<>(n2);
+                for (int j = 0; j < n2; j++) children.add(new Child(in.readUTF(), readReferences(in), readSearchable(in)));
+                cache.records.put(key, new Record(modified, kind, redirect, list, searchable, children));
             }
         } catch (IOException | RuntimeException unreadable) {
             cache.records.clear();   // rebuilt by the next scan
@@ -143,21 +139,56 @@ final class CgAssetRegistryCache {
                 out.writeUTF(r.kind);
                 out.writeBoolean(r.redirect != null);
                 if (r.redirect != null) out.writeUTF(r.redirect);
-                out.writeInt(r.references.size());
-                for (CgAssetReferences.Reference ref : r.references) {
-                    out.writeUTF(ref.kind().id());
-                    out.writeUTF(ref.id());
-                    out.writeBoolean(ref.strength() == CgValueType.Strength.HARD);
-                    out.writeUTF(ref.at().toString());
-                }
-                out.writeInt(r.searchable.size());
-                for (Map.Entry<String, String> v : r.searchable.entrySet()) {
-                    out.writeUTF(v.getKey());
-                    out.writeUTF(v.getValue());
+                writeReferences(out, r.references);
+                writeSearchable(out, r.searchable);
+                out.writeInt(r.children.size());
+                for (Child c : r.children) {
+                    out.writeUTF(c.id);
+                    writeReferences(out, c.references);
+                    writeSearchable(out, c.searchable);
                 }
             }
         }
         Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING);
+    }
+
+    private static List<CgAssetReferences.Reference> readReferences(DataInputStream in) throws IOException {
+        int refs = in.readInt();
+        List<CgAssetReferences.Reference> list = new ArrayList<>(refs);
+        for (int j = 0; j < refs; j++) {
+            CgType refKind = CgTypes.get(in.readUTF());
+            String id = in.readUTF();
+            CgValueType.Strength strength = in.readBoolean() ? CgValueType.Strength.HARD : CgValueType.Strength.SOFT;
+            CgPropertyPath at = CgPropertyPath.parse(in.readUTF());
+            if (refKind != null) list.add(new CgAssetReferences.Reference(refKind, id, strength, at));
+        }
+        return Collections.unmodifiableList(list);
+    }
+
+    private static Map<String, String> readSearchable(DataInputStream in) throws IOException {
+        int values = in.readInt();
+        if (values == 0) return Collections.emptyMap();
+        Map<String, String> searchable = new LinkedHashMap<>();
+        for (int j = 0; j < values; j++) searchable.put(in.readUTF(), in.readUTF());
+        return Collections.unmodifiableMap(searchable);
+    }
+
+    private static void writeReferences(DataOutputStream out, List<CgAssetReferences.Reference> refs) throws IOException {
+        out.writeInt(refs.size());
+        for (CgAssetReferences.Reference ref : refs) {
+            out.writeUTF(ref.kind().id());
+            out.writeUTF(ref.id());
+            out.writeBoolean(ref.strength() == CgValueType.Strength.HARD);
+            out.writeUTF(ref.at().toString());
+        }
+    }
+
+    private static void writeSearchable(DataOutputStream out, Map<String, String> searchable) throws IOException {
+        out.writeInt(searchable.size());
+        for (Map.Entry<String, String> v : searchable.entrySet()) {
+            out.writeUTF(v.getKey());
+            out.writeUTF(v.getValue());
+        }
     }
 
     private boolean underScanned(String key) {

@@ -27,7 +27,10 @@ edited there with undo, validated, and written back by one writer. The 21 kinds 
   reference's field declares the kind. Key anything by kind and id; a binary's id (folder and extension kept) alone.
 - **A scan reads each file once, on the workers, for its own references** (`CgAssetReferences.ofFile`, never
   resolved), its redirect and its kind's `SEARCHABLE` values (`entry.searchable()`, Unreal's asset registry tags: a
-  cue's `tag`), or takes them from the cache while the file's modification time holds. It adds all its
+  cue's `tag`), or takes them from the cache while the file's modification time holds. A file's inline `children`
+  (`tree.CgAssetChildren`) are expanded there into entries of their own (`entry.inlineIn()` names the file's asset),
+  and every reader of a file's tree (the pipeline, hot reload) reads a child's through `CgAssetChildren.tree`, before
+  the merge. A `UNIQUE` searchable value shared, or a file and a child with one id, fails registration naming both. It adds all its
   entries or none, then announces them: the batch, each alone, `SCANNED`. `registerEngine()` registers the engine's
   own assets (its built-in modules) as code with their definitions.
 - **A load's state changes only on its pipeline's loop**: workers parse, merge, validate and compile; `drain`

@@ -41,8 +41,8 @@ import com.crystalgraphics.object.value.CgValueForm;
  * {@link #freeze() frozen} once a definition compiles against it.</p>
  *
  * <ul>
- *   <li>A kind gets {@code _v}, {@code parent} and {@code units} before its own properties and {@code unsupported},
- *       {@code editor} and {@code remove} after them; an element gets {@code id} first and {@code editor} last. Never
+ *   <li>A kind gets {@code _v}, {@code parent} and {@code units} before its own properties and {@code children},
+ *       {@code unsupported}, {@code editor} and {@code remove} after them; an element gets {@code id} first and {@code editor} last. Never
  *       declare those yourself. An element's merge keys ({@code enabled}, {@code after}, {@code before}) differ by
  *       element, so each declares its own.</li>
  *   <li>Each property modifier ({@code quantity}, {@code flags}…) applies to the property declared last.</li>
@@ -53,8 +53,8 @@ import com.crystalgraphics.object.value.CgValueForm;
 public final class CgType {
 
     /** The keys every kind holds first and last, and every element first, in a file's order. */
-    public static final String VERSION = "_v", PARENT = "parent", UNITS = "units", UNSUPPORTED = "unsupported",
-            EDITOR = "editor", REMOVE = "remove", ID = "id";
+    public static final String VERSION = "_v", PARENT = "parent", UNITS = "units", CHILDREN = "children",
+            UNSUPPORTED = "unsupported", EDITOR = "editor", REMOVE = "remove", ID = "id";
 
     private final String id;
     private final CgTypeKind kind;
@@ -409,8 +409,10 @@ public final class CgType {
         public CgType register() {
             if (kind == CgTypeKind.KIND) {
                 if (folder == null || version == 0) throw new IllegalStateException(id + ": a kind needs a folder and a version");
-                // A kind may place unsupported itself, where its schema orders a key after it
+                // A kind may place unsupported itself, where its schema orders a key after it; children come just before
                 if (!declares(UNSUPPORTED)) property(UNSUPPORTED, CgValueType.TREE);
+                property(CHILDREN, CgValueType.TREE);
+                props.add(indexOf(UNSUPPORTED), props.remove(props.size() - 1));
                 property(EDITOR, CgValueType.TREE).flags(CgPropertyFlag.EDITOR_ONLY);
                 property(REMOVE, CgValueType.listOf(CgValueType.STRING));
             } else if (kind == CgTypeKind.ELEMENT && !declares(EDITOR)) {
@@ -422,8 +424,12 @@ public final class CgType {
         }
 
         private boolean declares(String name) {
-            for (PropertyBuilder p : props) if (p.name.equals(name)) return true;
-            return false;
+            return indexOf(name) >= 0;
+        }
+
+        private int indexOf(String name) {
+            for (int i = 0; i < props.size(); i++) if (props.get(i).name.equals(name)) return i;
+            return -1;
         }
 
         private PropertyBuilder current() {

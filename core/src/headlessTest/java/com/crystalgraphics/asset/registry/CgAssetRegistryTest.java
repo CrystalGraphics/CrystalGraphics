@@ -13,6 +13,7 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
+import com.crystalgraphics.asset.kind.CgGameplayKinds;
 import com.crystalgraphics.asset.kind.CgParticleKinds;
 import com.crystalgraphics.asset.kind.CgSequenceKinds;
 import com.crystalgraphics.asset.tree.CgAssetException;
@@ -105,6 +106,63 @@ public class CgAssetRegistryTest {
             fail("a file took a builder's id");
         } catch (CgAssetException expected) {
             assertTrue(expected.getMessage(), expected.getMessage().contains("charge.yaml"));
+        }
+    }
+
+    private static final String GROUND_BREAK = "_v: 1\ntag: mymod:cue.ground_break\nkind: burst\nrange: 32\n"
+            + "children:\n  hard:\n    range: 64\n    children:\n      wide: { range: 96 }\n  huge: { tag: mymod:cue.big, range: 128 }\n";
+
+    @Test
+    public void aFilesChildrenAreEntriesOfTheirOwn() throws IOException {
+        write("cues/ground_break.yaml", GROUND_BREAK);
+        CgAssetRegistry r = scanned();
+        CgType cue = CgGameplayKinds.CUE;
+        assertNull(r.entry(cue, "mymod:ground_break").inlineIn());
+        CgAssetEntry wide = r.entry(cue, "mymod:ground_break/hard/wide");
+        assertEquals("mymod:ground_break", wide.inlineIn());
+        assertEquals(ns.resolve("cues/ground_break.yaml"), wide.file());
+        assertEquals("mymod:cue.ground_break.hard.wide", wide.searchable().get("tag"));
+        assertEquals("written over its default", "mymod:cue.big", r.entry(cue, "mymod:ground_break/huge").searchable().get("tag"));
+    }
+
+    @Test
+    public void aCachedFilesChildrenComeBack() throws IOException {
+        write("cues/ground_break.yaml", GROUND_BREAK);
+        Path cache = tmp.getRoot().toPath().resolve("cache/registry.bin");
+        CgAssetRegistry first = new CgAssetRegistry();
+        first.cache(cache);
+        first.scanResources(tmp.getRoot());
+        CgAssetRegistry second = new CgAssetRegistry();
+        second.cache(cache);
+        second.scanResources(tmp.getRoot());
+        CgAssetEntry hard = second.entry(CgGameplayKinds.CUE, "mymod:ground_break/hard");
+        assertEquals("mymod:ground_break", hard.inlineIn());
+        assertEquals("mymod:cue.ground_break.hard", hard.searchable().get("tag"));
+    }
+
+    @Test
+    public void aFileAndAChildWithOneIdFailNamingBoth() throws IOException {
+        write("cues/ground_break.yaml", GROUND_BREAK);
+        write("cues/ground_break/hard.yaml", "_v: 1\nkind: burst\n");
+        try {
+            scanned();
+            fail("a file took a child's id");
+        } catch (CgAssetException expected) {
+            String m = expected.getMessage();
+            assertTrue(m, m.contains("ground_break.yaml") && m.contains("hard.yaml"));
+        }
+    }
+
+    @Test
+    public void twoCuesWithOneTagFailNamingBoth() throws IOException {
+        write("cues/ground_break.yaml", GROUND_BREAK);
+        write("cues/other.yaml", "_v: 1\ntag: mymod:cue.ground_break.hard\nkind: burst\n");
+        try {
+            scanned();
+            fail("two cues share a tag");
+        } catch (CgAssetException expected) {
+            String m = expected.getMessage();
+            assertTrue(m, m.contains("mymod:other") && m.contains("mymod:ground_break/hard"));
         }
     }
 

@@ -13,6 +13,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -41,6 +42,7 @@ import com.crystalgraphics.asset.kind.CgAssetKinds;
 import com.crystalgraphics.asset.kind.CgModuleTypes;
 import com.crystalgraphics.asset.kind.CgParticleKinds;
 import com.crystalgraphics.asset.kind.CgSequenceKinds;
+import com.crystalgraphics.asset.tree.CgAssetChildren;
 import com.crystalgraphics.asset.tree.CgAssetException;
 import com.crystalgraphics.asset.tree.CgAssetReferences;
 import com.crystalgraphics.job.CgJob;
@@ -264,7 +266,8 @@ public final class CgAssetRegistry {
         float walkShare = records.countUnder(root) > 0 ? SCAN_WALKED : SCAN_WALKED_COLD;
         records.scanning(root);
         if (task != null) task.progress(walkShare);
-        CgAssetEntry[] gathered = new CgAssetEntry[yaml.size()];
+        @SuppressWarnings("unchecked")
+        List<CgAssetEntry>[] gathered = new List[yaml.size()];
         AtomicReference<RuntimeException> failed = new AtomicReference<>();
         AtomicInteger read = new AtomicInteger();
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.MISC, SCAN_READ)) {
@@ -279,7 +282,7 @@ public final class CgAssetRegistry {
             });
         }
         if (failed.get() != null) throw failed.get();
-        Collections.addAll(found, gathered);
+        for (List<CgAssetEntry> file : gathered) found.addAll(file);
         found.sort((a, b) -> a.id().compareTo(b.id()));
         for (int i = 1; i < found.size(); i++) {
             CgAssetEntry a = found.get(i - 1), b = found.get(i);
@@ -287,6 +290,7 @@ public final class CgAssetRegistry {
                 throw new CgAssetException(key(b.kind(), b.id()) + " is registered twice: " + where(a) + " and " + where(b));
             }
         }
+        unique(found, Collections.emptyList());
         // Each entry's key and the reverse links its references add, built here so the commit only merges them
         String[] keys = new String[found.size()];
         Map<String, List<String>> links = new HashMap<>();
@@ -344,6 +348,7 @@ public final class CgAssetRegistry {
                 CgAssetEntry was = entries.get(keys[i]);
                 if (was != null) throw new CgAssetException(keys[i] + " is registered twice: " + where(was) + " and " + where(found.get(i)));
             }
+            unique(found, entries.values());
             if (g.index() != null) contentIndex.put(namespace, g.index());
             if (g.units() != null) units.put(namespace, g.units());
             List<CgAssetRegistryEvent> added = new ArrayList<>(found.size());
@@ -436,20 +441,82 @@ public final class CgAssetRegistry {
     public synchronized void changed(@Nullable CgType kind, String id) {
         CgAssetEntry e = entries.get(key(kind, id));
         if (e == null) return;
-        if (kind != null && e.file() != null) {
-            long modified;
-            try {
-                modified = Files.getLastModifiedTime(e.file()).toMillis();
-            } catch (IOException missing) {
-                throw new UncheckedIOException(missing);
-            }
-            CgAssetEntry now = gather(new Listed(id, kind, e.file(), modified), e.source(), cache());
-            link(e, false);
-            entries.put(key(kind, id), now);
-            link(now, true);
-            e = now;
+        if (kind == null || e.file() == null) {
+            fire(new CgAssetRegistryEvent(CgAssetRegistryEvent.Type.CHANGED, e.namespace(), e, null));
+            return;
         }
-        fire(new CgAssetRegistryEvent(CgAssetRegistryEvent.Type.CHANGED, e.namespace(), e, null));
+        // The file's own asset and every child it writes inline, read again together
+        String fileId = e.inlineIn() != null ? e.inlineIn() : id;
+        long modified;
+        try {
+            modified = Files.getLastModifiedTime(e.file()).toMillis();
+        } catch (IOException missing) {
+            throw new UncheckedIOException(missing);
+        }
+        List<CgAssetEntry> now = gather(new Listed(fileId, kind, e.file(), modified), e.source(), cache());
+        List<CgAssetEntry> was = new ArrayList<>();
+        for (CgAssetEntry o : entries.values()) {
+            if (o.kind() == kind && (o.id().equals(fileId) || fileId.equals(o.inlineIn()))) was.add(o);
+        }
+        for (CgAssetEntry n : now) {
+            CgAssetEntry other = entries.get(key(kind, n.id()));
+            if (other != null && !was.contains(other)) {
+                throw new CgAssetException(key(kind, n.id()) + " is registered twice: " + where(other) + " and " + where(n));
+            }
+        }
+        List<CgAssetEntry> others = new ArrayList<>(entries.values());
+        others.removeAll(was);
+        unique(now, others);
+        Set<String> kept = new HashSet<>();
+        for (CgAssetEntry n : now) kept.add(n.id());
+        List<CgAssetRegistryEvent> events = new ArrayList<>();
+        for (CgAssetEntry o : was) {
+            link(o, false);
+            if (!kept.contains(o.id())) {
+                entries.remove(key(kind, o.id()));
+                events.add(new CgAssetRegistryEvent(CgAssetRegistryEvent.Type.REMOVED, o.namespace(), o, null));
+            }
+        }
+        for (CgAssetEntry n : now) {
+            CgAssetEntry old = entries.put(key(kind, n.id()), n);
+            link(n, true);
+            events.add(new CgAssetRegistryEvent(old != null ? CgAssetRegistryEvent.Type.CHANGED : CgAssetRegistryEvent.Type.ADDED,
+                    n.namespace(), n, null));
+        }
+        for (CgAssetRegistryEvent ev : events) fire(ev);
+    }
+
+    /**
+     * Refuses a {@link CgPropertyFlag#UNIQUE} value {@code adding} shares with itself or with {@code registered}: a cue
+     * tag two cues declare. Names both.
+     */
+    private static void unique(List<CgAssetEntry> adding, Collection<CgAssetEntry> registered) {
+        Map<String, CgAssetEntry> seen = null;
+        for (CgAssetEntry e : adding) {
+            if (e.kind() == null || e.redirect() != null || e.searchable().isEmpty()) continue;
+            for (CgProperty p : e.kind().properties()) {
+                String v = p.has(CgPropertyFlag.UNIQUE) ? e.searchable().get(p.name()) : null;
+                if (v == null) continue;
+                if (seen == null) seen = uniqueValues(registered);
+                CgAssetEntry was = seen.put(e.kind().id() + '|' + p.name() + '|' + v, e);
+                if (was != null && was != e) {
+                    throw new CgAssetException(e.kind().id() + " " + p.name() + " " + v + " is declared twice: by "
+                            + was.id() + " (" + where(was) + ") and " + e.id() + " (" + where(e) + ")");
+                }
+            }
+        }
+    }
+
+    private static Map<String, CgAssetEntry> uniqueValues(Collection<CgAssetEntry> registered) {
+        Map<String, CgAssetEntry> out = new HashMap<>();
+        for (CgAssetEntry e : registered) {
+            if (e.kind() == null || e.redirect() != null || e.searchable().isEmpty()) continue;
+            for (CgProperty p : e.kind().properties()) {
+                String v = p.has(CgPropertyFlag.UNIQUE) ? e.searchable().get(p.name()) : null;
+                if (v != null) out.put(e.kind().id() + '|' + p.name() + '|' + v, e);
+            }
+        }
+        return out;
     }
 
     /**
@@ -616,7 +683,8 @@ public final class CgAssetRegistry {
     }
 
     private static String where(CgAssetEntry e) {
-        return e.file() != null ? e.file().toString() : "a builder (" + e.source() + ")";
+        if (e.file() == null) return "a builder (" + e.source() + ")";
+        return e.inlineIn() != null ? "a child in " + e.file() : e.file().toString();
     }
 
     private void link(CgAssetEntry e, boolean add) {
@@ -692,8 +760,11 @@ public final class CgAssetRegistry {
         return best;
     }
 
-    /** A YAML file's entry: its redirect and references from the cache while its file is unchanged, else read. */
-    private static CgAssetEntry gather(Listed f, CgAssetSource source, CgAssetRegistryCache records) {
+    /**
+     * A YAML file's entries, its own and each child it writes inline: redirect and references from the cache while its
+     * file is unchanged, else read.
+     */
+    private static List<CgAssetEntry> gather(Listed f, CgAssetSource source, CgAssetRegistryCache records) {
         String key = f.file().toAbsolutePath().normalize().toString();   // one key a file, however its root was spelled
         CgAssetRegistryCache.Record r = records.find(key, f.modified(), f.kind());
         if (r == null) {
@@ -702,11 +773,20 @@ public final class CgAssetRegistry {
                 records.put(key, r);
             } else {
                 // Uncached, so every scan names it until it is fixed.
-                r = new CgAssetRegistryCache.Record(f.modified(), f.kind().id(), null, Collections.emptyList(), Collections.emptyMap());
+                r = new CgAssetRegistryCache.Record(f.modified(), f.kind().id(), null, Collections.emptyList(),
+                        Collections.emptyMap(), Collections.emptyList());
             }
         }
-        return new CgAssetEntry(f.id(), f.kind(), source, f.file(), r.redirect(), null, r.references(), f.modified(),
-                r.searchable());
+        CgAssetEntry own = new CgAssetEntry(f.id(), f.kind(), source, f.file(), r.redirect(), null, r.references(),
+                f.modified(), r.searchable());
+        if (r.children().isEmpty()) return Collections.singletonList(own);
+        List<CgAssetEntry> out = new ArrayList<>(1 + r.children().size());
+        out.add(own);
+        for (CgAssetRegistryCache.Child c : r.children()) {
+            out.add(new CgAssetEntry(c.id(), f.kind(), source, f.file(), null, null, c.references(), f.modified(),
+                    c.searchable(), f.id()));
+        }
+        return out;
     }
 
     /**
@@ -728,10 +808,21 @@ public final class CgAssetRegistry {
                 if (to instanceof String) {
                     return new CgAssetRegistryCache.Record(f.modified(), f.kind().id(), (String) to, Collections.singletonList(
                             new CgAssetReferences.Reference(f.kind(), (String) to, CgValueType.Strength.HARD,
-                                    CgPropertyPath.of(f.id()).key(REDIRECT))), Collections.emptyMap());
+                                    CgPropertyPath.of(f.id()).key(REDIRECT))), Collections.emptyMap(), Collections.emptyList());
+                }
+                // Its inline children, each as its own file would read, gathered with its own asset
+                Map<String, Map<String, Object>> trees = CgAssetChildren.expand(f.id(), f.kind(), file);
+                Map<String, Object> own = trees.get(f.id());
+                List<CgAssetRegistryCache.Child> children = trees.size() == 1 ? Collections.emptyList() : new ArrayList<>();
+                for (Map.Entry<String, Map<String, Object>> t : trees.entrySet()) {
+                    if (t.getKey().equals(f.id())) continue;
+                    children.add(new CgAssetRegistryCache.Child(t.getKey(),
+                            Collections.unmodifiableList(CgAssetReferences.ofFile(t.getKey(), f.kind(), t.getValue())),
+                            searchable(f.kind(), t.getValue())));
                 }
                 return new CgAssetRegistryCache.Record(f.modified(), f.kind().id(), null,
-                        Collections.unmodifiableList(CgAssetReferences.ofFile(f.id(), f.kind(), file)), searchable(f.kind(), file));
+                        Collections.unmodifiableList(CgAssetReferences.ofFile(f.id(), f.kind(), own)),
+                        searchable(f.kind(), own), children);
             }
             // A cue is found by the tag read here, so one that never parses is never loaded to fail by name.
             LOGGER.error("{} {} ({}) is not a YAML map, so nothing finds it by what it declares",

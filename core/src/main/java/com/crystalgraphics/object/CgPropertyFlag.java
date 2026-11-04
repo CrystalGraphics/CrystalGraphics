@@ -35,6 +35,13 @@ public enum CgPropertyFlag {
      * {@code tag}, read as {@code entry.searchable().get("tag")}. A top-level scalar only.
      */
     SEARCHABLE,
+    /** A {@link #SEARCHABLE} value no two assets of the kind share: a second fails at registration, naming both. */
+    UNIQUE,
+    /**
+     * Names the asset as its id does: an inline child that leaves it unwritten takes its block's plus {@code .<name>}
+     * (a cue {@code rpgcore:cue.ground_break}'s child {@code hard} is {@code rpgcore:cue.ground_break.hard}).
+     */
+    NAMES_ASSET,
     /** Named by a code contract: the editor refuses a rename or delete, naming the class. */
     LOCKED,
     /** Read and upgraded, never written ({@code CPF_Deprecated}). */

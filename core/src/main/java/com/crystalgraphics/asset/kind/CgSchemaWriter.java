@@ -1,11 +1,13 @@
 package com.crystalgraphics.asset.kind;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import com.crystalgraphics.asset.tree.CgAssetChildren;
 import com.crystalgraphics.object.CgProperty;
 import com.crystalgraphics.object.CgPropertyFlag;
 import com.crystalgraphics.object.CgType;
@@ -29,6 +31,8 @@ import com.crystalgraphics.object.value.CgValueForm;
  *   <li>A number that takes every form is a {@code value}; one narrowed to a constant is a JSON number, with its
  *       declared range.</li>
  *   <li>A struct is closed unless its declaration is {@code open()}: {@code additionalProperties} is the declaration's.</li>
+ *   <li>A kind's {@code children} map each name to its {@code $defs/child}: the kind's keys less {@code _v},
+ *       {@code parent} and {@code units}, none required.</li>
  * </ul>
  */
 public final class CgSchemaWriter {
@@ -55,6 +59,13 @@ public final class CgSchemaWriter {
         required.add(CgType.VERSION);
         for (CgProperty p : kind.properties()) if (p.required() && !p.name().equals(CgType.VERSION)) required.add(p.name());
         s.put("required", required);
+        Map<String, Object> child = new LinkedHashMap<>();
+        child.put("type", "object");
+        Map<String, Object> delta = properties(kind);
+        delta.keySet().removeAll(Arrays.asList(CgType.VERSION, CgType.PARENT, CgType.UNITS));
+        child.put("properties", delta);
+        child.put("additionalProperties", kind.open());
+        s.put("$defs", map("child", child));
         return s;
     }
 
@@ -101,6 +112,10 @@ public final class CgSchemaWriter {
             if (n.equals(CgType.UNSUPPORTED)) return ref("unsupported");
             if (n.equals(CgType.EDITOR)) return ref("editor");
             if (n.equals(CgType.REMOVE)) return map("type", "array", "items", string(CgValueType.LOCAL_ID_PATTERN));
+            if (n.equals(CgType.CHILDREN) && owner.kind() == CgTypeKind.KIND) {
+                return map("type", "object", "propertyNames", string(CgAssetChildren.NAME_PATTERN),
+                        "additionalProperties", map("$ref", "#/$defs/child"));
+            }
         }
         if (n.equals(CgType.ID) && owner.kind() == CgTypeKind.ELEMENT) return string(CgValueType.LOCAL_ID_PATTERN);
         if (n.equals(CgType.EDITOR) && p.type().kind() == CgValueType.Kind.TREE) return ref("editor");

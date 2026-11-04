@@ -209,6 +209,52 @@ Every resolved value knows where it came from (`CgOrigin`): `DEFAULT`, `INHERITE
 something inside it changed), `OVERRIDDEN`, `ADDED`, `DISABLED` or `REMOVED`. That is what an editor greys out, and
 what "reset to parent" clears.
 
+### Children in one file
+
+A family of one effect, such as a light, hard and huge ground break, fits in one file. Each child is written inline
+under `children:`, in the block it derives from, and holds only what differs:
+
+```yaml
+# assets/mymod/cues/ground_break.yaml  →  mymod:ground_break, mymod:ground_break/hard, mymod:ground_break/huge
+_v: 1
+tag: mymod:cue.ground_break
+kind: burst
+range: 32
+burst:
+  shake: { shake: mymod:jolt, scale: 1, in_world: true, inner: 0, outer: 32, falloff: 1 }
+children:
+  hard: { range: 64, burst: { shake: { scale: 2, outer: 64 } } }    # tag mymod:cue.ground_break.hard
+  huge:
+    range: 128
+    burst: { shake: { scale: 4, outer: 128 } }
+    children:
+      wide: { range: 256 }                                          # mymod:ground_break/huge/wide, from huge
+```
+
+`hard` reads exactly as this file would:
+
+```yaml
+# assets/mymod/cues/ground_break/hard.yaml
+_v: 1
+parent: mymod:ground_break
+tag: mymod:cue.ground_break.hard
+range: 64
+burst: { shake: { scale: 2, outer: 64 } }
+```
+
+- **A child is an asset like any other**, with the id `<its block's id>/<name>`. Play it, reference it and load it by
+  that id; inheritance merges it over its block as above.
+- **A name** is lower-case letters, digits and `_`, at most 32.
+- **A child writes no `_v`, `parent` or `units`**: it takes its file's. Writing one fails at load.
+- **Children nest**: a child's own `children` derive from it.
+- **A field that names the asset follows its id**: a cue child that writes no `tag` takes its block's plus `.<name>`.
+- **One id, one source**: a file and a child with the same id, or two cues with one tag, fail at registration,
+  naming both.
+- **The file is the unit of loading and hot reload**: saving it re-reads every loaded child it holds. A child added
+  or renamed while the game runs is registered at the next start.
+- **A child is the same effect.** A different one (a vanish and its reappearance) gets a file of its own, and so does
+  a child of a parent in another file, with `parent:`.
+
 ## How a file is written
 
 Every writer the engine has goes through one set of rules, so the same tree always gives the same bytes and a diff

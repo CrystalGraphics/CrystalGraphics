@@ -43,10 +43,19 @@ import com.crystalgraphics.object.CgType;
  * @param modified   its file's modification time, in milliseconds; 0 for a builder's asset
  * @param searchable its kind's {@code SEARCHABLE} properties as its file writes them, read by the scan without loading
  *                   it (Unreal's {@code FAssetData} tags): a cue's {@code tag}; empty for a binary or a builder's asset
+ * @param inlineIn   the id of the asset whose file writes this one inline, under its {@code children}; null for an asset
+ *                   of its own file
  */
 public record CgAssetEntry(String id, @Nullable CgType kind, CgAssetSource source, @Nullable Path file,
         @Nullable String redirect, @Nullable Supplier<?> definition, List<CgAssetReferences.Reference> references,
-        long modified, Map<String, String> searchable) {
+        long modified, Map<String, String> searchable, @Nullable String inlineIn) {
+
+    /** An asset of its own file, a binary or a builder's. */
+    public CgAssetEntry(String id, @Nullable CgType kind, CgAssetSource source, @Nullable Path file,
+            @Nullable String redirect, @Nullable Supplier<?> definition, List<CgAssetReferences.Reference> references,
+            long modified, Map<String, String> searchable) {
+        this(id, kind, source, file, redirect, definition, references, modified, searchable, null);
+    }
 
     /** The namespace before the id's colon. */
     public String namespace() {

@@ -32,6 +32,7 @@ import com.crystalgraphics.loading.task.CgLoadPlan;
 import com.crystalgraphics.asset.codec.CgAssetYaml;
 import com.crystalgraphics.asset.registry.CgAssetEntry;
 import com.crystalgraphics.asset.registry.CgAssetRegistry;
+import com.crystalgraphics.asset.tree.CgAssetChildren;
 import com.crystalgraphics.asset.tree.CgAssetData;
 import com.crystalgraphics.asset.tree.CgAssetException;
 import com.crystalgraphics.asset.tree.CgAssetReferences;
@@ -472,11 +473,12 @@ public final class CgVfxAssets {
             }
         }
         for (CgAssetRef<?> r : hit) {
-            Path file = registry.entry(r.kind(), r.id()).file();
+            CgAssetEntry entry = registry.entry(r.kind(), r.id());
+            Path file = entry.file();
             CgJob.on(loop).run(() -> {
                 try {
                     Map<?, ?> tree = (Map<?, ?>) CgAssetYaml.read(new String(Files.readAllBytes(file), StandardCharsets.UTF_8));
-                    return CgAssetVersions.upgrade(tree, r.kind());
+                    return CgAssetChildren.tree(r.id(), entry.inlineIn(), r.kind(), CgAssetVersions.upgrade(tree, r.kind()));
                 } catch (Exception e) {
                     throw new CgAssetException(file + ": " + e);
                 }

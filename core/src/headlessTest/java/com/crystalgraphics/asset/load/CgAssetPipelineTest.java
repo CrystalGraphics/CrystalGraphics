@@ -4,12 +4,14 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Map;
 
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
+import com.crystalgraphics.asset.kind.CgGameplayKinds;
 import com.crystalgraphics.asset.kind.CgLookKinds;
 import com.crystalgraphics.asset.kind.CgParticleKinds;
 import com.crystalgraphics.asset.registry.CgAssetRegistry;
@@ -17,6 +19,7 @@ import com.crystalgraphics.asset.tree.CgAssetData;
 import com.crystalgraphics.job.CgJobLoop;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 /** Loads to COMPILED: a child after its parent, a hard dependency first, failures carried to referrers, a cycle. */
@@ -86,6 +89,31 @@ public class CgAssetPipelineTest {
         settle();
         assertEquals(CgAssetState.FAILED, a.state());
         assertEquals(CgAssetState.FAILED, pipeline.load(CgLookKinds.MATERIAL, "mymod:b").state());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    public void anInlineChildLoadsAsItsOwnFileWould() throws IOException, InterruptedException {
+        write("cues/ground_break.yaml", "_v: 1\ntag: mymod:cue.ground_break\nkind: burst\nrange: 32\n"
+                + "default_placement: { socket: root, attach: attach_to_target }\n"
+                + "children:\n  hard:\n    range: 64\n    default_placement: { socket: feet }\n"
+                + "    children:\n      wide: { range: 96 }\n");
+        CgAssetRegistry registry = new CgAssetRegistry();
+        registry.scanResources(tmp.getRoot());
+        pipeline = new CgAssetPipeline(registry, CgJobLoop.create("assets-test"));
+
+        CgAssetLoad wide = pipeline.request(CgGameplayKinds.CUE, "mymod:ground_break/hard/wide");
+        settle();
+        assertEquals(wide.toString(), CgAssetState.COMPILED, wide.state());
+        Map<?, ?> resolved = ((CgAssetData) wide.definition()).resolved();
+        assertEquals(96.0, ((Number) resolved.get("range")).doubleValue(), 0);
+        assertEquals("a name field follows the id", "mymod:cue.ground_break.hard.wide", resolved.get("tag"));
+        Map<?, ?> placement = (Map<?, ?>) resolved.get("default_placement");
+        assertEquals("from its block", "feet", placement.get("socket"));
+        assertEquals("from the file", "attach_to_target", placement.get("attach"));
+        assertFalse("children are expanded, never resolved", resolved.containsKey("children"));
+        CgAssetLoad file = pipeline.load(CgGameplayKinds.CUE, "mymod:ground_break");
+        assertFalse(((CgAssetData) file.definition()).resolved().containsKey("children"));
     }
 
     @Test

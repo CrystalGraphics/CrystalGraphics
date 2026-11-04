@@ -22,6 +22,7 @@ import com.crystalgraphics.asset.kind.CgParticleKinds;
 import com.crystalgraphics.asset.kind.CgSequenceKinds;
 import com.crystalgraphics.asset.registry.CgAssetEntry;
 import com.crystalgraphics.asset.registry.CgAssetRegistry;
+import com.crystalgraphics.asset.tree.CgAssetChildren;
 import com.crystalgraphics.asset.tree.CgAssetData;
 import com.crystalgraphics.asset.tree.CgAssetException;
 import com.crystalgraphics.asset.tree.CgAssetReferences;
@@ -127,8 +128,8 @@ public final class CgAssetPipeline {
                     }
                 });
             }
-            Map<?, ?> tree = (Map<?, ?>) CgAssetYaml.read(text);
-            return CgAssetVersions.upgrade(tree, kind);
+            Map<?, ?> tree = CgAssetVersions.upgrade((Map<?, ?>) CgAssetYaml.read(text), kind);
+            return CgAssetChildren.tree(id, entry.inlineIn(), kind, tree);
         }, tree -> read(reading, (Map<?, ?>) tree), "unreadable");
         return load;
     }
@@ -265,7 +266,8 @@ public final class CgAssetPipeline {
         try {
             String text = new String(Files.readAllBytes(e.file()), StandardCharsets.UTF_8);
             if (e.file().toString().endsWith(CgClipMarkers.SUFFIX)) return CgClipMarkers.length(id, text);
-            if (!(CgAssetYaml.read(text) instanceof Map<?, ?> tree)) return Double.NaN;
+            if (!(CgAssetYaml.read(text) instanceof Map<?, ?> file)) return Double.NaN;
+            Map<String, Object> tree = CgAssetChildren.tree(id, e.inlineIn(), CgSequenceKinds.SEQUENCE, file);
             if (tree.get("range") instanceof List<?> range && range.size() == 2 && range.get(0) instanceof Number from
                     && range.get(1) instanceof Number to) {
                 double ticks = tree.get("tick_resolution") instanceof Number t ? t.doubleValue() : Double.NaN;

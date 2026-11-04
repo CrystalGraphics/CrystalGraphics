@@ -434,7 +434,7 @@ public final class CgParticleKinds {
             .property("effect_type", hard("effect_type"))
             .property("user", CgValueType.mapOf(CgValueType.struct(USER_PARAMETER))).flags(CgPropertyFlag.HEADLESS, CgPropertyFlag.STRUCTURAL)
             .property("emitters", CgValueType.idList(EMITTER_HANDLE)).flags(CgPropertyFlag.STRUCTURAL)
-            .property("children", CgValueType.idList(CHILD)).flags(CgPropertyFlag.STRUCTURAL)
+            .property("systems", CgValueType.idList(CHILD)).flags(CgPropertyFlag.STRUCTURAL)
             .property("fields", CgValueType.idList(PLACED_FIELD))
             .property("warmup", CgValueType.struct(WARMUP))
             .property("tick", CgValueType.struct(TICK))
