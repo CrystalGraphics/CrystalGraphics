@@ -993,8 +993,38 @@ public final class CgTrackedGLBackend extends CgGLBackend {
             errors.invalidValue("cgImageBarrier on texture " + texture + ", which has no image");
             return;
         }
-        tracker.imageBarrier(t.image, from, to);
+        tracker.textureBarrier(t.image, from, to);
     }
+
+    @Override
+    public void cgTextureBarrier(int texture, int level, int levels, int layer, int layers, int from, int to) {
+        TrackedTextures.GlTexture t = textures.get(texture);
+        if (t == null || t.image == null) {
+            errors.invalidValue("cgTextureBarrier on texture " + texture + ", which has no image");
+            return;
+        }
+        int mips = t.image.desc().mips(), all = CgTracker.layers(t.image);
+        tracker.textureBarrier(t.image, level, levels < 0 ? mips - level : levels, layer, layers < 0 ? all - layer : layers,
+                from, to);
+    }
+
+    @Override
+    public void cgFramebufferBarrier(int framebuffer, int from, int to) {
+        framebuffers.barrier(framebuffer, from, to);
+    }
+
+    /** One transition of every barrier in the bracket, recorded at its end. */
+    @Override public void cgBeginBarriers() { tracker.beginBatch(); }
+
+    @Override public void cgEndBarriers() { tracker.endBatch(false); }
+
+    @Override public int cgEndBarriersSplit() { return tracker.endBatch(true); }
+
+    @Override public void cgEndSplit(int split) { tracker.endSplit(split); }
+
+    @Override public boolean cgGraphStates(boolean on) { return tracker.graphStates(on); }
+
+    @Override public boolean cgTakesTransitions() { return true; }
 
     // ── sync, timers, host sections ────────────────────────────────────────────
 

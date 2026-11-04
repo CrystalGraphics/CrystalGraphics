@@ -283,8 +283,8 @@ public class CgComputeGraphTest {
 
     @Test
     public void barrierRule_aReadAfterAKernelWriteWaitsOncePerKindOfReader() {
-        CgHazards hazards = new CgHazards();
-        long key = CgHazards.buffer(7);
+        CgResourceStates hazards = new CgResourceStates();
+        long key = CgResourceStates.buffer(7);
         assertEquals(0, hazards.access(key, CgAccess.COMPUTE_WRITE));
         assertEquals(CgAccess.COMPUTE_WRITE, hazards.access(key, CgAccess.COMPUTE_READ));
         assertEquals(0, hazards.access(key, CgAccess.COMPUTE_READ));
@@ -294,8 +294,8 @@ public class CgComputeGraphTest {
 
     @Test
     public void barrierRule_aWriteWaitsForTheWriteBeforeIt_orForTheReadsThatWaitedForIt() {
-        CgHazards hazards = new CgHazards();
-        long key = CgHazards.buffer(7);
+        CgResourceStates hazards = new CgResourceStates();
+        long key = CgResourceStates.buffer(7);
         hazards.access(key, CgAccess.COMPUTE_WRITE);
         assertEquals(CgAccess.COMPUTE_WRITE, hazards.access(key, CgAccess.COMPUTE_WRITE));
         hazards.access(key, CgAccess.VERTEX_READ);
@@ -303,19 +303,71 @@ public class CgComputeGraphTest {
     }
 
     @Test
-    public void barrierRule_drawsAndCopiesAloneAreLeftToTheBackend_butAKernelAfterThemWaits() {
-        CgHazards hazards = new CgHazards();
-        long key = CgHazards.texture(3);
-        assertEquals(0, hazards.access(key, CgAccess.COLOR_WRITE));
-        assertEquals(0, hazards.access(key, CgAccess.SAMPLED_READ));
-        assertEquals(CgAccess.COLOR_WRITE, hazards.access(key, CgAccess.COMPUTE_READ));
-        assertEquals(CgAccess.SAMPLED_READ | CgAccess.COMPUTE_READ, hazards.access(key, CgAccess.COMPUTE_WRITE));
+    public void barrierRule_everyHazardIsAnswered_aCopyAndADrawsAlike() {
+        CgResourceStates hazards = new CgResourceStates();
+        long key = CgResourceStates.buffer(3);
+        assertEquals(0, hazards.access(key, CgAccess.COPY_WRITE));
+        assertEquals(CgAccess.COPY_WRITE, hazards.access(key, CgAccess.VERTEX_INPUT));
+        assertEquals(CgAccess.COPY_WRITE, hazards.access(key, CgAccess.COMPUTE_READ));
+        assertEquals(CgAccess.VERTEX_INPUT | CgAccess.COMPUTE_READ, hazards.access(key, CgAccess.COMPUTE_WRITE));
+    }
+
+    @Test
+    public void imageRule_aWriteOrANewLayoutMoves_aReadInTheSameLayoutJoins_andRestIsAlwaysLeftByAStatement() {
+        assertTrue(CgResourceStates.moves(0, CgAccess.SAMPLED_READ));                            // where it rests, the device's
+        assertTrue(CgResourceStates.moves(CgAccess.COLOR_WRITE, CgAccess.COLOR_WRITE));          // a pass after a pass
+        assertTrue(CgResourceStates.moves(CgAccess.SAMPLED_READ, CgAccess.COMPUTE_READ));        // read-only to general
+        assertFalse(CgResourceStates.moves(CgAccess.SAMPLED_READ, CgAccess.SAMPLED_READ));
+        assertFalse(CgResourceStates.moves(CgAccess.COMPUTE_READ, CgAccess.COMPUTE_READ | CgAccess.FRAGMENT_READ));
+        CgResourceStates states = new CgResourceStates();
+        int[] subs = states.image(CgResourceStates.texture(3), 4);
+        subs[2] = CgAccess.COLOR_WRITE;
+        assertSame(subs, states.image(CgResourceStates.texture(3), 4));
+        states.forget(CgResourceStates.texture(3));
+        assertEquals(0, subs[2]);
+    }
+
+    /**
+     * Each pass's transitions as the executor states them: a device takes every one, images from where they rest;
+     * GL only those a kernel takes part in, ordering the rest itself.
+     */
+    @Test
+    public void eachPassStatesItsTransitions_everyOneOnADevice_aKernelsOnGl() {
+        CgGraphBuffer counts = CgGraphBuffer.persistent("counts", DESC);
+        CgGraphBuffer copy = CgGraphBuffer.transientBuffer("copy", DESC);
+        CgRecording rec = new CgRecording();
+        rec.fill(counts, 0);
+        CgComputePass add = rec.compute("add");
+        add.dispatch(consume, 64).bind("SRC", counts).bind("DST", copy);
+        add.end();
+        rec.copy(copy, 0, counts, 0, DESC.bytes());
+        CgRasterPass draw = rec.raster(CgGraphTexture.requested("target", new CgTextureDesc(8, 8, CgTextureDesc.RGBA8)),
+                CgLoad.load(), new CgPassConstants(), null, CgOrder.LOOKBACK);
+        int bindings = rec.bindings().begin().storage(3, counts).end();
+        CgChunkBuilder c = rec.chunks().begin();
+        c.draw(material.pipeline(CgInstanceKind.QUAD), bindings);
+        c.instance();
+        c.bounds(0, 0, 8, 8);
+        draw.add(c.end());
+        draw.end();
+        CgFrame frame = build(rec);
+
+        assertEquals(List.of(
+                "add: counts COPY_WRITE -> COMPUTE_READ",
+                "copy copy -> counts: copy COMPUTE_WRITE -> COPY_READ",
+                "copy copy -> counts: counts COMPUTE_READ -> COPY_WRITE",
+                "raster target: counts COPY_WRITE -> VERTEX_READ|FRAGMENT_READ",
+                "raster target: target RESTING -> COLOR_WRITE"), derive(frame, true));
+        assertEquals(List.of(
+                "add: counts COPY_WRITE -> COMPUTE_READ",
+                "copy copy -> counts: copy COMPUTE_WRITE -> COPY_READ",
+                "copy copy -> counts: counts COMPUTE_READ -> COPY_WRITE"), derive(frame, false));
     }
 
     @Test
     public void barrierRule_accessesOfOneOverlapSetWaitForNothingBetweenThem_butAnyOtherAccessWaitsForAll() {
-        CgHazards hazards = new CgHazards();
-        long key = CgHazards.buffer(7);
+        CgResourceStates hazards = new CgResourceStates();
+        long key = CgResourceStates.buffer(7);
         hazards.access(key, CgAccess.COMPUTE_READ);
         assertEquals(CgAccess.COMPUTE_READ, hazards.access(key, CgAccess.COMPUTE_WRITE, 5));   // the set's first waits
         assertEquals(0, hazards.access(key, CgAccess.COMPUTE_WRITE, 5));
@@ -330,8 +382,8 @@ public class CgComputeGraphTest {
 
     @Test
     public void barrierRule_readsOfAnOverlapSetToo_asNiagarasCountsOverlapWithinAStage() {
-        CgHazards hazards = new CgHazards();
-        long key = CgHazards.buffer(7);
+        CgResourceStates hazards = new CgResourceStates();
+        long key = CgResourceStates.buffer(7);
         hazards.access(key, CgAccess.COMPUTE_WRITE);                                              // last stage's
         assertEquals(CgAccess.COMPUTE_WRITE, hazards.access(key, CgAccess.COMPUTE_READ, 9));      // the stage waits once
         assertEquals(0, hazards.access(key, CgAccess.COMPUTE_READ | CgAccess.COMPUTE_WRITE, 9));  // each pool's own count
@@ -343,8 +395,8 @@ public class CgComputeGraphTest {
 
     @Test
     public void barrierRule_aStorageIsClaimedByThePassesFirstDispatchToTouchIt() {
-        CgHazards hazards = new CgHazards();
-        long key = CgHazards.buffer(7);
+        CgResourceStates hazards = new CgResourceStates();
+        long key = CgResourceStates.buffer(7);
         assertTrue(hazards.claim(key, 1, 0));
         assertTrue(hazards.claim(key, 1, 0));    // another binding of the same dispatch
         assertFalse(hazards.claim(key, 1, 3));
@@ -353,12 +405,12 @@ public class CgComputeGraphTest {
 
     @Test
     public void barrierRule_aStorageIsItsOwn_andForgottenWhenFreed() {
-        CgHazards hazards = new CgHazards();
-        hazards.access(CgHazards.buffer(1), CgAccess.COMPUTE_WRITE);
-        assertEquals(0, hazards.access(CgHazards.buffer(2), CgAccess.COMPUTE_READ));
-        assertEquals(0, hazards.access(CgHazards.texture(1), CgAccess.COMPUTE_READ));
-        hazards.forget(CgHazards.buffer(1));
-        assertEquals(0, hazards.access(CgHazards.buffer(1), CgAccess.COMPUTE_READ));
+        CgResourceStates hazards = new CgResourceStates();
+        hazards.access(CgResourceStates.buffer(1), CgAccess.COMPUTE_WRITE);
+        assertEquals(0, hazards.access(CgResourceStates.buffer(2), CgAccess.COMPUTE_READ));
+        assertEquals(0, hazards.access(CgResourceStates.texture(1), CgAccess.COMPUTE_READ));
+        hazards.forget(CgResourceStates.buffer(1));
+        assertEquals(0, hazards.access(CgResourceStates.buffer(1), CgAccess.COMPUTE_READ));
     }
 
     /**
@@ -378,7 +430,7 @@ public class CgComputeGraphTest {
         p2.end();
         CgFrame frame = build(rec);
 
-        List<String> barriers = derive(frame);
+        List<String> barriers = derive(frame, false);
         assertEquals(List.of("consume: scratch COMPUTE_WRITE -> COMPUTE_READ"), barriers);
         assertNull(unfenced(frame, barriers));
         assertEquals("consume reads scratch after a kernel wrote it, with no barrier", unfenced(frame, List.of()));
@@ -494,15 +546,28 @@ public class CgComputeGraphTest {
 
     // ── The executor's walk, GL-free ──────────────────────────────────────────
 
-    /** The barriers the executor's rule gives the frame, one storage per resource. */
-    private static List<String> derive(CgFrame frame) {
-        CgHazards hazards = new CgHazards();
+    /**
+     * The transitions the executor's rule states for the frame, one storage per resource: every one on a {@code device},
+     * only a kernel's on GL. A raster pass's target moves to {@link CgAccess#COLOR_WRITE}, a texture from where it rests.
+     */
+    private static List<String> derive(CgFrame frame, boolean device) {
+        CgResourceStates states = new CgResourceStates();
         Map<CgGraphResource, Integer> ids = new IdentityHashMap<>();
         List<String> out = new ArrayList<>();
         walk(frame, (s, resource, bits) -> {
             int id = ids.computeIfAbsent(resource, r -> ids.size() + 1);
-            int from = hazards.access(CgHazards.buffer(id), bits);
-            if (from != 0) {
+            int from;
+            if (resource instanceof CgGraphTexture) {
+                if (frame.pass(s) instanceof CgRasterPass && (bits & CgAccess.COLOR_WRITE) != 0) bits = CgAccess.COLOR_WRITE;
+                int[] subs = states.image(CgResourceStates.framebuffer(id), 1);
+                boolean moves = CgResourceStates.moves(subs[0], bits);
+                from = !moves ? 0 : subs[0] == 0 ? CgAccess.RESTING : subs[0];
+                subs[0] = moves ? bits : subs[0] | bits;
+            } else {
+                from = states.access(CgResourceStates.buffer(id), bits);
+            }
+            int compute = CgAccess.COMPUTE_READ | CgAccess.COMPUTE_WRITE;
+            if (from != 0 && (device || ((from | bits) & compute) != 0)) {
                 out.add(frame.passName(s) + ": " + resource.name() + " " + CgAccess.names(from) + " -> " + CgAccess.names(bits));
             }
         });

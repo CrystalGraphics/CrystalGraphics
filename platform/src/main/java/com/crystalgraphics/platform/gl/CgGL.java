@@ -1574,6 +1574,64 @@ public final class CgGL {
     }
 
     /**
+     * {@link #cgImageBarrier} for mips {@code level} to {@code level + levels} of layers {@code layer} to
+     * {@code layer + layers}; -1 for either count is the rest. A device moves only that range's layout.
+     *
+     * <pre>{@code
+     * CgGL.cgTextureBarrier(bloom, 3, 1, 0, -1, CgAccess.SAMPLED_READ, CgAccess.COLOR_WRITE);   // mip 3 drawn into next
+     * }</pre>
+     */
+    public static void cgTextureBarrier(int texture, int level, int levels, int layer, int layers, int from, int to) {
+        gl().cgTextureBarrier(texture, level, levels, layer, layers, from, to);
+    }
+
+    /**
+     * {@link #cgImageBarrier} for every attachment of {@code framebuffer} as attached, 0 the window's: a colour
+     * attachment takes {@code from} and {@code to}, a depth-stencil attachment the same with
+     * {@link CgAccess#COLOR_WRITE} read as {@link CgAccess#DEPTH_WRITE}. What a raster pass's target moves with.
+     */
+    public static void cgFramebufferBarrier(int framebuffer, int from, int to) {
+        gl().cgFramebufferBarrier(framebuffer, from, to);
+    }
+
+    /**
+     * Ends {@link #cgBeginBarriers} as the first half of a split transition: the writes before it may finish from
+     * here, and {@link #cgEndSplit} with the id answered is where what reads them may start. GL issues it here, whole.
+     *
+     * <pre>{@code
+     * CgGL.cgBeginBarriers();
+     * CgGL.cgBufferBarrier(particles, CgAccess.COMPUTE_WRITE, CgAccess.VERTEX_READ);
+     * int split = CgGL.cgEndBarriersSplit();   // after the kernel
+     * ... work touching none of it ...
+     * CgGL.cgEndSplit(split);                  // before the draw
+     * }</pre>
+     */
+    public static int cgEndBarriersSplit() {
+        return backend.cgEndBarriersSplit();
+    }
+
+    /** The second half of {@link #cgEndBarriersSplit}'s transition; 0 does nothing. */
+    public static void cgEndSplit(int split) {
+        backend.cgEndSplit(split);
+    }
+
+    /**
+     * Whether the frame graph states every transition of what is recorded from here, the device inferring none of
+     * them: on for a graph's steps, off for every other stream. Answers what it was, for nesting.
+     */
+    public static boolean cgGraphStates(boolean on) {
+        return backend.cgGraphStates(on);
+    }
+
+    /**
+     * Whether the backend takes every transition, layouts and attachments included: a device. GL takes only what a
+     * kernel's writes need, and orders the rest itself.
+     */
+    public static boolean cgTakesTransitions() {
+        return backend.cgTakesTransitions();
+    }
+
+    /**
      * What follows, kernels, barriers and transfers but no draw, runs on a compute queue beside the frame's where the
      * device has one ({@code CgCapabilities.asyncCompute()}), starting after everything before it, until
      * {@link #cgEndAsync}. Elsewhere, GL included, it runs in order with the same result. The frame graph's executor

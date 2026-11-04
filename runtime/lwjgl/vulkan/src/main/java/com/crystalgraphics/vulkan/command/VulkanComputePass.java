@@ -23,8 +23,9 @@ import static org.lwjgl.system.MemoryStack.stackPush;
 import static org.lwjgl.vulkan.VK10.*;
 
 /**
- * A compute pass on the frame's command buffer. A storage image it binds moves to {@code GENERAL} and rests again
- * when the pass ends, as a render pass's attachments do, so a later pass samples it with no barrier of its own.
+ * A compute pass on the frame's command buffer. Where the device infers, a storage image it binds moves to
+ * {@code GENERAL} and rests again when the pass ends, as a render pass's attachments do; where every transition is
+ * stated, it is found in {@code GENERAL} and left there.
  */
 final class VulkanComputePass implements CgComputePass {
 
@@ -60,12 +61,13 @@ final class VulkanComputePass implements CgComputePass {
         if (pipeline == null) throw new IllegalStateException("Bindings pushed before a pipeline");
         for (int i = 0; i < b.count(); i++) {
             if (b.type(i) == CgBindingLayout.Type.SAMPLED_TEXTURE) ((VulkanTexture) b.view(i).texture()).requireUsableOn(cmd());
-            if (b.type(i) != CgBindingLayout.Type.STORAGE_IMAGE) continue;
+            if (b.type(i) != CgBindingLayout.Type.STORAGE_IMAGE || !encoder.infers()) continue;
             CgTextureView view = b.view(i);
-            device.barriers += ((VulkanTexture) view.texture()).transition(cmd(), view.baseMip(), 1, view.baseLayer(), 1,
+            int moved = ((VulkanTexture) view.texture()).transition(cmd(), view.baseMip(), 1, view.baseLayer(), 1,
                     VK_IMAGE_LAYOUT_GENERAL, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                     VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT);
-            images.add(view);
+            device.barriers += moved;
+            if (moved > 0) images.add(view);
         }
         VulkanDescriptors.push(device, cmd(), VK_PIPELINE_BIND_POINT_COMPUTE, pipeline.pipelineLayout, pipeline.pushSet, b,
                 encoder.computePushed);
@@ -109,7 +111,7 @@ final class VulkanComputePass implements CgComputePass {
         vkCmdDispatchIndirect(cmd(), ((VulkanBuffer) buffer).buffer, offset);
     }
 
-    /** Every storage image back to rest, its writes visible to whatever reads it next. */
+    /** Every storage image it moved back to rest, its writes visible to whatever reads it next. */
     @Override
     public void end() {
         for (CgTextureView view : images) {
@@ -117,6 +119,7 @@ final class VulkanComputePass implements CgComputePass {
             device.barriers += t.transition(cmd(), view.baseMip(), 1, view.baseLayer(), 1, t.resting, AFTER,
                     VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_TRANSFER_READ_BIT);
         }
+        images.clear();
         encoder.computeEnded();
     }
 }

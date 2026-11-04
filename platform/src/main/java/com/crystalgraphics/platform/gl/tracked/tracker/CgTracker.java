@@ -1,5 +1,6 @@
 package com.crystalgraphics.platform.gl.tracked.tracker;
 
+import com.crystalgraphics.platform.gl.tracked.CgImplicitLayouts;
 import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.rhi.resource.CgRHIResource;
 import com.crystalgraphics.platform.rhi.command.CgAccess;
@@ -7,6 +8,7 @@ import com.crystalgraphics.platform.rhi.command.CgCommandList;
 import com.crystalgraphics.platform.rhi.command.CgComputePass;
 import com.crystalgraphics.platform.rhi.command.CgPassDesc;
 import com.crystalgraphics.platform.rhi.command.CgRenderPass;
+import com.crystalgraphics.platform.rhi.command.CgTransition;
 import com.crystalgraphics.platform.rhi.format.CgAttribFormat;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
 import com.crystalgraphics.platform.rhi.binding.CgBindingLayout;
@@ -28,7 +30,9 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import java.nio.ByteBuffer;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
@@ -685,8 +689,85 @@ public final class CgTracker {
     }
 
     public void imageBarrier(CgGpuTexture texture, int from, int to) {
+        textureBarrier(texture, from, to);
+    }
+
+    /** Every layer an image has: a volume's one. */
+    public static int layers(CgGpuTexture image) {
+        return image.desc().kind() == CgGpuTexture.Kind.D3 ? 1 : image.desc().depthOrLayers();
+    }
+
+    /** A whole texture's transition. */
+    public void textureBarrier(CgGpuTexture texture, int from, int to) {
+        textureBarrier(texture, 0, texture.desc().mips(), 0, layers(texture), from, to);
+    }
+
+    /** A range's transition: joins the open bracket's batch, or is recorded here. */
+    public void textureBarrier(CgGpuTexture texture, int baseMip, int mips, int baseLayer, int layers, int from, int to) {
+        if (batchDepth > 0) {
+            batch.texture(texture, baseMip, mips, baseLayer, layers, from, to);
+            return;
+        }
         outsideRenderPass();
-        device.encoder().imageBarrier(texture, from, to);
+        device.encoder().transition(batch.clear().texture(texture, baseMip, mips, baseLayer, layers, from, to));
+        batch.clear();
+    }
+
+    // ── transitions in batches, whole or split ─────────────────────────────────
+
+    /** The open bracket's barriers, recorded as one transition at its end. */
+    private CgTransition batch = new CgTransition();
+    private int batchDepth;
+    /** Split transitions begun, by id - 1; and cleared batches to reuse. */
+    private CgTransition[] splits = new CgTransition[8];
+    private final ArrayDeque<CgTransition> spare = new ArrayDeque<>();
+    /** Whether a frame graph states every transition of what is recorded now. */
+    private boolean graphStates;
+
+    /** {@code cgBeginBarriers}: brackets nest, and the outermost end records. */
+    public void beginBatch() {
+        if (batchDepth++ == 0) batch.clear();
+    }
+
+    /**
+     * {@code cgEndBarriers}, or with {@code split} {@code cgEndBarriersSplit}: answers the split's id for
+     * {@link #endSplit}, 0 when it was recorded whole or held nothing.
+     */
+    public int endBatch(boolean split) {
+        if (batchDepth == 0) throw new IllegalStateException("cgEndBarriers without cgBeginBarriers");
+        if (--batchDepth > 0 || batch.count() == 0) return 0;
+        outsideRenderPass();
+        if (!split) {
+            device.encoder().transition(batch);
+            batch.clear();
+            return 0;
+        }
+        int id = 0;
+        while (id < splits.length && splits[id] != null) id++;
+        if (id == splits.length) splits = Arrays.copyOf(splits, id * 2);
+        splits[id] = batch;
+        batch = spare.isEmpty() ? new CgTransition() : spare.pop();
+        device.encoder().beginTransitions(splits[id]);
+        return id + 1;
+    }
+
+    /** {@code cgEndSplit}: the second half of split {@code id}. */
+    public void endSplit(int id) {
+        if (id == 0) return;
+        CgTransition t = splits[id - 1];
+        if (t == null) throw new IllegalStateException("cgEndSplit(" + id + "): no such split begun");
+        splits[id - 1] = null;
+        outsideRenderPass();
+        device.encoder().endTransitions(t);
+        spare.push(t.clear());
+    }
+
+    /** {@code cgGraphStates}: while on, the device infers no transition of what is recorded. Answers what it was. */
+    public boolean graphStates(boolean on) {
+        boolean was = graphStates;
+        graphStates = on;
+        if (was != on && device instanceof CgImplicitLayouts layouts) layouts.implicitLayouts(!on);
+        return was;
     }
 
     /** Writes out a clear still pending and ends the render pass; a compute pass stays open. */

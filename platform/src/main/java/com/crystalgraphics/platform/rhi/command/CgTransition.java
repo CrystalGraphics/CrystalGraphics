@@ -1,6 +1,7 @@
 package com.crystalgraphics.platform.rhi.command;
 
 import com.crystalgraphics.platform.rhi.resource.CgGpuBuffer;
+import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
 import com.crystalgraphics.platform.rhi.resource.CgTextureView;
 
 import java.util.Arrays;
@@ -24,6 +25,12 @@ import java.util.Arrays;
  * cmd.endTransitions(moves);              // the reader may start
  * }</pre>
  *
+ * <p>A range of mips and layers, with no view made:</p>
+ *
+ * <pre>{@code
+ * moves.texture(bloom, 3, 1, 0, 1, CgAccess.SAMPLED_READ, CgAccess.COLOR_WRITE);   // mip 3 drawn into next
+ * }</pre>
+ *
  * <ul>
  *   <li>A buffer takes no image access ({@link CgAccess#IMAGE_ONLY}); an image no buffer access
  *   ({@link CgAccess#BUFFER_ONLY}). Both are refused here.</li>
@@ -34,13 +41,15 @@ public final class CgTransition {
 
     private int count;
     private CgGpuBuffer[] buffers = new CgGpuBuffer[8];
-    private CgTextureView[] textures = new CgTextureView[8];
+    private CgGpuTexture[] images = new CgGpuTexture[8];
+    /** Per image entry: base mip, mips, base layer, layers. */
+    private int[] ranges = new int[8 * 4];
     private int[] from = new int[8];
     private int[] to = new int[8];
 
     public CgTransition clear() {
         Arrays.fill(buffers, 0, count, null);
-        Arrays.fill(textures, 0, count, null);
+        Arrays.fill(images, 0, count, null);
         count = 0;
         return this;
     }
@@ -53,27 +62,37 @@ public final class CgTransition {
         return this;
     }
 
-    public CgTransition texture(CgTextureView texture, int from, int to) {
+    public CgTransition texture(CgTextureView view, int from, int to) {
+        return texture(view.texture(), view.baseMip(), view.mips(), view.baseLayer(), view.layers(), from, to);
+    }
+
+    /** Mips {@code baseMip} to {@code baseMip + mips} of layers {@code baseLayer} to {@code baseLayer + layers}. */
+    public CgTransition texture(CgGpuTexture texture, int baseMip, int mips, int baseLayer, int layers, int from, int to) {
         if (((from | to) & CgAccess.BUFFER_ONLY) != 0)
-            throw new IllegalArgumentException(texture.texture().label() + ": an image moving " + CgAccess.names(from)
-                    + " to " + CgAccess.names(to));
-        add(null, texture, from, to);
+            throw new IllegalArgumentException(texture.label() + ": an image moving " + CgAccess.names(from) + " to "
+                    + CgAccess.names(to));
+        int at = add(null, texture, from, to) * 4;
+        ranges[at] = baseMip;
+        ranges[at + 1] = mips;
+        ranges[at + 2] = baseLayer;
+        ranges[at + 3] = layers;
         return this;
     }
 
-    private void add(CgGpuBuffer buffer, CgTextureView texture, int f, int t) {
+    private int add(CgGpuBuffer buffer, CgGpuTexture image, int f, int t) {
         if (count == buffers.length) {
             int n = count * 2;
             buffers = Arrays.copyOf(buffers, n);
-            textures = Arrays.copyOf(textures, n);
+            images = Arrays.copyOf(images, n);
+            ranges = Arrays.copyOf(ranges, n * 4);
             from = Arrays.copyOf(from, n);
             to = Arrays.copyOf(to, n);
         }
         buffers[count] = buffer;
-        textures[count] = texture;
+        images[count] = image;
         from[count] = f;
         to[count] = t;
-        count++;
+        return count++;
     }
 
     public int count() { return count; }
@@ -82,7 +101,15 @@ public final class CgTransition {
     public CgGpuBuffer buffer(int i) { return buffers[i]; }
 
     /** The image at {@code i}, null where it is a buffer. */
-    public CgTextureView texture(int i) { return textures[i]; }
+    public CgGpuTexture image(int i) { return images[i]; }
+
+    public int baseMip(int i) { return ranges[i * 4]; }
+
+    public int mips(int i) { return ranges[i * 4 + 1]; }
+
+    public int baseLayer(int i) { return ranges[i * 4 + 2]; }
+
+    public int layers(int i) { return ranges[i * 4 + 3]; }
 
     public int from(int i) { return from[i]; }
 

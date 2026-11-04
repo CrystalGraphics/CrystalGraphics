@@ -1,6 +1,7 @@
 package com.crystalgraphics.platform.gl.tracked.gl;
 
 import com.crystalgraphics.platform.rhi.CgRHI;
+import com.crystalgraphics.platform.rhi.command.CgAccess;
 import com.crystalgraphics.platform.rhi.command.CgCommandList;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
 import com.crystalgraphics.platform.rhi.resource.CgGpuSampler;
@@ -307,6 +308,31 @@ public final class TrackedFramebuffers {
     }
 
     // ── status and queries ─────────────────────────────────────────────────────
+
+    /**
+     * A transition of framebuffer {@code name}'s draw attachments as attached, 0 the window's; the depth-stencil's
+     * with {@link CgAccess#COLOR_WRITE} read as {@link CgAccess#DEPTH_WRITE}.
+     */
+    public void barrier(int name, int from, int to) {
+        if (name != 0 && !fbos.exists(name)) {
+            errors.invalidValue("cgFramebufferBarrier: " + name + " was never generated");
+            return;
+        }
+        CgTarget t = target(name);
+        if (t == null) return;
+        for (int i = 0; i < t.colors().size(); i++) {
+            CgTextureView v = t.colors().get(i);
+            tracker.textureBarrier(v.texture(), v.baseMip(), v.mips(), v.baseLayer(), v.layers(), from, to);
+        }
+        CgTextureView d = t.depth();
+        if (d != null) {
+            tracker.textureBarrier(d.texture(), d.baseMip(), d.mips(), d.baseLayer(), d.layers(), depth(from), depth(to));
+        }
+    }
+
+    private static int depth(int access) {
+        return (access & CgAccess.COLOR_WRITE) == 0 ? access : access & ~CgAccess.COLOR_WRITE | CgAccess.DEPTH_WRITE;
+    }
 
     public int status(int target) {
         int name = target == CgGL.GL_READ_FRAMEBUFFER ? read : draw;

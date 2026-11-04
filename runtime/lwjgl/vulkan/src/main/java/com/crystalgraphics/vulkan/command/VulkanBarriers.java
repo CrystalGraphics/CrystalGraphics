@@ -8,9 +8,14 @@ import org.lwjgl.vulkan.VkImageSubresourceRange;
 import org.lwjgl.vulkan.VkMemoryBarrier;
 import org.lwjgl.vulkan.VkMemoryBarrier2;
 
+import org.lwjgl.system.MemoryUtil;
+
 import java.nio.ByteBuffer;
+import java.util.Arrays;
 
 import static org.lwjgl.vulkan.KHRSynchronization2.nvkCmdPipelineBarrier2KHR;
+import static org.lwjgl.vulkan.KHRSynchronization2.nvkCmdSetEvent2KHR;
+import static org.lwjgl.vulkan.KHRSynchronization2.nvkCmdWaitEvents2KHR;
 import static org.lwjgl.vulkan.VK10.*;
 import static org.lwjgl.vulkan.VK13.VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
 import static org.lwjgl.vulkan.VK13.VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
@@ -116,6 +121,150 @@ public final class VulkanBarriers {
                 .putInt(VkMemoryBarrier.SRCACCESSMASK, access(cmd, srcAccess, src))
                 .putInt(VkMemoryBarrier.DSTACCESSMASK, access(cmd, dstAccess, dst));
         nvkCmdPipelineBarrier(cmd, src, dst, 0, 1, s.address, 0, 0L, 0, 0L);
+    }
+
+    /**
+     * Barriers recorded as one dependency, as Unreal's Vulkan RHI records a transition: images each with its range and
+     * layouts, buffers joined into one memory barrier. Recorded at once, or split across an event: {@link #set} after
+     * the work before, {@link #waitFor} with the same content before the work after. Reused: {@link #clear}, then fill.
+     *
+     * <pre>{@code
+     * batch.clear().image(cmd, image, aspect, 0, 1, 0, 1, oldLayout, newLayout, src, srcAccess, dst, dstAccess);
+     * batch.record(cmd);                 // here, at once
+     * }</pre>
+     */
+    public static final class Batch {
+
+        private static final int FIELDS = 11;
+        private long[] images = new long[8];
+        /** Per image: aspect, base mip, mips, base layer, layers, old and new layout, src stage and access, dst stage and access. */
+        private int[] fields = new int[8 * FIELDS];
+        private int count;
+        private int memSrcStage, memSrcAccess, memDstStage, memDstAccess;
+
+        public Batch clear() {
+            count = 0;
+            memSrcStage = memSrcAccess = memDstStage = memDstAccess = 0;
+            return this;
+        }
+
+        public boolean isEmpty() {
+            return count == 0 && !memory();
+        }
+
+        private boolean memory() {
+            return memSrcStage != 0 || memDstStage != 0;
+        }
+
+        public void image(VkCommandBuffer cmd, long image, int aspect, int baseMip, int mips, int baseLayer, int layers,
+                          int oldLayout, int newLayout, int srcStage, int srcAccess, int dstStage, int dstAccess) {
+            if (count == images.length) {
+                images = Arrays.copyOf(images, count * 2);
+                fields = Arrays.copyOf(fields, count * 2 * FIELDS);
+            }
+            int src = stage(cmd, srcStage, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT);
+            int dst = stage(cmd, dstStage, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
+            images[count] = image;
+            int f = count++ * FIELDS;
+            fields[f] = aspect;
+            fields[f + 1] = baseMip;
+            fields[f + 2] = mips;
+            fields[f + 3] = baseLayer;
+            fields[f + 4] = layers;
+            fields[f + 5] = oldLayout;
+            fields[f + 6] = newLayout;
+            fields[f + 7] = src;
+            fields[f + 8] = access(cmd, srcAccess, src);
+            fields[f + 9] = dst;
+            fields[f + 10] = access(cmd, dstAccess, dst);
+        }
+
+        /** A buffer's barrier, joined into the batch's one memory barrier: drivers treat a buffer barrier as global. */
+        public void memory(int srcStage, int srcAccess, int dstStage, int dstAccess) {
+            memSrcStage |= srcStage;
+            memSrcAccess |= srcAccess;
+            memDstStage |= dstStage;
+            memDstAccess |= dstAccess;
+        }
+
+        /** Records the batch here: one call under synchronization2, one per barrier under 1.0. Answers barriers recorded. */
+        public int record(VkCommandBuffer cmd) {
+            if (isEmpty()) return 0;
+            if (sync2(cmd)) {
+                nvkCmdPipelineBarrier2KHR(cmd, dependency(cmd));
+                return 1;
+            }
+            for (int i = 0; i < count; i++) {
+                int f = i * FIELDS;
+                image(cmd, images[i], fields[f], fields[f + 1], fields[f + 2], fields[f + 3], fields[f + 4], fields[f + 5],
+                        fields[f + 6], fields[f + 7], fields[f + 8], fields[f + 9], fields[f + 10]);
+            }
+            if (memory()) global(cmd, memSrcStage, memSrcAccess, memDstStage, memDstAccess);
+            return count + (memory() ? 1 : 0);
+        }
+
+        /** Whether {@code cmd} can split a batch across an event: synchronization2's set and wait. */
+        public static boolean splits(VkCommandBuffer cmd) {
+            return sync2(cmd);
+        }
+
+        /** The first half of a split: {@code event} is set once the work before it is done. */
+        public void set(VkCommandBuffer cmd, long event) {
+            nvkCmdSetEvent2KHR(cmd, event, dependency(cmd));
+        }
+
+        /** The second half, filled as for {@link #set}: waits for {@code event}, and the layouts move. */
+        public void waitFor(VkCommandBuffer cmd, long event) {
+            long dependency = dependency(cmd);
+            MemoryUtil.memPutLong(eventAt, event);
+            nvkCmdWaitEvents2KHR(cmd, 1, eventAt, dependency);
+        }
+
+        /** Where {@link #dependency} left room for one event handle. */
+        private long eventAt;
+
+        /** The barriers and their {@code VkDependencyInfo} in {@link VulkanScratch}; answers the info's address. */
+        private long dependency(VkCommandBuffer cmd) {
+            int imageSize = (VkImageMemoryBarrier2.SIZEOF + 7) & ~7;
+            int memAt = count * imageSize, depAt = memAt + (memory() ? (VkMemoryBarrier2.SIZEOF + 7) & ~7 : 0);
+            int eventOffset = depAt + ((VkDependencyInfo.SIZEOF + 7) & ~7);
+            VulkanScratch s = VulkanScratch.get(eventOffset + 8);
+            ByteBuffer m = s.zero(eventOffset + 8);
+            for (int i = 0; i < count; i++) {
+                int at = i * imageSize, f = i * FIELDS, range = at + VkImageMemoryBarrier2.SUBRESOURCERANGE;
+                m.putInt(at + VkImageMemoryBarrier2.STYPE, VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2)
+                        .putLong(at + VkImageMemoryBarrier2.SRCSTAGEMASK, fields[f + 7] & 0xFFFFFFFFL)
+                        .putLong(at + VkImageMemoryBarrier2.SRCACCESSMASK, fields[f + 8] & 0xFFFFFFFFL)
+                        .putLong(at + VkImageMemoryBarrier2.DSTSTAGEMASK, fields[f + 9] & 0xFFFFFFFFL)
+                        .putLong(at + VkImageMemoryBarrier2.DSTACCESSMASK, fields[f + 10] & 0xFFFFFFFFL)
+                        .putInt(at + VkImageMemoryBarrier2.OLDLAYOUT, fields[f + 5])
+                        .putInt(at + VkImageMemoryBarrier2.NEWLAYOUT, fields[f + 6])
+                        .putInt(at + VkImageMemoryBarrier2.SRCQUEUEFAMILYINDEX, VK_QUEUE_FAMILY_IGNORED)
+                        .putInt(at + VkImageMemoryBarrier2.DSTQUEUEFAMILYINDEX, VK_QUEUE_FAMILY_IGNORED)
+                        .putLong(at + VkImageMemoryBarrier2.IMAGE, images[i])
+                        .putInt(range + VkImageSubresourceRange.ASPECTMASK, fields[f])
+                        .putInt(range + VkImageSubresourceRange.BASEMIPLEVEL, fields[f + 1])
+                        .putInt(range + VkImageSubresourceRange.LEVELCOUNT, fields[f + 2])
+                        .putInt(range + VkImageSubresourceRange.BASEARRAYLAYER, fields[f + 3])
+                        .putInt(range + VkImageSubresourceRange.LAYERCOUNT, fields[f + 4]);
+            }
+            if (memory()) {
+                int src = stage(cmd, memSrcStage, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT);
+                int dst = stage(cmd, memDstStage, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
+                m.putInt(memAt + VkMemoryBarrier2.STYPE, VK_STRUCTURE_TYPE_MEMORY_BARRIER_2)
+                        .putLong(memAt + VkMemoryBarrier2.SRCSTAGEMASK, src & 0xFFFFFFFFL)
+                        .putLong(memAt + VkMemoryBarrier2.SRCACCESSMASK, access(cmd, memSrcAccess, src) & 0xFFFFFFFFL)
+                        .putLong(memAt + VkMemoryBarrier2.DSTSTAGEMASK, dst & 0xFFFFFFFFL)
+                        .putLong(memAt + VkMemoryBarrier2.DSTACCESSMASK, access(cmd, memDstAccess, dst) & 0xFFFFFFFFL);
+                m.putInt(depAt + VkDependencyInfo.MEMORYBARRIERCOUNT, 1)
+                        .putLong(depAt + VkDependencyInfo.PMEMORYBARRIERS, s.address + memAt);
+            }
+            m.putInt(depAt + VkDependencyInfo.STYPE, VK_STRUCTURE_TYPE_DEPENDENCY_INFO)
+                    .putInt(depAt + VkDependencyInfo.IMAGEMEMORYBARRIERCOUNT, count)
+                    .putLong(depAt + VkDependencyInfo.PIMAGEMEMORYBARRIERS, count == 0 ? 0L : s.address);
+            eventAt = s.address + eventOffset;
+            return s.address + depAt;
+        }
     }
 
     /** Whether {@code cmd}'s device was made with synchronization2. */

@@ -428,7 +428,7 @@ public final class CgNullRHI implements CgRHI {
     private static String signature(CgTransition t) {
         StringBuilder s = new StringBuilder();
         for (int i = 0; i < t.count(); i++) {
-            s.append(t.buffer(i) != null ? ref(t.buffer(i)) : ref(t.texture(i).texture())).append(' ')
+            s.append(t.buffer(i) != null ? ref(t.buffer(i)) : ref(t.image(i))).append(' ')
                     .append(t.from(i)).append('>').append(t.to(i)).append(';');
         }
         return s.toString();
@@ -436,13 +436,13 @@ public final class CgNullRHI implements CgRHI {
 
     private void moves(String what, CgTransition t) {
         for (int i = 0; i < t.count(); i++) {
-            use(t.buffer(i) != null ? t.buffer(i) : t.texture(i).texture());
-            if (t.texture(i) != null) usable(t.texture(i).texture(), t.from(i) | t.to(i));
+            use(t.buffer(i) != null ? t.buffer(i) : t.image(i));
+            if (t.image(i) != null) usable(t.image(i), t.from(i) | t.to(i));
         }
         if (!logging) return;
         StringBuilder s = new StringBuilder(what);
         for (int i = 0; i < t.count(); i++) {
-            s.append(' ').append(t.buffer(i) != null ? ref(t.buffer(i)) : ref(t.texture(i).texture())).append(':')
+            s.append(' ').append(t.buffer(i) != null ? ref(t.buffer(i)) : ref(t.image(i))).append(':')
                     .append(CgAccess.names(t.from(i))).append('>').append(CgAccess.names(t.to(i)));
         }
         record(s.toString());

@@ -180,7 +180,9 @@ final class CgTargetCopy {
         if (mask == 0) return;
         int zone = (mask & CgGL.GL_COLOR_BUFFER_BIT) == 0 ? DEPTH_ZONE : mask == CgGL.GL_COLOR_BUFFER_BIT ? COLOR_ZONE : BOTH_ZONE;
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, zone)) {
+            CgExecutor.blitting(source, storage.getId());
             CgFrameBuffer.blitFrom(source, storage.getId(), x0, y0, x1, y1, x0, y0, x1, y1, mask, CgGL.GL_NEAREST);
+            CgExecutor.blitted(source, storage.getId());
         }
     }
 

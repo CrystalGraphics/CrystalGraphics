@@ -237,8 +237,44 @@ public final class VulkanTexture implements CgGpuTexture {
         return barriers;
     }
 
+    /**
+     * A stated transition of a range, into {@code batch}: from {@code oldLayout} to {@code layout}. Every subresource
+     * must be in {@code oldLayout} by this texture's record, or not laid yet ({@code UNDEFINED}); one that is not throws,
+     * naming it: a statement the graph got wrong, caught before validation would. With {@code update}, the record moves.
+     */
+    public void stated(VulkanBarriers.Batch batch, VkCommandBuffer cmd, int baseMip, int mips, int baseLayer, int count,
+                       int oldLayout, int srcStage, int srcAccess, int layout, int dstStage, int dstAccess, boolean update) {
+        requireUsableOn(cmd);
+        for (int mip = baseMip; mip < baseMip + mips; mip++) {
+            int layer = baseLayer;
+            while (layer < baseLayer + count) {
+                int recorded = layout(mip, layer);
+                int end = layer + 1;
+                while (end < baseLayer + count && layout(mip, end) == recorded) end++;
+                if (recorded != oldLayout && recorded != VK_IMAGE_LAYOUT_UNDEFINED) {
+                    throw new IllegalStateException(desc.label() + " mip " + mip + " layers " + layer + "-" + (end - 1)
+                            + ": stated in layout " + oldLayout + ", recorded in " + recorded);
+                }
+                batch.image(cmd, image, aspect, mip, 1, layer, end - layer, recorded, layout, srcStage, srcAccess,
+                        dstStage, dstAccess);
+                if (update) for (int l = layer; l < end; l++) layouts[mip * layers + l] = layout;
+                layer = end;
+            }
+        }
+    }
+
+    /**
+     * {@link #transition(VkCommandBuffer, int, int, int, int, int, int, int, int, int)}, with a dependency alone where a
+     * subresource is in {@code layout} already: what a write before or after needs.
+     */
+    public int depend(VkCommandBuffer cmd, int baseMip, int mips, int baseLayer, int count, int layout, int srcStage,
+                      int srcAccess, int dstStage, int dstAccess) {
+        requireUsableOn(cmd);
+        return move(cmd, baseMip, mips, baseLayer, count, layout, srcStage, srcAccess, dstStage, dstAccess, true);
+    }
+
     /** What the last use of a subresource in {@code layout} might still be doing. */
-    private static int srcStage(int layout) {
+    public static int srcStage(int layout) {
         switch (layout) {
             case VK_IMAGE_LAYOUT_UNDEFINED: return VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
             case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
@@ -251,7 +287,7 @@ public final class VulkanTexture implements CgGpuTexture {
         }
     }
 
-    private static int srcAccess(int layout) {
+    public static int srcAccess(int layout) {
         switch (layout) {
             case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL: return VK_ACCESS_TRANSFER_WRITE_BIT;
             case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL: return VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;

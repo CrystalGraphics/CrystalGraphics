@@ -443,6 +443,32 @@ public abstract class CgGLBackend {
         if (bits != 0) memoryBarrier(bits);
     }
 
+    /** GL's barrier is global: the range is the whole texture's. */
+    public void cgTextureBarrier(int texture, int level, int levels, int layer, int layers, int from, int to) {
+        cgImageBarrier(texture, from, to);
+    }
+
+    public void cgFramebufferBarrier(int framebuffer, int from, int to) {
+        cgImageBarrier(0, from, to);
+    }
+
+    /** GL splits nothing: the barrier is issued here, whole. */
+    public int cgEndBarriersSplit() {
+        cgEndBarriers();
+        return 0;
+    }
+
+    public void cgEndSplit(int split) {}
+
+    /** GL infers every transition. */
+    public boolean cgGraphStates(boolean on) {
+        return false;
+    }
+
+    public boolean cgTakesTransitions() {
+        return false;
+    }
+
     /** The {@code glMemoryBarrier} bits that make a kernel's writes visible to {@code to}. */
     private static int glBarrierBits(int to, boolean image) {
         int bits = 0;

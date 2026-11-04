@@ -1,5 +1,7 @@
 package com.crystalgraphics.render.graph;
 
+import java.util.function.Consumer;
+
 import com.crystalgraphics.gl.framebuffer.CgFrameBuffer;
 
 import java.util.ArrayList;
@@ -43,12 +45,16 @@ final class CgTexturePool {
         bucket.add(framebuffer, now);
     }
 
-    /** Frees what has sat unused for {@link CgBufferPool#IDLE_NANOS}. Once a frame. */
-    void endFrame() {
+    /** Frees what has sat unused for {@link CgBufferPool#IDLE_NANOS}, each handed to {@code deleting} first. Once a frame. */
+    void endFrame(Consumer<CgFrameBuffer> deleting) {
         now = System.nanoTime();
         for (int i = 0; i < buckets.size(); i++) {
             Bucket bucket = buckets.get(i);
-            while (bucket.size > 0 && now - bucket.oldestAt() > CgBufferPool.IDLE_NANOS) bucket.takeOldest().delete();
+            while (bucket.size > 0 && now - bucket.oldestAt() > CgBufferPool.IDLE_NANOS) {
+                CgFrameBuffer framebuffer = bucket.takeOldest();
+                deleting.accept(framebuffer);
+                framebuffer.delete();
+            }
         }
     }
 

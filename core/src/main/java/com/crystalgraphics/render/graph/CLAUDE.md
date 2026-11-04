@@ -178,13 +178,16 @@ needs is charged to it.
 nanoseconds its execution takes on the render thread, its GPU timing and barriers included, so a consumer budgets its
 own passes' CPU as `timed(budget)` budgets their GPU.
 
-**Barriers are the executor's** (`CgHazards`): before each access it compares the storage's last accesses — per GL
-name, so pooled transients, a history's two versions and a buffer used across frames each come out right — and issues
-`cgBufferBarrier`/`cgImageBarrier` wherever a kernel takes part: exact on the tracked backend, the reader's
-`glMemoryBarrier` bits on GL. Draws, copies and uploads among themselves stay the backend's to order, as they were.
-`-Dcrystalgraphics.graph.barriers=false` keeps the bookkeeping and issues nothing; synchronization validation must then
-fail `--mode=compute-graph`. Below compute (G40, G33, CPU) the bookkeeping runs and no barrier is issued: a lowered
-kernel's writes are draws, ordered like any draw, and a CPU body's are uploads.
+**Transitions are the executor's** (`CgResourceStates`, Unreal RDG's subresource states): before each access it
+compares the storage's state — per GL name, so pooled transients, a history's two versions and a buffer used across
+frames each come out right — and states what must move. On a device (`CgGL.cgTakesTransitions()`, the tracked backend)
+every access's: buffers as barriers, images with their layouts, a single-level texture and the current target as one
+framebuffer (`cgFramebufferBarrier`), any other by subresource (`cgTextureBarrier`); a texture outliving the execution is
+taken from where it rests (`CgAccess.RESTING`) and returned there at its end, and while the graph runs the device infers
+nothing (`cgGraphStates`), a callback's body excepted. On GL only those a kernel takes part in, as the reader's
+`glMemoryBarrier` bits; GL orders the rest. A transition whose next access is a read two or more steps on is split from
+its producer's end to its consumer (`cgEndBarriersSplit`), as RDG splits one. `-Dcrystalgraphics.graph.barriers=false`
+keeps the bookkeeping and issues nothing; synchronization validation must then fail `--mode=compute-graph`.
 
 Two rules keep a pass of many small dispatches from waiting dispatch by dispatch, Unreal RDG's:
 

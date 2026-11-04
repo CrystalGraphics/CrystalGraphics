@@ -43,31 +43,26 @@ final class VulkanAccess {
         return mask;
     }
 
-    /** Storage access is {@code GENERAL}, a copy or a target its own, sampling read-only; uses wanting two are {@code GENERAL}. */
-    static int layout(int access) {
-        if ((access & CgAccess.STORAGE) != 0) return VK_IMAGE_LAYOUT_GENERAL;
-        // Depth tested and sampled in one pass: the read-only layout serves both.
-        if ((access & CgAccess.DEPTH_READ) != 0 && (access & ~(CgAccess.DEPTH_READ | CgAccess.SAMPLED_READ)) == 0)
-            return VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
-        int layout = -1;
-        for (int i = 0; i < STAGES.length; i++) {
-            if ((access & (1 << i)) == 0) continue;
-            int l = layoutOf(1 << i);
-            if (layout >= 0 && l != layout) return VK_IMAGE_LAYOUT_GENERAL;
-            layout = l;
-        }
-        return layout < 0 ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL : layout;
+    /** The layout {@code access} needs ({@link CgAccess#layout}); {@code resting} for {@link CgAccess#RESTING} and none. */
+    static int layout(int access, int resting) {
+        CgAccess.Layout l = CgAccess.layout(access);
+        return l == null ? resting : vk(l);
     }
 
-    private static int layoutOf(int bit) {
-        return switch (bit) {
-            case CgAccess.COPY_READ -> VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-            case CgAccess.COPY_WRITE -> VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-            case CgAccess.COLOR_WRITE -> VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-            case CgAccess.DEPTH_READ -> VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
-            case CgAccess.DEPTH_WRITE -> VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-            case CgAccess.PRESENT -> KHRSwapchain.VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-            default -> VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    static int layout(int access) {
+        return layout(access, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    }
+
+    private static int vk(CgAccess.Layout layout) {
+        return switch (layout) {
+            case GENERAL -> VK_IMAGE_LAYOUT_GENERAL;
+            case SHADER_READ -> VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            case COLOR -> VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+            case DEPTH_READ -> VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+            case DEPTH -> VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+            case COPY_SRC -> VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+            case COPY_DST -> VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+            case PRESENT -> KHRSwapchain.VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
         };
     }
 }

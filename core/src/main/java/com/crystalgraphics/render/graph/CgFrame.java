@@ -157,6 +157,25 @@ public final class CgFrame {
         stepCount = count;
     }
 
+    /** Per access, the next access to the same view in a later step, -1 for none; and per access its step. */
+    int[] nextAccess = new int[32], accessStep = new int[32];
+
+    /** Fills {@link #nextAccess} and {@link #accessStep}, once every step's list is in: where a split may begin. */
+    void nextAccesses(int steps) {
+        if (nextAccess.length < accessCount) {
+            nextAccess = new int[accessView.length];
+            accessStep = new int[accessView.length];
+        }
+        for (int s = 0; s < steps; s++) for (int i = accessFrom[s]; i < accessFrom[s + 1]; i++) accessStep[i] = s;
+        accessIndex.clear();
+        indexedFrom = -1;
+        for (int i = accessCount - 1; i >= 0; i--) {
+            Integer next = accessIndex.put(accessView[i], CgBoxedInts.of(i));
+            nextAccess[i] = next == null ? -1 : next;
+        }
+        accessIndex.clear();
+    }
+
     /** Room for {@code steps} steps' access lists, emptied. */
     void accessFrom(int steps) {
         if (accessFrom.length < steps + 1) accessFrom = new int[Math.max(steps + 1, accessFrom.length * 2)];

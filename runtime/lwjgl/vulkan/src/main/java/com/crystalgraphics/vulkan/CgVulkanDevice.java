@@ -1,5 +1,6 @@
 package com.crystalgraphics.vulkan;
 
+import com.crystalgraphics.platform.gl.tracked.CgImplicitLayouts;
 import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.service.CgCacheDirectory;
 import com.crystalgraphics.platform.rhi.resource.CgRHIResource;
@@ -22,6 +23,7 @@ import com.crystalgraphics.vulkan.format.VulkanFormats;
 import com.crystalgraphics.vulkan.binding.VulkanBindingLayout;
 import com.crystalgraphics.vulkan.binding.VulkanBindingSet;
 import com.crystalgraphics.vulkan.binding.VulkanDescriptorPools;
+import com.crystalgraphics.vulkan.sync.VulkanEvents;
 import com.crystalgraphics.vulkan.sync.VulkanQueryPools;
 import com.crystalgraphics.vulkan.resource.VulkanBuffer;
 import com.crystalgraphics.vulkan.resource.VulkanComputePipeline;
@@ -139,7 +141,7 @@ import static org.lwjgl.vulkan.VK11.vkGetPhysicalDeviceProperties2;
  * <p>The default framebuffer is an image of the device's own, RGBA8 with depth-stencil, which the host presents;
  * its row 0 is GL's bottom. Owner thread only.</p>
  */
-public final class CgVulkanDevice implements CgRHI, AutoCloseable {
+public final class CgVulkanDevice implements CgRHI, CgImplicitLayouts, AutoCloseable {
 
     private static final Logger LOG = LogManager.getLogger("CrystalGraphics");
 
@@ -162,6 +164,7 @@ public final class CgVulkanDevice implements CgRHI, AutoCloseable {
     private final VulkanStaging staging;
     private final VulkanDescriptorPools descriptorPools;
     private final VulkanQueryPools queryPools;
+    private final VulkanEvents events;
     private final VulkanEncoder encoder;
     private VulkanTexture surfaceColor, surfaceDepth;
     private VulkanBuffer scratch;
@@ -222,6 +225,7 @@ public final class CgVulkanDevice implements CgRHI, AutoCloseable {
         staging = new VulkanStaging(this);
         descriptorPools = new VulkanDescriptorPools(device);
         queryPools = new VulkanQueryPools(device);
+        events = new VulkanEvents(device);
         encoder = new VulkanEncoder(this);
         resize(width, height);
     }
@@ -780,6 +784,14 @@ public final class CgVulkanDevice implements CgRHI, AutoCloseable {
     @Override public CgGpuTexture surfaceColor() { return surfaceColor; }
     @Override public CgGpuTexture surfaceDepth() { return surfaceDepth; }
     @Override public long frameIndex() { return host.frameIndex(); }
+
+    /** The events split transitions set and wait on. */
+    public VulkanEvents events() { return events; }
+
+    @Override
+    public void implicitLayouts(boolean on) {
+        encoder.implicitLayouts(on);
+    }
     @Override public long retiredFrame() { return host.retiredFrame(); }
     @Override public void whenRetired(long frame, Runnable action) { host.whenFrameRetired(frame, action); }
     @Override public boolean ownsSubmission() { return host.ownsSubmission(); }
@@ -910,6 +922,7 @@ public final class CgVulkanDevice implements CgRHI, AutoCloseable {
         for (long l : pipelineLayouts.values()) vkDestroyPipelineLayout(device, l, null);   // those over no set
         descriptorPools.destroy();
         queryPools.destroy();
+        events.destroy();
         pipelineLayouts.clear();
         for (VulkanSampler s : samplers.values()) vkDestroySampler(device, s.sampler, null);
         samplers.clear();

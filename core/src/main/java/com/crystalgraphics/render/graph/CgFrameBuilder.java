@@ -393,6 +393,7 @@ public final class CgFrameBuilder {
             }
         }
         frame.accessFrom[steps] = frame.accessCount;
+        frame.nextAccesses(steps);
     }
 
     private void pack(CgComputePass pass, CgFrame frame, CgFrame.Compute packed) {

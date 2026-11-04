@@ -5,29 +5,25 @@ import com.crystalgraphics.platform.rhi.command.CgAccess;
 import java.util.Arrays;
 
 /**
- * Which barrier each access needs, from the accesses before it to the same storage: Vulkan's rule — a read after a
- * write waits for the write and sees it, once per kind of reader; a write waits for the write and the reads before
- * it. Keyed by storage, not by graph resource, so two transients sharing pooled storage, a history's two versions and
- * a buffer used across frames each come out right. GL-free.
+ * Each storage's state, from which the graph states every transition (Unreal RDG's subresource states). For a buffer,
+ * Vulkan's rule: a read after a write waits for the write and sees it, once per kind of reader; a write waits for the
+ * write and the reads before it. For an image, the access each subresource was last moved to, which names its layout;
+ * 0 is where it rests. Keyed by storage, not by graph resource, so two transients sharing pooled storage, a history's two
+ * versions and storage used across frames and executions each come out right. GL-free.
  *
  * <pre>{@code
- * int from = hazards.access(key, CgAccess.COMPUTE_READ);
- * if (from != 0) CgGL.cgBufferBarrier(buffer, from, CgAccess.COMPUTE_READ);
+ * int from = states.access(CgResourceStates.buffer(id), CgAccess.COMPUTE_READ);   // what its read waits for, or 0
+ * int[] subs = states.image(CgResourceStates.framebuffer(fbo), 1);               // each subresource's access
  * }</pre>
  *
- * <p>Accesses may overlap: consecutive accesses through one overlap set, a compute pass's {@code skipBarrier}
+ * <p>Buffer accesses may overlap: consecutive accesses through one overlap set, a compute pass's {@code skipBarrier}
  * bindings of one group, wait for nothing between them, as Unreal RDG's {@code SkipBarrier} UAVs and Niagara's
  * {@code BeginUAVOverlap} over its count buffer (the caller promises they touch disjoint words). The set's first access
  * waits as any would; any access after the set, through another set or none, waits for all of it.</p>
- *
- * <p>Only a hazard a kernel takes part in answers a barrier. Between draws, copies and uploads the backend orders
- * everything itself, as it did before the graph had kernels; their accesses are still recorded, so the kernel after
- * them waits for them.</p>
  */
-final class CgHazards {
+final class CgResourceStates {
 
-    static final int WRITES = CgAccess.COMPUTE_WRITE | CgAccess.COPY_WRITE | CgAccess.COLOR_WRITE;
-    private static final int COMPUTE = CgAccess.COMPUTE_READ | CgAccess.COMPUTE_WRITE;
+    static final int WRITES = CgAccess.COMPUTE_WRITE | CgAccess.COPY_WRITE | CgAccess.COLOR_WRITE | CgAccess.DEPTH_WRITE;
 
     /**
      * Open addressing over storage keys; per entry the last write's bits, reads since, reads made visible, and the
@@ -37,6 +33,8 @@ final class CgHazards {
     private int[] lastWrite = new int[64], reads = new int[64], visible = new int[64], overlap = new int[64];
     /** Per entry: the compute pass that last claimed it, and which of its dispatches touches it first. */
     private int[] claimPass = new int[64], claimDispatch = new int[64];
+    /** Per entry an image's subresources, level-major: each one's access, 0 at rest. Null for a buffer. */
+    private int[][] subresources = new int[64][];
     private boolean[] used = new boolean[64];
     private int size;
 
@@ -45,13 +43,18 @@ final class CgHazards {
         return glBuffer & 0xFFFFFFFFL;
     }
 
-    /** A texture's key: its GL name, apart from a buffer's. */
+    /** A texture's key, moved by range: its GL name, apart from a buffer's. */
     static long texture(int glTexture) {
         return (1L << 32) | (glTexture & 0xFFFFFFFFL);
     }
 
+    /** A framebuffer's key, its attachments moved as one: its GL name, 0 the window's. */
+    static long framebuffer(int glFramebuffer) {
+        return (2L << 32) | (glFramebuffer & 0xFFFFFFFFL);
+    }
+
     /**
-     * Records an access of {@code bits} to {@code key} and answers the bits of the barrier it needs first: the
+     * Records an access of {@code bits} to buffer {@code key} and answers the bits of the barrier it needs first: the
      * accesses it must wait for, or 0.
      */
     int access(long key, int bits) {
@@ -88,7 +91,24 @@ final class CgHazards {
             if (from != 0) visible[e] |= read;
             reads[e] |= read;
         }
-        return from != 0 && ((from | bits) & COMPUTE) != 0 ? from : 0;
+        return from;
+    }
+
+    /** Image {@code key}'s state: one access per subresource, at least {@code count} of them, 0 at rest. */
+    int[] image(long key, int count) {
+        int e = entry(key);
+        int[] subs = subresources[e];
+        if (subs == null || subs.length < count) subresources[e] = subs = subs == null ? new int[count] : Arrays.copyOf(subs, count);
+        return subs;
+    }
+
+    /**
+     * Whether moving a subresource from {@code from} (0 at rest) to {@code to} is a transition to state: a write on
+     * either side, a layout that changes, or a subresource at rest, whose layout only the device knows.
+     */
+    static boolean moves(int from, int to) {
+        if (from == 0 || ((from | to) & WRITES) != 0) return true;
+        return CgAccess.layout(from) != CgAccess.layout(to);
     }
 
     /**
@@ -105,7 +125,7 @@ final class CgHazards {
         return claimDispatch[e] == dispatch;
     }
 
-    /** Forgets a storage that was freed: its name may be someone else's next. */
+    /** Forgets a storage that was freed: its name may be someone else's next, which rests where its maker left it. */
     void forget(long key) {
         int e = find(key);
         if (e < 0) return;
@@ -113,6 +133,7 @@ final class CgHazards {
         reads[e] = 0;
         visible[e] = 0;
         overlap[e] = 0;
+        if (subresources[e] != null) Arrays.fill(subresources[e], 0);
     }
 
     private int find(long key) {
@@ -132,6 +153,7 @@ final class CgHazards {
         used[i] = true;
         keys[i] = key;
         lastWrite[i] = reads[i] = visible[i] = overlap[i] = claimPass[i] = claimDispatch[i] = 0;
+        subresources[i] = null;
         size++;
         return i;
     }
@@ -140,6 +162,7 @@ final class CgHazards {
         long[] oldKeys = keys;
         int[] oldWrite = lastWrite, oldReads = reads, oldVisible = visible, oldOverlap = overlap;
         int[] oldClaimPass = claimPass, oldClaimDispatch = claimDispatch;
+        int[][] oldSubs = subresources;
         boolean[] oldUsed = used;
         int n = keys.length * 2;
         keys = new long[n];
@@ -149,6 +172,7 @@ final class CgHazards {
         overlap = new int[n];
         claimPass = new int[n];
         claimDispatch = new int[n];
+        subresources = new int[n][];
         used = new boolean[n];
         size = 0;
         for (int i = 0; i < oldKeys.length; i++) {
@@ -160,11 +184,13 @@ final class CgHazards {
             overlap[e] = oldOverlap[i];
             claimPass[e] = oldClaimPass[i];
             claimDispatch[e] = oldClaimDispatch[i];
+            subresources[e] = oldSubs[i];
         }
     }
 
     void clear() {
         Arrays.fill(used, false);
+        Arrays.fill(subresources, null);
         size = 0;
     }
 
