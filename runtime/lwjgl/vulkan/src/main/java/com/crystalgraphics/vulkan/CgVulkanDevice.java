@@ -812,6 +812,10 @@ public final class CgVulkanDevice implements CgRHI, CgImplicitLayouts, AutoClose
                     VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_READ_BIT);
             host.endFrame(new CgVulkanImage(surfaceColor.image, surfaceColor.format,
                     surfaceColor.desc.width(), surfaceColor.desc.height()));
+            // Back to rest in the next frame's command buffer, begun as this one was presented: every user outside a
+            // graph leaves an image at rest, and a graph takes it from there.
+            barriers += surfaceColor.transitionAll(host.commandBuffer(), surfaceColor.resting,
+                    VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT);
         } else {
             host.endFrame(null);                    // the host presents its own picture
         }

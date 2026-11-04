@@ -320,9 +320,18 @@ public final class TrackedFramebuffers {
         }
         CgTarget t = target(name);
         if (t == null) return;
-        for (int i = 0; i < t.colors().size(); i++) {
-            CgTextureView v = t.colors().get(i);
-            tracker.textureBarrier(v.texture(), v.baseMip(), v.mips(), v.baseLayer(), v.layers(), from, to);
+        if (name == 0) {
+            for (int i = 0; i < t.colors().size(); i++) {
+                CgTextureView v = t.colors().get(i);
+                tracker.textureBarrier(v.texture(), v.baseMip(), v.mips(), v.baseLayer(), v.layers(), from, to);
+            }
+        } else {
+            // Every colour attachment, drawn to or not yet: a pass sets its draw buffers after its transitions.
+            Framebuffer f = fbos.get(name);
+            for (int i = 0; i < COLORS; i++) {
+                CgTextureView v = view(f.colors[i]);
+                if (v != null) tracker.textureBarrier(v.texture(), v.baseMip(), v.mips(), v.baseLayer(), v.layers(), from, to);
+            }
         }
         CgTextureView d = t.depth();
         if (d != null) {

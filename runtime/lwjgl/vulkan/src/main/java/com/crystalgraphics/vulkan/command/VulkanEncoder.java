@@ -149,6 +149,7 @@ public final class VulkanEncoder implements CgCommandList {
 
     /** While explicit, whether the device infers for what follows: on for GL streams, off while a graph states. */
     public void implicitLayouts(boolean on) {
+        if (on != implicit) endCopies();   // an open copy run rests what it wrote under the mode it began in
         implicit = on;
     }
 
@@ -969,7 +970,6 @@ public final class VulkanEncoder implements CgCommandList {
 
     private void mipmaps(VulkanTexture t) {
         VkCommandBuffer cmd = cmd();
-        before(cmd);
         int w = t.desc().width(), h = t.desc().height(), z = volume(t) ? t.desc().depthOrLayers() : 1;
         try (MemoryStack stack = stackPush()) {
             for (int mip = 1; mip < t.desc().mips(); mip++) {
@@ -986,13 +986,8 @@ public final class VulkanEncoder implements CgCommandList {
                         VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, b, VK_FILTER_LINEAR);
             }
         }
-        if (infers()) {
-            rest(cmd, t, 0, t.desc().mips(), 0, t.layers);
-        } else {
-            device.barriers += t.transition(cmd, 0, t.desc().mips(), 0, t.layers, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                    VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
-        }
-        after(cmd);
+        // Self-contained, as an upload is: the texture is found and left at rest, whoever states the rest.
+        device.barriers += t.transition(cmd, 0, t.desc().mips(), 0, t.layers, t.resting, RESTED_STAGES, RESTED_ACCESS);
     }
 
     @Override

@@ -765,8 +765,12 @@ public final class CgTracker {
     /** {@code cgGraphStates}: while on, the device infers no transition of what is recorded. Answers what it was. */
     public boolean graphStates(boolean on) {
         boolean was = graphStates;
+        if (was == on) return was;
+        // What the stream before recorded finishes under its own mode: a pending clear, the open pass, compute pass.
+        outsideRenderPass();
+        endCompute();
         graphStates = on;
-        if (was != on && device instanceof CgImplicitLayouts layouts) layouts.implicitLayouts(!on);
+        if (device instanceof CgImplicitLayouts layouts) layouts.implicitLayouts(!on);
         return was;
     }
 

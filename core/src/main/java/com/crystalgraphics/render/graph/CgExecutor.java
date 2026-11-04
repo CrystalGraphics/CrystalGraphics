@@ -133,6 +133,11 @@ public final class CgExecutor {
      */
     private static boolean takes;
     private static final int SPLITS = CgTrace.name("graph.split-transitions");
+    private static final CgVar.Bool SPLIT = CgVar.bool("crystalgraphics.graph.splits", true, CgVar.DEV,
+            "Split a transition whose next access is a read two or more steps on, from its producer's end to its consumer;"
+                    + " false records every transition whole before its consumer.");
+    /** Raster passes that joined the render pass of the one before them (Unreal RDG's {@code MergeRenderPasses}). */
+    private static final int MERGED = CgTrace.name("graph.render-passes-merged");
     /** Persistent and history buffers whose storage this executor made, freed at teardown if never released. */
     private static final List<CgGraphBuffer> KEPT = new ArrayList<>();
     private static final CgVar.Bool BARRIERS = CgVar.bool("crystalgraphics.graph.barriers", true, CgVar.DEV,
@@ -242,13 +247,22 @@ public final class CgExecutor {
     /** This execution's: the newest async point covering storage outside the graph, waited for at its end. */
     private long asyncEnd;
     private final long[] keyScratch = new long[2];
-    /** Images outliving the execution that it moved, returned to rest at its end: key, GL name, levels and layers each. */
+    /**
+     * Images it moved: key, GL name, levels, layers and whether it outlives the execution, each. Those that do return to
+     * rest at its end; all of them before a callback's body, which is GL's and finds every image at rest.
+     */
     private long[] movedKeys = new long[16];
     private int[] movedNames = new int[16], movedLevels = new int[16], movedLayers = new int[16];
+    private boolean[] movedOutlives = new boolean[16];
     private int moved;
     /** Split transitions begun after a step and not yet ended: each one's id, and the step it ends before. */
     private int[] splitIds = new int[8], splitEnds = new int[8];
     private int splitCount;
+    /** The run of merged raster steps the step executing belongs to: its first and last, -1 outside one. */
+    private int runStart = -1, runEnd = -1;
+    /** The run's second attachment, which a pass of it without one of its own draws beside, writes masked off. */
+    @Nullable
+    private CgGraphTexture runAttachment;
     /** Where a blit's source framebuffer was before it ({@link #blitting}), returned there after. */
     private int blitSourceWas;
 
@@ -397,9 +411,10 @@ public final class CgExecutor {
         asyncEnd = 0;
         takes = CgGL.cgTakesTransitions();
         boolean wasStated = takes && CgGL.cgGraphStates(true);
-        boolean splits = takes && !again;
+        boolean splits = takes && !again && SPLIT.get();
         moved = 0;
         splitCount = 0;
+        runStart = runEnd = -1;
         multiDraw = caps.multiDraw() && CgMeshStore.get().multiDraw();
         // The current target, noted before any pass binds its own: rebound for a pass into it after one into another,
         // and what a copy of it reads. From the state shadow, since a glGet waits for the driver to drain the queue.
@@ -438,9 +453,10 @@ public final class CgExecutor {
                         staleTransients(frame, s, skipped);
                     }
                 }
-                if (splitCount > 0) endSplits(s);
+                if (takes && !again && s > runEnd) merge(frame, s);
+                if (splitCount > 0) endSplits(runEnd);
                 if (!skipped) step(frame, s);
-                if (splits && !skipped) beginSplits(frame, s);
+                if (splits && !skipped && s >= runEnd) beginSplits(frame, s);
                 // A window moved by its node executes no surface: what a re-execution drew into a kept texture.
                 if (again && pass instanceof CgRasterPass && pass.target != null
                         && pass.target.kind() == CgGraphTexture.Kind.REQUESTED) {
@@ -464,7 +480,7 @@ public final class CgExecutor {
             try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, FINISH)) {
                 if (takes) {
                     if (splitCount > 0) endSplits(Integer.MAX_VALUE);
-                    restMoved();
+                    restMoved(false);
                     CgGL.cgGraphStates(wasStated);
                 }
                 sharedDepth.release(POOL);
@@ -619,6 +635,14 @@ public final class CgExecutor {
                     awaitAsync(frame, s);
                 }
             }
+            // A history drawn into moves to its next version first: what the step's transitions and its reads name.
+            CgGraphTexture drawn = pass instanceof CgRasterPass raster ? raster.target
+                    : pass instanceof CgPass.Callback callback ? callback.target : null;
+            if (drawn != null && drawn.kind() == CgGraphTexture.Kind.HISTORY) {
+                if (drawn.isPreviousVersion()) throw new IllegalStateException(drawn + " is sampled only: draw into its history");
+                storage(drawn);
+                drawn.advance();
+            }
             if (!(pass instanceof CgComputePass)) {
                 try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, BARRIER)) {
                     barriers(frame, s);
@@ -679,7 +703,8 @@ public final class CgExecutor {
                     boolean drawsBeside = callback.target != null && callback.target.drawsBesideCurrentDepth()
                             && bindBeside(callback.target);
                     if (!drawsBeside) bindTarget(callback.target, 0, 0);
-                    boolean stated = takes && CgGL.cgGraphStates(false);   // its body is GL's: the device infers
+                    if (takes) restMoved(true);   // its body is GL's: the device infers, from images at rest
+                    boolean stated = takes && CgGL.cgGraphStates(false);
                     try {
                         callback.body.run();
                     } finally {
@@ -1178,25 +1203,96 @@ public final class CgExecutor {
      */
     private void barriers(CgFrame frame, int s) {
         if (!kernelsSeen && !takes) return;
-        CgPass pass = frame.steps[s];
+        if (s > runStart && s <= runEnd) return;   // its run's first step stated them
         CgGL.cgBeginBarriers();   // one glMemoryBarrier for the step on GL, one transition on a device
         try {
-            for (int i = frame.accessFrom[s]; i < frame.accessFrom[s + 1]; i++) {
-                int bits = frame.accessBits[i];
-                if (bits == 0) continue;   // a release
-                if (frame.accessView[i] instanceof CgGraphBuffer buffer) {
-                    bufferBarrier(bufferStorage(buffer, (bits & CgResourceStates.WRITES) != 0), bits);
-                } else if (pass instanceof CgRasterPass raster && (bits & CgAccess.COLOR_WRITE) != 0) {
-                    CgGraphTexture texture = (CgGraphTexture) frame.accessView[i];
-                    boolean target = texture == raster.target;
-                    move(texture, bits & ~CgAccess.COLOR_WRITE, target ? raster.level : 0, target ? raster.layer : 0);
-                } else {
-                    move((CgGraphTexture) frame.accessView[i], bits, -1, -1);
+            if (runEnd > s && runAttachment != null && ((CgRasterPass) frame.steps[s]).attachment() == null) {
+                move(runAttachment, 0, 0, 0);   // a later pass's attachment, bound from the run's start
+            }
+            for (int j = s; j <= Math.max(s, runEnd); j++) {
+                CgPass pass = frame.steps[j];
+                for (int i = frame.accessFrom[j]; i < frame.accessFrom[j + 1]; i++) {
+                    int bits = frame.accessBits[i];
+                    if (bits == 0) continue;   // a release
+                    if (frame.accessView[i] instanceof CgGraphBuffer buffer) {
+                        bufferBarrier(bufferStorage(buffer, (bits & CgResourceStates.WRITES) != 0), bits);
+                    } else if (pass instanceof CgRasterPass raster && (bits & CgAccess.COLOR_WRITE) != 0) {
+                        if (j > s) continue;   // the run's attachments, moved with its first step
+                        CgGraphTexture texture = (CgGraphTexture) frame.accessView[i];
+                        boolean target = texture == raster.target;
+                        move(texture, bits & ~CgAccess.COLOR_WRITE, target ? raster.level : 0, target ? raster.layer : 0);
+                    } else {
+                        move((CgGraphTexture) frame.accessView[i], bits, -1, -1);
+                    }
                 }
             }
         } finally {
             CgGL.cgEndBarriers();
         }
+    }
+
+    /**
+     * From raster step {@code s}, the run of raster steps that share its render pass, as Unreal RDG merges them
+     * ({@code MergeRenderPasses}): each after it into the same target, level, layer and second attachment, loading
+     * what is there, with no copy, rename, damage or indirect command of its own, reading nothing the run writes. The
+     * run's first step states every transition of the run, so none falls between them and the device's render pass
+     * stays open.
+     */
+    private void merge(CgFrame frame, int s) {
+        runStart = runEnd = s;
+        runAttachment = null;
+        if (!(frame.steps[s] instanceof CgRasterPass first) || first.target == null || unmergeable(frame, s, first)) return;
+        CgGraphTexture attachment = first.attachment();
+        int k = s + 1;
+        while (k < frame.stepCount && frame.steps[k] instanceof CgRasterPass next && joins(frame, first, attachment, k, next)) {
+            if (attachment == null) attachment = next.attachment();
+            k++;
+        }
+        runEnd = k - 1;
+        if (runEnd > s) {
+            CgTrace.add(CgChannels.GL, MERGED, runEnd - s);
+            runAttachment = attachment;
+        }
+    }
+
+    /** {@code pass}'s second attachment: its own, or inside a merged run the run's. */
+    @Nullable
+    private CgGraphTexture attachmentOf(CgRasterPass pass) {
+        CgGraphTexture own = pass.attachment();
+        return own != null ? own : runAttachment;
+    }
+
+    private boolean unmergeable(CgFrame frame, int s, CgRasterPass pass) {
+        return pass.damage() != null && !frame.wholePasses || pass.target.kind() == CgGraphTexture.Kind.HISTORY;
+    }
+
+    /**
+     * Whether raster step {@code k} joins the run {@code first} begins, whose second attachment so far is
+     * {@code attachment}. A pass with none joins one with, and one with joins one without: the run binds it throughout,
+     * each pass's writes to it masked off where its pipelines write none.
+     */
+    private boolean joins(CgFrame frame, CgRasterPass first, @Nullable CgGraphTexture attachment, int k, CgRasterPass next) {
+        if (next.target != first.target || next.level != first.level || next.layer != first.layer
+                || next.attachment() != null && attachment != null && next.attachment() != attachment || next.load.mask() != 0
+                || next.replacesTarget()
+                || next.depthFrom() != null || next.colorFrom() != null || unmergeable(frame, k, next)) {
+            return false;
+        }
+        CgFrame.Raster packed = frame.rasters[k];
+        if (packed.indirects > 0 && gpuCounts) return false;   // its commands are written by a dispatch first
+        for (int b = 0; b < packed.count; b++) if (packed.copyBefore[b] != 0) return false;
+        for (int i = frame.accessFrom[k]; i < frame.accessFrom[k + 1]; i++) {
+            CgGraphResource view = frame.accessView[i];
+            int bits = frame.accessBits[i];
+            if (view == CgGraphTexture.current() && first.target.drawsBesideCurrentDepth()) {
+                // Beside the host's depth a pass names it read and written: ordered on it, sampling none of it.
+                if ((bits & ~(CgAccess.COLOR_WRITE | CgAccess.SAMPLED_READ)) != 0) return false;
+            } else if ((view == first.target || view == attachment || view == next.attachment())
+                    && (bits & ~CgAccess.COLOR_WRITE) != 0) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /** The barrier an access of {@code bits} to buffer {@code id} needs, issued. */
@@ -1242,7 +1338,7 @@ public final class CgExecutor {
             if (color == null) continue;
             long key = CgResourceStates.texture(color.getId());
             int[] subs = STATES.image(key, levels * layers);
-            if (outlives) noteMoved(key, color.getId(), levels, layers);
+            noteMoved(key, color.getId(), levels, layers, outlives);
             for (int level = 0; level < levels; level++) {
                 int layer = 0;
                 while (layer < layers) {
@@ -1270,7 +1366,7 @@ public final class CgExecutor {
         long key = CgResourceStates.framebuffer(fbo);
         int[] subs = STATES.image(key, 1);
         int from = subs[0];
-        if (outlives) noteMoved(key, fbo, 0, 0);
+        noteMoved(key, fbo, 0, 0, outlives);
         boolean moves = CgResourceStates.moves(from, to);
         if (moves && issues(from == 0 ? CgAccess.RESTING : from, to)) {
             CgGL.cgFramebufferBarrier(fbo, from == 0 ? CgAccess.RESTING : from, to);
@@ -1280,27 +1376,37 @@ public final class CgExecutor {
         return from;
     }
 
-    /** {@code key} returns to rest at the execution's end; {@code levels} 0 for a framebuffer moved as one. */
-    private void noteMoved(long key, int name, int levels, int layers) {
-        for (int m = 0; m < moved; m++) if (movedKeys[m] == key) return;
+    /** {@code key} was moved, and with {@code outlives} returns to rest at the execution's end; {@code levels} 0 for a framebuffer. */
+    private void noteMoved(long key, int name, int levels, int layers, boolean outlives) {
+        for (int m = 0; m < moved; m++) {
+            if (movedKeys[m] != key) continue;
+            movedOutlives[m] |= outlives;
+            return;
+        }
         if (moved == movedKeys.length) {
             movedKeys = Arrays.copyOf(movedKeys, moved * 2);
             movedNames = Arrays.copyOf(movedNames, moved * 2);
             movedLevels = Arrays.copyOf(movedLevels, moved * 2);
             movedLayers = Arrays.copyOf(movedLayers, moved * 2);
+            movedOutlives = Arrays.copyOf(movedOutlives, moved * 2);
         }
+        movedOutlives[moved] = outlives;
         movedKeys[moved] = key;
         movedNames[moved] = name;
         movedLevels[moved] = levels;
         movedLayers[moved++] = layers;
     }
 
-    /** Every image outliving the execution that it moved, back where it rests: where the host and other streams find it. */
-    private void restMoved() {
+    /**
+     * Every image it moved that outlives the execution, or with {@code all} every one, back where it rests: where the
+     * host and GL streams find it. A transient left out keeps its state with its storage.
+     */
+    private void restMoved(boolean all) {
         if (moved == 0) return;
         CgGL.cgBeginBarriers();
         try {
             for (int m = 0; m < moved; m++) {
+                if (!all && !movedOutlives[m]) continue;
                 int levels = movedLevels[m], layers = movedLayers[m];
                 int[] subs = STATES.image(movedKeys[m], Math.max(1, levels * layers));
                 if (levels == 0) {
@@ -1401,7 +1507,13 @@ public final class CgExecutor {
         CgExecutor e = BY_DEPTH.get(depth - 1);
         CgGL.cgBeginBarriers();
         try {
-            if (e.blitSourceWas != 0) e.moveFramebuffer(source, e.blitSourceWas, false);
+            if (e.blitSourceWas != 0) {
+                e.moveFramebuffer(source, e.blitSourceWas, false);
+            } else {
+                // Found at rest, perhaps under another framebuffer's name for the same images: back to rest.
+                CgGL.cgFramebufferBarrier(source, CgAccess.COPY_READ, CgAccess.RESTING);
+                STATES.image(CgResourceStates.framebuffer(source), 1)[0] = 0;
+            }
             e.moveFramebuffer(dest, CgAccess.SAMPLED_READ, false);
         } finally {
             CgGL.cgEndBarriers();
@@ -1461,6 +1573,16 @@ public final class CgExecutor {
         if (rect[2] >= 0 && (rect[0] > 0 || rect[1] > 0 || rect[2] < old.getWidth() || rect[3] < old.getHeight())) return;
         renamedFrom = old;
         target.resolve(POOL.acquire(target.desc()));
+        if (takes) {
+            // After the step's transitions: the old storage is now what its batches sample, the new one its target.
+            CgGL.cgBeginBarriers();
+            try {
+                moveFramebuffer(old.getId(), CgAccess.SAMPLED_READ, false);
+                moveFramebuffer(target.framebuffer().getId(), CgAccess.COLOR_WRITE, false);
+            } finally {
+                CgGL.cgEndBarriers();
+            }
+        }
         CgTrace.add(CgChannels.GL, TARGET_RENAMES, 1);
     }
 
@@ -1469,12 +1591,12 @@ public final class CgExecutor {
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, RASTER_TARGET)) {
             try (CgTrace.Zone c = CgTrace.zone(CgChannels.GL_DETAIL, RASTER_COMPOSED)) {
                 // Beside the current depth, a second attachment is ours too: the host's colour stays out
-                composed = pass.attachment() != null && !(pass.target != null && pass.target.drawsBesideCurrentDepth())
+                composed = attachmentOf(pass) != null && !(pass.target != null && pass.target.drawsBesideCurrentDepth())
                         && bindComposed(pass);
             }
             try (CgTrace.Zone b = CgTrace.zone(CgChannels.GL_DETAIL, RASTER_BESIDE)) {
                 beside = !composed && pass.target != null && pass.target.drawsBesideCurrentDepth()
-                        && bindBeside(pass.target, pass.attachment());
+                        && bindBeside(pass.target, attachmentOf(pass));
             }
             try (CgTrace.Zone t = CgTrace.zone(CgChannels.GL_DETAIL, RASTER_OWN)) {
                 if (!composed && !beside) bindTarget(pass.target, pass.level, pass.layer);
@@ -1841,7 +1963,7 @@ public final class CgExecutor {
     private int depthDestination(CgRasterPass pass) {
         CgGraphTexture target = pass.target;
         if (target == null || target.kind() == CgGraphTexture.Kind.CURRENT || target.drawsBesideCurrentDepth()
-                || pass.attachment() != null) {
+                || attachmentOf(pass) != null) {
             return startFramebuffer;
         }
         CgFrameBuffer storage = storage(target);
@@ -2080,7 +2202,8 @@ public final class CgExecutor {
      * where the target takes none and the attachment is optional; where it is not, throws.
      */
     private boolean bindComposed(CgRasterPass pass) {
-        CgFrameBuffer extra = storage(pass.attachment());
+        CgGraphTexture attachment = attachmentOf(pass);
+        CgFrameBuffer extra = storage(attachment);
         CgGraphTexture target = pass.target;
         int host, x, y, w, h;
         if (target == null || target.kind() == CgGraphTexture.Kind.CURRENT) {
@@ -2100,7 +2223,7 @@ public final class CgExecutor {
         String refused = null;
         if (x != 0 || y != 0 || extra.getWidth() != w || extra.getHeight() != h) {
             // GL would draw into the intersection, quietly.
-            refused = pass.attachment() + " is " + extra.getWidth() + "x" + extra.getHeight() + ", beside a target of "
+            refused = attachment + " is " + extra.getWidth() + "x" + extra.getHeight() + ", beside a target of "
                     + w + "x" + h + " at " + x + "," + y;
         } else {
             refused = COMPOSED.bind(host, w, h, extra.getColorTexture(0).getId(), extra.getFormat().getColorSlot(0));
@@ -2172,11 +2295,6 @@ public final class CgExecutor {
                 otherBound = false;
             }
             return;
-        }
-        if (target.kind() == CgGraphTexture.Kind.HISTORY) {
-            if (target.isPreviousVersion()) throw new IllegalStateException(target + " is sampled only: draw into its history");
-            storage(target);
-            target.advance();
         }
         CgFrameBuffer storage = storage(target);
         if (layer != 0) storage.bindLayer(layer);
