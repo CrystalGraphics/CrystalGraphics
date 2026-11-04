@@ -1,7 +1,6 @@
 package com.crystalgraphics.gl.material.parse;
 
 import com.crystalgraphics.api.CgBindingPoints;
-import com.crystalgraphics.compute.lower.CgLoweredEmitter;
 import com.crystalgraphics.compute.source.CgBufferDecl;
 import com.crystalgraphics.gl.buffer.shader.CgBonePalettes;
 import com.crystalgraphics.gl.buffer.shader.CgEngineBufferRegistry;
@@ -984,7 +983,7 @@ public final class CgMaterialShaderCompiler {
             }
         }
         sb.append("// Buffers { }\n").append(shader.bufferStructs());
-        for (CgBufferDecl b : shader.buffers()) CgLoweredEmitter.reader(sb, b, useSsbo);
+        for (CgBufferDecl b : shader.buffers()) CgBufferReaders.reader(sb, b, useSsbo);
     }
 
     /** What the world hands a program carrying its own lighting, after the buffers and properties it reads through. */

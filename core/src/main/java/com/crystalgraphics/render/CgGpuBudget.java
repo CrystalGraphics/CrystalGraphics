@@ -1,6 +1,5 @@
 package com.crystalgraphics.render;
 
-import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.trace.CgGpuTrace;
 
 import java.util.Arrays;
@@ -26,8 +25,7 @@ import java.util.Arrays;
  * }</pre>
  *
  * <ul>
- *   <li>It starts at the tier's share, 1 where kernels run as compute, 0.5 lowered and 0.25 on the CPU tier, then
- *       follows what it measures. Where the context has no timer queries it stays there.</li>
+ *   <li>It starts at 1, then follows what it measures. Where the context has no timer queries it stays there.</li>
  *   <li>Charge every pass the consumer records, raster passes too ({@code CgRasterPass.timed}), or the scale holds the
  *       wrong time. An async pass on a device with a compute queue runs beside the timer and is not counted.</li>
  *   <li>What it measures lags the work by a few frames, and it never waits for it.</li>
@@ -124,7 +122,7 @@ public final class CgGpuBudget {
         long through = CgGpuTrace.budgetThrough(slot), nanos = CgGpuTrace.budgetNanos(slot);
         if (!started) {
             started = true;
-            scale = controller.start(share(CgCapabilities.detect().computeTier()), next);
+            scale = controller.start(1f, next);
         } else if (timed && through > seenThrough) {
             // The frames that came back together share their total: a frame's own figure is not kept apart.
             float each = (nanos - seenNanos) / 1e6f / (through - seenThrough);
@@ -135,17 +133,6 @@ public final class CgGpuBudget {
         }
         seenThrough = through;
         seenNanos = nanos;
-    }
-
-    /** Where a budget starts on a tier: how much of the work a kernel runs there at the cost compute would. */
-    static float share(CgCapabilities.ComputeTier tier) {
-        switch (tier) {
-            case V:
-            case G43: return 1f;
-            case G40:
-            case G33: return 0.5f;
-            default: return 0.25f;
-        }
     }
 
     private static float positive(float millis) {

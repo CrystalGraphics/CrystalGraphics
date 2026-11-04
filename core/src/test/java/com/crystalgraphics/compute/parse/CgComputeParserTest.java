@@ -52,14 +52,13 @@ public class CgComputeParserTest {
     @Test
     public void example_declaresEveryKernelWithItsSizeAndShape() {
         CgComputeSource s = example();
-        assertEquals(List.of("Integrate", "Spawn", "Histogram", "Shade", "Reduce", "ReduceScatter"),
+        assertEquals(List.of("Integrate", "Spawn", "Histogram", "Shade", "Reduce"),
                 s.kernels().stream().map(CgKernelDecl::name).toList());
         CgKernelDecl integrate = s.kernel("Integrate");
         assertEquals(CgKernelShape.MAP, integrate.shape());
         assertEquals(List.of(CgKernelDecl.DEFAULT_SIZE, 1, 1), List.of(integrate.sizeX(), integrate.sizeY(), integrate.sizeZ()));
         CgKernelDecl shade = s.kernel("Shade");
         assertEquals(List.of(8, 8, 1, 2), List.of(shade.sizeX(), shade.sizeY(), shade.sizeZ(), shade.dimensions()));
-        assertEquals("ReduceScatter", s.kernel("Reduce").fallback());
         assertEquals(List.of("WIND"), s.features());
         assertEquals(5, s.properties().size());
     }
@@ -138,9 +137,8 @@ public class CgComputeParserTest {
     }
 
     @Test
-    public void lowerableKernel_reachingAVec3Element_isRefused_generalKeepsIt() {
-        String message = refusal("#pragma kernel K map", "void K() { ODD_WRITE(ODD(CG_ELEMENT)); }");
-        assertTrue(message, message.contains("a tier without compute cannot hold"));
+    public void anyShape_reachesAVec3Element() {
+        parse("#pragma kernel K map", "void K() { ODD_WRITE(ODD(CG_ELEMENT)); }");
         parse("#pragma kernel K general", "void K() { ODD_STORE(CG_ELEMENT, ODD(CG_ELEMENT)); }");
     }
 
@@ -186,17 +184,10 @@ public class CgComputeParserTest {
     }
 
     @Test
-    public void computeOnly_namesAKernel_andTakesNoFallback() {
-        assertTrue(parse("#pragma kernel A general\n#pragma compute_only A", "void A() {}").kernel("A").computeOnly());
-        assertTrue(refusal("#pragma kernel A general\n#pragma compute_only B", "void A() {}").contains("names no kernel 'B'"));
-        assertTrue(refusal("#pragma kernel A general\n#pragma kernel L scatter\n#pragma fallback A L\n#pragma compute_only A",
-                "void A() {}\nvoid L() {}").contains("compute_only and names a #pragma fallback"));
-    }
-
-    @Test
-    public void fallbackToAGeneralKernel_isRefused() {
-        assertTrue(refusal("#pragma kernel A general\n#pragma kernel B general\n#pragma fallback A B",
-                "void A() {}\nvoid B() {}").contains("a fallback is lowerable"));
+    public void fallbackAndComputeOnly_areRefused() {
+        assertTrue(refusal("#pragma kernel A general\n#pragma compute_only A", "void A() {}").contains("are gone"));
+        assertTrue(refusal("#pragma kernel A general\n#pragma kernel L scatter\n#pragma fallback A L",
+                "void A() {}\nvoid L() {}").contains("are gone"));
     }
 
     @Test

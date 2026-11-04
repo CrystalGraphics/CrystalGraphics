@@ -3,7 +3,6 @@
 // Whether a box hides behind the scene's depth: CgGpuOps.depthPyramid's pyramid, each level the farthest eye depth it
 // covers. What CgGpuOps.cull and vfx Range test. Everything arrives as an argument: clip is projection times view by
 // rows (camera-relative), eye is projection [2][2], [2][3], [3][2], [3][3], size the pyramid's width, height and levels.
-// CgGpuOpsBodies.occluded is the Java twin.
 
 // The eye depth a clip-space depth over w stands for, as cg_LinearEyeDepth reads the pyramid's.
 float cg_occlusion_eye_depth(vec4 eye, float ndc) {

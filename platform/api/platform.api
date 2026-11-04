@@ -1100,7 +1100,6 @@ com/crystalgraphics/platform/gl/CgCapabilities
   method public subgroups ()Z
   method public vertexStreamTier ()Lcom/crystalgraphics/platform/gl/CgCapabilities$StreamBufferTier;
   method public,static clearCache ()V
-  method public,static cpuOracle (Z)V
   method public,static detect ()Lcom/crystalgraphics/platform/gl/CgCapabilities;
   method public,static detectUncached ()Lcom/crystalgraphics/platform/gl/CgCapabilities;
   method public,static detected ()Lcom/crystalgraphics/platform/gl/CgCapabilities;
@@ -1110,7 +1109,6 @@ com/crystalgraphics/platform/gl/CgCapabilities
 com/crystalgraphics/platform/gl/CgCapabilities$ComputeTier
   access public,final,enum
   extends java/lang/Enum
-  field public,static,final CPU Lcom/crystalgraphics/platform/gl/CgCapabilities$ComputeTier;
   field public,static,final G33 Lcom/crystalgraphics/platform/gl/CgCapabilities$ComputeTier;
   field public,static,final G40 Lcom/crystalgraphics/platform/gl/CgCapabilities$ComputeTier;
   field public,static,final G43 Lcom/crystalgraphics/platform/gl/CgCapabilities$ComputeTier;
@@ -1577,15 +1575,19 @@ com/crystalgraphics/platform/gl/CgGL
   method public,static cgBindTexture (III)V
   method public,static cgBlitNamedFramebuffer (IIIIIIIIIIII)V
   method public,static cgBufferBarrier (III)V
+  method public,static cgDeleteIsolatedProgram (I)V
   method public,static cgEndAsync ()J
   method public,static cgEndBarriers ()V
   method public,static cgEndTransfer ()V
   method public,static cgFillBuffer (IJJI)V
   method public,static cgForgetSamplers ()V
   method public,static cgImageBarrier (III)V
+  method public,static cgLinkIsolatedProgram (I)V
   method public,static cgParksLazily ()Z
+  method public,static cgProgramNames (ILcom/crystalgraphics/platform/gl/CgGlProgramNames$Names;)V
   method public,static cgWaitAsync (J)V
   method public,static checkSource (Ljava/lang/CharSequence;)Ljava/lang/CharSequence;
+  method public,static createIsolatedWorkerContext ()Lcom/crystalgraphics/platform/gl/CgGLWorkerContext;
   method public,static createWorkerContext ()Lcom/crystalgraphics/platform/gl/CgGLWorkerContext;
   method public,static drainErrors ()Ljava/util/List;
   method public,static enterGlFree (Ljava/lang/String;)V
@@ -1795,6 +1797,7 @@ com/crystalgraphics/platform/gl/CgGLBackend
   method public cgImageBarrier (III)V
   method public cgWaitAsync (J)V
   method public copyImageSubData (IIIIIIIIIIIIIII)V
+  method public createIsolatedWorkerContext ()Lcom/crystalgraphics/platform/gl/CgGLWorkerContext;
   method public framebufferTexture (IIII)V
   method public framebufferTextureLayer (IIIII)V
   method public,abstract bindFramebuffer (II)V
@@ -2020,6 +2023,17 @@ com/crystalgraphics/platform/gl/CgGlCallSites
   field public,static,final ON Z
   method public,static reset ()V
   method public,static write (Ljava/io/File;J)V
+com/crystalgraphics/platform/gl/CgGlProgramNames
+  access public,final
+  extends java/lang/Object
+com/crystalgraphics/platform/gl/CgGlProgramNames$Names
+  access public,final
+  extends java/lang/Object
+  method public <init> ()V
+  method public complete (Z)Lcom/crystalgraphics/platform/gl/CgGlProgramNames$Names;
+  method public storageBlock (Ljava/lang/String;I)Lcom/crystalgraphics/platform/gl/CgGlProgramNames$Names;
+  method public uniform (Ljava/lang/String;I)Lcom/crystalgraphics/platform/gl/CgGlProgramNames$Names;
+  method public uniformBlock (Ljava/lang/String;I)Lcom/crystalgraphics/platform/gl/CgGlProgramNames$Names;
 com/crystalgraphics/platform/gl/CgGlRecording
   access public,final
   extends java/lang/Object
@@ -2125,6 +2139,7 @@ com/crystalgraphics/platform/gl/state/CgCheckedProvider
   method public read (Lcom/crystalgraphics/platform/gl/state/CgGlSlot;Lcom/crystalgraphics/platform/gl/state/CgGlStateShadow;)V
   method public readTextureUnits (Lcom/crystalgraphics/platform/gl/state/CgGlStateShadow;I)I
   method public,static bit (Lcom/crystalgraphics/platform/gl/state/CgGlSlot;)I
+  method public,static deferChecksWhile (Ljava/util/function/BooleanSupplier;)V
   method public,static install (Ljava/lang/String;Ljava/util/concurrent/Callable;)V
 com/crystalgraphics/platform/gl/state/CgGlCensus
   access public,final
@@ -3226,6 +3241,7 @@ com/crystalgraphics/platform/service/CgCacheDirectory
   field public,static,final KEEP J
   field public,static,final MOST J
   field public,static,final PRUNED [Ljava/lang/String;
+  method public,static driver ()Ljava/lang/String;
   method public,static of (Ljava/lang/String;)Ljava/nio/file/Path;
   method public,static prune (Ljava/lang/String;)V
   method public,static used (Ljava/nio/file/Path;)V
@@ -3344,6 +3360,21 @@ com/crystalgraphics/platform/service/CgResourceService
   method public,abstract namespaces ()Ljava/util/Set;
   method public,abstract openStack (Ljava/lang/String;Ljava/lang/String;)Ljava/util/List;
   method public,abstract openStream (Ljava/lang/String;Ljava/lang/String;)Ljava/io/InputStream;
+com/crystalgraphics/platform/service/CgShaderPacks
+  access public,final
+  extends java/lang/Object
+  field public,static,final HOST Lcom/crystalgraphics/platform/CgService;
+  method public,static irisApi ()Lcom/crystalgraphics/platform/service/CgShaderPacks$Host;
+  method public,static mod ()Ljava/lang/String;
+  method public,static packInUse ()Z
+  method public,static renderingShadowPass ()Z
+com/crystalgraphics/platform/service/CgShaderPacks$Host
+  access public,abstract,interface
+  extends java/lang/Object
+  field public,static,final NONE Lcom/crystalgraphics/platform/service/CgShaderPacks$Host;
+  method public,abstract mod ()Ljava/lang/String;
+  method public,abstract packInUse ()Z
+  method public,abstract renderingShadowPass ()Z
 com/crystalgraphics/platform/service/CgSoundService
   access public,abstract,interface
   extends java/lang/Object

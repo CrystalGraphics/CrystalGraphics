@@ -1,5 +1,5 @@
-// CgComputeSelfTest's kernels: one per shape, each checked against values worked out in Java, so every tier (V, G43,
-// G40, G33, CPU) must give the same buffers and images.
+// CgComputeSelfTest's kernels: one per shape, each checked against values worked out in Java, so GL and a device must
+// give the same buffers and images.
 #pragma kernel Map map
 #pragma kernel Pairs map
 #pragma kernel Gather gather
@@ -11,18 +11,11 @@
 #pragma kernel Accumulate 8 8 image
 #pragma kernel Counted map
 #pragma kernel Bin general
-#pragma kernel BinLowered scatter
 #pragma kernel Big map
 #pragma kernel Many append
 #pragma kernel Doubled general
-#pragma kernel DoubledLowered map
 #pragma kernel After map
-#pragma kernel Stuck general
-#pragma kernel Only general
 #pragma kernel Bits map
-#pragma fallback Bin BinLowered
-#pragma fallback Doubled DoubledLowered
-#pragma compute_only Only
 
 struct Pair { vec4 a; uvec4 b; };
 struct BitResults { uvec4 a; uvec4 b; uvec4 c; uvec4 d; uvec4 e; uvec4 f; uvec4 g; uvec4 h; };
@@ -43,7 +36,6 @@ Buffers {
     MANY     ("Many",      uint,  append)
     DOUBLED  ("Doubled",   uint,  readwrite)
     AFTER    ("After",     uint,  writeonly)
-    ONLY     ("Only",      uint,  writeonly)
     BITS     ("Bits",      BitResults, writeonly)
 }
 
@@ -54,8 +46,6 @@ Images {
 
 shared uint halves[2];
 shared uint doubled[64];
-shared uint stuck[64];
-shared uint only[64];
 
 // Every element but each fifth doubles x and adds its int to y: an element left alone keeps what it held.
 void Map() {
@@ -114,7 +104,7 @@ void Counted() {
     COUNTED_WRITE(uint(CG_ELEMENT) + 100u);
 }
 
-// Halves counted through shared memory: general, so below compute its fallback runs.
+// Halves counted through shared memory.
 void Bin() {
     if (CG_LOCAL_INDEX < 2) halves[CG_LOCAL_INDEX] = 0u;
     barrier();
@@ -123,11 +113,7 @@ void Bin() {
     if (CG_LOCAL_INDEX < 2) HALVES_ADD(CG_LOCAL_INDEX, halves[CG_LOCAL_INDEX]);
 }
 
-void BinLowered() {
-    HALVES_INC(CG_ELEMENT % 2);
-}
-
-// Enough elements that the CPU tier runs them as many ranges at once.
+// Enough elements for many work groups.
 void Big() {
     BIG_WRITE(uint(CG_ELEMENT) * 3u + 1u);
 }
@@ -136,34 +122,15 @@ void Many() {
     if (CG_ELEMENT % 3 == 0) MANY_APPEND(uint(CG_ELEMENT));
 }
 
-// General, so below compute its fallback runs, between lowered kernels that write what it reads and read what it
-// writes.
+// General, between kernels that write what it reads and read what it writes.
 void Doubled() {
     doubled[CG_LOCAL_INDEX] = COUNTED(CG_ELEMENT) * 2u;
     barrier();
     DOUBLED_WRITE(doubled[CG_LOCAL_INDEX]);
 }
 
-void DoubledLowered() {
-    DOUBLED_WRITE(COUNTED(CG_ELEMENT) * 2u);
-}
-
 void After() {
     AFTER_WRITE(DOUBLED(CG_ELEMENT) + 1u);
-}
-
-// General, with no fallback: below compute it can run nowhere, and recording it says why.
-void Stuck() {
-    stuck[CG_LOCAL_INDEX] = 1u;
-    barrier();
-    if (CG_LOCAL_INDEX == 0) HALVES_ADD(0, stuck[0]);
-}
-
-// Compute alone, declared so: below compute it is refused by name, and kernel.runs() answers false.
-void Only() {
-    only[CG_LOCAL_INDEX] = uint(CG_ELEMENT) * 5u;
-    barrier();
-    ONLY_WRITE(only[CG_LOCAL_INDEX] + 1u);
 }
 
 uint bytesOf(ivec4 b) {
@@ -174,8 +141,7 @@ uint shortsOf(ivec2 s) {
     return uint(s.x & 65535) | uint(s.y & 65535) << 16;
 }
 
-// Every builtin newer than GLSL 3.30 that has a polyfill: below 4.00 and 4.20 the polyfills run, and every tier must
-// give the bits CgComputeSelfTest works out.
+// Builtins newer than GLSL 3.30, which must give the bits CgComputeSelfTest works out.
 void Bits() {
     uint x = uint(CG_ELEMENT) * 2654435761u + 12345u;
     uint y = (x ^ (x >> 13)) * 1540483477u;

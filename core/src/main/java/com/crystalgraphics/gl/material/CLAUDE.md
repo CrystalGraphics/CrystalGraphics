@@ -53,7 +53,7 @@ See [`parse/CLAUDE.md`](parse/CLAUDE.md) for the full class map. Key external-fa
 7. Sampler property uniform declarations (`uniform sampler2D/sampler2DArray/sampler3D/samplerCube <name>;` — one per sampler property)
 8. User-attached SSBO/TBO buffers (emitted by `CgGlslEmitter`)
 8. User-attached UBO blocks (emitted by `CgGlslEmitter`) — path-independent
-8a. `Buffers { }`: the structs its buffers name, then each buffer's reader (`CgLoweredEmitter.reader`) — a storage block wired to `CgBindingPoints.MATERIAL_BUFFERS_SSBO + i`, or a `usamplerBuffer` on the unit after the samplers (`materialBufferUnit`). The fragment stage the same
+8a. `Buffers { }`: the structs its buffers name, then each buffer's reader (`CgBufferReaders.reader`) — a storage block wired to `CgBindingPoints.MATERIAL_BUFFERS_SSBO + i`, or a `usamplerBuffer` on the unit after the samplers (`materialBufferUnit`). The fragment stage the same
 9. `struct v2f { <v2fStructBody> };`
 10. `flat out int cg_InstanceId;`
 11. v2f interface block (`out _CgV2fBlock { <fields> } _cg_v2f;`)

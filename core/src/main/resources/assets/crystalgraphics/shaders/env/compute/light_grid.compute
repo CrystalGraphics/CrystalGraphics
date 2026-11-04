@@ -2,21 +2,15 @@
 // the grid's space once (Unreal's LightViewSpacePositionAndRadius) and drops one too small on screen to draw
 // (ComputeLightVisibility's r.MinScreenRadiusForLights) by giving it no reach. Coarse culls every light into a parent grid a factor
 // smaller each way, a work group a parent cell (r.LightCulling.TwoLevel, CullLights_ThreadGroup), its lists bits into
-// one buffer in index order. Where compute runs, Cell lists each cell's lights from its parent's list, a work group a
-// cell (r.LightCulling.WorkloadDistributionMode 1), its run taken with an atomic. Below compute Count counts each
-// cell's lights from every light, an exclusive scan of the counts places each list (CgGpuOps.scan, since an atomic
-// there answers nothing), and Write writes them: the same lists.
+// one buffer in index order. Cell lists each cell's lights from its parent's list, a work group a cell
+// (r.LightCulling.WorkloadDistributionMode 1), its run taken with an atomic.
 // A cell's list has no cap of its own: the cells share one budget of CG_LIGHT_PER_CELL a cell on average (Unreal's
 // linked lists, MaxCulledLightsPerCell), and what passes it is dropped and counted. A cell is the view-space box of its
 // tile's edges at its slice's near and far depth; a light reaches it as cg_light_reaches says. Each cell's list is in index order within each light's run (CG_LIGHT_RUN), the runs in order,
 // and its header says where each starts, so a pass reads its own lights alone (LightGridCommon.ush's NumMegaLights).
 #pragma kernel View map
 #pragma kernel Coarse 64 general
-#pragma compute_only Coarse
 #pragma kernel Cell 64 general
-#pragma compute_only Cell
-#pragma kernel Count gather
-#pragma kernel Write scatter
 
 #include "crystalgraphics:shaders/lib/lights.glsl"
 #include "crystalgraphics:shaders/lib/color.glsl"
@@ -53,8 +47,6 @@ Buffers {
     ALLOC          ("Indices the parents took, the cells dropped, the cells took", uint, counter)
     PARENT_CELLS   ("Each parent cell's count and start, ~0 overflowed",   uint,        readwrite)
     PARENT_INDICES ("The parents' lists",                                  uint,        readwrite)
-    COUNTS         ("Each cell's light count",                             uint,        writeonly)
-    STARTS         ("Where each cell's list starts: the counts scanned",   uint,        readonly)
     CELLS          ("Each cell's count, start and runs (lights.glsl's CG_LIGHT_CELL_START)", uint, writeonly)
     INDICES        ("The cells' lists",                                    uint,        writeonly)
 }
@@ -218,7 +210,7 @@ void Coarse() {
     }
 }
 
-// The lights cell e may hold, as Cell, Count and Write walk them: n of its parent's list from `from`, or every light.
+// The lights cell e may hold, as Cell walks them: n of its parent's list from `from`, or every light.
 void candidates(int e, out ivec3 cell, out uint n, out uint from, out bool parented) {
     ivec3 grid = ivec3(_Grid.xyz);
     cell = ivec3(e % grid.x, (e / grid.x) % grid.y, e / (grid.x * grid.y));
@@ -234,58 +226,6 @@ void candidates(int e, out ivec3 cell, out uint n, out uint from, out bool paren
             n = count;
             from = PARENT_CELLS(pe * 2 + 1);
         }
-    }
-}
-
-// A cell an element, x fastest, then y, then the slice.
-void Count() {
-    ivec3 grid = ivec3(_Grid.xyz);
-    if (CG_ELEMENT >= grid.x * grid.y * grid.z) return;
-    ivec3 cell;
-    uint n, from;
-    bool parented;
-    candidates(CG_ELEMENT, cell, n, from, parented);
-    vec3 centre, extent;
-    cell_box(cell, cell + 1, centre, extent);
-    uint count = 0u;
-    for (uint k = 0u; k < n; k++) {
-        if (viewed_reaches(parented ? PARENT_INDICES(int(from + k)) : k, centre, extent)) count++;
-    }
-    COUNTS_WRITE(count);
-}
-
-void Write() {
-    ivec3 grid = ivec3(_Grid.xyz);
-    int e = CG_ELEMENT;
-    if (e >= grid.x * grid.y * grid.z) return;
-    ivec3 cell;
-    uint n, from;
-    bool parented;
-    candidates(e, cell, n, from, parented);
-    vec3 centre, extent;
-    cell_box(cell, cell + 1, centre, extent);
-    uint start = STARTS(e), budget = uint(_Budget.y);
-    uint counts[5] = uint[5](0u, 0u, 0u, 0u, 0u);
-    for (uint k = 0u; k < n; k++) {
-        uint i = parented ? PARENT_INDICES(int(from + k)) : k;
-        if (viewed_reaches(i, centre, extent)) counts[run_of(i)]++;
-    }
-    uint total = counts[0] + counts[1] + counts[2] + counts[3] + counts[4];
-    uint kept = min(min(total, start >= budget ? 0u : budget - start), 65535u);
-    if (kept < total) ALLOC_ADD(1, total - kept);
-    uint at[5];
-    uint b = 0u;
-    for (int r = 0; r < 5; r++) {
-        at[r] = b;
-        b += counts[r];
-    }
-    store_cell(e, kept, start, at[1], at[2], at[3], at[4]);
-    for (uint k = 0u; k < n; k++) {
-        uint i = parented ? PARENT_INDICES(int(from + k)) : k;
-        if (!viewed_reaches(i, centre, extent)) continue;
-        int kind = run_of(i);
-        if (at[kind] < kept) INDICES_STORE(int(start + at[kind]), i);
-        at[kind]++;
     }
 }
 

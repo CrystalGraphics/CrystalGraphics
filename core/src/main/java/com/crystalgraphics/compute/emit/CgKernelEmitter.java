@@ -127,15 +127,14 @@ public final class CgKernelEmitter {
             if (provider.envPath() != null) include(sb, provider.envPath());
         }
 
-        sb.append(CgGlslBuiltins.polyfills(kernel.builtins(), target.glsl()));
         for (CgSourcePart part : source.parts()) {
             if (part instanceof CgSourcePart.Text t) {
                 if (checked) line(sb, t.line());
-                sb.append(code(t.text(), kernel, target.glsl()));
+                sb.append(t.text());
             } else if (part instanceof CgSourcePart.Function f) {
                 if (!kernel.functions().contains(f.name())) continue;
                 if (checked) line(sb, f.line());
-                sb.append(code(f.text(), kernel, target.glsl()));
+                sb.append(f.text());
             }
             else if (part instanceof CgSourcePart.Shared s) { if (kernel.shared().contains(s.name())) sb.append(s.text()); }
             else if (part instanceof CgSourcePart.Buffers) buffers(sb, source, kernel, nativeFloatAdd, checked);
@@ -148,11 +147,6 @@ public final class CgKernelEmitter {
         return sb.toString();
     }
 
-    /** The file's code, every builtin GLSL {@code glsl} lacks called through its polyfill. */
-    public static String code(String text, CgKernelDecl kernel, int glsl) {
-        return CgGlslBuiltins.rename(text, kernel.builtins(), glsl);
-    }
-
     private static void check(CgComputeSource source, CgKernelDecl kernel, Set<String> keywords, CgKernelTarget target) {
         for (String keyword : keywords) {
             if (!source.features().contains(keyword)) {
@@ -161,8 +155,6 @@ public final class CgKernelEmitter {
             }
         }
         String named = "[" + source.path() + "] kernel " + kernel.name();
-        String builtins = CgGlslBuiltins.refusal(kernel.builtins(), target.glsl());
-        if (builtins != null) throw new CgShaderParseException(named + " " + builtins + ", which this device compiles");
         for (int axis = 0; axis < 3; axis++) {
             if (kernel.size(axis) > target.maxSize(axis)) {
                 throw new CgShaderParseException(named + " is " + kernel.size(axis) + " wide along " + "xyz".charAt(axis)

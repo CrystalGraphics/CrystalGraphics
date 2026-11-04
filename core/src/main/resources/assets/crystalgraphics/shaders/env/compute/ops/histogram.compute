@@ -1,12 +1,10 @@
-// CgGpuOps' histogram: each key counted into bin min(key >> _Shift, _Bins - 1). Counts are exact to
-// 2^24 a bin below compute, where adds are blends.
+// CgGpuOps' histogram: each key counted into bin min(key >> _Shift, _Bins - 1).
 //
-// Every tier: one global add per key (Histogram). Compute only, for up to 1024 bins: each work group counts its share
+// One global add per key (Histogram). For up to 1024 bins: each work group counts its share
 // of the keys into bins in shared memory and adds each bin it saw once (HistogramGroups), so keys falling in a few bins
 // contend in shared memory rather than on the same global words.
 #pragma kernel Histogram scatter
 #pragma kernel HistogramGroups 256 general
-#pragma compute_only HistogramGroups
 
 Properties {
     _CountAt  ("The count's word in COUNT, -1 for none", int) = -1

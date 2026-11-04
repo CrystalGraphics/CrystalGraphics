@@ -10,20 +10,12 @@ import com.crystalgraphics.api.state.CgAlphaState;
 import com.crystalgraphics.api.state.CgColorMask;
 import com.crystalgraphics.api.state.CgStencilState;
 import com.crystalgraphics.api.texture.CgTexture;
-import com.crystalgraphics.compute.CgDispatchBindings;
-import com.crystalgraphics.compute.CgKernelForm;
-import com.crystalgraphics.compute.cpu.CgCpuMirrors;
-import com.crystalgraphics.compute.cpu.CgCpuRunner;
-import com.crystalgraphics.compute.lower.CgLoweredKernel;
-import com.crystalgraphics.compute.lower.CgLoweredResources;
 import com.crystalgraphics.compute.emit.CgKernelTarget;
 import com.crystalgraphics.compute.program.CgComputeCheck;
 import com.crystalgraphics.compute.program.CgKernelProgram;
-import com.crystalgraphics.compute.source.CgComputeSource;
 import com.crystalgraphics.compute.source.CgImageAccess;
 import com.crystalgraphics.compute.source.CgImageDecl;
 import com.crystalgraphics.compute.source.CgImageDimension;
-import com.crystalgraphics.compute.source.CgKernelDecl;
 import com.crystalgraphics.gl.buffer.CgBufferReadback;
 import com.crystalgraphics.gl.buffer.CgBufferTextures;
 import com.crystalgraphics.gl.buffer.CgReadback;
@@ -65,7 +57,6 @@ import java.nio.IntBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
-import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.IntConsumer;
@@ -138,8 +129,6 @@ public final class CgExecutor {
                     + " must catch on --mode=compute-graph.");
     private static final int BARRIER_COUNT = CgTrace.name("graph.barriers");
     private static final int DISPATCH_COUNT = CgTrace.name("graph.dispatches");
-    private static final int LOWERED_COUNT = CgTrace.name("graph.dispatches.lowered");
-    private static final int CPU_COUNT = CgTrace.name("graph.dispatches.cpu");
     /** Each compute pass's GPU zone by its name, interned once: a pass is recorded anew each frame. */
     private static final Map<String, Integer> GPU_ZONES = new HashMap<>();
     /** By pipeline id, its GPU group's label plus one: its material's path. */
@@ -169,7 +158,7 @@ public final class CgExecutor {
             UPDATE_COPY = CgTrace.name("graph.update.copy");
     // The rest of an execution's body, so a driver wait in any of it is named (T10.5).
     private static final int UPLOADS = CgTrace.name("graph.uploads"), GPU_TIMER = CgTrace.name("graph.gpuTimer"),
-            AWAIT_ASYNC = CgTrace.name("graph.awaitAsync"), LAND_HELD = CgTrace.name("graph.landHeld"),
+            AWAIT_ASYNC = CgTrace.name("graph.awaitAsync"),
             BARRIER = CgTrace.name("graph.barrier"), UNPIN = CgTrace.name("graph.unpin"),
             STEP_READBACK = CgTrace.name("graph.readback"), STEP_COPY = CgTrace.name("graph.copy"),
             STEP_UPLOAD = CgTrace.name("graph.upload"), STEP_CALLBACK = CgTrace.name("graph.callback"),
@@ -194,7 +183,6 @@ public final class CgExecutor {
     private final CgBindingPoints.Binding[] standIn = new CgBindingPoints.Binding[CgDrawChunk.BUFFERS];
     private final CgIndirectArgs commands = new CgIndirectArgs();
     /** Per file, what its dispatches below compute bind: lowered, or run by a Java body. */
-    private final Map<CgComputeSource, CgDispatchBindings> belowCompute = new IdentityHashMap<>();
     private final int[] range = new int[4];
     /** Per indirect batch starting a run of the pass about to draw, the run's last batch: itself when none joins it. */
     private int[] runs = new int[64];
@@ -303,7 +291,6 @@ public final class CgExecutor {
         } finally {
             CgSamplers.unbindOwn();   // ours never reach the host's textures, nor an outer execution's next draw
             depth--;
-            if (depth == 0) CgCpuMirrors.endFrame();   // copies of buffers written outside the graph
         }
     }
 
@@ -456,7 +443,6 @@ public final class CgExecutor {
                         if (isResolved(transientResource)) giveBack(transientResource);
                     }
                 }
-                CgLoweredResources.landAll();   // what lowered dispatches left in their targets, before anything outside reads it
             }
         }
     }
@@ -510,7 +496,6 @@ public final class CgExecutor {
             texture.resolve(null);
         } else {
             CgGraphBuffer buffer = (CgGraphBuffer) resource;
-            CgLoweredResources.drop(buffer.bufferId());   // its last reader ran: what a target held of it goes unread
             BUFFERS.release(buffer.desc(), buffer.bufferId());
             buffer.resolve(0);
         }
@@ -600,11 +585,6 @@ public final class CgExecutor {
             if (asyncUnwaited && !async) {
                 try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, AWAIT_ASYNC)) {
                     awaitAsync(frame, s);
-                }
-            }
-            if (CgLoweredResources.holding()) {
-                try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, LAND_HELD)) {
-                    landHeld(frame, s);
                 }
             }
             if (!(pass instanceof CgComputePass)) {
@@ -712,8 +692,6 @@ public final class CgExecutor {
                  CgTrace.Zone named = detail ? CgTrace.zone(CgChannels.GL_DETAIL, CgTrace.name("graph.fill/" + fill.buffer.name())) : null) {
                 CgGL.cgFillBuffer(id, fill.offset, fill.size, fill.value);
             }
-            if (fill.value == 0) CgLoweredResources.zeroed(id, fill.offset, fill.size, CgFrameRing.frame());
-            else CgLoweredResources.written(id);
             written(fill.buffer);
         } else if (pass instanceof CgPass.Update update) {
             update(update);
@@ -725,31 +703,7 @@ public final class CgExecutor {
                     copy.toOffset, copy.size);
             CgGL.glBindBuffer(CgGL.GL_COPY_READ_BUFFER, 0);
             CgGL.glBindBuffer(CgGL.GL_COPY_WRITE_BUFFER, 0);
-            CgLoweredResources.written(to);
             written(copy.to);
-        }
-    }
-
-    /**
-     * What a lowered dispatch left in a target, read back into its buffer before a step other than a compute pass touches
-     * the buffer; everything before a callback, which may read anything. A compute pass decides per dispatch.
-     */
-    private static void landHeld(CgFrame frame, int s) {
-        CgPass pass = frame.steps[s];
-        if (pass instanceof CgComputePass || pass instanceof CgPass.BufferRelease) return;
-        if (pass instanceof CgPass.Callback) {
-            CgLoweredResources.landAll();
-            return;
-        }
-        for (int i = frame.accessFrom[s]; i < frame.accessFrom[s + 1]; i++) {
-            if (!(frame.accessView[i] instanceof CgGraphBuffer view)) continue;
-            CgGraphBuffer buffer = view.resource();
-            if (buffer.kind() == CgGraphBuffer.Kind.HISTORY) {
-                CgLoweredResources.land(buffer.versions()[0]);
-                CgLoweredResources.land(buffer.versions()[1]);
-            } else {
-                CgLoweredResources.land(buffer.bufferId());
-            }
         }
     }
 
@@ -758,33 +712,12 @@ public final class CgExecutor {
     private void compute(CgFrame frame, CgComputePass pass, CgFrame.Compute packed) {
         List<CgDispatch> dispatches = pass.dispatches();
         if (++passSerial == 1 << 28) passSerial = 1;   // a set keeps three bits for its group
-        boolean draws = false;
-        for (int d = 0; d < dispatches.size(); d++) draws |= dispatches.get(d).kernel.form().how() != CgKernelForm.How.COMPUTE;
-        if (!draws) prologue(dispatches);
-        int lowered = 0, cpu = 0;
-        // A lowered dispatch is draws: what they bind must not reach the passes after, which draw into what is bound.
-        try (CgTrace.Zone ignored = CgTrace.isEnabled(CgChannels.GL) ? CgTrace.zone(CgChannels.GL, CgTrace.name(pass.name())) : null;
-             CgGlScope scope = draws ? CgLoweredKernel.scope() : null) {
+        prologue(dispatches);
+        try (CgTrace.Zone ignored = CgTrace.isEnabled(CgChannels.GL) ? CgTrace.zone(CgChannels.GL, CgTrace.name(pass.name())) : null) {
             frame.bindings.bind(packed.constants);
-            for (int d = 0; d < dispatches.size(); d++) {
-                CgDispatch dispatch = dispatches.get(d);
-                switch (dispatch.kernel.form().how()) {
-                    case COMPUTE -> dispatch(frame, dispatch, packed.bindings[d]);
-                    case LOWERED -> {
-                        lowered(frame, dispatch, packed.bindings[d]);
-                        frame.bindings.bind(packed.constants);   // its draws may have bound another frame block
-                        lowered++;
-                    }
-                    case CPU -> {
-                        cpu(dispatch);
-                        cpu++;
-                    }
-                }
-            }
+            for (int d = 0; d < dispatches.size(); d++) dispatch(frame, dispatches.get(d), packed.bindings[d]);
         }
         CgTrace.add(CgChannels.GL, DISPATCH_COUNT, dispatches.size());
-        if (lowered > 0) CgTrace.add(CgChannels.GL, LOWERED_COUNT, lowered);
-        if (cpu > 0) CgTrace.add(CgChannels.GL, CPU_COUNT, cpu);
     }
 
     /**
@@ -824,7 +757,6 @@ public final class CgExecutor {
         for (CgBufferInspector.Request read = CgBufferInspector.due(); read != null; read = CgBufferInspector.due()) {
             if (asyncUnwaited) waitAsync(asyncLatest);
             int id = bufferStorage(read.view(), false);
-            CgLoweredResources.land(id);
             barrier(true, id, CgAccess.COPY_READ);
             CgReadback.buffer(id, read.offset(), read.size(), read);
         }
@@ -843,14 +775,9 @@ public final class CgExecutor {
         return CgTrace.isEnabled(CgChannels.GL_DETAIL) && CgGpuTrace.isMeasuring();
     }
 
-    /** Whether {@code pass} goes beside the frame's queue: asked for, on a device with a compute queue, all compute. */
+    /** Whether {@code pass} goes beside the frame's queue: asked for, on a device with a compute queue. */
     private boolean runsAsync(CgComputePass pass) {
-        if (!asyncCompute || !(pass.isAsync() || ASYNC_ALL)) return false;
-        List<CgDispatch> dispatches = pass.dispatches();
-        for (int d = 0; d < dispatches.size(); d++) {
-            if (dispatches.get(d).kernel.form().how() != CgKernelForm.How.COMPUTE) return false;
-        }
-        return true;
+        return asyncCompute && (pass.isAsync() || ASYNC_ALL);
     }
 
     /** Step {@code s} on the compute queue; the storage it touches is pending until the frame's queue waits for it. */
@@ -973,72 +900,11 @@ public final class CgExecutor {
         return 1;
     }
 
-    /** A dispatch below compute: the kernel's lowered passes over what the dispatch bound. */
-    private void lowered(CgFrame frame, CgDispatch d, int bindings) {
-        CgLoweredKernel kernel = d.kernel.lowered();
-        frame.bindings.bind(bindings);
-        for (String token : d.source.engineBuffers()) CgEngineBufferRegistry.get(token).buffer().get().bind();
-        kernel.dispatchBound(bind(d), true);
-        advanceHistories(d);
-    }
-
-    /** A dispatch on the CPU tier: its kernel's Java body, over CPU copies of what it binds. */
-    private void cpu(CgDispatch d) {
-        CgKernelDecl runs = d.kernel.form().runs();
-        CgDispatchBindings b = bind(d);
-        CgLoweredResources.land(b);   // the body reads and writes the buffers themselves
-        for (int i = 0; i < d.buffers.length; i++) {
-            if (imported(d.buffers[i])) CgCpuMirrors.external(b.buffer(i));
-            if (imported(d.counters[i])) CgCpuMirrors.external(b.counter(i));
-        }
-        if (imported(d.args)) CgCpuMirrors.external(b.args());
-        CgCpuRunner.dispatch(d.source, runs, d.kernel.keywords(), d.kernel.compute().cpuBody(runs.name()), b, d.values,
-                d.pass.constants, d.kernel.compute().properties(), d.samplers);
-        advanceHistories(d);
-    }
-
-    private static boolean imported(@Nullable CgGraphBuffer buffer) {
-        return buffer != null && buffer.kind() == CgGraphBuffer.Kind.IMPORTED;
-    }
-
     /** A history written by {@code d}: its next version is its newest from now on, however many bindings wrote it. */
     private void advanceHistories(CgDispatch d) {
         for (int i = 0; i < d.buffers.length; i++) {
             if (wroteHistory(d.buffers[i], d.bufferAccess[i]) && firstWriter(d, i)) d.buffers[i].advance();
         }
-    }
-
-    /** What {@code d} binds, in GL names: what a dispatch below compute runs over. */
-    private CgDispatchBindings bind(CgDispatch d) {
-        CgDispatchBindings b = belowCompute.computeIfAbsent(d.source, CgDispatchBindings::new);
-        for (int i = 0; i < d.buffers.length; i++) {
-            CgGraphBuffer view = d.buffers[i];
-            if (view == null) {
-                b.buffer(i, 0, 0, 0);
-            } else {
-                long bytes = d.sizes[i] == 0 ? view.size() - d.offsets[i] : d.sizes[i];
-                b.buffer(i, bufferStorage(view, (d.bufferAccess[i] & CgAccess.COMPUTE_WRITE) != 0), d.offsets[i], bytes);
-            }
-            if (d.counters[i] != null) {
-                b.counter(i, bufferStorage(d.counters[i], (d.counterAccess[i] & CgAccess.COMPUTE_WRITE) != 0),
-                        d.counterOffsets[i]);
-            }
-        }
-        for (int i = 0; i < d.images.length; i++) {
-            if (d.images[i] == null) continue;
-            CgFrameBuffer storage = storage(d.images[i]);
-            CgTexture color = storage.getColorTexture(0);
-            int level = d.levels[i];
-            b.image(i, color.getId(), color.getTarget(), level, color.getLevels(), d.layers[i],
-                    Math.max(1, color.getWidth() >> level), Math.max(1, color.getHeight() >> level),
-                    Math.max(1, storage.getDepth() >> level));
-        }
-        switch (d.form) {
-            case ELEMENTS -> b.elements(d.x, d.y, d.z);
-            case GROUPS -> b.elements(d.x * d.decl.sizeX(), d.y * d.decl.sizeY(), d.z * d.decl.sizeZ());
-            case INDIRECT -> b.indirect(bufferStorage(d.args, false), d.argsOffset);
-        }
-        return b.frame(CgFrameRing.frame());
     }
 
     private void dispatch(CgFrame frame, CgDispatch d, int bindings) {
@@ -1173,7 +1039,6 @@ public final class CgExecutor {
         }
         CgGL.glBindBuffer(CgGL.GL_COPY_READ_BUFFER, 0);
         CgGL.glBindBuffer(CgGL.GL_COPY_WRITE_BUFFER, 0);
-        CgLoweredResources.written(id);
         written(update.buffer);
     }
 
@@ -1222,8 +1087,6 @@ public final class CgExecutor {
     /** GL buffer {@code buffer} is freed: what is known of it goes with it. */
     private static void forget(int buffer) {
         HAZARDS.forget(CgHazards.buffer(buffer));
-        CgLoweredResources.drop(buffer);
-        CgLoweredResources.written(buffer);
     }
 
     /**
@@ -1798,21 +1661,19 @@ public final class CgExecutor {
         barrier(true, args, CgAccess.COMPUTE_WRITE);
         if (runs.length < packed.count) runs = new int[Math.max(packed.count, runs.length * 2)];
         int slot = 0;
-        try (CgGlScope scope = commands.lowered() ? CgLoweredKernel.scope() : null) {
-            for (int b = 0; b < packed.count; b++) {
-                if (packed.counts[b] == null) continue;
-                int end = b;
-                if (multiDraw && !sharesRecord(packed, b)) {
-                    while (end + 1 < packed.count && joinableIndirect(packed, b, end + 1)) end++;
-                    if (end + 1 < packed.count && CgTrace.isEnabled(CgChannels.GL)) countBreak(packed, b, end + 1);
-                }
-                runs[b] = end;
-                boolean joined = end > b || packed.eachFrom[b] >= 0 && eachJoins(packed, b);
-                for (int k = b; k <= end; k++) slot += writeCommand(packed, k, slot, joined);
-                b = end;
+        for (int b = 0; b < packed.count; b++) {
+            if (packed.counts[b] == null) continue;
+            int end = b;
+            if (multiDraw && !sharesRecord(packed, b)) {
+                while (end + 1 < packed.count && joinableIndirect(packed, b, end + 1)) end++;
+                if (end + 1 < packed.count && CgTrace.isEnabled(CgChannels.GL)) countBreak(packed, b, end + 1);
             }
-            commands.flush();
+            runs[b] = end;
+            boolean joined = end > b || packed.eachFrom[b] >= 0 && eachJoins(packed, b);
+            for (int k = b; k <= end; k++) slot += writeCommand(packed, k, slot, joined);
+            b = end;
         }
+        commands.flush();
         barrier(true, args, CgAccess.INDIRECT);
         CgTrace.add(CgChannels.GL, COMMAND_COUNT, packed.indirects);
     }
@@ -1841,13 +1702,11 @@ public final class CgExecutor {
             int n = packed.instances[b];
             for (int k = 0; k < n; k++) {
                 long at = packed.eachOffsets[packed.eachFrom[b] + k];
-                long bytes = count instanceof CgGraphBuffer graph ? graph.size() : at + 4;
-                commands.write(slot + k, countId, at, bytes, mode, factor, range, 1, -1, joined ? packed.first[b] + k : 0);
+                commands.write(slot + k, countId, at, mode, factor, range, 1, -1, joined ? packed.first[b] + k : 0);
             }
             return n;
         }
-        long countBytes = count instanceof CgGraphBuffer graph ? graph.size() : packed.countOffsets[b] + 4;
-        commands.write(slot, countId, packed.countOffsets[b], countBytes, mode, factor, range, packed.instances[b],
+        commands.write(slot, countId, packed.countOffsets[b], mode, factor, range, packed.instances[b],
                 packed.objects[b] != null ? packed.instances[b] : -1, joined ? packed.first[b] : 0);
         return 1;
     }
@@ -1870,11 +1729,8 @@ public final class CgExecutor {
     private void drawCounted(CgMesh mesh, CgPipeline pipeline, CgFrame.Raster packed, int b, long countOffset, int records) {
         CgBufferHandle handle = packed.counts[b];
         int countId = handle instanceof CgGraphBuffer graph ? bufferStorage(graph, false) : handle.bufferId();
-        long held = CgCpuMirrors.word(countId, countOffset);   // a count the CPU tier wrote: no read
-        if (held < 0) {
-            CgBufferReadback.readWords(countId, countOffset, countWord, 0, 1);
-            held = Integer.toUnsignedLong(countWord[0]);
-        }
+        CgBufferReadback.readWords(countId, countOffset, countWord, 0, 1);
+        long held = Integer.toUnsignedLong(countWord[0]);
         long n = held * (packed.countModes[b] >>> 2);
         if (packed.objects[b] != null) n = Math.min(n, packed.instances[b]);
         CgMeshStore store = CgMeshStore.get();

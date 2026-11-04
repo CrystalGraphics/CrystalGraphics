@@ -127,7 +127,7 @@ public class CgVfxEmitterCompilerTest {
         // A rate's periods count from its window's start, from birth unless given.
         assertTrue(glsl.contains("floor(((p.age - step_param(row + " + (shape.eventsAt() + CgVfxShape.EVENT_FROM)
                 + ")[1]) - s.dt) / step_param(row + " + shape.eventsAt() + ")[1])"));
-        CgVfxEmitterCompiler.compile(shape).kernel("Step").check();
+        CgVfxEmitterCompiler.compile(shape).kernel("Step").decl();
     }
 
     /** Cascade's location bVelocity: the birth's place from the shape's middle times a rate, rolled per particle. */
@@ -139,12 +139,12 @@ public class CgVfxEmitterCompilerTest {
         CgVfxShape shape = CgVfxShape.of(flung);
         assertTrue(CgVfxEmitterCompiler.source(shape).contains("step_rotate(q, local * vec3(1.0, 1.0 - s4.z, 1.0)) * "));
         assertTrue(!CgVfxEmitterCompiler.source(CgVfxShape.of(EVERY_KIND)).contains("1.0 - s4.z"));
-        CgVfxEmitterCompiler.compile(shape).kernel("Step").check();
+        CgVfxEmitterCompiler.compile(shape).kernel("Step").decl();
     }
 
     @Test
-    public void theStepKernelRunsOnEveryTier() {
-        CgVfxEmitterCompiler.compile(CgVfxShape.of(EVERY_KIND)).kernel("Step").check();
+    public void theStepKernelParses() {
+        CgVfxEmitterCompiler.compile(CgVfxShape.of(EVERY_KIND)).kernel("Step").decl();
     }
 
     @Test
@@ -176,7 +176,7 @@ public class CgVfxEmitterCompilerTest {
         assertTrue(shape.takes(CgVfxDataInterfaces.ENTITIES));
         assertTrue("a row carries what was struck and its entity", glsl.contains("ev.normal = vec4(n, hit)")
                 && glsl.contains("int(p.hitEntity)") && glsl.contains(", step_entities(inst));"));
-        CgVfxEmitterCompiler.compile(shape).kernel("Step").check();
+        CgVfxEmitterCompiler.compile(shape).kernel("Step").decl();
     }
 
     @Test
@@ -204,7 +204,7 @@ public class CgVfxEmitterCompilerTest {
         assertTrue("each tier its own pool", !mid.key().equals(CgVfxShape.of(middle).key()));
         CgVfxShape deepest = CgVfxShape.of(leaf, CgVfxShape.TIERS - 1);
         assertTrue(CgVfxEmitterCompiler.source(deepest).contains("fx_grandchild_key(ev.ids.x"));
-        for (CgVfxShape shape : new CgVfxShape[]{top, mid, low, deepest}) CgVfxEmitterCompiler.compile(shape).kernel("Step").check();
+        for (CgVfxShape shape : new CgVfxShape[]{top, mid, low, deepest}) CgVfxEmitterCompiler.compile(shape).kernel("Step").decl();
 
         // root has children's children: one more level above it is the third, and the fourth is refused
         CgVfxEmitter apex = CgVfxEmitter.builder("apex").capacity(4).event(CgVfxEvent.onDeath().spawn(root, 1)).build();

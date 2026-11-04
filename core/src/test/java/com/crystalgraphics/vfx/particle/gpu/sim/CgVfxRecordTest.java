@@ -59,7 +59,7 @@ public class CgVfxRecordTest {
                 .module(new CgVfxModule.Gravity(9.8f)).module(new CgVfxModule.Ground(0.3f, 0.5f, 0.8f)).build());
         assertEquals(List.of(FLAGS, PREVIOUS), landing.record().tail());   // fx_ground rests a particle; Look's floor
         assertEquals(20, landing.record().words());
-        CgVfxEmitterCompiler.compile(landing).kernel("Step").check();
+        CgVfxEmitterCompiler.compile(landing).kernel("Step").decl();
     }
 
     @Test

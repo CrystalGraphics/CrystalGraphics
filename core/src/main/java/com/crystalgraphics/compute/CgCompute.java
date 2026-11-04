@@ -1,12 +1,7 @@
 package com.crystalgraphics.compute;
 
-import com.crystalgraphics.compute.cpu.CgCpuBody;
-import com.crystalgraphics.compute.cpu.CgCpuMirrors;
-import com.crystalgraphics.compute.cpu.CgCpuRunner;
 import com.crystalgraphics.compute.emit.CgKernelTarget;
 import com.crystalgraphics.compute.emit.CgPropertyBlock;
-import com.crystalgraphics.compute.lower.CgLoweredKernel;
-import com.crystalgraphics.compute.lower.CgLoweredResources;
 import com.crystalgraphics.compute.parse.CgComputeParser;
 import com.crystalgraphics.compute.program.CgComputeCheck;
 import com.crystalgraphics.compute.program.CgKernelProgram;
@@ -68,7 +63,7 @@ public final class CgCompute implements CgReloadable {
     private static final Map<String, CgCompute> GENERATED = new ConcurrentHashMap<>();
     /** Replaced generated files, whose programs the render thread deletes. */
     private static final Queue<CgCompute> RETIRED = new ConcurrentLinkedQueue<>();
-    private static final int COMPILE = CgTrace.name("compute.compile"), COMPILE_LOWERED = CgTrace.name("compute.compileLowered");
+    private static final int COMPILE = CgTrace.name("compute.compile");
     private static final int COMPILES = CgTrace.name("compute.compiles");
     private static final CgVar.Bool LOG_COMPILES = CgVar.bool("crystalgraphics.compute.logCompiles", false, CgVar.DEV,
             "Log each kernel program compiled or started, by file and program key, with whether a dispatch waited.");
@@ -92,15 +87,10 @@ public final class CgCompute implements CgReloadable {
     private final Map<String, CgKernelProgram> programs = new HashMap<>();
     /** Programs {@link CgKernel#precache} started and no dispatch has taken yet. */
     private final Map<String, CgKernelProgram.Pending> precaching = new HashMap<>();
-    private final Map<String, CgLoweredKernel> lowered = new HashMap<>();
-    /** Java bodies by kernel name, kept across reloads. */
-    private final Map<String, CgCpuBody> bodies = new ConcurrentHashMap<>();
-    /** Each kernel with no keywords, made once: a kernel keeps its checks and its program across calls. */
+    /** Each kernel with no keywords, made once: a kernel keeps its program across calls. */
     private final Map<String, CgKernel> kernels = new ConcurrentHashMap<>();
     /** Each kernel with keywords, made once, as {@link #kernels}. */
     private final Map<CgKernel, CgKernel> variants = new ConcurrentHashMap<>();
-    /** Counts every body given: a kernel's form chosen before one may change. */
-    private volatile int bodiesGiven;
     /** Every file its parse and its programs read, normalized: what an edit to one of them refreshes it for. */
     private volatile Set<String> reads = Collections.emptySet();
 
@@ -278,38 +268,6 @@ public final class CgCompute implements CgReloadable {
         return decl;
     }
 
-    /** The lowered form of {@code kernel}, running {@code runs} (itself or its fallback), built the first time. */
-    synchronized CgLoweredKernel lowered(CgKernel kernel, CgKernelDecl runs) {
-        String key = runs.name() + kernel.keywords();
-        CgLoweredKernel built = lowered.get(key);
-        if (built == null || built.isDeleted()) {
-            CgIO.Reads recorded = CgIO.recordReads();
-            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, COMPILE_LOWERED)) {
-                built = CgLoweredKernel.build(source, runs, kernel.keywords());
-            } finally {
-                recorded.close();
-                addReads(recorded.paths());
-            }
-            CgTrace.add(CgChannels.GL, COMPILES, 1);
-            lowered.put(key, built);
-        }
-        return built;
-    }
-
-    void cpu(String kernel, CgCpuBody body) {
-        bodies.put(kernel, body);
-        bodiesGiven++;
-    }
-
-    /** The Java body kernel {@code name} was given, or null. */
-    public CgCpuBody cpuBody(String name) {
-        return bodies.get(name);
-    }
-
-    int bodiesGiven() {
-        return bodiesGiven;
-    }
-
     /** Re-reads the file and drops its programs, which the next use compiles from the new text. */
     public synchronized void reload() {
         if (generated) return;
@@ -395,8 +353,6 @@ public final class CgCompute implements CgReloadable {
         programs.clear();
         for (CgKernelProgram.Pending pending : precaching.values()) pending.delete();
         precaching.clear();
-        for (CgLoweredKernel kernel : lowered.values()) kernel.delete();
-        lowered.clear();
         generation++;
     }
 
@@ -450,14 +406,11 @@ public final class CgCompute implements CgReloadable {
         }
     }
 
-    /** Every program of every file, and what lowered dispatches share, at context teardown. */
+    /** Every program of every file, at context teardown. */
     public static void releaseAll() {
         for (CgCompute retired; (retired = RETIRED.poll()) != null; ) retired.release();
         for (CgCompute compute : LOADED.values()) compute.release();
         for (CgCompute compute : GENERATED.values()) compute.release();
-        CgLoweredResources.releaseAll();
-        CgCpuMirrors.releaseAll();
-        CgCpuRunner.releaseAll();
         CgBufferReadback.release();
         CgComputeCheck.release();
     }

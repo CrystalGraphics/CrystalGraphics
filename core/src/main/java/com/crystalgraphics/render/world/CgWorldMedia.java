@@ -129,8 +129,7 @@ public final class CgWorldMedia {
             .color(0, CgTextureType.RGBA16F).build();
     /** Its integration kernel, for the world's collector: compiled at the first smoke otherwise. */
     static void precacheKernels() {
-        CgKernel columns = CgCompute.load(KERNELS).kernel("IntegrateColumns");
-        (columns.runs() ? columns : CgCompute.load(KERNELS).kernel("Integrate")).precache();
+        CgCompute.load(KERNELS).kernel("IntegrateColumns").precache();
     }
 
     static final String LIGHT_SHADER = "crystalgraphics:shaders/world_media_light.shader";
@@ -154,9 +153,8 @@ public final class CgWorldMedia {
     private double cameraX, cameraY, cameraZ;
     private boolean first;
     @Nullable
+    /** IntegrateColumns: a thread a column. */
     private CgKernel integrate;
-    /** Whether integrate is IntegrateColumns, a thread a column, or Integrate, a thread a froxel (no compute). */
-    private boolean byColumn;
     /** Whether this firing's air was lit: the composite has light to add. */
     private boolean lit;
     private CgMaterial light;
@@ -286,10 +284,7 @@ public final class CgWorldMedia {
             lastZ = view.z();
             hadLast = true;
             if (integrate == null) {
-                CgKernel columns = CgCompute.load(KERNELS).kernel("IntegrateColumns");
-                byColumn = columns.runs();
-                integrate = byColumn ? columns : CgCompute.load(KERNELS).kernel("Integrate");
-                integrate.precache();
+                integrate = CgCompute.load(KERNELS).kernel("IntegrateColumns").precache();
             }
             current = null;
             first = true;
@@ -304,7 +299,7 @@ public final class CgWorldMedia {
                 scatter.end();
                 lit = scattered != null;
                 CgComputePass sum = recording.compute("world.mediaIntegrate", stage).timed(GPU_INTEGRATE);
-                sum.dispatch(integrate, width, height, byColumn ? 1 : SLICES).texture("_Media", current).image("MEDIA_TRANSMIT", transmit)
+                sum.dispatch(integrate, width, height, 1).texture("_Media", current).image("MEDIA_TRANSMIT", transmit)
                         .texture("_Scatter", lit ? scattered : CgFallbackTextures.BLACK_VOLUME);
                 sum.end();
             }

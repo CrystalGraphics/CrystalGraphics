@@ -26,8 +26,8 @@ public enum CgBufferAccessor {
     MIN("_MIN"),
     MAX("_MAX"),
     /**
-     * {@code NAME_APPEND(v)}: the next free element, dropped once the buffer is full. On compute it answers the element
-     * it took, or -1 when dropped, for a {@code compute_only} kernel writing beside it; lowered, it answers nothing.
+     * {@code NAME_APPEND(v)}: the next free element, dropped once the buffer is full. It answers the element it took,
+     * or -1 when dropped, for a kernel writing beside it.
      */
     APPEND("_APPEND"),
     /** {@code NAME_COUNT()}: elements appended, at most the buffer's length. */

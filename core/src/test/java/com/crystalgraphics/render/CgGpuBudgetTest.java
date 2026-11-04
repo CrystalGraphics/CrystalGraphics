@@ -1,6 +1,5 @@
 package com.crystalgraphics.render;
 
-import com.crystalgraphics.platform.gl.CgCapabilities.ComputeTier;
 import org.junit.Test;
 
 import java.util.ArrayDeque;
@@ -57,15 +56,6 @@ public class CgGpuBudgetTest {
         gpu.run(600, 2f);
         assertTrue("scale " + gpu.scale, gpu.scale > 0.4f && gpu.scale < 0.62f);
         assertEquals(0, gpu.run(200, 2f));
-    }
-
-    @Test
-    public void eachTierStartsAtItsShare() {
-        assertEquals(1f, CgGpuBudget.share(ComputeTier.V), 0f);
-        assertEquals(1f, CgGpuBudget.share(ComputeTier.G43), 0f);
-        assertEquals(0.5f, CgGpuBudget.share(ComputeTier.G40), 0f);
-        assertEquals(0.5f, CgGpuBudget.share(ComputeTier.G33), 0f);
-        assertEquals(0.25f, CgGpuBudget.share(ComputeTier.CPU), 0f);
     }
 
     /** Costs {@code fixed + full * scale} ms a frame, each frame's answer arriving {@link #LAG} frames later. */

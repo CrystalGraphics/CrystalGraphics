@@ -1,7 +1,6 @@
 package com.crystalgraphics.compute.parse;
 
 import com.crystalgraphics.api.shader.CgShaderPreprocessor;
-import com.crystalgraphics.compute.emit.CgGlslBuiltins;
 import com.crystalgraphics.compute.source.CgBufferAccess;
 import com.crystalgraphics.compute.source.CgBufferAccessor;
 import com.crystalgraphics.compute.source.CgBufferDecl;
@@ -94,8 +93,6 @@ public final class CgComputeParser {
     private final String blanked;
 
     private final List<KernelPragma> kernelPragmas = new ArrayList<>();
-    private final Map<String, String> fallbacks = new LinkedHashMap<>();
-    private final Map<String, Integer> computeOnly = new LinkedHashMap<>();
     private final List<String> features = new ArrayList<>();
     private final List<String> uses = new ArrayList<>();
     private final List<String> extensions = new ArrayList<>();
@@ -161,18 +158,8 @@ public final class CgComputeParser {
         indexGenerated();
         List<String> engineBuffers = engineBuffers();
 
-        for (Map.Entry<String, Integer> e : computeOnly.entrySet()) {
-            if (kernelPragmas.stream().noneMatch(k -> k.name().equals(e.getKey()))) {
-                throw fail(e.getValue(), "#pragma compute_only names no kernel '" + e.getKey() + "'");
-            }
-            if (fallbacks.containsKey(e.getKey())) {
-                throw fail(e.getValue(), "kernel " + e.getKey() + " is compute_only and names a #pragma fallback: one "
-                        + "runs below compute, the other says it never does");
-            }
-        }
         List<CgKernelDecl> kernels = new ArrayList<>();
         for (KernelPragma k : kernelPragmas) kernels.add(analyze(k, items));
-        checkFallbacks(kernels);
 
         return new CgComputeSource(path, List.copyOf(kernels), List.copyOf(buffers), List.copyOf(images), properties,
                 List.copyOf(features), engineBuffers, List.copyOf(extensions), parts(items));
@@ -189,18 +176,8 @@ public final class CgComputeParser {
             extensions.add(source.substring(item.start(), item.end()).trim());
         } else if (line.startsWith("#pragma kernel")) {
             kernelPragma(line.substring("#pragma kernel".length()).trim(), item.start());
-        } else if (line.startsWith("#pragma fallback")) {
-            String[] t = line.substring("#pragma fallback".length()).trim().split(" ");
-            if (t.length != 2 || t[0].isEmpty()) throw fail(item.start(), "#pragma fallback takes a kernel and the kernel "
-                    + "a tier without compute runs instead: '#pragma fallback Bin BinScatter'");
-            if (fallbacks.put(t[0], t[1]) != null) throw fail(item.start(), "names a second fallback for " + t[0]);
-        } else if (line.startsWith("#pragma compute_only")) {
-            String rest = line.substring("#pragma compute_only".length()).trim();
-            if (rest.isEmpty()) throw fail(item.start(), "#pragma compute_only takes the kernels that run only where compute "
-                    + "does: '#pragma compute_only Sort Scan'");
-            for (String name : rest.split(" ")) {
-                if (computeOnly.put(name, item.start()) != null) throw fail(item.start(), "#pragma compute_only names " + name + " twice");
-            }
+        } else if (line.startsWith("#pragma fallback") || line.startsWith("#pragma compute_only")) {
+            throw fail(item.start(), "#pragma fallback and #pragma compute_only are gone: every kernel runs as compute");
         } else if (line.startsWith("#pragma cg_feature")) {
             String name = line.substring("#pragma cg_feature".length()).trim();
             if (!NAME.matcher(name).matches()) throw fail(item.start(), "#pragma cg_feature: '" + name + "' is no name");
@@ -454,11 +431,9 @@ public final class CgComputeParser {
         Set<String> shared = new LinkedHashSet<>();
         Set<String> accessors = new LinkedHashSet<>();
         Set<String> subgroups = new LinkedHashSet<>();
-        Set<String> builtins = new LinkedHashSet<>();
         Set<CgBufferDecl> touched = new LinkedHashSet<>();
         for (String id : used) {
             if (sharedItems.containsKey(id)) shared.add(id);
-            if (CgGlslBuiltins.versioned(id) && !functionBodies.containsKey(id) && !defines.containsKey(id)) builtins.add(id);
             if (id.startsWith("CG_SUBGROUP_")) subgroups.add(id);
             Reach target = generated.get(id);
             if (target != null) {
@@ -479,24 +454,16 @@ public final class CgComputeParser {
             String first = shared.iterator().next();
             throw fail(first, kernel + " reaches shared " + first + ": shared memory is a general kernel's");
         }
-        if (k.shape().lowerable()) {
-            for (CgBufferDecl b : touched) {
-                if (!b.lowerable()) throw fail(b.name(), kernel + " reaches " + b.name() + ", whose element " + b.element()
-                        + " a tier without compute cannot hold: a float, int or uint, their 2- and 4-vectors, or a "
-                        + "struct of vec4, ivec4 or uvec4 only. Declare it general to keep the layout");
-            }
-        }
         if (k.shape() == CgKernelShape.APPEND && buffers.stream().noneMatch(b -> b.access() == CgBufferAccess.APPEND)) {
             throw fail(k.at(), kernel + " has no append buffer to append to: declare one in Buffers { }");
         }
         if (k.shape() == CgKernelShape.IMAGE && images.stream().noneMatch(i -> i.access().writable())) {
             throw fail(k.at(), kernel + " has no writable image: declare one in Images { }");
         }
-        return new CgKernelDecl(k.name(), k.x(), k.y(), k.z(), k.dimensions(), k.shape(), fallbacks.get(k.name()),
+        return new CgKernelDecl(k.name(), k.x(), k.y(), k.z(), k.dimensions(), k.shape(),
                 Collections.unmodifiableSet(functions), Collections.unmodifiableSet(shared),
                 Collections.unmodifiableSet(accessors), Collections.unmodifiableSet(samplers),
-                Collections.unmodifiableSet(subgroups), sharedBytes(k, shared),
-                Collections.unmodifiableSet(builtins), computeOnly.containsKey(k.name()));
+                Collections.unmodifiableSet(subgroups), sharedBytes(k, shared));
     }
 
     /** Why only a general kernel may name {@code id}, or null when any kernel may: what a refusal names. */
@@ -525,20 +492,6 @@ public final class CgComputeParser {
             bytes += l.size();
         }
         return bytes;
-    }
-
-    private void checkFallbacks(List<CgKernelDecl> kernels) {
-        for (Map.Entry<String, String> e : fallbacks.entrySet()) {
-            CgKernelDecl kernel = kernels.stream().filter(k -> k.name().equals(e.getKey())).findFirst().orElse(null);
-            CgKernelDecl fallback = kernels.stream().filter(k -> k.name().equals(e.getValue())).findFirst().orElse(null);
-            if (kernel == null) throw fail("#pragma fallback", "#pragma fallback names no kernel '" + e.getKey() + "'");
-            if (fallback == null) throw fail("#pragma fallback", "#pragma fallback " + e.getKey() + " names no kernel '"
-                    + e.getValue() + "'");
-            if (kernel.shape().lowerable()) throw fail("#pragma fallback", "kernel " + kernel.name() + " is "
-                    + kernel.shape().name().toLowerCase() + ", which every tier runs: only a general kernel takes a fallback");
-            if (!fallback.shape().lowerable()) throw fail("#pragma fallback", kernel.name() + "'s fallback "
-                    + fallback.name() + " is general itself: a fallback is lowerable");
-        }
     }
 
     private List<String> engineBuffers() {

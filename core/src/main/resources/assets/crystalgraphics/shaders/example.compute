@@ -11,30 +11,21 @@
 // No #version and no main(): the compiler writes both, per kernel and device.
 
 // #pragma kernel Name [x [y [z]]] shape. The sizes are the work group's (none: 64); the shape is what the kernel
-// writes, and so which tiers run it.
+// writes.
 //
-//     map      writes its own element of each output buffer (NAME_WRITE)        every tier
-//     gather   a map that reads other elements too                               every tier
-//     append   a map that also appends to an append buffer (NAME_APPEND)         every tier
-//     scatter  stores, adds, min or max at computed indices (NAME_STORE, _ADD)   every tier
-//     image    writes its own texel of each output image (NAME_WRITE)            every tier
-//     general  anything compute does: shared memory, barrier(), subgroups       compute only
+//     map      writes its own element of each output buffer (NAME_WRITE)
+//     gather   a map that reads other elements too
+//     append   a map that also appends to an append buffer (NAME_APPEND)
+//     scatter  stores, adds, min or max at computed indices (NAME_STORE, _ADD)
+//     image    writes its own texel of each output image (NAME_WRITE)
+//     general  anything compute does: shared memory, barrier(), subgroups
 //
-// The compiler refuses a kernel that reaches past its shape, naming what it reached. Every tier a player's context
-// may be at is asked of a kernel the first time it is recorded, on any machine: a general kernel needs a fallback
-// below compute, unless it says it is for compute alone.
+// The compiler refuses a kernel that reaches past its shape, naming what it reached.
 #pragma kernel Integrate map
 #pragma kernel Spawn 64 append
 #pragma kernel Histogram 128 scatter
 #pragma kernel Shade 8 8 image
 #pragma kernel Reduce 256 general
-#pragma kernel ReduceScatter scatter
-
-// What a tier without compute runs in place of a general kernel. It is dispatched as the kernel would be.
-#pragma fallback Reduce ReduceScatter
-
-// A kernel for compute alone: never lowered, refused below compute, and asked first with kernel.runs().
-// #pragma compute_only Reduce
 
 // A keyword: each set a kernel is asked for compiles once, as a material's variants do.
 #pragma cg_feature WIND
@@ -153,13 +144,4 @@ void Reduce() {
         for (int i = 0; i < CG_SUBGROUP_COUNT; i++) total += partial[i];
         SUMS_STORE(CG_GROUP_ID.x, total);
     }
-}
-
-// Reduce's fallback: the same sums, each by the first element of its group of 256, with no group in sight.
-void ReduceScatter() {
-    if (CG_ELEMENT % 256 != 0) return;
-    float total = 0.0;
-    int end = min(CG_ELEMENT + 256, CG_DISPATCH_COUNT.x);
-    for (int i = CG_ELEMENT; i < end; i++) total += max(STATE(i).positionLife.w, 0.0);
-    SUMS_STORE(CG_ELEMENT / 256, total);
 }

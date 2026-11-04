@@ -1,8 +1,7 @@
 // CgGpuOps.cull: instances of one mesh, each placed in the camera-relative world, tested against the
 // view's frustum, given the level its screen height picks and, with a depth pyramid, tested against the scene's depth.
 // Each kept at this dispatch's level is appended as the object record a draw reads. One dispatch a level, every one
-// testing every instance: an append writes one buffer. CgWorldRenderer's tests on the CPU, step for step;
-// CgGpuOpsBodies.cull is the CPU tier's twin, line for line.
+// testing every instance: an append writes one buffer. CgWorldRenderer's tests on the CPU, step for step.
 //
 // An ordered cull keeps each level's records in their order: CullFlags marks the instances kept at a level,
 // CgGpuOps.compact lists them in order, and CullPlace writes the kept record of each listed one.

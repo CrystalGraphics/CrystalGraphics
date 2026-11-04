@@ -6,7 +6,6 @@ import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.compute.CgCompute;
 import com.crystalgraphics.compute.CgReplayedReads;
-import com.crystalgraphics.compute.cpu.CgCpuBuffer;
 import com.crystalgraphics.compute.ops.CgGpuOps.Element;
 import com.crystalgraphics.compute.ops.CgGpuOps.Filter;
 import com.crystalgraphics.compute.ops.CgGpuOps.Fold;
@@ -137,15 +136,6 @@ public final class CgGpuOpsCheck {
             List<ImageCase> images = new ArrayList<>();
             for (CgTextureType type : CgGpuOps.IMAGE_TYPES) for (int[] size : IMAGE_SIZES) images.add(new ImageCase(type, size[0], size[1]));
             CgCompute check = CgCompute.load(PATH);
-            check.kernel("Rng").cpu(d -> {
-                CgCpuBuffer drawn = d.buffer("DRAWN");
-                int seed = d.propertyInt("_Seed");
-                int[] r = new int[4];
-                for (int e = d.first(); e < d.end(); e++) {
-                    CgRng.rng4(seed, e, 3, 1, r);
-                    for (int c = 0; c < 4; c++) drawn.setInt(e, c, r[c]);
-                }
-            });
             drainErrors();
             int drawn = buffer(DRAWN * 4);
             try {

@@ -20,12 +20,12 @@ import com.crystalgraphics.api.shader.CgShader;
 import com.crystalgraphics.api.shader.CgShaderPreprocessor;
 import com.crystalgraphics.api.shader.CgShaderProgram;
 import com.crystalgraphics.api.state.CgRenderState;
-import com.crystalgraphics.compute.lower.CgLoweredEmitter;
 import com.crystalgraphics.compute.source.CgBufferDecl;
 import com.crystalgraphics.gl.buffer.shader.CgBonePalettes;
 import com.crystalgraphics.gl.buffer.shader.CgEngineBufferRegistry;
 import com.crystalgraphics.gl.buffer.shader.CgShaderBuffer;
 import com.crystalgraphics.gl.buffer.shader.CgUniformBuffer;
+import com.crystalgraphics.gl.material.parse.CgBufferReaders;
 import com.crystalgraphics.gl.material.parse.CgMaterialShaderCompiler;
 import com.crystalgraphics.gl.material.parse.CgParsedPass;
 import com.crystalgraphics.gl.material.parse.CgParsedShader;
@@ -1723,10 +1723,10 @@ public final class CgMaterialShader implements CgReloadable {
         for (int i = 0; i < buffers.size(); i++) {
             CgBufferDecl b = buffers.get(i);
             if (texels) {
-                int at = shader.getUniformLocation(CgLoweredEmitter.tbo(b));
+                int at = shader.getUniformLocation(CgBufferReaders.tbo(b));
                 if (at >= 0) shader.getProgram().setUniform1i(at, CgBindingPoints.materialBufferUnit(samplers, i));
             } else {
-                int index = CgGL.glGetProgramResourceIndex(program, CgGL.GL_SHADER_STORAGE_BLOCK, CgLoweredEmitter.readerBlock(b));
+                int index = CgGL.glGetProgramResourceIndex(program, CgGL.GL_SHADER_STORAGE_BLOCK, CgBufferReaders.readerBlock(b));
                 if (index != CgGL.GL_INVALID_INDEX) CgGL.glShaderStorageBlockBinding(program, index, CgBindingPoints.MATERIAL_BUFFERS_SSBO + i);
             }
         }

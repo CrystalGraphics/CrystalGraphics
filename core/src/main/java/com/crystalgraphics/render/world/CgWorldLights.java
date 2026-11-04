@@ -10,8 +10,6 @@ import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.compute.CgCompute;
 import com.crystalgraphics.compute.CgKernel;
-import com.crystalgraphics.compute.ops.CgGpuCount;
-import com.crystalgraphics.compute.ops.CgGpuOps;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.gl.buffer.CgReadback;
 import com.crystalgraphics.gl.texture.CgFallbackTextures;
@@ -309,7 +307,7 @@ public final class CgWorldLights {
     private final float[] rays = new float[4], zParams = new float[3];
     /** How far past a spot's cone the lit air widens it: CgWorldMedia.spread's. */
     private final float[] airSpread = new float[2];
-    private CgGraphBuffer cells, indices, viewed, alloc, parentCells, parentIndices, counts, starts;
+    private CgGraphBuffer cells, indices, viewed, alloc, parentCells, parentIndices;
     /** Unreal's r.MinScreenRadiusForLights: a light whose bound is smaller on screen is not drawn. */
     private static final CgVar.Num MIN_SCREEN = CgVar.number("crystalgraphics.world.lightsMinScreenRadius", 0.03f, 0f, 1f,
             CgVar.DEV, "A light whose bounding sphere is smaller than this share of the screen is not drawn; 0 keeps all.");
@@ -367,7 +365,7 @@ public final class CgWorldLights {
     /** Where the sun's cascade rows start in the casters' texture: world_lights_sample.shader's SUN_ROWS_AT. */
     private static final int SUN_ROWS_AT = MOST_CASTERS * CASTER_FLOATS / 4;
     private static final float CASTER_REACH = 96f;
-    private CgKernel view, coarse, cell, countCells, writeCells;
+    private CgKernel view, coarse, cell;
     /** The tier {@link #quality} last set. */
     private static CgQuality appliedTier;
     /** Unreal's r.Shadow.DistanceScale and r.TranslucencyLightingVolume.Dim, by tier. */
@@ -1019,15 +1017,13 @@ public final class CgWorldLights {
         }
     }
 
-    /** The light grid's kernels, made and started once: the two-level bin where compute runs, else the scan's. */
+    /** The light grid's kernels, made and started once. */
     private void binKernels() {
         if (view != null) return;
         CgCompute kernels = CgCompute.load(KERNELS);
         view = kernels.kernel("View");
         coarse = kernels.kernel("Coarse");
         cell = kernels.kernel("Cell");
-        countCells = kernels.kernel("Count");
-        writeCells = kernels.kernel("Write");
         precacheBin();
     }
 
@@ -1042,19 +1038,13 @@ public final class CgWorldLights {
     private static void precacheBin() {
         CgCompute kernels = CgCompute.load(KERNELS);
         kernels.kernel("View").precache();
-        if (kernels.kernel("Coarse").runs()) {
-            kernels.kernel("Coarse").precache();
-            kernels.kernel("Cell").precache();
-        } else {
-            kernels.kernel("Count").precache();
-            kernels.kernel("Write").precache();
-            CgGpuOps.precacheScan(CgGpuOps.Scan.EXCLUSIVE, CgGpuOps.Fold.SUM, CgGpuOps.Element.UINT);
-        }
+        kernels.kernel("Coarse").precache();
+        kernels.kernel("Cell").precache();
     }
 
     /**
      * Each cell's lights, as Unreal 5 bins them (LightGridInjection.usf): the lights turned into the grid's space once, a
-     * parent grid {@link #PARENT} cells a side culled first where compute runs (LightGridInjection.cpp:1818-1851), then
+     * parent grid {@link #PARENT} cells a side culled first (LightGridInjection.cpp:1818-1851), then
      * each cell from its parent's list. The grid is sized to the target, {@link #TILE} pixels a cell
      * (LightGridInjection.cpp:659-670).
      */
@@ -1066,16 +1056,13 @@ public final class CgWorldLights {
             gridY = gy;
             binned = true;
             binKernels();
-            // Below compute, every cell reads every light: the same lists, by the longer route.
-            boolean twoLevel = coarse.runs();
             int px = (gx + PARENT - 1) / PARENT, py = (gy + PARENT - 1) / PARENT, pz = SLICES / PARENT;
             // Persistent, grown only: what a later recording reads back is the last firing's grid.
             if (cellsDropped > 0 && budgetScale < MOST_BUDGET) {
                 budgetScale *= 2;
                 cellsDropped = 0;
             }
-            int n = gx * gy * SLICES, budget = n * PER_CELL * budgetScale, parentBudget = twoLevel ? budget : 1,
-                    parents = px * py * pz;
+            int n = gx * gy * SLICES, budget = n * PER_CELL * budgetScale, parentBudget = budget, parents = px * py * pz;
             if (cells == null || cells.size() < n * 16L || parentCells.size() < parents * 8L
                     || parentIndices.size() < parentBudget * 4L || indices.size() < budget * 4L) {
                 if (cells != null) {
@@ -1083,13 +1070,7 @@ public final class CgWorldLights {
                     recording.release(indices);
                     recording.release(parentCells);
                     recording.release(parentIndices);
-                    recording.release(counts);
-                    recording.release(starts);
                 }
-                counts = CgGraphBuffer.persistent("cg_world_lights.counts",
-                        CgBufferDesc.elements(n, 4, CgBufferUsage.STORAGE, CgBufferUsage.COPY));
-                starts = CgGraphBuffer.persistent("cg_world_lights.starts",
-                        CgBufferDesc.elements(n, 4, CgBufferUsage.STORAGE, CgBufferUsage.COPY));
                 // Four words a cell: lights.glsl's CG_LIGHT_CELL_START.
                 cells = CgGraphBuffer.persistent("cg_world_lights.cells",
                         CgBufferDesc.elements(n * 4, 4, CgBufferUsage.STORAGE, CgBufferUsage.COPY));
@@ -1106,30 +1087,15 @@ public final class CgWorldLights {
                     gx, gy, 0, 0, 0, 0, budget, parentBudget);
             pass.end();
             // A pass a level, each timed: what the levels cost is the lever.
-            if (twoLevel) {
-                pass = recording.compute("world.lightsCoarse", stage).timed(GPU_COARSE);
-                grid(pass.dispatchGroups(coarse, px, py, pz).bind("COUNT", count).bind("VIEWED", viewed).bind("ALLOC", alloc)
-                        .bind("PARENT_CELLS", parentCells).bind("PARENT_INDICES", parentIndices), gx, gy, px, py, pz, PARENT,
-                        budget, parentBudget);
-                pass.end();
-            }
+            pass = recording.compute("world.lightsCoarse", stage).timed(GPU_COARSE);
+            grid(pass.dispatchGroups(coarse, px, py, pz).bind("COUNT", count).bind("VIEWED", viewed).bind("ALLOC", alloc)
+                    .bind("PARENT_CELLS", parentCells).bind("PARENT_INDICES", parentIndices), gx, gy, px, py, pz, PARENT,
+                    budget, parentBudget);
+            pass.end();
             pass = recording.compute("world.lightsCells", stage).timed(GPU_CELLS);
-            int factor = twoLevel ? PARENT : 0;
-            if (twoLevel) {
-                grid(pass.dispatchGroups(cell, gx, gy, SLICES).bind("COUNT", count).bind("VIEWED", viewed).bind("ALLOC", alloc)
-                        .bind("PARENT_CELLS", parentCells).bind("PARENT_INDICES", parentIndices).bind("CELLS", cells)
-                        .bind("INDICES", indices), gx, gy, px, py, pz, factor, budget, parentBudget);
-                pass.end();
-                return;
-            }
-            grid(pass.dispatch(countCells, n).bind("COUNT", count).bind("VIEWED", viewed).bind("PARENT_CELLS", parentCells)
-                    .bind("PARENT_INDICES", parentIndices).bind("COUNTS", counts), gx, gy, px, py, pz, factor, budget,
-                    parentBudget);
-            CgGpuOps.scan(pass, CgGpuOps.Scan.EXCLUSIVE, CgGpuOps.Fold.SUM, CgGpuOps.Element.UINT, counts, CgGpuCount.of(n),
-                    starts);
-            grid(pass.dispatch(writeCells, n).bind("COUNT", count).bind("VIEWED", viewed).bind("ALLOC", alloc)
-                    .bind("PARENT_CELLS", parentCells).bind("PARENT_INDICES", parentIndices).bind("STARTS", starts)
-                    .bind("CELLS", cells).bind("INDICES", indices), gx, gy, px, py, pz, factor, budget, parentBudget);
+            grid(pass.dispatchGroups(cell, gx, gy, SLICES).bind("COUNT", count).bind("VIEWED", viewed).bind("ALLOC", alloc)
+                    .bind("PARENT_CELLS", parentCells).bind("PARENT_INDICES", parentIndices).bind("CELLS", cells)
+                    .bind("INDICES", indices), gx, gy, px, py, pz, PARENT, budget, parentBudget);
             pass.end();
         }
     }
@@ -1595,7 +1561,7 @@ public final class CgWorldLights {
     /** Whether every kernel a lit firing dispatches is built: the bin's and the volume's. Flags, no GL. */
     private boolean kernelsBuilt() {
         if (view == null || fill == null || !view.isReady() || !fill.isReady()) return false;
-        return coarse.runs() ? coarse.isReady() && cell.isReady() : countCells.isReady() && writeCells.isReady();
+        return coarse.isReady() && cell.isReady();
     }
 
     /** The translucency volume's fill kernel, made and started once. */

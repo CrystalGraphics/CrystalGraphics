@@ -1,30 +1,14 @@
-// An indirect draw's command, written on the GPU: the count a kernel wrote, scaled, and the range of
-// the mesh as the store placed it, which only the render thread knows. Five elements a draw, one a word, dispatched by
-// the frame graph's executor before the draw's raster pass (render/graph/CgIndirectArgs) with ARGS bound to its
-// command alone, so two of them write nothing in common. A map, so a tier below compute captures it in one pass.
-#pragma kernel DrawArgs 8 map
-// Many commands reading one count buffer, in one dispatch: five elements a command, each command's values a row of
-// PARAMS (ARGS_ROW words: count word, mode, factor, first, elements, base, indexed, instances, most, first instance,
-// then the command's first word in ARGS). On compute only; below it the executor writes each command with DrawArgs.
+// Indirect draws' commands, written on the GPU: the count a kernel wrote, scaled, and the range of the mesh as the
+// store placed it, which only the render thread knows. Dispatched by the frame graph's executor before the draws' raster
+// pass (render/graph/CgIndirectArgs): many commands reading one count buffer in one dispatch, five elements a command,
+// each command's values a row of PARAMS (ARGS_ROW words: count word, mode, factor, first, elements, base, indexed,
+// instances, most, first instance, then the command's first word in ARGS).
 #pragma kernel DrawArgsMany 64 scatter
-
-Properties {
-    _Count     ("The count's uint",          int) = 0
-    _Mode      ("CgIndirect's ordinal",      int) = 0
-    _Factor    ("Count multiplier",          int) = 1
-    _First     ("First index, or vertex",    int) = 0
-    _Elements  ("The range's elements",      int) = 0
-    _Base      ("Base vertex",               int) = 0
-    _Instances ("Records, but for INSTANCES", int) = 1
-    _Most      ("Most INSTANCES, -1 any",     int) = -1
-    _FirstInstance ("A joined command's first instance", int) = 0
-    _Indexed   ("Drawn by indices",          int) = 0
-}
 
 Buffers {
     COUNT  ("Counts",   uint, readonly)
     ARGS   ("Commands", uint, writeonly)
-    PARAMS ("Each command's values, DrawArgsMany", uint, readonly)
+    PARAMS ("Each command's values", uint, readonly)
 }
 
 // GL's DrawElementsIndirectCommand and DrawArraysIndirectCommand, which are Vulkan's byte for byte: count, instances,
@@ -41,11 +25,6 @@ uint args_word(uint element, uint count, uint mode, uint factor, uint first, uin
     if (element == 2u) return first;
     if (element == 3u) return indexed != 0u ? base : 0u;
     return firstInstance;
-}
-
-void DrawArgs() {
-    ARGS_WRITE(args_word(uint(CG_ELEMENT), COUNT(_Count), uint(_Mode), uint(_Factor), uint(_First), uint(_Elements),
-            uint(_Base), uint(_Indexed), uint(_Instances), uint(_Most), uint(_FirstInstance)));
 }
 
 void DrawArgsMany() {

@@ -46,8 +46,8 @@ import java.util.Locale;
 public final class CgCapabilities {
 
     public static final CgVar.Text COMPUTE_TIER = CgVar.text("crystalgraphics.compute.tier", "", CgVar.DEV,
-            "V, G43, G40 or G33: kernels run as that tier would, where the context has what it needs, refused naming"
-                    + " what is missing where not; empty for the best. Taken at each context's capability probe.");
+            "V or G43: kernels run as that tier would, where the context has what it needs, refused naming what is"
+                    + " missing where not; G40 and G33 run none. Empty for the best. Taken at each context's capability probe.");
     public static final CgVar.Text SHADER_BUFFER_TIER = CgVar.text("crystalgraphics.shaderBuffer.tier", "", CgVar.DEV,
             "SSBO_GL43, SSBO_ARB or TBO: engine buffers read that way (TBO: buffer textures, GLSL 3.30, as a 3.3 context);"
                     + " empty for the best. Taken at each context's capability probe.");
@@ -69,7 +69,6 @@ public final class CgCapabilities {
     private static String cachedParsedVersionKey   = null;
     private static int[]  cachedParsedVersionValue = null;
     private static volatile CgCapabilities cachedCaps = null;
-    private static volatile boolean cpuOracle;
 
     // ─────────────────────────────────────────────────────────────────────────
     //  Enums
@@ -100,23 +99,19 @@ public final class CgCapabilities {
      * from {@link #detect()}.</p>
      */
     /**
-     * Where kernels run, best first. A kernel runs at the highest tier at or below {@link #computeTier()} it can,
-     * and every tier is forceable for a driver that misbehaves: {@code -Dcrystalgraphics.compute.tier=g40}.
+     * Where kernels run, best first, and every tier is forceable for a driver that misbehaves:
+     * {@code -Dcrystalgraphics.compute.tier=g43}. Kernels run on {@code V} and {@code G43} alone; {@code G40} and
+     * {@code G33} are still detected but nothing runs there (the lowered form was removed: {@code docs/LOWERED_COMPUTE.md}).
      */
     public enum ComputeTier {
         /** A device: compute passes on the tracked backend's device. */
         V,
         /** GL compute shaders and storage images, with indirect counts and subgroups where the context lists them. */
         G43,
-        /** No compute: kernels lowered to draws (transform feedback, blended points, fragment passes); counts stay on the GPU. */
+        /** No compute, transform feedback 2 (GL 4.0): where the lowered form ran. A kernel is refused here. */
         G40,
-        /** As {@code G40}, but a count a kernel wrote is read back before the draw that takes it: a stall. */
-        G33,
-        /**
-         * Kernels' Java bodies on worker threads: the gates' oracle, never a context's tier. No property selects it;
-         * {@link CgCapabilities#cpuOracle(boolean)} does, from a test or the harness.
-         */
-        CPU;
+        /** GL 3.3: where the lowered form ran, reading counts back. A kernel is refused here. */
+        G33;
 
         /** What this tier needs that the context lacks, or null. */
         String missing(CgCapabilities caps, boolean device) {
@@ -125,9 +120,7 @@ public final class CgCapabilities {
                 case G43: return caps.compute && caps.storageImages ? null : "compute shaders and storage images (GL 4.3)";
                 case G40: return device ? "transform feedback, which a device does not carry"
                         : caps.feedbackCount ? null : "transform feedback 2 (GL 4.0)";
-                case G33: return device ? "transform feedback, which a device does not carry" : null;
-                default:  return "the CPU oracle, which only a test or the harness turns on (CgCapabilities.cpuOracle;"
-                        + " -Dcrystalgraphics.harness.oracle=true)";
+                default:  return device ? "transform feedback, which a device does not carry" : null;
             }
         }
     }
@@ -597,21 +590,9 @@ public final class CgCapabilities {
     public int maxComputeWorkGroupCount(int axis) { return maxComputeWorkGroupCount[axis]; }
 
     /**
-     * The highest tier this context runs kernels at, or {@code -Dcrystalgraphics.compute.tier}'s; {@link ComputeTier#CPU}
-     * while {@link #cpuOracle(boolean)} is on.
+     * The highest tier this context runs kernels at, or {@code -Dcrystalgraphics.compute.tier}'s.
      */
-    public ComputeTier computeTier() { return cpuOracle ? ComputeTier.CPU : computeTier; }
-
-    /**
-     * Runs every kernel's Java body instead of its GPU form, the reference a gate checks the GPU forms against: for tests
-     * and the harness ({@code -Dcrystalgraphics.harness.oracle=true}), never a client, so no property reaches it. Takes
-     * effect at each kernel's next form; switch it before the first dispatch.
-     *
-     * <pre>{@code
-     * CgCapabilities.cpuOracle(true);    // every dispatch from here runs its kernel's kernel.cpu(...) body
-     * }</pre>
-     */
-    public static void cpuOracle(boolean on) { cpuOracle = on; }
+    public ComputeTier computeTier() { return computeTier; }
 
 
     // ─────────────────────────────────────────────────────────────────────────

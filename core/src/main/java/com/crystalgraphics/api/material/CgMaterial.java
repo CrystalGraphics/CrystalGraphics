@@ -12,7 +12,6 @@ import com.crystalgraphics.api.shader.CgShaderBindings;
 import com.crystalgraphics.api.state.CgBlendState;
 import com.crystalgraphics.api.state.CgDepthState;
 import com.crystalgraphics.api.state.CgRenderState;
-import com.crystalgraphics.compute.lower.CgLoweredEmitter;
 import com.crystalgraphics.compute.source.CgBufferDecl;
 import com.crystalgraphics.gl.buffer.shader.CgEngineBufferRegistry;
 import com.crystalgraphics.gl.buffer.shader.CgShaderBuffer;
@@ -23,6 +22,7 @@ import com.crystalgraphics.gl.material.CgMaterialProperties;
 import com.crystalgraphics.gl.material.CgMaterialProperty;
 import com.crystalgraphics.gl.material.CgMaterialShader;
 import com.crystalgraphics.gl.material.CgMaterialShaderRegistry;
+import com.crystalgraphics.gl.material.parse.CgBufferReaders;
 import com.crystalgraphics.gl.material.parse.CgParsedPass;
 import com.crystalgraphics.gl.material.parse.CgPermutationDomain;
 import com.crystalgraphics.gl.material.parse.CgParsedShader;
@@ -1184,7 +1184,7 @@ public final class CgMaterial {
             CgBufferHandle bound = buffers.get(b.name());
             if (texels) {
                 checkTexels(b, bound);
-                table.texelBuffer(CgBindingPoints.materialBufferUnit(propStore.samplerCount(), i), CgLoweredEmitter.texelFormat(b), bound);
+                table.texelBuffer(CgBindingPoints.materialBufferUnit(propStore.samplerCount(), i), CgBufferReaders.texelFormat(b), bound);
             } else {
                 table.storage(CgBindingPoints.MATERIAL_BUFFERS_SSBO + i, bound);
             }
@@ -1196,7 +1196,7 @@ public final class CgMaterial {
     private static void checkTexels(CgBufferDecl b, CgBufferHandle bound) {
         CgCapabilities caps = CgCapabilities.detected();
         if (caps == null || !(bound instanceof CgGraphBuffer buffer)) return;
-        long texels = buffer.size() / (CgLoweredEmitter.texelWords(b) * 4L);
+        long texels = buffer.size() / (CgBufferReaders.texelWords(b) * 4L);
         if (texels > caps.getMaxTextureBufferSize()) {
             throw new IllegalStateException(b.name() + " is " + texels + " texels; this context reads a buffer as a "
                     + "texture of at most " + caps.getMaxTextureBufferSize());

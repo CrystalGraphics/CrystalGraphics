@@ -170,10 +170,8 @@ public final class CgDispatch {
         this.args = args;
         this.argsOffset = argsOffset;
         valueCalls = bufferCalls = 0;
-        // A kernel some tier cannot run fails here, at the caller's line, on any machine; one this context cannot run
-        // too, not in the frame that executes it.
-        kernel.check();
-        if (CgCapabilities.detected() != null) kernel.form();
+        // A context without compute refuses here, at the caller's line, not in the frame that executes it.
+        if (CgCapabilities.detected() != null) kernel.requireCompute();
         if (args != null) {
             if (!args.allows(CgBufferUsage.INDIRECT)) {
                 throw new IllegalArgumentException(args + " has no INDIRECT use, so it cannot size a dispatch");

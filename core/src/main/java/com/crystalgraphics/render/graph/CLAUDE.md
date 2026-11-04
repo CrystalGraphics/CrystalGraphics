@@ -278,11 +278,9 @@ recording.raster(glow, CgLoad.clear(0, 0, 0, 0), constants, null, CgOrder.SORTED
 `CgChunkBuilder.indirect(count, offset, mode, factor)` or `CgWorldRenderer`'s `.indirect`. The raster pass reads the
 count as a kernel would, so the pass that writes it runs first; before the pass begins the executor writes each indirect
 draw's command with an engine kernel (`env/compute/args.compute`, `CgIndirectArgs`) from the count and the range the
-mesh store placed, then draws it with `glDrawElementsIndirect`/`glDrawArraysIndirect`. As compute, a pass's commands
-are one `DrawArgsMany` dispatch per count buffer, each command a row of a frame-local table; on G40 `DrawArgs` runs
-lowered, a dispatch a command;
-on G33 and the CPU tier, where no draw takes a count from a buffer, the batch is drawn with its count read back (a stall,
-`buffer.readbacks`) or, where the CPU tier wrote it, taken from the CPU's copy with no read.
+mesh store placed, then draws it with `glDrawElementsIndirect`/`glDrawArraysIndirect`. A pass's commands are one
+`DrawArgsMany` dispatch per count buffer, each command a row of a frame-local table. On a context where no draw takes a
+count from a buffer, the batch is drawn with its count read back (a stall, `buffer.readbacks`).
 
 ```java
 CgComputePass live = rec.compute("sparks.count");
@@ -417,11 +415,8 @@ its node moves (`graph.again.requested-kept`); with `false` they draw whole (`gr
   requested texture; an imported, persistent or history buffer) or carries a request.
 - **Transients live from their first to their last use** in the executed order, from a pool keyed by description
   (textures) or size class (buffers): two that never live at once share storage.
-- **A compute pass runs on every tier**: each dispatch as its kernel's form (`compute/CLAUDE.md` § *Three forms*),
-  chosen when the dispatch is recorded, which is where a kernel that can run nowhere throws. A pass with a dispatch
-  below compute runs inside `CgLoweredKernel.scope()`, so what those draws bind never reaches the next pass. What a
-  lowered dispatch writes stays in its target until a step other than a compute pass touches the buffer, or the
-  execution ends: ops chained in a frame land only what leaves them.
+- **A compute pass runs where compute does**: a dispatch on a context without it throws when it is recorded
+  (`CgKernel.requireCompute`).
 - **An `async()` compute pass runs on the device's compute queue** where it has one (the owned device), and in order
   elsewhere: on Minecraft's device only with `-Dcrystalgraphics.vulkan.asyncCompute=true` (`docs/ENGINE_API.md`
   § *Async compute*), and then it may not touch Minecraft's own images, which only its graphics queue may use. The
@@ -450,10 +445,8 @@ on a worker thread; the three PNGs in its output directory must be byte-identica
 built on a worker, matched against the CPU's picture, executed again too; with synchronization validation clean.
 `--mode=indirect-draw` is the indirect half: four indirect draws, one per mode and one past its mesh, each matched
 against a direct draw of what its count means, in a graph, executed again and through the world renderer.
-`--mode=material-buffer` is a material reading a kernel's buffers through `Buffers { }`, drawn indirect. All three pass
-forced to every tier (`-Dcrystalgraphics.compute.tier=G40|G33`) and under the CPU oracle
-(`-Dcrystalgraphics.harness.oracle=true`), as does `--mode=compute-tiers`
-(`compute/CLAUDE.md` § *Tests*). `--mode=raster-levels` is a chain drawn level by level through raster passes, each
+`--mode=material-buffer` is a material reading a kernel's buffers through `Buffers { }`, drawn indirect. All three pass on
+`gl` and `vulkan`, as does `--mode=compute-tiers` (`compute/CLAUDE.md` § *Tests*). `--mode=raster-levels` is a chain drawn level by level through raster passes, each
 level reading the one above through a level view, every texel checked; on `gl`, `vulkan` with synchronization
 validation, and both downlevel contexts. `--mode=raster-layers` is arrays': 2 to 5 layers of one array drawn each
 frame and summed through a `sampler2DArray`, every layer and the sum checked, on one storage throughout; on the same

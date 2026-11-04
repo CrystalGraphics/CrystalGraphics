@@ -271,7 +271,7 @@ public class CgVfxParticlePoolTest {
         }
         String glsl = CgVfxEmitterCompiler.source(CgVfxShape.of(a));
         assertTrue(glsl, glsl.contains("case 1: fx_sampled(") && glsl.contains("_Texture0_0_3"));
-        CgVfxEmitterCompiler.compile(CgVfxShape.of(a)).kernel("Step").check();
+        CgVfxEmitterCompiler.compile(CgVfxShape.of(a)).kernel("Step").decl();
         // Never precached: its own set alone, one call and no switch.
         Def solo = new Def("solo", CgVfxDrawLayout.QUADS, new Sampled(fields[0]));
         assertEquals(1, CgVfxShape.of(solo).textureSets());

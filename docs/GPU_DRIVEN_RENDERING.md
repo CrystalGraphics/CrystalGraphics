@@ -353,7 +353,7 @@ What production engines do, and what follows here. Research: `plan/crystalgraphi
 3. **Pick a state layout every tier runs.** *Compacted* (Niagara's GPU sims): each tick appends survivors into the next
    version of a history buffer, spawns after them; dense, no fragmentation, and `append` lowers. *Fixed slots*
    (Godot): slot i is particle i forever, a dead one inactive; simplest, wastes capacity on bursty effects. *Dead and
-   alive lists* (Wicked, AMD): fastest on compute, but every push and pop is an atomic, so `compute_only`.
+   alive lists* (Wicked, AMD): fastest, but every push and pop is an atomic.
 4. **One pool per kernel shape, not per effect.** Every effect whose kernels are the same shares a pool and one
    dispatch per tick (Niagara Data Channels, VFX Graph instancing); an effect's numbers are a row of a parameter table.
 5. **Build draw lists on the GPU**: bin, count per slot, scan, sort (§5). One sort keyed (slot, depth) orders every
@@ -525,7 +525,6 @@ against 0.221 on Vulkan, inside the 5% it allows over.
 | What a kernel wrote | the Frame Profiler's **Buffers** tab, or `CgBufferInspector` (`render/graph/CLAUDE.md`) |
 | An index out of range | `-Dcrystalgraphics.compute.checked=true`: the kernel, the line and the index |
 | A missing barrier | the Vulkan device with `-Dcrystalgraphics.vulkan.syncValidation=true`; `-Dcrystalgraphics.graph.asyncAll=true` checks every async wait |
-| Every tier | `-Dcrystalgraphics.compute.tier=G43|G40|G33` on your GPU, and `-Dcrystalgraphics.harness.oracle=true` for every kernel's Java body; `-Pharness.downlevel=mac41|gl33` for a context that lacks the features |
 | Its cost | the `profiling` skill; a pass's CPU zone is its name, its GPU zone on `crystalgraphics.gl.detail` |
 | Its budget holds | `budget.spent()` against `budget.millis()` while `scale()` settles; `--mode=gpu-budget` for the mechanism on a context (§13) |
 

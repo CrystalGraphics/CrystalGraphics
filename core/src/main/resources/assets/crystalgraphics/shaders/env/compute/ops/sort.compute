@@ -1,26 +1,17 @@
-// CgGpuOps' sort: least significant digit first, four bits a pass, stable, in two forms that put
-// every key in the same place.
+// CgGpuOps' sort: least significant digit first, four bits a pass, stable.
 //
-// Every tier: a pass counts the digits of each block of 32 elements (RadixCount), scans those counts digit-major with
-// scan.compute, and moves each element to its digit's offset for its block plus its rank among the block's earlier
-// elements of the same digit (RadixScatter).
-//
-// Compute only, ported from AMD's FidelityFX Parallel Sort: each work group counts the digits of its run of 512-key
+// Ported from AMD's FidelityFX Parallel Sort: each work group counts the digits of its run of 512-key
 // blocks (SortCount), the counts are scanned digit-major in two levels (SortReduce, SortScan, SortScanAdd), and each
 // group sorts each 128 keys of its run by the digit in shared memory, two bits at a time, before writing them out in
 // order (SortScatter). Copyright (c) 2020 Advanced Micro Devices, Inc., MIT: the licence is in META-INF/NOTICE.md.
 //
 // Keys are compared as sortable uints; the stored key is the original.
-#pragma kernel RadixCount map
-#pragma kernel RadixScatter scatter
-#pragma kernel RadixScatterKeys scatter
 #pragma kernel SortCount 128 general
 #pragma kernel SortReduce 128 general
 #pragma kernel SortScan 128 general
 #pragma kernel SortScanAdd 128 general
 #pragma kernel SortScatter 128 general
 #pragma kernel SortScatterKeys 128 general
-#pragma compute_only SortCount SortReduce SortScan SortScanAdd SortScatter SortScatterKeys
 #pragma cg_feature INT
 #pragma cg_feature FLOAT
 #pragma cg_feature DESCENDING
@@ -29,7 +20,6 @@ Properties {
     _CountAt      ("The count's word in COUNT, -1 for none",           int) = -1
     _Capacity     ("Elements at most",                                 int) = 0
     _Shift        ("The digit's lowest bit",                           int) = 0
-    _Blocks       ("Blocks of 32 at the capacity",                     int) = 0
     _Groups       ("Work groups counting and scattering",              int) = 1
     _GroupBlocks  ("Blocks of 512 each of them takes",                 int) = 1
     _ExtraGroups  ("How many of them, the last, take one block more",  int) = 0
@@ -40,8 +30,6 @@ Buffers {
     COUNT      ("The count",                                       uint, readonly)
     KEYS       ("Keys in",                                         uint, readonly)
     VALUES_IN  ("Values in",                                       uint, readonly)
-    CELLS      ("Each block's count of each digit, digit-major",   uint, readwrite)
-    OFFSETS    ("CELLS, scanned",                                  uint, readonly)
     KEYS_OUT   ("Keys out",                                        uint, readwrite)
     VALUES_OUT ("Values out",                                      uint, readwrite)
     TABLE      ("Each group's count of each digit, then scanned",  uint, readwrite)
@@ -73,43 +61,6 @@ uint digitOf(uint key) {
 uint digit(uint e) {
     return digitOf(KEYS(e));
 }
-
-// -- Every tier --------------------------------------------------------------
-
-// Cell (digit, block): how many of the block's elements have the digit.
-void RadixCount() {
-    uint cell = uint(CG_ELEMENT), blocks = uint(_Blocks);
-    if (cell >= 16u * blocks) return;
-    uint d = cell / blocks, first = (cell - d * blocks) * 32u, end = min(first + 32u, count()), n = 0u;
-    for (uint e = first; e < end; e++) {
-        if (digit(e) == d) n++;
-    }
-    CELLS_WRITE(n);
-}
-
-// Where element i lands: its digit's offset for its block, then the block's earlier elements of that digit.
-uint place(uint i) {
-    uint d = digit(i), rank = 0u;
-    for (uint e = i & ~31u; e < i; e++) {
-        if (digit(e) == d) rank++;
-    }
-    return OFFSETS(d * uint(_Blocks) + (i >> 5u)) + rank;
-}
-
-void RadixScatter() {
-    uint i = uint(CG_ELEMENT);
-    if (i >= count()) return;
-    uint at = place(i);
-    KEYS_OUT_STORE(at, KEYS(i));
-    VALUES_OUT_STORE(at, VALUES_IN(i));
-}
-
-void RadixScatterKeys() {
-    uint i = uint(CG_ELEMENT);
-    if (i < count()) KEYS_OUT_STORE(place(i), KEYS(i));
-}
-
-// -- Compute only ------------------------------------------------------------
 
 // A block is 128 invocations' four keys each, key i of invocation l at 128 i + l.
 const uint SORT_BLOCK = 512u;

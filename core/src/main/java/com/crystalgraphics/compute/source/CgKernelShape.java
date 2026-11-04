@@ -1,9 +1,8 @@
 package com.crystalgraphics.compute.source;
 
 /**
- * What a kernel writes, declared by its author in {@code #pragma kernel}, and so which tiers can run it: every shape
- * but {@link #GENERAL} lowers to fixed-function GL where there is no compute. The accessor macros
- * a kernel is given follow from its shape, and the parser refuses a kernel whose code reaches past it.
+ * What a kernel writes, declared by its author in {@code #pragma kernel}. The accessor macros a kernel is given follow
+ * from its shape, and the parser refuses a kernel whose code reaches past it.
  *
  * <pre>{@code
  * #pragma kernel Simulate 64 map        // STATE_WRITE(p): this element of each output
@@ -16,7 +15,7 @@ package com.crystalgraphics.compute.source;
 public enum CgKernelShape {
     /** Reads anything; writes its own element of each output buffer. */
     MAP,
-    /** {@link #MAP}, reading other elements too: lowered alike. */
+    /** {@link #MAP}, reading other elements too. */
     GATHER,
     /** {@link #MAP}, plus elements appended to an append buffer. */
     APPEND,
@@ -24,11 +23,8 @@ public enum CgKernelShape {
     SCATTER,
     /** Writes its own texel of each output image. */
     IMAGE,
-    /** Anything compute can do: shared memory, barriers, subgroups, raw atomics, any access. Not lowerable. */
+    /** Anything compute can do: shared memory, barriers, subgroups, raw atomics, any access. */
     GENERAL;
-
-    /** Whether a tier without compute can run it, rewritten. */
-    public boolean lowerable() { return this != GENERAL; }
 
     /** {@code NAME_WRITE(v)}: this element of a writable buffer. */
     public boolean writesOwnElement() { return this != IMAGE; }
