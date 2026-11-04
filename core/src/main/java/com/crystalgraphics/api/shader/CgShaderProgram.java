@@ -537,14 +537,21 @@ public final class CgShaderProgram {
                 finish();
                 return;
             }
-            CgGL.glProgramBinary(program, binaryFormat, binary);
-            if (CgGL.glGetProgrami(program, CgGL.GL_LINK_STATUS) != CgGL.GL_TRUE) {
-                error = "Shader program binary refused: " + CgGL.glGetProgramInfoLog(program, 4096);
-            } else {
-                CgProgramBinaryCache.store(key, binaryFormat, binary);
-                names();
-            }
+            ByteBuffer moved = binary;
             binary = null;
+            CgGL.glProgramBinary(program, binaryFormat, moved);
+            if (CgGL.glGetProgrami(program, CgGL.GL_LINK_STATUS) != CgGL.GL_TRUE) {
+                // NVIDIA refuses some binaries its own worker context just gave, with an empty log (a depth-only
+                // opaque program): linked from source here, as a refused cached binary is above
+                CgGL.glDeleteProgram(program);
+                program = CgGL.glCreateProgram();
+                isolated = false;
+                compileAndLink();
+                finish();
+                return;
+            }
+            CgProgramBinaryCache.store(key, binaryFormat, moved);
+            names();
         }
 
         /**
