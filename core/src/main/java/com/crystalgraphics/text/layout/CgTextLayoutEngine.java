@@ -74,9 +74,12 @@ public final class CgTextLayoutEngine {
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT, "shape.runs")) {
             for (int[] range : paragraphRanges(text)) {
                 String paragraph = text.substring(range[0], range[1]);
+                CgTextDirection direction = knobs.direction();
+                float tabStop = knobs.tabStopWidth();
                 List<CgShapedRun> runs = paragraph.isEmpty()
                         ? new ArrayList<>()
-                        : shapeParagraphText(paragraph, family, knobs.direction(), knobs.tabStopWidth());
+                        : CgShapedRunCache.runs(paragraph, family, direction, tabStop,
+                                () -> shapeParagraphText(paragraph, family, direction, tabStop));
                 slices.add(new CgShapedParagraph.Slice(paragraph, runs, new CgReshapeContext(paragraph)));
             }
         }

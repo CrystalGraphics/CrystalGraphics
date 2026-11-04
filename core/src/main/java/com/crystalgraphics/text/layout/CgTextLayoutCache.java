@@ -85,6 +85,15 @@ public final class CgTextLayoutCache {
         // text changing each frame) measures a workload real UI rarely produces. Without this
         // number there is no way to tell which regime a given scene is in.
         CgTextLayout layout = MAP.get(key);
+        // A font disposed since: the layout would draw from it. Reloaded under the same key, a value key still hits.
+        if (layout != null && layout.baked() != null) {
+            for (CgFont font : layout.baked().fonts()) {
+                if (font != null && font.isDisposed()) {
+                    layout = null;
+                    break;
+                }
+            }
+        }
         if (layout != null) {
             CgTrace.add(CgChannels.TEXT, "layoutCache.hit", 1);
         } else {
@@ -185,19 +194,16 @@ public final class CgTextLayoutCache {
     }
 
     /**
-     * Cache key. {@code text} compares/hashes by content (plain {@code String.equals}/
-     * {@code hashCode}, already cached internally by {@code String} itself after first use);
-     * {@code fontOrFamily} compares/hashes by <strong>identity</strong> (overriding the
-     * record's default component-wise behavior) — {@link CgFont}/{@link CgFontFamily}
-     * instances are loaded once and reused for the lifetime of a font registration (see
-     * {@code CgFontRegistry}), so identity is both cheaper than a value comparison and the
-     * semantically correct notion of "same font" here.
+     * Cache key. {@code text} compares by content. {@code fontOrFamily} compares by identity when it is a
+     * {@link CgFont} or {@link CgFontFamily} (loaded once and reused, so identity is "the same font"), and by value
+     * otherwise: {@code CgTextLayout.Request.build} passes a key of the family's fonts and its knobs, since it is
+     * handed a family built fresh each call.
      */
     public record Key(String text, Object fontOrFamily, float maxWidth, float maxHeight) {
         @Override
         public int hashCode() {
             int h = text.hashCode();
-            h = 31 * h + System.identityHashCode(fontOrFamily);
+            h = 31 * h + (byIdentity(fontOrFamily) ? System.identityHashCode(fontOrFamily) : fontOrFamily.hashCode());
             h = 31 * h + Float.floatToIntBits(maxWidth);
             h = 31 * h + Float.floatToIntBits(maxHeight);
             return h;
@@ -206,11 +212,14 @@ public final class CgTextLayoutCache {
         @Override
         public boolean equals(Object o) {
             if (this == o) return true;
-            if (!(o instanceof Key)) return false;
-            Key k = (Key) o;
+            if (!(o instanceof Key k)) return false;
             return maxWidth == k.maxWidth && maxHeight == k.maxHeight
-                    && fontOrFamily == k.fontOrFamily
+                    && (byIdentity(fontOrFamily) ? fontOrFamily == k.fontOrFamily : fontOrFamily.equals(k.fontOrFamily))
                     && text.equals(k.text);
+        }
+
+        private static boolean byIdentity(Object fontOrFamily) {
+            return fontOrFamily instanceof CgFont || fontOrFamily instanceof CgFontFamily;
         }
     }
 }

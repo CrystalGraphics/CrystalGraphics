@@ -4,6 +4,8 @@ import com.crystalgraphics.api.font.CgFont;
 import com.crystalgraphics.api.font.CgFontFamily;
 import com.crystalgraphics.api.font.CgFontFamilyGroup;
 import com.crystalgraphics.api.font.CgFontMetrics;
+import com.crystalgraphics.text.layout.CgShapedRunCache;
+import com.crystalgraphics.text.layout.CgTextLayoutCache;
 import com.crystalgraphics.text.layout.CgTextLayoutEngine;
 import com.crystalgraphics.text.richtext.CgMarkupParser;
 import lombok.Setter;
@@ -217,9 +219,26 @@ public record CgTextLayout(List<List<CgShapedRun>> lines, float totalWidth, floa
             return CgTextLayoutEngine.shape(plainText, family, knobs);
         }
 
-        /** {@code shape().layout(maxWidth(), maxHeight())} — the common case. */
+        /**
+         * {@code shape().layout(maxWidth(), maxHeight())} — the common case. Plain text is kept in
+         * {@link CgTextLayoutCache} by its content, fonts and knobs, so the same text built again each frame is
+         * the same layout, its glyphs already resolved; changed text shapes only its changed lines
+         * ({@code CgShapedRunCache}).
+         */
         public CgTextLayout build() {
-            return shape().layout(maxWidth, maxHeight);
+            if (styledText != null || parser != null || family == null) return shape().layout(maxWidth, maxHeight);
+            CgParagraphKnobs knobs = new CgParagraphKnobs(direction, tabStopWidth, align, maxLines, ellipsis, lineHeightOverride);
+            CgTextLayoutCache.Key key = CgTextLayoutCache.key(plainText,
+                    new BuildKey(CgShapedRunCache.familyKey(family), knobs), maxWidth, maxHeight);
+            CgTextLayout cached = CgTextLayoutCache.get(key);
+            if (cached != null) return cached;
+            CgTextLayout built = CgTextLayoutEngine.shape(plainText, family, knobs).layout(maxWidth, maxHeight);
+            CgTextLayoutCache.put(key, built);
+            return built;
+        }
+
+        /** What a plain build depends on besides its text and size: {@link CgTextLayoutCache.Key}'s by-value part. */
+        private record BuildKey(CgShapedRunCache.FamilyKey family, CgParagraphKnobs knobs) {
         }
     }
 }
