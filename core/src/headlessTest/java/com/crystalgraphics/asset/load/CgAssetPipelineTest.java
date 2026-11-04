@@ -105,7 +105,7 @@ public class CgAssetPipelineTest {
         CgAssetLoad wide = pipeline.request(CgGameplayKinds.CUE, "mymod:ground_break/hard/wide");
         settle();
         assertEquals(wide.toString(), CgAssetState.COMPILED, wide.state());
-        Map<?, ?> resolved = ((CgAssetData) wide.definition()).resolved();
+        Map<?, ?> resolved = wide.asset().resolved();
         assertEquals(96.0, ((Number) resolved.get("range")).doubleValue(), 0);
         assertEquals("a name field follows the id", "mymod:cue.ground_break.hard.wide", resolved.get("tag"));
         Map<?, ?> placement = (Map<?, ?>) resolved.get("default_placement");
@@ -113,7 +113,7 @@ public class CgAssetPipelineTest {
         assertEquals("from the file", "attach_to_target", placement.get("attach"));
         assertFalse("children are expanded, never resolved", resolved.containsKey("children"));
         CgAssetLoad file = pipeline.load(CgGameplayKinds.CUE, "mymod:ground_break");
-        assertFalse(((CgAssetData) file.definition()).resolved().containsKey("children"));
+        assertFalse(file.asset().resolved().containsKey("children"));
     }
 
     @Test

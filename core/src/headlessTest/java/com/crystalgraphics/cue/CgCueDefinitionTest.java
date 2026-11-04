@@ -200,7 +200,7 @@ public class CgCueDefinitionTest {
         assertEquals("another kit's look, by namespace", "otherkit", loaded.look());
     }
 
-    /** {@code -Pkits}: every kit cue compiles, its tag declared by the kit's {@code tags.yaml}, or fails naming its path. */
+    /** {@code -Pkits}: every kit cue compiles, its tag declared by its own file, or fails naming its path. */
     @Test
     public void everyKitCueCompilesOrFailsNamingItsPath() throws InterruptedException {
         String kits = System.getProperty("crystalgraphics.kits");

@@ -1,6 +1,7 @@
 package com.crystalgraphics.asset.registry;
 
 import java.nio.file.Path;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
@@ -43,18 +44,20 @@ import com.crystalgraphics.object.CgType;
  * @param modified   its file's modification time, in milliseconds; 0 for a builder's asset
  * @param searchable its kind's {@code SEARCHABLE} properties as its file writes them, read by the scan without loading
  *                   it (Unreal's {@code FAssetData} tags): a cue's {@code tag}; empty for a binary or a builder's asset
+ * @param tags       the gameplay tags its file declares ({@code DECLARES_TAG}: a cue's {@code tag}, a rig's
+ *                   {@code tags}), registered by the scan; empty for a binary or a builder's asset
  * @param inlineIn   the id of the asset whose file writes this one inline, under its {@code children}; null for an asset
  *                   of its own file
  */
 public record CgAssetEntry(String id, @Nullable CgType kind, CgAssetSource source, @Nullable Path file,
         @Nullable String redirect, @Nullable Supplier<?> definition, List<CgAssetReferences.Reference> references,
-        long modified, Map<String, String> searchable, @Nullable String inlineIn) {
+        long modified, Map<String, String> searchable, List<String> tags, @Nullable String inlineIn) {
 
-    /** An asset of its own file, a binary or a builder's. */
+    /** An asset that declares no tag, of its own file: a binary or a builder's. */
     public CgAssetEntry(String id, @Nullable CgType kind, CgAssetSource source, @Nullable Path file,
             @Nullable String redirect, @Nullable Supplier<?> definition, List<CgAssetReferences.Reference> references,
             long modified, Map<String, String> searchable) {
-        this(id, kind, source, file, redirect, definition, references, modified, searchable, null);
+        this(id, kind, source, file, redirect, definition, references, modified, searchable, Collections.emptyList(), null);
     }
 
     /** The namespace before the id's colon. */

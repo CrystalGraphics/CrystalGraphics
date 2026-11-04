@@ -42,6 +42,12 @@ public enum CgPropertyFlag {
      * (a cue {@code rpgcore:cue.ground_break}'s child {@code hard} is {@code rpgcore:cue.ground_break.hard}).
      */
     NAMES_ASSET,
+    /**
+     * Declares the gameplay tags it holds, a top-level tag or list of tags: the registry's scan registers them, and their
+     * ancestors, before anything compiles. A cue's {@code tag}, a rig's {@code tags}. Any other field naming a tag only
+     * refers to it.
+     */
+    DECLARES_TAG,
     /** Named by a code contract: the editor refuses a rename or delete, naming the class. */
     LOCKED,
     /** Read and upgraded, never written ({@code CPF_Deprecated}). */

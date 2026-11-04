@@ -6,29 +6,33 @@ sharing a class. A tag matches itself and its ancestors: `mymod:cue.beam.fire` m
 
 ## Declare tags
 
-In code, at init:
+A tag is declared by what owns it. There is no list of tags beside the assets.
+
+A cue declares its `tag`, and a camera rig its `tags`. The asset registry declares them when it scans the namespace,
+before any asset of it compiles:
+
+```yaml
+# assets/mymod/cues/beam/fire.yaml: declares mymod:cue.beam.fire, and with it mymod:cue.beam and mymod:cue
+_v: 1
+tag: mymod:cue.beam.fire
+kind: burst
+```
+
+A cue's inline child declares its own tag, its block's plus `.<name>` unless it writes one ([assets](assets.md#children-in-one-file)).
+
+A tag no asset owns, such as a gameplay state, is declared in code at init:
 
 ```java
 CgTagRegistry tags = CgTagRegistry.global();
-CgGameplayTag fire = tags.register("mymod:cue.beam.fire");   // also makes mymod:cue.beam and mymod:cue
+CgGameplayTag charging = tags.register("mymod:state.charging");   // also makes mymod:state
 ```
 
-Or in `assets/mymod/tags.yaml`, which the registry reads with the namespace it belongs to:
-
-```yaml
-_v: 1
-tags: [ mymod:cue.beam.fire, mymod:state.charging ]
-```
-
-The asset registry declares it when it scans the namespace, before any asset of it compiles. By hand:
-
-```java
-tags.registerFile("mymod", yamlText, "assets/mymod/tags.yaml");
-```
-
-A tag outside the file's namespace, a malformed name or an unknown key fails the file by name; nothing in it is
-declared. A file that names a tag looks it up with `tags.require("mymod:cue.beam.fire")`, which fails for one nobody
-declared.
+- **A declared tag is in its asset's namespace**: `mymod:` in `assets/mymod/`. Another namespace, or a malformed
+  name, fails the scan, naming the file.
+- **Everything else only refers to a tag**: a rig transition's `previous_rig_tags`, a cue played from a sequence or
+  from code. `tags.require("mymod:cue.beam.fire")` fails for a tag nobody declared, naming it.
+- **A server and its clients number tags alike** without sending them, since both scan the same assets: the index is
+  every declared tag, sorted by name.
 
 ## Test and combine tags
 

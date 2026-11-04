@@ -59,6 +59,7 @@ import com.crystalgraphics.object.CgType;
 import com.crystalgraphics.object.CgValueType;
 import com.crystalgraphics.object.value.CgUnits;
 import com.crystalgraphics.sequence.clip.CgClipMarkers;
+import com.crystalgraphics.tag.CgTagException;
 import com.crystalgraphics.tag.CgTagRegistry;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
@@ -107,8 +108,8 @@ import org.apache.logging.log4j.Logger;
  */
 public final class CgAssetRegistry {
 
-    /** A namespace's files that are not assets: its units, content index and tags. */
-    private static final Set<String> ROOT_FILES = new HashSet<>(Arrays.asList("units.yaml", "content.yaml", "tags.yaml", "preload.yaml",
+    /** A namespace's files that are not assets: its units, content index and preload list. */
+    private static final Set<String> ROOT_FILES = new HashSet<>(Arrays.asList("units.yaml", "content.yaml", "preload.yaml",
             "carried.json", "ruled.json", "subtitle_style.yaml", "look.yaml"));
     /** A namespace's folders that hold no assets: an importer's reports, a game's data kept for gameplay. */
     private static final Set<String> NOT_ASSETS = new HashSet<>(Arrays.asList("import", "roles", "strings", "fonts"));
@@ -159,8 +160,8 @@ public final class CgAssetRegistry {
     /**
      * Registers every asset of {@code namespace} under {@code root}, its {@code assets/<namespace>/} folder, then
      * announces them: Unreal's gatherer. The listing is walked, each YAML file's redirect and references are read on
-     * the workers, or taken from the cache, and nothing is added unless every id is free. Its {@code tags.yaml} is
-     * declared in {@code CgTagRegistry.global()}.
+     * the workers, or taken from the cache, and nothing is added unless every id is free. The gameplay tags its
+     * assets declare (a cue's {@code tag}, a rig's {@code tags}) are declared in {@code CgTagRegistry.global()}.
      *
      * @throws CgAssetException if an id is already registered from another file or by a builder
      */
@@ -304,7 +305,7 @@ public final class CgAssetRegistry {
         // The kit's tables, read here as each registry is safe on any thread: before any cue or sequence compiles, a
         // cue's tag must be declared, a game's cue name resolves through its sound table, a subtitle through its strings
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.MISC, SCAN_TABLES)) {
-            CgTagRegistry.global().registerKit(namespace, root);
+            declareTags(found, CgTagRegistry.global());
             CgKitSounds.registerKit(root);
             CgKitStrings.registerKit(namespace, root);
             CgSubtitleStyle.registerKit(namespace, root);
@@ -467,6 +468,7 @@ public final class CgAssetRegistry {
         List<CgAssetEntry> others = new ArrayList<>(entries.values());
         others.removeAll(was);
         unique(now, others);
+        declareTags(now, CgTagRegistry.global());
         Set<String> kept = new HashSet<>();
         for (CgAssetEntry n : now) kept.add(n.id());
         List<CgAssetRegistryEvent> events = new ArrayList<>();
@@ -529,7 +531,7 @@ public final class CgAssetRegistry {
         if (old == null) throw new CgAssetException("rename: " + from + " is not registered");
         if (entries.containsKey(key(kind, to))) throw new CgAssetException("rename: " + to + " is already registered");
         CgAssetEntry moved = new CgAssetEntry(to, old.kind(), old.source(), file, null, old.definition(), old.references(),
-                old.modified(), old.searchable());
+                old.modified(), old.searchable(), old.tags(), old.inlineIn());
         entries.remove(key(kind, from));
         link(old, false);
         entries.put(key(kind, to), moved);
@@ -774,17 +776,17 @@ public final class CgAssetRegistry {
             } else {
                 // Uncached, so every scan names it until it is fixed.
                 r = new CgAssetRegistryCache.Record(f.modified(), f.kind().id(), null, Collections.emptyList(),
-                        Collections.emptyMap(), Collections.emptyList());
+                        Collections.emptyMap(), Collections.emptyList(), Collections.emptyList());
             }
         }
         CgAssetEntry own = new CgAssetEntry(f.id(), f.kind(), source, f.file(), r.redirect(), null, r.references(),
-                f.modified(), r.searchable());
+                f.modified(), r.searchable(), r.tags(), null);
         if (r.children().isEmpty()) return Collections.singletonList(own);
         List<CgAssetEntry> out = new ArrayList<>(1 + r.children().size());
         out.add(own);
         for (CgAssetRegistryCache.Child c : r.children()) {
             out.add(new CgAssetEntry(c.id(), f.kind(), source, f.file(), null, null, c.references(), f.modified(),
-                    c.searchable(), f.id()));
+                    c.searchable(), c.tags(), f.id()));
         }
         return out;
     }
@@ -808,7 +810,8 @@ public final class CgAssetRegistry {
                 if (to instanceof String) {
                     return new CgAssetRegistryCache.Record(f.modified(), f.kind().id(), (String) to, Collections.singletonList(
                             new CgAssetReferences.Reference(f.kind(), (String) to, CgValueType.Strength.HARD,
-                                    CgPropertyPath.of(f.id()).key(REDIRECT))), Collections.emptyMap(), Collections.emptyList());
+                                    CgPropertyPath.of(f.id()).key(REDIRECT))), Collections.emptyMap(), Collections.emptyList(),
+                            Collections.emptyList());
                 }
                 // Its inline children, each as its own file would read, gathered with its own asset
                 Map<String, Map<String, Object>> trees = CgAssetChildren.expand(f.id(), f.kind(), file);
@@ -818,15 +821,18 @@ public final class CgAssetRegistry {
                     if (t.getKey().equals(f.id())) continue;
                     children.add(new CgAssetRegistryCache.Child(t.getKey(),
                             Collections.unmodifiableList(CgAssetReferences.ofFile(t.getKey(), f.kind(), t.getValue())),
-                            searchable(f.kind(), t.getValue())));
+                            searchable(f.kind(), t.getValue()), tags(t.getKey(), f.kind(), t.getValue())));
                 }
                 return new CgAssetRegistryCache.Record(f.modified(), f.kind().id(), null,
                         Collections.unmodifiableList(CgAssetReferences.ofFile(f.id(), f.kind(), own)),
-                        searchable(f.kind(), own), children);
+                        searchable(f.kind(), own), tags(f.id(), f.kind(), own), children);
             }
             // A cue is found by the tag read here, so one that never parses is never loaded to fail by name.
             LOGGER.error("{} {} ({}) is not a YAML map, so nothing finds it by what it declares",
                     f.kind().id(), f.id(), f.file());
+        } catch (CgAssetException named) {
+            // What the format refuses (a bad child, a bad tag) fails the scan, naming the file
+            throw new CgAssetException(f.file() + ": " + named.getMessage());
         } catch (RuntimeException unreadable) {
             LOGGER.error("{} {} ({}) does not parse, so nothing finds it by what it declares: {}",
                     f.kind().id(), f.id(), f.file(), unreadable.getMessage());
@@ -846,6 +852,44 @@ public final class CgAssetRegistry {
             }
         }
         return out == null ? Collections.emptyMap() : Collections.unmodifiableMap(out);
+    }
+
+    /** The gameplay tags {@code tree}'s {@code DECLARES_TAG} properties hold: a tag, or a list of them. */
+    private static List<String> tags(String id, CgType kind, Map<?, ?> tree) {
+        List<String> out = null;
+        for (CgProperty p : kind.properties()) {
+            if (!p.has(CgPropertyFlag.DECLARES_TAG)) continue;
+            Object v = tree.get(p.name());
+            List<?> values = v instanceof List<?> l ? l : v == null ? Collections.emptyList() : Collections.singletonList(v);
+            for (Object t : values) {
+                if (!(t instanceof String)) throw new CgAssetException(id + ": " + p.name() + " holds " + t + ", not a gameplay tag");
+                if (out == null) out = new ArrayList<>();
+                out.add((String) t);
+            }
+        }
+        return out == null ? Collections.emptyList() : Collections.unmodifiableList(out);
+    }
+
+    /**
+     * Declares every tag {@code found} declares in {@code tags}, with its ancestors: before anything compiles, a cue's tag
+     * and every reference to one resolve.
+     *
+     * @throws CgAssetException naming the asset, for a malformed tag or one outside the asset's namespace
+     */
+    private static void declareTags(List<CgAssetEntry> found, CgTagRegistry tags) {
+        for (CgAssetEntry e : found) {
+            for (String t : e.tags()) {
+                if (!t.startsWith(e.namespace() + ":")) {
+                    throw new CgAssetException(where(e) + ": " + e.id() + " declares the tag " + t + ", outside its namespace "
+                            + e.namespace());
+                }
+                try {
+                    tags.register(t);
+                } catch (CgTagException bad) {
+                    throw new CgAssetException(where(e) + ": " + e.id() + ": " + bad.getMessage());
+                }
+            }
+        }
     }
 
     private static CgUnits readUnits(Path file) {

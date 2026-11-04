@@ -8,7 +8,7 @@ Usage: `docs/vfx/networking.md`. Mirrors Unreal's `UGameplayTagsManager` and `FG
 | Type | Role |
 |---|---|
 | `CgGameplayTag` | One interned name; `matches` is a bit test against its ancestors |
-| `CgTagRegistry` | Interns tags (ancestors made too, names compare without case), reads `tags.yaml`, builds the net table |
+| `CgTagRegistry` | Interns tags (ancestors made too, names compare without case), builds the net table. Tags are declared by their owners: the asset registry's scan registers each `DECLARES_TAG` value (a cue's `tag`, a rig's `tags`), code the rest |
 | `CgTagContainer` | Explicit tags plus their ancestors as bit sets: `has*` as `FGameplayTagContainer` |
 | `CgTagTable` | Every tag sorted by name, and a CRC-32 of the lowercase names |
 | `CgTagLink` | One connection's agreement: wire index to local tag and back |

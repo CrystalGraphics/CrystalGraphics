@@ -1,12 +1,6 @@
 package com.crystalgraphics.tag;
 
-import com.crystalgraphics.asset.codec.CgAssetYaml;
-
 import javax.annotation.Nullable;
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -16,23 +10,22 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 
 /**
- * Every gameplay tag of a process, interned: a mod declares its tags at init, in code or in
- * {@code assets/<namespace>/tags.yaml}, and looks them up by name afterwards. Mirrors Unreal's
- * {@code UGameplayTagsManager}: registering {@code a.b.c} makes {@code a} and {@code a.b} too, and names compare
- * without case.
+ * Every gameplay tag of a process, interned: each is declared by what owns it, and looked up by name afterwards.
+ * Mirrors Unreal's {@code UGameplayTagsManager}: registering {@code a.b.c} makes {@code a} and {@code a.b} too, and
+ * names compare without case.
  *
  * <pre>{@code
- * // from code, at init
- * CgGameplayTag fire = CgTagRegistry.global().register("mymod:cue.kamehameha.fire");
+ * // from an asset: the registry's scan declares a cue's `tag` and a rig's `tags`, before anything compiles
+ * //   assets/mymod/cues/kamehameha/fire.yaml:  tag: mymod:cue.kamehameha.fire
  *
- * // from a file: assets/mymod/tags.yaml
- * //   _v: 1
- * //   tags: [ mymod:cue.kamehameha.fire, mymod:state.charging ]
- * CgTagRegistry.global().registerFile("mymod", yamlText, "assets/mymod/tags.yaml");
+ * // from code, at init: a tag no asset owns, such as a gameplay state
+ * CgGameplayTag charging = CgTagRegistry.global().register("mymod:state.charging");
  *
- * // in a file that names a tag (a cue's `tag`): unknown fails by name
- * CgGameplayTag tag = CgTagRegistry.global().require("mymod:cue.kamehameha.fire");
+ * // anything that only names a tag: unknown fails by name
+ * CgGameplayTag fire = CgTagRegistry.global().require("mymod:cue.kamehameha.fire");
  * }</pre>
+ *
+ * <p>There is no list of tags beside the assets: a tag no cue, rig or code declares does not exist.</p>
  *
  * <p>Easy to get wrong: the tags a client has differ from the server's when their mod sets differ, so indices never
  * cross the wire as {@link CgGameplayTag#index()}; {@link #table()} and {@link CgTagLink} agree them.</p>
@@ -84,64 +77,6 @@ public final class CgTagRegistry {
             if (last) return tag;
             parent = tag;
             dot = next;
-        }
-    }
-
-    /**
-     * Declares every tag of a {@code tags.yaml}, each in {@code namespace}.
-     *
-     * @param source the file's name, for the messages
-     * @throws CgTagException on a malformed file, a tag in another namespace, or a malformed tag
-     */
-    public synchronized void registerFile(String namespace, String yaml, String source) {
-        Object tree = CgAssetYaml.read(yaml);
-        if (!(tree instanceof Map)) throw new CgTagException(source + ": expected a map with _v and tags");
-        Map<?, ?> root = (Map<?, ?>) tree;
-        for (Object key : root.keySet()) {
-            if (!"_v".equals(key) && !"tags".equals(key) && !"editor".equals(key)) {
-                throw new CgTagException(source + ": unknown key '" + key + "' (expected _v, tags)");
-            }
-        }
-        Object version = root.get("_v");
-        if (!(version instanceof Number) || ((Number) version).intValue() != 1) {
-            throw new CgTagException(source + ": _v must be 1, not " + version);
-        }
-        Object tags = root.get("tags");
-        if (!(tags instanceof List)) throw new CgTagException(source + ": tags must be a list");
-        List<String> names = new ArrayList<>();
-        for (Object entry : (List<?>) tags) {
-            if (!(entry instanceof String)) throw new CgTagException(source + ": tag " + entry + " is not a string");
-            String name = (String) entry;
-            try {
-                validate(name);
-            } catch (CgTagException e) {
-                throw new CgTagException(source + ": " + e.getMessage());
-            }
-            if (!name.startsWith(namespace + ":")) {
-                throw new CgTagException(source + ": tag '" + name + "' is not in namespace '" + namespace + "'");
-            }
-            names.add(name);
-        }
-        for (String name : names) register(name);
-    }
-
-    /**
-     * Declares a kit folder's tags: its {@code tags.yaml}, or nothing when the kit has none (a kit that names no tag
-     * ships no file).
-     *
-     * <pre>{@code
-     * registry.registerKit("mymod", Paths.get("assets/mymod"));   // reads assets/mymod/tags.yaml if it exists
-     * }</pre>
-     *
-     * @throws CgTagException as {@link #registerFile}, or if the file cannot be read
-     */
-    public synchronized void registerKit(String namespace, Path folder) {
-        Path file = folder.resolve("tags.yaml");
-        if (!Files.isRegularFile(file)) return;
-        try {
-            registerFile(namespace, new String(Files.readAllBytes(file), StandardCharsets.UTF_8), file.toString());
-        } catch (IOException e) {
-            throw new CgTagException(file + ": " + e.getMessage());
         }
     }
 

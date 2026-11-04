@@ -13,12 +13,14 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
+import com.crystalgraphics.asset.kind.CgCameraKinds;
 import com.crystalgraphics.asset.kind.CgGameplayKinds;
 import com.crystalgraphics.asset.kind.CgParticleKinds;
 import com.crystalgraphics.asset.kind.CgSequenceKinds;
 import com.crystalgraphics.asset.tree.CgAssetException;
 import com.crystalgraphics.asset.tree.CgAssetReferences;
 import com.crystalgraphics.object.CgType;
+import com.crystalgraphics.tag.CgTagRegistry;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
@@ -138,6 +140,31 @@ public class CgAssetRegistryTest {
         CgAssetEntry hard = second.entry(CgGameplayKinds.CUE, "mymod:ground_break/hard");
         assertEquals("mymod:ground_break", hard.inlineIn());
         assertEquals("mymod:cue.ground_break.hard", hard.searchable().get("tag"));
+        assertEquals("[mymod:cue.ground_break.hard]", hard.tags().toString());
+    }
+
+    @Test
+    public void cuesAndRigsDeclareTheirTags() throws IOException {
+        write("cues/ground_break.yaml", GROUND_BREAK);
+        write("cameras/rigs/skill.yaml", "_v: 1\ntags: [ mymod:camera.skill, mymod:camera.close ]\nroot: []\n");
+        CgAssetRegistry r = scanned();
+        assertEquals("[mymod:camera.skill, mymod:camera.close]", r.entry(CgCameraKinds.CAMERA_RIG, "mymod:skill").tags().toString());
+        CgTagRegistry tags = CgTagRegistry.global();
+        assertTrue(tags.require("mymod:cue.ground_break.hard.wide").matches(tags.require("mymod:cue.ground_break")));
+        assertTrue("an ancestor comes with it", tags.find("mymod:camera") != null);
+        assertTrue(tags.find("mymod:camera.close") != null);
+    }
+
+    @Test
+    public void aTagOutsideItsAssetsNamespaceFailsNamingTheFile() throws IOException {
+        write("cues/stray.yaml", "_v: 1\ntag: other:cue.stray\nkind: burst\n");
+        try {
+            scanned();
+            fail("a cue declared another namespace's tag");
+        } catch (CgAssetException expected) {
+            String m = expected.getMessage();
+            assertTrue(m, m.contains("stray.yaml") && m.contains("other:cue.stray"));
+        }
     }
 
     @Test

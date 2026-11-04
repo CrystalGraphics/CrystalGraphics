@@ -32,16 +32,17 @@ import com.crystalgraphics.object.CgValueType;
  */
 final class CgAssetRegistryCache {
 
-    /** Bump with any change to what a scan reads from a file (references, redirects, searchable values) or to its keys. */
-    private static final int VERSION = 4;
+    /** Bump with any change to what a scan reads from a file (references, redirects, searchable values, tags) or to its keys. */
+    private static final int VERSION = 5;
 
     /** One file's gathered data: its own asset's, then each child it writes inline. */
     record Record(long modified, String kind, @Nullable String redirect, List<CgAssetReferences.Reference> references,
-                  Map<String, String> searchable, List<Child> children) {
+                  Map<String, String> searchable, List<String> tags, List<Child> children) {
     }
 
     /** A child a file writes inline, by its full id. */
-    record Child(String id, List<CgAssetReferences.Reference> references, Map<String, String> searchable) {
+    record Child(String id, List<CgAssetReferences.Reference> references, Map<String, String> searchable,
+                 List<String> tags) {
     }
 
     private final Map<String, Record> records = new ConcurrentHashMap<>();
@@ -104,10 +105,11 @@ final class CgAssetRegistryCache {
                 String redirect = in.readBoolean() ? in.readUTF() : null;
                 List<CgAssetReferences.Reference> list = readReferences(in);
                 Map<String, String> searchable = readSearchable(in);
+                List<String> tags = readTags(in);
                 int n2 = in.readInt();
                 List<Child> children = n2 == 0 ? Collections.emptyList() : new ArrayList<>(n2);
-                for (int j = 0; j < n2; j++) children.add(new Child(in.readUTF(), readReferences(in), readSearchable(in)));
-                cache.records.put(key, new Record(modified, kind, redirect, list, searchable, children));
+                for (int j = 0; j < n2; j++) children.add(new Child(in.readUTF(), readReferences(in), readSearchable(in), readTags(in)));
+                cache.records.put(key, new Record(modified, kind, redirect, list, searchable, tags, children));
             }
         } catch (IOException | RuntimeException unreadable) {
             cache.records.clear();   // rebuilt by the next scan
@@ -141,11 +143,13 @@ final class CgAssetRegistryCache {
                 if (r.redirect != null) out.writeUTF(r.redirect);
                 writeReferences(out, r.references);
                 writeSearchable(out, r.searchable);
+                writeTags(out, r.tags);
                 out.writeInt(r.children.size());
                 for (Child c : r.children) {
                     out.writeUTF(c.id);
                     writeReferences(out, c.references);
                     writeSearchable(out, c.searchable);
+                    writeTags(out, c.tags);
                 }
             }
         }
@@ -189,6 +193,19 @@ final class CgAssetRegistryCache {
             out.writeUTF(v.getKey());
             out.writeUTF(v.getValue());
         }
+    }
+
+    private static List<String> readTags(DataInputStream in) throws IOException {
+        int n = in.readInt();
+        if (n == 0) return Collections.emptyList();
+        List<String> tags = new ArrayList<>(n);
+        for (int j = 0; j < n; j++) tags.add(in.readUTF());
+        return Collections.unmodifiableList(tags);
+    }
+
+    private static void writeTags(DataOutputStream out, List<String> tags) throws IOException {
+        out.writeInt(tags.size());
+        for (String t : tags) out.writeUTF(t);
     }
 
     private boolean underScanned(String key) {

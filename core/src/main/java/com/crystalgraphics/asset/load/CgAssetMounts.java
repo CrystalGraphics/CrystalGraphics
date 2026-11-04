@@ -40,7 +40,7 @@ import com.crystalgraphics.util.io.CgIO;
  *
  * <pre>{@code
  * // CgEngineLifecycle, never a host:
- * CgAssetMounts.mount();      // pre-init: every mod's cues, shakes, systems and tags.yaml, before anything compiles
+ * CgAssetMounts.mount();      // pre-init: every mod's cues, shakes and systems, and the tags they declare, before anything compiles
  * CgAssetMounts.loadAhead();  // post-init: everything mounted (less what a preload.yaml opts out), starts loading
  *
  * // a tool or a test, over a registry of its own:
@@ -48,7 +48,7 @@ import com.crystalgraphics.util.io.CgIO;
  * }</pre>
  *
  * <ul>
- *   <li>A namespace mounts only where it holds the format's content: {@code tags.yaml}, {@code units.yaml},
+ *   <li>A namespace mounts only where it holds the format's content: {@code units.yaml},
  *       {@code content.yaml}, {@code preload.yaml}, or a kind's folder other than {@code textures} and {@code models}, which every
  *       Minecraft namespace has. Unreal mounts only plugins that can contain content.</li>
  *   <li>A namespace mounts from the first source that has it, so a dev run's source folder wins over its own build
@@ -61,7 +61,7 @@ public final class CgAssetMounts {
 
     private static final Logger LOGGER = LogManager.getLogger("CrystalGraphics");
     private static final String PRELOAD = "preload.yaml";
-    private static final Set<String> ROOT_FILES = new HashSet<>(Arrays.asList("tags.yaml", "units.yaml", "content.yaml", PRELOAD));
+    private static final Set<String> ROOT_FILES = new HashSet<>(Arrays.asList("units.yaml", "content.yaml", PRELOAD));
     /** Kind folders Minecraft's own namespaces use too: holding one says nothing. */
     private static final Set<String> SHARED = new HashSet<>(Arrays.asList("textures", "models"));
 

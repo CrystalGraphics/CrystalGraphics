@@ -122,7 +122,9 @@ public class CgCueManagerTest {
     @Before
     public void kit() throws IOException {
         Path ns = tmp.newFolder("assets", "cuemgr").toPath();
-        write(ns, "tags.yaml", "_v: 1\ntags: [ cuemgr:cue.hit.crit, cuemgr:cue.aura, cuemgr:cue.none, cuemgr:cue.flash ]\n");
+        // What no cue owns is declared in code: a tag routed to its parent's cue, and one with no cue at all
+        CgTagRegistry.global().register("cuemgr:cue.hit.crit");
+        CgTagRegistry.global().register("cuemgr:cue.none");
         write(ns, "cues/hit.yaml", "_v: 1\ntag: cuemgr:cue.hit\nkind: burst\nburst: { sounds: [ { sound: cuemgr:boom } ] }\n");
         write(ns, "cues/aura.yaml", "_v: 1\ntag: cuemgr:cue.aura\nkind: looping\n"
                 + "application: { sounds: [ { sound: cuemgr:start } ] }\nrecurring: { sounds: [ { sound: cuemgr:pulse } ] }\n"

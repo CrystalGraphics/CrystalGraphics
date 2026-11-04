@@ -183,7 +183,6 @@ public class CgCueNetTest {
 
     private CgAssetRegistry beamKit() throws IOException {
         Path ns = tmp.newFolder("assets", "cuenet").toPath();
-        write(ns, "tags.yaml", "_v: 1\ntags: [ cuenet:cue.beam, cuenet:cue.spark ]\n");
         write(ns, "cues/beam.yaml", "_v: 1\ntag: cuenet:cue.beam\nkind: looping\nauthoritative: true\nrange: 96\n"
                 + "writes: { Head: { meaning: the head's distance from the root, replication: goal } }\n"
                 + "fields: [ { name: level, type: int } ]\nsequence: cuenet:beam\n");

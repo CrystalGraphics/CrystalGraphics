@@ -82,8 +82,7 @@ already compiled.
   matches nothing mounted, warns. The log line `[crystalgraphics] assets ahead: N primaries (...)` says what was loaded.
 
 ```
-assets/rpgcore/tags.yaml                        # _v: 1, then tags: [ rpgcore:cue.ground_break ]
-assets/rpgcore/cues/ground_break.yaml           # tag: rpgcore:cue.ground_break, kind: burst, burst: { shake: ... }
+assets/rpgcore/cues/ground_break.yaml           # tag: rpgcore:cue.ground_break (declares it), kind: burst, burst: { shake: ... }
 assets/rpgcore/cameras/shakes/ground_break.yaml
 ```
 
@@ -91,7 +90,7 @@ assets/rpgcore/cameras/shakes/ground_break.yaml
 CgCueManager.server().execute(TAGS.require("rpgcore:cue.ground_break"), new CgCueParameters().at(x, y, z));
 ```
 
-- **A namespace counts** where it holds `tags.yaml`, `units.yaml`, `content.yaml` or `preload.yaml`, or a kind's folder other than
+- **A namespace counts** where it holds `units.yaml`, `content.yaml` or `preload.yaml`, or a kind's folder other than
   `textures` and `models`, which every Minecraft namespace has. A mod with only Minecraft's own assets is left alone.
 - **In a dev run** your source folder (`src/main/resources`) is mounted instead of the built copy, so a saved edit
   reloads while the game runs.

@@ -60,8 +60,8 @@ import com.crystalgraphics.vfx.system.CgVfxSystemDefinition;
  * }</pre>
  *
  * <ul>
- *   <li>Its tag must be declared ({@code tags.yaml}, or {@code CgTagRegistry.register}) before it compiles, or it
- *       fails at load by name.</li>
+ *   <li>A cue file declares its own tag (the registry's scan registers it); a cue built in Java declares its tag with
+ *       {@code CgTagRegistry.register} before it compiles, or it fails at load by name.</li>
  *   <li>An entry's spawn condition and placement are its own whole, else its block's, else the cue's defaults, as
  *       {@code FGameplayCueNotify_SpawnContext::GetPlacementInfo} picks: an override is never merged field by field.
  *       {@link Where} holds the resolved pair.</li>

@@ -412,7 +412,7 @@ public final class CgCameraKinds {
 
     /** {@code cameras/rigs/}: a tree of camera nodes and its parameters ({@code UCameraRigAsset}). */
     public static final CgType CAMERA_RIG = CgTypes.kind("crystalgraphics:camera_rig").folder("cameras/rigs").version(1)
-            .property("tags", CgValueType.listOf(STRING))
+            .property("tags", CgValueType.listOf(STRING)).flags(CgPropertyFlag.DECLARES_TAG)
             .property("initial_orientation", CgValueType.enumOf("none", "context_yaw_pitch", "previous_yaw_pitch",
                     "previous_absolute_target", "previous_relative_target"))
             .property("parameters", CgValueType.mapOf(CgValueType.struct(RIG_PARAMETER))).flags(CgPropertyFlag.STRUCTURAL)

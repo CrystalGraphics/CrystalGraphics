@@ -146,32 +146,6 @@ public class CgTagsTest {
     }
 
     @Test
-    public void aTagsFileDeclaresItsTagsAndAncestors() {
-        registry.registerFile("novamod", "_v: 1\ntags: [novamod:cue.nova_cannon, novamod:cue.nova_cannon.impact]\n",
-                "tags.yaml");
-        assertTrue(registry.require("novamod:cue.nova_cannon.impact").matches(registry.require("novamod:cue")));
-        assertEquals(3, registry.size());
-        assertTrue(registry.register("kakarot_kit:cue.C001A_S_SKL001.beam").matches(registry.require("kakarot_kit:cue")));
-    }
-
-    @Test
-    public void aBadTagsFileFailsNamingTheFileAndTheTag() {
-        rejects(() -> registry.registerFile("mod", "_v: 1\ntags: [other:cue.x]\n", "assets/mod/tags.yaml"));
-        rejects(() -> registry.registerFile("mod", "_v: 2\ntags: [mod:a]\n", "f"));
-        rejects(() -> registry.registerFile("mod", "_v: 1\ntags: [mod:a b]\n", "f"));
-        rejects(() -> registry.registerFile("mod", "_v: 1\ntags: mod:a\n", "f"));
-        rejects(() -> registry.registerFile("mod", "_v: 1\ntag: [mod:a]\n", "f"));
-        try {
-            registry.registerFile("mod", "_v: 1\ntags: [mod:ok, other:cue.x]\n", "assets/mod/tags.yaml");
-            fail();
-        } catch (CgTagException e) {
-            assertTrue(e.getMessage(), e.getMessage().contains("assets/mod/tags.yaml"));
-            assertTrue(e.getMessage(), e.getMessage().contains("other:cue.x"));
-        }
-        assertNull("a failed file declares nothing", registry.find("mod:ok"));
-    }
-
-    @Test
     public void theTableIsSortedSoTheSameSetsAgreeInAnyRegistrationOrder() {
         CgTagRegistry other = new CgTagRegistry();
         for (String n : new String[]{"m:b.x", "m:a", "m:c"}) registry.register(n);
