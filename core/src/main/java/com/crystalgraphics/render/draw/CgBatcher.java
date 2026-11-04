@@ -78,10 +78,11 @@ public final class CgBatcher {
     /** Starts a pass. */
     public void reset(CgOrder order) {
         this.order = order;
+        // The last pass's references only: the arrays keep the capacity of the largest pass
+        Arrays.fill(meshes, 0, draws, null);
+        Arrays.fill(batchMesh, 0, batchCount, null);
         draws = 0;
         batchCount = 0;
-        Arrays.fill(meshes, null);
-        Arrays.fill(batchMesh, null);
     }
 
     /** Adds the pass's next draw; {@code ref} is the caller's handle for it, given back in batch order. */

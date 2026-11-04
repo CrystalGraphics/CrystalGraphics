@@ -484,6 +484,7 @@ public final class CgChunkBuilder {
                 Arrays.copyOf(sortKeys, count), groups == null ? null : Arrays.copyOf(groups, count), kept,
                 each == null ? null : Arrays.copyOf(each, count),
                 each == null ? null : Arrays.copyOf(recordCounts, records[CgInstanceKind.OBJECT.ordinal()]));
+        held = Math.min(count + 1, pipelines.length);   // a dropped last draw may have left its slot set
         open = false;
         count = 0;
         Arrays.fill(records, 0);
@@ -499,6 +500,7 @@ public final class CgChunkBuilder {
         chunk.fill(spatial, clip, effect, bindings, count, pipelines, bindingIds, kinds, firsts, instanceCounts, meshes,
                 ranges, counts, countOffsets, countModes, objects, buffers, bufferAt, bounds, sortKeys, groups, instances,
                 records, each, recordCounts);
+        held = Math.min(count + 1, pipelines.length);   // a dropped last draw may have left its slot set
         open = false;
         count = 0;
         Arrays.fill(records, 0);
@@ -525,6 +527,7 @@ public final class CgChunkBuilder {
         CgDrawChunk chunk = new CgDrawChunk(spatial, clip, effect, bindings, count, pipelines, bindingIds, kinds,
                 firsts, instanceCounts, meshes, ranges, counts, countOffsets, countModes, objects, buffers, bufferAt, bounds,
                 sortKeys, groups, instances, each, recordCounts);
+        held = Math.min(count + 1, pipelines.length);   // a dropped last draw may have left its slot set
         open = false;
         count = 0;
         Arrays.fill(records, 0);
@@ -536,21 +539,29 @@ public final class CgChunkBuilder {
     public void reset() {
         open = false;
         drawing = -1;
+        held = Math.max(held, Math.min(count + 1, pipelines.length));
         count = 0;
         Arrays.fill(records, 0);
         dropReferences();
     }
 
+    /** Clears the references the last chunk's draws left, not the arrays' whole capacity: a chunk of one draw clears one. */
     private void dropReferences() {
         lent = false;
-        if (meshes != null) Arrays.fill(meshes, null);
-        if (counts != null) Arrays.fill(counts, null);
-        if (objects != null) Arrays.fill(objects, null);
+        int n = held;
+        held = 0;
+        if (n == 0) return;
+        if (meshes != null) Arrays.fill(meshes, 0, n, null);
+        if (counts != null) Arrays.fill(counts, 0, n, null);
+        if (objects != null) Arrays.fill(objects, 0, n, null);
         if (buffers != null) {
-            Arrays.fill(buffers, null);
-            Arrays.fill(bufferAt, null);
+            Arrays.fill(buffers, 0, n * CgDrawChunk.BUFFERS, null);
+            Arrays.fill(bufferAt, 0, n * CgDrawChunk.BUFFERS, null);
         }
     }
+
+    /** How many draws' references the arrays hold since they were last cleared. */
+    private int held;
 
     /** Keeps the open draw if it has instances; a draw without bounds covers everything. */
     private void closeDraw() {

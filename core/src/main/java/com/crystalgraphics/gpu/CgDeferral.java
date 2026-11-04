@@ -72,6 +72,8 @@ public final class CgDeferral {
 
     /** Guarded by this. */
     private final ArrayDeque<Runnable> queue = new ArrayDeque<>();
+    /** The queue's size, written under the lock: an empty flush asks no thread-local of its own. */
+    private volatile int queued;
 
     /** What each piece of work is scoped to restore; empty for none. */
     private final CgGlSlot[] restores;
@@ -115,6 +117,7 @@ public final class CgDeferral {
             if (!queue.isEmpty() || !mayDrive()) {
                 if (queue.isEmpty()) schedule(this);
                 queue.add(work);
+                queued = queue.size();
                 return;
             }
         }
@@ -142,7 +145,7 @@ public final class CgDeferral {
 
     /** Does what is queued, oldest first, where the device may be driven; nothing elsewhere. Cheap when empty. */
     public void flush() {
-        if (!mayDrive()) return;
+        if (queued == 0 || !mayDrive()) return;
         Runnable next;
         while ((next = poll()) != null) {
             try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, TASK); CgGlScope restore = restoring()) {
@@ -159,6 +162,7 @@ public final class CgDeferral {
             if (work instanceof CgUploadLease) ((CgUploadLease) work).release();
         }
         queue.clear();
+        queued = 0;
     }
 
     /** The thread owns the device and is not recording: the one question every deferral asks. */
@@ -167,7 +171,9 @@ public final class CgDeferral {
     }
 
     private synchronized Runnable poll() {
-        return queue.poll();
+        Runnable next = queue.poll();
+        queued = queue.size();
+        return next;
     }
 
     private static void schedule(CgDeferral deferral) {

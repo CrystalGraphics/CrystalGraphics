@@ -97,14 +97,21 @@ public final class CgFrameBuilder {
     /** Scratch rects for placing copies, in GL pixels: x0, y0, x1, y1. */
     private final int[] rect = new int[4], lastCopy = new int[4], dirty = new int[4];
 
+    private static final int BUILD_EDGES = CgTrace.name("graph.build.edges"), BUILD_ORDER = CgTrace.name("graph.build.order"),
+            BUILD_LIFETIMES = CgTrace.name("graph.build.lifetimes"), BUILD_ACCESSES = CgTrace.name("graph.build.accesses"),
+            BUILD_PACK = CgTrace.name("graph.build.pack");
+
     /** Builds the frame. The graph's recordings are only read. */
     public CgFrame build(CgFrameGraph graph) {
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "graph.build")) {
             List<CgRecording> recordings = graph.recordings();
             valuesOf.clear();
             for (int r = 0; r < recordings.size(); r++) valuesOf.put(recordings.get(r), graph.values(r));
+            CgTrace.Zone phase = CgTrace.zone(CgChannels.GL_DETAIL, BUILD_EDGES);
             int total = flatten(recordings);
             edges(recordings, total);
+            phase.close();
+            phase = CgTrace.zone(CgChannels.GL_DETAIL, BUILD_ORDER);
             cull(total);
             int steps = topological(total);
 
@@ -119,8 +126,14 @@ public final class CgFrameBuilder {
                 frame.kernels |= pass instanceof CgComputePass || pass instanceof CgPass.Fill
                         || pass instanceof CgPass.Update || pass instanceof CgPass.BufferCopy;
             }
+            phase.close();
+            phase = CgTrace.zone(CgChannels.GL_DETAIL, BUILD_LIFETIMES);
             lifetimes(frame, steps);
+            phase.close();
+            phase = CgTrace.zone(CgChannels.GL_DETAIL, BUILD_ACCESSES);
             accesses(frame, recordings, steps);
+            phase.close();
+            phase = CgTrace.zone(CgChannels.GL_DETAIL, BUILD_PACK);
 
             interned.clear();
             internMapsUsed = 0;
@@ -134,6 +147,7 @@ public final class CgFrameBuilder {
                     pack(compute, frame, frame.compute(s));
                 }
             }
+            phase.close();
             Arrays.fill(passes, 0, total, null);
             slots.clear();
             resources.clear();
@@ -397,6 +411,7 @@ public final class CgFrameBuilder {
     }
 
     private void pack(CgRasterPass pass, CgFrame frame, CgFrame.Raster packed) {
+        CgTrace.Zone part = CgTrace.zone(CgChannels.GL_DETAIL, PACK_BATCH);
         batcher.reset(pass.order);
         boolean groups = CgTrace.isEnabled(CgChannels.GPU_GROUPS);   // only then may a group split a batch
         int refs = 0;
@@ -429,6 +444,8 @@ public final class CgFrameBuilder {
             }
         }
         batcher.finish();
+        part.close();
+        part = CgTrace.zone(CgChannels.GL_DETAIL, PACK_INSTANCES);
 
         int n = batcher.batches();
         packed.size(n);
@@ -487,6 +504,8 @@ public final class CgFrameBuilder {
             }
         }
         Arrays.fill(refChunk, 0, refs, null);
+        part.close();
+        part = CgTrace.zone(CgChannels.GL_DETAIL, PACK_COPIES);
         boolean writesDepth = (pass.load.mask() & CgGL.GL_DEPTH_BUFFER_BIT) != 0;
         for (int b = 0; b < packed.count && !writesDepth; b++) {
             writesDepth = (writesOf(CgPipeline.byId(packed.pipeline[b]), pass.state) & CgTargetCopy.DEPTH) != 0;
@@ -494,9 +513,13 @@ public final class CgFrameBuilder {
         packed.writesDepth = writesDepth;
         placeCopies(pass, packed);
         frame.kernels |= packed.indirects > 0;   // an indirect draw's command is a kernel's
+        part.close();
+        part = CgTrace.zone(CgChannels.GL_DETAIL, PACK_TABLES);
         packed.clips = frame.clipsOf(pass.recording.clips());
         packed.shapes = frame.shapesOf(pass.recording.shapes());
         packed.palette = frame.paletteOf(pass.recording, valuesOf.get(pass.recording));
+        part.close();
+        part = CgTrace.zone(CgChannels.GL_DETAIL, PACK_CONSTANTS);
         CgBindingTable constants = frame.bindings.begin()
                 .block(CgBindingPoints.FRAME_DATA_UBO, pass.constants, 0, CgPassConstants.FLOATS);
         boolean lightmap = false, media = false, localLights = false;
@@ -532,7 +555,12 @@ public final class CgFrameBuilder {
         if (pass.target == null || pass.target.kind() == CgGraphTexture.Kind.CURRENT) frame.rastersCurrent = true;
         else frame.rastersOther = true;
         packed.constants = constants.end();
+        part.close();
     }
+
+    private static final int PACK_BATCH = CgTrace.name("graph.pack.batch"), PACK_INSTANCES = CgTrace.name("graph.pack.instances"),
+            PACK_COPIES = CgTrace.name("graph.pack.copies"), PACK_TABLES = CgTrace.name("graph.pack.tables"),
+            PACK_CONSTANTS = CgTrace.name("graph.pack.constants");
 
     /**
      * Where the pass copies its target for draws sampling it, and how much. Depth is copied whole, before a reader of
