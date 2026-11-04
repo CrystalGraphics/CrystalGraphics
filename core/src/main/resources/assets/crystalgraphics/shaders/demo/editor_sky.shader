@@ -3,6 +3,7 @@
 // layers of twinkling stars, the Milky Way's band and a moon. Draw it on a sphere round the camera in
 // CgSortLayer.BACKGROUND; it sits at the far plane, so everything draws in front of it.
 #type spatial
+#include "crystalgraphics:shaders/demo/editor_sky.glsl"
 
 Tags { "RenderType" = "Background" "Lighting" = "Unlit" "Fog" = "Off" }
 Queue = "Background"
@@ -82,8 +83,7 @@ Pass {
         vec3 zenith = vec3(0.012, 0.018, 0.045);
         vec3 high = vec3(0.025, 0.040, 0.085);
         vec3 horizon = vec3(0.060, 0.095, 0.150);
-        vec3 ground = vec3(0.010, 0.012, 0.018);
-        if (y < 0.0) return mix(horizon * 0.55, ground, smoothstep(0.0, -0.25, y));
+        if (y < 0.0) return editor_sky_below(y, 1.0);
         vec3 sky = mix(horizon, high, smoothstep(0.0, 0.25, y));
         sky = mix(sky, zenith, smoothstep(0.25, 1.0, y));
 
@@ -128,11 +128,9 @@ Pass {
         vec3 zenith = vec3(0.04, 0.22, 0.62);
         vec3 high = vec3(0.12, 0.42, 0.84);
         vec3 horizon = vec3(0.78, 0.89, 0.93);
-        vec3 haze = vec3(0.62, 0.67, 0.74);
-        vec3 ground = vec3(0.40, 0.44, 0.51);
         vec3 sky = mix(horizon, high, smoothstep(0.0, 0.3, y));
         sky = mix(sky, zenith, smoothstep(0.3, 1.0, y));
-        vec3 below = mix(haze, ground, smoothstep(0.0, -0.25, y));
+        vec3 below = editor_sky_below(y, 0.0);
         vec3 color = y >= 0.0 ? sky : below;
         // The sun: a disc with a soft rim, a tight glow and a wide one, above the horizon only.
         float toward = max(dot(d, normalize(_SunDirection.xyz)), 0.0);

@@ -1,12 +1,13 @@
-// An editor's ground grid, as Blender's viewport draws one: metre and ten-metre lines in absolute world space, the x
-// axis red and the z axis green through the origin, fading with distance. Lines only, so it reads from below too.
-// Draw it as a large plane at the floor's height, in CgSortLayer.BACKGROUND so effects draw over it. It writes the
-// plane's depth, so a colour region, a soft particle or a depth fade meets the floor there. Line maths after
+// An editor's ground, as Blender's viewport grid draws one: metre and ten-metre lines in absolute world space, the x
+// axis red and the z axis green through the origin, fading with distance, over editor_sky's colour below the horizon,
+// so the ground meets the sky without a seam. Opaque: it hides what is under the floor and writes its depth for a
+// colour region, a soft particle or a depth fade. Draw it as a large plane at the floor's height. Line maths after
 // Ben Golus, "The Best Darn Grid Shader (Yet)" (MIT). _Night dims and cools it under editor_sky's night.
 #type spatial
+#include "crystalgraphics:shaders/demo/editor_sky.glsl"
 
-Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" "Fog" = "Off" }
-Queue = "Transparent"
+Tags { "RenderType" = "Opaque" "Lighting" = "Unlit" "Fog" = "Off" }
+Queue = "Geometry"
 
 Properties {
     _Fade ("Distance the grid fades out by", float) = 150.0
@@ -18,7 +19,6 @@ struct v2f { vec3 worldPos; };
 Pass {
     Tags { "LightMode" = "Forward" }
     RenderState {
-        Blend ONE ONE_MINUS_SRC_ALPHA
         DepthTest LEQUAL
         DepthWrite ON
         Cull OFF
@@ -64,7 +64,7 @@ Pass {
         // At night, fainter and moonlit blue.
         fade *= mix(1.0, 0.5, _Night);
         vec3 tint = mix(vec3(1.0), vec3(0.55, 0.68, 0.95), _Night);
-        vec4 color = vec4(0.0);
+        vec4 color = vec4(editor_sky_below(normalize(i.worldPos).y, _Night), 1.0);
         color = grid_over(color, vec3(0.85) * tint, grid_lines(xz, deriv, 0.02) * 0.35 * fade);
         color = grid_over(color, vec3(0.95) * tint, grid_lines(xz * 0.1, deriv * 0.1, 0.015) * 0.6 * fade);
         color = grid_over(color, vec3(0.55, 0.86, 0.0), grid_axis(xz.x, deriv.x, 1.5) * fade);
