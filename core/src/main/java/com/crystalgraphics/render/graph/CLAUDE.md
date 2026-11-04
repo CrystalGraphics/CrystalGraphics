@@ -243,6 +243,12 @@ CgRasterPass pass = recording.raster(target, CgLoad.load(), constants, state, Cg
 
 - Each pass copies into one framebuffer from the transient pool, held from its first copy to its end; a later copy
   overwrites the earlier, so nesting and passes of other sizes never disturb it, and a steady frame allocates nothing.
+- **A pass whose first draw writes every pixel says so** (`replaces()`): where its target is a transient of one colour
+  slot and no depth of its own (the HDR scene) and that draw would copy all of it, the executor gives the target fresh
+  storage from the pool and binds the old as the copy, giving it back when the pass ends (`graph.target-renames`).
+  Unreal's post passes each write a new texture the same way. A full-screen copy is half a post pass's cost: two in
+  skinned-play's arena saved 0.05 ms of GPU. `CgPostMaterial` says it for a draw that blends nothing and never
+  discards.
 - The copy has the target's formats (a float target keeps its range); the current target's colour is RGBA8 and its
   depth in its own format, the viewport's size.
 - Sort order decides what a reader sees: it bends what sorted before it. The world renderer's groups and orders

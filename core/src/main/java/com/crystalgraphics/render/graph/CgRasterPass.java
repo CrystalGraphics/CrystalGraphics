@@ -91,6 +91,8 @@ public final class CgRasterPass extends CgPass {
 
     /** The units its draws sample the target's colour and depth at, or -1. */
     private int sceneColorUnit = -1, sceneDepthUnit = -1;
+    /** Whether its first draw writes every pixel of its target ({@link #replaces}). */
+    private boolean replaces;
     /** Its copy of its target, made when it first declares a read of it. */
     @Nullable
     private CgTargetCopy targetCopy;
@@ -154,6 +156,7 @@ public final class CgRasterPass extends CgPass {
         viewY = 0f;
         sceneColorUnit = -1;
         sceneDepthUnit = -1;
+        replaces = false;
         targetCopy = null;
         depthFrom = null;
         depthFromUnit = -1;
@@ -404,6 +407,32 @@ public final class CgRasterPass extends CgPass {
         sceneColorUnit = unit;
         if (targetCopy == null) targetCopy = keptCopy();
         return this;
+    }
+
+    /**
+     * Says its first draw writes every pixel of its target, unblended, discarding none: a full-screen post pass. Its
+     * {@link #sceneColor} then needs no copy of the target, as Unreal's post passes write a new texture rather than
+     * copy SceneColor: the pass draws into fresh storage and samples the target's storage as it found it.
+     *
+     * <pre>{@code
+     * recording.raster(scene, CgLoad.load(), constants, null, CgOrder.SORTED)
+     *         .sceneColor(CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT).replaces();
+     * }</pre>
+     *
+     * <ul>
+     *   <li>A pixel its first draw leaves out holds whatever the pool's storage held: never declare it otherwise.</li>
+     *   <li>Taken only where the target is a transient of one colour slot and no depth of its own (the HDR scene),
+     *       drawn whole at level 0 with no clear; anywhere else the copy is taken as before.</li>
+     * </ul>
+     */
+    public CgRasterPass replaces() {
+        if (ended) throw new IllegalStateException(this + " has ended");
+        replaces = true;
+        return this;
+    }
+
+    boolean replacesTarget() {
+        return replaces;
     }
 
     /** As {@link #sceneColor}, for the target's depth and {@code cg_DepthBuffer}. */

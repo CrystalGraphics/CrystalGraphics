@@ -1680,6 +1680,11 @@ public final class CgMaterial {
         return cgMaterialShader == null || cgMaterialShader.readsSceneColor();
     }
 
+    /** Whether its shader may discard a fragment ({@code discard}, {@code cg_Clip}); true until parsed. */
+    public boolean discards() {
+        return cgMaterialShader == null || cgMaterialShader.discards();
+    }
+
     /**
      * Returns the material properties UBO, or {@code null} for sampler-only shaders.
      * Engine-owned — do not delete.

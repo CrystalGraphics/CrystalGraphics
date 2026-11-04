@@ -105,6 +105,7 @@ public final class CgExecutor {
     private static final int TARGET_COPIES = CgTrace.name("graph.target-copies");
     private static final int TARGET_COPY_PIXELS = CgTrace.name("graph.target-copy-pixels");
     private static final int DEPTH_SHARED = CgTrace.name("graph.depth-copies-shared");
+    private static final int TARGET_RENAMES = CgTrace.name("graph.target-renames");
 
     /**
      * One copy of a framebuffer's depth, read by every pass after it that reads that depth until something may write
@@ -205,6 +206,12 @@ public final class CgExecutor {
      * beside the current target's depth.
      */
     private boolean composed, beside;
+    /**
+     * The storage a pass that {@link CgRasterPass#replaces} its target found there, sampled as its scene colour while
+     * it draws into fresh storage; given back to the pool when it ends. Null for every other pass.
+     */
+    @Nullable
+    private CgFrameBuffer renamedFrom;
     /**
      * Whether a pipeline of the pass executing turned the stencil test on: turned off at its end, since a later pass's
      * pipeline that declares no stencil would inherit it, into a target with a stencil of its own.
@@ -1327,10 +1334,18 @@ public final class CgExecutor {
                 writeCommands(pass, packed);   // a dispatch never sits inside a render pass
             }
         }
-        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, RASTER_BEGIN)) {
-            rasterBegin(frame, pass, packed, damage);
+        if (damage == null && pass.replacesTarget()) renameTarget(pass, packed);
+        try {
+            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, RASTER_BEGIN)) {
+                rasterBegin(frame, pass, packed, damage);
+            }
+            if (packed.count > 0) rasterBatches(frame, pass, packed, damage);
+        } finally {
+            if (renamedFrom != null) {
+                POOL.release(pass.target.desc(), renamedFrom);
+                renamedFrom = null;
+            }
         }
-        if (packed.count > 0) rasterBatches(frame, pass, packed, damage);
         if (stencilled) CgStencilState.DISABLED.apply();
         stencilled = false;
         if (!CgComposedTargets.KEEP) {
@@ -1338,6 +1353,26 @@ public final class CgExecutor {
             if (beside) BESIDE.detach();
         }
         composed = beside = false;   // detached at the execution's end: an attach a pass cost 2 µs on a threaded driver
+    }
+
+    /**
+     * Gives a pass that replaces its target fresh storage, keeping the old as what its first batch samples, where that
+     * batch would otherwise copy the whole target's colour: Unreal RDG's post passes, each into a new texture.
+     */
+    private void renameTarget(CgRasterPass pass, CgFrame.Raster packed) {
+        CgGraphTexture target = pass.target;
+        if (packed.count == 0 || (packed.copyBefore[0] & CgTargetCopy.COLOR) == 0) return;
+        if (target == null || target.kind() != CgGraphTexture.Kind.TRANSIENT || target.isArray()
+                || pass.level != 0 || pass.layer != 0 || pass.load.mask() != 0 || pass.attachment() != null) {
+            return;
+        }
+        CgFrameBuffer old = target.framebuffer();
+        if (old == null || old.getFormat().colorSlotCount() != 1 || old.getFormat().hasDepth()) return;
+        int[] rect = packed.copyRect;   // GL pixels x0, y0, x1, y1; x1 below 0 is the whole target
+        if (rect[2] >= 0 && (rect[0] > 0 || rect[1] > 0 || rect[2] < old.getWidth() || rect[3] < old.getHeight())) return;
+        renamedFrom = old;
+        target.resolve(POOL.acquire(target.desc()));
+        CgTrace.add(CgChannels.GL, TARGET_RENAMES, 1);
     }
 
     /** {@code pass}'s target bound and cleared, and what every batch shares bound. */
@@ -1440,8 +1475,16 @@ public final class CgExecutor {
                     }
                 }
                 if (packed.copyBefore[b] != 0) {
-                    try (CgTrace.Zone copying = CgTrace.zone(CgChannels.GL, "graph.targetCopy")) {
-                        copyTarget(pass, packed.copyBefore[b], packed.copyRect, b * 4);
+                    int bits = packed.copyBefore[b];
+                    if (b == 0 && renamedFrom != null) {
+                        // What the target held, read where it stands: the pass draws into fresh storage
+                        renamedFrom.getColorTexture(0).bind(pass.sceneColorUnit());
+                        bits &= ~CgTargetCopy.COLOR;
+                    }
+                    if ((bits & (CgTargetCopy.COLOR | CgTargetCopy.DEPTH)) != 0) {
+                        try (CgTrace.Zone copying = CgTrace.zone(CgChannels.GL, "graph.targetCopy")) {
+                            copyTarget(pass, bits, packed.copyRect, b * 4);
+                        }
                     }
                 }
                 if (packed.scissor[b] != boundScissor) {

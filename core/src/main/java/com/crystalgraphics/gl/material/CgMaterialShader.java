@@ -198,6 +198,8 @@ public final class CgMaterialShader implements CgReloadable {
     private volatile boolean sceneDepth = true;
     /** Whether it samples the scene colour; see {@link #readsSceneColor}. */
     private volatile boolean sceneColor = true;
+    /** Whether it or anything it includes discards; see {@link #discards}. */
+    private volatile boolean discards = true;
 
     /**
      * Flat pass × keywords program cache. Key = (passName, keywords set).
@@ -393,6 +395,7 @@ public final class CgMaterialShader implements CgReloadable {
             this.renderType = parsed.renderType();
             this.sceneDepth = sceneDepthIn(source);
             this.sceneColor = sceneColorIn(source);
+            this.discards = discardsIn(source);
             this.parsedSource = source;
             this.lastParsed = parsed;
             return parsed;
@@ -553,6 +556,7 @@ public final class CgMaterialShader implements CgReloadable {
             if (!source.equals(parsedSource)) {
                 this.sceneDepth = sceneDepthIn(source);
                 this.sceneColor = sceneColorIn(source);
+                this.discards = discardsIn(source);
             }
             this.parsedSource = source;
             this.lastParsed = parsed;   // last: a reader that sees it sees the three above
@@ -1669,6 +1673,18 @@ public final class CgMaterialShader implements CgReloadable {
 
     private boolean sceneColorIn(String source) {
         return new CgShaderPreprocessor().mentions(source, resourcePath, "cg_SceneColor", "CG_SCENE_COLOR");
+    }
+
+    /**
+     * Whether the parsed source or a file it includes names {@code discard} or {@code cg_Clip}, used or not; true
+     * until parsed. False means every fragment it shades is written.
+     */
+    public boolean discards() {
+        return parsedSource == null || discards;
+    }
+
+    private boolean discardsIn(String source) {
+        return new CgShaderPreprocessor().mentions(source, resourcePath, "discard", "cg_Clip");
     }
 
     private void wireShader(CgShader shader) {

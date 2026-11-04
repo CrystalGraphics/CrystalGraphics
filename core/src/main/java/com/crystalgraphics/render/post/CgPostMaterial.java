@@ -6,7 +6,9 @@ import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgMeshTopology;
 import com.crystalgraphics.api.shader.CgShaderBindings;
+import com.crystalgraphics.api.state.CgBlendState;
 import com.crystalgraphics.api.state.CgDepthState;
+import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.gl.material.parse.CgParsedShader;
@@ -239,12 +241,19 @@ public final class CgPostMaterial implements CgPostEffect {
         CgRasterPass pass = recording.raster(into, load, post.constants(), null, CgOrder.SORTED);
         // A pass into a target of its own reads the scene's colour and depth, not the target it clears.
         CgGraphTexture screen = post.target();
-        if (material.readsSceneColor() && into == colourOf) pass.sceneColor(CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT);
-        else if (material.readsSceneColor()) pass.sceneColor(CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT, colourOf);
+        CgPipeline drawn = depthless(pipeline);
+        if (material.readsSceneColor() && into == colourOf) {
+            pass.sceneColor(CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT);
+            // Its one full-screen triangle writes every pixel: read the scene where it stands, not a copy of it
+            CgBlendState blend = drawn.state().getBlend();
+            if ((blend == null || !blend.enabled()) && !material.discards()) pass.replaces();
+        } else if (material.readsSceneColor()) {
+            pass.sceneColor(CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT, colourOf);
+        }
         if (material.readsSceneDepth() && into == screen) pass.sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT);
         else if (material.readsSceneDepth()) pass.sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT, screen);
         CgChunkBuilder chunks = recording.chunks().begin();
-        chunks.draw(depthless(pipeline), material.captureBindings(recording.bindings()), FULLSCREEN);
+        chunks.draw(drawn, material.captureBindings(recording.bindings()), FULLSCREEN);
         weighted(chunks, weight);
         pass.add(chunks.end());
         pass.end();
@@ -253,12 +262,15 @@ public final class CgPostMaterial implements CgPostEffect {
     /**
      * {@code pipeline} neither testing nor writing depth, as Unreal's post-process material pass: an opaque material's
      * default depth write would otherwise stamp the full-screen triangle's depth over the scene, and before
-     * translucency hide every transparent draw behind it. Made once a pipeline.
+     * translucency hide every transparent draw behind it. A shader declaring no blend writes unblended, as Unreal's
+     * post pass does, rather than under whatever blend the last draw left. Made once a pipeline.
      */
     private CgPipeline depthless(CgPipeline pipeline) {
         CgPipeline made = depthless.get(pipeline);
         if (made == null) {
-            made = pipeline.withState(pipeline.state().withDepth(CgDepthState.NONE));
+            CgRenderState state = pipeline.state().withDepth(CgDepthState.NONE);
+            if (state.getBlend() == null) state = state.withBlend(CgBlendState.DISABLED);
+            made = pipeline.withState(state);
             depthless.put(pipeline, made);
         }
         return made;
