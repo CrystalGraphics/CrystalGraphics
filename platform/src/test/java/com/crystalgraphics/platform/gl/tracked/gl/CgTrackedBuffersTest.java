@@ -6,7 +6,7 @@ import com.crystalgraphics.platform.rhi.nulldrv.CgNullRHI;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.tracked.CgTrackedGLBackend;
 import com.crystalgraphics.platform.gl.tracked.FakeGlslCompiler;
-import com.crystalgraphics.platform.gl.tracked.memory.CgAllocation;
+import com.crystalgraphics.platform.rhi.memory.CgAllocation;
 import com.crystalgraphics.platform.gl.tracked.tracker.CgDrawState;
 import org.junit.Test;
 

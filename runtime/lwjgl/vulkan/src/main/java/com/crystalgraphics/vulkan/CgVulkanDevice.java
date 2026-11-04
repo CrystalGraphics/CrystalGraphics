@@ -26,7 +26,7 @@ import com.crystalgraphics.vulkan.resource.VulkanComputePipeline;
 import com.crystalgraphics.vulkan.resource.VulkanPipeline;
 import com.crystalgraphics.vulkan.resource.VulkanSampler;
 import com.crystalgraphics.vulkan.resource.VulkanShaderModule;
-import com.crystalgraphics.vulkan.resource.VulkanStaging;
+import com.crystalgraphics.vulkan.memory.VulkanStaging;
 import com.crystalgraphics.vulkan.resource.VulkanTexture;
 import com.crystalgraphics.vulkan.resource.VulkanTimerQuery;
 import com.crystalgraphics.vulkan.shader.ShadercGlslCompiler;

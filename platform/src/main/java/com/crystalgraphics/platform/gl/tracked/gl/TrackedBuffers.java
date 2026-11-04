@@ -1,7 +1,6 @@
 package com.crystalgraphics.platform.gl.tracked.gl;
 
 import com.crystalgraphics.platform.gl.CgGL;
-import com.crystalgraphics.platform.gl.tracked.memory.CgTrackedBuffer;
 import com.crystalgraphics.platform.gl.tracked.tracker.CgTracker;
 
 import java.nio.ByteBuffer;

@@ -1,4 +1,4 @@
-package com.crystalgraphics.platform.gl.tracked.memory;
+package com.crystalgraphics.platform.rhi.memory;
 
 import com.crystalgraphics.platform.rhi.resource.CgGpuBuffer;
 
@@ -16,7 +16,10 @@ public final class CgAllocation {
     final long size;
     final boolean dedicated;
     public long lastUse = -1;
-    /** The last dispatch that bound it, by its tracker's count, and the queue that dispatch ran on (0 for none). */
+    /**
+     * The tracked backend's hazard marks: the last dispatch that bound it, by its tracker's count, and the queue that
+     * dispatch ran on (0 for none). They go with that backend.
+     */
     public long dispatchedAt;
     public int dispatchedOn;
 

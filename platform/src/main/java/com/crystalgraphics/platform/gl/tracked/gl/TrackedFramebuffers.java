@@ -8,7 +8,7 @@ import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
 import com.crystalgraphics.platform.rhi.resource.CgTextureRegion;
 import com.crystalgraphics.platform.rhi.resource.CgTextureView;
 import com.crystalgraphics.platform.gl.CgGL;
-import com.crystalgraphics.platform.gl.tracked.memory.CgAllocation;
+import com.crystalgraphics.platform.rhi.memory.CgAllocation;
 import com.crystalgraphics.platform.gl.tracked.tracker.CgTarget;
 import com.crystalgraphics.platform.gl.tracked.tracker.CgTracker;
 

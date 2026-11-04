@@ -1,20 +1,27 @@
-package com.crystalgraphics.platform.gl.tracked.memory;
+package com.crystalgraphics.platform.rhi.memory;
 
 import java.util.ArrayDeque;
 
 /**
- * Memory for one frame's uploads, a draw's or a dispatch's uniforms: bump-allocated from host-visible pages, each page
- * taken again once the last frame that wrote it has retired. An upload allocates nothing and looks nothing up.
+ * Memory for one frame's uploads, a draw's or a dispatch's constants: bump-allocated from persistently mapped pages,
+ * each page taken again once the last frame that wrote it has retired. Once warm, an upload allocates nothing and
+ * looks nothing up; the bytes are written once, straight into the memory the GPU reads.
  *
  * <pre>{@code
- * CgFrameArena arena = new CgFrameArena(host, alignment);
- * long at = arena.allocate(size, device.frameIndex(), device.retiredFrame());
- * arena.page().put(at, bytes);                     // the range is page() at at, until the next allocate
+ * CgFrameArena arena = new CgFrameArena(new CgSlabAllocator(rhi, true, false, 1 << 22, 256), 256);
+ * long at = arena.allocate(64, rhi.frameIndex(), rhi.retiredFrame());
+ * CgAllocation page = arena.page();               // valid until the next allocate
+ * ByteBuffer mapped = page.buffer().mapped();
+ * int base = (int) (page.offset() + at);
+ * mapped.putFloat(base, time).putInt(base + 4, frame);   // in place: no staging copy
+ * bindings.buffer(0, CgBindingLayout.Type.UNIFORM_BUFFER, page.buffer(), page.offset() + at, 64);
  * }</pre>
+ *
+ * <p>Bytes already in a buffer of their own go in with {@code page.put(at, bytes)}.</p>
  *
  * <ul>
  *   <li>At most {@link #PAGE} bytes a request: a larger one belongs in an allocation of its own.</li>
- *   <li>Render thread only, like the tracker that owns it.</li>
+ *   <li>One thread: the one recording the frame.</li>
  * </ul>
  */
 public final class CgFrameArena {

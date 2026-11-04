@@ -1,4 +1,4 @@
-package com.crystalgraphics.vulkan.resource;
+package com.crystalgraphics.vulkan.memory;
 
 import com.crystalgraphics.vulkan.CgVulkanDevice;
 
@@ -6,6 +6,7 @@ import java.nio.ByteBuffer;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
+import com.crystalgraphics.vulkan.resource.VulkanBuffer;
 
 /**
  * Host-visible memory an upload or a readback passes through: chunks bump-allocated for the frame, handed back when

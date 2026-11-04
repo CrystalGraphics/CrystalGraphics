@@ -11,7 +11,7 @@ import com.crystalgraphics.platform.rhi.pipeline.CgGraphicsPipelineDesc;
 import com.crystalgraphics.platform.rhi.shader.CgGlslCompiler;
 import com.crystalgraphics.platform.rhi.shader.CgShaderModule;
 import com.crystalgraphics.platform.gl.CgGL;
-import com.crystalgraphics.platform.gl.tracked.memory.CgAllocation;
+import com.crystalgraphics.platform.rhi.memory.CgAllocation;
 import com.crystalgraphics.platform.gl.tracked.tracker.CgDrawState;
 import com.crystalgraphics.platform.gl.tracked.tracker.CgTrackedProgram;
 import com.crystalgraphics.platform.gl.tracked.tracker.CgTracker;

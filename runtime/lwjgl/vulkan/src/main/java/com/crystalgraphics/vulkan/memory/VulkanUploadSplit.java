@@ -1,4 +1,4 @@
-package com.crystalgraphics.vulkan.resource;
+package com.crystalgraphics.vulkan.memory;
 
 import com.crystalgraphics.platform.rhi.format.CgFormat;
 import com.crystalgraphics.platform.rhi.resource.CgTextureRegion;

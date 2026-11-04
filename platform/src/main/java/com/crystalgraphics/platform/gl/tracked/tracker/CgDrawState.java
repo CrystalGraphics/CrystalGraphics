@@ -6,7 +6,7 @@ import com.crystalgraphics.platform.rhi.binding.CgBindings;
 import com.crystalgraphics.platform.rhi.pipeline.CgGraphicsPipelineDesc;
 import com.crystalgraphics.platform.rhi.resource.CgGpuSampler;
 import com.crystalgraphics.platform.rhi.resource.CgTextureView;
-import com.crystalgraphics.platform.gl.tracked.memory.CgAllocation;
+import com.crystalgraphics.platform.rhi.memory.CgAllocation;
 
 import java.util.Arrays;
 import java.util.List;

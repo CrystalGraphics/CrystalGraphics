@@ -1,4 +1,4 @@
-package com.crystalgraphics.platform.gl.tracked.memory;
+package com.crystalgraphics.platform.rhi.memory;
 
 import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.rhi.resource.CgGpuBuffer;
@@ -9,8 +9,17 @@ import java.util.Map;
 import java.util.TreeMap;
 
 /**
- * First-fit sub-allocation from large device buffers of one memory kind. A request above half a slab gets a
- * buffer of its own. Freeing returns the range at once; callers defer it to the frame that last used it.
+ * First-fit sub-allocation from large device buffers of one memory kind, for anything that holds ranges across
+ * frames; per-frame uploads take a {@link CgFrameArena} over one. A request above half a slab gets a buffer of its own.
+ *
+ * <pre>{@code
+ * CgSlabAllocator device = new CgSlabAllocator(rhi, false, false, 64 << 20, 256);   // device-local
+ * CgAllocation mesh = device.allocate(bytes, "mesh");
+ * ...
+ * rhi.whenRetired(mesh.lastUse(), () -> device.free(mesh));
+ * }</pre>
+ *
+ * <p>Freeing returns the range at once: a caller defers it to the frame that last used it.</p>
  */
 public final class CgSlabAllocator {
 

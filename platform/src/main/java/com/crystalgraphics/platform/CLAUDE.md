@@ -25,10 +25,10 @@ and cursor seams are here too — see [UI-facing services](#ui-facing-services).
 | `gl/CENSUS.md` | Generated | Every `CgGLBackend` method and who reaches it; `python platform/tools/gl_census.py` |
 | `gl/tracked/CgTrackedGLBackend`, `CgTrackedGLContext`, `CgTrackedStateProvider` | Classes | `CgGLBackend` over a `CgRHI` — [the tracked backend](#the-tracked-backend-and-the-device-d3) — its capabilities, and the scopes' state provider on it |
 | `gl/tracked/tracker/` | Classes | `CgTracker`: passes, pipelines and bindings from GL's calls, with the draw state and target it compares |
-| `gl/tracked/gl/` | Classes | The GL objects the backend emulates — buffers, textures, programs, framebuffers, VAOs, render state, errors. Public for the backend only |
-| `gl/tracked/memory/` | Classes | Buffer storage: slab allocation and the renamed allocations behind one GL buffer |
+| `gl/tracked/gl/` | Classes | The GL objects the backend emulates — buffers (`CgTrackedBuffer`, renamed rather than waited on), textures, programs, framebuffers, VAOs, render state, errors. Public for the backend only |
 | `rhi/CgRHI` | Interface | The device API (Unreal's `FDynamicRHI`): objects, the frame's commands, frames in flight; `CgRHI.get()` the one installed, `CgRHI.Globals` what it can do. **Nothing else goes at `rhi/`'s root** |
 | `rhi/format/`, `resource/`, `pipeline/`, `binding/`, `command/`, `shader/`, `sync/` | Interfaces, records | Its types by subsystem: formats; buffers, textures, samplers, views and `CgRHIResource`; graphics and compute pipelines; binding layouts and per-draw bindings; the command list, passes and accesses; modules and `CgGlslCompiler`; timer queries |
+| `rhi/memory/` | Classes | Allocators over any `CgRHI`'s buffers: `CgSlabAllocator` (ranges kept across frames), `CgFrameArena` (a frame's uploads, written in place in mapped pages), `CgAllocation` |
 | `rhi/nulldrv/CgNullRHI` | Class | The null RHI (Unreal's `NullDrv`): logs every command and throws on misuse — for tests and headless runs |
 | `service/CgResourceService` | Interface | `openStream(domain, path)` — `null` on not-found; `openStack(domain, path)`, every pack's copy lowest first (what `sounds.json` merges from); `namespaces()` |
 | `service/CgRenderingService` | Interface | Viewport size and the legacy single-call frame |

@@ -1,9 +1,10 @@
-package com.crystalgraphics.platform.gl.tracked.memory;
+package com.crystalgraphics.platform.gl.tracked.gl;
 
 import com.crystalgraphics.platform.gl.tracked.tracker.CgTracker;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import com.crystalgraphics.platform.rhi.memory.CgAllocation;
 
 /**
  * A GL buffer object's storage on the tracked backend, with GL's ordering: a draw sees the contents as they
@@ -35,7 +36,7 @@ public final class CgTrackedBuffer {
     /** The storage a draw binds now; {@code null} before any {@link #data}. */
     public CgAllocation allocation() { return current; }
 
-    public long size() { return current == null ? 0 : current.size; }
+    public long size() { return current == null ? 0 : current.size(); }
 
     /**
      * {@code glBufferData}: new storage, the old freed once no frame reads it.
@@ -167,7 +168,7 @@ public final class CgTrackedBuffer {
 
     private CgAllocation rename(boolean preserve) {
         CgAllocation old = current;
-        CgAllocation fresh = old.owner.allocate(old.size, label);
+        CgAllocation fresh = old.owner.allocate(old.size(), label);
         if (preserve) fresh.memory().put(old.memory());
         tracker.stats.renames++;
         replace(fresh);

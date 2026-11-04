@@ -14,8 +14,8 @@ import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
 import com.crystalgraphics.platform.rhi.resource.CgTextureRegion;
 import com.crystalgraphics.platform.rhi.resource.CgTextureView;
 import com.crystalgraphics.platform.rhi.shader.CgShaderModule;
-import com.crystalgraphics.platform.gl.tracked.memory.CgAllocation;
-import com.crystalgraphics.platform.gl.tracked.memory.CgTrackedBuffer;
+import com.crystalgraphics.platform.rhi.memory.CgAllocation;
+import com.crystalgraphics.platform.gl.tracked.gl.CgTrackedBuffer;
 import org.junit.Test;
 
 import java.nio.ByteBuffer;

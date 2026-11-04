@@ -21,7 +21,7 @@ import com.crystalgraphics.platform.gl.tracked.gl.TrackedPrograms;
 import com.crystalgraphics.platform.gl.tracked.gl.TrackedRenderState;
 import com.crystalgraphics.platform.gl.tracked.gl.TrackedTextures;
 import com.crystalgraphics.platform.gl.tracked.gl.TrackedVertexArrays;
-import com.crystalgraphics.platform.gl.tracked.memory.CgAllocation;
+import com.crystalgraphics.platform.rhi.memory.CgAllocation;
 import com.crystalgraphics.platform.gl.tracked.tracker.CgDrawState;
 import com.crystalgraphics.platform.gl.tracked.tracker.CgTarget;
 import com.crystalgraphics.platform.gl.tracked.tracker.CgTrackedProgram;
