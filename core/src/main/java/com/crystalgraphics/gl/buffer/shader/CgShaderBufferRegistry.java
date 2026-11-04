@@ -11,12 +11,11 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Global registry of user-created SSBO/TBO and UBO shader buffers.
+ * Global registry of user-created SSBO and UBO shader buffers.
  *
  * <p>Provides lifecycle management (via {@link #deleteAll()}) for user-owned buffers.
  * All buffers obtained through this registry use binding points derived from a 0-based
- * {@code userIndex}: the actual binding point is {@code userIndex + CgBindingPoints.USER_START_SSBO}
- * (SSBO path) or {@code userIndex + CgBindingPoints.USER_START_TBO} (TBO path).</p>
+ * {@code userIndex}: the actual binding point is {@code userIndex + CgBindingPoints.USER_START_SSBO}.</p>
  *
  * <p><strong>Engine-internal buffers bypass this registry</strong>: the object records and the frame block
  * occupy engine-reserved binding points, resolved at runtime, and the executor binds them per pass.</p>
@@ -45,7 +44,7 @@ public final class CgShaderBufferRegistry {
 
     private static final CgShaderBufferRegistry INSTANCE = new CgShaderBufferRegistry();
 
-    /** SSBO/TBO cache — keyed by (name, format, bindingPoint). */
+    /** SSBO cache — keyed by (name, format, bindingPoint). */
     private final Map<ShaderBufferKey, CgShaderBuffer> shaderBufferCache = new HashMap<>();
 
     /** UBO cache — keyed by (name, format, bindingPoint). Separate cache, same key type. */
@@ -62,9 +61,8 @@ public final class CgShaderBufferRegistry {
     }
 
     /**
-     * Returns (or lazily creates) a format-aware SSBO/TBO for the given name, format, and
-     * 0-based user index. The actual binding point is {@code userIndex + CgBindingPoints.USER_START_SSBO}
-     * (SSBO path) or {@code userIndex + CgBindingPoints.USER_START_TBO} (TBO path).
+     * Returns (or lazily creates) a format-aware SSBO for the given name, format, and
+     * 0-based user index. The actual binding point is {@code userIndex + CgBindingPoints.USER_START_SSBO}.
      *
      * @param name      debug/sampler name for the buffer
      * @param format    typed format descriptor for the buffer records
@@ -88,10 +86,7 @@ public final class CgShaderBufferRegistry {
      * }</pre>
      */
     public CgShaderBuffer getOrCreate(String name, CgBufferFormat format, int userIndex, CgBufferLifetime lifetime) {
-        CgCapabilities.ShaderBufferPath path = CgCapabilities.detect().shaderBufferPath();
-        int binding = (path == CgCapabilities.ShaderBufferPath.TBO)
-                ? CgBindingPoints.USER_START_TBO + userIndex
-                : CgBindingPoints.USER_START_SSBO + userIndex;
+        int binding = CgBindingPoints.USER_START_SSBO + userIndex;
         ShaderBufferKey key = new ShaderBufferKey(name, format, binding);
         CgShaderBuffer existing = shaderBufferCache.get(key);
         if (existing != null) return sameLifetime(existing, lifetime);
@@ -101,11 +96,11 @@ public final class CgShaderBufferRegistry {
     }
 
     /**
-     * Returns (or lazily creates) a format-aware SSBO/TBO at an <strong>engine-reserved</strong>
+     * Returns (or lazily creates) a format-aware SSBO at an <strong>engine-reserved</strong>
      * binding — a {@link CgBindingPoints.Binding} (such as {@code CgBindingPoints.QUAD_RENDERER})
      * rather than a {@code USER_START_*}-relative user index. Unlike
      * {@link #getOrCreate(String, CgBufferFormat, int)}, no offset is added — the binding
-     * resolves itself to an absolute SSBO binding point or TBO texture unit (see
+     * resolves itself to an absolute SSBO binding point (see
      * {@link CgBindingPoints.Binding#resolve()}), used verbatim, matching
      * {@link CgShaderBuffer#createInternal(String, CgBufferFormat, int)}'s own contract.
      *
@@ -244,7 +239,7 @@ public final class CgShaderBufferRegistry {
     // ── Composite key types ───────────────────────────────────────────────────
 
     /**
-     * Value-equal cache key for the SSBO/TBO cache. Covers both SSBO and TBO paths
+     * Value-equal cache key for the SSBO cache. Covers every SSBO
      * since they share the same identity contract.
      *
      * @param name         Buffer debug/sampler name. Part of the identity contract.

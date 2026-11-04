@@ -85,20 +85,8 @@ public class CgMaterialBuffersTest {
     }
 
     @Test
-    public void texturePathReadsTexels() throws Exception {
-        path(CgCapabilities.ShaderBufferPath.TBO);
-        CgMaterialShaderCompiler.CompiledSource cs = compile(SPARKS);
-        for (String stage : new String[]{cs.vertexSource(), cs.fragmentSource()}) {
-            assertTrue(stage.contains("uniform usamplerBuffer _cg_tbo_SPARKS;"));
-            assertTrue("a field a texel", stage.contains("v.velocitySeed = uintBitsToFloat(texelFetch(_cg_tbo_SPARKS, t + 1));"));
-            assertTrue(stage.contains("return uintBitsToFloat(texelFetch(_cg_tbo_HEAT, t).r);"));
-            assertFalse(stage.contains("CgMaterialBuffer_"));
-        }
-    }
-
-    @Test
     public void aVertexPlacedFromABufferKeepsItsBodyInTheDepthPass() throws Exception {
-        path(CgCapabilities.ShaderBufferPath.TBO);
+        path(CgCapabilities.ShaderBufferPath.SSBO_GL43);
         CgParsedShader parsed = CgShaderParser.parse(SPARKS, "test");
         CgMaterialShaderCompiler.CompiledSource depth = CgMaterialShaderCompiler.compileDepthAutoGen(parsed,
                 parsed.passes().get(0), Collections.emptyList(), null, CgMaterialShaderCompiler.CompileConfig.DEFAULT);

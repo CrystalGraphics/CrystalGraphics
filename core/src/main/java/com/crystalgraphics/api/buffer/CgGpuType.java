@@ -77,41 +77,33 @@ public enum CgGpuType {
      */
     BOOL(0, 4, 4, 4, "bool"),
 
-    /** {@code ivec2} — 2-component signed integer vector. 8 bytes, 8-byte aligned.
-     * <p>TBO path: not supported in v1 (requires {@code isamplerBuffer} + {@code GL_RGBA32I}).</p> */
+    /** {@code ivec2} — 2-component signed integer vector. 8 bytes, 8-byte aligned. */
     IVEC2(0, 8, 8, 8, "ivec2"),
 
-    /** {@code ivec3} — 3-component signed integer vector. 12 bytes data, 16-byte aligned slot.
-     * <p>TBO path: not supported in v1.</p> */
+    /** {@code ivec3} — 3-component signed integer vector. 12 bytes data, 16-byte aligned slot. */
     IVEC3(0, 12, 16, 16, "ivec3"),
 
-    /** {@code ivec4} — 4-component signed integer vector. 16 bytes, 16-byte aligned.
-     * <p>TBO path: not supported in v1.</p> */
+    /** {@code ivec4} — 4-component signed integer vector. 16 bytes, 16-byte aligned. */
     IVEC4(0, 16, 16, 16, "ivec4"),
 
     /** {@code uvec2} — 2-component unsigned integer vector. 8 bytes, 8-byte aligned.
      * <p>Primary type for bindless texture handles ({@code ARB_bindless_texture}):
-     * a {@code uvec2} stores one 64-bit GL texture handle as two uint32 components.</p>
-     * <p>TBO path: not supported in v1 (requires {@code usamplerBuffer} + {@code GL_RGBA32UI}).</p> */
+     * a {@code uvec2} stores one 64-bit GL texture handle as two uint32 components.</p> */
     UVEC2(0, 8, 8, 8, "uvec2"),
 
-    /** {@code uvec3} — 3-component unsigned integer vector. 12 bytes data, 16-byte aligned slot.
-     * <p>TBO path: not supported in v1.</p> */
+    /** {@code uvec3} — 3-component unsigned integer vector. 12 bytes data, 16-byte aligned slot. */
     UVEC3(0, 12, 16, 16, "uvec3"),
 
-    /** {@code uvec4} — 4-component unsigned integer vector. 16 bytes, 16-byte aligned.
-     * <p>TBO path: not supported in v1.</p> */
+    /** {@code uvec4} — 4-component unsigned integer vector. 16 bytes, 16-byte aligned. */
     UVEC4(0, 16, 16, 16, "uvec4"),
 
     /** {@code uint64_t} — 64-bit unsigned integer. 8 bytes, 8-byte aligned.
      * <p>Requires {@code ARB_gpu_shader_int64} or {@code ARB_bindless_texture}.
-     * Stores a full 64-bit GL texture handle in a single field (vs two uint32 with UVEC2).</p>
-     * <p>TBO path: not supported in v1 (no standard 64-bit TBO internal format).</p> */
+     * Stores a full 64-bit GL texture handle in a single field (vs two uint32 with UVEC2).</p> */
     UINT64(0, 8, 8, 8, "uint64_t"),
 
     /** {@code int64_t} — 64-bit signed integer. 8 bytes, 8-byte aligned.
-     * <p>Requires {@code ARB_gpu_shader_int64}.</p>
-     * <p>TBO path: not supported in v1.</p> */
+     * <p>Requires {@code ARB_gpu_shader_int64}.</p> */
     INT64(0, 8, 8, 8, "int64_t");
 
     private final int floatComponents;
@@ -183,23 +175,4 @@ public enum CgGpuType {
         return alignedBytes / 4;
     }
 
-    /**
-     * Returns {@code true} if this type can be used in a TBO-path attached buffer.
-     *
-     * <p>The TBO float path uses {@code samplerBuffer} + {@code GL_RGBA32F}. Only float-family
-     * types map naturally to this format. Integer and 64-bit types require
-     * {@code isamplerBuffer}/{@code usamplerBuffer} with {@code GL_RGBA32I}/{@code GL_RGBA32UI},
-     * which the current {@code CgTextureBuffer} does not support.</p>
-     *
-     * <p>TBO-compatible: FLOAT, VEC2, VEC3, VEC4, MAT3, MAT4.<br>
-     * Not TBO-compatible: INT, UINT, BOOL, IVEC2-4, UVEC2-4, INT64, UINT64.</p>
-     */
-    public boolean isTboCompatible() {
-        switch (this) {
-            case FLOAT: case VEC2: case VEC3: case VEC4: case MAT3: case MAT4:
-                return true;
-            default:
-                return false;
-        }
-    }
 }

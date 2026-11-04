@@ -5,7 +5,6 @@ import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.platform.device.command.CgAccess;
-import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.render.CgGpuBudget;
 import com.crystalgraphics.render.draw.CgBindingTable;
@@ -209,13 +208,11 @@ public final class CgRasterPass extends CgPass {
         for (int d = 0; d < chunk.draws(); d++) {
             if (chunk.indirectCount(d) instanceof CgGraphBuffer count) recording.read(this, count, CgAccess.COMPUTE_READ);
             if (chunk.objects(d) instanceof CgGraphBuffer objects) {
-                recording.read(this, objects, CgBindingPoints.PATH == CgCapabilities.ShaderBufferPath.TBO
-                        ? CgAccess.SAMPLED_READ : CgAccess.VERTEX_READ | CgAccess.FRAGMENT_READ);
+                recording.read(this, objects, CgAccess.VERTEX_READ | CgAccess.FRAGMENT_READ);
             }
             for (int k = 0; k < CgDrawChunk.BUFFERS; k++) {
                 if (chunk.buffer(d, k) instanceof CgGraphBuffer read) {
-                    recording.read(this, read, CgBindingPoints.PATH == CgCapabilities.ShaderBufferPath.TBO
-                            ? CgAccess.SAMPLED_READ : CgAccess.VERTEX_READ | CgAccess.FRAGMENT_READ);
+                    recording.read(this, read, CgAccess.VERTEX_READ | CgAccess.FRAGMENT_READ);
                 }
             }
             int id = chunk.binding(d);
@@ -230,9 +227,6 @@ public final class CgRasterPass extends CgPass {
                 if (table.storage(id, s) instanceof CgGraphBuffer buffer) {
                     recording.read(this, buffer, CgAccess.VERTEX_READ | CgAccess.FRAGMENT_READ);
                 }
-            }
-            for (int s = 0; s < table.texelBuffers(id); s++) {
-                if (table.texelBuffer(id, s) instanceof CgGraphBuffer buffer) recording.read(this, buffer, CgAccess.SAMPLED_READ);
             }
         }
         return this;

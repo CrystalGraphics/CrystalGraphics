@@ -10,7 +10,7 @@ outside one a `flush()` draws them at once through `CgImmediate`, the frame grap
 
 | File | Role |
 |------|------|
-| `CgQuadRenderer.java` | Instanced quads. Per-instance data (`origin`/`right`/`up`/UVs/colour/atlasLayer/node/clip) lives in a class-wide SSBO/TBO at `CgBindingPoints.QUAD_RENDERER`, not in vertex attributes. Fluent `quad()…submit()` queues; `flush()` draws. Backs `CgTextRenderer` and all of CrystalGUI's box drawing. |
+| `CgQuadRenderer.java` | Instanced quads. Per-instance data (`origin`/`right`/`up`/UVs/colour/atlasLayer/node/clip) lives in a class-wide SSBO at `CgBindingPoints.QUAD_RENDERER`, not in vertex attributes. Fluent `quad()…submit()` queues; `flush()` draws. Backs `CgTextRenderer` and all of CrystalGUI's box drawing. |
 | `CgVectorRenderer.java` | Its twin for Bézier strokes, filled triangles and cells, over the curve record (`#pragma cg_use curve`). |
 | `CgInstanceRun.java` | A renderer's queued records as recorded draws: one draw per run under one `useMaterial`, under the material's pipeline and a snapshot of it; textures bound by hand laid over the material's samplers. |
 | `CgAbstractRenderer.java` | The shared `begin()`/`end()`/`isDirty()`/`delete()` lifecycle of the two renderers. |

@@ -24,7 +24,7 @@ public class CgMaterialShaderCompilerDepthTest {
         CgCapabilities stub = ctor.newInstance();
         Field pathField = CgCapabilities.class.getDeclaredField("shaderBufferPath");
         pathField.setAccessible(true);
-        pathField.set(stub, CgCapabilities.ShaderBufferPath.TBO);
+        pathField.set(stub, CgCapabilities.ShaderBufferPath.SSBO_GL43);
         Field cacheField = CgCapabilities.class.getDeclaredField("cachedCaps");
         cacheField.setAccessible(true);
         cacheField.set(null, stub);

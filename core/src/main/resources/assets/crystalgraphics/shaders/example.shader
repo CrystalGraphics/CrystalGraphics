@@ -38,7 +38,7 @@
 //
 // This is OPT-IN, unlike CgFrameBlock/CgObjectDataBuffer which cg_env.glsl
 // declares unconditionally: only a minority of shaders draw instanced quads, and
-// on the TBO fallback path the declaration costs a texture unit.
+// the declaration costs a storage binding.
 //
 // Using the symbols WITHOUT declaring the pragma is a hard parse error naming the
 // missing line. That check exists because the old failure mode was badly
@@ -162,7 +162,7 @@ Pass {
     // -- Vertex stage ----------------------------------------------------------
     // Engine-injected via cg_env.glsl (automatic #include):
     //   cg_Position, cg_Normal, cg_TexCoord0  -- vertex attribute aliases
-    //   CG_OBJECT_TO_WORLD, CG_NORMAL_MATRIX  -- per-instance matrices (SSBO/TBO)
+    //   CG_OBJECT_TO_WORLD, CG_NORMAL_MATRIX  -- per-instance matrices (SSBO)
     //   CG_MATRIX_MVP                         -- proj x view x model (macro)
     //   CG_FRAME_VIEW, CG_FRAME_PROJ          -- frame uniforms (UBO)
     //   cg_Time, cg_Resolution                -- frame uniforms

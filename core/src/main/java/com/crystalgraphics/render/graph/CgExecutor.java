@@ -17,7 +17,6 @@ import com.crystalgraphics.compute.source.CgImageAccess;
 import com.crystalgraphics.compute.source.CgImageDecl;
 import com.crystalgraphics.compute.source.CgImageDimension;
 import com.crystalgraphics.gl.buffer.CgBufferReadback;
-import com.crystalgraphics.gl.buffer.CgBufferTextures;
 import com.crystalgraphics.gl.buffer.CgReadback;
 import com.crystalgraphics.gl.texture.CgSamplers;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
@@ -1582,12 +1581,7 @@ public final class CgExecutor {
     /** Binds a GPU buffer of records where an engine buffer's macros read the frame's own. */
     private static void bindRecords(CgBufferHandle records, CgBindingPoints.Binding at) {
         int id = records instanceof CgGraphBuffer graph ? bufferStorage(graph, false) : records.bufferId();
-        if (CgBindingPoints.PATH == CgCapabilities.ShaderBufferPath.TBO) {
-            CgBufferTextures.bind(at.tbo(), CgGL.GL_RGBA32F, id);
-            CgTexture.active(0);
-        } else {
-            CgGL.glBindBufferBase(CgGL.GL_SHADER_STORAGE_BUFFER, at.ssbo(), id);
-        }
+        CgGL.glBindBufferBase(CgGL.GL_SHADER_STORAGE_BUFFER, at.ssbo(), id);
     }
 
     /** Binds the engine buffer made at {@code at} again, after draws that read their own there. */

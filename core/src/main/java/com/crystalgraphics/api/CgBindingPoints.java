@@ -4,14 +4,13 @@ import com.crystalgraphics.gl.buffer.shader.CgShaderBufferRegistry;
 import com.crystalgraphics.platform.gl.CgCapabilities;
 
 /**
- * Engine-reserved binding slot constants for SSBO, TBO, and UBO resources.
+ * Engine-reserved binding slot constants for SSBO and UBO resources.
  *
- * <h3>Two separate namespaces</h3>
- * <p>SSBO binding points and TBO texture units are <em>distinct</em> namespaces in OpenGL.
- * An SSBO at binding slot N and a TBO at texture unit N are completely independent resources.
- * Reserved SSBO/TBO pairs (see {@link Binding}) make the distinction explicit: {@code ssbo} is
- * an SSBO binding slot, {@code tbo} is a GL texture unit. UBO-only reservations (no TBO fallback
- * concept applies to UBOs) stay plain {@code int} fields.</p>
+ * <h3>The TBO half of a {@link Binding}</h3>
+ * <p>A reserved {@link Binding} is a pair: {@code ssbo}, a storage binding point, and {@code tbo}, the texture unit the
+ * buffer-texture path read it from. That path is unhooked ({@code docs/TBO_PATH.md}): {@code PATH} is never
+ * {@code TBO}, so {@code tbo} is -1 and {@link Binding#resolve()} answers {@code ssbo}. The pair stays as the seam to
+ * reconnect it. UBO-only reservations stay plain {@code int} fields.</p>
  *
  * <h3>Top-vs-bottom allocation strategy</h3>
  * <p>Engine-reserved slots are allocated from the <em>top</em> of the available range
@@ -76,9 +75,8 @@ public final class CgBindingPoints {
      *
      * <p>Unlike {@link #QUAD_RENDERER}, this buffer is read from the <em>fragment</em> stage as well
      * as the vertex stage: a curve's stroke is an analytic SDF evaluated per pixel, so the fragment
-     * needs the control points themselves. That works on both paths without any compiler change —
-     * {@code CgMaterialShaderCompiler.appendAttachedBuffers} runs for the fragment source too — but
-     * it does mean the TBO fallback consumes this texture unit in both stages rather than one.</p>
+     * needs the control points themselves. That needs no compiler change —
+     * {@code CgMaterialShaderCompiler.appendAttachedBuffers} runs for the fragment source too.</p>
      */
     public static Binding CURVE_RENDERER;
 
@@ -132,7 +130,7 @@ public final class CgBindingPoints {
 
     /**
      * Reserved binding pair for {@code CgBonePalettes}, every skinned draw's bone matrices (one storage point below
-     * {@link #PARTICLE_BEAMS}'s). Read from the vertex stage of a skinned program. On the TBO path it shares
+     * {@link #PARTICLE_BEAMS}'s). Read from the vertex stage of a skinned program. On the TBO path (unhooked) it shared
      * {@link #PARTICLE_BEAMS}' texture unit: only a strip's program reads that, a strip is never skinned, and both are
      * bound per draw.
      */
@@ -142,16 +140,10 @@ public final class CgBindingPoints {
     public static final int MATERIAL_BUFFER_COUNT = 4;
 
     /**
-     * The first of {@link #MATERIAL_BUFFER_COUNT} storage points a material's buffers bind at on the SSBO path: buffer
-     * {@code i} at this plus {@code i}, below the engine buffers' points. On the TBO path buffer {@code i} reads from
-     * the texture unit after the material's samplers and its earlier buffers.
+     * The first of {@link #MATERIAL_BUFFER_COUNT} storage points a material's buffers bind at: buffer {@code i} at this
+     * plus {@code i}, below the engine buffers' points.
      */
     public static int MATERIAL_BUFFERS_SSBO = -1;
-
-    /** The texture unit a material's buffer {@code i} reads from on the TBO path, after its {@code samplers}. */
-    public static int materialBufferUnit(int samplers, int i) {
-        return samplers + i;
-    }
 
     /**
      * UBO binding slot for the engine's per-frame uniform block ({@code CgFrameBlock}).
@@ -240,12 +232,6 @@ public final class CgBindingPoints {
     public static final int USER_START_SSBO = 0;
 
     /**
-     * First GL texture unit available to user-defined TBO buffers.
-     * Starts at unit 5 to stay above the texture units Minecraft typically occupies (0–4).
-     */
-    public static final int USER_START_TBO = 5;
-
-    /**
      * First UBO binding slot available to user-defined buffers.
      * User UBOs start at slot 0 and grow upward.
      * The top three slots ({@code maxUniformBufferBindings - 1} through {@code - 3}) are
@@ -270,7 +256,7 @@ public final class CgBindingPoints {
         int maxSsboBindings = caps.getMaxSsboBindings();
         int maxUboBindings  = caps.getMaxUniformBufferBindings();
 
-        // ── SSBO/TBO Path bindings ───────────────────────────────────────────────────────────────
+        // ── SSBO Path bindings ───────────────────────────────────────────────────────────────
         // A texture unit each only on the TBO path: a 12-unit host (Blaze3D) would otherwise leave materials four.
         // The depth and scene-colour units below count down after these, so never cache them across an init().
         boolean tbo = PATH == CgCapabilities.ShaderBufferPath.TBO;

@@ -10,39 +10,32 @@ storage under every shader buffer — plus the global quad index buffer shared b
 This package should never contain VAO logic or vertex format knowledge — that belongs in `gl/vertex`. The
 stream buffers here are format-agnostic byte pipes.
 
-## Two kinds of stream, each a waterfall of tiers
+## Three kinds of stream, all on the frame ring
 
-| | Factory | Tiers, best first | Lives |
-|---|---|---|---|
-| **Vertex stream** | `CgStreamBuffer.create(capacity)` | `PERSISTENT` > `RING` > `ORPHAN` > `SUBDATA` | on a ring tier, one frame: each upload at a new offset in this frame's region |
-| **Shader-buffer storage** (`CgBufferLifetime.RETAINED`, and every TBO) | `CgStreamBuffer.createForShaderBuffer(target, capacity)` | `ORPHAN` > `SUBDATA` | until the next upload, always at offset 0 |
-| **Frame-local SSBO or UBO** (a shader buffer with `CgBufferLifetime.FRAME`) | `CgStreamBuffer.createFrameLocal(target, capacity)` | `PERSISTENT` > `RING`, else as shader-buffer storage | one frame, bound by range (`glBindBufferRange`) at each upload's offset; `CgShaderBuffer.uploadData` re-binds after every upload. Only for data every reading frame uploads first — the quad, curve and object buffers, the material and frame blocks (copied in at a frame's first material bind) and the text UBO. A UBO starts at its block size and doubles on overflow. Not a TBO: `glTexBuffer` reads from 0 |
+| | Factory | Lives |
+|---|---|---|
+| **Vertex stream** | `CgStreamBuffer.create(capacity)` | one frame: each upload at a new offset in this frame's region |
+| **Shader-buffer storage** (`CgBufferLifetime.RETAINED`) | `CgStreamBuffer.createForShaderBuffer(target, capacity)` | until the next upload, always at offset 0: `RetainedStreamBuffer` writes each upload into one shared staging ring and copies it in on the GPU (Unreal's `RHIUpdateBuffer`, Vulkan's staging upload) |
+| **Frame-local SSBO or UBO** (a shader buffer with `CgBufferLifetime.FRAME`) | `CgStreamBuffer.createFrameLocal(target, capacity)` | one frame, bound by range (`glBindBufferRange`) at each upload's offset; `CgShaderBuffer.uploadData` re-binds after every upload. Only for data every reading frame uploads first — the quad, curve and object buffers, the material and frame blocks (copied in at a frame's first material bind) and the text UBO. A UBO starts at its block size and doubles on overflow |
 
-| Tier | Class | Needs | What it costs |
-|---|---|---|---|
-| `PERSISTENT` | `FrameRingStreamBuffer(persistent)` | GL 4.4 / `ARB_buffer_storage` | nothing per upload: the storage is mapped once, coherent |
-| `RING` | `FrameRingStreamBuffer` | GL 3.2 sync + `glMapBufferRange` | one unsynchronised map per upload |
-| `ORPHAN` | `MapAndOrphanStreamBuffer` | `glMapBufferRange` | a driver-side rename per upload |
-| `SUBDATA` | `SubDataStreamBuffer` | nothing | a CPU copy and `glBufferSubData` per upload — the path every driver gets right |
+| Ring tier | Needs | What it costs |
+|---|---|---|
+| `PERSISTENT` | GL 4.4 / `ARB_buffer_storage` | nothing per upload: the storage is mapped once, coherent |
+| `RING` | GL 3.2 sync + `glMapBufferRange` | one unsynchronised map per upload |
 
-**The waterfall is not only a GL-version fallback.** At the 3.3 floor every tier but `PERSISTENT` is always
-available, and the tiers still matter: drivers differ in which of them is fast or correct, which is why Dolphin
-— where these tiers come from — chooses among them. `CgCapabilities` decides both tiers once per context,
-`vertexStreamTier()` and `shaderStreamTier()`, and the factories only read them.
-`-Dcrystalgraphics.stream.tier=persistent|ring|orphan|subdata` forces one; a tier the context cannot do throws
-from `CgCapabilities.detect()`, and a shader buffer takes `subdata` if forced, else `orphan`. The harness's
+`CgCapabilities.vertexStreamTier()` decides it once per context and the factories only read it;
+`-Dcrystalgraphics.stream.tier=persistent|ring` forces one, and a tier the context cannot do throws from
+`CgCapabilities.detect()`. The orphan and subdata tiers went in rhi X2: the floor has the ring. The harness's
 `capability-report` prints the tier chosen.
 
 Which shader buffers go on the ring is a question of lifetime, not type: every frame that reads the buffer
 uploads it first. Instance data meets it by being written just before its draw. A block written once meets it
 when every reader passes a point that copies it into the frame: `CgMaterial.bind` does, for the material's
 properties (uploaded only when their bytes changed, or on its first bind of a frame); the frame block is a
-recorded pass's constants, packed into the frame's binding table; the text renderer re-uploads its block per frame. Orphaning stays for a
-TBO — `glTexBuffer` reads at 0, and the TBO path runs where `glTexBufferRange` is missing (Mac 4.1, older
-Intel) — and for a mod's own registry buffers, whose readers pass no such point. The copy is not made at a
-frame's first host section: on Minecraft's Vulkan host that is the frame end's, before Minecraft's submit,
-where a ring's wait for the frame three back is refused. On a backend that records rather than calls GL, an orphan is a fresh
-sub-allocation — the same meaning, no change here.
+recorded pass's constants, packed into the frame's binding table; the text renderer re-uploads its block per frame.
+Retained storage stays for a mod's own registry buffers, whose readers pass no such point. The copy is not made at
+a frame's first host section: on Minecraft's Vulkan host that is the frame end's, before Minecraft's submit, where a
+ring's wait for the frame three back is refused.
 
 ```
 CgFrameRing (static clock)
@@ -67,12 +60,10 @@ FrameRingStreamBuffer (PERSISTENT and RING)
 │   takes a new buffer and bumps getGeneration(), which the bindings compare alongside the offset
 └── a host that never ends a frame fills one region and renews storage: correct, unpipelined
 
-MapAndOrphanStreamBuffer (ORPHAN — vertex streams below the rings, and shader-buffer storage)
-├── orphans on every map() (GL_MAP_INVALIDATE_BUFFER_BIT), commit() returns 0
-└── uploadSmall(): glBufferSubData for writes ≤ 256 bytes, where the map call's fixed cost dominates
-
-SubDataStreamBuffer (SUBDATA)
-└── CPU staging ByteBuffer + glBufferSubData at offset 0
+RetainedStreamBuffer (shader-buffer storage)
+├── map()/mapFloats()/write() hand out a region of one shared staging ring (GL_COPY_READ_BUFFER)
+├── commit() → glCopyBufferSubData into its own storage at 0, growing it first; returns 0
+└── releaseStaging() at context teardown, through CgStreamBuffer.releaseShared()
 
 CgQuadIndexBuffer (global singleton)
 ├── shared IBO: pattern [0,1,2, 2,3,0, 4,5,6, 6,7,4, …]
@@ -117,11 +108,9 @@ CgQuadIndexBuffer (global singleton)
 | `CgStreamBuffer.java` | Abstract base and the three factories. Fields: `glBuffer`, `target`, `capacityBytes`, `writeOffset`. |
 | `CgFrameRing.java` | The frame clock: one fence per frame, `awaitRetired`. |
 | `FrameRingStreamBuffer.java` | The two ring tiers, persistent and mapped. |
-| `MapAndOrphanStreamBuffer.java` | The orphan tier: per upload, offset 0, small-write path. |
-| `SubDataStreamBuffer.java` | The subdata tier: CPU staging + `glBufferSubData`. |
+| `RetainedStreamBuffer.java` | Shader-buffer storage: staged in the ring, copied in at offset 0. |
 | `CgQuadIndexBuffer.java` | Global shared quad IBO. Pattern `[0,1,2,2,3,0,...]`. Max 16384 quads. Doubling growth. |
-| `CgBufferTextures.java` | One buffer texture per texture unit, pointed at whatever buffer a material or a lowered kernel reads there; 0 reads 16 zero bytes. Freed by `CgEngineLifecycle.shutdown()`. |
-| `CgReadback.java` | A buffer range, a framebuffer region or a 3D texture's box (`slices`, each slice attached in turn to one framebuffer bound for reading) read back without a stall: copied on the GPU into pooled staging, handed to a sink from `poll()` in `tickFrame` once `CgFrameRing` has retired the frame it was issued in (its own fence is queried only where the host has ended no frame: a query of a young fence waits for a threaded driver to drain). On the `PERSISTENT` tier the staging is mapped once, coherent, and read with no GL call; below it each delivery maps it, which on a threaded driver waits for the queue to drain. What `CgRecording.readback` and `CgPixelReadback` use. In-flight reads are dropped at teardown, beside `CgBufferTextures` |
+| `CgReadback.java` | A buffer range, a framebuffer region or a 3D texture's box (`slices`, each slice attached in turn to one framebuffer bound for reading) read back without a stall: copied on the GPU into pooled staging, handed to a sink from `poll()` in `tickFrame` once `CgFrameRing` has retired the frame it was issued in (its own fence is queried only where the host has ended no frame: a query of a young fence waits for a threaded driver to drain). On the `PERSISTENT` tier the staging is mapped once, coherent, and read with no GL call; below it each delivery maps it, which on a threaded driver waits for the queue to drain. What `CgRecording.readback` and `CgPixelReadback` use. In-flight reads are dropped at teardown |
 | `CgBufferReadback.java` | A buffer's words read now, a stall: for a count a draw needs this frame (G33) and the CPU tier's copies |
 
 ---

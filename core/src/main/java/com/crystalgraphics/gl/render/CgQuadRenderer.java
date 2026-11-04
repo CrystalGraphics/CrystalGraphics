@@ -24,7 +24,7 @@ import javax.annotation.Nullable;
 
 /**
  * Instanced quad renderer whose per-instance data lives in a single, class-wide
- * {@link CgShaderBuffer} (SSBO or TBO, chosen by the existing capability waterfall)
+ * {@link CgShaderBuffer} (an SSBO)
  * rather than GL vertex attributes — so per-instance data can grow arbitrarily
  * without ever hitting the ~16 GL vertex-attribute-slot ceiling.
  *
@@ -124,11 +124,11 @@ public final class CgQuadRenderer extends CgAbstractRenderer {
     private static final int INITIAL_CAPACITY_INSTANCES = 64;
 
     /**
-     * Shared static shader buffer — one SSBO/TBO backs every {@code CgQuadRenderer} instance.
+     * Shared static shader buffer — one SSBO backs every {@code CgQuadRenderer} instance.
      * Bound at an <strong>engine-reserved</strong> {@link CgBindingPoints.Binding}
      * ({@link CgBindingPoints#QUAD_RENDERER}), not a {@code USER_START_*}-relative user index —
      * a plain user index (e.g. {@code 0}) risks a real GL binding-point collision if some
-     * unrelated user-attached SSBO/TBO happens to pick the same index (the registry's cache
+     * unrelated user-attached SSBO happens to pick the same index (the registry's cache
      * dedups by name+format+binding, but two buffers with different names can still be assigned
      * the same numeric GL binding point, and only one can be bound there at a time).
      *

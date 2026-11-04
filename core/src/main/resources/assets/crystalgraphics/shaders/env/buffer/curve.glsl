@@ -12,7 +12,7 @@
 #pragma once
 
 // -- CgVectorRenderer convenience macros --------------------------------------
-// CgVectorRenderer (gl/render/CgVectorRenderer.java) is an SSBO/TBO-backed instanced renderer for
+// CgVectorRenderer (gl/render/CgVectorRenderer.java) is an SSBO-backed instanced renderer for
 // small 2D vector primitives -- not "curves" specifically, though that is still most of what draws
 // through it today. The buffer's schema is generic on purpose: vec3 p0/p1/p2 (a handful of points,
 // pose baked in CPU-side), vec4 color0/color1, vec2 widths, float feather, float flags. Same

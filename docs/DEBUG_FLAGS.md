@@ -259,7 +259,7 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 
 | Variable | Takes | Default | |
 |---|---|---|---|
-| `crystalgraphics.shaderBuffer.tier` | text | empty | SSBO_GL43, SSBO_ARB or TBO: engine buffers read that way (TBO: buffer textures, GLSL 3.30, as a 3.3 context); empty for the best. Taken at each context's capability probe. |
+| `crystalgraphics.shaderBuffer.tier` | text | empty | SSBO_GL43 or SSBO_ARB: engine buffers read that way; TBO is detected but unhooked (docs/TBO_PATH.md). Empty for the best. Taken at each context's capability probe. |
 
 ## `crystalgraphics.state`
 
@@ -274,7 +274,7 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 
 | Variable | Takes | Default | |
 |---|---|---|---|
-| `crystalgraphics.stream.tier` | text | empty | persistent, ring, orphan or subdata: how streamed vertex buffers upload, refused where the context lacks it; empty for the best. Taken at each context's capability probe. |
+| `crystalgraphics.stream.tier` | text | empty | persistent or ring: how the frame ring uploads, refused where the context lacks it; empty for the best. Taken at each context's capability probe. |
 
 ## `crystalgraphics.text`
 

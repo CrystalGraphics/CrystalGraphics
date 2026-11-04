@@ -632,10 +632,10 @@ CgMesh plain = CgMesh.build(CgVertexFormat.SPATIAL, m ->
 
 ### Shader Buffers
 
-Attach user-owned SSBO/TBO or UBO blocks to a material. The engine injects GLSL declarations automatically on the next compile.
+Attach user-owned SSBO or UBO blocks to a material. The engine injects GLSL declarations automatically on the next compile.
 
 ```java
-// SSBO/TBO — access via macro in shader: GLYPH_DATA(n).advance
+// SSBO — access via macro in shader: GLYPH_DATA(n).advance
 CgBufferFormat fmt = CgBufferFormat.builder("GlyphMetrics", STD430)
         .vec4("bbox").vec2("uv0").float_("advance").build();
 CgShaderBuffer buf = CgShaderBuffer.create("GlyphMetricsBuffer", fmt, 0);   // RETAINED: written once
@@ -659,14 +659,13 @@ material.detachUbo("SceneParams");
 ```
 
 **Lifetime, not type, decides where a shader buffer lives** (`CgBufferLifetime`, passed to every factory; the ones
-without it mean `RETAINED`). `FRAME`: uploaded in every frame that reads it — the frame ring, no orphan and no
-driver rename. Any shader buffer's upload of at most 4 KB equal to the last one is skipped — for a `FRAME`
+without it mean `RETAINED`). `FRAME`: uploaded in every frame that reads it — the frame ring, bound by range. Any shader buffer's upload of at most 4 KB equal to the last one is skipped — for a `FRAME`
 buffer, once this frame already has it. `RETAINED`: readable
-until the next upload however many frames later — orphaning storage at offset 0. A `FRAME` buffer read in a frame
+until the next upload however many frames later — its own storage at offset 0, each upload staged in the ring and
+copied in on the GPU. A `FRAME` buffer read in a frame
 that did not upload it reads another frame's bytes, with no error. Every buffer the engine owns is `FRAME`: the
 quad and curve instances, the object buffer, the material blocks (uploaded at every bind), the frame block
-(copied in at a frame's first material bind) and the text block. A TBO takes `RETAINED`'s storage whatever is
-asked. `gl/buffer/CLAUDE.md` has the tiers. A `RETAINED` buffer is made, written and deleted from any thread (§ *Async*).
+(copied in at a frame's first material bind) and the text block. `gl/buffer/CLAUDE.md` has the tiers. A `RETAINED` buffer is made, written and deleted from any thread (§ *Async*).
 
 Do NOT attach the engine's own blocks (`CgFrameBlock`, `CgObjectDataBuffer`) — declared in `cg_env.glsl`, wired automatically. Duplicate declarations cause compile failure.
 
@@ -879,7 +878,7 @@ CgGlState.saveAll()       // → every slot (used by CgExecutor around a frame)
 
 ### Capabilities
 
-`CgCapabilities.detect()` — cached per context; **throws below OpenGL 3.3**. Above the floor it answers `shaderBufferPath()` (SSBO → TBO, forceable with `-Dcrystalgraphics.shaderBuffer.tier=<path>`), `vertexStreamTier()` / `shaderStreamTier()` (the stream-buffer waterfall, see `gl/buffer/CLAUDE.md`), `isCopyImageSubDataSupported()`, the limits (`getMaxDrawBuffers()`, `getMaxTextureUnits()`, …) and `isCoreProfile()`. For compute and GPU-driven draws it answers what a consumer needs — `compute()`, `storageImages()`, `subgroups()`, `floatAtomics()`, `drawIndirect()`, `multiDrawIndirect()`, `indirectCount()`, `drawParameters()`, `feedbackCount()`, `asyncCompute()`, `bindless()`, `multiDraw()` (whether the mesh store joins draws; `-Dcrystalgraphics.mesh.multiDraw=false` turns it off) — each joined from a core version, its ARB extension and, on the tracked backend, the device; and `computeTier()` (`V` · `G43` · `G40` · `G33` · `CPU`), forceable with `-Dcrystalgraphics.compute.tier=<tier>`, which throws naming what a context lacks.
+`CgCapabilities.detect()` — cached per context; **throws below OpenGL 3.3**. Above the floor it answers `shaderBufferPath()` (GL 4.3 or ARB storage blocks, forceable with `-Dcrystalgraphics.shaderBuffer.tier=<path>`; the TBO path is detected and unhooked, `docs/TBO_PATH.md`), `vertexStreamTier()` (persistent or mapped ring, see `gl/buffer/CLAUDE.md`), `isCopyImageSubDataSupported()`, the limits (`getMaxDrawBuffers()`, `getMaxTextureUnits()`, …) and `isCoreProfile()`. For compute and GPU-driven draws it answers what a consumer needs — `compute()`, `storageImages()`, `subgroups()`, `floatAtomics()`, `drawIndirect()`, `multiDrawIndirect()`, `indirectCount()`, `drawParameters()`, `feedbackCount()`, `asyncCompute()`, `bindless()`, `multiDraw()` (whether the mesh store joins draws; `-Dcrystalgraphics.mesh.multiDraw=false` turns it off) — each joined from a core version, its ARB extension and, on the tracked backend, the device; and `computeTier()` (`V` · `G43` · `G40` · `G33` · `CPU`), forceable with `-Dcrystalgraphics.compute.tier=<tier>`, which throws naming what a context lacks.
 
 **`CgGpuReport`** is the full answer, for diagnosis rather than decisions: every feature a compute or draw tier is chosen
 from (`core`, the extension that gives it, or `no`) and the limits that bound it, from the driver on GL and from
@@ -1141,9 +1140,9 @@ CgEngineLifecycle.shutdown();
 | 5c | `CgFontRegistry.get().releaseAll()` | Glyph atlas textures + background generation executor, reset in place (reusable immediately) |
 | 6 | `CgMaterialRegistry.get().deleteAll()` | Material instances + GL shader programs |
 | 6b | `CgCompute.releaseAll()` | Kernel programs and their blocks; the parsed files stay for the next context |
-| 6c | `CgBufferTextures.releaseAll()` | The buffer textures materials and lowered kernels read buffers through, one per unit, and the zero buffer an unbound one reads |
+| 6c | `CgStreamBuffer.releaseShared()` | The staging ring retained shader buffers are uploaded through |
 | 6d | `CgReadback.releaseAll()` | Pooled staging buffers and the fences of readbacks still in flight; each pending sink is told it failed |
-| 7 | `CgShaderBufferRegistry.get().deleteAll()` | User SSBO/TBO/UBO resources |
+| 7 | `CgShaderBufferRegistry.get().deleteAll()` | User SSBO/UBO resources |
 | 8 | `CgWorldRenderer.get().release()` | Its draws, and the depth snapshot's reference (the framebuffer is freed by step 9) |
 | 8a | `CgPostStack.get().release()` | Its materials' references (the registry freed them at step 6); its transients are the graph's. Volumes and registered effects stay, for the next context |
 | 8b | `CgPreviewPool.deleteAll()` | Shader-graph preview targets, thumbnails and main previews. **Context-owned, not renderer-owned** — their storage is made by the executor outside any registry, so nothing below reaches it. Before step 9, since a target holds framebuffers |
@@ -1166,6 +1165,6 @@ All registries are **singletons accessed via `.get()`**. You normally interact w
 | `CgMaterialShaderRegistry` | `CgMaterialShaderRegistry.get()` | Shared `CgMaterialShader` GL program assets | Internal — managed by `CgMaterialRegistry` |
 | `CgTextureManager` | `CgTextureManager.get()` | All `CgTexture` instances (2D, array, 3D, cubemap) | `getOrCreate(path)` for cached texture load; `reloadAll()` on F3+T |
 | `CgFrameBufferRegistry` | `CgFrameBufferRegistry.get()` | Screen-sized FBOs that auto-resize | `getOrCreate(name, format)` for screen-sized FBOs |
-| `CgShaderBufferRegistry` | `CgShaderBufferRegistry.get()` | User-attached SSBO/TBO/UBO objects | `deleteAll()` on teardown (via lifecycle) |
+| `CgShaderBufferRegistry` | `CgShaderBufferRegistry.get()` | User-attached SSBO/UBO objects | `deleteAll()` on teardown (via lifecycle) |
 | `CgFontRegistry` | `CgFontRegistry.get()` | Glyph atlas textures (bitmap/MSDF/MTSDF) + background generation executor | `releaseAll()` on teardown (via lifecycle); parameterized constructors remain public for harness testing of custom atlas sizes/configs — see `text/cache/CLAUDE.md` |
 | `CgTextRendererRegistry` | `CgTextRendererRegistry.get()` | Tracks every `CgTextRenderer` for teardown; auto-resizes screen-sized ones (`create()`, the default — opt out via `createManualSized()`) on `onResize()` | Does not own renderer *lifecycle* the way other registries do — owners still call `delete()` themselves; `deleteAll()` on teardown is a backstop, not the primary path — see `text/render/CLAUDE.md` |

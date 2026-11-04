@@ -13,12 +13,6 @@ public class CgShaderBufferRegistryTest {
     }
 
     @Test
-    public void userStartTboIsAboveMcUnits() {
-        assertTrue("USER_START_TBO must be above Minecraft texture units 0–4",
-                CgBindingPoints.USER_START_TBO >= 5);
-    }
-
-    @Test
     public void userStartUboIsZero() {
         assertEquals("USER_START_UBO should be 0 (UBO user slots from bottom)", 0, CgBindingPoints.USER_START_UBO);
     }

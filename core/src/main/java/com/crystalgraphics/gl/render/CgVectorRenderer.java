@@ -23,7 +23,7 @@ import javax.annotation.Nullable;
 /**
  * Instanced 2D vector-primitive renderer — CrystalGraphics' general "hand me a few points and a
  * colour, and say whether to stroke or fill them" engine seam, and the vector-graphics counterpart
- * to {@link CgQuadRenderer}'s box-model one. Built on the same SSBO/TBO-backed instancing
+ * to {@link CgQuadRenderer}'s box-model one. Built on the same SSBO-backed instancing
  * foundation and deliberately mirroring its API shape method-for-method.
  *
  * <h3>What it draws today is a list; what it IS is a shared record</h3>
@@ -89,12 +89,8 @@ import javax.annotation.Nullable;
  * padding floats are the price of keeping the control points {@code vec3}; see the planar note below for
  * why they are {@code vec3} at all.</p>
  *
- * <p><b>The stride must stay a multiple of 16, and every field must stay float-typed.</b> Both are TBO
- * constraints, not style: {@code CgGlslEmitter} refuses to generate the fallback getter otherwise, and the
- * fallback is the GL 3.3 baseline path — so a field packed as {@code uint} to save bandwidth would compile
- * on SSBO hardware and throw on the machines that need the saving most. That is also why the obvious
- * shrink — colours as packed ARGB ints — is not available here without bit-reinterpreting them through
- * floats.</p>
+ * <p>The stride is a multiple of 16 and every field float-typed: the TBO path needed both, and keeping them keeps it
+ * reconnectable ({@code docs/TBO_PATH.md}).</p>
  * <p>The fill reading exists because it costs nothing once the stroke reading does: three points, a
  * colour and a feather were already here for {@link Curve}'s sake, so a filled {@link Triangle}
  * needs one bit and one repurposed field, not a second buffer. See {@link Triangle}'s own doc.</p>
@@ -304,7 +300,7 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
 
 
     /**
-     * Shared static shader buffer — one SSBO/TBO backs every {@code CgVectorRenderer} instance,
+     * Shared static shader buffer — one SSBO backs every {@code CgVectorRenderer} instance,
      * at the engine-reserved {@link CgBindingPoints#CURVE_RENDERER} pair.
      *
      * <p>Same lazy-class-init contract as {@code CgQuadRenderer.GPU_BUFFER}:
@@ -847,8 +843,7 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
      * instance record for {@link Curve}'s sake, so a filled triangle needs exactly one new bit
      * ({@link #FLAG_FILL}) and one repurposed field ({@code widths.x} becomes corner radius, since a
      * filled shape has no taper to store there). A second renderer would mean a second engine-
-     * reserved buffer visible from the fragment stage — the same scarce-texture-unit cost {@code
-     * CgBindingPoints} already documents for {@link #CURVE_RENDERER}'s TBO fallback path — to
+     * reserved buffer visible from the fragment stage — to
      * duplicate fields that already exist.</p>
      *
      * <h3>Defaults</h3>

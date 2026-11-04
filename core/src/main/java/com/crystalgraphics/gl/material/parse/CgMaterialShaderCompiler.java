@@ -1,6 +1,5 @@
 package com.crystalgraphics.gl.material.parse;
 
-import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.compute.source.CgBufferDecl;
 import com.crystalgraphics.gl.buffer.shader.CgBonePalettes;
 import com.crystalgraphics.gl.buffer.shader.CgEngineBufferRegistry;
@@ -288,13 +287,12 @@ public final class CgMaterialShaderCompiler {
      *
      * @param shader          material-level parse result (properties, featureNames)
      * @param pass            per-pass parse result (v2f, vertex/fragment bodies, render state)
-     * @param attachedBuffers user-defined SSBO/TBO and UBO buffers to inject (may be empty)
+     * @param attachedBuffers user-defined SSBO and UBO buffers to inject (may be empty)
      * @param matPropsEntry   engine-managed material properties UBO entry, or {@code null}
      * @param config          active-keyword config; use {@link CompileConfig#DEFAULT}
      *                        for the no-keyword path
      * @return a {@link CompiledSource} holding the complete vertex and fragment sources
-     * @throws IllegalArgumentException if {@code ShaderBufferPath} is {@code NONE}
-     * @throws CgPreprocessorException  if a TBO-path buffer contains incompatible field types
+     * @throws IllegalArgumentException if the context reads no storage blocks
      */
     public static CompiledSource compile(CgParsedShader shader,
                                          CgParsedPass pass,
@@ -302,11 +300,11 @@ public final class CgMaterialShaderCompiler {
                                          CgUniformBuffer matPropsEntry,
                                          CompileConfig config) {
         CgCapabilities.ShaderBufferPath path = CgCapabilities.detect().shaderBufferPath();
-        if (path == CgCapabilities.ShaderBufferPath.NONE)
-            throw new IllegalArgumentException("Cannot compile material shader: ShaderBufferPath is NONE (GL 3.3+ required)");
-
-        boolean useSsbo = (path == CgCapabilities.ShaderBufferPath.SSBO_GL43
-                || path == CgCapabilities.ShaderBufferPath.SSBO_ARB);
+        if (path != CgCapabilities.ShaderBufferPath.SSBO_GL43 && path != CgCapabilities.ShaderBufferPath.SSBO_ARB) {
+            // The TBO path is unhooked: docs/TBO_PATH.md
+            throw new IllegalArgumentException("Cannot compile material shader: ShaderBufferPath is " + path
+                    + "; materials read storage blocks (GL 4.3 or ARB_shader_storage_buffer_object)");
+        }
 
         Set<String> requiredExtensions = new LinkedHashSet<>();
         for (CgAttachedBuffer ab : attachedBuffers) {
@@ -350,9 +348,9 @@ public final class CgMaterialShaderCompiler {
             vertexFormat = CgVertexFormat.SKINNED;
         }
 
-        String vertexSource = buildVertexSource(shader, pass, properties, v2fFields, useSsbo,
+        String vertexSource = buildVertexSource(shader, pass, properties, v2fFields,
                 path, attachedBuffers, requiredExtensions, matPropsEntry, config, vertexFormat);
-        String fragmentSource = buildFragmentSource(shader, pass, properties, v2fFields, useSsbo,
+        String fragmentSource = buildFragmentSource(shader, pass, properties, v2fFields,
                 path, attachedBuffers, requiredExtensions, matPropsEntry, config);
 
         return new CompiledSource(vertexSource, fragmentSource, vertexFormat);
@@ -449,7 +447,7 @@ public final class CgMaterialShaderCompiler {
      *
      * @param shader          material-level parse result (properties, featureNames)
      * @param forwardPass     the Forward pass to derive the depth variant from; must not be null
-     * @param attachedBuffers user-defined SSBO/TBO and UBO buffers to inject
+     * @param attachedBuffers user-defined SSBO and UBO buffers to inject
      * @param matPropsUbo     engine-managed material properties UBO, or {@code null}
      * @param config          active-keyword config (typically {@link CompileConfig#DEFAULT})
      * @return a {@link CompiledSource} holding the complete depth vertex and fragment sources
@@ -562,7 +560,6 @@ public final class CgMaterialShaderCompiler {
                                              CgParsedPass pass,
                                              List<CgMaterialProperty> properties,
                                              List<CgShaderParser.V2fField> v2fFields,
-                                             boolean useSsbo,
                                              CgCapabilities.ShaderBufferPath shaderBufferPath,
                                              List<CgAttachedBuffer> attachedBuffers,
                                              Set<String> requiredExtensions,
@@ -572,7 +569,7 @@ public final class CgMaterialShaderCompiler {
         StringBuilder sb = new StringBuilder(1024);
 
         // Step 1: #version
-        int version = glslVersion(useSsbo, config);
+        int version = glslVersion(config);
         sb.append("#version ").append(version).append(" core\n");
 
         // Keyword #define injection — in featureNames declaration order, before user #-lines
@@ -598,9 +595,7 @@ public final class CgMaterialShaderCompiler {
         if (!directiveLines.isEmpty()) sb.append(directiveLines).append('\n');
         appendAutoRequiredExtensions(sb, requiredExtensions, directiveLines);
 
-        if (useSsbo) {
-            sb.append("#define CG_USE_SSBO 1\n");
-        }
+        sb.append("#define CG_USE_SSBO 1\n");   // cg_env.glsl's hook for the TBO path (docs/TBO_PATH.md)
 
         sb.append("#include \"").append(ENV_INCLUDE).append("\"\n");
 
@@ -635,7 +630,7 @@ public final class CgMaterialShaderCompiler {
         if (skinnedVariant(config)) appendSkinnedFactory(sb, shaderBufferPath);
         appendPropertyAccessors(sb, properties, shader.engineBuffers().contains(CgShaderParser.ROWS));
 
-        appendMaterialBuffers(sb, shader, useSsbo);
+        appendMaterialBuffers(sb, shader);
         appendHanded(sb, shader);
 
         // v2f struct
@@ -692,7 +687,6 @@ public final class CgMaterialShaderCompiler {
                                                CgParsedPass pass,
                                                List<CgMaterialProperty> properties,
                                                List<CgShaderParser.V2fField> v2fFields,
-                                               boolean useSsbo,
                                                CgCapabilities.ShaderBufferPath shaderBufferPath,
                                                List<CgAttachedBuffer> attachedBuffers,
                                                Set<String> requiredExtensions,
@@ -701,7 +695,7 @@ public final class CgMaterialShaderCompiler {
         StringBuilder sb = new StringBuilder(1024);
 
         // Step 1: #version
-        sb.append("#version ").append(glslVersion(useSsbo, config)).append(" core\n");
+        sb.append("#version ").append(glslVersion(config)).append(" core\n");
 
         // Keyword #define injection — in featureNames declaration order, before user #-lines
         appendKeywordDefines(sb, shader.featureNames(), config.activeKeywords());
@@ -719,10 +713,8 @@ public final class CgMaterialShaderCompiler {
         if (!directiveLines.isEmpty()) sb.append(directiveLines).append('\n');
         appendAutoRequiredExtensions(sb, requiredExtensions, directiveLines);
 
-        // CG_USE_SSBO (SSBO path only; fragment never defines CG_VERTEX_STAGE)
-        if (useSsbo) {
-            sb.append("#define CG_USE_SSBO 1\n");
-        }
+        // CG_USE_SSBO, cg_env.glsl's hook for the TBO path; fragment never defines CG_VERTEX_STAGE
+        sb.append("#define CG_USE_SSBO 1\n");
 
         sb.append("#include \"").append(ENV_INCLUDE).append("\"\n");
 
@@ -739,7 +731,7 @@ public final class CgMaterialShaderCompiler {
         appendEngineBufferEnv(sb, shader.engineBuffers());
         appendPropertyAccessors(sb, properties, shader.engineBuffers().contains(CgShaderParser.ROWS));
 
-        appendMaterialBuffers(sb, shader, useSsbo);
+        appendMaterialBuffers(sb, shader);
         appendHanded(sb, shader);
 
         // v2f struct
@@ -863,11 +855,10 @@ public final class CgMaterialShaderCompiler {
     }
 
     /**
-     * 430 with storage blocks, 330 without; a multi-draw variant at the context's own above that, since glslang
-     * declares the draw parameters from 450 and 4.6 has them in core.
+     * 430; a multi-draw variant at the context's own above that, since glslang declares the draw parameters from 450
+     * and 4.6 has them in core.
      */
-    private static int glslVersion(boolean useSsbo, CompileConfig config) {
-        if (!useSsbo) return 330;
+    private static int glslVersion(CompileConfig config) {
         return config.activeKeywords().contains(MULTI_DRAW) ? Math.max(430, CgCapabilities.detect().glslVersion()) : 430;
     }
 
@@ -966,24 +957,11 @@ public final class CgMaterialShaderCompiler {
         }
     }
 
-    /**
-     * The material's {@code Buffers { }}: the structs they hold, then each as a storage block, or below the SSBO path as
-     * a buffer texture on the unit after the samplers and the buffers before it.
-     */
-    private static void appendMaterialBuffers(StringBuilder sb, CgParsedShader shader, boolean useSsbo) {
+    /** The material's {@code Buffers { }}: the structs they hold, then each as a storage block. */
+    private static void appendMaterialBuffers(StringBuilder sb, CgParsedShader shader) {
         if (shader.buffers().isEmpty()) return;
-        if (!useSsbo && CgBindingPoints.isInitialized()) {
-            int samplers = 0;
-            for (CgMaterialProperty p : shader.properties()) if (p.getType().isSampler()) samplers++;
-            int free = CgBindingPoints.LOCAL_LIGHTS_TEXTURE_UNIT;   // the lowest reserved unit
-            if (samplers + shader.buffers().size() > free) {
-                throw new CgShaderParseException("'Buffers': " + samplers + " samplers and " + shader.buffers().size()
-                        + " buffers read as textures need " + (samplers + shader.buffers().size())
-                        + " texture units, and this context leaves a material " + free);
-            }
-        }
         sb.append("// Buffers { }\n").append(shader.bufferStructs());
-        for (CgBufferDecl b : shader.buffers()) CgBufferReaders.reader(sb, b, useSsbo);
+        for (CgBufferDecl b : shader.buffers()) CgBufferReaders.reader(sb, b);
     }
 
     /** What the world hands a program carrying its own lighting, after the buffers and properties it reads through. */
@@ -996,16 +974,11 @@ public final class CgMaterialShaderCompiler {
     private static void appendAttachedBuffers(StringBuilder sb,
                                                List<CgAttachedBuffer> attachedBuffers,
                                                CgCapabilities.ShaderBufferPath path) {
-        boolean useSsbo = (path == CgCapabilities.ShaderBufferPath.SSBO_GL43
-                || path == CgCapabilities.ShaderBufferPath.SSBO_ARB);
         for (CgAttachedBuffer ab : attachedBuffers) {
             if (ab.isUbo()) {
                 sb.append(CgGlslEmitter.emitUbo(ab.getBuffer().getFormat(), ab.getBuffer().getName())).append('\n');
             } else {
-                String block = useSsbo
-                        ? CgGlslEmitter.emitSsbo(ab)
-                        : CgGlslEmitter.emitTbo(ab);
-                sb.append(block).append('\n');
+                sb.append(CgGlslEmitter.emitSsbo(ab)).append('\n');
             }
         }
     }

@@ -64,7 +64,7 @@ Pass {
 
 ### cg_env.glsl — The Backbone
 
-`src/main/resources/assets/crystalgraphics/shaders/env/cg_env.glsl` is the foundation every `.shader` file stands on: the frame block, the per-instance object data with its SSBO/TBO dual path, the instance-id bridge, the scene samplers and the convenience macros over them. **A renderer's own macros are not in it** — `CG_QUAD_*` lives in `env/buffer/quad.glsl` and `CG_CURVE_*` in `env/buffer/curve.glsl`, injected only by `#pragma cg_use`; three quarters of this file used to be those two, paid for by every shader including the ones that draw neither. The material compiler **automatically `#include`s `cg_env.glsl`** into every generated vertex and fragment stage — you never include it manually in `.shader` files. Raw `CgShader` users must `#include "crystalgraphics:shaders/env/cg_env.glsl"` explicitly if they need its symbols.
+`src/main/resources/assets/crystalgraphics/shaders/env/cg_env.glsl` is the foundation every `.shader` file stands on: the frame block, the per-instance object data with its SSBO dual path, the instance-id bridge, the scene samplers and the convenience macros over them. **A renderer's own macros are not in it** — `CG_QUAD_*` lives in `env/buffer/quad.glsl` and `CG_CURVE_*` in `env/buffer/curve.glsl`, injected only by `#pragma cg_use`; three quarters of this file used to be those two, paid for by every shader including the ones that draw neither. The material compiler **automatically `#include`s `cg_env.glsl`** into every generated vertex and fragment stage — you never include it manually in `.shader` files. Raw `CgShader` users must `#include "crystalgraphics:shaders/env/cg_env.glsl"` explicitly if they need its symbols.
 
 It provides two distinct layers: per-frame global data and per-instance object data.
 
@@ -223,16 +223,12 @@ in both stages unless said:
   one it reads 1, since the deferred pass shadows our opaque pixels already. `_COLOR` is what a shadow leaves of the
   draw's light, its sky light over the whole; `_WRAP` is 0: Minecraft's sun lights nothing past the terminator.
 
-#### Per-Instance Object Data — SSBO / TBO Dual Path
+#### Per-Instance Object Data
 
-Every draw uses instancing. Per-object data lives in an engine-managed buffer. At startup, `CgCapabilities.detect().shaderBufferPath()` picks one of two hardware paths:
-
-| Path | Condition | Backing |
-|---|---|---|
-| **SSBO** (`CG_USE_SSBO` defined) | Core GL 4.3+ or ARB | `layout(std430) readonly buffer CgObjectDataBuffer { CgObjectData cg_Objects[]; }` |
-| **TBO** (fallback) | GL 3.3 baseline | `uniform samplerBuffer CgObjectDataBuffer` + `cg_FetchObjectData(int)` helper |
-
-The struct is the same on both paths:
+Every draw uses instancing. Per-object data lives in an engine-managed storage block,
+`layout(std430) readonly buffer CgObjectDataBuffer { CgObjectData cg_Objects[]; }` (GL 4.3 or
+`ARB_shader_storage_buffer_object`, and the Vulkan device). The buffer-texture path below that is unhooked and
+documented for reconnecting in [`TBO_PATH.md`](TBO_PATH.md). The struct:
 
 ```glsl
 struct CgObjectData {
@@ -245,7 +241,7 @@ struct CgObjectData {
 };
 ```
 
-Shaders never branch on the path — the macro surface is identical regardless:
+Shaders read it through macros:
 
 | Macro | Expands to | Notes |
 |---|---|---|
@@ -454,7 +450,7 @@ essentially every shader wants them. Buffers that only a minority of shaders nee
 > it re-reads `CURVE_DATA(CG_INSTANCE_ID)` rather than receiving them as varyings, because the
 > `.shader` v2f DSL has no `flat` qualifier to offer (`cg_InstanceId` is the only compiler-generated
 > flat varying). This needs no compiler change — `appendAttachedBuffers` already runs for the fragment
-> source too — but it does mean the TBO fallback occupies that texture unit in both stages.
+> source too.
 
 The buffer's GLSL declaration is injected **during parsing, before anything can compile**, so the
 symbols exist no matter what triggers the first compile. **A token may also carry an env file** —
@@ -535,8 +531,7 @@ fragColor.rgb *= (1.0 - CG_GLOBAL_skill_darken) * CG_GLOBAL_skill_tint.rgb;   //
   declaration after throws. A collection defined after a shader compiled recompiles that shader at the next frame.
 - **Uploaded once a frame by the world renderer**, after the client world's schedule: a pass outside the world reads the
   values of the last frame the world drew.
-- At most `CgParameterCollection.MAX_VEC4S` (1024) vec4s for every collection together. On the TBO path it takes a
-  texture unit, as each engine buffer does.
+- At most `CgParameterCollection.MAX_VEC4S` (1024) vec4s for every collection together.
 
 ### Reading a kernel's buffers
 
@@ -571,10 +566,7 @@ sparkMaterial.buffer("SPARKS", sparks).buffer("LIVE", live);   // graph buffers;
 world.draw(CgMesh.quads(CAPACITY), sparkMaterial).indirect(count, 0, CgIndirect.INDICES, 6).at(x, y, z).submit();
 ```
 
-| Context | A buffer is read as | Bound at |
-|---|---|---|
-| storage blocks (GL 4.3, the Vulkan device) | a `readonly` storage block | `CgBindingPoints.MATERIAL_BUFFERS_SSBO + i` |
-| without (macOS's 4.1, GL 3.3) | a `usamplerBuffer`, a texel per 16 bytes of a struct | texture unit `samplers + i`, after the material's own |
+A buffer is read as a `readonly` storage block bound at `CgBindingPoints.MATERIAL_BUFFERS_SSBO + i`.
 
 - **The kernel's grammar and element rule**: a `float`, `int` or `uint`, their 2- and 4-vectors, or a struct of
   `vec4`, `ivec4` and `uvec4` only, since every context must read it. Upper-case names not starting `CG_`; at most 4.
@@ -583,9 +575,6 @@ world.draw(CgMesh.quads(CAPACITY), sparkMaterial).indirect(count, 0, CgIndirect.
 - **Recorded draws only**: `captureBindings` (the world renderer, `CgImmediate`, a chunk) binds them; `bind()` binds
   none. Every declared buffer is bound before the first capture, which throws naming one that is not.
 - **No `NAME_LENGTH()`**: a draw's count says how many elements it reads.
-- **Without storage blocks**, samplers and buffers share the units below the engine's scene samplers, and a material
-  needing more is refused at compile; a buffer of more texels than the context reads as one texture
-  (`GL_MAX_TEXTURE_BUFFER_SIZE`, at least 65536) throws at capture.
 - A vertex stage reading a buffer keeps its body in the generated depth pass.
 
 ---

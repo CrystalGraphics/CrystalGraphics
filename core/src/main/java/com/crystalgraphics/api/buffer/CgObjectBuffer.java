@@ -5,7 +5,7 @@ import com.crystalgraphics.api.shader.CgShaderProgram;
 /**
  * Base contract for GPU-resident data blocks accessible from shader programs.
  *
- * <p>All VBO, EBO, SSBO, TBO, and UBO-backed buffer types in CrystalGraphics implement this
+ * <p>All VBO, EBO, SSBO and UBO-backed buffer types in CrystalGraphics implement this
  * interface. It mirrors the ownership and lifecycle model of {@link CgShaderProgram}:
  * bind, unbind, get the underlying GL object ID, and idempotent delete.</p>
  *

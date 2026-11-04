@@ -18,17 +18,17 @@ import static org.junit.Assert.*;
 
 public class CgMaterialShaderCompilerVariantTest {
 
-    private static final CgCapabilities.ShaderBufferPath TBO = CgCapabilities.ShaderBufferPath.TBO;
+    private static final CgCapabilities.ShaderBufferPath SSBO = CgCapabilities.ShaderBufferPath.SSBO_GL43;
     private static final List<CgAttachedBuffer> NO_BUFFERS = Collections.emptyList();
 
     @BeforeClass
-    public static void injectTboCapabilities() throws Exception {
+    public static void injectSsboCapabilities() throws Exception {
         Constructor<CgCapabilities> ctor = CgCapabilities.class.getDeclaredConstructor();
         ctor.setAccessible(true);
         CgCapabilities stub = ctor.newInstance();
         Field pathField = CgCapabilities.class.getDeclaredField("shaderBufferPath");
         pathField.setAccessible(true);
-        pathField.set(stub, CgCapabilities.ShaderBufferPath.TBO);
+        pathField.set(stub, CgCapabilities.ShaderBufferPath.SSBO_GL43);
         Field cacheField = CgCapabilities.class.getDeclaredField("cachedCaps");
         cacheField.setAccessible(true);
         cacheField.set(null, stub);
@@ -241,7 +241,7 @@ public class CgMaterialShaderCompilerVariantTest {
     public void compile_withDefaultConfig_identicalToLegacyOverload() {
         CgParsedShader parsed = parse(MINIMAL);
         CgMaterialShaderCompiler.CompiledSource legacy =
-                CgMaterialShaderCompiler.compile(parsed, TBO, NO_BUFFERS, null);
+                CgMaterialShaderCompiler.compile(parsed, SSBO, NO_BUFFERS, null);
         CgMaterialShaderCompiler.CompiledSource withDefault =
                 CgMaterialShaderCompiler.compile(parsed, NO_BUFFERS, null,
                         CgMaterialShaderCompiler.CompileConfig.DEFAULT);

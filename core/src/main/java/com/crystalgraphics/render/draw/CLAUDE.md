@@ -34,8 +34,7 @@ if (p.bind()) { table.bind(bindings); p.instanceBase(first); /* draw */ }
   storage. Its `CgSampler`, if any, is part of
   the snapshot (`texture(unit, texture, sampler)`): equal samplers intern to one id, another makes another.
 - **A buffer in a snapshot is a `CgBufferHandle`**, resolved at `bind` the same way; a `CgGraphBuffer` is read by the
-  raster pass the chunk is added to, so the graph orders the draw after the pass writing it. A buffer texture
-  (`texelBuffer(unit, format, buffer)`) binds through `CgBufferTextures`, one texture per unit.
+  raster pass the chunk is added to, so the graph orders the draw after the pass writing it.
 - **A sampler's unit is its index among the shader's declared samplers.** `CgMaterialShader` wires every program
   that way at compile, so nothing per material is left to wire at execution.
 - **`cg_InstanceBase`** is what `CG_INSTANCE_ID` adds to `gl_InstanceID`; it defaults to 0, so a draw that uploads

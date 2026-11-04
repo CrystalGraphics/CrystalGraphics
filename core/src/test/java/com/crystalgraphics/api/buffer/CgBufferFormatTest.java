@@ -9,7 +9,7 @@ import static org.junit.Assert.assertTrue;
  * Regression coverage for {@link CgBufferFormat.Builder#build()}'s final stride rounding.
  *
  * <p>std140/std430 both require a struct's own overall size — its per-element stride
- * when used in an array, which every {@code CgBufferFormat} here always is (SSBO/TBO
+ * when used in an array, which every {@code CgBufferFormat} here always is (SSBO
  * records) — to be rounded up to a multiple of 16 (the base alignment of {@code vec4}),
  * on top of each individual field's own alignment. Before this was fixed, {@code build()}
  * used the raw field-sum cursor as the stride with no final rounding; every format that

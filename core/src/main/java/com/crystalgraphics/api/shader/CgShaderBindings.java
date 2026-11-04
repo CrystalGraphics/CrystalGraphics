@@ -305,7 +305,7 @@ public interface CgShaderBindings {
 
     /**
      * Records a persistent UBO block binding. Calls {@code glUniformBlockBinding} on EVERY
-     * shader path (SSBO and TBO) to wire the block index to its binding slot.
+     * shader path (SSBO) to wire the block index to its binding slot.
      * Idempotent — writing the same integer to GL program state is effectively free.
      * Does NOT call {@code glBindBufferBase} — the buffer is bound by whoever owns it.
      * This op lives in persistent {@link CgShader#bindings()}, not ephemeral bindings,

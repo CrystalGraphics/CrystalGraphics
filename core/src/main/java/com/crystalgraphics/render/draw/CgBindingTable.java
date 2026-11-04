@@ -3,7 +3,6 @@ package com.crystalgraphics.render.draw;
 import com.crystalgraphics.api.texture.CgSampler;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.gl.texture.CgSamplers;
-import com.crystalgraphics.gl.buffer.CgBufferTextures;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.gl.buffer.CgStreamBuffer;
 import com.crystalgraphics.gl.buffer.shader.CgShaderBuffer;
@@ -41,7 +40,7 @@ import java.util.Objects;
  *   <li>{@link #upload} after the last {@link #end()} and before the first {@link #bind}: a block's place in the
  *       ring is only known once every block is.</li>
  *   <li>At most {@value #MAX_TEXTURES} textures, {@value #MAX_BLOCKS} blocks, {@value #MAX_BUFFERS} buffers,
- *       {@value #MAX_STORAGE} storage handles and {@value #MAX_TEXEL_BUFFERS} texel buffers per snapshot.</li>
+ *       and {@value #MAX_STORAGE} storage handles per snapshot.</li>
  *   <li>One thread at a time: the recorder fills it, and the render thread uploads and binds it once the
  *       recording is handed over. {@link #upload} and {@link #bind} touch GL; the table owns no GL object.</li>
  * </ul>
@@ -53,23 +52,18 @@ public final class CgBindingTable {
     public static final int MAX_BLOCKS = 4;
     public static final int MAX_BUFFERS = 4;
     public static final int MAX_STORAGE = 4;
-    public static final int MAX_TEXEL_BUFFERS = 4;
 
-    /**
-     * Per entry: texture, block, buffer, storage and texel-buffer counts, a unit per texture, (binding, offset, floats)
-     * per block, a binding point per storage handle, (unit, format) per texel buffer.
-     */
-    private static final int HEADER = 5;
+    /** Per entry: texture, block, buffer and storage counts, a unit per texture, (binding, offset, floats) per block, a
+     * binding point per storage handle. */
+    private static final int HEADER = 4;
     private static final int BLOCK_INTS = 3;
     private static final int BLOCKS_AT = HEADER + MAX_TEXTURES;
     private static final int STORAGE_AT = BLOCKS_AT + MAX_BLOCKS * BLOCK_INTS;
-    private static final int TEXELS_AT = STORAGE_AT + MAX_STORAGE;
-    private static final int ENTRY_INTS = TEXELS_AT + MAX_TEXEL_BUFFERS * 2;
+    private static final int ENTRY_INTS = STORAGE_AT + MAX_STORAGE;
 
-    /** Per entry: the textures, the buffers, the storage handles, the texel buffers, then each texture's sampler. */
+    /** Per entry: the textures, the buffers, the storage handles, then each texture's sampler. */
     private static final int STORAGE_REFS = MAX_TEXTURES + MAX_BUFFERS;
-    private static final int TEXEL_REFS = STORAGE_REFS + MAX_STORAGE;
-    private static final int SAMPLER_REFS = TEXEL_REFS + MAX_TEXEL_BUFFERS;
+    private static final int SAMPLER_REFS = STORAGE_REFS + MAX_STORAGE;
     private static final int ENTRY_REFS = SAMPLER_REFS + MAX_TEXTURES;
 
     /** {@code GL_UNIFORM_BUFFER_OFFSET_ALIGNMENT} is at most 256 on every GL and Vulkan device we run on. */
@@ -112,7 +106,6 @@ public final class CgBindingTable {
         entries[e + 1] = 0;
         entries[e + 2] = 0;
         entries[e + 3] = 0;
-        entries[e + 4] = 0;
         return this;
     }
 
@@ -169,21 +162,6 @@ public final class CgBindingTable {
         entries[e + STORAGE_AT + n] = point;
         refs[building * ENTRY_REFS + STORAGE_REFS + n] = buffer;
         entries[e + 3] = n + 1;
-        return this;
-    }
-
-    /**
-     * {@code buffer} read as texels of {@code format} ({@code GL_RGBA32UI}, ...) from texture {@code unit} for the
-     * draw, resolved when the draw executes: what a storage handle is below the SSBO path.
-     */
-    public CgBindingTable texelBuffer(int unit, int format, CgBufferHandle buffer) {
-        int e = building * ENTRY_INTS;
-        int n = entries[e + 4];
-        if (n == MAX_TEXEL_BUFFERS) throw new IllegalStateException("more than " + MAX_TEXEL_BUFFERS + " texel buffers in one snapshot");
-        entries[e + TEXELS_AT + n * 2] = unit;
-        entries[e + TEXELS_AT + n * 2 + 1] = format;
-        refs[building * ENTRY_REFS + TEXEL_REFS + n] = buffer;
-        entries[e + 4] = n + 1;
         return this;
     }
 
@@ -260,14 +238,6 @@ public final class CgBindingTable {
         for (int b = 0; b < from.entries[e + 3]; b++) {
             storage(from.entries[e + STORAGE_AT + b], (CgBufferHandle) from.refs[r + STORAGE_REFS + b]);
         }
-        copyTexelBuffers(from, e, r);
-    }
-
-    private void copyTexelBuffers(CgBindingTable from, int e, int r) {
-        for (int b = 0; b < from.entries[e + 4]; b++) {
-            int at = e + TEXELS_AT + b * 2;
-            texelBuffer(from.entries[at], from.entries[at + 1], (CgBufferHandle) from.refs[r + TEXEL_REFS + b]);
-        }
     }
 
     /** Snapshot {@code id} with {@code texture} at {@code unit}, in place of whatever it bound there. */
@@ -287,7 +257,6 @@ public final class CgBindingTable {
         }
         for (int b = 0; b < entries[e + 2]; b++) buffer((CgShaderBuffer) refs[r + MAX_TEXTURES + b]);
         for (int b = 0; b < entries[e + 3]; b++) storage(entries[e + STORAGE_AT + b], (CgBufferHandle) refs[r + STORAGE_REFS + b]);
-        copyTexelBuffers(this, e, r);
         return end();
     }
 
@@ -359,21 +328,6 @@ public final class CgBindingTable {
         return entries[id * ENTRY_INTS + 2];
     }
 
-    /** How many texel buffers snapshot {@code id} binds. */
-    public int texelBuffers(int id) {
-        return entries[id * ENTRY_INTS + 4];
-    }
-
-    /** Snapshot {@code id}'s {@code i}th texel buffer. */
-    public CgBufferHandle texelBuffer(int id, int i) {
-        return (CgBufferHandle) refs[id * ENTRY_REFS + TEXEL_REFS + i];
-    }
-
-    /** The texture unit snapshot {@code id}'s {@code i}th texel buffer is read from. */
-    public int texelUnit(int id, int i) {
-        return entries[id * ENTRY_INTS + TEXELS_AT + i * 2];
-    }
-
     /** Forgets every snapshot; ids from before are invalid. */
     public void reset() {
         if (building >= 0) throw new IllegalStateException("reset() inside a snapshot");
@@ -429,11 +383,7 @@ public final class CgBindingTable {
             texture.bind(unit);
             CgSamplers.bind(unit, (CgSampler) refs[r + SAMPLER_REFS + t], texture);
         }
-        for (int b = 0; b < entries[e + 4]; b++) {
-            int at = e + TEXELS_AT + b * 2;
-            CgBufferTextures.bind(entries[at], entries[at + 1], ((CgBufferHandle) refs[r + TEXEL_REFS + b]).bufferId());
-        }
-        if (entries[e] > 0 || entries[e + 4] > 0) CgTexture.active(0);
+        if (entries[e] > 0) CgTexture.active(0);
         for (int b = 0; b < entries[e + 1]; b++) {
             int block = e + BLOCKS_AT + b * BLOCK_INTS;
             int size = Math.max(16, (entries[block + 2] * 4 + 15) & ~15);
@@ -454,7 +404,7 @@ public final class CgBindingTable {
     private int hash(int id) {
         int e = id * ENTRY_INTS;
         int r = id * ENTRY_REFS;
-        int h = (((entries[e] * 31 + entries[e + 1]) * 31 + entries[e + 2]) * 31 + entries[e + 3]) * 31 + entries[e + 4];
+        int h = ((entries[e] * 31 + entries[e + 1]) * 31 + entries[e + 2]) * 31 + entries[e + 3];
         for (int t = 0; t < entries[e]; t++) {
             h = ((h * 31 + entries[e + HEADER + t]) * 31 + System.identityHashCode(refs[r + t])) * 31
                     + Objects.hashCode(refs[r + SAMPLER_REFS + t]);
@@ -468,10 +418,6 @@ public final class CgBindingTable {
         for (int b = 0; b < entries[e + 2]; b++) h = h * 31 + System.identityHashCode(refs[r + MAX_TEXTURES + b]);
         for (int b = 0; b < entries[e + 3]; b++) {
             h = (h * 31 + entries[e + STORAGE_AT + b]) * 31 + System.identityHashCode(refs[r + STORAGE_REFS + b]);
-        }
-        for (int b = 0; b < entries[e + 4]; b++) {
-            h = ((h * 31 + entries[e + TEXELS_AT + b * 2]) * 31 + entries[e + TEXELS_AT + b * 2 + 1]) * 31
-                    + System.identityHashCode(refs[r + TEXEL_REFS + b]);
         }
         return h ^ (h >>> 16);
     }
@@ -498,11 +444,6 @@ public final class CgBindingTable {
         for (int k = 0; k < entries[ea + 3]; k++) {
             if (entries[ea + STORAGE_AT + k] != entries[eb + STORAGE_AT + k]
                     || refs[ra + STORAGE_REFS + k] != refs[rb + STORAGE_REFS + k]) return false;
-        }
-        for (int k = 0; k < entries[ea + 4]; k++) {
-            int ta = ea + TEXELS_AT + k * 2, tb = eb + TEXELS_AT + k * 2;
-            if (entries[ta] != entries[tb] || entries[ta + 1] != entries[tb + 1]
-                    || refs[ra + TEXEL_REFS + k] != refs[rb + TEXEL_REFS + k]) return false;
         }
         return true;
     }

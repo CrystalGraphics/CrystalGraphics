@@ -42,18 +42,18 @@ See [`parse/CLAUDE.md`](parse/CLAUDE.md) for the full class map. Key external-fa
 
 ### Vertex shader generation sequence (steps 1–14)
 
-1. `#version 430 core` (SSBO) or `#version 330 core` (TBO); a `CG_MULTI_DRAW` variant at the context's GLSL version
+1. `#version 430 core`; a `CG_MULTI_DRAW` variant at the context's GLSL version
    when that is higher, enabling `GL_ARB_shader_draw_parameters` below 460 (glslang declares it from 450)
 2. `#define CG_VERTEX_STAGE 1`
-3. `#define CG_USE_SSBO 1` (SSBO path only)
+3. `#define CG_USE_SSBO 1` — always; the hook the TBO path would reconnect at (`docs/TBO_PATH.md`)
 4. `#define CG_OBJECT_BUFFER_BINDING <CgBindingPoints.OBJECT_DATA>` + `#define CG_FRAME_BLOCK_BINDING <CgBindingPoints.FRAME_DATA>`
 5. `#include "crystalgraphics:shaders/env/cg_env.glsl"`
 5a. **Vertex attribute injection** — `CgGlslEmitter.emitVertexInputs(vertexFormat)` emits `in <type> <name>;` for every attribute in the resolved `CgVertexFormat` (resolved from `shader.shaderType()` via `CgVertexFormat.forShaderType()`). Not present in fragment source.
 6. `CgMaterialBlock` UBO block (emitted via `CgGlslEmitter.emitUbo()` when non-sampler properties exist; no `binding=` qualifier — wired post-link by `wireShader()` at slot `CgBindingPoints.MATERIAL_PROPERTIES_UBO`)
 7. Sampler property uniform declarations (`uniform sampler2D/sampler2DArray/sampler3D/samplerCube <name>;` — one per sampler property)
-8. User-attached SSBO/TBO buffers (emitted by `CgGlslEmitter`)
+8. User-attached SSBO buffers (emitted by `CgGlslEmitter`)
 8. User-attached UBO blocks (emitted by `CgGlslEmitter`) — path-independent
-8a. `Buffers { }`: the structs its buffers name, then each buffer's reader (`CgBufferReaders.reader`) — a storage block wired to `CgBindingPoints.MATERIAL_BUFFERS_SSBO + i`, or a `usamplerBuffer` on the unit after the samplers (`materialBufferUnit`). The fragment stage the same
+8a. `Buffers { }`: the structs its buffers name, then each buffer's reader (`CgBufferReaders.reader`) — a storage block wired to `CgBindingPoints.MATERIAL_BUFFERS_SSBO + i`. The fragment stage the same
 9. `struct v2f { <v2fStructBody> };`
 10. `flat out int cg_InstanceId;`
 11. v2f interface block (`out _CgV2fBlock { <fields> } _cg_v2f;`)
@@ -69,7 +69,7 @@ See [`parse/CLAUDE.md`](parse/CLAUDE.md) for the full class map. Key external-fa
 4. `#include "crystalgraphics:shaders/env/cg_env.glsl"`
 5. `CgMaterialBlock` UBO block (when non-sampler properties exist)
 6. Sampler property uniform declarations
-7. User-attached SSBO/TBO buffers
+7. User-attached SSBO buffers
 7. User-attached UBO blocks
 8. `struct v2f { ... };`
 9. v2f interface block (`in _CgV2fBlock { <fields> } _cg_v2f;`)
@@ -87,18 +87,6 @@ struct StructName { type field; };
 layout(std430) readonly buffer BufferName { StructName _cg_structNameArr[]; };
 #define MACRO_NAME(n) _cg_structNameArr[n]
 ```
-
-### TBO output shape
-
-```glsl
-struct StructName { ... };
-uniform samplerBuffer BufferName;
-StructName _cg_getStructName(int n) { ... texelFetch ... }
-#define MACRO_NAME(n) _cg_getStructName(n)
-```
-
-TBO texel arithmetic: texel = 16 bytes = 4 floats. `texelIndex = byteOffset / 16`.  
-Throws `CgPreprocessorException` if any field is TBO-incompatible or `stride % 16 != 0`.
 
 ### UBO output shape
 

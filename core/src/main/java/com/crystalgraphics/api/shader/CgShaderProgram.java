@@ -483,7 +483,7 @@ public final class CgShaderProgram {
         /** Isolated: the program was compiled on the worker's own context, and {@link #land} loads it on the shared one. */
         private boolean isolated;
         /** Whether the context has storage blocks to look up: asked when made, on the render thread. */
-        private final boolean storage = CgCapabilities.detect().shaderBufferPath() != CgCapabilities.ShaderBufferPath.TBO;
+        private final boolean storage = CgCapabilities.detect().shaderBufferPath() != CgCapabilities.ShaderBufferPath.NONE;
 
         @Override
         protected boolean start() {

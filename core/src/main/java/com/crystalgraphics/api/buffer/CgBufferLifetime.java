@@ -32,8 +32,7 @@ package com.crystalgraphics.api.buffer;
  *       reuses a region three frames on, while a draw may still read it. Nothing reports it -- the values are
  *       simply wrong. Upload before the draw, every frame: an upload of unchanged bytes, up to 4 KB, is a
  *       compare, so it is cheap.</li>
- *   <li>{@link #FRAME} costs nothing extra to ask for where it cannot apply: a TBO (the path below GL 4.3, where
- *       {@code glTexBuffer} reads from offset 0) and a stream tier forced to {@code orphan} or {@code subdata}
+ *   <li>{@link #FRAME} costs nothing extra to ask for where it cannot apply: a target that binds no range
  *       both fall back to {@link #RETAINED}'s storage, which is correct for every use.</li>
  * </ul>
  */
@@ -46,8 +45,8 @@ public enum CgBufferLifetime {
     FRAME,
 
     /**
-     * Readable until the next upload, however many frames apart. Orphaning storage at offset 0: each upload
-     * costs the driver a rename, which is the price of keeping the bytes for draws that never upload.
+     * Readable until the next upload, however many frames apart. Its own storage at offset 0: each upload is
+     * staged in the frame ring and copied in on the GPU, the price of keeping the bytes for draws that never upload.
      */
     RETAINED
 }

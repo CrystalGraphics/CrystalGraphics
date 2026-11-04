@@ -1,16 +1,15 @@
 package com.crystalgraphics.api.material;
 
 import com.crystalgraphics.api.buffer.CgBufferFormat;
-import com.crystalgraphics.api.buffer.CgGpuType;
 import com.crystalgraphics.gl.buffer.shader.CgShaderBuffer;
 import com.crystalgraphics.gl.buffer.shader.CgUniformBuffer;
 import lombok.Getter;
 
 /**
- * Immutable descriptor for a user-defined auxiliary buffer (SSBO, TBO, or UBO) attached to a
+ * Immutable descriptor for a user-defined auxiliary buffer (SSBO or UBO) attached to a
  * {@link CgMaterial} for GLSL auto-injection.
  *
- * <h3>SSBO/TBO path ({@code of(CgShaderBuffer, macroName)})</h3>
+ * <h3>SSBO path ({@code of(CgShaderBuffer, macroName)})</h3>
  * <p>Per-material auxiliary structured data that your shader needs beyond what the engine's
  * {@code cg_env.glsl} provides: font glyph metrics, per-light data, bindless texture handle
  * pools (via {@code uvec2} or {@code uint64_t} fields), tile material properties, animation
@@ -19,23 +18,16 @@ import lombok.Getter;
  * <h3>UBO path ({@code of(CgUniformBuffer)})</h3>
  * <p>Single-instance uniform data: scene parameters, per-pass constants, camera extras, light
  * properties — anything the same for all instances in a draw. Fields land in direct shader
- * scope (no macro, no index). Use {@link #isUbo()} to distinguish from SSBO/TBO entries.</p>
+ * scope (no macro, no index). Use {@link #isUbo()} to distinguish from SSBO entries.</p>
  *
  * <h3>What they are NOT</h3>
  * <p>Engine pipeline buffers — {@code CgObjectDataBuffer}, {@code CgFrameBlock} — are owned
  * by the engine and declared in {@code cg_env.glsl}. Do NOT pass them here;
  * doing so produces duplicate GLSL declarations that fail to compile.</p>
  *
- * <h3>TBO path limitations</h3>
- * <p>The TBO float path uses {@code samplerBuffer} + {@code GL_RGBA32F}: only float-family
- * types are valid ({@link CgGpuType#isTboCompatible()}
- * must return {@code true} for every field). INT, UINT, BOOL, IVEC*, UVEC*, INT64, UINT64 are
- * SSBO-only. The format stride must also be a multiple of 16 bytes (one TBO texel = 16 bytes).
- * These constraints are validated at compile time (not at attach time).</p>
- *
  * <h3>Naming contract</h3>
- * <p>{@code buffer.getName()} is used directly as the GLSL block interface name (SSBO path) or
- * TBO {@code samplerBuffer} uniform name or UBO block name. This is required for the existing
+ * <p>{@code buffer.getName()} is used directly as the GLSL block interface name (SSBO) or UBO
+ * block name. This is required for the existing
  * {@link CgShaderBuffer#wireShader} implementations to locate the block/sampler in the linked
  * program via {@code glGetProgramResourceIndex} / {@code glGetUniformLocation}. Any mismatch
  * will cause silent GL wiring failure at runtime.</p>
@@ -58,12 +50,6 @@ public final class CgAttachedBuffer {
     @Getter private final String ssboArrayName;
 
     /**
-     * Internal TBO getter function name, derived as {@code "_cg_get" + structName}.
-     * Not user-visible; referenced only in the macro expansion.
-     */
-    @Getter private final String tboGetterName;
-
-    /**
      * -- GETTER --
      *  Returns 
      *  if this entry wraps a UBO (created via 
@@ -73,12 +59,11 @@ public final class CgAttachedBuffer {
     @Getter private final boolean isUbo;
 
     private CgAttachedBuffer(CgShaderBuffer buffer, String macroName,
-                              String structName, String ssboArrayName, String tboGetterName, boolean isUbo) {
+                              String structName, String ssboArrayName, boolean isUbo) {
         this.buffer        = buffer;
         this.macroName     = macroName;
         this.structName    = structName;
         this.ssboArrayName = ssboArrayName;
-        this.tboGetterName = tboGetterName;
         this.isUbo = isUbo;
     }
 
@@ -102,7 +87,7 @@ public final class CgAttachedBuffer {
         CgBufferFormat format = buffer.getFormat();
         if (format.getMemoryLayout() != CgBufferFormat.MemoryLayout.STD430) {
             throw new IllegalArgumentException(
-                "attach() requires a STD430 buffer (SSBO/TBO). UBOs use STD140 and cannot be auto-injected. " +
+                "attach() requires a STD430 buffer (SSBO). UBOs use STD140 and cannot be auto-injected. " +
                 "Use CgShaderBindings.ubo() instead.");
         }
 
@@ -117,9 +102,7 @@ public final class CgAttachedBuffer {
         }
 
         String ssboArrayName = "_cg_" + lowerFirst(structName) + "Arr";
-        String tboGetterName = "_cg_get" + structName;
-
-        return new CgAttachedBuffer(buffer, macroName, structName, ssboArrayName, tboGetterName, false);
+        return new CgAttachedBuffer(buffer, macroName, structName, ssboArrayName, false);
     }
 
     /**
@@ -147,7 +130,7 @@ public final class CgAttachedBuffer {
             throw new IllegalArgumentException(
                 "buffer.getName() \"" + blockName + "\" must not start with gl_");
         }
-        return new CgAttachedBuffer(buffer, null, null, null, null, true);
+        return new CgAttachedBuffer(buffer, null, null, null, true);
     }
 
     /** Lowercases the first character of {@code s}; returns {@code s} unchanged if empty. */

@@ -299,8 +299,7 @@ chunks.instance();                                                              
 
 **Object records from a buffer** (gpu-compute C9b): `CgChunkBuilder.objects(records, first, n)` draws a mesh once per
 record of a GPU buffer in `CgInstanceKind.OBJECT`'s layout, instead of records written into the chunk. The executor
-binds the buffer where `CG_OBJECT_DATA` reads (`CgBindingPoints.OBJECT_DATA`: a storage block, or a buffer texture on
-the TBO path) with `first` as the instance base, so instance i reads record `first + i`, and binds the frame's own
+binds the buffer where `CG_OBJECT_DATA` reads (`CgBindingPoints.OBJECT_DATA`, a storage block) with `first` as the instance base, so instance i reads record `first + i`, and binds the frame's own
 records back for the next batch that reads them. With `.indirect(count, offset, INSTANCES, factor)` the GPU's count says how many, held to n by
 the command's kernel (`_Most`) or, read back, by the executor.
 
@@ -308,7 +307,7 @@ the command's kernel (`_Most`) or, read back, by the executor.
 chunks.draw(pipeline, bindings, rock).objects(visible, 0, capacity).indirect(visibleCount, 0, CgIndirect.INSTANCES, 1);
 ```
 
-- The raster pass reads the buffer as a vertex and fragment stage would (sampled on the TBO path), so the pass writing
+- The raster pass reads the buffer as a vertex and fragment stage would, so the pass writing
   it runs first and, below compute, lands it.
 - Such a draw is a batch of its own, joined into a multi-draw only with indirect draws of the same buffer (below); a
   pass whose only object draws are of `objects()` uploads no object records.

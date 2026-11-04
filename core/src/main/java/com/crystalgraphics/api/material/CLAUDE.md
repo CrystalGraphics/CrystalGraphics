@@ -20,7 +20,7 @@ This is the top of the CrystalShader material stack.
 | `CgMaterialState` | A material's render state where it is not its shader's (Unreal's base property overrides): `builder().blend(CgBlendMode).clip().cull(..)/twoSided().depthWrite(b).separateTranslucency()`; the last orders a translucent draw after every other (`CgWorldRenderer.add`). Blend and clip are its shader asset's (`changesProgram`, `programKey`); cull and depth write are applied per pass by `CgMaterial.getPassRenderState` through `onPass`. `CgMaterial.newInstance(path, state)`, `fromSource(source, state)`, `state()`. `docs/SHADERS.md` § *A material's state* |
 | `CgBlendMode` | `OPAQUE`, `ALPHA`, `PREMULTIPLIED`, `ADDITIVE`, `MODULATE`, `SUBTRACT`: each the `CgBlendState` of the `Blend` line it stands for (`state()`) |
 | `CgRenderPassVariant` | Public enum bridging orchestrators to per-pass LightMode routing. `FORWARD("Forward")`, `DEPTH("Depth")`, `EMISSIVE("Emissive")` (the world's bloom; `CgMaterial.hasEmissivePass()`), `DISTORTION("Distortion")` (offsets the world renderer applies to the scene; `CgMaterial.hasDistortionPass()`). `lightModeName()` returns the canonical LightMode tag value. Used by `bindForPass(CgRenderPassVariant)`, `getPassRenderState(CgRenderPassVariant)`, and `hasDepthPass()`. No shadow-caster variant: the world's shadows are ray-traced from each pixel (`CgWorldLights`), so no material draws from a light's side. |
-| `CgAttachedBuffer` | Immutable descriptor for a user-attached SSBO/TBO or UBO buffer. Created via `CgAttachedBuffer.of(buffer, macroName)` (SSBO/TBO, STD430) or `CgAttachedBuffer.of(CgUniformBuffer)` (UBO, STD140). `isUbo()` returns `true` for UBO entries (macroName is null). SSBO/TBO fields: `buffer`, `macroName`, `structName` (= `format.getGlslName()`), `ssboArrayName` (`_cg_{lowerFirst}Arr`), `tboGetterName` (`_cg_get{structName}`). UBO entries: only `buffer` is set; macroName/structName/ssboArrayName/tboGetterName are all null. Block/sampler/UBO block name is always `buffer.getName()` — required for `wireShader()`. |
+| `CgAttachedBuffer` | Immutable descriptor for a user-attached SSBO or UBO buffer. Created via `CgAttachedBuffer.of(buffer, macroName)` (SSBO, STD430) or `CgAttachedBuffer.of(CgUniformBuffer)` (UBO, STD140). `isUbo()` returns `true` for UBO entries (macroName is null). SSBO fields: `buffer`, `macroName`, `structName` (= `format.getGlslName()`), `ssboArrayName` (`_cg_{lowerFirst}Arr`), `tboGetterName` (`_cg_get{structName}`). UBO entries: only `buffer` is set; macroName/structName/ssboArrayName/tboGetterName are all null. Block/sampler/UBO block name is always `buffer.getName()` — required for `wireShader()`. |
 | `CgMaterialRegistry` | Singleton load/reload/delete lifecycle manager. `get()` returns the singleton. `getOrCreate(String)` / `getOrCreate(CgMaterialKey)` check cache; on miss call `CgMaterial.create()` (which uses `CgMaterialShaderRegistry` internally), cache, and return. `reloadAll()` delegates to `CgMaterialShaderRegistry.get().reloadAll()` — marks all shader assets dirty; materials detect revision change on next `bind()`. `deleteAll()` deletes all cached material instances (freeing per-instance UBOs), then cascades to `CgMaterialShaderRegistry.get().deleteAll()` to free GL shader programs. Registered for teardown in `CgEngineLifecycle.shutdown()`. `getOrCreate(definition, drawKeyword)` is a `CgMaterialDefinition`'s material (`CgMaterial.of(definition)` with none): one a definition and draw keyword, by identity, its archetype under `definition.state()`, its keywords, constants and textures with their samplers, a texture made in code bound as the object (`Texture.resolve`), each file made as its `texture` asset says (`texture(path)`: sRGB or linear, mips, a `.hdr` as RGBA16F, `cube: true` as six stacked faces), each texture bound only to its kind's sampler (a cube's `samplerCube`, an array's `sampler2DArray`, a volume's `sampler3D`); `release(definition)` deletes an old generation's |
 | `CgMaterialKey` | `@Desugar record` wrapping a resource-path string. `of(String)` factory. Value equality. Used as a typed alternative to raw strings. |
 | `CgMaterialDefinition`, `CgMaterialDefinitions` | A `material` asset compiled (`CgMaterialDefinitions.register()` makes it the kind's compiler): its parent chain merged, every `values`/`textures` key and keyword checked against the archetype, its `CgMaterialPermutation` (interned program key: archetype, keywords, blend class, clip, shading; a value-only child shares its parent's), constants, row layout (`CgMaterialRowLayout`), `Draw` state, domain and shading model. `route(p)` and `requireRow(p, who)` (a key refused on a non-row property), `requireDomain(d, who)`, `state()`. `CgMaterialDefinition.of(id, shader)` writes the file's tree (`tree()`) and compiles it (`build()`); `CgMaterialDefinitions.derive(parent, overrides)` is a child made in code, interned per parent generation (a `WeakHashMap` on the definition) by its overrides in canonical form (floats by bits, keywords sorted) |
@@ -169,7 +169,7 @@ Both delegate to `CgMaterialRegistry.get().getOrCreate(...)`. Returns the same c
 Internal `CgMaterial.create(resourcePath)` steps (package-private, only called by registry):
 1. `CgIO.loadSource(resourcePath)` — load `.shader` source
 2. `CgShaderParser.parse(source)` — structural parse
-3. `CgCapabilities.detect().preferredShaderBufferPath()` — detect SSBO/TBO/NONE
+3. `CgCapabilities.detect().preferredShaderBufferPath()` — detect SSBO/NONE
 4. `CgMaterialShaderCompiler.compile(parsed, path)` — generate GLSL vert + frag strings
 5. `new CgShaderPreprocessor().process(...)` — resolve `#include "cg_env.glsl"` (once)
 6. `CgShaderFactory.fromSource(vert, frag, CgVertexFormat.SPATIAL)` — compile + link
@@ -192,7 +192,7 @@ Bind steps (in order):
 1. If `dirty`, calls `recompile()` — hot-reload from `resourcePath`
 2. Stage property values into ephemeral bindings
 3. `shader.bind()` — activates GL program and flushes all bindings
-4. `objectBuffer.bind(shader)` — binds SSBO/TBO and wires it (TBO: sets samplerBuffer uniform)
+4. `objectBuffer.bind(shader)` — binds SSBO and wires it
 
 ### CgMaterial.precache() — compiling without stalling a frame
 
@@ -267,18 +267,12 @@ CgVertexFormat format = CgVertexFormat.SPATIAL;
 CgMesh mesh = CgMeshShapes.cube(format);
 ```
 
-## Reserved Texture Unit
+## The sampler budget
 
-The engine object buffer TBO uses texture unit 0 (`CgBindingPoints.TBO_ENGINE_UNIT`). When using
-`applyBindings()` to set a `sampler2D` property, avoid texture unit 0 to prevent collision with
-the engine-managed TBO slot. The old `DEFAULT_TBO_TEXTURE_UNIT = 7` constant was removed — the
-texture unit is now derived from `bindingLocation` directly.
-
-**The sampler budget.** A material's samplers take units 0 up, by declaration order, and the engine reserves the
-units from `CgBindingPoints.LIGHTMAP_TEXTURE_UNIT` up (lightmap, depth, scene colour, its TBOs). A shader declaring
+ A material's samplers take units 0 up, by declaration order, and the engine reserves the
+units from `CgBindingPoints.LIGHTMAP_TEXTURE_UNIT` up (lightmap, depth, scene colour). A shader declaring
 more samplers than fit below that fails to load with a `CgShaderParseException` naming the count and what the GPU
-leaves. A material's own TBOs (`attach` on the TBO path) are not counted yet: they take units from
-`CgBindingPoints.USER_START_TBO` (5) up, so on the TBO path a sixth sampler beside one collides silently.
+leaves.
 
 ## Ownership Rules
 
@@ -288,7 +282,7 @@ leaves. A material's own TBOs (`attach` on the TBO path) are not counted yet: th
 
 ## User-Attached Buffer API
 
-### SSBO/TBO path — `attach(CgShaderBuffer, macroName)` / `detach(macroName)`
+### SSBO path — `attach(CgShaderBuffer, macroName)` / `detach(macroName)`
 
 ```java
 // Define format for per-glyph metrics
@@ -299,7 +293,7 @@ CgBufferFormat glyphFmt = CgBufferFormat.builder("GlyphMetrics", STD430)
     .build();
 CgShaderBuffer glyphBuf = CgShaderBuffer.create("GlyphMetricsBuffer", glyphFmt, 0);   // RETAINED: written once
 
-// Attach: GLSL struct + SSBO/TBO block auto-injected on next compile
+// Attach: GLSL struct + SSBO block auto-injected on next compile
 material.attach(glyphBuf, "GLYPH_DATA");
 
 // In shader: GLYPH_DATA(n).advance
@@ -310,7 +304,6 @@ material.detach("GLYPH_DATA");
 - `macroName` must match `^[A-Z][A-Z0-9_]*$` — validated by `CgAttachedBuffer.of()`.
 - `format.getMemoryLayout()` must be STD430 — throws for STD140.
 - Duplicate macroName or duplicate `format.getGlslName()` (struct name) throws.
-- TBO-path constraints (field types, stride % 16) validated at compile time, not attach time.
 - `attach()` calls `markDirty()` — next `bind()` triggers recompile.
 - **Ownership warning**: `CgMaterial.load(path)` returns a shared cached instance. Only call `attach()` on materials you exclusively own.
 - **Runtime binding**: `buffer.bind()` is your responsibility before each draw call — `attach()` registers for GLSL injection and `wireShader()` wiring only. A `CgBufferLifetime.FRAME` buffer re-binds at every upload, and must be uploaded in every frame that reads it.
@@ -336,7 +329,7 @@ material.detachUbo("SceneParams");
 
 Do NOT pass the engine's own blocks (`CgFrameBlock`, `CgObjectDataBuffer`) — those are declared in `cg_env.glsl` and wired automatically by the engine. Passing them here causes duplicate GLSL declarations that fail to compile.
 
-### GLSL symbol naming (SSBO/TBO)
+### GLSL symbol naming (SSBO)
 
 Given `buffer.getName() = "FontMetricsBuffer"`, `format.getGlslName() = "FontMetrics"`, `macroName = "FONT_METRICS"`:
 
@@ -345,8 +338,6 @@ Given `buffer.getName() = "FontMetricsBuffer"`, `format.getGlslName() = "FontMet
 | Struct type | `FontMetrics` | User-visible |
 | SSBO block interface name | `FontMetricsBuffer` | Internal — must match for `wireShader()` |
 | SSBO array instance name | `_cg_fontMetricsArr` | Internal |
-| TBO sampler uniform name | `FontMetricsBuffer` | Internal — must match for `wireShader()` |
-| TBO getter function | `_cg_getFontMetrics` | Internal |
 | User macro | `FONT_METRICS(n)` | User-facing entry point |
 
 ## Guardrails (NOT in this package)
@@ -360,7 +351,7 @@ Given `buffer.getName() = "FontMetricsBuffer"`, `format.getGlslName() = "FontMet
 | Package | Relationship |
 |---------|-------------|
 | `gl/material/` | Provides `CgShaderParser` (parse) and `CgMaterialShaderCompiler` (generate GLSL) |
-| `gl/buffer/shader/` | `CgUniformBuffer` (UBO frame data), `CgShaderBuffer` (SSBO/TBO per-object data) |
+| `gl/buffer/shader/` | `CgUniformBuffer` (UBO frame data), `CgShaderBuffer` (SSBO per-object data) |
 | `api/shader/` | `CgShader`, `CgShaderBindings`, `CgShaderPreprocessor` used internally |
 | `gl/shader/` | `CgShaderFactory.fromSource()` used by `CgMaterial.create()` |
 | `api/vertex/` | `CgVertexFormat.SPATIAL` — canonical spatial format for this pipeline; also `CgVertexSemantic`, `CgAttribType` |

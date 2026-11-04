@@ -23,7 +23,7 @@ import java.util.function.Supplier;
  * <p>{@code CgFrameBlock} and {@code CgObjectDataBuffer} are declared unconditionally in
  * {@code cg_env.glsl} because effectively every shader wants them. A quad-instance buffer is not in
  * that class — only a small minority of shaders draw through {@code CgQuadRenderer} — so declaring it
- * everywhere would spend a texture unit on the TBO path for shaders that never read it.</p>
+ * everywhere would bind it for shaders that never read it.</p>
  *
  * <p>The alternative that was in use before this registry — every caller remembering to call
  * {@code CgQuadRenderer.attachTo(material)} in Java — put the requirement arbitrarily far from the

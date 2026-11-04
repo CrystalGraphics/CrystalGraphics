@@ -49,10 +49,10 @@ public final class CgCapabilities {
             "V or G43: kernels run as that tier would, where the context has what it needs, refused naming what is"
                     + " missing where not; G40 and G33 run none. Empty for the best. Taken at each context's capability probe.");
     public static final CgVar.Text SHADER_BUFFER_TIER = CgVar.text("crystalgraphics.shaderBuffer.tier", "", CgVar.DEV,
-            "SSBO_GL43, SSBO_ARB or TBO: engine buffers read that way (TBO: buffer textures, GLSL 3.30, as a 3.3 context);"
-                    + " empty for the best. Taken at each context's capability probe.");
+            "SSBO_GL43 or SSBO_ARB: engine buffers read that way; TBO is detected but unhooked (docs/TBO_PATH.md). Empty"
+                    + " for the best. Taken at each context's capability probe.");
     public static final CgVar.Text STREAM_TIER = CgVar.text("crystalgraphics.stream.tier", "", CgVar.DEV,
-            "persistent, ring, orphan or subdata: how streamed vertex buffers upload, refused where the context lacks it;"
+            "persistent or ring: how the frame ring uploads, refused where the context lacks it;"
                     + " empty for the best. Taken at each context's capability probe.");
     public static final CgVar.Bool BC7 = CgVar.bool("crystalgraphics.texture.bc7", true, CgVar.DEV,
             "Cooked BC7 textures uploaded as their blocks where the context has BPTC; false decodes them to RGBA8 as they"
@@ -77,15 +77,16 @@ public final class CgCapabilities {
     /**
      * Enumerates the available GPU-resident shader buffer paths in preference order.
      *
-     * <p>SSBO is preferred (GL 4.3 core or ARB). TBO is the fallback for GL 3.3+ contexts
-     * that lack SSBO. NONE means the material pipeline cannot be used on this context.</p>
+     * <p>SSBO, GL 4.3 core or ARB. {@code TBO} is never chosen: the buffer-texture path is unhooked, its detect
+     * ({@code textureBufferMaterialPath}) kept, and {@code docs/TBO_PATH.md} says how to reconnect it. NONE means the
+     * material pipeline cannot be used on this context.</p>
      */
     public enum ShaderBufferPath {
         /** Core OpenGL 4.3 SSBO. */
         SSBO_GL43,
         /** {@code GL_ARB_shader_storage_buffer_object} SSBO when core 4.3 is absent. */
         SSBO_ARB,
-        /** Texture buffer object fallback (GL 3.1+, sampler-based). */
+        /** Texture buffer objects (GL 3.1+, sampler-based): unhooked, never chosen ({@code docs/TBO_PATH.md}). */
         TBO,
         /** No usable shader buffer path. Material pipeline creation will throw. */
         NONE
@@ -94,7 +95,7 @@ public final class CgCapabilities {
     /**
      * How a {@code CgStreamBuffer} uploads, best first.
      *
-     * <p>{@code -Dcrystalgraphics.stream.tier=persistent|ring|orphan|subdata} forces one — for a driver that
+     * <p>{@code -Dcrystalgraphics.stream.tier=persistent|ring} forces one — for a driver that
      * misbehaves on the tier chosen, and for comparing them. Forcing a tier this context cannot do throws
      * from {@link #detect()}.</p>
      */
@@ -129,11 +130,7 @@ public final class CgCapabilities {
         /** A frame ring in immutable storage mapped once for its life: no map call per upload. GL 4.4 / {@code ARB_buffer_storage}. */
         PERSISTENT,
         /** A frame ring mapped per upload, unsynchronised; one fence per frame. GL 3.2 sync and {@code glMapBufferRange}. */
-        RING,
-        /** Every upload orphans the whole buffer and writes at offset 0; the driver does the renaming. */
-        ORPHAN,
-        /** A CPU staging copy and {@code glBufferSubData} at offset 0 -- the one every driver gets right. */
-        SUBDATA
+        RING
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -193,7 +190,7 @@ public final class CgCapabilities {
     @Getter(AccessLevel.NONE) boolean bufferStorage;
     /** Chosen from the three flags above and the override. @see StreamBufferTier */
     @Getter(AccessLevel.NONE)
-    StreamBufferTier vertexStreamTier, shaderStreamTier;
+    StreamBufferTier vertexStreamTier;
 
     // ── Instancing ────────────────────────────────────────────────────────────
     /** Maximum vertex attribute slots. A mat4 consumes 4 slots. */
@@ -204,7 +201,7 @@ public final class CgCapabilities {
     boolean shaderStorageBufferCore;
     /** Whether {@code GL_ARB_shader_storage_buffer_object} is available (and core 4.3 is absent). */
     boolean shaderStorageBufferArb;
-    /** Whether the TBO material fallback path is available (GL33+, no SSBO). */
+    /** Whether the TBO path could run here (GL33+, no SSBO): detected, unhooked ({@code docs/TBO_PATH.md}). */
     boolean textureBufferMaterialPath;
     /** Preferred shader buffer path, derived from the three flags above. */
     @Getter(AccessLevel.NONE) ShaderBufferPath shaderBufferPath;
@@ -358,9 +355,8 @@ public final class CgCapabilities {
         caps.mappingIsFree     = gl.mappingIsFree();
         caps.bufferStorage     = gl.OpenGL44() || gl.GL_ARB_buffer_storage();
         caps.vertexStreamTier  = vertexStreamTier(caps);
-        caps.shaderStreamTier  = caps.vertexStreamTier == StreamBufferTier.SUBDATA ? StreamBufferTier.SUBDATA : StreamBufferTier.ORPHAN;
 
-        // ── Shader buffers (GL43 SSBO > ARB SSBO > TBO > NONE) ───────────────
+        // ── Shader buffers (GL43 SSBO > ARB SSBO > NONE; TBO detected) ───────────────
         caps.shaderStorageBufferCore   = gl.OpenGL43();
         caps.shaderStorageBufferArb    = !caps.shaderStorageBufferCore && gl.GL_ARB_shader_storage_buffer_object();
         caps.textureBufferMaterialPath = !caps.shaderStorageBufferCore && !caps.shaderStorageBufferArb && gl.OpenGL33();
@@ -424,9 +420,9 @@ public final class CgCapabilities {
 
     /** The best path, or {@code -Dcrystalgraphics.shaderBuffer.tier}'s where this context has it. */
     private static ShaderBufferPath shaderBufferPath(CgCapabilities caps) {
+        // TBO would follow SSBO_ARB where caps.textureBufferMaterialPath; unhooked (docs/TBO_PATH.md)
         ShaderBufferPath best = caps.shaderStorageBufferCore ? ShaderBufferPath.SSBO_GL43
                 : caps.shaderStorageBufferArb ? ShaderBufferPath.SSBO_ARB
-                : caps.textureBufferMaterialPath ? ShaderBufferPath.TBO
                 : ShaderBufferPath.NONE;
         String property = SHADER_BUFFER_TIER.get();
         if (property.isBlank()) return best;
@@ -434,8 +430,7 @@ public final class CgCapabilities {
         boolean has = switch (forced) {
             case SSBO_GL43 -> caps.shaderStorageBufferCore;
             case SSBO_ARB -> caps.shaderStorageBufferArb;
-            case TBO -> true;                                  // core since 3.1, below the floor
-            case NONE -> false;
+            case TBO, NONE -> false;   // TBO unhooked: docs/TBO_PATH.md
         };
         if (!has) {
             throw new IllegalStateException("-Dcrystalgraphics.shaderBuffer.tier=" + forced
@@ -459,10 +454,7 @@ public final class CgCapabilities {
     }
 
     private static StreamBufferTier vertexStreamTier(CgCapabilities caps) {
-        StreamBufferTier best = caps.bufferStorage ? StreamBufferTier.PERSISTENT
-                : caps.arbSync && caps.hasMapBufferRange ? StreamBufferTier.RING
-                : caps.hasMapBufferRange ? StreamBufferTier.ORPHAN
-                : StreamBufferTier.SUBDATA;
+        StreamBufferTier best = caps.bufferStorage ? StreamBufferTier.PERSISTENT : StreamBufferTier.RING;
         String property = STREAM_TIER.get();
         if (property.isBlank()) return best;
         StreamBufferTier forced = StreamBufferTier.valueOf(property.trim().toUpperCase(Locale.ROOT));
@@ -501,11 +493,8 @@ public final class CgCapabilities {
     /** Returns the preferred shader buffer path for the current GL context. */
     public ShaderBufferPath shaderBufferPath() { return shaderBufferPath; }
 
-    /** The tier a vertex stream takes: forced, or the best this context supports. */
+    /** The tier the frame ring takes: forced, or the best this context supports. */
     public StreamBufferTier vertexStreamTier() { return vertexStreamTier; }
-
-    /** The tier shader-buffer storage takes: {@code ORPHAN}, or {@code SUBDATA} where vertex streams take it. */
-    public StreamBufferTier shaderStreamTier() { return shaderStreamTier; }
 
     /** Kernels: GL 4.3 or {@code ARB_compute_shader}, with storage buffers; any device. */
     public boolean compute() { return compute; }

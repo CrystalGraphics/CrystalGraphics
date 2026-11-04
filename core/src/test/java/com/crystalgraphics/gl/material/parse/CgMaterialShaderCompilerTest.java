@@ -18,19 +18,19 @@ import static org.junit.Assert.*;
 
 public class CgMaterialShaderCompilerTest {
 
-    private static final CgCapabilities.ShaderBufferPath TBO =
-            CgCapabilities.ShaderBufferPath.TBO;
+    private static final CgCapabilities.ShaderBufferPath SSBO =
+            CgCapabilities.ShaderBufferPath.SSBO_GL43;
 
     private static final List<CgAttachedBuffer> NO_BUFFERS = Collections.emptyList();
 
     @BeforeClass
-    public static void injectTboCapabilities() throws Exception {
+    public static void injectSsboCapabilities() throws Exception {
         Constructor<CgCapabilities> ctor = CgCapabilities.class.getDeclaredConstructor();
         ctor.setAccessible(true);
         CgCapabilities stub = ctor.newInstance();
         Field pathField = CgCapabilities.class.getDeclaredField("shaderBufferPath");
         pathField.setAccessible(true);
-        pathField.set(stub, CgCapabilities.ShaderBufferPath.TBO);
+        pathField.set(stub, CgCapabilities.ShaderBufferPath.SSBO_GL43);
         Field cacheField = CgCapabilities.class.getDeclaredField("cachedCaps");
         cacheField.setAccessible(true);
         cacheField.set(null, stub);
@@ -339,7 +339,7 @@ public class CgMaterialShaderCompilerTest {
     // ── Version directive ─────────────────────────────────────────────────────
 
     @Test
-    public void tboPath_emits_versionDirective() {
+    public void emits_versionDirective() {
         CgMaterialShaderCompiler.CompiledSource cs =
                 CgMaterialShaderCompiler.compile(parse(MINIMAL), NO_BUFFERS);
         assertTrue("Vertex must start with #version",
@@ -360,11 +360,11 @@ public class CgMaterialShaderCompilerTest {
     }
 
     @Test
-    public void tboPath_doesNotEmitUseSsbo() {
+    public void bothStagesDefineUseSsbo() {
         CgMaterialShaderCompiler.CompiledSource cs =
                 CgMaterialShaderCompiler.compile(parse(MINIMAL), NO_BUFFERS);
-        assertFalse(cs.vertexSource().contains("CG_USE_SSBO"));
-        assertFalse(cs.fragmentSource().contains("CG_USE_SSBO"));
+        assertTrue(cs.vertexSource().contains("#define CG_USE_SSBO 1"));
+        assertTrue(cs.fragmentSource().contains("#define CG_USE_SSBO 1"));
     }
 
     // ── env include ───────────────────────────────────────────────────────────
@@ -454,7 +454,7 @@ public class CgMaterialShaderCompilerTest {
                 "    void fragment(in v2f i, out vec4 fragColor) { fragColor = vec4(1.0); }\n" +
                 "}\n";
         CgMaterialShaderCompiler.CompiledSource cs =
-                CgMaterialShaderCompiler.compile(parse(src), TBO, NO_BUFFERS, null);
+                CgMaterialShaderCompiler.compile(parse(src), SSBO, NO_BUFFERS, null);
         assertFalse("Non-sampler prop must not be emitted as a standalone uniform when matPropsUbo=null",
                 cs.fragmentSource().contains("uniform float _Alpha"));
     }

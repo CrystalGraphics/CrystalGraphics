@@ -3,7 +3,6 @@ package com.crystalgraphics.gl.material.parse;
 import com.crystalgraphics.api.buffer.CgBufferFormat;
 import com.crystalgraphics.api.buffer.CgBufferFormat.MemoryLayout;
 import com.crystalgraphics.api.material.CgAttachedBuffer;
-import com.crystalgraphics.api.shader.CgPreprocessorException;
 import com.crystalgraphics.api.vertex.CgAttribType;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
 import com.crystalgraphics.api.vertex.CgVertexSemantic;
@@ -15,7 +14,7 @@ import static org.junit.Assert.*;
  * Exhaustive unit tests for {@link CgGlslEmitter}.
  *
  * <p>All tests are pure string generation — no GL context required. Core methods are called
- * directly (package-private seam: {@code emitSsbo/emitTbo/emitUbo(format, name, ...)}).</p>
+ * directly (package-private seam: {@code emitSsbo/emitUbo(format, name, ...)}).</p>
  */
 public class CgGlslEmitterTest {
 
@@ -102,133 +101,6 @@ public class CgGlslEmitterTest {
     }
 
     @Test
-    public void testF1_allVec4_tbo() {
-        String out = CgGlslEmitter.emitTbo(ALL_VEC4, "InstBuf", "INST");
-
-        assertTrue(out.contains("uniform samplerBuffer InstBuf;"));
-        assertTrue(out.contains("InstanceData _cg_getInstanceData(int n) {"));
-        assertTrue(out.contains("int _base = n * 3;"));
-        assertTrue(out.contains("_r.color = texelFetch(InstBuf, _base + 0);"));
-        assertTrue(out.contains("_r.emissive = texelFetch(InstBuf, _base + 1);"));
-        assertTrue(out.contains("_r.params = texelFetch(InstBuf, _base + 2);"));
-        assertTrue(out.contains("#define INST(n) _cg_getInstanceData(n)"));
-    }
-
-    @Test
-    public void testF2_allMat4_tbo() {
-        String out = CgGlslEmitter.emitTbo(ALL_MAT4, "TransBuf", "TRANSFORM");
-
-        assertTrue(out.contains("int _base = n * 8;"));
-        assertTrue(out.contains("_r.modelA[0] = texelFetch(TransBuf, _base + 0);"));
-        assertTrue(out.contains("_r.modelA[1] = texelFetch(TransBuf, _base + 1);"));
-        assertTrue(out.contains("_r.modelA[2] = texelFetch(TransBuf, _base + 2);"));
-        assertTrue(out.contains("_r.modelA[3] = texelFetch(TransBuf, _base + 3);"));
-        assertTrue(out.contains("_r.modelB[0] = texelFetch(TransBuf, _base + 4);"));
-        assertTrue(out.contains("_r.modelB[3] = texelFetch(TransBuf, _base + 7);"));
-    }
-
-    @Test
-    public void testF3_packedSmall_tbo() {
-        String out = CgGlslEmitter.emitTbo(PACKED_SMALL, "GlyphBuf", "GLYPH");
-
-        assertTrue(out.contains("int _base = n * 3;"));
-        assertTrue(out.contains("_r.bbox = texelFetch(GlyphBuf, _base + 0);"));
-        assertTrue(out.contains("_r.uv0 = texelFetch(GlyphBuf, _base + 1).xy;"));
-        assertTrue(out.contains("_r.uv1 = texelFetch(GlyphBuf, _base + 1).zw;"));
-        assertTrue(out.contains("_r.advance = texelFetch(GlyphBuf, _base + 2).x;"));
-        assertTrue(out.contains("_r.bearing = texelFetch(GlyphBuf, _base + 2).y;"));
-        assertTrue(out.contains("_r.descent = texelFetch(GlyphBuf, _base + 2).z;"));
-        assertTrue(out.contains("_r.pad = texelFetch(GlyphBuf, _base + 2).w;"));
-    }
-
-    @Test
-    public void testF4_vec3_tbo() {
-        String out = CgGlslEmitter.emitTbo(VEC3_FORMAT, "LightBuf", "LIGHT");
-
-        assertTrue(out.contains("int _base = n * 6;"));
-        assertTrue(out.contains("_r.color = texelFetch(LightBuf, _base + 4).xyz;"));
-        assertTrue(out.contains("_r.params = texelFetch(LightBuf, _base + 5);"));
-    }
-
-    @Test
-    public void testF5_mat3_tbo() {
-        String out = CgGlslEmitter.emitTbo(MAT3_FORMAT, "NormBuf", "NORM");
-
-        assertTrue(out.contains("int _base = n * 5;"));
-        assertTrue(out.contains("_r.normalMat[0] = texelFetch(NormBuf, _base + 1).xyz;"));
-        assertTrue(out.contains("_r.normalMat[1] = texelFetch(NormBuf, _base + 2).xyz;"));
-        assertTrue(out.contains("_r.normalMat[2] = texelFetch(NormBuf, _base + 3).xyz;"));
-        assertTrue(out.contains("_r.extra = texelFetch(NormBuf, _base + 4);"));
-    }
-
-    @Test
-    public void testF6_mixedMat_tbo() {
-        String out = CgGlslEmitter.emitTbo(MIXED_MAT, "SkinBuf", "SKIN");
-
-        assertTrue(out.contains("int _base = n * 8;"));
-        assertTrue(out.contains("_r.bindPose[0] = texelFetch(SkinBuf, _base + 0);"));
-        assertTrue(out.contains("_r.bindPose[1] = texelFetch(SkinBuf, _base + 1);"));
-        assertTrue(out.contains("_r.bindPose[2] = texelFetch(SkinBuf, _base + 2);"));
-        assertTrue(out.contains("_r.bindPose[3] = texelFetch(SkinBuf, _base + 3);"));
-        assertTrue(out.contains("_r.normalMat[0] = texelFetch(SkinBuf, _base + 4).xyz;"));
-        assertTrue(out.contains("_r.normalMat[1] = texelFetch(SkinBuf, _base + 5).xyz;"));
-        assertTrue(out.contains("_r.normalMat[2] = texelFetch(SkinBuf, _base + 6).xyz;"));
-        assertTrue(out.contains("_r.weights = texelFetch(SkinBuf, _base + 7);"));
-    }
-
-    @Test
-    public void testF7_uvec2_tboThrows() {
-        try {
-            CgGlslEmitter.emitTbo(BINDLESS, "TexturePoolBuf", "TEX_POOL");
-            fail("Expected CgPreprocessorException for UVEC2 on TBO path");
-        } catch (CgPreprocessorException e) {
-            String msg = e.getMessage().toLowerCase();
-            assertTrue("Message should mention UVEC2 or tbo",
-                msg.contains("uvec2") || msg.contains("tbo") || msg.contains("tbo-compatible"));
-        }
-    }
-
-    @Test
-    public void testError_intFieldTboThrows() {
-        CgBufferFormat f = CgBufferFormat.builder("BadData", MemoryLayout.STD430)
-            .vec4("pos").int_("flags").build();
-        try {
-            CgGlslEmitter.emitTbo(f, "BadBuf", "BAD");
-            fail("Expected CgPreprocessorException for INT on TBO path");
-        } catch (CgPreprocessorException e) {
-            assertTrue("Message should mention INT", e.getMessage().contains("INT"));
-        }
-    }
-
-    @Test
-    public void testError_uint64FieldTboThrows() {
-        CgBufferFormat f = CgBufferFormat.builder("Handle64", MemoryLayout.STD430)
-            .uint64("h").vec4("pad").build();
-        try {
-            CgGlslEmitter.emitTbo(f, "H64Buf", "H64");
-            fail("Expected CgPreprocessorException for UINT64 on TBO path");
-        } catch (CgPreprocessorException e) {
-            assertTrue("Message should mention UINT64", e.getMessage().contains("UINT64"));
-        }
-    }
-
-    @Test
-    public void testBuild_strideAlwaysRoundedTo16_tboNeverThrowsOnStride() {
-        // CgBufferFormat.Builder.build() rounds the final stride up to a multiple of 16
-        // (the struct's own base alignment when used in an array — every SSBO/TBO record
-        // is exactly that) regardless of what the fields alone sum to. Three floats sum to
-        // 12 bytes unrounded; build() must round that to 16, so emitTbo's own defensive
-        // stride check can no longer be triggered via the public builder API at all — this
-        // replaces the old test that constructed a deliberately misaligned (12-byte)
-        // format and asserted emitTbo rejected it, which is no longer constructible.
-        CgBufferFormat f = CgBufferFormat.builder("ThreeFloats", MemoryLayout.STD430)
-            .float_("a").float_("b").float_("c").build();
-        assertEquals("build() must round stride up to a multiple of 16", 16, f.getStride());
-        // Must not throw — stride is valid by construction.
-        CgGlslEmitter.emitTbo(f, "ThreeFloatsBuf", "THREE_FLOATS");
-    }
-
-    @Test
     public void testError_invalidMacroName_lowercase() {
         try {
             CgAttachedBuffer.of(null, "myBuffer");
@@ -275,15 +147,6 @@ public class CgGlslEmitterTest {
     }
 
     @Test
-    public void testNoBindingQualifierAnywhere() {
-        assertFalse(CgGlslEmitter.emitSsbo(ALL_VEC4, "Buf", "MACRO").contains("binding ="));
-        assertFalse(CgGlslEmitter.emitTbo(ALL_VEC4, "Buf", "MACRO").contains("binding ="));
-        assertFalse(CgGlslEmitter.emitUbo(
-            CgBufferFormat.builder("P", MemoryLayout.STD140).vec4("x").build(), "P"
-        ).contains("binding ="));
-    }
-
-    @Test
     public void testUbo_noInstanceName() {
         CgBufferFormat f = CgBufferFormat.builder("SceneParams2", MemoryLayout.STD140)
             .vec4("ambientColor").build();
@@ -297,13 +160,6 @@ public class CgGlslEmitterTest {
         String out = CgGlslEmitter.emitSsbo(ALL_VEC4, "MyBufferName", "MACRO");
         assertTrue("Block interface name must equal bufferName",
             out.contains("readonly buffer MyBufferName {"));
-    }
-
-    @Test
-    public void testTbo_samplerNameEqualsBufferName() {
-        String out = CgGlslEmitter.emitTbo(ALL_VEC4, "MyBufferName", "MACRO");
-        assertTrue("Sampler uniform name must equal bufferName",
-            out.contains("uniform samplerBuffer MyBufferName;"));
     }
 
     @Test

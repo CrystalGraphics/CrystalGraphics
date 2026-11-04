@@ -162,11 +162,9 @@ com/crystalgraphics/api/CgBindingPoints
   field public,static,final MEDIA_TEXTURE_UNIFORM Ljava/lang/String;
   field public,static,final SCENE_COLOR_TEXTURE_UNIFORM Ljava/lang/String;
   field public,static,final USER_START_SSBO I
-  field public,static,final USER_START_TBO I
   field public,static,final USER_START_UBO I
   method public,static init (Lcom/crystalgraphics/platform/gl/CgCapabilities;)V
   method public,static isInitialized ()Z
-  method public,static materialBufferUnit (II)I
 com/crystalgraphics/api/CgBindingPoints$Binding
   access public,final,record
   extends java/lang/Record
@@ -486,7 +484,6 @@ com/crystalgraphics/api/buffer/CgGpuType
   method public getFloatComponents ()I
   method public getFloatCount ()I
   method public getGlslName ()Ljava/lang/String;
-  method public isTboCompatible ()Z
   method public requiredExtension ()Ljava/lang/String;
   method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/api/buffer/CgGpuType;
   method public,static values ()[Lcom/crystalgraphics/api/buffer/CgGpuType;
@@ -841,7 +838,6 @@ com/crystalgraphics/api/material/CgAttachedBuffer
   method public getMacroName ()Ljava/lang/String;
   method public getSsboArrayName ()Ljava/lang/String;
   method public getStructName ()Ljava/lang/String;
-  method public getTboGetterName ()Ljava/lang/String;
   method public isUbo ()Z
   method public,static of (Lcom/crystalgraphics/gl/buffer/shader/CgShaderBuffer;Ljava/lang/String;)Lcom/crystalgraphics/api/material/CgAttachedBuffer;
   method public,static of (Lcom/crystalgraphics/gl/buffer/shader/CgUniformBuffer;)Lcom/crystalgraphics/api/material/CgAttachedBuffer;
@@ -5827,11 +5823,6 @@ com/crystalgraphics/gl/buffer/CgBufferReadback
   extends java/lang/Object
   method public,static readWords (IJ[III)V
   method public,static release ()V
-com/crystalgraphics/gl/buffer/CgBufferTextures
-  access public,final
-  extends java/lang/Object
-  method public,static bind (III)V
-  method public,static releaseAll ()V
 com/crystalgraphics/gl/buffer/CgFrameRing
   access public,final
   extends java/lang/Object
@@ -5905,21 +5896,7 @@ com/crystalgraphics/gl/buffer/CgStreamBuffer
   method public,static create (II)Lcom/crystalgraphics/gl/buffer/CgStreamBuffer;
   method public,static createForShaderBuffer (II)Lcom/crystalgraphics/gl/buffer/CgStreamBuffer;
   method public,static createFrameLocal (II)Lcom/crystalgraphics/gl/buffer/CgStreamBuffer;
-com/crystalgraphics/gl/buffer/MapAndOrphanStreamBuffer
-  access public
-  extends com/crystalgraphics/gl/buffer/CgStreamBuffer
-  method protected uploadSmall ([FII)Z
-  method public <init> (II)V
-  method public commit (I)I
-  method public deleteGlResources ()V
-  method public map (I)Ljava/nio/ByteBuffer;
-com/crystalgraphics/gl/buffer/SubDataStreamBuffer
-  access public
-  extends com/crystalgraphics/gl/buffer/CgStreamBuffer
-  method public <init> (II)V
-  method public commit (I)I
-  method public deleteGlResources ()V
-  method public map (I)Ljava/nio/ByteBuffer;
+  method public,static releaseShared ()V
 com/crystalgraphics/gl/buffer/shader/CgBonePalettes
   access public,final
   extends java/lang/Object
@@ -6049,10 +6026,6 @@ com/crystalgraphics/gl/buffer/shader/CgShaderBufferRegistry
   method public ownerOf (Lcom/crystalgraphics/api/CgBindingPoints$Binding;)Lcom/crystalgraphics/gl/buffer/shader/CgShaderBuffer;
   method public,static get ()Lcom/crystalgraphics/gl/buffer/shader/CgShaderBufferRegistry;
 com/crystalgraphics/gl/buffer/shader/CgShaderStorageBuffer
-  access public,final
-  extends com/crystalgraphics/gl/buffer/shader/CgShaderBuffer
-  method public wireShader (Lcom/crystalgraphics/api/shader/CgShader;)V
-com/crystalgraphics/gl/buffer/shader/CgTextureBuffer
   access public,final
   extends com/crystalgraphics/gl/buffer/shader/CgShaderBuffer
   method public wireShader (Lcom/crystalgraphics/api/shader/CgShader;)V
@@ -6428,18 +6401,13 @@ com/crystalgraphics/gl/material/CgMaterialShaderRegistry
 com/crystalgraphics/gl/material/parse/CgBufferReaders
   access public,final
   extends java/lang/Object
-  method public,static reader (Ljava/lang/StringBuilder;Lcom/crystalgraphics/compute/source/CgBufferDecl;Z)V
+  method public,static reader (Ljava/lang/StringBuilder;Lcom/crystalgraphics/compute/source/CgBufferDecl;)V
   method public,static readerBlock (Lcom/crystalgraphics/compute/source/CgBufferDecl;)Ljava/lang/String;
-  method public,static tbo (Lcom/crystalgraphics/compute/source/CgBufferDecl;)Ljava/lang/String;
-  method public,static texelFormat (Lcom/crystalgraphics/compute/source/CgBufferDecl;)I
-  method public,static texelWords (Lcom/crystalgraphics/compute/source/CgBufferDecl;)I
 com/crystalgraphics/gl/material/parse/CgGlslEmitter
   access public,final
   extends java/lang/Object
   method public,static emitSsbo (Lcom/crystalgraphics/api/buffer/CgBufferFormat;Ljava/lang/String;Ljava/lang/String;Z)Ljava/lang/String;
   method public,static emitSsbo (Lcom/crystalgraphics/api/material/CgAttachedBuffer;)Ljava/lang/String;
-  method public,static emitTbo (Lcom/crystalgraphics/api/buffer/CgBufferFormat;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
-  method public,static emitTbo (Lcom/crystalgraphics/api/material/CgAttachedBuffer;)Ljava/lang/String;
   method public,static emitUbo (Lcom/crystalgraphics/api/buffer/CgBufferFormat;Ljava/lang/String;)Ljava/lang/String;
   method public,static emitUbo (Lcom/crystalgraphics/gl/buffer/shader/CgUniformBuffer;)Ljava/lang/String;
 com/crystalgraphics/gl/material/parse/CgMaterialShaderCompiler
@@ -8929,7 +8897,6 @@ com/crystalgraphics/render/draw/CgBindingTable
   field public,static,final MAX_BLOCKS I
   field public,static,final MAX_BUFFERS I
   field public,static,final MAX_STORAGE I
-  field public,static,final MAX_TEXEL_BUFFERS I
   field public,static,final MAX_TEXTURES I
   method public <init> ()V
   method public begin ()Lcom/crystalgraphics/render/draw/CgBindingTable;
@@ -8952,10 +8919,6 @@ com/crystalgraphics/render/draw/CgBindingTable
   method public storage (ILcom/crystalgraphics/render/draw/CgBufferHandle;)Lcom/crystalgraphics/render/draw/CgBindingTable;
   method public storagePoint (II)I
   method public storages (I)I
-  method public texelBuffer (II)Lcom/crystalgraphics/render/draw/CgBufferHandle;
-  method public texelBuffer (IILcom/crystalgraphics/render/draw/CgBufferHandle;)Lcom/crystalgraphics/render/draw/CgBindingTable;
-  method public texelBuffers (I)I
-  method public texelUnit (II)I
   method public texture (II)Lcom/crystalgraphics/api/texture/CgTexture;
   method public texture (ILcom/crystalgraphics/api/texture/CgTexture;)Lcom/crystalgraphics/render/draw/CgBindingTable;
   method public texture (ILcom/crystalgraphics/api/texture/CgTexture;Lcom/crystalgraphics/api/texture/CgSampler;)Lcom/crystalgraphics/render/draw/CgBindingTable;

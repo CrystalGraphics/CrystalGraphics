@@ -1092,7 +1092,6 @@ com/crystalgraphics/platform/gl/CgCapabilities
   method public multiDraw ()Z
   method public multiDrawIndirect ()Z
   method public shaderBufferPath ()Lcom/crystalgraphics/platform/gl/CgCapabilities$ShaderBufferPath;
-  method public shaderStreamTier ()Lcom/crystalgraphics/platform/gl/CgCapabilities$StreamBufferTier;
   method public storageImages ()Z
   method public storageOffsetAlignment ()I
   method public subgroupOperations ()I
@@ -1127,10 +1126,8 @@ com/crystalgraphics/platform/gl/CgCapabilities$ShaderBufferPath
 com/crystalgraphics/platform/gl/CgCapabilities$StreamBufferTier
   access public,final,enum
   extends java/lang/Enum
-  field public,static,final ORPHAN Lcom/crystalgraphics/platform/gl/CgCapabilities$StreamBufferTier;
   field public,static,final PERSISTENT Lcom/crystalgraphics/platform/gl/CgCapabilities$StreamBufferTier;
   field public,static,final RING Lcom/crystalgraphics/platform/gl/CgCapabilities$StreamBufferTier;
-  field public,static,final SUBDATA Lcom/crystalgraphics/platform/gl/CgCapabilities$StreamBufferTier;
   method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/platform/gl/CgCapabilities$StreamBufferTier;
   method public,static values ()[Lcom/crystalgraphics/platform/gl/CgCapabilities$StreamBufferTier;
 com/crystalgraphics/platform/gl/CgDisabledExtensions

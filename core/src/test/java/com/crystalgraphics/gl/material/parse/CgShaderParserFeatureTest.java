@@ -15,7 +15,7 @@ import static org.junit.Assert.*;
 
 public class CgShaderParserFeatureTest {
 
-    private static final CgCapabilities.ShaderBufferPath TBO = CgCapabilities.ShaderBufferPath.TBO;
+    private static final CgCapabilities.ShaderBufferPath SSBO = CgCapabilities.ShaderBufferPath.SSBO_GL43;
     private static final List<CgAttachedBuffer> NO_BUFFERS = Collections.emptyList();
 
     @BeforeClass
@@ -25,7 +25,7 @@ public class CgShaderParserFeatureTest {
         CgCapabilities stub = ctor.newInstance();
         Field pathField = CgCapabilities.class.getDeclaredField("shaderBufferPath");
         pathField.setAccessible(true);
-        pathField.set(stub, CgCapabilities.ShaderBufferPath.TBO);
+        pathField.set(stub, CgCapabilities.ShaderBufferPath.SSBO_GL43);
         Field cacheField = CgCapabilities.class.getDeclaredField("cachedCaps");
         cacheField.setAccessible(true);
         cacheField.set(null, stub);

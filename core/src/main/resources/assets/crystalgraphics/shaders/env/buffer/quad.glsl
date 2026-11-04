@@ -12,14 +12,14 @@
 #pragma once
 
 // -- CgQuadRenderer convenience macros ---------------------------------------
-// CgQuadRenderer (gl/render/CgQuadRenderer.java) is a general SSBO/TBO-backed instanced
+// CgQuadRenderer (gl/render/CgQuadRenderer.java) is a general SSBO-backed instanced
 // quad renderer with a fixed per-instance schema: vec3 origin/right/up (world-space quad
 // origin + two edge vectors, CPU-baked per instance via Quad.pose(...); three vectors rather than a mat4), vec2 uv0/uv1, vec4 color. These
 // macros hardcode both the attach() macro name (QUAD_DATA, = CgQuadRenderer.MACRO_NAME --
 // fixed, not caller-chosen) and CG_INSTANCE_ID, so no `QuadInstance inst = QUAD_DATA(...)`
 // declaration is needed in the shader at all. Zero-argument, so QUAD_DATA(CG_INSTANCE_ID)
 // is textually repeated per use; this is the same repeated-texelFetch-on-the-same-index
-// pattern the TBO struct getter codegen already relies on being driver-CSE'd (see
+// pattern the old TBO struct getter codegen relied on being driver-CSE'd (see
 // gl/material/parse/CgGlslEmitter.java's own comment on appendTboFieldFetch). Vertex stage
 // only; each instance is drawn on CgMesh.quads(1), so the corner is CG_VERTEX_CORNER and the
 // material declares #type none.

@@ -225,31 +225,31 @@ public final class CgBufferFormat {
         /** Adds a {@link CgGpuType#BOOL} field. */
         public Builder bool_(String name)  { return add(name, CgGpuType.BOOL); }
 
-        /** Adds an {@link CgGpuType#IVEC2} field. TBO path: not supported in v1. */
+        /** Adds an {@link CgGpuType#IVEC2} field. */
         public Builder ivec2(String name)  { return add(name, CgGpuType.IVEC2); }
 
-        /** Adds an {@link CgGpuType#IVEC3} field. TBO path: not supported in v1. */
+        /** Adds an {@link CgGpuType#IVEC3} field. */
         public Builder ivec3(String name)  { return add(name, CgGpuType.IVEC3); }
 
-        /** Adds an {@link CgGpuType#IVEC4} field. TBO path: not supported in v1. */
+        /** Adds an {@link CgGpuType#IVEC4} field. */
         public Builder ivec4(String name)  { return add(name, CgGpuType.IVEC4); }
 
         /** Adds a {@link CgGpuType#UVEC2} field (bindless texture handles, etc.).
-         * TBO path: not supported in v1. */
+         * */
         public Builder uvec2(String name)  { return add(name, CgGpuType.UVEC2); }
 
-        /** Adds a {@link CgGpuType#UVEC3} field. TBO path: not supported in v1. */
+        /** Adds a {@link CgGpuType#UVEC3} field. */
         public Builder uvec3(String name)  { return add(name, CgGpuType.UVEC3); }
 
-        /** Adds a {@link CgGpuType#UVEC4} field. TBO path: not supported in v1. */
+        /** Adds a {@link CgGpuType#UVEC4} field. */
         public Builder uvec4(String name)  { return add(name, CgGpuType.UVEC4); }
 
         /** Adds a {@link CgGpuType#UINT64} field (64-bit; requires ARB_gpu_shader_int64).
-         * TBO path: not supported in v1. */
+         * */
         public Builder uint64(String name) { return add(name, CgGpuType.UINT64); }
 
         /** Adds a {@link CgGpuType#INT64} field (64-bit; requires ARB_gpu_shader_int64).
-         * TBO path: not supported in v1. */
+         * */
         public Builder int64(String name)  { return add(name, CgGpuType.INT64); }
 
         /**
@@ -270,7 +270,7 @@ public final class CgBufferFormat {
                 }
             }
             // std140/std430 both require a struct's own overall size (its per-element
-            // stride when used in an array, e.g. every CgBufferFormat here — SSBO/TBO
+            // stride when used in an array, e.g. every CgBufferFormat here — SSBO
             // records are always arrays of this struct) to be rounded up to a multiple
             // of 16 (the base alignment of vec4), on top of each individual field's own
             // alignment already applied by add() above. Every supported field type here

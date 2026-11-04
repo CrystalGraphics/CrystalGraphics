@@ -39,9 +39,9 @@ import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.vfx.CgVfx;
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.gl.CgGlNames;
-import com.crystalgraphics.gl.buffer.CgBufferTextures;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.gl.buffer.CgQuadIndexBuffer;
+import com.crystalgraphics.gl.buffer.CgStreamBuffer;
 import com.crystalgraphics.gl.buffer.CgReadback;
 import com.crystalgraphics.render.CgGpuBudget;
 import com.crystalgraphics.gl.buffer.shader.CgShaderBufferRegistry;
@@ -624,11 +624,11 @@ public final class CgGraphicsLifecycle {
 
         // Step 7a2: Kernel programs and their blocks; the parsed files stay for the next context.
         CgCompute.releaseAll();
-        CgBufferTextures.releaseAll();
+        CgStreamBuffer.releaseShared();   // the staging every retained shader buffer copies through
         CgReadback.releaseAll();
         CgSamplers.releaseAll();   // the sampler objects bindings named
 
-        // Step 7b: User-created SSBO/TBO/UBO resources managed by CgShaderBufferRegistry.
+        // Step 7b: User-created SSBO/UBO resources managed by CgShaderBufferRegistry.
         //   Must be freed before the GL context is lost.
         CgShaderBufferRegistry.get().deleteAll();
 

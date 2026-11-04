@@ -245,7 +245,7 @@ public final class CgMaterialShader implements CgReloadable {
     private int renderQueue = 2000;
 
     /**
-     * User-attached SSBO/TBO and UBO buffers for GLSL auto-injection.
+     * User-attached SSBO and UBO buffers for GLSL auto-injection.
      * Mirrors the attach API on {@code CgMaterial}.
      */
     private final List<CgAttachedBuffer> attachedBuffers = new ArrayList<>();
@@ -1151,7 +1151,7 @@ public final class CgMaterialShader implements CgReloadable {
         return passName.equals(CgRenderPassVariant.DEPTH.lightModeName());
     }
 
-    /** Returns an unmodifiable view of the attached SSBO/TBO and UBO buffers. */
+    /** Returns an unmodifiable view of the attached SSBO and UBO buffers. */
     public List<CgAttachedBuffer> getAttachedBuffers() {
         return attachedView;
     }
@@ -1458,9 +1458,9 @@ public final class CgMaterialShader implements CgReloadable {
     // ── Buffer attachment API ─────────────────────────────────────────────────
 
     /**
-     * Attaches a user-defined SSBO/TBO buffer to this shader for GLSL auto-injection.
+     * Attaches a user-defined SSBO buffer to this shader for GLSL auto-injection.
      *
-     * <p>On the next compile, the buffer's GLSL struct and either an SSBO block or a TBO
+     * <p>On the next compile, the buffer's GLSL struct and an SSBO block
      * sampler + fetch function are injected into both vertex and fragment shader source.
      * Access it in GLSL via {@code macroName(n).fieldName}.</p>
      *
@@ -1523,7 +1523,7 @@ public final class CgMaterialShader implements CgReloadable {
     }
 
     /**
-     * Detaches the SSBO/TBO buffer registered under {@code macroName}; no-op if not found.
+     * Detaches the SSBO buffer registered under {@code macroName}; no-op if not found.
      *
      * @return {@code this} for fluent chaining
      */
@@ -1535,7 +1535,7 @@ public final class CgMaterialShader implements CgReloadable {
     }
 
     /**
-     * Detaches the SSBO/TBO buffer by reference; no-op if not attached.
+     * Detaches the SSBO buffer by reference; no-op if not attached.
      *
      * @return {@code this} for fluent chaining
      */
@@ -1713,22 +1713,15 @@ public final class CgMaterialShader implements CgReloadable {
             if (at >= 0) shader.getProgram().setUniform1i(at, unit);
             unit++;
         }
-        wireMaterialBuffers(shader, parsed.buffers(), unit);
+        wireMaterialBuffers(shader, parsed.buffers());
     }
 
-    /** Each {@code Buffers { }} entry: a storage block at its reserved point, or a buffer texture after the samplers. */
-    private static void wireMaterialBuffers(CgShader shader, List<CgBufferDecl> buffers, int samplers) {
-        boolean texels = CgCapabilities.detect().shaderBufferPath() == CgCapabilities.ShaderBufferPath.TBO;
+    /** Each {@code Buffers { }} entry: a storage block at its reserved point. */
+    private static void wireMaterialBuffers(CgShader shader, List<CgBufferDecl> buffers) {
         int program = shader.getProgram().getId();
         for (int i = 0; i < buffers.size(); i++) {
-            CgBufferDecl b = buffers.get(i);
-            if (texels) {
-                int at = shader.getUniformLocation(CgBufferReaders.tbo(b));
-                if (at >= 0) shader.getProgram().setUniform1i(at, CgBindingPoints.materialBufferUnit(samplers, i));
-            } else {
-                int index = CgGL.glGetProgramResourceIndex(program, CgGL.GL_SHADER_STORAGE_BLOCK, CgBufferReaders.readerBlock(b));
-                if (index != CgGL.GL_INVALID_INDEX) CgGL.glShaderStorageBlockBinding(program, index, CgBindingPoints.MATERIAL_BUFFERS_SSBO + i);
-            }
+            int index = CgGL.glGetProgramResourceIndex(program, CgGL.GL_SHADER_STORAGE_BLOCK, CgBufferReaders.readerBlock(buffers.get(i)));
+            if (index != CgGL.GL_INVALID_INDEX) CgGL.glShaderStorageBlockBinding(program, index, CgBindingPoints.MATERIAL_BUFFERS_SSBO + i);
         }
     }
 

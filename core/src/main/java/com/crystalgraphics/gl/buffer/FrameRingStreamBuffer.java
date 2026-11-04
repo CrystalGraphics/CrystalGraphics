@@ -122,7 +122,7 @@ final class FrameRingStreamBuffer extends CgStreamBuffer {
     /**
      * A small block on the mapped tier (a frame-local UBO) as one {@code glBufferSubData} at its reserved offset,
      * not a map and unmap: that pair costs about 0.19 ms a call whatever the size, as measured on the text UBO
-     * ({@code MapAndOrphanStreamBuffer.uploadSmall}). The bytes land where nothing in flight reads, as a mapped
+     * (the orphan tier's, before rhi X2). The bytes land where nothing in flight reads, as a mapped
      * write would. The persistent tier declines: its write is already a plain copy into the mapping.
      */
     @Override

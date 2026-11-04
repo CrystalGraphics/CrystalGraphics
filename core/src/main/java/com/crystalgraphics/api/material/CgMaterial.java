@@ -6,7 +6,6 @@ import com.crystalgraphics.util.trace.CgChannels;
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.buffer.CgBufferFormat;
 import com.crystalgraphics.api.buffer.CgBufferLifetime;
-import com.crystalgraphics.api.buffer.CgGpuType;
 import com.crystalgraphics.api.shader.CgShader;
 import com.crystalgraphics.api.shader.CgShaderBindings;
 import com.crystalgraphics.api.state.CgBlendState;
@@ -22,19 +21,16 @@ import com.crystalgraphics.gl.material.CgMaterialProperties;
 import com.crystalgraphics.gl.material.CgMaterialProperty;
 import com.crystalgraphics.gl.material.CgMaterialShader;
 import com.crystalgraphics.gl.material.CgMaterialShaderRegistry;
-import com.crystalgraphics.gl.material.parse.CgBufferReaders;
 import com.crystalgraphics.gl.material.parse.CgParsedPass;
 import com.crystalgraphics.gl.material.parse.CgPermutationDomain;
 import com.crystalgraphics.gl.material.parse.CgParsedShader;
 import com.crystalgraphics.gl.material.parse.CgShaderParser;
 import com.crystalgraphics.gl.texture.CgSamplers;
-import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.render.CgWarmBudget;
 import com.crystalgraphics.render.draw.CgBindingTable;
 import com.crystalgraphics.render.draw.CgBufferHandle;
 import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.render.draw.CgPipeline;
-import com.crystalgraphics.render.graph.CgGraphBuffer;
 import lombok.Getter;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -509,7 +505,7 @@ public final class CgMaterial {
     /**
      * Attaches a user-defined auxiliary buffer to this material's backing shader asset.
      *
-     * <p>On the next compile, the buffer's GLSL struct and either an SSBO block or a TBO
+     * <p>On the next compile, the buffer's GLSL struct and an SSBO block
      * sampler + fetch function are injected into both vertex and fragment shader source.
      * Access it in GLSL via {@code macroName(n).fieldName}.</p>
      *
@@ -527,13 +523,6 @@ public final class CgMaterial {
      * {@link CgMaterialShader}. Attaching a buffer affects all materials sharing the same
      * shader. Only call {@code attach()} on materials you exclusively own.</p>
      *
-     * <p><strong>TBO-path constraints</strong> (validated at compile time, not here):
-     * <ul>
-     *   <li>All field types must satisfy {@link CgGpuType#isTboCompatible()} — float-family only.
-     *       INT, UINT, BOOL, IVEC*, UVEC*, INT64, UINT64 are not accepted.</li>
-     *   <li>Format stride must be a multiple of 16 bytes (one TBO texel = 16 bytes).</li>
-     * </ul>
-     *
      * <p><strong>Runtime binding</strong>: per-context GL binding ({@code glBindBufferBase} /
      * {@code glActiveTexture+glBindTexture}) is <em>your responsibility</em>. Call
      * {@code buffer.bind()} before your draw call.</p>
@@ -549,7 +538,7 @@ public final class CgMaterial {
     }
 
     /**
-     * Detaches the SSBO/TBO buffer registered under {@code macroName}; no-op if not found.
+     * Detaches the SSBO buffer registered under {@code macroName}; no-op if not found.
      *
      * @return {@code this} for fluent chaining
      */
@@ -559,7 +548,7 @@ public final class CgMaterial {
     }
 
     /**
-     * Detaches the SSBO/TBO buffer by reference; no-op if not attached.
+     * Detaches the SSBO buffer by reference; no-op if not attached.
      *
      * @return {@code this} for fluent chaining
      */
@@ -1178,29 +1167,10 @@ public final class CgMaterial {
         }
         if (cgMaterialShader != null) captureAttachedBuffers(table);
         capturePerDrawEngineBuffers(table);
-        boolean texels = CgBindingPoints.PATH == CgCapabilities.ShaderBufferPath.TBO;
         for (int i = 0; i < declared.size(); i++) {
-            CgBufferDecl b = declared.get(i);
-            CgBufferHandle bound = buffers.get(b.name());
-            if (texels) {
-                checkTexels(b, bound);
-                table.texelBuffer(CgBindingPoints.materialBufferUnit(propStore.samplerCount(), i), CgBufferReaders.texelFormat(b), bound);
-            } else {
-                table.storage(CgBindingPoints.MATERIAL_BUFFERS_SSBO + i, bound);
-            }
+            table.storage(CgBindingPoints.MATERIAL_BUFFERS_SSBO + i, buffers.get(declared.get(i).name()));
         }
         return table.end();
-    }
-
-    /** Read as a texture, a buffer is cut off at the context's texel limit: refuse one that would be. */
-    private static void checkTexels(CgBufferDecl b, CgBufferHandle bound) {
-        CgCapabilities caps = CgCapabilities.detected();
-        if (caps == null || !(bound instanceof CgGraphBuffer buffer)) return;
-        long texels = buffer.size() / (CgBufferReaders.texelWords(b) * 4L);
-        if (texels > caps.getMaxTextureBufferSize()) {
-            throw new IllegalStateException(b.name() + " is " + texels + " texels; this context reads a buffer as a "
-                    + "texture of at most " + caps.getMaxTextureBufferSize());
-        }
     }
 
     /** What {@link #buffer} bound, by declared name. */

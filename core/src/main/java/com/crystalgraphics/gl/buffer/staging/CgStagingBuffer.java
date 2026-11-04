@@ -15,7 +15,7 @@ import java.util.Arrays;
  *   <dt>Vertex/record mode — {@link #CgStagingBuffer(int, int)}</dt>
  *   <dd>Has a fixed stride ({@code floatsPerVertex}). {@link #ensureRoomForNextVertex()} and
  *       {@link #ensureRoomForStride(int)} grow in stride-sized increments. Used by vertex and
- *       instance writers, and by SSBO/TBO shader buffers.</dd>
+ *       instance writers, and by SSBO shader buffers.</dd>
  *   <dt>Flat mode — {@link #CgStagingBuffer(int)}</dt>
  *   <dd>No stride concept. {@link #putFloat} auto-grows the array whenever the cursor reaches
  *       the end. Used by UBO writers that write an arbitrary sequence of floats with no fixed

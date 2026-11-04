@@ -36,32 +36,12 @@ struct CgObjectData {
 layout(std430) readonly buffer CgObjectDataBuffer {
     CgObjectData cg_Objects[];
 };
-
-// -- Per-Instance Object Data (TBO fallback path: material baseline GL 3.3) --
 #else
-uniform samplerBuffer CgObjectDataBuffer;
-
-CgObjectData cg_FetchObjectData(int instanceId) {
-    int base = instanceId * 12;
-    CgObjectData data;
-    data.modelMatrix = mat4(
-        texelFetch(CgObjectDataBuffer, base),
-        texelFetch(CgObjectDataBuffer, base + 1),
-        texelFetch(CgObjectDataBuffer, base + 2),
-        texelFetch(CgObjectDataBuffer, base + 3)
-    );
-    data.normalMatrix = mat4(
-        texelFetch(CgObjectDataBuffer, base + 4),
-        texelFetch(CgObjectDataBuffer, base + 5),
-        texelFetch(CgObjectDataBuffer, base + 6),
-        texelFetch(CgObjectDataBuffer, base + 7)
-    );
-    data.custom0 = texelFetch(CgObjectDataBuffer, base + 8);
-    data.custom1 = texelFetch(CgObjectDataBuffer, base + 9);
-    data.custom2 = texelFetch(CgObjectDataBuffer, base + 10);
-    data.custom3 = texelFetch(CgObjectDataBuffer, base + 11);
-    return data;
-}
+// The TBO path, unhooked (docs/TBO_PATH.md). It declared `uniform samplerBuffer CgObjectDataBuffer` (RGBA32F, 12 texels a
+// record) and `CgObjectData cg_FetchObjectData(int)`, which built each mat4 from four texelFetch(base + k) and custom0-3
+// from texels 8-11, base = instanceId * 12; CG_OBJECT_DATA below called it. The executor bound the records to
+// CgBindingPoints.OBJECT_DATA.tbo() as a buffer texture. Restore both #else branches with the Java half to reconnect.
+#error "the TBO path is unhooked: the compiler defines CG_USE_SSBO (docs/TBO_PATH.md)"
 #endif
 
 // -- Instance ID bridge -----------------------------------------------------
@@ -108,9 +88,7 @@ flat in int cg_InstanceId;
 // -- Object Data Definition-----------------------------------------------------
 #ifdef CG_USE_SSBO
 #define CG_OBJECT_DATA cg_Objects[CG_INSTANCE_ID]
-#else
-#define CG_OBJECT_DATA cg_FetchObjectData(CG_INSTANCE_ID)
-#endif
+#endif   // the TBO path's #else was cg_FetchObjectData(CG_INSTANCE_ID): docs/TBO_PATH.md
 
 // -- Data Macros ------------------------------------------------------
 #define CG_OBJECT_TO_WORLD (CG_OBJECT_DATA.modelMatrix)
