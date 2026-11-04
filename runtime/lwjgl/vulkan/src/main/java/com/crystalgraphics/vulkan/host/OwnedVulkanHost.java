@@ -121,6 +121,8 @@ public final class OwnedVulkanHost implements CgVulkanHost, AutoCloseable {
             RETIRE = CgTrace.name("vulkan.retire"), RESET = CgTrace.name("vulkan.resetPools");
     private static final String VALIDATION = "VK_LAYER_KHRONOS_validation";
     private static final boolean SYNC_VALIDATION = CgDevice.SYNC_VALIDATION.get();
+    /** {@code -Dcrystalgraphics.vulkan.validationStacks=true}: a Java stack under each validation error. */
+    private static final boolean VALIDATION_STACKS = Boolean.getBoolean("crystalgraphics.vulkan.validationStacks");
 
     private final long window;
     private final VkInstance instance;
@@ -845,6 +847,8 @@ public final class OwnedVulkanHost implements CgVulkanHost, AutoCloseable {
         boolean error = (severity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT) != 0;
         if (error) errors++;
         System.err.println("[vulkan] " + (error ? "ERROR " : "") + text);
+        // The layer calls back inside the failing vkCmd*, so the stack names the engine's caller
+        if (error && VALIDATION_STACKS) new Throwable("[vulkan] raised here").printStackTrace();
         return VK_FALSE;
     }
 

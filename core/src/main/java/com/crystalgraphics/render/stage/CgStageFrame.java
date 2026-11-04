@@ -279,6 +279,8 @@ public final class CgStageFrame {
     void executeInto(CgFrameBuffer target) {
         try (CgGlScope ignored = CgGlState.save(FRAMEBUFFER)) {
             target.bind();
+            // The executor takes the bound viewport as the current target's size
+            CgGL.glViewport(0, 0, target.getWidth(), target.getHeight());
             execute();
         }
     }

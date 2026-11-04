@@ -369,6 +369,7 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 | `crystalgraphics.vulkan.asyncCompute` | text | empty | Empty: async() compute passes on a compute-only queue family where there is one (an owned device), in order on a hosted one. false: in order everywhere. graphics: a second queue of the frame's family. true: a hosted device (Minecraft) runs async on its host's compute queue, waiting only on the host's end-of-frame submit, which serialised the GPU. Read at launch. |
 | `crystalgraphics.vulkan.presentMode` | text | empty | immediate, mailbox or fifo: forces one the surface offers (an owned device); empty lets the host choose. Read at launch. |
 | `crystalgraphics.vulkan.syncValidation` | true, false | `false` | With the validation layer on, its synchronization checks too. Read at launch. |
+| `crystalgraphics.vulkan.validationStacks` | true, false | `false` | With the validation layer on, a Java stack under each error: the layer reports inside the failing call, so it names the engine's caller. Read at launch. |
 | `crystalgraphics.vulkan.transfer` | true, false | `true` | New textures' copies and the mesh store's run on a transfer queue where there is one; false keeps them on the frame's queue (ENGINE_API.md, Async). Read at launch. |
 
 ## `crystalgraphics.warmBudget`

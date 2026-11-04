@@ -308,11 +308,15 @@ public final class CgRenderStage {
                     REHEARSAL_PROJECTION.setPerspective((float) Math.toRadians(70.0), (float) w / h, 0.05f, 512f));
         }
         int hostTarget = host.mainFramebuffer();
-        if (rehearsalTarget == null || rehearsalTarget.isDeleted() || hostTarget != rehearsedHost) {
-            // The host's depth type: copies of the current target are cached by it, so the cast reuses the rehearsal's.
+        if (rehearsalTarget == null || rehearsalTarget.isDeleted() || hostTarget != rehearsedHost
+                || rehearsalTarget.getWidth() != host.width() || rehearsalTarget.getHeight() != host.height()) {
+            if (rehearsalTarget != null && !rehearsalTarget.isDeleted()) rehearsalTarget.delete();
+            // The host's depth type and size: copies of the current target are cached by both and taken at the host's
+            // viewport, so the cast reuses the rehearsal's and a copy never reads past the target.
             CgTextureType depth = CgFrameBuffer.depthTypeOf(hostTarget);
-            rehearsalTarget = CgFrameBuffer.createScreenSized("cg_rehearsal", CgFrameBufferFormat.builder("cg_rehearsal")
-                    .color(0, CgTextureType.RGBA8).depth(depth != null ? depth : CgTextureType.DEPTH24_STENCIL8).build());
+            rehearsalTarget = CgFrameBuffer.createOwned("cg_rehearsal", host.width(), host.height(),
+                    CgFrameBufferFormat.builder("cg_rehearsal").color(0, CgTextureType.RGBA8)
+                            .depth(depth != null ? depth : CgTextureType.DEPTH24_STENCIL8).build());
             rehearsedHost = hostTarget;
         }
         firing++;
