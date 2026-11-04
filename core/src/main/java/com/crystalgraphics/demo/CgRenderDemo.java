@@ -74,7 +74,7 @@ import java.util.function.Supplier;
  * H    the HUD on or off
  * N    the next scene, placed ahead of the camera; Shift+N the previous one
  * C    camera shake on or off (CgCameraShake.enabled: the saved setting is untouched)
- * L    bloom in the target's encoding, in linear light, then off
+ * L    bloom off and on
  * X    kit looks on or off: each kit's effects graded by their game's post, or by the frame's
  * [ ]  the HDR scene's glow gain down or up a quarter;  - =  bloom's intensity
  * O    every world shadow off or on (crystalgraphics.world.lightsShadows), to compare
@@ -852,16 +852,14 @@ public final class CgRenderDemo {
         if (bloom.intensity() > 0f) bloom.intensity(bloom.intensity() * by);
     }
 
-    /** Blend, then linear, then off, then back at the intensity it had. */
+    /** Off, then back on at the intensity it had. */
     private static void cycleBloom() {
         CgBloom bloom = CgPostStack.get().bloom();
         if (bloom.intensity() == 0f) {
-            bloom.intensity(bloomIntensity).linear(false);
-        } else if (bloom.linear()) {
+            bloom.intensity(bloomIntensity);
+        } else {
             bloomIntensity = bloom.intensity();
             bloom.intensity(0f);
-        } else {
-            bloom.linear(true);
         }
     }
 
@@ -930,7 +928,7 @@ public final class CgRenderDemo {
                 : "\n\nShake [C]: off")
                 + String.format(Locale.ROOT, "\nGlow [ ]: %.2f", CgWorldRenderer.get().sceneEmission())
                 + " | Kit looks [X]: " + (CgWorldRenderer.get().gradeDraws() ? "on" : "off")
-                + "\nBloom [L]: " + (bloom.intensity() == 0f ? "off" : bloom.linear() ? "linear" : "blend")
+                + "\nBloom [L]: " + (bloom.intensity() == 0f ? "off" : "on")
                 + String.format(Locale.ROOT, " | Intensity [- =]: %.2f", bloom.intensity())
                 + "\n" + CgVfxDemoControls.get().hudLines(waves);
     }

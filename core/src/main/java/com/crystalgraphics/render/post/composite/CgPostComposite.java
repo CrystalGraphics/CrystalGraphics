@@ -30,8 +30,7 @@ import java.util.function.Consumer;
  *
  * <pre>{@code
  * // an effect, at BEFORE_COMPOSITE
- * post.composite().bloom(chain, 1.2f, 1f, 0.9f, 0.8f, false);   // a warm additive glow
- * post.composite().linear();                                     // this firing composites in linear light
+ * post.composite().bloom(chain, 1.2f, 1f, 0.9f, 0.8f);          // a warm glow, added
  * post.composite().flash(2f).vignette(0.4f);                     // twice as bright, darker corners
  * post.composite().impact(CgImpact.LINES, 1f, 0.5f, 0.5f);       // focus lines from the centre
  * }</pre>
@@ -61,7 +60,7 @@ public final class CgPostComposite {
     private final int[] keyed = {-1, -1};
     private final Inputs[] set = {new Inputs(), new Inputs()};
 
-    /** This firing's inputs, as bits by feature ordinal, and whether it asked for linear light. */
+    /** This firing's inputs, as bits by feature ordinal, and whether one asked for the copy form. */
     private int active;
     private boolean copy;
     private final Inputs inputs = new Inputs();
@@ -73,7 +72,7 @@ public final class CgPostComposite {
         b.vec4("_Tonemap", inputs.tonemapWeight, inputs.filmic ? 1f : 0f, 0f, 0f);
         CgImpactFrame f = inputs.frame;
         b.set1f("_Intensity", inputs.intensity).vec4("_Tint", inputs.r, inputs.g, inputs.b, 1f)
-                .set1f("_Conserve", inputs.conserve ? 1f : 0f).set1f("_Exposure", inputs.exposure)
+                .set1f("_Exposure", inputs.exposure)
                 .set1f("_Vignette", inputs.vignette).set1f("_Chromatic", inputs.chromatic)
                 .vec4("_Impact", inputs.impact, f.look(), inputs.seed, f.paper() == CgImpactFrame.Tone.LIGHT ? 1f : 0f)
                 .vec4("_ImpactDraw", f.fillSubject() ? 1f : 0f, f.lines(), f.hatch(), f.star())
@@ -102,7 +101,7 @@ public final class CgPostComposite {
         CgTexture3D lut;
         float intensity = Float.NaN, r, g, b;
         float tonemapWeight = 1f;
-        boolean conserve, filmic;
+        boolean filmic;
         float exposure = 1f, vignette, chromatic, impact, focusX = 0.5f, focusY = 0.5f;
         float fade, fadeR, fadeG, fadeB;
         CgImpactFrame frame = CgImpactFrame.NEGATIVE;
@@ -115,7 +114,7 @@ public final class CgPostComposite {
         boolean same(Inputs o) {
             return Arrays.equals(layers, o.layers) && Arrays.equals(layerBlooms, o.layerBlooms) && Arrays.equals(layerLuts, o.layerLuts)
                     && Arrays.equals(layerIntensity, o.layerIntensity) && scene == o.scene && bloom == o.bloom && subject == o.subject && lut == o.lut && intensity == o.intensity && r == o.r && g == o.g
-                    && b == o.b && conserve == o.conserve && exposure == o.exposure && vignette == o.vignette
+                    && b == o.b && exposure == o.exposure && vignette == o.vignette
                     && tonemapWeight == o.tonemapWeight && filmic == o.filmic
                     && chromatic == o.chromatic && impact == o.impact && frame == o.frame && seed == o.seed
                     && focusX == o.focusX && focusY == o.focusY && fade == o.fade && fadeR == o.fadeR
@@ -133,7 +132,6 @@ public final class CgPostComposite {
             r = o.r;
             g = o.g;
             b = o.b;
-            conserve = o.conserve;
             tonemapWeight = o.tonemapWeight;
             filmic = o.filmic;
             exposure = o.exposure;
@@ -182,17 +180,13 @@ public final class CgPostComposite {
         return this;
     }
 
-    /**
-     * Lays {@code chain}'s level 0, the whole glow, tinted {@code (r, g, b)}, over the target: added times
-     * {@code intensity}, or with {@code conserve} mixed in at that share (0 to 1), the picture dimmed to make room.
-     */
-    public CgPostComposite bloom(CgGraphTexture chain, float intensity, float r, float g, float b, boolean conserve) {
+    /** Lays {@code chain}'s level 0, the whole glow, tinted {@code (r, g, b)}, over the target, added times {@code intensity}. */
+    public CgPostComposite bloom(CgGraphTexture chain, float intensity, float r, float g, float b) {
         inputs.bloom = chain;
         inputs.intensity = intensity;
         inputs.r = r;
         inputs.g = g;
         inputs.b = b;
-        inputs.conserve = conserve;
         return on(CgCompositeFeature.BLOOM);
     }
 
@@ -290,12 +284,6 @@ public final class CgPostComposite {
     public CgPostComposite layerBloom(int k, CgGraphTexture glow, float intensity) {
         inputs.layerBlooms[k] = glow;
         inputs.layerIntensity[k] = intensity;
-        return this;
-    }
-
-    /** Composites this firing in linear light ({@link CgCompositeForm#COPY}), at the cost of a copy of the target. */
-    public CgPostComposite linear() {
-        copy = true;
         return this;
     }
 

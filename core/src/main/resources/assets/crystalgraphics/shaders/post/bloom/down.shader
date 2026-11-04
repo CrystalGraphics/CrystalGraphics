@@ -1,17 +1,12 @@
-// One downsample of the bloom chain: a level from the one above it (or from the emission target, for the first), by the
-// 13-tap filter. KARIS is the first step's, so a firefly cannot dominate its block; CHEAP is Low's 4x4 box instead.
-// One triangle over the level. CgBloomChain draws it.
+// One downsample of Unreal's Gaussian bloom: a stage from the one above it by its high-quality filter, four bilinear
+// taps a texel apart (a 4x4 box). One triangle over the stage. CgGaussianBloom draws it.
 #type none
-#pragma cg_feature KARIS
-#pragma cg_feature CHEAP
-#pragma cg_permutation KARIS|CHEAP   // the tier picks one, or neither
-#include "crystalgraphics:shaders/lib/post/bloom.glsl"
 
 Tags { "RenderType" = "Opaque" "Lighting" = "Unlit" "Fog" = "Off" "ColorSpace" = "Target" }
 Queue = "Overlay"
 
 Properties {
-    _Source ("The level above, or the emission", sampler2D) = "black"
+    _Source ("The stage above", sampler2D) = "black"
 }
 
 struct v2f { vec2 uv; };
@@ -33,12 +28,10 @@ Pass {
 
     void fragment(in v2f i, out vec4 fragColor) {
         vec2 texel = 1.0 / vec2(textureSize(_Source, 0));
-#if defined(CHEAP)
-        fragColor = vec4(post_downsample4(_Source, i.uv, texel, 1.0, false), 1.0);
-#elif defined(KARIS)
-        fragColor = vec4(post_downsample13(_Source, i.uv, texel, true), 1.0);
-#else
-        fragColor = vec4(post_downsample13(_Source, i.uv, texel, false), 1.0);
-#endif
+        vec3 a = texture(_Source, i.uv + texel * vec2(-1.0, 1.0)).rgb;
+        vec3 b = texture(_Source, i.uv + texel * vec2(1.0, 1.0)).rgb;
+        vec3 c = texture(_Source, i.uv + texel * vec2(-1.0, -1.0)).rgb;
+        vec3 d = texture(_Source, i.uv + texel * vec2(1.0, -1.0)).rgb;
+        fragColor = vec4((a + b + c + d) * 0.25, 1.0);
     }
 }

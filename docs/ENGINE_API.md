@@ -304,13 +304,14 @@ CgPostStack.get().volume(20, new CgPostSettings().impact(CgImpact.LINES, 1f));  
   CgPostVolume look = CgPostStack.get().volume(5, new CgPostSettings().filmic().toneCurve(0f).blueCorrection(0f)
           .expandGamut(0f).displayGamma(2.7f)).at(x, y, z).radius(24f).blend(8f);   // around an effect alone
   ```
-- **Unreal's Gaussian bloom**: `gaussianBloom()` draws Unreal's six layers in place of the engine's chain: the scene
-  halved to a 64th, each layer a Gaussian `bloomSize(layer)` percent of the screen's width times `bloomSizeScale`,
-  tinted, summed from the widest in, times `bloom` over six. Under the HDR scene its source is Unreal's bloom setup at
-  `bloomThreshold` (-1, the default, blooms the whole scene, as Unreal runs no setup then):
+- **Bloom is Unreal's Gaussian**: the scene halved to a 64th, each of six layers a Gaussian `bloomSize(layer)` percent
+  of the screen's width times `bloomSizeScale`, tinted, summed from the widest in, times `bloom` over six. Its source is
+  Unreal's bloom setup on the half-size scene. A volume that shapes it (`shapesBloom`: a threshold, size scale or
+  layer) blooms at its `bloomThreshold` (-1, the default, the whole scene, as Unreal); any other frame past
+  `CgPostStack.get().bloom().threshold()` (1, white):
 
   ```java
-  CgPostStack.get().volume(0, new CgPostSettings().gaussianBloom().bloom(1.25f).bloomSizeScale(4f)
+  CgPostStack.get().volume(0, new CgPostSettings().bloom(1.25f).bloomSizeScale(4f)
           .bloomLayer(1, 0.3f, 0.3466f, 0.3466f, 0.3466f).bloomLayer(6, 64f, 0.0149f, 0.0149f, 0.0149f));
   ```
 

@@ -57,7 +57,7 @@ public class CgVfxKitLookTest {
     public void aFilmLookCarriesItsPostAndItsExposure() throws IOException {
         CgVfxKitLook look = CgVfxKitLook.read(file(FILM));
         CgPostSettings post = look.settings();
-        assertTrue(post.bloomsGaussian());
+        assertTrue(post.shapesBloom());
         assertEquals(1.25f, post.bloom(), 1e-6f);
         assertEquals(-1f, post.bloomThreshold(), 1e-6f);
         assertEquals(0.3f, post.bloomSize(1), 1e-6f);

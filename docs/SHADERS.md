@@ -696,7 +696,7 @@ Pass { Tags { "LightMode" = "Emissive" }                         // or authored,
   Call it in the fragment body, not a helper declared before it. A fragment naming it that never calls it glows nothing.
 - **A glow that draws nothing in the scene** is `crystalgraphics:shaders/emission_only.shader`: its Emissive pass
   blooms the mesh in `_EmissionColor` × `_EmissionStrength`, and its Forward pass writes no colour or depth.
-- `-Dcrystalgraphics.post.debug=level<N>` draws one level of bloom's chain over the frame (`docs/DEBUG_FLAGS.md`).
+- `-Dcrystalgraphics.post.debug=level<N>` draws one stage of bloom over the frame (`docs/DEBUG_FLAGS.md`).
 
 #### The Distortion pass
 

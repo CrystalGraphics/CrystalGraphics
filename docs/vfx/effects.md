@@ -515,7 +515,7 @@ A cue does the same with `look:` ([`networking.md`](networking.md) § *Cues: wha
   screen, so they are left out. Its effects' light leaves the engine's own bloom, which would bloom it twice.
 - **At most two kits a frame**, and only under the HDR scene; past them a kit's effects keep the frame's look. Draws that
   multiply what is behind them and half-size draws keep it too, and so do GPU particles merged across effects past
-  `crystalgraphics.vfx.mergeParticlesFrom`. A layer costs a redraw of the kit's draws and, with bloom, a bloom chain.
+  `crystalgraphics.vfx.mergeParticlesFrom`. A layer costs a redraw of the kit's draws and, with bloom, a Gaussian bloom of its own.
 - **The exposure reaches only materials that scale by it**: an emissive or linear-light shader on a rows-drawn draw
   (`_cg_Exposure`, [`SHADERS.md`](../SHADERS.md)). Lit, sRGB surfaces are left as they are.
 
