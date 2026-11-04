@@ -348,7 +348,8 @@ public final class CgTracker {
         }
         for (int i = 0; i < state.bindings.count(); i++) {
             if (state.bindings.type(i) == CgBindingLayout.Type.SAMPLED_TEXTURE) {
-                if (debug && passTarget.attaches(state.bindings.view(i)))
+                if (debug && passTarget.attaches(state.bindings.view(i)) && !(readOnlyDepth && passTarget.depth() != null
+                        && passTarget.depth().texture() == state.bindings.view(i).texture()))   // read-only depth: sampled in place
                     throw new IllegalStateException(state.program.label + " samples '"
                             + state.bindings.view(i).texture().label() + "', which the pass renders to");
             } else {
@@ -762,6 +763,16 @@ public final class CgTracker {
         spare.push(t.clear());
     }
 
+    /** Whether the passes begun from here test depth without writing it, sampling it in place. */
+    private boolean readOnlyDepth;
+
+    /** {@code cgReadOnlyDepth}: a pass open with the other mode ends, and the next begins with this one. */
+    public void readOnlyDepth(boolean readOnly) {
+        if (readOnly == readOnlyDepth) return;
+        outsideRenderPass();
+        readOnlyDepth = readOnly;
+    }
+
     /** {@code cgGraphStates}: while on, the device infers no transition of what is recorded. Answers what it was. */
     public boolean graphStates(boolean on) {
         boolean was = graphStates;
@@ -920,6 +931,7 @@ public final class CgTracker {
                 same &= z != null && z.view() == target.depth()
                         && z.depthLoad() == (pendingDepth ? CgPassDesc.LoadOp.CLEAR : CgPassDesc.LoadOp.LOAD)
                         && z.stencilLoad() == (pendingStencil ? CgPassDesc.LoadOp.CLEAR : CgPassDesc.LoadOp.LOAD)
+                        && z.readOnly() == readOnlyDepth
                         && (!pendingDepth || z.clearDepth() == clearDepthValue)
                         && (!pendingStencil || z.clearStencil() == clearStencilValue);
             }
@@ -938,7 +950,7 @@ public final class CgTracker {
         CgPassDesc.Depth depth = target.depth() == null ? null : new CgPassDesc.Depth(target.depth(),
                 pendingDepth ? CgPassDesc.LoadOp.CLEAR : CgPassDesc.LoadOp.LOAD, clearDepthValue,
                 pendingStencil ? CgPassDesc.LoadOp.CLEAR : CgPassDesc.LoadOp.LOAD, clearStencilValue,
-                CgPassDesc.StoreOp.STORE, false);
+                CgPassDesc.StoreOp.STORE, readOnlyDepth);
         CgTextureView first = target.colors().isEmpty() ? target.depth() : target.colors().get(0);
         return new CgPassDesc(first.texture().label(), colors, depth, target.width(), target.height());
     }

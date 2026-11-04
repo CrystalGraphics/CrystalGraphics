@@ -1624,6 +1624,30 @@ public final class CgGL {
     }
 
     /**
+     * Whether the render passes begun from here test depth without writing it, so a shader may sample the depth
+     * attachment in the same pass (Unreal's {@code DepthRead}; Vulkan's read-only depth layout). A device's; GL's is
+     * nothing, and a GL caller copies the depth it samples.
+     *
+     * <pre>{@code
+     * CgGL.cgReadOnlyDepth(true);    // before the pass's first draw
+     * ... draws sampling the target's depth ...
+     * CgGL.cgReadOnlyDepth(false);
+     * }</pre>
+     */
+    public static void cgReadOnlyDepth(boolean readOnly) {
+        backend.cgReadOnlyDepth(readOnly);
+    }
+
+    /**
+     * A texture name a shader samples {@code framebuffer}'s depth attachment through, 0 the window's: on a device, the
+     * host's depth image imported under a name of its own, where it can be sampled. 0 where it cannot, and on GL, where
+     * a caller copies it instead.
+     */
+    public static int cgDepthTexture(int framebuffer) {
+        return backend.cgDepthTexture(framebuffer);
+    }
+
+    /**
      * Whether the backend takes every transition, layouts and attachments included: a device. GL takes only what a
      * kernel's writes need, and orders the rest itself.
      */

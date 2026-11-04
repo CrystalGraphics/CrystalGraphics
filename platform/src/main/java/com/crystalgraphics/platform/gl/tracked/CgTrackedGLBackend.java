@@ -1026,6 +1026,10 @@ public final class CgTrackedGLBackend extends CgGLBackend {
 
     @Override public boolean cgTakesTransitions() { return true; }
 
+    @Override public void cgReadOnlyDepth(boolean readOnly) { tracker.readOnlyDepth(readOnly); }
+
+    @Override public int cgDepthTexture(int framebuffer) { return framebuffers.depthTexture(framebuffer); }
+
     // ── sync, timers, host sections ────────────────────────────────────────────
 
     /** A fence is the frame that placed it: signalled once that frame retires. */

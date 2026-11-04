@@ -546,8 +546,7 @@ public final class CgVulkanDevice implements CgRHI, CgImplicitLayouts, AutoClose
                     w.pImageInfo(VkDescriptorImageInfo.calloc(1, stack)
                             .sampler(sampled ? ((VulkanSampler) contents.sampler(i)).sampler : 0L)
                             .imageView(t.view(device, contents.view(i), false))
-                            .imageLayout(!sampled ? VK_IMAGE_LAYOUT_GENERAL : t.borrowed() ? t.resting
-                                    : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL));
+                            .imageLayout(!sampled ? VK_IMAGE_LAYOUT_GENERAL : t.sampledLayout(contents.view(i))));
                 } else if (type == CgBindingLayout.Type.TEXEL_BUFFER) {
                     w.pTexelBufferView(stack.longs(texelView((VulkanBuffer) contents.buffer(i), contents.offset(i),
                             contents.size(i), contents.texelFormat(i))));
@@ -838,8 +837,11 @@ public final class CgVulkanDevice implements CgRHI, CgImplicitLayouts, AutoClose
                 CgGpuTexture.Usage.COPY_SRC, CgGpuTexture.Usage.COPY_DST);
         surfaceColor = (VulkanTexture) createTexture(new CgGpuTexture.Desc("surface", CgGpuTexture.Kind.D2,
                 CgFormat.RGBA8_UNORM, width, height, 1, 1, 1, usage));
+        // Sampled too: a pass that tests it read-only samples it in place (rhi-milestones G3).
+        Set<CgGpuTexture.Usage> depthUsage = EnumSet.copyOf(usage);
+        depthUsage.add(CgGpuTexture.Usage.SAMPLED);
         surfaceDepth = (VulkanTexture) createTexture(new CgGpuTexture.Desc("surfaceDepth", CgGpuTexture.Kind.D2,
-                CgFormat.DEPTH24_PLUS_STENCIL8, width, height, 1, 1, 1, usage));
+                CgFormat.DEPTH24_PLUS_STENCIL8, width, height, 1, 1, 1, depthUsage));
     }
 
     /** Barriers recorded since the device began, for {@code CgDeviceStats}. */

@@ -297,6 +297,16 @@ public final class VulkanTexture implements CgGpuTexture {
         }
     }
 
+    /**
+     * The layout a shader samples {@code v} in: the read-only depth layout where a pass testing it read-only holds it,
+     * a host's image where the host keeps it, otherwise read-only.
+     */
+    public int sampledLayout(CgTextureView v) {
+        int at = layout(v.baseMip(), v.baseLayer());
+        if (at == VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL) return at;
+        return borrowed() ? resting : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    }
+
     /** The view a pass renders into or a shader samples: one mip and layer, or the range the view names. */
     public long view(VkDevice device, CgTextureView v, boolean attachment) {
         long key = ((long) v.baseMip() << 48) | ((long) v.mips() << 32) | ((long) v.baseLayer() << 16)

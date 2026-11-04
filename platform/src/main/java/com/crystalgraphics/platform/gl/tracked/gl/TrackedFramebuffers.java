@@ -2,6 +2,9 @@ package com.crystalgraphics.platform.gl.tracked.gl;
 
 import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.rhi.command.CgAccess;
+import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
+import java.util.IdentityHashMap;
+import java.util.Map;
 import com.crystalgraphics.platform.rhi.command.CgCommandList;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
 import com.crystalgraphics.platform.rhi.resource.CgGpuSampler;
@@ -323,24 +326,52 @@ public final class TrackedFramebuffers {
         if (name == 0) {
             for (int i = 0; i < t.colors().size(); i++) {
                 CgTextureView v = t.colors().get(i);
-                tracker.textureBarrier(v.texture(), v.baseMip(), v.mips(), v.baseLayer(), v.layers(), from, to);
+                tracker.textureBarrier(v.texture(), v.baseMip(), v.mips(), v.baseLayer(), v.layers(), color(from), color(to));
             }
         } else {
             // Every colour attachment, drawn to or not yet: a pass sets its draw buffers after its transitions.
             Framebuffer f = fbos.get(name);
             for (int i = 0; i < COLORS; i++) {
                 CgTextureView v = view(f.colors[i]);
-                if (v != null) tracker.textureBarrier(v.texture(), v.baseMip(), v.mips(), v.baseLayer(), v.layers(), from, to);
+                if (v != null) {
+                    tracker.textureBarrier(v.texture(), v.baseMip(), v.mips(), v.baseLayer(), v.layers(), color(from), color(to));
+                }
             }
         }
         CgTextureView d = t.depth();
         if (d != null) {
-            tracker.textureBarrier(d.texture(), d.baseMip(), d.mips(), d.baseLayer(), d.layers(), depth(from), depth(to));
+            // Whole: a shader samples a depth texture's every level, so they move together.
+            tracker.textureBarrier(d.texture(), depth(from), depth(to));
         }
     }
 
+    /**
+     * What the depth attachment takes of a framebuffer's access: {@link CgAccess#DEPTH_READ} names a read-only depth
+     * sampled in place, for which the colours write on; otherwise a colour write is a depth write.
+     */
+    /** Depth images imported under a texture name, each once. */
+    private final Map<CgGpuTexture, Integer> depthNames = new IdentityHashMap<>();
+
+    /** {@code cgDepthTexture}: framebuffer {@code name}'s depth image under a texture name, 0 where none is sampleable. */
+    public int depthTexture(int name) {
+        if (name != 0 && !fbos.exists(name)) return 0;
+        CgTarget t = target(name);
+        if (t == null || t.depth() == null) return 0;
+        CgGpuTexture image = t.depth().texture();
+        if (!image.desc().usage().contains(CgGpuTexture.Usage.SAMPLED)) return 0;
+        Integer known = depthNames.get(image);
+        if (known == null) depthNames.put(image, known = textures.adopt(image));
+        return known;
+    }
+
     private static int depth(int access) {
+        if ((access & CgAccess.DEPTH_READ) != 0) return CgAccess.DEPTH_READ | CgAccess.SAMPLED_READ;
         return (access & CgAccess.COLOR_WRITE) == 0 ? access : access & ~CgAccess.COLOR_WRITE | CgAccess.DEPTH_WRITE;
+    }
+
+    /** What a colour attachment takes: the access, less a read-only depth's. */
+    private static int color(int access) {
+        return access & ~CgAccess.DEPTH_READ;
     }
 
     public int status(int target) {

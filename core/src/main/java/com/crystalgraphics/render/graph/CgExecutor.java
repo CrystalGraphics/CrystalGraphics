@@ -138,6 +138,10 @@ public final class CgExecutor {
                     + " false records every transition whole before its consumer.");
     /** Raster passes that joined the render pass of the one before them (Unreal RDG's {@code MergeRenderPasses}). */
     private static final int MERGED = CgTrace.name("graph.render-passes-merged");
+    /** Raster passes that sampled their target's depth in place, read-only, where they would have copied it. */
+    private static final int READ_ONLY_DEPTH = CgTrace.name("graph.depth-read-only");
+    /** Another target's depth sampled where it is, where it was copied. */
+    private static final int DEPTH_SAMPLED = CgTrace.name("graph.depth-sampled-in-place");
     /** Persistent and history buffers whose storage this executor made, freed at teardown if never released. */
     private static final List<CgGraphBuffer> KEPT = new ArrayList<>();
     private static final CgVar.Bool BARRIERS = CgVar.bool("crystalgraphics.graph.barriers", true, CgVar.DEV,
@@ -260,6 +264,9 @@ public final class CgExecutor {
     private int splitCount;
     /** The run of merged raster steps the step executing belongs to: its first and last, -1 outside one. */
     private int runStart = -1, runEnd = -1;
+    /** Whether the raster pass executing samples its target's depth in place ({@link #readOnlyDepth}); its step. */
+    private boolean depthInPlace;
+    private int currentStep;
     /** The run's second attachment, which a pass of it without one of its own draws beside, writes masked off. */
     @Nullable
     private CgGraphTexture runAttachment;
@@ -627,6 +634,7 @@ public final class CgExecutor {
     }
 
     private void run(CgFrame frame, int s, CgPass pass) {
+        currentStep = s;
         if (!(pass instanceof CgRasterPass)) releaseVertexArray();
         try {
             boolean async = pass instanceof CgComputePass compute && runsAsync(compute);
@@ -1220,6 +1228,11 @@ public final class CgExecutor {
                         if (j > s) continue;   // the run's attachments, moved with its first step
                         CgGraphTexture texture = (CgGraphTexture) frame.accessView[i];
                         boolean target = texture == raster.target;
+                        boolean hostTested = texture.kind() == CgGraphTexture.Kind.CURRENT && hostDepth(raster);
+                        if ((target && !hostDepth(raster) || hostTested) && readOnlyDepth(frame, j, raster)) {
+                            move(texture, CgAccess.COLOR_WRITE | CgAccess.DEPTH_READ, -1, -1);   // its depth sampled in place
+                            continue;
+                        }
                         move(texture, bits & ~CgAccess.COLOR_WRITE, target ? raster.level : 0, target ? raster.layer : 0);
                     } else {
                         move((CgGraphTexture) frame.accessView[i], bits, -1, -1);
@@ -1255,6 +1268,26 @@ public final class CgExecutor {
         }
     }
 
+    /**
+     * Whether raster step {@code s} samples its target's depth in place, read-only, rather than copying it: on a device,
+     * where no draw of the pass writes depth and its target is ours with a depth texture, a single level and layer.
+     * Unreal's translucency binds {@code DepthRead} so; a pass writing the depth it reads keeps its copy.
+     */
+    private boolean readOnlyDepth(CgFrame frame, int s, CgRasterPass pass) {
+        if (!takes || pass.sceneDepthUnit() < 0 || frame.rasters[s].writesDepth || pass.depthFrom() != null) return false;
+        CgGraphTexture target = pass.target;
+        if (hostDepth(pass)) return CgGL.cgDepthTexture(startFramebuffer) != 0;   // the host's, imported
+        if (attachmentOf(pass) != null || target.getLevels() != 1 || target.getLayers() != 1) return false;
+        CgFrameBuffer storage = target.kind() == CgGraphTexture.Kind.TRANSIENT ? target.framebuffer() : storage(target);
+        return storage != null && storage.getDepthTexture() != null;
+    }
+
+    /** Whether {@code pass} tests the host's depth: into the current target, or beside its depth. */
+    private static boolean hostDepth(CgRasterPass pass) {
+        CgGraphTexture target = pass.target;
+        return target == null || target.kind() == CgGraphTexture.Kind.CURRENT || target.drawsBesideCurrentDepth();
+    }
+
     /** {@code pass}'s second attachment: its own, or inside a merged run the run's. */
     @Nullable
     private CgGraphTexture attachmentOf(CgRasterPass pass) {
@@ -1278,6 +1311,7 @@ public final class CgExecutor {
                 || next.depthFrom() != null || next.colorFrom() != null || unmergeable(frame, k, next)) {
             return false;
         }
+        if (readOnlyDepth(frame, k, next) != readOnlyDepth(frame, runStart, first)) return false;   // one depth mode a pass
         CgFrame.Raster packed = frame.rasters[k];
         if (packed.indirects > 0 && gpuCounts) return false;   // its commands are written by a dispatch first
         for (int b = 0; b < packed.count; b++) if (packed.copyBefore[b] != 0) return false;
@@ -1553,6 +1587,8 @@ public final class CgExecutor {
         }
         if (stencilled) CgStencilState.DISABLED.apply();
         stencilled = false;
+        if (depthInPlace) CgGL.cgReadOnlyDepth(false);
+        depthInPlace = false;
         composed = beside = false;   // detached at the execution's end: an attach a pass cost 2 µs on a threaded driver
     }
 
@@ -1588,6 +1624,11 @@ public final class CgExecutor {
 
     /** {@code pass}'s target bound and cleared, and what every batch shares bound. */
     private void rasterBegin(CgFrame frame, CgRasterPass pass, CgFrame.Raster packed, @Nullable int[] damage) {
+        depthInPlace = readOnlyDepth(frame, currentStep, pass);
+        if (depthInPlace) {
+            CgGL.cgReadOnlyDepth(true);
+            CgTrace.add(CgChannels.GL, READ_ONLY_DEPTH, 1);
+        }
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, RASTER_TARGET)) {
             try (CgTrace.Zone c = CgTrace.zone(CgChannels.GL_DETAIL, RASTER_COMPOSED)) {
                 // Beside the current depth, a second attachment is ours too: the host's colour stays out
@@ -1950,6 +1991,13 @@ public final class CgExecutor {
     private void copyDepthFrom(CgRasterPass pass) {
         CgGraphTexture from = pass.depthFrom();
         CgTargetCopy copy = pass.depthFromCopy();
+        if (takes && from.kind() != CgGraphTexture.Kind.CURRENT && !from.drawsBesideCurrentDepth()
+                && storage(from).getDepthTexture() != null) {
+            // Not attached here, and moved to SAMPLED_READ with the step: sampled where it is, as Unreal samples SceneDepth.
+            storage(from).getDepthTexture().bind(pass.depthFromUnit());
+            CgTrace.add(CgChannels.GL, DEPTH_SAMPLED, 1);
+            return;
+        }
         if (from.kind() == CgGraphTexture.Kind.CURRENT || from.drawsBesideCurrentDepth()) {
             copy.borrowDepth(sharedDepth(startFramebuffer, null, startViewport.get(2), startViewport.get(3), pass));
         } else {
@@ -2141,6 +2189,13 @@ public final class CgExecutor {
     private void copyTarget(CgRasterPass pass, int bits, int[] rects, int at) {
         CgGraphTexture target = pass.target;
         CgTargetCopy copy = pass.targetCopy();
+        if (depthInPlace && (bits & CgTargetCopy.DEPTH) != 0) {
+            // Read-only in this pass: sampled where it is, no copy.
+            if (hostDepth(pass)) CgGL.cgBindTexture(pass.sceneDepthUnit(), CgGL.GL_TEXTURE_2D, CgGL.cgDepthTexture(startFramebuffer));
+            else storage(target).getDepthTexture().bind(pass.sceneDepthUnit());
+            bits &= ~(CgTargetCopy.DEPTH | CgTargetCopy.CLEAN);
+            if (bits == 0) return;
+        }
         if ((bits & (CgTargetCopy.DEPTH | CgTargetCopy.CLEAN)) == (CgTargetCopy.DEPTH | CgTargetCopy.CLEAN)) {
             // The target's depth as the pass found it: what an earlier pass may have copied already.
             if (target == null || target.kind() == CgGraphTexture.Kind.CURRENT) {

@@ -469,6 +469,12 @@ public abstract class CgGLBackend {
         return false;
     }
 
+    public void cgReadOnlyDepth(boolean readOnly) {}
+
+    public int cgDepthTexture(int framebuffer) {
+        return 0;
+    }
+
     /** The {@code glMemoryBarrier} bits that make a kernel's writes visible to {@code to}. */
     private static int glBarrierBits(int to, boolean image) {
         int bits = 0;
