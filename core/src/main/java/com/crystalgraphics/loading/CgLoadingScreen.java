@@ -494,6 +494,9 @@ public final class CgLoadingScreen {
                     .builder("cg_loading_world").color(0, CgTextureType.RGBA8).depth(worldDepth).build());
         }
         if (worldReversed) CgGL.setDepthReversed(true, worldZeroToOne);
+        // The executor takes what is bound as the host's target: a scene's init leaves its own bound, at the window's viewport
+        warmTarget.bind();
+        CgGL.glViewport(0, 0, WARM_SIZE, WARM_SIZE);
         try {
             for (CgRenderStage stage : WORLD) {
                 stage.host().set(0f, WARM_SIZE, WARM_SIZE, warmTarget.getId()).view().set(0, 0, 0, WARM_VIEW, WARM_PROJECTION);
