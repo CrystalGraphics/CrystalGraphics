@@ -251,8 +251,11 @@ vec4 cg_MediaSample(vec3 p) {
 // What of the light from eye depth `eye` at screen `uv` reaches the eye through smoke and gas, 0 to 1.
 float cg_MediaTransmit(vec2 uv, float eye) {
     float k = cg_MediaSlice(eye);
-    float t = cg_MediaSample(vec3(uv, (k - 0.5) / CG_MEDIA_SLICES)).a;
-    return mix(1.0, t, clamp(k, 0.0, 1.0));
+    float lost = 1.0 - cg_MediaSample(vec3(uv, (k - 0.5) / CG_MEDIA_SLICES)).a;
+    // Under half the grid's half-float step below 1 is the filter's rounding, not smoke: clear air must read 1 exactly,
+    // or a 16-bit blend takes 1 - 2^-11 and an opaque cover lets what is behind through
+    if (lost < 1.0 / 4096.0) return 1.0;
+    return 1.0 - lost * clamp(k, 0.0, 1.0);
 }
 
 // The light the smoke and gas between the eye and eye depth `eye` at screen `uv` scattered toward the eye: the world's
