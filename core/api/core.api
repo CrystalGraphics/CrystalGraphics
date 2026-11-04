@@ -4463,6 +4463,7 @@ com/crystalgraphics/compute/emit/CgKernelTarget
   method public,final hashCode ()I
   method public,final toString ()Ljava/lang/String;
   method public,static current ()Lcom/crystalgraphics/compute/emit/CgKernelTarget;
+  method public,static detected ()Lcom/crystalgraphics/compute/emit/CgKernelTarget;
 com/crystalgraphics/compute/emit/CgPropertyBlock
   access public,final
   extends java/lang/Object
@@ -9640,8 +9641,8 @@ com/crystalgraphics/render/post/CgPostStack
 com/crystalgraphics/render/post/bloom/CgBloom
   access public,final
   extends java/lang/Object
-  field public,static,final CHAIN Lcom/crystalgraphics/render/stage/CgFrameKey;
   field public,static,final INTENSITY F
+  field public,static,final LEVELS Lcom/crystalgraphics/render/stage/CgFrameKey;
   implements com/crystalgraphics/render/post/CgPostEffect
   method public <init> ()V
   method public active (Lcom/crystalgraphics/render/post/CgPostContext;)Z
@@ -10049,6 +10050,7 @@ com/crystalgraphics/render/post/volume/CgPostSettings
   access public,final
   extends java/lang/Object
   field public,static,final BLOOM I
+  field public,static,final BLOOM_EXCESS I
   field public,static,final BLOOM_LAYERS I
   field public,static,final BLOOM_SIZE_SCALE I
   field public,static,final BLOOM_THRESHOLD I
@@ -10080,6 +10082,7 @@ com/crystalgraphics/render/post/volume/CgPostSettings
   method public blend (Lcom/crystalgraphics/render/post/volume/CgPostSettings;FFF)V
   method public bloom ()F
   method public bloom (F)Lcom/crystalgraphics/render/post/volume/CgPostSettings;
+  method public bloomExcess ()Lcom/crystalgraphics/render/post/volume/CgPostSettings;
   method public bloomLayer (IFFFF)Lcom/crystalgraphics/render/post/volume/CgPostSettings;
   method public bloomSize (I)F
   method public bloomSize (IF)Lcom/crystalgraphics/render/post/volume/CgPostSettings;
@@ -10089,6 +10092,7 @@ com/crystalgraphics/render/post/volume/CgPostSettings
   method public bloomThreshold (F)Lcom/crystalgraphics/render/post/volume/CgPostSettings;
   method public bloomTint (IFFF)Lcom/crystalgraphics/render/post/volume/CgPostSettings;
   method public bloomTint (II)F
+  method public bloomsExcess ()Z
   method public bloomsGaussian ()Z
   method public blueCorrection ()F
   method public blueCorrection (F)Lcom/crystalgraphics/render/post/volume/CgPostSettings;

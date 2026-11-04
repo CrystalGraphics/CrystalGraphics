@@ -304,7 +304,8 @@ CgPostStack.get().volume(20, new CgPostSettings().impact(CgImpact.LINES, 1f));  
   CgPostVolume look = CgPostStack.get().volume(5, new CgPostSettings().filmic().toneCurve(0f).blueCorrection(0f)
           .expandGamut(0f).displayGamma(2.7f)).at(x, y, z).radius(24f).blend(8f);   // around an effect alone
   ```
-- **Unreal's Gaussian bloom**: `gaussianBloom()` draws Unreal's six layers in place of the engine's chain: the scene
+- **Unreal's Gaussian bloom**: `gaussianBloom()` draws Unreal's own six layers and setup in place of the engine's (`CgBloom`'s
+  layers, fitted to the chain they replaced, on each channel's excess; `bloomExcess()` gives a look that source too): the scene
   halved to a 64th, each layer a Gaussian `bloomSize(layer)` percent of the screen's width times `bloomSizeScale`,
   tinted, summed from the widest in, times `bloom` over six. Under the HDR scene its source is Unreal's bloom setup at
   `bloomThreshold` (-1, the default, blooms the whole scene, as Unreal runs no setup then):

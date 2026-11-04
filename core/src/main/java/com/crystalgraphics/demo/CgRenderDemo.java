@@ -24,8 +24,6 @@ import com.crystalgraphics.platform.input.CgKeyCodes;
 import com.crystalgraphics.platform.service.CgInputService;
 import com.crystalgraphics.render.CgFrameClock;
 import com.crystalgraphics.render.post.CgPostStack;
-import com.crystalgraphics.render.post.volume.CgPostSettings;
-import com.crystalgraphics.render.post.volume.CgPostVolume;
 import com.crystalgraphics.render.post.bloom.CgBloom;
 import com.crystalgraphics.render.stage.CgHostEnvironment;
 import com.crystalgraphics.render.stage.CgHostFrame;
@@ -47,7 +45,6 @@ import org.apache.logging.log4j.Logger;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 
-import javax.annotation.Nullable;
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.io.File;
@@ -77,7 +74,7 @@ import java.util.function.Supplier;
  * H    the HUD on or off
  * N    the next scene, placed ahead of the camera; Shift+N the previous one
  * C    camera shake on or off (CgCameraShake.enabled: the saved setting is untouched)
- * L    bloom in the target's encoding, in linear light, as Unreal's Gaussian layers, then off
+ * L    bloom in the target's encoding, in linear light, then off
  * X    kit looks on or off: each kit's effects graded by their game's post, or by the frame's
  * [ ]  the HDR scene's glow gain down or up a quarter;  - =  bloom's intensity
  * O    every world shadow off or on (crystalgraphics.world.lightsShadows), to compare
@@ -227,9 +224,6 @@ public final class CgRenderDemo {
             CgVfxDemoControls.KEYS);
     private final boolean[] held = new boolean[KEYS.length];
     private static float bloomIntensity = 1f;
-    /** The global volume that turns the Gaussian on, while {@link #cycleBloom} has it. */
-    @Nullable
-    private static CgPostVolume gaussianBloom;
     private boolean hudShown = true;
 
     /** After every other static: the constructor reads {@code MODE} and {@code KEYS}. */
@@ -858,19 +852,14 @@ public final class CgRenderDemo {
         if (bloom.intensity() > 0f) bloom.intensity(bloom.intensity() * by);
     }
 
-    /** Blend, then linear, then the Gaussian, then off, then back at the intensity it had. */
+    /** Blend, then linear, then off, then back at the intensity it had. */
     private static void cycleBloom() {
         CgBloom bloom = CgPostStack.get().bloom();
         if (bloom.intensity() == 0f) {
             bloom.intensity(bloomIntensity).linear(false);
-        } else if (gaussianBloom != null) {
-            gaussianBloom.close();
-            gaussianBloom = null;
+        } else if (bloom.linear()) {
             bloomIntensity = bloom.intensity();
             bloom.intensity(0f);
-        } else if (bloom.linear()) {
-            // Composited in linear light as the step before, so the two compare like for like
-            gaussianBloom = CgPostStack.get().volume(0, new CgPostSettings().chainGaussianBloom());
         } else {
             bloom.linear(true);
         }
@@ -941,7 +930,7 @@ public final class CgRenderDemo {
                 : "\n\nShake [C]: off")
                 + String.format(Locale.ROOT, "\nGlow [ ]: %.2f", CgWorldRenderer.get().sceneEmission())
                 + " | Kit looks [X]: " + (CgWorldRenderer.get().gradeDraws() ? "on" : "off")
-                + "\nBloom [L]: " + (bloom.intensity() == 0f ? "off" : gaussianBloom != null ? "gaussian" : bloom.linear() ? "linear" : "blend")
+                + "\nBloom [L]: " + (bloom.intensity() == 0f ? "off" : bloom.linear() ? "linear" : "blend")
                 + String.format(Locale.ROOT, " | Intensity [- =]: %.2f", bloom.intensity())
                 + "\n" + CgVfxDemoControls.get().hudLines(waves);
     }

@@ -42,10 +42,6 @@ public final class CgPostSettings {
     private static final float[] LAYER_SIZES = {0.3f, 1f, 2f, 10f, 30f, 64f};
     /** And its layer tints, grey each. */
     private static final float[] LAYER_TINTS = {0.3465f, 0.138f, 0.1176f, 0.066f, 0.066f, 0.061f};
-    /** {@link #chainGaussianBloom}'s layers, percent of the width at a size scale of 1, fitted to the chain's spread. */
-    private static final float[] CHAIN_SIZES = {0f, 2.687f, 4.575f, 8.525f, 16.264f, 38.25f};
-    /** And their tints at a {@link #bloom} of 1 (the composite takes a sixth of each). */
-    private static final float[] CHAIN_TINTS = {0f, 1.8368f, 1.4459f, 1.2088f, 0.9742f, 0.6965f};
 
     /** Where a grade applies: Unreal's global controls, then its Shadows, Midtones and Highlights. */
     public enum Region { GLOBAL, SHADOWS, MIDTONES, HIGHLIGHTS }
@@ -261,7 +257,8 @@ public final class CgPostSettings {
     /**
      * Draws the bloom as Unreal's Gaussian layers ({@code BloomMethod} Standard): the scene halved down to a 64th, each
      * of six layers a Gaussian of {@code size} percent of the screen's width (times {@link #bloomSizeScale}) and a tint,
-     * summed from the widest in, times {@link #bloom} over six. The engine's own chain unless asked.
+     * summed from the widest in, times {@link #bloom} over six: Unreal's look, where the engine's own layers ({@code CgBloom})
+     * draw unless asked.
      *
      * <pre>{@code
      * new CgPostSettings().gaussianBloom().bloom(1.25f).bloomSizeScale(4f).bloomLayer(1, 0.3f, 0.3466f, 0.3466f, 0.3466f);
@@ -278,30 +275,7 @@ public final class CgPostSettings {
     }
 
     /**
-     * Unreal's Gaussian layers set to spread as the engine's chain does: {@link #gaussianBloom} with five layers fitted to
-     * the chain's glow round one hot texel at 1080p, and light past 1 blooming as the chain's does.
-     *
-     * <pre>{@code
-     * CgPostVolume compare = CgPostStack.get().volume(0, new CgPostSettings().chainGaussianBloom());
-     * }</pre>
-     *
-     * <ul>
-     *   <li>Sets {@link #bloomSizeScale} to 1 and every layer: a later {@link #bloomLayer} changes one of them.</li>
-     *   <li>Blooms each channel's excess past 1, as the chain does ({@link #bloomExcess}): what keeps a glow as saturated
-     *       as its source.</li>
-     * </ul>
-     */
-    public CgPostSettings chainGaussianBloom() {
-        gaussianBloom().bloomExcess().bloomThreshold(1f).bloomSizeScale(1f);
-        for (int l = 1; l <= BLOOM_LAYERS; l++) {
-            float t = CHAIN_TINTS[l - 1];
-            bloomLayer(l, CHAIN_SIZES[l - 1], t, t, t);
-        }
-        return this;
-    }
-
-    /**
-     * The Gaussian layers bloom what the chain blooms: each channel's excess past {@link #bloomThreshold}, instead of Unreal's
+     * Unreal's layers bloom what the engine's own do: each channel's excess past {@link #bloomThreshold}, instead of Unreal's
      * setup, which scales the whole colour by how far its luminance passes the threshold. A yellow (3, 3, 0.8) blooms
      * (2, 2, 0) here, a deeper yellow than Unreal's.
      *
@@ -310,7 +284,7 @@ public final class CgPostSettings {
      * }</pre>
      *
      * <ul>
-     *   <li>The Gaussian's alone; the chain always blooms the excess.</li>
+     *   <li>Read only under {@link #gaussianBloom}: the engine's own layers always bloom the excess.</li>
      *   <li>A threshold of -1 or less blooms the whole scene either way.</li>
      * </ul>
      */
@@ -631,7 +605,7 @@ public final class CgPostSettings {
         return tintB;
     }
 
-    /** Whether the bloom is Unreal's Gaussian layers ({@link #gaussianBloom()}), not the engine's chain. */
+    /** Whether the bloom is Unreal's layers and setup ({@link #gaussianBloom()}), not the engine's own layers. */
     public boolean bloomsGaussian() {
         return (overrides & GAUSSIAN) != 0;
     }

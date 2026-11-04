@@ -20,7 +20,7 @@ import com.crystalgraphics.render.stage.CgDistortionField;
 import com.crystalgraphics.render.stage.CgFrameKeys;
 
 /**
- * Draws what bloom works from over the whole frame, last: one level of the chain. Set by
+ * Draws what bloom works from over the whole frame, last: one stage of its layers. Set by
  * {@code -Dcrystalgraphics.post.debug=level<N>} (0 is the glow the composite reads), so a material's
  * glow can be seen without the picture round it; {@code =overdraw} shows the world renderer's overdraw count through a
  * heat ramp (blue 1, green 4, red 16, white 32), {@code =distortion} the distortion field's offsets summed (|offset| x
@@ -34,7 +34,7 @@ public final class CgPostDebug implements CgPostEffect {
 
     private static final int OVERDRAW = -2, DISTORTION = -3;
 
-    /** {@link #OVERDRAW}, {@link #DISTORTION}, else the chain's level. */
+    /** {@link #OVERDRAW}, {@link #DISTORTION}, else bloom's stage. */
     private final int level;
     private CgMaterial material;
     private CgTexture bound;
@@ -46,7 +46,7 @@ public final class CgPostDebug implements CgPostEffect {
 
     /** What the frame shows for debugging; empty for nothing. */
     public static final CgVar.Text VIEW = CgVar.text("crystalgraphics.post.debug", "", CgVar.DEV,
-            "level<N>: a level of bloom's chain, 0 the glow the composite"
+            "level<N>: a stage of bloom's layers, 0 the glow the composite"
                     + " reads. overdraw: transparent fragments per pixel as a heat ramp (blue 1, green 4, red 16, white 32)."
                     + " distortion: the distortion target, |offset| x 50 in red and green, the split in blue.");
 
@@ -79,7 +79,7 @@ public final class CgPostDebug implements CgPostEffect {
     @Override
     public boolean active(CgPostContext post) {
         return level == DISTORTION ? post.resources().has(CgFrameKeys.DISTORTION)
-                : post.resources().has(level >= 0 ? CgBloom.CHAIN : CgFrameKeys.OVERDRAW);
+                : post.resources().has(level >= 0 ? CgBloom.LEVELS : CgFrameKeys.OVERDRAW);
     }
 
     @Override
@@ -93,10 +93,10 @@ public final class CgPostDebug implements CgPostEffect {
         } else if (level < 0) {
             source = post.resources().get(CgFrameKeys.OVERDRAW);
         } else {
-            CgGraphTexture[] chain = post.resources().get(CgBloom.CHAIN);
-            int k = Math.min(level, chain.length - 1);
-            while (k > 0 && chain[k] == null) k--;
-            source = chain[k];
+            CgGraphTexture[] stages = post.resources().get(CgBloom.LEVELS);
+            int k = Math.min(level, stages.length - 1);
+            while (k > 0 && stages[k] == null) k--;
+            source = stages[k];
         }
         if (material == null) {
             material = CgMaterial.newInstance(level == DISTORTION ? DISTORTION_SHADER : SHADER);
