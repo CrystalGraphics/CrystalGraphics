@@ -190,6 +190,12 @@ shadow cells. 10,000 outlined, shadowed labels went from 15,723 flushes a frame 
   such change.
 - A quad keeps its draw's pose, clip and nodes in a pose entry (`pushPose`); `draw.drainBuckets` times the replay.
 
+**A draw the same as before is replayed** (`Replay`): the same layout object, every `Draw` field (`sameAs`), pose,
+projection, clip, nodes and resolved tier, and no atlas eviction since, appends the records that draw emitted instead of
+resolving, planning shadows, sorting and building quads again. Kept 30 frames at most, since resolving stamps each
+glyph's use for the atlas's eviction; a draw that degraded or flushed midway is not kept; never while capturing.
+Skinned-play's HUD: overlay 0.20 to 0.11 ms. `-Dcrystalgraphics.text.replay=false` records every draw.
+
 **Captured text** (`capture`, `drawCaptured`, `CgTextCapture`): a draw's bucketed records kept rather than drawn, in
 the draw's own space, for text whose content stays while its pose moves. `drawCaptured` draws one batch of them from a
 buffer as one OBJECT draw of `text.shader`'s `WORLD_LABEL` variant, each record placed by the model matrix of the

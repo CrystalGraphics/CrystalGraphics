@@ -53,7 +53,9 @@ import javax.annotation.Nullable;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.function.Consumer;
 import java.util.logging.Logger;
@@ -596,6 +598,7 @@ public class CgTextRenderer {
      * owns its depth decides it from G3 on.</p>
      */
     private void flush() {
+        flushes++;
         drainBuckets();
         if (!quadRenderer.isDirty()) return;
 
@@ -1467,6 +1470,7 @@ public class CgTextRenderer {
             projectionValid = false;
             batchActive = false;
         }
+        replays.clear();
         quadRenderer.delete();
         textMaterial.delete();
         CgTextRendererRegistry.get().unregister(this);
@@ -1668,6 +1672,30 @@ public class CgTextRenderer {
         }
 
         long frame = CgFrameClock.frameIndex();
+        Replay replay = REPLAYS && capturing == null ? replays.get(resolvedLayout) : null;
+        if (replay != null && replay.matches(draw, pose.pose(), context.projection(), effectiveTargetPx, wantMsdf,
+                clip, spatialNode, effectNode, frame)) {
+            syncProjection(context.projection());
+            replay(replay);
+            CgTrace.add(CgChannels.TEXT, "draw.replayed", 1);
+            return;
+        }
+        long degradedBefore = degradedDrawCount;
+        long flushesBefore = flushes;
+        markBuckets();
+        recordDraw(draw, pose, resolved, originX, originY, frame);
+        if (REPLAYS && capturing == null && degradedDrawCount == degradedBefore && flushes == flushesBefore) {
+            keepReplay(resolvedLayout, draw, pose.pose(), effectiveTargetPx, wantMsdf, frame);
+        }
+    }
+
+    /** {@link #drawInternal}'s glyphs resolved and recorded into the buckets, past the cull and a replay. */
+    private void recordDraw(Draw draw, PoseStack.Pose pose, ResolvedDraw resolved, float originX, float originY,
+                            long frame) {
+        CgFontKey fontKey = resolved.fontKey();
+        int effectiveTargetPx = resolved.effectiveTargetPx();
+        boolean wantMsdf = resolved.wantMsdf();
+        CgTextLayout resolvedLayout = resolved.layout();
         int glyphCount;
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT, "glyph.resolveGlyphs")) {
             // The pose's own sub-pixel phase. A CSS transform moves text through the POSE, not
@@ -2225,6 +2253,97 @@ public class CgTextRenderer {
     private int bucketCount;
     @Nullable
     private Bucket lastBucket;
+
+    // ── Replays ─────────────────────────────────────────────────────────────
+    // A draw the same as one before it (its layout object, every Draw field, pose, projection, clip and nodes, the
+    // tier it resolved to, no atlas eviction since) appends the records that one emitted, skipping glyph resolve,
+    // the shadow plan, the sort and the quad loop. A HUD whose text changes a few times a second is these on most
+    // frames. Kept REPLAY_FRAMES at most: resolving stamps each glyph's use, which the atlas evicts by.
+
+    private static final int REPLAY_FRAMES = 30, MAX_REPLAYS = 1024;
+    /** {@code -Dcrystalgraphics.text.replay=false} records every draw, for comparison. */
+    private static final boolean REPLAYS = !"false".equals(System.getProperty("crystalgraphics.text.replay"));
+    private final Map<CgTextLayout, Replay> replays = new IdentityHashMap<>();
+    /** Each open bucket's count, and how many were open, when the draw being recorded began. */
+    private int[] markCounts = new int[16];
+    private int markBuckets;
+    /** Flushes so far: one inside a draw resets the buckets, so that draw is not kept. */
+    private long flushes;
+
+    private static final class Replay {
+        final Draw draw;
+        final Matrix4f pose = new Matrix4f(), projection = new Matrix4f();
+        int targetPx, clip, spatial, effect;
+        boolean msdf;
+        long evictions, frame;
+        final List<Slice> slices = new ArrayList<>();
+
+        Replay(Draw draw) {
+            this.draw = draw;
+        }
+
+        boolean matches(Draw d, Matrix4f p, Matrix4f proj, int px, boolean df, int c, int s, int e, long now) {
+            return now - frame < REPLAY_FRAMES && evictions == CgGlyphAtlas.evictions() && targetPx == px
+                    && msdf == df && clip == c && spatial == s && effect == e
+                    && pose.equals(p) && projection.equals(proj) && draw.sameAs(d);
+        }
+    }
+
+    /** One bucket's share of a kept draw: its key and the records the draw put there. */
+    private record Slice(int rank, long batchBits, boolean distanceField, int atlasId, float[] records, int[] spatial) {
+    }
+
+    private void markBuckets() {
+        if (markCounts.length < bucketCount) markCounts = Arrays.copyOf(markCounts, bucketCount * 2);
+        for (int i = 0; i < bucketCount; i++) markCounts[i] = buckets.get(i).count;
+        markBuckets = bucketCount;
+    }
+
+    /** Keeps what the draw just recorded since {@link #markBuckets}, under its layout. */
+    private void keepReplay(CgTextLayout layout, Draw draw, Matrix4f pose, int px, boolean msdf, long frame) {
+        Replay replay = replays.get(layout);
+        if (replay == null) {
+            // Full: drop those past their frames, and keep nothing new while every one is live, rather than thrash
+            if (replays.size() >= MAX_REPLAYS) replays.values().removeIf(r -> frame - r.frame >= REPLAY_FRAMES);
+            if (replays.size() >= MAX_REPLAYS) return;
+            replay = new Replay(new Draw(null));
+            replays.put(layout, replay);
+        }
+        replay.draw.set(draw);
+        replay.pose.set(pose);
+        replay.projection.set(context.projection());
+        replay.targetPx = px;
+        replay.msdf = msdf;
+        replay.clip = clip;
+        replay.spatial = spatialNode;
+        replay.effect = effectNode;
+        replay.evictions = CgGlyphAtlas.evictions();
+        replay.frame = frame;
+        replay.slices.clear();
+        for (int i = 0; i < bucketCount; i++) {
+            Bucket b = buckets.get(i);
+            int from = i < markBuckets ? markCounts[i] : 0;
+            if (b.count <= from) continue;
+            replay.slices.add(new Slice(b.rank, b.batchBits, b.distanceField, b.atlasId,
+                    Arrays.copyOfRange(b.records, from * RECORD, b.count * RECORD),
+                    Arrays.copyOfRange(b.spatial, from, b.count)));
+        }
+    }
+
+    private void replay(Replay replay) {
+        for (Slice slice : replay.slices) {
+            Bucket b = bucket(slice.rank, slice.batchBits, slice.distanceField, slice.atlasId);
+            int n = slice.spatial.length, need = b.count + n;
+            if (need > b.spatial.length) {
+                int grown = Math.max(need, b.spatial.length * 2);
+                b.spatial = Arrays.copyOf(b.spatial, grown);
+                b.records = Arrays.copyOf(b.records, grown * RECORD);
+            }
+            System.arraycopy(slice.spatial, 0, b.spatial, b.count, n);
+            System.arraycopy(slice.records, 0, b.records, b.count * RECORD, n * RECORD);
+            b.count = need;
+        }
+    }
     private final Vector3f bakeOrigin = new Vector3f(), bakeRight = new Vector3f(), bakeUp = new Vector3f();
 
     private Bucket bucket(int rank, long batchBits, boolean distanceField, int atlasId) {
