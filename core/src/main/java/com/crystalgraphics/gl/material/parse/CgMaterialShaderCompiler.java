@@ -116,6 +116,13 @@ public final class CgMaterialShaderCompiler {
     public static final String MULTI_DRAW = "CG_MULTI_DRAW";
 
     /**
+     * What a device reading textures by index from its bindless heap defines after {@code #version}, before any code:
+     * the runtime arrays {@code cg_env.glsl} declares then need the extension, which no code may precede.
+     */
+    static final String BINDLESS_EXTENSION = "#if defined(CG_BINDLESS) && defined(VULKAN)\n"
+            + "#extension GL_EXT_nonuniform_qualifier : require\n#endif\n";
+
+    /**
      * The keyword every {@code #pragma cg_use particle} program takes without declaring it (the parser adds it): its
      * strip variant, where {@code particle_factory.glsl}'s strip factory places each particle's strip from
      * {@code CG_VERTEX_ID}, as Unreal compiles a material for its beam-and-trail vertex factory. What a beam draws a
@@ -572,6 +579,7 @@ public final class CgMaterialShaderCompiler {
         // Step 1: #version
         int version = glslVersion(config);
         sb.append("#version ").append(version).append(" core\n");
+        sb.append(BINDLESS_EXTENSION);
 
         // Keyword #define injection — in featureNames declaration order, before user #-lines
         appendKeywordDefines(sb, shader.featureNames(), config.activeKeywords());
@@ -697,6 +705,7 @@ public final class CgMaterialShaderCompiler {
 
         // Step 1: #version
         sb.append("#version ").append(glslVersion(config)).append(" core\n");
+        sb.append(BINDLESS_EXTENSION);
 
         // Keyword #define injection — in featureNames declaration order, before user #-lines
         appendKeywordDefines(sb, shader.featureNames(), config.activeKeywords());
@@ -988,13 +997,26 @@ public final class CgMaterialShaderCompiler {
     }
 
     private static void appendPropertyUniforms(StringBuilder sb, List<CgMaterialProperty> properties) {
+        // Where the device reads textures by index, each is its handle in CgMaterialTextures read through cg_env's
+        // CG_TEXTURE_<type>, under the name the shader samples: Unreal's UB_RESOURCE_MEMBER_SRV. Otherwise bound.
+        StringBuilder handles = new StringBuilder(), reads = new StringBuilder();
+        for (CgMaterialProperty p : properties) {
+            if (!p.getType().isSampler()) continue;
+            handles.append("    uvec2 _cgt").append(p.getName()).append(";\n");
+            reads.append("#define ").append(p.getName()).append(" CG_TEXTURE_").append(p.getGlslType()).append("(_cgt")
+                    .append(p.getName()).append(")\n");
+        }
+        if (handles.length() == 0) return;
+        sb.append("// Sampler properties\n#ifdef CG_BINDLESS\n").append(CgBindingModel.TEXTURE_HANDLES.glsl())
+                .append("layout(std140) uniform CgMaterialTextures {\n").append(handles).append("};\n").append(reads)
+                .append("#else\n");
         int textures = 0;
         for (CgMaterialProperty p : properties) {
             if (p.getType().isSampler()) {
-                if (textures == 0) sb.append("// Sampler properties\n");
                 sb.append(CgBindingModel.texture(textures++).glsl()).append("uniform ").append(p.getGlslType()).append(' ').append(p.getName()).append(";\n");
             }
         }
+        sb.append("#endif\n");
     }
 
     private static void appendV2fStruct(StringBuilder sb, String v2fStructBody) {

@@ -334,9 +334,12 @@ final class CgGlslStrip {
             this.tokens = expand(tokens, 0);
         }
 
-        /** A macro the compiler may define: GL's and the driver's, and shaderc's {@code VULKAN} under Vulkan. */
+        /**
+         * A macro the compiler may define: GL's and the driver's, shaderc's {@code VULKAN} under Vulkan, and
+         * {@code CG_BINDLESS}, which a device reading textures by index defines.
+         */
         static boolean compilerDefines(String name) {
-            return name.startsWith("GL_") || name.startsWith("__") || name.equals("VULKAN");
+            return name.startsWith("GL_") || name.startsWith("__") || name.equals("VULKAN") || name.equals("CG_BINDLESS");
         }
 
         static Boolean defined(String name, Map<String, Macro> macros) {

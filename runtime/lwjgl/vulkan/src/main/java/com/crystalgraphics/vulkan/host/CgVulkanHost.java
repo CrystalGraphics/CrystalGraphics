@@ -121,6 +121,12 @@ public interface CgVulkanHost {
     /** Whether the device was created with {@code independentBlend}: attachments of one pipeline may differ in write mask. */
     boolean independentBlend();
 
+    /**
+     * Whether the device was created with the descriptor indexing a bindless heap needs: runtime arrays of sampled images
+     * and samplers, partially bound, written after bind.
+     */
+    boolean bindless();
+
     /** Whether the device was created with {@code textureCompressionBC}: BC7 images may be made and sampled. */
     boolean textureCompressionBC();
 

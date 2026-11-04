@@ -14,6 +14,7 @@ import com.crystalgraphics.platform.rhi.nulldrv.CgNullRHI;
 import com.crystalgraphics.platform.rhi.resource.CgGpuBuffer;
 import com.crystalgraphics.platform.rhi.resource.CgGpuSampler;
 import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
+import com.crystalgraphics.platform.rhi.resource.CgTextureView;
 import com.crystalgraphics.platform.rhi.sync.CgTimerQuery;
 import com.crystalgraphics.platform.rhi.shader.CgGlslCompiler;
 import com.crystalgraphics.platform.rhi.shader.CgShaderModule;
@@ -128,6 +129,43 @@ public interface CgRHI {
     /** Destroys {@code object} once the frame current now has retired. */
     void release(CgRHIResource object);
 
+    // ── the bindless heap ─────────────────────────────────────────────────────
+
+    /** The set a pipeline reads the bindless heap at ({@code rhi.md} §2.3). */
+    int BINDLESS_SET = 3;
+
+    /**
+     * The bindless heap's layout, for a pipeline's set {@link #BINDLESS_SET}: at binding 0 every texture view a shader
+     * reads, each with its sampler, by index, as Unreal's RHIs bind through one heap and GL's bindless handles name a
+     * texture with its sampler. Null where {@link Globals#bindless()} is false.
+     *
+     * <pre>{@code
+     * // layout(set = 3, binding = 0) uniform sampler2D cg_Textures2D[];   ...texture(cg_Textures2D[index], uv)
+     * CgBindingLayout none = rhi.createBindingLayout("none", List.of(), false);
+     * CgPipelineLayout layout = new CgPipelineLayout(List.of(view, none, none, rhi.bindlessLayout()), 4);
+     * pass.setBindingSet(CgRHI.BINDLESS_SET, rhi.bindlessSet());       // once a command list
+     * pass.pushConstants(0, rhi.bindlessIndex(CgTextureView.whole(albedo), sampler));
+     * }</pre>
+     *
+     * <ul>
+     *   <li>A view is read in its texture's sampled layout: transition it there, as for a bound one.</li>
+     *   <li>An index holds until its texture is released, and is then given to another pair.</li>
+     * </ul>
+     */
+    default CgBindingLayout bindlessLayout() {
+        return null;
+    }
+
+    /** The heap's one set, of {@link #bindlessLayout()}; null without one. */
+    default CgBindingSet bindlessSet() {
+        return null;
+    }
+
+    /** The heap's index of {@code view} read through {@code sampler}, made on the first ask. The texture needs {@code SAMPLED} usage. */
+    default int bindlessIndex(CgTextureView view, CgGpuSampler sampler) {
+        throw new UnsupportedOperationException(globals().name() + " has no bindless heap");
+    }
+
     // ── commands ──────────────────────────────────────────────────────────────
 
     /** The current frame's encoder; the same object until {@link #endFrame}. */
@@ -200,11 +238,12 @@ public interface CgRHI {
      * @param asyncCompute          a compute queue beside the frame's, so async work overlaps the frame's other work
      * @param drawParameters        {@code gl_DrawID} and a draw's base vertex and instance in a shader
      * @param independentBlend      a pipeline's colour attachments may differ in blend and write mask
+     * @param bindless              a heap of texture views and samplers read by index ({@link #bindlessLayout()})
      */
     record Globals(String name, String vendor, String driver, Limits limits,
                    boolean timestamps, boolean anisotropy, boolean nonSolidFill,
                    boolean multiDrawIndirect, boolean indirectCount, boolean indirectFirstInstance,
-                   boolean asyncCompute, boolean drawParameters, boolean independentBlend) {
+                   boolean asyncCompute, boolean drawParameters, boolean independentBlend, boolean bindless) {
 
         public record Limits(int maxTextureSize, int max3DTextureSize, int maxArrayLayers, int maxColorAttachments,
                              int maxSamples, int maxVertexAttributes, int maxTextureUnits, int maxUniformBlockSize,

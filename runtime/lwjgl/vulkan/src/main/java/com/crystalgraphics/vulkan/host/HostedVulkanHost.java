@@ -466,6 +466,8 @@ public abstract class HostedVulkanHost<T> implements CgVulkanHost {
 
     /** Off unless the host says its device was created with it: a host's own features leave it off. */
     @Override public boolean independentBlend() { return false; }
+    // Minecraft's device enables no descriptor indexing until DeviceFeaturesHook asks for it (H1)
+    @Override public boolean bindless() { return false; }
     @Override public boolean textureCompressionBC() { return false; }
 
     @Override public final boolean asyncCompute() { return asyncQueue != null; }

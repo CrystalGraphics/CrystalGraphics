@@ -16,12 +16,14 @@ import com.crystalgraphics.platform.rhi.pipeline.CgGraphicsPipelineDesc;
 import com.crystalgraphics.platform.rhi.resource.CgGpuBuffer;
 import com.crystalgraphics.platform.rhi.resource.CgGpuSampler;
 import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
+import com.crystalgraphics.platform.rhi.resource.CgTextureView;
 import com.crystalgraphics.platform.rhi.sync.CgTimerQuery;
 import com.crystalgraphics.platform.rhi.shader.CgShaderModule;
 import com.crystalgraphics.vulkan.command.VulkanEncoder;
 import com.crystalgraphics.vulkan.format.VulkanFormats;
 import com.crystalgraphics.vulkan.binding.VulkanBindingLayout;
 import com.crystalgraphics.vulkan.binding.VulkanBindingSet;
+import com.crystalgraphics.vulkan.binding.VulkanBindless;
 import com.crystalgraphics.vulkan.binding.VulkanDescriptorPools;
 import com.crystalgraphics.vulkan.sync.VulkanEvents;
 import com.crystalgraphics.vulkan.sync.VulkanQueryPools;
@@ -165,6 +167,8 @@ public final class CgVulkanDevice implements CgRHI, CgImplicitLayouts, AutoClose
     private final VulkanDescriptorPools descriptorPools;
     private final VulkanQueryPools queryPools;
     private final VulkanEvents events;
+    /** The bindless heap, where the host enabled descriptor indexing; null otherwise. */
+    private final VulkanBindless bindless;
     private final VulkanEncoder encoder;
     private VulkanTexture surfaceColor, surfaceDepth;
     private VulkanBuffer scratch;
@@ -226,6 +230,7 @@ public final class CgVulkanDevice implements CgRHI, CgImplicitLayouts, AutoClose
         descriptorPools = new VulkanDescriptorPools(device);
         queryPools = new VulkanQueryPools(device);
         events = new VulkanEvents(device);
+        bindless = host.bindless() ? new VulkanBindless(device) : null;
         encoder = new VulkanEncoder(this);
         resize(width, height);
     }
@@ -265,7 +270,7 @@ public final class CgVulkanDevice implements CgRHI, CgImplicitLayouts, AutoClose
                 (v >>> 22) + "." + ((v >>> 12) & 0x3FF) + "." + (v & 0xFFF), limits,
                 l.timestampComputeAndGraphics(), l.maxSamplerAnisotropy() > 1f, true,
                 host.multiDrawIndirect(), host.indirectCount(), host.indirectFirstInstance(), host.asyncCompute(),
-                host.drawParameters(), host.independentBlend());
+                host.drawParameters(), host.independentBlend(), host.bindless());
     }
 
     @Override
@@ -740,6 +745,26 @@ public final class CgVulkanDevice implements CgRHI, CgImplicitLayouts, AutoClose
     }
 
     @Override
+    public CgBindingLayout bindlessLayout() {
+        return bindless == null ? null : bindless.layout;
+    }
+
+    @Override
+    public CgBindingSet bindlessSet() {
+        return bindless == null ? null : bindless.set;
+    }
+
+    /** A pair's slot, its view written in its texture's sampled layout, which the texture is laid in first. */
+    @Override
+    public int bindlessIndex(CgTextureView view, CgGpuSampler sampler) {
+        if (bindless == null) throw new UnsupportedOperationException(info.name() + " has no bindless heap");
+        VulkanTexture t = (VulkanTexture) view.texture();
+        if (t.unlaid || t.transferOnly) lay(t);
+        return bindless.texture(view, sampler, t.view(device, view, false), t.sampledLayout(view),
+                ((VulkanSampler) sampler).sampler);
+    }
+
+    @Override
     public void release(CgRHIResource object) {
         if (object instanceof VulkanSampler) return;                   // cached by description, kept
         host.whenFrameRetired(host.frameIndex(), () -> destroy(object));
@@ -753,6 +778,7 @@ public final class CgVulkanDevice implements CgRHI, CgImplicitLayouts, AutoClose
             if (views != null) for (long v : views.values()) vkDestroyBufferView(device, v, null);
             vmaDestroyBuffer(vma, b.buffer, b.allocation);
         } else if (o instanceof VulkanTexture t) {
+            if (bindless != null) bindless.forget(t);
             t.destroyViews(device);
             if (!t.borrowed()) vmaDestroyImage(vma, t.image, t.allocation);
         } else if (o instanceof VulkanShaderModule m) {
@@ -929,6 +955,7 @@ public final class CgVulkanDevice implements CgRHI, CgImplicitLayouts, AutoClose
         descriptorPools.destroy();
         queryPools.destroy();
         events.destroy();
+        if (bindless != null) bindless.destroy();
         pipelineLayouts.clear();
         for (VulkanSampler s : samplers.values()) vkDestroySampler(device, s.sampler, null);
         samplers.clear();

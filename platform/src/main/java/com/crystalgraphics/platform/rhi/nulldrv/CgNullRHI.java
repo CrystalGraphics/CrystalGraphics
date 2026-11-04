@@ -29,6 +29,8 @@ import java.nio.ByteOrder;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -62,7 +64,8 @@ public final class CgNullRHI implements CgRHI {
 
     private static final CgRHI.Globals INFO = new CgRHI.Globals("recording", "CrystalGraphics", "0",
             new CgRHI.Globals.Limits(16384, 2048, 2048, 8, 8, 16, 32, 65536, 24, 16, 1 << 26,
-                    256, 256, 16, 16384, 16f, CgRHI.Globals.Compute.MINIMUM), true, true, true, true, true, true, true, true, true);
+                    256, 256, 16, 16384, 16f, CgRHI.Globals.Compute.MINIMUM), true, true, true, true, true, true, true, true, true,
+            true);
     private CgRHI.Globals info = INFO;
 
     private final List<String> log = new ArrayList<>();
@@ -135,7 +138,7 @@ public final class CgNullRHI implements CgRHI {
                 l.maxTexelBufferElements(), l.uniformOffsetAlignment(), l.storageOffsetAlignment(), l.texelOffsetAlignment(),
                 l.maxViewportSize(), l.maxAnisotropy(), compute), INFO.timestamps(), INFO.anisotropy(), INFO.nonSolidFill(),
                 INFO.multiDrawIndirect(), INFO.indirectCount(), INFO.indirectFirstInstance(), INFO.asyncCompute(),
-                INFO.drawParameters(), INFO.independentBlend());
+                INFO.drawParameters(), INFO.independentBlend(), INFO.bindless());
         return this;
     }
 
@@ -258,6 +261,53 @@ public final class CgNullRHI implements CgRHI {
         return p;
     }
 
+    // ── the bindless heap ──────────────────────────────────────────────────────
+
+    private Layout heapLayout;
+    private BindingSet heapSet;
+    private final Map<CgTextureView, Map<CgGpuSampler, Integer>> heapViews = new HashMap<>();
+    private final List<Integer> heapFree = new ArrayList<>();
+    private int heapNext;
+
+    @Override
+    public CgBindingLayout bindlessLayout() {
+        if (heapLayout == null) {
+            heapLayout = new Layout("bindless", List.of(new CgBindingLayout.Slot(0, CgBindingLayout.Type.SAMPLED_TEXTURE)), false);
+            heapSet = new BindingSet("bindless", heapLayout);
+        }
+        return heapLayout;
+    }
+
+    @Override
+    public CgBindingSet bindlessSet() {
+        bindlessLayout();
+        return heapSet;
+    }
+
+    @Override
+    public int bindlessIndex(CgTextureView view, CgGpuSampler sampler) {
+        use(view.texture(), sampler);
+        if (!view.texture().desc().usage().contains(CgGpuTexture.Usage.SAMPLED))
+            throw new IllegalStateException(view.texture().label() + " in the bindless heap without SAMPLED usage");
+        Map<CgGpuSampler, Integer> bySampler = heapViews.computeIfAbsent(view, v -> new IdentityHashMap<>());
+        Integer at = bySampler.get(sampler);
+        if (at != null) return at;
+        int index = heapFree.isEmpty() ? heapNext++ : heapFree.remove(heapFree.size() - 1);
+        bySampler.put(sampler, index);
+        if (logging) record("bindlessIndex " + ref(view.texture()) + " " + ref(sampler) + " " + index);
+        return index;
+    }
+
+    /** A released texture's heap indices, free again once its frame has retired. */
+    private void forgetHeap(CgRHIResource o) {
+        if (!(o instanceof Texture)) return;
+        heapViews.entrySet().removeIf(e -> {
+            if (e.getKey().texture() != o) return false;
+            heapFree.addAll(e.getValue().values());
+            return true;
+        });
+    }
+
     @Override
     public CgTimerQuery createTimerQuery(String label) {
         Timer t = new Timer(label);
@@ -273,6 +323,7 @@ public final class CgNullRHI implements CgRHI {
         if (logging) record("release #" + o.id);
         whenRetired(frame, () -> {
             o.destroyed = true;
+            forgetHeap(o);
             live--;
             if (logging) record("destroy #" + o.id);
         });
@@ -397,10 +448,14 @@ public final class CgNullRHI implements CgRHI {
         }
     }
 
-    /** Every set of {@code layout} there: the pushed one pushed in full, each other bound with its own layout. */
+    /**
+     * Every set of {@code layout} there: the pushed one pushed in full, each other bound with its own layout. A set with
+     * no bindings, holding a place below a higher one, need not be bound, as Vulkan asks only for the sets a shader reads.
+     */
     private void boundAll(String label, CgPipelineLayout layout, CgBindings pushed, CgBindingSet[] sets) {
         for (int i = 0; i < layout.sets().size(); i++) {
             CgBindingLayout want = layout.sets().get(i);
+            if (want.slots().isEmpty()) continue;
             if (want.pushed()) {
                 pushedAll(label, want, pushed);
                 continue;

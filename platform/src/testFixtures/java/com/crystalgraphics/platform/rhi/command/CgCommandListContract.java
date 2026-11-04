@@ -11,6 +11,7 @@ import com.crystalgraphics.platform.rhi.pipeline.CgGraphicsPipeline;
 import com.crystalgraphics.platform.rhi.pipeline.CgGraphicsPipelineDesc;
 import com.crystalgraphics.platform.rhi.pipeline.CgPipelineLayout;
 import com.crystalgraphics.platform.rhi.resource.CgGpuBuffer;
+import com.crystalgraphics.platform.rhi.resource.CgGpuSampler;
 import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
 import com.crystalgraphics.platform.rhi.resource.CgTextureView;
 import com.crystalgraphics.platform.rhi.shader.CgShaderModule;
@@ -25,7 +26,9 @@ import java.util.function.BooleanSupplier;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assume.assumeTrue;
 
 /**
  * What every {@link CgRHI} records: each command of {@link CgCommandList} and its passes, used as the API allows, one
@@ -63,6 +66,12 @@ public abstract class CgCommandListContract {
     private static final String CONSTANTS = "#version 450\nlayout(location = 0) out vec4 o;\n"
             + "layout(push_constant) uniform P { int a; int b; } p;\nvoid main() { o = vec4(float(p.a), float(p.b), 0.0, 1.0); }\n";
     private static final String NOTHING = "#version 450\nvoid main() {}\n";
+    private static final String BINDLESS = "#version 450\n#extension GL_EXT_nonuniform_qualifier : require\n"
+            + "layout(location = 0) out vec4 o;\n"
+            + "layout(set = 3, binding = 0) uniform sampler2D textures[];\n"
+            + "layout(push_constant) uniform P { uint tex; } p;\n"
+            + "vec4 read(sampler2D s) { return texture(s, vec2(0.5)); }\n"   // a heap slot passes to a function
+            + "void main() { o = read(textures[p.tex]); }\n";
     private static final String KERNEL = "#version 450\nlayout(local_size_x = 1) in;\n"
             + "layout(set = 0, binding = 0) uniform U { vec4 c; } u;\nlayout(set = 1, binding = 0) buffer B { uint v[]; } b;\n"
             + "layout(push_constant) uniform P { uint at; } p;\nvoid main() { b.v[p.at] = uint(u.c.x); }\n";
@@ -219,6 +228,46 @@ public abstract class CgCommandListContract {
         pass.setPipeline(testing);
         pass.draw(3, 1, 0, 0);
         pass.end();
+        endFrame();
+    }
+
+    private CgGpuTexture sampled(String label) {
+        return rhi().createTexture(new CgGpuTexture.Desc(label, CgGpuTexture.Kind.D2, CgFormat.RGBA8_UNORM, 4, 4, 1, 1, 1,
+                CgGpuTexture.Usage.SAMPLED_UPLOADED));
+    }
+
+    /** Two textures drawn by one pipeline through the heap, each named by an index pushed per draw. */
+    @Test
+    public void drawsTexturesThroughTheBindlessHeap() {
+        assumeTrue("no bindless heap", rhi().globals().bindless());
+        CgGpuTexture a = sampled("a"), b = sampled("b");
+        CgTextureView va = CgTextureView.whole(a), vb = CgTextureView.whole(b);
+        CgCommandList cmd = rhi().encoder();
+        cmd.transition(new CgTransition().texture(va, CgAccess.RESTING, CgAccess.SAMPLED_READ)
+                .texture(vb, CgAccess.RESTING, CgAccess.SAMPLED_READ));
+        CgGpuSampler sampler = rhi().createSampler(CgGpuSampler.Desc.DEFAULT);
+        int ia = rhi().bindlessIndex(va, sampler), ib = rhi().bindlessIndex(vb, sampler);
+        assertNotEquals("two views, two indices", ia, ib);
+        assertEquals("asked again, the same index", ia, rhi().bindlessIndex(CgTextureView.whole(a), sampler));
+        CgBindingLayout none = rhi().createBindingLayout("none", List.of(), false);
+        CgRenderPass pass = surfacePass();
+        pass.setPipeline(pipeline(new CgPipelineLayout(List.of(none, none, none, rhi().bindlessLayout()), 4), BINDLESS));
+        pass.setBindingSet(CgRHI.BINDLESS_SET, rhi().bindlessSet());
+        for (int index : new int[] {ia, ib}) {
+            pass.pushConstants(0, index);
+            pass.draw(3, 1, 0, 0);
+        }
+        pass.end();
+        cmd.transition(new CgTransition().texture(va, CgAccess.SAMPLED_READ, CgAccess.RESTING)
+                .texture(vb, CgAccess.SAMPLED_READ, CgAccess.RESTING));
+        endFrame();
+        rhi().release(a);
+        framesUntil(() -> false);
+        CgGpuTexture c = sampled("c");
+        assertEquals("a released texture's index, taken by the next view once its frames retired", ia,
+                rhi().bindlessIndex(CgTextureView.whole(c), sampler));
+        rhi().release(b);
+        rhi().release(c);
         endFrame();
     }
 

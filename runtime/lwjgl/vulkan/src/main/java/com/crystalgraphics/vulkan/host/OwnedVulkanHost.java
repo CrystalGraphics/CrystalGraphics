@@ -134,7 +134,7 @@ public final class OwnedVulkanHost implements CgVulkanHost, AutoCloseable {
     private final int family;
     private boolean bresenhamLines;
     private boolean multiDrawIndirect, indirectCount, indirectFirstInstance, drawParameters, independentBlend,
-            textureCompressionBC;
+            textureCompressionBC, bindless;
     private final VkQueue queue;
     /** Async compute's queue and its family; null and -1 where there is none, or it is turned off. */
     private final VkQueue asyncQueue;
@@ -258,6 +258,7 @@ public final class OwnedVulkanHost implements CgVulkanHost, AutoCloseable {
     @Override public boolean drawParameters() { return drawParameters; }
 
     @Override public boolean independentBlend() { return independentBlend; }
+    @Override public boolean bindless() { return bindless; }
     @Override public boolean textureCompressionBC() { return textureCompressionBC; }
 
     @Override public boolean asyncCompute() { return asyncQueue != null; }
@@ -1012,6 +1013,9 @@ public final class OwnedVulkanHost implements CgVulkanHost, AutoCloseable {
         indirectFirstInstance = has.drawIndirectFirstInstance();
         multiDrawIndirect = has.multiDrawIndirect();
         independentBlend = has.independentBlend();
+        // The bindless heap: arrays of views and samplers indexed at runtime, bound once, written as views are made
+        bindless = has12.runtimeDescriptorArray() && has12.descriptorBindingPartiallyBound()
+                && has12.descriptorBindingSampledImageUpdateAfterBind() && has12.descriptorBindingUpdateUnusedWhilePending();
         textureCompressionBC = has.textureCompressionBC();
 
         VkPhysicalDeviceFeatures enable = VkPhysicalDeviceFeatures.calloc(stack)
@@ -1040,6 +1044,8 @@ public final class OwnedVulkanHost implements CgVulkanHost, AutoCloseable {
         VkPhysicalDeviceVulkan12Features v12 = VkPhysicalDeviceVulkan12Features.calloc(stack).sType$Default()
                 .hostQueryReset(has12.hostQueryReset()).drawIndirectCount(indirectCount)
                 .timelineSemaphore(asyncFamily >= 0 || transferFamily >= 0)
+                .runtimeDescriptorArray(bindless).descriptorBindingPartiallyBound(bindless)
+                .descriptorBindingSampledImageUpdateAfterBind(bindless).descriptorBindingUpdateUnusedWhilePending(bindless)
                 .pNext(v11.address());
 
         List<String> names = new ArrayList<>(List.of(VK_KHR_SWAPCHAIN_EXTENSION_NAME,

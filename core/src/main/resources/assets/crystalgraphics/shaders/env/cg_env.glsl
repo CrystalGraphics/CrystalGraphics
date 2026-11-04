@@ -13,6 +13,21 @@
 #define CG_BIND(set_, binding_)
 #endif
 
+// The bindless heap (CgRHI.bindlessLayout, set 3), where the device defines CG_BINDLESS: a material's texture property
+// is then a handle, which the compiler names after the property, so the shader samples _MainTex as before. Every
+// texture with its sampler at binding 0, under each dimension's name; the handle's x is its index (GL's bindless
+// handle, S4, the whole uvec2).
+#if defined(CG_BINDLESS) && defined(VULKAN)
+CG_BIND(3, 0) uniform sampler2D cg_Textures2D[];
+CG_BIND(3, 0) uniform sampler2DArray cg_Textures2DArray[];
+CG_BIND(3, 0) uniform sampler3D cg_Textures3D[];
+CG_BIND(3, 0) uniform samplerCube cg_TexturesCube[];
+#define CG_TEXTURE_sampler2D(h) cg_Textures2D[(h).x]
+#define CG_TEXTURE_sampler2DArray(h) cg_Textures2DArray[(h).x]
+#define CG_TEXTURE_sampler3D(h) cg_Textures3D[(h).x]
+#define CG_TEXTURE_samplerCube(h) cg_TexturesCube[(h).x]
+#endif
+
 // Per-pass uniforms (view + proj + time + resolution + camera), one block per pass. FIELD ORDER MUST MATCH
 // CgPassConstants.FORMAT -- std140 offsets are positional, so a field added to one and not the other silently reads its
 // neighbour.
