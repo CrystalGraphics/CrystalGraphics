@@ -72,7 +72,7 @@ You do nothing for these; they are tasks or processes the bar counts.
 | `crystalgraphics:programs` | the engine's own programs and pipelines (world renderer, post, bloom, text, the loading view's) |
 | `crystalgraphics:<reason>` | the engine's processes: pipelines building, VFX looks warming, asset loads |
 | `<namespace>:scan`, `<namespace>:load` | a namespace's YAML scan, then its assets: all of each namespace unless its `preload.yaml` says `all: false`, and each `preload.yaml`'s declarations, with what they reach (`CgAssetMounts.loadAhead`) |
-| `crystalgui:start`, `crystalgui:paint` | CrystalGUI's styles, themes and widget kinds on a worker; then its fonts and paint shaders |
+| `crystalgui:start`, `crystalgui:paint`, `crystalgui:desktop` | CrystalGUI's styles, themes and widget kinds on a worker; then its fonts, their glyphs and paint shaders; then its desktop, built and laid out |
 | `loading:<reason>` | each reason a `CgLoadingProcess` gives |
 
 ---

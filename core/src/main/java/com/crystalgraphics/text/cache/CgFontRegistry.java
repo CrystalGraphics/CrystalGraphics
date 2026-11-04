@@ -330,6 +330,22 @@ public class CgFontRegistry {
     }
 
     /**
+     * Whether {@link #warmAscii} still has glyphs queued or generating: what a loading screen waits on to show
+     * text from the first frame after it.
+     *
+     * <pre>{@code
+     * CgFontRegistry.get().warmAscii(font, 20, 24);
+     * if (CgFontRegistry.get().isWarming()) return false;   // a load task's step: not yet
+     * }</pre>
+     *
+     * <p>The warmer feeds its queue from {@link #tickFrame}, so this only drains while frames run. Glyphs a draw
+     * asked for count too.</p>
+     */
+    public synchronized boolean isWarming() {
+        return warmer.pendingCount() > 0 || glyphGenerationExecutor.getPendingJobCount() > 0;
+    }
+
+    /**
      * Sum of every live atlas's {@link CgGlyphAtlas#getContentGeneration()} — bumped
      * whenever <em>any</em> atlas gains a glyph (or records one as empty).
      *
