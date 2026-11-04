@@ -41,6 +41,10 @@ public final class CgPostSettings {
     private static final float[] LAYER_SIZES = {0.3f, 1f, 2f, 10f, 30f, 64f};
     /** And its layer tints, grey each. */
     private static final float[] LAYER_TINTS = {0.3465f, 0.138f, 0.1176f, 0.066f, 0.066f, 0.061f};
+    /** {@link #chainGaussianBloom}'s layers, percent of the width at a size scale of 1, fitted to the chain's spread. */
+    private static final float[] CHAIN_SIZES = {0f, 2.687f, 4.575f, 8.525f, 16.264f, 38.25f};
+    /** And their tints at a {@link #bloom} of 1 (the composite takes a sixth of each). */
+    private static final float[] CHAIN_TINTS = {0f, 1.8368f, 1.4459f, 1.2088f, 0.9742f, 0.6965f};
 
     /** Where a grade applies: Unreal's global controls, then its Shadows, Midtones and Highlights. */
     public enum Region { GLOBAL, SHADOWS, MIDTONES, HIGHLIGHTS }
@@ -269,6 +273,29 @@ public final class CgPostSettings {
      */
     public CgPostSettings gaussianBloom() {
         overrides |= GAUSSIAN;
+        return this;
+    }
+
+    /**
+     * Unreal's Gaussian layers set to spread as the engine's chain does: {@link #gaussianBloom} with five layers fitted to
+     * the chain's glow round one hot texel at 1080p, and light past 1 blooming as the chain's does.
+     *
+     * <pre>{@code
+     * CgPostVolume compare = CgPostStack.get().volume(0, new CgPostSettings().chainGaussianBloom());
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Sets {@link #bloomSizeScale} to 1 and every layer: a later {@link #bloomLayer} changes one of them.</li>
+     *   <li>The source still differs: Unreal's setup scales a texel by {@code saturate((luminance - 1) / 2)}, where the
+     *       chain blooms each channel's excess past 1.</li>
+     * </ul>
+     */
+    public CgPostSettings chainGaussianBloom() {
+        gaussianBloom().bloomThreshold(1f).bloomSizeScale(1f);
+        for (int l = 1; l <= BLOOM_LAYERS; l++) {
+            float t = CHAIN_TINTS[l - 1];
+            bloomLayer(l, CHAIN_SIZES[l - 1], t, t, t);
+        }
         return this;
     }
 

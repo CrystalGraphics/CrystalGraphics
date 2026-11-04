@@ -869,8 +869,8 @@ public final class CgRenderDemo {
             bloomIntensity = bloom.intensity();
             bloom.intensity(0f);
         } else if (bloom.linear()) {
-            bloom.linear(false);
-            gaussianBloom = CgPostStack.get().volume(0, new CgPostSettings().gaussianBloom());
+            // Composited in linear light as the step before, so the two compare like for like
+            gaussianBloom = CgPostStack.get().volume(0, new CgPostSettings().chainGaussianBloom());
         } else {
             bloom.linear(true);
         }
