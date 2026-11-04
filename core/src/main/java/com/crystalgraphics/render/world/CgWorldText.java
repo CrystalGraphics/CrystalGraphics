@@ -54,8 +54,8 @@ public final class CgWorldText {
     private static final int RECORD = CgQuadRenderer.Record.FLOATS;
     private static final int NODE = CgQuadRenderer.Record.NODE;
     private static final int OBJECT = CgInstanceKind.OBJECT.format().getFloatCount();
-    /** The ranks a label's depth pass draws, from 0: the lines under the text, the text, the lines over it. */
-    private static final int TEXT_RANKS = 2;
+    /** The ranks a label's depth pass draws, from 0: the lines under the text, its outline, its fill, the lines over it. */
+    private static final int TEXT_RANKS = 3;
     /** Frames a label gone from the frame keeps its ranges for. */
     private static final int KEEP_HIDDEN = 300;
     /** A batch is compacted once this many records, and half of it, are holes. */

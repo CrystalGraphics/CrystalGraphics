@@ -1756,10 +1756,11 @@ public class CgTextRenderer {
             }
         }
 
-        // An upper bound: the text, then every shadow's glyphs and decorations again.
+        // An upper bound: the text's two passes, then every shadow's glyphs and decorations again.
         int perStage = glyphCount + resolvedDecorations.size();
         if (perStage == 0) return;
-        ensureSortScratchCapacity(perStage * (1 + shadows));
+        ensureSortScratchCapacity(perStage * (2 + shadows));
+        boolean stroked = strokeArgb != 0 && strokeWidthTexels > 0f;
 
         // Projection is constant for this whole draw() call. Flushes first if it differs from
         // what's already queued under a different projection — see syncProjection().
@@ -1777,16 +1778,19 @@ public class CgTextRenderer {
         float devicePerLocal = effectiveTargetPx / (float) Math.max(1, baseTargetPx);
 
         // PAINT ORDER: outer shadows at 0..n-1 with the LAST shadow first, the underline and overline at n, the
-        // text at n+1, its line-through at n+2, inset shadows at n+3..2n+2. It is the key's outermost field, so
-        // one sort gives painter's order across batches, and a list longer than the field holds is submitted as
-        // successive sorts in the same order. The lines split around the text as CSS Text Decoration 3 paints
-        // them: under the glyphs and their stroke, and a line-through over both.
+        // text's two passes at n+1 and n+2, its line-through at n+3, inset shadows at n+4..2n+3. It is the key's
+        // outermost field, so one sort gives painter's order across batches, and a list longer than the field
+        // holds is submitted as successive sorts in the same order. The lines split around the text as CSS Text
+        // Decoration 3 paints them: under the glyphs and their stroke, and a line-through over both.
+        //
+        // TWO TEXT PASSES, Slate's outline then fill (ElementBatcher's BuildShapedTextSequence): a glyph's stroke
+        // drawn with its fill would cover the glyph before it. See glyphPass for what each pass draws.
         //
         // EACH ITS OWN STEP, never "a decoration after a glyph in the same step": the key sorts by atlas before
         // kind, and a decoration's white texel is often in the bitmap atlas while the glyphs are distance
         // fields, so within one step every line painted under the text.
         int textPaint = shadows + 1;
-        int lastPaint = 2 * shadows + 2;
+        int lastPaint = 2 * shadows + 3;
         long emitted = 0;
         for (int window = 0; window <= lastPaint; window += CgTextSortKey.MAX_STAGE + 1) {
             int windowEnd = Math.min(lastPaint, window + CgTextSortKey.MAX_STAGE);
@@ -1802,14 +1806,15 @@ public class CgTextRenderer {
                         }
                         continue;
                     }
-                    if (paint == textPaint) {
+                    if (paint == textPaint || paint == textPaint + 1) {
+                        if (paint == textPaint && !stroked) continue;
                         for (int i = 0; i < glyphCount; i++) {
                             CgGlyphPlacement p = placements[i];
                             if (p != null && p.hasGeometry()) scratchSortKeys[count++] = CgTextSortKey.forGlyph(p, i, stage);
                         }
                         continue;
                     }
-                    if (paint == textPaint + 1) {
+                    if (paint == textPaint + 2) {
                         for (int i = 0; i < resolvedDecorations.size(); i++) {
                             if (!resolvedDecorations.get(i).underText()) {
                                 scratchSortKeys[count++] = CgTextSortKey.forDecoration(resolvedDecorations.get(i), i, stage);
@@ -1818,7 +1823,7 @@ public class CgTextRenderer {
                         continue;
                     }
                     int shadow = shadowAt(paint, shadows);
-                    if (shadowList.inset(shadow) != (paint > textPaint + 1) || !shadowList.casts(shadow)) {
+                    if (shadowList.inset(shadow) != (paint > textPaint + 2) || !shadowList.casts(shadow)) {
                         continue;
                     }
                     for (int i = 0; i < glyphCount; i++) {
@@ -1849,10 +1854,25 @@ public class CgTextRenderer {
         CgTrace.add(CgChannels.TEXT, "draw.quadsEmitted", emitted);
     }
 
-    /** Which shadow a paint step belongs to; see the paint order in {@link #submitBatchedQuads}. */
-    /** The shadow a paint step belongs to: outer ones before the text's three steps, inset ones after them. */
+    /** The shadow a paint step belongs to: outer ones before the text's four steps, inset ones after them. */
     private static int shadowAt(int paint, int shadows) {
-        return paint < shadows ? shadows - 1 - paint : 2 * shadows + 2 - paint;
+        return paint < shadows ? shadows - 1 - paint : 2 * shadows + 3 - paint;
+    }
+
+    /**
+     * What a stroked glyph draws in each of the text's two passes, so no glyph's ring covers another's fill. A ring
+     * under the fill (or an outset one, which never overlaps it) is all of pass 1, the fill all of pass 2. Pass 1 is
+     * Slate's: the whole shape in the stroke's colour, which an opaque fill covers with no seam at its edge; under a
+     * fill that is not opaque, the ring alone, or it would show through. A centred or inset ring over the fill is
+     * pass 2, alone, over pass 1's fill: its inner edge lies inside the fill, so it opens no seam either.
+     */
+    private static final int PASS_FILL = 0, PASS_SHAPE = 1, PASS_RING = 2;
+
+    private static int glyphPass(int pass, boolean stroked, float strokeAlign, float strokeOver, int fillArgb) {
+        if (!stroked) return PASS_FILL;
+        boolean ringOver = strokeOver > 0f && strokeAlign != ALIGN_OUTSET;
+        if (pass == 1) return ringOver ? PASS_FILL : (fillArgb >>> 24) == 0xFF ? PASS_SHAPE : PASS_RING;
+        return ringOver ? PASS_RING : PASS_FILL;
     }
 
     // Per-entry scratch for submitSorted, so a quad's geometry is written once and read by the submit.
@@ -1884,7 +1904,7 @@ public class CgTextRenderer {
             boolean isDecoration = CgTextSortKey.isDecoration(key);
             int localIndex = CgTextSortKey.localIndexOf(key);
             int paint = window + CgTextSortKey.stageOf(key);
-            int shadow = paint >= shadows && paint <= shadows + 2 ? -1 : shadowAt(paint, shadows);
+            int shadow = paint >= shadows && paint <= shadows + 3 ? -1 : shadowAt(paint, shadows);
 
             CgGlyphPlacement p = null;
             boolean isDistanceField;
@@ -1960,16 +1980,22 @@ public class CgTextRenderer {
                 rgba = resolvedGlyphs.argbColor[localIndex];
                 atlasLayer = p.atlasPageIndex();
                 // text.shader's own header states the layout: custom0 the colour, custom1
-                // (widthPx, align, over, pxRange). The STROKE fields are glyphs only -- a
-                // decoration is a solid rect with no distance field to offset a second threshold
-                // from, and they default to zero, so underlines never ask rather than needing to
-                // opt out. pxRange is not: a decoration's white texel is reserved in the same
-                // banded atlas and carries that band's range, so it batches with the glyphs
-                // around it instead of splitting them.
-                c0x = ((strokeArgb >> 16) & 0xFF) / 255f; c0y = ((strokeArgb >> 8) & 0xFF) / 255f;
-                c0z = (strokeArgb & 0xFF) / 255f; c0w = ((strokeArgb >>> 24) & 0xFF) / 255f;
-                c1x = strokeWidthTexels; c1y = strokeAlign; c1z = strokeOver; c1w = pxRange;
-                c2 = p.key().getFontKey().getTargetPx();
+                // (widthPx, align, over, pxRange). pxRange is on every pass: a decoration's white
+                // texel is reserved in the same banded atlas and carries that band's range, so it
+                // batches with the glyphs around it instead of splitting them.
+                int pass = glyphPass(paint - shadows, strokeArgb != 0 && strokeWidthTexels > 0f,
+                        strokeAlign, strokeOver, rgba);
+                c1w = pxRange;
+                if (pass == PASS_FILL) {
+                    c2 = p.key().getFontKey().getTargetPx();
+                } else {
+                    // The shader's stroked composite: the shape in the stroke's colour is that composite with
+                    // the fill coloured as the stroke; the ring alone is it with the fill transparent.
+                    rgba = pass == PASS_SHAPE ? strokeArgb : rgba & 0x00FFFFFF;
+                    c0x = ((strokeArgb >> 16) & 0xFF) / 255f; c0y = ((strokeArgb >> 8) & 0xFF) / 255f;
+                    c0z = (strokeArgb & 0xFF) / 255f; c0w = ((strokeArgb >>> 24) & 0xFF) / 255f;
+                    c1x = strokeWidthTexels; c1y = strokeAlign; c1z = strokeOver;
+                }
             } else {
                 byte kind = shadowPlan.kind(shadow, localIndex);
                 p = shadowPlan.placement(shadow, localIndex);
