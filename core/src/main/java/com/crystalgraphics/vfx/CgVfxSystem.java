@@ -59,7 +59,6 @@ import com.crystalgraphics.vfx.system.CgVfxSystemInstancePool;
 import com.crystalgraphics.render.world.CgWorldVoxelWindow;
 import com.crystalgraphics.world.CgAttachment;
 import com.crystalgraphics.world.CgEntityQueries;
-import com.crystalgraphics.world.CgWorldQueries;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxDrawLayout;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;

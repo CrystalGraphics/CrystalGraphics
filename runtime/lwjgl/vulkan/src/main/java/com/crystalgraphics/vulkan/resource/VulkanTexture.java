@@ -5,7 +5,6 @@ import com.crystalgraphics.platform.rhi.resource.CgTextureView;
 import com.crystalgraphics.vulkan.command.VulkanBarriers;
 import com.crystalgraphics.vulkan.command.VulkanComputeCommandBuffer;
 import com.crystalgraphics.vulkan.command.VulkanTransferCommandBuffer;
-import com.crystalgraphics.vulkan.format.VulkanCheck;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.vulkan.VkCommandBuffer;
 import org.lwjgl.vulkan.VkDevice;

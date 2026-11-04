@@ -18,11 +18,11 @@ import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
 import com.crystalgraphics.platform.rhi.sync.CgTimerQuery;
 import com.crystalgraphics.platform.rhi.shader.CgShaderModule;
 import com.crystalgraphics.vulkan.command.VulkanEncoder;
-import com.crystalgraphics.vulkan.format.VulkanCheck;
 import com.crystalgraphics.vulkan.format.VulkanFormats;
 import com.crystalgraphics.vulkan.binding.VulkanBindingLayout;
 import com.crystalgraphics.vulkan.binding.VulkanBindingSet;
 import com.crystalgraphics.vulkan.binding.VulkanDescriptorPools;
+import com.crystalgraphics.vulkan.sync.VulkanQueryPools;
 import com.crystalgraphics.vulkan.resource.VulkanBuffer;
 import com.crystalgraphics.vulkan.resource.VulkanComputePipeline;
 import com.crystalgraphics.vulkan.resource.VulkanPipeline;
@@ -30,7 +30,7 @@ import com.crystalgraphics.vulkan.resource.VulkanSampler;
 import com.crystalgraphics.vulkan.resource.VulkanShaderModule;
 import com.crystalgraphics.vulkan.memory.VulkanStaging;
 import com.crystalgraphics.vulkan.resource.VulkanTexture;
-import com.crystalgraphics.vulkan.resource.VulkanTimerQuery;
+import com.crystalgraphics.vulkan.sync.VulkanTimerQuery;
 import com.crystalgraphics.vulkan.shader.ShadercGlslCompiler;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -71,7 +71,6 @@ import org.lwjgl.vulkan.VkPipelineRenderingCreateInfoKHR;
 import org.lwjgl.vulkan.VkPipelineShaderStageCreateInfo;
 import org.lwjgl.vulkan.VkPipelineVertexInputStateCreateInfo;
 import org.lwjgl.vulkan.VkPipelineViewportStateCreateInfo;
-import org.lwjgl.vulkan.VkQueryPoolCreateInfo;
 import org.lwjgl.vulkan.VkSamplerCreateInfo;
 import org.lwjgl.vulkan.VkShaderModuleCreateInfo;
 import org.lwjgl.vulkan.VkPushConstantRange;
@@ -162,6 +161,7 @@ public final class CgVulkanDevice implements CgRHI, AutoCloseable {
     private final Map<VulkanBuffer, Map<Long, Long>> texelViews = new IdentityHashMap<>();
     private final VulkanStaging staging;
     private final VulkanDescriptorPools descriptorPools;
+    private final VulkanQueryPools queryPools;
     private final VulkanEncoder encoder;
     private VulkanTexture surfaceColor, surfaceDepth;
     private VulkanBuffer scratch;
@@ -221,6 +221,7 @@ public final class CgVulkanDevice implements CgRHI, AutoCloseable {
         }
         staging = new VulkanStaging(this);
         descriptorPools = new VulkanDescriptorPools(device);
+        queryPools = new VulkanQueryPools(device);
         encoder = new VulkanEncoder(this);
         resize(width, height);
     }
@@ -729,14 +730,10 @@ public final class CgVulkanDevice implements CgRHI, AutoCloseable {
 
     @Override
     public CgTimerQuery createTimerQuery(String label) {
-        try (MemoryStack stack = stackPush()) {
-            LongBuffer lp = stack.mallocLong(1);
-            check(vkCreateQueryPool(device, VkQueryPoolCreateInfo.calloc(stack).sType$Default()
-                    .queryType(VK_QUERY_TYPE_TIMESTAMP).queryCount(2), null, lp), "vkCreateQueryPool");
-            VulkanTimerQuery q = new VulkanTimerQuery(this, lp.get(0), label);
-            live.add(q);
-            return q;
-        }
+        long[] pair = queryPools.take();
+        VulkanTimerQuery q = new VulkanTimerQuery(this, pair[0], (int) pair[1], label);
+        live.add(q);
+        return q;
     }
 
     @Override
@@ -773,7 +770,7 @@ public final class CgVulkanDevice implements CgRHI, AutoCloseable {
         } else if (o instanceof VulkanComputePipeline p) {
             vkDestroyPipeline(device, p.pipeline, null);
         } else if (o instanceof VulkanTimerQuery q) {
-            vkDestroyQueryPool(device, q.pool, null);
+            queryPools.give(q.pool, q.first);
         }
     }
 
@@ -912,6 +909,7 @@ public final class CgVulkanDevice implements CgRHI, AutoCloseable {
         for (Object o : new ArrayList<>(live)) destroy(o);
         for (long l : pipelineLayouts.values()) vkDestroyPipelineLayout(device, l, null);   // those over no set
         descriptorPools.destroy();
+        queryPools.destroy();
         pipelineLayouts.clear();
         for (VulkanSampler s : samplers.values()) vkDestroySampler(device, s.sampler, null);
         samplers.clear();

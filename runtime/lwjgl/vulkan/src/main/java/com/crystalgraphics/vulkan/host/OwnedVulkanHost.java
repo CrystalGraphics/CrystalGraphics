@@ -7,7 +7,6 @@ import com.crystalgraphics.vulkan.CgVulkanDevice;
 import com.crystalgraphics.vulkan.command.VulkanBarriers;
 import com.crystalgraphics.vulkan.command.VulkanComputeCommandBuffer;
 import com.crystalgraphics.vulkan.command.VulkanTransferCommandBuffer;
-import com.crystalgraphics.vulkan.format.VulkanCheck;
 import org.lwjgl.PointerBuffer;
 import org.lwjgl.glfw.GLFW;
 import org.lwjgl.glfw.GLFWVulkan;
