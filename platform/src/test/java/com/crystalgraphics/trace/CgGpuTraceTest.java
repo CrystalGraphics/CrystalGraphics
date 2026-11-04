@@ -1,6 +1,5 @@
 package com.crystalgraphics.trace;
 
-import com.crystalgraphics.platform.gl.CgGlRecording;
 import com.crystalgraphics.platform.gl.RecordingGlBackend;
 import com.crystalgraphics.platform.gl.state.CgGlState;
 import org.junit.After;
@@ -128,21 +127,6 @@ public class CgGpuTraceTest {
         CgTrace.frameBegin();
         CgTrace.frameBegin();
         assertFalse(frame(0).hasGpu());
-    }
-
-    @Test
-    public void aZoneInsideARecordingIsNotTimedAndItsParentKeepsRunning() {
-        CgGlState.reset();
-        CgGlRecording recording = new CgGlRecording();
-        CgTrace.frameBegin();
-        CgGpuTrace.begin("frame");
-        recording.begin();
-        try { zone("ui"); } finally { recording.end(); }
-        CgGpuTrace.end();
-
-        assertEquals("the recording tapes no query", 0, recording.size());
-        assertEquals(1, gl.countOf("glBeginTimeElapsedQuery"));
-        assertEquals(1, gl.countOf("glEndTimeElapsedQuery"));
     }
 
     @Test

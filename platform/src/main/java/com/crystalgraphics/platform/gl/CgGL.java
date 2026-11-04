@@ -1791,7 +1791,7 @@ public final class CgGL {
     }
 
     public static void glDepthFunc(int func) {
-        int issued = depthReversed && !replaying && !state().restoring() ? mirroredDepthFunc(func) : func;
+        int issued = depthReversed && !state().restoring() ? mirroredDepthFunc(func) : func;
         if (state().depthFuncChanged(issued)) gl().glDepthFunc(issued);
     }
 
@@ -1800,16 +1800,13 @@ public final class CgGL {
     }
 
     public static void glClearDepth(double depth) {
-        gl().glClearDepth(depthReversed && !replaying ? 1.0 - depth : depth);
+        gl().glClearDepth(depthReversed ? 1.0 - depth : depth);
     }
 
     // --- Reversed depth --------------------------------------------------------
 
     private static boolean depthReversed;
     private static boolean depthZeroToOne;
-
-    /** Set while a {@link CgGlRecording} replays: what it recorded was already mirrored. */
-    static boolean replaying;
 
     /**
      * Draws what follows against a REVERSED depth buffer -- nearer is greater, cleared to 0 -- with every
@@ -1905,7 +1902,7 @@ public final class CgGL {
     public static void glPolygonOffset(float factor, float units) {
         // Mirrored like glDepthFunc: an offset that pushes away from the camera is a positive one only
         // while nearer is smaller.
-        boolean mirror = depthReversed && !replaying && !state().restoring();
+        boolean mirror = depthReversed && !state().restoring();
         float f = mirror ? -factor : factor, u = mirror ? -units : units;
         if (state().polygonOffsetChanged(f, u)) gl().glPolygonOffset(f, u);
     }
@@ -2268,8 +2265,6 @@ public final class CgGL {
      *       entries bracket themselves, and a host's bracket may wrap one.</li>
      *   <li>A host repairing its own state, such as Blaze3D's {@code GlStateManager} cache, does it after
      *       {@link #toHost()}. That work is the host's, not ours.</li>
-     *   <li>Never inside a {@link CgGlRecording}: its backend refuses both. Record, and replay, inside a
-     *       bracket.</li>
      *   <li>Inside a section only our code touches GL, so the state shadow is trusted across scopes there;
      *       the outermost {@code fromHost} forgets it, since the host had the context. Host code run inside
      *       one goes through {@link CgGlState#hostForeign}, which forgets it again.</li>
@@ -2313,12 +2308,7 @@ public final class CgGL {
         return backend.ownedByCurrentThread();
     }
 
-    /** Whether a {@link CgGlRecording} is capturing on this backend: calls are taped for replay, not drawn. */
-    public static boolean isRecording() {
-        return backend instanceof CgGlRecordingBackend;
-    }
-
-    /** The installed backend; {@link CgGlRecording} swaps it for the length of a recording. */
+    /** The installed backend. */
     static CgGLBackend backend() {
         return backend;
     }

@@ -94,8 +94,7 @@ public final class CgGlState {
     }
 
     /**
-     * Runs foreign drawing inside a {@link #hostForeign(CgGlSlot...)} scope — the form that survives a
-     * {@code CgGlRecording}, which records {@code body} and runs it on replay in order.
+     * Runs foreign drawing inside a {@link #hostForeign(CgGlSlot...)} scope.
      *
      * <pre>{@code
      * CgGlState.hostForeign(() -> itemRenderer.render(stack), CgGlSlot.BLEND, CgGlSlot.DEPTH, CgGlSlot.PROGRAM);

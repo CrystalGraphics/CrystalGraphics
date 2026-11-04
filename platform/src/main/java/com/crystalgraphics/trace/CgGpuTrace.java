@@ -1,7 +1,6 @@
 package com.crystalgraphics.trace;
 
 import com.crystalgraphics.platform.gl.CgGL;
-import com.crystalgraphics.platform.gl.CgGlRecording;
 import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.rhi.command.CgCommandList;
 import com.crystalgraphics.platform.rhi.sync.CgTimerQuery;
@@ -41,8 +40,6 @@ import java.util.Set;
  *   <li>One timer query can run at a time, so a zone opened inside another <b>pauses</b> it: the outer
  *       zone is timed in pieces around the inner one, the frame total stays right, and each pause counts
  *       under {@code gpu.nestedFlattened}.</li>
- *   <li>A zone opened while a {@link CgGlRecording} captures is not timed, since nothing reaches the GPU
- *       then; a zone around the replay times the work.</li>
  * </ul>
  *
  * <h3>Groups inside a zone</h3>
@@ -208,11 +205,10 @@ public final class CgGpuTrace {
     }
 
     /**
-     * Whether a zone opened now would be timed: the channel is on, the context can, and no
-     * {@link CgGlRecording} is capturing — nothing recorded reaches the GPU until replay.
+     * Whether a zone opened now would be timed: the channel is on and the context can.
      */
     public static boolean isMeasuring() {
-        return CgTrace.isEnabled(GPU) && support != Support.UNSUPPORTED && !CgGL.isRecording();
+        return CgTrace.isEnabled(GPU) && support != Support.UNSUPPORTED;
     }
 
     /** Interns a zone name, prefixed — the form a hot call site holds in a constant. */
@@ -260,7 +256,7 @@ public final class CgGpuTrace {
      * before it. GL thread.
      */
     public static void mark(int label) {
-        if (openDepth == 0 || open[openDepth - 1] == UNMEASURED || CgGL.isRecording() || !CgTrace.isEnabled(GPU)) return;
+        if (openDepth == 0 || open[openDepth - 1] == UNMEASURED || !CgTrace.isEnabled(GPU)) return;
         if (markLabel != SERIES_END && (markDepth != openDepth || markLabel == label)) return;
         stamp(open[openDepth - 1], label);
         markLabel = label;
@@ -492,7 +488,7 @@ public final class CgGpuTrace {
 
     /** Whether a zone opened now with {@code budget} would be timed. */
     private static boolean measures(int budget) {
-        return (budget != NO_BUDGET || CgTrace.isEnabled(GPU)) && supported() && !CgGL.isRecording();
+        return (budget != NO_BUDGET || CgTrace.isEnabled(GPU)) && supported();
     }
 
     private static void startQuery(int nameId, int budget) {
