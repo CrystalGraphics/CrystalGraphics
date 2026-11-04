@@ -165,6 +165,9 @@ public final class CgWorldRenderer {
     /** A firing's record, step by step. */
     private static final int REC_PREPARE = CgTrace.name("world.record.prepare"), REC_CLASSIFY = CgTrace.name("world.record.classify"),
             REC_TOP = CgTrace.name("world.record.top"), REC_MEDIA = CgTrace.name("world.record.media"),
+            TOP_NORMALS = CgTrace.name("world.top.normals"), TOP_OPAQUE_SCENE = CgTrace.name("world.top.opaqueScene"),
+            TOP_DISTORTION = CgTrace.name("world.top.distortion"), TOP_LABELS = CgTrace.name("world.top.labels"),
+            TOP_CUSTOM = CgTrace.name("world.top.custom"), TOP_EMISSION = CgTrace.name("world.top.emission"),
             REC_CULL = CgTrace.name("world.record.cull"), REC_PASSES = CgTrace.name("world.record.passes"),
             REC_AFTER = CgTrace.name("world.record.after");
     private static final CgWorldRenderer INSTANCE = new CgWorldRenderer();
@@ -1945,6 +1948,7 @@ public final class CgWorldRenderer {
             CgTrace.Zone top = CgTrace.zone(CgChannels.WORLD, REC_TOP);
 
             CgRecording recording = stage.recording();
+            CgTrace.Zone step = CgTrace.zone(CgChannels.GL_DETAIL, TOP_NORMALS);
             normalsInto = which == OPAQUE && drawn > 0 ? normalsFor(stage, recording) : null;
             if (which == OPAQUE) normalsWritten = normalsInto;
             CgPassConstants constants = stage.constants().sceneGlow(sceneEmission);
@@ -1952,10 +1956,14 @@ public final class CgWorldRenderer {
             // Before the opaque pass: its depth then holds the host's world and none of the draws below.
             Integer subjectKey = which == OPAQUE ? stage.resources().get(CgFrameKeys.SUBJECT_READ) : null;
             if (subjectKey != null && subjectKey != 0) recordOwnedSubject(stage, recording, view, subjectKey);
+            step.close();
+            step = CgTrace.zone(CgChannels.GL_DETAIL, TOP_OPAQUE_SCENE);
             // Our opaque draws into a linear scene of their own, as Unreal's base pass into SceneColor: past white kept
             boolean opaqueScene = which == OPAQUE && drawn > 0 && hdrSceneDrawn() && OPAQUE_SCENE.get()
                     && sceneTarget.recordOpaqueIn(stage);
             if (opaqueScene) constants = stage.constants().sceneGlow(sceneEmission);
+            step.close();
+            step = CgTrace.zone(CgChannels.GL_DETAIL, TOP_DISTORTION);
             int distorting = 0;
             if (drawn > 0 && which == TRANSPARENT) {
                 if (distorts.length < meshes.length) distorts = new boolean[meshes.length];
@@ -1977,11 +1985,15 @@ public final class CgWorldRenderer {
                 afterDrawn = 0;
                 for (int i = 0; i < count; i++) if (phase[i] == AFTER) afterDrawn++;
             }
+            step.close();
             // Under the HDR scene a glow is light added into the scene itself, where what draws in front covers it.
             boolean scene = which == TRANSPARENT && stage.resources().has(CgFrameKeys.SCENE);
             volumeFolds = scene && mergeEmission;
             // Before any glow: a label's text then hides the glows behind it from the emission, as from the colour.
+            step = CgTrace.zone(CgChannels.GL_DETAIL, TOP_LABELS);
             if (which == TRANSPARENT && !CgRehearsal.active()) text.recordDepth(stage, view);
+            step.close();
+            step = CgTrace.zone(CgChannels.GL_DETAIL, TOP_CUSTOM);
             if (which == TRANSPARENT && stage.resources().has(CgFrameKeys.CUSTOM_DATA_READ)) recordCustomData(stage, recording, view);
             // Custom depth and normals before the lights, as Unreal's after its base pass: what reads them before
             // translucency needs them published
@@ -1990,7 +2002,10 @@ public final class CgWorldRenderer {
                 stage.resources().put(CgFrameKeys.WORLD_NORMALS, normalsWritten);
                 normalsWritten = null;
             }
+            step.close();
+            step = CgTrace.zone(CgChannels.GL_DETAIL, TOP_EMISSION);
             CgGraphTexture emission = which == TRANSPARENT && drawn > 0 ? mergedEmission(stage, recording) : null;
+            step.close();
             top.close();
             // Lights fall on the opaque scene, so a firing with nothing transparent still lists them.
             lit = which == TRANSPARENT && pointLights.record(stage, view, toWorld, targetWidth, targetHeight);
@@ -2302,14 +2317,16 @@ public final class CgWorldRenderer {
      */
     private void recordCustomDepth(CgStageFrame stage, CgRecording recording, CgHostView view) {
         if (inCustomDepth.length < meshes.length) inCustomDepth = new boolean[meshes.length];
-        int marked = 0;
+        int marked = 0, bits = 0;
         for (int i = 0; i < count; i++) {
             int queue = queues[i];
             boolean transparent = queue >= CgRenderQueue.TRANSPARENT_THRESHOLD;
             boolean in = customDepths[i] >= 0 && (!transparent || materials[i].writesDepth())
                     && classify(i, transparent ? TRANSPARENT : OPAQUE, view) != SKIP;
             inCustomDepth[i] = in;
-            if (in) marked++;
+            if (!in) continue;
+            marked++;
+            bits |= customDepths[i] & customDepths[i] >>> 8 & 0xFF;   // the value under its write mask
         }
         if (marked == 0) return;
         int w = Math.max(1, (int) targetWidth), h = Math.max(1, (int) targetHeight);
@@ -2331,7 +2348,9 @@ public final class CgWorldRenderer {
         CgPipeline copy = customStencil.pipeline(CgInstanceKind.OBJECT);
         if (copy != null) {
             int copyBindings = customStencil.captureBindings(recording.bindings());
+            // From a cleared stencil, only the bits some draw writes can be set: copy those, not all eight
             for (int b = 0; b < 8; b++) {
+                if ((bits >>> b & 1) == 0) continue;
                 chunks.draw(copy.withState(STENCIL_BIT_STATES[b]), copyBindings, FULLSCREEN).sortKey(Long.MAX_VALUE);
                 int at = chunks.instance();
                 chunks.data()[at + 32] = (1 << b) / 255f;
