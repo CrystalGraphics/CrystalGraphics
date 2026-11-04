@@ -1,6 +1,7 @@
 // An editor's ground grid, as Blender's viewport draws one: metre and ten-metre lines in absolute world space, the x
 // axis red and the z axis green through the origin, fading with distance. Lines only, so it reads from below too.
-// Draw it as a large plane at the floor's height, in CgSortLayer.BACKGROUND so effects draw over it. Line maths after
+// Draw it as a large plane at the floor's height, in CgSortLayer.BACKGROUND so effects draw over it. It writes the
+// plane's depth, so a colour region, a soft particle or a depth fade meets the floor there. Line maths after
 // Ben Golus, "The Best Darn Grid Shader (Yet)" (MIT). _Night dims and cools it under editor_sky's night.
 #type spatial
 
@@ -19,7 +20,7 @@ Pass {
     RenderState {
         Blend ONE ONE_MINUS_SRC_ALPHA
         DepthTest LEQUAL
-        DepthWrite OFF
+        DepthWrite ON
         Cull OFF
     }
 
