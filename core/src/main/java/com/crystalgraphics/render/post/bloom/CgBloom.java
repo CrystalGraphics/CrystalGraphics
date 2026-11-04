@@ -2,7 +2,6 @@ package com.crystalgraphics.render.post.bloom;
 
 import java.util.Arrays;
 
-import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.mesh.CgMesh;
@@ -33,7 +32,7 @@ import javax.annotation.Nullable;
 /**
  * The post stack's bloom, Unreal's Gaussian layers ({@code BloomMethod} Standard): the HDR scene's ({@link CgFrameKeys#SCENE})
  * light past {@link #threshold}, halved, spread by six layers of separable Gaussians and added over the picture by the
- * composite. Its settings are global, as every engine's are; {@code CgPostStack.get().bloom()} is the instance.
+ * composite, in linear light. Its settings are global, as every engine's are; {@code CgPostStack.get().bloom()} is the instance.
  *
  * <pre>{@code
  * CgPostStack.get().bloom().intensity(1.5f);   // a brighter glow round every emissive thing
@@ -42,7 +41,6 @@ import javax.annotation.Nullable;
  * // Bevy's energy-conserving mode: the picture dimmed by the share the glow takes, so nothing gets brighter overall
  * CgPostStack.get().bloom().mode(CgBloom.Mode.ENERGY_CONSERVING).intensity(0.15f);
  * CgPostStack.get().bloom().tint(1f, 0.85f, 0.7f);   // a warm glow
- * CgPostStack.get().bloom().linear(true);            // composite in linear light, at the cost of a copy of the target
  * CgPostStack.get().bloom().threshold(0.8f);         // light past 0.8 blooms, not past 1
  *
  * // A look of Unreal's: its layers, sizes and threshold as Unreal reads them
@@ -113,10 +111,6 @@ public final class CgBloom implements CgPostEffect {
         for (int stage = 0; stage < STAGES; stage++) GPU_LAYER[stage] = CgGpuTrace.name("post.bloom.layer" + (stage + 1));
     }
 
-    private static final CgVar.Bool LINEAR = CgVar.bool("crystalgraphics.post.bloom.linear", false, CgVar.DEV,
-            "Bloom starts composited in linear light (the copy form), to compare with the default blend form; L cycles"
-                    + " blend, linear and off in any harness scene with a 3D camera.");
-
     private final Source source = new Source("cg_bloom_excess");
     private final Layers layers = new Layers();
     /** Each graded layer's own bloom, from its own light, by its look. */
@@ -127,7 +121,6 @@ public final class CgBloom implements CgPostEffect {
     private final CgPostSettings[] layerEngine = {engineLayers(), engineLayers()};
     private float intensity = INTENSITY, tintR = 1f, tintG = 1f, tintB = 1f, threshold = 1f;
     private Mode mode = Mode.ADDITIVE;
-    private boolean linear = LINEAR.get();
 
     /** How strongly what emits blooms: {@value #INTENSITY} by default, 0 for none. */
     public CgBloom intensity(float intensity) {
@@ -154,21 +147,6 @@ public final class CgBloom implements CgPostEffect {
         tintG = g;
         tintB = b;
         return this;
-    }
-
-    /**
-     * Whether it composites in linear light: decoding the target from sRGB, adding, and encoding again, which needs a
-     * copy of the target. Off by default: the glow is added in the target's encoding, an even step in perceived
-     * brightness, so over dark pixels it is fainter than linear light would make it and over bright ones stronger
-     * (a glow of 0.1 over an encoded 0.2 shows 0.073 linear where linear light gives 0.133; over 0.8, 0.787 for 0.704).
-     */
-    public CgBloom linear(boolean linear) {
-        this.linear = linear;
-        return this;
-    }
-
-    public boolean linear() {
-        return linear;
     }
 
     /**
@@ -207,7 +185,7 @@ public final class CgBloom implements CgPostEffect {
         if (glow == null) return;
         post.resources().put(LEVELS, layers.levels());
         post.composite().bloom(glow, intensity, tintR, tintG, tintB, mode == Mode.ENERGY_CONSERVING);
-        if (linear) post.composite().linear();
+        post.composite().linear();
     }
 
     /** Each graded layer's bloom, from its light alone and by its look: Unreal's where it asks, else the engine's layers. */

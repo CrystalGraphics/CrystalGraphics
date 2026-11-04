@@ -9648,8 +9648,6 @@ com/crystalgraphics/render/post/bloom/CgBloom
   method public active (Lcom/crystalgraphics/render/post/CgPostContext;)Z
   method public intensity ()F
   method public intensity (F)Lcom/crystalgraphics/render/post/bloom/CgBloom;
-  method public linear ()Z
-  method public linear (Z)Lcom/crystalgraphics/render/post/bloom/CgBloom;
   method public mode ()Lcom/crystalgraphics/render/post/bloom/CgBloom$Mode;
   method public mode (Lcom/crystalgraphics/render/post/bloom/CgBloom$Mode;)Lcom/crystalgraphics/render/post/bloom/CgBloom;
   method public point ()Lcom/crystalgraphics/render/post/CgPostPoint;

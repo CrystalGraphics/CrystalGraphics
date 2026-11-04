@@ -74,9 +74,9 @@ import java.util.function.Supplier;
  * H    the HUD on or off
  * N    the next scene, placed ahead of the camera; Shift+N the previous one
  * C    camera shake on or off (CgCameraShake.enabled: the saved setting is untouched)
- * L    bloom in the target's encoding, in linear light, then off
+ * L    bloom on or off
  * X    kit looks on or off: each kit's effects graded by their game's post, or by the frame's
- * [ ]  the HDR scene's glow gain down or up a quarter;  - =  bloom's intensity
+ * [ ]  emission, the HDR scene's glow gain, down or up a quarter;  - =  bloom's intensity
  * O    every world shadow off or on (crystalgraphics.world.lightsShadows), to compare
  * K J U  the shadows' temporal accumulation, their spatial filter, their rays' screen trace, off or on
  * M    the shadow rays' resolution: full, checkerboard, half
@@ -827,7 +827,7 @@ public final class CgRenderDemo {
             case CgKeyCodes.KEY_H -> hudShown = !hudShown;
             case CgKeyCodes.KEY_N -> wanted = (wanted + (shift ? kinds.length - 1 : 1)) % kinds.length;
             case CgKeyCodes.KEY_C -> CgCameraShake.enabled(!CgCameraShake.enabled());
-            case CgKeyCodes.KEY_L -> cycleBloom();
+            case CgKeyCodes.KEY_L -> toggleBloom();
             case CgKeyCodes.KEY_X -> CgWorldRenderer.get().gradeDraws(!CgWorldRenderer.get().gradeDraws());
             // A quarter down or up, as the harness's.
             case CgKeyCodes.KEY_LBRACKET -> CgWorldRenderer.get().sceneEmission(CgWorldRenderer.get().sceneEmission() / 1.25f);
@@ -852,16 +852,14 @@ public final class CgRenderDemo {
         if (bloom.intensity() > 0f) bloom.intensity(bloom.intensity() * by);
     }
 
-    /** Blend, then linear, then off, then back at the intensity it had. */
-    private static void cycleBloom() {
+    /** Off, its intensity put aside, or back on at the intensity it had. */
+    private static void toggleBloom() {
         CgBloom bloom = CgPostStack.get().bloom();
         if (bloom.intensity() == 0f) {
-            bloom.intensity(bloomIntensity).linear(false);
-        } else if (bloom.linear()) {
+            bloom.intensity(bloomIntensity);
+        } else {
             bloomIntensity = bloom.intensity();
             bloom.intensity(0f);
-        } else {
-            bloom.linear(true);
         }
     }
 
@@ -928,10 +926,10 @@ public final class CgRenderDemo {
                 + (scenes[wanted] != null ? scenes[wanted].hud() : "")
                 + (CgCameraShake.enabled() ? String.format(Locale.ROOT, "\n\nShake [C]: on, trauma %.2f", CgCameraShake.trauma())
                 : "\n\nShake [C]: off")
-                + String.format(Locale.ROOT, "\nGlow [ ]: %.2f", CgWorldRenderer.get().sceneEmission())
                 + " | Kit looks [X]: " + (CgWorldRenderer.get().gradeDraws() ? "on" : "off")
-                + "\nBloom [L]: " + (bloom.intensity() == 0f ? "off" : bloom.linear() ? "linear" : "blend")
-                + String.format(Locale.ROOT, " | Intensity [- =]: %.2f", bloom.intensity())
+                + (bloom.intensity() == 0f ? "\nBloom [L]: off"
+                        : String.format(Locale.ROOT, "\nBloom [L]: on, %.2f [- =]", bloom.intensity()))
+                + String.format(Locale.ROOT, " | Emission [ ]: %.2f", CgWorldRenderer.get().sceneEmission())
                 + "\n" + CgVfxDemoControls.get().hudLines(waves);
     }
 
