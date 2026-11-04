@@ -30,7 +30,8 @@ import com.crystalgraphics.trace.CgGpuTrace;
  * <p>Follows 5.1's {@code AddGaussianBloomPasses} (PostProcessBloomSetup.cpp): layer {@code i} blurs stage
  * {@code i - 1} with a kernel of {@code Bloom<i>Size * BloomSizeScale} percent of that stage's width, its weights times
  * {@code Bloom<i>Tint * BloomIntensity / 6}; and {@code Compute1DGaussianFilterKernel} (PostProcessWeightedSampleSum.cpp)
- * for the taps. Its fast blur, a horizontal pass at half width past a radius, is not taken: the same picture, less cheap.</p>
+ * for the taps, and its fast blur ({@code r.FastBlurThreshold} 7): from a radius of 7 texels the horizontal pass draws
+ * at half width, which the vertical pass reads bilinearly.</p>
  */
 final class CgGaussianBloom {
 
@@ -38,15 +39,29 @@ final class CgGaussianBloom {
     static final int STAGES = 6;
     /** SM5's most taps a pass ({@code MAX_FILTER_COMPILE_TIME_SAMPLES}). */
     static final int MAX_TAPS = 32;
+    /** {@code r.FastBlurThreshold}: the radius in texels from which the horizontal pass draws at half width. */
+    static final double FAST_BLUR_RADIUS = 7.0;
     private static final CgFrameBufferFormat FORMAT = CgFrameBufferFormat.builder("cg_bloom_gaussian")
             .color(0, CgTextureType.R11F_G11F_B10F).build();
     private static final String DOWN = "crystalgraphics:shaders/post/bloom/down.shader";
     private static final String GAUSSIAN = "crystalgraphics:shaders/post/bloom/gaussian.shader";
     private static final CgMesh FULLSCREEN = CgMesh.vertices(3, CgMeshTopology.TRIANGLES);
-    private static final int GPU = CgGpuTrace.name("post.bloom.gaussian");
+    private static final int GPU_DOWN = CgGpuTrace.name("post.bloom.gaussian.down");
+    private static final int[] GPU_LAYER = new int[STAGES];
 
-    /** Stages 1 to 5 (level {@code k} stage {@code k + 1}), each layer's horizontal pass, each layer's sum. */
-    private CgGraphTexture down, across, layers;
+    static {
+        for (int stage = 0; stage < STAGES; stage++) GPU_LAYER[stage] = CgGpuTrace.name("post.bloom.gaussian.layer" + (stage + 1));
+    }
+
+    /**
+     * A texture a stage, as Unreal's: stages 1 to 5 ({@code down[k]} stage {@code k + 1}); each layer's horizontal pass,
+     * at full width and, for a fast blur, at half; each layer's sum. Levels of one texture cost a level pin a pass.
+     */
+    private final CgGraphTexture[] down = new CgGraphTexture[STAGES - 1], across = new CgGraphTexture[STAGES],
+            acrossHalf = new CgGraphTexture[STAGES], layers = new CgGraphTexture[STAGES];
+    private int width, height;
+    /** Per stage: whether its horizontal pass draws at half width. */
+    private final boolean[] fast = new boolean[STAGES];
     private final CgMaterial[] downs = new CgMaterial[STAGES - 1], horizontal = new CgMaterial[STAGES],
             vertical = new CgMaterial[STAGES];
     private CgGraphTexture boundSource;
@@ -65,11 +80,18 @@ final class CgGaussianBloom {
      */
     CgGraphTexture record(CgRecording recording, CgGraphTexture source, CgPostSettings settings, CgPassConstants frame) {
         int w = source.getWidth(), h = source.getHeight();
-        if (down == null || down.getWidth() != Math.max(1, w / 2) || down.getHeight() != Math.max(1, h / 2)) {
-            down = CgGraphTexture.transientTexture("cg_bloom_gaussian_down",
-                    new CgTextureDesc(Math.max(1, w / 2), Math.max(1, h / 2), FORMAT, STAGES - 1));
-            across = CgGraphTexture.transientTexture("cg_bloom_gaussian_across", new CgTextureDesc(w, h, FORMAT, STAGES));
-            layers = CgGraphTexture.transientTexture("cg_bloom_gaussian_layers", new CgTextureDesc(w, h, FORMAT, STAGES));
+        if (layers[0] == null || width != w || height != h) {
+            width = w;
+            height = h;
+            for (int stage = 0; stage < STAGES; stage++) {
+                int sw = Math.max(1, w >> stage), sh = Math.max(1, h >> stage);
+                if (stage > 0) down[stage - 1] = CgGraphTexture.transientTexture("cg_bloom_gaussian_down", new CgTextureDesc(sw, sh, FORMAT));
+                across[stage] = CgGraphTexture.transientTexture("cg_bloom_gaussian_across", new CgTextureDesc(sw, sh, FORMAT));
+                acrossHalf[stage] = CgGraphTexture.transientTexture("cg_bloom_gaussian_across_half",
+                        new CgTextureDesc(Math.max(1, sw / 2), sh, FORMAT));
+                layers[stage] = CgGraphTexture.transientTexture("cg_bloom_gaussian_layers", new CgTextureDesc(sw, sh, FORMAT));
+            }
+            boundSource = null;
         }
         ensureMaterials(source);
         float tintScale = settings.bloom() / STAGES;
@@ -93,13 +115,13 @@ final class CgGaussianBloom {
             }
         }
         frame.write(block, 0);
-        for (int k = 0; k < STAGES - 1; k++) draw(recording, down, k, downs[k]);
+        for (int k = 0; k < STAGES - 1; k++) draw(recording, down[k], downs[k], GPU_DOWN);
         for (int stage = STAGES - 1; stage >= 0; stage--) {
             if (bound[stage * 7 + 6] == Float.NEGATIVE_INFINITY) continue;
-            draw(recording, across, stage, horizontal[stage]);
-            draw(recording, layers, stage, vertical[stage]);
+            draw(recording, (fast[stage] ? acrossHalf : across)[stage], horizontal[stage], GPU_LAYER[stage]);
+            draw(recording, layers[stage], vertical[stage], GPU_LAYER[stage]);
         }
-        return layers;
+        return layers[0];
     }
 
     /** Whether {@code stage} draws: its layer has a size, or it is the half-size stage under one that drew. */
@@ -113,14 +135,18 @@ final class CgGaussianBloom {
         Arrays.fill(horizontal, null);
         Arrays.fill(vertical, null);
         boundSource = null;
-        down = across = layers = null;
+        Arrays.fill(down, null);
+        Arrays.fill(across, null);
+        Arrays.fill(acrossHalf, null);
+        Arrays.fill(layers, null);
         Arrays.fill(bound, Float.NaN);
     }
 
-    private void draw(CgRecording recording, CgGraphTexture target, int level, CgMaterial material) {
+    private void draw(CgRecording recording, CgGraphTexture target, CgMaterial material, int zone) {
         CgPipeline pipeline = material.pipeline(CgInstanceKind.OBJECT);
-        constants.read(block, 0).resolution(Math.max(1, target.getWidth() >> level), Math.max(1, target.getHeight() >> level));
-        CgRasterPass pass = recording.raster(target, level, CgLoad.clear(0f, 0f, 0f, 0f), constants, null, CgOrder.SORTED).timed(GPU);
+        constants.read(block, 0).resolution(target.getWidth(), target.getHeight());
+        // Unreal's ENoAction: one opaque triangle covers the target, so a clear is a wasted write (3 us a pass)
+        CgRasterPass pass = recording.raster(target, CgLoad.load(), constants, null, CgOrder.SORTED).timed(zone);
         CgChunkBuilder chunks = recording.chunks().begin();
         chunks.draw(pipeline, material.captureBindings(recording.bindings()), FULLSCREEN);
         chunks.instance();
@@ -128,7 +154,7 @@ final class CgGaussianBloom {
         pass.end();
     }
 
-    /** Each pass's material, its source set: made once, set again when its textures are made anew. */
+    /** Each pass's material, its source set: made once, set again when its textures are made anew; the vertical's in weigh. */
     private void ensureMaterials(CgGraphTexture source) {
         if (source == boundSource && downs[0] != null) return;
         boundSource = source;
@@ -139,15 +165,14 @@ final class CgGaussianBloom {
                 // Unreal's high-quality chain is four bilinear taps a texel apart: the down filter's CHEAP form
                 downs[k].toggleKeyword("CHEAP", true);
             }
-            CgTexture from = k == 0 ? source : down.level(k - 1);
+            CgTexture from = k == 0 ? source : down[k - 1];
             downs[k].applyProperties(b -> b.sampler("_Source", 0, from));
         }
         for (int stage = 0; stage < STAGES; stage++) {
             if (horizontal[stage] == null) horizontal[stage] = CgMaterial.newInstance(GAUSSIAN);
             if (vertical[stage] == null) vertical[stage] = CgMaterial.newInstance(GAUSSIAN);
-            CgTexture level = stage == 0 ? source : down.level(stage - 1), across = this.across.level(stage);
+            CgTexture level = stage == 0 ? source : down[stage - 1];
             horizontal[stage].applyProperties(b -> b.sampler("_Source", 0, level));
-            vertical[stage].applyProperties(b -> b.sampler("_Source", 0, across));
         }
     }
 
@@ -159,7 +184,7 @@ final class CgGaussianBloom {
     private boolean weigh(int stage, CgPostSettings s, float tintScale, int before) {
         CgMaterial h = horizontal[stage], v = vertical[stage];
         if (h == null || v == null) return false;
-        int w = Math.max(1, across.getWidth() >> stage), hgt = Math.max(1, across.getHeight() >> stage);
+        int w = layers[stage].getWidth(), hgt = layers[stage].getHeight();
         float percent = s.bloomSize(stage + 1) * s.bloomSizeScale();
         float r = s.bloomTint(stage + 1, 0) * tintScale, g = s.bloomTint(stage + 1, 1) * tintScale,
                 b = s.bloomTint(stage + 1, 2) * tintScale;
@@ -175,23 +200,27 @@ final class CgGaussianBloom {
         bound[at + 4] = g;
         bound[at + 5] = b;
         bound[at + 6] = before;
-        int count = percent > 1e-8f ? kernel(radius(w, percent), kernel) : 0;
-        float[] across = taps[stage * 2], down = taps[stage * 2 + 1];
-        Arrays.fill(across, 0f);
+        double radius = radius(w, percent);
+        int count = percent > 1e-8f ? kernel(radius, kernel) : 0;
+        fast[stage] = count > 0 && radius >= FAST_BLUR_RADIUS;
+        // Offsets stay in the source's texels: a half-width target's texel centres fall between two of them
+        CgTexture across = (fast[stage] ? acrossHalf : this.across)[stage];
+        float[] sideways = taps[stage * 2], down = taps[stage * 2 + 1];
+        Arrays.fill(sideways, 0f);
         Arrays.fill(down, 0f);
         for (int i = 0; i < count; i++) {
-            across[i * 4] = (float) (kernel[i * 2] / w);
-            across[i * 4 + 2] = (float) kernel[i * 2 + 1];
+            sideways[i * 4] = (float) (kernel[i * 2] / w);
+            sideways[i * 4 + 2] = (float) kernel[i * 2 + 1];
             down[i * 4 + 1] = (float) (kernel[i * 2] / hgt);
             down[i * 4 + 2] = (float) kernel[i * 2 + 1];
         }
         float n = count;
-        h.applyProperties(m -> m.array("_Taps", across).set1f("_Count", n).vec4("_Tint", 1f, 1f, 1f, 1f));
-        v.applyProperties(m -> m.array("_Taps", down).set1f("_Count", n).vec4("_Tint", r, g, b, 1f));
+        h.applyProperties(m -> m.array("_Taps", sideways).set1f("_Count", n).vec4("_Tint", 1f, 1f, 1f, 1f));
+        v.applyProperties(m -> m.sampler("_Source", 0, across).array("_Taps", down).set1f("_Count", n).vec4("_Tint", r, g, b, 1f));
         // Unreal's Additive input: the layer before it, sampled bilinearly
         v.toggleKeyword("ADDITIVE", before >= 0);
         if (before >= 0) {
-            CgTexture added = layers.level(before);
+            CgTexture added = layers[before];
             v.applyProperties(m -> m.sampler("_Additive", 1, added));
         }
         return true;
