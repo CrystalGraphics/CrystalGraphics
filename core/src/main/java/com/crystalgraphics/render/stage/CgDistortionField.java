@@ -8,8 +8,8 @@ import com.crystalgraphics.render.graph.CgGraphTexture;
  * its weight. The world renderer publishes it under {@link CgFrameKeys#DISTORTION} once it has applied it to the target.
  *
  * <pre>{@code
- * // A post effect bends a side input of its own (emission, a mask) as the scene was bent:
- * CgGraphTexture emission = post.distorted(post.resources().get(CgFrameKeys.EMISSION));
+ * // A post effect bends a side input of its own (a mask, a subject) as the scene was bent:
+ * CgGraphTexture subject = post.distorted(post.resources().get(CgFrameKeys.SUBJECT));
  *
  * // Or reads the offsets itself, a sampler2DArray summed over the layers in use:
  * CgDistortionField field = post.resources().get(CgFrameKeys.DISTORTION);

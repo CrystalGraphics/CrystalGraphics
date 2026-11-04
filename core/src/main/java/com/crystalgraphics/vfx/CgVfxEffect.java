@@ -441,7 +441,7 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
 
     /**
      * Scales the light its draws give by {@code exposure}: a {@code "ColorSpace" = "Linear"} draw's colour and glow, and
-     * an sRGB draw's glow where it is drawn apart (its Emissive pass, or merged into the emission target). A game's effects authored under its own exposure play under ours this way (a kit's look sets
+     * an sRGB draw's glow (its Emissive pass). A game's effects authored under its own exposure play under ours this way (a kit's look sets
      * it for every effect of the kit).
      *
      * <pre>{@code

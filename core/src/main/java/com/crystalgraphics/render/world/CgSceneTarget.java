@@ -25,7 +25,7 @@ import javax.annotation.Nullable;
 
 /**
  * The HDR scene's way in and, around the opaque pass, its way out. At the top of
- * {@code WORLD_TRANSPARENT}, while {@link CgWorldRenderer#hdrScene()} is on, decodes the host's colour into an RGBA16F
+ * {@code WORLD_TRANSPARENT}, once its programs are built, decodes the host's colour into an RGBA16F
  * scene beside the host's depth, publishes it as {@link CgFrameKeys#SCENE} and makes it the stage's target, so every
  * renderer after draws into it in linear light. The post stack's composite encodes it back into the host's target.
  *
@@ -130,7 +130,6 @@ final class CgSceneTarget {
     void record(CgStageFrame stage) {
         boolean keeping = kept;
         kept = false;
-        if (!CgWorldRenderer.get().hdrSceneDrawn()) return;
         int fb = stage.host().mainFramebuffer(), w = Math.max(1, stage.host().width()), h = Math.max(1, stage.host().height());
         boolean beside = CgGraphTexture.takesCurrentDepth(fb);
         CgTextureType depth = beside ? null : depthOf(fb);

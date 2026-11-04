@@ -507,7 +507,7 @@ fragColor = _Color * _Bands(1);    // read as always: the row's value where boun
   every shader, with `rows` or without.
 - The VFX engine is the binder: a renderer's `bind` ([`vfx/effects.md`](vfx/effects.md) § *Constants, binds and keywords*).
 - **`_cg_Exposure`** is every rows shader's, 1 by default: the generated `main` multiplies a `"ColorSpace" = "Linear"`
-  Forward colour (its folded glow with it), an Emissive pass and a merged emission by it, before the encode; never a
+  Forward colour (its folded glow with it) and an Emissive pass by it, before the encode; never a
   modulate blend's colour, a factor rather than light (Unreal's pre-exposure skips it the same way). The VFX engine
   writes its effect's `exposure(...)` there for a shader that reads it (`CgMaterial.readsExposure()`): a game's effect
   authored under that game's camera exposure.
@@ -611,11 +611,10 @@ The `"Name"` tag sets the pass key dimension for the `ProgramKey` variant cache.
 
 #### The Emissive pass
 
-What a material draws in its Emissive pass is the light it gives off: `CgWorldRenderer` writes it into a float
-emission target, which bloom blurs and adds over the world (`docs/ENGINE_API.md` § *CgWorldRenderer*). Unity's,
-Godot's and Unreal's emission is a material output added to an HDR scene colour; Minecraft's target is 8-bit, so here
-it is a pass of its own. A codeless one on the Forward pass's blend is written by the Forward draw itself, as a second
-output; any other is the mesh drawn again into the emission target after the transparent pass.
+What a material draws in its Emissive pass is the light it gives off: `CgWorldRenderer` adds it into the HDR scene,
+where bloom takes what passes white (`docs/ENGINE_API.md` § *CgWorldRenderer*). Unity's, Godot's and Unreal's emission
+is a material output added to an HDR scene colour; here it is a pass of its own, which a codeless one on the Forward
+pass's blend folds into the Forward draw.
 
 ```glsl
 // The Forward pass's code and render state again: what it draws, it also blooms
@@ -629,16 +628,14 @@ Pass {
 }
 ```
 
-- **Write HDR colour with an alpha of 0.** It adds into a float target; the alpha is unused.
+- **Write HDR colour with an alpha of 0.** It adds into the float scene; the alpha is unused.
 - **Codeless**, it takes the first Forward pass's v2f, code and render state, and fails to parse when no Forward pass
   comes before it. A `RenderState` of its own replaces the Forward pass's.
 - **Codeless on one blend, it costs no draw of its own.** In a transparent material whose Emissive pass is codeless
   and blends as the Forward pass does, or adds (`Blend ONE ONE`) under a premultiplied Forward pass
   (`ONE ONE_MINUS_SRC_ALPHA`), the world renderer draws both in one draw: the Forward pass compiled with
-  `CG_EMISSION_TARGET` also writes the glow at location 1, into the emission beside the target
-  (`CgMaterialShaderCompiler.emissionMerge`, `CgPipeline.emissionTarget`). A body naming `CG_EMISSIVE_PASS` never
-  merges, since one draw cannot be both passes. Below GL 4.0 both outputs share one blend, which is why the blends must
-  agree.
+  `CG_SCENE_FOLD` adds the glow to its colour (`CgMaterialShaderCompiler.emissionMerge`, `sceneFolds`,
+  `CgPipeline.sceneFold`). A body naming `CG_EMISSIVE_PASS` never merges, since one draw cannot be both passes.
 - **With code and no `RenderState`**, it draws ONE ONE with no depth test and back faces culled. An authored state
   replaces all of it, including the cull, so list everything. ONE ONE is not `CgBlendState.ADDITIVE`, which is
   SRC_ALPHA ONE and adds nothing at alpha 0.
@@ -663,8 +660,7 @@ Pass {
 Pass { Tags { "LightMode" = "Emissive" } }                    // codeless: the body above, CG_EMISSIVE_PASS defined
 ```
 - It takes the material's keywords, as the Forward pass does.
-- **Under the HDR scene** (`CgWorldRenderer.hdrScene`) there is no emission target: the pass adds into the scene
-  itself, a transparent draw's right after its colour and an opaque or half-size draw's before the transparent pass, so
+- **Into the scene**: the pass adds into the HDR scene itself, a transparent draw's right after its colour and an opaque or half-size draw's before the transparent pass, so
   what is in front covers it; a codeless one that merges is folded into the colour's own draw instead, the glow added
   to the decoded colour (`CG_SCENE_FOLD`, `CgPipeline.sceneFold`). Either way times `CG_SCENE_GLOW` (`CgWorldRenderer.sceneEmission`, 0.5: a stop down, since a
   strength set for a blurred bloom floods a sharp core). Bloom then takes the scene's light past `CgBloom.threshold`
@@ -700,8 +696,7 @@ Pass { Tags { "LightMode" = "Emissive" }                         // or authored,
   Call it in the fragment body, not a helper declared before it. A fragment naming it that never calls it glows nothing.
 - **A glow that draws nothing in the scene** is `crystalgraphics:shaders/emission_only.shader`: its Emissive pass
   blooms the mesh in `_EmissionColor` × `_EmissionStrength`, and its Forward pass writes no colour or depth.
-- `-Dcrystalgraphics.post.debug=emission` draws the emission target over the frame; `=level<N>` one level of bloom's
-  chain (`docs/DEBUG_FLAGS.md`).
+- `-Dcrystalgraphics.post.debug=level<N>` draws one level of bloom's chain over the frame (`docs/DEBUG_FLAGS.md`).
 
 #### The Distortion pass
 

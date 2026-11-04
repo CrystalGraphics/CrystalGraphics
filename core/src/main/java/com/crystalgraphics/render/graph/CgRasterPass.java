@@ -569,15 +569,15 @@ public final class CgRasterPass extends CgPass {
     }
 
     /**
-     * Draws into {@code texture} as colour attachment 1 beside the target, keeping what it holds: the world's emission
+     * Draws into {@code texture} as colour attachment 1 beside the target, keeping what it holds: the world's normals
      * written by the same draws as its colour. A pipeline writes it only where its program has a location-1 output
      * ({@code CgPipeline.slotWrites}); for every other draw the slot is masked off.
      *
      * <pre>{@code
-     * recording.raster(emission, CgLoad.clear(0, 0, 0, 0), constants, null, CgOrder.SORTED).end();   // cleared first
+     * recording.raster(normals, CgLoad.clear(0, 0, 0, 0), constants, null, CgOrder.SORTED).end();   // cleared first
      * CgRasterPass pass = recording.raster(stage.target(), CgLoad.load(), constants, state, CgOrder.SORTED)
-     *         .attachment(emission);
-     * chunks.draw(material.pipeline(CgInstanceKind.OBJECT).emissionTarget(), bindings, mesh);
+     *         .attachment(normals);
+     * chunks.draw(material.pipeline(CgInstanceKind.OBJECT).normalTarget(), bindings, mesh);
      * }</pre>
      *
      * <ul>

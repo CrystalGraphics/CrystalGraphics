@@ -68,8 +68,6 @@ import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.stage.CgFrameKeys;
 import com.crystalgraphics.render.stage.CgStageFrame;
 import com.crystalgraphics.render.stage.CgStageHook;
-import com.crystalgraphics.settings.CgGraphicsSettings;
-import com.crystalgraphics.settings.CgQuality;
 import com.crystalgraphics.trace.CgGpuTrace;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.trace.CgTraceRun;
@@ -126,9 +124,8 @@ import java.util.Set;
  *   <li>A mesh with no bounds (a format whose positions are not floats) is never culled.</li>
  *   <li>A material is lit by the host's lightmap at {@code CG_OBJECT_LIGHT} and fogged unless its shader is tagged
  *       {@code "Lighting" = "Unlit"}. The light is the world's at {@link Draw#at}, read at {@link Draw#submit}.</li>
- *   <li>A material with a {@code "LightMode" = "Emissive"} pass glows: after the transparent pass that pass is drawn
- *       into the emission target ({@link #emissionScale} of the world's size), where the scene's depth hides it, and
- *       published as {@code CgFrameKeys.EMISSION} for the post stack to bloom.</li>
+ *   <li>A material with a {@code "LightMode" = "Emissive"} pass glows: its glow is light added into the HDR scene
+ *       ({@code CgFrameKeys.SCENE}), where what draws in front covers it, and bloom takes what passes white.</li>
  *   <li>A transparent draw marked {@link Draw#halfResolution()} draws at half the target's size before the transparent
  *       pass ({@link #halfResolution(boolean)} turns it off): light that adds is added over the target, depth-aware; a
  *       volume that covers (premultiplied) is blended with its last frame and laid over the target in the transparent
@@ -147,14 +144,11 @@ public final class CgWorldRenderer {
     private static final Logger LOGGER = LogManager.getLogger("CgWorldRenderer");
     // Above INSTANCE: its constructor reads them.
     private static final CgVar.Bool MERGE_EMISSION = CgVar.bool("crystalgraphics.world.mergeEmission", true, CgVar.DEV,
-            "What a new world renderer starts with: a transparent draw's codeless Emissive pass written by its Forward draw"
-                    + " beside the target; false draws every Emissive pass on its own (mergeEmission(boolean) live).");
+            "What a new world renderer starts with: a transparent draw's codeless Emissive pass folded into its Forward"
+                    + " draw; false draws every Emissive pass on its own (mergeEmission(boolean) live).");
     private static final CgVar.Bool HALF_RESOLUTION = CgVar.bool("crystalgraphics.world.halfResolution", true, CgVar.DEV,
             "What a new world renderer starts with: draws marked halfResolution() at half size; false at full size, in the"
                     + " transparent pass (H in the harness, halfResolution(boolean) live).");
-    private static final CgVar.Text HDR_SCENE = CgVar.text("crystalgraphics.world.hdrScene", "", CgVar.DEV,
-            "true or false forces the HDR scene for the run over the player's HDR setting, unsaved; empty follows the"
-                    + " setting (G in the harness, hdrScene(boolean) live).");
     private static final CgVar.Bool SKIP_UNREADY = CgVar.bool("crystalgraphics.world.skipUnready", true, CgVar.DEV,
             "Holds a draw whose programs are not built yet, starting them and counting it as world.unready-draws; false"
                     + " compiles at the draw (skipUnready(boolean) live).");
@@ -164,7 +158,7 @@ public final class CgWorldRenderer {
             REC_TOP = CgTrace.name("world.record.top"), REC_MEDIA = CgTrace.name("world.record.media"),
             TOP_NORMALS = CgTrace.name("world.top.normals"), TOP_OPAQUE_SCENE = CgTrace.name("world.top.opaqueScene"),
             TOP_DISTORTION = CgTrace.name("world.top.distortion"), TOP_LABELS = CgTrace.name("world.top.labels"),
-            TOP_CUSTOM = CgTrace.name("world.top.custom"), TOP_EMISSION = CgTrace.name("world.top.emission"),
+            TOP_CUSTOM = CgTrace.name("world.top.custom"),
             REC_CULL = CgTrace.name("world.record.cull"), REC_PASSES = CgTrace.name("world.record.passes"),
             REC_AFTER = CgTrace.name("world.record.after");
     private static final CgWorldRenderer INSTANCE = new CgWorldRenderer();
@@ -176,8 +170,8 @@ public final class CgWorldRenderer {
     private static final CgRenderState TRANSPARENT_STATE = CgRenderState.builder()
             .depth(CgDepthState.TEST_ONLY).blend(CgBlendState.ALPHA).build();
     /**
-     * Emissive passes add into the emission target, which has no depth: the scene hides them by its copied depth. ONE
-     * ONE, since emitted light is written with an alpha of 0.
+     * Emissive passes add into the scene, or a glow target of their own (an impact frame's subject), which has no depth:
+     * the scene hides them by its copied depth. ONE ONE, since emitted light is written with an alpha of 0.
      */
     private static final CgRenderState EMISSIVE_STATE = CgRenderState.builder()
             .depth(CgDepthState.NONE).blend(new CgBlendState(true, CgGL.GL_ONE, CgGL.GL_ONE, CgGL.GL_ONE, CgGL.GL_ONE,
@@ -357,11 +351,9 @@ public final class CgWorldRenderer {
     private CgCullSets[] cullBatches = new CgCullSets[4];
     private int cullPasses;
 
-    // Emission: the target Emissive passes draw into, and its constants.
+    // Glows drawn apart, for an impact frame's subject: which draws, and the target.
     private boolean[] emits = new boolean[64];
-    /** 0 until set: the tier's share then. */
-    private float emissionScale;
-    private CgGraphTexture emissionTarget, subjectTarget;
+    private CgGraphTexture subjectTarget;
     /**
      * Our opaque surfaces' normals, Unreal's G-buffer normal, for the world lights and a post material asking
      * ({@link CgFrameKeys#WORLD_NORMALS_READ}); this firing's, or null; and the opaque firing's, for the transparent one.
@@ -374,23 +366,17 @@ public final class CgWorldRenderer {
     private CgGraphTexture ownedSubject;
     private long ownedSubjectFrame = -1;
     private final CgPassConstants emissionConstants = new CgPassConstants();
-    /** Whether the transparent passes write glows beside the target: {@link #mergeEmission(boolean)}, once warm. */
+    /** Whether a foldable glow is drawn in its colour's draw: {@link #mergeEmission(boolean)}, once warm. */
     private boolean mergeEmission = MERGE_EMISSION.get();
     /** What {@link #mergeEmission(boolean)} asked for; applied once the program list is warm under it. */
     private boolean mergeRequested = mergeEmission;
     private volatile boolean gradeDraws = true;
-    /** The HDR scene as drawn: {@link #hdrScene()}, once the program list is warm under it. */
-    private boolean hdrApplied;
     @Nullable
     private CgPipelineList.Settings applied;
     private final CgPipelineList pipelines = new CgPipelineList(this::precache, this::requestedSettings);
     private boolean skipUnready = SKIP_UNREADY.get();
     private long unreadyDraws;
-    /** The target-sized emission those passes write into, and per draw whether its glows were drawn there. */
-    private CgGraphTexture emissionFull;
-    private boolean[] merged = new boolean[64];
-    private int mergedDraws;
-    private boolean mergeNoted, normalsRefusedNoted;
+    private boolean normalsRefusedNoted;
     private final float[] constantsBlock = new float[CgPassConstants.FLOATS];
 
     // Half resolution: the target half-size draws go into, its constants, and what adds it over the stage's target.
@@ -438,9 +424,7 @@ public final class CgWorldRenderer {
     public static final float SCENE_EMISSION = 0.5f;
     private volatile float sceneEmission = SCENE_EMISSION;
 
-    // The HDR scene: what WORLD_TRANSPARENT draws into in place of the host's colour, while on. Null follows the setting.
-    @Nullable
-    private volatile Boolean hdrSceneForced = HDR_SCENE.get().isEmpty() ? null : Boolean.valueOf(HDR_SCENE.get());
+    // The HDR scene: what WORLD_TRANSPARENT draws into in place of the host's colour.
     private final CgSceneTarget sceneTarget = new CgSceneTarget();
 
     private boolean installed;
@@ -568,7 +552,6 @@ public final class CgWorldRenderer {
         if (applied == null) applied = requested;
         if (pipelines.frame(requested, applied)) {
             applied = requested;
-            hdrApplied = requested.hdrScene();
             mergeEmission = mergeRequested;
         }
         precacheHeld();
@@ -576,12 +559,11 @@ public final class CgWorldRenderer {
 
     /** The settings asked for now: what the next frames draw under once the program list is warm. */
     public CgPipelineList.Settings requestedSettings() {
-        boolean hdr = hdrScene(), merge = mergeRequested && CgCapabilities.detect().independentBlend();
+        boolean merge = mergeRequested;
         boolean joins = CgCapabilities.detect().multiDraw() && CgMeshStore.get().multiDraw();
         CgPipelineList.Settings r = requested;
-        if (r == null || r.hdrScene() != hdr || r.mergeEmission() != merge || r.joins() != joins
-                || r.halfResolution() != halfResolution) {
-            requested = r = new CgPipelineList.Settings(hdr, merge, joins, halfResolution);
+        if (r == null || r.mergeEmission() != merge || r.joins() != joins || r.halfResolution() != halfResolution) {
+            requested = r = new CgPipelineList.Settings(merge, joins, halfResolution);
         }
         return r;
     }
@@ -592,11 +574,6 @@ public final class CgWorldRenderer {
     /** The precache's list: every pipeline kept built under the settings in force. {@link CgPipelinePrecache}'s. */
     CgPipelineList pipelines() {
         return pipelines;
-    }
-
-    /** Whether the HDR scene is drawn now: {@link #hdrScene()}, applied once the program list is warm under it. */
-    public boolean hdrSceneDrawn() {
-        return hdrApplied;
     }
 
     /**
@@ -646,22 +623,6 @@ public final class CgWorldRenderer {
         distortion.release();
         text.release();
         sceneTarget.release();
-        mergeNoted = false;
-    }
-
-    /**
-     * The emission target's size as a share of the world's, in place of the tier's: Low 0.25, Medium and High 0.5,
-     * Ultra 1. Larger is a tighter glow, at the square of the cost. How strongly it blooms is the post stack's
-     * ({@code CgPostStack.get().bloom()}).
-     *
-     * <pre>{@code
-     * CgWorldRenderer.get().emissionScale(1f);   // full size whatever the tier
-     * CgWorldRenderer.get().emissionScale(0f);   // the tier's again
-     * }</pre>
-     */
-    public void emissionScale(float scale) {
-        if (!(scale >= 0f && scale <= 1f)) throw new IllegalArgumentException("an emission scale of " + scale + ": 0 to 1");
-        emissionScale = scale;
     }
 
     /**
@@ -721,32 +682,8 @@ public final class CgWorldRenderer {
     }
 
     /**
-     * Whether the transparent stage draws into a linear HDR scene (RGBA16F beside the host's depth) that the post
-     * stack's composite encodes back into the host's target: the player's {@code CgGraphicsSettings.HDR}, on by default.
-     * Takes effect at the next firing, so it can be flipped live to compare.
-     *
-     * <pre>{@code
-     * CgGraphicsSettings.HDR.set(false);      // the player's choice, saved: straight into the host's picture
-     * CgWorldRenderer.get().hdrScene(true);   // this session only, whatever the setting says; never saved
-     * CgWorldRenderer.get().followHdrSetting();
-     * // -Dcrystalgraphics.world.hdrScene=false: the same override, from launch
-     * }</pre>
-     *
-     * <ul>
-     *   <li>Off, glows go to the emission target and bloom from it, merged into their draws where the host allows.</li>
-     *   <li>On, every renderer on {@code WORLD_TRANSPARENT} between the scene's first pass and the composite draws into
-     *       the scene through {@code CgStageFrame.target()}; raw GL into the host's framebuffer there is overwritten.</li>
-     *   <li>{@code cg_SceneColor} there reads linear HDR, not the host's encoded 8 bits.</li>
-     *   <li>Merged emission stands down while it is on.</li>
-     * </ul>
-     */
-    public void hdrScene(boolean on) {
-        hdrSceneForced = on;
-    }
-
-    /**
      * What a glow drawn into the HDR scene is multiplied by ({@code CG_SCENE_GLOW}), {@value #SCENE_EMISSION} by default:
-     * below 1, cores flood less to white, and fewer glows pass white to bloom. The old path's glows are not scaled.
+     * below 1, cores flood less to white, and fewer glows pass white to bloom.
      */
     public CgWorldRenderer sceneEmission(float gain) {
         sceneEmission = Math.max(0f, gain);
@@ -757,23 +694,10 @@ public final class CgWorldRenderer {
         return sceneEmission;
     }
 
-    /** Drops {@link #hdrScene(boolean)}'s override: the scene follows {@code CgGraphicsSettings.HDR} again. */
-    public void followHdrSetting() {
-        hdrSceneForced = null;
-    }
-
-    public boolean hdrScene() {
-        Boolean forced = hdrSceneForced;
-        return forced != null ? forced : CgGraphicsSettings.HDR.get();
-    }
-
     /**
-     * Whether a transparent draw whose Emissive pass folds into its Forward pass draws both at once, its glow written
-     * into a second attachment beside the target ({@code CgPipeline.emissionTarget}), on by default. The emission is
-     * then the target's size; what does not fold (opaque, half-size and authored Emissive passes) is drawn into it after.
-     * Off, every Emissive pass draws on its own into an emission target of {@link #emissionScale}: the comparison.
-     * Under the HDR scene the same switch folds such a glow into its colour's draw ({@code CgPipeline.sceneFold}), or,
-     * off, draws it after at the same key.
+     * Whether a transparent draw whose Emissive pass folds into its Forward pass draws both at once, its glow added into
+     * the scene with its colour ({@code CgPipeline.sceneFold}), on by default; off, the glow is drawn after it at the
+     * same key.
      *
      * <pre>{@code
      * CgWorldRenderer.get().mergeEmission(false);   // every glow its own draw again
@@ -807,11 +731,6 @@ public final class CgWorldRenderer {
         return gradeDraws;
     }
 
-    /** How many draws the last transparent firing recorded with their glow in their own draw: for gates and readouts. */
-    public int mergedDraws() {
-        return mergedDraws;
-    }
-
     /**
      * Whether the transparent pass is counted again, each draw's overdraw variant adding 1 per fragment into an R16F
      * target published as {@link CgFrameKeys#OVERDRAW}: its own vertex stage, depth test and discard. Off by default,
@@ -827,12 +746,6 @@ public final class CgWorldRenderer {
 
     public boolean overdraw() {
         return overdraw;
-    }
-
-    private float emissionScale() {
-        if (emissionScale > 0f) return emissionScale;
-        CgQuality tier = CgGraphicsSettings.QUALITY.get();
-        return tier == CgQuality.LOW ? 0.25f : tier == CgQuality.ULTRA ? 1f : 0.5f;
     }
 
     /** Starts a draw of {@code mesh} under {@code material}: the shared scratch, so build and submit in one expression. */
@@ -970,8 +883,8 @@ public final class CgWorldRenderer {
      * whether all are built: each link of its chain's Forward pass, its depth pass, its Emissive and Distortion passes,
      * each in the multi-draw form a joined run binds, the half-size passes where {@code halfResolution}, the skinned
      * vertex factory's forms where {@code skinned} (the precache key's vertex factory, as Unreal's), with the keywords
-     * enabled now. Only the variants those settings draw: under the HDR scene a glow folded into its colour
-     * ({@code sceneFold}); without it, the merged glow and its cover or, unmerged, the occluder. {@link CgPipelineList}'s
+     * enabled now. Only the variants those settings draw: a glow folded into its colour ({@code sceneFold}) where
+     * glows merge. {@link CgPipelineList}'s
      * precacher: a caller requests its materials through {@link CgPipelinePrecache}.
      */
     boolean precache(CgMaterial material, boolean halfResolution, boolean skinned, CgPipelineList.Settings settings) {
@@ -990,17 +903,9 @@ public final class CgWorldRenderer {
             }
             if (link.hasEmissivePass()) {
                 ready &= builtAs(skinned, link.pipeline(CgRenderPassVariant.EMISSIVE, CgInstanceKind.OBJECT), joins);
-                if (forward != null && settings.mergeEmission()) {
-                    ready &= builtAs(skinned, settings.hdrScene() ? forward.sceneFold() : forward.emissionTarget(), joins);
-                }
+                if (forward != null && settings.mergeEmission()) ready &= builtAs(skinned, forward.sceneFold(), joins);
             }
-            if (forward != null && !settings.hdrScene() && link.getRenderQueue() >= CgRenderQueue.TRANSPARENT_THRESHOLD) {
-                // The merged emission's cover; the occluder where the emission is drawn on its own, which a host
-                // framebuffer taking no second attachment falls back to as well.
-                if (settings.mergeEmission()) ready &= builtAs(skinned, forward.emissionCover(), joins);
-                ready &= builtAs(skinned, forward.emissionOccluder(), joins);
-            }
-            if (forward != null && settings.hdrScene() && link.getRenderQueue() < CgRenderQueue.TRANSPARENT_THRESHOLD
+            if (forward != null && link.getRenderQueue() < CgRenderQueue.TRANSPARENT_THRESHOLD
                     && link.readsExposure()) {
                 // An effect's opaque or masked draw graded: its Forward pass covering its layer, and its glow
                 ready &= builtAs(skinned, layered(forward.solidCover()), joins);
@@ -1008,7 +913,7 @@ public final class CgWorldRenderer {
                     ready &= builtAs(skinned, layered(link.pipeline(CgRenderPassVariant.EMISSIVE, CgInstanceKind.OBJECT)), joins);
                 }
             }
-            if (forward != null && settings.hdrScene() && link.getRenderQueue() >= CgRenderQueue.TRANSPARENT_THRESHOLD) {
+            if (forward != null && link.getRenderQueue() >= CgRenderQueue.TRANSPARENT_THRESHOLD) {
                 // A graded draw's layer: its Forward pass, folded or with its glow, under the layer's blend
                 ready &= builtAs(skinned, layered(forward), joins);
                 if (link.hasEmissivePass()) {
@@ -1956,7 +1861,7 @@ public final class CgWorldRenderer {
             step.close();
             step = CgTrace.zone(CgChannels.GL_DETAIL, TOP_OPAQUE_SCENE);
             // Our opaque draws into a linear scene of their own, as Unreal's base pass into SceneColor: past white kept
-            boolean opaqueScene = which == OPAQUE && drawn > 0 && hdrSceneDrawn() && sceneTarget.recordOpaqueIn(stage);
+            boolean opaqueScene = which == OPAQUE && drawn > 0 && sceneTarget.recordOpaqueIn(stage);
             if (opaqueScene) constants = stage.constants().sceneGlow(sceneEmission);
             step.close();
             step = CgTrace.zone(CgChannels.GL_DETAIL, TOP_DISTORTION);
@@ -1985,7 +1890,7 @@ public final class CgWorldRenderer {
             // Under the HDR scene a glow is light added into the scene itself, where what draws in front covers it.
             boolean scene = which == TRANSPARENT && stage.resources().has(CgFrameKeys.SCENE);
             volumeFolds = scene && mergeEmission;
-            // Before any glow: a label's text then hides the glows behind it from the emission, as from the colour.
+            // Before any glow: a label's text then hides the glows behind it, as it hides their colour.
             step = CgTrace.zone(CgChannels.GL_DETAIL, TOP_LABELS);
             if (which == TRANSPARENT && !CgRehearsal.active()) text.recordDepth(stage, view);
             step.close();
@@ -1998,9 +1903,6 @@ public final class CgWorldRenderer {
                 stage.resources().put(CgFrameKeys.WORLD_NORMALS, normalsWritten);
                 normalsWritten = null;
             }
-            step.close();
-            step = CgTrace.zone(CgChannels.GL_DETAIL, TOP_EMISSION);
-            CgGraphTexture emission = which == TRANSPARENT && drawn > 0 ? mergedEmission(stage, recording) : null;
             step.close();
             top.close();
             // Lights fall on the opaque scene, so a firing with nothing transparent still lists them.
@@ -2023,17 +1925,16 @@ public final class CgWorldRenderer {
                     cullSets(stage, recording, view, CULL_PASSES);
                 }
                 CgTrace.Zone passes = CgTrace.zone(CgChannels.WORLD, REC_PASSES);
-                if (prepass) recordPass(stage, recording, constants, OPAQUE_STATE, true, false, view, null, false);
+                if (prepass) recordPass(stage, recording, constants, OPAQUE_STATE, true, false, view, false);
                 if (halfDrawn > 0) recordHalf(stage, recording, view);
                 volumeOut = volumeDrawn > 0 ? recordVolumes(stage, recording, view) : null;
-                if (emission != null) recordEmission(stage, recording, view, emission, EMIT_BEFORE);
                 if (distorting > 0) distortion.recordBends(stage, recording, hazes);
                 if (drawn > halfDrawn + volumeDrawn + afterDrawn + apartDrawn || volumeOut != null) {
                     recordPass(stage, recording, constants, which == OPAQUE ? OPAQUE_STATE : TRANSPARENT_STATE, false, false,
-                            view, emission, scene);
+                            view, scene);
                 }
                 if (distorting > 0) distortion.recordFinal(stage, recording, hazes);
-                if (afterDrawn > 0) recordPass(stage, recording, constants, TRANSPARENT_STATE, false, true, view, emission, scene);
+                if (afterDrawn > 0) recordPass(stage, recording, constants, TRANSPARENT_STATE, false, true, view, scene);
                 if (apartDrawn > 0) recordSeparate(stage, recording, view, constants);
                 passes.close();
             }
@@ -2041,7 +1942,6 @@ public final class CgWorldRenderer {
             if (scene) recordGradeLayers(stage, recording, view, constants);
             if (opaqueScene) sceneTarget.recordOpaqueOut(stage);
             CgTrace.Zone after = CgTrace.zone(CgChannels.WORLD, REC_AFTER);
-            if (which == TRANSPARENT && !scene) recordEmission(stage, recording, view, emission, emission != null ? EMIT_AFTER : EMIT_ALL);
             if (which == TRANSPARENT && stage.resources().has(CgFrameKeys.SUBJECT_READ)) {
                 recordSubject(stage, recording, view, stage.resources().get(CgFrameKeys.SUBJECT_READ));
             }
@@ -2208,57 +2108,25 @@ public final class CgWorldRenderer {
         return exponent == 0 ? 0 : Math.round(Math.scalb((float) (1024 + (half & 0x3ff)), exponent - 25));
     }
 
-    /** {@link #recordEmission}'s parts: every glow, or those whose colour draws before the transparent pass, or after. */
-    private static final int EMIT_ALL = 0, EMIT_BEFORE = 1, EMIT_AFTER = 2;
-
-    /**
-     * Every visible draw with an Emissive pass, opaque or transparent, into the emission target hidden by the stage's
-     * depth, published as {@link CgFrameKeys#EMISSION}. After the transparent pass, so it glows over everything; into a
-     * merged emission, the glows whose colour draws before that pass (opaque and half-size draws) go before it too, so
-     * the surfaces it draws over them cover them there as well ({@code CgPipeline.emissionCover}). What nothing reads
-     * (bloom off, or below its quality) the graph culls, with its depth copy.
-     */
-    private void recordEmission(CgStageFrame stage, CgRecording recording, CgHostView view, @Nullable CgGraphTexture merged,
-                                int part) {
-        int recorded = markGlows(view, merged, part);
-        if (merged != null) stage.resources().put(CgFrameKeys.EMISSION, merged);
-        if (recorded == 0) return;
-
-        CgGraphTexture into = merged;
-        if (into == null) {
-            float scale = emissionScale();
-            int w = Math.max(1, (int) (targetWidth * scale)), h = Math.max(1, (int) (targetHeight * scale));
-            if (emissionTarget == null || emissionTarget.getWidth() != w || emissionTarget.getHeight() != h) {
-                emissionTarget = CgGraphTexture.transientTexture("cg_emission", new CgTextureDesc(w, h, EMISSION_FORMAT));
-            }
-            into = emissionTarget;
-        }
-        recordGlows(stage, recording, view, into, merged != null);
-        stage.resources().put(CgFrameKeys.EMISSION, into);
-    }
+    /** {@link #markGlows}'s parts: every glow, or those whose colour draws before the transparent pass. */
+    private static final int EMIT_ALL = 0, EMIT_BEFORE = 1;
 
     /**
      * What the hitting effect glows with, for an impact frame ({@link CgFrameKeys#SUBJECT}), while the post stack asks
-     * ({@link CgFrameKeys#SUBJECT_READ}): with a key, what {@link #recordOwnedSubject} drew; else the emission target if
-     * one was drawn, else every visible glow drawn as the emission would be, into a quarter-size target. Under the HDR
-     * scene that is the only time glows are drawn apart.
+     * ({@link CgFrameKeys#SUBJECT_READ}): with a key, what {@link #recordOwnedSubject} drew; else every visible glow,
+     * into a quarter-size target. The only time glows are drawn apart from the scene.
      */
     private void recordSubject(CgStageFrame stage, CgRecording recording, CgHostView view, int key) {
         if (key != 0) {
             if (ownedSubjectFrame == frame) stage.resources().put(CgFrameKeys.SUBJECT, ownedSubject);
             return;
         }
-        CgGraphTexture emission = stage.resources().get(CgFrameKeys.EMISSION);
-        if (emission != null) {
-            stage.resources().put(CgFrameKeys.SUBJECT, emission);
-            return;
-        }
-        if (markGlows(view, null, EMIT_ALL) == 0) return;
+        if (markGlows(view, EMIT_ALL) == 0) return;
         int w = Math.max(1, (int) (targetWidth * 0.25f)), h = Math.max(1, (int) (targetHeight * 0.25f));
         if (subjectTarget == null || subjectTarget.getWidth() != w || subjectTarget.getHeight() != h) {
             subjectTarget = CgGraphTexture.transientTexture("cg_subject", new CgTextureDesc(w, h, EMISSION_FORMAT));
         }
-        recordGlows(stage, recording, view, subjectTarget, false);
+        recordGlows(stage, recording, view, subjectTarget);
         stage.resources().put(CgFrameKeys.SUBJECT, subjectTarget);
     }
 
@@ -2439,23 +2307,21 @@ public final class CgWorldRenderer {
     }
 
     /**
-     * The glows {@link #emits} marks into {@code into}, hidden by the stage's depth, after clearing it unless
-     * {@code merged} (the transparent passes already wrote into it); drawn apart, each transparent surface covers them too.
+     * The glows {@link #emits} marks into {@code into}, cleared, hidden by the stage's depth; each transparent surface
+     * covers those behind it too ({@code CgPipeline.emissionOccluder}).
      */
-    private void recordGlows(CgStageFrame stage, CgRecording recording, CgHostView view, CgGraphTexture into, boolean merged) {
+    private void recordGlows(CgStageFrame stage, CgRecording recording, CgHostView view, CgGraphTexture into) {
         cullSets(stage, recording, view, CULL_EMITTING);
         stage.constants().write(constantsBlock, 0);
         emissionConstants.read(constantsBlock, 0).resolution(into.getWidth(), into.getHeight());
 
-        CgRasterPass glow = recording.raster(into, merged ? CgLoad.load() : CLEAR,
-                emissionConstants, EMISSIVE_STATE, CgOrder.SORTED)
+        CgRasterPass glow = recording.raster(into, CLEAR, emissionConstants, EMISSIVE_STATE, CgOrder.SORTED)
                 .sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT, stage.target()).timed(GPU_EMISSION);
         mediated(glow);
         CgChunkBuilder chunks = recording.chunks().begin();
         for (int i = 0; i < count; i++) {
-            // Drawn on its own, the emission takes each transparent surface's cover too, in the glows' order: what
-            // the merged emission's surfaces write beside their colour.
-            boolean covers = !merged && (phase[i] == FORWARD || phase[i] == AFTER)
+            // Each transparent surface's cover too, in the glows' order.
+            boolean covers = (phase[i] == FORWARD || phase[i] == AFTER)
                     && queues[i] >= CgRenderQueue.TRANSPARENT_THRESHOLD && queues[i] < CgRenderQueue.OVERLAY_THRESHOLD;
             if (!emits[i] && !covers) continue;
             modelOf(i, view);
@@ -2466,7 +2332,7 @@ public final class CgWorldRenderer {
                     CgPipeline occluder = forward.emissionOccluder();
                     if (occluder != null) emissionDraw(chunks, occluder, link, recording, i);
                 }
-                if (!emits[i] || !link.hasEmissivePass() || merged && this.merged[i] && foldsEmission(link)) continue;
+                if (!emits[i] || !link.hasEmissivePass()) continue;
                 CgPipeline pipeline = link.pipeline(CgRenderPassVariant.EMISSIVE, CgInstanceKind.OBJECT);
                 if (pipeline != null) emissionDraw(chunks, pipeline, link, recording, i);
             }
@@ -2476,18 +2342,16 @@ public final class CgWorldRenderer {
     }
 
     /**
-     * Marks {@link #emits}: the visible draws with a glow in {@code part}, less those {@code merged} drew whole; answers
-     * how many. Counts every visible glow, but for a merged emission's {@link #EMIT_BEFORE}, which its second part follows.
+     * Marks {@link #emits}: the visible draws with a glow in {@code part}; answers how many, and counts every visible glow.
      */
-    private int markGlows(CgHostView view, @Nullable CgGraphTexture merged, int part) {
+    private int markGlows(CgHostView view, int part) {
         if (emits.length < meshes.length) emits = new boolean[meshes.length];
         int emitting = 0, recorded = 0;
         for (int i = 0; i < count; i++) {
             int queue = queues[i];
             // A transparent draw was classified for this stage; an opaque one is classified again, its pass recorded.
             boolean e = queue < CgRenderQueue.OVERLAY_THRESHOLD && emissions[i] > 0f && emitsLight(materials[i])
-                    && (queue >= CgRenderQueue.TRANSPARENT_THRESHOLD ? phase[i] != SKIP : classify(i, OPAQUE, view) != SKIP)
-                    && (merged == null || !allMerged(i));
+                    && (queue >= CgRenderQueue.TRANSPARENT_THRESHOLD ? phase[i] != SKIP : classify(i, OPAQUE, view) != SKIP);
             if (e) emitting++;
             // A volume's glow folded into its light is drawn there.
             if (phase[i] == VOLUME && volumeFolds && allFold(i)) e = false;
@@ -2496,7 +2360,7 @@ public final class CgWorldRenderer {
             emits[i] = e;
             if (e) recorded++;
         }
-        if (merged == null || part != EMIT_BEFORE) CgTrace.counter(CgChannels.WORLD, "world.emissiveDraws", emitting);
+        CgTrace.counter(CgChannels.WORLD, "world.emissiveDraws", emitting);
         return recorded;
     }
 
@@ -2506,7 +2370,7 @@ public final class CgWorldRenderer {
      * they glow on. A transparent draw's glow follows its own draw in that pass ({@link #recordPass}).
      */
     private void recordSceneGlows(CgStageFrame stage, CgRecording recording, CgHostView view) {
-        if (markGlows(view, null, EMIT_BEFORE) == 0) return;
+        if (markGlows(view, EMIT_BEFORE) == 0) return;
         cullSets(stage, recording, view, CULL_EMITTING);
         CgRasterPass glow = recording.raster(stage.target(), CgLoad.load(), stage.constants().sceneGlow(sceneEmission),
                         EMISSIVE_STATE, CgOrder.SORTED)
@@ -2539,40 +2403,6 @@ public final class CgWorldRenderer {
     }
 
     /**
-     * The target-sized emission the transparent passes write glows into beside the target, after a pass clearing it,
-     * with {@link #merged} saying which draws do; null where none does, or the target is the default framebuffer
-     * (1.7.10 without framebuffers), which takes no second attachment, or the device cannot mask the other draws'
-     * second slot alone.
-     */
-    @Nullable
-    private CgGraphTexture mergedEmission(CgStageFrame stage, CgRecording recording) {
-        if (merged.length < meshes.length) merged = new boolean[meshes.length];
-        Arrays.fill(merged, 0, count, false);
-        mergedDraws = 0;
-        if (!mergeEmission || !CgCapabilities.detect().independentBlend() || stage.resources().has(CgFrameKeys.SCENE)
-                || stage.host().mainFramebuffer() <= 0 || !stage.resources().has(CgFrameKeys.EMISSION_READ)
-                || CgRasterPass.refusesAttachment(stage.host().mainFramebuffer())) return null;
-        for (int i = 0; i < count; i++) {
-            if (phase[i] != FORWARD && phase[i] != AFTER || queues[i] >= CgRenderQueue.OVERLAY_THRESHOLD || emissions[i] <= 0f) continue;
-            merged[i] = true;
-            for (CgMaterial link = materials[i]; link != null; link = link.getNextPass()) {
-                if (foldsEmission(link)) mergedDraws++;
-            }
-        }
-        if (mergedDraws == 0) return null;
-        int w = Math.max(1, (int) targetWidth), h = Math.max(1, (int) targetHeight);
-        if (emissionFull == null || emissionFull.getWidth() != w || emissionFull.getHeight() != h) {
-            emissionFull = CgGraphTexture.transientTexture("cg_emission_full", new CgTextureDesc(w, h, EMISSION_FORMAT));
-        }
-        recording.raster(emissionFull, CLEAR, stage.constants(), null, CgOrder.SORTED).end();
-        if (!mergeNoted) {
-            mergeNoted = true;
-            LOGGER.info("Glows merge into their surfaces' draws: an emission of {}x{} beside framebuffer {}", w, h, stage.host().mainFramebuffer());
-        }
-        return emissionFull;
-    }
-
-    /**
      * The normal target the opaque pass writes beside the host's target this firing, cleared, and handed to the world
      * lights; null where neither they (casting shadows) nor a reader ({@link CgFrameKeys#WORLD_NORMALS_READ}) asks, or
      * the host's framebuffer takes no second attachment, which is warned once: the lights then rebuild normals from depth.
@@ -2599,22 +2429,6 @@ public final class CgWorldRenderer {
         recording.raster(normalTarget, CLEAR, stage.constants(), null, CgOrder.SORTED).end();
         pointLights.normals(normalTarget);
         return normalTarget;
-    }
-
-    /** Whether a link's Emissive pass is drawn by its Forward draw ({@code CgPipeline.emissionTarget}). */
-    private static boolean foldsEmission(CgMaterial link) {
-        if (!link.hasEmissivePass()) return false;
-        CgPipeline forward = link.pipeline(CgInstanceKind.OBJECT);
-        return forward != null && forward.emissionTarget() != null;
-    }
-
-    /** Whether every Emissive pass of draw {@code i}'s chain was drawn by its Forward draws. */
-    private boolean allMerged(int i) {
-        if (!merged[i]) return false;
-        for (CgMaterial link = materials[i]; link != null; link = link.getNextPass()) {
-            if (link.hasEmissivePass() && !foldsEmission(link)) return false;
-        }
-        return true;
     }
 
     /**
@@ -2946,14 +2760,12 @@ public final class CgWorldRenderer {
      * where it merges ({@link CgPipeline#sceneFold}), else as a draw after it at its key.
      */
     private void recordPass(CgStageFrame stage, CgRecording recording, CgPassConstants constants, CgRenderState state,
-                            boolean depthOnlyPass, boolean after, CgHostView view, @Nullable CgGraphTexture emission,
-                            boolean sceneGlows) {
+                            boolean depthOnlyPass, boolean after, CgHostView view, boolean sceneGlows) {
         CgRasterPass pass = recording.raster(stage.target(), CgLoad.load(), constants, state, CgOrder.SORTED)
                 .sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT)
                 .sceneColor(CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT)
                 .texture(CgBindingPoints.LIGHTMAP_TEXTURE_UNIT, stage.host().textures().lightmapTexture());
         if (!depthOnlyPass) mediated(pass);
-        if (emission != null) pass.attachmentIfTaken(emission);
         boolean normals = normalsInto != null && state == OPAQUE_STATE && !depthOnlyPass;
         if (normals) pass.attachmentIfTaken(normalsInto);
         CgChunkBuilder chunks = recording.chunks().begin();
@@ -2979,13 +2791,6 @@ public final class CgWorldRenderer {
                     continue;
                 }
                 if (pipeline == null || (!depthOnlyPass && pipeline.state().writesNothing())) continue;
-                if (emission != null && !depthOnlyPass) {
-                    // A surface that does not glow covers the glows behind it as it covers their colour, so bloom
-                    // does not lay them back over it.
-                    CgPipeline glowing = merged[i] && link.hasEmissivePass() ? pipeline.emissionTarget() : null;
-                    if (glowing == null) glowing = pipeline.emissionCover();
-                    if (glowing != null) pipeline = glowing;
-                }
                 if (normals) {
                     CgPipeline normalled = pipeline.normalTarget();
                     if (normalled != null) pipeline = normalled;

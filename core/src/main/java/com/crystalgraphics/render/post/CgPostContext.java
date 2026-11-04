@@ -15,10 +15,10 @@ import com.crystalgraphics.render.stage.CgStageFrame;
  * may feed. One instance, refilled every firing; never hold it past {@link CgPostEffect#record}.
  *
  * <pre>{@code
- * CgGraphTexture emission = post.resources().get(CgFrameKeys.EMISSION);
+ * CgGraphTexture subject = post.resources().get(CgFrameKeys.SUBJECT);
  * CgRasterPass pass = post.recording().raster(post.target(), CgLoad.load(), post.constants(), null, CgOrder.SORTED);
  * post.composite().bloom(level1, intensity);   // at BEFORE_COMPOSITE: an input of the one composite pass
- * CgGraphTexture bent = post.distorted(emission);   // a side input bent as the scene was
+ * CgGraphTexture bent = post.distorted(subject);   // a side input bent as the scene was
  * }</pre>
  */
 public final class CgPostContext {
@@ -70,11 +70,11 @@ public final class CgPostContext {
 
     /**
      * {@code input} bent by this firing's distortion ({@link CgFrameKeys#DISTORTION}), as the scene beneath it was: for
-     * an effect reading a side input of the scene (emission, a mask) rather than the target, which is bent already.
+     * an effect reading a side input of the scene (a mask, a subject) rather than the target, which is bent already.
      * {@code input} itself when nothing distorted; bent once however many effects ask.
      *
      * <pre>{@code
-     * CgGraphTexture emission = post.distorted(post.resources().get(CgFrameKeys.EMISSION));
+     * CgGraphTexture subject = post.distorted(post.resources().get(CgFrameKeys.SUBJECT));
      * }</pre>
      */
     public CgGraphTexture distorted(CgGraphTexture input) {

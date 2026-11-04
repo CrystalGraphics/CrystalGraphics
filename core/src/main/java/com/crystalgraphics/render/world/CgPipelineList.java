@@ -26,7 +26,7 @@ import com.github.bsideup.jabel.Desugar;
 /**
  * Every pipeline the engine keeps built: what a {@link CgPipelinePrecache} collector or request names. A material is
  * kept in every form the world renderer draws it with ({@link CgWorldRenderer#precache}), for the settings in force; a
- * kernel's program once. A settings change (the HDR scene, merged emission, half size) re-warms every material under
+ * kernel's program once. A settings change (merged emission, half size) re-warms every material under
  * the new settings before the renderer applies them, so the first frame after a toggle compiles nothing. Unreal's PSO
  * precache, by material and vertex factory ({@code UMaterialInstance::PrecachePSOs}, MaterialInstance.cpp:2918).
  *
@@ -56,13 +56,12 @@ public final class CgPipelineList {
     /**
      * What decides which of a material's pipelines the world renderer draws.
      *
-     * @param hdrScene       the transparent stage draws into the linear HDR scene
-     * @param mergeEmission  a foldable glow is drawn in its colour's draw (where the device allows)
+     * @param mergeEmission  a foldable glow is drawn in its colour's draw
      * @param joins          runs of draws join into multi-draws: each pipeline's multi-draw form too
      * @param halfResolution a half-size draw is drawn at half size, with its passes
      */
     @Desugar
-    public record Settings(boolean hdrScene, boolean mergeEmission, boolean joins, boolean halfResolution) {
+    public record Settings(boolean mergeEmission, boolean joins, boolean halfResolution) {
     }
 
     /** Starts or polls a material's pipelines under settings; whether all are built. */

@@ -64,8 +64,8 @@ CgHostView world = CgRenderStage.WORLD_OPAQUE.host().view();
 - **`frame.resources()` is the firing's blackboard**: a renderer publishes a resource under a static `CgFrameKey`
   and one recording later in the same firing reads it, as Filament's blackboard does. It empties when the firing
   executes, so a hand-off across firings (opaque to transparent, 1.7.10's second anaglyph firing) needs a resource
-  that outlives the frame. The engine's keys are `CgFrameKeys`: `EMISSION`, the world renderer's emission target;
-  `DISTORTION`, its distortion field once applied (`CgDistortionField`: an array and how many layers hold offsets); `OVERDRAW`, its overdraw count while that view is on; `SCENE`, the HDR scene while it is on; `CUSTOM_DEPTH`, Unreal's
+  that outlives the frame. The engine's keys are `CgFrameKeys`:
+  `DISTORTION`, its distortion field once applied (`CgDistortionField`: an array and how many layers hold offsets); `OVERDRAW`, its overdraw count while that view is on; `SCENE`, the HDR scene; `CUSTOM_DEPTH`, Unreal's
   CustomDepth and CustomStencil of the draws marked `customDepth` (`render/world/CLAUDE.md`); `WORLD_NORMALS`, our
   opaque surfaces' world normals, written in a frame whose opaque firing carries `WORLD_NORMALS_READ`; `CUSTOM_DATA`,
   their custom data and shading model, where `CUSTOM_DATA_READ` was put (`docs/SHADERS.md` § *What a post material
@@ -144,30 +144,21 @@ world.text(sign).at(x, y, z).rotation(facingSouth).anchor(0f, 0f).family(family)
   position, read once a frame per block (`CgWorldLight`); `.light(block, sky)` states it and `.fullBright()` lights
   it fully. Every world pass binds the host's lightmap, and its constants carry the sun and the fog
   (`CgWorldAtmosphere`, from `CgHostEnvironment`).
-- **Emission**: a material with an Emissive pass (`docs/SHADERS.md` § *The Emissive pass*) glows. After the
-  transparent pass that pass is drawn into the emission target, hidden by the scene's depth, and published as
-  `CgFrameKeys.EMISSION`; the post stack blooms it (§ *The post stack*). The target is R11G11B10F, at the tier's share of
-  the world's size (Low 0.25, Medium and High 0.5, Ultra 1); `world.emissionScale(scale)` overrides it. A draw's
-  `.emission(scale)` scales its glow (0 leaves it out), and a material's `_EmissionColor`/`_EmissionStrength` its
-  material's, both through `CG_EMISSION`. Where the target is a framebuffer of the host's and bloom will read the
-  emission (`CgFrameKeys.EMISSION_READ`, which the post stack puts), a transparent draw whose Emissive pass is codeless
-  on its Forward pass's blend draws its glow in the same draw, into an emission beside the target. That emission is the
-  target's size whatever the scale: 33 MB of transient R11G11B10F at 4K, against 8 MB at half size. A host target that
-  takes no second attachment (multisampled, scaled, framebuffer 0) is logged once and drawn the old way, and so is
-  every glow on a device without `independentBlend` (`CgCapabilities.independentBlend()`; Minecraft 26.2's device is
-  created with it where the GPU has it).
-  `world.mergeEmission(false)` draws every Emissive pass on its own again.
-- **The HDR scene** (the player's `CgGraphicsSettings.HDR`, on by default; `world.hdrScene(on)` overrides it for the
-  session, unsaved, as `-Dcrystalgraphics.world.hdrScene` does from launch; render-hdr-scene):
-  `WORLD_TRANSPARENT` draws into a linear RGBA16F scene beside the host's depth instead of the host's colour. Its first
+- **Emission**: a material with an Emissive pass (`docs/SHADERS.md` § *The Emissive pass*) glows: its glow is light
+  added into the HDR scene (below), hidden by the scene's depth and covered by what draws in front, and the post stack
+  blooms the scene's light past white (§ *The post stack*). A draw's `.emission(scale)` scales its glow (0 leaves it
+  out), and a material's `_EmissionColor`/`_EmissionStrength` its material's, both through `CG_EMISSION`. A transparent
+  draw whose Emissive pass is codeless on its Forward pass's blend folds its glow into the same draw
+  (`CgPipeline.sceneFold`); `world.mergeEmission(false)` draws every Emissive pass on its own.
+- **The HDR scene** (render-hdr-scene): `WORLD_TRANSPARENT` draws into a linear RGBA16F scene beside the host's depth instead of the host's colour. Its first
   pass decodes the host's colour into it and makes it the stage's target (`CgStageFrame.retarget`, `CgFrameKeys.SCENE`);
   the post stack's composite encodes it back, a pixel nothing changed returning byte for byte. Between the two, raw GL
   into the host's framebuffer is overwritten and `cg_SceneColor` reads linear HDR. Materials' sRGB colour is decoded as
   it is written (`docs/SHADERS.md` § *Lighting and fog*). Our opaque draws go into a linear scene too, as Unreal's
   base pass writes SceneColor: encoded back into the host's colour after the opaque stage, so what the host draws
   before the transparent stage blends over them as before, and kept wherever the host drew nothing over them, so an
-  unlit colour past white reaches bloom. Glows add into the scene itself, with no emission target, and
-  bloom takes the scene's light past `CgPostStack.get().bloom().threshold(t)` (1). Flipped live, it takes effect at the next firing: the harness and the demo bind it to G.
+  unlit colour past white reaches bloom. Glows add into the scene itself, and bloom takes the scene's light past
+  `CgPostStack.get().bloom().threshold(t)` (1). Until its programs are built, a firing has no scene and draws no glow.
 - **Half resolution**: a transparent draw marked `.halfResolution()` draws into a half-size target before the
   transparent pass, at a quarter of the pixels. Soft light that adds (`Blend ONE ONE`: a glow) is added over the target
   by a depth-aware upsample. A volume that covers (`Blend ONE ONE_MINUS_SRC_ALPHA`: smoke) is blended with its last

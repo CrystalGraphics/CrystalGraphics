@@ -149,14 +149,8 @@ public final class CgMaterialShaderCompiler {
     public static final String DEBUG_OVERDRAW = "CG_DEBUG_OVERDRAW";
 
     /**
-     * The engine's keyword for a Forward pass that also writes its Emissive pass's glow at location 1, into a target's
-     * second attachment, in the same draw. Compiled only where {@link #emissionMerge} is not {@code NONE}.
-     */
-    public static final String EMISSION_TARGET = "CG_EMISSION_TARGET";
-
-    /**
-     * The engine's keyword for a Forward pass drawn into an emission target alone: black at its colour's alpha, hidden
-     * by the scene's depth as an Emissive pass is, so its blend covers the glows drawn behind it there.
+     * The engine's keyword for a Forward pass drawn into a glow target alone (an impact frame's subject): black at its
+     * colour's alpha, hidden by the scene's depth as an Emissive pass is, so its blend covers the glows drawn behind it.
      */
     public static final String EMISSION_COVER = "CG_EMISSION_COVER";
 
@@ -205,7 +199,7 @@ public final class CgMaterialShaderCompiler {
     /** A fragment naming the depth it marched to ({@code CG_VOLUME_DEPTH(eye)}). */
     private static final Pattern NAMES_VOLUME_DEPTH = Pattern.compile("\\bCG_VOLUME_DEPTH\\b");
 
-    /** Code applying {@code CG_EMISSION} itself; not {@code CG_EMISSION_TARGET}. */
+    /** Code applying {@code CG_EMISSION} itself. */
     private static final Pattern READS_EMISSION = Pattern.compile("\\bCG_EMISSION\\b");
 
     /** A fragment naming its glow ({@code CG_GLOW(rgb)}), which then replaces the colour in every glow it makes. */
@@ -213,7 +207,7 @@ public final class CgMaterialShaderCompiler {
     /** A fragment naming its emissive ({@code CG_SURFACE_EMISSIVE(rgb)}), added to its colour after lighting. */
     private static final Pattern SURFACE_EMISSIVE = Pattern.compile("\\bCG_SURFACE_EMISSIVE\\b");
 
-    /** Whether, and how, a shader's Emissive pass folds into its Forward draw as a second output. */
+    /** Whether, and how, a shader's Emissive pass folds into its Forward draw. */
     public enum EmissionMerge {
         /** It stays a draw of its own. */
         NONE,
@@ -223,13 +217,7 @@ public final class CgMaterialShaderCompiler {
          * It adds (ONE ONE) under a premultiplied Forward pass (ONE, ONE_MINUS_SRC_ALPHA): written with an alpha of 0,
          * ONE_MINUS_SRC_ALPHA is 1 and the shared blend adds.
          */
-        ADDED,
-        /**
-         * No glow of its own merges: black at the colour's alpha, so the shared blend covers the glow beneath as it
-         * covers the colour. What a Forward pass compiled with {@link #EMISSION_TARGET} writes when
-         * {@link #emissionMerge} answers {@code NONE}; never answered by it.
-         */
-        COVER
+        ADDED
     }
 
     /**
@@ -766,16 +754,11 @@ public final class CgMaterialShaderCompiler {
         appendGlobalDecls(sb, codeLines);
 
         // Fragment output declarations (single-output or MRT)
-        EmissionMerge merge = EmissionMerge.NONE;
-        if (config.activeKeywords().contains(EMISSION_TARGET) && CgParsedPass.LIGHT_MODE_FORWARD.equals(pass.lightMode())) {
-            merge = emissionMerge(shader);
-            if (merge == EmissionMerge.NONE && !pass.fragOutput().isMrt()) merge = EmissionMerge.COVER;
-        }
-        boolean volume = config.activeKeywords().contains(VOLUME_TARGET) && merge == EmissionMerge.NONE
+        boolean volume = config.activeKeywords().contains(VOLUME_TARGET)
                 && CgParsedPass.LIGHT_MODE_FORWARD.equals(pass.lightMode()) && !pass.fragOutput().isMrt();
-        appendFragmentOutputDeclarations(sb, pass, merge);
+        appendFragmentOutputDeclarations(sb, pass);
         if (volume) sb.append("layout(location = 1) out vec4 _cg_volumeDepth;\n");
-        normals &= !volume && merge == EmissionMerge.NONE;
+        normals &= !volume;
         if (normals) sb.append("layout(location = 1) out vec4 _cg_normalOut;\n");
 
         // User fragment function
@@ -784,11 +767,11 @@ public final class CgMaterialShaderCompiler {
         appendFragmentUserFunction(sb, pass);
 
         // Generated main()
-        boolean cover = config.activeKeywords().contains(EMISSION_COVER) && merge == EmissionMerge.NONE
+        boolean cover = config.activeKeywords().contains(EMISSION_COVER)
                 && CgParsedPass.LIGHT_MODE_FORWARD.equals(pass.lightMode()) && !pass.fragOutput().isMrt();
-        boolean fold = config.activeKeywords().contains(SCENE_FOLD) && merge == EmissionMerge.NONE && !cover
+        boolean fold = config.activeKeywords().contains(SCENE_FOLD) && !cover
                 && CgParsedPass.LIGHT_MODE_FORWARD.equals(pass.lightMode()) && sceneFolds(shader);
-        appendFragmentMain(sb, v2fFields, pass, shader, config.activeKeywords().contains(DEBUG_OVERDRAW), merge, cover, fold);
+        appendFragmentMain(sb, v2fFields, pass, shader, config.activeKeywords().contains(DEBUG_OVERDRAW), cover, fold);
         if (volume) sb.append("#undef main\nvoid main() {\n  _cg_volumeEye = 0.0;\n  _cg_main();\n  _cg_volumeDepth = vec4(_cg_volumeEye, 0.0, 0.0, _cg_volumeEye > 0.0 ? 1.0 : 0.0);\n}\n");
         if (normals) {
             // First in the generated main, before any return in it: a pixel discarded later writes nothing anyway.
@@ -803,7 +786,7 @@ public final class CgMaterialShaderCompiler {
             int close = sb.lastIndexOf("}");
             sb.insert(close, "  _cg_fragColor.a = 1.0;\n");
         }
-        if (config.activeKeywords().contains(CUSTOM_DATA_TARGET) && !normals && !volume && merge == EmissionMerge.NONE
+        if (config.activeKeywords().contains(CUSTOM_DATA_TARGET) && !normals && !volume
                 && CgParsedPass.LIGHT_MODE_FORWARD.equals(pass.lightMode()) && !pass.fragOutput().isMrt()) {
             // Last in the generated main, over the colour: x the ID byte and the model and type above it, y the base
             // colour's three bytes, each an integer a float holds exactly.
@@ -1086,10 +1069,8 @@ public final class CgMaterialShaderCompiler {
         sb.append("}\n");
     }
 
-    private static void appendFragmentOutputDeclarations(StringBuilder sb, CgParsedPass pass, EmissionMerge merge) {
-        if (merge != EmissionMerge.NONE) {
-            sb.append("layout(location = 0) out vec4 _cg_fragColor;\nlayout(location = 1) out vec4 _cg_emission;\n");
-        } else if (!pass.fragOutput().isMrt()) {
+    private static void appendFragmentOutputDeclarations(StringBuilder sb, CgParsedPass pass) {
+        if (!pass.fragOutput().isMrt()) {
             sb.append("out vec4 _cg_fragColor;\n");
         } else {
             List<String> fieldNames = pass.fragOutput().fieldNames();
@@ -1239,14 +1220,13 @@ public final class CgMaterialShaderCompiler {
      * Dims the pass's output by what gets through the world's media between the eye and the fragment, as its blend
      * takes it: light added or premultiplied whole, a colour blended by its alpha through that alpha.
      */
-    private static void appendMediaDim(StringBuilder sb, CgParsedPass pass, boolean emissive, EmissionMerge merge) {
+    private static void appendMediaDim(StringBuilder sb, CgParsedPass pass, boolean emissive) {
         CgBlendState blend = pass.renderState().getBlend();
         boolean whole = emissive || blend != null && blend.enabled() && blend.srcRgb() == CgGL.GL_ONE;
         boolean alpha = !emissive && blend != null && blend.enabled() && blend.srcRgb() == CgGL.GL_SRC_ALPHA;
         if (!whole && !alpha) return;
         sb.append("  float _cg_media = cg_MediaTransmit(gl_FragCoord.xy / CG_RESOLUTION, cg_LinearEyeDepth(gl_FragCoord.z));\n");
         sb.append(whole ? "  _cg_fragColor *= _cg_media;\n" : "  _cg_fragColor.a *= _cg_media;\n");
-        if (merge == EmissionMerge.SAME_BLEND || merge == EmissionMerge.ADDED) sb.append("  _cg_emission.rgb *= _cg_media;\n");
     }
 
     /**
@@ -1264,7 +1244,7 @@ public final class CgMaterialShaderCompiler {
 
     private static void appendFragmentMain(StringBuilder sb, List<CgShaderParser.V2fField> fields,
                                             CgParsedPass pass, CgParsedShader shader, boolean overdraw,
-                                            EmissionMerge merge, boolean cover, boolean fold) {
+                                            boolean cover, boolean fold) {
         sb.append("void main() {\n");
         sb.append("  v2f _v2f_local;\n");
         for (CgShaderParser.V2fField f : fields) {
@@ -1301,13 +1281,6 @@ public final class CgMaterialShaderCompiler {
             boolean named = NAMES_GLOW.matcher(pass.fragmentBody()).find();
             String glow = named ? "vec4(_cg_glowRgb, _cg_fragColor.a)" : "_cg_fragColor";
             if (emissive && named) sb.append("  _cg_fragColor.rgb = _cg_glowRgb;\n");
-            if (merge != EmissionMerge.NONE && merge != EmissionMerge.COVER) {
-                // What the Emissive pass would write: unlit, faded by fog as an added colour is.
-                sb.append("  _cg_emission = ").append(glow).append(";\n");
-                if (!READS_EMISSION.matcher(pass.fragmentBody()).find()) sb.append("  _cg_emission.rgb *= CG_EMISSION;\n");
-                if (shader.fogged()) sb.append("  _cg_emission.rgb *= 1.0 - cg_FogAmount(cg_FragmentDistance());\n");
-                if (merge == EmissionMerge.ADDED) sb.append("  _cg_emission.a = 0.0;\n");
-            }
             if (fold) {
                 // What the Emissive pass would add into the scene: unlit, times the scene's gain, faded by fog.
                 sb.append("  vec4 _cg_glow = ").append(glow).append(";\n");
@@ -1329,9 +1302,8 @@ public final class CgMaterialShaderCompiler {
                 sb.append("  _cg_fragColor.rgb += _cg_surfaceEmissive;\n");
             }
             if ((forward || emissive) && shader.fogged()) sb.append("  _cg_fragColor = cg_Fog(_cg_fragColor);\n");
-            if (merge == EmissionMerge.COVER) sb.append("  _cg_emission = vec4(0.0, 0.0, 0.0, _cg_fragColor.a);\n");
             if (cover) sb.append("  _cg_fragColor = vec4(0.0, 0.0, 0.0, _cg_fragColor.a);\n");
-            if (forward && !shader.linearColor() && merge == EmissionMerge.NONE && !cover) {
+            if (forward && !shader.linearColor() && !cover) {
                 appendSceneDecode(sb, pass);
                 // Held at white, as the 8-bit target holds it: its glow carries the light past, or it counts twice.
                 if (shader.getPassByLightMode(CgParsedPass.LIGHT_MODE_EMISSIVE) != null) {
@@ -1344,15 +1316,12 @@ public final class CgMaterialShaderCompiler {
             } else if (fold) {
                 sb.append("  _cg_fragColor.rgb += _cg_glow.rgb;\n");
             }
-            if ((forward || emissive) && dimsInMedia(shader, pass)) appendMediaDim(sb, pass, emissive, merge);
+            if ((forward || emissive) && dimsInMedia(shader, pass)) appendMediaDim(sb, pass, emissive);
             // The draw's exposure scales linear light: a Linear colour, an Emissive pass, a merged glow. Never a modulate
             // factor, which is no light (BasePassPixelShader.usf skips PreExposure under MATERIALBLENDING_MODULATE)
             if (!cover && shader.engineBuffers().contains(CgShaderParser.ROWS)) {
                 if (emissive || forward && shader.linearLight() && fogMode(pass) != 3) {
                     sb.append("  _cg_fragColor.rgb *= _cg_Exposure;\n");
-                }
-                if (forward && (merge == EmissionMerge.SAME_BLEND || merge == EmissionMerge.ADDED)) {
-                    sb.append("  _cg_emission.rgb *= _cg_Exposure;\n");
                 }
             }
             if (forward && shader.linearLight() && !cover) appendTargetEncode(sb, pass);

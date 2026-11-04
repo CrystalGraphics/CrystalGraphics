@@ -182,13 +182,9 @@ Authoring: `docs/SHADERS.md` § *The Emissive pass*. What this package does with
   render state (step 7e'); with code, an absent `RenderState` defaults to `CgShaderParser.EMISSIVE_STATE`.
 - **Compiler**: `appendPassDefine` adds `CG_EMISSIVE_PASS`; the generated fragment `main` is unlit with fog mode 2,
   and discards behind the scene's depth unless the pass's depth state is test-on with `GL_ALWAYS`.
-- **Merged into the Forward draw**: `emissionMerge(shader)` says whether a codeless Emissive pass folds into the first
+- **Whether it merges**: `emissionMerge(shader)` says whether a codeless Emissive pass can fold into the first
   Forward pass: `SAME_BLEND`, or `ADDED` (ONE ONE under a premultiplied Forward pass), else `NONE` (code of its own, a
-  body naming `CG_EMISSIVE_PASS`, an MRT or opaque Forward pass, a different depth test or cull). Compiled with
-  `EMISSION_TARGET`, the Forward pass declares `_cg_fragColor` at location 0 and `_cg_emission` at 1, and writes the
-  Emissive pass's output there before lighting: times `CG_EMISSION`, faded by fog, its alpha 0 for `ADDED`. A
-  single-output Forward pass compiled with it whose Emissive pass does not merge, or that has none, is `COVER`: black
-  at the lit, fogged colour's alpha, so the shared blend covers the glow beneath.
+  body naming `CG_EMISSIVE_PASS`, an MRT or opaque Forward pass, a different depth test or cull).
   `CgEmissionMergeTest` holds the rule.
 - **Folded into the HDR scene**: where it merges and the Forward blend scales its source by ONE or SRC_ALPHA
   (`sceneFolds`), the Forward pass compiled with `SCENE_FOLD` keeps one output and adds the glow (times `CG_EMISSION`,
@@ -232,7 +228,7 @@ Authoring: `docs/SHADERS.md` § *Dimmed by the smoke in front*. `CgParsedShader.
 below Overlay reading the object record, unless tagged `"Media" = "Off"` (`unmediated`). `dimsInMedia(shader, pass)`
 adds that the fragment names no `CG_VOLUME_DEPTH`. Then `appendMediaDim` ends a single-output Forward or Emissive
 `main`, after the scene decode: `_cg_fragColor *= cg_MediaTransmit(...)` for an Emissive pass or a source blend of
-ONE, `.a *=` for SRC_ALPHA, nothing for any other; a merged emission (`SAME_BLEND`, `ADDED`) is dimmed with it.
+ONE, `.a *=` for SRC_ALPHA, nothing for any other.
 
 ## The Distortion pass
 

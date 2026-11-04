@@ -28,20 +28,19 @@ import com.crystalgraphics.trace.CgGpuTrace;
 import javax.annotation.Nullable;
 
 /**
- * The post stack's bloom: what the scene emits ({@link CgFrameKeys#EMISSION}), or under the HDR scene
- * ({@link CgFrameKeys#SCENE}) its light past {@link #threshold}, spread wide by a chain of raster passes
+ * The post stack's bloom: the HDR scene's ({@link CgFrameKeys#SCENE}) light past {@link #threshold}, spread wide by a chain of raster passes
  * ({@link CgBloomChain}) and added over the picture by the composite. Its settings are global, as every engine's are;
  * {@code CgPostStack.get().bloom()} is the instance.
  *
  * <pre>{@code
  * CgPostStack.get().bloom().intensity(1.5f);   // a brighter glow round every emissive thing
- * CgPostStack.get().bloom().intensity(0f);     // none: the world renderer's emission pass is then culled too
+ * CgPostStack.get().bloom().intensity(0f);     // none
  *
  * // Bevy's energy-conserving mode: the picture dimmed by the share the glow takes, so nothing gets brighter overall
  * CgPostStack.get().bloom().mode(CgBloom.Mode.ENERGY_CONSERVING).intensity(0.15f);
  * CgPostStack.get().bloom().tint(1f, 0.85f, 0.7f);   // a warm glow
  * CgPostStack.get().bloom().linear(true);            // composite in linear light, at the cost of a copy of the target
- * CgPostStack.get().bloom().threshold(0.8f);         // under the HDR scene: light past 0.8 blooms, not past 1
+ * CgPostStack.get().bloom().threshold(0.8f);         // light past 0.8 blooms, not past 1
  * }</pre>
  *
  * <ul>
@@ -153,7 +152,7 @@ public final class CgBloom implements CgPostEffect {
     @Override
     public boolean active(CgPostContext post) {
         return intensity > 0f && (post.resources().has(CgGradeLayers.KEY) || post.settings().bloom() > 0f
-                && (post.resources().has(CgFrameKeys.EMISSION) || post.resources().has(CgFrameKeys.SCENE)));
+                && post.resources().has(CgFrameKeys.SCENE));
     }
 
     @Override
@@ -161,11 +160,10 @@ public final class CgBloom implements CgPostEffect {
         CgGraphTexture scene = post.resources().get(CgFrameKeys.SCENE);
         CgGradeLayers layers = scene != null ? post.resources().get(CgGradeLayers.KEY) : null;
         if (layers != null) recordLayers(post, layers);
-        if (post.settings().bloom() <= 0f) return;
+        if (post.settings().bloom() <= 0f || scene == null) return;
         if (post.settings().bloomsGaussian()) {
-            // Unreal's layers: the setup on the half-size scene, or the emission halved; their tints carry the intensity
-            CgGraphTexture half = scene != null ? excess.record(post, scene, true, post.settings().bloomThreshold(), layers)
-                    : excess.record(post, post.distorted(post.resources().get(CgFrameKeys.EMISSION)), true, -1f, null);
+            // Unreal's layers: the setup on the half-size scene; their tints carry the intensity
+            CgGraphTexture half = excess.record(post, scene, true, post.settings().bloomThreshold(), layers);
             CgGraphTexture glow = half == null ? null : gaussian.record(post.recording(), half, post.settings(), post.constants());
             if (glow == null) return;
             post.resources().put(CHAIN, gaussian.levels());
@@ -173,9 +171,7 @@ public final class CgBloom implements CgPostEffect {
             if (linear) post.composite().linear();
             return;
         }
-        // Bent as the scene beneath was, or the glow sits unbent over every haze; the scene is bent already.
-        CgGraphTexture emission = scene != null ? excess.record(post, scene, false, threshold, layers)
-                : post.distorted(post.resources().get(CgFrameKeys.EMISSION));
+        CgGraphTexture emission = excess.record(post, scene, false, threshold, layers);
         if (emission == null) return;
         CgGraphTexture glow = chain.record(post.recording(), emission, post.constants(), CgGraphicsSettings.QUALITY.get());
         if (glow == null) return;

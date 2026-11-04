@@ -77,7 +77,7 @@ import java.util.function.Consumer;
  * <ul>
  *   <li>{@code BEFORE_TRANSLUCENCY} draws into the lit opaque scene before any transparent draw, so a glow is drawn
  *       over its result (Unreal's {@code BL_BeforeTranslucency}); it reads custom depth, normals and custom data.
- *       {@code AFTER_WORLD} draws into the scene, before every look: linear HDR under {@code CgWorldRenderer.hdrScene}.
+ *       {@code AFTER_WORLD} draws into the scene, before every look: linear HDR.
  *       {@code AFTER_COMPOSITE} draws over the final picture, in the target's encoding. {@code BEFORE_COMPOSITE} is
  *       refused: it feeds the composite.</li>
  *   <li>A shader reading {@code cg_SceneColor} or {@code cg_DepthBuffer} gets the target as it stands; tag it
@@ -86,9 +86,8 @@ import java.util.function.Consumer;
  *   <li>The weight is per draw ({@code POST_WEIGHT}), so animating it leaves the material's properties alone.</li>
  *   <li>A pass's target is RGBA16F, cleared before it draws. {@code CG_RESOLUTION} is still the screen's: a pass
  *       reading its input's texels asks {@code textureSize}.</li>
- *   <li>{@code Tags { "Emission" = "_Mask" }} binds the firing's emission (what glows, bent with the scene) to the
- *       {@code sampler2D} it names, or under the HDR scene the scene itself, where glows are added: the mask a glare
- *       reads.</li>
+ *   <li>{@code Tags { "Emission" = "_Mask" }} binds the scene, where glows are added, to the {@code sampler2D} it
+ *       names: the mask a glare reads.</li>
  * </ul>
  */
 public final class CgPostMaterial implements CgPostEffect {
@@ -190,9 +189,8 @@ public final class CgPostMaterial implements CgPostEffect {
         CgRecording recording = post.recording();
         if (emissionInput != null) {
             CgGraphTexture scene = post.resources().get(CgFrameKeys.SCENE);
-            CgGraphTexture emission = scene != null ? scene : post.distorted(post.resources().get(CgFrameKeys.EMISSION));
-            if (emission == null) return;
-            bind(emissionInput, emission);
+            if (scene == null) return;
+            bind(emissionInput, scene);
         }
         if (material.handedScene()) {
             // Unreal's SceneTextures, from what this firing published; the fallbacks read stencil 0, no normal, no data.

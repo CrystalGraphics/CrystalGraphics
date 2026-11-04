@@ -36,7 +36,7 @@ import javax.annotation.Nullable;
  * The post-processing stack: what runs after the world renderer has drawn the scene, on the same stage firing. Every
  * active {@link CgPostEffect} records at its {@link CgPostPoint}, then one composite pass lays the firing's looks over
  * the target, as every production engine composes bloom inside its tonemap or uber pass. The world renderer produces
- * (it publishes {@code CgFrameKeys.EMISSION}); the stack consumes.
+ * (it publishes {@code CgFrameKeys.SCENE}); the stack consumes.
  *
  * <pre>{@code
  * CgPostStack post = CgPostStack.get();
@@ -161,12 +161,11 @@ public final class CgPostStack {
     public static final int DEMAND_ORDER = 0;
 
     /**
-     * Blends the volumes and, while bloom will draw, says the emission will be read ({@link CgFrameKeys#EMISSION_READ});
-     * while a drawn impact frame shows, the subject ({@link CgFrameKeys#SUBJECT_READ}).
+     * Blends the volumes and, while a drawn impact frame shows, says the subject will be read
+     * ({@link CgFrameKeys#SUBJECT_READ}).
      */
     private void demand(CgStageFrame stage) {
         resolve(stage);
-        if (bloom.intensity() * settings.bloom() > 0f) stage.resources().put(CgFrameKeys.EMISSION_READ, Boolean.TRUE);
         if (looks.drawsImpact(settings)) stage.resources().put(CgFrameKeys.SUBJECT_READ, settings.impactSubject());
         if (readsScene()) stage.resources().put(CgFrameKeys.CUSTOM_DATA_READ, Boolean.TRUE);
         if (effects.length > 0 && effects[0].point() == CgPostPoint.BEFORE_TRANSLUCENCY) {
@@ -180,7 +179,7 @@ public final class CgPostStack {
     private boolean recordedBefore;
 
     private void recordBeforeTranslucency(CgStageFrame stage) {
-        // Without the HDR scene there is no linear scene to grade: they record with AFTER_WORLD (11's LDR rule).
+        // No scene yet (its programs unbuilt): nothing linear to grade, so they record with AFTER_WORLD.
         if (!stage.resources().has(CgFrameKeys.SCENE)) return;
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, "post.beforeTranslucency")) {
             context.begin(stage, settings);

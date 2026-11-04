@@ -113,8 +113,7 @@ rec.readback(voxels, 0, 0, 0, 40, 128, 96, 2, data -> check(data));         // s
 
 **More than one colour attachment.** A graph texture whose format has `color(1, ...)` and up is drawn into whole by a
 raster pass: every slot is a draw buffer (`CgFrameBuffer` sets them at creation), so a fragment's `: RT1` output lands
-in slot 1. `texture.attachment(k)` samples slot k, ordered like the texture itself. `--mode=mrt-emission` is the gate:
-colour and emission in one pass against each alone, on `gl` and `vulkan` with synchronization validation.
+in slot 1. `texture.attachment(k)` samples slot k, ordered like the texture itself.
 
 ```java
 CgFrameBufferFormat both = CgFrameBufferFormat.builder("scene+glow")
@@ -134,13 +133,13 @@ int reads = rec.bindings().withTexture(material.captureBindings(rec.bindings()),
 beside a target it may not own, the current one included, keeping what it holds. Beside the current target the executor
 binds a framebuffer of ours with the host's colour and depth attached (`CgComposedTargets`): what differs attached at
 each bind, everything detached at the execution's end, so the host's own framebuffer is never changed and a target the
-host remade under the same names (between executions, never within one) is never drawn through stale. The world's merged emission is the user (`render/world/CLAUDE.md`).
+host remade under the same names (between executions, never within one) is never drawn through stale. The world's normal target is the user (`render/world/CLAUDE.md`).
 
 ```java
-recording.raster(emission, CgLoad.clear(0, 0, 0, 0), constants, null, CgOrder.SORTED).end();   // cleared first
+recording.raster(normals, CgLoad.clear(0, 0, 0, 0), constants, null, CgOrder.SORTED).end();   // cleared first
 CgRasterPass pass = recording.raster(CgGraphTexture.current(), CgLoad.load(), constants, state, CgOrder.SORTED)
-        .attachment(emission);
-chunks.draw(material.pipeline(CgInstanceKind.OBJECT).emissionTarget(), bindings, mesh);    // writes both slots
+        .attachment(normals);
+chunks.draw(material.pipeline(CgInstanceKind.OBJECT).normalTarget(), bindings, mesh);    // writes both slots
 ```
 
 - `texture` is the target's size (GL would draw into the intersection, quietly): the executor throws otherwise.

@@ -143,32 +143,16 @@ public class CgMaterialShaderCompilerTest {
     }
 
     @Test
-    public void emissionTarget_withNoGlow_writesBlackAtTheColoursAlpha() {
-        CgParsedShader shader = parse(MINIMAL.replace("Pass {\n", "Pass {\n    RenderState { Blend ONE ONE_MINUS_SRC_ALPHA }\n"));
-        String frag = CgMaterialShaderCompiler.compile(shader, shader.passes().get(0), NO_BUFFERS, null,
-                new CgMaterialShaderCompiler.CompileConfig(Collections.singleton(CgMaterialShaderCompiler.EMISSION_TARGET)))
-                .fragmentSource();
-        assertTrue(frag.contains("layout(location = 1) out vec4 _cg_emission;"));
-        int cover = frag.indexOf("_cg_emission = vec4(0.0, 0.0, 0.0, _cg_fragColor.a);");
-        assertTrue("the cover", cover >= 0);
-        assertTrue("after the colour is final", cover > frag.indexOf("fragment(_v2f_local, _cg_fragColor);"));
-    }
-
-    @Test
     public void aNamedGlow_replacesTheColourInEveryGlow() {
         String src = MINIMAL.replace("Pass {\n", "Pass {\n    RenderState { Blend ONE ONE_MINUS_SRC_ALPHA DepthWrite OFF }\n")
                 .replace("fragColor = vec4(1.0); }", "fragColor = vec4(1.0); CG_GLOW(vec3(2.0, 0.0, 0.0)); }")
                 + "Pass { Tags { \"LightMode\" = \"Emissive\" } RenderState { Blend ONE ONE DepthWrite OFF } }\n";
         CgParsedShader shader = parse(src);
         CgParsedPass forward = shader.passes().get(0);
-        String merged = CgMaterialShaderCompiler.compile(shader, forward, NO_BUFFERS, null,
-                new CgMaterialShaderCompiler.CompileConfig(Collections.singleton(CgMaterialShaderCompiler.EMISSION_TARGET)))
-                .fragmentSource();
-        assertTrue(merged.contains("#define CG_GLOW(rgb) _cg_glowRgb = (rgb)"));
-        assertTrue(merged.contains("_cg_emission = vec4(_cg_glowRgb, _cg_fragColor.a);"));
         String folded = CgMaterialShaderCompiler.compile(shader, forward, NO_BUFFERS, null,
                 new CgMaterialShaderCompiler.CompileConfig(Collections.singleton(CgMaterialShaderCompiler.SCENE_FOLD)))
                 .fragmentSource();
+        assertTrue(folded.contains("#define CG_GLOW(rgb) _cg_glowRgb = (rgb)"));
         assertTrue(folded.contains("vec4 _cg_glow = vec4(_cg_glowRgb, _cg_fragColor.a);"));
         String own = CgMaterialShaderCompiler.compile(shader, shader.getPassByLightMode("Emissive"), NO_BUFFERS, null,
                 CgMaterialShaderCompiler.CompileConfig.DEFAULT).fragmentSource();

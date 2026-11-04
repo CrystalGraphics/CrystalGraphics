@@ -41,10 +41,9 @@ if (p.bind()) { table.bind(bindings); p.instanceBase(first); /* draw */ }
 - **`cg_InstanceBase`** is what `CG_INSTANCE_ID` adds to `gl_InstanceID`; it defaults to 0, so a draw that uploads
   its own instances needs nothing. A pipeline's `multiDraw()` sibling, compiled with `CG_MULTI_DRAW`, has neither it
   nor `cg_VertexBase`: each draw of a multi-draw carries its own in its command (`render/graph/CLAUDE.md`).
-- **`emissionTarget()`** is a Forward pipeline's sibling that draws its Emissive pass too, writing the glow at location
-  1 (`CG_EMISSION_TARGET`); null where the shader's Emissive pass stays a draw of its own. `emissionCover()` is the
-  same variant for a draw that glows nothing: black at its colour's alpha at location 1, so its blend covers the glow
-  behind it; null where it adds. `volumeTarget()` is the world renderer's volume pass's: what the fragment names with
+- **`emissionOccluder()`** is a Forward pipeline's sibling for glows drawn apart from the scene (an impact frame's
+  subject): black at its colour's alpha (`CG_EMISSION_COVER`), so its blend covers the glow behind it; null where it
+  adds. `volumeTarget()` is the world renderer's volume pass's: what the fragment names with
   `CG_VOLUME_DEPTH(eye)` written at location 1 (`CG_VOLUME_TARGET`), composable with `sceneFold()`. `sceneFold()` is the HDR scene's: one output, the glow added to the colour
   (`CG_SCENE_FOLD`). `depthPrepass()` is a `"Depth" = "Prepass"` material's depth pass: the Forward pass compiled with
   `CG_DEPTH_PREPASS`, blend off, depth written, no colour. `normalTarget()` is an opaque Forward pipeline's sibling

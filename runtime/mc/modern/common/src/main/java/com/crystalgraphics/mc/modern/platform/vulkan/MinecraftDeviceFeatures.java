@@ -29,7 +29,7 @@ import static org.lwjgl.vulkan.VK10.vkGetPhysicalDeviceFeatures;
  *
  * <ul>
  *   <li>{@code independentBlend}, where the GPU has it: a pipeline's attachments may differ in write mask, which the
- *       world's merged emission needs ({@code CgCapabilities.independentBlend()}).</li>
+ *       world's normal target beside the scene needs ({@code CgCapabilities.independentBlend()}).</li>
  *   <li>{@code drawIndirectFirstInstance}, where the GPU has it: with Minecraft's own {@code multiDrawIndirect} and
  *       {@code shaderDrawParameters}, what joins a run of draws into one call ({@code CgCapabilities.multiDraw()}).</li>
  *   <li>{@code textureCompressionBC}, where the GPU has it: cooked BC7 textures uploaded as they are, rather than

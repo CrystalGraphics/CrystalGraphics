@@ -8,8 +8,8 @@ import java.util.Arrays;
  * {@link CgStageFrame#resources()}.
  *
  * <pre>{@code
- * frame.resources().put(CgFrameKeys.EMISSION, emission);
- * CgGraphTexture emission = frame.resources().get(CgFrameKeys.EMISSION);
+ * frame.resources().put(CgFrameKeys.SUBJECT, subject);
+ * CgGraphTexture subject = frame.resources().get(CgFrameKeys.SUBJECT);
  * }</pre>
  *
  * <ul>

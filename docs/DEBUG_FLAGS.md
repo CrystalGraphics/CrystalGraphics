@@ -223,7 +223,7 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 | Variable | Takes | Default | |
 |---|---|---|---|
 | `crystalgraphics.post.bloom.linear` | true, false | `false` | Bloom starts composited in linear light (the copy form), to compare with the default blend form; L cycles blend, linear and off in any harness scene with a 3D camera. |
-| `crystalgraphics.post.debug` | text | empty | emission: the emission target over the frame. level<N>: a level of bloom's chain, 0 the glow the composite reads. overdraw: transparent fragments per pixel as a heat ramp (blue 1, green 4, red 16, white 32). distortion: the distortion target, \|offset\| x 50 in red and green, the split in blue. |
+| `crystalgraphics.post.debug` | text | empty | level<N>: a level of bloom's chain, 0 the glow the composite reads. overdraw: transparent fragments per pixel as a heat ramp (blue 1, green 4, red 16, white 32). distortion: the distortion target, \|offset\| x 50 in red and green, the split in blue. |
 
 ## `crystalgraphics.recording`
 
@@ -375,7 +375,6 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 |---|---|---|---|
 | `crystalgraphics.world.blockShadowReach` | 0.0 to 64.0 | `48.0` | Blocks from the eye a torch, glowstone or any light-giving block is shadowed by our objects; 0 for none. |
 | `crystalgraphics.world.halfResolution` | true, false | `true` | What a new world renderer starts with: draws marked halfResolution() at half size; false at full size, in the transparent pass (H in the harness, halfResolution(boolean) live). |
-| `crystalgraphics.world.hdrScene` | text | empty | true or false forces the HDR scene for the run over the player's HDR setting, unsaved; empty follows the setting (G in the harness, hdrScene(boolean) live). |
 | `crystalgraphics.world.lightsAir` | true, false | `true` | Smoke, gas and haze in the air lit by the world's lights: Unreal's volumetric fog's light scattering. |
 | `crystalgraphics.world.lightsAirHistory` | true, false | `true` | Lit air jittered through each froxel and blended over the last frames: Unreal's r.VolumetricFog.TemporalReprojection. |
 | `crystalgraphics.world.lightsAirHistoryWeight` | 0.0 to 0.99 | `0.9` | How much of the lit air's last frames each frame keeps: Unreal's r.VolumetricFog.HistoryWeight. |
@@ -399,7 +398,7 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 | `crystalgraphics.world.lightsVolumeOuter` | 2.0 to 256.0 | `50.0` | Blocks from the eye its second reaches: r.TranslucencyLightingVolume.OuterDistance, 50 m. |
 | `crystalgraphics.world.lightsVolumeShadowRays` | 0 to 64 | `4` | Shadowed lights traced from each cell of the translucency volume; past them a cell's lights shine unshadowed. |
 | `crystalgraphics.world.mediaPixels` | 4 to 32 | `16` | Pixels of the screen a froxel of the air's grid spans across: Unreal's High 16, Epic 8 (four times the froxels). |
-| `crystalgraphics.world.mergeEmission` | true, false | `true` | What a new world renderer starts with: a transparent draw's codeless Emissive pass written by its Forward draw beside the target; false draws every Emissive pass on its own (mergeEmission(boolean) live). |
+| `crystalgraphics.world.mergeEmission` | true, false | `true` | What a new world renderer starts with: a transparent draw's codeless Emissive pass folded into its Forward draw; false draws every Emissive pass on its own (mergeEmission(boolean) live). |
 | `crystalgraphics.world.meshFieldFloats` | 65536 to 67108864 | `8388608` | Floats our meshes' distance fields share on the GPU; the least recently used are dropped past it. Read at launch. |
 | `crystalgraphics.world.skipUnready` | true, false | `true` | Holds a draw whose programs are not built yet, starting them and counting it as world.unready-draws; false compiles at the draw (skipUnready(boolean) live). |
 | `crystalgraphics.world.sunCasterReach` | 0.0 to 128.0 | `48.0` | Blocks toward the sun past each shadow cascade its casters are taken from: their longest shadow. |

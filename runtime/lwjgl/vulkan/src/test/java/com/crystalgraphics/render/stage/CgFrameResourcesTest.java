@@ -71,6 +71,6 @@ public class CgFrameResourcesTest {
     @Test
     public void keysTakeDistinctSlots() {
         assertNotEquals(NOTE.index, COUNT.index);
-        assertNotEquals(NOTE.index, CgFrameKeys.EMISSION.index);
+        assertNotEquals(NOTE.index, CgFrameKeys.SUBJECT.index);
     }
 }

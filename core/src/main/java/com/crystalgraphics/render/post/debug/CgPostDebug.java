@@ -16,13 +16,12 @@ import com.crystalgraphics.render.post.CgPostContext;
 import com.crystalgraphics.render.post.CgPostEffect;
 import com.crystalgraphics.render.post.CgPostPoint;
 import com.crystalgraphics.render.post.bloom.CgBloom;
-import com.crystalgraphics.render.stage.CgFrameKey;
 import com.crystalgraphics.render.stage.CgDistortionField;
 import com.crystalgraphics.render.stage.CgFrameKeys;
 
 /**
- * Draws what bloom works from over the whole frame, last: the emission target, or one level of the chain. Set by
- * {@code -Dcrystalgraphics.post.debug=emission} or {@code =level<N>} (0 is the glow the composite reads), so a material's
+ * Draws what bloom works from over the whole frame, last: one level of the chain. Set by
+ * {@code -Dcrystalgraphics.post.debug=level<N>} (0 is the glow the composite reads), so a material's
  * glow can be seen without the picture round it; {@code =overdraw} shows the world renderer's overdraw count through a
  * heat ramp (blue 1, green 4, red 16, white 32), {@code =distortion} the distortion field's offsets summed (|offset| x
  * 50 in red and green, the split in blue). The post stack adds it when the flag is set.
@@ -33,9 +32,9 @@ public final class CgPostDebug implements CgPostEffect {
     private static final String DISTORTION_SHADER = "crystalgraphics:shaders/post/debug_distortion.shader";
     private static final CgMesh FULLSCREEN = CgMesh.vertices(3, CgMeshTopology.TRIANGLES);
 
-    private static final int EMISSION = -1, OVERDRAW = -2, DISTORTION = -3;
+    private static final int OVERDRAW = -2, DISTORTION = -3;
 
-    /** {@link #EMISSION}, {@link #OVERDRAW}, else the chain's level. */
+    /** {@link #OVERDRAW}, {@link #DISTORTION}, else the chain's level. */
     private final int level;
     private CgMaterial material;
     private CgTexture bound;
@@ -47,7 +46,7 @@ public final class CgPostDebug implements CgPostEffect {
 
     /** What the frame shows for debugging; empty for nothing. */
     public static final CgVar.Text VIEW = CgVar.text("crystalgraphics.post.debug", "", CgVar.DEV,
-            "emission: the emission target over the frame. level<N>: a level of bloom's chain, 0 the glow the composite"
+            "level<N>: a level of bloom's chain, 0 the glow the composite"
                     + " reads. overdraw: transparent fragments per pixel as a heat ramp (blue 1, green 4, red 16, white 32)."
                     + " distortion: the distortion target, |offset| x 50 in red and green, the split in blue.");
 
@@ -55,7 +54,6 @@ public final class CgPostDebug implements CgPostEffect {
     public static CgPostDebug fromProperty() {
         String view = VIEW.get();
         if (view.isEmpty()) return null;
-        if (view.equals("emission")) return new CgPostDebug(EMISSION);
         if (view.equals("overdraw")) return new CgPostDebug(OVERDRAW);
         if (view.equals("distortion")) return new CgPostDebug(DISTORTION);
         if (view.startsWith("level")) {
@@ -65,7 +63,7 @@ public final class CgPostDebug implements CgPostEffect {
                 // falls through to the refusal
             }
         }
-        throw new IllegalArgumentException("-Dcrystalgraphics.post.debug=" + view + ": emission, overdraw, distortion or level<N>");
+        throw new IllegalArgumentException("-Dcrystalgraphics.post.debug=" + view + ": overdraw, distortion or level<N>");
     }
 
     @Override
@@ -81,7 +79,7 @@ public final class CgPostDebug implements CgPostEffect {
     @Override
     public boolean active(CgPostContext post) {
         return level == DISTORTION ? post.resources().has(CgFrameKeys.DISTORTION)
-                : post.resources().has(level >= 0 ? CgBloom.CHAIN : key());
+                : post.resources().has(level >= 0 ? CgBloom.CHAIN : CgFrameKeys.OVERDRAW);
     }
 
     @Override
@@ -93,7 +91,7 @@ public final class CgPostDebug implements CgPostEffect {
             source = field.offsets();
             count = field.count();
         } else if (level < 0) {
-            source = post.resources().get(key());
+            source = post.resources().get(CgFrameKeys.OVERDRAW);
         } else {
             CgGraphTexture[] chain = post.resources().get(CgBloom.CHAIN);
             int k = Math.min(level, chain.length - 1);
@@ -119,10 +117,6 @@ public final class CgPostDebug implements CgPostEffect {
         chunks.instance();
         pass.add(chunks.end());
         pass.end();
-    }
-
-    private CgFrameKey<CgGraphTexture> key() {
-        return level == EMISSION ? CgFrameKeys.EMISSION : CgFrameKeys.OVERDRAW;
     }
 
     /** Forgets its material, which the material registry frees with the context. */

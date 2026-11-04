@@ -75,7 +75,6 @@ import java.util.function.Supplier;
  * N    the next scene, placed ahead of the camera; Shift+N the previous one
  * C    camera shake on or off (CgCameraShake.enabled: the saved setting is untouched)
  * L    bloom in the target's encoding, in linear light, then off
- * G    the HDR scene on or off
  * X    kit looks on or off: each kit's effects graded by their game's post, or by the frame's
  * [ ]  the HDR scene's glow gain down or up a quarter;  - =  bloom's intensity
  * O    every world shadow off or on (crystalgraphics.world.lightsShadows), to compare
@@ -829,7 +828,6 @@ public final class CgRenderDemo {
             case CgKeyCodes.KEY_N -> wanted = (wanted + (shift ? kinds.length - 1 : 1)) % kinds.length;
             case CgKeyCodes.KEY_C -> CgCameraShake.enabled(!CgCameraShake.enabled());
             case CgKeyCodes.KEY_L -> cycleBloom();
-            case CgKeyCodes.KEY_G -> CgWorldRenderer.get().hdrScene(!CgWorldRenderer.get().hdrScene());
             case CgKeyCodes.KEY_X -> CgWorldRenderer.get().gradeDraws(!CgWorldRenderer.get().gradeDraws());
             // A quarter down or up, as the harness's.
             case CgKeyCodes.KEY_LBRACKET -> CgWorldRenderer.get().sceneEmission(CgWorldRenderer.get().sceneEmission() / 1.25f);
@@ -930,8 +928,7 @@ public final class CgRenderDemo {
                 + (scenes[wanted] != null ? scenes[wanted].hud() : "")
                 + (CgCameraShake.enabled() ? String.format(Locale.ROOT, "\n\nShake [C]: on, trauma %.2f", CgCameraShake.trauma())
                 : "\n\nShake [C]: off")
-                + "\nHDR [G]: " + (CgWorldRenderer.get().hdrScene() ? "on" : "off")
-                + String.format(Locale.ROOT, " | Glow [ ]: %.2f", CgWorldRenderer.get().sceneEmission())
+                + String.format(Locale.ROOT, "\nGlow [ ]: %.2f", CgWorldRenderer.get().sceneEmission())
                 + " | Kit looks [X]: " + (CgWorldRenderer.get().gradeDraws() ? "on" : "off")
                 + "\nBloom [L]: " + (bloom.intensity() == 0f ? "off" : bloom.linear() ? "linear" : "blend")
                 + String.format(Locale.ROOT, " | Intensity [- =]: %.2f", bloom.intensity())

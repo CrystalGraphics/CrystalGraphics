@@ -8,7 +8,7 @@ points, and one composite pass laying every screen-wide look over the target, as
 and Godot's tonemap pass compose bloom.
 
 ```
-CgWorldRenderer (ORDER 1000)  draws the scene, then the emission target ──► frame.resources(): EMISSION
+CgWorldRenderer (ORDER 1000)  draws the scene, glows added into it ──► frame.resources(): SCENE
 CgPostStack     (ORDER 2000)
   BEFORE_SEPARATE_TRANSLUCENCY  colour regions: the scene before separate translucency
   translucency      CgTranslucencyComposition: CgSeparateTranslucency over the scene and its graded layers
@@ -36,7 +36,7 @@ Shaders: `shaders/post/` — `composite.shader`, `composite_copy.shader`, `debug
 and `crossfade.shader`; bloom's passes under `shaders/post/bloom/` (`prefilter`, `down`, `up`), their
 filters in `shaders/lib/post/bloom.glsl`; a post material's triangle and weight in `shaders/lib/post/post_material.glsl`.
 
-**The HDR scene** (`CgWorldRenderer.hdrScene`): when the firing carries `CgFrameKeys.SCENE`, the stack hands the
+**The HDR scene**: when the firing carries `CgFrameKeys.SCENE`, the stack hands the
 composite the scene (`composite.scene`) and the stage its host target back (`retarget(null)`) before the composite
 records. The composite then always draws, in the copy form with `SCENE`: it reads the scene rather than a copy of the
 target, rolls a colour past white toward white keeping its hue (`c / peak` mixed toward white by
@@ -44,7 +44,7 @@ target, rolls a colour past white toward white keeping its hue (`c / peak` mixed
 a saturated glow at 2x still three quarters its colour), clamps, and writes a value within 0.1 of an 8-bit code back exact rather than dithered, so a pixel nothing drew
 over returns byte for byte. `AFTER_WORLD` and `BEFORE_COMPOSITE` effects draw into the scene; `AFTER_COMPOSITE` into the
 host. Bloom's source is then the scene's light past `CgBloom.threshold` (`excess.shader`: half size, R11G11B10F, each
-texel's excess soft-capped at 32 before the 2x2 average), already bent, rather than the emission. A shader drawing into
+texel's excess soft-capped at 32 before the 2x2 average), already bent. A shader drawing into
 the scene or over the picture with the colour it read is tagged `"ColorSpace" = "Target"`, as every one here is: the
 compiler neither decodes it into the scene nor encodes it onto the host.
 
@@ -55,13 +55,14 @@ compiler neither decodes it into the scene nor encodes it onto the host.
   (`CgFrameKeys`), never a field read across classes. The one crossing is `BEFORE_TRANSLUCENCY` (Unreal's
   `BL_BeforeTranslucency`, 4.27 `PostProcessing.cpp:476`): the stack puts a `CgStageHook` on the blackboard at
   `DEMAND_ORDER`, and the world renderer runs it onto the lit opaque scene before its transparent passes, custom
-  depth, normals and custom data published. Without the HDR scene those effects record with `AFTER_WORLD`.
+  depth, normals and custom data published. A firing without the scene (its programs unbuilt) records them with
+  `AFTER_WORLD`.
 - **One composite pass a firing.** A new screen-wide look is a `CgCompositeFeature`, or an effect at a point; never a
   second full-screen add.
 - **A mod's effect cannot join the composite** (Unreal's blendables run as their own passes too): it records at a point.
 - **What the stack asks of the world renderer goes through the blackboard too**: at `DEMAND_ORDER`, before the world
-  records, it blends the volumes and puts `CgFrameKeys.EMISSION_READ` while bloom will draw, which is what lets the
-  world write glows in their own draws. With bloom off nothing reads the emission target and the graph culls its pass.
+  records, it blends the volumes and puts `CgFrameKeys.SUBJECT_READ` while a drawn impact frame shows, which is what
+  lets the world draw its subject's glows apart.
 - **Dither the blend form by stochastic rounding, never by +-1 noise** (`post_round8`): an 8-bit attachment clamps a
   fragment's output to 0..1 before blending, so noise would lose its negative half and brighten the picture.
 - **An effect's look is a volume, never a write to the global settings**: it closes its volume when it ends, and the

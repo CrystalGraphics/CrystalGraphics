@@ -30,8 +30,8 @@ public class CgPipelineListTest {
             "Pass {", "    void vertex(out v2f o) { }",
             "    void fragment(in v2f i, out vec4 fragColor) { fragColor = _Color; }", "}");
     private static String shader;
-    private static final CgPipelineList.Settings HDR = new CgPipelineList.Settings(true, true, true, true);
-    private static final CgPipelineList.Settings LDR = new CgPipelineList.Settings(false, true, true, true);
+    private static final CgPipelineList.Settings HALF = new CgPipelineList.Settings(true, true, true);
+    private static final CgPipelineList.Settings FULL = new CgPipelineList.Settings(true, true, false);
 
     /** Builds a material the second time it is asked under the same settings. */
     private static final class Fake implements CgPipelineList.Precacher {
@@ -60,7 +60,7 @@ public class CgPipelineListTest {
     }
 
     private static CgPipelineList list(Fake fake) {
-        return new CgPipelineList(fake, () -> HDR);
+        return new CgPipelineList(fake, () -> HALF);
     }
 
     @Test
@@ -102,14 +102,14 @@ public class CgPipelineListTest {
         Fake fake = new Fake();
         CgPipelineList pipelines = list(fake);
         pipelines.collect(p -> p.add(manifest()), null);
-        pipelines.frame(HDR, HDR);
-        pipelines.frame(HDR, HDR);
+        pipelines.frame(HALF, HALF);
+        pipelines.frame(HALF, HALF);
         assertEquals(0, pipelines.pending());
         fake.asked.clear();
-        assertFalse("the list re-warms before the toggle applies", pipelines.frame(LDR, HDR));
-        assertEquals(Arrays.asList(LDR, LDR), fake.asked);
-        assertTrue(pipelines.frame(LDR, HDR));
-        assertTrue(pipelines.frame(LDR, LDR));
+        assertFalse("the list re-warms before the toggle applies", pipelines.frame(FULL, HALF));
+        assertEquals(Arrays.asList(FULL, FULL), fake.asked);
+        assertTrue(pipelines.frame(FULL, HALF));
+        assertTrue(pipelines.frame(FULL, FULL));
     }
 
     @Test
@@ -119,12 +119,12 @@ public class CgPipelineListTest {
         CgPipelineList pipelines = list(fake);
         pipelines.collect(p -> p.add(manifest()), null);
         int frames = 1;
-        while (!pipelines.frame(LDR, HDR)) frames++;
+        while (!pipelines.frame(FULL, HALF)) frames++;
         assertEquals(CgPipelineList.MAX_WAIT_FRAMES + 1, frames);
     }
 
     @Test
     public void anEmptyListAppliesAtOnce() {
-        assertTrue(list(new Fake()).frame(LDR, HDR));
+        assertTrue(list(new Fake()).frame(FULL, HALF));
     }
 }
