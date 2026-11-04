@@ -1,4 +1,4 @@
-package com.crystalgraphics.vulkan.resource;
+package com.crystalgraphics.vulkan.binding;
 
 import com.crystalgraphics.platform.rhi.binding.CgBindingLayout;
 

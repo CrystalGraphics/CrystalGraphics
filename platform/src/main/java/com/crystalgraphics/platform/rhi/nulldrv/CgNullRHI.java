@@ -435,7 +435,10 @@ public final class CgNullRHI implements CgRHI {
     }
 
     private void moves(String what, CgTransition t) {
-        for (int i = 0; i < t.count(); i++) use(t.buffer(i) != null ? t.buffer(i) : t.texture(i).texture());
+        for (int i = 0; i < t.count(); i++) {
+            use(t.buffer(i) != null ? t.buffer(i) : t.texture(i).texture());
+            if (t.texture(i) != null) usable(t.texture(i).texture(), t.from(i) | t.to(i));
+        }
         if (!logging) return;
         StringBuilder s = new StringBuilder(what);
         for (int i = 0; i < t.count(); i++) {
@@ -443,6 +446,21 @@ public final class CgNullRHI implements CgRHI {
                     .append(CgAccess.names(t.from(i))).append('>').append(CgAccess.names(t.to(i)));
         }
         record(s.toString());
+    }
+
+    /** An image's layout for {@code access} needs the usage it was made with: Vulkan refuses the barrier otherwise. */
+    private static void usable(CgGpuTexture texture, int access) {
+        needs(texture, access, CgAccess.SAMPLED_READ, CgGpuTexture.Usage.SAMPLED);
+        needs(texture, access, CgAccess.STORAGE, CgGpuTexture.Usage.STORAGE);
+        needs(texture, access, CgAccess.COLOR_WRITE | CgAccess.DEPTH_READ | CgAccess.DEPTH_WRITE, CgGpuTexture.Usage.ATTACHMENT);
+        needs(texture, access, CgAccess.COPY_READ, CgGpuTexture.Usage.COPY_SRC);
+        needs(texture, access, CgAccess.COPY_WRITE, CgGpuTexture.Usage.COPY_DST);
+    }
+
+    private static void needs(CgGpuTexture texture, int access, int bits, CgGpuTexture.Usage usage) {
+        if ((access & bits) != 0 && !texture.desc().usage().contains(usage))
+            throw new IllegalStateException(texture.label() + " moves to " + CgAccess.names(access & bits) + " without "
+                    + usage + " usage");
     }
 
     private static boolean writesDepthOrStencil(CgGraphicsPipelineDesc.DepthStencil d) {

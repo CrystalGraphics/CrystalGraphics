@@ -8,8 +8,6 @@ import com.crystalgraphics.platform.gl.tracked.CgTrackedGLBackend;
 import com.crystalgraphics.platform.gl.tracked.CgTrackedStateProvider;
 import com.crystalgraphics.platform.service.CgCacheDirectory;
 import com.crystalgraphics.vulkan.CgVulkanDevice;
-import com.crystalgraphics.vulkan.CgVulkanHost;
-import com.crystalgraphics.vulkan.CgVulkanImage;
 import com.crystalgraphics.vulkan.command.VulkanComputeCommandBuffer;
 import com.crystalgraphics.vulkan.command.VulkanEncoder;
 import com.crystalgraphics.vulkan.command.VulkanTransferCommandBuffer;

@@ -1,4 +1,4 @@
-package com.crystalgraphics.vulkan;
+package com.crystalgraphics.vulkan.host;
 
 import com.crystalgraphics.platform.gl.CgGpuReport;
 import org.lwjgl.system.MemoryStack;
@@ -38,16 +38,17 @@ import static org.lwjgl.vulkan.VK10.vkGetPhysicalDeviceQueueFamilyProperties;
 import static org.lwjgl.vulkan.VK11.vkGetPhysicalDeviceFeatures2;
 import static org.lwjgl.vulkan.VK11.vkGetPhysicalDeviceProperties2;
 import static org.lwjgl.vulkan.VK13.VK_API_VERSION_1_3;
+import com.crystalgraphics.vulkan.CgVulkanDevice;
 
 /**
  * {@link CgVulkanDevice#describe}: what the physical device supports, under {@link CgGpuReport}'s keys. On a hosted
  * device the host chose what is enabled, so {@code host=hosted} reads as "supported, not necessarily enabled".
  */
-final class VulkanReport {
+public final class VulkanReport {
 
     private VulkanReport() {}
 
-    static void describe(CgVulkanHost host, BiConsumer<String, String> fact) {
+    public static void describe(CgVulkanHost host, BiConsumer<String, String> fact) {
         VkPhysicalDevice pd = host.physicalDevice();
         try (MemoryStack stack = stackPush()) {
             Set<String> listed = extensions(stack, pd);

@@ -8,6 +8,7 @@ import com.crystalgraphics.platform.rhi.pipeline.CgComputePipeline;
 import com.crystalgraphics.platform.rhi.resource.CgGpuBuffer;
 import com.crystalgraphics.platform.rhi.resource.CgTextureView;
 import com.crystalgraphics.vulkan.CgVulkanDevice;
+import com.crystalgraphics.vulkan.binding.VulkanBindingSet;
 import com.crystalgraphics.vulkan.resource.VulkanBuffer;
 import com.crystalgraphics.vulkan.resource.VulkanComputePipeline;
 import com.crystalgraphics.vulkan.resource.VulkanTexture;
@@ -34,6 +35,8 @@ final class VulkanComputePass implements CgComputePass {
     private final VulkanEncoder encoder;
     private final List<CgTextureView> images = new ArrayList<>();
     private VulkanComputePipeline pipeline;
+    /** Sets bound by index, bound again with each pipeline: a new layout may disturb them. */
+    private final VulkanBindingSet[] sets = new VulkanBindingSet[8];
 
     VulkanComputePass(CgVulkanDevice device, VulkanEncoder encoder) {
         this.device = device;
@@ -49,6 +52,7 @@ final class VulkanComputePass implements CgComputePass {
     public void setPipeline(CgComputePipeline p) {
         pipeline = (VulkanComputePipeline) p;
         vkCmdBindPipeline(cmd(), VK_PIPELINE_BIND_POINT_COMPUTE, pipeline.pipeline);
+        for (int i = 0; i < sets.length; i++) if (sets[i] != null) bind(i);
     }
 
     @Override
@@ -69,7 +73,16 @@ final class VulkanComputePass implements CgComputePass {
 
     @Override
     public void setBindingSet(int set, CgBindingSet bindings) {
-        throw new UnsupportedOperationException("binding sets are not recorded on Vulkan yet");
+        sets[set] = (VulkanBindingSet) bindings;
+        if (pipeline != null) bind(set);
+    }
+
+    private void bind(int index) {
+        if (index >= pipeline.layout().sets().size()) return;
+        try (MemoryStack stack = stackPush()) {
+            vkCmdBindDescriptorSets(cmd(), VK_PIPELINE_BIND_POINT_COMPUTE, pipeline.pipelineLayout, index,
+                    stack.longs(sets[index].set), null);
+        }
     }
 
     @Override

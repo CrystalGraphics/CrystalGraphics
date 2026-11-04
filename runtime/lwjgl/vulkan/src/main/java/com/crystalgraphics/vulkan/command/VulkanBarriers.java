@@ -1,15 +1,25 @@
 package com.crystalgraphics.vulkan.command;
 
 import org.lwjgl.vulkan.VkCommandBuffer;
+import org.lwjgl.vulkan.VkDependencyInfo;
 import org.lwjgl.vulkan.VkImageMemoryBarrier;
+import org.lwjgl.vulkan.VkImageMemoryBarrier2;
 import org.lwjgl.vulkan.VkImageSubresourceRange;
 import org.lwjgl.vulkan.VkMemoryBarrier;
+import org.lwjgl.vulkan.VkMemoryBarrier2;
 
+import java.nio.ByteBuffer;
+
+import static org.lwjgl.vulkan.KHRSynchronization2.nvkCmdPipelineBarrier2KHR;
 import static org.lwjgl.vulkan.VK10.*;
+import static org.lwjgl.vulkan.VK13.VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+import static org.lwjgl.vulkan.VK13.VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
+import static org.lwjgl.vulkan.VK13.VK_STRUCTURE_TYPE_MEMORY_BARRIER_2;
 
 /**
  * Pipeline barriers, spelled once. Coarse on purpose (plan/device-vulkan.md §5): correct first. Filled in
- * {@link VulkanScratch}, since one is recorded per kernel access.
+ * {@link VulkanScratch}, since one is recorded per kernel access. Through synchronization2 where the device took it
+ * (the owned device, where the GPU has it), as Vulkan 1.0's barrier where not (a host's device that did not).
  *
  * <p>Into a {@link VulkanComputeCommandBuffer} a barrier keeps to the stages and accesses a compute queue has, and into
  * a {@link VulkanTransferCommandBuffer} to a copy queue's. What it drops is work only the frame's queue does: the work
@@ -33,6 +43,32 @@ public final class VulkanBarriers {
                       int oldLayout, int newLayout, int srcStage, int srcAccess, int dstStage, int dstAccess) {
         int src = stage(cmd, srcStage, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT);
         int dst = stage(cmd, dstStage, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
+        if (sync2(cmd)) {
+            int dep = (VkImageMemoryBarrier2.SIZEOF + 7) & ~7;
+            VulkanScratch s = VulkanScratch.get(dep + VkDependencyInfo.SIZEOF);
+            ByteBuffer m = s.zero(dep + VkDependencyInfo.SIZEOF);
+            int range = VkImageMemoryBarrier2.SUBRESOURCERANGE;
+            m.putInt(VkImageMemoryBarrier2.STYPE, VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2)
+                    .putLong(VkImageMemoryBarrier2.SRCSTAGEMASK, src & 0xFFFFFFFFL)
+                    .putLong(VkImageMemoryBarrier2.SRCACCESSMASK, access(cmd, srcAccess, src) & 0xFFFFFFFFL)
+                    .putLong(VkImageMemoryBarrier2.DSTSTAGEMASK, dst & 0xFFFFFFFFL)
+                    .putLong(VkImageMemoryBarrier2.DSTACCESSMASK, access(cmd, dstAccess, dst) & 0xFFFFFFFFL)
+                    .putInt(VkImageMemoryBarrier2.OLDLAYOUT, oldLayout)
+                    .putInt(VkImageMemoryBarrier2.NEWLAYOUT, newLayout)
+                    .putInt(VkImageMemoryBarrier2.SRCQUEUEFAMILYINDEX, VK_QUEUE_FAMILY_IGNORED)
+                    .putInt(VkImageMemoryBarrier2.DSTQUEUEFAMILYINDEX, VK_QUEUE_FAMILY_IGNORED)
+                    .putLong(VkImageMemoryBarrier2.IMAGE, image)
+                    .putInt(range + VkImageSubresourceRange.ASPECTMASK, aspect)
+                    .putInt(range + VkImageSubresourceRange.BASEMIPLEVEL, baseMip)
+                    .putInt(range + VkImageSubresourceRange.LEVELCOUNT, mips)
+                    .putInt(range + VkImageSubresourceRange.BASEARRAYLAYER, baseLayer)
+                    .putInt(range + VkImageSubresourceRange.LAYERCOUNT, layers);
+            m.putInt(dep + VkDependencyInfo.STYPE, VK_STRUCTURE_TYPE_DEPENDENCY_INFO)
+                    .putInt(dep + VkDependencyInfo.IMAGEMEMORYBARRIERCOUNT, 1)
+                    .putLong(dep + VkDependencyInfo.PIMAGEMEMORYBARRIERS, s.address);
+            nvkCmdPipelineBarrier2KHR(cmd, s.address + dep);
+            return;
+        }
         VulkanScratch s = VulkanScratch.get(VkImageMemoryBarrier.SIZEOF);
         int range = VkImageMemoryBarrier.SUBRESOURCERANGE;
         s.bytes.putInt(VkImageMemoryBarrier.STYPE, VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER)
@@ -59,12 +95,32 @@ public final class VulkanBarriers {
     static void global(VkCommandBuffer cmd, int srcStage, int srcAccess, int dstStage, int dstAccess) {
         int src = stage(cmd, srcStage, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT);
         int dst = stage(cmd, dstStage, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
+        if (sync2(cmd)) {
+            int dep = (VkMemoryBarrier2.SIZEOF + 7) & ~7;
+            VulkanScratch s = VulkanScratch.get(dep + VkDependencyInfo.SIZEOF);
+            ByteBuffer m = s.zero(dep + VkDependencyInfo.SIZEOF);
+            m.putInt(VkMemoryBarrier2.STYPE, VK_STRUCTURE_TYPE_MEMORY_BARRIER_2)
+                    .putLong(VkMemoryBarrier2.SRCSTAGEMASK, src & 0xFFFFFFFFL)
+                    .putLong(VkMemoryBarrier2.SRCACCESSMASK, access(cmd, srcAccess, src) & 0xFFFFFFFFL)
+                    .putLong(VkMemoryBarrier2.DSTSTAGEMASK, dst & 0xFFFFFFFFL)
+                    .putLong(VkMemoryBarrier2.DSTACCESSMASK, access(cmd, dstAccess, dst) & 0xFFFFFFFFL);
+            m.putInt(dep + VkDependencyInfo.STYPE, VK_STRUCTURE_TYPE_DEPENDENCY_INFO)
+                    .putInt(dep + VkDependencyInfo.MEMORYBARRIERCOUNT, 1)
+                    .putLong(dep + VkDependencyInfo.PMEMORYBARRIERS, s.address);
+            nvkCmdPipelineBarrier2KHR(cmd, s.address + dep);
+            return;
+        }
         VulkanScratch s = VulkanScratch.get(VkMemoryBarrier.SIZEOF);
         s.bytes.putInt(VkMemoryBarrier.STYPE, VK_STRUCTURE_TYPE_MEMORY_BARRIER)
                 .putLong(VkMemoryBarrier.PNEXT, 0L)
                 .putInt(VkMemoryBarrier.SRCACCESSMASK, access(cmd, srcAccess, src))
                 .putInt(VkMemoryBarrier.DSTACCESSMASK, access(cmd, dstAccess, dst));
         nvkCmdPipelineBarrier(cmd, src, dst, 0, 1, s.address, 0, 0L, 0, 0L);
+    }
+
+    /** Whether {@code cmd}'s device was made with synchronization2. */
+    private static boolean sync2(VkCommandBuffer cmd) {
+        return cmd.getCapabilities().VK_KHR_synchronization2;
     }
 
     /** {@code stages} as {@code cmd}'s queue has them; {@code none} where it has none of them. */

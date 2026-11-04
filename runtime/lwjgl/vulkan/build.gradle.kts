@@ -45,6 +45,7 @@ dependencies {
     compileOnly("org.lwjgl:lwjgl-glfw:$lwjglVulkan")
 
     testImplementation(project(":platform"))
+    testImplementation(testFixtures(project(":platform")))
     // The engine itself, for EngineOnTrackedBackendTest. Its own tests carry LWJGL 2, which this cannot.
     testImplementation(project(":core"))
     testImplementation("org.joml:joml:${rootProject.properties["dep.joml"]}")
@@ -52,10 +53,12 @@ dependencies {
     // Asset files are YAML (CgFormats.YAML): core's consumerApi does not reach this test classpath.
     testRuntimeOnly("org.yaml:snakeyaml:2.7")
     testImplementation("junit:junit:${rootProject.properties["dep.junit"]}")
-    for (module in listOf("lwjgl", "lwjgl-shaderc", "lwjgl-spvc")) {
+    for (module in listOf("lwjgl", "lwjgl-shaderc", "lwjgl-spvc", "lwjgl-vma", "lwjgl-glfw")) {
         testImplementation("org.lwjgl:$module:$lwjglVulkan")
         testRuntimeOnly("org.lwjgl:$module:$lwjglVulkan:$natives")
     }
+    // The command contract on a real device: the loader is the system's, so the binding has no natives.
+    testImplementation("org.lwjgl:lwjgl-vulkan:$lwjglVulkan")
 }
 
 tasks.withType<JavaCompile>().configureEach {

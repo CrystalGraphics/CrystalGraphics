@@ -1,10 +1,12 @@
 package com.crystalgraphics.platform.rhi.nulldrv;
 
+import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.rhi.binding.CgBindingLayout;
 import com.crystalgraphics.platform.rhi.binding.CgBindingSet;
 import com.crystalgraphics.platform.rhi.binding.CgBindings;
 import com.crystalgraphics.platform.rhi.command.CgAccess;
 import com.crystalgraphics.platform.rhi.command.CgCommandList;
+import com.crystalgraphics.platform.rhi.command.CgCommandListContract;
 import com.crystalgraphics.platform.rhi.command.CgComputePass;
 import com.crystalgraphics.platform.rhi.command.CgPassDesc;
 import com.crystalgraphics.platform.rhi.command.CgRenderPass;
@@ -16,6 +18,7 @@ import com.crystalgraphics.platform.rhi.pipeline.CgGraphicsPipeline;
 import com.crystalgraphics.platform.rhi.pipeline.CgGraphicsPipelineDesc;
 import com.crystalgraphics.platform.rhi.pipeline.CgPipelineLayout;
 import com.crystalgraphics.platform.rhi.resource.CgGpuBuffer;
+import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
 import com.crystalgraphics.platform.rhi.resource.CgTextureView;
 import com.crystalgraphics.platform.rhi.shader.CgShaderModule;
 import org.junit.Test;
@@ -25,11 +28,25 @@ import java.util.List;
 
 import static org.junit.Assert.*;
 
-/** The null RHI records each command and refuses what Vulkan's validation would, so a caller's bug fails a headless test. */
-public class CgNullRHITest {
+/**
+ * The null RHI records each command and refuses what Vulkan's validation would, so a caller's bug fails a headless test:
+ * the contract every implementation records, then what it refuses.
+ */
+public class CgNullRHITest extends CgCommandListContract {
 
     private final CgNullRHI device = new CgNullRHI(64, 64);
     private final CgCommandList cmd = device.encoder();
+
+    @Override protected CgRHI rhi() { return device; }
+
+    /** Any SPIR-V: nothing here runs it. */
+    @Override
+    protected CgShaderModule module(CgShaderModule.Stage stage, String glsl) {
+        return device.createShaderModule(stage, CgNullRHI.emptySpirv(), "contract");
+    }
+
+    /** Nothing left to check: every command was refused or taken as it was recorded. */
+    @Override protected void checkFrame() {}
 
     private CgGpuBuffer buffer() {
         return device.createBuffer(new CgGpuBuffer.Desc("b", 256, CgGpuBuffer.Usage.ALL, true));
@@ -187,6 +204,15 @@ public class CgNullRHITest {
         refused("a buffer moving", () -> new CgTransition().buffer(buffer(), CgAccess.COMPUTE_WRITE, CgAccess.COLOR_WRITE));
         refused("an image moving", () -> new CgTransition().texture(CgTextureView.whole(device.surfaceColor()),
                 CgAccess.COMPUTE_WRITE, CgAccess.INDIRECT));
+    }
+
+    @Test
+    public void anImageMovesOnlyToAUseItWasMadeFor() {
+        CgGpuTexture sampledOnly = device.createTexture(new CgGpuTexture.Desc("sampled", CgGpuTexture.Kind.D2,
+                CgFormat.RGBA8_UNORM, 4, 4, 1, 1, 1, CgGpuTexture.Usage.SAMPLED_UPLOADED));
+        refused("without ATTACHMENT usage", () -> cmd.transition(new CgTransition()
+                .texture(CgTextureView.whole(sampledOnly), CgAccess.SAMPLED_READ, CgAccess.COLOR_WRITE)));
+        cmd.transition(new CgTransition().texture(CgTextureView.whole(sampledOnly), CgAccess.COPY_WRITE, CgAccess.SAMPLED_READ));
     }
 
     @Test

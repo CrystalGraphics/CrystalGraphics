@@ -20,7 +20,9 @@ import com.crystalgraphics.platform.rhi.shader.CgShaderModule;
 import com.crystalgraphics.vulkan.command.VulkanEncoder;
 import com.crystalgraphics.vulkan.format.VulkanCheck;
 import com.crystalgraphics.vulkan.format.VulkanFormats;
-import com.crystalgraphics.vulkan.resource.VulkanBindingLayout;
+import com.crystalgraphics.vulkan.binding.VulkanBindingLayout;
+import com.crystalgraphics.vulkan.binding.VulkanBindingSet;
+import com.crystalgraphics.vulkan.binding.VulkanDescriptorPools;
 import com.crystalgraphics.vulkan.resource.VulkanBuffer;
 import com.crystalgraphics.vulkan.resource.VulkanComputePipeline;
 import com.crystalgraphics.vulkan.resource.VulkanPipeline;
@@ -42,7 +44,10 @@ import org.lwjgl.vulkan.VkBufferCreateInfo;
 import org.lwjgl.vulkan.VkComputePipelineCreateInfo;
 import org.lwjgl.vulkan.VkDebugUtilsObjectNameInfoEXT;
 import org.lwjgl.vulkan.VkBufferViewCreateInfo;
+import org.lwjgl.vulkan.VkDescriptorBufferInfo;
+import org.lwjgl.vulkan.VkDescriptorImageInfo;
 import org.lwjgl.vulkan.VkDescriptorSetLayoutBinding;
+import org.lwjgl.vulkan.VkWriteDescriptorSet;
 import org.lwjgl.vulkan.VkDescriptorSetLayoutCreateInfo;
 import org.lwjgl.vulkan.VkDevice;
 import org.lwjgl.vulkan.VkGraphicsPipelineCreateInfo;
@@ -94,6 +99,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.BiConsumer;
+import com.crystalgraphics.vulkan.host.CgVulkanHost;
+import com.crystalgraphics.vulkan.host.CgVulkanImage;
+import com.crystalgraphics.vulkan.host.VulkanReport;
 
 import static com.crystalgraphics.vulkan.format.VulkanCheck.check;
 import static org.lwjgl.system.MemoryStack.stackPush;
@@ -153,6 +161,7 @@ public final class CgVulkanDevice implements CgRHI, AutoCloseable {
     private final Map<CgPipelineLayout, Long> pipelineLayouts = new HashMap<>();
     private final Map<VulkanBuffer, Map<Long, Long>> texelViews = new IdentityHashMap<>();
     private final VulkanStaging staging;
+    private final VulkanDescriptorPools descriptorPools;
     private final VulkanEncoder encoder;
     private VulkanTexture surfaceColor, surfaceDepth;
     private VulkanBuffer scratch;
@@ -211,6 +220,7 @@ public final class CgVulkanDevice implements CgRHI, AutoCloseable {
             pipelineCache = lp.get(0);
         }
         staging = new VulkanStaging(this);
+        descriptorPools = new VulkanDescriptorPools(device);
         encoder = new VulkanEncoder(this);
         resize(width, height);
     }
@@ -512,9 +522,40 @@ public final class CgVulkanDevice implements CgRHI, AutoCloseable {
         }
     }
 
+    /** A set from the pools, written once; images it samples are laid in their resting layout first. */
     @Override
     public CgBindingSet createBindingSet(String label, CgBindingLayout layout, CgBindings contents) {
-        throw new UnsupportedOperationException(label + ": binding sets are not recorded on Vulkan yet");
+        if (layout.pushed()) throw new IllegalArgumentException(label + ": a set of " + layout.label() + ", which is pushed");
+        long[] made = descriptorPools.allocate(((VulkanBindingLayout) layout).setLayout, label);
+        int n = contents.count();
+        try (MemoryStack stack = stackPush()) {
+            VkWriteDescriptorSet.Buffer writes = VkWriteDescriptorSet.calloc(n, stack);
+            for (int i = 0; i < n; i++) {
+                CgBindingLayout.Type type = contents.type(i);
+                VkWriteDescriptorSet w = writes.get(i).sType$Default().dstSet(made[1]).dstBinding(contents.binding(i))
+                        .descriptorCount(1).descriptorType(descriptorType(type));
+                if (type == CgBindingLayout.Type.SAMPLED_TEXTURE || type == CgBindingLayout.Type.STORAGE_IMAGE) {
+                    boolean sampled = type == CgBindingLayout.Type.SAMPLED_TEXTURE;
+                    VulkanTexture t = (VulkanTexture) contents.view(i).texture();
+                    if (t.unlaid || t.transferOnly) lay(t);
+                    w.pImageInfo(VkDescriptorImageInfo.calloc(1, stack)
+                            .sampler(sampled ? ((VulkanSampler) contents.sampler(i)).sampler : 0L)
+                            .imageView(t.view(device, contents.view(i), false))
+                            .imageLayout(!sampled ? VK_IMAGE_LAYOUT_GENERAL : t.borrowed() ? t.resting
+                                    : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL));
+                } else if (type == CgBindingLayout.Type.TEXEL_BUFFER) {
+                    w.pTexelBufferView(stack.longs(texelView((VulkanBuffer) contents.buffer(i), contents.offset(i),
+                            contents.size(i), contents.texelFormat(i))));
+                } else {
+                    w.pBufferInfo(VkDescriptorBufferInfo.calloc(1, stack).buffer(((VulkanBuffer) contents.buffer(i)).buffer)
+                            .offset(contents.offset(i)).range(contents.size(i) > 0 ? contents.size(i) : VK_WHOLE_SIZE));
+                }
+            }
+            vkUpdateDescriptorSets(device, writes, null);
+        }
+        VulkanBindingSet s = new VulkanBindingSet(label, layout, made[0], made[1]);
+        live.add(s);
+        return s;
     }
 
     /**
@@ -725,6 +766,8 @@ public final class CgVulkanDevice implements CgRHI, AutoCloseable {
                 });
             }
             vkDestroyDescriptorSetLayout(device, l.setLayout, null);
+        } else if (o instanceof VulkanBindingSet s) {
+            descriptorPools.free(s.pool, s.set);
         } else if (o instanceof VulkanPipeline p) {
             vkDestroyPipeline(device, p.pipeline, null);
         } else if (o instanceof VulkanComputePipeline p) {
@@ -868,6 +911,7 @@ public final class CgVulkanDevice implements CgRHI, AutoCloseable {
         staging.destroy();
         for (Object o : new ArrayList<>(live)) destroy(o);
         for (long l : pipelineLayouts.values()) vkDestroyPipelineLayout(device, l, null);   // those over no set
+        descriptorPools.destroy();
         pipelineLayouts.clear();
         for (VulkanSampler s : samplers.values()) vkDestroySampler(device, s.sampler, null);
         samplers.clear();

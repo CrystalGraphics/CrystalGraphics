@@ -2,7 +2,11 @@ import cgbuildlogic.abstractModule
 import cgbuildlogic.publishedModule
 import java.io.File as JFile
 
-plugins { `java-library` }
+plugins {
+    `java-library`
+    // The RHI's command contract, run by the null RHI here and by each implementation's own tests.
+    `java-test-fixtures`
+}
 
 group = "com.crystalgraphics"
 version = rootProject.version.toString()
@@ -31,6 +35,7 @@ dependencies {
     // The state manager's deduplication decisions are pure logic — no GL context, no backend — so they are
     // unit-testable here. Whether CgGL calls them from the right places still needs a live context.
     testImplementation("junit:junit:${rootProject.properties["dep.junit"]}")
+    testFixturesImplementation("junit:junit:${rootProject.properties["dep.junit"]}")
 
 
     compileOnly("org.projectlombok:lombok:1.18.44")

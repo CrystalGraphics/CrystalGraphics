@@ -1,12 +1,11 @@
-package com.crystalgraphics.vulkan;
+package com.crystalgraphics.vulkan.host;
 
-import com.crystalgraphics.vulkan.host.HostedVulkanHost;
-import com.crystalgraphics.vulkan.host.OwnedVulkanHost;
 import org.lwjgl.vulkan.VkCommandBuffer;
 import org.lwjgl.vulkan.VkDevice;
 import org.lwjgl.vulkan.VkInstance;
 import org.lwjgl.vulkan.VkPhysicalDevice;
 import org.lwjgl.vulkan.VkQueue;
+import com.crystalgraphics.vulkan.CgVulkanDevice;
 
 /**
  * Everything {@link CgVulkanDevice} takes from outside: a device and queue, the command buffer the current frame

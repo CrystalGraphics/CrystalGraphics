@@ -7,6 +7,7 @@ import com.crystalgraphics.platform.rhi.binding.CgBindings;
 import com.crystalgraphics.platform.rhi.pipeline.CgGraphicsPipeline;
 import com.crystalgraphics.platform.rhi.resource.CgGpuBuffer;
 import com.crystalgraphics.vulkan.CgVulkanDevice;
+import com.crystalgraphics.vulkan.binding.VulkanBindingSet;
 import com.crystalgraphics.vulkan.resource.VulkanBuffer;
 import com.crystalgraphics.vulkan.resource.VulkanPipeline;
 import com.crystalgraphics.vulkan.resource.VulkanTexture;
@@ -39,6 +40,8 @@ final class VulkanPass implements CgRenderPass {
     private final VulkanEncoder encoder;
     private final CgPassDesc desc;
     private VulkanPipeline pipeline;
+    /** Sets bound by index, bound again with each pipeline: a new layout may disturb them. */
+    private final VulkanBindingSet[] sets = new VulkanBindingSet[8];
 
     VulkanPass(CgVulkanDevice device, VulkanEncoder encoder, CgPassDesc desc) {
         this.device = device;
@@ -54,6 +57,15 @@ final class VulkanPass implements CgRenderPass {
     public void setPipeline(CgGraphicsPipeline p) {
         pipeline = (VulkanPipeline) p;
         vkCmdBindPipeline(cmd(), VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.pipeline);
+        for (int i = 0; i < sets.length; i++) if (sets[i] != null) bind(i);
+    }
+
+    private void bind(int index) {
+        if (index >= pipeline.desc.layout().sets().size()) return;
+        try (MemoryStack stack = stackPush()) {
+            vkCmdBindDescriptorSets(cmd(), VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.pipelineLayout, index,
+                    stack.longs(sets[index].set), null);
+        }
     }
 
     @Override
@@ -66,7 +78,8 @@ final class VulkanPass implements CgRenderPass {
 
     @Override
     public void setBindingSet(int set, CgBindingSet bindings) {
-        throw new UnsupportedOperationException("binding sets are not recorded on Vulkan yet");
+        sets[set] = (VulkanBindingSet) bindings;
+        if (pipeline != null) bind(set);
     }
 
     @Override

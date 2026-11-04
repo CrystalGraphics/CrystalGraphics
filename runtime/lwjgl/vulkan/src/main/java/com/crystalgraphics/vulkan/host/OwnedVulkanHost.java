@@ -4,8 +4,6 @@ import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.trace.CgTraceChannel;
 import com.crystalgraphics.vulkan.CgVulkanDevice;
-import com.crystalgraphics.vulkan.CgVulkanHost;
-import com.crystalgraphics.vulkan.CgVulkanImage;
 import com.crystalgraphics.vulkan.command.VulkanBarriers;
 import com.crystalgraphics.vulkan.command.VulkanComputeCommandBuffer;
 import com.crystalgraphics.vulkan.command.VulkanTransferCommandBuffer;
@@ -41,6 +39,7 @@ import org.lwjgl.vulkan.VkPhysicalDeviceFeatures2;
 import org.lwjgl.vulkan.VkPhysicalDeviceLineRasterizationFeaturesEXT;
 import org.lwjgl.vulkan.VkPhysicalDeviceFeatures;
 import org.lwjgl.vulkan.VkPhysicalDeviceProperties;
+import org.lwjgl.vulkan.VkPhysicalDeviceSynchronization2FeaturesKHR;
 import org.lwjgl.vulkan.VkPhysicalDeviceVulkan11Features;
 import org.lwjgl.vulkan.VkPhysicalDeviceVulkan12Features;
 import org.lwjgl.vulkan.VkPresentInfoKHR;
@@ -75,6 +74,7 @@ import static org.lwjgl.vulkan.KHRPortabilitySubset.VK_KHR_PORTABILITY_SUBSET_EX
 import static org.lwjgl.vulkan.KHRPushDescriptor.VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME;
 import static org.lwjgl.vulkan.KHRSurface.*;
 import static org.lwjgl.vulkan.KHRSwapchain.*;
+import static org.lwjgl.vulkan.KHRSynchronization2.VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME;
 import static org.lwjgl.vulkan.VK10.*;
 import static org.lwjgl.vulkan.VK11.vkGetPhysicalDeviceFeatures2;
 import static org.lwjgl.vulkan.VK12.VK_API_VERSION_1_2;
@@ -129,6 +129,7 @@ public final class OwnedVulkanHost implements CgVulkanHost, AutoCloseable {
     private final VkDebugUtilsMessengerCallbackEXT callback;
     private final long messenger;
     private final long surface;
+    private final boolean validates;
     private final VkPhysicalDevice physical;
     private final VkDevice device;
     private final int family;
@@ -181,6 +182,7 @@ public final class OwnedVulkanHost implements CgVulkanHost, AutoCloseable {
         this.window = window;
         try (MemoryStack stack = stackPush()) {
             boolean layer = validate && hasLayer(stack, VALIDATION);
+            validates = layer;
             if (validate && !layer)
                 System.err.println("[crystalgraphics] vulkan: " + VALIDATION + " is not installed; running unvalidated");
             instance = createInstance(stack, layer);
@@ -244,6 +246,9 @@ public final class OwnedVulkanHost implements CgVulkanHost, AutoCloseable {
     @Override public long retiredFrame() { return retired; }
     @Override public boolean ownsSubmission() { return true; }
     @Override public int validationErrors() { return errors; }
+
+    /** Whether the validation layer was asked for and found: {@link #validationErrors()} counts nothing otherwise. */
+    public boolean validates() { return validates; }
     @Override public boolean namesObjects() { return messenger != VK_NULL_HANDLE; }
 
     @Override public boolean bresenhamLines() { return bresenhamLines; }
@@ -990,14 +995,19 @@ public final class OwnedVulkanHost implements CgVulkanHost, AutoCloseable {
         VkPhysicalDeviceFeatures has = VkPhysicalDeviceFeatures.malloc(stack);
         vkGetPhysicalDeviceFeatures(physical, has);
         boolean hasLines = extensions(stack, physical).contains(VK_EXT_LINE_RASTERIZATION_EXTENSION_NAME);
+        boolean hasSync2 = extensions(stack, physical).contains(VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME);
         VkPhysicalDeviceLineRasterizationFeaturesEXT hasLineModes = VkPhysicalDeviceLineRasterizationFeaturesEXT.calloc(stack)
                 .sType$Default();
+        VkPhysicalDeviceSynchronization2FeaturesKHR hasSync2Feature = VkPhysicalDeviceSynchronization2FeaturesKHR.calloc(stack)
+                .sType$Default().pNext(hasLines ? hasLineModes.address() : 0L);
         VkPhysicalDeviceVulkan11Features has11 = VkPhysicalDeviceVulkan11Features.calloc(stack).sType$Default()
-                .pNext(hasLines ? hasLineModes.address() : 0L);
+                .pNext(hasSync2 ? hasSync2Feature.address() : hasLines ? hasLineModes.address() : 0L);
         VkPhysicalDeviceVulkan12Features has12 = VkPhysicalDeviceVulkan12Features.calloc(stack).sType$Default()
                 .pNext(has11.address());
         vkGetPhysicalDeviceFeatures2(physical, VkPhysicalDeviceFeatures2.calloc(stack).sType$Default().pNext(has12.address()));
         bresenhamLines = hasLines && hasLineModes.bresenhamLines();
+        // Barriers with their stages per barrier, and the events a split transition will wait on.
+        boolean sync2 = hasSync2 && hasSync2Feature.synchronization2();
         drawParameters = has11.shaderDrawParameters();
         indirectCount = has12.drawIndirectCount();
         indirectFirstInstance = has.drawIndirectFirstInstance();
@@ -1017,8 +1027,11 @@ public final class OwnedVulkanHost implements CgVulkanHost, AutoCloseable {
         // GL's line rule, where the device has it: without it a line on a pixel boundary can vanish.
         VkPhysicalDeviceLineRasterizationFeaturesEXT lineModes = VkPhysicalDeviceLineRasterizationFeaturesEXT.calloc(stack)
                 .sType$Default().bresenhamLines(true);
+        VkPhysicalDeviceSynchronization2FeaturesKHR synchronization2 = VkPhysicalDeviceSynchronization2FeaturesKHR.calloc(stack)
+                .sType$Default().synchronization2(true).pNext(bresenhamLines ? lineModes.address() : 0L);
         VkPhysicalDeviceDynamicRenderingFeaturesKHR dynamic = VkPhysicalDeviceDynamicRenderingFeaturesKHR.calloc(stack)
-                .sType$Default().dynamicRendering(true).pNext(bresenhamLines ? lineModes.address() : 0L);
+                .sType$Default().dynamicRendering(true)
+                .pNext(sync2 ? synchronization2.address() : bresenhamLines ? lineModes.address() : 0L);
         asyncFamily = has12.timelineSemaphore() ? chooseAsyncFamily(stack) : -1;
         transferFamily = has12.timelineSemaphore() ? chooseTransferFamily(stack) : -1;
         System.out.println("[crystalgraphics] vulkan queue families: " + families(stack));
@@ -1035,6 +1048,7 @@ public final class OwnedVulkanHost implements CgVulkanHost, AutoCloseable {
         if (extensions(stack, physical).contains(VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME))
             names.add(VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME);
         if (bresenhamLines) names.add(VK_EXT_LINE_RASTERIZATION_EXTENSION_NAME);
+        if (sync2) names.add(VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME);
         PointerBuffer ext = stack.mallocPointer(names.size());
         for (String name : names) ext.put(stack.UTF8(name));
         ext.flip();
