@@ -12,8 +12,8 @@ Buffers {
 }
 
 // GL's DrawElementsIndirectCommand and DrawArraysIndirectCommand, which are Vulkan's byte for byte: count, instances,
-// first, then the base vertex for indices, then the first instance. That is 0 but in a multi-draw's command:
-// CG_INSTANCE_ID adds cg_InstanceBase on every device, and Vulkan's gl_InstanceIndex would count it twice.
+// first, then the base vertex for indices, then the first instance: where the batch's records start, CG_SHARED_RECORD
+// set where every instance reads one (cg_env.glsl).
 const uint ARGS_ROW = 11u;
 
 uint args_word(uint element, uint count, uint mode, uint factor, uint first, uint elements, uint base, uint indexed,

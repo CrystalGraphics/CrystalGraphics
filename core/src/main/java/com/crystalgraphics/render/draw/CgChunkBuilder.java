@@ -167,7 +167,7 @@ public final class CgChunkBuilder {
                     ? "an OBJECT draw names the mesh it expands" : "only an OBJECT draw takes a mesh");
         }
         // The mesh picks the vertex factory, as Unreal's does: a skinned mesh draws every pass skinned.
-        if (mesh != null && mesh.format().isSkinned()) pipeline = pipeline.skinned();
+        if (mesh != null && mesh.format().isSkinned()) pipeline = pipeline.as(CgPipelineForm.SKINNED);
         closeDraw();
         if (count == pipelines.length) grow();
         int d = count;

@@ -574,7 +574,7 @@ static final CgTexture2D SMOKE = CgTextures.of("mymod:cooked/fx/smoke.cgtex", Cg
 
 **A mesh is data** (`api/mesh/CgMesh`): built and edited on any thread, with no GPU in it. The graph and the world
 renderer draw it from `render/mesh/CgMeshStore`, which keeps every mesh's copy in pooled slabs per vertex format,
-uploads what changed before a frame's first pass, and draws with base-vertex calls (plan `mesh-rewrite`). Where
+uploads what changed before a frame's first pass, and draws with each draw's bases in the call (plan `mesh-rewrite`). Where
 `CgCapabilities.multiDraw()` holds, a run of draws sharing a pipeline, bindings and a slab is one multi-draw call
 (`render/graph/CLAUDE.md`, *Multi-draw*).
 
@@ -878,7 +878,7 @@ CgGlState.saveAll()       // → every slot (used by CgExecutor around a frame)
 
 ### Capabilities
 
-`CgCapabilities.detect()` — cached per context; **throws below OpenGL 3.3**. Above the floor it answers `shaderBufferPath()` (GL 4.3 or ARB storage blocks, forceable with `-Dcrystalgraphics.shaderBuffer.tier=<path>`; the TBO path is detected and unhooked, `docs/TBO_PATH.md`), `vertexStreamTier()` (persistent or mapped ring, see `gl/buffer/CLAUDE.md`), `isCopyImageSubDataSupported()`, the limits (`getMaxDrawBuffers()`, `getMaxTextureUnits()`, …) and `isCoreProfile()`. For compute and GPU-driven draws it answers what a consumer needs — `compute()`, `storageImages()`, `subgroups()`, `floatAtomics()`, `drawIndirect()`, `multiDrawIndirect()`, `indirectCount()`, `drawParameters()`, `feedbackCount()`, `asyncCompute()`, `bindless()`, `multiDraw()` (whether the mesh store joins draws; `-Dcrystalgraphics.mesh.multiDraw=false` turns it off) — each joined from a core version, its ARB extension and, on the tracked backend, the device; and `computeTier()` (`V` · `G43` · `G40` · `G33` · `CPU`), forceable with `-Dcrystalgraphics.compute.tier=<tier>`, which throws naming what a context lacks.
+`CgCapabilities.detect()` — cached per context; **throws below OpenGL 3.3, or without a draw's bases** (4.6, or `ARB_shader_draw_parameters` with `ARB_base_instance`). Above the floor it answers `shaderBufferPath()` (GL 4.3 or ARB storage blocks, forceable with `-Dcrystalgraphics.shaderBuffer.tier=<path>`; the TBO path is detected and unhooked, `docs/TBO_PATH.md`), `vertexStreamTier()` (persistent or mapped ring, see `gl/buffer/CLAUDE.md`), `isCopyImageSubDataSupported()`, the limits (`getMaxDrawBuffers()`, `getMaxTextureUnits()`, …) and `isCoreProfile()`. For compute and GPU-driven draws it answers what a consumer needs — `compute()`, `storageImages()`, `subgroups()`, `floatAtomics()`, `drawIndirect()`, `multiDrawIndirect()`, `indirectCount()`, `drawParameters()`, `feedbackCount()`, `asyncCompute()`, `bindless()`, `multiDraw()` (whether the mesh store joins draws; `-Dcrystalgraphics.mesh.multiDraw=false` turns it off) — each joined from a core version, its ARB extension and, on the tracked backend, the device; and `computeTier()` (`V` · `G43` · `G40` · `G33` · `CPU`), forceable with `-Dcrystalgraphics.compute.tier=<tier>`, which throws naming what a context lacks.
 
 **`CgGpuReport`** is the full answer, for diagnosis rather than decisions: every feature a compute or draw tier is chosen
 from (`core`, the extension that gives it, or `no`) and the limits that bound it, from the driver on GL and from

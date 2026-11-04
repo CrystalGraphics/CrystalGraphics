@@ -110,12 +110,6 @@ public final class CgMaterialShaderCompiler {
     private static final String HANDED_SCENE_INCLUDE = "crystalgraphics:shaders/env/handed_scene.glsl";
 
     /**
-     * The engine's keyword for a multi-draw's variant of any pass: {@code cg_env.glsl} takes a draw's bases from its
-     * command rather than from uniforms. Defined whether or not the shader declares it.
-     */
-    public static final String MULTI_DRAW = "CG_MULTI_DRAW";
-
-    /**
      * What a device reading textures by index from its bindless heap defines after {@code #version}, before any code:
      * the runtime arrays {@code cg_env.glsl} declares then need the extension, which no code may precede.
      */
@@ -577,16 +571,14 @@ public final class CgMaterialShaderCompiler {
         StringBuilder sb = new StringBuilder(1024);
 
         // Step 1: #version
-        int version = glslVersion(config);
+        int version = glslVersion();
         sb.append("#version ").append(version).append(" core\n");
         sb.append(BINDLESS_EXTENSION);
 
         // Keyword #define injection — in featureNames declaration order, before user #-lines
         appendKeywordDefines(sb, shader.featureNames(), config.activeKeywords());
-        // Before any code, which a hoisted #include may already be: cg_env.glsl reads a multi-draw's bases from it.
-        if (version < 460 && config.activeKeywords().contains(MULTI_DRAW)) {
-            sb.append("#extension GL_ARB_shader_draw_parameters : require\n");
-        }
+        // Before any code, which a hoisted #include may already be: cg_env.glsl reads a draw's bases from it.
+        if (version < 460) sb.append("#extension GL_ARB_shader_draw_parameters : require\n");
 
         // Step 2: CG_VERTEX_STAGE define.
         //
@@ -704,7 +696,7 @@ public final class CgMaterialShaderCompiler {
         StringBuilder sb = new StringBuilder(1024);
 
         // Step 1: #version
-        sb.append("#version ").append(glslVersion(config)).append(" core\n");
+        sb.append("#version ").append(glslVersion()).append(" core\n");
         sb.append(BINDLESS_EXTENSION);
 
         // Keyword #define injection — in featureNames declaration order, before user #-lines
@@ -864,12 +856,9 @@ public final class CgMaterialShaderCompiler {
         }
     }
 
-    /**
-     * 430; a multi-draw variant at the context's own above that, since glslang declares the draw parameters from 450
-     * and 4.6 has them in core.
-     */
-    private static int glslVersion(CompileConfig config) {
-        return config.activeKeywords().contains(MULTI_DRAW) ? Math.max(430, CgCapabilities.detect().glslVersion()) : 430;
+    /** The context's own, 430 at least: glslang declares the draw parameters from 450, and 4.6 has them in core. */
+    private static int glslVersion() {
+        return Math.max(430, CgCapabilities.detect().glslVersion());
     }
 
     private static void appendKeywordDefines(StringBuilder sb, List<String> featureNames,
@@ -880,7 +869,6 @@ public final class CgMaterialShaderCompiler {
                 sb.append("#define ").append(name).append(" 1\n");
             }
         }
-        if (activeKeywords.contains(MULTI_DRAW)) sb.append("#define ").append(MULTI_DRAW).append(" 1\n");
         if (activeKeywords.contains(DEBUG_OVERDRAW)) sb.append("#define ").append(DEBUG_OVERDRAW).append(" 1\n");
         if (activeKeywords.contains(DEPTH_PREPASS)) sb.append("#define ").append(DEPTH_PREPASS).append(" 1\n");
         if (activeKeywords.contains(VOLUME_TARGET)) sb.append("#define ").append(VOLUME_TARGET).append(" 1\n");

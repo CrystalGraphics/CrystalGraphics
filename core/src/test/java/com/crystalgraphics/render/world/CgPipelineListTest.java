@@ -30,8 +30,8 @@ public class CgPipelineListTest {
             "Pass {", "    void vertex(out v2f o) { }",
             "    void fragment(in v2f i, out vec4 fragColor) { fragColor = _Color; }", "}");
     private static String shader;
-    private static final CgPipelineList.Settings HALF = new CgPipelineList.Settings(true, true, true);
-    private static final CgPipelineList.Settings FULL = new CgPipelineList.Settings(true, true, false);
+    private static final CgPipelineList.Settings HALF = new CgPipelineList.Settings(true, true);
+    private static final CgPipelineList.Settings FULL = new CgPipelineList.Settings(true, false);
 
     /** Builds a material the second time it is asked under the same settings. */
     private static final class Fake implements CgPipelineList.Precacher {

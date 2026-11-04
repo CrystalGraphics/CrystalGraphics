@@ -5,7 +5,7 @@ import com.crystalgraphics.api.buffer.CgBufferFormat;
 /**
  * What a draw's instances are: the record each one writes and the geometry every instance expands. A batch never
  * mixes kinds, and the executor uploads one kind's instances for a frame in a single write, drawing each batch's
- * range of it through {@code cg_InstanceBase}.
+ * range of it from the draw's first instance.
  *
  * <pre>{@code
  * CgPipeline p = material.pipeline(CgInstanceKind.QUAD);   // a UI box, a glyph, a blit

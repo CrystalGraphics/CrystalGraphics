@@ -57,11 +57,10 @@ public final class CgPipelineList {
      * What decides which of a material's pipelines the world renderer draws.
      *
      * @param mergeEmission  a foldable glow is drawn in its colour's draw
-     * @param joins          runs of draws join into multi-draws: each pipeline's multi-draw form too
      * @param halfResolution a half-size draw is drawn at half size, with its passes
      */
     @Desugar
-    public record Settings(boolean mergeEmission, boolean joins, boolean halfResolution) {
+    public record Settings(boolean mergeEmission, boolean halfResolution) {
     }
 
     /** Starts or polls a material's pipelines under settings; whether all are built. */

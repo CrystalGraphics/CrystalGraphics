@@ -300,9 +300,12 @@ public abstract class CgGLBackend {
     public abstract void glDrawElements(int mode, int count, int type, long indices);
     public abstract void glDrawArraysInstanced(int mode, int first, int count, int instanceCount);
     public abstract void glDrawElementsInstanced(int mode, int count, int type, long indices, int instanceCount);
-    /** Each index plus {@code baseVertex}, as is {@code gl_VertexID} (core GL 3.2). */
-    public abstract void glDrawElementsInstancedBaseVertex(int mode, int count, int type, long indices,
-                                                           int instanceCount, int baseVertex);
+    /**
+     * Each index plus {@code baseVertex}, as is {@code gl_VertexID}; {@code gl_BaseVertex} and {@code gl_BaseInstance}
+     * are the two bases (GL 4.2, {@code ARB_base_instance}).
+     */
+    public abstract void glDrawElementsInstancedBaseVertexBaseInstance(int mode, int count, int type, long indices,
+                                                                       int instanceCount, int baseVertex, int baseInstance);
 
     // -------------------------------------------------------------------------
     // Indirect draws: arguments in the bound GL_DRAW_INDIRECT_BUFFER, at an offset

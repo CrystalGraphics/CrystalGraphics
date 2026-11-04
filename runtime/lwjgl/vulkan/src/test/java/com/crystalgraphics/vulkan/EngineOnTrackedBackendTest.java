@@ -121,7 +121,6 @@ public class EngineOnTrackedBackendTest {
             }
             CgParsedShader parsed = shader.getLastParsed();
             CgParsedPass forward = parsed.getPassByLightMode(CgRenderPassVariant.FORWARD.lightModeName());
-            List<String> multiDrawn = new ArrayList<>();
             for (CgParsedPass pass : parsed.passes()) {
                 List<Set<String>> variants = pass == forward ? variants(parsed.featureNames()) : List.of(Set.of());
                 for (Set<String> keywords : variants) {
@@ -129,14 +128,12 @@ public class EngineOnTrackedBackendTest {
                     if (shader.getOrCompile(pass.name(), keywords) == null)
                         failures.add(path + " pass " + pass.name() + " " + keywords + ": did not link (see log)");
                 }
-                multiDrawn.add(pass.name());
             }
             String depth = CgRenderPassVariant.DEPTH.lightModeName();
-            if (parsed.getPassByName(depth) == null && shader.hasCompiledPass(depth)) multiDrawn.add(depth);
-            for (String pass : multiDrawn) {   // what an executor binds for a run of draws joined into one call
+            if (parsed.getPassByName(depth) == null && shader.hasCompiledPass(depth)) {   // the generated depth pass
                 programs++;
-                if (shader.getOrCompile(pass, Set.of(CgMaterialShaderCompiler.MULTI_DRAW)) == null)
-                    failures.add(path + " pass " + pass + " multi-draw: did not link (see log)");
+                if (shader.getOrCompile(depth, Set.of()) == null)
+                    failures.add(path + " pass " + depth + ": did not link (see log)");
             }
             if (forward != null && !forward.fragOutput().isMrt()) {   // the world renderer's volume pass, folded or not
                 List<Set<String>> volumes = new ArrayList<>(List.of(Set.of(CgMaterialShaderCompiler.VOLUME_TARGET)));
@@ -180,10 +177,8 @@ public class EngineOnTrackedBackendTest {
                     }
                     CgParsedShader parsed = shader.getLastParsed();
                     for (CgParsedPass pass : parsed.passes()) {
-                        for (Set<String> keywords : List.of(Set.<String>of(), Set.of(CgMaterialShaderCompiler.MULTI_DRAW))) {
-                            if (shader.getOrCompile(pass.name(), keywords) == null)
-                                failures.add(path + " " + state.build() + " pass " + pass.name() + " " + keywords);
-                        }
+                        if (shader.getOrCompile(pass.name(), Set.of()) == null)
+                            failures.add(path + " " + state.build() + " pass " + pass.name());
                     }
                     CgParsedPass forward = parsed.getPassByLightMode(CgRenderPassVariant.FORWARD.lightModeName());
                     if (shader.getOrCompile(forward.name(), Set.of(CgMaterialShaderCompiler.VOLUME_TARGET)) == null)

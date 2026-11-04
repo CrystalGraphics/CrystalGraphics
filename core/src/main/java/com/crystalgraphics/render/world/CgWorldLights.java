@@ -13,7 +13,6 @@ import com.crystalgraphics.compute.CgKernel;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.gl.buffer.CgReadback;
 import com.crystalgraphics.gl.texture.CgFallbackTextures;
-import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
 import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.render.draw.CgOrder;
@@ -1375,8 +1374,6 @@ public final class CgWorldLights {
             if (!sunShadow.precache()) return false;
             CgPipeline pipeline = sunShadow.pipeline(CgInstanceKind.OBJECT);
             if (pipeline == null) return false;
-            // Its casters join into multi-draws: that form is a program of its own.
-            if (CgCapabilities.detect().multiDraw() && !pipeline.multiDraw().precache()) return false;
             int res = SUN_RESOLUTION.get();
             casterTexture();
             if (sunMap == null || sunMap.getWidth() != 2 * res) {

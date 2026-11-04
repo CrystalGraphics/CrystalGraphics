@@ -91,6 +91,17 @@ public record CgBlendState(boolean enabled, int srcRgb, int dstRgb, int srcAlpha
      * @param dstAlpha destination alpha factor
      * @return a new {@code CgBlendState} with {@code GL_FUNC_ADD} for both blend equations
      */
+    /** Source and destination summed, alpha too: a count, as the overdraw view keeps. */
+    public static final CgBlendState SUM = new CgBlendState(true,
+            CgGL.GL_ONE, CgGL.GL_ONE,
+            CgGL.GL_ONE, CgGL.GL_ONE,
+            CgGL.GL_FUNC_ADD, CgGL.GL_FUNC_ADD);
+
+    /** Whether it adds to what is there unscaled ({@code dst} factor ONE): it can only brighten it, never cover it. */
+    public boolean adds() {
+        return enabled && dstRgb == CgGL.GL_ONE;
+    }
+
     public static CgBlendState of(boolean enabled, int srcRgb, int dstRgb, int srcAlpha, int dstAlpha) {
         return new CgBlendState(enabled, srcRgb, dstRgb, srcAlpha, dstAlpha,
                 CgGL.GL_FUNC_ADD, CgGL.GL_FUNC_ADD);

@@ -1701,9 +1701,6 @@ public final class CgMaterialShader implements CgReloadable {
         if (loc >= 0) shader.getProgram().setUniform1i(loc, CgBindingPoints.MEDIA_TEXTURE_UNIT);
         loc = shader.getUniformLocation(CgBindingPoints.LOCAL_LIGHTS_TEXTURE_UNIFORM);
         if (loc >= 0) shader.getProgram().setUniform1i(loc, CgBindingPoints.LOCAL_LIGHTS_TEXTURE_UNIT);
-        // Cached now, after the link: asked first at the program's first draw, the query waits for the driver's queue.
-        shader.getUniformLocation("cg_InstanceBase");
-        shader.getUniformLocation("cg_VertexBase");
         CgParsedShader parsed = lastParsed;
         if (parsed == null) return;
         int unit = 0;

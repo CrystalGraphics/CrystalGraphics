@@ -767,24 +767,24 @@ public final class CgTrackedGLBackend extends CgGLBackend {
 
     // ── draws ──────────────────────────────────────────────────────────────────
 
-    @Override public void glDrawArrays(int mode, int first, int count) { draw(mode, first, count, 1, -1, 0, 0); }
+    @Override public void glDrawArrays(int mode, int first, int count) { draw(mode, first, count, 1, -1, 0, 0, 0); }
 
-    @Override public void glDrawElements(int mode, int count, int type, long indices) { draw(mode, 0, count, 1, type, indices, 0); }
+    @Override public void glDrawElements(int mode, int count, int type, long indices) { draw(mode, 0, count, 1, type, indices, 0, 0); }
 
     @Override
     public void glDrawArraysInstanced(int mode, int first, int count, int instanceCount) {
-        draw(mode, first, count, instanceCount, -1, 0, 0);
+        draw(mode, first, count, instanceCount, -1, 0, 0, 0);
     }
 
     @Override
     public void glDrawElementsInstanced(int mode, int count, int type, long indices, int instanceCount) {
-        draw(mode, 0, count, instanceCount, type, indices, 0);
+        draw(mode, 0, count, instanceCount, type, indices, 0, 0);
     }
 
     @Override
-    public void glDrawElementsInstancedBaseVertex(int mode, int count, int type, long indices, int instanceCount,
-                                                  int baseVertex) {
-        draw(mode, 0, count, instanceCount, type, indices, baseVertex);
+    public void glDrawElementsInstancedBaseVertexBaseInstance(int mode, int count, int type, long indices,
+                                                              int instanceCount, int baseVertex, int baseInstance) {
+        draw(mode, 0, count, instanceCount, type, indices, baseVertex, baseInstance);
     }
 
     /**
@@ -811,17 +811,18 @@ public final class CgTrackedGLBackend extends CgGLBackend {
     }
 
     /** @param type the index type, or -1 for a draw of arrays */
-    private void draw(int mode, int first, int count, int instances, int type, long indices, int baseVertex) {
+    private void draw(int mode, int first, int count, int instances, int type, long indices, int baseVertex,
+                      int baseInstance) {
         CgDrawState s = tracker.state;
         if (!prepareDraw(s)) return;
         CgGraphicsPipelineDesc.Topology topology = GlEnums.topology(mode);
         if (type < 0) {
-            tracker.draw(topology, count, instances, first, 0);
+            tracker.draw(topology, count, instances, first, baseInstance);
             return;
         }
         if (!indices(s, type)) return;
         tracker.drawIndexed(topology, count, instances, (int) (indices / (type == CgGL.GL_UNSIGNED_INT ? 4 : 2)),
-                baseVertex, 0);
+                baseVertex, baseInstance);
     }
 
     @Override public void glDrawArraysIndirect(int mode, long offset) { drawIndirect(mode, -1, offset, 1, 0, -1); }

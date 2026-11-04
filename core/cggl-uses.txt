@@ -70,7 +70,6 @@ com/crystalgraphics/noise/CgNoiseVolumes.java
 com/crystalgraphics/noise/CgWaveletNoise.java
 com/crystalgraphics/render/CgImmediate.java
 com/crystalgraphics/render/draw/CgBindingTable.java
-com/crystalgraphics/render/draw/CgPipeline.java
 com/crystalgraphics/render/graph/CgBufferPool.java
 com/crystalgraphics/render/graph/CgComposedTargets.java
 com/crystalgraphics/render/graph/CgDispatch.java

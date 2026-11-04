@@ -41,8 +41,6 @@ import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.world.CgWorldBegin;
 import com.crystalgraphics.platform.service.CgShaderPacks;
 import javax.annotation.Nullable;
-import com.crystalgraphics.render.mesh.CgMeshStore;
-import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.render.CgViewFrustum;
 import com.crystalgraphics.render.draw.CgBufferHandle;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
@@ -53,6 +51,7 @@ import com.crystalgraphics.render.draw.CgOrder;
 import com.crystalgraphics.text.render.CgTextRenderer;
 import com.crystalgraphics.render.draw.CgPassConstants;
 import com.crystalgraphics.render.draw.CgPipeline;
+import com.crystalgraphics.render.draw.CgPipelineForm;
 import com.crystalgraphics.render.graph.CgBufferDesc;
 import com.crystalgraphics.render.graph.CgBufferUsage;
 import com.crystalgraphics.render.graph.CgComputePass;
@@ -560,10 +559,9 @@ public final class CgWorldRenderer {
     /** The settings asked for now: what the next frames draw under once the program list is warm. */
     public CgPipelineList.Settings requestedSettings() {
         boolean merge = mergeRequested;
-        boolean joins = CgCapabilities.detect().multiDraw() && CgMeshStore.get().multiDraw();
         CgPipelineList.Settings r = requested;
-        if (r == null || r.mergeEmission() != merge || r.joins() != joins || r.halfResolution() != halfResolution) {
-            requested = r = new CgPipelineList.Settings(merge, joins, halfResolution);
+        if (r == null || r.mergeEmission() != merge || r.halfResolution() != halfResolution) {
+            requested = r = new CgPipelineList.Settings(merge, halfResolution);
         }
         return r;
     }
@@ -888,67 +886,64 @@ public final class CgWorldRenderer {
      * precacher: a caller requests its materials through {@link CgPipelinePrecache}.
      */
     boolean precache(CgMaterial material, boolean halfResolution, boolean skinned, CgPipelineList.Settings settings) {
-        boolean joins = settings.joins();
         boolean ready = true;
         for (CgMaterial link = material; link != null; link = link.getNextPass()) {
-            ready &= builtAs(skinned, link.pipeline(CgInstanceKind.OBJECT), joins);
-            if (link.hasDepthPass()) ready &= builtAs(skinned, link.pipeline(CgRenderPassVariant.DEPTH, CgInstanceKind.OBJECT), joins);
+            ready &= builtAs(skinned, link.pipeline(CgInstanceKind.OBJECT));
+            if (link.hasDepthPass()) ready &= builtAs(skinned, link.pipeline(CgRenderPassVariant.DEPTH, CgInstanceKind.OBJECT));
             CgPipeline forward = link.pipeline(CgInstanceKind.OBJECT);
-            if (forward != null) ready &= builtAs(skinned, forward.depthPrepass(), joins);
+            if (forward != null) ready &= builtAs(skinned, forward.as(CgPipelineForm.DEPTH));
             // The normals and custom data an opaque draw writes whenever the lights or a post material ask: warm
             // whether or not they ask now, so the frame that starts asking compiles nothing.
             if (forward != null && link.getRenderQueue() < CgRenderQueue.TRANSPARENT_THRESHOLD) {
-                ready &= builtAs(skinned, forward.normalTarget(), joins);
-                if (link.writesCustomData()) ready &= builtAs(skinned, forward.customDataTarget(), joins);
+                ready &= builtAs(skinned, forward.as(CgPipelineForm.NORMALS));
+                if (link.writesCustomData()) ready &= builtAs(skinned, forward.as(CgPipelineForm.CUSTOM_DATA));
             }
             if (link.hasEmissivePass()) {
-                ready &= builtAs(skinned, link.pipeline(CgRenderPassVariant.EMISSIVE, CgInstanceKind.OBJECT), joins);
-                if (forward != null && settings.mergeEmission()) ready &= builtAs(skinned, forward.sceneFold(), joins);
+                ready &= builtAs(skinned, link.pipeline(CgRenderPassVariant.EMISSIVE, CgInstanceKind.OBJECT));
+                if (forward != null && settings.mergeEmission()) ready &= builtAs(skinned, forward.as(CgPipelineForm.FOLD));
             }
             if (forward != null && link.getRenderQueue() < CgRenderQueue.TRANSPARENT_THRESHOLD
                     && link.readsExposure()) {
                 // An effect's opaque or masked draw graded: its Forward pass covering its layer, and its glow
-                ready &= builtAs(skinned, layered(forward.solidCover()), joins);
+                ready &= builtAs(skinned, layered(forward.as(CgPipelineForm.SOLID)));
                 if (link.hasEmissivePass()) {
-                    ready &= builtAs(skinned, layered(link.pipeline(CgRenderPassVariant.EMISSIVE, CgInstanceKind.OBJECT)), joins);
+                    ready &= builtAs(skinned, layered(link.pipeline(CgRenderPassVariant.EMISSIVE, CgInstanceKind.OBJECT)));
                 }
             }
             if (forward != null && link.getRenderQueue() >= CgRenderQueue.TRANSPARENT_THRESHOLD) {
                 // A graded draw's layer: its Forward pass, folded or with its glow, under the layer's blend
-                ready &= builtAs(skinned, layered(forward), joins);
+                ready &= builtAs(skinned, layered(forward));
                 if (link.hasEmissivePass()) {
-                    if (settings.mergeEmission()) ready &= builtAs(skinned, layered(forward.sceneFold()), joins);
-                    ready &= builtAs(skinned, layered(link.pipeline(CgRenderPassVariant.EMISSIVE, CgInstanceKind.OBJECT)), joins);
+                    if (settings.mergeEmission()) ready &= builtAs(skinned, layered(forward.as(CgPipelineForm.FOLD)));
+                    ready &= builtAs(skinned, layered(link.pipeline(CgRenderPassVariant.EMISSIVE, CgInstanceKind.OBJECT)));
                 }
             }
             if (link.hasDistortionPass()) {
-                ready &= builtAs(skinned, link.pipeline(CgRenderPassVariant.DISTORTION, CgInstanceKind.OBJECT), joins);
+                ready &= builtAs(skinned, link.pipeline(CgRenderPassVariant.DISTORTION, CgInstanceKind.OBJECT));
                 ready &= distortion.precache();
             }
         }
         // CustomDepth draws each material by its depth pipeline, started above, under a stencil state: only the
         // stencil copy is a program of its own. One for every material, since a draw marks itself.
         if (customStencil == null) customStencil = CgMaterial.newInstance(CUSTOM_STENCIL_SHADER);
-        ready &= built(customStencil.pipeline(CgInstanceKind.OBJECT), false);
+        ready &= built(customStencil.pipeline(CgInstanceKind.OBJECT));
         if (!halfResolution || !settings.halfResolution()) return ready;
         if (upsample == null) upsample = CgMaterial.newInstance(UPSAMPLE_SHADER);
         if (resolve == null) resolve = CgMaterial.newInstance(RESOLVE_SHADER);
         if (composite == null) composite = CgMaterial.newInstance(COMPOSITE_SHADER);
-        ready &= built(upsample.pipeline(CgInstanceKind.OBJECT), false);
-        ready &= built(resolve.pipeline(CgInstanceKind.OBJECT), false);
-        return built(composite.pipeline(CgInstanceKind.OBJECT), false) & ready;
+        ready &= built(upsample.pipeline(CgInstanceKind.OBJECT));
+        ready &= built(resolve.pipeline(CgInstanceKind.OBJECT));
+        return built(composite.pipeline(CgInstanceKind.OBJECT)) & ready;
     }
 
-    /** {@link #precached} of {@code pipeline}'s skinned form where {@code skinned}. */
-    private static boolean builtAs(boolean skinned, @Nullable CgPipeline pipeline, boolean joins) {
-        return built(pipeline == null || !skinned ? pipeline : pipeline.skinned(), joins);
+    /** {@link #built} of {@code pipeline}'s skinned form where {@code skinned}. */
+    private static boolean builtAs(boolean skinned, @Nullable CgPipeline pipeline) {
+        return built(pipeline == null || !skinned ? pipeline : pipeline.as(CgPipelineForm.SKINNED));
     }
 
-    /** {@code pipeline} and, where draws join, its multi-draw form, both started; whether both are built. */
-    private static boolean built(@Nullable CgPipeline pipeline, boolean joins) {
-        if (pipeline == null) return true;
-        boolean ready = pipeline.precache();
-        return joins ? pipeline.multiDraw().precache() & ready : ready;
+    /** {@code pipeline} started; whether it is built. */
+    private static boolean built(@Nullable CgPipeline pipeline) {
+        return pipeline == null || pipeline.precache();
     }
 
     /** One draw being built. Never hold it: the next {@link #draw} reuses it. */
@@ -2061,10 +2056,10 @@ public final class CgWorldRenderer {
                 }
                 if (pipeline == null) continue;
                 if (sets[i] != null) {
-                    drawSet(chunks, pipeline.overdraw(), bindingOf(link, recording), i);
+                    drawSet(chunks, pipeline.as(CgPipelineForm.OVERDRAW), bindingOf(link, recording), i);
                     continue;
                 }
-                chunks.draw(pipeline.overdraw(), bindingOf(link, recording), meshes[i]).sortKey(keys[i]);
+                chunks.draw(pipeline.as(CgPipelineForm.OVERDRAW), bindingOf(link, recording), meshes[i]).sortKey(keys[i]);
                 writeInstance(chunks, i);
             }
         }
@@ -2267,7 +2262,7 @@ public final class CgWorldRenderer {
             if (queues[i] >= CgRenderQueue.TRANSPARENT_THRESHOLD || !materials[i].writesCustomData()) continue;
             if (classify(i, OPAQUE, view) == SKIP) continue;
             CgPipeline forward = materials[i].pipeline(CgInstanceKind.OBJECT);
-            CgPipeline data = forward == null ? null : forward.customDataTarget();
+            CgPipeline data = forward == null ? null : forward.as(CgPipelineForm.CUSTOM_DATA);
             if (data == null) continue;
             CgRenderState own = data.state();
             CgRenderState tested = customDataStates.get(own);
@@ -2329,7 +2324,7 @@ public final class CgWorldRenderer {
             for (CgMaterial link = materials[i]; link != null; link = link.getNextPass()) {
                 CgPipeline forward = covers ? link.pipeline(CgInstanceKind.OBJECT) : null;
                 if (forward != null && !forward.state().writesNothing()) {
-                    CgPipeline occluder = forward.emissionOccluder();
+                    CgPipeline occluder = forward.as(CgPipelineForm.COVER);
                     if (occluder != null) emissionDraw(chunks, occluder, link, recording, i);
                 }
                 if (!emits[i] || !link.hasEmissivePass()) continue;
@@ -2503,7 +2498,7 @@ public final class CgWorldRenderer {
         for (CgMaterial link = materials[i]; link != null; link = link.getNextPass()) {
             if (!link.hasEmissivePass()) continue;
             CgPipeline forward = link.pipeline(CgInstanceKind.OBJECT);
-            if (forward == null || forward.sceneFold() == null) return false;
+            if (forward == null || forward.as(CgPipelineForm.FOLD) == null) return false;
         }
         return true;
     }
@@ -2533,8 +2528,8 @@ public final class CgWorldRenderer {
             for (CgMaterial link = materials[i]; link != null; link = link.getNextPass()) {
                 CgPipeline pipeline = link.pipeline(CgInstanceKind.OBJECT);
                 if (pipeline == null) continue;
-                CgPipeline folded = volumeFolds && link.hasEmissivePass() ? pipeline.sceneFold() : null;
-                CgPipeline marching = (folded != null ? folded : pipeline).volumeTarget();
+                CgPipeline folded = volumeFolds && link.hasEmissivePass() ? pipeline.as(CgPipelineForm.FOLD) : null;
+                CgPipeline marching = (folded != null ? folded : pipeline).as(CgPipelineForm.VOLUME);
                 if (marching == null || unready(marching, i)) continue;
                 if (sets[i] != null) {
                     drawSet(chunks, marching, bindingOf(link, recording), i);
@@ -2779,7 +2774,7 @@ public final class CgWorldRenderer {
             for (CgMaterial link = materials[i]; link != null; link = depthOnlyPass ? null : link.getNextPass()) {
                 CgPipeline pipeline = depthOnlyPass ? depthPipeline(link) : link.pipeline(CgInstanceKind.OBJECT);
                 if (glows && link.hasEmissivePass()) {
-                    CgPipeline folded = pipeline != null && mergeEmission ? pipeline.sceneFold() : null;
+                    CgPipeline folded = pipeline != null && mergeEmission ? pipeline.as(CgPipelineForm.FOLD) : null;
                     if (folded != null) {
                         passDraw(chunks, folded, link, recording, i);
                         continue;
@@ -2792,7 +2787,7 @@ public final class CgWorldRenderer {
                 }
                 if (pipeline == null || (!depthOnlyPass && pipeline.state().writesNothing())) continue;
                 if (normals) {
-                    CgPipeline normalled = pipeline.normalTarget();
+                    CgPipeline normalled = pipeline.as(CgPipelineForm.NORMALS);
                     if (normalled != null) pipeline = normalled;
                 }
                 passDraw(chunks, pipeline, link, recording, i);
@@ -2920,7 +2915,7 @@ public final class CgWorldRenderer {
             if (solid) {
                 // It covers what is behind it whatever alpha its fragment writes; its glow adds, as before the
                 // transparent pass, into the scene
-                layerDraw(chunks, pipeline.solidCover(), link, recording, i);
+                layerDraw(chunks, pipeline.as(CgPipelineForm.SOLID), link, recording, i);
                 if (glows && link.hasEmissivePass()) {
                     layerDraw(chunks, link.pipeline(CgRenderPassVariant.EMISSIVE, CgInstanceKind.OBJECT), link, recording, i);
                 }
@@ -2928,7 +2923,7 @@ public final class CgWorldRenderer {
             }
             // The same programs the transparent pass draws it with, so the layer holds what it adds there
             if (glows && link.hasEmissivePass()) {
-                CgPipeline folded = mergeEmission ? pipeline.sceneFold() : null;
+                CgPipeline folded = mergeEmission ? pipeline.as(CgPipelineForm.FOLD) : null;
                 if (folded != null) {
                     layerDraw(chunks, folded, link, recording, i);
                     continue;
@@ -3057,10 +3052,8 @@ public final class CgWorldRenderer {
     private boolean unready(CgPipeline pipeline, int i) {
         if (!skipUnready) return false;
         // The form the draw runs: a skinned mesh draws every pass skinned (CgChunkBuilder.draw).
-        if (skinnedDraw(i)) pipeline = pipeline.skinned();
-        // Its joined form too: a draw that joins a multi-draw runs that program.
-        boolean joins = applied != null && applied.joins();
-        if (pipeline.isBuilt() && (!joins || pipeline.multiDraw().isBuilt())) return false;
+        if (skinnedDraw(i)) pipeline = pipeline.as(CgPipelineForm.SKINNED);
+        if (pipeline.isBuilt()) return false;
         // Asked for here, started in settle(): a pipeline held by a thousand draws spends the warm budget once a frame.
         if (heldSet.add(pipeline)) held.add(pipeline);
         unreadyDraws++;
@@ -3080,10 +3073,9 @@ public final class CgWorldRenderer {
 
     /** Starts or polls each held pipeline once, dropping those built. */
     private void precacheHeld() {
-        boolean joins = applied != null && applied.joins();
         for (int i = held.size() - 1; i >= 0; i--) {
             CgPipeline p = held.get(i);
-            if (!built(p, joins)) continue;
+            if (!built(p)) continue;
             heldSet.remove(p);
             held.set(i, held.get(held.size() - 1));
             held.remove(held.size() - 1);
@@ -3264,7 +3256,7 @@ public final class CgWorldRenderer {
         if (material.hasDepthPass()) return material.pipeline(CgRenderPassVariant.DEPTH, CgInstanceKind.OBJECT);
         CgPipeline forward = material.pipeline(CgInstanceKind.OBJECT);
         if (forward == null) return null;
-        if (material.hasDepthPrepass()) return forward.depthPrepass();
+        if (material.hasDepthPrepass()) return forward.as(CgPipelineForm.DEPTH);
         CgRenderState own = material.getPassRenderState(CgRenderPassVariant.FORWARD);
         CgRenderState colourless = depthOnly.get(own);
         if (colourless == null) depthOnly.put(own, colourless = own.withColorMask(CgColorMask.NONE));

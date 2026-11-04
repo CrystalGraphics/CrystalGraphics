@@ -163,7 +163,7 @@ public final class RecordingGlBackend extends CgGLBackend {
     @Override public void glDrawElements(int mode, int count, int type, long indices) { record("glDrawElements"); }
     @Override public void glDrawArraysInstanced(int mode, int first, int count, int instanceCount) { record("glDrawArraysInstanced"); }
     @Override public void glDrawElementsInstanced(int mode, int count, int type, long indices, int instanceCount) { record("glDrawElementsInstanced"); }
-    @Override public void glDrawElementsInstancedBaseVertex(int mode, int count, int type, long indices, int instanceCount, int baseVertex) { record("glDrawElementsInstancedBaseVertex"); }
+    @Override public void glDrawElementsInstancedBaseVertexBaseInstance(int mode, int count, int type, long indices, int instanceCount, int baseVertex, int baseInstance) { record("glDrawElementsInstancedBaseVertexBaseInstance"); }
     @Override public void glDrawArraysIndirect(int mode, long offset) { record("glDrawArraysIndirect"); }
     @Override public void glDrawElementsIndirect(int mode, int type, long offset) { record("glDrawElementsIndirect"); }
     @Override public void glMultiDrawArraysIndirect(int mode, long offset, int drawCount, int stride) { record("glMultiDrawArraysIndirect"); }

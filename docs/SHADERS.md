@@ -248,15 +248,14 @@ Shaders read it through macros:
 | `CG_OBJECT_TO_WORLD` | `CG_OBJECT_DATA.modelMatrix` | Model → world transform |
 | `CG_NORMAL_MATRIX` | `mat3(CG_OBJECT_DATA.normalMatrix)` | Upper-left 3×3 — use for transforming normals |
 | `CG_OBJECT_CUSTOM0`–`CG_OBJECT_CUSTOM3` | `CG_OBJECT_DATA.custom0` … `.custom3` | Per-instance `vec4` slots — a world draw's `custom(slot, …)` |
-| `CG_INSTANCE_ID` | `gl_InstanceID + cg_InstanceBase` (vertex) / `cg_InstanceId` (fragment) | Instance index; bridged as `flat in int cg_InstanceId` varying so it's accessible in fragment. `cg_InstanceBase` is where a batch's instances start in its kind's upload — 0 unless a frame-graph executor sets it (`CgPipeline.instanceBase`). Below 0 it names the one record every instance reads (`CgPipeline.sharedInstance`): an indirect `INSTANCES` draw's |
+| `CG_INSTANCE_ID` | `CG_DRAW_INSTANCE + gl_BaseInstance` (vertex) / `cg_InstanceId` (fragment) | Instance index; bridged as `flat in int cg_InstanceId` varying so it's accessible in fragment. The draw's first instance is where its batch's instances start in its kind's upload; with `CG_SHARED_RECORD` (bit 30) set, the rest of it names the one record every instance reads: an indirect `INSTANCES` draw's |
 | `CG_DRAW_INSTANCE` | `gl_InstanceID` (vertex only) | The instance's index in its own draw: in an indirect `INSTANCES` draw, the element it draws |
-| `CG_VERTEX_ID` | `gl_VertexID - cg_VertexBase` (vertex only) | The vertex's index in its own mesh, wherever the mesh sits in the buffer it is drawn from. `cg_VertexBase` is the mesh's base vertex — 0 unless the draw sets it (`CgPipeline.vertexBase`) |
+| `CG_VERTEX_ID` | `gl_VertexID - gl_BaseVertex` (vertex only) | The vertex's index in its own mesh, wherever the mesh sits in the buffer it is drawn from: every draw is by indices, a mesh without them by 0, 1, 2 ... |
 | `CG_VERTEX_CORNER` | `vec2` from `CG_VERTEX_ID` (vertex only) | The corner of a `CgMesh.quads(n)` vertex: (0,0), (1,0), (1,1), (0,1) around each quad. What `CG_QUAD_*` and `CG_CURVE_*` place an instance's corners by |
 
-A run of draws the executor joins into one multi-draw (`render/graph/CLAUDE.md` § *Multi-draw*) binds every pass's
-`CG_MULTI_DRAW` variant, in which `CG_INSTANCE_ID`, `CG_DRAW_INSTANCE` and `CG_VERTEX_ID` take each draw's bases from
-its command instead of the two uniforms. They answer the same values, so a shader reading them never knows; one
-reading `cg_InstanceBase` or `cg_VertexBase` directly does not compile in that variant.
+Every draw carries its bases in the call (GL 4.6's draw parameters, `GL_ARB_shader_draw_parameters` below, which the
+compiler enables), so a run the executor joins into one multi-draw (`render/graph/CLAUDE.md` § *Multi-draw*) runs the
+program a draw alone runs.
 
 #### Vertex Attribute Aliases
 
@@ -770,7 +769,7 @@ void fragment(in v2f i, out vec4 fragColor) {
   applies the opacity mask to a Masked material alone, so a port calls `cg_Clip(mask)` unguarded and its masked
   master declares `"Depth" = "Clip"` (or its material asset's blend is `masked`).
 - **Prepass** is for a transparent queue only, and fails to parse on another. The world renderer draws a depth pass
-  of every such draw (`CgPipeline.depthPrepass()`: the Forward pass compiled with `CG_DEPTH_PREPASS`, no colour, no
+  of every such draw (`CgPipeline.as(CgPipelineForm.DEPTH)`: the Forward pass compiled with `CG_DEPTH_PREPASS`, no colour, no
   blend) before the transparent pass, where `cg_Clip` discards below the threshold and returns above it: compute
   only what decides it before the call. The Forward pass then blends with depth write off, and `cg_Clip` does nothing
   there. Every vertex stage of the material is `invariant gl_Position`, so the two passes agree on depth exactly.

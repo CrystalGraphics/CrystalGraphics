@@ -45,7 +45,7 @@
 - The prepass takes a material's depth pass when it has one, else its forward pipeline with colour writes off
   (`CgRenderState.withColorMask`), cached per render state.
 - **The transparent prepass**: a transparent draw whose material is `"Depth" = "Prepass"` (`prepassed(i)`) draws
-  `CgPipeline.depthPrepass()` in a depth-only pass at the top of the transparent firing, after the labels' depth and
+  `CgPipeline.as(DEPTH)` in a depth-only pass at the top of the transparent firing, after the labels' depth and
   before the half-size, emission and transparent passes, so what blends over it, its own back lobes and the glows behind
   it, are hidden where it is solid. Readers of `cg_DepthBuffer` after it see its depth, as they see the labels'.
 - **Solids first**: a transparent draw whose Forward draw writes depth (`CgMaterial.writesDepth()`: Clip, or
@@ -78,7 +78,7 @@
   drawn at is to its own (a joint bilateral upsample), the nearest in depth where none agrees. Only for light that
   adds: the upsample adds. GPU zones `world.half` and `world.halfAdd`.
 - **Volumes** (`recordVolumes`, a half-size draw whose Forward pass blends `ONE ONE_MINUS_SRC_ALPHA`): drawn through
-  `CgPipeline.volumeTarget()` (folded first under the HDR scene, so their glow needs no march of its own) into a
+  `CgPipeline.as(VOLUME)` (folded first under the HDR scene, so their glow needs no march of its own) into a
   transient half-size target of two slots, RGBA16F light and the R16F eye depth each names with `CG_VOLUME_DEPTH`; then
   `world_volume_resolve.shader` blends it over this firing ordinal's `CgGraphTexture.history` (four kept: a fifth
   firing composites its frame alone), last frame reprojected through `cg_PrevViewProj` at that depth (the scene's where
@@ -130,7 +130,7 @@
   our normals from depth as blocks', and a character under a point light shades in facets.
 - **Custom data** (`recordCustomData`, near the top of a transparent firing carrying `CgFrameKeys.CUSTOM_DATA_READ`):
   every opaque draw in view whose material writes custom data or a shading model (`CgMaterial.writesCustomData`) drawn
-  again through `CgPipeline.customDataTarget()` into an RG32F texture beside the host's depth, tested and unwritten,
+  again through `CgPipeline.as(CUSTOM_DATA)` into an RG32F texture beside the host's depth, tested and unwritten,
   published as `CUSTOM_DATA`. A host lending no depth (framebuffer 0) gets a target with its own depth, the host's
   copied in first (`world_depth_in.shader`); untested, a hidden writer's data would show through what covers it. A
   writer's redraw is compiled with `invariant gl_Position`, so its depth equals its colour draw's. Our forward passes have no G-buffer to carry Unreal's GBufferD, so this is one more draw
@@ -140,7 +140,7 @@
   LEQUAL and unwritten, through the programs the transparent pass drew it with (folded or with its glow), under
   `layered(pipeline)`: its colour blend kept, its alpha the coverage (over for a blend that covers, nothing for one that
   adds); a multiply has no layer form and keeps the frame's look, as half-size draws do. A graded opaque or masked draw
-  (drawn in the opaque firing) is drawn into its layer too, as its `CgPipeline.solidCover()` form, coverage 1 whatever
+  (drawn in the opaque firing) is drawn into its layer too, as its `CgPipeline.as(SOLID)` form, coverage 1 whatever
   alpha it writes, tested against the depth it wrote (an effect material's vertex stage is `invariant gl_Position`); the
   layers record in every transparent firing under the scene, transparent draws or none. At most `CgGradeLayers.MAX`
   looks a frame, each keeping its slot while it draws; published as `CgGradeLayers.KEY`, which the post stack blooms

@@ -23,7 +23,8 @@ import java.util.Locale;
  * and shader abstraction layers to select the appropriate backend.</p>
  *
  * <h3>The GL 3.3 floor</h3>
- * <p>Detection throws below OpenGL 3.3, so everything core in 3.3 — framebuffers, VAOs, instancing,
+ * <p>Detection throws below OpenGL 3.3, and without a draw's bases in its shaders and calls (4.6, or
+ * {@code ARB_shader_draw_parameters} with {@code ARB_base_instance}), so everything core in 3.3 — framebuffers, VAOs, instancing,
  * samplers, timer queries — is simply there and has no flag. A 3.2 context with the four extensions 3.3
  * absorbed from them passes too: vanilla Minecraft 1.17 to 1.21.4 asks for 3.2 core, and NVIDIA hands
  * back exactly 3.2 on hardware that runs 4.6, which on Fabric is the context we get. What is flagged is above the floor —
@@ -237,7 +238,7 @@ public final class CgCapabilities {
     // backend, the device. @see #computeTier
     @Getter(AccessLevel.NONE)
     boolean compute, storageImages, subgroups, floatAtomics, drawIndirect, multiDrawIndirect, indirectCount,
-            drawParameters, multiDraw, feedbackCount, asyncCompute, bindless, independentBlend, bc7;
+            multiDraw, feedbackCount, asyncCompute, bindless, independentBlend, bc7;
     @Getter(AccessLevel.NONE) ComputeTier computeTier;
     /** What a kernel may ask for; zeros without compute. @see #maxComputeWorkGroupSize */
     @Getter(AccessLevel.NONE) int maxComputeSharedMemory, maxComputeInvocations;
@@ -381,10 +382,15 @@ public final class CgCapabilities {
         caps.drawIndirect      = device != null || gl.OpenGL40() || gl.GL_ARB_draw_indirect();
         caps.multiDrawIndirect = device != null ? device.multiDrawIndirect() : gl.OpenGL43() || gl.GL_ARB_multi_draw_indirect();
         caps.indirectCount     = device != null ? device.indirectCount() : gl.OpenGL46() || gl.GL_ARB_indirect_parameters();
-        caps.drawParameters    = device != null ? device.drawParameters() : gl.OpenGL46() || gl.GL_ARB_shader_draw_parameters();
+        boolean drawParameters = device != null ? device.drawParameters() : gl.OpenGL46() || gl.GL_ARB_shader_draw_parameters();
         boolean firstInstance  = device != null ? device.indirectFirstInstance() : gl.OpenGL42() || gl.GL_ARB_base_instance();
-        caps.multiDraw         = caps.multiDrawIndirect && caps.drawParameters && firstInstance
-                && MULTI_DRAW.get();
+        if (!drawParameters || !firstInstance) {
+            // Every draw carries its bases, read by cg_env.glsl: on the way to GL 4.6, the floor (rhi D8).
+            throw new IllegalStateException("CrystalGraphics needs a draw's base vertex and instance: GL 4.6, or "
+                    + "ARB_shader_draw_parameters with ARB_base_instance; a Vulkan device's shaderDrawParameters and "
+                    + "drawIndirectFirstInstance");
+        }
+        caps.multiDraw         = caps.multiDrawIndirect && MULTI_DRAW.get();
         caps.feedbackCount     = device == null && (gl.OpenGL40() || gl.GL_ARB_transform_feedback2());
         caps.asyncCompute      = device != null && device.asyncCompute();
         caps.bindless          = device == null && gl.GL_ARB_bindless_texture();
@@ -528,13 +534,9 @@ public final class CgCapabilities {
     /** The draw count from a buffer too: GL 4.6 or {@code ARB_indirect_parameters}, or a device that enabled it. */
     public boolean indirectCount() { return indirectCount; }
 
-    /** {@code gl_DrawID} and a draw's bases in a shader: GL 4.6 or {@code ARB_shader_draw_parameters}, or a device. */
-    public boolean drawParameters() { return drawParameters; }
-
     /**
-     * Meshes drawn as one multi-draw, each command carrying its bases: {@link #multiDrawIndirect()},
-     * {@link #drawParameters()} and a command's first instance (GL 4.2, {@code ARB_base_instance}, or a device's
-     * {@code drawIndirectFirstInstance}). {@code -Dcrystalgraphics.mesh.multiDraw=false} turns it off.
+     * Meshes drawn as one multi-draw, each command carrying its bases: {@link #multiDrawIndirect()}.
+     * {@code -Dcrystalgraphics.mesh.multiDraw=false} turns it off.
      */
     public boolean multiDraw() { return multiDraw; }
 

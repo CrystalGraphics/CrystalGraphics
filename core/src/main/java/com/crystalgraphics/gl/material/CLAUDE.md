@@ -42,8 +42,8 @@ See [`parse/CLAUDE.md`](parse/CLAUDE.md) for the full class map. Key external-fa
 
 ### Vertex shader generation sequence (steps 1–14)
 
-1. `#version 430 core`; a `CG_MULTI_DRAW` variant at the context's GLSL version
-   when that is higher, enabling `GL_ARB_shader_draw_parameters` below 460 (glslang declares it from 450)
+1. `#version` at the context's GLSL version, 430 at least, the vertex stage enabling
+   `GL_ARB_shader_draw_parameters` below 460 (glslang declares it from 450): `cg_env.glsl` reads a draw's bases
 2. `#define CG_VERTEX_STAGE 1`
 3. `#define CG_USE_SSBO 1` — always; the hook the TBO path would reconnect at (`docs/TBO_PATH.md`)
 4. `#define CG_OBJECT_BUFFER_BINDING <CgBindingPoints.OBJECT_DATA>` + `#define CG_FRAME_BLOCK_BINDING <CgBindingPoints.FRAME_DATA>`

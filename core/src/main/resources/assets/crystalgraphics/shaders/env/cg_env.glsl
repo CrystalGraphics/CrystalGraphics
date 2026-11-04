@@ -72,16 +72,14 @@ CG_BIND(1, 0) layout(std430) readonly buffer CgObjectDataBuffer {
 #endif
 
 // -- Instance ID bridge -----------------------------------------------------
-// The vertex stage adds cg_InstanceBase: where a batch's instances start in its kind's upload for the pass, 0 for
-// a draw that uploaded its own. Below 0 it names the one record every instance reads, -1 - cg_InstanceBase: an
-// indirect INSTANCES draw's. The fragment stage reads the result as a flat varying the compiler wires. A kernel has
-// neither: its invocations are env/compute/kernel.glsl's.
+// Every draw carries its bases (Unreal's InstanceIdOffset, SceneData.ush): its first instance is where its batch's
+// instances start in its kind's upload, and its base vertex where its mesh starts in the buffer it is drawn from. Every
+// draw is by indices, a mesh without them by 0, 1, 2 ...: GL gives an array draw's base vertex as 0, Vulkan its first.
+// A first instance with CG_SHARED_RECORD set names the one record every instance reads (an indirect INSTANCES draw's):
+// bit 30, not Unreal's 31, since gl_BaseInstance is signed. The fragment stage reads the result as a flat varying the
+// compiler wires. A kernel has neither: its invocations are env/compute/kernel.glsl's.
+#define CG_SHARED_RECORD 0x40000000
 #ifdef CG_VERTEX_STAGE
-#ifdef CG_MULTI_DRAW
-// A multi-draw's variant: no uniform changes between its commands, so each command's first instance is its batch's
-// base and its base vertex the mesh's. Every command is drawn by indices, a mesh without them by 0, 1, 2 ...: GL gives
-// an array draw's base vertex as 0. Core in 4.6, GL_ARB_shader_draw_parameters below, which the compiler enables.
-// Vulkan's gl_InstanceIndex counts from the first instance; GL's gl_InstanceID does not.
 #if __VERSION__ >= 460
 #define CG_BASE_INSTANCE gl_BaseInstance
 #define CG_BASE_VERTEX gl_BaseVertex
@@ -89,22 +87,16 @@ CG_BIND(1, 0) layout(std430) readonly buffer CgObjectDataBuffer {
 #define CG_BASE_INSTANCE gl_BaseInstanceARB
 #define CG_BASE_VERTEX gl_BaseVertexARB
 #endif
+// The instance's index in its own draw: in an indirect INSTANCES draw, the element it draws. Vulkan's gl_InstanceIndex
+// counts from the first instance; GL's gl_InstanceID does not.
 #ifdef VULKAN
 #define CG_DRAW_INSTANCE (gl_InstanceIndex - CG_BASE_INSTANCE)
 #else
 #define CG_DRAW_INSTANCE gl_InstanceID
 #endif
-#define CG_INSTANCE_ID (CG_DRAW_INSTANCE + CG_BASE_INSTANCE)
+#define CG_INSTANCE_ID ((CG_BASE_INSTANCE & CG_SHARED_RECORD) != 0 ? CG_BASE_INSTANCE & (CG_SHARED_RECORD - 1) : CG_DRAW_INSTANCE + CG_BASE_INSTANCE)
+// The vertex's index in its own mesh.
 #define CG_VERTEX_ID (gl_VertexID - CG_BASE_VERTEX)
-#else
-uniform int cg_InstanceBase;
-#define CG_INSTANCE_ID (cg_InstanceBase < 0 ? -1 - cg_InstanceBase : gl_InstanceID + cg_InstanceBase)
-// The instance's index in its own draw: in an indirect INSTANCES draw, the element it draws.
-#define CG_DRAW_INSTANCE gl_InstanceID
-// The vertex's index in its own mesh: cg_VertexBase is where the mesh starts in the buffer it is drawn from.
-uniform int cg_VertexBase;
-#define CG_VERTEX_ID (gl_VertexID - cg_VertexBase)
-#endif
 // The corner of a CgMesh.quads(n) vertex: (0,0), (1,0), (1,1), (0,1) around each quad.
 #define CG_VERTEX_CORNER vec2(float(((CG_VERTEX_ID + 1) >> 1) & 1), float((CG_VERTEX_ID >> 1) & 1))
 #elif !defined(CG_COMPUTE_STAGE)

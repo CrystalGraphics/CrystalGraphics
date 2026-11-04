@@ -1402,9 +1402,10 @@ public final class CgGL {
         gl().glDrawElementsInstanced(mode, count, type, indices, instanceCount);
     }
 
-    public static void glDrawElementsInstancedBaseVertex(int mode, int count, int type, long indices,
-                                                         int instanceCount, int baseVertex) {
-        gl().glDrawElementsInstancedBaseVertex(mode, count, type, indices, instanceCount, baseVertex);
+    public static void glDrawElementsInstancedBaseVertexBaseInstance(int mode, int count, int type, long indices,
+                                                                     int instanceCount, int baseVertex, int baseInstance) {
+        gl().glDrawElementsInstancedBaseVertexBaseInstance(mode, count, type, indices, instanceCount, baseVertex,
+                baseInstance);
     }
 
     /**
