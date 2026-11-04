@@ -383,8 +383,8 @@ unit as GL's last bind did.
 owns: `recordInto(recording, target, load, constants)` picks the target, `scissor`/`noScissor` and `constants` are
 its set-state, a change of constants starts a pass, `endPass()` splits; nothing is read from GL. The caller executes
 the recording once with `CgImmediate.execute(recording)`. A recorded draw executes after its renderer has moved on,
-so a snapshot keeps by value what an immediate draw read live: a `CgTextureMutable` as the id it points at now, an
-attached uniform block as its bytes. A renderer's binding table resets once a frame, not per `begin()`, since
+so a snapshot keeps by value what an immediate draw read live: a texture as the handle it was given, an attached
+uniform block as its bytes. A renderer's binding table resets once a frame, not per `begin()`, since
 recorded chunks still name its snapshots. A recorder's passes are `LOOKBACK`: a recorded chunk is one spatial node's
 (the run ends it where the records' node changes) and each draw carries its records' bounds there, so a draw moves
 back past the draws it does not touch, within its node's domain.

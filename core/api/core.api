@@ -7308,17 +7308,6 @@ com/crystalgraphics/gl/texture/CgTextureManager
   method public getOrCreate (Ljava/lang/String;Lcom/crystalgraphics/api/texture/CgTextureSpec;Ljava/util/function/Supplier;)Lcom/crystalgraphics/api/texture/CgTexture;
   method public reloadAll ()V
   method public,static get ()Lcom/crystalgraphics/gl/texture/CgTextureManager;
-com/crystalgraphics/gl/texture/CgTextureMutable
-  access public,final
-  extends com/crystalgraphics/gl/texture/CgTextureAbstract
-  method public <init> (I)V
-  method public <init> (II)V
-  method public current ()Lcom/crystalgraphics/api/texture/CgTexture;
-  method public delete ()V
-  method public getTarget ()I
-  method public pointAt (Lcom/crystalgraphics/api/texture/CgTexture;)V
-  method public setId (I)V
-  method public setTarget (I)V
 com/crystalgraphics/gpu/CgDeferral
   access public,final
   extends java/lang/Object

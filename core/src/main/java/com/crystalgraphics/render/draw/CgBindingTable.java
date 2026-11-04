@@ -3,7 +3,6 @@ package com.crystalgraphics.render.draw;
 import com.crystalgraphics.api.texture.CgSampler;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.gl.texture.CgSamplers;
-import com.crystalgraphics.gl.texture.CgTextureMutable;
 import com.crystalgraphics.gl.buffer.CgBufferTextures;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.gl.buffer.CgStreamBuffer;
@@ -128,8 +127,7 @@ public final class CgBindingTable {
         int n = entries[e];
         if (n == MAX_TEXTURES) throw new IllegalStateException("more than " + MAX_TEXTURES + " textures in one snapshot");
         entries[e + HEADER + n] = unit;
-        // A repointable view is kept as what it points at now: by execution it may point elsewhere.
-        refs[building * ENTRY_REFS + n] = texture instanceof CgTextureMutable view ? view.current() : texture;
+        refs[building * ENTRY_REFS + n] = texture;
         refs[building * ENTRY_REFS + SAMPLER_REFS + n] = sampler;
         entries[e] = n + 1;
         return this;

@@ -2,7 +2,7 @@ package com.crystalgraphics.gl.material;
 
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.texture.CgTexture;
-import com.crystalgraphics.gl.texture.CgTextureMutable;
+import com.crystalgraphics.gl.texture.CgTextureAbstract;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.render.draw.CgBindingTable;
 import com.crystalgraphics.render.draw.CgInstanceKind;
@@ -107,8 +107,8 @@ public class CgMaterialRecordingTest {
     public void texturesAreHandlesAtTheirDeclaredUnits() {
         CgMaterial material = CgMaterial.fromSource(SOURCE);
         CgBindingTable table = new CgBindingTable();
-        CgTexture atlas = new CgTextureMutable(7, CgGL.GL_TEXTURE_2D);
-        CgTexture other = new CgTextureMutable(8, CgGL.GL_TEXTURE_2D);
+        CgTexture atlas = new Handle(7);
+        CgTexture other = new Handle(8);
 
         material.applyProperties(p -> p.sampler("_SharpTex", 5, atlas));
         int id = material.captureBindings(table);
@@ -120,21 +120,19 @@ public class CgMaterialRecordingTest {
         assertNotEquals(id, material.captureBindings(table));
     }
 
-    @Test
-    public void aRepointableViewIsKeptAsWhatItPointsAtNow() {
-        CgMaterial material = CgMaterial.fromSource(SOURCE);
-        CgBindingTable table = new CgBindingTable();
-        CgTextureMutable atlas = new CgTextureMutable(7, CgGL.GL_TEXTURE_2D);
-        material.applyProperties(p -> p.sampler("_SharpTex", 0, atlas));
+    /** A texture by id alone, no GL. */
+    private static final class Handle extends CgTextureAbstract {
+        Handle(int id) {
+            super(id, 0, 0, null);
+        }
 
-        int seven = material.captureBindings(table);
-        atlas.setId(8);
-        int eight = material.captureBindings(table);
-        assertEquals("a draw recorded before the view moved binds what it saw", 7, table.texture(seven, 0).getId());
-        assertEquals(8, table.texture(eight, 0).getId());
+        @Override
+        public int getTarget() {
+            return CgGL.GL_TEXTURE_2D;
+        }
 
-        atlas.setId(7);
-        assertEquals("one id, one snapshot", seven, material.captureBindings(table));
+        @Override
+        public void delete() {}
     }
 
     private static boolean contains(float[] values, float value) {

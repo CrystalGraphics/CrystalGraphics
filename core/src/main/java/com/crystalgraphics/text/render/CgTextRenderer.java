@@ -3,6 +3,8 @@ package com.crystalgraphics.text.render;
 import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.PoseStack;
+import com.crystalgraphics.api.shader.CgShaderBindings;
+import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.buffer.CgBufferFormat;
 import com.crystalgraphics.api.buffer.CgBufferLifetime;
 import com.crystalgraphics.api.font.*;
@@ -24,8 +26,6 @@ import com.crystalgraphics.gl.buffer.shader.CgUniformBuffer;
 import com.crystalgraphics.lifecycle.CgGraphicsLifecycle;
 import com.crystalgraphics.gl.render.CgClipTable;
 import com.crystalgraphics.gl.render.CgQuadRenderer;
-import com.crystalgraphics.gl.texture.CgTextureMutable;
-import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.render.CgFrameClock;
 import com.crystalgraphics.render.draw.CgBufferHandle;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
@@ -239,11 +239,12 @@ public class CgTextRenderer {
      */
     private final CgMaterial textMaterial = CgMaterial.newInstance(TEXT_SHADER);
     /**
-     * The atlas the current batch draws from, as {@link #textMaterial}'s {@code _MainTex}. Points at the atlas's texture
-     * itself, whose GL id exists only once the render thread has made it. {@code GL_TEXTURE_2D_ARRAY}, as
-     * {@code text.shader}'s {@code sampler2DArray} wants.
+     * The atlas the current batch draws from, bound as {@link #textMaterial}'s {@code _MainTex} by {@link #bindAtlas}: the
+     * texture itself, whose storage the render thread makes before the draw executes.
      */
-    private final CgTextureMutable atlasTexture = new CgTextureMutable(CgGL.GL_TEXTURE_2D_ARRAY);
+    @Nullable
+    private CgTexture atlas;
+    private final Consumer<CgShaderBindings> bindAtlas = b -> b.sampler("_MainTex", 0, atlas);
     /** This renderer's {@code TextData}: the projection and the gamma correction its chunks keep. */
     private final CgBufferWriter textBlock =
             new CgBufferWriter(new CgStagingBuffer(TEXT_DATA_FORMAT.getFloatCount()), TEXT_DATA_FORMAT);
@@ -477,7 +478,6 @@ public class CgTextRenderer {
 
     private CgTextRenderer() {
         this.quadRenderer = CgQuadRenderer.create();
-        textMaterial.applyProperties(b -> b.sampler("_MainTex", 0, atlasTexture));
         textMaterial.overrideBlock(TEXT_DATA_UBO, textBlock);
         quadRenderer.useMaterial(textMaterial);
     }
@@ -662,8 +662,8 @@ public class CgTextRenderer {
         CgTrace.add(CgChannels.TEXT, "draw.materialTransition", 1);
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT, "draw.materialTransition")) {
             textMaterial.toggleKeyword("MSDF_MODE", isDistanceField);
-            // The atlas's texture itself, not its id: the texture is made on the render thread before this draws.
-            atlasTexture.pointAt(CgGlyphAtlas.texture(atlasId));
+            atlas = CgGlyphAtlas.texture(atlasId);
+            textMaterial.applyProperties(bindAtlas);
             activeBatchBits = batchBits;
         }
     }
@@ -851,7 +851,8 @@ public class CgTextRenderer {
         if (depthPass) writeTextBlock(context.projection(), DEPTH_PASS_CUT);
         textMaterial.toggleKeyword("MSDF_MODE", CgTextSortKey.isDistanceField(batch));
         textMaterial.toggleKeyword("WORLD_LABEL", true);
-        atlasTexture.pointAt(CgGlyphAtlas.texture(CgTextSortKey.atlasIdOf(batch)));
+        atlas = CgGlyphAtlas.texture(CgTextSortKey.atlasIdOf(batch));
+        textMaterial.applyProperties(bindAtlas);
         CgPipeline pipeline = textMaterial.pipeline(CgInstanceKind.OBJECT);
         int bindings = textMaterial.captureBindings(chunks.bindings());
         textMaterial.toggleKeyword("WORLD_LABEL", false);
