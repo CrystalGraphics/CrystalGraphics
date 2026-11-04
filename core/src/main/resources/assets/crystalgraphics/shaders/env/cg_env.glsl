@@ -1,10 +1,22 @@
 #pragma once
 // Naming: cg_PascalCase = GLSL identifiers; CG_UPPER_SNAKE = macros
 
-// Per-pass uniforms (view + proj + time + resolution + camera), one block per pass. Block index wired post-link
-// via glUniformBlockBinding. FIELD ORDER MUST MATCH CgPassConstants.FORMAT -- std140 offsets are positional, so a
-// field added to one and not the other silently reads its neighbour.
-layout(std140) uniform CgFrameBlock {
+// Where a resource binds (CgBindingModel, rhi.md 2.3): set 0 the view's, 1 the pass's, 2 the material's, 3 the
+// bindless heap. Before a declaration's own layout:
+//
+//     CG_BIND(2, 0) layout(std140) uniform CgMaterialBlock { ... };
+//
+// Empty on GL, whose programs are wired by name after link until GL implements CgRHI.
+#ifdef VULKAN
+#define CG_BIND(set_, binding_) layout(set = set_, binding = binding_)
+#else
+#define CG_BIND(set_, binding_)
+#endif
+
+// Per-pass uniforms (view + proj + time + resolution + camera), one block per pass. FIELD ORDER MUST MATCH
+// CgPassConstants.FORMAT -- std140 offsets are positional, so a field added to one and not the other silently reads its
+// neighbour.
+CG_BIND(0, 0) layout(std140) uniform CgFrameBlock {
     mat4 cg_ViewMatrix;
     mat4 cg_ProjMatrix;
     vec4 cg_Time;        // (t/20, t, t*2, t*3) - seconds, scaled like Unity _Time
@@ -33,7 +45,7 @@ struct CgObjectData {
 };
 
 #ifdef CG_USE_SSBO
-layout(std430) readonly buffer CgObjectDataBuffer {
+CG_BIND(1, 0) layout(std430) readonly buffer CgObjectDataBuffer {
     CgObjectData cg_Objects[];
 };
 #else
@@ -111,17 +123,17 @@ flat in int cg_InstanceId;
 // reads it: in an opaque pass the host's world, in a transparent pass with the world renderer's opaque draws too.
 // Bound to CgBindingPoints.DEPTH_TEXTURE_UNIT in both vertex and fragment stages of every pass.
 // Do NOT use that texture unit in material Properties.
-uniform sampler2D cg_DepthBuffer;
+CG_BIND(0, 1) uniform sampler2D cg_DepthBuffer;
 
 // cg_SceneColor: the scene's colour, taken the same way and at the same moments as cg_DepthBuffer, for a material that
 // bends what is behind it (heat haze, a shockwave). RGBA8, linearly filtered. Bound to
 // CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT; do NOT use that unit in material Properties either.
-uniform sampler2D cg_SceneColor;
+CG_BIND(0, 2) uniform sampler2D cg_SceneColor;
 #define CG_SCENE_COLOR(uv) texture(cg_SceneColor, (uv))
 
 // cg_Lightmap: the host's lightmap, block light across and sky light down, in a world pass; 1x1 white in any other.
 // Bound to CgBindingPoints.LIGHTMAP_TEXTURE_UNIT; do NOT use that unit in material Properties either.
-uniform sampler2D cg_Lightmap;
+CG_BIND(0, 3) uniform sampler2D cg_Lightmap;
 // The colour the world lights a thing with at block and sky light (0 to 15 each), as Minecraft lights its blocks.
 #define CG_LIGHTMAP(light) texture(cg_Lightmap, (clamp((light), 0.0, 15.0) + 0.5) / 16.0).rgb
 
@@ -192,7 +204,7 @@ uvec2 _cg_shadingModel = uvec2(0u);
 // cg_Media: the world's froxel transmittance (CgWorldMedia), a volume over the screen, each texel to its slice's far edge
 // the light the air scattered toward the eye (rgb) and what gets through (a); white in a pass that binds none. Bound to
 // CgBindingPoints.MEDIA_TEXTURE_UNIT; do NOT use that unit in Properties.
-uniform sampler3D cg_Media;
+CG_BIND(0, 4) uniform sampler3D cg_Media;
 // Its slices in eye depth as Unreal's volumetric fog spaces them (CalculateGridZParams, r.VolumetricFog.
 // DepthDistributionScale 32): slice s's near edge at (2^(s / SPREAD) - O) / B, from CG_MEDIA_NEAR (Unreal's 9.5 cm) to
 // CG_MEDIA_FAR at the last. Twice Unreal's 64 slices, for four times its 60 m: each about as deep as Unreal's at 40 blocks.
@@ -249,7 +261,7 @@ vec3 cg_MediaLight(vec2 uv, float eye) {
 // and its size. 4N deep in a firing drawing a
 // "Surface"-lit material: both cascades' direction behind them (cg_LocalLightDirectional). Black, and 1 texel, in a
 // pass that binds none. Bound to CgBindingPoints.LOCAL_LIGHTS_TEXTURE_UNIT; do NOT use that unit in Properties.
-uniform sampler3D cg_LocalLights;
+CG_BIND(0, 5) uniform sampler3D cg_LocalLights;
 
 // Layer 0 and 1 the cascades' light, 2 and 3 their direction; n the cells a side.
 vec3 cg_local_light_cascade(vec3 u, float layer, float n, float depth) {

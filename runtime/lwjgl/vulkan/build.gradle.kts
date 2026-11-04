@@ -86,6 +86,10 @@ val stageKitPorts = tasks.register<Sync>("stageKitPorts") {
 // The natives load through System.load, which JDK 25 warns about unless native access is granted.
 tasks.test {
     jvmArgs("--enable-native-access=ALL-UNNAMED")
+    // EngineOnTrackedBackendTest holds every shipped material's every variant: past Gradle's 512 MB. Direct memory keeps
+    // the default's limit, which would follow the heap: an upload test leaking leases must still meet it.
+    maxHeapSize = "2g"
+    jvmArgs("-XX:MaxDirectMemorySize=512m")
     // Each class installs its own backend under the engine's static buffers and fences: one JVM a class.
     forkEvery = 1
     // A kit's ported programs, linked when asked (KitProgramsLinkTest): staged under their namespace, as a kit loads them.

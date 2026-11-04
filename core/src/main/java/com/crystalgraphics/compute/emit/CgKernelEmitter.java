@@ -123,7 +123,7 @@ public final class CgKernelEmitter {
         for (String token : source.engineBuffers()) {
             CgEngineBufferRegistry.Provider provider = CgEngineBufferRegistry.get(token);
             CgShaderBuffer buffer = provider.buffer().get();
-            sb.append(CgGlslEmitter.emitSsbo(buffer.getFormat(), buffer.getName(), provider.macroName(), !general));
+            sb.append(CgGlslEmitter.emitSsbo(buffer.getFormat(), buffer.getName(), provider.macroName(), !general, null));
             if (provider.envPath() != null) include(sb, provider.envPath());
         }
 

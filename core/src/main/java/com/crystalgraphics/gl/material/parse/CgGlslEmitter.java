@@ -6,6 +6,7 @@ import com.crystalgraphics.api.material.CgAttachedBuffer;
 import com.crystalgraphics.api.vertex.CgVertexAttribute;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
 import com.crystalgraphics.gl.buffer.shader.CgUniformBuffer;
+import com.crystalgraphics.render.shader.CgBindingModel;
 
 /**
  * Generates GLSL declaration blocks for user-attached buffers (SSBO, UBO)
@@ -52,21 +53,21 @@ public final class CgGlslEmitter {
     }
 
     /**
-     * Generates the SSBO block declaration for an attached buffer.
+     * Generates the SSBO block declaration for an attached buffer, bound at {@code slot}.
      *
      * @param ab the attached buffer descriptor
      */
-    public static String emitSsbo(CgAttachedBuffer ab) {
-        return emitSsbo(ab.getBuffer().getFormat(), ab.getBuffer().getName(), ab.getMacroName());
+    public static String emitSsbo(CgAttachedBuffer ab, CgBindingModel.Slot slot) {
+        return emitSsbo(ab.getBuffer().getFormat(), ab.getBuffer().getName(), ab.getMacroName(), true, slot);
     }
 
     /**
-     * Generates a flat {@code layout(std140) uniform} block declaration for a UBO.
+     * Generates a flat {@code layout(std140) uniform} block declaration for a UBO, bound at {@code slot}.
      *
      * @param ubo the uniform buffer
      */
-    public static String emitUbo(CgUniformBuffer ubo) {
-        return emitUbo(ubo.getFormat(), ubo.getName());
+    public static String emitUbo(CgUniformBuffer ubo, CgBindingModel.Slot slot) {
+        return emitUbo(ubo.getFormat(), ubo.getName(), slot);
     }
 
     /**
@@ -79,20 +80,22 @@ public final class CgGlslEmitter {
      * @param macroName  the user-facing macro, e.g. {@code "FONT_METRICS"}
      */
     static String emitSsbo(CgBufferFormat format, String bufferName, String macroName) {
-        return emitSsbo(format, bufferName, macroName, true);
+        return emitSsbo(format, bufferName, macroName, true, null);
     }
 
     /**
      * {@link #emitSsbo(CgBufferFormat, String, String)}, writable where {@code readonly} is false: what a kernel
-     * declares an engine buffer as.
+     * declares an engine buffer as. Bound at {@code slot}, or where the program is wired with none.
      */
-    public static String emitSsbo(CgBufferFormat format, String bufferName, String macroName, boolean readonly) {
+    public static String emitSsbo(CgBufferFormat format, String bufferName, String macroName, boolean readonly,
+                                  CgBindingModel.Slot slot) {
         String structName = format.getGlslName();
         String arrayName  = "_cg_" + lowerFirst(structName) + "Arr";
 
         StringBuilder sb = new StringBuilder(256);
         appendStructDecl(sb, format, structName);
         sb.append('\n');
+        if (slot != null) sb.append(slot.glsl());
         sb.append(readonly ? "layout(std430) readonly buffer " : "layout(std430) buffer ").append(bufferName).append(" {\n");
         sb.append("    ").append(structName).append(' ').append(arrayName).append("[];\n");
         sb.append("};\n");
@@ -113,7 +116,13 @@ public final class CgGlslEmitter {
      *                  block name; must match exactly for {@code wireShader()} to succeed
      */
     public static String emitUbo(CgBufferFormat format, String blockName) {
+        return emitUbo(format, blockName, null);
+    }
+
+    /** {@link #emitUbo(CgBufferFormat, String)} bound at {@code slot}, or where the program is wired with none. */
+    public static String emitUbo(CgBufferFormat format, String blockName, CgBindingModel.Slot slot) {
         StringBuilder sb = new StringBuilder(128);
+        if (slot != null) sb.append(slot.glsl());
         sb.append("layout(std140) uniform ").append(blockName).append(" {\n");
         for (int i = 0; i < format.getFieldCount(); i++) {
             CgBufferField field = format.getField(i);

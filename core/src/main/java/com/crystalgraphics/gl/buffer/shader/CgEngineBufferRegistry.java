@@ -206,6 +206,19 @@ public final class CgEngineBufferRegistry {
         return PROVIDERS.get(token);
     }
 
+    /**
+     * The place of the token whose buffer has {@code macroName} in registration order, or -1: what
+     * {@code CgBindingModel} binds the buffer at.
+     */
+    public static synchronized int indexOfMacro(String macroName) {
+        int i = 0;
+        for (Provider p : PROVIDERS.values()) {
+            if (p.macroName().equals(macroName)) return i;
+            i++;
+        }
+        return -1;
+    }
+
     /** Every registered token, for error messages. */
     public static Set<String> tokens() {
         return Collections.unmodifiableSet(PROVIDERS.keySet());

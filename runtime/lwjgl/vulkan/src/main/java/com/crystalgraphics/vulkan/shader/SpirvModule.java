@@ -31,9 +31,10 @@ final class SpirvModule {
     /**
      * @param word      the index of the decoration's literal in the binary
      * @param value     the decoration's value as compiled
+     * @param setWord   the index of its descriptor set's literal, or -1 for an interface variable
      * @param locations interface locations the variable takes
      */
-    record Resource(String name, int word, int value, int glType, boolean texel, int locations) {}
+    record Resource(String name, int word, int value, int setWord, int glType, boolean texel, int locations) {}
 
     final ByteBuffer spirv;
     final List<Resource> uniformBuffers = new ArrayList<>(), storageBuffers = new ArrayList<>();
@@ -80,9 +81,13 @@ final class SpirvModule {
         }
     }
 
-    /** Sets a decoration's value in the binary. */
+    /**
+     * Sets a decoration's value in the binary; a resource's set to 0, where the tracked backend binds everything, as
+     * the source's explicit sets ({@code CgBindingModel}) are bound by name.
+     */
     void set(Resource r, int value) {
         spirv.putInt(r.word * 4, value);
+        if (r.setWord >= 0) spirv.putInt(r.setWord * 4, 0);
     }
 
     private void read(MemoryStack stack, long compiler, long resources, int type, int decoration, List<Resource> out) {
@@ -94,7 +99,14 @@ final class SpirvModule {
             String name = r.nameString();
             if (!spvc_compiler_get_binary_offset_for_decoration(compiler, r.id(), decoration, word))
                 throw new CgShaderModule.CompileException(label + ": " + name + " has no decoration " + decoration);
-            int value = spvc_compiler_get_decoration(compiler, r.id(), decoration);
+            int value = spvc_compiler_get_decoration(compiler, r.id(), decoration), setWord = -1;
+            if (decoration == SpvDecorationBinding) {
+                if (!spvc_compiler_get_binary_offset_for_decoration(compiler, r.id(), SpvDecorationDescriptorSet, word))
+                    throw new CgShaderModule.CompileException(label + ": " + name + " has no descriptor set");
+                setWord = word.get(0);
+                check(spvc_compiler_get_binary_offset_for_decoration(compiler, r.id(), decoration, word) ? SPVC_SUCCESS : -1,
+                        "binding offset");
+            }
             long typeHandle = spvc_compiler_get_type_handle(compiler, r.type_id());
             int glType = 0, locations = 1;
             boolean texel = false;
@@ -114,7 +126,7 @@ final class SpirvModule {
                 defaultBlockSize = (int) size.get(0);
                 members(stack, compiler, r.base_type_id(), "", 0);
             }
-            out.add(new Resource(name, word.get(0), value, glType, texel, locations));
+            out.add(new Resource(name, word.get(0), value, setWord, glType, texel, locations));
         }
     }
 

@@ -39,6 +39,12 @@ import static org.lwjgl.util.shaderc.Shaderc.*;
  * new ShadercGlslCompiler(CgCacheDirectory.of("spirv"));   // a null folder keeps nothing
  * }</pre>
  *
+ * <p>A source binding everything itself ({@code CgBindingModel}'s {@code CG_BIND}) compiles with nothing assigned, so a
+ * resource it forgot fails the compile, as does any loose uniform:</p>
+ * <pre>{@code
+ * new ShadercGlslCompiler(null, false);
+ * }</pre>
+ *
  * <p>Two edits to the source, both checked by the compiler that follows: 26.2's own defines of
  * {@code gl_VertexID}/{@code gl_InstanceID} to their Vulkan names (every draw starts at instance 0, so they agree),
  * and, for the GL-depth vertex stage, {@code main} wrapped to map clip z from GL's range. glslang's relaxed Vulkan
@@ -52,7 +58,7 @@ public final class ShadercGlslCompiler implements CgGlslCompiler, AutoCloseable 
     private static final String DEFINES = "#define gl_VertexID gl_VertexIndex\n#define gl_InstanceID gl_InstanceIndex\n";
 
     /** Every option set below, for the cache's key: a change to them is a new key. */
-    private static final String OPTIONS = "vulkan 1.2, relaxed rules, auto-bound uniforms, auto-mapped locations";
+    private static final String OPTIONS = "vulkan 1.2, relaxed rules, auto-mapped locations";
 
     private final long compiler = shaderc_compiler_initialize();
     private final long options = shaderc_compile_options_initialize();
@@ -65,11 +71,19 @@ public final class ShadercGlslCompiler implements CgGlslCompiler, AutoCloseable 
 
     /** @param cacheDir where modules are kept across launches, or null for none */
     public ShadercGlslCompiler(Path cacheDir) {
+        this(cacheDir, true);
+    }
+
+    /**
+     * @param cacheDir where modules are kept across launches, or null for none
+     * @param autoBind whether a resource the source leaves unbound is given a binding; false refuses it
+     */
+    public ShadercGlslCompiler(Path cacheDir, boolean autoBind) {
         shaderc_compile_options_set_target_env(options, shaderc_target_env_vulkan, shaderc_env_version_vulkan_1_2);
         shaderc_compile_options_set_vulkan_rules_relaxed(options, true);
-        shaderc_compile_options_set_auto_bind_uniforms(options, true);
+        shaderc_compile_options_set_auto_bind_uniforms(options, autoBind);
         shaderc_compile_options_set_auto_map_locations(options, true);
-        cache = cacheDir == null ? null : new SpirvCache(cacheDir, OPTIONS);
+        cache = cacheDir == null ? null : new SpirvCache(cacheDir, OPTIONS + (autoBind ? ", auto-bound uniforms" : ""));
     }
 
     @Override

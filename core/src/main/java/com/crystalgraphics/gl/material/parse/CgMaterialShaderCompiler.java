@@ -18,6 +18,7 @@ import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.gl.buffer.shader.CgUniformBuffer;
 import com.crystalgraphics.gl.material.CgMaterialProperty;
+import com.crystalgraphics.render.shader.CgBindingModel;
 
 import java.util.Locale;
 import java.util.Collections;
@@ -621,7 +622,7 @@ public final class CgMaterialShaderCompiler {
 
         // Material properties UBO (CgMaterialBlock) — emitted before user-attached buffers
         if (matPropsEntry != null) {
-            sb.append(CgGlslEmitter.emitUbo(matPropsEntry)).append('\n');
+            sb.append(CgGlslEmitter.emitUbo(matPropsEntry, CgBindingModel.MATERIAL_BLOCK)).append('\n');
         }
 
         appendAttachedBuffers(sb, attachedBuffers, shaderBufferPath);
@@ -723,7 +724,7 @@ public final class CgMaterialShaderCompiler {
 
         // Material properties UBO (CgMaterialBlock) — emitted before user-attached buffers
         if (matPropsEntry != null) {
-            sb.append(CgGlslEmitter.emitUbo(matPropsEntry)).append('\n');
+            sb.append(CgGlslEmitter.emitUbo(matPropsEntry, CgBindingModel.MATERIAL_BLOCK)).append('\n');
         }
 
         appendAttachedBuffers(sb, attachedBuffers, shaderBufferPath);
@@ -961,7 +962,7 @@ public final class CgMaterialShaderCompiler {
     private static void appendMaterialBuffers(StringBuilder sb, CgParsedShader shader) {
         if (shader.buffers().isEmpty()) return;
         sb.append("// Buffers { }\n").append(shader.bufferStructs());
-        for (CgBufferDecl b : shader.buffers()) CgBufferReaders.reader(sb, b);
+        for (int i = 0; i < shader.buffers().size(); i++) CgBufferReaders.reader(sb, shader.buffers().get(i), i);
     }
 
     /** What the world hands a program carrying its own lighting, after the buffers and properties it reads through. */
@@ -974,24 +975,24 @@ public final class CgMaterialShaderCompiler {
     private static void appendAttachedBuffers(StringBuilder sb,
                                                List<CgAttachedBuffer> attachedBuffers,
                                                CgCapabilities.ShaderBufferPath path) {
+        int user = 0;
         for (CgAttachedBuffer ab : attachedBuffers) {
+            CgBindingModel.Slot slot = CgBindingModel.attached(ab, user);
+            if (slot.set() == CgBindingModel.MATERIAL) user++;
             if (ab.isUbo()) {
-                sb.append(CgGlslEmitter.emitUbo(ab.getBuffer().getFormat(), ab.getBuffer().getName())).append('\n');
+                sb.append(CgGlslEmitter.emitUbo(ab.getBuffer().getFormat(), ab.getBuffer().getName(), slot)).append('\n');
             } else {
-                sb.append(CgGlslEmitter.emitSsbo(ab)).append('\n');
+                sb.append(CgGlslEmitter.emitSsbo(ab, slot)).append('\n');
             }
         }
     }
 
     private static void appendPropertyUniforms(StringBuilder sb, List<CgMaterialProperty> properties) {
-        boolean hasSamplers = false;
+        int textures = 0;
         for (CgMaterialProperty p : properties) {
             if (p.getType().isSampler()) {
-                if (!hasSamplers) {
-                    sb.append("// Sampler properties\n");
-                    hasSamplers = true;
-                }
-                sb.append("uniform ").append(p.getGlslType()).append(' ').append(p.getName()).append(";\n");
+                if (textures == 0) sb.append("// Sampler properties\n");
+                sb.append(CgBindingModel.texture(textures++).glsl()).append("uniform ").append(p.getGlslType()).append(' ').append(p.getName()).append(";\n");
             }
         }
     }

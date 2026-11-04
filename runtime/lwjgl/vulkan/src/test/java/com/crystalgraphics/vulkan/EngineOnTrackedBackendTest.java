@@ -36,6 +36,7 @@ import com.crystalgraphics.platform.gl.tracked.CgTrackedStateProvider;
 import com.crystalgraphics.render.CgImmediate;
 import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.render.draw.CgPassConstants;
+import com.crystalgraphics.vulkan.shader.ExplicitBindingCheck;
 import com.crystalgraphics.vulkan.shader.ShadercGlslCompiler;
 import com.sun.management.ThreadMXBean;
 import org.joml.Matrix4f;
@@ -75,7 +76,7 @@ public class EngineOnTrackedBackendTest {
             {"crystalgraphics:shader/default.vert", "crystalgraphics:shader/default.frag"},
             {"crystalgraphics:shader/diag_atlas.vert", "crystalgraphics:shader/diag_atlas.frag"}};
 
-    private static ShadercGlslCompiler compiler;
+    private static ShadercGlslCompiler compiler, explicit;
     private static CgNullRHI device;
     private static CgTrackedGLBackend gl;
 
@@ -83,8 +84,9 @@ public class EngineOnTrackedBackendTest {
     @BeforeClass
     public static void install() throws ClassNotFoundException {
         compiler = new ShadercGlslCompiler();
+        explicit = new ShadercGlslCompiler(null, false);
         device = new CgNullRHI(64, 64);
-        gl = new CgTrackedGLBackend(device, compiler, true);
+        gl = new CgTrackedGLBackend(device, new ExplicitBindingCheck(compiler, explicit), true);
         CgGL.init(gl);
         CgCapabilities.init(new CgTrackedGLContext());
         CgCapabilities.clearCache();
@@ -101,7 +103,9 @@ public class EngineOnTrackedBackendTest {
     public static void uninstall() {
         CgGlState.reset();
         compiler.close();
+        explicit.close();
     }
+
 
     @Test
     public void everyMaterialPassAndKeywordVariantLinks() throws Exception {
