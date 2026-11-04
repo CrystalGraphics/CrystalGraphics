@@ -6,6 +6,9 @@ import com.crystalgraphics.platform.rhi.resource.CgRHIResource;
 import com.crystalgraphics.platform.rhi.command.CgCommandList;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
 import com.crystalgraphics.platform.rhi.binding.CgBindingLayout;
+import com.crystalgraphics.platform.rhi.binding.CgBindingSet;
+import com.crystalgraphics.platform.rhi.binding.CgBindings;
+import com.crystalgraphics.platform.rhi.pipeline.CgPipelineLayout;
 import com.crystalgraphics.platform.rhi.pipeline.CgComputePipeline;
 import com.crystalgraphics.platform.rhi.pipeline.CgGraphicsPipeline;
 import com.crystalgraphics.platform.rhi.pipeline.CgGraphicsPipelineDesc;
@@ -66,6 +69,7 @@ import org.lwjgl.vulkan.VkPipelineViewportStateCreateInfo;
 import org.lwjgl.vulkan.VkQueryPoolCreateInfo;
 import org.lwjgl.vulkan.VkSamplerCreateInfo;
 import org.lwjgl.vulkan.VkShaderModuleCreateInfo;
+import org.lwjgl.vulkan.VkPushConstantRange;
 import org.lwjgl.vulkan.VkStencilOpState;
 import org.lwjgl.vulkan.VkVertexInputAttributeDescription;
 import org.lwjgl.vulkan.VkVertexInputBindingDescription;
@@ -146,6 +150,7 @@ public final class CgVulkanDevice implements CgRHI, AutoCloseable {
     private final Map<CgGpuSampler.Desc, VulkanSampler> samplers = new HashMap<>();
     /** Every object made and not yet released: synchronized, since kernels' are made on the compile worker. */
     private final Set<Object> live = Collections.synchronizedSet(Collections.newSetFromMap(new IdentityHashMap<>()));
+    private final Map<CgPipelineLayout, Long> pipelineLayouts = new HashMap<>();
     private final Map<VulkanBuffer, Map<Long, Long>> texelViews = new IdentityHashMap<>();
     private final VulkanStaging staging;
     private final VulkanEncoder encoder;
@@ -486,8 +491,8 @@ public final class CgVulkanDevice implements CgRHI, AutoCloseable {
     }
 
     @Override
-    public CgBindingLayout createBindingLayout(String label, List<CgBindingLayout.Slot> slots) {
-        if (slots.size() > maxPushDescriptors)
+    public CgBindingLayout createBindingLayout(String label, List<CgBindingLayout.Slot> slots, boolean pushed) {
+        if (pushed && slots.size() > maxPushDescriptors)
             throw new UnsupportedOperationException(label + " has " + slots.size() + " bindings; a push-descriptor set "
                     + "holds " + maxPushDescriptors);
         try (MemoryStack stack = stackPush()) {
@@ -499,16 +504,46 @@ public final class CgVulkanDevice implements CgRHI, AutoCloseable {
             }
             LongBuffer lp = stack.mallocLong(1);
             check(vkCreateDescriptorSetLayout(device, VkDescriptorSetLayoutCreateInfo.calloc(stack).sType$Default()
-                    .flags(VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR).pBindings(bindings), null, lp),
+                    .flags(pushed ? VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR : 0).pBindings(bindings), null, lp),
                     "vkCreateDescriptorSetLayout " + label);
-            long setLayout = lp.get(0);
-            check(vkCreatePipelineLayout(device, VkPipelineLayoutCreateInfo.calloc(stack).sType$Default()
-                    .pSetLayouts(stack.longs(setLayout)), null, lp), "vkCreatePipelineLayout " + label);
-            VulkanBindingLayout l = new VulkanBindingLayout(label, List.copyOf(slots), setLayout, lp.get(0));
+            VulkanBindingLayout l = new VulkanBindingLayout(label, List.copyOf(slots), lp.get(0), pushed);
             live.add(l);
             return l;
         }
     }
+
+    @Override
+    public CgBindingSet createBindingSet(String label, CgBindingLayout layout, CgBindings contents) {
+        throw new UnsupportedOperationException(label + ": binding sets are not recorded on Vulkan yet");
+    }
+
+    /**
+     * The pipeline layout over {@code layout}'s sets and push constants, made once per distinct value. Destroyed with the
+     * first of its set layouts, or at {@link #close}.
+     */
+    public long pipelineLayout(CgPipelineLayout layout) {
+        synchronized (pipelineLayouts) {
+            Long made = pipelineLayouts.get(layout);
+            if (made != null) return made;
+            try (MemoryStack stack = stackPush()) {
+                LongBuffer sets = stack.mallocLong(layout.sets().size());
+                for (int i = 0; i < layout.sets().size(); i++) sets.put(i, ((VulkanBindingLayout) layout.sets().get(i)).setLayout);
+                VkPipelineLayoutCreateInfo ci = VkPipelineLayoutCreateInfo.calloc(stack).sType$Default().pSetLayouts(sets);
+                if (layout.pushConstantBytes() > 0) {
+                    ci.pPushConstantRanges(VkPushConstantRange.calloc(1, stack).stageFlags(PUSH_CONSTANT_STAGES)
+                            .offset(0).size(layout.pushConstantBytes()));
+                }
+                LongBuffer lp = stack.mallocLong(1);
+                check(vkCreatePipelineLayout(device, ci, null, lp), "vkCreatePipelineLayout");
+                pipelineLayouts.put(layout, lp.get(0));
+                return lp.get(0);
+            }
+        }
+    }
+
+    /** Every stage a pipeline here has: push constants are visible to all of them. */
+    public static final int PUSH_CONSTANT_STAGES = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT
+            | VK_SHADER_STAGE_COMPUTE_BIT;
 
     public static int descriptorType(CgBindingLayout.Type type) {
         switch (type) {
@@ -528,16 +563,17 @@ public final class CgVulkanDevice implements CgRHI, AutoCloseable {
     }
 
     @Override
-    public CgComputePipeline createComputePipeline(String label, CgShaderModule module, CgBindingLayout layout) {
+    public CgComputePipeline createComputePipeline(String label, CgShaderModule module, CgPipelineLayout layout) {
+        long pipelineLayout = pipelineLayout(layout);
         try (MemoryStack stack = stackPush()) {
             VkComputePipelineCreateInfo.Buffer ci = VkComputePipelineCreateInfo.calloc(1, stack).sType$Default()
-                    .layout(((VulkanBindingLayout) layout).pipelineLayout);
+                    .layout(pipelineLayout);
             ci.get(0).stage().sType$Default().stage(VK_SHADER_STAGE_COMPUTE_BIT)
                     .module(((VulkanShaderModule) module).module).pName(stack.UTF8("main"));
             LongBuffer lp = stack.mallocLong(1);
             check(vkCreateComputePipelines(device, pipelineCache, ci, null, lp), "vkCreateComputePipelines " + label);
             name(stack, VK_OBJECT_TYPE_PIPELINE, lp.get(0), label);
-            VulkanComputePipeline p = new VulkanComputePipeline(label, module, layout, lp.get(0));
+            VulkanComputePipeline p = new VulkanComputePipeline(label, module, layout, lp.get(0), pipelineLayout);
             live.add(p);
             return p;
         }
@@ -545,6 +581,7 @@ public final class CgVulkanDevice implements CgRHI, AutoCloseable {
 
     @Override
     public CgGraphicsPipeline createPipeline(CgGraphicsPipelineDesc d) {
+        long pipelineLayout = pipelineLayout(d.layout());
         try (MemoryStack stack = stackPush()) {
             VkPipelineShaderStageCreateInfo.Buffer stages = VkPipelineShaderStageCreateInfo.calloc(2, stack);
             stages.get(0).sType$Default().stage(VK_SHADER_STAGE_VERTEX_BIT)
@@ -634,10 +671,10 @@ public final class CgVulkanDevice implements CgRHI, AutoCloseable {
             ci.get(0).sType$Default().pNext(rendering.address()).pStages(stages).pVertexInputState(vertexInput)
                     .pInputAssemblyState(assembly).pViewportState(viewport).pRasterizationState(raster)
                     .pMultisampleState(multisample).pDepthStencilState(depth).pColorBlendState(blend)
-                    .pDynamicState(dynamic).layout(((VulkanBindingLayout) d.layout()).pipelineLayout);
+                    .pDynamicState(dynamic).layout(pipelineLayout);
             LongBuffer lp = stack.mallocLong(1);
             check(vkCreateGraphicsPipelines(device, pipelineCache, ci, null, lp), "vkCreateGraphicsPipelines " + d.label());
-            VulkanPipeline p = new VulkanPipeline(d, lp.get(0));
+            VulkanPipeline p = new VulkanPipeline(d, lp.get(0), pipelineLayout);
             live.add(p);
             return p;
         }
@@ -680,7 +717,13 @@ public final class CgVulkanDevice implements CgRHI, AutoCloseable {
         } else if (o instanceof VulkanShaderModule m) {
             vkDestroyShaderModule(device, m.module, null);
         } else if (o instanceof VulkanBindingLayout l) {
-            vkDestroyPipelineLayout(device, l.pipelineLayout, null);
+            synchronized (pipelineLayouts) {
+                pipelineLayouts.entrySet().removeIf(e -> {
+                    if (!e.getKey().sets().contains(l)) return false;
+                    vkDestroyPipelineLayout(device, e.getValue(), null);
+                    return true;
+                });
+            }
             vkDestroyDescriptorSetLayout(device, l.setLayout, null);
         } else if (o instanceof VulkanPipeline p) {
             vkDestroyPipeline(device, p.pipeline, null);
@@ -824,6 +867,8 @@ public final class CgVulkanDevice implements CgRHI, AutoCloseable {
         if (pipelineCacheFile != null) writePipelineCache();
         staging.destroy();
         for (Object o : new ArrayList<>(live)) destroy(o);
+        for (long l : pipelineLayouts.values()) vkDestroyPipelineLayout(device, l, null);   // those over no set
+        pipelineLayouts.clear();
         for (VulkanSampler s : samplers.values()) vkDestroySampler(device, s.sampler, null);
         samplers.clear();
         vkDestroyPipelineCache(device, pipelineCache, null);

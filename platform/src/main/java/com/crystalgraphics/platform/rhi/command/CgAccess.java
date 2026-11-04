@@ -39,15 +39,30 @@ public final class CgAccess {
     /** A render target's colour. */
     public static final int COLOR_WRITE = 1 << 12;
 
+    /** A depth attachment tested and not written: a read-only depth pass, which may sample it as well. */
+    public static final int DEPTH_READ = 1 << 13;
+
+    /** A depth attachment written. */
+    public static final int DEPTH_WRITE = 1 << 14;
+
+    /** Handed to the window to show. */
+    public static final int PRESENT = 1 << 15;
+
     /** Storage access from any shader stage: a storage image is in its general layout for these. */
     public static final int STORAGE = COMPUTE_READ | COMPUTE_WRITE | VERTEX_READ | FRAGMENT_READ;
     /** Everything a draw reads or writes. */
     public static final int GRAPHICS = VERTEX_READ | FRAGMENT_READ | UNIFORM_READ | SAMPLED_READ | VERTEX_INPUT
             | INDEX_INPUT | INDIRECT | COLOR_WRITE;
 
+    /** What only an image has: a buffer's transition refuses these. */
+    public static final int IMAGE_ONLY = COLOR_WRITE | DEPTH_READ | DEPTH_WRITE | PRESENT;
+
+    /** What only a buffer has: an image's transition refuses these. */
+    public static final int BUFFER_ONLY = UNIFORM_READ | VERTEX_INPUT | INDEX_INPUT | INDIRECT;
+
     private static final String[] NAMES = {"COMPUTE_READ", "COMPUTE_WRITE", "VERTEX_READ", "FRAGMENT_READ",
             "UNIFORM_READ", "SAMPLED_READ", "VERTEX_INPUT", "INDEX_INPUT", "INDIRECT", "COPY_READ", "COPY_WRITE",
-            "HOST_READ", "COLOR_WRITE"};
+            "HOST_READ", "COLOR_WRITE", "DEPTH_READ", "DEPTH_WRITE", "PRESENT"};
 
     private CgAccess() {}
 

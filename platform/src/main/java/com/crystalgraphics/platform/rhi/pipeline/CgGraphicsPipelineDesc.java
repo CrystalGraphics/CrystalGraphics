@@ -7,7 +7,6 @@ import com.crystalgraphics.platform.rhi.format.CgFormat;
 import com.crystalgraphics.platform.rhi.shader.CgShaderModule;
 
 import java.util.List;
-import com.crystalgraphics.platform.rhi.binding.CgBindingLayout;
 
 /**
  * Everything a draw fixes that a device compiles into a pipeline: the program, its vertex input, the render
@@ -28,7 +27,7 @@ import com.crystalgraphics.platform.rhi.binding.CgBindingLayout;
  * @param depthFormat the pass's depth attachment format, {@code null} with none
  * @param samples     the pass's sample count
  */
-public record CgGraphicsPipelineDesc(String label, CgBindingLayout layout, CgShaderModule vertex, CgShaderModule fragment,
+public record CgGraphicsPipelineDesc(String label, CgPipelineLayout layout, CgShaderModule vertex, CgShaderModule fragment,
                              List<VertexBuffer> vertexBuffers, Topology topology, Raster raster,
                              DepthStencil depthStencil, List<ColorTarget> colorTargets, CgFormat depthFormat,
                              int samples) {

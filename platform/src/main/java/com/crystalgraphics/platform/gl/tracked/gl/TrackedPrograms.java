@@ -4,6 +4,7 @@ import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.rhi.resource.CgRHIResource;
 import com.crystalgraphics.platform.rhi.format.CgAttribFormat;
 import com.crystalgraphics.platform.rhi.binding.CgBindingLayout;
+import com.crystalgraphics.platform.rhi.pipeline.CgPipelineLayout;
 import com.crystalgraphics.platform.rhi.pipeline.CgComputePipeline;
 import com.crystalgraphics.platform.rhi.pipeline.CgGraphicsPipeline;
 import com.crystalgraphics.platform.rhi.pipeline.CgGraphicsPipelineDesc;
@@ -288,7 +289,7 @@ public final class TrackedPrograms {
 
         synchronized void build(CgRHI device, CgTracker tracker, CgGlslCompiler.Program t, String label, long key) {
             if (dropped) return;
-            CgBindingLayout l = device.createBindingLayout(label, t.slots());
+            CgBindingLayout l = device.createBindingLayout(label, t.slots(), true);
             CgShaderModule vertexGl = device.createShaderModule(CgShaderModule.Stage.VERTEX, t.vertexGlDepth(), label);
             CgShaderModule vertexZero = device.createShaderModule(CgShaderModule.Stage.VERTEX, t.vertexZeroToOne(), label);
             CgShaderModule fragment = device.createShaderModule(CgShaderModule.Stage.FRAGMENT, t.fragment(), label);
@@ -305,10 +306,10 @@ public final class TrackedPrograms {
 
         synchronized void build(CgRHI device, CgGlslCompiler.ComputeProgram t, String label) {
             if (dropped) return;
-            layout = device.createBindingLayout(label, t.slots());
+            layout = device.createBindingLayout(label, t.slots(), true);
             module = device.createShaderModule(CgShaderModule.Stage.COMPUTE, t.spirv(), label);
             try (CgTrace.Zone ignored = CgTrace.zone(GL, PIPELINE)) {
-                pipeline = device.createComputePipeline(label, module, layout);
+                pipeline = device.createComputePipeline(label, module, CgPipelineLayout.of(layout));
             }
         }
 
@@ -385,10 +386,10 @@ public final class TrackedPrograms {
                 module = pre.module;
                 p.pipeline = pre.pipeline;
             } else {
-                layout = device.createBindingLayout(label, t.slots());
+                layout = device.createBindingLayout(label, t.slots(), true);
                 module = device.createShaderModule(CgShaderModule.Stage.COMPUTE, t.spirv(), label);
                 try (CgTrace.Zone ignored = CgTrace.zone(GL, PIPELINE)) {
-                    p.pipeline = device.createComputePipeline(label, module, layout);
+                    p.pipeline = device.createComputePipeline(label, module, CgPipelineLayout.of(layout));
                 }
             }
             p.objects.addAll(List.of(p.pipeline, module, layout));
@@ -400,7 +401,7 @@ public final class TrackedPrograms {
                 p.tracked = pre.graphics;
                 tracker.adoptAhead(pre.builds);
             } else {
-                CgBindingLayout layout = device.createBindingLayout(label, t.slots());
+                CgBindingLayout layout = device.createBindingLayout(label, t.slots(), true);
                 CgShaderModule vertexGl = device.createShaderModule(CgShaderModule.Stage.VERTEX, t.vertexGlDepth(), label);
                 CgShaderModule vertexZero = device.createShaderModule(CgShaderModule.Stage.VERTEX, t.vertexZeroToOne(), label);
                 CgShaderModule fragment = device.createShaderModule(CgShaderModule.Stage.FRAGMENT, t.fragment(), label);

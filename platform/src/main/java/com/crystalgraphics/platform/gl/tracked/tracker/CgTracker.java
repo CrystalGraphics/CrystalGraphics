@@ -256,7 +256,7 @@ public final class CgTracker {
                     i == attachment ? mask : 0));
         }
         CgFormat depthFormat = passTarget.depth() == null ? null : passTarget.depth().texture().desc().format();
-        CgGraphicsPipelineDesc desc = new CgGraphicsPipelineDesc(clearProgram.label, clearProgram.layout, clearProgram.vertexGlDepth,
+        CgGraphicsPipelineDesc desc = new CgGraphicsPipelineDesc(clearProgram.label, clearProgram.pipelineLayout, clearProgram.vertexGlDepth,
                 clearProgram.fragment, CLEAR_LAYOUT, CgGraphicsPipelineDesc.Topology.TRIANGLES, CgGraphicsPipelineDesc.Raster.DEFAULT,
                 CgGraphicsPipelineDesc.DepthStencil.OFF, targets, depthFormat,
                 passTarget.colors().get(attachment).texture().desc().samples());
@@ -442,7 +442,7 @@ public final class CgTracker {
                     ds.readMask(), ds.writeMask());
         }
         CgTextureView any = on.colors().isEmpty() ? on.depth() : on.colors().get(0);
-        CgGraphicsPipelineDesc desc = new CgGraphicsPipelineDesc(s.program.label, s.program.layout, vertex, s.program.fragment,
+        CgGraphicsPipelineDesc desc = new CgGraphicsPipelineDesc(s.program.label, s.program.pipelineLayout, vertex, s.program.fragment,
                 s.vertexLayouts, topology, s.raster, ds, targets, depthFormat, any.texture().desc().samples());
         CgGraphicsPipeline p = pipelines.get(desc);
         if (p == null) {
@@ -551,12 +551,12 @@ public final class CgTracker {
     /** Drops every pipeline built from {@code program}: it was relinked or deleted. */
     public void forgetPipelines(CgTrackedProgram program) {
         pipelines.entrySet().removeIf(e -> {
-            boolean mine = e.getKey().layout() == program.layout;
+            boolean mine = e.getKey().layout() == program.pipelineLayout;
             if (mine) device.release(e.getValue());
             return mine;
         });
         ahead.entrySet().removeIf(e -> {
-            boolean mine = e.getKey().layout() == program.layout;
+            boolean mine = e.getKey().layout() == program.pipelineLayout;
             if (mine) orphaned.add(e.getValue());
             return mine;
         });
@@ -853,7 +853,7 @@ public final class CgTracker {
         CgPassDesc.Depth depth = target.depth() == null ? null : new CgPassDesc.Depth(target.depth(),
                 pendingDepth ? CgPassDesc.LoadOp.CLEAR : CgPassDesc.LoadOp.LOAD, clearDepthValue,
                 pendingStencil ? CgPassDesc.LoadOp.CLEAR : CgPassDesc.LoadOp.LOAD, clearStencilValue,
-                CgPassDesc.StoreOp.STORE);
+                CgPassDesc.StoreOp.STORE, false);
         CgTextureView first = target.colors().isEmpty() ? target.depth() : target.colors().get(0);
         return new CgPassDesc(first.texture().label(), colors, depth, target.width(), target.height());
     }

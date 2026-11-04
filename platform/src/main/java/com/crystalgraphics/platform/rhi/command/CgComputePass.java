@@ -1,8 +1,11 @@
 package com.crystalgraphics.platform.rhi.command;
 
+import com.crystalgraphics.platform.rhi.binding.CgBindingSet;
 import com.crystalgraphics.platform.rhi.binding.CgBindings;
 import com.crystalgraphics.platform.rhi.pipeline.CgComputePipeline;
 import com.crystalgraphics.platform.rhi.resource.CgGpuBuffer;
+
+import java.nio.ByteBuffer;
 
 /**
  * One open compute pass: set a pipeline and its bindings, then dispatch. As in a render pass, nothing carries from one
@@ -24,8 +27,17 @@ public interface CgComputePass {
 
     void setPipeline(CgComputePipeline pipeline);
 
-    /** Replaces every binding. */
+    /** Fills the pipeline's pushed set, replacing what was pushed. */
     void pushBindings(CgBindings bindings);
+
+    /** Binds {@code bindings} at {@code set}; it stays bound across pipelines until replaced. */
+    void setBindingSet(int set, CgBindingSet bindings);
+
+    /** {@code value} at byte {@code offset} of the pipeline's push constants. */
+    void pushConstants(int offset, int value);
+
+    /** {@code data}'s remaining bytes at byte {@code offset} of the pipeline's push constants. */
+    void pushConstants(int offset, ByteBuffer data);
 
     void dispatch(int groupsX, int groupsY, int groupsZ);
 

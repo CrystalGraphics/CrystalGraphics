@@ -93,7 +93,7 @@ final class VulkanDescriptors {
 
     private VulkanDescriptors() {}
 
-    static void push(CgVulkanDevice device, VkCommandBuffer cmd, int bindPoint, long pipelineLayout, CgBindings b,
+    static void push(CgVulkanDevice device, VkCommandBuffer cmd, int bindPoint, long pipelineLayout, int set, CgBindings b,
                      Pushed pushed) {
         int n = b.count();
         if (n == 0) return;
@@ -174,7 +174,7 @@ final class VulkanDescriptors {
         }
         device.pushes++;
         device.pushWrites += changed;
-        nvkCmdPushDescriptorSetKHR(cmd, bindPoint, pipelineLayout, 0, changed, s.address);
+        nvkCmdPushDescriptorSetKHR(cmd, bindPoint, pipelineLayout, set, changed, s.address);
         pushed.keep(cmdAddress, pipelineLayout, n);
     }
 }

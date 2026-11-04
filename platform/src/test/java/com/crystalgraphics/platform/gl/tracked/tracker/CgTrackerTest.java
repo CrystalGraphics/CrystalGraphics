@@ -5,6 +5,7 @@ import com.crystalgraphics.platform.rhi.command.CgPassDesc;
 import com.crystalgraphics.platform.rhi.format.CgAttribFormat;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
 import com.crystalgraphics.platform.rhi.binding.CgBindingLayout;
+import com.crystalgraphics.platform.rhi.pipeline.CgPipelineLayout;
 import com.crystalgraphics.platform.rhi.pipeline.CgComputePipeline;
 import com.crystalgraphics.platform.rhi.pipeline.CgGraphicsPipelineDesc;
 import com.crystalgraphics.platform.rhi.nulldrv.CgNullRHI;
@@ -30,7 +31,7 @@ public class CgTrackerTest {
     private final CgTracker tracker = new CgTracker(device, true);
 
     private CgTrackedProgram program(CgBindingLayout.Slot... slots) {
-        CgBindingLayout layout = device.createBindingLayout("p", List.of(slots));
+        CgBindingLayout layout = device.createBindingLayout("p", List.of(slots), true);
         CgShaderModule vs = device.createShaderModule(CgShaderModule.Stage.VERTEX, CgNullRHI.emptySpirv(), "vs");
         CgShaderModule fs = device.createShaderModule(CgShaderModule.Stage.FRAGMENT, CgNullRHI.emptySpirv(), "fs");
         return new CgTrackedProgram("p", layout, vs, vs, fs);
@@ -188,9 +189,9 @@ public class CgTrackerTest {
 
     @Test
     public void aBufferBarrierIsDroppedWhereABarrierRecordedSinceItsLastDispatchOrdersIt() {
-        CgBindingLayout layout = device.createBindingLayout("k", List.of(new CgBindingLayout.Slot(0, CgBindingLayout.Type.STORAGE_BUFFER)));
+        CgBindingLayout layout = device.createBindingLayout("k", List.of(new CgBindingLayout.Slot(0, CgBindingLayout.Type.STORAGE_BUFFER)), true);
         CgShaderModule cs = device.createShaderModule(CgShaderModule.Stage.COMPUTE, CgNullRHI.emptySpirv(), "cs");
-        CgComputePipeline kernel = device.createComputePipeline("k", cs, layout);
+        CgComputePipeline kernel = device.createComputePipeline("k", cs, CgPipelineLayout.of(layout));
         CgAllocation first = tracker.allocate(64, false, false, "first"), second = tracker.allocate(64, false, false, "second");
         int write = CgAccess.COMPUTE_WRITE, read = CgAccess.COMPUTE_READ;
 

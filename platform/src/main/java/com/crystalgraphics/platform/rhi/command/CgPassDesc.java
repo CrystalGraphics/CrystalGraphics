@@ -25,8 +25,12 @@ public record CgPassDesc(String label, List<Color> colors, Depth depth, int widt
 
     public record Color(CgTextureView view, LoadOp load, float r, float g, float b, float a, StoreOp store) {}
 
+    /**
+     * @param readOnly tested and never written, so the pass may sample it too (Unreal's {@code DepthRead}): no clear
+     *                 load, no pipeline writing depth or stencil, no depth clear inside the pass
+     */
     public record Depth(CgTextureView view, LoadOp depthLoad, float clearDepth, LoadOp stencilLoad,
-                        int clearStencil, StoreOp store) {}
+                        int clearStencil, StoreOp store, boolean readOnly) {}
 
     /** The sample count of the attachments, which must agree. */
     public int samples() {

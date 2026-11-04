@@ -35,6 +35,26 @@ public interface CgCommandList {
     /** Every resource's uses at {@code from} before {@code to}: GL's {@code glMemoryBarrier}, which names none. */
     void memoryBarrier(int from, int to);
 
+    /** {@code transition}'s resources move here: {@link #beginTransitions} and {@link #endTransitions} at once. */
+    void transition(CgTransition transition);
+
+    /**
+     * Their previous uses may finish from here: the first half of a split transition (Unreal's
+     * {@code RHIBeginTransitions}). Outside a render pass; ended, the batch unchanged, before the frame ends.
+     */
+    void beginTransitions(CgTransition transition);
+
+    /** Their next uses may start from here: the second half. Outside a render pass. */
+    void endTransitions(CgTransition transition);
+
+    /**
+     * Dispatches until {@link #endStorageOverlap} write storage with no barrier between them: the caller states they
+     * touch disjoint ranges (Unreal's {@code BeginUAVOverlap}). Outside a render pass; not nested.
+     */
+    void beginStorageOverlap();
+
+    void endStorageOverlap();
+
     /** Copies {@code data}'s remaining bytes into a device-local buffer, through staging. */
     void writeBuffer(CgGpuBuffer dst, long dstOffset, ByteBuffer data);
 

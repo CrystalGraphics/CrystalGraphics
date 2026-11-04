@@ -2,20 +2,23 @@ package com.crystalgraphics.vulkan.command;
 
 import com.crystalgraphics.platform.rhi.command.CgComputePass;
 import com.crystalgraphics.platform.rhi.binding.CgBindingLayout;
+import com.crystalgraphics.platform.rhi.binding.CgBindingSet;
 import com.crystalgraphics.platform.rhi.binding.CgBindings;
 import com.crystalgraphics.platform.rhi.pipeline.CgComputePipeline;
 import com.crystalgraphics.platform.rhi.resource.CgGpuBuffer;
 import com.crystalgraphics.platform.rhi.resource.CgTextureView;
 import com.crystalgraphics.vulkan.CgVulkanDevice;
-import com.crystalgraphics.vulkan.resource.VulkanBindingLayout;
 import com.crystalgraphics.vulkan.resource.VulkanBuffer;
 import com.crystalgraphics.vulkan.resource.VulkanComputePipeline;
 import com.crystalgraphics.vulkan.resource.VulkanTexture;
+import org.lwjgl.system.MemoryStack;
 import org.lwjgl.vulkan.VkCommandBuffer;
 
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
 
+import static org.lwjgl.system.MemoryStack.stackPush;
 import static org.lwjgl.vulkan.VK10.*;
 
 /**
@@ -60,8 +63,27 @@ final class VulkanComputePass implements CgComputePass {
                     VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT);
             images.add(view);
         }
-        VulkanDescriptors.push(device, cmd(), VK_PIPELINE_BIND_POINT_COMPUTE,
-                ((VulkanBindingLayout) pipeline.layout()).pipelineLayout, b, encoder.computePushed);
+        VulkanDescriptors.push(device, cmd(), VK_PIPELINE_BIND_POINT_COMPUTE, pipeline.pipelineLayout, pipeline.pushSet, b,
+                encoder.computePushed);
+    }
+
+    @Override
+    public void setBindingSet(int set, CgBindingSet bindings) {
+        throw new UnsupportedOperationException("binding sets are not recorded on Vulkan yet");
+    }
+
+    @Override
+    public void pushConstants(int offset, int value) {
+        if (pipeline == null) throw new IllegalStateException("Push constants before a pipeline");
+        try (MemoryStack stack = stackPush()) {
+            vkCmdPushConstants(cmd(), pipeline.pipelineLayout, CgVulkanDevice.PUSH_CONSTANT_STAGES, offset, stack.ints(value));
+        }
+    }
+
+    @Override
+    public void pushConstants(int offset, ByteBuffer data) {
+        if (pipeline == null) throw new IllegalStateException("Push constants before a pipeline");
+        vkCmdPushConstants(cmd(), pipeline.pipelineLayout, CgVulkanDevice.PUSH_CONSTANT_STAGES, offset, data);
     }
 
     @Override

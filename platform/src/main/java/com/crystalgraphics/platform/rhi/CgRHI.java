@@ -4,6 +4,9 @@ import com.crystalgraphics.platform.rhi.command.CgCommandList;
 import com.crystalgraphics.platform.rhi.command.CgRenderPass;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
 import com.crystalgraphics.platform.rhi.binding.CgBindingLayout;
+import com.crystalgraphics.platform.rhi.binding.CgBindingSet;
+import com.crystalgraphics.platform.rhi.binding.CgBindings;
+import com.crystalgraphics.platform.rhi.pipeline.CgPipelineLayout;
 import com.crystalgraphics.platform.rhi.pipeline.CgComputePipeline;
 import com.crystalgraphics.platform.rhi.pipeline.CgGraphicsPipeline;
 import com.crystalgraphics.platform.rhi.pipeline.CgGraphicsPipelineDesc;
@@ -110,11 +113,15 @@ public interface CgRHI {
     /** One stage's SPIR-V, from a {@link CgGlslCompiler}. */
     CgShaderModule createShaderModule(CgShaderModule.Stage stage, ByteBuffer spirv, String label);
 
-    CgBindingLayout createBindingLayout(String label, List<CgBindingLayout.Slot> slots);
+    /** @param pushed filled per draw by {@code pushBindings}; otherwise made into {@link CgBindingSet}s */
+    CgBindingLayout createBindingLayout(String label, List<CgBindingLayout.Slot> slots, boolean pushed);
+
+    /** {@code contents} fixed into a set of {@code layout}, which is not pushed and is given every slot. */
+    CgBindingSet createBindingSet(String label, CgBindingLayout layout, CgBindings contents);
 
     CgGraphicsPipeline createPipeline(CgGraphicsPipelineDesc desc);
 
-    CgComputePipeline createComputePipeline(String label, CgShaderModule module, CgBindingLayout layout);
+    CgComputePipeline createComputePipeline(String label, CgShaderModule module, CgPipelineLayout layout);
 
     CgTimerQuery createTimerQuery(String label);
 

@@ -135,7 +135,7 @@ public final class CgPipelineRecipes {
 
         /** The description for {@code program}, with the vertex stage of its recorded clip convention. */
         public CgGraphicsPipelineDesc desc(CgTrackedProgram program) {
-            return new CgGraphicsPipelineDesc(program.label, program.layout, program.vertex(zeroToOne), program.fragment,
+            return new CgGraphicsPipelineDesc(program.label, program.pipelineLayout, program.vertex(zeroToOne), program.fragment,
                     vertexBuffers, topology, raster, depthStencil, colorTargets, depthFormat, samples);
         }
 

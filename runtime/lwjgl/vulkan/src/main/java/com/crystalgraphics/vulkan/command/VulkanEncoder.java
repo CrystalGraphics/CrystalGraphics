@@ -4,6 +4,7 @@ import com.crystalgraphics.platform.rhi.command.CgCommandList;
 import com.crystalgraphics.platform.rhi.command.CgComputePass;
 import com.crystalgraphics.platform.rhi.command.CgPassDesc;
 import com.crystalgraphics.platform.rhi.command.CgRenderPass;
+import com.crystalgraphics.platform.rhi.command.CgTransition;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
 import com.crystalgraphics.platform.rhi.resource.CgGpuBuffer;
 import com.crystalgraphics.platform.rhi.resource.CgGpuSampler;
@@ -273,6 +274,44 @@ public final class VulkanEncoder implements CgCommandList {
     }
 
     @Override
+    public void transition(CgTransition t) {
+        outsidePass("transition");
+        for (int i = 0; i < t.count(); i++) {
+            if (t.buffer(i) != null) {
+                bufferBarrier(t.buffer(i), t.from(i), t.to(i));
+                continue;
+            }
+            CgTextureView v = t.texture(i);
+            VulkanTexture texture = (VulkanTexture) v.texture();
+            use(texture);
+            device.barriers += texture.transition(cmd(), v.baseMip(), v.mips(), v.baseLayer(), v.layers(),
+                    VulkanAccess.layout(t.to(i)), VulkanAccess.stage(t.to(i)), VulkanAccess.access(t.to(i)));
+        }
+    }
+
+    /** Recorded whole at {@link #endTransitions}: a split into events waits for the graph's transitions. */
+    @Override
+    public void beginTransitions(CgTransition t) {
+        outsidePass("beginTransitions");
+    }
+
+    @Override
+    public void endTransitions(CgTransition t) {
+        transition(t);
+    }
+
+    /** Nothing to lift: this device puts no barrier between dispatches it was not asked for. */
+    @Override
+    public void beginStorageOverlap() {
+        outsidePass("beginStorageOverlap");
+    }
+
+    @Override
+    public void endStorageOverlap() {
+        outsidePass("endStorageOverlap");
+    }
+
+    @Override
     public CgRenderPass beginPass(CgPassDesc desc) {
         outsidePass("beginPass");
         if (openCompute != null) throw new IllegalStateException("beginPass inside a compute pass");
@@ -284,7 +323,11 @@ public final class VulkanEncoder implements CgCommandList {
                     VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
                     VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT);
         }
-        if (desc.depth() != null) {
+        if (desc.depth() != null && desc.depth().readOnly()) {
+            toAttachment(cmd, desc.depth().view(), VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL,
+                    VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+                    VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT);
+        } else if (desc.depth() != null) {
             toAttachment(cmd, desc.depth().view(), VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
                     VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
                     VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT);
@@ -345,7 +388,8 @@ public final class VulkanEncoder implements CgCommandList {
     }
 
     private static void depthStencil(ByteBuffer m, int at, long view, int load, int store, CgPassDesc.Depth d) {
-        attachment(m, at, view, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, load, store);
+        attachment(m, at, view, d.readOnly() ? VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL
+                : VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, load, store);
         int clear = at + VkRenderingAttachmentInfo.CLEARVALUE + VkClearValue.DEPTHSTENCIL;
         m.putFloat(clear + VkClearDepthStencilValue.DEPTH, d.clearDepth())
                 .putInt(clear + VkClearDepthStencilValue.STENCIL, d.clearStencil());

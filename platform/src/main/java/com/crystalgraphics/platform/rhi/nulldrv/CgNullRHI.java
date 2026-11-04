@@ -7,12 +7,15 @@ import com.crystalgraphics.platform.rhi.command.CgCommandList;
 import com.crystalgraphics.platform.rhi.command.CgComputePass;
 import com.crystalgraphics.platform.rhi.command.CgPassDesc;
 import com.crystalgraphics.platform.rhi.command.CgRenderPass;
+import com.crystalgraphics.platform.rhi.command.CgTransition;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
 import com.crystalgraphics.platform.rhi.binding.CgBindingLayout;
+import com.crystalgraphics.platform.rhi.binding.CgBindingSet;
 import com.crystalgraphics.platform.rhi.binding.CgBindings;
 import com.crystalgraphics.platform.rhi.pipeline.CgComputePipeline;
 import com.crystalgraphics.platform.rhi.pipeline.CgGraphicsPipeline;
 import com.crystalgraphics.platform.rhi.pipeline.CgGraphicsPipelineDesc;
+import com.crystalgraphics.platform.rhi.pipeline.CgPipelineLayout;
 import com.crystalgraphics.platform.rhi.resource.CgGpuBuffer;
 import com.crystalgraphics.platform.rhi.resource.CgGpuSampler;
 import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
@@ -24,7 +27,9 @@ import com.crystalgraphics.platform.rhi.shader.CgShaderModule;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -75,7 +80,9 @@ public final class CgNullRHI implements CgRHI {
     private int live;
     private int draws;
     private boolean logging = true;
-    private boolean async, transfer;
+    private boolean async, transfer, overlap;
+    /** Begun transitions, each with what it held when begun: ending it changed is refused. */
+    private final Map<CgTransition, String> begun = new IdentityHashMap<>();
     private long asyncPoint;
     private Pass open;
     /** Unlogged, the last ended pass, begun again: an allocation test measures the engine, not this device. */
@@ -210,23 +217,36 @@ public final class CgNullRHI implements CgRHI {
     }
 
     @Override
-    public CgBindingLayout createBindingLayout(String label, List<CgBindingLayout.Slot> slots) {
-        Layout l = new Layout(label, new ArrayList<>(slots));
-        if (logging) record("createBindingLayout #" + l.id + " " + label + " " + slots.size());
+    public CgBindingLayout createBindingLayout(String label, List<CgBindingLayout.Slot> slots, boolean pushed) {
+        Layout l = new Layout(label, new ArrayList<>(slots), pushed);
+        if (logging) record("createBindingLayout #" + l.id + " " + label + " " + slots.size() + (pushed ? " pushed" : ""));
         return l;
     }
 
     @Override
+    public CgBindingSet createBindingSet(String label, CgBindingLayout layout, CgBindings contents) {
+        use(layout);
+        if (layout.pushed()) throw new IllegalArgumentException(label + ": a set of " + layout.label() + ", which is pushed");
+        BindingSet s = new BindingSet(label, layout);
+        push(contents, s.contents, null);
+        pushedAll(label, layout, s.contents);
+        if (logging) record("createBindingSet #" + s.id + " " + label + " " + ref(layout));
+        return s;
+    }
+
+    @Override
     public CgGraphicsPipeline createPipeline(CgGraphicsPipelineDesc desc) {
-        use(desc.layout(), desc.vertex(), desc.fragment());
+        use(desc.vertex(), desc.fragment());
+        use(desc.layout());
         Pipeline p = new Pipeline(desc);
         if (logging) record("createPipeline #" + p.id + " " + desc.label());
         return p;
     }
 
     @Override
-    public CgComputePipeline createComputePipeline(String label, CgShaderModule module, CgBindingLayout layout) {
-        use(layout, module);
+    public CgComputePipeline createComputePipeline(String label, CgShaderModule module, CgPipelineLayout layout) {
+        use(module);
+        use(layout);
         if (module.stage() != CgShaderModule.Stage.COMPUTE)
             throw new IllegalArgumentException(label + ": a compute pipeline from a " + module.stage() + " module");
         ComputePipeline p = new ComputePipeline(label, module, layout);
@@ -274,6 +294,8 @@ public final class CgNullRHI implements CgRHI {
     public void endFrame() {
         if (open != null) throw new IllegalStateException("endFrame with pass '" + open.desc.label() + "' open");
         if (async) throw new IllegalStateException("endFrame inside async work");
+        if (!begun.isEmpty()) throw new IllegalStateException("endFrame with " + begun.size() + " transitions begun and not ended");
+        if (overlap) throw new IllegalStateException("endFrame inside a storage overlap");
         if (logging) record("endFrame " + frame);
         frame++;
         retireThrough(frame - 1 - framesInFlight);
@@ -317,6 +339,10 @@ public final class CgNullRHI implements CgRHI {
         }
     }
 
+    private void use(CgPipelineLayout layout) {
+        for (int i = 0; i < layout.sets().size(); i++) use(layout.sets().get(i));
+    }
+
     private void outsidePass(String what) {
         if (open != null) throw new IllegalStateException(what + " inside pass '" + open.desc.label() + "'");
     }
@@ -325,10 +351,10 @@ public final class CgNullRHI implements CgRHI {
         if (openCompute != null) throw new IllegalStateException(what + " inside compute pass '" + openCompute.label + "'");
     }
 
-    /** {@code from} copied into {@code into}, every resource checked live; the bindings logged as a line. */
-    private void push(CgBindings from, CgBindings into) {
+    /** {@code from} copied into {@code into}, every resource checked live; logged as {@code line} unless null. */
+    private void push(CgBindings from, CgBindings into, String line) {
         into.clear();
-        StringBuilder s = logging ? new StringBuilder("pushBindings") : null;
+        StringBuilder s = logging && line != null ? new StringBuilder(line) : null;
         for (int i = 0; i < from.count(); i++) {
             if (s != null) s.append(' ').append(from.binding(i)).append(':');
             switch (from.type(i)) {
@@ -367,6 +393,76 @@ public final class CgNullRHI implements CgRHI {
         }
     }
 
+    /** Every set of {@code layout} there: the pushed one pushed in full, each other bound with its own layout. */
+    private void boundAll(String label, CgPipelineLayout layout, CgBindings pushed, CgBindingSet[] sets) {
+        for (int i = 0; i < layout.sets().size(); i++) {
+            CgBindingLayout want = layout.sets().get(i);
+            if (want.pushed()) {
+                pushedAll(label, want, pushed);
+                continue;
+            }
+            CgBindingSet set = i < sets.length ? sets[i] : null;
+            if (set == null) throw new IllegalStateException(label + " reads set " + i + " (" + want.label() + "), which is not bound");
+            if (set.layout() != want)
+                throw new IllegalStateException(label + " reads set " + i + " as " + want.label() + "; " + set.label()
+                        + " bound there is " + set.layout().label());
+            use(set);
+        }
+    }
+
+    /** {@code bytes} at {@code offset} inside {@code layout}'s push constants. */
+    private static void constants(String label, CgPipelineLayout layout, int offset, int bytes) {
+        if (offset % 4 != 0 || bytes % 4 != 0 || offset < 0 || offset + bytes > layout.pushConstantBytes())
+            throw new IllegalStateException(label + " takes " + layout.pushConstantBytes() + " bytes of push constants; "
+                    + bytes + " pushed at " + offset);
+    }
+
+    private void bindSet(CgBindingSet[] sets, int index, CgBindingSet set) {
+        use(set);
+        if (index < 0 || index >= sets.length) throw new IllegalArgumentException("set " + index + ": sets are 0-" + (sets.length - 1));
+        sets[index] = set;
+        if (logging) record("setBindingSet " + index + " " + ref(set));
+    }
+
+    /** What {@code t} holds, to tell a batch ended as begun from one changed between. */
+    private static String signature(CgTransition t) {
+        StringBuilder s = new StringBuilder();
+        for (int i = 0; i < t.count(); i++) {
+            s.append(t.buffer(i) != null ? ref(t.buffer(i)) : ref(t.texture(i).texture())).append(' ')
+                    .append(t.from(i)).append('>').append(t.to(i)).append(';');
+        }
+        return s.toString();
+    }
+
+    private void moves(String what, CgTransition t) {
+        for (int i = 0; i < t.count(); i++) use(t.buffer(i) != null ? t.buffer(i) : t.texture(i).texture());
+        if (!logging) return;
+        StringBuilder s = new StringBuilder(what);
+        for (int i = 0; i < t.count(); i++) {
+            s.append(' ').append(t.buffer(i) != null ? ref(t.buffer(i)) : ref(t.texture(i).texture())).append(':')
+                    .append(CgAccess.names(t.from(i))).append('>').append(CgAccess.names(t.to(i)));
+        }
+        record(s.toString());
+    }
+
+    private static boolean writesDepthOrStencil(CgGraphicsPipelineDesc.DepthStencil d) {
+        if (d.depthWrite()) return true;
+        if (!d.stencilTest() || d.writeMask() == 0) return false;
+        return writes(d.front()) || writes(d.back());
+    }
+
+    private static boolean writes(CgGraphicsPipelineDesc.StencilFace f) {
+        return f.fail() != CgGraphicsPipelineDesc.StencilOp.KEEP || f.depthFail() != CgGraphicsPipelineDesc.StencilOp.KEEP
+                || f.pass() != CgGraphicsPipelineDesc.StencilOp.KEEP;
+    }
+
+    /** Vulkan's rule for an indirect draw's stride: a multiple of 4, at least one command, wherever it draws more than one. */
+    private void indirect(String what, int draws, int stride, int command) {
+        if (draws > 1 && !info.multiDrawIndirect()) throw new IllegalStateException(what + " of " + draws + " draws: no multi-draw indirect");
+        if (draws > 1 && (stride % 4 != 0 || stride < command))
+            throw new IllegalStateException(what + " stride " + stride + ": a multiple of 4, at least " + command);
+    }
+
     private static String ref(CgRHIResource o) { return o == null ? "-" : "#" + ((Obj) o).id; }
 
     // ── the encoder and the pass ───────────────────────────────────────────────
@@ -381,6 +477,9 @@ public final class CgNullRHI implements CgRHI {
             if (transfer) throw new IllegalStateException("A render pass inside a transfer: a transfer queue draws nothing");
             for (int i = 0; i < desc.colors().size(); i++) use(desc.colors().get(i).view().texture());
             if (desc.depth() != null) use(desc.depth().view().texture());
+            if (desc.depth() != null && desc.depth().readOnly()
+                    && (desc.depth().depthLoad() == CgPassDesc.LoadOp.CLEAR || desc.depth().stencilLoad() == CgPassDesc.LoadOp.CLEAR))
+                throw new IllegalStateException("Pass '" + desc.label() + "' clears a read-only depth attachment");
             if (!logging && spare != null) {
                 Pass p = spare;
                 spare = null;
@@ -434,6 +533,46 @@ public final class CgNullRHI implements CgRHI {
         public void memoryBarrier(int from, int to) {
             outsidePass("memoryBarrier");
             if (logging) record("memoryBarrier " + CgAccess.names(from) + " " + CgAccess.names(to));
+        }
+
+        @Override
+        public void transition(CgTransition t) {
+            outsidePass("transition");
+            if (begun.containsKey(t)) throw new IllegalStateException("transition of a batch begun and not ended");
+            moves("transition", t);
+        }
+
+        @Override
+        public void beginTransitions(CgTransition t) {
+            outsidePass("beginTransitions");
+            if (begun.containsKey(t)) throw new IllegalStateException("beginTransitions twice without an end");
+            moves("beginTransitions", t);
+            begun.put(t, signature(t));
+        }
+
+        @Override
+        public void endTransitions(CgTransition t) {
+            outsidePass("endTransitions");
+            String was = begun.remove(t);
+            if (was == null) throw new IllegalStateException("endTransitions of a batch never begun");
+            if (!was.equals(signature(t))) throw new IllegalStateException("endTransitions of a batch changed since it was begun");
+            moves("endTransitions", t);
+        }
+
+        @Override
+        public void beginStorageOverlap() {
+            outsidePass("beginStorageOverlap");
+            if (overlap) throw new IllegalStateException("beginStorageOverlap inside a storage overlap");
+            overlap = true;
+            if (logging) record("beginStorageOverlap");
+        }
+
+        @Override
+        public void endStorageOverlap() {
+            outsidePass("endStorageOverlap");
+            if (!overlap) throw new IllegalStateException("endStorageOverlap with none begun");
+            overlap = false;
+            if (logging) record("endStorageOverlap");
         }
 
         @Override
@@ -628,6 +767,7 @@ public final class CgNullRHI implements CgRHI {
     private final class Pass implements CgRenderPass {
         CgPassDesc desc;
         final CgBindings pushed = new CgBindings();
+        final CgBindingSet[] sets = new CgBindingSet[8];
         final Map<Integer, Buffer> vertexBuffers = new TreeMap<>();
         Pipeline pipeline;
         Buffer indexBuffer;
@@ -639,6 +779,7 @@ public final class CgNullRHI implements CgRHI {
         Pass reopen(CgPassDesc next) {
             desc = next;
             pushed.clear();
+            Arrays.fill(sets, null);
             vertexBuffers.clear();
             pipeline = null;
             indexBuffer = null;
@@ -669,6 +810,8 @@ public final class CgNullRHI implements CgRHI {
                 throw new IllegalStateException(d.label() + " depth is " + d.depthFormat() + ", the attachment " + depth);
             if (d.samples() != desc.samples())
                 throw new IllegalStateException(d.label() + " has " + d.samples() + " samples, the pass " + desc.samples());
+            if (desc.depth() != null && desc.depth().readOnly() && writesDepthOrStencil(d.depthStencil()))
+                throw new IllegalStateException(d.label() + " writes depth or stencil, read-only in pass '" + desc.label() + "'");
             pipeline = (Pipeline) p;
             if (logging) record("setPipeline " + ref(p));
         }
@@ -676,7 +819,31 @@ public final class CgNullRHI implements CgRHI {
         @Override
         public void pushBindings(CgBindings b) {
             live();
-            push(b, pushed);
+            if (pipeline == null) throw new IllegalStateException("pushBindings before a pipeline in '" + desc.label() + "'");
+            if (pipeline.desc().layout().pushSet() < 0) throw new IllegalStateException(pipeline.desc().label() + " pushes no set");
+            push(b, pushed, "pushBindings");
+        }
+
+        @Override
+        public void setBindingSet(int set, CgBindingSet bindings) {
+            live();
+            bindSet(sets, set, bindings);
+        }
+
+        @Override
+        public void pushConstants(int offset, int value) {
+            live();
+            if (pipeline == null) throw new IllegalStateException("pushConstants before a pipeline in '" + desc.label() + "'");
+            constants(pipeline.desc().label(), pipeline.desc().layout(), offset, 4);
+            if (logging) record("pushConstants " + offset + " " + value);
+        }
+
+        @Override
+        public void pushConstants(int offset, ByteBuffer data) {
+            live();
+            if (pipeline == null) throw new IllegalStateException("pushConstants before a pipeline in '" + desc.label() + "'");
+            constants(pipeline.desc().label(), pipeline.desc().layout(), offset, data.remaining());
+            if (logging) record("pushConstants " + offset + " +" + data.remaining());
         }
 
         @Override
@@ -732,6 +899,7 @@ public final class CgNullRHI implements CgRHI {
                                       int x, int y, int width, int height) {
             live();
             if (desc.depth() == null) throw new IllegalStateException("No depth attachment in '" + desc.label() + "'");
+            if (desc.depth().readOnly()) throw new IllegalStateException("clearDepthStencil in '" + desc.label() + "', read-only");
             if (logging) record("clearDepthStencil" + (depth ? " depth" : "") + (stencil ? " stencil" : "") + " "
                     + x + "," + y + " " + width + "x" + height);
         }
@@ -755,6 +923,7 @@ public final class CgNullRHI implements CgRHI {
         @Override
         public void drawIndirect(CgGpuBuffer buffer, long offset, int drawCount, int stride) {
             drawable();
+            indirect("drawIndirect", drawCount, stride, 16);
             use(buffer);
             draws++;
             if (logging) record("drawIndirect " + ref(buffer) + "+" + offset + " " + drawCount + " " + stride);
@@ -763,6 +932,7 @@ public final class CgNullRHI implements CgRHI {
         @Override
         public void drawIndexedIndirect(CgGpuBuffer buffer, long offset, int drawCount, int stride) {
             drawable();
+            indirect("drawIndexedIndirect", drawCount, stride, 20);
             if (indexBuffer == null) throw new IllegalStateException("drawIndexedIndirect with no index buffer");
             use(buffer, indexBuffer);
             draws++;
@@ -773,6 +943,8 @@ public final class CgNullRHI implements CgRHI {
         public void drawIndirectCount(CgGpuBuffer buffer, long offset, CgGpuBuffer count, long countOffset, int maxDraws,
                                       int stride) {
             drawable();
+            if (!info.indirectCount()) throw new IllegalStateException("drawIndirectCount: the device has no indirect count");
+            indirect("drawIndirectCount", maxDraws, stride, 16);
             use(buffer, count);
             draws++;
             if (logging) record("drawIndirectCount " + ref(buffer) + "+" + offset + " " + ref(count) + "+" + countOffset + " "
@@ -783,6 +955,8 @@ public final class CgNullRHI implements CgRHI {
         public void drawIndexedIndirectCount(CgGpuBuffer buffer, long offset, CgGpuBuffer count, long countOffset,
                                              int maxDraws, int stride) {
             drawable();
+            if (!info.indirectCount()) throw new IllegalStateException("drawIndexedIndirectCount: the device has no indirect count");
+            indirect("drawIndexedIndirectCount", maxDraws, stride, 20);
             if (indexBuffer == null) throw new IllegalStateException("drawIndexedIndirectCount with no index buffer");
             use(buffer, count, indexBuffer);
             draws++;
@@ -794,7 +968,7 @@ public final class CgNullRHI implements CgRHI {
             live();
             if (pipeline == null) throw new IllegalStateException("Draw with no pipeline in '" + desc.label() + "'");
             use(pipeline);
-            pushedAll(pipeline.desc().label(), pipeline.desc().layout(), pushed);
+            boundAll(pipeline.desc().label(), pipeline.desc().layout(), pushed, sets);
             List<CgGraphicsPipelineDesc.VertexBuffer> reads = pipeline.desc().vertexBuffers();
             for (int i = 0; i < reads.size(); i++) {
                 CgGraphicsPipelineDesc.VertexBuffer vb = reads.get(i);
@@ -889,13 +1063,29 @@ public final class CgNullRHI implements CgRHI {
 
     private final class Layout extends Obj implements CgBindingLayout {
         final List<Slot> slots;
+        final boolean pushed;
 
-        Layout(String label, List<Slot> slots) {
+        Layout(String label, List<Slot> slots, boolean pushed) {
             super(label);
             this.slots = slots;
+            this.pushed = pushed;
         }
 
         @Override public List<Slot> slots() { return slots; }
+
+        @Override public boolean pushed() { return pushed; }
+    }
+
+    private final class BindingSet extends Obj implements CgBindingSet {
+        final CgBindingLayout layout;
+        final CgBindings contents = new CgBindings();
+
+        BindingSet(String label, CgBindingLayout layout) {
+            super(label);
+            this.layout = layout;
+        }
+
+        @Override public CgBindingLayout layout() { return layout; }
     }
 
     private final class Pipeline extends Obj implements CgGraphicsPipeline {
@@ -914,6 +1104,7 @@ public final class CgNullRHI implements CgRHI {
     private final class ComputePass implements CgComputePass {
         String label;
         final CgBindings pushed = new CgBindings();
+        final CgBindingSet[] sets = new CgBindingSet[8];
         ComputePipeline pipeline;
         boolean ended;
 
@@ -922,6 +1113,7 @@ public final class CgNullRHI implements CgRHI {
         void reuse(String label) {
             this.label = label;
             pushed.clear();
+            Arrays.fill(sets, null);
             pipeline = null;
             ended = false;
         }
@@ -941,7 +1133,31 @@ public final class CgNullRHI implements CgRHI {
         @Override
         public void pushBindings(CgBindings b) {
             live();
-            push(b, pushed);
+            if (pipeline == null) throw new IllegalStateException("pushBindings before a pipeline in '" + label + "'");
+            if (pipeline.layout.pushSet() < 0) throw new IllegalStateException(pipeline.label() + " pushes no set");
+            push(b, pushed, "pushBindings");
+        }
+
+        @Override
+        public void setBindingSet(int set, CgBindingSet bindings) {
+            live();
+            bindSet(sets, set, bindings);
+        }
+
+        @Override
+        public void pushConstants(int offset, int value) {
+            live();
+            if (pipeline == null) throw new IllegalStateException("pushConstants before a pipeline in '" + label + "'");
+            constants(pipeline.label(), pipeline.layout, offset, 4);
+            if (logging) record("pushConstants " + offset + " " + value);
+        }
+
+        @Override
+        public void pushConstants(int offset, ByteBuffer data) {
+            live();
+            if (pipeline == null) throw new IllegalStateException("pushConstants before a pipeline in '" + label + "'");
+            constants(pipeline.label(), pipeline.layout, offset, data.remaining());
+            if (logging) record("pushConstants " + offset + " +" + data.remaining());
         }
 
         @Override
@@ -961,7 +1177,7 @@ public final class CgNullRHI implements CgRHI {
             live();
             if (pipeline == null) throw new IllegalStateException("Dispatch with no pipeline in '" + label + "'");
             use(pipeline);
-            pushedAll(pipeline.label(), pipeline.layout, pushed);
+            boundAll(pipeline.label(), pipeline.layout, pushed, sets);
         }
 
         @Override
@@ -975,16 +1191,16 @@ public final class CgNullRHI implements CgRHI {
 
     private final class ComputePipeline extends Obj implements CgComputePipeline {
         final CgShaderModule module;
-        final CgBindingLayout layout;
+        final CgPipelineLayout layout;
 
-        ComputePipeline(String label, CgShaderModule module, CgBindingLayout layout) {
+        ComputePipeline(String label, CgShaderModule module, CgPipelineLayout layout) {
             super(label);
             this.module = module;
             this.layout = layout;
         }
 
         @Override public CgShaderModule module() { return module; }
-        @Override public CgBindingLayout layout() { return layout; }
+        @Override public CgPipelineLayout layout() { return layout; }
     }
 
     private final class Timer extends Obj implements CgTimerQuery {

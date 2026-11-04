@@ -5,6 +5,7 @@ import java.util.Map;
 import java.util.TreeMap;
 
 import com.crystalgraphics.platform.rhi.binding.CgBindingLayout;
+import com.crystalgraphics.platform.rhi.pipeline.CgPipelineLayout;
 import com.crystalgraphics.platform.rhi.shader.CgShaderModule;
 
 /**
@@ -16,6 +17,8 @@ public final class CgTrackedProgram {
 
     final String label;
     public final CgBindingLayout layout;
+    /** {@link #layout} as its pipelines' one pushed set, made once so every pipeline of it shares the value. */
+    public final CgPipelineLayout pipelineLayout;
     final CgShaderModule vertexGlDepth;
     final CgShaderModule vertexZeroToOne;
     final CgShaderModule fragment;
@@ -31,6 +34,7 @@ public final class CgTrackedProgram {
                             CgShaderModule vertexZeroToOne, CgShaderModule fragment, long key) {
         this.label = label;
         this.layout = layout;
+        this.pipelineLayout = CgPipelineLayout.of(layout);
         this.vertexGlDepth = vertexGlDepth;
         this.vertexZeroToOne = vertexZeroToOne;
         this.fragment = fragment;

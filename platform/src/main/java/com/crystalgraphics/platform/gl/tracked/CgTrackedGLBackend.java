@@ -129,7 +129,7 @@ public final class CgTrackedGLBackend extends CgGLBackend {
         String label = "masked clear " + colors;
         CgGlslCompiler.Program p = compiler.compile(CLEAR_VERTEX, clearFragment(colors),
                 Map.of("cg_ClearPosition", 0, "cg_ClearColor", 1), label);
-        return clearPrograms[colors - 1] = new CgTrackedProgram(label, device.createBindingLayout(label, p.slots()),
+        return clearPrograms[colors - 1] = new CgTrackedProgram(label, device.createBindingLayout(label, p.slots(), true),
                 device.createShaderModule(CgShaderModule.Stage.VERTEX, p.vertexGlDepth(), label),
                 device.createShaderModule(CgShaderModule.Stage.VERTEX, p.vertexZeroToOne(), label),
                 device.createShaderModule(CgShaderModule.Stage.FRAGMENT, p.fragment(), label));

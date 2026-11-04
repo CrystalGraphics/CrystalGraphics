@@ -2,10 +2,13 @@ package com.crystalgraphics.platform.rhi.command;
 
 import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.rhi.binding.CgBindingLayout;
+import com.crystalgraphics.platform.rhi.binding.CgBindingSet;
 import com.crystalgraphics.platform.rhi.binding.CgBindings;
 import com.crystalgraphics.platform.rhi.pipeline.CgGraphicsPipeline;
 import com.crystalgraphics.platform.rhi.pipeline.CgGraphicsPipelineDesc;
 import com.crystalgraphics.platform.rhi.resource.CgGpuBuffer;
+
+import java.nio.ByteBuffer;
 
 /**
  * One open render pass. Set a pipeline, its bindings and its buffers, then draw; nothing carries from one
@@ -23,15 +26,32 @@ import com.crystalgraphics.platform.rhi.resource.CgGpuBuffer;
  * }</pre>
  *
  * <p>Viewport and scissor are in memory rows, as {@link CgCommandList} says: GL's values pass unchanged.
- * A draw needs every slot of its pipeline's {@link CgBindingLayout} pushed, and a buffer at each of its
- * vertex bindings.</p>
+ * A draw needs every set of its pipeline's layout bound, every slot of the pushed {@link CgBindingLayout} pushed,
+ * and a buffer at each of its vertex bindings.</p>
+ *
+ * <pre>{@code
+ * pass.setPipeline(scenePipeline);                 // layout: view, pass, material sets; 8 bytes of constants
+ * pass.setBindingSet(0, view);
+ * pass.setBindingSet(2, stone);
+ * pass.pushConstants(0, drawIndex);
+ * pass.drawIndexed(count, 1, firstIndex, baseVertex, 0);
+ * }</pre>
  */
 public interface CgRenderPass {
 
     void setPipeline(CgGraphicsPipeline pipeline);
 
-    /** Replaces every binding. */
+    /** Fills the pipeline's pushed set, replacing what was pushed. */
     void pushBindings(CgBindings bindings);
+
+    /** Binds {@code bindings} at {@code set}; it stays bound across pipelines until replaced. */
+    void setBindingSet(int set, CgBindingSet bindings);
+
+    /** {@code value} at byte {@code offset} of the pipeline's push constants. */
+    void pushConstants(int offset, int value);
+
+    /** {@code data}'s remaining bytes at byte {@code offset} of the pipeline's push constants. */
+    void pushConstants(int offset, ByteBuffer data);
 
     void setVertexBuffer(int binding, CgGpuBuffer buffer, long offset);
 
