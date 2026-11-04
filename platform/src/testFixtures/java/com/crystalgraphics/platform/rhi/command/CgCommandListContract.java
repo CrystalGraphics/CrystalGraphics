@@ -14,11 +14,18 @@ import com.crystalgraphics.platform.rhi.resource.CgGpuBuffer;
 import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
 import com.crystalgraphics.platform.rhi.resource.CgTextureView;
 import com.crystalgraphics.platform.rhi.shader.CgShaderModule;
+import com.crystalgraphics.platform.rhi.sync.CgGpuReadback;
+import com.crystalgraphics.platform.rhi.sync.CgTimerQuery;
 import org.junit.Test;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.List;
+import java.util.function.BooleanSupplier;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 
 /**
  * What every {@link CgRHI} records: each command of {@link CgCommandList} and its passes, used as the API allows, one
@@ -213,6 +220,46 @@ public abstract class CgCommandListContract {
         pass.draw(3, 1, 0, 0);
         pass.end();
         endFrame();
+    }
+
+    /** Ends frames, never waiting, until {@code landed} holds: a few at most, as frames in flight retire. */
+    private void framesUntil(BooleanSupplier landed) {
+        for (int i = 0; i < 8 && !landed.getAsBoolean(); i++) rhi().endFrame();
+    }
+
+    @Test
+    public void aReadbackLandsFramesLaterWithoutAStall() {
+        CgGpuBuffer counts = buffer("counts");
+        CgGpuReadback back = new CgGpuReadback(rhi(), "counts back", 64);
+        CgCommandList cmd = rhi().encoder();
+        cmd.fillBuffer(counts, 0, 64, 7);
+        cmd.transition(new CgTransition().buffer(counts, CgAccess.COPY_WRITE, CgAccess.COPY_READ));
+        back.enqueue(cmd, counts, 0, 64);
+        assertFalse("not in the frame that copied it", back.ready());
+        endFrame();
+        framesUntil(back::ready);
+        assertTrue("landed within the frames in flight", back.ready());
+        assertEquals(7, back.data().order(ByteOrder.nativeOrder()).getInt(60));
+        back.release();
+        checkFrame();
+    }
+
+    @Test
+    public void aTimerAnswersOnceItsFrameRetires() {
+        CgTimerQuery timer = rhi().createTimerQuery("contract");
+        CgCommandList cmd = rhi().encoder();
+        cmd.beginTimer(timer);
+        CgRenderPass pass = surfacePass();
+        pass.setPipeline(pipeline(CgPipelineLayout.of(), WHITE));
+        pass.draw(3, 1, 0, 0);
+        pass.end();
+        cmd.endTimer(timer);
+        assertEquals("no answer while in flight", -1, timer.resultNanos());
+        endFrame();
+        framesUntil(() -> timer.resultNanos() >= 0);
+        assertTrue(timer.resultNanos() >= 0);
+        rhi().release(timer);
+        checkFrame();
     }
 
     @Test

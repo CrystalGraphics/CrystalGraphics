@@ -2,6 +2,9 @@ package com.crystalgraphics.trace;
 
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.CgGlRecording;
+import com.crystalgraphics.platform.rhi.CgRHI;
+import com.crystalgraphics.platform.rhi.command.CgCommandList;
+import com.crystalgraphics.platform.rhi.sync.CgTimerQuery;
 
 import java.util.ArrayDeque;
 import java.util.Arrays;
@@ -62,6 +65,17 @@ import java.util.Set;
  *   <li>A series belongs to the zone it began in: a mark in a zone nested inside it does nothing.</li>
  * </ul>
  *
+ * <h3>Zones on a command list</h3>
+ * Work recorded through {@code CgRHI} is timed on its command list, by the RHI's timer queries (Unreal's
+ * {@code SCOPED_GPU_STAT(RHICmdList, ...)}). These nest without pausing: each zone has its own query.
+ *
+ * <pre>{@code
+ * int shadows = CgGpuTrace.name("shadows");      // once
+ * CgGpuTrace.begin(cmd, shadows);
+ * ... passes recorded on cmd ...
+ * CgGpuTrace.end(cmd);                           // "gpu:shadows", frames later
+ * }</pre>
+ *
  * <p>A zone opened with a budget slot ({@link #budgetSlot}), and every zone inside it, is timed whatever the
  * channel, and adds its nanoseconds to that slot under the budget frame it ran in ({@link #budgetFrame}): what
  * {@code CgGpuBudget} measures, frame by frame, as the GPU answers.</p>
@@ -119,6 +133,8 @@ public final class CgGpuTrace {
      */
     private static final class Pending {
         int query, nameId, generation, budget, label;
+        /** A command list's zone: its RHI timer, in place of {@link #query}. */
+        CgTimerQuery timer;
         long frame, budgetFrame;
         /** Opened with the channel on: its time goes to the trace as well as to its budget. */
         boolean traced, restart;
@@ -138,6 +154,12 @@ public final class CgGpuTrace {
      * 4 ms for 44 (T10).
      */
     private static final int TIMER_RESERVE = 256, STAMP_RESERVE = 64;
+    /** The RHI's timers kept in hand, and the zones open on command lists (null where one was not timed). */
+    private static final ArrayDeque<CgTimerQuery> FREE_TIMERS = new ArrayDeque<>();
+    private static CgTimerQuery[] listOpen = new CgTimerQuery[8];
+    private static int listDepth;
+    /** Whether a GL zone or mark has been issued: only then are GL's query pools kept topped up. */
+    private static boolean glZones;
     private static int[] open = new int[8];
     private static int[] openBudget = new int[8];
     private static int openDepth;
@@ -309,14 +331,19 @@ public final class CgGpuTrace {
             resolvedGeneration = generation;
         }
         // Queries complete in issue order: the first unfinished one ends the scan.
-        while (!PENDING.isEmpty() && CgGL.glIsQueryResultAvailable(PENDING.peekFirst().query)) {
+        while (!PENDING.isEmpty() && available(PENDING.peekFirst())) {
             Pending done = PENDING.pollFirst();
-            long nanos = CgGL.glGetQueryResultNanos(done.query);
+            long nanos = done.timer != null ? done.timer.resultNanos() : CgGL.glGetQueryResultNanos(done.query);
             if (done.label != TIMER) {
                 releaseStamp(done.query);
                 if (done.traced) resolveStamp(done, nanos, generation);
             } else {
-                release(done.query);
+                if (done.timer != null) {
+                    FREE_TIMERS.addLast(done.timer);
+                    done.timer = null;
+                } else {
+                    release(done.query);
+                }
                 if (done.budget != NO_BUDGET) charge(done.budget, done.budgetFrame, nanos);
                 if (done.traced) {
                     long[] total = TOTALS.computeIfAbsent(done.nameId, k -> new long[2]);
@@ -346,8 +373,42 @@ public final class CgGpuTrace {
         reserve();
     }
 
+    private static boolean available(Pending p) {
+        return p.timer != null ? p.timer.resultNanos() >= 0 : CgGL.glIsQueryResultAvailable(p.query);
+    }
+
+    /**
+     * Opens a zone on {@code cmd}, timed by the RHI's timer queries; it may nest in any other. The thread recording
+     * {@code cmd}; closed by {@link #end(CgCommandList)} on the same list.
+     */
+    public static void begin(CgCommandList cmd, int nameId) {
+        if (listDepth == listOpen.length) listOpen = Arrays.copyOf(listOpen, listDepth * 2);
+        CgTimerQuery timer = null;
+        if (CgTrace.isEnabled(GPU) && nameId != UNMEASURED) {
+            if (PENDING.size() >= MAX_IN_FLIGHT) {
+                count(DROPPED);              // skipped rather than waited for, as a GL zone is
+            } else {
+                timer = FREE_TIMERS.isEmpty() ? CgRHI.get().createTimerQuery("gpu zone") : FREE_TIMERS.pollFirst();
+                Pending p = pending(0, nameId, TIMER);
+                p.timer = timer;
+                PENDING.addLast(p);
+                cmd.beginTimer(timer);
+            }
+        }
+        listOpen[listDepth++] = timer;
+    }
+
+    /** Closes the zone {@link #begin(CgCommandList, int)} opened last on {@code cmd}. */
+    public static void end(CgCommandList cmd) {
+        if (listDepth == 0) throw new IllegalStateException("CgGpuTrace.end(cmd) with no zone open on a command list");
+        CgTimerQuery timer = listOpen[--listDepth];
+        listOpen[listDepth] = null;
+        if (timer != null) cmd.endTimer(timer);
+    }
+
     /** Tops the pools up to their reserve once either is below a quarter of it: one wait for the queue, not one a timer. */
     private static void reserve() {
+        if (!glZones) return;                // a host timing only command lists has no GL context to ask
         if (4 * freeCount >= TIMER_RESERVE && 4 * freeStampCount >= STAMP_RESERVE) return;
         while (freeCount < TIMER_RESERVE) release(CgGL.glGenQuery());
         while (freeStampCount < STAMP_RESERVE) releaseStamp(CgGL.glGenQuery());
@@ -383,7 +444,12 @@ public final class CgGpuTrace {
 
     /** Releases every query object. GL thread, with the context still current. */
     public static void dispose() {
-        for (Pending p : PENDING) CgGL.glDeleteQuery(p.query);
+        for (Pending p : PENDING) {
+            if (p.timer != null) CgRHI.get().release(p.timer);
+            else CgGL.glDeleteQuery(p.query);
+        }
+        for (CgTimerQuery t : FREE_TIMERS) CgRHI.get().release(t);
+        FREE_TIMERS.clear();
         for (int i = 0; i < freeCount; i++) CgGL.glDeleteQuery(freeQueries[i]);
         for (int i = 0; i < freeStampCount; i++) CgGL.glDeleteQuery(freeStamps[i]);
         freeStampCount = 0;
@@ -435,6 +501,7 @@ public final class CgGpuTrace {
             count(DROPPED);
             return;
         }
+        glZones = true;
         int query = freeCount > 0 ? freeQueries[--freeCount] : CgGL.glGenQuery();
         CgGL.glBeginTimeElapsedQuery(query);
         Pending p = pending(query, nameId, TIMER);
@@ -450,6 +517,7 @@ public final class CgGpuTrace {
             markDropped = true;
             return;
         }
+        glZones = true;
         int query = freeStampCount > 0 ? freeStamps[--freeStampCount] : CgGL.glGenQuery();
         CgGL.glQueryTimestamp(query);
         Pending p = pending(query, zone, label);
