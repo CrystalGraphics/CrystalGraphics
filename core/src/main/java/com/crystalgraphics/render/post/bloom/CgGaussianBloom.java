@@ -124,6 +124,11 @@ final class CgGaussianBloom {
         return layers[0];
     }
 
+    /** Each layer's sum, the glow first: what the last {@link #record} drew. Never changed by the caller. */
+    CgGraphTexture[] levels() {
+        return layers;
+    }
+
     /** Whether {@code stage} draws: its layer has a size, or it is the half-size stage under one that drew. */
     private static boolean drawn(CgPostSettings s, int stage, int before) {
         return s.bloomSize(stage + 1) * s.bloomSizeScale() > 1e-8f || stage == 0 && before >= 0;

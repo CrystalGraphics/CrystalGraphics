@@ -37,6 +37,8 @@ import java.util.Arrays;
  *
  * <p>By tier: Low draws 4×4 boxes down and four taps up, at most 4 levels; High and up weigh the first step by
  * Karis's average.</p>
+ *
+ * <p>A texture a level, as Unreal's and Bevy's chains: drawing into levels of one texture pins a level each pass.</p>
  */
 final class CgBloomChain {
 
@@ -57,40 +59,49 @@ final class CgBloomChain {
     private static final CgMesh FULLSCREEN = CgMesh.vertices(3, CgMeshTopology.TRIANGLES);
     private static final int GPU = CgGpuTrace.name("post.bloom.chain");
 
-    private CgGraphTexture chain, prefilter;
-    private int halvings;
+    /** Level {@code k} of the chain, null past the last; the prefilter's halvings. */
+    private final CgGraphTexture[] chain = new CgGraphTexture[MAX_LEVELS], prefilter = new CgGraphTexture[MAX_HALVINGS];
+    private int halvings, levels, width, height, emissionWidth, emissionHeight;
     /** Per level: what draws it down from the level above (level 0's from the emission), and up from the one below. */
     private final CgMaterial[] down = new CgMaterial[MAX_LEVELS], up = new CgMaterial[MAX_LEVELS];
     private final CgMaterial[] halve = new CgMaterial[MAX_HALVINGS];
     private final float[] weights = new float[MAX_LEVELS];
     /** What the materials' properties and keywords were set for, so they are set again only when one changes. */
-    private CgGraphTexture boundEmission, boundChain, boundPrefilter;
+    private CgGraphTexture boundEmission, boundChain;
     private CgQuality boundTier;
     private final CgPassConstants constants = new CgPassConstants();
     private final float[] block = new float[CgPassConstants.FLOATS];
 
     /**
      * Records the chain from {@code emission} under the frame's {@code frame} constants, with {@code tier}'s filters;
-     * answers it, its glow in level 0. Null, recording nothing, while a pass's program is not ready: a level never
-     * cleared would be blended over as the pool left it.
+     * answers its top level, which holds the glow. Null, recording nothing, while a pass's program is not ready.
      */
     CgGraphTexture record(CgRecording recording, CgGraphTexture emission, CgPassConstants frame, CgQuality tier) {
         int ew = emission.getWidth(), eh = emission.getHeight();
         int halvings = 0;
         while (halvings < MAX_HALVINGS && (eh >> halvings) > 2 * TOP) halvings++;
-        if (halvings > 0) {
-            int pw = Math.max(1, ew / 2), ph = Math.max(1, eh / 2);
-            if (prefilter == null || prefilter.getWidth() != pw || prefilter.getHeight() != ph || prefilter.getLevels() != halvings) {
-                prefilter = CgGraphTexture.transientTexture("cg_bloom_prefilter", new CgTextureDesc(pw, ph, PREFILTER_FORMAT, halvings));
-            }
-        }
-        this.halvings = halvings;
         int sw = Math.max(1, ew >> halvings), sh = Math.max(1, eh >> halvings);
         int h = Math.min(TOP, sh), w = Math.max(1, Math.round(sw * (float) h / sh));
         int byReach = 1 + Math.max(0, (int) Math.round(Math.log((double) h / SMALLEST) / Math.log(2)));
         int levels = Math.min(Math.min(tier == CgQuality.LOW ? LOW_LEVELS : MAX_LEVELS, byReach), CgTexture.fullChain(w, h));
-        if (chain == null || chain.getWidth() != w || chain.getHeight() != h || chain.getLevels() != levels) {
-            chain = CgGraphTexture.transientTexture("cg_bloom_chain", new CgTextureDesc(w, h, FORMAT, levels));
+        if (chain[0] == null || ew != emissionWidth || eh != emissionHeight || w != width || h != height
+                || levels != this.levels || halvings != this.halvings) {
+            emissionWidth = ew;
+            emissionHeight = eh;
+            width = w;
+            height = h;
+            this.levels = levels;
+            this.halvings = halvings;
+            Arrays.fill(prefilter, null);
+            for (int j = 0; j < halvings; j++) {
+                prefilter[j] = CgGraphTexture.transientTexture("cg_bloom_prefilter",
+                        new CgTextureDesc(Math.max(1, ew >> (j + 1)), Math.max(1, eh >> (j + 1)), PREFILTER_FORMAT));
+            }
+            Arrays.fill(chain, null);
+            for (int k = 0; k < levels; k++) {
+                chain[k] = CgGraphTexture.transientTexture("cg_bloom_chain",
+                        new CgTextureDesc(Math.max(1, w >> k), Math.max(1, h >> k), FORMAT));
+            }
         }
         ensureMaterials(emission, levels, tier);
         for (int j = 0; j < halvings; j++) if (halve[j].pipeline(CgInstanceKind.OBJECT) == null) return null;
@@ -99,15 +110,16 @@ final class CgBloomChain {
             if (k < levels - 1 && up[k].pipeline(CgInstanceKind.OBJECT) == null) return null;
         }
         frame.write(block, 0);
-        for (int j = 0; j < halvings; j++) {
-            draw(recording, prefilter, j, CgLoad.clear(0f, 0f, 0f, 0f), halve[j]);
-        }
-        for (int k = 0; k < levels; k++) {
-            draw(recording, chain, k, CgLoad.clear(0f, 0f, 0f, 0f), down[k]);
-        }
-        for (int k = levels - 2; k >= 0; k--) {
-            draw(recording, chain, k, CgLoad.load(), up[k]);
-        }
+        // Halvings and downsamples cover their target with blending off, so none clears; each upsample blends onto its
+        // level's downsample
+        for (int j = 0; j < halvings; j++) draw(recording, prefilter[j], halve[j]);
+        for (int k = 0; k < levels; k++) draw(recording, chain[k], down[k]);
+        for (int k = levels - 2; k >= 0; k--) draw(recording, chain[k], up[k]);
+        return chain[0];
+    }
+
+    /** The levels the last {@link #record} drew, the glow first, null past the last. Never changed by the caller. */
+    CgGraphTexture[] levels() {
         return chain;
     }
 
@@ -116,15 +128,16 @@ final class CgBloomChain {
         Arrays.fill(down, null);
         Arrays.fill(up, null);
         Arrays.fill(halve, null);
-        boundEmission = boundChain = boundPrefilter = null;
+        boundEmission = boundChain = null;
         boundTier = null;
-        chain = prefilter = null;
+        Arrays.fill(chain, null);
+        Arrays.fill(prefilter, null);
     }
 
-    private void draw(CgRecording recording, CgGraphTexture target, int level, CgLoad load, CgMaterial material) {
+    private void draw(CgRecording recording, CgGraphTexture target, CgMaterial material) {
         CgPipeline pipeline = material.pipeline(CgInstanceKind.OBJECT);
-        constants.read(block, 0).resolution(Math.max(1, target.getWidth() >> level), Math.max(1, target.getHeight() >> level));
-        CgRasterPass pass = recording.raster(target, level, load, constants, null, CgOrder.SORTED).timed(GPU);
+        constants.read(block, 0).resolution(target.getWidth(), target.getHeight());
+        CgRasterPass pass = recording.raster(target, CgLoad.load(), constants, null, CgOrder.SORTED).timed(GPU);
         CgChunkBuilder chunks = recording.chunks().begin();
         chunks.draw(pipeline, material.captureBindings(recording.bindings()), FULLSCREEN);
         chunks.instance();
@@ -138,17 +151,16 @@ final class CgBloomChain {
      * or the tier changes.
      */
     private void ensureMaterials(CgGraphTexture emission, int levels, CgQuality tier) {
-        CgGraphTexture pre = halvings > 0 ? prefilter : null;
-        if (emission == boundEmission && chain == boundChain && pre == boundPrefilter && tier == boundTier) return;
+        // A new top level means every level and halving was made anew
+        if (emission == boundEmission && chain[0] == boundChain && tier == boundTier) return;
         boundEmission = emission;
-        boundChain = chain;
-        boundPrefilter = pre;
+        boundChain = chain[0];
         boundTier = tier;
         boolean cheap = tier == CgQuality.LOW, karis = tier.atLeast(CgQuality.HIGH);
         for (int j = 0; j < halvings; j++) {
             if (halve[j] == null) halve[j] = CgMaterial.newInstance(PREFILTER);
             halve[j].toggleKeyword("KARIS", karis && j == 0);
-            CgTexture source = j == 0 ? emission : prefilter.level(j - 1);
+            CgTexture source = j == 0 ? emission : prefilter[j - 1];
             halve[j].applyProperties(b -> b.sampler("_Source", 0, source));
         }
         weigh(levels);
@@ -156,12 +168,12 @@ final class CgBloomChain {
             if (down[k] == null) down[k] = CgMaterial.newInstance(DOWN);
             down[k].toggleKeyword("CHEAP", cheap);
             down[k].toggleKeyword("KARIS", !cheap && karis && k == 0 && halvings == 0);
-            CgTexture source = k > 0 ? chain.level(k - 1) : halvings > 0 ? prefilter.level(halvings - 1) : emission;
+            CgTexture source = k > 0 ? chain[k - 1] : halvings > 0 ? prefilter[halvings - 1] : emission;
             down[k].applyProperties(b -> b.sampler("_Source", 0, source));
             if (k == levels - 1) continue;
             if (up[k] == null) up[k] = CgMaterial.newInstance(UP);
             up[k].toggleKeyword("CHEAP", cheap);
-            CgTexture below = chain.level(k + 1);
+            CgTexture below = chain[k + 1];
             // The deepest level is added as itself, at its own share; every other comes in whole, already weighted.
             float weight = k == levels - 2 ? weights[k + 1] : 1f, keep = weights[k];
             up[k].applyProperties(b -> b.sampler("_Source", 0, below).set1f("_Weight", weight).set1f("_Keep", keep));

@@ -61,8 +61,11 @@ public final class CgBloom implements CgPostEffect {
         ENERGY_CONSERVING
     }
 
-    /** The firing's chain, its glow in level 0: published for a later effect (the debug view) to read. */
-    public static final CgFrameKey<CgGraphTexture> CHAIN = CgFrameKey.of("crystalgraphics:bloom_chain", CgGraphTexture.class);
+    /**
+     * The firing's bloom levels, the glow first and null past the last, a texture each: published for a later effect (the
+     * debug view) to read. Read only.
+     */
+    public static final CgFrameKey<CgGraphTexture[]> CHAIN = CgFrameKey.of("crystalgraphics:bloom_chain", CgGraphTexture[].class);
 
     private static final String EXCESS = "crystalgraphics:shaders/post/bloom/excess.shader";
     private static final CgFrameBufferFormat EXCESS_FORMAT = CgFrameBufferFormat.builder("cg_bloom_excess")
@@ -165,7 +168,7 @@ public final class CgBloom implements CgPostEffect {
                     : excess.record(post, post.distorted(post.resources().get(CgFrameKeys.EMISSION)), true, -1f, null);
             CgGraphTexture glow = half == null ? null : gaussian.record(post.recording(), half, post.settings(), post.constants());
             if (glow == null) return;
-            post.resources().put(CHAIN, glow);
+            post.resources().put(CHAIN, gaussian.levels());
             post.composite().bloom(glow, intensity, tintR, tintG, tintB, mode == Mode.ENERGY_CONSERVING);
             if (linear) post.composite().linear();
             return;
@@ -176,7 +179,7 @@ public final class CgBloom implements CgPostEffect {
         if (emission == null) return;
         CgGraphTexture glow = chain.record(post.recording(), emission, post.constants(), CgGraphicsSettings.QUALITY.get());
         if (glow == null) return;
-        post.resources().put(CHAIN, glow);
+        post.resources().put(CHAIN, chain.levels());
         // A volume scales it: an effect's moment brightening every glow.
         post.composite().bloom(glow, intensity * post.settings().bloom(), tintR, tintG, tintB, mode == Mode.ENERGY_CONSERVING);
         if (linear) post.composite().linear();

@@ -80,7 +80,8 @@ public final class CgPostDebug implements CgPostEffect {
 
     @Override
     public boolean active(CgPostContext post) {
-        return level == DISTORTION ? post.resources().has(CgFrameKeys.DISTORTION) : post.resources().has(key());
+        return level == DISTORTION ? post.resources().has(CgFrameKeys.DISTORTION)
+                : post.resources().has(level >= 0 ? CgBloom.CHAIN : key());
     }
 
     @Override
@@ -94,8 +95,10 @@ public final class CgPostDebug implements CgPostEffect {
         } else if (level < 0) {
             source = post.resources().get(key());
         } else {
-            CgGraphTexture chain = post.resources().get(CgBloom.CHAIN);
-            source = chain.level(Math.min(level, chain.getLevels() - 1));
+            CgGraphTexture[] chain = post.resources().get(CgBloom.CHAIN);
+            int k = Math.min(level, chain.length - 1);
+            while (k > 0 && chain[k] == null) k--;
+            source = chain[k];
         }
         if (material == null) {
             material = CgMaterial.newInstance(level == DISTORTION ? DISTORTION_SHADER : SHADER);
@@ -119,7 +122,7 @@ public final class CgPostDebug implements CgPostEffect {
     }
 
     private CgFrameKey<CgGraphTexture> key() {
-        return level == EMISSION ? CgFrameKeys.EMISSION : level == OVERDRAW ? CgFrameKeys.OVERDRAW : CgBloom.CHAIN;
+        return level == EMISSION ? CgFrameKeys.EMISSION : CgFrameKeys.OVERDRAW;
     }
 
     /** Forgets its material, which the material registry frees with the context. */
