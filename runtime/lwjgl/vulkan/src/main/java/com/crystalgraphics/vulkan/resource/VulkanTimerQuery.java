@@ -1,6 +1,6 @@
 package com.crystalgraphics.vulkan.resource;
 
-import com.crystalgraphics.platform.device.resource.CgTimerQuery;
+import com.crystalgraphics.platform.rhi.sync.CgTimerQuery;
 import com.crystalgraphics.vulkan.CgVulkanDevice;
 import org.lwjgl.system.MemoryStack;
 

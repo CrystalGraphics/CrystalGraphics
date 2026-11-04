@@ -8,7 +8,7 @@ import com.crystalgraphics.gl.render.CgClipTable;
 import com.crystalgraphics.gl.render.CgShapeTable;
 import com.crystalgraphics.gl.texture.CgTexture2D;
 import com.crystalgraphics.gl.texture.CgTexture3D;
-import com.crystalgraphics.platform.device.command.CgAccess;
+import com.crystalgraphics.platform.rhi.command.CgAccess;
 import com.crystalgraphics.render.CgFrameClock;
 import com.crystalgraphics.render.draw.CgBindingTable;
 import com.crystalgraphics.render.draw.CgChunkBuilder;

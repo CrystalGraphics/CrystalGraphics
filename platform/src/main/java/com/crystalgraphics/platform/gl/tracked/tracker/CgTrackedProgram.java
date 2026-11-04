@@ -4,8 +4,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 
-import com.crystalgraphics.platform.device.pipeline.CgBindingLayout;
-import com.crystalgraphics.platform.device.shader.CgShaderModule;
+import com.crystalgraphics.platform.rhi.binding.CgBindingLayout;
+import com.crystalgraphics.platform.rhi.shader.CgShaderModule;
 
 /**
  * A linked program on the tracked backend: its binding layout and its modules. The vertex stage comes twice, one

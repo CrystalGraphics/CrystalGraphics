@@ -1,18 +1,18 @@
 package com.crystalgraphics.platform.gl.tracked.tracker;
 
-import com.crystalgraphics.platform.device.command.CgAccess;
-import com.crystalgraphics.platform.device.command.CgPassDesc;
-import com.crystalgraphics.platform.device.format.CgAttribFormat;
-import com.crystalgraphics.platform.device.format.CgFormat;
-import com.crystalgraphics.platform.device.pipeline.CgBindingLayout;
-import com.crystalgraphics.platform.device.pipeline.CgComputePipeline;
-import com.crystalgraphics.platform.device.pipeline.CgPipelineDesc;
-import com.crystalgraphics.platform.device.recording.CgRecordingDevice;
-import com.crystalgraphics.platform.device.resource.CgGpuSampler;
-import com.crystalgraphics.platform.device.resource.CgGpuTexture;
-import com.crystalgraphics.platform.device.resource.CgTextureRegion;
-import com.crystalgraphics.platform.device.resource.CgTextureView;
-import com.crystalgraphics.platform.device.shader.CgShaderModule;
+import com.crystalgraphics.platform.rhi.command.CgAccess;
+import com.crystalgraphics.platform.rhi.command.CgPassDesc;
+import com.crystalgraphics.platform.rhi.format.CgAttribFormat;
+import com.crystalgraphics.platform.rhi.format.CgFormat;
+import com.crystalgraphics.platform.rhi.binding.CgBindingLayout;
+import com.crystalgraphics.platform.rhi.pipeline.CgComputePipeline;
+import com.crystalgraphics.platform.rhi.pipeline.CgGraphicsPipelineDesc;
+import com.crystalgraphics.platform.rhi.nulldrv.CgNullRHI;
+import com.crystalgraphics.platform.rhi.resource.CgGpuSampler;
+import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
+import com.crystalgraphics.platform.rhi.resource.CgTextureRegion;
+import com.crystalgraphics.platform.rhi.resource.CgTextureView;
+import com.crystalgraphics.platform.rhi.shader.CgShaderModule;
 import com.crystalgraphics.platform.gl.tracked.memory.CgAllocation;
 import com.crystalgraphics.platform.gl.tracked.memory.CgTrackedBuffer;
 import org.junit.Test;
@@ -26,18 +26,18 @@ import static org.junit.Assert.*;
 /** The tracker's spine, each on a recording device: load ops, pass breaks, renames, deferred frees, feedback. */
 public class CgTrackerTest {
 
-    private final CgRecordingDevice device = new CgRecordingDevice(64, 64);
+    private final CgNullRHI device = new CgNullRHI(64, 64);
     private final CgTracker tracker = new CgTracker(device, true);
 
     private CgTrackedProgram program(CgBindingLayout.Slot... slots) {
         CgBindingLayout layout = device.createBindingLayout("p", List.of(slots));
-        CgShaderModule vs = device.createShaderModule(CgShaderModule.Stage.VERTEX, CgRecordingDevice.emptySpirv(), "vs");
-        CgShaderModule fs = device.createShaderModule(CgShaderModule.Stage.FRAGMENT, CgRecordingDevice.emptySpirv(), "fs");
+        CgShaderModule vs = device.createShaderModule(CgShaderModule.Stage.VERTEX, CgNullRHI.emptySpirv(), "vs");
+        CgShaderModule fs = device.createShaderModule(CgShaderModule.Stage.FRAGMENT, CgNullRHI.emptySpirv(), "fs");
         return new CgTrackedProgram("p", layout, vs, vs, fs);
     }
 
     private void drawTriangle() {
-        tracker.draw(CgPipelineDesc.Topology.TRIANGLES, 3, 1, 0, 0);
+        tracker.draw(CgGraphicsPipelineDesc.Topology.TRIANGLES, 3, 1, 0, 0);
     }
 
     private static ByteBuffer bytes(int... values) {
@@ -67,11 +67,11 @@ public class CgTrackerTest {
         tracker.bindTarget(CgTarget.surface(device));
         tracker.state.program = program();
         int mark = device.mark();
-        tracker.state.blend = CgPipelineDesc.Blend.ALPHA;
+        tracker.state.blend = CgGraphicsPipelineDesc.Blend.ALPHA;
         drawTriangle();
         tracker.state.blend = null;
         drawTriangle();
-        tracker.state.blend = CgPipelineDesc.Blend.ALPHA;
+        tracker.state.blend = CgGraphicsPipelineDesc.Blend.ALPHA;
         drawTriangle();
 
         List<String> binds = device.logSince(mark).stream().filter(l -> l.startsWith("setPipeline")).toList();
@@ -122,8 +122,8 @@ public class CgTrackerTest {
 
         tracker.bindTarget(CgTarget.surface(device));
         tracker.state.program = program();
-        tracker.state.vertexLayouts = List.of(new CgPipelineDesc.VertexBuffer(0, 4, false,
-                List.of(new CgPipelineDesc.VertexAttrib(0, CgAttribFormat.FLOAT32, 0))));
+        tracker.state.vertexLayouts = List.of(new CgGraphicsPipelineDesc.VertexBuffer(0, 4, false,
+                List.of(new CgGraphicsPipelineDesc.VertexAttrib(0, CgAttribFormat.FLOAT32, 0))));
         tracker.state.vertexBuffer(0, vbo.allocation(), 0);
         drawTriangle();
 
@@ -145,7 +145,7 @@ public class CgTrackerTest {
         tracker.state.program = program(new CgBindingLayout.Slot(0, CgBindingLayout.Type.UNIFORM_BUFFER),
                 new CgBindingLayout.Slot(1, CgBindingLayout.Type.SAMPLED_TEXTURE));
         tracker.state.clearBindings().uniform(0, ubo.allocation(), 0, 64)
-                .texture(1, CgTextureView.whole(used), device.createSampler(CgGpuSampler.Desc.GL_DEFAULT));
+                .texture(1, CgTextureView.whole(used), device.createSampler(CgGpuSampler.Desc.DEFAULT));
         drawTriangle();
         CgAllocation freed = ubo.allocation();
 
@@ -172,7 +172,7 @@ public class CgTrackerTest {
         tracker.bindTarget(new CgTarget(List.of(CgTextureView.whole(layer)), null));
         tracker.state.program = program(new CgBindingLayout.Slot(0, CgBindingLayout.Type.SAMPLED_TEXTURE));
         tracker.state.clearBindings().texture(0, CgTextureView.whole(layer),
-                device.createSampler(CgGpuSampler.Desc.GL_DEFAULT));
+                device.createSampler(CgGpuSampler.Desc.DEFAULT));
         try {
             drawTriangle();
             fail("expected a feedback loop to be refused");
@@ -189,7 +189,7 @@ public class CgTrackerTest {
     @Test
     public void aBufferBarrierIsDroppedWhereABarrierRecordedSinceItsLastDispatchOrdersIt() {
         CgBindingLayout layout = device.createBindingLayout("k", List.of(new CgBindingLayout.Slot(0, CgBindingLayout.Type.STORAGE_BUFFER)));
-        CgShaderModule cs = device.createShaderModule(CgShaderModule.Stage.COMPUTE, CgRecordingDevice.emptySpirv(), "cs");
+        CgShaderModule cs = device.createShaderModule(CgShaderModule.Stage.COMPUTE, CgNullRHI.emptySpirv(), "cs");
         CgComputePipeline kernel = device.createComputePipeline("k", cs, layout);
         CgAllocation first = tracker.allocate(64, false, false, "first"), second = tracker.allocate(64, false, false, "second");
         int write = CgAccess.COMPUTE_WRITE, read = CgAccess.COMPUTE_READ;

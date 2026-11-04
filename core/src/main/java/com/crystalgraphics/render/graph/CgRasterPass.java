@@ -4,7 +4,7 @@ import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.api.texture.CgTexture;
-import com.crystalgraphics.platform.device.command.CgAccess;
+import com.crystalgraphics.platform.rhi.command.CgAccess;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.render.CgGpuBudget;
 import com.crystalgraphics.render.draw.CgBindingTable;

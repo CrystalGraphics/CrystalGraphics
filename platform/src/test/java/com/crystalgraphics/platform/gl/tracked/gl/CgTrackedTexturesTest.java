@@ -1,13 +1,13 @@
 package com.crystalgraphics.platform.gl.tracked.gl;
 
-import com.crystalgraphics.platform.device.CgDevice;
-import com.crystalgraphics.platform.device.command.CgCommandEncoder;
-import com.crystalgraphics.platform.device.format.CgFormat;
-import com.crystalgraphics.platform.device.pipeline.CgBindingLayout;
-import com.crystalgraphics.platform.device.recording.CgRecordingDevice;
-import com.crystalgraphics.platform.device.resource.CgGpuTexture;
-import com.crystalgraphics.platform.device.resource.CgTextureView;
-import com.crystalgraphics.platform.device.shader.CgGlslCompiler;
+import com.crystalgraphics.platform.rhi.CgRHI;
+import com.crystalgraphics.platform.rhi.command.CgCommandList;
+import com.crystalgraphics.platform.rhi.format.CgFormat;
+import com.crystalgraphics.platform.rhi.binding.CgBindingLayout;
+import com.crystalgraphics.platform.rhi.nulldrv.CgNullRHI;
+import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
+import com.crystalgraphics.platform.rhi.resource.CgTextureView;
+import com.crystalgraphics.platform.rhi.shader.CgGlslCompiler;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.tracked.CgTrackedGLBackend;
 import com.crystalgraphics.platform.gl.tracked.FakeGlslCompiler;
@@ -29,7 +29,7 @@ public class CgTrackedTexturesTest {
             List.of(new CgGlslCompiler.Sampler("_MainTex", 0, 0x8B5E, false)), List.of(), -1, 0,
             List.of(new CgBindingLayout.Slot(0, CgBindingLayout.Type.SAMPLED_TEXTURE)));
 
-    private final CgRecordingDevice device = new CgRecordingDevice(16, 16);
+    private final CgNullRHI device = new CgNullRHI(16, 16);
     private final CgTrackedGLBackend gl = new CgTrackedGLBackend(device, COMPILER, true);
 
     private void program() {
@@ -55,11 +55,11 @@ public class CgTrackedTexturesTest {
     }
 
     /** {@code device}, its encoder answering {@code writeWaitsForFrame} with {@code waits[0]}: a transfer queue's answer. */
-    private static CgDevice writesWait(CgDevice device, boolean[] waits) {
-        CgCommandEncoder encoder = (CgCommandEncoder) Proxy.newProxyInstance(CgCommandEncoder.class.getClassLoader(),
-                new Class<?>[] {CgCommandEncoder.class},
+    private static CgRHI writesWait(CgRHI device, boolean[] waits) {
+        CgCommandList encoder = (CgCommandList) Proxy.newProxyInstance(CgCommandList.class.getClassLoader(),
+                new Class<?>[] {CgCommandList.class},
                 (p, m, args) -> m.getName().equals("writeWaitsForFrame") ? waits[0] : call(m, device.encoder(), args));
-        return (CgDevice) Proxy.newProxyInstance(CgDevice.class.getClassLoader(), new Class<?>[] {CgDevice.class},
+        return (CgRHI) Proxy.newProxyInstance(CgRHI.class.getClassLoader(), new Class<?>[] {CgRHI.class},
                 (p, m, args) -> m.getName().equals("encoder") ? encoder : call(m, device, args));
     }
 
@@ -90,7 +90,7 @@ public class CgTrackedTexturesTest {
         CgGpuTexture renamed = sampled(gl).texture();
         assertNotSame("every texel replaced: a new image", first, renamed);
         assertEquals(first.desc(), renamed.desc());
-        assertTrue("the old one released", device.log().contains("release #" + CgRecordingDevice.idOf(first)));
+        assertTrue("the old one released", device.log().contains("release #" + CgNullRHI.idOf(first)));
 
         gl.glTexSubImage2D(CgGL.GL_TEXTURE_2D, 0, 0, 0, 256, 512, CgGL.GL_RGBA, CgGL.GL_UNSIGNED_BYTE, whole);
         gl.glDrawArrays(CgGL.GL_TRIANGLES, 0, 3);

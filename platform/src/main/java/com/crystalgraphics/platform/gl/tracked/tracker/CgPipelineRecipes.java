@@ -21,17 +21,17 @@ import java.util.concurrent.Executor;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import com.crystalgraphics.platform.device.format.CgAttribFormat;
-import com.crystalgraphics.platform.device.format.CgCompare;
-import com.crystalgraphics.platform.device.format.CgFormat;
-import com.crystalgraphics.platform.device.pipeline.CgPipelineDesc;
-import com.crystalgraphics.platform.device.pipeline.CgPipelineDesc.Blend;
-import com.crystalgraphics.platform.device.pipeline.CgPipelineDesc.ColorTarget;
-import com.crystalgraphics.platform.device.pipeline.CgPipelineDesc.DepthStencil;
-import com.crystalgraphics.platform.device.pipeline.CgPipelineDesc.Raster;
-import com.crystalgraphics.platform.device.pipeline.CgPipelineDesc.StencilFace;
-import com.crystalgraphics.platform.device.pipeline.CgPipelineDesc.VertexAttrib;
-import com.crystalgraphics.platform.device.pipeline.CgPipelineDesc.VertexBuffer;
+import com.crystalgraphics.platform.rhi.format.CgAttribFormat;
+import com.crystalgraphics.platform.rhi.format.CgCompare;
+import com.crystalgraphics.platform.rhi.format.CgFormat;
+import com.crystalgraphics.platform.rhi.pipeline.CgGraphicsPipelineDesc;
+import com.crystalgraphics.platform.rhi.pipeline.CgGraphicsPipelineDesc.Blend;
+import com.crystalgraphics.platform.rhi.pipeline.CgGraphicsPipelineDesc.ColorTarget;
+import com.crystalgraphics.platform.rhi.pipeline.CgGraphicsPipelineDesc.DepthStencil;
+import com.crystalgraphics.platform.rhi.pipeline.CgGraphicsPipelineDesc.Raster;
+import com.crystalgraphics.platform.rhi.pipeline.CgGraphicsPipelineDesc.StencilFace;
+import com.crystalgraphics.platform.rhi.pipeline.CgGraphicsPipelineDesc.VertexAttrib;
+import com.crystalgraphics.platform.rhi.pipeline.CgGraphicsPipelineDesc.VertexBuffer;
 import com.github.bsideup.jabel.Desugar;
 
 /**
@@ -124,18 +124,18 @@ public final class CgPipelineRecipes {
 
     /** A pipeline's description less its program, which a program of the recorded key fills in. */
     @Desugar
-    public record Recipe(boolean zeroToOne, List<VertexBuffer> vertexBuffers, CgPipelineDesc.Topology topology,
+    public record Recipe(boolean zeroToOne, List<VertexBuffer> vertexBuffers, CgGraphicsPipelineDesc.Topology topology,
                          Raster raster, DepthStencil depthStencil, List<ColorTarget> colorTargets, CgFormat depthFormat,
                          int samples) {
 
-        public static Recipe of(CgPipelineDesc d, boolean zeroToOne) {
+        public static Recipe of(CgGraphicsPipelineDesc d, boolean zeroToOne) {
             return new Recipe(zeroToOne, d.vertexBuffers(), d.topology(), d.raster(), d.depthStencil(), d.colorTargets(),
                     d.depthFormat(), d.samples());
         }
 
         /** The description for {@code program}, with the vertex stage of its recorded clip convention. */
-        public CgPipelineDesc desc(CgTrackedProgram program) {
-            return new CgPipelineDesc(program.label, program.layout, program.vertex(zeroToOne), program.fragment,
+        public CgGraphicsPipelineDesc desc(CgTrackedProgram program) {
+            return new CgGraphicsPipelineDesc(program.label, program.layout, program.vertex(zeroToOne), program.fragment,
                     vertexBuffers, topology, raster, depthStencil, colorTargets, depthFormat, samples);
         }
 
@@ -172,8 +172,8 @@ public final class CgPipelineRecipes {
         static Recipe decode(String line) {
             String[] f = line.split(" ");
             String[] r = f[2].split(","), d = f[3].split(",");
-            Raster raster = new Raster(CgPipelineDesc.CullMode.valueOf(r[0]), CgPipelineDesc.FrontFace.valueOf(r[1]),
-                    CgPipelineDesc.PolygonMode.valueOf(r[2]), r[3].equals("1"));
+            Raster raster = new Raster(CgGraphicsPipelineDesc.CullMode.valueOf(r[0]), CgGraphicsPipelineDesc.FrontFace.valueOf(r[1]),
+                    CgGraphicsPipelineDesc.PolygonMode.valueOf(r[2]), r[3].equals("1"));
             DepthStencil ds = new DepthStencil(d[0].equals("1"), d[1].equals("1"), CgCompare.valueOf(d[2]),
                     d[3].equals("1"), face(d[4]), face(d[5]), Integer.parseInt(d[6]), Integer.parseInt(d[7]));
             List<ColorTarget> targets = new ArrayList<>();
@@ -198,7 +198,7 @@ public final class CgPipelineRecipes {
                             List.copyOf(attribs)));
                 }
             }
-            return new Recipe(f[0].equals("z"), List.copyOf(buffers), CgPipelineDesc.Topology.valueOf(f[1]), raster, ds,
+            return new Recipe(f[0].equals("z"), List.copyOf(buffers), CgGraphicsPipelineDesc.Topology.valueOf(f[1]), raster, ds,
                     List.copyOf(targets), f[5].equals("-") ? null : CgFormat.valueOf(f[5]), Integer.parseInt(f[6]));
         }
 
@@ -208,8 +208,8 @@ public final class CgPipelineRecipes {
 
         private static StencilFace face(String s) {
             String[] p = s.split("/");
-            return new StencilFace(CgCompare.valueOf(p[0]), CgPipelineDesc.StencilOp.valueOf(p[1]),
-                    CgPipelineDesc.StencilOp.valueOf(p[2]), CgPipelineDesc.StencilOp.valueOf(p[3]));
+            return new StencilFace(CgCompare.valueOf(p[0]), CgGraphicsPipelineDesc.StencilOp.valueOf(p[1]),
+                    CgGraphicsPipelineDesc.StencilOp.valueOf(p[2]), CgGraphicsPipelineDesc.StencilOp.valueOf(p[3]));
         }
 
         private static String blend(Blend b) {
@@ -220,9 +220,9 @@ public final class CgPipelineRecipes {
         private static Blend blend(String s) {
             if (s.equals("-")) return null;
             String[] p = s.split("\\+");
-            return new Blend(CgPipelineDesc.BlendFactor.valueOf(p[0]), CgPipelineDesc.BlendFactor.valueOf(p[1]),
-                    CgPipelineDesc.BlendOp.valueOf(p[2]), CgPipelineDesc.BlendFactor.valueOf(p[3]),
-                    CgPipelineDesc.BlendFactor.valueOf(p[4]), CgPipelineDesc.BlendOp.valueOf(p[5]));
+            return new Blend(CgGraphicsPipelineDesc.BlendFactor.valueOf(p[0]), CgGraphicsPipelineDesc.BlendFactor.valueOf(p[1]),
+                    CgGraphicsPipelineDesc.BlendOp.valueOf(p[2]), CgGraphicsPipelineDesc.BlendFactor.valueOf(p[3]),
+                    CgGraphicsPipelineDesc.BlendFactor.valueOf(p[4]), CgGraphicsPipelineDesc.BlendOp.valueOf(p[5]));
         }
     }
 }

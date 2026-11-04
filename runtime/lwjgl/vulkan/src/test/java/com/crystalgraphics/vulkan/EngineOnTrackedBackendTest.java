@@ -26,7 +26,7 @@ import com.crystalgraphics.gl.texture.CgTexture2D;
 import com.crystalgraphics.gl.texture.CgTextureCubemap;
 import com.crystalgraphics.gpu.CgDeferral;
 import com.crystalgraphics.gpu.CgUploads;
-import com.crystalgraphics.platform.device.recording.CgRecordingDevice;
+import com.crystalgraphics.platform.rhi.nulldrv.CgNullRHI;
 import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.state.CgGlState;
@@ -76,14 +76,14 @@ public class EngineOnTrackedBackendTest {
             {"crystalgraphics:shader/diag_atlas.vert", "crystalgraphics:shader/diag_atlas.frag"}};
 
     private static ShadercGlslCompiler compiler;
-    private static CgRecordingDevice device;
+    private static CgNullRHI device;
     private static CgTrackedGLBackend gl;
 
     /** One backend for the class: the engine's registries are process-wide and hold names from the first. */
     @BeforeClass
     public static void install() throws ClassNotFoundException {
         compiler = new ShadercGlslCompiler();
-        device = new CgRecordingDevice(64, 64);
+        device = new CgNullRHI(64, 64);
         gl = new CgTrackedGLBackend(device, compiler, true);
         CgGL.init(gl);
         CgCapabilities.init(new CgTrackedGLContext());

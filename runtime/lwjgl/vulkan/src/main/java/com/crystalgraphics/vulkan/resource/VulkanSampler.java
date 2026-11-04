@@ -1,6 +1,6 @@
 package com.crystalgraphics.vulkan.resource;
 
-import com.crystalgraphics.platform.device.resource.CgGpuSampler;
+import com.crystalgraphics.platform.rhi.resource.CgGpuSampler;
 
 /** A {@code VkSampler}, one per distinct description: the device caches them. */
 public final class VulkanSampler implements CgGpuSampler {

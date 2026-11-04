@@ -1,10 +1,10 @@
 package com.crystalgraphics.vulkan.command;
 
-import com.crystalgraphics.platform.device.command.CgPassDesc;
-import com.crystalgraphics.platform.device.command.CgRenderPass;
-import com.crystalgraphics.platform.device.pipeline.CgBindings;
-import com.crystalgraphics.platform.device.pipeline.CgPipeline;
-import com.crystalgraphics.platform.device.resource.CgGpuBuffer;
+import com.crystalgraphics.platform.rhi.command.CgPassDesc;
+import com.crystalgraphics.platform.rhi.command.CgRenderPass;
+import com.crystalgraphics.platform.rhi.binding.CgBindings;
+import com.crystalgraphics.platform.rhi.pipeline.CgGraphicsPipeline;
+import com.crystalgraphics.platform.rhi.resource.CgGpuBuffer;
 import com.crystalgraphics.vulkan.CgVulkanDevice;
 import com.crystalgraphics.vulkan.resource.VulkanBindingLayout;
 import com.crystalgraphics.vulkan.resource.VulkanBuffer;
@@ -50,7 +50,7 @@ final class VulkanPass implements CgRenderPass {
     }
 
     @Override
-    public void setPipeline(CgPipeline p) {
+    public void setPipeline(CgGraphicsPipeline p) {
         pipeline = (VulkanPipeline) p;
         vkCmdBindPipeline(cmd(), VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.pipeline);
     }
@@ -179,14 +179,14 @@ final class VulkanPass implements CgRenderPass {
     }
 
     private void requireMultiDraw(int drawCount) {
-        if (drawCount > 1 && !device.info().multiDrawIndirect()) {
+        if (drawCount > 1 && !device.globals().multiDrawIndirect()) {
             throw new IllegalStateException("drawIndirect of " + drawCount + " commands: the device was created without "
                     + "multiDrawIndirect");
         }
     }
 
     private void requireIndirectCount() {
-        if (!device.info().indirectCount()) {
+        if (!device.globals().indirectCount()) {
             throw new IllegalStateException("drawIndirectCount: the device was created without drawIndirectCount");
         }
     }

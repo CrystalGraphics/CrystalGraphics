@@ -1,7 +1,7 @@
 package com.crystalgraphics.vulkan.host;
 
-import com.crystalgraphics.platform.device.CgDevice;
-import com.crystalgraphics.platform.device.resource.CgGpuTexture;
+import com.crystalgraphics.platform.rhi.CgRHI;
+import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.state.CgGlState;
 import com.crystalgraphics.platform.gl.tracked.CgTrackedGLBackend;
@@ -265,7 +265,7 @@ public abstract class HostedVulkanHost<T> implements CgVulkanHost {
         if (device != null) throw new IllegalStateException("openBackend already ran on this host");
         // Opt-in: the host's once-a-frame submit is the only signal async work can wait on, so it starts after the
         // whole frame and the next submit waits for it -- serial, and in Minecraft 5 ms a frame slower than in order.
-        if ("true".equals(CgDevice.ASYNC_COMPUTE.get())) {
+        if ("true".equals(CgRHI.ASYNC_COMPUTE.get())) {
             asyncQueue = computeQueue();
             asyncQueueFamily = asyncQueue == null ? -1 : computeQueueFamily();
         }
@@ -274,7 +274,7 @@ public abstract class HostedVulkanHost<T> implements CgVulkanHost {
             asyncTimeline = timeline();
             LOG.info("[cg] async compute runs on {}'s compute queue, family {}", hostName, asyncQueueFamily);
         }
-        if (CgDevice.TRANSFER.get()) {
+        if (CgRHI.TRANSFER.get()) {
             VkQueue q = transferQueue();
             if (q != null && texelGranular(transferQueueFamily())) {
                 transferQueue = q;
@@ -286,6 +286,7 @@ public abstract class HostedVulkanHost<T> implements CgVulkanHost {
             LOG.info("[cg] copies into new images run on {}'s transfer queue, family {}", hostName, transferQueueFamily);
         }
         device = new CgVulkanDevice(this, width, height, CgCacheDirectory.of("vulkan"));
+        CgRHI.install(device);
         gl = new CgTrackedGLBackend(device, new ShadercGlslCompiler(CgCacheDirectory.of("spirv")), verify)
                 .compileInBackground();
         CgGlState.setProvider(new CgTrackedStateProvider(gl));

@@ -1,13 +1,13 @@
 package com.crystalgraphics.platform.gl.tracked.gl;
 
-import com.crystalgraphics.platform.device.command.CgCommandEncoder;
-import com.crystalgraphics.platform.device.format.CgCompare;
-import com.crystalgraphics.platform.device.format.CgFormat;
-import com.crystalgraphics.platform.device.resource.CgGpuSampler;
-import com.crystalgraphics.platform.device.resource.CgGpuTexture;
-import com.crystalgraphics.platform.device.resource.CgTextureRegion;
-import com.crystalgraphics.platform.device.resource.CgTextureView;
-import com.crystalgraphics.platform.device.shader.CgGlslCompiler;
+import com.crystalgraphics.platform.rhi.command.CgCommandList;
+import com.crystalgraphics.platform.rhi.format.CgCompare;
+import com.crystalgraphics.platform.rhi.format.CgFormat;
+import com.crystalgraphics.platform.rhi.resource.CgGpuSampler;
+import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
+import com.crystalgraphics.platform.rhi.resource.CgTextureRegion;
+import com.crystalgraphics.platform.rhi.resource.CgTextureView;
+import com.crystalgraphics.platform.rhi.shader.CgGlslCompiler;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.tracked.memory.CgAllocation;
 import com.crystalgraphics.platform.gl.tracked.tracker.CgDrawState;
@@ -113,7 +113,7 @@ public final class TrackedTextures implements TrackedPrograms.Samplers, TrackedP
         this.tracker = tracker;
         this.errors = errors;
         this.buffers = buffers;
-        this.units = new int[tracker.device().info().limits().maxTextureUnits()][KINDS];
+        this.units = new int[tracker.device().globals().limits().maxTextureUnits()][KINDS];
         this.unitSamplers = new int[units.length];
     }
 
@@ -241,7 +241,7 @@ public final class TrackedTextures implements TrackedPrograms.Samplers, TrackedP
         }
         CgTrackerStats stats = tracker.stats();
         long breaks = stats.passBreaks;
-        CgCommandEncoder encoder = tracker.transfer();
+        CgCommandList encoder = tracker.transfer();
         renameIfReplaced(encoder, t, level, 0, 0, 0, width, height, 1);
         encoder.copyBufferToTexture(a.buffer(), at, t.image, region(level, 0, 0, 0, width, height, 1));
         tracker.markUsed(a);
@@ -280,7 +280,7 @@ public final class TrackedTextures implements TrackedPrograms.Samplers, TrackedP
         CgTrackerStats stats = tracker.stats();
         long breaks = stats.passBreaks;
         int bytes = texels.remaining();
-        CgCommandEncoder encoder = tracker.transfer();
+        CgCommandList encoder = tracker.transfer();
         renameIfReplaced(encoder, t, level, 0, 0, 0, width, height, 1);
         encoder.writeTexture(t.image, region(level, 0, 0, 0, width, height, 1), texels);
         stats.textureWrites++;
@@ -318,7 +318,7 @@ public final class TrackedTextures implements TrackedPrograms.Samplers, TrackedP
                 && at % 4 == 0 && at % t.format.bytes() == 0) {
             CgTrackerStats stats = tracker.stats();
             long breaks = stats.passBreaks;
-            CgCommandEncoder encoder = tracker.transfer();
+            CgCommandList encoder = tracker.transfer();
             renameIfReplaced(encoder, t, level, x, y, layer, width, height, depth);
             encoder.copyBufferToTexture(a.buffer(), at, t.image, region(level, x, y, layer, width,
                     height, depth));
@@ -463,7 +463,7 @@ public final class TrackedTextures implements TrackedPrograms.Samplers, TrackedP
             return;
         }
         if (t == null || t.image == null || t.specifiedLevels <= t.baseLevel) {
-            state.texture(sampler.binding(), incomplete(kind), sampler(CgGpuSampler.Desc.GL_DEFAULT));
+            state.texture(sampler.binding(), incomplete(kind), sampler(CgGpuSampler.Desc.DEFAULT));
             return;
         }
         GlSampler bound = unitSamplers[unit] == 0 ? null : samplerNames.get(unitSamplers[unit]);
@@ -479,7 +479,7 @@ public final class TrackedTextures implements TrackedPrograms.Samplers, TrackedP
 
     private CgGpuSampler sampler(GlSampler s) {
         if (s.sampler == null) {
-            float most = tracker.device().info().limits().maxAnisotropy();
+            float most = tracker.device().globals().limits().maxAnisotropy();
             s.sampler = sampler(desc(s.minFilter, s.magFilter, s.wrapS, s.wrapT, s.wrapR, s.compareMode, s.compareFunc,
                     s.minLod, s.maxLod, Math.max(1f, Math.min(s.anisotropy, most))));
         }
@@ -631,7 +631,7 @@ public final class TrackedTextures implements TrackedPrograms.Samplers, TrackedP
         CgTrackerStats stats = tracker.stats();
         long breaks = stats.passBreaks;
         int bytes = texels.remaining();
-        CgCommandEncoder encoder = tracker.transfer();
+        CgCommandList encoder = tracker.transfer();
         renameIfReplaced(encoder, t, level, x, y, z, w, h, d);
         encoder.writeTexture(t.image, region(level, x, y, z, w, h, d), texels);
         stats.textureWrites++;
@@ -647,7 +647,7 @@ public final class TrackedTextures implements TrackedPrograms.Samplers, TrackedP
      * that use (a GL driver's texture rename). The old image retires with the frames reading it. Only where nothing
      * else the texture holds would be lost: level 0 whole, no other level specified.
      */
-    private void renameIfReplaced(CgCommandEncoder encoder, GlTexture t, int level, int x, int y, int z, int w, int h,
+    private void renameIfReplaced(CgCommandList encoder, GlTexture t, int level, int x, int y, int z, int w, int h,
                                   int d) {
         if (level != 0 || x != 0 || y != 0 || z != 0 || w != t.width || h != t.height || d != t.depth
                 || t.imported || t.samples > 1 || t.specifiedLevels > 1

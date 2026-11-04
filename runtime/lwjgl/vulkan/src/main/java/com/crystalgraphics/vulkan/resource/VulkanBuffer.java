@@ -1,6 +1,6 @@
 package com.crystalgraphics.vulkan.resource;
 
-import com.crystalgraphics.platform.device.resource.CgGpuBuffer;
+import com.crystalgraphics.platform.rhi.resource.CgGpuBuffer;
 
 import java.nio.ByteBuffer;
 

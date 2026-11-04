@@ -1,7 +1,7 @@
 package com.crystalgraphics.platform.gl.tracked.gl;
 
-import com.crystalgraphics.platform.device.command.CgPassDesc;
-import com.crystalgraphics.platform.device.recording.CgRecordingDevice;
+import com.crystalgraphics.platform.rhi.command.CgPassDesc;
+import com.crystalgraphics.platform.rhi.nulldrv.CgNullRHI;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.tracked.CgTrackedGLBackend;
 import com.crystalgraphics.platform.gl.tracked.FakeGlslCompiler;
@@ -15,7 +15,7 @@ import static org.junit.Assert.*;
 /** Framebuffers on the tracked backend: what is attached is what the next pass renders into, as GL defines it. */
 public class CgTrackedFramebuffersTest {
 
-    private final CgRecordingDevice device = new CgRecordingDevice(16, 16);
+    private final CgNullRHI device = new CgNullRHI(16, 16);
     private final CgTrackedGLBackend gl = new CgTrackedGLBackend(device, FakeGlslCompiler.EMPTY, true);
 
     private int texture(int size) {

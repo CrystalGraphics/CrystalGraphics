@@ -1,15 +1,14 @@
 package com.crystalgraphics.platform.gl.tracked;
 
-import com.crystalgraphics.platform.device.CgDevice;
-import com.crystalgraphics.platform.device.CgDeviceInfo;
-import com.crystalgraphics.platform.device.command.CgAccess;
-import com.crystalgraphics.platform.device.pipeline.CgComputePipeline;
-import com.crystalgraphics.platform.device.pipeline.CgPipelineDesc;
-import com.crystalgraphics.platform.device.resource.CgGpuTexture;
-import com.crystalgraphics.platform.device.resource.CgTextureRegion;
-import com.crystalgraphics.platform.device.resource.CgTimerQuery;
-import com.crystalgraphics.platform.device.shader.CgGlslCompiler;
-import com.crystalgraphics.platform.device.shader.CgShaderModule;
+import com.crystalgraphics.platform.rhi.CgRHI;
+import com.crystalgraphics.platform.rhi.command.CgAccess;
+import com.crystalgraphics.platform.rhi.pipeline.CgComputePipeline;
+import com.crystalgraphics.platform.rhi.pipeline.CgGraphicsPipelineDesc;
+import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
+import com.crystalgraphics.platform.rhi.resource.CgTextureRegion;
+import com.crystalgraphics.platform.rhi.sync.CgTimerQuery;
+import com.crystalgraphics.platform.rhi.shader.CgGlslCompiler;
+import com.crystalgraphics.platform.rhi.shader.CgShaderModule;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.CgGLBackend;
 import com.crystalgraphics.platform.gl.CgGLWorkerContext;
@@ -38,7 +37,7 @@ import java.util.Arrays;
 import java.util.Map;
 
 /**
- * {@code CgGLBackend} over a {@link CgDevice}: the GL subset CrystalGraphics calls (spec §5.0), with GL's own
+ * {@code CgGLBackend} over a {@link CgRHI}: the GL subset CrystalGraphics calls (spec §5.0), with GL's own
  * semantics, turned into passes, pipelines and per-draw bindings by a {@link CgTracker}. Nothing above
  * {@code CgGL} changes; a process installs one backend.
  *
@@ -63,7 +62,7 @@ public final class CgTrackedGLBackend extends CgGLBackend {
     private static final int GL_MAX_TEXTURE_BUFFER_SIZE = 0x8C2B, GL_MAX_VIEWPORT_DIMS = 0x0D3A;
     private static final int GL_MAX_TEXTURE_MAX_ANISOTROPY = 0x84FF;
 
-    private final CgDevice device;
+    private final CgRHI device;
     private final CgTracker tracker;
     private final TrackedGlErrors errors = new TrackedGlErrors();
     private final TrackedRenderState state;
@@ -87,7 +86,7 @@ public final class CgTrackedGLBackend extends CgGLBackend {
      * @param compiler what a program's link compiles its GLSL with
      * @param debug    refuse what GL leaves undefined and a device cannot survive: feedback loops
      */
-    public CgTrackedGLBackend(CgDevice device, CgGlslCompiler compiler, boolean debug) {
+    public CgTrackedGLBackend(CgRHI device, CgGlslCompiler compiler, boolean debug) {
         this.device = device;
         this.debug = debug;
         this.tracker = new CgTracker(device, debug);
@@ -201,7 +200,7 @@ public final class CgTrackedGLBackend extends CgGLBackend {
     }
 
     private int limits(int pname) {
-        CgDeviceInfo.Limits l = device.info().limits();
+        CgRHI.Globals.Limits l = device.globals().limits();
         switch (pname) {
             case CgGL.GL_MAX_TEXTURE_SIZE: case GL_MAX_RENDERBUFFER_SIZE: return one(l.maxTextureSize());
             case CgGL.GL_MAX_3D_TEXTURE_SIZE:          return one(l.max3DTextureSize());
@@ -258,14 +257,14 @@ public final class CgTrackedGLBackend extends CgGLBackend {
     @Override public float glGetFloat(int pname) { query(pname); return (float) q[0]; }
 
     /** The device every call lands on. */
-    public CgDevice device() {
+    public CgRHI device() {
         return device;
     }
 
     /** The device's own name, vendor and driver, as GL 4.4 core. */
     @Override
     public String glGetString(int name) {
-        CgDeviceInfo info = device.info();
+        CgRHI.Globals info = device.globals();
         switch (name) {
             case CgGL.GL_VENDOR:                   return info.vendor();
             case CgGL.GL_RENDERER:                 return info.name();
@@ -275,7 +274,7 @@ public final class CgTrackedGLBackend extends CgGLBackend {
         }
     }
 
-    /** Lists no extensions ({@code GL_NUM_EXTENSIONS} is 0): the device says what it has, through {@code CgDevice.describe}. */
+    /** Lists no extensions ({@code GL_NUM_EXTENSIONS} is 0): the device says what it has, through {@code CgRHI.describe}. */
     @Override
     public String glGetStringi(int name, int index) {
         throw new IllegalArgumentException("the tracked backend lists no extensions");
@@ -294,11 +293,11 @@ public final class CgTrackedGLBackend extends CgGLBackend {
             case CgGL.GL_IMAGE_BINDING_FORMAT:  return textures.imageUnit(index)[3];
             case CgGL.GL_IMAGE_BINDING_ACCESS:  return textures.imageUnit(index)[4];
             case CgGL.GL_MAX_COMPUTE_WORK_GROUP_SIZE: {
-                CgDeviceInfo.Compute c = device.info().limits().compute();
+                CgRHI.Globals.Compute c = device.globals().limits().compute();
                 return index == 0 ? c.sizeX() : index == 1 ? c.sizeY() : c.sizeZ();
             }
             case CgGL.GL_MAX_COMPUTE_WORK_GROUP_COUNT: {
-                CgDeviceInfo.Compute c = device.info().limits().compute();
+                CgRHI.Globals.Compute c = device.globals().limits().compute();
                 return index == 0 ? c.countX() : index == 1 ? c.countY() : c.countZ();
             }
             default:
@@ -815,7 +814,7 @@ public final class CgTrackedGLBackend extends CgGLBackend {
     private void draw(int mode, int first, int count, int instances, int type, long indices, int baseVertex) {
         CgDrawState s = tracker.state;
         if (!prepareDraw(s)) return;
-        CgPipelineDesc.Topology topology = GlEnums.topology(mode);
+        CgGraphicsPipelineDesc.Topology topology = GlEnums.topology(mode);
         if (type < 0) {
             tracker.draw(topology, count, instances, first, 0);
             return;

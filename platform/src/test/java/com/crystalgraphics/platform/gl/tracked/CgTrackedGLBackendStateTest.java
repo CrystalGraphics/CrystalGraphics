@@ -1,8 +1,8 @@
 package com.crystalgraphics.platform.gl.tracked;
 
-import com.crystalgraphics.platform.device.command.CgPassDesc;
-import com.crystalgraphics.platform.device.pipeline.CgPipelineDesc;
-import com.crystalgraphics.platform.device.recording.CgRecordingDevice;
+import com.crystalgraphics.platform.rhi.command.CgPassDesc;
+import com.crystalgraphics.platform.rhi.pipeline.CgGraphicsPipelineDesc;
+import com.crystalgraphics.platform.rhi.nulldrv.CgNullRHI;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.tracked.gl.TrackedRenderState;
 import org.junit.Test;
@@ -16,7 +16,7 @@ import static org.junit.Assert.*;
 /** Render state on the tracked backend: what GL wrote reads back, and reaches the device as GL would draw it. */
 public class CgTrackedGLBackendStateTest {
 
-    private final CgRecordingDevice device = new CgRecordingDevice(32, 16);
+    private final CgNullRHI device = new CgNullRHI(32, 16);
     private final CgTrackedGLBackend gl = new CgTrackedGLBackend(device, FakeGlslCompiler.EMPTY, true);
 
     @Test
@@ -50,7 +50,7 @@ public class CgTrackedGLBackendStateTest {
         TrackedRenderState state = stateOf();
         gl.glEnable(CgGL.GL_DEPTH_TEST);
         state.sync();
-        CgPipelineDesc.DepthStencil before = gl.tracker().state.depthStencil;
+        CgGraphicsPipelineDesc.DepthStencil before = gl.tracker().state.depthStencil;
         gl.glViewport(0, 0, 8, 8);
         state.sync();
         assertSame(before, gl.tracker().state.depthStencil);

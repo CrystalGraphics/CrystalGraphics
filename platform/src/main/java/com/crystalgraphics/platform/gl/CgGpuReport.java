@@ -25,7 +25,7 @@ import java.util.StringJoiner;
  * }</pre>
  *
  * <ul>
- *   <li>On GL it asks the driver. On the tracked backend it asks the device ({@code CgDevice.describe}), since the GL
+ *   <li>On GL it asks the driver. On the tracked backend it asks the device ({@code CgRHI.describe}), since the GL
  *       that backend answers is its own emulation. The keys are the same either way, so one table compares both.</li>
  *   <li>A limit is read only where its feature is present, and any error a query raised is drained.</li>
  * </ul>

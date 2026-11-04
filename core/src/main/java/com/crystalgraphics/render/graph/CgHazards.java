@@ -1,6 +1,6 @@
 package com.crystalgraphics.render.graph;
 
-import com.crystalgraphics.platform.device.command.CgAccess;
+import com.crystalgraphics.platform.rhi.command.CgAccess;
 
 import java.util.Arrays;
 

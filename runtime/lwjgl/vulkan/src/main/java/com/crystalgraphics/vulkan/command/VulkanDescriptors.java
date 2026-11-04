@@ -1,7 +1,7 @@
 package com.crystalgraphics.vulkan.command;
 
-import com.crystalgraphics.platform.device.pipeline.CgBindingLayout;
-import com.crystalgraphics.platform.device.pipeline.CgBindings;
+import com.crystalgraphics.platform.rhi.binding.CgBindingLayout;
+import com.crystalgraphics.platform.rhi.binding.CgBindings;
 import com.crystalgraphics.vulkan.CgVulkanDevice;
 import com.crystalgraphics.vulkan.resource.VulkanBuffer;
 import com.crystalgraphics.vulkan.resource.VulkanSampler;

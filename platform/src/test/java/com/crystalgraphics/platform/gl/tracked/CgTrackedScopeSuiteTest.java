@@ -1,6 +1,6 @@
 package com.crystalgraphics.platform.gl.tracked;
 
-import com.crystalgraphics.platform.device.recording.CgRecordingDevice;
+import com.crystalgraphics.platform.rhi.nulldrv.CgNullRHI;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.state.CgGlScope;
 import com.crystalgraphics.platform.gl.state.CgGlSlot;
@@ -27,7 +27,7 @@ public class CgTrackedScopeSuiteTest {
 
     @Before
     public void setUp() {
-        gl = new CgTrackedGLBackend(new CgRecordingDevice(32, 32), FakeGlslCompiler.EMPTY, true);
+        gl = new CgTrackedGLBackend(new CgNullRHI(32, 32), FakeGlslCompiler.EMPTY, true);
         provider = new CgTrackedStateProvider(gl);
         CgGL.init(gl);
         CgGlState.reset();

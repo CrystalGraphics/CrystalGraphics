@@ -11,8 +11,8 @@ import com.crystalgraphics.asset.registry.CgAssetSource;
 import com.crystalgraphics.frame.CgFrameBoundary;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.gl.texture.CgFallbackTextures;
-import com.crystalgraphics.platform.device.CgDeviceInfo;
-import com.crystalgraphics.platform.device.recording.CgRecordingDevice;
+import com.crystalgraphics.platform.rhi.CgRHI;
+import com.crystalgraphics.platform.rhi.nulldrv.CgNullRHI;
 import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.state.CgGlState;
@@ -66,8 +66,8 @@ public class CgVfxSubmitAllocationTest {
     private static final CgRenderStage[] WORLD = {CgRenderStage.WORLD_OPAQUE, CgRenderStage.WORLD_TRANSPARENT};
 
     /** A desktop GPU's compute limits: the VFX range's kernels are wider than Vulkan's minimum of 128. */
-    private static final CgDeviceInfo.Compute DESKTOP =
-            new CgDeviceInfo.Compute(49152, 1024, 1024, 1024, 64, 65535, 65535, 65535, 32, 0xFF);
+    private static final CgRHI.Globals.Compute DESKTOP =
+            new CgRHI.Globals.Compute(49152, 1024, 1024, 1024, 64, 65535, 65535, 65535, 32, 0xFF);
 
     private static ShadercGlslCompiler compiler;
     /** The plan's Nova Cannon kit, from this module's directory; the case skips where plan/ is not checked out. */
@@ -99,7 +99,7 @@ public class CgVfxSubmitAllocationTest {
     @BeforeClass
     public static void install() {
         compiler = new ShadercGlslCompiler();
-        CgTrackedGLBackend gl = new CgTrackedGLBackend(new CgRecordingDevice(64, 64).withoutLog().withCompute(DESKTOP), compiler, true);
+        CgTrackedGLBackend gl = new CgTrackedGLBackend(new CgNullRHI(64, 64).withoutLog().withCompute(DESKTOP), compiler, true);
         CgGL.init(gl);
         CgCapabilities.init(new CgTrackedGLContext());
         CgCapabilities.clearCache();

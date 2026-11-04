@@ -1,6 +1,6 @@
 package com.crystalgraphics.platform.gl;
 
-import com.crystalgraphics.platform.device.command.CgAccess;
+import com.crystalgraphics.platform.rhi.command.CgAccess;
 import com.crystalgraphics.variable.CgVar;
 
 import java.nio.*;

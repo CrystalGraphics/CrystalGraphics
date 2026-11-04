@@ -1,22 +1,22 @@
 package com.crystalgraphics.platform.gl.tracked.tracker;
 
-import com.crystalgraphics.platform.device.CgDevice;
-import com.crystalgraphics.platform.device.CgDeviceObject;
-import com.crystalgraphics.platform.device.command.CgAccess;
-import com.crystalgraphics.platform.device.command.CgCommandEncoder;
-import com.crystalgraphics.platform.device.command.CgComputePass;
-import com.crystalgraphics.platform.device.command.CgPassDesc;
-import com.crystalgraphics.platform.device.command.CgRenderPass;
-import com.crystalgraphics.platform.device.format.CgAttribFormat;
-import com.crystalgraphics.platform.device.format.CgFormat;
-import com.crystalgraphics.platform.device.pipeline.CgBindingLayout;
-import com.crystalgraphics.platform.device.pipeline.CgComputePipeline;
-import com.crystalgraphics.platform.device.pipeline.CgPipeline;
-import com.crystalgraphics.platform.device.pipeline.CgPipelineDesc;
-import com.crystalgraphics.platform.device.resource.CgGpuBuffer;
-import com.crystalgraphics.platform.device.resource.CgGpuTexture;
-import com.crystalgraphics.platform.device.resource.CgTextureView;
-import com.crystalgraphics.platform.device.shader.CgShaderModule;
+import com.crystalgraphics.platform.rhi.CgRHI;
+import com.crystalgraphics.platform.rhi.resource.CgRHIResource;
+import com.crystalgraphics.platform.rhi.command.CgAccess;
+import com.crystalgraphics.platform.rhi.command.CgCommandList;
+import com.crystalgraphics.platform.rhi.command.CgComputePass;
+import com.crystalgraphics.platform.rhi.command.CgPassDesc;
+import com.crystalgraphics.platform.rhi.command.CgRenderPass;
+import com.crystalgraphics.platform.rhi.format.CgAttribFormat;
+import com.crystalgraphics.platform.rhi.format.CgFormat;
+import com.crystalgraphics.platform.rhi.binding.CgBindingLayout;
+import com.crystalgraphics.platform.rhi.pipeline.CgComputePipeline;
+import com.crystalgraphics.platform.rhi.pipeline.CgGraphicsPipeline;
+import com.crystalgraphics.platform.rhi.pipeline.CgGraphicsPipelineDesc;
+import com.crystalgraphics.platform.rhi.resource.CgGpuBuffer;
+import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
+import com.crystalgraphics.platform.rhi.resource.CgTextureView;
+import com.crystalgraphics.platform.rhi.shader.CgShaderModule;
 import com.crystalgraphics.platform.gl.tracked.memory.CgAllocation;
 import com.crystalgraphics.platform.gl.tracked.memory.CgFrameArena;
 import com.crystalgraphics.platform.gl.tracked.memory.CgSlabAllocator;
@@ -40,14 +40,14 @@ import java.util.concurrent.Future;
 import java.util.function.IntFunction;
 
 /**
- * Turns GL's immediate model into passes, pipelines and per-draw bindings on a {@link CgDevice} (spec §5.1).
+ * Turns GL's immediate model into passes, pipelines and per-draw bindings on a {@link CgRHI} (spec §5.1).
  *
  * <pre>{@code
  * CgTracker tracker = new CgTracker(device, false);
  * tracker.bindTarget(CgTarget.surface(device));      // glBindFramebuffer: the next pass's target
  * tracker.clear(true, 0, 0, 0, 1, true, 1, false, 0); // before any draw: the pass's load op
  * tracker.state.program = program;                    // ... and the rest of the draw's state
- * tracker.draw(CgPipelineDesc.Topology.TRIANGLES, 6, 1, 0, 0);   // begins the pass
+ * tracker.draw(CgGraphicsPipelineDesc.Topology.TRIANGLES, 6, 1, 0, 0);   // begins the pass
  * tracker.transfer().writeTexture(...);               // ends it; the next draw resumes with LOAD
  * tracker.endFrame();
  * }</pre>
@@ -83,17 +83,17 @@ public final class CgTracker {
     public final CgDrawState state = new CgDrawState();
     public final CgTrackerStats stats = new CgTrackerStats();
 
-    private final CgDevice device;
+    private final CgRHI device;
     private final boolean debug;
     private final CgSlabAllocator host, local, readable, stream;
     private final CgFrameArena frameUploads;
     /** Where the last {@link #frameAllocate} put its bytes in the allocation it answered. */
     private long frameOffset;
-    private final Map<CgPipelineDesc, CgPipeline> pipelines = new HashMap<>();
+    private final Map<CgGraphicsPipelineDesc, CgGraphicsPipeline> pipelines = new HashMap<>();
     /** Recorded pipelines building on {@link #builders}, by description; taken by the first draw that needs one. */
-    private final Map<CgPipelineDesc, Future<CgPipeline>> ahead = new HashMap<>();
+    private final Map<CgGraphicsPipelineDesc, Future<CgGraphicsPipeline>> ahead = new HashMap<>();
     /** Built ahead for a program forgotten since: released once done. */
-    private final List<Future<CgPipeline>> orphaned = new ArrayList<>();
+    private final List<Future<CgGraphicsPipeline>> orphaned = new ArrayList<>();
     private CgPipelineRecipes recipes;
     private ExecutorService builders;
     private boolean zeroToOneClip;
@@ -101,9 +101,9 @@ public final class CgTracker {
     private IntFunction<CgTrackedProgram> clearPrograms;
 
     /** What a masked clear draws: a position and the clear colour per vertex, three vertices over the target. */
-    private static final List<CgPipelineDesc.VertexBuffer> CLEAR_LAYOUT = List.of(new CgPipelineDesc.VertexBuffer(0,
-            24, false, List.of(new CgPipelineDesc.VertexAttrib(0, CgAttribFormat.FLOAT32X2, 0),
-                    new CgPipelineDesc.VertexAttrib(1, CgAttribFormat.FLOAT32X4, 8))));
+    private static final List<CgGraphicsPipelineDesc.VertexBuffer> CLEAR_LAYOUT = List.of(new CgGraphicsPipelineDesc.VertexBuffer(0,
+            24, false, List.of(new CgGraphicsPipelineDesc.VertexAttrib(0, CgAttribFormat.FLOAT32X2, 0),
+                    new CgGraphicsPipelineDesc.VertexAttrib(1, CgAttribFormat.FLOAT32X4, 8))));
 
     private CgTarget target;
     private CgRenderPass pass;
@@ -130,7 +130,7 @@ public final class CgTracker {
     private float clearDepthValue;
     private int clearStencilValue;
 
-    private CgPipeline passPipeline;
+    private CgGraphicsPipeline passPipeline;
     private boolean passFresh;
     /** The passes begun lately, each reused while its target, its loads and its clears are a new one's: a frame's few. */
     private final CgPassDesc[] recentPasses = new CgPassDesc[8];
@@ -140,30 +140,30 @@ public final class CgTracker {
 
     private CgTrackedProgram keyProgram;
     private CgShaderModule keyVertex;
-    private CgPipelineDesc.Raster keyRaster;
-    private CgPipelineDesc.DepthStencil keyDepthStencil;
-    private CgPipelineDesc.Blend keyBlend;
+    private CgGraphicsPipelineDesc.Raster keyRaster;
+    private CgGraphicsPipelineDesc.DepthStencil keyDepthStencil;
+    private CgGraphicsPipelineDesc.Blend keyBlend;
     private int keyMasks;
-    private List<CgPipelineDesc.VertexBuffer> keyLayouts;
-    private CgPipelineDesc.Topology keyTopology;
+    private List<CgGraphicsPipelineDesc.VertexBuffer> keyLayouts;
+    private CgGraphicsPipelineDesc.Topology keyTopology;
     private CgTarget keyTarget;
-    private CgPipeline keyPipeline;
+    private CgGraphicsPipeline keyPipeline;
 
     /**
      * Pipelines by the identity of what picks them, kept across frames: the hit for draws alternating between states,
      * which the last key misses, with no description built or hashed. Holds because records keep their identity while
      * their values do (TrackedRenderState), and so does a target (TrackedFramebuffers).
      */
-    private final Map<PipelineKey, CgPipeline> byIdentity = new HashMap<>();
+    private final Map<PipelineKey, CgGraphicsPipeline> byIdentity = new HashMap<>();
     private final PipelineKey probe = new PipelineKey();
     private static final int MAX_BY_IDENTITY = 1024;
 
     /** @param debug refuse feedback loops; a check per sampled texture per draw */
-    public CgTracker(CgDevice device, boolean debug) {
+    public CgTracker(CgRHI device, boolean debug) {
         this.device = device;
         this.debug = debug;
-        long align = Math.max(16, Math.max(device.info().limits().uniformOffsetAlignment(),
-                Math.max(device.info().limits().storageOffsetAlignment(), device.info().limits().texelOffsetAlignment())));
+        long align = Math.max(16, Math.max(device.globals().limits().uniformOffsetAlignment(),
+                Math.max(device.globals().limits().storageOffsetAlignment(), device.globals().limits().texelOffsetAlignment())));
         this.host = new CgSlabAllocator(device, true, false, false, SLAB, align);
         this.local = new CgSlabAllocator(device, false, false, false, SLAB, align);
         this.readable = new CgSlabAllocator(device, true, true, false, SLAB, align);
@@ -171,7 +171,7 @@ public final class CgTracker {
         this.frameUploads = new CgFrameArena(stream, align);
     }
 
-    public CgDevice device() { return device; }
+    public CgRHI device() { return device; }
 
     public CgTrackerStats stats() { return stats; }
 
@@ -250,17 +250,17 @@ public final class CgTracker {
     /** A colour clear through a partial write mask: a triangle over the target, scissored to the cleared rect. */
     private void clearByDraw(int attachment, int mask, float r, float g, float b, float a, int x, int y, int w, int h) {
         CgTrackedProgram clearProgram = clearPrograms.apply(passTarget.colors().size());
-        List<CgPipelineDesc.ColorTarget> targets = new ArrayList<>(passTarget.colors().size());
+        List<CgGraphicsPipelineDesc.ColorTarget> targets = new ArrayList<>(passTarget.colors().size());
         for (int i = 0; i < passTarget.colors().size(); i++) {
-            targets.add(new CgPipelineDesc.ColorTarget(passTarget.colors().get(i).texture().desc().format(), null,
+            targets.add(new CgGraphicsPipelineDesc.ColorTarget(passTarget.colors().get(i).texture().desc().format(), null,
                     i == attachment ? mask : 0));
         }
         CgFormat depthFormat = passTarget.depth() == null ? null : passTarget.depth().texture().desc().format();
-        CgPipelineDesc desc = new CgPipelineDesc(clearProgram.label, clearProgram.layout, clearProgram.vertexGlDepth,
-                clearProgram.fragment, CLEAR_LAYOUT, CgPipelineDesc.Topology.TRIANGLES, CgPipelineDesc.Raster.DEFAULT,
-                CgPipelineDesc.DepthStencil.OFF, targets, depthFormat,
+        CgGraphicsPipelineDesc desc = new CgGraphicsPipelineDesc(clearProgram.label, clearProgram.layout, clearProgram.vertexGlDepth,
+                clearProgram.fragment, CLEAR_LAYOUT, CgGraphicsPipelineDesc.Topology.TRIANGLES, CgGraphicsPipelineDesc.Raster.DEFAULT,
+                CgGraphicsPipelineDesc.DepthStencil.OFF, targets, depthFormat,
                 passTarget.colors().get(attachment).texture().desc().samples());
-        CgPipeline p = pipelines.get(desc);
+        CgGraphicsPipeline p = pipelines.get(desc);
         if (p == null) {
             try (CgTrace.Zone ignored = CgTrace.zone(GL, PIPELINE_ZONE)) {
                 p = device.createPipeline(desc);
@@ -291,13 +291,13 @@ public final class CgTracker {
 
     // ── draws ──────────────────────────────────────────────────────────────────
 
-    public void draw(CgPipelineDesc.Topology topology, int vertexCount, int instanceCount, int firstVertex, int firstInstance) {
+    public void draw(CgGraphicsPipelineDesc.Topology topology, int vertexCount, int instanceCount, int firstVertex, int firstInstance) {
         prepareDraw(topology);
         pass.draw(vertexCount, instanceCount, firstVertex, firstInstance);
         stats.draws++;
     }
 
-    public void drawIndexed(CgPipelineDesc.Topology topology, int indexCount, int instanceCount, int firstIndex,
+    public void drawIndexed(CgGraphicsPipelineDesc.Topology topology, int indexCount, int instanceCount, int firstIndex,
                             int baseVertex, int firstInstance) {
         if (state.index == null) throw new IllegalStateException("drawIndexed with no element buffer");
         prepareDraw(topology);
@@ -311,7 +311,7 @@ public final class CgTracker {
      * {@code glDrawArraysIndirect} and its kin: {@code draws} argument records {@code stride} bytes apart at
      * {@code offset} in {@code args}, as many as {@code count} holds at {@code countOffset} when it is not null.
      */
-    public void drawIndirect(CgPipelineDesc.Topology topology, boolean indexed, CgAllocation args, long offset,
+    public void drawIndirect(CgGraphicsPipelineDesc.Topology topology, boolean indexed, CgAllocation args, long offset,
                              int draws, int stride, CgAllocation count, long countOffset) {
         if (indexed && state.index == null) throw new IllegalStateException("An indexed indirect draw with no element buffer");
         prepareDraw(topology);
@@ -333,10 +333,10 @@ public final class CgTracker {
         stats.draws++;
     }
 
-    private void prepareDraw(CgPipelineDesc.Topology topology) {
+    private void prepareDraw(CgGraphicsPipelineDesc.Topology topology) {
         if (state.program == null) throw new IllegalStateException("Draw with no program");
         ensurePass();
-        CgPipeline p = pipeline(topology);
+        CgGraphicsPipeline p = pipeline(topology);
         if (p != passPipeline) {
             pass.setPipeline(p);
             passPipeline = p;
@@ -352,9 +352,9 @@ public final class CgTracker {
             }
         }
         pass.pushBindings(state.bindings);
-        List<CgPipelineDesc.VertexBuffer> layouts = state.vertexLayouts;
+        List<CgGraphicsPipelineDesc.VertexBuffer> layouts = state.vertexLayouts;
         for (int i = 0; i < layouts.size(); i++) {
-            CgPipelineDesc.VertexBuffer vb = layouts.get(i);
+            CgGraphicsPipelineDesc.VertexBuffer vb = layouts.get(i);
             CgAllocation a = state.vertexAllocations[vb.binding()];
             if (a == null) throw new IllegalStateException("Vertex binding " + vb.binding() + " has no buffer");
             pass.setVertexBuffer(vb.binding(), a.buffer, a.offset + state.vertexOffsets[vb.binding()]);
@@ -391,13 +391,13 @@ public final class CgTracker {
      * Builds the pipeline a draw of {@code topology} would bind with the current state and the bound target, without
      * opening a pass or drawing: what puts a program through the device's own compiler ahead of its first draw.
      */
-    public void buildPipeline(CgPipelineDesc.Topology topology) {
+    public void buildPipeline(CgGraphicsPipelineDesc.Topology topology) {
         if (state.program == null) throw new IllegalStateException("A pipeline with no program");
         if (target == null) throw new IllegalStateException("A pipeline with no framebuffer bound");
         cachedPipeline(topology, target, state.program.vertex(zeroToOneClip));
     }
 
-    private CgPipeline pipeline(CgPipelineDesc.Topology topology) {
+    private CgGraphicsPipeline pipeline(CgGraphicsPipelineDesc.Topology topology) {
         CgDrawState s = state;
         CgShaderModule vertex = s.program.vertex(zeroToOneClip);
         if (keyPipeline != null && s.program == keyProgram && vertex == keyVertex && s.raster == keyRaster
@@ -405,7 +405,7 @@ public final class CgTracker {
                 && s.vertexLayouts == keyLayouts && topology == keyTopology && passTarget == keyTarget) {
             return keyPipeline;
         }
-        CgPipeline p = byIdentity.get(probe.set(s.program, vertex, s.raster, s.depthStencil, s.blend, s.colorMasks,
+        CgGraphicsPipeline p = byIdentity.get(probe.set(s.program, vertex, s.raster, s.depthStencil, s.blend, s.colorMasks,
                 s.vertexLayouts, topology, passTarget));
         if (p == null) {
             p = cachedPipeline(topology, passTarget, vertex);
@@ -424,27 +424,27 @@ public final class CgTracker {
         return keyPipeline = p;
     }
 
-    private CgPipeline cachedPipeline(CgPipelineDesc.Topology topology, CgTarget on, CgShaderModule vertex) {
+    private CgGraphicsPipeline cachedPipeline(CgGraphicsPipelineDesc.Topology topology, CgTarget on, CgShaderModule vertex) {
         CgDrawState s = state;
-        List<CgPipelineDesc.ColorTarget> targets = new ArrayList<>(on.colors().size());
+        List<CgGraphicsPipelineDesc.ColorTarget> targets = new ArrayList<>(on.colors().size());
         for (int i = 0; i < on.colors().size(); i++) {
             CgFormat f = on.colors().get(i).texture().desc().format();
-            CgPipelineDesc.Blend blend = f.numeric() == CgFormat.Numeric.INT ? null : s.blend;
-            targets.add(new CgPipelineDesc.ColorTarget(f, blend, (s.colorMasks >>> (4 * i)) & 0xF));
+            CgGraphicsPipelineDesc.Blend blend = f.numeric() == CgFormat.Numeric.INT ? null : s.blend;
+            targets.add(new CgGraphicsPipelineDesc.ColorTarget(f, blend, (s.colorMasks >>> (4 * i)) & 0xF));
         }
         CgFormat depthFormat = on.depth() == null ? null : on.depth().texture().desc().format();
-        CgPipelineDesc.DepthStencil ds = s.depthStencil;
+        CgGraphicsPipelineDesc.DepthStencil ds = s.depthStencil;
         if (depthFormat == null) {
-            ds = CgPipelineDesc.DepthStencil.OFF;
+            ds = CgGraphicsPipelineDesc.DepthStencil.OFF;
         } else if (!depthFormat.hasStencil() && ds.stencilTest() || !depthFormat.hasDepth() && ds.depthTest()) {
-            ds = new CgPipelineDesc.DepthStencil(ds.depthTest() && depthFormat.hasDepth(), ds.depthWrite(),
+            ds = new CgGraphicsPipelineDesc.DepthStencil(ds.depthTest() && depthFormat.hasDepth(), ds.depthWrite(),
                     ds.depthCompare(), ds.stencilTest() && depthFormat.hasStencil(), ds.front(), ds.back(),
                     ds.readMask(), ds.writeMask());
         }
         CgTextureView any = on.colors().isEmpty() ? on.depth() : on.colors().get(0);
-        CgPipelineDesc desc = new CgPipelineDesc(s.program.label, s.program.layout, vertex, s.program.fragment,
+        CgGraphicsPipelineDesc desc = new CgGraphicsPipelineDesc(s.program.label, s.program.layout, vertex, s.program.fragment,
                 s.vertexLayouts, topology, s.raster, ds, targets, depthFormat, any.texture().desc().samples());
-        CgPipeline p = pipelines.get(desc);
+        CgGraphicsPipeline p = pipelines.get(desc);
         if (p == null) {
             p = takeAhead(desc);
             if (p == null) {
@@ -468,11 +468,11 @@ public final class CgTracker {
      * links, on the compile worker, so they build inside the loading screen for whatever links there (Unreal's PSO
      * precache). Any thread; the owner adopts the answer ({@link #adoptAhead}) when it installs the link.
      */
-    public Map<CgPipelineDesc, Future<CgPipeline>> startRecorded(CgTrackedProgram program) {
+    public Map<CgGraphicsPipelineDesc, Future<CgGraphicsPipeline>> startRecorded(CgTrackedProgram program) {
         if (program.key == 0 || !device.createsOnAnyThread() || !RECORDED.get()) return Map.of();
-        Map<CgPipelineDesc, Future<CgPipeline>> started = new HashMap<>();
+        Map<CgGraphicsPipelineDesc, Future<CgGraphicsPipeline>> started = new HashMap<>();
         for (CgPipelineRecipes.Recipe recipe : recipes().of(program.key)) {
-            CgPipelineDesc desc = recipe.desc(program);
+            CgGraphicsPipelineDesc desc = recipe.desc(program);
             started.put(desc, builders().submit(() -> {
                 try (CgTrace.Zone ignored = CgTrace.zone(GL, AHEAD_ZONE)) {
                     return device.createPipeline(desc);
@@ -484,24 +484,24 @@ public final class CgTracker {
     }
 
     /** Takes pipelines started ahead for a program now installed: its first draws take them. Owner thread. */
-    public void adoptAhead(Map<CgPipelineDesc, Future<CgPipeline>> started) {
-        for (Map.Entry<CgPipelineDesc, Future<CgPipeline>> e : started.entrySet()) {
+    public void adoptAhead(Map<CgGraphicsPipelineDesc, Future<CgGraphicsPipeline>> started) {
+        for (Map.Entry<CgGraphicsPipelineDesc, Future<CgGraphicsPipeline>> e : started.entrySet()) {
             if (pipelines.containsKey(e.getKey()) || ahead.containsKey(e.getKey())) orphaned.add(e.getValue());
             else ahead.put(e.getKey(), e.getValue());
         }
     }
 
     /** Pipelines started for a link that will never install: released as each finishes. Owner thread. */
-    public void orphan(Collection<Future<CgPipeline>> started) {
+    public void orphan(Collection<Future<CgGraphicsPipeline>> started) {
         orphaned.addAll(started);
     }
 
     /** The pipeline started ahead for {@code desc}, waiting for it if it is still building; null if none was, or it failed. */
-    private CgPipeline takeAhead(CgPipelineDesc desc) {
-        Future<CgPipeline> built = ahead.remove(desc);
+    private CgGraphicsPipeline takeAhead(CgGraphicsPipelineDesc desc) {
+        Future<CgGraphicsPipeline> built = ahead.remove(desc);
         if (built == null) return null;
         try (CgTrace.Zone ignored = built.isDone() ? null : CgTrace.zone(GL, AHEAD_WAIT)) {
-            CgPipeline p = built.get();
+            CgGraphicsPipeline p = built.get();
             CgTrace.add(GL, AHEAD_HITS, 1);
             return p;
         } catch (ExecutionException e) {
@@ -516,7 +516,7 @@ public final class CgTracker {
     /** Releases what finished building for a program forgotten since it started. */
     private void releaseOrphaned() {
         for (int i = orphaned.size() - 1; i >= 0; i--) {
-            Future<CgPipeline> f = orphaned.get(i);
+            Future<CgGraphicsPipeline> f = orphaned.get(i);
             if (!f.isDone()) continue;
             orphaned.remove(i);
             try {
@@ -756,7 +756,7 @@ public final class CgTracker {
      * Ends the open pass, writing out any clear still pending, and returns the encoder for a copy, an upload or
      * a readback. The next draw begins a new pass that loads what this one stored.
      */
-    public CgCommandEncoder transfer() {
+    public CgCommandList transfer() {
         outsideRenderPass();
         endCompute();
         return device.encoder();
@@ -792,7 +792,7 @@ public final class CgTracker {
     }
 
     /** Destroys a device object once every frame that may use it has retired. */
-    public void release(CgDeviceObject object) {
+    public void release(CgRHIResource object) {
         device.release(object);
     }
 
@@ -948,18 +948,18 @@ public final class CgTracker {
     private static final class PipelineKey {
         CgTrackedProgram program;
         CgShaderModule vertex;
-        CgPipelineDesc.Raster raster;
-        CgPipelineDesc.DepthStencil depthStencil;
-        CgPipelineDesc.Blend blend;
+        CgGraphicsPipelineDesc.Raster raster;
+        CgGraphicsPipelineDesc.DepthStencil depthStencil;
+        CgGraphicsPipelineDesc.Blend blend;
         int masks;
-        List<CgPipelineDesc.VertexBuffer> layouts;
-        CgPipelineDesc.Topology topology;
+        List<CgGraphicsPipelineDesc.VertexBuffer> layouts;
+        CgGraphicsPipelineDesc.Topology topology;
         CgTarget target;
         int hash;
 
-        PipelineKey set(CgTrackedProgram program, CgShaderModule vertex, CgPipelineDesc.Raster raster,
-                        CgPipelineDesc.DepthStencil depthStencil, CgPipelineDesc.Blend blend, int masks,
-                        List<CgPipelineDesc.VertexBuffer> layouts, CgPipelineDesc.Topology topology, CgTarget target) {
+        PipelineKey set(CgTrackedProgram program, CgShaderModule vertex, CgGraphicsPipelineDesc.Raster raster,
+                        CgGraphicsPipelineDesc.DepthStencil depthStencil, CgGraphicsPipelineDesc.Blend blend, int masks,
+                        List<CgGraphicsPipelineDesc.VertexBuffer> layouts, CgGraphicsPipelineDesc.Topology topology, CgTarget target) {
             this.program = program;
             this.vertex = vertex;
             this.raster = raster;

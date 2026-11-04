@@ -8,7 +8,7 @@ import com.crystalgraphics.compute.source.CgImageAccessor;
 import com.crystalgraphics.compute.source.CgImageDecl;
 import com.crystalgraphics.compute.source.CgImageDimension;
 import com.crystalgraphics.gl.buffer.CgReadback;
-import com.crystalgraphics.platform.device.command.CgAccess;
+import com.crystalgraphics.platform.rhi.command.CgAccess;
 import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.gl.CgGlNames;
 import com.crystalgraphics.platform.gl.CgGL;

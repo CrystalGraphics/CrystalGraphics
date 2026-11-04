@@ -1,7 +1,7 @@
 package com.crystalgraphics.platform.gl.tracked;
 
-import com.crystalgraphics.platform.device.command.CgAccess;
-import com.crystalgraphics.platform.device.recording.CgRecordingDevice;
+import com.crystalgraphics.platform.rhi.command.CgAccess;
+import com.crystalgraphics.platform.rhi.nulldrv.CgNullRHI;
 import com.crystalgraphics.platform.gl.CgGL;
 import org.junit.Test;
 
@@ -16,7 +16,7 @@ public class CgTrackedComputeTest {
 
     @Test
     public void aBarrierIsRecordedExactly_andAFillIsADeviceFill() {
-        CgRecordingDevice device = new CgRecordingDevice(8, 8);
+        CgNullRHI device = new CgNullRHI(8, 8);
         CgTrackedGLBackend gl = new CgTrackedGLBackend(device, FakeGlslCompiler.EMPTY, true);
         int buffer = gl.glGenBuffers();
         gl.glBindBuffer(CgGL.GL_COPY_WRITE_BUFFER, buffer);
@@ -31,7 +31,7 @@ public class CgTrackedComputeTest {
 
     @Test
     public void asyncWorkIsBracketedOnTheDevice_andTheWaitForItFollows() {
-        CgRecordingDevice device = new CgRecordingDevice(8, 8);
+        CgNullRHI device = new CgNullRHI(8, 8);
         CgTrackedGLBackend gl = new CgTrackedGLBackend(device, FakeGlslCompiler.EMPTY, true);
         int buffer = gl.glGenBuffers();
         gl.glBindBuffer(CgGL.GL_COPY_WRITE_BUFFER, buffer);
@@ -49,7 +49,7 @@ public class CgTrackedComputeTest {
 
     @Test
     public void aFrameCannotEndInsideAsyncWork() {
-        CgRecordingDevice device = new CgRecordingDevice(8, 8);
+        CgNullRHI device = new CgNullRHI(8, 8);
         CgTrackedGLBackend gl = new CgTrackedGLBackend(device, FakeGlslCompiler.EMPTY, true);
         gl.cgBeginAsync();
         assertThrows(IllegalStateException.class, gl::endFrame);
@@ -57,7 +57,7 @@ public class CgTrackedComputeTest {
 
     @Test
     public void aCopyInATransferIsBracketedOnTheDevice_andAFrameCannotEndInsideOne() {
-        CgRecordingDevice device = new CgRecordingDevice(8, 8);
+        CgNullRHI device = new CgNullRHI(8, 8);
         CgTrackedGLBackend gl = new CgTrackedGLBackend(device, FakeGlslCompiler.EMPTY, true);
         int from = gl.glGenBuffers(), to = gl.glGenBuffers();
         gl.glBindBuffer(CgGL.GL_COPY_READ_BUFFER, from);
@@ -76,7 +76,7 @@ public class CgTrackedComputeTest {
 
     @Test
     public void aFillOfPartWordsIsRefused() {
-        CgRecordingDevice device = new CgRecordingDevice(8, 8);
+        CgNullRHI device = new CgNullRHI(8, 8);
         CgTrackedGLBackend gl = new CgTrackedGLBackend(device, FakeGlslCompiler.EMPTY, true);
         int buffer = gl.glGenBuffers();
         gl.glBindBuffer(CgGL.GL_COPY_WRITE_BUFFER, buffer);

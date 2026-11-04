@@ -48,7 +48,6 @@ import com.crystalgraphics.vfx.particle.renderer.CgVfxRibbonRendererProperties;
 import com.crystalgraphics.vfx.particle.ribbon.CgVfxRibbonGeneration;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxShape;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxShapeCoalescing;
-import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
 import com.crystalgraphics.vfx.path.CgVfxPathTexture;
 import com.crystalgraphics.vfx.render.CgVfxRibbons;
 import com.crystalgraphics.vfx.render.CgVfxSortGroup;

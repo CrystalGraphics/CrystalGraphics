@@ -1,11 +1,11 @@
 package com.crystalgraphics.platform.gl.tracked.tracker;
 
-import com.crystalgraphics.platform.device.format.CgFormat;
-import com.crystalgraphics.platform.device.pipeline.CgBindingLayout;
-import com.crystalgraphics.platform.device.pipeline.CgBindings;
-import com.crystalgraphics.platform.device.pipeline.CgPipelineDesc;
-import com.crystalgraphics.platform.device.resource.CgGpuSampler;
-import com.crystalgraphics.platform.device.resource.CgTextureView;
+import com.crystalgraphics.platform.rhi.format.CgFormat;
+import com.crystalgraphics.platform.rhi.binding.CgBindingLayout;
+import com.crystalgraphics.platform.rhi.binding.CgBindings;
+import com.crystalgraphics.platform.rhi.pipeline.CgGraphicsPipelineDesc;
+import com.crystalgraphics.platform.rhi.resource.CgGpuSampler;
+import com.crystalgraphics.platform.rhi.resource.CgTextureView;
 import com.crystalgraphics.platform.gl.tracked.memory.CgAllocation;
 
 import java.util.Arrays;
@@ -19,23 +19,23 @@ import java.util.List;
  * <pre>{@code
  * CgDrawState s = tracker.state;
  * s.program = program;
- * s.blend = CgPipelineDesc.Blend.ALPHA;
+ * s.blend = CgGraphicsPipelineDesc.Blend.ALPHA;
  * s.vertexLayouts = vao.layouts();
  * s.vertexBuffer(0, vbo.allocation(), 0);
  * s.clearBindings().uniform(0, frameBlock.allocation(), 0, 256);
- * tracker.draw(CgPipelineDesc.Topology.TRIANGLES, 6, 1, 0, 0);
+ * tracker.draw(CgGraphicsPipelineDesc.Topology.TRIANGLES, 6, 1, 0, 0);
  * }</pre>
  */
 public final class CgDrawState {
 
     public CgTrackedProgram program;
-    public CgPipelineDesc.Raster raster = CgPipelineDesc.Raster.DEFAULT;
-    public CgPipelineDesc.DepthStencil depthStencil = CgPipelineDesc.DepthStencil.OFF;
+    public CgGraphicsPipelineDesc.Raster raster = CgGraphicsPipelineDesc.Raster.DEFAULT;
+    public CgGraphicsPipelineDesc.DepthStencil depthStencil = CgGraphicsPipelineDesc.DepthStencil.OFF;
     /** {@code null} with blending off. */
-    public CgPipelineDesc.Blend blend;
+    public CgGraphicsPipelineDesc.Blend blend;
     /** Four bits per colour attachment, attachment {@code i} at bits {@code 4i..4i+3}: red, green, blue, alpha. */
     public int colorMasks = 0xFFFFFFFF;
-    public List<CgPipelineDesc.VertexBuffer> vertexLayouts = List.of();
+    public List<CgGraphicsPipelineDesc.VertexBuffer> vertexLayouts = List.of();
 
     public int viewportX, viewportY, viewportWidth, viewportHeight;
     public boolean scissorTest;

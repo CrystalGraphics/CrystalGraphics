@@ -1,17 +1,17 @@
 package com.crystalgraphics.vulkan.resource;
 
-import com.crystalgraphics.platform.device.pipeline.CgPipeline;
-import com.crystalgraphics.platform.device.pipeline.CgPipelineDesc;
+import com.crystalgraphics.platform.rhi.pipeline.CgGraphicsPipeline;
+import com.crystalgraphics.platform.rhi.pipeline.CgGraphicsPipelineDesc;
 
-public final class VulkanPipeline implements CgPipeline {
+public final class VulkanPipeline implements CgGraphicsPipeline {
 
-    public final CgPipelineDesc desc;
+    public final CgGraphicsPipelineDesc desc;
     public final long pipeline;
 
-    public VulkanPipeline(CgPipelineDesc desc, long pipeline) {
+    public VulkanPipeline(CgGraphicsPipelineDesc desc, long pipeline) {
         this.desc = desc;
         this.pipeline = pipeline;
     }
 
-    @Override public CgPipelineDesc desc() { return desc; }
+    @Override public CgGraphicsPipelineDesc desc() { return desc; }
 }

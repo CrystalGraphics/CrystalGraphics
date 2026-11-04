@@ -1,6 +1,6 @@
 package com.crystalgraphics.platform.gl.tracked;
 
-import com.crystalgraphics.platform.device.recording.CgRecordingDevice;
+import com.crystalgraphics.platform.rhi.nulldrv.CgNullRHI;
 import com.crystalgraphics.platform.gl.CgGL;
 import org.junit.Test;
 
@@ -14,7 +14,7 @@ public class CgTrackedSyncTest {
 
     @Test
     public void aFenceIsSignalledWhenItsFrameRetires() {
-        CgRecordingDevice device = new CgRecordingDevice(8, 8);
+        CgNullRHI device = new CgNullRHI(8, 8);
         CgTrackedGLBackend gl = new CgTrackedGLBackend(device, FakeGlslCompiler.EMPTY, true);
         long fence = gl.glFenceSync(CgGL.GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
         assertEquals(CgGL.GL_TIMEOUT_EXPIRED, gl.glClientWaitSync(fence, 0, 0));
@@ -26,13 +26,13 @@ public class CgTrackedSyncTest {
 
     @Test
     public void aBlockingWaitOnTheCurrentFrameSubmitsItAndAHostedDeviceRefuses() {
-        CgRecordingDevice device = new CgRecordingDevice(8, 8);
+        CgNullRHI device = new CgNullRHI(8, 8);
         CgTrackedGLBackend gl = new CgTrackedGLBackend(device, FakeGlslCompiler.EMPTY, true);
         long fence = gl.glFenceSync(CgGL.GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
         assertEquals(CgGL.GL_CONDITION_SATISFIED, gl.glClientWaitSync(fence, CgGL.GL_SYNC_FLUSH_COMMANDS_BIT, 1_000_000L));
         assertTrue(device.log().contains("endFrame 0"));
 
-        CgRecordingDevice hosted = new CgRecordingDevice(8, 8, 2, false);
+        CgNullRHI hosted = new CgNullRHI(8, 8, 2, false);
         CgTrackedGLBackend onHost = new CgTrackedGLBackend(hosted, FakeGlslCompiler.EMPTY, true);
         long f = onHost.glFenceSync(CgGL.GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
         try {
@@ -44,7 +44,7 @@ public class CgTrackedSyncTest {
 
     @Test
     public void aCopyIntoMemoryTheCpuReadsRunsOnTheGpu_andAMapWaitsOnlyForTheFrameThatCopied() {
-        CgRecordingDevice device = new CgRecordingDevice(8, 8);
+        CgNullRHI device = new CgNullRHI(8, 8);
         CgTrackedGLBackend gl = new CgTrackedGLBackend(device, FakeGlslCompiler.EMPTY, true);
         int counts = gl.glGenBuffers(), staging = gl.glGenBuffers();
         gl.glBindBuffer(CgGL.GL_COPY_READ_BUFFER, counts);
@@ -73,7 +73,7 @@ public class CgTrackedSyncTest {
         assertTrue(device.log().contains("finish"));
         assertEquals(1, device.frameIndex());
 
-        CgRecordingDevice hosted = new CgRecordingDevice(8, 8, 2, false);
+        CgNullRHI hosted = new CgNullRHI(8, 8, 2, false);
         CgTrackedGLBackend onHost = new CgTrackedGLBackend(hosted, FakeGlslCompiler.EMPTY, true);
         int from = onHost.glGenBuffers(), to = onHost.glGenBuffers();
         onHost.glBindBuffer(CgGL.GL_COPY_READ_BUFFER, from);
@@ -90,7 +90,7 @@ public class CgTrackedSyncTest {
 
     @Test
     public void aTimerAroundADrawLeavesThePassWhole() {
-        CgRecordingDevice device = new CgRecordingDevice(8, 8);
+        CgNullRHI device = new CgNullRHI(8, 8);
         CgTrackedGLBackend gl = new CgTrackedGLBackend(device, FakeGlslCompiler.EMPTY, true);
         int vs = gl.glCreateShader(CgGL.GL_VERTEX_SHADER), fs = gl.glCreateShader(CgGL.GL_FRAGMENT_SHADER), p = gl.glCreateProgram();
         gl.glAttachShader(p, vs);

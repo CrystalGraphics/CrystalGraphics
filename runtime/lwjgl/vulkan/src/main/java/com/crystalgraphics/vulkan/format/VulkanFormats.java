@@ -1,10 +1,10 @@
 package com.crystalgraphics.vulkan.format;
 
-import com.crystalgraphics.platform.device.format.CgAttribFormat;
-import com.crystalgraphics.platform.device.format.CgCompare;
-import com.crystalgraphics.platform.device.format.CgFormat;
-import com.crystalgraphics.platform.device.pipeline.CgPipelineDesc;
-import com.crystalgraphics.platform.device.resource.CgGpuSampler;
+import com.crystalgraphics.platform.rhi.format.CgAttribFormat;
+import com.crystalgraphics.platform.rhi.format.CgCompare;
+import com.crystalgraphics.platform.rhi.format.CgFormat;
+import com.crystalgraphics.platform.rhi.pipeline.CgGraphicsPipelineDesc;
+import com.crystalgraphics.platform.rhi.resource.CgGpuSampler;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.vulkan.VkFormatProperties;
 import org.lwjgl.vulkan.VkPhysicalDevice;
@@ -154,7 +154,7 @@ public final class VulkanFormats {
         }
     }
 
-    public static int stencilOp(CgPipelineDesc.StencilOp op) {
+    public static int stencilOp(CgGraphicsPipelineDesc.StencilOp op) {
         switch (op) {
             case ZERO: return VK_STENCIL_OP_ZERO;
             case REPLACE: return VK_STENCIL_OP_REPLACE;
@@ -167,7 +167,7 @@ public final class VulkanFormats {
         }
     }
 
-    public static int blendFactor(CgPipelineDesc.BlendFactor f) {
+    public static int blendFactor(CgGraphicsPipelineDesc.BlendFactor f) {
         switch (f) {
             case ZERO: return VK_BLEND_FACTOR_ZERO;
             case ONE: return VK_BLEND_FACTOR_ONE;
@@ -187,7 +187,7 @@ public final class VulkanFormats {
         }
     }
 
-    public static int blendOp(CgPipelineDesc.BlendOp op) {
+    public static int blendOp(CgGraphicsPipelineDesc.BlendOp op) {
         switch (op) {
             case SUBTRACT: return VK_BLEND_OP_SUBTRACT;
             case REVERSE_SUBTRACT: return VK_BLEND_OP_REVERSE_SUBTRACT;
@@ -197,7 +197,7 @@ public final class VulkanFormats {
         }
     }
 
-    public static int topology(CgPipelineDesc.Topology t) {
+    public static int topology(CgGraphicsPipelineDesc.Topology t) {
         switch (t) {
             case POINTS: return VK_PRIMITIVE_TOPOLOGY_POINT_LIST;
             case LINES: return VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
@@ -208,7 +208,7 @@ public final class VulkanFormats {
         }
     }
 
-    public static int cull(CgPipelineDesc.CullMode c) {
+    public static int cull(CgGraphicsPipelineDesc.CullMode c) {
         switch (c) {
             case FRONT: return VK_CULL_MODE_FRONT_BIT;
             case BACK: return VK_CULL_MODE_BACK_BIT;
@@ -217,7 +217,7 @@ public final class VulkanFormats {
         }
     }
 
-    public static int polygonMode(CgPipelineDesc.PolygonMode m) {
+    public static int polygonMode(CgGraphicsPipelineDesc.PolygonMode m) {
         switch (m) {
             case LINE: return VK_POLYGON_MODE_LINE;
             case POINT: return VK_POLYGON_MODE_POINT;

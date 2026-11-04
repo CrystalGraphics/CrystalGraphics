@@ -1,8 +1,8 @@
 package com.crystalgraphics.platform.gl.tracked.tracker;
 
-import com.crystalgraphics.platform.device.CgDevice;
-import com.crystalgraphics.platform.device.resource.CgGpuTexture;
-import com.crystalgraphics.platform.device.resource.CgTextureView;
+import com.crystalgraphics.platform.rhi.CgRHI;
+import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
+import com.crystalgraphics.platform.rhi.resource.CgTextureView;
 
 import java.util.List;
 import java.util.Objects;
@@ -17,7 +17,7 @@ import java.util.Objects;
 public record CgTarget(List<CgTextureView> colors, CgTextureView depth) {
 
     /** The default framebuffer. */
-    public static CgTarget surface(CgDevice device) {
+    public static CgTarget surface(CgRHI device) {
         CgGpuTexture depth = device.surfaceDepth();
         return new CgTarget(List.of(CgTextureView.whole(device.surfaceColor())),
                 depth == null ? null : CgTextureView.whole(depth));

@@ -1,8 +1,8 @@
 package com.crystalgraphics.platform.gl.tracked.gl;
 
-import com.crystalgraphics.platform.device.command.CgAccess;
-import com.crystalgraphics.platform.device.format.CgCompare;
-import com.crystalgraphics.platform.device.pipeline.CgPipelineDesc;
+import com.crystalgraphics.platform.rhi.command.CgAccess;
+import com.crystalgraphics.platform.rhi.format.CgCompare;
+import com.crystalgraphics.platform.rhi.pipeline.CgGraphicsPipelineDesc;
 import com.crystalgraphics.platform.gl.CgGL;
 
 /** GL's enums to the device's. An enum GL would reject throws, naming it. */
@@ -24,79 +24,79 @@ public final class GlEnums {
         }
     }
 
-    static CgPipelineDesc.BlendFactor blendFactor(int f) {
+    static CgGraphicsPipelineDesc.BlendFactor blendFactor(int f) {
         switch (f) {
-            case CgGL.GL_ZERO:                return CgPipelineDesc.BlendFactor.ZERO;
-            case CgGL.GL_ONE:                 return CgPipelineDesc.BlendFactor.ONE;
-            case CgGL.GL_SRC_COLOR:           return CgPipelineDesc.BlendFactor.SRC_COLOR;
-            case CgGL.GL_ONE_MINUS_SRC_COLOR: return CgPipelineDesc.BlendFactor.ONE_MINUS_SRC_COLOR;
-            case CgGL.GL_DST_COLOR:           return CgPipelineDesc.BlendFactor.DST_COLOR;
-            case CgGL.GL_ONE_MINUS_DST_COLOR: return CgPipelineDesc.BlendFactor.ONE_MINUS_DST_COLOR;
-            case CgGL.GL_SRC_ALPHA:           return CgPipelineDesc.BlendFactor.SRC_ALPHA;
-            case CgGL.GL_ONE_MINUS_SRC_ALPHA: return CgPipelineDesc.BlendFactor.ONE_MINUS_SRC_ALPHA;
-            case CgGL.GL_DST_ALPHA:           return CgPipelineDesc.BlendFactor.DST_ALPHA;
-            case CgGL.GL_ONE_MINUS_DST_ALPHA: return CgPipelineDesc.BlendFactor.ONE_MINUS_DST_ALPHA;
-            case 0x8001:                      return CgPipelineDesc.BlendFactor.CONSTANT_COLOR;
-            case 0x8002:                      return CgPipelineDesc.BlendFactor.ONE_MINUS_CONSTANT_COLOR;
-            case 0x8003:                      return CgPipelineDesc.BlendFactor.CONSTANT_ALPHA;
-            case 0x8004:                      return CgPipelineDesc.BlendFactor.ONE_MINUS_CONSTANT_ALPHA;
-            case CgGL.GL_SRC_ALPHA_SATURATE:  return CgPipelineDesc.BlendFactor.SRC_ALPHA_SATURATE;
+            case CgGL.GL_ZERO:                return CgGraphicsPipelineDesc.BlendFactor.ZERO;
+            case CgGL.GL_ONE:                 return CgGraphicsPipelineDesc.BlendFactor.ONE;
+            case CgGL.GL_SRC_COLOR:           return CgGraphicsPipelineDesc.BlendFactor.SRC_COLOR;
+            case CgGL.GL_ONE_MINUS_SRC_COLOR: return CgGraphicsPipelineDesc.BlendFactor.ONE_MINUS_SRC_COLOR;
+            case CgGL.GL_DST_COLOR:           return CgGraphicsPipelineDesc.BlendFactor.DST_COLOR;
+            case CgGL.GL_ONE_MINUS_DST_COLOR: return CgGraphicsPipelineDesc.BlendFactor.ONE_MINUS_DST_COLOR;
+            case CgGL.GL_SRC_ALPHA:           return CgGraphicsPipelineDesc.BlendFactor.SRC_ALPHA;
+            case CgGL.GL_ONE_MINUS_SRC_ALPHA: return CgGraphicsPipelineDesc.BlendFactor.ONE_MINUS_SRC_ALPHA;
+            case CgGL.GL_DST_ALPHA:           return CgGraphicsPipelineDesc.BlendFactor.DST_ALPHA;
+            case CgGL.GL_ONE_MINUS_DST_ALPHA: return CgGraphicsPipelineDesc.BlendFactor.ONE_MINUS_DST_ALPHA;
+            case 0x8001:                      return CgGraphicsPipelineDesc.BlendFactor.CONSTANT_COLOR;
+            case 0x8002:                      return CgGraphicsPipelineDesc.BlendFactor.ONE_MINUS_CONSTANT_COLOR;
+            case 0x8003:                      return CgGraphicsPipelineDesc.BlendFactor.CONSTANT_ALPHA;
+            case 0x8004:                      return CgGraphicsPipelineDesc.BlendFactor.ONE_MINUS_CONSTANT_ALPHA;
+            case CgGL.GL_SRC_ALPHA_SATURATE:  return CgGraphicsPipelineDesc.BlendFactor.SRC_ALPHA_SATURATE;
             default: throw bad("blend factor", f);
         }
     }
 
-    static CgPipelineDesc.BlendOp blendOp(int mode) {
+    static CgGraphicsPipelineDesc.BlendOp blendOp(int mode) {
         switch (mode) {
-            case CgGL.GL_FUNC_ADD:              return CgPipelineDesc.BlendOp.ADD;
-            case CgGL.GL_FUNC_SUBTRACT:         return CgPipelineDesc.BlendOp.SUBTRACT;
-            case CgGL.GL_FUNC_REVERSE_SUBTRACT: return CgPipelineDesc.BlendOp.REVERSE_SUBTRACT;
-            case CgGL.GL_MIN:                   return CgPipelineDesc.BlendOp.MIN;
-            case CgGL.GL_MAX:                   return CgPipelineDesc.BlendOp.MAX;
+            case CgGL.GL_FUNC_ADD:              return CgGraphicsPipelineDesc.BlendOp.ADD;
+            case CgGL.GL_FUNC_SUBTRACT:         return CgGraphicsPipelineDesc.BlendOp.SUBTRACT;
+            case CgGL.GL_FUNC_REVERSE_SUBTRACT: return CgGraphicsPipelineDesc.BlendOp.REVERSE_SUBTRACT;
+            case CgGL.GL_MIN:                   return CgGraphicsPipelineDesc.BlendOp.MIN;
+            case CgGL.GL_MAX:                   return CgGraphicsPipelineDesc.BlendOp.MAX;
             default: throw bad("blend equation", mode);
         }
     }
 
-    static CgPipelineDesc.StencilOp stencilOp(int op) {
+    static CgGraphicsPipelineDesc.StencilOp stencilOp(int op) {
         switch (op) {
-            case CgGL.GL_KEEP:      return CgPipelineDesc.StencilOp.KEEP;
-            case CgGL.GL_ZERO:      return CgPipelineDesc.StencilOp.ZERO;
-            case CgGL.GL_REPLACE:   return CgPipelineDesc.StencilOp.REPLACE;
-            case CgGL.GL_INCR:      return CgPipelineDesc.StencilOp.INCREMENT_CLAMP;
-            case CgGL.GL_DECR:      return CgPipelineDesc.StencilOp.DECREMENT_CLAMP;
-            case CgGL.GL_INVERT:    return CgPipelineDesc.StencilOp.INVERT;
-            case CgGL.GL_INCR_WRAP: return CgPipelineDesc.StencilOp.INCREMENT_WRAP;
-            case CgGL.GL_DECR_WRAP: return CgPipelineDesc.StencilOp.DECREMENT_WRAP;
+            case CgGL.GL_KEEP:      return CgGraphicsPipelineDesc.StencilOp.KEEP;
+            case CgGL.GL_ZERO:      return CgGraphicsPipelineDesc.StencilOp.ZERO;
+            case CgGL.GL_REPLACE:   return CgGraphicsPipelineDesc.StencilOp.REPLACE;
+            case CgGL.GL_INCR:      return CgGraphicsPipelineDesc.StencilOp.INCREMENT_CLAMP;
+            case CgGL.GL_DECR:      return CgGraphicsPipelineDesc.StencilOp.DECREMENT_CLAMP;
+            case CgGL.GL_INVERT:    return CgGraphicsPipelineDesc.StencilOp.INVERT;
+            case CgGL.GL_INCR_WRAP: return CgGraphicsPipelineDesc.StencilOp.INCREMENT_WRAP;
+            case CgGL.GL_DECR_WRAP: return CgGraphicsPipelineDesc.StencilOp.DECREMENT_WRAP;
             default: throw bad("stencil op", op);
         }
     }
 
-    static CgPipelineDesc.CullMode cull(boolean enabled, int mode) {
-        if (!enabled) return CgPipelineDesc.CullMode.NONE;
+    static CgGraphicsPipelineDesc.CullMode cull(boolean enabled, int mode) {
+        if (!enabled) return CgGraphicsPipelineDesc.CullMode.NONE;
         switch (mode) {
-            case CgGL.GL_FRONT:          return CgPipelineDesc.CullMode.FRONT;
-            case CgGL.GL_BACK:           return CgPipelineDesc.CullMode.BACK;
-            case CgGL.GL_FRONT_AND_BACK: return CgPipelineDesc.CullMode.FRONT_AND_BACK;
+            case CgGL.GL_FRONT:          return CgGraphicsPipelineDesc.CullMode.FRONT;
+            case CgGL.GL_BACK:           return CgGraphicsPipelineDesc.CullMode.BACK;
+            case CgGL.GL_FRONT_AND_BACK: return CgGraphicsPipelineDesc.CullMode.FRONT_AND_BACK;
             default: throw bad("cull face", mode);
         }
     }
 
-    static CgPipelineDesc.PolygonMode polygonMode(int mode) {
+    static CgGraphicsPipelineDesc.PolygonMode polygonMode(int mode) {
         switch (mode) {
-            case CgGL.GL_FILL:  return CgPipelineDesc.PolygonMode.FILL;
-            case CgGL.GL_LINE:  return CgPipelineDesc.PolygonMode.LINE;
-            case CgGL.GL_POINT: return CgPipelineDesc.PolygonMode.POINT;
+            case CgGL.GL_FILL:  return CgGraphicsPipelineDesc.PolygonMode.FILL;
+            case CgGL.GL_LINE:  return CgGraphicsPipelineDesc.PolygonMode.LINE;
+            case CgGL.GL_POINT: return CgGraphicsPipelineDesc.PolygonMode.POINT;
             default: throw bad("polygon mode", mode);
         }
     }
 
-    public static CgPipelineDesc.Topology topology(int mode) {
+    public static CgGraphicsPipelineDesc.Topology topology(int mode) {
         switch (mode) {
-            case CgGL.GL_POINTS:         return CgPipelineDesc.Topology.POINTS;
-            case CgGL.GL_LINES:          return CgPipelineDesc.Topology.LINES;
-            case CgGL.GL_LINE_STRIP:     return CgPipelineDesc.Topology.LINE_STRIP;
-            case CgGL.GL_TRIANGLES:      return CgPipelineDesc.Topology.TRIANGLES;
-            case CgGL.GL_TRIANGLE_STRIP: return CgPipelineDesc.Topology.TRIANGLE_STRIP;
-            case CgGL.GL_TRIANGLE_FAN:   return CgPipelineDesc.Topology.TRIANGLE_FAN;
+            case CgGL.GL_POINTS:         return CgGraphicsPipelineDesc.Topology.POINTS;
+            case CgGL.GL_LINES:          return CgGraphicsPipelineDesc.Topology.LINES;
+            case CgGL.GL_LINE_STRIP:     return CgGraphicsPipelineDesc.Topology.LINE_STRIP;
+            case CgGL.GL_TRIANGLES:      return CgGraphicsPipelineDesc.Topology.TRIANGLES;
+            case CgGL.GL_TRIANGLE_STRIP: return CgGraphicsPipelineDesc.Topology.TRIANGLE_STRIP;
+            case CgGL.GL_TRIANGLE_FAN:   return CgGraphicsPipelineDesc.Topology.TRIANGLE_FAN;
             default: throw bad("draw mode (a core profile has no quads or line loops here)", mode);
         }
     }

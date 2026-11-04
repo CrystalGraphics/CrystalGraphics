@@ -1,7 +1,7 @@
 package com.crystalgraphics.vulkan.shader;
 
-import com.crystalgraphics.platform.device.pipeline.CgBindingLayout;
-import com.crystalgraphics.platform.device.shader.CgGlslCompiler;
+import com.crystalgraphics.platform.rhi.binding.CgBindingLayout;
+import com.crystalgraphics.platform.rhi.shader.CgGlslCompiler;
 import org.junit.AfterClass;
 import org.junit.Test;
 

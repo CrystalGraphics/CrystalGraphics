@@ -1,16 +1,16 @@
 package com.crystalgraphics.vulkan.command;
 
-import com.crystalgraphics.platform.device.command.CgCommandEncoder;
-import com.crystalgraphics.platform.device.command.CgComputePass;
-import com.crystalgraphics.platform.device.command.CgPassDesc;
-import com.crystalgraphics.platform.device.command.CgRenderPass;
-import com.crystalgraphics.platform.device.format.CgFormat;
-import com.crystalgraphics.platform.device.resource.CgGpuBuffer;
-import com.crystalgraphics.platform.device.resource.CgGpuSampler;
-import com.crystalgraphics.platform.device.resource.CgGpuTexture;
-import com.crystalgraphics.platform.device.resource.CgTextureRegion;
-import com.crystalgraphics.platform.device.resource.CgTextureView;
-import com.crystalgraphics.platform.device.resource.CgTimerQuery;
+import com.crystalgraphics.platform.rhi.command.CgCommandList;
+import com.crystalgraphics.platform.rhi.command.CgComputePass;
+import com.crystalgraphics.platform.rhi.command.CgPassDesc;
+import com.crystalgraphics.platform.rhi.command.CgRenderPass;
+import com.crystalgraphics.platform.rhi.format.CgFormat;
+import com.crystalgraphics.platform.rhi.resource.CgGpuBuffer;
+import com.crystalgraphics.platform.rhi.resource.CgGpuSampler;
+import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
+import com.crystalgraphics.platform.rhi.resource.CgTextureRegion;
+import com.crystalgraphics.platform.rhi.resource.CgTextureView;
+import com.crystalgraphics.platform.rhi.sync.CgTimerQuery;
 import com.crystalgraphics.vulkan.CgVulkanDevice;
 import com.crystalgraphics.vulkan.format.VulkanFormats;
 import com.crystalgraphics.vulkan.resource.VulkanBuffer;
@@ -61,7 +61,7 @@ import static org.lwjgl.vulkan.VK12.vkResetQueryPool;
  * an image or buffer it wrote, at the next pass, or at the frame's end; mipmaps asked of one meanwhile are generated
  * then.</p>
  */
-public final class VulkanEncoder implements CgCommandEncoder {
+public final class VulkanEncoder implements CgCommandList {
 
     /** A rested texture's readers. Compute too: an async pass's command buffer keeps only that stage of these. */
     private static final int SHADER_STAGES = VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT

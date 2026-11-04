@@ -1,7 +1,7 @@
 package com.crystalgraphics.vulkan.resource;
 
-import com.crystalgraphics.platform.device.format.CgFormat;
-import com.crystalgraphics.platform.device.resource.CgTextureRegion;
+import com.crystalgraphics.platform.rhi.format.CgFormat;
+import com.crystalgraphics.platform.rhi.resource.CgTextureRegion;
 
 /**
  * Cuts a texture upload into pieces no larger than a staging chunk: whole slices (depth or layers) while one fits, else

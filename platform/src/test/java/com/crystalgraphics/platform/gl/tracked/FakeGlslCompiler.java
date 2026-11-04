@@ -1,9 +1,9 @@
 package com.crystalgraphics.platform.gl.tracked;
 
-import com.crystalgraphics.platform.device.pipeline.CgBindingLayout;
-import com.crystalgraphics.platform.device.recording.CgRecordingDevice;
-import com.crystalgraphics.platform.device.shader.CgGlslCompiler;
-import com.crystalgraphics.platform.device.shader.CgShaderModule;
+import com.crystalgraphics.platform.rhi.binding.CgBindingLayout;
+import com.crystalgraphics.platform.rhi.nulldrv.CgNullRHI;
+import com.crystalgraphics.platform.rhi.shader.CgGlslCompiler;
+import com.crystalgraphics.platform.rhi.shader.CgShaderModule;
 
 import java.util.List;
 import java.util.Map;
@@ -36,7 +36,7 @@ public final class FakeGlslCompiler implements CgGlslCompiler {
     public Program compile(String vertexGlsl, String fragmentGlsl, Map<String, Integer> attribLocations, String label) {
         if (vertexGlsl.contains("BROKEN") || fragmentGlsl.contains("BROKEN"))
             throw new CgShaderModule.CompileException(label + ": 'BROKEN' : undeclared identifier");
-        return new Program(CgRecordingDevice.emptySpirv(), CgRecordingDevice.emptySpirv(), CgRecordingDevice.emptySpirv(),
+        return new Program(CgNullRHI.emptySpirv(), CgNullRHI.emptySpirv(), CgNullRHI.emptySpirv(),
                 attributes, uniformBlocks, List.of(), samplers, uniforms, vertexUniformBinding, vertexUniformSize, -1, 0, slots);
     }
 

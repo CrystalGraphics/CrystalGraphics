@@ -1,7 +1,7 @@
 package com.crystalgraphics.platform.gl.tracked;
 
-import com.crystalgraphics.platform.device.recording.CgRecordingDevice;
-import com.crystalgraphics.platform.device.shader.CgGlslCompiler;
+import com.crystalgraphics.platform.rhi.nulldrv.CgNullRHI;
+import com.crystalgraphics.platform.rhi.shader.CgGlslCompiler;
 import com.crystalgraphics.platform.gl.CgGL;
 import org.junit.Test;
 
@@ -50,7 +50,7 @@ public class CgTrackedBackgroundCompileTest {
     @Test
     public void aLinkReturnsBeforeShadercHas_andItsStatusWaitsForIt() {
         Gated compiler = new Gated();
-        CgTrackedGLBackend gl = new CgTrackedGLBackend(new CgRecordingDevice(8, 8), compiler, true).compileInBackground();
+        CgTrackedGLBackend gl = new CgTrackedGLBackend(new CgNullRHI(8, 8), compiler, true).compileInBackground();
         int program = link(gl, "void main() {}");
 
         assertEquals(CgGL.GL_FALSE, gl.glGetProgrami(program, CgGL.GL_COMPLETION_STATUS_KHR));
@@ -62,7 +62,7 @@ public class CgTrackedBackgroundCompileTest {
 
     @Test
     public void aCompileThatFailsOnTheWorkerFailsTheLink_withItsLog() {
-        CgTrackedGLBackend gl = new CgTrackedGLBackend(new CgRecordingDevice(8, 8), FakeGlslCompiler.EMPTY, true)
+        CgTrackedGLBackend gl = new CgTrackedGLBackend(new CgNullRHI(8, 8), FakeGlslCompiler.EMPTY, true)
                 .compileInBackground();
         int program = link(gl, "BROKEN");
 
@@ -72,7 +72,7 @@ public class CgTrackedBackgroundCompileTest {
 
     @Test
     public void withoutAWorker_aLinkIsDoneAtTheCall() {
-        CgTrackedGLBackend gl = new CgTrackedGLBackend(new CgRecordingDevice(8, 8), FakeGlslCompiler.EMPTY, true);
+        CgTrackedGLBackend gl = new CgTrackedGLBackend(new CgNullRHI(8, 8), FakeGlslCompiler.EMPTY, true);
         int program = link(gl, "void main() {}");
 
         assertEquals(CgGL.GL_TRUE, gl.glGetProgrami(program, CgGL.GL_COMPLETION_STATUS_KHR));

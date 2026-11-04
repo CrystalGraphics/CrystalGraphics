@@ -1,7 +1,7 @@
 package com.crystalgraphics.vulkan.shader;
 
-import com.crystalgraphics.platform.device.shader.CgGlslCompiler;
-import com.crystalgraphics.platform.device.shader.CgShaderModule;
+import com.crystalgraphics.platform.rhi.shader.CgGlslCompiler;
+import com.crystalgraphics.platform.rhi.shader.CgShaderModule;
 import org.lwjgl.PointerBuffer;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.util.spvc.SpvcReflectedResource;

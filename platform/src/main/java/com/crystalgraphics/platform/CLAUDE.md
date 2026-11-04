@@ -23,13 +23,13 @@ and cursor seams are here too — see [UI-facing services](#ui-facing-services).
 | `gl/CgGlProgramNames` | Class | Each program's uniform locations and block indices, read by the link worker where it linked the program, so `CgGL`'s name queries never wait on a threaded driver from the render thread |
 | `gl/CgGlStateManager`, `gl/state/*` | — | The GL state shadow, scopes and providers (`core/.../gl/state/CLAUDE.md`) |
 | `gl/CENSUS.md` | Generated | Every `CgGLBackend` method and who reaches it; `python platform/tools/gl_census.py` |
-| `gl/tracked/CgTrackedGLBackend`, `CgTrackedGLContext`, `CgTrackedStateProvider` | Classes | `CgGLBackend` over a `CgDevice` — [the tracked backend](#the-tracked-backend-and-the-device-d3) — its capabilities, and the scopes' state provider on it |
+| `gl/tracked/CgTrackedGLBackend`, `CgTrackedGLContext`, `CgTrackedStateProvider` | Classes | `CgGLBackend` over a `CgRHI` — [the tracked backend](#the-tracked-backend-and-the-device-d3) — its capabilities, and the scopes' state provider on it |
 | `gl/tracked/tracker/` | Classes | `CgTracker`: passes, pipelines and bindings from GL's calls, with the draw state and target it compares |
 | `gl/tracked/gl/` | Classes | The GL objects the backend emulates — buffers, textures, programs, framebuffers, VAOs, render state, errors. Public for the backend only |
 | `gl/tracked/memory/` | Classes | Buffer storage: slab allocation and the renamed allocations behind one GL buffer |
-| `device/CgDevice`, `CgDeviceInfo`, `CgDeviceObject` | Interfaces, records | What a GPU device does: buffers, textures, SPIR-V modules, pipelines, passes, frames |
-| `device/format/`, `resource/`, `pipeline/`, `command/`, `shader/` | Interfaces, records | Its types, by what they describe: formats; buffers, textures, samplers, views, timers; pipelines and bindings; encoders and passes; modules and `CgGlslCompiler` |
-| `device/recording/CgRecordingDevice` | Class | A device that logs every command and throws on misuse — for tests |
+| `rhi/CgRHI` | Interface | The device API (Unreal's `FDynamicRHI`): objects, the frame's commands, frames in flight; `CgRHI.get()` the one installed, `CgRHI.Globals` what it can do. **Nothing else goes at `rhi/`'s root** |
+| `rhi/format/`, `resource/`, `pipeline/`, `binding/`, `command/`, `shader/`, `sync/` | Interfaces, records | Its types by subsystem: formats; buffers, textures, samplers, views and `CgRHIResource`; graphics and compute pipelines; binding layouts and per-draw bindings; the command list, passes and accesses; modules and `CgGlslCompiler`; timer queries |
+| `rhi/nulldrv/CgNullRHI` | Class | The null RHI (Unreal's `NullDrv`): logs every command and throws on misuse — for tests and headless runs |
 | `service/CgResourceService` | Interface | `openStream(domain, path)` — `null` on not-found; `openStack(domain, path)`, every pack's copy lowest first (what `sounds.json` merges from); `namespaces()` |
 | `service/CgRenderingService` | Interface | Viewport size and the legacy single-call frame |
 | `service/CgLifecycleService` | Interface | Context init, destroy, resize, and the frame tick |
@@ -228,8 +228,8 @@ where a scope left open at `end()` was opened.
 
 ## The tracked backend and the device (D3)
 
-`CgTrackedGLBackend` answers every `CgGLBackend` call on a `CgDevice` instead of a GL driver, so nothing above
-`CgGL` changes. Its devices are `CgRecordingDevice` in tests and `CgVulkanDevice` (`runtime/lwjgl/vulkan`,
+`CgTrackedGLBackend` answers every `CgGLBackend` call on a `CgRHI` instead of a GL driver, so nothing above
+`CgGL` changes. Its devices are `CgNullRHI` in tests and `CgVulkanDevice` (`runtime/lwjgl/vulkan`,
 `plan/device-vulkan.md`), which the harness runs with `--device=vulkan`.
 
 ```java
@@ -245,7 +245,7 @@ gl.endFrame();                      // once a frame: ends the open pass and the 
 A test that wants the device's view reads it back:
 
 ```java
-CgRecordingDevice device = new CgRecordingDevice(64, 64);
+CgNullRHI device = new CgNullRHI(64, 64);
 // ... draw ...
 gl.endFrame();
 device.draws();        // draws the device accepted -- it throws on a draw it cannot record
@@ -255,7 +255,7 @@ gl.stats();            // passes, pass breaks, clears folded into load ops, pipe
 
 | Layer | Job |
 |---|---|
-| `CgDevice` | Buffers, textures, samplers, SPIR-V modules, pipelines by description, dynamic-rendering passes with load and store ops, one push-descriptor set per draw, frames in flight with release deferred to retirement |
+| `CgRHI` | Buffers, textures, samplers, SPIR-V modules, pipelines by description, dynamic-rendering passes with load and store ops, one push-descriptor set per draw, frames in flight with release deferred to retirement |
 | `CgTracker` | GL's implicit passes made explicit: a clear before the first draw is the pass's `CLEAR` load op; a copy, blit, readback or texture upload ends the pass and the next draw resumes with `LOAD`; a pipeline per state key; buffer memory renamed when an unretired frame used it |
 | `CgTrackedGLBackend` | GL's objects and selector state over the tracker, one `Tracked*` class per domain in the census's order |
 | `CgGlslCompiler` | `ShadercGlslCompiler` (`runtime/lwjgl/vulkan`) compiles as Minecraft 26.2 does: shaderc on the source as written, then SPIRV-Cross reflection with the binding and location words patched so the stages agree by name. Given a folder it keeps shaderc's output there by the source's hash, so a second launch runs shaderc on nothing it ran it on before; `CgVulkanDevice` keeps its pipeline cache the same way, one file per driver, written at `close()` |
@@ -310,7 +310,7 @@ What is easy to get wrong:
   or at the frame's end; mipmaps asked of it meanwhile are generated after that wait.
   `-Dcrystalgraphics.vulkan.transfer=false` keeps every copy on the frame's queue.
 - **An upload replacing a whole texture the frame has used, 256 KB or more, goes to a new image** (`TrackedTextures`'
-  rename, asked of `CgCommandEncoder.writeWaitsForFrame`), so it takes the transfer queue rather than waiting behind
+  rename, asked of `CgCommandList.writeWaitsForFrame`), so it takes the transfer queue rather than waiting behind
   the frame: level 0 whole, with no other level specified, since those would be lost. The old image retires with the
   frames reading it. A smaller or partial upload stays on the frame's queue, where copies one after another share one
   barrier pair, and one call where they share a source and a texture, until anything else is recorded

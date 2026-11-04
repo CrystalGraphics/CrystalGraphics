@@ -1,8 +1,8 @@
 package com.crystalgraphics.platform.gl.tracked.gl;
 
-import com.crystalgraphics.platform.device.pipeline.CgBindingLayout;
-import com.crystalgraphics.platform.device.recording.CgRecordingDevice;
-import com.crystalgraphics.platform.device.shader.CgGlslCompiler;
+import com.crystalgraphics.platform.rhi.binding.CgBindingLayout;
+import com.crystalgraphics.platform.rhi.nulldrv.CgNullRHI;
+import com.crystalgraphics.platform.rhi.shader.CgGlslCompiler;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.tracked.CgTrackedGLBackend;
 import com.crystalgraphics.platform.gl.tracked.FakeGlslCompiler;
@@ -32,7 +32,7 @@ public class CgTrackedProgramsTest {
             List.of(new CgBindingLayout.Slot(0, CgBindingLayout.Type.UNIFORM_BUFFER),
                     new CgBindingLayout.Slot(1, CgBindingLayout.Type.UNIFORM_BUFFER)));
 
-    private final CgRecordingDevice device = new CgRecordingDevice(16, 16);
+    private final CgNullRHI device = new CgNullRHI(16, 16);
     private final CgTrackedGLBackend gl = new CgTrackedGLBackend(device, COMPILER, true);
 
     private int program(String vertexSource) {

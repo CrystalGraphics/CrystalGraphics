@@ -1,7 +1,7 @@
 package com.crystalgraphics.vulkan.resource;
 
-import com.crystalgraphics.platform.device.resource.CgGpuTexture;
-import com.crystalgraphics.platform.device.resource.CgTextureView;
+import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
+import com.crystalgraphics.platform.rhi.resource.CgTextureView;
 import com.crystalgraphics.vulkan.command.VulkanBarriers;
 import com.crystalgraphics.vulkan.command.VulkanComputeCommandBuffer;
 import com.crystalgraphics.vulkan.command.VulkanTransferCommandBuffer;

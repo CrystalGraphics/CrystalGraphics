@@ -1,6 +1,6 @@
 package com.crystalgraphics.vulkan.command;
 
-import com.crystalgraphics.platform.device.command.CgAccess;
+import com.crystalgraphics.platform.rhi.command.CgAccess;
 
 import static org.lwjgl.vulkan.VK10.*;
 

@@ -1,14 +1,14 @@
 package com.crystalgraphics.platform.gl.tracked.gl;
 
-import com.crystalgraphics.platform.device.CgDevice;
-import com.crystalgraphics.platform.device.CgDeviceObject;
-import com.crystalgraphics.platform.device.format.CgAttribFormat;
-import com.crystalgraphics.platform.device.pipeline.CgBindingLayout;
-import com.crystalgraphics.platform.device.pipeline.CgComputePipeline;
-import com.crystalgraphics.platform.device.pipeline.CgPipeline;
-import com.crystalgraphics.platform.device.pipeline.CgPipelineDesc;
-import com.crystalgraphics.platform.device.shader.CgGlslCompiler;
-import com.crystalgraphics.platform.device.shader.CgShaderModule;
+import com.crystalgraphics.platform.rhi.CgRHI;
+import com.crystalgraphics.platform.rhi.resource.CgRHIResource;
+import com.crystalgraphics.platform.rhi.format.CgAttribFormat;
+import com.crystalgraphics.platform.rhi.binding.CgBindingLayout;
+import com.crystalgraphics.platform.rhi.pipeline.CgComputePipeline;
+import com.crystalgraphics.platform.rhi.pipeline.CgGraphicsPipeline;
+import com.crystalgraphics.platform.rhi.pipeline.CgGraphicsPipelineDesc;
+import com.crystalgraphics.platform.rhi.shader.CgGlslCompiler;
+import com.crystalgraphics.platform.rhi.shader.CgShaderModule;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.tracked.memory.CgAllocation;
 import com.crystalgraphics.platform.gl.tracked.tracker.CgDrawState;
@@ -71,7 +71,7 @@ public final class TrackedPrograms {
         CgTrackedProgram tracked;
         CgComputePipeline pipeline;
         /** What the link made, released when the program is linked again or deleted. */
-        final List<CgDeviceObject> objects = new ArrayList<>();
+        final List<CgRHIResource> objects = new ArrayList<>();
         /** A kernel's loose uniforms are in {@code vertexData}, at their vertex offsets. */
         ByteBuffer vertexData, fragmentData;
         boolean vertexDirty, fragmentDirty;
@@ -104,19 +104,19 @@ public final class TrackedPrograms {
     }
 
     private final CgTracker tracker;
-    private final CgDevice device;
+    private final CgRHI device;
     private final CgGlslCompiler compiler;
     private final TrackedGlErrors errors;
     private final GlNames<Object> names = new GlNames<>("Shader or program");
     private Program current;
-    private final Map<List<CgPipelineDesc.VertexBuffer>, Map<List<CgPipelineDesc.VertexAttrib>, List<CgPipelineDesc.VertexBuffer>>>
+    private final Map<List<CgGraphicsPipelineDesc.VertexBuffer>, Map<List<CgGraphicsPipelineDesc.VertexAttrib>, List<CgGraphicsPipelineDesc.VertexBuffer>>>
             withConstants = new HashMap<>();
     private CgAllocation constantValues;
     /** The last {@link #feedDisabledInputs}: the program table and layouts it was given, and the layouts it answered. */
     private CgGlslCompiler.Reflection fedTable;
-    private List<CgPipelineDesc.VertexBuffer> fedBase, fedLayouts;
+    private List<CgGraphicsPipelineDesc.VertexBuffer> fedBase, fedLayouts;
     /** {@link #layoutsFeeding}'s answer per program, then per layout list: worked out once. */
-    private final Map<CgGlslCompiler.Reflection, Map<List<CgPipelineDesc.VertexBuffer>, Object>> fedBy = new IdentityHashMap<>();
+    private final Map<CgGlslCompiler.Reflection, Map<List<CgGraphicsPipelineDesc.VertexBuffer>, Object>> fedBy = new IdentityHashMap<>();
     /** The answer for layouts feeding every input: no binding added. */
     private static final Object FEEDS_ALL = new Object();
     /** Where links run shaderc, from {@link #compileInBackground}; null: at the link. */
@@ -283,10 +283,10 @@ public final class TrackedPrograms {
         private CgShaderModule module;
         private CgComputePipeline pipeline;
         private CgTrackedProgram graphics;
-        private Map<CgPipelineDesc, Future<CgPipeline>> builds;
+        private Map<CgGraphicsPipelineDesc, Future<CgGraphicsPipeline>> builds;
         private boolean dropped;
 
-        synchronized void build(CgDevice device, CgTracker tracker, CgGlslCompiler.Program t, String label, long key) {
+        synchronized void build(CgRHI device, CgTracker tracker, CgGlslCompiler.Program t, String label, long key) {
             if (dropped) return;
             CgBindingLayout l = device.createBindingLayout(label, t.slots());
             CgShaderModule vertexGl = device.createShaderModule(CgShaderModule.Stage.VERTEX, t.vertexGlDepth(), label);
@@ -299,11 +299,11 @@ public final class TrackedPrograms {
         /** Whether every recorded pipeline it started has finished building. */
         synchronized boolean built() {
             if (builds == null) return true;
-            for (Future<CgPipeline> f : builds.values()) if (!f.isDone()) return false;
+            for (Future<CgGraphicsPipeline> f : builds.values()) if (!f.isDone()) return false;
             return true;
         }
 
-        synchronized void build(CgDevice device, CgGlslCompiler.ComputeProgram t, String label) {
+        synchronized void build(CgRHI device, CgGlslCompiler.ComputeProgram t, String label) {
             if (dropped) return;
             layout = device.createBindingLayout(label, t.slots());
             module = device.createShaderModule(CgShaderModule.Stage.COMPUTE, t.spirv(), label);
@@ -760,14 +760,14 @@ public final class TrackedPrograms {
         if (current.table != fedTable || state.vertexLayouts != fedBase) {
             fedTable = current.table;
             fedBase = state.vertexLayouts;
-            Map<List<CgPipelineDesc.VertexBuffer>, Object> byBase = fedBy.get(fedTable);
+            Map<List<CgGraphicsPipelineDesc.VertexBuffer>, Object> byBase = fedBy.get(fedTable);
             if (byBase == null) fedBy.put(fedTable, byBase = new HashMap<>());
             Object answer = byBase.get(fedBase);
             if (answer == null) {
-                List<CgPipelineDesc.VertexBuffer> computed = layoutsFeeding(fedBase);
+                List<CgGraphicsPipelineDesc.VertexBuffer> computed = layoutsFeeding(fedBase);
                 byBase.put(fedBase, answer = computed == null ? FEEDS_ALL : computed);
             }
-            fedLayouts = answer == FEEDS_ALL ? null : (List<CgPipelineDesc.VertexBuffer>) answer;
+            fedLayouts = answer == FEEDS_ALL ? null : (List<CgGraphicsPipelineDesc.VertexBuffer>) answer;
         }
         if (fedLayouts == null) return;
         state.vertexLayouts = fedLayouts;
@@ -779,24 +779,24 @@ public final class TrackedPrograms {
     }
 
     /** {@code base} with a binding feeding every input it leaves unfed, or null when it feeds them all. */
-    private List<CgPipelineDesc.VertexBuffer> layoutsFeeding(List<CgPipelineDesc.VertexBuffer> base) {
+    private List<CgGraphicsPipelineDesc.VertexBuffer> layoutsFeeding(List<CgGraphicsPipelineDesc.VertexBuffer> base) {
         boolean[] provided = new boolean[TrackedVertexArrays.ATTRIBS];
-        for (CgPipelineDesc.VertexBuffer vb : base) {
-            for (CgPipelineDesc.VertexAttrib a : vb.attribs()) provided[a.location()] = true;
+        for (CgGraphicsPipelineDesc.VertexBuffer vb : base) {
+            for (CgGraphicsPipelineDesc.VertexAttrib a : vb.attribs()) provided[a.location()] = true;
         }
-        List<CgPipelineDesc.VertexAttrib> constants = null;
+        List<CgGraphicsPipelineDesc.VertexAttrib> constants = null;
         for (CgGlslCompiler.Attribute a : ((CgGlslCompiler.Program) current.table).attributes()) {
             if (a.location() < provided.length && provided[a.location()]) continue;
             if (constants == null) constants = new ArrayList<>();
             CgAttribFormat f = constantFormat(a.glType());
-            constants.add(new CgPipelineDesc.VertexAttrib(a.location(), f, f == CgAttribFormat.FLOAT32X4 ? 0 : 16));
+            constants.add(new CgGraphicsPipelineDesc.VertexAttrib(a.location(), f, f == CgAttribFormat.FLOAT32X4 ? 0 : 16));
         }
         if (constants == null) return null;
-        List<CgPipelineDesc.VertexAttrib> fed = constants;
+        List<CgGraphicsPipelineDesc.VertexAttrib> fed = constants;
         // Cached by value, so a draw's layout list is the same object every frame and keeps its pipeline.
         return withConstants.computeIfAbsent(base, k -> new HashMap<>()).computeIfAbsent(fed, k -> {
-            List<CgPipelineDesc.VertexBuffer> layouts = new ArrayList<>(base);
-            layouts.add(new CgPipelineDesc.VertexBuffer(CONSTANT_BINDING, 0, false, fed));
+            List<CgGraphicsPipelineDesc.VertexBuffer> layouts = new ArrayList<>(base);
+            layouts.add(new CgGraphicsPipelineDesc.VertexBuffer(CONSTANT_BINDING, 0, false, fed));
             return List.copyOf(layouts);
         });
     }
@@ -835,7 +835,7 @@ public final class TrackedPrograms {
 
     private void releaseLinked(Program p) {
         if (p.tracked != null) tracker.forgetPipelines(p.tracked);
-        for (CgDeviceObject o : p.objects) tracker.release(o);
+        for (CgRHIResource o : p.objects) tracker.release(o);
         p.objects.clear();
         p.tracked = null;
         p.pipeline = null;

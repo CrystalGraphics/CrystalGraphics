@@ -1,20 +1,19 @@
 package com.crystalgraphics.vulkan;
 
-import com.crystalgraphics.platform.device.CgDevice;
+import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.service.CgCacheDirectory;
-import com.crystalgraphics.platform.device.CgDeviceInfo;
-import com.crystalgraphics.platform.device.CgDeviceObject;
-import com.crystalgraphics.platform.device.command.CgCommandEncoder;
-import com.crystalgraphics.platform.device.format.CgFormat;
-import com.crystalgraphics.platform.device.pipeline.CgBindingLayout;
-import com.crystalgraphics.platform.device.pipeline.CgComputePipeline;
-import com.crystalgraphics.platform.device.pipeline.CgPipeline;
-import com.crystalgraphics.platform.device.pipeline.CgPipelineDesc;
-import com.crystalgraphics.platform.device.resource.CgGpuBuffer;
-import com.crystalgraphics.platform.device.resource.CgGpuSampler;
-import com.crystalgraphics.platform.device.resource.CgGpuTexture;
-import com.crystalgraphics.platform.device.resource.CgTimerQuery;
-import com.crystalgraphics.platform.device.shader.CgShaderModule;
+import com.crystalgraphics.platform.rhi.resource.CgRHIResource;
+import com.crystalgraphics.platform.rhi.command.CgCommandList;
+import com.crystalgraphics.platform.rhi.format.CgFormat;
+import com.crystalgraphics.platform.rhi.binding.CgBindingLayout;
+import com.crystalgraphics.platform.rhi.pipeline.CgComputePipeline;
+import com.crystalgraphics.platform.rhi.pipeline.CgGraphicsPipeline;
+import com.crystalgraphics.platform.rhi.pipeline.CgGraphicsPipelineDesc;
+import com.crystalgraphics.platform.rhi.resource.CgGpuBuffer;
+import com.crystalgraphics.platform.rhi.resource.CgGpuSampler;
+import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
+import com.crystalgraphics.platform.rhi.sync.CgTimerQuery;
+import com.crystalgraphics.platform.rhi.shader.CgShaderModule;
 import com.crystalgraphics.vulkan.command.VulkanEncoder;
 import com.crystalgraphics.vulkan.format.VulkanCheck;
 import com.crystalgraphics.vulkan.format.VulkanFormats;
@@ -107,7 +106,7 @@ import static org.lwjgl.vulkan.VK11.VK_FORMAT_FEATURE_TRANSFER_SRC_BIT;
 import static org.lwjgl.vulkan.VK11.vkGetPhysicalDeviceProperties2;
 
 /**
- * {@code CgDevice} over Vulkan 1.2 with dynamic rendering and push descriptors — what the tracked backend draws
+ * {@code CgRHI} over Vulkan 1.2 with dynamic rendering and push descriptors — what the tracked backend draws
  * through when {@code CgGL} runs on Vulkan (plan/device-vulkan.md). Everything from outside comes through its
  * {@link CgVulkanHost}.
  *
@@ -129,7 +128,7 @@ import static org.lwjgl.vulkan.VK11.vkGetPhysicalDeviceProperties2;
  * <p>The default framebuffer is an image of the device's own, RGBA8 with depth-stencil, which the host presents;
  * its row 0 is GL's bottom. Owner thread only.</p>
  */
-public final class CgVulkanDevice implements CgDevice, AutoCloseable {
+public final class CgVulkanDevice implements CgRHI, AutoCloseable {
 
     private static final Logger LOG = LogManager.getLogger("CrystalGraphics");
 
@@ -140,7 +139,7 @@ public final class CgVulkanDevice implements CgDevice, AutoCloseable {
     /** Where the pipeline cache is kept across launches, or null. */
     private final Path pipelineCacheFile;
     private final VulkanFormats formats;
-    private final CgDeviceInfo info;
+    private final CgRHI.Globals info;
     private final float timestampPeriod;
     private final int maxPushDescriptors;
     private final Thread owner = Thread.currentThread();
@@ -224,25 +223,25 @@ public final class CgVulkanDevice implements CgDevice, AutoCloseable {
         return Arrays.copyOf(all, n);
     }
 
-    private static CgDeviceInfo info(VkPhysicalDeviceProperties props, VkPhysicalDeviceSubgroupProperties subgroups,
+    private static CgRHI.Globals info(VkPhysicalDeviceProperties props, VkPhysicalDeviceSubgroupProperties subgroups,
                                      CgVulkanHost host) {
         VkPhysicalDeviceLimits l = props.limits();
         int samples = Integer.highestOneBit(l.framebufferColorSampleCounts() & l.framebufferDepthSampleCounts());
         // Binding counts at GL's scale: the tracker sizes its tables by them, and Vulkan's are in the millions.
-        CgDeviceInfo.Limits limits = new CgDeviceInfo.Limits(l.maxImageDimension2D(), l.maxImageDimension3D(),
+        CgRHI.Globals.Limits limits = new CgRHI.Globals.Limits(l.maxImageDimension2D(), l.maxImageDimension3D(),
                 l.maxImageArrayLayers(), l.maxColorAttachments(), samples, Math.min(16, l.maxVertexInputAttributes()),
                 Math.min(32, l.maxPerStageDescriptorSamplers()), l.maxUniformBufferRange(),
                 Math.min(24, l.maxPerStageDescriptorUniformBuffers()), Math.min(16, l.maxPerStageDescriptorStorageBuffers()),
                 l.maxTexelBufferElements(), (int) l.minUniformBufferOffsetAlignment(),
                 (int) l.minStorageBufferOffsetAlignment(), (int) l.minTexelBufferOffsetAlignment(),
-                l.maxViewportDimensions(0), l.maxSamplerAnisotropy(), new CgDeviceInfo.Compute(
+                l.maxViewportDimensions(0), l.maxSamplerAnisotropy(), new CgRHI.Globals.Compute(
                         l.maxComputeSharedMemorySize(), l.maxComputeWorkGroupInvocations(),
                         l.maxComputeWorkGroupSize(0), l.maxComputeWorkGroupSize(1), l.maxComputeWorkGroupSize(2),
                         l.maxComputeWorkGroupCount(0), l.maxComputeWorkGroupCount(1), l.maxComputeWorkGroupCount(2),
                         subgroups.subgroupSize(), (subgroups.supportedStages() & VK_SHADER_STAGE_COMPUTE_BIT) != 0
                                 ? subgroups.supportedOperations() : 0));
         int v = props.driverVersion();
-        return new CgDeviceInfo(props.deviceNameString(), "vendor 0x" + Integer.toHexString(props.vendorID()),
+        return new CgRHI.Globals(props.deviceNameString(), "vendor 0x" + Integer.toHexString(props.vendorID()),
                 (v >>> 22) + "." + ((v >>> 12) & 0x3FF) + "." + (v & 0xFFF), limits,
                 l.timestampComputeAndGraphics(), l.maxSamplerAnisotropy() > 1f, true,
                 host.multiDrawIndirect(), host.indirectCount(), host.indirectFirstInstance(), host.asyncCompute(),
@@ -293,9 +292,9 @@ public final class CgVulkanDevice implements CgDevice, AutoCloseable {
         }
     }
 
-    // ── CgDevice: objects ──────────────────────────────────────────────────────
+    // ── CgRHI: objects ──────────────────────────────────────────────────────
 
-    @Override public CgDeviceInfo info() { return info; }
+    @Override public CgRHI.Globals globals() { return info; }
 
     @Override public boolean ownedByCurrentThread() { return Thread.currentThread() == owner; }
 
@@ -545,7 +544,7 @@ public final class CgVulkanDevice implements CgDevice, AutoCloseable {
     }
 
     @Override
-    public CgPipeline createPipeline(CgPipelineDesc d) {
+    public CgGraphicsPipeline createPipeline(CgGraphicsPipelineDesc d) {
         try (MemoryStack stack = stackPush()) {
             VkPipelineShaderStageCreateInfo.Buffer stages = VkPipelineShaderStageCreateInfo.calloc(2, stack);
             stages.get(0).sType$Default().stage(VK_SHADER_STAGE_VERTEX_BIT)
@@ -554,15 +553,15 @@ public final class CgVulkanDevice implements CgDevice, AutoCloseable {
                     .module(((VulkanShaderModule) d.fragment()).module).pName(stack.UTF8("main"));
 
             int attribCount = 0;
-            for (CgPipelineDesc.VertexBuffer vb : d.vertexBuffers()) attribCount += vb.attribs().size();
+            for (CgGraphicsPipelineDesc.VertexBuffer vb : d.vertexBuffers()) attribCount += vb.attribs().size();
             VkVertexInputBindingDescription.Buffer vbs = VkVertexInputBindingDescription.calloc(d.vertexBuffers().size(), stack);
             VkVertexInputAttributeDescription.Buffer attrs = VkVertexInputAttributeDescription.calloc(attribCount, stack);
             int a = 0;
             for (int i = 0; i < d.vertexBuffers().size(); i++) {
-                CgPipelineDesc.VertexBuffer vb = d.vertexBuffers().get(i);
+                CgGraphicsPipelineDesc.VertexBuffer vb = d.vertexBuffers().get(i);
                 vbs.get(i).binding(vb.binding()).stride(vb.stride())
                         .inputRate(vb.perInstance() ? VK_VERTEX_INPUT_RATE_INSTANCE : VK_VERTEX_INPUT_RATE_VERTEX);
-                for (CgPipelineDesc.VertexAttrib at : vb.attribs()) {
+                for (CgGraphicsPipelineDesc.VertexAttrib at : vb.attribs()) {
                     attrs.get(a++).location(at.location()).binding(vb.binding())
                             .format(VulkanFormats.attrib(at.format())).offset(at.offset());
                 }
@@ -573,17 +572,17 @@ public final class CgVulkanDevice implements CgDevice, AutoCloseable {
                     .sType$Default().topology(VulkanFormats.topology(d.topology()));
             VkPipelineViewportStateCreateInfo viewport = VkPipelineViewportStateCreateInfo.calloc(stack).sType$Default()
                     .viewportCount(1).scissorCount(1);
-            CgPipelineDesc.Raster r = d.raster();
+            CgGraphicsPipelineDesc.Raster r = d.raster();
             VkPipelineRasterizationStateCreateInfo raster = VkPipelineRasterizationStateCreateInfo.calloc(stack)
                     .sType$Default().polygonMode(VulkanFormats.polygonMode(r.polygonMode()))
                     .cullMode(VulkanFormats.cull(r.cull()))
                     // Inverted, and on purpose: Vulkan's winding area carries the opposite sign to GL's, so under
                     // the positive viewport that keeps GL's rows the same triangle winds the other way.
-                    .frontFace(r.frontFace() == CgPipelineDesc.FrontFace.CCW ? VK_FRONT_FACE_CLOCKWISE
+                    .frontFace(r.frontFace() == CgGraphicsPipelineDesc.FrontFace.CCW ? VK_FRONT_FACE_CLOCKWISE
                             : VK_FRONT_FACE_COUNTER_CLOCKWISE)
                     .depthBiasEnable(r.depthBias()).lineWidth(1f);
-            boolean lines = d.topology() == CgPipelineDesc.Topology.LINES || d.topology() == CgPipelineDesc.Topology.LINE_STRIP
-                    || r.polygonMode() == CgPipelineDesc.PolygonMode.LINE;
+            boolean lines = d.topology() == CgGraphicsPipelineDesc.Topology.LINES || d.topology() == CgGraphicsPipelineDesc.Topology.LINE_STRIP
+                    || r.polygonMode() == CgGraphicsPipelineDesc.PolygonMode.LINE;
             if (lines && host.bresenhamLines()) {
                 raster.pNext(VkPipelineRasterizationLineStateCreateInfoEXT.calloc(stack).sType$Default()
                         .lineRasterizationMode(VK_LINE_RASTERIZATION_MODE_BRESENHAM_EXT).address());
@@ -591,7 +590,7 @@ public final class CgVulkanDevice implements CgDevice, AutoCloseable {
             VkPipelineMultisampleStateCreateInfo multisample = VkPipelineMultisampleStateCreateInfo.calloc(stack)
                     .sType$Default().rasterizationSamples(d.samples());
 
-            CgPipelineDesc.DepthStencil ds = d.depthStencil();
+            CgGraphicsPipelineDesc.DepthStencil ds = d.depthStencil();
             VkPipelineDepthStencilStateCreateInfo depth = VkPipelineDepthStencilStateCreateInfo.calloc(stack)
                     .sType$Default().depthTestEnable(ds.depthTest()).depthWriteEnable(ds.depthWrite())
                     .depthCompareOp(VulkanFormats.compare(ds.depthCompare())).stencilTestEnable(ds.stencilTest());
@@ -602,7 +601,7 @@ public final class CgVulkanDevice implements CgDevice, AutoCloseable {
                     VkPipelineColorBlendAttachmentState.calloc(d.colorTargets().size(), stack);
             IntBuffer colorFormats = stack.mallocInt(d.colorTargets().size());
             for (int i = 0; i < d.colorTargets().size(); i++) {
-                CgPipelineDesc.ColorTarget t = d.colorTargets().get(i);
+                CgGraphicsPipelineDesc.ColorTarget t = d.colorTargets().get(i);
                 colorFormats.put(i, formats.vk(t.format()));
                 VkPipelineColorBlendAttachmentState s = blends.get(i).colorWriteMask(t.writeMask());
                 if (t.blend() != null) {
@@ -644,7 +643,7 @@ public final class CgVulkanDevice implements CgDevice, AutoCloseable {
         }
     }
 
-    private static void stencil(VkStencilOpState s, CgPipelineDesc.StencilFace f, CgPipelineDesc.DepthStencil ds) {
+    private static void stencil(VkStencilOpState s, CgGraphicsPipelineDesc.StencilFace f, CgGraphicsPipelineDesc.DepthStencil ds) {
         s.failOp(VulkanFormats.stencilOp(f.fail())).passOp(VulkanFormats.stencilOp(f.pass()))
                 .depthFailOp(VulkanFormats.stencilOp(f.depthFail())).compareOp(VulkanFormats.compare(f.compare()))
                 .compareMask(ds.readMask()).writeMask(ds.writeMask()).reference(0);
@@ -663,7 +662,7 @@ public final class CgVulkanDevice implements CgDevice, AutoCloseable {
     }
 
     @Override
-    public void release(CgDeviceObject object) {
+    public void release(CgRHIResource object) {
         if (object instanceof VulkanSampler) return;                   // cached by description, kept
         host.whenFrameRetired(host.frameIndex(), () -> destroy(object));
     }
@@ -692,9 +691,9 @@ public final class CgVulkanDevice implements CgDevice, AutoCloseable {
         }
     }
 
-    // ── CgDevice: commands and frames ──────────────────────────────────────────
+    // ── CgRHI: commands and frames ──────────────────────────────────────────
 
-    @Override public CgCommandEncoder encoder() { return encoder; }
+    @Override public CgCommandList encoder() { return encoder; }
     @Override public CgGpuTexture surfaceColor() { return surfaceColor; }
     @Override public CgGpuTexture surfaceDepth() { return surfaceDepth; }
     @Override public long frameIndex() { return host.frameIndex(); }

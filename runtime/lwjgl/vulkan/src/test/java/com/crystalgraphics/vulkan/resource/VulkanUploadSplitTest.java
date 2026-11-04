@@ -1,7 +1,7 @@
 package com.crystalgraphics.vulkan.resource;
 
-import com.crystalgraphics.platform.device.format.CgFormat;
-import com.crystalgraphics.platform.device.resource.CgTextureRegion;
+import com.crystalgraphics.platform.rhi.format.CgFormat;
+import com.crystalgraphics.platform.rhi.resource.CgTextureRegion;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;

@@ -1,8 +1,8 @@
 package com.crystalgraphics.platform.gl.tracked.gl;
 
-import com.crystalgraphics.platform.device.format.CgAttribFormat;
-import com.crystalgraphics.platform.device.pipeline.CgPipelineDesc;
-import com.crystalgraphics.platform.device.recording.CgRecordingDevice;
+import com.crystalgraphics.platform.rhi.format.CgAttribFormat;
+import com.crystalgraphics.platform.rhi.pipeline.CgGraphicsPipelineDesc;
+import com.crystalgraphics.platform.rhi.nulldrv.CgNullRHI;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.tracked.CgTrackedGLBackend;
 import com.crystalgraphics.platform.gl.tracked.FakeGlslCompiler;
@@ -19,7 +19,7 @@ import static org.junit.Assert.*;
 /** Buffers and vertex arrays on the tracked backend, with GL's rules about what a draw reads. */
 public class CgTrackedBuffersTest {
 
-    private final CgRecordingDevice device = new CgRecordingDevice(16, 16);
+    private final CgNullRHI device = new CgNullRHI(16, 16);
     private final CgTrackedGLBackend gl = new CgTrackedGLBackend(device, FakeGlslCompiler.EMPTY, true);
 
     private int buffer(int target, int bytes, int usage) {
@@ -71,10 +71,10 @@ public class CgTrackedBuffersTest {
 
         CgDrawState s = gl.tracker().state;
         gl.vertexArrays().apply(s);
-        List<CgPipelineDesc.VertexBuffer> layouts = s.vertexLayouts;
+        List<CgGraphicsPipelineDesc.VertexBuffer> layouts = s.vertexLayouts;
         assertEquals(2, layouts.size());
-        assertEquals(List.of(new CgPipelineDesc.VertexAttrib(0, CgAttribFormat.FLOAT32X3, 0),
-                new CgPipelineDesc.VertexAttrib(1, CgAttribFormat.UNORM8X4, 12)), layouts.get(0).attribs());
+        assertEquals(List.of(new CgGraphicsPipelineDesc.VertexAttrib(0, CgAttribFormat.FLOAT32X3, 0),
+                new CgGraphicsPipelineDesc.VertexAttrib(1, CgAttribFormat.UNORM8X4, 12)), layouts.get(0).attribs());
         assertTrue(layouts.get(1).perInstance());
         assertEquals("the instanced range starts at its pointer", 32, s.vertexOffsets[1]);
 
@@ -97,10 +97,10 @@ public class CgTrackedBuffersTest {
 
         CgDrawState s = gl.tracker().state;
         gl.vertexArrays().apply(s);
-        assertEquals(List.of(new CgPipelineDesc.VertexAttrib(0, CgAttribFormat.UINT8X4, 0),
-                new CgPipelineDesc.VertexAttrib(1, CgAttribFormat.SINT16X2, 4),
-                new CgPipelineDesc.VertexAttrib(2, CgAttribFormat.UINT32, 8),
-                new CgPipelineDesc.VertexAttrib(3, CgAttribFormat.FLOAT16X4, 12)), s.vertexLayouts.get(0).attribs());
+        assertEquals(List.of(new CgGraphicsPipelineDesc.VertexAttrib(0, CgAttribFormat.UINT8X4, 0),
+                new CgGraphicsPipelineDesc.VertexAttrib(1, CgAttribFormat.SINT16X2, 4),
+                new CgGraphicsPipelineDesc.VertexAttrib(2, CgAttribFormat.UINT32, 8),
+                new CgGraphicsPipelineDesc.VertexAttrib(3, CgAttribFormat.FLOAT16X4, 12)), s.vertexLayouts.get(0).attribs());
     }
 
     @Test

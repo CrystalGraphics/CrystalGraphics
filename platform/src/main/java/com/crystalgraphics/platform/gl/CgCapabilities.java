@@ -3,9 +3,9 @@ package com.crystalgraphics.platform.gl;
 import lombok.AccessLevel;
 import lombok.Getter;
 import com.crystalgraphics.platform.CgPlatform;
-import com.crystalgraphics.platform.device.CgDeviceInfo;
-import com.crystalgraphics.platform.device.format.CgFormat;
-import com.crystalgraphics.platform.device.resource.CgGpuTexture;
+import com.crystalgraphics.platform.rhi.CgRHI;
+import com.crystalgraphics.platform.rhi.format.CgFormat;
+import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
 import com.crystalgraphics.platform.gl.state.CgGlStateShadow;
 import com.crystalgraphics.platform.gl.tracked.CgTrackedGLBackend;
 import com.crystalgraphics.variable.CgVar;
@@ -371,7 +371,7 @@ public final class CgCapabilities {
         caps.coreProfile = (CgGL.glGetInteger(0x9126) & 0x1) != 0;
 
         // ── Compute and GPU-driven draws ──────────────────────────────────────
-        CgDeviceInfo device = CgGL.backend() instanceof CgTrackedGLBackend tracked ? tracked.device().info() : null;
+        CgRHI.Globals device = CgGL.backend() instanceof CgTrackedGLBackend tracked ? tracked.device().globals() : null;
         caps.glslVersion = device != null ? 450 : gl.OpenGL46() ? 460 : gl.OpenGL44() ? 440 : gl.OpenGL43() ? 430
                 : gl.OpenGL42() ? 420 : gl.OpenGL40() ? 400 : 330;
         boolean ssbo = caps.shaderStorageBufferCore || caps.shaderStorageBufferArb;

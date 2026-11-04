@@ -1,6 +1,6 @@
 package com.crystalgraphics.platform.gl.tracked.memory;
 
-import com.crystalgraphics.platform.device.resource.CgGpuBuffer;
+import com.crystalgraphics.platform.rhi.resource.CgGpuBuffer;
 
 import java.nio.ByteBuffer;
 

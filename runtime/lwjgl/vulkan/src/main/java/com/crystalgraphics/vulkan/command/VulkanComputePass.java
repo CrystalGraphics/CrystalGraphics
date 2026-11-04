@@ -1,11 +1,11 @@
 package com.crystalgraphics.vulkan.command;
 
-import com.crystalgraphics.platform.device.command.CgComputePass;
-import com.crystalgraphics.platform.device.pipeline.CgBindingLayout;
-import com.crystalgraphics.platform.device.pipeline.CgBindings;
-import com.crystalgraphics.platform.device.pipeline.CgComputePipeline;
-import com.crystalgraphics.platform.device.resource.CgGpuBuffer;
-import com.crystalgraphics.platform.device.resource.CgTextureView;
+import com.crystalgraphics.platform.rhi.command.CgComputePass;
+import com.crystalgraphics.platform.rhi.binding.CgBindingLayout;
+import com.crystalgraphics.platform.rhi.binding.CgBindings;
+import com.crystalgraphics.platform.rhi.pipeline.CgComputePipeline;
+import com.crystalgraphics.platform.rhi.resource.CgGpuBuffer;
+import com.crystalgraphics.platform.rhi.resource.CgTextureView;
 import com.crystalgraphics.vulkan.CgVulkanDevice;
 import com.crystalgraphics.vulkan.resource.VulkanBindingLayout;
 import com.crystalgraphics.vulkan.resource.VulkanBuffer;

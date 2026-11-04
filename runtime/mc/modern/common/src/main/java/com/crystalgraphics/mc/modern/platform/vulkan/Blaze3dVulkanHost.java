@@ -3,8 +3,8 @@ package com.crystalgraphics.mc.modern.platform.vulkan;
 import com.crystalgraphics.platform.gl.state.CgHostStateCache;
 
 //? if >=26.2 {
-/*import com.crystalgraphics.platform.device.format.CgFormat;
-import com.crystalgraphics.platform.device.resource.CgGpuTexture;
+/*import com.crystalgraphics.platform.rhi.format.CgFormat;
+import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
 import com.crystalgraphics.platform.gl.tracked.CgTrackedGLBackend;
 import com.crystalgraphics.vulkan.host.HostedVulkanHost;
 import com.mojang.blaze3d.GpuFormat;

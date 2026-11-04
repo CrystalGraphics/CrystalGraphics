@@ -1,6 +1,6 @@
 package com.crystalgraphics.vulkan.resource;
 
-import com.crystalgraphics.platform.device.shader.CgShaderModule;
+import com.crystalgraphics.platform.rhi.shader.CgShaderModule;
 
 public final class VulkanShaderModule implements CgShaderModule {
 

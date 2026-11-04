@@ -1,6 +1,6 @@
 package com.crystalgraphics.vulkan.resource;
 
-import com.crystalgraphics.platform.device.pipeline.CgBindingLayout;
+import com.crystalgraphics.platform.rhi.binding.CgBindingLayout;
 
 import java.util.List;
 

@@ -1,7 +1,7 @@
 package com.crystalgraphics.platform.gl.tracked.memory;
 
-import com.crystalgraphics.platform.device.CgDevice;
-import com.crystalgraphics.platform.device.resource.CgGpuBuffer;
+import com.crystalgraphics.platform.rhi.CgRHI;
+import com.crystalgraphics.platform.rhi.resource.CgGpuBuffer;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -14,14 +14,14 @@ import java.util.TreeMap;
  */
 public final class CgSlabAllocator {
 
-    private final CgDevice device;
+    private final CgRHI device;
     private final boolean hostVisible, hostReads, streamed;
     private final long slabSize;
     private final long alignment;
     private final List<Slab> slabs = new ArrayList<>();
 
     /** @param hostReads the CPU reads what it hands out: {@link CgGpuBuffer.Desc#hostReads} */
-    public CgSlabAllocator(CgDevice device, boolean hostVisible, boolean hostReads, long slabSize, long alignment) {
+    public CgSlabAllocator(CgRHI device, boolean hostVisible, boolean hostReads, long slabSize, long alignment) {
         this(device, hostVisible, hostReads, false, slabSize, alignment);
     }
 
@@ -29,7 +29,7 @@ public final class CgSlabAllocator {
      * @param hostReads the CPU reads what it hands out: {@link CgGpuBuffer.Desc#hostReads}
      * @param streamed  written for the GPU to read about once: {@link CgGpuBuffer.Desc#streamed}
      */
-    public CgSlabAllocator(CgDevice device, boolean hostVisible, boolean hostReads, boolean streamed, long slabSize,
+    public CgSlabAllocator(CgRHI device, boolean hostVisible, boolean hostReads, boolean streamed, long slabSize,
                            long alignment) {
         this.device = device;
         this.hostVisible = hostVisible;

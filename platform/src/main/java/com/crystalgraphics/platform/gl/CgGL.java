@@ -1,7 +1,7 @@
 package com.crystalgraphics.platform.gl;
 
 import com.crystalgraphics.platform.CgPlatform;
-import com.crystalgraphics.platform.device.command.CgAccess;
+import com.crystalgraphics.platform.rhi.command.CgAccess;
 import com.crystalgraphics.platform.gl.state.CgGlState;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.trace.CgTraceChannel;

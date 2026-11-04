@@ -1,7 +1,7 @@
 package com.crystalgraphics.platform.gl.tracked.gl;
 
-import com.crystalgraphics.platform.device.format.CgAttribFormat;
-import com.crystalgraphics.platform.device.pipeline.CgPipelineDesc;
+import com.crystalgraphics.platform.rhi.format.CgAttribFormat;
+import com.crystalgraphics.platform.rhi.pipeline.CgGraphicsPipelineDesc;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.tracked.tracker.CgDrawState;
 
@@ -29,7 +29,7 @@ public final class TrackedVertexArrays {
     public static final class Vao {
         final Attrib[] attribs = new Attrib[ATTRIBS];
         public int elementBuffer;
-        private List<CgPipelineDesc.VertexBuffer> layouts;
+        private List<CgGraphicsPipelineDesc.VertexBuffer> layouts;
         private int[] bindingBuffer = new int[0];
         private long[] bindingBase = new long[0];
 
@@ -136,10 +136,10 @@ public final class TrackedVertexArrays {
             if (a.divisor != b.divisor) return Integer.compare(a.divisor, b.divisor);
             return Long.compare(a.offset, b.offset);
         });
-        List<CgPipelineDesc.VertexBuffer> layouts = new ArrayList<>();
+        List<CgGraphicsPipelineDesc.VertexBuffer> layouts = new ArrayList<>();
         List<Integer> buffersOf = new ArrayList<>();
         List<Long> bases = new ArrayList<>();
-        List<CgPipelineDesc.VertexAttrib> group = null;
+        List<CgGraphicsPipelineDesc.VertexAttrib> group = null;
         Attrib first = null;
         for (int index : enabled) {
             Attrib a = v.attribs[index];
@@ -153,7 +153,7 @@ public final class TrackedVertexArrays {
                 buffersOf.add(a.buffer);
                 bases.add(a.offset);
             }
-            group.add(new CgPipelineDesc.VertexAttrib(index, format(a.size, a.type, a.normalized, a.integer), (int) (a.offset - first.offset)));
+            group.add(new CgGraphicsPipelineDesc.VertexAttrib(index, format(a.size, a.type, a.normalized, a.integer), (int) (a.offset - first.offset)));
         }
         if (group != null) close(layouts, group, first);
         v.layouts = Collections.unmodifiableList(layouts);
@@ -161,8 +161,8 @@ public final class TrackedVertexArrays {
         v.bindingBase = bases.stream().mapToLong(Long::longValue).toArray();
     }
 
-    private static void close(List<CgPipelineDesc.VertexBuffer> layouts, List<CgPipelineDesc.VertexAttrib> group, Attrib first) {
-        layouts.add(new CgPipelineDesc.VertexBuffer(layouts.size(), stride(first), first.divisor == 1,
+    private static void close(List<CgGraphicsPipelineDesc.VertexBuffer> layouts, List<CgGraphicsPipelineDesc.VertexAttrib> group, Attrib first) {
+        layouts.add(new CgGraphicsPipelineDesc.VertexBuffer(layouts.size(), stride(first), first.divisor == 1,
                 Collections.unmodifiableList(group)));
     }
 

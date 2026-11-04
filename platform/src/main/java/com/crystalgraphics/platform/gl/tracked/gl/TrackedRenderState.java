@@ -1,7 +1,7 @@
 package com.crystalgraphics.platform.gl.tracked.gl;
 
-import com.crystalgraphics.platform.device.format.CgCompare;
-import com.crystalgraphics.platform.device.pipeline.CgPipelineDesc;
+import com.crystalgraphics.platform.rhi.format.CgCompare;
+import com.crystalgraphics.platform.rhi.pipeline.CgGraphicsPipelineDesc;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.tracked.tracker.CgDrawState;
 import com.crystalgraphics.platform.gl.tracked.tracker.CgTracker;
@@ -39,9 +39,9 @@ public final class TrackedRenderState {
     public int clearStencil;
 
     private boolean blendDirty = true, depthStencilDirty = true, rasterDirty = true;
-    private final Records<CgPipelineDesc.Blend> blends = new Records<>();
-    private final Records<CgPipelineDesc.DepthStencil> depthStencils = new Records<>();
-    private final Records<CgPipelineDesc.Raster> rasters = new Records<>();
+    private final Records<CgGraphicsPipelineDesc.Blend> blends = new Records<>();
+    private final Records<CgGraphicsPipelineDesc.DepthStencil> depthStencils = new Records<>();
+    private final Records<CgGraphicsPipelineDesc.Raster> rasters = new Records<>();
     private boolean warnedFixedFunction, warnedLineWidth;
 
     public TrackedRenderState(CgTracker tracker, TrackedGlErrors errors, int width, int height) {
@@ -168,39 +168,39 @@ public final class TrackedRenderState {
         s.stencilReference = stencilRef;
     }
 
-    private CgPipelineDesc.Blend blendRecord() {
-        CgPipelineDesc.BlendFactor sc = GlEnums.blendFactor(srcRgb), dc = GlEnums.blendFactor(dstRgb);
-        CgPipelineDesc.BlendFactor sa = GlEnums.blendFactor(srcAlpha), da = GlEnums.blendFactor(dstAlpha);
-        CgPipelineDesc.BlendOp oc = GlEnums.blendOp(equationRgb), oa = GlEnums.blendOp(equationAlpha);
+    private CgGraphicsPipelineDesc.Blend blendRecord() {
+        CgGraphicsPipelineDesc.BlendFactor sc = GlEnums.blendFactor(srcRgb), dc = GlEnums.blendFactor(dstRgb);
+        CgGraphicsPipelineDesc.BlendFactor sa = GlEnums.blendFactor(srcAlpha), da = GlEnums.blendFactor(dstAlpha);
+        CgGraphicsPipelineDesc.BlendOp oc = GlEnums.blendOp(equationRgb), oa = GlEnums.blendOp(equationAlpha);
         long key = sc.ordinal() | dc.ordinal() << 4 | sa.ordinal() << 8 | da.ordinal() << 12 | oc.ordinal() << 16
                 | oa.ordinal() << 20;
-        CgPipelineDesc.Blend b = blends.get(key);
-        return b != null ? b : blends.put(key, new CgPipelineDesc.Blend(sc, dc, oc, sa, da, oa));
+        CgGraphicsPipelineDesc.Blend b = blends.get(key);
+        return b != null ? b : blends.put(key, new CgGraphicsPipelineDesc.Blend(sc, dc, oc, sa, da, oa));
     }
 
-    private CgPipelineDesc.DepthStencil depthStencilRecord() {
+    private CgGraphicsPipelineDesc.DepthStencil depthStencilRecord() {
         CgCompare depth = GlEnums.compare(depthFunc), stencil = GlEnums.compare(stencilFunc);
-        CgPipelineDesc.StencilOp fail = GlEnums.stencilOp(stencilFail), depthFail = GlEnums.stencilOp(stencilDepthFail),
+        CgGraphicsPipelineDesc.StencilOp fail = GlEnums.stencilOp(stencilFail), depthFail = GlEnums.stencilOp(stencilDepthFail),
                 pass = GlEnums.stencilOp(stencilPass);
         long key = (depthTest ? 1 : 0) | (depthMask ? 2 : 0) | (stencilTest ? 4 : 0) | depth.ordinal() << 3
                 | stencil.ordinal() << 6 | fail.ordinal() << 9 | depthFail.ordinal() << 12 | pass.ordinal() << 15
                 | (stencilValueMask & 0xFF) << 18 | (long) (stencilWriteMask & 0xFF) << 26;
-        CgPipelineDesc.DepthStencil d = depthStencils.get(key);
+        CgGraphicsPipelineDesc.DepthStencil d = depthStencils.get(key);
         if (d != null) return d;
-        CgPipelineDesc.StencilFace face = new CgPipelineDesc.StencilFace(stencil, fail, depthFail, pass);
-        return depthStencils.put(key, new CgPipelineDesc.DepthStencil(depthTest, depthMask, depth, stencilTest, face,
+        CgGraphicsPipelineDesc.StencilFace face = new CgGraphicsPipelineDesc.StencilFace(stencil, fail, depthFail, pass);
+        return depthStencils.put(key, new CgGraphicsPipelineDesc.DepthStencil(depthTest, depthMask, depth, stencilTest, face,
                 face, stencilValueMask & 0xFF, stencilWriteMask & 0xFF));
     }
 
-    private CgPipelineDesc.Raster rasterRecord() {
-        CgPipelineDesc.PolygonMode mode = GlEnums.polygonMode(polygonMode);
-        boolean bias = mode == CgPipelineDesc.PolygonMode.FILL ? polygonOffsetFill
-                : mode == CgPipelineDesc.PolygonMode.LINE ? polygonOffsetLine : polygonOffsetPoint;
-        CgPipelineDesc.CullMode cull = GlEnums.cull(cullFace, cullMode);
-        CgPipelineDesc.FrontFace front = frontFace == CgGL.GL_CW ? CgPipelineDesc.FrontFace.CW : CgPipelineDesc.FrontFace.CCW;
+    private CgGraphicsPipelineDesc.Raster rasterRecord() {
+        CgGraphicsPipelineDesc.PolygonMode mode = GlEnums.polygonMode(polygonMode);
+        boolean bias = mode == CgGraphicsPipelineDesc.PolygonMode.FILL ? polygonOffsetFill
+                : mode == CgGraphicsPipelineDesc.PolygonMode.LINE ? polygonOffsetLine : polygonOffsetPoint;
+        CgGraphicsPipelineDesc.CullMode cull = GlEnums.cull(cullFace, cullMode);
+        CgGraphicsPipelineDesc.FrontFace front = frontFace == CgGL.GL_CW ? CgGraphicsPipelineDesc.FrontFace.CW : CgGraphicsPipelineDesc.FrontFace.CCW;
         long key = cull.ordinal() | front.ordinal() << 2 | mode.ordinal() << 3 | (bias ? 1 << 5 : 0);
-        CgPipelineDesc.Raster r = rasters.get(key);
-        return r != null ? r : rasters.put(key, new CgPipelineDesc.Raster(cull, front, mode, bias));
+        CgGraphicsPipelineDesc.Raster r = rasters.get(key);
+        return r != null ? r : rasters.put(key, new CgGraphicsPipelineDesc.Raster(cull, front, mode, bias));
     }
 
     /**

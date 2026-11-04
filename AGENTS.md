@@ -90,7 +90,7 @@ This is the load-bearing architectural law. Read it before writing code that tou
 
 ```
 platform/        ← the SPI: CgGLBackend, CgGLContext, the services, CgService slots;
-                   and CgTrackedGLBackend, GL's semantics over a CgDevice
+                   and CgTrackedGLBackend, GL's semantics over a CgRHI
     ↑
 core/            ← rendering logic — calls CgGL and CgPlatform.lifecycle() etc.
     ↑
@@ -100,7 +100,7 @@ runtime/mc/*     ← a host: registers a bundle over tier 1, adds what names Min
 ```
 
 **`CgGLBackend` is the seam, and `CgGL`'s 132 methods keep GL's semantics on every backend.** A GL backend
-calls the driver; `CgTrackedGLBackend` answers the same calls on a `CgDevice` — `CgVulkanDevice` in the
+calls the driver; `CgTrackedGLBackend` answers the same calls on a `CgRHI` — `CgVulkanDevice` in the
 harness's `--device=vulkan`, a recording device in tests. Three additions live inside a host on either:
 `importHostTexture`, `fromHost`/`toHost` (the bracket around every host entry — nothing on GL), and
 `ownedByCurrentThread`. The platform guide has each, and the tracked backend's rules.

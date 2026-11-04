@@ -1,8 +1,8 @@
 package com.crystalgraphics.vulkan.resource;
 
-import com.crystalgraphics.platform.device.pipeline.CgBindingLayout;
-import com.crystalgraphics.platform.device.pipeline.CgComputePipeline;
-import com.crystalgraphics.platform.device.shader.CgShaderModule;
+import com.crystalgraphics.platform.rhi.binding.CgBindingLayout;
+import com.crystalgraphics.platform.rhi.pipeline.CgComputePipeline;
+import com.crystalgraphics.platform.rhi.shader.CgShaderModule;
 
 public final class VulkanComputePipeline implements CgComputePipeline {
 

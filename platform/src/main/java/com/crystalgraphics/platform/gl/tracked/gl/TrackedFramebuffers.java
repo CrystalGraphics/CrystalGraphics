@@ -1,12 +1,12 @@
 package com.crystalgraphics.platform.gl.tracked.gl;
 
-import com.crystalgraphics.platform.device.CgDevice;
-import com.crystalgraphics.platform.device.command.CgCommandEncoder;
-import com.crystalgraphics.platform.device.format.CgFormat;
-import com.crystalgraphics.platform.device.resource.CgGpuSampler;
-import com.crystalgraphics.platform.device.resource.CgGpuTexture;
-import com.crystalgraphics.platform.device.resource.CgTextureRegion;
-import com.crystalgraphics.platform.device.resource.CgTextureView;
+import com.crystalgraphics.platform.rhi.CgRHI;
+import com.crystalgraphics.platform.rhi.command.CgCommandList;
+import com.crystalgraphics.platform.rhi.format.CgFormat;
+import com.crystalgraphics.platform.rhi.resource.CgGpuSampler;
+import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
+import com.crystalgraphics.platform.rhi.resource.CgTextureRegion;
+import com.crystalgraphics.platform.rhi.resource.CgTextureView;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.tracked.memory.CgAllocation;
 import com.crystalgraphics.platform.gl.tracked.tracker.CgTarget;
@@ -73,7 +73,7 @@ public final class TrackedFramebuffers {
     }
 
     private final CgTracker tracker;
-    private final CgDevice device;
+    private final CgRHI device;
     private final TrackedGlErrors errors;
     private final TrackedTextures textures;
     private final TrackedBuffers buffers;
@@ -142,7 +142,7 @@ public final class TrackedFramebuffers {
         if (renderbuffer == 0) { errors.invalidOperation("glRenderbufferStorage with no renderbuffer bound"); return; }
         Renderbuffer r = rbos.get(renderbuffer);
         if (r.image != null) tracker.release(r.image);
-        int s = Math.max(1, Math.min(samples, device.info().limits().maxSamples()));
+        int s = Math.max(1, Math.min(samples, device.globals().limits().maxSamples()));
         r.image = device.createTexture(new CgGpuTexture.Desc("renderbuffer " + r.name, CgGpuTexture.Kind.D2,
                 GlPixels.device(internalFormat), width, height, 1, 1, s,
                 EnumSet.of(CgGpuTexture.Usage.ATTACHMENT, CgGpuTexture.Usage.COPY_SRC, CgGpuTexture.Usage.COPY_DST)));
@@ -394,7 +394,7 @@ public final class TrackedFramebuffers {
         CgGpuSampler.Filter f = filter == CgGL.GL_LINEAR ? CgGpuSampler.Filter.LINEAR : CgGpuSampler.Filter.NEAREST;
         CgTarget src = target(read), dst = target(draw);
         if (src == null || dst == null) { errors.invalidFramebufferOperation("glBlitFramebuffer with nothing attached"); return; }
-        CgCommandEncoder enc = tracker.transfer();
+        CgCommandList enc = tracker.transfer();
         if ((mask & CgGL.GL_COLOR_BUFFER_BIT) != 0) {
             CgTextureView from = readView(src);
             for (CgTextureView to : dst.colors()) blitOne(enc, from, sx0, sy0, sx1, sy1, to, dx0, dy0, dx1, dy1, f);
@@ -404,7 +404,7 @@ public final class TrackedFramebuffers {
         }
     }
 
-    private static void blitOne(CgCommandEncoder enc, CgTextureView from, int sx0, int sy0, int sx1, int sy1,
+    private static void blitOne(CgCommandList enc, CgTextureView from, int sx0, int sy0, int sx1, int sy1,
                                 CgTextureView to, int dx0, int dy0, int dx1, int dy1, CgGpuSampler.Filter filter) {
         if (from.texture().desc().samples() > 1) enc.resolve(from, to);
         else enc.blit(from, sx0, sy0, sx1, sy1, to, dx0, dy0, dx1, dy1, filter);

@@ -882,7 +882,7 @@ CgGlState.saveAll()       // → every slot (used by CgExecutor around a frame)
 
 **`CgGpuReport`** is the full answer, for diagnosis rather than decisions: every feature a compute or draw tier is chosen
 from (`core`, the extension that gives it, or `no`) and the limits that bound it, from the driver on GL and from
-`CgDevice.describe` on the Vulkan device. Each context logs it once as `[crystalgraphics] gpu …`, `prodSmoke`
+`CgRHI.describe` on the Vulkan device. Each context logs it once as `[crystalgraphics] gpu …`, `prodSmoke`
 gathers every client's into `build/prodSmoke/gpu-report.txt`, and the harness's `--mode=capability-report` prints it
 as a table.
 

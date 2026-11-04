@@ -4,7 +4,7 @@ import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.gl.texture.CgFallbackTextures;
-import com.crystalgraphics.platform.device.recording.CgRecordingDevice;
+import com.crystalgraphics.platform.rhi.nulldrv.CgNullRHI;
 import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.state.CgGlState;
@@ -51,7 +51,7 @@ public class CgStageExecuteAllocationTest {
     @BeforeClass
     public static void install() {
         compiler = new ShadercGlslCompiler();
-        CgTrackedGLBackend gl = new CgTrackedGLBackend(new CgRecordingDevice(64, 64).withoutLog(), compiler, true);
+        CgTrackedGLBackend gl = new CgTrackedGLBackend(new CgNullRHI(64, 64).withoutLog(), compiler, true);
         CgGL.init(gl);
         CgCapabilities.init(new CgTrackedGLContext());
         CgCapabilities.clearCache();
