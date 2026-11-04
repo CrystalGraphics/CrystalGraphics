@@ -13,6 +13,7 @@ import com.crystalgraphics.api.state.CgDepthState;
 import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.api.text.CgShapedParagraph;
 import com.crystalgraphics.api.text.CgStrokeAlign;
+import com.crystalgraphics.api.text.CgStrokeJoin;
 import com.crystalgraphics.api.text.CgTextDecorationRect;
 import com.crystalgraphics.api.text.CgTextStroke;
 import com.crystalgraphics.api.text.CgTextLayout;
@@ -45,6 +46,7 @@ import lombok.NonNull;
 import lombok.Setter;
 import lombok.experimental.Accessors;
 import org.joml.Matrix4f;
+import org.joml.Vector2f;
 import org.joml.Vector3f;
 
 import javax.annotation.Nullable;
@@ -667,6 +669,11 @@ public class CgTextRenderer {
     //  FLUENT DRAW REQUEST
     // ══════════════════════════════════════════════════════════════════════════════════════════
     
+    /** {@code text.shader}'s align slot: the align, plus 3 for a round join. */
+    private static float alignCode(float align, boolean round) {
+        return round ? align + 3f : align;
+    }
+
     /** What {@code quad.glsl} reads for a {@link CgStrokeAlign}: on the contour, outside it, inside it. */
     static final float ALIGN_CENTER = 0f, ALIGN_OUTSET = 1f, ALIGN_INSET = 2f;
     
@@ -972,6 +979,9 @@ public class CgTextRenderer {
         private int strokeArgb;
         private float strokeAlign = ALIGN_OUTSET;
         private float strokeOver;
+        private boolean strokeRound = true;
+        private boolean shadowsStroked;
+        private boolean contained = true;
         private final CgTextShadowList shadows = new CgTextShadowList();
         @Nullable
         private final Consumer<Draw> queue;
@@ -998,6 +1008,9 @@ public class CgTextRenderer {
             strokeArgb = 0;
             strokeAlign = ALIGN_OUTSET;
             strokeOver = 0f;
+            strokeRound = true;
+            shadowsStroked = false;
+            contained = true;
             shadows.clear();
             return this;
         }
@@ -1019,7 +1032,8 @@ public class CgTextRenderer {
                     && maxHeight == other.maxHeight && targetPx == other.targetPx && x == other.x && y == other.y
                     && rgba == other.rgba && strokeWidthEm == other.strokeWidthEm && strokeArgb == other.strokeArgb
                     && strokeAlign == other.strokeAlign && strokeOver == other.strokeOver
-                    && shadows.sameAs(other.shadows);
+                    && strokeRound == other.strokeRound && shadowsStroked == other.shadowsStroked
+                    && contained == other.contained && shadows.sameAs(other.shadows);
         }
 
         /** Takes every field of {@code other} but its pose: a copy to compare later draws against with {@link #sameAs}. */
@@ -1039,6 +1053,9 @@ public class CgTextRenderer {
             strokeArgb = other.strokeArgb;
             strokeAlign = other.strokeAlign;
             strokeOver = other.strokeOver;
+            strokeRound = other.strokeRound;
+            shadowsStroked = other.shadowsStroked;
+            contained = other.contained;
             shadows.set(other.shadows);
             return this;
         }
@@ -1182,6 +1199,38 @@ public class CgTextRenderer {
             return this;
         }
 
+        /** How the outline turns the glyph's corners. {@link CgStrokeJoin#ROUND} by default, as Unreal's. */
+        public Draw strokeJoin(CgStrokeJoin join) {
+            this.strokeRound = join != CgStrokeJoin.MITRE;
+            return this;
+        }
+
+        /**
+         * Whether the outline is part of every shadow's shape: {@code false}, the default, shadows the glyphs alone,
+         * as Unreal's {@code bApplyOutlineToDropShadows}; {@code true} shadows the outlined glyphs, as CSS
+         * {@code text-shadow} does.
+         */
+        public Draw shadowsStroked(boolean stroked) {
+            this.shadowsStroked = stroked;
+            return this;
+        }
+
+        /**
+         * Whether the outline and the shadows' offsets stay inside the text's box, as Slate's text runs keep them:
+         * {@code true}, the default, moves the text right and down by the outline's reach and by any shadow offset
+         * up or left, and {@link #measureSize} counts them. {@code false} draws the text at {@link #at} and lets
+         * both overflow, as CSS does.
+         *
+         * <pre>{@code
+         * renderer.draw().text("Ready").font(font).at(4, 4).stroke(0.1f, black).submit();     // the outline's edge at (4, 4)
+         * renderer.draw().text("Ready").font(font).at(4, 4).stroke(0.1f, black).contained(false).submit(); // the glyphs'
+         * }</pre>
+         */
+        public Draw contained(boolean contained) {
+            this.contained = contained;
+            return this;
+        }
+
         /**
          * The same four values from a {@link CgTextStroke}, for a caller that already holds one.
          *
@@ -1260,7 +1309,8 @@ public class CgTextRenderer {
          *   <li>{@code inset}: shadows the canvas into the glyph, over the text, inside the stroke.</li>
          * </ul>
          *
-         * <p>A stroke set on this draw is part of the shadow's shape. A shadow a worker has not built yet
+         * <p>A stroke set on this draw is part of the shadow's shape only under {@link #shadowsStroked}. A shadow a
+         * worker has not built yet
          * is left out of this frame and counted in {@link CgTextRenderer#getDegradedDrawCount()}.</p>
          */
         public Draw shadow(int index, float offsetX, float offsetY, float sigma, float spread, int argb,
@@ -1327,6 +1377,51 @@ public class CgTextRenderer {
                     "CgTextRenderer.Draw requires font(...) or family(...) before measure()");
 
             return resolveDraw(this, effectivePose().last()).layout();
+        }
+
+        /**
+         * The box the text takes in the layout's pixels: {@link #measure()}'s size, and under {@link #contained} the
+         * outline's reach on every side and the shadows' offsets, as Slate measures a run.
+         *
+         * <pre>{@code
+         * Vector2f size = draw.measureSize(new Vector2f());
+         * nextY += size.y;
+         * }</pre>
+         */
+        public Vector2f measureSize(Vector2f out) {
+            CgTextLayout measured = measure();
+            out.set(measured.totalWidth(), measured.totalHeight());
+            if (!contained) return out;
+            float outline = outlineReach();
+            return out.add(2f * outline + shadowReach(true, false) + shadowReach(true, true),
+                    2f * outline + shadowReach(false, false) + shadowReach(false, true));
+        }
+
+        /** Where the glyphs' origin lands: {@link #at}, moved in under {@link #contained}. */
+        private float originX() {
+            return contained ? x + outlineReach() + shadowReach(true, true) : x;
+        }
+
+        private float originY() {
+            return contained ? y + outlineReach() + shadowReach(false, true) : y;
+        }
+
+        /** How far the outline reaches past the glyphs, in the layout's pixels; its tier is not asked. */
+        private float outlineReach() {
+            if (!strokeRequested(this)) return 0f;
+            float share = strokeAlign == ALIGN_INSET ? 0f : strokeAlign == ALIGN_CENTER ? 0.5f : 1f;
+            return strokeWidthEm * share * basePx();
+        }
+
+        /** The outer shadows' furthest offset along one axis, before the text ({@code before}) or after it. */
+        private float shadowReach(boolean horizontal, boolean before) {
+            float reach = 0f;
+            for (int i = 0; i < shadows.count(); i++) {
+                if (shadows.inset(i)) continue;
+                float offset = horizontal ? shadows.x(i) : shadows.y(i);
+                reach = Math.max(reach, before ? -offset : offset);
+            }
+            return reach;
         }
 
         /**
@@ -1560,12 +1655,13 @@ public class CgTextRenderer {
         CgTextLayout resolvedLayout = resolved.layout();
 
         if (resolvedLayout == null || resolvedLayout.lines().isEmpty()) return;
+        float originX = draw.originX(), originY = draw.originY();
 
         // Before resolveGlyphs, not inside the quad loop: an off-screen layout otherwise pays for
         // full glyph resolution and quad building before anything notices. See CgTextCuller.
         if (capturing != null) {
             capturing.layout(resolvedLayout);
-        } else if (spatialNode == 0 && culler.isCulled(resolvedLayout, draw.x, draw.y, context.projection(), pose.pose(), draw.shadows.reach())) {
+        } else if (spatialNode == 0 && culler.isCulled(resolvedLayout, originX, originY, context.projection(), pose.pose(), draw.shadows.reach())) {
             // Not under a spatial node: the pose is the node's space and the projection the target's.
             CgTrace.add(CgChannels.TEXT, "text.drawsCulled", 1);
             return;
@@ -1577,11 +1673,11 @@ public class CgTextRenderer {
             // The pose's own sub-pixel phase. A CSS transform moves text through the POSE, not
             // through draw.x/draw.y, so without this the placement cache returns the same glyphs
             // for every sub-pixel position of a translated element and the offset never lands.
-            scratchPosePhase.set(draw.x, draw.y, 0f);
+            scratchPosePhase.set(originX, originY, 0f);
             pose.pose().transformPosition(scratchPosePhase);
             // Under the registry's lock, so a glyph a worker commits cannot land halfway through one resolve.
             synchronized (registry) {
-                glyphCount = resolvedGlyphs.resolve(resolvedLayout, draw.x, draw.y, frame, context,
+                glyphCount = resolvedGlyphs.resolve(resolvedLayout, originX, originY, frame, context,
                         effectiveTargetPx, wantMsdf, fontKey, draw.rgba, scratchPosePhase.x);
             }
         }
@@ -1639,7 +1735,8 @@ public class CgTextRenderer {
                 boolean degraded;
                 synchronized (registry) {
                     degraded = shadowPlan.plan(draw.shadows, resolvedGlyphs.placements, resolvedGlyphs.cached,
-                            resolvedLayout.baked(), glyphCount, fontKey, effectiveTargetPx, strokeWidthTexels,
+                            resolvedLayout.baked(), glyphCount, fontKey, effectiveTargetPx,
+                            draw.shadowsStroked ? strokeWidthTexels : 0f,
                             draw.strokeAlign, context.isWorldText(), frame);
                 }
                 if (degraded) degradedDrawCount++;
@@ -1751,7 +1848,7 @@ public class CgTextRenderer {
         List<CgResolvedGlyphs.ResolvedDecoration> resolvedDecorations;
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT_DETAIL, "glyph.resolveDecorations")) {
             synchronized (registry) {
-                resolvedDecorations = resolvedGlyphs.resolveDecorations(decorations, draw.x, draw.y, draw.rgba,
+                resolvedDecorations = resolvedGlyphs.resolveDecorations(decorations, draw.originX(), draw.originY(), draw.rgba,
                         effectiveTargetPx, wantMsdf);
             }
         }
@@ -1994,7 +2091,7 @@ public class CgTextRenderer {
                     rgba = pass == PASS_SHAPE ? strokeArgb : rgba & 0x00FFFFFF;
                     c0x = ((strokeArgb >> 16) & 0xFF) / 255f; c0y = ((strokeArgb >> 8) & 0xFF) / 255f;
                     c0z = (strokeArgb & 0xFF) / 255f; c0w = ((strokeArgb >>> 24) & 0xFF) / 255f;
-                    c1x = strokeWidthTexels; c1y = strokeAlign; c1z = strokeOver;
+                    c1x = strokeWidthTexels; c1y = alignCode(strokeAlign, draw.strokeRound && p.atlasType() == CgGlyphAtlas.Type.MTSDF); c1z = strokeOver;
                 }
             } else {
                 byte kind = shadowPlan.kind(shadow, localIndex);
@@ -2019,8 +2116,8 @@ public class CgTextRenderer {
                 } else {
                     c1w = pxRange;
                     if (kind == CgTextShadowPlan.FIELD_OUTER || kind == CgTextShadowPlan.FIELD_INSET) {
-                        c1x = strokeWidthTexels;
-                        c1y = strokeAlign;
+                        c1x = draw.shadowsStroked ? strokeWidthTexels : 0f;
+                        c1y = alignCode(strokeAlign, draw.strokeRound && p.atlasType() == CgGlyphAtlas.Type.MTSDF);
                         c1z = shadowPlan.spreadTexels(shadow);
                         c0w = kind == CgTextShadowPlan.FIELD_OUTER ? KIND_FIELD_OUTER : KIND_FIELD_INSET;
                         if (kind == CgTextShadowPlan.FIELD_INSET) {

@@ -173,7 +173,14 @@ defensively auto-flushes).
 its paint step less the draw's shadow count, so outer shadows are negative, then decorations under the text (0), the
 glyphs' outline pass (1) and fill pass (2), decorations over them (3) and inset shadows. The two glyph passes are
 Slate's (`ElementBatcher`: outline at a layer, fill at the next): a stroke drawn with its own glyph's fill covered the
-glyph before it. `glyphPass` says what each pass draws. `flush()` drains the buckets by rank, first-seen order within a
+glyph before it. `glyphPass` says what each pass draws.
+
+**Outlines and shadows default to Unreal's, and CrystalGUI's CSS opts out** (`TextStrokeStyle`, `TextShadowStyle`):
+- `strokeJoin`: `ROUND`, as `FFontOutlineSettings::bMiteredCorners` false. The outline's outer edge reads MTSDF's true
+  distance (`text.shader`'s align slot plus 3), on an MTSDF glyph only; CSS takes `MITRE`.
+- `shadowsStroked`: `false`, as `bApplyOutlineToDropShadows`; CSS's `text-shadow` shadows the stroke too.
+- `contained`: `true`, as `FSlateTextRun` measures a run: the text moves in by the outline's reach and any shadow
+  offset up or left, and `measureSize` counts both. CSS's stroke and shadows overflow instead. `flush()` drains the buckets by rank, first-seen order within a
 rank, submit order within a bucket: a transition per bucket, not per draw, however the draws alternate atlases and
 shadow cells. 10,000 outlined, shadowed labels went from 15,723 flushes a frame to 3 (`--mode=world-labels`).
 - Each draw keeps its own layering. Across draws in one batch, every shadow lies beneath every glyph: two texts that

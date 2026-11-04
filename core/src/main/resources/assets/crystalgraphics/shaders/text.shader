@@ -70,6 +70,7 @@ Properties {
     //   CG_QUAD_CUSTOM0 = the outline's colour, rgba
     //   CG_QUAD_CUSTOM1 = (width in atlas TEXELS, align, over, pxRange)
     //       align:   0 centred on the contour, 1 outside it, 2 inside it  @see CgStrokeAlign
+    //                plus 3 for a round join: the outer edge from the true distance  @see CgStrokeJoin
     //       over:    non-zero to paint the stroke over the fill           @see paint-order
     //       pxRange: the range the GLYPH's own atlas band was generated at. Per instance because a
     //                face carrying a dense script is banded narrower than the rest, and two bands
@@ -177,7 +178,8 @@ Pass {
             return;
         }
 #ifdef MSDF_MODE
-        vec3 field = texture(_MainTex, uvw).rgb;
+        vec4 fieldSample = texture(_MainTex, uvw);
+        vec3 field = fieldSample.rgb;
         float signedDistance = max(min(field.r, field.g), min(max(field.r, field.g), field.b));
 
         vec4 strokeParams = CG_QUAD_CUSTOM1;
@@ -219,7 +221,8 @@ Pass {
             float shadowWidthField = strokeParams.x / max(pxRange, 1.0e-6);
             float shadowSpreadField = strokeParams.z / max(pxRange, 1.0e-6);
             float shadowReach = max(0.5 - max(1.0 / max(screenPxRange, 1.0e-6), 1.0 / max(pxRange, 1.0e-6)), 0.0);
-            float shadowAlign = strokeParams.y;
+            float shadowRound = step(2.5, strokeParams.y);
+            float shadowAlign = strokeParams.y - 3.0 * shadowRound;
             float shadowOutward = shadowAlign < 0.5 ? shadowWidthField * 0.5
                                 : shadowAlign < 1.5 ? shadowWidthField : 0.0;
             float shadowInward = shadowWidthField - shadowOutward;
@@ -227,7 +230,9 @@ Pass {
             if (shadowKind > -1.5) {
                 // Outer: the fill united with the ring's outer edge -- the median, so a stroke's mitred corner is
                 // shadowed as it is drawn -- then grown by the spread along the TRUE distance, which rounds.
-                shadowCoverage = clamp(screenPxDist + min(shadowOutward, shadowReach) * screenPxRange + 0.5, 0.0, 1.0);
+                float shadowEdge = shadowRound > 0.5 && shadowOutward > 0.0
+                        ? screenPxRange * (fieldSample.a - 0.5) : screenPxDist;
+                shadowCoverage = clamp(shadowEdge + min(shadowOutward, shadowReach) * screenPxRange + 0.5, 0.0, 1.0);
                 if (shadowSpreadField > 0.0) {
                     float trueDistance = texture(_MainTex, uvw).a;
                     float grown = min(shadowOutward + shadowSpreadField, shadowReach);
@@ -273,7 +278,8 @@ Pass {
         // has already paid for a texture fetch.
         vec4 strokeColor = CG_QUAD_CUSTOM0;
         float strokeWidthTexels = strokeParams.x;
-        float strokeAlign = strokeParams.y;
+        float strokeRound = step(2.5, strokeParams.y);
+        float strokeAlign = strokeParams.y - 3.0 * strokeRound;
         float strokeOver = strokeParams.z;
         if (strokeWidthTexels > 0.0 && strokeColor.a > 0.0) {
             // THE RING IS A DIFFERENCE OF TWO COVERAGES, not a band test. Thresholding |distance| picks
@@ -293,12 +299,9 @@ Pass {
             // an A's band, 0.7% of an E's, and EXACTLY 0% of an o's -- they part company at corners and
             // nowhere else. The median mitres a corner, a true distance rounds it.
             //
-            // Mitred is the default this API owes: -webkit-text-stroke is a path stroke and Skia's
-            // default join is mitre. It also keeps the ring's inner edge exactly on the fill's own edge,
-            // since both thresholds read one reconstruction -- reading alpha for the ring and the median
-            // for the fill would open a hairline at every corner, which is the seam this whole composite
-            // exists to close. A round join is therefore a FEATURE THAT EXISTS TO BE BUILT, reading
-            // alpha for both edges, not a difference that cannot be seen.
+            // So the inner edge reads the median, where the fill's own edge is, and only the OUTER edge
+            // reads the true distance under a round join (CgStrokeJoin): a mitre keeps the median there
+            // too, as -webkit-text-stroke's path stroke does.
             // @see CgStrokeFieldRangeTest#medianAndTrueDistanceDisagreeAtCorners
             float strokeDist = screenPxDist;
 
@@ -353,7 +356,10 @@ Pass {
             float outward = min(wantOutward, reachField);
             float inward  = min(strokeWidthField - wantOutward, reachField);
 
-            float ringOuter = clamp(strokeDist + outward * screenPxRange + 0.5, 0.0, 1.0);
+            // A ROUND JOIN takes the outer edge from the true distance (MTSDF's alpha), which rounds a corner as
+            // Unreal's SDF outline does; the inner edge stays on the median, where the fill's own edge is.
+            float outerDist = strokeRound > 0.5 && outward > 0.0 ? screenPxRange * (fieldSample.a - 0.5) : strokeDist;
+            float ringOuter = clamp(outerDist + outward * screenPxRange + 0.5, 0.0, 1.0);
             float ringInner = clamp(strokeDist - inward  * screenPxRange + 0.5, 0.0, 1.0);
             float strokeCoverage = max(ringOuter - ringInner, 0.0);
 

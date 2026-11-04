@@ -309,8 +309,8 @@ public class CgMsdfGenerator {
                 }
 
                 if (key.isSyntheticBold()) {
-                    // Dilate: shift every distance-carrying channel (R/G/B — never MTSDF's
-                    // alpha) toward "inside" so the reconstructed 0.5-threshold edge moves
+                    // Dilate: shift every distance channel, MTSDF's alpha too, toward "inside"
+                    // so the reconstructed 0.5-threshold edge moves
                     // outward, uniformly, on the already-correct (unmodified) shape's distance
                     // field — no geometry, no self-intersection risk.
                     //
@@ -623,15 +623,14 @@ public class CgMsdfGenerator {
     }
 
     /**
-     * Adds {@code bias} to every distance-carrying channel (R/G/B; MTSDF's 4th/alpha channel
-     * is untouched — see {@code text.shader}'s MSDF path, which only ever reads {@code .rgb}),
-     * clamped to {@code [0,1]}. See the synthetic-bold call site in
-     * {@link #prepareGlyph} for why this replaces a geometry-level embolden.
+     * Adds {@code bias} to every distance channel, MTSDF's true distance included, clamped to {@code [0,1]}:
+     * {@code text.shader} reads the alpha for a round outline's edge and a shadow's spread, which must grow with
+     * the bold. See the synthetic-bold call site in {@link #prepareGlyph} for why this replaces a geometry-level
+     * embolden.
      */
     private static void applyBoldBias(float[] pixels, int channels, float bias) {
-        int distanceChannels = Math.min(channels, 3);
         for (int i = 0; i < pixels.length; i += channels) {
-            for (int c = 0; c < distanceChannels; c++) {
+            for (int c = 0; c < channels; c++) {
                 float v = pixels[i + c] + bias;
                 pixels[i + c] = v < 0f ? 0f : (v > 1f ? 1f : v);
             }
