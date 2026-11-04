@@ -29,7 +29,6 @@ import java.nio.ByteOrder;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -81,8 +80,13 @@ public final class CgNullRHI implements CgRHI {
     private int draws;
     private boolean logging = true;
     private boolean async, transfer, overlap;
-    /** Begun transitions, each with what it held when begun: ending it changed is refused. */
-    private final Map<CgTransition, String> begun = new IdentityHashMap<>();
+    /**
+     * Begun transitions, each with a hash of what it held when begun: ending it changed is refused. Arrays, since a
+     * frame begins a few and an allocation test measures the engine, not this device.
+     */
+    private CgTransition[] begun = new CgTransition[8];
+    private long[] begunHeld = new long[8];
+    private int begunCount;
     private long asyncPoint;
     private Pass open;
     /** Unlogged, the last ended pass, begun again: an allocation test measures the engine, not this device. */
@@ -294,7 +298,7 @@ public final class CgNullRHI implements CgRHI {
     public void endFrame() {
         if (open != null) throw new IllegalStateException("endFrame with pass '" + open.desc.label() + "' open");
         if (async) throw new IllegalStateException("endFrame inside async work");
-        if (!begun.isEmpty()) throw new IllegalStateException("endFrame with " + begun.size() + " transitions begun and not ended");
+        if (begunCount > 0) throw new IllegalStateException("endFrame with " + begunCount + " transitions begun and not ended");
         if (overlap) throw new IllegalStateException("endFrame inside a storage overlap");
         if (logging) record("endFrame " + frame);
         frame++;
@@ -424,14 +428,20 @@ public final class CgNullRHI implements CgRHI {
         if (logging) record("setBindingSet " + index + " " + ref(set));
     }
 
-    /** What {@code t} holds, to tell a batch ended as begun from one changed between. */
-    private static String signature(CgTransition t) {
-        StringBuilder s = new StringBuilder();
+    /** What {@code t} holds, hashed, to tell a batch ended as begun from one changed between. */
+    private static long held(CgTransition t) {
+        long h = t.count();
         for (int i = 0; i < t.count(); i++) {
-            s.append(t.buffer(i) != null ? ref(t.buffer(i)) : ref(t.image(i))).append(' ')
-                    .append(t.from(i)).append('>').append(t.to(i)).append(';');
+            Obj o = (Obj) (t.buffer(i) != null ? t.buffer(i) : t.image(i));
+            h = (h * 31 + (o == null ? 0 : o.id)) * 31 + t.from(i);
+            h = h * 31 + t.to(i);
         }
-        return s.toString();
+        return h;
+    }
+
+    private int begunAt(CgTransition t) {
+        for (int i = 0; i < begunCount; i++) if (begun[i] == t) return i;
+        return -1;
     }
 
     private void moves(String what, CgTransition t) {
@@ -556,24 +566,33 @@ public final class CgNullRHI implements CgRHI {
         @Override
         public void transition(CgTransition t) {
             outsidePass("transition");
-            if (begun.containsKey(t)) throw new IllegalStateException("transition of a batch begun and not ended");
+            if (begunAt(t) >= 0) throw new IllegalStateException("transition of a batch begun and not ended");
             moves("transition", t);
         }
 
         @Override
         public void beginTransitions(CgTransition t) {
             outsidePass("beginTransitions");
-            if (begun.containsKey(t)) throw new IllegalStateException("beginTransitions twice without an end");
+            if (begunAt(t) >= 0) throw new IllegalStateException("beginTransitions twice without an end");
             moves("beginTransitions", t);
-            begun.put(t, signature(t));
+            if (begunCount == begun.length) {
+                begun = Arrays.copyOf(begun, begunCount * 2);
+                begunHeld = Arrays.copyOf(begunHeld, begunCount * 2);
+            }
+            begun[begunCount] = t;
+            begunHeld[begunCount++] = held(t);
         }
 
         @Override
         public void endTransitions(CgTransition t) {
             outsidePass("endTransitions");
-            String was = begun.remove(t);
-            if (was == null) throw new IllegalStateException("endTransitions of a batch never begun");
-            if (!was.equals(signature(t))) throw new IllegalStateException("endTransitions of a batch changed since it was begun");
+            int at = begunAt(t);
+            if (at < 0) throw new IllegalStateException("endTransitions of a batch never begun");
+            long was = begunHeld[at];
+            begun[at] = begun[--begunCount];
+            begunHeld[at] = begunHeld[begunCount];
+            begun[begunCount] = null;
+            if (was != held(t)) throw new IllegalStateException("endTransitions of a batch changed since it was begun");
             moves("endTransitions", t);
         }
 

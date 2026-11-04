@@ -66,6 +66,8 @@ public final class CgStageFrame {
     private final CgPassConstants hostConstants = new CgPassConstants();
     private CgGraphTexture pyramid;
     private boolean pyramidBuilt;
+    /** The pyramid's description at the host's last size: made again only when it changes. */
+    private CgTextureDesc pyramidDesc;
     /** Whether this firing is a rehearsal's, which builds its own pyramid and takes none of the frame's. */
     private boolean rehearsing;
     /** The frame's pyramid and the host whose target it was built from (L1: one a frame, every firing's). */
@@ -204,7 +206,10 @@ public final class CgStageFrame {
         pyramidBuilt = true;
         CgTrace.add(CgChannels.GL, PYRAMID_ASKS, 1);
         int w = (int) host.width(), h = (int) host.height();
-        CgTextureDesc desc = new CgTextureDesc(w, h, CgGpuOps.PYRAMID_FORMAT).withMips();
+        if (pyramidDesc == null || pyramidDesc.width() != w || pyramidDesc.height() != h) {
+            pyramidDesc = new CgTextureDesc(w, h, CgGpuOps.PYRAMID_FORMAT).withMips();
+        }
+        CgTextureDesc desc = pyramidDesc;
         if (rehearsing) {
             if (pyramid == null || !desc.equals(pyramid.desc())) pyramid = CgGraphTexture.transientTexture("stage.pyramid", desc);
         } else {
