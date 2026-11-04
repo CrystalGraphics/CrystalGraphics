@@ -212,7 +212,11 @@ what "reset to parent" clears.
 ### Children in one file
 
 A family of one effect, such as a light, hard and huge ground break, fits in one file. Each child is written inline
-under `children:`, in the block it derives from, and holds only what differs:
+under `children:`, in the block it derives from.
+
+**A child inherits everything its parent has.** Write only the fields you want different; every field you leave out
+is the parent's, nested ones included, merged as [Inheritance](#inheritance) says. Here `hard` changes `range` and
+two of the shake's fields. Its `kind`, the shake asset, `in_world`, `inner` and `falloff` are all `ground_break`'s:
 
 ```yaml
 # assets/mymod/cues/ground_break.yaml  →  mymod:ground_break, mymod:ground_break/hard, mymod:ground_break/huge
@@ -231,6 +235,9 @@ children:
       wide: { range: 256 }                                          # mymod:ground_break/huge/wide, from huge
 ```
 
+So `hard` plays with `range: 64` and `shake: { shake: mymod:jolt, scale: 2, in_world: true, inner: 0, outer: 64,
+falloff: 1 }`. `wide` inherits from `huge`, and through it from `ground_break`: it changes `range` alone.
+
 `hard` reads exactly as this file would:
 
 ```yaml
@@ -243,7 +250,9 @@ burst: { shake: { scale: 2, outer: 64 } }
 ```
 
 - **A child is an asset like any other**, with the id `<its block's id>/<name>`. Play it, reference it and load it by
-  that id; inheritance merges it over its block as above.
+  that id.
+- **An empty child (`light: {}`) is an exact copy of its parent** under its own id and tag. To drop an inherited
+  element, use `remove: [id]`; a list that is not of elements is replaced whole by the child's.
 - **A name** is lower-case letters, digits and `_`, at most 32.
 - **A child writes no `_v`, `parent` or `units`**: it takes its file's. Writing one fails at load.
 - **Children nest**: a child's own `children` derive from it.
