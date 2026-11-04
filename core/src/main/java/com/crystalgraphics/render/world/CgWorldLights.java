@@ -179,10 +179,6 @@ public final class CgWorldLights {
      */
     private static final float GRID_NEAR = 0.05f + 0.095f, GRID_FAR = 256.1f, GRID_SPREAD = 4.05f;
     private static final String KERNELS = "crystalgraphics:shaders/env/compute/light_grid.compute";
-    /**
-     * Unreal's translucency lighting volume (TranslucentLighting.cpp): two cascades of {@link #VOLUME_CELLS} a side round
-     * the view, which light_volume.compute fills and every lit transparent pass reads ({@code cg_LocalLights}).
-     */
     private static final String VOLUME_KERNELS = "crystalgraphics:shaders/env/compute/light_volume.compute";
     private static final int GPU_VOLUME = CgGpuTrace.name("world.lightsVolume");
     /** Unreal's r.TranslucencyLightingVolume.Dim. */
@@ -379,9 +375,8 @@ public final class CgWorldLights {
     /** Where the sun's cascade rows start in the casters' texture: world_lights_sample.shader's SUN_ROWS_AT. */
     private static final int SUN_ROWS_AT = MOST_CASTERS * CASTER_FLOATS / 4;
     private static final float CASTER_REACH = 96f;
-    /** Unreal's r.Forward.LightGridHZBCull. */
     /**
-     * Off: in Minecraft 1.20.1 it cut the lit air into the grid's 64-pixel squares (the harness never shows it), and in
+     * Unreal's r.Forward.LightGridHZBCull. Off: in Minecraft 1.20.1 it cut the lit air into the grid's 64-pixel squares (the harness never shows it), and in
      * the lights demo at 2560x1440 it saved 0.02 ms.
      */
     private static final CgVar.Bool HZB = CgVar.bool("crystalgraphics.world.lightsHzb", false, CgVar.DEV,
@@ -813,7 +808,6 @@ public final class CgWorldLights {
         return gridY;
     }
 
-    /** Unit-depth view rays at the target's left, bottom, right and top edges: what a cell's x and y run along. */
     /**
      * How far past its cone the light grid lists a spot at eye depth z, {@code z * [0] + [1]} blocks: the lit air's
      * widening of its cone ({@link CgWorldMedia}). Read only.
@@ -1041,12 +1035,6 @@ public final class CgWorldLights {
         }
     }
 
-    /**
-     * Each cell's lights, as Unreal 5 bins them (LightGridInjection.usf): the lights turned into the grid's space once, a
-     * parent grid {@link #PARENT} cells a side culled first where compute runs (LightGridInjection.cpp:1818-1851), then
-     * each cell from its parent's list. The grid is sized to the target, {@link #TILE} pixels a cell
-     * (LightGridInjection.cpp:659-670).
-     */
     /** The light grid's kernels, made and started once: the two-level bin where compute runs, else the scan's. */
     private void binKernels() {
         if (view != null) return;
@@ -1059,7 +1047,6 @@ public final class CgWorldLights {
         precacheBin();
     }
 
-    /** Every light-grid kernel a bin dispatches; inside {@link CgKernel#ahead}, their sources on a worker. */
     /** Every kernel a lit firing dispatches, for the world's collector: the bin's, the volume's and the air's. */
     static void precacheKernels() {
         precacheBin();
@@ -1067,6 +1054,7 @@ public final class CgWorldLights {
         CgCompute.load(VOLUME_KERNELS).kernel("Scatter").precache();
     }
 
+    /** Every light-grid kernel a bin dispatches; inside {@link CgKernel#ahead}, their sources on a worker. */
     private static void precacheBin() {
         CgCompute kernels = CgCompute.load(KERNELS);
         kernels.kernel("View").precache();
@@ -1080,6 +1068,12 @@ public final class CgWorldLights {
         }
     }
 
+    /**
+     * Each cell's lights, as Unreal 5 bins them (LightGridInjection.usf): the lights turned into the grid's space once, a
+     * parent grid {@link #PARENT} cells a side culled first where compute runs (LightGridInjection.cpp:1818-1851), then
+     * each cell from its parent's list. The grid is sized to the target, {@link #TILE} pixels a cell
+     * (LightGridInjection.cpp:659-670).
+     */
     private void bin(CgRecording recording, CgPassConstants stage, CgComputePass pass, Matrix4fc projection,
                      Matrix4fc toWorld, float targetWidth, float targetHeight, CgTexture lightmap) {
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, ZONE_BIN)) {
@@ -1249,11 +1243,6 @@ public final class CgWorldLights {
         projection.mul(bob.invertAffine(perspective), perspective);
     }
 
-    /**
-     * Adds this firing's lights onto the scene behind each pixel, after {@link #record} answered true: one full-screen
-     * pass over the stage's target, Unreal's simple lights through the grid. Skipped while its program is unbuilt.
-     * {@code transparents} fills the translucency volume, and {@code directional} its direction too.
-     */
     /** The apply's and the G-buffer's programs, made once; whether all three are built, polling those still compiling. */
     private boolean applyBuilt() {
         if (applyPoints == null) {
@@ -1268,6 +1257,11 @@ public final class CgWorldLights {
         return points.precache() & shaped.precache() & gbufferPass.precache();
     }
 
+    /**
+     * Adds this firing's lights onto the scene behind each pixel, after {@link #record} answered true: one full-screen
+     * pass over the stage's target, Unreal's simple lights through the grid. Skipped while its program is unbuilt.
+     * {@code transparents} fills the translucency volume, and {@code directional} its direction too.
+     */
     void apply(CgStageFrame stage, CgRecording recording, boolean transparents, boolean directional) {
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, ZONE_APPLY)) {
             localLights = null;
@@ -1637,6 +1631,10 @@ public final class CgWorldLights {
         scatterKernel.precache();
     }
 
+    /**
+     * Unreal's translucency lighting volume (TranslucentLighting.cpp): two cascades of {@link #VOLUME_CELLS} a side round
+     * the view, which light_volume.compute fills and every lit transparent pass reads ({@code cg_LocalLights}).
+     */
     private void recordVolume(CgStageFrame stage, CgRecording recording, boolean directional) {
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, ZONE_VOLUME)) {
             volumeKernel();

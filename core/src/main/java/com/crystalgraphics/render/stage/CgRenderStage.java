@@ -244,7 +244,7 @@ public final class CgRenderStage {
      * host section of its own. Render thread, from the host's frame. Nothing happens after the engine is torn down.
      */
     public void fire() {
-        // NOTHING RUNS AFTER A TEARDOWN. Minecraft keeps dispatching render stages for a frame or two after
+        // Nothing runs after a teardown. Minecraft keeps dispatching render stages for a frame or two after
         // GameShuttisngDownEvent, and by then every registry is deleted: a stage reaching CgMaterial.load threw
         // "CgMaterialRegistry has been deleted" out of a render event, which surfaced as a crash on quitting.
         if (CgGraphicsLifecycle.isContextDestroyed() || CgGraphicsLifecycle.isStoodDown()) return;

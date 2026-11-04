@@ -306,11 +306,6 @@ public final class CgRasterPass extends CgPass {
     }
 
     /**
-     * Places this pass's target at {@code (originX, originY)} in the recording's root space, moving with spatial node
-     * {@code owner}: a layer whose content was recorded under {@code owner} and is composited back through it. A
-     * pass with no view is the root's own target, at the origin.
-     */
-    /**
      * Executes only what lies in {@code (x, y, width, height)}, the target's bottom-left pixels: the clear and every
      * draw cut to it, the rest of the target kept as it was -- a surface whose window changed in one place. An empty
      * rect executes nothing. May be set after {@link #end}, until the recording is sealed.
@@ -332,6 +327,11 @@ public final class CgRasterPass extends CgPass {
         return damage;
     }
 
+    /**
+     * Places this pass's target at {@code (originX, originY)} in the recording's root space, moving with spatial node
+     * {@code owner}: a layer whose content was recorded under {@code owner} and is composited back through it. A
+     * pass with no view is the root's own target, at the origin.
+     */
     public CgRasterPass view(int owner, float originX, float originY) {
         viewOwner = owner;
         viewX = originX;

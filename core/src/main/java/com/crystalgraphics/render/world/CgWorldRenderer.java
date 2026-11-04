@@ -139,9 +139,9 @@ public final class CgWorldRenderer {
 
     /** Where the world renderer records in each world stage: after renderers at the default order, which may submit. */
     public static final int ORDER = 1000;
-    /** Where a firing starts the world renderer's frame and runs the client world's schedule: after camera shake only. */
     /** A pass into a target it fills from nothing: one load, not one a pass. */
     private static final CgLoad CLEAR = CgLoad.clear(0f, 0f, 0f, 0f);
+    /** Where a firing starts the world renderer's frame and runs the client world's schedule: after camera shake only. */
     private static final int FRAME_ORDER = Integer.MIN_VALUE + 1;
 
     private static final Logger LOGGER = LogManager.getLogger("CgWorldRenderer");

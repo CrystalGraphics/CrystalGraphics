@@ -140,7 +140,6 @@ public abstract sealed class CgPass permits CgRasterPass, CgComputePass, CgPass.
     /** A buffer range set to one 32-bit value. Reused by its recording after a reset. */
     static final class Fill extends CgPass {
         CgGraphBuffer buffer;
-        /** The buffer name {@link #name} was made from: kept past {@link #clearReferences}. */
         long offset, size;
         int value;
 
@@ -176,7 +175,6 @@ public abstract sealed class CgPass permits CgRasterPass, CgComputePass, CgPass.
         int from;
         /** In bytes. */
         int size;
-        /** The buffer name {@link #name} was made from: kept past {@link #clearReferences}. */
         /** The bytes a reused update copies into, grown as needed: {@link #bytes} while it holds bytes. */
         @Nullable
         private byte[] owned;

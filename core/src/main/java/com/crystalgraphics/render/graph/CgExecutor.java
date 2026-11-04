@@ -257,7 +257,6 @@ public final class CgExecutor {
     }
 
     /** Executes {@code frame} and restores GL state after. Render thread, inside a frame. */
-
     public static void execute(CgFrame frame) {
         execute(frame, true);
     }
@@ -334,10 +333,6 @@ public final class CgExecutor {
     }
 
     /**
-     * Frees every executor's ring, the transient pools and every persistent or history buffer's storage still held. At
-     * context teardown, before the framebuffer sweep.
-     */
-    /**
      * Makes the executors of the first {@code depths} nesting depths now. Each maps a ring and an indirect-args table,
      * and a map waits for a threaded driver's queue, deepest while loading: an immediate draw's first nested execution
      * held the loading screen 117 ms (1.20.1). At the engine's start, after {@code CgBindingPoints.init}. Render thread.
@@ -352,6 +347,10 @@ public final class CgExecutor {
         BESIDE.forgetHost();
     }
 
+    /**
+     * Frees every executor's ring, the transient pools and every persistent or history buffer's storage still held. At
+     * context teardown, before the framebuffer sweep.
+     */
     public static void destroyAll() {
         for (CgExecutor executor : BY_DEPTH) {
             executor.ring.delete();
@@ -377,18 +376,19 @@ public final class CgExecutor {
     private void run(CgFrame frame) {
         boolean again = frame.executions++ > 0;
         kernelsSeen |= frame.kernels;
-        ComputeTier tier = CgCapabilities.detect().computeTier();
+        CgCapabilities caps = CgCapabilities.detect();
+        ComputeTier tier = caps.computeTier();
         boolean compute = tier == ComputeTier.V || tier == ComputeTier.G43;
         computeBarriers = BARRIERS.get() && compute;
-        gpuCounts = compute || tier == ComputeTier.G40 && CgCapabilities.detect().drawIndirect();
-        asyncCompute = tier == ComputeTier.V && CgCapabilities.detect().asyncCompute();
-        independentMasks = CgCapabilities.detect().independentBlend();
+        gpuCounts = compute || tier == ComputeTier.G40 && caps.drawIndirect();
+        asyncCompute = tier == ComputeTier.V && caps.asyncCompute();
+        independentMasks = caps.independentBlend();
         if (asyncUnwaited && CgFrameRing.frame() != asyncFrame) {   // the last frame's end waited for all of it
             clearAsync();
             asyncUnwaited = false;
         }
         asyncEnd = 0;
-        multiDraw = CgCapabilities.detect().multiDraw() && CgMeshStore.get().multiDraw();
+        multiDraw = caps.multiDraw() && CgMeshStore.get().multiDraw();
         // The current target, noted before any pass binds its own: rebound for a pass into it after one into another,
         // and what a copy of it reads. From the state shadow, since a glGet waits for the driver to drain the queue.
         startNoted = frame.readsCurrentDepth || frame.rastersCurrent;
@@ -427,7 +427,7 @@ public final class CgExecutor {
                     }
                 }
                 if (!skipped) step(frame, s);
-                // A WINDOW MOVED BY ITS NODE executes no surface: what a re-execution drew into a kept texture.
+                // A window moved by its node executes no surface: what a re-execution drew into a kept texture.
                 if (again && pass instanceof CgRasterPass && pass.target != null
                         && pass.target.kind() == CgGraphTexture.Kind.REQUESTED) {
                     CgTrace.add(CgChannels.GL, frame.keepRequested ? "graph.again.requested-kept"
@@ -1001,6 +1001,7 @@ public final class CgExecutor {
         return buffer != null && buffer.kind() == CgGraphBuffer.Kind.IMPORTED;
     }
 
+    /** A history written by {@code d}: its next version is its newest from now on, however many bindings wrote it. */
     private void advanceHistories(CgDispatch d) {
         for (int i = 0; i < d.buffers.length; i++) {
             if (wroteHistory(d.buffers[i], d.bufferAccess[i]) && firstWriter(d, i)) d.buffers[i].advance();
@@ -1066,10 +1067,7 @@ public final class CgExecutor {
                 }
             }
         }
-        // A history written here: its next version is its newest from now on, once however many bindings wrote it.
-        for (int b = 0; b < d.buffers.length; b++) {
-            if (wroteHistory(d.buffers[b], d.bufferAccess[b]) && firstWriter(d, b)) d.buffers[b].advance();
-        }
+        advanceHistories(d);
     }
 
     private void bindDispatch(CgDispatch d, CgKernelProgram program, CgFrame frame, int bindings) {
@@ -1221,7 +1219,6 @@ public final class CgExecutor {
         return id;
     }
 
-    /** A persistent or history buffer's storage freed, and forgotten by the barrier rule. */
     /** GL buffer {@code buffer} is freed: what is known of it goes with it. */
     private static void forget(int buffer) {
         HAZARDS.forget(CgHazards.buffer(buffer));
@@ -1324,7 +1321,7 @@ public final class CgExecutor {
 
     private void raster(CgFrame frame, CgRasterPass pass, CgFrame.Raster packed, @Nullable int[] damage) {
         if (damage != null && (damage[2] == 0 || damage[3] == 0)) {
-            // NOTHING CHANGED IN IT: the target keeps what the last execution left.
+            // Nothing changed in it: the target keeps what the last execution left.
             CgTrace.add(CgChannels.GL, "graph.passes.undamaged", 1);
             return;
         }
