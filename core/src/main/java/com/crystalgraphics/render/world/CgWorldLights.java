@@ -1150,39 +1150,50 @@ public final class CgWorldLights {
      * {@code perspective} is {@code projection} and {@code bob} the identity. An RQ split of the x, y and w rows.
      */
     static void splitPerspective(Matrix4fc projection, Matrix4f perspective, Matrix4f bob) {
-        Vector3f a0 = new Vector3f(projection.m00(), projection.m10(), projection.m20());
-        Vector3f a1 = new Vector3f(projection.m01(), projection.m11(), projection.m21());
-        Vector3f r2 = new Vector3f(projection.m03(), projection.m13(), projection.m23());
-        float k22 = r2.length();
+        // Rows as floats: this runs every firing on the render thread, which allocates nothing.
+        float a0x = projection.m00(), a0y = projection.m10(), a0z = projection.m20();
+        float a1x = projection.m01(), a1y = projection.m11(), a1z = projection.m21();
+        float r2x = projection.m03(), r2y = projection.m13(), r2z = projection.m23();
+        float k22 = (float) Math.sqrt(r2x * r2x + r2y * r2y + r2z * r2z);
         // An orthographic projection's w row is constant: no eye to turn about.
         if (k22 < 1e-6f) {
             perspective.set(projection);
             bob.identity();
             return;
         }
-        r2.div(k22);
-        float k12 = a1.dot(r2);
-        Vector3f r1 = new Vector3f(r2).mul(-k12).add(a1);
-        float k11 = r1.length();
-        r1.div(k11);
-        float k02 = a0.dot(r2), k01 = a0.dot(r1);
-        Vector3f r0 = new Vector3f(a0).sub(new Vector3f(r1).mul(k01)).sub(new Vector3f(r2).mul(k02));
-        float k00 = r0.length();
-        r0.div(k00);
+        r2x /= k22;
+        r2y /= k22;
+        r2z /= k22;
+        float k12 = a1x * r2x + a1y * r2y + a1z * r2z;
+        float r1x = a1x - k12 * r2x, r1y = a1y - k12 * r2y, r1z = a1z - k12 * r2z;
+        float k11 = (float) Math.sqrt(r1x * r1x + r1y * r1y + r1z * r1z);
+        r1x /= k11;
+        r1y /= k11;
+        r1z /= k11;
+        float k02 = a0x * r2x + a0y * r2y + a0z * r2z, k01 = a0x * r1x + a0y * r1y + a0z * r1z;
+        float r0x = a0x - k01 * r1x - k02 * r2x, r0y = a0y - k01 * r1y - k02 * r2y, r0z = a0z - k01 * r1z - k02 * r2z;
+        float k00 = (float) Math.sqrt(r0x * r0x + r0y * r0y + r0z * r0z);
+        r0x /= k00;
+        r0y /= k00;
+        r0z /= k00;
         // A flipped axis (a y-down projection) stays the perspective's, so the bob is a turn and never a mirror.
-        if (r0.x < 0f) {
-            r0.negate();
+        if (r0x < 0f) {
+            r0x = -r0x;
+            r0y = -r0y;
+            r0z = -r0z;
             k00 = -k00;
         }
-        if (r1.y < 0f) {
-            r1.negate();
+        if (r1y < 0f) {
+            r1x = -r1x;
+            r1y = -r1y;
+            r1z = -r1z;
             k11 = -k11;
             k01 = -k01;
         }
         float t2 = projection.m33() / k22, t1 = (projection.m31() - k12 * t2) / k11;
         float t0 = (projection.m30() - k01 * t1 - k02 * t2) / k00;
         // The w row is -z: the bob's third row is r2 turned round, so no bob is the identity.
-        bob.set(r0.x, r1.x, -r2.x, 0f, r0.y, r1.y, -r2.y, 0f, r0.z, r1.z, -r2.z, 0f, t0, t1, -t2, 1f);
+        bob.set(r0x, r1x, -r2x, 0f, r0y, r1y, -r2y, 0f, r0z, r1z, -r2z, 0f, t0, t1, -t2, 1f);
         projection.mul(bob.invertAffine(perspective), perspective);
     }
 
