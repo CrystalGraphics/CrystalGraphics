@@ -33,7 +33,8 @@ public final class CgPostSettings {
             FILM_HEAL = 1 << 11, FILM_SATURATION = 1 << 12, WHITE_BALANCE = 1 << 13, FILMIC = 1 << 14,
             TONE_CURVE = 1 << 15, FILM_SLOPE = 1 << 16, FILM_CURVE_TOE = 1 << 17, FILM_SHOULDER = 1 << 18,
             FILM_BLACK_CLIP = 1 << 19, FILM_WHITE_CLIP = 1 << 20, BLUE_CORRECTION = 1 << 21, EXPAND_GAMUT = 1 << 22,
-            DISPLAY_GAMMA = 1 << 23, GAUSSIAN = 1 << 24, BLOOM_THRESHOLD = 1 << 25, BLOOM_SIZE_SCALE = 1 << 26;
+            DISPLAY_GAMMA = 1 << 23, GAUSSIAN = 1 << 24, BLOOM_THRESHOLD = 1 << 25, BLOOM_SIZE_SCALE = 1 << 26,
+            BLOOM_EXCESS = 1 << 27;
 
     /** Unreal's Gaussian bloom layers, {@code Bloom1} to {@code Bloom6}. */
     public static final int BLOOM_LAYERS = 6;
@@ -286,16 +287,35 @@ public final class CgPostSettings {
      *
      * <ul>
      *   <li>Sets {@link #bloomSizeScale} to 1 and every layer: a later {@link #bloomLayer} changes one of them.</li>
-     *   <li>The source still differs: Unreal's setup scales a texel by {@code saturate((luminance - 1) / 2)}, where the
-     *       chain blooms each channel's excess past 1.</li>
+     *   <li>Blooms each channel's excess past 1, as the chain does ({@link #bloomExcess}): what keeps a glow as saturated
+     *       as its source.</li>
      * </ul>
      */
     public CgPostSettings chainGaussianBloom() {
-        gaussianBloom().bloomThreshold(1f).bloomSizeScale(1f);
+        gaussianBloom().bloomExcess().bloomThreshold(1f).bloomSizeScale(1f);
         for (int l = 1; l <= BLOOM_LAYERS; l++) {
             float t = CHAIN_TINTS[l - 1];
             bloomLayer(l, CHAIN_SIZES[l - 1], t, t, t);
         }
+        return this;
+    }
+
+    /**
+     * The Gaussian layers bloom what the chain blooms: each channel's excess past {@link #bloomThreshold}, instead of Unreal's
+     * setup, which scales the whole colour by how far its luminance passes the threshold. A yellow (3, 3, 0.8) blooms
+     * (2, 2, 0) here, a deeper yellow than Unreal's.
+     *
+     * <pre>{@code
+     * new CgPostSettings().gaussianBloom().bloomExcess().bloomThreshold(1f);
+     * }</pre>
+     *
+     * <ul>
+     *   <li>The Gaussian's alone; the chain always blooms the excess.</li>
+     *   <li>A threshold of -1 or less blooms the whole scene either way.</li>
+     * </ul>
+     */
+    public CgPostSettings bloomExcess() {
+        overrides |= BLOOM_EXCESS;
         return this;
     }
 
@@ -614,6 +634,11 @@ public final class CgPostSettings {
     /** Whether the bloom is Unreal's Gaussian layers ({@link #gaussianBloom()}), not the engine's chain. */
     public boolean bloomsGaussian() {
         return (overrides & GAUSSIAN) != 0;
+    }
+
+    /** Whether the Gaussian layers bloom each channel's excess ({@link #bloomExcess()}), not Unreal's setup. */
+    public boolean bloomsExcess() {
+        return (overrides & BLOOM_EXCESS) != 0;
     }
 
     public float bloomThreshold() {

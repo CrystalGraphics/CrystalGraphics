@@ -163,7 +163,7 @@ public final class CgBloom implements CgPostEffect {
         if (post.settings().bloom() <= 0f || scene == null) return;
         if (post.settings().bloomsGaussian()) {
             // Unreal's layers: the setup on the half-size scene; their tints carry the intensity
-            CgGraphTexture half = excess.record(post, scene, true, post.settings().bloomThreshold(), layers);
+            CgGraphTexture half = excess.record(post, scene, !post.settings().bloomsExcess(), sourceThreshold(post.settings()), layers);
             CgGraphTexture glow = half == null ? null : gaussian.record(post.recording(), half, post.settings(), post.constants());
             if (glow == null) return;
             post.resources().put(CHAIN, gaussian.levels());
@@ -191,7 +191,7 @@ public final class CgBloom implements CgPostEffect {
             if (look == null || look.bloom() <= 0f) continue;
             CgGraphTexture layer = layers.layer(k), glow;
             if (look.bloomsGaussian()) {
-                CgGraphTexture half = layerExcess[k].record(post, layer, true, look.bloomThreshold(), null);
+                CgGraphTexture half = layerExcess[k].record(post, layer, !look.bloomsExcess(), sourceThreshold(look), null);
                 glow = half == null ? null : layerGaussians[k].record(post.recording(), half, look, post.constants());
                 if (glow != null) post.composite().layerBloom(k, glow, intensity);
             } else {
@@ -201,6 +201,11 @@ public final class CgBloom implements CgPostEffect {
                 if (glow != null) post.composite().layerBloom(k, glow, intensity * look.bloom());
             }
         }
+    }
+
+    /** The Gaussian's threshold: Unreal's as set, or for the excess form at least 0, where -1 blooms the whole scene. */
+    private static float sourceThreshold(CgPostSettings s) {
+        return s.bloomsExcess() ? Math.max(0f, s.bloomThreshold()) : s.bloomThreshold();
     }
 
     /** A source of bloom: a scene's light past a threshold at half its size, its material and target its own. */
