@@ -326,7 +326,8 @@ public final class TrackedFramebuffers {
         if (name == 0) {
             for (int i = 0; i < t.colors().size(); i++) {
                 CgTextureView v = t.colors().get(i);
-                tracker.textureBarrier(v.texture(), v.baseMip(), v.mips(), v.baseLayer(), v.layers(), color(from), color(to));
+                tracker.textureBarrier(v.texture(), v.baseMip(), v.mips(), v.baseLayer(), v.layers(),
+                        unsampled(v, color(from), CgAccess.COLOR_WRITE), unsampled(v, color(to), CgAccess.COLOR_WRITE));
             }
         } else {
             // Every colour attachment, drawn to or not yet: a pass sets its draw buffers after its transitions.
@@ -334,14 +335,16 @@ public final class TrackedFramebuffers {
             for (int i = 0; i < COLORS; i++) {
                 CgTextureView v = view(f.colors[i]);
                 if (v != null) {
-                    tracker.textureBarrier(v.texture(), v.baseMip(), v.mips(), v.baseLayer(), v.layers(), color(from), color(to));
+                    tracker.textureBarrier(v.texture(), v.baseMip(), v.mips(), v.baseLayer(), v.layers(),
+                            unsampled(v, color(from), CgAccess.COLOR_WRITE), unsampled(v, color(to), CgAccess.COLOR_WRITE));
                 }
             }
         }
         CgTextureView d = t.depth();
         if (d != null) {
             // Whole: a shader samples a depth texture's every level, so they move together.
-            tracker.textureBarrier(d.texture(), depth(from), depth(to));
+            tracker.textureBarrier(d.texture(), unsampled(d, depth(from), CgAccess.DEPTH_WRITE),
+                    unsampled(d, depth(to), CgAccess.DEPTH_WRITE));
         }
     }
 
@@ -367,6 +370,16 @@ public final class TrackedFramebuffers {
     private static int depth(int access) {
         if ((access & CgAccess.DEPTH_READ) != 0) return CgAccess.DEPTH_READ | CgAccess.SAMPLED_READ;
         return (access & CgAccess.COLOR_WRITE) == 0 ? access : access & ~CgAccess.COLOR_WRITE | CgAccess.DEPTH_WRITE;
+    }
+
+    /**
+     * An attachment no shader can sample (a renderbuffer) stays in its attachment layout for any read but a copy: what
+     * the graph's statement of the framebuffer names is the sampleable images' access.
+     */
+    private static int unsampled(CgTextureView v, int access, int attachment) {
+        if (v.texture().desc().usage().contains(CgGpuTexture.Usage.SAMPLED)) return access;
+        if ((access & (CgAccess.COPY_READ | CgAccess.COPY_WRITE | CgAccess.RESTING)) != 0 || access == 0) return access;
+        return attachment;
     }
 
     /** What a colour attachment takes: the access, less a read-only depth's. */

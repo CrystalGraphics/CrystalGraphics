@@ -17,6 +17,7 @@ import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 import com.crystalgraphics.render.graph.CgFrameBuilder;
 import com.crystalgraphics.render.graph.CgFrameGraph;
+import com.crystalgraphics.render.graph.CgFrameScope;
 import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.render.graph.CgLoad;
 import com.crystalgraphics.render.graph.CgRasterPass;
@@ -65,6 +66,13 @@ public final class CgStageFrame {
     private final CgPassConstants hostConstants = new CgPassConstants();
     private CgGraphTexture pyramid;
     private boolean pyramidBuilt;
+    /** Whether this firing is a rehearsal's, which builds its own pyramid and takes none of the frame's. */
+    private boolean rehearsing;
+    /** The frame's pyramid and the host whose target it was built from (L1: one a frame, every firing's). */
+    private static final CgFrameScope.Key<CgGraphTexture> PYRAMID = new CgFrameScope.Key<>("stage.pyramid");
+    private static final CgFrameScope.Key<Integer> PYRAMID_HOST = new CgFrameScope.Key<>("stage.pyramid.host");
+    /** Pyramids built, and firings asking for one: what each built before the frame shared one. */
+    private static final int PYRAMIDS = CgTrace.name("stage.pyramids-built"), PYRAMID_ASKS = CgTrace.name("stage.pyramid-asks");
     @Nullable
     private CgGraphTexture target;
 
@@ -177,28 +185,40 @@ public final class CgStageFrame {
     }
 
     /**
-     * The depth pyramid of the host's target as recorded so far, built at the first ask of a firing and shared by every
-     * renderer that asks after ({@link CgGpuOps#depthPyramid}: each level the farthest eye depth it covers). What a GPU
-     * cull tests occlusion against.
+     * The depth pyramid of the host's target, built at the frame's first ask and shared by every renderer and every
+     * later firing of the host's frame that asks after ({@link CgGpuOps#depthPyramid}: each level the farthest eye depth
+     * it covers), as Unreal builds one furthest HZB a view a frame. What a GPU cull tests occlusion against.
      *
      * <pre>{@code
      * cull.view(view.view(), view.projection()).pyramid(frame.depthPyramid());
      * }</pre>
      *
      * <ul>
-     *   <li>Holds the depth of what was recorded before the first ask: asked ahead of a renderer's own draws, it hides
-     *       nothing behind them. At {@code WORLD_OPAQUE}, everything the host drew before firing it.</li>
+     *   <li>Holds the depth of what was recorded before the frame's first ask: asked ahead of a renderer's own draws, it
+     *       hides nothing behind them. At {@code WORLD_OPAQUE}, everything the host drew before firing it; a later firing
+     *       culls against that, farther than its own depth, so it culls less and draws the same picture.</li>
      * </ul>
      */
     public CgGraphTexture depthPyramid() {
-        if (!pyramidBuilt) {
-            int w = (int) host.width(), h = (int) host.height();
-            if (pyramid == null || pyramid.getWidth() != w || pyramid.getHeight() != h) {
-                pyramid = CgGraphTexture.transientTexture("stage.pyramid", new CgTextureDesc(w, h, CgGpuOps.PYRAMID_FORMAT).withMips());
+        if (pyramidBuilt) return pyramid;
+        pyramidBuilt = true;
+        CgTrace.add(CgChannels.GL, PYRAMID_ASKS, 1);
+        int w = (int) host.width(), h = (int) host.height();
+        CgTextureDesc desc = new CgTextureDesc(w, h, CgGpuOps.PYRAMID_FORMAT).withMips();
+        if (rehearsing) {
+            if (pyramid == null || !desc.equals(pyramid.desc())) pyramid = CgGraphTexture.transientTexture("stage.pyramid", desc);
+        } else {
+            CgGraphTexture shared = CgFrameScope.get(PYRAMID);
+            Integer from = CgFrameScope.get(PYRAMID_HOST);   // the host's target it was built from: its framebuffer
+            if (shared != null && from != null && from == host.mainFramebuffer() && desc.equals(shared.desc())) {
+                return pyramid = shared;   // built by an earlier firing of this frame
             }
-            CgGpuOps.depthPyramid(recording, target(), constants(), pyramid);
-            pyramidBuilt = true;
+            pyramid = CgFrameScope.texture(PYRAMID, desc, recording);
+            CgFrameScope.put(PYRAMID, pyramid);
+            CgFrameScope.put(PYRAMID_HOST, host.mainFramebuffer());
         }
+        CgGpuOps.depthPyramid(recording, target(), constants(), pyramid);
+        CgTrace.add(CgChannels.GL, PYRAMIDS, 1);
         return pyramid;
     }
 
@@ -211,6 +231,7 @@ public final class CgStageFrame {
         this.host = host;
         recording.reset();
         pyramidBuilt = false;
+        rehearsing = false;
         target = null;
         long frame = CgFrameRing.frame();
         ordinal = frame == firingFrame ? ordinal + 1 : 0;
@@ -223,6 +244,7 @@ public final class CgStageFrame {
         this.host = host;
         recording.reset();
         pyramidBuilt = false;
+        rehearsing = true;
         target = null;
         viewProjection.set(host.view().projection()).mul(host.view().view());
         historyValid = false;
