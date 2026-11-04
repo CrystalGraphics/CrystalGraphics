@@ -106,13 +106,14 @@ public final class CgPostStack {
 
     /**
      * Bloom's and the composite's passes, each in every keyword set a setting can switch to, as its shader's permutation
-     * domain names them (the HDR scene, bloom, a fade); the HDR scene's way in; and the distortion's bend, which a tier
-     * below Medium never draws. The looks' keywords
+     * domain names them (the tier's {@code CHEAP}, Karis, the HDR scene, bloom, a fade); the HDR scene's way in; and the
+     * bend bloom's emission takes through the distortion, which a tier below Medium never draws. The looks' keywords
      * follow volumes, not settings: each volume registers its own as it is made, and an asset's preparer requests them
      * ahead of it ({@link #lookPasses}).
      */
     private static final String[] WARMED = {
-            "crystalgraphics:shaders/post/bloom/down.shader", "crystalgraphics:shaders/post/bloom/excess.shader",
+            "crystalgraphics:shaders/post/bloom/down.shader", "crystalgraphics:shaders/post/bloom/up.shader",
+            "crystalgraphics:shaders/post/bloom/prefilter.shader", "crystalgraphics:shaders/post/bloom/excess.shader",
             "crystalgraphics:shaders/post/bloom/gaussian.shader",
             "crystalgraphics:shaders/world_scene_in.shader", "crystalgraphics:shaders/world_scene_out.shader",
             "crystalgraphics:shaders/post/distortion_bend.shader", CgTranslucencyComposition.SHADER,

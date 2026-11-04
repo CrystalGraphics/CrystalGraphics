@@ -48,8 +48,9 @@ Queue = "Overlay"
 Properties {
     _Scene     ("The linear HDR scene", sampler2D) = "black"
     _Bloom     ("The bloom chain", sampler2D) = "black"
-    _Intensity ("Bloom's strength", float) = 1.0
+    _Intensity ("Bloom's strength; its mix share when conserving", float) = 1.0
     _Tint      ("Bloom's tint", color) = (1, 1, 1, 1)
+    _Conserve  ("1 to mix the bloom in, keeping the picture's energy; 0 to add it", float) = 0.0
     _Exposure  ("The flash: what the picture is multiplied by", float) = 1.0
     _Vignette  ("How dark the corners go, 0 to 1", float) = 0.0
     _Chromatic ("Colour fringe, Unreal's SceneFringeIntensity in percent", float) = 0.0
@@ -148,7 +149,7 @@ Pass {
         c *= _Exposure;
 #endif
 #ifdef BLOOM
-        c += b * _Intensity;
+        c = _Conserve > 0.5 ? mix(c, b, clamp(_Intensity, 0.0, 1.0)) : c + b * _Intensity;
 #endif
 #ifdef VIGNETTE
         c *= post_vignette(uv, CG_RESOLUTION, _Vignette);

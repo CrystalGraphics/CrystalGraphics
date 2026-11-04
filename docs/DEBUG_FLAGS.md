@@ -222,7 +222,8 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 
 | Variable | Takes | Default | |
 |---|---|---|---|
-| `crystalgraphics.post.debug` | text | empty | level<N>: a stage of bloom, 0 the glow the composite reads. overdraw: transparent fragments per pixel as a heat ramp (blue 1, green 4, red 16, white 32). distortion: the distortion target, \|offset\| x 50 in red and green, the split in blue. |
+| `crystalgraphics.post.bloom.linear` | true, false | `false` | Bloom starts composited in linear light (the copy form), to compare with the default blend form; L cycles blend, linear and off in any harness scene with a 3D camera. |
+| `crystalgraphics.post.debug` | text | empty | level<N>: a level of bloom's chain, 0 the glow the composite reads. overdraw: transparent fragments per pixel as a heat ramp (blue 1, green 4, red 16, white 32). distortion: the distortion target, \|offset\| x 50 in red and green, the split in blue. |
 
 ## `crystalgraphics.recording`
 

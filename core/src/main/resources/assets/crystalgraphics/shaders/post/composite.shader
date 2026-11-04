@@ -16,8 +16,9 @@ Queue = "Overlay"
 
 Properties {
     _Bloom     ("The bloom chain", sampler2D) = "black"
-    _Intensity ("Bloom's strength", float) = 1.0
+    _Intensity ("Bloom's strength; its mix share when conserving", float) = 1.0
     _Tint      ("Bloom's tint", color) = (1, 1, 1, 1)
+    _Conserve  ("1 to mix the bloom in, keeping the picture's energy; 0 to add it", float) = 0.0
     _Fade      ("rgb: the colour it fades to, in the target's encoding; a: how far", vec4) = (0, 0, 0, 0)
 }
 
@@ -43,7 +44,10 @@ Pass {
         vec3 added = vec3(0.0);
         float lost = 0.0;
 #ifdef BLOOM
-        added += textureLod(_Bloom, i.uv, 0.0).rgb * _Tint.rgb * _Intensity;
+        vec3 bloom = textureLod(_Bloom, i.uv, 0.0).rgb * _Tint.rgb;
+        float share = mix(_Intensity, clamp(_Intensity, 0.0, 1.0), _Conserve);
+        added += bloom * share;
+        lost = _Conserve * share;
 #endif
 #ifdef FADE
         added = added * (1.0 - _Fade.a) + _Fade.rgb * _Fade.a;

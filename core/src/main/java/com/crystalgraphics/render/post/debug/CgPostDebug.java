@@ -46,7 +46,7 @@ public final class CgPostDebug implements CgPostEffect {
 
     /** What the frame shows for debugging; empty for nothing. */
     public static final CgVar.Text VIEW = CgVar.text("crystalgraphics.post.debug", "", CgVar.DEV,
-            "level<N>: a stage of bloom, 0 the glow the composite"
+            "level<N>: a level of bloom's chain, 0 the glow the composite"
                     + " reads. overdraw: transparent fragments per pixel as a heat ramp (blue 1, green 4, red 16, white 32)."
                     + " distortion: the distortion target, |offset| x 50 in red and green, the split in blue.");
 

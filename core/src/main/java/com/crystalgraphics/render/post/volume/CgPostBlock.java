@@ -119,10 +119,18 @@ public final class CgPostBlock {
     }
 
     private static void bloomLayers(Map<?, ?> block, CgPostSettings s) {
-        if (block.get("bloom_threshold") instanceof Number n) s.bloomThreshold(n.floatValue());
-        if (block.get("bloom_size_scale") instanceof Number n) s.bloomSizeScale(n.floatValue());
+        boolean layered = false;
+        if (block.get("bloom_threshold") instanceof Number n) {
+            s.bloomThreshold(n.floatValue());
+            layered = true;
+        }
+        if (block.get("bloom_size_scale") instanceof Number n) {
+            s.bloomSizeScale(n.floatValue());
+            layered = true;
+        }
         for (int l = 1; l <= CgPostSettings.BLOOM_LAYERS; l++) {
             if (!(block.get("bloom" + l) instanceof Map<?, ?> layer)) continue;
+            layered = true;
             if (layer.get("size") instanceof Number n) s.bloomSize(l, n.floatValue());
             if (layer.get("tint") != null) {
                 float[] t = numbers(layer.get("tint"), "bloom" + l + ".tint", 3, 4);
@@ -130,9 +138,8 @@ public final class CgPostBlock {
             }
         }
         Object method = block.get("bloom_method");
-        if (method != null && !"sog".equals(method)) {
-            throw new IllegalArgumentException("post.bloom_method " + method + " is not drawn yet: sog is");
-        }
+        if (method == null ? layered : "sog".equals(method)) s.gaussianBloom();
+        else if (method != null) throw new IllegalArgumentException("post.bloom_method " + method + " is not drawn yet: sog is");
     }
 
     /** The block key of {@code region}'s controls. */
@@ -173,6 +180,7 @@ public final class CgPostBlock {
             wb.put("tint", (double) s.whiteTint());
             b.put("white_balance", wb);
         }
+        if (s.overrides(CgPostSettings.GAUSSIAN)) b.put("bloom_method", "sog");
         if (s.overrides(CgPostSettings.BLOOM_THRESHOLD)) b.put("bloom_threshold", (double) s.bloomThreshold());
         for (int l = 1; l <= CgPostSettings.BLOOM_LAYERS; l++) {
             Map<String, Object> layer = new LinkedHashMap<>();

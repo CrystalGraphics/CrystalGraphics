@@ -9647,12 +9647,23 @@ com/crystalgraphics/render/post/bloom/CgBloom
   method public active (Lcom/crystalgraphics/render/post/CgPostContext;)Z
   method public intensity ()F
   method public intensity (F)Lcom/crystalgraphics/render/post/bloom/CgBloom;
+  method public linear ()Z
+  method public linear (Z)Lcom/crystalgraphics/render/post/bloom/CgBloom;
+  method public mode ()Lcom/crystalgraphics/render/post/bloom/CgBloom$Mode;
+  method public mode (Lcom/crystalgraphics/render/post/bloom/CgBloom$Mode;)Lcom/crystalgraphics/render/post/bloom/CgBloom;
   method public point ()Lcom/crystalgraphics/render/post/CgPostPoint;
   method public record (Lcom/crystalgraphics/render/post/CgPostContext;)V
   method public release ()V
   method public threshold ()F
   method public threshold (F)Lcom/crystalgraphics/render/post/bloom/CgBloom;
   method public tint (FFF)Lcom/crystalgraphics/render/post/bloom/CgBloom;
+com/crystalgraphics/render/post/bloom/CgBloom$Mode
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final ADDITIVE Lcom/crystalgraphics/render/post/bloom/CgBloom$Mode;
+  field public,static,final ENERGY_CONSERVING Lcom/crystalgraphics/render/post/bloom/CgBloom$Mode;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/render/post/bloom/CgBloom$Mode;
+  method public,static values ()[Lcom/crystalgraphics/render/post/bloom/CgBloom$Mode;
 com/crystalgraphics/render/post/composite/CgCompositeFeature
   access public,final,enum
   extends java/lang/Enum
@@ -9682,7 +9693,7 @@ com/crystalgraphics/render/post/composite/CgPostComposite
   method public <init> ()V
   method public active (Lcom/crystalgraphics/render/post/composite/CgCompositeFeature;)Z
   method public begin ()V
-  method public bloom (Lcom/crystalgraphics/render/graph/CgGraphTexture;FFFF)Lcom/crystalgraphics/render/post/composite/CgPostComposite;
+  method public bloom (Lcom/crystalgraphics/render/graph/CgGraphTexture;FFFFZ)Lcom/crystalgraphics/render/post/composite/CgPostComposite;
   method public chromatic (FFF)Lcom/crystalgraphics/render/post/composite/CgPostComposite;
   method public fade (FFFF)Lcom/crystalgraphics/render/post/composite/CgPostComposite;
   method public flash (F)Lcom/crystalgraphics/render/post/composite/CgPostComposite;
@@ -9692,6 +9703,7 @@ com/crystalgraphics/render/post/composite/CgPostComposite
   method public impact (Lcom/crystalgraphics/render/post/volume/CgImpactFrame;FIFFLcom/crystalgraphics/render/graph/CgGraphTexture;)Lcom/crystalgraphics/render/post/composite/CgPostComposite;
   method public layer (ILcom/crystalgraphics/render/graph/CgGraphTexture;Lcom/crystalgraphics/gl/texture/CgTexture3D;)Lcom/crystalgraphics/render/post/composite/CgPostComposite;
   method public layerBloom (ILcom/crystalgraphics/render/graph/CgGraphTexture;F)Lcom/crystalgraphics/render/post/composite/CgPostComposite;
+  method public linear ()Lcom/crystalgraphics/render/post/composite/CgPostComposite;
   method public record (Lcom/crystalgraphics/render/graph/CgRecording;Lcom/crystalgraphics/render/graph/CgGraphTexture;Lcom/crystalgraphics/render/draw/CgPassConstants;)V
   method public release ()V
   method public scene (Lcom/crystalgraphics/render/graph/CgGraphTexture;)Lcom/crystalgraphics/render/post/composite/CgPostComposite;
@@ -10058,6 +10070,7 @@ com/crystalgraphics/render/post/volume/CgPostSettings
   field public,static,final FILM_WHITE_CLIP I
   field public,static,final FLASH I
   field public,static,final FOCUS I
+  field public,static,final GAUSSIAN I
   field public,static,final IMPACT I
   field public,static,final TONEMAP I
   field public,static,final TONE_CURVE I
@@ -10076,6 +10089,7 @@ com/crystalgraphics/render/post/volume/CgPostSettings
   method public bloomThreshold (F)Lcom/crystalgraphics/render/post/volume/CgPostSettings;
   method public bloomTint (IFFF)Lcom/crystalgraphics/render/post/volume/CgPostSettings;
   method public bloomTint (II)F
+  method public bloomsGaussian ()Z
   method public blueCorrection ()F
   method public blueCorrection (F)Lcom/crystalgraphics/render/post/volume/CgPostSettings;
   method public chromatic ()F
@@ -10109,6 +10123,7 @@ com/crystalgraphics/render/post/volume/CgPostSettings
   method public focus (FF)Lcom/crystalgraphics/render/post/volume/CgPostSettings;
   method public focusX ()F
   method public focusY ()F
+  method public gaussianBloom ()Lcom/crystalgraphics/render/post/volume/CgPostSettings;
   method public grade (Lcom/crystalgraphics/render/post/volume/CgPostSettings$Region;Lcom/crystalgraphics/render/post/volume/CgPostSettings$Control;FFFF)Lcom/crystalgraphics/render/post/volume/CgPostSettings;
   method public grade (Lcom/crystalgraphics/render/post/volume/CgPostSettings$Region;Lcom/crystalgraphics/render/post/volume/CgPostSettings$Control;I)F
   method public grades ()Z
@@ -10122,7 +10137,6 @@ com/crystalgraphics/render/post/volume/CgPostSettings
   method public overrides (I)Z
   method public overridesLayer (IZ)Z
   method public reset ()V
-  method public shapesBloom ()Z
   method public subject (I)Lcom/crystalgraphics/render/post/volume/CgPostSettings;
   method public tint (FFF)Lcom/crystalgraphics/render/post/volume/CgPostSettings;
   method public tint (IF)Lcom/crystalgraphics/render/post/volume/CgPostSettings;

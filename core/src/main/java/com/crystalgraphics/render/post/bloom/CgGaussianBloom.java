@@ -165,7 +165,11 @@ final class CgGaussianBloom {
         boundSource = source;
         Arrays.fill(bound, Float.NaN);
         for (int k = 0; k < STAGES - 1; k++) {
-            if (downs[k] == null) downs[k] = CgMaterial.newInstance(DOWN);
+            if (downs[k] == null) {
+                downs[k] = CgMaterial.newInstance(DOWN);
+                // Unreal's high-quality chain is four bilinear taps a texel apart: the down filter's CHEAP form
+                downs[k].toggleKeyword("CHEAP", true);
+            }
             CgTexture from = k == 0 ? source : down[k - 1];
             downs[k].applyProperties(b -> b.sampler("_Source", 0, from));
         }

@@ -56,30 +56,29 @@ public class CgPostBlockTest {
     public void theTonemapperAndTheBloomLayersRoundTrip_eachKeyItsOwnField() {
         Map<String, Object> b = block("tonemapper", "film", "tone_curve", 0.0, "film", block("slope", 0.75, "white_clip", 0.0625),
                 "film_legacy", block("contrast", 0.25, "heal_amount", 0.5), "blue_correction", 0.0, "expand_gamut", 0.0,
-                "display_gamma", 2.5, "bloom_threshold", -1.0, "bloom_size_scale", 4.0,
+                "display_gamma", 2.5, "bloom_method", "sog", "bloom_threshold", -1.0, "bloom_size_scale", 4.0,
                 "bloom1", block("size", 0.25, "tint", List.of(0.5, 0.25, 0.125)), "bloom6", block("size", 64.0));
         CgPostSettings s = CgPostBlock.settings(b);
-        assertTrue(s.tonemapsFilmic() && s.shapesBloom());
+        assertTrue(s.tonemapsFilmic() && s.bloomsGaussian());
         assertTrue(s.overrides(CgPostSettings.FILM_SLOPE) && !s.overrides(CgPostSettings.FILM_SHOULDER));
         assertEquals("a key alone keeps its curve's other settings", 0.26f, s.filmShoulder(), 0f);
         assertTrue(s.overridesLayer(6, false) && !s.overridesLayer(6, true) && !s.overridesLayer(2, false));
         assertEquals(b, CgPostBlock.block(s));
-        // A layer key alone shapes the bloom as Unreal's; sog is the one method; one not drawn yet fails by name
-        assertTrue(CgPostBlock.settings(block("bloom2", block("size", 1.0))).shapesBloom());
-        assertFalse(CgPostBlock.settings(block("bloom", 2.0)).shapesBloom());
-        assertFalse(CgPostBlock.settings(block("bloom_method", "sog")).shapesBloom());
+        // A layer key alone draws the Gaussian bloom; a method not drawn yet fails by name
+        assertTrue(CgPostBlock.settings(block("bloom2", block("size", 1.0))).bloomsGaussian());
+        assertFalse(CgPostBlock.settings(block("bloom", 2.0)).bloomsGaussian());
         assertThrows(IllegalArgumentException.class, () -> CgPostBlock.settings(block("bloom_method", "cc2")));
     }
 
     @Test
     public void bloomLayersBlendByWeight_aSizeAndATintApart() {
         CgPostSettings out = new CgPostSettings();
-        out.blend(new CgPostSettings().bloomSize(1, 1f), 0.5f, 0.5f, 0.5f);
+        out.blend(new CgPostSettings().gaussianBloom().bloomSize(1, 1f), 0.5f, 0.5f, 0.5f);
         assertEquals("halfway from Unreal's 0.3", 0.65f, out.bloomSize(1), 1e-6f);
         assertEquals("its tint left Unreal's", 0.3465f, out.bloomTint(1, 0), 1e-6f);
         out.reset();
         assertEquals(0.3f, out.bloomSize(1), 0f);
-        assertFalse(out.shapesBloom());
+        assertFalse(out.bloomsGaussian());
     }
 
     @Test

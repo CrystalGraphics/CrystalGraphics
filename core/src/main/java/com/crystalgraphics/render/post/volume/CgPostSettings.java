@@ -33,7 +33,7 @@ public final class CgPostSettings {
             FILM_HEAL = 1 << 11, FILM_SATURATION = 1 << 12, WHITE_BALANCE = 1 << 13, FILMIC = 1 << 14,
             TONE_CURVE = 1 << 15, FILM_SLOPE = 1 << 16, FILM_CURVE_TOE = 1 << 17, FILM_SHOULDER = 1 << 18,
             FILM_BLACK_CLIP = 1 << 19, FILM_WHITE_CLIP = 1 << 20, BLUE_CORRECTION = 1 << 21, EXPAND_GAMUT = 1 << 22,
-            DISPLAY_GAMMA = 1 << 23, BLOOM_THRESHOLD = 1 << 25, BLOOM_SIZE_SCALE = 1 << 26;
+            DISPLAY_GAMMA = 1 << 23, GAUSSIAN = 1 << 24, BLOOM_THRESHOLD = 1 << 25, BLOOM_SIZE_SCALE = 1 << 26;
 
     /** Unreal's Gaussian bloom layers, {@code Bloom1} to {@code Bloom6}. */
     public static final int BLOOM_LAYERS = 6;
@@ -254,13 +254,27 @@ public final class CgPostSettings {
     }
 
     /**
-     * {@code BloomThreshold}: light whose luminance passes it blooms, by {@code saturate((luminance - t) / 2)}; -1 (the
-     * default) or less blooms the whole scene, Unreal running no setup pass. Read only where the volume shapes the bloom
-     * ({@link #shapesBloom}); elsewhere the engine's {@code CgBloom.threshold} holds.
+     * Draws the bloom as Unreal's Gaussian layers ({@code BloomMethod} Standard): the scene halved down to a 64th, each
+     * of six layers a Gaussian of {@code size} percent of the screen's width (times {@link #bloomSizeScale}) and a tint,
+     * summed from the widest in, times {@link #bloom} over six. The engine's own chain unless asked.
      *
      * <pre>{@code
-     * new CgPostSettings().bloom(1.25f).bloomThreshold(-1f).bloomLayer(1, 0.3f, 0.3466f, 0.3466f, 0.3466f);   // Unreal's look
+     * new CgPostSettings().gaussianBloom().bloom(1.25f).bloomSizeScale(4f).bloomLayer(1, 0.3f, 0.3466f, 0.3466f, 0.3466f);
      * }</pre>
+     *
+     * <ul>
+     *   <li>A layer of size 0 is skipped, as Unreal skips it.</li>
+     *   <li>Under the HDR scene, its source is Unreal's bloom setup on the half-size scene ({@link #bloomThreshold}).</li>
+     * </ul>
+     */
+    public CgPostSettings gaussianBloom() {
+        overrides |= GAUSSIAN;
+        return this;
+    }
+
+    /**
+     * {@code BloomThreshold}: light whose luminance passes it blooms, by {@code saturate((luminance - t) / 2)}; -1 (the
+     * default) or less blooms the whole scene, Unreal running no setup pass. The Gaussian bloom's alone.
      */
     public CgPostSettings bloomThreshold(float threshold) {
         bloomThreshold = threshold;
@@ -570,12 +584,9 @@ public final class CgPostSettings {
         return tintB;
     }
 
-    /**
-     * Whether it shapes the bloom as Unreal's: its threshold, size scale or a layer set. Such a volume blooms by
-     * {@link #bloomThreshold} (Unreal's -1 unless set); any other by the engine's threshold, past white.
-     */
-    public boolean shapesBloom() {
-        return (overrides & (BLOOM_THRESHOLD | BLOOM_SIZE_SCALE)) != 0 || layerOverrides != 0;
+    /** Whether the bloom is Unreal's Gaussian layers ({@link #gaussianBloom()}), not the engine's chain. */
+    public boolean bloomsGaussian() {
+        return (overrides & GAUSSIAN) != 0;
     }
 
     public float bloomThreshold() {
