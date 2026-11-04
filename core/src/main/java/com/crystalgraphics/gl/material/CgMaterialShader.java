@@ -1681,7 +1681,8 @@ public final class CgMaterialShader implements CgReloadable {
     }
 
     private void wireShaderBuffers(CgShader shader) {
-        CgUniformBuffer.wireBlock(shader, CgPassConstants.BLOCK_NAME, CgBindingPoints.FRAME_DATA_UBO);
+        CgUniformBuffer.wireBlock(shader, CgPassConstants.VIEW_BLOCK, CgBindingPoints.VIEW_UBO);
+        CgUniformBuffer.wireBlock(shader, CgPassConstants.ENVIRONMENT_BLOCK, CgBindingPoints.ENVIRONMENT_UBO);
         CgShaderBuffer.wireBlock(shader, CgInstanceKind.OBJECT_BLOCK_NAME, CgBindingPoints.OBJECT_DATA);
         if (matPropsUbo != null) matPropsUbo.wireShader(shader);
         for (CgAttachedBuffer ab : attachedBuffers) ab.getBuffer().wireShader(shader);

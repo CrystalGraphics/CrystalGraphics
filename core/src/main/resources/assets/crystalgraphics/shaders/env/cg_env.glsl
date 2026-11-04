@@ -28,10 +28,9 @@ CG_BIND(3, 0) uniform samplerCube cg_TexturesCube[];
 #define CG_TEXTURE_samplerCube(h) cg_TexturesCube[(h).x]
 #endif
 
-// Per-pass uniforms (view + proj + time + resolution + camera), one block per pass. FIELD ORDER MUST MATCH
-// CgPassConstants.FORMAT -- std140 offsets are positional, so a field added to one and not the other silently reads its
-// neighbour.
-CG_BIND(0, 0) layout(std140) uniform CgFrameBlock {
+// The view, made once a firing, and the world's environment, which every pass of a frame shares (CgPassConstants).
+// FIELD ORDER MUST MATCH CgPassConstants.VIEW_FORMAT and ENVIRONMENT_FORMAT: std140 offsets are positional.
+CG_BIND(0, 0) layout(std140) uniform CgViewBlock {
     mat4 cg_ViewMatrix;
     mat4 cg_ProjMatrix;
     vec4 cg_Time;        // (t/20, t, t*2, t*3) - seconds, scaled like Unity _Time
@@ -40,13 +39,15 @@ CG_BIND(0, 0) layout(std140) uniform CgFrameBlock {
     vec4 cg_DepthParams; // x: 1 when depth is reversed (nearer is greater); y: 1 when clip depth runs 0..1;
                          // z: 1 when the target is the linear HDR scene (CG_LINEAR_SCENE); w: its glow gain
     vec4 cg_WorldOrigin; // where world space's origin is in absolute coordinates: the camera, in a world pass
+    mat4 cg_PrevViewProj; // this pass's camera-relative points to last frame's clip space: cg_PreviousClip
+    vec4 cg_FrameParams;  // x the host frame's index, 0 to 65535; y 1 while last frame is one of this view;
+                          // w 1 when the target is the host's own, its colour sRGB-encoded (CG_ENCODED_TARGET)
+};
+CG_BIND(0, 6) layout(std140) uniform CgEnvironmentBlock {
     vec4 cg_SunDirection; // xyz toward the sun, or the moon while the sun is down; w the daylight, 0 to 1
     vec4 cg_FogColor;     // the host's fog colour; a 1 while there is fog, 0 for none
     vec4 cg_FogParams;    // x where the fog starts, y where it is whole, in blocks from the camera; z CG_SUN_SHARE;
-                          // w 1 when the target is the host's own, its colour sRGB-encoded (CG_ENCODED_TARGET)
-    mat4 cg_PrevViewProj; // this pass's camera-relative points to last frame's clip space: cg_PreviousClip
-    vec4 cg_FrameParams;  // x the host frame's index, 0 to 65535; y 1 while last frame is one of this view;
-                          // z 1 where entities take the Nether's two lights (CG_ENTITY_LIGHT1)
+                          // w 1 where entities take the Nether's two lights (CG_ENTITY_LIGHT1)
 };
 
 // -- Per-Instance Object Data (SSBO path: GL 4.3+/ARB) ----------------------
@@ -314,7 +315,7 @@ vec3 cg_LocalLightDirectional(vec3 p) {
 #define CG_LINEAR_SCENE        (cg_DepthParams.z > 0.5)
 // Whether this pass draws onto the host's own target, its colour sRGB-encoded. A "ColorSpace" = "Linear" Forward
 // pass's colour is linear light, so the generated main encodes it there (cg_SceneEncode).
-#define CG_ENCODED_TARGET      (cg_FogParams.w > 0.5)
+#define CG_ENCODED_TARGET      (cg_FrameParams.w > 0.5)
 // What a glow drawn into the scene is multiplied by (CgWorldRenderer.sceneEmission): 1 anywhere else.
 #define CG_SCENE_GLOW          (CG_LINEAR_SCENE ? cg_DepthParams.w : 1.0)
 // A material's value for each path, e.g. CG_HDR(0.4, 1.0): one program, picked at runtime.
@@ -365,7 +366,7 @@ vec4 cg_PreviousClip(vec3 worldPos) {
 // Minecraft's two directional lights on entities, in world axes (Lighting.DIFFUSE_LIGHT_0 and _1, normalised); the
 // Nether's second comes from below (NETHER_DIFFUSE_LIGHT_1).
 #define CG_ENTITY_LIGHT0 vec3(0.1616904, 0.8084521, -0.5659165)
-#define CG_ENTITY_LIGHT1 vec3(-0.1616904, cg_FrameParams.z > 0.5 ? -0.8084521 : 0.8084521, 0.5659165)
+#define CG_ENTITY_LIGHT1 vec3(-0.1616904, cg_FogParams.w > 0.5 ? -0.8084521 : 0.8084521, 0.5659165)
 
 // How much of the host's fog lies between the camera and a point this far from it: 0 to 1, 0 with no fog.
 float cg_FogAmount(float distance) {

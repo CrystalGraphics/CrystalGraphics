@@ -514,7 +514,7 @@ public final class CgMaterial {
      * animation curves, etc. Any structured dataset your shader needs beyond what the engine's
      * {@code cg_env.glsl} provides.</p>
      *
-     * <p><strong>What NOT to pass</strong>: the engine's own blocks ({@code CgFrameBlock},
+     * <p><strong>What NOT to pass</strong>: the engine's own blocks ({@code CgViewBlock},
      * {@code CgObjectDataBuffer}). Those are declared in {@code cg_env.glsl} and wired automatically; passing them
      * here causes duplicate declarations.</p>
      *

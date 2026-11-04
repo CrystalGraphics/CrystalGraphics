@@ -68,9 +68,11 @@ Pass {
 
 It provides two distinct layers: per-frame global data and per-instance object data.
 
-#### Frame Data — `CgFrameBlock`
+#### Frame Data — `CgViewBlock` and `CgEnvironmentBlock`
 
-A `layout(std140) uniform CgFrameBlock` wired post-link by the engine. Available in every stage, every pass:
+Two `layout(std140)` blocks wired post-link by the engine, available in every stage, every pass: `CgViewBlock`, the
+pass's view, and `CgEnvironmentBlock` (`cg_SunDirection`, `cg_FogColor`, `cg_FogParams`), the world's, which every
+pass of a frame shares (`CgPassConstants`):
 
 | GLSL name | Type | Content |
 |---|---|---|
@@ -82,9 +84,9 @@ A `layout(std140) uniform CgFrameBlock` wired post-link by the engine. Available
 | `cg_WorldOrigin` | `vec4` | Where world space's origin is in absolute coordinates: the camera, in a camera-relative world pass. Read through `CG_ABSOLUTE_WORLD_POS(p)` |
 | `cg_SunDirection` | `vec4` | `xyz` the direction toward the sun (the moon while it is down), `w` daylight 0..1. Read through `CG_SUN_DIRECTION`, `CG_DAYLIGHT` |
 | `cg_FogColor` | `vec4` | The world's fog colour, `a` 1 when there is fog |
-| `cg_FogParams` | `vec4` | `x` fog start, `y` fog end, in blocks from the eye. Read through `cg_FogAmount`. `z` the sun's direct share of a full day's sky light (`crystalgraphics.world.sunShare`, 0.6), read through `CG_SUN_SHARE` |
+| `cg_FogParams` | `vec4` | `x` fog start, `y` fog end, in blocks from the eye. Read through `cg_FogAmount`. `z` the sun's direct share of a full day's sky light (`crystalgraphics.world.sunShare`, 0.6), read through `CG_SUN_SHARE`. `w` 1 where entities take the Nether's two lights (`CG_ENTITY_LIGHT1`) |
 | `cg_PrevViewProj` | `mat4` | This pass's camera-relative points to last frame's clip space, for a temporal effect. Read through `cg_PreviousClip(p)` |
-| `cg_FrameParams` | `vec4` | `x` the host frame's index (0 to 65535), `y` 1 while last frame was one of this view. Read through `CG_FRAME_INDEX`, `CG_HISTORY_VALID` |
+| `cg_FrameParams` | `vec4` | `x` the host frame's index (0 to 65535), `y` 1 while last frame was one of this view, `w` 1 when the target is the host's own (`CG_ENCODED_TARGET`). Read through `CG_FRAME_INDEX`, `CG_HISTORY_VALID` |
 
 **Scene samplers** — auto-bound by the engine before every material draw; do not declare or bind these yourself:
 
@@ -282,7 +284,7 @@ picks the variant (`CgPipeline.skinned()`), in every pass; a shader of another `
 
 #### Why the Engine's Blocks Must NOT Be Attached
 
-`cg_env.glsl` already declares `CgObjectDataBuffer` and `CgFrameBlock`. The engine wires them automatically post-link. **Never `material.attach()` a buffer named for either** — it produces duplicate GLSL declarations and a compile failure. Only user-owned buffers belong in `attach()`.
+`cg_env.glsl` already declares `CgObjectDataBuffer`, `CgViewBlock` and `CgEnvironmentBlock`. The engine wires them automatically post-link. **Never `material.attach()` a buffer named for either** — it produces duplicate GLSL declarations and a compile failure. Only user-owned buffers belong in `attach()`.
 
 #### Stage defines — `CG_VERTEX_STAGE` / `CG_FRAGMENT_STAGE` / `CG_COMPUTE_STAGE`
 
@@ -395,7 +397,7 @@ pipelines.add("mymod:shaders/rune.shader", "GLOW");              // each combina
 
 ### Engine Buffers — `#pragma cg_use`
 
-`CgFrameBlock` and `CgObjectDataBuffer` are declared unconditionally in `cg_env.glsl` because
+`CgViewBlock`, `CgEnvironmentBlock` and `CgObjectDataBuffer` are declared unconditionally in `cg_env.glsl` because
 essentially every shader wants them. Buffers that only a minority of shaders need are **opt-in**:
 
 ```glsl

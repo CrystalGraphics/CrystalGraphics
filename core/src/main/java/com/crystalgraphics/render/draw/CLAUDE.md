@@ -10,7 +10,7 @@ recorder will run on a UI document's own thread (`render-graph` §3.1); GL happe
 | `CgPipeline` | a key: shader asset + pass + keyword set + render state + instance kind, interned to an `int` | `of`/`byId` any thread; `precache`/`program`/`bind`/`instanceBase` render thread |
 | `CgBindingTable` | a recording's binding snapshots: block bytes copied, textures, storage buffers and buffer textures as handles, interned by content | filled by one recorder; `upload`/`bind` on the render thread after handover |
 | `CgInstanceKind` | what instances are: `QUAD`, `CURVE`, `OBJECT`, and the record stride each writes | — |
-| `CgPassConstants` | the pass block (`CgFrameBlock`'s layout) as a value, one per pass | any |
+| `CgPassConstants` | the pass's view and environment blocks (`CgViewBlock`, `CgEnvironmentBlock`) as a value, one per pass | any |
 | `CgDrawChunk` / `CgChunkBuilder` | a run of draws under one property state (spatial, clip, effect node), with its instance records per kind and bounds per draw — Blink's paint chunk. A recording's own builder (`CgChunkBuilder.pooling`) refills its chunks after the recording's reset; `with` copies one that must outlive it | the builder: one recorder; the chunk: any, once ended |
 | `CgOrder`, `CgBatcher` | `LOOKBACK` (painter's order, WebRender's lookback, never across a domain) or `SORTED` (by the recorder's key, stable); the batcher groups a pass's draws by pipeline + snapshot + kind + mesh | the frame builder's |
 

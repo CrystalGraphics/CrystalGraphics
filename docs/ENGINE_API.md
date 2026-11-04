@@ -667,7 +667,7 @@ that did not upload it reads another frame's bytes, with no error. Every buffer 
 quad and curve instances, the object buffer, the material blocks (uploaded at every bind), the frame block
 (copied in at a frame's first material bind) and the text block. `gl/buffer/CLAUDE.md` has the tiers. A `RETAINED` buffer is made, written and deleted from any thread (§ *Async*).
 
-Do NOT attach the engine's own blocks (`CgFrameBlock`, `CgObjectDataBuffer`) — declared in `cg_env.glsl`, wired automatically. Duplicate declarations cause compile failure.
+Do NOT attach the engine's own blocks (`CgViewBlock`, `CgEnvironmentBlock`, `CgObjectDataBuffer`) — declared in `cg_env.glsl`, wired automatically. Duplicate declarations cause compile failure.
 
 **Package guides**: `api/buffer/CLAUDE.md` · `gl/buffer/shader/CLAUDE.md`
 

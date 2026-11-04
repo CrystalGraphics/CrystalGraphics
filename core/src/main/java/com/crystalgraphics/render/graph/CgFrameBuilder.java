@@ -521,8 +521,7 @@ public final class CgFrameBuilder {
         packed.palette = frame.paletteOf(pass.recording, valuesOf.get(pass.recording));
         part.close();
         part = CgTrace.zone(CgChannels.GL_DETAIL, PACK_CONSTANTS);
-        CgBindingTable constants = frame.bindings.begin()
-                .block(CgBindingPoints.FRAME_DATA_UBO, pass.constants, 0, CgPassConstants.FLOATS);
+        CgBindingTable constants = CgPassConstants.blocks(frame.bindings.begin(), pass.constants, 0);
         boolean lightmap = false, media = false, localLights = false;
         for (int i = 0; i < pass.textureCount(); i++) {
             constants.texture(pass.textureUnit(i), pass.texture(i));

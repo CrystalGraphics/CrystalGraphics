@@ -43,8 +43,8 @@ public final class CgBindingModel {
         }
     }
 
-    // set 0, written in cg_env.glsl: CgFrameBlock 0, cg_DepthBuffer 1, cg_SceneColor 2, cg_Lightmap 3, cg_Media 4,
-    // cg_LocalLights 5
+    // set 0, written in cg_env.glsl: CgViewBlock 0, cg_DepthBuffer 1, cg_SceneColor 2, cg_Lightmap 3, cg_Media 4,
+    // cg_LocalLights 5, CgEnvironmentBlock 6
 
     /** {@code CgObjectDataBuffer}, the pass's draw records: written in {@code cg_env.glsl}. */
     public static final Slot OBJECTS = new Slot(PASS, 0);

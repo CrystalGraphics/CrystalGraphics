@@ -40,7 +40,7 @@ import java.util.regex.Pattern;
  *
  * <h3>Shadow auto-generation</h3>
  * <p>The shadow fields {@code cg_ShadowViewProjMatrix}, {@code cg_LightDirection}, and
- * {@code cg_ShadowParams} are declared in the {@code CgFrameBlock} UBO (injected via
+ * {@code cg_ShadowParams} are declared in the {@code CgViewBlock} UBO (injected via
  * {@code cg_env.glsl}). Auto-generated shadow shaders reference them as plain identifiers —
  * never as standalone {@code uniform} declarations, which would cause GLSL redeclaration
  * conflicts.</p>

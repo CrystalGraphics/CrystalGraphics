@@ -20,7 +20,7 @@ import static org.lwjgl.util.spvc.Spvc.*;
  * {@code IntermediaryShaderModule} does.
  *
  * <p>Blocks and samplers are the <em>active</em> ones, as GL counts them: {@code cg_env.glsl} declares
- * {@code CgFrameBlock} in every material, and one that never reads it must not need a buffer bound. Stage
+ * {@code CgViewBlock} in every material, and one that never reads it must not need a buffer bound. Stage
  * inputs and outputs are all of them, since varyings are matched by name across the stages.</p>
  */
 final class SpirvModule {

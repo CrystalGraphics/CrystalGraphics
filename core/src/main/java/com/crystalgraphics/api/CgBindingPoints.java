@@ -146,11 +146,11 @@ public final class CgBindingPoints {
     public static int MATERIAL_BUFFERS_SSBO = -1;
 
     /**
-     * UBO binding slot for the engine's per-frame uniform block ({@code CgFrameBlock}).
-     * Set to {@code maxUniformBufferBindings - 1} by {@link #init(CgCapabilities)}.
-     * Valid only after {@link #init(CgCapabilities)} has been called.
+     * UBO binding slots for a pass's view block ({@code CgViewBlock}) and the world's environment block
+     * ({@code CgEnvironmentBlock}), both {@code CgPassConstants}'. Set to {@code maxUniformBufferBindings - 1} and
+     * {@code - 4} by {@link #init(CgCapabilities)}; valid only after it.
      */
-    public static int FRAME_DATA_UBO = -1;
+    public static int VIEW_UBO = -1, ENVIRONMENT_UBO = -1;
 
     /**
      * UBO binding slot for the engine's per-material properties block ({@code CgMaterialBlock}).
@@ -165,7 +165,7 @@ public final class CgBindingPoints {
      * ({@code u_projection} — renderer-local, deliberately separate from the engine's shared
      * per-frame {@code cg_ProjMatrix}). Set to {@code maxUniformBufferBindings - 3} by
      * {@link #init(CgCapabilities)}, following the same top-of-range pattern as
-     * {@link #FRAME_DATA_UBO}/{@link #MATERIAL_PROPERTIES_UBO}. This slot is engine-reserved and
+     * {@link #VIEW_UBO}/{@link #MATERIAL_PROPERTIES_UBO}. This slot is engine-reserved and
      * must not be used by user-attached UBOs — see {@link CgShaderBufferRegistry}.
      * Valid only after {@link #init(CgCapabilities)} has been called.
      */
@@ -234,9 +234,9 @@ public final class CgBindingPoints {
     /**
      * First UBO binding slot available to user-defined buffers.
      * User UBOs start at slot 0 and grow upward.
-     * The top three slots ({@code maxUniformBufferBindings - 1} through {@code - 3}) are
-     * engine-reserved for {@link #FRAME_DATA_UBO}, {@link #MATERIAL_PROPERTIES_UBO}, and
-     * {@link #TEXT_DATA_UBO}.
+     * The top four slots ({@code maxUniformBufferBindings - 1} through {@code - 4}) are
+     * engine-reserved for {@link #VIEW_UBO}, {@link #MATERIAL_PROPERTIES_UBO}, {@link #TEXT_DATA_UBO} and
+     * {@link #ENVIRONMENT_UBO}.
      */
     public static final int USER_START_UBO = 0;
 
@@ -276,9 +276,10 @@ public final class CgBindingPoints {
         MATERIAL_BUFFERS_SSBO = maxSsboBindings;
 
         // ── UBO bindings ───────────────────────────────────────────────────────────────
-        FRAME_DATA_UBO          = --maxUboBindings;
+        VIEW_UBO                = --maxUboBindings;
         MATERIAL_PROPERTIES_UBO = --maxUboBindings;
         TEXT_DATA_UBO           = --maxUboBindings;
+        ENVIRONMENT_UBO         = --maxUboBindings;
 
         // ── Texture bindings ───────────────────────────────────────────────────────────────
         DEPTH_TEXTURE_UNIT = --maxTextureUnits;

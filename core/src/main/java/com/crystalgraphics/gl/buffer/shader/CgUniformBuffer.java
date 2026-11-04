@@ -50,7 +50,7 @@ import com.crystalgraphics.platform.gl.CgGL;
  * <h3>GLSL block</h3>
  * <p>Fields must be declared in the same order as writes. Example:</p>
  * <pre>{@code
- * layout(std140, binding = 1) uniform CgFrameBlock {
+ * layout(std140, binding = 1) uniform CgViewBlock {
  *     mat4 cg_ViewMatrix;
  *     mat4 cg_ProjMatrix;
  * };

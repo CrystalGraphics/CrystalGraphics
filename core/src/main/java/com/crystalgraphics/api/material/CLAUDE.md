@@ -174,7 +174,7 @@ Internal `CgMaterial.create(resourcePath)` steps (package-private, only called b
 5. `new CgShaderPreprocessor().process(...)` — resolve `#include "cg_env.glsl"` (once)
 6. `CgShaderFactory.fromSource(vert, frag, CgVertexFormat.SPATIAL)` — compile + link
 7. `mat.setResourcePath(resourcePath)` — store path for hot-reload
-8. `wireShaderBuffers` — wire `CgFrameBlock` and `CgObjectDataBuffer` to their reserved slots by name
+8. `wireShaderBuffers` — wire `CgViewBlock`, `CgEnvironmentBlock` and `CgObjectDataBuffer` to their reserved slots by name
 9. Apply property defaults from `Properties` block
 
 Throws `IllegalStateException` if compile/link fails — never returns a broken material.
@@ -327,7 +327,7 @@ material.detachUbo("SceneParams");
 
 ### What NOT to pass
 
-Do NOT pass the engine's own blocks (`CgFrameBlock`, `CgObjectDataBuffer`) — those are declared in `cg_env.glsl` and wired automatically by the engine. Passing them here causes duplicate GLSL declarations that fail to compile.
+Do NOT pass the engine's own blocks (`CgViewBlock`, `CgEnvironmentBlock`, `CgObjectDataBuffer`) — those are declared in `cg_env.glsl` and wired automatically by the engine. Passing them here causes duplicate GLSL declarations that fail to compile.
 
 ### GLSL symbol naming (SSBO)
 

@@ -76,8 +76,8 @@ public final class CgKernelProgram {
      * storage, which waits for a threaded driver's queue (734 ms behind the loading screen, Forge 1.20.1).
      */
     private CgUniformBuffer propertyBlock;
-    private CgUniformBuffer frameBlock;
-    private float[] frameValues;
+    private CgUniformBuffer viewBlock, environmentBlock;
+    private float[] frameValues, environmentValues;
 
     private CgKernelProgram(CgComputeSource source, CgKernelDecl kernel, Set<String> keywords, String glsl,
                             CgShaderProgram program, boolean checked) {
@@ -212,7 +212,8 @@ public final class CgKernelProgram {
             CgShaderBuffer buffer = CgEngineBufferRegistry.get(token).buffer().get();
             storageBlock(id, buffer.getName(), buffer.getBindingLocation());
         }
-        uniformBlock(id, CgPassConstants.BLOCK_NAME, CgBindingPoints.FRAME_DATA_UBO);
+        uniformBlock(id, CgPassConstants.VIEW_BLOCK, CgBindingPoints.VIEW_UBO);
+        uniformBlock(id, CgPassConstants.ENVIRONMENT_BLOCK, CgBindingPoints.ENVIRONMENT_UBO);
         uniformBlock(id, CgKernelEmitter.PROPERTY_BLOCK, CgBindingPoints.MATERIAL_PROPERTIES_UBO);
         for (CgImageDecl image : source.images()) unit(id, image.uniform(), image.index());
         for (int i = 0; i < samplers.size(); i++) unit(id, samplers.get(i).getName(), i);
@@ -323,14 +324,18 @@ public final class CgKernelProgram {
         return properties;
     }
 
-    /** The frame block a kernel reads {@code cg_Time} and the camera from, uploaded at every dispatch. */
+    /** The view and environment blocks a kernel reads {@code cg_Time}, the camera and the sun from, uploaded at every dispatch. */
     public CgKernelProgram frame(CgPassConstants constants) {
-        if (frameBlock == null) {
-            frameBlock = new CgUniformBuffer(CgPassConstants.BLOCK_NAME, CgPassConstants.FORMAT,
-                    CgBindingPoints.FRAME_DATA_UBO, CgBufferLifetime.FRAME);
+        if (viewBlock == null) {
+            viewBlock = new CgUniformBuffer(CgPassConstants.VIEW_BLOCK, CgPassConstants.VIEW_FORMAT,
+                    CgBindingPoints.VIEW_UBO, CgBufferLifetime.FRAME);
+            environmentBlock = new CgUniformBuffer(CgPassConstants.ENVIRONMENT_BLOCK, CgPassConstants.ENVIRONMENT_FORMAT,
+                    CgBindingPoints.ENVIRONMENT_UBO, CgBufferLifetime.FRAME);
             frameValues = new float[CgPassConstants.FLOATS];
+            environmentValues = new float[CgPassConstants.ENVIRONMENT_FLOATS];
         }
         constants.write(frameValues, 0);
+        System.arraycopy(frameValues, CgPassConstants.VIEW_FLOATS, environmentValues, 0, CgPassConstants.ENVIRONMENT_FLOATS);
         return this;
     }
 
@@ -400,9 +405,11 @@ public final class CgKernelProgram {
             propertyBlock.upload();
             propertyBlock.bind();
         }
-        if (frameBlock != null) {
-            frameBlock.uploadRaw(frameValues, frameValues.length);
-            frameBlock.bind();
+        if (viewBlock != null) {
+            viewBlock.uploadRaw(frameValues, CgPassConstants.VIEW_FLOATS);
+            viewBlock.bind();
+            environmentBlock.uploadRaw(environmentValues, CgPassConstants.ENVIRONMENT_FLOATS);
+            environmentBlock.bind();
         }
         properties.bindSamplerTextures();
     }
@@ -441,7 +448,10 @@ public final class CgKernelProgram {
     public void delete() {
         program.delete();
         if (propertyBlock != null) propertyBlock.delete();
-        if (frameBlock != null) frameBlock.delete();
+        if (viewBlock != null) {
+            viewBlock.delete();
+            environmentBlock.delete();
+        }
     }
 
     private CgBufferDecl buffer(String name) {

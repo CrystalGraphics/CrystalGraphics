@@ -58,7 +58,7 @@ Wired by name after linking, so the source carries no `binding =`:
 | Image `i` of `Images { }` | image unit `i`; at most 8 a file, refused at parse |
 | A sampler property | texture unit, by its place among the samplers |
 | `Properties` values | `CgKernelBlock` at `CgBindingPoints.MATERIAL_PROPERTIES_UBO` |
-| The frame block | `CgFrameBlock` at `FRAME_DATA_UBO`: `CgKernelProgram.frame(constants)` in a direct dispatch |
+| The view and environment blocks | `CgViewBlock` at `VIEW_UBO`, `CgEnvironmentBlock` at `ENVIRONMENT_UBO`: `CgKernelProgram.frame(constants)` in a direct dispatch |
 | An engine buffer (`#pragma cg_use`) | its own binding point; writable in a general kernel, read-only in the rest |
 | `cg_Dispatch[6]` | base and count per dispatch, one `glUniform1iv` |
 | Checked mode's slot (`CgCheck`) | the next point after the counts; each dispatch binds its own slot of `CgComputeCheck`'s buffer, so no two overlap |

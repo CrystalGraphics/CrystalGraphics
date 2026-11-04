@@ -7,6 +7,8 @@ import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.gl.buffer.CgStreamBuffer;
 import com.crystalgraphics.gl.buffer.shader.CgShaderBuffer;
 import com.crystalgraphics.platform.gl.CgGL;
+import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.util.trace.CgChannels;
 
 import java.nio.FloatBuffer;
 import java.util.Arrays;
@@ -16,7 +18,8 @@ import java.util.Objects;
  * A recording's binding snapshots: what a draw reads besides its instances, interned by content so two draws that
  * read the same things share an id, and a batch can hold both. Uniform blocks are copied when recorded; textures
  * and buffers are held as handles and resolved when bound. At execution every block is uploaded in one ring write
- * and bound by range. A {@link CgBufferHandle} — a frame graph's buffer — binds as a storage block at the point given,
+ * and bound by range, a block equal to the last one uploaded at its binding sharing its place: the environment block
+ * every pass of a frame carries is written once. A {@link CgBufferHandle} — a frame graph's buffer — binds as a storage block at the point given,
  * or below the SSBO path as a buffer texture at the unit given, and the graph orders the draw after whatever wrote it.
  *
  * <pre>{@code
@@ -68,6 +71,10 @@ public final class CgBindingTable {
 
     /** {@code GL_UNIFORM_BUFFER_OFFSET_ALIGNMENT} is at most 256 on every GL and Vulkan device we run on. */
     private static final int BLOCK_ALIGNMENT = 256;
+    private static final int BLOCKS_SHARED = CgTrace.name("bindings.blocks-shared");
+
+    /** Per binding point, during an {@link #upload}: the last block written there, and where it landed. */
+    private int[] lastBlock = new int[16], lastOffset = new int[16];
 
     private int[] entries = new int[ENTRY_INTS * 64];
     private Object[] refs = new Object[ENTRY_REFS * 64];
@@ -348,23 +355,47 @@ public final class CgBindingTable {
         uploaded = true;
         uploadedFrame = frame;
         if (ringOffsets.length < count * MAX_BLOCKS) ringOffsets = new int[Math.max(ringOffsets.length * 2, count * MAX_BLOCKS)];
-        int bytes = 0;
-        for (int id = 0; id < count; id++) {
-            int e = id * ENTRY_INTS;
-            for (int b = 0; b < entries[e + 1]; b++) bytes += align(entries[e + BLOCKS_AT + b * BLOCK_INTS + 2] * 4);
-        }
-        if (bytes == 0) return;
-        FloatBuffer view = ring.mapFloats(bytes);
-        int from = view.position();
-        int at = 0;
+        // Places first: a block equal to the last at its binding takes that one's, kept as -1 - offset until written.
+        Arrays.fill(lastBlock, -1);
+        int bytes = 0, shared = 0;
         for (int id = 0; id < count; id++) {
             int e = id * ENTRY_INTS;
             for (int b = 0; b < entries[e + 1]; b++) {
                 int block = e + BLOCKS_AT + b * BLOCK_INTS;
+                int binding = entries[block];
+                if (binding >= lastBlock.length) {
+                    int was = lastBlock.length;
+                    lastBlock = Arrays.copyOf(lastBlock, binding * 2);
+                    lastOffset = Arrays.copyOf(lastOffset, binding * 2);
+                    Arrays.fill(lastBlock, was, lastBlock.length, -1);
+                }
+                int last = lastBlock[binding];
+                if (last >= 0 && sameFloats(last, block)) {
+                    ringOffsets[id * MAX_BLOCKS + b] = -1 - lastOffset[binding];
+                    shared++;
+                    continue;
+                }
+                lastBlock[binding] = block;
+                lastOffset[binding] = bytes;
+                ringOffsets[id * MAX_BLOCKS + b] = bytes;
+                bytes += align(entries[block + 2] * 4);
+            }
+        }
+        CgTrace.add(CgChannels.GL, BLOCKS_SHARED, shared);
+        if (bytes == 0) return;
+        FloatBuffer view = ring.mapFloats(bytes);
+        int from = view.position();
+        for (int id = 0; id < count; id++) {
+            int e = id * ENTRY_INTS;
+            for (int b = 0; b < entries[e + 1]; b++) {
+                int at = ringOffsets[id * MAX_BLOCKS + b];
+                if (at < 0) {
+                    ringOffsets[id * MAX_BLOCKS + b] = -1 - at;
+                    continue;
+                }
+                int block = e + BLOCKS_AT + b * BLOCK_INTS;
                 view.position(from + (at >> 2));
                 view.put(floats, entries[block + 1], entries[block + 2]);
-                ringOffsets[id * MAX_BLOCKS + b] = at;
-                at += align(entries[block + 2] * 4);
             }
         }
         int base = ring.commit(bytes);
@@ -395,6 +426,17 @@ public final class CgBindingTable {
             CgGL.glBindBufferBase(CgGL.GL_SHADER_STORAGE_BUFFER, entries[e + STORAGE_AT + b],
                     ((CgBufferHandle) refs[r + STORAGE_REFS + b]).bufferId());
         }
+    }
+
+    /** Whether the blocks at entry offsets {@code a} and {@code b} hold the same floats. */
+    private boolean sameFloats(int a, int b) {
+        int n = entries[a + 2];
+        if (entries[b + 2] != n) return false;
+        int fa = entries[a + 1], fb = entries[b + 1];
+        for (int f = 0; f < n; f++) {
+            if (Float.floatToRawIntBits(floats[fa + f]) != Float.floatToRawIntBits(floats[fb + f])) return false;
+        }
+        return true;
     }
 
     private static int align(int bytes) {

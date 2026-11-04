@@ -20,7 +20,7 @@ import java.util.function.Supplier;
  * Engine-provided shader buffers a {@code .shader} can opt into with {@code #pragma cg_use <token>}.
  *
  * <h3>Why an opt-in registry rather than {@code cg_env.glsl}</h3>
- * <p>{@code CgFrameBlock} and {@code CgObjectDataBuffer} are declared unconditionally in
+ * <p>{@code CgViewBlock} and {@code CgObjectDataBuffer} are declared unconditionally in
  * {@code cg_env.glsl} because effectively every shader wants them. A quad-instance buffer is not in
  * that class — only a small minority of shaders draw through {@code CgQuadRenderer} — so declaring it
  * everywhere would bind it for shaders that never read it.</p>
