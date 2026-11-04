@@ -124,7 +124,9 @@ Pass {
         shafts = smoothstep(0.12, 0.6, shafts) * smoothstep(HORIZON - 0.1, HORIZON + 0.1, uv.y) * exp(-(uv.y - HORIZON) * 2.0);
         col += vec3(0.40, 0.80, 1.00) * shafts * 0.42 * (1.0 - 0.65 * column);
 
-        // Specks drifting up: small and faint far off, a few large and soft close by, faster
+        // Specks drifting up: small and faint far off, a few large and soft close by, faster. They fade out under the
+        // surface rather than rising across it
+        float underwater = smoothstep(HORIZON - 0.02, HORIZON + 0.10, uv.y);
         for (int layer = 0; layer < 2; layer++) {
             bool far = layer == 0;
             vec4 g = rising(uv, t, aspect, far ? 18.0 : 6.0, far ? 0.10 : 0.30);
@@ -132,7 +134,7 @@ Pass {
             vec2 d = g.xy - (h - 0.5) * 0.6 - vec2(sin(t * 0.8 + h.y * 6.2832) * 0.1, 0.0);
             float size = far ? 0.0020 : 0.012;
             float speck = exp(-dot(d, d) / size) * step(far ? 0.80 : 0.86, hash12(g.zw + 64.7 + float(layer)))
-                    * (far ? 0.30 + 0.25 * h.x : 0.14 + 0.08 * h.x) * (1.0 - 0.7 * column);
+                    * (far ? 0.30 + 0.25 * h.x : 0.14 + 0.08 * h.x) * (1.0 - 0.7 * column) * underwater;
             col = mix(col, vec3(0.88, 0.96, 1.00), speck);
         }
         return col;
