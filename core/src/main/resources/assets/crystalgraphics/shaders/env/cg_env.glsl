@@ -127,7 +127,8 @@ CG_BIND(0, 1) uniform sampler2D cg_DepthBuffer;
 // bends what is behind it (heat haze, a shockwave). RGBA8, linearly filtered. Bound to
 // CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT; do NOT use that unit in material Properties either.
 CG_BIND(0, 2) uniform sampler2D cg_SceneColor;
-#define CG_SCENE_COLOR(uv) texture(cg_SceneColor, (uv))
+// Level 0, as Unreal's CalcSceneColor: a screen read takes no derivatives, which a discard leaves undefined
+#define CG_SCENE_COLOR(uv) textureLod(cg_SceneColor, (uv), 0.0)
 
 // cg_Lightmap: the host's lightmap, block light across and sky light down, in a world pass; 1x1 white in any other.
 // Bound to CgBindingPoints.LIGHTMAP_TEXTURE_UNIT; do NOT use that unit in material Properties either.
@@ -153,7 +154,9 @@ float cg_LinearEyeDepth(float windowDepth) {
     float p32 = cg_ProjMatrix[3][2] + p22 * cg_ProjMatrix[3][3];
     return p32 / (ndc + p22);
 }
-#define CG_SCENE_EYE_DEPTH(uv) cg_LinearEyeDepth(texture(cg_DepthBuffer, (uv)).r)
+// Level 0, as Unreal's CalcSceneDepth: after a discard a derivative is undefined (SPIR-V's OpKill), and the host's
+// depth samples through its own mipmapped filter
+#define CG_SCENE_EYE_DEPTH(uv) cg_LinearEyeDepth(textureLod(cg_DepthBuffer, (uv), 0.0).r)
 
 // CG_CUSTOM_STENCIL, CG_SCENE_WORLD_NORMAL, CG_CUSTOM_DATA and CG_SHADING_MODEL_ID are handed to a post material naming
 // them (env/handed_scene.glsl). CustomDepth as an eye distance, and the rest of what Unreal's post materials sample, are
