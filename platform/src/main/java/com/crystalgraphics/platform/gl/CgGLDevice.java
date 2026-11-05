@@ -1,0 +1,420 @@
+package com.crystalgraphics.platform.gl;
+
+import com.crystalgraphics.platform.gl.binding.GLBindingLayout;
+import com.crystalgraphics.platform.gl.binding.GLBindingSet;
+import com.crystalgraphics.platform.gl.command.GLEncoder;
+import com.crystalgraphics.platform.gl.command.GLFramebuffers;
+import com.crystalgraphics.platform.gl.driver.CgGLDriver;
+import com.crystalgraphics.platform.gl.pipeline.GLComputePipeline;
+import com.crystalgraphics.platform.gl.pipeline.GLGraphicsPipeline;
+import com.crystalgraphics.platform.gl.pipeline.GLShaderModule;
+import com.crystalgraphics.platform.gl.pipeline.GLShaderTranslator;
+import com.crystalgraphics.platform.gl.resource.GLBuffer;
+import com.crystalgraphics.platform.gl.resource.GLSampler;
+import com.crystalgraphics.platform.gl.resource.GLTexture;
+import com.crystalgraphics.platform.gl.sync.GLTimerQuery;
+import com.crystalgraphics.platform.rhi.CgRHI;
+import com.crystalgraphics.platform.rhi.binding.CgBindingLayout;
+import com.crystalgraphics.platform.rhi.binding.CgBindingSet;
+import com.crystalgraphics.platform.rhi.binding.CgBindings;
+import com.crystalgraphics.platform.rhi.command.CgCommandList;
+import com.crystalgraphics.platform.rhi.format.CgFormat;
+import com.crystalgraphics.platform.rhi.pipeline.CgComputePipeline;
+import com.crystalgraphics.platform.rhi.pipeline.CgGraphicsPipeline;
+import com.crystalgraphics.platform.rhi.pipeline.CgGraphicsPipelineDesc;
+import com.crystalgraphics.platform.rhi.pipeline.CgPipelineLayout;
+import com.crystalgraphics.platform.rhi.resource.CgGpuBuffer;
+import com.crystalgraphics.platform.rhi.resource.CgGpuSampler;
+import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
+import com.crystalgraphics.platform.rhi.resource.CgRHIResource;
+import com.crystalgraphics.platform.rhi.resource.CgTextureView;
+import com.crystalgraphics.platform.rhi.shader.CgShaderModule;
+import com.crystalgraphics.platform.rhi.sync.CgTimerQuery;
+
+import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.EnumSet;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.function.BiConsumer;
+
+import static com.crystalgraphics.platform.gl.driver.GLC.*;
+
+/**
+ * {@link CgRHI} on GL 4.6, as Unreal's OpenGL RHI implements its RHI: commands run as they are called, a pipeline's
+ * state is applied before each draw where it differs from the context's (the PSO fallback), framebuffers are cached by
+ * attachments, binding sets are bound at ranges of binding points, and a frame retires when its fence signals. GL is
+ * reached through a {@link CgGLDriver}, so one device serves every LWJGL era.
+ *
+ * <pre>{@code
+ * CgGLDevice device = new CgGLDevice(new Lwjgl3GLDriver(), new SpvcGlslTranslator(), width, height, true);
+ * CgRHI.install(device);
+ * ... record through device.encoder() ...
+ * device.endFrame();                     // presents the surface to the window's framebuffer, then the host swaps
+ * device.resize(newWidth, newHeight);    // a new surfaceColor() and surfaceDepth()
+ * }</pre>
+ *
+ * <ul>
+ *   <li>Made, used and closed on the thread whose GL 4.6 context is current; nothing is created on another.</li>
+ *   <li>The surface is the device's own colour and depth textures (Unreal's back buffer); {@code presents} blits the
+ *   colour to the window's framebuffer at each {@link #endFrame}.</li>
+ * </ul>
+ */
+public final class CgGLDevice implements CgRHI {
+
+    /** Frames recorded ahead of the GPU before {@link #endFrame} waits for the oldest. */
+    public static final int FRAMES_IN_FLIGHT = 3;
+
+    private static final int HEAP_CAPACITY = 1 << 16;
+
+    private final CgGLDriver gl;
+    private final GLShaderTranslator translator;
+    private final boolean presents;
+    private final Thread owner = Thread.currentThread();
+    private final Globals globals;
+    private final GLFramebuffers framebuffers;
+    private final GLEncoder encoder;
+    private GLTexture surfaceColor, surfaceDepth;
+
+    private long frame;
+    private long retired = -1;
+    private final long[] fences = new long[FRAMES_IN_FLIGHT];
+
+    // what retires with a frame: an object to delete or a Runnable to run
+    private long[] retireFrames = new long[64];
+    private Object[] retireItems = new Object[64];
+    private int retireCount;
+    private Object[] due = new Object[64];
+    private CgTextureView[] presented;
+
+    // the bindless heap: a storage buffer of ARB_bindless_texture handles
+    private GLBindingLayout heapLayout;
+    private GLBindingSet heapSet;
+    private GLBuffer heap;
+    private final Map<HeapKey, Integer> heapIndex = new HashMap<>();
+    private final List<HeapKey> heapKeys = new ArrayList<>();
+    private long[] heapHandles = new long[0];
+    private int[] freeIndices = new int[16];
+    private int freeCount, heapNext;
+
+    private record HeapKey(CgTextureView view, GLSampler sampler) {}
+
+    public CgGLDevice(CgGLDriver gl, GLShaderTranslator translator, int width, int height, boolean presents) {
+        this.gl = gl;
+        this.translator = translator;
+        this.presents = presents;
+        String version = gl.glGetString(GL_VERSION);
+        int at = gl.glGetInteger(GL_MAJOR_VERSION) * 10 + gl.glGetInteger(GL_MINOR_VERSION);
+        if (at < 45) throw new IllegalStateException("CgGLDevice needs GL 4.5 or newer, not " + version);
+        boolean gl46 = at >= 46;
+        Globals.Limits limits = new Globals.Limits(gl.glGetInteger(GL_MAX_TEXTURE_SIZE),
+                gl.glGetInteger(GL_MAX_3D_TEXTURE_SIZE), gl.glGetInteger(GL_MAX_ARRAY_TEXTURE_LAYERS),
+                gl.glGetInteger(GL_MAX_COLOR_ATTACHMENTS), gl.glGetInteger(GL_MAX_SAMPLES),
+                gl.glGetInteger(GL_MAX_VERTEX_ATTRIBS), gl.glGetInteger(GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS),
+                gl.glGetInteger(GL_MAX_UNIFORM_BLOCK_SIZE), gl.glGetInteger(GL_MAX_UNIFORM_BUFFER_BINDINGS),
+                gl.glGetInteger(GL_MAX_SHADER_STORAGE_BUFFER_BINDINGS), gl.glGetInteger(GL_MAX_TEXTURE_BUFFER_SIZE),
+                gl.glGetInteger(GL_UNIFORM_BUFFER_OFFSET_ALIGNMENT),
+                gl.glGetInteger(GL_SHADER_STORAGE_BUFFER_OFFSET_ALIGNMENT),
+                gl.glGetInteger(GL_TEXTURE_BUFFER_OFFSET_ALIGNMENT), gl.glGetInteger(GL_MAX_VIEWPORT_DIMS),
+                gl.glGetFloat(GL_MAX_TEXTURE_MAX_ANISOTROPY),
+                new Globals.Compute(gl.glGetInteger(GL_MAX_COMPUTE_SHARED_MEMORY_SIZE),
+                        gl.glGetInteger(GL_MAX_COMPUTE_WORK_GROUP_INVOCATIONS), Globals.Compute.MINIMUM.sizeX(),
+                        Globals.Compute.MINIMUM.sizeY(), Globals.Compute.MINIMUM.sizeZ(), Globals.Compute.MINIMUM.countX(),
+                        Globals.Compute.MINIMUM.countY(), Globals.Compute.MINIMUM.countZ(), 1, 0));
+        globals = new Globals("OpenGL", gl.glGetString(GL_VENDOR) + " " + gl.glGetString(GL_RENDERER), version, limits,
+                true, limits.maxAnisotropy() > 1f, true, true, gl46 || gl.hasExtension("GL_ARB_indirect_parameters"),
+                true, false, true, true, gl.hasExtension("GL_ARB_bindless_texture"));
+
+        // Vulkan's conventions: depth in [0, 1]; images' rows in memory as Vulkan writes them (present flips)
+        gl.glClipControl(GL_LOWER_LEFT, GL_ZERO_TO_ONE);
+        gl.glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
+        gl.glEnable(GL_PROGRAM_POINT_SIZE);
+        gl.glEnable(GL_FRAMEBUFFER_SRGB);
+        gl.glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+        gl.glPixelStorei(GL_PACK_ALIGNMENT, 1);
+
+        framebuffers = new GLFramebuffers(gl);
+        encoder = new GLEncoder(this, gl, framebuffers, limits.uniformOffsetAlignment());
+        makeSurface(width, height);
+    }
+
+    // ── what the device is ────────────────────────────────────────────────────
+
+    @Override public Globals globals() { return globals; }
+
+    @Override
+    public void describe(BiConsumer<String, String> fact) {
+        fact.accept("api", "OpenGL " + globals.driver());
+        fact.accept("bindless", String.valueOf(globals.bindless()));
+        fact.accept("indirectCount", String.valueOf(globals.indirectCount()));
+        fact.accept("computeInvocations", String.valueOf(globals.limits().compute().invocations()));
+    }
+
+    @Override
+    public boolean supports(CgFormat format, CgGpuTexture.Usage usage) {
+        return switch (usage) {
+            case ATTACHMENT -> !format.compressed();
+            case STORAGE -> format.aspect() == CgFormat.Aspect.COLOR && !format.compressed()
+                    && format != CgFormat.RGBA8_SRGB && format != CgFormat.BGRA8_UNORM;
+            default -> true;
+        };
+    }
+
+    @Override public boolean ownedByCurrentThread() { return Thread.currentThread() == owner; }
+
+    /** The GL calls this device makes. */
+    public CgGLDriver driver() { return gl; }
+
+    // ── objects ───────────────────────────────────────────────────────────────
+
+    @Override public CgGpuBuffer createBuffer(CgGpuBuffer.Desc desc) { return new GLBuffer(gl, desc); }
+
+    @Override public CgGpuTexture createTexture(CgGpuTexture.Desc desc) { return new GLTexture(gl, desc); }
+
+    @Override
+    public CgGpuSampler createSampler(CgGpuSampler.Desc desc) {
+        return new GLSampler(gl, desc, globals.limits().maxAnisotropy());
+    }
+
+    @Override
+    public CgShaderModule createShaderModule(CgShaderModule.Stage stage, ByteBuffer spirv, String label) {
+        return new GLShaderModule(stage, spirv, label);
+    }
+
+    @Override
+    public CgBindingLayout createBindingLayout(String label, List<CgBindingLayout.Slot> slots, boolean pushed) {
+        return new GLBindingLayout(label, slots, pushed, false);
+    }
+
+    @Override
+    public CgBindingSet createBindingSet(String label, CgBindingLayout layout, CgBindings contents) {
+        if (layout.pushed()) throw new IllegalArgumentException(label + ": a set of a pushed layout");
+        return new GLBindingSet(label, layout, contents);
+    }
+
+    @Override
+    public CgGraphicsPipeline createPipeline(CgGraphicsPipelineDesc desc) {
+        return new GLGraphicsPipeline(gl, translator, desc);
+    }
+
+    @Override
+    public CgComputePipeline createComputePipeline(String label, CgShaderModule module, CgPipelineLayout layout) {
+        return new GLComputePipeline(gl, translator, label, module, layout);
+    }
+
+    @Override
+    public CgTimerQuery createTimerQuery(String label) {
+        return new GLTimerQuery(gl, this::retiredFrame, label);
+    }
+
+    @Override
+    public void release(CgRHIResource object) {
+        retireAt(frame, object);
+    }
+
+    private void delete(Object o) {
+        if (o instanceof GLBuffer b) b.delete(gl);
+        else if (o instanceof GLTexture t) {
+            framebuffers.forget(t);
+            dropHeapEntries(t);
+            t.delete(gl);
+        } else if (o instanceof GLSampler s) gl.glDeleteSamplers(s.name);
+        else if (o instanceof GLGraphicsPipeline p) p.delete(gl);
+        else if (o instanceof GLComputePipeline p) gl.glDeleteProgram(p.program);
+        else if (o instanceof GLTimerQuery q) q.delete();
+    }
+
+    // ── the bindless heap ─────────────────────────────────────────────────────
+
+    @Override
+    public CgBindingLayout bindlessLayout() {
+        if (!globals.bindless()) return null;
+        if (heapLayout == null) {
+            heapLayout = new GLBindingLayout("bindless", List.of(new CgBindingLayout.Slot(0, CgBindingLayout.Type.SAMPLED_TEXTURE)),
+                    false, true);
+            heapSet = new GLBindingSet("bindless", heapLayout, new CgBindings());
+            heap = new GLBuffer(gl, new CgGpuBuffer.Desc("bindless heap", (long) HEAP_CAPACITY * 8,
+                    EnumSet.of(CgGpuBuffer.Usage.STORAGE), true, false, true));
+        }
+        return heapLayout;
+    }
+
+    @Override
+    public CgBindingSet bindlessSet() {
+        bindlessLayout();
+        return heapSet;
+    }
+
+    /** The heap's storage buffer of handles, which set {@link #BINDLESS_SET} binds. */
+    public GLBuffer heapBuffer() { return heap; }
+
+    @Override
+    public int bindlessIndex(CgTextureView view, CgGpuSampler sampler) {
+        if (bindlessLayout() == null) return CgRHI.super.bindlessIndex(view, sampler);
+        if (!view.texture().desc().usage().contains(CgGpuTexture.Usage.SAMPLED))
+            throw new IllegalStateException(view.texture().label() + " in the bindless heap without SAMPLED usage");
+        HeapKey key = new HeapKey(view, (GLSampler) sampler);
+        Integer known = heapIndex.get(key);
+        if (known != null) return known;
+        int index = freeCount > 0 ? freeIndices[--freeCount] : heapNext++;
+        if (index >= HEAP_CAPACITY) throw new IllegalStateException("the bindless heap is full: " + HEAP_CAPACITY);
+        GLTexture t = (GLTexture) view.texture();
+        long handle = gl.glGetTextureSamplerHandleARB(t.sampled(gl, view), key.sampler().name);
+        gl.glMakeTextureHandleResidentARB(handle);
+        heap.mapped().putLong(index * 8, handle);
+        if (index >= heapHandles.length) heapHandles = Arrays.copyOf(heapHandles, Math.max(64, index * 2));
+        heapHandles[index] = handle;
+        while (heapKeys.size() <= index) heapKeys.add(null);
+        heapKeys.set(index, key);
+        heapIndex.put(key, index);
+        return index;
+    }
+
+    /** A deleted texture's handles go non-resident and their indices free: its frames have retired. */
+    private void dropHeapEntries(GLTexture t) {
+        for (int i = 0; i < heapKeys.size(); i++) {
+            HeapKey k = heapKeys.get(i);
+            if (k == null || k.view().texture() != t) continue;
+            gl.glMakeTextureHandleNonResidentARB(heapHandles[i]);
+            heapKeys.set(i, null);
+            heapIndex.remove(k);
+            if (freeCount == freeIndices.length) freeIndices = Arrays.copyOf(freeIndices, freeCount * 2);
+            freeIndices[freeCount++] = i;
+        }
+    }
+
+    // ── commands ──────────────────────────────────────────────────────────────
+
+    @Override public CgCommandList encoder() { return encoder; }
+
+    @Override public CgGpuTexture surfaceColor() { return surfaceColor; }
+
+    @Override public CgGpuTexture surfaceDepth() { return surfaceDepth; }
+
+    /** The window was resized: a new surface, the old one released with its frames. */
+    public void resize(int width, int height) {
+        if (surfaceColor.desc().width() == width && surfaceColor.desc().height() == height) return;
+        release(surfaceColor);
+        release(surfaceDepth);
+        makeSurface(width, height);
+    }
+
+    private void makeSurface(int width, int height) {
+        surfaceColor = new GLTexture(gl, new CgGpuTexture.Desc("surface", CgGpuTexture.Kind.D2, CgFormat.RGBA8_UNORM,
+                width, height, 1, 1, 1, CgGpuTexture.Usage.ALL));
+        surfaceDepth = new GLTexture(gl, new CgGpuTexture.Desc("surface depth", CgGpuTexture.Kind.D2,
+                CgFormat.DEPTH24_PLUS_STENCIL8, width, height, 1, 1, 1,
+                EnumSet.of(CgGpuTexture.Usage.ATTACHMENT, CgGpuTexture.Usage.SAMPLED, CgGpuTexture.Usage.COPY_SRC)));
+        presented = new CgTextureView[] {CgTextureView.whole(surfaceColor)};
+    }
+
+    // ── frames ────────────────────────────────────────────────────────────────
+
+    @Override public long frameIndex() { return frame; }
+
+    @Override public long retiredFrame() { return retired; }
+
+    @Override
+    public void whenRetired(long f, Runnable action) {
+        if (f <= retired) action.run();
+        else retireAt(f, action);
+    }
+
+    private void retireAt(long f, Object item) {
+        if (retireCount == retireFrames.length) {
+            retireFrames = Arrays.copyOf(retireFrames, retireCount * 2);
+            retireItems = Arrays.copyOf(retireItems, retireCount * 2);
+        }
+        retireFrames[retireCount] = f;
+        retireItems[retireCount++] = item;
+    }
+
+    @Override
+    public void endFrame() {
+        if (encoder.inPass()) throw new IllegalStateException("endFrame with a pass open");
+        if (presents) present();
+        fences[(int) (frame % FRAMES_IN_FLIGHT)] = gl.glFenceSync();
+        gl.glFlush();
+        frame++;
+        encoder.endFrame(frame);
+        if (frame - retired > FRAMES_IN_FLIGHT) waitFence(frame - FRAMES_IN_FLIGHT);
+        poll();
+    }
+
+    /** The surface's colour onto the window's framebuffer, rows flipped: GL's window has its first row at the bottom. */
+    private void present() {
+        int w = surfaceColor.desc().width(), h = surfaceColor.desc().height();
+        gl.glDisable(GL_FRAMEBUFFER_SRGB);
+        gl.glBlitNamedFramebuffer(framebuffers.get(presented, 1, null), 0,
+                0, 0, w, h, 0, h, w, 0, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+        gl.glEnable(GL_FRAMEBUFFER_SRGB);
+    }
+
+    /** Retires every frame whose fence has signalled, in order. */
+    private void poll() {
+        while (retired + 1 < frame) {
+            long next = retired + 1;
+            long fence = fences[(int) (next % FRAMES_IN_FLIGHT)];
+            int r = gl.glClientWaitSync(fence, 0, 0);
+            if (r != GL_ALREADY_SIGNALED && r != GL_CONDITION_SATISFIED) break;
+            retire(next);
+        }
+    }
+
+    private void waitFence(long f) {
+        while (retired < f) {
+            long next = retired + 1;
+            long fence = fences[(int) (next % FRAMES_IN_FLIGHT)];
+            int r;
+            do r = gl.glClientWaitSync(fence, GL_SYNC_FLUSH_COMMANDS_BIT, 1_000_000_000L);
+            while (r == GL_TIMEOUT_EXPIRED);
+            if (r == GL_WAIT_FAILED) throw new IllegalStateException("glClientWaitSync failed on frame " + next);
+            retire(next);
+        }
+    }
+
+    private void retire(long f) {
+        gl.glDeleteSync(fences[(int) (f % FRAMES_IN_FLIGHT)]);
+        retired = f;
+        // taken out first: an action run may release or ask for more
+        int dueCount = 0, kept = 0;
+        for (int i = 0; i < retireCount; i++) {
+            if (retireFrames[i] <= f) {
+                if (dueCount == due.length) due = Arrays.copyOf(due, dueCount * 2);
+                due[dueCount++] = retireItems[i];
+            } else {
+                retireFrames[kept] = retireFrames[i];
+                retireItems[kept++] = retireItems[i];
+            }
+        }
+        for (int i = kept; i < retireCount; i++) retireItems[i] = null;
+        retireCount = kept;
+        for (int i = 0; i < dueCount; i++) {
+            Object item = due[i];
+            due[i] = null;
+            if (item instanceof Runnable r) r.run();
+            else delete(item);
+        }
+    }
+
+    @Override public boolean ownsSubmission() { return true; }
+
+    @Override
+    public void waitRetired(long f) {
+        if (f >= frame) endFrame();
+        waitFence(Math.min(f, frame - 1));
+    }
+
+    /** Waits for the GPU and deletes everything the device made. */
+    public void close() {
+        waitRetired(frame - 1);
+        release(surfaceColor);
+        release(surfaceDepth);
+        endFrame();
+        waitRetired(frame - 1);
+        encoder.delete();
+        if (heap != null) heap.delete(gl);
+    }
+}

@@ -28,7 +28,8 @@ import com.crystalgraphics.platform.rhi.resource.CgRHIResource;
 /**
  * The device API the engine draws and dispatches through (Unreal's {@code FDynamicRHI}): resources, pipelines, the
  * frame's command list and frames in flight. One implementation runs at a time, reached through {@link #get()}:
- * Vulkan's ({@code CgVulkanDevice}), and {@link CgNullRHI}, which records and validates, for tests and headless runs.
+ * Vulkan's ({@code CgVulkanDevice}), GL 4.6's ({@code CgGLDevice}), and {@link CgNullRHI}, which records and validates,
+ * for tests and headless runs.
  *
  * <pre>{@code
  * CgRHI rhi = CgRHI.get();

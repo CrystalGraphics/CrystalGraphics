@@ -53,7 +53,8 @@ dependencies {
     // Asset files are YAML (CgFormats.YAML): core's consumerApi does not reach this test classpath.
     testRuntimeOnly("org.yaml:snakeyaml:2.7")
     testImplementation("junit:junit:${rootProject.properties["dep.junit"]}")
-    for (module in listOf("lwjgl", "lwjgl-shaderc", "lwjgl-spvc", "lwjgl-vma", "lwjgl-glfw")) {
+    testImplementation(project(":runtime:lwjgl:3"))   // the GL device's driver, for its contract runner
+    for (module in listOf("lwjgl", "lwjgl-shaderc", "lwjgl-spvc", "lwjgl-vma", "lwjgl-glfw", "lwjgl-opengl")) {
         testImplementation("org.lwjgl:$module:$lwjglVulkan")
         testRuntimeOnly("org.lwjgl:$module:$lwjglVulkan:$natives")
     }
