@@ -5,6 +5,7 @@ import com.crystalgraphics.gl.shader.CgShader;
 import com.crystalgraphics.api.material.CgMaterialValues;
 import com.crystalgraphics.api.texture.CgSampler;
 import com.crystalgraphics.api.texture.CgTexture;
+import com.crystalgraphics.gl.texture.CgFallbackTextures;
 import com.crystalgraphics.gl.texture.CgSamplers;
 import com.crystalgraphics.gl.buffer.staging.CgBufferWriter;
 import com.crystalgraphics.render.draw.CgBindingTable;
@@ -122,11 +123,13 @@ public final class CgMaterialProperties implements CgMaterialValues {
 
     /**
      * Adds each sampler's texture to a snapshot, at the unit its program reads it from: its index among the declared
-     * samplers. A sampler with no texture set takes the engine texture its default names, else is left out.
+     * samplers. A sampler with no texture set takes the engine texture its default names, else white, as an Unreal
+     * texture parameter always has its default.
      */
     public void captureSamplers(CgBindingTable table) {
         for (int i = 0; i < samplerProps.size(); i++) {
             CgTexture texture = samplerProps.get(i).boundTexture();
+            if (texture == null) texture = CgFallbackTextures.WHITE_1x1;
             if (texture != null) table.texture(i, texture, samplerProps.get(i).getSampler());
         }
     }

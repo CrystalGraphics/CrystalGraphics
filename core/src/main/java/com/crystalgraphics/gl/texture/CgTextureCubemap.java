@@ -1,5 +1,7 @@
 package com.crystalgraphics.gl.texture;
 
+import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
+import com.crystalgraphics.platform.gl.format.GLFormats;
 import com.crystalgraphics.gl.CgGlNames;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.texture.CgTextureSpec;
@@ -87,6 +89,13 @@ public final class CgTextureCubemap extends CgTextureAbstract {
     @Nullable private final String stacked;
 
     private final Consumer<CgUploadLease> landing = this::land;
+
+
+    @Override
+    protected CgGpuTexture.Desc rhiDesc() {
+        return new CgGpuTexture.Desc(source(), CgGpuTexture.Kind.CUBE, GLFormats.of(spec.getGlInternalFormat()), width,
+                height, 6, mips(), 1, SAMPLED_ONLY);
+    }
 
     private CgTextureCubemap(int textureId, int size, CgTextureSpec spec, String[] sourcePaths) {
         this(textureId, size, spec, sourcePaths, null);

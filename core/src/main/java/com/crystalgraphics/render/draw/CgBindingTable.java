@@ -367,6 +367,31 @@ public final class CgBindingTable {
         return entries[id * ENTRY_INTS + 2];
     }
 
+    /** Snapshot {@code id}'s {@code i}th buffer. */
+    public CgShaderBuffer buffer(int id, int i) {
+        return (CgShaderBuffer) refs[id * ENTRY_REFS + MAX_TEXTURES + i];
+    }
+
+    /** Snapshot {@code id}'s {@code k}th block's persistent version; null for one copied into the ring. */
+    CgBlockVersion blockVersion(int id, int k) {
+        return (CgBlockVersion) refs[id * ENTRY_REFS + BLOCK_REFS + k];
+    }
+
+    /** How many floats snapshot {@code id}'s {@code k}th block holds. */
+    int blockFloatCount(int id, int k) {
+        return entries[id * ENTRY_INTS + BLOCKS_AT + k * BLOCK_INTS + 2];
+    }
+
+    /** Where snapshot {@code id}'s {@code k}th ring block landed in {@link #uploadedBuffer()}; after {@link #upload}. */
+    int ringOffset(int id, int k) {
+        return ringOffsets[id * MAX_BLOCKS + k];
+    }
+
+    /** The ring buffer's name its blocks landed in at the last {@link #upload}; 0 before one wrote any. */
+    int uploadedBuffer() {
+        return uploadedBuffer;
+    }
+
     /** Forgets every snapshot; ids from before are invalid. */
     public void reset() {
         if (building >= 0) throw new IllegalStateException("reset() inside a snapshot");

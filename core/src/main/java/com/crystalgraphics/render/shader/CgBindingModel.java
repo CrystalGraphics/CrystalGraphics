@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.shader;
 
+import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.material.CgAttachedBuffer;
 import com.crystalgraphics.gl.buffer.shader.CgBonePalettes;
 import com.crystalgraphics.gl.buffer.shader.CgEngineBufferRegistry;
@@ -43,8 +44,13 @@ public final class CgBindingModel {
         }
     }
 
-    // set 0, written in cg_env.glsl: CgViewBlock 0, cg_DepthBuffer 1, cg_SceneColor 2, cg_Lightmap 3, cg_Media 4,
-    // cg_LocalLights 5, CgEnvironmentBlock 6
+    /** Set 0's bindings, as {@code cg_env.glsl} writes them. */
+    public static final int VIEW_BLOCK = 0, DEPTH = 1, SCENE_COLOR = 2, LIGHTMAP = 3, MEDIA = 4, LOCAL_LIGHTS = 5,
+            ENVIRONMENT_BLOCK = 6;
+
+    /** A packed slot that names nothing: {@link #ofTexture}, {@link #ofBlock} and {@link #ofStorage} for a number the
+     * model does not place. */
+    public static final int NONE = -1;
 
     /** {@code CgObjectDataBuffer}, the pass's draw records: written in {@code cg_env.glsl}. */
     public static final Slot OBJECTS = new Slot(PASS, 0);
@@ -65,6 +71,57 @@ public final class CgBindingModel {
     public static final int FIRST_TEXTURE = 16;
 
     private CgBindingModel() {}
+
+    /** {@code set} and {@code binding} in one int: {@link #setOf} and {@link #bindingOf} read it back. */
+    public static int pack(int set, int binding) {
+        return set << 16 | binding;
+    }
+
+    public static int setOf(int packed) {
+        return packed >>> 16;
+    }
+
+    public static int bindingOf(int packed) {
+        return packed & 0xFFFF;
+    }
+
+    /**
+     * The slot a texture recorded at engine unit {@code unit} reads: set 0's for the pass's units, the material's texture
+     * {@code unit} below them. {@link #NONE} for a negative unit.
+     */
+    public static int ofTexture(int unit) {
+        if (unit < 0) return NONE;
+        if (unit == CgBindingPoints.DEPTH_TEXTURE_UNIT) return pack(VIEW, DEPTH);
+        if (unit == CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT) return pack(VIEW, SCENE_COLOR);
+        if (unit == CgBindingPoints.LIGHTMAP_TEXTURE_UNIT) return pack(VIEW, LIGHTMAP);
+        if (unit == CgBindingPoints.MEDIA_TEXTURE_UNIT) return pack(VIEW, MEDIA);
+        if (unit == CgBindingPoints.LOCAL_LIGHTS_TEXTURE_UNIT) return pack(VIEW, LOCAL_LIGHTS);
+        return pack(MATERIAL, FIRST_TEXTURE + unit);
+    }
+
+    /** The slot a uniform block recorded at engine point {@code point} reads; {@link #NONE} for one it does not place. */
+    public static int ofBlock(int point) {
+        if (point < 0) return NONE;
+        if (point == CgBindingPoints.VIEW_UBO) return pack(VIEW, VIEW_BLOCK);
+        if (point == CgBindingPoints.ENVIRONMENT_UBO) return pack(VIEW, ENVIRONMENT_BLOCK);
+        if (point == CgBindingPoints.MATERIAL_PROPERTIES_UBO) return pack(MATERIAL, MATERIAL_BLOCK.binding());
+        if (point == CgBindingPoints.TEXT_DATA_UBO) return pack(PASS, TEXT_DATA.binding());
+        return NONE;
+    }
+
+    /**
+     * The slot a storage buffer recorded at engine point {@code point} reads: the pass's records, bone palettes and
+     * cg_use tokens, the material's {@code Buffers { }}. {@link #NONE} for one it does not place.
+     */
+    public static int ofStorage(int point) {
+        if (point < 0 || !CgBindingPoints.isInitialized()) return NONE;
+        if (point == CgBindingPoints.OBJECT_DATA.ssbo()) return pack(PASS, OBJECTS.binding());
+        if (point == CgBindingPoints.BONE_PALETTES.ssbo()) return pack(PASS, BONES.binding());
+        int material = point - CgBindingPoints.MATERIAL_BUFFERS_SSBO;
+        if (material >= 0 && material < CgBindingPoints.MATERIAL_BUFFER_COUNT) return pack(MATERIAL, FIRST_BUFFER + material);
+        int token = CgEngineBufferRegistry.indexOfPoint(point);
+        return token >= 0 ? pack(PASS, FIRST_TOKEN + token) : NONE;
+    }
 
     /** The material's {@code Buffers { }} entry {@code i}. */
     public static Slot buffer(int i) {

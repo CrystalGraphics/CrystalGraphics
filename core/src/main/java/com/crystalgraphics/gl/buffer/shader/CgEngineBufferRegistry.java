@@ -9,6 +9,7 @@ import com.crystalgraphics.render.property.CgPalette;
 import com.crystalgraphics.render.stage.CgDirectionalLights;
 import com.crystalgraphics.text.render.CgTextRenderer;
 
+import java.util.Arrays;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -221,6 +222,33 @@ public final class CgEngineBufferRegistry {
             i++;
         }
         return -1;
+    }
+
+    /** {@link #indexOfPoint}'s answers by storage point, for the registry as it was at {@link #pointsAt} tokens. */
+    private static int[] tokenOfPoint = new int[0];
+    private static int pointsAt = -1;
+
+    /**
+     * The place of the token whose buffer binds at storage point {@code point}, or -1: what {@code CgBindingModel}
+     * places a buffer recorded by its point at. Resolves each provider's buffer the first time it is asked after a
+     * registration; render thread.
+     */
+    public static synchronized int indexOfPoint(int point) {
+        if (pointsAt != PROVIDERS.size()) {
+            int max = -1;
+            int[] points = new int[PROVIDERS.size()];
+            int i = 0;
+            for (Provider p : PROVIDERS.values()) {
+                CgShaderBuffer b = p.buffer().get();
+                points[i] = b == null ? -1 : b.getBindingLocation();
+                max = Math.max(max, points[i++]);
+            }
+            tokenOfPoint = new int[max + 1];
+            Arrays.fill(tokenOfPoint, -1);
+            for (int t = points.length - 1; t >= 0; t--) if (points[t] >= 0) tokenOfPoint[points[t]] = t;
+            pointsAt = PROVIDERS.size();
+        }
+        return point >= 0 && point < tokenOfPoint.length ? tokenOfPoint[point] : -1;
     }
 
     /** Every registered token, for error messages. */

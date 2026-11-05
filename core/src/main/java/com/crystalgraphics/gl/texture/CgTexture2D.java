@@ -235,9 +235,10 @@ public final class CgTexture2D extends CgTextureAbstract {
         return tex;
     }
 
-    /** The RHI texture behind it, where it was made {@link #onDevice}; else null. */
-    @Nullable
-    public CgGpuTexture rhiTexture() { return image; }
+    @Override
+    protected int mips() {
+        return getLevels();
+    }
 
     /** Creates an empty 2D texture with no image data. Not cached; caller owns the lifecycle. */
     public static CgTexture2D createEmpty(int width, int height, CgTextureSpec spec) {

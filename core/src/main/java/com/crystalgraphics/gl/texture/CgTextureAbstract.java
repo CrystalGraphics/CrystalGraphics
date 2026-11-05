@@ -1,5 +1,8 @@
 package com.crystalgraphics.gl.texture;
 
+import java.util.Set;
+import java.util.EnumSet;
+import com.crystalgraphics.platform.gl.format.GLFormats;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.texture.CgTextureSpec;
 import com.crystalgraphics.gpu.CgDeferral;
@@ -72,6 +75,35 @@ public abstract class CgTextureAbstract implements CgTexture, CgReloadable {
     private volatile boolean unloaded;
     /** Whether its files would not load: it samples a stand-in. */
     protected boolean missing;
+
+    /**
+     * The RHI texture behind it on the installed device: its own where it was made on the device, else its name imported
+     * through {@link CgGLImports} (RDG's external texture). Null while it has no storage. Render thread.
+     */
+    @Nullable
+    public CgGpuTexture rhiTexture() {
+        if (image != null) return image;
+        if (textureId == 0 || !CgGLImports.installed()) return null;
+        return CgGLImports.get().texture(textureId, rhiDesc());
+    }
+
+    /** The spec it was made with: its own sampling, unless something set it since. */
+    public CgTextureSpec spec() {
+        return spec;
+    }
+
+    /** How the device sees it, for {@link #rhiTexture}'s import: a 2D texture unless a kind says otherwise. */
+    protected CgGpuTexture.Desc rhiDesc() {
+        return new CgGpuTexture.Desc(source(), CgGpuTexture.Kind.D2, GLFormats.of(spec.getGlInternalFormat()), width, height,
+                1, mips(), 1, SAMPLED_ONLY);
+    }
+
+    /** Its mip count where nothing records one: the full chain under a mipmapped spec. */
+    protected int mips() {
+        return spec.getMipmaps().isEnabled() ? CgTexture.fullChain(width, height) : 1;
+    }
+
+    protected static final Set<CgGpuTexture.Usage> SAMPLED_ONLY = EnumSet.of(CgGpuTexture.Usage.SAMPLED);
 
     protected CgTextureAbstract(int textureId, int width, int height, CgTextureSpec spec) {
         this(textureId, width, height, spec, true);

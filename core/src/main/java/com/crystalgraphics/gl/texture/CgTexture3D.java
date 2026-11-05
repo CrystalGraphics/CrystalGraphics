@@ -1,6 +1,8 @@
 package com.crystalgraphics.gl.texture;
 
 
+import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
+import com.crystalgraphics.platform.gl.format.GLFormats;
 import com.crystalgraphics.gl.CgGlNames;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.texture.CgTextureSpec;
@@ -57,6 +59,12 @@ public final class CgTexture3D extends CgTextureAbstract {
 
     // ── Type-specific state ─────────────────────────────────────────
     private int depth;
+
+    @Override
+    protected CgGpuTexture.Desc rhiDesc() {
+        return new CgGpuTexture.Desc(source(), CgGpuTexture.Kind.D3, GLFormats.of(spec.getGlInternalFormat()), width, height,
+                depth, mips(), 1, SAMPLED_ONLY);
+    }
 
     /** Levels allocated by {@link #createEmpty}; a spec that generates mipmaps has its full chain instead. */
     private int levels = 1;
