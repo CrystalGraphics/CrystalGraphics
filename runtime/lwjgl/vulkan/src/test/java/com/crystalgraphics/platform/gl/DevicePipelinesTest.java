@@ -12,6 +12,7 @@ import com.crystalgraphics.platform.gl.tracked.CgTrackedStateProvider;
 import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
 import com.crystalgraphics.platform.rhi.nulldrv.CgNullRHI;
+import com.crystalgraphics.platform.rhi.pipeline.CgGraphicsPipelineDesc;
 import com.crystalgraphics.platform.rhi.shader.CgGlslCompiler;
 import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.render.draw.CgPipeline;
@@ -74,7 +75,8 @@ public class DevicePipelinesTest {
                                 return;
                             }
                             int outputs = Math.max(1, linked.explicit(what).colorOutputs());
-                            if (p.device(CgRenderState.DEFAULT, Collections.nCopies(outputs, CgFormat.RGBA16_FLOAT),
+                            if (p.device(CgRenderState.DEFAULT, CgGraphicsPipelineDesc.Topology.TRIANGLES,
+                                    Collections.nCopies(outputs, CgFormat.RGBA16_FLOAT),
                                     CgFormat.DEPTH32_FLOAT, 1) != null) built[at]++;
                             else failures.add(what + ": no pipeline");
                         } catch (RuntimeException e) {

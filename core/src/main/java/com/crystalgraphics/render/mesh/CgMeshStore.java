@@ -1,5 +1,10 @@
 package com.crystalgraphics.render.mesh;
 
+import com.crystalgraphics.render.draw.CgDrawStateCache;
+import com.crystalgraphics.platform.rhi.resource.CgGpuBuffer;
+import com.crystalgraphics.platform.rhi.pipeline.CgGraphicsPipelineDesc;
+import com.crystalgraphics.platform.rhi.command.CgRenderPass;
+import com.crystalgraphics.platform.gl.CgGLImports;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgMeshChanges;
 import com.crystalgraphics.api.mesh.CgMeshTopology;
@@ -655,6 +660,114 @@ public final class CgMeshStore {
         CgTrace.add(CgChannels.GL, DRAWN_INDIRECT, n);
         CgTrace.add(CgChannels.GL, MULTI_DRAWS, 1);
         CgTrace.add(CgChannels.GL, MULTI_COMMANDS, n);
+    }
+
+    // ── Drawing on a device ────────────────────────────────────────────────────
+
+    /** {@code mesh}'s topology as its device pipeline describes it. */
+    public static CgGraphicsPipelineDesc.Topology topology(CgMesh mesh) {
+        return switch (mesh.topology()) {
+            case TRIANGLES -> CgGraphicsPipelineDesc.Topology.TRIANGLES;
+            case TRIANGLE_STRIP -> CgGraphicsPipelineDesc.Topology.TRIANGLE_STRIP;
+            case LINES -> CgGraphicsPipelineDesc.Topology.LINES;
+            case LINE_STRIP -> CgGraphicsPipelineDesc.Topology.LINE_STRIP;
+            case POINTS -> CgGraphicsPipelineDesc.Topology.POINTS;
+        };
+    }
+
+    /**
+     * {@link #draw(CgMesh, int, int, int, int, int)} on a device's render pass, its streams set through {@code cache}:
+     * with the pass's pipeline for this mesh's format and topology set.
+     */
+    public void drawOn(CgRenderPass pass, CgDrawStateCache cache, CgMesh mesh, int instances, int firstInstance, int submesh,
+                       int first, int count) {
+        Placement p = placed(mesh);
+        if (p == null) return;
+        int from = submesh < 0 ? 0 : submesh, to = submesh < 0 ? p.submeshCount : Math.min(submesh + 1, p.submeshCount);
+        for (int s = from; s < to; s++) {
+            int firstIndex = p.submeshes[s * 4], indexCount = p.submeshes[s * 4 + 1];
+            int firstVertex = p.submeshes[s * 4 + 2], vertexCount = p.submeshes[s * 4 + 3];
+            boolean indexed = indexCount > 0;
+            int total = indexed ? indexCount : vertexCount;
+            int start = submesh < 0 ? 0 : Math.min(first, total);
+            int n = submesh < 0 || count < 0 ? total - start : Math.min(count, total - start);
+            if (n <= 0) continue;
+            drawing += (long) n * instances;
+            calls++;
+            CgTrace.add(CgChannels.GL, DRAWN, (long) n * instances);
+            streamsOn(pass, cache, p, indexed);
+            pass.drawIndexed(n, instances, indexed ? p.firstIndex + firstIndex + start : start, p.baseVertex + firstVertex,
+                    firstInstance);
+        }
+    }
+
+    /** {@link #drawIndirect} on a device's render pass: the command at byte {@code offset} of {@code args}. */
+    public void drawIndirectOn(CgRenderPass pass, CgDrawStateCache cache, CgMesh mesh, int submesh, CgGpuBuffer args,
+                               long offset) {
+        Placement p = placed(mesh);
+        if (p == null || p.submeshCount == 0) return;
+        int s = Math.min(Math.max(submesh, 0), p.submeshCount - 1);
+        streamsOn(pass, cache, p, p.submeshes[s * 4 + 1] > 0);
+        pass.drawIndexedIndirect(args, offset, 1, COMMAND_WORDS * 4);
+        calls++;
+        CgTrace.add(CgChannels.GL, DRAWN_INDIRECT, 1);
+    }
+
+    /** {@link #drawJoined} on a device's render pass: the joined commands from the frame ring, one indirect call. */
+    public void drawJoinedOn(CgRenderPass pass, CgDrawStateCache cache) {
+        Placement p = joinedFrom;
+        int n = joinedCount;
+        dropJoined();
+        if (n == 0) return;
+        streamsOn(pass, cache, p, p.joinsAs != BY_SEQUENCE);
+        if (commands == null) commands = CgStreamBuffer.create(CgGL.GL_DRAW_INDIRECT_BUFFER, 64 << 10);
+        int bytes = n * COMMAND_WORDS * 4;
+        ByteBuffer out = commands.map(bytes).order(ByteOrder.nativeOrder());
+        long vertices = 0;
+        for (int i = 0; i < n * COMMAND_WORDS; i += COMMAND_WORDS) {
+            out.putInt(joined[i]).putInt(joined[i + 1]).putInt(joined[i + 2]).putInt(joined[i + 3]).putInt(joined[i + 4]);
+            vertices += (long) joined[i] * joined[i + 1];
+        }
+        drawing += vertices;
+        CgTrace.add(CgChannels.GL, DRAWN, vertices);
+        int offset = commands.commit(bytes);
+        CgGLImports imports = CgGLImports.get();
+        int name = commands.getGlBufferId();
+        pass.drawIndexedIndirect(imports.buffer(name), imports.bufferOffset(name) + offset, n, COMMAND_WORDS * 4);
+        calls++;
+        CgTrace.add(CgChannels.GL, MULTI_DRAWS, 1);
+        CgTrace.add(CgChannels.GL, MULTI_COMMANDS, n);
+    }
+
+    /** {@link #drawIndirectJoined} on a device's render pass. */
+    public void drawIndirectJoinedOn(CgRenderPass pass, CgDrawStateCache cache, CgMesh first, CgGpuBuffer args, long offset,
+                                     int n, int stride) {
+        Placement p = placed(first);
+        if (p == null || p.joinsAs == 0) return;
+        streamsOn(pass, cache, p, p.joinsAs != BY_SEQUENCE);
+        pass.drawIndexedIndirect(args, offset, n, stride);
+        calls++;
+        CgTrace.add(CgChannels.GL, DRAWN_INDIRECT, n);
+        CgTrace.add(CgChannels.GL, MULTI_DRAWS, 1);
+        CgTrace.add(CgChannels.GL, MULTI_COMMANDS, n);
+    }
+
+    /** Sets {@code p}'s vertex buffer and its indices (the run of 0, 1, 2 ... where it draws without) on {@code pass}. */
+    private void streamsOn(CgRenderPass pass, CgDrawStateCache cache, Placement p, boolean indexed) {
+        int vertexName, indexName;
+        if (p.ring) {
+            CgStreamBuffer page = p.ringPage >= 0 ? ring.page(p.ringPage).buffer : null;
+            vertexName = page == null ? 0 : page.getGlBufferId();
+            indexName = indexed ? vertexName : sequence;
+        } else {
+            vertexName = p.slab.vertexBuffer;
+            indexName = indexed ? p.slab.indexBuffer : sequence;
+        }
+        CgGLImports imports = CgGLImports.get();
+        if (vertexName != 0 && p.mesh.format().getStride() > 0) {
+            cache.vertexBuffer(pass, imports.buffer(vertexName), imports.bufferOffset(vertexName));
+        }
+        cache.indexBuffer(pass, imports.buffer(indexName), imports.bufferOffset(indexName));
     }
 
     /** Whether {@code p} and {@code q} share the vertex array, the indices and the topology a multi-draw needs. */

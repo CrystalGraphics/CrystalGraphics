@@ -103,6 +103,7 @@ public final class CgPipeline {
     /** {@link #device}'s last answer and what it was asked: a draw asks again with the same pass. */
     private CgGraphicsPipeline deviceLast;
     private CgRenderState deviceLastPass;
+    private CgGraphicsPipelineDesc.Topology deviceLastTopology;
     private List<CgFormat> deviceLastColors;
     private CgFormat deviceLastDepth;
     private int deviceLastSamples;
@@ -496,12 +497,12 @@ public final class CgPipeline {
      * thread.
      *
      * <pre>{@code
-     * CgGraphicsPipeline p = pipeline.device(passState, List.of(CgFormat.RGBA16_FLOAT), CgFormat.DEPTH32_FLOAT, 1);
+     * CgGraphicsPipeline p = pipeline.device(passState, CgMeshStore.topology(mesh), List.of(CgFormat.RGBA16_FLOAT),
+     *         CgFormat.DEPTH32_FLOAT, 1);
      * if (p != null) pass.setPipeline(p);
      * }</pre>
      *
      * <ul>
-     *   <li>Triangles: a pipeline drawing another topology is not asked for yet.</li>
      *   <li>The stencil reference is the pass's to set, not the pipeline's.</li>
      * </ul>
      *
@@ -510,12 +511,14 @@ public final class CgPipeline {
      *         unbound
      */
     @Nullable
-    public CgGraphicsPipeline device(CgRenderState passState, List<CgFormat> colors, @Nullable CgFormat depth, int samples) {
+    public CgGraphicsPipeline device(CgRenderState passState, CgGraphicsPipelineDesc.Topology topology, List<CgFormat> colors,
+                                     @Nullable CgFormat depth, int samples) {
         CgShader linked = program();
         if (linked == null) return null;
         CgRHI rhi = CgRHI.get();
         if (deviceLast != null && deviceLastOf == rhi && deviceLastProgram == linked && deviceLastPass == passState
-                && deviceLastDepth == depth && deviceLastSamples == samples && deviceLastColors.equals(colors)) {
+                && deviceLastTopology == topology && deviceLastDepth == depth && deviceLastSamples == samples
+                && deviceLastColors.equals(colors)) {
             return deviceLast;
         }
         String label = toString();
@@ -530,7 +533,7 @@ public final class CgPipeline {
         CgGraphicsPipelineDesc desc = new CgGraphicsPipelineDesc(label, CgDeviceStates.layout(rhi, linked.explicit(label)),
                 linked.deviceModule(rhi, CgShaderModule.Stage.VERTEX, label),
                 linked.deviceModule(rhi, CgShaderModule.Stage.FRAGMENT, label),
-                CgDeviceStates.vertexBuffers(linked.format()), CgGraphicsPipelineDesc.Topology.TRIANGLES,
+                CgDeviceStates.vertexBuffers(linked.format()), topology,
                 CgDeviceStates.raster(s.getCull()), CgDeviceStates.depthStencil(s.getDepth(), s.getStencil()), targets,
                 depth, samples);
         if (deviceCacheOf != rhi) {
@@ -541,6 +544,7 @@ public final class CgPipeline {
         deviceLastOf = rhi;
         deviceLastProgram = linked;
         deviceLastPass = passState;
+        deviceLastTopology = topology;
         deviceLastColors = List.copyOf(colors);
         deviceLastDepth = depth;
         deviceLastSamples = samples;
