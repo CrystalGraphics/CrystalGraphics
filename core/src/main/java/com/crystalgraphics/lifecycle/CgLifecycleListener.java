@@ -6,6 +6,8 @@ import java.util.function.Consumer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import javax.annotation.Nullable;
+
 import com.crystalgraphics.loading.task.CgLoadPlan;
 import com.crystalgraphics.loading.watchdog.CgLoadWatchdog;
 import com.crystalgraphics.loading.CgLoadingScreen;
@@ -169,6 +171,19 @@ public interface CgLifecycleListener {
      * run, so anything that loads a class then fails. Writing a report is the case. Nothing here may draw.</p>
      */
     default void onShutdown() {
+    }
+
+    /**
+     * A server is starting, its worlds loaded, after the engine's own start of it. On the server thread, once per server
+     * (an integrated one each time a world opens).
+     *
+     * @param server the game's server object, or null where the host has none to give (1.7.10 to 1.12.2)
+     */
+    default void onServerStarting(@Nullable Object server) {
+    }
+
+    /** The server is stopping, before the engine closes every connection. */
+    default void onServerStopping() {
     }
 
     /**

@@ -30,6 +30,7 @@ import com.crystalgraphics.mc.v1710.platform.world.PlayerQuery1710;
 import com.crystalgraphics.platform.service.CgProcessExit;
 import com.crystalgraphics.platform.world.CgHostShapes;
 import com.crystalgraphics.platform.world.CgLevels;
+import com.crystalgraphics.platform.service.CgServers;
 import com.crystalgraphics.platform.world.CgPlayerQuery;
 import com.crystalgraphics.collision.mirror.CgMirrorHost;
 import com.crystalgraphics.serialization.format.nbt.CgHostFormats;
@@ -150,6 +151,7 @@ public final class PlatformService1710 implements CgPlatformService {
         CgPlatform.provide(CgModLoader.HOST, new ModLoader1710());
         CgPlatform.provide(CgLevels.SERVICE, Levels1710.INSTANCE);
         CgPlatform.provide(CgPlayerQuery.SERVICE, PlayerQuery1710.INSTANCE);
+        CgPlatform.provide(CgServers.HOST, Servers1710.INSTANCE);
         CgPlatform.provide(CgHostShapes.SERVICE, new HostShapes1710());
         CgPlatform.provide(CgMirrorHost.SERVICE, new MirrorHost1710());
         CgPlatform.provide(CgHostFormats.SERVICE, new HostFormats1710());

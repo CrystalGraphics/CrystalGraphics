@@ -30,6 +30,7 @@ import com.crystalgraphics.mc.modern.platform.world.HostVolumeModern;
 import com.crystalgraphics.mc.modern.platform.world.LevelsModern;
 import com.crystalgraphics.mc.modern.platform.world.MirrorHostModern;
 import com.crystalgraphics.mc.modern.platform.world.PlayerQueryModern;
+
 import com.crystalgraphics.mc.modern.platform.world.WorldStimulusModern;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.CgPlatformService;
@@ -53,6 +54,7 @@ import com.crystalgraphics.platform.world.CgHostDebug;
 import com.crystalgraphics.platform.world.CgHostShapes;
 import com.crystalgraphics.platform.world.CgLevels;
 import com.crystalgraphics.platform.world.CgPlayerQuery;
+import com.crystalgraphics.platform.service.CgServers;
 import com.crystalgraphics.platform.world.CgModelSpace;
 import com.crystalgraphics.platform.world.CgWorldEvents;
 import com.crystalgraphics.platform.audio.CgAudioDecoder;
@@ -118,6 +120,7 @@ public final class PlatformServiceModern implements CgPlatformService {
         CgPlatform.provide(CgModLoader.HOST, loader);
         CgPlatform.provide(CgLevels.SERVICE, LevelsModern.INSTANCE);
         CgPlatform.provide(CgPlayerQuery.SERVICE, PlayerQueryModern.INSTANCE);
+        CgPlatform.provide(CgServers.HOST, ServersModern.INSTANCE);
         CgPlatform.provide(CgHostShapes.SERVICE, new HostShapesModern());
         CgPlatform.provide(CgMirrorHost.SERVICE, new MirrorHostModern());
         CgPlatform.provide(CgHostFormats.SERVICE, new HostFormatsModern());

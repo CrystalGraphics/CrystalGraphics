@@ -68,6 +68,37 @@ public final class PlayerQueryLegacy implements CgPlayerQuery {
         return null;
     }
 
+    @Override
+    public boolean isOperator(String name) {
+        MinecraftServer server = FMLCommonHandler.instance().getMinecraftServerInstance();
+        if (server == null || name == null) return false;
+        //? if <1.10 {
+        /*if (server.getConfigurationManager() == null) return false;
+        List<?> players = server.getConfigurationManager().playerEntityList;
+        *///?} else {
+        if (server.getPlayerList() == null) return false;
+        List<?> players = server.getPlayerList().getPlayers();
+        //?}
+        for (Object entry : players) {
+            EntityPlayerMP player = (EntityPlayerMP) entry;
+            if (!player.getName().equals(name)) continue;
+            // canSendCommands folds the world's allow-cheats flag into its single-player branch: ownership is separate.
+            //? if <1.10 {
+            /*return server.getConfigurationManager().canSendCommands(player.getGameProfile());
+            *///?} else {
+            return server.getPlayerList().canSendCommands(player.getGameProfile());
+            //?}
+        }
+        return false;
+    }
+
+    @Override
+    public boolean isOwner(String name) {
+        MinecraftServer server = FMLCommonHandler.instance().getMinecraftServerInstance();
+        return server != null && name != null && server.isSinglePlayer()
+                && name.equalsIgnoreCase(server.getServerOwner());
+    }
+
     @SuppressWarnings("unchecked")
     @Override
     public <V> V localPlayer() {

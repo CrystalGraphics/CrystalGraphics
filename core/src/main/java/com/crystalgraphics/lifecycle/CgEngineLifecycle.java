@@ -269,6 +269,7 @@ public final class CgEngineLifecycle {
     public static void serverStarting(@Nullable Object server) {
         CgNetwork.serverStarting(server);
         postInit();
+        listeners.dispatch("onServerStarting", l -> l.onServerStarting(server));
     }
 
     /** The server's tick has run: the tick's listeners, then the network's sending. At its end, on the server thread. */
@@ -281,6 +282,7 @@ public final class CgEngineLifecycle {
 
     /** The server is stopping: every connection closed and the persisted networked objects saved. */
     public static void serverStopping() {
+        listeners.dispatch("onServerStopping", CgLifecycleListener::onServerStopping);
         CgNetwork.closeAll("server stopping");
     }
 

@@ -59,6 +59,28 @@ public final class PlayerQuery1710 implements CgPlayerQuery {
         return null;
     }
 
+    @Override
+    public boolean isOperator(String name) {
+        MinecraftServer server = MinecraftServer.getServer();
+        if (server == null || server.getConfigurationManager() == null || name == null) return false;
+        for (Object entry : server.getConfigurationManager().playerEntityList) {
+            EntityPlayerMP player = (EntityPlayerMP) entry;
+            // func_152596_g is "may use commands" and folds the world's allow-cheats flag into its single-player
+            // branch: ownership is separate.
+            if (player.getCommandSenderName().equals(name)) {
+                return server.getConfigurationManager().func_152596_g(player.getGameProfile());
+            }
+        }
+        return false;
+    }
+
+    @Override
+    public boolean isOwner(String name) {
+        MinecraftServer server = MinecraftServer.getServer();
+        return server != null && name != null && server.isSinglePlayer()
+                && name.equalsIgnoreCase(server.getServerOwner());
+    }
+
     @SuppressWarnings("unchecked")
     @Override
     public <V> V localPlayer() {

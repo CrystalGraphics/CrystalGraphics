@@ -30,6 +30,7 @@ import com.crystalgraphics.platform.service.CgModLoader;
 import com.crystalgraphics.platform.service.CgProcessExit;
 import com.crystalgraphics.platform.world.CgHostShapes;
 import com.crystalgraphics.platform.world.CgLevels;
+import com.crystalgraphics.platform.service.CgServers;
 import com.crystalgraphics.platform.world.CgPlayerQuery;
 import com.crystalgraphics.collision.mirror.CgMirrorHost;
 import com.crystalgraphics.serialization.format.nbt.CgHostFormats;
@@ -103,6 +104,7 @@ public final class PlatformServiceLegacy implements CgPlatformService {
         CgPlatform.provide(CgModLoader.HOST, new ModLoaderLegacy());
         CgPlatform.provide(CgLevels.SERVICE, LevelsLegacy.INSTANCE);
         CgPlatform.provide(CgPlayerQuery.SERVICE, PlayerQueryLegacy.INSTANCE);
+        CgPlatform.provide(CgServers.HOST, ServersLegacy.INSTANCE);
         CgPlatform.provide(CgHostShapes.SERVICE, new HostShapesLegacy());
         CgPlatform.provide(CgMirrorHost.SERVICE, new MirrorHostLegacy());
         CgPlatform.provide(CgHostFormats.SERVICE, new HostFormatsLegacy());

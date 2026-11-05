@@ -7336,6 +7336,8 @@ com/crystalgraphics/lifecycle/CgLifecycleListener
   method public onLoad (Lcom/crystalgraphics/loading/task/CgLoadPlan;)V
   method public onPostInit ()V
   method public onPreInit ()V
+  method public onServerStarting (Ljava/lang/Object;)V
+  method public onServerStopping ()V
   method public onShutdown ()V
 com/crystalgraphics/lifecycle/CgLifecycleListener$Registry
   access public,final
@@ -19448,6 +19450,8 @@ com/crystalgraphics/world/CgPlayers
   access public,final
   extends java/lang/Object
   method public,static idOf (Ljava/lang/Object;)Ljava/util/UUID;
+  method public,static isOperator (Ljava/lang/String;)Z
+  method public,static isOwner (Ljava/lang/String;)Z
   method public,static local ()Ljava/lang/Object;
   method public,static player (I)Ljava/lang/Object;
   method public,static player (Ljava/util/UUID;)Ljava/lang/Object;
