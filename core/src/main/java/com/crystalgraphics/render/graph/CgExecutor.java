@@ -186,7 +186,8 @@ public final class CgExecutor {
     /** Passes whose names hold one of these stay on {@code CgGL}: for finding which pass a picture differs in. */
     private static final String[] DEVICE_RASTER_SKIP = CgVar.text("crystalgraphics.rhi.deviceRasterSkip", "", CgVar.DEV
             | CgVar.RESTART, "Comma-separated parts of pass names kept on CgGL under deviceRaster.").get().split(",");
-    private static final int DEVICE_PASSES = CgTrace.name("graph.device-passes"), GL_PASSES = CgTrace.name("graph.gl-passes");
+    private static final int DEVICE_PASSES = CgTrace.name("graph.device-passes"), GL_PASSES = CgTrace.name("graph.gl-passes"),
+            MID_PASS_SPLITS = CgTrace.name("graph.device-pass-splits");
     private final CgDrawStateCache drawCache = new CgDrawStateCache();
     private final Set<String> glPassReasons = new HashSet<>();
     private final List<CgPassDesc.Color> deviceColors = new ArrayList<>(4);
@@ -2129,7 +2130,6 @@ public final class CgExecutor {
             return "a depth clear under damage";
         }
         for (int b = 0; b < packed.count; b++) {
-            if (packed.copyBefore[b] != 0) return "a target copy mid-pass";
             if (packed.counts[b] != null && !gpuCounts) return "draws counted on the CPU";
         }
         CgGraphTexture attachment = attachmentOf(pass);
@@ -2190,8 +2190,12 @@ public final class CgExecutor {
             CgBoundResources.forgetTextures(CgBindingModel.MATERIAL);
             // Through CgGL and before the device section, as the GL path copies before its first batch: the copies'
             // binds are what the pass set reads
+            depthInPlace = false;
             if (pass.depthFrom() != null) copyDepthFrom(pass);
             if (pass.colorFrom() != null) copyColorFrom(pass);
+            if ((packed.copyBefore[0] & (CgTargetCopy.COLOR | CgTargetCopy.DEPTH)) != 0) {
+                copyTarget(pass, packed.copyBefore[0], packed.copyRect, 0);
+            }
             for (int k = 0; k < KINDS; k++) if ((packed.kinds & (1 << k)) != 0) instanceBuffers[k].bind();
             packed.palette.pass(pass.viewOwner(), pass.viewX(), pass.viewY(), CgPassConstants.height(pass.constants));
             if ((packed.kinds & UNIT_KINDS) != 0 || packed.tables) {
@@ -2237,34 +2241,78 @@ public final class CgExecutor {
         CgRenderPass rp = null;
         try {
             CgRHI rhi = CgRHI.get();
-            rp = rhi.encoder().beginPass(new CgPassDesc("graph", deviceColors, depth, w, h));
-            if (current) {
-                rp.setViewport(startViewport.get(0), startViewport.get(1), startViewport.get(2), startViewport.get(3), 0, 1);
-            } else {
-                rp.setViewport(0, 0, w, h, 0, 1);
-            }
+            devicePassDesc = new CgPassDesc("graph", deviceColors, depth, w, h);
+            devicePassCurrent = current;
+            rp = open(rhi, devicePassDesc);
             if (clearColor && damage != null) {
                 for (int i = 0; i < deviceColors.size(); i++) {
                     rp.clearColor(i, load.r(), load.g(), load.b(), load.a(), damage[0], damage[1], damage[2], damage[3]);
                 }
             }
-            drawCache.reset();
-            if (packed.count > 0) deviceBatches(frame, pass, packed, damage, rp, rhi, passState, depthFormat, samples, w, h);
-            CgRenderPass ending = rp;
+            if (packed.count > 0) deviceBatches(frame, pass, packed, damage, rhi, passState, depthFormat, samples, w, h);
             rp = null;
+            CgRenderPass ending = devicePass;
+            devicePass = null;
             ending.end();
         } finally {
             // Ended on a throw too, or the section's end throws over it for the open pass
-            if (rp != null) rp.end();
+            if (devicePass != null) {
+                devicePass.end();
+                devicePass = null;
+            } else if (rp != null) {
+                rp.end();
+            }
             stating = false;
             CgDeviceSection.end();
             if (pass.targetCopy() != null) pass.targetCopy().release(POOL);
         }
     }
 
+    /** The device's render pass open now, and what opened it, which a copy mid-pass opens again loading. */
+    @Nullable
+    private CgRenderPass devicePass;
+    private CgPassDesc devicePassDesc;
+    private boolean devicePassCurrent;
+
+    /** Begins {@code desc} as {@link #devicePass}, its viewport the target's, with the state cache emptied. */
+    private CgRenderPass open(CgRHI rhi, CgPassDesc desc) {
+        CgRenderPass rp = rhi.encoder().beginPass(desc);
+        devicePass = rp;
+        if (devicePassCurrent) {
+            rp.setViewport(startViewport.get(0), startViewport.get(1), startViewport.get(2), startViewport.get(3), 0, 1);
+        } else {
+            rp.setViewport(0, 0, desc.width(), desc.height(), 0, 1);
+        }
+        drawCache.reset();
+        return rp;
+    }
+
+    /**
+     * Batch {@code b}'s target copy, between render passes as Unreal RDG splits one around a copy: the pass ended, the
+     * copy made through CgGL, the pass begun again loading what it drew. Its binds are what the next sets read.
+     */
+    private CgRenderPass copyMidPass(CgRHI rhi, CgRasterPass pass, CgFrame.Raster packed, int b) {
+        CgRenderPass ending = devicePass;
+        devicePass = null;
+        ending.end();
+        CgDeviceSection.end();
+        copyTarget(pass, packed.copyBefore[b], packed.copyRect, b * 4);
+        CgDeviceSection.begin();
+        CgPassDesc d = devicePassDesc;
+        List<CgPassDesc.Color> colors = new ArrayList<>(d.colors().size());
+        for (CgPassDesc.Color c : d.colors()) {
+            colors.add(new CgPassDesc.Color(c.view(), CgPassDesc.LoadOp.LOAD, c.r(), c.g(), c.b(), c.a(), c.store()));
+        }
+        CgPassDesc.Depth depth = d.depth() == null ? null : new CgPassDesc.Depth(d.depth().view(), CgPassDesc.LoadOp.LOAD,
+                d.depth().clearDepth(), CgPassDesc.LoadOp.LOAD, d.depth().clearStencil(), d.depth().store(), d.depth().readOnly());
+        CgTrace.add(CgChannels.GL, MID_PASS_SPLITS, 1);
+        return open(rhi, new CgPassDesc(d.label(), colors, depth, d.width(), d.height()));
+    }
+
     private void deviceBatches(CgFrame frame, CgRasterPass pass, CgFrame.Raster packed, @Nullable int[] damage,
-                               CgRenderPass rp, CgRHI rhi, CgRenderState passState, @Nullable CgFormat depthFormat,
+                               CgRHI rhi, CgRenderState passState, @Nullable CgFormat depthFormat,
                                int samples, int w, int h) {
+        CgRenderPass rp = devicePass;
         CgMeshStore store = CgMeshStore.get();
         CgBindingTable table = frame.bindings;
         int boundPipeline = -1, boundScissor = CgRasterPass.INHERIT, slot = 0;
@@ -2277,6 +2325,12 @@ public final class CgExecutor {
         if (damage == null) rp.setScissor(0, 0, w, h);
         else rp.setScissor(damage[0], damage[1], damage[2], damage[3]);
         for (int b = 0; b < packed.count; b++) {
+            if (b > 0 && (packed.copyBefore[b] & (CgTargetCopy.COLOR | CgTargetCopy.DEPTH)) != 0) {
+                rp = copyMidPass(rhi, pass, packed, b);
+                boundScissor = CgRasterPass.INHERIT;
+                if (damage == null) rp.setScissor(0, 0, w, h);
+                else rp.setScissor(damage[0], damage[1], damage[2], damage[3]);
+            }
             int command = packed.counts[b] != null ? slot : -1;
             int end, commandCount = 0;
             if (command >= 0) {
