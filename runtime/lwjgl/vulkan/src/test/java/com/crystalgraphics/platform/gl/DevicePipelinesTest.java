@@ -75,7 +75,7 @@ public class DevicePipelinesTest {
                                 return;
                             }
                             int outputs = Math.max(1, linked.explicit(what).colorOutputs());
-                            if (p.device(CgRenderState.DEFAULT, CgGraphicsPipelineDesc.Topology.TRIANGLES,
+                            if (p.device(CgRenderState.DEFAULT, CgGraphicsPipelineDesc.Topology.TRIANGLES, true,
                                     Collections.nCopies(outputs, CgFormat.RGBA16_FLOAT),
                                     CgFormat.DEPTH32_FLOAT, 1) != null) built[at]++;
                             else failures.add(what + ": no pipeline");

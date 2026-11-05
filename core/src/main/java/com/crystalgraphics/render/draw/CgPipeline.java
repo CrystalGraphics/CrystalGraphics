@@ -104,6 +104,7 @@ public final class CgPipeline {
     private CgGraphicsPipeline deviceLast;
     private CgRenderState deviceLastPass;
     private CgGraphicsPipelineDesc.Topology deviceLastTopology;
+    private boolean deviceLastGlDepth;
     private List<CgFormat> deviceLastColors;
     private CgFormat deviceLastDepth;
     private int deviceLastSamples;
@@ -497,7 +498,7 @@ public final class CgPipeline {
      * thread.
      *
      * <pre>{@code
-     * CgGraphicsPipeline p = pipeline.device(passState, CgMeshStore.topology(mesh), List.of(CgFormat.RGBA16_FLOAT),
+     * CgGraphicsPipeline p = pipeline.device(passState, CgMeshStore.topology(mesh), true, List.of(CgFormat.RGBA16_FLOAT),
      *         CgFormat.DEPTH32_FLOAT, 1);
      * if (p != null) pass.setPipeline(p);
      * }</pre>
@@ -506,18 +507,20 @@ public final class CgPipeline {
      *   <li>The stencil reference is the pass's to set, not the pipeline's.</li>
      * </ul>
      *
+     * @param glDepth whether the engine's projections give GL's clip depth ({@code [-w, w]}), which the vertex stage then
+     *                maps to the device's; false for projections already in zero-to-one depth
      * @param depth null for a pass with no depth target
      * @throws com.crystalgraphics.platform.rhi.shader.CgShaderModule.CompileException where its sources leave a resource
      *         unbound
      */
     @Nullable
-    public CgGraphicsPipeline device(CgRenderState passState, CgGraphicsPipelineDesc.Topology topology, List<CgFormat> colors,
-                                     @Nullable CgFormat depth, int samples) {
+    public CgGraphicsPipeline device(CgRenderState passState, CgGraphicsPipelineDesc.Topology topology, boolean glDepth,
+                                     List<CgFormat> colors, @Nullable CgFormat depth, int samples) {
         CgShader linked = program();
         if (linked == null) return null;
         CgRHI rhi = CgRHI.get();
         if (deviceLast != null && deviceLastOf == rhi && deviceLastProgram == linked && deviceLastPass == passState
-                && deviceLastTopology == topology && deviceLastDepth == depth && deviceLastSamples == samples
+                && deviceLastTopology == topology && deviceLastGlDepth == glDepth && deviceLastDepth == depth && deviceLastSamples == samples
                 && deviceLastColors.equals(colors)) {
             return deviceLast;
         }
@@ -531,8 +534,8 @@ public final class CgPipeline {
             targets.add(new CgGraphicsPipelineDesc.ColorTarget(colors.get(i), blend, mask));
         }
         CgGraphicsPipelineDesc desc = new CgGraphicsPipelineDesc(label, CgDeviceStates.layout(rhi, linked.explicit(label)),
-                linked.deviceModule(rhi, CgShaderModule.Stage.VERTEX, label),
-                linked.deviceModule(rhi, CgShaderModule.Stage.FRAGMENT, label),
+                linked.deviceModule(rhi, CgShaderModule.Stage.VERTEX, glDepth, label),
+                linked.deviceModule(rhi, CgShaderModule.Stage.FRAGMENT, glDepth, label),
                 CgDeviceStates.vertexBuffers(linked.format()), topology,
                 CgDeviceStates.raster(s.getCull()), CgDeviceStates.depthStencil(s.getDepth(), s.getStencil()), targets,
                 depth, samples);
@@ -545,6 +548,7 @@ public final class CgPipeline {
         deviceLastProgram = linked;
         deviceLastPass = passState;
         deviceLastTopology = topology;
+        deviceLastGlDepth = glDepth;
         deviceLastColors = List.copyOf(colors);
         deviceLastDepth = depth;
         deviceLastSamples = samples;

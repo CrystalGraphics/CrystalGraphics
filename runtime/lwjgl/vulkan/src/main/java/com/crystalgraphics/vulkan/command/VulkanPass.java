@@ -1,5 +1,6 @@
 package com.crystalgraphics.vulkan.command;
 
+import com.crystalgraphics.platform.rhi.binding.CgBindingLayout;
 import com.crystalgraphics.platform.rhi.command.CgPassDesc;
 import com.crystalgraphics.platform.rhi.command.CgRenderPass;
 import com.crystalgraphics.platform.rhi.binding.CgBindingSet;
@@ -61,7 +62,13 @@ final class VulkanPass implements CgRenderPass {
     public void setPipeline(CgGraphicsPipeline p) {
         pipeline = (VulkanPipeline) p;
         vkCmdBindPipeline(cmd(), VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.pipeline);
-        for (int i = 0; i < sets.length; i++) if (sets[i] != null) bind(i);
+        // A set made for another layout is the caller's to set again: binding it here would be invalid
+        List<CgBindingLayout> layouts = pipeline.desc.layout().sets();
+        for (int i = 0; i < sets.length; i++) {
+            if (sets[i] == null) continue;
+            if (i < layouts.size() && sets[i].layout() == layouts.get(i)) bind(i);
+            else sets[i] = null;
+        }
     }
 
     private void bind(int index) {

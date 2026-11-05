@@ -24,7 +24,7 @@ import static com.crystalgraphics.platform.gl.driver.GLC.*;
 /**
  * Linked programs kept across launches as the driver's own binaries (Unreal's {@code FOpenGLProgramBinaryCache}): a
  * program linked once loads in about a millisecond afterwards, with neither SPIRV-Cross nor the driver's compiler run.
- * Keyed by its modules' SPIR-V and the binding points it was translated under. A binary is its format word, then the
+ * Keyed by its modules' SPIR-V, the binding points and the translator's version it was translated under. A binary is its format word, then the
  * driver's bytes, as Unreal stores it (`OpenGLShaders.cpp:1431`).
  *
  * <pre>{@code
@@ -66,8 +66,9 @@ public final class GLProgramBinaries {
     public boolean on() { return dir != null; }
 
     /** The key of a program linked from {@code modules} under {@code points}. */
-    public static String key(GLBindingPoints points, GLShaderModule... modules) {
+    public static String key(GLShaderTranslator translator, GLBindingPoints points, GLShaderModule... modules) {
         MessageDigest sha = sha();
+        sha.update(translator.version().getBytes(StandardCharsets.UTF_8));
         sha.update(points.toString().getBytes(StandardCharsets.UTF_8));
         for (GLShaderModule m : modules) {
             sha.update((byte) m.stage().ordinal());

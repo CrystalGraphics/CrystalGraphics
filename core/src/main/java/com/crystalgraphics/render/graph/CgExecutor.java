@@ -2070,26 +2070,32 @@ public final class CgExecutor {
     /** Its colour and depth as RHI textures; null where it has none, or a renderbuffer. */
     @Nullable
     private CgGpuTexture hostColor, hostDepth;
-    /** Its depth attachment's name: 0 for none, -1 for a renderbuffer. */
-    private int hostDepthName;
+    /** Its attachments' names (0 for none, -1 for a renderbuffer) and their descriptions. */
+    private int hostColorName, hostDepthName;
+    @Nullable
+    private CgGpuTexture.Desc hostColorDesc, hostDepthDesc;
 
     /**
-     * Reads the host framebuffer's attachments and imports its textures (RDG's {@code RegisterExternalTexture}): once a
-     * host framebuffer and size, again after {@link #forgetHostTargets}.
+     * Reads the host framebuffer's attachments and imports its textures (RDG's {@code RegisterExternalTexture}). The
+     * names are read once a host framebuffer and size, again after {@link #forgetHostTargets}; the textures every time,
+     * since a name's image may change under it (the tracked backend renames one an upload replaces whole).
      */
     private void readHost() {
         int host = startFramebuffer, width = startViewport.get(2), height = startViewport.get(3);
-        if (host == hostRead && width == hostReadWidth && height == hostReadHeight) return;
-        CgGL.glBindFramebuffer(CgGL.GL_FRAMEBUFFER, host);
-        otherBound = false;
-        int color = hostAttachment(CgGL.GL_COLOR_ATTACHMENT0);
-        hostDepthName = hostAttachment(CgGL.GL_DEPTH_ATTACHMENT);
         CgGLImports imports = CgGLImports.get();
-        hostColor = color > 0 ? imports.texture(color, imports.describe(color)) : null;
-        hostDepth = hostDepthName > 0 ? imports.texture(hostDepthName, imports.describe(hostDepthName)) : null;
-        hostRead = host;
-        hostReadWidth = width;
-        hostReadHeight = height;
+        if (host != hostRead || width != hostReadWidth || height != hostReadHeight) {
+            CgGL.glBindFramebuffer(CgGL.GL_FRAMEBUFFER, host);
+            otherBound = false;
+            hostColorName = hostAttachment(CgGL.GL_COLOR_ATTACHMENT0);
+            hostDepthName = hostAttachment(CgGL.GL_DEPTH_ATTACHMENT);
+            hostColorDesc = hostColorName > 0 ? imports.describe(hostColorName) : null;
+            hostDepthDesc = hostDepthName > 0 ? imports.describe(hostDepthName) : null;
+            hostRead = host;
+            hostReadWidth = width;
+            hostReadHeight = height;
+        }
+        hostColor = hostColorDesc != null ? imports.texture(hostColorName, hostColorDesc) : null;
+        hostDepth = hostDepthDesc != null ? imports.texture(hostDepthName, hostDepthDesc) : null;
     }
 
     /** The texture at {@code point} of the bound framebuffer: its name, 0 for nothing there, -1 for a renderbuffer. */
@@ -2231,9 +2237,10 @@ public final class CgExecutor {
         CgRenderState passState = pass.state != null ? pass.state : CgRenderState.DEFAULT;
         CgDeviceSection.begin();
         stating = true;
+        CgRenderPass rp = null;
         try {
             CgRHI rhi = CgRHI.get();
-            CgRenderPass rp = rhi.encoder().beginPass(new CgPassDesc("graph", deviceColors, depth, w, h));
+            rp = rhi.encoder().beginPass(new CgPassDesc("graph", deviceColors, depth, w, h));
             if (current) {
                 rp.setViewport(startViewport.get(0), startViewport.get(1), startViewport.get(2), startViewport.get(3), 0, 1);
             } else {
@@ -2246,8 +2253,12 @@ public final class CgExecutor {
             }
             drawCache.reset();
             if (packed.count > 0) deviceBatches(frame, pass, packed, damage, rp, rhi, passState, depthFormat, samples, w, h);
-            rp.end();
+            CgRenderPass ending = rp;
+            rp = null;
+            ending.end();
         } finally {
+            // Ended on a throw too, or the section's end throws over it for the open pass
+            if (rp != null) rp.end();
             stating = false;
             CgDeviceSection.end();
             if (pass.targetCopy() != null) pass.targetCopy().release(POOL);
@@ -2298,8 +2309,13 @@ public final class CgExecutor {
             }
             CgMesh mesh = mesh(packed, b);
             CgGraphicsPipeline device = linked == null ? null
-                    : pipeline.device(passState, CgMeshStore.topology(mesh), deviceFormats, depthFormat, samples);
+                    : pipeline.device(passState, CgMeshStore.topology(mesh), !CgGL.isDepthZeroToOne(), deviceFormats,
+                            depthFormat, samples);
             if (device == null) {
+                if (glPassReasons.add("skipped " + pipeline)) {
+                    LOGGER.warn("device raster: {} skipped in {}: {}", pipeline, pass.name(),
+                            linked == null ? "its program did not link" : "no device pipeline");
+                }
                 if (end > b && command < 0) store.dropJoined();
                 CgTrace.add(CgChannels.GL, "graph.batches.skipped", end - b + 1);
                 b = end;

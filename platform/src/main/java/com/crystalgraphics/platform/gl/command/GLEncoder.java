@@ -587,7 +587,10 @@ public final class GLEncoder implements CgCommandList {
             }
             commitBindings(p.desc().layout(), p.points);
             if (vertexDirty != 0) {
-                for (int b = 0; b < vertexBuffers.length; b++) {
+                // A buffer the pipeline declares no stream for is unread, as Vulkan leaves it (a vertex stage pulling
+                // its own vertices declares none)
+                int streams = p.desc().vertexBuffers().size();
+                for (int b = 0; b < Math.min(streams, vertexBuffers.length); b++) {
                     if ((vertexDirty & (1 << b)) == 0 || vertexBuffers[b] == null) continue;
                     gl.glVertexArrayVertexBuffer(p.vao, b, vertexBuffers[b].name, vertexOffsets[b], p.stride(b));
                 }

@@ -467,7 +467,9 @@ public final class CgMaterialProperty {
      */
     public CgTexture boundTexture() {
         if (samplerTexture != null || rawDefault == null) return samplerTexture;
-        if (namedDefault == null) namedDefault = CgEngineTextures.supplier(rawDefault);
+        if (namedDefault == null) {
+            namedDefault = type == Type.SAMPLER3D ? CgEngineTextures.volume(rawDefault) : CgEngineTextures.supplier(rawDefault);
+        }
         return namedDefault == null ? null : namedDefault.get();
     }
     

@@ -59,6 +59,14 @@ public final class CgGlState {
         manager.invalidateAtBoundary();
     }
 
+    /**
+     * Marks every domain untrustworthy, even where the host keeps the shadow: for GL written behind {@link CgGL} by
+     * another front in the same context, which no host's shadow saw (the GL device's section).
+     */
+    public static void invalidateAll() {
+        manager.invalidateAll();
+    }
+
     /** Discards the shadow. Call on GL context destruction — a shadow describes exactly one context. */
     public static void reset() {
         manager = new CgGlStateManager(CgGlStateProvider.glGet());

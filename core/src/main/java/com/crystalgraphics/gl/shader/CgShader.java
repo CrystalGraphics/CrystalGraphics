@@ -45,8 +45,8 @@ public final class CgShader {
     /** The sources the program linked, preprocessed: what {@link #explicit} compiles. */
     private String linkedVertex, linkedFragment;
     private CgGlslCompiler.Explicit explicit;
-    /** {@link #explicit}'s stages on {@link #modulesOf}. */
-    private CgShaderModule deviceVertex, deviceFragment;
+    /** {@link #explicit}'s stages on {@link #modulesOf}: the vertex stage as written and in GL depth, the fragment. */
+    private CgShaderModule deviceVertex, deviceVertexGlDepth, deviceFragment;
     private CgRHI modulesOf;
 
     CgShader(String vertexSource, String fragmentSource, CgVertexFormat format) {
@@ -174,23 +174,29 @@ public final class CgShader {
         return explicit;
     }
 
-    /** {@link #explicit}'s {@code stage} as {@code rhi}'s shader module, both stages made once a device. */
-    public CgShaderModule deviceModule(CgRHI rhi, CgShaderModule.Stage stage, String label) {
+    /**
+     * {@link #explicit}'s {@code stage} as {@code rhi}'s shader module, every stage made once a device. With
+     * {@code glDepth}, the vertex stage mapping GL's clip depth to the device's.
+     */
+    public CgShaderModule deviceModule(CgRHI rhi, CgShaderModule.Stage stage, boolean glDepth, String label) {
         if (modulesOf != rhi) {
             releaseModules();
             CgGlslCompiler.Explicit p = explicit(label);
             deviceVertex = rhi.createShaderModule(CgShaderModule.Stage.VERTEX, p.vertex(), label);
+            deviceVertexGlDepth = rhi.createShaderModule(CgShaderModule.Stage.VERTEX, p.vertexGlDepth(), label);
             deviceFragment = rhi.createShaderModule(CgShaderModule.Stage.FRAGMENT, p.fragment(), label);
             modulesOf = rhi;
         }
-        return stage == CgShaderModule.Stage.VERTEX ? deviceVertex : deviceFragment;
+        if (stage != CgShaderModule.Stage.VERTEX) return deviceFragment;
+        return glDepth ? deviceVertexGlDepth : deviceVertex;
     }
 
     private void releaseModules() {
         if (modulesOf == null) return;
         modulesOf.release(deviceVertex);
+        modulesOf.release(deviceVertexGlDepth);
         modulesOf.release(deviceFragment);
-        deviceVertex = deviceFragment = null;
+        deviceVertex = deviceVertexGlDepth = deviceFragment = null;
         modulesOf = null;
     }
 

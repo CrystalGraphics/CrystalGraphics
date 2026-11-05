@@ -19,7 +19,7 @@ public final class GLPrograms {
      */
     public static int link(CgGLDriver gl, GLShaderTranslator translator, GLProgramBinaries binaries,
                            GLBindingPoints points, String label, GLShaderModule... modules) {
-        String key = binaries != null && binaries.on() ? GLProgramBinaries.key(points, modules) : null;
+        String key = binaries != null && binaries.on() ? GLProgramBinaries.key(translator, points, modules) : null;
         if (key != null) {
             byte[] kept = binaries.read(key);
             if (kept != null) {

@@ -3,6 +3,7 @@ package com.crystalgraphics.render.draw;
 import com.crystalgraphics.platform.rhi.binding.CgBindingSet;
 import com.crystalgraphics.platform.rhi.command.CgRenderPass;
 import com.crystalgraphics.platform.rhi.pipeline.CgGraphicsPipeline;
+import com.crystalgraphics.platform.rhi.pipeline.CgPipelineLayout;
 import com.crystalgraphics.platform.rhi.resource.CgGpuBuffer;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
@@ -20,7 +21,9 @@ import com.crystalgraphics.util.trace.CgChannels;
  * }</pre>
  *
  * <ul>
- *   <li>A pipeline change keeps the sets: every pipeline of a pass shares the engine's set layouts.</li>
+ *   <li>A pipeline change keeps the sets its layout shares with the last one's, up to the first set that differs
+ *       (Vulkan's pipeline layout compatibility); a set's layout is reflected per program, so a material's often
+ *       differs.</li>
  *   <li>Counted: {@code bindings.sets-bound}, {@code bindings.sets-skipped}.</li>
  * </ul>
  */
@@ -46,8 +49,22 @@ public final class CgDrawStateCache {
 
     public void pipeline(CgRenderPass pass, CgGraphicsPipeline p) {
         if (p == pipeline) return;
+        if (pipeline != null) forgetFrom(compatibleSets(pipeline.desc().layout(), p.desc().layout()));
         pass.setPipeline(p);
         pipeline = p;
+    }
+
+    /** How many leading sets {@code b} may keep from {@code a}: binding layouts are interned, so compared by identity. */
+    private static int compatibleSets(CgPipelineLayout a, CgPipelineLayout b) {
+        if (a == b) return SETS;
+        if (a.pushConstantBytes() != b.pushConstantBytes()) return 0;
+        int n = Math.min(a.sets().size(), b.sets().size());
+        for (int i = 0; i < n; i++) if (a.sets().get(i) != b.sets().get(i)) return i;
+        return n;
+    }
+
+    private void forgetFrom(int first) {
+        for (int i = first; i < SETS; i++) sets[i] = null;
     }
 
     public void set(CgRenderPass pass, int index, CgBindingSet set) {

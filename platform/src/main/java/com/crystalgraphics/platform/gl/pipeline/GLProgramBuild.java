@@ -34,7 +34,7 @@ public final class GLProgramBuild {
     /** On the worker, its context current. */
     void run(CgGLDriver gl) {
         try {
-            String key = binaries != null && binaries.on() ? GLProgramBinaries.key(points, modules) : null;
+            String key = binaries != null && binaries.on() ? GLProgramBinaries.key(translator, points, modules) : null;
             byte[] kept = key == null ? null : binaries.read(key);
             if (kept != null) {
                 binary = kept;
@@ -84,7 +84,7 @@ public final class GLProgramBuild {
             return program;
         }
         gl.glDeleteProgram(program);
-        if (binaries != null && binaries.on()) binaries.forget(GLProgramBinaries.key(points, modules));
+        if (binaries != null && binaries.on()) binaries.forget(GLProgramBinaries.key(translator, points, modules));
         return GLPrograms.link(gl, translator, null, points, label, modules);
     }
 }

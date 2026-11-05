@@ -53,12 +53,14 @@ public interface CgGlslCompiler {
     }
 
     /**
-     * A program as written: each stage's SPIR-V (the vertex stage in zero-to-one depth, as a device draws), each set's
-     * slots by binding in set order (empty for a set it skips), whether it reads the bindless heap at set 3 (then that
-     * set's slot list is empty), its push-constant bytes, and the colour outputs its fragment stage writes.
+     * A program as written: each stage's SPIR-V, each set's slots by binding in set order (empty for a set it skips),
+     * whether it reads the bindless heap at set 3 (then that set's slot list is empty), its push-constant bytes, and the
+     * colour outputs its fragment stage writes. Two vertex stages: {@code vertex} as written, for a projection already in
+     * a device's zero-to-one depth; {@code vertexGlDepth} with its clip depth mapped from GL's {@code [-w, w]} to
+     * {@code [0, w]}, for the engine's usual projections.
      */
-    record Explicit(ByteBuffer vertex, ByteBuffer fragment, List<List<CgBindingLayout.Slot>> sets, boolean heap,
-                    int pushConstantBytes, int colorOutputs) {}
+    record Explicit(ByteBuffer vertex, ByteBuffer vertexGlDepth, ByteBuffer fragment, List<List<CgBindingLayout.Slot>> sets,
+                    boolean heap, int pushConstantBytes, int colorOutputs) {}
 
     /** The compiler installed now, for code making device pipelines; throws until a host installs one. */
     static CgGlslCompiler get() {

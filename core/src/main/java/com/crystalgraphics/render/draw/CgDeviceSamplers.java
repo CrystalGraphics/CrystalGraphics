@@ -45,12 +45,19 @@ public final class CgDeviceSamplers {
             madeOn = rhi;
         }
         Desc desc = sampler != null ? desc(sampler, texture.getLevels() > 1) : own(texture);
+        // No mip filter over a single level: GL takes the texture as incomplete then, and it reads (0, 0, 0, 1)
+        if (desc.mip() != MipFilter.NONE && texture.getLevels() <= 1) desc = singleLevel(desc);
         CgGpuSampler made = MADE.get(desc);
         if (made == null) {
             made = rhi.createSampler(desc);
             MADE.put(desc, made);
         }
         return made;
+    }
+
+    private static Desc singleLevel(Desc d) {
+        return new Desc(d.min(), d.mag(), MipFilter.NONE, d.u(), d.v(), d.w(), d.compare(), d.minLod(), d.maxLod(),
+                d.maxAnisotropy());
     }
 
     /** As {@code CgSamplers} makes a sampler object for it. */

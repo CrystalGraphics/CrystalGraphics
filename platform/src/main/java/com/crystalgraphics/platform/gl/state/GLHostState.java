@@ -36,17 +36,25 @@ public interface GLHostState {
     /**
      * The host is {@code CgGL} in the same context, while it and the device draw side by side: what it has is unknown
      * to the device on entry (every field set again), and {@code CgGL}'s shadow is dropped on leaving (Unreal's
-     * {@code RHIInvalidateCachedState}, both ways).
+     * {@code RHIInvalidateCachedState}, both ways), a shadow the host keeps included: the device's viewport and binds
+     * are none of its.
      */
     static GLHostState sharedWithCgGL() {
         return new GLHostState() {
             @Override public void read(GLContextState into) { into.invalidate(); }
 
-            @Override public void left() { CgGlState.invalidateAllIfPresent(); }
+            @Override public void left() { CgGlState.invalidateAll(); }
 
-            /** {@code CgGL} sets none of the device's conventions: it draws under GL's defaults. */
+            /**
+             * {@code CgGL} sets none of the device's conventions: it draws under GL's defaults. Nor does it track the
+             * pixel-transfer buffers or sampler objects, which it assumes unbound: a pack buffer left bound takes its
+             * next read into memory, a sampler left on a unit replaces a texture's own sampling.
+             */
             @Override
             public void conventions(CgGLDriver gl) {
+                gl.glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+                gl.glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+                for (int unit = 0; unit < GLContextState.UNITS; unit++) gl.glBindSampler(unit, 0);
                 gl.glDisable(GL_FRAMEBUFFER_SRGB);
                 gl.glDisable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
                 gl.glDisable(GL_PROGRAM_POINT_SIZE);

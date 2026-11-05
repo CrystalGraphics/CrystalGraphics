@@ -106,11 +106,13 @@ public final class ShadercGlslCompiler implements CgGlslCompiler, AutoCloseable 
     @Override
     public synchronized Explicit compileExplicit(String vertexGlsl, String fragmentGlsl, Map<String, Integer> attribLocations,
                                                  String label) {
-        SpirvModule vertex = new SpirvModule(compile(withDefines(vertexGlsl, label), shaderc_glsl_vertex_shader, label,
+        String vertexSource = withDefines(vertexGlsl, label);
+        SpirvModule vertex = new SpirvModule(compile(vertexSource, shaderc_glsl_vertex_shader, label, explicitOptions), label);
+        SpirvModule glDepth = new SpirvModule(compile(wrapMain(vertexSource, label), shaderc_glsl_vertex_shader, label,
                 explicitOptions), label);
         SpirvModule fragment = new SpirvModule(compile(withDefines(fragmentGlsl, label), shaderc_glsl_fragment_shader, label,
                 explicitOptions), label);
-        vertexInputs(vertex, vertex, attribLocations);
+        vertexInputs(glDepth, vertex, attribLocations);
         Map<Integer, Map<Integer, CgBindingLayout.Type>> sets = new TreeMap<>();
         boolean heap = false;
         for (SpirvModule m : new SpirvModule[] {vertex, fragment}) {
@@ -134,7 +136,8 @@ public final class ShadercGlslCompiler implements CgGlslCompiler, AutoCloseable 
         int outputs = 0;
         for (SpirvModule.Resource r : fragment.outputs) outputs = Math.max(outputs, r.value() + r.locations());
         int push = Math.max(vertex.pushConstantBytes, fragment.pushConstantBytes);
-        return new Explicit(vertex.spirv, fragment.spirv, List.copyOf(layout), heap, (push + 3) / 4 * 4, outputs);
+        return new Explicit(vertex.spirv, glDepth.spirv, fragment.spirv, List.copyOf(layout), heap, (push + 3) / 4 * 4,
+                outputs);
     }
 
     private static void slot(Map<Integer, Map<Integer, CgBindingLayout.Type>> sets, int set, int binding,

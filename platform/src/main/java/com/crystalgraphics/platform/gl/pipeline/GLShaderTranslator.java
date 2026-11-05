@@ -19,4 +19,12 @@ public interface GLShaderTranslator {
 
     /** @throws CgShaderModule.CompileException when the module cannot be expressed for GL */
     String glsl(ByteBuffer spirv, CgShaderModule.Stage stage, GLBindingPoints points, String label);
+
+    /**
+     * What its output depends on besides its input: kept program binaries are keyed by it, so a translator whose
+     * output changes for the same SPIR-V must answer something new.
+     */
+    default String version() {
+        return getClass().getName();
+    }
 }

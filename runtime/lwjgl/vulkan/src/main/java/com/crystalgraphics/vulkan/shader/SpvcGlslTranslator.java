@@ -96,6 +96,12 @@ public final class SpvcGlslTranslator implements GLShaderTranslator {
         }
     }
 
+    /** Raised whenever its output changes for the same SPIR-V: 2, a fragment stage's origin lower-left. */
+    @Override
+    public String version() {
+        return "spvc-glsl 2";
+    }
+
     private static final Pattern HEAP = Pattern.compile("layout\\(binding = (\\d+)\\) uniform (\\w+) (\\w+)\\[\\];");
 
     /** The heap's sampler arrays as storage blocks of bindless handles; GL has no runtime-sized sampler array. */
@@ -122,8 +128,10 @@ public final class SpvcGlslTranslator implements GLShaderTranslator {
     }
 
     /**
-     * The module's words with descriptor indexing's capabilities turned into {@code Shader}: SPIRV-Cross refuses them
-     * outside Vulkan GLSL, and GL reads the heap through bindless handles, which need neither.
+     * The module's words made GL's: descriptor indexing's capabilities turned into {@code Shader} (SPIRV-Cross refuses
+     * them outside Vulkan GLSL, and GL reads the heap through bindless handles, which need neither), and a fragment
+     * stage's {@code OriginUpperLeft} made {@code OriginLowerLeft}: under {@code GL_LOWER_LEFT} clip control a lower-left
+     * {@code gl_FragCoord} has row 0 where Vulkan's has it, where an upper-left one would count rows from the other end.
      */
     private static IntBuffer withoutDescriptorIndexing(ByteBuffer spirv) {
         IntBuffer in = spirv.duplicate().order(ByteOrder.LITTLE_ENDIAN).asIntBuffer();
@@ -133,6 +141,9 @@ public final class SpvcGlslTranslator implements GLShaderTranslator {
             int word = words.get(at), count = word >>> 16;
             if ((word & 0xFFFF) == OP_CAPABILITY && count == 2 && words.get(at + 1) >= CAPABILITY_NON_UNIFORM_FIRST
                     && words.get(at + 1) <= CAPABILITY_NON_UNIFORM_LAST) words.put(at + 1, SpvCapabilityShader);
+            if ((word & 0xFFFF) == OP_EXECUTION_MODE && count >= 3 && words.get(at + 2) == MODE_ORIGIN_UPPER_LEFT) {
+                words.put(at + 2, MODE_ORIGIN_LOWER_LEFT);
+            }
             if (count == 0) break;
             at += count;
         }
@@ -140,6 +151,8 @@ public final class SpvcGlslTranslator implements GLShaderTranslator {
     }
 
     private static final int OP_CAPABILITY = 17;
+
+    private static final int OP_EXECUTION_MODE = 16, MODE_ORIGIN_UPPER_LEFT = 7, MODE_ORIGIN_LOWER_LEFT = 8;
     /** {@code ShaderNonUniform} (5301) to {@code StorageTexelBufferArrayNonUniformIndexing} (5312). */
     private static final int CAPABILITY_NON_UNIFORM_FIRST = 5301, CAPABILITY_NON_UNIFORM_LAST = 5312;
 
