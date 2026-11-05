@@ -1,12 +1,12 @@
 package com.crystalgraphics.api.buffer;
 
-import com.crystalgraphics.api.shader.CgShaderProgram;
+import com.crystalgraphics.gl.shader.CgProgram;
 
 /**
  * Base contract for GPU-resident data blocks accessible from shader programs.
  *
  * <p>All VBO, EBO, SSBO and UBO-backed buffer types in CrystalGraphics implement this
- * interface. It mirrors the ownership and lifecycle model of {@link CgShaderProgram}:
+ * interface. It mirrors the ownership and lifecycle model of {@link CgProgram}:
  * bind, unbind, get the underlying GL object ID, and idempotent delete.</p>
  *
  * <p>Implementations must document their designated GL binding point and the

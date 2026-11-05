@@ -36,7 +36,7 @@ import java.util.concurrent.locks.LockSupport;
  * }</pre>
  *
  * <ul>
- *   <li>{@code CgShaderProgram} is its one user: every fresh link goes through it, so nothing else names it.</li>
+ *   <li>{@code CgProgram} is its one user: every fresh link goes through it, so nothing else names it.</li>
  *   <li>A job's {@link Job#start}, {@link Job#linked} and {@link Job#finish} run on the worker, with its context current:
  *       program and shader objects only, never state the render thread's shadow keeps, and never
  *       {@code CgGL.glDeleteProgram}, which updates it: a program nobody takes is deleted on the render thread.</li>

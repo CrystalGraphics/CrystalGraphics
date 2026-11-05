@@ -8,7 +8,6 @@ import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgMaterialState;
 import com.crystalgraphics.api.material.CgRenderPassVariant;
 import com.crystalgraphics.api.state.CgCullState;
-import com.crystalgraphics.api.shader.CgShader;
 import com.crystalgraphics.gl.material.CgMaterialShader;
 import com.crystalgraphics.gl.material.CgMaterialShaderRegistry;
 import com.crystalgraphics.gl.material.parse.CgMaterialShaderCompiler;
@@ -18,7 +17,6 @@ import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgMeshShapes;
 import com.crystalgraphics.gl.render.CgQuadRenderer;
 import com.crystalgraphics.gl.render.CgVectorRenderer;
-import com.crystalgraphics.gl.shader.CgShaderFactory;
 import com.crystalgraphics.api.texture.CgSampler;
 import com.crystalgraphics.api.texture.CgTextureSpec;
 import com.crystalgraphics.gl.texture.CgFallbackTextures;
@@ -72,10 +70,6 @@ public class EngineOnTrackedBackendTest {
     /** The annotated format reference: prose and commented-out passes, and it does not parse. */
     private static final String DOCUMENTATION_ONLY = "example.shader";
 
-    private static final String[][] RAW = {
-            {"crystalgraphics:shader/default.vert", "crystalgraphics:shader/default.frag"},
-            {"crystalgraphics:shader/diag_atlas.vert", "crystalgraphics:shader/diag_atlas.frag"}};
-
     private static ShadercGlslCompiler compiler, explicit;
     private static CgNullRHI device;
     private static CgTrackedGLBackend gl;
@@ -95,7 +89,7 @@ public class EngineOnTrackedBackendTest {
         // CgEngineLifecycle.ensureGraphicsContext's own steps, less the platform it would ask for a context.
         CgBindingPoints.init(CgCapabilities.detect());
         CgFallbackTextures.init();
-        // text.shader's material is only complete once the text renderer has attached its UBO.
+        // text.shader's engine token (`cg_use text`) is the text renderer's block: its class must have loaded.
         Class.forName("com.crystalgraphics.text.render.CgTextRenderer");
     }
 
@@ -309,17 +303,6 @@ public class EngineOnTrackedBackendTest {
                 void fragment(in v2f i, out vec4 fragColor) { fragColor = texture(_MainTex, i.uv); }
             }
             """;
-
-    @Test
-    public void everyRawShaderLinks() {
-        List<String> failures = new ArrayList<>();
-        for (String[] pair : RAW) {
-            CgShader shader = CgShaderFactory.load(pair[0], pair[1]);
-            if (!shader.isCompiled()) failures.add(pair[0] + ": " + shader.getLastCompileError());
-            shader.delete();
-        }
-        assertTrue(String.join("\n", failures), failures.isEmpty());
-    }
 
     /** The three ways the engine draws, recorded onto the device: every pass and draw it accepted, none refused. */
     @Test

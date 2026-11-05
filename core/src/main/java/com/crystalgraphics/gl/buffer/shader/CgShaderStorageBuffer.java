@@ -4,7 +4,7 @@ package com.crystalgraphics.gl.buffer.shader;
 import com.crystalgraphics.api.buffer.CgBufferFormat;
 import com.crystalgraphics.api.buffer.CgBufferLifetime;
 import com.crystalgraphics.platform.gl.CgCapabilities;
-import com.crystalgraphics.api.shader.CgShader;
+import com.crystalgraphics.gl.shader.CgShader;
 import com.crystalgraphics.platform.gl.CgGL;
 
 /**

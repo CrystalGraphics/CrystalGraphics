@@ -1,8 +1,6 @@
-package com.crystalgraphics.api.shader;
+package com.crystalgraphics.gl.shader;
 
 import com.crystalgraphics.api.vertex.CgVertexFormat;
-import com.crystalgraphics.gl.shader.CgLinkWorker;
-import com.crystalgraphics.gl.shader.CgProgramBinaryCache;
 import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.CgGlProgramNames;
@@ -20,20 +18,16 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import static com.crystalgraphics.gl.shader.CgShaderFactory.JOML_BUFFER;
 
 /**
  * A linked GLSL program: compiled from vertex and fragment source, bound for drawing, given its uniforms. Most
  * callers want a {@link CgShader} or a material, which own one.
  *
  * <pre>{@code
- * CgShaderProgram program = CgShaderProgram.compile(vertexSource, fragmentSource, CgVertexFormat.SPATIAL);
+ * CgProgram program = CgProgram.compile(vertexSource, fragmentSource, CgVertexFormat.SPATIAL);
  * program.bind();
  * program.setUniformMatrix4f(program.getUniformLocation("u_mvp"), mvp);
  * ... draw ...
@@ -42,7 +36,7 @@ import static com.crystalgraphics.gl.shader.CgShaderFactory.JOML_BUFFER;
  *
  * <p>Linking without waiting, for a driver that compiles on threads of its own:</p>
  * <pre>{@code
- * CgShaderProgram program = CgShaderProgram.create();
+ * CgProgram program = CgProgram.create();
  * program.submitLink(vertexSource, fragmentSource, format);
  * // later frames:
  * if (program.isLinkDone()) program.finishLink();   // throws as compile would
@@ -50,12 +44,12 @@ import static com.crystalgraphics.gl.shader.CgShaderFactory.JOML_BUFFER;
  *
  * <p>A compute program, for a kernel:</p>
  * <pre>{@code
- * CgShaderProgram kernel = CgShaderProgram.compileCompute(computeSource);
+ * CgProgram kernel = CgProgram.compileCompute(computeSource);
  * }</pre>
  *
  * <p>A capture program, for a kernel lowered below compute: its outputs written to a transform feedback buffer:</p>
  * <pre>{@code
- * CgShaderProgram capture = CgShaderProgram.compileCapture(vertex, geometry, null, new String[]{"_cg_c0", "_cg_c1"});
+ * CgProgram capture = CgProgram.compileCapture(vertex, geometry, null, new String[]{"_cg_c0", "_cg_c1"});
  * }</pre>
  *
  * <ul>
@@ -69,7 +63,7 @@ import static com.crystalgraphics.gl.shader.CgShaderFactory.JOML_BUFFER;
  *       {@code KHR_parallel_shader_compile}), every link not loaded is counted as {@code shader.blocking-links}.</li>
  * </ul>
  */
-public final class CgShaderProgram {
+public final class CgProgram {
 
     /** Links submitted where the driver links on the calling thread: each is a stall of that thread. */
     private static final int BLOCKING_LINKS = CgTrace.name("shader.blocking-links");
@@ -90,11 +84,14 @@ public final class CgShaderProgram {
      * trace says which program a slow link was.
      *
      * <pre>{@code
-     * try (CgShaderProgram.Labelled ignored = CgShaderProgram.labelled(path + " " + pass + keywords)) {
+     * try (CgProgram.Labelled ignored = CgProgram.labelled(path + " " + pass + keywords)) {
      *     shader = CgShaderFactory.submit(vertex, fragment, format);
      * }
      * }</pre>
      */
+    /** A direct buffer for one matrix, per thread: a matrix uniform's upload allocates nothing. */
+    private static final ThreadLocal<FloatBuffer> JOML_BUFFER = ThreadLocal.withInitial(() -> CgBufferUtils.createFloatBuffer(16));
+
     public static Labelled labelled(String label) {
         String before = LABEL.get();
         LABEL.set(label);
@@ -114,7 +111,7 @@ public final class CgShaderProgram {
     /** The binary cache's key for the pending link, kept once it links; null when none is kept. */
     @Nullable private String pendingKey;
 
-    private CgShaderProgram(int programId) {
+    private CgProgram(int programId) {
         this.programId = programId;
     }
 
@@ -125,8 +122,8 @@ public final class CgShaderProgram {
      * @param format the vertex format of the geometry it draws, or null to bind no attribute locations
      * @throws IllegalStateException if a stage fails to compile or the program to link, with the driver's log
      */
-    public static CgShaderProgram compile(String vertexSource, String fragmentSource, CgVertexFormat format) {
-        CgShaderProgram program = create();
+    public static CgProgram compile(String vertexSource, String fragmentSource, CgVertexFormat format) {
+        CgProgram program = create();
         try {
             program.relink(vertexSource, fragmentSource, format);
         } catch (IllegalStateException e) {
@@ -141,8 +138,8 @@ public final class CgShaderProgram {
      *
      * @throws IllegalStateException if it fails to compile or link, with the driver's log
      */
-    public static CgShaderProgram compileCompute(String computeSource) {
-        CgShaderProgram program = create();
+    public static CgProgram compileCompute(String computeSource) {
+        CgProgram program = create();
         try {
             program.submitComputeLink(computeSource);
             program.finishLink();
@@ -161,9 +158,9 @@ public final class CgShaderProgram {
      * @param varyings the outputs to capture, or null for none
      * @throws IllegalStateException if a stage fails to compile or the program to link, with the driver's log
      */
-    public static CgShaderProgram compileCapture(String vertex, @Nullable String geometry, @Nullable String fragment,
+    public static CgProgram compileCapture(String vertex, @Nullable String geometry, @Nullable String fragment,
                                                  @Nullable String[] varyings) {
-        CgShaderProgram program = new CgShaderProgram(CgGL.glCreateProgram());
+        CgProgram program = new CgProgram(CgGL.glCreateProgram());
         int id = program.programId;
         int[] stages = new int[3];
         try {
@@ -205,8 +202,8 @@ public final class CgShaderProgram {
      * A program with nothing linked yet, for a {@link #submitLink} to fill. Where the {@link CgLinkWorker} runs, it has
      * no id until that link is finished: the worker makes it.
      */
-    public static CgShaderProgram create() {
-        return new CgShaderProgram(CgLinkWorker.on() ? 0 : CgGL.glCreateProgram());
+    public static CgProgram create() {
+        return new CgProgram(CgLinkWorker.on() ? 0 : CgGL.glCreateProgram());
     }
 
     // ── Binding and lifetime ───────────────────────────────────────────────
@@ -669,25 +666,6 @@ public final class CgShaderProgram {
     public int getUniformLocation(String name) {
         if (name == null) throw new IllegalArgumentException("Uniform name must not be null");
         return CgGL.glGetUniformLocation(programId, name);
-    }
-
-    /** Every active uniform after a successful link, {@code gl_*} built-ins excluded. Unmodifiable, never null. */
-    public List<CgActiveUniform> getActiveUniforms() {
-        int count = CgGL.glGetProgrami(programId, CgGL.GL_ACTIVE_UNIFORMS);
-        if (count <= 0) return Collections.emptyList();
-        int maxLen = CgGL.glGetProgrami(programId, CgGL.GL_ACTIVE_UNIFORM_MAX_LENGTH);
-        if (maxLen <= 0) maxLen = 256;
-
-        List<CgActiveUniform> result = new ArrayList<>(count);
-        // The LWJGL 2 form: fills sizeTypeBuf[0] = size, [1] = type, and returns the name.
-        IntBuffer sizeTypeBuf = CgBufferUtils.createIntBuffer(2);
-        for (int i = 0; i < count; i++) {
-            sizeTypeBuf.clear();
-            String name = CgGL.glGetActiveUniform(programId, i, maxLen, sizeTypeBuf);
-            if (name == null || name.startsWith("gl_")) continue;
-            result.add(new CgActiveUniform(name, sizeTypeBuf.get(1), sizeTypeBuf.get(0), CgGL.glGetUniformLocation(programId, name)));
-        }
-        return Collections.unmodifiableList(result);
     }
 
     public void setUniform1i(int location, int value) {

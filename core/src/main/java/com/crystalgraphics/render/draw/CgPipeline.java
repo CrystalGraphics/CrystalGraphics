@@ -1,7 +1,7 @@
 package com.crystalgraphics.render.draw;
 
 import com.crystalgraphics.api.material.CgRenderPassVariant;
-import com.crystalgraphics.api.shader.CgShader;
+import com.crystalgraphics.gl.shader.CgShader;
 import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.gl.material.CgMaterialShader;
 import com.crystalgraphics.gl.material.parse.CgParsedPass;

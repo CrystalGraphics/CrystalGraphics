@@ -5,8 +5,8 @@ import com.crystalgraphics.api.material.CgAttachedBuffer;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgRenderPassVariant;
 import com.crystalgraphics.api.material.CgRenderQueue;
-import com.crystalgraphics.api.shader.CgShader;
-import com.crystalgraphics.api.shader.CgShaderProgram;
+import com.crystalgraphics.gl.shader.CgShader;
+import com.crystalgraphics.gl.shader.CgProgram;
 import com.crystalgraphics.gl.buffer.shader.CgEngineBufferRegistry;
 import com.crystalgraphics.gl.buffer.shader.CgShaderBuffer;
 import com.crystalgraphics.gl.buffer.shader.CgUniformBuffer;
@@ -162,7 +162,7 @@ final class CgMaterialShaderMap {
     static CgShader build(String label, Sources sources, String pass, boolean defer) {
         CgTrace.marker(CgChannels.GL, "material.compile", label);   // which program a frame compiled
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, defer ? "material.glSubmit" : "material.glCompile");
-             CgShaderProgram.Labelled named = CgShaderProgram.labelled(label + " " + pass)) {
+             CgProgram.Labelled named = CgProgram.labelled(label + " " + pass)) {
             return defer ? CgShaderFactory.submit(sources.vertex(), sources.fragment(), sources.compiled().vertexFormat())
                     : CgShaderFactory.fromSource(sources.vertex(), sources.fragment(), sources.compiled().vertexFormat());
         }

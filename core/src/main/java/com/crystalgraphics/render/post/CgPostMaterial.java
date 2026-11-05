@@ -5,7 +5,7 @@ import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgMeshTopology;
-import com.crystalgraphics.api.shader.CgShaderBindings;
+import com.crystalgraphics.api.material.CgMaterialValues;
 import com.crystalgraphics.api.state.CgBlendState;
 import com.crystalgraphics.api.state.CgDepthState;
 import com.crystalgraphics.api.state.CgRenderState;
@@ -113,7 +113,7 @@ public final class CgPostMaterial implements CgPostEffect {
     private String bindName;
     private int bindUnit;
     private CgTexture bindTexture;
-    private final Consumer<CgShaderBindings> bind = b -> b.sampler(bindName, bindUnit, bindTexture);
+    private final Consumer<CgMaterialValues> bind = b -> b.sampler(bindName, bindUnit, bindTexture);
 
     private CgPostMaterial(CgMaterial material, CgPostPoint point, int order) {
         this.material = Objects.requireNonNull(material, "material");

@@ -27,7 +27,7 @@ import java.util.stream.Stream;
 /**
  * Linked GL programs kept across launches as the driver's own binaries, so a program linked once loads in about a
  * millisecond afterwards instead of compiling again: Unreal's OpenGL program binary cache. {@link
- * com.crystalgraphics.api.shader.CgShaderProgram} uses it for every program it links; nothing else needs to.
+ * com.crystalgraphics.api.shader.CgProgram} uses it for every program it links; nothing else needs to.
  *
  * <pre>{@code
  * String key = CgProgramBinaryCache.key(vertexSource, fragmentSource, "cg_Position", "cg_Normal");

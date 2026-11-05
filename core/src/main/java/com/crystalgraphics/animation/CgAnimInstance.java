@@ -9,7 +9,7 @@ import com.crystalgraphics.api.animation.CgSocket;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgMaterialDefinition;
 import com.crystalgraphics.api.mesh.CgSkeletalMesh;
-import com.crystalgraphics.api.shader.CgShaderBindings;
+import com.crystalgraphics.api.material.CgMaterialValues;
 import com.crystalgraphics.gl.material.CgMaterialProperty;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.shape.bounds.CgAABB;
@@ -747,13 +747,13 @@ public final class CgAnimInstance {
     }
 
     /** Writes one scalar or vector; reused, so setting one allocates nothing. */
-    private static final class ScalarWriter implements Consumer<CgShaderBindings> {
+    private static final class ScalarWriter implements Consumer<CgMaterialValues> {
         String name;
         float value, x, y, z, w;
         boolean vector;
 
         @Override
-        public void accept(CgShaderBindings b) {
+        public void accept(CgMaterialValues b) {
             if (vector) b.vec4(name, x, y, z, w);
             else b.set1f(name, value);
         }

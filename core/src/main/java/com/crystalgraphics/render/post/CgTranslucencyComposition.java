@@ -5,7 +5,7 @@ import java.util.function.Consumer;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgMeshTopology;
-import com.crystalgraphics.api.shader.CgShaderBindings;
+import com.crystalgraphics.api.material.CgMaterialValues;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
 import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.render.draw.CgOrder;
@@ -36,7 +36,7 @@ final class CgTranslucencyComposition {
     private CgMaterial material;
     // What the held binder sets, so binding allocates nothing
     private CgGraphTexture bound;
-    private final Consumer<CgShaderBindings> bind = b -> b.sampler("_Translucency", 0, bound);
+    private final Consumer<CgMaterialValues> bind = b -> b.sampler("_Translucency", 0, bound);
 
     void record(CgPostContext post) {
         CgSeparateTranslucency apart = post.resources().get(CgSeparateTranslucency.KEY);

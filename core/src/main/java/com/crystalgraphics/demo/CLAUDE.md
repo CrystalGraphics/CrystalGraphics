@@ -46,7 +46,4 @@ composite because with the HDR scene on the host's target holds the world only f
 
 - `CgFontDemo` owns the frame counter; adapters carry no demo state.
 - Dispose is called from the platform on context destroy (`CgFontDemo.INSTANCE.dispose()`).
-- The diag atlas shader (`crystalgraphics:shader/diag_atlas.vert/frag`) must declare
-  `a_pos` before `a_uv`; attrib locations 0 and 1 are hard-coded because `glGetAttribLocation`
-  is not exposed by `CgGLBackend`.
 - `CgRenderDemo` has no camera of its own: it draws under the host's, from the world stages.

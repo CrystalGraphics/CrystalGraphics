@@ -1,7 +1,7 @@
 package com.crystalgraphics.render.world;
 
 import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
-import com.crystalgraphics.api.shader.CgShaderBindings;
+import com.crystalgraphics.api.material.CgMaterialValues;
 import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.compute.CgCompute;
 import com.crystalgraphics.compute.CgKernel;
@@ -242,7 +242,7 @@ public final class CgWorldVoxelWindow {
      * The volume, its distance field and where it sits, onto a material declaring {@link #PROPERTIES}: its three volumes
      * at units {@code unit} to {@code unit + 2}. A pass drawing with it is ordered after the window's fill.
      */
-    public CgShaderBindings bind(CgShaderBindings b, int unit) {
+    public CgMaterialValues bind(CgMaterialValues b, int unit) {
         if (!live) {
             return b.sampler("_World", unit, noVolume).sampler("_WorldSections", unit + 1, noSections)
                     .sampler("_WorldDistance", unit + 2, noSections).set1i("_WorldLive", 0);

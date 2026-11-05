@@ -1,37 +1,13 @@
-# `api/shader` — Public Shader API
+# `api/shader` — GLSL sources: the preprocessor and the library
 
-Public, stable contracts for the managed shader system. No GL calls, no Minecraft imports. Everything here is consumed by both the MC module and the standalone GL harness.
+What every shader's source goes through, and the GLSL library it may include. No program handle lives here: a shader is
+reached through a material (`CgMaterial`, its values through `CgMaterialValues`) or a kernel (`CgKernel`); the linked
+programs are internal (`gl/shader`). The raw-program API (`CgShader`, `CgShaderProgram`, `CgShaderBindings`, the
+shader manager, global uniform injectors) was deleted in rhi SH9.
 
 ---
 
 ## Class Map
-
-### `CgShader`
-The primary handle for a managed shader. Wraps a `CgShaderProgram` with lazy compilation, dirty-reload semantics, and binding accumulation.
-
-Key contract points:
-- `bind()` — compiles on first call if dirty; no-op if not compiled
-- `unbind()` — no-op if not compiled
-- `markDirty()` — defers recompile to next `bind()`; safe to call mid-render
-- `preprocess(CgShaderPreprocessor)` — attaches a preprocessor post-construction, marks dirty; pass `null` to clear
-- `applyBindings(Consumer<CgShaderBindings>)` — ephemeral bindings applied once on next bind then auto-cleared
-- `bindings()` — persistent binding container, survives across frames
-- `bindScoped()` / `bindScoped(CgScopeRestoreOption...)` — try-with-resources binding; restores prior program on close
-- `getUniformLocation(String)` — cached; invalidated on recompile
-- `getLastCompileError()` — returns the GL info log from the last failed compile/link, or `null` if compile succeeded or has not been attempted
-- `recompile()` — forces immediate recompilation from current sources; on success replaces GL program in-place; on failure `isCompiled()` becomes false and old program is gone
-- `getActiveUniforms()` — returns an unmodifiable `List<CgActiveUniform>` introspected from the linked program; empty list if not compiled
-
-### `CgShaderManager`
-Factory + cache interface for managed shaders. Entry point for mod code.
-
-```java
-CgShader s = CgShaderFactory.SHADER_MANAGER.load("mymod:shaders/foo.vert", "mymod:shaders/foo.frag");
-s.preprocess(new CgShaderPreprocessor(myDefines));
-s.bind();
-```
-
-Key methods: `load(vert, frag)`, `load(vert, frag, CgVertexFormat)`, `getIfLoaded(key)`, `reloadAll()`, `deleteAll()`.
 
 ### `CgShaderPreprocessor`
 GLSL source preprocessor. Handles `#include`, `#pragma once`, `#define` injection, header text, and cycle detection.
@@ -53,8 +29,6 @@ GLSL source preprocessor. Handles `#include`, `#pragma once`, `#define` injectio
 ```java
 CgShaderPreprocessor pp = new CgShaderPreprocessor();
 String expanded = pp.process(rawGlsl, "crystalgraphics:shaders/my_shader.frag");
-
-shader.preprocess(pp);  // attaches to managed shader, recompiles on next bind()
 ```
 
 Constructors: `()`, `(Map<String,String> defines)`, `(String headerText, Map<String,String> defines)`.
@@ -62,69 +36,14 @@ Constructors: `()`, `(Map<String,String> defines)`, `(String headerText, Map<Str
 ### `CgPreprocessorException`
 `RuntimeException` thrown by `CgShaderPreprocessor` on include-not-found or circular include. Fields: `shaderPath` (normalized path), `line` (1-based, or 0 if unknown).
 
-### `CgShaderBindings`
-Deferred uniform/sampler container. Accumulated via fluent API, flushed to the program on `apply(CgShader)`.
-
-Supported setter families:
-- `set1i`, `set1f`, `set2f`, `set3f`, `set4f` — scalar/vector uniforms
-- `vec2`, `vec3`, `vec4` — JOML vector overloads
-- `mat3`, `mat4` — JOML matrix uniforms (serialized via thread-local `FloatBuffer`)
-- `argbColor` — ARGB int → normalized vec4
-- `sampler2D(name, unit, CgTexture)`, `sampler2DRaw(name, unit, target, texId)` — texture binding + sampler unit
-- `apply(CgShader)` — flush all ops; `clear()` — reset
-
-Missing uniforms: warn-once per program ID, not per frame.
-
-### `CgShaderProgram`
-Low-level compiled program handle. Used by `CgShader` internally. Direct callers should prefer `CgShader`. Methods: `bind()`, `unbind()`, `getUniformLocation(String)`, `setUniform1f/1i/2f/3f/4f/mat3/mat4(loc, ...)`, `isDeleted()`, `delete()`, `getActiveUniforms()`, `relink`, and `submitLink`/`isLinkDone`/`finishLink` to link without waiting. One concrete class; its javadoc has the usage.
-
-### `CgGlslStrip`
-Package-private. What every stage's source becomes before `glShaderSource`, applied by `CgShaderProgram` (on the link worker where one runs): comments, the `#if` branches the source's own macros decide, functions nothing reaches from `main` and macros nothing names removed, blank lines dropped, a `#line` wherever lines went so the driver's line numbers still name the source given. Undecidable conditionals (driver macros, function-like macros) stay whole; `##` in any macro keeps every function. It shrinks text, not compile time: NVIDIA's cost is optimising what is reached, measured the same stripped or not. `-Dcrystalgraphics.shader.strip=false` hands the driver the source as written.
-
-### `CgActiveUniform`
-Immutable `@Value` descriptor of one active uniform as reported by `glGetActiveUniform` / `glGetActiveUniformARB`. Fields:
-- `name` — uniform name (e.g. `"u_time"`, `"myArray[0]"`)
-- `glType` — GL type constant (`GL_FLOAT`, `GL_FLOAT_VEC2`, `GL_SAMPLER_2D`, …)
-- `size` — array element count (1 for non-arrays)
-- `location` — result of `glGetUniformLocation`
-
-Built-in `gl_*` uniforms are excluded. Returned by `CgShader.getActiveUniforms()` and `CgShaderProgram.getActiveUniforms()`.
-
-### `CgShaderCacheKey`
-Immutable value object: `(vertexLocation, fragmentLocation, defines)`. Sorted defines for deterministic equality. Used as cache key in `CgShaderManagerImpl`.
-
-### `CgShaderScope`
-`Closeable` scope returned by `CgShader.bindScoped()`. Restores the previously bound program (or full GL state with `FULL_BINDINGS`) on close.
-
-### `CgScopeRestoreOption`
-Enum controlling `bindScoped` restore depth. `FULL_BINDINGS` saves/restores framebuffer + textures + active unit + shader via `CgStateBoundary`.
-
-### `CgUniformInjector`
-Functional interface for system-wide per-frame uniform injection. Registered with `CgSystemUniformRegistry`. Called on every `bind()` before per-shader bindings.
-
-```java
-CgSystemUniformRegistry.getInstance().register(
-    CgUniformName.of("u_time"),
-    (shader, name) -> {
-        int loc = shader.getUniformLocation(name);
-        if (loc >= 0) shader.getProgram().setUniform1f(loc, CrystalGraphics.getTimeSinceStart());
-    }
-);
-```
-
----
-
-## Binding Application Order (per `bind()`)
-
-1. `CgSystemUniformRegistry.applyAll()` — system uniforms (`u_time`, `u_resolution`, …) in ascending priority
-2. `shader.bindings().apply(shader)` — persistent per-shader bindings
-3. `shader.ephemeralBindings.apply(shader)` — one-shot bindings from `applyBindings()`; cleared immediately after
+### `CgShaderStages`
+Which stage a source is for, and the stage defines the compilers emit.
 
 ---
 
 ## GLSL Library Files
 
-Located at `src/main/resources/assets/crystalgraphics/shaders/lib/`. All files use `#pragma once` and target `#version 330 core`. Loaded via classpath at `CgIO.loadSource("crystalgraphics:shaders/lib/math.glsl")`.
+Located at `src/main/resources/assets/crystalgraphics/shaders/lib/`. All files use `#pragma once`; every shader compiles at the one target, `#version 450 core`. Loaded via classpath at `CgIO.loadSource("crystalgraphics:shaders/lib/math.glsl")`.
 
 | File | Contents |
 |---|---|
@@ -134,9 +53,8 @@ Located at `src/main/resources/assets/crystalgraphics/shaders/lib/`. All files u
 | `uv.glsl` | `rotate_uv`, `scale_uv`, `tile_uv`, `pan_uv`, `flip_uv_x`/`flip_uv_y`, `cartesian_to_polar_uv` |
 | `noise.glsl` | `hash12`/`hash22`/`hash13` (Dave Hoskins sin-free), `value_noise`, `fbm4`/`fbm6` (unrolled IQ), `fbm(p, octaves)`, `fbm_ridged` |
 
-Include in shaders:
+Include in a `.shader` or `.compute`:
 ```glsl
-#version 330 core
 #include "crystalgraphics:shaders/lib/color.glsl"
 #include "crystalgraphics:shaders/lib/noise.glsl"
 ```

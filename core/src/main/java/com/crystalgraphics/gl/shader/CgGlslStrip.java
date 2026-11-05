@@ -1,4 +1,4 @@
-package com.crystalgraphics.api.shader;
+package com.crystalgraphics.gl.shader;
 
 import com.crystalgraphics.variable.CgVar;
 
@@ -17,7 +17,7 @@ import java.util.regex.Pattern;
  * GLSL as the driver needs it: comments, the {@code #if} branches the source's own macros decide against, the functions
  * nothing reaches from {@code main} and the macros nothing names, all removed, and the blank lines they leave. A
  * {@code #line} stands wherever lines went, so the driver's line numbers still name the source as it was given, and an
- * error printed beside that source reads true. {@link CgShaderProgram} hands every stage through it.
+ * error printed beside that source reads true. {@link CgProgram} hands every stage through it.
  *
  * <pre>{@code
  * CgGL.glShaderSource(shader, CgGlslStrip.forDriver(expanded));

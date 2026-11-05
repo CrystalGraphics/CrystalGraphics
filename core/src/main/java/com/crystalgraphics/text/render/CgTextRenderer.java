@@ -3,7 +3,7 @@ package com.crystalgraphics.text.render;
 import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.PoseStack;
-import com.crystalgraphics.api.shader.CgShaderBindings;
+import com.crystalgraphics.api.material.CgMaterialValues;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.buffer.CgBufferFormat;
 import com.crystalgraphics.api.buffer.CgBufferLifetime;
@@ -246,7 +246,7 @@ public class CgTextRenderer {
      */
     @Nullable
     private CgTexture atlas;
-    private final Consumer<CgShaderBindings> bindAtlas = b -> b.sampler("_MainTex", 0, atlas);
+    private final Consumer<CgMaterialValues> bindAtlas = b -> b.sampler("_MainTex", 0, atlas);
     /** This renderer's {@code TextData}: the projection and the gamma correction its chunks keep. */
     private final CgBufferWriter textBlock =
             new CgBufferWriter(new CgStagingBuffer(TEXT_DATA_FORMAT.getFloatCount()), TEXT_DATA_FORMAT);

@@ -4,9 +4,6 @@ com/crystalgraphics/api/framebuffer/CgFrameBufferFormat.java
 com/crystalgraphics/api/material/CgBlendMode.java
 com/crystalgraphics/api/material/CgMaterial.java
 com/crystalgraphics/api/material/CgMaterialRegistry.java
-com/crystalgraphics/api/shader/CgGlslStrip.java
-com/crystalgraphics/api/shader/CgShaderBindings.java
-com/crystalgraphics/api/shader/CgShaderProgram.java
 com/crystalgraphics/api/state/CgAlphaState.java
 com/crystalgraphics/api/state/CgBlendState.java
 com/crystalgraphics/api/state/CgColorMask.java
@@ -26,7 +23,6 @@ com/crystalgraphics/compute/CgReplayedReads.java
 com/crystalgraphics/compute/ops/CgGpuOpsCheck.java
 com/crystalgraphics/compute/program/CgComputeCheck.java
 com/crystalgraphics/compute/program/CgKernelProgram.java
-com/crystalgraphics/demo/CgFontDemo.java
 com/crystalgraphics/demo/CgRenderDemo.java
 com/crystalgraphics/demo/CgVfxModules.java
 com/crystalgraphics/gl/CgGlNames.java
@@ -48,7 +44,9 @@ com/crystalgraphics/gl/material/parse/CgParsedShader.java
 com/crystalgraphics/gl/material/parse/CgRenderStateParser.java
 com/crystalgraphics/gl/material/parse/CgShaderKeywords.java
 com/crystalgraphics/gl/material/parse/CgShaderParser.java
+com/crystalgraphics/gl/shader/CgGlslStrip.java
 com/crystalgraphics/gl/shader/CgLinkWorker.java
+com/crystalgraphics/gl/shader/CgProgram.java
 com/crystalgraphics/gl/shader/CgProgramBinaryCache.java
 com/crystalgraphics/gl/texture/CgFallbackTextures.java
 com/crystalgraphics/gl/texture/CgHostSamplers.java

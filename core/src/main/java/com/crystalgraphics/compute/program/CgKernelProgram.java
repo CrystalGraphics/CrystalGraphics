@@ -1,9 +1,9 @@
 package com.crystalgraphics.compute.program;
 
 import com.crystalgraphics.api.CgBindingPoints;
-import com.crystalgraphics.api.shader.CgShaderBindings;
+import com.crystalgraphics.api.material.CgMaterialValues;
 import com.crystalgraphics.api.shader.CgShaderPreprocessor;
-import com.crystalgraphics.api.shader.CgShaderProgram;
+import com.crystalgraphics.gl.shader.CgProgram;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.compute.emit.CgKernelEmitter;
 import com.crystalgraphics.compute.emit.CgKernelTarget;
@@ -60,7 +60,7 @@ public final class CgKernelProgram {
     private final CgKernelDecl kernel;
     private final Set<String> keywords;
     private final String glsl;
-    private final CgShaderProgram program;
+    private final CgProgram program;
     private final int dispatchLocation;
     private final int[] counterPoints;
     /** Per append buffer, its count's word uniform; -1 for any other buffer. */
@@ -80,7 +80,7 @@ public final class CgKernelProgram {
     private float[] frameValues, environmentValues;
 
     private CgKernelProgram(CgComputeSource source, CgKernelDecl kernel, Set<String> keywords, String glsl,
-                            CgShaderProgram program, boolean checked) {
+                            CgProgram program, boolean checked) {
         this.source = source;
         this.kernel = kernel;
         this.keywords = keywords;
@@ -137,8 +137,8 @@ public final class CgKernelProgram {
 
     /** {@link #submit(CgComputeSource, CgKernelDecl, Set, CgKernelTarget)} from sources made already, on a worker. */
     public static Pending submit(Sources made, CgKernelDecl kernel, Set<String> keywords) {
-        CgShaderProgram program = CgShaderProgram.create();
-        try (CgShaderProgram.Labelled named = CgShaderProgram.labelled(made.source().path() + " " + kernel.name() + keywords)) {
+        CgProgram program = CgProgram.create();
+        try (CgProgram.Labelled named = CgProgram.labelled(made.source().path() + " " + kernel.name() + keywords)) {
             program.submitComputeLink(made.expanded(), made.driver());
         }
         return new Pending(made.source(), kernel, keywords, made.glsl(), made.expanded(), program, made.target().checked());
@@ -152,7 +152,7 @@ public final class CgKernelProgram {
         public static Sources of(CgComputeSource source, CgKernelDecl kernel, Set<String> keywords, CgKernelTarget target) {
             String glsl = CgKernelEmitter.emit(source, kernel, keywords, target);
             String expanded = CgGL.checkSource(new CgShaderPreprocessor().process(glsl, source.path())).toString();
-            return new Sources(source, target, glsl, expanded, CgShaderProgram.forDriver(expanded));
+            return new Sources(source, target, glsl, expanded, CgProgram.forDriver(expanded));
         }
     }
 
@@ -162,11 +162,11 @@ public final class CgKernelProgram {
         private final CgKernelDecl kernel;
         private final Set<String> keywords;
         private final String glsl, expanded;
-        private final CgShaderProgram program;
+        private final CgProgram program;
         private final boolean checked;
 
         private Pending(CgComputeSource source, CgKernelDecl kernel, Set<String> keywords, String glsl, String expanded,
-                        CgShaderProgram program, boolean checked) {
+                        CgProgram program, boolean checked) {
             this.source = source;
             this.kernel = kernel;
             this.keywords = keywords;
@@ -315,7 +315,7 @@ public final class CgKernelProgram {
     }
 
     /** This program's {@code Properties} values, uploaded at every dispatch: set them as a material's. */
-    public CgShaderBindings properties() {
+    public CgMaterialValues properties() {
         return properties;
     }
 

@@ -3,7 +3,7 @@ package com.crystalgraphics.render.post.fog;
 import java.util.function.Consumer;
 
 import com.crystalgraphics.api.material.CgMaterial;
-import com.crystalgraphics.api.shader.CgShaderBindings;
+import com.crystalgraphics.api.material.CgMaterialValues;
 import com.crystalgraphics.render.post.CgPostContext;
 import com.crystalgraphics.render.post.CgPostEffect;
 import com.crystalgraphics.render.post.CgPostMaterial;
@@ -49,7 +49,7 @@ public final class CgHeightFog implements CgPostEffect {
     private final CgMaterial material = CgMaterial.newInstance(SHADER);
     private final CgPostMaterial draw = CgPostMaterial.of(material, CgPostPoint.BEFORE_TRANSLUCENCY, 0);
     private final float[] fog0 = new float[4], fog1 = new float[4];
-    private final Consumer<CgShaderBindings> write = this::write;
+    private final Consumer<CgMaterialValues> write = this::write;
 
     /** Its density at {@link #height}, per block. */
     public CgHeightFog density(float perBlock) {
@@ -135,7 +135,7 @@ public final class CgHeightFog implements CgPostEffect {
         draw.record(post);
     }
 
-    private void write(CgShaderBindings b) {
+    private void write(CgMaterialValues b) {
         b.vec4("_Fog0", fog0[0], fog0[1], fog0[2], fog0[3]);
         b.vec4("_Fog1", fog1[0], fog1[1], fog1[2], fog1[3]);
         b.vec4("_FogColour", red, green, blue, 1f);

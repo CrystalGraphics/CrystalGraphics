@@ -2,7 +2,6 @@ package com.crystalgraphics.mc;
 
 import com.crystalgraphics.compute.CgCompute;
 import com.crystalgraphics.api.material.CgMaterialRegistry;
-import com.crystalgraphics.api.shader.CgShaderManager;
 import com.crystalgraphics.api.shader.CgShaderPreprocessor;
 import com.crystalgraphics.gl.material.CgMaterialShaderRegistry;
 import com.crystalgraphics.gl.texture.CgTextureManager;
@@ -59,8 +58,6 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 public final class CgAssetReloader {
 
     private static final Logger LOGGER = LogManager.getLogger("CrystalGraphics");
-
-    private static final Set<CgShaderManager> shaderManagers = Collections.newSetFromMap(new IdentityHashMap<>());
 
     private CgAssetReloader() {}
 
@@ -148,22 +145,6 @@ public final class CgAssetReloader {
     private static void reloadShaders() {
         // First: shaders and then materials recompile against it, and an edited include must be read again.
         CgShaderPreprocessor.clearCache();
-        Set<CgShaderManager> snapshot;
-        synchronized (shaderManagers) {
-            if (shaderManagers.isEmpty()) return;
-            snapshot = Collections.newSetFromMap(new IdentityHashMap<>());
-            snapshot.addAll(shaderManagers);
-        }
-
-        LOGGER.info("Reloading {} shader manager(s)", snapshot.size());
-
-        for (CgShaderManager manager : snapshot) {
-            try {
-                manager.reloadAll();
-            } catch (Exception e) {
-                LOGGER.error("Failed to reload shader manager: {}", manager, e);
-            }
-        }
     }
 
     private static void reloadMaterials() {
@@ -271,12 +252,5 @@ public final class CgAssetReloader {
         String rest = normalized.startsWith("/assets/") ? normalized.substring("/assets/".length()) : normalized;
         int slash = rest.indexOf('/');
         return slash > 0 ? rest.substring(0, slash) + ":" + rest.substring(slash + 1) : rest;
-    }
-
-    public static void trackShaderManager(CgShaderManager manager) {
-        if (manager == null) return;
-        synchronized (shaderManagers) {
-            shaderManagers.add(manager);
-        }
     }
 }

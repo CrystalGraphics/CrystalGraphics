@@ -87,8 +87,7 @@ public final class CgAttachedBuffer {
         CgBufferFormat format = buffer.getFormat();
         if (format.getMemoryLayout() != CgBufferFormat.MemoryLayout.STD430) {
             throw new IllegalArgumentException(
-                "attach() requires a STD430 buffer (SSBO). UBOs use STD140 and cannot be auto-injected. " +
-                "Use CgShaderBindings.ubo() instead.");
+                "An engine token's storage buffer is STD430 (an SSBO); a uniform block takes CgAttachedBuffer.of(CgUniformBuffer).");
         }
 
         String structName = format.getGlslName();

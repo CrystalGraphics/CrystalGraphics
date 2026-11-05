@@ -80,13 +80,12 @@ material.applyProperties(b -> {
     b.vec4("_Color", 1f, 0f, 0f, 1f);
 });
 ```
-Routes writes through the material's `CgMaterialProperties` instance (which implements
-`CgShaderBindings`). Values are stored persistently on the property objects and survive
+Routes writes through the material's `CgMaterialProperties` instance (its `CgMaterialValues`). Values are stored persistently on the property objects and survive
 across frames until overwritten. The properties block is repacked on the next `bind()` only if a
 value actually moved — writing the same value again, or only a sampler, costs a comparison — and then
 uploaded only if its bytes differ from the last upload or it is the frame's first bind (counter
 `material.propsPack`). Returns `this` for chaining. Unknown names are silently
-ignored. Non-property operations (`mat4`, `ubo`, etc.) throw `UnsupportedOperationException`.
+ignored. A material has no other values: matrices and buffers are blocks the engine binds.
 
 **Safe to call before first `bind()`, and compiles nothing**: properties are built from the shader's
 *parse* (`CgMaterialShader.ensureParsed()`), so a write before any compile lands at once. Only a source that
@@ -303,7 +302,7 @@ wired automatically: never declare them again.
 |---------|-------------|
 | `gl/material/` | Provides `CgShaderParser` (parse) and `CgMaterialShaderCompiler` (generate GLSL) |
 | `gl/buffer/shader/` | `CgUniformBuffer` (UBO frame data), `CgShaderBuffer` (SSBO per-object data) |
-| `api/shader/` | `CgShader`, `CgShaderBindings`, `CgShaderPreprocessor` used internally |
+| `api/shader/` | `CgShaderPreprocessor`, the source pipeline every shader goes through |
 | `gl/shader/` | `CgShaderFactory.fromSource()` used by `CgMaterial.create()` |
 | `api/vertex/` | `CgVertexFormat.SPATIAL` — canonical spatial format for this pipeline; also `CgVertexSemantic`, `CgAttribType` |
 | `render/world/`, `render/graph/` | `CgWorldRenderer` and the graph draw a `CgMesh` under a material, through the mesh store |

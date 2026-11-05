@@ -1,4 +1,4 @@
-package com.crystalgraphics.api.shader;
+package com.crystalgraphics.gl.shader;
 
 import org.junit.Test;
 

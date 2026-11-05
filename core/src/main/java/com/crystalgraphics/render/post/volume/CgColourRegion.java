@@ -14,7 +14,7 @@ import org.joml.Quaternionf;
 import org.joml.Vector3f;
 
 import com.crystalgraphics.api.material.CgMaterial;
-import com.crystalgraphics.api.shader.CgShaderBindings;
+import com.crystalgraphics.api.material.CgMaterialValues;
 import com.crystalgraphics.asset.tree.CgAssetException;
 import com.crystalgraphics.render.post.CgPostContext;
 import com.crystalgraphics.render.post.CgPostEffect;
@@ -97,7 +97,7 @@ public final class CgColourRegion implements CgPostEffect {
     private final CgPostMaterial draw = CgPostMaterial.of(material, CgPostPoint.BEFORE_SEPARATE_TRANSLUCENCY, 0);
     private final Matrix3f toLocal = new Matrix3f();
     private final float[] rows = new float[12], half = new float[3];
-    private final Consumer<CgShaderBindings> write = this::write;
+    private final Consumer<CgMaterialValues> write = this::write;
     /** The keyword set its program has: shape, advanced and temperature packed; -1 before the first. */
     private int keyed = -1;
 
@@ -268,7 +268,7 @@ public final class CgColourRegion implements CgPostEffect {
         }
     }
 
-    private void write(CgShaderBindings b) {
+    private void write(CgMaterialValues b) {
         b.vec4("_ToRegion0", rows[0], rows[1], rows[2], rows[3]);
         b.vec4("_ToRegion1", rows[4], rows[5], rows[6], rows[7]);
         b.vec4("_ToRegion2", rows[8], rows[9], rows[10], rows[11]);

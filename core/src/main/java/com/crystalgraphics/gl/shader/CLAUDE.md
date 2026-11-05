@@ -1,45 +1,24 @@
-# `gl/shader` — GL Shader Program Backends
+# `gl/shader` — the engine's linked programs (internal)
 
-Low-level, backend-specific shader program implementations. These classes compile and link GLSL source using whatever GL API is available (core GL20 or ARB_shader_objects). They are consumed exclusively by `CgShaderImpl` via `CgShaderFactory.compile()`.
+What a material's pass and keyword set, or a kernel, compiles into until S4 makes them `CgRHI` pipelines (GL3). Not
+API: a consumer's shader is a material (`CgMaterial`) or a kernel (`CgKernel`); there is no public way to compile GLSL
+text or set a uniform by name (rhi SH9, Unreal's material and global shaders).
 
----
+## Class map
 
-## Class Map
-
-### `CgShaderFactory`
-Static facade. Entry point for all shader creation.
-
-**Global singletons:**
-- `SHADER_MANAGER` — the `CgShaderManagerImpl` instance used by the whole application. Access managed shaders via `CgShaderFactory.load(...)`.
-- `JOML_BUFFER` — `ThreadLocal<FloatBuffer>` (16 elements) for zero-allocation matrix serialization.
-
-**`load()` overloads** — delegate to `SHADER_MANAGER.load(...)`:
-```java
-CgShaderFactory.load("mymod:shaders/foo.vert", "mymod:shaders/foo.frag")
-CgShaderFactory.load(vertRL, fragRL, CgVertexFormat)
-```
-
-**`fromSource()` overloads** — create an inline-mode `CgShaderImpl` via `CgShaderManagerImpl.createFromSource()`, compile eagerly, return handle. NOT cached in the shader manager. Callers must call `delete()` when done:
-```java
-CgShader s = CgShaderFactory.fromSource(vertSrc, fragSrc);
-CgShader s = CgShaderFactory.fromSource(vertSrc, fragSrc, format);
-```
-
-**`compile()` overloads** — compile from raw GLSL strings directly (no caching, no managed lifecycle). Used internally by `CgShaderImpl.recompile()` after preprocessing:
-```java
-CgShaderProgram prog = CgShaderFactory.compile(vertSrc, fragSrc);
-CgShaderProgram prog = CgShaderFactory.compile(vertSrc, fragSrc, format);
-```
-`CgShaderFactory.compile` is `CgShaderProgram.compile` (`api/shader`): one concrete class, every context meeting the
-3.3 floor. `delete()` is idempotent.
-
----
+| Class | Job |
+|---|---|
+| `CgShader` | A linked program from generated sources: `isCompiled`, `isReady` (a submitted link done), `bind`/`bindScoped`, `getUniformLocation`, `getLastCompileError`, `delete`. A failure is logged and kept, never thrown |
+| `CgShaderFactory` | `fromSource(vertex, fragment, format)` compiles now (preprocessed); `submit(...)` links on the driver's threads, the sources as given |
+| `CgProgram` | The GL program object under a `CgShader` or a kernel: compile/link, `submitLink`/`finishLink`, `compileCompute`, uniform setters by location, `labelled(...)` for debug names |
+| `CgLinkWorker` | Links on a worker context where the driver has none of its own |
+| `CgProgramBinaryCache` | Program binaries kept across launches |
+| `CgGlslStrip` | Strips comments and blank lines from a source before the driver sees it |
 
 ## Invariants
 
-- The caller of `CgShaderFactory.compile()` owns the program and calls `delete()` when done (managed shaders do this automatically on recompile or `delete()`).
-- `format` passed to `compile()` is used for `glBindAttribLocation` calls before linking, so attribute indices match the VAO layout. Pass `null` if not needed (e.g. when using explicit `layout(location = N)` in GLSL).
-- `CgShaderFactory` is not instantiable — constructor throws `AssertionError`.
+- `format` names the vertex inputs for `glBindAttribLocation` before linking; null where the source places them.
+- The owner of a `CgShader` deletes it: a material's map, a kernel program.
 
 ---
 

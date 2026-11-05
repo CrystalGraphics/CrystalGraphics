@@ -14,7 +14,7 @@ import com.crystalgraphics.api.material.CgMaterialState;
 import com.crystalgraphics.api.material.CgRenderPassVariant;
 import com.crystalgraphics.api.material.CgRenderQueue;
 import com.crystalgraphics.api.shader.CgPreprocessorException;
-import com.crystalgraphics.api.shader.CgShader;
+import com.crystalgraphics.gl.shader.CgShader;
 import com.crystalgraphics.api.shader.CgShaderPreprocessor;
 import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.compute.source.CgBufferDecl;

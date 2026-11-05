@@ -31,7 +31,7 @@ The seams were left in place so reconnecting is restoring code, not redesigning:
 | A snapshot's texel buffers | `CgBindingTable`: a fifth header count, `(unit, format)` pairs and refs, bound through `CgBufferTextures` |
 | The graph's view of them | `CgRasterPass` declared object records and buffers `SAMPLED_READ`, and each texel buffer |
 | The type gate | `CgGpuType.isTboCompatible()` (float-family only) and the per-type TBO notes on `CgGpuType`/`CgBufferFormat`; `CgAttachedBuffer.tboGetterName` (`"_cg_get" + structName`, the getter's name) |
-| Program interface | `CgShaderBuffer.wireBlock` set the sampler uniform; `CgShaderProgram`'s `storage` skipped block lookups |
+| Program interface | `CgShaderBuffer.wireBlock` set the sampler uniform; `CgShaderProgram`'s `storage` skipped block lookups (now `gl.shader.CgProgram`) |
 | User buffers | `CgBindingPoints.USER_START_TBO` (unit 5, above Minecraft's 0–4) in `CgShaderBuffer.create` and `CgShaderBufferRegistry.getOrCreate` |
 | The compiler's version | `glslVersion` answered 330 off the SSBO path; `appendMaterialBuffers` refused more samplers plus buffers than the units below the reserved ones |
 | Rules kept for it | `CgVectorRenderer`'s curve record stays float-typed at a 16-byte stride, so it would read through texels unchanged |

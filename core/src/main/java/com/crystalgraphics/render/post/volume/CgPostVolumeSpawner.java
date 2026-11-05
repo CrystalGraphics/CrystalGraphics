@@ -11,7 +11,7 @@ import javax.annotation.Nullable;
 
 import org.joml.Vector4f;
 
-import com.crystalgraphics.api.shader.CgShaderBindings;
+import com.crystalgraphics.api.material.CgMaterialValues;
 import com.crystalgraphics.asset.tree.CgAssetException;
 import com.crystalgraphics.camera.CgCameraSystem;
 import com.crystalgraphics.gl.material.CgMaterialProperty;
@@ -226,7 +226,7 @@ public final class CgPostVolumeSpawner implements CgSequenceSpawner {
      * {@code screen_point} (Kakarot's {@code UKoratPostProcessWorldToScreenComponent}): the followed place projected
      * through the world's camera into screen UV, written each frame.
      */
-    private static final class Blend implements CgSequenceTarget, Consumer<CgShaderBindings> {
+    private static final class Blend implements CgSequenceTarget, Consumer<CgMaterialValues> {
         final CgPostBlendable blendable;
         private int writing;
         final CgPostMaterial post;
@@ -297,7 +297,7 @@ public final class CgPostVolumeSpawner implements CgSequenceSpawner {
 
         /** Writes the value at slot {@link #writing}, or at -1 the screen point; reused, so a frame allocates nothing. */
         @Override
-        public void accept(CgShaderBindings b) {
+        public void accept(CgMaterialValues b) {
             if (writing >= 0) {
                 float[] v = values.get(writing);
                 if (widths.get(writing) == 1) b.set1f(names.get(writing), v[0]);

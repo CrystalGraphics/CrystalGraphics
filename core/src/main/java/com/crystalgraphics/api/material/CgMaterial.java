@@ -6,8 +6,7 @@ import com.crystalgraphics.util.trace.CgChannels;
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.buffer.CgBufferFormat;
 import com.crystalgraphics.api.buffer.CgBufferLifetime;
-import com.crystalgraphics.api.shader.CgShader;
-import com.crystalgraphics.api.shader.CgShaderBindings;
+import com.crystalgraphics.gl.shader.CgShader;
 import com.crystalgraphics.api.state.CgBlendState;
 import com.crystalgraphics.api.state.CgDepthState;
 import com.crystalgraphics.api.state.CgRenderState;
@@ -226,7 +225,7 @@ public final class CgMaterial {
      * Drained into {@code propStore} inside {@link #onShaderRecompiled()} after the first
      * successful compile. Lazily allocated — null until first buffered call.
      */
-    private List<Consumer<CgShaderBindings>> pendingApplyConsumers = null;
+    private List<Consumer<CgMaterialValues>> pendingApplyConsumers = null;
 
     /**
      * Optional chained material for multi-draw decorative effects (outline, additive glow,
@@ -544,7 +543,7 @@ public final class CgMaterial {
      * @param consumer receives a property-routing bindings adapter; must not be null
      * @return this for chaining
      */
-    public CgMaterial applyProperties(Consumer<CgShaderBindings> consumer) {
+    public CgMaterial applyProperties(Consumer<CgMaterialValues> consumer) {
         checkNotDeleted();
         // From the parse alone, so setting a property compiles nothing.
         syncPropsToParse();
@@ -1712,7 +1711,7 @@ public final class CgMaterial {
         capturePropsDirty = true;
 
         if (pendingApplyConsumers != null && !pendingApplyConsumers.isEmpty()) {
-            for (Consumer<CgShaderBindings> pending : pendingApplyConsumers) pending.accept(propStore);
+            for (Consumer<CgMaterialValues> pending : pendingApplyConsumers) pending.accept(propStore);
             pendingApplyConsumers.clear();
         }
     }

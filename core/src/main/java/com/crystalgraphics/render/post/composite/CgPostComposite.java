@@ -4,7 +4,7 @@ import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgMeshTopology;
-import com.crystalgraphics.api.shader.CgShaderBindings;
+import com.crystalgraphics.api.material.CgMaterialValues;
 import com.crystalgraphics.gl.texture.CgTexture3D;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
 import com.crystalgraphics.render.draw.CgInstanceKind;
@@ -65,7 +65,7 @@ public final class CgPostComposite {
     private int active;
     private boolean copy;
     private final Inputs inputs = new Inputs();
-    private final Consumer<CgShaderBindings> properties = b -> {
+    private final Consumer<CgMaterialValues> properties = b -> {
         if (inputs.scene != null) b.sampler("_Scene", 0, inputs.scene);
         if (inputs.bloom != null) b.sampler("_Bloom", 0, inputs.bloom);   // a look without bloom leaves it unread
         if (inputs.subject != null) b.sampler("_Subject", 0, inputs.subject);
