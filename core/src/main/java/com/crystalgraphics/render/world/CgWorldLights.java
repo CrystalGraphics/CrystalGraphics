@@ -297,6 +297,8 @@ public final class CgWorldLights {
     }
 
     private final List<Appender> appenders = new CopyOnWriteArrayList<>();
+    /** {@link #appenders} as a frame walks them: replaced on each add and remove, so a walk allocates no iterator. */
+    private volatile Appender[] appending = new Appender[0];
     private final Vector3f eye = new Vector3f();
     private final Matrix4f unproject = new Matrix4f(), toView = new Matrix4f(), perspective = new Matrix4f(),
             bob = new Matrix4f();
@@ -723,11 +725,17 @@ public final class CgWorldLights {
 
     /** Adds {@code appender}, from any thread; a frame recording now may miss it. */
     public void add(Appender appender) {
-        appenders.add(appender);
+        synchronized (appenders) {
+            appenders.add(appender);
+            appending = appenders.toArray(new Appender[0]);
+        }
     }
 
     public void remove(Appender appender) {
-        appenders.remove(appender);
+        synchronized (appenders) {
+            appenders.remove(appender);
+            appending = appenders.toArray(new Appender[0]);
+        }
     }
 
     /** {@code dispatch} appending into this firing's list: {@link #BUFFER}, its count, and {@code _LightEye}. */
@@ -988,9 +996,10 @@ public final class CgWorldLights {
             recording.update(count, 0, start, 0, 4);
             recording.update(alloc, 0, zeros, 0, 4);
             boolean appended = false;
-            for (Appender a : appenders) a.upload(recording, this);
+            Appender[] all = appending;
+            for (Appender a : all) a.upload(recording, this);
             CgComputePass pass = recording.compute("world.lights", stage).timed(GPU_ZONE);
-            for (Appender a : appenders) {
+            for (Appender a : all) {
                 if (!a.append(pass, this)) continue;
                 appended = true;
                 if (!a.pointsOnly()) shapedExact = shapedAny = true;
@@ -1000,10 +1009,10 @@ public final class CgWorldLights {
                     frame.host().textures().lightmapTexture());
             else pass.end();
             // Every firing: a surge (a flash, a burst) drops lights the frame it comes, and the budget grows for the next.
-            if (binned) recording.readback(alloc, 4, 4, readAlloc);
+            if (binned) recording.fetch(alloc, 4, 4, readAlloc);
             if (appended && firings++ % COUNT_EVERY == 0) {
                 readCpuDropped = cpuDropped;
-                recording.readback(count, 0, 4, readCount);
+                recording.fetch(count, 0, 4, readCount);
             } else if (!appended) {
                 dropped = cpuDropped;
             }

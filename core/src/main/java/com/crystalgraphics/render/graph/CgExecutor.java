@@ -2350,6 +2350,7 @@ public final class CgExecutor {
 
     /** A readback's copy, issued here; its sink hears from {@link CgReadback#poll} once the GPU has finished. */
     private static void readback(CgPass.Readback r) {
+        r.delivering = true;
         if (r.buffer != null) {
             CgReadback.buffer(bufferStorage(r.buffer, false), r.offset, r.size, r);
             return;

@@ -14,7 +14,6 @@ import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.Iterator;
 
 /**
  * Where uploads are staged: {@link CgUploadLease}s, leased on any thread and landed by a texture on the render thread.
@@ -173,11 +172,11 @@ public final class CgUploads {
         synchronized (LOCK) {
             if (tier == null) tier = chooseTier();
             long retiredBy = CgFrameRing.frame() - CgFrameRing.FRAMES;
-            for (Iterator<Block> it = busy.iterator(); it.hasNext(); ) {
-                Block b = it.next();
+            for (int i = 0; i < busy.size(); i++) {   // by index: a frame's tick allocates no iterator
+                Block b = busy.get(i);
                 if (b.outstanding > 0 || b.lastUse > retiredBy) continue;
                 if (b.lastUse >= 0) CgFrameRing.awaitRetired(b.lastUse);   // three frames back: already signalled
-                it.remove();
+                busy.remove(i--);
                 reuse(b);
             }
             if (tier == Tier.UNPACK && (missedBytes > 0 || unpackBytes == 0)) grow();

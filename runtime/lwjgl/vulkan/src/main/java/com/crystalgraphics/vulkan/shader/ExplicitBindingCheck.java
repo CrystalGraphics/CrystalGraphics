@@ -11,7 +11,7 @@ import java.util.Map;
  * {@code linker} alone. For the tests linking every shipped shader on the tracked backend.
  *
  * <pre>{@code
- * try (ShadercGlslCompiler auto = new ShadercGlslCompiler(); ShadercGlslCompiler bare = new ShadercGlslCompiler(null, false)) {
+ * try (ShadercGlslCompiler auto = new ShadercGlslCompiler(); ShadercGlslCompiler bare = new ShadercGlslCompiler(null, false, false)) {
  *     CgTrackedGLBackend gl = new CgTrackedGLBackend(device, new ExplicitBindingCheck(auto, bare), true);
  * }
  * }</pre>

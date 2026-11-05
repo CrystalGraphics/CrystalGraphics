@@ -10,7 +10,10 @@ import com.crystalgraphics.asset.registry.CgAssetRegistry;
 import com.crystalgraphics.asset.registry.CgAssetSource;
 import com.crystalgraphics.frame.CgFrameBoundary;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
+import com.crystalgraphics.gl.buffer.CgReadback;
 import com.crystalgraphics.gl.texture.CgFallbackTextures;
+import com.crystalgraphics.gpu.CgUploads;
+import com.crystalgraphics.job.CgJob;
 import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.rhi.nulldrv.CgNullRHI;
 import com.crystalgraphics.platform.gl.CgCapabilities;
@@ -126,6 +129,9 @@ public class CgVfxSubmitAllocationTest {
         Matrix4f view = new Matrix4f(), projection = new Matrix4f().perspective(1.2f, 1f, 0.1f, 256f);
         double[] clock = {0.0};
         Runnable frame = () -> {
+            CgJob.drain();       // answers from the workers, as the client thread drains them every tick
+            CgReadback.poll();   // readbacks delivered and their staging reused, as the host's frame polls them
+            CgUploads.tick();    // upload staging the GPU has read, back in its pool
             clock[0] += 1.0 / 60.0;
             vfx.update(clock[0]);
             vfx.submit(world);
@@ -181,6 +187,9 @@ public class CgVfxSubmitAllocationTest {
         double[] clock = {0.0};
         Runnable frame = () -> {
             CgFrameBoundary.run();   // the assets' drain and publish, as every host frame runs them
+            CgJob.drain();           // answers from the workers, as the client thread drains them every tick
+            CgReadback.poll();       // readbacks delivered and their staging reused, as the host's frame polls them
+            CgUploads.tick();        // upload staging the GPU has read, back in its pool
             clock[0] += 1.0 / 60.0;
             vfx.update(clock[0]);
             vfx.submit(world);

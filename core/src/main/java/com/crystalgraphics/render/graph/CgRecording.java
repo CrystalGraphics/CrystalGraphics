@@ -100,6 +100,9 @@ public final class CgRecording {
     private int computesUsed;
     private final List<CgPass.Fill> fills = new ArrayList<>();
     private int fillsUsed;
+    /** {@link #fetch}'s passes, each reused once its last delivery has landed. */
+    private final List<CgPass.Readback> fetches = new ArrayList<>();
+    private int fetchesUsed;
     private final List<CgPass.Update> updates = new ArrayList<>();
     private int updatesUsed;
     /** {@link #compute(String)}'s frame block: identity, its time set per call. */
@@ -411,16 +414,41 @@ public final class CgRecording {
      * }</pre>
      */
     public CgRequest readback(CgGraphBuffer buffer, long offset, long size, CgReadback.Sink sink) {
+        CgRequest request = new CgRequest("readback " + buffer.name());
+        readback(buffer, offset, size, sink, request);
+        return request;
+    }
+
+    /**
+     * {@link #readback}, where nothing waits on a request: a value a frame reads back every frame (a count, a budget)
+     * records no allocation once its pass is warm, Unreal's reused {@code FRHIGPUBufferReadback}. {@code sink} is called
+     * as {@link #readback}'s, a few frames later; keep it in a field.
+     *
+     * <pre>{@code
+     * private final CgReadback.Sink readCount = data -> lastCount = data.getInt(0);
+     * recording.fetch(counts, 0, 4, readCount);   // every frame
+     * }</pre>
+     */
+    public void fetch(CgGraphBuffer buffer, long offset, long size, CgReadback.Sink sink) {
+        CgPass.Readback pass = fetchesUsed < fetches.size() ? fetches.get(fetchesUsed) : null;
+        if (pass == null) fetches.add(pass = new CgPass.Readback(buffer, offset, size, sink, null));
+        else pass.reuse(buffer, offset, size, sink);
+        fetchesUsed++;
+        readback(buffer, offset, size, sink, pass);
+    }
+
+    private void readback(CgGraphBuffer buffer, long offset, long size, CgReadback.Sink sink, CgRequest request) {
+        readback(buffer, offset, size, sink, new CgPass.Readback(buffer, offset, size, sink, request));
+    }
+
+    private void readback(CgGraphBuffer buffer, long offset, long size, CgReadback.Sink sink, CgPass.Readback pass) {
         requireOpen();
         requireUse(buffer, CgBufferUsage.COPY);
         if (offset < 0 || size <= 0 || offset + size > buffer.size()) {
             throw new IllegalArgumentException("a readback of " + size + " bytes at " + offset + " in " + buffer);
         }
-        CgRequest request = new CgRequest("readback " + buffer.name());
-        CgPass.Readback pass = new CgPass.Readback(buffer, offset, size, sink, request);
         add(pass);
         read(pass, buffer, CgAccess.COPY_READ);
-        return request;
     }
 
     /**
@@ -695,6 +723,8 @@ public final class CgRecording {
         computesUsed = 0;
         recycle(fills, fillsUsed);
         fillsUsed = 0;
+        recycle(fetches, fetchesUsed);
+        fetchesUsed = 0;
         recycle(updates, updatesUsed);
         updatesUsed = 0;
         chunks.reset();

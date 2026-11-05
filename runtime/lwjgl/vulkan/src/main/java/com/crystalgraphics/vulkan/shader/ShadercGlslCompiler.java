@@ -58,7 +58,7 @@ public final class ShadercGlslCompiler implements CgGlslCompiler, AutoCloseable 
     private static final String DEFINES = "#define gl_VertexID gl_VertexIndex\n#define gl_InstanceID gl_InstanceIndex\n";
 
     /** Every option set below, for the cache's key: a change to them is a new key. */
-    private static final String OPTIONS = "vulkan 1.2, relaxed rules, auto-mapped locations";
+    private static final String OPTIONS = "vulkan 1.2, auto-mapped locations";
 
     private final long compiler = shaderc_compiler_initialize();
     private final long options = shaderc_compile_options_initialize();
@@ -79,11 +79,20 @@ public final class ShadercGlslCompiler implements CgGlslCompiler, AutoCloseable 
      * @param autoBind whether a resource the source leaves unbound is given a binding; false refuses it
      */
     public ShadercGlslCompiler(Path cacheDir, boolean autoBind) {
+        this(cacheDir, autoBind, true);
+    }
+
+    /**
+     * @param relaxed GL's rules (loose uniforms, the default block); false compiles under Vulkan's own, refusing a
+     *                source that still needs them: what the strict check of every material runs
+     */
+    public ShadercGlslCompiler(Path cacheDir, boolean autoBind, boolean relaxed) {
         shaderc_compile_options_set_target_env(options, shaderc_target_env_vulkan, shaderc_env_version_vulkan_1_2);
-        shaderc_compile_options_set_vulkan_rules_relaxed(options, true);
+        shaderc_compile_options_set_vulkan_rules_relaxed(options, relaxed);
         shaderc_compile_options_set_auto_bind_uniforms(options, autoBind);
         shaderc_compile_options_set_auto_map_locations(options, true);
-        cache = cacheDir == null ? null : new SpirvCache(cacheDir, OPTIONS + (autoBind ? ", auto-bound uniforms" : ""));
+        cache = cacheDir == null ? null : new SpirvCache(cacheDir, OPTIONS + (relaxed ? ", relaxed rules" : "")
+                + (autoBind ? ", auto-bound uniforms" : ""));
     }
 
     @Override

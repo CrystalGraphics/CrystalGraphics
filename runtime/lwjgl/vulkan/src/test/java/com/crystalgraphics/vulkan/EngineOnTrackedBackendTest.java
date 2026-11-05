@@ -78,7 +78,7 @@ public class EngineOnTrackedBackendTest {
     @BeforeClass
     public static void install() throws ClassNotFoundException {
         compiler = new ShadercGlslCompiler();
-        explicit = new ShadercGlslCompiler(null, false);
+        explicit = new ShadercGlslCompiler(null, false, false);   // Vulkan's own rules, nothing auto-bound
         device = new CgNullRHI(64, 64);
         gl = new CgTrackedGLBackend(device, new ExplicitBindingCheck(compiler, explicit), true);
         CgGL.init(gl);
