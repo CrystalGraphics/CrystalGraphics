@@ -85,6 +85,8 @@ public final class Lwjgl3GLDriver implements CgGLDriver {
 
     @Override public void glBindBufferBase(int target, int index, int buffer) { GL46.glBindBufferBase(target, index, buffer); }
 
+    @Override public long glGetNamedBufferParameteri64(int buffer, int name) { return GL46.glGetNamedBufferParameteri64(buffer, name); }
+
     @Override public void glDeleteBuffers(int buffer) { GL46.glDeleteBuffers(buffer); }
 
     @Override public void glBindBuffer(int target, int buffer) { GL46.glBindBuffer(target, buffer); }

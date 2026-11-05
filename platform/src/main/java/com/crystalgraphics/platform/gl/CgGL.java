@@ -1130,6 +1130,7 @@ public final class CgGL {
     public static void glDeleteBuffers(int buffer) {
         gl().glDeleteBuffers(buffer);
         state().bufferDeleted(buffer);
+        if (CgGLImports.installed()) CgGLImports.get().bufferDeleted(buffer);
     }
 
     public static void glBindBufferBase(int target, int index, int buffer) {
@@ -1202,6 +1203,7 @@ public final class CgGL {
         gl().glDeleteTextures(texture);
         // The shadow must forget it or the next bind of a recycled id is elided. @see CgGlStateManager
         state().textureDeleted(texture);
+        if (CgGLImports.installed()) CgGLImports.get().textureDeleted(texture);
     }
 
     public static void glTexImage2D(int target, int level, int internalFormat,

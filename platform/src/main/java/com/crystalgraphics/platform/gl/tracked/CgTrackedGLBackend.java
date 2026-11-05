@@ -161,7 +161,7 @@ public final class CgTrackedGLBackend extends CgGLBackend {
 
     public TrackedBuffers bufferObjects() { return buffers; }
 
-    TrackedTextures textureObjects() { return textures; }
+    public TrackedTextures textureObjects() { return textures; }
 
     TrackedPrograms programObjects() { return programs; }
 

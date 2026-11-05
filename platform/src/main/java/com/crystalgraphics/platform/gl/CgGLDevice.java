@@ -12,6 +12,7 @@ import com.crystalgraphics.platform.gl.pipeline.GLProgramBinaries;
 import com.crystalgraphics.platform.gl.pipeline.GLShaderModule;
 import com.crystalgraphics.platform.gl.pipeline.GLShaderTranslator;
 import com.crystalgraphics.platform.gl.resource.GLBuffer;
+import com.crystalgraphics.platform.gl.resource.GLImports;
 import com.crystalgraphics.platform.gl.resource.GLSampler;
 import com.crystalgraphics.platform.gl.resource.GLTexture;
 import com.crystalgraphics.platform.gl.state.GLContextState;
@@ -93,6 +94,7 @@ public final class CgGLDevice implements CgRHI {
     private final GLShaderTranslator translator;
     private GLProgramBinaries binaries;
     private GLLinkWorker worker;
+    private GLImports imports;
     private CgGLWorkerContext workerContext;
     private final CgGLDriver raw;
     private final boolean presents;
@@ -215,6 +217,12 @@ public final class CgGLDevice implements CgRHI {
         if (workerContext == null) return false;
         worker = new GLLinkWorker(raw, workerContext);
         return true;
+    }
+
+    /** The device's {@link CgGLImports}, for a host sharing its context with {@code CgGL} to install. */
+    public GLImports imports() {
+        if (imports == null) imports = new GLImports(gl);
+        return imports;
     }
 
     /** What the context has, as the device's filter knows it. */

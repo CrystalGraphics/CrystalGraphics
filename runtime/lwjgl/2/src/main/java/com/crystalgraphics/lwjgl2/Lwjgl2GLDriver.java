@@ -74,6 +74,8 @@ public final class Lwjgl2GLDriver implements CgGLDriver {
 
     @Override public void glBindBufferBase(int target, int index, int buffer) { GL30.glBindBufferBase(target, index, buffer); }
 
+    @Override public long glGetNamedBufferParameteri64(int buffer, int name) { return GL45.glGetNamedBufferParameteri64(buffer, name); }
+
     @Override public void glDeleteBuffers(int buffer) { GL15.glDeleteBuffers(buffer); }
 
     @Override public void glBindBuffer(int target, int buffer) { GL15.glBindBuffer(target, buffer); }

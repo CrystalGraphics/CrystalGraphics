@@ -21,6 +21,7 @@ public final class GLTexture implements CgGpuTexture {
     private final Desc desc;
     private final List<CgTextureView> viewKeys = new ArrayList<>();
     private final List<Integer> viewNames = new ArrayList<>();
+    private final boolean owned;
 
     public GLTexture(CgGLDriver gl, Desc desc) {
         this.desc = desc;
@@ -37,6 +38,19 @@ public final class GLTexture implements CgGpuTexture {
                     desc.depthOrLayers());
         }
         gl.glObjectLabel(GL_TEXTURE, name, desc.label());
+        owned = true;
+    }
+
+    private GLTexture(int name, Desc desc) {
+        this.desc = desc;
+        this.target = target(desc);
+        this.name = name;
+        this.owned = false;
+    }
+
+    /** {@code name}, made elsewhere with {@code desc}, as a texture that never deletes it. */
+    public static GLTexture adopt(int name, Desc desc) {
+        return new GLTexture(name, desc);
     }
 
     /** The GL texture target a description makes. */
@@ -68,6 +82,6 @@ public final class GLTexture implements CgGpuTexture {
     /** Deletes the texture and its views. */
     public void delete(CgGLDriver gl) {
         for (int v : viewNames) gl.glDeleteTextures(v);
-        gl.glDeleteTextures(name);
+        if (owned) gl.glDeleteTextures(name);
     }
 }

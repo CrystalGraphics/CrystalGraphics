@@ -473,6 +473,7 @@ public final class GLStateFilter implements CgGLDriver {
     @Override public void glGetNamedBufferSubData(int buffer, long offset, ByteBuffer out) { raw.glGetNamedBufferSubData(buffer, offset, out); }
     @Override public void glCopyNamedBufferSubData(int read, int write, long readOffset, long writeOffset, long size) { raw.glCopyNamedBufferSubData(read, write, readOffset, writeOffset, size); }
     @Override public void glClearNamedBufferSubData(int buffer, int internalFormat, long offset, long size, int format, int type, ByteBuffer value) { raw.glClearNamedBufferSubData(buffer, internalFormat, offset, size, format, type, value); }
+    @Override public long glGetNamedBufferParameteri64(int buffer, int name) { return raw.glGetNamedBufferParameteri64(buffer, name); }
     @Override public int glCreateTextures(int target) { return raw.glCreateTextures(target); }
     @Override public int glGenTextures() { return raw.glGenTextures(); }
     @Override public void glTextureStorage2D(int texture, int levels, int internalFormat, int width, int height) { raw.glTextureStorage2D(texture, levels, internalFormat, width, height); }

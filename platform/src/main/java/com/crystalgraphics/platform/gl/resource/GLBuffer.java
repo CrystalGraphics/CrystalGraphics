@@ -23,6 +23,7 @@ public final class GLBuffer implements CgGpuBuffer {
     public final int name;
     private final Desc desc;
     private final ByteBuffer mapped;
+    private final boolean owned;
     private List<long[]> texels;   // offset, size, format ordinal, texture name
 
     public GLBuffer(CgGLDriver gl, Desc desc) {
@@ -36,7 +37,21 @@ public final class GLBuffer implements CgGpuBuffer {
         }
         gl.glNamedBufferStorage(name, Math.max(4, desc.size()), flags);
         gl.glObjectLabel(GL_BUFFER, name, desc.label());
+        owned = true;
         mapped = desc.hostVisible() ? gl.glMapNamedBufferRange(name, 0, desc.size(), access).order(ByteOrder.nativeOrder()) : null;
+    }
+
+    private GLBuffer(int name, Desc desc) {
+        this.name = name;
+        this.desc = desc;
+        this.mapped = null;
+        this.owned = false;
+    }
+
+    /** {@code name}, made elsewhere, as a device-local buffer that never deletes it. */
+    public static GLBuffer adopt(CgGLDriver gl, int name) {
+        long size = gl.glGetNamedBufferParameteri64(name, GL_BUFFER_SIZE);
+        return new GLBuffer(name, new Desc("buffer " + name, size, Usage.ALL, false));
     }
 
     public Desc desc() { return desc; }
@@ -69,6 +84,6 @@ public final class GLBuffer implements CgGpuBuffer {
     /** Deletes the buffer and its buffer textures. */
     public void delete(CgGLDriver gl) {
         if (texels != null) for (long[] t : texels) gl.glDeleteTextures((int) t[3]);
-        gl.glDeleteBuffers(name);
+        if (owned) gl.glDeleteBuffers(name);
     }
 }

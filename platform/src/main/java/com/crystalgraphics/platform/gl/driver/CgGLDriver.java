@@ -69,6 +69,8 @@ public interface CgGLDriver {
     void glClearNamedBufferSubData(int buffer, int internalFormat, long offset, long size, int format, int type,
                                    ByteBuffer value);
 
+    long glGetNamedBufferParameteri64(int buffer, int name);
+
     void glDeleteBuffers(int buffer);
 
     void glBindBuffer(int target, int buffer);
