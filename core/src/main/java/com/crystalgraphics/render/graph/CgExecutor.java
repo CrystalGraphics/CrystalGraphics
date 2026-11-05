@@ -2117,7 +2117,6 @@ public final class CgExecutor {
             readHost();
             if (hostDepth == null) return "beside a host depth renderbuffer, or none";
         }
-        if (attachmentOf(pass) != null) return "a composed target";
         if (pass.depthFrom() != null || pass.colorFrom() != null) return "a copy from another target";
         if (pass.layer != 0) return "a layer of an array target";
         if (readOnlyDepth(frame, currentStep, pass)) return "read-only depth";
@@ -2128,9 +2127,30 @@ public final class CgExecutor {
             if (packed.copyBefore[b] != 0) return "a target copy mid-pass";
             if (packed.counts[b] != null && !gpuCounts) return "draws counted on the CPU";
         }
-        if (current) return null;
+        CgGraphTexture attachment = attachmentOf(pass);
+        if (attachment != null && pass.target != null && pass.target.kind() != CgGraphTexture.Kind.CURRENT
+                && !pass.target.drawsBesideCurrentDepth()) {
+            return "a composed target";
+        }
+        if (attachment != null && current) return "a composed current target";
+        if (attachment != null) return "beside the current depth with a second attachment";
+        CgFrameBuffer extra = attachment == null ? null : storage(attachment);
+        if (attachment != null && (extra == null || extra.getColorTexture(0) == null
+                || extra.getColorTexture(0).rhiView() == null)) {
+            return "a second attachment with no texture";
+        }
+        if (current) {
+            if (extra != null && (extra.getWidth() != hostColor.desc().width() || extra.getHeight() != hostColor.desc().height())) {
+                return "a second attachment of another size";
+            }
+            return null;
+        }
         CgFrameBuffer storage = storage(pass.target);
         if (storage == null) return "no storage";
+        if (extra != null && (extra.getWidth() != storage.levelWidth(pass.level)
+                || extra.getHeight() != storage.levelHeight(pass.level))) {
+            return "a second attachment of another size";
+        }
         if (pass.target.drawsBesideCurrentDepth() && (storage.levelWidth(pass.level) != hostDepth.desc().width()
                 || storage.levelHeight(pass.level) != hostDepth.desc().height())) {
             return "beside a host depth of another size";
@@ -2183,10 +2203,13 @@ public final class CgExecutor {
         boolean clearColor = (load.mask() & CgGL.GL_COLOR_BUFFER_BIT) != 0;
         deviceColors.clear();
         deviceFormats.clear();
-        int colors = current ? 1 : storage.getFormat().colorSlotCount();
-        for (int i = 0; i < colors; i++) {
-            CgGpuTexture texture = current ? hostColor : storage.getColorTexture(i).rhiView().texture();
-            CgTextureView view = CgTextureView.attachment(texture, level, 0);
+        // A second attachment (composed, or beside the current depth with one) is colour 1, after the target's colour 0.
+        CgGraphTexture attachment = attachmentOf(pass);
+        CgGpuTexture second = attachment == null ? null : storage(attachment).getColorTexture(0).rhiView().texture();
+        int colors = current || second != null ? 1 : storage.getFormat().colorSlotCount();
+        for (int i = 0; i < colors + (second != null ? 1 : 0); i++) {
+            CgGpuTexture texture = i == colors ? second : current ? hostColor : storage.getColorTexture(i).rhiView().texture();
+            CgTextureView view = CgTextureView.attachment(texture, i == colors ? 0 : level, 0);
             deviceColors.add(new CgPassDesc.Color(view, clearColor && damage == null ? CgPassDesc.LoadOp.CLEAR : CgPassDesc.LoadOp.LOAD,
                     load.r(), load.g(), load.b(), load.a(), CgPassDesc.StoreOp.STORE));
             deviceFormats.add(texture.desc().format());

@@ -73,9 +73,11 @@ public final class CgDeviceStates {
         b.depth(own.getDepth() != null ? own.getDepth() : pass.getDepth());
         b.cull(own.getCull() != null ? own.getCull() : pass.getCull());
         b.stencil(own.getStencil() != null ? own.getStencil() : pass.getStencil());
-        List<CgColorMask> masks = own.getColorMasks() != null && !own.getColorMasks().isEmpty() ? own.getColorMasks()
-                : pass.getColorMasks();
-        if (masks != null) b.colorMasks(masks);
+        // Masks per target, as GL applies them: the pass's, then the pipeline's over them where it names a target.
+        List<CgColorMask> masks = new ArrayList<>();
+        if (pass.getColorMasks() != null) masks.addAll(pass.getColorMasks());
+        if (own.getColorMasks() != null) masks.addAll(own.getColorMasks());
+        if (!masks.isEmpty()) b.colorMasks(masks);
         return b.build();
     }
 
@@ -112,7 +114,7 @@ public final class CgDeviceStates {
     public static int writeMask(List<CgColorMask> masks, int index) {
         if (masks == null) return 0xF;
         CgColorMask m = null;
-        for (CgColorMask c : masks) if (c.targetIndex() == index || c.targetIndex() < 0 && m == null) m = c;
+        for (CgColorMask c : masks) if (c.targetIndex() == index || c.targetIndex() < 0) m = c;   // the last applied wins
         if (m == null) return 0xF;
         return (m.r() ? 1 : 0) | (m.g() ? 2 : 0) | (m.b() ? 4 : 0) | (m.a() ? 8 : 0);
     }
