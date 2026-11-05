@@ -31,6 +31,8 @@ repositories {
     mavenCentral()
 }
 
+val lwjgl2Natives: Configuration by configurations.creating
+
 dependencies {
     // The SPI this tier implements. compileOnly: the merge adds `platform` once.
     compileOnly(project(":platform"))
@@ -40,6 +42,31 @@ dependencies {
     compileOnly("org.lwjgl.lwjgl:lwjgl:${providers.gradleProperty("dep.lwjgl").getOrElse("2.9.4-nightly-20150209")}")
     // The Ogg Vorbis decoder these clients ship for their own sounds: called, never bundled.
     compileOnly("org.jcraft:jorbis:0.0.17")
+
+    // Lwjgl2CommandListTest: the GL device's contract on LWJGL 2, in a pbuffer's context
+    testImplementation(project(":platform"))
+    testImplementation(testFixtures(project(":platform")))
+    testImplementation("org.lwjgl.lwjgl:lwjgl:${providers.gradleProperty("dep.lwjgl").getOrElse("2.9.4-nightly-20150209")}")
+    testImplementation("junit:junit:${rootProject.properties["dep.junit"]}")
+    testRuntimeOnly("org.apache.logging.log4j:log4j-core:2.26.1")
+    lwjgl2Natives("org.lwjgl.lwjgl:lwjgl-platform:${providers.gradleProperty("dep.lwjgl").getOrElse("2.9.4-nightly-20150209")}:" + System.getProperty("os.name").lowercase().let { os ->
+        when {
+            os.contains("win") -> "natives-windows"
+            os.contains("mac") -> "natives-osx"
+            else -> "natives-linux"
+        }
+    })
+}
+
+val unpackLwjgl2Natives = tasks.register<Sync>("unpackLwjgl2Natives") {
+    from(lwjgl2Natives.elements.map { files -> files.map { zipTree(it.asFile) } })
+    exclude("META-INF/**")
+    into(layout.buildDirectory.dir("lwjgl2-natives"))
+}
+
+tasks.test {
+    dependsOn(unpackLwjgl2Natives)
+    systemProperty("org.lwjgl.librarypath", layout.buildDirectory.dir("lwjgl2-natives").get().asFile.absolutePath)
 }
 
 // The tier boundary, enforced rather than described (F4). Everything above LWJGL is what the
