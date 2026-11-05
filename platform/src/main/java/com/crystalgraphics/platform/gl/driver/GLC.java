@@ -119,7 +119,7 @@ public final class GLC {
             GL_CONSTANT_ALPHA = 0x8003, GL_ONE_MINUS_CONSTANT_ALPHA = 0x8004;
     public static final int GL_FUNC_ADD = 0x8006, GL_FUNC_SUBTRACT = 0x800A, GL_FUNC_REVERSE_SUBTRACT = 0x800B,
             GL_MIN = 0x8007, GL_MAX = 0x8008;
-    public static final int GL_LOWER_LEFT = 0x8CA1, GL_ZERO_TO_ONE = 0x935F;
+    public static final int GL_LOWER_LEFT = 0x8CA1, GL_ZERO_TO_ONE = 0x935F, GL_NEGATIVE_ONE_TO_ONE = 0x935E;
 
     // draws
     public static final int GL_POINTS = 0, GL_LINES = 1, GL_LINE_STRIP = 3, GL_TRIANGLES = 4,

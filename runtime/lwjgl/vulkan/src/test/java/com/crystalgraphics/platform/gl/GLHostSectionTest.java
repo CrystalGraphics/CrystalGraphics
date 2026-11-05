@@ -28,6 +28,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 import static org.lwjgl.opengl.GL46.*;
 
 /** A host section on the GL device sets back every field it changed to what the host left. */
@@ -40,6 +42,27 @@ public class GLHostSectionTest {
             + "layout(set = 0, binding = 1) uniform sampler2D t;\n"
             + "layout(push_constant) uniform P { float k; } p;\n"
             + "void main() { o = u.c * texture(t, vec2(0.5)) * p.k; }\n";
+
+    /** {@code CgGL} draws under GL's defaults: a section shared with it leaves none of the device's conventions on. */
+    @Test
+    public void aSectionSharedWithCgGLLeavesGLsDefaults() {
+        try (GLTestWindow window = new GLTestWindow()) {
+            CgGLDevice device = new CgGLDevice(new Lwjgl3GLDriver(), new SpvcGlslTranslator(), 64, 64, false,
+                    GLHostState.sharedWithCgGL());
+            device.fromHost();
+            assertTrue("the device writes sRGB inside the section", glIsEnabled(GL_FRAMEBUFFER_SRGB));
+            device.toHost();
+            assertFalse("sRGB writes left on: CgGL's UI encoded twice", glIsEnabled(GL_FRAMEBUFFER_SRGB));
+            assertFalse(glIsEnabled(GL_TEXTURE_CUBE_MAP_SEAMLESS));
+            assertFalse(glIsEnabled(GL_PROGRAM_POINT_SIZE));
+            assertEquals(GL_NEGATIVE_ONE_TO_ONE, glGetInteger(GL_CLIP_DEPTH_MODE));
+            assertEquals(GL_LOWER_LEFT, glGetInteger(GL_CLIP_ORIGIN));
+            assertEquals(4, glGetInteger(GL_UNPACK_ALIGNMENT));
+            assertEquals(4, glGetInteger(GL_PACK_ALIGNMENT));
+            device.close();
+            assertTrue("GL errors: " + window.errors, window.errors.isEmpty());
+        }
+    }
 
     @Test
     public void aSectionLeavesTheHostsStateAsItFoundIt() {

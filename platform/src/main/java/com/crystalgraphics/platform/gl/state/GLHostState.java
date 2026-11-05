@@ -27,6 +27,13 @@ public interface GLHostState {
     default void left() {}
 
     /**
+     * Sets back the conventions the device's section set ({@code CgGLDevice}: sRGB writes, zero-to-one clip depth,
+     * seamless cube maps, program point size, tight pixel rows) to what the host draws under, through {@code gl}. Nothing
+     * for a host that declares none.
+     */
+    default void conventions(CgGLDriver gl) {}
+
+    /**
      * The host is {@code CgGL} in the same context, while it and the device draw side by side: what it has is unknown
      * to the device on entry (every field set again), and {@code CgGL}'s shadow is dropped on leaving (Unreal's
      * {@code RHIInvalidateCachedState}, both ways).
@@ -36,6 +43,17 @@ public interface GLHostState {
             @Override public void read(GLContextState into) { into.invalidate(); }
 
             @Override public void left() { CgGlState.invalidateAllIfPresent(); }
+
+            /** {@code CgGL} sets none of the device's conventions: it draws under GL's defaults. */
+            @Override
+            public void conventions(CgGLDriver gl) {
+                gl.glDisable(GL_FRAMEBUFFER_SRGB);
+                gl.glDisable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
+                gl.glDisable(GL_PROGRAM_POINT_SIZE);
+                gl.glClipControl(GL_LOWER_LEFT, GL_NEGATIVE_ONE_TO_ONE);
+                gl.glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+                gl.glPixelStorei(GL_PACK_ALIGNMENT, 4);
+            }
         };
     }
 
