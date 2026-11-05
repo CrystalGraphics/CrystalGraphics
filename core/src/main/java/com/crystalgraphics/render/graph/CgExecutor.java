@@ -2129,7 +2129,6 @@ public final class CgExecutor {
             readHost();
             if (hostDepth == null) return "beside a host depth renderbuffer, or none";
         }
-        if (pass.layer != 0) return "a layer of an array target";
         if (damage != null && (pass.load.mask() & (CgGL.GL_DEPTH_BUFFER_BIT | CgGL.GL_STENCIL_BUFFER_BIT)) != 0) {
             return "a depth clear under damage";
         }
@@ -2220,7 +2219,9 @@ public final class CgExecutor {
         int colors = current || second != null ? 1 : storage.getFormat().colorSlotCount();
         for (int i = 0; i < colors + (second != null ? 1 : 0); i++) {
             CgGpuTexture texture = i == colors ? second : current ? hostColor : storage.getColorTexture(i).rhiView().texture();
-            CgTextureView view = CgTextureView.attachment(texture, i == colors ? 0 : level, 0);
+            // The pass's layer of an array target; the host's and a second attachment are no arrays
+            CgTextureView view = i == colors || current ? CgTextureView.attachment(texture, i == colors ? 0 : level, 0)
+                    : CgTextureView.attachment(texture, level, pass.layer);
             deviceColors.add(new CgPassDesc.Color(view, clearColor && damage == null ? CgPassDesc.LoadOp.CLEAR : CgPassDesc.LoadOp.LOAD,
                     load.r(), load.g(), load.b(), load.a(), CgPassDesc.StoreOp.STORE));
             deviceFormats.add(texture.desc().format());
@@ -2232,7 +2233,8 @@ public final class CgExecutor {
         if (depthTexture != null) {
             boolean clearDepth = (load.mask() & CgGL.GL_DEPTH_BUFFER_BIT) != 0;
             boolean clearStencil = (load.mask() & CgGL.GL_STENCIL_BUFFER_BIT) != 0;
-            depth = new CgPassDesc.Depth(CgTextureView.attachment(depthTexture, level, 0),
+            int depthLayer = depthTexture == hostDepth ? 0 : pass.layer;
+            depth = new CgPassDesc.Depth(CgTextureView.attachment(depthTexture, level, depthLayer),
                     clearDepth ? CgPassDesc.LoadOp.CLEAR : CgPassDesc.LoadOp.LOAD, (float) load.depth(),
                     clearStencil ? CgPassDesc.LoadOp.CLEAR : CgPassDesc.LoadOp.LOAD, load.stencil(), CgPassDesc.StoreOp.STORE,
                     depthInPlace);
