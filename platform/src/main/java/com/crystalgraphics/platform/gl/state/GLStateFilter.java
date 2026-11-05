@@ -1,5 +1,6 @@
 package com.crystalgraphics.platform.gl.state;
 
+import com.crystalgraphics.platform.gl.CgGLWorkerContext;
 import com.crystalgraphics.platform.gl.driver.CgGLDriver;
 
 import java.nio.ByteBuffer;
@@ -455,6 +456,7 @@ public final class GLStateFilter implements CgGLDriver {
     @Override public int glGetInteger(int name) { return raw.glGetInteger(name); }
     @Override public float glGetFloat(int name) { return raw.glGetFloat(name); }
     @Override public boolean hasExtension(String name) { return raw.hasExtension(name); }
+    @Override public CgGLWorkerContext createIsolatedContext() { return raw.createIsolatedContext(); }
     @Override public boolean glIsEnabled(int cap) { return raw.glIsEnabled(cap); }
     @Override public boolean glIsEnabledi(int cap, int index) { return raw.glIsEnabledi(cap, index); }
     @Override public void glGetIntegerv(int name, int[] out) { raw.glGetIntegerv(name, out); }
@@ -520,6 +522,9 @@ public final class GLStateFilter implements CgGLDriver {
     @Override public int glGetProgrami(int program, int name) { return raw.glGetProgrami(program, name); }
     @Override public String glGetProgramInfoLog(int program) { return raw.glGetProgramInfoLog(program); }
     @Override public void glDeleteProgram(int program) { raw.glDeleteProgram(program); }
+    @Override public void glProgramParameteri(int program, int name, int value) { raw.glProgramParameteri(program, name, value); }
+    @Override public int glGetProgramBinary(int program, ByteBuffer out) { return raw.glGetProgramBinary(program, out); }
+    @Override public void glProgramBinary(int program, int format, ByteBuffer binary) { raw.glProgramBinary(program, format, binary); }
     @Override public int glCreateVertexArrays() { return raw.glCreateVertexArrays(); }
     @Override public void glEnableVertexArrayAttrib(int vao, int index) { raw.glEnableVertexArrayAttrib(vao, index); }
     @Override public void glVertexArrayAttribFormat(int vao, int index, int size, int type, boolean normalized, int offset) { raw.glVertexArrayAttribFormat(vao, index, size, type, normalized, offset); }

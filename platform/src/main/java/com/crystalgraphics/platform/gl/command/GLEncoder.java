@@ -577,7 +577,7 @@ public final class GLEncoder implements CgCommandList {
             if (p == null) throw new IllegalStateException(desc.label() + ": a draw with no pipeline");
             if (committed != p) {
                 CgGraphicsPipelineDesc d = p.desc();
-                if (committed == null || ((GLGraphicsPipeline) committed).program != p.program) gl.glUseProgram(p.program);
+                gl.glUseProgram(p.program(gl));
                 gl.glBindVertexArray(p.vao);
                 applyRaster(d.raster());
                 applyDepthStencil(d.depthStencil());
@@ -805,7 +805,7 @@ public final class GLEncoder implements CgCommandList {
             GLComputePipeline next = (GLComputePipeline) p;
             if (next == pipeline) return;
             pipeline = next;
-            gl.glUseProgram(next.program);
+            gl.glUseProgram(next.program(gl));
             committed = null;
             bindingsDirty = true;
             pushDirty = true;

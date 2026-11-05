@@ -1,5 +1,7 @@
 package com.crystalgraphics.platform.gl.driver;
 
+import com.crystalgraphics.platform.gl.CgGLWorkerContext;
+
 import java.nio.ByteBuffer;
 
 /**
@@ -27,6 +29,9 @@ public interface CgGLDriver {
     float glGetFloat(int name);
 
     boolean hasExtension(String name);
+
+    /** A context at this one's version sharing none of its objects, for a link worker; null where none can be made. */
+    CgGLWorkerContext createIsolatedContext();
 
     boolean glIsEnabled(int cap);
 
@@ -203,6 +208,13 @@ public interface CgGLDriver {
     void glDeleteProgram(int program);
 
     void glUseProgram(int program);
+
+    void glProgramParameteri(int program, int name, int value);
+
+    /** Fills {@code out} with {@code program}'s binary and answers its format. */
+    int glGetProgramBinary(int program, ByteBuffer out);
+
+    void glProgramBinary(int program, int format, ByteBuffer binary);
 
     // ── vertex arrays ─────────────────────────────────────────────────────────
     int glCreateVertexArrays();

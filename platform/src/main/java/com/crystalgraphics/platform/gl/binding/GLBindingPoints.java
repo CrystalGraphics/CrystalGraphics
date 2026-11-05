@@ -3,6 +3,8 @@ package com.crystalgraphics.platform.gl.binding;
 import com.crystalgraphics.platform.rhi.binding.CgBindingLayout;
 import com.crystalgraphics.platform.rhi.pipeline.CgPipelineLayout;
 
+import java.util.Arrays;
+
 /**
  * Where a pipeline layout's slots bind on GL, as Unreal gives a program's blocks {@code FirstUniformBuffer + index}
  * (`OpenGLShaders.cpp`), here by set: each set, in order, takes a range of each class of binding point (uniform
@@ -52,6 +54,12 @@ public final class GLBindingPoints {
         if (set * 4 >= base.length)
             throw new IllegalArgumentException("set " + set + " is outside a layout of " + base.length / 4);
         return base[set * 4 + kind] + binding;
+    }
+
+    /** Every set's bases and the push point: two layouts with the same string bind alike. */
+    @Override
+    public String toString() {
+        return Arrays.toString(base) + " push " + pushConstants;
     }
 
     /** The uniform buffer point push constants bind at. */

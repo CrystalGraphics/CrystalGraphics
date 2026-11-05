@@ -7,6 +7,8 @@ import com.crystalgraphics.platform.gl.command.GLFramebuffers;
 import com.crystalgraphics.platform.gl.driver.CgGLDriver;
 import com.crystalgraphics.platform.gl.pipeline.GLComputePipeline;
 import com.crystalgraphics.platform.gl.pipeline.GLGraphicsPipeline;
+import com.crystalgraphics.platform.gl.pipeline.GLLinkWorker;
+import com.crystalgraphics.platform.gl.pipeline.GLProgramBinaries;
 import com.crystalgraphics.platform.gl.pipeline.GLShaderModule;
 import com.crystalgraphics.platform.gl.pipeline.GLShaderTranslator;
 import com.crystalgraphics.platform.gl.resource.GLBuffer;
@@ -35,12 +37,14 @@ import com.crystalgraphics.platform.rhi.shader.CgShaderModule;
 import com.crystalgraphics.platform.rhi.sync.CgTimerQuery;
 
 import java.nio.ByteBuffer;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Executor;
 import java.util.function.BiConsumer;
 
 import static com.crystalgraphics.platform.gl.driver.GLC.*;
@@ -87,6 +91,10 @@ public final class CgGLDevice implements CgRHI {
     private final GLHostState host;
     private final GLContextState entry = new GLContextState();
     private final GLShaderTranslator translator;
+    private GLProgramBinaries binaries;
+    private GLLinkWorker worker;
+    private CgGLWorkerContext workerContext;
+    private final CgGLDriver raw;
     private final boolean presents;
     private final Thread owner = Thread.currentThread();
     private final Globals globals;
@@ -126,6 +134,7 @@ public final class CgGLDevice implements CgRHI {
     public CgGLDevice(CgGLDriver driver, GLShaderTranslator translator, int width, int height, boolean presents,
                       GLHostState host) {
         this.gl = new GLStateFilter(driver);
+        this.raw = driver;
         this.host = host;
         CgGLDriver gl = this.gl;
         this.translator = translator;
@@ -187,6 +196,27 @@ public final class CgGLDevice implements CgRHI {
         encoder.invalidate();
     }
 
+    /**
+     * Keeps linked programs' binaries under {@code root} across launches, written by {@code writer}: before the first
+     * pipeline. Off where the driver gives no binaries.
+     */
+    public void programCache(Path root, Executor writer) {
+        binaries = new GLProgramBinaries(gl, root, writer);
+    }
+
+    /**
+     * Links programs on a worker thread in a context of its own, handed over as binaries ({@link GLLinkWorker}): before
+     * the first pipeline. Answers whether it runs: not where the driver gives no binaries or no context.
+     */
+    public boolean linkWorker() {
+        if (worker != null) return true;
+        if (gl.glGetInteger(GL_NUM_PROGRAM_BINARY_FORMATS) <= 0) return false;
+        workerContext = raw.createIsolatedContext();
+        if (workerContext == null) return false;
+        worker = new GLLinkWorker(raw, workerContext);
+        return true;
+    }
+
     /** What the context has, as the device's filter knows it. */
     public GLContextState contextState() { return gl.state(); }
 
@@ -246,12 +276,12 @@ public final class CgGLDevice implements CgRHI {
 
     @Override
     public CgGraphicsPipeline createPipeline(CgGraphicsPipelineDesc desc) {
-        return new GLGraphicsPipeline(gl, translator, desc);
+        return new GLGraphicsPipeline(gl, translator, binaries, worker, desc);
     }
 
     @Override
     public CgComputePipeline createComputePipeline(String label, CgShaderModule module, CgPipelineLayout layout) {
-        return new GLComputePipeline(gl, translator, label, module, layout);
+        return new GLComputePipeline(gl, translator, binaries, worker, label, module, layout);
     }
 
     @Override
@@ -272,7 +302,7 @@ public final class CgGLDevice implements CgRHI {
             t.delete(gl);
         } else if (o instanceof GLSampler s) gl.glDeleteSamplers(s.name);
         else if (o instanceof GLGraphicsPipeline p) p.delete(gl);
-        else if (o instanceof GLComputePipeline p) gl.glDeleteProgram(p.program);
+        else if (o instanceof GLComputePipeline p) p.delete(gl);
         else if (o instanceof GLTimerQuery q) q.delete();
     }
 
@@ -466,5 +496,9 @@ public final class CgGLDevice implements CgRHI {
         waitRetired(frame - 1);
         encoder.delete();
         if (heap != null) heap.delete(gl);
+        if (worker != null) {
+            worker.stop();
+            workerContext.destroy();
+        }
     }
 }

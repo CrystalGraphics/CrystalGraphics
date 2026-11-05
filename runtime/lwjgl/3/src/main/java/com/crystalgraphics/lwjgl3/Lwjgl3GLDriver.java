@@ -1,11 +1,13 @@
 package com.crystalgraphics.lwjgl3;
 
+import com.crystalgraphics.platform.gl.CgGLWorkerContext;
 import com.crystalgraphics.platform.gl.driver.CgGLDriver;
 import org.lwjgl.opengl.ARBBindlessTexture;
 import org.lwjgl.opengl.GL46;
 import org.lwjgl.system.MemoryStack;
 
 import java.nio.ByteBuffer;
+import java.nio.IntBuffer;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -35,6 +37,8 @@ public final class Lwjgl3GLDriver implements CgGLDriver {
         }
         return extensions.contains(name);
     }
+
+    @Override public CgGLWorkerContext createIsolatedContext() { return Lwjgl3WorkerContext.create(false); }
 
     @Override public boolean glIsEnabled(int cap) { return GL46.glIsEnabled(cap); }
 
@@ -303,6 +307,19 @@ public final class Lwjgl3GLDriver implements CgGLDriver {
     @Override public void glDeleteProgram(int program) { GL46.glDeleteProgram(program); }
 
     @Override public void glUseProgram(int program) { GL46.glUseProgram(program); }
+
+    @Override public void glProgramParameteri(int program, int name, int value) { GL46.glProgramParameteri(program, name, value); }
+
+    @Override
+    public int glGetProgramBinary(int program, ByteBuffer out) {
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            IntBuffer format = stack.mallocInt(1);
+            GL46.glGetProgramBinary(program, null, format, out);
+            return format.get(0);
+        }
+    }
+
+    @Override public void glProgramBinary(int program, int format, ByteBuffer binary) { GL46.glProgramBinary(program, format, binary); }
 
     // ── vertex arrays ─────────────────────────────────────────────────────────
     @Override public int glCreateVertexArrays() { return GL46.glCreateVertexArrays(); }

@@ -11,14 +11,46 @@ public final class GLPrograms {
 
     private GLPrograms() {}
 
-    /** @throws CgShaderModule.CompileException with the driver's log when a stage fails to compile or the program to link */
-    public static int link(CgGLDriver gl, GLShaderTranslator translator, GLBindingPoints points, String label,
-                           CgShaderModule... modules) {
+    /**
+     * Links on the calling thread, from a kept binary where there is one.
+     *
+     * @param binaries kept binaries; null for none
+     * @throws CgShaderModule.CompileException with the driver's log when a stage fails to compile or the program to link
+     */
+    public static int link(CgGLDriver gl, GLShaderTranslator translator, GLProgramBinaries binaries,
+                           GLBindingPoints points, String label, GLShaderModule... modules) {
+        String key = binaries != null && binaries.on() ? GLProgramBinaries.key(points, modules) : null;
+        if (key != null) {
+            byte[] kept = binaries.read(key);
+            if (kept != null) {
+                int program = gl.glCreateProgram();
+                if (GLProgramBinaries.load(gl, program, kept)) {
+                    gl.glObjectLabel(GL_PROGRAM, program, label);
+                    return program;
+                }
+                gl.glDeleteProgram(program);
+                binaries.forget(key);
+            }
+        }
+        int program = compile(gl, translator, points, label, key != null, modules);
+        if (key != null) binaries.write(key, GLProgramBinaries.binary(gl, program));
+        return program;
+    }
+
+    /**
+     * Translates, compiles and links on the calling thread.
+     *
+     * @param retrievable whether the driver is asked to keep the program's binary
+     * @throws CgShaderModule.CompileException with the driver's log when a stage fails to compile or the program to link
+     */
+    static int compile(CgGLDriver gl, GLShaderTranslator translator, GLBindingPoints points, String label,
+                       boolean retrievable, GLShaderModule... modules) {
         int program = gl.glCreateProgram();
+        if (retrievable) gl.glProgramParameteri(program, GL_PROGRAM_BINARY_RETRIEVABLE_HINT, 1);
         int[] shaders = new int[modules.length];
         try {
             for (int i = 0; i < modules.length; i++) {
-                GLShaderModule m = (GLShaderModule) modules[i];
+                GLShaderModule m = modules[i];
                 String source = translator.glsl(m.spirv, m.stage(), points, label);
                 int shader = shaders[i] = gl.glCreateShader(type(m.stage()));
                 gl.glShaderSource(shader, source);

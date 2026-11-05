@@ -87,6 +87,9 @@ val stageKitPorts = tasks.register<Sync>("stageKitPorts") {
 // The natives load through System.load, which JDK 25 warns about unless native access is granted.
 tasks.test {
     jvmArgs("--enable-native-access=ALL-UNNAMED")
+    // EngineOnGLDeviceTest's measurement: -PglShaderCache=<empty dir> makes NVIDIA's shader cache cold, -PglShaderReport=<file>
+    providers.gradleProperty("glShaderCache").orNull?.let { environment("__GL_SHADER_DISK_CACHE_PATH", it) }
+    providers.gradleProperty("glShaderReport").orNull?.let { systemProperty("crystalgraphics.test.glShaderReport", it) }
     // EngineOnTrackedBackendTest holds every shipped material's every variant: past Gradle's 512 MB. Direct memory keeps
     // the default's limit, which would follow the heap: an upload test leaking leases must still meet it.
     maxHeapSize = "2g"

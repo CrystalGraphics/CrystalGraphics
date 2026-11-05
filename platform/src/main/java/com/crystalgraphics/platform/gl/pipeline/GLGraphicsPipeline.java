@@ -17,15 +17,20 @@ import static com.crystalgraphics.platform.gl.driver.GLC.*;
 public final class GLGraphicsPipeline implements CgGraphicsPipeline {
 
     private final CgGraphicsPipelineDesc desc;
-    public final int program;
+    private int program;
+    private GLProgramBuild build;
     public final int vao;
     public final int mode;
     public final GLBindingPoints points;
 
-    public GLGraphicsPipeline(CgGLDriver gl, GLShaderTranslator translator, CgGraphicsPipelineDesc desc) {
+    /** @param worker links the program off this thread; null links it here */
+    public GLGraphicsPipeline(CgGLDriver gl, GLShaderTranslator translator, GLProgramBinaries binaries,
+                              GLLinkWorker worker, CgGraphicsPipelineDesc desc) {
         this.desc = desc;
         this.points = new GLBindingPoints(desc.layout());
-        this.program = GLPrograms.link(gl, translator, points, desc.label(), desc.vertex(), desc.fragment());
+        GLShaderModule vs = (GLShaderModule) desc.vertex(), fs = (GLShaderModule) desc.fragment();
+        if (worker != null) worker.submit(build = new GLProgramBuild(translator, binaries, points, desc.label(), vs, fs));
+        else program = GLPrograms.link(gl, translator, binaries, points, desc.label(), vs, fs);
         this.mode = mode(desc.topology());
         this.vao = gl.glCreateVertexArrays();
         for (VertexBuffer vb : desc.vertexBuffers()) {
@@ -61,8 +66,23 @@ public final class GLGraphicsPipeline implements CgGraphicsPipeline {
 
     @Override public CgGraphicsPipelineDesc desc() { return desc; }
 
+    /** The linked program, waiting for the link worker if it has not landed. */
+    public int program(CgGLDriver gl) {
+        if (build != null) {
+            GLProgramBuild b = build;
+            build = null;
+            program = b.program(gl);
+        }
+        return program;
+    }
+
+    /** Whether {@link #program} answers without waiting. */
+    public boolean ready() {
+        return build == null || build.ready();
+    }
+
     public void delete(CgGLDriver gl) {
-        gl.glDeleteProgram(program);
+        if (program != 0) gl.glDeleteProgram(program);
         gl.glDeleteVertexArrays(vao);
     }
 }
