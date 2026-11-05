@@ -196,6 +196,7 @@ public final class CgGLDevice implements CgRHI {
         if (encoder.inPass()) throw new IllegalStateException("toHost with a pass open");
         gl.restore(entry);
         encoder.invalidate();
+        host.left();
     }
 
     /**

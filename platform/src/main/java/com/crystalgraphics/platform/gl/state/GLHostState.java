@@ -23,6 +23,22 @@ public interface GLHostState {
     /** Fills {@code into} with what the host believes; on the context's thread. */
     void read(GLContextState into);
 
+    /** The section closed and the context went back to the host. */
+    default void left() {}
+
+    /**
+     * The host is {@code CgGL} in the same context, while it and the device draw side by side: what it has is unknown
+     * to the device on entry (every field set again), and {@code CgGL}'s shadow is dropped on leaving (Unreal's
+     * {@code RHIInvalidateCachedState}, both ways).
+     */
+    static GLHostState sharedWithCgGL() {
+        return new GLHostState() {
+            @Override public void read(GLContextState into) { into.invalidate(); }
+
+            @Override public void left() { CgGlState.invalidateAllIfPresent(); }
+        };
+    }
+
     /** Reads every field from GL by {@code glGet}: exact, and a stall on a threaded driver, so for hosts with no cache. */
     static GLHostState byQuery(CgGLDriver gl) {
         int[] one = new int[1], two = new int[2], four = new int[4];
