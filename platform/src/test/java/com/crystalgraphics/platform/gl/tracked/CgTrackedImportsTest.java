@@ -3,6 +3,7 @@ package com.crystalgraphics.platform.gl.tracked;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
 import com.crystalgraphics.platform.rhi.nulldrv.CgNullRHI;
+import com.crystalgraphics.platform.rhi.resource.CgGpuBuffer;
 import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
 import org.junit.Test;
 
@@ -44,5 +45,19 @@ public class CgTrackedImportsTest {
         gl.glBufferData(CgGL.GL_ARRAY_BUFFER, 256, CgGL.GL_DYNAMIC_DRAW);
         assertEquals(gl.bufferObjects().get(name).storage.allocation().buffer(), imports.buffer(name));
         assertEquals(gl.bufferObjects().get(name).storage.allocation().offset(), imports.bufferOffset(name));
+    }
+
+    @Test
+    public void aDeviceBufferGetsANameItsStorageAndForgettingDropsIt() {
+        CgNullRHI device = new CgNullRHI(8, 8);
+        CgTrackedGLBackend gl = new CgTrackedGLBackend(device, FakeGlslCompiler.EMPTY, true);
+        CgTrackedImports imports = new CgTrackedImports(gl);
+        CgGpuBuffer made = device.createBuffer(new CgGpuBuffer.Desc("graph buffer", 128, CgGpuBuffer.Usage.ALL, false));
+        int name = imports.name(made);
+        assertEquals("the same name each ask", name, imports.name(made));
+        assertSame(made, imports.buffer(name));
+        assertEquals(0, imports.bufferOffset(name));
+        imports.forget(made);
+        assertNotEquals("its name gone: asked again, a new one", name, imports.name(made));
     }
 }

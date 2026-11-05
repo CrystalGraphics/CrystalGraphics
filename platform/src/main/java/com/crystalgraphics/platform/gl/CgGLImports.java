@@ -13,6 +13,8 @@ import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
  * CgGpuTexture albedo = imports.texture(texture.getId(), desc);   // a CgGL texture, for a binding set
  * CgGpuBuffer vertices = imports.buffer(meshBuffer);              // a CgGL buffer, at imports.bufferOffset(meshBuffer)
  * int name = imports.name(graphTexture);                          // an RHI texture, for CgGL code
+ * imports.forget(graphTexture);                                  // before releasing it
+ * rhi.release(graphTexture);
  * }</pre>
  *
  * <ul>
@@ -34,6 +36,15 @@ public interface CgGLImports {
 
     /** A {@code CgGL} name for {@code texture}, the same each ask. */
     int name(CgGpuTexture texture);
+
+    /** A {@code CgGL} name for {@code buffer}, the same each ask; its storage starts at offset 0. */
+    int name(CgGpuBuffer buffer);
+
+    /** {@code texture} is being released: drop the name given it, which {@code CgGL} must not use again. */
+    default void forget(CgGpuTexture texture) {}
+
+    /** {@code buffer} is being released: drop the name given it. */
+    default void forget(CgGpuBuffer buffer) {}
 
     /** {@code CgGL} deleted {@code texture}: forget anything kept for it. */
     default void textureDeleted(int texture) {}

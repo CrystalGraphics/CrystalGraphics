@@ -5,6 +5,7 @@ import com.crystalgraphics.api.texture.CgTextureSpec;
 import com.crystalgraphics.gpu.CgDeferral;
 import com.crystalgraphics.mc.CgReloadable;
 import com.crystalgraphics.platform.gl.CgGL;
+import com.crystalgraphics.platform.gl.CgGLImports;
 import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
 import com.crystalgraphics.platform.gl.state.CgGlSlot;
@@ -221,6 +222,7 @@ public abstract class CgTextureAbstract implements CgTexture, CgReloadable {
         gpu.clear();
         gpu.run(() -> {
             if (image != null) {
+                CgGLImports.get().forget(image);
                 CgRHI.get().release(image);
                 image = null;
             } else if (owned && textureId != 0) {

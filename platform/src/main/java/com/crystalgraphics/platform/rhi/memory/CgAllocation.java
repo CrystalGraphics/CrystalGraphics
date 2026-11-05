@@ -31,6 +31,11 @@ public final class CgAllocation {
         this.dedicated = dedicated;
     }
 
+    /** All of {@code buffer}, made outside any allocator: its owner frees it, never an allocator. */
+    public static CgAllocation whole(CgGpuBuffer buffer) {
+        return new CgAllocation(null, buffer, 0, buffer.size(), true);
+    }
+
     public CgGpuBuffer buffer() { return buffer; }
 
     /** Where the range starts in {@link #buffer()}. */

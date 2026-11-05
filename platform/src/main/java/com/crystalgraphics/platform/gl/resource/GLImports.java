@@ -40,6 +40,8 @@ public final class GLImports implements CgGLImports {
 
     @Override public int name(CgGpuTexture texture) { return ((GLTexture) texture).name; }
 
+    @Override public int name(CgGpuBuffer buffer) { return ((GLBuffer) buffer).name; }
+
     @Override public void textureDeleted(int texture) { textures.remove(texture); }
 
     @Override public void bufferDeleted(int buffer) { buffers.remove(buffer); }

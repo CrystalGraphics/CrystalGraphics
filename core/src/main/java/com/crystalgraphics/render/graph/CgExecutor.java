@@ -1187,12 +1187,12 @@ public final class CgExecutor {
             int[] versions = buffer.versions();
             for (int v = 0; v < 2; v++) {
                 if (versions[v] == 0) continue;
-                CgGL.glDeleteBuffers(versions[v]);
+                CgBufferPool.free(versions[v]);
                 forget(versions[v]);
                 versions[v] = 0;
             }
         } else if (buffer.bufferId() != 0) {
-            CgGL.glDeleteBuffers(buffer.bufferId());
+            CgBufferPool.free(buffer.bufferId());
             forget(buffer.bufferId());
             buffer.resolve(0);
         }

@@ -1,5 +1,6 @@
 package com.crystalgraphics.platform.gl.tracked.gl;
 
+import com.crystalgraphics.platform.rhi.resource.CgGpuBuffer;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.tracked.tracker.CgTracker;
 
@@ -52,6 +53,13 @@ public final class TrackedBuffers {
     public int gen() {
         int name = names.next();
         return names.add(new GlBuffer(name, new CgTrackedBuffer(tracker, "buffer " + name)));
+    }
+
+    /** A device buffer under a GL name of its own; never freed by us. */
+    public int adopt(CgGpuBuffer buffer) {
+        int name = gen();
+        get(name).storage.adopt(buffer);
+        return name;
     }
 
     public GlBuffer get(int name) {

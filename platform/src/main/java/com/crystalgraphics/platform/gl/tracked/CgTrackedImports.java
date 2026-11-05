@@ -16,6 +16,7 @@ public final class CgTrackedImports implements CgGLImports {
     private final TrackedTextures textures;
     private final TrackedBuffers buffers;
     private final Map<CgGpuTexture, Integer> adopted = new IdentityHashMap<>();
+    private final Map<CgGpuBuffer, Integer> adoptedBuffers = new IdentityHashMap<>();
 
     public CgTrackedImports(CgTrackedGLBackend backend) {
         this.textures = backend.textureObjects();
@@ -47,6 +48,32 @@ public final class CgTrackedImports implements CgGLImports {
         int name = textures.adopt(texture);
         adopted.put(texture, name);
         return name;
+    }
+
+    @Override
+    public int name(CgGpuBuffer buffer) {
+        Integer known = adoptedBuffers.get(buffer);
+        if (known != null) return known;
+        int name = buffers.adopt(buffer);
+        adoptedBuffers.put(buffer, name);
+        return name;
+    }
+
+    @Override
+    public void forget(CgGpuTexture texture) {
+        Integer name = adopted.remove(texture);
+        if (name != null) textures.delete(name);
+    }
+
+    @Override
+    public void forget(CgGpuBuffer buffer) {
+        Integer name = adoptedBuffers.remove(buffer);
+        if (name != null) buffers.delete(name);
+    }
+
+    @Override
+    public void bufferDeleted(int buffer) {
+        adoptedBuffers.values().removeIf(n -> n == buffer);
     }
 
     @Override

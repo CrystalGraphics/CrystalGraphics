@@ -78,7 +78,7 @@ final class CgIndirectArgs {
         if (bytes > capacity) {
             if (buffer != 0) {
                 freed.accept(buffer);
-                CgGL.glDeleteBuffers(buffer);
+                CgBufferPool.free(buffer);
             }
             capacity = Math.max(bytes, Math.max(capacity * 2, 16 * stride));
             buffer = CgBufferPool.create(capacity);
@@ -147,7 +147,7 @@ final class CgIndirectArgs {
         params.delete();   // its executor goes with it (CgExecutor.destroyAll)
         if (buffer == 0) return;
         freed.accept(buffer);
-        CgGL.glDeleteBuffers(buffer);
+        CgBufferPool.free(buffer);
         buffer = 0;
         capacity = 0;
         stride = 0;
