@@ -28,6 +28,20 @@ public interface CgGLDriver {
 
     boolean hasExtension(String name);
 
+    boolean glIsEnabled(int cap);
+
+    boolean glIsEnabledi(int cap, int index);
+
+    /** {@code out.length} values of {@code name}. */
+    void glGetIntegerv(int name, int[] out);
+
+    void glGetFloatv(int name, float[] out);
+
+    /** {@code out.length} values of {@code name} at {@code index}. */
+    void glGetIntegeri_v(int name, int index, int[] out);
+
+    long glGetInteger64i(int name, int index);
+
     void glObjectLabel(int identifier, int name, String label);
 
     void glPushDebugGroup(String message);
@@ -55,6 +69,8 @@ public interface CgGLDriver {
     void glBindBuffer(int target, int buffer);
 
     void glBindBufferRange(int target, int index, int buffer, long offset, long size);
+
+    void glBindBufferBase(int target, int index, int buffer);
 
     // ── textures and samplers ─────────────────────────────────────────────────
     int glCreateTextures(int target);
@@ -107,6 +123,9 @@ public interface CgGLDriver {
     void glDeleteTextures(int texture);
 
     void glBindTextureUnit(int unit, int texture);
+
+    /** Only to read a unit's bindings: the device binds by unit and never relies on the active one. */
+    void glActiveTexture(int texture);
 
     void glBindImageTexture(int unit, int texture, int level, boolean layered, int layer, int access, int format);
 

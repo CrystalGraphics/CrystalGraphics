@@ -36,6 +36,18 @@ public final class Lwjgl3GLDriver implements CgGLDriver {
         return extensions.contains(name);
     }
 
+    @Override public boolean glIsEnabled(int cap) { return GL46.glIsEnabled(cap); }
+
+    @Override public boolean glIsEnabledi(int cap, int index) { return GL46.glIsEnabledi(cap, index); }
+
+    @Override public void glGetIntegerv(int name, int[] out) { GL46.glGetIntegerv(name, out); }
+
+    @Override public void glGetFloatv(int name, float[] out) { GL46.glGetFloatv(name, out); }
+
+    @Override public void glGetIntegeri_v(int name, int index, int[] out) { GL46.glGetIntegeri_v(name, index, out); }
+
+    @Override public long glGetInteger64i(int name, int index) { return GL46.glGetInteger64i(name, index); }
+
     @Override public void glObjectLabel(int identifier, int name, String label) { GL46.glObjectLabel(identifier, name, label); }
 
     @Override public void glPushDebugGroup(String message) { GL46.glPushDebugGroup(GL_DEBUG_SOURCE_APPLICATION, 0, message); }
@@ -66,6 +78,8 @@ public final class Lwjgl3GLDriver implements CgGLDriver {
                                           ByteBuffer value) {
         GL46.glClearNamedBufferSubData(buffer, internalFormat, offset, size, format, type, value);
     }
+
+    @Override public void glBindBufferBase(int target, int index, int buffer) { GL46.glBindBufferBase(target, index, buffer); }
 
     @Override public void glDeleteBuffers(int buffer) { GL46.glDeleteBuffers(buffer); }
 
@@ -170,6 +184,8 @@ public final class Lwjgl3GLDriver implements CgGLDriver {
     @Override public void glDeleteTextures(int texture) { GL46.glDeleteTextures(texture); }
 
     @Override public void glBindTextureUnit(int unit, int texture) { GL46.glBindTextureUnit(unit, texture); }
+
+    @Override public void glActiveTexture(int texture) { GL46.glActiveTexture(texture); }
 
     @Override
     public void glBindImageTexture(int unit, int texture, int level, boolean layered, int layer, int access, int format) {

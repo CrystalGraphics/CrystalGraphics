@@ -12,6 +12,9 @@ import com.crystalgraphics.platform.gl.pipeline.GLShaderTranslator;
 import com.crystalgraphics.platform.gl.resource.GLBuffer;
 import com.crystalgraphics.platform.gl.resource.GLSampler;
 import com.crystalgraphics.platform.gl.resource.GLTexture;
+import com.crystalgraphics.platform.gl.state.GLContextState;
+import com.crystalgraphics.platform.gl.state.GLHostState;
+import com.crystalgraphics.platform.gl.state.GLStateFilter;
 import com.crystalgraphics.platform.gl.sync.GLTimerQuery;
 import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.rhi.binding.CgBindingLayout;
@@ -46,7 +49,8 @@ import static com.crystalgraphics.platform.gl.driver.GLC.*;
  * {@link CgRHI} on GL 4.6, as Unreal's OpenGL RHI implements its RHI: commands run as they are called, a pipeline's
  * state is applied before each draw where it differs from the context's (the PSO fallback), framebuffers are cached by
  * attachments, binding sets are bound at ranges of binding points, and a frame retires when its fence signals. GL is
- * reached through a {@link CgGLDriver}, so one device serves every LWJGL era.
+ * reached through a {@link CgGLDriver}, so one device serves every LWJGL era, and every call passes a
+ * {@link GLStateFilter}, which drops one setting what the context already has.
  *
  * <pre>{@code
  * CgGLDevice device = new CgGLDevice(new Lwjgl3GLDriver(), new SpvcGlslTranslator(), width, height, true);
@@ -54,6 +58,16 @@ import static com.crystalgraphics.platform.gl.driver.GLC.*;
  * ... record through device.encoder() ...
  * device.endFrame();                     // presents the surface to the window's framebuffer, then the host swaps
  * device.resize(newWidth, newHeight);    // a new surfaceColor() and surfaceDepth()
+ * }</pre>
+ *
+ * <p>Sharing a context with a host that draws too (Minecraft), it is made with the host's {@link GLHostState}: each
+ * host section then opens with {@link #fromHost} and closes with {@link #toHost}.</p>
+ *
+ * <pre>{@code
+ * CgGLDevice device = new CgGLDevice(driver, translator, width, height, false, hostState);
+ * device.fromHost();      // the host's state adopted; the device's conventions set
+ * ... record ...
+ * device.toHost();        // every field the section changed set back to what the host believes
  * }</pre>
  *
  * <ul>
@@ -69,7 +83,9 @@ public final class CgGLDevice implements CgRHI {
 
     private static final int HEAP_CAPACITY = 1 << 16;
 
-    private final CgGLDriver gl;
+    private final GLStateFilter gl;
+    private final GLHostState host;
+    private final GLContextState entry = new GLContextState();
     private final GLShaderTranslator translator;
     private final boolean presents;
     private final Thread owner = Thread.currentThread();
@@ -101,8 +117,17 @@ public final class CgGLDevice implements CgRHI {
 
     private record HeapKey(CgTextureView view, GLSampler sampler) {}
 
-    public CgGLDevice(CgGLDriver gl, GLShaderTranslator translator, int width, int height, boolean presents) {
-        this.gl = gl;
+    /** A device owning its context: no host draws between its frames. */
+    public CgGLDevice(CgGLDriver driver, GLShaderTranslator translator, int width, int height, boolean presents) {
+        this(driver, translator, width, height, presents, null);
+    }
+
+    /** @param host what a host sharing the context believes it has; null when nothing else draws in it */
+    public CgGLDevice(CgGLDriver driver, GLShaderTranslator translator, int width, int height, boolean presents,
+                      GLHostState host) {
+        this.gl = new GLStateFilter(driver);
+        this.host = host;
+        CgGLDriver gl = this.gl;
         this.translator = translator;
         this.presents = presents;
         String version = gl.glGetString(GL_VERSION);
@@ -127,18 +152,43 @@ public final class CgGLDevice implements CgRHI {
                 true, limits.maxAnisotropy() > 1f, true, true, gl46 || gl.hasExtension("GL_ARB_indirect_parameters"),
                 true, false, true, true, gl.hasExtension("GL_ARB_bindless_texture"));
 
-        // Vulkan's conventions: depth in [0, 1]; images' rows in memory as Vulkan writes them (present flips)
+        if (host == null) conventions();
+        framebuffers = new GLFramebuffers(gl);
+        encoder = new GLEncoder(this, gl, framebuffers, limits.uniformOffsetAlignment());
+        makeSurface(width, height);
+    }
+
+    /** Vulkan's conventions: depth in [0, 1], images' rows in memory as Vulkan writes them (present flips). */
+    private void conventions() {
         gl.glClipControl(GL_LOWER_LEFT, GL_ZERO_TO_ONE);
         gl.glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
         gl.glEnable(GL_PROGRAM_POINT_SIZE);
         gl.glEnable(GL_FRAMEBUFFER_SRGB);
         gl.glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
         gl.glPixelStorei(GL_PACK_ALIGNMENT, 1);
-
-        framebuffers = new GLFramebuffers(gl);
-        encoder = new GLEncoder(this, gl, framebuffers, limits.uniformOffsetAlignment());
-        makeSurface(width, height);
     }
+
+    /** The host drew since the last section: what it believes becomes what the filter knows. No-op when owned. */
+    @Override
+    public void fromHost() {
+        if (host == null) return;
+        host.read(entry);
+        gl.adopt(entry);
+        encoder.invalidate();
+        conventions();
+    }
+
+    /** Sets back every field the section changed to what the host believes. No-op when owned. */
+    @Override
+    public void toHost() {
+        if (host == null) return;
+        if (encoder.inPass()) throw new IllegalStateException("toHost with a pass open");
+        gl.restore(entry);
+        encoder.invalidate();
+    }
+
+    /** What the context has, as the device's filter knows it. */
+    public GLContextState contextState() { return gl.state(); }
 
     // ── what the device is ────────────────────────────────────────────────────
 
