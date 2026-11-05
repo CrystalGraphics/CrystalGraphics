@@ -2113,7 +2113,9 @@ public final class CgExecutor {
             if (hostColor == null) return "a host colour renderbuffer, or none";
             if (hostDepthName < 0) return "a host depth renderbuffer";
         } else if (pass.target.drawsBesideCurrentDepth()) {
-            return "beside the current depth";
+            if (startFramebuffer == 0) return "beside the default framebuffer's depth";
+            readHost();
+            if (hostDepth == null) return "beside a host depth renderbuffer, or none";
         }
         if (attachmentOf(pass) != null) return "a composed target";
         if (pass.depthFrom() != null || pass.colorFrom() != null) return "a copy from another target";
@@ -2129,6 +2131,10 @@ public final class CgExecutor {
         if (current) return null;
         CgFrameBuffer storage = storage(pass.target);
         if (storage == null) return "no storage";
+        if (pass.target.drawsBesideCurrentDepth() && (storage.levelWidth(pass.level) != hostDepth.desc().width()
+                || storage.levelHeight(pass.level) != hostDepth.desc().height())) {
+            return "beside a host depth of another size";
+        }
         for (int i = 0; i < storage.getFormat().colorSlotCount(); i++) {
             CgTexture color = storage.getColorTexture(i);
             if (color == null || color.rhiView() == null) return "a colour renderbuffer";
@@ -2187,7 +2193,7 @@ public final class CgExecutor {
         }
         CgPassDesc.Depth depth = null;
         CgFormat depthFormat = null;
-        CgGpuTexture depthTexture = current ? hostDepth
+        CgGpuTexture depthTexture = current || pass.target.drawsBesideCurrentDepth() ? hostDepth
                 : storage.getFormat().hasDepth() ? storage.getDepthTexture().rhiView().texture() : null;
         if (depthTexture != null) {
             boolean clearDepth = (load.mask() & CgGL.GL_DEPTH_BUFFER_BIT) != 0;
