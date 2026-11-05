@@ -1,5 +1,14 @@
 package com.crystalgraphics.render.graph;
 
+import com.crystalgraphics.api.state.CgRenderState;
+import com.crystalgraphics.render.draw.CgDrawStateCache;
+import com.crystalgraphics.platform.rhi.shader.CgGlslCompiler;
+import com.crystalgraphics.platform.rhi.resource.CgTextureView;
+import com.crystalgraphics.platform.rhi.pipeline.CgGraphicsPipeline;
+import com.crystalgraphics.platform.rhi.format.CgFormat;
+import com.crystalgraphics.platform.rhi.command.CgRenderPass;
+import com.crystalgraphics.platform.rhi.command.CgPassDesc;
+import com.crystalgraphics.platform.rhi.CgDeviceSection;
 import java.util.Set;
 import java.util.HashSet;
 import com.crystalgraphics.gl.shader.CgShader;
@@ -170,6 +179,21 @@ public final class CgExecutor {
     private static final int BINDING_BREAKS = CgTrace.name("graph.multi-draw.binding-breaks");
     /** Every compute pass that can go async does, as if marked: a correctness check of the waits. */
     /** GL6's check: each batch also makes its device sets, and a slot left to a default is logged once. */
+    /** GL6 part 4: a raster pass the device path covers draws through {@code CgRHI}; the rest through {@code CgGL}. */
+    static final boolean DEVICE_RASTER = CgVar.bool("crystalgraphics.rhi.deviceRaster", false, CgVar.DEV | CgVar.RESTART,
+            "A raster pass the device path covers draws through CgRHI, the rest through CgGL, each reason logged once.").get();
+    /** Passes whose names hold one of these stay on {@code CgGL}: for finding which pass a picture differs in. */
+    private static final String[] DEVICE_RASTER_SKIP = CgVar.text("crystalgraphics.rhi.deviceRasterSkip", "", CgVar.DEV
+            | CgVar.RESTART, "Comma-separated parts of pass names kept on CgGL under deviceRaster.").get().split(",");
+    private static final int DEVICE_PASSES = CgTrace.name("graph.device-passes"), GL_PASSES = CgTrace.name("graph.gl-passes");
+    private final CgDrawStateCache drawCache = new CgDrawStateCache();
+    private final Set<String> glPassReasons = new HashSet<>();
+    private final List<CgPassDesc.Color> deviceColors = new ArrayList<>(4);
+    private final List<CgFormat> deviceFormats = new ArrayList<>(4);
+    /** While a pass draws on the device: a bind notes what it binds ({@code CgBoundResources}) and issues nothing. */
+    private boolean stating;
+    private long devicePasses, glPasses, passesReport = 10;
+
     static final boolean DEVICE_SETS = CgVar.bool("crystalgraphics.rhi.deviceSets", false, CgVar.DEV | CgVar.RESTART,
             "Each batch also makes its view, pass and material sets on the device, logging a slot left to a default.").get();
     private final CgDeviceSets deviceSets = new CgDeviceSets();
@@ -293,7 +317,7 @@ public final class CgExecutor {
     private CgExecutor(int depth) {
         // A region of 1 MB: a ring outgrowing its region is new storage, which waits for a threaded driver to drain.
         ring = CgStreamBuffer.createFrameLocal(CgGL.GL_UNIFORM_BUFFER, 1 << 20);
-        CgBoundResources.recording = DEVICE_SETS;
+        CgBoundResources.recording = DEVICE_SETS || DEVICE_RASTER;
         CgShaderBufferRegistry registry = CgShaderBufferRegistry.get();
         instanceBuffers[CgInstanceKind.QUAD.ordinal()] = registry.getOrCreateInternal("CgGraphQuadInstances" + depth,
                 CgInstanceKind.QUAD.format(), CgBindingPoints.QUAD_RENDERER, CgBufferLifetime.FRAME);
@@ -1592,6 +1616,16 @@ public final class CgExecutor {
                 writeCommands(pass, packed);   // a dispatch never sits inside a render pass
             }
         }
+        if (DEVICE_RASTER) {
+            String refused = deviceRefuses(frame, pass, packed, damage);
+            if (refused == null) {
+                rasterDevice(frame, pass, packed, damage);
+                return;
+            }
+            glPasses++;
+            CgTrace.add(CgChannels.GL, GL_PASSES, 1);
+            if (glPassReasons.add(refused + " " + pass.name())) LOGGER.warn("device raster: {} on CgGL: {}", pass.name(), refused);
+        }
         if (damage == null && pass.replacesTarget()) renameTarget(pass, packed);
         try {
             try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, RASTER_BEGIN)) {
@@ -2025,17 +2059,235 @@ public final class CgExecutor {
     /** {@link #deviceSets}' next report, at each power of ten sets asked for. */
     private long deviceSetsReport = 10;
 
+    // ── Raster on the device (GL6 part 4) ──────────────────────────────────────
+
+    /** Why {@code pass} cannot draw on the device yet; null when it can. */
+    @Nullable
+    private String deviceRefuses(CgFrame frame, CgRasterPass pass, CgFrame.Raster packed, @Nullable int[] damage) {
+        if (!CgGLImports.installed() || !CgGlslCompiler.installed()) return "no device";
+        for (String skip : DEVICE_RASTER_SKIP) if (!skip.isEmpty() && pass.name().contains(skip)) return "skipped by name";
+        if (pass.target == null || pass.target.kind() == CgGraphTexture.Kind.CURRENT) return "the current target";
+        if (pass.target.drawsBesideCurrentDepth()) return "beside the current depth";
+        if (attachmentOf(pass) != null) return "a composed target";
+        if (pass.depthFrom() != null || pass.colorFrom() != null) return "a copy from another target";
+        if (pass.layer != 0) return "a layer of an array target";
+        if (readOnlyDepth(frame, currentStep, pass)) return "read-only depth";
+        if (damage != null && (pass.load.mask() & (CgGL.GL_DEPTH_BUFFER_BIT | CgGL.GL_STENCIL_BUFFER_BIT)) != 0) {
+            return "a depth clear under damage";
+        }
+        for (int b = 0; b < packed.count; b++) {
+            if (packed.copyBefore[b] != 0) return "a target copy mid-pass";
+            if (packed.counts[b] != null && !gpuCounts) return "draws counted on the CPU";
+        }
+        CgFrameBuffer storage = storage(pass.target);
+        if (storage == null) return "no storage";
+        for (int i = 0; i < storage.getFormat().colorSlotCount(); i++) {
+            CgTexture color = storage.getColorTexture(i);
+            if (color == null || color.rhiView() == null) return "a colour renderbuffer";
+        }
+        if (storage.getFormat().hasDepth()) {
+            CgTexture depth = storage.getDepthTexture();
+            if (depth == null || depth.rhiView() == null) return "a depth renderbuffer";
+        }
+        return null;
+    }
+
+    /**
+     * {@code pass} drawn through {@code CgRHI}: what binds through {@code CgGL} (the pass's snapshot, its instance
+     * buffers and tables, every texture's upload, every mesh's placement) first; then, in a device section, a render
+     * pass over its target's attachments, each batch's pipeline, sets and draw through the state cache.
+     */
+    private void rasterDevice(CgFrame frame, CgRasterPass pass, CgFrame.Raster packed, @Nullable int[] damage) {
+        devicePasses++;
+        CgTrace.add(CgChannels.GL, DEVICE_PASSES, 1);
+        if (glPassReasons.add("device " + pass.name())) LOGGER.warn("device raster: {} on the device", pass.name());
+        if (devicePasses + glPasses >= passesReport) {
+            passesReport *= 10;
+            LOGGER.warn("device raster: {} passes on the device, {} on CgGL", devicePasses, glPasses);
+        }
+        CgFrameBuffer storage = storage(pass.target);
+        int level = pass.level, w = storage.levelWidth(level), h = storage.levelHeight(level);
+        CgMeshStore store = CgMeshStore.get();
+        if (packed.count > 0) {
+            frame.bindings.bind(packed.constants);
+            CgBoundResources.forgetTextures(CgBindingModel.PASS);
+            CgBoundResources.forgetTextures(CgBindingModel.MATERIAL);
+            for (int k = 0; k < KINDS; k++) if ((packed.kinds & (1 << k)) != 0) instanceBuffers[k].bind();
+            packed.palette.pass(pass.viewOwner(), pass.viewX(), pass.viewY(), CgPassConstants.height(pass.constants));
+            if ((packed.kinds & UNIT_KINDS) != 0 || packed.tables) {
+                packed.clips.bindForDraw();
+                packed.shapes.bindForDraw();
+                packed.palette.bindForDraw();
+            }
+            deviceSets.prepare(frame.bindings);
+            for (int b = 0; b < packed.count; b++) store.ready(mesh(packed, b));
+        }
+        CgLoad load = pass.load;
+        boolean clearColor = (load.mask() & CgGL.GL_COLOR_BUFFER_BIT) != 0;
+        deviceColors.clear();
+        deviceFormats.clear();
+        for (int i = 0; i < storage.getFormat().colorSlotCount(); i++) {
+            CgTextureView whole = storage.getColorTexture(i).rhiView();
+            CgTextureView view = CgTextureView.attachment(whole.texture(), level, 0);
+            deviceColors.add(new CgPassDesc.Color(view, clearColor && damage == null ? CgPassDesc.LoadOp.CLEAR : CgPassDesc.LoadOp.LOAD,
+                    load.r(), load.g(), load.b(), load.a(), CgPassDesc.StoreOp.STORE));
+            deviceFormats.add(whole.texture().desc().format());
+        }
+        CgPassDesc.Depth depth = null;
+        CgFormat depthFormat = null;
+        if (storage.getFormat().hasDepth()) {
+            CgTextureView whole = storage.getDepthTexture().rhiView();
+            boolean clearDepth = (load.mask() & CgGL.GL_DEPTH_BUFFER_BIT) != 0;
+            boolean clearStencil = (load.mask() & CgGL.GL_STENCIL_BUFFER_BIT) != 0;
+            depth = new CgPassDesc.Depth(CgTextureView.attachment(whole.texture(), level, 0),
+                    clearDepth ? CgPassDesc.LoadOp.CLEAR : CgPassDesc.LoadOp.LOAD, (float) load.depth(),
+                    clearStencil ? CgPassDesc.LoadOp.CLEAR : CgPassDesc.LoadOp.LOAD, load.stencil(), CgPassDesc.StoreOp.STORE, false);
+            depthFormat = whole.texture().desc().format();
+        }
+        int samples = deviceColors.isEmpty() ? depth.view().texture().desc().samples()
+                : deviceColors.get(0).view().texture().desc().samples();
+        CgRenderState passState = pass.state != null ? pass.state : CgRenderState.DEFAULT;
+        CgDeviceSection.begin();
+        stating = true;
+        try {
+            CgRHI rhi = CgRHI.get();
+            CgRenderPass rp = rhi.encoder().beginPass(new CgPassDesc("graph", deviceColors, depth, w, h));
+            rp.setViewport(0, 0, w, h, 0, 1);
+            if (clearColor && damage != null) {
+                for (int i = 0; i < deviceColors.size(); i++) {
+                    rp.clearColor(i, load.r(), load.g(), load.b(), load.a(), damage[0], damage[1], damage[2], damage[3]);
+                }
+            }
+            drawCache.reset();
+            if (packed.count > 0) deviceBatches(frame, pass, packed, damage, rp, rhi, passState, depthFormat, samples, w, h);
+            rp.end();
+        } finally {
+            stating = false;
+            CgDeviceSection.end();
+            if (pass.targetCopy() != null) pass.targetCopy().release(POOL);
+        }
+    }
+
+    private void deviceBatches(CgFrame frame, CgRasterPass pass, CgFrame.Raster packed, @Nullable int[] damage,
+                               CgRenderPass rp, CgRHI rhi, CgRenderState passState, @Nullable CgFormat depthFormat,
+                               int samples, int w, int h) {
+        CgMeshStore store = CgMeshStore.get();
+        CgBindingTable table = frame.bindings;
+        int boundPipeline = -1, boundScissor = CgRasterPass.INHERIT, slot = 0;
+        CgPipeline pipeline = null;
+        CgShader linked = null;
+        CgPipelineLayout layout = null;
+        boolean objectsBound = false;
+        CgBindingPoints.Binding[] standIn = this.standIn;
+        Arrays.fill(standIn, null);
+        if (damage == null) rp.setScissor(0, 0, w, h);
+        else rp.setScissor(damage[0], damage[1], damage[2], damage[3]);
+        for (int b = 0; b < packed.count; b++) {
+            int command = packed.counts[b] != null ? slot : -1;
+            int end, commandCount = 0;
+            if (command >= 0) {
+                end = runs[b];
+                for (int k = b; k <= end; k++) commandCount += commandsOf(packed, k);
+                slot += commandCount;
+            } else {
+                end = packed.objects[b] == null && packed.buffers[b * CgDrawChunk.BUFFERS] == null && multiDraw
+                        && b + 1 < packed.count && joinable(packed, b, b + 1) ? joinRun(packed, b) : b;
+            }
+            if (packed.scissor[b] != boundScissor) {
+                boundScissor = packed.scissor[b];
+                if (boundScissor == CgRasterPass.NO_SCISSOR) {
+                    if (damage == null) rp.setScissor(0, 0, w, h);
+                    else rp.setScissor(damage[0], damage[1], damage[2], damage[3]);
+                } else if (boundScissor >= 0) {
+                    scissorRect(pass, packed.palette, boundScissor);
+                    if (damage != null) cutToDamage(damage);
+                    rp.setScissor(scissorRect[0], scissorRect[1], scissorRect[2], scissorRect[3]);
+                }
+            }
+            if (packed.pipeline[b] != boundPipeline) {
+                boundPipeline = packed.pipeline[b];
+                pipeline = CgPipeline.byId(boundPipeline);
+                linked = pipeline.program();
+                layout = linked == null ? null : CgDeviceStates.layout(rhi, linked.explicit(pipeline.toString()));
+            }
+            CgMesh mesh = mesh(packed, b);
+            CgGraphicsPipeline device = linked == null ? null
+                    : pipeline.device(passState, CgMeshStore.topology(mesh), deviceFormats, depthFormat, samples);
+            if (device == null) {
+                if (end > b && command < 0) store.dropJoined();
+                CgTrace.add(CgChannels.GL, "graph.batches.skipped", end - b + 1);
+                b = end;
+                continue;
+            }
+            drawCache.pipeline(rp, device);
+            CgStencilState stencil = pipeline.state().getStencil();
+            if (stencil != null && stencil.enabled()) drawCache.stencilReference(rp, stencil.ref());
+            int binding = packed.binding[b];
+            for (int i = 0; i < table.buffers(binding); i++) table.buffer(binding, i).noteBound();
+            int first = b * CgDrawChunk.BUFFERS;
+            if (packed.objects[b] != null) {
+                bindRecords(packed.objects[b], CgBindingPoints.OBJECT_DATA);
+                objectsBound = true;
+            } else if (objectsBound && packed.kind[b] == OBJECT) {
+                instanceBuffers[OBJECT].noteBound();
+                objectsBound = false;
+            }
+            for (int s = 0; s < CgDrawChunk.BUFFERS; s++) {
+                if (standIn[s] != null && !reads(packed, first, standIn[s])) bindEngineBuffer(standIn[s]);
+            }
+            for (int s = 0; s < CgDrawChunk.BUFFERS; s++) {
+                CgBindingPoints.Binding at = packed.bufferAt[first + s];
+                if (at != null) bindRecords(packed.buffers[first + s], at);
+                standIn[s] = at;
+            }
+            for (int set = 0; set < layout.sets().size(); set++) {
+                if (set == CgRHI.BINDLESS_SET) {
+                    drawCache.set(rp, set, rhi.bindlessSet());
+                    continue;
+                }
+                if (layout.sets().get(set).slots().isEmpty()) continue;
+                drawCache.set(rp, set, deviceSets.set(rhi, table, set == CgBindingModel.VIEW ? packed.constants : binding,
+                        layout, set, null));
+            }
+            CgGLImports imports = CgGLImports.get();
+            if (end > b || command >= 0 && packed.eachFrom[b] >= 0 && eachJoins(packed, b)) {
+                if (command >= 0) {
+                    int name = commands.buffer();
+                    store.drawIndirectJoinedOn(rp, drawCache, mesh, imports.buffer(name),
+                            imports.bufferOffset(name) + commands.offset(command), commandCount, commands.stride());
+                } else {
+                    store.drawJoinedOn(rp, drawCache);
+                }
+                b = end;
+                continue;
+            }
+            if (command >= 0) {
+                int name = commands.buffer();
+                int each = packed.eachFrom[b] >= 0 ? commandCount : 1;
+                for (int k = 0; k < each; k++) {
+                    store.drawIndirectOn(rp, drawCache, mesh, packed.submesh[b], imports.buffer(name),
+                            imports.bufferOffset(name) + commands.offset(command + k));
+                }
+                continue;
+            }
+            store.drawOn(rp, drawCache, mesh, packed.instances[b], packed.first[b], packed.submesh[b], packed.rangeFirst[b],
+                    packed.rangeCount[b]);
+        }
+        for (CgBindingPoints.Binding at : standIn) if (at != null) bindEngineBuffer(at);
+    }
+
     /** Binds a GPU buffer of records where an engine buffer's macros read the frame's own. */
-    private static void bindRecords(CgBufferHandle records, CgBindingPoints.Binding at) {
+    private void bindRecords(CgBufferHandle records, CgBindingPoints.Binding at) {
         int id = records instanceof CgGraphBuffer graph ? bufferStorage(graph, false) : records.bufferId();
-        CgGL.glBindBufferBase(CgGL.GL_SHADER_STORAGE_BUFFER, at.ssbo(), id);
+        if (!stating) CgGL.glBindBufferBase(CgGL.GL_SHADER_STORAGE_BUFFER, at.ssbo(), id);
         CgBoundResources.storage(at.ssbo(), id, 0, 0);
     }
 
     /** Binds the engine buffer made at {@code at} again, after draws that read their own there. */
-    private static void bindEngineBuffer(CgBindingPoints.Binding at) {
+    private void bindEngineBuffer(CgBindingPoints.Binding at) {
         CgShaderBuffer owner = CgShaderBufferRegistry.get().ownerOf(at);
-        if (owner != null) owner.bind();
+        if (owner != null && stating) owner.noteBound();
+        else if (owner != null) owner.bind();
     }
 
     /** Copies the depth of the target a pass reads besides its own, whole, and binds it. */

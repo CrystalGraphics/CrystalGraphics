@@ -12,7 +12,8 @@ import static com.crystalgraphics.platform.gl.driver.GLC.*;
 
 /**
  * A texture with immutable storage. A view of part of its mips or layers is a {@code glTextureView}, made on the first
- * ask and kept until the texture goes; the whole texture is its own view.
+ * ask and kept until the texture goes. The whole of one with several levels is a view too: its own name is shared with
+ * the GL front, which pins the levels it samples (base and max level are texture state, under any sampler).
  */
 public final class GLTexture implements CgGpuTexture {
 
@@ -65,10 +66,15 @@ public final class GLTexture implements CgGpuTexture {
 
     @Override public Desc desc() { return desc; }
 
-    /** The texture name {@code view} samples: this texture's own for a whole view, else a texture view of the range. */
+    /**
+     * The texture name {@code view} samples: a texture view of the range, or this texture's own for the whole of one
+     * that is adopted (mutable storage takes no view) or has a single level.
+     */
     public int sampled(CgGLDriver gl, CgTextureView view) {
         if (view.baseMip() == 0 && view.mips() == desc.mips() && view.baseLayer() == 0
-                && (desc.kind() == Kind.D3 || view.layers() == desc.depthOrLayers())) return name;
+                && (desc.kind() == Kind.D3 || view.layers() == desc.depthOrLayers()) && (!owned || desc.mips() == 1)) {
+            return name;
+        }
         int at = viewKeys.indexOf(view);
         if (at >= 0) return viewNames.get(at);
         int v = gl.glGenTextures();

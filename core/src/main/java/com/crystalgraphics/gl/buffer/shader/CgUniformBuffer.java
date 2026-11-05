@@ -154,9 +154,18 @@ public final class CgUniformBuffer extends CgShaderBuffer {
         if (dataBuffer.offsetMovesPerUpload() && bytes > 0) {
             CgGL.glBindBufferRange(CgGL.GL_UNIFORM_BUFFER, bindingLocation, dataBuffer.getGlBuffer(),
                     dataBuffer.getWriteOffset(), bytes);
-            CgBoundResources.block(bindingLocation, dataBuffer.getGlBuffer(), dataBuffer.getWriteOffset(), bytes);
         } else {
             CgGL.glBindBufferBase(CgGL.GL_UNIFORM_BUFFER, bindingLocation, dataBuffer.getGlBuffer());
+        }
+        noteInternal();
+    }
+
+    @Override
+    protected void noteInternal() {
+        int bytes = (dataBuffer.getCommittedBytes() + 15) & ~15;
+        if (dataBuffer.offsetMovesPerUpload() && bytes > 0) {
+            CgBoundResources.block(bindingLocation, dataBuffer.getGlBuffer(), dataBuffer.getWriteOffset(), bytes);
+        } else {
             CgBoundResources.block(bindingLocation, dataBuffer.getGlBuffer(), 0, 0);
         }
     }

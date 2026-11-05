@@ -69,6 +69,10 @@ public final class CgDeviceSamplers {
         boolean mipmapped = spec.getMipmaps() != null && spec.getMipmaps().isEnabled();
         int min = mipmapped ? spec.getMipmaps().getMinFilter() : spec.getMinFilter();
         int mag = mipmapped ? spec.getMipmaps().getMagFilter() : spec.getMagFilter();
+        // A chain of levels a pass made samples across them, as CgTexture2D's sampleChain sets it.
+        if (!mipmapped && texture.getLevels() > 1) {
+            min = min == GL_NEAREST ? GL_NEAREST_MIPMAP_NEAREST : GL_LINEAR_MIPMAP_LINEAR;
+        }
         MipFilter mip = switch (min) {
             case GL_NEAREST_MIPMAP_NEAREST, GL_LINEAR_MIPMAP_NEAREST -> MipFilter.NEAREST;
             case GL_NEAREST_MIPMAP_LINEAR, GL_LINEAR_MIPMAP_LINEAR -> MipFilter.LINEAR;

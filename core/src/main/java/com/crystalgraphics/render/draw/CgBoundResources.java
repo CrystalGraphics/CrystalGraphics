@@ -51,6 +51,15 @@ public final class CgBoundResources {
         if (i >= 0) SAMPLER[i] = sampler;
     }
 
+    /** Forgets the textures noted for {@code set}: a pass on the device takes them from its snapshots. */
+    public static void forgetTextures(int set) {
+        if (set >= SETS) return;
+        for (int b = 0; b < BINDINGS; b++) {
+            TEXTURE[set * BINDINGS + b] = null;
+            SAMPLER[set * BINDINGS + b] = null;
+        }
+    }
+
     /** The texture bound for {@code packed}; null for none. */
     @Nullable
     static CgTexture texture(int packed) {

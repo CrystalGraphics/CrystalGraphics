@@ -664,6 +664,14 @@ public final class CgMeshStore {
 
     // ── Drawing on a device ────────────────────────────────────────────────────
 
+    /**
+     * Places {@code mesh} for this frame now if it is not, uploading it: before a device pass draws it, as a placement
+     * inside one would upload through the GL front mid-pass.
+     */
+    public void ready(CgMesh mesh) {
+        placed(mesh);
+    }
+
     /** {@code mesh}'s topology as its device pipeline describes it. */
     public static CgGraphicsPipelineDesc.Topology topology(CgMesh mesh) {
         return switch (mesh.topology()) {
