@@ -39,13 +39,16 @@ public interface CgGlslCompiler {
      * with nothing bound for them, and the pipeline layout they declare: what a device builds a pipeline from.
      *
      * <pre>{@code
-     * CgGlslCompiler.Explicit p = CgGlslCompiler.get().compileExplicit(vertexGlsl, fragmentGlsl, "stone");
+     * CgGlslCompiler.Explicit p = CgGlslCompiler.get().compileExplicit(vertexGlsl, fragmentGlsl, Map.of("cg_Position", 0),
+ *         "stone");
      * CgShaderModule vs = rhi.createShaderModule(CgShaderModule.Stage.VERTEX, p.vertex(), "stone");
      * }</pre>
      *
+     * @param attribLocations each named vertex input's location, as {@link #compile} binds them; the rest placed around
      * @throws CgShaderModule.CompileException with the compiler's log, a source leaving a resource unbound included
      */
-    default Explicit compileExplicit(String vertexGlsl, String fragmentGlsl, String label) {
+    default Explicit compileExplicit(String vertexGlsl, String fragmentGlsl, Map<String, Integer> attribLocations,
+                                     String label) {
         throw new UnsupportedOperationException(getClass().getSimpleName() + " compiles no explicit programs");
     }
 

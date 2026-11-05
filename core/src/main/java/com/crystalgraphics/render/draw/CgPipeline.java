@@ -7,6 +7,12 @@ import com.crystalgraphics.gl.material.CgMaterialShader;
 import com.crystalgraphics.gl.material.parse.CgParsedPass;
 import com.crystalgraphics.gl.material.parse.CgParsedShader;
 import com.crystalgraphics.gl.material.parse.CgPermutationDomain;
+import com.crystalgraphics.platform.rhi.CgRHI;
+import com.crystalgraphics.platform.rhi.format.CgFormat;
+import com.crystalgraphics.platform.rhi.pipeline.CgGraphicsPipeline;
+import com.crystalgraphics.platform.rhi.pipeline.CgGraphicsPipelineDesc;
+import com.crystalgraphics.platform.rhi.pipeline.CgPipelineCache;
+import com.crystalgraphics.platform.rhi.shader.CgShaderModule;
 import com.crystalgraphics.render.CgWarmBudget;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
@@ -15,6 +21,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import javax.annotation.Nullable;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -66,6 +73,9 @@ public final class CgPipeline {
     private static final Object REGISTERING = new Object();
     private static volatile CgPipeline[] byId = new CgPipeline[64];
     private static int count;
+    /** {@link #device}'s pipelines, on the device {@link #deviceCacheOf}. */
+    private static CgPipelineCache deviceCache;
+    private static CgRHI deviceCacheOf;
 
     private final int id;
     private final CgMaterialShader shader;
@@ -90,6 +100,14 @@ public final class CgPipeline {
     private int programRevision = -1;
     /** The shader revision {@link #precache} last answered true at: a built pipeline spends no warming budget. */
     private int builtRevision = -1;
+    /** {@link #device}'s last answer and what it was asked: a draw asks again with the same pass. */
+    private CgGraphicsPipeline deviceLast;
+    private CgRenderState deviceLastPass;
+    private List<CgFormat> deviceLastColors;
+    private CgFormat deviceLastDepth;
+    private int deviceLastSamples;
+    private CgShader deviceLastProgram;
+    private CgRHI deviceLastOf;
     /** Whether a miss of a shader with a permutation domain was logged: once a pipeline. */
     private boolean domainWarned;
 
@@ -469,6 +487,64 @@ public final class CgPipeline {
         state.apply();
         bound.bind();
         return true;
+    }
+
+    /**
+     * This pipeline as {@code CgRHI.get()}'s graphics pipeline into targets of these formats: its program as written, its
+     * shader's vertex format at binding 0, its render state over {@code passState}, the outputs it does not write
+     * ({@link #slotWrites()}) masked off. Built once per description; null when the program does not compile. Render
+     * thread.
+     *
+     * <pre>{@code
+     * CgGraphicsPipeline p = pipeline.device(passState, List.of(CgFormat.RGBA16_FLOAT), CgFormat.DEPTH32_FLOAT, 1);
+     * if (p != null) pass.setPipeline(p);
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Triangles: a pipeline drawing another topology is not asked for yet.</li>
+     *   <li>The stencil reference is the pass's to set, not the pipeline's.</li>
+     * </ul>
+     *
+     * @param depth null for a pass with no depth target
+     * @throws com.crystalgraphics.platform.rhi.shader.CgShaderModule.CompileException where its sources leave a resource
+     *         unbound
+     */
+    @Nullable
+    public CgGraphicsPipeline device(CgRenderState passState, List<CgFormat> colors, @Nullable CgFormat depth, int samples) {
+        CgShader linked = program();
+        if (linked == null) return null;
+        CgRHI rhi = CgRHI.get();
+        if (deviceLast != null && deviceLastOf == rhi && deviceLastProgram == linked && deviceLastPass == passState
+                && deviceLastDepth == depth && deviceLastSamples == samples && deviceLastColors.equals(colors)) {
+            return deviceLast;
+        }
+        String label = toString();
+        CgRenderState s = CgDeviceStates.over(passState, state);
+        CgGraphicsPipelineDesc.Blend blend = CgDeviceStates.blend(s.getBlend());
+        int writes = slotWrites();
+        List<CgGraphicsPipelineDesc.ColorTarget> targets = new ArrayList<>(colors.size());
+        for (int i = 0; i < colors.size(); i++) {
+            int mask = (writes & 1 << i) == 0 ? 0 : CgDeviceStates.writeMask(s.getColorMasks(), i);
+            targets.add(new CgGraphicsPipelineDesc.ColorTarget(colors.get(i), blend, mask));
+        }
+        CgGraphicsPipelineDesc desc = new CgGraphicsPipelineDesc(label, CgDeviceStates.layout(rhi, linked.explicit(label)),
+                linked.deviceModule(rhi, CgShaderModule.Stage.VERTEX, label),
+                linked.deviceModule(rhi, CgShaderModule.Stage.FRAGMENT, label),
+                CgDeviceStates.vertexBuffers(linked.format()), CgGraphicsPipelineDesc.Topology.TRIANGLES,
+                CgDeviceStates.raster(s.getCull()), CgDeviceStates.depthStencil(s.getDepth(), s.getStencil()), targets,
+                depth, samples);
+        if (deviceCacheOf != rhi) {
+            deviceCache = new CgPipelineCache(rhi);
+            deviceCacheOf = rhi;
+        }
+        deviceLast = deviceCache.get(desc, 0, true);
+        deviceLastOf = rhi;
+        deviceLastProgram = linked;
+        deviceLastPass = passState;
+        deviceLastColors = List.copyOf(colors);
+        deviceLastDepth = depth;
+        deviceLastSamples = samples;
+        return deviceLast;
     }
 
     @Override

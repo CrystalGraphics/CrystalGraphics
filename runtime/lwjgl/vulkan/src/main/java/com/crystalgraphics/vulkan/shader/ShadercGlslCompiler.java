@@ -104,11 +104,13 @@ public final class ShadercGlslCompiler implements CgGlslCompiler, AutoCloseable 
     }
 
     @Override
-    public synchronized Explicit compileExplicit(String vertexGlsl, String fragmentGlsl, String label) {
+    public synchronized Explicit compileExplicit(String vertexGlsl, String fragmentGlsl, Map<String, Integer> attribLocations,
+                                                 String label) {
         SpirvModule vertex = new SpirvModule(compile(withDefines(vertexGlsl, label), shaderc_glsl_vertex_shader, label,
                 explicitOptions), label);
         SpirvModule fragment = new SpirvModule(compile(withDefines(fragmentGlsl, label), shaderc_glsl_fragment_shader, label,
                 explicitOptions), label);
+        vertexInputs(vertex, vertex, attribLocations);
         Map<Integer, Map<Integer, CgBindingLayout.Type>> sets = new TreeMap<>();
         boolean heap = false;
         for (SpirvModule m : new SpirvModule[] {vertex, fragment}) {

@@ -31,8 +31,24 @@ public final class ShippedPrograms {
 
     private ShippedPrograms() {}
 
+    /** One program of a shipped material: its pass by name and the keywords it is compiled with. */
+    public interface Variant {
+        void accept(String path, CgMaterialShader shader, String pass, Set<String> keywords);
+    }
+
     /** Links every program; adds what failed to {@code failures} and answers how many it tried. */
     public static int linkEveryVariant(List<String> failures) throws Exception {
+        return forEachVariant(failures, true, (path, shader, pass, keywords) -> {
+            if (shader.getOrCompile(pass, keywords) == null)
+                failures.add(path + " pass " + pass + " " + keywords + ": did not link (see log)");
+        });
+    }
+
+    /**
+     * Visits every program, as {@link #linkEveryVariant} links them; with {@code everySubset} false, a Forward pass's
+     * keywords one at a time rather than every subset of them. Answers how many it visited.
+     */
+    public static int forEachVariant(List<String> failures, boolean everySubset, Variant each) throws Exception {
         List<String> materials = materials();
         int programs = 0;
         for (String path : materials) {
@@ -45,18 +61,17 @@ public final class ShippedPrograms {
             CgParsedShader parsed = shader.getLastParsed();
             CgParsedPass forward = parsed.getPassByLightMode(CgRenderPassVariant.FORWARD.lightModeName());
             for (CgParsedPass pass : parsed.passes()) {
-                List<Set<String>> variants = pass == forward ? variants(parsed.featureNames()) : List.of(Set.of());
+                List<Set<String>> variants = pass != forward ? List.of(Set.of())
+                        : everySubset ? variants(parsed.featureNames()) : singles(parsed.featureNames());
                 for (Set<String> keywords : variants) {
                     programs++;
-                    if (shader.getOrCompile(pass.name(), keywords) == null)
-                        failures.add(path + " pass " + pass.name() + " " + keywords + ": did not link (see log)");
+                    each.accept(path, shader, pass.name(), keywords);
                 }
             }
             String depth = CgRenderPassVariant.DEPTH.lightModeName();
             if (parsed.getPassByName(depth) == null && shader.hasCompiledPass(depth)) {   // the generated depth pass
                 programs++;
-                if (shader.getOrCompile(depth, Set.of()) == null)
-                    failures.add(path + " pass " + depth + ": did not link (see log)");
+                each.accept(path, shader, depth, Set.of());
             }
             if (forward != null && !forward.fragOutput().isMrt()) {   // the world renderer's volume pass, folded or not
                 List<Set<String>> volumes = new ArrayList<>(List.of(Set.of(CgMaterialShaderCompiler.VOLUME_TARGET)));
@@ -65,8 +80,7 @@ public final class ShippedPrograms {
                 }
                 for (Set<String> keywords : volumes) {
                     programs++;
-                    if (shader.getOrCompile(forward.name(), keywords) == null)
-                        failures.add(path + " pass " + forward.name() + " " + keywords + ": did not link (see log)");
+                    each.accept(path, shader, forward.name(), keywords);
                 }
             }
             CgMaterial material = CgMaterial.newInstance(path);
@@ -108,6 +122,16 @@ public final class ShippedPrograms {
                     out.add(new LinkedHashSet<>(List.of(CgMaterialShaderCompiler.STRIP, kind, other)));
                 }
             }
+        }
+        return out;
+    }
+
+    /** None, then each keyword alone; a strip kind with the strip. */
+    private static List<Set<String>> singles(List<String> names) {
+        List<Set<String>> out = new ArrayList<>(List.of(Set.of()));
+        for (String name : names) {
+            boolean kind = name.equals(CgMaterialShaderCompiler.STRIP_BEAM) || name.equals(CgMaterialShaderCompiler.STRIP_ANIM);
+            out.add(kind ? Set.of(CgMaterialShaderCompiler.STRIP, name) : Set.of(name));
         }
         return out;
     }

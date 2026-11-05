@@ -60,7 +60,11 @@ public final class SpvcGlslTranslator implements GLShaderTranslator {
                 spvc_compiler_options_set_bool(options, SPVC_COMPILER_OPTION_GLSL_VULKAN_SEMANTICS, false);
                 spvc_compiler_options_set_bool(options, SPVC_COMPILER_OPTION_GLSL_EMIT_PUSH_CONSTANT_AS_UNIFORM_BUFFER, true);
                 check(spvc_compiler_install_compiler_options(compiler, options), "install options", label);
-                check(spvc_compiler_create_shader_resources(compiler, p), "resources", label);
+                // the active resources alone, as the layout reflects them: a declared, unread one has no point
+                check(spvc_compiler_get_active_interface_variables(compiler, p), "active variables", label);
+                long active = p.get(0);
+                check(spvc_compiler_set_enabled_interface_variables(compiler, active), "enable active", label);
+                check(spvc_compiler_create_shader_resources_for_active_variables(compiler, p, active), "resources", label);
                 long resources = p.get(0);
 
                 List<String> heaps = new ArrayList<>(1);

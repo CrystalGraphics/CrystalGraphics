@@ -5,10 +5,14 @@ import com.crystalgraphics.api.vertex.CgVertexFormat;
 import com.crystalgraphics.platform.gl.state.CgGlScope;
 import com.crystalgraphics.platform.gl.state.CgGlSlot;
 import com.crystalgraphics.platform.gl.state.CgGlState;
+import com.crystalgraphics.platform.rhi.CgRHI;
+import com.crystalgraphics.platform.rhi.shader.CgGlslCompiler;
+import com.crystalgraphics.platform.rhi.shader.CgShaderModule;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import java.util.HashMap;
+import java.util.Map;
 
 /**
  * A linked program from sources the engine generated: what a material's pass and keyword set, or a kernel, compiles
@@ -38,6 +42,12 @@ public final class CgShader {
     private String lastCompileError;
     /** Locations by name for the current program; cleared with it. */
     private final HashMap<String, Integer> locations = new HashMap<>();
+    /** The sources the program linked, preprocessed: what {@link #explicit} compiles. */
+    private String linkedVertex, linkedFragment;
+    private CgGlslCompiler.Explicit explicit;
+    /** {@link #explicit}'s stages on {@link #modulesOf}. */
+    private CgShaderModule deviceVertex, deviceFragment;
+    private CgRHI modulesOf;
 
     CgShader(String vertexSource, String fragmentSource, CgVertexFormat format) {
         this.vertexSource = vertexSource;
@@ -50,7 +60,9 @@ public final class CgShader {
         pending = false;
         CgShaderPreprocessor pp = new CgShaderPreprocessor();
         try {
-            program = CgProgram.compile(pp.process(vertexSource, ""), pp.process(fragmentSource, ""), format);
+            linkedVertex = pp.process(vertexSource, "");
+            linkedFragment = pp.process(fragmentSource, "");
+            program = CgProgram.compile(linkedVertex, linkedFragment, format);
         } catch (Exception e) {
             LOGGER.error("Failed to compile inline shader: {}", e.getMessage());
             lastCompileError = e.getMessage();
@@ -73,6 +85,8 @@ public final class CgShader {
             return;
         }
         program = next;
+        linkedVertex = vertexSource;
+        linkedFragment = fragmentSource;
         pending = true;
         compiled = false;
     }
@@ -139,6 +153,47 @@ public final class CgShader {
         return saved;
     }
 
+    /** The vertex format its attributes are bound from, attribute {@code i} at location {@code i}; null for none. */
+    public CgVertexFormat format() {
+        return format;
+    }
+
+    /**
+     * The program as written, for a device pipeline: the sources it linked through {@link CgGlslCompiler#compileExplicit},
+     * each vertex attribute at the location the GL program binds it. Compiled on first ask.
+     *
+     * @throws CgShaderModule.CompileException where the sources leave a resource unbound, or no compiler is installed
+     */
+    public CgGlslCompiler.Explicit explicit(String label) {
+        if (explicit == null) {
+            if (linkedVertex == null) throw new IllegalStateException(label + ": never linked");
+            Map<String, Integer> attribs = new HashMap<>();
+            if (format != null) for (int i = 0; i < format.getAttributeCount(); i++) attribs.put(format.getAttribute(i).getName(), i);
+            explicit = CgGlslCompiler.get().compileExplicit(linkedVertex, linkedFragment, attribs, label);
+        }
+        return explicit;
+    }
+
+    /** {@link #explicit}'s {@code stage} as {@code rhi}'s shader module, both stages made once a device. */
+    public CgShaderModule deviceModule(CgRHI rhi, CgShaderModule.Stage stage, String label) {
+        if (modulesOf != rhi) {
+            releaseModules();
+            CgGlslCompiler.Explicit p = explicit(label);
+            deviceVertex = rhi.createShaderModule(CgShaderModule.Stage.VERTEX, p.vertex(), label);
+            deviceFragment = rhi.createShaderModule(CgShaderModule.Stage.FRAGMENT, p.fragment(), label);
+            modulesOf = rhi;
+        }
+        return stage == CgShaderModule.Stage.VERTEX ? deviceVertex : deviceFragment;
+    }
+
+    private void releaseModules() {
+        if (modulesOf == null) return;
+        modulesOf.release(deviceVertex);
+        modulesOf.release(deviceFragment);
+        deviceVertex = deviceFragment = null;
+        modulesOf = null;
+    }
+
     public boolean isDeleted() {
         return deleted;
     }
@@ -149,6 +204,7 @@ public final class CgShader {
         compiled = false;
         pending = false;
         locations.clear();
+        releaseModules();
         deleted = true;
     }
 

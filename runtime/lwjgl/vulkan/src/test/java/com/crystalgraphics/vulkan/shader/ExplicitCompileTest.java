@@ -6,6 +6,7 @@ import com.crystalgraphics.platform.rhi.shader.CgShaderModule;
 import org.junit.Test;
 
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -31,7 +32,7 @@ public class ExplicitCompileTest {
     @Test
     public void setsHeapPushAndOutputsAsWritten() {
         try (ShadercGlslCompiler compiler = new ShadercGlslCompiler(null, true)) {
-            CgGlslCompiler.Explicit p = compiler.compileExplicit(VERTEX, FRAGMENT, "explicit");
+            CgGlslCompiler.Explicit p = compiler.compileExplicit(VERTEX, FRAGMENT, Map.of(), "explicit");
             assertEquals("sets 0 to 3, the heap's last", 4, p.sets().size());
             assertEquals(List.of(new CgBindingLayout.Slot(0, CgBindingLayout.Type.UNIFORM_BUFFER)), p.sets().get(0));
             assertEquals("set 1 skipped", List.of(), p.sets().get(1));
@@ -47,7 +48,7 @@ public class ExplicitCompileTest {
     public void aResourceLeftUnboundIsRefused() {
         try (ShadercGlslCompiler compiler = new ShadercGlslCompiler(null, true)) {
             compiler.compileExplicit("#version 450\nuniform U { vec4 c; } u;\nvoid main() { gl_Position = u.c; }\n",
-                    "#version 450\nlayout(location = 0) out vec4 o;\nvoid main() { o = vec4(1.0); }\n", "unbound");
+                    "#version 450\nlayout(location = 0) out vec4 o;\nvoid main() { o = vec4(1.0); }\n", Map.of(), "unbound");
             fail("an unbound block compiled");
         } catch (CgShaderModule.CompileException expected) {
             assertFalse(expected.getMessage().isEmpty());
