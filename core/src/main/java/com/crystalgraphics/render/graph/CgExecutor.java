@@ -1320,7 +1320,10 @@ public final class CgExecutor {
      * Unreal's translucency binds {@code DepthRead} so; a pass writing the depth it reads keeps its copy.
      */
     private boolean readOnlyDepth(CgFrame frame, int s, CgRasterPass pass) {
-        if (!takes || pass.sceneDepthUnit() < 0 || frame.rasters[s].writesDepth || pass.depthFrom() != null) return false;
+        if (!takes || pass.sceneDepthUnit() < 0 || frame.rasters[s].writesDepth || pass.depthFrom() != null
+                || (pass.load.mask() & (CgGL.GL_DEPTH_BUFFER_BIT | CgGL.GL_STENCIL_BUFFER_BIT)) != 0) {
+            return false;
+        }
         CgGraphTexture target = pass.target;
         if (hostDepth(pass)) return CgGL.cgDepthTexture(startFramebuffer) != 0;   // the host's, imported
         if (attachmentOf(pass) != null || target.getLevels() != 1 || target.getLayers() != 1) return false;
@@ -2075,6 +2078,8 @@ public final class CgExecutor {
     private int hostColorName, hostDepthName;
     @Nullable
     private CgGpuTexture.Desc hostColorDesc, hostDepthDesc;
+    /** The host's depth as a texture a pass samples in place ({@link #readOnlyDepth}). */
+    private final CgImportedTexture hostDepthTexture = new CgImportedTexture();
 
     /**
      * Reads the host framebuffer's attachments and imports its textures (RDG's {@code RegisterExternalTexture}). The
@@ -2125,7 +2130,6 @@ public final class CgExecutor {
             if (hostDepth == null) return "beside a host depth renderbuffer, or none";
         }
         if (pass.layer != 0) return "a layer of an array target";
-        if (readOnlyDepth(frame, currentStep, pass)) return "read-only depth";
         if (damage != null && (pass.load.mask() & (CgGL.GL_DEPTH_BUFFER_BIT | CgGL.GL_STENCIL_BUFFER_BIT)) != 0) {
             return "a depth clear under damage";
         }
@@ -2190,7 +2194,7 @@ public final class CgExecutor {
             CgBoundResources.forgetTextures(CgBindingModel.MATERIAL);
             // Through CgGL and before the device section, as the GL path copies before its first batch: the copies'
             // binds are what the pass set reads
-            depthInPlace = false;
+            depthInPlace = readOnlyDepth(frame, currentStep, pass);
             if (pass.depthFrom() != null) copyDepthFrom(pass);
             if (pass.colorFrom() != null) copyColorFrom(pass);
             if ((packed.copyBefore[0] & (CgTargetCopy.COLOR | CgTargetCopy.DEPTH)) != 0) {
@@ -2230,7 +2234,8 @@ public final class CgExecutor {
             boolean clearStencil = (load.mask() & CgGL.GL_STENCIL_BUFFER_BIT) != 0;
             depth = new CgPassDesc.Depth(CgTextureView.attachment(depthTexture, level, 0),
                     clearDepth ? CgPassDesc.LoadOp.CLEAR : CgPassDesc.LoadOp.LOAD, (float) load.depth(),
-                    clearStencil ? CgPassDesc.LoadOp.CLEAR : CgPassDesc.LoadOp.LOAD, load.stencil(), CgPassDesc.StoreOp.STORE, false);
+                    clearStencil ? CgPassDesc.LoadOp.CLEAR : CgPassDesc.LoadOp.LOAD, load.stencil(), CgPassDesc.StoreOp.STORE,
+                    depthInPlace);
             depthFormat = depthTexture.desc().format();
         }
         int samples = deviceColors.isEmpty() ? depth.view().texture().desc().samples()
@@ -2263,6 +2268,7 @@ public final class CgExecutor {
                 rp.end();
             }
             stating = false;
+            depthInPlace = false;
             CgDeviceSection.end();
             if (pass.targetCopy() != null) pass.targetCopy().release(POOL);
         }
@@ -2644,8 +2650,12 @@ public final class CgExecutor {
         CgTargetCopy copy = pass.targetCopy();
         if (depthInPlace && (bits & CgTargetCopy.DEPTH) != 0) {
             // Read-only in this pass: sampled where it is, no copy.
-            if (hostDepth(pass)) CgGL.cgBindTexture(pass.sceneDepthUnit(), CgGL.GL_TEXTURE_2D, CgGL.cgDepthTexture(startFramebuffer));
-            else storage(target).getDepthTexture().bind(pass.sceneDepthUnit());
+            if (hostDepth(pass)) {
+                hostDepthTexture.point(CgGL.cgDepthTexture(startFramebuffer), CgGL.GL_TEXTURE_2D, startViewport.get(2), startViewport.get(3), hostDepth);
+                hostDepthTexture.bind(pass.sceneDepthUnit());
+            } else {
+                storage(target).getDepthTexture().bind(pass.sceneDepthUnit());
+            }
             bits &= ~(CgTargetCopy.DEPTH | CgTargetCopy.CLEAN);
             if (bits == 0) return;
         }
