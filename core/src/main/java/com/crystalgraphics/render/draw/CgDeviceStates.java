@@ -125,17 +125,18 @@ public final class CgDeviceStates {
     }
 
     /**
-     * {@code program}'s attributes, at its locations, read from vertices laid out as {@code mesh}'s (Unreal's vertex
-     * declaration, the vertex factory's and not the shader's): a program may draw a mesh of another format, as a
-     * static material drawn over a skinned mesh. An attribute the mesh has not is read as the program lays it out.
+     * {@code program}'s locations fed from vertices laid out as {@code mesh}'s (Unreal's vertex declaration, the vertex
+     * factory's and not the shader's): a program may draw a mesh of another format, as a static material drawn over a
+     * skinned mesh. Location i reads the mesh's attribute i, as {@code CgMeshPool}'s arrays do; a location past the
+     * mesh's attributes is left unfed and reads GL's constant (0, 0, 0, 1).
      */
     public static List<CgGraphicsPipelineDesc.VertexBuffer> vertexBuffers(CgVertexFormat program, CgVertexFormat mesh) {
         if (program == null || program.getAttributeCount() == 0) return List.of();
         CgVertexFormat from = mesh != null ? mesh : program;
-        List<CgGraphicsPipelineDesc.VertexAttrib> attribs = new ArrayList<>(program.getAttributeCount());
-        for (int i = 0; i < program.getAttributeCount(); i++) {
-            int at = from.indexOf(program.getAttribute(i).getName());
-            CgVertexAttribute a = at >= 0 ? from.getAttribute(at) : program.getAttribute(i);
+        int n = Math.min(program.getAttributeCount(), from.getAttributeCount());
+        List<CgGraphicsPipelineDesc.VertexAttrib> attribs = new ArrayList<>(n);
+        for (int i = 0; i < n; i++) {
+            CgVertexAttribute a = from.getAttribute(i);
             attribs.add(new CgGraphicsPipelineDesc.VertexAttrib(i, attribFormat(a), a.getOffset()));
         }
         return List.of(new CgGraphicsPipelineDesc.VertexBuffer(0, from.getStride(), false, attribs));

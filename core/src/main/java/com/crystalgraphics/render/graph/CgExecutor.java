@@ -2123,7 +2123,6 @@ public final class CgExecutor {
             readHost();
             if (hostDepth == null) return "beside a host depth renderbuffer, or none";
         }
-        if (pass.depthFrom() != null || pass.colorFrom() != null) return "a copy from another target";
         if (pass.layer != 0) return "a layer of an array target";
         if (readOnlyDepth(frame, currentStep, pass)) return "read-only depth";
         if (damage != null && (pass.load.mask() & (CgGL.GL_DEPTH_BUFFER_BIT | CgGL.GL_STENCIL_BUFFER_BIT)) != 0) {
@@ -2134,12 +2133,6 @@ public final class CgExecutor {
             if (packed.counts[b] != null && !gpuCounts) return "draws counted on the CPU";
         }
         CgGraphTexture attachment = attachmentOf(pass);
-        if (attachment != null && pass.target != null && pass.target.kind() != CgGraphTexture.Kind.CURRENT
-                && !pass.target.drawsBesideCurrentDepth()) {
-            return "a composed target";
-        }
-        if (attachment != null && current) return "a composed current target";
-        if (attachment != null) return "beside the current depth with a second attachment";
         CgFrameBuffer extra = attachment == null ? null : storage(attachment);
         if (attachment != null && (extra == null || extra.getColorTexture(0) == null
                 || extra.getColorTexture(0).rhiView() == null)) {
@@ -2195,6 +2188,10 @@ public final class CgExecutor {
             frame.bindings.bind(packed.constants);
             CgBoundResources.forgetTextures(CgBindingModel.PASS);
             CgBoundResources.forgetTextures(CgBindingModel.MATERIAL);
+            // Through CgGL and before the device section, as the GL path copies before its first batch: the copies'
+            // binds are what the pass set reads
+            if (pass.depthFrom() != null) copyDepthFrom(pass);
+            if (pass.colorFrom() != null) copyColorFrom(pass);
             for (int k = 0; k < KINDS; k++) if ((packed.kinds & (1 << k)) != 0) instanceBuffers[k].bind();
             packed.palette.pass(pass.viewOwner(), pass.viewX(), pass.viewY(), CgPassConstants.height(pass.constants));
             if ((packed.kinds & UNIT_KINDS) != 0 || packed.tables) {
