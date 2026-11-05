@@ -3,6 +3,7 @@ package com.crystalgraphics.render.graph;
 import java.util.function.Consumer;
 
 import com.crystalgraphics.gl.framebuffer.CgFrameBuffer;
+import com.crystalgraphics.platform.gl.CgGLImports;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -33,7 +34,8 @@ final class CgTexturePool {
     static CgFrameBuffer create(String name, CgTextureDesc desc) {
         if (desc.isArray()) return CgFrameBuffer.createArray(name, desc.width(), desc.height(), desc.layers(), desc.format());
         return desc.isVolume() ? CgFrameBuffer.createVolume(name, desc.width(), desc.height(), desc.depth(), desc.format())
-                : CgFrameBuffer.createOwned(name, desc.width(), desc.height(), desc.format(), desc.levels());
+                : CgGLImports.installed() ? CgFrameBuffer.createOnDevice(name, desc.width(), desc.height(), desc.format(),
+                desc.levels()) : CgFrameBuffer.createOwned(name, desc.width(), desc.height(), desc.format(), desc.levels());
     }
 
     void release(CgTextureDesc desc, CgFrameBuffer framebuffer) {

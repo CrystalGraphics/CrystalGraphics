@@ -5,8 +5,11 @@ import com.crystalgraphics.api.texture.CgTextureSpec;
 import com.crystalgraphics.gpu.CgDeferral;
 import com.crystalgraphics.mc.CgReloadable;
 import com.crystalgraphics.platform.gl.CgGL;
+import com.crystalgraphics.platform.rhi.CgRHI;
+import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
 import com.crystalgraphics.platform.gl.state.CgGlSlot;
 import com.crystalgraphics.trace.CgTrace;
+import javax.annotation.Nullable;
 import com.crystalgraphics.util.trace.CgChannels;
 import com.crystalgraphics.variable.CgVar;
 import org.apache.logging.log4j.LogManager;
@@ -61,6 +64,8 @@ public abstract class CgTextureAbstract implements CgTexture, CgReloadable {
     protected final CgTextureSpec spec;
     /** False for a texture adopted from its owner: {@link #delete()} forgets it without deleting it. */
     private final boolean owned;
+    /** Made on the installed device ({@code CgTexture2D.onDevice}): released through it. */
+    @Nullable protected CgGpuTexture image;
     private boolean deleted;
     /** Set while a texture from files waits for its first use. */
     private volatile boolean unloaded;
@@ -215,7 +220,12 @@ public abstract class CgTextureAbstract implements CgTexture, CgReloadable {
         unloaded = false;
         gpu.clear();
         gpu.run(() -> {
-            if (owned && textureId != 0) CgGL.glDeleteTextures(textureId);
+            if (image != null) {
+                CgRHI.get().release(image);
+                image = null;
+            } else if (owned && textureId != 0) {
+                CgGL.glDeleteTextures(textureId);
+            }
             textureId = 0;
         });
     }

@@ -73,6 +73,12 @@ public final class GLFormats {
 
     public static int internal(CgFormat f) { return INTERNAL[f.ordinal()]; }
 
+    /** The format a GL internal format names, the first in {@link CgFormat}'s order where two share one. */
+    public static CgFormat of(int internal) {
+        for (CgFormat f : CgFormat.values()) if (INTERNAL[f.ordinal()] == internal) return f;
+        throw new IllegalArgumentException("no CgFormat for GL internal format 0x" + Integer.toHexString(internal));
+    }
+
     public static int format(CgFormat f) { return FORMAT[f.ordinal()]; }
 
     public static int type(CgFormat f) { return TYPE[f.ordinal()]; }

@@ -144,6 +144,8 @@ public class CgFrameBuffer {
     /** Mip levels of each colour texture, at most its full chain at the current size. */
     @Getter
     private int colorLevels = 1;
+    /** Its textures made on the installed device ({@link #createOnDevice}). */
+    private boolean onDevice;
 
     /** Framebuffers drawing into level {@code l} of every colour texture, at {@code l - 1}; made at first use. */
     private int[] levelFbos = new int[0];
@@ -247,6 +249,11 @@ public class CgFrameBuffer {
 
     private static CgFrameBuffer createInternal(String name, int width, int height, CgFrameBufferFormat format,
                                                 int colorLevels) {
+        return createInternal(name, width, height, format, colorLevels, false);
+    }
+
+    private static CgFrameBuffer createInternal(String name, int width, int height, CgFrameBufferFormat format,
+                                                int colorLevels, boolean onDevice) {
         if (width <= 0 || height <= 0) 
             throw new IllegalArgumentException("Framebuffer dimensions must be positive: " + width + "x" + height);
         if (format == null) 
@@ -266,6 +273,7 @@ public class CgFrameBuffer {
         }
         CgFrameBuffer fbo = new CgFrameBuffer(name, format, width, height);
         fbo.colorLevels = colorLevels;
+        fbo.onDevice = onDevice;
         fbo.initGl(width, height, format);
         return fbo;
     }
@@ -304,6 +312,23 @@ public class CgFrameBuffer {
     public static CgFrameBuffer createOwned(String name, int width, int height, CgFrameBufferFormat format,
                                             int colorLevels) {
         return createInternal(name, width, height, format, colorLevels);
+    }
+
+    /**
+     * {@link #createOwned(String, int, int, CgFrameBufferFormat, int)} with its colour and depth textures made on the
+     * installed device ({@link CgTexture2D#onDevice}): the frame graph's attachments, which the executor names as RHI
+     * textures. Renderbuffer slots stay {@code CgGL}'s.
+     *
+     * <pre>{@code
+     * CgFrameBuffer target = CgGLImports.installed() ? CgFrameBuffer.createOnDevice(name, w, h, format, levels)
+     *         : CgFrameBuffer.createOwned(name, w, h, format, levels);
+     * }</pre>
+     *
+     * <p>A {@link #resize} makes new textures on the device; the old ones go once the frames reading them retire.</p>
+     */
+    public static CgFrameBuffer createOnDevice(String name, int width, int height, CgFrameBufferFormat format,
+                                               int colorLevels) {
+        return createInternal(name, width, height, format, colorLevels, true);
     }
 
     /**
@@ -490,8 +515,9 @@ public class CgFrameBuffer {
                             + "but declared as a sampleable texture. Use colorRenderbuffer(...) and "
                             + "resolve with blitFrom(...), which is what a sampler2D can read.");
                 } else {
-                    CgTexture2D tex = CgTexture2D.createEmpty(w, h, type.toTextureSpec(),
-                            Math.min(colorLevels, CgTexture.fullChain(w, h)));
+                    int levels = Math.min(colorLevels, CgTexture.fullChain(w, h));
+                    CgTexture2D tex = onDevice ? CgTexture2D.onDevice(name + " colour " + slot, w, h, type.toTextureSpec(),
+                            levels) : CgTexture2D.createEmpty(w, h, type.toTextureSpec(), levels);
                     doFramebufferTexture2D(CgGL.GL_FRAMEBUFFER, glAttach, CgGL.GL_TEXTURE_2D, tex.getId(), 0);
                     a.setTexture(tex);
                 }
@@ -522,7 +548,8 @@ public class CgFrameBuffer {
                             "CgFrameBufferFormat '" + fmt + "': depth is multisampled but declared as a "
                             + "sampleable texture. Use depthRenderbuffer(...).");
                 } else {
-                    CgTexture2D tex = CgTexture2D.createEmpty(w, h, depthType.toTextureSpec());
+                    CgTexture2D tex = onDevice ? CgTexture2D.onDevice(name + " depth", w, h, depthType.toTextureSpec(), 1)
+                            : CgTexture2D.createEmpty(w, h, depthType.toTextureSpec());
                     doFramebufferTexture2D(CgGL.GL_FRAMEBUFFER, glAttach, CgGL.GL_TEXTURE_2D, tex.getId(), 0);
                     a.setTexture(tex);
                 }

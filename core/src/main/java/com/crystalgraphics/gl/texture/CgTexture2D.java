@@ -8,6 +8,11 @@ import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.gpu.CgUploadLease;
 import com.crystalgraphics.gpu.CgUploads;
 import com.crystalgraphics.platform.gl.CgCapabilities;
+import com.crystalgraphics.platform.gl.CgGLImports;
+import com.crystalgraphics.platform.gl.format.GLFormats;
+import com.crystalgraphics.platform.rhi.CgRHI;
+import com.crystalgraphics.platform.rhi.format.CgFormat;
+import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
 import com.crystalgraphics.util.io.CgBc7;
 import com.crystalgraphics.util.CgHalfFloat;
 import com.crystalgraphics.util.io.CgCookedTexture;
@@ -24,6 +29,8 @@ import com.crystalgraphics.platform.gl.state.CgGlScope;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.EnumSet;
+import java.util.Set;
 import java.util.function.Consumer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -119,6 +126,11 @@ public final class CgTexture2D extends CgTextureAbstract {
         this.sourcePath = null;
     }
 
+    private CgTexture2D(int textureId, int width, int height, CgTextureSpec spec, boolean owned) {
+        super(textureId, width, height, spec, owned);
+        this.sourcePath = null;
+    }
+
     // ── Factories ────────────────────────────────────────────────────
 
     /** {@code path}, linear and clamped: {@link #create(String, CgTextureSpec)} with {@link CgTextureSpec#RGBA8_LINEAR}. */
@@ -186,6 +198,46 @@ public final class CgTexture2D extends CgTextureAbstract {
     public static CgTexture2D wrap(int textureId, int width, int height) {
         return new CgTexture2D(textureId, width, height);
     }
+
+    /**
+     * An empty texture made on the installed device ({@code CgRHI}), reached through {@code CgGL} by the name
+     * {@link CgGLImports} gives it: what the frame graph makes its attachments as, so the executor names them as RHI
+     * textures. Render thread.
+     *
+     * <pre>{@code
+     * if (CgGLImports.installed()) colour = CgTexture2D.onDevice("bloom", w, h, CgTextureSpec.RGBA16F_LINEAR, levels);
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Its storage is immutable: uploads and resizes throw, as on a wrapped texture.</li>
+     *   <li>{@link #delete} releases it through the device, once the frames reading it retire.</li>
+     * </ul>
+     */
+    public static CgTexture2D onDevice(String label, int width, int height, CgTextureSpec spec, int levels) {
+        CgFormat format = GLFormats.of(spec.getGlInternalFormat());
+        CgRHI rhi = CgRHI.get();
+        Set<CgGpuTexture.Usage> usage = format.hasDepth()
+                ? EnumSet.of(CgGpuTexture.Usage.ATTACHMENT, CgGpuTexture.Usage.SAMPLED, CgGpuTexture.Usage.COPY_SRC,
+                        CgGpuTexture.Usage.COPY_DST)
+                : rhi.supports(format, CgGpuTexture.Usage.STORAGE) ? CgGpuTexture.Usage.ALL
+                : EnumSet.complementOf(EnumSet.of(CgGpuTexture.Usage.STORAGE));
+        CgGpuTexture image = rhi.createTexture(new CgGpuTexture.Desc(label, CgGpuTexture.Kind.D2, format, width, height, 1,
+                levels, 1, usage));
+        CgTexture2D tex = new CgTexture2D(CgGLImports.get().name(image), width, height, spec, false);
+        tex.levels = levels;
+        tex.image = image;
+        try (CgGlScope restore = tex.gpu.restoring()) {
+            CgGL.glBindTexture(GL_TEXTURE_2D, tex.textureId);
+            spec.applyTo(GL_TEXTURE_2D);
+            tex.sampleChain(levels);
+            CgGL.glBindTexture(GL_TEXTURE_2D, 0);
+        }
+        return tex;
+    }
+
+    /** The RHI texture behind it, where it was made {@link #onDevice}; else null. */
+    @Nullable
+    public CgGpuTexture rhiTexture() { return image; }
 
     /** Creates an empty 2D texture with no image data. Not cached; caller owns the lifecycle. */
     public static CgTexture2D createEmpty(int width, int height, CgTextureSpec spec) {
