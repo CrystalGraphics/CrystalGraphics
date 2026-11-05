@@ -1,5 +1,6 @@
 package com.crystalgraphics.gl.texture;
 
+import com.crystalgraphics.render.draw.CgBoundResources;
 import com.crystalgraphics.gl.CgGlNames;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.texture.CgMipmapConfig;
@@ -584,6 +585,7 @@ public final class CgTexture2D extends CgTextureAbstract {
     public void bindLevel(int unit, int level) {
         CgTexture.active(unit);
         bindLevel(level);
+        CgBoundResources.texture(unit, this, level);
     }
 
     /** {@link #bindLevel(int, int)} on the active unit. */

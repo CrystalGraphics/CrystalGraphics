@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.graph;
 
+import com.crystalgraphics.platform.rhi.resource.CgTextureView;
 import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.texture.CgTextureType;
@@ -239,6 +240,13 @@ final class CgTargetCopy {
         public void bind(int unit) {
             CgTexture texture = texture();
             if (texture != null) texture.bind(unit);
+        }
+
+        @Override
+        @Nullable
+        public CgTextureView rhiView() {
+            CgTexture texture = texture();
+            return texture == null ? null : texture.rhiView();
         }
 
         @Override

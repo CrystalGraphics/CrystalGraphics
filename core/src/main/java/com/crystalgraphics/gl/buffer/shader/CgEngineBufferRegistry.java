@@ -225,15 +225,21 @@ public final class CgEngineBufferRegistry {
     }
 
     /** {@link #indexOfPoint}'s answers by storage point, for the registry as it was at {@link #pointsAt} tokens. */
-    private static int[] tokenOfPoint = new int[0];
-    private static int pointsAt = -1;
+    private static volatile int[] tokenOfPoint = new int[0];
+    private static volatile int pointsAt = -1;
 
     /**
      * The place of the token whose buffer binds at storage point {@code point}, or -1: what {@code CgBindingModel}
      * places a buffer recorded by its point at. Resolves each provider's buffer the first time it is asked after a
      * registration; render thread.
      */
-    public static synchronized int indexOfPoint(int point) {
+    public static int indexOfPoint(int point) {
+        int[] table = tokenOfPoint;
+        if (pointsAt != PROVIDERS.size()) table = rebuildPoints();
+        return point >= 0 && point < table.length ? table[point] : -1;
+    }
+
+    private static synchronized int[] rebuildPoints() {
         if (pointsAt != PROVIDERS.size()) {
             int max = -1;
             int[] points = new int[PROVIDERS.size()];
@@ -248,7 +254,7 @@ public final class CgEngineBufferRegistry {
             for (int t = points.length - 1; t >= 0; t--) if (points[t] >= 0) tokenOfPoint[points[t]] = t;
             pointsAt = PROVIDERS.size();
         }
-        return point >= 0 && point < tokenOfPoint.length ? tokenOfPoint[point] : -1;
+        return tokenOfPoint;
     }
 
     /** Every registered token, for error messages. */

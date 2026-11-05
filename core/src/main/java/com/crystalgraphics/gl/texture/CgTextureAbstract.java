@@ -1,5 +1,7 @@
 package com.crystalgraphics.gl.texture;
 
+import com.crystalgraphics.render.draw.CgBoundResources;
+import com.crystalgraphics.platform.rhi.resource.CgTextureView;
 import java.util.Set;
 import java.util.EnumSet;
 import com.crystalgraphics.platform.gl.format.GLFormats;
@@ -87,6 +89,19 @@ public abstract class CgTextureAbstract implements CgTexture, CgReloadable {
         return CgGLImports.get().texture(textureId, rhiDesc());
     }
 
+    /** {@link #rhiView}'s answer, for the device texture it was made over. */
+    @Nullable
+    private CgTextureView rhiView;
+
+    @Override
+    @Nullable
+    public CgTextureView rhiView() {
+        CgGpuTexture t = rhiTexture();
+        if (t == null) return null;
+        if (rhiView == null || rhiView.texture() != t) rhiView = CgTextureView.whole(t);
+        return rhiView;
+    }
+
     /** The spec it was made with: its own sampling, unless something set it since. */
     public CgTextureSpec spec() {
         return spec;
@@ -130,6 +145,7 @@ public abstract class CgTextureAbstract implements CgTexture, CgReloadable {
     public void bind(int unit) {
         checkUsable();
         gpu.flush();
+        CgBoundResources.texture(unit, this, -1);
         if (SKIP_HELD) {
             CgGL.cgBindTexture(unit, getTarget(), textureId);
             return;

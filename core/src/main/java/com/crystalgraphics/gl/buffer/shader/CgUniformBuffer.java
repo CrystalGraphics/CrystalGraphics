@@ -1,6 +1,7 @@
 package com.crystalgraphics.gl.buffer.shader;
 
 
+import com.crystalgraphics.render.draw.CgBoundResources;
 import com.crystalgraphics.api.buffer.CgBufferFormat;
 import com.crystalgraphics.api.buffer.CgBufferLifetime;
 import com.crystalgraphics.api.CgBindingPoints;
@@ -153,8 +154,10 @@ public final class CgUniformBuffer extends CgShaderBuffer {
         if (dataBuffer.offsetMovesPerUpload() && bytes > 0) {
             CgGL.glBindBufferRange(CgGL.GL_UNIFORM_BUFFER, bindingLocation, dataBuffer.getGlBuffer(),
                     dataBuffer.getWriteOffset(), bytes);
+            CgBoundResources.block(bindingLocation, dataBuffer.getGlBuffer(), dataBuffer.getWriteOffset(), bytes);
         } else {
             CgGL.glBindBufferBase(CgGL.GL_UNIFORM_BUFFER, bindingLocation, dataBuffer.getGlBuffer());
+            CgBoundResources.block(bindingLocation, dataBuffer.getGlBuffer(), 0, 0);
         }
     }
 

@@ -1,6 +1,8 @@
 package com.crystalgraphics.api.texture;
 
 
+import javax.annotation.Nullable;
+import com.crystalgraphics.platform.rhi.resource.CgTextureView;
 import com.crystalgraphics.asset.tree.CgBinaryAsset;
 import com.crystalgraphics.gl.texture.CgTextureManager;
 import com.crystalgraphics.platform.gl.CgGL;
@@ -37,6 +39,15 @@ public interface CgTexture extends CgBinaryAsset {
      * @param unit zero-based texture unit (0 corresponds to GL_TEXTURE0)
      */
     void bind(int unit);
+
+    /**
+     * What {@link #bind(int)} would bind, as a view of the installed device's texture: what a device set holds. Null
+     * where it has no storage now, or no device texture behind it.
+     */
+    @Nullable
+    default CgTextureView rhiView() {
+        return null;
+    }
 
     /** @return the OpenGL texture object id */
     int getId();

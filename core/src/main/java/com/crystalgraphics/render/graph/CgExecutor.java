@@ -1,5 +1,16 @@
 package com.crystalgraphics.render.graph;
 
+import java.util.Set;
+import java.util.HashSet;
+import com.crystalgraphics.gl.shader.CgShader;
+import com.crystalgraphics.platform.rhi.pipeline.CgPipelineLayout;
+import com.crystalgraphics.platform.rhi.CgRHI;
+import com.crystalgraphics.platform.gl.CgGLImports;
+import com.crystalgraphics.render.shader.CgBindingModel;
+import com.crystalgraphics.render.draw.CgBindingTable;
+import com.crystalgraphics.render.draw.CgDeviceStates;
+import com.crystalgraphics.render.draw.CgDeviceSets;
+import com.crystalgraphics.render.draw.CgBoundResources;
 import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.api.CgBindingPoints;
@@ -158,6 +169,12 @@ public final class CgExecutor {
     /** Runs of draws a multi-draw ended only because the next draw binds other textures or properties. */
     private static final int BINDING_BREAKS = CgTrace.name("graph.multi-draw.binding-breaks");
     /** Every compute pass that can go async does, as if marked: a correctness check of the waits. */
+    /** GL6's check: each batch also makes its device sets, and a slot left to a default is logged once. */
+    static final boolean DEVICE_SETS = CgVar.bool("crystalgraphics.rhi.deviceSets", false, CgVar.DEV | CgVar.RESTART,
+            "Each batch also makes its view, pass and material sets on the device, logging a slot left to a default.").get();
+    private final CgDeviceSets deviceSets = new CgDeviceSets();
+    private final Set<String> deviceSetsLogged = new HashSet<>();
+
     static final boolean ASYNC_ALL = CgVar.bool("crystalgraphics.graph.asyncAll", false, CgVar.DEV | CgVar.RESTART,
             "Every compute pass that can go async does, as if marked async(): a check of the waits, which the compute"
                     + " scenes must pass under synchronization validation.").get();
@@ -276,6 +293,7 @@ public final class CgExecutor {
     private CgExecutor(int depth) {
         // A region of 1 MB: a ring outgrowing its region is new storage, which waits for a threaded driver to drain.
         ring = CgStreamBuffer.createFrameLocal(CgGL.GL_UNIFORM_BUFFER, 1 << 20);
+        CgBoundResources.recording = DEVICE_SETS;
         CgShaderBufferRegistry registry = CgShaderBufferRegistry.get();
         instanceBuffers[CgInstanceKind.QUAD.ordinal()] = registry.getOrCreateInternal("CgGraphQuadInstances" + depth,
                 CgInstanceKind.QUAD.format(), CgBindingPoints.QUAD_RENDERER, CgBufferLifetime.FRAME);
@@ -381,6 +399,7 @@ public final class CgExecutor {
      */
     public static void destroyAll() {
         for (CgExecutor executor : BY_DEPTH) {
+            if (DEVICE_SETS) executor.deviceSets.release();
             executor.ring.delete();
             executor.commands.delete(FORGET_BUFFER);
             if (executor.staging != null) executor.staging.delete();
@@ -1800,6 +1819,7 @@ public final class CgExecutor {
                         standIn[s] = at;
                     }
                 }
+                if (DEVICE_SETS) deviceSets(pipeline, frame.bindings, packed.constants, boundBinding);
                 if (joinedDraw) {
                     try (CgTrace.Zone drawing = CgTrace.zone(CgChannels.GL_DETAIL, BATCH_DRAW)) {
                         if (command >= 0) {
@@ -1968,10 +1988,48 @@ public final class CgExecutor {
         return false;
     }
 
+    /**
+     * Makes the batch's view, pass and material sets for its device pipeline's layout from what is bound now: the pass
+     * constants' snapshot, the batch's, and the buffers the executor bound ({@code CgBoundResources}). Logs, once each, a
+     * slot left to a default or a program that will not compile as written.
+     */
+    private void deviceSets(@Nullable CgPipeline pipeline, CgBindingTable table, int constants, int binding) {
+        if (pipeline == null || !CgGLImports.installed()) return;
+        CgShader linked = pipeline.program();
+        if (linked == null) return;
+        CgRHI rhi = CgRHI.get();
+        CgPipelineLayout layout;
+        try {
+            layout = CgDeviceStates.layout(rhi, linked.explicit(pipeline.toString()));
+        } catch (RuntimeException e) {
+            if (deviceSetsLogged.add(pipeline.toString())) LOGGER.warn("device sets: {}: {}", pipeline, e.getMessage());
+            return;
+        }
+        for (int set = 0; set < layout.sets().size() && set < CgRHI.BINDLESS_SET; set++) {
+            if (layout.sets().get(set).slots().isEmpty()) continue;
+            long before = deviceSets.defaulted();
+            deviceSets.set(rhi, table, set == CgBindingModel.VIEW ? constants : binding, layout, set, null);
+            if (deviceSets.defaulted() != before) {
+                String what = pipeline + " " + deviceSets.lastDefaulted();
+                if (deviceSetsLogged.add(what)) LOGGER.warn("device sets: {} defaulted", what);
+            }
+        }
+        long asked = deviceSets.made() + deviceSets.reused();
+        if (asked >= deviceSetsReport) {
+            deviceSetsReport *= 10;
+            LOGGER.warn("device sets: {} asked: {} made, {} reused, {} slots defaulted", asked, deviceSets.made(),
+                    deviceSets.reused(), deviceSets.defaulted());
+        }
+    }
+
+    /** {@link #deviceSets}' next report, at each power of ten sets asked for. */
+    private long deviceSetsReport = 10;
+
     /** Binds a GPU buffer of records where an engine buffer's macros read the frame's own. */
     private static void bindRecords(CgBufferHandle records, CgBindingPoints.Binding at) {
         int id = records instanceof CgGraphBuffer graph ? bufferStorage(graph, false) : records.bufferId();
         CgGL.glBindBufferBase(CgGL.GL_SHADER_STORAGE_BUFFER, at.ssbo(), id);
+        CgBoundResources.storage(at.ssbo(), id, 0, 0);
     }
 
     /** Binds the engine buffer made at {@code at} again, after draws that read their own there. */

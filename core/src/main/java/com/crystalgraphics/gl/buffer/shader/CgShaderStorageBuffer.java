@@ -1,6 +1,7 @@
 package com.crystalgraphics.gl.buffer.shader;
 
 
+import com.crystalgraphics.render.draw.CgBoundResources;
 import com.crystalgraphics.api.buffer.CgBufferFormat;
 import com.crystalgraphics.api.buffer.CgBufferLifetime;
 import com.crystalgraphics.platform.gl.CgCapabilities;
@@ -51,8 +52,10 @@ public final class CgShaderStorageBuffer extends CgShaderBuffer {
         if (dataBuffer.offsetMovesPerUpload() && bytes > 0) {
             CgGL.glBindBufferRange(CgGL.GL_SHADER_STORAGE_BUFFER, bindingLocation, dataBuffer.getGlBuffer(),
                     dataBuffer.getWriteOffset(), bytes);
+            CgBoundResources.storage(bindingLocation, dataBuffer.getGlBuffer(), dataBuffer.getWriteOffset(), bytes);
         } else {
             CgGL.glBindBufferBase(CgGL.GL_SHADER_STORAGE_BUFFER, bindingLocation, dataBuffer.getGlBuffer());
+            CgBoundResources.storage(bindingLocation, dataBuffer.getGlBuffer(), 0, 0);
         }
     }
 

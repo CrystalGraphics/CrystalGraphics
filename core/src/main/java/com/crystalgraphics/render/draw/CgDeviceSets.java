@@ -2,10 +2,7 @@ package com.crystalgraphics.render.draw;
 
 import com.crystalgraphics.api.texture.CgSampler;
 import com.crystalgraphics.api.texture.CgTexture;
-import com.crystalgraphics.gl.buffer.shader.CgShaderBuffer;
-import com.crystalgraphics.gl.buffer.shader.CgUniformBuffer;
 import com.crystalgraphics.gl.texture.CgFallbackTextures;
-import com.crystalgraphics.gl.texture.CgTextureAbstract;
 import com.crystalgraphics.platform.gl.CgGLImports;
 import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.rhi.binding.CgBindingLayout;
@@ -14,7 +11,6 @@ import com.crystalgraphics.platform.rhi.binding.CgBindings;
 import com.crystalgraphics.platform.rhi.pipeline.CgPipelineLayout;
 import com.crystalgraphics.platform.rhi.resource.CgGpuBuffer;
 import com.crystalgraphics.platform.rhi.resource.CgGpuSampler;
-import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
 import com.crystalgraphics.platform.rhi.resource.CgTextureView;
 import com.crystalgraphics.render.shader.CgBindingModel;
 import com.crystalgraphics.trace.CgTrace;
@@ -29,7 +25,8 @@ import java.util.Map;
 /**
  * A recorded draw's bindings as the device's sets: each set of its pipeline's layout filled from the draw's
  * {@link CgBindingTable} snapshot through {@link CgBindingModel}'s slots, from what the caller supplies for the slots
- * a snapshot does not hold (the pass's records), and interned by content across frames, as Unreal keeps a material's
+ * a snapshot does not hold, then from what the executor has bound there ({@link CgBoundResources}: the pass's records
+ * and tables), and interned by content across frames, as Unreal keeps a material's
  * uniform buffer until its contents change.
  *
  * <pre>{@code
@@ -153,13 +150,13 @@ public final class CgDeviceSets {
     private boolean fromTable(CgRHI rhi, CgBindingTable table, int id, int packed, CgBindingLayout.Slot slot) {
         switch (slot.type()) {
             case SAMPLED_TEXTURE -> {
+                if (boundTexture(rhi, slot, packed)) return true;
                 for (int t = 0; t < table.textures(id); t++) {
                     if (CgBindingModel.ofTexture(table.textureUnit(id, t)) != packed) continue;
                     CgTexture texture = table.texture(id, t);
-                    CgGpuTexture image = texture instanceof CgTextureAbstract a ? a.rhiTexture() : null;
-                    if (image == null) return false;
-                    contents.texture(slot.binding(), CgTextureView.whole(image),
-                            CgDeviceSamplers.of(rhi, table.sampler(id, t), texture));
+                    CgTextureView view = texture.rhiView();
+                    if (view == null) return false;
+                    contents.texture(slot.binding(), view, CgDeviceSamplers.of(rhi, table.sampler(id, t), texture));
                     return true;
                 }
                 return false;
@@ -176,14 +173,14 @@ public final class CgDeviceSets {
                     contents.buffer(slot.binding(), slot.type(), imports.buffer(name), imports.bufferOffset(name) + at, bytes);
                     return true;
                 }
-                return shaderBuffer(table, id, packed, slot, true);
+                return bound(slot, packed);
             }
             case STORAGE_BUFFER -> {
                 for (int s = 0; s < table.storages(id); s++) {
                     if (CgBindingModel.ofStorage(table.storagePoint(id, s)) != packed) continue;
                     return whole(slot, table.storage(id, s).bufferId());
                 }
-                return shaderBuffer(table, id, packed, slot, false);
+                return bound(slot, packed);
             }
             default -> {
                 return false;
@@ -191,14 +188,28 @@ public final class CgDeviceSets {
         }
     }
 
-    private boolean shaderBuffer(CgBindingTable table, int id, int packed, CgBindingLayout.Slot slot, boolean uniform) {
-        for (int b = 0; b < table.buffers(id); b++) {
-            CgShaderBuffer buffer = table.buffer(id, b);
-            if (buffer instanceof CgUniformBuffer != uniform) continue;
-            int at = uniform ? CgBindingModel.ofBlock(buffer.getBindingLocation()) : CgBindingModel.ofStorage(buffer.getBindingLocation());
-            if (at == packed) return whole(slot, buffer.getGlBufferId());
-        }
-        return false;
+    /** The texture bound for {@code packed} ({@link CgBoundResources}): over the snapshot's, as a GL program samples. */
+    private boolean boundTexture(CgRHI rhi, CgBindingLayout.Slot slot, int packed) {
+        CgTexture texture = CgBoundResources.texture(packed);
+        if (texture == null || texture.isDeleted()) return false;
+        CgTextureView view = texture.rhiView();
+        if (view == null) return false;
+        int level = CgBoundResources.level(packed);
+        if (level >= 0) view = new CgTextureView(view.texture(), level, 1, view.baseLayer(), view.layers());
+        contents.texture(slot.binding(), view, CgDeviceSamplers.of(rhi, CgBoundResources.sampler(packed), texture));
+        return true;
+    }
+
+    /** What the executor has bound for {@code packed} ({@link CgBoundResources}): a snapshot's buffers, the pass's. */
+    private boolean bound(CgBindingLayout.Slot slot, int packed) {
+        int name = CgBoundResources.name(packed);
+        if (name == 0) return false;
+        CgGLImports imports = CgGLImports.get();
+        CgGpuBuffer buffer = imports.buffer(name);
+        long offset = imports.bufferOffset(name) + CgBoundResources.offset(packed);
+        long size = CgBoundResources.size(packed);
+        contents.buffer(slot.binding(), slot.type(), buffer, offset, size != 0 ? size : buffer.size() - offset);
+        return true;
     }
 
     /** {@code name}'s whole storage at {@code slot}. */
@@ -223,9 +234,9 @@ public final class CgDeviceSets {
     private void fallback(CgRHI rhi, CgBindingLayout.Slot slot) {
         switch (slot.type()) {
             case SAMPLED_TEXTURE -> {
-                CgGpuTexture white = CgFallbackTextures.WHITE_1x1 instanceof CgTextureAbstract a ? a.rhiTexture() : null;
+                CgTextureView white = CgFallbackTextures.WHITE_1x1 == null ? null : CgFallbackTextures.WHITE_1x1.rhiView();
                 if (white == null) throw new IllegalStateException("no default texture for " + slot);
-                contents.texture(slot.binding(), CgTextureView.whole(white),
+                contents.texture(slot.binding(), white,
                         CgDeviceSamplers.of(rhi, CgSampler.NEAREST_CLAMP, CgFallbackTextures.WHITE_1x1));
             }
             case UNIFORM_BUFFER, STORAGE_BUFFER -> {
@@ -253,16 +264,17 @@ public final class CgDeviceSets {
             if (nums.length < count * 3) nums = new long[count * 3];
             int h = System.identityHashCode(layout);
             for (int i = 0; i < count; i++) {
-                Object resource = c.view(i) != null ? c.view(i).texture() : c.buffer(i);
+                CgTextureView view = c.view(i);
+                Object resource = view != null ? view.texture() : c.buffer(i);
                 CgGpuSampler sampler = c.sampler(i);
                 refs[i * 2] = resource;
                 refs[i * 2 + 1] = sampler;
                 nums[i * 3] = c.binding(i);
-                nums[i * 3 + 1] = c.offset(i);
-                nums[i * 3 + 2] = c.size(i);
+                nums[i * 3 + 1] = view != null ? (long) view.baseMip() << 32 | view.baseLayer() : c.offset(i);
+                nums[i * 3 + 2] = view != null ? (long) view.mips() << 32 | view.layers() : c.size(i);
                 h = h * 31 + System.identityHashCode(resource);
                 h = h * 31 + System.identityHashCode(sampler);
-                h = h * 31 + Long.hashCode(c.offset(i)) + c.binding(i);
+                h = h * 31 + Long.hashCode(nums[i * 3 + 1]) + c.binding(i);
             }
             hash = h;
         }
