@@ -25,6 +25,8 @@ public final class CgTrackedGLContext implements CgGLContext {
 
     @Override public boolean OpenGL44() { return true; }
 
+    @Override public boolean OpenGL45() { return true; }
+
     @Override public boolean OpenGL46() { return false; }
 
     @Override public boolean GL_ARB_map_buffer_range() { return true; }

@@ -60,17 +60,9 @@ struct CgObjectData {
     vec4 custom3;
 };
 
-#ifdef CG_USE_SSBO
 CG_BIND(1, 0) layout(std430) readonly buffer CgObjectDataBuffer {
     CgObjectData cg_Objects[];
 };
-#else
-// The TBO path, unhooked (docs/TBO_PATH.md). It declared `uniform samplerBuffer CgObjectDataBuffer` (RGBA32F, 12 texels a
-// record) and `CgObjectData cg_FetchObjectData(int)`, which built each mat4 from four texelFetch(base + k) and custom0-3
-// from texels 8-11, base = instanceId * 12; CG_OBJECT_DATA below called it. The executor bound the records to
-// CgBindingPoints.OBJECT_DATA.tbo() as a buffer texture. Restore both #else branches with the Java half to reconnect.
-#error "the TBO path is unhooked: the compiler defines CG_USE_SSBO (docs/TBO_PATH.md)"
-#endif
 
 // -- Instance ID bridge -----------------------------------------------------
 // Every draw carries its bases (Unreal's InstanceIdOffset, SceneData.ush): its first instance is where its batch's
@@ -106,9 +98,7 @@ flat in int cg_InstanceId;
 #endif
 
 // -- Object Data Definition-----------------------------------------------------
-#ifdef CG_USE_SSBO
 #define CG_OBJECT_DATA cg_Objects[CG_INSTANCE_ID]
-#endif   // the TBO path's #else was cg_FetchObjectData(CG_INSTANCE_ID): docs/TBO_PATH.md
 
 // -- Data Macros ------------------------------------------------------
 #define CG_OBJECT_TO_WORLD (CG_OBJECT_DATA.modelMatrix)

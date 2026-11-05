@@ -36,6 +36,7 @@ public class CgStageExecuteAllocationTest {
 
     private static final String SOURCE = """
             #type none
+            #pragma cg_use quad
             Tags { "RenderType" = "Transparent" }
             Properties {
                 _Alpha ("Alpha", float) = 1
@@ -72,7 +73,7 @@ public class CgStageExecuteAllocationTest {
      * 11.8 KB a firing, by JFR's TLAB samples, most first: {@code CgChunkBuilder.end}'s copies (float[], int[], the
      * chunk); {@code CgRecording.block}'s float[] and a {@code CgRasterPass} with its list and int[] per raster;
      * {@code FrameRingStreamBuffer.map}'s DirectByteBuffer from {@code CgBindingTable.upload}; a
-     * {@code CgMaterialShader.ProgramKey} per program lookup; {@code CgTrackedGLBackend.glFenceSync}'s boxed Long; and
+     * {@code CgMaterialShaderMap.ProgramKey} per program lookup; {@code CgTrackedGLBackend.glFenceSync}'s boxed Long; and
      * the recording device's own byte[] at retirement (a test device's, never a player's).
      */
     @Test

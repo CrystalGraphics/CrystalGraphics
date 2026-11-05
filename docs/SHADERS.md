@@ -280,11 +280,13 @@ was not given repeats the set before: Unreal's null colour stream and its repeat
 **On a skinned mesh** every `#type spatial` material draws its `CG_SKINNED` variant, the skinned vertex factory: the
 compiler declares `cg_BoneIndices` and `cg_BoneWeights` and the draw's palette (`env/buffer/bones.glsl`), and
 `cg_Position` and `cg_Normal` read as the vertex skinned by its bones, so a material needs no code for it. The mesh
-picks the variant (`CgPipeline.skinned()`), in every pass; a shader of another `#type` drawn on one fails to compile.
+picks the variant (`CgPipelineForm.SKINNED`), in every pass; a shader of another `#type` drawn on one fails to compile.
 
-#### Why the Engine's Blocks Must NOT Be Attached
+#### The engine's blocks are declared already
 
-`cg_env.glsl` already declares `CgObjectDataBuffer`, `CgViewBlock` and `CgEnvironmentBlock`. The engine wires them automatically post-link. **Never `material.attach()` a buffer named for either** — it produces duplicate GLSL declarations and a compile failure. Only user-owned buffers belong in `attach()`.
+`cg_env.glsl` declares `CgObjectDataBuffer`, `CgViewBlock` and `CgEnvironmentBlock`, and the engine wires them: a
+material never declares them again. A material reads anything else through `Buffers { }` or an engine token
+(`#pragma cg_use`); nothing is injected into a shader at runtime.
 
 #### Stage defines — `CG_VERTEX_STAGE` / `CG_FRAGMENT_STAGE` / `CG_COMPUTE_STAGE`
 

@@ -33,8 +33,8 @@ import java.util.regex.Pattern;
  *
  * <p>This is the bridge between the structural parser ({@link CgShaderParser}) and the
  * GLSL compilation backend ({@link CgShaderFactory}).
- * It injects the {@code #version} directive, the {@code CG_VERTEX_STAGE} / {@code CG_USE_SSBO}
- * defines, the {@code cg_env.glsl} include, property uniform declarations, the v2f struct
+ * It injects the {@code #version} directive (one target, {@link #VERSION}), the {@code CG_VERTEX_STAGE}
+ * define, the {@code cg_env.glsl} include, property uniform declarations, the v2f struct
  * and its flat-packed varying declarations, global declarations, the user-authored functions,
  * and the generated {@code void main()} wrappers.</p>
  *
@@ -115,6 +115,12 @@ public final class CgMaterialShaderCompiler {
      */
     static final String BINDLESS_EXTENSION = "#if defined(CG_BINDLESS) && defined(VULKAN)\n"
             + "#extension GL_EXT_nonuniform_qualifier : require\n#endif\n";
+
+    /**
+     * The one GLSL every material compiles to, on every device: GL 4.5 drivers take it, and shaderc compiles it to
+     * SPIR-V for Vulkan. The vertex stage adds {@code GL_ARB_shader_draw_parameters} (core only from 460).
+     */
+    public static final String VERSION = "#version 450 core\n";
 
     /**
      * The keyword every {@code #pragma cg_use particle} program takes without declaring it (the parser adds it): its
@@ -301,13 +307,6 @@ public final class CgMaterialShaderCompiler {
                                          List<CgAttachedBuffer> attachedBuffers,
                                          CgUniformBuffer matPropsEntry,
                                          CompileConfig config) {
-        CgCapabilities.ShaderBufferPath path = CgCapabilities.detect().shaderBufferPath();
-        if (path != CgCapabilities.ShaderBufferPath.SSBO_GL43 && path != CgCapabilities.ShaderBufferPath.SSBO_ARB) {
-            // The TBO path is unhooked: docs/TBO_PATH.md
-            throw new IllegalArgumentException("Cannot compile material shader: ShaderBufferPath is " + path
-                    + "; materials read storage blocks (GL 4.3 or ARB_shader_storage_buffer_object)");
-        }
-
         Set<String> requiredExtensions = new LinkedHashSet<>();
         for (CgAttachedBuffer ab : attachedBuffers) {
             for (int i = 0; i < ab.getBuffer().getFormat().getFieldCount(); i++) {
@@ -344,16 +343,16 @@ public final class CgMaterialShaderCompiler {
         // The skinned factory reads the skinned format's attributes; its indices are a uvec4 at either width.
         if (skinnedVariant(config)) {
             if (!vertexFormat.equals(CgVertexFormat.SPATIAL)) {
-                throw new IllegalArgumentException("[" + path + "] " + SKINNED + " skins a #type spatial shader, not #type "
+                throw new IllegalArgumentException(SKINNED + " skins a #type spatial shader, not #type "
                         + shader.shaderType());
             }
             vertexFormat = CgVertexFormat.SKINNED;
         }
 
         String vertexSource = buildVertexSource(shader, pass, properties, v2fFields,
-                path, attachedBuffers, requiredExtensions, matPropsEntry, config, vertexFormat);
+                attachedBuffers, requiredExtensions, matPropsEntry, config, vertexFormat);
         String fragmentSource = buildFragmentSource(shader, pass, properties, v2fFields,
-                path, attachedBuffers, requiredExtensions, matPropsEntry, config);
+                attachedBuffers, requiredExtensions, matPropsEntry, config);
 
         return new CompiledSource(vertexSource, fragmentSource, vertexFormat);
     }
@@ -374,8 +373,8 @@ public final class CgMaterialShaderCompiler {
      * attributes comes before the macros, so it reads the mesh's; {@code main} calls it first. Unreal's
      * {@code SkinPosition} and {@code SkinTangents}: position by the blended 3x4, normal by its rotation, renormalised.
      */
-    private static void appendSkinnedFactory(StringBuilder sb, CgCapabilities.ShaderBufferPath path) {
-        appendAttachedBuffers(sb, List.of(CgAttachedBuffer.of(CgBonePalettes.buffer(), CgBonePalettes.MACRO_NAME)), path);
+    private static void appendSkinnedFactory(StringBuilder sb) {
+        appendAttachedBuffers(sb, List.of(CgAttachedBuffer.of(CgBonePalettes.buffer(), CgBonePalettes.MACRO_NAME)));
         sb.append("#include \"").append(BONES_ENV).append("\"\n");
         sb.append("vec3 _cg_skinPosition;\nvec3 _cg_skinNormal;\n")
           .append("void _cg_skin() {\n")
@@ -403,17 +402,6 @@ public final class CgMaterialShaderCompiler {
      */
     public static CompiledSource compile(CgParsedShader parsed, List<CgAttachedBuffer> attachedBuffers) {
         return compile(parsed, parsed.passes().get(0), attachedBuffers, null, CompileConfig.DEFAULT);
-    }
-
-    /**
-     * Compiles a {@link CgParsedShader} using its first pass, with a material properties UBO.
-     * Convenience overload — delegates to {@link #compile(CgParsedShader, CgParsedPass, List, CgUniformBuffer, CompileConfig)}.
-     */
-    public static CompiledSource compile(CgParsedShader parsed,
-                                         CgCapabilities.ShaderBufferPath shaderBufferPath,
-                                         List<CgAttachedBuffer> attachedBuffers,
-                                         CgUniformBuffer matPropsEntry) {
-        return compile(parsed, parsed.passes().get(0), attachedBuffers, matPropsEntry, CompileConfig.DEFAULT);
     }
 
     /**
@@ -562,7 +550,6 @@ public final class CgMaterialShaderCompiler {
                                              CgParsedPass pass,
                                              List<CgMaterialProperty> properties,
                                              List<CgShaderParser.V2fField> v2fFields,
-                                             CgCapabilities.ShaderBufferPath shaderBufferPath,
                                              List<CgAttachedBuffer> attachedBuffers,
                                              Set<String> requiredExtensions,
                                              CgUniformBuffer matPropsEntry,
@@ -571,14 +558,13 @@ public final class CgMaterialShaderCompiler {
         StringBuilder sb = new StringBuilder(1024);
 
         // Step 1: #version
-        int version = glslVersion();
-        sb.append("#version ").append(version).append(" core\n");
+        sb.append(VERSION);
         sb.append(BINDLESS_EXTENSION);
 
         // Keyword #define injection — in featureNames declaration order, before user #-lines
         appendKeywordDefines(sb, shader.featureNames(), config.activeKeywords());
         // Before any code, which a hoisted #include may already be: cg_env.glsl reads a draw's bases from it.
-        if (version < 460) sb.append("#extension GL_ARB_shader_draw_parameters : require\n");
+        sb.append("#extension GL_ARB_shader_draw_parameters : require\n");
 
         // Step 2: CG_VERTEX_STAGE define.
         //
@@ -595,8 +581,6 @@ public final class CgMaterialShaderCompiler {
         String codeLines = gd[1];
         if (!directiveLines.isEmpty()) sb.append(directiveLines).append('\n');
         appendAutoRequiredExtensions(sb, requiredExtensions, directiveLines);
-
-        sb.append("#define CG_USE_SSBO 1\n");   // cg_env.glsl's hook for the TBO path (docs/TBO_PATH.md)
 
         sb.append("#include \"").append(ENV_INCLUDE).append("\"\n");
 
@@ -623,10 +607,10 @@ public final class CgMaterialShaderCompiler {
         // Material properties UBO (CgMaterialBlock) — emitted before user-attached buffers
         appendMaterialBlock(sb, properties, matPropsEntry);
 
-        appendAttachedBuffers(sb, attachedBuffers, shaderBufferPath);
+        appendAttachedBuffers(sb, attachedBuffers);
 
         appendEngineBufferEnv(sb, shader.engineBuffers());
-        if (skinnedVariant(config)) appendSkinnedFactory(sb, shaderBufferPath);
+        if (skinnedVariant(config)) appendSkinnedFactory(sb);
         appendPropertyAccessors(sb, properties, shader.engineBuffers().contains(CgShaderParser.ROWS));
 
         appendMaterialBuffers(sb, shader);
@@ -686,7 +670,6 @@ public final class CgMaterialShaderCompiler {
                                                CgParsedPass pass,
                                                List<CgMaterialProperty> properties,
                                                List<CgShaderParser.V2fField> v2fFields,
-                                               CgCapabilities.ShaderBufferPath shaderBufferPath,
                                                List<CgAttachedBuffer> attachedBuffers,
                                                Set<String> requiredExtensions,
                                                CgUniformBuffer matPropsEntry,
@@ -694,7 +677,7 @@ public final class CgMaterialShaderCompiler {
         StringBuilder sb = new StringBuilder(1024);
 
         // Step 1: #version
-        sb.append("#version ").append(glslVersion()).append(" core\n");
+        sb.append(VERSION);
         sb.append(BINDLESS_EXTENSION);
 
         // Keyword #define injection — in featureNames declaration order, before user #-lines
@@ -713,9 +696,6 @@ public final class CgMaterialShaderCompiler {
         if (!directiveLines.isEmpty()) sb.append(directiveLines).append('\n');
         appendAutoRequiredExtensions(sb, requiredExtensions, directiveLines);
 
-        // CG_USE_SSBO, cg_env.glsl's hook for the TBO path; fragment never defines CG_VERTEX_STAGE
-        sb.append("#define CG_USE_SSBO 1\n");
-
         sb.append("#include \"").append(ENV_INCLUDE).append("\"\n");
 
         // Property uniform declarations (sampler types only; non-sampler go into CgMaterialBlock UBO)
@@ -724,7 +704,7 @@ public final class CgMaterialShaderCompiler {
         // Material properties UBO (CgMaterialBlock) — emitted before user-attached buffers
         appendMaterialBlock(sb, properties, matPropsEntry);
 
-        appendAttachedBuffers(sb, attachedBuffers, shaderBufferPath);
+        appendAttachedBuffers(sb, attachedBuffers);
 
         appendEngineBufferEnv(sb, shader.engineBuffers());
         appendPropertyAccessors(sb, properties, shader.engineBuffers().contains(CgShaderParser.ROWS));
@@ -853,9 +833,6 @@ public final class CgMaterialShaderCompiler {
     }
 
     /** The context's own, 430 at least: glslang declares the draw parameters from 450, and 4.6 has them in core. */
-    private static int glslVersion() {
-        return Math.max(430, CgCapabilities.detect().glslVersion());
-    }
 
     private static void appendKeywordDefines(StringBuilder sb, List<String> featureNames,
                                               Set<String> activeKeywords) {
@@ -966,8 +943,7 @@ public final class CgMaterialShaderCompiler {
     }
 
     private static void appendAttachedBuffers(StringBuilder sb,
-                                               List<CgAttachedBuffer> attachedBuffers,
-                                               CgCapabilities.ShaderBufferPath path) {
+                                               List<CgAttachedBuffer> attachedBuffers) {
         int user = 0;
         for (CgAttachedBuffer ab : attachedBuffers) {
             CgBindingModel.Slot slot = CgBindingModel.attached(ab, user);
@@ -1027,7 +1003,8 @@ public final class CgMaterialShaderCompiler {
     private static void appendV2fStruct(StringBuilder sb, String v2fStructBody) {
         sb.append("// v2f struct\n");
         sb.append("struct v2f {\n");
-        sb.append(v2fStructBody).append("\n");
+        // GLSL has no empty struct: a pass passing nothing still declares a member, never a varying.
+        sb.append(v2fStructBody.isBlank() ? "    int cg_Unused;" : v2fStructBody).append("\n");
         sb.append("};\n");
     }
 

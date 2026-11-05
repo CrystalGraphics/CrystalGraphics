@@ -7,6 +7,7 @@ import com.crystalgraphics.gl.render.CgQuadRenderer;
 import com.crystalgraphics.gl.render.CgVectorRenderer;
 import com.crystalgraphics.render.property.CgPalette;
 import com.crystalgraphics.render.stage.CgDirectionalLights;
+import com.crystalgraphics.text.render.CgTextRenderer;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -108,6 +109,9 @@ public final class CgEngineBufferRegistry {
                     CgDirectionalLights.declare();
                     return CgParameterCollection.glsl();
                 });
+        // The text renderer's own block (projection, gamma, cut), a uniform block filled per renderer. Last, so the
+        // tokens before it keep their bindings.
+        register("text", CgTextRenderer::textData, "TEXT_DATA");
     }
 
     private CgEngineBufferRegistry() {}

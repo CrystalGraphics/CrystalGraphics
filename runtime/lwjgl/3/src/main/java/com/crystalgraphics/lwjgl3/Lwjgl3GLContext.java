@@ -54,6 +54,7 @@ public final class Lwjgl3GLContext implements CgGLContext {
     @Override public boolean OpenGL42() { return caps().OpenGL42; }
     @Override public boolean OpenGL43() { return caps().OpenGL43; }
     @Override public boolean OpenGL44() { return caps().OpenGL44; }
+    @Override public boolean OpenGL45() { return caps().OpenGL45; }
     @Override public boolean OpenGL46() { return caps().OpenGL46; }
 
     // ── Streaming ─────────────────────────────────────────────────────────────

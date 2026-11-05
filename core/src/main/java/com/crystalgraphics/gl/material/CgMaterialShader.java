@@ -4,10 +4,8 @@ import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.render.draw.CgPassConstants;
 import com.crystalgraphics.render.CgWarmBudget;
-import com.github.bsideup.jabel.Desugar;
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.platform.gl.CgCapabilities;
-import com.crystalgraphics.api.vertex.CgVertexFormat;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 import com.crystalgraphics.api.material.CgAttachedBuffer;
@@ -18,13 +16,13 @@ import com.crystalgraphics.api.material.CgRenderQueue;
 import com.crystalgraphics.api.shader.CgPreprocessorException;
 import com.crystalgraphics.api.shader.CgShader;
 import com.crystalgraphics.api.shader.CgShaderPreprocessor;
-import com.crystalgraphics.api.shader.CgShaderProgram;
 import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.compute.source.CgBufferDecl;
 import com.crystalgraphics.gl.buffer.shader.CgBonePalettes;
-import com.crystalgraphics.gl.buffer.shader.CgEngineBufferRegistry;
 import com.crystalgraphics.gl.buffer.shader.CgShaderBuffer;
 import com.crystalgraphics.gl.buffer.shader.CgUniformBuffer;
+import com.crystalgraphics.gl.material.CgMaterialShaderMap.ProgramKey;
+import com.crystalgraphics.gl.material.CgMaterialShaderMap.Sources;
 import com.crystalgraphics.gl.material.parse.CgBufferReaders;
 import com.crystalgraphics.gl.material.parse.CgMaterialShaderCompiler;
 import com.crystalgraphics.gl.material.parse.CgParsedPass;
@@ -32,7 +30,6 @@ import com.crystalgraphics.gl.material.parse.CgParsedShader;
 import com.crystalgraphics.gl.material.parse.CgShaderParseException;
 import com.crystalgraphics.gl.material.parse.CgShaderParser;
 import com.crystalgraphics.gl.shader.CgLinkWorker;
-import com.crystalgraphics.gl.shader.CgShaderFactory;
 import com.crystalgraphics.job.CgJob;
 import com.crystalgraphics.job.CgJobLane;
 import com.crystalgraphics.mc.CgAssetReloader;
@@ -51,8 +48,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -68,14 +63,11 @@ import java.util.concurrent.CompletableFuture;
  * <p>{@link #getRevisionNumber()} increments on each successful {@link #recompile()}; materials
  * detect recompiles via revision comparison on every {@code bind()} call.</p>
  *
- * <h3>Pass program cache</h3>
- * <p>Each {@code Pass { }} block compiled during {@link #recompile()} gets its own entry in the
- * flat {@link ProgramKey} → {@code CgShader} program cache. A {@code ProgramKey} identifies a
- * program by both its pass name <em>and</em> the active keyword set. Call
- * {@link #getOrCompile(String, Set)} to retrieve or compile a specific combination. The
- * {@link #recompile()} method resets the entire cache and immediately compiles the no-keyword
- * variant of every pass declared in the source.</p>
- *
+ * <h3>The asset and its programs</h3>
+ * <p>This is the asset: its source, its parse, what the source reads, hot reload. The programs compiled from one
+ * parse are its {@link CgMaterialShaderMap}, which a recompile replaces whole: every pass under no keywords is
+ * compiled by the recompile, and each keyword variant the first time {@link #getOrCompile(String, Set)} or
+ * {@link #precacheVariant} asks for it.</p>
  *
  * <h3>Lifecycle</h3>
  * <p>Created exclusively by {@link CgMaterialShaderRegistry#getOrCreate(String)}. Deleted by
@@ -110,44 +102,17 @@ public final class CgMaterialShader implements CgReloadable {
         return compileWaits;
     }
 
-    private void waited(Object what) {
-        if (LOG_COMPILE_WAITS.get()) LOGGER.warn("compile wait: {} {}", resourcePath, what);
+
+    /** Counts a program a thread had to compile or wait for. */
+    static void waited(String label, Object what) {
+        if (LOG_COMPILE_WAITS.get()) LOGGER.warn("compile wait: {} {}", label, what);
         compileWaits++;
         CgTrace.add(CgChannels.GL, COMPILE_WAITS, 1);
     }
 
-    // ── Nested key type ───────────────────────────────────────────────────────
-
-    /**
-     * Immutable flat cache key for a compiled pass-variant program.
-     *
-     * <p>Identifies a program by both the pass name <em>and</em> the active keyword set.
-     * The keyword set uses set-based equality — order does not matter.
-     * Two keys with {@code ("Forward", {"A","B"})} and {@code ("Forward", {"B","A"})} are
-     * equal and share the same cache entry.</p>
-     *
-     * @param passName  authored or auto-assigned pass name (e.g. {@code "Pass0"}, {@code "Depth"})
-     * @param keywords  always an unmodifiable, insertion-ordered copy
-     */
-    @Desugar
-    record ProgramKey(String passName, Set<String> keywords) {
-        ProgramKey(String passName, Set<String> keywords) {
-            this.passName = passName;
-            this.keywords = Collections.unmodifiableSet(new LinkedHashSet<>(keywords));
-        }
-
-        @Override
-        public boolean equals(Object o) {
-            if (this == o) return true;
-            if (!(o instanceof ProgramKey)) return false;
-            ProgramKey other = (ProgramKey) o;
-            return passName.equals(other.passName) && keywords.equals(other.keywords);
-        }
-
-        @Override
-        public int hashCode() {
-            return 31 * passName.hashCode() + keywords.hashCode();
-        }
+    /** Whether sources are made on a worker before the frame submits them. */
+    static boolean sourcesAhead() {
+        return SOURCES_AHEAD.get() && !DUMP_GLSL.get();
     }
 
     // ── Fields ────────────────────────────────────────────────────────────────
@@ -201,31 +166,11 @@ public final class CgMaterialShader implements CgReloadable {
     /** Whether it or anything it includes discards; see {@link #discards}. */
     private volatile boolean discards = true;
 
-    /**
-     * Flat pass × keywords program cache. Key = (passName, keywords set).
-     * Each entry is a fully linked and wired GL program.
-     * Cleared and rebuilt from scratch on hot-reload.
-     */
-    private final Map<ProgramKey, CgShader> programCache = new LinkedHashMap<>();
-    /**
-     * The last programs {@link #getOrCompile} found, by the identity of the pass name and keyword set a pipeline passes
-     * each frame, so a hit builds no {@link ProgramKey}. Valid while {@link #cacheVersion} is the one it was found at.
-     */
-    private static final int HITS = 4;
-    private final String[] hitPass = new String[HITS];
-    private final Object[] hitKeywords = new Object[HITS];
-    private final CgShader[] hitShader = new CgShader[HITS];
-    private final int[] hitVersion = new int[HITS];
-    private int hitNext;
-    /** Bumped whenever {@link #programCache} changes. */
-    private int cacheVersion;
 
-    /**
-     * Template UBO created from the parsed properties for GLSL block emission and post-link wiring.
-     * Not used for value storage — per-material UBOs handle that.
-     * {@code null} for sampler-only shaders (no non-sampler properties).
-     */
-    private CgUniformBuffer matPropsUbo;
+    /** The programs compiled from the last committed parse; null until a compile has succeeded. */
+    @Nullable
+    private CgMaterialShaderMap map;
+    private boolean warnedUncompiled;
 
     /**
      * Material-level RenderType tag (e.g. {@code "Opaque"}, {@code "Transparent"}).
@@ -243,13 +188,6 @@ public final class CgMaterialShader implements CgReloadable {
      */
     @Getter
     private int renderQueue = 2000;
-
-    /**
-     * User-attached SSBO and UBO buffers for GLSL auto-injection.
-     * Mirrors the attach API on {@code CgMaterial}.
-     */
-    private final List<CgAttachedBuffer> attachedBuffers = new ArrayList<>();
-    private final List<CgAttachedBuffer> attachedView = Collections.unmodifiableList(attachedBuffers);
 
     /**
      * Whether the shader needs a full recompile on the next {@code bind()} call.
@@ -424,7 +362,7 @@ public final class CgMaterialShader implements CgReloadable {
      * engine depth shader fallback is used instead.</p>
      */
     public void recompile() {
-        if (!deferring) waited("every pass");
+        if (!deferring) waited(resourcePath, "every pass");
         // Recorded even when the compile fails: fixing the include that broke it must find this shader again.
         CgIO.Reads recorded = CgIO.recordReads();
         try {
@@ -468,7 +406,7 @@ public final class CgMaterialShader implements CgReloadable {
         // silently forget to latch and reopen the retry storm. See #compileFailed.
         compileFailed = true;
 
-        boolean isFirst = programCache.isEmpty();
+        boolean isFirst = map == null;
 
         // ── Step 1: Load source ────────────────────────────────────────────────
         // A generated shader IS its source, so there is nothing to load and nothing that can fail here.
@@ -548,24 +486,8 @@ public final class CgMaterialShader implements CgReloadable {
         // ── Step 2a, why ───────────────────────────────────────────────────────
         // These are CPU-side facts about the source text — the declared feature list, the queue, the
         // render type — with no GL dependency whatsoever. Publishing them here, rather than with the
-        // compiled programs in Step 8, decouples "we understand this shader" from "the driver
-        // accepted its GLSL".
-        //
-        // Why it matters: when the GLSL compile failed, the good parse used to be thrown away, so
-        // getDeclaredFeatureNames() fell back to an empty list and the next enableKeyword("X") threw
-        // "Keyword 'X' is not declared as #pragma cg_feature in this shader" — pointing at the
-        // author's pragma, which was present and correct, instead of at the codegen bug that
-        // actually failed. The real error was three lines earlier in a 900KB log.
-
-        // ── Step 2b: Attach engine buffers declared via #pragma cg_use ─────────
-        // Before compilation, deliberately. These buffers inject GLSL declarations, so attaching
-        // them after a compile would be too late — that ordering is exactly what made a shader read
-        // an undeclared QUAD_DATA when something forced an early recompile. Doing it here means a
-        // declared buffer is wired for every compile of this shader, including the first.
-        //
-        // Unknown tokens were already rejected at parse time, so the provider is non-null. attach()
-        // dedupes by macro name, so a caller that also attached manually is harmless.
-        attachEngineBuffers(parsed);
+        // compiled programs, decouples "we understand this shader" from "the driver accepted its GLSL":
+        // a failed GLSL compile must not hide the declared keywords behind an empty list.
 
         // ── Step 3: Capability check ───────────────────────────────────────────
         CgCapabilities.ShaderBufferPath bufferPath = CgCapabilities.detect().shaderBufferPath();
@@ -575,153 +497,87 @@ public final class CgMaterialShader implements CgReloadable {
             return;
         }
 
-        // ── Step 4: Build template UBO for GLSL emission ───────────────────────
-        CgUniformBuffer newMatPropsUbo = ahead != null && ahead.basis == parsed ? ahead.takeUbo() : null;
-        if (newMatPropsUbo == null) try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "material.templateUbo")) {
-            CgMaterialProperties tempProps = new CgMaterialProperties(parsed.properties());
-            if (tempProps.hasUboProps()) {
-                newMatPropsUbo = new CgUniformBuffer(CgMaterial.MATERIAL_PROPERTIES_BLOCK,
-                        tempProps.buildUboFormat(), CgBindingPoints.MATERIAL_PROPERTIES_UBO);
-            }
+        // ── Step 4: The new map, its template block and engine buffers ─────────
+        CgMaterialShaderMap next = ahead != null ? ahead.takeMap(parsed) : null;
+        if (next == null) try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "material.templateUbo")) {
+            next = CgMaterialShaderMap.of(resourcePath, parsed);
         }
 
         // ── Step 5: Compile all declared passes (no-keyword variant) ──────────
-        // Collect newly compiled shaders so we can delete them on partial failure.
-        List<CgShader> newShaders = new ArrayList<>();
-        Map<ProgramKey, CgShader> newCache = new LinkedHashMap<>();
-
         for (CgParsedPass pass : parsed.passes()) {
-            Sources made = ahead != null ? ahead.sources(parsed, pass, attachedBuffers) : null;
-            CgMaterialShaderCompiler.CompiledSource compiled;
-            if (made != null) {
-                compiled = made.compiled();
-            } else try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "material.codegen")) {
-                compiled = CgMaterialShaderCompiler.compile(parsed, pass, attachedBuffers,
-                        newMatPropsUbo, CgMaterialShaderCompiler.CompileConfig.DEFAULT);
-            } catch (CgPreprocessorException e) {
-                // Abort entire recompile — clean up shaders compiled so far
-                for (CgShader s : newShaders) s.delete();
-                if (newMatPropsUbo != null) newMatPropsUbo.delete();
-                if (isFirst) throw e;
-                LOGGER.error("Reload failed for '{}' pass '{}': buffer injection error — {}",
-                        resourcePath, pass.name(), e.getMessage());
-                return;
+            Sources made = ahead != null ? ahead.sources(next, pass) : null;
+            if (made == null) {
+                CgMaterialShaderCompiler.CompiledSource compiled;
+                try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "material.codegen")) {
+                    compiled = CgMaterialShaderCompiler.compile(parsed, pass, next.buffers, next.block,
+                            CgMaterialShaderCompiler.CompileConfig.DEFAULT);
+                } catch (CgPreprocessorException e) {
+                    next.delete();
+                    if (isFirst) throw e;
+                    LOGGER.error("Reload failed for '{}' pass '{}': buffer injection error — {}",
+                            resourcePath, pass.name(), e.getMessage());
+                    return;
+                }
+                try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "material.preprocess")) {
+                    made = prepare(compiled, resourcePath);
+                }
             }
 
             if (DUMP_GLSL.get()) {
                 LOGGER.info("=== CgMaterialShader GLSL dump for '" + resourcePath + "' pass '" + pass.name() + "' ===");
-                LOGGER.info("--- VERTEX ---\n{}", compiled.vertexSource());
-                LOGGER.info("--- FRAGMENT ---\n{}", compiled.fragmentSource());
+                LOGGER.info("--- VERTEX ---\n{}", made.compiled().vertexSource());
+                LOGGER.info("--- FRAGMENT ---\n{}", made.compiled().fragmentSource());
                 LOGGER.info("=== end GLSL dump ===");
             }
 
-            String processedVert;
-            String processedFrag;
-            if (made != null) {
-                processedVert = made.vertex();
-                processedFrag = made.fragment();
-            } else try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "material.preprocess")) {
-                processedVert = new CgShaderPreprocessor().process(compiled.vertexSource(), resourcePath);
-                processedFrag = new CgShaderPreprocessor().process(compiled.fragmentSource(), resourcePath);
-            }
-
-            CgShader newShader = build(processedVert, processedFrag, compiled.vertexFormat(), pass.name());
-            if (!deferring && !newShader.isCompiled()) {
-                String err = newShader.getLastCompileError();
-                newShader.delete();
-                // Abort entire recompile — clean up shaders compiled so far
-                for (CgShader s : newShaders) s.delete();
-                if (newMatPropsUbo != null) newMatPropsUbo.delete();
-                // THE ONE FAILURE A GENERATED SHADER CAN ACTUALLY REACH, and the reason lastCompileError
-                // exists: `err` is the driver's own text, carrying the line number that maps back through
-                // lineOwners to the node that emitted it.
+            CgShader program = CgMaterialShaderMap.build(resourcePath, made, pass.name(), deferring);
+            if (!deferring && !program.isCompiled()) {
+                String err = program.getLastCompileError();
+                program.delete();
+                next.delete();
+                // The driver's own text: its line number maps back through lineOwners to the node that emitted it.
                 failed((isFirst ? "Compile failed for '" : "Reload failed for '") + resourcePath
                         + "' pass '" + pass.name() + "': " + err);
                 return;
             }
-
-            newShaders.add(newShader);
-            newCache.put(new ProgramKey(pass.name(), Collections.emptySet()), newShader);
+            next.programs.put(new ProgramKey(pass.name(), Collections.emptySet()), program);
         }
 
-        Set<ProgramKey> declared = new HashSet<>(newCache.keySet());
-
-        // Step 6.5 waits for the first pass that asks, for a caller drawing only the Forward pass.
-        // @see #ensureAutoGen
-        if (!forwardOnly) {
-            // ── Step 6.5: Depth auto-generation ───────────────────────────────────────
-            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "material.depthAutoGen")) {
-                if (!attemptDepthAutoGen(parsed, newMatPropsUbo, newCache, newShaders, isFirst, true)) return;
-            }
+        // ── Step 6: Depth auto-generation, waiting for the first pass that asks in a forward-only compile ──
+        CgShader generated = null;
+        if (!forwardOnly) try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "material.depthAutoGen")) {
+            generated = next.autoGenDepth(deferring);
+        } catch (CgPreprocessorException e) {
+            next.delete();
+            if (isFirst) throw e;
+            LOGGER.error("Reload failed for '{}' depth auto-gen: buffer injection error — {}", resourcePath, e.getMessage());
+            return;
         }
 
         if (deferring) {
-            Set<ProgramKey> generated = new HashSet<>(newCache.keySet());
-            generated.removeAll(declared);
-            pendingCommit = new PendingCommit(newCache, newMatPropsUbo, expanded, isFirst, generated, forwardOnly);
+            pendingCommit = new PendingCommit(next, expanded, isFirst, generated, forwardOnly);
             return;
         }
-        commit(newCache, newMatPropsUbo, expanded, isFirst, false);
-    }
-
-    /**
-     * Builds the depth program a forward-only compile left out, the first time a pass asks for one.
-     * Synchronous: it is what an eager compile would have done at load, paid at first use instead.
-     */
-    private void ensureAutoGen() {
-        if (!autoGenSkipped || lastParsed == null) return;
-        autoGenSkipped = false;
-        Map<ProgramKey, CgShader> generated = new LinkedHashMap<>();
-        List<CgShader> made = new ArrayList<>();
-        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "material.lateAutoGen")) {
-            attemptDepthAutoGen(lastParsed, matPropsUbo, generated, made, false, false);
-        }
-        for (CgShader shader : generated.values()) wireShader(shader);
-        programCache.putAll(generated);
-        cacheVersion++;
+        commit(next, expanded, isFirst, forwardOnly);
     }
 
     /** Set for the length of a forward-only {@link #submitRecompile}. */
     private boolean forwardOnly;
 
-    /** The committed programs came from a forward-only compile, so no depth pass was tried yet. */
-    private boolean autoGenSkipped;
-
-    /** Steps 7 to 9: the new programs replace the old, and are wired. */
-    private void commit(Map<ProgramKey, CgShader> newCache, CgUniformBuffer newMatPropsUbo, String expanded,
-                        boolean isFirst, boolean skippedAutoGen) {
-        autoGenSkipped = skippedAutoGen;
-        dropVariants();
-        // ── Step 7: On hot-reload, delete all existing variant programs ────────
-        if (!isFirst) {
-            for (CgShader s : programCache.values()) s.delete();
-            programCache.clear();
-            cacheVersion++;
-        }
-
-        // ── Step 8: Commit new state ───────────────────────────────────────────
-        programCache.putAll(newCache);
-        cacheVersion++;
-
-        if (this.matPropsUbo != null) this.matPropsUbo.delete();
-        this.matPropsUbo = newMatPropsUbo;
+    /** Steps 7 and 8: the new map's programs are wired and replace the old map. */
+    private void commit(CgMaterialShaderMap next, String expanded, boolean isFirst, boolean skippedAutoGen) {
+        next.autoGenSkipped = skippedAutoGen;
+        for (CgShader program : next.programs.values()) wire(program, next);
+        if (map != null) map.delete();
+        map = next;
         // lastParsed / renderQueue / renderType were committed in Step 2a — they are parse products,
         // not compile products, and must survive a GLSL failure.
-
         compileFailed = false;
         lastCompileError = null;
         lastCompiledSource = expanded;
-
-        // ── Step 9: Wire all newly compiled programs ───────────────────────────
-        for (Map.Entry<ProgramKey, CgShader> entry : newCache.entrySet())
-            wireShader(entry.getValue());
-
-        // Increment revision — materials detect this on next bind()
+        // Materials detect this on their next bind().
         revisionNumber++;
-
-        if (!isFirst) {
-            LOGGER.info("Reloaded '{}'", resourcePath);
-        }
+        if (!isFirst) LOGGER.info("Reloaded '{}'", resourcePath);
     }
 
     /**
@@ -772,7 +628,7 @@ public final class CgMaterialShader implements CgReloadable {
     public boolean pollPending() {
         PendingCommit pending = pendingCommit;
         if (pending == null) return true;
-        for (CgShader shader : pending.programs().values()) {
+        for (CgShader shader : pending.map().programs.values()) {
             if (!shader.isReady()) return false;
         }
         // Committed between links: during one, NVIDIA makes the commit's program calls wait for it (material.commit).
@@ -794,9 +650,9 @@ public final class CgMaterialShader implements CgReloadable {
         PendingCommit pending = pendingCommit;
         if (pending == null) return;
         pendingCommit = null;
-        for (CgShader shader : pending.programs().values()) {
+        for (CgShader shader : pending.map().programs.values()) {
             if (!shader.isReady()) {
-                waited("pending commit");
+                waited(resourcePath, "pending commit");
                 break;
             }
         }
@@ -805,27 +661,26 @@ public final class CgMaterialShader implements CgReloadable {
         }
     }
 
+
     /** Verifies each submitted program; a failed pass fails the recompile, a failed auto-generated one is dropped. */
     private void finish(PendingCommit pending) {
-        Map<ProgramKey, CgShader> programs = new LinkedHashMap<>(pending.programs());
-        for (Map.Entry<ProgramKey, CgShader> entry : pending.programs().entrySet()) {
+        CgMaterialShaderMap next = pending.map();
+        for (Map.Entry<ProgramKey, CgShader> entry : new HashMap<>(next.programs).entrySet()) {
             CgShader shader = entry.getValue();
             if (shader.isCompiled()) continue;
             String err = shader.getLastCompileError();
-            if (pending.generated().contains(entry.getKey())) {
-                shader.delete();
-                programs.remove(entry.getKey());
+            if (shader == pending.generated()) {
+                next.drop(entry.getKey());
                 LOGGER.error("'" + resourcePath + "' " + entry.getKey().passName()
                         + " auto-gen failed (continuing without it): " + err);
                 continue;
             }
-            for (CgShader each : pending.programs().values()) each.delete();
-            if (pending.matPropsUbo() != null) pending.matPropsUbo().delete();
+            next.delete();
             failed((pending.isFirst() ? "Compile failed for '" : "Reload failed for '") + resourcePath
                     + "' pass '" + entry.getKey().passName() + "': " + err);
             return;
         }
-        commit(programs, pending.matPropsUbo(), pending.expanded(), pending.isFirst(), pending.forwardOnly());
+        commit(next, pending.expanded(), pending.isFirst(), pending.forwardOnly());
     }
 
     /** Drops a pending submit that a newer compile supersedes. */
@@ -833,17 +688,7 @@ public final class CgMaterialShader implements CgReloadable {
         PendingCommit pending = pendingCommit;
         if (pending == null) return;
         pendingCommit = null;
-        for (CgShader shader : pending.programs().values()) shader.delete();
-        if (pending.matPropsUbo() != null) pending.matPropsUbo().delete();
-    }
-
-    /** A program from sources already preprocessed: submitted while {@link #deferring}, compiled otherwise. */
-    private CgShader build(String vert, String frag, CgVertexFormat format, String pass) {
-        CgTrace.marker(CgChannels.GL, "material.compile", resourcePath);   // which program a frame compiled
-        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, deferring ? "material.glSubmit" : "material.glCompile");
-             CgShaderProgram.Labelled named = CgShaderProgram.labelled(resourcePath + " " + pass)) {
-            return deferring ? CgShaderFactory.submit(vert, frag, format) : CgShaderFactory.fromSource(vert, frag, format);
-        }
+        pending.map().delete();
     }
 
     /** Set for the length of a {@link #submitRecompile}. */
@@ -853,9 +698,10 @@ public final class CgMaterialShader implements CgReloadable {
     @Nullable
     private PendingCommit pendingCommit;
 
-    private record PendingCommit(Map<ProgramKey, CgShader> programs, @Nullable CgUniformBuffer matPropsUbo,
-                                 String expanded, boolean isFirst, Set<ProgramKey> generated, boolean forwardOnly) {
+    private record PendingCommit(CgMaterialShaderMap map, String expanded, boolean isFirst,
+                                 @Nullable CgShader generated, boolean forwardOnly) {
     }
+
 
     /**
      * This source with every {@code #include} pulled in, or null when it cannot be expanded.
@@ -888,35 +734,18 @@ public final class CgMaterialShader implements CgReloadable {
      */
     public CgShader getOrCompile(String passName, Set<String> activeKeywords) {
         awaitPending();
-        for (int i = 0; i < HITS; i++) {
-            if (hitPass[i] == passName && hitKeywords[i] == activeKeywords && hitVersion[i] == cacheVersion) return hitShader[i];
+        CgMaterialShaderMap current = map;
+        if (current == null) {
+            // A failed compile was logged; asked before any compile, said once.
+            if (!compileFailed && !warnedUncompiled) {
+                warnedUncompiled = true;
+                LOGGER.error("Cannot compile variant: shader '{}' has not been compiled yet", resourcePath);
+            }
+            return null;
         }
-        ProgramKey key = new ProgramKey(passName, activeKeywords);
-        CgShader cached = programCache.get(key);
-        if (cached != null) {
-            remember(passName, activeKeywords, cached);
-            return cached;
-        }
-        CgShader submitted = pendingVariants.remove(key);
-        if (submitted != null) {
-            if (!submitted.isReady()) waited(key);
-            return keepVariant(key, submitted);
-        }
-        if (isAutoGenerated(passName)) {
-            ensureAutoGen();
-            cached = programCache.get(key);
-            if (cached != null) return cached;
-        }
-        if (failedVariants.containsKey(key)) return remember(passName, activeKeywords, null);
-        CgMaterialShaderCompiler.CompiledSource compiled = variantSource(key);
-        if (compiled == null) return remember(passName, activeKeywords, null);
-        waited(key);
-        String processedVert = new CgShaderPreprocessor().process(compiled.vertexSource(), resourcePath);
-        String processedFrag = new CgShaderPreprocessor().process(compiled.fragmentSource(), resourcePath);
-        try (CgShaderProgram.Labelled named = CgShaderProgram.labelled(resourcePath + " " + key)) {
-            return keepVariant(key, CgShaderFactory.fromSource(processedVert, processedFrag, compiled.vertexFormat()));
-        }
+        return current.get(passName, activeKeywords);
     }
+
 
     /**
      * Starts compiling {@code passName} (null for the Forward pass) with {@code activeKeywords} without waiting for the
@@ -926,156 +755,16 @@ public final class CgMaterialShader implements CgReloadable {
      */
     public boolean precacheVariant(@Nullable String passName, Set<String> activeKeywords) {
         if (isDirty() || !pollPending()) return false;
-        if (lastParsed == null) return true;
+        CgMaterialShaderMap current = map;
+        if (current == null) return true;
         if (passName == null) {
-            CgParsedPass forward = lastParsed.getPassByLightMode(CgRenderPassVariant.FORWARD.lightModeName());
+            CgParsedPass forward = current.parsed.getPassByLightMode(CgRenderPassVariant.FORWARD.lightModeName());
             if (forward == null) return true;
             passName = forward.name();
         }
-        ProgramKey key = new ProgramKey(passName, activeKeywords);
-        if (programCache.containsKey(key) || failedVariants.containsKey(key)) return true;
-        CgShader submitted = pendingVariants.get(key);
-        if (submitted != null) {
-            if (!submitted.isReady() || CgLinkWorker.linking()) return false;
-            keepVariant(key, pendingVariants.remove(key));
-            return true;
-        }
-        if (isAutoGenerated(passName) && !programCache.containsKey(new ProgramKey(passName, Collections.emptySet()))) {
-            return true;
-        }
-        if (SOURCES_AHEAD.get() && !DUMP_GLSL.get()) {
-            VariantAhead ahead = variantsAhead.get(key);
-            if (ahead == null) {
-                variantsAhead.put(key, startVariant(key));
-                return false;
-            }
-            if (!ahead.sources().isDone()) return false;
-            variantsAhead.remove(key);
-            Sources made = ahead.sources().isCompletedExceptionally() ? null : ahead.sources().join();
-            if (made != null && ahead.parsed() == lastParsed && ahead.ubo() == matPropsUbo
-                    && ahead.buffers().equals(attachedBuffers)) {
-                for (String read : ahead.reads()) CgIO.noteRead(read);
-                CgTrace.marker(CgChannels.GL, "material.compile", resourcePath + " " + key.keywords());
-                try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "material.glSubmit");
-                     CgShaderProgram.Labelled named = CgShaderProgram.labelled(resourcePath + " " + key)) {
-                    pendingVariants.put(key, CgShaderFactory.submit(made.vertex(), made.fragment(),
-                            made.compiled().vertexFormat()));
-                }
-                return false;
-            }
-            // Stale, or it failed: made here as before, which reports what failed.
-        }
-        CgMaterialShaderCompiler.CompiledSource compiled = variantSource(key);
-        if (compiled == null) {
-            failedVariants.put(key, "pass '" + key.passName() + "' has no source for this variant");
-            return true;
-        }
-        CgTrace.marker(CgChannels.GL, "material.compile", resourcePath + " " + key.keywords());
-        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "material.glSubmit");
-             CgShaderProgram.Labelled named = CgShaderProgram.labelled(resourcePath + " " + key)) {
-            String vert = new CgShaderPreprocessor().process(compiled.vertexSource(), resourcePath);
-            String frag = new CgShaderPreprocessor().process(compiled.fragmentSource(), resourcePath);
-            pendingVariants.put(key, CgShaderFactory.submit(vert, frag, compiled.vertexFormat()));
-        }
-        return false;
+        return current.precache(passName, activeKeywords);
     }
 
-    /** A variant's sources a worker is making, and what it made them from: taken only while all of it is current. */
-    private record VariantAhead(CgParsedShader parsed, List<CgAttachedBuffer> buffers, @Nullable CgUniformBuffer ubo,
-                                Set<String> reads, CompletableFuture<Sources> sources) {
-    }
-
-    /** Variants whose sources a worker is making for {@link #precacheVariant}. */
-    private final Map<ProgramKey, VariantAhead> variantsAhead = new HashMap<>();
-
-    /** {@code key}'s sources on a worker, from a snapshot of what {@link #variantSource} reads. Render thread. */
-    private VariantAhead startVariant(ProgramKey key) {
-        CgParsedShader parsed = lastParsed;
-        List<CgAttachedBuffer> buffers = new ArrayList<>(attachedBuffers);
-        CgUniformBuffer ubo = matPropsUbo;
-        String path = resourcePath;
-        Set<String> reads = Collections.synchronizedSet(new HashSet<>());
-        return new VariantAhead(parsed, buffers, ubo, reads, CompletableFuture.supplyAsync(() -> {
-            CgMaterialShaderCompiler.CompiledSource compiled = variantSource(parsed, key, buffers, ubo);
-            if (compiled == null) throw new IllegalStateException("no variant " + key);
-            try (CgIO.Reads recorded = CgIO.recordReads()) {
-                Sources made = new Sources(compiled,
-                        CgGL.checkSource(new CgShaderPreprocessor().process(compiled.vertexSource(), path)).toString(),
-                        CgGL.checkSource(new CgShaderPreprocessor().process(compiled.fragmentSource(), path)).toString());
-                reads.addAll(recorded.paths());
-                return made;
-            }
-        }, CgJob.executor(CgJobLane.LATENCY)));
-    }
-
-    /**
-     * {@link #variantSource(ProgramKey)} from what it reads, on any thread: null where there is no such pass, logging
-     * nothing, so the frame's own attempt reports it.
-     */
-    @Nullable
-    private static CgMaterialShaderCompiler.CompiledSource variantSource(CgParsedShader parsed, ProgramKey key,
-                                                                         List<CgAttachedBuffer> buffers,
-                                                                         @Nullable CgUniformBuffer ubo) {
-        if (parsed == null) return null;
-        String passName = key.passName();
-        CgParsedPass pass = parsed.getPassByName(passName);
-        CgMaterialShaderCompiler.CompileConfig config = new CgMaterialShaderCompiler.CompileConfig(key.keywords());
-        if (pass != null) return CgMaterialShaderCompiler.compile(parsed, pass, buffers, ubo, config);
-        if (!isAutoGenerated(passName)) return null;
-        CgParsedPass forward = parsed.getPassByLightMode(CgRenderPassVariant.FORWARD.lightModeName());
-        return CgMaterialShaderCompiler.compileDepthAutoGen(parsed, forward, buffers, ubo, config);
-    }
-
-    /** The sources of a pass and keyword set, or null, logged, when the shader has no such pass. */
-    @Nullable
-    private CgMaterialShaderCompiler.CompiledSource variantSource(ProgramKey key) {
-        String passName = key.passName();
-        if (lastParsed == null) {
-            LOGGER.error("Cannot compile keyword variant: shader '{}' has not been successfully compiled yet — " +
-                    "call recompile() first", resourcePath);
-            return null;
-        }
-        CgParsedPass pass = lastParsed.getPassByName(passName);
-        CgMaterialShaderCompiler.CompileConfig config = new CgMaterialShaderCompiler.CompileConfig(key.keywords());
-        if (pass != null) return CgMaterialShaderCompiler.compile(lastParsed, pass, attachedBuffers, matPropsUbo, config);
-        if (isAutoGenerated(passName) && programCache.containsKey(new ProgramKey(passName, Collections.emptySet()))) {
-            // A keyword variant of a generated pass (a multi-draw's depth prepass): generated again, with the keywords.
-            CgParsedPass forward = lastParsed.getPassByLightMode(CgRenderPassVariant.FORWARD.lightModeName());
-            return CgMaterialShaderCompiler.compileDepthAutoGen(lastParsed, forward, attachedBuffers, matPropsUbo, config);
-        }
-        LOGGER.error("Cannot compile variant: pass '" + passName + "' not found in shader '" + resourcePath + "'");
-        return null;
-    }
-
-    /** A variant's program, linked (waiting for the driver if it must), wired and cached; null, logged, if it failed. */
-    @Nullable
-    private CgShader keepVariant(ProgramKey key, CgShader program) {
-        if (!program.isCompiled()) {
-            String err = program.getLastCompileError();
-            program.delete();
-            failedVariants.put(key, String.valueOf(err));
-            LOGGER.error("Failed to compile keyword variant for '" + resourcePath + "' pass '" + key.passName() + "': " + err);
-            return null;
-        }
-        wireShader(program);
-        programCache.put(key, program);
-        cacheVersion++;
-        return program;
-    }
-
-    /** Forgets variants made from the source being replaced. */
-    private void dropVariants() {
-        for (CgShader s : pendingVariants.values()) s.delete();
-        pendingVariants.clear();
-        variantsAhead.clear();
-        failedVariants.clear();
-        cacheVersion++;
-    }
-
-    /** Variants {@link #precacheVariant} submitted, not yet kept. Dropped by a recompile, which clears the cache. */
-    private final Map<ProgramKey, CgShader> pendingVariants = new HashMap<>();
-    /** Variants that failed since the last recompile, with why: not tried again until the source changes. */
-    private final Map<ProgramKey, String> failedVariants = new HashMap<>();
 
     /**
      * Why the variant of {@code passName} under {@code keywords} failed to compile since the last recompile, the
@@ -1087,8 +776,10 @@ public final class CgMaterialShader implements CgReloadable {
      */
     @Nullable
     public String variantError(String passName, Set<String> keywords) {
-        return failedVariants.get(new ProgramKey(passName, keywords));
+        CgMaterialShaderMap current = map;
+        return current == null ? null : current.variantError(passName, keywords);
     }
+
 
     /**
      * Convenience: finds the first Forward-lit pass and returns or compiles the keyword variant
@@ -1142,31 +833,18 @@ public final class CgMaterialShader implements CgReloadable {
      */
     public boolean hasCompiledPass(String passName) {
         awaitPending();
-        if (isAutoGenerated(passName)) ensureAutoGen();
-        return programCache.containsKey(new ProgramKey(passName, Collections.emptySet()));
+        return map != null && map.hasCompiled(passName);
     }
 
-    /** The pass step 6.5 generates when the shader does not author it. */
-    private static boolean isAutoGenerated(String passName) {
-        return passName.equals(CgRenderPassVariant.DEPTH.lightModeName());
+    /**
+     * The buffers of the engine tokens the committed parse names ({@code #pragma cg_use}): what a capture binds beside
+     * the material's own. Empty until a compile has succeeded.
+     */
+    public List<CgAttachedBuffer> engineBuffers() {
+        CgMaterialShaderMap current = map;
+        return current == null ? Collections.emptyList() : current.buffers;
     }
 
-    /** Returns an unmodifiable view of the attached SSBO and UBO buffers. */
-    public List<CgAttachedBuffer> getAttachedBuffers() {
-        return attachedView;
-    }
-
-    /** Notes a lookup's answer, a failure's null too, until the cache next changes; answers {@code shader}. */
-    @Nullable
-    private CgShader remember(String passName, Set<String> keywords, @Nullable CgShader shader) {
-        int i = hitNext;
-        hitNext = (hitNext + 1) % HITS;
-        hitPass[i] = passName;
-        hitKeywords[i] = keywords;
-        hitShader[i] = shader;
-        hitVersion[i] = cacheVersion;
-        return shader;
-    }
 
     // ── Sources made ahead, on a worker ─────────────────────────────────────────
 
@@ -1217,10 +895,6 @@ public final class CgMaterialShader implements CgReloadable {
     private record Front(String source, @Nullable String expanded, @Nullable CgParsedShader parsed, Set<String> reads) {
     }
 
-    /** One pass's generated GLSL, and the same preprocessed: what {@code CgShaderFactory} takes. */
-    private record Sources(CgMaterialShaderCompiler.CompiledSource compiled, String vertex, String fragment) {
-    }
-
     /** Every pass's sources by name, and what preprocessing them read. */
     private record Passes(Map<String, Sources> sources, Set<String> reads) {
     }
@@ -1234,9 +908,9 @@ public final class CgMaterialShader implements CgReloadable {
         final int generation;
         final CompletableFuture<Front> front;
         Front landed;
-        CgParsedShader basis;
-        CgUniformBuffer ubo;
-        List<CgAttachedBuffer> buffers;
+        /** The map the passes are generated for; the compile's once {@link #takeMap} hands it over. */
+        CgMaterialShaderMap map;
+        boolean taken;
         CompletableFuture<Passes> passes;
 
         Ahead(int generation, CompletableFuture<Front> front) {
@@ -1244,17 +918,18 @@ public final class CgMaterialShader implements CgReloadable {
             this.front = front;
         }
 
-        /** The template block, now the compile's. */
-        CgUniformBuffer takeUbo() {
-            CgUniformBuffer taken = ubo;
-            ubo = null;
-            return taken;
+        /** The map made for this parse, now the compile's; null where it was made for another. */
+        @Nullable
+        CgMaterialShaderMap takeMap(CgParsedShader parsed) {
+            if (map == null || map.parsed != parsed) return null;
+            taken = true;
+            return map;
         }
 
-        /** A pass's sources, where they were generated from this parse and these buffers; null otherwise. */
+        /** A pass's sources, where they were generated for this map; null otherwise. */
         @Nullable
-        Sources sources(CgParsedShader parsed, CgParsedPass pass, List<CgAttachedBuffer> attached) {
-            if (passes == null || basis != parsed || !buffers.equals(attached)) return null;
+        Sources sources(CgMaterialShaderMap next, CgParsedPass pass) {
+            if (passes == null || map != next) return null;
             if (!passes.isDone() || passes.isCompletedExceptionally()) return null;
             return passes.join().sources().get(pass.name());
         }
@@ -1268,10 +943,11 @@ public final class CgMaterialShader implements CgReloadable {
         }
 
         void release() {
-            if (ubo != null) ubo.delete();
-            ubo = null;
+            if (map != null && !taken) map.delete();
+            map = null;
         }
     }
+
 
     /**
      * Moves the sources a worker makes one hop on, and says whether a submit may go ahead: true once they are made,
@@ -1321,7 +997,7 @@ public final class CgMaterialShader implements CgReloadable {
         }, CgJob.executor(CgJobLane.LATENCY)));
     }
 
-    /** Between the hops, on the frame: the engine buffers attached and the template block made, then every pass on a worker. */
+    /** Between the hops, on the frame: the map made (its block and buffers are GPU objects), then every pass on a worker. */
     private void startPasses(Ahead a, Front front) {
         a.landed = front;
         CgParsedShader parsed;
@@ -1332,30 +1008,20 @@ public final class CgMaterialShader implements CgReloadable {
             a.passes = CompletableFuture.completedFuture(new Passes(Collections.emptyMap(), Collections.emptySet()));
             return;
         }
-        attachEngineBuffers(parsed);
-        CgMaterialProperties props = new CgMaterialProperties(parsed.properties());
-        a.basis = parsed;
-        a.ubo = props.hasUboProps() ? new CgUniformBuffer(CgMaterial.MATERIAL_PROPERTIES_BLOCK,
-                props.buildUboFormat(), CgBindingPoints.MATERIAL_PROPERTIES_UBO) : null;
-        a.buffers = new ArrayList<>(attachedBuffers);
-        List<CgAttachedBuffer> buffers = a.buffers;
-        CgUniformBuffer ubo = a.ubo;
+        CgMaterialShaderMap made = a.map = CgMaterialShaderMap.of(resourcePath, parsed);
         String path = resourcePath;
         a.passes = CompletableFuture.supplyAsync(() -> {
             try (CgIO.Reads reads = CgIO.recordReads()) {
-                Map<String, Sources> made = new HashMap<>();
+                Map<String, Sources> sources = new HashMap<>();
                 for (CgParsedPass pass : parsed.passes()) {
-                    CgMaterialShaderCompiler.CompiledSource compiled = CgMaterialShaderCompiler.compile(parsed, pass,
-                            buffers, ubo, CgMaterialShaderCompiler.CompileConfig.DEFAULT);
-                    // Checked here too, so glShaderSource has no scan left for the frame that submits.
-                    made.put(pass.name(), new Sources(compiled,
-                            CgGL.checkSource(new CgShaderPreprocessor().process(compiled.vertexSource(), path)).toString(),
-                            CgGL.checkSource(new CgShaderPreprocessor().process(compiled.fragmentSource(), path)).toString()));
+                    sources.put(pass.name(), prepare(CgMaterialShaderCompiler.compile(parsed, pass, made.buffers,
+                            made.block, CgMaterialShaderCompiler.CompileConfig.DEFAULT), path));
                 }
-                return new Passes(made, new HashSet<>(reads.paths()));
+                return new Passes(sources, new HashSet<>(reads.paths()));
             }
         }, CgJob.executor(CgJobLane.LATENCY));
     }
+
 
     /** The sources made for this compile, or null where none are or they are stale; the caller releases them. */
     @Nullable
@@ -1444,166 +1110,40 @@ public final class CgMaterialShader implements CgReloadable {
             deleted = true;
             CgAssetReloader.untrack(this);
             discardPending();
-            dropVariants();
-            for (CgShader s : programCache.values()) s.delete();
-            programCache.clear();
-            cacheVersion++;
-            if (matPropsUbo != null) {
-                matPropsUbo.delete();
-                matPropsUbo = null;
-            }
+            if (map != null) map.delete();
+            map = null;
         }
     }
 
-    // ── Buffer attachment API ─────────────────────────────────────────────────
+    // ── What it reads of the scene ──────────────────────────────────────────────
 
     /**
-     * Attaches a user-defined SSBO buffer to this shader for GLSL auto-injection.
+     * Whether {@code program}, one of this shader's, samples {@code cg_DepthBuffer}: read from the linked program itself
+     * (the driver's active uniforms on GL, SPIR-V reflection on the tracked backend), so a keyword variant answers for
+     * itself. {@link #readsSceneDepth()} for a program this shader did not link.
      *
-     * <p>On the next compile, the buffer's GLSL struct and an SSBO block
-     * sampler + fetch function are injected into both vertex and fragment shader source.
-     * Access it in GLSL via {@code macroName(n).fieldName}.</p>
-     *
-     * <p><strong>Ownership warning</strong>: this shader asset may be shared across multiple
-     * {@code CgMaterial} instances. Attaching affects all of them — attach before materials
-     * are created, or coordinate carefully.</p>
-     *
-     * @param buffer    the buffer to attach; format must use {@code STD430}
-     * @param macroName uppercase GLSL-style identifier, e.g. {@code "FONT_METRICS"}
-     * @return {@code this} for fluent chaining
-     * @apiNote Never throws — validation failures are logged as warnings and the call becomes a no-op.
+     * <pre>{@code
+     * CgShader program = shader.getOrCompile("Pass0", keywords);
+     * if (program != null && shader.readsSceneDepth(program)) copies |= CgTargetCopy.DEPTH;
+     * }</pre>
      */
-    public CgMaterialShader attach(CgShaderBuffer buffer, String macroName) {
-        return attach(buffer, macroName, true);
+    public boolean readsSceneDepth(CgShader program) {
+        CgMaterialShaderMap current = map;
+        int reads = current == null ? -1 : current.reads(program);
+        return reads < 0 ? readsSceneDepth() : (reads & CgMaterialShaderMap.READS_DEPTH) != 0;
+    }
+
+    /** As {@link #readsSceneDepth(CgShader)}, for {@code cg_SceneColor}. */
+    public boolean readsSceneColor(CgShader program) {
+        CgMaterialShaderMap current = map;
+        int reads = current == null ? -1 : current.reads(program);
+        return reads < 0 ? readsSceneColor() : (reads & CgMaterialShaderMap.READS_COLOR) != 0;
     }
 
     /**
-     * The engine buffers a parse names ({@code #pragma cg_use}), attached for the compile that declares them: it
-     * includes them, so attaching marks nothing dirty.
-     */
-    private void attachEngineBuffers(CgParsedShader parsed) {
-        // Unknown tokens were rejected at parse time, so the provider is non-null; attach dedupes by macro name.
-        for (String token : parsed.engineBuffers()) {
-            CgEngineBufferRegistry.Provider provider = CgEngineBufferRegistry.get(token);
-            attach(provider.buffer().get(), provider.macroName(), false);
-        }
-    }
-
-    private CgMaterialShader attach(CgShaderBuffer buffer, String macroName, boolean dirties) {
-        CgAttachedBuffer ab;
-        try {
-            ab = CgAttachedBuffer.of(buffer, macroName);
-        } catch (IllegalArgumentException e) {
-            LOGGER.warn("attach() skipped for macro '" + macroName + "': " + e.getMessage());
-            return this;
-        }
-        for (CgAttachedBuffer existing : attachedBuffers) {
-            if (existing.isUbo()) continue;
-            if (existing.getMacroName().equals(macroName)) {
-                // THE SAME BUFFER UNDER THE SAME MACRO IS A NO-OP, not a mistake. Engine buffers are
-                // re-attached from `#pragma cg_use` on EVERY compile (step 2b) while this list
-                // survives recompiles, so warning here fired on the ordinary path -- once per macro
-                // per recompile -- for something nobody did wrong. A DIFFERENT buffer claiming a
-                // macro that is taken is still the collision this check exists to catch.
-                if (existing.getBuffer() != buffer) {
-                    LOGGER.warn("attach() skipped: macro name \"{}\" is already attached to this "
-                            + "shader by a different buffer.", macroName);
-                }
-                return this;
-            }
-            if (existing.getStructName().equals(ab.getStructName())) {
-                LOGGER.warn("attach() skipped: GLSL struct name collision for \"{}\" (already in use by macro \"{}\").",
-                        ab.getStructName(), existing.getMacroName());
-                return this;
-            }
-        }
-        attachedBuffers.add(ab);
-        if (dirties) markDirty();
-        return this;
-    }
-
-    /**
-     * Detaches the SSBO buffer registered under {@code macroName}; no-op if not found.
-     *
-     * @return {@code this} for fluent chaining
-     */
-    public CgMaterialShader detach(String macroName) {
-        if (attachedBuffers.removeIf(ab -> !ab.isUbo() && ab.getMacroName().equals(macroName))) {
-            markDirty();
-        }
-        return this;
-    }
-
-    /**
-     * Detaches the SSBO buffer by reference; no-op if not attached.
-     *
-     * @return {@code this} for fluent chaining
-     */
-    public CgMaterialShader detach(CgShaderBuffer buffer) {
-        if (attachedBuffers.removeIf(ab -> ab.getBuffer() == buffer)) {
-            markDirty();
-        }
-        return this;
-    }
-
-    /**
-     * Attaches a UBO to this shader for GLSL flat-block auto-injection.
-     *
-     * <p>On the next compile, a {@code layout(std140) uniform BlockName { ... };} block is
-     * injected into both vertex and fragment shader source.</p>
-     *
-     * @param buffer UBO to attach; format must use {@code STD140}
-     * @return {@code this} for fluent chaining
-     * @apiNote Never throws — validation failures are logged as warnings and the call becomes a no-op.
-     */
-    public CgMaterialShader attach(CgUniformBuffer buffer) {
-        CgAttachedBuffer ab;
-        try {
-            ab = CgAttachedBuffer.of(buffer);
-        } catch (IllegalArgumentException e) {
-            LOGGER.warn("attach(CgUniformBuffer) skipped for '{}': {}",
-                    buffer == null ? "null" : buffer.getName(), e.getMessage());
-            return this;
-        }
-        for (CgAttachedBuffer existing : attachedBuffers) {
-            if (existing.isUbo() && existing.getBuffer().getName().equals(buffer.getName())) {
-                LOGGER.warn("attach(CgUniformBuffer) skipped: UBO block name \"{}\" is already attached.",
-                        buffer.getName());
-                return this;
-            }
-        }
-        attachedBuffers.add(ab);
-        markDirty();
-        return this;
-    }
-
-    /**
-     * Detaches the UBO with the given block name; no-op if not found.
-     *
-     * @return {@code this} for fluent chaining
-     */
-    public CgMaterialShader detachUbo(String blockName) {
-        if (attachedBuffers.removeIf(ab -> ab.isUbo() && ab.getBuffer().getName().equals(blockName))) {
-            markDirty();
-        }
-        return this;
-    }
-
-    /**
-     * Detaches the UBO by reference; no-op if not attached.
-     *
-     * @return {@code this} for fluent chaining
-     */
-    public CgMaterialShader detach(CgUniformBuffer buffer) {
-        if (attachedBuffers.removeIf(ab -> ab.isUbo() && ab.getBuffer() == buffer)) {
-            markDirty();
-        }
-        return this;
-    }
-    
-    /**
-     * Whether the parsed source samples {@code cg_DepthBuffer}, directly or through {@code CG_SCENE_EYE_DEPTH}, in its
-     * own text or in a file it includes; true until parsed.
+     * Whether the source may sample {@code cg_DepthBuffer}, directly or through {@code CG_SCENE_EYE_DEPTH}, in its own
+     * text, a file it includes or any keyword's code; true until parsed. What a caller with no linked program goes by:
+     * a program answers exactly through {@link #readsSceneDepth(CgShader)}.
      */
     public boolean readsSceneDepth() {
         return parsedSource == null || sceneDepth;
@@ -1613,7 +1153,7 @@ public final class CgMaterialShader implements CgReloadable {
         return new CgShaderPreprocessor().mentions(source, resourcePath, "cg_DepthBuffer", "CG_SCENE_EYE_DEPTH");
     }
 
-    /** Whether the parsed source samples {@code cg_SceneColor}, directly or through {@code CG_SCENE_COLOR}; true until parsed. */
+    /** As {@link #readsSceneDepth()}, for {@code cg_SceneColor} or {@code CG_SCENE_COLOR}. */
     public boolean readsSceneColor() {
         return parsedSource == null || sceneColor;
     }
@@ -1670,40 +1210,59 @@ public final class CgMaterialShader implements CgReloadable {
         return new CgShaderPreprocessor().mentions(source, resourcePath, "discard", "cg_Clip");
     }
 
-    private void wireShader(CgShader shader) {
+    // ── GL program wiring, and the source a GL driver takes (until GL3) ────────────
+
+    /**
+     * A pass's generated GLSL preprocessed, and checked here so {@code glShaderSource} has no scan left for the frame
+     * that submits. Any thread.
+     */
+    static Sources prepare(CgMaterialShaderCompiler.CompiledSource compiled, String path) {
+        return new Sources(compiled,
+                CgGL.checkSource(new CgShaderPreprocessor().process(compiled.vertexSource(), path)).toString(),
+                CgGL.checkSource(new CgShaderPreprocessor().process(compiled.fragmentSource(), path)).toString());
+    }
+
+    /** Points a program's blocks and samplers at the engine's binding points and at its map's. */
+    static void wire(CgShader shader, CgMaterialShaderMap map) {
         // Links finish while a stage records, outside any scope: the host's program goes back, since Minecraft from
         // 1.21.5 rebinds its own only when its pipeline changes.
         try (CgGlScope ignored = CgGlState.saveProgram()) {
             shader.bind();
-            wireShaderBuffers(shader);
-            wireShaderSamplers(shader);
+            CgUniformBuffer.wireBlock(shader, CgPassConstants.VIEW_BLOCK, CgBindingPoints.VIEW_UBO);
+            CgUniformBuffer.wireBlock(shader, CgPassConstants.ENVIRONMENT_BLOCK, CgBindingPoints.ENVIRONMENT_UBO);
+            CgShaderBuffer.wireBlock(shader, CgInstanceKind.OBJECT_BLOCK_NAME, CgBindingPoints.OBJECT_DATA);
+            if (map.block != null) map.block.wireShader(shader);
+            for (CgAttachedBuffer ab : map.buffers) ab.getBuffer().wireShader(shader);
+            // Only a skinned program declares the palettes; any other leaves the block absent, which this skips.
+            CgShaderBuffer.wireBlock(shader, CgBonePalettes.BLOCK_NAME, CgBindingPoints.BONE_PALETTES);
+            map.reflected(shader, wireSamplers(shader, map.parsed));
+            wireMaterialBuffers(shader, map.parsed.buffers());
         }
     }
 
-    private void wireShaderBuffers(CgShader shader) {
-        CgUniformBuffer.wireBlock(shader, CgPassConstants.VIEW_BLOCK, CgBindingPoints.VIEW_UBO);
-        CgUniformBuffer.wireBlock(shader, CgPassConstants.ENVIRONMENT_BLOCK, CgBindingPoints.ENVIRONMENT_UBO);
-        CgShaderBuffer.wireBlock(shader, CgInstanceKind.OBJECT_BLOCK_NAME, CgBindingPoints.OBJECT_DATA);
-        if (matPropsUbo != null) matPropsUbo.wireShader(shader);
-        for (CgAttachedBuffer ab : attachedBuffers) ab.getBuffer().wireShader(shader);
-        // Only a skinned program declares the palettes; any other leaves the block absent, which this skips.
-        CgShaderBuffer.wireBlock(shader, CgBonePalettes.BLOCK_NAME, CgBindingPoints.BONE_PALETTES);
-    }
-
-    /** The scene snapshots' and the lightmap's units, and each sampler property's: its index among the declared samplers. */
-    private void wireShaderSamplers(CgShader shader) {
+    /**
+     * The scene snapshots' and the lightmap's units, and each sampler property's: its index among the declared samplers.
+     * Answers which snapshots the program samples, as {@link CgMaterialShaderMap#READS_DEPTH} bits: a location is the
+     * program's own reflection, -1 for a sampler it never uses.
+     */
+    private static int wireSamplers(CgShader shader, CgParsedShader parsed) {
+        int reads = 0;
         int loc = shader.getUniformLocation(CgBindingPoints.DEPTH_TEXTURE_UNIFORM);
-        if (loc >= 0) shader.getProgram().setUniform1i(loc, CgBindingPoints.DEPTH_TEXTURE_UNIT);
+        if (loc >= 0) {
+            shader.getProgram().setUniform1i(loc, CgBindingPoints.DEPTH_TEXTURE_UNIT);
+            reads |= CgMaterialShaderMap.READS_DEPTH;
+        }
         loc = shader.getUniformLocation(CgBindingPoints.SCENE_COLOR_TEXTURE_UNIFORM);
-        if (loc >= 0) shader.getProgram().setUniform1i(loc, CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT);
+        if (loc >= 0) {
+            shader.getProgram().setUniform1i(loc, CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT);
+            reads |= CgMaterialShaderMap.READS_COLOR;
+        }
         loc = shader.getUniformLocation(CgBindingPoints.LIGHTMAP_TEXTURE_UNIFORM);
         if (loc >= 0) shader.getProgram().setUniform1i(loc, CgBindingPoints.LIGHTMAP_TEXTURE_UNIT);
         loc = shader.getUniformLocation(CgBindingPoints.MEDIA_TEXTURE_UNIFORM);
         if (loc >= 0) shader.getProgram().setUniform1i(loc, CgBindingPoints.MEDIA_TEXTURE_UNIT);
         loc = shader.getUniformLocation(CgBindingPoints.LOCAL_LIGHTS_TEXTURE_UNIFORM);
         if (loc >= 0) shader.getProgram().setUniform1i(loc, CgBindingPoints.LOCAL_LIGHTS_TEXTURE_UNIT);
-        CgParsedShader parsed = lastParsed;
-        if (parsed == null) return;
         int unit = 0;
         for (CgMaterialProperty property : parsed.properties()) {
             if (!property.getType().isSampler()) continue;
@@ -1711,7 +1270,7 @@ public final class CgMaterialShader implements CgReloadable {
             if (at >= 0) shader.getProgram().setUniform1i(at, unit);
             unit++;
         }
-        wireMaterialBuffers(shader, parsed.buffers());
+        return reads;
     }
 
     /** Each {@code Buffers { }} entry: a storage block at its reserved point. */
@@ -1721,64 +1280,5 @@ public final class CgMaterialShader implements CgReloadable {
             int index = CgGL.glGetProgramResourceIndex(program, CgGL.GL_SHADER_STORAGE_BLOCK, CgBufferReaders.readerBlock(buffers.get(i)));
             if (index != CgGL.GL_INVALID_INDEX) CgGL.glShaderStorageBlockBinding(program, index, CgBindingPoints.MATERIAL_BUFFERS_SSBO + i);
         }
-    }
-
-    /**
-     * ── Step 6.5: Depth auto-generation ─────────────────────────────────────────
-     *
-     * <p>Conditions: opaque queue and no explicit Depth pass: every opaque material needs a
-     * correct depth variant.
-     * When all conditions are met, compiles a depth-prepass program from the first Forward pass
-     * and stores it under {@code ProgramKey("Depth", emptySet)}.</p>
-     *
-     * <p>Failure is non-fatal regardless of first/hot-reload: logs an error and continues
-     * without a depth variant (the renderer falls back to the engine depth shader).</p>
-     *
-     * @return {@code true} to proceed with the rest of recompile(); {@code false} to abort
-     *         (only on buffer injection error — newShaders and newMatPropsUbo already cleaned up)
-     */
-    private boolean attemptDepthAutoGen(CgParsedShader parsed, CgUniformBuffer newMatPropsUbo,
-                                         Map<ProgramKey, CgShader> newCache, List<CgShader> newShaders,
-                                         boolean isFirst, boolean ownsBuffers) {
-        boolean hasExplicitDepth = parsed.getPassByLightMode(CgRenderPassVariant.DEPTH.lightModeName()) != null;
-        boolean isOpaque = parsed.renderQueue() < CgRenderQueue.TRANSPARENT_THRESHOLD;
-
-        if (!isOpaque || hasExplicitDepth) return true;
-
-        CgParsedPass forwardPass = parsed.getPassByLightMode(CgRenderPassVariant.FORWARD.lightModeName());
-        if (forwardPass == null) {
-            LOGGER.warn("'{}': opaque material has no Forward pass — depth auto-gen skipped.", resourcePath);
-            return true;
-        }
-
-        CgMaterialShaderCompiler.CompiledSource depthCompiled;
-        try {
-            depthCompiled = CgMaterialShaderCompiler.compileDepthAutoGen(parsed, forwardPass,
-                    attachedBuffers, newMatPropsUbo, CgMaterialShaderCompiler.CompileConfig.DEFAULT);
-        } catch (CgPreprocessorException e) {
-            if (ownsBuffers) {
-                for (CgShader s : newShaders) s.delete();
-                if (newMatPropsUbo != null) newMatPropsUbo.delete();
-            }
-            if (isFirst) throw e;
-            LOGGER.error("Reload failed for '{}' depth auto-gen: buffer injection error — {}",
-                    resourcePath, e.getMessage());
-            return false;
-        }
-
-        String depthVert = new CgShaderPreprocessor().process(depthCompiled.vertexSource(), resourcePath);
-        String depthFrag = new CgShaderPreprocessor().process(depthCompiled.fragmentSource(), resourcePath);
-
-        CgShader depthShader = build(depthVert, depthFrag, depthCompiled.vertexFormat(), "Depth");
-        if (!deferring && !depthShader.isCompiled()) {
-            String err = depthShader.getLastCompileError();
-            depthShader.delete();
-            LOGGER.error("'" + resourcePath + "' depth auto-gen failed (continuing without depth variant): " + err);
-        } else {
-            newShaders.add(depthShader);
-            newCache.put(new ProgramKey(CgRenderPassVariant.DEPTH.lightModeName(),
-                    Collections.emptySet()), depthShader);
-        }
-        return true;
     }
 }

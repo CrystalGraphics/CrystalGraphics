@@ -300,12 +300,21 @@ public final class CgPipeline {
     private volatile boolean tables;
 
     /**
-     * Whether its draws sample {@code cg_DepthBuffer}: its shader names it, or the compiler's discard behind the scene
-     * does, which an Emissive, Distortion, cover or overdraw pipeline has whatever its source names.
+     * Whether its draws sample {@code cg_DepthBuffer}: its linked program does (its source may, before it links), or the
+     * compiler's discard behind the scene does, which an Emissive, Distortion, cover or overdraw pipeline has whatever
+     * its source names.
      */
     public boolean readsSceneDepth() {
-        return shader.readsSceneDepth() || pass == CgRenderPassVariant.EMISSIVE || pass == CgRenderPassVariant.DISTORTION
+        CgShader linked = resolved() ? program : null;
+        return (linked != null ? shader.readsSceneDepth(linked) : shader.readsSceneDepth())
+                || pass == CgRenderPassVariant.EMISSIVE || pass == CgRenderPassVariant.DISTORTION
                 || has(CgPipelineForm.COVER) || has(CgPipelineForm.OVERDRAW);
+    }
+
+    /** Whether its draws sample {@code cg_SceneColor}: its linked program does, or its source may before it links. */
+    public boolean readsSceneColor() {
+        CgShader linked = resolved() ? program : null;
+        return linked != null ? shader.readsSceneColor(linked) : shader.readsSceneColor();
     }
 
     public CgRenderPassVariant pass() {

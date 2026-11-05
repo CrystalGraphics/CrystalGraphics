@@ -440,7 +440,9 @@ public final class CgNullRHI implements CgRHI {
 
     /** Every slot of {@code layout} pushed with its type. */
     private static void pushedAll(String label, CgBindingLayout layout, CgBindings pushed) {
-        for (CgBindingLayout.Slot slot : layout.slots()) {
+        List<CgBindingLayout.Slot> slots = layout.slots();
+        for (int s = 0; s < slots.size(); s++) {
+            CgBindingLayout.Slot slot = slots.get(s);
             int i = pushed.indexOf(slot.binding());
             if (i < 0 || pushed.type(i) != slot.type())
                 throw new IllegalStateException(label + " reads binding " + slot.binding() + " (" + slot.type()

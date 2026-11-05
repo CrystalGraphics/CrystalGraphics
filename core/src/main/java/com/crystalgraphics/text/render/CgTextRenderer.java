@@ -223,14 +223,16 @@ public class CgTextRenderer {
             .build();
 
     /**
-     * Declares {@code TextData} on the shared shader. Nothing writes or uploads it: each renderer's {@link #textBlock}
-     * overrides it on that renderer's material, and every chunk keeps those bytes by value.
+     * {@code TextData}, which {@code text.shader} declares through {@code #pragma cg_use text}. Nothing writes or
+     * uploads it: each renderer's {@link #textBlock} overrides it on that renderer's material, and every chunk keeps
+     * those bytes by value.
      */
     private static final CgUniformBuffer TEXT_DATA_UBO = CgShaderBufferRegistry.get().getOrCreateUboInternal(
             TEXT_DATA_FORMAT, "TextData", CgBindingPoints.TEXT_DATA_UBO, CgBufferLifetime.FRAME);
 
-    static {
-        TEXT_MATERIAL.attach(TEXT_DATA_UBO);
+    /** The {@code text} engine token's block ({@code CgEngineBufferRegistry}). */
+    public static CgUniformBuffer textData() {
+        return TEXT_DATA_UBO;
     }
 
     /**

@@ -14,13 +14,13 @@ This is the top of the CrystalShader material stack.
 
 | Type | Role |
 |------|------|
-| `CgMaterial` | User-facing material handle backed by a shared `CgMaterialShader` asset. `load(path)` returns the cached instance per path. `newInstance(path)` creates a fresh non-cached instance. `bind()` activates the Forward pass with enabled keywords; detects hot-reload via revision check, then delegates shared bind logic to private `doBind(CgShader, CgRenderPassVariant)`. `bindForPass(CgRenderPassVariant)` activates a specific pass variant (FORWARD uses active keywords; DEPTH uses empty keywords); also delegates to `doBind`. `doBind` (private) owns: UBO wiring, GL state save, UBO upload, sampler binding, render state apply, and `shader.bind()`. `drawChain(CgRenderPassVariant, Runnable)` executes all chained passes in authored order — use this instead of `bindForPass`+`unbind` for correct multi-pass support. `getPassRenderState(CgRenderPassVariant)` returns the render state for the given pass. `hasDepthPass()` — true when an explicit authored `[Depth]` pass is present in the parsed result (parse-state only, does NOT include auto-generated depth variants). `hasCompiledDepthPass()` — true when a compiled Depth GL program exists in the cache (compile-state); includes both explicit and auto-generated depth variants from `recompile()`. Always false for transparent materials. `getMaterialId()` — stable per-instance integer ID from an `AtomicInteger` counter; the material slot of `CgWorldRenderer`'s sort key. `enableKeyword(name)` / `disableKeyword(name)` toggle feature flags; throws for undeclared names. `unbind()` deactivates shader using `lastBoundShader`. `delete()` frees only the per-instance property UBO. `attach(CgShaderBuffer, macroName)` / `detach(...)` / `attach(CgUniformBuffer)` / `detachUbo(...)` delegate to `CgMaterialShader`. |
+| `CgMaterial` | User-facing material handle backed by a shared `CgMaterialShader` asset. `load(path)` returns the cached instance per path. `newInstance(path)` creates a fresh non-cached instance. `bind()` activates the Forward pass with enabled keywords; detects hot-reload via revision check, then delegates shared bind logic to private `doBind(CgShader, CgRenderPassVariant)`. `bindForPass(CgRenderPassVariant)` activates a specific pass variant (FORWARD uses active keywords; DEPTH uses empty keywords); also delegates to `doBind`. `doBind` (private) owns: UBO wiring, GL state save, UBO upload, sampler binding, render state apply, and `shader.bind()`. `drawChain(CgRenderPassVariant, Runnable)` executes all chained passes in authored order — use this instead of `bindForPass`+`unbind` for correct multi-pass support. `getPassRenderState(CgRenderPassVariant)` returns the render state for the given pass. `hasDepthPass()` — true when an explicit authored `[Depth]` pass is present in the parsed result (parse-state only, does NOT include auto-generated depth variants). `hasCompiledDepthPass()` — true when a compiled Depth GL program exists in the cache (compile-state); includes both explicit and auto-generated depth variants from `recompile()`. Always false for transparent materials. `getMaterialId()` — stable per-instance integer ID from an `AtomicInteger` counter; the material slot of `CgWorldRenderer`'s sort key. `enableKeyword(name)` / `disableKeyword(name)` toggle feature flags; throws for undeclared names. `unbind()` deactivates shader using `lastBoundShader`. `delete()` frees only the per-instance property UBO. Buffers are declared in the source, never attached (§ *Buffers a material reads*). |
 | `CgParameterCollection` | Values every material reads, set once (Unreal's material parameter collection): `of(namespace)`, `scalar(name, default)` and `vector(name, argb)` answer typed handles, `set`/`get` on the render thread without allocating. Each collection is placed in the `globals` engine buffer (`CgParameterCollectionBuffer`) at its first use, scalars packed by four then vectors, in definition order; `glsl()` is the `#define CG_GLOBAL_<ns>_<name>` lines the compiler appends after `env/buffer/globals.glsl`, and `upload()` the world renderer's once a frame. A collection placed after a shader compiled against it recompiles that shader (`CgAssetReloader.changed` on the provider's `generatedPath()`). `docs/SHADERS.md` § *Global parameters* |
 | `CgParameterCollections` | The `parameters` kind's compiler (`CgBuiltInCompilers`): an asset declares its collection, `base` and `overrides` applied; compiled again with the same layout it answers the same collection, a changed layout throws |
 | `CgMaterialState` | A material's render state where it is not its shader's (Unreal's base property overrides): `builder().blend(CgBlendMode).clip().cull(..)/twoSided().depthWrite(b).separateTranslucency()`; the last orders a translucent draw after every other (`CgWorldRenderer.add`). Blend and clip are its shader asset's (`changesProgram`, `programKey`); cull and depth write are applied per pass by `CgMaterial.getPassRenderState` through `onPass`. `CgMaterial.newInstance(path, state)`, `fromSource(source, state)`, `state()`. `docs/SHADERS.md` § *A material's state* |
 | `CgBlendMode` | `OPAQUE`, `ALPHA`, `PREMULTIPLIED`, `ADDITIVE`, `MODULATE`, `SUBTRACT`: each the `CgBlendState` of the `Blend` line it stands for (`state()`) |
 | `CgRenderPassVariant` | Public enum bridging orchestrators to per-pass LightMode routing. `FORWARD("Forward")`, `DEPTH("Depth")`, `EMISSIVE("Emissive")` (the world's bloom; `CgMaterial.hasEmissivePass()`), `DISTORTION("Distortion")` (offsets the world renderer applies to the scene; `CgMaterial.hasDistortionPass()`). `lightModeName()` returns the canonical LightMode tag value. Used by `bindForPass(CgRenderPassVariant)`, `getPassRenderState(CgRenderPassVariant)`, and `hasDepthPass()`. No shadow-caster variant: the world's shadows are ray-traced from each pixel (`CgWorldLights`), so no material draws from a light's side. |
-| `CgAttachedBuffer` | Immutable descriptor for a user-attached SSBO or UBO buffer. Created via `CgAttachedBuffer.of(buffer, macroName)` (SSBO, STD430) or `CgAttachedBuffer.of(CgUniformBuffer)` (UBO, STD140). `isUbo()` returns `true` for UBO entries (macroName is null). SSBO fields: `buffer`, `macroName`, `structName` (= `format.getGlslName()`), `ssboArrayName` (`_cg_{lowerFirst}Arr`), `tboGetterName` (`_cg_get{structName}`). UBO entries: only `buffer` is set; macroName/structName/ssboArrayName/tboGetterName are all null. Block/sampler/UBO block name is always `buffer.getName()` — required for `wireShader()`. |
+| `CgAttachedBuffer` | Immutable descriptor for an engine token's buffer, declared for a compile by `#pragma cg_use`: an SSBO or a UBO. Created via `CgAttachedBuffer.of(buffer, macroName)` (SSBO, STD430) or `CgAttachedBuffer.of(CgUniformBuffer)` (UBO, STD140). `isUbo()` returns `true` for UBO entries (macroName is null). SSBO fields: `buffer`, `macroName`, `structName` (= `format.getGlslName()`), `ssboArrayName` (`_cg_{lowerFirst}Arr`), `tboGetterName` (`_cg_get{structName}`). UBO entries: only `buffer` is set; macroName/structName/ssboArrayName/tboGetterName are all null. Block/sampler/UBO block name is always `buffer.getName()` — required for `wireShader()`. |
 | `CgMaterialRegistry` | Singleton load/reload/delete lifecycle manager. `get()` returns the singleton. `getOrCreate(String)` / `getOrCreate(CgMaterialKey)` check cache; on miss call `CgMaterial.create()` (which uses `CgMaterialShaderRegistry` internally), cache, and return. `reloadAll()` delegates to `CgMaterialShaderRegistry.get().reloadAll()` — marks all shader assets dirty; materials detect revision change on next `bind()`. `deleteAll()` deletes all cached material instances (freeing per-instance UBOs), then cascades to `CgMaterialShaderRegistry.get().deleteAll()` to free GL shader programs. Registered for teardown in `CgEngineLifecycle.shutdown()`. `getOrCreate(definition, drawKeyword)` is a `CgMaterialDefinition`'s material (`CgMaterial.of(definition)` with none): one a definition and draw keyword, by identity, its archetype under `definition.state()`, its keywords, constants and textures with their samplers, a texture made in code bound as the object (`Texture.resolve`), each file made as its `texture` asset says (`texture(path)`: sRGB or linear, mips, a `.hdr` as RGBA16F, `cube: true` as six stacked faces), each texture bound only to its kind's sampler (a cube's `samplerCube`, an array's `sampler2DArray`, a volume's `sampler3D`); `release(definition)` deletes an old generation's |
 | `CgMaterialKey` | `@Desugar record` wrapping a resource-path string. `of(String)` factory. Value equality. Used as a typed alternative to raw strings. |
 | `CgMaterialDefinition`, `CgMaterialDefinitions` | A `material` asset compiled (`CgMaterialDefinitions.register()` makes it the kind's compiler): its parent chain merged, every `values`/`textures` key and keyword checked against the archetype, its `CgMaterialPermutation` (interned program key: archetype, keywords, blend class, clip, shading; a value-only child shares its parent's), constants, row layout (`CgMaterialRowLayout`), `Draw` state, domain and shading model. `route(p)` and `requireRow(p, who)` (a key refused on a non-row property), `requireDomain(d, who)`, `state()`. `CgMaterialDefinition.of(id, shader)` writes the file's tree (`tree()`) and compiles it (`build()`); `CgMaterialDefinitions.derive(parent, overrides)` is a child made in code, interned per parent generation (a `WeakHashMap` on the definition) by its overrides in canonical form (floats by bits, keywords sorted) |
@@ -280,65 +280,16 @@ leaves.
 - `CgEngineLifecycle.shutdown()` calls `CgMaterialRegistry.get().deleteAll()` automatically.
 - Callers that hold a reference to a material must not call `delete()` on it directly — the registry owns teardown.
 
-## User-Attached Buffer API
+## Buffers a material reads
 
-### SSBO path — `attach(CgShaderBuffer, macroName)` / `detach(macroName)`
+A material reads what its source declares: `Buffers { }`, bound by name with `material.buffer(name, buffer)`, and the
+engine tokens it names with `#pragma cg_use <token>` (`CgEngineBufferRegistry`; `text` is the text renderer's
+`TextData`, a uniform block). Nothing is injected into a shader at runtime, so a program's reads are fixed by its
+source (rhi SH6, Unreal's shader parameters). A renderer giving each of its materials its own contents for an engine
+uniform block uses `overrideBlock(block, contents)`, which a capture keeps by value.
 
-```java
-// Define format for per-glyph metrics
-CgBufferFormat glyphFmt = CgBufferFormat.builder("GlyphMetrics", STD430)
-    .vec4("bbox")
-    .vec2("uv0").vec2("uv1")
-    .float_("advance").float_("bearing").float_("descent").float_("pad")
-    .build();
-CgShaderBuffer glyphBuf = CgShaderBuffer.create("GlyphMetricsBuffer", glyphFmt, 0);   // RETAINED: written once
-
-// Attach: GLSL struct + SSBO block auto-injected on next compile
-material.attach(glyphBuf, "GLYPH_DATA");
-
-// In shader: GLYPH_DATA(n).advance
-// Detach:
-material.detach("GLYPH_DATA");
-```
-
-- `macroName` must match `^[A-Z][A-Z0-9_]*$` — validated by `CgAttachedBuffer.of()`.
-- `format.getMemoryLayout()` must be STD430 — throws for STD140.
-- Duplicate macroName or duplicate `format.getGlslName()` (struct name) throws.
-- `attach()` calls `markDirty()` — next `bind()` triggers recompile.
-- **Ownership warning**: `CgMaterial.load(path)` returns a shared cached instance. Only call `attach()` on materials you exclusively own.
-- **Runtime binding**: `buffer.bind()` is your responsibility before each draw call — `attach()` registers for GLSL injection and `wireShader()` wiring only. A `CgBufferLifetime.FRAME` buffer re-binds at every upload, and must be uploaded in every frame that reads it.
-
-### UBO path — `attach(CgUniformBuffer)` / `detachUbo(blockName)`
-
-```java
-CgBufferFormat sceneFmt = CgBufferFormat.builder("SceneParams", STD140)
-    .vec4("ambientColor").float_("exposure").build();
-CgUniformBuffer sceneUbo = CgUniformBuffer.create(sceneFmt, "SceneParams", 0, CgBufferLifetime.FRAME);
-
-material.attach(sceneUbo);  // emits: layout(std140) uniform SceneParams { vec4 ambientColor; float exposure; };
-// In shader: ambientColor  (direct scope — no block prefix, no macro)
-material.detachUbo("SceneParams");
-```
-
-- `format.getMemoryLayout()` must be STD140 — throws for STD430.
-- Duplicate block name (`buffer.getName()`) throws.
-- **UBO flat-scope semantics**: `emitUbo()` emits no struct, no instance name, no macro. All fields land in direct shader scope — write `fieldName`, not `BlockName.fieldName`.
-- `attach(CgUniformBuffer)` takes no `macroName` — UBO data is a single instance, not an indexed array.
-
-### What NOT to pass
-
-Do NOT pass the engine's own blocks (`CgViewBlock`, `CgEnvironmentBlock`, `CgObjectDataBuffer`) — those are declared in `cg_env.glsl` and wired automatically by the engine. Passing them here causes duplicate GLSL declarations that fail to compile.
-
-### GLSL symbol naming (SSBO)
-
-Given `buffer.getName() = "FontMetricsBuffer"`, `format.getGlslName() = "FontMetrics"`, `macroName = "FONT_METRICS"`:
-
-| Symbol | Value | Visibility |
-|--------|-------|------------|
-| Struct type | `FontMetrics` | User-visible |
-| SSBO block interface name | `FontMetricsBuffer` | Internal — must match for `wireShader()` |
-| SSBO array instance name | `_cg_fontMetricsArr` | Internal |
-| User macro | `FONT_METRICS(n)` | User-facing entry point |
+The engine's own blocks (`CgViewBlock`, `CgEnvironmentBlock`, `CgObjectDataBuffer`) are declared in `cg_env.glsl` and
+wired automatically: never declare them again.
 
 ## Guardrails (NOT in this package)
 

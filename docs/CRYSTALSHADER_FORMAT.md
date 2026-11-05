@@ -162,7 +162,7 @@ Use this section for:
 - Forward declarations
 
 **Forbidden**:
-- `#version` directives (the compiler emits `#version 430 core` or `#version 330 core`)
+- `#version` directives (the compiler emits its one target, `#version 450 core`)
 - Any declaration of `main()` (the compiler emits the `main()` wrapper)
 
 ---

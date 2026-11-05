@@ -373,7 +373,7 @@ public final class CgCapabilities {
 
         // ── Compute and GPU-driven draws ──────────────────────────────────────
         CgRHI.Globals device = CgGL.backend() instanceof CgTrackedGLBackend tracked ? tracked.device().globals() : null;
-        caps.glslVersion = device != null ? 450 : gl.OpenGL46() ? 460 : gl.OpenGL44() ? 440 : gl.OpenGL43() ? 430
+        caps.glslVersion = device != null ? 450 : gl.OpenGL46() ? 460 : gl.OpenGL45() ? 450 : gl.OpenGL44() ? 440 : gl.OpenGL43() ? 430
                 : gl.OpenGL42() ? 420 : gl.OpenGL40() ? 400 : 330;
         boolean ssbo = caps.shaderStorageBufferCore || caps.shaderStorageBufferArb;
         caps.compute           = device != null || (gl.OpenGL43() || gl.GL_ARB_compute_shader()) && ssbo;
@@ -389,6 +389,10 @@ public final class CgCapabilities {
             throw new IllegalStateException("CrystalGraphics needs a draw's base vertex and instance: GL 4.6, or "
                     + "ARB_shader_draw_parameters with ARB_base_instance; a Vulkan device's shaderDrawParameters and "
                     + "drawIndirectFirstInstance");
+        }
+        if (device == null && !gl.OpenGL45()) {
+            // Materials compile to one target, GLSL 4.50 (CgMaterialShaderCompiler.VERSION).
+            throw new IllegalStateException("CrystalGraphics needs OpenGL 4.5: its materials compile to GLSL 4.50");
         }
         caps.multiDraw         = caps.multiDrawIndirect && MULTI_DRAW.get();
         caps.feedbackCount     = device == null && (gl.OpenGL40() || gl.GL_ARB_transform_feedback2());

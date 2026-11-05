@@ -632,30 +632,21 @@ CgMesh plain = CgMesh.build(CgVertexFormat.SPATIAL, m ->
 
 ### Shader Buffers
 
-Attach user-owned SSBO or UBO blocks to a material. The engine injects GLSL declarations automatically on the next compile.
+A material reads buffers it declares: `Buffers { }` in its source, bound by name with `material.buffer(name, buffer)`
+(`SHADERS.md` § *Buffers*), or an engine token, `#pragma cg_use <token>` (`CgEngineBufferRegistry`). Nothing is
+injected into a shader at runtime: what a program reads is in its source, so it is compiled and reflected once.
 
 ```java
-// SSBO — access via macro in shader: GLYPH_DATA(n).advance
-CgBufferFormat fmt = CgBufferFormat.builder("GlyphMetrics", STD430)
-        .vec4("bbox").vec2("uv0").float_("advance").build();
-CgShaderBuffer buf = CgShaderBuffer.create("GlyphMetricsBuffer", fmt, 0);   // RETAINED: written once
-material.attach(buf, "GLYPH_DATA");     // macroName must be ^[A-Z][A-Z0-9_]*$
-buf.bind();                              // caller's responsibility before each draw
-material.detach("GLYPH_DATA");
+// sparks.shader, at material scope:
+//   struct Spark { vec4 positionLife; vec4 velocitySeed; };
+//   Buffers { SPARKS ("Sparks", Spark, readonly) }
+sparkMaterial.buffer("SPARKS", sparks);    // a graph buffer a kernel writes, or a CgBufferHandle of your own
 
 // Rewritten every frame before the draws that read it: the frame ring
 CgShaderBuffer particles = CgShaderBuffer.create("Particles", particleFmt, 1, CgBufferLifetime.FRAME);
 particles.beginWrite(n);
 // ... n records ...
 particles.endWrite();                   // this frame's region, re-bound there
-
-// UBO — flat scope, direct field name access in shader: ambientColor (no prefix)
-CgBufferFormat sceneFmt = CgBufferFormat.builder("SceneParams", STD140)
-        .vec4("ambientColor").float_("exposure").build();
-CgUniformBuffer ubo = CgUniformBuffer.create(sceneFmt, "SceneParams", 0, CgBufferLifetime.FRAME);
-material.attach(ubo);                   // no macroName — UBO is a single instance
-ubo.upload();                           // before every draw that reads it; a compare when nothing moved
-material.detachUbo("SceneParams");
 ```
 
 **Lifetime, not type, decides where a shader buffer lives** (`CgBufferLifetime`, passed to every factory; the ones
@@ -667,7 +658,7 @@ that did not upload it reads another frame's bytes, with no error. Every buffer 
 quad and curve instances, the object buffer, the material blocks (uploaded at every bind), the frame block
 (copied in at a frame's first material bind) and the text block. `gl/buffer/CLAUDE.md` has the tiers. A `RETAINED` buffer is made, written and deleted from any thread (§ *Async*).
 
-Do NOT attach the engine's own blocks (`CgViewBlock`, `CgEnvironmentBlock`, `CgObjectDataBuffer`) — declared in `cg_env.glsl`, wired automatically. Duplicate declarations cause compile failure.
+The engine's own blocks (`CgViewBlock`, `CgEnvironmentBlock`, `CgObjectDataBuffer`) are declared in `cg_env.glsl` and wired automatically: never declare them again.
 
 **Package guides**: `api/buffer/CLAUDE.md` · `gl/buffer/shader/CLAUDE.md`
 
@@ -878,7 +869,7 @@ CgGlState.saveAll()       // → every slot (used by CgExecutor around a frame)
 
 ### Capabilities
 
-`CgCapabilities.detect()` — cached per context; **throws below OpenGL 3.3, or without a draw's bases** (4.6, or `ARB_shader_draw_parameters` with `ARB_base_instance`). Above the floor it answers `shaderBufferPath()` (GL 4.3 or ARB storage blocks, forceable with `-Dcrystalgraphics.shaderBuffer.tier=<path>`; the TBO path is detected and unhooked, `docs/TBO_PATH.md`), `vertexStreamTier()` (persistent or mapped ring, see `gl/buffer/CLAUDE.md`), `isCopyImageSubDataSupported()`, the limits (`getMaxDrawBuffers()`, `getMaxTextureUnits()`, …) and `isCoreProfile()`. For compute and GPU-driven draws it answers what a consumer needs — `compute()`, `storageImages()`, `subgroups()`, `floatAtomics()`, `drawIndirect()`, `multiDrawIndirect()`, `indirectCount()`, `drawParameters()`, `feedbackCount()`, `asyncCompute()`, `bindless()`, `multiDraw()` (whether the mesh store joins draws; `-Dcrystalgraphics.mesh.multiDraw=false` turns it off) — each joined from a core version, its ARB extension and, on the tracked backend, the device; and `computeTier()` (`V` · `G43` · `G40` · `G33` · `CPU`), forceable with `-Dcrystalgraphics.compute.tier=<tier>`, which throws naming what a context lacks.
+`CgCapabilities.detect()` — cached per context; **throws below OpenGL 4.5, or without a draw's bases** (4.6, or `ARB_shader_draw_parameters` with `ARB_base_instance`): materials compile to one target, GLSL 4.50 (`CgMaterialShaderCompiler.VERSION`). Above the floor it answers `shaderBufferPath()` (GL 4.3 or ARB storage blocks, forceable with `-Dcrystalgraphics.shaderBuffer.tier=<path>`; the TBO path is detected and unhooked, `docs/TBO_PATH.md`), `vertexStreamTier()` (persistent or mapped ring, see `gl/buffer/CLAUDE.md`), `isCopyImageSubDataSupported()`, the limits (`getMaxDrawBuffers()`, `getMaxTextureUnits()`, …) and `isCoreProfile()`. For compute and GPU-driven draws it answers what a consumer needs — `compute()`, `storageImages()`, `subgroups()`, `floatAtomics()`, `drawIndirect()`, `multiDrawIndirect()`, `indirectCount()`, `feedbackCount()`, `asyncCompute()`, `bindless()`, `multiDraw()` (whether the mesh store joins draws; `-Dcrystalgraphics.mesh.multiDraw=false` turns it off) — each joined from a core version, its ARB extension and, on the tracked backend, the device; and `computeTier()` (`V` · `G43` · `G40` · `G33` · `CPU`), forceable with `-Dcrystalgraphics.compute.tier=<tier>`, which throws naming what a context lacks.
 
 **`CgGpuReport`** is the full answer, for diagnosis rather than decisions: every feature a compute or draw tier is chosen
 from (`core`, the extension that gives it, or `no`) and the limits that bound it, from the driver on GL and from

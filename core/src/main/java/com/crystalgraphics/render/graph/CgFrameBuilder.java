@@ -684,7 +684,7 @@ public final class CgFrameBuilder {
     }
 
     private static int readsOf(CgPipeline pipeline) {
-        return (pipeline.shader().readsSceneColor() ? CgTargetCopy.COLOR : 0)
+        return (pipeline.readsSceneColor() ? CgTargetCopy.COLOR : 0)
                 | (pipeline.readsSceneDepth() ? CgTargetCopy.DEPTH : 0);
     }
 

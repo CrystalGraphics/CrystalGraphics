@@ -16,8 +16,8 @@ The seams were left in place so reconnecting is restoring code, not redesigning:
   with `-Dcrystalgraphics.shaderBuffer.tier=TBO` is refused.
 - **The binding pair**: `CgBindingPoints.Binding(ssbo, tbo)`. `init` still counts a texture unit down per engine buffer
   when `PATH == TBO` and `resolve()` still answers `tbo` there; today `tbo` is always -1.
-- **The shader hook**: the material compiler always emits `#define CG_USE_SSBO 1`; `env/cg_env.glsl` keeps its
-  `#ifdef CG_USE_SSBO … #else` with the TBO branch replaced by a note and an `#error`.
+- **The shader hook** is gone (rhi SH6): materials compile to one target, GLSL 4.50 over storage blocks, and
+  `env/cg_env.glsl` declares the object records as a storage block alone. Its TBO branches are at `7f9984fa`.
 
 ## What it did, and where (at `7f9984fa`)
 
@@ -43,6 +43,7 @@ The seams were left in place so reconnecting is restoring code, not redesigning:
 1. Restore `CgTextureBuffer` and `CgBufferTextures`, and choose `TBO` again in `CgCapabilities.shaderBufferPath`.
 2. Put back each `PATH == TBO` branch above: the factories, `wireBlock`, `bindRecords`, the raster pass's accesses,
    the material's texel buffers and the binding table's texel section, the compiler's `useSsbo` and 330.
-3. Restore `cg_env.glsl`'s two `#else` branches and emit `CG_USE_SSBO` only on the SSBO path.
+3. Restore `cg_env.glsl`'s two TBO branches behind a define the compiler emits only on the TBO path, and a second
+   compiler target below `CgMaterialShaderCompiler.VERSION`.
 4. Retained storage is now staged (`RetainedStreamBuffer`, copied in at offset 0), which `glTexBuffer` reads as it
    read the orphaned storage.

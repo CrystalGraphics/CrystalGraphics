@@ -43,7 +43,7 @@ import static org.junit.Assert.*;
  *       {@link #stripInactiveStageBlocks} this test could never go green.</li>
  * </ul>
  *
- * <p>Non-stage conditionals ({@code CG_USE_SSBO}, keyword variants) keep <b>both</b> branches, so a
+ * <p>Non-stage conditionals (keyword variants) keep <b>both</b> branches, so a
  * banned builtin cannot hide behind a {@code #pragma cg_feature} that happens to be off.</p>
  *
  * <p>CrystalGUI carries a near-identical test for {@code crystalgui:shaders/*}. The duplication is
@@ -87,7 +87,7 @@ public class ShippedShaderStagePurityTest {
     // ── The gate ──────────────────────────────────────────────────────────────
 
     /**
-     * The storage-block path, {@code #version 430 core}: the one every context runs.
+     * The one target every context compiles, {@code #version 450 core} over storage blocks.
      */
     @Test
     public void shippedShaders_vertexStage_hasNoFragmentOnlyBuiltins_ssboPath() throws Exception {

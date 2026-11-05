@@ -101,7 +101,7 @@ public final class CgKernelEmitter {
             if (keywords.contains(feature)) sb.append("#define ").append(feature).append(" 1\n");
         }
         int group = kernel.groupSize();
-        sb.append("#define CG_COMPUTE_STAGE 1\n#define CG_USE_SSBO 1\n");
+        sb.append("#define CG_COMPUTE_STAGE 1\n");
         if (nativeSubgroups) sb.append("#define CG_SUBGROUPS 1\n");
         if (nativeFloatAdd) sb.append("#define CG_FLOAT_ATOMICS 1\n");
         sb.append("#define CG_LOCAL_SIZE_X ").append(kernel.sizeX()).append('\n');

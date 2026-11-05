@@ -44,6 +44,9 @@ public interface CgGLContext {
     /** @return {@code true} if the context is OpenGL 4.4 or later */
     boolean OpenGL44();
 
+    /** @return {@code true} if the context is OpenGL 4.5 or later */
+    boolean OpenGL45();
+
     /** @return {@code true} if the context is OpenGL 4.6 or later */
     boolean OpenGL46();
 
