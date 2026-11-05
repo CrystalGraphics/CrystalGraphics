@@ -34,6 +34,49 @@ public interface CgGlslCompiler {
     /** A compute stage, every binding assigned as {@link #compile} assigns them. @throws CgShaderModule.CompileException */
     ComputeProgram compileCompute(String glsl, String label);
 
+    /**
+     * Both stages as Vulkan SPIR-V with their sets and bindings as the source writes them, under Vulkan's own rules
+     * with nothing bound for them, and the pipeline layout they declare: what a device builds a pipeline from.
+     *
+     * <pre>{@code
+     * CgGlslCompiler.Explicit p = CgGlslCompiler.get().compileExplicit(vertexGlsl, fragmentGlsl, "stone");
+     * CgShaderModule vs = rhi.createShaderModule(CgShaderModule.Stage.VERTEX, p.vertex(), "stone");
+     * }</pre>
+     *
+     * @throws CgShaderModule.CompileException with the compiler's log, a source leaving a resource unbound included
+     */
+    default Explicit compileExplicit(String vertexGlsl, String fragmentGlsl, String label) {
+        throw new UnsupportedOperationException(getClass().getSimpleName() + " compiles no explicit programs");
+    }
+
+    /**
+     * A program as written: each stage's SPIR-V (the vertex stage in zero-to-one depth, as a device draws), each set's
+     * slots by binding in set order (empty for a set it skips), whether it reads the bindless heap at set 3 (then that
+     * set's slot list is empty), its push-constant bytes, and the colour outputs its fragment stage writes.
+     */
+    record Explicit(ByteBuffer vertex, ByteBuffer fragment, List<List<CgBindingLayout.Slot>> sets, boolean heap,
+                    int pushConstantBytes, int colorOutputs) {}
+
+    /** The compiler installed now, for code making device pipelines; throws until a host installs one. */
+    static CgGlslCompiler get() {
+        CgGlslCompiler c = Slot.installed;
+        if (c == null) throw new IllegalStateException("no CgGlslCompiler installed: a host with a shader compiler installs one");
+        return c;
+    }
+
+    /** Whether a compiler is installed. */
+    static boolean installed() { return Slot.installed != null; }
+
+    /** Installs {@code compiler}; null when it closes. */
+    static void install(CgGlslCompiler compiler) { Slot.installed = compiler; }
+
+    /** Where {@link #get} reads from. */
+    final class Slot {
+        static volatile CgGlslCompiler installed;
+
+        private Slot() {}
+    }
+
     /** What GL's program queries read, from either kind of program. */
     sealed interface Reflection permits Program, ComputeProgram {
         List<Block> uniformBlocks();

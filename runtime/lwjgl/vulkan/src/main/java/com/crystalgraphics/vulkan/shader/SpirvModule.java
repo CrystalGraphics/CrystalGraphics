@@ -45,6 +45,8 @@ final class SpirvModule {
     /** The loose-uniform block's leaves, at their offsets in it; empty without one. */
     final List<CgGlslCompiler.Uniform> uniforms = new ArrayList<>();
     int defaultBlockSize;
+    /** The push-constant block's size in bytes; 0 without one. */
+    int pushConstantBytes;
 
     private final String label;
 
@@ -70,6 +72,15 @@ final class SpirvModule {
                 read(stack, compiler, active, SPVC_RESOURCE_TYPE_STORAGE_BUFFER, SpvDecorationBinding, storageBuffers);
                 read(stack, compiler, active, SPVC_RESOURCE_TYPE_SAMPLED_IMAGE, SpvDecorationBinding, samplers);
                 read(stack, compiler, active, SPVC_RESOURCE_TYPE_STORAGE_IMAGE, SpvDecorationBinding, images);
+                PointerBuffer list = stack.callocPointer(1), count = stack.callocPointer(1);
+                check(spvc_resources_get_resource_list_for_type(active, SPVC_RESOURCE_TYPE_PUSH_CONSTANT, list, count),
+                        "push constants");
+                for (SpvcReflectedResource r : SpvcReflectedResource.create(list.get(0), (int) count.get(0))) {
+                    PointerBuffer size = stack.callocPointer(1);
+                    check(spvc_compiler_get_declared_struct_size(compiler, spvc_compiler_get_type_handle(compiler,
+                            r.base_type_id()), size), "push constant size");
+                    pushConstantBytes = Math.max(pushConstantBytes, (int) size.get(0));
+                }
                 for (int i = 0; i < 3; i++) {
                     localSize[i] = spvc_compiler_get_execution_mode_argument_by_index(compiler, SpvExecutionModeLocalSize, i);
                 }
@@ -79,6 +90,11 @@ final class SpirvModule {
                 spvc_context_destroy(context);
             }
         }
+    }
+
+    /** The descriptor set {@code r} is declared in; 0 for one with no set. */
+    int set(Resource r) {
+        return r.setWord < 0 ? 0 : spirv.getInt(r.setWord * 4);
     }
 
     /**

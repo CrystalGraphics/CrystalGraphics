@@ -1,5 +1,7 @@
 package com.crystalgraphics.vulkan.shader;
 
+import java.util.TreeMap;
+import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.rhi.binding.CgBindingLayout;
 import com.crystalgraphics.platform.rhi.shader.CgGlslCompiler;
 import com.crystalgraphics.platform.rhi.shader.CgShaderModule;
@@ -62,6 +64,8 @@ public final class ShadercGlslCompiler implements CgGlslCompiler, AutoCloseable 
 
     private final long compiler = shaderc_compiler_initialize();
     private final long options = shaderc_compile_options_initialize();
+    /** Vulkan's own rules, nothing bound for the source: {@link #compileExplicit}'s. */
+    private final long explicitOptions = shaderc_compile_options_initialize();
     private final SpirvCache cache;
 
     /** A compiler that keeps nothing. */
@@ -90,9 +94,52 @@ public final class ShadercGlslCompiler implements CgGlslCompiler, AutoCloseable 
         shaderc_compile_options_set_target_env(options, shaderc_target_env_vulkan, shaderc_env_version_vulkan_1_2);
         shaderc_compile_options_set_vulkan_rules_relaxed(options, relaxed);
         shaderc_compile_options_set_auto_bind_uniforms(options, autoBind);
+        shaderc_compile_options_set_target_env(explicitOptions, shaderc_target_env_vulkan, shaderc_env_version_vulkan_1_2);
+        shaderc_compile_options_set_vulkan_rules_relaxed(explicitOptions, false);
+        shaderc_compile_options_set_auto_bind_uniforms(explicitOptions, false);
+        shaderc_compile_options_set_auto_map_locations(explicitOptions, true);
         shaderc_compile_options_set_auto_map_locations(options, true);
         cache = cacheDir == null ? null : new SpirvCache(cacheDir, OPTIONS + (relaxed ? ", relaxed rules" : "")
                 + (autoBind ? ", auto-bound uniforms" : ""));
+    }
+
+    @Override
+    public synchronized Explicit compileExplicit(String vertexGlsl, String fragmentGlsl, String label) {
+        SpirvModule vertex = new SpirvModule(compile(withDefines(vertexGlsl, label), shaderc_glsl_vertex_shader, label,
+                explicitOptions), label);
+        SpirvModule fragment = new SpirvModule(compile(withDefines(fragmentGlsl, label), shaderc_glsl_fragment_shader, label,
+                explicitOptions), label);
+        Map<Integer, Map<Integer, CgBindingLayout.Type>> sets = new TreeMap<>();
+        boolean heap = false;
+        for (SpirvModule m : new SpirvModule[] {vertex, fragment}) {
+            for (SpirvModule.Resource r : m.uniformBuffers) slot(sets, m.set(r), r.value(), CgBindingLayout.Type.UNIFORM_BUFFER);
+            for (SpirvModule.Resource r : m.storageBuffers) slot(sets, m.set(r), r.value(), CgBindingLayout.Type.STORAGE_BUFFER);
+            for (SpirvModule.Resource r : m.images) slot(sets, m.set(r), r.value(), CgBindingLayout.Type.STORAGE_IMAGE);
+            for (SpirvModule.Resource r : m.samplers) {
+                if (m.set(r) == CgRHI.BINDLESS_SET) heap = true;
+                else slot(sets, m.set(r), r.value(), r.texel() ? CgBindingLayout.Type.TEXEL_BUFFER
+                        : CgBindingLayout.Type.SAMPLED_TEXTURE);
+            }
+        }
+        int count = heap ? CgRHI.BINDLESS_SET + 1 : sets.isEmpty() ? 0 : ((TreeMap<Integer, ?>) sets).lastKey() + 1;
+        List<List<CgBindingLayout.Slot>> layout = new ArrayList<>(count);
+        for (int s = 0; s < count; s++) {
+            List<CgBindingLayout.Slot> slots = new ArrayList<>();
+            for (Map.Entry<Integer, CgBindingLayout.Type> e : sets.getOrDefault(s, Map.of()).entrySet())
+                slots.add(new CgBindingLayout.Slot(e.getKey(), e.getValue()));
+            layout.add(List.copyOf(slots));
+        }
+        int outputs = 0;
+        for (SpirvModule.Resource r : fragment.outputs) outputs = Math.max(outputs, r.value() + r.locations());
+        int push = Math.max(vertex.pushConstantBytes, fragment.pushConstantBytes);
+        return new Explicit(vertex.spirv, fragment.spirv, List.copyOf(layout), heap, (push + 3) / 4 * 4, outputs);
+    }
+
+    private static void slot(Map<Integer, Map<Integer, CgBindingLayout.Type>> sets, int set, int binding,
+                             CgBindingLayout.Type type) {
+        CgBindingLayout.Type was = sets.computeIfAbsent(set, s -> new TreeMap<>()).putIfAbsent(binding, type);
+        if (was != null && was != type)
+            throw new CgShaderModule.CompileException("set " + set + " binding " + binding + " is both " + was + " and " + type);
     }
 
     @Override
@@ -288,6 +335,10 @@ public final class ShadercGlslCompiler implements CgGlslCompiler, AutoCloseable 
     }
 
     private ByteBuffer compile(String source, int kind, String label) {
+        return compile(source, kind, label, options);
+    }
+
+    private ByteBuffer compile(String source, int kind, String label, long options) {
         // The source on the native heap: an expanded material outgrows MemoryStack, which the String overload uses.
         ByteBuffer text = memUTF8(source, false);
         long result;
@@ -356,6 +407,7 @@ public final class ShadercGlslCompiler implements CgGlslCompiler, AutoCloseable 
     @Override
     public void close() {
         shaderc_compile_options_release(options);
+        shaderc_compile_options_release(explicitOptions);
         shaderc_compiler_release(compiler);
     }
 }
