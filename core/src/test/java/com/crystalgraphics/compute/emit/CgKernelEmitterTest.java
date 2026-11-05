@@ -28,7 +28,7 @@ public class CgKernelEmitterTest {
     @Test
     public void header_versionLocalSizeAndEnvironment() {
         String glsl = emit("Shade", CgKernelTarget.GL43);
-        assertTrue(glsl.startsWith("#version 430 core\n"));
+        assertTrue(glsl.startsWith(CgKernelEmitter.VERSION));
         assertTrue(glsl.contains("layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;"));
         assertTrue(glsl.contains("#define CG_GROUP_SIZE 64\n"));
         assertTrue(glsl.contains("#define CG_COMPUTE_STAGE 1\n"));
@@ -37,9 +37,11 @@ public class CgKernelEmitterTest {
     }
 
     @Test
-    public void arbTarget_asksForTheExtensions() {
-        String glsl = emit("Integrate", CgKernelTarget.GL43.withArb(true));
-        assertTrue(glsl.startsWith("#version 420 core\n#extension GL_ARB_compute_shader : require\n"));
+    public void declaredResources_areBoundAtEmission() {
+        String glsl = emit("Integrate", CgKernelTarget.GL43);
+        assertTrue(glsl.contains("layout(std430, binding = "));
+        assertFalse(glsl.contains("layout(std430) buffer CgBuffer_"));
+        assertFalse(glsl.contains("#extension GL_ARB_compute_shader"));
     }
 
     @Test
@@ -92,8 +94,8 @@ public class CgKernelEmitterTest {
         assertFalse("a stage holds few storage blocks: one the kernel never reaches is not declared",
                 integrate.contains("CgBuffer_SPAWNED") || integrate.contains("CgCounter_SPAWNED"));
         String spawn = emit("Spawn", CgKernelTarget.GL43);
-        assertTrue(spawn.contains("layout(std430) buffer CgBuffer_SPAWNED"));
-        assertTrue(spawn.contains("layout(std430) buffer CgCounter_SPAWNED"));
+        assertTrue(spawn.matches("(?s).*layout\\(std430, binding = \\d+\\) buffer CgBuffer_SPAWNED.*"));
+        assertTrue(spawn.matches("(?s).*layout\\(std430, binding = \\d+\\) buffer CgCounter_SPAWNED.*"));
     }
 
     @Test
@@ -123,9 +125,9 @@ public class CgKernelEmitterTest {
     public void deviceLimits_areChecked() {
         CgComputeSource s = example();
         CgKernelDecl reduce = s.kernel("Reduce");
-        CgKernelTarget small = new CgKernelTarget(false, 0, false, 32768, 128, 1024, 1024, 64, 430, false);
+        CgKernelTarget small = new CgKernelTarget(0, false, 32768, 128, 1024, 1024, 64, false);
         assertRefused(s, reduce, small, "256 invocations");
-        CgKernelTarget tight = new CgKernelTarget(false, 0, false, 1024, 1024, 1024, 1024, 64, 430, false);
+        CgKernelTarget tight = new CgKernelTarget(0, false, 1024, 1024, 1024, 1024, 64, false);
         assertRefused(s, reduce, tight, "shared memory");
     }
 

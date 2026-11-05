@@ -30,9 +30,10 @@ import java.util.Set;
  * String glsl = CgKernelEmitter.emit(source, source.kernel("Simulate"), Set.of("COLLISION"), CgKernelTarget.current());
  * }</pre>
  *
- * <p>Bindings are by name, wired after linking: buffer {@code i} at storage binding point {@code i}, an append
- * buffer's count after every buffer, image {@code i} at unit {@code i}, samplers at units in declaration order. The
- * block names are {@link #bufferBlock}, {@link #bitsBlock} and {@link #counterBlock}.</p>
+ * <p>What the kernel declares is bound at emission: buffer {@code i} (and its {@link #bitsBlock}) at storage binding
+ * {@code i}, an append buffer's count after every buffer ({@link #counterPoint}), checked mode's report after those
+ * ({@link #checkPoint}), image {@code i} at unit {@code i}, samplers at units in declaration order. The engine's
+ * environment (its blocks, scene samplers and engine tokens' buffers) the program wires by name on GL until GL3.</p>
  *
  * <p>For a {@link CgKernelTarget#checked} target every indexed accessor is a macro passing {@code __LINE__} to a
  * function that bounds-checks the access, reports one out of range to {@link #CHECK_BLOCK} and skips it; each part of
@@ -50,6 +51,8 @@ public final class CgKernelEmitter {
     public static final String CHECK_BLOCK = "CgCheck";
     /** Where an image accessor's site starts in a checked kernel's reports; a buffer accessor's is below it. */
     public static final int IMAGE_SITES = 1 << 12;
+    /** The one GLSL every kernel is emitted at, on every device: the materials' target. */
+    public static final String VERSION = "#version 450 core\n";
 
     private static final String ENV = "crystalgraphics:shaders/env/";
     private static final String[] SUBGROUP_EXTENSIONS = {"GL_KHR_shader_subgroup_basic", "GL_KHR_shader_subgroup_vote",
@@ -71,6 +74,23 @@ public final class CgKernelEmitter {
      */
     public static String counterWord(CgBufferDecl buffer) { return "cg_CounterAt_" + buffer.name(); }
 
+    /** The storage binding of append buffer {@code b}'s count, after every buffer's; -1 for any other buffer. */
+    public static int counterPoint(CgComputeSource source, CgBufferDecl b) {
+        if (b.access() != CgBufferAccess.APPEND) return -1;
+        int point = source.buffers().size();
+        for (CgBufferDecl other : source.buffers()) {
+            if (other.index() < b.index() && other.access() == CgBufferAccess.APPEND) point++;
+        }
+        return point;
+    }
+
+    /** The storage binding of checked mode's report, after every buffer and count. */
+    public static int checkPoint(CgComputeSource source) {
+        int point = source.buffers().size();
+        for (CgBufferDecl b : source.buffers()) if (b.access() == CgBufferAccess.APPEND) point++;
+        return point;
+    }
+
     /** What a checked kernel reports an access of buffer {@code b} through {@code accessor} as. */
     public static int site(CgBufferDecl b, CgBufferAccessor accessor) { return b.index() << 4 | accessor.ordinal(); }
 
@@ -87,13 +107,7 @@ public final class CgKernelEmitter {
                 .anyMatch(b -> b.element().equals("float") && kernel.accessors().contains(b.name() + "_ADD"));
 
         StringBuilder sb = new StringBuilder(4096);
-        sb.append("#version ").append(target.glsl()).append(" core\n");
-        if (target.arb()) {
-            sb.append("#extension GL_ARB_compute_shader : require\n");
-            sb.append("#extension GL_ARB_shader_storage_buffer_object : require\n");
-            sb.append("#extension GL_ARB_shader_image_load_store : enable\n");
-            sb.append("#extension GL_ARB_shader_image_size : enable\n");
-        }
+        sb.append(VERSION);
         if (nativeSubgroups) for (String e : SUBGROUP_EXTENSIONS) sb.append("#extension ").append(e).append(" : require\n");
         if (nativeFloatAdd) sb.append("#extension GL_NV_shader_atomic_float : require\n");
         for (String e : source.extensions()) sb.append(e).append('\n');
@@ -117,7 +131,10 @@ public final class CgKernelEmitter {
         include(sb, ENV + "compute/kernel.glsl");
         include(sb, ENV + "compute/atomic.glsl");
         if (subgroups) include(sb, ENV + "compute/subgroup.glsl");
-        if (checked) include(sb, ENV + "compute/check.glsl");
+        if (checked) {
+            sb.append("#define CG_CHECK_BINDING ").append(checkPoint(source)).append('\n');
+            include(sb, ENV + "compute/check.glsl");
+        }
 
         properties(sb, source);
         for (String token : source.engineBuffers()) {
@@ -192,8 +209,11 @@ public final class CgKernelEmitter {
     /** The {@code Properties} declarations every stage a kernel is emitted as carries: samplers and the block. */
     public static void properties(StringBuilder sb, CgComputeSource source) {
         CgMaterialProperties properties = new CgMaterialProperties(source.properties());
+        int unit = 0;
         for (CgMaterialProperty p : properties.all()) {
-            if (p.getType().isSampler()) sb.append("uniform ").append(p.getGlslType()).append(' ').append(p.getName()).append(";\n");
+            if (!p.getType().isSampler()) continue;
+            sb.append("layout(binding = ").append(unit++).append(") uniform ").append(p.getGlslType()).append(' ')
+              .append(p.getName()).append(";\n");
         }
         if (properties.hasUboProps()) sb.append(CgGlslEmitter.emitUbo(properties.buildUboFormat(), PROPERTY_BLOCK));
     }
@@ -208,14 +228,17 @@ public final class CgKernelEmitter {
             String e = b.element();
             String a = b.array();
             String qualifier = b.access() == CgBufferAccess.READONLY ? "readonly " : b.access() == CgBufferAccess.WRITEONLY ? "writeonly " : "";
-            sb.append("layout(std430) ").append(qualifier).append("buffer ").append(bufferBlock(b)).append(" { ")
+            sb.append("layout(std430, binding = ").append(b.index()).append(") ").append(qualifier).append("buffer ")
+              .append(bufferBlock(b)).append(" { ")
               .append(e).append(' ').append(a).append("[]; };\n");
             boolean floatAtomics = e.equals("float") && b.access() == CgBufferAccess.READWRITE
                     && (uses(kernel, b, CgBufferAccessor.ADD) && !nativeFloatAdd
                         || uses(kernel, b, CgBufferAccessor.MIN) || uses(kernel, b, CgBufferAccessor.MAX));
-            if (floatAtomics) sb.append("layout(std430) buffer ").append(bitsBlock(b)).append(" { uint ").append(a).append("_bits[]; };\n");
+            if (floatAtomics) sb.append("layout(std430, binding = ").append(b.index()).append(") buffer ").append(bitsBlock(b))
+              .append(" { uint ").append(a).append("_bits[]; };\n");
             if (b.access() == CgBufferAccess.APPEND) {
-                sb.append("layout(std430) buffer ").append(counterBlock(b)).append(" { uint ").append(a)
+                sb.append("layout(std430, binding = ").append(counterPoint(source, b)).append(") buffer ")
+                  .append(counterBlock(b)).append(" { uint ").append(a)
                   .append("_counter[]; };\nuniform int ").append(counterWord(b)).append(";\n#define ").append(a)
                   .append("_count ").append(a).append("_counter[").append(counterWord(b)).append("]\n");
             }
@@ -306,7 +329,8 @@ public final class CgKernelEmitter {
             for (CgImageAccessor a : CgImageAccessor.values()) reached |= kernel.accessors().contains(image.name() + a.suffix);
             if (!reached) continue;
             String qualifier = image.access() == CgImageAccess.READONLY ? "readonly " : image.access() == CgImageAccess.WRITEONLY ? "writeonly " : "";
-            sb.append("layout(").append(image.format().qualifier()).append(") uniform ").append(qualifier)
+            sb.append("layout(").append(image.format().qualifier()).append(", binding = ").append(image.index())
+              .append(") uniform ").append(qualifier)
               .append(image.glslType()).append(' ').append(image.uniform()).append(";\n");
             for (CgImageAccessor accessor : CgImageAccessor.values()) {
                 if (kernel.accessors().contains(image.name() + accessor.suffix)) {

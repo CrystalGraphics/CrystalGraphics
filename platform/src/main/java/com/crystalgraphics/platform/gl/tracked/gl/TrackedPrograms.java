@@ -429,10 +429,15 @@ public final class TrackedPrograms {
     private static void linked(Program p, CgGlslCompiler.Reflection t) {
         p.table = t;
         p.vertexDirty = p.fragmentDirty = true;
+        // Where the source's layout(binding = n) starts each one, as GL does.
         p.blockBinding = new int[t.uniformBlocks().size()];
+        for (int i = 0; i < p.blockBinding.length; i++) p.blockBinding[i] = t.uniformBlocks().get(i).declared();
         p.storageBinding = new int[t.storageBlocks().size()];
+        for (int i = 0; i < p.storageBinding.length; i++) p.storageBinding[i] = t.storageBlocks().get(i).declared();
         p.samplerUnit = new int[t.samplers().size()];
+        for (int i = 0; i < p.samplerUnit.length; i++) p.samplerUnit[i] = t.samplers().get(i).declared();
         p.imageUnit = new int[images(t).size()];
+        for (int i = 0; i < p.imageUnit.length; i++) p.imageUnit[i] = images(t).get(i).declared();
         p.locations.clear();
         p.locationByName.clear();
         for (int i = 0; i < t.uniforms().size(); i++) {

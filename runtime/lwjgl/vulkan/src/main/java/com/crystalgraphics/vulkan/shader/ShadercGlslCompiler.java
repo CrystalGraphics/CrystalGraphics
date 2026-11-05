@@ -101,6 +101,12 @@ public final class ShadercGlslCompiler implements CgGlslCompiler, AutoCloseable 
         Map<String, Integer> uniformBlocks = new LinkedHashMap<>(), storageBlocks = new LinkedHashMap<>();
         Map<String, SpirvModule.Resource> samplers = new LinkedHashMap<>();
         Map<String, Integer> samplerBindings = new HashMap<>();
+        Map<String, Integer> declared = new HashMap<>();
+        for (SpirvModule m : new SpirvModule[] {glDepth, fragment}) {
+            for (SpirvModule.Resource r : m.uniformBuffers) declared.putIfAbsent(r.name(), declared(r));
+            for (SpirvModule.Resource r : m.storageBuffers) declared.putIfAbsent(r.name(), declared(r));
+            for (SpirvModule.Resource r : m.samplers) declared.putIfAbsent(r.name(), declared(r));
+        }
         for (SpirvModule m : new SpirvModule[] {glDepth, fragment}) {
             for (SpirvModule.Resource r : m.uniformBuffers) {
                 if (!r.name().equals(SpirvModule.DEFAULT_BLOCK) && !uniformBlocks.containsKey(r.name())) uniformBlocks.put(r.name(), next++);
@@ -143,16 +149,16 @@ public final class ShadercGlslCompiler implements CgGlslCompiler, AutoCloseable 
         if (vLoose >= 0) slots.add(new CgBindingLayout.Slot(vLoose, CgBindingLayout.Type.UNIFORM_BUFFER));
         if (fLoose >= 0) slots.add(new CgBindingLayout.Slot(fLoose, CgBindingLayout.Type.UNIFORM_BUFFER));
         uniformBlocks.forEach((name, b) -> {
-            ub.add(new Block(name, b));
+            ub.add(new Block(name, b, declared.get(name)));
             slots.add(new CgBindingLayout.Slot(b, CgBindingLayout.Type.UNIFORM_BUFFER));
         });
         storageBlocks.forEach((name, b) -> {
-            sb.add(new Block(name, b));
+            sb.add(new Block(name, b, declared.get(name)));
             slots.add(new CgBindingLayout.Slot(b, CgBindingLayout.Type.STORAGE_BUFFER));
         });
         samplers.forEach((name, r) -> {
             int b = samplerBindings.get(name);
-            smp.add(new Sampler(name, b, r.glType(), r.texel()));
+            smp.add(new Sampler(name, b, r.glType(), r.texel(), declared.get(name)));
             slots.add(new CgBindingLayout.Slot(b, r.texel() ? CgBindingLayout.Type.TEXEL_BUFFER : CgBindingLayout.Type.SAMPLED_TEXTURE));
         });
         slots.sort(Comparator.comparingInt(CgBindingLayout.Slot::binding));
@@ -177,28 +183,37 @@ public final class ShadercGlslCompiler implements CgGlslCompiler, AutoCloseable 
                 m.set(r, loose);
                 continue;
             }
+            ub.add(new Block(r.name(), next, declared(r)));
             m.set(r, next);
-            ub.add(new Block(r.name(), next));
             slots.add(new CgBindingLayout.Slot(next++, CgBindingLayout.Type.UNIFORM_BUFFER));
         }
         for (SpirvModule.Resource r : m.storageBuffers) {
+            sb.add(new Block(r.name(), next, declared(r)));
             m.set(r, next);
-            sb.add(new Block(r.name(), next));
             slots.add(new CgBindingLayout.Slot(next++, CgBindingLayout.Type.STORAGE_BUFFER));
         }
         for (SpirvModule.Resource r : m.samplers) {
+            smp.add(new Sampler(r.name(), next, r.glType(), r.texel(), declared(r)));
             m.set(r, next);
-            smp.add(new Sampler(r.name(), next, r.glType(), r.texel()));
             slots.add(new CgBindingLayout.Slot(next++, r.texel() ? CgBindingLayout.Type.TEXEL_BUFFER
                     : CgBindingLayout.Type.SAMPLED_TEXTURE));
         }
         for (SpirvModule.Resource r : m.images) {
+            img.add(new Image(r.name(), next, r.glType(), declared(r)));
             m.set(r, next);
-            img.add(new Image(r.name(), next, r.glType()));
             slots.add(new CgBindingLayout.Slot(next++, CgBindingLayout.Type.STORAGE_IMAGE));
         }
         return new ComputeProgram(m.spirv, m.localSize.clone(), ub, sb, smp, img, List.copyOf(m.uniforms), loose,
                 m.defaultBlockSize, slots);
+    }
+
+    /**
+     * The binding {@code r} was compiled at, where GL starts it: the source's {@code layout(binding = n)}, or shaderc's
+     * own number for one the source binds nowhere, which the engine wires by name. (A binding base cannot tell the two
+     * apart: glslang shifts declared bindings too.)
+     */
+    private static int declared(SpirvModule.Resource r) {
+        return r.value();
     }
 
     /**

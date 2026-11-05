@@ -90,9 +90,8 @@ public final class CgKernelProgram {
         for (CgMaterialProperty p : properties.all()) if (p.getType().isSampler()) samplers.add(p);
         this.counterPoints = new int[source.buffers().size()];
         this.counterWords = new int[source.buffers().size()];
-        int next = source.buffers().size();
-        for (CgBufferDecl b : source.buffers()) counterPoints[b.index()] = b.access() == CgBufferAccess.APPEND ? next++ : -1;
-        this.checkPoint = checked ? next : -1;
+        for (CgBufferDecl b : source.buffers()) counterPoints[b.index()] = CgKernelEmitter.counterPoint(source, b);
+        this.checkPoint = checked ? CgKernelEmitter.checkPoint(source) : -1;
         CgCapabilities caps = CgCapabilities.detect();
         for (int axis = 0; axis < 3; axis++) groupLimits[axis] = caps.maxComputeWorkGroupCount(axis);
         try (CgGlScope scope = CgGlState.save(CgGlSlot.PROGRAM)) {
@@ -200,14 +199,12 @@ public final class CgKernelProgram {
         }
     }
 
+    /**
+     * The engine's environment, whose GL points are sized from the driver's limits: by name until GL3. What the kernel
+     * declares itself the emitter bound ({@link CgKernelEmitter}).
+     */
     private void wire() {
         int id = program.getId();
-        for (CgBufferDecl b : source.buffers()) {
-            storageBlock(id, CgKernelEmitter.bufferBlock(b), b.index());
-            storageBlock(id, CgKernelEmitter.bitsBlock(b), b.index());
-            if (counterPoints[b.index()] >= 0) storageBlock(id, CgKernelEmitter.counterBlock(b), counterPoints[b.index()]);
-        }
-        if (checkPoint >= 0) storageBlock(id, CgKernelEmitter.CHECK_BLOCK, checkPoint);
         for (String token : source.engineBuffers()) {
             CgShaderBuffer buffer = CgEngineBufferRegistry.get(token).buffer().get();
             storageBlock(id, buffer.getName(), buffer.getBindingLocation());
@@ -215,8 +212,6 @@ public final class CgKernelProgram {
         uniformBlock(id, CgPassConstants.VIEW_BLOCK, CgBindingPoints.VIEW_UBO);
         uniformBlock(id, CgPassConstants.ENVIRONMENT_BLOCK, CgBindingPoints.ENVIRONMENT_UBO);
         uniformBlock(id, CgKernelEmitter.PROPERTY_BLOCK, CgBindingPoints.MATERIAL_PROPERTIES_UBO);
-        for (CgImageDecl image : source.images()) unit(id, image.uniform(), image.index());
-        for (int i = 0; i < samplers.size(); i++) unit(id, samplers.get(i).getName(), i);
         unit(id, CgBindingPoints.DEPTH_TEXTURE_UNIFORM, CgBindingPoints.DEPTH_TEXTURE_UNIT);
         unit(id, CgBindingPoints.SCENE_COLOR_TEXTURE_UNIFORM, CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT);
         unit(id, CgBindingPoints.LIGHTMAP_TEXTURE_UNIFORM, CgBindingPoints.LIGHTMAP_TEXTURE_UNIT);

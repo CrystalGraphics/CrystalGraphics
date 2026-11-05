@@ -39,8 +39,8 @@ still collapses a lib the engine's env files include too.
 
 ## What a kernel's source is
 
-The header the target needs (`#version 430 core`, or `420 core` with the ARB compute extensions below GL 4.3; the
-KHR subgroup extensions where they are native), the keywords asked for, `CG_COMPUTE_STAGE`, the size macros, `cg_env.glsl`,
+One header, `CgKernelEmitter.VERSION` (`#version 450 core`, the materials' target; the KHR subgroup extensions
+where they are native), the keywords asked for, `CG_COMPUTE_STAGE`, the size macros, `cg_env.glsl`,
 `env/compute/kernel.glsl` and `atomic.glsl` (and `subgroup.glsl` if it uses `CG_SUBGROUP_*`), the properties, the
 engine buffers, then **the file's code with every function and `shared` variable this kernel does not reach left
 out**, the `Buffers`/`Images` blocks replaced in place by declarations and accessors for the buffers and images it
@@ -49,7 +49,8 @@ returning first for an invocation past the count, in every shape but `general`.
 
 ## Bindings
 
-Wired by name after linking, so the source carries no `binding =`:
+What the kernel declares is bound at emission (`layout(binding = n)`, read back by the tracked backend as GL reads
+it); the engine's environment (its blocks, scene samplers and engine buffers) is wired by name on GL until GL3:
 
 | What | Where |
 |---|---|
@@ -61,7 +62,7 @@ Wired by name after linking, so the source carries no `binding =`:
 | The view and environment blocks | `CgViewBlock` at `VIEW_UBO`, `CgEnvironmentBlock` at `ENVIRONMENT_UBO`: `CgKernelProgram.frame(constants)` in a direct dispatch |
 | An engine buffer (`#pragma cg_use`) | its own binding point; writable in a general kernel, read-only in the rest |
 | `cg_Dispatch[6]` | base and count per dispatch, one `glUniform1iv` |
-| Checked mode's slot (`CgCheck`) | the next point after the counts; each dispatch binds its own slot of `CgComputeCheck`'s buffer, so no two overlap |
+| Checked mode's slot (`CgCheck`) | the next point after the counts (`CG_CHECK_BINDING`); each dispatch binds its own slot of `CgComputeCheck`'s buffer, so no two overlap |
 
 ## Ops, inside
 

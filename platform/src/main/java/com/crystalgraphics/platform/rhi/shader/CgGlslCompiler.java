@@ -48,14 +48,29 @@ public interface CgGlslCompiler {
     /** A vertex input and the location it reads. */
     record Attribute(String name, int location, int glType) {}
 
-    /** A uniform or storage block and its binding. */
-    record Block(String name, int binding) {}
+    /**
+     * A uniform or storage block and its binding. {@code declared} is its {@code layout(binding = n)}, 0 where the
+     * source gives none: the point a GL program starts it at, until {@code glUniformBlockBinding} moves it.
+     */
+    record Block(String name, int binding, int declared) {
+        public Block(String name, int binding) {
+            this(name, binding, 0);
+        }
+    }
 
-    /** A sampler or texel buffer and its binding. */
-    record Sampler(String name, int binding, int glType, boolean texel) {}
+    /** A sampler or texel buffer and its binding; {@code declared} as {@link Block}'s, its starting unit. */
+    record Sampler(String name, int binding, int glType, boolean texel, int declared) {
+        public Sampler(String name, int binding, int glType, boolean texel) {
+            this(name, binding, glType, texel, 0);
+        }
+    }
 
-    /** A storage image and its binding. */
-    record Image(String name, int binding, int glType) {}
+    /** A storage image and its binding; {@code declared} as {@link Block}'s, its starting unit. */
+    record Image(String name, int binding, int glType, int declared) {
+        public Image(String name, int binding, int glType) {
+            this(name, binding, glType, 0);
+        }
+    }
 
     /**
      * One leaf of a loose uniform: {@code -1} for a stage that does not declare it. Element {@code e}, column
