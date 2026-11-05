@@ -137,4 +137,6 @@ public final class GLC {
     public static final int GL_SYNC_FLUSH_COMMANDS_BIT = 0x1, GL_ALREADY_SIGNALED = 0x911A,
             GL_TIMEOUT_EXPIRED = 0x911B, GL_CONDITION_SATISFIED = 0x911C, GL_WAIT_FAILED = 0x911D;
     public static final int GL_TIMESTAMP = 0x8E28, GL_QUERY_RESULT = 0x8866, GL_QUERY_RESULT_AVAILABLE = 0x8867;
+    /** The longest object label a driver takes. */
+    public static final int GL_MAX_LABEL_LENGTH = 0x82E8;
 }

@@ -121,13 +121,24 @@ public final class CgDeviceStates {
 
     /** {@code format} as one interleaved vertex buffer at binding 0, attribute {@code i} at location {@code i}. */
     public static List<CgGraphicsPipelineDesc.VertexBuffer> vertexBuffers(CgVertexFormat format) {
-        if (format == null || format.getAttributeCount() == 0) return List.of();
-        List<CgGraphicsPipelineDesc.VertexAttrib> attribs = new ArrayList<>(format.getAttributeCount());
-        for (int i = 0; i < format.getAttributeCount(); i++) {
-            CgVertexAttribute a = format.getAttribute(i);
+        return vertexBuffers(format, format);
+    }
+
+    /**
+     * {@code program}'s attributes, at its locations, read from vertices laid out as {@code mesh}'s (Unreal's vertex
+     * declaration, the vertex factory's and not the shader's): a program may draw a mesh of another format, as a
+     * static material drawn over a skinned mesh. An attribute the mesh has not is read as the program lays it out.
+     */
+    public static List<CgGraphicsPipelineDesc.VertexBuffer> vertexBuffers(CgVertexFormat program, CgVertexFormat mesh) {
+        if (program == null || program.getAttributeCount() == 0) return List.of();
+        CgVertexFormat from = mesh != null ? mesh : program;
+        List<CgGraphicsPipelineDesc.VertexAttrib> attribs = new ArrayList<>(program.getAttributeCount());
+        for (int i = 0; i < program.getAttributeCount(); i++) {
+            int at = from.indexOf(program.getAttribute(i).getName());
+            CgVertexAttribute a = at >= 0 ? from.getAttribute(at) : program.getAttribute(i);
             attribs.add(new CgGraphicsPipelineDesc.VertexAttrib(i, attribFormat(a), a.getOffset()));
         }
-        return List.of(new CgGraphicsPipelineDesc.VertexBuffer(0, format.getStride(), false, attribs));
+        return List.of(new CgGraphicsPipelineDesc.VertexBuffer(0, from.getStride(), false, attribs));
     }
 
     /** A vertex attribute's device format. */

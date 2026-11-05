@@ -2309,8 +2309,8 @@ public final class CgExecutor {
             }
             CgMesh mesh = mesh(packed, b);
             CgGraphicsPipeline device = linked == null ? null
-                    : pipeline.device(passState, CgMeshStore.topology(mesh), !CgGL.isDepthZeroToOne(), deviceFormats,
-                            depthFormat, samples);
+                    : pipeline.device(passState, mesh.format(), CgMeshStore.topology(mesh), !CgGL.isDepthZeroToOne(),
+                            deviceFormats, depthFormat, samples);
             if (device == null) {
                 if (glPassReasons.add("skipped " + pipeline)) {
                     LOGGER.warn("device raster: {} skipped in {}: {}", pipeline, pass.name(),

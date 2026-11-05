@@ -463,7 +463,15 @@ public final class GLStateFilter implements CgGLDriver {
     @Override public void glGetFloatv(int name, float[] out) { raw.glGetFloatv(name, out); }
     @Override public void glGetIntegeri_v(int name, int index, int[] out) { raw.glGetIntegeri_v(name, index, out); }
     @Override public long glGetInteger64i(int name, int index) { return raw.glGetInteger64i(name, index); }
-    @Override public void glObjectLabel(int identifier, int name, String label) { raw.glObjectLabel(identifier, name, label); }
+    /** {@code GL_MAX_LABEL_LENGTH}, asked once; 0 until then. */
+    private int maxLabel;
+
+    /** Clipped to the driver's limit: a longer label is an error, not a shorter label. */
+    @Override
+    public void glObjectLabel(int identifier, int name, String label) {
+        if (maxLabel == 0) maxLabel = Math.max(1, raw.glGetInteger(GL_MAX_LABEL_LENGTH));
+        raw.glObjectLabel(identifier, name, label.length() < maxLabel ? label : label.substring(0, maxLabel - 1));
+    }
     @Override public void glPushDebugGroup(String message) { raw.glPushDebugGroup(message); }
     @Override public void glPopDebugGroup() { raw.glPopDebugGroup(); }
     @Override public int glCreateBuffers() { return raw.glCreateBuffers(); }

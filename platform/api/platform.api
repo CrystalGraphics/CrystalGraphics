@@ -1597,6 +1597,7 @@ com/crystalgraphics/platform/gl/driver/GLC
   field public,static,final GL_MAX_COMPUTE_SHARED_MEMORY_SIZE I
   field public,static,final GL_MAX_COMPUTE_WORK_GROUP_INVOCATIONS I
   field public,static,final GL_MAX_IMAGE_UNITS I
+  field public,static,final GL_MAX_LABEL_LENGTH I
   field public,static,final GL_MAX_SAMPLES I
   field public,static,final GL_MAX_SHADER_STORAGE_BUFFER_BINDINGS I
   field public,static,final GL_MAX_TEXTURE_BUFFER_SIZE I

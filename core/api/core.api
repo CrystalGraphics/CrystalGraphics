@@ -8928,6 +8928,7 @@ com/crystalgraphics/render/draw/CgDeviceStates
   method public,static over (Lcom/crystalgraphics/api/state/CgRenderState;Lcom/crystalgraphics/api/state/CgRenderState;)Lcom/crystalgraphics/api/state/CgRenderState;
   method public,static raster (Lcom/crystalgraphics/api/state/CgCullState;)Lcom/crystalgraphics/platform/rhi/pipeline/CgGraphicsPipelineDesc$Raster;
   method public,static vertexBuffers (Lcom/crystalgraphics/api/vertex/CgVertexFormat;)Ljava/util/List;
+  method public,static vertexBuffers (Lcom/crystalgraphics/api/vertex/CgVertexFormat;Lcom/crystalgraphics/api/vertex/CgVertexFormat;)Ljava/util/List;
   method public,static writeMask (Ljava/util/List;I)I
 com/crystalgraphics/render/draw/CgDrawChunk
   access public,final
@@ -9049,7 +9050,7 @@ com/crystalgraphics/render/draw/CgPipeline
   extends java/lang/Object
   method public as (Lcom/crystalgraphics/render/draw/CgPipelineForm;)Lcom/crystalgraphics/render/draw/CgPipeline;
   method public bind ()Z
-  method public device (Lcom/crystalgraphics/api/state/CgRenderState;Lcom/crystalgraphics/platform/rhi/pipeline/CgGraphicsPipelineDesc$Topology;ZLjava/util/List;Lcom/crystalgraphics/platform/rhi/format/CgFormat;I)Lcom/crystalgraphics/platform/rhi/pipeline/CgGraphicsPipeline;
+  method public device (Lcom/crystalgraphics/api/state/CgRenderState;Lcom/crystalgraphics/api/vertex/CgVertexFormat;Lcom/crystalgraphics/platform/rhi/pipeline/CgGraphicsPipelineDesc$Topology;ZLjava/util/List;Lcom/crystalgraphics/platform/rhi/format/CgFormat;I)Lcom/crystalgraphics/platform/rhi/pipeline/CgGraphicsPipeline;
   method public has (Lcom/crystalgraphics/render/draw/CgPipelineForm;)Z
   method public id ()I
   method public isBuilt ()Z
