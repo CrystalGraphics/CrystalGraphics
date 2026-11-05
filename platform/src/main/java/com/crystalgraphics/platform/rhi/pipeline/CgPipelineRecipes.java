@@ -1,4 +1,4 @@
-package com.crystalgraphics.platform.gl.tracked.tracker;
+package com.crystalgraphics.platform.rhi.pipeline;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -24,7 +24,6 @@ import org.apache.logging.log4j.Logger;
 import com.crystalgraphics.platform.rhi.format.CgAttribFormat;
 import com.crystalgraphics.platform.rhi.format.CgCompare;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
-import com.crystalgraphics.platform.rhi.pipeline.CgGraphicsPipelineDesc;
 import com.crystalgraphics.platform.rhi.pipeline.CgGraphicsPipelineDesc.Blend;
 import com.crystalgraphics.platform.rhi.pipeline.CgGraphicsPipelineDesc.ColorTarget;
 import com.crystalgraphics.platform.rhi.pipeline.CgGraphicsPipelineDesc.DepthStencil;
@@ -32,6 +31,7 @@ import com.crystalgraphics.platform.rhi.pipeline.CgGraphicsPipelineDesc.Raster;
 import com.crystalgraphics.platform.rhi.pipeline.CgGraphicsPipelineDesc.StencilFace;
 import com.crystalgraphics.platform.rhi.pipeline.CgGraphicsPipelineDesc.VertexAttrib;
 import com.crystalgraphics.platform.rhi.pipeline.CgGraphicsPipelineDesc.VertexBuffer;
+import com.crystalgraphics.platform.rhi.shader.CgShaderModule;
 import com.github.bsideup.jabel.Desugar;
 
 /**
@@ -43,7 +43,7 @@ import com.github.bsideup.jabel.Desugar;
  *
  * <pre>{@code
  * CgPipelineRecipes recipes = CgPipelineRecipes.load(CgCacheDirectory.of("pipelines"), executor);
- * for (CgPipelineRecipes.Recipe r : recipes.of(program.key())) build(r.desc(program));   // as a program links
+ * for (CgPipelineRecipes.Recipe r : recipes.of(key)) build(r.desc(label, layout, vertex, fragment));   // as a program links
  * recipes.record(program.key(), CgPipelineRecipes.Recipe.of(desc, zeroToOne));          // a pipeline built at a draw
  * }</pre>
  *
@@ -133,10 +133,14 @@ public final class CgPipelineRecipes {
                     d.depthFormat(), d.samples());
         }
 
-        /** The description for {@code program}, with the vertex stage of its recorded clip convention. */
-        public CgGraphicsPipelineDesc desc(CgTrackedProgram program) {
-            return new CgGraphicsPipelineDesc(program.label, program.pipelineLayout, program.vertex(zeroToOne), program.fragment,
-                    vertexBuffers, topology, raster, depthStencil, colorTargets, depthFormat, samples);
+        /**
+         * The description for a program of the recorded key: its {@code vertex} stage the one of the recorded clip
+         * convention ({@link #zeroToOne}).
+         */
+        public CgGraphicsPipelineDesc desc(String label, CgPipelineLayout layout, CgShaderModule vertex,
+                                           CgShaderModule fragment) {
+            return new CgGraphicsPipelineDesc(label, layout, vertex, fragment, vertexBuffers, topology, raster,
+                    depthStencil, colorTargets, depthFormat, samples);
         }
 
         String encode() {

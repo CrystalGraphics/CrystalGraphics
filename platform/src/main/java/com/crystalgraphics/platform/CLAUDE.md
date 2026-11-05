@@ -328,14 +328,14 @@ What is easy to get wrong:
 - **A pass into a host's `0..1` depth draws with each program's zero-to-one vertex stage**: `CgGL.setDepthReversed(true, true)`
   (Minecraft 26.2's world passes) reaches `cgClipZeroToOne`, and the tracker stops remapping GL's `-1..1`. Left on the
   GL-depth stage, every depth lands in the half nearest the eye and passes the test against everything the host drew.
-- **A program's pipelines are built as it links, from the recorded list** (`tracker/CgPipelineRecipes`, Unreal's
-  bundled PSO cache): every pipeline a draw built is written down by the program's key (a hash of its sources) and
+- **A program's pipelines are built as it links, from the recorded list** (`rhi.pipeline.CgPipelineCache` and its
+  `CgPipelineRecipes`, Unreal's `PipelineStateCache` and bundled PSO cache; the tracker asks it by description): every pipeline a draw built is written down by the program's key (a hash of its sources) and
   the rest of its description, into the jar's `assets/crystalgraphics/pipelines/recorded.txt` and the user's
   `crystalgraphics/cache/pipelines/recorded.txt`. A later link builds them on the compile worker and the
   `crystalgraphics-pipelines` builders (a driver compiles one a thread), and `GL_COMPLETION_STATUS_KHR` answers
   true only once they are built, so a draw the engine holds until its program is ready finds them built: inside the
-  loading screen for what links there. One no list names is built at its draw (`tracker.pipeline`, counted
-  `tracker.pipelines-built`, logged by `crystalgraphics.tracker.logPipelines`) and recorded. To ship a gate's list,
+  loading screen for what links there. One no list names is built at its draw (`pipelines.build`, counted
+  `pipelines.built`, logged by `crystalgraphics.pipelines.log`) and recorded. To ship a gate's list,
   copy its `recorded.txt` over the jar's. `buildPipeline(mode)` builds one for the current program and state with
   nothing it reads bound: what the shader audit runs on a device, in both clip conventions.
 - **`debug`** refuses sampling a texture the open pass renders to, and a vertex input no attribute array

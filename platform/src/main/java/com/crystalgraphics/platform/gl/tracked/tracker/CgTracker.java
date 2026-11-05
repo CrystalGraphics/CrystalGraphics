@@ -15,6 +15,7 @@ import com.crystalgraphics.platform.rhi.binding.CgBindingLayout;
 import com.crystalgraphics.platform.rhi.pipeline.CgComputePipeline;
 import com.crystalgraphics.platform.rhi.pipeline.CgGraphicsPipeline;
 import com.crystalgraphics.platform.rhi.pipeline.CgGraphicsPipelineDesc;
+import com.crystalgraphics.platform.rhi.pipeline.CgPipelineCache;
 import com.crystalgraphics.platform.rhi.resource.CgGpuBuffer;
 import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
 import com.crystalgraphics.platform.rhi.resource.CgTextureView;
@@ -22,10 +23,8 @@ import com.crystalgraphics.platform.rhi.shader.CgShaderModule;
 import com.crystalgraphics.platform.rhi.memory.CgAllocation;
 import com.crystalgraphics.platform.rhi.memory.CgFrameArena;
 import com.crystalgraphics.platform.rhi.memory.CgSlabAllocator;
-import com.crystalgraphics.platform.service.CgCacheDirectory;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.trace.CgTraceChannel;
-import com.crystalgraphics.variable.CgVar;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -37,9 +36,6 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.function.IntFunction;
 
@@ -75,14 +71,6 @@ public final class CgTracker {
     private static final CgTraceChannel GL = CgTrace.channel("crystalgraphics.gl");
     /** A pipeline the device built at its first draw, and how many: on a cold driver cache 10-100 ms each. */
     private static final Logger LOGGER = LogManager.getLogger("CgTracker");
-    private static final CgVar.Bool LOG_PIPELINES = CgVar.bool("crystalgraphics.tracker.logPipelines", false, CgVar.DEV,
-            "Log each pipeline the device built at a draw (tracker.pipelines-built), with its program and how long it took.");
-    private static final CgVar.Bool RECORDED = CgVar.bool("crystalgraphics.tracker.recordedPipelines", true, CgVar.DEV,
-            "Build a program's recorded pipelines as it links (CgPipelineRecipes); false builds each at its first draw.");
-    private static final int PIPELINE_ZONE =CgTrace.name("tracker.pipeline"), PIPELINES = CgTrace.name("tracker.pipelines-built");
-    /** Recorded pipelines started on a builder as their program linked, those a draw took built, and its waits for one. */
-    private static final int AHEAD_ZONE = CgTrace.name("tracker.pipelineAhead"), AHEAD_WAIT = CgTrace.name("tracker.pipelineWait"),
-            AHEAD = CgTrace.name("tracker.pipelines-ahead"), AHEAD_HITS = CgTrace.name("tracker.pipelines-ahead-hits");
 
     public final CgDrawState state = new CgDrawState();
     public final CgTrackerStats stats = new CgTrackerStats();
@@ -93,13 +81,8 @@ public final class CgTracker {
     private final CgFrameArena frameUploads;
     /** Where the last {@link #frameAllocate} put its bytes in the allocation it answered. */
     private long frameOffset;
-    private final Map<CgGraphicsPipelineDesc, CgGraphicsPipeline> pipelines = new HashMap<>();
-    /** Recorded pipelines building on {@link #builders}, by description; taken by the first draw that needs one. */
-    private final Map<CgGraphicsPipelineDesc, Future<CgGraphicsPipeline>> ahead = new HashMap<>();
-    /** Built ahead for a program forgotten since: released once done. */
-    private final List<Future<CgGraphicsPipeline>> orphaned = new ArrayList<>();
-    private CgPipelineRecipes recipes;
-    private ExecutorService builders;
+    /** Every graphics pipeline, by its full description: the RHI's cache, with the recorded list. */
+    private final CgPipelineCache pipelines;
     private boolean zeroToOneClip;
     private boolean warnedMaskedClear;
     private IntFunction<CgTrackedProgram> clearPrograms;
@@ -165,6 +148,7 @@ public final class CgTracker {
     /** @param debug refuse feedback loops; a check per sampled texture per draw */
     public CgTracker(CgRHI device, boolean debug) {
         this.device = device;
+        this.pipelines = new CgPipelineCache(device);
         this.debug = debug;
         long align = Math.max(16, Math.max(device.globals().limits().uniformOffsetAlignment(),
                 Math.max(device.globals().limits().storageOffsetAlignment(), device.globals().limits().texelOffsetAlignment())));
@@ -264,16 +248,7 @@ public final class CgTracker {
                 clearProgram.fragment, CLEAR_LAYOUT, CgGraphicsPipelineDesc.Topology.TRIANGLES, CgGraphicsPipelineDesc.Raster.DEFAULT,
                 CgGraphicsPipelineDesc.DepthStencil.OFF, targets, depthFormat,
                 passTarget.colors().get(attachment).texture().desc().samples());
-        CgGraphicsPipeline p = pipelines.get(desc);
-        if (p == null) {
-            try (CgTrace.Zone ignored = CgTrace.zone(GL, PIPELINE_ZONE)) {
-                p = device.createPipeline(desc);
-            }
-            CgTrace.add(GL, PIPELINES, 1);
-            if (LOG_PIPELINES.get()) LOGGER.info("pipeline built at its draw: {} on {} colour targets", desc.label(), desc.colorTargets().size());
-            pipelines.put(desc, p);
-            stats.pipelineMisses++;
-        }
+        CgGraphicsPipeline p = pipeline(desc, 0, false);
         pass.setPipeline(p);
         passPipeline = p;
 
@@ -449,122 +424,39 @@ public final class CgTracker {
         CgTextureView any = on.colors().isEmpty() ? on.depth() : on.colors().get(0);
         CgGraphicsPipelineDesc desc = new CgGraphicsPipelineDesc(s.program.label, s.program.pipelineLayout, vertex, s.program.fragment,
                 s.vertexLayouts, topology, s.raster, ds, targets, depthFormat, any.texture().desc().samples());
-        CgGraphicsPipeline p = pipelines.get(desc);
-        if (p == null) {
-            p = takeAhead(desc);
-            if (p == null) {
-                try (CgTrace.Zone ignored = CgTrace.zone(GL, PIPELINE_ZONE)) {
-                    p = device.createPipeline(desc);
-                }
-                CgTrace.add(GL, PIPELINES, 1);
-                if (LOG_PIPELINES.get()) LOGGER.info("pipeline built at its draw: {} on {} colour targets", desc.label(), desc.colorTargets().size());
-                stats.pipelineMisses++;
-                if (s.program.key != 0 && device.createsOnAnyThread()) {
-                    recipes().record(s.program.key, CgPipelineRecipes.Recipe.of(desc, vertex == s.program.vertexZeroToOne));
-                }
-            }
-            pipelines.put(desc, p);
-        }
+        return pipeline(desc, s.program.key, vertex == s.program.vertexZeroToOne);
+    }
+
+    /** {@link CgPipelineCache#get}, counting a pipeline built at this draw in {@link #stats}. */
+    private CgGraphicsPipeline pipeline(CgGraphicsPipelineDesc desc, long programKey, boolean zeroToOne) {
+        long missed = pipelines.misses();
+        CgGraphicsPipeline p = pipelines.get(desc, programKey, zeroToOne);
+        if (pipelines.misses() != missed) stats.pipelineMisses++;
         return p;
     }
 
     /**
-     * Starts every pipeline recorded for {@code program} on the builders and answers them by description: as it
-     * links, on the compile worker, so they build inside the loading screen for whatever links there (Unreal's PSO
-     * precache). Any thread; the owner adopts the answer ({@link #adoptAhead}) when it installs the link.
+     * Starts every pipeline recorded for {@code program} building ({@link CgPipelineCache#startRecorded}): as it links,
+     * on the compile worker. Any thread; the owner adopts the answer ({@link #adoptAhead}) when it installs the link.
      */
     public Map<CgGraphicsPipelineDesc, Future<CgGraphicsPipeline>> startRecorded(CgTrackedProgram program) {
-        if (program.key == 0 || !device.createsOnAnyThread() || !RECORDED.get()) return Map.of();
-        Map<CgGraphicsPipelineDesc, Future<CgGraphicsPipeline>> started = new HashMap<>();
-        for (CgPipelineRecipes.Recipe recipe : recipes().of(program.key)) {
-            CgGraphicsPipelineDesc desc = recipe.desc(program);
-            started.put(desc, builders().submit(() -> {
-                try (CgTrace.Zone ignored = CgTrace.zone(GL, AHEAD_ZONE)) {
-                    return device.createPipeline(desc);
-                }
-            }));
-        }
-        CgTrace.add(GL, AHEAD, started.size());
-        return started;
+        return pipelines.startRecorded(program.key, recipe -> recipe.desc(program.label, program.pipelineLayout,
+                program.vertex(recipe.zeroToOne()), program.fragment));
     }
 
     /** Takes pipelines started ahead for a program now installed: its first draws take them. Owner thread. */
     public void adoptAhead(Map<CgGraphicsPipelineDesc, Future<CgGraphicsPipeline>> started) {
-        for (Map.Entry<CgGraphicsPipelineDesc, Future<CgGraphicsPipeline>> e : started.entrySet()) {
-            if (pipelines.containsKey(e.getKey()) || ahead.containsKey(e.getKey())) orphaned.add(e.getValue());
-            else ahead.put(e.getKey(), e.getValue());
-        }
+        pipelines.adopt(started);
     }
 
     /** Pipelines started for a link that will never install: released as each finishes. Owner thread. */
     public void orphan(Collection<Future<CgGraphicsPipeline>> started) {
-        orphaned.addAll(started);
-    }
-
-    /** The pipeline started ahead for {@code desc}, waiting for it if it is still building; null if none was, or it failed. */
-    private CgGraphicsPipeline takeAhead(CgGraphicsPipelineDesc desc) {
-        Future<CgGraphicsPipeline> built = ahead.remove(desc);
-        if (built == null) return null;
-        try (CgTrace.Zone ignored = built.isDone() ? null : CgTrace.zone(GL, AHEAD_WAIT)) {
-            CgGraphicsPipeline p = built.get();
-            CgTrace.add(GL, AHEAD_HITS, 1);
-            return p;
-        } catch (ExecutionException e) {
-            LOGGER.warn("pipeline built ahead for {} failed; building it at its draw", desc.label(), e.getCause());
-            return null;
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            return null;
-        }
-    }
-
-    /** Releases what finished building for a program forgotten since it started. */
-    private void releaseOrphaned() {
-        for (int i = orphaned.size() - 1; i >= 0; i--) {
-            Future<CgGraphicsPipeline> f = orphaned.get(i);
-            if (!f.isDone()) continue;
-            orphaned.remove(i);
-            try {
-                device.release(f.get());
-            } catch (ExecutionException e) {
-                // It failed to build: nothing to release.
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-        }
-    }
-
-    private synchronized CgPipelineRecipes recipes() {
-        if (recipes == null) recipes = CgPipelineRecipes.load(CgCacheDirectory.of("pipelines"), builders());
-        return recipes;
-    }
-
-    /** Half the cores, from one to four: a driver compiles one pipeline a thread. */
-    private synchronized ExecutorService builders() {
-        if (builders == null) {
-            int n = Math.max(1, Math.min(4, Runtime.getRuntime().availableProcessors() / 2));
-            builders = Executors.newFixedThreadPool(n, r -> {
-                Thread t = new Thread(r, "crystalgraphics-pipelines");
-                t.setDaemon(true);
-                t.setPriority(Thread.MIN_PRIORITY);
-                return t;
-            });
-        }
-        return builders;
+        pipelines.orphan(started);
     }
 
     /** Drops every pipeline built from {@code program}: it was relinked or deleted. */
     public void forgetPipelines(CgTrackedProgram program) {
-        pipelines.entrySet().removeIf(e -> {
-            boolean mine = e.getKey().layout() == program.pipelineLayout;
-            if (mine) device.release(e.getValue());
-            return mine;
-        });
-        ahead.entrySet().removeIf(e -> {
-            boolean mine = e.getKey().layout() == program.pipelineLayout;
-            if (mine) orphaned.add(e.getValue());
-            return mine;
-        });
+        pipelines.forget(desc -> desc.layout() == program.pipelineLayout);
         byIdentity.keySet().removeIf(k -> k.program == program);
         if (keyProgram == program) keyPipeline = null;
         passPipeline = null;
@@ -882,7 +774,7 @@ public final class CgTracker {
         flushPendingClears();
         if (pass != null) endPass();
         endCompute();
-        releaseOrphaned();
+        pipelines.endFrame();
         device.endFrame();
         keyPipeline = null;
     }

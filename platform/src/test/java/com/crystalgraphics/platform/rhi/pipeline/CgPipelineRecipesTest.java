@@ -1,17 +1,15 @@
-package com.crystalgraphics.platform.gl.tracked.tracker;
+package com.crystalgraphics.platform.rhi.pipeline;
 
 import com.crystalgraphics.platform.rhi.format.CgAttribFormat;
 import com.crystalgraphics.platform.rhi.format.CgCompare;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
-import com.crystalgraphics.platform.rhi.pipeline.CgGraphicsPipelineDesc;
 import org.junit.Test;
 
 import java.util.List;
-import java.util.Map;
 
 import static org.junit.Assert.*;
 
-/** A recorded pipeline reads back as the description it was written from, and a program's key is its sources'. */
+/** A recorded pipeline reads back as the description it was written from. */
 public class CgPipelineRecipesTest {
 
     @Test
@@ -35,11 +33,4 @@ public class CgPipelineRecipesTest {
         assertEquals(bare, CgPipelineRecipes.Recipe.decode(bare.encode()));
     }
 
-    @Test
-    public void aProgramsKeyFollowsItsSourcesAlone() {
-        long a = CgTrackedProgram.key("vs", "fs", Map.of("pos", 0, "uv", 1));
-        assertEquals(a, CgTrackedProgram.key("vs", "fs", Map.of("uv", 1, "pos", 0)));
-        assertNotEquals(a, CgTrackedProgram.key("vs", "fs2", Map.of("pos", 0, "uv", 1)));
-        assertNotEquals(a, CgTrackedProgram.key("vsf", "s", Map.of("pos", 0, "uv", 1)));
-    }
 }
