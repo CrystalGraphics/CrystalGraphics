@@ -28,6 +28,12 @@ public interface CgGLImports {
     /** The RHI texture behind {@code name}, which has {@code desc}. */
     CgGpuTexture texture(int name, CgGpuTexture.Desc desc);
 
+    /**
+     * {@code name}'s own description, a 2D texture made elsewhere (a host's target): its format and size as the device
+     * sees them, sampled and drawn into, one level. What {@link #texture} is asked with for a name nothing described.
+     */
+    CgGpuTexture.Desc describe(int name);
+
     /** The RHI buffer holding {@code name}'s storage now. */
     CgGpuBuffer buffer(int name);
 

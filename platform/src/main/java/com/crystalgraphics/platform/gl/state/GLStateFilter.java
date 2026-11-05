@@ -521,6 +521,7 @@ public final class GLStateFilter implements CgGLDriver {
     @Override public void glDetachShader(int program, int shader) { raw.glDetachShader(program, shader); }
     @Override public void glLinkProgram(int program) { raw.glLinkProgram(program); }
     @Override public int glGetProgrami(int program, int name) { return raw.glGetProgrami(program, name); }
+    @Override public int glGetTextureLevelParameteri(int texture, int level, int name) { return raw.glGetTextureLevelParameteri(texture, level, name); }
     @Override public String glGetProgramInfoLog(int program) { return raw.glGetProgramInfoLog(program); }
     @Override public void glDeleteProgram(int program) { raw.glDeleteProgram(program); }
     @Override public void glProgramParameteri(int program, int name, int value) { raw.glProgramParameteri(program, name, value); }

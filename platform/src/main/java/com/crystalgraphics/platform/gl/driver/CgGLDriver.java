@@ -205,6 +205,9 @@ public interface CgGLDriver {
 
     int glGetProgrami(int program, int name);
 
+    /** A level's parameter of a texture by name: its internal format, width or height. */
+    int glGetTextureLevelParameteri(int texture, int level, int name);
+
     String glGetProgramInfoLog(int program);
 
     void glDeleteProgram(int program);

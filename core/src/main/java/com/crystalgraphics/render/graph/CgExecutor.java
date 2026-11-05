@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.graph;
 
+import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
 import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.render.draw.CgDrawStateCache;
 import com.crystalgraphics.platform.rhi.shader.CgGlslCompiler;
@@ -415,6 +416,7 @@ public final class CgExecutor {
     public static void forgetHostTargets() {
         COMPOSED.forgetHost();
         BESIDE.forgetHost();
+        for (CgExecutor executor : BY_DEPTH) executor.hostRead = -1;
     }
 
     /**
@@ -2061,13 +2063,58 @@ public final class CgExecutor {
 
     // ── Raster on the device (GL6 part 4) ──────────────────────────────────────
 
+    /** The host framebuffer's attachment parameters, which {@code CgGL} does not name. */
+    private static final int GL_ATTACHMENT_NAME = 0x8CD1, GL_ATTACHMENT_TEXTURE = 0x1702;
+    /** The host framebuffer {@link #readHost} read, at what viewport size; -1 for none. */
+    private int hostRead = -1, hostReadWidth, hostReadHeight;
+    /** Its colour and depth as RHI textures; null where it has none, or a renderbuffer. */
+    @Nullable
+    private CgGpuTexture hostColor, hostDepth;
+    /** Its depth attachment's name: 0 for none, -1 for a renderbuffer. */
+    private int hostDepthName;
+
+    /**
+     * Reads the host framebuffer's attachments and imports its textures (RDG's {@code RegisterExternalTexture}): once a
+     * host framebuffer and size, again after {@link #forgetHostTargets}.
+     */
+    private void readHost() {
+        int host = startFramebuffer, width = startViewport.get(2), height = startViewport.get(3);
+        if (host == hostRead && width == hostReadWidth && height == hostReadHeight) return;
+        CgGL.glBindFramebuffer(CgGL.GL_FRAMEBUFFER, host);
+        otherBound = false;
+        int color = hostAttachment(CgGL.GL_COLOR_ATTACHMENT0);
+        hostDepthName = hostAttachment(CgGL.GL_DEPTH_ATTACHMENT);
+        CgGLImports imports = CgGLImports.get();
+        hostColor = color > 0 ? imports.texture(color, imports.describe(color)) : null;
+        hostDepth = hostDepthName > 0 ? imports.texture(hostDepthName, imports.describe(hostDepthName)) : null;
+        hostRead = host;
+        hostReadWidth = width;
+        hostReadHeight = height;
+    }
+
+    /** The texture at {@code point} of the bound framebuffer: its name, 0 for nothing there, -1 for a renderbuffer. */
+    private static int hostAttachment(int point) {
+        int type = CgGL.glGetFramebufferAttachmentParameteriv(CgGL.GL_FRAMEBUFFER, point,
+                CgGL.GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE);
+        if (type == CgGL.GL_NONE) return 0;
+        if (type != GL_ATTACHMENT_TEXTURE) return -1;
+        return CgGL.glGetFramebufferAttachmentParameteriv(CgGL.GL_FRAMEBUFFER, point, GL_ATTACHMENT_NAME);
+    }
+
     /** Why {@code pass} cannot draw on the device yet; null when it can. */
     @Nullable
     private String deviceRefuses(CgFrame frame, CgRasterPass pass, CgFrame.Raster packed, @Nullable int[] damage) {
         if (!CgGLImports.installed() || !CgGlslCompiler.installed()) return "no device";
         for (String skip : DEVICE_RASTER_SKIP) if (!skip.isEmpty() && pass.name().contains(skip)) return "skipped by name";
-        if (pass.target == null || pass.target.kind() == CgGraphTexture.Kind.CURRENT) return "the current target";
-        if (pass.target.drawsBesideCurrentDepth()) return "beside the current depth";
+        boolean current = pass.target == null || pass.target.kind() == CgGraphTexture.Kind.CURRENT;
+        if (current) {
+            if (startFramebuffer == 0) return "the default framebuffer";
+            readHost();
+            if (hostColor == null) return "a host colour renderbuffer, or none";
+            if (hostDepthName < 0) return "a host depth renderbuffer";
+        } else if (pass.target.drawsBesideCurrentDepth()) {
+            return "beside the current depth";
+        }
         if (attachmentOf(pass) != null) return "a composed target";
         if (pass.depthFrom() != null || pass.colorFrom() != null) return "a copy from another target";
         if (pass.layer != 0) return "a layer of an array target";
@@ -2079,6 +2126,7 @@ public final class CgExecutor {
             if (packed.copyBefore[b] != 0) return "a target copy mid-pass";
             if (packed.counts[b] != null && !gpuCounts) return "draws counted on the CPU";
         }
+        if (current) return null;
         CgFrameBuffer storage = storage(pass.target);
         if (storage == null) return "no storage";
         for (int i = 0; i < storage.getFormat().colorSlotCount(); i++) {
@@ -2105,8 +2153,11 @@ public final class CgExecutor {
             passesReport *= 10;
             LOGGER.warn("device raster: {} passes on the device, {} on CgGL", devicePasses, glPasses);
         }
-        CgFrameBuffer storage = storage(pass.target);
-        int level = pass.level, w = storage.levelWidth(level), h = storage.levelHeight(level);
+        boolean current = pass.target == null || pass.target.kind() == CgGraphTexture.Kind.CURRENT;
+        CgFrameBuffer storage = current ? null : storage(pass.target);
+        int level = pass.level;
+        int w = current ? hostColor.desc().width() : storage.levelWidth(level);
+        int h = current ? hostColor.desc().height() : storage.levelHeight(level);
         CgMeshStore store = CgMeshStore.get();
         if (packed.count > 0) {
             frame.bindings.bind(packed.constants);
@@ -2126,23 +2177,25 @@ public final class CgExecutor {
         boolean clearColor = (load.mask() & CgGL.GL_COLOR_BUFFER_BIT) != 0;
         deviceColors.clear();
         deviceFormats.clear();
-        for (int i = 0; i < storage.getFormat().colorSlotCount(); i++) {
-            CgTextureView whole = storage.getColorTexture(i).rhiView();
-            CgTextureView view = CgTextureView.attachment(whole.texture(), level, 0);
+        int colors = current ? 1 : storage.getFormat().colorSlotCount();
+        for (int i = 0; i < colors; i++) {
+            CgGpuTexture texture = current ? hostColor : storage.getColorTexture(i).rhiView().texture();
+            CgTextureView view = CgTextureView.attachment(texture, level, 0);
             deviceColors.add(new CgPassDesc.Color(view, clearColor && damage == null ? CgPassDesc.LoadOp.CLEAR : CgPassDesc.LoadOp.LOAD,
                     load.r(), load.g(), load.b(), load.a(), CgPassDesc.StoreOp.STORE));
-            deviceFormats.add(whole.texture().desc().format());
+            deviceFormats.add(texture.desc().format());
         }
         CgPassDesc.Depth depth = null;
         CgFormat depthFormat = null;
-        if (storage.getFormat().hasDepth()) {
-            CgTextureView whole = storage.getDepthTexture().rhiView();
+        CgGpuTexture depthTexture = current ? hostDepth
+                : storage.getFormat().hasDepth() ? storage.getDepthTexture().rhiView().texture() : null;
+        if (depthTexture != null) {
             boolean clearDepth = (load.mask() & CgGL.GL_DEPTH_BUFFER_BIT) != 0;
             boolean clearStencil = (load.mask() & CgGL.GL_STENCIL_BUFFER_BIT) != 0;
-            depth = new CgPassDesc.Depth(CgTextureView.attachment(whole.texture(), level, 0),
+            depth = new CgPassDesc.Depth(CgTextureView.attachment(depthTexture, level, 0),
                     clearDepth ? CgPassDesc.LoadOp.CLEAR : CgPassDesc.LoadOp.LOAD, (float) load.depth(),
                     clearStencil ? CgPassDesc.LoadOp.CLEAR : CgPassDesc.LoadOp.LOAD, load.stencil(), CgPassDesc.StoreOp.STORE, false);
-            depthFormat = whole.texture().desc().format();
+            depthFormat = depthTexture.desc().format();
         }
         int samples = deviceColors.isEmpty() ? depth.view().texture().desc().samples()
                 : deviceColors.get(0).view().texture().desc().samples();
@@ -2152,7 +2205,11 @@ public final class CgExecutor {
         try {
             CgRHI rhi = CgRHI.get();
             CgRenderPass rp = rhi.encoder().beginPass(new CgPassDesc("graph", deviceColors, depth, w, h));
-            rp.setViewport(0, 0, w, h, 0, 1);
+            if (current) {
+                rp.setViewport(startViewport.get(0), startViewport.get(1), startViewport.get(2), startViewport.get(3), 0, 1);
+            } else {
+                rp.setViewport(0, 0, w, h, 0, 1);
+            }
             if (clearColor && damage != null) {
                 for (int i = 0; i < deviceColors.size(); i++) {
                     rp.clearColor(i, load.r(), load.g(), load.b(), load.a(), damage[0], damage[1], damage[2], damage[3]);

@@ -30,6 +30,13 @@ public final class CgTrackedImports implements CgGLImports {
         return t.image;
     }
 
+    @Override
+    public CgGpuTexture.Desc describe(int name) {
+        TrackedTextures.GlTexture t = textures.get(name);
+        if (t == null || t.image == null) throw new IllegalArgumentException("texture " + name + " has no image");
+        return t.image.desc();
+    }
+
     private CgAllocation storage(int name) {
         TrackedBuffers.GlBuffer b = buffers.get(name);
         CgAllocation a = b == null ? null : b.storage.allocation();

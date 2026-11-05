@@ -303,6 +303,9 @@ public final class Lwjgl3GLDriver implements CgGLDriver {
     @Override public void glLinkProgram(int program) { GL46.glLinkProgram(program); }
 
     @Override public int glGetProgrami(int program, int name) { return GL46.glGetProgrami(program, name); }
+    @Override public int glGetTextureLevelParameteri(int texture, int level, int name) {
+        return GL46.glGetTextureLevelParameteri(texture, level, name);
+    }
 
     @Override public String glGetProgramInfoLog(int program) { return GL46.glGetProgramInfoLog(program); }
 

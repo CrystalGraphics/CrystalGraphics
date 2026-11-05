@@ -249,6 +249,9 @@ public final class Lwjgl2GLDriver implements CgGLDriver {
     @Override public void glLinkProgram(int program) { GL20.glLinkProgram(program); }
 
     @Override public int glGetProgrami(int program, int name) { return GL20.glGetProgrami(program, name); }
+    @Override public int glGetTextureLevelParameteri(int texture, int level, int name) {
+        return GL45.glGetTextureLevelParameteri(texture, level, name);
+    }
 
     @Override public void glDeleteProgram(int program) { GL20.glDeleteProgram(program); }
 
