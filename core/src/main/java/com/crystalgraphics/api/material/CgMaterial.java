@@ -28,6 +28,7 @@ import com.crystalgraphics.gl.material.parse.CgShaderParser;
 import com.crystalgraphics.gl.texture.CgSamplers;
 import com.crystalgraphics.render.CgWarmBudget;
 import com.crystalgraphics.render.draw.CgBindingTable;
+import com.crystalgraphics.render.draw.CgBlockVersion;
 import com.crystalgraphics.render.draw.CgBufferHandle;
 import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.render.draw.CgPipeline;
@@ -191,6 +192,10 @@ public final class CgMaterial {
     @Nullable
     private CgBufferWriter capturePacker;
     private boolean capturePropsDirty = true;
+    /** The properties block as captures last saw it: a new version only after a value moved. */
+    @Nullable
+    private CgBlockVersion blockVersion;
+    private static final int BLOCK_WRITES = CgTrace.name("material.block-writes");
     /** This instance's own contents for uniform blocks attached to the shared shader, read in their place. */
     private Map<CgShaderBuffer, CgBufferWriter> blockOverrides;
 
@@ -1159,10 +1164,7 @@ public final class CgMaterial {
         }
         table.begin();
         if (propStore != null) {
-            if (propStore.hasUboProps()) {
-                CgBufferWriter packer = capturePacker();
-                table.block(CgBindingPoints.MATERIAL_PROPERTIES_UBO, packer.rawData(), 0, packer.rawCursor());
-            }
+            if (propStore.hasUboProps()) table.block(CgBindingPoints.MATERIAL_PROPERTIES_UBO, blockVersion());
             propStore.captureSamplers(table);
         }
         if (cgMaterialShader != null) captureAttachedBuffers(table);
@@ -1206,6 +1208,20 @@ public final class CgMaterial {
         if (buffers == null) buffers = new HashMap<>();
         buffers.put(name, Objects.requireNonNull(buffer, "buffer"));
         return this;
+    }
+
+    /**
+     * The properties block as it is now, persistent: a new version only after a value moved (counted,
+     * {@code material.block-writes}), so an unchanged material uploads nothing frame to frame.
+     */
+    private CgBlockVersion blockVersion() {
+        CgBlockVersion current = blockVersion;
+        if (current != null && !capturePropsDirty) return current;
+        CgBufferWriter packer = capturePacker();
+        if (current != null) current.supersede();
+        blockVersion = current = CgBlockVersion.of(packer.rawData(), packer.rawCursor());
+        CgTrace.add(CgChannels.GL, BLOCK_WRITES, 1);
+        return current;
     }
 
     /** The properties block packed as it is now, repacked only after a value moved. */
@@ -1724,6 +1740,7 @@ public final class CgMaterial {
     public void delete() {
         if (!deleted) {
             deleted = true;
+            if (blockVersion != null) blockVersion.supersede();
             // Do NOT delete cgMaterialShader.getShader() — that is asset-owned, not instance-owned.
             if (matPropsUbo != null) {
                 matPropsUbo.delete();

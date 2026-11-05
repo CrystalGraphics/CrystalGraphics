@@ -61,11 +61,6 @@ public final class CgBindingModel {
     public static final int FIRST_BUFFER = 1;
     /** The first buffer attached to a material at runtime; {@code CgMaterial.attach} allows {@link #ATTACHED_COUNT}. */
     public static final int FIRST_ATTACHED = 5, ATTACHED_COUNT = 8;
-    /**
-     * {@code CgMaterialTextures}, each texture property's heap indices where the device reads textures by index
-     * ({@code CG_BINDLESS}): the material block's own, once its block is persistent (SH5).
-     */
-    public static final Slot TEXTURE_HANDLES = new Slot(MATERIAL, 15);
     /** A material's textures where they are bound rather than read by index: property {@code i} at this plus {@code i}. */
     public static final int FIRST_TEXTURE = 16;
 

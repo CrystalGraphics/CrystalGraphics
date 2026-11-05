@@ -621,9 +621,7 @@ public final class CgMaterialShaderCompiler {
         appendPropertyUniforms(sb, properties);
 
         // Material properties UBO (CgMaterialBlock) — emitted before user-attached buffers
-        if (matPropsEntry != null) {
-            sb.append(CgGlslEmitter.emitUbo(matPropsEntry, CgBindingModel.MATERIAL_BLOCK)).append('\n');
-        }
+        appendMaterialBlock(sb, properties, matPropsEntry);
 
         appendAttachedBuffers(sb, attachedBuffers, shaderBufferPath);
 
@@ -724,9 +722,7 @@ public final class CgMaterialShaderCompiler {
         appendPropertyUniforms(sb, properties);
 
         // Material properties UBO (CgMaterialBlock) — emitted before user-attached buffers
-        if (matPropsEntry != null) {
-            sb.append(CgGlslEmitter.emitUbo(matPropsEntry, CgBindingModel.MATERIAL_BLOCK)).append('\n');
-        }
+        appendMaterialBlock(sb, properties, matPropsEntry);
 
         appendAttachedBuffers(sb, attachedBuffers, shaderBufferPath);
 
@@ -985,19 +981,17 @@ public final class CgMaterialShaderCompiler {
     }
 
     private static void appendPropertyUniforms(StringBuilder sb, List<CgMaterialProperty> properties) {
-        // Where the device reads textures by index, each is its handle in CgMaterialTextures read through cg_env's
-        // CG_TEXTURE_<type>, under the name the shader samples: Unreal's UB_RESOURCE_MEMBER_SRV. Otherwise bound.
-        StringBuilder handles = new StringBuilder(), reads = new StringBuilder();
+        // Where the device reads textures by index, each is its handle in CgMaterialBlock (appendMaterialBlock) read
+        // through cg_env's CG_TEXTURE_<type>, under the name the shader samples: Unreal's UB_RESOURCE_MEMBER_SRV.
+        // Otherwise bound.
+        StringBuilder reads = new StringBuilder();
         for (CgMaterialProperty p : properties) {
             if (!p.getType().isSampler()) continue;
-            handles.append("    uvec2 _cgt").append(p.getName()).append(";\n");
             reads.append("#define ").append(p.getName()).append(" CG_TEXTURE_").append(p.getGlslType()).append("(_cgt")
                     .append(p.getName()).append(")\n");
         }
-        if (handles.length() == 0) return;
-        sb.append("// Sampler properties\n#ifdef CG_BINDLESS\n").append(CgBindingModel.TEXTURE_HANDLES.glsl())
-                .append("layout(std140) uniform CgMaterialTextures {\n").append(handles).append("};\n").append(reads)
-                .append("#else\n");
+        if (reads.length() == 0) return;
+        sb.append("// Sampler properties\n#ifdef CG_BINDLESS\n").append(reads).append("#else\n");
         int textures = 0;
         for (CgMaterialProperty p : properties) {
             if (p.getType().isSampler()) {
@@ -1005,6 +999,29 @@ public final class CgMaterialShaderCompiler {
             }
         }
         sb.append("#endif\n");
+    }
+
+    /**
+     * {@code CgMaterialBlock}: the material's values, and where the device reads textures by index, each texture's
+     * handle after them, so a material is one block (Unreal's material uniform buffer). Absent with neither.
+     */
+    private static void appendMaterialBlock(StringBuilder sb, List<CgMaterialProperty> properties,
+                                            CgUniformBuffer values) {
+        StringBuilder handles = new StringBuilder();
+        for (CgMaterialProperty p : properties) {
+            if (p.getType().isSampler()) handles.append("    uvec2 _cgt").append(p.getName()).append(";\n");
+        }
+        if (values != null) {
+            String block = CgGlslEmitter.emitUbo(values, CgBindingModel.MATERIAL_BLOCK);
+            if (handles.length() > 0) {
+                int close = block.lastIndexOf("};");
+                block = block.substring(0, close) + "#ifdef CG_BINDLESS\n" + handles + "#endif\n" + block.substring(close);
+            }
+            sb.append(block).append('\n');
+        } else if (handles.length() > 0) {
+            sb.append("#ifdef CG_BINDLESS\n").append(CgBindingModel.MATERIAL_BLOCK.glsl())
+                    .append("layout(std140) uniform CgMaterialBlock {\n").append(handles).append("};\n#endif\n");
+        }
     }
 
     private static void appendV2fStruct(StringBuilder sb, String v2fStructBody) {

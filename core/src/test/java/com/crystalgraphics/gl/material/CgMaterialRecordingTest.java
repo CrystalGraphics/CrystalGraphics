@@ -84,13 +84,15 @@ public class CgMaterialRecordingTest {
     }
 
     @Test
-    public void equalSnapshotsShareAnIdAndKeepTheirValues() {
+    public void aBlockIsANewVersionOnlyWhenAValueMoves() {
         CgMaterial material = CgMaterial.fromSource(SOURCE);
         CgBindingTable table = new CgBindingTable();
 
         material.applyProperties(p -> p.set1f("_Alpha", 0.25f));
         int quarter = material.captureBindings(table);
-        assertEquals(quarter, material.captureBindings(table));
+        for (int frame = 0; frame < 3; frame++) assertEquals("unchanged: one version", quarter, material.captureBindings(table));
+        material.applyProperties(p -> p.set1f("_Alpha", 0.25f));
+        assertEquals("the same value written: still one version", quarter, material.captureBindings(table));
 
         material.applyProperties(p -> p.set1f("_Alpha", 0.75f));
         int threeQuarters = material.captureBindings(table);
@@ -98,8 +100,8 @@ public class CgMaterialRecordingTest {
         assertEquals(2, table.size());
 
         material.applyProperties(p -> p.set1f("_Alpha", 0.25f));
-        assertEquals("the first snapshot still holds its own value", quarter, material.captureBindings(table));
-        assertTrue(contains(table.blockFloats(quarter, 0), 0.25f));
+        assertNotEquals("a value moved back is a new version", threeQuarters, material.captureBindings(table));
+        assertTrue("the first snapshot still holds its own value", contains(table.blockFloats(quarter, 0), 0.25f));
         assertTrue(contains(table.blockFloats(threeQuarters, 0), 0.75f));
     }
 
