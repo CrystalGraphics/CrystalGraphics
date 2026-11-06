@@ -1,6 +1,11 @@
 package com.crystalgraphics.render.graph;
 
+import com.crystalgraphics.platform.rhi.CgDeviceSection;
+import com.crystalgraphics.platform.rhi.CgRHI;
+import com.crystalgraphics.platform.rhi.resource.CgGpuSampler;
+import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
 import com.crystalgraphics.platform.rhi.resource.CgTextureView;
+import com.crystalgraphics.platform.rhi.format.CgFormat;
 import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.texture.CgTextureType;
@@ -159,6 +164,49 @@ final class CgTargetCopy {
         boolean depth = sourceFormat != null ? sourceFormat.hasDepth() : probedDepthMask[probe(source)] != 0;
         if (!depth) throw new IllegalStateException(pass + " reads the depth of framebuffer " + source + ", which has none");
         copy(source, sourceFormat, width, height, DEPTH, WHOLE, 0, pool);
+    }
+
+    /**
+     * Copies {@code from}, a host's depth imported as an RHI texture, whole through the device: a renderbuffer's or the
+     * window's, which no pass samples in place, as Unreal resolves scene depth into a texture once for the passes after
+     * the base pass. Outside a device section; opens its own.
+     */
+    void copyDepth(CgGpuTexture from, CgTexturePool pool) {
+        CgTextureType type = depthType(from.desc().format());
+        int width = from.desc().width(), height = from.desc().height();
+        CgFrameBufferFormat format = DEPTH_FORMATS.computeIfAbsent(type, t -> copyFormat(null, t));
+        depthLender = null;
+        if (!fits(desc, width, height, format)) {
+            release(pool);
+            desc = new CgTextureDesc(width, height, format);
+        }
+        if (storage == null) storage = pool.acquire(desc);
+        CgTextureView to = storage.getDepthTexture().rhiView();
+        if (to == null) throw new IllegalStateException("a depth copy of " + from + " has no device texture");
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, DEPTH_ZONE)) {
+            CgDeviceSection.begin();
+            try {
+                CgRHI.get().encoder().blit(CgTextureView.attachment(from, 0, 0), 0, 0, width, height,
+                        to, 0, 0, width, height, CgGpuSampler.Filter.NEAREST);
+            } finally {
+                CgDeviceSection.end();
+            }
+        }
+    }
+
+    /** Depth-only copy formats, by depth type. */
+    private static final Map<CgTextureType, CgFrameBufferFormat> DEPTH_FORMATS = new HashMap<>();
+
+    /** The texture type holding a depth of {@code format}: a blit between depth formats fails, so they match. */
+    private static CgTextureType depthType(CgFormat format) {
+        switch (format) {
+            case DEPTH16_UNORM: return CgTextureType.DEPTH16;
+            case DEPTH24_PLUS: return CgTextureType.DEPTH24;
+            case DEPTH32_FLOAT: return CgTextureType.DEPTH32F;
+            case DEPTH24_PLUS_STENCIL8: return CgTextureType.DEPTH24_STENCIL8;
+            case DEPTH32_FLOAT_STENCIL8: return CgTextureType.DEPTH32F_STENCIL8;
+            default: throw new IllegalArgumentException(format + " is no depth format");
+        }
     }
 
     private static final int[] WHOLE = {0, 0, -1, -1};

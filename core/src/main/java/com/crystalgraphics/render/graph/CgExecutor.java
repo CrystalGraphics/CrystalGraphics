@@ -57,6 +57,7 @@ import com.crystalgraphics.platform.gl.CgCapabilities.ComputeTier;
 import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.state.CgGlScope;
+import com.crystalgraphics.platform.gl.state.CgGlSlot;
 import com.crystalgraphics.platform.gl.state.CgGlState;
 import com.crystalgraphics.render.CgCpuMeter;
 import com.crystalgraphics.render.CgGpuBudget;
@@ -2330,6 +2331,7 @@ public final class CgExecutor {
 
     /** The host framebuffer's attachment parameters, which {@code CgGL} does not name. */
     private static final int GL_ATTACHMENT_NAME = 0x8CD1, GL_ATTACHMENT_TEXTURE = 0x1702;
+    private static final CgGlSlot[] FRAMEBUFFER = {CgGlSlot.FBO};
     /** The host framebuffer {@link #readHost} read, at what viewport size; -1 for none. */
     private int hostRead = -1, hostReadWidth, hostReadHeight;
     /** Its colour and depth as RHI textures (a texture's, a renderbuffer's, the default framebuffer's); null for none. */
@@ -2357,12 +2359,14 @@ public final class CgExecutor {
             return;
         }
         if (host != hostRead || width != hostReadWidth || height != hostReadHeight) {
-            CgGL.glBindFramebuffer(CgGL.GL_FRAMEBUFFER, host);
-            otherBound = false;
-            hostColorType = attachmentType(CgGL.GL_COLOR_ATTACHMENT0);
-            hostDepthType = attachmentType(CgGL.GL_DEPTH_ATTACHMENT);
-            hostColorName = hostColorType == 0 ? 0 : attachmentName(CgGL.GL_COLOR_ATTACHMENT0);
-            hostDepthName = hostDepthType == 0 ? 0 : attachmentName(CgGL.GL_DEPTH_ATTACHMENT);
+            // The binding as found: a CgGL pass reads the host mid-pass, its own target bound
+            try (CgGlScope ignored = CgGlState.save(FRAMEBUFFER)) {
+                CgGL.glBindFramebuffer(CgGL.GL_FRAMEBUFFER, host);
+                hostColorType = attachmentType(CgGL.GL_COLOR_ATTACHMENT0);
+                hostDepthType = attachmentType(CgGL.GL_DEPTH_ATTACHMENT);
+                hostColorName = hostColorType == 0 ? 0 : attachmentName(CgGL.GL_COLOR_ATTACHMENT0);
+                hostDepthName = hostDepthType == 0 ? 0 : attachmentName(CgGL.GL_DEPTH_ATTACHMENT);
+            }
             hostColorDesc = describe(imports, hostColorType, hostColorName);
             hostDepthDesc = describe(imports, hostDepthType, hostDepthName);
             hostRead = host;
@@ -2794,7 +2798,14 @@ public final class CgExecutor {
             CgTrace.add(CgChannels.GL, DEPTH_SHARED, 1);
             return sharedDepth;
         }
-        sharedDepth.copyDepth(source, format, width, height, pass, POOL);
+        if (format == null && CgGLImports.installed()) {
+            // The host's, through the device: a renderbuffer or the window's depth too, which CgGL cannot name
+            readHost();
+            if (hostDepth == null) throw new IllegalStateException(pass + " reads the depth of framebuffer " + source + ", which has none");
+            sharedDepth.copyDepth(hostDepth, POOL);
+        } else {
+            sharedDepth.copyDepth(source, format, width, height, pass, POOL);
+        }
         sharedDepthSource = source;
         sharedDepthWidth = width;
         sharedDepthHeight = height;
