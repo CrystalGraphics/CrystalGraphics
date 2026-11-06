@@ -3,6 +3,7 @@ package com.crystalgraphics.storage.config;
 import com.crystalgraphics.serialization.CgCodec;
 import com.crystalgraphics.serialization.CgCodecException;
 import com.crystalgraphics.serialization.CgCodecs;
+import com.crystalgraphics.serialization.format.CgFiles;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
@@ -11,6 +12,9 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
@@ -79,8 +83,21 @@ public class CgConfigStorageTypedTest {
         store.write("a.json", Shelf.CODEC, new Shelf(false, 1));
         store.write("a.json", Shelf.CODEC, new Shelf(false, 2));
 
-        assertEquals(java.util.Collections.singletonList("a.json"), store.list());
+        assertEquals(Collections.singletonList("a.json"), store.list());
         assertTrue(new String(Files.readAllBytes(dir.resolve("a.json")), StandardCharsets.UTF_8).contains("2"));
+    }
+
+    @Test
+    public void aMapOfNamesToMillisSurvivesJson() throws IOException {
+        CgCodec<Map<String, Long>> history = CgCodecs.mapOf(CgCodecs.STRING, CgCodecs.LONG);
+        Map<String, Long> times = new LinkedHashMap<>();
+        times.put("mymod:runes/bake", 1234L);
+        times.put("minecraft", 98_765_432_100L);
+        Path file = folder.newFolder().toPath().resolve("history.json");
+
+        CgFiles.JSON.write(file, history, times);
+
+        assertEquals(times, CgFiles.JSON.read(file, history));
     }
 
     @Test

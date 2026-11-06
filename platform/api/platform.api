@@ -2275,6 +2275,10 @@ com/crystalgraphics/platform/input/CgSystemInput$Mouse$Event
 com/crystalgraphics/platform/input/CgSystemInput$MultiClickInterval
   access public,final
   extends java/lang/Object
+com/crystalgraphics/platform/io/CgAtomicFile
+  access public,final
+  extends java/lang/Object
+  method public,static write (Ljava/nio/file/Path;[B)V
 com/crystalgraphics/platform/rhi/CgRHI
   access public,abstract,interface
   extends java/lang/Object

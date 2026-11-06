@@ -1,13 +1,8 @@
 package com.crystalgraphics.loading.task;
 
 import com.crystalgraphics.loading.CgLoadingProcess;
-import java.io.BufferedReader;
-import java.io.BufferedWriter;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -23,6 +18,9 @@ import org.apache.logging.log4j.Logger;
 import com.crystalgraphics.job.CgJob;
 import com.crystalgraphics.job.CgJobLane;
 import com.crystalgraphics.platform.service.CgCacheDirectory;
+import com.crystalgraphics.serialization.CgCodec;
+import com.crystalgraphics.serialization.CgCodecs;
+import com.crystalgraphics.serialization.format.CgFiles;
 
 /**
  * Everything loading behind the screen, and how far along it is: every {@link CgLoadPlan} task, the work it adopted, and
@@ -277,27 +275,22 @@ public final class CgLoadTracker {
         return history;
     }
 
+    private static final CgCodec<Map<String, Long>> HISTORY = CgCodecs.mapOf(CgCodecs.STRING, CgCodecs.LONG);
+
     @Nullable
     private static Path file(String name) {
         Path dir = CgCacheDirectory.of("loading");
-        return dir == null ? null : dir.resolve(name + ".txt");
+        return dir == null ? null : dir.resolve(name + ".json");
     }
 
     private static Map<String, Long> load(String name) {
         Map<String, Long> out = new HashMap<>();
-        Path f;
         try {
-            f = file(name);
-        } catch (RuntimeException noGameDirectory) {
-            return out;
-        }
-        if (f == null || !Files.isRegularFile(f)) return out;
-        try (BufferedReader in = Files.newBufferedReader(f, StandardCharsets.UTF_8)) {
-            for (String line; (line = in.readLine()) != null; ) {
-                int tab = line.lastIndexOf('\t');
-                if (tab > 0) out.put(line.substring(0, tab), Long.parseLong(line.substring(tab + 1).trim()));
-            }
-        } catch (IOException | NumberFormatException e) {
+            Path f = file(name);
+            Map<String, Long> read = f == null ? null : CgFiles.JSON.read(f, HISTORY);
+            if (read != null) out.putAll(read);
+        } catch (IOException | RuntimeException unreadable) {
+            // No game directory, or a file somebody damaged: a bar with no history estimates, and the next save replaces it
             out.clear();
         }
         return out;
@@ -306,12 +299,7 @@ public final class CgLoadTracker {
     private static void save(String name, Map<String, Long> times) {
         try {
             Path f = file(name);
-            if (f == null) return;
-            Path tmp = f.resolveSibling(f.getFileName() + ".tmp");
-            try (BufferedWriter out = Files.newBufferedWriter(tmp, StandardCharsets.UTF_8)) {
-                for (Map.Entry<String, Long> e : times.entrySet()) out.write(e.getKey() + '\t' + e.getValue() + '\n');
-            }
-            Files.move(tmp, f, StandardCopyOption.REPLACE_EXISTING);
+            if (f != null) CgFiles.JSON.write(f, HISTORY, times);
         } catch (IOException | RuntimeException e) {
             LOGGER.warn("[loading] the bar's history could not be kept: {}", e.toString());
         }

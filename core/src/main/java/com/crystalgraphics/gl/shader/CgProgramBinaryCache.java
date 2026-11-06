@@ -3,6 +3,7 @@ package com.crystalgraphics.gl.shader;
 import com.crystalgraphics.job.CgJob;
 import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.platform.gl.CgGL;
+import com.crystalgraphics.platform.io.CgAtomicFile;
 import com.crystalgraphics.platform.service.CgCacheDirectory;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
@@ -19,7 +20,6 @@ import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.stream.Stream;
@@ -144,9 +144,7 @@ public final class CgProgramBinaryCache {
 
     private static void write(Path at, String key, byte[] bytes) {
         try {
-            Path temp = Files.createTempFile(at, key, ".tmp");
-            Files.write(temp, bytes);
-            Files.move(temp, at.resolve(key), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            CgAtomicFile.write(at.resolve(key), bytes);
         } catch (IOException e) {
             LOG.warn("Program binary {} not kept: {}", key, e.toString());
         }

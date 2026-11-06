@@ -4,6 +4,7 @@ import com.crystalgraphics.serialization.CgCodec;
 import com.crystalgraphics.serialization.CgDynamicOps;
 
 import com.crystalgraphics.platform.CgPlatform;
+import com.crystalgraphics.platform.io.CgAtomicFile;
 import com.crystalgraphics.serialization.format.file.BinaryFileFormat;
 import com.crystalgraphics.serialization.format.file.JsonFileFormat;
 import com.crystalgraphics.serialization.format.file.JsoncFileFormat;
@@ -14,10 +15,8 @@ import com.crystalgraphics.serialization.format.nbt.HostTagOps;
 
 import javax.annotation.Nullable;
 import java.io.IOException;
-import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.Locale;
 
 /**
@@ -90,20 +89,7 @@ public final class CgFiles {
      * leaves the last contents. Every format's {@code write} and every config store goes through it.
      */
     public static void writeAtomic(Path file, byte[] bytes) throws IOException {
-        Path parent = file.toAbsolutePath().getParent();
-        if (parent != null) Files.createDirectories(parent);
-        // Same directory as the target: elsewhere the rename may degrade to a non-atomic copy
-        Path temp = Files.createTempFile(parent, ".cg-", ".tmp");
-        try {
-            Files.write(temp, bytes);
-            try {
-                Files.move(temp, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-            } catch (AtomicMoveNotSupportedException notAtomic) {
-                Files.move(temp, file, StandardCopyOption.REPLACE_EXISTING);
-            }
-        } finally {
-            Files.deleteIfExists(temp);
-        }
+        CgAtomicFile.write(file, bytes);
     }
 
     /** {@link #BINARY}'s {@link CgFileFormat#write}. */
