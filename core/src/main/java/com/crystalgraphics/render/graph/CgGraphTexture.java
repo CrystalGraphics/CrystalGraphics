@@ -3,6 +3,7 @@ package com.crystalgraphics.render.graph;
 import com.crystalgraphics.platform.rhi.resource.CgTextureView;
 import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.texture.CgTexture;
+import com.crystalgraphics.api.texture.CgTextureSpec;
 import com.crystalgraphics.gl.framebuffer.CgFrameBuffer;
 import com.crystalgraphics.gl.texture.CgTexture2D;
 
@@ -348,6 +349,13 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
     }
 
     @Override
+    @Nullable
+    public CgTextureSpec spec() {
+        CgTexture color = color();
+        return color == null ? null : color.spec();
+    }
+
+    @Override
     public int getId() {
         CgTexture color = color();
         return color == null ? 0 : color.getId();
@@ -442,6 +450,13 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
             CgTexture color = texture.color();
             if (color instanceof CgTexture2D flat) flat.bindLevel(unit, level);
             else if (color != null) color.bind(unit);
+        }
+
+        @Override
+        @Nullable
+        public CgTextureSpec spec() {
+            CgTexture color = texture.color();
+            return color == null ? null : color.spec();
         }
 
         /** Its level alone, as {@link #bind} samples it. */
@@ -549,6 +564,13 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
         public CgTextureView rhiView() {
             CgTexture color = color();
             return color == null ? null : color.rhiView();
+        }
+
+        @Override
+        @Nullable
+        public CgTextureSpec spec() {
+            CgTexture color = color();
+            return color == null ? null : color.spec();
         }
 
         @Override

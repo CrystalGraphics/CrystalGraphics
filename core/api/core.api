@@ -2116,6 +2116,7 @@ com/crystalgraphics/api/texture/CgTexture
   method public isMissing ()Z
   method public reload ()V
   method public rhiView ()Lcom/crystalgraphics/platform/rhi/resource/CgTextureView;
+  method public spec ()Lcom/crystalgraphics/api/texture/CgTextureSpec;
   method public,abstract bind ()V
   method public,abstract bind (I)V
   method public,abstract delete ()V
@@ -9358,6 +9359,7 @@ com/crystalgraphics/render/graph/CgGraphTexture
   method public level (I)Lcom/crystalgraphics/render/graph/CgGraphTexture$Level;
   method public previous ()Lcom/crystalgraphics/render/graph/CgGraphTexture;
   method public rhiView ()Lcom/crystalgraphics/platform/rhi/resource/CgTextureView;
+  method public spec ()Lcom/crystalgraphics/api/texture/CgTextureSpec;
   method public toString ()Ljava/lang/String;
   method public,static besideCurrentDepth (Ljava/lang/String;Lcom/crystalgraphics/render/graph/CgTextureDesc;)Lcom/crystalgraphics/render/graph/CgGraphTexture;
   method public,static current ()Lcom/crystalgraphics/render/graph/CgGraphTexture;
@@ -9381,6 +9383,7 @@ com/crystalgraphics/render/graph/CgGraphTexture$Attachment
   method public isDeleted ()Z
   method public rhiView ()Lcom/crystalgraphics/platform/rhi/resource/CgTextureView;
   method public slot ()I
+  method public spec ()Lcom/crystalgraphics/api/texture/CgTextureSpec;
   method public texture ()Lcom/crystalgraphics/render/graph/CgGraphTexture;
   method public toString ()Ljava/lang/String;
 com/crystalgraphics/render/graph/CgGraphTexture$Kind
@@ -9407,6 +9410,7 @@ com/crystalgraphics/render/graph/CgGraphTexture$Level
   method public isDeleted ()Z
   method public level ()I
   method public rhiView ()Lcom/crystalgraphics/platform/rhi/resource/CgTextureView;
+  method public spec ()Lcom/crystalgraphics/api/texture/CgTextureSpec;
   method public texture ()Lcom/crystalgraphics/render/graph/CgGraphTexture;
   method public toString ()Ljava/lang/String;
 com/crystalgraphics/render/graph/CgLoad

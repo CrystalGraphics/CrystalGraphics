@@ -49,6 +49,15 @@ public interface CgTexture extends CgBinaryAsset {
         return null;
     }
 
+    /**
+     * How it is sampled where a draw names no sampler: its spec's filters and wraps. Null for GL's defaults, which
+     * repeat; a texture standing for another (a frame graph's) answers with what stands behind it.
+     */
+    @Nullable
+    default CgTextureSpec spec() {
+        return null;
+    }
+
     /** @return the OpenGL texture object id */
     int getId();
 

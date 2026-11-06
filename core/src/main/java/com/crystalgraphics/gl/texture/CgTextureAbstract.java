@@ -103,6 +103,7 @@ public abstract class CgTextureAbstract implements CgTexture, CgReloadable {
     }
 
     /** The spec it was made with: its own sampling, unless something set it since. */
+    @Override
     public CgTextureSpec spec() {
         return spec;
     }

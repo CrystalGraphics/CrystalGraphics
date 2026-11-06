@@ -3,7 +3,6 @@ package com.crystalgraphics.render.draw;
 import com.crystalgraphics.api.texture.CgSampler;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.texture.CgTextureSpec;
-import com.crystalgraphics.gl.texture.CgTextureAbstract;
 import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.rhi.format.CgCompare;
 import com.crystalgraphics.platform.rhi.resource.CgGpuSampler;
@@ -69,9 +68,9 @@ public final class CgDeviceSamplers {
                 Math.max(1, s.anisotropy()));
     }
 
-    /** A texture's own sampling, as its spec set it; GL's defaults for a texture with no spec. */
+    /** A texture's own sampling, as its spec set it (a graph texture's, its storage's); GL's defaults for none. */
     static Desc own(CgTexture texture) {
-        CgTextureSpec spec = texture instanceof CgTextureAbstract t ? t.spec() : null;
+        CgTextureSpec spec = texture.spec();
         if (spec == null) return Desc.DEFAULT;
         boolean mipmapped = spec.getMipmaps() != null && spec.getMipmaps().isEnabled();
         int min = mipmapped ? spec.getMipmaps().getMinFilter() : spec.getMinFilter();
