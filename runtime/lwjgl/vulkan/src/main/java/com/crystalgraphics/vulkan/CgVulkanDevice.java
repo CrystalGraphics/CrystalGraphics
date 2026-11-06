@@ -1,5 +1,9 @@
 package com.crystalgraphics.vulkan;
 
+import org.lwjgl.vulkan.VkMemoryRequirements;
+import com.crystalgraphics.vulkan.resource.VulkanHeap;
+import com.crystalgraphics.platform.rhi.resource.CgGpuHeap;
+import com.crystalgraphics.platform.rhi.memory.CgTransientMemory;
 import com.crystalgraphics.platform.gl.tracked.CgImplicitLayouts;
 import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.service.CgCacheDirectory;
@@ -181,6 +185,7 @@ public final class CgVulkanDevice implements CgRHI, CgImplicitLayouts, AutoClose
     private final VulkanBindless bindless;
     private final VulkanEncoder encoder;
     private VulkanTexture surfaceColor, surfaceDepth;
+    private final CgTransientMemory transientMemory = new TransientMemory();
     private VulkanBuffer scratch;
     /** Every queue family a buffer or image is used on, when more than the frame's: they are made CONCURRENT. */
     private final int[] sharedFamilies;
@@ -396,30 +401,8 @@ public final class CgVulkanDevice implements CgRHI, CgImplicitLayouts, AutoClose
     public CgGpuTexture createTexture(CgGpuTexture.Desc desc) {
         int format = formats.vk(desc.format());
         int aspect = formats.aspectOf(desc.format());
-        boolean depth = (aspect & VK_IMAGE_ASPECT_COLOR_BIT) == 0;
-        int usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-        if (desc.usage().contains(CgGpuTexture.Usage.SAMPLED)) usage |= VK_IMAGE_USAGE_SAMPLED_BIT;
-        if (desc.usage().contains(CgGpuTexture.Usage.STORAGE)) {
-            if (desc.samples() > 1 || !supports(desc.format(), CgGpuTexture.Usage.STORAGE))
-                throw new IllegalArgumentException(desc.label() + ": " + desc.format() + " x" + desc.samples()
-                        + " cannot be a storage image on " + info.name());
-            usage |= VK_IMAGE_USAGE_STORAGE_BIT;
-        }
-        if (desc.usage().contains(CgGpuTexture.Usage.ATTACHMENT))
-            usage |= depth ? VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT : VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-        boolean volume = desc.kind() == CgGpuTexture.Kind.D3;
         try (MemoryStack stack = stackPush()) {
-            VkImageCreateInfo ici = VkImageCreateInfo.calloc(stack).sType$Default()
-                    .imageType(volume ? VK_IMAGE_TYPE_3D : VK_IMAGE_TYPE_2D).format(format)
-                    .mipLevels(desc.mips()).arrayLayers(volume ? 1 : desc.depthOrLayers()).samples(desc.samples())
-                    .tiling(VK_IMAGE_TILING_OPTIMAL).usage(usage).sharingMode(VK_SHARING_MODE_EXCLUSIVE)
-                    .initialLayout(VK_IMAGE_LAYOUT_UNDEFINED)
-                    .flags(desc.kind() == CgGpuTexture.Kind.CUBE ? VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT : 0);
-            ici.extent().set(desc.width(), desc.height(), volume ? desc.depthOrLayers() : 1);
-            if (sharedFamilies.length > 1) {
-                ici.sharingMode(VK_SHARING_MODE_CONCURRENT).queueFamilyIndexCount(sharedFamilies.length)
-                        .pQueueFamilyIndices(stack.ints(sharedFamilies));
-            }
+            VkImageCreateInfo ici = imageInfo(stack, desc, format, aspect);
             VmaAllocationCreateInfo aci = VmaAllocationCreateInfo.calloc(stack).usage(VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE);
             LongBuffer lp = stack.mallocLong(1);
             PointerBuffer pp = stack.mallocPointer(1);
@@ -437,6 +420,98 @@ public final class CgVulkanDevice implements CgRHI, CgImplicitLayouts, AutoClose
                         VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT);
             }
             return t;
+        }
+    }
+
+    /** {@code desc} as an image: its usage from the description's, every queue family sharing it. */
+    private VkImageCreateInfo imageInfo(MemoryStack stack, CgGpuTexture.Desc desc, int format, int aspect) {
+        boolean depth = (aspect & VK_IMAGE_ASPECT_COLOR_BIT) == 0;
+        int usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+        if (desc.usage().contains(CgGpuTexture.Usage.SAMPLED)) usage |= VK_IMAGE_USAGE_SAMPLED_BIT;
+        if (desc.usage().contains(CgGpuTexture.Usage.STORAGE)) {
+            if (desc.samples() > 1 || !supports(desc.format(), CgGpuTexture.Usage.STORAGE))
+                throw new IllegalArgumentException(desc.label() + ": " + desc.format() + " x" + desc.samples()
+                        + " cannot be a storage image on " + info.name());
+            usage |= VK_IMAGE_USAGE_STORAGE_BIT;
+        }
+        if (desc.usage().contains(CgGpuTexture.Usage.ATTACHMENT))
+            usage |= depth ? VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT : VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+        boolean volume = desc.kind() == CgGpuTexture.Kind.D3;
+        VkImageCreateInfo ici = VkImageCreateInfo.calloc(stack).sType$Default()
+                .imageType(volume ? VK_IMAGE_TYPE_3D : VK_IMAGE_TYPE_2D).format(format)
+                .mipLevels(desc.mips()).arrayLayers(volume ? 1 : desc.depthOrLayers()).samples(desc.samples())
+                .tiling(VK_IMAGE_TILING_OPTIMAL).usage(usage).sharingMode(VK_SHARING_MODE_EXCLUSIVE)
+                .initialLayout(VK_IMAGE_LAYOUT_UNDEFINED)
+                .flags(desc.kind() == CgGpuTexture.Kind.CUBE ? VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT : 0);
+        ici.extent().set(desc.width(), desc.height(), volume ? desc.depthOrLayers() : 1);
+        if (sharedFamilies.length > 1) {
+            ici.sharingMode(VK_SHARING_MODE_CONCURRENT).queueFamilyIndexCount(sharedFamilies.length)
+                    .pQueueFamilyIndices(stack.ints(sharedFamilies));
+        }
+        return ici;
+    }
+
+    @Override
+    public CgTransientMemory transientMemory() {
+        return transientMemory;
+    }
+
+    /**
+     * Heaps as dedicated VMA allocations, device-local, and images aliased over them ({@code vmaCreateAliasingImage2}),
+     * as Unreal's {@code FVulkanTransientHeap}.
+     */
+    private final class TransientMemory implements CgTransientMemory {
+
+        @Override
+        public Requirements requirements(CgGpuTexture.Desc desc) {
+            // Vulkan 1.2 asks an image, not a description (vkGetDeviceImageMemoryRequirements is 1.3's).
+            try (MemoryStack stack = stackPush()) {
+                LongBuffer lp = stack.mallocLong(1);
+                VkImageCreateInfo ici = imageInfo(stack, desc, formats.vk(desc.format()), formats.aspectOf(desc.format()));
+                check(vkCreateImage(device, ici, null, lp), "vkCreateImage " + desc.label());
+                VkMemoryRequirements req = VkMemoryRequirements.malloc(stack);
+                vkGetImageMemoryRequirements(device, lp.get(0), req);
+                vkDestroyImage(device, lp.get(0), null);
+                return new Requirements(req.size(), req.alignment(), req.memoryTypeBits());
+            }
+        }
+
+        @Override
+        public CgGpuHeap createHeap(String label, long size, int memoryTypes) {
+            try (MemoryStack stack = stackPush()) {
+                VkMemoryRequirements req = VkMemoryRequirements.calloc(stack).size(size).alignment(1)
+                        .memoryTypeBits(memoryTypes);
+                VmaAllocationCreateInfo aci = VmaAllocationCreateInfo.calloc(stack)
+                        .flags(VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT)
+                        .requiredFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+                PointerBuffer pp = stack.mallocPointer(1);
+                VmaAllocationInfo ai = VmaAllocationInfo.malloc(stack);
+                check(vmaAllocateMemory(vma, req, aci, pp, ai), "vmaAllocateMemory " + label);
+                name(stack, VK_OBJECT_TYPE_DEVICE_MEMORY, ai.deviceMemory(), label);
+                VulkanHeap h = new VulkanHeap(label, pp.get(0), size, ai.memoryType());
+                live.add(h);
+                return h;
+            }
+        }
+
+        @Override
+        public CgGpuTexture place(CgGpuHeap heap, long offset, CgGpuTexture.Desc desc) {
+            int format = formats.vk(desc.format());
+            int aspect = formats.aspectOf(desc.format());
+            try (MemoryStack stack = stackPush()) {
+                LongBuffer lp = stack.mallocLong(1);
+                check(vmaCreateAliasingImage2(vma, ((VulkanHeap) heap).allocation, offset,
+                        imageInfo(stack, desc, format, aspect), lp), "vmaCreateAliasingImage2 " + desc.label());
+                name(stack, VK_OBJECT_TYPE_IMAGE, lp.get(0), desc.label());
+                VulkanTexture t = VulkanTexture.placed(desc, lp.get(0), format, aspect);
+                live.add(t);
+                return t;
+            }
+        }
+
+        @Override
+        public void discard(CgGpuTexture texture) {
+            ((VulkanTexture) texture).discard();
         }
     }
 
@@ -790,7 +865,10 @@ public final class CgVulkanDevice implements CgRHI, CgImplicitLayouts, AutoClose
         } else if (o instanceof VulkanTexture t) {
             if (bindless != null) bindless.forget(t);
             t.destroyViews(device);
-            if (!t.borrowed()) vmaDestroyImage(vma, t.image, t.allocation);
+            if (t.placed) vkDestroyImage(device, t.image, null);
+            else if (!t.borrowed()) vmaDestroyImage(vma, t.image, t.allocation);
+        } else if (o instanceof VulkanHeap h) {
+            vmaFreeMemory(vma, h.allocation);
         } else if (o instanceof VulkanShaderModule m) {
             vkDestroyShaderModule(device, m.module, null);
         } else if (o instanceof VulkanBindingLayout l) {

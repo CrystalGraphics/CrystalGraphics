@@ -1,5 +1,7 @@
 package com.crystalgraphics.platform.rhi.nulldrv;
 
+import com.crystalgraphics.platform.rhi.resource.CgGpuHeap;
+import com.crystalgraphics.platform.rhi.memory.CgTransientMemory;
 import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.rhi.resource.CgRHIResource;
 import com.crystalgraphics.platform.rhi.command.CgAccess;
@@ -49,7 +51,8 @@ import java.util.function.BiConsumer;
  *
  * <p>Frames retire {@code framesInFlight} frames after they end, as a GPU running that far behind would;
  * {@link #retireAll()} catches up. A released object is destroyed at its frame's retirement and refused from
- * then on. Readbacks return zeros.</p>
+ * then on. Readbacks return zeros. It places textures in heaps ({@link #transientMemory()}), refusing one outside its
+ * heap or off its alignment.</p>
  */
 public final class CgNullRHI implements CgRHI {
 
@@ -1093,6 +1096,58 @@ public final class CgNullRHI implements CgRHI {
         }
     }
 
+    /** The alignment a placed texture's offset needs here: 64 KiB, as a desktop GPU's optimal images. */
+    public static final long PLACEMENT_ALIGNMENT = 64 << 10;
+
+    private final CgTransientMemory transientMemory = new TransientMemory();
+
+    @Override
+    public CgTransientMemory transientMemory() {
+        return transientMemory;
+    }
+
+    /** One memory type; a texture needs its mips' bytes, unpadded. */
+    private final class TransientMemory implements CgTransientMemory {
+
+        @Override
+        public Requirements requirements(CgGpuTexture.Desc desc) {
+            boolean volume = desc.kind() == CgGpuTexture.Kind.D3;
+            long size = 0;
+            for (int m = 0; m < desc.mips(); m++) {
+                size += desc.format().bytes(Math.max(1, desc.width() >> m), Math.max(1, desc.height() >> m),
+                        volume ? Math.max(1, desc.depthOrLayers() >> m) : desc.depthOrLayers());
+            }
+            return new Requirements(size * desc.samples(), PLACEMENT_ALIGNMENT, 1);
+        }
+
+        @Override
+        public CgGpuHeap createHeap(String label, long size, int memoryTypes) {
+            if ((memoryTypes & 1) == 0) throw new IllegalArgumentException(label + ": no memory type of " + memoryTypes);
+            Heap h = new Heap(label, size);
+            record("createHeap #" + h.id + " " + label + " " + size);
+            return h;
+        }
+
+        @Override
+        public CgGpuTexture place(CgGpuHeap heap, long offset, CgGpuTexture.Desc desc) {
+            use(heap);
+            Requirements need = requirements(desc);
+            if (offset < 0 || offset % need.alignment() != 0 || offset + need.size() > heap.size()) {
+                throw new IllegalArgumentException(desc.label() + " (" + need.size() + " bytes, aligned to "
+                        + need.alignment() + ") at " + offset + " in " + heap.label() + " of " + heap.size());
+            }
+            Texture t = new Texture(desc);
+            record("place #" + t.id + " " + desc.label() + " in #" + ((Obj) heap).id + " at " + offset);
+            return t;
+        }
+
+        @Override
+        public void discard(CgGpuTexture texture) {
+            use(texture);
+            record("discard #" + ((Obj) texture).id);
+        }
+    }
+
     // ── objects ────────────────────────────────────────────────────────────────
 
     private abstract class Obj implements CgRHIResource {
@@ -1141,6 +1196,19 @@ public final class CgNullRHI implements CgRHI {
         }
 
         @Override public CgGpuTexture.Desc desc() { return desc; }
+    }
+
+    private final class Heap extends Obj implements CgGpuHeap {
+        final long size;
+
+        Heap(String label, long size) {
+            super(label);
+            this.size = size;
+        }
+
+        @Override public long size() { return size; }
+
+        @Override public int memoryType() { return 0; }
     }
 
     private final class Sampler extends Obj implements CgGpuSampler {

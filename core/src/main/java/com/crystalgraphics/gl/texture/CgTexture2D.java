@@ -215,15 +215,35 @@ public final class CgTexture2D extends CgTextureAbstract {
      * </ul>
      */
     public static CgTexture2D onDevice(String label, int width, int height, CgTextureSpec spec, int levels) {
+        return onDevice(CgRHI.get().createTexture(deviceDesc(label, width, height, spec, levels)), spec);
+    }
+
+    /**
+     * What {@link #onDevice(String, int, int, CgTextureSpec, int)} makes: a 2D texture of {@code spec}'s format,
+     * sampled, copied, an attachment, and a storage image where the device can make the format one.
+     */
+    public static CgGpuTexture.Desc deviceDesc(String label, int width, int height, CgTextureSpec spec, int levels) {
         CgFormat format = GLFormats.of(spec.getGlInternalFormat());
-        CgRHI rhi = CgRHI.get();
         Set<CgGpuTexture.Usage> usage = format.hasDepth()
                 ? EnumSet.of(CgGpuTexture.Usage.ATTACHMENT, CgGpuTexture.Usage.SAMPLED, CgGpuTexture.Usage.COPY_SRC,
                         CgGpuTexture.Usage.COPY_DST)
-                : rhi.supports(format, CgGpuTexture.Usage.STORAGE) ? CgGpuTexture.Usage.ALL
+                : CgRHI.get().supports(format, CgGpuTexture.Usage.STORAGE) ? CgGpuTexture.Usage.ALL
                 : EnumSet.complementOf(EnumSet.of(CgGpuTexture.Usage.STORAGE));
-        CgGpuTexture image = rhi.createTexture(new CgGpuTexture.Desc(label, CgGpuTexture.Kind.D2, format, width, height, 1,
-                levels, 1, usage));
+        return new CgGpuTexture.Desc(label, CgGpuTexture.Kind.D2, format, width, height, 1, levels, 1, usage);
+    }
+
+    /**
+     * {@code image}, a texture {@link #deviceDesc} describes, made by the caller: as {@code onDevice}'s, which
+     * {@link #delete} releases. The frame graph's placed transients.
+     *
+     * <pre>{@code
+     * CgGpuTexture image = memory.place(heap, offset, CgTexture2D.deviceDesc("bloom", w, h, spec, 1));
+     * CgTexture2D bloom = CgTexture2D.onDevice(image, spec);
+     * }</pre>
+     */
+    public static CgTexture2D onDevice(CgGpuTexture image, CgTextureSpec spec) {
+        CgGpuTexture.Desc desc = image.desc();
+        int width = desc.width(), height = desc.height(), levels = desc.mips();
         CgTexture2D tex = new CgTexture2D(CgGLImports.get().name(image), width, height, spec, false);
         tex.levels = levels;
         tex.image = image;

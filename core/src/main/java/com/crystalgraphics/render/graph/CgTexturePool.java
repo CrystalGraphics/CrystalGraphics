@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.graph;
 
+import java.util.function.ToLongFunction;
 import java.util.function.Consumer;
 
 import com.crystalgraphics.gl.framebuffer.CgFrameBuffer;
@@ -23,11 +24,25 @@ final class CgTexturePool {
     /** {@link System#nanoTime()} at the last frame's end: a framebuffer remade is names and storage, driver waits. */
     private long now = System.nanoTime();
     private int created;
+    /** What a framebuffer of a description holds on the device, and the sum of it over every framebuffer held. */
+    private ToLongFunction<CgTextureDesc> sizes = desc -> 0;
+    private long bytes;
 
     CgFrameBuffer acquire(CgTextureDesc desc) {
         Bucket bucket = free.get(desc);
         if (bucket != null && bucket.size > 0) return bucket.takeNewest();
+        bytes += sizes.applyAsLong(desc);
         return create("cg_graph_" + desc.width() + "x" + desc.height() + "_" + created++, desc);
+    }
+
+    /** Counts what each framebuffer made from now holds, by {@code sizes}: {@link #bytes()}. */
+    void measure(ToLongFunction<CgTextureDesc> sizes) {
+        this.sizes = sizes;
+    }
+
+    /** Bytes of the framebuffers held, in use and free, as {@link #measure} counts them. */
+    long bytes() {
+        return bytes;
     }
 
     /** Storage for {@code desc}: a framebuffer, an array's, or a volume's 3D texture. */
@@ -41,7 +56,7 @@ final class CgTexturePool {
     void release(CgTextureDesc desc, CgFrameBuffer framebuffer) {
         Bucket bucket = free.get(desc);
         if (bucket == null) {
-            free.put(desc, bucket = new Bucket());
+            free.put(desc, bucket = new Bucket(desc));
             buckets.add(bucket);
         }
         bucket.add(framebuffer, now);
@@ -56,6 +71,7 @@ final class CgTexturePool {
                 CgFrameBuffer framebuffer = bucket.takeOldest();
                 deleting.accept(framebuffer);
                 framebuffer.delete();
+                bytes -= sizes.applyAsLong(bucket.desc);
             }
         }
     }
@@ -67,13 +83,19 @@ final class CgTexturePool {
         }
         free.clear();
         buckets.clear();
+        bytes = 0;
     }
 
     /** One description's free framebuffers, oldest first, as a ring of parallel arrays. */
     private static final class Bucket {
+        final CgTextureDesc desc;
         private CgFrameBuffer[] framebuffers = new CgFrameBuffer[4];
         private long[] releasedAt = new long[4];
         private int head, size;
+
+        Bucket(CgTextureDesc desc) {
+            this.desc = desc;
+        }
 
         void add(CgFrameBuffer framebuffer, long at) {
             if (size == framebuffers.length) grow();

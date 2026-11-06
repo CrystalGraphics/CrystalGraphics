@@ -1,6 +1,10 @@
 package com.crystalgraphics.gl.framebuffer;
 
 
+import java.util.List;
+import java.util.ArrayList;
+import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
+import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.gl.CgGlNames;
 import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
@@ -144,8 +148,8 @@ public class CgFrameBuffer {
     /** Mip levels of each colour texture, at most its full chain at the current size. */
     @Getter
     private int colorLevels = 1;
-    /** Its textures made on the installed device ({@link #createOnDevice}). */
-    private boolean onDevice;
+    /** What makes its texture slots on the installed device ({@link #createOnDevice}); null for {@code CgGL}'s. */
+    @Nullable private Images images;
 
     /** Framebuffers drawing into level {@code l} of every colour texture, at {@code l - 1}; made at first use. */
     private int[] levelFbos = new int[0];
@@ -249,11 +253,11 @@ public class CgFrameBuffer {
 
     private static CgFrameBuffer createInternal(String name, int width, int height, CgFrameBufferFormat format,
                                                 int colorLevels) {
-        return createInternal(name, width, height, format, colorLevels, false);
+        return createInternal(name, width, height, format, colorLevels, null);
     }
 
     private static CgFrameBuffer createInternal(String name, int width, int height, CgFrameBufferFormat format,
-                                                int colorLevels, boolean onDevice) {
+                                                int colorLevels, @Nullable Images images) {
         if (width <= 0 || height <= 0) 
             throw new IllegalArgumentException("Framebuffer dimensions must be positive: " + width + "x" + height);
         if (format == null) 
@@ -273,7 +277,7 @@ public class CgFrameBuffer {
         }
         CgFrameBuffer fbo = new CgFrameBuffer(name, format, width, height);
         fbo.colorLevels = colorLevels;
-        fbo.onDevice = onDevice;
+        fbo.images = images;
         fbo.initGl(width, height, format);
         return fbo;
     }
@@ -328,7 +332,67 @@ public class CgFrameBuffer {
      */
     public static CgFrameBuffer createOnDevice(String name, int width, int height, CgFrameBufferFormat format,
                                                int colorLevels) {
-        return createInternal(name, width, height, format, colorLevels, true);
+        CgRHI rhi = CgRHI.get();
+        return createInternal(name, width, height, format, colorLevels, rhi::createTexture);
+    }
+
+    /**
+     * {@link #createOnDevice(String, int, int, CgFrameBufferFormat, int)} with each texture slot's image made by
+     * {@code images}, asked in {@link #deviceDescs}' order: the frame graph's transients, placed in heaps.
+     *
+     * <pre>{@code
+     * List<CgGpuTexture.Desc> descs = CgFrameBuffer.deviceDescs(name, w, h, format, 1);
+     * CgFrameBuffer target = CgFrameBuffer.createOnDevice(name, w, h, format, 1, desc -> memory.place(heap, at(desc), desc));
+     * }</pre>
+     *
+     * <ul>
+     *   <li>A {@link #resize} asks {@code images} again, for the new size.</li>
+     *   <li>Renderbuffer slots stay {@code CgGL}'s ({@link #allOnDevice}).</li>
+     * </ul>
+     */
+    public static CgFrameBuffer createOnDevice(String name, int width, int height, CgFrameBufferFormat format,
+                                               int colorLevels, Images images) {
+        return createInternal(name, width, height, format, colorLevels, images);
+    }
+
+    /** Makes a framebuffer's texture slot on the device, from what the slot needs. */
+    @FunctionalInterface
+    public interface Images {
+        CgGpuTexture make(CgGpuTexture.Desc desc);
+    }
+
+    /**
+     * The device textures {@link #createOnDevice} makes for {@code format} at this size, in the order it makes them:
+     * each colour texture slot by slot, then a depth texture.
+     */
+    public static List<CgGpuTexture.Desc> deviceDescs(String name, int width, int height, CgFrameBufferFormat format,
+                                                      int colorLevels) {
+        List<CgGpuTexture.Desc> descs = new ArrayList<>();
+        if (format.isMultisampled()) return descs;
+        for (int slot : format.getActiveColorSlotIds()) {
+            if (format.isColorRenderbuffer(slot)) continue;
+            descs.add(CgTexture2D.deviceDesc(colourLabel(name, slot), width, height,
+                    format.getColorSlot(slot).toTextureSpec(), Math.min(colorLevels, CgTexture.fullChain(width, height))));
+        }
+        if (format.hasDepth() && !format.isDepthRenderbuffer()) {
+            descs.add(CgTexture2D.deviceDesc(depthLabel(name), width, height, format.getDepthType().toTextureSpec(), 1));
+        }
+        return descs;
+    }
+
+    /** Whether {@link #createOnDevice} makes every attachment of {@code format} a device texture: no renderbuffer. */
+    public static boolean allOnDevice(CgFrameBufferFormat format) {
+        if (format.isMultisampled() || format.hasDepth() && format.isDepthRenderbuffer()) return false;
+        for (int slot : format.getActiveColorSlotIds()) if (format.isColorRenderbuffer(slot)) return false;
+        return true;
+    }
+
+    private static String colourLabel(String name, int slot) {
+        return name + " colour " + slot;
+    }
+
+    private static String depthLabel(String name) {
+        return name + " depth";
     }
 
     /**
@@ -516,8 +580,9 @@ public class CgFrameBuffer {
                             + "resolve with blitFrom(...), which is what a sampler2D can read.");
                 } else {
                     int levels = Math.min(colorLevels, CgTexture.fullChain(w, h));
-                    CgTexture2D tex = onDevice ? CgTexture2D.onDevice(name + " colour " + slot, w, h, type.toTextureSpec(),
-                            levels) : CgTexture2D.createEmpty(w, h, type.toTextureSpec(), levels);
+                    CgTexture2D tex = images != null ? CgTexture2D.onDevice(images.make(CgTexture2D.deviceDesc(
+                            colourLabel(name, slot), w, h, type.toTextureSpec(), levels)), type.toTextureSpec())
+                            : CgTexture2D.createEmpty(w, h, type.toTextureSpec(), levels);
                     doFramebufferTexture2D(CgGL.GL_FRAMEBUFFER, glAttach, CgGL.GL_TEXTURE_2D, tex.getId(), 0);
                     a.setTexture(tex);
                 }
@@ -548,7 +613,8 @@ public class CgFrameBuffer {
                             "CgFrameBufferFormat '" + fmt + "': depth is multisampled but declared as a "
                             + "sampleable texture. Use depthRenderbuffer(...).");
                 } else {
-                    CgTexture2D tex = onDevice ? CgTexture2D.onDevice(name + " depth", w, h, depthType.toTextureSpec(), 1)
+                    CgTexture2D tex = images != null ? CgTexture2D.onDevice(images.make(CgTexture2D.deviceDesc(
+                            depthLabel(name), w, h, depthType.toTextureSpec(), 1)), depthType.toTextureSpec())
                             : CgTexture2D.createEmpty(w, h, depthType.toTextureSpec());
                     doFramebufferTexture2D(CgGL.GL_FRAMEBUFFER, glAttach, CgGL.GL_TEXTURE_2D, tex.getId(), 0);
                     a.setTexture(tex);

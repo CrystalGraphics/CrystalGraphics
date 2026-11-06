@@ -1,5 +1,7 @@
 package com.crystalgraphics.platform.rhi;
 
+import com.crystalgraphics.platform.rhi.memory.CgTransientMemory;
+import com.crystalgraphics.platform.rhi.memory.CgTransientAllocator;
 import com.crystalgraphics.platform.rhi.command.CgCommandList;
 import com.crystalgraphics.platform.rhi.command.CgRenderPass;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
@@ -129,6 +131,15 @@ public interface CgRHI {
 
     /** Destroys {@code object} once the frame current now has retired. */
     void release(CgRHIResource object);
+
+    /**
+     * Heaps and textures placed in them, for textures alive during part of a frame to share memory
+     * ({@link CgTransientAllocator}); null where the device cannot place, as GL cannot, where the frame graph pools them
+     * instead (Unreal's {@code RHICreateTransientResourceAllocator}).
+     */
+    default CgTransientMemory transientMemory() {
+        return null;
+    }
 
     // ── the bindless heap ─────────────────────────────────────────────────────
 

@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.graph;
 
+import com.crystalgraphics.platform.rhi.memory.CgTransientMemory;
 import com.crystalgraphics.platform.rhi.resource.CgTextureRegion;
 import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
 import com.crystalgraphics.api.state.CgRenderState;
@@ -141,6 +142,15 @@ public final class CgExecutor {
 
     private static final List<CgExecutor> BY_DEPTH = new ArrayList<>();
     private static final CgTexturePool POOL = new CgTexturePool();
+    /** Transients placed in the device's transient heaps, made with the first frame on a device that places; else null. */
+    private static CgTransientTextures transients;
+    private static final boolean ALIASING = CgVar.bool("crystalgraphics.graph.aliasing", true, CgVar.DEV | CgVar.RESTART,
+            "Transient 2D textures share memory where the device can place them (Vulkan); false pools them by description,"
+                    + " as GL does: Unreal's r.RDG.TransientAllocator 0, for comparing the two.").get();
+    /** KiB of 2D transient textures held: heaps where placed, the pooled framebuffers' images where not. */
+    private static final int TRANSIENT_KB = CgTrace.name("graph.transient-kb");
+    /** KiB of placed transient textures alive at once at the last frame's most. */
+    private static final int TRANSIENT_PEAK_KB = CgTrace.name("graph.transient-peak-kb");
     private static final CgComposedTargets COMPOSED = new CgComposedTargets(true), BESIDE = new CgComposedTargets(false);
     private static final CgBufferPool BUFFERS = new CgBufferPool();
     private static final CgResourceStates STATES = new CgResourceStates();
@@ -365,6 +375,12 @@ public final class CgExecutor {
                 try (CgTrace.Zone trim = CgTrace.zone(CgChannels.GL, TRIM_POOLS)) {
                     POOL.endFrame(FORGET_STORAGE);
                     BUFFERS.endFrame(FORGET_BUFFER);
+                    // The last frame's end waited for all its async work, as run() takes it.
+                    if (transients != null) {
+                        transients.endFrame(asyncLatest, FORGET_STORAGE);
+                        CgTrace.counter(CgChannels.GL, TRANSIENT_KB, (ALIASING ? transients.heapBytes() : POOL.bytes()) >> 10);
+                        if (ALIASING) CgTrace.counter(CgChannels.GL, TRANSIENT_PEAK_KB, transients.framePeak() >> 10);
+                    }
                 }
                 trimmedFrame = ringFrame;
             }
@@ -445,6 +461,8 @@ public final class CgExecutor {
         }
         BY_DEPTH.clear();
         POOL.delete();
+        if (transients != null) transients.delete();
+        transients = null;
         BUFFERS.delete();
         COMPOSED.delete();
         BESIDE.delete();
@@ -507,7 +525,7 @@ public final class CgExecutor {
             for (int s = 0; s < frame.stepCount; s++) {
                 for (int t = 0; t < frame.transients.size(); t++) {
                     if (frame.acquireAt[t] == s) {
-                        acquire(frame.transients.get(t));
+                        acquire(frame.steps[s], frame.transients.get(t));
                         resolved++;
                     }
                 }
@@ -592,10 +610,11 @@ public final class CgExecutor {
         }
     }
 
-    private static void acquire(CgGraphResource resource) {
+    /** {@code resource}'s storage, as {@code user}, its first, is about to run. */
+    private void acquire(CgPass user, CgGraphResource resource) {
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, ACQUIRE)) {
             if (resource instanceof CgGraphTexture texture) {
-                texture.resolve(POOL.acquire(texture.desc()));
+                texture.resolve(takeStorage(texture.desc(), user));
             } else {
                 CgGraphBuffer buffer = (CgGraphBuffer) resource;
                 buffer.resolve(BUFFERS.acquire(buffer.desc()));
@@ -605,13 +624,63 @@ public final class CgExecutor {
 
     private static void giveBack(CgGraphResource resource) {
         if (resource instanceof CgGraphTexture texture) {
-            POOL.release(texture.desc(), texture.framebuffer());
+            giveStorage(texture.desc(), texture.framebuffer());
             texture.resolve(null);
         } else {
             CgGraphBuffer buffer = (CgGraphBuffer) resource;
             BUFFERS.release(buffer.desc(), buffer.bufferId());
             buffer.resolve(0);
         }
+    }
+
+    /**
+     * Storage for a transient of {@code desc} that {@code user} uses first: placed in the device's transient heaps where
+     * it places them, its contents undefined, else pooled.
+     */
+    private CgFrameBuffer takeStorage(CgTextureDesc desc, CgPass user) {
+        CgTransientTextures placing = placing(desc);
+        if (placing == null) return POOL.acquire(desc);
+        boolean async = user instanceof CgComputePass compute && runsAsync(compute);
+        return placing.acquire(desc, async ? Long.MAX_VALUE : joined());
+    }
+
+    /** {@code storage} given back after its last use, with the async work still pending on it. */
+    private static void giveStorage(CgTextureDesc desc, CgFrameBuffer storage) {
+        CgTransientTextures placing = placing(desc);
+        if (placing != null) placing.release(storage, pendingAsync(storage));
+        else POOL.release(desc, storage);
+    }
+
+    /** The device's transient heaps where {@code desc} is placed in them; null where it is pooled. */
+    private static CgTransientTextures placing(CgTextureDesc desc) {
+        if (!CgGLImports.installed()) return null;
+        if (transients == null) {
+            CgRHI rhi = CgRHI.get();
+            CgTransientMemory memory = rhi.transientMemory();
+            if (memory == null) return null;
+            CgTransientTextures made = new CgTransientTextures(rhi, memory);
+            POOL.measure(d -> CgTransientTextures.places(d) ? made.bytes(d) : 0);
+            transients = made;
+        }
+        return ALIASING && CgTransientTextures.places(desc) ? transients : null;
+    }
+
+    /** The newest async point the frame's queue has waited for: the newest of all, once none is left unwaited. */
+    private static long joined() {
+        return asyncUnwaited ? asyncWaited : asyncLatest;
+    }
+
+    /** The newest async point not yet waited for on {@code storage}, under either name a step keys it by; else 0. */
+    private static long pendingAsync(CgFrameBuffer storage) {
+        if (!asyncUnwaited) return 0;
+        long point = pendingPoint(CgResourceStates.framebuffer(storage.getId()));
+        CgTexture color = storage.getColorTexture(0);
+        return color == null ? point : Math.max(point, pendingPoint(CgResourceStates.texture(color.getId())));
+    }
+
+    private static long pendingPoint(long key) {
+        int j = asyncEntry(key);
+        return asyncKeys[j] != 0 ? asyncPoints[j] : 0;
     }
 
     private static boolean isResolved(CgGraphResource resource) {
@@ -1832,7 +1901,7 @@ public final class CgExecutor {
             if (packed.count > 0) rasterBatches(frame, pass, packed, damage);
         } finally {
             if (renamedFrom != null) {
-                POOL.release(pass.target.desc(), renamedFrom);
+                giveStorage(pass.target.desc(), renamedFrom);
                 renamedFrom = null;
             }
         }
@@ -1859,7 +1928,7 @@ public final class CgExecutor {
         int[] rect = packed.copyRect;   // GL pixels x0, y0, x1, y1; x1 below 0 is the whole target
         if (rect[2] >= 0 && (rect[0] > 0 || rect[1] > 0 || rect[2] < old.getWidth() || rect[3] < old.getHeight())) return;
         renamedFrom = old;
-        target.resolve(POOL.acquire(target.desc()));
+        target.resolve(takeStorage(target.desc(), pass));
         if (takes) {
             // After the step's transitions: the old storage is now what its batches sample, the new one its target.
             CgGL.cgBeginBarriers();
