@@ -10,6 +10,7 @@ import javax.annotation.Nullable;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.concurrent.Executor;
 import java.util.Deque;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -286,6 +287,22 @@ public final class CgProtocolConnection<T> {
     // ── Running ─────────────────────────────────────────────────────────────
 
     /**
+     * Delivers every message to its handler through {@code executor} instead of on the thread that ticks: for a peer
+     * whose handlers touch a tree another thread owns, so the host's tick need not be that thread. Null delivers
+     * inline, as by default. Messages reach it in arrival order.
+     *
+     * <pre>{@code
+     * connection.dispatchThrough(work -> sequence.execute(work));   // the UI's handlers run on the UI's sequence
+     * }</pre>
+     */
+    public void dispatchThrough(@Nullable Executor executor) {
+        this.dispatcher = executor;
+    }
+
+    @Nullable
+    private volatile Executor dispatcher;
+
+    /**
      * Pump, drain, expire. <b>Call once per tick, on the thread that owns whatever the handlers touch.</b>
      *
      * @return how many messages were dispatched
@@ -316,7 +333,12 @@ public final class CgProtocolConnection<T> {
                 LOGGER.warn("Dropping an undecodable message: {}", malformed.getMessage());
                 continue;
             }
-            router.accept(envelope);
+            Executor through = dispatcher;
+            if (through == null) router.accept(envelope);
+            else {
+                CgEnvelope decoded = envelope;
+                through.execute(() -> router.accept(decoded));
+            }
             dispatched++;
         }
         router.tickTimeouts(System.currentTimeMillis());
