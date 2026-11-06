@@ -230,6 +230,11 @@ public final class Lwjgl3GLDriver implements CgGLDriver {
     }
 
     @Override
+    public void glNamedFramebufferRenderbuffer(int framebuffer, int attachment, int renderbuffer) {
+        GL46.glNamedFramebufferRenderbuffer(framebuffer, attachment, 0x8D41 /* GL_RENDERBUFFER */, renderbuffer);
+    }
+
+    @Override
     public void glNamedFramebufferTextureLayer(int framebuffer, int attachment, int texture, int level, int layer) {
         GL46.glNamedFramebufferTextureLayer(framebuffer, attachment, texture, level, layer);
     }
@@ -305,6 +310,14 @@ public final class Lwjgl3GLDriver implements CgGLDriver {
     @Override public int glGetProgrami(int program, int name) { return GL46.glGetProgrami(program, name); }
     @Override public int glGetTextureLevelParameteri(int texture, int level, int name) {
         return GL46.glGetTextureLevelParameteri(texture, level, name);
+    }
+
+    @Override public int glGetNamedRenderbufferParameteri(int renderbuffer, int name) {
+        return GL46.glGetNamedRenderbufferParameteri(renderbuffer, name);
+    }
+
+    @Override public int glGetNamedFramebufferAttachmentParameteri(int framebuffer, int attachment, int name) {
+        return GL46.glGetNamedFramebufferAttachmentParameteri(framebuffer, attachment, name);
     }
 
     @Override public String glGetProgramInfoLog(int program) { return GL46.glGetProgramInfoLog(program); }

@@ -509,6 +509,7 @@ public final class GLStateFilter implements CgGLDriver {
     @Override public void glMakeTextureHandleNonResidentARB(long handle) { raw.glMakeTextureHandleNonResidentARB(handle); }
     @Override public int glCreateFramebuffers() { return raw.glCreateFramebuffers(); }
     @Override public void glNamedFramebufferTexture(int framebuffer, int attachment, int texture, int level) { raw.glNamedFramebufferTexture(framebuffer, attachment, texture, level); }
+    @Override public void glNamedFramebufferRenderbuffer(int framebuffer, int attachment, int renderbuffer) { raw.glNamedFramebufferRenderbuffer(framebuffer, attachment, renderbuffer); }
     @Override public void glNamedFramebufferTextureLayer(int framebuffer, int attachment, int texture, int level, int layer) { raw.glNamedFramebufferTextureLayer(framebuffer, attachment, texture, level, layer); }
     @Override public void glNamedFramebufferDrawBuffers(int framebuffer, int[] buffers) { raw.glNamedFramebufferDrawBuffers(framebuffer, buffers); }
     @Override public int glCheckNamedFramebufferStatus(int framebuffer, int target) { return raw.glCheckNamedFramebufferStatus(framebuffer, target); }
@@ -530,6 +531,8 @@ public final class GLStateFilter implements CgGLDriver {
     @Override public void glLinkProgram(int program) { raw.glLinkProgram(program); }
     @Override public int glGetProgrami(int program, int name) { return raw.glGetProgrami(program, name); }
     @Override public int glGetTextureLevelParameteri(int texture, int level, int name) { return raw.glGetTextureLevelParameteri(texture, level, name); }
+    @Override public int glGetNamedRenderbufferParameteri(int renderbuffer, int name) { return raw.glGetNamedRenderbufferParameteri(renderbuffer, name); }
+    @Override public int glGetNamedFramebufferAttachmentParameteri(int framebuffer, int attachment, int name) { return raw.glGetNamedFramebufferAttachmentParameteri(framebuffer, attachment, name); }
     @Override public String glGetProgramInfoLog(int program) { return raw.glGetProgramInfoLog(program); }
     @Override public void glDeleteProgram(int program) { raw.glDeleteProgram(program); }
     @Override public void glProgramParameteri(int program, int name, int value) { raw.glProgramParameteri(program, name, value); }

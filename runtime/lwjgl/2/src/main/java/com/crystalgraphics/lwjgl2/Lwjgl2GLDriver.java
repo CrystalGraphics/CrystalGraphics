@@ -213,6 +213,11 @@ public final class Lwjgl2GLDriver implements CgGLDriver {
     }
 
     @Override
+    public void glNamedFramebufferRenderbuffer(int framebuffer, int attachment, int renderbuffer) {
+        GL45.glNamedFramebufferRenderbuffer(framebuffer, attachment, 0x8D41 /* GL_RENDERBUFFER */, renderbuffer);
+    }
+
+    @Override
     public void glNamedFramebufferTextureLayer(int framebuffer, int attachment, int texture, int level, int layer) {
         GL45.glNamedFramebufferTextureLayer(framebuffer, attachment, texture, level, layer);
     }
@@ -251,6 +256,14 @@ public final class Lwjgl2GLDriver implements CgGLDriver {
     @Override public int glGetProgrami(int program, int name) { return GL20.glGetProgrami(program, name); }
     @Override public int glGetTextureLevelParameteri(int texture, int level, int name) {
         return GL45.glGetTextureLevelParameteri(texture, level, name);
+    }
+
+    @Override public int glGetNamedRenderbufferParameteri(int renderbuffer, int name) {
+        return GL45.glGetNamedRenderbufferParameter(renderbuffer, name);
+    }
+
+    @Override public int glGetNamedFramebufferAttachmentParameteri(int framebuffer, int attachment, int name) {
+        return GL45.glGetNamedFramebufferAttachmentParameter(framebuffer, attachment, name);
     }
 
     @Override public void glDeleteProgram(int program) { GL20.glDeleteProgram(program); }

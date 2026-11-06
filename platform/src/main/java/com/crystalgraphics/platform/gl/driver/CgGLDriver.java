@@ -157,6 +157,7 @@ public interface CgGLDriver {
     int glCreateFramebuffers();
 
     void glNamedFramebufferTexture(int framebuffer, int attachment, int texture, int level);
+    void glNamedFramebufferRenderbuffer(int framebuffer, int attachment, int renderbuffer);
 
     void glNamedFramebufferTextureLayer(int framebuffer, int attachment, int texture, int level, int layer);
 
@@ -207,6 +208,8 @@ public interface CgGLDriver {
 
     /** A level's parameter of a texture by name: its internal format, width or height. */
     int glGetTextureLevelParameteri(int texture, int level, int name);
+    int glGetNamedRenderbufferParameteri(int renderbuffer, int name);
+    int glGetNamedFramebufferAttachmentParameteri(int framebuffer, int attachment, int name);
 
     String glGetProgramInfoLog(int program);
 

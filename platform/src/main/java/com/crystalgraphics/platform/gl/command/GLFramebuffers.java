@@ -60,6 +60,7 @@ public final class GLFramebuffers {
 
     /** The framebuffer of {@code count} colour views and {@code depth}, made on the first ask. */
     public int get(CgTextureView[] colors, int count, CgTextureView depth) {
+        if (backBuffer(colors, count, depth)) return 0;
         for (int i = 0; i < entries.size(); i++) {
             Entry e = entries.get(i);
             if (e.matches(colors, count, depth)) return e.name;
@@ -83,8 +84,23 @@ public final class GLFramebuffers {
         return fb;
     }
 
+    /** Whether the attachments are the default framebuffer's, which framebuffer 0 alone holds (Unreal's back buffer). */
+    private static boolean backBuffer(CgTextureView[] colors, int count, CgTextureView depth) {
+        boolean color = count > 0 && ((GLTexture) colors[0].texture()).name == 0;
+        boolean z = depth != null && ((GLTexture) depth.texture()).name == 0;
+        if (!color && !z) return false;
+        if (count > 1 || (count == 1 && !color) || (depth != null && !z)) {
+            throw new IllegalArgumentException("the default framebuffer's buffers beside other attachments");
+        }
+        return true;
+    }
+
     private void attach(int fb, int attachment, CgTextureView v) {
         GLTexture t = (GLTexture) v.texture();
+        if (t.target == GL_RENDERBUFFER) {
+            gl.glNamedFramebufferRenderbuffer(fb, attachment, t.name);
+            return;
+        }
         boolean layeredTarget = t.target != GL_TEXTURE_2D && t.target != GL_TEXTURE_2D_MULTISAMPLE;
         if (layeredTarget && v.layers() == 1) gl.glNamedFramebufferTextureLayer(fb, attachment, t.name, v.baseMip(), v.baseLayer());
         else gl.glNamedFramebufferTexture(fb, attachment, t.name, v.baseMip());

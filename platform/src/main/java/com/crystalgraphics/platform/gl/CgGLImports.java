@@ -34,6 +34,21 @@ public interface CgGLImports {
      */
     CgGpuTexture.Desc describe(int name);
 
+    /** Renderbuffer {@code name} as an RHI texture, which has {@code desc}: an attachment only, never sampled. */
+    CgGpuTexture renderbuffer(int name, CgGpuTexture.Desc desc);
+
+    /** Renderbuffer {@code name}'s own description: its format and size, an attachment only. */
+    CgGpuTexture.Desc describeRenderbuffer(int name);
+
+    /**
+     * The default framebuffer's colour, {@code width} by {@code height}, as an RHI texture (Unreal's back buffer): a pass
+     * drawing to it draws to framebuffer 0 on GL, to the surface on a device presenting one. An attachment only.
+     */
+    CgGpuTexture defaultColor(int width, int height);
+
+    /** The default framebuffer's depth beside {@link #defaultColor}; null where it has none. */
+    CgGpuTexture defaultDepth(int width, int height);
+
     /** The RHI buffer holding {@code name}'s storage now. */
     CgGpuBuffer buffer(int name);
 

@@ -2,7 +2,9 @@ package com.crystalgraphics.platform.gl.tracked;
 
 import com.crystalgraphics.platform.gl.CgGLImports;
 import com.crystalgraphics.platform.gl.tracked.gl.TrackedBuffers;
+import com.crystalgraphics.platform.gl.tracked.gl.TrackedFramebuffers;
 import com.crystalgraphics.platform.gl.tracked.gl.TrackedTextures;
+import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.rhi.memory.CgAllocation;
 import com.crystalgraphics.platform.rhi.resource.CgGpuBuffer;
 import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
@@ -15,12 +17,16 @@ public final class CgTrackedImports implements CgGLImports {
 
     private final TrackedTextures textures;
     private final TrackedBuffers buffers;
+    private final TrackedFramebuffers framebuffers;
+    private final CgRHI device;
     private final Map<CgGpuTexture, Integer> adopted = new IdentityHashMap<>();
     private final Map<CgGpuBuffer, Integer> adoptedBuffers = new IdentityHashMap<>();
 
     public CgTrackedImports(CgTrackedGLBackend backend) {
         this.textures = backend.textureObjects();
         this.buffers = backend.bufferObjects();
+        this.framebuffers = backend.framebufferObjects();
+        this.device = backend.device();
     }
 
     @Override
@@ -36,6 +42,23 @@ public final class CgTrackedImports implements CgGLImports {
         if (t == null || t.image == null) throw new IllegalArgumentException("texture " + name + " has no image");
         return t.image.desc();
     }
+
+    @Override
+    public CgGpuTexture renderbuffer(int name, CgGpuTexture.Desc desc) {
+        CgGpuTexture image = framebuffers.renderbufferImage(name);
+        if (image == null) throw new IllegalArgumentException("renderbuffer " + name + " has no image");
+        return image;
+    }
+
+    @Override
+    public CgGpuTexture.Desc describeRenderbuffer(int name) {
+        return renderbuffer(name, null).desc();
+    }
+
+    /** Framebuffer 0 is the surface, the swapchain image drawn now. */
+    @Override public CgGpuTexture defaultColor(int width, int height) { return device.surfaceColor(); }
+
+    @Override public CgGpuTexture defaultDepth(int width, int height) { return device.surfaceDepth(); }
 
     private CgAllocation storage(int name) {
         TrackedBuffers.GlBuffer b = buffers.get(name);

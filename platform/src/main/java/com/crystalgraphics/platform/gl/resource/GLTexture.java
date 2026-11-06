@@ -42,16 +42,29 @@ public final class GLTexture implements CgGpuTexture {
         owned = true;
     }
 
-    private GLTexture(int name, Desc desc) {
+    private GLTexture(int name, int target, Desc desc) {
         this.desc = desc;
-        this.target = target(desc);
+        this.target = target;
         this.name = name;
         this.owned = false;
     }
 
     /** {@code name}, made elsewhere with {@code desc}, as a texture that never deletes it. */
     public static GLTexture adopt(int name, Desc desc) {
-        return new GLTexture(name, desc);
+        return new GLTexture(name, target(desc), desc);
+    }
+
+    /** Renderbuffer {@code name}, made elsewhere with {@code desc}: an attachment only, never deleted here. */
+    public static GLTexture adoptRenderbuffer(int name, Desc desc) {
+        return new GLTexture(name, GL_RENDERBUFFER, desc);
+    }
+
+    /**
+     * The default framebuffer's colour or depth, {@code desc}: name 0, which {@link
+     * com.crystalgraphics.platform.gl.command.GLFramebuffers} answers as framebuffer 0 (Unreal's back buffer).
+     */
+    public static GLTexture backBuffer(Desc desc) {
+        return new GLTexture(0, GL_NONE, desc);
     }
 
     /** The GL texture target a description makes. */

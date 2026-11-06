@@ -1151,9 +1151,13 @@ com/crystalgraphics/platform/gl/CgGLImports
   method public textureDeleted (I)V
   method public,abstract buffer (I)Lcom/crystalgraphics/platform/rhi/resource/CgGpuBuffer;
   method public,abstract bufferOffset (I)J
+  method public,abstract defaultColor (II)Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture;
+  method public,abstract defaultDepth (II)Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture;
   method public,abstract describe (I)Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture$Desc;
+  method public,abstract describeRenderbuffer (I)Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture$Desc;
   method public,abstract name (Lcom/crystalgraphics/platform/rhi/resource/CgGpuBuffer;)I
   method public,abstract name (Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture;)I
+  method public,abstract renderbuffer (ILcom/crystalgraphics/platform/rhi/resource/CgGpuTexture$Desc;)Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture;
   method public,abstract texture (ILcom/crystalgraphics/platform/rhi/resource/CgGpuTexture$Desc;)Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture;
   method public,static get ()Lcom/crystalgraphics/platform/gl/CgGLImports;
   method public,static install (Lcom/crystalgraphics/platform/gl/CgGLImports;)V
@@ -1422,6 +1426,8 @@ com/crystalgraphics/platform/gl/driver/CgGLDriver
   method public,abstract glGetIntegerv (I[I)V
   method public,abstract glGetNamedBufferParameteri64 (II)J
   method public,abstract glGetNamedBufferSubData (IJLjava/nio/ByteBuffer;)V
+  method public,abstract glGetNamedFramebufferAttachmentParameteri (III)I
+  method public,abstract glGetNamedRenderbufferParameteri (II)I
   method public,abstract glGetProgramBinary (ILjava/nio/ByteBuffer;)I
   method public,abstract glGetProgramInfoLog (I)Ljava/lang/String;
   method public,abstract glGetProgrami (II)I
@@ -1448,6 +1454,7 @@ com/crystalgraphics/platform/gl/driver/CgGLDriver
   method public,abstract glNamedBufferStorage (IJI)V
   method public,abstract glNamedBufferSubData (IJLjava/nio/ByteBuffer;)V
   method public,abstract glNamedFramebufferDrawBuffers (I[I)V
+  method public,abstract glNamedFramebufferRenderbuffer (III)V
   method public,abstract glNamedFramebufferTexture (IIII)V
   method public,abstract glNamedFramebufferTextureLayer (IIIII)V
   method public,abstract glObjectLabel (IILjava/lang/String;)V
@@ -1670,6 +1677,7 @@ com/crystalgraphics/platform/gl/driver/GLC
   field public,static,final GL_READ_WRITE I
   field public,static,final GL_RED I
   field public,static,final GL_RED_INTEGER I
+  field public,static,final GL_RENDERBUFFER I
   field public,static,final GL_RENDERER I
   field public,static,final GL_REPEAT I
   field public,static,final GL_REPLACE I
@@ -1896,9 +1904,13 @@ com/crystalgraphics/platform/gl/resource/GLImports
   method public buffer (I)Lcom/crystalgraphics/platform/rhi/resource/CgGpuBuffer;
   method public bufferDeleted (I)V
   method public bufferOffset (I)J
+  method public defaultColor (II)Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture;
+  method public defaultDepth (II)Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture;
   method public describe (I)Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture$Desc;
+  method public describeRenderbuffer (I)Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture$Desc;
   method public name (Lcom/crystalgraphics/platform/rhi/resource/CgGpuBuffer;)I
   method public name (Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture;)I
+  method public renderbuffer (ILcom/crystalgraphics/platform/rhi/resource/CgGpuTexture$Desc;)Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture;
   method public texture (ILcom/crystalgraphics/platform/rhi/resource/CgGpuTexture$Desc;)Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture;
   method public textureDeleted (I)V
 com/crystalgraphics/platform/gl/resource/GLSampler
@@ -1920,6 +1932,8 @@ com/crystalgraphics/platform/gl/resource/GLTexture
   method public desc ()Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture$Desc;
   method public sampled (Lcom/crystalgraphics/platform/gl/driver/CgGLDriver;Lcom/crystalgraphics/platform/rhi/resource/CgTextureView;)I
   method public,static adopt (ILcom/crystalgraphics/platform/rhi/resource/CgGpuTexture$Desc;)Lcom/crystalgraphics/platform/gl/resource/GLTexture;
+  method public,static adoptRenderbuffer (ILcom/crystalgraphics/platform/rhi/resource/CgGpuTexture$Desc;)Lcom/crystalgraphics/platform/gl/resource/GLTexture;
+  method public,static backBuffer (Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture$Desc;)Lcom/crystalgraphics/platform/gl/resource/GLTexture;
   method public,static target (Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture$Desc;)I
 com/crystalgraphics/platform/gl/state/CgCheckedProvider
   access public,abstract
@@ -2279,6 +2293,8 @@ com/crystalgraphics/platform/gl/state/GLStateFilter
   method public glGetIntegerv (I[I)V
   method public glGetNamedBufferParameteri64 (II)J
   method public glGetNamedBufferSubData (IJLjava/nio/ByteBuffer;)V
+  method public glGetNamedFramebufferAttachmentParameteri (III)I
+  method public glGetNamedRenderbufferParameteri (II)I
   method public glGetProgramBinary (ILjava/nio/ByteBuffer;)I
   method public glGetProgramInfoLog (I)Ljava/lang/String;
   method public glGetProgrami (II)I
@@ -2305,6 +2321,7 @@ com/crystalgraphics/platform/gl/state/GLStateFilter
   method public glNamedBufferStorage (IJI)V
   method public glNamedBufferSubData (IJLjava/nio/ByteBuffer;)V
   method public glNamedFramebufferDrawBuffers (I[I)V
+  method public glNamedFramebufferRenderbuffer (III)V
   method public glNamedFramebufferTexture (IIII)V
   method public glNamedFramebufferTextureLayer (IIIII)V
   method public glObjectLabel (IILjava/lang/String;)V
@@ -2614,11 +2631,15 @@ com/crystalgraphics/platform/gl/tracked/CgTrackedImports
   method public buffer (I)Lcom/crystalgraphics/platform/rhi/resource/CgGpuBuffer;
   method public bufferDeleted (I)V
   method public bufferOffset (I)J
+  method public defaultColor (II)Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture;
+  method public defaultDepth (II)Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture;
   method public describe (I)Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture$Desc;
+  method public describeRenderbuffer (I)Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture$Desc;
   method public forget (Lcom/crystalgraphics/platform/rhi/resource/CgGpuBuffer;)V
   method public forget (Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture;)V
   method public name (Lcom/crystalgraphics/platform/rhi/resource/CgGpuBuffer;)I
   method public name (Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture;)I
+  method public renderbuffer (ILcom/crystalgraphics/platform/rhi/resource/CgGpuTexture$Desc;)Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture;
   method public texture (ILcom/crystalgraphics/platform/rhi/resource/CgGpuTexture$Desc;)Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture;
   method public textureDeleted (I)V
 com/crystalgraphics/platform/gl/tracked/CgTrackedStateProvider

@@ -2332,11 +2332,11 @@ public final class CgExecutor {
     private static final int GL_ATTACHMENT_NAME = 0x8CD1, GL_ATTACHMENT_TEXTURE = 0x1702;
     /** The host framebuffer {@link #readHost} read, at what viewport size; -1 for none. */
     private int hostRead = -1, hostReadWidth, hostReadHeight;
-    /** Its colour and depth as RHI textures; null where it has none, or a renderbuffer. */
+    /** Its colour and depth as RHI textures (a texture's, a renderbuffer's, the default framebuffer's); null for none. */
     @Nullable
     private CgGpuTexture hostColor, hostDepth;
-    /** Its attachments' names (0 for none, -1 for a renderbuffer) and their descriptions. */
-    private int hostColorName, hostDepthName;
+    /** Its attachments' names and kinds ({@code GL_TEXTURE}, {@code GL_RENDERBUFFER}, 0 for none), and descriptions. */
+    private int hostColorName, hostDepthName, hostColorType, hostDepthType;
     @Nullable
     private CgGpuTexture.Desc hostColorDesc, hostDepthDesc;
     /** The host's depth as a texture a pass samples in place ({@link #readOnlyDepth}). */
@@ -2350,28 +2350,77 @@ public final class CgExecutor {
     private void readHost() {
         int host = startFramebuffer, width = startViewport.get(2), height = startViewport.get(3);
         CgGLImports imports = CgGLImports.get();
+        if (host == 0) {
+            // Unreal's back buffer: the window's own buffers, framebuffer 0 on GL, the surface on a device presenting one
+            hostColor = imports.defaultColor(width, height);
+            hostDepth = imports.defaultDepth(width, height);
+            return;
+        }
         if (host != hostRead || width != hostReadWidth || height != hostReadHeight) {
             CgGL.glBindFramebuffer(CgGL.GL_FRAMEBUFFER, host);
             otherBound = false;
-            hostColorName = hostAttachment(CgGL.GL_COLOR_ATTACHMENT0);
-            hostDepthName = hostAttachment(CgGL.GL_DEPTH_ATTACHMENT);
-            hostColorDesc = hostColorName > 0 ? imports.describe(hostColorName) : null;
-            hostDepthDesc = hostDepthName > 0 ? imports.describe(hostDepthName) : null;
+            hostColorType = attachmentType(CgGL.GL_COLOR_ATTACHMENT0);
+            hostDepthType = attachmentType(CgGL.GL_DEPTH_ATTACHMENT);
+            hostColorName = hostColorType == 0 ? 0 : attachmentName(CgGL.GL_COLOR_ATTACHMENT0);
+            hostDepthName = hostDepthType == 0 ? 0 : attachmentName(CgGL.GL_DEPTH_ATTACHMENT);
+            hostColorDesc = describe(imports, hostColorType, hostColorName);
+            hostDepthDesc = describe(imports, hostDepthType, hostDepthName);
             hostRead = host;
             hostReadWidth = width;
             hostReadHeight = height;
         }
-        hostColor = hostColorDesc != null ? imports.texture(hostColorName, hostColorDesc) : null;
-        hostDepth = hostDepthDesc != null ? imports.texture(hostDepthName, hostDepthDesc) : null;
+        hostColor = imported(imports, hostColorType, hostColorName, hostColorDesc);
+        hostDepth = imported(imports, hostDepthType, hostDepthName, hostDepthDesc);
     }
 
-    /** The texture at {@code point} of the bound framebuffer: its name, 0 for nothing there, -1 for a renderbuffer. */
-    private static int hostAttachment(int point) {
+    /** What is at {@code point} of the bound framebuffer: {@code GL_TEXTURE}, {@code GL_RENDERBUFFER}, or 0 for nothing. */
+    private static int attachmentType(int point) {
         int type = CgGL.glGetFramebufferAttachmentParameteriv(CgGL.GL_FRAMEBUFFER, point,
                 CgGL.GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE);
-        if (type == CgGL.GL_NONE) return 0;
-        if (type != GL_ATTACHMENT_TEXTURE) return -1;
+        return type == GL_ATTACHMENT_TEXTURE || type == CgGL.GL_RENDERBUFFER ? type : 0;
+    }
+
+    /** The name of the texture or renderbuffer at {@code point} of the bound framebuffer. */
+    private static int attachmentName(int point) {
         return CgGL.glGetFramebufferAttachmentParameteriv(CgGL.GL_FRAMEBUFFER, point, GL_ATTACHMENT_NAME);
+    }
+
+    @Nullable
+    private static CgGpuTexture.Desc describe(CgGLImports imports, int type, int name) {
+        if (type == 0) return null;
+        return type == CgGL.GL_RENDERBUFFER ? imports.describeRenderbuffer(name) : imports.describe(name);
+    }
+
+    @Nullable
+    private static CgGpuTexture imported(CgGLImports imports, int type, int name, @Nullable CgGpuTexture.Desc desc) {
+        if (desc == null) return null;
+        return type == CgGL.GL_RENDERBUFFER ? imports.renderbuffer(name, desc) : imports.texture(name, desc);
+    }
+
+    /**
+     * The host's depth for a pass into {@code target}, {@code width} x {@code height}, beside it; null where it lends
+     * none, drawn without depth as {@link #bindBeside} draws: a host with no depth and framebuffer 0 are refused for
+     * good ({@link CgGraphTexture#takesCurrentDepth}), a size from a stale recorder for this pass alone.
+     */
+    @Nullable
+    private CgGpuTexture besideDepth(CgGraphTexture target, int width, int height) {
+        String refused = hostDepth == null ? "framebuffer " + startFramebuffer + " has no depth to draw beside"
+                : startFramebuffer == 0 ? "the default framebuffer lends no attachment to a framebuffer of ours" : null;
+        if (refused != null) {
+            if (!CgComposedTargets.refused(startFramebuffer)) LOGGER.warn("{} draws without the host's depth: {}", target, refused);
+            CgComposedTargets.refuse(startFramebuffer);
+            return null;
+        }
+        int w = hostDepth.desc().width(), h = hostDepth.desc().height();
+        if (w != width || h != height) {
+            long sizes = (long) width << 48 | (long) height << 32 | (long) w << 16 | h;
+            if (sizes != besideMismatch) {
+                besideMismatch = sizes;
+                LOGGER.warn("{} is {}x{}, beside a target of {}x{}: drawn without the host's depth", target, width, height, w, h);
+            }
+            return null;
+        }
+        return hostDepth;
     }
 
     /** Why {@code pass} cannot draw on the device yet; null when it can. */
@@ -2381,14 +2430,10 @@ public final class CgExecutor {
         for (String skip : DEVICE_RASTER_SKIP) if (!skip.isEmpty() && pass.name().contains(skip)) return "skipped by name";
         boolean current = pass.target == null || pass.target.kind() == CgGraphTexture.Kind.CURRENT;
         if (current) {
-            if (startFramebuffer == 0) return "the default framebuffer";
             readHost();
-            if (hostColor == null) return "a host colour renderbuffer, or none";
-            if (hostDepthName < 0) return "a host depth renderbuffer";
+            if (hostColor == null) return "a host framebuffer with no colour";
         } else if (pass.target.drawsBesideCurrentDepth()) {
-            if (startFramebuffer == 0) return "beside the default framebuffer's depth";
             readHost();
-            if (hostDepth == null) return "beside a host depth renderbuffer, or none";
         }
         if (damage != null && (pass.load.mask() & (CgGL.GL_DEPTH_BUFFER_BIT | CgGL.GL_STENCIL_BUFFER_BIT)) != 0) {
             return "a depth clear under damage";
@@ -2413,10 +2458,6 @@ public final class CgExecutor {
         if (extra != null && (extra.getWidth() != storage.levelWidth(pass.level)
                 || extra.getHeight() != storage.levelHeight(pass.level))) {
             return "a second attachment of another size";
-        }
-        if (pass.target.drawsBesideCurrentDepth() && (storage.levelWidth(pass.level) != hostDepth.desc().width()
-                || storage.levelHeight(pass.level) != hostDepth.desc().height())) {
-            return "beside a host depth of another size";
         }
         for (int i = 0; i < storage.getFormat().colorSlotCount(); i++) {
             CgTexture color = storage.getColorTexture(i);
@@ -2489,7 +2530,8 @@ public final class CgExecutor {
         }
         CgPassDesc.Depth depth = null;
         CgFormat depthFormat = null;
-        CgGpuTexture depthTexture = current || pass.target.drawsBesideCurrentDepth() ? hostDepth
+        CgGpuTexture depthTexture = current ? hostDepth
+                : pass.target.drawsBesideCurrentDepth() ? besideDepth(pass.target, w, h)
                 : storage.getFormat().hasDepth() ? storage.getDepthTexture().rhiView().texture() : null;
         if (depthTexture != null) {
             boolean clearDepth = (load.mask() & CgGL.GL_DEPTH_BUFFER_BIT) != 0;

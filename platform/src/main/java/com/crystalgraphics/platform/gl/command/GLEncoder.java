@@ -459,7 +459,7 @@ public final class GLEncoder implements CgCommandList {
                     unmasked();
                     clear(framebuffer, i, c.view().texture().desc().format(), c.r(), c.g(), c.b(), c.a());
                 } else if (c.load() == CgPassDesc.LoadOp.DONT_CARE) {
-                    discard[invalidated++] = GL_COLOR_ATTACHMENT0 + i;
+                    discard[invalidated++] = colorAttachment(i);
                 }
             }
             CgPassDesc.Depth z = d.depth();
@@ -472,10 +472,20 @@ public final class GLEncoder implements CgCommandList {
                 else if (depth) gl.glClearNamedFramebufferfv(framebuffer, GL_DEPTH, 0, z.clearDepth(), 0, 0, 0);
                 else if (stencil) gl.glClearNamedFramebufferiv(framebuffer, GL_STENCIL, 0, z.clearStencil(), 0, 0, 0);
                 if (f.hasDepth() && z.depthLoad() == CgPassDesc.LoadOp.DONT_CARE && !z.readOnly()) {
-                    discard[invalidated++] = GLFormats.attachment(f, 0);
+                    discard[invalidated++] = depthAttachment(f);
                 }
             }
             if (invalidated > 0) gl.glInvalidateNamedFramebufferData(framebuffer, discard, invalidated);
+        }
+
+        /** Colour {@code i} as invalidation names it: framebuffer 0 names its buffers, not attachment points. */
+        private int colorAttachment(int i) {
+            return framebuffer == 0 ? GL_COLOR : GL_COLOR_ATTACHMENT0 + i;
+        }
+
+        /** The depth attachment of format {@code f} as invalidation names it. */
+        private int depthAttachment(CgFormat f) {
+            return framebuffer == 0 ? GL_DEPTH : GLFormats.attachment(f, 0);
         }
 
         /** Masks and scissor off for a clear, which both limit; the next draw restores its pipeline's. */
@@ -783,11 +793,11 @@ public final class GLEncoder implements CgCommandList {
             if (!inPass) throw new IllegalStateException("end of a pass not open");
             int invalidated = 0;
             for (int i = 0; i < desc.colors().size(); i++) {
-                if (desc.colors().get(i).store() == CgPassDesc.StoreOp.DONT_CARE) discard[invalidated++] = GL_COLOR_ATTACHMENT0 + i;
+                if (desc.colors().get(i).store() == CgPassDesc.StoreOp.DONT_CARE) discard[invalidated++] = colorAttachment(i);
             }
             CgPassDesc.Depth z = desc.depth();
             if (z != null && !z.readOnly() && z.store() == CgPassDesc.StoreOp.DONT_CARE)
-                discard[invalidated++] = GLFormats.attachment(z.view().texture().desc().format(), 0);
+                discard[invalidated++] = depthAttachment(z.view().texture().desc().format());
             if (invalidated > 0) gl.glInvalidateNamedFramebufferData(framebuffer, discard, invalidated);
             gl.glDisable(GL_SCISSOR_TEST);
             gl.glBindFramebuffer(GL_FRAMEBUFFER, 0);
