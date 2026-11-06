@@ -1,139 +1,34 @@
 package com.crystalgraphics.gl.shader;
 
-import com.crystalgraphics.api.shader.CgShader;
-import com.crystalgraphics.api.shader.CgShaderManager;
-import com.crystalgraphics.api.shader.CgShaderProgram;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
-import com.crystalgraphics.mc.shader.CgShaderImpl;
-import com.crystalgraphics.mc.shader.CgShaderManagerImpl;
-import com.crystalgraphics.util.CgBufferUtils;
-
-import java.nio.FloatBuffer;
 
 /**
- * Factory for creating shader programs using the best available backend.
+ * Makes the engine's linked programs ({@link CgShader}) from the sources its compilers generate. Internal: a consumer's
+ * shader is a material or a kernel.
  *
- * <p>Selection order: Core GL20 &gt; ARB shader objects.
- * If neither is available, throws {@link UnsupportedOperationException}.</p>
- *
- * <p>This class is not instantiable.</p>
- *
- * @see CgShaderProgram
+ * <pre>{@code
+ * CgShader now = CgShaderFactory.fromSource(vertex, fragment, format);     // compiled and linked before it returns
+ * CgShader later = CgShaderFactory.submit(vertex, fragment, format);      // linked on the driver's threads
+ * }</pre>
  */
 public final class CgShaderFactory {
 
-       /**
-     * Thread-local direct FloatBuffer (16 elements) for serializing JOML matrices
-     * without per-call allocation.  Sized for 4×4 (16 floats); 3×3 (9 floats)
-     * reuses the same buffer with a smaller limit.
-     */
-    public static final ThreadLocal<FloatBuffer> JOML_BUFFER = 
-               ThreadLocal.withInitial(() -> CgBufferUtils.createFloatBuffer(16));
-    
-    /**
-     * The lazily-initialized global shader manager singleton.
-     * Initialized on the first render tick after the GL context is available.
-     */
-    public static final CgShaderManager SHADER_MANAGER = new CgShaderManagerImpl();;
+    private CgShaderFactory() {}
 
-    /**
-     * Compiles and links a GLSL program using the best available backend.
-     *
-     * <p>Through {@link CgShaderProgram#compile(String, String, CgVertexFormat)}.</p>
-     *
-     * @param vertexSource   GLSL vertex shader source code
-     * @param fragmentSource GLSL fragment shader source code
-     * @param format attribute format of the VAO that feeds this shader
-     * @return a new owned shader program
-     * @throws IllegalStateException if shader compilation or linking fails
-     */
-    public static CgShaderProgram compile(String vertexSource, String fragmentSource, CgVertexFormat format) {
-        return CgShaderProgram.compile(vertexSource, fragmentSource, format);
-    }
-
-    /**
-     * Compiles and links a GLSL program using the best available backend.
-     *
-     * <p>Through {@link CgShaderProgram#compile(String, String, CgVertexFormat)}.</p>
-     *
-     * @param vertexSource   GLSL vertex shader source code
-     * @param fragmentSource GLSL fragment shader source code
-     * @return a new owned shader program
-     * @throws IllegalStateException if shader compilation or linking fails
-     */
-    public static CgShaderProgram compile(String vertexSource, String fragmentSource) {
-        return compile(vertexSource, fragmentSource, null);
-    }
-
-    public static CgShader load(String vertexLocation, String fragmentLocation, CgVertexFormat format) {
-        return SHADER_MANAGER.load(vertexLocation, fragmentLocation, format);
-    }
-    
-    public static CgShader load(String vertexLocation, String fragmentLocation) {
-        return load(vertexLocation, fragmentLocation, null);
-    }
-    
-    /**
-     * Creates a {@link CgShader} compiled directly from inline GLSL source strings,
-     * without a vertex format.
-     *
-     * <p>Equivalent to {@link #fromSource(String, String, CgVertexFormat)} with
-     * {@code format = null}.</p>
-     *
-     * @param vertSrc GLSL vertex shader source
-     * @param fragSrc GLSL fragment shader source
-     * @return a compiled (or failed-to-compile) {@link CgShader} handle
-     */
-    public static CgShader fromSource(String vertSrc, String fragSrc) {
-        return fromSource(vertSrc, fragSrc, null);
-    }
-
-    /**
-     * Creates a {@link CgShader} compiled directly from inline GLSL source strings.
-     *
-     * <p>The returned shader is <em>not</em> registered in the shader manager cache.
-     * It compiles eagerly on construction. The GLSL source can be replaced at any
-     * time via {@link CgShader#setSource(String, String)}, which marks the shader
-     * dirty and triggers a recompile on the next {@link CgShader#bind()} call —
-     * making this the preferred entry point for node-graph codegen workflows.</p>
-     *
-     * @param vertSrc GLSL vertex shader source
-     * @param fragSrc GLSL fragment shader source
-     * @param format  vertex attribute format for {@code glBindAttribLocation}, or {@code null}
-     * @return a compiled (or failed-to-compile) {@link CgShader} handle
-     */
-    public static CgShader fromSource(String vertSrc, String fragSrc, CgVertexFormat format) {
-        CgShaderImpl shader = CgShaderImpl.fromSource(vertSrc, fragSrc, format);
-
-        shader.recompile();
+    /** A program compiled and linked now; {@code format} names its vertex inputs, or null for none. */
+    public static CgShader fromSource(String vertexSource, String fragmentSource, CgVertexFormat format) {
+        CgShader shader = new CgShader(vertexSource, fragmentSource, format);
+        shader.compile();
         return shader;
     }
 
     /**
-     * {@link #fromSource}, returning before the driver has compiled it. The sources are used as given, with no
-     * preprocessing.
-     *
-     * <pre>{@code
-     * CgShader shader = CgShaderFactory.submit(vert, frag, format);
-     * ... later frames ...
-     * if (shader.isReady() && shader.isCompiled()) draw(shader);
-     * }</pre>
-     *
-     * <p>Anything asked of it before {@link CgShader#isReady} waits for the driver, as {@code fromSource} would
-     * have. Where the driver cannot report progress, it is ready at once and waits on first use.</p>
+     * A program whose link the driver runs while frames go on; the sources are used as given. Anything asked of it
+     * before {@link CgShader#isReady} waits for the driver.
      */
-    public static CgShader submit(String vertSrc, String fragSrc, CgVertexFormat format) {
-        CgShaderImpl shader = CgShaderImpl.fromSource(vertSrc, fragSrc, format);
+    public static CgShader submit(String vertexSource, String fragmentSource, CgVertexFormat format) {
+        CgShader shader = new CgShader(vertexSource, fragmentSource, format);
         shader.submit();
         return shader;
-    }
-    
-    /**
-     * Private constructor to prevent instantiation.
-     *
-     * @throws AssertionError always
-     */
-    private CgShaderFactory() {
-        throw new AssertionError();
     }
 }

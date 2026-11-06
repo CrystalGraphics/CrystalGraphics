@@ -1,5 +1,10 @@
 package com.crystalgraphics.render.mesh;
 
+import com.crystalgraphics.render.draw.CgDrawStateCache;
+import com.crystalgraphics.platform.rhi.resource.CgGpuBuffer;
+import com.crystalgraphics.platform.rhi.pipeline.CgGraphicsPipelineDesc;
+import com.crystalgraphics.platform.rhi.command.CgRenderPass;
+import com.crystalgraphics.platform.gl.CgGLImports;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgMeshChanges;
 import com.crystalgraphics.api.mesh.CgMeshTopology;
@@ -8,7 +13,6 @@ import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.gl.buffer.CgStreamBuffer;
 import com.crystalgraphics.gl.CgGlNames;
 import com.crystalgraphics.platform.gl.CgGL;
-import com.crystalgraphics.render.draw.CgPipeline;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.CgBufferUtils;
 import com.crystalgraphics.util.trace.CgChannels;
@@ -27,22 +31,23 @@ import java.util.Map;
 /**
  * Where meshes' GPU copies live: a {@link CgMeshPool} per vertex format, and a placement per mesh that draws -- its
  * slab, base vertex and first index. The executor places every mesh a frame draws, uploads what changed before the
- * frame's first pass, and draws each with a base-vertex call, so meshes in one slab share every binding.
+ * frame's first pass, and draws each with its bases in the call, so meshes in one slab share every binding and a
+ * pipeline draws them alike one call each or joined. Every draw is by indices: a submesh without them is drawn by a
+ * shared run of 0, 1, 2 ..., since GL gives an array draw's base vertex as 0 and Vulkan as its first vertex.
  *
  * <pre>{@code
  * CgMeshStore store = CgMeshStore.get();
  * store.place(mesh);                        // for every mesh the frame draws
  * store.upload();                           // once, before the first raster pass
  * pipeline.bind();
- * store.draw(mesh, pipeline, instances);    // in the pass
+ * store.draw(mesh, instances, first);       // in the pass; CG_INSTANCE_ID counts from first
  *
  * // An indirect draw: its command is written on the GPU from what range() answers, before the pass
  * store.range(mesh, submesh, first, count, range);
- * store.drawIndirect(mesh, pipeline, submesh, args, offset);
+ * store.drawIndirect(mesh, submesh, args, offset);
  *
  * // Draws of meshes that join, as one call (CgCapabilities.multiDraw()): each with its own first instance
  * if (store.join(a, 1, -1, 0, -1, firstA) && store.join(b, 1, -1, 0, -1, firstB)) {
- *     pipeline.multiDraw().bind();
  *     store.drawJoined();
  * } else {
  *     store.dropJoined();                   // and draw() each
@@ -83,6 +88,12 @@ public final class CgMeshStore {
 
     /** Consecutive frames of edits after which a mesh that is not FRAME is reported. */
     private static final int EVERY_FRAME = 60;
+
+    /**
+     * Set in a draw's first instance, the rest of it naming the one record every instance reads: an indirect
+     * {@code INSTANCES} draw's, whose instance count only the GPU knows ({@code cg_env.glsl}'s {@code CG_SHARED_RECORD}).
+     */
+    public static final int SHARED_RECORD = 1 << 30;
 
     private long drawing, drawn, calls;
     private boolean multiDraw = true;
@@ -336,7 +347,7 @@ public final class CgMeshStore {
             else longest = Math.max(longest, submesh[3]);
         }
         p.joinsAs = p.submeshCount == 0 ? 0 : indexed == p.submeshCount ? BY_INDICES : indexed == 0 ? BY_SEQUENCE : 0;
-        if (p.joinsAs == BY_SEQUENCE) sequenceNeed = Math.max(sequenceNeed, longest);
+        sequenceNeed = Math.max(sequenceNeed, longest);
     }
 
     /** Copies what {@code from} holds into {@code to} on the GPU: the part of the mesh that did not change. */
@@ -465,50 +476,52 @@ public final class CgMeshStore {
     // ── Drawing ────────────────────────────────────────────────────────────────
 
     /**
-     * Draws {@code mesh}, every submesh, {@code instances} times, with {@code pipeline} bound: what
-     * {@code CG_VERTEX_ID} subtracts is set per submesh. Leaves the slab's vertex array bound; the caller binds 0
-     * when its draws are done.
+     * Draws {@code mesh}, every submesh, {@code instances} times from instance {@code firstInstance} (or
+     * {@link #SHARED_RECORD} with a record), with a pipeline bound. Leaves the slab's vertex array bound; the caller
+     * binds 0 when its draws are done.
      */
-    public void draw(CgMesh mesh, CgPipeline pipeline, int instances) {
-        draw(mesh, pipeline, instances, -1, 0, -1);
+    public void draw(CgMesh mesh, int instances, int firstInstance) {
+        draw(mesh, instances, firstInstance, -1, 0, -1);
     }
 
     /**
-     * As {@link #draw(CgMesh, CgPipeline, int)}, a range of it: submesh {@code submesh}'s indices from {@code first},
+     * As {@link #draw(CgMesh, int, int)}, a range of it: submesh {@code submesh}'s indices from {@code first},
      * {@code count} of them (-1 to its end), or its vertices for a submesh with no indices; {@code submesh} -1 draws
      * every submesh whole. The base vertex, and so {@code CG_VERTEX_ID}, is the submesh's whatever the range.
      */
-    public void draw(CgMesh mesh, CgPipeline pipeline, int instances, int submesh, int first, int count) {
+    public void draw(CgMesh mesh, int instances, int firstInstance, int submesh, int first, int count) {
         Placement p = placed(mesh);
         if (p == null) return;
-        bind(p, -1);
         int from = submesh < 0 ? 0 : submesh, to = submesh < 0 ? p.submeshCount : Math.min(submesh + 1, p.submeshCount);
+        int elements = 0;
         for (int s = from; s < to; s++) {
             int firstIndex = p.submeshes[s * 4], indexCount = p.submeshes[s * 4 + 1];
             int firstVertex = p.submeshes[s * 4 + 2], vertexCount = p.submeshes[s * 4 + 3];
             int base = p.baseVertex + firstVertex;
-            int total = indexCount > 0 ? indexCount : vertexCount;
+            boolean indexed = indexCount > 0;
+            int total = indexed ? indexCount : vertexCount;
             int start = submesh < 0 ? 0 : Math.min(first, total);
             int n = submesh < 0 || count < 0 ? total - start : Math.min(count, total - start);
             if (n <= 0) continue;
             drawing += (long) n * instances;
             calls++;
             CgTrace.add(CgChannels.GL, DRAWN, (long) n * instances);
-            pipeline.vertexBase(base);
-            if (indexCount > 0) {
-                CgGL.glDrawElementsInstancedBaseVertex(p.mode, n, CgGL.GL_UNSIGNED_INT,
-                        (long) (p.firstIndex + firstIndex + start) * 4, instances, base);
-            } else {
-                CgGL.glDrawArraysInstanced(p.mode, base + start, n, instances);
+            int want = indexed ? 1 : 2;
+            if (elements != want) {
+                bind(p, indexed ? -1 : sequence);
+                elements = want;
             }
+            long offset = (long) (indexed ? p.firstIndex + firstIndex + start : start) * 4;
+            CgGL.glDrawElementsInstancedBaseVertexBaseInstance(p.mode, n, CgGL.GL_UNSIGNED_INT, offset, instances, base,
+                    firstInstance);
         }
     }
 
     /**
      * What an indirect draw of a range of {@code mesh} composes its command from, into {@code out}: where the range
-     * starts (in the indices the slab draws from, or a vertex for a mesh without), how many it holds, its base vertex,
-     * and 1 when it is drawn by indices. A range as {@link #draw}'s, of one submesh ({@code submesh} -1 is the first).
-     * False, writing nothing, when the mesh has nothing to draw.
+     * starts in the indices it is drawn by (the slab's, or the run of 0, 1, 2 ... for a submesh without), how many it
+     * holds, its base vertex, and 1. A range as {@link #draw}'s, of one submesh ({@code submesh} -1 is the first). False,
+     * writing nothing, when the mesh has nothing to draw.
      */
     public boolean range(CgMesh mesh, int submesh, int first, int count, int[] out) {
         Placement p = placed(mesh);
@@ -516,30 +529,26 @@ public final class CgMeshStore {
         int s = Math.min(Math.max(submesh, 0), p.submeshCount - 1);
         int firstIndex = p.submeshes[s * 4], indexCount = p.submeshes[s * 4 + 1];
         int firstVertex = p.submeshes[s * 4 + 2], vertexCount = p.submeshes[s * 4 + 3];
-        int base = p.baseVertex + firstVertex;
         int total = indexCount > 0 ? indexCount : vertexCount;
         int start = Math.min(first, total);
-        out[0] = indexCount > 0 ? p.firstIndex + firstIndex + start : base + start;
+        out[0] = indexCount > 0 ? p.firstIndex + firstIndex + start : start;
         out[1] = count < 0 ? total - start : Math.min(count, total - start);
-        out[2] = base;
-        out[3] = indexCount > 0 ? 1 : 0;
+        out[2] = p.baseVertex + firstVertex;
+        out[3] = 1;
         return true;
     }
 
     /**
      * Draws a range of {@code mesh} by the command at byte {@code offset} in buffer {@code args}, written from what
-     * {@link #range} answered for it. Sets what {@code CG_VERTEX_ID} subtracts, and leaves the slab's vertex array
-     * bound, as {@link #draw} does.
+     * {@link #range} answered for it. Leaves the slab's vertex array bound, as {@link #draw} does.
      */
-    public void drawIndirect(CgMesh mesh, CgPipeline pipeline, int submesh, int args, long offset) {
+    public void drawIndirect(CgMesh mesh, int submesh, int args, long offset) {
         Placement p = placed(mesh);
         if (p == null || p.submeshCount == 0) return;
-        bind(p, -1);
         int s = Math.min(Math.max(submesh, 0), p.submeshCount - 1);
-        pipeline.vertexBase(p.baseVertex + p.submeshes[s * 4 + 2]);
+        bind(p, p.submeshes[s * 4 + 1] > 0 ? -1 : sequence);
         CgGL.glBindBuffer(CgGL.GL_DRAW_INDIRECT_BUFFER, args);
-        if (p.submeshes[s * 4 + 1] > 0) CgGL.glDrawElementsIndirect(p.mode, CgGL.GL_UNSIGNED_INT, offset);
-        else CgGL.glDrawArraysIndirect(p.mode, offset);
+        CgGL.glDrawElementsIndirect(p.mode, CgGL.GL_UNSIGNED_INT, offset);
         CgGL.glBindBuffer(CgGL.GL_DRAW_INDIRECT_BUFFER, 0);
         calls++;
         CgTrace.add(CgChannels.GL, DRAWN_INDIRECT, 1);
@@ -548,14 +557,12 @@ public final class CgMeshStore {
     /**
      * Adds a draw to the call {@link #drawJoined} makes, if its mesh joins those added since that call last ran: from
      * the same vertex array, in one topology, drawn by indices or without them as they are. False, adding nothing, when
-     * it does not. A range as {@link #draw(CgMesh, CgPipeline, int, int, int, int)} takes, its instances counted from
-     * {@code firstInstance} rather than {@code cg_InstanceBase}.
+     * it does not. A range and first instance as {@link #draw(CgMesh, int, int, int, int, int)} takes.
      *
      * <pre>{@code
      * int n = 0;
      * while (n < meshes.length && store.join(meshes[n], 1, -1, 0, -1, firsts[n])) n++;
      * if (n > 1) {
-     *     pipeline.multiDraw().bind();     // CG_INSTANCE_ID and CG_VERTEX_ID from each command
      *     store.drawJoined();              // n draws, one call
      * } else {
      *     store.dropJoined();              // one draw is drawn the plain way
@@ -596,8 +603,7 @@ public final class CgMeshStore {
 
     /**
      * Draws everything {@link #join}ed since the last call as one {@code glMultiDrawElementsIndirect}, its commands
-     * written to the frame ring, with a {@link CgPipeline#multiDraw()} pipeline bound. Leaves the vertex array bound,
-     * as {@link #draw} does.
+     * written to the frame ring, with a pipeline bound. Leaves the vertex array bound, as {@link #draw} does.
      */
     public void drawJoined() {
         Placement p = joinedFrom;
@@ -634,29 +640,12 @@ public final class CgMeshStore {
     }
 
     /**
-     * What a command of {@link #drawIndirectJoined} draws a range of {@code mesh} from, into {@code out}, in
-     * {@link #range}'s form: always by indices, a mesh without them by the shared run of 0, 1, 2 ... False, writing
-     * nothing, when the mesh has nothing to draw or never joins.
-     */
-    public boolean joinedRange(CgMesh mesh, int submesh, int first, int count, int[] out) {
-        Placement p = placed(mesh);
-        if (p == null || p.joinsAs == 0 || !range(mesh, submesh, first, count, out)) return false;
-        if (p.joinsAs == BY_SEQUENCE) {
-            out[0] -= out[2];   // the first vertex, counted from the base: an index into the run
-            out[3] = 1;
-        }
-        return true;
-    }
-
-    /**
      * Draws {@code n} commands {@code stride} bytes apart from byte {@code offset} of buffer {@code args} as one
-     * {@code glMultiDrawElementsIndirect}, each written from {@link #joinedRange} for a mesh that {@link #joins}
-     * {@code first}, with a {@link CgPipeline#multiDraw()} pipeline bound. Leaves the vertex array bound, as
-     * {@link #draw} does.
+     * {@code glMultiDrawElementsIndirect}, each written from {@link #range} for a mesh that {@link #joins}
+     * {@code first}, with a pipeline bound. Leaves the vertex array bound, as {@link #draw} does.
      *
      * <pre>{@code
-     * store.joinedRange(mesh, -1, 0, -1, range);       // per command, written into args on the GPU
-     * pipeline.multiDraw().bind();
+     * store.range(mesh, -1, 0, -1, range);             // per command, written into args on the GPU
      * store.drawIndirectJoined(firstMesh, args, offset, n, stride);
      * }</pre>
      */
@@ -671,6 +660,122 @@ public final class CgMeshStore {
         CgTrace.add(CgChannels.GL, DRAWN_INDIRECT, n);
         CgTrace.add(CgChannels.GL, MULTI_DRAWS, 1);
         CgTrace.add(CgChannels.GL, MULTI_COMMANDS, n);
+    }
+
+    // ── Drawing on a device ────────────────────────────────────────────────────
+
+    /**
+     * Places {@code mesh} for this frame now if it is not, uploading it: before a device pass draws it, as a placement
+     * inside one would upload through the GL front mid-pass.
+     */
+    public void ready(CgMesh mesh) {
+        placed(mesh);
+    }
+
+    /** {@code mesh}'s topology as its device pipeline describes it. */
+    public static CgGraphicsPipelineDesc.Topology topology(CgMesh mesh) {
+        return switch (mesh.topology()) {
+            case TRIANGLES -> CgGraphicsPipelineDesc.Topology.TRIANGLES;
+            case TRIANGLE_STRIP -> CgGraphicsPipelineDesc.Topology.TRIANGLE_STRIP;
+            case LINES -> CgGraphicsPipelineDesc.Topology.LINES;
+            case LINE_STRIP -> CgGraphicsPipelineDesc.Topology.LINE_STRIP;
+            case POINTS -> CgGraphicsPipelineDesc.Topology.POINTS;
+        };
+    }
+
+    /**
+     * {@link #draw(CgMesh, int, int, int, int, int)} on a device's render pass, its streams set through {@code cache}:
+     * with the pass's pipeline for this mesh's format and topology set.
+     */
+    public void drawOn(CgRenderPass pass, CgDrawStateCache cache, CgMesh mesh, int instances, int firstInstance, int submesh,
+                       int first, int count) {
+        Placement p = placed(mesh);
+        if (p == null) return;
+        int from = submesh < 0 ? 0 : submesh, to = submesh < 0 ? p.submeshCount : Math.min(submesh + 1, p.submeshCount);
+        for (int s = from; s < to; s++) {
+            int firstIndex = p.submeshes[s * 4], indexCount = p.submeshes[s * 4 + 1];
+            int firstVertex = p.submeshes[s * 4 + 2], vertexCount = p.submeshes[s * 4 + 3];
+            boolean indexed = indexCount > 0;
+            int total = indexed ? indexCount : vertexCount;
+            int start = submesh < 0 ? 0 : Math.min(first, total);
+            int n = submesh < 0 || count < 0 ? total - start : Math.min(count, total - start);
+            if (n <= 0) continue;
+            drawing += (long) n * instances;
+            calls++;
+            CgTrace.add(CgChannels.GL, DRAWN, (long) n * instances);
+            streamsOn(pass, cache, p, indexed);
+            pass.drawIndexed(n, instances, indexed ? p.firstIndex + firstIndex + start : start, p.baseVertex + firstVertex,
+                    firstInstance);
+        }
+    }
+
+    /** {@link #drawIndirect} on a device's render pass: the command at byte {@code offset} of {@code args}. */
+    public void drawIndirectOn(CgRenderPass pass, CgDrawStateCache cache, CgMesh mesh, int submesh, CgGpuBuffer args,
+                               long offset) {
+        Placement p = placed(mesh);
+        if (p == null || p.submeshCount == 0) return;
+        int s = Math.min(Math.max(submesh, 0), p.submeshCount - 1);
+        streamsOn(pass, cache, p, p.submeshes[s * 4 + 1] > 0);
+        pass.drawIndexedIndirect(args, offset, 1, COMMAND_WORDS * 4);
+        calls++;
+        CgTrace.add(CgChannels.GL, DRAWN_INDIRECT, 1);
+    }
+
+    /** {@link #drawJoined} on a device's render pass: the joined commands from the frame ring, one indirect call. */
+    public void drawJoinedOn(CgRenderPass pass, CgDrawStateCache cache) {
+        Placement p = joinedFrom;
+        int n = joinedCount;
+        dropJoined();
+        if (n == 0) return;
+        streamsOn(pass, cache, p, p.joinsAs != BY_SEQUENCE);
+        if (commands == null) commands = CgStreamBuffer.create(CgGL.GL_DRAW_INDIRECT_BUFFER, 64 << 10);
+        int bytes = n * COMMAND_WORDS * 4;
+        ByteBuffer out = commands.map(bytes).order(ByteOrder.nativeOrder());
+        long vertices = 0;
+        for (int i = 0; i < n * COMMAND_WORDS; i += COMMAND_WORDS) {
+            out.putInt(joined[i]).putInt(joined[i + 1]).putInt(joined[i + 2]).putInt(joined[i + 3]).putInt(joined[i + 4]);
+            vertices += (long) joined[i] * joined[i + 1];
+        }
+        drawing += vertices;
+        CgTrace.add(CgChannels.GL, DRAWN, vertices);
+        int offset = commands.commit(bytes);
+        CgGLImports imports = CgGLImports.get();
+        int name = commands.getGlBufferId();
+        pass.drawIndexedIndirect(imports.buffer(name), imports.bufferOffset(name) + offset, n, COMMAND_WORDS * 4);
+        calls++;
+        CgTrace.add(CgChannels.GL, MULTI_DRAWS, 1);
+        CgTrace.add(CgChannels.GL, MULTI_COMMANDS, n);
+    }
+
+    /** {@link #drawIndirectJoined} on a device's render pass. */
+    public void drawIndirectJoinedOn(CgRenderPass pass, CgDrawStateCache cache, CgMesh first, CgGpuBuffer args, long offset,
+                                     int n, int stride) {
+        Placement p = placed(first);
+        if (p == null || p.joinsAs == 0) return;
+        streamsOn(pass, cache, p, p.joinsAs != BY_SEQUENCE);
+        pass.drawIndexedIndirect(args, offset, n, stride);
+        calls++;
+        CgTrace.add(CgChannels.GL, DRAWN_INDIRECT, n);
+        CgTrace.add(CgChannels.GL, MULTI_DRAWS, 1);
+        CgTrace.add(CgChannels.GL, MULTI_COMMANDS, n);
+    }
+
+    /** Sets {@code p}'s vertex buffer and its indices (the run of 0, 1, 2 ... where it draws without) on {@code pass}. */
+    private void streamsOn(CgRenderPass pass, CgDrawStateCache cache, Placement p, boolean indexed) {
+        int vertexName, indexName;
+        if (p.ring) {
+            CgStreamBuffer page = p.ringPage >= 0 ? ring.page(p.ringPage).buffer : null;
+            vertexName = page == null ? 0 : page.getGlBufferId();
+            indexName = indexed ? vertexName : sequence;
+        } else {
+            vertexName = p.slab.vertexBuffer;
+            indexName = indexed ? p.slab.indexBuffer : sequence;
+        }
+        CgGLImports imports = CgGLImports.get();
+        if (vertexName != 0 && p.mesh.format().getStride() > 0) {
+            cache.vertexBuffer(pass, imports.buffer(vertexName), imports.bufferOffset(vertexName));
+        }
+        cache.indexBuffer(pass, imports.buffer(indexName), imports.bufferOffset(indexName));
     }
 
     /** Whether {@code p} and {@code q} share the vertex array, the indices and the topology a multi-draw needs. */

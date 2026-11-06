@@ -3,10 +3,15 @@ package com.crystalgraphics.render.graph;
 import com.crystalgraphics.gl.CgGlNames;
 import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.platform.gl.CgGL;
+import com.crystalgraphics.platform.gl.CgGLImports;
+import com.crystalgraphics.platform.rhi.CgRHI;
+import com.crystalgraphics.platform.rhi.resource.CgGpuBuffer;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 
 import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.function.IntConsumer;
 
@@ -30,6 +35,8 @@ final class CgBufferPool {
     private int classes;
     /** {@link System#nanoTime()} at the last frame's end: what a release is stamped with. */
     private long now = System.nanoTime();
+    /** Buffers made on the installed device, by the {@code CgGL} name the graph knows them by. */
+    private static final Map<Integer, CgGpuBuffer> made = new HashMap<>();
 
     /** A buffer of at least {@code desc}'s bytes. */
     int acquire(CgBufferDesc desc) {
@@ -49,7 +56,7 @@ final class CgBufferPool {
             Bucket bucket = buckets[c];
             while (bucket.size > 0 && now - bucket.oldestAt() > IDLE_NANOS) {
                 int buffer = bucket.takeOldest();
-                CgGL.glDeleteBuffers(buffer);
+                free(buffer);
                 freed.accept(buffer);
             }
         }
@@ -58,7 +65,7 @@ final class CgBufferPool {
     void delete() {
         for (int c = 0; c < classes; c++) {
             Bucket bucket = buckets[c];
-            while (bucket.size > 0) CgGL.glDeleteBuffers(bucket.takeOldest());
+            while (bucket.size > 0) free(bucket.takeOldest());
         }
         classes = 0;
     }
@@ -75,7 +82,14 @@ final class CgBufferPool {
     }
 
     /** Device-local storage of {@code bytes}: immutable where the context has buffer storage. */
+    /** A buffer of {@code bytes}: on the installed device where {@code CgGLImports} is, reached by its name. */
     static int create(long bytes) {
+        if (CgGLImports.installed()) {
+            CgGpuBuffer b = CgRHI.get().createBuffer(new CgGpuBuffer.Desc("graph buffer", bytes, CgGpuBuffer.Usage.ALL, false));
+            int name = CgGLImports.get().name(b);
+            made.put(name, b);
+            return name;
+        }
         int buffer = CgGlNames.buffer();
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL_DETAIL, STORAGE)) {
             CgGL.glBindBuffer(CgGL.GL_COPY_WRITE_BUFFER, buffer);
@@ -84,6 +98,22 @@ final class CgBufferPool {
             CgGL.glBindBuffer(CgGL.GL_COPY_WRITE_BUFFER, 0);
         }
         return buffer;
+    }
+
+    /** Deletes a buffer {@link #create} made, through the device that made it. */
+    static void free(int buffer) {
+        CgGpuBuffer b = made.remove(buffer);
+        if (b == null) {
+            CgGL.glDeleteBuffers(buffer);
+            return;
+        }
+        CgGLImports.get().forget(b);
+        CgRHI.get().release(b);
+    }
+
+    /** The device buffer behind a name {@link #create} gave, or null where {@code CgGL} made it. */
+    static CgGpuBuffer rhiBuffer(int buffer) {
+        return made.get(buffer);
     }
 
     private static final int STORAGE = CgTrace.name("graph.bufferStorage");

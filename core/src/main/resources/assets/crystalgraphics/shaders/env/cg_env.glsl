@@ -1,10 +1,36 @@
 #pragma once
 // Naming: cg_PascalCase = GLSL identifiers; CG_UPPER_SNAKE = macros
 
-// Per-pass uniforms (view + proj + time + resolution + camera), one block per pass. Block index wired post-link
-// via glUniformBlockBinding. FIELD ORDER MUST MATCH CgPassConstants.FORMAT -- std140 offsets are positional, so a
-// field added to one and not the other silently reads its neighbour.
-layout(std140) uniform CgFrameBlock {
+// Where a resource binds (CgBindingModel, rhi.md 2.3): set 0 the view's, 1 the pass's, 2 the material's, 3 the
+// bindless heap. Before a declaration's own layout:
+//
+//     CG_BIND(2, 0) layout(std140) uniform CgMaterialBlock { ... };
+//
+// Empty on GL, whose programs are wired by name after link until GL implements CgRHI.
+#ifdef VULKAN
+#define CG_BIND(set_, binding_) layout(set = set_, binding = binding_)
+#else
+#define CG_BIND(set_, binding_)
+#endif
+
+// The bindless heap (CgRHI.bindlessLayout, set 3), where the device defines CG_BINDLESS: a material's texture property
+// is then a handle, which the compiler names after the property, so the shader samples _MainTex as before. Every
+// texture with its sampler at binding 0, under each dimension's name; the handle's x is its index (GL's bindless
+// handle, S4, the whole uvec2).
+#if defined(CG_BINDLESS) && defined(VULKAN)
+CG_BIND(3, 0) uniform sampler2D cg_Textures2D[];
+CG_BIND(3, 0) uniform sampler2DArray cg_Textures2DArray[];
+CG_BIND(3, 0) uniform sampler3D cg_Textures3D[];
+CG_BIND(3, 0) uniform samplerCube cg_TexturesCube[];
+#define CG_TEXTURE_sampler2D(h) cg_Textures2D[(h).x]
+#define CG_TEXTURE_sampler2DArray(h) cg_Textures2DArray[(h).x]
+#define CG_TEXTURE_sampler3D(h) cg_Textures3D[(h).x]
+#define CG_TEXTURE_samplerCube(h) cg_TexturesCube[(h).x]
+#endif
+
+// The view, made once a firing, and the world's environment, which every pass of a frame shares (CgPassConstants).
+// FIELD ORDER MUST MATCH CgPassConstants.VIEW_FORMAT and ENVIRONMENT_FORMAT: std140 offsets are positional.
+CG_BIND(0, 0) layout(std140) uniform CgViewBlock {
     mat4 cg_ViewMatrix;
     mat4 cg_ProjMatrix;
     vec4 cg_Time;        // (t/20, t, t*2, t*3) - seconds, scaled like Unity _Time
@@ -13,16 +39,21 @@ layout(std140) uniform CgFrameBlock {
     vec4 cg_DepthParams; // x: 1 when depth is reversed (nearer is greater); y: 1 when clip depth runs 0..1;
                          // z: 1 when the target is the linear HDR scene (CG_LINEAR_SCENE); w: its glow gain
     vec4 cg_WorldOrigin; // where world space's origin is in absolute coordinates: the camera, in a world pass
+    mat4 cg_PrevViewProj; // this pass's camera-relative points to last frame's clip space: cg_PreviousClip
+    vec4 cg_FrameParams;  // x the host frame's index, 0 to 65535; y 1 while last frame is one of this view;
+                          // w 1 when the target is the host's own, its colour sRGB-encoded (CG_ENCODED_TARGET)
+};
+CG_BIND(0, 6) layout(std140) uniform CgEnvironmentBlock {
     vec4 cg_SunDirection; // xyz toward the sun, or the moon while the sun is down; w the daylight, 0 to 1
     vec4 cg_FogColor;     // the host's fog colour; a 1 while there is fog, 0 for none
     vec4 cg_FogParams;    // x where the fog starts, y where it is whole, in blocks from the camera; z CG_SUN_SHARE;
-                          // w 1 when the target is the host's own, its colour sRGB-encoded (CG_ENCODED_TARGET)
-    mat4 cg_PrevViewProj; // this pass's camera-relative points to last frame's clip space: cg_PreviousClip
-    vec4 cg_FrameParams;  // x the host frame's index, 0 to 65535; y 1 while last frame is one of this view;
-                          // z 1 where entities take the Nether's two lights (CG_ENTITY_LIGHT1)
+                          // w 1 where entities take the Nether's two lights (CG_ENTITY_LIGHT1)
 };
 
-// -- Per-Instance Object Data (SSBO path: GL 4.3+/ARB) ----------------------
+// -- Object records and ids --------------------------------------------------
+// The firing's records, each written once (CgPrimitiveTable, Unreal's GPUScene primitives), or a draw's own; an
+// OBJECT draw's instance carries an id naming one, as Unreal's primitive id streams do. A draw of its own records
+// reads them through identity ids.
 struct CgObjectData {
     mat4 modelMatrix;
     mat4 normalMatrix;
@@ -32,29 +63,23 @@ struct CgObjectData {
     vec4 custom3;
 };
 
-#ifdef CG_USE_SSBO
-layout(std430) readonly buffer CgObjectDataBuffer {
+CG_BIND(1, 0) layout(std430) readonly buffer CgObjectDataBuffer {
     CgObjectData cg_Objects[];
 };
-#else
-// The TBO path, unhooked (docs/TBO_PATH.md). It declared `uniform samplerBuffer CgObjectDataBuffer` (RGBA32F, 12 texels a
-// record) and `CgObjectData cg_FetchObjectData(int)`, which built each mat4 from four texelFetch(base + k) and custom0-3
-// from texels 8-11, base = instanceId * 12; CG_OBJECT_DATA below called it. The executor bound the records to
-// CgBindingPoints.OBJECT_DATA.tbo() as a buffer texture. Restore both #else branches with the Java half to reconnect.
-#error "the TBO path is unhooked: the compiler defines CG_USE_SSBO (docs/TBO_PATH.md)"
-#endif
+
+CG_BIND(1, 3) layout(std430) readonly buffer CgObjectIdBuffer {
+    uint cg_ObjectIds[];
+};
 
 // -- Instance ID bridge -----------------------------------------------------
-// The vertex stage adds cg_InstanceBase: where a batch's instances start in its kind's upload for the pass, 0 for
-// a draw that uploaded its own. Below 0 it names the one record every instance reads, -1 - cg_InstanceBase: an
-// indirect INSTANCES draw's. The fragment stage reads the result as a flat varying the compiler wires. A kernel has
-// neither: its invocations are env/compute/kernel.glsl's.
+// Every draw carries its bases (Unreal's InstanceIdOffset, SceneData.ush): its first instance is where its batch's
+// instances start in its kind's upload, and its base vertex where its mesh starts in the buffer it is drawn from. Every
+// draw is by indices, a mesh without them by 0, 1, 2 ...: GL gives an array draw's base vertex as 0, Vulkan its first.
+// A first instance with CG_SHARED_RECORD set names the one record every instance reads (an indirect INSTANCES draw's):
+// bit 30, not Unreal's 31, since gl_BaseInstance is signed. The fragment stage reads the result as a flat varying the
+// compiler wires. A kernel has neither: its invocations are env/compute/kernel.glsl's.
+#define CG_SHARED_RECORD 0x40000000
 #ifdef CG_VERTEX_STAGE
-#ifdef CG_MULTI_DRAW
-// A multi-draw's variant: no uniform changes between its commands, so each command's first instance is its batch's
-// base and its base vertex the mesh's. Every command is drawn by indices, a mesh without them by 0, 1, 2 ...: GL gives
-// an array draw's base vertex as 0. Core in 4.6, GL_ARB_shader_draw_parameters below, which the compiler enables.
-// Vulkan's gl_InstanceIndex counts from the first instance; GL's gl_InstanceID does not.
 #if __VERSION__ >= 460
 #define CG_BASE_INSTANCE gl_BaseInstance
 #define CG_BASE_VERTEX gl_BaseVertex
@@ -62,22 +87,16 @@ layout(std430) readonly buffer CgObjectDataBuffer {
 #define CG_BASE_INSTANCE gl_BaseInstanceARB
 #define CG_BASE_VERTEX gl_BaseVertexARB
 #endif
+// The instance's index in its own draw: in an indirect INSTANCES draw, the element it draws. Vulkan's gl_InstanceIndex
+// counts from the first instance; GL's gl_InstanceID does not.
 #ifdef VULKAN
 #define CG_DRAW_INSTANCE (gl_InstanceIndex - CG_BASE_INSTANCE)
 #else
 #define CG_DRAW_INSTANCE gl_InstanceID
 #endif
-#define CG_INSTANCE_ID (CG_DRAW_INSTANCE + CG_BASE_INSTANCE)
+#define CG_INSTANCE_ID ((CG_BASE_INSTANCE & CG_SHARED_RECORD) != 0 ? CG_BASE_INSTANCE & (CG_SHARED_RECORD - 1) : CG_DRAW_INSTANCE + CG_BASE_INSTANCE)
+// The vertex's index in its own mesh.
 #define CG_VERTEX_ID (gl_VertexID - CG_BASE_VERTEX)
-#else
-uniform int cg_InstanceBase;
-#define CG_INSTANCE_ID (cg_InstanceBase < 0 ? -1 - cg_InstanceBase : gl_InstanceID + cg_InstanceBase)
-// The instance's index in its own draw: in an indirect INSTANCES draw, the element it draws.
-#define CG_DRAW_INSTANCE gl_InstanceID
-// The vertex's index in its own mesh: cg_VertexBase is where the mesh starts in the buffer it is drawn from.
-uniform int cg_VertexBase;
-#define CG_VERTEX_ID (gl_VertexID - cg_VertexBase)
-#endif
 // The corner of a CgMesh.quads(n) vertex: (0,0), (1,0), (1,1), (0,1) around each quad.
 #define CG_VERTEX_CORNER vec2(float(((CG_VERTEX_ID + 1) >> 1) & 1), float((CG_VERTEX_ID >> 1) & 1))
 #elif !defined(CG_COMPUTE_STAGE)
@@ -86,9 +105,7 @@ flat in int cg_InstanceId;
 #endif
 
 // -- Object Data Definition-----------------------------------------------------
-#ifdef CG_USE_SSBO
-#define CG_OBJECT_DATA cg_Objects[CG_INSTANCE_ID]
-#endif   // the TBO path's #else was cg_FetchObjectData(CG_INSTANCE_ID): docs/TBO_PATH.md
+#define CG_OBJECT_DATA cg_Objects[cg_ObjectIds[CG_INSTANCE_ID]]
 
 // -- Data Macros ------------------------------------------------------
 #define CG_OBJECT_TO_WORLD (CG_OBJECT_DATA.modelMatrix)
@@ -111,17 +128,18 @@ flat in int cg_InstanceId;
 // reads it: in an opaque pass the host's world, in a transparent pass with the world renderer's opaque draws too.
 // Bound to CgBindingPoints.DEPTH_TEXTURE_UNIT in both vertex and fragment stages of every pass.
 // Do NOT use that texture unit in material Properties.
-uniform sampler2D cg_DepthBuffer;
+CG_BIND(0, 1) uniform sampler2D cg_DepthBuffer;
 
 // cg_SceneColor: the scene's colour, taken the same way and at the same moments as cg_DepthBuffer, for a material that
 // bends what is behind it (heat haze, a shockwave). RGBA8, linearly filtered. Bound to
 // CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT; do NOT use that unit in material Properties either.
-uniform sampler2D cg_SceneColor;
-#define CG_SCENE_COLOR(uv) texture(cg_SceneColor, (uv))
+CG_BIND(0, 2) uniform sampler2D cg_SceneColor;
+// Level 0, as Unreal's CalcSceneColor: a screen read takes no derivatives, which a discard leaves undefined
+#define CG_SCENE_COLOR(uv) textureLod(cg_SceneColor, (uv), 0.0)
 
 // cg_Lightmap: the host's lightmap, block light across and sky light down, in a world pass; 1x1 white in any other.
 // Bound to CgBindingPoints.LIGHTMAP_TEXTURE_UNIT; do NOT use that unit in material Properties either.
-uniform sampler2D cg_Lightmap;
+CG_BIND(0, 3) uniform sampler2D cg_Lightmap;
 // The colour the world lights a thing with at block and sky light (0 to 15 each), as Minecraft lights its blocks.
 #define CG_LIGHTMAP(light) texture(cg_Lightmap, (clamp((light), 0.0, 15.0) + 0.5) / 16.0).rgb
 
@@ -143,7 +161,9 @@ float cg_LinearEyeDepth(float windowDepth) {
     float p32 = cg_ProjMatrix[3][2] + p22 * cg_ProjMatrix[3][3];
     return p32 / (ndc + p22);
 }
-#define CG_SCENE_EYE_DEPTH(uv) cg_LinearEyeDepth(texture(cg_DepthBuffer, (uv)).r)
+// Level 0, as Unreal's CalcSceneDepth: after a discard a derivative is undefined (SPIR-V's OpKill), and the host's
+// depth samples through its own mipmapped filter
+#define CG_SCENE_EYE_DEPTH(uv) cg_LinearEyeDepth(textureLod(cg_DepthBuffer, (uv), 0.0).r)
 
 // CG_CUSTOM_STENCIL, CG_SCENE_WORLD_NORMAL, CG_CUSTOM_DATA and CG_SHADING_MODEL_ID are handed to a post material naming
 // them (env/handed_scene.glsl). CustomDepth as an eye distance, and the rest of what Unreal's post materials sample, are
@@ -192,7 +212,7 @@ uvec2 _cg_shadingModel = uvec2(0u);
 // cg_Media: the world's froxel transmittance (CgWorldMedia), a volume over the screen, each texel to its slice's far edge
 // the light the air scattered toward the eye (rgb) and what gets through (a); white in a pass that binds none. Bound to
 // CgBindingPoints.MEDIA_TEXTURE_UNIT; do NOT use that unit in Properties.
-uniform sampler3D cg_Media;
+CG_BIND(0, 4) uniform sampler3D cg_Media;
 // Its slices in eye depth as Unreal's volumetric fog spaces them (CalculateGridZParams, r.VolumetricFog.
 // DepthDistributionScale 32): slice s's near edge at (2^(s / SPREAD) - O) / B, from CG_MEDIA_NEAR (Unreal's 9.5 cm) to
 // CG_MEDIA_FAR at the last. Twice Unreal's 64 slices, for four times its 60 m: each about as deep as Unreal's at 40 blocks.
@@ -249,7 +269,7 @@ vec3 cg_MediaLight(vec2 uv, float eye) {
 // and its size. 4N deep in a firing drawing a
 // "Surface"-lit material: both cascades' direction behind them (cg_LocalLightDirectional). Black, and 1 texel, in a
 // pass that binds none. Bound to CgBindingPoints.LOCAL_LIGHTS_TEXTURE_UNIT; do NOT use that unit in Properties.
-uniform sampler3D cg_LocalLights;
+CG_BIND(0, 5) uniform sampler3D cg_LocalLights;
 
 // Layer 0 and 1 the cascades' light, 2 and 3 their direction; n the cells a side.
 vec3 cg_local_light_cascade(vec3 u, float layer, float n, float depth) {
@@ -295,7 +315,7 @@ vec3 cg_LocalLightDirectional(vec3 p) {
 #define CG_LINEAR_SCENE        (cg_DepthParams.z > 0.5)
 // Whether this pass draws onto the host's own target, its colour sRGB-encoded. A "ColorSpace" = "Linear" Forward
 // pass's colour is linear light, so the generated main encodes it there (cg_SceneEncode).
-#define CG_ENCODED_TARGET      (cg_FogParams.w > 0.5)
+#define CG_ENCODED_TARGET      (cg_FrameParams.w > 0.5)
 // What a glow drawn into the scene is multiplied by (CgWorldRenderer.sceneEmission): 1 anywhere else.
 #define CG_SCENE_GLOW          (CG_LINEAR_SCENE ? cg_DepthParams.w : 1.0)
 // A material's value for each path, e.g. CG_HDR(0.4, 1.0): one program, picked at runtime.
@@ -346,7 +366,7 @@ vec4 cg_PreviousClip(vec3 worldPos) {
 // Minecraft's two directional lights on entities, in world axes (Lighting.DIFFUSE_LIGHT_0 and _1, normalised); the
 // Nether's second comes from below (NETHER_DIFFUSE_LIGHT_1).
 #define CG_ENTITY_LIGHT0 vec3(0.1616904, 0.8084521, -0.5659165)
-#define CG_ENTITY_LIGHT1 vec3(-0.1616904, cg_FrameParams.z > 0.5 ? -0.8084521 : 0.8084521, 0.5659165)
+#define CG_ENTITY_LIGHT1 vec3(-0.1616904, cg_FogParams.w > 0.5 ? -0.8084521 : 0.8084521, 0.5659165)
 
 // How much of the host's fog lies between the camera and a point this far from it: 0 to 1, 0 with no fog.
 float cg_FogAmount(float distance) {

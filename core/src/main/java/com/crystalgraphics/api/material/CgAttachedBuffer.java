@@ -21,7 +21,7 @@ import lombok.Getter;
  * scope (no macro, no index). Use {@link #isUbo()} to distinguish from SSBO entries.</p>
  *
  * <h3>What they are NOT</h3>
- * <p>Engine pipeline buffers — {@code CgObjectDataBuffer}, {@code CgFrameBlock} — are owned
+ * <p>Engine pipeline buffers — {@code CgObjectDataBuffer}, {@code CgViewBlock} — are owned
  * by the engine and declared in {@code cg_env.glsl}. Do NOT pass them here;
  * doing so produces duplicate GLSL declarations that fail to compile.</p>
  *
@@ -87,8 +87,7 @@ public final class CgAttachedBuffer {
         CgBufferFormat format = buffer.getFormat();
         if (format.getMemoryLayout() != CgBufferFormat.MemoryLayout.STD430) {
             throw new IllegalArgumentException(
-                "attach() requires a STD430 buffer (SSBO). UBOs use STD140 and cannot be auto-injected. " +
-                "Use CgShaderBindings.ubo() instead.");
+                "An engine token's storage buffer is STD430 (an SSBO); a uniform block takes CgAttachedBuffer.of(CgUniformBuffer).");
         }
 
         String structName = format.getGlslName();

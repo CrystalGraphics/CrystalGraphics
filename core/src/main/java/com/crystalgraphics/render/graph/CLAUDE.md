@@ -139,7 +139,7 @@ host remade under the same names (between executions, never within one) is never
 recording.raster(normals, CgLoad.clear(0, 0, 0, 0), constants, null, CgOrder.SORTED).end();   // cleared first
 CgRasterPass pass = recording.raster(CgGraphTexture.current(), CgLoad.load(), constants, state, CgOrder.SORTED)
         .attachment(normals);
-chunks.draw(material.pipeline(CgInstanceKind.OBJECT).normalTarget(), bindings, mesh);    // writes both slots
+chunks.draw(material.pipeline(CgInstanceKind.OBJECT).as(CgPipelineForm.NORMALS), bindings, mesh);    // writes both slots
 ```
 
 - `texture` is the target's size (GL would draw into the intersection, quietly): the executor throws otherwise.
@@ -178,13 +178,16 @@ needs is charged to it.
 nanoseconds its execution takes on the render thread, its GPU timing and barriers included, so a consumer budgets its
 own passes' CPU as `timed(budget)` budgets their GPU.
 
-**Barriers are the executor's** (`CgHazards`): before each access it compares the storage's last accesses — per GL
-name, so pooled transients, a history's two versions and a buffer used across frames each come out right — and issues
-`cgBufferBarrier`/`cgImageBarrier` wherever a kernel takes part: exact on the tracked backend, the reader's
-`glMemoryBarrier` bits on GL. Draws, copies and uploads among themselves stay the backend's to order, as they were.
-`-Dcrystalgraphics.graph.barriers=false` keeps the bookkeeping and issues nothing; synchronization validation must then
-fail `--mode=compute-graph`. Below compute (G40, G33, CPU) the bookkeeping runs and no barrier is issued: a lowered
-kernel's writes are draws, ordered like any draw, and a CPU body's are uploads.
+**Transitions are the executor's** (`CgResourceStates`, Unreal RDG's subresource states): before each access it
+compares the storage's state — per GL name, so pooled transients, a history's two versions and a buffer used across
+frames each come out right — and states what must move. On a device (`CgGL.cgTakesTransitions()`, the tracked backend)
+every access's: buffers as barriers, images with their layouts, a single-level texture and the current target as one
+framebuffer (`cgFramebufferBarrier`), any other by subresource (`cgTextureBarrier`); a texture outliving the execution is
+taken from where it rests (`CgAccess.RESTING`) and returned there at its end, and while the graph runs the device infers
+nothing (`cgGraphStates`), a callback's body excepted. On GL only those a kernel takes part in, as the reader's
+`glMemoryBarrier` bits; GL orders the rest. A transition whose next access is a read two or more steps on is split from
+its producer's end to its consumer (`cgEndBarriersSplit`), as RDG splits one. `-Dcrystalgraphics.graph.barriers=false`
+keeps the bookkeeping and issues nothing; synchronization validation must then fail `--mode=compute-graph`.
 
 Two rules keep a pass of many small dispatches from waiting dispatch by dispatch, Unreal RDG's:
 
@@ -292,8 +295,8 @@ chunks.instance();                                                              
 
 - `INDICES` and `VERTICES` draw count x factor of the range, never more than it holds; `INSTANCES` draws the range
   count x factor times, every instance reading the draw's one record, and `CG_DRAW_INSTANCE` is which element it is.
-- An indirect draw is a batch of its own, and its command's first instance is 0 on every device: the instance base is
-  `cg_InstanceBase`, as for any draw. A command a multi-draw draws is the exception (below).
+- An indirect draw is a batch of its own, and its command's first instance is its batch's instance base, as any draw's
+  is; with `CgMeshStore.SHARED_RECORD` set for an `INSTANCES` draw of the frame's records, whose every instance reads one.
 - Each command has a slot of its own, aligned for a storage binding (`CgCapabilities.storageOffsetAlignment`), so the
   kernels writing them share nothing and need no barrier between them.
 
@@ -315,17 +318,15 @@ chunks.draw(pipeline, bindings, rock).objects(visible, 0, capacity).indirect(vis
 **Multi-draw** (gpu-compute C9a): where `CgCapabilities.multiDraw()` holds, consecutive batches under one pipeline,
 bindings and scissor, with no target copy between them, drawn directly from meshes in one slab or one ring page,
 are one `glMultiDrawElementsIndirect`. The store takes each draw while its mesh joins the run (`CgMeshStore.join`)
-and writes the commands into the frame ring (`drawJoined`); the executor binds the pipeline's `multiDraw()` variant,
-which reads each draw's first instance and base vertex from its command rather than `cg_InstanceBase` and
-`cg_VertexBase`. A run of one is drawn the plain way.
+and writes the commands into the frame ring (`drawJoined`), under the same pipeline a draw alone binds: every draw
+carries its bases. A run of one is drawn the plain way.
 
 Indirect draws join too, where their commands are written on the GPU (compute, and G40 with indirect draws):
 consecutive indirect batches under one pipeline, bindings and scissor, reading the same object records, from meshes
 that join (`CgMeshStore.joins`). The executor decides the runs before the pass, when it writes the commands: each into
-consecutive slots, in the joined form (`joinedRange`) with the batch's instance base as its first instance, then draws
-the run with `drawIndirectJoined` at the slots' stride. A culled set's levels (`CgGpuOps.cull`) are such a run: one
-call however many levels. An `INSTANCES` draw of the frame's records never joins, since every instance reads one
-record and the multi-draw variant has no shared record.
+consecutive slots, by indices (`CgMeshStore.range`) with each batch's first instance, then draws the run with
+`drawIndirectJoined` at the slots' stride. A culled set's levels (`CgGpuOps.cull`) are such a run: one call however many
+levels. An `INSTANCES` draw of the frame's records joins too: its shared record rides in its own command.
 
 **A command a record** (`CgChunkBuilder.indirectEach`, `CgWorldRenderer.Draw.indirectEach`): one draw whose every
 record is its own command, its count at the offset `countAt` gave it: one batch, the frame's `eachOffsets` holding
@@ -429,7 +430,7 @@ its node moves (`graph.again.requested-kept`); with `false` they draw whole (`gr
   thread; a pass that throws fails its request and the frame goes on. A readback's is done frames after its execution,
   once `CgReadback.poll` has run its sink; executing the frame again does not read it again.
 - **One upload per kind per frame.** The executor binds its own instance buffers at the engine binding points and
-  draws each batch's range through `cg_InstanceBase`. A nested execution (an immediate inside a callback) gets its
+  draws each batch's range from its first instance. A nested execution (an immediate inside a callback) gets its
   own buffers and ring.
 - **A recording is a value once sealed**: nothing changes it, nothing in it refers to its recorder.
   `CgRecording.reset()` is only for an owner that knows nobody else holds it: it refills its chunks and raster passes

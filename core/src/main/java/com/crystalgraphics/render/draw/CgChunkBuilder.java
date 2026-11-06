@@ -30,13 +30,25 @@ import java.util.Objects;
  *       {@link #instance()}, never across a call.</li>
  *   <li>A draw with no instances is dropped. A draw whose bounds are never set covers everything.</li>
  *   <li>An {@link CgInstanceKind#OBJECT} draw names the mesh its instances expand; the other kinds expand the unit
- *       quad and take none.</li>
+ *       quad and take none. Its records go into {@link #primitives()}, the recording's table, and the chunk keeps
+ *       their ids: {@link #instance()} answers a place in the table's array, which {@link #data()} then is, and
+ *       {@link #primitive} names a record an earlier pass wrote.</li>
  *   <li>One thread at a time, like the recording it writes for.</li>
  * </ul>
  */
 public final class CgChunkBuilder {
 
+    private static final int OBJECT_KIND = CgInstanceKind.OBJECT.ordinal();
+    /** What a chunk with no OBJECT draw names: never written. */
+    private static final CgPrimitiveTable NO_PRIMITIVES = new CgPrimitiveTable();
+
     private CgBindingTable bindings;
+    /** Where OBJECT records go: a recording's table, or {@link #own} where none is lent. */
+    @Nullable
+    private CgPrimitiveTable primitives;
+    /** A builder's own table, where no recording lends one: each chunk ended keeps a copy, and it starts again. */
+    @Nullable
+    private CgPrimitiveTable own;
 
     private boolean open;
     private int spatial;
@@ -108,13 +120,14 @@ public final class CgChunkBuilder {
      * allocates none. Its chunks live until {@link #recycle()}, which the recording's reset calls.
      *
      * <pre>{@code
-     * CgChunkBuilder chunks = CgChunkBuilder.pooling(bindings);   // what CgRecording holds
+     * CgChunkBuilder chunks = CgChunkBuilder.pooling(bindings, primitives);   // what CgRecording holds
      * pass.add(chunks.begin().draw(pipeline, id).end());
      * chunks.recycle();                                           // once nothing holds the chunks: the recording reset
      * }</pre>
      */
-    public static CgChunkBuilder pooling(CgBindingTable bindings) {
+    public static CgChunkBuilder pooling(CgBindingTable bindings, CgPrimitiveTable primitives) {
         CgChunkBuilder b = new CgChunkBuilder(bindings);
+        b.primitives = primitives;
         b.shells = new CgDrawChunk[16];
         return b;
     }
@@ -138,6 +151,20 @@ public final class CgChunkBuilder {
         return this;
     }
 
+    /** Writes later chunks' OBJECT records into {@code table}: a recording's, for a builder that records into several. */
+    public CgChunkBuilder primitives(CgPrimitiveTable table) {
+        if (open) throw new IllegalStateException("a chunk is open over another table");
+        this.primitives = table;
+        return this;
+    }
+
+    /** The table OBJECT records are written into: the recording's, or the builder's own. */
+    public CgPrimitiveTable primitives() {
+        if (primitives != null) return primitives;
+        if (own == null) own = new CgPrimitiveTable();
+        return own;
+    }
+
     /** Starts a chunk under the root nodes. */
     public CgChunkBuilder begin() {
         return begin(0, 0, 0);
@@ -146,7 +173,10 @@ public final class CgChunkBuilder {
     /** Starts a chunk whose draws are positioned in {@code spatial}, clipped by {@code clip}, grouped in {@code effect}. */
     public CgChunkBuilder begin(int spatial, int clip, int effect) {
         if (open) throw new IllegalStateException("begin() inside a chunk: end() the last one first");
-        if (lent) dropReferences();
+        if (lent) {
+            dropReferences();
+            if (primitives == null && own != null) own.reset();   // the lent chunk's records, as its arrays
+        }
         open = true;
         this.spatial = spatial;
         this.clip = clip;
@@ -167,7 +197,7 @@ public final class CgChunkBuilder {
                     ? "an OBJECT draw names the mesh it expands" : "only an OBJECT draw takes a mesh");
         }
         // The mesh picks the vertex factory, as Unreal's does: a skinned mesh draws every pass skinned.
-        if (mesh != null && mesh.format().isSkinned()) pipeline = pipeline.skinned();
+        if (mesh != null && mesh.format().isSkinned()) pipeline = pipeline.as(CgPipelineForm.SKINNED);
         closeDraw();
         if (count == pipelines.length) grow();
         int d = count;
@@ -204,10 +234,18 @@ public final class CgChunkBuilder {
         return this;
     }
 
-    /** Reserves one zeroed record for the open draw and answers its first float in {@link #data()}. */
+    /**
+     * Reserves one zeroed record for the open draw and answers its first float in {@link #data()}: for an OBJECT draw,
+     * a record of {@link #primitives()}, whose slot is {@code CgPrimitiveTable.slot(at)}.
+     */
     public int instance() {
         if (drawing < 0) throw new IllegalStateException("instance() with no draw open: draw() first");
         if (objects != null && objects[drawing] != null) throw new IllegalStateException("instance() on a draw of objects()");
+        if (drawingKind == OBJECT_KIND) {
+            int at = primitives().add();
+            id(CgPrimitiveTable.slot(at));
+            return at;
+        }
         float[] data = instances[drawingKind];
         int at = records[drawingKind] * drawingFloats;
         if (data == null || at + drawingFloats > data.length) {
@@ -228,11 +266,47 @@ public final class CgChunkBuilder {
         return at;
     }
 
+    /**
+     * Names record {@code slot} of {@link #primitives()} as the open OBJECT draw's next instance: one an earlier pass of
+     * the firing wrote, drawn again without writing it. In a draw of {@link #indirectEach}, {@link #countAt} follows.
+     */
+    public CgChunkBuilder primitive(int slot) {
+        if (drawing < 0 || drawingKind != OBJECT_KIND) throw new IllegalStateException("primitive() with no OBJECT draw open");
+        if (objects != null && objects[drawing] != null) throw new IllegalStateException("primitive() on a draw of objects()");
+        if (slot < 0 || slot >= primitives().count()) {
+            throw new IllegalArgumentException("slot " + slot + " of a table of " + primitives().count());
+        }
+        id(slot);
+        return this;
+    }
+
+    /** Appends {@code slot}'s id to the open OBJECT draw. */
+    private void id(int slot) {
+        float[] ids = instances[OBJECT_KIND];
+        int at = records[OBJECT_KIND];
+        if (ids == null || at == ids.length) {
+            ids = ids == null ? new float[64] : Arrays.copyOf(ids, ids.length * 2);
+            instances[OBJECT_KIND] = ids;
+        }
+        ids[at] = Float.intBitsToFloat(slot);
+        if (each != null && each[drawing]) {
+            if (recordCounts.length <= at) recordCounts = Arrays.copyOf(recordCounts, Math.max(recordCounts.length * 2, at + 1));
+            recordCounts[at] = -1;
+        }
+        records[OBJECT_KIND]++;
+        instanceCounts[drawing]++;
+    }
+
     /** Appends {@code count} whole records of the open draw's kind, read from {@code records} at float {@code from}. */
     public CgChunkBuilder instances(float[] records, int from, int count) {
         if (drawing < 0) throw new IllegalStateException("instances() with no draw open: draw() first");
         if (each != null && each[drawing]) throw new IllegalStateException("instances() on a draw of indirectEach(): instance() and countAt()");
         if (objects != null && objects[drawing] != null) throw new IllegalStateException("instances() on a draw of objects()");
+        if (drawingKind == OBJECT_KIND) {
+            int first = primitives().add(records, from, count);
+            for (int i = 0; i < count; i++) id(first + i);
+            return this;
+        }
         int floats = count * drawingFloats;
         float[] data = instances[drawingKind];
         int at = this.records[drawingKind] * drawingFloats;
@@ -247,9 +321,12 @@ public final class CgChunkBuilder {
         return this;
     }
 
-    /** The open draw's kind's records. Read it after {@link #instance()}; it is replaced when it grows. */
+    /**
+     * The open draw's kind's records, the table's for an OBJECT draw. Read it after {@link #instance()}; it is replaced
+     * when it grows.
+     */
     public float[] data() {
-        return instances[drawingKind];
+        return drawingKind == OBJECT_KIND ? primitives().data() : instances[drawingKind];
     }
 
     /** Unions a rectangle into the open draw's bounds, in the chunk's spatial node. */
@@ -370,7 +447,7 @@ public final class CgChunkBuilder {
 
     /**
      * Draws the open draw's mesh once per object record in {@code records}, {@code count} of them from {@code first},
-     * in place of records written here: {@link CgInstanceKind#OBJECT}'s layout, written on the GPU by a kernel or a
+     * in place of records written here: {@link CgPrimitiveTable#FORMAT}, written on the GPU by a kernel or a
      * cull. Every material reads them as it reads any draw's, through {@code CG_OBJECT_DATA}.
      *
      * <pre>{@code
@@ -483,7 +560,7 @@ public final class CgChunkBuilder {
                 buffers == null ? null : Arrays.copyOf(bufferAt, count * CgDrawChunk.BUFFERS), Arrays.copyOf(bounds, count * 4),
                 Arrays.copyOf(sortKeys, count), groups == null ? null : Arrays.copyOf(groups, count), kept,
                 each == null ? null : Arrays.copyOf(each, count),
-                each == null ? null : Arrays.copyOf(recordCounts, records[CgInstanceKind.OBJECT.ordinal()]));
+                each == null ? null : Arrays.copyOf(recordCounts, records[OBJECT_KIND]), endedPrimitives());
         held = Math.min(count + 1, pipelines.length);   // a dropped last draw may have left its slot set
         open = false;
         count = 0;
@@ -499,7 +576,7 @@ public final class CgChunkBuilder {
         shellsUsed++;
         chunk.fill(spatial, clip, effect, bindings, count, pipelines, bindingIds, kinds, firsts, instanceCounts, meshes,
                 ranges, counts, countOffsets, countModes, objects, buffers, bufferAt, bounds, sortKeys, groups, instances,
-                records, each, recordCounts);
+                records, each, recordCounts, primitives());
         held = Math.min(count + 1, pipelines.length);   // a dropped last draw may have left its slot set
         open = false;
         count = 0;
@@ -526,7 +603,7 @@ public final class CgChunkBuilder {
         closeDraw();
         CgDrawChunk chunk = new CgDrawChunk(spatial, clip, effect, bindings, count, pipelines, bindingIds, kinds,
                 firsts, instanceCounts, meshes, ranges, counts, countOffsets, countModes, objects, buffers, bufferAt, bounds,
-                sortKeys, groups, instances, each, recordCounts);
+                sortKeys, groups, instances, each, recordCounts, primitives());
         held = Math.min(count + 1, pipelines.length);   // a dropped last draw may have left its slot set
         open = false;
         count = 0;
@@ -543,6 +620,15 @@ public final class CgChunkBuilder {
         count = 0;
         Arrays.fill(records, 0);
         dropReferences();
+    }
+
+    /** The table an ended chunk's ids name: the one lent, else a copy of the builder's own, which starts again. */
+    private CgPrimitiveTable endedPrimitives() {
+        if (primitives != null) return primitives;
+        if (records[OBJECT_KIND] == 0 || own == null) return NO_PRIMITIVES;
+        CgPrimitiveTable kept = own.copy();
+        own.reset();
+        return kept;
     }
 
     /** Clears the references the last chunk's draws left, not the arrays' whole capacity: a chunk of one draw clears one. */

@@ -5,7 +5,7 @@ import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgMeshTopology;
-import com.crystalgraphics.api.shader.CgShaderBindings;
+import com.crystalgraphics.api.material.CgMaterialValues;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.compute.CgCompute;
@@ -13,7 +13,6 @@ import com.crystalgraphics.compute.CgKernel;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.gl.buffer.CgReadback;
 import com.crystalgraphics.gl.texture.CgFallbackTextures;
-import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
 import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.render.draw.CgOrder;
@@ -298,6 +297,8 @@ public final class CgWorldLights {
     }
 
     private final List<Appender> appenders = new CopyOnWriteArrayList<>();
+    /** {@link #appenders} as a frame walks them: replaced on each add and remove, so a walk allocates no iterator. */
+    private volatile Appender[] appending = new Appender[0];
     private final Vector3f eye = new Vector3f();
     private final Matrix4f unproject = new Matrix4f(), toView = new Matrix4f(), perspective = new Matrix4f(),
             bob = new Matrix4f();
@@ -377,7 +378,7 @@ public final class CgWorldLights {
     private CgMaterial applyPoints, applyShaped;
     private CgMaterial gbufferPass, sample, shade, temporal, denoise, tiles, tileDepth;
     private CgGraphTexture gbuffer;
-    private final Consumer<CgShaderBindings> gbufferValues = b -> this.gridValues.accept(b.sampler("_Normals", 0,
+    private final Consumer<CgMaterialValues> gbufferValues = b -> this.gridValues.accept(b.sampler("_Normals", 0,
             this.normalsNow() ? this.normals : CgFallbackTextures.BLACK_1x1));
     /**
      * The translucency lighting volume, and the one twice as deep holding its direction too: this firing's, or null; each
@@ -400,8 +401,8 @@ public final class CgWorldLights {
     /** This firing's entities per tile, and the farthest a shadowed light's ray runs, blocks. */
     private CgGraphTexture entityTiles, tileRanges;
     private float rayReach;
-    private final Consumer<CgShaderBindings> rangeValues = b -> b.vec4("_Screen", this.targetW, this.targetH, 0f, 0f);
-    private final Consumer<CgShaderBindings> tileValues = b -> b.vec4("_Screen", this.targetW, this.targetH, 0f, 0f)
+    private final Consumer<CgMaterialValues> rangeValues = b -> b.vec4("_Screen", this.targetW, this.targetH, 0f, 0f);
+    private final Consumer<CgMaterialValues> tileValues = b -> b.vec4("_Screen", this.targetW, this.targetH, 0f, 0f)
             .sampler("_Ranges", 0, this.tileRanges)
             .vec4("_Rays", rays[0], rays[1], rays[2], rays[3])
             .vec4("_ToView0", toView.m00(), toView.m10(), toView.m20(), toView.m30())
@@ -472,7 +473,7 @@ public final class CgWorldLights {
     private final float[] sunDirection = new float[3];
     private final float[] eyeFrac = new float[3];
     private final int[] eyeBlock = new int[3];
-    private final Consumer<CgShaderBindings> sampleValues = b -> this.gridValues.accept(b.vec4("_Screen", targetW, targetH, this.downX, this.downY)
+    private final Consumer<CgMaterialValues> sampleValues = b -> this.gridValues.accept(b.vec4("_Screen", targetW, targetH, this.downX, this.downY)
             .vec4("_Trace", SCREEN_TRACE.get(), SCREEN_STEPS.get(), 0.02f, 0.005f).set1i("_EyeX", eyeBlock[0]).set1i("_EyeY", eyeBlock[1])
             .set1i("_EyeZ", eyeBlock[2]).vec4("_EyeFrac", eyeFrac[0], eyeFrac[1], eyeFrac[2], 0f)
             .set1i("_Entities", this.entities).set1i("_Casters", this.casterCount)
@@ -484,47 +485,47 @@ public final class CgWorldLights {
             .sampler("_GBuffer", 6, this.gbuffer)
             .sampler("_SunMap", 7, this.sunMapped ? this.sunMap : CgFallbackTextures.WHITE_1x1)
             .sampler("_EntityTiles", 8, this.entities > 0 ? this.entityTiles : CgFallbackTextures.BLACK_1x1));
-    private final Consumer<CgShaderBindings> windowValues = b -> CgWorldVoxelWindow.get().bind(b, 0);
+    private final Consumer<CgMaterialValues> windowValues = b -> CgWorldVoxelWindow.get().bind(b, 0);
     private int entities;
     /** The downsample factor the sample and shade passes read this frame: {@link #DOWNSAMPLE}'s mode. */
     private int downX = 2, downY = 2;
     /** The samples a downsampled pixel takes, as their block of the samples texture: {@link #SAMPLES}' layout. */
     private int sampleX = 2, sampleY = 2;
-    private final Consumer<CgShaderBindings> shadeValues = b -> this.gridValues.accept(b.vec4("_Screen", targetW, targetH, this.downX, this.downY)
+    private final Consumer<CgMaterialValues> shadeValues = b -> this.gridValues.accept(b.vec4("_Screen", targetW, targetH, this.downX, this.downY)
             .sampler("_Samples", 0, samples).set1f("_MaxWeight", 20f)
             .vec4("_SampleGrid", this.sampleX, this.sampleY, this.sampleX * this.sampleY, 0f)
             .sampler("_GBuffer", 1, this.gbuffer).set1i("_Scale", lightScale));
-    private final Consumer<CgShaderBindings> temporalValues = b -> this.gridValues.accept(b.vec4("_Eye", eye.x, eye.y, eye.z, 0f)
+    private final Consumer<CgMaterialValues> temporalValues = b -> this.gridValues.accept(b.vec4("_Eye", eye.x, eye.y, eye.z, 0f)
             .sampler("_Now", 0, shaded).sampler("_Last", 1, freshHistory ? shaded : history.previous())
             .sampler("_LastMoments", 2, freshHistory ? shaded : history.previous().attachment(1))
             .sampler("_NowVis", 3, shaded.attachment(1))
             .sampler("_LastVis", 4, freshHistory ? shaded.attachment(1) : history.previous().attachment(2))
             .set1f("_Fresh", freshHistory ? 1f : 0f)
             .vec4("_Frames", Math.min(4f, MAX_FRAMES.get()), MAX_FRAMES.get(), 1f, 0.03f).set1i("_Scale", lightScale));
-    private final Consumer<CgShaderBindings> denoiseValues = b -> this.gridValues.accept(b.sampler("_Lighting", 0, accumulated)
+    private final Consumer<CgMaterialValues> denoiseValues = b -> this.gridValues.accept(b.sampler("_Lighting", 0, accumulated)
             .sampler("_Moments", 1, accumulated.attachment(1)).sampler("_Vis", 2, accumulated.attachment(2))
             .sampler("_GBuffer", 3, this.gbuffer)
             .vec4("_Spatial", SPATIAL_RADIUS.get() / lightScale, 4f, 10000f, 2f)
             .vec4("_Spread", 2f, 0.15f, MAX_FRAMES.get(), 0f).set1i("_Scale", lightScale));
-    private final Consumer<CgShaderBindings> applyValues = b -> this.gridValues.accept(b.set1f("_Shadows", shadowsOn ? 1f : 0f)
+    private final Consumer<CgMaterialValues> applyValues = b -> this.gridValues.accept(b.set1f("_Shadows", shadowsOn ? 1f : 0f)
             .sampler("_Shadowed", 0, shadowsOn ? filtered : CgFallbackTextures.BLACK_1x1)
             .sampler("_Visibility", 1, shadowsOn ? filtered.attachment(1) : CgFallbackTextures.WHITE_1x1)
             .vec4("_Sun", shadowsOn && sunOn ? 1f : 0f, CgWorldAtmosphere.SUN_SHARE.get(), 0f, 0f)
             .set1i("_EyeX", eyeBlock[0]).set1i("_EyeY", eyeBlock[1]).set1i("_EyeZ", eyeBlock[2])
             .vec4("_EyeFrac", eyeFrac[0], eyeFrac[1], eyeFrac[2], 0f).set1i("_Scale", lightScale)
             .sampler("_GBuffer", 5, this.gbuffer));
-    private final Consumer<CgShaderBindings> applyWindow = b -> CgWorldVoxelWindow.get().bind(b, 2);
+    private final Consumer<CgMaterialValues> applyWindow = b -> CgWorldVoxelWindow.get().bind(b, 2);
     /** Whether {@link #handSun} binds this firing's map. */
     private boolean handSunLive;
     private int handSunUnit;
-    private final Consumer<CgShaderBindings> handSunValues = b -> b
+    private final Consumer<CgMaterialValues> handSunValues = b -> b
             .sampler("_cg_SunMap", this.handSunUnit, this.handSunLive ? this.sunMap : CgFallbackTextures.WHITE_1x1)
             .array("_cg_SunRows", this.sunRowData).vec4("_cg_Sun", this.handSunLive ? 1f : 0f, 0f, 0f, 0f)
             .vec4("_cg_SunEye", eye.x, eye.y, eye.z, 0f);
     /** Whether {@link #hand} binds a grid holding lights. */
     private boolean handLive;
     /** Where the grid lay when it was last binned, for {@code handed_lights.glsl}. */
-    private final Consumer<CgShaderBindings> handValues = b -> b.vec4("_cg_LightGrid", gridX, gridY, SLICES, handLive ? 1f : 0f)
+    private final Consumer<CgMaterialValues> handValues = b -> b.vec4("_cg_LightGrid", gridX, gridY, SLICES, handLive ? 1f : 0f)
             .vec4("_cg_LightTile", tileU, tileV, 0f, 0f).vec4("_cg_LightZ", zParams[0], zParams[1], zParams[2], 0f)
             .vec4("_cg_LightRays", rays[0], rays[1], rays[2], rays[3])
             .vec4("_cg_LightView0", toView.m00(), toView.m10(), toView.m20(), toView.m30())
@@ -532,7 +533,7 @@ public final class CgWorldLights {
             .vec4("_cg_LightView2", toView.m02(), toView.m12(), toView.m22(), toView.m32())
             .vec4("_cg_LightEye", eye.x, eye.y, eye.z, 0f);
     /** The grid's values onto the apply material, read from the fields this firing set. */
-    private final Consumer<CgShaderBindings> gridValues = b -> b.vec4("_Grid", gridX, gridY, SLICES, 0f)
+    private final Consumer<CgMaterialValues> gridValues = b -> b.vec4("_Grid", gridX, gridY, SLICES, 0f)
             .vec4("_Tile", tileU, tileV, 0f, 0f).vec4("_ZParams", zParams[0], zParams[1], zParams[2], 0f)
             .vec4("_Rays", rays[0], rays[1], rays[2], rays[3])
             .vec4("_ToView0", toView.m00(), toView.m10(), toView.m20(), toView.m30())
@@ -724,11 +725,17 @@ public final class CgWorldLights {
 
     /** Adds {@code appender}, from any thread; a frame recording now may miss it. */
     public void add(Appender appender) {
-        appenders.add(appender);
+        synchronized (appenders) {
+            appenders.add(appender);
+            appending = appenders.toArray(new Appender[0]);
+        }
     }
 
     public void remove(Appender appender) {
-        appenders.remove(appender);
+        synchronized (appenders) {
+            appenders.remove(appender);
+            appending = appenders.toArray(new Appender[0]);
+        }
     }
 
     /** {@code dispatch} appending into this firing's list: {@link #BUFFER}, its count, and {@code _LightEye}. */
@@ -989,9 +996,10 @@ public final class CgWorldLights {
             recording.update(count, 0, start, 0, 4);
             recording.update(alloc, 0, zeros, 0, 4);
             boolean appended = false;
-            for (Appender a : appenders) a.upload(recording, this);
+            Appender[] all = appending;
+            for (Appender a : all) a.upload(recording, this);
             CgComputePass pass = recording.compute("world.lights", stage).timed(GPU_ZONE);
-            for (Appender a : appenders) {
+            for (Appender a : all) {
                 if (!a.append(pass, this)) continue;
                 appended = true;
                 if (!a.pointsOnly()) shapedExact = shapedAny = true;
@@ -1001,10 +1009,10 @@ public final class CgWorldLights {
                     frame.host().textures().lightmapTexture());
             else pass.end();
             // Every firing: a surge (a flash, a burst) drops lights the frame it comes, and the budget grows for the next.
-            if (binned) recording.readback(alloc, 4, 4, readAlloc);
+            if (binned) recording.fetch(alloc, 4, 4, readAlloc);
             if (appended && firings++ % COUNT_EVERY == 0) {
                 readCpuDropped = cpuDropped;
-                recording.readback(count, 0, 4, readCount);
+                recording.fetch(count, 0, 4, readCount);
             } else if (!appended) {
                 dropped = cpuDropped;
             }
@@ -1375,8 +1383,6 @@ public final class CgWorldLights {
             if (!sunShadow.precache()) return false;
             CgPipeline pipeline = sunShadow.pipeline(CgInstanceKind.OBJECT);
             if (pipeline == null) return false;
-            // Its casters join into multi-draws: that form is a program of its own.
-            if (CgCapabilities.detect().multiDraw() && !pipeline.multiDraw().precache()) return false;
             int res = SUN_RESOLUTION.get();
             casterTexture();
             if (sunMap == null || sunMap.getWidth() != 2 * res) {

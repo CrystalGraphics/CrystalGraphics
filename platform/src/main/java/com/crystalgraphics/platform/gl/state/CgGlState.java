@@ -59,6 +59,14 @@ public final class CgGlState {
         manager.invalidateAtBoundary();
     }
 
+    /**
+     * Marks every domain untrustworthy, even where the host keeps the shadow: for GL written behind {@link CgGL} by
+     * another front in the same context, which no host's shadow saw (the GL device's section).
+     */
+    public static void invalidateAll() {
+        manager.invalidateAll();
+    }
+
     /** Discards the shadow. Call on GL context destruction — a shadow describes exactly one context. */
     public static void reset() {
         manager = new CgGlStateManager(CgGlStateProvider.glGet());
@@ -67,6 +75,11 @@ public final class CgGlState {
     /** The bound draw framebuffer without a {@code glGet} once the shadow knows it. @see CgGlStateManager#drawFramebuffer */
     public static int drawFramebuffer() {
         return manager.drawFramebuffer();
+    }
+
+    /** The bound read framebuffer, as {@link #drawFramebuffer} reads. */
+    public static int readFramebuffer() {
+        return manager.readFramebuffer();
     }
 
     /** The viewport into {@code into} at 0..3, as {@link #drawFramebuffer} reads. */
@@ -94,8 +107,7 @@ public final class CgGlState {
     }
 
     /**
-     * Runs foreign drawing inside a {@link #hostForeign(CgGlSlot...)} scope — the form that survives a
-     * {@code CgGlRecording}, which records {@code body} and runs it on replay in order.
+     * Runs foreign drawing inside a {@link #hostForeign(CgGlSlot...)} scope.
      *
      * <pre>{@code
      * CgGlState.hostForeign(() -> itemRenderer.render(stack), CgGlSlot.BLEND, CgGlSlot.DEPTH, CgGlSlot.PROGRAM);

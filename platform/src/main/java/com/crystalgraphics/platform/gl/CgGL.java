@@ -765,6 +765,7 @@ public final class CgGL {
 
     public static void glDeleteRenderbuffers(int rbo) {
         gl().glDeleteRenderbuffers(rbo);
+        if (CgGLImports.installed()) CgGLImports.get().renderbufferDeleted(rbo);
     }
 
     public static void glBindRenderbuffer(int target, int renderbuffer) {
@@ -1130,6 +1131,7 @@ public final class CgGL {
     public static void glDeleteBuffers(int buffer) {
         gl().glDeleteBuffers(buffer);
         state().bufferDeleted(buffer);
+        if (CgGLImports.installed()) CgGLImports.get().bufferDeleted(buffer);
     }
 
     public static void glBindBufferBase(int target, int index, int buffer) {
@@ -1202,6 +1204,7 @@ public final class CgGL {
         gl().glDeleteTextures(texture);
         // The shadow must forget it or the next bind of a recycled id is elided. @see CgGlStateManager
         state().textureDeleted(texture);
+        if (CgGLImports.installed()) CgGLImports.get().textureDeleted(texture);
     }
 
     public static void glTexImage2D(int target, int level, int internalFormat,
@@ -1402,9 +1405,10 @@ public final class CgGL {
         gl().glDrawElementsInstanced(mode, count, type, indices, instanceCount);
     }
 
-    public static void glDrawElementsInstancedBaseVertex(int mode, int count, int type, long indices,
-                                                         int instanceCount, int baseVertex) {
-        gl().glDrawElementsInstancedBaseVertex(mode, count, type, indices, instanceCount, baseVertex);
+    public static void glDrawElementsInstancedBaseVertexBaseInstance(int mode, int count, int type, long indices,
+                                                                     int instanceCount, int baseVertex, int baseInstance) {
+        gl().glDrawElementsInstancedBaseVertexBaseInstance(mode, count, type, indices, instanceCount, baseVertex,
+                baseInstance);
     }
 
     /**
@@ -1574,6 +1578,88 @@ public final class CgGL {
     }
 
     /**
+     * {@link #cgImageBarrier} for mips {@code level} to {@code level + levels} of layers {@code layer} to
+     * {@code layer + layers}; -1 for either count is the rest. A device moves only that range's layout.
+     *
+     * <pre>{@code
+     * CgGL.cgTextureBarrier(bloom, 3, 1, 0, -1, CgAccess.SAMPLED_READ, CgAccess.COLOR_WRITE);   // mip 3 drawn into next
+     * }</pre>
+     */
+    public static void cgTextureBarrier(int texture, int level, int levels, int layer, int layers, int from, int to) {
+        gl().cgTextureBarrier(texture, level, levels, layer, layers, from, to);
+    }
+
+    /**
+     * {@link #cgImageBarrier} for every attachment of {@code framebuffer} as attached, 0 the window's: a colour
+     * attachment takes {@code from} and {@code to}, a depth-stencil attachment the same with
+     * {@link CgAccess#COLOR_WRITE} read as {@link CgAccess#DEPTH_WRITE}. What a raster pass's target moves with.
+     */
+    public static void cgFramebufferBarrier(int framebuffer, int from, int to) {
+        gl().cgFramebufferBarrier(framebuffer, from, to);
+    }
+
+    /**
+     * Ends {@link #cgBeginBarriers} as the first half of a split transition: the writes before it may finish from
+     * here, and {@link #cgEndSplit} with the id answered is where what reads them may start. GL issues it here, whole.
+     *
+     * <pre>{@code
+     * CgGL.cgBeginBarriers();
+     * CgGL.cgBufferBarrier(particles, CgAccess.COMPUTE_WRITE, CgAccess.VERTEX_READ);
+     * int split = CgGL.cgEndBarriersSplit();   // after the kernel
+     * ... work touching none of it ...
+     * CgGL.cgEndSplit(split);                  // before the draw
+     * }</pre>
+     */
+    public static int cgEndBarriersSplit() {
+        return backend.cgEndBarriersSplit();
+    }
+
+    /** The second half of {@link #cgEndBarriersSplit}'s transition; 0 does nothing. */
+    public static void cgEndSplit(int split) {
+        backend.cgEndSplit(split);
+    }
+
+    /**
+     * Whether the frame graph states every transition of what is recorded from here, the device inferring none of
+     * them: on for a graph's steps, off for every other stream. Answers what it was, for nesting.
+     */
+    public static boolean cgGraphStates(boolean on) {
+        return backend.cgGraphStates(on);
+    }
+
+    /**
+     * Whether the render passes begun from here test depth without writing it, so a shader may sample the depth
+     * attachment in the same pass (Unreal's {@code DepthRead}; Vulkan's read-only depth layout). A device's; GL's is
+     * nothing, and a GL caller copies the depth it samples.
+     *
+     * <pre>{@code
+     * CgGL.cgReadOnlyDepth(true);    // before the pass's first draw
+     * ... draws sampling the target's depth ...
+     * CgGL.cgReadOnlyDepth(false);
+     * }</pre>
+     */
+    public static void cgReadOnlyDepth(boolean readOnly) {
+        backend.cgReadOnlyDepth(readOnly);
+    }
+
+    /**
+     * A texture name a shader samples {@code framebuffer}'s depth attachment through, 0 the window's: on a device, the
+     * host's depth image imported under a name of its own, where it can be sampled. 0 where it cannot, and on GL, where
+     * a caller copies it instead.
+     */
+    public static int cgDepthTexture(int framebuffer) {
+        return backend.cgDepthTexture(framebuffer);
+    }
+
+    /**
+     * Whether the backend takes every transition, layouts and attachments included: a device. GL takes only what a
+     * kernel's writes need, and orders the rest itself.
+     */
+    public static boolean cgTakesTransitions() {
+        return backend.cgTakesTransitions();
+    }
+
+    /**
      * What follows, kernels, barriers and transfers but no draw, runs on a compute queue beside the frame's where the
      * device has one ({@code CgCapabilities.asyncCompute()}), starting after everything before it, until
      * {@link #cgEndAsync}. Elsewhere, GL included, it runs in order with the same result. The frame graph's executor
@@ -1709,7 +1795,7 @@ public final class CgGL {
     }
 
     public static void glDepthFunc(int func) {
-        int issued = depthReversed && !replaying && !state().restoring() ? mirroredDepthFunc(func) : func;
+        int issued = depthReversed && !state().restoring() ? mirroredDepthFunc(func) : func;
         if (state().depthFuncChanged(issued)) gl().glDepthFunc(issued);
     }
 
@@ -1718,16 +1804,13 @@ public final class CgGL {
     }
 
     public static void glClearDepth(double depth) {
-        gl().glClearDepth(depthReversed && !replaying ? 1.0 - depth : depth);
+        gl().glClearDepth(depthReversed ? 1.0 - depth : depth);
     }
 
     // --- Reversed depth --------------------------------------------------------
 
     private static boolean depthReversed;
     private static boolean depthZeroToOne;
-
-    /** Set while a {@link CgGlRecording} replays: what it recorded was already mirrored. */
-    static boolean replaying;
 
     /**
      * Draws what follows against a REVERSED depth buffer -- nearer is greater, cleared to 0 -- with every
@@ -1823,7 +1906,7 @@ public final class CgGL {
     public static void glPolygonOffset(float factor, float units) {
         // Mirrored like glDepthFunc: an offset that pushes away from the camera is a positive one only
         // while nearer is smaller.
-        boolean mirror = depthReversed && !replaying && !state().restoring();
+        boolean mirror = depthReversed && !state().restoring();
         float f = mirror ? -factor : factor, u = mirror ? -units : units;
         if (state().polygonOffsetChanged(f, u)) gl().glPolygonOffset(f, u);
     }
@@ -2186,8 +2269,6 @@ public final class CgGL {
      *       entries bracket themselves, and a host's bracket may wrap one.</li>
      *   <li>A host repairing its own state, such as Blaze3D's {@code GlStateManager} cache, does it after
      *       {@link #toHost()}. That work is the host's, not ours.</li>
-     *   <li>Never inside a {@link CgGlRecording}: its backend refuses both. Record, and replay, inside a
-     *       bracket.</li>
      *   <li>Inside a section only our code touches GL, so the state shadow is trusted across scopes there;
      *       the outermost {@code fromHost} forgets it, since the host had the context. Host code run inside
      *       one goes through {@link CgGlState#hostForeign}, which forgets it again.</li>
@@ -2231,12 +2312,7 @@ public final class CgGL {
         return backend.ownedByCurrentThread();
     }
 
-    /** Whether a {@link CgGlRecording} is capturing on this backend: calls are taped for replay, not drawn. */
-    public static boolean isRecording() {
-        return backend instanceof CgGlRecordingBackend;
-    }
-
-    /** The installed backend; {@link CgGlRecording} swaps it for the length of a recording. */
+    /** The installed backend. */
     static CgGLBackend backend() {
         return backend;
     }

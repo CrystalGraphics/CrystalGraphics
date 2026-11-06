@@ -34,6 +34,76 @@ public interface CgGlslCompiler {
     /** A compute stage, every binding assigned as {@link #compile} assigns them. @throws CgShaderModule.CompileException */
     ComputeProgram compileCompute(String glsl, String label);
 
+    /**
+     * Both stages as Vulkan SPIR-V with their sets and bindings as the source writes them, under Vulkan's own rules
+     * with nothing bound for them, and the pipeline layout they declare: what a device builds a pipeline from.
+     *
+     * <pre>{@code
+     * CgGlslCompiler.Explicit p = CgGlslCompiler.get().compileExplicit(vertexGlsl, fragmentGlsl, Map.of("cg_Position", 0),
+ *         "stone");
+     * CgShaderModule vs = rhi.createShaderModule(CgShaderModule.Stage.VERTEX, p.vertex(), "stone");
+     * }</pre>
+     *
+     * @param attribLocations each named vertex input's location, as {@link #compile} binds them; the rest placed around
+     * @throws CgShaderModule.CompileException with the compiler's log, a source leaving a resource unbound included
+     */
+    default Explicit compileExplicit(String vertexGlsl, String fragmentGlsl, Map<String, Integer> attribLocations,
+                                     String label) {
+        throw new UnsupportedOperationException(getClass().getSimpleName() + " compiles no explicit programs");
+    }
+
+    /**
+     * A program as written: each stage's SPIR-V, each set's slots by binding in set order (empty for a set it skips),
+     * whether it reads the bindless heap at set 3 (then that set's slot list is empty), its push-constant bytes, and the
+     * colour outputs its fragment stage writes. Two vertex stages: {@code vertex} as written, for a projection already in
+     * a device's zero-to-one depth; {@code vertexGlDepth} with its clip depth mapped from GL's {@code [-w, w]} to
+     * {@code [0, w]}, for the engine's usual projections.
+     */
+    record Explicit(ByteBuffer vertex, ByteBuffer vertexGlDepth, ByteBuffer fragment, List<List<CgBindingLayout.Slot>> sets,
+                    boolean heap, int pushConstantBytes, int colorOutputs) {}
+
+    /**
+     * A compute stage as Vulkan SPIR-V with its sets and bindings as the source writes them, as
+     * {@link #compileExplicit} compiles a program: what a device builds a compute pipeline from.
+     *
+     * <pre>{@code
+     * CgGlslCompiler.ExplicitCompute k = CgGlslCompiler.get().compileExplicitCompute(kernelGlsl, "simulate");
+     * CgShaderModule cs = rhi.createShaderModule(CgShaderModule.Stage.COMPUTE, k.spirv(), "simulate");
+     * }</pre>
+     *
+     * <p>{@code CG_EXPLICIT} is defined for the source: a kernel's own resources then bind in its sets and its
+     * per-dispatch values are push constants ({@code CgKernelEmitter}).</p>
+     *
+     * @throws CgShaderModule.CompileException with the compiler's log, a source leaving a resource unbound included
+     */
+    default ExplicitCompute compileExplicitCompute(String glsl, String label) {
+        throw new UnsupportedOperationException(getClass().getSimpleName() + " compiles no explicit kernels");
+    }
+
+    /** A compute stage as written: its SPIR-V, its group size, its sets as {@link Explicit}'s, its push-constant bytes. */
+    record ExplicitCompute(ByteBuffer spirv, int[] localSize, List<List<CgBindingLayout.Slot>> sets, boolean heap,
+                           int pushConstantBytes) {}
+
+    /** The compiler installed now, for code making device pipelines; throws until a host installs one. */
+    static CgGlslCompiler get() {
+        CgGlslCompiler c = Slot.installed;
+        if (c == null) throw new IllegalStateException("no CgGlslCompiler installed: a host with a shader compiler installs one");
+        return c;
+    }
+
+    /** Whether a compiler is installed. */
+    static boolean installed() { return Slot.installed != null; }
+
+    /** Installs {@code compiler}; null when it closes. */
+    static void install(CgGlslCompiler compiler) { Slot.installed = compiler; }
+
+    /** Where {@link #get} reads from. */
+    final class Slot {
+        static volatile CgGlslCompiler installed;
+
+        private Slot() {}
+    }
+
     /** What GL's program queries read, from either kind of program. */
     sealed interface Reflection permits Program, ComputeProgram {
         List<Block> uniformBlocks();
@@ -48,14 +118,29 @@ public interface CgGlslCompiler {
     /** A vertex input and the location it reads. */
     record Attribute(String name, int location, int glType) {}
 
-    /** A uniform or storage block and its binding. */
-    record Block(String name, int binding) {}
+    /**
+     * A uniform or storage block and its binding. {@code declared} is its {@code layout(binding = n)}, 0 where the
+     * source gives none: the point a GL program starts it at, until {@code glUniformBlockBinding} moves it.
+     */
+    record Block(String name, int binding, int declared) {
+        public Block(String name, int binding) {
+            this(name, binding, 0);
+        }
+    }
 
-    /** A sampler or texel buffer and its binding. */
-    record Sampler(String name, int binding, int glType, boolean texel) {}
+    /** A sampler or texel buffer and its binding; {@code declared} as {@link Block}'s, its starting unit. */
+    record Sampler(String name, int binding, int glType, boolean texel, int declared) {
+        public Sampler(String name, int binding, int glType, boolean texel) {
+            this(name, binding, glType, texel, 0);
+        }
+    }
 
-    /** A storage image and its binding. */
-    record Image(String name, int binding, int glType) {}
+    /** A storage image and its binding; {@code declared} as {@link Block}'s, its starting unit. */
+    record Image(String name, int binding, int glType, int declared) {
+        public Image(String name, int binding, int glType) {
+            this(name, binding, glType, 0);
+        }
+    }
 
     /**
      * One leaf of a loose uniform: {@code -1} for a stage that does not declare it. Element {@code e}, column

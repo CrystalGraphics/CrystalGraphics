@@ -375,7 +375,7 @@ public final class CgVfxGridAtlas {
             List<CgVfxParticlePool> pools = CgVfxParticlePool.pools();
             for (int i = 0; i < pools.size(); i++) {
                 CgVfxParticlePool p = pools.get(i);
-                if (!p.rasterizes() || p.curves() == null) continue;
+                if (!p.rasterizes() || !p.stepped() || p.curves() == null) continue;
                 rasterizing.add(p);
                 rasterRows.add(p.rasterRows(recording));
             }

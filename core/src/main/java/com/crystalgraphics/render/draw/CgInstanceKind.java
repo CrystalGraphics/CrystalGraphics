@@ -5,7 +5,7 @@ import com.crystalgraphics.api.buffer.CgBufferFormat;
 /**
  * What a draw's instances are: the record each one writes and the geometry every instance expands. A batch never
  * mixes kinds, and the executor uploads one kind's instances for a frame in a single write, drawing each batch's
- * range of it through {@code cg_InstanceBase}.
+ * range of it from the draw's first instance.
  *
  * <pre>{@code
  * CgPipeline p = material.pipeline(CgInstanceKind.QUAD);   // a UI box, a glyph, a blit
@@ -14,7 +14,8 @@ import com.crystalgraphics.api.buffer.CgBufferFormat;
  * }</pre>
  *
  * <p>A shader reads the record through its engine buffer: {@code #pragma cg_use quad} for {@link #QUAD},
- * {@code cg_use curve} for {@link #CURVE}; {@link #OBJECT} through {@code cg_env.glsl}'s {@code CG_OBJECT_DATA}.
+ * {@code cg_use curve} for {@link #CURVE}; {@link #OBJECT} through {@code cg_env.glsl}'s {@code CG_OBJECT_DATA}, which
+ * reads its id and then the table's record.
  * The formats live here, not in the renderers, so a frame builder off the render thread can read them without
  * touching a class that allocates GL buffers.</p>
  */
@@ -26,18 +27,30 @@ public enum CgInstanceKind {
     /** The curve record over the curve strip: strokes, triangles, cells. */
     CURVE(curveFormat()),
 
-    /** The object record ({@code cg_env.glsl}'s {@code CgObjectData}) over the mesh a draw names: world geometry. */
-    OBJECT(objectFormat());
+    /**
+     * A slot of the firing's {@link CgPrimitiveTable} over the mesh a draw names: world geometry. The record
+     * ({@code cg_env.glsl}'s {@code CgObjectData}) is the table's; an instance carries its id.
+     */
+    OBJECT(objectIdFormat(), 1);
 
-    /** The GLSL buffer {@link #OBJECT}'s records are read from, declared by {@code cg_env.glsl}. */
+    /** The GLSL buffer the object records are read from, declared by {@code cg_env.glsl}: the table, or a draw's own. */
     public static final String OBJECT_BLOCK_NAME = "CgObjectDataBuffer";
+    /** The GLSL buffer {@link #OBJECT}'s ids are read from, declared by {@code cg_env.glsl}. */
+    public static final String OBJECT_ID_BLOCK_NAME = "CgObjectIdBuffer";
 
     private static final CgInstanceKind[] BY_ORDINAL = values();
 
     private final CgBufferFormat format;
+    /** Floats a record takes in the array: the format's, which rounds to 16 bytes, but for a scalar array's 4. */
+    private final int floats;
 
     CgInstanceKind(CgBufferFormat format) {
+        this(format, format.getFloatCount());
+    }
+
+    CgInstanceKind(CgBufferFormat format, int floats) {
         this.format = format;
+        this.floats = floats;
     }
 
     /** The kind with this ordinal, without the copy {@code values()} makes. */
@@ -52,12 +65,12 @@ public enum CgInstanceKind {
 
     /** Floats per instance record. */
     public int floats() {
-        return format.getFloatCount();
+        return floats;
     }
 
     /** Bytes per instance record. */
     public int stride() {
-        return format.getFloatCount() * Float.BYTES;
+        return floats * Float.BYTES;
     }
 
     private static CgBufferFormat quadFormat() {
@@ -92,17 +105,9 @@ public enum CgInstanceKind {
                 .build();
     }
 
-    /** {@code cg_env.glsl}'s {@code CgObjectData}: model, normal matrix (its 3x3 read as a mat3), custom0..3. */
-    private static CgBufferFormat objectFormat() {
-        return CgBufferFormat
-                .builder("cg_object", CgBufferFormat.MemoryLayout.STD430)
-                .mat4("modelMatrix")
-                .mat4("normalMatrix")
-                .vec4("custom0")
-                .vec4("custom1")
-                .vec4("custom2")
-                .vec4("custom3")
-                .build();
+    /** {@code cg_env.glsl}'s {@code cg_ObjectIds} entry: a slot of the table, its bits carried in a float record. */
+    private static CgBufferFormat objectIdFormat() {
+        return CgBufferFormat.builder("cg_object_id", CgBufferFormat.MemoryLayout.STD430).uint("id").build();
     }
 
     private static CgBufferFormat curveFormat() {

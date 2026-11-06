@@ -162,7 +162,7 @@ Use this section for:
 - Forward declarations
 
 **Forbidden**:
-- `#version` directives (the compiler emits `#version 430 core` or `#version 330 core`)
+- `#version` directives (the compiler emits its one target, `#version 450 core`)
 - Any declaration of `main()` (the compiler emits the `main()` wrapper)
 
 ---
@@ -217,8 +217,8 @@ All built-in names are provided by `cg_env.glsl`, included automatically by the 
 | `CG_INSTANCE_ID`      | `int`    | vertex+frag    | Instance index (0 for non-instanced draws)       |
 | `CG_OBJECT_DATA`      | struct   | vertex+frag    | Raw per-object record (avoid direct use)         |
 | `CG_MATRIX_MVP`       | `mat4`   | vertex+frag    | `cg_ProjMatrix * cg_ViewMatrix * CG_OBJECT_TO_WORLD` |
-| `cg_ViewMatrix`       | `mat4`   | vertex+frag    | View matrix from `CgFrameBlock` UBO              |
-| `cg_ProjMatrix`       | `mat4`   | vertex+frag    | Projection matrix from `CgFrameBlock` UBO        |
+| `cg_ViewMatrix`       | `mat4`   | vertex+frag    | View matrix from `CgViewBlock` UBO                 |
+| `cg_ProjMatrix`       | `mat4`   | vertex+frag    | Projection matrix from `CgViewBlock` UBO           |
 | `cg_Position`         | `vec3`   | **vertex only**| Vertex position attribute                        |
 | `cg_TexCoord0`        | `vec2`   | **vertex only**| Vertex UV attribute                              |
 | `cg_Normal`           | `vec3`   | **vertex only**| Vertex normal attribute                          |
@@ -233,7 +233,7 @@ or overridden by authored shaders:
 | Binding Type | Point | Purpose                    |
 |--------------|-------|----------------------------|
 | SSBO         | 0     | `CgShaderBuffer` (per-object data) |
-| UBO          | 1     | `CgFrameBlock` (frame matrices)    |
+| UBO          | 1     | `CgViewBlock` (the view)           |
 
 User-declared custom buffers are **forbidden in MVP**.
 

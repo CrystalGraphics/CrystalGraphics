@@ -68,9 +68,11 @@ Pass {
 
 It provides two distinct layers: per-frame global data and per-instance object data.
 
-#### Frame Data — `CgFrameBlock`
+#### Frame Data — `CgViewBlock` and `CgEnvironmentBlock`
 
-A `layout(std140) uniform CgFrameBlock` wired post-link by the engine. Available in every stage, every pass:
+Two `layout(std140)` blocks wired post-link by the engine, available in every stage, every pass: `CgViewBlock`, the
+pass's view, and `CgEnvironmentBlock` (`cg_SunDirection`, `cg_FogColor`, `cg_FogParams`), the world's, which every
+pass of a frame shares (`CgPassConstants`):
 
 | GLSL name | Type | Content |
 |---|---|---|
@@ -82,9 +84,9 @@ A `layout(std140) uniform CgFrameBlock` wired post-link by the engine. Available
 | `cg_WorldOrigin` | `vec4` | Where world space's origin is in absolute coordinates: the camera, in a camera-relative world pass. Read through `CG_ABSOLUTE_WORLD_POS(p)` |
 | `cg_SunDirection` | `vec4` | `xyz` the direction toward the sun (the moon while it is down), `w` daylight 0..1. Read through `CG_SUN_DIRECTION`, `CG_DAYLIGHT` |
 | `cg_FogColor` | `vec4` | The world's fog colour, `a` 1 when there is fog |
-| `cg_FogParams` | `vec4` | `x` fog start, `y` fog end, in blocks from the eye. Read through `cg_FogAmount`. `z` the sun's direct share of a full day's sky light (`crystalgraphics.world.sunShare`, 0.6), read through `CG_SUN_SHARE` |
+| `cg_FogParams` | `vec4` | `x` fog start, `y` fog end, in blocks from the eye. Read through `cg_FogAmount`. `z` the sun's direct share of a full day's sky light (`crystalgraphics.world.sunShare`, 0.6), read through `CG_SUN_SHARE`. `w` 1 where entities take the Nether's two lights (`CG_ENTITY_LIGHT1`) |
 | `cg_PrevViewProj` | `mat4` | This pass's camera-relative points to last frame's clip space, for a temporal effect. Read through `cg_PreviousClip(p)` |
-| `cg_FrameParams` | `vec4` | `x` the host frame's index (0 to 65535), `y` 1 while last frame was one of this view. Read through `CG_FRAME_INDEX`, `CG_HISTORY_VALID` |
+| `cg_FrameParams` | `vec4` | `x` the host frame's index (0 to 65535), `y` 1 while last frame was one of this view, `w` 1 when the target is the host's own (`CG_ENCODED_TARGET`). Read through `CG_FRAME_INDEX`, `CG_HISTORY_VALID` |
 
 **Scene samplers** — auto-bound by the engine before every material draw; do not declare or bind these yourself:
 
@@ -248,15 +250,14 @@ Shaders read it through macros:
 | `CG_OBJECT_TO_WORLD` | `CG_OBJECT_DATA.modelMatrix` | Model → world transform |
 | `CG_NORMAL_MATRIX` | `mat3(CG_OBJECT_DATA.normalMatrix)` | Upper-left 3×3 — use for transforming normals |
 | `CG_OBJECT_CUSTOM0`–`CG_OBJECT_CUSTOM3` | `CG_OBJECT_DATA.custom0` … `.custom3` | Per-instance `vec4` slots — a world draw's `custom(slot, …)` |
-| `CG_INSTANCE_ID` | `gl_InstanceID + cg_InstanceBase` (vertex) / `cg_InstanceId` (fragment) | Instance index; bridged as `flat in int cg_InstanceId` varying so it's accessible in fragment. `cg_InstanceBase` is where a batch's instances start in its kind's upload — 0 unless a frame-graph executor sets it (`CgPipeline.instanceBase`). Below 0 it names the one record every instance reads (`CgPipeline.sharedInstance`): an indirect `INSTANCES` draw's |
+| `CG_INSTANCE_ID` | `CG_DRAW_INSTANCE + gl_BaseInstance` (vertex) / `cg_InstanceId` (fragment) | Instance index; bridged as `flat in int cg_InstanceId` varying so it's accessible in fragment. The draw's first instance is where its batch's instances start in its kind's upload; with `CG_SHARED_RECORD` (bit 30) set, the rest of it names the one record every instance reads: an indirect `INSTANCES` draw's |
 | `CG_DRAW_INSTANCE` | `gl_InstanceID` (vertex only) | The instance's index in its own draw: in an indirect `INSTANCES` draw, the element it draws |
-| `CG_VERTEX_ID` | `gl_VertexID - cg_VertexBase` (vertex only) | The vertex's index in its own mesh, wherever the mesh sits in the buffer it is drawn from. `cg_VertexBase` is the mesh's base vertex — 0 unless the draw sets it (`CgPipeline.vertexBase`) |
+| `CG_VERTEX_ID` | `gl_VertexID - gl_BaseVertex` (vertex only) | The vertex's index in its own mesh, wherever the mesh sits in the buffer it is drawn from: every draw is by indices, a mesh without them by 0, 1, 2 ... |
 | `CG_VERTEX_CORNER` | `vec2` from `CG_VERTEX_ID` (vertex only) | The corner of a `CgMesh.quads(n)` vertex: (0,0), (1,0), (1,1), (0,1) around each quad. What `CG_QUAD_*` and `CG_CURVE_*` place an instance's corners by |
 
-A run of draws the executor joins into one multi-draw (`render/graph/CLAUDE.md` § *Multi-draw*) binds every pass's
-`CG_MULTI_DRAW` variant, in which `CG_INSTANCE_ID`, `CG_DRAW_INSTANCE` and `CG_VERTEX_ID` take each draw's bases from
-its command instead of the two uniforms. They answer the same values, so a shader reading them never knows; one
-reading `cg_InstanceBase` or `cg_VertexBase` directly does not compile in that variant.
+Every draw carries its bases in the call (GL 4.6's draw parameters, `GL_ARB_shader_draw_parameters` below, which the
+compiler enables), so a run the executor joins into one multi-draw (`render/graph/CLAUDE.md` § *Multi-draw*) runs the
+program a draw alone runs.
 
 #### Vertex Attribute Aliases
 
@@ -279,11 +280,13 @@ was not given repeats the set before: Unreal's null colour stream and its repeat
 **On a skinned mesh** every `#type spatial` material draws its `CG_SKINNED` variant, the skinned vertex factory: the
 compiler declares `cg_BoneIndices` and `cg_BoneWeights` and the draw's palette (`env/buffer/bones.glsl`), and
 `cg_Position` and `cg_Normal` read as the vertex skinned by its bones, so a material needs no code for it. The mesh
-picks the variant (`CgPipeline.skinned()`), in every pass; a shader of another `#type` drawn on one fails to compile.
+picks the variant (`CgPipelineForm.SKINNED`), in every pass; a shader of another `#type` drawn on one fails to compile.
 
-#### Why the Engine's Blocks Must NOT Be Attached
+#### The engine's blocks are declared already
 
-`cg_env.glsl` already declares `CgObjectDataBuffer` and `CgFrameBlock`. The engine wires them automatically post-link. **Never `material.attach()` a buffer named for either** — it produces duplicate GLSL declarations and a compile failure. Only user-owned buffers belong in `attach()`.
+`cg_env.glsl` declares `CgObjectDataBuffer`, `CgViewBlock` and `CgEnvironmentBlock`, and the engine wires them: a
+material never declares them again. A material reads anything else through `Buffers { }` or an engine token
+(`#pragma cg_use`); nothing is injected into a shader at runtime.
 
 #### Stage defines — `CG_VERTEX_STAGE` / `CG_FRAGMENT_STAGE` / `CG_COMPUTE_STAGE`
 
@@ -396,7 +399,7 @@ pipelines.add("mymod:shaders/rune.shader", "GLOW");              // each combina
 
 ### Engine Buffers — `#pragma cg_use`
 
-`CgFrameBlock` and `CgObjectDataBuffer` are declared unconditionally in `cg_env.glsl` because
+`CgViewBlock`, `CgEnvironmentBlock` and `CgObjectDataBuffer` are declared unconditionally in `cg_env.glsl` because
 essentially every shader wants them. Buffers that only a minority of shaders need are **opt-in**:
 
 ```glsl
@@ -770,7 +773,7 @@ void fragment(in v2f i, out vec4 fragColor) {
   applies the opacity mask to a Masked material alone, so a port calls `cg_Clip(mask)` unguarded and its masked
   master declares `"Depth" = "Clip"` (or its material asset's blend is `masked`).
 - **Prepass** is for a transparent queue only, and fails to parse on another. The world renderer draws a depth pass
-  of every such draw (`CgPipeline.depthPrepass()`: the Forward pass compiled with `CG_DEPTH_PREPASS`, no colour, no
+  of every such draw (`CgPipeline.as(CgPipelineForm.DEPTH)`: the Forward pass compiled with `CG_DEPTH_PREPASS`, no colour, no
   blend) before the transparent pass, where `cg_Clip` discards below the threshold and returns above it: compute
   only what decides it before the call. The Forward pass then blends with depth write off, and `cg_Clip` does nothing
   there. Every vertex stage of the material is `invariant gl_Position`, so the two passes agree on depth exactly.

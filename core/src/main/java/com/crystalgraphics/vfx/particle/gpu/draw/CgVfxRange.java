@@ -579,7 +579,7 @@ public final class CgVfxRange {
 
     /** Whether {@code p}'s particles are keyed this frame: it has records, and a slot to draw them. */
     private static boolean keyed(CgVfxParticlePool p) {
-        return !p.isReleased() && p.records() != null && p.openSlots() > 0;
+        return !p.isReleased() && p.stepped() && p.openSlots() > 0;
     }
 
     private static void recordAll(CgStageFrame frame) {

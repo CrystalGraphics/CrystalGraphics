@@ -21,11 +21,11 @@ import java.util.function.IntConsumer;
  *
  * <pre>{@code
  * int args = commands.reserve(indirects, freed);  // the buffer, big enough for the pass's commands
- * commands.write(slot, count, countOffset, mode, factor, range, records, most, 0);
+ * commands.write(slot, count, countOffset, mode, factor, range, records, most, first);
  * commands.flush();                                // write queues: the pass's commands in one dispatch
- * store.drawIndirect(mesh, pipeline, submesh, commands.buffer(), commands.offset(slot));
+ * store.drawIndirect(mesh, submesh, commands.buffer(), commands.offset(slot));
  *
- * // Consecutive slots, written from CgMeshStore.joinedRange with each batch's first instance, draw as one call
+ * // Consecutive slots of meshes that join draw as one call
  * store.drawIndirectJoined(mesh, commands.buffer(), commands.offset(slot), n, commands.stride());
  * }</pre>
  */
@@ -78,7 +78,7 @@ final class CgIndirectArgs {
         if (bytes > capacity) {
             if (buffer != 0) {
                 freed.accept(buffer);
-                CgGL.glDeleteBuffers(buffer);
+                CgBufferPool.free(buffer);
             }
             capacity = Math.max(bytes, Math.max(capacity * 2, 16 * stride));
             buffer = CgBufferPool.create(capacity);
@@ -89,8 +89,8 @@ final class CgIndirectArgs {
     /**
      * Writes command {@code slot}: the {@code uint} at byte {@code countOffset} in GL buffer {@code count}, times
      * {@code factor}, read as {@code mode}, over {@code range} as {@code CgMeshStore.range} answered it. An
-     * {@code INSTANCES} command draws at most {@code most} instances, -1 for any number. {@code firstInstance} is 0
-     * but for a command a multi-draw draws, whose pipeline reads it in place of {@code cg_InstanceBase}.
+     * {@code INSTANCES} command draws at most {@code most} instances, -1 for any number. {@code firstInstance} is where
+     * the batch's records start, {@code CgMeshStore.SHARED_RECORD} set where every instance reads that one.
      */
     void write(int slot, int count, long countOffset, CgIndirect mode, int factor, int[] range, int records, int most,
                int firstInstance) {
@@ -147,7 +147,7 @@ final class CgIndirectArgs {
         params.delete();   // its executor goes with it (CgExecutor.destroyAll)
         if (buffer == 0) return;
         freed.accept(buffer);
-        CgGL.glDeleteBuffers(buffer);
+        CgBufferPool.free(buffer);
         buffer = 0;
         capacity = 0;
         stride = 0;

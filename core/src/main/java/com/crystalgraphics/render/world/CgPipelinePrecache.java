@@ -73,7 +73,7 @@ import com.github.bsideup.jabel.Desugar;
  *       here. A set nothing covers compiles at its first draw, counted as {@code pipeline.missed} and logged under
  *       {@code crystalgraphics.pipeline.logMisses}.</li>
  *   <li>Name what draws, not every file: a shader's base variant is rarely the one a draw binds (keywords, skinned,
- *       half size, multi-draw), and every variant of a directory is thousands of programs.</li>
+ *       half size), and every variant of a directory is thousands of programs.</li>
  *   <li>A step that throws is logged under its request's name and skipped; the request goes on with the rest.</li>
  *   <li>An effect's look requests its own through {@code CgVfxOwner.precache}; a skinned mesh's materials are requested
  *       by its {@code CgAnimInstance} as they are set. Textures and meshes are {@code CgPreload}'s, not this.</li>

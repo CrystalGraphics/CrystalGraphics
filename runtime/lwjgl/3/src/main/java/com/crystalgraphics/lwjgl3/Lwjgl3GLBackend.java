@@ -568,9 +568,10 @@ public class Lwjgl3GLBackend extends CgGLBackend {
     }
 
     @Override
-    public void glDrawElementsInstancedBaseVertex(int mode, int count, int type, long indices, int instanceCount,
-                                                  int baseVertex) {
-        GL32C.glDrawElementsInstancedBaseVertex(mode, count, type, indices, instanceCount, baseVertex);
+    public void glDrawElementsInstancedBaseVertexBaseInstance(int mode, int count, int type, long indices,
+                                                              int instanceCount, int baseVertex, int baseInstance) {
+        GL42C.glDrawElementsInstancedBaseVertexBaseInstance(mode, count, type, indices, instanceCount, baseVertex,
+                baseInstance);
     }
 
     // -------------------------------------------------------------------------

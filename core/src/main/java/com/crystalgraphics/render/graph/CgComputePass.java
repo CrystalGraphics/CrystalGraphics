@@ -199,8 +199,7 @@ public final class CgComputePass extends CgPass {
     /** Ends the pass: every dispatch's bindings complete, its values and samplers captured. */
     public void end() {
         requireOpen();
-        constantsBinding = recording.bindings().begin()
-                .block(CgBindingPoints.FRAME_DATA_UBO, constants, 0, CgPassConstants.FLOATS).end();
+        constantsBinding = CgPassConstants.blocks(recording.bindings().begin(), constants, 0).end();
         for (int d = 0; d < dispatches.size(); d++) {
             CgDispatch dispatch = dispatches.get(d);
             dispatch.requireBound();

@@ -1,5 +1,6 @@
 package com.crystalgraphics.gl.texture;
 
+import com.crystalgraphics.render.draw.CgBoundResources;
 import com.crystalgraphics.api.texture.CgSampler;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.platform.gl.CgGL;
@@ -45,6 +46,7 @@ public final class CgSamplers {
 
     /** Binds {@code sampler}'s object to {@code unit} for {@code texture}, or none for {@code null}. */
     public static void bind(int unit, @Nullable CgSampler sampler, CgTexture texture) {
+        CgBoundResources.sampler(unit, sampler);
         int name = sampler == null ? 0 : name(sampler, texture.getLevels() > 1);
         if (unit < UNITS) {
             if (BOUND[unit] == name) return;

@@ -7,15 +7,16 @@ import org.joml.Matrix4fc;
 import org.joml.Vector3f;
 
 /**
- * What every draw of one pass reads in {@code CgFrameBlock}: camera, projection, time, resolution, depth
- * convention, world origin, sun and fog. One per pass, where the frame block used to be one global that every caller saved and restored around
- * itself; a UI layer, a preview and the world each carry their own. The GLSL names are unchanged.
+ * What every draw of one pass reads, as two blocks (Unreal's view uniform buffer, and the world's state beside it):
+ * {@code CgViewBlock}, the camera, projection, time, resolution, depth convention, origin, history and the target's
+ * encoding, made a firing; and {@code CgEnvironmentBlock}, the sun, daylight and fog, which every pass of a frame
+ * shares, so the binding table uploads it once. A UI layer, a preview and the world each carry their own.
  *
  * <pre>{@code
  * CgPassConstants c = new CgPassConstants();
  * c.projection.setOrtho(0, w, h, 0, -1, 1);
  * c.resolution(w, h).time(frameSeconds);
- * int block = c.capture(table);          // bound once, at the start of the pass
+ * int blocks = c.capture(table);         // both blocks, bound once at the start of the pass
  * }</pre>
  *
  * <ul>
@@ -31,15 +32,15 @@ import org.joml.Vector3f;
  */
 public final class CgPassConstants {
 
-    /** The GLSL block, declared by {@code cg_env.glsl}. */
-    public static final String BLOCK_NAME = "CgFrameBlock";
+    /** The GLSL blocks, declared by {@code cg_env.glsl}. */
+    public static final String VIEW_BLOCK = "CgViewBlock", ENVIRONMENT_BLOCK = "CgEnvironmentBlock";
 
     /**
-     * {@code CgFrameBlock} in std140: view, projection, time, resolution (+2 pad), camera, depth parameters, origin, sun,
-     * fog, the previous frame's view-projection and the frame's index and history validity.
+     * {@code CgViewBlock} in std140: view, projection, time, resolution (+2 pad), camera, depth parameters, origin, the
+     * previous frame's view-projection, and the frame's index, history validity and target encoding.
      */
-    public static final CgBufferFormat FORMAT = CgBufferFormat
-            .builder(BLOCK_NAME, CgBufferFormat.MemoryLayout.STD140)
+    public static final CgBufferFormat VIEW_FORMAT = CgBufferFormat
+            .builder(VIEW_BLOCK, CgBufferFormat.MemoryLayout.STD140)
             .mat4("cg_ViewMatrix")
             .mat4("cg_ProjMatrix")
             .vec4("cg_Time")
@@ -47,14 +48,20 @@ public final class CgPassConstants {
             .vec4("cg_CameraPos")
             .vec4("cg_DepthParams")
             .vec4("cg_WorldOrigin")
-            .vec4("cg_SunDirection")
-            .vec4("cg_FogColor")
-            .vec4("cg_FogParams")
             .mat4("cg_PrevViewProj")
             .vec4("cg_FrameParams")
             .build();
 
-    public static final int FLOATS = 84;
+    /** {@code CgEnvironmentBlock} in std140: the sun with the daylight, the fog colour, the fog's reach and the sun's share. */
+    public static final CgBufferFormat ENVIRONMENT_FORMAT = CgBufferFormat
+            .builder(ENVIRONMENT_BLOCK, CgBufferFormat.MemoryLayout.STD140)
+            .vec4("cg_SunDirection")
+            .vec4("cg_FogColor")
+            .vec4("cg_FogParams")
+            .build();
+
+    /** Floats a packed pass holds: the view block's, then from {@link #VIEW_FLOATS} the environment block's. */
+    public static final int VIEW_FLOATS = 72, ENVIRONMENT_FLOATS = 12, FLOATS = VIEW_FLOATS + ENVIRONMENT_FLOATS;
 
     /** {@link #sun}'s direction until set: high, toward +x and +z. */
     public static final float SUN_X = 0.3f, SUN_Y = 0.906f, SUN_Z = 0.3f;
@@ -74,8 +81,8 @@ public final class CgPassConstants {
     private float cameraZ;
     private boolean depthReversed;
     private boolean depthZeroToOne;
-    /** Where {@link #encodedTarget} sits in the block: {@code cg_FogParams.w}. */
-    public static final int ENCODED_TARGET = 63;
+    /** Where {@link #encodedTarget} sits in a packed pass: {@code cg_FrameParams.w}. */
+    public static final int ENCODED_TARGET = 71;
 
     private boolean linearScene, encodedTarget;
     private float sceneGlow = 1f;
@@ -253,22 +260,23 @@ public final class CgPassConstants {
         originX = block[at + 48];
         originY = block[at + 49];
         originZ = block[at + 50];
-        sunX = block[at + 52];
-        sunY = block[at + 53];
-        sunZ = block[at + 54];
-        daylight = block[at + 55];
-        fogRed = block[at + 56];
-        fogGreen = block[at + 57];
-        fogBlue = block[at + 58];
-        fog = block[at + 59] != 0f;
-        fogStart = block[at + 60];
-        fogEnd = block[at + 61];
-        sunShare = block[at + 62];
+        previous.set(block, at + 52);
+        frameIndex = (int) block[at + 68];
+        historyValid = block[at + 69] != 0f;
         encodedTarget = block[at + ENCODED_TARGET] != 0f;
-        previous.set(block, at + 64);
-        frameIndex = (int) block[at + 80];
-        historyValid = block[at + 81] != 0f;
-        netherLighting = block[at + 82] != 0f;
+        int e = at + VIEW_FLOATS;
+        sunX = block[e];
+        sunY = block[e + 1];
+        sunZ = block[e + 2];
+        daylight = block[e + 3];
+        fogRed = block[e + 4];
+        fogGreen = block[e + 5];
+        fogBlue = block[e + 6];
+        fog = block[e + 7] != 0f;
+        fogStart = block[e + 8];
+        fogEnd = block[e + 9];
+        sunShare = block[e + 10];
+        netherLighting = block[e + 11] != 0f;
         return this;
     }
 
@@ -282,7 +290,7 @@ public final class CgPassConstants {
         return block[37];
     }
 
-    /** Writes the block's {@value #FLOATS} floats into {@code out} at {@code at}. */
+    /** Writes both blocks' {@value #FLOATS} floats into {@code out} at {@code at}, the view block's first. */
     public void write(float[] out, int at) {
         view.get(out, at);
         projection.get(out, at + 16);
@@ -306,28 +314,35 @@ public final class CgPassConstants {
         out[at + 49] = originY;
         out[at + 50] = originZ;
         out[at + 51] = 0f;
-        out[at + 52] = sunX;
-        out[at + 53] = sunY;
-        out[at + 54] = sunZ;
-        out[at + 55] = daylight;
-        out[at + 56] = fogRed;
-        out[at + 57] = fogGreen;
-        out[at + 58] = fogBlue;
-        out[at + 59] = fog ? 1f : 0f;
-        out[at + 60] = fogStart;
-        out[at + 61] = fogEnd;
-        out[at + 62] = sunShare;
+        previous.get(out, at + 52);
+        out[at + 68] = frameIndex & 0xFFFF;
+        out[at + 69] = historyValid ? 1f : 0f;
+        out[at + 70] = 0f;
         out[at + ENCODED_TARGET] = encodedTarget ? 1f : 0f;
-        previous.get(out, at + 64);
-        out[at + 80] = frameIndex & 0xFFFF;
-        out[at + 81] = historyValid ? 1f : 0f;
-        out[at + 82] = netherLighting ? 1f : 0f;
-        out[at + 83] = 0f;
+        int e = at + VIEW_FLOATS;
+        out[e] = sunX;
+        out[e + 1] = sunY;
+        out[e + 2] = sunZ;
+        out[e + 3] = daylight;
+        out[e + 4] = fogRed;
+        out[e + 5] = fogGreen;
+        out[e + 6] = fogBlue;
+        out[e + 7] = fog ? 1f : 0f;
+        out[e + 8] = fogStart;
+        out[e + 9] = fogEnd;
+        out[e + 10] = sunShare;
+        out[e + 11] = netherLighting ? 1f : 0f;
     }
 
-    /** Snapshots the block into {@code table} at the frame block's binding, and answers its id. */
+    /** Adds a packed pass's two blocks to the snapshot {@code table} is building, at their bindings. */
+    public static CgBindingTable blocks(CgBindingTable table, float[] packed, int at) {
+        return table.block(CgBindingPoints.VIEW_UBO, packed, at, VIEW_FLOATS)
+                .block(CgBindingPoints.ENVIRONMENT_UBO, packed, at + VIEW_FLOATS, ENVIRONMENT_FLOATS);
+    }
+
+    /** Snapshots both blocks into {@code table}, and answers its id. */
     public int capture(CgBindingTable table) {
         write(packed, 0);
-        return table.begin().block(CgBindingPoints.FRAME_DATA_UBO, packed, 0, FLOATS).end();
+        return blocks(table.begin(), packed, 0).end();
     }
 }

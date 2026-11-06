@@ -1,6 +1,8 @@
 package com.crystalgraphics.gl.texture;
 
 
+import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
+import com.crystalgraphics.platform.gl.format.GLFormats;
 import com.crystalgraphics.gl.CgGlNames;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.texture.CgTextureSpec;
@@ -66,6 +68,12 @@ public final class CgTexture2DArray extends CgTextureAbstract {
     // ── Type-specific state ─────────────────────────────────────────
     /** Not final — {@link #growLayers(int)} reallocates storage in place and bumps this. */
     @Getter private int depth;
+
+    @Override
+    protected CgGpuTexture.Desc rhiDesc() {
+        return new CgGpuTexture.Desc(source(), CgGpuTexture.Kind.D2_ARRAY, GLFormats.of(spec.getGlInternalFormat()), width,
+                height, depth, mips(), 1, SAMPLED_ONLY);
+    }
 
     /** Source paths for reload; {@code null} for createDirect (no reload support). */
     @Getter private final String[] sourcePaths;

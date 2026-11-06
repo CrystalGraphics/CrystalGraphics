@@ -4,7 +4,7 @@ import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgMaterialDefinition;
 import com.crystalgraphics.api.material.CgMaterialDefinitions;
 import com.crystalgraphics.api.material.CgMaterialUsage;
-import com.crystalgraphics.api.shader.CgShaderBindings;
+import com.crystalgraphics.api.material.CgMaterialValues;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.gl.buffer.shader.CgPropertyRows;
 import com.crystalgraphics.gl.material.CgMaterialShader;

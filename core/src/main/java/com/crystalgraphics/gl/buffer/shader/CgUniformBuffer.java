@@ -1,10 +1,11 @@
 package com.crystalgraphics.gl.buffer.shader;
 
 
+import com.crystalgraphics.render.draw.CgBoundResources;
 import com.crystalgraphics.api.buffer.CgBufferFormat;
 import com.crystalgraphics.api.buffer.CgBufferLifetime;
 import com.crystalgraphics.api.CgBindingPoints;
-import com.crystalgraphics.api.shader.CgShader;
+import com.crystalgraphics.gl.shader.CgShader;
 import com.crystalgraphics.gl.buffer.staging.CgBufferWriter;
 import com.crystalgraphics.platform.gl.CgGL;
 
@@ -50,7 +51,7 @@ import com.crystalgraphics.platform.gl.CgGL;
  * <h3>GLSL block</h3>
  * <p>Fields must be declared in the same order as writes. Example:</p>
  * <pre>{@code
- * layout(std140, binding = 1) uniform CgFrameBlock {
+ * layout(std140, binding = 1) uniform CgViewBlock {
  *     mat4 cg_ViewMatrix;
  *     mat4 cg_ProjMatrix;
  * };
@@ -155,6 +156,17 @@ public final class CgUniformBuffer extends CgShaderBuffer {
                     dataBuffer.getWriteOffset(), bytes);
         } else {
             CgGL.glBindBufferBase(CgGL.GL_UNIFORM_BUFFER, bindingLocation, dataBuffer.getGlBuffer());
+        }
+        noteInternal();
+    }
+
+    @Override
+    protected void noteInternal() {
+        int bytes = (dataBuffer.getCommittedBytes() + 15) & ~15;
+        if (dataBuffer.offsetMovesPerUpload() && bytes > 0) {
+            CgBoundResources.block(bindingLocation, dataBuffer.getGlBuffer(), dataBuffer.getWriteOffset(), bytes);
+        } else {
+            CgBoundResources.block(bindingLocation, dataBuffer.getGlBuffer(), 0, 0);
         }
     }
 

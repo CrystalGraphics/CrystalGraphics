@@ -1,5 +1,8 @@
 package com.crystalgraphics.platform.gl.tracked;
 
+import com.crystalgraphics.platform.gl.state.CgGlState;
+import com.crystalgraphics.platform.gl.CgGLImports;
+import com.crystalgraphics.platform.rhi.CgDeviceSection;
 import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.rhi.command.CgAccess;
 import com.crystalgraphics.platform.rhi.pipeline.CgComputePipeline;
@@ -152,6 +155,30 @@ public final class CgTrackedGLBackend extends CgGLBackend {
         return this;
     }
 
+    /**
+     * Makes this the process's device front, whole (Unreal's {@code RHIInit}, one place): its device as {@link CgRHI},
+     * device sections as this backend's {@link #toHost}/{@link #fromHost}, its compiler, its names as RHI resources
+     * ({@link CgTrackedImports}) and its state as {@code CgGlState}'s. A host installs nothing of these itself.
+     *
+     * <pre>{@code
+     * CgTrackedGLBackend gl = new CgTrackedGLBackend(device, compiler, false).compileInBackground().install();
+     * CgGL.init(gl);
+     * }</pre>
+     */
+    public CgTrackedGLBackend install() {
+        CgRHI.install(device);
+        // Not a host section: ending one per section handed the host a command buffer per graph pass
+        CgDeviceSection.install(new CgDeviceSection.Host() {
+            @Override public void begin() { tracker.toDevice(); }
+
+            @Override public void end() {}
+        });
+        CgGlslCompiler.install(compiler);
+        CgGLImports.install(new CgTrackedImports(this));
+        CgGlState.setProvider(new CgTrackedStateProvider(this));
+        return this;
+    }
+
     /** Ends the frame: every pass ends and the device submits. The host presents after it. */
     public void endFrame() { tracker.endFrame(); }
 
@@ -161,7 +188,7 @@ public final class CgTrackedGLBackend extends CgGLBackend {
 
     public TrackedBuffers bufferObjects() { return buffers; }
 
-    TrackedTextures textureObjects() { return textures; }
+    public TrackedTextures textureObjects() { return textures; }
 
     TrackedPrograms programObjects() { return programs; }
 
@@ -592,6 +619,12 @@ public final class CgTrackedGLBackend extends CgGLBackend {
 
     @Override
     public void glBindBufferRange(int target, int index, int buffer, long offset, long size) {
+        long align = target == CgGL.GL_UNIFORM_BUFFER ? device.globals().limits().uniformOffsetAlignment()
+                : device.globals().limits().storageOffsetAlignment();
+        if (offset < 0 || size <= 0 || offset % align != 0) {
+            errors.invalidValue("glBindBufferRange at " + offset + ", " + size + " bytes (offsets align to " + align + ")");
+            return;
+        }
         buffers.bindIndexed(target, index, buffer, offset, size);
     }
 
@@ -767,24 +800,24 @@ public final class CgTrackedGLBackend extends CgGLBackend {
 
     // ── draws ──────────────────────────────────────────────────────────────────
 
-    @Override public void glDrawArrays(int mode, int first, int count) { draw(mode, first, count, 1, -1, 0, 0); }
+    @Override public void glDrawArrays(int mode, int first, int count) { draw(mode, first, count, 1, -1, 0, 0, 0); }
 
-    @Override public void glDrawElements(int mode, int count, int type, long indices) { draw(mode, 0, count, 1, type, indices, 0); }
+    @Override public void glDrawElements(int mode, int count, int type, long indices) { draw(mode, 0, count, 1, type, indices, 0, 0); }
 
     @Override
     public void glDrawArraysInstanced(int mode, int first, int count, int instanceCount) {
-        draw(mode, first, count, instanceCount, -1, 0, 0);
+        draw(mode, first, count, instanceCount, -1, 0, 0, 0);
     }
 
     @Override
     public void glDrawElementsInstanced(int mode, int count, int type, long indices, int instanceCount) {
-        draw(mode, 0, count, instanceCount, type, indices, 0);
+        draw(mode, 0, count, instanceCount, type, indices, 0, 0);
     }
 
     @Override
-    public void glDrawElementsInstancedBaseVertex(int mode, int count, int type, long indices, int instanceCount,
-                                                  int baseVertex) {
-        draw(mode, 0, count, instanceCount, type, indices, baseVertex);
+    public void glDrawElementsInstancedBaseVertexBaseInstance(int mode, int count, int type, long indices,
+                                                              int instanceCount, int baseVertex, int baseInstance) {
+        draw(mode, 0, count, instanceCount, type, indices, baseVertex, baseInstance);
     }
 
     /**
@@ -811,17 +844,18 @@ public final class CgTrackedGLBackend extends CgGLBackend {
     }
 
     /** @param type the index type, or -1 for a draw of arrays */
-    private void draw(int mode, int first, int count, int instances, int type, long indices, int baseVertex) {
+    private void draw(int mode, int first, int count, int instances, int type, long indices, int baseVertex,
+                      int baseInstance) {
         CgDrawState s = tracker.state;
         if (!prepareDraw(s)) return;
         CgGraphicsPipelineDesc.Topology topology = GlEnums.topology(mode);
         if (type < 0) {
-            tracker.draw(topology, count, instances, first, 0);
+            tracker.draw(topology, count, instances, first, baseInstance);
             return;
         }
         if (!indices(s, type)) return;
         tracker.drawIndexed(topology, count, instances, (int) (indices / (type == CgGL.GL_UNSIGNED_INT ? 4 : 2)),
-                baseVertex, 0);
+                baseVertex, baseInstance);
     }
 
     @Override public void glDrawArraysIndirect(int mode, long offset) { drawIndirect(mode, -1, offset, 1, 0, -1); }
@@ -993,8 +1027,42 @@ public final class CgTrackedGLBackend extends CgGLBackend {
             errors.invalidValue("cgImageBarrier on texture " + texture + ", which has no image");
             return;
         }
-        tracker.imageBarrier(t.image, from, to);
+        tracker.textureBarrier(t.image, from, to);
     }
+
+    @Override
+    public void cgTextureBarrier(int texture, int level, int levels, int layer, int layers, int from, int to) {
+        TrackedTextures.GlTexture t = textures.get(texture);
+        if (t == null || t.image == null) {
+            errors.invalidValue("cgTextureBarrier on texture " + texture + ", which has no image");
+            return;
+        }
+        int mips = t.image.desc().mips(), all = CgTracker.layers(t.image);
+        tracker.textureBarrier(t.image, level, levels < 0 ? mips - level : levels, layer, layers < 0 ? all - layer : layers,
+                from, to);
+    }
+
+    @Override
+    public void cgFramebufferBarrier(int framebuffer, int from, int to) {
+        framebuffers.barrier(framebuffer, from, to);
+    }
+
+    /** One transition of every barrier in the bracket, recorded at its end. */
+    @Override public void cgBeginBarriers() { tracker.beginBatch(); }
+
+    @Override public void cgEndBarriers() { tracker.endBatch(false); }
+
+    @Override public int cgEndBarriersSplit() { return tracker.endBatch(true); }
+
+    @Override public void cgEndSplit(int split) { tracker.endSplit(split); }
+
+    @Override public boolean cgGraphStates(boolean on) { return tracker.graphStates(on); }
+
+    @Override public boolean cgTakesTransitions() { return true; }
+
+    @Override public void cgReadOnlyDepth(boolean readOnly) { tracker.readOnlyDepth(readOnly); }
+
+    @Override public int cgDepthTexture(int framebuffer) { return framebuffers.depthTexture(framebuffer); }
 
     // ── sync, timers, host sections ────────────────────────────────────────────
 

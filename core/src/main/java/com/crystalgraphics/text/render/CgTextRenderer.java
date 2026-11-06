@@ -3,7 +3,7 @@ package com.crystalgraphics.text.render;
 import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.PoseStack;
-import com.crystalgraphics.api.shader.CgShaderBindings;
+import com.crystalgraphics.api.material.CgMaterialValues;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.buffer.CgBufferFormat;
 import com.crystalgraphics.api.buffer.CgBufferLifetime;
@@ -223,14 +223,16 @@ public class CgTextRenderer {
             .build();
 
     /**
-     * Declares {@code TextData} on the shared shader. Nothing writes or uploads it: each renderer's {@link #textBlock}
-     * overrides it on that renderer's material, and every chunk keeps those bytes by value.
+     * {@code TextData}, which {@code text.shader} declares through {@code #pragma cg_use text}. Nothing writes or
+     * uploads it: each renderer's {@link #textBlock} overrides it on that renderer's material, and every chunk keeps
+     * those bytes by value.
      */
     private static final CgUniformBuffer TEXT_DATA_UBO = CgShaderBufferRegistry.get().getOrCreateUboInternal(
             TEXT_DATA_FORMAT, "TextData", CgBindingPoints.TEXT_DATA_UBO, CgBufferLifetime.FRAME);
 
-    static {
-        TEXT_MATERIAL.attach(TEXT_DATA_UBO);
+    /** The {@code text} engine token's block ({@code CgEngineBufferRegistry}). */
+    public static CgUniformBuffer textData() {
+        return TEXT_DATA_UBO;
     }
 
     /**
@@ -244,7 +246,7 @@ public class CgTextRenderer {
      */
     @Nullable
     private CgTexture atlas;
-    private final Consumer<CgShaderBindings> bindAtlas = b -> b.sampler("_MainTex", 0, atlas);
+    private final Consumer<CgMaterialValues> bindAtlas = b -> b.sampler("_MainTex", 0, atlas);
     /** This renderer's {@code TextData}: the projection and the gamma correction its chunks keep. */
     private final CgBufferWriter textBlock =
             new CgBufferWriter(new CgStagingBuffer(TEXT_DATA_FORMAT.getFloatCount()), TEXT_DATA_FORMAT);

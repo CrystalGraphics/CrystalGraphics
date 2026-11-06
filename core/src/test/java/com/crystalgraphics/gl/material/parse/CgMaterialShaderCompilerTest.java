@@ -18,8 +18,6 @@ import static org.junit.Assert.*;
 
 public class CgMaterialShaderCompilerTest {
 
-    private static final CgCapabilities.ShaderBufferPath SSBO =
-            CgCapabilities.ShaderBufferPath.SSBO_GL43;
 
     private static final List<CgAttachedBuffer> NO_BUFFERS = Collections.emptyList();
 
@@ -360,11 +358,13 @@ public class CgMaterialShaderCompilerTest {
     }
 
     @Test
-    public void bothStagesDefineUseSsbo() {
+    public void bothStagesCompileToTheOneTarget() {
         CgMaterialShaderCompiler.CompiledSource cs =
                 CgMaterialShaderCompiler.compile(parse(MINIMAL), NO_BUFFERS);
-        assertTrue(cs.vertexSource().contains("#define CG_USE_SSBO 1"));
-        assertTrue(cs.fragmentSource().contains("#define CG_USE_SSBO 1"));
+        assertTrue(cs.vertexSource().startsWith(CgMaterialShaderCompiler.VERSION));
+        assertTrue(cs.fragmentSource().startsWith(CgMaterialShaderCompiler.VERSION));
+        assertTrue(cs.vertexSource().contains("#extension GL_ARB_shader_draw_parameters : require"));
+        assertFalse(cs.vertexSource().contains("CG_USE_SSBO"));
     }
 
     // ── env include ───────────────────────────────────────────────────────────
@@ -454,7 +454,8 @@ public class CgMaterialShaderCompilerTest {
                 "    void fragment(in v2f i, out vec4 fragColor) { fragColor = vec4(1.0); }\n" +
                 "}\n";
         CgMaterialShaderCompiler.CompiledSource cs =
-                CgMaterialShaderCompiler.compile(parse(src), SSBO, NO_BUFFERS, null);
+                CgMaterialShaderCompiler.compile(parse(src), NO_BUFFERS, null,
+                        CgMaterialShaderCompiler.CompileConfig.DEFAULT);
         assertFalse("Non-sampler prop must not be emitted as a standalone uniform when matPropsUbo=null",
                 cs.fragmentSource().contains("uniform float _Alpha"));
     }

@@ -3,12 +3,18 @@ package com.crystalgraphics.render.draw;
 import com.crystalgraphics.api.texture.CgSampler;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.gl.texture.CgSamplers;
+import com.crystalgraphics.gl.CgGlNames;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.gl.buffer.CgStreamBuffer;
 import com.crystalgraphics.gl.buffer.shader.CgShaderBuffer;
 import com.crystalgraphics.platform.gl.CgGL;
+import com.crystalgraphics.render.mesh.CgOffsetAllocator;
+import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.util.trace.CgChannels;
 
 import java.nio.FloatBuffer;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Arrays;
 import java.util.Objects;
 
@@ -16,7 +22,8 @@ import java.util.Objects;
  * A recording's binding snapshots: what a draw reads besides its instances, interned by content so two draws that
  * read the same things share an id, and a batch can hold both. Uniform blocks are copied when recorded; textures
  * and buffers are held as handles and resolved when bound. At execution every block is uploaded in one ring write
- * and bound by range. A {@link CgBufferHandle} — a frame graph's buffer — binds as a storage block at the point given,
+ * and bound by range, a block equal to the last one uploaded at its binding sharing its place: the environment block
+ * every pass of a frame carries is written once. A {@link CgBufferHandle} — a frame graph's buffer — binds as a storage block at the point given,
  * or below the SSBO path as a buffer texture at the unit given, and the graph orders the draw after whatever wrote it.
  *
  * <pre>{@code
@@ -61,13 +68,21 @@ public final class CgBindingTable {
     private static final int STORAGE_AT = BLOCKS_AT + MAX_BLOCKS * BLOCK_INTS;
     private static final int ENTRY_INTS = STORAGE_AT + MAX_STORAGE;
 
-    /** Per entry: the textures, the buffers, the storage handles, then each texture's sampler. */
+    /** Per entry: the textures, the buffers, the storage handles, each texture's sampler, then each block's version. */
     private static final int STORAGE_REFS = MAX_TEXTURES + MAX_BUFFERS;
     private static final int SAMPLER_REFS = STORAGE_REFS + MAX_STORAGE;
-    private static final int ENTRY_REFS = SAMPLER_REFS + MAX_TEXTURES;
+    private static final int BLOCK_REFS = SAMPLER_REFS + MAX_TEXTURES;
+    private static final int ENTRY_REFS = BLOCK_REFS + MAX_BLOCKS;
 
     /** {@code GL_UNIFORM_BUFFER_OFFSET_ALIGNMENT} is at most 256 on every GL and Vulkan device we run on. */
     private static final int BLOCK_ALIGNMENT = 256;
+    private static final int BLOCKS_SHARED = CgTrace.name("bindings.blocks-shared");
+
+    /** Per binding point, during an {@link #upload}: the last block written there, and where it landed. */
+    private int[] lastBlock = new int[16], lastOffset = new int[16];
+    /** During an {@link #upload}: the versions it writes, and where each is staged in the ring. */
+    private CgBlockVersion[] writing = new CgBlockVersion[16];
+    private int[] writingAt = new int[16];
 
     private int[] entries = new int[ENTRY_INTS * 64];
     private Object[] refs = new Object[ENTRY_REFS * 64];
@@ -139,7 +154,25 @@ public final class CgBindingTable {
         entries[b] = binding;
         entries[b + 1] = floatCursor;
         entries[b + 2] = floatCount;
+        refs[building * ENTRY_REFS + BLOCK_REFS + n] = null;
         floatCursor += floatCount;
+        entries[e + 1] = n + 1;
+        return this;
+    }
+
+    /**
+     * A uniform block bound at {@code binding} from {@code version}'s persistent memory: written once, the first time a
+     * snapshot holding it executes, and bound by every draw after. Snapshots interning by the version's identity.
+     */
+    public CgBindingTable block(int binding, CgBlockVersion version) {
+        int e = building * ENTRY_INTS;
+        int n = entries[e + 1];
+        if (n == MAX_BLOCKS) throw new IllegalStateException("more than " + MAX_BLOCKS + " blocks in one snapshot");
+        int b = e + BLOCKS_AT + n * BLOCK_INTS;
+        entries[b] = binding;
+        entries[b + 1] = -1;
+        entries[b + 2] = version.floats.length;
+        refs[building * ENTRY_REFS + BLOCK_REFS + n] = version;
         entries[e + 1] = n + 1;
         return this;
     }
@@ -232,7 +265,9 @@ public final class CgBindingTable {
         }
         for (int b = 0; b < from.entries[e + 1]; b++) {
             int block = e + BLOCKS_AT + b * BLOCK_INTS;
-            block(from.entries[block], from.floats, from.entries[block + 1], from.entries[block + 2]);
+            CgBlockVersion version = (CgBlockVersion) from.refs[r + BLOCK_REFS + b];
+            if (version != null) block(from.entries[block], version);
+            else block(from.entries[block], from.floats, from.entries[block + 1], from.entries[block + 2]);
         }
         for (int b = 0; b < from.entries[e + 2]; b++) buffer((CgShaderBuffer) from.refs[r + MAX_TEXTURES + b]);
         for (int b = 0; b < from.entries[e + 3]; b++) {
@@ -253,7 +288,9 @@ public final class CgBindingTable {
         texture(unit, texture);
         for (int b = 0; b < entries[e + 1]; b++) {
             int block = e + BLOCKS_AT + b * BLOCK_INTS;
-            block(entries[block], floats, entries[block + 1], entries[block + 2]);
+            CgBlockVersion version = (CgBlockVersion) refs[r + BLOCK_REFS + b];
+            if (version != null) block(entries[block], version);
+            else block(entries[block], floats, entries[block + 1], entries[block + 2]);
         }
         for (int b = 0; b < entries[e + 2]; b++) buffer((CgShaderBuffer) refs[r + MAX_TEXTURES + b]);
         for (int b = 0; b < entries[e + 3]; b++) storage(entries[e + STORAGE_AT + b], (CgBufferHandle) refs[r + STORAGE_REFS + b]);
@@ -304,6 +341,8 @@ public final class CgBindingTable {
 
     /** A copy of snapshot {@code id}'s {@code k}th block, as captured. */
     public float[] blockFloats(int id, int k) {
+        CgBlockVersion version = (CgBlockVersion) refs[id * ENTRY_REFS + BLOCK_REFS + k];
+        if (version != null) return version.floats();
         int block = id * ENTRY_INTS + BLOCKS_AT + k * BLOCK_INTS;
         return Arrays.copyOfRange(floats, entries[block + 1], entries[block + 1] + entries[block + 2]);
     }
@@ -328,6 +367,31 @@ public final class CgBindingTable {
         return entries[id * ENTRY_INTS + 2];
     }
 
+    /** Snapshot {@code id}'s {@code i}th buffer. */
+    public CgShaderBuffer buffer(int id, int i) {
+        return (CgShaderBuffer) refs[id * ENTRY_REFS + MAX_TEXTURES + i];
+    }
+
+    /** Snapshot {@code id}'s {@code k}th block's persistent version; null for one copied into the ring. */
+    CgBlockVersion blockVersion(int id, int k) {
+        return (CgBlockVersion) refs[id * ENTRY_REFS + BLOCK_REFS + k];
+    }
+
+    /** How many floats snapshot {@code id}'s {@code k}th block holds. */
+    int blockFloatCount(int id, int k) {
+        return entries[id * ENTRY_INTS + BLOCKS_AT + k * BLOCK_INTS + 2];
+    }
+
+    /** Where snapshot {@code id}'s {@code k}th ring block landed in {@link #uploadedBuffer()}; after {@link #upload}. */
+    int ringOffset(int id, int k) {
+        return ringOffsets[id * MAX_BLOCKS + k];
+    }
+
+    /** The ring buffer's name its blocks landed in at the last {@link #upload}; 0 before one wrote any. */
+    int uploadedBuffer() {
+        return uploadedBuffer;
+    }
+
     /** Forgets every snapshot; ids from before are invalid. */
     public void reset() {
         if (building >= 0) throw new IllegalStateException("reset() inside a snapshot");
@@ -347,29 +411,89 @@ public final class CgBindingTable {
         if (uploaded && uploadedFrame == frame) return;
         uploaded = true;
         uploadedFrame = frame;
+        BlockStore store = BlockStore.STORE;
+        store.retire();
+        int writes = 0;
         if (ringOffsets.length < count * MAX_BLOCKS) ringOffsets = new int[Math.max(ringOffsets.length * 2, count * MAX_BLOCKS)];
-        int bytes = 0;
-        for (int id = 0; id < count; id++) {
-            int e = id * ENTRY_INTS;
-            for (int b = 0; b < entries[e + 1]; b++) bytes += align(entries[e + BLOCKS_AT + b * BLOCK_INTS + 2] * 4);
-        }
-        if (bytes == 0) return;
-        FloatBuffer view = ring.mapFloats(bytes);
-        int from = view.position();
-        int at = 0;
+        // Places first: a block equal to the last at its binding takes that one's, kept as -1 - offset until written.
+        Arrays.fill(lastBlock, -1);
+        int bytes = 0, shared = 0;
         for (int id = 0; id < count; id++) {
             int e = id * ENTRY_INTS;
             for (int b = 0; b < entries[e + 1]; b++) {
                 int block = e + BLOCKS_AT + b * BLOCK_INTS;
+                CgBlockVersion version = (CgBlockVersion) refs[id * ENTRY_REFS + BLOCK_REFS + b];
+                if (version != null) {
+                    if (store.place(version)) {
+                        if (writes == writing.length) {
+                            writing = Arrays.copyOf(writing, writes * 2);
+                            writingAt = Arrays.copyOf(writingAt, writes * 2);
+                        }
+                        writing[writes] = version;
+                        writingAt[writes++] = bytes;
+                        bytes += BlockStore.bytes(version);
+                    }
+                    continue;
+                }
+                int binding = entries[block];
+                if (binding >= lastBlock.length) {
+                    int was = lastBlock.length;
+                    lastBlock = Arrays.copyOf(lastBlock, binding * 2);
+                    lastOffset = Arrays.copyOf(lastOffset, binding * 2);
+                    Arrays.fill(lastBlock, was, lastBlock.length, -1);
+                }
+                int last = lastBlock[binding];
+                if (last >= 0 && sameFloats(last, block)) {
+                    ringOffsets[id * MAX_BLOCKS + b] = -1 - lastOffset[binding];
+                    shared++;
+                    continue;
+                }
+                lastBlock[binding] = block;
+                lastOffset[binding] = bytes;
+                ringOffsets[id * MAX_BLOCKS + b] = bytes;
+                bytes += align(entries[block + 2] * 4);
+            }
+        }
+        CgTrace.add(CgChannels.GL, BLOCKS_SHARED, shared);
+        if (bytes == 0) return;
+        FloatBuffer view = ring.mapFloats(bytes);
+        int from = view.position();
+        for (int id = 0; id < count; id++) {
+            int e = id * ENTRY_INTS;
+            for (int b = 0; b < entries[e + 1]; b++) {
+                if (refs[id * ENTRY_REFS + BLOCK_REFS + b] != null) continue;
+                int at = ringOffsets[id * MAX_BLOCKS + b];
+                if (at < 0) {
+                    ringOffsets[id * MAX_BLOCKS + b] = -1 - at;
+                    continue;
+                }
+                int block = e + BLOCKS_AT + b * BLOCK_INTS;
                 view.position(from + (at >> 2));
                 view.put(floats, entries[block + 1], entries[block + 2]);
-                ringOffsets[id * MAX_BLOCKS + b] = at;
-                at += align(entries[block + 2] * 4);
             }
+        }
+        for (int w = 0; w < writes; w++) {
+            view.position(from + (writingAt[w] >> 2));
+            view.put(writing[w].floats);
         }
         int base = ring.commit(bytes);
         uploadedBuffer = ring.getGlBufferId();
         for (int i = 0; i < count * MAX_BLOCKS; i++) ringOffsets[i] += base;
+        if (writes == 0) return;
+        // Each new version copied from the ring into its page, as CgMeshStore writes its slabs: outside any pass.
+        CgGL.cgBeginTransfer();
+        try {
+            CgGL.glBindBuffer(CgGL.GL_COPY_READ_BUFFER, uploadedBuffer);
+            for (int w = 0; w < writes; w++) {
+                CgBlockVersion v = writing[w];
+                CgGL.glBindBuffer(CgGL.GL_COPY_WRITE_BUFFER, v.buffer);
+                CgGL.glCopyBufferSubData(CgGL.GL_COPY_READ_BUFFER, CgGL.GL_COPY_WRITE_BUFFER, base + writingAt[w], v.offset,
+                        v.floats.length * 4L);
+                writing[w] = null;
+            }
+        } finally {
+            CgGL.cgEndTransfer();
+        }
     }
 
     /** Binds snapshot {@code id}'s textures, blocks and buffers. {@link #upload} first. */
@@ -387,14 +511,31 @@ public final class CgBindingTable {
         for (int b = 0; b < entries[e + 1]; b++) {
             int block = e + BLOCKS_AT + b * BLOCK_INTS;
             int size = Math.max(16, (entries[block + 2] * 4 + 15) & ~15);
-            CgGL.glBindBufferRange(CgGL.GL_UNIFORM_BUFFER, entries[block], uploadedBuffer,
-                    ringOffsets[id * MAX_BLOCKS + b], size);
+            CgBlockVersion version = (CgBlockVersion) refs[r + BLOCK_REFS + b];
+            if (version != null) {
+                version.lastUse = CgFrameRing.frame();
+                CgGL.glBindBufferRange(CgGL.GL_UNIFORM_BUFFER, entries[block], version.buffer, version.offset, size);
+            } else {
+                CgGL.glBindBufferRange(CgGL.GL_UNIFORM_BUFFER, entries[block], uploadedBuffer,
+                        ringOffsets[id * MAX_BLOCKS + b], size);
+            }
         }
         for (int b = 0; b < entries[e + 2]; b++) ((CgShaderBuffer) refs[r + MAX_TEXTURES + b]).bind();
         for (int b = 0; b < entries[e + 3]; b++) {
             CgGL.glBindBufferBase(CgGL.GL_SHADER_STORAGE_BUFFER, entries[e + STORAGE_AT + b],
                     ((CgBufferHandle) refs[r + STORAGE_REFS + b]).bufferId());
         }
+    }
+
+    /** Whether the blocks at entry offsets {@code a} and {@code b} hold the same floats. */
+    private boolean sameFloats(int a, int b) {
+        int n = entries[a + 2];
+        if (entries[b + 2] != n) return false;
+        int fa = entries[a + 1], fb = entries[b + 1];
+        for (int f = 0; f < n; f++) {
+            if (Float.floatToRawIntBits(floats[fa + f]) != Float.floatToRawIntBits(floats[fb + f])) return false;
+        }
+        return true;
     }
 
     private static int align(int bytes) {
@@ -412,6 +553,11 @@ public final class CgBindingTable {
         for (int b = 0; b < entries[e + 1]; b++) {
             int block = e + BLOCKS_AT + b * BLOCK_INTS;
             h = h * 31 + entries[block];
+            Object version = refs[r + BLOCK_REFS + b];
+            if (version != null) {
+                h = h * 31 + System.identityHashCode(version);
+                continue;
+            }
             int from = entries[block + 1];
             for (int f = 0; f < entries[block + 2]; f++) h = h * 31 + Float.floatToRawIntBits(floats[from + f]);
         }
@@ -433,6 +579,9 @@ public final class CgBindingTable {
         for (int k = 0; k < entries[ea + 1]; k++) {
             int ba = ea + BLOCKS_AT + k * BLOCK_INTS, bb = eb + BLOCKS_AT + k * BLOCK_INTS;
             if (entries[ba] != entries[bb] || entries[ba + 2] != entries[bb + 2]) return false;
+            Object va = refs[ra + BLOCK_REFS + k], vb = refs[rb + BLOCK_REFS + k];
+            if (va != vb) return false;
+            if (va != null) continue;
             int fa = entries[ba + 1], fb = entries[bb + 1];
             for (int f = 0; f < entries[ba + 2]; f++) {
                 if (Float.floatToRawIntBits(floats[fa + f]) != Float.floatToRawIntBits(floats[fb + f])) return false;
@@ -456,6 +605,88 @@ public final class CgBindingTable {
             int s = hashes[id] & mask;
             while (slots[s] != 0) s = (s + 1) & mask;
             slots[s] = id + 1;
+        }
+    }
+
+    /**
+     * Where {@link CgBlockVersion}s live once written: pages of uniform memory that outlive frames, a range a version, freed
+     * once the version is superseded and the last frame that bound it has retired. {@link CgBindingTable#upload} places and
+     * writes the versions its snapshots hold; render thread only.
+     */
+    static final class BlockStore {
+
+        static final BlockStore STORE = new BlockStore();
+
+        /** {@code GL_UNIFORM_BUFFER_OFFSET_ALIGNMENT} is at most 256 on every GL and Vulkan device we run on. */
+        static final int ALIGNMENT = 256;
+        private static final int PAGE_UNITS = (1 << 20) / ALIGNMENT;
+        private static final int WRITTEN = CgTrace.name("blocks.persistent-written"), LIVE = CgTrace.name("blocks.persistent-live");
+
+        static final class Page {
+            final int buffer;
+            final CgOffsetAllocator ranges;
+
+            Page(int units) {
+                buffer = CgGlNames.buffer();
+                CgGL.glBindBuffer(CgGL.GL_COPY_WRITE_BUFFER, buffer);
+                CgGL.glBufferData(CgGL.GL_COPY_WRITE_BUFFER, (long) units * ALIGNMENT, CgGL.GL_STATIC_DRAW);
+                ranges = new CgOffsetAllocator(units);
+            }
+        }
+
+        private final List<Page> pages = new ArrayList<>();
+        private final List<CgBlockVersion> live = new ArrayList<>();
+        private long retiredScan = -1;
+
+        /** The bytes {@code v} takes, aligned: what a write stages for it. */
+        static int bytes(CgBlockVersion v) {
+            return (v.floats.length * 4 + ALIGNMENT - 1) / ALIGNMENT * ALIGNMENT;
+        }
+
+        /** Gives {@code v} its range if it has none, answering whether it must be written now. */
+        boolean place(CgBlockVersion v) {
+            if (v.buffer != 0) return false;
+            int units = bytes(v) / ALIGNMENT;
+            for (int i = 0; i < pages.size(); i++) {
+                if (take(pages.get(i), v, units)) return true;
+            }
+            Page page = new Page(Math.max(PAGE_UNITS, CgOffsetAllocator.fittingSize(units)));
+            pages.add(page);
+            if (!take(page, v, units)) throw new IllegalStateException("a new page holds no block of " + units * ALIGNMENT + " bytes");
+            return true;
+        }
+
+        private boolean take(Page page, CgBlockVersion v, int units) {
+            int node = page.ranges.allocate(units);
+            if (node == CgOffsetAllocator.NO_SPACE) return false;
+            v.page = page;
+            v.node = node;
+            v.offset = page.ranges.offset(node) * ALIGNMENT;
+            v.buffer = page.buffer;
+            live.add(v);
+            CgTrace.add(CgChannels.GL, WRITTEN, 1);
+            return true;
+        }
+
+        /** Frees the ranges of versions superseded whose frames have retired: once a frame, at its first upload. */
+        void retire() {
+            long now = CgFrameRing.frame();
+            if (now == retiredScan) return;
+            retiredScan = now;
+            long safe = now - CgFrameRing.FRAMES;
+            for (int i = live.size() - 1; i >= 0; i--) {
+                CgBlockVersion v = live.get(i);
+                if (!v.superseded || v.lastUse > safe) continue;
+                CgFrameRing.awaitRetired(v.lastUse);
+                v.page.ranges.free(v.node);
+                // Unwritten again: a recording executed again places and writes it anew.
+                v.page = null;
+                v.node = -1;
+                v.buffer = 0;
+                live.set(i, live.get(live.size() - 1));
+                live.remove(live.size() - 1);
+            }
+            CgTrace.counter(CgChannels.GL, LIVE, live.size());
         }
     }
 }

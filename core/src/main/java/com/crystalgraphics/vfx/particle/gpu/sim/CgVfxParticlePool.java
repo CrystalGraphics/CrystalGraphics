@@ -2221,10 +2221,24 @@ public final class CgVfxParticlePool {
     }
 
     /**
+     * Whether it has a live count to read: it has stepped since its storage was made. A precached pool
+     * ({@link #allocate()}) holds its records before it counts anything, so a reader keys on this, not on
+     * {@link #records()}.
+     *
+     * <pre>{@code
+     * if (pool.stepped()) pass.dispatch(kernel, pool.storage()).bind("LIVE", pool.liveBuffer(), pool.liveOffset(), 16);
+     * }</pre>
+     */
+    public boolean stepped() {
+        return liveEntry >= 0;
+    }
+
+    /**
      * Where this pool's count is in {@link #liveBuffer()}, in bytes: a whole 256, so a binding may start there.
-     * Negative until its first step: a precached pool holds its records before it counts anything.
+     * Only once {@link #stepped()}.
      */
     public long liveOffset() {
+        if (liveEntry < 0) throw new IllegalStateException(recordsName + " has no live count before its first step");
         return (long) liveEntry * COUNT_STRIDE;
     }
 

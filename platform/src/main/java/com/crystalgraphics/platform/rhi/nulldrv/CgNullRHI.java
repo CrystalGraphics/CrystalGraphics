@@ -1,5 +1,7 @@
 package com.crystalgraphics.platform.rhi.nulldrv;
 
+import com.crystalgraphics.platform.rhi.resource.CgGpuHeap;
+import com.crystalgraphics.platform.rhi.memory.CgTransientMemory;
 import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.rhi.resource.CgRHIResource;
 import com.crystalgraphics.platform.rhi.command.CgAccess;
@@ -29,6 +31,7 @@ import java.nio.ByteOrder;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
@@ -48,9 +51,20 @@ import java.util.function.BiConsumer;
  *
  * <p>Frames retire {@code framesInFlight} frames after they end, as a GPU running that far behind would;
  * {@link #retireAll()} catches up. A released object is destroyed at its frame's retirement and refused from
- * then on. Readbacks return zeros.</p>
+ * then on. Readbacks return zeros. It places textures in heaps ({@link #transientMemory()}), refusing one outside its
+ * heap or off its alignment.</p>
  */
 public final class CgNullRHI implements CgRHI {
+
+    /** Kept, never run: a null device has no close, and creates nothing on other threads. */
+    private final List<Runnable> closing = new ArrayList<>();
+
+    @Override
+    public void onClose(Runnable task) {
+        synchronized (closing) {
+            closing.add(task);
+        }
+    }
 
     private static final int SPIRV_MAGIC = 0x07230203;
 
@@ -63,7 +77,8 @@ public final class CgNullRHI implements CgRHI {
 
     private static final CgRHI.Globals INFO = new CgRHI.Globals("recording", "CrystalGraphics", "0",
             new CgRHI.Globals.Limits(16384, 2048, 2048, 8, 8, 16, 32, 65536, 24, 16, 1 << 26,
-                    256, 256, 16, 16384, 16f, CgRHI.Globals.Compute.MINIMUM), true, true, true, true, true, true, true, true, true);
+                    256, 256, 16, 16384, 16f, CgRHI.Globals.Compute.MINIMUM), true, true, true, true, true, true, true, true, true,
+            true);
     private CgRHI.Globals info = INFO;
 
     private final List<String> log = new ArrayList<>();
@@ -81,8 +96,13 @@ public final class CgNullRHI implements CgRHI {
     private int draws;
     private boolean logging = true;
     private boolean async, transfer, overlap;
-    /** Begun transitions, each with what it held when begun: ending it changed is refused. */
-    private final Map<CgTransition, String> begun = new IdentityHashMap<>();
+    /**
+     * Begun transitions, each with a hash of what it held when begun: ending it changed is refused. Arrays, since a
+     * frame begins a few and an allocation test measures the engine, not this device.
+     */
+    private CgTransition[] begun = new CgTransition[8];
+    private long[] begunHeld = new long[8];
+    private int begunCount;
     private long asyncPoint;
     private Pass open;
     /** Unlogged, the last ended pass, begun again: an allocation test measures the engine, not this device. */
@@ -131,7 +151,7 @@ public final class CgNullRHI implements CgRHI {
                 l.maxTexelBufferElements(), l.uniformOffsetAlignment(), l.storageOffsetAlignment(), l.texelOffsetAlignment(),
                 l.maxViewportSize(), l.maxAnisotropy(), compute), INFO.timestamps(), INFO.anisotropy(), INFO.nonSolidFill(),
                 INFO.multiDrawIndirect(), INFO.indirectCount(), INFO.indirectFirstInstance(), INFO.asyncCompute(),
-                INFO.drawParameters(), INFO.independentBlend());
+                INFO.drawParameters(), INFO.independentBlend(), INFO.bindless());
         return this;
     }
 
@@ -254,6 +274,53 @@ public final class CgNullRHI implements CgRHI {
         return p;
     }
 
+    // ── the bindless heap ──────────────────────────────────────────────────────
+
+    private Layout heapLayout;
+    private BindingSet heapSet;
+    private final Map<CgTextureView, Map<CgGpuSampler, Integer>> heapViews = new HashMap<>();
+    private final List<Integer> heapFree = new ArrayList<>();
+    private int heapNext;
+
+    @Override
+    public CgBindingLayout bindlessLayout() {
+        if (heapLayout == null) {
+            heapLayout = new Layout("bindless", List.of(new CgBindingLayout.Slot(0, CgBindingLayout.Type.SAMPLED_TEXTURE)), false);
+            heapSet = new BindingSet("bindless", heapLayout);
+        }
+        return heapLayout;
+    }
+
+    @Override
+    public CgBindingSet bindlessSet() {
+        bindlessLayout();
+        return heapSet;
+    }
+
+    @Override
+    public int bindlessIndex(CgTextureView view, CgGpuSampler sampler) {
+        use(view.texture(), sampler);
+        if (!view.texture().desc().usage().contains(CgGpuTexture.Usage.SAMPLED))
+            throw new IllegalStateException(view.texture().label() + " in the bindless heap without SAMPLED usage");
+        Map<CgGpuSampler, Integer> bySampler = heapViews.computeIfAbsent(view, v -> new IdentityHashMap<>());
+        Integer at = bySampler.get(sampler);
+        if (at != null) return at;
+        int index = heapFree.isEmpty() ? heapNext++ : heapFree.remove(heapFree.size() - 1);
+        bySampler.put(sampler, index);
+        if (logging) record("bindlessIndex " + ref(view.texture()) + " " + ref(sampler) + " " + index);
+        return index;
+    }
+
+    /** A released texture's heap indices, free again once its frame has retired. */
+    private void forgetHeap(CgRHIResource o) {
+        if (!(o instanceof Texture)) return;
+        heapViews.entrySet().removeIf(e -> {
+            if (e.getKey().texture() != o) return false;
+            heapFree.addAll(e.getValue().values());
+            return true;
+        });
+    }
+
     @Override
     public CgTimerQuery createTimerQuery(String label) {
         Timer t = new Timer(label);
@@ -269,6 +336,7 @@ public final class CgNullRHI implements CgRHI {
         if (logging) record("release #" + o.id);
         whenRetired(frame, () -> {
             o.destroyed = true;
+            forgetHeap(o);
             live--;
             if (logging) record("destroy #" + o.id);
         });
@@ -294,7 +362,7 @@ public final class CgNullRHI implements CgRHI {
     public void endFrame() {
         if (open != null) throw new IllegalStateException("endFrame with pass '" + open.desc.label() + "' open");
         if (async) throw new IllegalStateException("endFrame inside async work");
-        if (!begun.isEmpty()) throw new IllegalStateException("endFrame with " + begun.size() + " transitions begun and not ended");
+        if (begunCount > 0) throw new IllegalStateException("endFrame with " + begunCount + " transitions begun and not ended");
         if (overlap) throw new IllegalStateException("endFrame inside a storage overlap");
         if (logging) record("endFrame " + frame);
         frame++;
@@ -385,7 +453,9 @@ public final class CgNullRHI implements CgRHI {
 
     /** Every slot of {@code layout} pushed with its type. */
     private static void pushedAll(String label, CgBindingLayout layout, CgBindings pushed) {
-        for (CgBindingLayout.Slot slot : layout.slots()) {
+        List<CgBindingLayout.Slot> slots = layout.slots();
+        for (int s = 0; s < slots.size(); s++) {
+            CgBindingLayout.Slot slot = slots.get(s);
             int i = pushed.indexOf(slot.binding());
             if (i < 0 || pushed.type(i) != slot.type())
                 throw new IllegalStateException(label + " reads binding " + slot.binding() + " (" + slot.type()
@@ -393,10 +463,14 @@ public final class CgNullRHI implements CgRHI {
         }
     }
 
-    /** Every set of {@code layout} there: the pushed one pushed in full, each other bound with its own layout. */
+    /**
+     * Every set of {@code layout} there: the pushed one pushed in full, each other bound with its own layout. A set with
+     * no bindings, holding a place below a higher one, need not be bound, as Vulkan asks only for the sets a shader reads.
+     */
     private void boundAll(String label, CgPipelineLayout layout, CgBindings pushed, CgBindingSet[] sets) {
         for (int i = 0; i < layout.sets().size(); i++) {
             CgBindingLayout want = layout.sets().get(i);
+            if (want.slots().isEmpty()) continue;
             if (want.pushed()) {
                 pushedAll(label, want, pushed);
                 continue;
@@ -424,25 +498,31 @@ public final class CgNullRHI implements CgRHI {
         if (logging) record("setBindingSet " + index + " " + ref(set));
     }
 
-    /** What {@code t} holds, to tell a batch ended as begun from one changed between. */
-    private static String signature(CgTransition t) {
-        StringBuilder s = new StringBuilder();
+    /** What {@code t} holds, hashed, to tell a batch ended as begun from one changed between. */
+    private static long held(CgTransition t) {
+        long h = t.count();
         for (int i = 0; i < t.count(); i++) {
-            s.append(t.buffer(i) != null ? ref(t.buffer(i)) : ref(t.texture(i).texture())).append(' ')
-                    .append(t.from(i)).append('>').append(t.to(i)).append(';');
+            Obj o = (Obj) (t.buffer(i) != null ? t.buffer(i) : t.image(i));
+            h = (h * 31 + (o == null ? 0 : o.id)) * 31 + t.from(i);
+            h = h * 31 + t.to(i);
         }
-        return s.toString();
+        return h;
+    }
+
+    private int begunAt(CgTransition t) {
+        for (int i = 0; i < begunCount; i++) if (begun[i] == t) return i;
+        return -1;
     }
 
     private void moves(String what, CgTransition t) {
         for (int i = 0; i < t.count(); i++) {
-            use(t.buffer(i) != null ? t.buffer(i) : t.texture(i).texture());
-            if (t.texture(i) != null) usable(t.texture(i).texture(), t.from(i) | t.to(i));
+            use(t.buffer(i) != null ? t.buffer(i) : t.image(i));
+            if (t.image(i) != null) usable(t.image(i), t.from(i) | t.to(i));
         }
         if (!logging) return;
         StringBuilder s = new StringBuilder(what);
         for (int i = 0; i < t.count(); i++) {
-            s.append(' ').append(t.buffer(i) != null ? ref(t.buffer(i)) : ref(t.texture(i).texture())).append(':')
+            s.append(' ').append(t.buffer(i) != null ? ref(t.buffer(i)) : ref(t.image(i))).append(':')
                     .append(CgAccess.names(t.from(i))).append('>').append(CgAccess.names(t.to(i)));
         }
         record(s.toString());
@@ -556,24 +636,33 @@ public final class CgNullRHI implements CgRHI {
         @Override
         public void transition(CgTransition t) {
             outsidePass("transition");
-            if (begun.containsKey(t)) throw new IllegalStateException("transition of a batch begun and not ended");
+            if (begunAt(t) >= 0) throw new IllegalStateException("transition of a batch begun and not ended");
             moves("transition", t);
         }
 
         @Override
         public void beginTransitions(CgTransition t) {
             outsidePass("beginTransitions");
-            if (begun.containsKey(t)) throw new IllegalStateException("beginTransitions twice without an end");
+            if (begunAt(t) >= 0) throw new IllegalStateException("beginTransitions twice without an end");
             moves("beginTransitions", t);
-            begun.put(t, signature(t));
+            if (begunCount == begun.length) {
+                begun = Arrays.copyOf(begun, begunCount * 2);
+                begunHeld = Arrays.copyOf(begunHeld, begunCount * 2);
+            }
+            begun[begunCount] = t;
+            begunHeld[begunCount++] = held(t);
         }
 
         @Override
         public void endTransitions(CgTransition t) {
             outsidePass("endTransitions");
-            String was = begun.remove(t);
-            if (was == null) throw new IllegalStateException("endTransitions of a batch never begun");
-            if (!was.equals(signature(t))) throw new IllegalStateException("endTransitions of a batch changed since it was begun");
+            int at = begunAt(t);
+            if (at < 0) throw new IllegalStateException("endTransitions of a batch never begun");
+            long was = begunHeld[at];
+            begun[at] = begun[--begunCount];
+            begunHeld[at] = begunHeld[begunCount];
+            begun[begunCount] = null;
+            if (was != held(t)) throw new IllegalStateException("endTransitions of a batch changed since it was begun");
             moves("endTransitions", t);
         }
 
@@ -1007,6 +1096,58 @@ public final class CgNullRHI implements CgRHI {
         }
     }
 
+    /** The alignment a placed texture's offset needs here: 64 KiB, as a desktop GPU's optimal images. */
+    public static final long PLACEMENT_ALIGNMENT = 64 << 10;
+
+    private final CgTransientMemory transientMemory = new TransientMemory();
+
+    @Override
+    public CgTransientMemory transientMemory() {
+        return transientMemory;
+    }
+
+    /** One memory type; a texture needs its mips' bytes, unpadded. */
+    private final class TransientMemory implements CgTransientMemory {
+
+        @Override
+        public Requirements requirements(CgGpuTexture.Desc desc) {
+            boolean volume = desc.kind() == CgGpuTexture.Kind.D3;
+            long size = 0;
+            for (int m = 0; m < desc.mips(); m++) {
+                size += desc.format().bytes(Math.max(1, desc.width() >> m), Math.max(1, desc.height() >> m),
+                        volume ? Math.max(1, desc.depthOrLayers() >> m) : desc.depthOrLayers());
+            }
+            return new Requirements(size * desc.samples(), PLACEMENT_ALIGNMENT, 1);
+        }
+
+        @Override
+        public CgGpuHeap createHeap(String label, long size, int memoryTypes) {
+            if ((memoryTypes & 1) == 0) throw new IllegalArgumentException(label + ": no memory type of " + memoryTypes);
+            Heap h = new Heap(label, size);
+            record("createHeap #" + h.id + " " + label + " " + size);
+            return h;
+        }
+
+        @Override
+        public CgGpuTexture place(CgGpuHeap heap, long offset, CgGpuTexture.Desc desc) {
+            use(heap);
+            Requirements need = requirements(desc);
+            if (offset < 0 || offset % need.alignment() != 0 || offset + need.size() > heap.size()) {
+                throw new IllegalArgumentException(desc.label() + " (" + need.size() + " bytes, aligned to "
+                        + need.alignment() + ") at " + offset + " in " + heap.label() + " of " + heap.size());
+            }
+            Texture t = new Texture(desc);
+            record("place #" + t.id + " " + desc.label() + " in #" + ((Obj) heap).id + " at " + offset);
+            return t;
+        }
+
+        @Override
+        public void discard(CgGpuTexture texture) {
+            use(texture);
+            record("discard #" + ((Obj) texture).id);
+        }
+    }
+
     // ── objects ────────────────────────────────────────────────────────────────
 
     private abstract class Obj implements CgRHIResource {
@@ -1055,6 +1196,19 @@ public final class CgNullRHI implements CgRHI {
         }
 
         @Override public CgGpuTexture.Desc desc() { return desc; }
+    }
+
+    private final class Heap extends Obj implements CgGpuHeap {
+        final long size;
+
+        Heap(String label, long size) {
+            super(label);
+            this.size = size;
+        }
+
+        @Override public long size() { return size; }
+
+        @Override public int memoryType() { return 0; }
     }
 
     private final class Sampler extends Obj implements CgGpuSampler {

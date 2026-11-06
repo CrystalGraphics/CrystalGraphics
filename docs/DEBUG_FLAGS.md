@@ -121,6 +121,7 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 |---|---|---|---|
 | `crystalgraphics.graph.asyncAll` | true, false | `false` | Every compute pass that can go async does, as if marked async(): a check of the waits, which the compute scenes must pass under synchronization validation. Read at launch. |
 | `crystalgraphics.graph.barriers` | true, false | `true` | Barriers where a kernel takes part; false keeps the bookkeeping and issues none: what synchronization validation must catch on --mode=compute-graph. |
+| `crystalgraphics.graph.splits` | true, false | `true` | Split a transition whose next access is a read two or more steps on, from its producer's end to its consumer; false records every transition whole before its consumer. |
 
 ## `crystalgraphics.host`
 
@@ -218,17 +219,18 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 |---|---|---|---|
 | `crystalgraphics.pipeline.logMisses` | true, false | `false` | Log each pipeline a draw found unbuilt (pipeline.missed, pipeline.too-late), with its shader, pass and keywords. |
 
+## `crystalgraphics.pipelines`
+
+| Variable | Takes | Default | |
+|---|---|---|---|
+| `crystalgraphics.pipelines.log` | true, false | `false` | Log each pipeline the device built at a draw (pipelines.built), with its program. |
+| `crystalgraphics.pipelines.recorded` | true, false | `true` | Build a program's recorded pipelines as it links (CgPipelineRecipes); false builds each at its first draw. |
+
 ## `crystalgraphics.post`
 
 | Variable | Takes | Default | |
 |---|---|---|---|
 | `crystalgraphics.post.debug` | text | empty | level<N>: a stage of bloom's layers, 0 the glow the composite reads. overdraw: transparent fragments per pixel as a heat ramp (blue 1, green 4, red 16, white 32). distortion: the distortion target, \|offset\| x 50 in red and green, the split in blue. |
-
-## `crystalgraphics.recording`
-
-| Variable | Takes | Default | |
-|---|---|---|---|
-| `crystalgraphics.recording.debugScopes` | true, false | `false` | A scope a GL recording leaves open at end() names where it was opened. |
 
 ## `crystalgraphics.rehearsal`
 
@@ -311,13 +313,6 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 | `crystalgraphics.trace.splitFrames` | 1 to 1048576 | `300` | Frames each side of a splitAt split at most. |
 | `crystalgraphics.trace.zones` | 1 to 268435456 | `65536` | Zones a thread keeps at most, for each of the newest and the first frames; raise it when a report warns of dropped zones. Read at launch. |
 | `crystalgraphics.trace.zonesAhead` | true, false | `false` | The frame thread's zones grown to their ceiling at a frame's start, rather than doubled while it records: a doubling is tens of MB in one frame. Read at launch. |
-
-## `crystalgraphics.tracker`
-
-| Variable | Takes | Default | |
-|---|---|---|---|
-| `crystalgraphics.tracker.logPipelines` | true, false | `false` | Log each pipeline the device built at a draw (tracker.pipelines-built), with its program and how long it took. |
-| `crystalgraphics.tracker.recordedPipelines` | true, false | `true` | Build a program's recorded pipelines as it links (CgPipelineRecipes); false builds each at its first draw. |
 
 ## `crystalgraphics.uploads`
 

@@ -1,5 +1,31 @@
 package com.crystalgraphics.render.graph;
 
+import com.crystalgraphics.platform.rhi.memory.CgTransientMemory;
+import com.crystalgraphics.platform.rhi.resource.CgTextureRegion;
+import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
+import com.crystalgraphics.api.state.CgRenderState;
+import com.crystalgraphics.render.draw.CgDrawStateCache;
+import com.crystalgraphics.platform.rhi.shader.CgGlslCompiler;
+import com.crystalgraphics.platform.rhi.resource.CgTextureView;
+import com.crystalgraphics.platform.rhi.pipeline.CgGraphicsPipeline;
+import com.crystalgraphics.platform.rhi.format.CgFormat;
+import com.crystalgraphics.platform.rhi.command.CgRenderPass;
+import com.crystalgraphics.platform.rhi.command.CgPassDesc;
+import com.crystalgraphics.platform.rhi.CgDeviceSection;
+import java.util.Set;
+import java.util.HashSet;
+import com.crystalgraphics.gl.shader.CgShader;
+import com.crystalgraphics.platform.rhi.pipeline.CgPipelineLayout;
+import com.crystalgraphics.platform.rhi.binding.CgBindingLayout;
+import com.crystalgraphics.platform.rhi.binding.CgBindingSet;
+import com.crystalgraphics.platform.rhi.binding.CgBindings;
+import com.crystalgraphics.platform.rhi.CgRHI;
+import com.crystalgraphics.platform.gl.CgGLImports;
+import com.crystalgraphics.render.shader.CgBindingModel;
+import com.crystalgraphics.render.draw.CgBindingTable;
+import com.crystalgraphics.render.draw.CgDeviceStates;
+import com.crystalgraphics.render.draw.CgDeviceSets;
+import com.crystalgraphics.render.draw.CgBoundResources;
 import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.api.CgBindingPoints;
@@ -31,6 +57,7 @@ import com.crystalgraphics.platform.gl.CgCapabilities.ComputeTier;
 import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.state.CgGlScope;
+import com.crystalgraphics.platform.gl.state.CgGlSlot;
 import com.crystalgraphics.platform.gl.state.CgGlState;
 import com.crystalgraphics.render.CgCpuMeter;
 import com.crystalgraphics.render.CgGpuBudget;
@@ -39,6 +66,7 @@ import com.crystalgraphics.render.draw.CgIndirect;
 import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.render.draw.CgPassConstants;
 import com.crystalgraphics.render.draw.CgPipeline;
+import com.crystalgraphics.render.draw.CgPrimitiveTable;
 import com.crystalgraphics.render.mesh.CgMeshStore;
 import com.crystalgraphics.render.property.CgPalette;
 import com.crystalgraphics.trace.CgGpuTrace;
@@ -58,12 +86,13 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 import java.util.function.IntConsumer;
 
 /**
  * Runs a {@link CgFrame} on the render thread: uploads its snapshots and each kind's instances once, then executes its
- * passes in order — transients taken from the pool and returned after their last use, a barrier before each access a
- * kernel takes part in, requests completed or failed. GL state is restored after.
+ * passes in order — transients taken from the pool and returned after their last use, every access's transition
+ * stated, requests completed or failed. GL state is restored after.
  *
  * <pre>{@code
  * CgFrame frame = builder.build(graph);   // any thread
@@ -77,10 +106,13 @@ import java.util.function.IntConsumer;
  *       restored.</li>
  *   <li>Re-entrant: a callback pass that executes a frame of its own (a {@code CgImmediate} inside it) gets its
  *       own ring and instance buffers, so the outer frame's are still bound when it returns.</li>
- *   <li>Barriers come from each storage's accesses as executed, across frames and executions
- *       ({@code CgHazards}); {@code -Dcrystalgraphics.graph.barriers=false} records them and issues none, which
- *       synchronization validation must then report. A compute pass barriers each storage's first access before its
- *       first dispatch, and {@link CgDispatch#skipBarrier} accesses of one group of a pass wait for nothing between them.</li>
+ *   <li>Transitions come from each storage's state as executed, across frames and executions
+ *       ({@code CgResourceStates}): on a device every access's, images with their layouts, split where the next access
+ *       is steps later; on GL only those a kernel takes part in, GL ordering the rest. A texture outliving the
+ *       execution is taken from where it rests and returned there at its end. {@code -Dcrystalgraphics.graph.barriers=false}
+ *       records them and issues none, which synchronization validation must then report. A compute pass barriers each
+ *       storage's first access before its first dispatch, and {@link CgDispatch#skipBarrier} accesses of one group of a
+ *       pass wait for nothing between them.</li>
  *   <li>A compute pass needs a context that runs compute shaders, and throws naming the tier where it does not; so
  *       does a raster pass holding an indirect draw, whose command a kernel writes before the pass begins.</li>
  *   <li>An {@code async()} compute pass goes to the device's compute queue, where it has one; the first later step
@@ -107,20 +139,50 @@ public final class CgExecutor {
     private static final int KINDS = CgInstanceKind.values().length;
     private static final int UNIT_KINDS = (1 << CgInstanceKind.QUAD.ordinal()) | (1 << CgInstanceKind.CURVE.ordinal());
     private static final int OBJECT = CgInstanceKind.OBJECT.ordinal();
+    /** Records written to the frame's table, once each, and ids the passes copied to name them: SR1's two counts. */
+    private static final int PRIMITIVES = CgTrace.name("graph.primitives"), PRIMITIVE_IDS = CgTrace.name("graph.primitive-ids");
+    /** {@code i} at {@code i}: what a draw of its own records reads them through, grown as one reaches further. */
+    private static float[] identity = new float[0];
     /** What every QUAD and CURVE instance expands. */
     private static final CgMesh UNIT_QUAD = CgMesh.quads(1);
 
     private static final List<CgExecutor> BY_DEPTH = new ArrayList<>();
     private static final CgTexturePool POOL = new CgTexturePool();
+    /** Transients placed in the device's transient heaps, made with the first frame on a device that places; else null. */
+    private static CgTransientTextures transients;
+    private static final boolean ALIASING = CgVar.bool("crystalgraphics.graph.aliasing", true, CgVar.DEV | CgVar.RESTART,
+            "Transient 2D textures share memory where the device can place them (Vulkan); false pools them by description,"
+                    + " as GL does: Unreal's r.RDG.TransientAllocator 0, for comparing the two.").get();
+    /** KiB of 2D transient textures held: heaps where placed, the pooled framebuffers' images where not. */
+    private static final int TRANSIENT_KB = CgTrace.name("graph.transient-kb");
+    /** KiB of placed transient textures alive at once at the last frame's most. */
+    private static final int TRANSIENT_PEAK_KB = CgTrace.name("graph.transient-peak-kb");
     private static final CgComposedTargets COMPOSED = new CgComposedTargets(true), BESIDE = new CgComposedTargets(false);
     private static final CgBufferPool BUFFERS = new CgBufferPool();
-    private static final CgHazards HAZARDS = new CgHazards();
+    private static final CgResourceStates STATES = new CgResourceStates();
     /**
      * The compute pass executing, numbered: its overlap sets, one a skip group ({@link CgDispatch#skipBarrier}), and
      * its claims on storage ({@link #prologue}).
      */
     private static int passSerial;
     private static final IntConsumer FORGET_BUFFER = CgExecutor::forget;
+    private static final Consumer<CgFrameBuffer> FORGET_STORAGE = CgExecutor::forgetStorage;
+    private static final int COMPUTE = CgAccess.COMPUTE_READ | CgAccess.COMPUTE_WRITE;
+    /**
+     * This execution's: whether the backend takes every transition, a device's; GL takes only a kernel's. While it
+     * does, the device infers none of what the graph records ({@code cgGraphStates}).
+     */
+    private static boolean takes;
+    private static final int SPLITS = CgTrace.name("graph.split-transitions");
+    private static final CgVar.Bool SPLIT = CgVar.bool("crystalgraphics.graph.splits", true, CgVar.DEV,
+            "Split a transition whose next access is a read two or more steps on, from its producer's end to its consumer;"
+                    + " false records every transition whole before its consumer.");
+    /** Raster passes that joined the render pass of the one before them (Unreal RDG's {@code MergeRenderPasses}). */
+    private static final int MERGED = CgTrace.name("graph.render-passes-merged");
+    /** Raster passes that sampled their target's depth in place, read-only, where they would have copied it. */
+    private static final int READ_ONLY_DEPTH = CgTrace.name("graph.depth-read-only");
+    /** Another target's depth sampled where it is, where it was copied. */
+    private static final int DEPTH_SAMPLED = CgTrace.name("graph.depth-sampled-in-place");
     /** Persistent and history buffers whose storage this executor made, freed at teardown if never released. */
     private static final List<CgGraphBuffer> KEPT = new ArrayList<>();
     private static final CgVar.Bool BARRIERS = CgVar.bool("crystalgraphics.graph.barriers", true, CgVar.DEV,
@@ -136,7 +198,35 @@ public final class CgExecutor {
     private static final int COMMAND_COUNT = CgTrace.name("graph.indirect-commands");
     /** Runs of draws a multi-draw ended only because the next draw binds other textures or properties. */
     private static final int BINDING_BREAKS = CgTrace.name("graph.multi-draw.binding-breaks");
-    /** Every compute pass that can go async does, as if marked: a correctness check of the waits. */
+    private static final int DEVICE_PASSES = CgTrace.name("graph.device-passes"),
+            MID_PASS_SPLITS = CgTrace.name("graph.device-pass-splits");
+    private final CgDrawStateCache drawCache = new CgDrawStateCache();
+    /** What was logged once: a pipeline skipped, a second attachment dropped. */
+    private final Set<String> loggedOnce = new HashSet<>();
+    private final List<CgPassDesc.Color> deviceColors = new ArrayList<>(4);
+    private final List<CgFormat> deviceFormats = new ArrayList<>(4);
+    /** While a pass draws on the device: a bind notes what it binds ({@code CgBoundResources}) and issues nothing. */
+    private boolean stating;
+    /**
+     * This execution's: whether a device is installed. Every pass, dispatch and readback goes to it then; without one
+     * (a GL-era host before its shader toolchain lands, or after its download failed) through {@code CgGL}.
+     */
+    private boolean device;
+    /** Where the last execution drew, logged when it changes; false before the first. */
+    private static boolean onDevice;
+
+    static final boolean DEVICE_SETS = CgVar.bool("crystalgraphics.rhi.deviceSets", false, CgVar.DEV | CgVar.RESTART,
+            "Each batch also makes its view, pass and material sets on the device, logging a slot left to a default.").get();
+    private final CgDeviceSets deviceSets = new CgDeviceSets();
+    private final Set<String> deviceSetsLogged = new HashSet<>();
+    /** The device compute pass between dispatches, which a barrier through {@code CgGL} closes. */
+    private static final CgDeviceCompute DEVICE_COMPUTE = new CgDeviceCompute();
+    /** Whether a compute pass dispatches on the device now, and whether a {@code CgGL} barrier batch is open in it. */
+    private static boolean deviceComputing, deviceBarrierBatch;
+    /** A dispatch's kernel slots its snapshot does not hold: buffers, counts, images, checked mode's report. */
+    private final CgBindings kernelBindings = new CgBindings();
+    private static final int DEVICE_COMPUTES = CgTrace.name("graph.device-computes");
+
     static final boolean ASYNC_ALL = CgVar.bool("crystalgraphics.graph.asyncAll", false, CgVar.DEV | CgVar.RESTART,
             "Every compute pass that can go async does, as if marked async(): a check of the waits, which the compute"
                     + " scenes must pass under synchronization validation.").get();
@@ -177,6 +267,13 @@ public final class CgExecutor {
 
     private final CgStreamBuffer ring;
     private final CgShaderBuffer[] instanceBuffers = new CgShaderBuffer[KINDS];
+    /** The frame's object records at {@code OBJECT_DATA}, uploaded once; {@code instanceBuffers[OBJECT]} holds the ids. */
+    private final CgShaderBuffer primitives;
+    /** Identity ids at {@code OBJECT_IDS}, for a draw of its own records; kept across frames, {@link #identityIds} of them. */
+    private final CgShaderBuffer identityBuffer;
+    private int identityIds;
+    /** Whether the frame executing has records in its table, which a pass of OBJECT draws binds. */
+    private boolean tabled;
     private final int[] scissorRect = new int[4], scissorPart = new int[4];
     /** The engine buffers the last batch's buffer()s stood in for: the batch loop's, kept so it allocates nothing. */
     private final CgBindingPoints.Binding[] standIn = new CgBindingPoints.Binding[CgDrawChunk.BUFFERS];
@@ -222,7 +319,7 @@ public final class CgExecutor {
      * the frame's executions, and dropped at the next, whose start the device orders after all of it.
      */
     private static long[] asyncKeys = new long[64], asyncPoints = new long[64];
-    /** {@link #asyncKeys} is open-addressed by {@link CgHazards} key, 0 a free entry (no key is 0); a pass names hundreds. */
+    /** {@link #asyncKeys} is open-addressed by {@link CgResourceStates} key, 0 a free entry (no key is 0); a pass names hundreds. */
     private static int asyncCount;
     private static long[] keptKeys = new long[64], keptPoints = new long[64];
     private static long asyncLatest, asyncWaited, asyncFrame = -1;
@@ -230,6 +327,27 @@ public final class CgExecutor {
     /** This execution's: the newest async point covering storage outside the graph, waited for at its end. */
     private long asyncEnd;
     private final long[] keyScratch = new long[2];
+    /**
+     * Images it moved: key, GL name, levels, layers and whether it outlives the execution, each. Those that do return to
+     * rest at its end; all of them before a callback's body, which is GL's and finds every image at rest.
+     */
+    private long[] movedKeys = new long[16];
+    private int[] movedNames = new int[16], movedLevels = new int[16], movedLayers = new int[16];
+    private boolean[] movedOutlives = new boolean[16];
+    private int moved;
+    /** Split transitions begun after a step and not yet ended: each one's id, and the step it ends before. */
+    private int[] splitIds = new int[8], splitEnds = new int[8];
+    private int splitCount;
+    /** The run of merged raster steps the step executing belongs to: its first and last, -1 outside one. */
+    private int runStart = -1, runEnd = -1;
+    /** Whether the raster pass executing samples its target's depth in place ({@link #readOnlyDepth}); its step. */
+    private boolean depthInPlace;
+    private int currentStep;
+    /** The run's second attachment, which a pass of it without one of its own draws beside, writes masked off. */
+    @Nullable
+    private CgGraphTexture runAttachment;
+    /** Where a blit's source framebuffer was before it ({@link #blitting}), returned there after. */
+    private int blitSourceWas;
 
     private CgExecutor(int depth) {
         // A region of 1 MB: a ring outgrowing its region is new storage, which waits for a threaded driver to drain.
@@ -239,8 +357,12 @@ public final class CgExecutor {
                 CgInstanceKind.QUAD.format(), CgBindingPoints.QUAD_RENDERER, CgBufferLifetime.FRAME);
         instanceBuffers[CgInstanceKind.CURVE.ordinal()] = registry.getOrCreateInternal("CgGraphCurveInstances" + depth,
                 CgInstanceKind.CURVE.format(), CgBindingPoints.CURVE_RENDERER, CgBufferLifetime.FRAME);
-        instanceBuffers[CgInstanceKind.OBJECT.ordinal()] = registry.getOrCreateInternal("CgGraphObjectInstances" + depth,
-                CgInstanceKind.OBJECT.format(), CgBindingPoints.OBJECT_DATA, CgBufferLifetime.FRAME);
+        instanceBuffers[CgInstanceKind.OBJECT.ordinal()] = registry.getOrCreateInternal("CgGraphObjectIds" + depth,
+                CgInstanceKind.OBJECT.format(), CgBindingPoints.OBJECT_IDS, CgBufferLifetime.FRAME);
+        primitives = registry.getOrCreateInternal("CgGraphPrimitives" + depth, CgPrimitiveTable.FORMAT,
+                CgBindingPoints.OBJECT_DATA, CgBufferLifetime.FRAME);
+        identityBuffer = registry.getOrCreateInternal("CgGraphIdentityIds" + depth, CgInstanceKind.OBJECT.format(),
+                CgBindingPoints.OBJECT_IDS, CgBufferLifetime.RETAINED);
     }
 
     /** Executes {@code frame} and restores GL state after. Render thread, inside a frame. */
@@ -265,8 +387,14 @@ public final class CgExecutor {
             long ringFrame = CgFrameRing.frame();
             if (depth == 0 && ringFrame != trimmedFrame) {
                 try (CgTrace.Zone trim = CgTrace.zone(CgChannels.GL, TRIM_POOLS)) {
-                    POOL.endFrame();
+                    POOL.endFrame(FORGET_STORAGE);
                     BUFFERS.endFrame(FORGET_BUFFER);
+                    // The last frame's end waited for all its async work, as run() takes it.
+                    if (transients != null) {
+                        transients.endFrame(asyncLatest, FORGET_STORAGE);
+                        CgTrace.counter(CgChannels.GL, TRANSIENT_KB, (ALIASING ? transients.heapBytes() : POOL.bytes()) >> 10);
+                        if (ALIASING) CgTrace.counter(CgChannels.GL, TRANSIENT_PEAK_KB, transients.framePeak() >> 10);
+                    }
                 }
                 trimmedFrame = ringFrame;
             }
@@ -331,6 +459,7 @@ public final class CgExecutor {
     public static void forgetHostTargets() {
         COMPOSED.forgetHost();
         BESIDE.forgetHost();
+        for (CgExecutor executor : BY_DEPTH) executor.hostRead = -1;
     }
 
     /**
@@ -339,18 +468,21 @@ public final class CgExecutor {
      */
     public static void destroyAll() {
         for (CgExecutor executor : BY_DEPTH) {
+            if (DEVICE_SETS) executor.deviceSets.release();
             executor.ring.delete();
             executor.commands.delete(FORGET_BUFFER);
             if (executor.staging != null) executor.staging.delete();
         }
         BY_DEPTH.clear();
         POOL.delete();
+        if (transients != null) transients.delete();
+        transients = null;
         BUFFERS.delete();
         COMPOSED.delete();
         BESIDE.delete();
         for (CgGraphBuffer buffer : KEPT) freeKept(buffer);
         KEPT.clear();
-        HAZARDS.clear();
+        STATES.clear();
         CgBufferInspector.reset();
         // The next device's timelines start again at 0.
         clearAsync();
@@ -362,6 +494,12 @@ public final class CgExecutor {
     private void run(CgFrame frame) {
         boolean again = frame.executions++ > 0;
         kernelsSeen |= frame.kernels;
+        device = CgGLImports.installed() && CgGlslCompiler.installed();
+        CgBoundResources.recording = DEVICE_SETS || device;
+        if (device != onDevice) {
+            onDevice = device;
+            LOGGER.info(device ? "the graph draws on the device" : "the graph draws on CgGL: no device installed");
+        }
         CgCapabilities caps = CgCapabilities.detect();
         ComputeTier tier = caps.computeTier();
         boolean compute = tier == ComputeTier.V || tier == ComputeTier.G43;
@@ -374,10 +512,16 @@ public final class CgExecutor {
             asyncUnwaited = false;
         }
         asyncEnd = 0;
+        takes = CgGL.cgTakesTransitions();
+        boolean wasStated = takes && CgGL.cgGraphStates(true);
+        boolean splits = takes && !again && SPLIT.get();
+        moved = 0;
+        splitCount = 0;
+        runStart = runEnd = -1;
         multiDraw = caps.multiDraw() && CgMeshStore.get().multiDraw();
         // The current target, noted before any pass binds its own: rebound for a pass into it after one into another,
         // and what a copy of it reads. From the state shadow, since a glGet waits for the driver to drain the queue.
-        startNoted = frame.readsCurrentDepth || frame.rastersCurrent;
+        startNoted = takes || frame.readsCurrentDepth || frame.rastersCurrent;
         otherBound = false;
         if (startNoted) {
             startFramebuffer = CgGlState.drawFramebuffer();
@@ -388,6 +532,11 @@ public final class CgExecutor {
             for (int k = 0; k < KINDS; k++) {
                 if (frame.instanceFloats[k] > 0) instanceBuffers[k].uploadRaw(frame.instances[k], frame.instanceFloats[k]);
             }
+            tabled = frame.primitiveFloats > 0;
+            if (tabled) primitives.uploadRaw(frame.primitives, frame.primitiveFloats);
+            if (frame.identityIds > identityIds) uploadIdentity(frame.identityIds);
+            CgTrace.add(CgChannels.GL, PRIMITIVES, frame.primitives());
+            CgTrace.add(CgChannels.GL, PRIMITIVE_IDS, frame.instanceFloats[OBJECT]);
         }
         boolean gpu = uploadGpuZones();
         if (gpu) CgGpuTrace.begin(GPU_MESHES);
@@ -401,7 +550,7 @@ public final class CgExecutor {
             for (int s = 0; s < frame.stepCount; s++) {
                 for (int t = 0; t < frame.transients.size(); t++) {
                     if (frame.acquireAt[t] == s) {
-                        acquire(frame.transients.get(t));
+                        acquire(frame.steps[s], frame.transients.get(t));
                         resolved++;
                     }
                 }
@@ -412,7 +561,10 @@ public final class CgExecutor {
                         staleTransients(frame, s, skipped);
                     }
                 }
+                if (takes && !again && s > runEnd) merge(frame, s);
+                if (splitCount > 0) endSplits(runEnd);
                 if (!skipped) step(frame, s);
+                if (splits && !skipped && s >= runEnd) beginSplits(frame, s);
                 // A window moved by its node executes no surface: what a re-execution drew into a kept texture.
                 if (again && pass instanceof CgRasterPass && pass.target != null
                         && pass.target.kind() == CgGraphTexture.Kind.REQUESTED) {
@@ -434,6 +586,11 @@ public final class CgExecutor {
             }
         } finally {
             try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, FINISH)) {
+                if (takes) {
+                    if (splitCount > 0) endSplits(Integer.MAX_VALUE);
+                    restMoved(false);
+                    CgGL.cgGraphStates(wasStated);
+                }
                 sharedDepth.release(POOL);
                 sharedDepthSource = -1;
                 waitAsync(asyncEnd);   // what the host may touch; the rest waits for its reader, or the frame's end
@@ -463,11 +620,11 @@ public final class CgExecutor {
             CgGraphResource resource = frame.accessView[i];
             int bits = frame.accessBits[i];
             if (skipped) {
-                if (kernelOrBuffer && resource.isTransient() && (bits & CgHazards.WRITES) != 0) {
+                if (kernelOrBuffer && resource.isTransient() && (bits & CgResourceStates.WRITES) != 0) {
                     stale.add(resource);
                     staleBy.add(pass);
                 }
-            } else if ((bits & ~CgHazards.WRITES) != 0) {
+            } else if ((bits & ~CgResourceStates.WRITES) != 0) {
                 int at = stale.indexOf(resource);
                 if (at >= 0) {
                     throw new IllegalStateException(pass + " reads " + resource.name() + ", which " + staleBy.get(at)
@@ -478,10 +635,11 @@ public final class CgExecutor {
         }
     }
 
-    private static void acquire(CgGraphResource resource) {
+    /** {@code resource}'s storage, as {@code user}, its first, is about to run. */
+    private void acquire(CgPass user, CgGraphResource resource) {
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, ACQUIRE)) {
             if (resource instanceof CgGraphTexture texture) {
-                texture.resolve(POOL.acquire(texture.desc()));
+                texture.resolve(takeStorage(texture.desc(), user));
             } else {
                 CgGraphBuffer buffer = (CgGraphBuffer) resource;
                 buffer.resolve(BUFFERS.acquire(buffer.desc()));
@@ -491,13 +649,63 @@ public final class CgExecutor {
 
     private static void giveBack(CgGraphResource resource) {
         if (resource instanceof CgGraphTexture texture) {
-            POOL.release(texture.desc(), texture.framebuffer());
+            giveStorage(texture.desc(), texture.framebuffer());
             texture.resolve(null);
         } else {
             CgGraphBuffer buffer = (CgGraphBuffer) resource;
             BUFFERS.release(buffer.desc(), buffer.bufferId());
             buffer.resolve(0);
         }
+    }
+
+    /**
+     * Storage for a transient of {@code desc} that {@code user} uses first: placed in the device's transient heaps where
+     * it places them, its contents undefined, else pooled.
+     */
+    private CgFrameBuffer takeStorage(CgTextureDesc desc, CgPass user) {
+        CgTransientTextures placing = placing(desc);
+        if (placing == null) return POOL.acquire(desc);
+        boolean async = user instanceof CgComputePass compute && runsAsync(compute);
+        return placing.acquire(desc, async ? Long.MAX_VALUE : joined());
+    }
+
+    /** {@code storage} given back after its last use, with the async work still pending on it. */
+    private static void giveStorage(CgTextureDesc desc, CgFrameBuffer storage) {
+        CgTransientTextures placing = placing(desc);
+        if (placing != null) placing.release(storage, pendingAsync(storage));
+        else POOL.release(desc, storage);
+    }
+
+    /** The device's transient heaps where {@code desc} is placed in them; null where it is pooled. */
+    private static CgTransientTextures placing(CgTextureDesc desc) {
+        if (!CgGLImports.installed()) return null;
+        if (transients == null) {
+            CgRHI rhi = CgRHI.get();
+            CgTransientMemory memory = rhi.transientMemory();
+            if (memory == null) return null;
+            CgTransientTextures made = new CgTransientTextures(rhi, memory);
+            POOL.measure(d -> CgTransientTextures.places(d) ? made.bytes(d) : 0);
+            transients = made;
+        }
+        return ALIASING && CgTransientTextures.places(desc) ? transients : null;
+    }
+
+    /** The newest async point the frame's queue has waited for: the newest of all, once none is left unwaited. */
+    private static long joined() {
+        return asyncUnwaited ? asyncWaited : asyncLatest;
+    }
+
+    /** The newest async point not yet waited for on {@code storage}, under either name a step keys it by; else 0. */
+    private static long pendingAsync(CgFrameBuffer storage) {
+        if (!asyncUnwaited) return 0;
+        long point = pendingPoint(CgResourceStates.framebuffer(storage.getId()));
+        CgTexture color = storage.getColorTexture(0);
+        return color == null ? point : Math.max(point, pendingPoint(CgResourceStates.texture(color.getId())));
+    }
+
+    private static long pendingPoint(long key) {
+        int j = asyncEntry(key);
+        return asyncKeys[j] != 0 ? asyncPoints[j] : 0;
     }
 
     private static boolean isResolved(CgGraphResource resource) {
@@ -578,6 +786,7 @@ public final class CgExecutor {
     }
 
     private void run(CgFrame frame, int s, CgPass pass) {
+        currentStep = s;
         if (!(pass instanceof CgRasterPass)) releaseVertexArray();
         try {
             boolean async = pass instanceof CgComputePass compute && runsAsync(compute);
@@ -585,6 +794,14 @@ public final class CgExecutor {
                 try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, AWAIT_ASYNC)) {
                     awaitAsync(frame, s);
                 }
+            }
+            // A history drawn into moves to its next version first: what the step's transitions and its reads name.
+            CgGraphTexture drawn = pass instanceof CgRasterPass raster ? raster.target
+                    : pass instanceof CgPass.Callback callback ? callback.target : null;
+            if (drawn != null && drawn.kind() == CgGraphTexture.Kind.HISTORY) {
+                if (drawn.isPreviousVersion()) throw new IllegalStateException(drawn + " is sampled only: draw into its history");
+                storage(drawn);
+                drawn.advance();
             }
             if (!(pass instanceof CgComputePass)) {
                 try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, BARRIER)) {
@@ -646,9 +863,12 @@ public final class CgExecutor {
                     boolean drawsBeside = callback.target != null && callback.target.drawsBesideCurrentDepth()
                             && bindBeside(callback.target);
                     if (!drawsBeside) bindTarget(callback.target, 0, 0);
+                    if (takes) restMoved(true);   // its body is GL's: the device infers, from images at rest
+                    boolean stated = takes && CgGL.cgGraphStates(false);
                     try {
                         callback.body.run();
                     } finally {
+                        if (takes) CgGL.cgGraphStates(stated);
                         if (drawsBeside) BESIDE.detach();
                     }
                 }
@@ -711,6 +931,10 @@ public final class CgExecutor {
     private void compute(CgFrame frame, CgComputePass pass, CgFrame.Compute packed) {
         List<CgDispatch> dispatches = pass.dispatches();
         if (++passSerial == 1 << 28) passSerial = 1;   // a set keeps three bits for its group
+        if (device) {
+            computeDevice(frame, pass, packed);
+            return;
+        }
         prologue(dispatches);
         try (CgTrace.Zone ignored = CgTrace.isEnabled(CgChannels.GL) ? CgTrace.zone(CgChannels.GL, CgTrace.name(pass.name())) : null) {
             frame.bindings.bind(packed.constants);
@@ -728,7 +952,7 @@ public final class CgExecutor {
         for (int d = 0; d < dispatches.size(); d++) {
             CgDispatch dispatch = dispatches.get(d);
             // Claimed, never hoisted: a write later in the pass must not move ahead of this read.
-            if (dispatch.args != null) HAZARDS.claim(CgHazards.buffer(bufferStorage(dispatch.args, false)), passSerial, d);
+            if (dispatch.args != null) STATES.claim(CgResourceStates.buffer(bufferStorage(dispatch.args, false)), passSerial, d);
             for (int b = 0; b < dispatch.buffers.length; b++) {
                 hoist(d, dispatch.buffers[b], dispatch.bufferAccess[b], set(dispatch.skipGroup[b]), dispatch.hoisted, b);
                 hoist(d, dispatch.counters[b], dispatch.counterAccess[b], set(dispatch.countSkipGroup[b]),
@@ -740,9 +964,154 @@ public final class CgExecutor {
     private static void hoist(int dispatch, @Nullable CgGraphBuffer buffer, int access, int set, int[] hoisted, int b) {
         if (buffer == null || access == 0 || buffer.resource().kind() == CgGraphBuffer.Kind.HISTORY) return;
         int id = bufferStorage(buffer, (access & CgAccess.COMPUTE_WRITE) != 0);
-        if (!HAZARDS.claim(CgHazards.buffer(id), passSerial, dispatch)) return;
+        if (!STATES.claim(CgResourceStates.buffer(id), passSerial, dispatch)) return;
         barrier(id, access, set);
         hoisted[b] = passSerial;
+    }
+
+    /**
+     * {@code pass}'s dispatches through the device's compute pass: what goes through {@code CgGL} first (the constants'
+     * snapshot, the tokens' buffers, every storage, each kernel's pipeline), then each dispatch's pipeline, sets, pushed
+     * words and dispatch. Its barriers stay on {@code CgGL}, between device sections ({@link CgDeviceCompute}).
+     */
+    private void computeDevice(CgFrame frame, CgComputePass pass, CgFrame.Compute packed) {
+        List<CgDispatch> dispatches = pass.dispatches();
+        CgRHI rhi = CgRHI.get();
+        CgTrace.add(CgChannels.GL, DEVICE_COMPUTES, 1);
+        frame.bindings.bind(packed.constants);
+        CgBoundResources.forgetTextures(CgBindingModel.PASS);
+        CgBoundResources.forgetTextures(CgBindingModel.MATERIAL);
+        deviceSets.prepare(frame.bindings);
+        if (CgKernelTarget.CHECKED) CgComputeCheck.prepare();
+        for (int i = 0; i < dispatches.size(); i++) {
+            CgDispatch d = dispatches.get(i);
+            for (String token : d.source.engineBuffers()) CgEngineBufferRegistry.get(token).buffer().get().bind();
+            d.kernel.program().devicePipeline(rhi);
+            for (int b = 0; b < d.buffers.length; b++) {
+                if (d.buffers[b] != null) bufferStorage(d.buffers[b], false);
+                if (d.counters[b] != null) bufferStorage(d.counters[b], false);
+            }
+            if (d.args != null) bufferStorage(d.args, false);
+        }
+        DEVICE_COMPUTE.begin(pass.name());
+        deviceComputing = true;
+        try {
+            prologue(dispatches);
+            for (int i = 0; i < dispatches.size(); i++) dispatchDevice(frame, rhi, dispatches.get(i), packed.bindings[i], packed.constants);
+            CgTrace.add(CgChannels.GL, DISPATCH_COUNT, dispatches.size());
+        } finally {
+            DEVICE_COMPUTE.close();
+            endDeviceBarriers();
+            deviceComputing = false;
+        }
+    }
+
+    private void dispatchDevice(CgFrame frame, CgRHI rhi, CgDispatch d, int bindings, int constants) {
+        CgKernelProgram program = d.kernel.program();
+        CgBindings k = kernelBindings.clear();
+        for (int b = 0; b < d.buffers.length; b++) {
+            if (d.buffers[b] != null) {
+                int access = d.hoisted[b] == passSerial ? 0 : d.bufferAccess[b];
+                int id = bufferStorage(d.buffers[b], (access & CgAccess.COMPUTE_WRITE) != 0);
+                if (access != 0) barrier(id, access, set(d.skipGroup[b]));
+                storageSlot(k, CgBindingModel.FIRST_KERNEL_BUFFER + b, id, d.offsets[b], d.sizes[b]);
+            }
+            if (d.counters[b] != null) {
+                long base = CgKernelProgram.counterBase(d.counterOffsets[b]);
+                int access = d.counterHoisted[b] == passSerial ? 0 : d.counterAccess[b];
+                int id = bufferStorage(d.counters[b], (access & CgAccess.COMPUTE_WRITE) != 0);
+                if (access != 0) barrier(id, access, set(d.countSkipGroup[b]));
+                storageSlot(k, CgBindingModel.FIRST_KERNEL_BUFFER + program.counterPoint(b), id, base,
+                        d.counterOffsets[b] - base + 4);
+                program.counterWordOn(b, d.counterOffsets[b]);
+            }
+        }
+        for (CgTexture sampler : d.samplers) {
+            CgGraphTexture graph = sampler == null ? null : CgGraphTexture.sampled(sampler);
+            if (graph != null) move(graph, CgAccess.SAMPLED_READ, -1, -1);   // after a kernel wrote it as an image
+        }
+        for (int i = 0; i < d.images.length; i++) {
+            CgGraphTexture texture = d.images[i];
+            if (texture == null) continue;
+            CgTexture color = storage(texture).getColorTexture(0);
+            int access = imageAccess(d, i, color.getId());
+            if (access != 0) move(texture, access, -1, -1);
+            k.image(CgBindingModel.FIRST_KERNEL_IMAGE + i, imageView(d, i, color.rhiView().texture()));
+        }
+        CgGLImports imports = CgGLImports.get();
+        if (program.checkPoint() >= 0) {
+            int report = CgComputeCheck.buffer();
+            k.buffer(CgBindingModel.FIRST_KERNEL_BUFFER + program.checkPoint(), CgBindingLayout.Type.STORAGE_BUFFER,
+                    imports.buffer(report), imports.bufferOffset(report) + CgComputeCheck.claim(program),
+                    CgComputeCheck.SLOT_BYTES);
+        }
+        int args = d.form == CgDispatch.Form.INDIRECT ? bufferStorage(d.args, false) : 0;
+        if (args != 0) bufferBarrier(args, CgAccess.INDIRECT);
+        endDeviceBarriers();
+        DEVICE_COMPUTE.pass(rhi);
+        CgPipelineLayout layout = program.deviceLayout();
+        DEVICE_COMPUTE.pipeline(program.devicePipeline(rhi), layout);
+        for (int set = 0; set < layout.sets().size(); set++) {
+            if (set == CgRHI.BINDLESS_SET) {
+                DEVICE_COMPUTE.set(set, rhi.bindlessSet());
+                continue;
+            }
+            if (layout.sets().get(set).slots().isEmpty()) continue;
+            long before = deviceSets.defaulted();
+            CgBindingSet s = deviceSets.set(rhi, frame.bindings, set == CgBindingModel.VIEW ? constants : bindings, layout,
+                    set, set == CgBindingModel.MATERIAL ? k : null);
+            if (deviceSets.defaulted() != before) {
+                String what = d.source.path() + " " + d.decl.name() + " " + deviceSets.lastDefaulted();
+                if (deviceSetsLogged.add(what)) LOGGER.warn("device compute: {} defaulted", what);
+            }
+            DEVICE_COMPUTE.set(set, s);
+        }
+        switch (d.form) {
+            case ELEMENTS -> program.dispatchOn(DEVICE_COMPUTE.pass(rhi), d.x, d.y, d.z);
+            case GROUPS -> program.dispatchOn(DEVICE_COMPUTE.pass(rhi), d.x * program.kernel().sizeX(),
+                    d.y * program.kernel().sizeY(), d.z * program.kernel().sizeZ());
+            case INDIRECT -> program.dispatchIndirectOn(DEVICE_COMPUTE.pass(rhi), imports.buffer(args),
+                    imports.bufferOffset(args) + d.argsOffset);
+        }
+        advanceHistories(d);
+    }
+
+    /** {@code id}'s range as {@link #bindStorage} binds it, at {@code binding} of {@code k}. */
+    private static void storageSlot(CgBindings k, int binding, int id, long offset, long size) {
+        CgGLImports imports = CgGLImports.get();
+        long base = imports.bufferOffset(id);
+        long whole = imports.buffer(id).size() - base;
+        k.buffer(binding, CgBindingLayout.Type.STORAGE_BUFFER, imports.buffer(id), base + offset,
+                size == 0 ? whole - offset : size);
+    }
+
+    /** Image binding {@code i} of {@code d} as {@code glBindImageTexture} takes it: a level, one layer or all of them. */
+    private static CgTextureView imageView(CgDispatch d, int i, CgGpuTexture texture) {
+        CgImageDecl image = d.source.images().get(i);
+        if (d.layers[i] < 0 && image.dimension() != CgImageDimension.D2) {
+            CgTextureView whole = CgTextureView.whole(texture);
+            return new CgTextureView(texture, d.levels[i], 1, whole.baseLayer(), whole.layers());
+        }
+        return new CgTextureView(texture, d.levels[i], 1, Math.max(0, d.layers[i]), 1);
+    }
+
+    /**
+     * Before a barrier through {@code CgGL} while a pass dispatches on the device: the device's compute pass and section
+     * end, and a barrier batch opens.
+     */
+    private static void leaveDeviceCompute() {
+        if (!deviceComputing) return;
+        DEVICE_COMPUTE.close();
+        if (!deviceBarrierBatch) {
+            CgGL.cgBeginBarriers();
+            deviceBarrierBatch = true;
+        }
+    }
+
+    private static void endDeviceBarriers() {
+        if (!deviceBarrierBatch) return;
+        deviceBarrierBatch = false;
+        CgGL.cgEndBarriers();
     }
 
     /** The overlap set of skip group {@code group1} (1 + the group, 0 for none) in the executing pass. */
@@ -756,7 +1125,7 @@ public final class CgExecutor {
         for (CgBufferInspector.Request read = CgBufferInspector.due(); read != null; read = CgBufferInspector.due()) {
             if (asyncUnwaited) waitAsync(asyncLatest);
             int id = bufferStorage(read.view(), false);
-            barrier(true, id, CgAccess.COPY_READ);
+            bufferBarrier(id, CgAccess.COPY_READ);
             CgReadback.buffer(id, read.offset(), read.size(), read);
         }
     }
@@ -879,23 +1248,25 @@ public final class CgExecutor {
         asyncPoints[j] = point;
     }
 
-    /** The storage {@code view} names now, as {@link CgHazards} keys into {@link #keyScratch}: a history's both versions. */
+    /** The storage {@code view} names now, as {@link CgResourceStates} keys into {@link #keyScratch}: a history's both versions. */
     private int keys(CgGraphResource view) {
         if (view instanceof CgGraphBuffer buffer) {
             CgGraphBuffer resource = buffer.resource();
             if (resource.kind() == CgGraphBuffer.Kind.HISTORY) {
                 int[] versions = resource.versions();
-                keyScratch[0] = CgHazards.buffer(versions[0]);
-                keyScratch[1] = CgHazards.buffer(versions[1]);
+                keyScratch[0] = CgResourceStates.buffer(versions[0]);
+                keyScratch[1] = CgResourceStates.buffer(versions[1]);
                 return 2;
             }
-            keyScratch[0] = CgHazards.buffer(resource.bufferId());
+            keyScratch[0] = CgResourceStates.buffer(resource.bufferId());
             return resource.bufferId() == 0 ? 0 : 1;
         }
-        CgFrameBuffer storage = ((CgGraphTexture) view).framebuffer();
+        CgGraphTexture texture = (CgGraphTexture) view;
+        CgFrameBuffer storage = texture.framebuffer();
         CgTexture color = storage == null ? null : storage.getColorTexture(0);
         if (color == null) return 0;
-        keyScratch[0] = CgHazards.texture(color.getId());
+        boolean whole = texture.getLevels() == 1 && texture.getLayers() == 1 && storage.getDepth() <= 1;
+        keyScratch[0] = whole ? CgResourceStates.framebuffer(storage.getId()) : CgResourceStates.texture(color.getId());
         return 1;
     }
 
@@ -927,7 +1298,7 @@ public final class CgExecutor {
                         d.z * program.kernel().sizeZ());
                 case INDIRECT -> {
                     int args = bufferStorage(d.args, false);
-                    barrier(true, args, CgAccess.INDIRECT);
+                    bufferBarrier(args, CgAccess.INDIRECT);
                     program.dispatchIndirectBound(args, d.argsOffset);
                 }
             }
@@ -953,8 +1324,7 @@ public final class CgExecutor {
         }
         for (CgTexture sampler : d.samplers) {
             CgGraphTexture graph = sampler == null ? null : CgGraphTexture.sampled(sampler);
-            CgTexture color = graph == null ? null : storage(graph).getColorTexture(0);
-            if (color != null) barrier(false, color.getId(), CgAccess.SAMPLED_READ);   // after a kernel wrote it as an image
+            if (graph != null) move(graph, CgAccess.SAMPLED_READ, -1, -1);   // after a kernel wrote it as an image
         }
         for (int i = 0; i < d.images.length; i++) {
             CgGraphTexture texture = d.images[i];
@@ -962,7 +1332,7 @@ public final class CgExecutor {
             CgImageDecl image = d.source.images().get(i);
             int id = storage(texture).getColorTexture(0).getId();
             int access = imageAccess(d, i, id);
-            if (access != 0) barrier(false, id, access);
+            if (access != 0) move(texture, access, -1, -1);
             boolean layered = d.layers[i] < 0 && image.dimension() != CgImageDimension.D2;
             CgGL.glBindImageTexture(i, id, d.levels[i], layered, Math.max(0, d.layers[i]), glAccess(image.access()),
                     image.format().glFormat);
@@ -1085,7 +1455,7 @@ public final class CgExecutor {
 
     /** GL buffer {@code buffer} is freed: what is known of it goes with it. */
     private static void forget(int buffer) {
-        HAZARDS.forget(CgHazards.buffer(buffer));
+        STATES.forget(CgResourceStates.buffer(buffer));
     }
 
     /**
@@ -1118,12 +1488,12 @@ public final class CgExecutor {
             int[] versions = buffer.versions();
             for (int v = 0; v < 2; v++) {
                 if (versions[v] == 0) continue;
-                CgGL.glDeleteBuffers(versions[v]);
+                CgBufferPool.free(versions[v]);
                 forget(versions[v]);
                 versions[v] = 0;
             }
         } else if (buffer.bufferId() != 0) {
-            CgGL.glDeleteBuffers(buffer.bufferId());
+            CgBufferPool.free(buffer.bufferId());
             forget(buffer.bufferId());
             buffer.resolve(0);
         }
@@ -1135,20 +1505,39 @@ public final class CgExecutor {
      * The barriers step {@code s} needs before it runs, from its access list. Storage that does not exist yet is left
      * alone: a texture a draw samples before anything made it binds nothing, as it always has.
      */
-    private static void barriers(CgFrame frame, int s) {
-        if (!kernelsSeen) return;
-        CgGL.cgBeginBarriers();   // one glMemoryBarrier for the step on GL
+    /**
+     * Step {@code s}'s transitions, one batch: each buffer's barrier, and each texture moved to its access. A raster
+     * step's attachments move to {@link CgAccess#COLOR_WRITE}, its target's other levels and layers to what it reads
+     * of them.
+     */
+    private void barriers(CgFrame frame, int s) {
+        if (!kernelsSeen && !takes) return;
+        if (s > runStart && s <= runEnd) return;   // its run's first step stated them
+        CgGL.cgBeginBarriers();   // one glMemoryBarrier for the step on GL, one transition on a device
         try {
-            for (int i = frame.accessFrom[s]; i < frame.accessFrom[s + 1]; i++) {
-                int bits = frame.accessBits[i];
-                if (bits == 0) continue;   // a release
-                if (frame.accessView[i] instanceof CgGraphBuffer buffer) {
-                    barrier(true, bufferStorage(buffer, (bits & CgHazards.WRITES) != 0), bits);
-                } else {
-                    CgGraphTexture texture = (CgGraphTexture) frame.accessView[i];
-                    CgFrameBuffer storage = texture.framebuffer();
-                    CgTexture color = storage == null ? null : storage.getColorTexture(0);
-                    if (color != null) barrier(false, color.getId(), bits);
+            if (runEnd > s && runAttachment != null && ((CgRasterPass) frame.steps[s]).attachment() == null) {
+                move(runAttachment, 0, 0, 0);   // a later pass's attachment, bound from the run's start
+            }
+            for (int j = s; j <= Math.max(s, runEnd); j++) {
+                CgPass pass = frame.steps[j];
+                for (int i = frame.accessFrom[j]; i < frame.accessFrom[j + 1]; i++) {
+                    int bits = frame.accessBits[i];
+                    if (bits == 0) continue;   // a release
+                    if (frame.accessView[i] instanceof CgGraphBuffer buffer) {
+                        bufferBarrier(bufferStorage(buffer, (bits & CgResourceStates.WRITES) != 0), bits);
+                    } else if (pass instanceof CgRasterPass raster && (bits & CgAccess.COLOR_WRITE) != 0) {
+                        if (j > s) continue;   // the run's attachments, moved with its first step
+                        CgGraphTexture texture = (CgGraphTexture) frame.accessView[i];
+                        boolean target = texture == raster.target;
+                        boolean hostTested = texture.kind() == CgGraphTexture.Kind.CURRENT && hostDepth(raster);
+                        if ((target && !hostDepth(raster) || hostTested) && readOnlyDepth(frame, j, raster)) {
+                            move(texture, CgAccess.COLOR_WRITE | CgAccess.DEPTH_READ, -1, -1);   // its depth sampled in place
+                            continue;
+                        }
+                        move(texture, bits & ~CgAccess.COLOR_WRITE, target ? raster.level : 0, target ? raster.layer : 0);
+                    } else {
+                        move((CgGraphTexture) frame.accessView[i], bits, -1, -1);
+                    }
                 }
             }
         } finally {
@@ -1156,22 +1545,320 @@ public final class CgExecutor {
         }
     }
 
-    /** The barrier an access of {@code bits} to buffer or texture {@code id} needs, issued. */
-    private static void barrier(boolean buffer, int id, int bits) {
-        if (buffer) barrier(id, bits, 0);
-        else issue(false, id, HAZARDS.access(CgHazards.texture(id), bits), bits);
+    /**
+     * From raster step {@code s}, the run of raster steps that share its render pass, as Unreal RDG merges them
+     * ({@code MergeRenderPasses}): each after it into the same target, level, layer and second attachment, loading
+     * what is there, with no copy, rename, damage or indirect command of its own, reading nothing the run writes. The
+     * run's first step states every transition of the run, so none falls between them and the device's render pass
+     * stays open.
+     */
+    private void merge(CgFrame frame, int s) {
+        runStart = runEnd = s;
+        runAttachment = null;
+        if (!(frame.steps[s] instanceof CgRasterPass first) || first.target == null || unmergeable(frame, s, first)) return;
+        CgGraphTexture attachment = first.attachment();
+        int k = s + 1;
+        while (k < frame.stepCount && frame.steps[k] instanceof CgRasterPass next && joins(frame, first, attachment, k, next)) {
+            if (attachment == null) attachment = next.attachment();
+            k++;
+        }
+        runEnd = k - 1;
+        if (runEnd > s) {
+            CgTrace.add(CgChannels.GL, MERGED, runEnd - s);
+            runAttachment = attachment;
+        }
     }
 
-    /** {@link #barrier(boolean, int, int)} for buffer {@code id}, through overlap set {@code set} (0 for none). */
+    /**
+     * Whether raster step {@code s} samples its target's depth in place, read-only, rather than copying it: on a device,
+     * where no draw of the pass writes depth and its target is ours with a depth texture, a single level and layer.
+     * Unreal's translucency binds {@code DepthRead} so; a pass writing the depth it reads keeps its copy.
+     */
+    private boolean readOnlyDepth(CgFrame frame, int s, CgRasterPass pass) {
+        if (!takes || pass.sceneDepthUnit() < 0 || frame.rasters[s].writesDepth || pass.depthFrom() != null
+                || (pass.load.mask() & (CgGL.GL_DEPTH_BUFFER_BIT | CgGL.GL_STENCIL_BUFFER_BIT)) != 0) {
+            return false;
+        }
+        CgGraphTexture target = pass.target;
+        if (hostDepth(pass)) return CgGL.cgDepthTexture(startFramebuffer) != 0;   // the host's, imported
+        if (attachmentOf(pass) != null || target.getLevels() != 1 || target.getLayers() != 1) return false;
+        CgFrameBuffer storage = target.kind() == CgGraphTexture.Kind.TRANSIENT ? target.framebuffer() : storage(target);
+        return storage != null && storage.getDepthTexture() != null;
+    }
+
+    /** Whether {@code pass} tests the host's depth: into the current target, or beside its depth. */
+    private static boolean hostDepth(CgRasterPass pass) {
+        CgGraphTexture target = pass.target;
+        return target == null || target.kind() == CgGraphTexture.Kind.CURRENT || target.drawsBesideCurrentDepth();
+    }
+
+    /** {@code pass}'s second attachment: its own, or inside a merged run the run's. */
+    @Nullable
+    private CgGraphTexture attachmentOf(CgRasterPass pass) {
+        CgGraphTexture own = pass.attachment();
+        return own != null ? own : runAttachment;
+    }
+
+    private boolean unmergeable(CgFrame frame, int s, CgRasterPass pass) {
+        return pass.damage() != null && !frame.wholePasses || pass.target.kind() == CgGraphTexture.Kind.HISTORY;
+    }
+
+    /**
+     * Whether raster step {@code k} joins the run {@code first} begins, whose second attachment so far is
+     * {@code attachment}. A pass with none joins one with, and one with joins one without: the run binds it throughout,
+     * each pass's writes to it masked off where its pipelines write none.
+     */
+    private boolean joins(CgFrame frame, CgRasterPass first, @Nullable CgGraphTexture attachment, int k, CgRasterPass next) {
+        if (next.target != first.target || next.level != first.level || next.layer != first.layer
+                || next.attachment() != null && attachment != null && next.attachment() != attachment || next.load.mask() != 0
+                || next.replacesTarget()
+                || next.depthFrom() != null || next.colorFrom() != null || unmergeable(frame, k, next)) {
+            return false;
+        }
+        if (readOnlyDepth(frame, k, next) != readOnlyDepth(frame, runStart, first)) return false;   // one depth mode a pass
+        CgFrame.Raster packed = frame.rasters[k];
+        if (packed.indirects > 0 && gpuCounts) return false;   // its commands are written by a dispatch first
+        for (int b = 0; b < packed.count; b++) if (packed.copyBefore[b] != 0) return false;
+        for (int i = frame.accessFrom[k]; i < frame.accessFrom[k + 1]; i++) {
+            CgGraphResource view = frame.accessView[i];
+            int bits = frame.accessBits[i];
+            if (view == CgGraphTexture.current() && first.target.drawsBesideCurrentDepth()) {
+                // Beside the host's depth a pass names it read and written: ordered on it, sampling none of it.
+                if ((bits & ~(CgAccess.COLOR_WRITE | CgAccess.SAMPLED_READ)) != 0) return false;
+            } else if ((view == first.target || view == attachment || view == next.attachment())
+                    && (bits & ~CgAccess.COLOR_WRITE) != 0) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /** The barrier an access of {@code bits} to buffer {@code id} needs, issued. */
+    private static void bufferBarrier(int id, int bits) {
+        barrier(id, bits, 0);
+    }
+
+    /** {@link #bufferBarrier} through overlap set {@code set} (0 for none). */
     private static void barrier(int id, int bits, int set) {
-        issue(true, id, HAZARDS.access(CgHazards.buffer(id), bits, set), bits);
+        int from = STATES.access(CgResourceStates.buffer(id), bits, set);
+        if (!issues(from, bits)) return;
+        leaveDeviceCompute();
+        CgGL.cgBufferBarrier(id, from, bits);
+        CgTrace.add(CgChannels.GL, BARRIER_COUNT, 1);
     }
 
-    private static void issue(boolean buffer, int id, int from, int bits) {
-        if (from == 0 || !computeBarriers) return;
-        if (buffer) CgGL.cgBufferBarrier(id, from, bits);
-        else CgGL.cgImageBarrier(id, from, bits);
-        CgTrace.add(CgChannels.GL, BARRIER_COUNT, 1);
+    /** Whether a transition from {@code from} to {@code to} is issued: every one on a device, a kernel's on GL. */
+    private static boolean issues(int from, int to) {
+        return from != 0 && computeBarriers && (takes || ((from | to) & COMPUTE) != 0);
+    }
+
+    /**
+     * Moves graph texture {@code texture} to {@code to}, stating what must move: whole, or where {@code attachedLevel}
+     * is not -1, its subresource at that level and {@code attachedLayer} to {@link CgAccess#COLOR_WRITE} and the rest
+     * to {@code to} (none where 0). A single-level, single-layer texture and the current target move as one
+     * framebuffer, depth with colour; any other by each colour texture's subresources.
+     */
+    private void move(CgGraphTexture texture, int to, int attachedLevel, int attachedLayer) {
+        boolean outlives = texture.kind() != CgGraphTexture.Kind.TRANSIENT;
+        if (texture.kind() == CgGraphTexture.Kind.CURRENT) {
+            moveFramebuffer(startFramebuffer, attachedLevel >= 0 ? CgAccess.COLOR_WRITE : to, true);
+            return;
+        }
+        // A requested texture's or a history's storage is made at its first use: this statement, before its bind.
+        CgFrameBuffer storage = outlives ? storage(texture) : texture.framebuffer();
+        if (storage == null) return;
+        int levels = texture.getLevels(), layers = texture.getLayers();
+        if (levels == 1 && layers == 1 && storage.getDepth() <= 1) {
+            moveFramebuffer(storage.getId(), attachedLevel >= 0 ? CgAccess.COLOR_WRITE : to, outlives);
+            return;
+        }
+        for (int slot = 0; slot < storage.getFormat().colorSlotCount(); slot++) {
+            CgTexture color = storage.getColorTexture(slot);
+            if (color == null) continue;
+            long key = CgResourceStates.texture(color.getId());
+            int[] subs = STATES.image(key, levels * layers);
+            noteMoved(key, color.getId(), levels, layers, outlives);
+            for (int level = 0; level < levels; level++) {
+                int layer = 0;
+                while (layer < layers) {
+                    int want = level == attachedLevel && layer == attachedLayer ? CgAccess.COLOR_WRITE : to;
+                    int from = subs[level * layers + layer], end = layer + 1;
+                    while (end < layers && subs[level * layers + end] == from && (level != attachedLevel
+                            || (end != attachedLayer && layer != attachedLayer))) end++;
+                    if (want != 0) {
+                        boolean moves = CgResourceStates.moves(from, want);
+                        if (moves && issues(from == 0 ? CgAccess.RESTING : from, want)) {
+                            leaveDeviceCompute();
+                            CgGL.cgTextureBarrier(color.getId(), level, 1, layer, end - layer,
+                                    from == 0 ? CgAccess.RESTING : from, want);
+                            CgTrace.add(CgChannels.GL, BARRIER_COUNT, 1);
+                        }
+                        for (int l = layer; l < end; l++) subs[level * layers + l] = moves ? want : from | want;
+                    }
+                    layer = end;
+                }
+            }
+        }
+    }
+
+    /** Moves framebuffer {@code fbo}'s attachments to {@code to}; answers where they were, 0 at rest. */
+    private int moveFramebuffer(int fbo, int to, boolean outlives) {
+        long key = CgResourceStates.framebuffer(fbo);
+        int[] subs = STATES.image(key, 1);
+        int from = subs[0];
+        noteMoved(key, fbo, 0, 0, outlives);
+        boolean moves = CgResourceStates.moves(from, to);
+        if (moves && issues(from == 0 ? CgAccess.RESTING : from, to)) {
+            leaveDeviceCompute();
+            CgGL.cgFramebufferBarrier(fbo, from == 0 ? CgAccess.RESTING : from, to);
+            CgTrace.add(CgChannels.GL, BARRIER_COUNT, 1);
+        }
+        subs[0] = moves ? to : from | to;
+        return from;
+    }
+
+    /** {@code key} was moved, and with {@code outlives} returns to rest at the execution's end; {@code levels} 0 for a framebuffer. */
+    private void noteMoved(long key, int name, int levels, int layers, boolean outlives) {
+        for (int m = 0; m < moved; m++) {
+            if (movedKeys[m] != key) continue;
+            movedOutlives[m] |= outlives;
+            return;
+        }
+        if (moved == movedKeys.length) {
+            movedKeys = Arrays.copyOf(movedKeys, moved * 2);
+            movedNames = Arrays.copyOf(movedNames, moved * 2);
+            movedLevels = Arrays.copyOf(movedLevels, moved * 2);
+            movedLayers = Arrays.copyOf(movedLayers, moved * 2);
+            movedOutlives = Arrays.copyOf(movedOutlives, moved * 2);
+        }
+        movedOutlives[moved] = outlives;
+        movedKeys[moved] = key;
+        movedNames[moved] = name;
+        movedLevels[moved] = levels;
+        movedLayers[moved++] = layers;
+    }
+
+    /**
+     * Every image it moved that outlives the execution, or with {@code all} every one, back where it rests: where the
+     * host and GL streams find it. A transient left out keeps its state with its storage.
+     */
+    private void restMoved(boolean all) {
+        if (moved == 0) return;
+        CgGL.cgBeginBarriers();
+        try {
+            for (int m = 0; m < moved; m++) {
+                if (!all && !movedOutlives[m]) continue;
+                int levels = movedLevels[m], layers = movedLayers[m];
+                int[] subs = STATES.image(movedKeys[m], Math.max(1, levels * layers));
+                if (levels == 0) {
+                    if (subs[0] != 0) CgGL.cgFramebufferBarrier(movedNames[m], subs[0], CgAccess.RESTING);
+                    subs[0] = 0;
+                    continue;
+                }
+                for (int i = 0; i < levels * layers; i++) {
+                    if (subs[i] == 0) continue;
+                    CgGL.cgTextureBarrier(movedNames[m], i / layers, 1, i % layers, 1, subs[i], CgAccess.RESTING);
+                    subs[i] = 0;
+                }
+            }
+        } finally {
+            CgGL.cgEndBarriers();
+        }
+        moved = 0;
+    }
+
+    /**
+     * After step {@code s}: each access whose next is a read two or more steps on begins its transition now, ended
+     * before that step ({@link #endSplits}), as Unreal RDG splits a transition from its producer's epilogue to its
+     * consumer's prologue. Not across async work, a callback, or an attachment.
+     */
+    private void beginSplits(CgFrame frame, int s) {
+        if (!splittable(frame, s)) return;
+        int end = Integer.MAX_VALUE;
+        CgGL.cgBeginBarriers();
+        int began;
+        try {
+            for (int i = frame.accessFrom[s]; i < frame.accessFrom[s + 1]; i++) {
+                int next = frame.nextAccess[i];
+                if (next < 0) continue;
+                int c = frame.accessStep[next], bits = frame.accessBits[next];
+                if (c <= s + 1 || bits == 0 || (bits & CgResourceStates.WRITES) != 0 || !splittable(frame, c)
+                        || frame.steps[c] instanceof CgRasterPass && frame.accessView[next] instanceof CgGraphTexture
+                        && (bits & CgAccess.COLOR_WRITE) != 0) {
+                    continue;
+                }
+                if (frame.accessView[next] instanceof CgGraphBuffer buffer) {
+                    if (buffer.resource().kind() == CgGraphBuffer.Kind.HISTORY) continue;
+                    bufferBarrier(bufferStorage(buffer, false), bits);
+                } else {
+                    move((CgGraphTexture) frame.accessView[next], bits, -1, -1);
+                }
+                end = Math.min(end, c);
+            }
+        } finally {
+            began = CgGL.cgEndBarriersSplit();
+        }
+        if (began == 0) return;
+        if (splitCount == splitIds.length) {
+            splitIds = Arrays.copyOf(splitIds, splitCount * 2);
+            splitEnds = Arrays.copyOf(splitEnds, splitCount * 2);
+        }
+        splitIds[splitCount] = began;
+        splitEnds[splitCount++] = end;
+        CgTrace.add(CgChannels.GL, SPLITS, 1);
+    }
+
+    /** Whether step {@code s} may begin or end a split: a raster, compute or buffer step on the frame's queue. */
+    private boolean splittable(CgFrame frame, int s) {
+        CgPass pass = frame.steps[s];
+        if (pass instanceof CgComputePass compute) return !runsAsync(compute);
+        return pass instanceof CgRasterPass || pass instanceof CgPass.Fill || pass instanceof CgPass.Update
+                || pass instanceof CgPass.BufferCopy;
+    }
+
+    /** Ends every split due by step {@code s}. */
+    private void endSplits(int s) {
+        for (int k = 0; k < splitCount; ) {
+            if (splitEnds[k] > s) {
+                k++;
+                continue;
+            }
+            CgGL.cgEndSplit(splitIds[k]);
+            splitIds[k] = splitIds[--splitCount];
+            splitEnds[k] = splitEnds[splitCount];
+        }
+    }
+
+    /** Before a blit of framebuffer {@code source} into {@code dest} inside a pass: the source read, the destination written. */
+    static void blitting(int source, int dest) {
+        if (!takes || depth == 0) return;
+        CgExecutor e = BY_DEPTH.get(depth - 1);
+        CgGL.cgBeginBarriers();
+        try {
+            e.blitSourceWas = e.moveFramebuffer(source, CgAccess.COPY_READ, source == e.startFramebuffer);
+            e.moveFramebuffer(dest, CgAccess.COPY_WRITE, false);
+        } finally {
+            CgGL.cgEndBarriers();
+        }
+    }
+
+    /** After it: the source where it was, the copy sampled. */
+    static void blitted(int source, int dest) {
+        if (!takes || depth == 0) return;
+        CgExecutor e = BY_DEPTH.get(depth - 1);
+        CgGL.cgBeginBarriers();
+        try {
+            if (e.blitSourceWas != 0) {
+                e.moveFramebuffer(source, e.blitSourceWas, false);
+            } else {
+                // Found at rest, perhaps under another framebuffer's name for the same images: back to rest.
+                CgGL.cgFramebufferBarrier(source, CgAccess.COPY_READ, CgAccess.RESTING);
+                STATES.image(CgResourceStates.framebuffer(source), 1)[0] = 0;
+            }
+            e.moveFramebuffer(dest, CgAccess.SAMPLED_READ, false);
+        } finally {
+            CgGL.cgEndBarriers();
+        }
     }
 
     // ── Raster ───────────────────────────────────────────────────────────────
@@ -1193,6 +1880,10 @@ public final class CgExecutor {
                 writeCommands(pass, packed);   // a dispatch never sits inside a render pass
             }
         }
+        if (device) {
+            rasterDevice(frame, pass, packed, damage);
+            return;
+        }
         if (damage == null && pass.replacesTarget()) renameTarget(pass, packed);
         try {
             try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, RASTER_BEGIN)) {
@@ -1201,12 +1892,14 @@ public final class CgExecutor {
             if (packed.count > 0) rasterBatches(frame, pass, packed, damage);
         } finally {
             if (renamedFrom != null) {
-                POOL.release(pass.target.desc(), renamedFrom);
+                giveStorage(pass.target.desc(), renamedFrom);
                 renamedFrom = null;
             }
         }
         if (stencilled) CgStencilState.DISABLED.apply();
         stencilled = false;
+        if (depthInPlace) CgGL.cgReadOnlyDepth(false);
+        depthInPlace = false;
         composed = beside = false;   // detached at the execution's end: an attach a pass cost 2 µs on a threaded driver
     }
 
@@ -1226,21 +1919,36 @@ public final class CgExecutor {
         int[] rect = packed.copyRect;   // GL pixels x0, y0, x1, y1; x1 below 0 is the whole target
         if (rect[2] >= 0 && (rect[0] > 0 || rect[1] > 0 || rect[2] < old.getWidth() || rect[3] < old.getHeight())) return;
         renamedFrom = old;
-        target.resolve(POOL.acquire(target.desc()));
+        target.resolve(takeStorage(target.desc(), pass));
+        if (takes) {
+            // After the step's transitions: the old storage is now what its batches sample, the new one its target.
+            CgGL.cgBeginBarriers();
+            try {
+                moveFramebuffer(old.getId(), CgAccess.SAMPLED_READ, false);
+                moveFramebuffer(target.framebuffer().getId(), CgAccess.COLOR_WRITE, false);
+            } finally {
+                CgGL.cgEndBarriers();
+            }
+        }
         CgTrace.add(CgChannels.GL, TARGET_RENAMES, 1);
     }
 
     /** {@code pass}'s target bound and cleared, and what every batch shares bound. */
     private void rasterBegin(CgFrame frame, CgRasterPass pass, CgFrame.Raster packed, @Nullable int[] damage) {
+        depthInPlace = readOnlyDepth(frame, currentStep, pass);
+        if (depthInPlace) {
+            CgGL.cgReadOnlyDepth(true);
+            CgTrace.add(CgChannels.GL, READ_ONLY_DEPTH, 1);
+        }
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, RASTER_TARGET)) {
             try (CgTrace.Zone c = CgTrace.zone(CgChannels.GL_DETAIL, RASTER_COMPOSED)) {
                 // Beside the current depth, a second attachment is ours too: the host's colour stays out
-                composed = pass.attachment() != null && !(pass.target != null && pass.target.drawsBesideCurrentDepth())
+                composed = attachmentOf(pass) != null && !(pass.target != null && pass.target.drawsBesideCurrentDepth())
                         && bindComposed(pass);
             }
             try (CgTrace.Zone b = CgTrace.zone(CgChannels.GL_DETAIL, RASTER_BESIDE)) {
                 beside = !composed && pass.target != null && pass.target.drawsBesideCurrentDepth()
-                        && bindBeside(pass.target, pass.attachment());
+                        && bindBeside(pass.target, attachmentOf(pass));
             }
             try (CgTrace.Zone t = CgTrace.zone(CgChannels.GL_DETAIL, RASTER_OWN)) {
                 if (!composed && !beside) bindTarget(pass.target, pass.level, pass.layer);
@@ -1253,6 +1961,7 @@ public final class CgExecutor {
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, RASTER_BINDINGS)) {
             frame.bindings.bind(packed.constants);
             for (int k = 0; k < KINDS; k++) if ((packed.kinds & (1 << k)) != 0) instanceBuffers[k].bind();
+            if (tabled && (packed.kinds & (1 << OBJECT)) != 0) primitives.bind();
             packed.palette.pass(pass.viewOwner(), pass.viewX(), pass.viewY(), CgPassConstants.height(pass.constants));
             if ((packed.kinds & UNIT_KINDS) != 0 || packed.tables) {
                 packed.clips.bindForDraw();
@@ -1355,7 +2064,7 @@ public final class CgExecutor {
                     }
                 }
                 boolean joinedDraw = end > b || command >= 0 && gpuCounts && packed.eachFrom[b] >= 0 && eachJoins(packed, b);
-                int id = joinedDraw ? CgPipeline.byId(packed.pipeline[b]).multiDraw().id() : packed.pipeline[b];
+                int id = packed.pipeline[b];
                 if (id != boundPipeline) {
                     boundPipeline = id;
                     pipeline = CgPipeline.byId(id);
@@ -1389,8 +2098,10 @@ public final class CgExecutor {
                 try (CgTrace.Zone records = CgTrace.zone(CgChannels.GL_DETAIL, BATCH_RECORDS)) {
                     if (packed.objects[b] != null) {
                         bindRecords(packed.objects[b], CgBindingPoints.OBJECT_DATA);
+                        identityBuffer.bind();
                         objectsBound = true;
                     } else if (objectsBound && packed.kind[b] == OBJECT) {
+                        if (tabled) primitives.bind();
                         instanceBuffers[OBJECT].bind();
                         objectsBound = false;
                     }
@@ -1403,6 +2114,7 @@ public final class CgExecutor {
                         standIn[s] = at;
                     }
                 }
+                if (DEVICE_SETS) deviceSets(pipeline, frame.bindings, packed.constants, boundBinding);
                 if (joinedDraw) {
                     try (CgTrace.Zone drawing = CgTrace.zone(CgChannels.GL_DETAIL, BATCH_DRAW)) {
                         if (command >= 0) {
@@ -1420,35 +2132,26 @@ public final class CgExecutor {
                     CgMesh mesh = mesh(packed, b);
                     try (CgTrace.Zone drawing = CgTrace.zone(CgChannels.GL_DETAIL, BATCH_DRAW)) {
                         for (int k = 0; k < commandCount; k++) {
-                            pipeline.instanceBase(packed.first[b] + k);
                             if (gpuCounts) {
-                                CgMeshStore.get().drawIndirect(mesh, pipeline, packed.submesh[b], commands.buffer(),
+                                CgMeshStore.get().drawIndirect(mesh, packed.submesh[b], commands.buffer(),
                                         commands.offset(command + k));
                             } else {
-                                drawCounted(mesh, pipeline, packed, b, packed.eachOffsets[packed.eachFrom[b] + k], 1);
+                                drawCounted(mesh, packed, b, packed.eachOffsets[packed.eachFrom[b] + k], 1,
+                                        packed.first[b] + k);
                             }
                         }
                     }
                     continue;
                 }
-                try (CgTrace.Zone base = CgTrace.zone(CgChannels.GL_DETAIL, BATCH_BASE)) {
-                    if (command >= 0 && packed.objects[b] == null
-                            && (packed.countModes[b] & 3) == CgIndirect.INSTANCES.ordinal()) {
-                        pipeline.sharedInstance(packed.first[b]);
-                    } else {
-                        pipeline.instanceBase(packed.first[b]);
-                    }
-                }
                 CgMesh mesh = mesh(packed, b);
                 try (CgTrace.Zone drawing = CgTrace.zone(CgChannels.GL_DETAIL, BATCH_DRAW)) {
                     if (command >= 0 && gpuCounts) {
-                        CgMeshStore.get().drawIndirect(mesh, pipeline, packed.submesh[b], commands.buffer(),
-                                commands.offset(command));
+                        CgMeshStore.get().drawIndirect(mesh, packed.submesh[b], commands.buffer(), commands.offset(command));
                     } else if (command >= 0) {
-                        drawCounted(mesh, pipeline, packed, b, packed.countOffsets[b], packed.instances[b]);
+                        drawCounted(mesh, packed, b, packed.countOffsets[b], packed.instances[b], firstInstance(packed, b));
                     } else {
-                        CgMeshStore.get().draw(mesh, pipeline, packed.instances[b], packed.submesh[b], packed.rangeFirst[b],
-                                packed.rangeCount[b]);
+                        CgMeshStore.get().draw(mesh, packed.instances[b], packed.first[b], packed.submesh[b],
+                                packed.rangeFirst[b], packed.rangeCount[b]);
                     }
                 }
             }
@@ -1472,7 +2175,7 @@ public final class CgExecutor {
     private static final int BATCH_PIPELINE = CgTrace.name("graph.batch.pipeline"),
             BATCH_BINDINGS = CgTrace.name("graph.batch.bindings"), BATCH_DRAW = CgTrace.name("graph.batch.draw"),
             BATCH_COPY_FROM = CgTrace.name("graph.batch.copyFrom"), BATCH_JOIN = CgTrace.name("graph.batch.join"),
-            BATCH_RECORDS = CgTrace.name("graph.batch.records"), BATCH_BASE = CgTrace.name("graph.batch.base");
+            BATCH_RECORDS = CgTrace.name("graph.batch.records");
 
     private static int groupLabel(int pipeline) {
         if (pipeline >= groupLabels.length) groupLabels = Arrays.copyOf(groupLabels, Math.max(pipeline + 1, groupLabels.length * 2));
@@ -1518,11 +2221,10 @@ public final class CgExecutor {
 
     /**
      * Indirect batch {@code k} drawn in one multi-draw after {@code b}: as {@link #joinable}, reading the same object
-     * records, from a mesh the store {@link CgMeshStore#joins joins} with {@code b}'s. Never a draw whose instances
-     * share one record, which a multi-draw's pipeline cannot read.
+     * records, from a mesh the store {@link CgMeshStore#joins joins} with {@code b}'s.
      */
     private static boolean joinableIndirect(CgFrame.Raster packed, int b, int k) {
-        return packed.counts[k] != null && !sharesRecord(packed, k) && packed.copyBefore[k] == 0
+        return packed.counts[k] != null && packed.copyBefore[k] == 0
                 && packed.pipeline[k] == packed.pipeline[b] && packed.binding[k] == packed.binding[b]
                 && packed.scissor[k] == packed.scissor[b] && packed.objects[k] == packed.objects[b]
                 && sameBuffers(packed, b, k) && packed.group[k] == packed.group[b]
@@ -1532,25 +2234,28 @@ public final class CgExecutor {
     private static final CgIndirect[] INDIRECT_MODES = CgIndirect.values();
 
     private static final int[] BREAKS = {
-            CgTrace.name("graph.multi-draw.breaks.direct"), CgTrace.name("graph.multi-draw.breaks.shared-record"),
-            CgTrace.name("graph.multi-draw.breaks.copy"), CgTrace.name("graph.multi-draw.breaks.pipeline"),
+            CgTrace.name("graph.multi-draw.breaks.direct"), CgTrace.name("graph.multi-draw.breaks.copy"), CgTrace.name("graph.multi-draw.breaks.pipeline"),
             CgTrace.name("graph.multi-draw.breaks.binding"), CgTrace.name("graph.multi-draw.breaks.scissor"),
             CgTrace.name("graph.multi-draw.breaks.records"), CgTrace.name("graph.multi-draw.breaks.group"),
             CgTrace.name("graph.multi-draw.breaks.mesh")};
 
     /** Counts the first reason indirect batch {@code k} does not join {@code b}'s run, by {@link #joinableIndirect}'s terms. */
     private static void countBreak(CgFrame.Raster packed, int b, int k) {
-        int why = packed.counts[k] == null ? 0 : sharesRecord(packed, k) ? 1 : packed.copyBefore[k] != 0 ? 2
-                : packed.pipeline[k] != packed.pipeline[b] ? 3 : packed.binding[k] != packed.binding[b] ? 4
-                : packed.scissor[k] != packed.scissor[b] ? 5
-                : packed.objects[k] != packed.objects[b] || !sameBuffers(packed, b, k) ? 6
-                : packed.group[k] != packed.group[b] ? 7 : 8;
+        int why = packed.counts[k] == null ? 0 : packed.copyBefore[k] != 0 ? 1
+                : packed.pipeline[k] != packed.pipeline[b] ? 2 : packed.binding[k] != packed.binding[b] ? 3
+                : packed.scissor[k] != packed.scissor[b] ? 4
+                : packed.objects[k] != packed.objects[b] || !sameBuffers(packed, b, k) ? 5
+                : packed.group[k] != packed.group[b] ? 6 : 7;
         CgTrace.add(CgChannels.GL, BREAKS[why], 1);
     }
 
-    /** Whether every instance of indirect batch {@code b} reads its one record: an INSTANCES draw of the frame's. */
-    private static boolean sharesRecord(CgFrame.Raster packed, int b) {
-        return packed.objects[b] == null && (packed.countModes[b] & 3) == CgIndirect.INSTANCES.ordinal();
+    /**
+     * Indirect batch {@code b}'s first instance: where its records start, or with {@link CgMeshStore#SHARED_RECORD} the
+     * one record every instance reads, an INSTANCES draw of the frame's.
+     */
+    private static int firstInstance(CgFrame.Raster packed, int b) {
+        boolean shared = packed.objects[b] == null && (packed.countModes[b] & 3) == CgIndirect.INSTANCES.ordinal();
+        return shared ? packed.first[b] | CgMeshStore.SHARED_RECORD : packed.first[b];
     }
 
     /** Whether batch {@code k} would join {@code b}'s run but for its bindings: what bindless would join. */
@@ -1578,22 +2283,515 @@ public final class CgExecutor {
         return false;
     }
 
+    /**
+     * Makes the batch's view, pass and material sets for its device pipeline's layout from what is bound now: the pass
+     * constants' snapshot, the batch's, and the buffers the executor bound ({@code CgBoundResources}). Logs, once each, a
+     * slot left to a default or a program that will not compile as written.
+     */
+    private void deviceSets(@Nullable CgPipeline pipeline, CgBindingTable table, int constants, int binding) {
+        if (pipeline == null || !CgGLImports.installed()) return;
+        CgShader linked = pipeline.program();
+        if (linked == null) return;
+        CgRHI rhi = CgRHI.get();
+        CgPipelineLayout layout;
+        try {
+            layout = CgDeviceStates.layout(rhi, linked.explicit(pipeline.toString()));
+        } catch (RuntimeException e) {
+            if (deviceSetsLogged.add(pipeline.toString())) LOGGER.warn("device sets: {}: {}", pipeline, e.getMessage());
+            return;
+        }
+        for (int set = 0; set < layout.sets().size() && set < CgRHI.BINDLESS_SET; set++) {
+            if (layout.sets().get(set).slots().isEmpty()) continue;
+            long before = deviceSets.defaulted();
+            deviceSets.set(rhi, table, set == CgBindingModel.VIEW ? constants : binding, layout, set, null);
+            if (deviceSets.defaulted() != before) {
+                String what = pipeline + " " + deviceSets.lastDefaulted();
+                if (deviceSetsLogged.add(what)) LOGGER.warn("device sets: {} defaulted", what);
+            }
+        }
+        long asked = deviceSets.made() + deviceSets.reused();
+        if (asked >= deviceSetsReport) {
+            deviceSetsReport *= 10;
+            LOGGER.warn("device sets: {} asked: {} made, {} reused, {} slots defaulted", asked, deviceSets.made(),
+                    deviceSets.reused(), deviceSets.defaulted());
+        }
+    }
+
+    /** {@link #deviceSets}' next report, at each power of ten sets asked for. */
+    private long deviceSetsReport = 10;
+
+    // ── Raster on the device (GL6 part 4) ──────────────────────────────────────
+
+    /** The host framebuffer's attachment parameters, which {@code CgGL} does not name. */
+    private static final int GL_ATTACHMENT_NAME = 0x8CD1, GL_ATTACHMENT_TEXTURE = 0x1702;
+    private static final CgGlSlot[] FRAMEBUFFER = {CgGlSlot.FBO};
+    /** The host framebuffer {@link #readHost} read, at what viewport size; -1 for none. */
+    private int hostRead = -1, hostReadWidth, hostReadHeight;
+    /** Its colour and depth as RHI textures (a texture's, a renderbuffer's, the default framebuffer's); null for none. */
+    @Nullable
+    private CgGpuTexture hostColor, hostDepth;
+    /** Its attachments' names and kinds ({@code GL_TEXTURE}, {@code GL_RENDERBUFFER}, 0 for none), and descriptions. */
+    private int hostColorName, hostDepthName, hostColorType, hostDepthType;
+    @Nullable
+    private CgGpuTexture.Desc hostColorDesc, hostDepthDesc;
+    /** The host's depth as a texture a pass samples in place ({@link #readOnlyDepth}). */
+    private final CgImportedTexture hostDepthTexture = new CgImportedTexture();
+
+    /**
+     * Reads the host framebuffer's attachments and imports its textures (RDG's {@code RegisterExternalTexture}). The
+     * names are read once a host framebuffer and size, again after {@link #forgetHostTargets}; the textures every time,
+     * since a name's image may change under it (the tracked backend renames one an upload replaces whole).
+     */
+    private void readHost() {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, READ_HOST)) {
+            importHost();
+        }
+    }
+
+    private static final int READ_HOST = CgTrace.name("graph.readHost"),
+            DEVICE_PREPARE = CgTrace.name("graph.device.prepare"), DEVICE_PASS = CgTrace.name("graph.device.pass");
+
+    private void importHost() {
+        int host = startFramebuffer, width = startViewport.get(2), height = startViewport.get(3);
+        CgGLImports imports = CgGLImports.get();
+        if (host == 0) {
+            // Unreal's back buffer: the window's own buffers, framebuffer 0 on GL, the surface on a device presenting one
+            hostColor = imports.defaultColor(width, height);
+            hostDepth = imports.defaultDepth(width, height);
+            return;
+        }
+        if (host != hostRead || width != hostReadWidth || height != hostReadHeight) {
+            // The binding as found: a CgGL pass reads the host mid-pass, its own target bound
+            try (CgGlScope ignored = CgGlState.save(FRAMEBUFFER)) {
+                CgGL.glBindFramebuffer(CgGL.GL_FRAMEBUFFER, host);
+                hostColorType = attachmentType(CgGL.GL_COLOR_ATTACHMENT0);
+                hostDepthType = attachmentType(CgGL.GL_DEPTH_ATTACHMENT);
+                hostColorName = hostColorType == 0 ? 0 : attachmentName(CgGL.GL_COLOR_ATTACHMENT0);
+                hostDepthName = hostDepthType == 0 ? 0 : attachmentName(CgGL.GL_DEPTH_ATTACHMENT);
+            }
+            hostColorDesc = describe(imports, hostColorType, hostColorName);
+            hostDepthDesc = describe(imports, hostDepthType, hostDepthName);
+            hostRead = host;
+            hostReadWidth = width;
+            hostReadHeight = height;
+        }
+        hostColor = imported(imports, hostColorType, hostColorName, hostColorDesc);
+        hostDepth = imported(imports, hostDepthType, hostDepthName, hostDepthDesc);
+    }
+
+    /** What is at {@code point} of the bound framebuffer: {@code GL_TEXTURE}, {@code GL_RENDERBUFFER}, or 0 for nothing. */
+    private static int attachmentType(int point) {
+        int type = CgGL.glGetFramebufferAttachmentParameteriv(CgGL.GL_FRAMEBUFFER, point,
+                CgGL.GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE);
+        return type == GL_ATTACHMENT_TEXTURE || type == CgGL.GL_RENDERBUFFER ? type : 0;
+    }
+
+    /** The name of the texture or renderbuffer at {@code point} of the bound framebuffer. */
+    private static int attachmentName(int point) {
+        return CgGL.glGetFramebufferAttachmentParameteriv(CgGL.GL_FRAMEBUFFER, point, GL_ATTACHMENT_NAME);
+    }
+
+    @Nullable
+    private static CgGpuTexture.Desc describe(CgGLImports imports, int type, int name) {
+        if (type == 0) return null;
+        return type == CgGL.GL_RENDERBUFFER ? imports.describeRenderbuffer(name) : imports.describe(name);
+    }
+
+    @Nullable
+    private static CgGpuTexture imported(CgGLImports imports, int type, int name, @Nullable CgGpuTexture.Desc desc) {
+        if (desc == null) return null;
+        return type == CgGL.GL_RENDERBUFFER ? imports.renderbuffer(name, desc) : imports.texture(name, desc);
+    }
+
+    /**
+     * The host's depth for a pass into {@code target}, {@code width} x {@code height}, beside it; null where it lends
+     * none, drawn without depth as {@link #bindBeside} draws: a host with no depth and framebuffer 0 are refused for
+     * good ({@link CgGraphTexture#takesCurrentDepth}), a size from a stale recorder for this pass alone.
+     */
+    @Nullable
+    private CgGpuTexture besideDepth(CgGraphTexture target, int width, int height) {
+        String refused = hostDepth == null ? "framebuffer " + startFramebuffer + " has no depth to draw beside"
+                : startFramebuffer == 0 ? "the default framebuffer lends no attachment to a framebuffer of ours" : null;
+        if (refused != null) {
+            if (!CgComposedTargets.refused(startFramebuffer)) LOGGER.warn("{} draws without the host's depth: {}", target, refused);
+            CgComposedTargets.refuse(startFramebuffer);
+            return null;
+        }
+        int w = hostDepth.desc().width(), h = hostDepth.desc().height();
+        if (w != width || h != height) {
+            long sizes = (long) width << 48 | (long) height << 32 | (long) w << 16 | h;
+            if (sizes != besideMismatch) {
+                besideMismatch = sizes;
+                LOGGER.warn("{} is {}x{}, beside a target of {}x{}: drawn without the host's depth", target, width, height, w, h);
+            }
+            return null;
+        }
+        return hostDepth;
+    }
+
+    /** Reads the host's attachments where {@code pass} draws into or beside them; throws where it cannot be drawn. */
+    private void checkDevicePass(CgRasterPass pass, CgFrame.Raster packed) {
+        boolean current = pass.target == null || pass.target.kind() == CgGraphTexture.Kind.CURRENT;
+        if (current) {
+            readHost();
+            if (hostColor == null && hostDepth == null) throw new IllegalStateException(pass + " draws into a host framebuffer with nothing attached");
+        } else {
+            if (pass.target.drawsBesideCurrentDepth()) readHost();
+            if (storage(pass.target) == null) throw new IllegalStateException(pass + ": " + pass.target + " has no storage");
+        }
+        // A device runs compute, so its draws are counted on the GPU (gpuCounts)
+        for (int b = 0; b < packed.count; b++) {
+            if (packed.counts[b] != null && !gpuCounts) throw new IllegalStateException(pass + " counts draws on the CPU beside a device");
+        }
+    }
+
+    /** The device texture at {@code storage}'s colour slot {@code slot}, or its depth where {@code slot} is -1. */
+    private static CgGpuTexture deviceTexture(CgFrameBuffer storage, int slot) {
+        CgGpuTexture texture = slot < 0 ? storage.rhiDepth() : storage.rhiColor(slot);
+        if (texture == null) throw new IllegalStateException(storage + (slot < 0 ? "'s depth" : "'s colour " + slot) + " has no device texture");
+        return texture;
+    }
+
+    /**
+     * The device texture of {@code pass}'s second attachment, drawn {@code width} x {@code height}; null for none. One
+     * {@code CgGL} could not attach (another size; the host's, with no colour of its own to draw beside) is dropped when
+     * optional, logged once, and throws when not, as {@link #bindComposed} does.
+     */
+    @Nullable
+    private CgGpuTexture deviceSecond(CgRasterPass pass, boolean current, int width, int height) {
+        CgGraphTexture attachment = attachmentOf(pass);
+        if (attachment == null) return null;
+        CgFrameBuffer extra = storage(attachment);
+        String refused = current && hostColor == null ? "the host framebuffer has no colour attachment 0 to draw beside"
+                : extra.getWidth() != width || extra.getHeight() != height
+                ? attachment + " is " + extra.getWidth() + "x" + extra.getHeight() + ", beside a target of " + width + "x" + height
+                : null;
+        if (refused == null) return deviceTexture(extra, 0);
+        if (!pass.attachmentOptional()) throw new IllegalStateException(pass + ": " + refused);
+        if (current) {
+            if (!CgComposedTargets.refused(startFramebuffer)) LOGGER.warn("{} draws without its second attachment: {}", pass, refused);
+            CgComposedTargets.refuse(startFramebuffer);
+        } else if (loggedOnce.add("second " + pass.name())) {
+            LOGGER.warn("{} draws without its second attachment: {}", pass, refused);
+        }
+        return null;
+    }
+
+    /**
+     * {@code pass} drawn through {@code CgRHI}: what binds through {@code CgGL} (the pass's snapshot, its instance
+     * buffers and tables, every texture's upload, every mesh's placement) first; then, in a device section, a render
+     * pass over its target's attachments, each batch's pipeline, sets and draw through the state cache.
+     */
+    private void rasterDevice(CgFrame frame, CgRasterPass pass, CgFrame.Raster packed, @Nullable int[] damage) {
+        CgTrace.add(CgChannels.GL, DEVICE_PASSES, 1);
+        long prepared = CgTrace.stamp(CgChannels.GL);
+        checkDevicePass(pass, packed);
+        boolean current = pass.target == null || pass.target.kind() == CgGraphTexture.Kind.CURRENT;
+        CgFrameBuffer storage = current ? null : storage(pass.target);
+        int level = pass.level;
+        // A host target of depth alone draws no colour
+        CgGpuTexture hostSized = hostColor != null ? hostColor : hostDepth;
+        int w = current ? hostSized.desc().width() : storage.levelWidth(level);
+        int h = current ? hostSized.desc().height() : storage.levelHeight(level);
+        CgMeshStore store = CgMeshStore.get();
+        if (packed.count > 0) {
+            frame.bindings.bind(packed.constants);
+            CgBoundResources.forgetTextures(CgBindingModel.PASS);
+            CgBoundResources.forgetTextures(CgBindingModel.MATERIAL);
+            // Through CgGL and before the device section, as the GL path copies before its first batch: the copies'
+            // binds are what the pass set reads
+            depthInPlace = readOnlyDepth(frame, currentStep, pass);
+            if (pass.depthFrom() != null) copyDepthFrom(pass);
+            if (pass.colorFrom() != null) copyColorFrom(pass);
+            if ((packed.copyBefore[0] & (CgTargetCopy.COLOR | CgTargetCopy.DEPTH)) != 0) {
+                copyTarget(pass, packed.copyBefore[0], packed.copyRect, 0);
+            }
+            for (int k = 0; k < KINDS; k++) if ((packed.kinds & (1 << k)) != 0) instanceBuffers[k].bind();
+            if (tabled && (packed.kinds & (1 << OBJECT)) != 0) primitives.bind();
+            packed.palette.pass(pass.viewOwner(), pass.viewX(), pass.viewY(), CgPassConstants.height(pass.constants));
+            if ((packed.kinds & UNIT_KINDS) != 0 || packed.tables) {
+                packed.clips.bindForDraw();
+                packed.shapes.bindForDraw();
+                packed.palette.bindForDraw();
+            }
+            deviceSets.prepare(frame.bindings);
+            for (int b = 0; b < packed.count; b++) store.ready(mesh(packed, b));
+        }
+        CgLoad load = pass.load;
+        boolean clearColor = (load.mask() & CgGL.GL_COLOR_BUFFER_BIT) != 0;
+        deviceColors.clear();
+        deviceFormats.clear();
+        // A second attachment (composed, or beside the current depth with one) is colour 1, after the target's colour 0.
+        CgGpuTexture second = deviceSecond(pass, current, w, h);
+        int colors = current ? (hostColor != null ? 1 : 0) : second != null ? 1 : storage.getFormat().colorSlotCount();
+        for (int i = 0; i < colors + (second != null ? 1 : 0); i++) {
+            CgGpuTexture texture = i == colors ? second : current ? hostColor : deviceTexture(storage, i);
+            // The pass's layer of an array target; the host's and a second attachment are no arrays
+            CgTextureView view = i == colors || current ? CgTextureView.attachment(texture, i == colors ? 0 : level, 0)
+                    : CgTextureView.attachment(texture, level, pass.layer);
+            deviceColors.add(new CgPassDesc.Color(view, clearColor && damage == null ? CgPassDesc.LoadOp.CLEAR : CgPassDesc.LoadOp.LOAD,
+                    load.r(), load.g(), load.b(), load.a(), CgPassDesc.StoreOp.STORE));
+            deviceFormats.add(texture.desc().format());
+        }
+        CgPassDesc.Depth depth = null;
+        CgFormat depthFormat = null;
+        CgGpuTexture depthTexture = current ? hostDepth
+                : pass.target.drawsBesideCurrentDepth() ? besideDepth(pass.target, w, h)
+                : storage.getFormat().hasDepth() ? deviceTexture(storage, -1) : null;
+        boolean clearDepth = depthTexture != null && (load.mask() & CgGL.GL_DEPTH_BUFFER_BIT) != 0;
+        boolean clearStencil = depthTexture != null && (load.mask() & CgGL.GL_STENCIL_BUFFER_BIT) != 0;
+        if (depthTexture != null) {
+            int depthLayer = depthTexture == hostDepth ? 0 : pass.layer;
+            // Under damage loaded and cleared over the damage alone, as colour is
+            depth = new CgPassDesc.Depth(CgTextureView.attachment(depthTexture, level, depthLayer),
+                    clearDepth && damage == null ? CgPassDesc.LoadOp.CLEAR : CgPassDesc.LoadOp.LOAD, (float) load.depth(),
+                    clearStencil && damage == null ? CgPassDesc.LoadOp.CLEAR : CgPassDesc.LoadOp.LOAD, load.stencil(),
+                    CgPassDesc.StoreOp.STORE, depthInPlace);
+            depthFormat = depthTexture.desc().format();
+        }
+        int samples = deviceColors.isEmpty() ? depth.view().texture().desc().samples()
+                : deviceColors.get(0).view().texture().desc().samples();
+        CgRenderState passState = pass.state != null ? pass.state : CgRenderState.DEFAULT;
+        CgTrace.zoneDone(CgChannels.GL, DEVICE_PREPARE, prepared);
+        long passed = CgTrace.stamp(CgChannels.GL);
+        CgDeviceSection.begin();
+        stating = true;
+        CgRenderPass rp = null;
+        try {
+            CgRHI rhi = CgRHI.get();
+            devicePassDesc = new CgPassDesc("graph", deviceColors, depth, w, h);
+            devicePassCurrent = current;
+            rp = open(rhi, devicePassDesc);
+            if (clearColor && damage != null) {
+                for (int i = 0; i < deviceColors.size(); i++) {
+                    rp.clearColor(i, load.r(), load.g(), load.b(), load.a(), damage[0], damage[1], damage[2], damage[3]);
+                }
+            }
+            if ((clearDepth || clearStencil) && damage != null) {
+                rp.clearDepthStencil(clearDepth, (float) load.depth(), clearStencil, load.stencil(),
+                        damage[0], damage[1], damage[2], damage[3]);
+            }
+            if (packed.count > 0) deviceBatches(frame, pass, packed, damage, rhi, passState, depthFormat, samples, w, h);
+            rp = null;
+            CgRenderPass ending = devicePass;
+            devicePass = null;
+            ending.end();
+        } finally {
+            // Ended on a throw too, or the section's end throws over it for the open pass
+            if (devicePass != null) {
+                devicePass.end();
+                devicePass = null;
+            } else if (rp != null) {
+                rp.end();
+            }
+            stating = false;
+            depthInPlace = false;
+            CgDeviceSection.end();
+            CgTrace.zoneDone(CgChannels.GL, DEVICE_PASS, passed);
+            if (pass.targetCopy() != null) pass.targetCopy().release(POOL);
+        }
+    }
+
+    /** The device's render pass open now, and what opened it, which a copy mid-pass opens again loading. */
+    @Nullable
+    private CgRenderPass devicePass;
+    private CgPassDesc devicePassDesc;
+    private boolean devicePassCurrent;
+
+    /** Begins {@code desc} as {@link #devicePass}, its viewport the target's, with the state cache emptied. */
+    private CgRenderPass open(CgRHI rhi, CgPassDesc desc) {
+        CgRenderPass rp = rhi.encoder().beginPass(desc);
+        devicePass = rp;
+        if (devicePassCurrent) {
+            rp.setViewport(startViewport.get(0), startViewport.get(1), startViewport.get(2), startViewport.get(3), 0, 1);
+        } else {
+            rp.setViewport(0, 0, desc.width(), desc.height(), 0, 1);
+        }
+        drawCache.reset();
+        return rp;
+    }
+
+    /**
+     * Batch {@code b}'s target copy, between render passes as Unreal RDG splits one around a copy: the pass ended, the
+     * copy made through CgGL, the pass begun again loading what it drew. Its binds are what the next sets read.
+     */
+    private CgRenderPass copyMidPass(CgRHI rhi, CgRasterPass pass, CgFrame.Raster packed, int b) {
+        CgRenderPass ending = devicePass;
+        devicePass = null;
+        ending.end();
+        CgDeviceSection.end();
+        copyTarget(pass, packed.copyBefore[b], packed.copyRect, b * 4);
+        CgDeviceSection.begin();
+        CgPassDesc d = devicePassDesc;
+        List<CgPassDesc.Color> colors = new ArrayList<>(d.colors().size());
+        for (CgPassDesc.Color c : d.colors()) {
+            colors.add(new CgPassDesc.Color(c.view(), CgPassDesc.LoadOp.LOAD, c.r(), c.g(), c.b(), c.a(), c.store()));
+        }
+        CgPassDesc.Depth depth = d.depth() == null ? null : new CgPassDesc.Depth(d.depth().view(), CgPassDesc.LoadOp.LOAD,
+                d.depth().clearDepth(), CgPassDesc.LoadOp.LOAD, d.depth().clearStencil(), d.depth().store(), d.depth().readOnly());
+        CgTrace.add(CgChannels.GL, MID_PASS_SPLITS, 1);
+        return open(rhi, new CgPassDesc(d.label(), colors, depth, d.width(), d.height()));
+    }
+
+    private void deviceBatches(CgFrame frame, CgRasterPass pass, CgFrame.Raster packed, @Nullable int[] damage,
+                               CgRHI rhi, CgRenderState passState, @Nullable CgFormat depthFormat,
+                               int samples, int w, int h) {
+        CgRenderPass rp = devicePass;
+        CgMeshStore store = CgMeshStore.get();
+        CgBindingTable table = frame.bindings;
+        int boundPipeline = -1, boundScissor = CgRasterPass.INHERIT, slot = 0;
+        CgPipeline pipeline = null;
+        CgShader linked = null;
+        CgPipelineLayout layout = null;
+        boolean objectsBound = false;
+        CgBindingPoints.Binding[] standIn = this.standIn;
+        Arrays.fill(standIn, null);
+        if (damage == null) rp.setScissor(0, 0, w, h);
+        else rp.setScissor(damage[0], damage[1], damage[2], damage[3]);
+        for (int b = 0; b < packed.count; b++) {
+            if (b > 0 && (packed.copyBefore[b] & (CgTargetCopy.COLOR | CgTargetCopy.DEPTH)) != 0) {
+                rp = copyMidPass(rhi, pass, packed, b);
+                boundScissor = CgRasterPass.INHERIT;
+                if (damage == null) rp.setScissor(0, 0, w, h);
+                else rp.setScissor(damage[0], damage[1], damage[2], damage[3]);
+            }
+            int command = packed.counts[b] != null ? slot : -1;
+            int end, commandCount = 0;
+            if (command >= 0) {
+                end = runs[b];
+                for (int k = b; k <= end; k++) commandCount += commandsOf(packed, k);
+                slot += commandCount;
+            } else {
+                end = packed.objects[b] == null && packed.buffers[b * CgDrawChunk.BUFFERS] == null && multiDraw
+                        && b + 1 < packed.count && joinable(packed, b, b + 1) ? joinRun(packed, b) : b;
+            }
+            if (packed.scissor[b] != boundScissor) {
+                boundScissor = packed.scissor[b];
+                if (boundScissor == CgRasterPass.NO_SCISSOR) {
+                    if (damage == null) rp.setScissor(0, 0, w, h);
+                    else rp.setScissor(damage[0], damage[1], damage[2], damage[3]);
+                } else if (boundScissor >= 0) {
+                    scissorRect(pass, packed.palette, boundScissor);
+                    if (damage != null) cutToDamage(damage);
+                    rp.setScissor(scissorRect[0], scissorRect[1], scissorRect[2], scissorRect[3]);
+                }
+            }
+            if (packed.pipeline[b] != boundPipeline) {
+                boundPipeline = packed.pipeline[b];
+                pipeline = CgPipeline.byId(boundPipeline);
+                linked = pipeline.program();
+                layout = linked == null ? null : CgDeviceStates.layout(rhi, linked.explicit(pipeline.toString()));
+            }
+            CgMesh mesh = mesh(packed, b);
+            CgGraphicsPipeline device = linked == null ? null
+                    : pipeline.device(passState, mesh.format(), CgMeshStore.topology(mesh), !CgGL.isDepthZeroToOne(),
+                            deviceFormats, depthFormat, samples);
+            if (device == null) {
+                if (loggedOnce.add("skipped " + pipeline)) {
+                    LOGGER.warn("device raster: {} skipped in {}: {}", pipeline, pass.name(),
+                            linked == null ? "its program did not link" : "no device pipeline");
+                }
+                if (end > b && command < 0) store.dropJoined();
+                CgTrace.add(CgChannels.GL, "graph.batches.skipped", end - b + 1);
+                b = end;
+                continue;
+            }
+            drawCache.pipeline(rp, device);
+            CgStencilState stencil = pipeline.state().getStencil();
+            if (stencil != null && stencil.enabled()) drawCache.stencilReference(rp, stencil.ref());
+            int binding = packed.binding[b];
+            for (int i = 0; i < table.buffers(binding); i++) table.buffer(binding, i).noteBound();
+            int first = b * CgDrawChunk.BUFFERS;
+            if (packed.objects[b] != null) {
+                bindRecords(packed.objects[b], CgBindingPoints.OBJECT_DATA);
+                identityBuffer.noteBound();
+                objectsBound = true;
+            } else if (objectsBound && packed.kind[b] == OBJECT) {
+                if (tabled) primitives.noteBound();
+                instanceBuffers[OBJECT].noteBound();
+                objectsBound = false;
+            }
+            for (int s = 0; s < CgDrawChunk.BUFFERS; s++) {
+                if (standIn[s] != null && !reads(packed, first, standIn[s])) bindEngineBuffer(standIn[s]);
+            }
+            for (int s = 0; s < CgDrawChunk.BUFFERS; s++) {
+                CgBindingPoints.Binding at = packed.bufferAt[first + s];
+                if (at != null) bindRecords(packed.buffers[first + s], at);
+                standIn[s] = at;
+            }
+            for (int set = 0; set < layout.sets().size(); set++) {
+                if (set == CgRHI.BINDLESS_SET) {
+                    drawCache.set(rp, set, rhi.bindlessSet());
+                    continue;
+                }
+                if (layout.sets().get(set).slots().isEmpty()) continue;
+                drawCache.set(rp, set, deviceSets.set(rhi, table, set == CgBindingModel.VIEW ? packed.constants : binding,
+                        layout, set, null));
+            }
+            CgGLImports imports = CgGLImports.get();
+            if (end > b || command >= 0 && packed.eachFrom[b] >= 0 && eachJoins(packed, b)) {
+                if (command >= 0) {
+                    int name = commands.buffer();
+                    store.drawIndirectJoinedOn(rp, drawCache, mesh, imports.buffer(name),
+                            imports.bufferOffset(name) + commands.offset(command), commandCount, commands.stride());
+                } else {
+                    store.drawJoinedOn(rp, drawCache);
+                }
+                b = end;
+                continue;
+            }
+            if (command >= 0) {
+                int name = commands.buffer();
+                int each = packed.eachFrom[b] >= 0 ? commandCount : 1;
+                for (int k = 0; k < each; k++) {
+                    store.drawIndirectOn(rp, drawCache, mesh, packed.submesh[b], imports.buffer(name),
+                            imports.bufferOffset(name) + commands.offset(command + k));
+                }
+                continue;
+            }
+            store.drawOn(rp, drawCache, mesh, packed.instances[b], packed.first[b], packed.submesh[b], packed.rangeFirst[b],
+                    packed.rangeCount[b]);
+        }
+        for (CgBindingPoints.Binding at : standIn) if (at != null) bindEngineBuffer(at);
+    }
+
     /** Binds a GPU buffer of records where an engine buffer's macros read the frame's own. */
-    private static void bindRecords(CgBufferHandle records, CgBindingPoints.Binding at) {
+    /** The identity ids reaching {@code n} at least, uploaded where they reached less: rarely, as a draw's records grow. */
+    private void uploadIdentity(int n) {
+        int ids = Math.max(n, identityIds * 2);
+        if (identity.length < ids) {
+            float[] grown = new float[ids];
+            for (int i = 0; i < ids; i++) grown[i] = Float.intBitsToFloat(i);
+            identity = grown;
+        }
+        identityBuffer.uploadRaw(identity, ids);
+        identityIds = ids;
+    }
+
+    private void bindRecords(CgBufferHandle records, CgBindingPoints.Binding at) {
         int id = records instanceof CgGraphBuffer graph ? bufferStorage(graph, false) : records.bufferId();
-        CgGL.glBindBufferBase(CgGL.GL_SHADER_STORAGE_BUFFER, at.ssbo(), id);
+        if (!stating) CgGL.glBindBufferBase(CgGL.GL_SHADER_STORAGE_BUFFER, at.ssbo(), id);
+        CgBoundResources.storage(at.ssbo(), id, 0, 0);
     }
 
     /** Binds the engine buffer made at {@code at} again, after draws that read their own there. */
-    private static void bindEngineBuffer(CgBindingPoints.Binding at) {
+    private void bindEngineBuffer(CgBindingPoints.Binding at) {
         CgShaderBuffer owner = CgShaderBufferRegistry.get().ownerOf(at);
-        if (owner != null) owner.bind();
+        if (owner != null && stating) owner.noteBound();
+        else if (owner != null) owner.bind();
     }
 
     /** Copies the depth of the target a pass reads besides its own, whole, and binds it. */
     private void copyDepthFrom(CgRasterPass pass) {
         CgGraphTexture from = pass.depthFrom();
         CgTargetCopy copy = pass.depthFromCopy();
+        if (takes && from.kind() != CgGraphTexture.Kind.CURRENT && !from.drawsBesideCurrentDepth()
+                && storage(from).getDepthTexture() != null) {
+            // Not attached here, and moved to SAMPLED_READ with the step: sampled where it is, as Unreal samples SceneDepth.
+            storage(from).getDepthTexture().bind(pass.depthFromUnit());
+            CgTrace.add(CgChannels.GL, DEPTH_SAMPLED, 1);
+            return;
+        }
         if (from.kind() == CgGraphTexture.Kind.CURRENT || from.drawsBesideCurrentDepth()) {
             copy.borrowDepth(sharedDepth(startFramebuffer, null, startViewport.get(2), startViewport.get(3), pass));
         } else {
@@ -1607,7 +2805,7 @@ public final class CgExecutor {
     private int depthDestination(CgRasterPass pass) {
         CgGraphTexture target = pass.target;
         if (target == null || target.kind() == CgGraphTexture.Kind.CURRENT || target.drawsBesideCurrentDepth()
-                || pass.attachment() != null) {
+                || attachmentOf(pass) != null) {
             return startFramebuffer;
         }
         CgFrameBuffer storage = storage(target);
@@ -1623,7 +2821,14 @@ public final class CgExecutor {
             CgTrace.add(CgChannels.GL, DEPTH_SHARED, 1);
             return sharedDepth;
         }
-        sharedDepth.copyDepth(source, format, width, height, pass, POOL);
+        if (format == null && CgGLImports.installed()) {
+            // The host's, through the device: a renderbuffer or the window's depth too, which CgGL cannot name
+            readHost();
+            if (hostDepth == null) throw new IllegalStateException(pass + " reads the depth of framebuffer " + source + ", which has none");
+            sharedDepth.copyDepth(source, hostDepth, POOL);
+        } else {
+            sharedDepth.copyDepth(source, format, width, height, pass, POOL);
+        }
         sharedDepthSource = source;
         sharedDepthWidth = width;
         sharedDepthHeight = height;
@@ -1652,43 +2857,40 @@ public final class CgExecutor {
      */
     private void writeCommands(CgRasterPass pass, CgFrame.Raster packed) {
         int args = commands.reserve(packed.indirects, FORGET_BUFFER);
-        barrier(true, args, CgAccess.COMPUTE_WRITE);
+        bufferBarrier(args, CgAccess.COMPUTE_WRITE);
         if (runs.length < packed.count) runs = new int[Math.max(packed.count, runs.length * 2)];
         int slot = 0;
         for (int b = 0; b < packed.count; b++) {
             if (packed.counts[b] == null) continue;
             int end = b;
-            if (multiDraw && !sharesRecord(packed, b)) {
+            if (multiDraw) {
                 while (end + 1 < packed.count && joinableIndirect(packed, b, end + 1)) end++;
                 if (end + 1 < packed.count && CgTrace.isEnabled(CgChannels.GL)) countBreak(packed, b, end + 1);
             }
             runs[b] = end;
-            boolean joined = end > b || packed.eachFrom[b] >= 0 && eachJoins(packed, b);
-            for (int k = b; k <= end; k++) slot += writeCommand(packed, k, slot, joined);
+            for (int k = b; k <= end; k++) slot += writeCommand(packed, k, slot);
             b = end;
         }
         commands.flush();
-        barrier(true, args, CgAccess.INDIRECT);
+        bufferBarrier(args, CgAccess.INDIRECT);
         CgTrace.add(CgChannels.GL, COMMAND_COUNT, packed.indirects);
     }
 
     /**
      * Batch {@code b}'s commands from {@code slot}, answering how many: one, or one per record of a batch of
-     * {@code indirectEach}. {@code joined}, in a multi-draw's form, each with its first instance.
+     * {@code indirectEach}, each with its first instance.
      */
-    private int writeCommand(CgFrame.Raster packed, int b, int slot, boolean joined) {
+    private int writeCommand(CgFrame.Raster packed, int b, int slot) {
         CgBufferHandle count = packed.counts[b];
         int countId;
         if (count instanceof CgGraphBuffer graph) {
             countId = bufferStorage(graph, false);
         } else {
             countId = count.bufferId();
-            barrier(true, countId, CgAccess.COMPUTE_READ);
+            bufferBarrier(countId, CgAccess.COMPUTE_READ);
         }
         CgMeshStore store = CgMeshStore.get();
-        boolean drawn = joined
-                ? store.joinedRange(packed.mesh[b], packed.submesh[b], packed.rangeFirst[b], packed.rangeCount[b], range)
-                : store.range(packed.mesh[b], packed.submesh[b], packed.rangeFirst[b], packed.rangeCount[b], range);
+        boolean drawn = store.range(packed.mesh[b], packed.submesh[b], packed.rangeFirst[b], packed.rangeCount[b], range);
         if (!drawn) Arrays.fill(range, 0);   // a mesh with nothing to draw: a command of nothing
         CgIndirect mode = INDIRECT_MODES[packed.countModes[b] & 3];
         int factor = packed.countModes[b] >>> 2;
@@ -1696,12 +2898,12 @@ public final class CgExecutor {
             int n = packed.instances[b];
             for (int k = 0; k < n; k++) {
                 long at = packed.eachOffsets[packed.eachFrom[b] + k];
-                commands.write(slot + k, countId, at, mode, factor, range, 1, -1, joined ? packed.first[b] + k : 0);
+                commands.write(slot + k, countId, at, mode, factor, range, 1, -1, packed.first[b] + k);
             }
             return n;
         }
         commands.write(slot, countId, packed.countOffsets[b], mode, factor, range, packed.instances[b],
-                packed.objects[b] != null ? packed.instances[b] : -1, joined ? packed.first[b] : 0);
+                packed.objects[b] != null ? packed.instances[b] : -1, firstInstance(packed, b));
         return 1;
     }
 
@@ -1720,7 +2922,7 @@ public final class CgExecutor {
      * An indirect batch drawn by its count read on the CPU, where no draw can take the GPU's (tier G33, or a context
      * with no indirect draw): the same picture, at the cost of the read.
      */
-    private void drawCounted(CgMesh mesh, CgPipeline pipeline, CgFrame.Raster packed, int b, long countOffset, int records) {
+    private void drawCounted(CgMesh mesh, CgFrame.Raster packed, int b, long countOffset, int records, int firstInstance) {
         CgBufferHandle handle = packed.counts[b];
         int countId = handle instanceof CgGraphBuffer graph ? bufferStorage(graph, false) : handle.bufferId();
         CgBufferReadback.readWords(countId, countOffset, countWord, 0, 1);
@@ -1731,12 +2933,12 @@ public final class CgExecutor {
         int submesh = Math.max(0, packed.submesh[b]);
         if ((packed.countModes[b] & 3) == CgIndirect.INSTANCES.ordinal()) {
             if (n > 0) {
-                store.draw(mesh, pipeline, (int) Math.min(n, Integer.MAX_VALUE), submesh, packed.rangeFirst[b],
+                store.draw(mesh, (int) Math.min(n, Integer.MAX_VALUE), firstInstance, submesh, packed.rangeFirst[b],
                         packed.rangeCount[b]);
             }
         } else if (store.range(mesh, submesh, packed.rangeFirst[b], packed.rangeCount[b], range)) {
             long count = Math.min(n, range[1]);
-            if (count > 0) store.draw(mesh, pipeline, records, submesh, packed.rangeFirst[b], (int) count);
+            if (count > 0) store.draw(mesh, records, firstInstance, submesh, packed.rangeFirst[b], (int) count);
         }
     }
 
@@ -1785,6 +2987,17 @@ public final class CgExecutor {
     private void copyTarget(CgRasterPass pass, int bits, int[] rects, int at) {
         CgGraphTexture target = pass.target;
         CgTargetCopy copy = pass.targetCopy();
+        if (depthInPlace && (bits & CgTargetCopy.DEPTH) != 0) {
+            // Read-only in this pass: sampled where it is, no copy.
+            if (hostDepth(pass)) {
+                hostDepthTexture.point(CgGL.cgDepthTexture(startFramebuffer), CgGL.GL_TEXTURE_2D, startViewport.get(2), startViewport.get(3), hostDepth);
+                hostDepthTexture.bind(pass.sceneDepthUnit());
+            } else {
+                storage(target).getDepthTexture().bind(pass.sceneDepthUnit());
+            }
+            bits &= ~(CgTargetCopy.DEPTH | CgTargetCopy.CLEAN);
+            if (bits == 0) return;
+        }
         if ((bits & (CgTargetCopy.DEPTH | CgTargetCopy.CLEAN)) == (CgTargetCopy.DEPTH | CgTargetCopy.CLEAN)) {
             // The target's depth as the pass found it: what an earlier pass may have copied already.
             if (target == null || target.kind() == CgGraphTexture.Kind.CURRENT) {
@@ -1846,7 +3059,8 @@ public final class CgExecutor {
      * where the target takes none and the attachment is optional; where it is not, throws.
      */
     private boolean bindComposed(CgRasterPass pass) {
-        CgFrameBuffer extra = storage(pass.attachment());
+        CgGraphTexture attachment = attachmentOf(pass);
+        CgFrameBuffer extra = storage(attachment);
         CgGraphTexture target = pass.target;
         int host, x, y, w, h;
         if (target == null || target.kind() == CgGraphTexture.Kind.CURRENT) {
@@ -1866,7 +3080,7 @@ public final class CgExecutor {
         String refused = null;
         if (x != 0 || y != 0 || extra.getWidth() != w || extra.getHeight() != h) {
             // GL would draw into the intersection, quietly.
-            refused = pass.attachment() + " is " + extra.getWidth() + "x" + extra.getHeight() + ", beside a target of "
+            refused = attachment + " is " + extra.getWidth() + "x" + extra.getHeight() + ", beside a target of "
                     + w + "x" + h + " at " + x + "," + y;
         } else {
             refused = COMPOSED.bind(host, w, h, extra.getColorTexture(0).getId(), extra.getFormat().getColorSlot(0));
@@ -1939,11 +3153,6 @@ public final class CgExecutor {
             }
             return;
         }
-        if (target.kind() == CgGraphTexture.Kind.HISTORY) {
-            if (target.isPreviousVersion()) throw new IllegalStateException(target + " is sampled only: draw into its history");
-            storage(target);
-            target.advance();
-        }
         CgFrameBuffer storage = storage(target);
         if (layer != 0) storage.bindLayer(layer);
         else storage.bindLevel(level);
@@ -1953,6 +3162,8 @@ public final class CgExecutor {
 
     /** A readback's copy, issued here; its sink hears from {@link CgReadback#poll} once the GPU has finished. */
     private static void readback(CgPass.Readback r) {
+        r.delivering = true;
+        if (CgGLImports.installed() && readbackDevice(r)) return;
         if (r.buffer != null) {
             CgReadback.buffer(bufferStorage(r.buffer, false), r.offset, r.size, r);
             return;
@@ -1966,12 +3177,40 @@ public final class CgExecutor {
         }
     }
 
-    /** A released storage's framebuffer deleted and its texture forgotten by the hazards. */
+    /**
+     * {@code r}'s copy on the device (its step's barriers have made the source readable as a copy's); false where its
+     * texture has no device image, which the {@code CgGL} copy then reads.
+     */
+    private static boolean readbackDevice(CgPass.Readback r) {
+        CgGLImports imports = CgGLImports.get();
+        if (r.buffer != null) {
+            int id = bufferStorage(r.buffer, false);
+            CgReadback.buffer(imports.buffer(id), imports.bufferOffset(id) + r.offset, r.size, r);
+            return true;
+        }
+        CgFrameBuffer storage = storage(r.texture);
+        CgTextureView view = storage.getColorTexture(0).rhiView();
+        if (view == null) return false;
+        boolean slices = storage.isVolume() || storage.isArray();
+        CgReadback.texture(view.texture(), new CgTextureRegion(r.level, r.x, r.y, slices ? r.z : 0, r.w, r.h,
+                slices ? r.d : 1), r);
+        return true;
+    }
+
+    /** A released storage's framebuffer deleted, its states forgotten. */
     private static void free(@Nullable CgFrameBuffer storage) {
         if (storage == null) return;
-        CgTexture color = storage.getColorTexture(0);
-        if (color != null) HAZARDS.forget(CgHazards.texture(color.getId()));
+        forgetStorage(storage);
         storage.delete();
+    }
+
+    /** {@code storage}'s states forgotten, before it is deleted: its names may be someone else's next. */
+    private static void forgetStorage(CgFrameBuffer storage) {
+        STATES.forget(CgResourceStates.framebuffer(storage.getId()));
+        for (int slot = 0; slot < storage.getFormat().colorSlotCount(); slot++) {
+            CgTexture color = storage.getColorTexture(slot);
+            if (color != null) STATES.forget(CgResourceStates.texture(color.getId()));
+        }
     }
 
     /** A texture's storage now: a requested one's is made on first use, a history's both versions, cleared. */
@@ -1979,11 +3218,15 @@ public final class CgExecutor {
         CgFrameBuffer[] versions = texture.versions();
         if (versions != null && versions[0] == null) {
             CgTrace.add(CgChannels.GL, "graph.history.made", 1);
+            boolean stated = takes && CgGL.cgGraphStates(false);   // the clears are GL's: the device lays them
             try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, MAKE_STORAGE)) {
                 for (int v = 0; v < 2; v++) {
                     versions[v] = CgTexturePool.create("cg_graph_" + texture.resource().name() + v, texture.desc());
+                    forgetStorage(versions[v]);
                     versions[v].clearColor(0f, 0f, 0f, 0f);
                 }
+            } finally {
+                if (takes) CgGL.cgGraphStates(stated);
             }
         }
         CgFrameBuffer storage = texture.framebuffer();
@@ -1993,6 +3236,7 @@ public final class CgExecutor {
             try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, MAKE_STORAGE)) {
                 storage = CgTexturePool.create("cg_graph_" + texture.name(), texture.desc());
             }
+            forgetStorage(storage);
             texture.resolve(storage);
         }
         if (storage == null) throw new IllegalStateException(texture + " has no storage in this pass");

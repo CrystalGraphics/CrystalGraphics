@@ -53,7 +53,8 @@ dependencies {
     // Asset files are YAML (CgFiles.YAML): core's consumerApi does not reach this test classpath.
     testRuntimeOnly("org.yaml:snakeyaml:2.7")
     testImplementation("junit:junit:${rootProject.properties["dep.junit"]}")
-    for (module in listOf("lwjgl", "lwjgl-shaderc", "lwjgl-spvc", "lwjgl-vma", "lwjgl-glfw")) {
+    testImplementation(project(":runtime:lwjgl:3"))   // the GL device's driver, for its contract runner
+    for (module in listOf("lwjgl", "lwjgl-shaderc", "lwjgl-spvc", "lwjgl-vma", "lwjgl-glfw", "lwjgl-opengl")) {
         testImplementation("org.lwjgl:$module:$lwjglVulkan")
         testRuntimeOnly("org.lwjgl:$module:$lwjglVulkan:$natives")
     }
@@ -86,6 +87,17 @@ val stageKitPorts = tasks.register<Sync>("stageKitPorts") {
 // The natives load through System.load, which JDK 25 warns about unless native access is granted.
 tasks.test {
     jvmArgs("--enable-native-access=ALL-UNNAMED")
+    // The engine's caches (framebuffer layouts, SPIR-V) in the build folder: its root is the working directory, the module's
+    systemProperty("crystalgraphics.cache.dir", layout.buildDirectory.dir("test-cache").get().asFile.absolutePath)
+    // EngineOnGLDeviceTest's measurement: -PglShaderCache=<empty dir> makes NVIDIA's shader cache cold, -PglShaderReport=<file>
+    providers.gradleProperty("glShaderCache").orNull?.let { environment("__GL_SHADER_DISK_CACHE_PATH", it) }
+    providers.gradleProperty("glShaderReport").orNull?.let { systemProperty("crystalgraphics.test.glShaderReport", it) }
+    // GLCommandListTest rewrites the LWJGL 2 runner's GLSL fixtures: -PupdateGlFixtures=true
+    providers.gradleProperty("updateGlFixtures").orNull?.let { systemProperty("crystalgraphics.test.updateGlFixtures", it) }
+    // EngineOnTrackedBackendTest holds every shipped material's every variant: past Gradle's 512 MB. Direct memory keeps
+    // the default's limit, which would follow the heap: an upload test leaking leases must still meet it.
+    maxHeapSize = "2g"
+    jvmArgs("-XX:MaxDirectMemorySize=512m")
     // Each class installs its own backend under the engine's static buffers and fences: one JVM a class.
     forkEvery = 1
     // A kit's ported programs, linked when asked (KitProgramsLinkTest): staged under their namespace, as a kit loads them.

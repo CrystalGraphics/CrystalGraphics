@@ -28,6 +28,8 @@ public final class VulkanTexture implements CgGpuTexture {
     public final Desc desc;
     public final long image;
     public final long allocation;
+    /** Whether it is placed in a heap whose memory it does not own ({@code CgTransientMemory}). */
+    public final boolean placed;
     public final int format;
     public final int aspect;
     public final int layers;
@@ -41,19 +43,26 @@ public final class VulkanTexture implements CgGpuTexture {
     public long transferBatch;
     /** Whether its mipmaps are owed once that batch lands. */
     public boolean mipmapsOwed;
+    /**
+     * Whether its memory was last another image's ({@link #discard}): a barrier from {@code UNDEFINED} then waits on
+     * every command's writes, the aliasing barrier.
+     */
+    private boolean aliased;
     private final int[] layouts;
     /** Its views by range key, a handful each: parallel arrays, so a lookup boxes nothing. */
     private long[] viewKeys = new long[4], viewIds = new long[4];
     private int viewCount;
 
     public VulkanTexture(Desc desc, long image, long allocation, int format, int aspect) {
-        this(desc, image, allocation, format, aspect, restingFor(desc, aspect), VK_IMAGE_LAYOUT_UNDEFINED);
+        this(desc, image, allocation, false, format, aspect, restingFor(desc, aspect), VK_IMAGE_LAYOUT_UNDEFINED);
     }
 
-    private VulkanTexture(Desc desc, long image, long allocation, int format, int aspect, int resting, int layout) {
+    private VulkanTexture(Desc desc, long image, long allocation, boolean placed, int format, int aspect, int resting,
+                          int layout) {
         this.desc = desc;
         this.image = image;
         this.allocation = allocation;
+        this.placed = placed;
         this.format = format;
         this.aspect = aspect;
         this.layers = desc.kind() == Kind.D3 ? 1 : desc.depthOrLayers();
@@ -67,12 +76,29 @@ public final class VulkanTexture implements CgGpuTexture {
      * the host's own record of it true. It has no allocation: destroying it destroys only its views.
      */
     public static VulkanTexture borrowed(Desc desc, long image, int format, int aspect, int layout) {
-        return new VulkanTexture(desc, image, 0L, format, aspect, layout, layout);
+        return new VulkanTexture(desc, image, 0L, false, format, aspect, layout, layout);
+    }
+
+    /**
+     * An image bound to a heap's memory at an offset, which it shares with others alive at other times: destroying it
+     * destroys the image alone. Every use of the memory begins with {@link #discard}.
+     */
+    public static VulkanTexture placed(Desc desc, long image, int format, int aspect) {
+        return new VulkanTexture(desc, image, 0L, true, format, aspect, restingFor(desc, aspect), VK_IMAGE_LAYOUT_UNDEFINED);
     }
 
     /** Whether the image belongs to a host rather than to this device. */
     public boolean borrowed() {
-        return allocation == 0L;
+        return allocation == 0L && !placed;
+    }
+
+    /**
+     * Takes its memory over from whatever used it last: every subresource undefined, and the next barrier of each waits
+     * on all earlier commands' writes, on the queue it is recorded for.
+     */
+    public void discard() {
+        Arrays.fill(layouts, VK_IMAGE_LAYOUT_UNDEFINED);
+        aliased = true;
     }
 
     private static int restingFor(Desc desc, int aspect) {
@@ -153,13 +179,14 @@ public final class VulkanTexture implements CgGpuTexture {
                 }
                 int end = layer + 1;
                 while (end < layers && layout(mip, end) == from) end++;
-                VulkanBarriers.image(cmd, image, aspect, mip, 1, layer, end - layer, from, layout, srcStage(from),
-                        srcAccess(from), dstStage, dstAccess);
+                VulkanBarriers.image(cmd, image, aspect, mip, 1, layer, end - layer, from, layout, waitStage(from),
+                        waitAccess(from), dstStage, dstAccess);
                 barriers++;
                 for (int l = layer; l < end; l++) layouts[mip * layers + l] = layout;
                 layer = end;
             }
         }
+        settle();
         return barriers;
     }
 
@@ -182,12 +209,13 @@ public final class VulkanTexture implements CgGpuTexture {
                 int end = layer + 1;
                 while (end < layers && layout(mip, end) == VK_IMAGE_LAYOUT_UNDEFINED) end++;
                 VulkanBarriers.image(cmd, image, aspect, mip, 1, layer, end - layer, VK_IMAGE_LAYOUT_UNDEFINED, layout,
-                        VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0, dstStage, dstAccess);
+                        waitStage(VK_IMAGE_LAYOUT_UNDEFINED), waitAccess(VK_IMAGE_LAYOUT_UNDEFINED), dstStage, dstAccess);
                 barriers++;
                 for (int l = layer; l < end; l++) layouts[mip * layers + l] = layout;
                 layer = end;
             }
         }
+        settle();
         return barriers;
     }
 
@@ -223,7 +251,7 @@ public final class VulkanTexture implements CgGpuTexture {
                 while (end < baseLayer + count && layout(mip, end) == old) end++;
                 if (old != layout) {
                     VulkanBarriers.image(cmd, image, aspect, mip, 1, layer, end - layer, old, layout,
-                            srcStage(old) | srcStage, srcAccess(old) | srcAccess, dstStage, dstAccess);
+                            waitStage(old) | srcStage, waitAccess(old) | srcAccess, dstStage, dstAccess);
                     barriers++;
                     for (int l = layer; l < end; l++) layouts[mip * layers + l] = layout;
                 } else if (depend) {
@@ -234,11 +262,70 @@ public final class VulkanTexture implements CgGpuTexture {
                 layer = end;
             }
         }
+        settle();
         return barriers;
     }
 
+    /**
+     * A stated transition of a range, into {@code batch}: from {@code oldLayout} to {@code layout}. Every subresource
+     * must be in {@code oldLayout} by this texture's record, or not laid yet ({@code UNDEFINED}); one that is not throws,
+     * naming it: a statement the graph got wrong, caught before validation would. With {@code update}, the record moves.
+     */
+    public void stated(VulkanBarriers.Batch batch, VkCommandBuffer cmd, int baseMip, int mips, int baseLayer, int count,
+                       int oldLayout, int srcStage, int srcAccess, int layout, int dstStage, int dstAccess, boolean update) {
+        requireUsableOn(cmd);
+        for (int mip = baseMip; mip < baseMip + mips; mip++) {
+            int layer = baseLayer;
+            while (layer < baseLayer + count) {
+                int recorded = layout(mip, layer);
+                int end = layer + 1;
+                while (end < baseLayer + count && layout(mip, end) == recorded) end++;
+                if (recorded != oldLayout && recorded != VK_IMAGE_LAYOUT_UNDEFINED) {
+                    throw new IllegalStateException(desc.label() + " mip " + mip + " layers " + layer + "-" + (end - 1)
+                            + ": stated in layout " + oldLayout + ", recorded in " + recorded);
+                }
+                boolean taken = recorded == VK_IMAGE_LAYOUT_UNDEFINED && aliased;
+                batch.image(cmd, image, aspect, mip, 1, layer, end - layer, recorded, layout,
+                        taken ? srcStage | waitStage(recorded) : srcStage, taken ? srcAccess | waitAccess(recorded)
+                        : srcAccess, dstStage, dstAccess);
+                if (update) for (int l = layer; l < end; l++) layouts[mip * layers + l] = layout;
+                layer = end;
+            }
+        }
+        if (update) settle();
+    }
+
+    /**
+     * {@link #transition(VkCommandBuffer, int, int, int, int, int, int, int, int, int)}, with a dependency alone where a
+     * subresource is in {@code layout} already: what a write before or after needs.
+     */
+    public int depend(VkCommandBuffer cmd, int baseMip, int mips, int baseLayer, int count, int layout, int srcStage,
+                      int srcAccess, int dstStage, int dstAccess) {
+        requireUsableOn(cmd);
+        return move(cmd, baseMip, mips, baseLayer, count, layout, srcStage, srcAccess, dstStage, dstAccess, true);
+    }
+
+    /**
+     * What a barrier from {@code layout} waits on: its last use's stages, or every command after a {@link #discard},
+     * since another image's last use of the memory is not this one's to know.
+     */
+    private int waitStage(int layout) {
+        return layout == VK_IMAGE_LAYOUT_UNDEFINED && aliased ? VK_PIPELINE_STAGE_ALL_COMMANDS_BIT : srcStage(layout);
+    }
+
+    private int waitAccess(int layout) {
+        return layout == VK_IMAGE_LAYOUT_UNDEFINED && aliased ? VK_ACCESS_MEMORY_WRITE_BIT : srcAccess(layout);
+    }
+
+    /** Ends {@link #aliased} once no subresource is left undefined. */
+    private void settle() {
+        if (!aliased) return;
+        for (int l : layouts) if (l == VK_IMAGE_LAYOUT_UNDEFINED) return;
+        aliased = false;
+    }
+
     /** What the last use of a subresource in {@code layout} might still be doing. */
-    private static int srcStage(int layout) {
+    public static int srcStage(int layout) {
         switch (layout) {
             case VK_IMAGE_LAYOUT_UNDEFINED: return VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
             case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
@@ -251,7 +338,7 @@ public final class VulkanTexture implements CgGpuTexture {
         }
     }
 
-    private static int srcAccess(int layout) {
+    public static int srcAccess(int layout) {
         switch (layout) {
             case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL: return VK_ACCESS_TRANSFER_WRITE_BIT;
             case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL: return VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
@@ -259,6 +346,16 @@ public final class VulkanTexture implements CgGpuTexture {
             case VK_IMAGE_LAYOUT_GENERAL: return VK_ACCESS_SHADER_WRITE_BIT;   // a storage image a kernel wrote
             default: return 0;                          // a read: nothing to make visible, only to wait for
         }
+    }
+
+    /**
+     * The layout a shader samples {@code v} in: the read-only depth layout where a pass testing it read-only holds it,
+     * a host's image where the host keeps it, otherwise read-only.
+     */
+    public int sampledLayout(CgTextureView v) {
+        int at = layout(v.baseMip(), v.baseLayer());
+        if (at == VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL) return at;
+        return borrowed() ? resting : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
     }
 
     /** The view a pass renders into or a shader samples: one mip and layer, or the range the view names. */

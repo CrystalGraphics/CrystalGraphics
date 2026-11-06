@@ -1,5 +1,7 @@
 package com.crystalgraphics.platform.rhi;
 
+import com.crystalgraphics.platform.rhi.memory.CgTransientMemory;
+import com.crystalgraphics.platform.rhi.memory.CgTransientAllocator;
 import com.crystalgraphics.platform.rhi.command.CgCommandList;
 import com.crystalgraphics.platform.rhi.command.CgRenderPass;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
@@ -14,6 +16,7 @@ import com.crystalgraphics.platform.rhi.nulldrv.CgNullRHI;
 import com.crystalgraphics.platform.rhi.resource.CgGpuBuffer;
 import com.crystalgraphics.platform.rhi.resource.CgGpuSampler;
 import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
+import com.crystalgraphics.platform.rhi.resource.CgTextureView;
 import com.crystalgraphics.platform.rhi.sync.CgTimerQuery;
 import com.crystalgraphics.platform.rhi.shader.CgGlslCompiler;
 import com.crystalgraphics.platform.rhi.shader.CgShaderModule;
@@ -27,7 +30,8 @@ import com.crystalgraphics.platform.rhi.resource.CgRHIResource;
 /**
  * The device API the engine draws and dispatches through (Unreal's {@code FDynamicRHI}): resources, pipelines, the
  * frame's command list and frames in flight. One implementation runs at a time, reached through {@link #get()}:
- * Vulkan's ({@code CgVulkanDevice}), and {@link CgNullRHI}, which records and validates, for tests and headless runs.
+ * Vulkan's ({@code CgVulkanDevice}), GL 4.6's ({@code CgGLDevice}), and {@link CgNullRHI}, which records and validates,
+ * for tests and headless runs.
  *
  * <pre>{@code
  * CgRHI rhi = CgRHI.get();
@@ -83,6 +87,11 @@ public interface CgRHI {
         return rhi;
     }
 
+    /** Whether a host installed one: {@link #get()} answers rather than throws. */
+    static boolean installed() {
+        return Current.rhi != null;
+    }
+
     /** Makes {@code rhi} the one {@link #get()} returns; the host that made it calls this, null when it goes. */
     static void install(CgRHI rhi) {
         Current.rhi = rhi;
@@ -128,6 +137,52 @@ public interface CgRHI {
     /** Destroys {@code object} once the frame current now has retired. */
     void release(CgRHIResource object);
 
+    /**
+     * Heaps and textures placed in them, for textures alive during part of a frame to share memory
+     * ({@link CgTransientAllocator}); null where the device cannot place, as GL cannot, where the frame graph pools them
+     * instead (Unreal's {@code RHICreateTransientResourceAllocator}).
+     */
+    default CgTransientMemory transientMemory() {
+        return null;
+    }
+
+    // ── the bindless heap ─────────────────────────────────────────────────────
+
+    /** The set a pipeline reads the bindless heap at ({@code rhi.md} §2.3). */
+    int BINDLESS_SET = 3;
+
+    /**
+     * The bindless heap's layout, for a pipeline's set {@link #BINDLESS_SET}: at binding 0 every texture view a shader
+     * reads, each with its sampler, by index, as Unreal's RHIs bind through one heap and GL's bindless handles name a
+     * texture with its sampler. Null where {@link Globals#bindless()} is false.
+     *
+     * <pre>{@code
+     * // layout(set = 3, binding = 0) uniform sampler2D cg_Textures2D[];   ...texture(cg_Textures2D[index], uv)
+     * CgBindingLayout none = rhi.createBindingLayout("none", List.of(), false);
+     * CgPipelineLayout layout = new CgPipelineLayout(List.of(view, none, none, rhi.bindlessLayout()), 4);
+     * pass.setBindingSet(CgRHI.BINDLESS_SET, rhi.bindlessSet());       // once a command list
+     * pass.pushConstants(0, rhi.bindlessIndex(CgTextureView.whole(albedo), sampler));
+     * }</pre>
+     *
+     * <ul>
+     *   <li>A view is read in its texture's sampled layout: transition it there, as for a bound one.</li>
+     *   <li>An index holds until its texture is released, and is then given to another pair.</li>
+     * </ul>
+     */
+    default CgBindingLayout bindlessLayout() {
+        return null;
+    }
+
+    /** The heap's one set, of {@link #bindlessLayout()}; null without one. */
+    default CgBindingSet bindlessSet() {
+        return null;
+    }
+
+    /** The heap's index of {@code view} read through {@code sampler}, made on the first ask. The texture needs {@code SAMPLED} usage. */
+    default int bindlessIndex(CgTextureView view, CgGpuSampler sampler) {
+        throw new UnsupportedOperationException(globals().name() + " has no bindless heap");
+    }
+
     // ── commands ──────────────────────────────────────────────────────────────
 
     /** The current frame's encoder; the same object until {@link #endFrame}. */
@@ -170,6 +225,16 @@ public interface CgRHI {
     }
 
     /**
+     * Runs {@code task} first as the device closes, before anything of it is destroyed: where what makes objects on it
+     * from other threads drains (Unreal's {@code PipelineStateCache::Shutdown} at RHI exit). Any thread.
+     *
+     * <pre>{@code
+     * CgPipelineCache cache = new CgPipelineCache(device);   // registers its close: builds under way finish first
+     * }</pre>
+     */
+    void onClose(Runnable task);
+
+    /**
      * The host hands us its frame, as a host section opens. Nothing to do for a device that owns
      * its frames.
      */
@@ -200,11 +265,12 @@ public interface CgRHI {
      * @param asyncCompute          a compute queue beside the frame's, so async work overlaps the frame's other work
      * @param drawParameters        {@code gl_DrawID} and a draw's base vertex and instance in a shader
      * @param independentBlend      a pipeline's colour attachments may differ in blend and write mask
+     * @param bindless              a heap of texture views and samplers read by index ({@link #bindlessLayout()})
      */
     record Globals(String name, String vendor, String driver, Limits limits,
                    boolean timestamps, boolean anisotropy, boolean nonSolidFill,
                    boolean multiDrawIndirect, boolean indirectCount, boolean indirectFirstInstance,
-                   boolean asyncCompute, boolean drawParameters, boolean independentBlend) {
+                   boolean asyncCompute, boolean drawParameters, boolean independentBlend, boolean bindless) {
 
         public record Limits(int maxTextureSize, int max3DTextureSize, int maxArrayLayers, int maxColorAttachments,
                              int maxSamples, int maxVertexAttributes, int maxTextureUnits, int maxUniformBlockSize,

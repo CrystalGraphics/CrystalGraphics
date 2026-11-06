@@ -3,9 +3,7 @@ package com.crystalgraphics.vulkan.host;
 import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
 import com.crystalgraphics.platform.gl.CgGL;
-import com.crystalgraphics.platform.gl.state.CgGlState;
 import com.crystalgraphics.platform.gl.tracked.CgTrackedGLBackend;
-import com.crystalgraphics.platform.gl.tracked.CgTrackedStateProvider;
 import com.crystalgraphics.platform.service.CgCacheDirectory;
 import com.crystalgraphics.vulkan.CgVulkanDevice;
 import com.crystalgraphics.vulkan.command.VulkanComputeCommandBuffer;
@@ -258,7 +256,7 @@ public abstract class HostedVulkanHost<T> implements CgVulkanHost {
 
     // ── Use ──────────────────────────────────────────────────────────────────────────────────────
 
-    /** Builds the device over this host and GL's semantics over that, and makes it CgGL's state provider. Once. */
+    /** Builds the device over this host and GL's semantics over that, and installs them as the device front. Once. */
     public final CgTrackedGLBackend openBackend(int width, int height) {
         if (device != null) throw new IllegalStateException("openBackend already ran on this host");
         // Opt-in: the host's once-a-frame submit is the only signal async work can wait on, so it starts after the
@@ -284,10 +282,8 @@ public abstract class HostedVulkanHost<T> implements CgVulkanHost {
             LOG.info("[cg] copies into new images run on {}'s transfer queue, family {}", hostName, transferQueueFamily);
         }
         device = new CgVulkanDevice(this, width, height, CgCacheDirectory.of("vulkan"));
-        CgRHI.install(device);
         gl = new CgTrackedGLBackend(device, new ShadercGlslCompiler(CgCacheDirectory.of("spirv")), verify)
-                .compileInBackground();
-        CgGlState.setProvider(new CgTrackedStateProvider(gl));
+                .compileInBackground().install();
         return gl;
     }
 
@@ -466,6 +462,8 @@ public abstract class HostedVulkanHost<T> implements CgVulkanHost {
 
     /** Off unless the host says its device was created with it: a host's own features leave it off. */
     @Override public boolean independentBlend() { return false; }
+    // Minecraft's device enables no descriptor indexing until DeviceFeaturesHook asks for it (H1)
+    @Override public boolean bindless() { return false; }
     @Override public boolean textureCompressionBC() { return false; }
 
     @Override public final boolean asyncCompute() { return asyncQueue != null; }

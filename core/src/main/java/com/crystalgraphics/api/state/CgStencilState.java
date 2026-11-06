@@ -46,6 +46,31 @@ public record CgStencilState(
             CgGL.GL_ALWAYS, CgGL.GL_KEEP, CgGL.GL_KEEP, CgGL.GL_KEEP);
 
     /**
+     * Passes where the stencil's {@code readMask} bits equal {@code ref}'s, and writes nothing: a draw kept to the pixels
+     * a stencil value marks.
+     *
+     * <pre>{@code
+     * CgStencilState bit3 = CgStencilState.equal(1 << 3, 1 << 3);   // where bit 3 is set
+     * }</pre>
+     */
+    public static CgStencilState equal(int ref, int readMask) {
+        return new CgStencilState(true, ref, readMask, 0, CgGL.GL_EQUAL, CgGL.GL_KEEP, CgGL.GL_KEEP, CgGL.GL_KEEP);
+    }
+
+    /**
+     * Writes {@code value} into the {@code writeMask} bits wherever the draw passes; where depth fails, kept, or written
+     * too with {@code depthFailWrites} (Unreal's CustomDepth under a partial mask).
+     *
+     * <pre>{@code
+     * CgStencilState mark = CgStencilState.write(7, 0xFF, false);   // 7 where the draw is nearest
+     * }</pre>
+     */
+    public static CgStencilState write(int value, int writeMask, boolean depthFailWrites) {
+        return new CgStencilState(true, value, 0xFF, writeMask, CgGL.GL_ALWAYS, CgGL.GL_REPLACE, CgGL.GL_KEEP,
+                depthFailWrites ? CgGL.GL_REPLACE : CgGL.GL_KEEP);
+    }
+
+    /**
      * Applies this stencil state to the current GL context.
      *
      * <p>If enabled, calls {@code glEnable(GL_STENCIL_TEST)}, sets the comparison function,

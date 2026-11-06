@@ -275,8 +275,7 @@ the capacity and every kernel stops at the count it reads.
 
 ## 8. What joins into one call
 
-Where `CgCapabilities.multiDraw()` holds (multi-draw indirect, draw parameters and a first instance: desktop GL 4.3+
-drivers and the Vulkan device; not macOS's GL), the executor joins **consecutive** draws into one
+Where `CgCapabilities.multiDraw()` holds (multi-draw indirect: desktop GL 4.3+ drivers and the Vulkan device), the executor joins **consecutive** draws into one
 `glMultiDrawElementsIndirect`. Indirect draws join when their commands are written on the GPU. A run joins while every
 draw has:
 
@@ -328,11 +327,10 @@ Pass {
 | Use | Never | Why |
 |---|---|---|
 | `CG_VERTEX_ID`, `CG_VERTEX_CORNER` | `gl_VertexID` | a joined draw's base vertex is the mesh's place in the slab |
-| `CG_INSTANCE_ID`, `CG_DRAW_INSTANCE` | `gl_InstanceID` | a joined draw's first instance is its batch's base; `CG_DRAW_INSTANCE` is the element an `INSTANCES` draw draws |
+| `CG_INSTANCE_ID`, `CG_DRAW_INSTANCE` | `gl_InstanceID` | every draw's first instance is its batch's base; `CG_DRAW_INSTANCE` is the element an `INSTANCES` draw draws |
 | `CG_OBJECT_DATA`, `CG_OBJECT_TO_WORLD`, `CG_OBJECT_CUSTOM0..3` | a uniform per draw | a multi-draw changes no uniform between its commands |
 
-- The engine compiles the `CG_MULTI_DRAW` variant of every pipeline itself; a material using the macros needs nothing
-  else.
+- A joined draw runs the program a draw alone runs: a material using the macros needs nothing else.
 - `Buffers { }` takes the kernel's element grammar (scalars, 2- and 4-vectors, structs of `vec4`, `ivec4`, `uvec4`),
   at most four buffers, bound with `material.buffer(name, buffer)`
   ([`SHADERS.md` § *Reading a kernel's buffers*](SHADERS.md#reading-a-kernels-buffers)).

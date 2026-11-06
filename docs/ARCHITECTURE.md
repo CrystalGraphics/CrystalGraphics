@@ -103,9 +103,8 @@ Every package guide (`CLAUDE.md`) under `src/main/java/com/crystalgraphics/`. Re
 ### Shaders
 | Path | What it covers |
 |---|---|
-| `api/shader/CLAUDE.md` | `CgShader` lifecycle, `CgShaderPreprocessor` (#include/pragma-once/cycle detection), `CgShaderBindings` fluent API, `CgActiveUniform` |
+| `api/shader/CLAUDE.md` | `CgShaderPreprocessor` (#include/pragma-once/cycle detection), the GLSL library |
 | `gl/shader/CLAUDE.md` | `CgShaderFactory`, `StandaloneCgShader` |
-| `mc/shader/CLAUDE.md` | `CgShaderImpl` hot-reload flow, `CgShaderManagerImpl` cache, `CgShaderReloadHook` (F3+T), `CgSystemUniformRegistry` |
 
 ### Framebuffers
 | Path | What it covers |

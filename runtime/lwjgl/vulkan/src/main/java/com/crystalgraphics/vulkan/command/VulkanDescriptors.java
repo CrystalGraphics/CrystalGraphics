@@ -118,7 +118,7 @@ final class VulkanDescriptors {
                 w[at] = sampled ? ((VulkanSampler) b.sampler(i)).sampler : 0L;
                 w[at + 1] = t.view(device.vk(), b.view(i), false);
                 // A host's image is sampled where the host keeps it.
-                w[at + 2] = !sampled ? VK_IMAGE_LAYOUT_GENERAL : t.borrowed() ? t.resting : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+                w[at + 2] = !sampled ? VK_IMAGE_LAYOUT_GENERAL : t.sampledLayout(b.view(i));
             } else if (type == CgBindingLayout.Type.TEXEL_BUFFER) {
                 w[at] = device.texelView((VulkanBuffer) b.buffer(i), b.offset(i), b.size(i), b.texelFormat(i));
                 w[at + 1] = 0L;

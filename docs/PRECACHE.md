@@ -97,7 +97,7 @@ A pipeline nothing precached is counted at its first draw. Run your content once
 | `pipeline.too-late` | asked for, not built in time: request it earlier |
 | `material.compile-waits` | a frame waited for a program; `CgMaterialShader.compileWaits()` reads it |
 | `world.unready-draws` | draws held this frame while their programs build |
-| `tracker.pipelines-built` | (Vulkan) pipelines built at a draw rather than ahead |
+| `pipelines.built` | (Vulkan) pipelines the RHI's cache built at a draw rather than ahead (`CgPipelineCache.misses()`) |
 
 The harness gates `--mode=vfx-precache` and `--mode=vfx-declared` hold a VFX move to 0 compile waits; a gate of your own
 reads the same counters.
@@ -111,8 +111,8 @@ engine rehearses every precached registry entry and system asset in a hidden sys
 
 ## The shipped pipeline list (Vulkan)
 
-On Vulkan a program's pipelines are built as it links, from a recorded list (Unreal's bundled PSO cache,
-`CgPipelineRecipes`): the jar's `assets/crystalgraphics/pipelines/recorded.txt`, and the player's own
+On Vulkan a program's pipelines are built as it links, from a recorded list the RHI's pipeline cache keeps (Unreal's
+bundled PSO cache; `CgPipelineCache`, `CgPipelineRecipes`): the jar's `assets/crystalgraphics/pipelines/recorded.txt`, and the player's own
 `crystalgraphics/cache/pipelines/recorded.txt`, which records every pipeline built at a draw. A mod does nothing: its
 pipelines are recorded in the player's cache on their first launch.
 
@@ -131,7 +131,7 @@ release**:
        -Dcrystalgraphics.demo=<scene> -Dcrystalgraphics.cache.dir=<one empty folder>
    ```
 2. Copy `<that folder>/pipelines/recorded.txt` over `core/src/main/resources/assets/crystalgraphics/pipelines/recorded.txt`.
-3. Check: a cold rerun of one scene (a new empty cache) builds no pipeline at a draw: `tracker.pipelines-built` stays
+3. Check: a cold rerun of one scene (a new empty cache) builds no pipeline at a draw: `pipelines.built` stays
    0, and the new cache's `recorded.txt` gains no line.
 
 A new draw path the demo scenes never reach (a new renderer, a new pass) needs a scene that reaches it in step 1.

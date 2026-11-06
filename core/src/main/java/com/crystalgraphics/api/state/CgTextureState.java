@@ -1,8 +1,8 @@
 package com.crystalgraphics.api.state;
 
 
-import com.crystalgraphics.api.shader.CgShader;
-import com.crystalgraphics.api.shader.CgShaderProgram;
+import com.crystalgraphics.gl.shader.CgShader;
+import com.crystalgraphics.gl.shader.CgProgram;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.github.bsideup.jabel.Desugar;
@@ -73,7 +73,7 @@ public record CgTextureState(int target, int unit, String samplerUniform,
         CgGL.glActiveTexture(CgGL.GL_TEXTURE0 + unit);
         CgGL.glBindTexture(target, textureId);
 
-        CgShaderProgram program = shader.getProgram();
+        CgProgram program = shader.getProgram();
         int loc = shader.getUniformLocation(samplerUniform);
         if (program != null && loc >= 0) {
             program.setSampler(loc, unit);

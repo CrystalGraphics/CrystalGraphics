@@ -36,7 +36,7 @@ import java.util.concurrent.locks.LockSupport;
  * }</pre>
  *
  * <ul>
- *   <li>{@code CgShaderProgram} is its one user: every fresh link goes through it, so nothing else names it.</li>
+ *   <li>{@code CgProgram} is its one user: every fresh link goes through it, so nothing else names it.</li>
  *   <li>A job's {@link Job#start}, {@link Job#linked} and {@link Job#finish} run on the worker, with its context current:
  *       program and shader objects only, never state the render thread's shadow keeps, and never
  *       {@code CgGL.glDeleteProgram}, which updates it: a program nobody takes is deleted on the render thread.</li>
@@ -268,7 +268,13 @@ public final class CgLinkWorker {
                 }
             }
         } finally {
+            // Both contexts this thread made current are released: LWJGL 2 keeps a context's thread until then and
+            // refuses to destroy it from the render thread, and the shared one is not current here
             compiling.release();
+            if (isolatedContext != null) {
+                context.makeCurrent();
+                context.release();
+            }
         }
     }
 

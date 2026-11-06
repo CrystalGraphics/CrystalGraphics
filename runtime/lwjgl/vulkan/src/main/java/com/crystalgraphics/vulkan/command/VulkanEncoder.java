@@ -1,5 +1,10 @@
 package com.crystalgraphics.vulkan.command;
 
+import com.crystalgraphics.platform.rhi.command.CgAccess;
+import com.crystalgraphics.variable.CgVar;
+
+import java.util.Arrays;
+
 import com.crystalgraphics.platform.rhi.command.CgCommandList;
 import com.crystalgraphics.platform.rhi.command.CgComputePass;
 import com.crystalgraphics.platform.rhi.command.CgPassDesc;
@@ -51,8 +56,10 @@ import static org.lwjgl.vulkan.VK10.*;
 import static org.lwjgl.vulkan.VK12.vkResetQueryPool;
 
 /**
- * The frame's commands outside a pass. Every transfer is fenced by a global barrier on each side and leaves each
- * texture it touched back in its resting layout: coarse, and correct (plan/device-vulkan.md §5). Copies into textures
+ * The frame's commands outside a pass. Where the device infers, every transfer is fenced by a global barrier on each
+ * side and leaves each texture it touched back in its resting layout: coarse, and correct (plan/device-vulkan.md §5).
+ * Explicit ({@link #EXPLICIT}), it records the transitions it is told and no other, but while a client asks it to
+ * infer ({@link #implicitLayouts}): the tracked backend, for the GL streams outside a graph. Copies into textures
  * one after another share one fence, and one call where they share a source and a texture, until anything else is
  * recorded ({@link #endCopies}).
  *
@@ -63,6 +70,29 @@ import static org.lwjgl.vulkan.VK12.vkResetQueryPool;
  * then.</p>
  */
 public final class VulkanEncoder implements CgCommandList {
+
+    /** The device moves no layout and fences no transfer it was not told to (rhi-milestones G1). */
+    public static final CgVar.Bool EXPLICIT = CgVar.bool("crystalgraphics.vulkan.explicit", false, CgVar.DEV | CgVar.RESTART,
+            "The Vulkan device records only the transitions it is told: a graph's, and the tracked backend's for GL streams"
+                    + " outside one. False, it also lays attachments, storage images and copies itself.");
+    /** Where a texture back at rest may be used next: any shader, as an attachment, or copied. */
+    private static final int RESTED_STAGES = VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT
+            | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
+            | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT;
+    private static final int RESTED_ACCESS = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_READ_BIT
+            | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT
+            | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | VK_ACCESS_TRANSFER_READ_BIT;
+
+    private final boolean explicit = EXPLICIT.get();
+    /** While explicit: whether a client asked the device to infer, as for every GL stream outside a graph. */
+    private boolean implicit = true;
+    private final VulkanBarriers.Batch moves = new VulkanBarriers.Batch();
+    /** Split transitions begun as events and not yet ended, each with its event. */
+    private CgTransition[] splitOf = new CgTransition[8];
+    private long[] splitEvent = new long[8];
+    private int splits;
+    /** What {@link #imageBarrier} states, one entry at a time. */
+    private final CgTransition single = new CgTransition();
 
     /** A rested texture's readers. Compute too: an async pass's command buffer keeps only that stage of these. */
     private static final int SHADER_STAGES = VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT
@@ -113,6 +143,15 @@ public final class VulkanEncoder implements CgCommandList {
     }
 
     public VulkanPass openPass() { return open; }
+
+    /** Whether the device moves layouts and fences transfers itself now: not explicit, or a client asked it to. */
+    boolean infers() { return !explicit || implicit; }
+
+    /** While explicit, whether the device infers for what follows: on for GL streams, off while a graph states. */
+    public void implicitLayouts(boolean on) {
+        if (on != implicit) endCopies();   // an open copy run rests what it wrote under the mode it began in
+        implicit = on;
+    }
 
     /** Whether a pass is open: what a host checks before taking its command stream back. */
     public boolean passOpen() { return open != null; }
@@ -262,9 +301,17 @@ public final class VulkanEncoder implements CgCommandList {
     @Override
     public void imageBarrier(CgGpuTexture texture, int from, int to) {
         outsidePass("imageBarrier");
-        use((VulkanTexture) texture);
-        device.barriers += ((VulkanTexture) texture).barrier(cmd(), VulkanAccess.layout(to), VulkanAccess.stage(from),
-                VulkanAccess.access(from), VulkanAccess.stage(to), VulkanAccess.access(to));
+        if (explicit) {
+            VulkanTexture t = (VulkanTexture) texture;
+            transition(single.clear().texture(t, 0, t.desc().mips(), 0, t.layers, from, to));
+            single.clear();
+            return;
+        }
+        VulkanTexture t = (VulkanTexture) texture;
+        use(t);
+        device.barriers += t.barrier(cmd(), VulkanAccess.layout(to, t.resting), VulkanAccess.stage(from),
+                VulkanAccess.access(from), (to & CgAccess.RESTING) != 0 ? RESTED_STAGES : VulkanAccess.stage(to),
+                (to & CgAccess.RESTING) != 0 ? RESTED_ACCESS : VulkanAccess.access(to));
     }
 
     @Override
@@ -273,30 +320,93 @@ public final class VulkanEncoder implements CgCommandList {
         hold(from, to);
     }
 
+    /**
+     * Explicit, from the stated layouts as one batch, a texture's record checked against each statement; otherwise each
+     * from its recorded layout, as before. {@link CgAccess#RESTING} on either side is the texture's resting layout.
+     */
     @Override
     public void transition(CgTransition t) {
         outsidePass("transition");
+        if (explicit) {
+            VkCommandBuffer cmd = cmd();
+            fill(t, cmd, true);
+            device.barriers += moves.record(cmd);
+            return;
+        }
         for (int i = 0; i < t.count(); i++) {
+            int from = t.from(i), to = t.to(i);
             if (t.buffer(i) != null) {
-                bufferBarrier(t.buffer(i), t.from(i), t.to(i));
+                bufferBarrier(t.buffer(i), from, to);
                 continue;
             }
-            CgTextureView v = t.texture(i);
-            VulkanTexture texture = (VulkanTexture) v.texture();
+            VulkanTexture texture = (VulkanTexture) t.image(i);
             use(texture);
-            device.barriers += texture.transition(cmd(), v.baseMip(), v.mips(), v.baseLayer(), v.layers(),
-                    VulkanAccess.layout(t.to(i)), VulkanAccess.stage(t.to(i)), VulkanAccess.access(t.to(i)));
+            boolean rest = (to & CgAccess.RESTING) != 0;
+            device.barriers += texture.depend(cmd(), t.baseMip(i), t.mips(i), t.baseLayer(i), t.layers(i),
+                    VulkanAccess.layout(to, texture.resting), VulkanAccess.stage(from), VulkanAccess.access(from),
+                    rest ? RESTED_STAGES : VulkanAccess.stage(to), rest ? RESTED_ACCESS : VulkanAccess.access(to));
         }
     }
 
-    /** Recorded whole at {@link #endTransitions}: a split into events waits for the graph's transitions. */
+    /** {@code t} into {@link #moves} as stated; with {@code update}, each texture's record moves with it. */
+    private void fill(CgTransition t, VkCommandBuffer cmd, boolean update) {
+        moves.clear();
+        for (int i = 0; i < t.count(); i++) {
+            int from = t.from(i), to = t.to(i);
+            if (t.buffer(i) != null) {
+                use((VulkanBuffer) t.buffer(i));
+                moves.memory(VulkanAccess.stage(from), VulkanAccess.access(from), VulkanAccess.stage(to),
+                        VulkanAccess.access(to));
+                continue;
+            }
+            VulkanTexture texture = (VulkanTexture) t.image(i);
+            use(texture);
+            boolean fromRest = from == 0 || (from & CgAccess.RESTING) != 0, toRest = (to & CgAccess.RESTING) != 0;
+            int oldLayout = fromRest ? texture.resting : VulkanAccess.layout(from);
+            texture.stated(moves, cmd, t.baseMip(i), t.mips(i), t.baseLayer(i), t.layers(i), oldLayout,
+                    fromRest ? VulkanTexture.srcStage(oldLayout) : VulkanAccess.stage(from),
+                    fromRest ? VulkanTexture.srcAccess(oldLayout) : VulkanAccess.access(from),
+                    toRest ? texture.resting : VulkanAccess.layout(to), toRest ? RESTED_STAGES : VulkanAccess.stage(to),
+                    toRest ? RESTED_ACCESS : VulkanAccess.access(to), update);
+        }
+    }
+
+    /**
+     * Explicit under synchronization2, an event set once the work before is done; otherwise nothing here, and the
+     * whole transition at {@link #endTransitions}.
+     */
     @Override
     public void beginTransitions(CgTransition t) {
         outsidePass("beginTransitions");
+        if (!explicit) return;
+        VkCommandBuffer cmd = cmd();
+        if (!VulkanBarriers.Batch.splits(cmd)) return;
+        fill(t, cmd, false);
+        long event = device.events().take(device.frameIndex(), device.retiredFrame());
+        moves.set(cmd, event);
+        if (splits == splitOf.length) {
+            splitOf = Arrays.copyOf(splitOf, splits * 2);
+            splitEvent = Arrays.copyOf(splitEvent, splits * 2);
+        }
+        splitOf[splits] = t;
+        splitEvent[splits++] = event;
     }
 
     @Override
     public void endTransitions(CgTransition t) {
+        outsidePass("endTransitions");
+        for (int i = 0; i < splits; i++) {
+            if (splitOf[i] != t) continue;
+            long event = splitEvent[i];
+            splitOf[i] = splitOf[--splits];
+            splitEvent[i] = splitEvent[splits];
+            splitOf[splits] = null;
+            VkCommandBuffer cmd = cmd();
+            fill(t, cmd, true);
+            moves.waitFor(cmd, event);
+            device.barriers++;
+            return;
+        }
         transition(t);
     }
 
@@ -318,19 +428,22 @@ public final class VulkanEncoder implements CgCommandList {
         outsideTransfer("beginPass");
         syncTransfers();
         VkCommandBuffer cmd = cmd();
-        for (CgPassDesc.Color c : desc.colors()) {
-            toAttachment(cmd, c.view(), VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-                    VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-                    VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT);
-        }
-        if (desc.depth() != null && desc.depth().readOnly()) {
-            toAttachment(cmd, desc.depth().view(), VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL,
+        int laid = 0;
+        if (infers()) {
+            for (int i = 0; i < desc.colors().size(); i++) {
+                if (toAttachment(cmd, desc.colors().get(i).view(), VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                        VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT) > 0) {
+                    laid |= 1 << i;
+                }
+            }
+            if (desc.depth() != null && toAttachment(cmd, desc.depth().view(), desc.depth().readOnly()
+                            ? VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
                     VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
-                    VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT);
-        } else if (desc.depth() != null) {
-            toAttachment(cmd, desc.depth().view(), VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-                    VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
-                    VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT);
+                    desc.depth().readOnly() ? VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT
+                            : VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT) > 0) {
+                laid |= VulkanPass.DEPTH_LAID;
+            }
         }
         // In VulkanScratch: the rendering info, each colour attachment, then depth and stencil.
         int n = desc.colors().size(), size = VkRenderingAttachmentInfo.SIZEOF;
@@ -375,7 +488,7 @@ public final class VulkanEncoder implements CgCommandList {
         }
         nvkCmdBeginRenderingKHR(cmd, s.address);
         graphicsPushed.forget();
-        open = new VulkanPass(device, this, desc);
+        open = new VulkanPass(device, this, desc, laid);
         return open;
     }
 
@@ -395,9 +508,12 @@ public final class VulkanEncoder implements CgCommandList {
                 .putInt(clear + VkClearDepthStencilValue.STENCIL, d.clearStencil());
     }
 
-    private void toAttachment(VkCommandBuffer cmd, CgTextureView v, int layout, int stage, int access) {
+    /** Answers the barriers recorded: none where it was laid already. */
+    private int toAttachment(VkCommandBuffer cmd, CgTextureView v, int layout, int stage, int access) {
         VulkanTexture t = (VulkanTexture) v.texture();
-        device.barriers += t.transition(cmd, v.baseMip(), 1, v.baseLayer(), 1, layout, stage, access);
+        int barriers = t.transition(cmd, v.baseMip(), 1, v.baseLayer(), 1, layout, stage, access);
+        device.barriers += barriers;
+        return barriers;
     }
 
     static void color(VkClearValue value, CgFormat format, float r, float g, float b, float a) {
@@ -423,12 +539,14 @@ public final class VulkanEncoder implements CgCommandList {
     // ── transfers ──────────────────────────────────────────────────────────────
 
     private void before(VkCommandBuffer cmd) {
+        if (!infers()) return;
         VulkanBarriers.global(cmd, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_ACCESS_MEMORY_WRITE_BIT,
                 VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT);
         device.barriers++;
     }
 
     private void after(VkCommandBuffer cmd) {
+        if (!infers()) return;
         VulkanBarriers.global(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
                 VK_PIPELINE_STAGE_ALL_COMMANDS_BIT | VK_PIPELINE_STAGE_HOST_BIT,
                 VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT | VK_ACCESS_HOST_READ_BIT);
@@ -436,11 +554,13 @@ public final class VulkanEncoder implements CgCommandList {
     }
 
     private void to(VkCommandBuffer cmd, VulkanTexture t, int mip, int mips, int layer, int layers, int layout) {
+        if (!infers()) return;
         int access = layout == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL ? VK_ACCESS_TRANSFER_READ_BIT : VK_ACCESS_TRANSFER_WRITE_BIT;
         device.barriers += t.transition(cmd, mip, mips, layer, layers, layout, VK_PIPELINE_STAGE_TRANSFER_BIT, access);
     }
 
     private void rest(VkCommandBuffer cmd, VulkanTexture t, int mip, int mips, int layer, int layers) {
+        if (!infers()) return;
         device.barriers += t.transition(cmd, mip, mips, layer, layers, t.resting,
                 SHADER_STAGES | VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT,
                 VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT
@@ -661,7 +781,7 @@ public final class VulkanEncoder implements CgCommandList {
         int stages = SHADER_STAGES | VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
         int access = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT
                 | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-        for (int i = 0; i < runTextures.size(); i++) {
+        for (int i = 0; infers() && i < runTextures.size(); i++) {
             VulkanTexture t = runTextures.get(i);
             device.barriers += t.transitionFrom(cmd, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, t.resting, stages, access);
         }
@@ -850,12 +970,13 @@ public final class VulkanEncoder implements CgCommandList {
 
     private void mipmaps(VulkanTexture t) {
         VkCommandBuffer cmd = cmd();
-        before(cmd);
         int w = t.desc().width(), h = t.desc().height(), z = volume(t) ? t.desc().depthOrLayers() : 1;
         try (MemoryStack stack = stackPush()) {
             for (int mip = 1; mip < t.desc().mips(); mip++) {
-                to(cmd, t, mip - 1, 1, 0, t.layers, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
-                to(cmd, t, mip, 1, 0, t.layers, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+                device.barriers += t.transition(cmd, mip - 1, 1, 0, t.layers, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                        VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_READ_BIT);
+                device.barriers += t.transition(cmd, mip, 1, 0, t.layers, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                        VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
                 VkImageBlit.Buffer b = VkImageBlit.calloc(1, stack);
                 b.srcSubresource().aspectMask(t.aspect).mipLevel(mip - 1).layerCount(t.layers);
                 b.srcOffsets(1).set(Math.max(1, w >> (mip - 1)), Math.max(1, h >> (mip - 1)), Math.max(1, z >> (mip - 1)));
@@ -865,8 +986,8 @@ public final class VulkanEncoder implements CgCommandList {
                         VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, b, VK_FILTER_LINEAR);
             }
         }
-        rest(cmd, t, 0, t.desc().mips(), 0, t.layers);
-        after(cmd);
+        // Self-contained, as an upload is: the texture is found and left at rest, whoever states the rest.
+        device.barriers += t.transition(cmd, 0, t.desc().mips(), 0, t.layers, t.resting, RESTED_STAGES, RESTED_ACCESS);
     }
 
     @Override

@@ -3,6 +3,7 @@ package com.crystalgraphics.render.stage;
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
+import com.crystalgraphics.gl.buffer.CgReadback;
 import com.crystalgraphics.gl.texture.CgFallbackTextures;
 import com.crystalgraphics.platform.rhi.nulldrv.CgNullRHI;
 import com.crystalgraphics.platform.gl.CgCapabilities;
@@ -16,6 +17,9 @@ import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.render.draw.CgOrder;
 import com.crystalgraphics.render.draw.CgPassConstants;
 import com.crystalgraphics.render.draw.CgPipeline;
+import com.crystalgraphics.render.graph.CgBufferDesc;
+import com.crystalgraphics.render.graph.CgBufferUsage;
+import com.crystalgraphics.render.graph.CgGraphBuffer;
 import com.crystalgraphics.render.graph.CgRasterPass;
 import com.crystalgraphics.trace.CgAllocationSources;
 import com.crystalgraphics.trace.CgThreadAllocation;
@@ -26,6 +30,7 @@ import org.junit.Test;
 
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assume.assumeTrue;
 
 /**
@@ -36,6 +41,7 @@ public class CgStageExecuteAllocationTest {
 
     private static final String SOURCE = """
             #type none
+            #pragma cg_use quad
             Tags { "RenderType" = "Transparent" }
             Properties {
                 _Alpha ("Alpha", float) = 1
@@ -72,7 +78,7 @@ public class CgStageExecuteAllocationTest {
      * 11.8 KB a firing, by JFR's TLAB samples, most first: {@code CgChunkBuilder.end}'s copies (float[], int[], the
      * chunk); {@code CgRecording.block}'s float[] and a {@code CgRasterPass} with its list and int[] per raster;
      * {@code FrameRingStreamBuffer.map}'s DirectByteBuffer from {@code CgBindingTable.upload}; a
-     * {@code CgMaterialShader.ProgramKey} per program lookup; {@code CgTrackedGLBackend.glFenceSync}'s boxed Long; and
+     * {@code CgMaterialShaderMap.ProgramKey} per program lookup; {@code CgTrackedGLBackend.glFenceSync}'s boxed Long; and
      * the recording device's own byte[] at retirement (a test device's, never a player's).
      */
     @Test
@@ -110,6 +116,45 @@ public class CgStageExecuteAllocationTest {
         }
         if (perFrame != 0) {
             assertEquals("bytes a firing allocates on the render thread; sources:\n" + CgAllocationSources.of(500, firing), 0L, perFrame);
+        }
+    }
+
+    /**
+     * A value read back every frame ({@code CgRecording.fetch}) allocates nothing once warm while its deliveries are in
+     * flight: each lands {@link CgFrameRing#FRAMES} frames after it was issued, so the recording holds that many passes
+     * at once and reuses each once delivered (Unreal's readbacks, reused once read).
+     */
+    @Test
+    public void aFetchEveryFrameAllocatesNothingWhileItsDeliveriesAreInFlight() {
+        assumeTrue(CgThreadAllocation.available());
+        CgRenderStage stage = CgRenderStage.define("test:fetch_allocation");
+        stage.host().set(0f, 64, 64, 0);
+        CgStageFrame frame = new CgStageFrame(stage);
+        CgGraphBuffer counts = CgGraphBuffer.persistent("test:fetched",
+                CgBufferDesc.elements(4, 4, CgBufferUsage.STORAGE, CgBufferUsage.COPY));
+        int[] word = {0};
+        long[] delivered = {0};
+        CgReadback.Sink read = data -> delivered[0]++;
+        Runnable firing = () -> {
+            CgReadback.poll();   // as the host's frame polls them: a delivery lands FRAMES frames after its issue
+            frame.begin(stage.host());
+            word[0]++;
+            frame.recording().update(counts, 0, word, 0, 1);
+            frame.recording().fetch(counts, 0, 4, read);
+            frame.execute();
+            CgFrameRing.endFrame();
+        };
+        for (int i = 0; i < 2_000; i++) firing.run();
+        assertTrue("fetches delivered: " + delivered[0] + ", pending: " + CgReadback.pending() + ", frame " + CgFrameRing.frame() + ", retired " + CgFrameRing.retired(), delivered[0] > 1_000);
+        long perFrame = Long.MAX_VALUE;
+        for (int round = 0; round < 3; round++) {
+            long before = CgThreadAllocation.current();
+            for (int i = 0; i < 500; i++) firing.run();
+            perFrame = Math.min(perFrame, (CgThreadAllocation.current() - before) / 500);
+        }
+        if (perFrame != 0) {
+            assertEquals("bytes a frame fetching allocates on the render thread; sources:\n"
+                    + CgAllocationSources.of(500, firing), 0L, perFrame);
         }
     }
 }

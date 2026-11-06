@@ -13,7 +13,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * <pre>{@code
  * CgGlProgramNames.Names names = new CgGlProgramNames.Names();   // on the link worker, the program linked
  * names.uniform("_Color", CgGL.glGetUniformLocation(program, "_Color"));
- * names.uniformBlock("CgFrameBlock", CgGL.glGetUniformBlockIndex(program, "CgFrameBlock"));
+ * names.uniformBlock("CgViewBlock", CgGL.glGetUniformBlockIndex(program, "CgViewBlock"));
  * CgGL.cgProgramNames(program, names.complete(true));           // everything listed: an unlisted name is inactive
  * }</pre>
  *

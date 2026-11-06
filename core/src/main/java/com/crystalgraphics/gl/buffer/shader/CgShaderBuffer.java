@@ -7,7 +7,7 @@ import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.api.buffer.CgBufferFormat;
 import com.crystalgraphics.api.buffer.CgBufferLifetime;
 import com.crystalgraphics.api.buffer.CgObjectBuffer;
-import com.crystalgraphics.api.shader.CgShader;
+import com.crystalgraphics.gl.shader.CgShader;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.gl.buffer.CgStreamBuffer;
 import com.crystalgraphics.gl.buffer.staging.CgBufferWriter;
@@ -431,6 +431,17 @@ public abstract class CgShaderBuffer implements CgObjectBuffer {
         bind();
         wireShader(shader);
     }
+
+    /**
+     * Notes what {@link #bind()} would bind ({@code CgBoundResources}) without binding it: a pass drawing on the device
+     * states its buffers. Its data must be on the GPU already, as a {@link #bind()} before the pass leaves it.
+     */
+    public void noteBound() {
+        if (dataBuffer != null) noteInternal();
+    }
+
+    /** What {@link #noteBound} notes: the range {@link #bindInternal} binds. */
+    protected void noteInternal() {}
 
     /** Unbinds this buffer from its GL binding point. */
     @Override public void unbind() { unbindInternal(); }

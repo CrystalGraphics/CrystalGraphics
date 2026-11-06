@@ -21,7 +21,7 @@ and cursor seams are here too — see [UI-facing services](#ui-facing-services).
 | `gl/CgGLContext` | Interface | Capability detection, probed once on the GL thread |
 | `gl/CgCapabilities` | Class | The immutable capability snapshot built from the context |
 | `gl/CgGlProgramNames` | Class | Each program's uniform locations and block indices, read by the link worker where it linked the program, so `CgGL`'s name queries never wait on a threaded driver from the render thread |
-| `gl/CgGlStateManager`, `gl/state/*` | — | The GL state shadow, scopes and providers (`core/.../gl/state/CLAUDE.md`) |
+| `gl/CgGlStateManager`, `gl/state/*` | — | `CgGL`'s state shadow, scopes and providers (`core/.../gl/state/CLAUDE.md`); and the GL device's: `GLContextState` (Unreal's context state), `GLStateFilter` (its driver over the raw one, dropping a call setting what the context has), `GLHostState` (what a host sharing the context believes, read at `fromHost`, set back at `toHost`) |
 | `gl/CENSUS.md` | Generated | Every `CgGLBackend` method and who reaches it; `python platform/tools/gl_census.py` |
 | `gl/tracked/CgTrackedGLBackend`, `CgTrackedGLContext`, `CgTrackedStateProvider` | Classes | `CgGLBackend` over a `CgRHI` — [the tracked backend](#the-tracked-backend-and-the-device-d3) — its capabilities, and the scopes' state provider on it |
 | `gl/tracked/tracker/` | Classes | `CgTracker`: passes, pipelines and bindings from GL's calls, with the draw state and target it compares |
@@ -30,6 +30,9 @@ and cursor seams are here too — see [UI-facing services](#ui-facing-services).
 | `rhi/format/`, `resource/`, `pipeline/`, `binding/`, `command/`, `shader/`, `sync/` | Interfaces, records | Its types by subsystem: formats; buffers, textures, samplers, views and `CgRHIResource`; graphics and compute pipelines; binding layouts and per-draw bindings; the command list, passes and accesses; modules and `CgGlslCompiler`; timer queries |
 | `rhi/memory/` | Classes | Allocators over any `CgRHI`'s buffers: `CgSlabAllocator` (ranges kept across frames), `CgFrameArena` (a frame's uploads, written in place in mapped pages), `CgAllocation` |
 | `rhi/nulldrv/CgNullRHI` | Class | The null RHI (Unreal's `NullDrv`): logs every command and throws on misuse — for tests and headless runs |
+| `gl/CgGLDevice` | Class | `CgRHI` on GL 4.6, as Unreal's OpenGL RHI: commands run as called, a pipeline's state applied before each draw where it differs (the PSO fallback), framebuffers cached by attachments, frames retired by fences. Its contract runner is `GLCommandListTest` (the Vulkan module's tests, where shaderc and spvc are) |
+| `gl/driver/` | Interface, constants | `CgGLDriver`, the GL 4.6 calls the device makes, DSA only (Unreal's `FOpenGL`), one per LWJGL era (`Lwjgl3GLDriver`; `Lwjgl2GLDriver`, LWJGL 2.9.4's own bindings, GL 4.5 plus `ARB_indirect_parameters` and `ARB_bindless_texture`: no trampoline); `GLC`, their constants. LWJGL 2's contract runner is `Lwjgl2CommandListTest`, its GLSL the fixtures `GLCommandListTest` keeps (`-PupdateGlFixtures=true`) |
+| `gl/resource/`, `binding/`, `pipeline/`, `command/`, `sync/`, `format/` | Classes | The device's types by `rhi/`'s subsystems. `binding/GLBindingPoints`: a pipeline layout's sets as ranges of binding points per class, push constants after them; `pipeline/GLShaderTranslator`: Vulkan SPIR-V to GLSL under those points (`SpvcGlslTranslator`); `pipeline/GLLinkWorker`, `GLProgramBuild`: programs linked on a thread in a context of their own, loaded as binaries (`CgGLDevice.linkWorker()`); `pipeline/GLProgramBinaries`: programs kept across launches (`CgGLDevice.programCache`); `command/GLEncoder`, the command list and its passes |
 | `service/CgResourceService` | Interface | `openStream(domain, path)` — `null` on not-found; `openStack(domain, path)`, every pack's copy lowest first (what `sounds.json` merges from); `namespaces()` |
 | `service/CgRenderingService` | Interface | Viewport size and the legacy single-call frame |
 | `service/CgLifecycleService` | Interface | Context init, destroy, resize, and the frame tick |
@@ -334,14 +337,14 @@ What is easy to get wrong:
 - **A pass into a host's `0..1` depth draws with each program's zero-to-one vertex stage**: `CgGL.setDepthReversed(true, true)`
   (Minecraft 26.2's world passes) reaches `cgClipZeroToOne`, and the tracker stops remapping GL's `-1..1`. Left on the
   GL-depth stage, every depth lands in the half nearest the eye and passes the test against everything the host drew.
-- **A program's pipelines are built as it links, from the recorded list** (`tracker/CgPipelineRecipes`, Unreal's
-  bundled PSO cache): every pipeline a draw built is written down by the program's key (a hash of its sources) and
+- **A program's pipelines are built as it links, from the recorded list** (`rhi.pipeline.CgPipelineCache` and its
+  `CgPipelineRecipes`, Unreal's `PipelineStateCache` and bundled PSO cache; the tracker asks it by description): every pipeline a draw built is written down by the program's key (a hash of its sources) and
   the rest of its description, into the jar's `assets/crystalgraphics/pipelines/recorded.txt` and the user's
   `crystalgraphics/cache/pipelines/recorded.txt`. A later link builds them on the compile worker and the
   `crystalgraphics-pipelines` builders (a driver compiles one a thread), and `GL_COMPLETION_STATUS_KHR` answers
   true only once they are built, so a draw the engine holds until its program is ready finds them built: inside the
-  loading screen for what links there. One no list names is built at its draw (`tracker.pipeline`, counted
-  `tracker.pipelines-built`, logged by `crystalgraphics.tracker.logPipelines`) and recorded. To ship a gate's list,
+  loading screen for what links there. One no list names is built at its draw (`pipelines.build`, counted
+  `pipelines.built`, logged by `crystalgraphics.pipelines.log`) and recorded. To ship a gate's list,
   copy its `recorded.txt` over the jar's. `buildPipeline(mode)` builds one for the current program and state with
   nothing it reads bound: what the shader audit runs on a device, in both clip conventions.
 - **`debug`** refuses sampling a texture the open pass renders to, and a vertex input no attribute array

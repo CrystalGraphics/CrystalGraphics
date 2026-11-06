@@ -34,7 +34,7 @@ public class ShippedKernelStagePurityTest {
     };
     private static final Pattern BANNED = Pattern.compile("\\b(" + String.join("|", NOT_COMPUTE) + ")\\b");
     private static final CgKernelTarget[] TARGETS = {
-            CgKernelTarget.GL43, CgKernelTarget.GL43.withSubgroups(0), CgKernelTarget.GL43.withArb(true),
+            CgKernelTarget.GL43, CgKernelTarget.GL43.withSubgroups(0),
             CgKernelTarget.GL43.withFloatAtomics(true),
     };
 

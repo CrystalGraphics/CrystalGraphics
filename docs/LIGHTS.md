@@ -204,7 +204,7 @@ lights.add(x, y, z, 2f, 0xFFFFE080, 4f, 0f).shadowed(false).sampled(false);   //
   sphere-traces each field it crosses, 32 steps at most, ignoring a hit within two voxels of its start (the self-shadow
   bias). Counter `world.lights-casters`; `--mode=lights-casters` is the gate.
 - **Normals**: our opaque materials write their vertex normal into `cg_world.normals` (the `CG_NORMAL_TARGET`
-  variant, `CgPipeline.normalTarget()`), and every pass reads it where drawn, as Unreal's passes read the G-buffer's;
+  variant, `CgPipeline.as(NORMALS)`), and every pass reads it where drawn, as Unreal's passes read the G-buffer's;
   Minecraft's pixels rebuild theirs from depth, held to a world axis. On our pixels the sun fades over a face's last
   few degrees toward it, so a face edge-on to the sun holds still.
 - **What does not**: a particle's light (Unreal's simple lights cast none), a slot light with `cast_shadows: false`,

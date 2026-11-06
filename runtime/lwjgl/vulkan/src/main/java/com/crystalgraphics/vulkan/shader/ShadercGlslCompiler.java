@@ -1,5 +1,7 @@
 package com.crystalgraphics.vulkan.shader;
 
+import java.util.TreeMap;
+import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.rhi.binding.CgBindingLayout;
 import com.crystalgraphics.platform.rhi.shader.CgGlslCompiler;
 import com.crystalgraphics.platform.rhi.shader.CgShaderModule;
@@ -39,6 +41,12 @@ import static org.lwjgl.util.shaderc.Shaderc.*;
  * new ShadercGlslCompiler(CgCacheDirectory.of("spirv"));   // a null folder keeps nothing
  * }</pre>
  *
+ * <p>A source binding everything itself ({@code CgBindingModel}'s {@code CG_BIND}) compiles with nothing assigned, so a
+ * resource it forgot fails the compile, as does any loose uniform:</p>
+ * <pre>{@code
+ * new ShadercGlslCompiler(null, false);
+ * }</pre>
+ *
  * <p>Two edits to the source, both checked by the compiler that follows: 26.2's own defines of
  * {@code gl_VertexID}/{@code gl_InstanceID} to their Vulkan names (every draw starts at instance 0, so they agree),
  * and, for the GL-depth vertex stage, {@code main} wrapped to map clip z from GL's range. glslang's relaxed Vulkan
@@ -50,12 +58,16 @@ public final class ShadercGlslCompiler implements CgGlslCompiler, AutoCloseable 
     private static final Pattern VERSION = Pattern.compile("(?m)^[ \\t]*#[ \\t]*version\\b.*$");
     private static final Pattern MAIN = Pattern.compile("\\bvoid\\s+main\\s*\\(\\s*(?:void)?\\s*\\)");
     private static final String DEFINES = "#define gl_VertexID gl_VertexIndex\n#define gl_InstanceID gl_InstanceIndex\n";
+    /** What a source compiled as written is told: it binds as {@code CgBindingModel} writes, and pushes its words. */
+    private static final String EXPLICIT = "#define CG_EXPLICIT 1\n";
 
     /** Every option set below, for the cache's key: a change to them is a new key. */
-    private static final String OPTIONS = "vulkan 1.2, relaxed rules, auto-bound uniforms, auto-mapped locations";
+    private static final String OPTIONS = "vulkan 1.2, auto-mapped locations";
 
     private final long compiler = shaderc_compiler_initialize();
     private final long options = shaderc_compile_options_initialize();
+    /** Vulkan's own rules, nothing bound for the source: {@link #compileExplicit}'s. */
+    private final long explicitOptions = shaderc_compile_options_initialize();
     private final SpirvCache cache;
 
     /** A compiler that keeps nothing. */
@@ -65,21 +77,102 @@ public final class ShadercGlslCompiler implements CgGlslCompiler, AutoCloseable 
 
     /** @param cacheDir where modules are kept across launches, or null for none */
     public ShadercGlslCompiler(Path cacheDir) {
+        this(cacheDir, true);
+    }
+
+    /**
+     * @param cacheDir where modules are kept across launches, or null for none
+     * @param autoBind whether a resource the source leaves unbound is given a binding; false refuses it
+     */
+    public ShadercGlslCompiler(Path cacheDir, boolean autoBind) {
+        this(cacheDir, autoBind, true);
+    }
+
+    /**
+     * @param relaxed GL's rules (loose uniforms, the default block); false compiles under Vulkan's own, refusing a
+     *                source that still needs them: what the strict check of every material runs
+     */
+    public ShadercGlslCompiler(Path cacheDir, boolean autoBind, boolean relaxed) {
         shaderc_compile_options_set_target_env(options, shaderc_target_env_vulkan, shaderc_env_version_vulkan_1_2);
-        shaderc_compile_options_set_vulkan_rules_relaxed(options, true);
-        shaderc_compile_options_set_auto_bind_uniforms(options, true);
+        shaderc_compile_options_set_vulkan_rules_relaxed(options, relaxed);
+        shaderc_compile_options_set_auto_bind_uniforms(options, autoBind);
+        shaderc_compile_options_set_target_env(explicitOptions, shaderc_target_env_vulkan, shaderc_env_version_vulkan_1_2);
+        shaderc_compile_options_set_vulkan_rules_relaxed(explicitOptions, false);
+        shaderc_compile_options_set_auto_bind_uniforms(explicitOptions, false);
+        shaderc_compile_options_set_auto_map_locations(explicitOptions, true);
         shaderc_compile_options_set_auto_map_locations(options, true);
-        cache = cacheDir == null ? null : new SpirvCache(cacheDir, OPTIONS);
+        cache = cacheDir == null ? null : new SpirvCache(cacheDir, OPTIONS + (relaxed ? ", relaxed rules" : "")
+                + (autoBind ? ", auto-bound uniforms" : ""));
+    }
+
+    @Override
+    public synchronized Explicit compileExplicit(String vertexGlsl, String fragmentGlsl, Map<String, Integer> attribLocations,
+                                                 String label) {
+        String vertexSource = withDefines(vertexGlsl, label, EXPLICIT);
+        SpirvModule vertex = new SpirvModule(compile(vertexSource, shaderc_glsl_vertex_shader, label, explicitOptions), label);
+        SpirvModule glDepth = new SpirvModule(compile(wrapMain(vertexSource, label), shaderc_glsl_vertex_shader, label,
+                explicitOptions), label);
+        SpirvModule fragment = new SpirvModule(compile(withDefines(fragmentGlsl, label, EXPLICIT),
+                shaderc_glsl_fragment_shader, label, explicitOptions), label);
+        vertexInputs(glDepth, vertex, attribLocations);
+        Layout layout = layout(vertex, fragment);
+        int outputs = 0;
+        for (SpirvModule.Resource r : fragment.outputs) outputs = Math.max(outputs, r.value() + r.locations());
+        int push = Math.max(vertex.pushConstantBytes, fragment.pushConstantBytes);
+        return new Explicit(vertex.spirv, glDepth.spirv, fragment.spirv, layout.sets, layout.heap, (push + 3) / 4 * 4,
+                outputs);
+    }
+
+    @Override
+    public synchronized ExplicitCompute compileExplicitCompute(String glsl, String label) {
+        SpirvModule m = new SpirvModule(compile(withDefines(glsl, label, EXPLICIT), shaderc_glsl_compute_shader, label,
+                explicitOptions), label);
+        Layout layout = layout(m);
+        return new ExplicitCompute(m.spirv, m.localSize.clone(), layout.sets, layout.heap, (m.pushConstantBytes + 3) / 4 * 4);
+    }
+
+    /** The sets the stages declare, each's slots by binding in set order, and whether they read the bindless heap. */
+    private record Layout(List<List<CgBindingLayout.Slot>> sets, boolean heap) {}
+
+    private static Layout layout(SpirvModule... stages) {
+        Map<Integer, Map<Integer, CgBindingLayout.Type>> sets = new TreeMap<>();
+        boolean heap = false;
+        for (SpirvModule m : stages) {
+            for (SpirvModule.Resource r : m.uniformBuffers) slot(sets, m.set(r), r.value(), CgBindingLayout.Type.UNIFORM_BUFFER);
+            for (SpirvModule.Resource r : m.storageBuffers) slot(sets, m.set(r), r.value(), CgBindingLayout.Type.STORAGE_BUFFER);
+            for (SpirvModule.Resource r : m.images) slot(sets, m.set(r), r.value(), CgBindingLayout.Type.STORAGE_IMAGE);
+            for (SpirvModule.Resource r : m.samplers) {
+                if (m.set(r) == CgRHI.BINDLESS_SET) heap = true;
+                else slot(sets, m.set(r), r.value(), r.texel() ? CgBindingLayout.Type.TEXEL_BUFFER
+                        : CgBindingLayout.Type.SAMPLED_TEXTURE);
+            }
+        }
+        int count = heap ? CgRHI.BINDLESS_SET + 1 : sets.isEmpty() ? 0 : ((TreeMap<Integer, ?>) sets).lastKey() + 1;
+        List<List<CgBindingLayout.Slot>> layout = new ArrayList<>(count);
+        for (int s = 0; s < count; s++) {
+            List<CgBindingLayout.Slot> slots = new ArrayList<>();
+            for (Map.Entry<Integer, CgBindingLayout.Type> e : sets.getOrDefault(s, Map.of()).entrySet())
+                slots.add(new CgBindingLayout.Slot(e.getKey(), e.getValue()));
+            layout.add(List.copyOf(slots));
+        }
+        return new Layout(List.copyOf(layout), heap);
+    }
+
+    private static void slot(Map<Integer, Map<Integer, CgBindingLayout.Type>> sets, int set, int binding,
+                             CgBindingLayout.Type type) {
+        CgBindingLayout.Type was = sets.computeIfAbsent(set, s -> new TreeMap<>()).putIfAbsent(binding, type);
+        if (was != null && was != type)
+            throw new CgShaderModule.CompileException("set " + set + " binding " + binding + " is both " + was + " and " + type);
     }
 
     @Override
     public synchronized Program compile(String vertexGlsl, String fragmentGlsl, Map<String, Integer> attribLocations,
                                         String label) {
-        String vertex = withDefines(vertexGlsl, label);
+        String vertex = withDefines(vertexGlsl, label, "");
         SpirvModule glDepth = new SpirvModule(spirv(wrapMain(vertex, label), shaderc_glsl_vertex_shader, label), label);
         SpirvModule zeroToOne = new SpirvModule(spirv(vertex, shaderc_glsl_vertex_shader, label), label);
-        SpirvModule fragment = new SpirvModule(spirv(withDefines(fragmentGlsl, label), shaderc_glsl_fragment_shader, label),
-                label);
+        SpirvModule fragment = new SpirvModule(spirv(withDefines(fragmentGlsl, label, ""), shaderc_glsl_fragment_shader,
+                label), label);
 
         int next = 0;
         int vLoose = has(glDepth.uniformBuffers, SpirvModule.DEFAULT_BLOCK) ? next++ : -1;
@@ -87,6 +180,12 @@ public final class ShadercGlslCompiler implements CgGlslCompiler, AutoCloseable 
         Map<String, Integer> uniformBlocks = new LinkedHashMap<>(), storageBlocks = new LinkedHashMap<>();
         Map<String, SpirvModule.Resource> samplers = new LinkedHashMap<>();
         Map<String, Integer> samplerBindings = new HashMap<>();
+        Map<String, Integer> declared = new HashMap<>();
+        for (SpirvModule m : new SpirvModule[] {glDepth, fragment}) {
+            for (SpirvModule.Resource r : m.uniformBuffers) declared.putIfAbsent(r.name(), declared(r));
+            for (SpirvModule.Resource r : m.storageBuffers) declared.putIfAbsent(r.name(), declared(r));
+            for (SpirvModule.Resource r : m.samplers) declared.putIfAbsent(r.name(), declared(r));
+        }
         for (SpirvModule m : new SpirvModule[] {glDepth, fragment}) {
             for (SpirvModule.Resource r : m.uniformBuffers) {
                 if (!r.name().equals(SpirvModule.DEFAULT_BLOCK) && !uniformBlocks.containsKey(r.name())) uniformBlocks.put(r.name(), next++);
@@ -129,16 +228,16 @@ public final class ShadercGlslCompiler implements CgGlslCompiler, AutoCloseable 
         if (vLoose >= 0) slots.add(new CgBindingLayout.Slot(vLoose, CgBindingLayout.Type.UNIFORM_BUFFER));
         if (fLoose >= 0) slots.add(new CgBindingLayout.Slot(fLoose, CgBindingLayout.Type.UNIFORM_BUFFER));
         uniformBlocks.forEach((name, b) -> {
-            ub.add(new Block(name, b));
+            ub.add(new Block(name, b, declared.get(name)));
             slots.add(new CgBindingLayout.Slot(b, CgBindingLayout.Type.UNIFORM_BUFFER));
         });
         storageBlocks.forEach((name, b) -> {
-            sb.add(new Block(name, b));
+            sb.add(new Block(name, b, declared.get(name)));
             slots.add(new CgBindingLayout.Slot(b, CgBindingLayout.Type.STORAGE_BUFFER));
         });
         samplers.forEach((name, r) -> {
             int b = samplerBindings.get(name);
-            smp.add(new Sampler(name, b, r.glType(), r.texel()));
+            smp.add(new Sampler(name, b, r.glType(), r.texel(), declared.get(name)));
             slots.add(new CgBindingLayout.Slot(b, r.texel() ? CgBindingLayout.Type.TEXEL_BUFFER : CgBindingLayout.Type.SAMPLED_TEXTURE));
         });
         slots.sort(Comparator.comparingInt(CgBindingLayout.Slot::binding));
@@ -163,28 +262,37 @@ public final class ShadercGlslCompiler implements CgGlslCompiler, AutoCloseable 
                 m.set(r, loose);
                 continue;
             }
+            ub.add(new Block(r.name(), next, declared(r)));
             m.set(r, next);
-            ub.add(new Block(r.name(), next));
             slots.add(new CgBindingLayout.Slot(next++, CgBindingLayout.Type.UNIFORM_BUFFER));
         }
         for (SpirvModule.Resource r : m.storageBuffers) {
+            sb.add(new Block(r.name(), next, declared(r)));
             m.set(r, next);
-            sb.add(new Block(r.name(), next));
             slots.add(new CgBindingLayout.Slot(next++, CgBindingLayout.Type.STORAGE_BUFFER));
         }
         for (SpirvModule.Resource r : m.samplers) {
+            smp.add(new Sampler(r.name(), next, r.glType(), r.texel(), declared(r)));
             m.set(r, next);
-            smp.add(new Sampler(r.name(), next, r.glType(), r.texel()));
             slots.add(new CgBindingLayout.Slot(next++, r.texel() ? CgBindingLayout.Type.TEXEL_BUFFER
                     : CgBindingLayout.Type.SAMPLED_TEXTURE));
         }
         for (SpirvModule.Resource r : m.images) {
+            img.add(new Image(r.name(), next, r.glType(), declared(r)));
             m.set(r, next);
-            img.add(new Image(r.name(), next, r.glType()));
             slots.add(new CgBindingLayout.Slot(next++, CgBindingLayout.Type.STORAGE_IMAGE));
         }
         return new ComputeProgram(m.spirv, m.localSize.clone(), ub, sb, smp, img, List.copyOf(m.uniforms), loose,
                 m.defaultBlockSize, slots);
+    }
+
+    /**
+     * The binding {@code r} was compiled at, where GL starts it: the source's {@code layout(binding = n)}, or shaderc's
+     * own number for one the source binds nowhere, which the engine wires by name. (A binding base cannot tell the two
+     * apart: glslang shifts declared bindings too.)
+     */
+    private static int declared(SpirvModule.Resource r) {
+        return r.value();
     }
 
     /**
@@ -250,6 +358,10 @@ public final class ShadercGlslCompiler implements CgGlslCompiler, AutoCloseable 
     }
 
     private ByteBuffer compile(String source, int kind, String label) {
+        return compile(source, kind, label, options);
+    }
+
+    private ByteBuffer compile(String source, int kind, String label, long options) {
         // The source on the native heap: an expanded material outgrows MemoryStack, which the String overload uses.
         ByteBuffer text = memUTF8(source, false);
         long result;
@@ -275,12 +387,15 @@ public final class ShadercGlslCompiler implements CgGlslCompiler, AutoCloseable 
         return kind == shaderc_glsl_vertex_shader ? "vertex" : kind == shaderc_glsl_fragment_shader ? "fragment" : "compute";
     }
 
-    /** 26.2's two defines after {@code #version}, and a {@code #line} so errors keep the source's numbering. */
-    private static String withDefines(String source, String label) {
+    /**
+     * 26.2's two defines and {@code more} after {@code #version}, and a {@code #line} so errors keep the source's
+     * numbering.
+     */
+    private static String withDefines(String source, String label, String more) {
         Matcher m = VERSION.matcher(source);
         if (!m.find()) throw new CgShaderModule.CompileException(label + ": no #version");
         int line = 2 + count(source, m.end());
-        return source.substring(0, m.end()) + "\n" + DEFINES + "#line " + line + source.substring(m.end());
+        return source.substring(0, m.end()) + "\n" + DEFINES + more + "#line " + line + source.substring(m.end());
     }
 
     /** {@code main} renamed, and a {@code main} after it that calls it and maps clip z from [-w, w] to [0, w]. */
@@ -318,6 +433,7 @@ public final class ShadercGlslCompiler implements CgGlslCompiler, AutoCloseable 
     @Override
     public void close() {
         shaderc_compile_options_release(options);
+        shaderc_compile_options_release(explicitOptions);
         shaderc_compiler_release(compiler);
     }
 }

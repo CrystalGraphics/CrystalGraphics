@@ -1,17 +1,20 @@
 package com.crystalgraphics.render.draw;
 
 import com.crystalgraphics.api.material.CgRenderPassVariant;
-import com.crystalgraphics.api.shader.CgShader;
-import com.crystalgraphics.api.state.CgBlendState;
-import com.crystalgraphics.api.state.CgColorMask;
-import com.crystalgraphics.api.state.CgDepthState;
+import com.crystalgraphics.api.vertex.CgVertexFormat;
+import com.crystalgraphics.gl.shader.CgShader;
 import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.gl.material.CgMaterialShader;
-import com.crystalgraphics.gl.material.parse.CgMaterialShaderCompiler;
 import com.crystalgraphics.gl.material.parse.CgParsedPass;
 import com.crystalgraphics.gl.material.parse.CgParsedShader;
 import com.crystalgraphics.gl.material.parse.CgPermutationDomain;
-import com.crystalgraphics.platform.gl.CgGL;
+import com.crystalgraphics.platform.rhi.CgRHI;
+import com.crystalgraphics.platform.rhi.format.CgFormat;
+import com.crystalgraphics.platform.rhi.pipeline.CgGraphicsPipeline;
+import com.crystalgraphics.platform.rhi.pipeline.CgGraphicsPipelineDesc;
+import com.crystalgraphics.platform.rhi.pipeline.CgPipelineCache;
+import com.crystalgraphics.platform.rhi.shader.CgGlslCompiler;
+import com.crystalgraphics.platform.rhi.shader.CgShaderModule;
 import com.crystalgraphics.render.CgWarmBudget;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
@@ -20,6 +23,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import javax.annotation.Nullable;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -29,17 +33,19 @@ import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Everything that ends a batch and is not data: a shader's pass and keyword variant, the render state that pass
- * declares, and the kind of instance it reads. A key, interned to an {@code int} so a batch compares integers, and
- * made with no GL at all: the program behind it is resolved on the render thread when a batch draws with it.
+ * Everything that ends a batch and is not data: a shader's pass and keyword variant, its forms
+ * ({@link CgPipelineForm}), the render state that pass declares, and the kind of instance it reads. A key, interned to
+ * an {@code int} so a batch compares integers, and made with no GL at all: the program behind it is resolved on the
+ * render thread when a batch draws with it. A draw's bases travel in the draw ({@code CgMeshStore}), so one pipeline
+ * draws a mesh alone or joined into a multi-draw.
  *
  * <pre>{@code
  * CgPipeline p = material.pipeline(CgInstanceKind.QUAD);       // on any thread; compiles nothing
+ * CgPipeline prepass = p.as(CgPipelineForm.DEPTH);              // a form of it, or null where it has none
  *
  * // at execution, on the render thread:
  * if (p.bind()) {                                               // compiles the variant on first use
- *     p.instanceBase(first);
- *     CgGL.glDrawElementsInstanced(...);
+ *     CgMeshStore.get().draw(mesh, instances, first);
  * }
  * }</pre>
  *
@@ -49,8 +55,8 @@ import java.util.concurrent.ConcurrentHashMap;
  * <ul>
  *   <li>The render state's unset domains are the pass's: an executor applies its pass's state, then this one's.</li>
  *   <li>A shader reloaded in place keeps its pipelines: {@link #program()} follows the shader's revision.</li>
- *   <li>Lives for the session. Interning is thread-safe; {@link #program()}, {@link #bind()},
- *       {@link #precache()}, {@link #instanceBase} and {@link #vertexBase} are render thread only.</li>
+ *   <li>Lives for the session. Interning is thread-safe; {@link #program()}, {@link #bind()} and
+ *       {@link #precache()} are render thread only.</li>
  * </ul>
  */
 public final class CgPipeline {
@@ -69,9 +75,9 @@ public final class CgPipeline {
     private static final Object REGISTERING = new Object();
     private static volatile CgPipeline[] byId = new CgPipeline[64];
     private static int count;
-
-    /** Not yet looked up for the program as it is now compiled. */
-    private static final int UNRESOLVED = -2;
+    /** {@link #device}'s pipelines, on the device {@link #deviceCacheOf}. */
+    private static CgPipelineCache deviceCache;
+    private static CgRHI deviceCacheOf;
 
     private final int id;
     private final CgMaterialShader shader;
@@ -82,37 +88,12 @@ public final class CgPipeline {
     private final Set<String> keywords;
     private final CgRenderState state;
     private final CgInstanceKind kind;
-    private final boolean multiDraw;
-    private final boolean overdraw;
-    private final boolean cover;
-    private final boolean solid;
-    private final boolean fold;
-    private final boolean depth;
-    private final boolean volume;
-    private final boolean normals;
-    private final boolean skinned;
-    private final boolean customData;
-    /** What the program is compiled with: the pass's keywords, and the multi-draw's. */
+    /** Its {@link CgPipelineForm}s, a bit each. */
+    private final int forms;
+    /** What the program is compiled with: the pass's keywords, and its forms'. */
     private final Set<String> compiled;
-    @Nullable
-    private CgPipeline multi;
-    @Nullable
-    private CgPipeline overdrawn;
-    @Nullable
-    private CgPipeline occluding;
-    @Nullable
-    private CgPipeline folding;
-    @Nullable
-    private CgPipeline depthOnly;
-    @Nullable
-    private CgPipeline volumed;
-    @Nullable
-    private CgPipeline normalled;
-    private CgPipeline solidified;
-    @Nullable
-    private CgPipeline skinnedTwin;
-    @Nullable
-    private CgPipeline customDataTwin;
+    /** {@link #as} answers, by form. */
+    private final CgPipeline[] twins = new CgPipeline[CgPipelineForm.ALL.length];
     /** {@link #slotWrites()}, for the shader revision {@link #slotsRevision}. */
     private int slots, slotsRevision = -1;
 
@@ -121,6 +102,17 @@ public final class CgPipeline {
     private int programRevision = -1;
     /** The shader revision {@link #precache} last answered true at: a built pipeline spends no warming budget. */
     private int builtRevision = -1;
+    /** {@link #device}'s last answer and what it was asked: a draw asks again with the same pass. */
+    private CgGraphicsPipeline deviceLast;
+    private CgRenderState deviceLastPass;
+    private CgVertexFormat deviceLastMeshFormat;
+    private CgGraphicsPipelineDesc.Topology deviceLastTopology;
+    private boolean deviceLastGlDepth;
+    private List<CgFormat> deviceLastColors;
+    private CgFormat deviceLastDepth;
+    private int deviceLastSamples;
+    private CgShader deviceLastProgram;
+    private CgRHI deviceLastOf;
     /** Whether a miss of a shader with a permutation domain was logged: once a pipeline. */
     private boolean domainWarned;
 
@@ -149,7 +141,6 @@ public final class CgPipeline {
 
     /** The shader revision {@link #precache} was last asked at: a draw finding it unbuilt is too late, not missed. */
     private int requestedRevision = -1;
-    private int instanceBaseLocation = UNRESOLVED, vertexBaseLocation = UNRESOLVED;
 
     /** {@link #withState} answers, by state identity. */
     private CgPipeline[] derived = new CgPipeline[2];
@@ -164,29 +155,11 @@ public final class CgPipeline {
         this.keywords = key.keywords;
         this.state = key.state;
         this.kind = key.kind;
-        this.multiDraw = (key.flags & MULTI) != 0;
-        this.overdraw = (key.flags & OVERDRAW) != 0;
-        this.cover = (key.flags & COVER) != 0;
-        this.solid = (key.flags & SOLID) != 0;
-        this.fold = (key.flags & FOLD) != 0;
-        this.depth = (key.flags & DEPTH) != 0;
-        this.volume = (key.flags & VOLUME) != 0;
-        this.normals = (key.flags & NORMALS) != 0;
-        this.skinned = (key.flags & SKINNED) != 0;
-        this.customData = (key.flags & CUSTOM_DATA) != 0;
+        this.forms = key.forms;
         Set<String> passKeywords = takesKeywords(pass) ? keywords : Collections.emptySet();
-        if (multiDraw || overdraw || cover || fold || depth || volume || normals || skinned || customData || solid) {
+        if (forms != 0) {
             Set<String> more = new TreeSet<>(passKeywords);
-            if (multiDraw) more.add(CgMaterialShaderCompiler.MULTI_DRAW);
-            if (overdraw) more.add(CgMaterialShaderCompiler.DEBUG_OVERDRAW);
-            if (cover) more.add(CgMaterialShaderCompiler.EMISSION_COVER);
-            if (fold) more.add(CgMaterialShaderCompiler.SCENE_FOLD);
-            if (depth) more.add(CgMaterialShaderCompiler.DEPTH_PREPASS);
-            if (volume) more.add(CgMaterialShaderCompiler.VOLUME_TARGET);
-            if (normals) more.add(CgMaterialShaderCompiler.NORMAL_TARGET);
-            if (skinned) more.add(CgMaterialShaderCompiler.SKINNED);
-            if (customData) more.add(CgMaterialShaderCompiler.CUSTOM_DATA_TARGET);
-            if (solid) more.add(CgMaterialShaderCompiler.SOLID_COVER);
+            for (CgPipelineForm form : CgPipelineForm.ALL) if (has(form)) more.add(form.keyword);
             passKeywords = Collections.unmodifiableSet(more);
         }
         this.compiled = passKeywords;
@@ -218,37 +191,39 @@ public final class CgPipeline {
                 variant, state, kind, 0), CgPipeline::register);
     }
 
-    private static final int MULTI = 1, OVERDRAW = 2, COVER = 8, FOLD = 16, DEPTH = 32, VOLUME = 64,
-            NORMALS = 128, SKINNED = 256, CUSTOM_DATA = 512, SOLID = 1024;
-
-    private int flags() {
-        return (multiDraw ? MULTI : 0) | (overdraw ? OVERDRAW : 0) | (cover ? COVER : 0)
-                | (fold ? FOLD : 0) | (depth ? DEPTH : 0) | (volume ? VOLUME : 0) | (normals ? NORMALS : 0)
-                | (skinned ? SKINNED : 0) | (customData ? CUSTOM_DATA : 0) | (solid ? SOLID : 0);
-    }
-
     /**
-     * This pipeline on a skinned mesh: the same pass compiled with {@link CgMaterialShaderCompiler#SKINNED}, its
-     * vertices placed by their bones from the draw's palette (Unreal's GPU skin vertex factory). Every sibling of it
-     * stays skinned. A chunk picks it for a mesh in a skinned format, so a recorder never asks. Any thread.
+     * This pipeline in {@code form} as well as the forms it has, made on first use; null where the form does not apply
+     * ({@link CgPipelineForm} says when). {@code this} where it has it already. Any thread.
      *
      * <pre>{@code
-     * chunks.draw(material.pipeline(CgInstanceKind.OBJECT), bindings, kurama);   // drawn through .skinned()
+     * CgPipeline folded = material.pipeline(CgInstanceKind.OBJECT).as(CgPipelineForm.FOLD);
+     * if (folded != null) chunks.draw(folded, bindings, mesh);              // colour and glow, into the scene
      * }</pre>
      */
-    public CgPipeline skinned() {
-        if (skinned) return this;
-        CgPipeline made = skinnedTwin;
-        if (made == null) {
-            made = INTERNED.computeIfAbsent(new Key(shader, pass, passName, keywords, state, kind, flags() | SKINNED), CgPipeline::register);
-            skinnedTwin = made;
+    @Nullable
+    public CgPipeline as(CgPipelineForm form) {
+        int bit = form.bit();
+        if ((forms & bit) != 0) return this;
+        CgPipeline made = twins[form.ordinal()];
+        if (made != null) return made;
+        if ((forms & form.excludes) != 0 || form.forwardOnly && pass != CgRenderPassVariant.FORWARD) return null;
+        if (form.forwardOnly) {
+            CgParsedShader parsed = shader.ensureParsed();
+            if (parsed == null || !form.admits(parsed, state)) return null;
+            if (form.singleOutput) {
+                CgParsedPass own = ownPass(parsed);
+                if (own == null || own.fragOutput().isMrt()) return null;
+            }
         }
+        made = INTERNED.computeIfAbsent(new Key(shader, pass, passName, keywords, form.state(state), kind,
+                (forms | bit) & ~form.drops), CgPipeline::register);
+        twins[form.ordinal()] = made;
         return made;
     }
 
-    /** Whether it skins its vertices: {@link #skinned()}. */
-    public boolean isSkinned() {
-        return skinned;
+    /** Whether it draws in {@code form}. */
+    public boolean has(CgPipelineForm form) {
+        return (forms & form.bit()) != 0;
     }
 
     /** The passes a material's keywords reach: the ones a material authors for the frame it draws into. */
@@ -258,237 +233,15 @@ public final class CgPipeline {
     }
 
     /**
-     * This pipeline as a multi-draw binds it: the same pass compiled with
-     * {@link CgMaterialShaderCompiler#MULTI_DRAW}, each draw's bases taken from its command. What an executor binds
-     * for a run of draws it makes one call, where {@code CgCapabilities.multiDraw()}. Render thread.
-     *
-     * <pre>{@code
-     * CgPipeline multi = pipeline.multiDraw();
-     * if (multi.bind()) CgGL.glMultiDrawElementsIndirect(mode, CgGL.GL_UNSIGNED_INT, offset, commands, 20);
-     * }</pre>
-     */
-    public CgPipeline multiDraw() {
-        if (multiDraw) return this;
-        if (multi == null) {
-            multi = INTERNED.computeIfAbsent(new Key(shader, pass, passName, keywords, state, kind, flags() | MULTI), CgPipeline::register);
-        }
-        return multi;
-    }
-
-    /**
-     * This pipeline as the overdraw view draws it: the same vertex stage, depth test and discard, adding a count of 1
-     * in red into a target with no depth ({@link CgMaterialShaderCompiler#DEBUG_OVERDRAW}). Any thread.
-     *
-     * <pre>{@code
-     * chunks.draw(material.pipeline(CgInstanceKind.OBJECT).overdraw(), bindings, mesh);   // into an R16F count target
-     * }</pre>
-     */
-    public CgPipeline overdraw() {
-        if (overdraw) return this;
-        CgPipeline made = overdrawn;
-        if (made == null) {
-            CgRenderState counting = CgRenderState.builder().blend(ADD).depth(CgDepthState.NONE).cull(state.getCull())
-                    .colorMask(CgColorMask.ALL).build();
-            made = INTERNED.computeIfAbsent(new Key(shader, pass, passName, keywords, counting, kind, (flags() | OVERDRAW) & ~(COVER | FOLD)),
-                    CgPipeline::register);
-            overdrawn = made;
-        }
-        return made;
-    }
-
-    /**
-     * This Forward pipeline drawing its Emissive pass too, into the HDR scene: its glow added to its colour in the same
-     * draw, under its own blend ({@link CgMaterialShaderCompiler#SCENE_FOLD}). Null where the shader's Emissive pass
-     * stays a draw of its own ({@link CgMaterialShaderCompiler#sceneFolds}). Any thread.
-     *
-     * <pre>{@code
-     * CgPipeline folded = material.pipeline(CgInstanceKind.OBJECT).sceneFold();
-     * if (folded != null) chunks.draw(folded, bindings, mesh);              // colour and glow, into the scene
-     * else { ... the Forward pipeline, then its Emissive pass at the same key ... }
-     * }</pre>
-     */
-    @Nullable
-    public CgPipeline sceneFold() {
-        if (fold) return this;
-        if (pass != CgRenderPassVariant.FORWARD || overdraw || cover) return null;
-        CgPipeline made = folding;
-        if (made == null) {
-            CgParsedShader parsed = shader.ensureParsed();
-            if (parsed == null || !CgMaterialShaderCompiler.sceneFolds(parsed)) return null;
-            made = INTERNED.computeIfAbsent(new Key(shader, pass, passName, keywords, state, kind, flags() | FOLD), CgPipeline::register);
-            folding = made;
-        }
-        return made;
-    }
-
-    /**
-     * This Forward pipeline drawing depth alone where it is solid: a {@code "Depth" = "Prepass"} material's prepass
-     * ({@link CgMaterialShaderCompiler#DEPTH_PREPASS}), its fragment run up to {@code cg_Clip}, colour off and depth
-     * written under its own test and cull. Both programs declare {@code invariant gl_Position}, so its colour draw
-     * passes its depth test exactly where this wrote. Null for any other material. Any thread.
-     *
-     * <pre>{@code
-     * CgPipeline prepass = material.pipeline(CgInstanceKind.OBJECT).depthPrepass();
-     * if (prepass != null) chunks.draw(prepass, bindings, mesh);    // before the transparent draws of the firing
-     * }</pre>
-     */
-    @Nullable
-    public CgPipeline depthPrepass() {
-        if (depth) return this;
-        if (pass != CgRenderPassVariant.FORWARD || overdraw || cover || fold) return null;
-        CgPipeline made = depthOnly;
-        if (made == null) {
-            CgParsedShader parsed = shader.ensureParsed();
-            if (parsed == null || parsed.depthMode() != CgParsedShader.DepthMode.PREPASS) return null;
-            CgDepthState own = state.getDepth();
-            CgRenderState writing = CgRenderState.builder().blend(CgBlendState.DISABLED)
-                    .depth(new CgDepthState(true, true, own != null && own.test() ? own.compareFunc() : CgGL.GL_LEQUAL))
-                    .cull(state.getCull()).colorMask(CgColorMask.NONE).build();
-            made = INTERNED.computeIfAbsent(new Key(shader, pass, passName, keywords, writing, kind, flags() | DEPTH),
-                    CgPipeline::register);
-            depthOnly = made;
-        }
-        return made;
-    }
-
-    /**
-     * This Forward pipeline as the world renderer's volume pass draws it: what its fragment names with
-     * {@code CG_VOLUME_DEPTH(eye)} written at location 1 ({@link CgMaterialShaderCompiler#VOLUME_TARGET}), the depth a
-     * temporal resolve reprojects it by; 0 where it names none. Under its own blend and state, folded or not. Null for
-     * any other pass, or an MRT one. Any thread.
-     *
-     * <pre>{@code
-     * CgPipeline marching = material.pipeline(CgInstanceKind.OBJECT).volumeTarget();
-     * if (marching != null) chunks.draw(marching, bindings, cube);   // into recording.raster(volume, ...).attachment(depth)
-     * }</pre>
-     */
-    @Nullable
-    public CgPipeline volumeTarget() {
-        if (volume) return this;
-        if (pass != CgRenderPassVariant.FORWARD || overdraw || cover || depth) return null;
-        CgPipeline made = volumed;
-        if (made == null) {
-            CgParsedShader parsed = shader.ensureParsed();
-            CgParsedPass own = ownPass(parsed);
-            if (own == null || own.fragOutput().isMrt()) return null;
-            made = INTERNED.computeIfAbsent(new Key(shader, pass, passName, keywords, state, kind, flags() | VOLUME), CgPipeline::register);
-            volumed = made;
-        }
-        return made;
-    }
-
-    /**
-     * This Forward pipeline as the world renderer's opaque pass draws it with a normal target beside it: the vertex
-     * normal written at location 1 ({@link CgMaterialShaderCompiler#NORMAL_TARGET}), what the world lights read for our
-     * surfaces in place of a normal rebuilt from depth. Null for any other pass, or an MRT one. Any thread.
-     *
-     * <pre>{@code
-     * CgPipeline normalled = material.pipeline(CgInstanceKind.OBJECT).normalTarget();
-     * if (normalled != null) chunks.draw(normalled, bindings, mesh);   // into recording.raster(...).attachmentIfTaken(normals)
-     * }</pre>
-     */
-    @Nullable
-    public CgPipeline normalTarget() {
-        if (normals) return this;
-        if (pass != CgRenderPassVariant.FORWARD || overdraw || cover || fold || depth || volume) return null;
-        CgPipeline made = normalled;
-        if (made == null) {
-            CgParsedShader parsed = shader.ensureParsed();
-            CgParsedPass own = ownPass(parsed);
-            if (own == null || own.fragOutput().isMrt()) return null;
-            made = INTERNED.computeIfAbsent(new Key(shader, pass, passName, keywords, state, kind, flags() | NORMALS), CgPipeline::register);
-            normalled = made;
-        }
-        return made;
-    }
-
-    /**
-     * This Forward pipeline writing, in place of its colour, the custom data and shading model its fragment names
-     * ({@link CgMaterialShaderCompiler#CUSTOM_DATA_TARGET}): what the world renderer draws an opaque draw again with, in
-     * a frame a post material reads {@code CG_CUSTOM_DATA} or {@code CG_SHADING_MODEL_ID}. Null for any other pass, or
-     * an MRT one. Any thread.
-     *
-     * <pre>{@code
-     * CgPipeline data = material.pipeline(CgInstanceKind.OBJECT).customDataTarget();
-     * if (data != null) chunks.draw(data.withState(ownState.withDepth(CgDepthState.TEST_ONLY)), bindings, mesh);
-     * }</pre>
-     */
-    @Nullable
-    public CgPipeline customDataTarget() {
-        if (customData) return this;
-        if (pass != CgRenderPassVariant.FORWARD || overdraw || cover || fold || depth || volume || normals) return null;
-        CgPipeline made = customDataTwin;
-        if (made == null) {
-            CgParsedShader parsed = shader.ensureParsed();
-            CgParsedPass own = ownPass(parsed);
-            if (own == null || own.fragOutput().isMrt()) return null;
-            made = INTERNED.computeIfAbsent(new Key(shader, pass, passName, keywords, state, kind, flags() | CUSTOM_DATA), CgPipeline::register);
-            customDataTwin = made;
-        }
-        return made;
-    }
-
-    /**
-     * This Forward pipeline as a surface glowing nothing, for glows drawn apart from the scene (an impact frame's
-     * subject): black at its colour's alpha at location 0, under this pipeline's blend, hidden by the scene's depth as an
-     * Emissive pass is, since that target has none. Drawn in the same order as the glows, it covers those behind it. Null
-     * where it covers nothing: it adds ({@code dst} factor ONE), or is not a single-output Forward pass. Any thread.
-     *
-     * <pre>{@code
-     * CgPipeline occluder = forward.emissionOccluder();
-     * if (occluder != null) chunks.draw(occluder, bindings, mesh).sortKey(key);   // sorted with the glows
-     * }</pre>
-     */
-    @Nullable
-    public CgPipeline emissionOccluder() {
-        if (cover) return this;
-        if (pass != CgRenderPassVariant.FORWARD || overdraw) return null;
-        CgBlendState blend = state.getBlend();
-        if (blend != null && blend.enabled() && blend.dstRgb() == CgGL.GL_ONE) return null;
-        CgPipeline made = occluding;
-        if (made == null) {
-            CgParsedShader parsed = shader.ensureParsed();
-            CgParsedPass own = ownPass(parsed);
-            if (own == null || own.fragOutput().isMrt()) return null;
-            // Unset is the transparent pass's alpha blend; the glow pass's own is ONE ONE.
-            CgRenderState covering = CgRenderState.builder().blend(blend != null ? blend : CgBlendState.ALPHA)
-                    .depth(CgDepthState.NONE).cull(state.getCull()).colorMask(CgColorMask.ALL).build();
-            made = INTERNED.computeIfAbsent(new Key(shader, pass, passName, keywords, covering, kind, flags() | COVER), CgPipeline::register);
-            occluding = made;
-        }
-        return made;
-    }
-
-    /**
-     * This Forward pipeline writing full coverage, alpha 1, whatever its fragment wrote
-     * ({@link CgMaterialShaderCompiler#SOLID_COVER}): an opaque or masked draw redrawn into a graded layer, which hides
-     * all that is behind it there as it does in the scene. Null for another pass or an MRT output. Any thread.
-     */
-    @Nullable
-    public CgPipeline solidCover() {
-        if (solid) return this;
-        if (pass != CgRenderPassVariant.FORWARD || overdraw || cover || fold || depth || volume || normals) return null;
-        CgPipeline made = solidified;
-        if (made == null) {
-            CgParsedPass own = ownPass(shader.ensureParsed());
-            if (own == null || own.fragOutput().isMrt()) return null;
-            made = INTERNED.computeIfAbsent(new Key(shader, pass, passName, keywords, state, kind, flags() | SOLID), CgPipeline::register);
-            solidified = made;
-        }
-        return made;
-    }
-
-    /**
-     * The colour attachments its program writes, a bit each: slot 0 always, slot 1 for {@link #volumeTarget()} and
-     * {@link #normalTarget()}, and
-     * an MRT output's {@code : RTn} slots. A pass drawing into more than one masks every other slot off for it, so an
+     * The colour attachments its program writes, a bit each: slot 0 always, slot 1 for {@link CgPipelineForm#VOLUME}
+     * and {@link CgPipelineForm#NORMALS}, and an MRT output's {@code : RTn} slots. A pass drawing into more than one masks every other slot off for it, so an
      * unwritten output never lands. Render thread.
      */
     public int slotWrites() {
         int revision = shader.getRevisionNumber();
         if (slotsRevision == revision) return slots;
         int bits = 1;
-        if (volume || normals) bits |= 2;
+        if (has(CgPipelineForm.VOLUME) || has(CgPipelineForm.NORMALS)) bits |= 2;
         CgParsedShader parsed = shader.ensureParsed();
         CgParsedPass own = ownPass(parsed);
         if (own != null && own.fragOutput().isMrt()) {
@@ -499,9 +252,6 @@ public final class CgPipeline {
         slotsRevision = revision;
         return bits;
     }
-
-    private static final CgBlendState ADD = new CgBlendState(true, CgGL.GL_ONE, CgGL.GL_ONE, CgGL.GL_ONE, CgGL.GL_ONE,
-            CgGL.GL_FUNC_ADD, CgGL.GL_FUNC_ADD);
 
     private static CgPipeline register(Key key) {
         synchronized (REGISTERING) {
@@ -523,7 +273,7 @@ public final class CgPipeline {
         synchronized (this) {
             for (int i = 0; i < derivedCount; i++) if (derivedStates[i] == other) return derived[i];
         }
-        CgPipeline variant = INTERNED.computeIfAbsent(new Key(shader, pass, passName, keywords, other, kind, flags()),
+        CgPipeline variant = INTERNED.computeIfAbsent(new Key(shader, pass, passName, keywords, other, kind, forms),
                 CgPipeline::register);
         synchronized (this) {
             if (derivedCount == derived.length) {
@@ -573,12 +323,21 @@ public final class CgPipeline {
     private volatile boolean tables;
 
     /**
-     * Whether its draws sample {@code cg_DepthBuffer}: its shader names it, or the compiler's discard behind the scene
-     * does, which an Emissive, Distortion, cover or overdraw pipeline has whatever its source names.
+     * Whether its draws sample {@code cg_DepthBuffer}: its linked program does (its source may, before it links), or the
+     * compiler's discard behind the scene does, which an Emissive, Distortion, cover or overdraw pipeline has whatever
+     * its source names.
      */
     public boolean readsSceneDepth() {
-        return shader.readsSceneDepth() || pass == CgRenderPassVariant.EMISSIVE || pass == CgRenderPassVariant.DISTORTION
-                || cover || overdraw;
+        CgShader linked = resolved() ? program : null;
+        return (linked != null ? shader.readsSceneDepth(linked) : shader.readsSceneDepth())
+                || pass == CgRenderPassVariant.EMISSIVE || pass == CgRenderPassVariant.DISTORTION
+                || has(CgPipelineForm.COVER) || has(CgPipelineForm.OVERDRAW);
+    }
+
+    /** Whether its draws sample {@code cg_SceneColor}: its linked program does, or its source may before it links. */
+    public boolean readsSceneColor() {
+        CgShader linked = resolved() ? program : null;
+        return linked != null ? shader.readsSceneColor(linked) : shader.readsSceneColor();
     }
 
     public CgRenderPassVariant pass() {
@@ -606,7 +365,7 @@ public final class CgPipeline {
 
     /**
      * Starts this pipeline's program compiling without waiting, the shader's first and then this pass, keyword set
-     * and multi-draw form of it, and says whether {@link #program()} would now return without compiling or waiting
+     * and forms of it, and says whether {@link #program()} would now return without compiling or waiting
      * on the driver. False on a frame that starts one, or once the frame's {@link CgWarmBudget} is spent; poll it frame
      * to frame.
      */
@@ -678,8 +437,7 @@ public final class CgPipeline {
                     : pass == CgRenderPassVariant.FORWARD ? shader.getOrCompileForwardPass(compiled)
                     : shader.getOrCompile(pass.lightModeName(), compiled);
             programRevision = revision;
-            instanceBaseLocation = UNRESOLVED;
-            vertexBaseLocation = UNRESOLVED;
+            if (program != null) startRecorded(program);
         }
         long took = System.nanoTime() - start;
         // Built by another pipeline of the same program (a state of its own, a sibling) is built all the same.
@@ -738,48 +496,111 @@ public final class CgPipeline {
     }
 
     /**
-     * Where this batch's instances start in its kind's upload: what {@code CG_INSTANCE_ID} adds to
-     * {@code gl_InstanceID}. After {@link #bind()}.
+     * This pipeline as {@code CgRHI.get()}'s graphics pipeline into targets of these formats: its program as written, its
+     * shader's vertex format at binding 0, its render state over {@code passState}, the outputs it does not write
+     * ({@link #slotWrites()}) masked off. Built once per description; null when the program does not compile. Render
+     * thread.
+     *
+     * <pre>{@code
+     * CgGraphicsPipeline p = pipeline.device(passState, mesh.format(), CgMeshStore.topology(mesh), true,
+     *         List.of(CgFormat.RGBA16_FLOAT),
+     *         CgFormat.DEPTH32_FLOAT, 1);
+     * if (p != null) pass.setPipeline(p);
+     * }</pre>
+     *
+     * <ul>
+     *   <li>The stencil reference is the pass's to set, not the pipeline's.</li>
+     * </ul>
+     *
+     * @param meshFormat the drawn mesh's vertex format, which the vertex layout follows (null for the program's own)
+     * @param glDepth whether the engine's projections give GL's clip depth ({@code [-w, w]}), which the vertex stage then
+     *                maps to the device's; false for projections already in zero-to-one depth
+     * @param depth null for a pass with no depth target
+     * @throws com.crystalgraphics.platform.rhi.shader.CgShaderModule.CompileException where its sources leave a resource
+     *         unbound
      */
-    public void instanceBase(int base) {
-        if (instanceBaseLocation == UNRESOLVED) instanceBaseLocation = program.getUniformLocation("cg_InstanceBase");
-        if (instanceBaseLocation >= 0) CgGL.glUniform1i(instanceBaseLocation, base);
+    @Nullable
+    public CgGraphicsPipeline device(CgRenderState passState, CgVertexFormat meshFormat,
+                                     CgGraphicsPipelineDesc.Topology topology, boolean glDepth,
+                                     List<CgFormat> colors, @Nullable CgFormat depth, int samples) {
+        CgShader linked = program();
+        if (linked == null) return null;
+        CgRHI rhi = CgRHI.get();
+        if (deviceLast != null && deviceLastOf == rhi && deviceLastProgram == linked && deviceLastPass == passState
+                && deviceLastMeshFormat == meshFormat && deviceLastTopology == topology && deviceLastGlDepth == glDepth && deviceLastDepth == depth && deviceLastSamples == samples
+                && deviceLastColors.equals(colors)) {
+            return deviceLast;
+        }
+        String label = toString();
+        CgRenderState s = CgDeviceStates.over(passState, state);
+        CgGraphicsPipelineDesc.Blend blend = CgDeviceStates.blend(s.getBlend());
+        int writes = slotWrites();
+        List<CgGraphicsPipelineDesc.ColorTarget> targets = new ArrayList<>(colors.size());
+        for (int i = 0; i < colors.size(); i++) {
+            int mask = (writes & 1 << i) == 0 ? 0 : CgDeviceStates.writeMask(s.getColorMasks(), i);
+            targets.add(new CgGraphicsPipelineDesc.ColorTarget(colors.get(i), blend, mask));
+        }
+        CgGraphicsPipelineDesc desc = new CgGraphicsPipelineDesc(label, CgDeviceStates.layout(rhi, linked.explicit(label)),
+                linked.deviceModule(rhi, CgShaderModule.Stage.VERTEX, glDepth, label),
+                linked.deviceModule(rhi, CgShaderModule.Stage.FRAGMENT, glDepth, label),
+                CgDeviceStates.vertexBuffers(linked.format(), meshFormat), topology,
+                CgDeviceStates.raster(s.getCull()), CgDeviceStates.depthStencil(s.getDepth(), s.getStencil()), targets,
+                depth, samples);
+        deviceLast = deviceCache(rhi).get(desc, linked.deviceKey(), !glDepth);
+        deviceLastOf = rhi;
+        deviceLastProgram = linked;
+        deviceLastPass = passState;
+        deviceLastMeshFormat = meshFormat;
+        deviceLastTopology = topology;
+        deviceLastGlDepth = glDepth;
+        deviceLastColors = List.copyOf(colors);
+        deviceLastDepth = depth;
+        deviceLastSamples = samples;
+        return deviceLast;
+    }
+
+    private static CgPipelineCache deviceCache(CgRHI rhi) {
+        if (deviceCacheOf != rhi) {
+            deviceCache = new CgPipelineCache(rhi);
+            deviceCacheOf = rhi;
+        }
+        return deviceCache;
     }
 
     /**
-     * The one record every instance of the next draw reads, at {@code record} in its kind's upload: an indirect
-     * {@code INSTANCES} draw's, whose instance count only the GPU knows. After {@link #bind()}.
+     * Starts every device pipeline recorded for {@code linked} building on the cache's workers, once a device: as its
+     * program becomes the pipeline's (a precache, inside the loading screen), as Unreal's PSO cache starts a program's
+     * recorded pipelines as it loads. Its draws then take them ({@link CgPipelineCache#get}). Nothing without a device
+     * that builds off the render thread.
      */
-    public void sharedInstance(int record) {
-        instanceBase(-1 - record);
-    }
-
-    /**
-     * Where the drawn mesh's vertices start in the buffer it is drawn from: what {@code CG_VERTEX_ID} takes from
-     * {@code gl_VertexID}, so a shader sees the vertex's index in its own mesh. After {@link #bind()}.
-     */
-    public void vertexBase(int base) {
-        if (vertexBaseLocation == UNRESOLVED) vertexBaseLocation = program.getUniformLocation("cg_VertexBase");
-        if (vertexBaseLocation >= 0) CgGL.glUniform1i(vertexBaseLocation, base);
+    private void startRecorded(CgShader linked) {
+        if (!CgRHI.installed() || !CgGlslCompiler.installed()) return;
+        CgRHI rhi = CgRHI.get();
+        if (!rhi.createsOnAnyThread() || linked.deviceKey() == 0 || !linked.startsOn(rhi)) return;
+        String label = toString();
+        CgPipelineCache cache = deviceCache(rhi);
+        cache.adopt(cache.startRecorded(linked.deviceKey(), recipe -> recipe.desc(label,
+                CgDeviceStates.layout(rhi, linked.explicit(label)),
+                linked.deviceModule(rhi, CgShaderModule.Stage.VERTEX, !recipe.zeroToOne(), label),
+                linked.deviceModule(rhi, CgShaderModule.Stage.FRAGMENT, false, label))));
     }
 
     @Override
     public String toString() {
-        return "CgPipeline#" + id + "(" + shader.getResourcePath() + " " + (passName != null ? passName : pass) + " " + keywords
-                + " " + kind + (multiDraw ? " multi-draw" : "")
-                + (overdraw ? " overdraw" : "") + (depth ? " depth prepass" : "")
-                + (fold ? " fold" : "") + (cover ? " cover" : "") + (volume ? " volume" : "") + (normals ? " normals" : "")
-                + (skinned ? " skinned" : "") + (customData ? " custom data" : "") + ")";
+        StringBuilder sb = new StringBuilder("CgPipeline#").append(id).append('(').append(shader.getResourcePath())
+                .append(' ').append(passName != null ? passName : pass).append(' ').append(keywords).append(' ').append(kind);
+        for (CgPipelineForm form : CgPipelineForm.ALL) if (has(form)) sb.append(' ').append(form);
+        return sb.append(')').toString();
     }
 
     /** A shader and a render state by identity, since neither has value equality worth trusting. */
     private record Key(CgMaterialShader shader, CgRenderPassVariant pass, @Nullable String passName, Set<String> keywords,
-                       CgRenderState state, CgInstanceKind kind, int flags) {
+                       CgRenderState state, CgInstanceKind kind, int forms) {
         @Override
         public boolean equals(Object o) {
             return o instanceof Key k && k.shader == shader && k.pass == pass && Objects.equals(k.passName, passName)
                     && k.keywords.equals(keywords)
-                    && k.state == state && k.kind == kind && k.flags == flags;
+                    && k.state == state && k.kind == kind && k.forms == forms;
         }
 
         @Override
@@ -790,7 +611,7 @@ public final class CgPipeline {
             h = h * 31 + keywords.hashCode();
             h = h * 31 + System.identityHashCode(state);
             h = h * 31 + kind.ordinal();
-            return h * 8 + flags;
+            return h * 31 + forms;
         }
     }
 }

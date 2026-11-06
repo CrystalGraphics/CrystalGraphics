@@ -1,5 +1,6 @@
 package com.crystalgraphics.vulkan.command;
 
+import com.crystalgraphics.platform.rhi.binding.CgBindingLayout;
 import com.crystalgraphics.platform.rhi.command.CgPassDesc;
 import com.crystalgraphics.platform.rhi.command.CgRenderPass;
 import com.crystalgraphics.platform.rhi.binding.CgBindingSet;
@@ -39,11 +40,15 @@ final class VulkanPass implements CgRenderPass {
     private final CgVulkanDevice device;
     private final VulkanEncoder encoder;
     private final CgPassDesc desc;
+    /** The attachments its begin moved, which its end returns to rest: bit i a colour, {@link #DEPTH_LAID} the depth. */
+    private final int laid;
+    static final int DEPTH_LAID = 1 << 31;
     private VulkanPipeline pipeline;
     /** Sets bound by index, bound again with each pipeline: a new layout may disturb them. */
     private final VulkanBindingSet[] sets = new VulkanBindingSet[8];
 
-    VulkanPass(CgVulkanDevice device, VulkanEncoder encoder, CgPassDesc desc) {
+    VulkanPass(CgVulkanDevice device, VulkanEncoder encoder, CgPassDesc desc, int laid) {
+        this.laid = laid;
         this.device = device;
         this.encoder = encoder;
         this.desc = desc;
@@ -57,7 +62,13 @@ final class VulkanPass implements CgRenderPass {
     public void setPipeline(CgGraphicsPipeline p) {
         pipeline = (VulkanPipeline) p;
         vkCmdBindPipeline(cmd(), VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.pipeline);
-        for (int i = 0; i < sets.length; i++) if (sets[i] != null) bind(i);
+        // A set made for another layout is the caller's to set again: binding it here would be invalid
+        List<CgBindingLayout> layouts = pipeline.desc.layout().sets();
+        for (int i = 0; i < sets.length; i++) {
+            if (sets[i] == null) continue;
+            if (i < layouts.size() && sets[i].layout() == layouts.get(i)) bind(i);
+            else sets[i] = null;
+        }
     }
 
     private void bind(int index) {
@@ -224,14 +235,16 @@ final class VulkanPass implements CgRenderPass {
         }
     }
 
-    /** Ends rendering; an attachment a shader samples goes back to rest for the next pass to read. */
+    /** Ends rendering; an attachment its begin laid goes back to rest for the next pass to read. */
     @Override
     public void end() {
         VkCommandBuffer cmd = cmd();
         vkCmdEndRenderingKHR(cmd);
         List<CgPassDesc.Color> colors = desc.colors();
-        for (int i = 0; i < colors.size(); i++) settle(cmd, (VulkanTexture) colors.get(i).view().texture(), colors.get(i));
-        if (desc.depth() != null) {
+        for (int i = 0; i < colors.size(); i++) {
+            if ((laid & (1 << i)) != 0) settle(cmd, (VulkanTexture) colors.get(i).view().texture(), colors.get(i));
+        }
+        if (desc.depth() != null && (laid & DEPTH_LAID) != 0) {
             VulkanTexture t = (VulkanTexture) desc.depth().view().texture();
             device.barriers += t.transition(cmd, desc.depth().view().baseMip(), 1, desc.depth().view().baseLayer(), 1,
                     t.resting, VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT

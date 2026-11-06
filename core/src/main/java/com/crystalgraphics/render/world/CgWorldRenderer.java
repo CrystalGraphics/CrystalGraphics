@@ -13,16 +13,12 @@ import com.crystalgraphics.api.material.CgParameterCollection;
 import com.crystalgraphics.api.material.CgRenderPassVariant;
 import com.crystalgraphics.api.material.CgRenderQueue;
 import com.crystalgraphics.api.state.CgBlendState;
-import com.crystalgraphics.api.state.CgColorMask;
-import com.crystalgraphics.api.state.CgCullState;
-import com.crystalgraphics.api.state.CgStencilState;
 import com.crystalgraphics.api.state.CgDepthState;
 import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.api.text.CgShapedParagraph;
 import com.crystalgraphics.api.text.CgTextLayout;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.texture.CgTextureType;
-import com.crystalgraphics.gl.framebuffer.CgFrameBuffer;
 import com.crystalgraphics.compute.CgKernel;
 import com.crystalgraphics.compute.ops.CgCull;
 import com.crystalgraphics.compute.ops.CgCullSets;
@@ -32,7 +28,6 @@ import com.crystalgraphics.frame.CgWorld;
 import com.crystalgraphics.lifecycle.CgGraphicsLifecycle;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.animation.CgAnimInstance;
-import com.crystalgraphics.gl.buffer.CgReadback;
 import com.crystalgraphics.gl.buffer.shader.CgBonePalettes;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgMeshLods;
@@ -41,8 +36,6 @@ import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.world.CgWorldBegin;
 import com.crystalgraphics.platform.service.CgShaderPacks;
 import javax.annotation.Nullable;
-import com.crystalgraphics.render.mesh.CgMeshStore;
-import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.render.CgViewFrustum;
 import com.crystalgraphics.render.draw.CgBufferHandle;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
@@ -53,6 +46,7 @@ import com.crystalgraphics.render.draw.CgOrder;
 import com.crystalgraphics.text.render.CgTextRenderer;
 import com.crystalgraphics.render.draw.CgPassConstants;
 import com.crystalgraphics.render.draw.CgPipeline;
+import com.crystalgraphics.render.draw.CgPipelineForm;
 import com.crystalgraphics.render.graph.CgBufferDesc;
 import com.crystalgraphics.render.graph.CgBufferUsage;
 import com.crystalgraphics.render.graph.CgComputePass;
@@ -79,14 +73,8 @@ import org.joml.Matrix4f;
 import org.joml.Matrix4fc;
 import org.joml.Vector3f;
 
-import java.nio.ByteBuffer;
-import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
-import java.util.IdentityHashMap;
-import java.util.List;
 import java.util.Objects;
-import java.util.Set;
 
 /**
  * Draws meshes into a host's world at its two world stages, under the host's own camera: submitted at absolute
@@ -137,11 +125,11 @@ public final class CgWorldRenderer {
     /** Where the world renderer records in each world stage: after renderers at the default order, which may submit. */
     public static final int ORDER = 1000;
     /** A pass into a target it fills from nothing: one load, not one a pass. */
-    private static final CgLoad CLEAR = CgLoad.clear(0f, 0f, 0f, 0f);
+    static final CgLoad CLEAR = CgLoad.clear(0f, 0f, 0f, 0f);
     /** Where a firing starts the world renderer's frame and runs the client world's schedule: after camera shake only. */
     private static final int FRAME_ORDER = Integer.MIN_VALUE + 1;
 
-    private static final Logger LOGGER = LogManager.getLogger("CgWorldRenderer");
+    static final Logger LOGGER = LogManager.getLogger("CgWorldRenderer");
     // Above INSTANCE: its constructor reads them.
     private static final CgVar.Bool MERGE_EMISSION = CgVar.bool("crystalgraphics.world.mergeEmission", true, CgVar.DEV,
             "What a new world renderer starts with: a transparent draw's codeless Emissive pass folded into its Forward"
@@ -149,10 +137,9 @@ public final class CgWorldRenderer {
     private static final CgVar.Bool HALF_RESOLUTION = CgVar.bool("crystalgraphics.world.halfResolution", true, CgVar.DEV,
             "What a new world renderer starts with: draws marked halfResolution() at half size; false at full size, in the"
                     + " transparent pass (H in the harness, halfResolution(boolean) live).");
-    private static final CgVar.Bool SKIP_UNREADY = CgVar.bool("crystalgraphics.world.skipUnready", true, CgVar.DEV,
+    static final CgVar.Bool SKIP_UNREADY = CgVar.bool("crystalgraphics.world.skipUnready", true, CgVar.DEV,
             "Holds a draw whose programs are not built yet, starting them and counting it as world.unready-draws; false"
                     + " compiles at the draw (skipUnready(boolean) live).");
-    private static final int UNREADY_DRAWS = CgTrace.name("world.unready-draws");
     /** A firing's record, step by step. */
     private static final int REC_PREPARE = CgTrace.name("world.record.prepare"), REC_CLASSIFY = CgTrace.name("world.record.classify"),
             REC_TOP = CgTrace.name("world.record.top"), REC_MEDIA = CgTrace.name("world.record.media"),
@@ -163,245 +150,86 @@ public final class CgWorldRenderer {
             REC_AFTER = CgTrace.name("world.record.after");
     private static final CgWorldRenderer INSTANCE = new CgWorldRenderer();
 
-    private static final CgRenderState OPAQUE_STATE = CgRenderState.builder()
+    static final CgRenderState OPAQUE_STATE = CgRenderState.builder()
             .depth(CgDepthState.TEST_WRITE).blend(CgBlendState.DISABLED).build();
-    private static final CgFrameBufferFormat GRADE_FORMAT = CgFrameBufferFormat.builder("cg_grade_layer")
-            .color(0, CgTextureType.RGBA16F).build();
-    private static final CgRenderState TRANSPARENT_STATE = CgRenderState.builder()
+    static final CgRenderState TRANSPARENT_STATE = CgRenderState.builder()
             .depth(CgDepthState.TEST_ONLY).blend(CgBlendState.ALPHA).build();
-    /**
-     * Emissive passes add into the scene, or a glow target of their own (an impact frame's subject), which has no depth:
-     * the scene hides them by its copied depth. ONE ONE, since emitted light is written with an alpha of 0.
-     */
-    private static final CgRenderState EMISSIVE_STATE = CgRenderState.builder()
-            .depth(CgDepthState.NONE).blend(new CgBlendState(true, CgGL.GL_ONE, CgGL.GL_ONE, CgGL.GL_ONE, CgGL.GL_ONE,
-                    CgGL.GL_FUNC_ADD, CgGL.GL_FUNC_ADD)).build();
-    /** CustomDepth beside CustomStencil's copy (CgFrameKeys.CUSTOM_DEPTH): Unreal's PF_DepthStencil, cleared to far and 0. */
-    private static final CgFrameBufferFormat CUSTOM_DEPTH_FORMAT = CgFrameBufferFormat.builder("cg_custom_depth")
-            .color(0, CgTextureType.R8).depth(CgTextureType.DEPTH32F_STENCIL8).build();
-    private static final CgLoad CUSTOM_DEPTH_CLEAR = CgLoad.clear(0f, 0f, 0f, 0f).andDepth(1.0).andStencil(0);
-    private static final int GPU_CUSTOM_DEPTH = CgGpuTrace.name("world.customDepth");
-    /**
-     * Custom data cleared to DefaultLit's shading model (packed x = 256 * model): a pixel the host drew is a lit surface,
-     * as every world pixel is in Unreal's GBuffer, so a post material testing for Unlit grades the host's world too.
-     */
-    private static final CgLoad HOST_LIT_CLEAR = CgLoad.clear(256f, 0f, 0f, 0f);
-    private static final CgLoad HOST_LIT_DEPTH_CLEAR = CgLoad.clear(256f, 0f, 0f, 0f).andDepth(1.0).andStencil(0);
     static final String CUSTOM_STENCIL_SHADER = "crystalgraphics:shaders/world_custom_stencil.shader";
-    /** Custom data and the shading model, packed as {@code handed_scene.glsl} reads them: two exact floats. */
-    private static final CgFrameBufferFormat CUSTOM_DATA_FORMAT = CgFrameBufferFormat.builder("cg_custom_data")
-            .color(0, CgTextureType.RG32F).build();
-    private static final int GPU_CUSTOM_DATA = CgGpuTrace.name("world.customData");
     /** The host's depth copied into the custom data's own, where the host lends none. */
     static final String DEPTH_IN_SHADER = "crystalgraphics:shaders/world_depth_in.shader";
-    /**
-     * The stencil's copy, Unreal's on GL (CustomDepthRendering.cpp:436-450) by draws, since no device here samples a
-     * stencil: bit b's draw passes where the stencil holds it and adds 2^b/255 into the R8 colour.
-     */
-    private static final CgRenderState[] STENCIL_BIT_STATES = new CgRenderState[8];
 
-    static {
-        for (int b = 0; b < 8; b++) {
-            STENCIL_BIT_STATES[b] = CgRenderState.builder().depth(CgDepthState.NONE).cull(CgCullState.NONE)
-                    .blend(new CgBlendState(true, CgGL.GL_ONE, CgGL.GL_ONE, CgGL.GL_ONE, CgGL.GL_ONE, CgGL.GL_FUNC_ADD, CgGL.GL_FUNC_ADD))
-                    .stencil(new CgStencilState(true, 1 << b, 1 << b, 0, CgGL.GL_EQUAL, CgGL.GL_KEEP, CgGL.GL_KEEP, CgGL.GL_KEEP))
-                    .colorMask(CgColorMask.ALL).build();
-        }
-    }
-
-    private static final CgFrameBufferFormat EMISSION_FORMAT = CgFrameBufferFormat.builder("cg_emission")
-            .color(0, CgTextureType.R11F_G11F_B10F).build();
-    private static final int GPU_EMISSION = CgGpuTrace.name("world.emission");
-    private static final CgFrameBufferFormat HALF_FORMAT = CgFrameBufferFormat.builder("cg_world_half")
-            .color(0, CgTextureType.R11F_G11F_B10F).build();
-    private static final String UPSAMPLE_SHADER = "crystalgraphics:shaders/world_half_upsample.shader";
-    private static final CgMesh FULLSCREEN = CgMesh.vertices(3, CgMeshTopology.TRIANGLES);
-    private static final int GPU_HALF = CgGpuTrace.name("world.half"), GPU_HALF_ADD = CgGpuTrace.name("world.halfAdd");
-    private static final CgFrameBufferFormat OVERDRAW_FORMAT = CgFrameBufferFormat.builder("cg_world_overdraw")
-            .color(0, CgTextureType.R16F).build();
-    /** Half-size volumes: premultiplied light, and the eye depth each was marched to (0 for none). */
-    private static final CgFrameBufferFormat VOLUME_FORMAT = CgFrameBufferFormat.builder("cg_world_volume")
-            .color(0, CgTextureType.RGBA16F).color(1, CgTextureType.R16F).build();
-    private static final CgFrameBufferFormat VOLUME_HISTORY_FORMAT = CgFrameBufferFormat.builder("cg_world_volume_history")
-            .color(0, CgTextureType.RGBA16F).build();
-    private static final String RESOLVE_SHADER = "crystalgraphics:shaders/world_volume_resolve.shader";
-    private static final String COMPOSITE_SHADER = "crystalgraphics:shaders/world_volume_composite.shader";
-    private static final int GPU_VOLUME = CgGpuTrace.name("world.volume"), GPU_VOLUME_RESOLVE = CgGpuTrace.name("world.volumeResolve");
-    /** Firings of a host frame with a volume history of their own; a later one composites this frame's alone. */
-    private static final int VOLUME_HISTORIES = 4;
+    static final String UPSAMPLE_SHADER = "crystalgraphics:shaders/world_half_upsample.shader";
+    static final CgMesh FULLSCREEN = CgMesh.vertices(3, CgMeshTopology.TRIANGLES);
 
     private final Draw scratch = new Draw();
 
     // The frame's draws, flat: what a pooled command object per draw used to hold.
-    private long frame = -1;
+    long frame = -1;
     private long notified = -1;
-    private int count;
-    private CgMesh[] meshes = new CgMesh[64];
-    private CgMeshLods[] lods = new CgMeshLods[64];
+    /** The frame's draws: what {@link Draw#submit} wrote, read by every pass. */
+    final CgWorldDraws draws = new CgWorldDraws();
+    /** What every pass builds its draws with, over {@link #draws}. */
+    final CgMeshDrawCommands commands = new CgMeshDrawCommands(draws);
+    final CgBasePass basePass = new CgBasePass(this);
+    final CgGradeLayerPass gradeLayerPass = new CgGradeLayerPass(this);
+    /** Separate translucency's draws this firing. */
+    private int apartDrawn;
+    final CgVolumePass volumePass = new CgVolumePass(this);
+    final CgHalfPass halfPass = new CgHalfPass(this);
+    final CgEmissivePass emissivePass = new CgEmissivePass(this);
+    final CgCustomDataPass customDataPass = new CgCustomDataPass(this);
+    final CgCustomDepthPass customDepthPass = new CgCustomDepthPass(this);
+    final CgOverdrawPass overdrawPass = new CgOverdrawPass(this);
     private final float[] meshBounds = new float[6];
     private final CgAABB meshAabb = new CgAABB();
-    /** Per draw: submesh, first, count of its mesh; its stated bounds (6) and whether set; its padding. */
-    private int[] ranges = new int[64 * 3];
-    private float[] drawBounds = new float[64 * 6];
-    private boolean[] boundsStated = new boolean[64];
-    private float[] pads = new float[64];
-    /** Per draw: the buffer an indirect draw's count is in, else null; the count's byte offset, mode and factor. */
-    private CgBufferHandle[] counts = new CgBufferHandle[64];
-    private long[] countOffsets = new long[64];
-    private CgIndirect[] countModes = new CgIndirect[64];
-    private int[] countFactors = new int[64];
-    /** Per draw, two slots: the buffers it reads in place of engine buffers, and where; else null. */
-    private CgBufferHandle[] buffers = new CgBufferHandle[64 * CgDrawChunk.BUFFERS];
-    private CgBindingPoints.Binding[] bufferAt = new CgBindingPoints.Binding[64 * CgDrawChunk.BUFFERS];
-    /** Per draw: the object records a set of instances draws, else null, and how many of them. */
-    private CgGraphBuffer[] sets = new CgGraphBuffer[64];
-    private int[] setFirsts = new int[64];
-    /** Per draw: the customs it stated, a bit each, which a set's cull stamps; and a set's instance scale. */
-    private int[] customsStated = new int[64];
-    private float[] setScales = new float[64];
-    private CgGpuCount[] setCounts = new CgGpuCount[64];
-    private CgMaterial[] materials = new CgMaterial[64];
-    private double[] positions = new double[64 * 3];
-    private float[] transforms = new float[64 * 16];
-    private float[] customs = new float[64 * 16];
-    /** Per draw: block and sky light, 0 to 15. */
-    private float[] lights = new float[64 * 2];
-    /** Per draw: its emission scale, CG_OBJECT_EMISSION. */
-    private float[] emissions = new float[64];
-    /** Per draw: where its palette starts in the frame's bones, -1 for an unskinned draw. */
-    private int[] boneBases = new int[64];
-    /** The frame's bone palettes, recorded by its first world stage; {@link #palettesFrame} the ring frame it was. */
-    private CgGraphBuffer palettes;
-    private long palettesFrame = -1;
-    /** Per draw: whether it asked to be drawn at half the target's size. */
-    private boolean[] halves = new boolean[64];
-    /** Per draw: whether its count holds only what a GPU cull kept, so no CPU bounds test runs. */
-    private boolean[] culledOnGpu = new boolean[64];
-    /** Per draw: the GPU group it is charged to, null for its material's. */
-    private String[] gpuGroups = new String[64];
-    /** Per draw: the impact frame subject it belongs to ({@link Draw#subject}), 0 for none. */
-    private int[] subjects = new int[64];
-    private CgPostSettings[] grades = new CgPostSettings[64];
-    /** Per draw: drawn into CustomDepth ({@link Draw#customDepth}), its stencil value and its write mask << 8; -1 for not. */
-    private int[] customDepths = new int[64];
-    private int[] queues = new int[64];
-    private int[] orders = new int[64];
-    private int[] batchKeys = new int[64];
-    private CgSortLayer[] layers = new CgSortLayer[64];
-    /** Per draw: whether it is in a group, and the group's absolute position (3). */
-    private boolean[] grouped = new boolean[64];
-    private double[] groupPositions = new double[64 * 3];
-    /** Per draw of {@link Draw#indirectEach}: its first record in the record arrays and how many; 0 for none. */
-    private int[] recordFirsts = new int[64];
-    private int[] recordCounts = new int[64];
-    /** Every such draw's records: absolute position (3), customs (16), its count's byte offset. */
-    private int records;
-    private double[] recordPositions = new double[64 * 3];
-    private float[] recordCustoms = new float[64 * 16];
-    private long[] recordOffsets = new long[64];
-    /** A draw's records far to near this stage: each key its distance's bits over its index. */
-    private long[] recordOrder = new long[64];
-    private final Matrix4f recordModel = new Matrix4f();
-    /** The view {@link #prepare} last took: what records are placed and ordered under. */
-    private CgHostView recordView;
 
-    // Per recording, reused: nothing here allocates per frame once warm.
-    private final Matrix4f model = new Matrix4f();
-    private final Matrix4f normal = new Matrix4f();
     private final Matrix4f viewProjection = new Matrix4f();
     private final Matrix4f toWorld = new Matrix4f();
-    private final Vector3f eye = new Vector3f();
-    private final Vector3f forward = new Vector3f();
     private final Vector3f min = new Vector3f();
     private final Vector3f max = new Vector3f();
     /** A box's corners in clip space: x, y, w. */
     private final float[] clipX = new float[8], clipY = new float[8], clipW = new float[8];
     private final CgViewFrustum frustum = new CgViewFrustum();
-    private final IdentityHashMap<CgMaterial, Integer> bindings = new IdentityHashMap<>();
-    private final IdentityHashMap<CgRenderState, CgRenderState> depthOnly = new IdentityHashMap<>();
-    /** A depth pipeline's state's CustomDepth variants, by stencil value and write mask ({@link #customDepths}). */
-    private final IdentityHashMap<CgRenderState, StencilVariants> customDepthStates = new IdentityHashMap<>();
-    private boolean[] inCustomDepth = new boolean[64];
-    private CgGraphTexture customDepthTarget;
-    private CgMaterial customStencil;
-    /** A custom-data pipeline's state tested against the host's depth and writing none ({@link #recordCustomData}). */
-    private final IdentityHashMap<CgRenderState, CgRenderState> customDataStates = new IdentityHashMap<>();
-    private CgGraphTexture customDataTarget;
-    /** The depth of the framebuffer last probed ({@link #customDataProbed}), for a host lending none. */
-    @Nullable
-    private CgTextureType customDataDepth;
-    private int customDataProbed = -1;
-    private CgMaterial depthIn;
-
-    /** A state's CustomDepth states, found by a scan: a state has a few. */
-    private static final class StencilVariants {
-        int[] keys = new int[4];
-        CgRenderState[] states = new CgRenderState[4];
-        int n;
-    }
 
     // Sets culled on the GPU: one cull, its values copied into each dispatch; per draw, the records and level counts its
     // cull wrote this stage, and where its own start in them. Every set one cull pass culls shares one records buffer
     // and one counts buffer, so their draws join; the k-th pass of a stage writes the k-th pair.
     private final CgCull cull = new CgCull();
-    private CgGraphBuffer[] culled = new CgGraphBuffer[64], culledCounts = new CgGraphBuffer[64];
-    private int[] culledFirst = new int[64], culledWord = new int[64], cullHandles = new int[64];
     private CgGraphBuffer[] cullOut = new CgGraphBuffer[4], cullLevels = new CgGraphBuffer[4];
     /** Per cull pass of the frame: its sets, culled together. */
     private CgCullSets[] cullBatches = new CgCullSets[4];
     private int cullPasses;
 
-    // Glows drawn apart, for an impact frame's subject: which draws, and the target.
-    private boolean[] emits = new boolean[64];
-    private CgGraphTexture subjectTarget;
     /**
      * Our opaque surfaces' normals, Unreal's G-buffer normal, for the world lights and a post material asking
      * ({@link CgFrameKeys#WORLD_NORMALS_READ}); this firing's, or null; and the opaque firing's, for the transparent one.
      */
-    private CgGraphTexture normalTarget, normalsInto, normalsWritten;
+    CgGraphTexture normalTarget, normalsInto, normalsWritten;
     private static final CgFrameBufferFormat NORMAL_FORMAT = CgFrameBufferFormat.builder("cg_world.normals")
             .color(0, CgTextureType.RGBA16F).build();
 
-    /** An impact frame's subject drawn at the opaque stage ({@link #recordOwnedSubject}), and the ring frame it holds. */
-    private CgGraphTexture ownedSubject;
-    private long ownedSubjectFrame = -1;
-    private final CgPassConstants emissionConstants = new CgPassConstants();
     /** Whether a foldable glow is drawn in its colour's draw: {@link #mergeEmission(boolean)}, once warm. */
-    private boolean mergeEmission = MERGE_EMISSION.get();
+    boolean mergeEmission = MERGE_EMISSION.get();
     /** What {@link #mergeEmission(boolean)} asked for; applied once the program list is warm under it. */
     private boolean mergeRequested = mergeEmission;
     private volatile boolean gradeDraws = true;
     @Nullable
     private CgPipelineList.Settings applied;
     private final CgPipelineList pipelines = new CgPipelineList(this::precache, this::requestedSettings);
-    private boolean skipUnready = SKIP_UNREADY.get();
-    private long unreadyDraws;
     private boolean normalsRefusedNoted;
-    private final float[] constantsBlock = new float[CgPassConstants.FLOATS];
+    final float[] constantsBlock = new float[CgPassConstants.FLOATS];
 
     // Half resolution: the target half-size draws go into, its constants, and what adds it over the stage's target.
     private boolean halfResolution = HALF_RESOLUTION.get();
-    private CgGraphTexture halfTarget;
-    private final CgPassConstants halfConstants = new CgPassConstants();
-    private CgMaterial upsample;
-    private CgTexture upsampleBound;
+    final CgPassConstants halfConstants = new CgPassConstants();
 
-    // Volumes: half-size premultiplied draws, blended with their last frame per firing ordinal, then laid over the
-    // target in the transparent pass at the farthest one's key.
-    private CgGraphTexture volumeTarget;
-    /** One a firing ordinal, and the last a rehearsal's, so its passes never advance the real frame's. */
-    private final CgGraphTexture[] volumeHistories = new CgGraphTexture[VOLUME_HISTORIES + 1];
-    /** Per ordinal: the ring frame its history was made in, which holds nothing of a frame before. */
-    private final long[] volumeMade = new long[VOLUME_HISTORIES + 1];
-    private CgMaterial resolve, composite;
-    private CgTexture resolveBound, compositeBound;
     @Nullable
-    private CgTexture volumeOut;
+    CgTexture volumeOut;
     /** Whether a volume's glow is folded into its light this firing: the HDR scene, merging glows. */
-    private boolean volumeFolds;
+    boolean volumeFolds;
 
     // Distortion: what plans and records it, and the distorting draws this firing.
-    private final CgWorldDistortion distortion = new CgWorldDistortion();
+    final CgWorldDistortion distortion = new CgWorldDistortion();
     private final CgWorldMedia media = new CgWorldMedia();
     private final CgWorldLights pointLights = new CgWorldLights();
     /** Whether this transparent firing's light list holds any light. */
@@ -415,14 +243,10 @@ public final class CgWorldRenderer {
 
     // The overdraw view: the transparent draws counted again into this target.
     private boolean overdraw = "overdraw".equals(CgPostDebug.VIEW.get());
-    private CgGraphTexture overdrawTarget;
-    /** Pixels per overdraw count, the last bin everything from it up: {@link #summariseOverdraw}'s. */
-    private final int[] overdrawCounts = new int[256];
-    private final CgReadback.Sink overdrawSink = this::summariseOverdraw;
 
     /** A stop down: strengths were set for a glow blurred into bloom, which spreads a core's energy wide. */
     public static final float SCENE_EMISSION = 0.5f;
-    private volatile float sceneEmission = SCENE_EMISSION;
+    volatile float sceneEmission = SCENE_EMISSION;
 
     // The HDR scene: what WORLD_TRANSPARENT draws into in place of the host's colour.
     private final CgSceneTarget sceneTarget = new CgSceneTarget();
@@ -514,7 +338,7 @@ public final class CgWorldRenderer {
      */
     private static void parsePassesAhead() {
         // text.shader with them: its collector above parsed it on the render thread (109 ms on 1.7.10)
-        CgPipelinePrecache.parseAhead(UPSAMPLE_SHADER, RESOLVE_SHADER, COMPOSITE_SHADER, CgWorldDistortion.APPLY_SHADER,
+        CgPipelinePrecache.parseAhead(UPSAMPLE_SHADER, CgVolumePass.RESOLVE_SHADER, CgVolumePass.COMPOSITE_SHADER, CgWorldDistortion.APPLY_SHADER,
                 CgWorldLights.APPLY_SHADER, CgTextRenderer.TEXT_SHADER);
     }
 
@@ -554,16 +378,15 @@ public final class CgWorldRenderer {
             applied = requested;
             mergeEmission = mergeRequested;
         }
-        precacheHeld();
+        commands.precacheHeld();
     }
 
     /** The settings asked for now: what the next frames draw under once the program list is warm. */
     public CgPipelineList.Settings requestedSettings() {
         boolean merge = mergeRequested;
-        boolean joins = CgCapabilities.detect().multiDraw() && CgMeshStore.get().multiDraw();
         CgPipelineList.Settings r = requested;
-        if (r == null || r.mergeEmission() != merge || r.joins() != joins || r.halfResolution() != halfResolution) {
-            requested = r = new CgPipelineList.Settings(merge, joins, halfResolution);
+        if (r == null || r.mergeEmission() != merge || r.halfResolution() != halfResolution) {
+            requested = r = new CgPipelineList.Settings(merge, halfResolution);
         }
         return r;
     }
@@ -587,39 +410,39 @@ public final class CgWorldRenderer {
      * }</pre>
      */
     public void skipUnready(boolean on) {
-        skipUnready = on;
+        commands.skipUnready = on;
     }
 
     public boolean skipUnready() {
-        return skipUnready;
+        return commands.skipUnready;
     }
 
     /** How many draws were skipped for an unbuilt program since start. */
     public long unreadyDraws() {
-        return unreadyDraws;
+        return commands.unreadyDraws;
     }
 
     /** Drops every draw. At context teardown. */
     public void release() {
         clear();
         frame = -1;
-        held.clear();
-        heldSet.clear();
-        depthOnly.clear();
-        customDepthStates.clear();
-        customDataStates.clear();
-        customStencil = depthIn = null;
-        customDataTarget = null;
-        customDataProbed = -1;
-        upsample = null;
-        upsampleBound = null;
-        resolve = null;
-        composite = null;
-        resolveBound = null;
-        compositeBound = null;
-        volumeTarget = null;
+        commands.held.clear();
+        commands.heldSet.clear();
+        commands.depthOnly.clear();
+        customDepthPass.customDepthStates.clear();
+        customDataPass.customDataStates.clear();
+        customDepthPass.customStencil = customDataPass.depthIn = null;
+        customDataPass.customDataTarget = null;
+        customDataPass.customDataProbed = -1;
+        halfPass.upsample = null;
+        halfPass.upsampleBound = null;
+        volumePass.resolve = null;
+        volumePass.composite = null;
+        volumePass.resolveBound = null;
+        volumePass.compositeBound = null;
+        volumePass.volumeTarget = null;
         volumeOut = null;
-        Arrays.fill(volumeHistories, null);
+        Arrays.fill(volumePass.volumeHistories, null);
         distortion.release();
         text.release();
         sceneTarget.release();
@@ -888,67 +711,64 @@ public final class CgWorldRenderer {
      * precacher: a caller requests its materials through {@link CgPipelinePrecache}.
      */
     boolean precache(CgMaterial material, boolean halfResolution, boolean skinned, CgPipelineList.Settings settings) {
-        boolean joins = settings.joins();
         boolean ready = true;
         for (CgMaterial link = material; link != null; link = link.getNextPass()) {
-            ready &= builtAs(skinned, link.pipeline(CgInstanceKind.OBJECT), joins);
-            if (link.hasDepthPass()) ready &= builtAs(skinned, link.pipeline(CgRenderPassVariant.DEPTH, CgInstanceKind.OBJECT), joins);
+            ready &= builtAs(skinned, link.pipeline(CgInstanceKind.OBJECT));
+            if (link.hasDepthPass()) ready &= builtAs(skinned, link.pipeline(CgRenderPassVariant.DEPTH, CgInstanceKind.OBJECT));
             CgPipeline forward = link.pipeline(CgInstanceKind.OBJECT);
-            if (forward != null) ready &= builtAs(skinned, forward.depthPrepass(), joins);
+            if (forward != null) ready &= builtAs(skinned, forward.as(CgPipelineForm.DEPTH));
             // The normals and custom data an opaque draw writes whenever the lights or a post material ask: warm
             // whether or not they ask now, so the frame that starts asking compiles nothing.
             if (forward != null && link.getRenderQueue() < CgRenderQueue.TRANSPARENT_THRESHOLD) {
-                ready &= builtAs(skinned, forward.normalTarget(), joins);
-                if (link.writesCustomData()) ready &= builtAs(skinned, forward.customDataTarget(), joins);
+                ready &= builtAs(skinned, forward.as(CgPipelineForm.NORMALS));
+                if (link.writesCustomData()) ready &= builtAs(skinned, forward.as(CgPipelineForm.CUSTOM_DATA));
             }
             if (link.hasEmissivePass()) {
-                ready &= builtAs(skinned, link.pipeline(CgRenderPassVariant.EMISSIVE, CgInstanceKind.OBJECT), joins);
-                if (forward != null && settings.mergeEmission()) ready &= builtAs(skinned, forward.sceneFold(), joins);
+                ready &= builtAs(skinned, link.pipeline(CgRenderPassVariant.EMISSIVE, CgInstanceKind.OBJECT));
+                if (forward != null && settings.mergeEmission()) ready &= builtAs(skinned, forward.as(CgPipelineForm.FOLD));
             }
             if (forward != null && link.getRenderQueue() < CgRenderQueue.TRANSPARENT_THRESHOLD
                     && link.readsExposure()) {
                 // An effect's opaque or masked draw graded: its Forward pass covering its layer, and its glow
-                ready &= builtAs(skinned, layered(forward.solidCover()), joins);
+                ready &= builtAs(skinned, gradeLayerPass.layered(forward.as(CgPipelineForm.SOLID)));
                 if (link.hasEmissivePass()) {
-                    ready &= builtAs(skinned, layered(link.pipeline(CgRenderPassVariant.EMISSIVE, CgInstanceKind.OBJECT)), joins);
+                    ready &= builtAs(skinned, gradeLayerPass.layered(link.pipeline(CgRenderPassVariant.EMISSIVE, CgInstanceKind.OBJECT)));
                 }
             }
             if (forward != null && link.getRenderQueue() >= CgRenderQueue.TRANSPARENT_THRESHOLD) {
                 // A graded draw's layer: its Forward pass, folded or with its glow, under the layer's blend
-                ready &= builtAs(skinned, layered(forward), joins);
+                ready &= builtAs(skinned, gradeLayerPass.layered(forward));
                 if (link.hasEmissivePass()) {
-                    if (settings.mergeEmission()) ready &= builtAs(skinned, layered(forward.sceneFold()), joins);
-                    ready &= builtAs(skinned, layered(link.pipeline(CgRenderPassVariant.EMISSIVE, CgInstanceKind.OBJECT)), joins);
+                    if (settings.mergeEmission()) ready &= builtAs(skinned, gradeLayerPass.layered(forward.as(CgPipelineForm.FOLD)));
+                    ready &= builtAs(skinned, gradeLayerPass.layered(link.pipeline(CgRenderPassVariant.EMISSIVE, CgInstanceKind.OBJECT)));
                 }
             }
             if (link.hasDistortionPass()) {
-                ready &= builtAs(skinned, link.pipeline(CgRenderPassVariant.DISTORTION, CgInstanceKind.OBJECT), joins);
+                ready &= builtAs(skinned, link.pipeline(CgRenderPassVariant.DISTORTION, CgInstanceKind.OBJECT));
                 ready &= distortion.precache();
             }
         }
         // CustomDepth draws each material by its depth pipeline, started above, under a stencil state: only the
         // stencil copy is a program of its own. One for every material, since a draw marks itself.
-        if (customStencil == null) customStencil = CgMaterial.newInstance(CUSTOM_STENCIL_SHADER);
-        ready &= built(customStencil.pipeline(CgInstanceKind.OBJECT), false);
+        if (customDepthPass.customStencil == null) customDepthPass.customStencil = CgMaterial.newInstance(CUSTOM_STENCIL_SHADER);
+        ready &= built(customDepthPass.customStencil.pipeline(CgInstanceKind.OBJECT));
         if (!halfResolution || !settings.halfResolution()) return ready;
-        if (upsample == null) upsample = CgMaterial.newInstance(UPSAMPLE_SHADER);
-        if (resolve == null) resolve = CgMaterial.newInstance(RESOLVE_SHADER);
-        if (composite == null) composite = CgMaterial.newInstance(COMPOSITE_SHADER);
-        ready &= built(upsample.pipeline(CgInstanceKind.OBJECT), false);
-        ready &= built(resolve.pipeline(CgInstanceKind.OBJECT), false);
-        return built(composite.pipeline(CgInstanceKind.OBJECT), false) & ready;
+        if (halfPass.upsample == null) halfPass.upsample = CgMaterial.newInstance(UPSAMPLE_SHADER);
+        if (volumePass.resolve == null) volumePass.resolve = CgMaterial.newInstance(CgVolumePass.RESOLVE_SHADER);
+        if (volumePass.composite == null) volumePass.composite = CgMaterial.newInstance(CgVolumePass.COMPOSITE_SHADER);
+        ready &= built(halfPass.upsample.pipeline(CgInstanceKind.OBJECT));
+        ready &= built(volumePass.resolve.pipeline(CgInstanceKind.OBJECT));
+        return built(volumePass.composite.pipeline(CgInstanceKind.OBJECT)) & ready;
     }
 
-    /** {@link #precached} of {@code pipeline}'s skinned form where {@code skinned}. */
-    private static boolean builtAs(boolean skinned, @Nullable CgPipeline pipeline, boolean joins) {
-        return built(pipeline == null || !skinned ? pipeline : pipeline.skinned(), joins);
+    /** {@link #built} of {@code pipeline}'s skinned form where {@code skinned}. */
+    private static boolean builtAs(boolean skinned, @Nullable CgPipeline pipeline) {
+        return built(pipeline == null || !skinned ? pipeline : pipeline.as(CgPipelineForm.SKINNED));
     }
 
-    /** {@code pipeline} and, where draws join, its multi-draw form, both started; whether both are built. */
-    private static boolean built(@Nullable CgPipeline pipeline, boolean joins) {
-        if (pipeline == null) return true;
-        boolean ready = pipeline.precache();
-        return joins ? pipeline.multiDraw().precache() & ready : ready;
+    /** {@code pipeline} started; whether it is built. */
+    static boolean built(@Nullable CgPipeline pipeline) {
+        return pipeline == null || pipeline.precache();
     }
 
     /** One draw being built. Never hold it: the next {@link #draw} reuses it. */
@@ -1562,148 +1382,85 @@ public final class CgWorldRenderer {
             clear();
             frame = now;
         }
-        if (count == meshes.length) grow();
-        meshes[count] = d.mesh;
-        lods[count] = d.lods;
-        materials[count] = d.material;
-        positions[count * 3] = d.x;
-        positions[count * 3 + 1] = d.y;
-        positions[count * 3 + 2] = d.z;
-        d.transform.get(transforms, count * 16);
-        System.arraycopy(d.custom, 0, customs, count * 16, 16);
+        draws.reserve();
+        draws.meshes[draws.count] = d.mesh;
+        draws.lods[draws.count] = d.lods;
+        draws.materials[draws.count] = d.material;
+        draws.positions[draws.count * 3] = d.x;
+        draws.positions[draws.count * 3 + 1] = d.y;
+        draws.positions[draws.count * 3 + 2] = d.z;
+        d.transform.get(draws.transforms, draws.count * 16);
+        System.arraycopy(d.custom, 0, draws.customs, draws.count * 16, 16);
         if (Float.isNaN(d.blockLight)) {
             int light = CgWorldLight.at(d.x, d.y, d.z);
-            lights[count * 2] = CgWorldLight.block(light);
-            lights[count * 2 + 1] = CgWorldLight.sky(light);
+            draws.lights[draws.count * 2] = CgWorldLight.block(light);
+            draws.lights[draws.count * 2 + 1] = CgWorldLight.sky(light);
         } else {
-            lights[count * 2] = d.blockLight;
-            lights[count * 2 + 1] = d.skyLight;
+            draws.lights[draws.count * 2] = d.blockLight;
+            draws.lights[draws.count * 2 + 1] = d.skyLight;
         }
-        emissions[count] = d.emission;
-        boneBases[count] = d.bones;
-        halves[count] = d.half;
-        culledOnGpu[count] = d.onGpu;
-        gpuGroups[count] = d.gpuGroup;
-        subjects[count] = d.subject;
-        grades[count] = gradeDraws ? d.grade : null;
-        customDepths[count] = d.customDepth;
-        queues[count] = d.queue;
-        orders[count] = d.order;
-        batchKeys[count] = d.batchKey;
-        layers[count] = d.layer;
+        draws.emissions[draws.count] = d.emission;
+        draws.boneBases[draws.count] = d.bones;
+        draws.halves[draws.count] = d.half;
+        draws.culledOnGpu[draws.count] = d.onGpu;
+        draws.gpuGroups[draws.count] = d.gpuGroup;
+        draws.subjects[draws.count] = d.subject;
+        draws.grades[draws.count] = gradeDraws ? d.grade : null;
+        draws.customDepths[draws.count] = d.customDepth;
+        draws.queues[draws.count] = d.queue;
+        draws.orders[draws.count] = d.order;
+        draws.batchKeys[draws.count] = d.batchKey;
+        draws.layers[draws.count] = d.layer;
         if (d.material.state().separateTranslucency()
                 && d.queue >= CgRenderQueue.TRANSPARENT_THRESHOLD && d.queue < CgRenderQueue.OVERLAY_THRESHOLD) {
             // Unreal's separate translucency: after every other translucent draw, unbent by their distortion
-            queues[count] = Math.max(d.queue, CgRenderQueue.AFTER_DISTORTION);
-            if (d.layer.rank() < CgSortLayer.SEPARATE_TRANSLUCENCY.rank()) layers[count] = CgSortLayer.SEPARATE_TRANSLUCENCY;
+            draws.queues[draws.count] = Math.max(d.queue, CgRenderQueue.AFTER_DISTORTION);
+            if (d.layer.rank() < CgSortLayer.SEPARATE_TRANSLUCENCY.rank()) draws.layers[draws.count] = CgSortLayer.SEPARATE_TRANSLUCENCY;
         }
-        grouped[count] = d.inGroup;
+        draws.grouped[draws.count] = d.inGroup;
         if (d.inGroup) {
-            groupPositions[count * 3] = d.groupX;
-            groupPositions[count * 3 + 1] = d.groupY;
-            groupPositions[count * 3 + 2] = d.groupZ;
+            draws.groupPositions[draws.count * 3] = d.groupX;
+            draws.groupPositions[draws.count * 3 + 1] = d.groupY;
+            draws.groupPositions[draws.count * 3 + 2] = d.groupZ;
         }
-        ranges[count * 3] = d.submesh;
-        ranges[count * 3 + 1] = d.first;
-        ranges[count * 3 + 2] = d.count;
-        boundsStated[count] = d.boundsSet;
-        if (d.boundsSet) System.arraycopy(d.bounds, 0, drawBounds, count * 6, 6);
-        pads[count] = d.pad;
-        counts[count] = d.indirect;
-        countOffsets[count] = d.indirectOffset;
-        countModes[count] = d.indirectMode;
-        countFactors[count] = d.indirectFactor;
-        sets[count] = d.set;
-        setFirsts[count] = d.setFirst;
-        customsStated[count] = d.stated;
-        setScales[count] = d.setScale;
-        setCounts[count] = d.setCount;
-        System.arraycopy(d.buffer, 0, buffers, count * CgDrawChunk.BUFFERS, CgDrawChunk.BUFFERS);
-        System.arraycopy(d.bufferPoint, 0, bufferAt, count * CgDrawChunk.BUFFERS, CgDrawChunk.BUFFERS);
-        recordCounts[count] = d.each ? d.records : 0;
+        draws.ranges[draws.count * 3] = d.submesh;
+        draws.ranges[draws.count * 3 + 1] = d.first;
+        draws.ranges[draws.count * 3 + 2] = d.count;
+        draws.boundsStated[draws.count] = d.boundsSet;
+        if (d.boundsSet) System.arraycopy(d.bounds, 0, draws.drawBounds, draws.count * 6, 6);
+        draws.pads[draws.count] = d.pad;
+        draws.counts[draws.count] = d.indirect;
+        draws.countOffsets[draws.count] = d.indirectOffset;
+        draws.countModes[draws.count] = d.indirectMode;
+        draws.countFactors[draws.count] = d.indirectFactor;
+        draws.sets[draws.count] = d.set;
+        draws.setFirsts[draws.count] = d.setFirst;
+        draws.customsStated[draws.count] = d.stated;
+        draws.setScales[draws.count] = d.setScale;
+        draws.setCounts[draws.count] = d.setCount;
+        System.arraycopy(d.buffer, 0, draws.buffers, draws.count * CgDrawChunk.BUFFERS, CgDrawChunk.BUFFERS);
+        System.arraycopy(d.bufferPoint, 0, draws.bufferAt, draws.count * CgDrawChunk.BUFFERS, CgDrawChunk.BUFFERS);
+        draws.recordCounts[draws.count] = d.each ? d.records : 0;
         if (d.each) {
-            recordFirsts[count] = records;
-            int n = records + d.records;
-            if (n > recordOffsets.length) {
-                int size = Math.max(n, recordOffsets.length * 2);
-                recordPositions = Arrays.copyOf(recordPositions, size * 3);
-                recordCustoms = Arrays.copyOf(recordCustoms, size * 16);
-                recordOffsets = Arrays.copyOf(recordOffsets, size);
-            }
-            System.arraycopy(d.recordAt, 0, recordPositions, records * 3, d.records * 3);
-            System.arraycopy(d.recordCustom, 0, recordCustoms, records * 16, d.records * 16);
-            System.arraycopy(d.recordCount, 0, recordOffsets, records, d.records);
-            records = n;
+            draws.recordFirsts[draws.count] = draws.records;
+            draws.reserveRecords(d.records);
+            int n = draws.records + d.records;
+            System.arraycopy(d.recordAt, 0, draws.recordPositions, draws.records * 3, d.records * 3);
+            System.arraycopy(d.recordCustom, 0, draws.recordCustoms, draws.records * 16, d.records * 16);
+            System.arraycopy(d.recordCount, 0, draws.recordOffsets, draws.records, d.records);
+            draws.records = n;
         }
-        count++;
+        draws.count++;
     }
 
     private void clear() {
         text.clear();
-        Arrays.fill(meshes, 0, count, null);
-        Arrays.fill(lods, 0, count, null);
-        Arrays.fill(materials, 0, count, null);
-        Arrays.fill(counts, 0, count, null);
-        Arrays.fill(layers, 0, count, null);
-        Arrays.fill(sets, 0, count, null);
-        Arrays.fill(setCounts, 0, count, null);
-        Arrays.fill(buffers, 0, count * CgDrawChunk.BUFFERS, null);
-        Arrays.fill(bufferAt, 0, count * CgDrawChunk.BUFFERS, null);
-        Arrays.fill(culled, 0, count, null);
-        Arrays.fill(culledCounts, 0, count, null);
-        count = 0;
-        records = 0;
+        draws.clear();
     }
 
-    private void grow() {
-        int n = meshes.length * 2;
-        meshes = Arrays.copyOf(meshes, n);
-        lods = Arrays.copyOf(lods, n);
-        materials = Arrays.copyOf(materials, n);
-        positions = Arrays.copyOf(positions, n * 3);
-        transforms = Arrays.copyOf(transforms, n * 16);
-        customs = Arrays.copyOf(customs, n * 16);
-        lights = Arrays.copyOf(lights, n * 2);
-        emissions = Arrays.copyOf(emissions, n);
-        boneBases = Arrays.copyOf(boneBases, n);
-        halves = Arrays.copyOf(halves, n);
-        culledOnGpu = Arrays.copyOf(culledOnGpu, n);
-        gpuGroups = Arrays.copyOf(gpuGroups, n);
-        subjects = Arrays.copyOf(subjects, n);
-        grades = Arrays.copyOf(grades, n);
-        customDepths = Arrays.copyOf(customDepths, n);
-        queues = Arrays.copyOf(queues, n);
-        orders = Arrays.copyOf(orders, n);
-        batchKeys = Arrays.copyOf(batchKeys, n);
-        recordFirsts = Arrays.copyOf(recordFirsts, n);
-        recordCounts = Arrays.copyOf(recordCounts, n);
-        layers = Arrays.copyOf(layers, n);
-        grouped = Arrays.copyOf(grouped, n);
-        groupPositions = Arrays.copyOf(groupPositions, n * 3);
-        ranges = Arrays.copyOf(ranges, n * 3);
-        drawBounds = Arrays.copyOf(drawBounds, n * 6);
-        boundsStated = Arrays.copyOf(boundsStated, n);
-        pads = Arrays.copyOf(pads, n);
-        counts = Arrays.copyOf(counts, n);
-        countOffsets = Arrays.copyOf(countOffsets, n);
-        countModes = Arrays.copyOf(countModes, n);
-        countFactors = Arrays.copyOf(countFactors, n);
-        sets = Arrays.copyOf(sets, n);
-        setFirsts = Arrays.copyOf(setFirsts, n);
-        customsStated = Arrays.copyOf(customsStated, n);
-        setScales = Arrays.copyOf(setScales, n);
-        setCounts = Arrays.copyOf(setCounts, n);
-        buffers = Arrays.copyOf(buffers, n * CgDrawChunk.BUFFERS);
-        bufferAt = Arrays.copyOf(bufferAt, n * CgDrawChunk.BUFFERS);
-        culled = Arrays.copyOf(culled, n);
-        culledCounts = Arrays.copyOf(culledCounts, n);
-        culledFirst = Arrays.copyOf(culledFirst, n);
-        culledWord = Arrays.copyOf(culledWord, n);
-        cullHandles = Arrays.copyOf(cullHandles, n);
-    }
     // ── Recording ────────────────────────────────────────────────────────────────────────────────
 
-    private static final int OPAQUE = 0, TRANSPARENT = 1;
+    static final int OPAQUE = 0, TRANSPARENT = 1;
 
     /**
      * This frame's opaque draws as the lights' shadow casters, each traced through its mesh's distance field (Unreal's
@@ -1711,28 +1468,22 @@ public final class CgWorldRenderer {
      * indirect counts, half-size draws and meshes the shader places.
      */
     private void casters() {
-        for (int i = 0; i < count; i++) {
-            CgMesh mesh = lods[i] != null ? lods[i].finest() : meshes[i];
+        for (int i = 0; i < draws.count; i++) {
+            CgMesh mesh = draws.lods[i] != null ? draws.lods[i].finest() : draws.meshes[i];
             // A transparent draw that is a solid drawn late (a program lighting itself) casts as opaque ones do; one that
             // blends never does, though it write depth (a beam's closed core), or it shadows its own lights.
-            if (mesh == null || sets[i] != null || counts[i] != null || halves[i] || culledOnGpu[i]
-                    || queues[i] >= CgRenderQueue.TRANSPARENT_THRESHOLD && !materials[i].solid()) {
+            if (mesh == null || draws.sets[i] != null || draws.counts[i] != null || draws.halves[i] || draws.culledOnGpu[i]
+                    || draws.queues[i] >= CgRenderQueue.TRANSPARENT_THRESHOLD && !draws.materials[i].solid()) {
                 continue;
             }
-            pointLights.caster(mesh, ranges[i * 3], ranges[i * 3 + 1], ranges[i * 3 + 2], positions[i * 3],
-                    positions[i * 3 + 1], positions[i * 3 + 2], transforms, i * 16);
+            pointLights.caster(mesh, draws.ranges[i * 3], draws.ranges[i * 3 + 1], draws.ranges[i * 3 + 2], draws.positions[i * 3],
+                    draws.positions[i * 3 + 1], draws.positions[i * 3 + 2], draws.transforms, i * 16);
         }
     }
-    /** APART: separate translucency under the HDR scene, drawn into {@link CgSeparateTranslucency} rather than the scene. */
-    private static final byte SKIP = -1, FORWARD = 0, FORWARD_AND_PREPASS = 1, HALF = 2, AFTER = 3, VOLUME = 4, APART = 5;
     /** The clip-space w a draw's screen rect is cut at: nearer than any host's near plane (Minecraft's is 0.05). */
     private static final float NEAR_W = 0.01f;
 
-    private long[] keys = new long[64];
-    private byte[] phase = new byte[64];
-    /** Per draw this stage: its box on screen, in target pixels from the top left; NaN first for none. */
-    private float[] screens = new float[64 * 4];
-    private float targetWidth, targetHeight;
+    float targetWidth, targetHeight;
 
     private void recordOpaque(CgStageFrame stage) {
         record(stage, OPAQUE);
@@ -1769,9 +1520,10 @@ public final class CgWorldRenderer {
     }
 
     private void recordFiring(CgStageFrame stage, int which) {
+        commands.firing++;
         CgHostView view = stage.host().view();
         beginFrame(view);
-        if (count == 0) {
+        if (draws.count == 0) {
             if (which == TRANSPARENT) {
                 // Lights fall on the opaque scene, so a frame drawing nothing of ours still lights it.
                 targetWidth = stage.host().width();
@@ -1795,25 +1547,25 @@ public final class CgWorldRenderer {
             targetHeight = stage.host().height();
             try (CgTrace.Zone z = CgTrace.zone(CgChannels.WORLD, REC_PREPARE)) {
                 prepare(view);
-                if (palettesFrame != frame && CgBonePalettes.written() > 0) {
+                if (commands.palettesFrame != frame && CgBonePalettes.written() > 0) {
                     // Once a frame, in its first stage: a persistent buffer, so the later stage reads the same upload.
-                    palettesFrame = frame;
-                    palettes = CgBonePalettes.record(stage.recording());
+                    commands.palettesFrame = frame;
+                    commands.palettes = CgBonePalettes.record(stage.recording());
                 }
             }
             CgTrace.Zone classifying = CgTrace.zone(CgChannels.WORLD, REC_CLASSIFY);
-            Arrays.fill(culled, 0, count, null);
-            Arrays.fill(culledCounts, 0, count, null);
+            Arrays.fill(draws.culled, 0, draws.count, null);
+            Arrays.fill(draws.culledCounts, 0, draws.count, null);
             cullPasses = 0;
             boolean prepass = false, surfaceLit = false, handed = false;
             int drawn = 0;
-            for (int i = 0; i < count; i++) {
+            for (int i = 0; i < draws.count; i++) {
                 byte p = classify(i, which, view);
-                phase[i] = p;
-                if (p == SKIP) continue;
+                draws.phase[i] = p;
+                if (p == CgWorldDraws.SKIP) continue;
                 drawn++;
-                prepass |= p == FORWARD_AND_PREPASS;
-                for (CgMaterial link = materials[i]; link != null; link = link.getNextPass()) {
+                prepass |= p == CgWorldDraws.FORWARD_AND_PREPASS;
+                for (CgMaterial link = draws.materials[i]; link != null; link = link.getNextPass()) {
                     surfaceLit |= which == TRANSPARENT && link.surfaceLit();
                     handed |= link.handedLights() || link.handedSun();
                 }
@@ -1821,13 +1573,13 @@ public final class CgWorldRenderer {
             CgTrace.counter(CgChannels.WORLD, which == OPAQUE ? "world.opaqueDraws" : "world.transparentDraws", drawn);
             int halfDrawn = 0, volumeDrawn = 0;
             if (which == TRANSPARENT && halfResolution) {
-                for (int i = 0; i < count; i++) {
-                    if (phase[i] == SKIP || !halves[i]) continue;
-                    if (covers(materials[i])) {
-                        phase[i] = VOLUME;
+                for (int i = 0; i < draws.count; i++) {
+                    if (draws.phase[i] == CgWorldDraws.SKIP || !draws.halves[i]) continue;
+                    if (covers(draws.materials[i])) {
+                        draws.phase[i] = CgWorldDraws.VOLUME;
                         volumeDrawn++;
                     } else {
-                        phase[i] = HALF;
+                        draws.phase[i] = CgWorldDraws.HALF;
                         halfDrawn++;
                     }
                 }
@@ -1838,13 +1590,13 @@ public final class CgWorldRenderer {
             apartDrawn = 0;
             separate.reset();
             if (which == TRANSPARENT) {
-                for (int i = 0; i < count; i++) {
-                    if (phase[i] != FORWARD || queues[i] < CgRenderQueue.AFTER_DISTORTION_THRESHOLD) continue;
-                    phase[i] = AFTER;
+                for (int i = 0; i < draws.count; i++) {
+                    if (draws.phase[i] != CgWorldDraws.FORWARD || draws.queues[i] < CgRenderQueue.AFTER_DISTORTION_THRESHOLD) continue;
+                    draws.phase[i] = CgWorldDraws.AFTER;
                     afterDrawn++;
                 }
-                apartDrawn = separateDraws(stage);
-                for (int i = 0; i < count; i++) prepass |= prepassed(i);
+                apartDrawn = gradeLayerPass.separateDraws(stage);
+                for (int i = 0; i < draws.count; i++) prepass |= prepassed(i);
             }
             classifying.close();
             CgTrace.Zone top = CgTrace.zone(CgChannels.WORLD, REC_TOP);
@@ -1854,10 +1606,10 @@ public final class CgWorldRenderer {
             normalsInto = which == OPAQUE && drawn > 0 ? normalsFor(stage, recording) : null;
             if (which == OPAQUE) normalsWritten = normalsInto;
             CgPassConstants constants = stage.constants().sceneGlow(sceneEmission);
-            bindings.clear();
+            commands.bindings.clear();
             // Before the opaque pass: its depth then holds the host's world and none of the draws below.
             Integer subjectKey = which == OPAQUE ? stage.resources().get(CgFrameKeys.SUBJECT_READ) : null;
-            if (subjectKey != null && subjectKey != 0) recordOwnedSubject(stage, recording, view, subjectKey);
+            if (subjectKey != null && subjectKey != 0) emissivePass.recordOwnedSubject(stage, recording, view, subjectKey);
             step.close();
             step = CgTrace.zone(CgChannels.GL_DETAIL, TOP_OPAQUE_SCENE);
             // Our opaque draws into a linear scene of their own, as Unreal's base pass into SceneColor: past white kept
@@ -1867,24 +1619,24 @@ public final class CgWorldRenderer {
             step = CgTrace.zone(CgChannels.GL_DETAIL, TOP_DISTORTION);
             int distorting = 0;
             if (drawn > 0 && which == TRANSPARENT) {
-                if (distorts.length < meshes.length) distorts = new boolean[meshes.length];
+                if (distorts.length < draws.meshes.length) distorts = new boolean[draws.meshes.length];
                 // Separate translucency is composited after the distortion, unbent, as Unreal's
-                for (int i = 0; i < count; i++) {
-                    distorts[i] = phase[i] != SKIP && phase[i] != APART && !halfSize(i) && distortsScene(materials[i]);
+                for (int i = 0; i < draws.count; i++) {
+                    distorts[i] = draws.phase[i] != CgWorldDraws.SKIP && draws.phase[i] != CgWorldDraws.APART && !halfSize(i) && distortsScene(draws.materials[i]);
                 }
                 // The apply is a pass of the renderer's own: skipped while unbuilt, its hazes with it, each counted.
-                if (skipUnready && !distortion.precache()) {
-                    for (int i = 0; i < count; i++) {
+                if (commands.skipUnready && !distortion.precache()) {
+                    for (int i = 0; i < draws.count; i++) {
                         if (!distorts[i]) continue;
                         distorts[i] = false;
-                        unreadyDraws++;
-                        CgTrace.add(CgChannels.GL, UNREADY_DRAWS, 1);
+                        commands.unreadyDraws++;
+                        CgTrace.add(CgChannels.GL, CgMeshDrawCommands.UNREADY_DRAWS, 1);
                     }
                 }
                 hazes.view = view;
                 distorting = distortion.plan(hazes, targetWidth, targetHeight);
                 afterDrawn = 0;
-                for (int i = 0; i < count; i++) if (phase[i] == AFTER) afterDrawn++;
+                for (int i = 0; i < draws.count; i++) if (draws.phase[i] == CgWorldDraws.AFTER) afterDrawn++;
             }
             step.close();
             // Under the HDR scene a glow is light added into the scene itself, where what draws in front covers it.
@@ -1895,10 +1647,10 @@ public final class CgWorldRenderer {
             if (which == TRANSPARENT && !CgRehearsal.active()) text.recordDepth(stage, view);
             step.close();
             step = CgTrace.zone(CgChannels.GL_DETAIL, TOP_CUSTOM);
-            if (which == TRANSPARENT && stage.resources().has(CgFrameKeys.CUSTOM_DATA_READ)) recordCustomData(stage, recording, view);
+            if (which == TRANSPARENT && stage.resources().has(CgFrameKeys.CUSTOM_DATA_READ)) customDataPass.recordCustomData(stage, recording, view);
             // Custom depth and normals before the lights, as Unreal's after its base pass: what reads them before
             // translucency needs them published
-            if (which == TRANSPARENT) recordCustomDepth(stage, recording, view);
+            if (which == TRANSPARENT) customDepthPass.recordCustomDepth(stage, recording, view);
             if (which == TRANSPARENT && normalsWritten != null) {
                 stage.resources().put(CgFrameKeys.WORLD_NORMALS, normalsWritten);
                 normalsWritten = null;
@@ -1917,7 +1669,7 @@ public final class CgWorldRenderer {
                 mediaOut = which == TRANSPARENT && (drawn > 0 || media.holdsAny())
                         ? media.record(recording, stage.constants(), view, toWorld, targetWidth, targetHeight, pointLights) : null;
                 if (mediaOut != null) media.composite(stage, recording, mediaOut);
-                if (scene) recordSceneGlows(stage, recording, view);
+                if (scene) emissivePass.recordSceneGlows(stage, recording, view);
             }
             if (which == TRANSPARENT) beforeTranslucency(stage);
             if (drawn > 0) {
@@ -1925,27 +1677,27 @@ public final class CgWorldRenderer {
                     cullSets(stage, recording, view, CULL_PASSES);
                 }
                 CgTrace.Zone passes = CgTrace.zone(CgChannels.WORLD, REC_PASSES);
-                if (prepass) recordPass(stage, recording, constants, OPAQUE_STATE, true, false, view, false);
-                if (halfDrawn > 0) recordHalf(stage, recording, view);
-                volumeOut = volumeDrawn > 0 ? recordVolumes(stage, recording, view) : null;
+                if (prepass) basePass.recordPass(stage, recording, constants, OPAQUE_STATE, true, false, view, false);
+                if (halfDrawn > 0) halfPass.recordHalf(stage, recording, view);
+                volumeOut = volumeDrawn > 0 ? volumePass.recordVolumes(stage, recording, view) : null;
                 if (distorting > 0) distortion.recordBends(stage, recording, hazes);
                 if (drawn > halfDrawn + volumeDrawn + afterDrawn + apartDrawn || volumeOut != null) {
-                    recordPass(stage, recording, constants, which == OPAQUE ? OPAQUE_STATE : TRANSPARENT_STATE, false, false,
+                    basePass.recordPass(stage, recording, constants, which == OPAQUE ? OPAQUE_STATE : TRANSPARENT_STATE, false, false,
                             view, scene);
                 }
                 if (distorting > 0) distortion.recordFinal(stage, recording, hazes);
-                if (afterDrawn > 0) recordPass(stage, recording, constants, TRANSPARENT_STATE, false, true, view, scene);
-                if (apartDrawn > 0) recordSeparate(stage, recording, view, constants);
+                if (afterDrawn > 0) basePass.recordPass(stage, recording, constants, TRANSPARENT_STATE, false, true, view, scene);
+                if (apartDrawn > 0) gradeLayerPass.recordSeparate(stage, recording, view, constants);
                 passes.close();
             }
             // With nothing transparent too: a graded opaque or masked draw has its layer all the same
-            if (scene) recordGradeLayers(stage, recording, view, constants);
+            if (scene) gradeLayerPass.recordGradeLayers(stage, recording, view, constants);
             if (opaqueScene) sceneTarget.recordOpaqueOut(stage);
             CgTrace.Zone after = CgTrace.zone(CgChannels.WORLD, REC_AFTER);
             if (which == TRANSPARENT && stage.resources().has(CgFrameKeys.SUBJECT_READ)) {
-                recordSubject(stage, recording, view, stage.resources().get(CgFrameKeys.SUBJECT_READ));
+                emissivePass.recordSubject(stage, recording, view, stage.resources().get(CgFrameKeys.SUBJECT_READ));
             }
-            if (which == TRANSPARENT && overdraw && drawn > 0) recordOverdraw(stage, recording, view);
+            if (which == TRANSPARENT && overdraw && drawn > 0) overdrawPass.recordOverdraw(stage, recording, view);
             if (which == TRANSPARENT && !CgRehearsal.active()) text.record(stage, view);
             after.close();
         }
@@ -1953,9 +1705,9 @@ public final class CgWorldRenderer {
 
     /** The light grid and the sun's map bound to every drawn material reading what it is handed of them. */
     private void handLights(CgRecording recording, boolean transparent) {
-        for (int i = 0; i < count; i++) {
-            if (phase[i] == SKIP) continue;
-            for (CgMaterial link = materials[i]; link != null; link = link.getNextPass()) {
+        for (int i = 0; i < draws.count; i++) {
+            if (draws.phase[i] == CgWorldDraws.SKIP) continue;
+            for (CgMaterial link = draws.materials[i]; link != null; link = link.getNextPass()) {
                 if (link.handedLights()) pointLights.hand(link, recording);
                 if (link.handedSun()) pointLights.handSun(link, transparent);
             }
@@ -1969,7 +1721,7 @@ public final class CgWorldRenderer {
 
         @Override
         public int count() {
-            return count;
+            return draws.count;
         }
 
         @Override
@@ -1979,51 +1731,51 @@ public final class CgWorldRenderer {
 
         @Override
         public boolean inPass(int i) {
-            return phase[i] == FORWARD || phase[i] == AFTER;
+            return draws.phase[i] == CgWorldDraws.FORWARD || draws.phase[i] == CgWorldDraws.AFTER;
         }
 
         @Override
         public boolean sharp(int i) {
-            return phase[i] == AFTER;
+            return draws.phase[i] == CgWorldDraws.AFTER;
         }
 
         @Override
         public void inPlace(int i) {
-            phase[i] = FORWARD;
+            draws.phase[i] = CgWorldDraws.FORWARD;
         }
 
         @Override
         public long key(int i) {
-            return keys[i];
+            return draws.keys[i];
         }
 
         @Override
         public void rect(int i, float[] out) {
-            if (Float.isNaN(screens[i * 4])) {
+            if (Float.isNaN(draws.screens[i * 4])) {
                 out[0] = 0f;
                 out[1] = 0f;
                 out[2] = targetWidth;
                 out[3] = targetHeight;
             } else {
-                System.arraycopy(screens, i * 4, out, 0, 4);
+                System.arraycopy(draws.screens, i * 4, out, 0, 4);
             }
         }
 
         @Override
         public void drawDistortion(CgChunkBuilder chunks, CgRecording recording, int i) {
-            modelOf(i, view);
-            model.normal(normal);
-            for (CgMaterial link = materials[i]; link != null; link = link.getNextPass()) {
+            commands.modelOf(i, view);
+            commands.model.normal(commands.normal);
+            for (CgMaterial link = draws.materials[i]; link != null; link = link.getNextPass()) {
                 if (!link.hasDistortionPass()) continue;
                 CgPipeline pipeline = link.pipeline(CgRenderPassVariant.DISTORTION, CgInstanceKind.OBJECT);
-                if (pipeline == null || unready(pipeline, i)) continue;
-                if (sets[i] != null) {
-                    drawSet(chunks, pipeline, bindingOf(link, recording), i);
+                if (pipeline == null || commands.unready(pipeline, i)) continue;
+                if (draws.sets[i] != null) {
+                    commands.drawSet(chunks, pipeline, commands.bindingOf(link, recording), i);
                     continue;
                 }
-                chunks.draw(pipeline, bindingOf(link, recording), meshes[i]).sortKey(keys[i]);
-                group(chunks, i);
-                writeInstance(chunks, i);
+                chunks.draw(pipeline, commands.bindingOf(link, recording), draws.meshes[i]).sortKey(draws.keys[i]);
+                commands.group(chunks, i);
+                commands.writeInstance(chunks, i);
             }
         }
     }
@@ -2036,370 +1788,10 @@ public final class CgWorldRenderer {
         return false;
     }
 
-    /**
-     * Every transparent draw this stage drew, half-size ones too, again through its overdraw variant into a target of
-     * the stage's size: 1 a fragment, hidden by the stage's depth as its own depth test would hide it.
-     */
-    private void recordOverdraw(CgStageFrame stage, CgRecording recording, CgHostView view) {
-        int w = Math.max(1, (int) targetWidth), h = Math.max(1, (int) targetHeight);
-        if (overdrawTarget == null || overdrawTarget.getWidth() != w || overdrawTarget.getHeight() != h) {
-            overdrawTarget = CgGraphTexture.transientTexture("cg_world_overdraw", new CgTextureDesc(w, h, OVERDRAW_FORMAT));
-        }
-        CgRasterPass pass = recording.raster(overdrawTarget, CLEAR, stage.constants(), null,
-                        CgOrder.SORTED).sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT, stage.target())
-                .texture(CgBindingPoints.LIGHTMAP_TEXTURE_UNIT, stage.host().textures().lightmapTexture());
-        CgChunkBuilder chunks = recording.chunks().begin();
-        for (int i = 0; i < count; i++) {
-            if (phase[i] == SKIP) continue;
-            modelOf(i, view);
-            model.normal(normal);
-            for (CgMaterial link = materials[i]; link != null; link = link.getNextPass()) {
-                CgPipeline pipeline = link.pipeline(CgInstanceKind.OBJECT);
-                // A pass writing nothing is skipped; a pure haze's cost is its Distortion pass.
-                if (pipeline != null && pipeline.state().writesNothing()) {
-                    pipeline = link.hasDistortionPass() ? link.pipeline(CgRenderPassVariant.DISTORTION, CgInstanceKind.OBJECT) : null;
-                }
-                if (pipeline == null) continue;
-                if (sets[i] != null) {
-                    drawSet(chunks, pipeline.overdraw(), bindingOf(link, recording), i);
-                    continue;
-                }
-                chunks.draw(pipeline.overdraw(), bindingOf(link, recording), meshes[i]).sortKey(keys[i]);
-                writeInstance(chunks, i);
-            }
-        }
-        pass.add(chunks.end());
-        pass.end();
-        stage.resources().put(CgFrameKeys.OVERDRAW, overdrawTarget);
-        if (CgTrace.isEnabled(CgChannels.WORLD)) recording.readback(overdrawTarget, 0, 0, 0, w, h, overdrawSink);
-    }
-
-    /**
-     * The overdraw count read back, as counters a frame or two later: {@code world.overdraw-covered} the share of pixels
-     * any transparent fragment reached, and over those the mean, 95th percentile and most.
-     */
-    private void summariseOverdraw(ByteBuffer data) {
-        Arrays.fill(overdrawCounts, 0);
-        int pixels = data.remaining() / 2, base = data.position();
-        long sum = 0;
-        for (int i = 0; i < pixels; i++) {
-            int n = halfCount(data.getShort(base + i * 2));
-            sum += n;
-            overdrawCounts[Math.min(n, overdrawCounts.length - 1)]++;
-        }
-        int covered = pixels - overdrawCounts[0];
-        CgTrace.counter(CgChannels.WORLD, "world.overdraw-covered", pixels == 0 ? 0.0 : (double) covered / pixels);
-        if (covered == 0) return;
-        CgTrace.counter(CgChannels.WORLD, "world.overdraw-mean", (double) sum / covered);
-        int p95 = 0, max = 0;
-        for (int c = 1, seen = 0; c < overdrawCounts.length; c++) {
-            if (overdrawCounts[c] == 0) continue;
-            max = c;
-            seen += overdrawCounts[c];
-            if (p95 == 0 && seen >= 0.95 * covered) p95 = c;
-        }
-        CgTrace.counter(CgChannels.WORLD, "world.overdraw-p95", p95);
-        CgTrace.counter(CgChannels.WORLD, "world.overdraw-max", max);
-    }
-
     /** A half float holding a whole count, as an int; below 1 is 0. */
-    private static int halfCount(short half) {
+    static int halfCount(short half) {
         int exponent = (half >>> 10) & 0x1f;
         return exponent == 0 ? 0 : Math.round(Math.scalb((float) (1024 + (half & 0x3ff)), exponent - 25));
-    }
-
-    /** {@link #markGlows}'s parts: every glow, or those whose colour draws before the transparent pass. */
-    private static final int EMIT_ALL = 0, EMIT_BEFORE = 1;
-
-    /**
-     * What the hitting effect glows with, for an impact frame ({@link CgFrameKeys#SUBJECT}), while the post stack asks
-     * ({@link CgFrameKeys#SUBJECT_READ}): with a key, what {@link #recordOwnedSubject} drew; else every visible glow,
-     * into a quarter-size target. The only time glows are drawn apart from the scene.
-     */
-    private void recordSubject(CgStageFrame stage, CgRecording recording, CgHostView view, int key) {
-        if (key != 0) {
-            if (ownedSubjectFrame == frame) stage.resources().put(CgFrameKeys.SUBJECT, ownedSubject);
-            return;
-        }
-        if (markGlows(view, EMIT_ALL) == 0) return;
-        int w = Math.max(1, (int) (targetWidth * 0.25f)), h = Math.max(1, (int) (targetHeight * 0.25f));
-        if (subjectTarget == null || subjectTarget.getWidth() != w || subjectTarget.getHeight() != h) {
-            subjectTarget = CgGraphTexture.transientTexture("cg_subject", new CgTextureDesc(w, h, EMISSION_FORMAT));
-        }
-        recordGlows(stage, recording, view, subjectTarget);
-        stage.resources().put(CgFrameKeys.SUBJECT, subjectTarget);
-    }
-
-    /**
-     * The subject of an impact frame whose settings name {@code key}: the glows of the draws holding it
-     * ({@link Draw#subject}), drawn at the opaque stage before its own draws, so the depth hiding them is the host's
-     * world alone and no other effect's smoke covers them. The transparent stage publishes it as
-     * {@link CgFrameKeys#SUBJECT}; a frame where no such draw shows publishes none.
-     */
-    private void recordOwnedSubject(CgStageFrame stage, CgRecording recording, CgHostView view, int key) {
-        if (emits.length < meshes.length) emits = new boolean[meshes.length];
-        int marked = 0;
-        for (int i = 0; i < count; i++) {
-            int queue = queues[i];
-            boolean e = subjects[i] == key && sets[i] == null && queue < CgRenderQueue.OVERLAY_THRESHOLD
-                    && emissions[i] > 0f && emitsLight(materials[i])
-                    && classify(i, queue >= CgRenderQueue.TRANSPARENT_THRESHOLD ? TRANSPARENT : OPAQUE, view) != SKIP;
-            emits[i] = e;
-            if (e) marked++;
-        }
-        ownedSubjectFrame = marked > 0 ? frame : -1;
-        if (marked == 0) return;
-        int w = Math.max(1, (int) (targetWidth * 0.25f)), h = Math.max(1, (int) (targetHeight * 0.25f));
-        if (ownedSubject == null || ownedSubject.getWidth() != w || ownedSubject.getHeight() != h) {
-            if (ownedSubject != null) recording.release(ownedSubject);
-            ownedSubject = CgGraphTexture.requested("cg_subject_owned", new CgTextureDesc(w, h, EMISSION_FORMAT));
-        }
-        stage.constants().write(constantsBlock, 0);
-        emissionConstants.read(constantsBlock, 0).resolution(w, h);
-        CgRasterPass glow = recording.raster(ownedSubject, CLEAR, emissionConstants, EMISSIVE_STATE,
-                CgOrder.SORTED).sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT, stage.target()).timed(GPU_EMISSION);
-        CgChunkBuilder chunks = recording.chunks().begin();
-        for (int i = 0; i < count; i++) {
-            if (!emits[i]) continue;
-            modelOf(i, view);
-            model.normal(normal);
-            for (CgMaterial link = materials[i]; link != null; link = link.getNextPass()) {
-                if (!link.hasEmissivePass()) continue;
-                CgPipeline pipeline = link.pipeline(CgRenderPassVariant.EMISSIVE, CgInstanceKind.OBJECT);
-                if (pipeline != null) emissionDraw(chunks, pipeline, link, recording, i);
-            }
-        }
-        glow.add(chunks.end());
-        glow.end();
-    }
-
-    /**
-     * Unreal's CustomDepth pass (CustomDepthRendering.cpp:216-326): every draw in view marked {@link Draw#customDepth}
-     * drawn depth-only into a target of its own, tested against it alone and writing its stencil value; then the
-     * stencil's copy into the target's R8 colour. Published as {@link CgFrameKeys#CUSTOM_DEPTH}. Transparent draws only
-     * where their material writes depth (UseDefaultMaterial, :560-591).
-     */
-    private void recordCustomDepth(CgStageFrame stage, CgRecording recording, CgHostView view) {
-        if (inCustomDepth.length < meshes.length) inCustomDepth = new boolean[meshes.length];
-        int marked = 0, bits = 0;
-        for (int i = 0; i < count; i++) {
-            int queue = queues[i];
-            boolean transparent = queue >= CgRenderQueue.TRANSPARENT_THRESHOLD;
-            boolean in = customDepths[i] >= 0 && (!transparent || materials[i].writesDepth())
-                    && classify(i, transparent ? TRANSPARENT : OPAQUE, view) != SKIP;
-            inCustomDepth[i] = in;
-            if (!in) continue;
-            marked++;
-            bits |= customDepths[i] & customDepths[i] >>> 8 & 0xFF;   // the value under its write mask
-        }
-        if (marked == 0) return;
-        int w = Math.max(1, (int) targetWidth), h = Math.max(1, (int) targetHeight);
-        if (customDepthTarget == null || customDepthTarget.getWidth() != w || customDepthTarget.getHeight() != h) {
-            customDepthTarget = CgGraphTexture.transientTexture("cg_custom_depth", new CgTextureDesc(w, h, CUSTOM_DEPTH_FORMAT));
-        }
-        CgRasterPass pass = recording.raster(customDepthTarget, CUSTOM_DEPTH_CLEAR, stage.constants(), null, CgOrder.SORTED)
-                .timed(GPU_CUSTOM_DEPTH);
-        CgChunkBuilder chunks = recording.chunks().begin();
-        for (int i = 0; i < count; i++) {
-            if (!inCustomDepth[i]) continue;
-            CgPipeline depth = depthPipeline(materials[i]);
-            if (depth == null) continue;
-            modelOf(i, view);
-            model.normal(normal);
-            passDraw(chunks, customDepthPipeline(depth, customDepths[i]), materials[i], recording, i);
-        }
-        if (customStencil == null) customStencil = CgMaterial.newInstance(CUSTOM_STENCIL_SHADER);
-        CgPipeline copy = customStencil.pipeline(CgInstanceKind.OBJECT);
-        if (copy != null) {
-            int copyBindings = customStencil.captureBindings(recording.bindings());
-            // From a cleared stencil, only the bits some draw writes can be set: copy those, not all eight
-            for (int b = 0; b < 8; b++) {
-                if ((bits >>> b & 1) == 0) continue;
-                chunks.draw(copy.withState(STENCIL_BIT_STATES[b]), copyBindings, FULLSCREEN).sortKey(Long.MAX_VALUE);
-                int at = chunks.instance();
-                chunks.data()[at + 32] = (1 << b) / 255f;
-            }
-        }
-        pass.add(chunks.end());
-        pass.end();
-        stage.resources().put(CgFrameKeys.CUSTOM_DEPTH, customDepthTarget);
-    }
-
-    /**
-     * Unreal's custom data and shading model (GBufferD, GBufferB's model), which our forward passes write nowhere: every
-     * opaque draw in view whose material writes them ({@link CgMaterial#writesCustomData}) drawn again through
-     * {@link CgPipeline#customDataTarget()} into an RG32F texture beside the host's depth, tested against it and writing
-     * none, so only what shows lands. Published as {@link CgFrameKeys#CUSTOM_DATA}; only in a firing asked for it.
-     * A host lending no depth (framebuffer 0) gets a target with a depth of its own, the host's copied in first.
-     */
-    private void recordCustomData(CgStageFrame stage, CgRecording recording, CgHostView view) {
-        int w = Math.max(1, (int) targetWidth), h = Math.max(1, (int) targetHeight);
-        int fb = stage.host().mainFramebuffer();
-        CgTextureType depth = null;
-        if (!CgGraphTexture.takesCurrentDepth(fb)) {
-            if (fb != customDataProbed) {
-                customDataDepth = CgFrameBuffer.depthTypeOf(fb);
-                customDataProbed = fb;
-            }
-            depth = customDataDepth;
-        }
-        boolean ownDepth = depth != null;
-        if (customDataTarget == null || customDataTarget.getWidth() != w || customDataTarget.getHeight() != h
-                || customDataTarget.drawsBesideCurrentDepth() == ownDepth) {
-            customDataTarget = ownDepth
-                    ? CgGraphTexture.transientTexture("cg_custom_data", new CgTextureDesc(w, h, CgFrameBufferFormat
-                            .builder("cg_custom_data_depth").color(0, CgTextureType.RG32F).depth(depth).build()))
-                    : CgGraphTexture.besideCurrentDepth("cg_custom_data", new CgTextureDesc(w, h, CUSTOM_DATA_FORMAT));
-        }
-        CgRasterPass pass = recording.raster(customDataTarget, ownDepth ? HOST_LIT_DEPTH_CLEAR : HOST_LIT_CLEAR, stage.constants(), null,
-                CgOrder.SORTED).timed(GPU_CUSTOM_DATA);
-        CgChunkBuilder chunks = recording.chunks().begin();
-        if (ownDepth) {
-            if (depthIn == null) depthIn = CgMaterial.newInstance(DEPTH_IN_SHADER);
-            CgPipeline copy = depthIn.pipeline(CgInstanceKind.OBJECT);
-            if (copy != null) {
-                pass.sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT, CgGraphTexture.current());
-                chunks.draw(copy, depthIn.captureBindings(recording.bindings()), FULLSCREEN).sortKey(Long.MIN_VALUE);
-                chunks.instance();
-            }
-        }
-        for (int i = 0; i < count; i++) {
-            if (queues[i] >= CgRenderQueue.TRANSPARENT_THRESHOLD || !materials[i].writesCustomData()) continue;
-            if (classify(i, OPAQUE, view) == SKIP) continue;
-            CgPipeline forward = materials[i].pipeline(CgInstanceKind.OBJECT);
-            CgPipeline data = forward == null ? null : forward.customDataTarget();
-            if (data == null) continue;
-            CgRenderState own = data.state();
-            CgRenderState tested = customDataStates.get(own);
-            if (tested == null) {
-                customDataStates.put(own, tested = own.withDepth(CgDepthState.TEST_ONLY).withBlend(CgBlendState.DISABLED));
-            }
-            modelOf(i, view);
-            model.normal(normal);
-            passDraw(chunks, data.withState(tested), materials[i], recording, i);
-        }
-        pass.add(chunks.end());
-        pass.end();
-        stage.resources().put(CgFrameKeys.CUSTOM_DATA, customDataTarget);
-    }
-
-    /**
-     * {@code depth} writing CustomDepth: depth tested near-or-equal and written, the stencil set to the value in the
-     * mask's bits, kept where depth fails under the full mask and replaced under a partial one, as
-     * {@code GetCustomDepthStencilState} (CustomDepthRendering.cpp:534-557). Cached per state and value.
-     */
-    private CgPipeline customDepthPipeline(CgPipeline depth, int packed) {
-        CgRenderState own = depth.state();
-        StencilVariants v = customDepthStates.get(own);
-        if (v == null) customDepthStates.put(own, v = new StencilVariants());
-        for (int k = 0; k < v.n; k++) if (v.keys[k] == packed) return depth.withState(v.states[k]);
-        int value = packed & 0xFF, mask = packed >>> 8;
-        int depthFail = mask == 0xFF ? CgGL.GL_KEEP : CgGL.GL_REPLACE;
-        CgRenderState state = own.withDepth(CgDepthState.TEST_WRITE).withStencil(new CgStencilState(true, value, 0xFF, mask,
-                CgGL.GL_ALWAYS, CgGL.GL_REPLACE, CgGL.GL_KEEP, depthFail));
-        if (v.n == v.keys.length) {
-            v.keys = Arrays.copyOf(v.keys, v.n * 2);
-            v.states = Arrays.copyOf(v.states, v.n * 2);
-        }
-        v.keys[v.n] = packed;
-        v.states[v.n++] = state;
-        return depth.withState(state);
-    }
-
-    /**
-     * The glows {@link #emits} marks into {@code into}, cleared, hidden by the stage's depth; each transparent surface
-     * covers those behind it too ({@code CgPipeline.emissionOccluder}).
-     */
-    private void recordGlows(CgStageFrame stage, CgRecording recording, CgHostView view, CgGraphTexture into) {
-        cullSets(stage, recording, view, CULL_EMITTING);
-        stage.constants().write(constantsBlock, 0);
-        emissionConstants.read(constantsBlock, 0).resolution(into.getWidth(), into.getHeight());
-
-        CgRasterPass glow = recording.raster(into, CLEAR, emissionConstants, EMISSIVE_STATE, CgOrder.SORTED)
-                .sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT, stage.target()).timed(GPU_EMISSION);
-        mediated(glow);
-        CgChunkBuilder chunks = recording.chunks().begin();
-        for (int i = 0; i < count; i++) {
-            // Each transparent surface's cover too, in the glows' order.
-            boolean covers = (phase[i] == FORWARD || phase[i] == AFTER)
-                    && queues[i] >= CgRenderQueue.TRANSPARENT_THRESHOLD && queues[i] < CgRenderQueue.OVERLAY_THRESHOLD;
-            if (!emits[i] && !covers) continue;
-            modelOf(i, view);
-            model.normal(normal);
-            for (CgMaterial link = materials[i]; link != null; link = link.getNextPass()) {
-                CgPipeline forward = covers ? link.pipeline(CgInstanceKind.OBJECT) : null;
-                if (forward != null && !forward.state().writesNothing()) {
-                    CgPipeline occluder = forward.emissionOccluder();
-                    if (occluder != null) emissionDraw(chunks, occluder, link, recording, i);
-                }
-                if (!emits[i] || !link.hasEmissivePass()) continue;
-                CgPipeline pipeline = link.pipeline(CgRenderPassVariant.EMISSIVE, CgInstanceKind.OBJECT);
-                if (pipeline != null) emissionDraw(chunks, pipeline, link, recording, i);
-            }
-        }
-        glow.add(chunks.end());
-        glow.end();
-    }
-
-    /**
-     * Marks {@link #emits}: the visible draws with a glow in {@code part}; answers how many, and counts every visible glow.
-     */
-    private int markGlows(CgHostView view, int part) {
-        if (emits.length < meshes.length) emits = new boolean[meshes.length];
-        int emitting = 0, recorded = 0;
-        for (int i = 0; i < count; i++) {
-            int queue = queues[i];
-            // A transparent draw was classified for this stage; an opaque one is classified again, its pass recorded.
-            boolean e = queue < CgRenderQueue.OVERLAY_THRESHOLD && emissions[i] > 0f && emitsLight(materials[i])
-                    && (queue >= CgRenderQueue.TRANSPARENT_THRESHOLD ? phase[i] != SKIP : classify(i, OPAQUE, view) != SKIP);
-            if (e) emitting++;
-            // A volume's glow folded into its light is drawn there.
-            if (phase[i] == VOLUME && volumeFolds && allFold(i)) e = false;
-            boolean before = queue < CgRenderQueue.TRANSPARENT_THRESHOLD || halfSize(i);
-            e &= part == EMIT_ALL || (part == EMIT_BEFORE) == before;
-            emits[i] = e;
-            if (e) recorded++;
-        }
-        CgTrace.counter(CgChannels.WORLD, "world.emissiveDraws", emitting);
-        return recorded;
-    }
-
-    /**
-     * Under the HDR scene, the Emissive passes of the draws whose colour draws before the transparent pass (opaque and
-     * half-size draws) added into the scene, hidden by its depth, so the transparent pass covers them as it covers what
-     * they glow on. A transparent draw's glow follows its own draw in that pass ({@link #recordPass}).
-     */
-    private void recordSceneGlows(CgStageFrame stage, CgRecording recording, CgHostView view) {
-        if (markGlows(view, EMIT_BEFORE) == 0) return;
-        cullSets(stage, recording, view, CULL_EMITTING);
-        CgRasterPass glow = recording.raster(stage.target(), CgLoad.load(), stage.constants().sceneGlow(sceneEmission),
-                        EMISSIVE_STATE, CgOrder.SORTED)
-                .sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT).timed(GPU_EMISSION);
-        mediated(glow);
-        CgChunkBuilder chunks = recording.chunks().begin();
-        for (int i = 0; i < count; i++) {
-            if (!emits[i]) continue;
-            modelOf(i, view);
-            model.normal(normal);
-            for (CgMaterial link = materials[i]; link != null; link = link.getNextPass()) {
-                CgPipeline pipeline = link.hasEmissivePass() ? link.pipeline(CgRenderPassVariant.EMISSIVE, CgInstanceKind.OBJECT) : null;
-                if (pipeline != null) emissionDraw(chunks, pipeline, link, recording, i);
-            }
-        }
-        glow.add(chunks.end());
-        glow.end();
-    }
-
-    /** Draw {@code i} through {@code pipeline} into the emission pass, sorted by its key. */
-    private void emissionDraw(CgChunkBuilder chunks, CgPipeline pipeline, CgMaterial link, CgRecording recording, int i) {
-        if (unready(pipeline, i)) return;
-        if (sets[i] != null) {
-            drawSet(chunks, pipeline, bindingOf(link, recording), i);
-            return;
-        }
-        chunks.draw(pipeline, bindingOf(link, recording), meshes[i]).sortKey(keys[i]);
-        group(chunks, i);
-        writeInstance(chunks, i);
     }
 
     /**
@@ -2431,63 +1823,9 @@ public final class CgWorldRenderer {
         return normalTarget;
     }
 
-    /**
-     * The draws asking for half resolution ({@link #HALF}) into a target half the stage's size, cleared, then added over
-     * the stage's target with a depth-aware upsample: each pixel weighs the four half-size texels round it by how close
-     * the scene's depth where each was drawn is to its own, so light does not bleed across a silhouette. Before the
-     * transparent pass, so what draws after (a haze bending it, smoke over it) sees it in the target.
-     */
-    private void recordHalf(CgStageFrame stage, CgRecording recording, CgHostView view) {
-        int w = Math.max(1, (int) (targetWidth * 0.5f)), h = Math.max(1, (int) (targetHeight * 0.5f));
-        if (halfTarget == null || halfTarget.getWidth() != w || halfTarget.getHeight() != h) {
-            halfTarget = CgGraphTexture.transientTexture("cg_world_half", new CgTextureDesc(w, h, HALF_FORMAT));
-        }
-        stage.constants().write(constantsBlock, 0);
-        halfConstants.read(constantsBlock, 0).resolution(w, h);
-        CgRasterPass pass = recording.raster(halfTarget, CLEAR, halfConstants, TRANSPARENT_STATE,
-                        CgOrder.SORTED).sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT, stage.target())
-                .texture(CgBindingPoints.LIGHTMAP_TEXTURE_UNIT, stage.host().textures().lightmapTexture()).timed(GPU_HALF);
-        mediated(pass);
-        CgChunkBuilder chunks = recording.chunks().begin();
-        for (int i = 0; i < count; i++) {
-            if (phase[i] != HALF) continue;
-            modelOf(i, view);
-            model.normal(normal);
-            for (CgMaterial link = materials[i]; link != null; link = link.getNextPass()) {
-                CgPipeline pipeline = link.pipeline(CgInstanceKind.OBJECT);
-                if (pipeline == null || unready(pipeline, i)) continue;
-                if (sets[i] != null) {
-                    drawSet(chunks, pipeline, bindingOf(link, recording), i);
-                    continue;
-                }
-                chunks.draw(pipeline, bindingOf(link, recording), meshes[i]).sortKey(keys[i]);
-                group(chunks, i);
-                writeInstance(chunks, i);
-            }
-        }
-        pass.add(chunks.end());
-        pass.end();
-
-        if (upsample == null) upsample = CgMaterial.newInstance(UPSAMPLE_SHADER);
-        if (halfTarget != upsampleBound) {
-            CgTexture half = halfTarget;
-            upsample.applyProperties(b -> b.sampler("_Half", 0, half));
-            upsampleBound = half;
-        }
-        CgPipeline pipeline = upsample.pipeline(CgInstanceKind.OBJECT);
-        if (pipeline == null) return;
-        CgRasterPass add = recording.raster(stage.target(), CgLoad.load(), stage.constants(), null, CgOrder.SORTED)
-                .sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT).timed(GPU_HALF_ADD);
-        CgChunkBuilder upsampled = recording.chunks().begin();
-        upsampled.draw(pipeline, upsample.captureBindings(recording.bindings()), FULLSCREEN);
-        upsampled.instance();
-        add.add(upsampled.end());
-        add.end();
-    }
-
     /** Whether draw {@code i} draws at half size this firing, added or as a volume. */
-    private boolean halfSize(int i) {
-        return phase[i] == HALF || phase[i] == VOLUME;
+    boolean halfSize(int i) {
+        return draws.phase[i] == CgWorldDraws.HALF || draws.phase[i] == CgWorldDraws.VOLUME;
     }
 
     /** Whether a material's Forward pass covers what is behind it, premultiplied: a volume's blend. */
@@ -2499,105 +1837,17 @@ public final class CgWorldRenderer {
     }
 
     /** Whether every Emissive pass of draw {@code i}'s chain folds into its Forward draw under the scene. */
-    private boolean allFold(int i) {
-        for (CgMaterial link = materials[i]; link != null; link = link.getNextPass()) {
+    boolean allFold(int i) {
+        for (CgMaterial link = draws.materials[i]; link != null; link = link.getNextPass()) {
             if (!link.hasEmissivePass()) continue;
             CgPipeline forward = link.pipeline(CgInstanceKind.OBJECT);
-            if (forward == null || forward.sceneFold() == null) return false;
+            if (forward == null || forward.as(CgPipelineForm.FOLD) == null) return false;
         }
         return true;
     }
 
-    /**
-     * The volumes ({@link #VOLUME}) into a half-size target, cleared: their light, premultiplied, and the eye depth
-     * each marched to ({@code CG_VOLUME_DEPTH}). Then resolved into this firing ordinal's history: last frame's,
-     * reprojected through {@code cg_PrevViewProj} and held to this frame's neighbourhood, blended with this one. Answers
-     * what the transparent pass lays over the target: the history, or this frame's alone past the last ordinal kept.
-     */
-    @Nullable
-    private CgTexture recordVolumes(CgStageFrame stage, CgRecording recording, CgHostView view) {
-        int w = Math.max(1, (int) (targetWidth * 0.5f)), h = Math.max(1, (int) (targetHeight * 0.5f));
-        if (volumeTarget == null || volumeTarget.getWidth() != w || volumeTarget.getHeight() != h) {
-            volumeTarget = CgGraphTexture.transientTexture("cg_world_volume", new CgTextureDesc(w, h, VOLUME_FORMAT));
-        }
-        stage.constants().write(constantsBlock, 0);
-        halfConstants.read(constantsBlock, 0).resolution(w, h);
-        CgRasterPass pass = recording.raster(volumeTarget, CLEAR, halfConstants, TRANSPARENT_STATE,
-                        CgOrder.SORTED).sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT, stage.target())
-                .texture(CgBindingPoints.LIGHTMAP_TEXTURE_UNIT, stage.host().textures().lightmapTexture()).timed(GPU_VOLUME);
-        CgChunkBuilder chunks = recording.chunks().begin();
-        for (int i = 0; i < count; i++) {
-            if (phase[i] != VOLUME) continue;
-            modelOf(i, view);
-            model.normal(normal);
-            for (CgMaterial link = materials[i]; link != null; link = link.getNextPass()) {
-                CgPipeline pipeline = link.pipeline(CgInstanceKind.OBJECT);
-                if (pipeline == null) continue;
-                CgPipeline folded = volumeFolds && link.hasEmissivePass() ? pipeline.sceneFold() : null;
-                CgPipeline marching = (folded != null ? folded : pipeline).volumeTarget();
-                if (marching == null || unready(marching, i)) continue;
-                if (sets[i] != null) {
-                    drawSet(chunks, marching, bindingOf(link, recording), i);
-                    continue;
-                }
-                chunks.draw(marching, bindingOf(link, recording), meshes[i]).sortKey(keys[i]);
-                group(chunks, i);
-                writeInstance(chunks, i);
-            }
-        }
-        pass.add(chunks.end());
-        pass.end();
-
-        int ordinal = CgRehearsal.active() ? VOLUME_HISTORIES : stage.ordinal();
-        if (ordinal > VOLUME_HISTORIES || ordinal == VOLUME_HISTORIES && !CgRehearsal.active()) {
-            return volumeTarget.attachment(0);
-        }
-        CgGraphTexture history = volumeHistories[ordinal];
-        if (history == null || history.getWidth() != w || history.getHeight() != h) {
-            if (history != null) recording.release(history);
-            history = CgGraphTexture.history("cg_world_volume_history" + ordinal,
-                    new CgTextureDesc(w, h, VOLUME_HISTORY_FORMAT));
-            volumeHistories[ordinal] = history;
-            volumeMade[ordinal] = CgFrameRing.frame();
-        }
-        if (resolve == null) resolve = CgMaterial.newInstance(RESOLVE_SHADER);
-        if (resolveBound != history) {
-            CgTexture now = volumeTarget.attachment(0), depth = volumeTarget.attachment(1), last = history.previous();
-            resolve.applyProperties(b -> b.sampler("_Now", 0, now).sampler("_NowDepth", 1, depth).sampler("_Last", 2, last));
-            resolveBound = history;
-        }
-        boolean fresh = volumeMade[ordinal] == CgFrameRing.frame();
-        resolve.applyProperties(b -> b.set1f("_Fresh", fresh ? 1f : 0f));
-        CgPipeline pipeline = resolve.pipeline(CgInstanceKind.OBJECT);
-        if (pipeline == null) return volumeTarget.attachment(0);
-        CgRasterPass resolving = recording.raster(history, CLEAR, halfConstants, null, CgOrder.SORTED)
-                .sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT, stage.target()).timed(GPU_VOLUME_RESOLVE);
-        CgChunkBuilder resolved = recording.chunks().begin();
-        resolved.draw(pipeline, resolve.captureBindings(recording.bindings()), FULLSCREEN);
-        resolved.instance();
-        resolving.add(resolved.end());
-        resolving.end();
-        return history;
-    }
-
-    /** The volumes {@link #recordVolumes} resolved, laid over the target first in the transparent pass. */
-    private void addComposite(CgChunkBuilder chunks, CgRecording recording) {
-        if (composite == null) composite = CgMaterial.newInstance(COMPOSITE_SHADER);
-        if (compositeBound != volumeOut) {
-            CgTexture volumes = volumeOut;
-            composite.applyProperties(b -> b.sampler("_Volumes", 0, volumes));
-            compositeBound = volumes;
-        }
-        CgPipeline pipeline = composite.pipeline(CgInstanceKind.OBJECT);
-        if (pipeline == null) return;
-        // First of the pass: every surface after it is dimmed by the smoke in front of it (CgWorldMedia), so one
-        // behind the smoke must not have been covered by it too.
-        chunks.draw(pipeline, composite.captureBindings(recording.bindings()), FULLSCREEN).sortKey(Long.MIN_VALUE);
-        chunks.instance();
-    }
-
     /** Whether any link of a material chain has an Emissive pass. */
-    private static boolean emitsLight(CgMaterial material) {
+    static boolean emitsLight(CgMaterial material) {
         for (CgMaterial link = material; link != null; link = link.getNextPass()) {
             if (link.hasEmissivePass()) return true;
         }
@@ -2606,36 +1856,31 @@ public final class CgWorldRenderer {
 
     /** The frustum, the eye and its forward, in the view's camera-relative space. */
     private void prepare(CgHostView view) {
-        recordView = view;
+        commands.recordView = view;
         viewProjection.set(view.projection()).mul(view.view());
         frustum.set(viewProjection);
         toWorld.set(view.view()).invert();
-        toWorld.transformPosition(eye.set(0f, 0f, 0f));
-        toWorld.transformDirection(forward.set(0f, 0f, -1f)).normalize();
-        if (keys.length < count) {
-            keys = new long[meshes.length];
-            phase = new byte[meshes.length];
-            screens = new float[meshes.length * 4];
-        }
+        toWorld.transformPosition(commands.eye.set(0f, 0f, 0f));
+        toWorld.transformDirection(commands.forward.set(0f, 0f, -1f)).normalize();
     }
 
     /** Whether draw {@code i} takes part in this stage, and its sort key. */
-    private byte classify(int i, int which, CgHostView view) {
-        int queue = queues[i];
+    byte classify(int i, int which, CgHostView view) {
+        int queue = draws.queues[i];
         boolean transparent = queue >= CgRenderQueue.TRANSPARENT_THRESHOLD;
-        if (queue >= CgRenderQueue.OVERLAY_THRESHOLD || transparent != (which == TRANSPARENT)) return SKIP;
-        if (sets[i] != null && setCounts[i].capacity() == 0) return SKIP;
-        modelOf(i, view);
+        if (queue >= CgRenderQueue.OVERLAY_THRESHOLD || transparent != (which == TRANSPARENT)) return CgWorldDraws.SKIP;
+        if (draws.sets[i] != null && draws.setCounts[i].capacity() == 0) return CgWorldDraws.SKIP;
+        commands.modelOf(i, view);
         float cx, cy, cz;
         float[] bounds;
-        if (culledOnGpu[i]) {
+        if (draws.culledOnGpu[i]) {
             bounds = null;
-        } else if (boundsStated[i]) {
-            System.arraycopy(drawBounds, i * 6, meshBounds, 0, 6);
+        } else if (draws.boundsStated[i]) {
+            System.arraycopy(draws.drawBounds, i * 6, meshBounds, 0, 6);
             bounds = meshBounds;
-        } else if (sets[i] != null) {
-            bounds = null;   // a set's instances are culled one by one, on the GPU
-        } else if ((lods[i] != null ? lods[i].finest() : meshes[i]).bounds(meshAabb) != null) {
+        } else if (draws.sets[i] != null) {
+            bounds = null;   // a set's instances are draws.culled one by one, on the GPU
+        } else if ((draws.lods[i] != null ? draws.lods[i].finest() : draws.meshes[i]).bounds(meshAabb) != null) {
             meshBounds[0] = (float) meshAabb.minX;
             meshBounds[1] = (float) meshAabb.minY;
             meshBounds[2] = (float) meshAabb.minZ;
@@ -2647,45 +1892,45 @@ public final class CgWorldRenderer {
             bounds = null;
         }
         if (bounds != null) {
-            float p = pads[i];
-            model.transformAab(bounds[0] - p, bounds[1] - p, bounds[2] - p, bounds[3] + p, bounds[4] + p, bounds[5] + p,
+            float p = draws.pads[i];
+            commands.model.transformAab(bounds[0] - p, bounds[1] - p, bounds[2] - p, bounds[3] + p, bounds[4] + p, bounds[5] + p,
                     min, max);
-            if (!frustum.testAabb(min.x, min.y, min.z, max.x, max.y, max.z)) return SKIP;
+            if (!frustum.testAabb(min.x, min.y, min.z, max.x, max.y, max.z)) return CgWorldDraws.SKIP;
             screenOf(i);
             cx = (min.x + max.x) * 0.5f;
             cy = (min.y + max.y) * 0.5f;
             cz = (min.z + max.z) * 0.5f;
-            if (lods[i] != null && sets[i] == null) {
-                CgMesh level = lods[i].pick(screenHeight(cx, cy, cz, view));
-                if (level == null) return SKIP;
-                meshes[i] = level;
+            if (draws.lods[i] != null && draws.sets[i] == null) {
+                CgMesh level = draws.lods[i].pick(screenHeight(cx, cy, cz, view));
+                if (level == null) return CgWorldDraws.SKIP;
+                draws.meshes[i] = level;
             }
         } else {
-            screens[i * 4] = Float.NaN;
-            if (lods[i] != null) meshes[i] = lods[i].finest();
-            cx = model.m30();
-            cy = model.m31();
-            cz = model.m32();
+            draws.screens[i * 4] = Float.NaN;
+            if (draws.lods[i] != null) draws.meshes[i] = draws.lods[i].finest();
+            cx = commands.model.m30();
+            cy = commands.model.m31();
+            cz = commands.model.m32();
         }
-        float distance = Math.max(0f, (cx - eye.x) * forward.x + (cy - eye.y) * forward.y + (cz - eye.z) * forward.z);
-        CgMaterial material = materials[i];
-        keys[i] = transparent
+        float distance = Math.max(0f, (cx - commands.eye.x) * commands.forward.x + (cy - commands.eye.y) * commands.forward.y + (cz - commands.eye.z) * commands.forward.z);
+        CgMaterial material = draws.materials[i];
+        draws.keys[i] = transparent
                 ? transparentKey(i, queue, distance, view)
-                : CgSortKey.opaque(queue, layers[i].rank(), orders[i], material.getMaterialId(), System.identityHashCode(meshes[i]), distance);
+                : CgSortKey.opaque(queue, draws.layers[i].rank(), draws.orders[i], material.getMaterialId(), System.identityHashCode(draws.meshes[i]), distance);
         boolean prepass = !transparent && (material.hasDepthPass() || queue >= CgRenderQueue.ALPHA_TEST_THRESHOLD);
-        return prepass ? FORWARD_AND_PREPASS : FORWARD;
+        return prepass ? CgWorldDraws.FORWARD_AND_PREPASS : CgWorldDraws.FORWARD;
     }
 
     /** Draw {@code i}'s transparent key: its layer, its group's distance, then its own order, batch key and distance. */
     private long transparentKey(int i, int queue, float distance, CgHostView view) {
-        int layer = layers[i].rank();
-        boolean solid = materials[i].writesDepth();
-        if (!grouped[i]) return CgSortKey.transparent(queue, layer, distance, solid, orders[i], batchKeys[i], distance);
-        float gx = (float) (groupPositions[i * 3] - view.x()) - eye.x;
-        float gy = (float) (groupPositions[i * 3 + 1] - view.y()) - eye.y;
-        float gz = (float) (groupPositions[i * 3 + 2] - view.z()) - eye.z;
-        float groupDistance = Math.max(0f, gx * forward.x + gy * forward.y + gz * forward.z);
-        return CgSortKey.transparent(queue, layer, groupDistance, solid, orders[i], batchKeys[i], distance);
+        int layer = draws.layers[i].rank();
+        boolean solid = draws.materials[i].writesDepth();
+        if (!draws.grouped[i]) return CgSortKey.transparent(queue, layer, distance, solid, draws.orders[i], draws.batchKeys[i], distance);
+        float gx = (float) (draws.groupPositions[i * 3] - view.x()) - commands.eye.x;
+        float gy = (float) (draws.groupPositions[i * 3 + 1] - view.y()) - commands.eye.y;
+        float gz = (float) (draws.groupPositions[i * 3 + 2] - view.z()) - commands.eye.z;
+        float groupDistance = Math.max(0f, gx * commands.forward.x + gy * commands.forward.y + gz * commands.forward.z);
+        return CgSortKey.transparent(queue, layer, groupDistance, solid, draws.orders[i], draws.batchKeys[i], distance);
     }
 
     /**
@@ -2701,7 +1946,7 @@ public final class CgWorldRenderer {
     }
 
     /**
-     * Draw {@code i}'s box {@code min}..{@code max} on screen, into {@link #screens}: what the frame graph cuts a copy
+     * Draw {@code i}'s box {@code min}..{@code max} on screen, into {@link CgWorldDraws#screens}: what the frame graph cuts a copy
      * of the target to. A box crossing the near plane is cut by it, its edges' crossings projected with the corners in
      * front; NaN for a box wholly behind it.
      */
@@ -2737,384 +1982,40 @@ public final class CgWorldRenderer {
             }
         }
         if (x0 > x1) {
-            screens[i * 4] = Float.NaN;
+            draws.screens[i * 4] = Float.NaN;
             return;
         }
-        screens[i * 4] = (x0 * 0.5f + 0.5f) * targetWidth;
-        screens[i * 4 + 1] = (0.5f - y1 * 0.5f) * targetHeight;
-        screens[i * 4 + 2] = (x1 * 0.5f + 0.5f) * targetWidth;
-        screens[i * 4 + 3] = (0.5f - y0 * 0.5f) * targetHeight;
+        draws.screens[i * 4] = (x0 * 0.5f + 0.5f) * targetWidth;
+        draws.screens[i * 4 + 1] = (0.5f - y1 * 0.5f) * targetHeight;
+        draws.screens[i * 4 + 2] = (x1 * 0.5f + 0.5f) * targetWidth;
+        draws.screens[i * 4 + 3] = (0.5f - y0 * 0.5f) * targetHeight;
     }
 
-    /** Draw {@code i}'s model matrix, camera-relative: its position minus the view's, in doubles, then its transform. */
-    private void modelOf(int i, CgHostView view) {
-        model.set(transforms, i * 16);
-        model.m30(model.m30() + (float) (positions[i * 3] - view.x()))
-                .m31(model.m31() + (float) (positions[i * 3 + 1] - view.y()))
-                .m32(model.m32() + (float) (positions[i * 3 + 2] - view.z()));
-    }
+    static final CgLoad CLEAR_LAYER = CgLoad.clear(0f, 0f, 0f, 0f);
+    static final int GPU_GRADE = CgGpuTrace.name("world.gradeLayers");
 
-    /**
-     * The opaque, prepass or transparent pass; with {@code after}, the transparent draws drawn after distortion. With
-     * {@code sceneGlows}, each draw's Emissive pass adds its glow into the HDR scene: folded into its colour's draw
-     * where it merges ({@link CgPipeline#sceneFold}), else as a draw after it at its key.
-     */
-    private void recordPass(CgStageFrame stage, CgRecording recording, CgPassConstants constants, CgRenderState state,
-                            boolean depthOnlyPass, boolean after, CgHostView view, boolean sceneGlows) {
-        CgRasterPass pass = recording.raster(stage.target(), CgLoad.load(), constants, state, CgOrder.SORTED)
-                .sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT)
-                .sceneColor(CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT)
-                .texture(CgBindingPoints.LIGHTMAP_TEXTURE_UNIT, stage.host().textures().lightmapTexture());
-        if (!depthOnlyPass) mediated(pass);
-        boolean normals = normalsInto != null && state == OPAQUE_STATE && !depthOnlyPass;
-        if (normals) pass.attachmentIfTaken(normalsInto);
-        CgChunkBuilder chunks = recording.chunks().begin();
-        for (int i = 0; i < count; i++) {
-            if (phase[i] == SKIP || halfSize(i)) continue;
-            if (depthOnlyPass ? phase[i] != FORWARD_AND_PREPASS && !prepassed(i)
-                    : phase[i] == APART || (phase[i] == AFTER) != after) continue;
-            modelOf(i, view);
-            model.normal(normal);
-            boolean glows = sceneGlows && emissions[i] > 0f && queues[i] < CgRenderQueue.OVERLAY_THRESHOLD;
-            for (CgMaterial link = materials[i]; link != null; link = depthOnlyPass ? null : link.getNextPass()) {
-                CgPipeline pipeline = depthOnlyPass ? depthPipeline(link) : link.pipeline(CgInstanceKind.OBJECT);
-                if (glows && link.hasEmissivePass()) {
-                    CgPipeline folded = pipeline != null && mergeEmission ? pipeline.sceneFold() : null;
-                    if (folded != null) {
-                        passDraw(chunks, folded, link, recording, i);
-                        continue;
-                    }
-                    // Its glow follows its colour: SORTED is stable, so a draw of the same key after it covers both.
-                    if (pipeline != null && !pipeline.state().writesNothing()) passDraw(chunks, pipeline, link, recording, i);
-                    CgPipeline glow = link.pipeline(CgRenderPassVariant.EMISSIVE, CgInstanceKind.OBJECT);
-                    if (glow != null) passDraw(chunks, glow, link, recording, i);
-                    continue;
-                }
-                if (pipeline == null || (!depthOnlyPass && pipeline.state().writesNothing())) continue;
-                if (normals) {
-                    CgPipeline normalled = pipeline.normalTarget();
-                    if (normalled != null) pipeline = normalled;
-                }
-                passDraw(chunks, pipeline, link, recording, i);
-            }
-        }
-        if (state == TRANSPARENT_STATE && !depthOnlyPass && !after) {
-            distortion.addApplies(chunks, recording);
-            if (volumeOut != null) addComposite(chunks, recording);
-        }
-        pass.add(chunks.end());
-        pass.end();
-    }
-
-    private static final CgLoad CLEAR_LAYER = CgLoad.clear(0f, 0f, 0f, 0f);
-    private static final int GPU_GRADE = CgGpuTrace.name("world.gradeLayers");
-    private final CgGradeLayers gradeLayers = new CgGradeLayers();
-    /** Each slot's look, kept while it draws so its baked table stays baked; and whether it drew this firing. */
-    private final CgPostSettings[] gradeSlots = new CgPostSettings[CgGradeLayers.MAX];
-    private final boolean[] gradeSeen = new boolean[CgGradeLayers.MAX];
-    /** Per draw this firing, whether it goes into its look's layer; grown with the draws. */
-    private boolean[] inLayer = new boolean[64];
-    private final CgGraphTexture[] gradeTargets = new CgGraphTexture[CgGradeLayers.MAX];
-    private final int[] gradeSizes = new int[CgGradeLayers.MAX * 2];
-    /** Each pipeline's layer form; itself where it has none (a multiply), so the answer is asked once. */
-    private final IdentityHashMap<CgPipeline, CgPipeline> layerForms = new IdentityHashMap<>();
-    private boolean gradesWarned, gradeDepthWarned;
-
-    /**
-     * Each look's draws again into its layer, cleared, tested against the scene's depth and writing none: what they add
-     * premultiplied, and in alpha how much of what is behind them they cover. Published as {@link CgGradeLayers#KEY}.
-     */
-    private void recordGradeLayers(CgStageFrame stage, CgRecording recording, CgHostView view, CgPassConstants constants) {
-        Arrays.fill(gradeSeen, false);
-        if (inLayer.length < count) inLayer = new boolean[Math.max(count, inLayer.length * 2)];
-        // This firing's transparent draws, and the opaque and masked ones the opaque firing drew: each hides what is
-        // behind it in the scene, so its layer holds it too
-        for (int i = 0; i < count; i++) {
-            inLayer[i] = grades[i] != null && (phase[i] != SKIP ? !halfSize(i)
-                    : queues[i] < CgRenderQueue.TRANSPARENT_THRESHOLD && classify(i, OPAQUE, view) != SKIP);
-        }
-        boolean any = false;
-        for (int i = 0; i < count; i++) {
-            if (!inLayer[i]) continue;
-            for (int k = 0; k < CgGradeLayers.MAX; k++) if (gradeSlots[k] == grades[i]) gradeSeen[k] = any = true;
-        }
-        for (int i = 0; i < count; i++) {
-            CgPostSettings g = grades[i];
-            if (!inLayer[i] || slotOf(g) >= 0) continue;
-            int free = -1;
-            for (int k = 0; k < CgGradeLayers.MAX && free < 0; k++) if (!gradeSeen[k]) free = k;
-            if (free < 0) {
-                if (!gradesWarned) LOGGER.warn("More than {} graded looks in one frame: the rest keep the frame's look", CgGradeLayers.MAX);
-                gradesWarned = true;
-                continue;
-            }
-            gradeSlots[free] = g;
-            gradeSeen[free] = any = true;
-        }
-        for (int k = 0; k < CgGradeLayers.MAX; k++) gradeLayers.looks[k] = null;
-        if (!any) return;
-        int fb = stage.host().mainFramebuffer();
-        if (!CgGraphTexture.takesCurrentDepth(fb)) {
-            // A layer is tested against the scene's depth: a host lending none keeps one look
-            if (!gradeDepthWarned) LOGGER.warn("The host's framebuffer lends no depth to share: graded draws keep the frame's look");
-            gradeDepthWarned = true;
-            return;
-        }
-        // A set the opaque firing drew draws its culled records: cull it here too, as the passes' are
-        cullSets(stage, recording, view, CULL_LAYERS);
-        CgGraphTexture scene = stage.resources().get(CgFrameKeys.SCENE);
-        int w = Math.max(1, Math.round(targetWidth)), h = Math.max(1, Math.round(targetHeight));
-        for (int k = 0; k < CgGradeLayers.MAX; k++) {
-            if (!gradeSeen[k]) continue;
-            if (gradeTargets[k] == null || gradeSizes[k * 2] != w || gradeSizes[k * 2 + 1] != h) {
-                gradeTargets[k] = CgGraphTexture.besideCurrentDepth("cg_grade_layer" + k, new CgTextureDesc(w, h, GRADE_FORMAT));
-                gradeApart[k] = CgGraphTexture.besideCurrentDepth("cg_grade_apart" + k, new CgTextureDesc(w, h, GRADE_FORMAT));
-                gradeSizes[k * 2] = w;
-                gradeSizes[k * 2 + 1] = h;
-            }
-            layerPass(stage, recording, view, constants, gradeTargets[k], k, false, scene);
-            // Its separate draws apart, laid over it after the colour regions as they are over the scene
-            boolean apartHere = false;
-            for (int i = 0; i < count && !apartHere; i++) apartHere = inLayer[i] && phase[i] == APART && grades[i] == gradeSlots[k];
-            if (apartHere) {
-                layerPass(stage, recording, view, constants, gradeApart[k], k, true, scene);
-                separate.layers[k] = gradeApart[k];
-            }
-            gradeLayers.layers[k] = gradeTargets[k];
-            gradeLayers.looks[k] = gradeSlots[k];
-        }
-        stage.resources().put(CgGradeLayers.KEY, gradeLayers);
-        if (separate.any()) stage.resources().put(CgSeparateTranslucency.KEY, separate);
-    }
-
-    /**
-     * Into {@code target}, cleared: graded slot {@code k}'s draws, its separate ones alone with {@code apart} or the rest
-     * without; with {@code k} below 0 every separate draw.
-     */
-    private void layerPass(CgStageFrame stage, CgRecording recording, CgHostView view, CgPassConstants constants,
-                           CgGraphTexture target, int k, boolean apart, @Nullable CgGraphTexture scene) {
-        CgRasterPass pass = recording.raster(target, CLEAR_LAYER, constants, null, CgOrder.SORTED)
-                .timed(k < 0 ? GPU_SEPARATE : GPU_GRADE)
-                .sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT)
-                .texture(CgBindingPoints.LIGHTMAP_TEXTURE_UNIT, stage.host().textures().lightmapTexture());
-        if (scene != null) pass.sceneColor(CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT, scene);
-        mediated(pass);
-        CgChunkBuilder chunks = recording.chunks().begin();
-        for (int i = 0; i < count; i++) {
-            if (k < 0 ? phase[i] != APART : !inLayer[i] || grades[i] != gradeSlots[k] || (phase[i] == APART) != apart) continue;
-            layerDraws(chunks, recording, view, i);
-        }
-        pass.add(chunks.end());
-        pass.end();
-    }
-
-    /** Draw {@code i} in its layer forms: the programs the transparent pass draws it with, or a solid's cover. */
-    private void layerDraws(CgChunkBuilder chunks, CgRecording recording, CgHostView view, int i) {
-        modelOf(i, view);
-        model.normal(normal);
-        boolean glows = emissions[i] > 0f && queues[i] < CgRenderQueue.OVERLAY_THRESHOLD;
-        boolean solid = queues[i] < CgRenderQueue.TRANSPARENT_THRESHOLD;
-        for (CgMaterial link = materials[i]; link != null; link = link.getNextPass()) {
-            CgPipeline pipeline = link.pipeline(CgInstanceKind.OBJECT);
-            if (pipeline == null) continue;
-            if (solid) {
-                // It covers what is behind it whatever alpha its fragment writes; its glow adds, as before the
-                // transparent pass, into the scene
-                layerDraw(chunks, pipeline.solidCover(), link, recording, i);
-                if (glows && link.hasEmissivePass()) {
-                    layerDraw(chunks, link.pipeline(CgRenderPassVariant.EMISSIVE, CgInstanceKind.OBJECT), link, recording, i);
-                }
-                continue;
-            }
-            // The same programs the transparent pass draws it with, so the layer holds what it adds there
-            if (glows && link.hasEmissivePass()) {
-                CgPipeline folded = mergeEmission ? pipeline.sceneFold() : null;
-                if (folded != null) {
-                    layerDraw(chunks, folded, link, recording, i);
-                    continue;
-                }
-                if (!pipeline.state().writesNothing()) layerDraw(chunks, pipeline, link, recording, i);
-                CgPipeline glow = link.pipeline(CgRenderPassVariant.EMISSIVE, CgInstanceKind.OBJECT);
-                if (glow != null) layerDraw(chunks, glow, link, recording, i);
-                continue;
-            }
-            if (!pipeline.state().writesNothing()) layerDraw(chunks, pipeline, link, recording, i);
-        }
-    }
-
-    private static final int GPU_SEPARATE = CgGpuTrace.name("world.separateTranslucency");
-    private final CgSeparateTranslucency separate = new CgSeparateTranslucency();
-    private final CgGraphTexture[] gradeApart = new CgGraphTexture[CgGradeLayers.MAX];
-    private CgGraphTexture separateTarget;
-    private int separateWidth, separateHeight, apartDrawn;
-    private boolean separateMultiplyWarned;
-
-    /**
-     * Moves this transparent firing's separate translucency ({@code CgMaterialState.separateTranslucency}, drawn after
-     * distortion) to {@link #APART} under the HDR scene, where the host lends its depth to share; how many moved. A draw
-     * whose blend multiplies has no form of light and coverage and stays in the scene, warned once.
-     */
-    private int separateDraws(CgStageFrame stage) {
-        if (!stage.resources().has(CgFrameKeys.SCENE) || !CgGraphTexture.takesCurrentDepth(stage.host().mainFramebuffer())) return 0;
-        int moved = 0;
-        for (int i = 0; i < count; i++) {
-            if (phase[i] != AFTER || !materials[i].state().separateTranslucency()) continue;
-            if (!layerable(i)) {
-                if (!separateMultiplyWarned) {
-                    LOGGER.warn("A separate translucency draw whose blend multiplies draws into the scene, where colour regions grade it");
-                }
-                separateMultiplyWarned = true;
-                continue;
-            }
-            phase[i] = APART;
-            moved++;
-        }
-        return moved;
-    }
-
-    /** Whether every program draw {@code i} draws has a layer form. */
-    private boolean layerable(int i) {
-        for (CgMaterial link = materials[i]; link != null; link = link.getNextPass()) {
-            CgPipeline pipeline = link.pipeline(CgInstanceKind.OBJECT);
-            if (pipeline != null && !pipeline.state().writesNothing() && layered(pipeline) == null) return false;
-        }
-        return true;
-    }
-
-    /** The separate draws into their target, published as {@link CgSeparateTranslucency#KEY} for the post stack. */
-    private void recordSeparate(CgStageFrame stage, CgRecording recording, CgHostView view, CgPassConstants constants) {
-        int w = Math.max(1, Math.round(targetWidth)), h = Math.max(1, Math.round(targetHeight));
-        if (separateTarget == null || separateWidth != w || separateHeight != h) {
-            separateTarget = CgGraphTexture.besideCurrentDepth("cg_separate_translucency", new CgTextureDesc(w, h, GRADE_FORMAT));
-            separateWidth = w;
-            separateHeight = h;
-        }
-        layerPass(stage, recording, view, constants, separateTarget, -1, true, stage.resources().get(CgFrameKeys.SCENE));
-        separate.target = separateTarget;
-        stage.resources().put(CgSeparateTranslucency.KEY, separate);
-    }
-
-    private int slotOf(CgPostSettings look) {
-        for (int k = 0; k < CgGradeLayers.MAX; k++) if (gradeSlots[k] == look && gradeSeen[k]) return k;
-        return -1;
-    }
-
-    private void layerDraw(CgChunkBuilder chunks, CgPipeline pipeline, CgMaterial link, CgRecording recording, int i) {
-        CgPipeline layer = layered(pipeline);
-        if (layer != null) passDraw(chunks, layer, link, recording, i);
-    }
-
-    /**
-     * {@code pipeline} drawing into a graded layer: its colour blend kept, its alpha the coverage (over what is behind for
-     * a blend that covers, nothing for one that adds), depth tested at LEQUAL and unwritten. Null for no pipeline, or one
-     * whose blend multiplies, which a layer of added light cannot hold.
-     */
-    @Nullable
-    private CgPipeline layered(@Nullable CgPipeline pipeline) {
-        if (pipeline == null) return null;
-        CgPipeline made = layerForms.get(pipeline);
-        if (made == null) {
-            CgRenderState state = layerState(pipeline.state());
-            made = state == null ? pipeline : pipeline.withState(state);
-            layerForms.put(pipeline, made);
-        }
-        return made == pipeline ? null : made;
-    }
-
-    @Nullable
-    private static CgRenderState layerState(CgRenderState own) {
-        // Unset is the transparent pass's alpha blend.
-        CgBlendState b = own.getBlend() != null ? own.getBlend() : CgBlendState.ALPHA;
-        CgBlendState blend;
-        if (!b.enabled()) {
-            blend = CgBlendState.DISABLED;
-        } else if (b.blendEquationRgb() != CgGL.GL_FUNC_ADD) {
-            return null;
-        } else if (b.dstRgb() == CgGL.GL_ONE_MINUS_SRC_ALPHA) {
-            blend = CgBlendState.of(true, b.srcRgb(), b.dstRgb(), CgGL.GL_ONE, CgGL.GL_ONE_MINUS_SRC_ALPHA);
-        } else if (b.dstRgb() == CgGL.GL_ONE) {
-            blend = CgBlendState.of(true, b.srcRgb(), CgGL.GL_ONE, CgGL.GL_ZERO, CgGL.GL_ONE);
-        } else {
-            return null;
-        }
-        CgDepthState depth = own.getDepth();
-        return CgRenderState.builder().blend(blend)
-                .depth(depth == null || depth.test() ? CgDepthState.TEST_ONLY : CgDepthState.NONE)
-                .cull(own.getCull()).colorMask(CgColorMask.ALL).build();
-    }
+    static final int GPU_SEPARATE = CgGpuTrace.name("world.separateTranslucency");
+    final CgSeparateTranslucency separate = new CgSeparateTranslucency();
 
     /** {@code pass} reading this firing's media, where anything is in the air. */
-    private void mediated(CgRasterPass pass) {
+    void mediated(CgRasterPass pass) {
         if (mediaOut != null) pass.texture(CgBindingPoints.MEDIA_TEXTURE_UNIT, mediaOut);
         CgGraphTexture lit = pointLights.localLights();
         if (lit != null) pass.texture(CgBindingPoints.LOCAL_LIGHTS_TEXTURE_UNIT, lit);
     }
 
-    /**
-     * Whether a draw through {@code pipeline} is skipped, its program not built while {@link #skipUnready} is on: counted,
-     * and its compile started. Every pass a material draws in asks it: forward, emission, distortion, half size, volumes.
-     */
-    private boolean unready(CgPipeline pipeline, int i) {
-        if (!skipUnready) return false;
-        // The form the draw runs: a skinned mesh draws every pass skinned (CgChunkBuilder.draw).
-        if (skinnedDraw(i)) pipeline = pipeline.skinned();
-        // Its joined form too: a draw that joins a multi-draw runs that program.
-        boolean joins = applied != null && applied.joins();
-        if (pipeline.isBuilt() && (!joins || pipeline.multiDraw().isBuilt())) return false;
-        // Asked for here, started in settle(): a pipeline held by a thousand draws spends the warm budget once a frame.
-        if (heldSet.add(pipeline)) held.add(pipeline);
-        unreadyDraws++;
-        CgTrace.add(CgChannels.GL, UNREADY_DRAWS, 1);
-        return true;
-    }
-
-    /** Whether draw {@code i}'s mesh is skinned, which picks every pipeline's skinned form. */
-    private boolean skinnedDraw(int i) {
-        CgMesh m = lods[i] != null ? lods[i].finest() : meshes[i];
-        return m != null && m.format().isSkinned();
-    }
-
-    /** Pipelines a held draw asked for, polled once a frame until built: Unreal's precache requests. */
-    private final List<CgPipeline> held = new ArrayList<>();
-    private final Set<CgPipeline> heldSet = Collections.newSetFromMap(new IdentityHashMap<>());
-
-    /** Starts or polls each held pipeline once, dropping those built. */
-    private void precacheHeld() {
-        boolean joins = applied != null && applied.joins();
-        for (int i = held.size() - 1; i >= 0; i--) {
-            CgPipeline p = held.get(i);
-            if (!built(p, joins)) continue;
-            heldSet.remove(p);
-            held.set(i, held.get(held.size() - 1));
-            held.remove(held.size() - 1);
-        }
-    }
-
-    /** Draw {@code i} through {@code pipeline} into a world pass, at its key and within its screen rect. */
-    private void passDraw(CgChunkBuilder chunks, CgPipeline pipeline, CgMaterial link, CgRecording recording, int i) {
-        if (unready(pipeline, i)) return;
-        if (sets[i] != null) {
-            drawSet(chunks, pipeline, bindingOf(link, recording), i);
-            return;
-        }
-        chunks.draw(pipeline, bindingOf(link, recording), meshes[i]).sortKey(keys[i]);
-        group(chunks, i);
-        if (!Float.isNaN(screens[i * 4])) chunks.bounds(screens[i * 4], screens[i * 4 + 1], screens[i * 4 + 2], screens[i * 4 + 3]);
-        writeInstance(chunks, i);
-    }
-
     /** What {@link #cullSets} culls: the sets the stage's passes draw, those its bloom draws, those its graded layers draw. */
-    private static final int CULL_PASSES = 0, CULL_EMITTING = 1, CULL_LAYERS = 2;
+    static final int CULL_PASSES = 0, CULL_EMITTING = 1, CULL_LAYERS = 2;
 
     /**
      * Culls on the GPU every set this stage draws that it has not culled yet, all at once: those {@code which} names.
      * The first asks for the stage's depth pyramid.
      */
-    private void cullSets(CgStageFrame stage, CgRecording recording, CgHostView view, int which) {
+    void cullSets(CgStageFrame stage, CgRecording recording, CgHostView view, int which) {
         int k = -1;
         CgCullSets batch = null;
-        for (int i = 0; i < count; i++) {
-            cullHandles[i] = -1;
+        for (int i = 0; i < draws.count; i++) {
+            draws.cullHandles[i] = -1;
             if (!culls(i, which)) continue;
             if (batch == null) {
                 k = cullPasses++;
@@ -3126,7 +2027,7 @@ public final class CgWorldRenderer {
                 if (cullBatches[k] == null) cullBatches[k] = new CgCullSets();
                 batch = cullBatches[k].clear();
             }
-            cullHandles[i] = batch.add(placeCull(i, view), sets[i], setFirsts[i], setCounts[i]);
+            draws.cullHandles[i] = batch.add(placeCull(i, view), draws.sets[i], draws.setFirsts[i], draws.setCounts[i]);
         }
         if (batch == null) return;
         long bytes = (long) batch.records() * CgGpuOps.cullRecordBytes(), words = batch.words() * 4L;
@@ -3141,140 +2042,39 @@ public final class CgWorldRenderer {
         CgComputePass pass = recording.compute("world.cull");
         CgGpuOps.cull(pass, cull, batch, cullOut[k], cullLevels[k]);
         pass.end();
-        for (int i = 0; i < count; i++) {
-            int h = cullHandles[i];
+        for (int i = 0; i < draws.count; i++) {
+            int h = draws.cullHandles[i];
             if (h < 0) continue;
-            culled[i] = cullOut[k];
-            culledCounts[i] = cullLevels[k];
-            culledFirst[i] = batch.first(h);
-            culledWord[i] = batch.word(h);
+            draws.culled[i] = cullOut[k];
+            draws.culledCounts[i] = cullLevels[k];
+            draws.culledFirst[i] = batch.first(h);
+            draws.culledWord[i] = batch.word(h);
         }
     }
 
     /** Whether this {@link #cullSets} culls draw {@code i}: a set not culled yet that the stage, or its bloom, draws. */
     private boolean culls(int i, int which) {
-        if (sets[i] == null || culled[i] != null) return false;
-        return which == CULL_EMITTING ? emits[i] : which == CULL_LAYERS ? inLayer[i] : phase[i] != SKIP;
+        if (draws.sets[i] == null || draws.culled[i] != null) return false;
+        return which == CULL_EMITTING ? emissivePass.emits[i] : which == CULL_LAYERS ? gradeLayerPass.inLayer[i] : draws.phase[i] != CgWorldDraws.SKIP;
     }
 
     /** The cull set to draw {@code i}'s set: its mesh, placed by its model, its pad, light, scale and customs. */
     private CgCull placeCull(int i, CgHostView view) {
-        if (lods[i] != null) cull.mesh(lods[i]);
-        else cull.mesh(meshes[i]);
-        modelOf(i, view);
-        cull.place(model).pad(pads[i]).light(lights[i * 2], lights[i * 2 + 1]).scale(setScales[i]).ownCustoms();
+        if (draws.lods[i] != null) cull.mesh(draws.lods[i]);
+        else cull.mesh(draws.meshes[i]);
+        commands.modelOf(i, view);
+        cull.place(commands.model).pad(draws.pads[i]).light(draws.lights[i * 2], draws.lights[i * 2 + 1]).scale(draws.setScales[i]).ownCustoms();
         for (int k = 0; k < 4; k++) {
             int c = i * 16 + k * 4;
-            if ((customsStated[i] & 1 << k) != 0) cull.custom(k, customs[c], customs[c + 1], customs[c + 2], customs[c + 3]);
+            if ((draws.customsStated[i] & 1 << k) != 0) cull.custom(k, draws.customs[c], draws.customs[c + 1], draws.customs[c + 2], draws.customs[c + 3]);
         }
         return cull;
     }
 
-    private void group(CgChunkBuilder chunks, int i) {
-        if (gpuGroups[i] != null && CgTrace.isEnabled(CgChannels.GPU_GROUPS)) chunks.gpuGroup(gpuGroups[i]);
-    }
-
-    /** Set {@code i}'s levels, each an indirect draw of the records its cull kept at that level this stage. */
-    private void drawSet(CgChunkBuilder chunks, CgPipeline pipeline, int binding, int i) {
-        int capacity = setCounts[i].capacity(), levels = lods[i] != null ? lods[i].levelCount() : 1;
-        for (int l = 0; l < levels; l++) {
-            chunks.draw(pipeline, binding, lods[i] != null ? lods[i].level(l) : meshes[i]).sortKey(keys[i]);
-            group(chunks, i);
-            if (!Float.isNaN(screens[i * 4])) chunks.bounds(screens[i * 4], screens[i * 4 + 1], screens[i * 4 + 2], screens[i * 4 + 3]);
-            if (ranges[i * 3] >= 0) chunks.range(ranges[i * 3], ranges[i * 3 + 1], ranges[i * 3 + 2]);
-            chunks.objects(culled[i], culledFirst[i] + CgGpuOps.cullFirst(l, capacity), capacity)
-                    .indirect(culledCounts[i], (culledWord[i] + l) * 4L, CgIndirect.INSTANCES, 1);
-            readBuffers(chunks, i);
-        }
-    }
-
-    /** Draw {@code i}'s buffers read in place of engine buffers, every slot, and a skinned draw's palettes. */
-    private void readBuffers(CgChunkBuilder chunks, int i) {
-        for (int s = i * CgDrawChunk.BUFFERS, end = s + CgDrawChunk.BUFFERS; s < end; s++) {
-            if (buffers[s] != null) chunks.buffer(bufferAt[s], buffers[s]);
-        }
-        if (boneBases[i] >= 0) chunks.buffer(CgBindingPoints.BONE_PALETTES, palettes);
-    }
-
-    /** Draw {@code i}'s range, count and object record into the draw just begun, under {@link #model} and {@link #normal}. */
-    private void writeInstance(CgChunkBuilder chunks, int i) {
-        if (ranges[i * 3] >= 0) chunks.range(ranges[i * 3], ranges[i * 3 + 1], ranges[i * 3 + 2]);
-        if (recordCounts[i] > 0) {
-            writeRecords(chunks, i);
-            return;
-        }
-        if (counts[i] != null) chunks.indirect(counts[i], countOffsets[i], countModes[i], countFactors[i]);
-        readBuffers(chunks, i);
-        int at = chunks.instance();
-        float[] data = chunks.data();
-        model.get(data, at);
-        normal.get(data, at + 16);
-        if (boneBases[i] >= 0) data[at + 19] = boneBases[i];   // CG_OBJECT_SPARE.x: the skinned factory's palette base
-        data[at + 28] = lights[i * 2];   // CG_OBJECT_LIGHT: the normal matrix's unused column
-        data[at + 29] = lights[i * 2 + 1];
-        data[at + 30] = emissions[i] - 1f;   // CG_OBJECT_EMISSION, less 1 so a record left 0 means 1
-        System.arraycopy(customs, i * 16, data, at + 32, 16);
-    }
-
-    /**
-     * Draw {@code i}'s records of {@link Draw#indirectEach}, far to near under this stage's view, each under the draw's
-     * transform at its own position, with {@link #normal} the draw's normal matrix.
-     */
-    private void writeRecords(CgChunkBuilder chunks, int i) {
-        chunks.indirectEach(counts[i], countModes[i], countFactors[i]);
-        readBuffers(chunks, i);
-        int first = recordFirsts[i], n = recordCounts[i];
-        if (recordOrder.length < n) recordOrder = new long[Math.max(n, recordOrder.length * 2)];
-        double vx = recordView.x(), vy = recordView.y(), vz = recordView.z();
-        for (int k = 0; k < n; k++) {
-            int r = (first + k) * 3;
-            float d = Math.max(0f, (float) (recordPositions[r] - vx - eye.x) * forward.x
-                    + (float) (recordPositions[r + 1] - vy - eye.y) * forward.y
-                    + (float) (recordPositions[r + 2] - vz - eye.z) * forward.z);
-            recordOrder[k] = (long) (0x7FFFFFFF - Float.floatToIntBits(d)) << 32 | k;   // far first
-        }
-        Arrays.sort(recordOrder, 0, n);
-        for (int o = 0; o < n; o++) {
-            int r = first + (int) recordOrder[o];
-            recordModel.set(transforms, i * 16);
-            recordModel.m30(recordModel.m30() + (float) (recordPositions[r * 3] - vx))
-                    .m31(recordModel.m31() + (float) (recordPositions[r * 3 + 1] - vy))
-                    .m32(recordModel.m32() + (float) (recordPositions[r * 3 + 2] - vz));
-            int at = chunks.instance();
-            float[] data = chunks.data();
-            recordModel.get(data, at);
-            normal.get(data, at + 16);
-            if (boneBases[i] >= 0) data[at + 19] = boneBases[i];
-            data[at + 28] = lights[i * 2];
-            data[at + 29] = lights[i * 2 + 1];
-            data[at + 30] = emissions[i] - 1f;
-            System.arraycopy(recordCustoms, r * 16, data, at + 32, 16);
-            chunks.countAt(recordOffsets[r]);
-        }
-    }
-
     /** Whether transparent draw {@code i} draws into the prepass: its material's {@code "Depth" = "Prepass"}. */
-    private boolean prepassed(int i) {
-        return (phase[i] == FORWARD || phase[i] == AFTER || phase[i] == APART) && queues[i] >= CgRenderQueue.TRANSPARENT_THRESHOLD
-                && materials[i].hasDepthPrepass();
+    boolean prepassed(int i) {
+        return (draws.phase[i] == CgWorldDraws.FORWARD || draws.phase[i] == CgWorldDraws.AFTER || draws.phase[i] == CgWorldDraws.APART) && draws.queues[i] >= CgRenderQueue.TRANSPARENT_THRESHOLD
+                && draws.materials[i].hasDepthPrepass();
     }
 
-    /** A material's depth pass, its depth prepass, or its forward pass writing depth alone. */
-    private CgPipeline depthPipeline(CgMaterial material) {
-        if (material.hasDepthPass()) return material.pipeline(CgRenderPassVariant.DEPTH, CgInstanceKind.OBJECT);
-        CgPipeline forward = material.pipeline(CgInstanceKind.OBJECT);
-        if (forward == null) return null;
-        if (material.hasDepthPrepass()) return forward.depthPrepass();
-        CgRenderState own = material.getPassRenderState(CgRenderPassVariant.FORWARD);
-        CgRenderState colourless = depthOnly.get(own);
-        if (colourless == null) depthOnly.put(own, colourless = own.withColorMask(CgColorMask.NONE));
-        return forward.withState(colourless);
-    }
-
-    /** A material's snapshot in this recording, taken once per stage. */
-    private int bindingOf(CgMaterial material, CgRecording recording) {
-        Integer id = bindings.get(material);
-        if (id == null) bindings.put(material, id = material.captureBindings(recording.bindings()));
-        return id;
-    }
 }

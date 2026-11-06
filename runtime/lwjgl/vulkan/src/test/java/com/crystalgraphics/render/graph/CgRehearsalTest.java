@@ -34,6 +34,7 @@ public class CgRehearsalTest {
 
     private static final String SOURCE = """
             #type none
+            #pragma cg_use quad
             Tags { "RenderType" = "Transparent" }
             Properties {
                 _Alpha ("Alpha", float) = 1

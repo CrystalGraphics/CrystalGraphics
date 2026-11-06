@@ -6,6 +6,7 @@ import com.crystalgraphics.compute.emit.CgKernelTarget;
 import com.crystalgraphics.compute.parse.CgComputeParser;
 import com.crystalgraphics.compute.source.CgComputeSource;
 import com.crystalgraphics.compute.source.CgKernelDecl;
+import com.crystalgraphics.platform.rhi.shader.CgGlslCompiler;
 import com.crystalgraphics.util.io.CgIO;
 import org.junit.AfterClass;
 import org.junit.Test;
@@ -18,16 +19,23 @@ import java.util.Set;
 import static org.junit.Assert.*;
 
 /**
- * Every shipped kernel, in every keyword set, with subgroups native and emulated, compiles to SPIR-V as the Vulkan
- * device compiles it: the GLSL the emitter writes is GLSL a compiler accepts, checked on any machine.
+ * Every shipped kernel, in every keyword set, with subgroups native and emulated, checked and not, compiles to SPIR-V
+ * both ways a device compiles it: GL's rules with bindings assigned, and as written ({@code CG_EXPLICIT}), every
+ * resource in a set, nothing loose. Checked on any machine.
  */
 public class ShippedKernelSpirvTest {
 
     private static final ShadercGlslCompiler COMPILER = new ShadercGlslCompiler();
-    private static final CgKernelTarget[] TARGETS = {CgKernelTarget.GL43, CgKernelTarget.GL43.withSubgroups(0)};
+    /** Vulkan's own rules, nothing auto-bound. */
+    private static final ShadercGlslCompiler EXPLICIT = new ShadercGlslCompiler(null, false, false);
+    private static final CgKernelTarget[] TARGETS = {CgKernelTarget.GL43, CgKernelTarget.GL43.withSubgroups(0),
+            CgKernelTarget.GL43.withChecked(true)};
 
     @AfterClass
-    public static void close() { COMPILER.close(); }
+    public static void close() {
+        COMPILER.close();
+        EXPLICIT.close();
+    }
 
     @Test
     public void everyShippedKernelCompiles() {
@@ -40,11 +48,16 @@ public class ShippedKernelSpirvTest {
             for (CgKernelDecl kernel : source.kernels()) {
                 for (Set<String> keywords : keywordSets(source.features())) {
                     for (CgKernelTarget target : TARGETS) {
-                        String label = path + "#" + kernel.name() + keywords + (target.nativeSubgroups() ? "" : " emulated");
+                        String label = path + "#" + kernel.name() + keywords + (target.nativeSubgroups() ? "" : " emulated")
+                                + (target.checked() ? " checked" : "");
                         String glsl = new CgShaderPreprocessor().process(
                                 CgKernelEmitter.emit(source, kernel, keywords, target), path);
                         try {
                             COMPILER.compileCompute(glsl, label);
+                            CgGlslCompiler.ExplicitCompute k = EXPLICIT.compileExplicitCompute(glsl, label);
+                            assertEquals(label, kernel.sizeX(), k.localSize()[0]);
+                            assertTrue(label + " pushes " + k.pushConstantBytes() + " bytes",
+                                    k.pushConstantBytes() <= CgKernelEmitter.PUSH_BYTES);
                             compiled++;
                         } catch (RuntimeException e) {
                             failures.add(label + ": " + e.getMessage());

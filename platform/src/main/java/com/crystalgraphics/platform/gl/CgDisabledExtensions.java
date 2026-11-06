@@ -69,6 +69,7 @@ public final class CgDisabledExtensions {
         @Override public boolean OpenGL42() { return gl.OpenGL42(); }
         @Override public boolean OpenGL43() { return gl.OpenGL43(); }
         @Override public boolean OpenGL44() { return gl.OpenGL44(); }
+        @Override public boolean OpenGL45() { return gl.OpenGL45(); }
         @Override public boolean OpenGL46() { return gl.OpenGL46(); }
         @Override public boolean GL_ARB_map_buffer_range() { return on(gl.GL_ARB_map_buffer_range(), "GL_ARB_map_buffer_range"); }
         @Override public boolean GL_ARB_sync() { return on(gl.GL_ARB_sync(), "GL_ARB_sync"); }

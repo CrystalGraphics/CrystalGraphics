@@ -15,6 +15,7 @@ import com.crystalgraphics.render.draw.CgChunkBuilder;
 import com.crystalgraphics.render.draw.CgOrder;
 import com.crystalgraphics.render.draw.CgPassConstants;
 import com.crystalgraphics.render.draw.CgPipeline;
+import com.crystalgraphics.render.draw.CgPrimitiveTable;
 import com.crystalgraphics.render.property.CgEffectTree;
 import com.crystalgraphics.render.property.CgSpatialTree;
 import com.crystalgraphics.util.CgBoxedInts;
@@ -23,6 +24,7 @@ import com.crystalgraphics.util.CgBufferUtils;
 import javax.annotation.Nullable;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Arrays;
 import java.util.IdentityHashMap;
 import java.util.List;
@@ -72,7 +74,8 @@ public final class CgRecording {
     private final CgShapeTable shapes = new CgShapeTable();
     private final CgSpatialTree spatial = new CgSpatialTree();
     private final CgEffectTree effects = new CgEffectTree();
-    private final CgChunkBuilder chunks = CgChunkBuilder.pooling(bindings);
+    private final CgPrimitiveTable primitives = new CgPrimitiveTable();
+    private final CgChunkBuilder chunks = CgChunkBuilder.pooling(bindings, primitives);
     private final List<CgPass> passes = new ArrayList<>();
 
     private final List<CgGraphResource> resources = new ArrayList<>();
@@ -100,6 +103,12 @@ public final class CgRecording {
     private int computesUsed;
     private final List<CgPass.Fill> fills = new ArrayList<>();
     private int fillsUsed;
+    /**
+     * {@link #fetch}'s passes: [0, {@link #fetchesUsed}) this recording's, the rest free or held by a delivery in flight,
+     * each reused once delivered (Niagara's readback staging, reused once read). Grows to the frames in flight and stops.
+     */
+    private final List<CgPass.Readback> fetches = new ArrayList<>();
+    private int fetchesUsed;
     private final List<CgPass.Update> updates = new ArrayList<>();
     private int updatesUsed;
     /** {@link #compute(String)}'s frame block: identity, its time set per call. */
@@ -146,6 +155,14 @@ public final class CgRecording {
     /** The table every chunk of this recording takes its binding ids from. */
     public CgBindingTable bindings() {
         return bindings;
+    }
+
+    /**
+     * The firing's object records, each written once and named by slot in every pass that draws it: what its chunks'
+     * OBJECT ids name. A builder recording here from outside takes it with {@code chunks.primitives(...)}.
+     */
+    public CgPrimitiveTable primitives() {
+        return primitives;
     }
 
     /** The spatial nodes its chunks are positioned in. @see CgSpatialTree */
@@ -411,16 +428,54 @@ public final class CgRecording {
      * }</pre>
      */
     public CgRequest readback(CgGraphBuffer buffer, long offset, long size, CgReadback.Sink sink) {
+        CgRequest request = new CgRequest("readback " + buffer.name());
+        readback(buffer, offset, size, sink, request);
+        return request;
+    }
+
+    /**
+     * {@link #readback}, where nothing waits on a request: a value a frame reads back every frame (a count, a budget)
+     * records no allocation once its pass is warm, Unreal's reused {@code FRHIGPUBufferReadback}. {@code sink} is called
+     * as {@link #readback}'s, a few frames later; keep it in a field.
+     *
+     * <pre>{@code
+     * private final CgReadback.Sink readCount = data -> lastCount = data.getInt(0);
+     * recording.fetch(counts, 0, 4, readCount);   // every frame
+     * }</pre>
+     */
+    public void fetch(CgGraphBuffer buffer, long offset, long size, CgReadback.Sink sink) {
+        CgPass.Readback pass = null;
+        for (int i = fetchesUsed; i < fetches.size(); i++) {
+            CgPass.Readback free = fetches.get(i);
+            if (free.held()) continue;
+            fetches.set(i, fetches.get(fetchesUsed));
+            fetches.set(fetchesUsed, free);
+            pass = free;
+            break;
+        }
+        if (pass == null) {
+            pass = new CgPass.Readback(buffer, offset, size, sink, null);
+            fetches.add(pass);
+            Collections.swap(fetches, fetches.size() - 1, fetchesUsed);
+        } else {
+            pass.reuse(buffer, offset, size, sink);
+        }
+        fetchesUsed++;
+        readback(buffer, offset, size, sink, pass);
+    }
+
+    private void readback(CgGraphBuffer buffer, long offset, long size, CgReadback.Sink sink, CgRequest request) {
+        readback(buffer, offset, size, sink, new CgPass.Readback(buffer, offset, size, sink, request));
+    }
+
+    private void readback(CgGraphBuffer buffer, long offset, long size, CgReadback.Sink sink, CgPass.Readback pass) {
         requireOpen();
         requireUse(buffer, CgBufferUsage.COPY);
         if (offset < 0 || size <= 0 || offset + size > buffer.size()) {
             throw new IllegalArgumentException("a readback of " + size + " bytes at " + offset + " in " + buffer);
         }
-        CgRequest request = new CgRequest("readback " + buffer.name());
-        CgPass.Readback pass = new CgPass.Readback(buffer, offset, size, sink, request);
         add(pass);
         read(pass, buffer, CgAccess.COPY_READ);
-        return request;
     }
 
     /**
@@ -695,10 +750,16 @@ public final class CgRecording {
         computesUsed = 0;
         recycle(fills, fillsUsed);
         fillsUsed = 0;
+        for (int i = 0; i < fetchesUsed; i++) {
+            CgPass.Readback pass = fetches.get(i);
+            if (!pass.held()) pass.clearReferences();   // one in flight keeps its sink until delivered
+        }
+        fetchesUsed = 0;
         recycle(updates, updatesUsed);
         updatesUsed = 0;
         chunks.reset();
         chunks.recycle();
+        primitives.reset();
         bindings.reset();
         clips.reset();
         shapes.reset();

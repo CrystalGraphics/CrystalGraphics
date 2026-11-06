@@ -1,0 +1,36 @@
+package com.crystalgraphics.platform.rhi.pipeline;
+
+import com.crystalgraphics.platform.rhi.format.CgAttribFormat;
+import com.crystalgraphics.platform.rhi.format.CgCompare;
+import com.crystalgraphics.platform.rhi.format.CgFormat;
+import org.junit.Test;
+
+import java.util.List;
+
+import static org.junit.Assert.*;
+
+/** A recorded pipeline reads back as the description it was written from. */
+public class CgPipelineRecipesTest {
+
+    @Test
+    public void aRecipeReadsBackAsWritten() {
+        CgGraphicsPipelineDesc.StencilFace face = new CgGraphicsPipelineDesc.StencilFace(CgCompare.EQUAL, CgGraphicsPipelineDesc.StencilOp.KEEP,
+                CgGraphicsPipelineDesc.StencilOp.ZERO, CgGraphicsPipelineDesc.StencilOp.REPLACE);
+        CgPipelineRecipes.Recipe full = new CgPipelineRecipes.Recipe(true,
+                List.of(new CgGraphicsPipelineDesc.VertexBuffer(0, 24, false, List.of(
+                        new CgGraphicsPipelineDesc.VertexAttrib(0, CgAttribFormat.FLOAT32X2, 0),
+                        new CgGraphicsPipelineDesc.VertexAttrib(1, CgAttribFormat.FLOAT32X4, 8)))),
+                CgGraphicsPipelineDesc.Topology.TRIANGLE_STRIP,
+                new CgGraphicsPipelineDesc.Raster(CgGraphicsPipelineDesc.CullMode.BACK, CgGraphicsPipelineDesc.FrontFace.CW, CgGraphicsPipelineDesc.PolygonMode.FILL, true),
+                new CgGraphicsPipelineDesc.DepthStencil(true, false, CgCompare.GREATER, true, face, CgGraphicsPipelineDesc.StencilFace.KEEP, 0x0F, 0xF0),
+                List.of(new CgGraphicsPipelineDesc.ColorTarget(CgFormat.values()[0], CgGraphicsPipelineDesc.Blend.ALPHA, 0xF),
+                        new CgGraphicsPipelineDesc.ColorTarget(CgFormat.values()[1], null, 0x7)),
+                CgFormat.values()[2], 4);
+        assertEquals(full, CgPipelineRecipes.Recipe.decode(full.encode()));
+
+        CgPipelineRecipes.Recipe bare = new CgPipelineRecipes.Recipe(false, List.of(), CgGraphicsPipelineDesc.Topology.POINTS,
+                CgGraphicsPipelineDesc.Raster.DEFAULT, CgGraphicsPipelineDesc.DepthStencil.OFF, List.of(), null, 1);
+        assertEquals(bare, CgPipelineRecipes.Recipe.decode(bare.encode()));
+    }
+
+}

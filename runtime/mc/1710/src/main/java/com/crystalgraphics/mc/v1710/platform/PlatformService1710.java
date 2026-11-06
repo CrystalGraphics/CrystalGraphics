@@ -8,6 +8,7 @@ import com.crystalgraphics.lwjgl2.Lwjgl2GLContext;
 import com.crystalgraphics.lwjgl2.Lwjgl2InputService;
 import com.crystalgraphics.mc.v1710.CrystalGraphicsVersion;
 import com.crystalgraphics.mc.v1710.platform.gl.GLBackend1710;
+import com.crystalgraphics.mc.v1710.platform.gl.GLDevice1710;
 import com.crystalgraphics.mc.v1710.platform.service.*;
 import net.minecraftforge.common.MinecraftForge;
 import cpw.mods.fml.common.FMLCommonHandler;
@@ -98,7 +99,10 @@ public final class PlatformService1710 implements CgPlatformService {
     private CgSoundService     soundImpl;
 
     @Override public CgGLBackend gl() {
-        if (glDispatchImpl == null) glDispatchImpl = new GLBackend1710();
+        if (glDispatchImpl == null) {
+            glDispatchImpl = new GLBackend1710();
+            CgEngineLifecycle.addListener(new GLDevice1710());
+        }
         return glDispatchImpl;
     }
 

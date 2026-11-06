@@ -8,7 +8,6 @@ import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgMaterialState;
 import com.crystalgraphics.api.material.CgRenderPassVariant;
 import com.crystalgraphics.api.state.CgCullState;
-import com.crystalgraphics.api.shader.CgShader;
 import com.crystalgraphics.gl.material.CgMaterialShader;
 import com.crystalgraphics.gl.material.CgMaterialShaderRegistry;
 import com.crystalgraphics.gl.material.parse.CgMaterialShaderCompiler;
@@ -18,7 +17,6 @@ import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgMeshShapes;
 import com.crystalgraphics.gl.render.CgQuadRenderer;
 import com.crystalgraphics.gl.render.CgVectorRenderer;
-import com.crystalgraphics.gl.shader.CgShaderFactory;
 import com.crystalgraphics.api.texture.CgSampler;
 import com.crystalgraphics.api.texture.CgTextureSpec;
 import com.crystalgraphics.gl.texture.CgFallbackTextures;
@@ -36,6 +34,7 @@ import com.crystalgraphics.platform.gl.tracked.CgTrackedStateProvider;
 import com.crystalgraphics.render.CgImmediate;
 import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.render.draw.CgPassConstants;
+import com.crystalgraphics.vulkan.shader.ExplicitBindingCheck;
 import com.crystalgraphics.vulkan.shader.ShadercGlslCompiler;
 import com.sun.management.ThreadMXBean;
 import org.joml.Matrix4f;
@@ -44,12 +43,9 @@ import org.junit.BeforeClass;
 import org.junit.Test;
 
 import java.lang.management.ManagementFactory;
-import java.net.URI;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.FileSystem;
-import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -58,7 +54,6 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.stream.Stream;
 
 import static org.junit.Assert.*;
 
@@ -69,13 +64,8 @@ import static org.junit.Assert.*;
 public class EngineOnTrackedBackendTest {
 
     /** The annotated format reference: prose and commented-out passes, and it does not parse. */
-    private static final String DOCUMENTATION_ONLY = "example.shader";
 
-    private static final String[][] RAW = {
-            {"crystalgraphics:shader/default.vert", "crystalgraphics:shader/default.frag"},
-            {"crystalgraphics:shader/diag_atlas.vert", "crystalgraphics:shader/diag_atlas.frag"}};
-
-    private static ShadercGlslCompiler compiler;
+    private static ShadercGlslCompiler compiler, explicit;
     private static CgNullRHI device;
     private static CgTrackedGLBackend gl;
 
@@ -83,8 +73,9 @@ public class EngineOnTrackedBackendTest {
     @BeforeClass
     public static void install() throws ClassNotFoundException {
         compiler = new ShadercGlslCompiler();
+        explicit = new ShadercGlslCompiler(null, false, false);   // Vulkan's own rules, nothing auto-bound
         device = new CgNullRHI(64, 64);
-        gl = new CgTrackedGLBackend(device, compiler, true);
+        gl = new CgTrackedGLBackend(device, new ExplicitBindingCheck(compiler, explicit), true);
         CgGL.init(gl);
         CgCapabilities.init(new CgTrackedGLContext());
         CgCapabilities.clearCache();
@@ -93,7 +84,7 @@ public class EngineOnTrackedBackendTest {
         // CgEngineLifecycle.ensureGraphicsContext's own steps, less the platform it would ask for a context.
         CgBindingPoints.init(CgCapabilities.detect());
         CgFallbackTextures.init();
-        // text.shader's material is only complete once the text renderer has attached its UBO.
+        // text.shader's engine token (`cg_use text`) is the text renderer's block: its class must have loaded.
         Class.forName("com.crystalgraphics.text.render.CgTextRenderer");
     }
 
@@ -101,58 +92,16 @@ public class EngineOnTrackedBackendTest {
     public static void uninstall() {
         CgGlState.reset();
         compiler.close();
+        explicit.close();
     }
+
 
     @Test
     public void everyMaterialPassAndKeywordVariantLinks() throws Exception {
-        List<String> materials = shippedMaterials();
         List<String> failures = new ArrayList<>();
-        int programs = 0;
-        for (String path : materials) {
-            CgMaterialShader shader = CgMaterialShaderRegistry.get().getOrCreate(path);
-            if (shader.getLastParsed() == null || shader.hasCompileFailed()) shader.recompile();
-            if (shader.hasCompileFailed()) {
-                failures.add(shader.lastCompileError());
-                continue;
-            }
-            CgParsedShader parsed = shader.getLastParsed();
-            CgParsedPass forward = parsed.getPassByLightMode(CgRenderPassVariant.FORWARD.lightModeName());
-            List<String> multiDrawn = new ArrayList<>();
-            for (CgParsedPass pass : parsed.passes()) {
-                List<Set<String>> variants = pass == forward ? variants(parsed.featureNames()) : List.of(Set.of());
-                for (Set<String> keywords : variants) {
-                    programs++;
-                    if (shader.getOrCompile(pass.name(), keywords) == null)
-                        failures.add(path + " pass " + pass.name() + " " + keywords + ": did not link (see log)");
-                }
-                multiDrawn.add(pass.name());
-            }
-            String depth = CgRenderPassVariant.DEPTH.lightModeName();
-            if (parsed.getPassByName(depth) == null && shader.hasCompiledPass(depth)) multiDrawn.add(depth);
-            for (String pass : multiDrawn) {   // what an executor binds for a run of draws joined into one call
-                programs++;
-                if (shader.getOrCompile(pass, Set.of(CgMaterialShaderCompiler.MULTI_DRAW)) == null)
-                    failures.add(path + " pass " + pass + " multi-draw: did not link (see log)");
-            }
-            if (forward != null && !forward.fragOutput().isMrt()) {   // the world renderer's volume pass, folded or not
-                List<Set<String>> volumes = new ArrayList<>(List.of(Set.of(CgMaterialShaderCompiler.VOLUME_TARGET)));
-                if (CgMaterialShaderCompiler.sceneFolds(parsed)) {
-                    volumes.add(Set.of(CgMaterialShaderCompiler.VOLUME_TARGET, CgMaterialShaderCompiler.SCENE_FOLD));
-                }
-                for (Set<String> keywords : volumes) {
-                    programs++;
-                    if (shader.getOrCompile(forward.name(), keywords) == null)
-                        failures.add(path + " pass " + forward.name() + " " + keywords + ": did not link (see log)");
-                }
-            }
-            CgMaterial material = CgMaterial.newInstance(path);
-            if (parsed.renderQueue() < 3000 && forward != null && !material.hasDepthPass()
-                    && !shader.hasCompiledPass(CgRenderPassVariant.DEPTH.lightModeName()))
-                failures.add(path + ": the generated depth pass did not link (see log)");
-            material.delete();
-        }
+        int programs = ShippedPrograms.linkEveryVariant(failures);
         assertTrue(String.join("\n", failures), failures.isEmpty());
-        assertTrue("no program was linked: the test proves nothing", programs > materials.size());
+        assertTrue("no program was linked: the test proves nothing", programs > ShippedPrograms.materials().size());
     }
 
     /**
@@ -176,10 +125,8 @@ public class EngineOnTrackedBackendTest {
                     }
                     CgParsedShader parsed = shader.getLastParsed();
                     for (CgParsedPass pass : parsed.passes()) {
-                        for (Set<String> keywords : List.of(Set.<String>of(), Set.of(CgMaterialShaderCompiler.MULTI_DRAW))) {
-                            if (shader.getOrCompile(pass.name(), keywords) == null)
-                                failures.add(path + " " + state.build() + " pass " + pass.name() + " " + keywords);
-                        }
+                        if (shader.getOrCompile(pass.name(), Set.of()) == null)
+                            failures.add(path + " " + state.build() + " pass " + pass.name());
                     }
                     CgParsedPass forward = parsed.getPassByLightMode(CgRenderPassVariant.FORWARD.lightModeName());
                     if (shader.getOrCompile(forward.name(), Set.of(CgMaterialShaderCompiler.VOLUME_TARGET)) == null)
@@ -310,17 +257,6 @@ public class EngineOnTrackedBackendTest {
                 void fragment(in v2f i, out vec4 fragColor) { fragColor = texture(_MainTex, i.uv); }
             }
             """;
-
-    @Test
-    public void everyRawShaderLinks() {
-        List<String> failures = new ArrayList<>();
-        for (String[] pair : RAW) {
-            CgShader shader = CgShaderFactory.load(pair[0], pair[1]);
-            if (!shader.isCompiled()) failures.add(pair[0] + ": " + shader.getLastCompileError());
-            shader.delete();
-        }
-        assertTrue(String.join("\n", failures), failures.isEmpty());
-    }
 
     /** The three ways the engine draws, recorded onto the device: every pass and draw it accepted, none refused. */
     @Test
@@ -510,47 +446,4 @@ public class EngineOnTrackedBackendTest {
             """;
 
     /** Every {@code .shader} under core's {@code assets/crystalgraphics/shaders/}, its folders' too, jar or directory. */
-    private static List<String> shippedMaterials() throws Exception {
-        URI dir = CgMaterial.class.getResource("/assets/crystalgraphics/shaders/").toURI();
-        try (FileSystem jar = "jar".equals(dir.getScheme()) ? FileSystems.newFileSystem(dir, Map.of()) : null;
-             Stream<Path> files = Files.walk(Path.of(dir))) {
-            Path root = Path.of(dir);
-            return files.map(f -> root.relativize(f).toString().replace('\\', '/'))
-                    .filter(n -> n.endsWith(".shader") && !n.equals(DOCUMENTATION_ONLY))
-                    .sorted().map(n -> "crystalgraphics:shaders/" + n).toList();
-        }
-    }
-
-    /**
-     * Every subset of a pass's keywords but the strip kinds; then each strip kind with the strip alone and with each
-     * other keyword. A kind swaps only the vertex factory and excludes the other, so its every subset would quadruple
-     * a particle shader's programs past the test's heap.
-     */
-    private static List<Set<String>> variants(List<String> names) {
-        List<String> kinds = List.of(CgMaterialShaderCompiler.STRIP_BEAM, CgMaterialShaderCompiler.STRIP_ANIM);
-        List<String> plain = new ArrayList<>(names);
-        plain.removeAll(kinds);
-        List<Set<String>> out = subsets(plain);
-        if (!plain.contains(CgMaterialShaderCompiler.STRIP)) return out;
-        for (String kind : kinds) {
-            if (!names.contains(kind)) continue;
-            out.add(new LinkedHashSet<>(List.of(CgMaterialShaderCompiler.STRIP, kind)));
-            for (String other : plain) {
-                if (!other.equals(CgMaterialShaderCompiler.STRIP)) {
-                    out.add(new LinkedHashSet<>(List.of(CgMaterialShaderCompiler.STRIP, kind, other)));
-                }
-            }
-        }
-        return out;
-    }
-
-    private static List<Set<String>> subsets(List<String> names) {
-        List<Set<String>> out = new ArrayList<>();
-        for (int mask = 0; mask < 1 << names.size(); mask++) {
-            Set<String> s = new LinkedHashSet<>();
-            for (int i = 0; i < names.size(); i++) if ((mask & 1 << i) != 0) s.add(names.get(i));
-            out.add(s);
-        }
-        return out;
-    }
 }

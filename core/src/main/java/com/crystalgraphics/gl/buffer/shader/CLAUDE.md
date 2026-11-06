@@ -119,7 +119,7 @@ Engine-provided buffers a `.shader` opts into by name:
 compile** — so the GLSL declaration exists no matter what triggers the first compile. The parser
 hard-fails a shader that uses `QUAD_DATA`/`CG_QUAD_*` without declaring it.
 
-**Why a registry rather than `cg_env.glsl`:** `CgFrameBlock`/`CgObjectDataBuffer` are declared
+**Why a registry rather than `cg_env.glsl`:** `CgViewBlock`/`CgEnvironmentBlock`/`CgObjectDataBuffer` are declared
 unconditionally because nearly every shader wants them. A quad buffer is wanted by a small minority,
 and the declaration costs a storage binding — so it is opt-in.
 

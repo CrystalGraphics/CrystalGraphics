@@ -26,12 +26,15 @@ import java.util.function.Supplier;
  *
  * <ul>
  *   <li>An unknown name, or one whose texture does not exist yet, resolves to null: the sampler binds nothing.</li>
- *   <li>The texture's type must match the sampler's ({@code sampler3D} a 3D texture); nothing checks it.</li>
+ *   <li>The texture's type must match the sampler's ({@code sampler3D} a 3D texture): {@link #volume} answers a
+ *       {@code sampler3D}'s, {@code white} and {@code black} as volumes.</li>
  * </ul>
  */
 public final class CgEngineTextures {
 
     private static final Map<String, Supplier<CgTexture>> NAMED = new ConcurrentHashMap<>();
+    /** A {@code sampler3D}'s textures by name, where one differs from the 2D one. */
+    private static final Map<String, Supplier<CgTexture>> VOLUMES = new ConcurrentHashMap<>();
 
     static {
         register("white", () -> CgFallbackTextures.WHITE_1x1);
@@ -39,6 +42,15 @@ public final class CgEngineTextures {
         register("transparent", () -> CgFallbackTextures.TRANSPARENT);
         register("normal", () -> CgFallbackTextures.FLAT_NORMAL);
         register("bump", () -> CgFallbackTextures.FLAT_NORMAL);
+        VOLUMES.put("white", () -> CgFallbackTextures.WHITE_VOLUME);
+        VOLUMES.put("black", () -> CgFallbackTextures.BLACK_VOLUME);
+    }
+
+
+    /** {@code name} for a {@code sampler3D}: its volume where the engine has one, else {@link #supplier}'s. */
+    public static Supplier<CgTexture> volume(String name) {
+        Supplier<CgTexture> v = VOLUMES.get(name);
+        return v != null ? v : supplier(name);
     }
 
     private CgEngineTextures() {

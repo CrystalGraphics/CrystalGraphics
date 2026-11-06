@@ -1,12 +1,21 @@
 package com.crystalgraphics.gl.texture;
 
+import com.crystalgraphics.render.draw.CgBoundResources;
+import com.crystalgraphics.platform.rhi.resource.CgTextureView;
+import java.util.Set;
+import java.util.EnumSet;
+import com.crystalgraphics.platform.gl.format.GLFormats;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.texture.CgTextureSpec;
 import com.crystalgraphics.gpu.CgDeferral;
 import com.crystalgraphics.mc.CgReloadable;
 import com.crystalgraphics.platform.gl.CgGL;
+import com.crystalgraphics.platform.gl.CgGLImports;
+import com.crystalgraphics.platform.rhi.CgRHI;
+import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
 import com.crystalgraphics.platform.gl.state.CgGlSlot;
 import com.crystalgraphics.trace.CgTrace;
+import javax.annotation.Nullable;
 import com.crystalgraphics.util.trace.CgChannels;
 import com.crystalgraphics.variable.CgVar;
 import org.apache.logging.log4j.LogManager;
@@ -61,11 +70,56 @@ public abstract class CgTextureAbstract implements CgTexture, CgReloadable {
     protected final CgTextureSpec spec;
     /** False for a texture adopted from its owner: {@link #delete()} forgets it without deleting it. */
     private final boolean owned;
+    /** Made on the installed device ({@code CgTexture2D.onDevice}): released through it. */
+    @Nullable protected CgGpuTexture image;
     private boolean deleted;
     /** Set while a texture from files waits for its first use. */
     private volatile boolean unloaded;
     /** Whether its files would not load: it samples a stand-in. */
     protected boolean missing;
+
+    /**
+     * The RHI texture behind it on the installed device: its own where it was made on the device, else its name imported
+     * through {@link CgGLImports} (RDG's external texture). Null while it has no storage. Render thread.
+     */
+    @Nullable
+    public CgGpuTexture rhiTexture() {
+        if (image != null) return image;
+        if (textureId == 0 || !CgGLImports.installed()) return null;
+        return CgGLImports.get().texture(textureId, rhiDesc());
+    }
+
+    /** {@link #rhiView}'s answer, for the device texture it was made over. */
+    @Nullable
+    private CgTextureView rhiView;
+
+    @Override
+    @Nullable
+    public CgTextureView rhiView() {
+        CgGpuTexture t = rhiTexture();
+        if (t == null) return null;
+        if (rhiView == null || rhiView.texture() != t) rhiView = CgTextureView.whole(t);
+        return rhiView;
+    }
+
+    /** The spec it was made with: its own sampling, unless something set it since. */
+    @Override
+    public CgTextureSpec spec() {
+        return spec;
+    }
+
+    /** How the device sees it, for {@link #rhiTexture}'s import: a 2D texture unless a kind says otherwise. */
+    protected CgGpuTexture.Desc rhiDesc() {
+        return new CgGpuTexture.Desc(source(), CgGpuTexture.Kind.D2, GLFormats.of(spec.getGlInternalFormat()), width, height,
+                1, mips(), 1, SAMPLED_ONLY);
+    }
+
+    /** Its mip count where nothing records one: the full chain under a mipmapped spec. */
+    protected int mips() {
+        return spec.getMipmaps().isEnabled() ? CgTexture.fullChain(width, height) : 1;
+    }
+
+    protected static final Set<CgGpuTexture.Usage> SAMPLED_ONLY = EnumSet.of(CgGpuTexture.Usage.SAMPLED);
 
     protected CgTextureAbstract(int textureId, int width, int height, CgTextureSpec spec) {
         this(textureId, width, height, spec, true);
@@ -92,6 +146,7 @@ public abstract class CgTextureAbstract implements CgTexture, CgReloadable {
     public void bind(int unit) {
         checkUsable();
         gpu.flush();
+        CgBoundResources.texture(unit, this, -1);
         if (SKIP_HELD) {
             CgGL.cgBindTexture(unit, getTarget(), textureId);
             return;
@@ -215,7 +270,13 @@ public abstract class CgTextureAbstract implements CgTexture, CgReloadable {
         unloaded = false;
         gpu.clear();
         gpu.run(() -> {
-            if (owned && textureId != 0) CgGL.glDeleteTextures(textureId);
+            if (image != null) {
+                CgGLImports.get().forget(image);
+                CgRHI.get().release(image);
+                image = null;
+            } else if (owned && textureId != 0) {
+                CgGL.glDeleteTextures(textureId);
+            }
             textureId = 0;
         });
     }

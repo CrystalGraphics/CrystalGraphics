@@ -1,6 +1,7 @@
 package com.crystalgraphics.api.mesh;
 
 import com.crystalgraphics.shape.bounds.CgAABB;
+import com.github.bsideup.jabel.Desugar;
 import com.crystalgraphics.shape.bounds.CgAABBc;
 import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.api.vertex.CgAttribType;
@@ -162,6 +163,19 @@ public final class CgMesh {
      */
     public static CgMesh quads(int count) {
         if (count <= 0) throw new IllegalArgumentException("quads(" + count + ")");
+        // The counts a frame asks for lately, so a hit boxes no key and makes no lambda.
+        for (QuadsHit hit : QUADS_HITS) if (hit != null && hit.count == count) return hit.mesh;
+        CgMesh mesh = quadsBuilt(count);
+        QUADS_HITS[quadsNext++ & (QUADS_HITS.length - 1)] = new QuadsHit(count, mesh);
+        return mesh;
+    }
+
+    @Desugar
+    private record QuadsHit(int count, CgMesh mesh) {}
+    private static final QuadsHit[] QUADS_HITS = new QuadsHit[8];
+    private static int quadsNext;
+
+    private static CgMesh quadsBuilt(int count) {
         return GENERATED.computeIfAbsent((long) count << 8, k -> shared(CgVertexFormat.NONE, m -> {
             for (int i = 0; i < count * 4; i++) m.vertex().end();
             for (int q = 0; q < count; q++) m.quad(q * 4, q * 4 + 1, q * 4 + 2, q * 4 + 3);

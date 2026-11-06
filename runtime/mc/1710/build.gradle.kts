@@ -1,3 +1,4 @@
+import cgbuildlogic.shaderToolchainVmArgs
 import java.util.zip.ZipFile
 
 plugins {
@@ -71,6 +72,8 @@ jvmdg.multiReleaseOriginal.set(false)
 
 
 tasks.named<JavaExec>("runClient") {
+    // Every dev client shares one shader toolchain folder (cgbuildlogic.SHADER_TOOLCHAIN_DEV_DIR).
+    jvmArgs(shaderToolchainVmArgs())
     doFirst {
      //   val agent = findJarBySubstring("unimixins")
         // jvmArgs("-javaagent:${agent.absolutePath}")

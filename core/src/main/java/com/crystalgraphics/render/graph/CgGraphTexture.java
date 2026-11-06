@@ -1,7 +1,9 @@
 package com.crystalgraphics.render.graph;
 
+import com.crystalgraphics.platform.rhi.resource.CgTextureView;
 import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.texture.CgTexture;
+import com.crystalgraphics.api.texture.CgTextureSpec;
 import com.crystalgraphics.gl.framebuffer.CgFrameBuffer;
 import com.crystalgraphics.gl.texture.CgTexture2D;
 
@@ -340,6 +342,20 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
     }
 
     @Override
+    @Nullable
+    public CgTextureView rhiView() {
+        CgTexture color = color();
+        return color == null ? null : color.rhiView();
+    }
+
+    @Override
+    @Nullable
+    public CgTextureSpec spec() {
+        CgTexture color = color();
+        return color == null ? null : color.spec();
+    }
+
+    @Override
     public int getId() {
         CgTexture color = color();
         return color == null ? 0 : color.getId();
@@ -437,6 +453,30 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
         }
 
         @Override
+        @Nullable
+        public CgTextureSpec spec() {
+            CgTexture color = texture.color();
+            return color == null ? null : color.spec();
+        }
+
+        /** Its level alone, as {@link #bind} samples it. */
+        @Nullable
+        private CgTextureView view;
+
+        @Override
+        @Nullable
+        public CgTextureView rhiView() {
+            CgTexture color = texture.color();
+            CgTextureView whole = color == null ? null : color.rhiView();
+            if (whole == null) return null;
+            if (!(color instanceof CgTexture2D)) return whole;
+            if (view == null || view.texture() != whole.texture()) {
+                view = new CgTextureView(whole.texture(), level, 1, 0, whole.layers());
+            }
+            return view;
+        }
+
+        @Override
         public int getId() {
             return texture.getId();
         }
@@ -517,6 +557,20 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
         public void bind(int unit) {
             CgTexture color = bound();
             if (color != null) color.bind(unit);
+        }
+
+        @Override
+        @Nullable
+        public CgTextureView rhiView() {
+            CgTexture color = color();
+            return color == null ? null : color.rhiView();
+        }
+
+        @Override
+        @Nullable
+        public CgTextureSpec spec() {
+            CgTexture color = color();
+            return color == null ? null : color.spec();
         }
 
         @Override

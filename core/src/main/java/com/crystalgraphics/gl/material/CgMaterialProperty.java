@@ -1,7 +1,7 @@
 package com.crystalgraphics.gl.material;
 
 import com.crystalgraphics.api.buffer.CgBufferFormat;
-import com.crystalgraphics.api.shader.CgShader;
+import com.crystalgraphics.gl.shader.CgShader;
 import com.crystalgraphics.api.texture.CgSampler;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.gl.texture.CgSamplers;
@@ -467,7 +467,9 @@ public final class CgMaterialProperty {
      */
     public CgTexture boundTexture() {
         if (samplerTexture != null || rawDefault == null) return samplerTexture;
-        if (namedDefault == null) namedDefault = CgEngineTextures.supplier(rawDefault);
+        if (namedDefault == null) {
+            namedDefault = type == Type.SAMPLER3D ? CgEngineTextures.volume(rawDefault) : CgEngineTextures.supplier(rawDefault);
+        }
         return namedDefault == null ? null : namedDefault.get();
     }
     

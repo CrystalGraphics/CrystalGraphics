@@ -10,7 +10,7 @@ recorder will run on a UI document's own thread (`render-graph` §3.1); GL happe
 | `CgPipeline` | a key: shader asset + pass + keyword set + render state + instance kind, interned to an `int` | `of`/`byId` any thread; `precache`/`program`/`bind`/`instanceBase` render thread |
 | `CgBindingTable` | a recording's binding snapshots: block bytes copied, textures, storage buffers and buffer textures as handles, interned by content | filled by one recorder; `upload`/`bind` on the render thread after handover |
 | `CgInstanceKind` | what instances are: `QUAD`, `CURVE`, `OBJECT`, and the record stride each writes | — |
-| `CgPassConstants` | the pass block (`CgFrameBlock`'s layout) as a value, one per pass | any |
+| `CgPassConstants` | the pass's view and environment blocks (`CgViewBlock`, `CgEnvironmentBlock`) as a value, one per pass | any |
 | `CgDrawChunk` / `CgChunkBuilder` | a run of draws under one property state (spatial, clip, effect node), with its instance records per kind and bounds per draw — Blink's paint chunk. A recording's own builder (`CgChunkBuilder.pooling`) refills its chunks after the recording's reset; `with` copies one that must outlive it | the builder: one recorder; the chunk: any, once ended |
 | `CgOrder`, `CgBatcher` | `LOOKBACK` (painter's order, WebRender's lookback, never across a domain) or `SORTED` (by the recorder's key, stable); the batcher groups a pass's draws by pipeline + snapshot + kind + mesh | the frame builder's |
 
@@ -23,7 +23,7 @@ int pass = constants.capture(table);
 // execution, render thread:
 table.upload(ring);
 table.bind(pass);
-if (p.bind()) { table.bind(bindings); p.instanceBase(first); /* draw */ }
+if (p.bind()) { table.bind(bindings); CgMeshStore.get().draw(mesh, instances, first); }
 ```
 
 ## Rules
@@ -37,18 +37,17 @@ if (p.bind()) { table.bind(bindings); p.instanceBase(first); /* draw */ }
   raster pass the chunk is added to, so the graph orders the draw after the pass writing it.
 - **A sampler's unit is its index among the shader's declared samplers.** `CgMaterialShader` wires every program
   that way at compile, so nothing per material is left to wire at execution.
-- **`cg_InstanceBase`** is what `CG_INSTANCE_ID` adds to `gl_InstanceID`; it defaults to 0, so a draw that uploads
-  its own instances needs nothing. A pipeline's `multiDraw()` sibling, compiled with `CG_MULTI_DRAW`, has neither it
-  nor `cg_VertexBase`: each draw of a multi-draw carries its own in its command (`render/graph/CLAUDE.md`).
-- **`emissionOccluder()`** is a Forward pipeline's sibling for glows drawn apart from the scene (an impact frame's
-  subject): black at its colour's alpha (`CG_EMISSION_COVER`), so its blend covers the glow behind it; null where it
-  adds. `volumeTarget()` is the world renderer's volume pass's: what the fragment names with
-  `CG_VOLUME_DEPTH(eye)` written at location 1 (`CG_VOLUME_TARGET`), composable with `sceneFold()`. `sceneFold()` is the HDR scene's: one output, the glow added to the colour
-  (`CG_SCENE_FOLD`). `depthPrepass()` is a `"Depth" = "Prepass"` material's depth pass: the Forward pass compiled with
-  `CG_DEPTH_PREPASS`, blend off, depth written, no colour. `normalTarget()` is an opaque Forward pipeline's sibling
-  writing its normal at location 1 (`CG_NORMAL_TARGET`) for the world lights; null for an MRT pass. `skinned()` is
-  any pipeline compiled with `CG_SKINNED`, the skinned vertex factory; `CgChunkBuilder.draw` takes it for a mesh in a
-  skinned format, so a recorder never asks, and every sibling of a skinned pipeline stays skinned. `slotWrites()` is the colour
-  attachments a pipeline's program writes, which a pass with more than one masks the rest off by.
+- **A draw carries its bases**: its first instance (where its batch's records start, `CgMeshStore.SHARED_RECORD` set
+  where every instance reads one) and its base vertex, read by `CG_INSTANCE_ID` and `CG_VERTEX_ID` through
+  `gl_BaseInstance`/`gl_BaseVertex`. No uniform is set per draw, so one pipeline draws a mesh alone or joined into a
+  multi-draw (`render/graph/CLAUDE.md`).
+- **A pipeline's forms are `CgPipelineForm`s**, added by `as(form)` (null where the form does not apply) and asked by
+  `has(form)`; the enum's table is the one place saying which combine. `COVER` is for glows drawn apart from the scene
+  (an impact frame's subject), `VOLUME` the world's volume pass (composable with `FOLD`), `FOLD` the HDR scene's glow
+  added to the colour, `DEPTH` a `"Depth" = "Prepass"` material's prepass, `NORMALS` and `CUSTOM_DATA` an opaque draw's
+  extra targets, `SOLID` a layer's cover, `OVERDRAW` the overdraw view. `SKINNED` is the skinned vertex factory:
+  `CgChunkBuilder.draw` takes it for a mesh in a skinned format, so a recorder never asks, and every form of a skinned
+  pipeline stays skinned. `slotWrites()` is the colour attachments a pipeline's program writes, which a pass with more
+  than one masks the rest off by.
 - A pipeline lives for the session, and is keyed by the *identity* of its render state: the first compile reuses the
   parse of unchanged source, so a key named before it is the one that draws after it.

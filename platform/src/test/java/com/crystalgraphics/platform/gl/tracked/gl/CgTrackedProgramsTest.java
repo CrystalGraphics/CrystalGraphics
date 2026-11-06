@@ -1,6 +1,7 @@
 package com.crystalgraphics.platform.gl.tracked.gl;
 
 import com.crystalgraphics.platform.rhi.binding.CgBindingLayout;
+import com.crystalgraphics.platform.rhi.pipeline.CgPipelineRecipes;
 import com.crystalgraphics.platform.rhi.nulldrv.CgNullRHI;
 import com.crystalgraphics.platform.rhi.shader.CgGlslCompiler;
 import com.crystalgraphics.platform.gl.CgGL;
@@ -12,6 +13,7 @@ import org.junit.Test;
 
 import java.nio.ByteBuffer;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.Assert.*;
 
@@ -144,5 +146,14 @@ public class CgTrackedProgramsTest {
         assertEquals(gl.glGetUniformLocation(p, "u_list") + 2, gl.glGetUniformLocation(p, "u_list[2]"));
         assertEquals(-1, gl.glGetUniformLocation(p, "u_missing"));
         assertEquals(CgGL.GL_INVALID_INDEX, gl.glGetUniformBlockIndex(p, "NoSuchBlock"));
+    }
+
+    /** What the recorded pipeline list keys a program by: its sources alone. */
+    @Test
+    public void aProgramsKeyFollowsItsSourcesAlone() {
+        long a = CgPipelineRecipes.programKey("vs", "fs", Map.of("pos", 0, "uv", 1));
+        assertEquals(a, CgPipelineRecipes.programKey("vs", "fs", Map.of("uv", 1, "pos", 0)));
+        assertNotEquals(a, CgPipelineRecipes.programKey("vs", "fs2", Map.of("pos", 0, "uv", 1)));
+        assertNotEquals(a, CgPipelineRecipes.programKey("vsf", "s", Map.of("pos", 0, "uv", 1)));
     }
 }

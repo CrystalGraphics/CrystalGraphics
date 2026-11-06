@@ -571,7 +571,7 @@ public final class CgRasterPass extends CgPass {
      * recording.raster(normals, CgLoad.clear(0, 0, 0, 0), constants, null, CgOrder.SORTED).end();   // cleared first
      * CgRasterPass pass = recording.raster(stage.target(), CgLoad.load(), constants, state, CgOrder.SORTED)
      *         .attachment(normals);
-     * chunks.draw(material.pipeline(CgInstanceKind.OBJECT).normalTarget(), bindings, mesh);
+     * chunks.draw(material.pipeline(CgInstanceKind.OBJECT).as(CgPipelineForm.NORMALS), bindings, mesh);
      * }</pre>
      *
      * <ul>

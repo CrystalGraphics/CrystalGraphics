@@ -541,9 +541,10 @@ public class Lwjgl2GLBackend extends CgGLBackend {
     }
 
     @Override
-    public void glDrawElementsInstancedBaseVertex(int mode, int count, int type, long indices, int instanceCount,
-                                                  int baseVertex) {
-        GL32.glDrawElementsInstancedBaseVertex(mode, count, type, indices, instanceCount, baseVertex);
+    public void glDrawElementsInstancedBaseVertexBaseInstance(int mode, int count, int type, long indices,
+                                                              int instanceCount, int baseVertex, int baseInstance) {
+        GL42.glDrawElementsInstancedBaseVertexBaseInstance(mode, count, type, indices, instanceCount, baseVertex,
+                baseInstance);
     }
 
     // -------------------------------------------------------------------------

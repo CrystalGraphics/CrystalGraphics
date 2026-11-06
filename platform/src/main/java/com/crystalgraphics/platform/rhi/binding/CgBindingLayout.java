@@ -11,7 +11,7 @@ import java.util.List;
  *
  * <pre>{@code
  * CgBindingLayout text = rhi.createBindingLayout("text", List.of(
- *         new CgBindingLayout.Slot(0, CgBindingLayout.Type.UNIFORM_BUFFER),     // CgFrameBlock
+ *         new CgBindingLayout.Slot(0, CgBindingLayout.Type.UNIFORM_BUFFER),     // CgViewBlock
  *         new CgBindingLayout.Slot(1, CgBindingLayout.Type.STORAGE_BUFFER),     // CgObjectDataBuffer
  *         new CgBindingLayout.Slot(2, CgBindingLayout.Type.SAMPLED_TEXTURE)),   // the atlas
  *         true);                                                                // pushed per draw

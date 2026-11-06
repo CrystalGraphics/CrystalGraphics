@@ -16,8 +16,8 @@ import org.lwjgl.opengl.GLContext;
 public final class Lwjgl2GLContext implements CgGLContext {
 
     private volatile ContextCapabilities caps;
-    /** What LWJGL 2's capabilities predate: GL 4.6, the subgroup and the parallel compile extensions. */
-    private volatile boolean openGL46, subgroups, parallelCompile;
+    /** What LWJGL 2's capabilities predate: GL 4.5 and 4.6, the subgroup and the parallel compile extensions. */
+    private volatile boolean openGL45, openGL46, subgroups, parallelCompile;
     
     private ContextCapabilities caps() {
         if(caps == null) probe();
@@ -28,6 +28,7 @@ public final class Lwjgl2GLContext implements CgGLContext {
     public void probe() {
         caps = GLContext.getCapabilities();
         int major = GL11.glGetInteger(GL30.GL_MAJOR_VERSION), minor = GL11.glGetInteger(GL30.GL_MINOR_VERSION);
+        openGL45 = major > 4 || major == 4 && minor >= 5;
         openGL46 = major > 4 || major == 4 && minor >= 6;
         subgroups = false;
         parallelCompile = false;
@@ -47,6 +48,7 @@ public final class Lwjgl2GLContext implements CgGLContext {
     @Override public boolean OpenGL42() { return caps().OpenGL42; }
     @Override public boolean OpenGL43() { return caps().OpenGL43; }
     @Override public boolean OpenGL44() { return caps().OpenGL44; }
+    @Override public boolean OpenGL45() { caps(); return openGL45; }
     @Override public boolean OpenGL46() { caps(); return openGL46; }
 
     // ── Streaming ─────────────────────────────────────────────────────────────

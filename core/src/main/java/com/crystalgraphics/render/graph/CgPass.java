@@ -242,12 +242,40 @@ public abstract sealed class CgPass permits CgRasterPass, CgComputePass, CgPass.
     /** A buffer range, or a region of one texture level, read back to the CPU and handed to a sink frames later. */
     static final class Readback extends CgPass implements CgReadback.Sink {
         @Nullable
-        final CgGraphBuffer buffer;
-        final long offset, size;
+        CgGraphBuffer buffer;
+        long offset, size;
         @Nullable
         final CgGraphTexture texture;
         final int level, x, y, z, w, h, d;
-        private final CgReadback.Sink sink;
+        private CgReadback.Sink sink;
+        /** Issued and not yet heard from: the pass is the readback's sink, so a recording reuses it only after. */
+        volatile boolean delivering;
+
+        /** A buffer range read back again, for {@link CgRecording#fetch}: renamed only for another buffer. */
+        void reuse(CgGraphBuffer buffer, long offset, long size, CgReadback.Sink sink) {
+            if (this.buffer != buffer || name == null) name = "readback " + buffer.name();
+            this.buffer = buffer;
+            this.offset = offset;
+            this.size = size;
+            this.sink = sink;
+        }
+
+        @Override
+        boolean held() {
+            return super.held() || delivering;
+        }
+
+        /** Its sink is outside the graph, with a request or none ({@link CgRecording#fetch}): RDG's readbacks never cull. */
+        @Override
+        boolean sideEffect() {
+            return true;
+        }
+
+        @Override
+        void clearReferences() {
+            sink = null;
+        }
+
 
         Readback(CgGraphBuffer buffer, long offset, long size, CgReadback.Sink sink, CgRequest request) {
             super("readback " + buffer.name(), null, request);
@@ -277,13 +305,15 @@ public abstract sealed class CgPass permits CgRasterPass, CgComputePass, CgPass.
 
         @Override
         public void accept(ByteBuffer data) {
+            delivering = false;
             sink.accept(data);
-            request.complete();
+            if (request != null) request.complete();
         }
 
         @Override
         public void failed(String reason) {
-            request.fail(reason);
+            delivering = false;
+            if (request != null) request.fail(reason);
             sink.failed(reason);
         }
     }

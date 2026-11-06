@@ -288,7 +288,7 @@ public final class CgShapeTable {
             values[at + 3] = w;
         }
 
-        /** As {@code CgShaderBindings.colorARGB}: the same floats, so a shape draws as the uniforms it replaced. */
+        /** As {@code CgMaterialValues.colorARGB}: the same floats, so a shape draws as the uniforms it replaced. */
         private void color(int at, int argb) {
             set(at, ((argb >> 16) & 0xFF) / 255f, ((argb >> 8) & 0xFF) / 255f, (argb & 0xFF) / 255f,
                     ((argb >> 24) & 0xFF) / 255f);

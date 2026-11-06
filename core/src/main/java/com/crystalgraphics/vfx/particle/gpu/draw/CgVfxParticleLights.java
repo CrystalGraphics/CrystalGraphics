@@ -125,7 +125,7 @@ public final class CgVfxParticleLights implements CgWorldLights.Appender {
         CgKernel kernel = null;
         for (int i = 0; i < f.count; i++) {
             CgVfxParticlePool pool = f.pools[i];
-            if (pool.isReleased() || pool.records() == null || !first(f, i)) continue;
+            if (pool.isReleased() || !pool.stepped() || !first(f, i)) continue;
             if (kernel == null) kernel = CgCompute.load(KERNELS).kernel("Lights");
             CgVfxRecord record = pool.record();
             lights.into(pass.dispatch(kernel, pool.storage())).bind("RECORDS", pool.records()).bind("DRAWN", pool.drawn())

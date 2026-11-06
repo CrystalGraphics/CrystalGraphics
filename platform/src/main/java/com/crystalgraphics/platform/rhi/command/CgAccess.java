@@ -48,6 +48,18 @@ public final class CgAccess {
     /** Handed to the window to show. */
     public static final int PRESENT = 1 << 15;
 
+    /**
+     * Where a texture rests between uses: sampled-read for a texture shaders sample, the host's own layout for a host's
+     * image (Unreal's tracked access of a resource outside the graph). Every user outside a graph leaves a texture
+     * here; a graph takes it from here and returns it here. A texture's alone, either side of a transition.
+     *
+     * <pre>{@code
+     * moves.texture(CgTextureView.whole(albedo), CgAccess.RESTING, CgAccess.COLOR_WRITE);   // into a graph's pass
+     * moves.texture(CgTextureView.whole(albedo), CgAccess.COLOR_WRITE, CgAccess.RESTING);   // and back at its end
+     * }</pre>
+     */
+    public static final int RESTING = 1 << 16;
+
     /** Storage access from any shader stage: a storage image is in its general layout for these. */
     public static final int STORAGE = COMPUTE_READ | COMPUTE_WRITE | VERTEX_READ | FRAGMENT_READ;
     /** Everything a draw reads or writes. */
@@ -55,16 +67,46 @@ public final class CgAccess {
             | INDEX_INPUT | INDIRECT | COLOR_WRITE;
 
     /** What only an image has: a buffer's transition refuses these. */
-    public static final int IMAGE_ONLY = COLOR_WRITE | DEPTH_READ | DEPTH_WRITE | PRESENT;
+    public static final int IMAGE_ONLY = COLOR_WRITE | DEPTH_READ | DEPTH_WRITE | PRESENT | RESTING;
 
     /** What only a buffer has: an image's transition refuses these. */
     public static final int BUFFER_ONLY = UNIFORM_READ | VERTEX_INPUT | INDEX_INPUT | INDIRECT;
 
     private static final String[] NAMES = {"COMPUTE_READ", "COMPUTE_WRITE", "VERTEX_READ", "FRAGMENT_READ",
             "UNIFORM_READ", "SAMPLED_READ", "VERTEX_INPUT", "INDEX_INPUT", "INDIRECT", "COPY_READ", "COPY_WRITE",
-            "HOST_READ", "COLOR_WRITE", "DEPTH_READ", "DEPTH_WRITE", "PRESENT"};
+            "HOST_READ", "COLOR_WRITE", "DEPTH_READ", "DEPTH_WRITE", "PRESENT", "RESTING"};
+
+    /** The arrangement an image's texels need for an access: Vulkan's image layouts, which GL keeps to itself. */
+    public enum Layout { GENERAL, SHADER_READ, COLOR, DEPTH_READ, DEPTH, COPY_SRC, COPY_DST, PRESENT }
 
     private CgAccess() {}
+
+    /**
+     * The layout an image needs for {@code access}: storage is {@code GENERAL}, a copy or a target its own, sampling
+     * read-only; uses wanting two are {@code GENERAL}, but depth tested and sampled at once, which the read-only depth
+     * layout serves. Null for {@link #RESTING}, which is the texture's own, and for none.
+     */
+    public static Layout layout(int access) {
+        if ((access & RESTING) != 0 || access == 0) return null;
+        if ((access & STORAGE) != 0) return Layout.GENERAL;
+        if ((access & DEPTH_READ) != 0 && (access & ~(DEPTH_READ | SAMPLED_READ)) == 0) return Layout.DEPTH_READ;
+        Layout layout = null;
+        for (int bit = 1; bit <= PRESENT; bit <<= 1) {
+            if ((access & bit) == 0) continue;
+            Layout l = switch (bit) {
+                case COPY_READ -> Layout.COPY_SRC;
+                case COPY_WRITE -> Layout.COPY_DST;
+                case COLOR_WRITE -> Layout.COLOR;
+                case DEPTH_READ -> Layout.DEPTH_READ;
+                case DEPTH_WRITE -> Layout.DEPTH;
+                case PRESENT -> Layout.PRESENT;
+                default -> Layout.SHADER_READ;
+            };
+            if (layout != null && l != layout) return Layout.GENERAL;
+            layout = l;
+        }
+        return layout;
+    }
 
     /** {@code COMPUTE_WRITE|VERTEX_READ}: the bits by name. */
     public static String names(int access) {

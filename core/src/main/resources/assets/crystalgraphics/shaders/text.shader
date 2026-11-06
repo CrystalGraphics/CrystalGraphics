@@ -8,6 +8,7 @@
 #type none
 #pragma cg_use quad
 #pragma cg_use clip
+#pragma cg_use text
 
 // One keyword covers both distance-field atlas types (MSDF and MTSDF) -- the fragment
 // logic is byte-for-byte identical for both today (same median-based reconstruction,
@@ -133,8 +134,8 @@ Pass {
     // 1 / gamma) and (smallPx, largePx, enabled). They correct the FILL's coverage only -- shadows are blurred
     // masks and a stroke's ring has a colour of its own.
     //
-    // u_Projection reaches this shader via CgTextRenderer's attached, shared static "TextData"
-    // CgUniformBuffer (flat STD140 scope -- referenced directly, no block prefix). Deliberately
+    // u_Projection reaches this shader through `#pragma cg_use text`, CgTextRenderer's "TextData" block
+    // (flat STD140 scope -- referenced directly, no block prefix). Deliberately
     // NOT the engine's shared cg_ProjMatrix (CgFrameBlock): that's frame-owner state (the actual
     // scene camera), and CgTextRenderContext's projection is renderer-local (often an
     // orthographic UI projection unrelated to the scene camera) -- reusing cg_ProjMatrix would
@@ -142,11 +143,7 @@ Pass {
     void vertex(out v2f o) {
 #ifdef WORLD_LABEL
         int label = int(QUAD_DATA(CG_INSTANCE_ID).node);
-#ifdef CG_USE_SSBO
         mat4 place = cg_Objects[label].modelMatrix;
-#else
-        mat4 place = cg_FetchObjectData(label).modelMatrix;
-#endif
         vec3 local = QUAD_DATA(CG_INSTANCE_ID).origin + CG_VERTEX_CORNER.x * QUAD_DATA(CG_INSTANCE_ID).right
                 + CG_VERTEX_CORNER.y * QUAD_DATA(CG_INSTANCE_ID).up;
         gl_Position = u_Projection * (place * vec4(local, 1.0));

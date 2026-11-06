@@ -2,6 +2,7 @@ package com.crystalgraphics.mc.modern.platform;
 
 import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.mc.modern.platform.gl.Blaze3dGLBackend;
+import com.crystalgraphics.mc.modern.platform.gl.GLDeviceModern;
 import com.crystalgraphics.mc.modern.platform.gl.HostStateModern;
 // 26.3 ships SDL3 and no GLFW, so a 26.3 node cannot even load the GLFW pair.
 //? if >=26.3 {
@@ -211,6 +212,7 @@ public final class PlatformServiceModern implements CgPlatformService {
                 HostStateVerifier.announceIfEnabled();
                 glBackend = new Blaze3dGLBackend();
                 HostStateModern.install();
+                CgEngineLifecycle.addListener(new GLDeviceModern());
             }
         }
         return glBackend;

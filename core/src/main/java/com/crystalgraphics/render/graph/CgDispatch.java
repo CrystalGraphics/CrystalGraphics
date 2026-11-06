@@ -192,6 +192,8 @@ public final class CgDispatch {
         CgBufferDecl b = bufferDecl(name);
         int access = bufferAccess(b);
         checkHistory(buffer, access, name, "");
+        if (offset < 0 || size < 0 || ((offset | size) & 3) != 0)
+            throw new IllegalArgumentException(name + " bound at " + offset + ", " + size + " bytes: both a multiple of 4, neither negative");
         if (!buffer.allows(CgBufferUsage.STORAGE)) {
             throw new IllegalArgumentException(buffer + " has no STORAGE use, so a kernel cannot bind it as " + name);
         }
@@ -269,6 +271,8 @@ public final class CgDispatch {
         int access = ((use & APPEND) != 0 ? CgAccess.COMPUTE_READ | CgAccess.COMPUTE_WRITE : 0)
                 | ((use & COUNT) != 0 ? CgAccess.COMPUTE_READ : 0);
         checkHistory(counter, access, name, "'s count");
+        if (offset < 0 || (offset & 3) != 0)
+            throw new IllegalArgumentException(name + "'s count at " + offset + ": a multiple of 4, not negative");
         counters[b.index()] = counter;
         counterOffsets[b.index()] = offset;
         counterAccess[b.index()] = access;

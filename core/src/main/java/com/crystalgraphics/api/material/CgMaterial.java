@@ -6,8 +6,7 @@ import com.crystalgraphics.util.trace.CgChannels;
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.buffer.CgBufferFormat;
 import com.crystalgraphics.api.buffer.CgBufferLifetime;
-import com.crystalgraphics.api.shader.CgShader;
-import com.crystalgraphics.api.shader.CgShaderBindings;
+import com.crystalgraphics.gl.shader.CgShader;
 import com.crystalgraphics.api.state.CgBlendState;
 import com.crystalgraphics.api.state.CgDepthState;
 import com.crystalgraphics.api.state.CgRenderState;
@@ -28,6 +27,7 @@ import com.crystalgraphics.gl.material.parse.CgShaderParser;
 import com.crystalgraphics.gl.texture.CgSamplers;
 import com.crystalgraphics.render.CgWarmBudget;
 import com.crystalgraphics.render.draw.CgBindingTable;
+import com.crystalgraphics.render.draw.CgBlockVersion;
 import com.crystalgraphics.render.draw.CgBufferHandle;
 import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.render.draw.CgPipeline;
@@ -191,6 +191,10 @@ public final class CgMaterial {
     @Nullable
     private CgBufferWriter capturePacker;
     private boolean capturePropsDirty = true;
+    /** The properties block as captures last saw it: a new version only after a value moved. */
+    @Nullable
+    private CgBlockVersion blockVersion;
+    private static final int BLOCK_WRITES = CgTrace.name("material.block-writes");
     /** This instance's own contents for uniform blocks attached to the shared shader, read in their place. */
     private Map<CgShaderBuffer, CgBufferWriter> blockOverrides;
 
@@ -221,7 +225,7 @@ public final class CgMaterial {
      * Drained into {@code propStore} inside {@link #onShaderRecompiled()} after the first
      * successful compile. Lazily allocated — null until first buffered call.
      */
-    private List<Consumer<CgShaderBindings>> pendingApplyConsumers = null;
+    private List<Consumer<CgMaterialValues>> pendingApplyConsumers = null;
 
     /**
      * Optional chained material for multi-draw decorative effects (outline, additive glow,
@@ -500,109 +504,6 @@ public final class CgMaterial {
         return propStore.all().stream().filter(p -> p.getName().equals(name)).findFirst().orElse(null);
     }
 
-    // ── Buffer attachment API ─────────────────────────────────────────────────
-
-    /**
-     * Attaches a user-defined auxiliary buffer to this material's backing shader asset.
-     *
-     * <p>On the next compile, the buffer's GLSL struct and an SSBO block
-     * sampler + fetch function are injected into both vertex and fragment shader source.
-     * Access it in GLSL via {@code macroName(n).fieldName}.</p>
-     *
-     * <p><strong>What this is for</strong>: per-material auxiliary data — font glyph metrics,
-     * light tables, bindless texture handle pools ({@code uvec2} handles), tile properties,
-     * animation curves, etc. Any structured dataset your shader needs beyond what the engine's
-     * {@code cg_env.glsl} provides.</p>
-     *
-     * <p><strong>What NOT to pass</strong>: the engine's own blocks ({@code CgFrameBlock},
-     * {@code CgObjectDataBuffer}). Those are declared in {@code cg_env.glsl} and wired automatically; passing them
-     * here causes duplicate declarations.</p>
-     *
-     * <p><strong>Ownership warning</strong>: {@code CgMaterial.load(path)} returns a
-     * <em>shared cached instance</em> from {@code CgMaterialRegistry}, backed by a shared
-     * {@link CgMaterialShader}. Attaching a buffer affects all materials sharing the same
-     * shader. Only call {@code attach()} on materials you exclusively own.</p>
-     *
-     * <p><strong>Runtime binding</strong>: per-context GL binding ({@code glBindBufferBase} /
-     * {@code glActiveTexture+glBindTexture}) is <em>your responsibility</em>. Call
-     * {@code buffer.bind()} before your draw call.</p>
-     *
-     * @param buffer    the buffer to attach; format must use {@code STD430}
-     * @param macroName uppercase GLSL-style identifier function, e.g. {@code "FONT_METRICS"}
-     * @return {@code this} for fluent chaining
-     * @apiNote Never throws — validation failures are logged as warnings and the call becomes a no-op.
-     */
-    public CgMaterial attach(CgShaderBuffer buffer, String macroName) {
-        if (cgMaterialShader != null) cgMaterialShader.attach(buffer, macroName);
-        return this;
-    }
-
-    /**
-     * Detaches the SSBO buffer registered under {@code macroName}; no-op if not found.
-     *
-     * @return {@code this} for fluent chaining
-     */
-    public CgMaterial detach(String macroName) {
-        if (cgMaterialShader != null) cgMaterialShader.detach(macroName);
-        return this;
-    }
-
-    /**
-     * Detaches the SSBO buffer by reference; no-op if not attached.
-     *
-     * @return {@code this} for fluent chaining
-     */
-    public CgMaterial detach(CgShaderBuffer buffer) {
-        if (cgMaterialShader != null) cgMaterialShader.detach(buffer);
-        return this;
-    }
-
-    /**
-     * Attaches a UBO to this material's backing shader asset for GLSL flat-block auto-injection.
-     *
-     * <p>On the next compile, a {@code layout(std140) uniform BlockName { ... };} block is
-     * injected into both vertex and fragment shader source. All fields land in direct scope —
-     * write {@code fieldName} in your shader, not {@code BlockName.fieldName}.</p>
-     *
-     * <p>Use this for single-instance uniform data: scene parameters, per-pass constants,
-     * camera extras, light properties — anything that is the same for all instances in a draw.</p>
-     *
-     * <p>For per-instance indexed data, use {@link #attach(CgShaderBuffer, String)} instead.</p>
-     *
-     * <p><strong>Ownership warning</strong>: see {@link #attach(CgShaderBuffer, String)}.
-     * Same rule applies here.</p>
-     *
-     * <p><strong>Runtime binding</strong>: call {@code buffer.bind()} before your draw call.</p>
-     *
-     * @param buffer UBO to attach; format must use {@link CgBufferFormat.MemoryLayout#STD140}
-     * @return {@code this} for fluent chaining
-     * @apiNote Never throws — validation failures are logged as warnings and the call becomes a no-op.
-     */
-    public CgMaterial attach(CgUniformBuffer buffer) {
-        if (cgMaterialShader != null) cgMaterialShader.attach(buffer);
-        return this;
-    }
-
-    /**
-     * Detaches the UBO with the given block name; no-op if not found.
-     *
-     * @return {@code this} for fluent chaining
-     */
-    public CgMaterial detachUbo(String blockName) {
-        if (cgMaterialShader != null) cgMaterialShader.detachUbo(blockName);
-        return this;
-    }
-
-    /**
-     * Detaches the UBO by reference; no-op if not attached.
-     *
-     * @return {@code this} for fluent chaining
-     */
-    public CgMaterial detach(CgUniformBuffer buffer) {
-        if (cgMaterialShader != null) cgMaterialShader.detach(buffer);
-        return this;
-    }
-
     // ── Property bindings ─────────────────────────────────────────────────────
 
     /**
@@ -642,7 +543,7 @@ public final class CgMaterial {
      * @param consumer receives a property-routing bindings adapter; must not be null
      * @return this for chaining
      */
-    public CgMaterial applyProperties(Consumer<CgShaderBindings> consumer) {
+    public CgMaterial applyProperties(Consumer<CgMaterialValues> consumer) {
         checkNotDeleted();
         // From the parse alone, so setting a property compiles nothing.
         syncPropsToParse();
@@ -1159,13 +1060,10 @@ public final class CgMaterial {
         }
         table.begin();
         if (propStore != null) {
-            if (propStore.hasUboProps()) {
-                CgBufferWriter packer = capturePacker();
-                table.block(CgBindingPoints.MATERIAL_PROPERTIES_UBO, packer.rawData(), 0, packer.rawCursor());
-            }
+            if (propStore.hasUboProps()) table.block(CgBindingPoints.MATERIAL_PROPERTIES_UBO, blockVersion());
             propStore.captureSamplers(table);
         }
-        if (cgMaterialShader != null) captureAttachedBuffers(table);
+        if (cgMaterialShader != null) captureEngineBlocks(table);
         capturePerDrawEngineBuffers(table);
         for (int i = 0; i < declared.size(); i++) {
             table.storage(CgBindingPoints.MATERIAL_BUFFERS_SSBO + i, buffers.get(declared.get(i).name()));
@@ -1208,6 +1106,20 @@ public final class CgMaterial {
         return this;
     }
 
+    /**
+     * The properties block as it is now, persistent: a new version only after a value moved (counted,
+     * {@code material.block-writes}), so an unchanged material uploads nothing frame to frame.
+     */
+    private CgBlockVersion blockVersion() {
+        CgBlockVersion current = blockVersion;
+        if (current != null && !capturePropsDirty) return current;
+        CgBufferWriter packer = capturePacker();
+        if (current != null) current.supersede();
+        blockVersion = current = CgBlockVersion.of(packer.rawData(), packer.rawCursor());
+        CgTrace.add(CgChannels.GL, BLOCK_WRITES, 1);
+        return current;
+    }
+
     /** The properties block packed as it is now, repacked only after a value moved. */
     private CgBufferWriter capturePacker() {
         if (capturePacker == null) {
@@ -1242,35 +1154,23 @@ public final class CgMaterial {
     }
 
     /**
-     * The buffers a user attached, leaving out those an engine token declared: an executor binds its kind's own. A
-     * uniform block is kept by value, as written now, since its owner rewrites it before the draw executes.
+     * The uniform blocks of the engine tokens the shader names, kept by value as written now, since their owner
+     * rewrites them before the draw executes. A token's storage buffer the executor binds itself.
      */
-    private void captureAttachedBuffers(CgBindingTable table) {
-        List<CgAttachedBuffer> attached = cgMaterialShader.getAttachedBuffers();
-        if (attached.isEmpty()) return;
-        CgParsedShader parsed = cgMaterialShader.getLastParsed();
-        for (int i = 0; i < attached.size(); i++) {
-            CgAttachedBuffer buffer = attached.get(i);
+    private void captureEngineBlocks(CgBindingTable table) {
+        List<CgAttachedBuffer> buffers = cgMaterialShader.engineBuffers();
+        for (int i = 0; i < buffers.size(); i++) {
+            CgAttachedBuffer buffer = buffers.get(i);
+            if (!buffer.isUbo()) continue;
             CgShaderBuffer target = buffer.getBuffer();
-            if (buffer.isUbo()) {
-                CgBufferWriter override = blockOverrides == null ? null : blockOverrides.get(target);
-                CgBufferWriter written = override != null ? override : target.writer();
-                if (written.rawCursor() > 0) {
-                    table.block(target.getBindingLocation(), written.rawData(), 0, written.rawCursor());
-                    continue;
-                }
-            } else if (parsed != null && declaresEngineBuffer(parsed, buffer.getMacroName())) {
-                continue;
+            CgBufferWriter override = blockOverrides == null ? null : blockOverrides.get(target);
+            CgBufferWriter written = override != null ? override : target.writer();
+            if (written.rawCursor() > 0) {
+                table.block(target.getBindingLocation(), written.rawData(), 0, written.rawCursor());
+            } else {
+                table.buffer(target);
             }
-            table.buffer(target);
         }
-    }
-
-    private static boolean declaresEngineBuffer(CgParsedShader parsed, String macroName) {
-        for (String token : parsed.engineBuffers()) {
-            if (CgEngineBufferRegistry.get(token).macroName().equals(macroName)) return true;
-        }
-        return false;
     }
 
     /**
@@ -1526,7 +1426,7 @@ public final class CgMaterial {
      * <p>Unlike {@link #hasDepthPass()} (which checks for an explicit authored
      * {@code [Depth]} pass), this method also returns {@code true} for auto-generated depth
      * variants produced by {@link CgMaterialShader#recompile()}
-     * during {@code attemptDepthAutoGen()}. It is the correct query for
+     * during {@code CgMaterialShaderMap.autoGenDepth()}. It is the correct query for
      * a depth prepass deciding whether to bind {@code DEPTH} or fall back to the forward pass.</p>
      *
      * @return {@code true} if a compiled depth variant program is available
@@ -1724,6 +1624,7 @@ public final class CgMaterial {
     public void delete() {
         if (!deleted) {
             deleted = true;
+            if (blockVersion != null) blockVersion.supersede();
             // Do NOT delete cgMaterialShader.getShader() — that is asset-owned, not instance-owned.
             if (matPropsUbo != null) {
                 matPropsUbo.delete();
@@ -1810,7 +1711,7 @@ public final class CgMaterial {
         capturePropsDirty = true;
 
         if (pendingApplyConsumers != null && !pendingApplyConsumers.isEmpty()) {
-            for (Consumer<CgShaderBindings> pending : pendingApplyConsumers) pending.accept(propStore);
+            for (Consumer<CgMaterialValues> pending : pendingApplyConsumers) pending.accept(propStore);
             pendingApplyConsumers.clear();
         }
     }

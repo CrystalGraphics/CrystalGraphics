@@ -31,6 +31,8 @@ dependencies {
     "compileOnly"(project(":runtime:mc:shared"))
     // Tier 1: the LWJGL2 services this era's bundle is assembled from.
     "compileOnly"(project(":runtime:lwjgl:2"))
+    // The shader toolchain's loader, which GLDeviceLegacy makes its GL device with.
+    "compileOnly"(project(":runtime:lwjgl:vulkan"))
     // HostViewLegacy hands the world stages JOML matrices; the companion jar supplies JOML at run time.
     "compileOnly"("org.joml:joml:${rootProject.property("dep.joml")}")
     // MixinBooter supplies Mixin at runtime. A stub build has its signatures in the stub.

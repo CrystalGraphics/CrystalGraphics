@@ -5,6 +5,7 @@ import com.crystalgraphics.platform.gl.tracked.tracker.CgTracker;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import com.crystalgraphics.platform.rhi.memory.CgAllocation;
+import com.crystalgraphics.platform.rhi.resource.CgGpuBuffer;
 
 /**
  * A GL buffer object's storage on the tracked backend, with GL's ordering: a draw sees the contents as they
@@ -25,6 +26,7 @@ public final class CgTrackedBuffer {
     private final String label;
     private CgAllocation current;
     private boolean persistent;
+    private boolean adopted;
     private ByteBuffer staging;
     private long stagingOffset;
 
@@ -150,9 +152,17 @@ public final class CgTrackedBuffer {
         }
     }
 
+    /** Storage made on the device outside the tracker: immutable, never renamed, never freed here. */
+    public void adopt(CgGpuBuffer buffer) {
+        if (current != null) throw new IllegalStateException(label + " already has storage");
+        current = CgAllocation.whole(buffer);
+        persistent = true;
+        adopted = true;
+    }
+
     /** {@code glDeleteBuffers}. */
     public void release() {
-        if (current != null) tracker.free(current);
+        if (current != null && !adopted) tracker.free(current);
         current = null;
     }
 

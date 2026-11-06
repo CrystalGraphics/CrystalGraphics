@@ -1,5 +1,10 @@
 package com.crystalgraphics.vulkan;
 
+import org.lwjgl.vulkan.VkMemoryRequirements;
+import com.crystalgraphics.vulkan.resource.VulkanHeap;
+import com.crystalgraphics.platform.rhi.resource.CgGpuHeap;
+import com.crystalgraphics.platform.rhi.memory.CgTransientMemory;
+import com.crystalgraphics.platform.gl.tracked.CgImplicitLayouts;
 import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.service.CgCacheDirectory;
 import com.crystalgraphics.platform.rhi.resource.CgRHIResource;
@@ -15,13 +20,16 @@ import com.crystalgraphics.platform.rhi.pipeline.CgGraphicsPipelineDesc;
 import com.crystalgraphics.platform.rhi.resource.CgGpuBuffer;
 import com.crystalgraphics.platform.rhi.resource.CgGpuSampler;
 import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
+import com.crystalgraphics.platform.rhi.resource.CgTextureView;
 import com.crystalgraphics.platform.rhi.sync.CgTimerQuery;
 import com.crystalgraphics.platform.rhi.shader.CgShaderModule;
 import com.crystalgraphics.vulkan.command.VulkanEncoder;
 import com.crystalgraphics.vulkan.format.VulkanFormats;
 import com.crystalgraphics.vulkan.binding.VulkanBindingLayout;
 import com.crystalgraphics.vulkan.binding.VulkanBindingSet;
+import com.crystalgraphics.vulkan.binding.VulkanBindless;
 import com.crystalgraphics.vulkan.binding.VulkanDescriptorPools;
+import com.crystalgraphics.vulkan.sync.VulkanEvents;
 import com.crystalgraphics.vulkan.sync.VulkanQueryPools;
 import com.crystalgraphics.vulkan.resource.VulkanBuffer;
 import com.crystalgraphics.vulkan.resource.VulkanComputePipeline;
@@ -139,7 +147,17 @@ import static org.lwjgl.vulkan.VK11.vkGetPhysicalDeviceProperties2;
  * <p>The default framebuffer is an image of the device's own, RGBA8 with depth-stencil, which the host presents;
  * its row 0 is GL's bottom. Owner thread only.</p>
  */
-public final class CgVulkanDevice implements CgRHI, AutoCloseable {
+public final class CgVulkanDevice implements CgRHI, CgImplicitLayouts, AutoCloseable {
+
+    /** {@link CgRHI#onClose}'s tasks: run first as it closes. */
+    private final List<Runnable> closing = new ArrayList<>();
+
+    @Override
+    public void onClose(Runnable task) {
+        synchronized (closing) {
+            closing.add(task);
+        }
+    }
 
     private static final Logger LOG = LogManager.getLogger("CrystalGraphics");
 
@@ -162,8 +180,12 @@ public final class CgVulkanDevice implements CgRHI, AutoCloseable {
     private final VulkanStaging staging;
     private final VulkanDescriptorPools descriptorPools;
     private final VulkanQueryPools queryPools;
+    private final VulkanEvents events;
+    /** The bindless heap, where the host enabled descriptor indexing; null otherwise. */
+    private final VulkanBindless bindless;
     private final VulkanEncoder encoder;
     private VulkanTexture surfaceColor, surfaceDepth;
+    private final CgTransientMemory transientMemory = new TransientMemory();
     private VulkanBuffer scratch;
     /** Every queue family a buffer or image is used on, when more than the frame's: they are made CONCURRENT. */
     private final int[] sharedFamilies;
@@ -222,6 +244,8 @@ public final class CgVulkanDevice implements CgRHI, AutoCloseable {
         staging = new VulkanStaging(this);
         descriptorPools = new VulkanDescriptorPools(device);
         queryPools = new VulkanQueryPools(device);
+        events = new VulkanEvents(device);
+        bindless = host.bindless() ? new VulkanBindless(device) : null;
         encoder = new VulkanEncoder(this);
         resize(width, height);
     }
@@ -261,7 +285,7 @@ public final class CgVulkanDevice implements CgRHI, AutoCloseable {
                 (v >>> 22) + "." + ((v >>> 12) & 0x3FF) + "." + (v & 0xFFF), limits,
                 l.timestampComputeAndGraphics(), l.maxSamplerAnisotropy() > 1f, true,
                 host.multiDrawIndirect(), host.indirectCount(), host.indirectFirstInstance(), host.asyncCompute(),
-                host.drawParameters(), host.independentBlend());
+                host.drawParameters(), host.independentBlend(), host.bindless());
     }
 
     @Override
@@ -377,30 +401,8 @@ public final class CgVulkanDevice implements CgRHI, AutoCloseable {
     public CgGpuTexture createTexture(CgGpuTexture.Desc desc) {
         int format = formats.vk(desc.format());
         int aspect = formats.aspectOf(desc.format());
-        boolean depth = (aspect & VK_IMAGE_ASPECT_COLOR_BIT) == 0;
-        int usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-        if (desc.usage().contains(CgGpuTexture.Usage.SAMPLED)) usage |= VK_IMAGE_USAGE_SAMPLED_BIT;
-        if (desc.usage().contains(CgGpuTexture.Usage.STORAGE)) {
-            if (desc.samples() > 1 || !supports(desc.format(), CgGpuTexture.Usage.STORAGE))
-                throw new IllegalArgumentException(desc.label() + ": " + desc.format() + " x" + desc.samples()
-                        + " cannot be a storage image on " + info.name());
-            usage |= VK_IMAGE_USAGE_STORAGE_BIT;
-        }
-        if (desc.usage().contains(CgGpuTexture.Usage.ATTACHMENT))
-            usage |= depth ? VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT : VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-        boolean volume = desc.kind() == CgGpuTexture.Kind.D3;
         try (MemoryStack stack = stackPush()) {
-            VkImageCreateInfo ici = VkImageCreateInfo.calloc(stack).sType$Default()
-                    .imageType(volume ? VK_IMAGE_TYPE_3D : VK_IMAGE_TYPE_2D).format(format)
-                    .mipLevels(desc.mips()).arrayLayers(volume ? 1 : desc.depthOrLayers()).samples(desc.samples())
-                    .tiling(VK_IMAGE_TILING_OPTIMAL).usage(usage).sharingMode(VK_SHARING_MODE_EXCLUSIVE)
-                    .initialLayout(VK_IMAGE_LAYOUT_UNDEFINED)
-                    .flags(desc.kind() == CgGpuTexture.Kind.CUBE ? VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT : 0);
-            ici.extent().set(desc.width(), desc.height(), volume ? desc.depthOrLayers() : 1);
-            if (sharedFamilies.length > 1) {
-                ici.sharingMode(VK_SHARING_MODE_CONCURRENT).queueFamilyIndexCount(sharedFamilies.length)
-                        .pQueueFamilyIndices(stack.ints(sharedFamilies));
-            }
+            VkImageCreateInfo ici = imageInfo(stack, desc, format, aspect);
             VmaAllocationCreateInfo aci = VmaAllocationCreateInfo.calloc(stack).usage(VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE);
             LongBuffer lp = stack.mallocLong(1);
             PointerBuffer pp = stack.mallocPointer(1);
@@ -418,6 +420,98 @@ public final class CgVulkanDevice implements CgRHI, AutoCloseable {
                         VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT);
             }
             return t;
+        }
+    }
+
+    /** {@code desc} as an image: its usage from the description's, every queue family sharing it. */
+    private VkImageCreateInfo imageInfo(MemoryStack stack, CgGpuTexture.Desc desc, int format, int aspect) {
+        boolean depth = (aspect & VK_IMAGE_ASPECT_COLOR_BIT) == 0;
+        int usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+        if (desc.usage().contains(CgGpuTexture.Usage.SAMPLED)) usage |= VK_IMAGE_USAGE_SAMPLED_BIT;
+        if (desc.usage().contains(CgGpuTexture.Usage.STORAGE)) {
+            if (desc.samples() > 1 || !supports(desc.format(), CgGpuTexture.Usage.STORAGE))
+                throw new IllegalArgumentException(desc.label() + ": " + desc.format() + " x" + desc.samples()
+                        + " cannot be a storage image on " + info.name());
+            usage |= VK_IMAGE_USAGE_STORAGE_BIT;
+        }
+        if (desc.usage().contains(CgGpuTexture.Usage.ATTACHMENT))
+            usage |= depth ? VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT : VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+        boolean volume = desc.kind() == CgGpuTexture.Kind.D3;
+        VkImageCreateInfo ici = VkImageCreateInfo.calloc(stack).sType$Default()
+                .imageType(volume ? VK_IMAGE_TYPE_3D : VK_IMAGE_TYPE_2D).format(format)
+                .mipLevels(desc.mips()).arrayLayers(volume ? 1 : desc.depthOrLayers()).samples(desc.samples())
+                .tiling(VK_IMAGE_TILING_OPTIMAL).usage(usage).sharingMode(VK_SHARING_MODE_EXCLUSIVE)
+                .initialLayout(VK_IMAGE_LAYOUT_UNDEFINED)
+                .flags(desc.kind() == CgGpuTexture.Kind.CUBE ? VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT : 0);
+        ici.extent().set(desc.width(), desc.height(), volume ? desc.depthOrLayers() : 1);
+        if (sharedFamilies.length > 1) {
+            ici.sharingMode(VK_SHARING_MODE_CONCURRENT).queueFamilyIndexCount(sharedFamilies.length)
+                    .pQueueFamilyIndices(stack.ints(sharedFamilies));
+        }
+        return ici;
+    }
+
+    @Override
+    public CgTransientMemory transientMemory() {
+        return transientMemory;
+    }
+
+    /**
+     * Heaps as dedicated VMA allocations, device-local, and images aliased over them ({@code vmaCreateAliasingImage2}),
+     * as Unreal's {@code FVulkanTransientHeap}.
+     */
+    private final class TransientMemory implements CgTransientMemory {
+
+        @Override
+        public Requirements requirements(CgGpuTexture.Desc desc) {
+            // Vulkan 1.2 asks an image, not a description (vkGetDeviceImageMemoryRequirements is 1.3's).
+            try (MemoryStack stack = stackPush()) {
+                LongBuffer lp = stack.mallocLong(1);
+                VkImageCreateInfo ici = imageInfo(stack, desc, formats.vk(desc.format()), formats.aspectOf(desc.format()));
+                check(vkCreateImage(device, ici, null, lp), "vkCreateImage " + desc.label());
+                VkMemoryRequirements req = VkMemoryRequirements.malloc(stack);
+                vkGetImageMemoryRequirements(device, lp.get(0), req);
+                vkDestroyImage(device, lp.get(0), null);
+                return new Requirements(req.size(), req.alignment(), req.memoryTypeBits());
+            }
+        }
+
+        @Override
+        public CgGpuHeap createHeap(String label, long size, int memoryTypes) {
+            try (MemoryStack stack = stackPush()) {
+                VkMemoryRequirements req = VkMemoryRequirements.calloc(stack).size(size).alignment(1)
+                        .memoryTypeBits(memoryTypes);
+                VmaAllocationCreateInfo aci = VmaAllocationCreateInfo.calloc(stack)
+                        .flags(VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT)
+                        .requiredFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+                PointerBuffer pp = stack.mallocPointer(1);
+                VmaAllocationInfo ai = VmaAllocationInfo.malloc(stack);
+                check(vmaAllocateMemory(vma, req, aci, pp, ai), "vmaAllocateMemory " + label);
+                name(stack, VK_OBJECT_TYPE_DEVICE_MEMORY, ai.deviceMemory(), label);
+                VulkanHeap h = new VulkanHeap(label, pp.get(0), size, ai.memoryType());
+                live.add(h);
+                return h;
+            }
+        }
+
+        @Override
+        public CgGpuTexture place(CgGpuHeap heap, long offset, CgGpuTexture.Desc desc) {
+            int format = formats.vk(desc.format());
+            int aspect = formats.aspectOf(desc.format());
+            try (MemoryStack stack = stackPush()) {
+                LongBuffer lp = stack.mallocLong(1);
+                check(vmaCreateAliasingImage2(vma, ((VulkanHeap) heap).allocation, offset,
+                        imageInfo(stack, desc, format, aspect), lp), "vmaCreateAliasingImage2 " + desc.label());
+                name(stack, VK_OBJECT_TYPE_IMAGE, lp.get(0), desc.label());
+                VulkanTexture t = VulkanTexture.placed(desc, lp.get(0), format, aspect);
+                live.add(t);
+                return t;
+            }
+        }
+
+        @Override
+        public void discard(CgGpuTexture texture) {
+            ((VulkanTexture) texture).discard();
         }
     }
 
@@ -542,8 +636,7 @@ public final class CgVulkanDevice implements CgRHI, AutoCloseable {
                     w.pImageInfo(VkDescriptorImageInfo.calloc(1, stack)
                             .sampler(sampled ? ((VulkanSampler) contents.sampler(i)).sampler : 0L)
                             .imageView(t.view(device, contents.view(i), false))
-                            .imageLayout(!sampled ? VK_IMAGE_LAYOUT_GENERAL : t.borrowed() ? t.resting
-                                    : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL));
+                            .imageLayout(!sampled ? VK_IMAGE_LAYOUT_GENERAL : t.sampledLayout(contents.view(i))));
                 } else if (type == CgBindingLayout.Type.TEXEL_BUFFER) {
                     w.pTexelBufferView(stack.longs(texelView((VulkanBuffer) contents.buffer(i), contents.offset(i),
                             contents.size(i), contents.texelFormat(i))));
@@ -737,6 +830,26 @@ public final class CgVulkanDevice implements CgRHI, AutoCloseable {
     }
 
     @Override
+    public CgBindingLayout bindlessLayout() {
+        return bindless == null ? null : bindless.layout;
+    }
+
+    @Override
+    public CgBindingSet bindlessSet() {
+        return bindless == null ? null : bindless.set;
+    }
+
+    /** A pair's slot, its view written in its texture's sampled layout, which the texture is laid in first. */
+    @Override
+    public int bindlessIndex(CgTextureView view, CgGpuSampler sampler) {
+        if (bindless == null) throw new UnsupportedOperationException(info.name() + " has no bindless heap");
+        VulkanTexture t = (VulkanTexture) view.texture();
+        if (t.unlaid || t.transferOnly) lay(t);
+        return bindless.texture(view, sampler, t.view(device, view, false), t.sampledLayout(view),
+                ((VulkanSampler) sampler).sampler);
+    }
+
+    @Override
     public void release(CgRHIResource object) {
         if (object instanceof VulkanSampler) return;                   // cached by description, kept
         host.whenFrameRetired(host.frameIndex(), () -> destroy(object));
@@ -750,8 +863,12 @@ public final class CgVulkanDevice implements CgRHI, AutoCloseable {
             if (views != null) for (long v : views.values()) vkDestroyBufferView(device, v, null);
             vmaDestroyBuffer(vma, b.buffer, b.allocation);
         } else if (o instanceof VulkanTexture t) {
+            if (bindless != null) bindless.forget(t);
             t.destroyViews(device);
-            if (!t.borrowed()) vmaDestroyImage(vma, t.image, t.allocation);
+            if (t.placed) vkDestroyImage(device, t.image, null);
+            else if (!t.borrowed()) vmaDestroyImage(vma, t.image, t.allocation);
+        } else if (o instanceof VulkanHeap h) {
+            vmaFreeMemory(vma, h.allocation);
         } else if (o instanceof VulkanShaderModule m) {
             vkDestroyShaderModule(device, m.module, null);
         } else if (o instanceof VulkanBindingLayout l) {
@@ -780,6 +897,14 @@ public final class CgVulkanDevice implements CgRHI, AutoCloseable {
     @Override public CgGpuTexture surfaceColor() { return surfaceColor; }
     @Override public CgGpuTexture surfaceDepth() { return surfaceDepth; }
     @Override public long frameIndex() { return host.frameIndex(); }
+
+    /** The events split transitions set and wait on. */
+    public VulkanEvents events() { return events; }
+
+    @Override
+    public void implicitLayouts(boolean on) {
+        encoder.implicitLayouts(on);
+    }
     @Override public long retiredFrame() { return host.retiredFrame(); }
     @Override public void whenRetired(long frame, Runnable action) { host.whenFrameRetired(frame, action); }
     @Override public boolean ownsSubmission() { return host.ownsSubmission(); }
@@ -800,6 +925,10 @@ public final class CgVulkanDevice implements CgRHI, AutoCloseable {
                     VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_READ_BIT);
             host.endFrame(new CgVulkanImage(surfaceColor.image, surfaceColor.format,
                     surfaceColor.desc.width(), surfaceColor.desc.height()));
+            // Back to rest in the next frame's command buffer, begun as this one was presented: every user outside a
+            // graph leaves an image at rest, and a graph takes it from there.
+            barriers += surfaceColor.transitionAll(host.commandBuffer(), surfaceColor.resting,
+                    VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT);
         } else {
             host.endFrame(null);                    // the host presents its own picture
         }
@@ -822,8 +951,11 @@ public final class CgVulkanDevice implements CgRHI, AutoCloseable {
                 CgGpuTexture.Usage.COPY_SRC, CgGpuTexture.Usage.COPY_DST);
         surfaceColor = (VulkanTexture) createTexture(new CgGpuTexture.Desc("surface", CgGpuTexture.Kind.D2,
                 CgFormat.RGBA8_UNORM, width, height, 1, 1, 1, usage));
+        // Sampled too: a pass that tests it read-only samples it in place (rhi-milestones G3).
+        Set<CgGpuTexture.Usage> depthUsage = EnumSet.copyOf(usage);
+        depthUsage.add(CgGpuTexture.Usage.SAMPLED);
         surfaceDepth = (VulkanTexture) createTexture(new CgGpuTexture.Desc("surfaceDepth", CgGpuTexture.Kind.D2,
-                CgFormat.DEPTH24_PLUS_STENCIL8, width, height, 1, 1, 1, usage));
+                CgFormat.DEPTH24_PLUS_STENCIL8, width, height, 1, 1, 1, depthUsage));
     }
 
     /** Barriers recorded since the device began, for {@code CgDeviceStats}. */
@@ -903,6 +1035,12 @@ public final class CgVulkanDevice implements CgRHI, AutoCloseable {
     /** Waits for the GPU, keeps the pipeline cache where given one, then destroys everything still alive. Close the host after. */
     @Override
     public void close() {
+        List<Runnable> tasks;
+        synchronized (closing) {
+            tasks = new ArrayList<>(closing);
+            closing.clear();
+        }
+        for (Runnable task : tasks) task.run();
         vkDeviceWaitIdle(device);
         if (pipelineCacheFile != null) writePipelineCache();
         staging.destroy();
@@ -910,6 +1048,8 @@ public final class CgVulkanDevice implements CgRHI, AutoCloseable {
         for (long l : pipelineLayouts.values()) vkDestroyPipelineLayout(device, l, null);   // those over no set
         descriptorPools.destroy();
         queryPools.destroy();
+        events.destroy();
+        if (bindless != null) bindless.destroy();
         pipelineLayouts.clear();
         for (VulkanSampler s : samplers.values()) vkDestroySampler(device, s.sampler, null);
         samplers.clear();

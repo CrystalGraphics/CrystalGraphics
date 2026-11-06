@@ -393,6 +393,7 @@ public final class CgFrameBuilder {
             }
         }
         frame.accessFrom[steps] = frame.accessCount;
+        frame.nextAccesses(steps);
     }
 
     private void pack(CgComputePass pass, CgFrame frame, CgFrame.Compute packed) {
@@ -469,8 +470,19 @@ public final class CgFrameBuilder {
                 CgDrawChunk chunk = refChunk[batcher.ref(i)];
                 int d = refDraw[batcher.ref(i)];
                 if (chunk.objects(d) != null) {
+                    // Its own records, bound where the table is and read through identity ids
                     packed.objects[b] = chunk.objects(d);
                     packed.first[b] = chunk.first(d);
+                    frame.identityIds = Math.max(frame.identityIds, chunk.first(d) + chunk.instances(d));
+                } else if (ki == OBJECT) {
+                    int base = frame.primitivesOf(chunk.primitives()), ids = chunk.instances(d);
+                    frame.reserve(ki, ids);
+                    float[] from = chunk.data(k), to = frame.instances[ki];
+                    for (int r = chunk.first(d), at = frame.instanceFloats[ki], end = r + ids; r < end; r++, at++) {
+                        to[at] = Float.intBitsToFloat(Float.floatToRawIntBits(from[r]) + base);
+                    }
+                    frame.instanceFloats[ki] += ids;
+                    packed.kinds |= 1 << ki;
                 } else {
                     int length = chunk.instances(d) * floats;
                     frame.reserve(ki, length);
@@ -520,8 +532,7 @@ public final class CgFrameBuilder {
         packed.palette = frame.paletteOf(pass.recording, valuesOf.get(pass.recording));
         part.close();
         part = CgTrace.zone(CgChannels.GL_DETAIL, PACK_CONSTANTS);
-        CgBindingTable constants = frame.bindings.begin()
-                .block(CgBindingPoints.FRAME_DATA_UBO, pass.constants, 0, CgPassConstants.FLOATS);
+        CgBindingTable constants = CgPassConstants.blocks(frame.bindings.begin(), pass.constants, 0);
         boolean lightmap = false, media = false, localLights = false;
         for (int i = 0; i < pass.textureCount(); i++) {
             constants.texture(pass.textureUnit(i), pass.texture(i));
@@ -684,7 +695,7 @@ public final class CgFrameBuilder {
     }
 
     private static int readsOf(CgPipeline pipeline) {
-        return (pipeline.shader().readsSceneColor() ? CgTargetCopy.COLOR : 0)
+        return (pipeline.readsSceneColor() ? CgTargetCopy.COLOR : 0)
                 | (pipeline.readsSceneDepth() ? CgTargetCopy.DEPTH : 0);
     }
 
@@ -796,4 +807,6 @@ public final class CgFrameBuilder {
             }
         }
     }
+
+    private static final int OBJECT = CgInstanceKind.OBJECT.ordinal();
 }

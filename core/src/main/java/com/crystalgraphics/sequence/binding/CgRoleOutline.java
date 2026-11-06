@@ -4,7 +4,7 @@ import java.util.function.Consumer;
 
 import com.crystalgraphics.animation.CgAnimInstance;
 import com.crystalgraphics.api.material.CgMaterial;
-import com.crystalgraphics.api.shader.CgShaderBindings;
+import com.crystalgraphics.api.material.CgMaterialValues;
 import com.crystalgraphics.gl.material.CgMaterialProperty;
 import com.crystalgraphics.render.post.CgPostMaterial;
 import com.crystalgraphics.sequence.CgSequenceTarget;
@@ -45,7 +45,7 @@ public final class CgRoleOutline implements CgSequenceTarget {
     /** The post's colour for this slot before any key: what switching back to the materials' own puts there. */
     private final float[] postOwn = {0, 0, 0, 1};
     private final float[] colour = new float[4];
-    private final Consumer<CgShaderBindings> writeColour;
+    private final Consumer<CgMaterialValues> writeColour;
     private boolean keyed;
 
     /**

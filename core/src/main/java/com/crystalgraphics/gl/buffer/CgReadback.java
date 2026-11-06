@@ -1,5 +1,11 @@
 package com.crystalgraphics.gl.buffer;
 
+import com.crystalgraphics.platform.rhi.sync.CgGpuReadback;
+import com.crystalgraphics.platform.rhi.resource.CgTextureRegion;
+import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
+import com.crystalgraphics.platform.rhi.resource.CgGpuBuffer;
+import com.crystalgraphics.platform.rhi.CgRHI;
+import com.crystalgraphics.platform.rhi.CgDeviceSection;
 import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.gl.CgGlNames;
 import com.crystalgraphics.platform.gl.CgCapabilities;
@@ -39,6 +45,14 @@ import static com.crystalgraphics.platform.gl.state.CgGlSlot.FBO;
  *     public void accept(ByteBuffer data) { show(data); }
  *     public void failed(String reason) { LOG.warn("stats lost: {}", reason); }
  * });
+ * }</pre>
+ *
+ * <p>On the installed device, the copy is the device's and its staging the device's readback memory (Unreal's
+ * {@code FRHIGPUBufferReadback}), the source already readable as a copy's:</p>
+ *
+ * <pre>{@code
+ * CgReadback.buffer(imports.buffer(counts), imports.bufferOffset(counts), 4, data -> alive = data.getInt(0));
+ * CgReadback.texture(heightMap, CgTextureRegion.of2D(0, 0, 0, 64, 64), data -> keep(data));
  * }</pre>
  *
  * <ul>
@@ -100,6 +114,9 @@ public final class CgReadback {
     private static final int PERSISTENT_FLAGS = CgGL.GL_MAP_READ_BIT | CgGL.GL_MAP_PERSISTENT_BIT | CgGL.GL_MAP_COHERENT_BIT;
 
     private int buffer;
+    /** Its staging on a device instead of {@link #buffer}, and that device; null for a {@code CgGL} one. */
+    private CgGpuReadback staging;
+    private CgRHI stagingOf;
     private long capacity;
     private long bytes;
     private long fence;
@@ -125,6 +142,38 @@ public final class CgReadback {
         CgGL.glBindBuffer(CgGL.GL_COPY_READ_BUFFER, 0);
         CgGL.glBindBuffer(CgGL.GL_COPY_WRITE_BUFFER, 0);
         if (gpu) CgGpuTrace.end();
+        r.start(size, sink);
+    }
+
+    /**
+     * Reads {@code size} bytes of {@code source} from {@code offset} on the installed device: copied by the device in a
+     * device section, its source already readable as a copy's ({@code CgAccess.COPY_READ}).
+     */
+    public static void buffer(CgGpuBuffer source, long offset, long size, Sink sink) {
+        if (size <= 0) throw new IllegalArgumentException("a readback of " + size + " bytes");
+        CgReadback r = takeStaged(size);
+        CgDeviceSection.begin();
+        try {
+            r.staging.enqueue(CgRHI.get().encoder(), source, offset, size);
+        } finally {
+            CgDeviceSection.end();
+        }
+        r.start(size, sink);
+    }
+
+    /**
+     * Reads {@code region} of {@code source} on the installed device, texels tightly packed with rows from the first in
+     * memory, as {@link #pixels} lays them out; its source already readable as a copy's.
+     */
+    public static void texture(CgGpuTexture source, CgTextureRegion region, Sink sink) {
+        long size = source.desc().format().bytes(region.width(), region.height(), region.depth());
+        CgReadback r = takeStaged(size);
+        CgDeviceSection.begin();
+        try {
+            r.staging.enqueue(CgRHI.get().encoder(), source, region);
+        } finally {
+            CgDeviceSection.end();
+        }
         r.start(size, sink);
     }
 
@@ -227,6 +276,17 @@ public final class CgReadback {
         if (frame >= CgFrameRing.FRAMES && !PENDING.isEmpty()) CgFrameRing.awaitRetired(frame - CgFrameRing.FRAMES);
         while (!PENDING.isEmpty()) {
             CgReadback r = PENDING.peekFirst();
+            if (r.staging != null) {
+                if (!r.staging.ready()) return;   // the device retires frames in order: nothing newer is done either
+                PENDING.pollFirst();
+                try (CgTrace.Zone z = CgTrace.zone(CgChannels.GL, DELIVER)) {
+                    ByteBuffer data = r.staging.data();
+                    data.clear().limit((int) r.bytes);
+                    r.accept(data.order(ByteOrder.nativeOrder()));
+                }
+                r.recycle();
+                continue;
+            }
             int state;
             if (r.fence == 0L) {
                 if (r.ringFrame > CgFrameRing.retired()) return;
@@ -259,20 +319,40 @@ public final class CgReadback {
         for (CgReadback r : PENDING) {
             if (r.fence != 0L) CgGL.glDeleteSync(r.fence);
             r.fail("the context was torn down");
-            CgGL.glDeleteBuffers(r.buffer);
+            r.free();
         }
-        for (CgReadback r : IDLE) CgGL.glDeleteBuffers(r.buffer);
+        for (CgReadback r : IDLE) r.free();
         PENDING.clear();
         IDLE.clear();
         if (sliceReader != 0) CgGL.glDeleteFramebuffers(sliceReader);
         sliceReader = 0;
     }
 
+    /** The size class {@code size} bytes stage in. */
+    private static long capacity(long size) {
+        return Math.max(SMALLEST, Long.highestOneBit(size - 1) << 1);
+    }
+
+    /** One staged on the installed device with at least {@code size} bytes: an idle one of that size class, else new. */
+    private static CgReadback takeStaged(long size) {
+        long capacity = capacity(size);
+        CgRHI rhi = CgRHI.get();
+        for (int i = IDLE.size() - 1; i >= 0; i--) {
+            CgReadback idle = IDLE.get(i);
+            if (idle.stagingOf == rhi && idle.capacity == capacity) return IDLE.remove(i);
+        }
+        CgReadback r = new CgReadback();
+        r.capacity = capacity;
+        r.staging = new CgGpuReadback(rhi, "readback", capacity);
+        r.stagingOf = rhi;
+        return r;
+    }
+
     /** One with staging of at least {@code size} bytes: an idle one of that size class, else new. */
     private static CgReadback take(long size) {
-        long capacity = Math.max(SMALLEST, Long.highestOneBit(size - 1) << 1);
+        long capacity = capacity(size);
         for (int i = IDLE.size() - 1; i >= 0; i--) {
-            if (IDLE.get(i).capacity == capacity) return IDLE.remove(i);
+            if (IDLE.get(i).staging == null && IDLE.get(i).capacity == capacity) return IDLE.remove(i);
         }
         CgReadback r = new CgReadback();
         r.capacity = capacity;
@@ -297,7 +377,7 @@ public final class CgReadback {
         this.ringFrame = CgFrameRing.frame();
         // Only a host that has ended no frame reads it (poll): glFenceSync answers a handle, so on a threaded driver
         // it waits for the queue, 2-5 ms a readback mid-move (T10).
-        fence = ringFrame > 0 ? 0L : CgGL.glFenceSync(CgGL.GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+        fence = staging != null || ringFrame > 0 ? 0L : CgGL.glFenceSync(CgGL.GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
         PENDING.addLast(this);
         CgTrace.add(CgChannels.GL, REQUESTS, 1);
         CgTrace.add(CgChannels.GL, BYTES, size);
@@ -352,7 +432,13 @@ public final class CgReadback {
         if (IDLE.size() < KEPT) {
             IDLE.add(this);
         } else {
-            CgGL.glDeleteBuffers(buffer);
+            free();
         }
+    }
+
+    /** Its staging freed: the device's released, or the {@code CgGL} buffer deleted. */
+    private void free() {
+        if (staging != null) staging.release();
+        else CgGL.glDeleteBuffers(buffer);
     }
 }
