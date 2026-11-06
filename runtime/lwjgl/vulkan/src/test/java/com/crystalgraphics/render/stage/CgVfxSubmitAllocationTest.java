@@ -72,6 +72,9 @@ public class CgVfxSubmitAllocationTest {
     private static final CgRHI.Globals.Compute DESKTOP =
             new CgRHI.Globals.Compute(49152, 1024, 1024, 1024, 64, 65535, 65535, 65535, 32, 0xFF);
 
+    /** Rounds of 500 frames measured, the least taken: a steady allocation is in all, warm-up in the first few. */
+    private static final int ROUNDS = 8;
+
     private static ShadercGlslCompiler compiler;
     /** The plan's Nova Cannon kit, from this module's directory; the case skips where plan/ is not checked out. */
     private static final Path NOVA = Paths.get("../../../../plan/crystalgraphics/vfx-aaa/examples/novamod/assets/novamod");
@@ -144,7 +147,8 @@ public class CgVfxSubmitAllocationTest {
         try {
             for (int i = 0; i < 3_000; i++) frame.run();
             long perFrame = Long.MAX_VALUE;
-            for (int round = 0; round < 3; round++) {   // the least of three: a one-off is no frame's
+            // The least of eight: a one-off is no frame's, and the last JIT compiles land within the first few
+            for (int round = 0; round < ROUNDS; round++) {
                 long before = CgThreadAllocation.current();
                 for (int i = 0; i < 500; i++) frame.run();
                 perFrame = Math.min(perFrame, (CgThreadAllocation.current() - before) / 500);
@@ -202,7 +206,7 @@ public class CgVfxSubmitAllocationTest {
         try {
             for (int i = 0; i < 3_000; i++) frame.run();
             long perFrame = Long.MAX_VALUE;
-            for (int round = 0; round < 3; round++) {
+            for (int round = 0; round < ROUNDS; round++) {
                 long before = CgThreadAllocation.current();
                 for (int i = 0; i < 500; i++) frame.run();
                 perFrame = Math.min(perFrame, (CgThreadAllocation.current() - before) / 500);

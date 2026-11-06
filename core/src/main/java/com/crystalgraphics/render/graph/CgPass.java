@@ -265,6 +265,12 @@ public abstract sealed class CgPass permits CgRasterPass, CgComputePass, CgPass.
             return super.held() || delivering;
         }
 
+        /** Its sink is outside the graph, with a request or none ({@link CgRecording#fetch}): RDG's readbacks never cull. */
+        @Override
+        boolean sideEffect() {
+            return true;
+        }
+
         @Override
         void clearReferences() {
             sink = null;

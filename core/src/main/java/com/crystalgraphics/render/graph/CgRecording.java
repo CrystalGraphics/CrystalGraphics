@@ -23,6 +23,7 @@ import com.crystalgraphics.util.CgBufferUtils;
 import javax.annotation.Nullable;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Arrays;
 import java.util.IdentityHashMap;
 import java.util.List;
@@ -100,7 +101,10 @@ public final class CgRecording {
     private int computesUsed;
     private final List<CgPass.Fill> fills = new ArrayList<>();
     private int fillsUsed;
-    /** {@link #fetch}'s passes, each reused once its last delivery has landed. */
+    /**
+     * {@link #fetch}'s passes: [0, {@link #fetchesUsed}) this recording's, the rest free or held by a delivery in flight,
+     * each reused once delivered (Niagara's readback staging, reused once read). Grows to the frames in flight and stops.
+     */
     private final List<CgPass.Readback> fetches = new ArrayList<>();
     private int fetchesUsed;
     private final List<CgPass.Update> updates = new ArrayList<>();
@@ -430,9 +434,22 @@ public final class CgRecording {
      * }</pre>
      */
     public void fetch(CgGraphBuffer buffer, long offset, long size, CgReadback.Sink sink) {
-        CgPass.Readback pass = fetchesUsed < fetches.size() ? fetches.get(fetchesUsed) : null;
-        if (pass == null) fetches.add(pass = new CgPass.Readback(buffer, offset, size, sink, null));
-        else pass.reuse(buffer, offset, size, sink);
+        CgPass.Readback pass = null;
+        for (int i = fetchesUsed; i < fetches.size(); i++) {
+            CgPass.Readback free = fetches.get(i);
+            if (free.held()) continue;
+            fetches.set(i, fetches.get(fetchesUsed));
+            fetches.set(fetchesUsed, free);
+            pass = free;
+            break;
+        }
+        if (pass == null) {
+            pass = new CgPass.Readback(buffer, offset, size, sink, null);
+            fetches.add(pass);
+            Collections.swap(fetches, fetches.size() - 1, fetchesUsed);
+        } else {
+            pass.reuse(buffer, offset, size, sink);
+        }
         fetchesUsed++;
         readback(buffer, offset, size, sink, pass);
     }
@@ -723,7 +740,10 @@ public final class CgRecording {
         computesUsed = 0;
         recycle(fills, fillsUsed);
         fillsUsed = 0;
-        recycle(fetches, fetchesUsed);
+        for (int i = 0; i < fetchesUsed; i++) {
+            CgPass.Readback pass = fetches.get(i);
+            if (!pass.held()) pass.clearReferences();   // one in flight keeps its sink until delivered
+        }
         fetchesUsed = 0;
         recycle(updates, updatesUsed);
         updatesUsed = 0;
