@@ -65,8 +65,10 @@ public final class CgDrawChunk {
     @Nullable
     int[] groups;
 
-    /** Instance records per kind ordinal, each trimmed to what the chunk wrote. */
+    /** Instance records per kind ordinal, each trimmed to what the chunk wrote; {@code OBJECT}'s are ids. */
     float[][] instances;
+    /** The table its {@code OBJECT} ids name: its recording's, or one of its own. */
+    CgPrimitiveTable primitives;
     /** Per draw, whether each record is its own command; per OBJECT record of such a draw, its count's offset. */
     @Nullable
     boolean[] each;
@@ -103,7 +105,8 @@ public final class CgDrawChunk {
                 @Nullable CgBufferHandle[] counts, @Nullable long[] countOffsets, @Nullable int[] countModes,
                 @Nullable CgBufferHandle[] objects, @Nullable CgBufferHandle[] buffers,
                 @Nullable CgBindingPoints.Binding[] bufferAt, float[] bounds, long[] sortKeys,
-                @Nullable int[] groups, float[][] instances, @Nullable boolean[] each, @Nullable long[] recordCounts) {
+                @Nullable int[] groups, float[][] instances, @Nullable boolean[] each, @Nullable long[] recordCounts,
+                CgPrimitiveTable primitives) {
         this.pooled = false;
         this.spatial = spatial;
         this.clip = clip;
@@ -129,6 +132,7 @@ public final class CgDrawChunk {
         this.instances = instances;
         this.each = each;
         this.recordCounts = recordCounts;
+        this.primitives = primitives;
     }
 
     /** The spatial node its draws are positioned in; 0 is the root. */
@@ -168,7 +172,10 @@ public final class CgDrawChunk {
         return CgInstanceKind.of(kinds[draw]);
     }
 
-    /** The draw's first instance, in records, within {@link #data(CgInstanceKind)} of its kind, or its {@link #objects}. */
+    /**
+     * The draw's first instance, in records, within {@link #data(CgInstanceKind)} of its kind (an {@code OBJECT} draw's,
+     * its ids), or its {@link #objects}.
+     */
     public int first(int draw) {
         return firsts[draw];
     }
@@ -289,7 +296,7 @@ public final class CgDrawChunk {
         return new CgDrawChunk(spatial, clip, effect, bindings, count, pipelines,
                 bindingIds != null ? bindingIds : this.bindingIds, kinds, firsts, instanceCounts, meshes, ranges, counts,
                 countOffsets, countModes, objects, buffers, bufferAt, bounds, sortKeys, groups,
-                instances != null ? instances : this.instances, each, recordCounts);
+                instances != null ? instances : this.instances, each, recordCounts, primitives);
     }
 
     /** This chunk with arrays of its own, trimmed to what it holds: what outlives a pooled chunk's recording. */
@@ -306,7 +313,8 @@ public final class CgDrawChunk {
                 buffers == null ? null : Arrays.copyOf(buffers, count * BUFFERS),
                 bufferAt == null ? null : Arrays.copyOf(bufferAt, count * BUFFERS), Arrays.copyOf(bounds, count * 4),
                 Arrays.copyOf(sortKeys, count), groups == null ? null : Arrays.copyOf(groups, count), kept,
-                each == null ? null : Arrays.copyOf(each, count), recordCounts == null ? null : recordCounts.clone());
+                each == null ? null : Arrays.copyOf(each, count), recordCounts == null ? null : recordCounts.clone(),
+                primitives.copy());
     }
 
     /**
@@ -318,8 +326,10 @@ public final class CgDrawChunk {
               @Nullable CgBufferHandle[] counts, @Nullable long[] countOffsets, @Nullable int[] countModes,
               @Nullable CgBufferHandle[] objects, @Nullable CgBufferHandle[] buffers,
               @Nullable CgBindingPoints.Binding[] bufferAt, float[] bounds, long[] sortKeys, @Nullable int[] groups,
-              float[][] instances, int[] records, @Nullable boolean[] each, @Nullable long[] recordCounts) {
+              float[][] instances, int[] records, @Nullable boolean[] each, @Nullable long[] recordCounts,
+              CgPrimitiveTable primitives) {
         this.spatial = spatial;
+        this.primitives = primitives;
         this.clip = clip;
         this.effect = effect;
         this.bindings = bindings;
@@ -394,6 +404,7 @@ public final class CgDrawChunk {
     /** Drops what a shell names, so a reset recording keeps no mesh, buffer or table alive. */
     void clearReferences() {
         bindings = null;
+        primitives = null;
         if (ownMeshes != null) Arrays.fill(ownMeshes, null);
         if (ownCounts != null) Arrays.fill(ownCounts, null);
         if (ownObjects != null) Arrays.fill(ownObjects, null);
@@ -413,7 +424,12 @@ public final class CgDrawChunk {
         return own;
     }
 
-    /** The instance records of {@code kind}, every draw of that kind's in turn. Read only. */
+    /** The table its {@code OBJECT} draws' ids name. */
+    public CgPrimitiveTable primitives() {
+        return primitives;
+    }
+
+    /** The instance records of {@code kind}, every draw of that kind's in turn; {@code OBJECT}'s ids. Read only. */
     public float[] data(CgInstanceKind kind) {
         return instances[kind.ordinal()];
     }

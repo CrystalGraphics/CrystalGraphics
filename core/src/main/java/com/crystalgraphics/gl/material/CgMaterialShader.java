@@ -1231,6 +1231,7 @@ public final class CgMaterialShader implements CgReloadable {
             CgUniformBuffer.wireBlock(shader, CgPassConstants.VIEW_BLOCK, CgBindingPoints.VIEW_UBO);
             CgUniformBuffer.wireBlock(shader, CgPassConstants.ENVIRONMENT_BLOCK, CgBindingPoints.ENVIRONMENT_UBO);
             CgShaderBuffer.wireBlock(shader, CgInstanceKind.OBJECT_BLOCK_NAME, CgBindingPoints.OBJECT_DATA);
+            CgShaderBuffer.wireBlock(shader, CgInstanceKind.OBJECT_ID_BLOCK_NAME, CgBindingPoints.OBJECT_IDS);
             if (map.block != null) map.block.wireShader(shader);
             for (CgAttachedBuffer ab : map.buffers) ab.getBuffer().wireShader(shader);
             // Only a skinned program declares the palettes; any other leaves the block absent, which this skips.

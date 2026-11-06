@@ -5,7 +5,7 @@ import com.crystalgraphics.api.font.CgFontFamily;
 import com.crystalgraphics.api.text.CgTextLayout;
 import com.crystalgraphics.gl.render.CgQuadRenderer;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
-import com.crystalgraphics.render.draw.CgInstanceKind;
+import com.crystalgraphics.render.draw.CgPrimitiveTable;
 import com.crystalgraphics.render.graph.CgBufferDesc;
 import com.crystalgraphics.render.graph.CgBufferUsage;
 import com.crystalgraphics.render.graph.CgGraphBuffer;
@@ -48,7 +48,7 @@ public final class CgWorldText {
 
     private static final int RECORD = CgQuadRenderer.Record.FLOATS;
     private static final int NODE = CgQuadRenderer.Record.NODE;
-    private static final int OBJECT = CgInstanceKind.OBJECT.format().getFloatCount();
+    private static final int OBJECT = CgPrimitiveTable.FLOATS;
     /** The ranks a label's depth pass draws, from 0: the lines under the text, its outline, its fill, the lines over it. */
     private static final int TEXT_RANKS = 3;
     /** Frames a label gone from the frame keeps its ranges for. */

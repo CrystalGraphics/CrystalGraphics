@@ -470,8 +470,19 @@ public final class CgFrameBuilder {
                 CgDrawChunk chunk = refChunk[batcher.ref(i)];
                 int d = refDraw[batcher.ref(i)];
                 if (chunk.objects(d) != null) {
+                    // Its own records, bound where the table is and read through identity ids
                     packed.objects[b] = chunk.objects(d);
                     packed.first[b] = chunk.first(d);
+                    frame.identityIds = Math.max(frame.identityIds, chunk.first(d) + chunk.instances(d));
+                } else if (ki == OBJECT) {
+                    int base = frame.primitivesOf(chunk.primitives()), ids = chunk.instances(d);
+                    frame.reserve(ki, ids);
+                    float[] from = chunk.data(k), to = frame.instances[ki];
+                    for (int r = chunk.first(d), at = frame.instanceFloats[ki], end = r + ids; r < end; r++, at++) {
+                        to[at] = Float.intBitsToFloat(Float.floatToRawIntBits(from[r]) + base);
+                    }
+                    frame.instanceFloats[ki] += ids;
+                    packed.kinds |= 1 << ki;
                 } else {
                     int length = chunk.instances(d) * floats;
                     frame.reserve(ki, length);
@@ -796,4 +807,6 @@ public final class CgFrameBuilder {
             }
         }
     }
+
+    private static final int OBJECT = CgInstanceKind.OBJECT.ordinal();
 }

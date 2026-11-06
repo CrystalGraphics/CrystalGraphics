@@ -15,6 +15,7 @@ import com.crystalgraphics.render.draw.CgChunkBuilder;
 import com.crystalgraphics.render.draw.CgOrder;
 import com.crystalgraphics.render.draw.CgPassConstants;
 import com.crystalgraphics.render.draw.CgPipeline;
+import com.crystalgraphics.render.draw.CgPrimitiveTable;
 import com.crystalgraphics.render.property.CgEffectTree;
 import com.crystalgraphics.render.property.CgSpatialTree;
 import com.crystalgraphics.util.CgBoxedInts;
@@ -73,7 +74,8 @@ public final class CgRecording {
     private final CgShapeTable shapes = new CgShapeTable();
     private final CgSpatialTree spatial = new CgSpatialTree();
     private final CgEffectTree effects = new CgEffectTree();
-    private final CgChunkBuilder chunks = CgChunkBuilder.pooling(bindings);
+    private final CgPrimitiveTable primitives = new CgPrimitiveTable();
+    private final CgChunkBuilder chunks = CgChunkBuilder.pooling(bindings, primitives);
     private final List<CgPass> passes = new ArrayList<>();
 
     private final List<CgGraphResource> resources = new ArrayList<>();
@@ -153,6 +155,14 @@ public final class CgRecording {
     /** The table every chunk of this recording takes its binding ids from. */
     public CgBindingTable bindings() {
         return bindings;
+    }
+
+    /**
+     * The firing's object records, each written once and named by slot in every pass that draws it: what its chunks'
+     * OBJECT ids name. A builder recording here from outside takes it with {@code chunks.primitives(...)}.
+     */
+    public CgPrimitiveTable primitives() {
+        return primitives;
     }
 
     /** The spatial nodes its chunks are positioned in. @see CgSpatialTree */
@@ -749,6 +759,7 @@ public final class CgRecording {
         updatesUsed = 0;
         chunks.reset();
         chunks.recycle();
+        primitives.reset();
         bindings.reset();
         clips.reset();
         shapes.reset();

@@ -57,6 +57,12 @@ public final class CgBindingPoints {
     public static Binding OBJECT_DATA;
 
     /**
+     * The passes' object ids ({@code CgObjectIdBuffer}): an OBJECT draw's instance names its record in
+     * {@link #OBJECT_DATA} by one. A storage point only. {@code null} until {@link #init(CgCapabilities)} has been called.
+     */
+    public static Binding OBJECT_IDS;
+
+    /**
      * Reserved binding pair for {@code CgQuadRenderer}'s shared {@code "CgQuadRendererInstances"}
      * buffer — {@code ssbo} one below {@link #OBJECT_DATA}'s, {@code tbo} one below
      * {@link #OBJECT_DATA}'s, continuing the same top-of-range countdown. Engine-reserved,
@@ -261,6 +267,7 @@ public final class CgBindingPoints {
         // The depth and scene-colour units below count down after these, so never cache them across an init().
         boolean tbo = PATH == CgCapabilities.ShaderBufferPath.TBO;
         OBJECT_DATA = new Binding(--maxSsboBindings, tbo ? --maxTextureUnits : -1);
+        OBJECT_IDS = new Binding(--maxSsboBindings, -1);
         QUAD_RENDERER = new Binding(--maxSsboBindings, tbo ? --maxTextureUnits : -1);
         CURVE_RENDERER = new Binding(--maxSsboBindings, tbo ? --maxTextureUnits : -1);
         PARTICLES = new Binding(--maxSsboBindings, tbo ? --maxTextureUnits : -1);

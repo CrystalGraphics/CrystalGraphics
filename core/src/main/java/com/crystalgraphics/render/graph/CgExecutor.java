@@ -66,6 +66,7 @@ import com.crystalgraphics.render.draw.CgIndirect;
 import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.render.draw.CgPassConstants;
 import com.crystalgraphics.render.draw.CgPipeline;
+import com.crystalgraphics.render.draw.CgPrimitiveTable;
 import com.crystalgraphics.render.mesh.CgMeshStore;
 import com.crystalgraphics.render.property.CgPalette;
 import com.crystalgraphics.trace.CgGpuTrace;
@@ -138,6 +139,10 @@ public final class CgExecutor {
     private static final int KINDS = CgInstanceKind.values().length;
     private static final int UNIT_KINDS = (1 << CgInstanceKind.QUAD.ordinal()) | (1 << CgInstanceKind.CURVE.ordinal());
     private static final int OBJECT = CgInstanceKind.OBJECT.ordinal();
+    /** Records written to the frame's table, once each, and ids the passes copied to name them: SR1's two counts. */
+    private static final int PRIMITIVES = CgTrace.name("graph.primitives"), PRIMITIVE_IDS = CgTrace.name("graph.primitive-ids");
+    /** {@code i} at {@code i}: what a draw of its own records reads them through, grown as one reaches further. */
+    private static float[] identity = new float[0];
     /** What every QUAD and CURVE instance expands. */
     private static final CgMesh UNIT_QUAD = CgMesh.quads(1);
 
@@ -262,6 +267,13 @@ public final class CgExecutor {
 
     private final CgStreamBuffer ring;
     private final CgShaderBuffer[] instanceBuffers = new CgShaderBuffer[KINDS];
+    /** The frame's object records at {@code OBJECT_DATA}, uploaded once; {@code instanceBuffers[OBJECT]} holds the ids. */
+    private final CgShaderBuffer primitives;
+    /** Identity ids at {@code OBJECT_IDS}, for a draw of its own records; kept across frames, {@link #identityIds} of them. */
+    private final CgShaderBuffer identityBuffer;
+    private int identityIds;
+    /** Whether the frame executing has records in its table, which a pass of OBJECT draws binds. */
+    private boolean tabled;
     private final int[] scissorRect = new int[4], scissorPart = new int[4];
     /** The engine buffers the last batch's buffer()s stood in for: the batch loop's, kept so it allocates nothing. */
     private final CgBindingPoints.Binding[] standIn = new CgBindingPoints.Binding[CgDrawChunk.BUFFERS];
@@ -345,8 +357,12 @@ public final class CgExecutor {
                 CgInstanceKind.QUAD.format(), CgBindingPoints.QUAD_RENDERER, CgBufferLifetime.FRAME);
         instanceBuffers[CgInstanceKind.CURVE.ordinal()] = registry.getOrCreateInternal("CgGraphCurveInstances" + depth,
                 CgInstanceKind.CURVE.format(), CgBindingPoints.CURVE_RENDERER, CgBufferLifetime.FRAME);
-        instanceBuffers[CgInstanceKind.OBJECT.ordinal()] = registry.getOrCreateInternal("CgGraphObjectInstances" + depth,
-                CgInstanceKind.OBJECT.format(), CgBindingPoints.OBJECT_DATA, CgBufferLifetime.FRAME);
+        instanceBuffers[CgInstanceKind.OBJECT.ordinal()] = registry.getOrCreateInternal("CgGraphObjectIds" + depth,
+                CgInstanceKind.OBJECT.format(), CgBindingPoints.OBJECT_IDS, CgBufferLifetime.FRAME);
+        primitives = registry.getOrCreateInternal("CgGraphPrimitives" + depth, CgPrimitiveTable.FORMAT,
+                CgBindingPoints.OBJECT_DATA, CgBufferLifetime.FRAME);
+        identityBuffer = registry.getOrCreateInternal("CgGraphIdentityIds" + depth, CgInstanceKind.OBJECT.format(),
+                CgBindingPoints.OBJECT_IDS, CgBufferLifetime.RETAINED);
     }
 
     /** Executes {@code frame} and restores GL state after. Render thread, inside a frame. */
@@ -516,6 +532,11 @@ public final class CgExecutor {
             for (int k = 0; k < KINDS; k++) {
                 if (frame.instanceFloats[k] > 0) instanceBuffers[k].uploadRaw(frame.instances[k], frame.instanceFloats[k]);
             }
+            tabled = frame.primitiveFloats > 0;
+            if (tabled) primitives.uploadRaw(frame.primitives, frame.primitiveFloats);
+            if (frame.identityIds > identityIds) uploadIdentity(frame.identityIds);
+            CgTrace.add(CgChannels.GL, PRIMITIVES, frame.primitives());
+            CgTrace.add(CgChannels.GL, PRIMITIVE_IDS, frame.instanceFloats[OBJECT]);
         }
         boolean gpu = uploadGpuZones();
         if (gpu) CgGpuTrace.begin(GPU_MESHES);
@@ -1940,6 +1961,7 @@ public final class CgExecutor {
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, RASTER_BINDINGS)) {
             frame.bindings.bind(packed.constants);
             for (int k = 0; k < KINDS; k++) if ((packed.kinds & (1 << k)) != 0) instanceBuffers[k].bind();
+            if (tabled && (packed.kinds & (1 << OBJECT)) != 0) primitives.bind();
             packed.palette.pass(pass.viewOwner(), pass.viewX(), pass.viewY(), CgPassConstants.height(pass.constants));
             if ((packed.kinds & UNIT_KINDS) != 0 || packed.tables) {
                 packed.clips.bindForDraw();
@@ -2076,8 +2098,10 @@ public final class CgExecutor {
                 try (CgTrace.Zone records = CgTrace.zone(CgChannels.GL_DETAIL, BATCH_RECORDS)) {
                     if (packed.objects[b] != null) {
                         bindRecords(packed.objects[b], CgBindingPoints.OBJECT_DATA);
+                        identityBuffer.bind();
                         objectsBound = true;
                     } else if (objectsBound && packed.kind[b] == OBJECT) {
+                        if (tabled) primitives.bind();
                         instanceBuffers[OBJECT].bind();
                         objectsBound = false;
                     }
@@ -2483,6 +2507,7 @@ public final class CgExecutor {
                 copyTarget(pass, packed.copyBefore[0], packed.copyRect, 0);
             }
             for (int k = 0; k < KINDS; k++) if ((packed.kinds & (1 << k)) != 0) instanceBuffers[k].bind();
+            if (tabled && (packed.kinds & (1 << OBJECT)) != 0) primitives.bind();
             packed.palette.pass(pass.viewOwner(), pass.viewX(), pass.viewY(), CgPassConstants.height(pass.constants));
             if ((packed.kinds & UNIT_KINDS) != 0 || packed.tables) {
                 packed.clips.bindForDraw();
@@ -2679,8 +2704,10 @@ public final class CgExecutor {
             int first = b * CgDrawChunk.BUFFERS;
             if (packed.objects[b] != null) {
                 bindRecords(packed.objects[b], CgBindingPoints.OBJECT_DATA);
+                identityBuffer.noteBound();
                 objectsBound = true;
             } else if (objectsBound && packed.kind[b] == OBJECT) {
+                if (tabled) primitives.noteBound();
                 instanceBuffers[OBJECT].noteBound();
                 objectsBound = false;
             }
@@ -2729,6 +2756,18 @@ public final class CgExecutor {
     }
 
     /** Binds a GPU buffer of records where an engine buffer's macros read the frame's own. */
+    /** The identity ids reaching {@code n} at least, uploaded where they reached less: rarely, as a draw's records grow. */
+    private void uploadIdentity(int n) {
+        int ids = Math.max(n, identityIds * 2);
+        if (identity.length < ids) {
+            float[] grown = new float[ids];
+            for (int i = 0; i < ids; i++) grown[i] = Float.intBitsToFloat(i);
+            identity = grown;
+        }
+        identityBuffer.uploadRaw(identity, ids);
+        identityIds = ids;
+    }
+
     private void bindRecords(CgBufferHandle records, CgBindingPoints.Binding at) {
         int id = records instanceof CgGraphBuffer graph ? bufferStorage(graph, false) : records.bufferId();
         if (!stating) CgGL.glBindBufferBase(CgGL.GL_SHADER_STORAGE_BUFFER, at.ssbo(), id);

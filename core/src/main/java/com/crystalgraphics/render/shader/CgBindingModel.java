@@ -22,7 +22,7 @@ import com.github.bsideup.jabel.Desugar;
  * <table>
  *   <tr><th>Set</th><th>Holds</th><th>Made</th></tr>
  *   <tr><td>{@link #VIEW}</td><td>the frame block, scene depth and colour, the lightmap, the media, local lights</td><td>once a firing</td></tr>
- *   <tr><td>{@link #PASS}</td><td>the pass's records, the text block, bone palettes, engine buffers by {@code cg_use} token</td><td>once a pass</td></tr>
+ *   <tr><td>{@link #PASS}</td><td>the object records, the text block, bone palettes, the pass's object ids, engine buffers by {@code cg_use} token</td><td>once a pass</td></tr>
  *   <tr><td>{@link #MATERIAL}</td><td>its block, its {@code Buffers { }}, buffers attached to it, its textures where bound</td><td>persistent</td></tr>
  *   <tr><td>{@link #BINDLESS}</td><td>every texture view and sampler, by index</td><td>once a frame</td></tr>
  * </table>
@@ -52,14 +52,16 @@ public final class CgBindingModel {
      * model does not place. */
     public static final int NONE = -1;
 
-    /** {@code CgObjectDataBuffer}, the pass's draw records: written in {@code cg_env.glsl}. */
+    /** {@code CgObjectDataBuffer}, the firing's object records or a draw's own: written in {@code cg_env.glsl}. */
     public static final Slot OBJECTS = new Slot(PASS, 0);
     /** {@code CgTextRenderer}'s {@code TextData} block. */
     public static final Slot TEXT_DATA = new Slot(PASS, 1);
     /** {@code CgBonePalettes}, read by a skinned variant. */
     public static final Slot BONES = new Slot(PASS, 2);
+    /** {@code CgObjectIdBuffer}, the pass's object ids: written in {@code cg_env.glsl}. */
+    public static final Slot OBJECT_IDS = new Slot(PASS, 3);
     /** The first cg_use token's binding; token {@code i} in the registry's order is at this plus {@code i}. */
-    public static final int FIRST_TOKEN = 3;
+    public static final int FIRST_TOKEN = 4;
 
     /** {@code CgMaterialBlock}, the material's parameters. */
     public static final Slot MATERIAL_BLOCK = new Slot(MATERIAL, 0);
@@ -117,12 +119,13 @@ public final class CgBindingModel {
     }
 
     /**
-     * The slot a storage buffer recorded at engine point {@code point} reads: the pass's records, bone palettes and
-     * cg_use tokens, the material's {@code Buffers { }}. {@link #NONE} for one it does not place.
+     * The slot a storage buffer recorded at engine point {@code point} reads: the object records and ids, bone palettes
+     * and cg_use tokens, the material's {@code Buffers { }}. {@link #NONE} for one it does not place.
      */
     public static int ofStorage(int point) {
         if (point < 0 || !CgBindingPoints.isInitialized()) return NONE;
         if (point == CgBindingPoints.OBJECT_DATA.ssbo()) return pack(PASS, OBJECTS.binding());
+        if (point == CgBindingPoints.OBJECT_IDS.ssbo()) return pack(PASS, OBJECT_IDS.binding());
         if (point == CgBindingPoints.BONE_PALETTES.ssbo()) return pack(PASS, BONES.binding());
         int material = point - CgBindingPoints.MATERIAL_BUFFERS_SSBO;
         if (material >= 0 && material < CgBindingPoints.MATERIAL_BUFFER_COUNT) return pack(MATERIAL, FIRST_BUFFER + material);

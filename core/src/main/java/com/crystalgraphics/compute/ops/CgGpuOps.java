@@ -12,6 +12,7 @@ import com.crystalgraphics.gl.buffer.CgReadback;
 import com.crystalgraphics.gl.framebuffer.CgFrameBuffer;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
 import com.crystalgraphics.render.draw.CgInstanceKind;
+import com.crystalgraphics.render.draw.CgPrimitiveTable;
 import com.crystalgraphics.render.draw.CgOrder;
 import com.crystalgraphics.render.draw.CgPassConstants;
 import com.crystalgraphics.render.draw.CgPipeline;
@@ -135,7 +136,7 @@ public final class CgGpuOps {
     private static final String PYRAMID_SHADER = "crystalgraphics:shaders/depth_pyramid.shader";
     private static final CgMesh FULLSCREEN = CgMesh.vertices(3, CgMeshTopology.TRIANGLES);
     /** An object record's bytes: what each instance and each kept record of a cull is. */
-    private static final int RECORD_BYTES = CgInstanceKind.OBJECT.floats() * 4;
+    private static final int RECORD_BYTES = CgPrimitiveTable.FLOATS * 4;
     /** Each instance buffer's keys start at a multiple of this in a batched cull: a binding offset is a whole 256 bytes. */
     private static final int KEY_ALIGN = 64;
     /** Per image type: its kernels and images in image.compute. */

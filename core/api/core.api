@@ -145,6 +145,7 @@ com/crystalgraphics/api/CgBindingPoints
   field public,static MATERIAL_PROPERTIES_UBO I
   field public,static MEDIA_TEXTURE_UNIT I
   field public,static OBJECT_DATA Lcom/crystalgraphics/api/CgBindingPoints$Binding;
+  field public,static OBJECT_IDS Lcom/crystalgraphics/api/CgBindingPoints$Binding;
   field public,static PALETTE Lcom/crystalgraphics/api/CgBindingPoints$Binding;
   field public,static PARTICLES Lcom/crystalgraphics/api/CgBindingPoints$Binding;
   field public,static PARTICLE_BEAMS Lcom/crystalgraphics/api/CgBindingPoints$Binding;
@@ -8942,11 +8943,14 @@ com/crystalgraphics/render/draw/CgChunkBuilder
   method public instance ()I
   method public instances ([FII)Lcom/crystalgraphics/render/draw/CgChunkBuilder;
   method public objects (Lcom/crystalgraphics/render/draw/CgBufferHandle;II)Lcom/crystalgraphics/render/draw/CgChunkBuilder;
+  method public primitive (I)Lcom/crystalgraphics/render/draw/CgChunkBuilder;
+  method public primitives ()Lcom/crystalgraphics/render/draw/CgPrimitiveTable;
+  method public primitives (Lcom/crystalgraphics/render/draw/CgPrimitiveTable;)Lcom/crystalgraphics/render/draw/CgChunkBuilder;
   method public range (III)Lcom/crystalgraphics/render/draw/CgChunkBuilder;
   method public recycle ()V
   method public reset ()V
   method public sortKey (J)Lcom/crystalgraphics/render/draw/CgChunkBuilder;
-  method public,static pooling (Lcom/crystalgraphics/render/draw/CgBindingTable;)Lcom/crystalgraphics/render/draw/CgChunkBuilder;
+  method public,static pooling (Lcom/crystalgraphics/render/draw/CgBindingTable;Lcom/crystalgraphics/render/draw/CgPrimitiveTable;)Lcom/crystalgraphics/render/draw/CgChunkBuilder;
 com/crystalgraphics/render/draw/CgChunkSink
   access public,abstract,interface
   extends java/lang/Object
@@ -9004,6 +9008,7 @@ com/crystalgraphics/render/draw/CgDrawChunk
   method public mesh (I)Lcom/crystalgraphics/api/mesh/CgMesh;
   method public objects (I)Lcom/crystalgraphics/render/draw/CgBufferHandle;
   method public pipeline (I)I
+  method public primitives ()Lcom/crystalgraphics/render/draw/CgPrimitiveTable;
   method public rangeCount (I)I
   method public rangeFirst (I)I
   method public rangeSubmesh (I)I
@@ -9041,6 +9046,7 @@ com/crystalgraphics/render/draw/CgInstanceKind
   field public,static,final CURVE Lcom/crystalgraphics/render/draw/CgInstanceKind;
   field public,static,final OBJECT Lcom/crystalgraphics/render/draw/CgInstanceKind;
   field public,static,final OBJECT_BLOCK_NAME Ljava/lang/String;
+  field public,static,final OBJECT_ID_BLOCK_NAME Ljava/lang/String;
   field public,static,final QUAD Lcom/crystalgraphics/render/draw/CgInstanceKind;
   method public floats ()I
   method public format ()Lcom/crystalgraphics/api/buffer/CgBufferFormat;
@@ -9137,6 +9143,20 @@ com/crystalgraphics/render/draw/CgPipelineForm
   field public,static,final VOLUME Lcom/crystalgraphics/render/draw/CgPipelineForm;
   method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/render/draw/CgPipelineForm;
   method public,static values ()[Lcom/crystalgraphics/render/draw/CgPipelineForm;
+com/crystalgraphics/render/draw/CgPrimitiveTable
+  access public,final
+  extends java/lang/Object
+  field public,static,final FLOATS I
+  field public,static,final FORMAT Lcom/crystalgraphics/api/buffer/CgBufferFormat;
+  method public <init> ()V
+  method public add ()I
+  method public add ([FII)I
+  method public copy ()Lcom/crystalgraphics/render/draw/CgPrimitiveTable;
+  method public count ()I
+  method public data ()[F
+  method public floats ()I
+  method public reset ()V
+  method public,static slot (I)I
 com/crystalgraphics/render/graph/CgBufferDesc
   access public,final,record
   extends java/lang/Record
@@ -9253,6 +9273,7 @@ com/crystalgraphics/render/graph/CgFrame
   method public pass (I)Lcom/crystalgraphics/render/graph/CgPass;
   method public passName (I)Ljava/lang/String;
   method public passes ()I
+  method public primitives ()I
   method public releasedAfter (I)I
   method public transients ()Ljava/util/List;
 com/crystalgraphics/render/graph/CgFrameBuilder
@@ -9476,6 +9497,7 @@ com/crystalgraphics/render/graph/CgRecording
   method public isSealed ()Z
   method public operations ()I
   method public pass (I)Lcom/crystalgraphics/render/graph/CgPass;
+  method public primitives ()Lcom/crystalgraphics/render/draw/CgPrimitiveTable;
   method public raster (Lcom/crystalgraphics/render/graph/CgGraphTexture;IILcom/crystalgraphics/render/graph/CgLoad;Lcom/crystalgraphics/render/draw/CgPassConstants;Lcom/crystalgraphics/api/state/CgRenderState;Lcom/crystalgraphics/render/draw/CgOrder;)Lcom/crystalgraphics/render/graph/CgRasterPass;
   method public raster (Lcom/crystalgraphics/render/graph/CgGraphTexture;ILcom/crystalgraphics/render/graph/CgLoad;Lcom/crystalgraphics/render/draw/CgPassConstants;Lcom/crystalgraphics/api/state/CgRenderState;Lcom/crystalgraphics/render/draw/CgOrder;)Lcom/crystalgraphics/render/graph/CgRasterPass;
   method public raster (Lcom/crystalgraphics/render/graph/CgGraphTexture;Lcom/crystalgraphics/render/graph/CgLoad;Lcom/crystalgraphics/render/draw/CgPassConstants;Lcom/crystalgraphics/api/state/CgRenderState;Lcom/crystalgraphics/render/draw/CgOrder;)Lcom/crystalgraphics/render/graph/CgRasterPass;
@@ -10342,6 +10364,7 @@ com/crystalgraphics/render/shader/CgBindingModel
   field public,static,final MEDIA I
   field public,static,final NONE I
   field public,static,final OBJECTS Lcom/crystalgraphics/render/shader/CgBindingModel$Slot;
+  field public,static,final OBJECT_IDS Lcom/crystalgraphics/render/shader/CgBindingModel$Slot;
   field public,static,final PASS I
   field public,static,final SCENE_COLOR I
   field public,static,final TEXT_DATA Lcom/crystalgraphics/render/shader/CgBindingModel$Slot;

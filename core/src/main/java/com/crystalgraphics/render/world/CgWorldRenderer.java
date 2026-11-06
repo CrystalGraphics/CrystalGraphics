@@ -52,6 +52,7 @@ import com.crystalgraphics.text.render.CgTextRenderer;
 import com.crystalgraphics.render.draw.CgPassConstants;
 import com.crystalgraphics.render.draw.CgPipeline;
 import com.crystalgraphics.render.draw.CgPipelineForm;
+import com.crystalgraphics.render.draw.CgPrimitiveTable;
 import com.crystalgraphics.render.graph.CgBufferDesc;
 import com.crystalgraphics.render.graph.CgBufferUsage;
 import com.crystalgraphics.render.graph.CgComputePass;
@@ -1764,6 +1765,7 @@ public final class CgWorldRenderer {
     }
 
     private void recordFiring(CgStageFrame stage, int which) {
+        firing++;
         CgHostView view = stage.host().view();
         beginFrame(view);
         if (count == 0) {
@@ -3188,7 +3190,18 @@ public final class CgWorldRenderer {
         if (boneBases[i] >= 0) chunks.buffer(CgBindingPoints.BONE_PALETTES, palettes);
     }
 
-    /** Draw {@code i}'s range, count and object record into the draw just begun, under {@link #model} and {@link #normal}. */
+    /**
+     * Per draw: the slot its record has in the firing's table, and which firing and table wrote it there. The table is
+     * the recording's, reset between firings, so a slot is good only in the firing that wrote it.
+     */
+    private int[] primitiveSlots = new int[64], primitiveFirings = new int[64];
+    private CgPrimitiveTable[] primitiveTables = new CgPrimitiveTable[64];
+    private int firing;
+
+    /**
+     * Draw {@code i}'s range, count and object record into the draw just begun, under {@link #model} and {@link #normal}:
+     * the record written the first time a pass of the firing draws it, named by its slot after (Unreal's GPUScene).
+     */
     private void writeInstance(CgChunkBuilder chunks, int i) {
         if (ranges[i * 3] >= 0) chunks.range(ranges[i * 3], ranges[i * 3 + 1], ranges[i * 3 + 2]);
         if (recordCounts[i] > 0) {
@@ -3197,7 +3210,13 @@ public final class CgWorldRenderer {
         }
         if (counts[i] != null) chunks.indirect(counts[i], countOffsets[i], countModes[i], countFactors[i]);
         readBuffers(chunks, i);
+        CgPrimitiveTable table = chunks.primitives();
+        if (written(i, table)) {
+            chunks.primitive(primitiveSlots[i]);
+            return;
+        }
         int at = chunks.instance();
+        keep(i, table, CgPrimitiveTable.slot(at));
         float[] data = chunks.data();
         model.get(data, at);
         normal.get(data, at + 16);
@@ -3226,6 +3245,15 @@ public final class CgWorldRenderer {
             recordOrder[k] = (long) (0x7FFFFFFF - Float.floatToIntBits(d)) << 32 | k;   // far first
         }
         Arrays.sort(recordOrder, 0, n);
+        // Written far to near once a firing: a later pass names them in that order, as the view is the firing's
+        CgPrimitiveTable table = chunks.primitives();
+        if (written(i, table)) {
+            for (int o = 0; o < n; o++) {
+                chunks.primitive(primitiveSlots[i] + o).countAt(recordOffsets[first + (int) recordOrder[o]]);
+            }
+            return;
+        }
+        keep(i, table, table.count());
         for (int o = 0; o < n; o++) {
             int r = first + (int) recordOrder[o];
             recordModel.set(transforms, i * 16);
@@ -3243,6 +3271,24 @@ public final class CgWorldRenderer {
             System.arraycopy(recordCustoms, r * 16, data, at + 32, 16);
             chunks.countAt(recordOffsets[r]);
         }
+    }
+
+    /** Whether draw {@code i}'s record is in {@code table} from this firing: its slot is then {@code primitiveSlots[i]}. */
+    private boolean written(int i, CgPrimitiveTable table) {
+        return i < primitiveSlots.length && primitiveFirings[i] == firing && primitiveTables[i] == table;
+    }
+
+    /** Notes draw {@code i}'s record, or the first of its records, at {@code slot} of {@code table} this firing. */
+    private void keep(int i, CgPrimitiveTable table, int slot) {
+        if (i >= primitiveSlots.length) {
+            int n = Math.max(i + 1, primitiveSlots.length * 2);
+            primitiveSlots = Arrays.copyOf(primitiveSlots, n);
+            primitiveFirings = Arrays.copyOf(primitiveFirings, n);
+            primitiveTables = Arrays.copyOf(primitiveTables, n);
+        }
+        primitiveSlots[i] = slot;
+        primitiveFirings[i] = firing;
+        primitiveTables[i] = table;
     }
 
     /** Whether transparent draw {@code i} draws into the prepass: its material's {@code "Depth" = "Prepass"}. */

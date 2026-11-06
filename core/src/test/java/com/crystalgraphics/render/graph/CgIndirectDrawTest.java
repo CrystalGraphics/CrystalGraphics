@@ -10,6 +10,7 @@ import com.crystalgraphics.platform.rhi.command.CgAccess;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
 import com.crystalgraphics.render.draw.CgIndirect;
 import com.crystalgraphics.render.draw.CgInstanceKind;
+import com.crystalgraphics.render.draw.CgPrimitiveTable;
 import com.crystalgraphics.render.draw.CgOrder;
 import com.crystalgraphics.render.draw.CgPassConstants;
 import com.crystalgraphics.render.draw.CgPipeline;
@@ -143,7 +144,7 @@ public class CgIndirectDrawTest {
     @Test
     public void aDrawOfObjectsRunsAfterTheKernelWritingThem_andDrawsAloneFromTheirBuffer() {
         CgGraphBuffer records = CgGraphBuffer.transientBuffer("records",
-                CgBufferDesc.elements(64, CgInstanceKind.OBJECT.floats() * 4, CgBufferUsage.STORAGE));
+                CgBufferDesc.elements(64, CgPrimitiveTable.FLOATS * 4, CgBufferUsage.STORAGE));
         CgGraphBuffer live = CgGraphBuffer.persistent("live", DESC);
         CgMesh quad = CgMesh.quads(1);
         CgRecording rec = new CgRecording();

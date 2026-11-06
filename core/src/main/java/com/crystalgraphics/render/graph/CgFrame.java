@@ -10,6 +10,7 @@ import com.crystalgraphics.render.draw.CgBindingTable;
 import com.crystalgraphics.render.draw.CgBufferHandle;
 import com.crystalgraphics.render.draw.CgDrawChunk;
 import com.crystalgraphics.render.draw.CgInstanceKind;
+import com.crystalgraphics.render.draw.CgPrimitiveTable;
 import com.crystalgraphics.util.CgBoxedInts;
 
 import javax.annotation.Nullable;
@@ -21,7 +22,7 @@ import java.util.List;
 
 /**
  * A frame graph built and ready to execute: its passes in the order they run, every batch packed, every instance of
- * each kind in one array, every binding snapshot in one table. Made by {@link CgFrameBuilder} on any thread and
+ * each kind in one array, every object record in one table, every binding snapshot in one table. Made by {@link CgFrameBuilder} on any thread and
  * executed by {@link CgExecutor} on the render thread; nothing in it needs the recordings any more.
  *
  * <pre>{@code
@@ -48,6 +49,15 @@ public final class CgFrame {
     final CgBindingTable bindings = new CgBindingTable();
     final float[][] instances = new float[KINDS][];
     final int[] instanceFloats = new int[KINDS];
+    /** The object records its OBJECT ids name: each recording's table copied once, at its base slot. */
+    float[] primitives = new float[CgPrimitiveTable.FLOATS * 256];
+    int primitiveFloats;
+    /** The tables copied, and each one's base slot: one a recording, usually one. */
+    private CgPrimitiveTable[] tables = new CgPrimitiveTable[4];
+    private int[] tableBases = new int[4];
+    private int tableCount;
+    /** How far the identity ids a draw of its own records reads through must reach: its first instance plus its count. */
+    int identityIds;
     final List<CgGraphResource> transients = new ArrayList<>();
     /** Per step, from {@code accessFrom[s]} to {@code accessFrom[s + 1]}: what it accesses, once each, and how. */
     int[] accessFrom = new int[9];
@@ -101,6 +111,10 @@ public final class CgFrame {
         readsCurrentDepth = rastersCurrent = rastersOther = false;
         bindings.reset();
         Arrays.fill(instanceFloats, 0);
+        primitiveFloats = 0;
+        identityIds = 0;
+        Arrays.fill(tables, 0, tableCount, null);
+        tableCount = 0;
         transients.clear();
         batches = 0;
         draws = 0;
@@ -111,6 +125,24 @@ public final class CgFrame {
         shapesUsed = 0;
         palettes.clear();
         palettesUsed = 0;
+    }
+
+    /** The slot {@code table}'s first record has in this frame's, copied on first ask in a build. */
+    int primitivesOf(CgPrimitiveTable table) {
+        for (int i = 0; i < tableCount; i++) if (tables[i] == table) return tableBases[i];
+        if (tableCount == tables.length) {
+            tables = Arrays.copyOf(tables, tableCount * 2);
+            tableBases = Arrays.copyOf(tableBases, tableCount * 2);
+        }
+        int base = primitiveFloats / CgPrimitiveTable.FLOATS, floats = table.floats();
+        if (primitiveFloats + floats > primitives.length) {
+            primitives = Arrays.copyOf(primitives, Math.max(primitiveFloats + floats, primitives.length * 2));
+        }
+        System.arraycopy(table.data(), 0, primitives, primitiveFloats, floats);
+        primitiveFloats += floats;
+        tables[tableCount] = table;
+        tableBases[tableCount++] = base;
+        return base;
     }
 
     /** This frame's copy of {@code table}, made on first ask in a build. */
@@ -251,9 +283,14 @@ public final class CgFrame {
         return draws;
     }
 
-    /** Instances of {@code kind} the frame uploads. */
+    /** Instances of {@code kind} the frame uploads: for {@code OBJECT}, the ids its passes copied. */
     public int instances(CgInstanceKind kind) {
         return instanceFloats[kind.ordinal()] / kind.floats();
+    }
+
+    /** Object records the frame uploads, each written once however many passes draw it. */
+    public int primitives() {
+        return primitiveFloats / CgPrimitiveTable.FLOATS;
     }
 
     /** The name of the pass at {@code step}, for tests and traces. */
