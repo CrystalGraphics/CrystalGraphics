@@ -3502,6 +3502,16 @@ com/crystalgraphics/platform/service/CgSoundService
   access public,abstract,interface
   extends java/lang/Object
   method public,abstract play (Ljava/lang/String;)V
+com/crystalgraphics/platform/service/CgStorageLayout
+  access public,final
+  extends java/lang/Object
+  field public,static,final CACHE Ljava/lang/String;
+  field public,static,final CONFIG Ljava/lang/String;
+  method public cacheIn (Ljava/nio/file/Path;)Ljava/nio/file/Path;
+  method public configIn (Ljava/nio/file/Path;)Ljava/nio/file/Path;
+  method public root ()Ljava/lang/String;
+  method public rootIn (Ljava/nio/file/Path;)Ljava/nio/file/Path;
+  method public,static of (Ljava/lang/String;)Lcom/crystalgraphics/platform/service/CgStorageLayout;
 com/crystalgraphics/platform/world/CgBlockCopy
   access public,abstract,interface
   extends java/lang/Object

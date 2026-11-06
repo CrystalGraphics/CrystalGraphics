@@ -13021,6 +13021,181 @@ com/crystalgraphics/shape/query/CgShapes
   method public,static distance (Lcom/crystalgraphics/shape/CgShape;Lcom/crystalgraphics/shape/CgPose;Lcom/crystalgraphics/shape/CgShape;Lcom/crystalgraphics/shape/CgPose;)D
   method public,static overlaps (Lcom/crystalgraphics/shape/CgShape;Lcom/crystalgraphics/shape/CgPose;Lcom/crystalgraphics/shape/CgShape;Lcom/crystalgraphics/shape/CgPose;)Z
   method public,static overlaps (Lcom/crystalgraphics/shape/CgShape;Lcom/crystalgraphics/shape/CgPose;Lcom/crystalgraphics/shape/bounds/CgAABBc;)Z
+com/crystalgraphics/storage/cache/CgCacheFiles
+  access public,final
+  extends java/lang/Object
+  method public,static digestOf (Ljava/nio/file/Path;)Ljava/lang/String;
+  method public,static gitBlobSha1 (Ljava/nio/file/Path;)Ljava/lang/String;
+  method public,static install (Ljava/nio/file/Path;Ljava/io/InputStream;Ljava/lang/String;)Z
+  method public,static install (Ljava/nio/file/Path;Ljava/io/InputStream;Ljava/lang/String;Z)Z
+  method public,static isValid (Ljava/nio/file/Path;Ljava/lang/String;)Z
+  method public,static partOf (Ljava/nio/file/Path;)Ljava/nio/file/Path;
+  method public,static partialSize (Ljava/nio/file/Path;)J
+  method public,static sha1Of (Ljava/nio/file/Path;)Ljava/lang/String;
+com/crystalgraphics/storage/cache/CgTarArchive
+  access public,final
+  extends java/lang/Object
+  implements java/io/Closeable
+  method public close ()V
+  method public next ()Lcom/crystalgraphics/storage/cache/CgTarArchive$Entry;
+  method public read ()[B
+  method public,static gzip (Ljava/io/InputStream;)Lcom/crystalgraphics/storage/cache/CgTarArchive;
+com/crystalgraphics/storage/cache/CgTarArchive$Entry
+  access public,final
+  extends java/lang/Object
+  method public isFile ()Z
+  method public name ()Ljava/lang/String;
+  method public size ()J
+com/crystalgraphics/storage/config/CgConfigStorage
+  access public,abstract,interface
+  extends java/lang/Object
+  method public directory ()Ljava/nio/file/Path;
+  method public isWritable ()Z
+  method public scoped (Ljava/lang/String;)Lcom/crystalgraphics/storage/config/CgConfigStorage;
+  method public,abstract delete (Ljava/lang/String;)V
+  method public,abstract list ()Ljava/util/List;
+  method public,abstract read (Ljava/lang/String;)Ljava/lang/String;
+  method public,abstract write (Ljava/lang/String;Ljava/lang/String;)V
+com/crystalgraphics/storage/config/CgInMemoryConfigStorage
+  access public,final
+  extends java/lang/Object
+  implements com/crystalgraphics/storage/config/CgConfigStorage
+  method public <init> ()V
+  method public delete (Ljava/lang/String;)V
+  method public isWritable ()Z
+  method public list ()Ljava/util/List;
+  method public read (Ljava/lang/String;)Ljava/lang/String;
+  method public setWritable (Z)Lcom/crystalgraphics/storage/config/CgInMemoryConfigStorage;
+  method public write (Ljava/lang/String;Ljava/lang/String;)V
+com/crystalgraphics/storage/config/CgLocalConfigStorage
+  access public,final
+  extends java/lang/Object
+  implements com/crystalgraphics/storage/config/CgConfigStorage
+  method public <init> (Ljava/nio/file/Path;)V
+  method public delete (Ljava/lang/String;)V
+  method public directory ()Ljava/nio/file/Path;
+  method public isWritable ()Z
+  method public list ()Ljava/util/List;
+  method public read (Ljava/lang/String;)Ljava/lang/String;
+  method public scoped (Ljava/lang/String;)Lcom/crystalgraphics/storage/config/CgConfigStorage;
+  method public write (Ljava/lang/String;Ljava/lang/String;)V
+com/crystalgraphics/storage/config/CgScopedConfigStorage
+  access public,final
+  extends java/lang/Object
+  implements com/crystalgraphics/storage/config/CgConfigStorage
+  method public delete (Ljava/lang/String;)V
+  method public directory ()Ljava/nio/file/Path;
+  method public isWritable ()Z
+  method public list ()Ljava/util/List;
+  method public read (Ljava/lang/String;)Ljava/lang/String;
+  method public write (Ljava/lang/String;Ljava/lang/String;)V
+com/crystalgraphics/storage/download/CgDownload
+  access public,final
+  extends java/lang/Object
+  implements java/io/Closeable
+  method public close ()V
+  method public length ()J
+  method public resumed ()Z
+  method public stream ()Ljava/io/InputStream;
+  method public url ()Ljava/lang/String;
+com/crystalgraphics/storage/download/CgDownloadLocations
+  access public,final
+  extends java/lang/Object
+  field public,static,final STALE_AFTER_MILLIS J
+  method public find (Ljava/lang/String;)Lcom/crystalgraphics/storage/download/CgDownloadLocations$Location;
+  method public idsUnder (Ljava/lang/String;)Ljava/util/List;
+  method public lists (Ljava/lang/String;)Z
+  method public pinOf (Ljava/lang/String;)Ljava/lang/String;
+  method public refresh ()Z
+  method public refreshIfStale ()V
+  method public useCacheRoot (Ljava/nio/file/Path;)V
+  method public,static of (Lcom/crystalgraphics/storage/download/CgDownloadLocations$Source;)Lcom/crystalgraphics/storage/download/CgDownloadLocations;
+  method public,static of (Ljava/lang/String;Ljava/lang/String;Ljava/nio/file/Path;Z)Lcom/crystalgraphics/storage/download/CgDownloadLocations;
+com/crystalgraphics/storage/download/CgDownloadLocations$Location
+  access public,final,record
+  extends java/lang/Record
+  method public <init> (Ljava/lang/String;Ljava/lang/String;Ljava/util/List;)V
+  method public digest ()Ljava/lang/String;
+  method public id ()Ljava/lang/String;
+  method public urls ()Ljava/util/List;
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
+com/crystalgraphics/storage/download/CgDownloadLocations$Source
+  access public,final,record
+  extends java/lang/Record
+  method public <init> (Ljava/lang/String;Ljava/lang/Class;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/function/Supplier;)V
+  method public anchor ()Ljava/lang/Class;
+  method public defaultCacheRoot ()Ljava/util/function/Supplier;
+  method public name ()Ljava/lang/String;
+  method public overrideProperty ()Ljava/lang/String;
+  method public remoteProperty ()Ljava/lang/String;
+  method public resource ()Ljava/lang/String;
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
+com/crystalgraphics/storage/download/CgDownloads
+  access public,final
+  extends java/lang/Object
+  field public,static,final ATTEMPTS I
+  field public,static,final LOCATIONS Lcom/crystalgraphics/storage/download/CgDownloadLocations;
+  field public,static,final RETRY_BACKOFF_MILLIS J
+  field public,static,final TIMEOUT_MILLIS I
+  method public,static batch (Ljava/util/List;)Lcom/crystalgraphics/storage/download/CgDownloads$Batch;
+  method public,static describe (Ljava/lang/Throwable;)Ljava/lang/String;
+  method public,static fetch (Ljava/lang/String;)Lcom/crystalgraphics/storage/download/CgDownloads$Body;
+  method public,static fetch (Ljava/lang/String;J)Lcom/crystalgraphics/storage/download/CgDownloads$Body;
+  method public,static from (Ljava/lang/String;)Lcom/crystalgraphics/storage/download/CgDownloads$Request;
+  method public,static lengthOf (Ljava/lang/String;)J
+  method public,static located (Lcom/crystalgraphics/storage/download/CgDownloadLocations;Ljava/lang/String;)Lcom/crystalgraphics/storage/download/CgDownloads$Request;
+  method public,static located (Ljava/lang/String;)Lcom/crystalgraphics/storage/download/CgDownloads$Request;
+  method public,static open (Ljava/lang/String;)Ljava/io/InputStream;
+com/crystalgraphics/storage/download/CgDownloads$Artifact
+  access public,final,record
+  extends java/lang/Record
+  method public <init> (Ljava/lang/String;Lcom/crystalgraphics/storage/download/CgDownloads$Request;)V
+  method public fileName ()Ljava/lang/String;
+  method public request ()Lcom/crystalgraphics/storage/download/CgDownloads$Request;
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
+com/crystalgraphics/storage/download/CgDownloads$Batch
+  access public,final
+  extends java/lang/Object
+  method public cancelledWhen (Ljava/util/function/BooleanSupplier;)Lcom/crystalgraphics/storage/download/CgDownloads$Batch;
+  method public into (Ljava/nio/file/Path;)Lcom/crystalgraphics/storage/download/CgDownloads$Batch$Result;
+  method public named (Ljava/lang/String;)Lcom/crystalgraphics/storage/download/CgDownloads$Batch;
+  method public reporting (Lcom/crystalgraphics/job/progress/CgProgress;)Lcom/crystalgraphics/storage/download/CgDownloads$Batch;
+com/crystalgraphics/storage/download/CgDownloads$Batch$Result
+  access public,final,record
+  extends java/lang/Record
+  method public <init> (IILjava/lang/String;Z)V
+  method public cancelled ()Z
+  method public complete ()Z
+  method public failure ()Ljava/lang/String;
+  method public installed ()I
+  method public toString ()Ljava/lang/String;
+  method public total ()I
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+com/crystalgraphics/storage/download/CgDownloads$Body
+  access public,final
+  extends java/lang/Object
+  implements java/io/Closeable
+  method public close ()V
+  method public length ()J
+  method public resumed ()Z
+  method public stream ()Ljava/io/InputStream;
+com/crystalgraphics/storage/download/CgDownloads$Request
+  access public,final
+  extends java/lang/Object
+  method public cancelledWhen (Ljava/util/function/BooleanSupplier;)Lcom/crystalgraphics/storage/download/CgDownloads$Request;
+  method public digest ()Ljava/lang/String;
+  method public into (Ljava/nio/file/Path;)Z
+  method public named (Ljava/lang/String;)Lcom/crystalgraphics/storage/download/CgDownloads$Request;
+  method public open ()Lcom/crystalgraphics/storage/download/CgDownload;
+  method public reporting (Lcom/crystalgraphics/job/progress/CgProgress;)Lcom/crystalgraphics/storage/download/CgDownloads$Request;
+  method public verifying (Ljava/lang/String;)Lcom/crystalgraphics/storage/download/CgDownloads$Request;
 com/crystalgraphics/tag/CgGameplayTag
   access public,final
   extends java/lang/Object

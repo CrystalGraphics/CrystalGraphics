@@ -56,13 +56,16 @@ public final class CgCacheDirectory {
      */
     public static final long MOST = 128L << 20, KEEP = 96L << 20;
 
+    /** CrystalGraphics' own tree under the game directory. */
+    private static final CgStorageLayout LAYOUT = CgStorageLayout.of("crystalgraphics");
+
     private CgCacheDirectory() {}
 
     /** {@code name}'s folder under the cache root, made if missing; null where caching is off or it cannot be made. */
     public static Path of(String name) {
         if (!ENABLED.get()) return null;
         Path root = DIR.isSet() ? Paths.get(DIR.get())
-                : CgGameDirectory.game().resolve("crystalgraphics").resolve("cache");
+                : LAYOUT.cacheIn(CgGameDirectory.game());
         Path dir = root.resolve(name);
         try {
             return Files.createDirectories(dir);
