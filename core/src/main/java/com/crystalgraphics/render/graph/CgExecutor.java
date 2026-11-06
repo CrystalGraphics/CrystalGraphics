@@ -2786,7 +2786,7 @@ public final class CgExecutor {
             // The host's, through the device: a renderbuffer or the window's depth too, which CgGL cannot name
             readHost();
             if (hostDepth == null) throw new IllegalStateException(pass + " reads the depth of framebuffer " + source + ", which has none");
-            sharedDepth.copyDepth(hostDepth, POOL);
+            sharedDepth.copyDepth(source, hostDepth, POOL);
         } else {
             sharedDepth.copyDepth(source, format, width, height, pass, POOL);
         }

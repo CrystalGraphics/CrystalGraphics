@@ -167,11 +167,11 @@ final class CgTargetCopy {
     }
 
     /**
-     * Copies {@code from}, a host's depth imported as an RHI texture, whole through the device: a renderbuffer's or the
-     * window's, which no pass samples in place, as Unreal resolves scene depth into a texture once for the passes after
-     * the base pass. Outside a device section; opens its own.
+     * Copies {@code from}, framebuffer {@code source}'s depth imported as an RHI texture, whole through the device: a
+     * renderbuffer's or the window's, which no pass samples in place, as Unreal resolves scene depth into a texture once
+     * for the passes after the base pass. Outside a device section; opens its own.
      */
-    void copyDepth(CgGpuTexture from, CgTexturePool pool) {
+    void copyDepth(int source, CgGpuTexture from, CgTexturePool pool) {
         CgTextureType type = depthType(from.desc().format());
         int width = from.desc().width(), height = from.desc().height();
         CgFrameBufferFormat format = DEPTH_FORMATS.computeIfAbsent(type, t -> copyFormat(null, t));
@@ -184,6 +184,8 @@ final class CgTargetCopy {
         CgTextureView to = storage.getDepthTexture().rhiView();
         if (to == null) throw new IllegalStateException("a depth copy of " + from + " has no device texture");
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, DEPTH_ZONE)) {
+            // The framebuffers' states moved round it as round a CgGL blit: what explicit Vulkan barriers read
+            CgExecutor.blitting(source, storage.getId());
             CgDeviceSection.begin();
             try {
                 CgRHI.get().encoder().blit(CgTextureView.attachment(from, 0, 0), 0, 0, width, height,
@@ -191,6 +193,7 @@ final class CgTargetCopy {
             } finally {
                 CgDeviceSection.end();
             }
+            CgExecutor.blitted(source, storage.getId());
         }
     }
 
