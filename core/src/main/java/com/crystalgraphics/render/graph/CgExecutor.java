@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.graph;
 
+import com.crystalgraphics.platform.rhi.resource.CgTextureRegion;
 import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
 import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.render.draw.CgDrawStateCache;
@@ -3017,6 +3018,7 @@ public final class CgExecutor {
     /** A readback's copy, issued here; its sink hears from {@link CgReadback#poll} once the GPU has finished. */
     private static void readback(CgPass.Readback r) {
         r.delivering = true;
+        if (DEVICE_RASTER && CgGLImports.installed() && readbackDevice(r)) return;
         if (r.buffer != null) {
             CgReadback.buffer(bufferStorage(r.buffer, false), r.offset, r.size, r);
             return;
@@ -3028,6 +3030,26 @@ public final class CgExecutor {
         } else {
             CgReadback.pixels(storage.levelId(r.level), r.x, r.y, r.w, r.h, storage.getFormat().getColorSlot(0), r);
         }
+    }
+
+    /**
+     * {@code r}'s copy on the device (its step's barriers have made the source readable as a copy's); false where its
+     * texture has no device image, which the {@code CgGL} copy then reads.
+     */
+    private static boolean readbackDevice(CgPass.Readback r) {
+        CgGLImports imports = CgGLImports.get();
+        if (r.buffer != null) {
+            int id = bufferStorage(r.buffer, false);
+            CgReadback.buffer(imports.buffer(id), imports.bufferOffset(id) + r.offset, r.size, r);
+            return true;
+        }
+        CgFrameBuffer storage = storage(r.texture);
+        CgTextureView view = storage.getColorTexture(0).rhiView();
+        if (view == null) return false;
+        boolean slices = storage.isVolume() || storage.isArray();
+        CgReadback.texture(view.texture(), new CgTextureRegion(r.level, r.x, r.y, slices ? r.z : 0, r.w, r.h,
+                slices ? r.d : 1), r);
+        return true;
     }
 
     /** A released storage's framebuffer deleted, its states forgotten. */
