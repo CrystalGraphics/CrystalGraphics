@@ -1,7 +1,106 @@
 {
-  "$comment": "Every address CrystalGraphics downloads from at run time. Empty until it downloads something.",
+  "$comment": "Every address CrystalGraphics downloads from at run time. docs/STORAGE.md section 7 says how to edit it.",
   "format": 1,
-  "self": [],
-  "repositories": {},
-  "files": {}
+  "self": [
+    "https://raw.githubusercontent.com/CrystalGraphics/CrystalGraphics/master/core/src/main/resources/assets/crystalgraphics/download/locations.json",
+    "https://cdn.jsdelivr.net/gh/CrystalGraphics/CrystalGraphics@master/core/src/main/resources/assets/crystalgraphics/download/locations.json"
+  ],
+  "repositories": {
+    "maven-central": ["https://repo1.maven.org/maven2/{path}"],
+    "mirror": ["https://github.com/CrystalGraphics/CrystalGraphics/releases/download/download-mirror/{file}"]
+  },
+  "mirror": {
+    "repository": "mirror",
+    "release": "download-mirror",
+    "github": "CrystalGraphics/CrystalGraphics",
+    "licences": {
+      "lwjgl-": "BSD-3-Clause, (c) Lightweight Java Game Library"
+    }
+  },
+  "files": {
+    "shader-toolchain/lwjgl-3.4.1.jar": {
+      "maven": "org.lwjgl:lwjgl:3.4.1", "from": ["maven-central", "mirror"],
+      "digest": "sha1:6105690714874b995aa7812e4f7732a21109276c"
+    },
+    "shader-toolchain/lwjgl-shaderc-3.4.1.jar": {
+      "maven": "org.lwjgl:lwjgl-shaderc:3.4.1", "from": ["maven-central", "mirror"],
+      "digest": "sha1:5c02c88f0d879529014c78463b76f43fdecfd272"
+    },
+    "shader-toolchain/lwjgl-spvc-3.4.1.jar": {
+      "maven": "org.lwjgl:lwjgl-spvc:3.4.1", "from": ["maven-central", "mirror"],
+      "digest": "sha1:188553592e97b5ab2dba54a1b403ee80b48dad4c"
+    },
+    "shader-toolchain/windows/lwjgl-3.4.1-natives-windows.jar": {
+      "maven": "org.lwjgl:lwjgl:3.4.1:natives-windows", "from": ["maven-central", "mirror"],
+      "digest": "sha1:96a217f0428ab73487f114a54179a4f41e851a04"
+    },
+    "shader-toolchain/windows/lwjgl-shaderc-3.4.1-natives-windows.jar": {
+      "maven": "org.lwjgl:lwjgl-shaderc:3.4.1:natives-windows", "from": ["maven-central", "mirror"],
+      "digest": "sha1:daacbaeb2c1dfd00db83f4b7cc2c76901eb297bd"
+    },
+    "shader-toolchain/windows/lwjgl-spvc-3.4.1-natives-windows.jar": {
+      "maven": "org.lwjgl:lwjgl-spvc:3.4.1:natives-windows", "from": ["maven-central", "mirror"],
+      "digest": "sha1:b7f14df71a9657103324101f61df09dcfb28cf28"
+    },
+    "shader-toolchain/windows-arm64/lwjgl-3.4.1-natives-windows-arm64.jar": {
+      "maven": "org.lwjgl:lwjgl:3.4.1:natives-windows-arm64", "from": ["maven-central", "mirror"],
+      "digest": "sha1:d1d3a7052da47ccde2a5fdf3a1bd45d801c3157c"
+    },
+    "shader-toolchain/windows-arm64/lwjgl-shaderc-3.4.1-natives-windows-arm64.jar": {
+      "maven": "org.lwjgl:lwjgl-shaderc:3.4.1:natives-windows-arm64", "from": ["maven-central", "mirror"],
+      "digest": "sha1:50884f728fdd7cff33731403fdc53b724ff09c85"
+    },
+    "shader-toolchain/windows-arm64/lwjgl-spvc-3.4.1-natives-windows-arm64.jar": {
+      "maven": "org.lwjgl:lwjgl-spvc:3.4.1:natives-windows-arm64", "from": ["maven-central", "mirror"],
+      "digest": "sha1:a60a8d48822ec9449a5de9b6c50e5ed6ae7e8e9f"
+    },
+    "shader-toolchain/linux/lwjgl-3.4.1-natives-linux.jar": {
+      "maven": "org.lwjgl:lwjgl:3.4.1:natives-linux", "from": ["maven-central", "mirror"],
+      "digest": "sha1:2734e106bd95db49fe0da8cf8bf7fd96475c436c"
+    },
+    "shader-toolchain/linux/lwjgl-shaderc-3.4.1-natives-linux.jar": {
+      "maven": "org.lwjgl:lwjgl-shaderc:3.4.1:natives-linux", "from": ["maven-central", "mirror"],
+      "digest": "sha1:4289bdfa998c4afcdfa7c6925baf50e938113188"
+    },
+    "shader-toolchain/linux/lwjgl-spvc-3.4.1-natives-linux.jar": {
+      "maven": "org.lwjgl:lwjgl-spvc:3.4.1:natives-linux", "from": ["maven-central", "mirror"],
+      "digest": "sha1:6ea8d9edcfcc5664d14e11b9a37a1a900783584a"
+    },
+    "shader-toolchain/linux-arm64/lwjgl-3.4.1-natives-linux-arm64.jar": {
+      "maven": "org.lwjgl:lwjgl:3.4.1:natives-linux-arm64", "from": ["maven-central", "mirror"],
+      "digest": "sha1:46883f3b622d8b4d7f27b627ca3360cda3db0e0e"
+    },
+    "shader-toolchain/linux-arm64/lwjgl-shaderc-3.4.1-natives-linux-arm64.jar": {
+      "maven": "org.lwjgl:lwjgl-shaderc:3.4.1:natives-linux-arm64", "from": ["maven-central", "mirror"],
+      "digest": "sha1:bc5c99b2eb7e2109c6db21cfced15a6851f8111b"
+    },
+    "shader-toolchain/linux-arm64/lwjgl-spvc-3.4.1-natives-linux-arm64.jar": {
+      "maven": "org.lwjgl:lwjgl-spvc:3.4.1:natives-linux-arm64", "from": ["maven-central", "mirror"],
+      "digest": "sha1:e2eaa8f516d43fe11b8253e6243b3d8e1315c9c8"
+    },
+    "shader-toolchain/macos/lwjgl-3.4.1-natives-macos.jar": {
+      "maven": "org.lwjgl:lwjgl:3.4.1:natives-macos", "from": ["maven-central", "mirror"],
+      "digest": "sha1:b034fd9a67cb8646c01af7efcefcb93be835542b"
+    },
+    "shader-toolchain/macos/lwjgl-shaderc-3.4.1-natives-macos.jar": {
+      "maven": "org.lwjgl:lwjgl-shaderc:3.4.1:natives-macos", "from": ["maven-central", "mirror"],
+      "digest": "sha1:1d7bbdba70cf29c42978f6c0c1bdef945b922072"
+    },
+    "shader-toolchain/macos/lwjgl-spvc-3.4.1-natives-macos.jar": {
+      "maven": "org.lwjgl:lwjgl-spvc:3.4.1:natives-macos", "from": ["maven-central", "mirror"],
+      "digest": "sha1:2eeebd6d5bae966bfffda9747eba744cfe839ae1"
+    },
+    "shader-toolchain/macos-arm64/lwjgl-3.4.1-natives-macos-arm64.jar": {
+      "maven": "org.lwjgl:lwjgl:3.4.1:natives-macos-arm64", "from": ["maven-central", "mirror"],
+      "digest": "sha1:b4cbdef4818abd714ee66985344c0949fd1cd6d6"
+    },
+    "shader-toolchain/macos-arm64/lwjgl-shaderc-3.4.1-natives-macos-arm64.jar": {
+      "maven": "org.lwjgl:lwjgl-shaderc:3.4.1:natives-macos-arm64", "from": ["maven-central", "mirror"],
+      "digest": "sha1:48aa2727e8616154d399d4dab0d8e8479741fa4f"
+    },
+    "shader-toolchain/macos-arm64/lwjgl-spvc-3.4.1-natives-macos-arm64.jar": {
+      "maven": "org.lwjgl:lwjgl-spvc:3.4.1:natives-macos-arm64", "from": ["maven-central", "mirror"],
+      "digest": "sha1:a4f66638d28129eba0babd8fdc4385427a5ea83e"
+    }
+  }
 }

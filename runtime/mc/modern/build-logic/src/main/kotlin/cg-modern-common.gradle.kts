@@ -46,11 +46,10 @@ dependencies {
     // module reading it needs the type. One compiled copy serves every 1.13+ target; the merge adds
     // it once, which is why it is a `libraryProject` in cg-single-jar and not bundled per loader.
     "api"(project(":runtime:lwjgl:3"))
-    // Tier 1 for Vulkan, from 26.2: Blaze3dVulkanHost hosts CgVulkanDevice on Minecraft's own Vulkan device.
-    // Older Minecraft ships no LWJGL Vulkan binding for it to run on.
-    if (MinecraftVersionOrder.compare(property("mc.version").toString(), "26.2") >= 0) {
-        "api"(project(":runtime:lwjgl:vulkan"))
-    }
+    // Tier 1 for Vulkan, on every node as in the merged jar: from 26.2 Blaze3dVulkanHost hosts CgVulkanDevice on
+    // Minecraft's own Vulkan device; on a GL client GLDeviceModern loads its shader toolchain beside the host's LWJGL.
+    // Its LWJGL is compileOnly, so nothing of 3.4 reaches an older node's classpath.
+    "api"(project(":runtime:lwjgl:vulkan"))
     // HostViewModern hands the world stages JOML matrices. Minecraft ships JOML from 1.19.3; below it the
     // companion jar supplies it at run time, and the build's own projects never see core's published copy.
     if (MinecraftVersionOrder.compare(property("mc.version").toString(), "1.19.3") < 0) {

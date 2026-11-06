@@ -1,6 +1,8 @@
 import cgbuildlogic.abstractModule
 import cgbuildlogic.consumerApi
 import cgbuildlogic.publishedModule
+import cgbuildlogic.registerDownloadTasks
+import java.security.MessageDigest
 import java.io.File as JFile
 
 plugins {
@@ -434,3 +436,48 @@ tasks.named<JavaCompile>("compileJava") {
 tasks.jar {
     from(sourceSets.main.get().allJava) { into("assets/crystalgraphics/sources") }
 }
+
+// ── Downloads (docs/STORAGE.md §7) ───────────────────────────────────────────────────────────────────
+//
+// The locations file is checked by the code that reads it. The shader toolchain's pins must be the jars the Vulkan
+// module is built against, each platform's natives included: a GL-era client loads exactly those beside its own LWJGL.
+val downloadLocations = file("src/main/resources/assets/crystalgraphics/download/locations.json")
+val downloadTool: Configuration by configurations.creating { isCanBeConsumed = false }
+val shaderToolchain: Configuration by configurations.creating { isCanBeConsumed = false; isTransitive = false }
+val toolchainLwjgl = rootProject.properties["dep.lwjgl3.vulkan"].toString()
+val toolchainPlatforms = listOf("windows", "windows-arm64", "linux", "linux-arm64", "macos", "macos-arm64")
+dependencies {
+    downloadTool("com.google.code.gson:gson:2.11.0")
+    downloadTool("org.apache.logging.log4j:log4j-core:2.26.1")
+    for (artifact in listOf("lwjgl", "lwjgl-shaderc", "lwjgl-spvc")) {
+        shaderToolchain("org.lwjgl:$artifact:$toolchainLwjgl")
+        for (platform in toolchainPlatforms) shaderToolchain("org.lwjgl:$artifact:$toolchainLwjgl:natives-$platform")
+    }
+}
+val downloadTasks = registerDownloadTasks(downloadLocations,
+    files(sourceSets.main.get().output, configurations.runtimeClasspath, downloadTool)) { shaderToolchain.files }
+
+val checkShaderToolchainPins = tasks.register("checkShaderToolchainPins") {
+    group = "verification"
+    description = "Fails unless the locations file pins the shader toolchain dep.lwjgl3.vulkan resolves, every platform's natives."
+    inputs.file(downloadLocations)
+    inputs.files(shaderToolchain)
+    doLast {
+        @Suppress("UNCHECKED_CAST")
+        val files = (groovy.json.JsonSlurper().parse(downloadLocations) as Map<String, Any?>)["files"] as Map<String, Map<String, Any?>>
+        val pinned = files.filterKeys { it.startsWith("shader-toolchain/") }.mapValues { it.value["digest"] as String? }
+        val resolved = shaderToolchain.resolvedConfiguration.resolvedArtifacts.associate { artifact ->
+            val folder = artifact.classifier?.removePrefix("natives-")?.let { "$it/" } ?: ""
+            val sha1 = MessageDigest.getInstance("SHA-1").digest(artifact.file.readBytes()).joinToString("") { "%02x".format(it) }
+            "shader-toolchain/$folder${artifact.file.name}" to "sha1:$sha1"
+        }
+        val offences = (resolved.keys + pinned.keys).sorted().filter { resolved[it] != pinned[it] }
+            .map { "$it: pinned ${pinned[it]}, resolved ${resolved[it]}" }
+        if (offences.isNotEmpty()) {
+            throw GradleException("${downloadLocations.name} is not the shader toolchain of LWJGL $toolchainLwjgl:\n  " +
+                offences.joinToString("\n  "))
+        }
+    }
+}
+downloadTasks.check.configure { dependsOn(checkShaderToolchainPins) }
+tasks.named("check") { dependsOn(downloadTasks.check) }

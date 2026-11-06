@@ -10364,6 +10364,11 @@ com/crystalgraphics/render/shader/CgBindingModel$Slot
   method public,final equals (Ljava/lang/Object;)Z
   method public,final hashCode ()I
   method public,final toString ()Ljava/lang/String;
+com/crystalgraphics/render/shader/CgShaderToolchainFiles
+  access public,final
+  extends java/lang/Object
+  method public,static fetch (Lcom/crystalgraphics/job/progress/CgProgress;)Ljava/util/List;
+  method public,static platform ()Ljava/lang/String;
 com/crystalgraphics/render/stage/CgDirectionalLights
   access public,final
   extends java/lang/Object
