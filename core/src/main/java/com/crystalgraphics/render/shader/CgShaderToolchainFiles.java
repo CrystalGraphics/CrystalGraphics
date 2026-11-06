@@ -2,6 +2,7 @@ package com.crystalgraphics.render.shader;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -33,6 +34,8 @@ import com.crystalgraphics.storage.download.CgDownloads;
  *   <li>Empty when this platform has no pinned natives or the fetch failed, with why logged: the host stays where it is.</li>
  *   <li>Pinned in {@code assets/crystalgraphics/download/locations.json} under {@code shader-toolchain/}: the shared
  *       jars at the top, each platform's natives under {@code <platform>/}. Every file is checked against its pin.</li>
+ *   <li>Kept in CrystalGraphics' cache, or in {@code -Dcrystalgraphics.shaderToolchain.dir}: one folder many
+ *       clients share (every dev run's, {@code ~/.crystalgraphics/shader-toolchain}).</li>
  *   <li>Blocking and on the network: never the render thread.</li>
  * </ul>
  */
@@ -40,6 +43,7 @@ public final class CgShaderToolchainFiles {
 
     private static final Logger LOGGER = LogManager.getLogger(CgShaderToolchainFiles.class);
     private static final String PREFIX = "shader-toolchain/";
+    private static final String DIRECTORY_PROPERTY = "crystalgraphics.shaderToolchain.dir";
 
     private CgShaderToolchainFiles() {
     }
@@ -63,7 +67,8 @@ public final class CgShaderToolchainFiles {
                     System.getProperty("os.arch"));
             return Collections.emptyList();
         }
-        Path directory = CgCacheDirectory.of("shader-toolchain");
+        String shared = System.getProperty(DIRECTORY_PROPERTY);
+        Path directory = shared != null ? Paths.get(shared) : CgCacheDirectory.of("shader-toolchain");
         List<Path> jars = new ArrayList<>(ids.size());
         List<CgDownloads.Artifact> missing = new ArrayList<>();
         try {

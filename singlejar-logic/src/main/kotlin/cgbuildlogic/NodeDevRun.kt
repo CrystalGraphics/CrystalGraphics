@@ -69,6 +69,7 @@ fun Project.registerNodeDevRun(descriptor: ModDescriptor, bundled: List<Project>
             }
             if (javaClass.getMethod("getName").invoke(this) == "client") {
                 renderDocDevRun().forEach { javaClass.getMethod("vmArg", String::class.java).invoke(this, it) }
+                shaderToolchainVmArgs().forEach { javaClass.getMethod("vmArg", String::class.java).invoke(this, it) }
                 renderDocEnvironment().forEach { (key, value) ->
                     javaClass.getMethod("environmentVariable", String::class.java, Any::class.java).invoke(this, key, value)
                 }
@@ -92,7 +93,10 @@ fun Project.registerNodeDevRun(descriptor: ModDescriptor, bundled: List<Project>
             gameDirectory.set(layout.projectDirectory.dir("runs/$side"))
             forwarded.forEach { (key, value) -> systemProperty(key, value) }
             programArguments.addAll(mixinArgs)
-            if (side == "client") renderDocRun(this)
+            if (side == "client") {
+                renderDocRun(this)
+                shaderToolchainRun(this)
+            }
         }
     }
 }
