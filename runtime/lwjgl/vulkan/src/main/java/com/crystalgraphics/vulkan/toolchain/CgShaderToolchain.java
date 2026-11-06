@@ -17,7 +17,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.jar.Manifest;
 
+import com.crystalgraphics.platform.gl.CgGLDevice;
+import com.crystalgraphics.platform.gl.driver.CgGLDriver;
 import com.crystalgraphics.platform.gl.pipeline.GLShaderTranslator;
+import com.crystalgraphics.platform.gl.state.GLHostState;
+import com.crystalgraphics.platform.service.CgCacheDirectory;
 import com.crystalgraphics.platform.rhi.shader.CgGlslCompiler;
 import com.crystalgraphics.vulkan.shader.ShadercGlslCompiler;
 import com.crystalgraphics.vulkan.shader.SpvcGlslTranslator;
@@ -86,6 +90,16 @@ public final class CgShaderToolchain {
     /** shaderc as the process's GLSL compiler; {@code cacheDir} keeps its modules across launches, null for none. */
     public CgGlslCompiler compiler(Path cacheDir) {
         return make(ShadercGlslCompiler.class.getName(), CgGlslCompiler.class, new Class<?>[] {Path.class}, cacheDir);
+    }
+
+    /**
+     * A GL device beside {@code CgGL} in the current context, on {@code driver}, made with this toolchain and
+     * installed whole ({@link CgGLDevice#installBesideCgGL}), its modules kept in the engine's cache. Render thread,
+     * the host's context current.
+     */
+    public CgGLDevice glDeviceBesideCgGL(CgGLDriver driver, int width, int height) {
+        CgGLDevice device = new CgGLDevice(driver, translator(), width, height, false, GLHostState.sharedWithCgGL());
+        return device.installBesideCgGL(compiler(CgCacheDirectory.of("spirv")));
     }
 
     /** SPIRV-Cross as a GL device's translator, SPIR-V back to GLSL 4.60. */

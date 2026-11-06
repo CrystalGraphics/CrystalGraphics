@@ -146,6 +146,7 @@ public final class PlatformServiceLegacy implements CgPlatformService {
         if (glBackend == null) {
             glBackend = new GlStateManagerGLBackend();
             HostStateLegacy.install();
+            CgEngineLifecycle.addListener(new GLDeviceLegacy());
         }
         return glBackend;
     }

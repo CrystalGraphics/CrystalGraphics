@@ -10369,6 +10369,19 @@ com/crystalgraphics/render/shader/CgShaderToolchainFiles
   extends java/lang/Object
   method public,static fetch (Lcom/crystalgraphics/job/progress/CgProgress;)Ljava/util/List;
   method public,static platform ()Ljava/lang/String;
+com/crystalgraphics/render/shader/CgToolchainDevice
+  access public,abstract
+  extends java/lang/Object
+  implements com/crystalgraphics/lifecycle/CgLifecycleListener
+  method protected,abstract close ()V
+  method protected,abstract ineligible ()Ljava/lang/String;
+  method protected,abstract install (Ljava/util/List;)V
+  method protected,abstract resize ()V
+  method protected,static natives ()Ljava/nio/file/Path;
+  method public <init> ()V
+  method public,final onContextDestroy ()V
+  method public,final onFrame (J)V
+  method public,final onLoad (Lcom/crystalgraphics/loading/task/CgLoadPlan;)V
 com/crystalgraphics/render/stage/CgDirectionalLights
   access public,final
   extends java/lang/Object

@@ -68,6 +68,14 @@ dependencies {
         }
     }
 
+    // The shader toolchain's loader, which GLDevice1710 makes its GL device with; it names no Minecraft class.
+    shadowImplementation(project(':runtime:lwjgl:vulkan')) {
+        attributes {
+            attribute(Attribute.of("com.gtnewhorizons.retrofuturagradle.obfuscation", String.class), "none")
+            attribute(Attribute.of("rfgDeobfuscatorTransformed", Boolean.class), false)
+        }
+    }
+
     // :runtime:mc:shared, which mixins.crystalgraphics.json names as its plugin. Safe as a shadowed
     // dependency here because this module does not relocate what it shadows
     // (relocateShadowedDependencies = false); CrystalGUI's 1.7.10 does, so it unpacks the jar
