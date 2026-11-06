@@ -195,6 +195,10 @@ Authoring: `docs/SHADERS.md` § *The Emissive pass*. What this package does with
   location 1, as `n * 0.5 + 0.5` with the eye depth as alpha, flipped for a back face; `(0, 0, 0, -eye)` where the
   format has no normal. Both
   are inserted into the generated `main`, never by renaming it: a backend rewrites `main`.
+- **The graded layer**: compiled with `LAYER_TARGET` (a single-output Forward pass, `CgPipelineForm.LAYER`), the
+  generated `main` is renamed `_cg_main` and wrapped, as `VOLUME_TARGET`'s is, so every way out of it writes the colour
+  again at location 1: a transparent draw drawing its look's layer beside the scene, blended there under the pipeline's
+  second blend (`CgRenderState.secondBlend`, its blend's layer form). Device pipelines only.
 - **A named glow**: a fragment body naming `CG_GLOW` gets `_cg_glowRgb` and the macro before `fragment()`
   (`appendFragmentUserFunction`), and every glow its `main` makes (merge, fold, its own Emissive draw) takes
   `_cg_glowRgb` with the colour's alpha in place of the colour.

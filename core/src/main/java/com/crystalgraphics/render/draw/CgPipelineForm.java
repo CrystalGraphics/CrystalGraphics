@@ -96,7 +96,28 @@ public enum CgPipelineForm {
         }
     },
     /** Full coverage, alpha 1, whatever its fragment wrote: an opaque draw redrawn into a graded layer. */
-    SOLID(CgMaterialShaderCompiler.SOLID_COVER, true, true);
+    SOLID(CgMaterialShaderCompiler.SOLID_COVER, true, true),
+    /**
+     * Beside its colour, at location 1, the same colour into its look's graded layer under its blend's layer form
+     * ({@link CgBlendState#layered}): the transparent draw drawing its layer too, where the layer pass drew it again.
+     * Refused where its blend has no layer form (a multiply). On a device alone: GL's state has one blend for all.
+     */
+    LAYER(CgMaterialShaderCompiler.LAYER_TARGET, true, true) {
+        @Override
+        boolean admits(CgParsedShader parsed, CgRenderState own) {
+            return layerBlend(own) != null;
+        }
+
+        @Override
+        CgRenderState state(CgRenderState own) {
+            return own.withSecondBlend(layerBlend(own));
+        }
+    };
+
+    /** Unset is the transparent pass's alpha blend, as the layer pass takes it. */
+    private static CgBlendState layerBlend(CgRenderState own) {
+        return (own.getBlend() != null ? own.getBlend() : CgBlendState.ALPHA).layered();
+    }
 
     static {
         // The table: a form, then the forms a pipeline holding any of them cannot take it with.
@@ -107,6 +128,7 @@ public enum CgPipelineForm {
         CUSTOM_DATA.excludes(OVERDRAW, COVER, FOLD, DEPTH, VOLUME, NORMALS);
         COVER.excludes(OVERDRAW);
         SOLID.excludes(OVERDRAW, COVER, FOLD, DEPTH, VOLUME, NORMALS);
+        LAYER.excludes(OVERDRAW, COVER, DEPTH, VOLUME, NORMALS, CUSTOM_DATA, SOLID);
         // Overdraw counts what is drawn, so it takes any pipeline, dropping the forms that would change what that is.
         OVERDRAW.drops(COVER, FOLD);
     }

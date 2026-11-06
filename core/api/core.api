@@ -1717,17 +1717,20 @@ com/crystalgraphics/api/state/CgRenderState
   method public getColorMasks ()Ljava/util/List;
   method public getCull ()Lcom/crystalgraphics/api/state/CgCullState;
   method public getDepth ()Lcom/crystalgraphics/api/state/CgDepthState;
+  method public getSecondBlend ()Lcom/crystalgraphics/api/state/CgBlendState;
   method public getStencil ()Lcom/crystalgraphics/api/state/CgStencilState;
   method public setAlpha (Lcom/crystalgraphics/api/state/CgAlphaState;)V
   method public setBlend (Lcom/crystalgraphics/api/state/CgBlendState;)V
   method public setColorMasks (Ljava/util/List;)V
   method public setCull (Lcom/crystalgraphics/api/state/CgCullState;)V
   method public setDepth (Lcom/crystalgraphics/api/state/CgDepthState;)V
+  method public setSecondBlend (Lcom/crystalgraphics/api/state/CgBlendState;)V
   method public setStencil (Lcom/crystalgraphics/api/state/CgStencilState;)V
   method public withBlend (Lcom/crystalgraphics/api/state/CgBlendState;)Lcom/crystalgraphics/api/state/CgRenderState;
   method public withColorMask (Lcom/crystalgraphics/api/state/CgColorMask;)Lcom/crystalgraphics/api/state/CgRenderState;
   method public withCull (Lcom/crystalgraphics/api/state/CgCullState;)Lcom/crystalgraphics/api/state/CgRenderState;
   method public withDepth (Lcom/crystalgraphics/api/state/CgDepthState;)Lcom/crystalgraphics/api/state/CgRenderState;
+  method public withSecondBlend (Lcom/crystalgraphics/api/state/CgBlendState;)Lcom/crystalgraphics/api/state/CgRenderState;
   method public withStencil (Lcom/crystalgraphics/api/state/CgStencilState;)Lcom/crystalgraphics/api/state/CgRenderState;
   method public writesNothing ()Z
   method public,static builder ()Lcom/crystalgraphics/api/state/CgRenderState$Builder;
@@ -1741,6 +1744,7 @@ com/crystalgraphics/api/state/CgRenderState$Builder
   method public colorMasks (Ljava/util/List;)Lcom/crystalgraphics/api/state/CgRenderState$Builder;
   method public cull (Lcom/crystalgraphics/api/state/CgCullState;)Lcom/crystalgraphics/api/state/CgRenderState$Builder;
   method public depth (Lcom/crystalgraphics/api/state/CgDepthState;)Lcom/crystalgraphics/api/state/CgRenderState$Builder;
+  method public secondBlend (Lcom/crystalgraphics/api/state/CgBlendState;)Lcom/crystalgraphics/api/state/CgRenderState$Builder;
   method public stencil (Lcom/crystalgraphics/api/state/CgStencilState;)Lcom/crystalgraphics/api/state/CgRenderState$Builder;
 com/crystalgraphics/api/state/CgScissorRect
   access public,final
@@ -6310,6 +6314,7 @@ com/crystalgraphics/gl/material/parse/CgMaterialShaderCompiler
   field public,static,final DEBUG_OVERDRAW Ljava/lang/String;
   field public,static,final DEPTH_PREPASS Ljava/lang/String;
   field public,static,final EMISSION_COVER Ljava/lang/String;
+  field public,static,final LAYER_TARGET Ljava/lang/String;
   field public,static,final NORMAL_TARGET Ljava/lang/String;
   field public,static,final SCENE_FOLD Ljava/lang/String;
   field public,static,final SKINNED Ljava/lang/String;
@@ -9140,6 +9145,7 @@ com/crystalgraphics/render/draw/CgPipelineForm
   field public,static,final CUSTOM_DATA Lcom/crystalgraphics/render/draw/CgPipelineForm;
   field public,static,final DEPTH Lcom/crystalgraphics/render/draw/CgPipelineForm;
   field public,static,final FOLD Lcom/crystalgraphics/render/draw/CgPipelineForm;
+  field public,static,final LAYER Lcom/crystalgraphics/render/draw/CgPipelineForm;
   field public,static,final NORMALS Lcom/crystalgraphics/render/draw/CgPipelineForm;
   field public,static,final OVERDRAW Lcom/crystalgraphics/render/draw/CgPipelineForm;
   field public,static,final SKINNED Lcom/crystalgraphics/render/draw/CgPipelineForm;
@@ -9258,6 +9264,7 @@ com/crystalgraphics/render/graph/CgExecutor
   extends java/lang/Object
   method public,static ahead (I)V
   method public,static destroyAll ()V
+  method public,static drawsOnDevice ()Z
   method public,static execute (Lcom/crystalgraphics/render/graph/CgFrame;)V
   method public,static execute (Lcom/crystalgraphics/render/graph/CgFrame;Z)V
   method public,static executeAgain (Lcom/crystalgraphics/render/graph/CgFrame;Z)V

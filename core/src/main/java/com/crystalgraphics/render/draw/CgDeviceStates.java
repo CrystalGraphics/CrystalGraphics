@@ -70,6 +70,7 @@ public final class CgDeviceStates {
     public static CgRenderState over(CgRenderState pass, CgRenderState own) {
         CgRenderState.Builder b = CgRenderState.builder();
         b.blend(own.getBlend() != null ? own.getBlend() : pass.getBlend());
+        b.secondBlend(own.getSecondBlend() != null ? own.getSecondBlend() : pass.getSecondBlend());
         b.depth(own.getDepth() != null ? own.getDepth() : pass.getDepth());
         b.cull(own.getCull() != null ? own.getCull() : pass.getCull());
         b.stencil(own.getStencil() != null ? own.getStencil() : pass.getStencil());

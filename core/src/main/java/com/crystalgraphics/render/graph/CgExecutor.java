@@ -455,6 +455,14 @@ public final class CgExecutor {
         while (BY_DEPTH.size() < depths) BY_DEPTH.add(new CgExecutor(BY_DEPTH.size()));
     }
 
+    /**
+     * Whether an execution starting now draws through {@code CgRHI}, a device's: what a recorder choosing a form only a
+     * device draws (a second attachment's own blend) asks before it records.
+     */
+    public static boolean drawsOnDevice() {
+        return CgGLImports.installed() && CgGlslCompiler.installed();
+    }
+
     /** The host's targets are read again at their next composed bind: at a window resize, which may remake them. */
     public static void forgetHostTargets() {
         COMPOSED.forgetHost();
@@ -494,7 +502,7 @@ public final class CgExecutor {
     private void run(CgFrame frame) {
         boolean again = frame.executions++ > 0;
         kernelsSeen |= frame.kernels;
-        device = CgGLImports.installed() && CgGlslCompiler.installed();
+        device = drawsOnDevice();
         CgBoundResources.recording = DEVICE_SETS || device;
         if (device != onDevice) {
             onDevice = device;
@@ -2664,6 +2672,10 @@ public final class CgExecutor {
             } else {
                 end = packed.objects[b] == null && packed.buffers[b * CgDrawChunk.BUFFERS] == null && multiDraw
                         && b + 1 < packed.count && joinable(packed, b, b + 1) ? joinRun(packed, b) : b;
+                if (multiDraw && end + 1 < packed.count && CgTrace.isEnabled(CgChannels.GL)
+                        && breaksOnBinding(packed, b, end + 1)) {
+                    CgTrace.add(CgChannels.GL, BINDING_BREAKS, 1);
+                }
             }
             if (packed.scissor[b] != boundScissor) {
                 boundScissor = packed.scissor[b];

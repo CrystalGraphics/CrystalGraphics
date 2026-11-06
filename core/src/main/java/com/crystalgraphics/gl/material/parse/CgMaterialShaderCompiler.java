@@ -202,6 +202,12 @@ public final class CgMaterialShaderCompiler {
      */
     public static final String CUSTOM_DATA_TARGET = "CG_CUSTOM_DATA_TARGET";
 
+    /**
+     * A single-output Forward pass writing its colour at location 1 too, into the graded layer beside the scene: the
+     * transparent draw drawing its layer, blended there under its blend's layer form (the pipeline's second blend).
+     */
+    public static final String LAYER_TARGET = "CG_LAYER_TARGET";
+
     /** A fragment naming the depth it marched to ({@code CG_VOLUME_DEPTH(eye)}). */
     private static final Pattern NAMES_VOLUME_DEPTH = Pattern.compile("\\bCG_VOLUME_DEPTH\\b");
 
@@ -729,6 +735,9 @@ public final class CgMaterialShaderCompiler {
         if (volume) sb.append("layout(location = 1) out vec4 _cg_volumeDepth;\n");
         normals &= !volume;
         if (normals) sb.append("layout(location = 1) out vec4 _cg_normalOut;\n");
+        boolean layer = config.activeKeywords().contains(LAYER_TARGET) && !normals && !volume
+                && CgParsedPass.LIGHT_MODE_FORWARD.equals(pass.lightMode()) && !pass.fragOutput().isMrt();
+        if (layer) sb.append("layout(location = 1) out vec4 _cg_layerOut;\n#define main _cg_main\n");
 
         // User fragment function
         sb.append("// User fragment function\n");
@@ -755,6 +764,8 @@ public final class CgMaterialShaderCompiler {
             int close = sb.lastIndexOf("}");
             sb.insert(close, "  _cg_fragColor.a = 1.0;\n");
         }
+        // Around the generated main, so every way out of it, a return at cg_Clip too, writes the layer
+        if (layer) sb.append("#undef main\nvoid main() {\n  _cg_main();\n  _cg_layerOut = _cg_fragColor;\n}\n");
         if (config.activeKeywords().contains(CUSTOM_DATA_TARGET) && !normals && !volume
                 && CgParsedPass.LIGHT_MODE_FORWARD.equals(pass.lightMode()) && !pass.fragOutput().isMrt()) {
             // Last in the generated main, over the colour: x the ID byte and the model and type above it, y the base
