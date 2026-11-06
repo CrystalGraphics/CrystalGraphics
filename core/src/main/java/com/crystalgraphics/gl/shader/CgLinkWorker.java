@@ -268,7 +268,13 @@ public final class CgLinkWorker {
                 }
             }
         } finally {
+            // Both contexts this thread made current are released: LWJGL 2 keeps a context's thread until then and
+            // refuses to destroy it from the render thread, and the shared one is not current here
             compiling.release();
+            if (isolatedContext != null) {
+                context.makeCurrent();
+                context.release();
+            }
         }
     }
 
