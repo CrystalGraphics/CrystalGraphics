@@ -102,6 +102,23 @@ public record CgBlendState(boolean enabled, int srcRgb, int dstRgb, int srcAlpha
         return enabled && dstRgb == CgGL.GL_ONE;
     }
 
+    /**
+     * This blend drawn into a layer of its own whose alpha is the coverage a composite lays it over with: an alpha
+     * blend's colour as it is, its alpha over; an additive one's colour as it is, its alpha untouched. Null for any other,
+     * which a layer cannot carry; {@link #DISABLED} for none.
+     *
+     * <pre>{@code
+     * CgBlendState inLayer = CgBlendState.ALPHA.layered();   // colour as ALPHA, alpha ONE, ONE_MINUS_SRC_ALPHA
+     * }</pre>
+     */
+    public CgBlendState layered() {
+        if (!enabled) return DISABLED;
+        if (blendEquationRgb != CgGL.GL_FUNC_ADD) return null;
+        if (dstRgb == CgGL.GL_ONE_MINUS_SRC_ALPHA) return of(true, srcRgb, dstRgb, CgGL.GL_ONE, CgGL.GL_ONE_MINUS_SRC_ALPHA);
+        if (dstRgb == CgGL.GL_ONE) return of(true, srcRgb, CgGL.GL_ONE, CgGL.GL_ZERO, CgGL.GL_ONE);
+        return null;
+    }
+
     public static CgBlendState of(boolean enabled, int srcRgb, int dstRgb, int srcAlpha, int dstAlpha) {
         return new CgBlendState(enabled, srcRgb, dstRgb, srcAlpha, dstAlpha,
                 CgGL.GL_FUNC_ADD, CgGL.GL_FUNC_ADD);

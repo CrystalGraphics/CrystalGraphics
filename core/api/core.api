@@ -1646,6 +1646,7 @@ com/crystalgraphics/api/state/CgBlendState
   method public dstAlpha ()I
   method public dstRgb ()I
   method public enabled ()Z
+  method public layered ()Lcom/crystalgraphics/api/state/CgBlendState;
   method public srcAlpha ()I
   method public srcRgb ()I
   method public toString ()Ljava/lang/String;
@@ -1773,6 +1774,8 @@ com/crystalgraphics/api/state/CgStencilState
   method public,final equals (Ljava/lang/Object;)Z
   method public,final hashCode ()I
   method public,final toString ()Ljava/lang/String;
+  method public,static equal (II)Lcom/crystalgraphics/api/state/CgStencilState;
+  method public,static write (IIZ)Lcom/crystalgraphics/api/state/CgStencilState;
 com/crystalgraphics/api/state/CgTextureState
   access public,final,record
   extends java/lang/Record
