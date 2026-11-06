@@ -884,7 +884,6 @@ public final class CgExecutor {
     private String computeRefuses(CgComputePass pass) {
         if (!CgGLImports.installed() || !CgGlslCompiler.installed()) return "no device";
         for (String skip : DEVICE_RASTER_SKIP) if (!skip.isEmpty() && pass.name().contains(skip)) return "skipped by name";
-        if (runsAsync(pass)) return "async: the compute queue";
         for (CgDispatch d : pass.dispatches()) {
             try {
                 d.kernel.program().explicit();

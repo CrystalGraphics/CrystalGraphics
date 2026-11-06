@@ -752,13 +752,15 @@ public final class CgTracker {
 
     /**
      * The host takes its frame back: a clear still pending is written out and our open pass ends, so the host
-     * never records into a pass of ours.
+     * never records into a pass of ours. Inside async work too, where what the host records goes to the compute
+     * queue: {@link #beginAsync} left no pass and no clear to end.
      */
     public void toHost() {
-        if (async) throw new IllegalStateException("A host section ends inside async work");
         if (transfer) throw new IllegalStateException("A host section ends inside a transfer");
-        flushPendingClears();
-        if (pass != null) endPass();
+        if (!async) {
+            flushPendingClears();
+            if (pass != null) endPass();
+        }
         endCompute();
         device.toHost();
     }
