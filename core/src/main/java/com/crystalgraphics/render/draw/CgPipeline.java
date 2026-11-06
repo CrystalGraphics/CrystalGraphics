@@ -13,6 +13,7 @@ import com.crystalgraphics.platform.rhi.format.CgFormat;
 import com.crystalgraphics.platform.rhi.pipeline.CgGraphicsPipeline;
 import com.crystalgraphics.platform.rhi.pipeline.CgGraphicsPipelineDesc;
 import com.crystalgraphics.platform.rhi.pipeline.CgPipelineCache;
+import com.crystalgraphics.platform.rhi.shader.CgGlslCompiler;
 import com.crystalgraphics.platform.rhi.shader.CgShaderModule;
 import com.crystalgraphics.render.CgWarmBudget;
 import com.crystalgraphics.trace.CgTrace;
@@ -436,6 +437,7 @@ public final class CgPipeline {
                     : pass == CgRenderPassVariant.FORWARD ? shader.getOrCompileForwardPass(compiled)
                     : shader.getOrCompile(pass.lightModeName(), compiled);
             programRevision = revision;
+            if (program != null) startRecorded(program);
         }
         long took = System.nanoTime() - start;
         // Built by another pipeline of the same program (a state of its own, a sibling) is built all the same.
@@ -544,11 +546,7 @@ public final class CgPipeline {
                 CgDeviceStates.vertexBuffers(linked.format(), meshFormat), topology,
                 CgDeviceStates.raster(s.getCull()), CgDeviceStates.depthStencil(s.getDepth(), s.getStencil()), targets,
                 depth, samples);
-        if (deviceCacheOf != rhi) {
-            deviceCache = new CgPipelineCache(rhi);
-            deviceCacheOf = rhi;
-        }
-        deviceLast = deviceCache.get(desc, 0, true);
+        deviceLast = deviceCache(rhi).get(desc, linked.deviceKey(), !glDepth);
         deviceLastOf = rhi;
         deviceLastProgram = linked;
         deviceLastPass = passState;
@@ -559,6 +557,32 @@ public final class CgPipeline {
         deviceLastDepth = depth;
         deviceLastSamples = samples;
         return deviceLast;
+    }
+
+    private static CgPipelineCache deviceCache(CgRHI rhi) {
+        if (deviceCacheOf != rhi) {
+            deviceCache = new CgPipelineCache(rhi);
+            deviceCacheOf = rhi;
+        }
+        return deviceCache;
+    }
+
+    /**
+     * Starts every device pipeline recorded for {@code linked} building on the cache's workers, once a device: as its
+     * program becomes the pipeline's (a precache, inside the loading screen), as Unreal's PSO cache starts a program's
+     * recorded pipelines as it loads. Its draws then take them ({@link CgPipelineCache#get}). Nothing without a device
+     * that builds off the render thread.
+     */
+    private void startRecorded(CgShader linked) {
+        if (!CgRHI.installed() || !CgGlslCompiler.installed()) return;
+        CgRHI rhi = CgRHI.get();
+        if (!rhi.createsOnAnyThread() || linked.deviceKey() == 0 || !linked.startsOn(rhi)) return;
+        String label = toString();
+        CgPipelineCache cache = deviceCache(rhi);
+        cache.adopt(cache.startRecorded(linked.deviceKey(), recipe -> recipe.desc(label,
+                CgDeviceStates.layout(rhi, linked.explicit(label)),
+                linked.deviceModule(rhi, CgShaderModule.Stage.VERTEX, !recipe.zeroToOne(), label),
+                linked.deviceModule(rhi, CgShaderModule.Stage.FRAGMENT, false, label))));
     }
 
     @Override

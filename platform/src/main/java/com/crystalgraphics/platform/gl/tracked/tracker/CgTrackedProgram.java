@@ -1,8 +1,6 @@
 package com.crystalgraphics.platform.gl.tracked.tracker;
 
 import java.util.List;
-import java.util.Map;
-import java.util.TreeMap;
 
 import com.crystalgraphics.platform.rhi.binding.CgBindingLayout;
 import com.crystalgraphics.platform.rhi.pipeline.CgPipelineLayout;
@@ -22,7 +20,7 @@ public final class CgTrackedProgram {
     final CgShaderModule vertexGlDepth;
     final CgShaderModule vertexZeroToOne;
     final CgShaderModule fragment;
-    /** A hash of its sources, the same in every run: what its pipelines are recorded by. 0: never recorded. */
+    /** Its key ({@code CgPipelineRecipes.programKey}): what its pipelines are recorded by. 0: never recorded. */
     final long key;
 
     public CgTrackedProgram(String label, CgBindingLayout layout, CgShaderModule vertexGlDepth,
@@ -39,26 +37,6 @@ public final class CgTrackedProgram {
         this.vertexZeroToOne = vertexZeroToOne;
         this.fragment = fragment;
         this.key = key;
-    }
-
-    /** 64-bit FNV-1a over a program's sources and attribute bindings: its key across runs. Any thread. */
-    public static long key(String vertex, String fragment, Map<String, Integer> attribs) {
-        long h = 0xcbf29ce484222325L;
-        h = fnv(h, vertex);
-        h = fnv(h, "\u0000");
-        h = fnv(h, fragment);
-        for (Map.Entry<String, Integer> e : new TreeMap<>(attribs).entrySet()) {
-            h = fnv(h, e.getKey() + "=" + e.getValue() + ";");
-        }
-        return h == 0 ? 1 : h;
-    }
-
-    private static long fnv(long h, String s) {
-        for (int i = 0; i < s.length(); i++) {
-            h ^= s.charAt(i);
-            h *= 0x100000001b3L;
-        }
-        return h;
     }
 
     public String label() { return label; }

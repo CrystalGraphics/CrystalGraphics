@@ -1,6 +1,7 @@
 package com.crystalgraphics.platform.gl.tracked.gl;
 
 import com.crystalgraphics.platform.rhi.CgRHI;
+import com.crystalgraphics.platform.rhi.pipeline.CgPipelineRecipes;
 import com.crystalgraphics.platform.rhi.resource.CgRHIResource;
 import com.crystalgraphics.platform.rhi.format.CgAttribFormat;
 import com.crystalgraphics.platform.rhi.binding.CgBindingLayout;
@@ -235,7 +236,7 @@ public final class TrackedPrograms {
         Map<String, Integer> attribs = new HashMap<>(p.attribBindings);
         long[] key = new long[1];
         compile(p, label, key, () -> {
-            key[0] = CgTrackedProgram.key(vertex, fragment, attribs);
+            key[0] = CgPipelineRecipes.programKey(vertex, fragment, attribs);
             return compiler.compile(vertex, fragment, attribs, label);
         });
     }

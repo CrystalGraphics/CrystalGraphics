@@ -1,11 +1,11 @@
 package com.crystalgraphics.platform.gl.tracked.gl;
 
 import com.crystalgraphics.platform.rhi.binding.CgBindingLayout;
+import com.crystalgraphics.platform.rhi.pipeline.CgPipelineRecipes;
 import com.crystalgraphics.platform.rhi.nulldrv.CgNullRHI;
 import com.crystalgraphics.platform.rhi.shader.CgGlslCompiler;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.tracked.CgTrackedGLBackend;
-import com.crystalgraphics.platform.gl.tracked.tracker.CgTrackedProgram;
 import com.crystalgraphics.platform.gl.tracked.FakeGlslCompiler;
 import com.crystalgraphics.platform.rhi.memory.CgAllocation;
 import com.crystalgraphics.platform.gl.tracked.tracker.CgDrawState;
@@ -151,9 +151,9 @@ public class CgTrackedProgramsTest {
     /** What the recorded pipeline list keys a program by: its sources alone. */
     @Test
     public void aProgramsKeyFollowsItsSourcesAlone() {
-        long a = CgTrackedProgram.key("vs", "fs", Map.of("pos", 0, "uv", 1));
-        assertEquals(a, CgTrackedProgram.key("vs", "fs", Map.of("uv", 1, "pos", 0)));
-        assertNotEquals(a, CgTrackedProgram.key("vs", "fs2", Map.of("pos", 0, "uv", 1)));
-        assertNotEquals(a, CgTrackedProgram.key("vsf", "s", Map.of("pos", 0, "uv", 1)));
+        long a = CgPipelineRecipes.programKey("vs", "fs", Map.of("pos", 0, "uv", 1));
+        assertEquals(a, CgPipelineRecipes.programKey("vs", "fs", Map.of("uv", 1, "pos", 0)));
+        assertNotEquals(a, CgPipelineRecipes.programKey("vs", "fs2", Map.of("pos", 0, "uv", 1)));
+        assertNotEquals(a, CgPipelineRecipes.programKey("vsf", "s", Map.of("pos", 0, "uv", 1)));
     }
 }

@@ -16,7 +16,10 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -32,6 +35,7 @@ import com.crystalgraphics.platform.rhi.pipeline.CgGraphicsPipelineDesc.StencilF
 import com.crystalgraphics.platform.rhi.pipeline.CgGraphicsPipelineDesc.VertexAttrib;
 import com.crystalgraphics.platform.rhi.pipeline.CgGraphicsPipelineDesc.VertexBuffer;
 import com.crystalgraphics.platform.rhi.shader.CgShaderModule;
+import com.crystalgraphics.platform.service.CgCacheDirectory;
 import com.github.bsideup.jabel.Desugar;
 
 /**
@@ -66,6 +70,53 @@ public final class CgPipelineRecipes {
     private CgPipelineRecipes(Path folder, Executor writer) {
         this.file = folder == null ? null : folder.resolve(FILE);
         this.writer = writer;
+    }
+
+    private static CgPipelineRecipes shared;
+
+    /**
+     * The process's list: the shipped one and the user's in the cache folder ({@code CgCacheDirectory.of("pipelines")}),
+     * appended on a writer thread of its own. One for every pipeline cache, so two caches on a device (the tracked
+     * backend's, the graph's) read each other's recipes and never write the file at once.
+     */
+    public static synchronized CgPipelineRecipes shared() {
+        if (shared == null) {
+            ExecutorService writer = Executors.newSingleThreadExecutor(r -> {
+                Thread t = new Thread(r, "crystalgraphics-pipeline-list");
+                t.setDaemon(true);
+                t.setPriority(Thread.MIN_PRIORITY);
+                return t;
+            });
+            shared = load(CgCacheDirectory.of("pipelines"), writer);
+        }
+        return shared;
+    }
+
+    /**
+     * A program's key: an FNV-1a hash of its vertex and fragment sources and its attribute locations, never 0. An
+     * edited source is a new key, whose recipes are recorded anew.
+     *
+     * <pre>{@code
+     * long key = CgPipelineRecipes.programKey(vertexGlsl, fragmentGlsl, Map.of("position", 0));
+     * }</pre>
+     */
+    public static long programKey(String vertex, String fragment, Map<String, Integer> attribs) {
+        long h = 0xcbf29ce484222325L;
+        h = fnv(h, vertex);
+        h = fnv(h, "\u0000");
+        h = fnv(h, fragment);
+        for (Map.Entry<String, Integer> e : new TreeMap<>(attribs).entrySet()) {
+            h = fnv(h, e.getKey() + "=" + e.getValue() + ";");
+        }
+        return h == 0 ? 1 : h;
+    }
+
+    private static long fnv(long h, String s) {
+        for (int i = 0; i < s.length(); i++) {
+            h ^= s.charAt(i);
+            h *= 0x100000001b3L;
+        }
+        return h;
     }
 
     /** The shipped list and the user's in {@code folder} (null: shipped only, nothing written). */

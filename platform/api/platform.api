@@ -2983,7 +2983,6 @@ com/crystalgraphics/platform/gl/tracked/tracker/CgTrackedProgram
   method public label ()Ljava/lang/String;
   method public layout ()Lcom/crystalgraphics/platform/rhi/binding/CgBindingLayout;
   method public modules ()Ljava/util/List;
-  method public,static key (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;)J
 com/crystalgraphics/platform/gl/tracked/tracker/CgTracker
   access public,final
   extends java/lang/Object
@@ -3328,6 +3327,7 @@ com/crystalgraphics/platform/rhi/CgRHI
   method public,abstract whenRetired (JLjava/lang/Runnable;)V
   method public,static get ()Lcom/crystalgraphics/platform/rhi/CgRHI;
   method public,static install (Lcom/crystalgraphics/platform/rhi/CgRHI;)V
+  method public,static installed ()Z
 com/crystalgraphics/platform/rhi/CgRHI$Current
   access public,final
   extends java/lang/Object
@@ -4090,6 +4090,8 @@ com/crystalgraphics/platform/rhi/pipeline/CgPipelineRecipes
   method public of (J)Ljava/util/List;
   method public record (JLcom/crystalgraphics/platform/rhi/pipeline/CgPipelineRecipes$Recipe;)V
   method public,static load (Ljava/nio/file/Path;Ljava/util/concurrent/Executor;)Lcom/crystalgraphics/platform/rhi/pipeline/CgPipelineRecipes;
+  method public,static programKey (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;)J
+  method public,static shared ()Lcom/crystalgraphics/platform/rhi/pipeline/CgPipelineRecipes;
 com/crystalgraphics/platform/rhi/pipeline/CgPipelineRecipes$Recipe
   access public,final,record
   extends java/lang/Record

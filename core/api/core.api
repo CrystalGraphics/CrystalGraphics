@@ -6083,6 +6083,8 @@ com/crystalgraphics/gl/framebuffer/CgFrameBuffer
   method public reattachColorRaw (III)V
   method public reattachDepth (Lcom/crystalgraphics/api/texture/CgTexture;)V
   method public resize (II)V
+  method public rhiColor (I)Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture;
+  method public rhiDepth ()Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture;
   method public supportsMrt ()Z
   method public unbind ()V
   method public,static allOnDevice (Lcom/crystalgraphics/api/framebuffer/CgFrameBufferFormat;)Z
@@ -6751,6 +6753,7 @@ com/crystalgraphics/gl/shader/CgShader
   method public bindScoped ()Lcom/crystalgraphics/platform/gl/state/CgGlScope;
   method public bindScoped ([Lcom/crystalgraphics/platform/gl/state/CgGlSlot;)Lcom/crystalgraphics/platform/gl/state/CgGlScope;
   method public delete ()V
+  method public deviceKey ()J
   method public deviceModule (Lcom/crystalgraphics/platform/rhi/CgRHI;Lcom/crystalgraphics/platform/rhi/shader/CgShaderModule$Stage;ZLjava/lang/String;)Lcom/crystalgraphics/platform/rhi/shader/CgShaderModule;
   method public explicit (Ljava/lang/String;)Lcom/crystalgraphics/platform/rhi/shader/CgGlslCompiler$Explicit;
   method public format ()Lcom/crystalgraphics/api/vertex/CgVertexFormat;
@@ -6760,6 +6763,7 @@ com/crystalgraphics/gl/shader/CgShader
   method public isCompiled ()Z
   method public isDeleted ()Z
   method public isReady ()Z
+  method public startsOn (Lcom/crystalgraphics/platform/rhi/CgRHI;)Z
   method public unbind ()V
 com/crystalgraphics/gl/shader/CgShaderFactory
   access public,final

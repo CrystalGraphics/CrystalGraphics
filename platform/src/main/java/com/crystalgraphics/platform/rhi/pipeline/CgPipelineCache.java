@@ -1,7 +1,6 @@
 package com.crystalgraphics.platform.rhi.pipeline;
 
 import com.crystalgraphics.platform.rhi.CgRHI;
-import com.crystalgraphics.platform.service.CgCacheDirectory;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.trace.CgTraceChannel;
 import com.crystalgraphics.variable.CgVar;
@@ -60,7 +59,6 @@ public final class CgPipelineCache {
     private final Map<CgGraphicsPipelineDesc, Future<CgGraphicsPipeline>> ahead = new HashMap<>();
     /** Built ahead for a link that will never install: released once done. */
     private final List<Future<CgGraphicsPipeline>> orphaned = new ArrayList<>();
-    private CgPipelineRecipes recipes;
     private ExecutorService builders;
     /** Closed with its device: no build starts. */
     private boolean closed;
@@ -216,9 +214,8 @@ public final class CgPipelineCache {
         }
     }
 
-    private synchronized CgPipelineRecipes recipes() {
-        if (recipes == null) recipes = CgPipelineRecipes.load(CgCacheDirectory.of("pipelines"), builders());
-        return recipes;
+    private CgPipelineRecipes recipes() {
+        return CgPipelineRecipes.shared();
     }
 
     /** Half the cores, from one to four: a driver compiles one pipeline a thread. Null once closed. */

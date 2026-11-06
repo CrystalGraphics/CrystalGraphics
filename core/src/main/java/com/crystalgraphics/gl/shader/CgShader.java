@@ -6,6 +6,7 @@ import com.crystalgraphics.platform.gl.state.CgGlScope;
 import com.crystalgraphics.platform.gl.state.CgGlSlot;
 import com.crystalgraphics.platform.gl.state.CgGlState;
 import com.crystalgraphics.platform.rhi.CgRHI;
+import com.crystalgraphics.platform.rhi.pipeline.CgPipelineRecipes;
 import com.crystalgraphics.platform.rhi.shader.CgGlslCompiler;
 import com.crystalgraphics.platform.rhi.shader.CgShaderModule;
 import org.apache.logging.log4j.LogManager;
@@ -62,6 +63,7 @@ public final class CgShader {
         try {
             linkedVertex = pp.process(vertexSource, "");
             linkedFragment = pp.process(fragmentSource, "");
+            deviceKey = 0;
             program = CgProgram.compile(linkedVertex, linkedFragment, format);
         } catch (Exception e) {
             LOGGER.error("Failed to compile inline shader: {}", e.getMessage());
@@ -87,6 +89,7 @@ public final class CgShader {
         program = next;
         linkedVertex = vertexSource;
         linkedFragment = fragmentSource;
+        deviceKey = 0;
         pending = true;
         compiled = false;
     }
@@ -167,11 +170,40 @@ public final class CgShader {
     public CgGlslCompiler.Explicit explicit(String label) {
         if (explicit == null) {
             if (linkedVertex == null) throw new IllegalStateException(label + ": never linked");
-            Map<String, Integer> attribs = new HashMap<>();
-            if (format != null) for (int i = 0; i < format.getAttributeCount(); i++) attribs.put(format.getAttribute(i).getName(), i);
-            explicit = CgGlslCompiler.get().compileExplicit(linkedVertex, linkedFragment, attribs, label);
+            explicit = CgGlslCompiler.get().compileExplicit(linkedVertex, linkedFragment, attribs(), label);
         }
         return explicit;
+    }
+
+    /** Each vertex attribute at the location the GL program binds it. */
+    private Map<String, Integer> attribs() {
+        Map<String, Integer> attribs = new HashMap<>();
+        if (format != null) for (int i = 0; i < format.getAttributeCount(); i++) attribs.put(format.getAttribute(i).getName(), i);
+        return attribs;
+    }
+
+    /**
+     * What its device pipelines are recorded by ({@code CgPipelineRecipes}): a hash of the sources {@link #explicit}
+     * compiles, apart from the tracked backend's keys over the same sources, whose pipelines are another program's.
+     * 0 before it links.
+     */
+    public long deviceKey() {
+        if (deviceKey == 0 && linkedVertex != null) {
+            deviceKey = CgPipelineRecipes.programKey(DEVICE_KEY + linkedVertex, linkedFragment, attribs());
+        }
+        return deviceKey;
+    }
+
+    private static final String DEVICE_KEY = "device\u0000";
+    private long deviceKey;
+    /** The device its recorded pipelines were started on ({@link #startsOn}). */
+    private CgRHI startedOn;
+
+    /** True once a device: whoever asks first starts its recorded pipelines there. */
+    public boolean startsOn(CgRHI rhi) {
+        if (startedOn == rhi) return false;
+        startedOn = rhi;
+        return true;
     }
 
     /**
@@ -211,6 +243,7 @@ public final class CgShader {
         pending = false;
         locations.clear();
         releaseModules();
+        deviceKey = 0;
         deleted = true;
     }
 

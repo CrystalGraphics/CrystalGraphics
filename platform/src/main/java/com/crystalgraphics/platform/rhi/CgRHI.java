@@ -87,6 +87,11 @@ public interface CgRHI {
         return rhi;
     }
 
+    /** Whether a host installed one: {@link #get()} answers rather than throws. */
+    static boolean installed() {
+        return Current.rhi != null;
+    }
+
     /** Makes {@code rhi} the one {@link #get()} returns; the host that made it calls this, null when it goes. */
     static void install(CgRHI rhi) {
         Current.rhi = rhi;
