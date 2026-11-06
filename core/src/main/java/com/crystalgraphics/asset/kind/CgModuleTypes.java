@@ -16,7 +16,7 @@ import com.crystalgraphics.object.CgValueType;
 import com.crystalgraphics.object.value.CgQuantity;
 import com.crystalgraphics.object.value.CgValueForm;
 import com.crystalgraphics.serialization.CgCodecs;
-import com.crystalgraphics.serialization.format.CgFormats;
+import com.crystalgraphics.serialization.format.CgFiles;
 import com.crystalgraphics.util.io.CgIO;
 
 /**
@@ -101,7 +101,7 @@ public final class CgModuleTypes {
 
     /** Reads {@code modules.yaml}'s text into types registered in {@code registry}. */
     public static CgModuleTypes load(String yaml, CgTypes registry) {
-        Map<String, Object> doc = asMap(CgFormats.YAML.fromText(CgCodecs.PLAIN, yaml), "modules.yaml");
+        Map<String, Object> doc = asMap(CgFiles.YAML.fromText(CgCodecs.PLAIN, yaml), "modules.yaml");
         Map<String, Module> out = new LinkedHashMap<>();
         for (Object entry : asList(doc.get("modules"), "modules")) {
             Map<String, Object> m = asMap(entry, "a module");

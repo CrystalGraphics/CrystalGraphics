@@ -879,9 +879,9 @@ whole of it is **[`docs/SERIALIZATION.md`](SERIALIZATION.md)**:
 | reload into an object other code holds | [§5 Decoding into a live object](SERIALIZATION.md#5-decoding-into-a-live-object) |
 
 ```java
-CgFormats.write(file, PlayerData.CODEC, data);                         // a file of your own
-tag.put("character", CgFormats.toNbt(Character.CODEC, character));     // Minecraft's NBT
-CgFormats.YAML.read(config, Settings.CODEC, live);                     // a config, into the live settings
+CgFiles.write(file, PlayerData.CODEC, data);                         // a file of your own
+tag.put("character", CgFiles.toNbt(Character.CODEC, character));     // Minecraft's NBT
+CgFiles.YAML.read(config, Settings.CODEC, live);                     // a config, into the live settings
 ```
 
 ---

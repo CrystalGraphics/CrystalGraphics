@@ -1,6 +1,6 @@
 package com.crystalgraphics.serialization;
 
-import com.crystalgraphics.serialization.format.CgFormats;
+import com.crystalgraphics.serialization.format.CgFiles;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
@@ -208,19 +208,19 @@ public class CgDecodeIntoTest {
     public void aFileIsReadIntoTheLiveObjectAndADamagedOneTouchesNothing() throws IOException {
         Path file = folder.getRoot().toPath().resolve("goku.dat");
         Character live = new Character();
-        assertSame("no file: as it was", live, CgFormats.read(file, Character.CODEC, live));
+        assertSame("no file: as it was", live, CgFiles.read(file, Character.CODEC, live));
 
         Character saved = Character.CODEC.decode(CgPlainOps.INSTANCE, encoded("Goku", 4, 1, 2, "kaioken"));
-        CgFormats.write(file, Character.CODEC, saved);
+        CgFiles.write(file, Character.CODEC, saved);
         List<String> skills = live.skills;
-        assertSame(live, CgFormats.read(file, Character.CODEC, live));
+        assertSame(live, CgFiles.read(file, Character.CODEC, live));
         assertEquals("Goku", live.name);
         assertSame(skills, live.skills);
         assertEquals(Arrays.asList("kaioken"), live.skills);
 
         byte[] bytes = Files.readAllBytes(file);
         Files.write(file, Arrays.copyOf(bytes, bytes.length / 2));
-        assertThrows(IOException.class, () -> CgFormats.read(file, Character.CODEC, live));
+        assertThrows(IOException.class, () -> CgFiles.read(file, Character.CODEC, live));
         assertEquals("Goku", live.name);
         assertEquals(Arrays.asList("kaioken"), live.skills);
     }

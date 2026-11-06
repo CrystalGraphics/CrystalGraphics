@@ -15,8 +15,8 @@ import java.util.function.Consumer;
  *         .from(1, tree -> tree.rename("Level", "level"))                       // version 1 to 2
  *         .from(2, tree -> tree.move("skills", "abilities.list"));              // version 2 to 3
  *
- * CgFormats.write(file, SAVED, character);     // writes "_v": 3 before the codec's keys
- * Character back = CgFormats.read(file, SAVED);   // a version 1 file runs both steps first
+ * CgFiles.write(file, SAVED, character);     // writes "_v": 3 before the codec's keys
+ * Character back = CgFiles.read(file, SAVED);   // a version 1 file runs both steps first
  * }</pre>
  *
  * <ul>

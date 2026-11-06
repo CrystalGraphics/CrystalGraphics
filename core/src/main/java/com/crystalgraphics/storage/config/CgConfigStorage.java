@@ -2,8 +2,8 @@ package com.crystalgraphics.storage.config;
 
 import com.crystalgraphics.serialization.CgCodec;
 import com.crystalgraphics.serialization.CgCodecException;
-import com.crystalgraphics.serialization.format.CgFormat;
-import com.crystalgraphics.serialization.format.CgFormats;
+import com.crystalgraphics.serialization.format.CgFileFormat;
+import com.crystalgraphics.serialization.format.CgFiles;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -16,7 +16,7 @@ import javax.annotation.Nullable;
 /**
  * A product's own files as named blobs: preferences, one session record per project. A store sits on a directory
  * ({@link CgLocalConfigStorage}), a key prefix of another ({@link CgScopedConfigStorage}) or a map
- * ({@link CgInMemoryConfigStorage}, for tests). Values go through {@code CgFormats}, so the name's extension picks the
+ * ({@link CgInMemoryConfigStorage}, for tests). Values go through {@code CgFiles}, so the name's extension picks the
  * format: {@code .toml}, {@code .json}, {@code .jsonc}, {@code .yml}, anything else binary.
  *
  * <pre>{@code
@@ -116,8 +116,8 @@ public interface CgConfigStorage {
     }
 
     /** The format the extension of {@code name} names. */
-    static CgFormat formatOf(String name) {
-        return CgFormats.of(Paths.get(name));
+    static CgFileFormat formatOf(String name) {
+        return CgFiles.of(Paths.get(name));
     }
 
     /** False for a store that cannot be written, such as a directory that could not be created. */

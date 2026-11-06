@@ -26,19 +26,19 @@ import java.util.Locale;
  * needs no NBT of its own.
  *
  * <pre>{@code
- * CgFormats.write(file, PlayerData.CODEC, data);                  // binary, compressed
- * PlayerData data = CgFormats.read(file, PlayerData.CODEC);       // null when there is no file yet
- * CgFormats.read(file, PlayerData.CODEC, live);                   // into a live object
+ * CgFiles.write(file, PlayerData.CODEC, data);                  // binary, compressed
+ * PlayerData data = CgFiles.read(file, PlayerData.CODEC);       // null when there is no file yet
+ * CgFiles.read(file, PlayerData.CODEC, live);                   // into a live object
  *
- * CgFormats.TOML.write(config, Settings.CODEC, settings);         // a config file people edit
- * Settings s = CgFormats.of(config).read(config, Settings.CODEC); // the format from the extension
+ * CgFiles.TOML.write(config, Settings.CODEC, settings);         // a config file people edit
+ * Settings s = CgFiles.of(config).read(config, Settings.CODEC); // the format from the extension
  * }</pre>
  *
  * Inside an entity's, block entity's or item's saved data, which only takes Minecraft's tags:
  *
  * <pre>{@code
- * tag.put("character", CgFormats.toNbt(Character.CODEC, character));              // saving
- * Character character = CgFormats.fromNbt(Character.CODEC, tag.get("character")); // loading
+ * tag.put("character", CgFiles.toNbt(Character.CODEC, character));              // saving
+ * Character character = CgFiles.fromNbt(Character.CODEC, tag.get("character")); // loading
  * }</pre>
  *
  * <ul>
@@ -49,10 +49,10 @@ import java.util.Locale;
  *       {@link CgHostFormats} slot.</li>
  * </ul>
  */
-public final class CgFormats {
+public final class CgFiles {
 
     /** CrystalGraphics' binary format, gzipped: the wire's own, smallest and fastest. */
-    public static final CgFormat BINARY = new BinaryFileFormat();
+    public static final CgFileFormat BINARY = new BinaryFileFormat();
 
     /** JSON, pretty-printed: Gson, which every Minecraft ships. */
     public static final CgTextFormat JSON = new LazyTextFormat("JSON", "Gson", () -> new JsonFileFormat());
@@ -69,14 +69,14 @@ public final class CgFormats {
      */
     public static final CgTextFormat JSONC = new JsoncFileFormat();
 
-    private CgFormats() {
+    private CgFiles() {
     }
 
     /**
      * The format a file's extension names: {@code .json}, {@code .jsonc}, {@code .yml}, {@code .yaml} or {@code .toml},
      * anything else binary.
      */
-    public static CgFormat of(Path file) {
+    public static CgFileFormat of(Path file) {
         String name = file.getFileName().toString().toLowerCase(Locale.ROOT);
         if (name.endsWith(".json")) return JSON;
         if (name.endsWith(".jsonc")) return JSONC;
@@ -106,18 +106,18 @@ public final class CgFormats {
         }
     }
 
-    /** {@link #BINARY}'s {@link CgFormat#write}. */
+    /** {@link #BINARY}'s {@link CgFileFormat#write}. */
     public static <V> void write(Path file, CgCodec<V> codec, V value) throws IOException {
         BINARY.write(file, codec, value);
     }
 
-    /** {@link #BINARY}'s {@link CgFormat#read}: null when there is no file. */
+    /** {@link #BINARY}'s {@link CgFileFormat#read}: null when there is no file. */
     @Nullable
     public static <V> V read(Path file, CgCodec<V> codec) throws IOException {
         return BINARY.read(file, codec);
     }
 
-    /** {@link #BINARY}'s {@link CgFormat#read(Path, CgCodec, Object)}: into {@code target}. */
+    /** {@link #BINARY}'s {@link CgFileFormat#read(Path, CgCodec, Object)}: into {@code target}. */
     public static <V> V read(Path file, CgCodec<V> codec, V target) throws IOException {
         return BINARY.read(file, codec, target);
     }

@@ -29,7 +29,7 @@ import com.crystalgraphics.object.CgTypes;
 import com.crystalgraphics.object.CgValueType;
 import com.crystalgraphics.object.value.CgValueForm;
 import com.crystalgraphics.serialization.CgCodecs;
-import com.crystalgraphics.serialization.format.CgFormats;
+import com.crystalgraphics.serialization.format.CgFiles;
 import com.crystalgraphics.util.io.CgIO;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
@@ -90,7 +90,7 @@ public class CgBibleGateTest {
     public void everyModuleLoadsAsItsDeclarationSaysBothWays() throws IOException {
         String yaml = new String(Files.readAllBytes(spec.resolve("schema/modules.yaml")), StandardCharsets.UTF_8);
         CgModuleTypes modules = CgModuleTypes.load(yaml, CgTypes.create());
-        Map<String, Object> doc = (Map<String, Object>) CgFormats.YAML.fromText(CgCodecs.PLAIN, yaml);
+        Map<String, Object> doc = (Map<String, Object>) CgFiles.YAML.fromText(CgCodecs.PLAIN, yaml);
         List<String> found = new ArrayList<>();
         Set<String> inputKeys = new LinkedHashSet<>();
         List<Map<String, Object>> declared = (List<Map<String, Object>>) doc.get("modules");

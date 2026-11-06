@@ -31,8 +31,8 @@ import java.util.function.Supplier;
  *             .build();
  * }
  *
- * Character fresh = CgFormats.read(file, Character.CODEC);       // Character::new, then filled
- * CgFormats.read(file, Character.CODEC, live);               // live, its skills and its stats keep their identity
+ * Character fresh = CgFiles.read(file, Character.CODEC);       // Character::new, then filled
+ * CgFiles.read(file, Character.CODEC, live);               // live, its skills and its stats keep their identity
  * }</pre>
  *
  * An object the caller makes itself (from a registry, a constructor with arguments) takes the factory-less form:

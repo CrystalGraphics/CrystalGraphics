@@ -11980,7 +11980,7 @@ com/crystalgraphics/serialization/CgVersionedCodec
   method public decode (Lcom/crystalgraphics/serialization/CgDynamicOps;Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
   method public encode (Lcom/crystalgraphics/serialization/CgDynamicOps;Ljava/lang/Object;)Ljava/lang/Object;
   method public from (ILjava/util/function/Consumer;)Lcom/crystalgraphics/serialization/CgVersionedCodec;
-com/crystalgraphics/serialization/format/CgFormat
+com/crystalgraphics/serialization/format/CgFileFormat
   access public,abstract,interface
   extends java/lang/Object
   method public,abstract fromBytes (Lcom/crystalgraphics/serialization/CgCodec;[B)Ljava/lang/Object;
@@ -11989,10 +11989,10 @@ com/crystalgraphics/serialization/format/CgFormat
   method public,abstract read (Ljava/nio/file/Path;Lcom/crystalgraphics/serialization/CgCodec;Ljava/lang/Object;)Ljava/lang/Object;
   method public,abstract toBytes (Lcom/crystalgraphics/serialization/CgCodec;Ljava/lang/Object;[B)[B
   method public,abstract write (Ljava/nio/file/Path;Lcom/crystalgraphics/serialization/CgCodec;Ljava/lang/Object;)V
-com/crystalgraphics/serialization/format/CgFormats
+com/crystalgraphics/serialization/format/CgFiles
   access public,final
   extends java/lang/Object
-  field public,static,final BINARY Lcom/crystalgraphics/serialization/format/CgFormat;
+  field public,static,final BINARY Lcom/crystalgraphics/serialization/format/CgFileFormat;
   field public,static,final JSON Lcom/crystalgraphics/serialization/format/CgTextFormat;
   field public,static,final JSONC Lcom/crystalgraphics/serialization/format/CgTextFormat;
   field public,static,final TOML Lcom/crystalgraphics/serialization/format/CgTextFormat;
@@ -12000,7 +12000,7 @@ com/crystalgraphics/serialization/format/CgFormats
   method public,static fromNbt (Lcom/crystalgraphics/serialization/CgCodec;Ljava/lang/Object;)Ljava/lang/Object;
   method public,static fromNbt (Lcom/crystalgraphics/serialization/CgCodec;Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
   method public,static nbt ()Lcom/crystalgraphics/serialization/CgDynamicOps;
-  method public,static of (Ljava/nio/file/Path;)Lcom/crystalgraphics/serialization/format/CgFormat;
+  method public,static of (Ljava/nio/file/Path;)Lcom/crystalgraphics/serialization/format/CgFileFormat;
   method public,static read (Ljava/nio/file/Path;Lcom/crystalgraphics/serialization/CgCodec;)Ljava/lang/Object;
   method public,static read (Ljava/nio/file/Path;Lcom/crystalgraphics/serialization/CgCodec;Ljava/lang/Object;)Ljava/lang/Object;
   method public,static toNbt (Lcom/crystalgraphics/serialization/CgCodec;Ljava/lang/Object;)Ljava/lang/Object;
@@ -12028,7 +12028,7 @@ com/crystalgraphics/serialization/format/CgJsonOps
 com/crystalgraphics/serialization/format/CgTextFormat
   access public,abstract,interface
   extends java/lang/Object
-  implements com/crystalgraphics/serialization/format/CgFormat
+  implements com/crystalgraphics/serialization/format/CgFileFormat
   method public,abstract fromText (Lcom/crystalgraphics/serialization/CgCodec;Ljava/lang/String;)Ljava/lang/Object;
   method public,abstract fromText (Lcom/crystalgraphics/serialization/CgCodec;Ljava/lang/String;Ljava/lang/Object;)Ljava/lang/Object;
   method public,abstract toText (Lcom/crystalgraphics/serialization/CgCodec;Ljava/lang/Object;)Ljava/lang/String;
@@ -13065,7 +13065,7 @@ com/crystalgraphics/storage/config/CgConfigStorage
   method public,abstract list ()Ljava/util/List;
   method public,abstract readBytes (Ljava/lang/String;)[B
   method public,abstract writeBytes (Ljava/lang/String;[B)V
-  method public,static formatOf (Ljava/lang/String;)Lcom/crystalgraphics/serialization/format/CgFormat;
+  method public,static formatOf (Ljava/lang/String;)Lcom/crystalgraphics/serialization/format/CgFileFormat;
 com/crystalgraphics/storage/config/CgInMemoryConfigStorage
   access public,final
   extends java/lang/Object

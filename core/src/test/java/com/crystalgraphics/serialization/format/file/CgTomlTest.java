@@ -6,7 +6,7 @@ import com.crystalgraphics.serialization.CgCodecs;
 import com.crystalgraphics.serialization.CgDynamicOps;
 import com.crystalgraphics.serialization.CgObjectCodec;
 import com.crystalgraphics.serialization.CgPlainOps;
-import com.crystalgraphics.serialization.format.CgFormats;
+import com.crystalgraphics.serialization.format.CgFiles;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
@@ -150,12 +150,12 @@ public class CgTomlTest {
         c.audio = new Audio(0.5f, true);
         c.spells.add(new Spell("beam", 3));
         c.spells.add(new Spell("dash", 1));
-        String text = CgFormats.TOML.toText(Config.CODEC, c);
+        String text = CgFiles.TOML.toText(Config.CODEC, c);
         assertTrue(text, text.startsWith("# Shown in the menu.\ntitle = \"Saiyan \\\"Saga\\\"\"\n"));
         assertTrue(text, text.contains("\n# Sound.\n[audio]\n# Master volume, 0 to 1.\nvolume = 0.5\nsubtitles = true\n"));
         assertTrue(text, text.contains("\n[[spells]]\nname = \"beam\"\n"));
 
-        Config back = CgFormats.TOML.fromText(Config.CODEC, text);
+        Config back = CgFiles.TOML.fromText(Config.CODEC, text);
         assertEquals(c.title, back.title);
         assertEquals(c.audio, back.audio);
         assertEquals(c.spells, back.spells);
@@ -178,9 +178,9 @@ public class CgTomlTest {
                 + "cost = 3   # cheap\n"
                 + "\n"
                 + "# the end\n").getBytes(StandardCharsets.UTF_8));
-        Config live = CgFormats.TOML.read(file, Config.CODEC, new Config());
+        Config live = CgFiles.TOML.read(file, Config.CODEC, new Config());
         live.audio = new Audio(0.3f, true);
-        CgFormats.TOML.write(file, Config.CODEC, live);
+        CgFiles.TOML.write(file, Config.CODEC, live);
 
         String text = new String(Files.readAllBytes(file), StandardCharsets.UTF_8);
         assertTrue(text, text.startsWith("# my own title note\ntitle = \"x\"  # set by hand\n"));   // theirs, over ours
@@ -188,7 +188,7 @@ public class CgTomlTest {
         assertTrue(text, text.contains("cost = 3  # cheap\n"));
         assertFalse(text, text.contains("no longer writes"));
         assertTrue(text, text.endsWith("\n# the end\n"));
-        assertEquals(new Audio(0.3f, true), CgFormats.TOML.read(file, Config.CODEC).audio);
+        assertEquals(new Audio(0.3f, true), CgFiles.TOML.read(file, Config.CODEC).audio);
     }
 
     /** {@code a = value}, its comment written by hand; the codec's own comment is the file's header. */
@@ -209,11 +209,11 @@ public class CgTomlTest {
 
     @Test
     public void aHeaderIsTheBlockAboveTheFirstKeyWithABlankLineAfterIt() throws IOException {
-        assertEquals("# mymod settings.\n\n# Set by hand.\na = 1\n", CgFormats.TOML.toText(HEADED, 1));
+        assertEquals("# mymod settings.\n\n# Set by hand.\na = 1\n", CgFiles.TOML.toText(HEADED, 1));
 
         Path file = folder.newFile("headed.toml").toPath();
         Files.write(file, "# mine\n\n# on a\na = 1\n".getBytes(StandardCharsets.UTF_8));
-        CgFormats.TOML.write(file, HEADED, 2);
+        CgFiles.TOML.write(file, HEADED, 2);
         assertEquals("# mine\n\n# on a\na = 2\n", new String(Files.readAllBytes(file), StandardCharsets.UTF_8));
     }
 
@@ -221,7 +221,7 @@ public class CgTomlTest {
     public void aNestedValuesOwnCommentGoesAboveItsSection() {
         CgCodec<Audio> sound = Audio.CODEC.comment("Sound.");
         CgCodec<Audio> holder = CgCodecs.record(CgCodecs.field("audio", sound, a -> a), a -> a);
-        String text = CgFormats.TOML.toText(holder, new Audio(1f, false));
+        String text = CgFiles.TOML.toText(holder, new Audio(1f, false));
         assertTrue(text, text.startsWith("# Sound.\n[audio]\n# Master volume, 0 to 1.\nvolume = 1.0\n"));
     }
 
@@ -229,7 +229,7 @@ public class CgTomlTest {
     public void aKeyInsideAnArrayOfTablesTakesItsComment() {
         CgCodec<List<Spell>> list = CgCodecs.record(CgCodecs.field("spells", CgCodecs.listOf(Spell.CODEC), l -> l),
                 l -> l);
-        String text = CgFormats.TOML.toText(list, Arrays.asList(new Spell("beam", 3), new Spell("dash", 1)));
+        String text = CgFiles.TOML.toText(list, Arrays.asList(new Spell("beam", 3), new Spell("dash", 1)));
         assertEquals(text, 2, text.split("# Ki it takes.", -1).length - 1);
     }
 
@@ -241,9 +241,9 @@ public class CgTomlTest {
 
     @Test
     public void whatTomlCannotHoldSaysSo() {
-        assertThrows(CgCodecException.class, () -> CgFormats.TOML.toText(CgCodecs.INT, 3));
+        assertThrows(CgCodecException.class, () -> CgFiles.TOML.toText(CgCodecs.INT, 3));
         assertThrows(CgCodecException.class,
-                () -> CgFormats.TOML.toText(CgCodecs.mapOf(CgCodecs.DOUBLE, CgCodecs.INT), Collections.singletonMap(1.5, 2)));
+                () -> CgFiles.TOML.toText(CgCodecs.mapOf(CgCodecs.DOUBLE, CgCodecs.INT), Collections.singletonMap(1.5, 2)));
     }
 
     @Test

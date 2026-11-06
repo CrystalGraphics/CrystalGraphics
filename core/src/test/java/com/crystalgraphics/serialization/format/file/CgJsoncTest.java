@@ -4,7 +4,7 @@ import com.crystalgraphics.serialization.CgCodec;
 import com.crystalgraphics.serialization.CgCodecException;
 import com.crystalgraphics.serialization.CgCodecs;
 import com.crystalgraphics.serialization.CgObjectCodec;
-import com.crystalgraphics.serialization.format.CgFormats;
+import com.crystalgraphics.serialization.format.CgFiles;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
@@ -72,7 +72,7 @@ public class CgJsoncTest {
         }
         CgCodecException e = assertThrows(CgCodecException.class, () -> JsoncReader.read("{\n\n\"a\": nope}", null));
         assertTrue(e.getMessage(), e.getMessage().contains("line 3"));
-        assertThrows(CgCodecException.class, () -> CgFormats.JSONC.toText(CgCodecs.DOUBLE, Double.NaN));
+        assertThrows(CgCodecException.class, () -> CgFiles.JSONC.toText(CgCodecs.DOUBLE, Double.NaN));
     }
 
     @Test
@@ -81,16 +81,16 @@ public class CgJsoncTest {
         c.title = "Saga";
         c.volume = 0.5f;
         c.spells.add(new Spell("beam", 3));
-        String text = CgFormats.JSONC.toText(Config.CODEC, c);
+        String text = CgFiles.JSONC.toText(Config.CODEC, c);
         assertTrue(text, text.startsWith("// mymod settings.\n\n{\n  // Shown in the menu.\n  \"title\": \"Saga\",\n"));
         assertTrue(text, text.contains("\n\n  // Master volume, 0 to 1.\n  \"volume\": 0.5,\n"));
         assertTrue(text, text.contains("      // Ki it takes.\n      \"cost\": 3\n"));
 
-        Config back = CgFormats.JSONC.fromText(Config.CODEC, text);
+        Config back = CgFiles.JSONC.fromText(Config.CODEC, text);
         assertEquals("Saga", back.title);
         assertEquals(c.spells, back.spells);
-        assertFalse("strict JSON writes none", CgFormats.JSON.toText(Config.CODEC, c).contains("//"));
-        assertEquals("Saga", CgFormats.JSONC.fromText(Config.CODEC, CgFormats.JSON.toText(Config.CODEC, c)).title);
+        assertFalse("strict JSON writes none", CgFiles.JSON.toText(Config.CODEC, c).contains("//"));
+        assertEquals("Saga", CgFiles.JSONC.fromText(Config.CODEC, CgFiles.JSON.toText(Config.CODEC, c)).title);
     }
 
     @Test
@@ -105,15 +105,15 @@ public class CgJsoncTest {
                 + "  \"legacy\": 3\n"
                 + "}\n"
                 + "// the end\n").getBytes(StandardCharsets.UTF_8));
-        Config live = CgFormats.JSONC.read(file, Config.CODEC, new Config());
+        Config live = CgFiles.JSONC.read(file, Config.CODEC, new Config());
         live.volume = 0.3f;
-        CgFormats.JSONC.write(file, Config.CODEC, live);
+        CgFiles.JSONC.write(file, Config.CODEC, live);
 
         String text = new String(Files.readAllBytes(file), StandardCharsets.UTF_8);
         assertTrue(text, text.startsWith("// mine, on top\n\n{\n  /* why: the menu */\n  \"title\": \"x\", // set by hand\n"));
         assertTrue(text, text.contains("  // Master volume, 0 to 1.\n  \"volume\": 0.3,\n"));
         assertFalse(text, text.contains("no longer writes"));
         assertTrue(text, text.endsWith("}\n// the end\n"));
-        assertEquals(0.3f, CgFormats.JSONC.read(file, Config.CODEC).volume, 0f);
+        assertEquals(0.3f, CgFiles.JSONC.read(file, Config.CODEC).volume, 0f);
     }
 }

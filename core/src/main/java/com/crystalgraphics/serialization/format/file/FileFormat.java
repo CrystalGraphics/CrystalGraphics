@@ -1,18 +1,18 @@
 package com.crystalgraphics.serialization.format.file;
 
-import com.crystalgraphics.serialization.format.CgFormat;
+import com.crystalgraphics.serialization.format.CgFileFormat;
 
 import com.crystalgraphics.serialization.CgCodec;
 import com.crystalgraphics.serialization.CgDynamicOps;
-import com.crystalgraphics.serialization.format.CgFormats;
+import com.crystalgraphics.serialization.format.CgFiles;
 
 import javax.annotation.Nullable;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
-/** A {@link CgFormat} as a tree in {@code T} and how that tree becomes bytes; the file handling is here, once. */
-abstract class FileFormat<T> implements CgFormat {
+/** A {@link CgFileFormat} as a tree in {@code T} and how that tree becomes bytes; the file handling is here, once. */
+abstract class FileFormat<T> implements CgFileFormat {
 
     abstract CgDynamicOps<T> ops();
 
@@ -39,7 +39,7 @@ abstract class FileFormat<T> implements CgFormat {
     @Override
     public <V> void write(Path file, CgCodec<V> codec, V value) throws IOException {
         byte[] previous = Files.isRegularFile(file) ? Files.readAllBytes(file) : null;
-        CgFormats.writeAtomic(file, toBytes(codec, value, previous));
+        CgFiles.writeAtomic(file, toBytes(codec, value, previous));
     }
 
     @Override

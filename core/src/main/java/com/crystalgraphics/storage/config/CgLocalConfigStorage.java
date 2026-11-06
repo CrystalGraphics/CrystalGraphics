@@ -1,6 +1,6 @@
 package com.crystalgraphics.storage.config;
 
-import com.crystalgraphics.serialization.format.CgFormats;
+import com.crystalgraphics.serialization.format.CgFiles;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -24,7 +24,7 @@ import javax.annotation.Nullable;
  * }</pre>
  *
  * <ul>
- *   <li>Writes are {@code CgFormats.writeAtomic}, so a crash leaves the previous file.</li>
+ *   <li>Writes are {@code CgFiles.writeAtomic}, so a crash leaves the previous file.</li>
  *   <li>Failures are logged, never thrown, so unreadable preferences mean defaults rather than a crash. Writing to a
  *       store already known read-only throws.</li>
  *   <li>{@link #scoped} is a real subdirectory.</li>
@@ -78,7 +78,7 @@ public final class CgLocalConfigStorage implements CgConfigStorage {
         if (!writable) throw new IllegalStateException("Config storage at " + directory + " is read-only");
         Path target = directory.resolve(name);
         try {
-            CgFormats.writeAtomic(target, contents);
+            CgFiles.writeAtomic(target, contents);
         } catch (IOException e) {
             LOGGER.warn("Could not write {}", target, e);
         }

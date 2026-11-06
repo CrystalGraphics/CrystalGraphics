@@ -9,7 +9,7 @@ import java.util.Map;
 import com.crystalgraphics.api.animation.CgAnimSequence;
 import com.crystalgraphics.asset.curve.CgRichCurve;
 import com.crystalgraphics.serialization.CgCodecs;
-import com.crystalgraphics.serialization.format.CgFormats;
+import com.crystalgraphics.serialization.format.CgFiles;
 
 /**
  * A GeckoLib {@code .animation.json} converted into keyed sequences for one model. Ported from GeckoLib 4.8's
@@ -30,7 +30,7 @@ final class CgGeckoAnimations {
     }
 
     static List<CgGeckoAnimation> read(CgGeckoModel model, String text, String file) {
-        Map<?, ?> root = CgGeckoModel.map(CgFormats.JSON.fromText(CgCodecs.PLAIN, text), file);
+        Map<?, ?> root = CgGeckoModel.map(CgFiles.JSON.fromText(CgCodecs.PLAIN, text), file);
         Object animations = root.get("animations");
         if (animations == null) return List.of();
         List<CgGeckoAnimation> out = new ArrayList<>();

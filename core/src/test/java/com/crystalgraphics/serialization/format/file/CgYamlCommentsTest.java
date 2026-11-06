@@ -3,7 +3,7 @@ package com.crystalgraphics.serialization.format.file;
 import com.crystalgraphics.serialization.CgCodec;
 import com.crystalgraphics.serialization.CgCodecs;
 import com.crystalgraphics.serialization.CgObjectCodec;
-import com.crystalgraphics.serialization.format.CgFormats;
+import com.crystalgraphics.serialization.format.CgFiles;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
@@ -61,21 +61,21 @@ public class CgYamlCommentsTest {
 
     @Test
     public void aCodecsCommentsAreWrittenAboveTheirKeys() {
-        String text = CgFormats.YAML.toText(Settings.CODEC, settings(0.5f, "vegeta"));
+        String text = CgFiles.YAML.toText(Settings.CODEC, settings(0.5f, "vegeta"));
         assertTrue(text, text.startsWith("# Sound.\n# All of it.\naudio:\n"));
         assertTrue(text, text.contains("  # Master volume, 0 to 1.\n  volume: 0.5\n"));
-        assertEquals(0.5f, CgFormats.YAML.fromText(Settings.CODEC, text).audio.volume(), 0f);
-        assertFalse(CgFormats.JSON.toText(Settings.CODEC, settings(0.5f)).contains("#"));
+        assertEquals(0.5f, CgFiles.YAML.fromText(Settings.CODEC, text).audio.volume(), 0f);
+        assertFalse(CgFiles.JSON.toText(Settings.CODEC, settings(0.5f)).contains("#"));
     }
 
     @Test
     public void aCommentedKeyHasABlankLineAboveItTheFirstExcepted() throws IOException {
-        String text = CgFormats.YAML.toText(More.CODEC, new More());
+        String text = CgFiles.YAML.toText(More.CODEC, new More());
         assertTrue(text, text.startsWith("# Sound."));
         assertTrue(text, text.contains("\n\n# Only on More.\nextra:"));
         Path file = folder.getRoot().toPath().resolve("more.yml");
-        CgFormats.YAML.write(file, More.CODEC, new More());
-        CgFormats.YAML.write(file, More.CODEC, CgFormats.YAML.read(file, More.CODEC));
+        CgFiles.YAML.write(file, More.CODEC, new More());
+        CgFiles.YAML.write(file, More.CODEC, CgFiles.YAML.read(file, More.CODEC));
         assertEquals("written again, the blank line is not doubled", text,
                 new String(Files.readAllBytes(file), StandardCharsets.UTF_8));
     }
@@ -91,17 +91,17 @@ public class CgYamlCommentsTest {
                 + "  - vegeta\n"
                 + "# about a key the mod no longer writes\n"
                 + "legacy: 3\n").getBytes(StandardCharsets.UTF_8));
-        Settings live = CgFormats.YAML.read(file, Settings.CODEC);
+        Settings live = CgFiles.YAML.read(file, Settings.CODEC);
         live.muted.add("goku");
         live.audio = new Audio(0.3f, true);
-        CgFormats.YAML.write(file, Settings.CODEC, live);
+        CgFiles.YAML.write(file, Settings.CODEC, live);
 
         String text = new String(Files.readAllBytes(file), StandardCharsets.UTF_8);
         assertTrue(text, text.startsWith("# my own: quiet at night\naudio:\n"));      // theirs, over the codec's
         assertTrue(text, text.contains("# Master volume, 0 to 1."));                  // ours, where they wrote none
         assertTrue(text, text.contains("volume: 0.3 # turned down"));
         assertFalse(text, text.contains("no longer writes"));
-        Settings back = CgFormats.YAML.read(file, Settings.CODEC);
+        Settings back = CgFiles.YAML.read(file, Settings.CODEC);
         assertEquals(Arrays.asList("vegeta", "goku"), back.muted);
         assertTrue(back.audio.subtitles());
     }
@@ -110,14 +110,14 @@ public class CgYamlCommentsTest {
     public void aFileThatIsNotYamlIsReplacedWithoutItsComments() throws IOException {
         Path file = folder.newFile("broken.yml").toPath();
         Files.write(file, "audio: [unclosed\n".getBytes(StandardCharsets.UTF_8));
-        CgFormats.YAML.write(file, Settings.CODEC, settings(0.7f));
-        assertEquals(0.7f, CgFormats.YAML.read(file, Settings.CODEC).audio.volume(), 0f);
+        CgFiles.YAML.write(file, Settings.CODEC, settings(0.7f));
+        assertEquals(0.7f, CgFiles.YAML.read(file, Settings.CODEC).audio.volume(), 0f);
     }
 
     @Test
     public void aSubclassCommentLeavesItsParentAlone() {
-        assertTrue(CgFormats.YAML.toText(More.CODEC, new More()).contains("# Only on More.\nextra:"));
-        assertFalse(CgFormats.YAML.toText(Settings.CODEC, new Settings()).contains("Only on More."));
+        assertTrue(CgFiles.YAML.toText(More.CODEC, new More()).contains("# Only on More.\nextra:"));
+        assertFalse(CgFiles.YAML.toText(Settings.CODEC, new Settings()).contains("Only on More."));
     }
 
     @Test
@@ -126,7 +126,7 @@ public class CgYamlCommentsTest {
                 .comment("Players you never see.").into("muted", CgCodecs.listOf(CgCodecs.STRING), s -> s.muted)
                 .build()
                 .comment("mymod settings.");
-        String text = CgFormats.YAML.toText(headed, settings(1f, "vegeta"));
+        String text = CgFiles.YAML.toText(headed, settings(1f, "vegeta"));
         assertTrue(text, text.startsWith("# mymod settings.\n\n# Players you never see.\nmuted:"));
     }
 
@@ -134,7 +134,7 @@ public class CgYamlCommentsTest {
     public void aCommentInsideAListElementIsWritten() {
         CgCodec<List<Audio>> holder = CgCodecs.record(
                 CgCodecs.field("tracks", CgCodecs.listOf(Audio.CODEC), (List<Audio> l) -> l), l -> l);
-        String text = CgFormats.YAML.toText(holder, Arrays.asList(new Audio(0.5f, true)));
+        String text = CgFiles.YAML.toText(holder, Arrays.asList(new Audio(0.5f, true)));
         assertTrue(text, text.contains("# Master volume, 0 to 1."));
     }
 }

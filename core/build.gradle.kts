@@ -84,11 +84,11 @@ dependencies {
     compileOnly("de.javagl:obj:0.4.0")
     compileOnly("de.javagl:jgltf-model:2.0.4")
     compileOnly("commons-io:commons-io:2.4")
-    // CgFormats.JSON: every Minecraft ships Gson, 1.7.10 the oldest, 2.2.4. Compile against that one: a later
+    // CgFiles.JSON: every Minecraft ships Gson, 1.7.10 the oldest, 2.2.4. Compile against that one: a later
     // API (static JsonParser.parseString, 2.8.6) is a NoSuchMethodError in game.
     compileOnly("com.google.code.gson:gson:2.2.4")
-    // CgFormats.YAML: no Minecraft ships YAML. The single jar shades and relocates it; consumerApi puts it on a
-    // consumer's dev runtime, where CgFormats would otherwise fail to load. Never import org.yaml outside core:
+    // CgFiles.YAML: no Minecraft ships YAML. The single jar shades and relocates it; consumerApi puts it on a
+    // consumer's dev runtime, where CgFiles would otherwise fail to load. Never import org.yaml outside core:
     // in game it is relocated.
     consumerApi("org.yaml:snakeyaml:2.7")
     compileOnly("org.hotswapagent:hotswap-agent-core:1.4.1")

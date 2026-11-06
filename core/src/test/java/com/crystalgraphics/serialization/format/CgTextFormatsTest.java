@@ -82,7 +82,7 @@ public class CgTextFormatsTest {
 
     @Test
     public void everyKindOfValueCrossesBothTextFormats() {
-        for (CgTextFormat format : Arrays.asList(CgFormats.JSON, CgFormats.JSONC, CgFormats.YAML, CgFormats.TOML)) {
+        for (CgTextFormat format : Arrays.asList(CgFiles.JSON, CgFiles.JSONC, CgFiles.YAML, CgFiles.TOML)) {
             String text = format.toText(Settings.CODEC, goku());
             assertTrue(text, text.contains("kamehameha"));
             assertGoku(format.fromText(Settings.CODEC, text));
@@ -94,7 +94,7 @@ public class CgTextFormatsTest {
         Path yaml = folder.getRoot().toPath().resolve("settings.yml");
         Files.write(yaml, ("# a comment\nname: Goku\nlevel: 9\nmuted:\n  - vegeta\nskills:\n  kamehameha: 3\n")
                 .getBytes(StandardCharsets.UTF_8));
-        Settings s = CgFormats.of(yaml).read(yaml, Settings.CODEC);
+        Settings s = CgFiles.of(yaml).read(yaml, Settings.CODEC);
         assertEquals("Goku", s.name);
         assertEquals(9, s.level);
         assertEquals("absent keys keep the constructor's", 1f, s.volume, 0f);
@@ -102,7 +102,7 @@ public class CgTextFormatsTest {
 
         Path json = folder.getRoot().toPath().resolve("settings.json");
         Files.write(json, "{ \"name\": \"Vegeta\", \"ki\": true }".getBytes(StandardCharsets.UTF_8));
-        Settings v = CgFormats.of(json).read(json, Settings.CODEC);
+        Settings v = CgFiles.of(json).read(json, Settings.CODEC);
         assertEquals("Vegeta", v.name);
         assertTrue(v.ki);
     }
@@ -111,7 +111,7 @@ public class CgTextFormatsTest {
     public void aFileIsWrittenWholeAndReadIntoALiveObject() throws IOException {
         for (String name : Arrays.asList("live.json", "live.yaml", "live.toml", "live.jsonc", "live.dat")) {
             Path file = folder.getRoot().toPath().resolve(name);
-            CgFormat format = CgFormats.of(file);
+            CgFileFormat format = CgFiles.of(file);
             format.write(file, Settings.CODEC, goku());
             assertFalse(Files.exists(file.resolveSibling(name + ".tmp")));
 
@@ -125,21 +125,21 @@ public class CgTextFormatsTest {
 
     @Test
     public void theNamePicksTheFormat() {
-        assertSame(CgFormats.JSON, CgFormats.of(folder.getRoot().toPath().resolve("a.JSON")));
-        assertSame(CgFormats.YAML, CgFormats.of(folder.getRoot().toPath().resolve("a.yml")));
-        assertSame(CgFormats.YAML, CgFormats.of(folder.getRoot().toPath().resolve("a.yaml")));
-        assertSame(CgFormats.JSONC, CgFormats.of(folder.getRoot().toPath().resolve("a.jsonc")));
-        assertSame(CgFormats.TOML, CgFormats.of(folder.getRoot().toPath().resolve("a.toml")));
-        assertSame(CgFormats.BINARY, CgFormats.of(folder.getRoot().toPath().resolve("a.dat")));
+        assertSame(CgFiles.JSON, CgFiles.of(folder.getRoot().toPath().resolve("a.JSON")));
+        assertSame(CgFiles.YAML, CgFiles.of(folder.getRoot().toPath().resolve("a.yml")));
+        assertSame(CgFiles.YAML, CgFiles.of(folder.getRoot().toPath().resolve("a.yaml")));
+        assertSame(CgFiles.JSONC, CgFiles.of(folder.getRoot().toPath().resolve("a.jsonc")));
+        assertSame(CgFiles.TOML, CgFiles.of(folder.getRoot().toPath().resolve("a.toml")));
+        assertSame(CgFiles.BINARY, CgFiles.of(folder.getRoot().toPath().resolve("a.dat")));
     }
 
     @Test
     public void textThatIsNotTheFormatSaysSo() {
-        assertThrows(CgCodecException.class, () -> CgFormats.JSON.fromText(Settings.CODEC, "{ \"name\": "));
-        assertThrows(CgCodecException.class, () -> CgFormats.YAML.fromText(Settings.CODEC, "name: [unclosed"));
+        assertThrows(CgCodecException.class, () -> CgFiles.JSON.fromText(Settings.CODEC, "{ \"name\": "));
+        assertThrows(CgCodecException.class, () -> CgFiles.YAML.fromText(Settings.CODEC, "name: [unclosed"));
         // a file builds maps, lists and scalars, never a class it names
         assertThrows(CgCodecException.class,
-                () -> CgFormats.YAML.fromText(Settings.CODEC, "!!java.io.File [\"/tmp\"]"));
-        assertThrows(CgCodecException.class, () -> CgFormats.TOML.fromText(Settings.CODEC, "name = \"unclosed"));
+                () -> CgFiles.YAML.fromText(Settings.CODEC, "!!java.io.File [\"/tmp\"]"));
+        assertThrows(CgCodecException.class, () -> CgFiles.TOML.fromText(Settings.CODEC, "name = \"unclosed"));
     }
 }

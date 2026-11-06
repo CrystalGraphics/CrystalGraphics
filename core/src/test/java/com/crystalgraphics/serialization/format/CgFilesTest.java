@@ -31,7 +31,7 @@ import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 
 /** A codec's value in a file of its own, and as a host's tags. */
-public class CgFormatsTest {
+public class CgFilesTest {
 
     record Character(String name, int level, boolean ki, Map<String, Integer> skills, byte[] seed) {
         static final CgCodec<Map<String, Integer>> SKILLS = CgCodecs.mapOf(CgCodecs.STRING, CgCodecs.INT);
@@ -70,10 +70,10 @@ public class CgFormatsTest {
     @Test
     public void aFileHoldsWhatWasWrittenAndNothingBeside() throws IOException {
         Path file = folder.getRoot().toPath().resolve("players/goku.dat");
-        assertNull("no file yet", CgFormats.read(file, Character.CODEC));
-        CgFormats.write(file, Character.CODEC, goku());
-        CgFormats.write(file, Character.CODEC, goku());
-        assertSame(goku(), CgFormats.read(file, Character.CODEC));
+        assertNull("no file yet", CgFiles.read(file, Character.CODEC));
+        CgFiles.write(file, Character.CODEC, goku());
+        CgFiles.write(file, Character.CODEC, goku());
+        assertSame(goku(), CgFiles.read(file, Character.CODEC));
         assertFalse("the temporary file is moved over it", Files.exists(file.resolveSibling("goku.dat.tmp")));
         byte[] head = Arrays.copyOf(Files.readAllBytes(file), 2);
         assertArrayEquals("compressed", new byte[]{(byte) 0x1F, (byte) 0x8B}, head);
@@ -82,17 +82,17 @@ public class CgFormatsTest {
     @Test
     public void aValueCrossesTheHostsTagsAndBack() {
         CgPlatform.provide(CgHostFormats.SERVICE, new Tags());
-        Object tag = CgFormats.toNbt(Character.CODEC, goku());
+        Object tag = CgFiles.toNbt(Character.CODEC, goku());
         assertTrue("a compound", tag instanceof Map);
         assertEquals("a boolean is a byte", (byte) 1, ((Map<?, ?>) tag).get("ki"));
         assertTrue("bytes stay bytes", ((Map<?, ?>) tag).get("seed") instanceof byte[]);
-        assertSame(goku(), CgFormats.fromNbt(Character.CODEC, tag));
+        assertSame(goku(), CgFiles.fromNbt(Character.CODEC, tag));
     }
 
     @Test
     public void withNoHostTheBridgeNamesItsSlot() {
         IllegalStateException e = assertThrows(IllegalStateException.class,
-                () -> CgFormats.toNbt(CgCodecs.INT, 1));
+                () -> CgFiles.toNbt(CgCodecs.INT, 1));
         assertTrue(e.getMessage(), e.getMessage().contains("crystalgraphics:host_formats"));
     }
 
@@ -102,9 +102,9 @@ public class CgFormatsTest {
         Map<Integer, Integer> byNumber = new LinkedHashMap<>();
         byNumber.put(1, 2);
         CgCodec<Map<Integer, Integer>> ints = CgCodecs.mapOf(CgCodecs.INT, CgCodecs.INT);
-        assertEquals("an INT key is written as its text", byNumber, CgFormats.fromNbt(ints, CgFormats.toNbt(ints, byNumber)));
+        assertEquals("an INT key is written as its text", byNumber, CgFiles.fromNbt(ints, CgFiles.toNbt(ints, byNumber)));
         assertThrows(CgCodecException.class,
-                () -> CgFormats.toNbt(CgCodecs.mapOf(CgCodecs.DOUBLE, CgCodecs.INT), Collections.singletonMap(1.5, 2)));
+                () -> CgFiles.toNbt(CgCodecs.mapOf(CgCodecs.DOUBLE, CgCodecs.INT), Collections.singletonMap(1.5, 2)));
     }
 
     /** Tags as Java values: a compound a map, a list a list, a string a string. */

@@ -120,7 +120,7 @@ CrystalGraphics' own cache is `CgCacheDirectory`, on its own layout; `-Dcrystalg
 
 `CgConfigStorage` is named files: a value through a codec, or raw text. It is [`SERIALIZATION.md`](SERIALIZATION.md)
 §6 underneath: the name's extension picks the format (`.toml`, `.json`, `.jsonc`, `.yml`/`.yaml`, anything else
-binary), and a write is `CgFormats`' own atomic write.
+binary), and a write is `CgFiles`' own atomic write.
 
 ```java
 CgConfigStorage config = new CgLocalConfigStorage(layout.configIn(CgGameDirectory.game()));
@@ -147,14 +147,14 @@ CgConfigStorage mine   = config.scoped("mymod:editor");      // ':' and '/' beco
 
 | Store | On | For |
 |---|---|---|
-| `CgLocalConfigStorage` | a directory | the real thing; a write is `CgFormats.writeAtomic`: a temp file, then a rename |
+| `CgLocalConfigStorage` | a directory | the real thing; a write is `CgFiles.writeAtomic`: a temp file, then a rename |
 | `CgScopedConfigStorage` | a key prefix of another | what `scoped(...)` returns |
 | `CgInMemoryConfigStorage` | a map | tests |
 
 The primitive is bytes (`readBytes`, `writeBytes`); text and values are layered on it, which is why binary works.
 
-**Store, or `CgFormats` on a path?** The same formats either way. Use a store for a product's own files: it is scoped,
-sits on the layout, and tests with the in-memory one. Use `CgFormats.TOML.write(path, ...)` when you already hold a
+**Store, or `CgFiles` on a path?** The same formats either way. Use a store for a product's own files: it is scoped,
+sits on the layout, and tests with the in-memory one. Use `CgFiles.TOML.write(path, ...)` when you already hold a
 `Path` (an export, a file the player picked) or a `CgSettings` file in Minecraft's `config/`.
 
 - Absence is `null`. An unreadable or unwritable file is logged and the store carries on.

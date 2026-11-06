@@ -1,6 +1,6 @@
 package com.crystalgraphics.serialization.format.nbt;
 
-import com.crystalgraphics.serialization.format.CgFormats;
+import com.crystalgraphics.serialization.format.CgFiles;
 
 import com.crystalgraphics.platform.CgService;
 
@@ -9,9 +9,9 @@ import java.util.Collection;
 import java.util.List;
 
 /**
- * The host's own tags, as the few operations {@link CgFormats} builds every codec format over: what
- * {@link CgFormats#toNbt} writes into an entity's or item's saved data, where only Minecraft's tags will do. Each era
- * spells them its own way; the rules of the format (typed numbers, booleans, text keys) are {@link CgFormats}'.
+ * The host's own tags, as the few operations {@link CgFiles} builds every codec format over: what
+ * {@link CgFiles#toNbt} writes into an entity's or item's saved data, where only Minecraft's tags will do. Each era
+ * spells them its own way; the rules of the format (typed numbers, booleans, text keys) are {@link CgFiles}'.
  *
  * <pre>{@code
  * // a host, once, on both sides
@@ -23,7 +23,7 @@ import java.util.List;
  *       kind.</li>
  *   <li>A list takes one kind of tag, as Minecraft's do before 1.21.5: a codec's list of maps or of one number type
  *       always is.</li>
- *   <li>{@link #NONE} has no tags (a test, the harness): {@link CgFormats#toNbt} throws there, naming the slot.</li>
+ *   <li>{@link #NONE} has no tags (a test, the harness): {@link CgFiles#toNbt} throws there, naming the slot.</li>
  * </ul>
  */
 public interface CgHostFormats {

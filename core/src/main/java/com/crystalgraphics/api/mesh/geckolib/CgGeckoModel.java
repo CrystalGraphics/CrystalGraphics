@@ -21,7 +21,7 @@ import com.crystalgraphics.api.mesh.CgMeshWriter;
 import com.crystalgraphics.api.mesh.CgSkeletalMesh;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
 import com.crystalgraphics.serialization.CgCodecs;
-import com.crystalgraphics.serialization.format.CgFormats;
+import com.crystalgraphics.serialization.format.CgFiles;
 import com.crystalgraphics.util.io.CgIO;
 
 /**
@@ -87,7 +87,7 @@ public final class CgGeckoModel {
 
     /** The model in {@code text}, {@code file} naming it in errors. Not cached. */
     public static CgGeckoModel read(String text, String file) {
-        Object tree = CgFormats.JSON.fromText(CgCodecs.PLAIN, text);
+        Object tree = CgFiles.JSON.fromText(CgCodecs.PLAIN, text);
         return new Baker(file).bake(map(tree, file));
     }
 

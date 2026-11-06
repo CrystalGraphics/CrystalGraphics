@@ -12,7 +12,7 @@ CgDownloads.located(MY_LOCATIONS, "jdk-sources/17").named("JDK sources").reporti
 
 | Package | Owns |
 |---|---|
-| `config/` | `CgConfigStorage` (named bytes, text and codec values by extension through `CgFormats`; `scoped` corners) over a directory (`CgLocalConfigStorage`), a key prefix (`CgScopedConfigStorage`) or a map (`CgInMemoryConfigStorage`). Atomic writes are `CgFormats.writeAtomic`, shared with every format |
+| `config/` | `CgConfigStorage` (named bytes, text and codec values by extension through `CgFiles`; `scoped` corners) over a directory (`CgLocalConfigStorage`), a key prefix (`CgScopedConfigStorage`) or a map (`CgInMemoryConfigStorage`). Atomic writes are `CgFiles.writeAtomic`, shared with every format |
 | `cache/` | `CgCacheFiles` (verified, atomic installs; digests `sha1:`, `md5:`, `gitblob:`), `CgTarArchive` (forward-only `.tar.gz`) |
 | `download/` | `CgDownloads` (a described transfer: named, reported, cancellable, resumed, retried, verified), `CgDownload`, `CgDownloadLocations` (a `download/locations.json` per product: the jar's pins, master's addresses, an override) |
 
