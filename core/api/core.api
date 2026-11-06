@@ -11983,8 +11983,11 @@ com/crystalgraphics/serialization/CgVersionedCodec
 com/crystalgraphics/serialization/format/CgFormat
   access public,abstract,interface
   extends java/lang/Object
+  method public,abstract fromBytes (Lcom/crystalgraphics/serialization/CgCodec;[B)Ljava/lang/Object;
+  method public,abstract fromBytes (Lcom/crystalgraphics/serialization/CgCodec;[BLjava/lang/Object;)Ljava/lang/Object;
   method public,abstract read (Ljava/nio/file/Path;Lcom/crystalgraphics/serialization/CgCodec;)Ljava/lang/Object;
   method public,abstract read (Ljava/nio/file/Path;Lcom/crystalgraphics/serialization/CgCodec;Ljava/lang/Object;)Ljava/lang/Object;
+  method public,abstract toBytes (Lcom/crystalgraphics/serialization/CgCodec;Ljava/lang/Object;[B)[B
   method public,abstract write (Ljava/nio/file/Path;Lcom/crystalgraphics/serialization/CgCodec;Ljava/lang/Object;)V
 com/crystalgraphics/serialization/format/CgFormats
   access public,final
@@ -12002,6 +12005,7 @@ com/crystalgraphics/serialization/format/CgFormats
   method public,static read (Ljava/nio/file/Path;Lcom/crystalgraphics/serialization/CgCodec;Ljava/lang/Object;)Ljava/lang/Object;
   method public,static toNbt (Lcom/crystalgraphics/serialization/CgCodec;Ljava/lang/Object;)Ljava/lang/Object;
   method public,static write (Ljava/nio/file/Path;Lcom/crystalgraphics/serialization/CgCodec;Ljava/lang/Object;)V
+  method public,static writeAtomic (Ljava/nio/file/Path;[B)V
 com/crystalgraphics/serialization/format/CgJsonOps
   access public,final
   extends java/lang/Object
@@ -13051,11 +13055,17 @@ com/crystalgraphics/storage/config/CgConfigStorage
   extends java/lang/Object
   method public directory ()Ljava/nio/file/Path;
   method public isWritable ()Z
+  method public read (Ljava/lang/String;)Ljava/lang/String;
+  method public read (Ljava/lang/String;Lcom/crystalgraphics/serialization/CgCodec;)Ljava/lang/Object;
+  method public read (Ljava/lang/String;Lcom/crystalgraphics/serialization/CgCodec;Ljava/lang/Object;)Ljava/lang/Object;
   method public scoped (Ljava/lang/String;)Lcom/crystalgraphics/storage/config/CgConfigStorage;
+  method public write (Ljava/lang/String;Lcom/crystalgraphics/serialization/CgCodec;Ljava/lang/Object;)V
+  method public write (Ljava/lang/String;Ljava/lang/String;)V
   method public,abstract delete (Ljava/lang/String;)V
   method public,abstract list ()Ljava/util/List;
-  method public,abstract read (Ljava/lang/String;)Ljava/lang/String;
-  method public,abstract write (Ljava/lang/String;Ljava/lang/String;)V
+  method public,abstract readBytes (Ljava/lang/String;)[B
+  method public,abstract writeBytes (Ljava/lang/String;[B)V
+  method public,static formatOf (Ljava/lang/String;)Lcom/crystalgraphics/serialization/format/CgFormat;
 com/crystalgraphics/storage/config/CgInMemoryConfigStorage
   access public,final
   extends java/lang/Object
@@ -13064,9 +13074,9 @@ com/crystalgraphics/storage/config/CgInMemoryConfigStorage
   method public delete (Ljava/lang/String;)V
   method public isWritable ()Z
   method public list ()Ljava/util/List;
-  method public read (Ljava/lang/String;)Ljava/lang/String;
+  method public readBytes (Ljava/lang/String;)[B
   method public setWritable (Z)Lcom/crystalgraphics/storage/config/CgInMemoryConfigStorage;
-  method public write (Ljava/lang/String;Ljava/lang/String;)V
+  method public writeBytes (Ljava/lang/String;[B)V
 com/crystalgraphics/storage/config/CgLocalConfigStorage
   access public,final
   extends java/lang/Object
@@ -13076,9 +13086,9 @@ com/crystalgraphics/storage/config/CgLocalConfigStorage
   method public directory ()Ljava/nio/file/Path;
   method public isWritable ()Z
   method public list ()Ljava/util/List;
-  method public read (Ljava/lang/String;)Ljava/lang/String;
+  method public readBytes (Ljava/lang/String;)[B
   method public scoped (Ljava/lang/String;)Lcom/crystalgraphics/storage/config/CgConfigStorage;
-  method public write (Ljava/lang/String;Ljava/lang/String;)V
+  method public writeBytes (Ljava/lang/String;[B)V
 com/crystalgraphics/storage/config/CgScopedConfigStorage
   access public,final
   extends java/lang/Object
@@ -13087,8 +13097,8 @@ com/crystalgraphics/storage/config/CgScopedConfigStorage
   method public directory ()Ljava/nio/file/Path;
   method public isWritable ()Z
   method public list ()Ljava/util/List;
-  method public read (Ljava/lang/String;)Ljava/lang/String;
-  method public write (Ljava/lang/String;Ljava/lang/String;)V
+  method public readBytes (Ljava/lang/String;)[B
+  method public writeBytes (Ljava/lang/String;[B)V
 com/crystalgraphics/storage/download/CgDownload
   access public,final
   extends java/lang/Object

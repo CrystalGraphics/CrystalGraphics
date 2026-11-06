@@ -8,7 +8,8 @@ interrupted, and lets a dead link be repaired without a new release.
 It comes in three parts:
 
 - **Layout and config**: one folder per product, split into what must survive (preferences, sessions) and what may be
-  deleted (derived output); text files read and written by name.
+  deleted (derived output); values and text read and written by name, in the format the name's extension says. It is
+  [`SERIALIZATION.md`](SERIALIZATION.md)'s codecs and formats underneath.
 - **Cache files**: a file installed only once its bytes are verified, atomically, with a partial one kept to resume.
 - **Downloads**: a described transfer — named, reported, cancellable, resumed, retried, verified — and a
   `download/locations.json` per product that says where each artifact lives.
@@ -32,7 +33,7 @@ try (InputStream in = new URL("https://example.org/engine.jar").openStream()) {
 
 ```java
 CgConfigStorage config = new CgLocalConfigStorage(LAYOUT.configIn(CgGameDirectory.game()));
-config.write("settings.json", json);                                 // temp file, then rename: whole or untouched
+config.write("settings.toml", Settings.CODEC, settings);             // a codec, a format by extension, whole or untouched
 
 CgDownloads.located(LOCATIONS, "engine/jar").named("Engine").reporting(progress).into(target);
 ```
@@ -43,6 +44,7 @@ CgDownloads.located(LOCATIONS, "engine/jar").named("Engine").reporting(progress)
 |---|---|---|
 | **Finding the game folder** | a loader call per era | `CgGameDirectory.game()`, one call on every version |
 | **A half-written file** | `Files.write` torn by a crash | writes go to a temp file and rename |
+| **Saving a value** | a hand-written serializer per file | a codec, and the extension picks TOML, JSON, YAML or binary |
 | **Telling config from cache** | one folder, so clearing cache loses settings | two roots; the cache one may be deleted at any moment |
 | **Two apps on one folder** | each overwrites the other's `settings.json` | `scoped("editor")`, a folder of its own |
 | **A truncated download** | trusted because the file exists | verified against a digest, installed only if it matches |
@@ -85,8 +87,8 @@ public final class MyStorage {
 
 // Settings that survive
 CgConfigStorage config = new CgLocalConfigStorage(MyStorage.LAYOUT.configIn(CgGameDirectory.game()));
-config.write("settings.json", json);
-String back = config.read("settings.json");            // null when never written
+config.write("settings.toml", Settings.CODEC, settings);
+Settings back = config.read("settings.toml", Settings.CODEC);   // null when never written
 
 // A file fetched once, checked, kept
 Path jar = MyStorage.LAYOUT.cacheIn(CgGameDirectory.game()).resolve("engine.jar");
@@ -102,12 +104,13 @@ CgStorageLayout layout = CgStorageLayout.of("mymod");
 Path game = CgGameDirectory.game();
 
 layout.rootIn(game);      // <game>/mymod
-layout.configIn(game);    // <game>/mymod/workspace-config   durable
+layout.configIn(game);    // <game>/mymod/config             durable
 layout.cacheIn(game);     // <game>/mymod/cache              deletable
 ```
 
-- Two constants only, `CgStorageLayout.CONFIG` and `CACHE`. Folders of your own (projects, backups) are your
-  product's: add them beside, under `rootIn`, in a class of yours.
+- Two constants only, `CgStorageLayout.CONFIG` (`config`) and `CACHE` (`cache`). Folders of your own (projects,
+  backups) are your product's: add them beside, under `rootIn`, in a class of yours. A product that names its durable
+  tree differently resolves it under `rootIn` itself, as CrystalGUI does with `workspace-config`.
 - Hold the layout in a `static final`; it is cheap and stateless, and one place then says where everything is.
 - On a dedicated server the same calls work; a player's preferences just do not belong there.
 
@@ -115,22 +118,28 @@ CrystalGraphics' own cache is `CgCacheDirectory`, on its own layout; `-Dcrystalg
 
 ## 4. Config storage
 
-`CgConfigStorage` is named text blobs: `read`, `write`, `list`, `delete`.
+`CgConfigStorage` is named files: a value through a codec, or raw text. It is [`SERIALIZATION.md`](SERIALIZATION.md)
+§6 underneath: the name's extension picks the format (`.toml`, `.json`, `.jsonc`, `.yml`/`.yaml`, anything else
+binary), and a write is `CgFormats`' own atomic write.
 
 ```java
 CgConfigStorage config = new CgLocalConfigStorage(layout.configIn(CgGameDirectory.game()));
 
-config.write("settings.json", json);
-config.read("settings.json");          // the text, or null
-config.list();                         // every name stored
-config.delete("settings.json");
-config.isWritable();                   // false when the directory could not be created
+config.write("shelf.toml", Shelf.CODEC, shelf);         // a codec; a person's comments in the file survive
+Shelf s = config.read("shelf.toml", Shelf.CODEC);       // null when never written
+config.read("shelf.toml", Shelf.CODEC, live);           // decoded into a live object
+
+config.write("notes.txt", "text");                      // raw text, no codec
+config.read("notes.txt");                               // the text, or null
+config.list();                                          // every name stored
+config.delete("notes.txt");
+config.isWritable();                                    // false when the directory could not be created
 ```
 
 **Scoped corners.** Two applications sharing a store each take a corner, so neither replaces the other's file:
 
 ```java
-CgConfigStorage editor = config.scoped("editor");            // <config>/editor/settings.json
+CgConfigStorage editor = config.scoped("editor");            // <config>/editor/settings.toml
 CgConfigStorage mine   = config.scoped("mymod:editor");      // ':' and '/' become '.', legal on Windows
 ```
 
@@ -138,11 +147,19 @@ CgConfigStorage mine   = config.scoped("mymod:editor");      // ':' and '/' beco
 
 | Store | On | For |
 |---|---|---|
-| `CgLocalConfigStorage` | a directory | the real thing; each write is a temp file (`.cg-*.tmp`) then a rename |
+| `CgLocalConfigStorage` | a directory | the real thing; a write is `CgFormats.writeAtomic`: a temp file, then a rename |
 | `CgScopedConfigStorage` | a key prefix of another | what `scoped(...)` returns |
 | `CgInMemoryConfigStorage` | a map | tests |
 
-- Absence is `null`, never an exception; a failed read is logged and the store carries on.
+The primitive is bytes (`readBytes`, `writeBytes`); text and values are layered on it, which is why binary works.
+
+**Store, or `CgFormats` on a path?** The same formats either way. Use a store for a product's own files: it is scoped,
+sits on the layout, and tests with the in-memory one. Use `CgFormats.TOML.write(path, ...)` when you already hold a
+`Path` (an export, a file the player picked) or a `CgSettings` file in Minecraft's `config/`.
+
+- Absence is `null`. An unreadable or unwritable file is logged and the store carries on.
+- **A file that is not its format, or holds what the codec cannot read, throws `CgCodecException`** naming the file.
+  Catch it where you can fall back; do not write defaults over it, as it is somebody's hand edit.
 - `write` on a store that is not writable throws `IllegalStateException`; check `isWritable()` first when it matters.
 - `directory()` is for derived output that must be a real folder; settings go through `read`/`write`.
 
@@ -278,8 +295,8 @@ No game, no GL, no network.
 
 ```java
 CgInMemoryConfigStorage config = new CgInMemoryConfigStorage();
-config.write("settings.json", "{}");
-assertEquals("{}", config.read("settings.json"));
+config.write("shelf.toml", Shelf.CODEC, shelf);
+assertEquals(shelf, config.read("shelf.toml", Shelf.CODEC));
 
 config.setWritable(false);                       // a store that refuses writes
 assertThrows(IllegalStateException.class, () -> config.write("a", "b"));
@@ -291,6 +308,9 @@ dedicated server's classpath (`core/src/headlessTest`).
 ## 10. Questions people ask
 
 **Config or cache?** If losing it loses something the user did, config. If it can be rebuilt, cache.
+
+**Why does a typed read throw on a bad file but return null for a missing one?** Missing is a normal first run. A
+file that will not parse is somebody's edit half done; returning defaults would let the next save overwrite it.
 
 **Why does `into` return a boolean instead of throwing on a bad digest?** A wrong digest is an answer, not a fault:
 the host served something else. The caller decides whether to tell the user; a retry would fetch the same bytes.

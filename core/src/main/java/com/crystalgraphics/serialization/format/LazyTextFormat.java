@@ -53,6 +53,21 @@ final class LazyTextFormat implements CgTextFormat {
     }
 
     @Override
+    public <V> byte[] toBytes(CgCodec<V> codec, V value, @Nullable byte[] previous) throws IOException {
+        return format().toBytes(codec, value, previous);
+    }
+
+    @Override
+    public <V> V fromBytes(CgCodec<V> codec, byte[] bytes) throws IOException {
+        return format().fromBytes(codec, bytes);
+    }
+
+    @Override
+    public <V> V fromBytes(CgCodec<V> codec, byte[] bytes, V target) throws IOException {
+        return format().fromBytes(codec, bytes, target);
+    }
+
+    @Override
     public <V> String toText(CgCodec<V> codec, V value) {
         return format().toText(codec, value);
     }

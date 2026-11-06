@@ -14,7 +14,10 @@ import com.crystalgraphics.serialization.format.nbt.HostTagOps;
 
 import javax.annotation.Nullable;
 import java.io.IOException;
+import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.Locale;
 
 /**
@@ -80,6 +83,27 @@ public final class CgFormats {
         if (name.endsWith(".yml") || name.endsWith(".yaml")) return YAML;
         if (name.endsWith(".toml")) return TOML;
         return BINARY;
+    }
+
+    /**
+     * Replaces {@code file} with {@code bytes}, making its folders: written beside it and moved over it, so a crash
+     * leaves the last contents. Every format's {@code write} and every config store goes through it.
+     */
+    public static void writeAtomic(Path file, byte[] bytes) throws IOException {
+        Path parent = file.toAbsolutePath().getParent();
+        if (parent != null) Files.createDirectories(parent);
+        // Same directory as the target: elsewhere the rename may degrade to a non-atomic copy
+        Path temp = Files.createTempFile(parent, ".cg-", ".tmp");
+        try {
+            Files.write(temp, bytes);
+            try {
+                Files.move(temp, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            } catch (AtomicMoveNotSupportedException notAtomic) {
+                Files.move(temp, file, StandardCopyOption.REPLACE_EXISTING);
+            }
+        } finally {
+            Files.deleteIfExists(temp);
+        }
     }
 
     /** {@link #BINARY}'s {@link CgFormat#write}. */

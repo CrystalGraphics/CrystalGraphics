@@ -5,14 +5,14 @@ locations file. Layout of the tree is `platform`'s `CgStorageLayout`.
 
 ```java
 CgConfigStorage config = new CgLocalConfigStorage(CgStorageLayout.of("mymod").configIn(CgGameDirectory.game()));
-config.scoped("editor").write("settings.json", json);
+config.scoped("editor").write("settings.toml", Settings.CODEC, settings);
 
 CgDownloads.located(MY_LOCATIONS, "jdk-sources/17").named("JDK sources").reporting(progress).into(target);
 ```
 
 | Package | Owns |
 |---|---|
-| `config/` | `CgConfigStorage` (named text blobs, `scoped` corners) over a directory (`CgLocalConfigStorage`, atomic writes), a key prefix (`CgScopedConfigStorage`) or a map (`CgInMemoryConfigStorage`) |
+| `config/` | `CgConfigStorage` (named bytes, text and codec values by extension through `CgFormats`; `scoped` corners) over a directory (`CgLocalConfigStorage`), a key prefix (`CgScopedConfigStorage`) or a map (`CgInMemoryConfigStorage`). Atomic writes are `CgFormats.writeAtomic`, shared with every format |
 | `cache/` | `CgCacheFiles` (verified, atomic installs; digests `sha1:`, `md5:`, `gitblob:`), `CgTarArchive` (forward-only `.tar.gz`) |
 | `download/` | `CgDownloads` (a described transfer: named, reported, cancellable, resumed, retried, verified), `CgDownload`, `CgDownloadLocations` (a `download/locations.json` per product: the jar's pins, master's addresses, an override) |
 

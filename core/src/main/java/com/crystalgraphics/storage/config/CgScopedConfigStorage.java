@@ -27,13 +27,13 @@ public final class CgScopedConfigStorage implements CgConfigStorage {
 
     @Override
     @Nullable
-    public String read(String name) {
-        return delegate.read(prefix + name);
+    public byte[] readBytes(String name) {
+        return delegate.readBytes(prefix + name);
     }
 
     @Override
-    public void write(String name, String contents) {
-        delegate.write(prefix + name, contents);
+    public void writeBytes(String name, byte[] contents) {
+        delegate.writeBytes(prefix + name, contents);
     }
 
     @Override

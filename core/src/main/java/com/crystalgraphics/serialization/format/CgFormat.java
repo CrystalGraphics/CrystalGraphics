@@ -34,4 +34,16 @@ public interface CgFormat {
 
     /** The value in {@code file}, decoded into {@code target}; no file leaves {@code target} as it is. */
     <V> V read(Path file, CgCodec<V> codec, V target) throws IOException;
+
+    /**
+     * {@code value} as this format's bytes, for a store that is not a file. {@code previous} is what they replace, or
+     * null: a format that keeps comments carries the old file's across.
+     */
+    <V> byte[] toBytes(CgCodec<V> codec, V value, @Nullable byte[] previous) throws IOException;
+
+    /** The value in {@code bytes}. */
+    <V> V fromBytes(CgCodec<V> codec, byte[] bytes) throws IOException;
+
+    /** The value in {@code bytes}, decoded into {@code target}. */
+    <V> V fromBytes(CgCodec<V> codec, byte[] bytes, V target) throws IOException;
 }

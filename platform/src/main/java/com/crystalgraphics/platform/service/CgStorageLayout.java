@@ -9,8 +9,8 @@ import java.util.Objects;
  *
  * <pre>{@code
  * CgStorageLayout layout = CgStorageLayout.of("mymod");
- * Path config = layout.configIn(CgGameDirectory.game());     // <game>/mymod/workspace-config   durable
- * Path cache  = layout.cacheIn(CgGameDirectory.game());      // <game>/mymod/cache              disposable
+ * Path config = layout.configIn(CgGameDirectory.game());     // <game>/mymod/config           durable
+ * Path cache  = layout.cacheIn(CgGameDirectory.game());      // <game>/mymod/cache            disposable
  * }</pre>
  *
  * <ul>
@@ -23,7 +23,7 @@ import java.util.Objects;
 public final class CgStorageLayout {
 
     /** Durable: preferences, arrangements, sessions, backups, history. */
-    public static final String CONFIG = "workspace-config";
+    public static final String CONFIG = "config";
 
     /** Derived: compiled output, indexes, thumbnails. Deletable at any moment. */
     public static final String CACHE = "cache";
@@ -49,7 +49,7 @@ public final class CgStorageLayout {
         return base.resolve(root);
     }
 
-    /** {@code <base>/<product>/workspace-config}. */
+    /** {@code <base>/<product>/config}. */
     public Path configIn(Path base) {
         return rootIn(base).resolve(CONFIG);
     }

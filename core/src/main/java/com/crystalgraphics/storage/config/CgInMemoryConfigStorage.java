@@ -17,19 +17,20 @@ import javax.annotation.Nullable;
  */
 public final class CgInMemoryConfigStorage implements CgConfigStorage {
 
-    private final Map<String, String> blobs = new LinkedHashMap<>();
+    private final Map<String, byte[]> blobs = new LinkedHashMap<>();
     private boolean writable = true;
 
     @Nullable
     @Override
-    public String read(String name) {
-        return blobs.get(name);
+    public byte[] readBytes(String name) {
+        byte[] bytes = blobs.get(name);
+        return bytes == null ? null : bytes.clone();
     }
 
     @Override
-    public void write(String name, String contents) {
+    public void writeBytes(String name, byte[] contents) {
         if (!writable) throw new IllegalStateException("Config storage is read-only");
-        blobs.put(name, contents);
+        blobs.put(name, contents.clone());
     }
 
     @Override

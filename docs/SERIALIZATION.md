@@ -541,6 +541,10 @@ skills:
 - **SnakeYAML is relocated inside CrystalGraphics' jar.** Never import `org.yaml` in your mod: in game it is not at
   that name. Use `CgFormats.YAML`. TOML needs no library.
 
+**Files of a product's own** (a player's shelf, a session, per-project state) are better kept through a
+[`CgConfigStorage`](STORAGE.md): the same formats picked by the name's extension, scoped, on the product's layout, and
+in memory in tests. Reach for `CgFormats` on a `Path` when you already hold one.
+
 ### A config file people edit, with comments
 
 A config file explains itself when the codec says what each key means. Put `.comment(text)` before a field; it is
