@@ -2,6 +2,8 @@ package com.crystalgraphics.platform.gl.state;
 
 import com.crystalgraphics.platform.gl.driver.CgGLDriver;
 
+import java.nio.IntBuffer;
+
 import static com.crystalgraphics.platform.gl.driver.GLC.*;
 
 /**
@@ -36,12 +38,24 @@ public interface GLHostState {
     /**
      * The host is {@code CgGL} in the same context, while it and the device draw side by side: what it has is unknown
      * to the device on entry (every field set again), and {@code CgGL}'s shadow is dropped on leaving (Unreal's
-     * {@code RHIInvalidateCachedState}, both ways), a shadow the host keeps included: the device's viewport and binds
-     * are none of its.
+     * {@code RHIInvalidateCachedState}, both ways), a shadow the host keeps included. Its framebuffers and viewport
+     * excepted, read from the shadow and set back as the section closes: they are where the host's frame draws, which
+     * a pass of the device must not move.
      */
     static GLHostState sharedWithCgGL() {
+        IntBuffer viewport = IntBuffer.allocate(4);
         return new GLHostState() {
-            @Override public void read(GLContextState into) { into.invalidate(); }
+            @Override
+            public void read(GLContextState into) {
+                into.invalidate();
+                into.drawFramebuffer = CgGlState.drawFramebuffer();
+                into.readFramebuffer = CgGlState.readFramebuffer();
+                CgGlState.viewport(viewport);
+                into.viewportX = viewport.get(0);
+                into.viewportY = viewport.get(1);
+                into.viewportW = viewport.get(2);
+                into.viewportH = viewport.get(3);
+            }
 
             @Override public void left() { CgGlState.invalidateAll(); }
 

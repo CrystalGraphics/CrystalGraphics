@@ -77,6 +77,11 @@ public final class CgGlState {
         return manager.drawFramebuffer();
     }
 
+    /** The bound read framebuffer, as {@link #drawFramebuffer} reads. */
+    public static int readFramebuffer() {
+        return manager.readFramebuffer();
+    }
+
     /** The viewport into {@code into} at 0..3, as {@link #drawFramebuffer} reads. */
     public static void viewport(IntBuffer into) {
         manager.viewport(into);

@@ -1277,6 +1277,12 @@ public final class CgGlStateManager {
         return current.drawFbo;
     }
 
+    /** The bound read framebuffer, as {@link #drawFramebuffer} reads. */
+    public int readFramebuffer() {
+        know(CgGlSlot.FBO);
+        return current.readFbo;
+    }
+
     /** The viewport into {@code into} at 0..3 (x, y, width, height), as {@link #drawFramebuffer} reads. */
     public void viewport(IntBuffer into) {
         know(CgGlSlot.VIEWPORT);
