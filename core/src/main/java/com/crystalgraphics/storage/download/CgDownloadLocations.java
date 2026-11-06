@@ -90,6 +90,71 @@ public final class CgDownloadLocations {
     public record Location(String id, @Nullable String digest, List<String> urls) {
     }
 
+    /**
+     * What the file says about its own mirror, for the build's tools; the runtime ignores it.
+     *
+     * @param repository the entry of {@code repositories} that is the mirror
+     * @param release    the GitHub release holding the files
+     * @param github     {@code owner/repo} the release is in
+     * @param licences   what a mirrored file is redistributed under, by file-name prefix; a file matching none is never mirrored
+     */
+    public record Mirror(@Nullable String repository, @Nullable String release, @Nullable String github,
+                         Map<String, String> licences) {
+
+        static final Mirror NONE = new Mirror(null, null, null, Collections.<String, String>emptyMap());
+
+        /** The licence a file named {@code fileName} is mirrored under, or null. */
+        public @Nullable String licenceOf(String fileName) {
+            for (Map.Entry<String, String> licence : licences.entrySet()) {
+                if (fileName.startsWith(licence.getKey())) return licence.getValue();
+            }
+            return null;
+        }
+    }
+
+    /**
+     * One download as the build checks it.
+     *
+     * @param urls       every address, best first
+     * @param upstream   the addresses that are not the mirror's
+     * @param mirrorFile the file's name in the mirror, or null when it does not come from there
+     */
+    public record Line(String id, @Nullable String digest, List<String> urls, List<String> upstream,
+                       @Nullable String mirrorFile, boolean template) {
+    }
+
+    /** A whole file as the build reads it. */
+    public record Listing(List<String> self, Map<String, List<String>> repositories, List<Line> lines, Mirror mirror) {
+    }
+
+    /**
+     * {@code text} as the build's checks read it, through the code the runtime reads it with.
+     *
+     * @throws IllegalArgumentException when it is not a locations file in this format
+     */
+    public static Listing listing(String text) {
+        Copy copy = parse(text);
+        if (copy == null) throw new IllegalArgumentException("not a locations file in format " + FORMAT);
+        List<Line> lines = new ArrayList<>();
+        for (Entry entry : copy.entries()) {
+            List<String> all = new ArrayList<>();
+            List<String> upstream = new ArrayList<>();
+            String mirrorFile = null;
+            for (Address address : entry.addresses()) {
+                List<String> urls = expand(new Entry(entry.id(), entry.digest(), Collections.singletonList(address)),
+                        Collections.<String, String>emptyMap(), copy.repositories());
+                all.addAll(urls);
+                if (address.repository() != null && address.repository().equals(copy.mirror().repository())) {
+                    mirrorFile = mavenFile(address.coordinates());
+                } else {
+                    upstream.addAll(urls);
+                }
+            }
+            lines.add(new Line(entry.id(), entry.digest(), all, upstream, mirrorFile, entry.isTemplate()));
+        }
+        return new Listing(copy.self(), copy.repositories(), lines, copy.mirror());
+    }
+
     /** A download as the file writes it: its URLs, or Maven coordinates {@code from} named repositories; and a pin. */
     private record Spec(List<String> urls, @Nullable String maven, List<String> from, @Nullable String digest) {
 
@@ -106,6 +171,8 @@ public final class CgDownloadLocations {
     private static final CgCodec<Map<String, List<String>>> REPOSITORIES = CgCodecs.mapOf(CgCodecs.STRING, STRINGS);
 
     private static final CgCodec<Map<String, Spec>> FILES = CgCodecs.mapOf(CgCodecs.STRING, Spec.CODEC);
+
+    private static final CgCodec<Map<String, String>> LICENCES = CgCodecs.mapOf(CgCodecs.STRING, CgCodecs.STRING);
 
     /** Each engine band's jars: coordinates to digest. */
     private static final CgCodec<Map<String, Map<String, String>>> BANDS =
@@ -124,11 +191,11 @@ public final class CgDownloadLocations {
     }
 
     /** One copy of the file: where it lives, each repository's addresses, and its entries. */
-    private record Copy(List<String> self, Map<String, List<String>> repositories, List<Entry> entries) {
+    private record Copy(List<String> self, Map<String, List<String>> repositories, List<Entry> entries, Mirror mirror) {
     }
 
     private static final Copy EMPTY = new Copy(Collections.<String>emptyList(),
-            Collections.<String, List<String>>emptyMap(), Collections.<Entry>emptyList());
+            Collections.<String, List<String>>emptyMap(), Collections.<Entry>emptyList(), Mirror.NONE);
 
     /** An id resolved against one entry: the entry, and what each placeholder stands for. */
     private record Match(Entry entry, Map<String, String> values) {
@@ -483,8 +550,15 @@ public final class CgDownloadLocations {
                     }
                 }
             }
+            Mirror mirror = Mirror.NONE;
+            if (file.has("mirror")) {
+                CgCodecs.MapCodecReader<JsonElement> block = CgCodecs.read(ops, file.raw("mirror"));
+                mirror = new Mirror(block.optional("repository", CgCodecs.STRING, null),
+                        block.optional("release", CgCodecs.STRING, null), block.optional("github", CgCodecs.STRING, null),
+                        block.optional("licences", LICENCES, Collections.<String, String>emptyMap()));
+            }
             return new Copy(file.optional("self", STRINGS, Collections.<String>emptyList()),
-                    file.optional("repositories", REPOSITORIES, Collections.<String, List<String>>emptyMap()), entries);
+                    file.optional("repositories", REPOSITORIES, Collections.<String, List<String>>emptyMap()), entries, mirror);
         } catch (RuntimeException unreadable) {
             return null;
         }

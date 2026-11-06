@@ -274,6 +274,32 @@ where.digest();     // the jar's pin, or null
 - Setting your `remoteProperty` to `false` never reads master. Your `overrideProperty` names the override file.
 - CrystalGraphics' own is `CgDownloads.LOCATIONS`, from `assets/crystalgraphics/download/locations.json`.
 
+### Checking the file in your build
+
+The file's format is checked by the code that reads it, so a build tool and a running jar cannot disagree.
+`cgbuildlogic.registerDownloadTasks` (in `singlejar-logic`) adds three tasks that run `CgDownloadTool` over it:
+
+```kotlin
+val downloadTool by configurations.creating { isCanBeConsumed = false }   // com.crystalgraphics:core + platform, gson, log4j-core
+registerDownloadTasks(file("download/locations.json"), downloadTool) { localJars }
+    .check.configure { dependsOn("checkMyPins") }                           // checks only your product knows go beside
+```
+
+| Task | Does |
+|---|---|
+| `checkDownloadLocations` | https only, pins well-formed, a template never pinned, every mirrored file pinned and licensed |
+| `verifyDownloadLocations` | fetches every address and compares the pin; online |
+| `stageDownloadMirror` | the mirror's files into `build/download-mirror`, verified, and the `gh release` commands; publishing is yours |
+
+A product with a mirror describes it in the file, which the runtime ignores:
+
+```json
+"mirror": { "repository": "mirror", "release": "download-mirror", "github": "owner/repo",
+            "licences": { "cfr-": "MIT, (c) Lee Benfield", "intermediary-": "CC0-1.0" } }
+```
+
+`repository` names the entry of `repositories` that is the mirror; a file matching no `licences` prefix is never mirrored.
+
 ## 8. Setting up a product
 
 1. Put `assets/<product>/download/locations.json` in your jar (`{"format": 1, "repositories": {}, "files": {}}` to begin).

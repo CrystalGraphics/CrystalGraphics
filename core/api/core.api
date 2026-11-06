@@ -13119,8 +13119,33 @@ com/crystalgraphics/storage/download/CgDownloadLocations
   method public refresh ()Z
   method public refreshIfStale ()V
   method public useCacheRoot (Ljava/nio/file/Path;)V
+  method public,static listing (Ljava/lang/String;)Lcom/crystalgraphics/storage/download/CgDownloadLocations$Listing;
   method public,static of (Lcom/crystalgraphics/storage/download/CgDownloadLocations$Source;)Lcom/crystalgraphics/storage/download/CgDownloadLocations;
   method public,static of (Ljava/lang/String;Ljava/lang/String;Ljava/nio/file/Path;Z)Lcom/crystalgraphics/storage/download/CgDownloadLocations;
+com/crystalgraphics/storage/download/CgDownloadLocations$Line
+  access public,final,record
+  extends java/lang/Record
+  method public <init> (Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/util/List;Ljava/lang/String;Z)V
+  method public digest ()Ljava/lang/String;
+  method public id ()Ljava/lang/String;
+  method public mirrorFile ()Ljava/lang/String;
+  method public template ()Z
+  method public upstream ()Ljava/util/List;
+  method public urls ()Ljava/util/List;
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
+com/crystalgraphics/storage/download/CgDownloadLocations$Listing
+  access public,final,record
+  extends java/lang/Record
+  method public <init> (Ljava/util/List;Ljava/util/Map;Ljava/util/List;Lcom/crystalgraphics/storage/download/CgDownloadLocations$Mirror;)V
+  method public lines ()Ljava/util/List;
+  method public mirror ()Lcom/crystalgraphics/storage/download/CgDownloadLocations$Mirror;
+  method public repositories ()Ljava/util/Map;
+  method public self ()Ljava/util/List;
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
 com/crystalgraphics/storage/download/CgDownloadLocations$Location
   access public,final,record
   extends java/lang/Record
@@ -13128,6 +13153,18 @@ com/crystalgraphics/storage/download/CgDownloadLocations$Location
   method public digest ()Ljava/lang/String;
   method public id ()Ljava/lang/String;
   method public urls ()Ljava/util/List;
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
+com/crystalgraphics/storage/download/CgDownloadLocations$Mirror
+  access public,final,record
+  extends java/lang/Record
+  method public <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;)V
+  method public github ()Ljava/lang/String;
+  method public licenceOf (Ljava/lang/String;)Ljava/lang/String;
+  method public licences ()Ljava/util/Map;
+  method public release ()Ljava/lang/String;
+  method public repository ()Ljava/lang/String;
   method public,final equals (Ljava/lang/Object;)Z
   method public,final hashCode ()I
   method public,final toString ()Ljava/lang/String;
@@ -13144,6 +13181,10 @@ com/crystalgraphics/storage/download/CgDownloadLocations$Source
   method public,final equals (Ljava/lang/Object;)Z
   method public,final hashCode ()I
   method public,final toString ()Ljava/lang/String;
+com/crystalgraphics/storage/download/CgDownloadTool
+  access public,final
+  extends java/lang/Object
+  method public,static main ([Ljava/lang/String;)V
 com/crystalgraphics/storage/download/CgDownloads
   access public,final
   extends java/lang/Object
