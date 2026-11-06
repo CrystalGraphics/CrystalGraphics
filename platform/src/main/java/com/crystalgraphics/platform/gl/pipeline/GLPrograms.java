@@ -64,16 +64,20 @@ public final class GLPrograms {
             if (gl.glGetProgrami(program, GL_LINK_STATUS) == 0)
                 throw new CgShaderModule.CompileException(label + ": " + gl.glGetProgramInfoLog(program));
             gl.glObjectLabel(GL_PROGRAM, program, label);
-            return program;
         } catch (RuntimeException e) {
+            release(gl, program, shaders);
             gl.glDeleteProgram(program);
             throw e;
-        } finally {
-            for (int shader : shaders) {
-                if (shader == 0) continue;
-                gl.glDetachShader(program, shader);
-                gl.glDeleteShader(shader);
-            }
+        }
+        release(gl, program, shaders);
+        return program;
+    }
+
+    private static void release(CgGLDriver gl, int program, int[] shaders) {
+        for (int shader : shaders) {
+            if (shader == 0) continue;
+            gl.glDetachShader(program, shader);
+            gl.glDeleteShader(shader);
         }
     }
 

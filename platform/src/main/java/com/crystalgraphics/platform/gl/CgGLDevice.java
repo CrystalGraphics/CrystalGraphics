@@ -280,7 +280,7 @@ public final class CgGLDevice implements CgRHI {
 
     /** The device's {@link CgGLImports}: {@code CgGL}'s names as its resources and its resources by name. */
     public GLImports imports() {
-        if (imports == null) imports = new GLImports(gl);
+        if (imports == null) imports = new GLImports(gl, framebuffers);
         return imports;
     }
 

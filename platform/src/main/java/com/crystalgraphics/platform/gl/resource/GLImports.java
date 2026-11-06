@@ -5,6 +5,7 @@ import java.util.EnumSet;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
 import com.crystalgraphics.platform.gl.format.GLFormats;
 import com.crystalgraphics.platform.gl.CgGLImports;
+import com.crystalgraphics.platform.gl.command.GLFramebuffers;
 import com.crystalgraphics.platform.gl.driver.CgGLDriver;
 import com.crystalgraphics.platform.rhi.resource.CgGpuBuffer;
 import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
@@ -25,19 +26,25 @@ public final class GLImports implements CgGLImports {
             GL_FRAMEBUFFER_ATTACHMENT_DEPTH_SIZE = 0x8216, GL_FRAMEBUFFER_ATTACHMENT_STENCIL_SIZE = 0x8217;
 
     private final CgGLDriver gl;
+    private final GLFramebuffers framebuffers;
     private final Map<Integer, GLTexture> textures = new HashMap<>();
     private final Map<Integer, GLBuffer> buffers = new HashMap<>();
     private final Map<Integer, GLTexture> renderbuffers = new HashMap<>();
     private GLTexture backColor, backDepth;
 
-    public GLImports(CgGLDriver gl) {
+    /** @param framebuffers the device's: an import replaced or deleted drops those it is attached to */
+    public GLImports(CgGLDriver gl, GLFramebuffers framebuffers) {
         this.gl = gl;
+        this.framebuffers = framebuffers;
     }
 
     @Override
     public CgGpuTexture texture(int name, CgGpuTexture.Desc desc) {
         GLTexture t = textures.get(name);
-        if (t == null || !t.desc().equals(desc)) textures.put(name, t = GLTexture.adopt(name, desc));
+        if (t == null || !t.desc().equals(desc)) {
+            if (t != null) framebuffers.forget(t);
+            textures.put(name, t = GLTexture.adopt(name, desc));
+        }
         return t;
     }
 
@@ -55,7 +62,10 @@ public final class GLImports implements CgGLImports {
     @Override
     public CgGpuTexture renderbuffer(int name, CgGpuTexture.Desc desc) {
         GLTexture t = renderbuffers.get(name);
-        if (t == null || !t.desc().equals(desc)) renderbuffers.put(name, t = GLTexture.adoptRenderbuffer(name, desc));
+        if (t == null || !t.desc().equals(desc)) {
+            if (t != null) framebuffers.forget(t);
+            renderbuffers.put(name, t = GLTexture.adoptRenderbuffer(name, desc));
+        }
         return t;
     }
 
@@ -104,7 +114,17 @@ public final class GLImports implements CgGLImports {
 
     @Override public int name(CgGpuBuffer buffer) { return ((GLBuffer) buffer).name; }
 
-    @Override public void textureDeleted(int texture) { textures.remove(texture); }
+    @Override
+    public void textureDeleted(int texture) {
+        GLTexture t = textures.remove(texture);
+        if (t != null) framebuffers.forget(t);
+    }
+
+    @Override
+    public void renderbufferDeleted(int renderbuffer) {
+        GLTexture t = renderbuffers.remove(renderbuffer);
+        if (t != null) framebuffers.forget(t);
+    }
 
     @Override public void bufferDeleted(int buffer) { buffers.remove(buffer); }
 }

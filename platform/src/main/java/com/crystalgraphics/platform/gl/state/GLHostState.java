@@ -1,5 +1,6 @@
 package com.crystalgraphics.platform.gl.state;
 
+import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.driver.CgGLDriver;
 
 import java.nio.IntBuffer;
@@ -44,9 +45,15 @@ public interface GLHostState {
      */
     static GLHostState sharedWithCgGL() {
         IntBuffer viewport = IntBuffer.allocate(4);
+        CgGlSlot[] alpha = {CgGlSlot.ALPHA_TEST};
         return new GLHostState() {
             /** Slots of {@code CgGL}'s shadow this section's entry could not say, as bits by ordinal. */
             private int unsaid;
+            /**
+             * The host's alpha test, which a compatibility profile applies to every fragment the device writes: off
+             * through {@code CgGL} for the section, so the host's own cache sees it put back.
+             */
+            private CgGlScope alphaTest;
 
             @Override
             public void read(GLContextState into) {
@@ -54,14 +61,26 @@ public interface GLHostState {
                 CgGlState.readFramebuffer();
                 CgGlState.viewport(viewport);
                 unsaid = CgGlState.manager().export(into) | 1 << CgGlSlot.IMAGES.ordinal();
+                if (!CgGL.CORE) {
+                    alphaTest = CgGlState.save(alpha);
+                    CgGL.glDisable(CgGL.GL_ALPHA_TEST);
+                }
             }
 
-            @Override public void left() { CgGlState.manager().invalidate(unsaid); }
+            @Override
+            public void left() {
+                CgGlState.manager().invalidate(unsaid);
+                if (alphaTest != null) {
+                    alphaTest.close();
+                    alphaTest = null;
+                }
+            }
 
             /**
              * {@code CgGL} sets none of the device's conventions: it draws under GL's defaults. Nor does it track the
-             * pixel-transfer buffers or sampler objects, which it assumes unbound: a pack buffer left bound takes its
-             * next read into memory, a sampler left on a unit replaces a texture's own sampling.
+             * pixel-transfer buffers, sampler objects or the depth range, which it assumes unbound and GL's default: a
+             * pack buffer left bound takes its next read into memory, a sampler left on a unit replaces a texture's own
+             * sampling.
              */
             @Override
             public void conventions(CgGLDriver gl) {
@@ -72,6 +91,7 @@ public interface GLHostState {
                 gl.glDisable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
                 gl.glDisable(GL_PROGRAM_POINT_SIZE);
                 gl.glClipControl(GL_LOWER_LEFT, GL_NEGATIVE_ONE_TO_ONE);
+                gl.glDepthRangef(0f, 1f);
                 gl.glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
                 gl.glPixelStorei(GL_PACK_ALIGNMENT, 4);
             }

@@ -267,6 +267,7 @@ public final class GLEncoder implements CgCommandList {
     public void writeTexture(CgGpuTexture dst, CgTextureRegion r, ByteBuffer data) {
         GLTexture t = (GLTexture) dst;
         CgFormat f = t.desc().format();
+        gl.glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
         if (t.target == GL_TEXTURE_2D) {
             if (f.compressed()) gl.glCompressedTextureSubImage2D(t.name, r.mip(), r.x(), r.y(), r.width(), r.height(),
                     GLFormats.internal(f), data);
@@ -339,6 +340,7 @@ public final class GLEncoder implements CgCommandList {
         outsidePass("readTexture");
         GLTexture t = (GLTexture) src;
         CgFormat f = t.desc().format();
+        gl.glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
         gl.glGetTextureSubImage(t.name, r.mip(), r.x(), r.y(), r.z(), r.width(), r.height(), r.depth(), GLFormats.format(f),
                 GLFormats.type(f), out);
     }
@@ -472,7 +474,8 @@ public final class GLEncoder implements CgCommandList {
                 else if (depth) gl.glClearNamedFramebufferfv(framebuffer, GL_DEPTH, 0, z.clearDepth(), 0, 0, 0);
                 else if (stencil) gl.glClearNamedFramebufferiv(framebuffer, GL_STENCIL, 0, z.clearStencil(), 0, 0, 0);
                 if (f.hasDepth() && z.depthLoad() == CgPassDesc.LoadOp.DONT_CARE && !z.readOnly()) {
-                    discard[invalidated++] = depthAttachment(f);
+                    boolean keepsStencil = f.hasStencil() && z.stencilLoad() != CgPassDesc.LoadOp.DONT_CARE;
+                    discard[invalidated++] = keepsStencil ? depthAlone() : depthAttachment(f);
                 }
             }
             if (invalidated > 0) gl.glInvalidateNamedFramebufferData(framebuffer, discard, invalidated);
@@ -481,6 +484,11 @@ public final class GLEncoder implements CgCommandList {
         /** Colour {@code i} as invalidation names it: framebuffer 0 names its buffers, not attachment points. */
         private int colorAttachment(int i) {
             return framebuffer == 0 ? GL_COLOR : GL_COLOR_ATTACHMENT0 + i;
+        }
+
+        /** The depth half of a depth-stencil attachment as invalidation names it, its stencil kept. */
+        private int depthAlone() {
+            return framebuffer == 0 ? GL_DEPTH : GL_DEPTH_ATTACHMENT;
         }
 
         /** The depth attachment of format {@code f} as invalidation names it. */
@@ -600,10 +608,10 @@ public final class GLEncoder implements CgCommandList {
             if (vertexDirty != 0) {
                 // A buffer the pipeline declares no stream for is unread, as Vulkan leaves it (a vertex stage pulling
                 // its own vertices declares none)
-                int streams = p.desc().vertexBuffers().size();
-                for (int b = 0; b < Math.min(streams, vertexBuffers.length); b++) {
-                    if ((vertexDirty & (1 << b)) == 0 || vertexBuffers[b] == null) continue;
-                    gl.glVertexArrayVertexBuffer(p.vao, b, vertexBuffers[b].name, vertexOffsets[b], p.stride(b));
+                for (CgGraphicsPipelineDesc.VertexBuffer vb : p.desc().vertexBuffers()) {
+                    int b = vb.binding();
+                    if (b >= vertexBuffers.length || (vertexDirty & (1 << b)) == 0 || vertexBuffers[b] == null) continue;
+                    gl.glVertexArrayVertexBuffer(p.vao, b, vertexBuffers[b].name, vertexOffsets[b], vb.stride());
                 }
                 vertexDirty = 0;
             }

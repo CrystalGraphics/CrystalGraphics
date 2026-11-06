@@ -15,7 +15,7 @@ import static com.crystalgraphics.platform.gl.driver.GLC.*;
  * targets, mips and array indices (`OpenGLRenderTarget.cpp`): made on a miss, dropped with a texture in them.
  *
  * <pre>{@code
- * int fb = framebuffers.get(colors, depth);   // colors: views of mip and layer ranges, depth: null for none
+ * int fb = framebuffers.get(colors, count, depth);   // the first count colours, views of mip and layer ranges; depth null for none
  * }</pre>
  */
 public final class GLFramebuffers {

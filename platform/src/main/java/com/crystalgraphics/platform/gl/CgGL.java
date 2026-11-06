@@ -765,6 +765,7 @@ public final class CgGL {
 
     public static void glDeleteRenderbuffers(int rbo) {
         gl().glDeleteRenderbuffers(rbo);
+        if (CgGLImports.installed()) CgGLImports.get().renderbufferDeleted(rbo);
     }
 
     public static void glBindRenderbuffer(int target, int renderbuffer) {

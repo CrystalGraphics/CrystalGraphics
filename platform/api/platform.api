@@ -1148,6 +1148,7 @@ com/crystalgraphics/platform/gl/CgGLImports
   method public bufferDeleted (I)V
   method public forget (Lcom/crystalgraphics/platform/rhi/resource/CgGpuBuffer;)V
   method public forget (Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture;)V
+  method public renderbufferDeleted (I)V
   method public textureDeleted (I)V
   method public,abstract buffer (I)Lcom/crystalgraphics/platform/rhi/resource/CgGpuBuffer;
   method public,abstract bufferOffset (I)J
@@ -1904,7 +1905,7 @@ com/crystalgraphics/platform/gl/resource/GLImports
   access public,final
   extends java/lang/Object
   implements com/crystalgraphics/platform/gl/CgGLImports
-  method public <init> (Lcom/crystalgraphics/platform/gl/driver/CgGLDriver;)V
+  method public <init> (Lcom/crystalgraphics/platform/gl/driver/CgGLDriver;Lcom/crystalgraphics/platform/gl/command/GLFramebuffers;)V
   method public buffer (I)Lcom/crystalgraphics/platform/rhi/resource/CgGpuBuffer;
   method public bufferDeleted (I)V
   method public bufferOffset (I)J
@@ -1915,6 +1916,7 @@ com/crystalgraphics/platform/gl/resource/GLImports
   method public name (Lcom/crystalgraphics/platform/rhi/resource/CgGpuBuffer;)I
   method public name (Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture;)I
   method public renderbuffer (ILcom/crystalgraphics/platform/rhi/resource/CgGpuTexture$Desc;)Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture;
+  method public renderbufferDeleted (I)V
   method public texture (ILcom/crystalgraphics/platform/rhi/resource/CgGpuTexture$Desc;)Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture;
   method public textureDeleted (I)V
 com/crystalgraphics/platform/gl/resource/GLSampler

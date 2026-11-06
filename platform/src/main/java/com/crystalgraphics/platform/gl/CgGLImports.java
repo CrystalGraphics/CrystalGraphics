@@ -70,6 +70,9 @@ public interface CgGLImports {
     /** {@code CgGL} deleted {@code texture}: forget anything kept for it. */
     default void textureDeleted(int texture) {}
 
+    /** {@code CgGL} deleted {@code renderbuffer}: forget anything kept for it. */
+    default void renderbufferDeleted(int renderbuffer) {}
+
     /** {@code CgGL} deleted {@code buffer}: forget anything kept for it. */
     default void bufferDeleted(int buffer) {}
 
