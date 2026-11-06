@@ -61,7 +61,7 @@ before the level renders, so anything painted from a GUI hook lands under the wo
   buffers of its own from Blaze3D's per-submit pool and hands them to Minecraft's submit at `toHost`;
   `bindMainTarget` imports the main target's images, which our passes leave in `GENERAL`; the frame closes
   in `FrameHooks.endFrame`, before Minecraft's submit. The GL-only repairs stand aside: Blaze3D's texture
-  units, `HostStateVerifier`, `OwnDepthConvention`'s clip control, CrystalGUI's `CgUiHostGl.leave`.
+  units, `HostStateVerifier`, `OwnDepthConvention`'s clip control, `HostGlHandoff.leave`.
   `LifecycleModern.canRender()` stands the engine down (`CgGraphicsLifecycle.standDown`) only when the
   hosted device cannot be built, with the cause in the log; on GL it asks GLFW for a current context, and
   from 26.3, which has no GLFW, takes a device that is not Vulkan as GL. 26.3 under Vulkan stands down for

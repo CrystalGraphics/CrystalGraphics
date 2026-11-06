@@ -330,7 +330,7 @@ public final class LifecycleModern {
      */
     public static int bindMainTarget(Minecraft mc) {
         //? if >=26.1 {
-        /*RenderTarget main = mainTarget(mc);
+        /*RenderTarget main = CgMinecraftClient.mainTarget(mc);
         // Meant to stay bound, for our passes and for Minecraft's next draw: handed over, not restored.
         try (CgGlScope ignored = CgGlState.handOver(CgGlSlot.FBO, CgGlSlot.VIEWPORT)) {
             int fbo = mainFbo(main);
@@ -370,17 +370,6 @@ public final class LifecycleModern {
     // The GL texture under one the loader may have wrapped: what a cast to GlTexture needs.
     public static GpuTexture hostTexture(GpuTexture texture) {
         return hostTexture.apply(texture);
-    }
-    *///?}
-
-    // 26.2 moved it from Minecraft to the game renderer.
-    //? if >=26.2 {
-    /*private static RenderTarget mainTarget(Minecraft mc) {
-        return mc.gameRenderer.mainRenderTarget();
-    }
-    *///?} elif >=26.1 {
-    /*private static RenderTarget mainTarget(Minecraft mc) {
-        return mc.getMainRenderTarget();
     }
     *///?}
 
