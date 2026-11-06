@@ -179,6 +179,11 @@ public final class LifecycleModern {
     private static void fireOverlay(CgRenderStage stage) {
         if (!canRender()) return;
         Minecraft mc = Minecraft.getInstance();
+        // Minecraft's GUI batch drawn first, or it flushes over the stage: a tooltip's text is left in it, unflushed.
+        // Before 1.15 GUI draws are immediate; from 1.21.6 the GUI is recorded and drawn at the frame's end.
+        //? if >=1.15 <1.21.6 {
+        mc.renderBuffers().bufferSource().endBatch();
+        //?}
         CgGL.fromHost();
         try {
             int mainFbo = bindMainTarget(mc);
