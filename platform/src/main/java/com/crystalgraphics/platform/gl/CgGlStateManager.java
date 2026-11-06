@@ -535,9 +535,10 @@ public final class CgGlStateManager {
             if (s.polygonModeFront == s.polygonModeBack) into.polygonMode = s.polygonModeFront;
             else unsaid |= 1 << CgGlSlot.POLYGON_MODE.ordinal();
         }
-        if (trusted(CgGlSlot.PROGRAM, F_PROGRAM)) into.program = s.programId;
-        if (trusted(CgGlSlot.FBO, F_DRAW_FBO)) into.drawFramebuffer = s.drawFbo;
-        if (trusted(CgGlSlot.FBO, F_READ_FBO)) into.readFramebuffer = s.readFbo;
+        // Always issued, never deduplicated, yet tracked: a host's own cache (Blaze3D's) skips the rebind
+        if (tracked(F_PROGRAM)) into.program = s.programId;
+        if (tracked(F_DRAW_FBO)) into.drawFramebuffer = s.drawFbo;
+        if (tracked(F_READ_FBO)) into.readFramebuffer = s.readFbo;
         if (trusted(CgGlSlot.VERTEX_INPUT, F_VERTEX_ARRAY)) into.vertexArray = s.vertexArray;
         if (!mustIssue(CgGlSlot.TEXTURES)) {
             for (int i = 0; i < GLContextState.UNITS && i < CgGlStateShadow.MAX_TEXTURE_UNITS; i++) {
@@ -561,6 +562,11 @@ public final class CgGlStateManager {
             }
         }
         return unsaid;
+    }
+
+    /** Whether the shadow holds {@code fields} as GL has them, deduplicated or not ({@link #DEDUP_EXEMPT}). */
+    private boolean tracked(long fields) {
+        return !verifying && (unknownFields & fields) == 0;
     }
 
     /** Whether the shadow vouches for {@code fields} of {@code slot}. */
