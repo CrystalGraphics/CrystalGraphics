@@ -4,7 +4,9 @@ package com.crystalgraphics.gl.framebuffer;
 import java.util.List;
 import java.util.ArrayList;
 import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
+import com.crystalgraphics.platform.rhi.resource.CgTextureView;
 import com.crystalgraphics.platform.rhi.CgRHI;
+import com.crystalgraphics.platform.gl.CgGLImports;
 import com.crystalgraphics.gl.CgGlNames;
 import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
@@ -858,6 +860,26 @@ public class CgFrameBuffer {
         return depthAttachment != null ? depthAttachment.getTexture() : null;
     }
 
+    /**
+     * The device texture at colour slot {@code slot}, a renderbuffer's too (attach-only): what a render pass on the
+     * device draws into. Null where the slot is unused or no device is installed.
+     *
+     * <pre>{@code
+     * CgTextureView view = CgTextureView.attachment(fbo.rhiColor(0), 0, 0);
+     * }</pre>
+     */
+    @Nullable
+    public CgGpuTexture rhiColor(int slot) {
+        Attachment a = colorAttachments.get(slot);
+        return a != null ? a.rhiTexture() : null;
+    }
+
+    /** As {@link #rhiColor}, for the depth/stencil attachment. */
+    @Nullable
+    public CgGpuTexture rhiDepth() {
+        return depthAttachment != null ? depthAttachment.rhiTexture() : null;
+    }
+
     // ── Blit ───────────────────────────────────────────────────────────────────
 
     /** Blits from {@code source} into this FBO. Extracts GL id and dimensions from the source. */
@@ -1322,8 +1344,25 @@ public class CgFrameBuffer {
         // ── Package-private setters (called by CgFrameBuffer during creation) ──
 
         void setTexture(CgTexture t)     { this.texture         = t; }
-        void setRenderbufferId(int id)   { this.renderbufferId  = id; }
+        void setRenderbufferId(int id)   { this.renderbufferId  = id; renderbufferDesc = null; }
         int  getRenderbufferId()         { return renderbufferId; }
+
+        /** The renderbuffer as the device describes it, read once: its storage is fixed for its life. */
+        @Nullable
+        private CgGpuTexture.Desc renderbufferDesc;
+
+        /** The device texture behind it: the texture's, or the renderbuffer imported attach-only; null with no device. */
+        @Nullable
+        CgGpuTexture rhiTexture() {
+            if (texture != null) {
+                CgTextureView view = texture.rhiView();
+                return view == null ? null : view.texture();
+            }
+            if (renderbufferId == 0 || !CgGLImports.installed()) return null;
+            CgGLImports imports = CgGLImports.get();
+            if (renderbufferDesc == null) renderbufferDesc = imports.describeRenderbuffer(renderbufferId);
+            return imports.renderbuffer(renderbufferId, renderbufferDesc);
+        }
 
         /**
          * Releases the GL resource held by this attachment.

@@ -2435,41 +2435,46 @@ public final class CgExecutor {
         boolean current = pass.target == null || pass.target.kind() == CgGraphTexture.Kind.CURRENT;
         if (current) {
             readHost();
-            if (hostColor == null) return "a host framebuffer with no colour";
-        } else if (pass.target.drawsBesideCurrentDepth()) {
-            readHost();
+            if (hostColor == null && hostDepth == null) throw new IllegalStateException(pass + " draws into a host framebuffer with nothing attached");
+        } else {
+            if (pass.target.drawsBesideCurrentDepth()) readHost();
+            if (storage(pass.target) == null) throw new IllegalStateException(pass + ": " + pass.target + " has no storage");
         }
-        if (damage != null && (pass.load.mask() & (CgGL.GL_DEPTH_BUFFER_BIT | CgGL.GL_STENCIL_BUFFER_BIT)) != 0) {
-            return "a depth clear under damage";
-        }
+        // A device runs compute, so its draws are counted on the GPU (gpuCounts)
         for (int b = 0; b < packed.count; b++) {
-            if (packed.counts[b] != null && !gpuCounts) return "draws counted on the CPU";
+            if (packed.counts[b] != null && !gpuCounts) throw new IllegalStateException(pass + " counts draws on the CPU beside a device");
         }
+        return null;
+    }
+
+    /** The device texture at {@code storage}'s colour slot {@code slot}, or its depth where {@code slot} is -1. */
+    private static CgGpuTexture deviceTexture(CgFrameBuffer storage, int slot) {
+        CgGpuTexture texture = slot < 0 ? storage.rhiDepth() : storage.rhiColor(slot);
+        if (texture == null) throw new IllegalStateException(storage + (slot < 0 ? "'s depth" : "'s colour " + slot) + " has no device texture");
+        return texture;
+    }
+
+    /**
+     * The device texture of {@code pass}'s second attachment, drawn {@code width} x {@code height}; null for none. One
+     * {@code CgGL} could not attach (another size; the host's, with no colour of its own to draw beside) is dropped when
+     * optional, logged once, and throws when not, as {@link #bindComposed} does.
+     */
+    @Nullable
+    private CgGpuTexture deviceSecond(CgRasterPass pass, boolean current, int width, int height) {
         CgGraphTexture attachment = attachmentOf(pass);
-        CgFrameBuffer extra = attachment == null ? null : storage(attachment);
-        if (attachment != null && (extra == null || extra.getColorTexture(0) == null
-                || extra.getColorTexture(0).rhiView() == null)) {
-            return "a second attachment with no texture";
-        }
+        if (attachment == null) return null;
+        CgFrameBuffer extra = storage(attachment);
+        String refused = current && hostColor == null ? "the host framebuffer has no colour attachment 0 to draw beside"
+                : extra.getWidth() != width || extra.getHeight() != height
+                ? attachment + " is " + extra.getWidth() + "x" + extra.getHeight() + ", beside a target of " + width + "x" + height
+                : null;
+        if (refused == null) return deviceTexture(extra, 0);
+        if (!pass.attachmentOptional()) throw new IllegalStateException(pass + ": " + refused);
         if (current) {
-            if (extra != null && (extra.getWidth() != hostColor.desc().width() || extra.getHeight() != hostColor.desc().height())) {
-                return "a second attachment of another size";
-            }
-            return null;
-        }
-        CgFrameBuffer storage = storage(pass.target);
-        if (storage == null) return "no storage";
-        if (extra != null && (extra.getWidth() != storage.levelWidth(pass.level)
-                || extra.getHeight() != storage.levelHeight(pass.level))) {
-            return "a second attachment of another size";
-        }
-        for (int i = 0; i < storage.getFormat().colorSlotCount(); i++) {
-            CgTexture color = storage.getColorTexture(i);
-            if (color == null || color.rhiView() == null) return "a colour renderbuffer";
-        }
-        if (storage.getFormat().hasDepth()) {
-            CgTexture depth = storage.getDepthTexture();
-            if (depth == null || depth.rhiView() == null) return "a depth renderbuffer";
+            if (!CgComposedTargets.refused(startFramebuffer)) LOGGER.warn("{} draws without its second attachment: {}", pass, refused);
+            CgComposedTargets.refuse(startFramebuffer);
+        } else if (glPassReasons.add("second " + pass.name())) {
+            LOGGER.warn("{} draws without its second attachment: {}", pass, refused);
         }
         return null;
     }
@@ -2490,8 +2495,10 @@ public final class CgExecutor {
         boolean current = pass.target == null || pass.target.kind() == CgGraphTexture.Kind.CURRENT;
         CgFrameBuffer storage = current ? null : storage(pass.target);
         int level = pass.level;
-        int w = current ? hostColor.desc().width() : storage.levelWidth(level);
-        int h = current ? hostColor.desc().height() : storage.levelHeight(level);
+        // A host target of depth alone draws no colour
+        CgGpuTexture hostSized = hostColor != null ? hostColor : hostDepth;
+        int w = current ? hostSized.desc().width() : storage.levelWidth(level);
+        int h = current ? hostSized.desc().height() : storage.levelHeight(level);
         CgMeshStore store = CgMeshStore.get();
         if (packed.count > 0) {
             frame.bindings.bind(packed.constants);
@@ -2520,11 +2527,10 @@ public final class CgExecutor {
         deviceColors.clear();
         deviceFormats.clear();
         // A second attachment (composed, or beside the current depth with one) is colour 1, after the target's colour 0.
-        CgGraphTexture attachment = attachmentOf(pass);
-        CgGpuTexture second = attachment == null ? null : storage(attachment).getColorTexture(0).rhiView().texture();
-        int colors = current || second != null ? 1 : storage.getFormat().colorSlotCount();
+        CgGpuTexture second = deviceSecond(pass, current, w, h);
+        int colors = current ? (hostColor != null ? 1 : 0) : second != null ? 1 : storage.getFormat().colorSlotCount();
         for (int i = 0; i < colors + (second != null ? 1 : 0); i++) {
-            CgGpuTexture texture = i == colors ? second : current ? hostColor : storage.getColorTexture(i).rhiView().texture();
+            CgGpuTexture texture = i == colors ? second : current ? hostColor : deviceTexture(storage, i);
             // The pass's layer of an array target; the host's and a second attachment are no arrays
             CgTextureView view = i == colors || current ? CgTextureView.attachment(texture, i == colors ? 0 : level, 0)
                     : CgTextureView.attachment(texture, level, pass.layer);
@@ -2536,15 +2542,16 @@ public final class CgExecutor {
         CgFormat depthFormat = null;
         CgGpuTexture depthTexture = current ? hostDepth
                 : pass.target.drawsBesideCurrentDepth() ? besideDepth(pass.target, w, h)
-                : storage.getFormat().hasDepth() ? storage.getDepthTexture().rhiView().texture() : null;
+                : storage.getFormat().hasDepth() ? deviceTexture(storage, -1) : null;
+        boolean clearDepth = depthTexture != null && (load.mask() & CgGL.GL_DEPTH_BUFFER_BIT) != 0;
+        boolean clearStencil = depthTexture != null && (load.mask() & CgGL.GL_STENCIL_BUFFER_BIT) != 0;
         if (depthTexture != null) {
-            boolean clearDepth = (load.mask() & CgGL.GL_DEPTH_BUFFER_BIT) != 0;
-            boolean clearStencil = (load.mask() & CgGL.GL_STENCIL_BUFFER_BIT) != 0;
             int depthLayer = depthTexture == hostDepth ? 0 : pass.layer;
+            // Under damage loaded and cleared over the damage alone, as colour is
             depth = new CgPassDesc.Depth(CgTextureView.attachment(depthTexture, level, depthLayer),
-                    clearDepth ? CgPassDesc.LoadOp.CLEAR : CgPassDesc.LoadOp.LOAD, (float) load.depth(),
-                    clearStencil ? CgPassDesc.LoadOp.CLEAR : CgPassDesc.LoadOp.LOAD, load.stencil(), CgPassDesc.StoreOp.STORE,
-                    depthInPlace);
+                    clearDepth && damage == null ? CgPassDesc.LoadOp.CLEAR : CgPassDesc.LoadOp.LOAD, (float) load.depth(),
+                    clearStencil && damage == null ? CgPassDesc.LoadOp.CLEAR : CgPassDesc.LoadOp.LOAD, load.stencil(),
+                    CgPassDesc.StoreOp.STORE, depthInPlace);
             depthFormat = depthTexture.desc().format();
         }
         int samples = deviceColors.isEmpty() ? depth.view().texture().desc().samples()
@@ -2562,6 +2569,10 @@ public final class CgExecutor {
                 for (int i = 0; i < deviceColors.size(); i++) {
                     rp.clearColor(i, load.r(), load.g(), load.b(), load.a(), damage[0], damage[1], damage[2], damage[3]);
                 }
+            }
+            if ((clearDepth || clearStencil) && damage != null) {
+                rp.clearDepthStencil(clearDepth, (float) load.depth(), clearStencil, load.stencil(),
+                        damage[0], damage[1], damage[2], damage[3]);
             }
             if (packed.count > 0) deviceBatches(frame, pass, packed, damage, rhi, passState, depthFormat, samples, w, h);
             rp = null;
