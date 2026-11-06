@@ -39,7 +39,7 @@ public class CgKernelEmitterTest {
     @Test
     public void declaredResources_areBoundAtEmission() {
         String glsl = emit("Integrate", CgKernelTarget.GL43);
-        assertTrue(glsl.contains("layout(std430, binding = "));
+        assertTrue(glsl.contains("layout(std430, CG_KBUFFER("));
         assertFalse(glsl.contains("layout(std430) buffer CgBuffer_"));
         assertFalse(glsl.contains("#extension GL_ARB_compute_shader"));
     }
@@ -94,8 +94,8 @@ public class CgKernelEmitterTest {
         assertFalse("a stage holds few storage blocks: one the kernel never reaches is not declared",
                 integrate.contains("CgBuffer_SPAWNED") || integrate.contains("CgCounter_SPAWNED"));
         String spawn = emit("Spawn", CgKernelTarget.GL43);
-        assertTrue(spawn.matches("(?s).*layout\\(std430, binding = \\d+\\) buffer CgBuffer_SPAWNED.*"));
-        assertTrue(spawn.matches("(?s).*layout\\(std430, binding = \\d+\\) buffer CgCounter_SPAWNED.*"));
+        assertTrue(spawn.matches("(?s).*layout\\(std430, CG_KBUFFER\\(\\d+\\)\\) buffer CgBuffer_SPAWNED.*"));
+        assertTrue(spawn.matches("(?s).*layout\\(std430, CG_KBUFFER\\(\\d+\\)\\) buffer CgCounter_SPAWNED.*"));
     }
 
     @Test

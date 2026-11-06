@@ -17,6 +17,7 @@ import com.crystalgraphics.gl.material.CgMaterialProperties;
 import com.crystalgraphics.gl.material.CgMaterialProperty;
 import com.crystalgraphics.gl.material.parse.CgGlslEmitter;
 import com.crystalgraphics.gl.material.parse.CgShaderParseException;
+import com.crystalgraphics.render.shader.CgBindingModel;
 
 import java.util.Set;
 
@@ -30,10 +31,12 @@ import java.util.Set;
  * String glsl = CgKernelEmitter.emit(source, source.kernel("Simulate"), Set.of("COLLISION"), CgKernelTarget.current());
  * }</pre>
  *
- * <p>What the kernel declares is bound at emission: buffer {@code i} (and its {@link #bitsBlock}) at storage binding
+ * <p>What the kernel declares is bound at emission: buffer {@code i} (and its {@link #bitsBlock}) at storage point
  * {@code i}, an append buffer's count after every buffer ({@link #counterPoint}), checked mode's report after those
- * ({@link #checkPoint}), image {@code i} at unit {@code i}, samplers at units in declaration order. The engine's
- * environment (its blocks, scene samplers and engine tokens' buffers) the program wires by name on GL until GL3.</p>
+ * ({@link #checkPoint}), image {@code i} at unit {@code i}, samplers at units in declaration order. Compiled as written
+ * ({@code CG_EXPLICIT}, a device's compile), those points are bindings of {@code CgBindingModel}'s material set, the
+ * {@code Properties} block is its block, engine tokens are in the pass set, and the dispatch and append counts' words
+ * are push constants; on GL the program wires blocks by name.</p>
  *
  * <p>For a {@link CgKernelTarget#checked} target every indexed accessor is a macro passing {@code __LINE__} to a
  * function that bounds-checks the access, reports one out of range to {@link #CHECK_BLOCK} and skips it; each part of
@@ -53,6 +56,8 @@ public final class CgKernelEmitter {
     public static final int IMAGE_SITES = 1 << 12;
     /** The one GLSL every kernel is emitted at, on every device: the materials' target. */
     public static final String VERSION = "#version 450 core\n";
+    /** The append buffers a kernel may declare: each count's word is a push constant compiled as written. */
+    public static final int KERNEL_WORDS = 8;
 
     private static final String ENV = "crystalgraphics:shaders/env/";
     private static final String[] SUBGROUP_EXTENSIONS = {"GL_KHR_shader_subgroup_basic", "GL_KHR_shader_subgroup_vote",
@@ -91,6 +96,11 @@ public final class CgKernelEmitter {
         return point;
     }
 
+    /** Which of the {@link #KERNEL_WORDS} append buffer {@code b}'s {@link #counterWord} is, compiled as written. */
+    public static int kernelWord(CgComputeSource source, CgBufferDecl b) {
+        return counterPoint(source, b) - source.buffers().size();
+    }
+
     /** What a checked kernel reports an access of buffer {@code b} through {@code accessor} as. */
     public static int site(CgBufferDecl b, CgBufferAccessor accessor) { return b.index() << 4 | accessor.ordinal(); }
 
@@ -125,6 +135,7 @@ public final class CgKernelEmitter {
         sb.append("#define CG_GROUP_POW2 ").append(Integer.bitCount(group) == 1 ? group : Integer.highestOneBit(group) << 1).append('\n');
         sb.append("#define CG_DIMENSIONS ").append(kernel.dimensions()).append('\n');
         sb.append("#define CG_KERNEL_").append(kernel.name()).append(" 1\n");
+        slots(sb);
         sb.append("layout(local_size_x = ").append(kernel.sizeX()).append(", local_size_y = ").append(kernel.sizeY())
           .append(", local_size_z = ").append(kernel.sizeZ()).append(") in;\n");
         include(sb, ENV + "cg_env.glsl");
@@ -140,7 +151,8 @@ public final class CgKernelEmitter {
         for (String token : source.engineBuffers()) {
             CgEngineBufferRegistry.Provider provider = CgEngineBufferRegistry.get(token);
             CgShaderBuffer buffer = provider.buffer().get();
-            sb.append(CgGlslEmitter.emitSsbo(buffer.getFormat(), buffer.getName(), provider.macroName(), !general, null));
+            sb.append(CgGlslEmitter.emitSsbo(buffer.getFormat(), buffer.getName(), provider.macroName(), !general,
+                    CgBindingModel.token(provider.macroName())));
             if (provider.envPath() != null) include(sb, provider.envPath());
         }
 
@@ -178,6 +190,18 @@ public final class CgKernelEmitter {
                         + "; this device allows " + target.maxSize(axis));
             }
         }
+        int appends = checkPoint(source) - source.buffers().size();
+        if (appends > KERNEL_WORDS) {
+            throw new CgShaderParseException(named + "'s file declares " + appends + " append buffers; a kernel takes "
+                    + KERNEL_WORDS);
+        }
+        int samplers = 0;
+        for (CgMaterialProperty p : new CgMaterialProperties(source.properties()).all()) if (p.getType().isSampler()) samplers++;
+        if (checkPoint(source) + 1 > CgBindingModel.FIRST_KERNEL_IMAGE - CgBindingModel.FIRST_KERNEL_BUFFER
+                || samplers > CgBindingModel.FIRST_KERNEL_BUFFER - CgBindingModel.FIRST_TEXTURE) {
+            throw new CgShaderParseException(named + "'s file declares " + source.buffers().size() + " buffers ("
+                    + appends + " appending) and " + samplers + " samplers, more than a kernel's set holds");
+        }
         if (kernel.groupSize() > target.maxInvocations()) {
             throw new CgShaderParseException(named + " asks for " + kernel.groupSize() + " invocations a group; this "
                     + "device allows " + target.maxInvocations());
@@ -206,16 +230,35 @@ public final class CgKernelEmitter {
         sb.append("\n#line ").append(line).append('\n');
     }
 
-    /** The {@code Properties} declarations every stage a kernel is emitted as carries: samplers and the block. */
-    public static void properties(StringBuilder sb, CgComputeSource source) {
+    /**
+     * Where a kernel's own resources bind: GL points, or compiled as written ({@code CG_EXPLICIT}) bindings of the
+     * material set, from {@link CgBindingModel}'s numbers.
+     */
+    private static void slots(StringBuilder sb) {
+        sb.append("#ifdef CG_EXPLICIT\n")
+          .append("#define CG_KBUFFER(i) set = ").append(CgBindingModel.MATERIAL).append(", binding = ")
+          .append(CgBindingModel.FIRST_KERNEL_BUFFER).append(" + (i)\n")
+          .append("#define CG_KIMAGE(i) set = ").append(CgBindingModel.MATERIAL).append(", binding = ")
+          .append(CgBindingModel.FIRST_KERNEL_IMAGE).append(" + (i)\n")
+          .append("#define CG_KSAMPLER(i) set = ").append(CgBindingModel.MATERIAL).append(", binding = ")
+          .append(CgBindingModel.FIRST_TEXTURE).append(" + (i)\n")
+          .append("#define CG_KERNEL_WORDS ").append(KERNEL_WORDS).append('\n')
+          .append("#else\n#define CG_KBUFFER(i) binding = i\n#define CG_KIMAGE(i) binding = i\n")
+          .append("#define CG_KSAMPLER(i) binding = i\n#endif\n");
+    }
+
+    /** The {@code Properties} declarations: samplers and the block. */
+    private static void properties(StringBuilder sb, CgComputeSource source) {
         CgMaterialProperties properties = new CgMaterialProperties(source.properties());
         int unit = 0;
         for (CgMaterialProperty p : properties.all()) {
             if (!p.getType().isSampler()) continue;
-            sb.append("layout(binding = ").append(unit++).append(") uniform ").append(p.getGlslType()).append(' ')
+            sb.append("layout(CG_KSAMPLER(").append(unit++).append(")) uniform ").append(p.getGlslType()).append(' ')
               .append(p.getName()).append(";\n");
         }
-        if (properties.hasUboProps()) sb.append(CgGlslEmitter.emitUbo(properties.buildUboFormat(), PROPERTY_BLOCK));
+        if (properties.hasUboProps()) {
+            sb.append(CgGlslEmitter.emitUbo(properties.buildUboFormat(), PROPERTY_BLOCK, CgBindingModel.MATERIAL_BLOCK));
+        }
     }
 
     // ── Buffers ───────────────────────────────────────────────────────────────
@@ -228,18 +271,20 @@ public final class CgKernelEmitter {
             String e = b.element();
             String a = b.array();
             String qualifier = b.access() == CgBufferAccess.READONLY ? "readonly " : b.access() == CgBufferAccess.WRITEONLY ? "writeonly " : "";
-            sb.append("layout(std430, binding = ").append(b.index()).append(") ").append(qualifier).append("buffer ")
+            sb.append("layout(std430, CG_KBUFFER(").append(b.index()).append(")) ").append(qualifier).append("buffer ")
               .append(bufferBlock(b)).append(" { ")
               .append(e).append(' ').append(a).append("[]; };\n");
             boolean floatAtomics = e.equals("float") && b.access() == CgBufferAccess.READWRITE
                     && (uses(kernel, b, CgBufferAccessor.ADD) && !nativeFloatAdd
                         || uses(kernel, b, CgBufferAccessor.MIN) || uses(kernel, b, CgBufferAccessor.MAX));
-            if (floatAtomics) sb.append("layout(std430, binding = ").append(b.index()).append(") buffer ").append(bitsBlock(b))
+            if (floatAtomics) sb.append("layout(std430, CG_KBUFFER(").append(b.index()).append(")) buffer ").append(bitsBlock(b))
               .append(" { uint ").append(a).append("_bits[]; };\n");
             if (b.access() == CgBufferAccess.APPEND) {
-                sb.append("layout(std430, binding = ").append(counterPoint(source, b)).append(") buffer ")
-                  .append(counterBlock(b)).append(" { uint ").append(a)
-                  .append("_counter[]; };\nuniform int ").append(counterWord(b)).append(";\n#define ").append(a)
+                sb.append("layout(std430, CG_KBUFFER(").append(counterPoint(source, b)).append(")) buffer ")
+                  .append(counterBlock(b)).append(" { uint ").append(a).append("_counter[]; };\n")
+                  .append("#ifdef CG_EXPLICIT\n#define ").append(counterWord(b)).append(" cg_KernelWords[")
+                  .append(kernelWord(source, b)).append("]\n#else\nuniform int ").append(counterWord(b))
+                  .append(";\n#endif\n#define ").append(a)
                   .append("_count ").append(a).append("_counter[").append(counterWord(b)).append("]\n");
             }
             for (CgBufferAccessor accessor : CgBufferAccessor.values()) {
@@ -329,8 +374,8 @@ public final class CgKernelEmitter {
             for (CgImageAccessor a : CgImageAccessor.values()) reached |= kernel.accessors().contains(image.name() + a.suffix);
             if (!reached) continue;
             String qualifier = image.access() == CgImageAccess.READONLY ? "readonly " : image.access() == CgImageAccess.WRITEONLY ? "writeonly " : "";
-            sb.append("layout(").append(image.format().qualifier()).append(", binding = ").append(image.index())
-              .append(") uniform ").append(qualifier)
+            sb.append("layout(").append(image.format().qualifier()).append(", CG_KIMAGE(").append(image.index())
+              .append(")) uniform ").append(qualifier)
               .append(image.glslType()).append(' ').append(image.uniform()).append(";\n");
             for (CgImageAccessor accessor : CgImageAccessor.values()) {
                 if (kernel.accessors().contains(image.name() + accessor.suffix)) {

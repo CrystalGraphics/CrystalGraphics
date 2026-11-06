@@ -58,6 +58,8 @@ public final class ShadercGlslCompiler implements CgGlslCompiler, AutoCloseable 
     private static final Pattern VERSION = Pattern.compile("(?m)^[ \\t]*#[ \\t]*version\\b.*$");
     private static final Pattern MAIN = Pattern.compile("\\bvoid\\s+main\\s*\\(\\s*(?:void)?\\s*\\)");
     private static final String DEFINES = "#define gl_VertexID gl_VertexIndex\n#define gl_InstanceID gl_InstanceIndex\n";
+    /** What a source compiled as written is told: it binds as {@code CgBindingModel} writes, and pushes its words. */
+    private static final String EXPLICIT = "#define CG_EXPLICIT 1\n";
 
     /** Every option set below, for the cache's key: a change to them is a new key. */
     private static final String OPTIONS = "vulkan 1.2, auto-mapped locations";
@@ -106,16 +108,36 @@ public final class ShadercGlslCompiler implements CgGlslCompiler, AutoCloseable 
     @Override
     public synchronized Explicit compileExplicit(String vertexGlsl, String fragmentGlsl, Map<String, Integer> attribLocations,
                                                  String label) {
-        String vertexSource = withDefines(vertexGlsl, label);
+        String vertexSource = withDefines(vertexGlsl, label, EXPLICIT);
         SpirvModule vertex = new SpirvModule(compile(vertexSource, shaderc_glsl_vertex_shader, label, explicitOptions), label);
         SpirvModule glDepth = new SpirvModule(compile(wrapMain(vertexSource, label), shaderc_glsl_vertex_shader, label,
                 explicitOptions), label);
-        SpirvModule fragment = new SpirvModule(compile(withDefines(fragmentGlsl, label), shaderc_glsl_fragment_shader, label,
-                explicitOptions), label);
+        SpirvModule fragment = new SpirvModule(compile(withDefines(fragmentGlsl, label, EXPLICIT),
+                shaderc_glsl_fragment_shader, label, explicitOptions), label);
         vertexInputs(glDepth, vertex, attribLocations);
+        Layout layout = layout(vertex, fragment);
+        int outputs = 0;
+        for (SpirvModule.Resource r : fragment.outputs) outputs = Math.max(outputs, r.value() + r.locations());
+        int push = Math.max(vertex.pushConstantBytes, fragment.pushConstantBytes);
+        return new Explicit(vertex.spirv, glDepth.spirv, fragment.spirv, layout.sets, layout.heap, (push + 3) / 4 * 4,
+                outputs);
+    }
+
+    @Override
+    public synchronized ExplicitCompute compileExplicitCompute(String glsl, String label) {
+        SpirvModule m = new SpirvModule(compile(withDefines(glsl, label, EXPLICIT), shaderc_glsl_compute_shader, label,
+                explicitOptions), label);
+        Layout layout = layout(m);
+        return new ExplicitCompute(m.spirv, m.localSize.clone(), layout.sets, layout.heap, (m.pushConstantBytes + 3) / 4 * 4);
+    }
+
+    /** The sets the stages declare, each's slots by binding in set order, and whether they read the bindless heap. */
+    private record Layout(List<List<CgBindingLayout.Slot>> sets, boolean heap) {}
+
+    private static Layout layout(SpirvModule... stages) {
         Map<Integer, Map<Integer, CgBindingLayout.Type>> sets = new TreeMap<>();
         boolean heap = false;
-        for (SpirvModule m : new SpirvModule[] {vertex, fragment}) {
+        for (SpirvModule m : stages) {
             for (SpirvModule.Resource r : m.uniformBuffers) slot(sets, m.set(r), r.value(), CgBindingLayout.Type.UNIFORM_BUFFER);
             for (SpirvModule.Resource r : m.storageBuffers) slot(sets, m.set(r), r.value(), CgBindingLayout.Type.STORAGE_BUFFER);
             for (SpirvModule.Resource r : m.images) slot(sets, m.set(r), r.value(), CgBindingLayout.Type.STORAGE_IMAGE);
@@ -133,11 +155,7 @@ public final class ShadercGlslCompiler implements CgGlslCompiler, AutoCloseable 
                 slots.add(new CgBindingLayout.Slot(e.getKey(), e.getValue()));
             layout.add(List.copyOf(slots));
         }
-        int outputs = 0;
-        for (SpirvModule.Resource r : fragment.outputs) outputs = Math.max(outputs, r.value() + r.locations());
-        int push = Math.max(vertex.pushConstantBytes, fragment.pushConstantBytes);
-        return new Explicit(vertex.spirv, glDepth.spirv, fragment.spirv, List.copyOf(layout), heap, (push + 3) / 4 * 4,
-                outputs);
+        return new Layout(List.copyOf(layout), heap);
     }
 
     private static void slot(Map<Integer, Map<Integer, CgBindingLayout.Type>> sets, int set, int binding,
@@ -150,11 +168,11 @@ public final class ShadercGlslCompiler implements CgGlslCompiler, AutoCloseable 
     @Override
     public synchronized Program compile(String vertexGlsl, String fragmentGlsl, Map<String, Integer> attribLocations,
                                         String label) {
-        String vertex = withDefines(vertexGlsl, label);
+        String vertex = withDefines(vertexGlsl, label, "");
         SpirvModule glDepth = new SpirvModule(spirv(wrapMain(vertex, label), shaderc_glsl_vertex_shader, label), label);
         SpirvModule zeroToOne = new SpirvModule(spirv(vertex, shaderc_glsl_vertex_shader, label), label);
-        SpirvModule fragment = new SpirvModule(spirv(withDefines(fragmentGlsl, label), shaderc_glsl_fragment_shader, label),
-                label);
+        SpirvModule fragment = new SpirvModule(spirv(withDefines(fragmentGlsl, label, ""), shaderc_glsl_fragment_shader,
+                label), label);
 
         int next = 0;
         int vLoose = has(glDepth.uniformBuffers, SpirvModule.DEFAULT_BLOCK) ? next++ : -1;
@@ -369,12 +387,15 @@ public final class ShadercGlslCompiler implements CgGlslCompiler, AutoCloseable 
         return kind == shaderc_glsl_vertex_shader ? "vertex" : kind == shaderc_glsl_fragment_shader ? "fragment" : "compute";
     }
 
-    /** 26.2's two defines after {@code #version}, and a {@code #line} so errors keep the source's numbering. */
-    private static String withDefines(String source, String label) {
+    /**
+     * 26.2's two defines and {@code more} after {@code #version}, and a {@code #line} so errors keep the source's
+     * numbering.
+     */
+    private static String withDefines(String source, String label, String more) {
         Matcher m = VERSION.matcher(source);
         if (!m.find()) throw new CgShaderModule.CompileException(label + ": no #version");
         int line = 2 + count(source, m.end());
-        return source.substring(0, m.end()) + "\n" + DEFINES + "#line " + line + source.substring(m.end());
+        return source.substring(0, m.end()) + "\n" + DEFINES + more + "#line " + line + source.substring(m.end());
     }
 
     /** {@code main} renamed, and a {@code main} after it that calls it and maps clip z from [-w, w] to [0, w]. */

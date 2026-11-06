@@ -62,6 +62,28 @@ public interface CgGlslCompiler {
     record Explicit(ByteBuffer vertex, ByteBuffer vertexGlDepth, ByteBuffer fragment, List<List<CgBindingLayout.Slot>> sets,
                     boolean heap, int pushConstantBytes, int colorOutputs) {}
 
+    /**
+     * A compute stage as Vulkan SPIR-V with its sets and bindings as the source writes them, as
+     * {@link #compileExplicit} compiles a program: what a device builds a compute pipeline from.
+     *
+     * <pre>{@code
+     * CgGlslCompiler.ExplicitCompute k = CgGlslCompiler.get().compileExplicitCompute(kernelGlsl, "simulate");
+     * CgShaderModule cs = rhi.createShaderModule(CgShaderModule.Stage.COMPUTE, k.spirv(), "simulate");
+     * }</pre>
+     *
+     * <p>{@code CG_EXPLICIT} is defined for the source: a kernel's own resources then bind in its sets and its
+     * per-dispatch values are push constants ({@code CgKernelEmitter}).</p>
+     *
+     * @throws CgShaderModule.CompileException with the compiler's log, a source leaving a resource unbound included
+     */
+    default ExplicitCompute compileExplicitCompute(String glsl, String label) {
+        throw new UnsupportedOperationException(getClass().getSimpleName() + " compiles no explicit kernels");
+    }
+
+    /** A compute stage as written: its SPIR-V, its group size, its sets as {@link Explicit}'s, its push-constant bytes. */
+    record ExplicitCompute(ByteBuffer spirv, int[] localSize, List<List<CgBindingLayout.Slot>> sets, boolean heap,
+                           int pushConstantBytes) {}
+
     /** The compiler installed now, for code making device pipelines; throws until a host installs one. */
     static CgGlslCompiler get() {
         CgGlslCompiler c = Slot.installed;

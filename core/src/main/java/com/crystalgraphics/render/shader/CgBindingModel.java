@@ -70,6 +70,13 @@ public final class CgBindingModel {
     /** A material's textures where they are bound rather than read by index: property {@code i} at this plus {@code i}. */
     public static final int FIRST_TEXTURE = 16;
 
+    /**
+     * A kernel's own resources are in {@link #MATERIAL}'s set, as a material's: its {@code Properties} block at
+     * {@link #MATERIAL_BLOCK}, its samplers from {@link #FIRST_TEXTURE}, its buffers from this (append counts and
+     * checked mode's report after them), images from {@link #FIRST_KERNEL_IMAGE}.
+     */
+    public static final int FIRST_KERNEL_BUFFER = 32, FIRST_KERNEL_IMAGE = 96;
+
     private CgBindingModel() {}
 
     /** {@code set} and {@code binding} in one int: {@link #setOf} and {@link #bindingOf} read it back. */
@@ -133,6 +140,12 @@ public final class CgBindingModel {
         return new Slot(MATERIAL, FIRST_TEXTURE + i);
     }
 
+    /** The pass slot of the cg_use token whose macro is {@code macro}; null for a macro no token has. */
+    public static Slot token(String macro) {
+        int token = CgEngineBufferRegistry.indexOfMacro(macro);
+        return token >= 0 ? new Slot(PASS, FIRST_TOKEN + token) : null;
+    }
+
     /**
      * Where an attached buffer binds: an engine buffer's pass slot, found by its macro name or block name, or the
      * material's {@code user}th attached slot.
@@ -142,8 +155,8 @@ public final class CgBindingModel {
             if (TEXT_DATA_BLOCK.equals(ab.getBuffer().getName())) return TEXT_DATA;
         } else {
             if (CgBonePalettes.MACRO_NAME.equals(ab.getMacroName())) return BONES;
-            int token = CgEngineBufferRegistry.indexOfMacro(ab.getMacroName());
-            if (token >= 0) return new Slot(PASS, FIRST_TOKEN + token);
+            Slot token = token(ab.getMacroName());
+            if (token != null) return token;
         }
         if (user >= ATTACHED_COUNT)
             throw new IllegalArgumentException("a material takes " + ATTACHED_COUNT + " attached buffers; "

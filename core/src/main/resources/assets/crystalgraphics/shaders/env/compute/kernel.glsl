@@ -11,7 +11,12 @@
 #pragma once
 
 // Base xyz and count xyz, set per dispatch by the engine. A count of -1 is an indirect dispatch's: its groups.
+// Compiled as written (CG_EXPLICIT), a push constant with the append counts' words.
+#ifdef CG_EXPLICIT
+layout(push_constant) uniform CgKernelPush { int cg_Dispatch[6]; int cg_KernelWords[CG_KERNEL_WORDS]; };
+#else
 uniform int cg_Dispatch[6];
+#endif
 
 #define CG_LOCAL_SIZE     ivec3(CG_LOCAL_SIZE_X, CG_LOCAL_SIZE_Y, CG_LOCAL_SIZE_Z)
 #define CG_DISPATCH_BASE  ivec3(cg_Dispatch[0], cg_Dispatch[1], cg_Dispatch[2])

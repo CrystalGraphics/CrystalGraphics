@@ -7,8 +7,9 @@ import java.util.Map;
 /**
  * A compiler that proves a material's source binds everything it reads: each program carrying {@code CG_BIND}
  * ({@code CgBindingModel}) is compiled first with nothing auto-bound, failing on what it left unbound, and again in its
- * bindless form ({@code CG_BINDLESS}), then linked as {@code linker} links it. Raw programs and kernels go to
- * {@code linker} alone. For the tests linking every shipped shader on the tracked backend.
+ * bindless form ({@code CG_BINDLESS}), then linked as {@code linker} links it. Each kernel is compiled as written
+ * ({@link #compileExplicitCompute}) before it links. Raw programs go to {@code linker} alone. For the tests linking every
+ * shipped shader on the tracked backend.
  *
  * <pre>{@code
  * try (ShadercGlslCompiler auto = new ShadercGlslCompiler(); ShadercGlslCompiler bare = new ShadercGlslCompiler(null, false, false)) {
@@ -35,6 +36,7 @@ public record ExplicitBindingCheck(CgGlslCompiler linker, CgGlslCompiler bare) i
 
     @Override
     public ComputeProgram compileCompute(String glsl, String label) {
+        bare.compileExplicitCompute(glsl, label);
         return linker.compileCompute(glsl, label);
     }
 }

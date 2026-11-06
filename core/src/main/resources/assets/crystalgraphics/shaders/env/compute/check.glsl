@@ -2,7 +2,7 @@
 // range and skip it. The block is this dispatch's slot: how many, then the first one's site, line, index and size.
 #pragma once
 
-layout(std430, binding = CG_CHECK_BINDING) buffer CgCheck { uint cg_Checks[]; };
+layout(std430, CG_KBUFFER(CG_CHECK_BINDING)) buffer CgCheck { uint cg_Checks[]; };
 
 void cg_Violation(int site, int line, uvec3 at, uvec3 size) {
     if (atomicAdd(cg_Checks[0], 1u) == 0u) {
