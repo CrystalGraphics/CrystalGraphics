@@ -1,5 +1,7 @@
 package com.crystalgraphics.platform.gl;
 
+import com.crystalgraphics.platform.rhi.shader.CgGlslCompiler;
+import com.crystalgraphics.platform.rhi.CgDeviceSection;
 import com.crystalgraphics.platform.gl.binding.GLBindingLayout;
 import com.crystalgraphics.platform.gl.binding.GLBindingSet;
 import com.crystalgraphics.platform.gl.command.GLEncoder;
@@ -231,10 +233,32 @@ public final class CgGLDevice implements CgRHI {
         return true;
     }
 
-    /** The device's {@link CgGLImports}, for a host sharing its context with {@code CgGL} to install. */
+    /** The device's {@link CgGLImports}: {@code CgGL}'s names as its resources and its resources by name. */
     public GLImports imports() {
         if (imports == null) imports = new GLImports(gl);
         return imports;
+    }
+
+    /**
+     * Makes this the process's device beside {@code CgGL} in the same context, whole (Unreal's {@code RHIInit}, one
+     * place): as {@link CgRHI}, device sections as {@link #fromHost}/{@link #toHost}, {@code compiler}, and its
+     * {@link #imports()}. Made with {@link GLHostState#sharedWithCgGL()}.
+     *
+     * <pre>{@code
+     * CgGLDevice device = new CgGLDevice(driver, translator, w, h, false, GLHostState.sharedWithCgGL());
+     * device.installBesideCgGL(new ShadercGlslCompiler(CgCacheDirectory.of("spirv")));
+     * }</pre>
+     */
+    public CgGLDevice installBesideCgGL(CgGlslCompiler compiler) {
+        CgRHI.install(this);
+        CgDeviceSection.install(new CgDeviceSection.Host() {
+            @Override public void begin() { fromHost(); }
+
+            @Override public void end() { toHost(); }
+        });
+        CgGlslCompiler.install(compiler);
+        CgGLImports.install(imports());
+        return this;
     }
 
     /** What the context has, as the device's filter knows it. */
