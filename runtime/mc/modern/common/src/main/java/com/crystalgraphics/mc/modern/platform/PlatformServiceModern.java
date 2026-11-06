@@ -54,13 +54,15 @@ import com.crystalgraphics.platform.world.CgHostDebug;
 import com.crystalgraphics.platform.world.CgHostShapes;
 import com.crystalgraphics.platform.world.CgLevels;
 import com.crystalgraphics.platform.world.CgPlayerQuery;
+import com.crystalgraphics.platform.service.CgGameThreads;
+import com.crystalgraphics.platform.service.CgHostWindow;
 import com.crystalgraphics.platform.service.CgServers;
 import com.crystalgraphics.platform.world.CgModelSpace;
 import com.crystalgraphics.platform.world.CgWorldEvents;
 import com.crystalgraphics.platform.audio.CgAudioDecoder;
 import com.crystalgraphics.platform.audio.CgAudioOutput;
 import com.crystalgraphics.platform.audio.CgHostDuck;
-import com.crystalgraphics.platform.service.CgHostI18n;
+import com.crystalgraphics.platform.service.CgI18n;
 import com.crystalgraphics.mc.modern.platform.service.HostI18nModern;
 import com.crystalgraphics.platform.audio.CgHostVolume;
 import com.crystalgraphics.platform.world.CgWorldStimulus;
@@ -131,12 +133,6 @@ public final class PlatformServiceModern implements CgPlatformService {
      * levels and players, the camera, debug view, audio, language, stimulus, game directory and cursor. They name client
      * and LWJGL classes a dedicated server does not ship, so nothing on a server path may call it.
      */
-    /** Minecraft's, or before Minecraft exists (NeoForge constructs mods first) the launcher's working directory. */
-    private static Path gameDirectory() {
-        Minecraft mc = Minecraft.getInstance();
-        return mc != null ? mc.gameDirectory.toPath() : Paths.get("").toAbsolutePath();
-    }
-
     public static void installClient() {
         ClientModern.install();
         CgPlatform.provide(CgHostCamera.SERVICE, new HostCameraModern());
@@ -145,10 +141,12 @@ public final class PlatformServiceModern implements CgPlatformService {
         CgPlatform.provide(CgAudioOutput.SERVICE, new Lwjgl3AudioOutput(HostVolumeModern::device));
         CgPlatform.provide(CgHostVolume.SERVICE, new HostVolumeModern());
         CgPlatform.provide(CgHostDuck.SERVICE, new HostDuckModern());
-        CgPlatform.provide(CgHostI18n.SERVICE, new HostI18nModern());
+        CgPlatform.provide(CgI18n.HOST, new HostI18nModern());
         CgPlatform.provide(CgAudioDecoder.SERVICE, new StbVorbisDecoder());
         CgPlatform.provide(CgWorldStimulus.SERVICE, new WorldStimulusModern());
-        CgPlatform.provide(CgGameDirectory.SERVICE, PlatformServiceModern::gameDirectory);
+        CgPlatform.provide(CgGameDirectory.HOST, new GameDirectoryModern());
+        CgPlatform.provide(CgGameThreads.HOST, new GameThreadsModern());
+        CgPlatform.provide(CgHostWindow.HOST, new HostWindowModern());
         CgPlatform.provide(CgShaderPacks.HOST, CgShaderPacks.irisApi());   // Iris, Oculus
         // What WorldEventsModern.poll reports; the explosion and the broken block are the loaders' mixins'.
         //? if >=1.14 {

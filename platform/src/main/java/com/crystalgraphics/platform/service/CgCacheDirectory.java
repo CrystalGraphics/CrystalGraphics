@@ -62,7 +62,7 @@ public final class CgCacheDirectory {
     public static Path of(String name) {
         if (!ENABLED.get()) return null;
         Path root = DIR.isSet() ? Paths.get(DIR.get())
-                : CgPlatform.get(CgGameDirectory.SERVICE).get().resolve("crystalgraphics").resolve("cache");
+                : CgGameDirectory.game().resolve("crystalgraphics").resolve("cache");
         Path dir = root.resolve(name);
         try {
             return Files.createDirectories(dir);

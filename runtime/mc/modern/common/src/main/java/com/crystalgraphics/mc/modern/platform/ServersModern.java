@@ -28,6 +28,11 @@ public final class ServersModern implements CgServers.Host {
         this.server = server;
     }
 
+    /** The running server, or null; for the thread binding. */
+    MinecraftServer minecraftServer() {
+        return server;
+    }
+
     /** The directory a world is saved in. */
     public static Path worldRoot(MinecraftServer server) {
         // LevelResource is 1.16's; before it the save is a folder of the storage source's base.

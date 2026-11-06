@@ -24,7 +24,7 @@ import com.crystalgraphics.i18n.CgKitStrings;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.audio.CgAudioDecoder;
 import com.crystalgraphics.platform.audio.CgAudioStream;
-import com.crystalgraphics.platform.service.CgHostI18n;
+import com.crystalgraphics.platform.service.CgI18n;
 import com.crystalgraphics.sequence.CgSequencePlayer;
 import com.crystalgraphics.sequence.CgSequencer;
 import com.crystalgraphics.sequence.definition.CgSequenceDefinition;
@@ -73,9 +73,18 @@ public class CgSequenceSubtitleTest {
         CgSubtitleStyle.registerKit("subsub", kit);
     }
 
+    /** Provided once, as {@link CgI18n} keeps the host it is first given; a test sets the language it answers. */
+    private static final class Language implements CgI18n.Host {
+        static final Language INSTANCE = new Language();
+        static { CgPlatform.provide(CgI18n.HOST, INSTANCE); }
+        volatile String code = "en_us";
+        @Override public String translate(String key) { return null; }
+        @Override public String language() { return code; }
+    }
+
     @After
     public void english() {
-        CgPlatform.provide(CgHostI18n.SERVICE, null);
+        Language.INSTANCE.code = "en_us";
     }
 
     /** The test's "files": a rate, seconds and hertz, decoded as a sine. */
@@ -147,10 +156,7 @@ public class CgSequenceSubtitleTest {
     /** Joined by a seek, a line shows at its age; the player's language reads its own text, English where it has none. */
     @Test
     public void aSeekJoinsALineAndTheLanguageIsThePlayers() {
-        CgPlatform.provide(CgHostI18n.SERVICE, new CgHostI18n() {
-            @Override public String translate(String key) { return null; }
-            @Override public String language() { return "fr_fr"; }
-        });
+        Language.INSTANCE.code = "fr_fr";
         CgSequencePlayer player = play();
         player.jumpTo(2.0);
         step(0f);

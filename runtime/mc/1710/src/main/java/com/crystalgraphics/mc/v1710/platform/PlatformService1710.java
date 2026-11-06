@@ -30,6 +30,8 @@ import com.crystalgraphics.mc.v1710.platform.world.PlayerQuery1710;
 import com.crystalgraphics.platform.service.CgProcessExit;
 import com.crystalgraphics.platform.world.CgHostShapes;
 import com.crystalgraphics.platform.world.CgLevels;
+import com.crystalgraphics.platform.service.CgGameThreads;
+import com.crystalgraphics.platform.service.CgHostWindow;
 import com.crystalgraphics.platform.service.CgServers;
 import com.crystalgraphics.platform.world.CgPlayerQuery;
 import com.crystalgraphics.collision.mirror.CgMirrorHost;
@@ -47,7 +49,7 @@ import com.crystalgraphics.platform.world.CgWorldEvents;
 import com.crystalgraphics.platform.audio.CgAudioDecoder;
 import com.crystalgraphics.platform.audio.CgAudioOutput;
 import com.crystalgraphics.platform.audio.CgHostDuck;
-import com.crystalgraphics.platform.service.CgHostI18n;
+import com.crystalgraphics.platform.service.CgI18n;
 import com.crystalgraphics.mc.v1710.platform.service.ModLoader1710;
 import com.crystalgraphics.mc.v1710.platform.service.HostI18n1710;
 import com.crystalgraphics.platform.audio.CgHostVolume;
@@ -180,10 +182,12 @@ public final class PlatformService1710 implements CgPlatformService {
             CgPlatform.provide(CgAudioOutput.SERVICE, new Lwjgl2AudioOutput());
             CgPlatform.provide(CgHostVolume.SERVICE, new HostVolume1710());
             CgPlatform.provide(CgHostDuck.SERVICE, new HostDuck1710());
-            CgPlatform.provide(CgHostI18n.SERVICE, new HostI18n1710());
+            CgPlatform.provide(CgI18n.HOST, new HostI18n1710());
             CgPlatform.provide(CgAudioDecoder.SERVICE, new JOrbisDecoder());
             CgPlatform.provide(CgWorldStimulus.SERVICE, new WorldStimulus1710());
-            CgPlatform.provide(CgGameDirectory.SERVICE, new GameDirectoryService1710());
+            CgPlatform.provide(CgGameDirectory.HOST, new GameDirectoryService1710());
+            CgPlatform.provide(CgGameThreads.HOST, new GameThreads1710());
+            CgPlatform.provide(CgHostWindow.HOST, new HostWindow1710());
             // WorldEvents1710 polls the hurts, deaths and lightning; ExplosionHook and LevelEventHook the rest.
             CgWorldEvents.declare(CgWorldEvents.EXPLOSION | CgWorldEvents.BLOCK_BROKEN | CgWorldEvents.ENTITY_HURT
                     | CgWorldEvents.ENTITY_DIED | CgWorldEvents.LIGHTNING);

@@ -51,10 +51,13 @@ and cursor seams are here too — see [UI-facing services](#ui-facing-services).
 | `audio/CgAudioDecoder` | Interface + slot | Ogg Vorbis from memory with the host's own decoder: `StbVorbisDecoder` (LWJGL 3), `JOrbisDecoder` (LWJGL 2 hosts' JOrbis), never bundled. Client only; `NONE` throws |
 | `audio/CgHostVolume` | Interface + slot | The host's volume sliders, master and by category, that the engine's sound follows. Client only; `NONE` answers 1 |
 | `audio/CgHostDuck` | Interface + slot | Scales the host's own playing and new sounds by category, never its sliders: a mix's `duckHost`. Client only; `NONE` ignores it |
-| `service/CgHostI18n` | Interface + slot | A translation key's text in the player's language (`I18n`): what a Minecraft sound event's subtitle reads as. Read in core through `i18n.CgI18n` alone. Client only; `NONE` and a missing key answer null |
+| `service/CgI18n` | Static owner + `Host` slot | A translation key's text in the player's language (`I18n`): what a Minecraft sound event's subtitle reads as; `language()` as a kit names it, `locale()` as a `Locale`. Client only; `NONE` and a missing key answer null |
 | `service/CgModLoader` | Static owner + `Host` slot | The mod loader: its name, version and dev flag, every loaded mod (`Mod`: id, version, name, roots), `isLoaded`, and each mod's root, which `asset.load.CgAssetMounts` mounts. Both sides; `ModLoaderForge`, `ModLoaderNeoForge`, `ModLoaderFabric`, `ModLoaderLegacy`, `ModLoader1710`. The new SPI shape (§ *The wiring standard*) |
 | `service/CgShaderPacks` | Static owner + `Host` slot | The shader-pack mod: which one (`iris`, `oculus`, `angelica`, `none`), whether a pack is in use, whether its shadow pass is drawing. Client only; `irisApi()` reads Iris's public `IrisApi` v0, which all three ship, and is what the modern and 1.7.10 hosts provide; legacy Forge provides nothing |
-| `service/CgGameDirectory` | Interface + slot | The client's game directory, where `config/` lives: what CrystalGraphics' settings file (`com.crystalgraphics.settings`) is kept under. Absent: the working directory |
+| `service/CgGameDirectory` | Static owner + `Host` slot | The game directory, where `config/` lives (what CrystalGraphics' settings file and cache are kept under; absent: the working directory), and `world()`, the integrated server's loaded world, null with none. Client only; `GameDirectoryModern`, `GameDirectoryService`, `GameDirectoryService1710` |
+| `service/CgServers` | Static owner + `Host` slot | The server this process runs: `running`, `dedicated`, its `directory`, `version`, `halt`. Both sides; `ServersModern`, `ServersLegacy`, `Servers1710` |
+| `service/CgGameThreads` | Static owner + `Host` slot | The game's client and server threads as a `Binding` (`execute`, `isCurrent`, `isAvailable`), what core's `job.CgHostThread` runs work on. Client slot from the client install, server from either; `GameThreadsModern`, `GameThreadsLegacy`, `GameThreads1710` |
+| `service/CgHostWindow` | Static owner + `Host` slot | The surface's `width()` and `height()` in device pixels. Client only; `HostWindowModern`, `HostWindowLegacy`, `HostWindow1710` |
 | `service/CgCacheDirectory` | Final class | `of(name)`: a folder under `<game>/crystalgraphics/cache/` for what can be rebuilt — the SPIR-V (`spirv`) and pipeline (`vulkan`) caches a host passes its compiler and device, GL program binaries (`glprogram`, `CgProgramBinaryCache`) and the framebuffer layouts found complete (`framebuffer`, `CgFrameBufferLayouts`); `driver()` names the GL driver, for a cache kept per driver. Null where `-Dcrystalgraphics.cache=false` or it cannot be made; `-Dcrystalgraphics.cache.dir` moves it |
 | `world/CgWorldEvents` | Final class | What the client learns happens in the world (explosion, block broken, entity hurt or killed, lightning), pushed by hosts to listeners, on the render thread |
 | `service/CgNetworkChannel` | Interface + slot | Carrying one frame to the server or a player, and its ceiling: the whole platform side of networking. `CgNetworkChannel.SERVICE`; everything above it is core's `net` |
@@ -75,7 +78,7 @@ How a platform service is declared, provided and read. **`CgModLoader` (`platfor
 `CgService` SPI takes** (the user, 2026-10-31): a final class named for the concern is its static owner, as `CgGL`
 owns `CgGLBackend`; its nested `Host` interface is what a host implements, with a `NONE`; its slot is `HOST`; records
 it answers are nested too (`CgModLoader.Mod`). Callers use the owner's static calls and never the slot. The older
-slots (`CgLevels`, `CgGameDirectory`, the audio ones, ...) are the previous shape, a bare interface with `SERVICE` and
+slots (`CgLevels`, the audio ones, ...) are the previous shape, a bare interface with `SERVICE` and
 a facade in core, and are to be rewritten to this one.
 
 ```java

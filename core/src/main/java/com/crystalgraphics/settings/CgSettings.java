@@ -112,7 +112,7 @@ public final class CgSettings {
     /** Where it is kept. */
     public synchronized Path path() {
         if (path == null) {
-            path = CgPlatform.get(CgGameDirectory.SERVICE).get().toAbsolutePath().resolve("config").resolve(name + ".toml");
+            path = CgGameDirectory.game().toAbsolutePath().resolve("config").resolve(name + ".toml");
         }
         return path;
     }

@@ -7038,12 +7038,6 @@ com/crystalgraphics/gpu/CgUploads$Tier
   field public,static,final UNPACK Lcom/crystalgraphics/gpu/CgUploads$Tier;
   method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/gpu/CgUploads$Tier;
   method public,static values ()[Lcom/crystalgraphics/gpu/CgUploads$Tier;
-com/crystalgraphics/i18n/CgI18n
-  access public,final
-  extends java/lang/Object
-  method public,static language ()Ljava/lang/String;
-  method public,static translate (Ljava/lang/String;)Ljava/lang/String;
-  method public,static translate (Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
 com/crystalgraphics/i18n/CgKitStrings
   access public,final
   extends java/lang/Object
@@ -7061,6 +7055,31 @@ com/crystalgraphics/i18n/CgKitStrings$Entry
   method public,final equals (Ljava/lang/Object;)Z
   method public,final hashCode ()I
   method public,final toString ()Ljava/lang/String;
+com/crystalgraphics/job/CgHostThread
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final CLIENT Lcom/crystalgraphics/job/CgHostThread;
+  field public,static,final RENDER Lcom/crystalgraphics/job/CgHostThread;
+  field public,static,final SERVER Lcom/crystalgraphics/job/CgHostThread;
+  field public,static,final UNAVAILABLE Ljava/lang/String;
+  method public call (Ljava/util/function/Supplier;)Lcom/crystalgraphics/job/reply/CgReply;
+  method public isAvailable ()Z
+  method public isCurrent ()Z
+  method public run (Ljava/lang/Runnable;)V
+  method public,static answerThrough (Ljava/util/function/Supplier;)V
+  method public,static drainFrames ()V
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/job/CgHostThread;
+  method public,static values ()[Lcom/crystalgraphics/job/CgHostThread;
+com/crystalgraphics/job/CgHostThread$Queue
+  access public,final
+  extends java/lang/Object
+  implements com/crystalgraphics/platform/service/CgGameThreads$Binding
+  method public <init> ()V
+  method public <init> (Ljava/util/function/BooleanSupplier;)V
+  method public drain ()V
+  method public execute (Ljava/lang/Runnable;)V
+  method public isAvailable ()Z
+  method public isCurrent ()Z
 com/crystalgraphics/job/CgJob
   access public,final
   extends com/crystalgraphics/job/CgJobBase

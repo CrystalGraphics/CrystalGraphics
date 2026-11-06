@@ -21,7 +21,7 @@ public final class ServersLegacy implements CgServers.Host {
     private ServersLegacy() {
     }
 
-    private static MinecraftServer server() {
+    static MinecraftServer server() {
         return FMLCommonHandler.instance().getMinecraftServerInstance();
     }
 
