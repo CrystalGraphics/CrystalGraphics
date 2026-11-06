@@ -22,6 +22,7 @@ import org.lwjgl.opengl.GLSync;
 import java.nio.ByteBuffer;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -78,7 +79,11 @@ public final class Lwjgl2GLDriver implements CgGLDriver {
 
     @Override public void glDeleteBuffers(int buffer) { GL15.glDeleteBuffers(buffer); }
 
-    @Override public void glBindBuffer(int target, int buffer) { GL15.glBindBuffer(target, buffer); }
+    @Override
+    public void glBindBuffer(int target, int buffer) {
+        GL15.glBindBuffer(target, buffer);
+        if (target == GL_ELEMENT_ARRAY_BUFFER) elementOf(boundVao, buffer);
+    }
 
     @Override
     public void glBindBufferRange(int target, int index, int buffer, long offset, long size) {
@@ -298,11 +303,48 @@ public final class Lwjgl2GLDriver implements CgGLDriver {
         GL45.glVertexArrayVertexBuffer(vao, binding, buffer, offset, stride);
     }
 
-    @Override public void glVertexArrayElementBuffer(int vao, int buffer) { GL45.glVertexArrayElementBuffer(vao, buffer); }
+    @Override
+    public void glVertexArrayElementBuffer(int vao, int buffer) {
+        GL45.glVertexArrayElementBuffer(vao, buffer);
+        elementOf(vao, buffer);
+    }
 
-    @Override public void glDeleteVertexArrays(int vao) { GL30.glDeleteVertexArrays(vao); }
+    @Override
+    public void glDeleteVertexArrays(int vao) {
+        GL30.glDeleteVertexArrays(vao);
+        elementOf(vao, 0);
+        if (boundVao == vao) boundVao = 0;
+    }
 
-    @Override public void glBindVertexArray(int vao) { GL30.glBindVertexArray(vao); }
+    @Override
+    public void glBindVertexArray(int vao) {
+        GL30.glBindVertexArray(vao);
+        boundVao = vao;
+    }
+
+    /**
+     * Each vertex array's element buffer, by name, as set through this driver; and the vertex array bound. LWJGL 2 checks
+     * an offset-taking indexed draw against its own copy of the element binding, changed only by {@code GL15.glBindBuffer}
+     * ({@code GLChecks.ensureElementVBOenabled}): a buffer set by {@code glVertexArrayElementBuffer} or restored by a
+     * vertex-array bind is invisible to it, and the draw throws before reaching GL. Render thread.
+     */
+    private int[] elementBuffers = new int[64];
+    private int boundVao;
+
+    private void elementOf(int vao, int buffer) {
+        if (vao >= elementBuffers.length) {
+            if (buffer == 0) return;
+            elementBuffers = Arrays.copyOf(elementBuffers, Math.max(vao + 1, elementBuffers.length * 2));
+        }
+        elementBuffers[vao] = buffer;
+    }
+
+    /** Binds the bound vertex array's element buffer again through LWJGL 2, so its check agrees with GL. */
+    private void elementsForLwjgl() {
+        GL15.glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, boundVao < elementBuffers.length ? elementBuffers[boundVao] : 0);
+    }
+
+    private static final int GL_ELEMENT_ARRAY_BUFFER = 0x8893;
 
     // ── fixed-function state ──────────────────────────────────────────────────
     @Override public void glEnable(int cap) { GL11.glEnable(cap); }
@@ -357,6 +399,7 @@ public final class Lwjgl2GLDriver implements CgGLDriver {
     @Override
     public void glDrawElementsInstancedBaseVertexBaseInstance(int mode, int count, int type, long offset, int instances,
                                                               int baseVertex, int baseInstance) {
+        elementsForLwjgl();
         GL42.glDrawElementsInstancedBaseVertexBaseInstance(mode, count, type, offset, instances, baseVertex, baseInstance);
     }
 
@@ -367,6 +410,7 @@ public final class Lwjgl2GLDriver implements CgGLDriver {
 
     @Override
     public void glMultiDrawElementsIndirect(int mode, int type, long offset, int drawCount, int stride) {
+        elementsForLwjgl();
         GL43.glMultiDrawElementsIndirect(mode, type, offset, drawCount, stride);
     }
 
@@ -508,6 +552,7 @@ public final class Lwjgl2GLDriver implements CgGLDriver {
     @Override
     public void glMultiDrawElementsIndirectCount(int mode, int type, long offset, long countOffset, int maxDrawCount,
                                                  int stride) {
+        elementsForLwjgl();
         ARBIndirectParameters.glMultiDrawElementsIndirectCountARB(mode, type, offset, countOffset, maxDrawCount, stride);
     }
 

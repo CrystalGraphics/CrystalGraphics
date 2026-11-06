@@ -1545,6 +1545,7 @@ com/crystalgraphics/platform/gl/driver/GLC
   field public,static,final GL_DEPTH_COMPONENT I
   field public,static,final GL_DEPTH_COMPONENT16 I
   field public,static,final GL_DEPTH_COMPONENT24 I
+  field public,static,final GL_DEPTH_COMPONENT32 I
   field public,static,final GL_DEPTH_COMPONENT32F I
   field public,static,final GL_DEPTH_FUNC I
   field public,static,final GL_DEPTH_RANGE I
@@ -1695,6 +1696,7 @@ com/crystalgraphics/platform/gl/driver/GLC
   field public,static,final GL_RGB10_A2 I
   field public,static,final GL_RGB10_A2UI I
   field public,static,final GL_RGB5_A1 I
+  field public,static,final GL_RGB8 I
   field public,static,final GL_RGBA I
   field public,static,final GL_RGBA16F I
   field public,static,final GL_RGBA16I I

@@ -73,10 +73,31 @@ public final class GLFormats {
 
     public static int internal(CgFormat f) { return INTERNAL[f.ordinal()]; }
 
-    /** The format a GL internal format names, the first in {@link CgFormat}'s order where two share one. */
+    /**
+     * The format a GL internal format names, the first in {@link CgFormat}'s order where two share one. A host's
+     * format the RHI has none for (a GL-era Minecraft's unsized or 32-bit integer ones) answers the format it draws
+     * and samples the same as: {@code GL_DEPTH_COMPONENT32} is {@link CgFormat#DEPTH24_PLUS}, depth of 24 bits or more.
+     *
+     * <pre>{@code
+     * GLFormats.of(GL_RGBA16F);               // RGBA16_FLOAT
+     * GLFormats.of(GL_DEPTH_COMPONENT32);     // DEPTH24_PLUS, as imported from a host
+     * }</pre>
+     */
     public static CgFormat of(int internal) {
         for (CgFormat f : CgFormat.values()) if (INTERNAL[f.ordinal()] == internal) return f;
+        CgFormat host = hostFormat(internal);
+        if (host != null) return host;
         throw new IllegalArgumentException("no CgFormat for GL internal format 0x" + Integer.toHexString(internal));
+    }
+
+    /** A host's internal format no {@link CgFormat} names, as the one it is drawn and sampled as; null for none. */
+    private static CgFormat hostFormat(int internal) {
+        return switch (internal) {
+            case GL_DEPTH_COMPONENT32, GL_DEPTH_COMPONENT -> CgFormat.DEPTH24_PLUS;
+            case GL_DEPTH_STENCIL -> CgFormat.DEPTH24_PLUS_STENCIL8;
+            case GL_RGBA, GL_RGB8, GL_RGB -> CgFormat.RGBA8_UNORM;
+            default -> null;
+        };
     }
 
     public static int format(CgFormat f) { return FORMAT[f.ordinal()]; }

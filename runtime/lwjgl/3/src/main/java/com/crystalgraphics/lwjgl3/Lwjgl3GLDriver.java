@@ -3,13 +3,19 @@ package com.crystalgraphics.lwjgl3;
 import com.crystalgraphics.platform.gl.CgGLWorkerContext;
 import com.crystalgraphics.platform.gl.driver.CgGLDriver;
 import org.lwjgl.opengl.ARBBindlessTexture;
+import org.lwjgl.opengl.ARBDrawBuffersBlend;
+import org.lwjgl.opengl.ARBIndirectParameters;
+import org.lwjgl.opengl.GL;
 import org.lwjgl.opengl.GL46;
+import org.lwjgl.opengl.GLCapabilities;
 import org.lwjgl.system.MemoryStack;
 
 import java.nio.ByteBuffer;
 import java.nio.IntBuffer;
 import java.util.HashSet;
 import java.util.Set;
+
+import static org.lwjgl.system.MemoryUtil.NULL;
 
 /**
  * {@link CgGLDriver} on LWJGL 3: each call the GL function of its name. Written against the plain {@code GLxx} classes,
@@ -20,6 +26,34 @@ public final class Lwjgl3GLDriver implements CgGLDriver {
     private static final int GL_EXTENSIONS = 0x1F03, GL_NUM_EXTENSIONS = 0x821D, GL_DEBUG_SOURCE_APPLICATION = 0x824A;
 
     private Set<String> extensions;
+
+    /**
+     * Which of the functions whose extension spells them apart the current context has as core. LWJGL loads a core
+     * function only on a context of its version: Minecraft's 3.2 core request comes back named 3.3 with every
+     * extension after it, so there {@code glBlendFuncSeparatei} is {@code ARB_draw_buffers_blend}'s
+     * {@code glBlendFuncSeparateiARB}. The extensions that kept the core names (direct state access and the rest)
+     * load under them either way.
+     */
+    private static final class Core {
+        final GLCapabilities caps;
+        final boolean blendIndexed, indirectCount;
+
+        Core(GLCapabilities caps) {
+            this.caps = caps;
+            blendIndexed = caps.glBlendFuncSeparatei != NULL;
+            indirectCount = caps.glMultiDrawArraysIndirectCount != NULL;
+        }
+    }
+
+    /** Per thread, as a context is: the render thread's and a link worker's differ. */
+    private final ThreadLocal<Core> core = new ThreadLocal<>();
+
+    private Core core() {
+        GLCapabilities caps = GL.getCapabilities();
+        Core known = core.get();
+        if (known == null || known.caps != caps) core.set(known = new Core(caps));
+        return known;
+    }
 
     // ── queries ───────────────────────────────────────────────────────────────
     @Override public String glGetString(int name) { return GL46.glGetString(name); }
@@ -398,10 +432,15 @@ public final class Lwjgl3GLDriver implements CgGLDriver {
 
     @Override
     public void glBlendFuncSeparatei(int buffer, int srcRgb, int dstRgb, int srcAlpha, int dstAlpha) {
-        GL46.glBlendFuncSeparatei(buffer, srcRgb, dstRgb, srcAlpha, dstAlpha);
+        if (core().blendIndexed) GL46.glBlendFuncSeparatei(buffer, srcRgb, dstRgb, srcAlpha, dstAlpha);
+        else ARBDrawBuffersBlend.glBlendFuncSeparateiARB(buffer, srcRgb, dstRgb, srcAlpha, dstAlpha);
     }
 
-    @Override public void glBlendEquationSeparatei(int buffer, int modeRgb, int modeAlpha) { GL46.glBlendEquationSeparatei(buffer, modeRgb, modeAlpha); }
+    @Override
+    public void glBlendEquationSeparatei(int buffer, int modeRgb, int modeAlpha) {
+        if (core().blendIndexed) GL46.glBlendEquationSeparatei(buffer, modeRgb, modeAlpha);
+        else ARBDrawBuffersBlend.glBlendEquationSeparateiARB(buffer, modeRgb, modeAlpha);
+    }
 
     @Override public void glColorMaski(int buffer, boolean r, boolean g, boolean b, boolean a) { GL46.glColorMaski(buffer, r, g, b, a); }
 
@@ -437,13 +476,15 @@ public final class Lwjgl3GLDriver implements CgGLDriver {
 
     @Override
     public void glMultiDrawArraysIndirectCount(int mode, long offset, long countOffset, int maxDrawCount, int stride) {
-        GL46.glMultiDrawArraysIndirectCount(mode, offset, countOffset, maxDrawCount, stride);
+        if (core().indirectCount) GL46.glMultiDrawArraysIndirectCount(mode, offset, countOffset, maxDrawCount, stride);
+        else ARBIndirectParameters.glMultiDrawArraysIndirectCountARB(mode, offset, countOffset, maxDrawCount, stride);
     }
 
     @Override
     public void glMultiDrawElementsIndirectCount(int mode, int type, long offset, long countOffset, int maxDrawCount,
                                                  int stride) {
-        GL46.glMultiDrawElementsIndirectCount(mode, type, offset, countOffset, maxDrawCount, stride);
+        if (core().indirectCount) GL46.glMultiDrawElementsIndirectCount(mode, type, offset, countOffset, maxDrawCount, stride);
+        else ARBIndirectParameters.glMultiDrawElementsIndirectCountARB(mode, type, offset, countOffset, maxDrawCount, stride);
     }
 
     @Override public void glDispatchCompute(int x, int y, int z) { GL46.glDispatchCompute(x, y, z); }
