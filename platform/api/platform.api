@@ -1215,6 +1215,7 @@ com/crystalgraphics/platform/gl/CgGlStateManager
   method public depthFuncChanged (I)Z
   method public depthMaskChanged (Z)Z
   method public drawFramebuffer ()I
+  method public export (Lcom/crystalgraphics/platform/gl/state/GLContextState;)I
   method public fboChanged (II)Z
   method public feedbackBindingChanged (IIJJ)Z
   method public framebufferDeleted (I)V
@@ -1224,6 +1225,7 @@ com/crystalgraphics/platform/gl/CgGlStateManager
   method public hostForeign (Ljava/lang/Runnable;[Lcom/crystalgraphics/platform/gl/state/CgGlSlot;)V
   method public hostForeign ([Lcom/crystalgraphics/platform/gl/state/CgGlSlot;)Lcom/crystalgraphics/platform/gl/state/CgGlScope;
   method public imageBindingChanged (IIIIII)Z
+  method public invalidate (I)V
   method public invalidate ([Lcom/crystalgraphics/platform/gl/state/CgGlSlot;)V
   method public invalidateAll ()V
   method public invalidateAtBoundary ()V

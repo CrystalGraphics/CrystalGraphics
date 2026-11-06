@@ -36,28 +36,27 @@ public interface GLHostState {
     default void conventions(CgGLDriver gl) {}
 
     /**
-     * The host is {@code CgGL} in the same context, while it and the device draw side by side: what it has is unknown
-     * to the device on entry (every field set again), and {@code CgGL}'s shadow is dropped on leaving (Unreal's
-     * {@code RHIInvalidateCachedState}, both ways), a shadow the host keeps included. Its framebuffers and viewport
-     * excepted, read from the shadow and set back as the section closes: they are where the host's frame draws, which
-     * a pass of the device must not move.
+     * The host is {@code CgGL} in the same context, while it and the device draw side by side: what {@code CgGL}'s
+     * shadow knows is the device's entry, set back as the section closes, so the shadow stays true and nothing is read
+     * from GL again (a host's own cache behind it included). Its framebuffers and viewport are read first where the
+     * shadow does not know them: they are where the host's frame draws, which a pass of the device must not move.
+     * What the device writes and the shadow cannot hold (image units) is forgotten on leaving.
      */
     static GLHostState sharedWithCgGL() {
         IntBuffer viewport = IntBuffer.allocate(4);
         return new GLHostState() {
+            /** Slots of {@code CgGL}'s shadow this section's entry could not say, as bits by ordinal. */
+            private int unsaid;
+
             @Override
             public void read(GLContextState into) {
-                into.invalidate();
-                into.drawFramebuffer = CgGlState.drawFramebuffer();
-                into.readFramebuffer = CgGlState.readFramebuffer();
+                CgGlState.drawFramebuffer();
+                CgGlState.readFramebuffer();
                 CgGlState.viewport(viewport);
-                into.viewportX = viewport.get(0);
-                into.viewportY = viewport.get(1);
-                into.viewportW = viewport.get(2);
-                into.viewportH = viewport.get(3);
+                unsaid = CgGlState.manager().export(into) | 1 << CgGlSlot.IMAGES.ordinal();
             }
 
-            @Override public void left() { CgGlState.invalidateAll(); }
+            @Override public void left() { CgGlState.manager().invalidate(unsaid); }
 
             /**
              * {@code CgGL} sets none of the device's conventions: it draws under GL's defaults. Nor does it track the

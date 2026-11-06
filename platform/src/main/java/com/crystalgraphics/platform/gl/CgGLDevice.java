@@ -38,6 +38,8 @@ import com.crystalgraphics.platform.rhi.resource.CgRHIResource;
 import com.crystalgraphics.platform.rhi.resource.CgTextureView;
 import com.crystalgraphics.platform.rhi.shader.CgShaderModule;
 import com.crystalgraphics.platform.rhi.sync.CgTimerQuery;
+import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.trace.CgTraceChannel;
 
 import java.nio.ByteBuffer;
 import java.nio.file.Path;
@@ -226,10 +228,12 @@ public final class CgGLDevice implements CgRHI {
     @Override
     public void fromHost() {
         if (host == null) return;
+        long t = CgTrace.stamp(GL_CHANNEL);
         host.read(entry);
         gl.adopt(entry);
         encoder.invalidate();
         conventions();
+        CgTrace.zoneDone(GL_CHANNEL, FROM_HOST, t);
     }
 
     /** Sets back every field the section changed to what the host believes. No-op when owned. */
@@ -237,11 +241,21 @@ public final class CgGLDevice implements CgRHI {
     public void toHost() {
         if (host == null) return;
         if (encoder.inPass()) throw new IllegalStateException("toHost with a pass open");
+        long t = CgTrace.stamp(GL_CHANNEL);
         gl.restore(entry);
         host.conventions(gl);
         encoder.invalidate();
         host.left();
+        CgTrace.zoneDone(GL_CHANNEL, TO_HOST, t);
     }
+
+    /** A host section's two hand-overs: once each a device pass on a GL host. */
+    private static final CgTraceChannel GL_CHANNEL = CgTrace.channel("crystalgraphics.gl");
+    private static final int FROM_HOST = CgTrace.name("device.fromHost"), TO_HOST = CgTrace.name("device.toHost");
+    /** The frame {@code FRAMES_IN_FLIGHT} back retiring: the GPU's pace, a wait. */
+    private static final int FRAME_FENCE = CgTrace.waitName("device.frameFence");
+    private static final int FRAME_FLUSH = CgTrace.name("device.frameFlush"), FRAME_ENCODER = CgTrace.name("device.frameEncoder"),
+            FRAME_RETIRE = CgTrace.name("device.frameRetire");
 
     /**
      * Keeps linked programs' binaries under {@code root} across launches, written by {@code writer}: before the first
@@ -491,11 +505,21 @@ public final class CgGLDevice implements CgRHI {
         if (encoder.inPass()) throw new IllegalStateException("endFrame with a pass open");
         if (presents) present();
         fences[(int) (frame % FRAMES_IN_FLIGHT)] = gl.glFenceSync();
+        long t = CgTrace.stamp(GL_CHANNEL);
         gl.glFlush();
+        CgTrace.zoneDone(GL_CHANNEL, FRAME_FLUSH, t);
         frame++;
+        t = CgTrace.stamp(GL_CHANNEL);
         encoder.endFrame(frame);
-        if (frame - retired > FRAMES_IN_FLIGHT) waitFence(frame - FRAMES_IN_FLIGHT);
+        CgTrace.zoneDone(GL_CHANNEL, FRAME_ENCODER, t);
+        if (frame - retired > FRAMES_IN_FLIGHT) {
+            t = CgTrace.stamp(GL_CHANNEL);
+            waitFence(frame - FRAMES_IN_FLIGHT);
+            CgTrace.zoneDone(GL_CHANNEL, FRAME_FENCE, t);
+        }
+        t = CgTrace.stamp(GL_CHANNEL);
         poll();
+        CgTrace.zoneDone(GL_CHANNEL, FRAME_RETIRE, t);
     }
 
     /** The surface's colour onto the window's framebuffer, rows flipped: GL's window has its first row at the bottom. */
@@ -546,13 +570,19 @@ public final class CgGLDevice implements CgRHI {
         }
         for (int i = kept; i < retireCount; i++) retireItems[i] = null;
         retireCount = kept;
+        long t = CgTrace.stamp(GL_CHANNEL);
         for (int i = 0; i < dueCount; i++) {
             Object item = due[i];
             due[i] = null;
             if (item instanceof Runnable r) r.run();
             else delete(item);
         }
+        CgTrace.zoneDone(GL_CHANNEL, RETIRE_ACTIONS, t);
+        CgTrace.add(GL_CHANNEL, RETIRED_ITEMS, dueCount);
     }
+
+    private static final int RETIRE_ACTIONS = CgTrace.name("device.retireActions"),
+            RETIRED_ITEMS = CgTrace.name("device.retired-items");
 
     @Override public boolean ownsSubmission() { return true; }
 

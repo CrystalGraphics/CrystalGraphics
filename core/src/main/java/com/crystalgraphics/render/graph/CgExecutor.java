@@ -2319,6 +2319,15 @@ public final class CgExecutor {
      * since a name's image may change under it (the tracked backend renames one an upload replaces whole).
      */
     private void readHost() {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, READ_HOST)) {
+            importHost();
+        }
+    }
+
+    private static final int READ_HOST = CgTrace.name("graph.readHost"),
+            DEVICE_PREPARE = CgTrace.name("graph.device.prepare"), DEVICE_PASS = CgTrace.name("graph.device.pass");
+
+    private void importHost() {
         int host = startFramebuffer, width = startViewport.get(2), height = startViewport.get(3);
         CgGLImports imports = CgGLImports.get();
         if (host == 0) {
@@ -2451,6 +2460,7 @@ public final class CgExecutor {
      */
     private void rasterDevice(CgFrame frame, CgRasterPass pass, CgFrame.Raster packed, @Nullable int[] damage) {
         CgTrace.add(CgChannels.GL, DEVICE_PASSES, 1);
+        long prepared = CgTrace.stamp(CgChannels.GL);
         checkDevicePass(pass, packed);
         boolean current = pass.target == null || pass.target.kind() == CgGraphTexture.Kind.CURRENT;
         CgFrameBuffer storage = current ? null : storage(pass.target);
@@ -2517,6 +2527,8 @@ public final class CgExecutor {
         int samples = deviceColors.isEmpty() ? depth.view().texture().desc().samples()
                 : deviceColors.get(0).view().texture().desc().samples();
         CgRenderState passState = pass.state != null ? pass.state : CgRenderState.DEFAULT;
+        CgTrace.zoneDone(CgChannels.GL, DEVICE_PREPARE, prepared);
+        long passed = CgTrace.stamp(CgChannels.GL);
         CgDeviceSection.begin();
         stating = true;
         CgRenderPass rp = null;
@@ -2550,6 +2562,7 @@ public final class CgExecutor {
             stating = false;
             depthInPlace = false;
             CgDeviceSection.end();
+            CgTrace.zoneDone(CgChannels.GL, DEVICE_PASS, passed);
             if (pass.targetCopy() != null) pass.targetCopy().release(POOL);
         }
     }

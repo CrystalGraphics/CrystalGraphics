@@ -8,6 +8,7 @@ import com.crystalgraphics.platform.gl.state.CgGlScope;
 import com.crystalgraphics.platform.gl.state.CgGlSlot;
 import com.crystalgraphics.platform.gl.state.CgGlStateProvider;
 import com.crystalgraphics.platform.gl.state.CgGlStateShadow;
+import com.crystalgraphics.platform.gl.state.GLContextState;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -456,12 +457,129 @@ public final class CgGlStateManager {
         forget(slots);
     }
 
-    private void forget(CgGlSlot... slots) {
-        for (CgGlSlot s : slots) {
-            unknownFields |= SLOT_FIELDS[s.ordinal()];
-            if (s == CgGlSlot.TEXTURES) unknownUnits = ALL_UNITS;
-            if ((CAPTURED_SLOTS & (1 << s.ordinal())) != 0) known[captured(s)] = 0;
+    /** As {@link #invalidate(CgGlSlot...)}, the slots as bits by ordinal: what {@link #export} answers. */
+    public void invalidate(int slots) {
+        for (CgGlSlot s : SLOTS) if ((slots & 1 << s.ordinal()) != 0) forgetSlot(s);
+    }
+
+    /**
+     * Writes what the shadow knows into {@code into}, every other field {@link GLContextState#UNKNOWN}: the belief a GL
+     * device's section sets back as it closes, so the shadow stays true across it and nothing is read again. Answers
+     * the slots it could not say whole (a polygon mode differing by face), which the caller forgets after the section.
+     *
+     * <pre>{@code
+     * int unsaid = CgGlState.manager().export(entry);   // as the section opens
+     * ... the device draws, then sets back what entry holds ...
+     * CgGlState.manager().invalidate(unsaid);            // as it closes
+     * }</pre>
+     */
+    public int export(GLContextState into) {
+        into.invalidate();
+        CgGlStateShadow s = current;
+        int unsaid = 0;
+        if (trusted(CgGlSlot.BLEND, F_BLEND_ENABLE)) Arrays.fill(into.blendEnabled, s.blendEnabled ? 1 : 0);
+        if (trusted(CgGlSlot.BLEND, F_BLEND_FUNC)) {
+            Arrays.fill(into.blendSrcRgb, s.blendSrcRgb);
+            Arrays.fill(into.blendDstRgb, s.blendDstRgb);
+            Arrays.fill(into.blendSrcAlpha, s.blendSrcAlpha);
+            Arrays.fill(into.blendDstAlpha, s.blendDstAlpha);
         }
+        if (trusted(CgGlSlot.BLEND, F_BLEND_EQUATION)) {
+            Arrays.fill(into.blendEqRgb, s.blendEqRgb);
+            Arrays.fill(into.blendEqAlpha, s.blendEqAlpha);
+        }
+        if (trusted(CgGlSlot.COLOR_MASK, F_COLOR_MASK)) {
+            for (int i = 0; i < GLContextState.DRAW_BUFFERS; i++) into.colorMask[i] = s.colorMaskPacked >>> (i * 4) & 0xF;
+        }
+        cap(into, CgGlSlot.DEPTH, F_DEPTH_TEST, CgGL.GL_DEPTH_TEST, s.depthTest);
+        if (trusted(CgGlSlot.DEPTH, F_DEPTH_MASK)) into.depthMask = s.depthMask ? 1 : 0;
+        if (trusted(CgGlSlot.DEPTH, F_DEPTH_FUNC)) into.depthFunc = s.depthFunc;
+        cap(into, CgGlSlot.CULL, F_CULL_ENABLE, CgGL.GL_CULL_FACE, s.cullEnabled);
+        if (trusted(CgGlSlot.CULL, F_CULL_FACE)) into.cullFace = s.cullFace;
+        if (trusted(CgGlSlot.CULL, F_FRONT_FACE)) into.frontFace = s.frontFace;
+        cap(into, CgGlSlot.STENCIL, F_STENCIL_TEST, CgGL.GL_STENCIL_TEST, s.stencilTest);
+        for (int f = 0; f < 2; f++) {
+            if (trusted(CgGlSlot.STENCIL, F_STENCIL_FUNC)) {
+                into.stencilFunc[f] = s.stencilFunc;
+                into.stencilRef[f] = s.stencilRef;
+                into.stencilValueMask[f] = s.stencilValueMask;
+            }
+            if (trusted(CgGlSlot.STENCIL, F_STENCIL_OP)) {
+                into.stencilFail[f] = s.stencilFail;
+                into.stencilDepthFail[f] = s.stencilZFail;
+                into.stencilPass[f] = s.stencilZPass;
+            }
+            if (trusted(CgGlSlot.STENCIL, F_STENCIL_MASK)) into.stencilWriteMask[f] = s.stencilWriteMask;
+        }
+        if (trusted(CgGlSlot.VIEWPORT, F_VIEWPORT)) {
+            into.viewportX = s.viewportX;
+            into.viewportY = s.viewportY;
+            into.viewportW = s.viewportW;
+            into.viewportH = s.viewportH;
+        }
+        cap(into, CgGlSlot.SCISSOR, F_SCISSOR_TEST, CgGL.GL_SCISSOR_TEST, s.scissorTest);
+        if (trusted(CgGlSlot.SCISSOR, F_SCISSOR_BOX)) {
+            into.scissorX = s.scissorX;
+            into.scissorY = s.scissorY;
+            into.scissorW = s.scissorW;
+            into.scissorH = s.scissorH;
+        }
+        cap(into, CgGlSlot.POLYGON_OFFSET, F_OFFSET_FILL, CgGL.GL_POLYGON_OFFSET_FILL, s.polygonOffsetFill);
+        cap(into, CgGlSlot.POLYGON_OFFSET, F_OFFSET_LINE, CgGL.GL_POLYGON_OFFSET_LINE, s.polygonOffsetLine);
+        cap(into, CgGlSlot.POLYGON_OFFSET, F_OFFSET_POINT, CgGL.GL_POLYGON_OFFSET_POINT, s.polygonOffsetPoint);
+        if (trusted(CgGlSlot.POLYGON_OFFSET, F_OFFSET_VALUES)) {
+            into.offsetFactor = s.polygonOffsetFactor;
+            into.offsetUnits = s.polygonOffsetUnits;
+        }
+        if (trusted(CgGlSlot.POLYGON_MODE, F_MODE_FRONT | F_MODE_BACK)) {
+            if (s.polygonModeFront == s.polygonModeBack) into.polygonMode = s.polygonModeFront;
+            else unsaid |= 1 << CgGlSlot.POLYGON_MODE.ordinal();
+        }
+        if (trusted(CgGlSlot.PROGRAM, F_PROGRAM)) into.program = s.programId;
+        if (trusted(CgGlSlot.FBO, F_DRAW_FBO)) into.drawFramebuffer = s.drawFbo;
+        if (trusted(CgGlSlot.FBO, F_READ_FBO)) into.readFramebuffer = s.readFbo;
+        if (trusted(CgGlSlot.VERTEX_INPUT, F_VERTEX_ARRAY)) into.vertexArray = s.vertexArray;
+        if (!mustIssue(CgGlSlot.TEXTURES)) {
+            for (int i = 0; i < GLContextState.UNITS && i < CgGlStateShadow.MAX_TEXTURE_UNITS; i++) {
+                if ((unknownUnits & (1 << i)) == 0) into.unitTexture[i] = s.boundTexture2D[i];
+            }
+        }
+        if (!mustIssue(CgGlSlot.STORAGE_BUFFERS)) {
+            int points = known[captured(CgGlSlot.STORAGE_BUFFERS)];
+            for (int i = 0; i < GLContextState.POINTS && i < CgGlStateShadow.MAX_STORAGE_BINDINGS; i++) {
+                if ((points & (1 << i)) == 0) continue;
+                into.storageBuffer[i] = s.storageBuffer[i];
+                into.storageOffset[i] = s.storageOffset[i];
+                into.storageSize[i] = s.storageSize[i];
+            }
+        }
+        if (!mustIssue(CgGlSlot.INDIRECT_BUFFERS)) {
+            int points = known[captured(CgGlSlot.INDIRECT_BUFFERS)];
+            for (int i = 0; i < CgGlStateShadow.INDIRECT_TARGETS.length; i++) {
+                int target = GLContextState.target(CgGlStateShadow.INDIRECT_TARGETS[i]);
+                if ((points & (1 << i)) != 0 && target >= 0) into.targetBuffer[target] = s.indirectBuffer[i];
+            }
+        }
+        return unsaid;
+    }
+
+    /** Whether the shadow vouches for {@code fields} of {@code slot}. */
+    private boolean trusted(CgGlSlot slot, long fields) {
+        return !mustIssue(slot) && (unknownFields & fields) == 0;
+    }
+
+    private void cap(GLContextState into, CgGlSlot slot, long field, int cap, boolean on) {
+        if (trusted(slot, field)) into.caps[GLContextState.cap(cap)] = on ? 1 : 0;
+    }
+
+    private void forget(CgGlSlot... slots) {
+        for (CgGlSlot s : slots) forgetSlot(s);
+    }
+
+    private void forgetSlot(CgGlSlot s) {
+        unknownFields |= SLOT_FIELDS[s.ordinal()];
+        if (s == CgGlSlot.TEXTURES) unknownUnits = ALL_UNITS;
+        if ((CAPTURED_SLOTS & (1 << s.ordinal())) != 0) known[captured(s)] = 0;
     }
 
     /** Whether the shadow survives the host: inside a host section, or always where the host keeps it. */
