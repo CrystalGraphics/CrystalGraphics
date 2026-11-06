@@ -373,8 +373,11 @@ public final class CgCapabilities {
 
         // ── Compute and GPU-driven draws ──────────────────────────────────────
         CgRHI.Globals device = CgGL.backend() instanceof CgTrackedGLBackend tracked ? tracked.device().globals() : null;
-        caps.glslVersion = device != null ? 450 : gl.OpenGL46() ? 460 : gl.OpenGL45() ? 450 : gl.OpenGL44() ? 440 : gl.OpenGL43() ? 430
-                : gl.OpenGL42() ? 420 : gl.OpenGL40() ? 400 : 330;
+        // What the driver compiles, not the version the context names: NVIDIA answers a 3.2 core request with a
+        // context named 3.3 that compiles any GLSL it knows
+        boolean glsl450 = device != null || gl.OpenGL45() || compiles(450);
+        caps.glslVersion = device != null ? 450 : gl.OpenGL46() ? 460 : glsl450 ? 450 : gl.OpenGL44() ? 440
+                : gl.OpenGL43() ? 430 : gl.OpenGL42() ? 420 : gl.OpenGL40() ? 400 : 330;
         boolean ssbo = caps.shaderStorageBufferCore || caps.shaderStorageBufferArb;
         caps.compute           = device != null || (gl.OpenGL43() || gl.GL_ARB_compute_shader()) && ssbo;
         caps.storageImages     = device != null || gl.OpenGL42() || gl.GL_ARB_shader_image_load_store();
@@ -390,9 +393,10 @@ public final class CgCapabilities {
                     + "ARB_shader_draw_parameters with ARB_base_instance; a Vulkan device's shaderDrawParameters and "
                     + "drawIndirectFirstInstance");
         }
-        if (device == null && !gl.OpenGL45()) {
+        if (!glsl450) {
             // Materials compile to one target, GLSL 4.50 (CgMaterialShaderCompiler.VERSION).
-            throw new IllegalStateException("CrystalGraphics needs OpenGL 4.5: its materials compile to GLSL 4.50");
+            throw new IllegalStateException("CrystalGraphics needs a driver that compiles GLSL 4.50, as GL 4.5's does: "
+                    + "its materials compile to it");
         }
         caps.multiDraw         = caps.multiDrawIndirect && MULTI_DRAW.get();
         caps.feedbackCount     = device == null && (gl.OpenGL40() || gl.GL_ARB_transform_feedback2());
@@ -644,5 +648,17 @@ public final class CgCapabilities {
         int result = 0;
         for (int i = from; i < to; i++) result = result * 10 + (s.charAt(i) - '0');
         return result;
+    }
+
+    /** Whether the driver compiles a vertex shader at GLSL {@code version}, core. */
+    private static boolean compiles(int version) {
+        int shader = CgGL.glCreateShader(CgGL.GL_VERTEX_SHADER);
+        try {
+            CgGL.glShaderSource(shader, "#version " + version + " core\nvoid main() { gl_Position = vec4(0.0); }\n");
+            CgGL.glCompileShader(shader);
+            return CgGL.glGetShaderi(shader, CgGL.GL_COMPILE_STATUS) != 0;
+        } finally {
+            CgGL.glDeleteShader(shader);
+        }
     }
 }

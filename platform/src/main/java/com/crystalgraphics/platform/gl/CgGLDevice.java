@@ -139,6 +139,28 @@ public final class CgGLDevice implements CgRHI {
 
     private record HeapKey(CgTextureView view, GLSampler sampler) {}
 
+    /** What the device calls past GL 3.3, by the extension that brought each into 4.x core. */
+    private static final List<String> PAST_33 = List.of(
+            "GL_ARB_direct_state_access", "GL_ARB_clip_control", "GL_ARB_compute_shader",
+            "GL_ARB_shader_storage_buffer_object", "GL_ARB_shader_image_load_store", "GL_ARB_base_instance",
+            "GL_ARB_draw_indirect", "GL_ARB_multi_draw_indirect", "GL_ARB_buffer_storage", "GL_ARB_texture_storage",
+            "GL_ARB_texture_storage_multisample", "GL_ARB_copy_image", "GL_ARB_clear_buffer_object",
+            "GL_ARB_draw_buffers_blend", "GL_ARB_ES2_compatibility", "GL_ARB_get_program_binary", "GL_KHR_debug",
+            "GL_ARB_texture_view", "GL_ARB_texture_buffer_range", "GL_ARB_vertex_attrib_binding",
+            "GL_ARB_viewport_array", "GL_ARB_get_texture_sub_image", "GL_ARB_invalidate_subdata");
+
+    /** Whether the driver compiles a vertex shader at GLSL {@code version}, core. */
+    private static boolean compiles(CgGLDriver gl, int version) {
+        int shader = gl.glCreateShader(GL_VERTEX_SHADER);
+        try {
+            gl.glShaderSource(shader, "#version " + version + " core\nvoid main() { gl_Position = vec4(0.0); }\n");
+            gl.glCompileShader(shader);
+            return gl.glGetShaderi(shader, GL_COMPILE_STATUS) != 0;
+        } finally {
+            gl.glDeleteShader(shader);
+        }
+    }
+
     /** A device owning its context: no host draws between its frames. */
     public CgGLDevice(CgGLDriver driver, GLShaderTranslator translator, int width, int height, boolean presents) {
         this(driver, translator, width, height, presents, null);
@@ -155,7 +177,16 @@ public final class CgGLDevice implements CgRHI {
         this.presents = presents;
         String version = gl.glGetString(GL_VERSION);
         int at = gl.glGetInteger(GL_MAJOR_VERSION) * 10 + gl.glGetInteger(GL_MINOR_VERSION);
-        if (at < 45) throw new IllegalStateException("CgGLDevice needs GL 4.5 or newer, not " + version);
+        if (at < 45) {
+            // A context named older may still do 4.5's work: NVIDIA answers a 3.2 core request with 3.3 and every
+            // later ARB extension. What the device calls past 3.3, extension by extension, then GLSL 4.60 compiled.
+            List<String> missing = new ArrayList<>();
+            for (String extension : PAST_33) if (!gl.hasExtension(extension)) missing.add(extension);
+            if (at < 33 || !missing.isEmpty() || !compiles(gl, 460)) {
+                throw new IllegalStateException("CgGLDevice needs GL 4.5, or 3.3 with the extensions 4.5 absorbed and "
+                        + "GLSL 4.60, not " + version + (missing.isEmpty() ? "" : "; missing " + missing));
+            }
+        }
         boolean gl46 = at >= 46;
         Globals.Limits limits = new Globals.Limits(gl.glGetInteger(GL_MAX_TEXTURE_SIZE),
                 gl.glGetInteger(GL_MAX_3D_TEXTURE_SIZE), gl.glGetInteger(GL_MAX_ARRAY_TEXTURE_LAYERS),
