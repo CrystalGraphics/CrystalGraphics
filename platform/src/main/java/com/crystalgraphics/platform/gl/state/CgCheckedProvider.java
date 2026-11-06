@@ -106,6 +106,12 @@ public abstract class CgCheckedProvider extends CgGlGetProvider {
         return unitsMask();
     }
 
+    /** A host cache: its texture units are what its next bind compares against. */
+    @Override
+    public boolean hostCachesTextures() {
+        return true;
+    }
+
 
     @Override
     public void read(CgGlSlot slot, CgGlStateShadow t) {

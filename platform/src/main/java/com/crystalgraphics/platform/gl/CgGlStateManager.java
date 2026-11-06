@@ -1033,6 +1033,17 @@ public final class CgGlStateManager {
     }
 
     /**
+     * Reads the host's texture units the shadow does not know, where the host caches them
+     * ({@link CgGlStateProvider#hostCachesTextures}): before {@link #export}, for a GL device's section, whose binds
+     * {@code CgGL} never sees, so its close sets back what the host's cache believes. Nothing elsewhere.
+     */
+    public void adoptHostUnits() {
+        if (!provider.hostCachesTextures()) return;
+        int want = unknownUnits & provider.hostUnits() & ALL_UNITS;
+        if (want != 0) readUnits(want);
+    }
+
+    /**
      * {@code TEXTURES} for a scope opening: the units our code has touched, all of them when {@code reread}, else those
      * the shadow does not know. Nothing when it knows them and the active unit.
      */

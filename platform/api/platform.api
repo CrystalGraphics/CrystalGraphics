@@ -1201,6 +1201,7 @@ com/crystalgraphics/platform/gl/CgGlStateManager
   method public activeTextureChanged (I)Z
   method public activeUnit ()I
   method public adoptCapturedPoints ()V
+  method public adoptHostUnits ()V
   method public alphaFuncChanged (IF)Z
   method public baselineFor (Lcom/crystalgraphics/platform/gl/state/CgGlSlot;)Lcom/crystalgraphics/platform/gl/state/CgGlStateShadow;
   method public blendEquationChanged (II)Z
@@ -1949,6 +1950,7 @@ com/crystalgraphics/platform/gl/state/CgCheckedProvider
   method protected,abstract answer (Lcom/crystalgraphics/platform/gl/state/CgGlSlot;Lcom/crystalgraphics/platform/gl/state/CgGlStateShadow;)V
   method protected,abstract answerTextures (Lcom/crystalgraphics/platform/gl/state/CgGlStateShadow;I)V
   method protected,abstract unitsMask ()I
+  method public hostCachesTextures ()Z
   method public hostUnits ()I
   method public read (Lcom/crystalgraphics/platform/gl/state/CgGlSlot;Lcom/crystalgraphics/platform/gl/state/CgGlStateShadow;)V
   method public readTextureUnits (Lcom/crystalgraphics/platform/gl/state/CgGlStateShadow;I)I
@@ -2045,6 +2047,7 @@ com/crystalgraphics/platform/gl/state/CgGlStateProvider
   extends java/lang/Object
   method public excuse (Lcom/crystalgraphics/platform/gl/state/CgGlSlot;Lcom/crystalgraphics/platform/gl/state/CgGlStateShadow;Lcom/crystalgraphics/platform/gl/state/CgGlStateShadow;)V
   method public hostBinds (Lcom/crystalgraphics/platform/gl/state/CgGlSlot;)Z
+  method public hostCachesTextures ()Z
   method public hostKeepsShadow ()Z
   method public hostUnits ()I
   method public isFree ()Z
@@ -3031,6 +3034,7 @@ com/crystalgraphics/platform/gl/tracked/tracker/CgTracker
   method public target ()Lcom/crystalgraphics/platform/gl/tracked/tracker/CgTarget;
   method public textureBarrier (Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture;II)V
   method public textureBarrier (Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture;IIIIII)V
+  method public toDevice ()V
   method public toHost ()V
   method public transfer ()Lcom/crystalgraphics/platform/rhi/command/CgCommandList;
   method public waitAsync (J)V
