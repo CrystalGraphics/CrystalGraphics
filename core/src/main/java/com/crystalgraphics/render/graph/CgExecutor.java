@@ -193,23 +193,22 @@ public final class CgExecutor {
     private static final int COMMAND_COUNT = CgTrace.name("graph.indirect-commands");
     /** Runs of draws a multi-draw ended only because the next draw binds other textures or properties. */
     private static final int BINDING_BREAKS = CgTrace.name("graph.multi-draw.binding-breaks");
-    /** Every compute pass that can go async does, as if marked: a correctness check of the waits. */
-    /** GL6's check: each batch also makes its device sets, and a slot left to a default is logged once. */
-    /** GL6: a raster or compute pass the device path covers runs through {@code CgRHI}; the rest through {@code CgGL}. */
-    static final boolean DEVICE_RASTER = CgVar.bool("crystalgraphics.rhi.deviceRaster", false, CgVar.DEV | CgVar.RESTART,
-            "A raster pass the device path covers draws through CgRHI, the rest through CgGL, each reason logged once.").get();
-    /** Passes whose names hold one of these stay on {@code CgGL}: for finding which pass a picture differs in. */
-    private static final String[] DEVICE_RASTER_SKIP = CgVar.text("crystalgraphics.rhi.deviceRasterSkip", "", CgVar.DEV
-            | CgVar.RESTART, "Comma-separated parts of pass names kept on CgGL under deviceRaster.").get().split(",");
-    private static final int DEVICE_PASSES = CgTrace.name("graph.device-passes"), GL_PASSES = CgTrace.name("graph.gl-passes"),
+    private static final int DEVICE_PASSES = CgTrace.name("graph.device-passes"),
             MID_PASS_SPLITS = CgTrace.name("graph.device-pass-splits");
     private final CgDrawStateCache drawCache = new CgDrawStateCache();
-    private final Set<String> glPassReasons = new HashSet<>();
+    /** What was logged once: a pipeline skipped, a second attachment dropped. */
+    private final Set<String> loggedOnce = new HashSet<>();
     private final List<CgPassDesc.Color> deviceColors = new ArrayList<>(4);
     private final List<CgFormat> deviceFormats = new ArrayList<>(4);
     /** While a pass draws on the device: a bind notes what it binds ({@code CgBoundResources}) and issues nothing. */
     private boolean stating;
-    private long devicePasses, glPasses, passesReport = 10;
+    /**
+     * This execution's: whether a device is installed. Every pass, dispatch and readback goes to it then; without one
+     * (a GL-era host before its shader toolchain lands, or after its download failed) through {@code CgGL}.
+     */
+    private boolean device;
+    /** Where the last execution drew, logged when it changes; false before the first. */
+    private static boolean onDevice;
 
     static final boolean DEVICE_SETS = CgVar.bool("crystalgraphics.rhi.deviceSets", false, CgVar.DEV | CgVar.RESTART,
             "Each batch also makes its view, pass and material sets on the device, logging a slot left to a default.").get();
@@ -221,8 +220,7 @@ public final class CgExecutor {
     private static boolean deviceComputing, deviceBarrierBatch;
     /** A dispatch's kernel slots its snapshot does not hold: buffers, counts, images, checked mode's report. */
     private final CgBindings kernelBindings = new CgBindings();
-    private static final int DEVICE_COMPUTES = CgTrace.name("graph.device-computes"),
-            GL_COMPUTES = CgTrace.name("graph.gl-computes");
+    private static final int DEVICE_COMPUTES = CgTrace.name("graph.device-computes");
 
     static final boolean ASYNC_ALL = CgVar.bool("crystalgraphics.graph.asyncAll", false, CgVar.DEV | CgVar.RESTART,
             "Every compute pass that can go async does, as if marked async(): a check of the waits, which the compute"
@@ -342,7 +340,6 @@ public final class CgExecutor {
     private CgExecutor(int depth) {
         // A region of 1 MB: a ring outgrowing its region is new storage, which waits for a threaded driver to drain.
         ring = CgStreamBuffer.createFrameLocal(CgGL.GL_UNIFORM_BUFFER, 1 << 20);
-        CgBoundResources.recording = DEVICE_SETS || DEVICE_RASTER;
         CgShaderBufferRegistry registry = CgShaderBufferRegistry.get();
         instanceBuffers[CgInstanceKind.QUAD.ordinal()] = registry.getOrCreateInternal("CgGraphQuadInstances" + depth,
                 CgInstanceKind.QUAD.format(), CgBindingPoints.QUAD_RENDERER, CgBufferLifetime.FRAME);
@@ -481,6 +478,12 @@ public final class CgExecutor {
     private void run(CgFrame frame) {
         boolean again = frame.executions++ > 0;
         kernelsSeen |= frame.kernels;
+        device = CgGLImports.installed() && CgGlslCompiler.installed();
+        CgBoundResources.recording = DEVICE_SETS || device;
+        if (device != onDevice) {
+            onDevice = device;
+            LOGGER.info(device ? "the graph draws on the device" : "the graph draws on CgGL: no device installed");
+        }
         CgCapabilities caps = CgCapabilities.detect();
         ComputeTier tier = caps.computeTier();
         boolean compute = tier == ComputeTier.V || tier == ComputeTier.G43;
@@ -907,14 +910,9 @@ public final class CgExecutor {
     private void compute(CgFrame frame, CgComputePass pass, CgFrame.Compute packed) {
         List<CgDispatch> dispatches = pass.dispatches();
         if (++passSerial == 1 << 28) passSerial = 1;   // a set keeps three bits for its group
-        if (DEVICE_RASTER) {
-            String refused = computeRefuses(pass);
-            if (refused == null) {
-                computeDevice(frame, pass, packed);
-                return;
-            }
-            CgTrace.add(CgChannels.GL, GL_COMPUTES, 1);
-            if (glPassReasons.add(refused + " " + pass.name())) LOGGER.warn("device compute: {} on CgGL: {}", pass.name(), refused);
+        if (device) {
+            computeDevice(frame, pass, packed);
+            return;
         }
         prologue(dispatches);
         try (CgTrace.Zone ignored = CgTrace.isEnabled(CgChannels.GL) ? CgTrace.zone(CgChannels.GL, CgTrace.name(pass.name())) : null) {
@@ -950,28 +948,6 @@ public final class CgExecutor {
         hoisted[b] = passSerial;
     }
 
-    /** Why {@code pass} cannot dispatch on the device; null when it can. */
-    @Nullable
-    private String computeRefuses(CgComputePass pass) {
-        if (!CgGLImports.installed() || !CgGlslCompiler.installed()) return "no device";
-        for (String skip : DEVICE_RASTER_SKIP) if (!skip.isEmpty() && pass.name().contains(skip)) return "skipped by name";
-        for (CgDispatch d : pass.dispatches()) {
-            try {
-                d.kernel.program().explicit();
-            } catch (RuntimeException e) {
-                return d.source.path() + " " + d.decl.name() + " does not compile as written: " + e.getMessage();
-            }
-            for (CgGraphTexture image : d.images) {
-                if (image == null) continue;
-                CgFrameBuffer storage = storage(image);
-                if (storage == null || storage.getColorTexture(0) == null || storage.getColorTexture(0).rhiView() == null) {
-                    return "an image with no texture";
-                }
-            }
-        }
-        return null;
-    }
-
     /**
      * {@code pass}'s dispatches through the device's compute pass: what goes through {@code CgGL} first (the constants'
      * snapshot, the tokens' buffers, every storage, each kernel's pipeline), then each dispatch's pipeline, sets, pushed
@@ -981,7 +957,6 @@ public final class CgExecutor {
         List<CgDispatch> dispatches = pass.dispatches();
         CgRHI rhi = CgRHI.get();
         CgTrace.add(CgChannels.GL, DEVICE_COMPUTES, 1);
-        if (glPassReasons.add("device " + pass.name())) LOGGER.warn("device compute: {} on the device", pass.name());
         frame.bindings.bind(packed.constants);
         CgBoundResources.forgetTextures(CgBindingModel.PASS);
         CgBoundResources.forgetTextures(CgBindingModel.MATERIAL);
@@ -1884,15 +1859,9 @@ public final class CgExecutor {
                 writeCommands(pass, packed);   // a dispatch never sits inside a render pass
             }
         }
-        if (DEVICE_RASTER) {
-            String refused = deviceRefuses(frame, pass, packed, damage);
-            if (refused == null) {
-                rasterDevice(frame, pass, packed, damage);
-                return;
-            }
-            glPasses++;
-            CgTrace.add(CgChannels.GL, GL_PASSES, 1);
-            if (glPassReasons.add(refused + " " + pass.name())) LOGGER.warn("device raster: {} on CgGL: {}", pass.name(), refused);
+        if (device) {
+            rasterDevice(frame, pass, packed, damage);
+            return;
         }
         if (damage == null && pass.replacesTarget()) renameTarget(pass, packed);
         try {
@@ -2427,11 +2396,8 @@ public final class CgExecutor {
         return hostDepth;
     }
 
-    /** Why {@code pass} cannot draw on the device yet; null when it can. */
-    @Nullable
-    private String deviceRefuses(CgFrame frame, CgRasterPass pass, CgFrame.Raster packed, @Nullable int[] damage) {
-        if (!CgGLImports.installed() || !CgGlslCompiler.installed()) return "no device";
-        for (String skip : DEVICE_RASTER_SKIP) if (!skip.isEmpty() && pass.name().contains(skip)) return "skipped by name";
+    /** Reads the host's attachments where {@code pass} draws into or beside them; throws where it cannot be drawn. */
+    private void checkDevicePass(CgRasterPass pass, CgFrame.Raster packed) {
         boolean current = pass.target == null || pass.target.kind() == CgGraphTexture.Kind.CURRENT;
         if (current) {
             readHost();
@@ -2444,7 +2410,6 @@ public final class CgExecutor {
         for (int b = 0; b < packed.count; b++) {
             if (packed.counts[b] != null && !gpuCounts) throw new IllegalStateException(pass + " counts draws on the CPU beside a device");
         }
-        return null;
     }
 
     /** The device texture at {@code storage}'s colour slot {@code slot}, or its depth where {@code slot} is -1. */
@@ -2473,7 +2438,7 @@ public final class CgExecutor {
         if (current) {
             if (!CgComposedTargets.refused(startFramebuffer)) LOGGER.warn("{} draws without its second attachment: {}", pass, refused);
             CgComposedTargets.refuse(startFramebuffer);
-        } else if (glPassReasons.add("second " + pass.name())) {
+        } else if (loggedOnce.add("second " + pass.name())) {
             LOGGER.warn("{} draws without its second attachment: {}", pass, refused);
         }
         return null;
@@ -2485,13 +2450,8 @@ public final class CgExecutor {
      * pass over its target's attachments, each batch's pipeline, sets and draw through the state cache.
      */
     private void rasterDevice(CgFrame frame, CgRasterPass pass, CgFrame.Raster packed, @Nullable int[] damage) {
-        devicePasses++;
         CgTrace.add(CgChannels.GL, DEVICE_PASSES, 1);
-        if (glPassReasons.add("device " + pass.name())) LOGGER.warn("device raster: {} on the device", pass.name());
-        if (devicePasses + glPasses >= passesReport) {
-            passesReport *= 10;
-            LOGGER.warn("device raster: {} passes on the device, {} on CgGL", devicePasses, glPasses);
-        }
+        checkDevicePass(pass, packed);
         boolean current = pass.target == null || pass.target.kind() == CgGraphTexture.Kind.CURRENT;
         CgFrameBuffer storage = current ? null : storage(pass.target);
         int level = pass.level;
@@ -2689,7 +2649,7 @@ public final class CgExecutor {
                     : pipeline.device(passState, mesh.format(), CgMeshStore.topology(mesh), !CgGL.isDepthZeroToOne(),
                             deviceFormats, depthFormat, samples);
             if (device == null) {
-                if (glPassReasons.add("skipped " + pipeline)) {
+                if (loggedOnce.add("skipped " + pipeline)) {
                     LOGGER.warn("device raster: {} skipped in {}: {}", pipeline, pass.name(),
                             linked == null ? "its program did not link" : "no device pipeline");
                 }
@@ -3151,7 +3111,7 @@ public final class CgExecutor {
     /** A readback's copy, issued here; its sink hears from {@link CgReadback#poll} once the GPU has finished. */
     private static void readback(CgPass.Readback r) {
         r.delivering = true;
-        if (DEVICE_RASTER && CgGLImports.installed() && readbackDevice(r)) return;
+        if (CgGLImports.installed() && readbackDevice(r)) return;
         if (r.buffer != null) {
             CgReadback.buffer(bufferStorage(r.buffer, false), r.offset, r.size, r);
             return;
