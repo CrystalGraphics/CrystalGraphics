@@ -168,7 +168,8 @@ public final class GLEncoder implements CgCommandList {
     private void bind(int set, CgBindings b, GLBindingPoints points) {
         for (int i = 0; i < b.count(); i++) {
             CgBindingLayout.Type type = b.type(i);
-            int point = points.point(set, b.binding(i), GLBindingPoints.classOf(type));
+            int point = points.find(set, b.binding(i), GLBindingPoints.classOf(type));
+            if (point < 0) continue;
             switch (type) {
                 case UNIFORM_BUFFER -> gl.glBindBufferRange(GL_UNIFORM_BUFFER, point, ((GLBuffer) b.buffer(i)).name,
                         b.offset(i), b.size(i));

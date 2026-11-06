@@ -167,23 +167,33 @@ public final class CgDeviceStates {
      * {@code program}'s pipeline layout on {@code rhi}: a binding layout per set (made once per distinct slot list), the
      * device's heap layout at set 3 where it reads the heap, its push range.
      */
-    public static synchronized CgPipelineLayout layout(CgRHI rhi, CgGlslCompiler.Explicit program) {
+    public static CgPipelineLayout layout(CgRHI rhi, CgGlslCompiler.Explicit program) {
+        return layout(rhi, program.sets(), program.heap(), program.pushConstantBytes());
+    }
+
+    /** A kernel's pipeline layout on {@code rhi}, as {@link #layout(CgRHI, CgGlslCompiler.Explicit)}. */
+    public static CgPipelineLayout layout(CgRHI rhi, CgGlslCompiler.ExplicitCompute kernel) {
+        return layout(rhi, kernel.sets(), kernel.heap(), kernel.pushConstantBytes());
+    }
+
+    private static synchronized CgPipelineLayout layout(CgRHI rhi, List<List<CgBindingLayout.Slot>> declared, boolean readsHeap,
+                                                        int pushConstantBytes) {
         if (layoutsOf != rhi) {
             LAYOUTS.clear();
             layoutsOf = rhi;
         }
-        List<CgBindingLayout> sets = new ArrayList<>(program.sets().size());
-        for (int s = 0; s < program.sets().size(); s++) {
-            if (program.heap() && s == CgRHI.BINDLESS_SET) {
+        List<CgBindingLayout> sets = new ArrayList<>(declared.size());
+        for (int s = 0; s < declared.size(); s++) {
+            if (readsHeap && s == CgRHI.BINDLESS_SET) {
                 CgBindingLayout heap = rhi.bindlessLayout();
                 if (heap == null) throw new IllegalStateException(rhi.globals().name() + " has no bindless heap");
                 sets.add(heap);
                 continue;
             }
-            List<CgBindingLayout.Slot> slots = program.sets().get(s);
+            List<CgBindingLayout.Slot> slots = declared.get(s);
             sets.add(LAYOUTS.computeIfAbsent(slots, k -> rhi.createBindingLayout("set " + k, k, false)));
         }
-        return new CgPipelineLayout(sets, program.pushConstantBytes());
+        return new CgPipelineLayout(sets, pushConstantBytes);
     }
 
     static CgCompare compare(int gl) {

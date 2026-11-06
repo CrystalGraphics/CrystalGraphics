@@ -61,7 +61,7 @@ it); the engine's environment (its blocks, scene samplers and engine buffers) is
 | `Properties` values | `CgKernelBlock` at `CgBindingPoints.MATERIAL_PROPERTIES_UBO` |
 | The view and environment blocks | `CgViewBlock` at `VIEW_UBO`, `CgEnvironmentBlock` at `ENVIRONMENT_UBO`: `CgKernelProgram.frame(constants)` in a direct dispatch |
 | An engine buffer (`#pragma cg_use`) | its own binding point; writable in a general kernel, read-only in the rest |
-| `cg_Dispatch[6]` | base and count per dispatch, one `glUniform1iv` |
+| `cg_Dispatch[6]` | base and count per dispatch, one `glUniform1iv`; compiled as written, `CgKernelPush`'s two `ivec4`s, pushed |
 | Checked mode's slot (`CgCheck`) | the next point after the counts (`CG_CHECK_BINDING`); each dispatch binds its own slot of `CgComputeCheck`'s buffer, so no two overlap |
 
 ## Ops, inside

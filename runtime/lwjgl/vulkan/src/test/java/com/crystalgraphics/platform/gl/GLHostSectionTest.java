@@ -1,6 +1,8 @@
 package com.crystalgraphics.platform.gl;
 
+import com.crystalgraphics.lwjgl3.Lwjgl3GLBackend;
 import com.crystalgraphics.lwjgl3.Lwjgl3GLDriver;
+import com.crystalgraphics.platform.gl.state.CgGlState;
 import com.crystalgraphics.platform.gl.driver.CgGLDriver;
 import com.crystalgraphics.platform.gl.state.GLContextState;
 import com.crystalgraphics.platform.gl.state.GLHostState;
@@ -47,6 +49,9 @@ public class GLHostSectionTest {
     @Test
     public void aSectionSharedWithCgGLLeavesGLsDefaults() {
         try (GLTestWindow window = new GLTestWindow()) {
+            // Shared with CgGL: CgGL on this context, which the section reads the host's framebuffers from
+            CgGL.init(new Lwjgl3GLBackend());
+            CgGlState.reset();
             CgGLDevice device = new CgGLDevice(new Lwjgl3GLDriver(), new SpvcGlslTranslator(), 64, 64, false,
                     GLHostState.sharedWithCgGL());
             device.fromHost();
@@ -61,6 +66,9 @@ public class GLHostSectionTest {
             assertEquals(4, glGetInteger(GL_PACK_ALIGNMENT));
             device.close();
             assertTrue("GL errors: " + window.errors, window.errors.isEmpty());
+        } finally {
+            CgGlState.reset();
+            CgGL.init(null);
         }
     }
 

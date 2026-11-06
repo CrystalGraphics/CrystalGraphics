@@ -13,6 +13,7 @@ import org.junit.BeforeClass;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -63,6 +64,15 @@ public class GLCommandListTest extends CgCommandListContract {
             Path file = FIXTURES.resolve(e.getKey() + ".glsl");
             if (update) Files.writeString(file, e.getValue());
             else if (!Files.exists(file) || !Files.readString(file).equals(e.getValue())) stale.append(' ').append(file);
+        }
+        // A fixture no translation wrote any more: its name is the old source's hash
+        try (DirectoryStream<Path> files = Files.newDirectoryStream(FIXTURES, "*.glsl")) {
+            for (Path file : files) {
+                String name = file.getFileName().toString();
+                if (translations.containsKey(name.substring(0, name.length() - ".glsl".length()))) continue;
+                if (update) Files.delete(file);
+                else stale.append(' ').append(file);
+            }
         }
         assertEquals("the LWJGL 2 runner's fixtures are stale; rerun with -PupdateGlFixtures=true:",
                 "", stale.toString());

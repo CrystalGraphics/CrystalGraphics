@@ -14,6 +14,9 @@ import java.util.Set;
 import java.util.HashSet;
 import com.crystalgraphics.gl.shader.CgShader;
 import com.crystalgraphics.platform.rhi.pipeline.CgPipelineLayout;
+import com.crystalgraphics.platform.rhi.binding.CgBindingLayout;
+import com.crystalgraphics.platform.rhi.binding.CgBindingSet;
+import com.crystalgraphics.platform.rhi.binding.CgBindings;
 import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.gl.CgGLImports;
 import com.crystalgraphics.render.shader.CgBindingModel;
@@ -180,7 +183,7 @@ public final class CgExecutor {
     private static final int BINDING_BREAKS = CgTrace.name("graph.multi-draw.binding-breaks");
     /** Every compute pass that can go async does, as if marked: a correctness check of the waits. */
     /** GL6's check: each batch also makes its device sets, and a slot left to a default is logged once. */
-    /** GL6 part 4: a raster pass the device path covers draws through {@code CgRHI}; the rest through {@code CgGL}. */
+    /** GL6: a raster or compute pass the device path covers runs through {@code CgRHI}; the rest through {@code CgGL}. */
     static final boolean DEVICE_RASTER = CgVar.bool("crystalgraphics.rhi.deviceRaster", false, CgVar.DEV | CgVar.RESTART,
             "A raster pass the device path covers draws through CgRHI, the rest through CgGL, each reason logged once.").get();
     /** Passes whose names hold one of these stay on {@code CgGL}: for finding which pass a picture differs in. */
@@ -200,6 +203,14 @@ public final class CgExecutor {
             "Each batch also makes its view, pass and material sets on the device, logging a slot left to a default.").get();
     private final CgDeviceSets deviceSets = new CgDeviceSets();
     private final Set<String> deviceSetsLogged = new HashSet<>();
+    /** The device compute pass between dispatches, which a barrier through {@code CgGL} closes. */
+    private static final CgDeviceCompute DEVICE_COMPUTE = new CgDeviceCompute();
+    /** Whether a compute pass dispatches on the device now, and whether a {@code CgGL} barrier batch is open in it. */
+    private static boolean deviceComputing, deviceBarrierBatch;
+    /** A dispatch's kernel slots its snapshot does not hold: buffers, counts, images, checked mode's report. */
+    private final CgBindings kernelBindings = new CgBindings();
+    private static final int DEVICE_COMPUTES = CgTrace.name("graph.device-computes"),
+            GL_COMPUTES = CgTrace.name("graph.gl-computes");
 
     static final boolean ASYNC_ALL = CgVar.bool("crystalgraphics.graph.asyncAll", false, CgVar.DEV | CgVar.RESTART,
             "Every compute pass that can go async does, as if marked async(): a check of the waits, which the compute"
@@ -825,6 +836,15 @@ public final class CgExecutor {
     private void compute(CgFrame frame, CgComputePass pass, CgFrame.Compute packed) {
         List<CgDispatch> dispatches = pass.dispatches();
         if (++passSerial == 1 << 28) passSerial = 1;   // a set keeps three bits for its group
+        if (DEVICE_RASTER) {
+            String refused = computeRefuses(pass);
+            if (refused == null) {
+                computeDevice(frame, pass, packed);
+                return;
+            }
+            CgTrace.add(CgChannels.GL, GL_COMPUTES, 1);
+            if (glPassReasons.add(refused + " " + pass.name())) LOGGER.warn("device compute: {} on CgGL: {}", pass.name(), refused);
+        }
         prologue(dispatches);
         try (CgTrace.Zone ignored = CgTrace.isEnabled(CgChannels.GL) ? CgTrace.zone(CgChannels.GL, CgTrace.name(pass.name())) : null) {
             frame.bindings.bind(packed.constants);
@@ -857,6 +877,175 @@ public final class CgExecutor {
         if (!STATES.claim(CgResourceStates.buffer(id), passSerial, dispatch)) return;
         barrier(id, access, set);
         hoisted[b] = passSerial;
+    }
+
+    /** Why {@code pass} cannot dispatch on the device; null when it can. */
+    @Nullable
+    private String computeRefuses(CgComputePass pass) {
+        if (!CgGLImports.installed() || !CgGlslCompiler.installed()) return "no device";
+        for (String skip : DEVICE_RASTER_SKIP) if (!skip.isEmpty() && pass.name().contains(skip)) return "skipped by name";
+        if (runsAsync(pass)) return "async: the compute queue";
+        for (CgDispatch d : pass.dispatches()) {
+            try {
+                d.kernel.program().explicit();
+            } catch (RuntimeException e) {
+                return d.source.path() + " " + d.decl.name() + " does not compile as written: " + e.getMessage();
+            }
+            for (CgGraphTexture image : d.images) {
+                if (image == null) continue;
+                CgFrameBuffer storage = storage(image);
+                if (storage == null || storage.getColorTexture(0) == null || storage.getColorTexture(0).rhiView() == null) {
+                    return "an image with no texture";
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * {@code pass}'s dispatches through the device's compute pass: what goes through {@code CgGL} first (the constants'
+     * snapshot, the tokens' buffers, every storage, each kernel's pipeline), then each dispatch's pipeline, sets, pushed
+     * words and dispatch. Its barriers stay on {@code CgGL}, between device sections ({@link CgDeviceCompute}).
+     */
+    private void computeDevice(CgFrame frame, CgComputePass pass, CgFrame.Compute packed) {
+        List<CgDispatch> dispatches = pass.dispatches();
+        CgRHI rhi = CgRHI.get();
+        CgTrace.add(CgChannels.GL, DEVICE_COMPUTES, 1);
+        if (glPassReasons.add("device " + pass.name())) LOGGER.warn("device compute: {} on the device", pass.name());
+        frame.bindings.bind(packed.constants);
+        CgBoundResources.forgetTextures(CgBindingModel.PASS);
+        CgBoundResources.forgetTextures(CgBindingModel.MATERIAL);
+        deviceSets.prepare(frame.bindings);
+        if (CgKernelTarget.CHECKED) CgComputeCheck.prepare();
+        for (int i = 0; i < dispatches.size(); i++) {
+            CgDispatch d = dispatches.get(i);
+            for (String token : d.source.engineBuffers()) CgEngineBufferRegistry.get(token).buffer().get().bind();
+            d.kernel.program().devicePipeline(rhi);
+            for (int b = 0; b < d.buffers.length; b++) {
+                if (d.buffers[b] != null) bufferStorage(d.buffers[b], false);
+                if (d.counters[b] != null) bufferStorage(d.counters[b], false);
+            }
+            if (d.args != null) bufferStorage(d.args, false);
+        }
+        DEVICE_COMPUTE.begin(pass.name());
+        deviceComputing = true;
+        try {
+            prologue(dispatches);
+            for (int i = 0; i < dispatches.size(); i++) dispatchDevice(frame, rhi, dispatches.get(i), packed.bindings[i], packed.constants);
+            CgTrace.add(CgChannels.GL, DISPATCH_COUNT, dispatches.size());
+        } finally {
+            DEVICE_COMPUTE.close();
+            endDeviceBarriers();
+            deviceComputing = false;
+        }
+    }
+
+    private void dispatchDevice(CgFrame frame, CgRHI rhi, CgDispatch d, int bindings, int constants) {
+        CgKernelProgram program = d.kernel.program();
+        CgBindings k = kernelBindings.clear();
+        for (int b = 0; b < d.buffers.length; b++) {
+            if (d.buffers[b] != null) {
+                int access = d.hoisted[b] == passSerial ? 0 : d.bufferAccess[b];
+                int id = bufferStorage(d.buffers[b], (access & CgAccess.COMPUTE_WRITE) != 0);
+                if (access != 0) barrier(id, access, set(d.skipGroup[b]));
+                storageSlot(k, CgBindingModel.FIRST_KERNEL_BUFFER + b, id, d.offsets[b], d.sizes[b]);
+            }
+            if (d.counters[b] != null) {
+                long base = CgKernelProgram.counterBase(d.counterOffsets[b]);
+                int access = d.counterHoisted[b] == passSerial ? 0 : d.counterAccess[b];
+                int id = bufferStorage(d.counters[b], (access & CgAccess.COMPUTE_WRITE) != 0);
+                if (access != 0) barrier(id, access, set(d.countSkipGroup[b]));
+                storageSlot(k, CgBindingModel.FIRST_KERNEL_BUFFER + program.counterPoint(b), id, base,
+                        d.counterOffsets[b] - base + 4);
+                program.counterWordOn(b, d.counterOffsets[b]);
+            }
+        }
+        for (CgTexture sampler : d.samplers) {
+            CgGraphTexture graph = sampler == null ? null : CgGraphTexture.sampled(sampler);
+            if (graph != null) move(graph, CgAccess.SAMPLED_READ, -1, -1);   // after a kernel wrote it as an image
+        }
+        for (int i = 0; i < d.images.length; i++) {
+            CgGraphTexture texture = d.images[i];
+            if (texture == null) continue;
+            CgTexture color = storage(texture).getColorTexture(0);
+            int access = imageAccess(d, i, color.getId());
+            if (access != 0) move(texture, access, -1, -1);
+            k.image(CgBindingModel.FIRST_KERNEL_IMAGE + i, imageView(d, i, color.rhiView().texture()));
+        }
+        CgGLImports imports = CgGLImports.get();
+        if (program.checkPoint() >= 0) {
+            int report = CgComputeCheck.buffer();
+            k.buffer(CgBindingModel.FIRST_KERNEL_BUFFER + program.checkPoint(), CgBindingLayout.Type.STORAGE_BUFFER,
+                    imports.buffer(report), imports.bufferOffset(report) + CgComputeCheck.claim(program),
+                    CgComputeCheck.SLOT_BYTES);
+        }
+        int args = d.form == CgDispatch.Form.INDIRECT ? bufferStorage(d.args, false) : 0;
+        if (args != 0) bufferBarrier(args, CgAccess.INDIRECT);
+        endDeviceBarriers();
+        DEVICE_COMPUTE.pass(rhi);
+        CgPipelineLayout layout = program.deviceLayout();
+        DEVICE_COMPUTE.pipeline(program.devicePipeline(rhi), layout);
+        for (int set = 0; set < layout.sets().size(); set++) {
+            if (set == CgRHI.BINDLESS_SET) {
+                DEVICE_COMPUTE.set(set, rhi.bindlessSet());
+                continue;
+            }
+            if (layout.sets().get(set).slots().isEmpty()) continue;
+            long before = deviceSets.defaulted();
+            CgBindingSet s = deviceSets.set(rhi, frame.bindings, set == CgBindingModel.VIEW ? constants : bindings, layout,
+                    set, set == CgBindingModel.MATERIAL ? k : null);
+            if (deviceSets.defaulted() != before) {
+                String what = d.source.path() + " " + d.decl.name() + " " + deviceSets.lastDefaulted();
+                if (deviceSetsLogged.add(what)) LOGGER.warn("device compute: {} defaulted", what);
+            }
+            DEVICE_COMPUTE.set(set, s);
+        }
+        switch (d.form) {
+            case ELEMENTS -> program.dispatchOn(DEVICE_COMPUTE.pass(rhi), d.x, d.y, d.z);
+            case GROUPS -> program.dispatchOn(DEVICE_COMPUTE.pass(rhi), d.x * program.kernel().sizeX(),
+                    d.y * program.kernel().sizeY(), d.z * program.kernel().sizeZ());
+            case INDIRECT -> program.dispatchIndirectOn(DEVICE_COMPUTE.pass(rhi), imports.buffer(args),
+                    imports.bufferOffset(args) + d.argsOffset);
+        }
+        advanceHistories(d);
+    }
+
+    /** {@code id}'s range as {@link #bindStorage} binds it, at {@code binding} of {@code k}. */
+    private static void storageSlot(CgBindings k, int binding, int id, long offset, long size) {
+        CgGLImports imports = CgGLImports.get();
+        long base = imports.bufferOffset(id);
+        long whole = imports.buffer(id).size() - base;
+        k.buffer(binding, CgBindingLayout.Type.STORAGE_BUFFER, imports.buffer(id), base + offset,
+                size == 0 ? whole - offset : size);
+    }
+
+    /** Image binding {@code i} of {@code d} as {@code glBindImageTexture} takes it: a level, one layer or all of them. */
+    private static CgTextureView imageView(CgDispatch d, int i, CgGpuTexture texture) {
+        CgImageDecl image = d.source.images().get(i);
+        if (d.layers[i] < 0 && image.dimension() != CgImageDimension.D2) {
+            CgTextureView whole = CgTextureView.whole(texture);
+            return new CgTextureView(texture, d.levels[i], 1, whole.baseLayer(), whole.layers());
+        }
+        return new CgTextureView(texture, d.levels[i], 1, Math.max(0, d.layers[i]), 1);
+    }
+
+    /**
+     * Before a barrier through {@code CgGL} while a pass dispatches on the device: the device's compute pass and section
+     * end, and a barrier batch opens.
+     */
+    private static void leaveDeviceCompute() {
+        if (!deviceComputing) return;
+        DEVICE_COMPUTE.close();
+        if (!deviceBarrierBatch) {
+            CgGL.cgBeginBarriers();
+            deviceBarrierBatch = true;
+        }
+    }
+
+    private static void endDeviceBarriers() {
+        if (!deviceBarrierBatch) return;
+        deviceBarrierBatch = false;
+        CgGL.cgEndBarriers();
     }
 
     /** The overlap set of skip group {@code group1} (1 + the group, 0 for none) in the executing pass. */
@@ -1387,6 +1576,7 @@ public final class CgExecutor {
     private static void barrier(int id, int bits, int set) {
         int from = STATES.access(CgResourceStates.buffer(id), bits, set);
         if (!issues(from, bits)) return;
+        leaveDeviceCompute();
         CgGL.cgBufferBarrier(id, from, bits);
         CgTrace.add(CgChannels.GL, BARRIER_COUNT, 1);
     }
@@ -1432,6 +1622,7 @@ public final class CgExecutor {
                     if (want != 0) {
                         boolean moves = CgResourceStates.moves(from, want);
                         if (moves && issues(from == 0 ? CgAccess.RESTING : from, want)) {
+                            leaveDeviceCompute();
                             CgGL.cgTextureBarrier(color.getId(), level, 1, layer, end - layer,
                                     from == 0 ? CgAccess.RESTING : from, want);
                             CgTrace.add(CgChannels.GL, BARRIER_COUNT, 1);
@@ -1452,6 +1643,7 @@ public final class CgExecutor {
         noteMoved(key, fbo, 0, 0, outlives);
         boolean moves = CgResourceStates.moves(from, to);
         if (moves && issues(from == 0 ? CgAccess.RESTING : from, to)) {
+            leaveDeviceCompute();
             CgGL.cgFramebufferBarrier(fbo, from == 0 ? CgAccess.RESTING : from, to);
             CgTrace.add(CgChannels.GL, BARRIER_COUNT, 1);
         }

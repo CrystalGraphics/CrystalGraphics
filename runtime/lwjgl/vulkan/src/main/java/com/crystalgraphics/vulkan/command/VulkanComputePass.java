@@ -36,7 +36,10 @@ final class VulkanComputePass implements CgComputePass {
     private final VulkanEncoder encoder;
     private final List<CgTextureView> images = new ArrayList<>();
     private VulkanComputePipeline pipeline;
-    /** Sets bound by index, bound again with each pipeline: a new layout may disturb them. */
+    /**
+     * Sets bound by index. A pipeline keeps those its layout shares with the last one's from set 0 up (Vulkan's pipeline
+     * layout compatibility, push range included); a set from the first that differs is dropped, for the caller to bind again.
+     */
     private final VulkanBindingSet[] sets = new VulkanBindingSet[8];
 
     VulkanComputePass(CgVulkanDevice device, VulkanEncoder encoder) {
@@ -51,9 +54,19 @@ final class VulkanComputePass implements CgComputePass {
 
     @Override
     public void setPipeline(CgComputePipeline p) {
+        VulkanComputePipeline was = pipeline;
         pipeline = (VulkanComputePipeline) p;
         vkCmdBindPipeline(cmd(), VK_PIPELINE_BIND_POINT_COMPUTE, pipeline.pipeline);
-        for (int i = 0; i < sets.length; i++) if (sets[i] != null) bind(i);
+        if (was == null) {
+            for (int i = 0; i < sets.length; i++) if (sets[i] != null) bind(i);
+            return;
+        }
+        List<CgBindingLayout> before = was.layout().sets(), now = pipeline.layout().sets();
+        boolean shared = was.layout().pushConstantBytes() == pipeline.layout().pushConstantBytes();
+        for (int i = 0; i < sets.length; i++) {
+            shared &= i < before.size() && i < now.size() && before.get(i) == now.get(i);
+            if (!shared) sets[i] = null;
+        }
     }
 
     @Override

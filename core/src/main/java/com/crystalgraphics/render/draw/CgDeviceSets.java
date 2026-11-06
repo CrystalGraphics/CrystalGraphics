@@ -23,11 +23,10 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * A recorded draw's bindings as the device's sets: each set of its pipeline's layout filled from the draw's
- * {@link CgBindingTable} snapshot through {@link CgBindingModel}'s slots, from what the caller supplies for the slots
- * a snapshot does not hold, then from what the executor has bound there ({@link CgBoundResources}: the pass's records
- * and tables), and interned by content across frames, as Unreal keeps a material's
- * uniform buffer until its contents change.
+ * A recorded draw's or dispatch's bindings as the device's sets: each set of its pipeline's layout filled from what the
+ * caller supplies by binding, then from its {@link CgBindingTable} snapshot through {@link CgBindingModel}'s slots, then
+ * from what the executor has bound there ({@link CgBoundResources}: the pass's records and tables), and interned by
+ * content across frames, as Unreal keeps a material's uniform buffer until its contents change.
  *
  * <pre>{@code
  * table.upload(ring);                                                 // the ring blocks' places first
@@ -64,7 +63,7 @@ public final class CgDeviceSets {
     /**
      * Set {@code set} of {@code layout} for snapshot {@code id}: made, or the one made for equal contents before.
      *
-     * @param extras what fills a slot the snapshot does not hold, by binding; null for none
+     * @param extras what fills a slot ahead of the snapshot, by binding (a kernel's buffers and images); null for none
      */
     public CgBindingSet set(CgRHI rhi, CgBindingTable table, int id, CgPipelineLayout layout, int set,
                             @Nullable CgBindings extras) {
@@ -132,13 +131,12 @@ public final class CgDeviceSets {
         List<CgBindingLayout.Slot> slots = layout.slots();
         for (int i = 0; i < slots.size(); i++) {
             CgBindingLayout.Slot slot = slots.get(i);
-            int packed = CgBindingModel.pack(set, slot.binding());
-            if (fromTable(rhi, table, id, packed, slot)) continue;
             int at = extras == null ? -1 : extras.indexOf(slot.binding());
             if (at >= 0) {
                 copy(extras, at);
                 continue;
             }
+            if (fromTable(rhi, table, id, CgBindingModel.pack(set, slot.binding()), slot)) continue;
             fallback(rhi, slot);
             defaulted++;
             lastDefaulted = "set " + set + " binding " + slot.binding() + " " + slot.type();

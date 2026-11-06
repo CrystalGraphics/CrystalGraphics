@@ -58,6 +58,11 @@ public final class CgKernelEmitter {
     public static final String VERSION = "#version 450 core\n";
     /** The append buffers a kernel may declare: each count's word is a push constant compiled as written. */
     public static final int KERNEL_WORDS = 8;
+    /**
+     * {@code kernel.glsl}'s {@code CgKernelPush}: the dispatch's base at 0 and count at 16 (each an {@code ivec4}), then
+     * the counter words from {@link #PUSH_WORDS_AT}, word {@code k} at {@code 4 * k}.
+     */
+    public static final int PUSH_WORDS_AT = 32, PUSH_BYTES = PUSH_WORDS_AT + 4 * KERNEL_WORDS;
 
     private static final String ENV = "crystalgraphics:shaders/env/";
     private static final String[] SUBGROUP_EXTENSIONS = {"GL_KHR_shader_subgroup_basic", "GL_KHR_shader_subgroup_vote",
@@ -283,7 +288,8 @@ public final class CgKernelEmitter {
                 sb.append("layout(std430, CG_KBUFFER(").append(counterPoint(source, b)).append(")) buffer ")
                   .append(counterBlock(b)).append(" { uint ").append(a).append("_counter[]; };\n")
                   .append("#ifdef CG_EXPLICIT\n#define ").append(counterWord(b)).append(" cg_KernelWords[")
-                  .append(kernelWord(source, b)).append("]\n#else\nuniform int ").append(counterWord(b))
+                  .append(kernelWord(source, b) / 4).append("][").append(kernelWord(source, b) % 4)
+                  .append("]\n#else\nuniform int ").append(counterWord(b))
                   .append(";\n#endif\n#define ").append(a)
                   .append("_count ").append(a).append("_counter[").append(counterWord(b)).append("]\n");
             }

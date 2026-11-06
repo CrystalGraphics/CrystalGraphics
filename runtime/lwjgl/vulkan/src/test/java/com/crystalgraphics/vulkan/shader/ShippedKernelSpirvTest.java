@@ -57,7 +57,7 @@ public class ShippedKernelSpirvTest {
                             CgGlslCompiler.ExplicitCompute k = EXPLICIT.compileExplicitCompute(glsl, label);
                             assertEquals(label, kernel.sizeX(), k.localSize()[0]);
                             assertTrue(label + " pushes " + k.pushConstantBytes() + " bytes",
-                                    k.pushConstantBytes() <= 4 * (6 + CgKernelEmitter.KERNEL_WORDS));
+                                    k.pushConstantBytes() <= CgKernelEmitter.PUSH_BYTES);
                             compiled++;
                         } catch (RuntimeException e) {
                             failures.add(label + ": " + e.getMessage());

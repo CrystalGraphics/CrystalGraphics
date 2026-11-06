@@ -74,6 +74,17 @@ public final class CgComputeCheck {
 
     /** Binds the next slot at {@code point} for a dispatch of {@code program}. Render thread. */
     static void bind(int point, CgKernelProgram program) {
+        CgGL.glBindBufferRange(CgGL.GL_SHADER_STORAGE_BUFFER, point, buffer, claim(program), SLOT_BYTES);
+    }
+
+    /** A slot's bytes: what binds at a checked kernel's report point. */
+    public static final long SLOT_BYTES = WORDS * 4L;
+
+    /**
+     * The next slot for a dispatch of {@code program}: its byte offset in {@link #buffer}. Render thread, after
+     * {@link #prepare}.
+     */
+    public static long claim(CgKernelProgram program) {
         if (buffer == 0) create();
         int slot;
         if (used < SLOTS) {
@@ -87,7 +98,12 @@ public final class CgComputeCheck {
             }
         }
         PROGRAMS[slot] = program;
-        CgGL.glBindBufferRange(CgGL.GL_SHADER_STORAGE_BUFFER, point, buffer, (long) slot * stride, WORDS * 4L);
+        return (long) slot * stride;
+    }
+
+    /** The GL buffer the report slots are in; 0 before {@link #prepare}. */
+    public static int buffer() {
+        return buffer;
     }
 
     /** Reads back the slots this frame's dispatches wrote, and clears them. Render thread, between frames. */
