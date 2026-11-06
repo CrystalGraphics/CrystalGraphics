@@ -3363,6 +3363,18 @@ com/crystalgraphics/platform/service/CgGameThreads$Host
   field public,static,final NONE Lcom/crystalgraphics/platform/service/CgGameThreads$Host;
   method public,abstract client ()Lcom/crystalgraphics/platform/service/CgGameThreads$Binding;
   method public,abstract server ()Lcom/crystalgraphics/platform/service/CgGameThreads$Binding;
+com/crystalgraphics/platform/service/CgHostPaint
+  access public,final
+  extends java/lang/Object
+  field public,static,final HOST Lcom/crystalgraphics/platform/CgService;
+  method public,static enter ()V
+  method public,static leave ()V
+com/crystalgraphics/platform/service/CgHostPaint$Host
+  access public,abstract,interface
+  extends java/lang/Object
+  field public,static,final NONE Lcom/crystalgraphics/platform/service/CgHostPaint$Host;
+  method public,abstract enter ()V
+  method public,abstract leave ()V
 com/crystalgraphics/platform/service/CgHostWindow
   access public,final
   extends java/lang/Object

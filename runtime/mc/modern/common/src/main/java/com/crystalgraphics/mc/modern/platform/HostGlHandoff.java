@@ -4,6 +4,7 @@ import com.crystalgraphics.lifecycle.CgGraphicsLifecycle;
 import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.state.CgGlState;
+import com.crystalgraphics.platform.service.CgHostPaint;
 
 //? if >=1.21.5 {
 /*import com.mojang.blaze3d.opengl.GlStateManager;
@@ -18,13 +19,12 @@ import org.lwjgl.opengl.GL13;
 *///?}
 
 /**
- * The GL discipline around anything that paints with CrystalGraphics inside Minecraft's frame, outside a world pass:
- * a screen, a HUD layer. Both directions owe Minecraft the same thing, so it is written once.
+ * The modern GL hand-over behind {@link CgHostPaint}, plus the context checks a paint asks before it starts.
  *
  * <pre>{@code
  * if (!HostGlHandoff.contextIsLive()) return;
- * HostGlHandoff.enter();
- * try { paint(); } finally { HostGlHandoff.leave(); }
+ * CgHostPaint.enter();
+ * try { paint(); } finally { CgHostPaint.leave(); }
  * }</pre>
  *
  * <p>There are two state shadows here, each blind to the other: CrystalGraphics' {@code CgGlState} and Blaze3D's
@@ -65,7 +65,7 @@ public final class HostGlHandoff {
      * before we paint or each stale field is a bind we skip. Cheap: it drops trust, it does not read the
      * driver.
      */
-    public static void enter() {
+    static void enter() {
         CgGL.fromHost();
         CgGlState.invalidateAllIfPresent();
         // 1.21.5 binds a target only inside its own render passes, so a screen or HUD paint finds the
@@ -100,7 +100,7 @@ public final class HostGlHandoff {
      * repair is raw LWJGL because Minecraft's present is fixed-function and keeps no shadow of its own,
      * while here it MUST go through Blaze3D or Minecraft's cache is left describing the wrong world.
      */
-    public static void leave() {
+    static void leave() {
         OwnDepthConvention.leave();
         // Ours ends here; the repair below is Minecraft's own state, through its own API.
         CgGL.toHost();

@@ -31,6 +31,7 @@ import com.crystalgraphics.platform.service.CgProcessExit;
 import com.crystalgraphics.platform.world.CgHostShapes;
 import com.crystalgraphics.platform.world.CgLevels;
 import com.crystalgraphics.platform.service.CgGameThreads;
+import com.crystalgraphics.platform.service.CgHostPaint;
 import com.crystalgraphics.platform.service.CgHostWindow;
 import com.crystalgraphics.platform.service.CgServers;
 import com.crystalgraphics.platform.world.CgPlayerQuery;
@@ -188,6 +189,7 @@ public final class PlatformService1710 implements CgPlatformService {
             CgPlatform.provide(CgGameDirectory.HOST, new GameDirectoryService1710());
             CgPlatform.provide(CgGameThreads.HOST, new GameThreads1710());
             CgPlatform.provide(CgHostWindow.HOST, new HostWindow1710());
+            CgPlatform.provide(CgHostPaint.HOST, new HostPaint1710());
             // WorldEvents1710 polls the hurts, deaths and lightning; ExplosionHook and LevelEventHook the rest.
             CgWorldEvents.declare(CgWorldEvents.EXPLOSION | CgWorldEvents.BLOCK_BROKEN | CgWorldEvents.ENTITY_HURT
                     | CgWorldEvents.ENTITY_DIED | CgWorldEvents.LIGHTNING);

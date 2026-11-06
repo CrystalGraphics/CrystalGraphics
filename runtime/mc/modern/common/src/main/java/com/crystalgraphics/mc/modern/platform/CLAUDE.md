@@ -31,7 +31,7 @@ the shutdown. A loader decides only which event (or node mixin) reaches it.
 | `HostStateVerifier` | `-Dcrystalgraphics.host.verify=true`: after each pass, compares the driver against `GlStateManager`'s fields and names the domain that disagrees |
 | `Blaze3dTextureUnits` | how many texture units Blaze3D's table models: `Blaze3dGLBackend` sends units above it to the driver and re-issues the switch back, which `GlStateManager` would elide |
 | `CgMinecraftClient` | the client state Minecraft moved (26.2: the screen, the loading overlay and the HUD's hidden flag onto `mc.gui`, the main target onto the game renderer), spelled once. Use it instead of a directive at the call site |
-| `HostGlHandoff` | the GL discipline around a paint outside a world pass (a screen, a HUD layer): `enter()` drops our state shadow and binds the main target, `leave()` repairs Blaze3D's cache, bouncing through unit 1 |
+| `HostGlHandoff` | the modern body of `CgHostPaint` (`HostPaintModern` forwards to it): `enter()` drops our state shadow and binds the main target, `leave()` repairs Blaze3D's cache, bouncing through unit 1. Also `contextIsLive()` and `ensureContext()`, asked before a paint |
 | `HostKeys` | CrystalGraphics' key and button numbers in this Minecraft's own: GLFW's, SDL's from 26.3 |
 | `FrameHooks` | the end-of-frame resize check and `CgGraphicsLifecycle.tickFrame()` |
 | `ResourceIds`, `Windows` | a `ResourceLocation` and the game window, in whichever spelling the running version has |
