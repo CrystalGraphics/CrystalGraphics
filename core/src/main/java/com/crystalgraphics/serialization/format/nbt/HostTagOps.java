@@ -1,6 +1,6 @@
 package com.crystalgraphics.serialization.format.nbt;
 
-import com.crystalgraphics.serialization.format.CgFormats;
+import com.crystalgraphics.serialization.format.CgFiles;
 
 import com.crystalgraphics.serialization.CgDynamicOps;
 import com.crystalgraphics.serialization.CgCodecException;
@@ -12,7 +12,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * {@link CgDynamicOps} over a host's tags: what {@link CgFormats#nbt()} hands out. The format's rules live here, once,
+ * {@link CgDynamicOps} over a host's tags: what {@link CgFiles#nbt()} hands out. The format's rules live here, once,
  * and each era answers only {@link CgHostFormats}' primitives: a boolean is a byte, map keys are text, and the absent
  * value is an empty compound. Mojang's {@code NbtOps} keeps the same rules.
  */

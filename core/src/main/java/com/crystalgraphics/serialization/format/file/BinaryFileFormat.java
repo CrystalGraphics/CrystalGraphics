@@ -1,6 +1,6 @@
 package com.crystalgraphics.serialization.format.file;
 
-import com.crystalgraphics.serialization.format.CgFormats;
+import com.crystalgraphics.serialization.format.CgFiles;
 
 import com.crystalgraphics.serialization.CgDynamicOps;
 import com.crystalgraphics.serialization.CgPlainOps;
@@ -14,7 +14,7 @@ import java.io.OutputStream;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
 
-/** {@link CgFormats#BINARY}: {@link CgBinaryFormat}, gzipped. */
+/** {@link CgFiles#BINARY}: {@link CgBinaryFormat}, gzipped. */
 public final class BinaryFileFormat extends FileFormat<Object> {
 
     @Override

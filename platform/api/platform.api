@@ -3247,6 +3247,10 @@ com/crystalgraphics/platform/input/CgSystemInput$Mouse$Event
 com/crystalgraphics/platform/input/CgSystemInput$MultiClickInterval
   access public,final
   extends java/lang/Object
+com/crystalgraphics/platform/io/CgAtomicFile
+  access public,final
+  extends java/lang/Object
+  method public,static write (Ljava/nio/file/Path;[B)V
 com/crystalgraphics/platform/rhi/CgDeviceSection
   access public,final
   extends java/lang/Object
@@ -4462,16 +4466,71 @@ com/crystalgraphics/platform/service/CgCursorService$Image
   method public,static of (Ljava/lang/String;[IIIII)Lcom/crystalgraphics/platform/service/CgCursorService$Image;
   method public,static standard (Ljava/lang/String;)Lcom/crystalgraphics/platform/service/CgCursorService$Image;
 com/crystalgraphics/platform/service/CgGameDirectory
+  access public,final
+  extends java/lang/Object
+  field public,static,final HOST Lcom/crystalgraphics/platform/CgService;
+  method public,static game ()Ljava/nio/file/Path;
+  method public,static world ()Ljava/nio/file/Path;
+com/crystalgraphics/platform/service/CgGameDirectory$Host
   access public,abstract,interface
   extends java/lang/Object
-  field public,static,final NONE Lcom/crystalgraphics/platform/service/CgGameDirectory;
-  field public,static,final SERVICE Lcom/crystalgraphics/platform/CgService;
-  method public,abstract get ()Ljava/nio/file/Path;
-com/crystalgraphics/platform/service/CgHostI18n
+  field public,static,final NONE Lcom/crystalgraphics/platform/service/CgGameDirectory$Host;
+  method public,abstract game ()Ljava/nio/file/Path;
+  method public,abstract world ()Ljava/nio/file/Path;
+com/crystalgraphics/platform/service/CgGameThreads
+  access public,final
+  extends java/lang/Object
+  field public,static,final HOST Lcom/crystalgraphics/platform/CgService;
+  method public,static client ()Lcom/crystalgraphics/platform/service/CgGameThreads$Binding;
+  method public,static server ()Lcom/crystalgraphics/platform/service/CgGameThreads$Binding;
+com/crystalgraphics/platform/service/CgGameThreads$Binding
   access public,abstract,interface
   extends java/lang/Object
-  field public,static,final NONE Lcom/crystalgraphics/platform/service/CgHostI18n;
-  field public,static,final SERVICE Lcom/crystalgraphics/platform/CgService;
+  method public isAvailable ()Z
+  method public,abstract execute (Ljava/lang/Runnable;)V
+  method public,abstract isCurrent ()Z
+com/crystalgraphics/platform/service/CgGameThreads$Host
+  access public,abstract,interface
+  extends java/lang/Object
+  field public,static,final NONE Lcom/crystalgraphics/platform/service/CgGameThreads$Host;
+  method public,abstract client ()Lcom/crystalgraphics/platform/service/CgGameThreads$Binding;
+  method public,abstract server ()Lcom/crystalgraphics/platform/service/CgGameThreads$Binding;
+com/crystalgraphics/platform/service/CgHostPaint
+  access public,final
+  extends java/lang/Object
+  field public,static,final HOST Lcom/crystalgraphics/platform/CgService;
+  method public,static enter ()V
+  method public,static leave ()V
+com/crystalgraphics/platform/service/CgHostPaint$Host
+  access public,abstract,interface
+  extends java/lang/Object
+  field public,static,final NONE Lcom/crystalgraphics/platform/service/CgHostPaint$Host;
+  method public,abstract enter ()V
+  method public,abstract leave ()V
+com/crystalgraphics/platform/service/CgHostWindow
+  access public,final
+  extends java/lang/Object
+  field public,static,final HOST Lcom/crystalgraphics/platform/CgService;
+  method public,static height ()I
+  method public,static width ()I
+com/crystalgraphics/platform/service/CgHostWindow$Host
+  access public,abstract,interface
+  extends java/lang/Object
+  field public,static,final NONE Lcom/crystalgraphics/platform/service/CgHostWindow$Host;
+  method public,abstract height ()I
+  method public,abstract width ()I
+com/crystalgraphics/platform/service/CgI18n
+  access public,final
+  extends java/lang/Object
+  field public,static,final HOST Lcom/crystalgraphics/platform/CgService;
+  method public,static language ()Ljava/lang/String;
+  method public,static locale ()Ljava/util/Locale;
+  method public,static translate (Ljava/lang/String;)Ljava/lang/String;
+  method public,static translate (Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
+com/crystalgraphics/platform/service/CgI18n$Host
+  access public,abstract,interface
+  extends java/lang/Object
+  field public,static,final NONE Lcom/crystalgraphics/platform/service/CgI18n$Host;
   method public language ()Ljava/lang/String;
   method public,abstract translate (Ljava/lang/String;)Ljava/lang/String;
 com/crystalgraphics/platform/service/CgInputService
@@ -4554,6 +4613,24 @@ com/crystalgraphics/platform/service/CgResourceService
   method public,abstract namespaces ()Ljava/util/Set;
   method public,abstract openStack (Ljava/lang/String;Ljava/lang/String;)Ljava/util/List;
   method public,abstract openStream (Ljava/lang/String;Ljava/lang/String;)Ljava/io/InputStream;
+com/crystalgraphics/platform/service/CgServers
+  access public,final
+  extends java/lang/Object
+  field public,static,final HOST Lcom/crystalgraphics/platform/CgService;
+  method public,static dedicated ()Z
+  method public,static directory ()Ljava/nio/file/Path;
+  method public,static halt ()V
+  method public,static running ()Z
+  method public,static version ()Ljava/lang/String;
+com/crystalgraphics/platform/service/CgServers$Host
+  access public,abstract,interface
+  extends java/lang/Object
+  field public,static,final NONE Lcom/crystalgraphics/platform/service/CgServers$Host;
+  method public,abstract dedicated ()Z
+  method public,abstract directory ()Ljava/nio/file/Path;
+  method public,abstract halt ()V
+  method public,abstract running ()Z
+  method public,abstract version ()Ljava/lang/String;
 com/crystalgraphics/platform/service/CgShaderPacks
   access public,final
   extends java/lang/Object
@@ -4573,6 +4650,16 @@ com/crystalgraphics/platform/service/CgSoundService
   access public,abstract,interface
   extends java/lang/Object
   method public,abstract play (Ljava/lang/String;)V
+com/crystalgraphics/platform/service/CgStorageLayout
+  access public,final
+  extends java/lang/Object
+  field public,static,final CACHE Ljava/lang/String;
+  field public,static,final CONFIG Ljava/lang/String;
+  method public cacheIn (Ljava/nio/file/Path;)Ljava/nio/file/Path;
+  method public configIn (Ljava/nio/file/Path;)Ljava/nio/file/Path;
+  method public root ()Ljava/lang/String;
+  method public rootIn (Ljava/nio/file/Path;)Ljava/nio/file/Path;
+  method public,static of (Ljava/lang/String;)Lcom/crystalgraphics/platform/service/CgStorageLayout;
 com/crystalgraphics/platform/world/CgBlockCopy
   access public,abstract,interface
   extends java/lang/Object
@@ -4733,6 +4820,8 @@ com/crystalgraphics/platform/world/CgPlayerQuery
   extends java/lang/Object
   field public,static,final NONE Lcom/crystalgraphics/platform/world/CgPlayerQuery;
   field public,static,final SERVICE Lcom/crystalgraphics/platform/CgService;
+  method public isOperator (Ljava/lang/String;)Z
+  method public isOwner (Ljava/lang/String;)Z
   method public,abstract localPlayer ()Ljava/lang/Object;
   method public,abstract player (I)Ljava/lang/Object;
   method public,abstract player (Ljava/util/UUID;)Ljava/lang/Object;

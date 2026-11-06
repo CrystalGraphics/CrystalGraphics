@@ -1,6 +1,6 @@
 package com.crystalgraphics.serialization;
 
-import com.crystalgraphics.serialization.format.CgFormats;
+import com.crystalgraphics.serialization.format.CgFiles;
 import com.crystalgraphics.serialization.format.CgJsonOps;
 import com.crystalgraphics.serialization.format.nbt.CgTestTags;
 import org.junit.Test;
@@ -37,10 +37,10 @@ public class CgVersionedCodecTest {
 
     @Test
     public void everyOlderVersionLoadsAsToday() {
-        assertEquals(GOKU, CgFormats.JSON.fromText(SAVED, "{\"name\":\"Goku\",\"Level\":9,\"skills\":[\"kamehameha\"]}"));
-        assertEquals(GOKU, CgFormats.JSON.fromText(SAVED,
+        assertEquals(GOKU, CgFiles.JSON.fromText(SAVED, "{\"name\":\"Goku\",\"Level\":9,\"skills\":[\"kamehameha\"]}"));
+        assertEquals(GOKU, CgFiles.JSON.fromText(SAVED,
                 "{\"_v\":2,\"name\":\"Goku\",\"level\":9,\"skills\":[\"kamehameha\"]}"));
-        assertEquals(GOKU, CgFormats.JSON.fromText(SAVED,
+        assertEquals(GOKU, CgFiles.JSON.fromText(SAVED,
                 "{\"_v\":3,\"name\":\"Goku\",\"level\":90,\"abilities\":{\"list\":[\"kamehameha\"]}}"));
     }
 
@@ -55,7 +55,7 @@ public class CgVersionedCodecTest {
     @Test
     public void aNewerSaveIsRefused() {
         CgCodecException refused = assertThrows(CgCodecException.class,
-                () -> CgFormats.JSON.fromText(SAVED, "{\"_v\":4,\"name\":\"Goku\",\"level\":90}"));
+                () -> CgFiles.JSON.fromText(SAVED, "{\"_v\":4,\"name\":\"Goku\",\"level\":90}"));
         assertTrue(refused.getMessage(), refused.getMessage().contains("version 4") && refused.getMessage().contains("3"));
     }
 
@@ -73,8 +73,8 @@ public class CgVersionedCodecTest {
 
         try (CgTestTags tags = CgTestTags.install()) {
             Object old = CgTestTags.parse("{name:\"Goku\",Level:9,skills:[\"kamehameha\"]}");
-            assertEquals(GOKU, CgFormats.fromNbt(SAVED, old));
-            assertEquals(GOKU, CgFormats.fromNbt(SAVED, CgFormats.toNbt(SAVED, GOKU)));
+            assertEquals(GOKU, CgFiles.fromNbt(SAVED, old));
+            assertEquals(GOKU, CgFiles.fromNbt(SAVED, CgFiles.toNbt(SAVED, GOKU)));
         }
     }
 
@@ -93,13 +93,13 @@ public class CgVersionedCodecTest {
         Map<String, Integer> want = new LinkedHashMap<>();
         want.put("kamehameha", 1);
         want.put("solar flare", 1);
-        assertEquals(want, CgFormats.JSON.fromText(saved, "{\"skills\":[\"kamehameha\",\"solar flare\"]}").skills());
+        assertEquals(want, CgFiles.JSON.fromText(saved, "{\"skills\":[\"kamehameha\",\"solar flare\"]}").skills());
     }
 
     @Test
     public void aStepOnAMissingPathDoesNothingAndAStepIsDeclaredOnce() {
         assertEquals(new Character("Gohan", 10, Collections.emptyList()),
-                CgFormats.JSON.fromText(SAVED, "{\"_v\":2,\"name\":\"Gohan\",\"level\":1}"));
+                CgFiles.JSON.fromText(SAVED, "{\"_v\":2,\"name\":\"Gohan\",\"level\":1}"));
         assertThrows(IllegalArgumentException.class, () -> CgCodecs.versioned(2, Character.CODEC)
                 .from(1, tree -> { }).from(1, tree -> { }));
         assertThrows(IllegalArgumentException.class, () -> CgCodecs.versioned(2, Character.CODEC).from(2, tree -> { }));

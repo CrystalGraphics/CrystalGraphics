@@ -24,6 +24,7 @@ import java.util.function.Consumer;
  *   <li>Players are named by profile id, the key every connection is opened under. Host objects cross as
  *       {@code Object}; the {@code <V>} getters cast at the caller's site.</li>
  *   <li>The server's questions on the server thread; {@link #localPlayer} on the render thread.</li>
+ *   <li>{@link #isOperator} and {@link #isOwner} take the player's name and are false for anyone not online.</li>
  *   <li>{@link #NONE} has no players: the harness, a client with no integrated server for the server's questions.</li>
  * </ul>
  */
@@ -58,4 +59,14 @@ public interface CgPlayerQuery {
 
     /** Hands {@code out} each player whose client has {@code entity} loaded, never the entity itself. */
     void trackingEntity(Object entity, Consumer<UUID> out);
+
+    /** Whether the online player with this name may use commands as an operator; false for none online. Server thread. */
+    default boolean isOperator(String name) {
+        return false;
+    }
+
+    /** Whether this name is the single-player world's owner; false on a dedicated server. Server thread. */
+    default boolean isOwner(String name) {
+        return false;
+    }
 }

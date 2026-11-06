@@ -1,5 +1,6 @@
 package com.crystalgraphics.vulkan.shader;
 
+import com.crystalgraphics.platform.io.CgAtomicFile;
 import com.crystalgraphics.platform.service.CgCacheDirectory;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -11,7 +12,6 @@ import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 
@@ -82,19 +82,12 @@ final class SpirvCache {
     /** Keeps {@code words}, written to a temporary file and moved into place, so a reader never sees half of one. */
     void put(int kind, String source, ByteBuffer words) {
         String key = key(kind, source);
-        Path temp = dir.resolve(key + ".tmp" + Long.toHexString(System.nanoTime()));
         byte[] bytes = new byte[words.remaining()];
         words.duplicate().get(bytes);
         try {
-            Files.write(temp, bytes);
-            Files.move(temp, dir.resolve(key), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            CgAtomicFile.write(dir.resolve(key), bytes);
         } catch (IOException e) {
             warn("write", e);
-            try {
-                Files.deleteIfExists(temp);
-            } catch (IOException ignored) {
-                // A stray temporary file is the next prune's.
-            }
         }
     }
 

@@ -22,7 +22,7 @@ import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.audio.CgHostDuck;
 import com.crystalgraphics.platform.audio.CgHostVolume;
-import com.crystalgraphics.i18n.CgI18n;
+import com.crystalgraphics.platform.service.CgI18n;
 import com.crystalgraphics.settings.CgGraphicsSettings;
 import com.crystalgraphics.platform.service.CgGameDirectory;
 import com.crystalgraphics.platform.world.CgEntityQuery;
@@ -587,7 +587,7 @@ public final class CgWorldProbe {
 
     private static void settingsChecks(CgHostEnvironment env) {
         Path file = CgGraphicsSettings.FILE.path();
-        Path game = CgPlatform.get(CgGameDirectory.SERVICE).get();
+        Path game = CgGameDirectory.game();
         check("settings.file", file.startsWith(game) && Files.isRegularFile(file), file + " under " + game);
 
         // At density 0.5 an emitter spawns half its particles, whatever Minecraft's Particles says.

@@ -2,7 +2,7 @@ package com.crystalgraphics.serialization.format.nbt;
 
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.serialization.CgCodecException;
-import com.crystalgraphics.serialization.format.CgFormats;
+import com.crystalgraphics.serialization.format.CgFiles;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
@@ -14,7 +14,7 @@ import java.util.regex.Pattern;
 
 /**
  * Minecraft's tags in a unit test: installed into the {@code crystalgraphics:host_formats} slot, so
- * {@link CgFormats#toNbt} and {@link CgFormats#fromNbt} run with no game, under the same rules the game's tags do
+ * {@link CgFiles#toNbt} and {@link CgFiles#fromNbt} run with no game, under the same rules the game's tags do
  * (a boolean is a byte, a list holds one kind of tag, keys are text).
  *
  * <pre>{@code
@@ -23,9 +23,9 @@ import java.util.regex.Pattern;
  * @After public void untag() { tags.close(); }
  *
  * @Test public void aCharacterSavesAsNbt() {
- *     Object tag = CgFormats.toNbt(Character.CODEC, character);
+ *     Object tag = CgFiles.toNbt(Character.CODEC, character);
  *     assertEquals("{name:\"Goku\",level:9}", CgTestTags.toSnbt(tag));
- *     assertEquals(9, CgFormats.fromNbt(Character.CODEC, tag).level);
+ *     assertEquals(9, CgFiles.fromNbt(Character.CODEC, tag).level);
  * }
  * }</pre>
  *
@@ -33,7 +33,7 @@ import java.util.regex.Pattern;
  *
  * <pre>{@code
  * Object preset = CgTestTags.parse("{style:3b,dyed:1b,colors:[I;16711680,255]}");
- * Hair hair = CgFormats.fromNbt(Hair.CODEC, preset);   // dyed reads as true
+ * Hair hair = CgFiles.fromNbt(Hair.CODEC, preset);   // dyed reads as true
  * }</pre>
  *
  * <ul>

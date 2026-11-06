@@ -6984,12 +6984,6 @@ com/crystalgraphics/gpu/CgUploads$Tier
   field public,static,final UNPACK Lcom/crystalgraphics/gpu/CgUploads$Tier;
   method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/gpu/CgUploads$Tier;
   method public,static values ()[Lcom/crystalgraphics/gpu/CgUploads$Tier;
-com/crystalgraphics/i18n/CgI18n
-  access public,final
-  extends java/lang/Object
-  method public,static language ()Ljava/lang/String;
-  method public,static translate (Ljava/lang/String;)Ljava/lang/String;
-  method public,static translate (Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
 com/crystalgraphics/i18n/CgKitStrings
   access public,final
   extends java/lang/Object
@@ -7007,6 +7001,31 @@ com/crystalgraphics/i18n/CgKitStrings$Entry
   method public,final equals (Ljava/lang/Object;)Z
   method public,final hashCode ()I
   method public,final toString ()Ljava/lang/String;
+com/crystalgraphics/job/CgHostThread
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final CLIENT Lcom/crystalgraphics/job/CgHostThread;
+  field public,static,final RENDER Lcom/crystalgraphics/job/CgHostThread;
+  field public,static,final SERVER Lcom/crystalgraphics/job/CgHostThread;
+  field public,static,final UNAVAILABLE Ljava/lang/String;
+  method public call (Ljava/util/function/Supplier;)Lcom/crystalgraphics/job/reply/CgReply;
+  method public isAvailable ()Z
+  method public isCurrent ()Z
+  method public run (Ljava/lang/Runnable;)V
+  method public,static answerThrough (Ljava/util/function/Supplier;)V
+  method public,static drainFrames ()V
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/job/CgHostThread;
+  method public,static values ()[Lcom/crystalgraphics/job/CgHostThread;
+com/crystalgraphics/job/CgHostThread$Queue
+  access public,final
+  extends java/lang/Object
+  implements com/crystalgraphics/platform/service/CgGameThreads$Binding
+  method public <init> ()V
+  method public <init> (Ljava/util/function/BooleanSupplier;)V
+  method public drain ()V
+  method public execute (Ljava/lang/Runnable;)V
+  method public isAvailable ()Z
+  method public isCurrent ()Z
 com/crystalgraphics/job/CgJob
   access public,final
   extends com/crystalgraphics/job/CgJobBase
@@ -7282,6 +7301,8 @@ com/crystalgraphics/lifecycle/CgLifecycleListener
   method public onLoad (Lcom/crystalgraphics/loading/task/CgLoadPlan;)V
   method public onPostInit ()V
   method public onPreInit ()V
+  method public onServerStarting (Ljava/lang/Object;)V
+  method public onServerStopping ()V
   method public onShutdown ()V
 com/crystalgraphics/lifecycle/CgLifecycleListener$Registry
   access public,final
@@ -12039,16 +12060,19 @@ com/crystalgraphics/serialization/CgVersionedCodec
   method public decode (Lcom/crystalgraphics/serialization/CgDynamicOps;Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
   method public encode (Lcom/crystalgraphics/serialization/CgDynamicOps;Ljava/lang/Object;)Ljava/lang/Object;
   method public from (ILjava/util/function/Consumer;)Lcom/crystalgraphics/serialization/CgVersionedCodec;
-com/crystalgraphics/serialization/format/CgFormat
+com/crystalgraphics/serialization/format/CgFileFormat
   access public,abstract,interface
   extends java/lang/Object
+  method public,abstract fromBytes (Lcom/crystalgraphics/serialization/CgCodec;[B)Ljava/lang/Object;
+  method public,abstract fromBytes (Lcom/crystalgraphics/serialization/CgCodec;[BLjava/lang/Object;)Ljava/lang/Object;
   method public,abstract read (Ljava/nio/file/Path;Lcom/crystalgraphics/serialization/CgCodec;)Ljava/lang/Object;
   method public,abstract read (Ljava/nio/file/Path;Lcom/crystalgraphics/serialization/CgCodec;Ljava/lang/Object;)Ljava/lang/Object;
+  method public,abstract toBytes (Lcom/crystalgraphics/serialization/CgCodec;Ljava/lang/Object;[B)[B
   method public,abstract write (Ljava/nio/file/Path;Lcom/crystalgraphics/serialization/CgCodec;Ljava/lang/Object;)V
-com/crystalgraphics/serialization/format/CgFormats
+com/crystalgraphics/serialization/format/CgFiles
   access public,final
   extends java/lang/Object
-  field public,static,final BINARY Lcom/crystalgraphics/serialization/format/CgFormat;
+  field public,static,final BINARY Lcom/crystalgraphics/serialization/format/CgFileFormat;
   field public,static,final JSON Lcom/crystalgraphics/serialization/format/CgTextFormat;
   field public,static,final JSONC Lcom/crystalgraphics/serialization/format/CgTextFormat;
   field public,static,final TOML Lcom/crystalgraphics/serialization/format/CgTextFormat;
@@ -12056,11 +12080,12 @@ com/crystalgraphics/serialization/format/CgFormats
   method public,static fromNbt (Lcom/crystalgraphics/serialization/CgCodec;Ljava/lang/Object;)Ljava/lang/Object;
   method public,static fromNbt (Lcom/crystalgraphics/serialization/CgCodec;Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
   method public,static nbt ()Lcom/crystalgraphics/serialization/CgDynamicOps;
-  method public,static of (Ljava/nio/file/Path;)Lcom/crystalgraphics/serialization/format/CgFormat;
+  method public,static of (Ljava/nio/file/Path;)Lcom/crystalgraphics/serialization/format/CgFileFormat;
   method public,static read (Ljava/nio/file/Path;Lcom/crystalgraphics/serialization/CgCodec;)Ljava/lang/Object;
   method public,static read (Ljava/nio/file/Path;Lcom/crystalgraphics/serialization/CgCodec;Ljava/lang/Object;)Ljava/lang/Object;
   method public,static toNbt (Lcom/crystalgraphics/serialization/CgCodec;Ljava/lang/Object;)Ljava/lang/Object;
   method public,static write (Ljava/nio/file/Path;Lcom/crystalgraphics/serialization/CgCodec;Ljava/lang/Object;)V
+  method public,static writeAtomic (Ljava/nio/file/Path;[B)V
 com/crystalgraphics/serialization/format/CgJsonOps
   access public,final
   extends java/lang/Object
@@ -12083,7 +12108,7 @@ com/crystalgraphics/serialization/format/CgJsonOps
 com/crystalgraphics/serialization/format/CgTextFormat
   access public,abstract,interface
   extends java/lang/Object
-  implements com/crystalgraphics/serialization/format/CgFormat
+  implements com/crystalgraphics/serialization/format/CgFileFormat
   method public,abstract fromText (Lcom/crystalgraphics/serialization/CgCodec;Ljava/lang/String;)Ljava/lang/Object;
   method public,abstract fromText (Lcom/crystalgraphics/serialization/CgCodec;Ljava/lang/String;Ljava/lang/Object;)Ljava/lang/Object;
   method public,abstract toText (Lcom/crystalgraphics/serialization/CgCodec;Ljava/lang/Object;)Ljava/lang/String;
@@ -13080,6 +13105,228 @@ com/crystalgraphics/shape/query/CgShapes
   method public,static distance (Lcom/crystalgraphics/shape/CgShape;Lcom/crystalgraphics/shape/CgPose;Lcom/crystalgraphics/shape/CgShape;Lcom/crystalgraphics/shape/CgPose;)D
   method public,static overlaps (Lcom/crystalgraphics/shape/CgShape;Lcom/crystalgraphics/shape/CgPose;Lcom/crystalgraphics/shape/CgShape;Lcom/crystalgraphics/shape/CgPose;)Z
   method public,static overlaps (Lcom/crystalgraphics/shape/CgShape;Lcom/crystalgraphics/shape/CgPose;Lcom/crystalgraphics/shape/bounds/CgAABBc;)Z
+com/crystalgraphics/storage/cache/CgCacheFiles
+  access public,final
+  extends java/lang/Object
+  method public,static digestOf (Ljava/nio/file/Path;)Ljava/lang/String;
+  method public,static gitBlobSha1 (Ljava/nio/file/Path;)Ljava/lang/String;
+  method public,static install (Ljava/nio/file/Path;Ljava/io/InputStream;Ljava/lang/String;)Z
+  method public,static install (Ljava/nio/file/Path;Ljava/io/InputStream;Ljava/lang/String;Z)Z
+  method public,static isValid (Ljava/nio/file/Path;Ljava/lang/String;)Z
+  method public,static partOf (Ljava/nio/file/Path;)Ljava/nio/file/Path;
+  method public,static partialSize (Ljava/nio/file/Path;)J
+  method public,static sha1Of (Ljava/nio/file/Path;)Ljava/lang/String;
+com/crystalgraphics/storage/cache/CgTarArchive
+  access public,final
+  extends java/lang/Object
+  implements java/io/Closeable
+  method public close ()V
+  method public next ()Lcom/crystalgraphics/storage/cache/CgTarArchive$Entry;
+  method public read ()[B
+  method public,static gzip (Ljava/io/InputStream;)Lcom/crystalgraphics/storage/cache/CgTarArchive;
+com/crystalgraphics/storage/cache/CgTarArchive$Entry
+  access public,final
+  extends java/lang/Object
+  method public isFile ()Z
+  method public name ()Ljava/lang/String;
+  method public size ()J
+com/crystalgraphics/storage/config/CgConfigStorage
+  access public,abstract,interface
+  extends java/lang/Object
+  method public directory ()Ljava/nio/file/Path;
+  method public isWritable ()Z
+  method public read (Ljava/lang/String;)Ljava/lang/String;
+  method public read (Ljava/lang/String;Lcom/crystalgraphics/serialization/CgCodec;)Ljava/lang/Object;
+  method public read (Ljava/lang/String;Lcom/crystalgraphics/serialization/CgCodec;Ljava/lang/Object;)Ljava/lang/Object;
+  method public scoped (Ljava/lang/String;)Lcom/crystalgraphics/storage/config/CgConfigStorage;
+  method public write (Ljava/lang/String;Lcom/crystalgraphics/serialization/CgCodec;Ljava/lang/Object;)V
+  method public write (Ljava/lang/String;Ljava/lang/String;)V
+  method public,abstract delete (Ljava/lang/String;)V
+  method public,abstract list ()Ljava/util/List;
+  method public,abstract readBytes (Ljava/lang/String;)[B
+  method public,abstract writeBytes (Ljava/lang/String;[B)V
+  method public,static formatOf (Ljava/lang/String;)Lcom/crystalgraphics/serialization/format/CgFileFormat;
+com/crystalgraphics/storage/config/CgInMemoryConfigStorage
+  access public,final
+  extends java/lang/Object
+  implements com/crystalgraphics/storage/config/CgConfigStorage
+  method public <init> ()V
+  method public delete (Ljava/lang/String;)V
+  method public isWritable ()Z
+  method public list ()Ljava/util/List;
+  method public readBytes (Ljava/lang/String;)[B
+  method public setWritable (Z)Lcom/crystalgraphics/storage/config/CgInMemoryConfigStorage;
+  method public writeBytes (Ljava/lang/String;[B)V
+com/crystalgraphics/storage/config/CgLocalConfigStorage
+  access public,final
+  extends java/lang/Object
+  implements com/crystalgraphics/storage/config/CgConfigStorage
+  method public <init> (Ljava/nio/file/Path;)V
+  method public delete (Ljava/lang/String;)V
+  method public directory ()Ljava/nio/file/Path;
+  method public isWritable ()Z
+  method public list ()Ljava/util/List;
+  method public readBytes (Ljava/lang/String;)[B
+  method public scoped (Ljava/lang/String;)Lcom/crystalgraphics/storage/config/CgConfigStorage;
+  method public writeBytes (Ljava/lang/String;[B)V
+com/crystalgraphics/storage/config/CgScopedConfigStorage
+  access public,final
+  extends java/lang/Object
+  implements com/crystalgraphics/storage/config/CgConfigStorage
+  method public delete (Ljava/lang/String;)V
+  method public directory ()Ljava/nio/file/Path;
+  method public isWritable ()Z
+  method public list ()Ljava/util/List;
+  method public readBytes (Ljava/lang/String;)[B
+  method public writeBytes (Ljava/lang/String;[B)V
+com/crystalgraphics/storage/download/CgDownload
+  access public,final
+  extends java/lang/Object
+  implements java/io/Closeable
+  method public close ()V
+  method public length ()J
+  method public resumed ()Z
+  method public stream ()Ljava/io/InputStream;
+  method public url ()Ljava/lang/String;
+com/crystalgraphics/storage/download/CgDownloadLocations
+  access public,final
+  extends java/lang/Object
+  field public,static,final STALE_AFTER_MILLIS J
+  method public find (Ljava/lang/String;)Lcom/crystalgraphics/storage/download/CgDownloadLocations$Location;
+  method public idsUnder (Ljava/lang/String;)Ljava/util/List;
+  method public lists (Ljava/lang/String;)Z
+  method public pinOf (Ljava/lang/String;)Ljava/lang/String;
+  method public refresh ()Z
+  method public refreshIfStale ()V
+  method public useCacheRoot (Ljava/nio/file/Path;)V
+  method public,static listing (Ljava/lang/String;)Lcom/crystalgraphics/storage/download/CgDownloadLocations$Listing;
+  method public,static of (Lcom/crystalgraphics/storage/download/CgDownloadLocations$Source;)Lcom/crystalgraphics/storage/download/CgDownloadLocations;
+  method public,static of (Ljava/lang/String;Ljava/lang/String;Ljava/nio/file/Path;Z)Lcom/crystalgraphics/storage/download/CgDownloadLocations;
+com/crystalgraphics/storage/download/CgDownloadLocations$Line
+  access public,final,record
+  extends java/lang/Record
+  method public <init> (Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/util/List;Ljava/lang/String;Z)V
+  method public digest ()Ljava/lang/String;
+  method public id ()Ljava/lang/String;
+  method public mirrorFile ()Ljava/lang/String;
+  method public template ()Z
+  method public upstream ()Ljava/util/List;
+  method public urls ()Ljava/util/List;
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
+com/crystalgraphics/storage/download/CgDownloadLocations$Listing
+  access public,final,record
+  extends java/lang/Record
+  method public <init> (Ljava/util/List;Ljava/util/Map;Ljava/util/List;Lcom/crystalgraphics/storage/download/CgDownloadLocations$Mirror;)V
+  method public lines ()Ljava/util/List;
+  method public mirror ()Lcom/crystalgraphics/storage/download/CgDownloadLocations$Mirror;
+  method public repositories ()Ljava/util/Map;
+  method public self ()Ljava/util/List;
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
+com/crystalgraphics/storage/download/CgDownloadLocations$Location
+  access public,final,record
+  extends java/lang/Record
+  method public <init> (Ljava/lang/String;Ljava/lang/String;Ljava/util/List;)V
+  method public digest ()Ljava/lang/String;
+  method public id ()Ljava/lang/String;
+  method public urls ()Ljava/util/List;
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
+com/crystalgraphics/storage/download/CgDownloadLocations$Mirror
+  access public,final,record
+  extends java/lang/Record
+  method public <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;)V
+  method public github ()Ljava/lang/String;
+  method public licenceOf (Ljava/lang/String;)Ljava/lang/String;
+  method public licences ()Ljava/util/Map;
+  method public release ()Ljava/lang/String;
+  method public repository ()Ljava/lang/String;
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
+com/crystalgraphics/storage/download/CgDownloadLocations$Source
+  access public,final,record
+  extends java/lang/Record
+  method public <init> (Ljava/lang/String;Ljava/lang/Class;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/function/Supplier;)V
+  method public anchor ()Ljava/lang/Class;
+  method public defaultCacheRoot ()Ljava/util/function/Supplier;
+  method public name ()Ljava/lang/String;
+  method public overrideProperty ()Ljava/lang/String;
+  method public remoteProperty ()Ljava/lang/String;
+  method public resource ()Ljava/lang/String;
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
+com/crystalgraphics/storage/download/CgDownloadTool
+  access public,final
+  extends java/lang/Object
+  method public,static main ([Ljava/lang/String;)V
+com/crystalgraphics/storage/download/CgDownloads
+  access public,final
+  extends java/lang/Object
+  field public,static,final ATTEMPTS I
+  field public,static,final LOCATIONS Lcom/crystalgraphics/storage/download/CgDownloadLocations;
+  field public,static,final RETRY_BACKOFF_MILLIS J
+  field public,static,final TIMEOUT_MILLIS I
+  method public,static batch (Ljava/util/List;)Lcom/crystalgraphics/storage/download/CgDownloads$Batch;
+  method public,static describe (Ljava/lang/Throwable;)Ljava/lang/String;
+  method public,static fetch (Ljava/lang/String;)Lcom/crystalgraphics/storage/download/CgDownloads$Body;
+  method public,static fetch (Ljava/lang/String;J)Lcom/crystalgraphics/storage/download/CgDownloads$Body;
+  method public,static from (Ljava/lang/String;)Lcom/crystalgraphics/storage/download/CgDownloads$Request;
+  method public,static lengthOf (Ljava/lang/String;)J
+  method public,static located (Lcom/crystalgraphics/storage/download/CgDownloadLocations;Ljava/lang/String;)Lcom/crystalgraphics/storage/download/CgDownloads$Request;
+  method public,static located (Ljava/lang/String;)Lcom/crystalgraphics/storage/download/CgDownloads$Request;
+  method public,static open (Ljava/lang/String;)Ljava/io/InputStream;
+com/crystalgraphics/storage/download/CgDownloads$Artifact
+  access public,final,record
+  extends java/lang/Record
+  method public <init> (Ljava/lang/String;Lcom/crystalgraphics/storage/download/CgDownloads$Request;)V
+  method public fileName ()Ljava/lang/String;
+  method public request ()Lcom/crystalgraphics/storage/download/CgDownloads$Request;
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
+com/crystalgraphics/storage/download/CgDownloads$Batch
+  access public,final
+  extends java/lang/Object
+  method public cancelledWhen (Ljava/util/function/BooleanSupplier;)Lcom/crystalgraphics/storage/download/CgDownloads$Batch;
+  method public into (Ljava/nio/file/Path;)Lcom/crystalgraphics/storage/download/CgDownloads$Batch$Result;
+  method public named (Ljava/lang/String;)Lcom/crystalgraphics/storage/download/CgDownloads$Batch;
+  method public reporting (Lcom/crystalgraphics/job/progress/CgProgress;)Lcom/crystalgraphics/storage/download/CgDownloads$Batch;
+com/crystalgraphics/storage/download/CgDownloads$Batch$Result
+  access public,final,record
+  extends java/lang/Record
+  method public <init> (IILjava/lang/String;Z)V
+  method public cancelled ()Z
+  method public complete ()Z
+  method public failure ()Ljava/lang/String;
+  method public installed ()I
+  method public toString ()Ljava/lang/String;
+  method public total ()I
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+com/crystalgraphics/storage/download/CgDownloads$Body
+  access public,final
+  extends java/lang/Object
+  implements java/io/Closeable
+  method public close ()V
+  method public length ()J
+  method public resumed ()Z
+  method public stream ()Ljava/io/InputStream;
+com/crystalgraphics/storage/download/CgDownloads$Request
+  access public,final
+  extends java/lang/Object
+  method public cancelledWhen (Ljava/util/function/BooleanSupplier;)Lcom/crystalgraphics/storage/download/CgDownloads$Request;
+  method public digest ()Ljava/lang/String;
+  method public into (Ljava/nio/file/Path;)Z
+  method public named (Ljava/lang/String;)Lcom/crystalgraphics/storage/download/CgDownloads$Request;
+  method public open ()Lcom/crystalgraphics/storage/download/CgDownload;
+  method public reporting (Lcom/crystalgraphics/job/progress/CgProgress;)Lcom/crystalgraphics/storage/download/CgDownloads$Request;
+  method public verifying (Ljava/lang/String;)Lcom/crystalgraphics/storage/download/CgDownloads$Request;
 com/crystalgraphics/tag/CgGameplayTag
   access public,final
   extends java/lang/Object
@@ -13303,7 +13550,6 @@ com/crystalgraphics/text/cache/CgFontRegistry
   method public getDecorationWhiteTexel (Lcom/crystalgraphics/api/font/CgFontKey;IZ)Lcom/crystalgraphics/text/atlas/CgGlyphAtlas$WhiteTexel;
   method public getPendingAsyncGlyphCount ()I
   method public getResolvedMsdfConfig (Lcom/crystalgraphics/api/font/CgFontKey;)Lcom/crystalgraphics/text/msdf/CgMsdfAtlasConfig;
-  method public isWarming ()Z
   method public maxShadowCellPx ()I
   method public maxStrokeWidthEm (Lcom/crystalgraphics/api/font/CgFont;)F
   method public maxStrokeWidthEm (Lcom/crystalgraphics/api/font/CgFontFamily;)F
@@ -19531,6 +19777,8 @@ com/crystalgraphics/world/CgPlayers
   access public,final
   extends java/lang/Object
   method public,static idOf (Ljava/lang/Object;)Ljava/util/UUID;
+  method public,static isOperator (Ljava/lang/String;)Z
+  method public,static isOwner (Ljava/lang/String;)Z
   method public,static local ()Ljava/lang/Object;
   method public,static player (I)Ljava/lang/Object;
   method public,static player (Ljava/util/UUID;)Ljava/lang/Object;

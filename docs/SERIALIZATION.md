@@ -49,9 +49,9 @@ public final class Character {
             .build();
 }
 
-tag.put("Character", CgFormats.toNbt(Character.CODEC, character));           // inside an entity's NBT
-CgFormats.fromNbt(Character.CODEC, tag.get("Character"), character);       // loaded into the live one
-CgFormats.TOML.write(file, Character.CODEC, character);                    // a file a person edits
+tag.put("Character", CgFiles.toNbt(Character.CODEC, character));           // inside an entity's NBT
+CgFiles.fromNbt(Character.CODEC, tag.get("Character"), character);       // loaded into the live one
+CgFiles.TOML.write(file, Character.CODEC, character);                    // a file a person edits
 CgMessage<Character> SHOW = CgMessage.toClients("mymod:show", Character.CODEC);   // the wire
 ```
 
@@ -63,7 +63,7 @@ CgMessage<Character> SHOW = CgMessage.toClients("mymod:show", Character.CODEC); 
 | **Every port rewrites the NBT code** | `getInt`, `getAllKeys`, `NBTTagCompound`, `func_150296_c`: renamed across versions | your codec never names a tag; each version's spelling is CrystalGraphics' |
 | **Keys typed twice** | the save writes `"Level"`, the load reads `"level"`, nothing notices | `CgCodecs.object` declares each field once, for both directions |
 | **A reload breaks references** | a new object is made, and every screen holding the old one shows stale data | decode into the live object: everything holding it sees the new values |
-| **Hand-edited config files** | a parser of your own, or Gson's reflection guessing your fields | `CgFormats.TOML`, `YAML` or `JSON` with the same codec; missing keys keep their defaults, and a person's comments survive the mod writing the file |
+| **Hand-edited config files** | a parser of your own, or Gson's reflection guessing your fields | `CgFiles.TOML`, `YAML` or `JSON` with the same codec; missing keys keep their defaults, and a person's comments survive the mod writing the file |
 | **An old save after a change** | a migration written by hand, or saves that stop loading | `CgCodecs.versioned`: each old version's steps run before today's codec reads it |
 | **A crash mid-save** | half a file, and a corrupted world folder | written beside the old file, then moved over it in one step |
 | **Testing** | launch the game to see whether a save loads | a codec runs in a plain JUnit test, NBT included (`CgTestTags`) |
@@ -94,11 +94,11 @@ takes a codec from this page.
 | **Codec** | How a value of one Java type is written and read. Says what keys it has and each one's codec; nothing about bytes or files. | `CgCodec`, `CgCodecs` |
 | **Record codec** | A record's codec, declared as its keys and its constructor. | `CgCodecs.record` |
 | **Format** | What the value becomes: the wire's plain tree, JSON, TOML, YAML, NBT. A codec works with every one. | `CgDynamicOps` |
-| **Ops** | A format's handful of primitives: make a string, read a number, build a map. A codec talks only to these. | `CgPlainOps`, `CgJsonOps`, `CgFormats.nbt()` |
+| **Ops** | A format's handful of primitives: make a string, read a number, build a map. A codec talks only to these. | `CgPlainOps`, `CgJsonOps`, `CgFiles.nbt()` |
 | **Tree** | A value in a format before it is bytes: maps, lists, strings, numbers. | — |
 | **Object codec** | A codec for a mutable class, each field declared once with how to read and set it. | `CgObjectCodec` |
 | **Target** | An object that already exists, decoded into in place instead of making a new one. | `decode(ops, in, target)` |
-| **File format** | Where a tree is stored: a compressed binary file, a JSON, TOML or YAML file. | `CgFormats.BINARY`, `JSON`, `TOML`, `YAML` |
+| **File format** | Where a tree is stored: a compressed binary file, a JSON, TOML or YAML file. | `CgFiles.BINARY`, `JSON`, `TOML`, `YAML` |
 
 How they fit together:
 
@@ -108,7 +108,7 @@ How they fit together:
                                          CgJsonOps    (JSON)
                                          plain + TOML (TOML)
                                          plain + YAML (YAML)
-                                         CgFormats.nbt() (Minecraft's tags)
+                                         CgFiles.nbt() (Minecraft's tags)
 ```
 
 ---
@@ -125,8 +125,8 @@ public record Spell(String name, int cost) {
             Spell::new);
 }
 
-CgFormats.write(file, Spell.CODEC, spell);          // a compressed file of your own
-Spell back = CgFormats.read(file, Spell.CODEC);     // null when there is no file yet
+CgFiles.write(file, Spell.CODEC, spell);          // a compressed file of your own
+Spell back = CgFiles.read(file, Spell.CODEC);     // null when there is no file yet
 ```
 
 ### A settings object, hand-edited
@@ -143,8 +143,8 @@ public final class Settings {
 }
 
 Path file = configDir.resolve("mymod.toml");
-Settings settings = CgFormats.TOML.read(file, Settings.CODEC);   // null on first run
-if (settings == null) CgFormats.TOML.write(file, Settings.CODEC, settings = new Settings());
+Settings settings = CgFiles.TOML.read(file, Settings.CODEC);   // null on first run
+if (settings == null) CgFiles.TOML.write(file, Settings.CODEC, settings = new Settings());
 ```
 
 ### Inside an entity's NBT
@@ -152,11 +152,11 @@ if (settings == null) CgFormats.TOML.write(file, Settings.CODEC, settings = new 
 ```java
 @Override protected void addAdditionalSaveData(CompoundTag tag) {
     super.addAdditionalSaveData(tag);
-    tag.put("Spells", CgFormats.toNbt(SPELLS, this.spells));
+    tag.put("Spells", CgFiles.toNbt(SPELLS, this.spells));
 }
 @Override protected void readAdditionalSaveData(CompoundTag tag) {
     super.readAdditionalSaveData(tag);
-    if (tag.contains("Spells")) this.spells = CgFormats.fromNbt(SPELLS, tag.get("Spells"));
+    if (tag.contains("Spells")) this.spells = CgFiles.fromNbt(SPELLS, tag.get("Spells"));
 }
 static final CgCodec<List<Spell>> SPELLS = CgCodecs.listOf(Spell.CODEC);
 ```
@@ -332,7 +332,7 @@ public <T> void readState(CgStateMap<T> in) {
 |---|---|---|
 | What it is | a description of a type, a constant | a bag filled for one value, then thrown away |
 | A missing key | throws, or reads the fallback you declared | always reads the default you pass |
-| Files, NBT, the wire | `CgFormats`, `toNbt`, `CgMessage` take it directly | gives a tree (`encode()`) to whatever asked for it |
+| Files, NBT, the wire | `CgFiles`, `toNbt`, `CgMessage` take it directly | gives a tree (`encode()`) to whatever asked for it |
 | Comments, versions, decoding into a live object | yes | no |
 
 **Which do I use?**
@@ -473,8 +473,8 @@ holder.title = CgCodecs.STRING.decode(ops, in, holder.title);    // a string: th
 - **A codec you write by hand** decodes anew into a target unless it overrides `decode(ops, in, target)`; if it does,
   it answers the target.
 
-Every way in has the target form: `CgFormats.read(file, codec, target)`, `CgFormat.read(...)`,
-`CgTextFormat.fromText(codec, text, target)`, `CgFormats.fromNbt(codec, tag, target)`.
+Every way in has the target form: `CgFiles.read(file, codec, target)`, `CgFileFormat.read(...)`,
+`CgTextFormat.fromText(codec, text, target)`, `CgFiles.fromNbt(codec, tag, target)`.
 
 ---
 
@@ -482,29 +482,29 @@ Every way in has the target form: `CgFormats.read(file, codec, target)`, `CgForm
 
 | Format | Use it for | What it is |
 |---|---|---|
-| `CgFormats.BINARY` | your mod's own data: player files, caches, anything a person does not open | the wire's binary format, gzipped. Smallest and fastest |
-| `CgFormats.JSON` | data packs, exports, files a tool reads | pretty-printed JSON, through Gson (every Minecraft ships it) |
-| `CgFormats.TOML` | **config files players edit** | TOML 1.0, what Forge and NeoForge configs are: `[sections]` of `key = value`, no indentation to get wrong |
-| `CgFormats.YAML` | hand-edited data that nests deeply: lists of maps, presets | block-style YAML, through SnakeYAML (CrystalGraphics carries it) |
-| `CgFormats.JSONC` | a JSON-shaped file people edit and want to explain | JSON with `//` comments and trailing commas, as VS Code's `settings.json`. `.jsonc` |
+| `CgFiles.BINARY` | your mod's own data: player files, caches, anything a person does not open | the wire's binary format, gzipped. Smallest and fastest |
+| `CgFiles.JSON` | data packs, exports, files a tool reads | pretty-printed JSON, through Gson (every Minecraft ships it) |
+| `CgFiles.TOML` | **config files players edit** | TOML 1.0, what Forge and NeoForge configs are: `[sections]` of `key = value`, no indentation to get wrong |
+| `CgFiles.YAML` | hand-edited data that nests deeply: lists of maps, presets | block-style YAML, through SnakeYAML (CrystalGraphics carries it) |
+| `CgFiles.JSONC` | a JSON-shaped file people edit and want to explain | JSON with `//` comments and trailing commas, as VS Code's `settings.json`. `.jsonc` |
 
 **Which for a config?** TOML. Players already know it from every other mod's config, a stray space cannot break it,
 and its values say their type: `language = "no"` is text, where YAML reads an unquoted `no` as `false`.
 
 **Why is JSON strict?** JSON has no comments: a `.json` file with one is rejected by strict readers, and data packs and
-tools are exactly those. So `CgFormats.JSON` writes none, and `CgFormats.JSONC` writes `.jsonc` files with them.
+tools are exactly those. So `CgFiles.JSON` writes none, and `CgFiles.JSONC` writes `.jsonc` files with them.
 
 ```java
-CgFormats.write(file, Data.CODEC, data);                  // BINARY, the shorthand
-Data data = CgFormats.read(file, Data.CODEC);             // null when there is no file
-CgFormats.read(file, Data.CODEC, live);                   // into a live object; no file leaves it as it is
+CgFiles.write(file, Data.CODEC, data);                  // BINARY, the shorthand
+Data data = CgFiles.read(file, Data.CODEC);             // null when there is no file
+CgFiles.read(file, Data.CODEC, live);                   // into a live object; no file leaves it as it is
 
-CgFormats.TOML.write(config, Settings.CODEC, settings);
-CgFormats.JSON.read(export, Settings.CODEC);
-CgFormats.of(file).read(file, Settings.CODEC);            // by name: .json, .toml, .yml/.yaml, anything else binary
+CgFiles.TOML.write(config, Settings.CODEC, settings);
+CgFiles.JSON.read(export, Settings.CODEC);
+CgFiles.of(file).read(file, Settings.CODEC);            // by name: .json, .toml, .yml/.yaml, anything else binary
 
-String text = CgFormats.TOML.toText(Settings.CODEC, settings);    // text, not a file
-Settings back = CgFormats.TOML.fromText(Settings.CODEC, text);
+String text = CgFiles.TOML.toText(Settings.CODEC, settings);    // text, not a file
+Settings back = CgFiles.TOML.fromText(Settings.CODEC, text);
 ```
 
 One value in each, as `Settings` writes it, which a person may then edit, comment and cut down:
@@ -539,7 +539,11 @@ skills:
   field is not written. A date or time a person types reads as its text.
 - **A YAML file builds maps, lists and scalars only**: a `!!java.io.File`-style tag is refused, never instantiated.
 - **SnakeYAML is relocated inside CrystalGraphics' jar.** Never import `org.yaml` in your mod: in game it is not at
-  that name. Use `CgFormats.YAML`. TOML needs no library.
+  that name. Use `CgFiles.YAML`. TOML needs no library.
+
+**Files of a product's own** (a player's shelf, a session, per-project state) are better kept through a
+[`CgConfigStorage`](STORAGE.md): the same formats picked by the name's extension, scoped, on the product's layout, and
+in memory in tests. Reach for `CgFiles` on a `Path` when you already hold one.
 
 ### A config file people edit, with comments
 
@@ -566,8 +570,8 @@ public final class ModConfig {
 
 // at startup: load what is there, then write it back, so a new key appears with its comment
 Path file = configDir.resolve("mymod.toml");
-ModConfig config = CgFormats.TOML.read(file, ModConfig.CODEC, new ModConfig());
-CgFormats.TOML.write(file, ModConfig.CODEC, config);
+ModConfig config = CgFiles.TOML.read(file, ModConfig.CODEC, new ModConfig());
+CgFiles.TOML.write(file, ModConfig.CODEC, config);
 ```
 
 The first run writes:
@@ -630,13 +634,13 @@ The next time the mod writes the file, **everything the player wrote stays**: `q
 
 ## 7. Minecraft's NBT
 
-Minecraft's own containers (an entity's saved data, a block entity's, an item's) take only its tags. `CgFormats` turns
+Minecraft's own containers (an entity's saved data, a block entity's, an item's) take only its tags. `CgFiles` turns
 any codec's value into them and back, on every version, so your mod writes no NBT code.
 
 ```java
-tag.put("character", CgFormats.toNbt(Character.CODEC, character));            // typed as put takes it
-Character character = CgFormats.fromNbt(Character.CODEC, tag.get("character"));
-CgFormats.fromNbt(Character.CODEC, tag.get("character"), this.character);     // into the live one
+tag.put("character", CgFiles.toNbt(Character.CODEC, character));            // typed as put takes it
+Character character = CgFiles.fromNbt(Character.CODEC, tag.get("character"));
+CgFiles.fromNbt(Character.CODEC, tag.get("character"), this.character);     // into the live one
 ```
 
 - **`toNbt` answers the type you assign it to** (`Tag`, `CompoundTag`, `NBTBase`): no cast. Asking for a kind it
@@ -649,7 +653,7 @@ CgFormats.fromNbt(Character.CODEC, tag.get("character"), this.character);     //
 - **NBT exists only inside Minecraft.** In the harness, `toNbt` throws, naming the `crystalgraphics:host_formats`
   slot. A test installs `CgTestTags` for it (§10).
 
-Use NBT only where Minecraft owns the container. Your mod's own files are better as `CgFormats.BINARY`: smaller,
+Use NBT only where Minecraft owns the container. Your mod's own files are better as `CgFiles.BINARY`: smaller,
 faster, and no NBT rules.
 
 How each version spells its tags, and how that is proven: `docs/MINECRAFT_INTEGRATION.md` § *Saving and NBT*.
@@ -665,7 +669,7 @@ something else wants the tree rather than bytes.
 |---|---|---|
 | `CgPlainOps.INSTANCE` | JDK maps, lists, strings, boxed numbers, `byte[]` | the wire and binary files; tests |
 | `CgJsonOps.INSTANCE` | Gson's `JsonElement` | anything that already speaks Gson |
-| `CgFormats.nbt()` | Minecraft's tags, as `Object` | a codec read or written into NBT by hand |
+| `CgFiles.nbt()` | Minecraft's tags, as `Object` | a codec read or written into NBT by hand |
 
 ```java
 JsonElement json = Settings.CODEC.encode(CgJsonOps.INSTANCE, settings);
@@ -711,8 +715,8 @@ public static final CgCodec<Character> CODEC = ...;
 public static final CgCodec<Character> SAVED = CgCodecs.versioned(2, CODEC)
         .from(1, tree -> tree.rename("Level", "level"));
 
-CgFormats.write(file, SAVED, character);        // writes "_v": 2 before the codec's keys
-Character back = CgFormats.read(file, SAVED);   // an old save runs the step first
+CgFiles.write(file, SAVED, character);        // writes "_v": 2 before the codec's keys
+Character back = CgFiles.read(file, SAVED);   // an old save runs the step first
 ```
 
 **Each later change raises the version and adds a step**, never edits one already released: a player may be coming
@@ -790,7 +794,7 @@ is the only copy of their data. Load something else and keep it:
 ```java
 ModData data;
 try {
-    data = CgFormats.read(file, ModData.SAVED);
+    data = CgFiles.read(file, ModData.SAVED);
 } catch (CgCodecException newerOrBroken) {
     LOGGER.error("mymod: {} could not be read ({}); leaving it as it is", file, newerOrBroken.getMessage());
     data = new ModData();
@@ -822,13 +826,13 @@ A codec runs in a plain JUnit test, no Minecraft:
 @Test public void aConfigFileLoads() throws IOException {
     Path file = folder.newFile("mymod.yml").toPath();
     Files.write(file, "volume: 0.5\n".getBytes(StandardCharsets.UTF_8));
-    assertEquals(0.5f, CgFormats.YAML.read(file, Settings.CODEC).volume, 0f);
+    assertEquals(0.5f, CgFiles.YAML.read(file, Settings.CODEC).volume, 0f);
 }
 ```
 
 - Run a codec through `CgPlainOps`, `CgJsonOps` and a file: three formats, one codec, and a codec that secretly
   depends on one format shows itself.
-- **NBT in a test**: install `CgTestTags`. `CgFormats.toNbt` and `fromNbt` then work in a plain JUnit test, under
+- **NBT in a test**: install `CgTestTags`. `CgFiles.toNbt` and `fromNbt` then work in a plain JUnit test, under
   the game's own rules (a boolean is a byte, a list holds one kind of tag, keys are text), with no Minecraft.
 
   ```java
@@ -837,9 +841,9 @@ A codec runs in a plain JUnit test, no Minecraft:
   @After public void untag() { tags.close(); }                        // puts back what was there
 
   @Test public void aCharacterSavesAsNbt() {
-      Object tag = CgFormats.toNbt(Character.CODEC, character);
+      Object tag = CgFiles.toNbt(Character.CODEC, character);
       assertEquals("{name:\"Goku\",level:9}", CgTestTags.toSnbt(tag));   // what /data get would show
-      assertEquals(9, CgFormats.fromNbt(Character.CODEC, tag).level);
+      assertEquals(9, CgFiles.fromNbt(Character.CODEC, tag).level);
   }
   ```
 
@@ -853,7 +857,7 @@ A codec runs in a plain JUnit test, no Minecraft:
   ```java
   @Test public void aSaveFromBeforeTheRenameStillLoads() {
       String v1 = "{\"name\":\"Goku\",\"Level\":9}";                  // what 1.0 wrote
-      assertEquals(9, CgFormats.JSON.fromText(Character.SAVED, v1).level);
+      assertEquals(9, CgFiles.JSON.fromText(Character.SAVED, v1).level);
   }
   ```
 
@@ -883,8 +887,8 @@ not parse is replaced whole.
 
 `CgSettings` (`com.crystalgraphics.settings`) is for the options a player changes in a settings screen: each a
 number, toggle or choice with a label, a range and a default, read again while the game runs whenever the file
-changes. It is a `config/<name>.toml` written through `CgFormats.TOML`, so its comments and a player's survive the
-same way. Anything else a mod configures is a codec of its own and `CgFormats.TOML`, as in §6.
+changes. It is a `config/<name>.toml` written through `CgFiles.TOML`, so its comments and a player's survive the
+same way. Anything else a mod configures is a codec of its own and `CgFiles.TOML`, as in §6.
 
 ### A codec or a `CgStateMap`?
 
@@ -916,6 +920,6 @@ serde.
 
 ### Where is the code?
 
-`com.crystalgraphics.serialization` (codecs, records, versions), `.format` (`CgFormats`), `.format.file` (each file
+`com.crystalgraphics.serialization` (codecs, records, versions), `.format` (`CgFiles`), `.format.file` (each file
 format) and `.format.nbt` (the NBT bridge and `CgTestTags`); the package guide is
 `core/src/main/java/com/crystalgraphics/serialization/CLAUDE.md`.

@@ -25,7 +25,7 @@ import com.crystalgraphics.api.animation.CgPose;
 import com.crystalgraphics.api.mesh.CgSkeletalMesh;
 import com.crystalgraphics.asset.curve.CgRichCurve;
 import com.crystalgraphics.serialization.CgCodecs;
-import com.crystalgraphics.serialization.format.CgFormats;
+import com.crystalgraphics.serialization.format.CgFiles;
 import com.crystalgraphics.shape.bounds.CgAABB;
 
 /**
@@ -61,7 +61,7 @@ public class CgGeckoModelTest {
         try (InputStream in = CgGeckoModelTest.class.getResourceAsStream("/geckolib/geckolib-4.8.4-easings.json")) {
             text = new String(in.readAllBytes(), StandardCharsets.UTF_8);
         }
-        Map<?, ?> ref = (Map<?, ?>) CgFormats.JSON.fromText(CgCodecs.PLAIN, text);
+        Map<?, ?> ref = (Map<?, ?>) CgFiles.JSON.fromText(CgCodecs.PLAIN, text);
         int checked = 0;
         for (Object o : (List<?>) ref.get("cases")) {
             Map<?, ?> c = (Map<?, ?>) o;

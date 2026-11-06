@@ -19,7 +19,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * {@link CgDynamicOps} over Gson's tree: what {@link CgFormats#JSON} reads and writes, and a codec's value as a
+ * {@link CgDynamicOps} over Gson's tree: what {@link CgFiles#JSON} reads and writes, and a codec's value as a
  * {@code JsonElement} where something else wants one.
  *
  * <pre>{@code
@@ -42,7 +42,7 @@ public final class CgJsonOps implements CgDynamicOps<JsonElement> {
     }
 
     /**
-     * A tree built by hand as pretty-printed JSON, ending in a newline: what {@link CgFormats#JSON} writes, for a tree
+     * A tree built by hand as pretty-printed JSON, ending in a newline: what {@link CgFiles#JSON} writes, for a tree
      * no single codec made.
      *
      * <pre>{@code

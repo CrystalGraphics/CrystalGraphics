@@ -1,5 +1,6 @@
 package com.crystalgraphics.mc.modern.platform.world;
 
+import com.crystalgraphics.mc.modern.platform.CgMinecraftClient;
 import com.crystalgraphics.render.stage.CgHostEnvironment;
 import com.crystalgraphics.render.stage.CgHostView;
 import net.minecraft.client.Minecraft;
@@ -56,7 +57,7 @@ public final class EnvironmentModern {
     }
 
     public static void capture(Minecraft mc, float partialTick, CgHostView view, CgHostEnvironment out) {
-        out.clear().screen(screenOpen(mc));
+        out.clear().screen(CgMinecraftClient.screen(mc) != null);
         //? if >=1.15 {
         ClientLevel level = mc.level;
         //?} else {
@@ -159,7 +160,7 @@ public final class EnvironmentModern {
         *///?}
 
         out.camera(cameraFluid(mc), perspective(options), (float) Math.toDegrees(2.0 * Math.atan(1.0 / view.projection().m11())),
-                renderDistance(options), guiHidden(mc));
+                renderDistance(options), CgMinecraftClient.hudHidden(mc));
 
         LocalPlayer player = mc.player;
         if (player != null) {
@@ -233,23 +234,6 @@ public final class EnvironmentModern {
         return options.getEffectiveRenderDistance() * 16f;
         //?} else {
         /*return options.renderDistance * 16f;
-        *///?}
-    }
-
-    /** 26.2 moved the HUD's hidden flag and the screen onto {@code Minecraft.gui}. */
-    private static boolean guiHidden(Minecraft mc) {
-        //? if <26.2 {
-        return mc.options.hideGui;
-        //?} else {
-        /*return mc.gui.hud.isHidden();
-        *///?}
-    }
-
-    private static boolean screenOpen(Minecraft mc) {
-        //? if <26.2 {
-        return mc.screen != null;
-        //?} else {
-        /*return mc.gui.screen() != null;
         *///?}
     }
 

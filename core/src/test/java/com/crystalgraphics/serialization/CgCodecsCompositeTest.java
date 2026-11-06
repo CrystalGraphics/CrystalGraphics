@@ -1,6 +1,6 @@
 package com.crystalgraphics.serialization;
 
-import com.crystalgraphics.serialization.format.CgFormats;
+import com.crystalgraphics.serialization.format.CgFiles;
 import org.junit.Test;
 
 import java.util.ArrayList;
@@ -64,7 +64,7 @@ public class CgCodecsCompositeTest {
         Map<?, ?> tree = (Map<?, ?>) codec.encode(CgPlainOps.INSTANCE, layers);
         assertEquals(Arrays.asList("3", "-1"), new ArrayList<>(tree.keySet()));
         assertEquals(layers, throughBytes(codec, layers));
-        assertEquals(layers, CgFormats.JSON.fromText(codec, CgFormats.JSON.toText(codec, layers)));
+        assertEquals(layers, CgFiles.JSON.fromText(codec, CgFiles.JSON.toText(codec, layers)));
         Map<Object, Object> numbered = new LinkedHashMap<>();
         numbered.put(3, "outline");
         numbered.put(-1L, "base");
@@ -79,8 +79,8 @@ public class CgCodecsCompositeTest {
         tree.put("tags", Arrays.asList("hot", true));
         tree.put("inner", new LinkedHashMap<>(Map.of("name", "x")));
         assertEquals(tree, throughBytes(CgCodecs.PLAIN, tree));
-        assertEquals(tree, CgFormats.JSON.fromText(CgCodecs.PLAIN, CgFormats.JSON.toText(CgCodecs.PLAIN, tree)));
-        assertEquals(tree, CgFormats.YAML.fromText(CgCodecs.PLAIN, CgFormats.YAML.toText(CgCodecs.PLAIN, tree)));
+        assertEquals(tree, CgFiles.JSON.fromText(CgCodecs.PLAIN, CgFiles.JSON.toText(CgCodecs.PLAIN, tree)));
+        assertEquals(tree, CgFiles.YAML.fromText(CgCodecs.PLAIN, CgFiles.YAML.toText(CgCodecs.PLAIN, tree)));
         assertThrows(CgCodecException.class, () -> CgCodecs.PLAIN.encode(CgPlainOps.INSTANCE, new Object()));
     }
 

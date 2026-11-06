@@ -1,5 +1,6 @@
 package com.crystalgraphics.mc.modern.platform.world;
 
+import com.crystalgraphics.mc.modern.platform.CgMinecraftClient;
 import com.crystalgraphics.platform.world.CgHeldCamera;
 import com.crystalgraphics.platform.world.CgHostCamera;
 import com.crystalgraphics.platform.world.CgWorldBegin;
@@ -270,7 +271,7 @@ public final class HostCameraModern implements CgHostCamera {
         //?} else {
         /*savedPerspective = mc.options.thirdPersonView;
         *///?}
-        savedHud = hudHidden(mc);
+        savedHud = CgMinecraftClient.hudHidden(mc);
         hudChanged = false;
     }
 
@@ -325,8 +326,8 @@ public final class HostCameraModern implements CgHostCamera {
         /*mc.options.thirdPersonView = 0;
         *///?}
         boolean hide = HELD.hidesHud() || savedHud;
-        if (hudHidden(mc) != hide) {
-            hideHud(mc, hide);
+        if (CgMinecraftClient.hudHidden(mc) != hide) {
+            CgMinecraftClient.setHudHidden(mc, hide);
             hudChanged = true;
         }
     }
@@ -345,7 +346,7 @@ public final class HostCameraModern implements CgHostCamera {
         //?} else {
         /*mc.options.thirdPersonView = savedPerspective;
         *///?}
-        if (hudChanged && hudHidden(mc) != savedHud) hideHud(mc, savedHud);
+        if (hudChanged && CgMinecraftClient.hudHidden(mc) != savedHud) CgMinecraftClient.setHudHidden(mc, savedHud);
         hudChanged = false;
         // The keys released while held, read again from the keyboard: one still held works without a fresh press.
         KeyMapping.setAll();
@@ -377,22 +378,6 @@ public final class HostCameraModern implements CgHostCamera {
         //?} else {
         /*player.inventory.selected = slot;
         *///?}
-    }
-
-    private static boolean hudHidden(Minecraft mc) {
-        //? if >=26.2 {
-        /*return mc.gui.hud.isHidden();
-        *///?} else {
-        return mc.options.hideGui;
-        //?}
-    }
-
-    private static void hideHud(Minecraft mc, boolean hidden) {
-        //? if >=26.2 {
-        /*if (mc.gui.hud.isHidden() != hidden) mc.gui.hud.toggle();
-        *///?} else {
-        mc.options.hideGui = hidden;
-        //?}
     }
 
     /** The frame's partial tick, pause-aware, as the render call has it. */

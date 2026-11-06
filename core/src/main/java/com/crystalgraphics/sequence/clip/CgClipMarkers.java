@@ -12,7 +12,7 @@ import com.crystalgraphics.asset.tree.CgAssetException;
 import com.crystalgraphics.serialization.CgCodec;
 import com.crystalgraphics.serialization.CgCodecException;
 import com.crystalgraphics.serialization.CgCodecs;
-import com.crystalgraphics.serialization.format.CgFormats;
+import com.crystalgraphics.serialization.format.CgFiles;
 
 /**
  * A GeckoLib clip's markers as its notify sequence: each animation of a Bedrock {@code .animation.json} becomes a
@@ -142,7 +142,7 @@ public final class CgClipMarkers {
 
     private static ClipFile read(String file, String json) {
         try {
-            return CgFormats.JSON.fromText(ClipFile.CODEC, json);
+            return CgFiles.JSON.fromText(ClipFile.CODEC, json);
         } catch (CgCodecException e) {
             throw new CgAssetException(file + " is not a Bedrock animation file: " + e.getMessage());
         }

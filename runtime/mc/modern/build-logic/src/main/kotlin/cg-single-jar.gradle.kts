@@ -99,7 +99,7 @@ registerSingleJarPipeline(SingleJarSpec(
     relocations = listOf(
         "de.javagl" to "com.crystalgraphics.shadow.de.javagl",
         "com.fasterxml.jackson" to "com.crystalgraphics.shadow.com.fasterxml.jackson",
-        // CgFormats.YAML; another mod may carry its own SnakeYAML
+        // CgFiles.YAML; another mod may carry its own SnakeYAML
         "org.yaml.snakeyaml" to "com.crystalgraphics.shadow.org.yaml.snakeyaml",
     ),
 

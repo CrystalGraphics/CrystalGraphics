@@ -4,6 +4,8 @@ import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
+import com.mojang.authlib.GameProfile;
+
 import com.crystalgraphics.platform.world.CgPlayerQuery;
 
 import net.minecraft.server.MinecraftServer;
@@ -11,6 +13,9 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.Level;
+//? if >=1.21.9 {
+/*import net.minecraft.server.players.NameAndId;
+*///?}
 //? if >=1.14 {
 import net.minecraft.world.level.ChunkPos;
 //?}
@@ -71,6 +76,36 @@ public final class PlayerQueryModern implements CgPlayerQuery {
             if (player.getId() == entityId) return (V) player;
         }
         return null;
+    }
+
+    @Override
+    public boolean isOperator(String name) {
+        MinecraftServer s = server;
+        if (s == null || s.getPlayerList() == null || name == null) return false;
+        ServerPlayer player = s.getPlayerList().getPlayerByName(name);
+        // 1.21.9 asks by NameAndId.
+        //? if >=1.21.9 {
+        /*return player != null && s.getPlayerList().isOp(new NameAndId(player.getGameProfile()));
+        *///?} else {
+        return player != null && s.getPlayerList().isOp(player.getGameProfile());
+        //?}
+    }
+
+    @Override
+    public boolean isOwner(String name) {
+        MinecraftServer s = server;
+        if (s == null || name == null) return false;
+        // 1.19 made the single-player owner a profile; before it is just a name.
+        //? if >=1.21.9 {
+        /*GameProfile owner = s.getSingleplayerProfile();
+        return owner != null && owner.name() != null && owner.name().equalsIgnoreCase(name);
+        *///?} elif >=1.19 {
+        GameProfile owner = s.getSingleplayerProfile();
+        return owner != null && owner.getName() != null && owner.getName().equalsIgnoreCase(name);
+        //?} else {
+        /*String owner = s.getSingleplayerName();
+        return owner != null && owner.equalsIgnoreCase(name);
+        *///?}
     }
 
     @SuppressWarnings("unchecked")

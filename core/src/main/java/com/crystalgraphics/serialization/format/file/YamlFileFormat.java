@@ -1,6 +1,6 @@
 package com.crystalgraphics.serialization.format.file;
 
-import com.crystalgraphics.serialization.format.CgFormats;
+import com.crystalgraphics.serialization.format.CgFiles;
 
 import com.crystalgraphics.serialization.CgCodec;
 import com.crystalgraphics.serialization.CgDynamicOps;
@@ -30,7 +30,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * {@link CgFormats#YAML}: SnakeYAML over the plain tree, block style. {@link SafeConstructor} only: a file builds maps,
+ * {@link CgFiles#YAML}: SnakeYAML over the plain tree, block style. {@link SafeConstructor} only: a file builds maps,
  * lists and scalars, never a class it names.
  *
  * <p>Comments: a codec's own, made with its maps, are written above their keys, and a person's, in the file being

@@ -1,7 +1,7 @@
 package com.crystalgraphics.asset.registry;
 
 import java.io.BufferedInputStream;
-import java.io.BufferedOutputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.File;
@@ -9,7 +9,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -19,6 +18,8 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 import javax.annotation.Nullable;
+
+import com.crystalgraphics.platform.io.CgAtomicFile;
 
 import com.crystalgraphics.asset.tree.CgAssetReferences;
 import com.crystalgraphics.object.CgPropertyPath;
@@ -124,14 +125,13 @@ final class CgAssetRegistryCache {
      */
     void save(Path file) throws IOException {
         if (!changed() && Files.isRegularFile(file)) return;
-        Files.createDirectories(file.toAbsolutePath().getParent());
-        Path tmp = file.resolveSibling(file.getFileName() + ".tmp");
         List<Map.Entry<String, Record>> written = new ArrayList<>(seen.entrySet());
         for (Map.Entry<String, Record> e : records.entrySet()) {
             if (seen.containsKey(e.getKey()) || underScanned(e.getKey())) continue;
             if (Files.isRegularFile(Paths.get(e.getKey()))) written.add(e);
         }
-        try (DataOutputStream out = new DataOutputStream(new BufferedOutputStream(Files.newOutputStream(tmp)))) {
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        try (DataOutputStream out = new DataOutputStream(bytes)) {
             out.writeInt(VERSION);
             out.writeInt(written.size());
             for (Map.Entry<String, Record> e : written) {
@@ -153,7 +153,7 @@ final class CgAssetRegistryCache {
                 }
             }
         }
-        Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING);
+        CgAtomicFile.write(file, bytes.toByteArray());
     }
 
     private static List<CgAssetReferences.Reference> readReferences(DataInputStream in) throws IOException {

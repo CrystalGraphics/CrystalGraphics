@@ -23,8 +23,8 @@ import javax.annotation.Nullable;
  * made:
  *
  * <pre>{@code
- * Settings fresh = CgFormats.read(file, Settings.CODEC);      // a new one
- * CgFormats.read(file, Settings.CODEC, live);                // live itself, refreshed; whoever holds it sees it
+ * Settings fresh = CgFiles.read(file, Settings.CODEC);      // a new one
+ * CgFiles.read(file, Settings.CODEC, live);                // live itself, refreshed; whoever holds it sees it
  * }</pre>
  *
  * <ul>

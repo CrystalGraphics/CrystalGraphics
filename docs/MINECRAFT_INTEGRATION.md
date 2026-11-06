@@ -62,17 +62,17 @@ cues, a type each (`docs/VFX.md` § *Effects over the network: cues*). Hosts for
 router's correlation, timeout and cancel; a peer without the namespace answers `CgRequest.UNSUPPORTED`. Mods
 mostly push: a `CgMessage` unless the asker needs the answer.
 
-### Saving and NBT — `serialization.CgFormats`
+### Saving and NBT — `serialization.CgFiles`
 
-**A mod saves with the codecs it sends with, and writes no NBT.** Its own files are `CgFormats.write`/`read`:
+**A mod saves with the codecs it sends with, and writes no NBT.** Its own files are `CgFiles.write`/`read`:
 CrystalGraphics' binary format, compressed, in core, with no host involved. NBT comes in only where Minecraft owns the
-container (an entity's, block entity's or item's saved data), and there `CgFormats.toNbt`/`fromNbt` turn any codec's
+container (an entity's, block entity's or item's saved data), and there `CgFiles.toNbt`/`fromNbt` turn any codec's
 value into the running version's real tags and back, so `/data` reads it. Using it from a mod:
 [`docs/SERIALIZATION.md` § 7](SERIALIZATION.md#7-minecrafts-nbt).
 
 ```java
-tag.put("character", CgFormats.toNbt(Character.CODEC, character));             // typed as put takes it
-Character character = CgFormats.fromNbt(Character.CODEC, tag.get("character"));
+tag.put("character", CgFiles.toNbt(Character.CODEC, character));             // typed as put takes it
+Character character = CgFiles.fromNbt(Character.CODEC, tag.get("character"));
 ```
 
 The host answers one slot, `CgHostFormats` (`crystalgraphics:host_formats`): a dozen primitives to make, fill and read

@@ -16,7 +16,9 @@ public final class Ticks1710 {
 
     @SubscribeEvent
     public void onServerTick(TickEvent.ServerTickEvent event) {
-        if (event.phase == TickEvent.Phase.END) CgEngineLifecycle.serverTick();
+        if (event.phase != TickEvent.Phase.END) return;
+        GameThreads1710.SERVER.drain();
+        CgEngineLifecycle.serverTick();
     }
 
     @SubscribeEvent

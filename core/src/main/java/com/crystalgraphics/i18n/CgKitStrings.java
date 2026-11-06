@@ -1,5 +1,7 @@
 package com.crystalgraphics.i18n;
 
+import com.crystalgraphics.platform.service.CgI18n;
+
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryStream;

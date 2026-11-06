@@ -7,7 +7,7 @@ import com.crystalgraphics.serialization.CgCodecException;
 import com.crystalgraphics.serialization.CgCodecs;
 import com.crystalgraphics.serialization.CgDynamicOps;
 import com.crystalgraphics.serialization.CgPlainOps;
-import com.crystalgraphics.serialization.format.CgFormats;
+import com.crystalgraphics.serialization.format.CgFiles;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -112,7 +112,7 @@ public final class CgSettings {
     /** Where it is kept. */
     public synchronized Path path() {
         if (path == null) {
-            path = CgPlatform.get(CgGameDirectory.SERVICE).get().toAbsolutePath().resolve("config").resolve(name + ".toml");
+            path = CgGameDirectory.game().toAbsolutePath().resolve("config").resolve(name + ".toml");
         }
         return path;
     }
@@ -173,7 +173,7 @@ public final class CgSettings {
             return;
         }
         try {
-            CgFormats.TOML.read(file, codec, this);
+            CgFiles.TOML.read(file, codec, this);
         } catch (CgCodecException notToml) {
             keepBroken(file, notToml);
         } catch (IOException e) {
@@ -207,7 +207,7 @@ public final class CgSettings {
         dirty = false;
         Path file = path();
         try {
-            CgFormats.TOML.write(file, codec, this);
+            CgFiles.TOML.write(file, codec, this);
             seen = modified();
         } catch (IOException e) {
             warnOnce("could not write " + file, e);

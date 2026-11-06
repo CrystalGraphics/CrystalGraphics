@@ -31,7 +31,7 @@ import com.crystalgraphics.serialization.CgCodec;
 import com.crystalgraphics.serialization.CgCodecException;
 import com.crystalgraphics.serialization.CgCodecs;
 import com.crystalgraphics.serialization.CgDynamicOps;
-import com.crystalgraphics.serialization.format.CgFormats;
+import com.crystalgraphics.serialization.format.CgFiles;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 import com.crystalgraphics.variable.CgVar;
@@ -1112,7 +1112,7 @@ public final class CgNetObjects {
         Path file = file(world, type);
         List<CgNetObject> loaded;
         try {
-            loaded = CgFormats.read(file, new SavedObjects(type));
+            loaded = CgFiles.read(file, new SavedObjects(type));
         } catch (IOException | RuntimeException failed) {
             Path aside = file.resolveSibling(file.getFileName() + ".unreadable");
             LOGGER.error("[cg-net] could not read {}; moved to {}", file, aside, failed);
@@ -1149,7 +1149,7 @@ public final class CgNetObjects {
         for (CgNetObject obj : LIVE) if (obj.type == type && obj.isLive()) objects.add(obj);
         Path file = file(world, type);
         try {
-            CgFormats.write(file, new SavedObjects(type), objects);
+            CgFiles.write(file, new SavedObjects(type), objects);
             return true;
         } catch (IOException failed) {
             LOGGER.error("[cg-net] could not save {} to {}", type.name, file, failed);

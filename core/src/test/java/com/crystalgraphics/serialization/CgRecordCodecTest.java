@@ -1,6 +1,6 @@
 package com.crystalgraphics.serialization;
 
-import com.crystalgraphics.serialization.format.CgFormats;
+import com.crystalgraphics.serialization.format.CgFiles;
 import com.crystalgraphics.serialization.format.CgJsonOps;
 import org.junit.Test;
 
@@ -61,7 +61,7 @@ public class CgRecordCodecTest {
         assertEquals(tag, Tag.CODEC.decode(CgPlainOps.INSTANCE, Tag.CODEC.encode(CgPlainOps.INSTANCE, tag)));
         Wide wide = new Wide(1, 2, 3, 4, "five", true, 7.5, Arrays.asList("eight"));
         assertEquals(wide, Wide.CODEC.decode(CgPlainOps.INSTANCE, Wide.CODEC.encode(CgPlainOps.INSTANCE, wide)));
-        assertEquals(wide, CgFormats.JSON.fromText(Wide.CODEC, CgFormats.JSON.toText(Wide.CODEC, wide)));
+        assertEquals(wide, CgFiles.JSON.fromText(Wide.CODEC, CgFiles.JSON.toText(Wide.CODEC, wide)));
         Widest widest = new Widest(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, "sixteen");
         Map<?, ?> tree = (Map<?, ?>) Widest.CODEC.encode(CgPlainOps.INSTANCE, widest);
         assertArrayEquals("a flat save, in declaration order", "abcdefghijklmnop".split(""), tree.keySet().toArray());
@@ -89,9 +89,9 @@ public class CgRecordCodecTest {
         assertArrayEquals(new Object[] {"Style", "File", "Group"}, tree.keySet().toArray());
         assertEquals(known, Known.CODEC.decode(CgPlainOps.INSTANCE, tree));
         assertEquals("the inlined record's optional key", new Known("base", new Group("a.json", "idle")),
-                CgFormats.JSON.fromText(Known.CODEC, "{\"Style\":\"base\",\"File\":\"a.json\"}"));
+                CgFiles.JSON.fromText(Known.CODEC, "{\"Style\":\"base\",\"File\":\"a.json\"}"));
         assertTrue("its keys' comments come along",
-                CgFormats.YAML.toText(Known.CODEC, known).contains("# The animation file.\nFile:"));
+                CgFiles.YAML.toText(Known.CODEC, known).contains("# The animation file.\nFile:"));
         assertThrows(IllegalArgumentException.class, () -> CgCodecs.record(
                 CgCodecs.field("File", CgCodecs.STRING, Known::style), CgCodecs.inline(Group.CODEC, Known::group),
                 Known::new));
@@ -146,7 +146,7 @@ public class CgRecordCodecTest {
         Map<?, ?> tree = (Map<?, ?>) Spell.CODEC.encode(CgPlainOps.INSTANCE, plain);
         assertEquals(Collections.singleton("name"), tree.keySet());
         assertEquals(plain, Spell.CODEC.decode(CgPlainOps.INSTANCE, tree));
-        assertEquals(new Spell("ki blast", 0, null), CgFormats.JSON.fromText(Spell.CODEC, "{\"name\":\"ki blast\",\"icon\":null}"));
+        assertEquals(new Spell("ki blast", 0, null), CgFiles.JSON.fromText(Spell.CODEC, "{\"name\":\"ki blast\",\"icon\":null}"));
     }
 
     record Prop(String id, boolean exposed) {
@@ -160,7 +160,7 @@ public class CgRecordCodecTest {
     public void aFieldOrIsAlwaysWrittenAndAbsentReadsItsFallback() {
         Map<?, ?> tree = (Map<?, ?>) Prop.CODEC.encode(CgPlainOps.INSTANCE, new Prop("p", true));
         assertEquals(Boolean.TRUE, tree.get("exposed"));
-        assertEquals(new Prop("p", true), CgFormats.JSON.fromText(Prop.CODEC, "{\"id\":\"p\"}"));
+        assertEquals(new Prop("p", true), CgFiles.JSON.fromText(Prop.CODEC, "{\"id\":\"p\"}"));
     }
 
     @Test

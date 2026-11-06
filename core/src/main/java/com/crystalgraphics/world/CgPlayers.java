@@ -71,6 +71,16 @@ public final class CgPlayers {
         players().trackingEntity(entity, out);
     }
 
+    /** Whether the online player with this name may use commands as an operator. Server thread. */
+    public static boolean isOperator(String name) {
+        return players().isOperator(name);
+    }
+
+    /** Whether this name is the single-player world's owner; false on a dedicated server. Server thread. */
+    public static boolean isOwner(String name) {
+        return players().isOwner(name);
+    }
+
     private static CgPlayerQuery players() {
         return CgPlatform.get(CgPlayerQuery.SERVICE);
     }

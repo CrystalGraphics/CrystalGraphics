@@ -8,13 +8,13 @@ import java.io.IOException;
 import java.nio.file.Path;
 
 /**
- * A file format for any codec: {@link CgFormats#BINARY}, {@link CgFormats#JSON} or {@link CgFormats#YAML}.
+ * A file format for any codec: {@link CgFiles#BINARY}, {@link CgFiles#JSON} or {@link CgFiles#YAML}.
  *
  * <pre>{@code
- * CgFormats.YAML.write(file, Settings.CODEC, settings);
- * Settings settings = CgFormats.YAML.read(file, Settings.CODEC);      // null when there is no file
- * CgFormats.YAML.read(file, Settings.CODEC, live);                     // into a live object
- * CgFormats.of(file).read(file, Settings.CODEC);                       // by extension
+ * CgFiles.YAML.write(file, Settings.CODEC, settings);
+ * Settings settings = CgFiles.YAML.read(file, Settings.CODEC);      // null when there is no file
+ * CgFiles.YAML.read(file, Settings.CODEC, live);                     // into a live object
+ * CgFiles.of(file).read(file, Settings.CODEC);                       // by extension
  * }</pre>
  *
  * <ul>
@@ -23,7 +23,7 @@ import java.nio.file.Path;
  *   <li>A file that is not this format, or holds what the codec cannot read, throws {@link CgCodecException}.</li>
  * </ul>
  */
-public interface CgFormat {
+public interface CgFileFormat {
 
     /** Writes {@code value} to {@code file}, making its folders, replacing it whole. */
     <V> void write(Path file, CgCodec<V> codec, V value) throws IOException;
@@ -34,4 +34,16 @@ public interface CgFormat {
 
     /** The value in {@code file}, decoded into {@code target}; no file leaves {@code target} as it is. */
     <V> V read(Path file, CgCodec<V> codec, V target) throws IOException;
+
+    /**
+     * {@code value} as this format's bytes, for a store that is not a file. {@code previous} is what they replace, or
+     * null: a format that keeps comments carries the old file's across.
+     */
+    <V> byte[] toBytes(CgCodec<V> codec, V value, @Nullable byte[] previous) throws IOException;
+
+    /** The value in {@code bytes}. */
+    <V> V fromBytes(CgCodec<V> codec, byte[] bytes) throws IOException;
+
+    /** The value in {@code bytes}, decoded into {@code target}. */
+    <V> V fromBytes(CgCodec<V> codec, byte[] bytes, V target) throws IOException;
 }

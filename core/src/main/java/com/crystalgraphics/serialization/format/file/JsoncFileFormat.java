@@ -1,6 +1,6 @@
 package com.crystalgraphics.serialization.format.file;
 
-import com.crystalgraphics.serialization.format.CgFormats;
+import com.crystalgraphics.serialization.format.CgFiles;
 
 import com.crystalgraphics.serialization.CgCodec;
 import com.crystalgraphics.serialization.CgCodecException;
@@ -9,7 +9,7 @@ import com.crystalgraphics.serialization.CgDynamicOps;
 import javax.annotation.Nullable;
 
 /**
- * {@link CgFormats#JSONC}: JSON with comments, as VS Code's {@code settings.json}, read by {@link JsoncReader} and
+ * {@link CgFiles#JSONC}: JSON with comments, as VS Code's {@code settings.json}, read by {@link JsoncReader} and
  * written by {@link JsoncWriter}. Comments as {@link YamlFileFormat} keeps them: a codec's own above their keys, a
  * person's carried to the same key path and kept as they wrote them, theirs winning.
  *

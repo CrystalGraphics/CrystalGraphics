@@ -3,7 +3,7 @@ package com.crystalgraphics.serialization.format.nbt;
 import com.crystalgraphics.serialization.CgCodec;
 import com.crystalgraphics.serialization.CgCodecException;
 import com.crystalgraphics.serialization.CgCodecs;
-import com.crystalgraphics.serialization.format.CgFormats;
+import com.crystalgraphics.serialization.format.CgFiles;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -59,8 +59,8 @@ public class CgTestTagsTest {
         Map<String, Kind> kinds = new LinkedHashMap<>();
         kinds.put("first", Kind.BEAM);
         Sample sample = new Sample("Goku", 9, 1L << 40, 2.5, true, new byte[] {1, 2, 3}, Arrays.asList(0.5f, 1f), kinds);
-        Object tag = CgFormats.toNbt(Sample.CODEC, sample);
-        Sample back = CgFormats.fromNbt(Sample.CODEC, tag);
+        Object tag = CgFiles.toNbt(Sample.CODEC, sample);
+        Sample back = CgFiles.fromNbt(Sample.CODEC, tag);
         assertEquals(sample.s(), back.s());
         assertEquals(sample.l(), back.l());
         assertTrue(back.b());
@@ -74,14 +74,14 @@ public class CgTestTagsTest {
     @Test
     public void anEmptyMapIsAValueNotAnAbsence() {
         Owner owner = new Owner(new UUID(1, 2), Collections.emptyMap());
-        assertEquals(owner, CgFormats.fromNbt(Owner.CODEC, CgFormats.toNbt(Owner.CODEC, owner)));
+        assertEquals(owner, CgFiles.fromNbt(Owner.CODEC, CgFiles.toNbt(Owner.CODEC, owner)));
     }
 
     @Test
     public void aByteReadsAsABoolean() {
         Object preset = CgTestTags.parse("{s:\"x\",i:1,l:2L,d:0.5,b:1b,bytes:[B;],floats:[],kinds:{}}");
-        assertTrue(CgFormats.fromNbt(Sample.CODEC, preset).b());
-        assertEquals(true, CgFormats.fromNbt(CgCodecs.BOOL, CgTestTags.parse("true")));
+        assertTrue(CgFiles.fromNbt(Sample.CODEC, preset).b());
+        assertEquals(true, CgFiles.fromNbt(CgCodecs.BOOL, CgTestTags.parse("true")));
     }
 
     @Test
@@ -108,8 +108,8 @@ public class CgTestTagsTest {
     @Test
     public void closingPutsTheSlotBack() {
         tags.close();
-        assertThrows(IllegalStateException.class, () -> CgFormats.toNbt(CgCodecs.INT, 1));
+        assertThrows(IllegalStateException.class, () -> CgFiles.toNbt(CgCodecs.INT, 1));
         tags = CgTestTags.install();
-        assertEquals(1, (int) CgFormats.fromNbt(CgCodecs.INT, CgFormats.toNbt(CgCodecs.INT, 1)));
+        assertEquals(1, (int) CgFiles.fromNbt(CgCodecs.INT, CgFiles.toNbt(CgCodecs.INT, 1)));
     }
 }

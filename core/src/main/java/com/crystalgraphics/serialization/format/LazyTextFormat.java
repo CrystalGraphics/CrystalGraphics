@@ -8,7 +8,7 @@ import java.nio.file.Path;
 import java.util.function.Supplier;
 
 /**
- * A text format made on first use, so {@link CgFormats} loads where its library is missing: a dev run without
+ * A text format made on first use, so {@link CgFiles} loads where its library is missing: a dev run without
  * SnakeYAML still writes binary files and NBT, and a YAML call there names what is missing.
  */
 final class LazyTextFormat implements CgTextFormat {
@@ -50,6 +50,21 @@ final class LazyTextFormat implements CgTextFormat {
     @Override
     public <V> V read(Path file, CgCodec<V> codec, V target) throws IOException {
         return format().read(file, codec, target);
+    }
+
+    @Override
+    public <V> byte[] toBytes(CgCodec<V> codec, V value, @Nullable byte[] previous) throws IOException {
+        return format().toBytes(codec, value, previous);
+    }
+
+    @Override
+    public <V> V fromBytes(CgCodec<V> codec, byte[] bytes) throws IOException {
+        return format().fromBytes(codec, bytes);
+    }
+
+    @Override
+    public <V> V fromBytes(CgCodec<V> codec, byte[] bytes, V target) throws IOException {
+        return format().fromBytes(codec, bytes, target);
     }
 
     @Override
