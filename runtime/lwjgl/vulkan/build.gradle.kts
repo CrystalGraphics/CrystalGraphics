@@ -87,6 +87,8 @@ val stageKitPorts = tasks.register<Sync>("stageKitPorts") {
 // The natives load through System.load, which JDK 25 warns about unless native access is granted.
 tasks.test {
     jvmArgs("--enable-native-access=ALL-UNNAMED")
+    // The engine's caches (framebuffer layouts, SPIR-V) in the build folder: its root is the working directory, the module's
+    systemProperty("crystalgraphics.cache.dir", layout.buildDirectory.dir("test-cache").get().asFile.absolutePath)
     // EngineOnGLDeviceTest's measurement: -PglShaderCache=<empty dir> makes NVIDIA's shader cache cold, -PglShaderReport=<file>
     providers.gradleProperty("glShaderCache").orNull?.let { environment("__GL_SHADER_DISK_CACHE_PATH", it) }
     providers.gradleProperty("glShaderReport").orNull?.let { systemProperty("crystalgraphics.test.glShaderReport", it) }
