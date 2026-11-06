@@ -158,6 +158,8 @@ public final class TrackedBuffers {
             errors.invalidValue("glCopyBufferSubData ranges overlap");
             return;
         }
+        // GL takes an empty copy as a no-op; Vulkan refuses a zero-size region.
+        if (size == 0) return;
         to.storage.copyFrom(from.storage, readOffset, writeOffset, size);
     }
 

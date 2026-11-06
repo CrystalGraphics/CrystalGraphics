@@ -618,6 +618,12 @@ public final class CgTrackedGLBackend extends CgGLBackend {
 
     @Override
     public void glBindBufferRange(int target, int index, int buffer, long offset, long size) {
+        long align = target == CgGL.GL_UNIFORM_BUFFER ? device.globals().limits().uniformOffsetAlignment()
+                : device.globals().limits().storageOffsetAlignment();
+        if (offset < 0 || size <= 0 || offset % align != 0) {
+            errors.invalidValue("glBindBufferRange at " + offset + ", " + size + " bytes (offsets align to " + align + ")");
+            return;
+        }
         buffers.bindIndexed(target, index, buffer, offset, size);
     }
 
