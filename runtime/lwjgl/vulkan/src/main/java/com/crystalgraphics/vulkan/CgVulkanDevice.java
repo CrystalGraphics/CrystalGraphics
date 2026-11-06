@@ -145,6 +145,16 @@ import static org.lwjgl.vulkan.VK11.vkGetPhysicalDeviceProperties2;
  */
 public final class CgVulkanDevice implements CgRHI, CgImplicitLayouts, AutoCloseable {
 
+    /** {@link CgRHI#onClose}'s tasks: run first as it closes. */
+    private final List<Runnable> closing = new ArrayList<>();
+
+    @Override
+    public void onClose(Runnable task) {
+        synchronized (closing) {
+            closing.add(task);
+        }
+    }
+
     private static final Logger LOG = LogManager.getLogger("CrystalGraphics");
 
     private final CgVulkanHost host;
@@ -947,6 +957,12 @@ public final class CgVulkanDevice implements CgRHI, CgImplicitLayouts, AutoClose
     /** Waits for the GPU, keeps the pipeline cache where given one, then destroys everything still alive. Close the host after. */
     @Override
     public void close() {
+        List<Runnable> tasks;
+        synchronized (closing) {
+            tasks = new ArrayList<>(closing);
+            closing.clear();
+        }
+        for (Runnable task : tasks) task.run();
         vkDeviceWaitIdle(device);
         if (pipelineCacheFile != null) writePipelineCache();
         staging.destroy();

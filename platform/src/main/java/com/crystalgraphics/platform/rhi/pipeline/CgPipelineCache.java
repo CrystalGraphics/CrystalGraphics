@@ -17,6 +17,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.function.Predicate;
 
@@ -61,10 +62,54 @@ public final class CgPipelineCache {
     private final List<Future<CgGraphicsPipeline>> orphaned = new ArrayList<>();
     private CgPipelineRecipes recipes;
     private ExecutorService builders;
+    /** Closed with its device: no build starts. */
+    private boolean closed;
     private long misses;
 
+    /** A cache over {@code device}, closed as it closes ({@link CgRHI#onClose}). */
     public CgPipelineCache(CgRHI device) {
         this.device = device;
+        device.onClose(this::close);
+    }
+
+    /**
+     * Drains it as its device closes: no build starts, those under way finish, and every pipeline it holds is
+     * released (Unreal's {@code PipelineStateCache::Shutdown} at RHI exit). A build still running when the device
+     * goes would create on a device being destroyed.
+     */
+    public void close() {
+        ExecutorService pool;
+        synchronized (this) {
+            closed = true;
+            pool = builders;
+            builders = null;
+        }
+        if (pool != null) {
+            pool.shutdown();
+            try {
+                while (!pool.awaitTermination(10, TimeUnit.SECONDS)) LOGGER.warn("pipelines still building as the device closes");
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
+        for (CgGraphicsPipeline p : pipelines.values()) device.release(p);
+        pipelines.clear();
+        for (Future<CgGraphicsPipeline> f : ahead.values()) releaseBuilt(f);
+        ahead.clear();
+        for (Future<CgGraphicsPipeline> f : orphaned) releaseBuilt(f);
+        orphaned.clear();
+    }
+
+    /** Releases what {@code built} made, if it made anything. */
+    private void releaseBuilt(Future<CgGraphicsPipeline> built) {
+        if (!built.isDone()) return;
+        try {
+            device.release(built.get());
+        } catch (ExecutionException e) {
+            // It failed to build: nothing to release.
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     /**
@@ -102,10 +147,12 @@ public final class CgPipelineCache {
     public Map<CgGraphicsPipelineDesc, Future<CgGraphicsPipeline>> startRecorded(
             long programKey, Function<CgPipelineRecipes.Recipe, CgGraphicsPipelineDesc> describe) {
         if (programKey == 0 || !device.createsOnAnyThread() || !RECORDED.get()) return Map.of();
+        ExecutorService pool = builders();
+        if (pool == null) return Map.of();
         Map<CgGraphicsPipelineDesc, Future<CgGraphicsPipeline>> started = new HashMap<>();
         for (CgPipelineRecipes.Recipe recipe : recipes().of(programKey)) {
             CgGraphicsPipelineDesc desc = describe.apply(recipe);
-            started.put(desc, builders().submit(() -> {
+            started.put(desc, pool.submit(() -> {
                 try (CgTrace.Zone ignored = CgTrace.zone(CHANNEL, AHEAD_ZONE)) {
                     return device.createPipeline(desc);
                 }
@@ -148,13 +195,7 @@ public final class CgPipelineCache {
             Future<CgGraphicsPipeline> f = orphaned.get(i);
             if (!f.isDone()) continue;
             orphaned.remove(i);
-            try {
-                device.release(f.get());
-            } catch (ExecutionException e) {
-                // It failed to build: nothing to release.
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
+            releaseBuilt(f);
         }
     }
 
@@ -180,8 +221,9 @@ public final class CgPipelineCache {
         return recipes;
     }
 
-    /** Half the cores, from one to four: a driver compiles one pipeline a thread. */
+    /** Half the cores, from one to four: a driver compiles one pipeline a thread. Null once closed. */
     private synchronized ExecutorService builders() {
+        if (closed) return null;
         if (builders == null) {
             int n = Math.max(1, Math.min(4, Runtime.getRuntime().availableProcessors() / 2));
             builders = Executors.newFixedThreadPool(n, r -> {

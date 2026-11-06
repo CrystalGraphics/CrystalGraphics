@@ -53,6 +53,16 @@ import java.util.function.BiConsumer;
  */
 public final class CgNullRHI implements CgRHI {
 
+    /** Kept, never run: a null device has no close, and creates nothing on other threads. */
+    private final List<Runnable> closing = new ArrayList<>();
+
+    @Override
+    public void onClose(Runnable task) {
+        synchronized (closing) {
+            closing.add(task);
+        }
+    }
+
     private static final int SPIRV_MAGIC = 0x07230203;
 
     /** The smallest module a test can hand {@link #createShaderModule}: a SPIR-V header and nothing else. */

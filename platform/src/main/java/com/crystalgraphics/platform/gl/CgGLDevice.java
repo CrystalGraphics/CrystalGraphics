@@ -83,6 +83,16 @@ import static com.crystalgraphics.platform.gl.driver.GLC.*;
  */
 public final class CgGLDevice implements CgRHI {
 
+    /** {@link CgRHI#onClose}'s tasks: run first as it closes. */
+    private final List<Runnable> closing = new ArrayList<>();
+
+    @Override
+    public void onClose(Runnable task) {
+        synchronized (closing) {
+            closing.add(task);
+        }
+    }
+
     /** Frames recorded ahead of the GPU before {@link #endFrame} waits for the oldest. */
     public static final int FRAMES_IN_FLIGHT = 3;
 
@@ -499,6 +509,12 @@ public final class CgGLDevice implements CgRHI {
 
     /** Waits for the GPU and deletes everything the device made. */
     public void close() {
+        List<Runnable> tasks;
+        synchronized (closing) {
+            tasks = new ArrayList<>(closing);
+            closing.clear();
+        }
+        for (Runnable task : tasks) task.run();
         waitRetired(frame - 1);
         release(surfaceColor);
         release(surfaceDepth);

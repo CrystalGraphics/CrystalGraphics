@@ -209,6 +209,16 @@ public interface CgRHI {
     }
 
     /**
+     * Runs {@code task} first as the device closes, before anything of it is destroyed: where what makes objects on it
+     * from other threads drains (Unreal's {@code PipelineStateCache::Shutdown} at RHI exit). Any thread.
+     *
+     * <pre>{@code
+     * CgPipelineCache cache = new CgPipelineCache(device);   // registers its close: builds under way finish first
+     * }</pre>
+     */
+    void onClose(Runnable task);
+
+    /**
      * The host hands us its frame, as a host section opens. Nothing to do for a device that owns
      * its frames.
      */
