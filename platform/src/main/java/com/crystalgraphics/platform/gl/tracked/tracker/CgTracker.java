@@ -756,13 +756,22 @@ public final class CgTracker {
      * queue: {@link #beginAsync} left no pass and no clear to end.
      */
     public void toHost() {
-        if (transfer) throw new IllegalStateException("A host section ends inside a transfer");
+        toDevice();
+        device.toHost();
+    }
+
+    /**
+     * Code drawing through the device itself takes the command list ({@code CgDeviceSection}): a clear still pending
+     * is written out and our open pass ends, as for the host, but the frame stays ours. Both fronts record into the
+     * same commands; nothing is handed to the host.
+     */
+    public void toDevice() {
+        if (transfer) throw new IllegalStateException("A device section begins inside a transfer");
         if (!async) {
             flushPendingClears();
             if (pass != null) endPass();
         }
         endCompute();
-        device.toHost();
     }
 
     /** The host hands us its frame: the next draw begins a pass that loads what is there. */

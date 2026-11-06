@@ -167,10 +167,11 @@ public final class CgTrackedGLBackend extends CgGLBackend {
      */
     public CgTrackedGLBackend install() {
         CgRHI.install(device);
+        // Not a host section: ending one per section handed the host a command buffer per graph pass
         CgDeviceSection.install(new CgDeviceSection.Host() {
-            @Override public void begin() { toHost(); }
+            @Override public void begin() { tracker.toDevice(); }
 
-            @Override public void end() { fromHost(); }
+            @Override public void end() {}
         });
         CgGlslCompiler.install(compiler);
         CgGLImports.install(new CgTrackedImports(this));
