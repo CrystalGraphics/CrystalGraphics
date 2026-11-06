@@ -78,6 +78,7 @@ public final class CrystalGraphicsFabric implements VariantEntry {
             registerRenderFrame();
             registerGui();
             registerShutdown();
+            ScreenInputFabric.register();
             // The world events, once a client tick and as entities join and leave the client level.
             ClientTickEvents.END_CLIENT_TICK.register(client -> LifecycleModern.clientTick());
             ClientTickEvents.START_CLIENT_TICK.register(client -> LifecycleModern.clientTickStart());

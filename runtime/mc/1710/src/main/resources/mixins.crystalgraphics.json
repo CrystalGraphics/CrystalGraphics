@@ -11,6 +11,7 @@
   ],
   "client": [
     "client.CgRenderHook",
+    "client.MixinGuiScreen",
     "client.MixinMinecraft",
     "client.MixinRenderGlobal"
   ],

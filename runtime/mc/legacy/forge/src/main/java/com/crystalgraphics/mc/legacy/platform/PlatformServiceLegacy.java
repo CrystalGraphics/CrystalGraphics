@@ -31,6 +31,7 @@ import com.crystalgraphics.platform.service.CgProcessExit;
 import com.crystalgraphics.platform.world.CgHostShapes;
 import com.crystalgraphics.platform.world.CgLevels;
 import com.crystalgraphics.platform.service.CgGameThreads;
+import com.crystalgraphics.platform.input.CgInputStage;
 import com.crystalgraphics.platform.service.CgHostPaint;
 import com.crystalgraphics.platform.service.CgHostWindow;
 import com.crystalgraphics.platform.service.CgServers;
@@ -127,6 +128,7 @@ public final class PlatformServiceLegacy implements CgPlatformService {
         CgPlatform.provide(CgGameThreads.HOST, new GameThreadsLegacy());
         CgPlatform.provide(CgHostWindow.HOST, new HostWindowLegacy());
         CgPlatform.provide(CgHostPaint.HOST, new HostPaintLegacy());
+        CgPlatform.provide(CgInputStage.HOST, new InputHostLegacy());
         // WorldEventsLegacy polls the hurts, deaths and lightning; ExplosionHook and LevelEventHook the rest.
         CgWorldEvents.declare(CgWorldEvents.EXPLOSION | CgWorldEvents.BLOCK_BROKEN | CgWorldEvents.ENTITY_HURT
                 | CgWorldEvents.ENTITY_DIED | CgWorldEvents.LIGHTNING);
@@ -137,6 +139,10 @@ public final class PlatformServiceLegacy implements CgPlatformService {
         FMLCommonHandler.instance().bus().register(new WorldEventsLegacy.Ticks());
         FMLCommonHandler.instance().bus().register(new HostCameraLegacy.Ticks());
         MinecraftForge.EVENT_BUS.register(new OverlayStagesLegacy());
+        // Forge's bus for the screen's input events, FML's for the render tick; on 1.12 they are one, which ignores the second.
+        ScreenInputLegacy screenInput = new ScreenInputLegacy();
+        MinecraftForge.EVENT_BUS.register(screenInput);
+        FMLCommonHandler.instance().bus().register(screenInput);
         MinecraftForge.EVENT_BUS.register(new LoadingScreenLegacy());
         // The graphics start's GL-free work, begun behind mod loading rather than at the first frame
         CgEngineLifecycle.clientStarting();

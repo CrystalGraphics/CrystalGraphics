@@ -3031,6 +3031,7 @@ com/crystalgraphics/platform/gl/tracked/tracker/CgTracker
   method public target ()Lcom/crystalgraphics/platform/gl/tracked/tracker/CgTarget;
   method public textureBarrier (Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture;II)V
   method public textureBarrier (Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture;IIIIII)V
+  method public toDevice ()V
   method public toHost ()V
   method public transfer ()Lcom/crystalgraphics/platform/rhi/command/CgCommandList;
   method public waitAsync (J)V
@@ -3065,6 +3066,43 @@ com/crystalgraphics/platform/input/CgGlfwKeyCodes
   field public,static,final UNMAPPED_CG [I
   method public,static toCg (I)I
   method public,static toGlfw (I)I
+com/crystalgraphics/platform/input/CgInputListener
+  access public,abstract,interface
+  extends java/lang/Object
+  method public character (Lcom/crystalgraphics/platform/input/CgSystemInput$Keyboard$Event;)Z
+  method public composition (Ljava/lang/String;I)Z
+  method public key (Lcom/crystalgraphics/platform/input/CgSystemInput$Keyboard$Event;)Z
+  method public mouseButton (Lcom/crystalgraphics/platform/input/CgSystemInput$Mouse$Event;)Z
+  method public mouseMoved (Lcom/crystalgraphics/platform/input/CgSystemInput$Mouse$Event;)Z
+  method public scrolled (Lcom/crystalgraphics/platform/input/CgSystemInput$Mouse$Event;)Z
+  method public wants ()Z
+com/crystalgraphics/platform/input/CgInputStage
+  access public,final
+  extends java/lang/Object
+  field public,static,final HOST Lcom/crystalgraphics/platform/CgService;
+  field public,static,final SCREEN Lcom/crystalgraphics/platform/input/CgInputStage;
+  method public character (Lcom/crystalgraphics/platform/input/CgSystemInput$Keyboard$Event;)Z
+  method public composition (Ljava/lang/String;I)Z
+  method public id ()Ljava/lang/String;
+  method public key (Lcom/crystalgraphics/platform/input/CgSystemInput$Keyboard$Event;)Z
+  method public listening ()Z
+  method public mouseButton (Lcom/crystalgraphics/platform/input/CgSystemInput$Mouse$Event;)Z
+  method public mouseMoved (Lcom/crystalgraphics/platform/input/CgSystemInput$Mouse$Event;)Z
+  method public register (ILcom/crystalgraphics/platform/input/CgInputListener;)Lcom/crystalgraphics/platform/input/CgInputStage$Registration;
+  method public scrolled (Lcom/crystalgraphics/platform/input/CgSystemInput$Mouse$Event;)Z
+  method public wanted ()Z
+  method public,static define (Ljava/lang/String;)Lcom/crystalgraphics/platform/input/CgInputStage;
+  method public,static pointerGrabbed ()Z
+com/crystalgraphics/platform/input/CgInputStage$Host
+  access public,abstract,interface
+  extends java/lang/Object
+  field public,static,final NONE Lcom/crystalgraphics/platform/input/CgInputStage$Host;
+  method public,abstract pointerGrabbed ()Z
+com/crystalgraphics/platform/input/CgInputStage$Registration
+  access public,abstract,interface
+  extends java/lang/Object
+  implements java/lang/AutoCloseable
+  method public,abstract close ()V
 com/crystalgraphics/platform/input/CgKeyCodes
   access public,final
   extends java/lang/Object

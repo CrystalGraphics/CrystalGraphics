@@ -32,6 +32,7 @@ import com.crystalgraphics.platform.service.CgProcessExit;
 import com.crystalgraphics.platform.world.CgHostShapes;
 import com.crystalgraphics.platform.world.CgLevels;
 import com.crystalgraphics.platform.service.CgGameThreads;
+import com.crystalgraphics.platform.input.CgInputStage;
 import com.crystalgraphics.platform.service.CgHostPaint;
 import com.crystalgraphics.platform.service.CgHostWindow;
 import com.crystalgraphics.platform.service.CgServers;
@@ -194,6 +195,7 @@ public final class PlatformService1710 implements CgPlatformService {
             CgPlatform.provide(CgGameThreads.HOST, new GameThreads1710());
             CgPlatform.provide(CgHostWindow.HOST, new HostWindow1710());
             CgPlatform.provide(CgHostPaint.HOST, new HostPaint1710());
+            CgPlatform.provide(CgInputStage.HOST, new InputHost1710());
             // WorldEvents1710 polls the hurts, deaths and lightning; ExplosionHook and LevelEventHook the rest.
             CgWorldEvents.declare(CgWorldEvents.EXPLOSION | CgWorldEvents.BLOCK_BROKEN | CgWorldEvents.ENTITY_HURT
                     | CgWorldEvents.ENTITY_DIED | CgWorldEvents.LIGHTNING);
@@ -201,6 +203,8 @@ public final class PlatformService1710 implements CgPlatformService {
             FMLCommonHandler.instance().bus().register(new HostCamera1710.Ticks());
             MinecraftForge.EVENT_BUS.register(new HostCamera1710.Renders());
             MinecraftForge.EVENT_BUS.register(new OverlayStages1710());
+            // The render tick is on FML's bus; the mixin hook (MixinGuiScreen) takes the tick-time drain.
+            FMLCommonHandler.instance().bus().register(new ScreenInput1710());
             MinecraftForge.EVENT_BUS.register(new LoadingScreen1710());
             // The graphics start's GL-free work, begun behind mod loading rather than at the first frame
             CgEngineLifecycle.clientStarting();

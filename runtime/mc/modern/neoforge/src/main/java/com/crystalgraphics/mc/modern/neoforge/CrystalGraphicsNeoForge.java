@@ -179,6 +179,7 @@ public final class CrystalGraphicsNeoForge implements VariantEntry {
                 // drawn. Client-only types: NeoForge 1.20.4 refuses ScreenEvent on a dedicated server.
                 NeoForge.EVENT_BUS.addListener(ModBus::onRenderGui);
                 NeoForge.EVENT_BUS.addListener(ModBus::onScreenRender);
+                ScreenInputNeoForge.register();
                 // The camera hooks a shake and an FOV kick are added at (HostCameraModern): game-bus events, but
                 // client-only types, so they live here.
                 // Last, so a held camera's angles and field of view are written after every other mod's.

@@ -319,6 +319,7 @@ public final class CrystalGraphicsForge implements VariantEntry {
             MinecraftForge.EVENT_BUS.addListener(Events::onRenderGui);
             MinecraftForge.EVENT_BUS.addListener(Events::onScreenRender);
             //?}
+            ScreenInputForge.register();
             // The first screen held behind our loading screen: set in Minecraft's constructor below 1.20.1, swapped as
             // it opens. From 1.20.1 the FirstScreenHook node mixin holds it once the load finishes.
             //? if <1.20.1 {
