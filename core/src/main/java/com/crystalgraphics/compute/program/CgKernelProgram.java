@@ -79,6 +79,8 @@ public final class CgKernelProgram {
     private final String glsl;
     /** {@link #glsl} with its includes expanded: what {@link #explicit} compiles. */
     private final String expanded;
+    /** What it was emitted for. */
+    private final CgKernelTarget target;
     private final CgProgram program;
     private final int dispatchLocation;
     private final int[] counterPoints;
@@ -107,19 +109,20 @@ public final class CgKernelProgram {
     private ByteBuffer push;
 
     private CgKernelProgram(CgComputeSource source, CgKernelDecl kernel, Set<String> keywords, String glsl,
-                            String expanded, CgProgram program, boolean checked) {
+                            String expanded, CgKernelTarget target, CgProgram program) {
         this.source = source;
         this.kernel = kernel;
         this.keywords = keywords;
         this.glsl = glsl;
         this.expanded = expanded;
+        this.target = target;
         this.program = program;
         this.properties = new CgMaterialProperties(copies(source.properties()));
         for (CgMaterialProperty p : properties.all()) if (p.getType().isSampler()) samplers.add(p);
         this.counterPoints = new int[source.buffers().size()];
         this.counterWords = new int[source.buffers().size()];
         for (CgBufferDecl b : source.buffers()) counterPoints[b.index()] = CgKernelEmitter.counterPoint(source, b);
-        this.checkPoint = checked ? CgKernelEmitter.checkPoint(source) : -1;
+        this.checkPoint = target.checked() ? CgKernelEmitter.checkPoint(source) : -1;
         CgCapabilities caps = CgCapabilities.detect();
         for (int axis = 0; axis < 3; axis++) groupLimits[axis] = caps.maxComputeWorkGroupCount(axis);
         try (CgGlScope scope = CgGlState.save(CgGlSlot.PROGRAM)) {
@@ -169,7 +172,7 @@ public final class CgKernelProgram {
         try (CgProgram.Labelled named = CgProgram.labelled(made.source().path() + " " + kernel.name() + keywords)) {
             program.submitComputeLink(made.expanded(), made.driver());
         }
-        return new Pending(made.source(), kernel, keywords, made.glsl(), made.expanded(), program, made.target().checked());
+        return new Pending(made.source(), kernel, keywords, made.glsl(), made.expanded(), made.target(), program);
     }
 
     /**
@@ -190,18 +193,18 @@ public final class CgKernelProgram {
         private final CgKernelDecl kernel;
         private final Set<String> keywords;
         private final String glsl, expanded;
+        private final CgKernelTarget target;
         private final CgProgram program;
-        private final boolean checked;
 
         private Pending(CgComputeSource source, CgKernelDecl kernel, Set<String> keywords, String glsl, String expanded,
-                        CgProgram program, boolean checked) {
+                        CgKernelTarget target, CgProgram program) {
             this.source = source;
             this.kernel = kernel;
             this.keywords = keywords;
             this.glsl = glsl;
             this.expanded = expanded;
+            this.target = target;
             this.program = program;
-            this.checked = checked;
         }
 
         /** Whether {@link #finish} would return without waiting. */
@@ -218,7 +221,7 @@ public final class CgKernelProgram {
                 throw new IllegalStateException("[" + source.path() + "] kernel " + kernel.name() + keywords + ": "
                         + e.getMessage() + "\n--- emitted ---\n" + numbered(expanded), e);
             }
-            return new CgKernelProgram(source, kernel, keywords, glsl, expanded, program, checked);
+            return new CgKernelProgram(source, kernel, keywords, glsl, expanded, target, program);
         }
 
         /** Drops a link nobody will finish. */
@@ -445,7 +448,13 @@ public final class CgKernelProgram {
      * @throws CgShaderModule.CompileException where it leaves a resource unbound, or no compiler is installed
      */
     public CgGlslCompiler.ExplicitCompute explicit() {
-        if (explicit == null) explicit = CgGlslCompiler.get().compileExplicitCompute(expanded, label());
+        if (explicit == null) {
+            // GL's native float atomics are NV_shader_atomic_float, which a device's compiler refuses: its module takes
+            // the compare-and-swap form, the bytes alike
+            String forDevice = target.floatAtomics()
+                    ? Sources.of(source, kernel, keywords, target.withFloatAtomics(false)).expanded() : expanded;
+            explicit = CgGlslCompiler.get().compileExplicitCompute(forDevice, label());
+        }
         return explicit;
     }
 
