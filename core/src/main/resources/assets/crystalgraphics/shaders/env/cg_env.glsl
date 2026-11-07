@@ -52,8 +52,9 @@ CG_BIND(0, 6) layout(std140) uniform CgEnvironmentBlock {
 
 // -- Object records and ids --------------------------------------------------
 // The firing's records, each written once (CgPrimitiveTable, Unreal's GPUScene primitives), or a draw's own; an
-// OBJECT draw's instance carries an id naming one, as Unreal's primitive id streams do. A draw of its own records
-// reads them through identity ids.
+// OBJECT draw's instance carries an id naming one, as Unreal's primitive id streams do, and beside it the slot of its
+// material's values in its shader's arena (CgMaterialArena, CG_MATERIAL_SLOT). A draw of its own records reads them
+// through identity ids, slot 0.
 struct CgObjectData {
     mat4 modelMatrix;
     mat4 normalMatrix;
@@ -68,7 +69,7 @@ CG_BIND(1, 0) layout(std430) readonly buffer CgObjectDataBuffer {
 };
 
 CG_BIND(1, 3) layout(std430) readonly buffer CgObjectIdBuffer {
-    uint cg_ObjectIds[];
+    uvec2 cg_ObjectIds[];   // (record, material slot)
 };
 
 // -- Instance ID bridge -----------------------------------------------------
@@ -105,7 +106,7 @@ flat in int cg_InstanceId;
 #endif
 
 // -- Object Data Definition-----------------------------------------------------
-#define CG_OBJECT_DATA cg_Objects[cg_ObjectIds[CG_INSTANCE_ID]]
+#define CG_OBJECT_DATA cg_Objects[cg_ObjectIds[CG_INSTANCE_ID].x]
 
 // -- Data Macros ------------------------------------------------------
 #define CG_OBJECT_TO_WORLD (CG_OBJECT_DATA.modelMatrix)

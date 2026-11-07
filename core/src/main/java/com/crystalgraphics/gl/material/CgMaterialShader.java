@@ -2,6 +2,7 @@ package com.crystalgraphics.gl.material;
 
 import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.render.draw.CgInstanceKind;
+import com.crystalgraphics.render.draw.CgMaterialArena;
 import com.crystalgraphics.render.draw.CgPassConstants;
 import com.crystalgraphics.render.CgWarmBudget;
 import com.crystalgraphics.api.CgBindingPoints;
@@ -171,6 +172,9 @@ public final class CgMaterialShader implements CgReloadable {
     /** The programs compiled from the last committed parse; null until a compile has succeeded. */
     @Nullable
     private CgMaterialShaderMap map;
+    /** Where its materials' values live ({@link CgParsedShader#valuesInArena}), for the block size it was made for. */
+    @Nullable
+    private CgMaterialArena arena;
     private boolean warnedUncompiled;
 
     /**
@@ -298,6 +302,16 @@ public final class CgMaterialShader implements CgReloadable {
      * <p>Null after a failure until {@link #markDirty()}, so a broken file is read once, not once per draw.</p>
      */
     @Nullable
+    /**
+     * The arena its materials' values of {@code floats} floats live in: made at the first ask, and again when a reload
+     * changed the block's size. Any thread.
+     */
+    public synchronized CgMaterialArena arena(int floats) {
+        CgMaterialArena a = arena;
+        if (a == null || a.stride() != CgMaterialArena.stride(floats)) arena = a = new CgMaterialArena(resourcePath, floats);
+        return a;
+    }
+
     public CgParsedShader ensureParsed() {
         CgParsedShader parsed = lastParsed;
         if (parsed != null) return parsed;
@@ -1234,6 +1248,7 @@ public final class CgMaterialShader implements CgReloadable {
             CgShaderBuffer.wireBlock(shader, CgInstanceKind.OBJECT_BLOCK_NAME, CgBindingPoints.OBJECT_DATA);
             CgShaderBuffer.wireBlock(shader, CgInstanceKind.OBJECT_ID_BLOCK_NAME, CgBindingPoints.OBJECT_IDS);
             CgShaderBuffer.wireBlock(shader, CgGlslEmitter.VERTEX_BLOCK, CgBindingPoints.VERTICES);
+            CgShaderBuffer.wireBlock(shader, CgGlslEmitter.ARENA_BLOCK, CgBindingPoints.MATERIAL_ARENA);
             if (map.block != null) map.block.wireShader(shader);
             for (CgAttachedBuffer ab : map.buffers) ab.getBuffer().wireShader(shader);
             // Only a skinned program declares the palettes; any other leaves the block absent, which this skips.

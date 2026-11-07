@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.draw;
 
+import javax.annotation.Nullable;
 import java.util.Arrays;
 
 /**
@@ -11,6 +12,9 @@ import java.util.Arrays;
  * CgBlockVersion v = CgBlockVersion.of(packed, floats);       // when a value moved
  * int id = table.begin().block(binding, v).end();             // every capture until the next change
  * v.supersede();                                              // replaced: freed once its frames retire
+ *
+ * CgBlockVersion w = CgBlockVersion.in(arena, packed, floats); // a slot of its shader's arena instead
+ * int id = table.begin().block(CgBindingPoints.MATERIAL_ARENA.ssbo(), w).end();
  * }</pre>
  *
  * <ul>
@@ -22,20 +26,45 @@ import java.util.Arrays;
 public final class CgBlockVersion {
 
     final float[] floats;
+    /** The arena whose slot it takes ({@link #in}); null for a range of a page. */
+    @Nullable
+    final CgMaterialArena arena;
     /** Where it was written: a page's buffer, its range's node and its byte offset; buffer 0 until written. */
     int buffer, node = -1, offset;
     CgBindingTable.BlockStore.Page page;
+    /** In an arena, under its lock: its slot, -1 for none; the frames built naming it and not yet uploaded. */
+    int slot = -1, pins;
+    /** In an arena: whether its slot holds its floats. */
+    boolean written;
     /** The last frame a draw bound it in. */
     long lastUse;
     volatile boolean superseded;
 
-    private CgBlockVersion(float[] floats) {
+    private CgBlockVersion(float[] floats, @Nullable CgMaterialArena arena) {
         this.floats = floats;
+        this.arena = arena;
     }
 
     /** A version holding {@code data[0, count)}, copied. */
     public static CgBlockVersion of(float[] data, int count) {
-        return new CgBlockVersion(Arrays.copyOf(data, count));
+        return new CgBlockVersion(Arrays.copyOf(data, count), null);
+    }
+
+    /**
+     * A version holding {@code data[0, count)} in a slot of {@code arena}: bound as the arena, its draws' ids naming
+     * the slot, so draws of other versions of the arena join with its.
+     *
+     * @throws IllegalArgumentException if {@code count} floats are more than the arena's slot holds
+     */
+    public static CgBlockVersion in(CgMaterialArena arena, float[] data, int count) {
+        if (count * 4 > arena.stride()) throw new IllegalArgumentException("a block of " + count + " floats in " + arena);
+        return new CgBlockVersion(Arrays.copyOf(data, count), arena);
+    }
+
+    /** The arena it takes a slot of; null for a version of its own. */
+    @Nullable
+    public CgMaterialArena arena() {
+        return arena;
     }
 
     /** Its floats' count. */

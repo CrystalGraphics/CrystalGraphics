@@ -141,6 +141,7 @@ com/crystalgraphics/api/CgBindingPoints
   field public,static GLOBALS Lcom/crystalgraphics/api/CgBindingPoints$Binding;
   field public,static LIGHTMAP_TEXTURE_UNIT I
   field public,static LOCAL_LIGHTS_TEXTURE_UNIT I
+  field public,static MATERIAL_ARENA Lcom/crystalgraphics/api/CgBindingPoints$Binding;
   field public,static MATERIAL_BUFFERS_SSBO I
   field public,static MATERIAL_PROPERTIES_UBO I
   field public,static MEDIA_TEXTURE_UNIT I
@@ -6252,6 +6253,7 @@ com/crystalgraphics/gl/material/CgMaterialShader
   access public,final
   extends java/lang/Object
   implements com/crystalgraphics/mc/CgReloadable
+  method public arena (I)Lcom/crystalgraphics/render/draw/CgMaterialArena;
   method public awaitPending ()V
   method public delete ()V
   method public discards ()Z
@@ -6307,7 +6309,9 @@ com/crystalgraphics/gl/material/parse/CgBufferReaders
 com/crystalgraphics/gl/material/parse/CgGlslEmitter
   access public,final
   extends java/lang/Object
+  field public,static,final ARENA_BLOCK Ljava/lang/String;
   field public,static,final VERTEX_BLOCK Ljava/lang/String;
+  method public,static emitArena (Lcom/crystalgraphics/api/buffer/CgBufferFormat;Lcom/crystalgraphics/render/shader/CgBindingModel$Slot;I)Ljava/lang/String;
   method public,static emitSsbo (Lcom/crystalgraphics/api/buffer/CgBufferFormat;Ljava/lang/String;Ljava/lang/String;ZLcom/crystalgraphics/render/shader/CgBindingModel$Slot;)Ljava/lang/String;
   method public,static emitSsbo (Lcom/crystalgraphics/api/material/CgAttachedBuffer;Lcom/crystalgraphics/render/shader/CgBindingModel$Slot;)Ljava/lang/String;
   method public,static emitUbo (Lcom/crystalgraphics/api/buffer/CgBufferFormat;Ljava/lang/String;)Ljava/lang/String;
@@ -6416,6 +6420,7 @@ com/crystalgraphics/gl/material/parse/CgParsedShader
   method public unfogged ()Z
   method public unlit ()Z
   method public unmediated ()Z
+  method public valuesInArena ()Z
   method public withState (Lcom/crystalgraphics/api/material/CgMaterialState;Ljava/lang/String;)Lcom/crystalgraphics/gl/material/parse/CgParsedShader;
   method public writesCustomData ()Z
   method public,final equals (Ljava/lang/Object;)Z
@@ -8898,6 +8903,7 @@ com/crystalgraphics/render/draw/CgBindingTable
   method public <init> ()V
   method public begin ()Lcom/crystalgraphics/render/draw/CgBindingTable;
   method public bind (I)V
+  method public bind (IZ)V
   method public bindsUnit (II)Z
   method public block (ILcom/crystalgraphics/render/draw/CgBlockVersion;)Lcom/crystalgraphics/render/draw/CgBindingTable;
   method public block (I[FII)Lcom/crystalgraphics/render/draw/CgBindingTable;
@@ -8913,7 +8919,9 @@ com/crystalgraphics/render/draw/CgBindingTable
   method public endUnique ()I
   method public reset ()V
   method public sampler (II)Lcom/crystalgraphics/api/texture/CgSampler;
+  method public share (I)I
   method public size ()I
+  method public slotOf (I)I
   method public storage (II)Lcom/crystalgraphics/render/draw/CgBufferHandle;
   method public storage (ILcom/crystalgraphics/render/draw/CgBufferHandle;)Lcom/crystalgraphics/render/draw/CgBindingTable;
   method public storagePoint (II)I
@@ -8925,12 +8933,15 @@ com/crystalgraphics/render/draw/CgBindingTable
   method public textures (I)I
   method public upload (Lcom/crystalgraphics/gl/buffer/CgStreamBuffer;)V
   method public withTexture (IILcom/crystalgraphics/api/texture/CgTexture;)I
+  method public,static bindAlone (Lcom/crystalgraphics/render/draw/CgBlockVersion;I)V
 com/crystalgraphics/render/draw/CgBlockVersion
   access public,final
   extends java/lang/Object
+  method public arena ()Lcom/crystalgraphics/render/draw/CgMaterialArena;
   method public floatCount ()I
   method public floats ()[F
   method public supersede ()V
+  method public,static in (Lcom/crystalgraphics/render/draw/CgMaterialArena;[FI)Lcom/crystalgraphics/render/draw/CgBlockVersion;
   method public,static of ([FI)Lcom/crystalgraphics/render/draw/CgBlockVersion;
 com/crystalgraphics/render/draw/CgBoundResources
   access public,final
@@ -8996,6 +9007,7 @@ com/crystalgraphics/render/draw/CgDeviceSets
   method public release ()V
   method public reused ()J
   method public set (Lcom/crystalgraphics/platform/rhi/CgRHI;Lcom/crystalgraphics/render/draw/CgBindingTable;ILcom/crystalgraphics/platform/rhi/pipeline/CgPipelineLayout;ILcom/crystalgraphics/platform/rhi/binding/CgBindings;)Lcom/crystalgraphics/platform/rhi/binding/CgBindingSet;
+  method public set (Lcom/crystalgraphics/platform/rhi/CgRHI;Lcom/crystalgraphics/render/draw/CgBindingTable;ILcom/crystalgraphics/platform/rhi/pipeline/CgPipelineLayout;ILcom/crystalgraphics/platform/rhi/binding/CgBindings;Z)Lcom/crystalgraphics/platform/rhi/binding/CgBindingSet;
 com/crystalgraphics/render/draw/CgDeviceStates
   access public,final
   extends java/lang/Object
@@ -9076,6 +9088,14 @@ com/crystalgraphics/render/draw/CgInstanceKind
   method public,static of (I)Lcom/crystalgraphics/render/draw/CgInstanceKind;
   method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/render/draw/CgInstanceKind;
   method public,static values ()[Lcom/crystalgraphics/render/draw/CgInstanceKind;
+com/crystalgraphics/render/draw/CgMaterialArena
+  access public,final
+  extends java/lang/Object
+  field public,static,final MAX_SLOTS I
+  method public <init> (Ljava/lang/String;I)V
+  method public stride ()I
+  method public toString ()Ljava/lang/String;
+  method public,static stride (I)I
 com/crystalgraphics/render/draw/CgOrder
   access public,final,enum
   extends java/lang/Enum

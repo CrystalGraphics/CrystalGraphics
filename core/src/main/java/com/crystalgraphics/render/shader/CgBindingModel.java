@@ -65,7 +65,7 @@ public final class CgBindingModel {
     /** The first cg_use token's binding; token {@code i} in the registry's order is at this plus {@code i}. */
     public static final int FIRST_TOKEN = 5;
 
-    /** {@code CgMaterialBlock}, the material's parameters. */
+    /** {@code CgMaterialBlock}, the material's parameters, or its shader's arena of them ({@code CgMaterialArena}). */
     public static final Slot MATERIAL_BLOCK = new Slot(MATERIAL, 0);
     /** The first of a material's {@code Buffers { }}: buffer {@code i} at this plus {@code i}. */
     public static final int FIRST_BUFFER = 1;
@@ -130,6 +130,7 @@ public final class CgBindingModel {
         if (point == CgBindingPoints.OBJECT_IDS.ssbo()) return pack(PASS, OBJECT_IDS.binding());
         if (point == CgBindingPoints.BONE_PALETTES.ssbo()) return pack(PASS, BONES.binding());
         if (point == CgBindingPoints.VERTICES.ssbo()) return pack(PASS, VERTICES.binding());
+        if (point == CgBindingPoints.MATERIAL_ARENA.ssbo()) return pack(MATERIAL, MATERIAL_BLOCK.binding());
         int material = point - CgBindingPoints.MATERIAL_BUFFERS_SSBO;
         if (material >= 0 && material < CgBindingPoints.MATERIAL_BUFFER_COUNT) return pack(MATERIAL, FIRST_BUFFER + material);
         int token = CgEngineBufferRegistry.indexOfPoint(point);

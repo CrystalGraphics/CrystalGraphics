@@ -10,8 +10,11 @@ import com.crystalgraphics.gl.buffer.shader.CgShaderBuffer;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.render.mesh.CgOffsetAllocator;
 import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.util.CgBufferUtils;
 import com.crystalgraphics.util.trace.CgChannels;
 
+import javax.annotation.Nullable;
+import java.nio.ByteBuffer;
 import java.nio.FloatBuffer;
 import java.util.ArrayList;
 import java.util.List;
@@ -50,6 +53,8 @@ import java.util.Objects;
  *       and {@value #MAX_STORAGE} storage handles per snapshot.</li>
  *   <li>One thread at a time: the recorder fills it, and the render thread uploads and binds it once the
  *       recording is handed over. {@link #upload} and {@link #bind} touch GL; the table owns no GL object.</li>
+ *   <li>A block in a {@link CgMaterialArena} binds as the arena: its snapshot's draws carry its {@link #slotOf slot} in
+ *       their ids, and snapshots equal but for which version of one arena they hold have one {@link #share}.</li>
  * </ul>
  */
 public final class CgBindingTable {
@@ -105,6 +110,16 @@ public final class CgBindingTable {
     private boolean uploaded;
     /** The ring frame it was uploaded in: a later frame's region is somewhere else. */
     private long uploadedFrame = -1;
+
+    /** Per snapshot: its arena slot once asked ({@link #slotOf}), -1 before; whether the ask holds a pin. */
+    private int[] arenaSlots = new int[0];
+    private boolean[] arenaPinned = new boolean[0];
+    /** Per snapshot: its {@link #share}, made at the first ask after a change. Open addressing over shares, stored +1. */
+    private int[] shares = new int[64];
+    private boolean sharesMade;
+    private int[] shareSlots = new int[128];
+    /** During an {@link #upload}: the arenas its blocks are in. */
+    private final List<CgMaterialArena> arenas = new ArrayList<>();
 
     /** Starts a snapshot. */
     public CgBindingTable begin() {
@@ -212,6 +227,7 @@ public final class CgBindingTable {
                 count++;
                 if (count * 2 > slots.length) rehash();
                 uploaded = false;
+                sharesMade = false;
                 return id;
             }
             if (hashes[found] == hash && sameContent(found, id)) {
@@ -237,6 +253,7 @@ public final class CgBindingTable {
         count++;
         if (count * 2 > slots.length) rehash();
         uploaded = false;
+        sharesMade = false;
         return id;
     }
 
@@ -395,11 +412,20 @@ public final class CgBindingTable {
     /** Forgets every snapshot; ids from before are invalid. */
     public void reset() {
         if (building >= 0) throw new IllegalStateException("reset() inside a snapshot");
+        for (int id = 0; id < Math.min(count, arenaSlots.length); id++) {
+            if (arenaPinned[id]) {
+                CgBlockVersion v = arenaVersion(id);
+                v.arena.unpin(v);
+                arenaPinned[id] = false;
+            }
+            arenaSlots[id] = -1;
+        }
         Arrays.fill(refs, 0, count * ENTRY_REFS, null);
         count = 0;
         floatCursor = 0;
         Arrays.fill(slots, 0);
         uploaded = false;
+        sharesMade = false;
     }
 
     /**
@@ -414,17 +440,44 @@ public final class CgBindingTable {
         BlockStore store = BlockStore.STORE;
         store.retire();
         int writes = 0;
+        int bytes = 0, shared = 0;
+        // Arena blocks: each given its slot, the frame builder's pin released (retire has run), its arena fitted to its
+        // slots, and staged below with the pages' new versions.
+        arenas.clear();
+        for (int id = 0; id < count; id++) {
+            CgBlockVersion v = arenaVersion(id);
+            if (v == null) continue;
+            if (id < arenaPinned.length && arenaPinned[id]) {
+                arenaPinned[id] = false;
+                v.arena.unpin(v);
+            } else if (v.slot < 0) {
+                v.arena.slotOf(v);
+                v.arena.unpin(v);
+            }
+            v.lastUse = frame;
+            if (!arenas.contains(v.arena)) arenas.add(v.arena);
+            if (v.written) continue;
+            v.written = true;
+            store.track(v);
+            if (writes == writing.length) {
+                writing = Arrays.copyOf(writing, writes * 2);
+                writingAt = Arrays.copyOf(writingAt, writes * 2);
+            }
+            writing[writes] = v;
+            writingAt[writes++] = bytes;
+            bytes += BlockStore.bytes(v);
+        }
+        for (int a = 0; a < arenas.size(); a++) store.fit(arenas.get(a));
         if (ringOffsets.length < count * MAX_BLOCKS) ringOffsets = new int[Math.max(ringOffsets.length * 2, count * MAX_BLOCKS)];
         // Places first: a block equal to the last at its binding takes that one's, kept as -1 - offset until written.
         Arrays.fill(lastBlock, -1);
-        int bytes = 0, shared = 0;
         for (int id = 0; id < count; id++) {
             int e = id * ENTRY_INTS;
             for (int b = 0; b < entries[e + 1]; b++) {
                 int block = e + BLOCKS_AT + b * BLOCK_INTS;
                 CgBlockVersion version = (CgBlockVersion) refs[id * ENTRY_REFS + BLOCK_REFS + b];
                 if (version != null) {
-                    if (store.place(version)) {
+                    if (version.arena == null && store.place(version)) {
                         if (writes == writing.length) {
                             writing = Arrays.copyOf(writing, writes * 2);
                             writingAt = Arrays.copyOf(writingAt, writes * 2);
@@ -480,15 +533,17 @@ public final class CgBindingTable {
         uploadedBuffer = ring.getGlBufferId();
         for (int i = 0; i < count * MAX_BLOCKS; i++) ringOffsets[i] += base;
         if (writes == 0) return;
-        // Each new version copied from the ring into its page, as CgMeshStore writes its pools: outside any pass.
+        // Each new version copied from the ring into its page or its arena slot, as CgMeshStore writes its pools: outside
+        // any pass.
         CgGL.cgBeginTransfer();
         try {
             CgGL.glBindBuffer(CgGL.GL_COPY_READ_BUFFER, uploadedBuffer);
             for (int w = 0; w < writes; w++) {
                 CgBlockVersion v = writing[w];
-                CgGL.glBindBuffer(CgGL.GL_COPY_WRITE_BUFFER, v.buffer);
-                CgGL.glCopyBufferSubData(CgGL.GL_COPY_READ_BUFFER, CgGL.GL_COPY_WRITE_BUFFER, base + writingAt[w], v.offset,
-                        v.floats.length * 4L);
+                CgMaterialArena arena = v.arena;
+                CgGL.glBindBuffer(CgGL.GL_COPY_WRITE_BUFFER, arena != null ? arena.buffer : v.buffer);
+                CgGL.glCopyBufferSubData(CgGL.GL_COPY_READ_BUFFER, CgGL.GL_COPY_WRITE_BUFFER, base + writingAt[w],
+                        arena != null ? (long) v.slot * arena.stride() : v.offset, v.floats.length * 4L);
                 writing[w] = null;
             }
         } finally {
@@ -496,8 +551,24 @@ public final class CgBindingTable {
         }
     }
 
-    /** Binds snapshot {@code id}'s textures, blocks and buffers. {@link #upload} first. */
+    /**
+     * Writes {@code version}, a block in an arena, into its slot now and binds that slot alone at storage point
+     * {@code point}: a draw bound by {@code CgMaterial.bind()}, outside any recording. Render thread.
+     */
+    public static void bindAlone(CgBlockVersion version, int point) {
+        BlockStore.STORE.bindAlone(version, point);
+    }
+
+    /** Binds snapshot {@code id}'s textures, blocks and buffers, an arena block as its whole arena. {@link #upload} first. */
     public void bind(int id) {
+        bind(id, true);
+    }
+
+    /**
+     * {@link #bind(int)}, an arena block as the whole arena where {@code whole}, for draws whose ids carry its slot, else
+     * as its slot's range alone.
+     */
+    public void bind(int id, boolean whole) {
         if (!uploaded) throw new IllegalStateException("bind() before upload()");
         int e = id * ENTRY_INTS;
         int r = id * ENTRY_REFS;
@@ -512,7 +583,11 @@ public final class CgBindingTable {
             int block = e + BLOCKS_AT + b * BLOCK_INTS;
             int size = Math.max(16, (entries[block + 2] * 4 + 15) & ~15);
             CgBlockVersion version = (CgBlockVersion) refs[r + BLOCK_REFS + b];
-            if (version != null) {
+            if (version != null && version.arena != null) {
+                CgMaterialArena a = version.arena;
+                CgGL.glBindBufferRange(CgGL.GL_SHADER_STORAGE_BUFFER, entries[block], a.buffer,
+                        whole ? 0 : (long) version.slot * a.stride(), whole ? (long) a.capacity * a.stride() : a.stride());
+            } else if (version != null) {
                 version.lastUse = CgFrameRing.frame();
                 CgGL.glBindBufferRange(CgGL.GL_UNIFORM_BUFFER, entries[block], version.buffer, version.offset, size);
             } else {
@@ -524,6 +599,74 @@ public final class CgBindingTable {
         for (int b = 0; b < entries[e + 3]; b++) {
             CgGL.glBindBufferBase(CgGL.GL_SHADER_STORAGE_BUFFER, entries[e + STORAGE_AT + b],
                     ((CgBufferHandle) refs[r + STORAGE_REFS + b]).bufferId());
+        }
+    }
+
+    /**
+     * The arena slot snapshot {@code id}'s material block takes, given now if it holds none and kept until this table's
+     * {@link #upload}: what the frame builder writes beside each id of the snapshot's draws. 0 for a snapshot holding no
+     * arena block. The building thread's.
+     */
+    public int slotOf(int id) {
+        if (arenaSlots.length < count) {
+            int was = arenaSlots.length;
+            arenaSlots = Arrays.copyOf(arenaSlots, Math.max(count, was * 2));
+            arenaPinned = Arrays.copyOf(arenaPinned, arenaSlots.length);
+            Arrays.fill(arenaSlots, was, arenaSlots.length, -1);
+        }
+        if (arenaSlots[id] >= 0) return arenaSlots[id];
+        CgBlockVersion v = arenaVersion(id);
+        if (v == null) return arenaSlots[id] = 0;
+        arenaPinned[id] = true;
+        return arenaSlots[id] = v.arena.slotOf(v);
+    }
+
+    /**
+     * Snapshot {@code id}'s share: the first snapshot equal to it but for which version of one arena they hold, which
+     * draws its with one set and in one multi-draw (Bevy's material slab key).
+     */
+    public int share(int id) {
+        if (!sharesMade) share();
+        return shares[id];
+    }
+
+    /** Snapshot {@code id}'s block in an arena; null for none. */
+    @Nullable
+    CgBlockVersion arenaVersion(int id) {
+        int e = id * ENTRY_INTS;
+        for (int b = 0; b < entries[e + 1]; b++) {
+            CgBlockVersion v = (CgBlockVersion) refs[id * ENTRY_REFS + BLOCK_REFS + b];
+            if (v != null && v.arena != null) return v;
+        }
+        return null;
+    }
+
+    /** Every snapshot's {@link #share}, interned by content with each arena block taken as its arena. */
+    private void share() {
+        sharesMade = true;
+        if (shares.length < count) shares = new int[Math.max(count, shares.length * 2)];
+        int size = Integer.highestOneBit(Math.max(count * 2, 2) - 1) << 1;
+        if (shareSlots.length < size) shareSlots = new int[size];
+        else Arrays.fill(shareSlots, 0);
+        int mask = shareSlots.length - 1;
+        for (int id = 0; id < count; id++) {
+            if (arenaVersion(id) == null) {
+                shares[id] = id;
+                continue;
+            }
+            int h = hash(id, true);
+            for (int s = h & mask; ; s = (s + 1) & mask) {
+                int found = shareSlots[s] - 1;
+                if (found < 0) {
+                    shareSlots[s] = id + 1;
+                    shares[id] = id;
+                    break;
+                }
+                if (sameContent(found, id, true)) {
+                    shares[id] = found;
+                    break;
+                }
+            }
         }
     }
 
@@ -543,6 +686,11 @@ public final class CgBindingTable {
     }
 
     private int hash(int id) {
+        return hash(id, false);
+    }
+
+    /** {@code id}'s content hash; with {@code share}, an arena block by its arena. */
+    private int hash(int id, boolean share) {
         int e = id * ENTRY_INTS;
         int r = id * ENTRY_REFS;
         int h = ((entries[e] * 31 + entries[e + 1]) * 31 + entries[e + 2]) * 31 + entries[e + 3];
@@ -553,9 +701,9 @@ public final class CgBindingTable {
         for (int b = 0; b < entries[e + 1]; b++) {
             int block = e + BLOCKS_AT + b * BLOCK_INTS;
             h = h * 31 + entries[block];
-            Object version = refs[r + BLOCK_REFS + b];
+            CgBlockVersion version = (CgBlockVersion) refs[r + BLOCK_REFS + b];
             if (version != null) {
-                h = h * 31 + System.identityHashCode(version);
+                h = h * 31 + System.identityHashCode(share && version.arena != null ? version.arena : version);
                 continue;
             }
             int from = entries[block + 1];
@@ -569,6 +717,11 @@ public final class CgBindingTable {
     }
 
     private boolean sameContent(int a, int b) {
+        return sameContent(a, b, false);
+    }
+
+    /** Whether snapshots {@code a} and {@code b} hold the same; with {@code share}, two blocks of one arena match. */
+    private boolean sameContent(int a, int b, boolean share) {
         int ea = a * ENTRY_INTS, eb = b * ENTRY_INTS;
         int ra = a * ENTRY_REFS, rb = b * ENTRY_REFS;
         for (int i = 0; i < HEADER; i++) if (entries[ea + i] != entries[eb + i]) return false;
@@ -579,8 +732,8 @@ public final class CgBindingTable {
         for (int k = 0; k < entries[ea + 1]; k++) {
             int ba = ea + BLOCKS_AT + k * BLOCK_INTS, bb = eb + BLOCKS_AT + k * BLOCK_INTS;
             if (entries[ba] != entries[bb] || entries[ba + 2] != entries[bb + 2]) return false;
-            Object va = refs[ra + BLOCK_REFS + k], vb = refs[rb + BLOCK_REFS + k];
-            if (va != vb) return false;
+            CgBlockVersion va = (CgBlockVersion) refs[ra + BLOCK_REFS + k], vb = (CgBlockVersion) refs[rb + BLOCK_REFS + k];
+            if (va != vb && !(share && va != null && vb != null && va.arena != null && va.arena == vb.arena)) return false;
             if (va != null) continue;
             int fa = entries[ba + 1], fb = entries[bb + 1];
             for (int f = 0; f < entries[ba + 2]; f++) {
@@ -620,7 +773,8 @@ public final class CgBindingTable {
         /** {@code GL_UNIFORM_BUFFER_OFFSET_ALIGNMENT} is at most 256 on every GL and Vulkan device we run on. */
         static final int ALIGNMENT = 256;
         private static final int PAGE_UNITS = (1 << 20) / ALIGNMENT;
-        private static final int WRITTEN = CgTrace.name("blocks.persistent-written"), LIVE = CgTrace.name("blocks.persistent-live");
+        private static final int WRITTEN = CgTrace.name("blocks.persistent-written"), LIVE = CgTrace.name("blocks.persistent-live"),
+                ARENA_SLOTS = CgTrace.name("material.arena-slots"), ARENA_GROWS = CgTrace.name("material.arena-grows");
 
         static final class Page {
             final int buffer;
@@ -636,6 +790,62 @@ public final class CgBindingTable {
 
         private final List<Page> pages = new ArrayList<>();
         private final List<CgBlockVersion> live = new ArrayList<>();
+        /** Every arena a version was written into; the buffers arenas outgrew, deleted once their frames retire. */
+        private final List<CgMaterialArena> arenas = new ArrayList<>();
+        private int[] outgrown = new int[4];
+        private long[] outgrownFrames = new long[4];
+        private int outgrownCount;
+        /** {@link #bindAlone}'s staging, a slot's bytes. */
+        private ByteBuffer alone;
+
+        /** Makes {@code a}'s buffer hold every slot given, copying what it held; outside any pass. */
+        void fit(CgMaterialArena a) {
+            int need = a.reach();
+            if (need <= a.capacity) return;
+            int slots = Math.max(CgMaterialArena.FIRST_SLOTS, Integer.highestOneBit(need - 1) << 1);
+            int grown = CgGlNames.buffer();
+            CgGL.glBindBuffer(CgGL.GL_COPY_WRITE_BUFFER, grown);
+            CgGL.glBufferData(CgGL.GL_COPY_WRITE_BUFFER, (long) slots * a.stride(), CgGL.GL_STATIC_DRAW);
+            if (a.buffer != 0) {
+                CgGL.cgBeginTransfer();
+                try {
+                    CgGL.glBindBuffer(CgGL.GL_COPY_READ_BUFFER, a.buffer);
+                    CgGL.glBindBuffer(CgGL.GL_COPY_WRITE_BUFFER, grown);
+                    CgGL.glCopyBufferSubData(CgGL.GL_COPY_READ_BUFFER, CgGL.GL_COPY_WRITE_BUFFER, 0, 0, (long) a.capacity * a.stride());
+                } finally {
+                    CgGL.cgEndTransfer();
+                }
+                if (outgrownCount == outgrown.length) {
+                    outgrown = Arrays.copyOf(outgrown, outgrownCount * 2);
+                    outgrownFrames = Arrays.copyOf(outgrownFrames, outgrownCount * 2);
+                }
+                outgrown[outgrownCount] = a.buffer;
+                outgrownFrames[outgrownCount++] = CgFrameRing.frame();
+                CgTrace.add(CgChannels.GL, ARENA_GROWS, 1);
+            }
+            a.buffer = grown;
+            a.capacity = slots;
+        }
+
+        /** {@link CgBindingTable#bindAlone}. */
+        void bindAlone(CgBlockVersion v, int point) {
+            CgMaterialArena a = v.arena;
+            a.slotOf(v);
+            a.unpin(v);
+            fit(a);
+            if (!v.written) {
+                if (alone == null || alone.capacity() < v.floats.length * 4) alone = CgBufferUtils.createByteBuffer(a.stride());
+                alone.clear();
+                alone.asFloatBuffer().put(v.floats);
+                alone.limit(v.floats.length * 4);
+                CgGL.glBindBuffer(CgGL.GL_COPY_WRITE_BUFFER, a.buffer);
+                CgGL.glBufferSubData(CgGL.GL_COPY_WRITE_BUFFER, (long) v.slot * a.stride(), alone);
+                v.written = true;
+                track(v);
+            }
+            v.lastUse = CgFrameRing.frame();
+            CgGL.glBindBufferRange(CgGL.GL_SHADER_STORAGE_BUFFER, point, a.buffer, (long) v.slot * a.stride(), a.stride());
+        }
         private long retiredScan = -1;
 
         /** The bytes {@code v} takes, aligned: what a write stages for it. */
@@ -668,7 +878,14 @@ public final class CgBindingTable {
             return true;
         }
 
-        /** Frees the ranges of versions superseded whose frames have retired: once a frame, at its first upload. */
+        /** Keeps {@code v}, an arena version just written, for {@link #retire} to free its slot. Render thread. */
+        void track(CgBlockVersion v) {
+            live.add(v);
+            CgTrace.add(CgChannels.GL, WRITTEN, 1);
+            if (!arenas.contains(v.arena)) arenas.add(v.arena);
+        }
+
+        /** Frees the ranges and slots of versions superseded whose frames have retired: once a frame, at its first upload. */
         void retire() {
             long now = CgFrameRing.frame();
             if (now == retiredScan) return;
@@ -676,6 +893,14 @@ public final class CgBindingTable {
             long safe = now - CgFrameRing.FRAMES;
             for (int i = live.size() - 1; i >= 0; i--) {
                 CgBlockVersion v = live.get(i);
+                if (v.arena != null) {
+                    // A replay naming it after takes a new slot: the frame builder writes slots, no recording holds one
+                    if (v.arena.free(v, safe)) {
+                        live.set(i, live.get(live.size() - 1));
+                        live.remove(live.size() - 1);
+                    }
+                    continue;
+                }
                 if (!v.superseded || v.lastUse > safe) continue;
                 CgFrameRing.awaitRetired(v.lastUse);
                 v.page.ranges.free(v.node);
@@ -687,6 +912,17 @@ public final class CgBindingTable {
                 live.remove(live.size() - 1);
             }
             CgTrace.counter(CgChannels.GL, LIVE, live.size());
+            for (int i = outgrownCount - 1; i >= 0; i--) {
+                if (outgrownFrames[i] > safe) continue;
+                CgFrameRing.awaitRetired(outgrownFrames[i]);
+                CgGL.glDeleteBuffers(outgrown[i]);
+                outgrownCount--;
+                outgrown[i] = outgrown[outgrownCount];
+                outgrownFrames[i] = outgrownFrames[outgrownCount];
+            }
+            int slots = 0;
+            for (int a = 0; a < arenas.size(); a++) slots += arenas.get(a).live();
+            CgTrace.counter(CgChannels.GL, ARENA_SLOTS, slots);
         }
     }
 }

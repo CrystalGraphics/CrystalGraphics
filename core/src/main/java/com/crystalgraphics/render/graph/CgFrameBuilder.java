@@ -475,13 +475,17 @@ public final class CgFrameBuilder {
                     packed.first[b] = chunk.first(d);
                     frame.identityIds = Math.max(frame.identityIds, chunk.first(d) + chunk.instances(d));
                 } else if (ki == OBJECT) {
+                    // Each id the frame's table's, and beside it its material's arena slot, given now: a replay of an
+                    // old recording names a slot that holds its values this frame
                     int base = frame.primitivesOf(chunk.primitives()), ids = chunk.instances(d);
-                    frame.reserve(ki, ids);
+                    float material = Float.intBitsToFloat(frame.bindings.slotOf(packed.binding[b]));
+                    frame.reserve(ki, ids * 2);
                     float[] from = chunk.data(k), to = frame.instances[ki];
-                    for (int r = chunk.first(d), at = frame.instanceFloats[ki], end = r + ids; r < end; r++, at++) {
-                        to[at] = Float.intBitsToFloat(Float.floatToRawIntBits(from[r]) + base);
+                    for (int r = chunk.first(d), at = frame.instanceFloats[ki], end = r + ids; r < end; r++, at += 2) {
+                        to[at] = Float.intBitsToFloat(Float.floatToRawIntBits(from[r * 2]) + base);
+                        to[at + 1] = material;
                     }
-                    frame.instanceFloats[ki] += ids;
+                    frame.instanceFloats[ki] += ids * 2;
                     packed.kinds |= 1 << ki;
                 } else {
                     int length = chunk.instances(d) * floats;

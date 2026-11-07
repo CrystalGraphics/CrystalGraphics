@@ -18,6 +18,7 @@ import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.gl.buffer.shader.CgUniformBuffer;
 import com.crystalgraphics.gl.material.CgMaterialProperty;
+import com.crystalgraphics.render.draw.CgMaterialArena;
 import com.crystalgraphics.render.shader.CgBindingModel;
 
 import java.util.Locale;
@@ -615,7 +616,7 @@ public final class CgMaterialShaderCompiler {
         appendPropertyUniforms(sb, properties);
 
         // Material properties UBO (CgMaterialBlock) — emitted before user-attached buffers
-        appendMaterialBlock(sb, properties, matPropsEntry);
+        appendMaterialBlock(sb, properties, matPropsEntry, shader.valuesInArena());
 
         appendAttachedBuffers(sb, attachedBuffers);
 
@@ -653,9 +654,9 @@ public final class CgMaterialShaderCompiler {
           .append(pass.vertexBody()).append("\n")
           .append("}\n");
 
-        // Generated main(): the vertex fetched, then skinned, before anything reads it
+        // Generated main(): the material's values loaded, the vertex fetched, then skinned, before anything reads them
         appendVertexMain(sb, v2fFields);
-        String first = (vertexFormat.getAttributeCount() > 0 ? "\n  cg_FetchVertex();" : "")
+        String first = MATERIAL_LOAD + (vertexFormat.getAttributeCount() > 0 ? "\n  cg_FetchVertex();" : "")
                 + (skinnedVariant(config) ? "\n  _cg_skin();" : "");
         if (!first.isEmpty()) sb.insert(sb.indexOf("{", sb.lastIndexOf("void main()")) + 1, first);
         if (normals) {
@@ -711,7 +712,7 @@ public final class CgMaterialShaderCompiler {
         appendPropertyUniforms(sb, properties);
 
         // Material properties UBO (CgMaterialBlock) — emitted before user-attached buffers
-        appendMaterialBlock(sb, properties, matPropsEntry);
+        appendMaterialBlock(sb, properties, matPropsEntry, shader.valuesInArena());
 
         appendAttachedBuffers(sb, attachedBuffers);
 
@@ -991,12 +992,17 @@ public final class CgMaterialShaderCompiler {
         sb.append("#endif\n");
     }
 
+    /** First in each generated main: an arena material's values, read from the draw's slot (CgGlslEmitter.emitArena). */
+    private static final String MATERIAL_LOAD = "\n#ifdef CG_MATERIAL_ARENA\n  _cg_material();\n#endif";
+
     /**
      * {@code CgMaterialBlock}: the material's values, and where the device reads textures by index, each texture's
-     * handle after them, so a material is one block (Unreal's material uniform buffer). Absent with neither.
+     * handle after them, so a material is one block (Unreal's material uniform buffer). Absent with neither. Where its
+     * values live in its shader's arena ({@code arena}), a slot of {@code CgMaterialArena} instead, but in the bindless
+     * form, whose handles the arena does not hold yet.
      */
     private static void appendMaterialBlock(StringBuilder sb, List<CgMaterialProperty> properties,
-                                            CgUniformBuffer values) {
+                                            CgUniformBuffer values, boolean arena) {
         StringBuilder handles = new StringBuilder();
         for (CgMaterialProperty p : properties) {
             if (p.getType().isSampler()) handles.append("    uvec2 _cgt").append(p.getName()).append(";\n");
@@ -1006,6 +1012,12 @@ public final class CgMaterialShaderCompiler {
             if (handles.length() > 0) {
                 int close = block.lastIndexOf("};");
                 block = block.substring(0, close) + "#ifdef CG_BINDLESS\n" + handles + "#endif\n" + block.substring(close);
+            }
+            if (arena) {
+                int floats = values.getFormat().getFloatCount();
+                block = "#ifdef CG_BINDLESS\n" + block + "#else\n"
+                        + CgGlslEmitter.emitArena(values.getFormat(), CgBindingModel.MATERIAL_BLOCK, CgMaterialArena.stride(floats))
+                        + "#endif\n";
             }
             sb.append(block).append('\n');
         } else if (handles.length() > 0) {
@@ -1236,7 +1248,7 @@ public final class CgMaterialShaderCompiler {
     private static void appendFragmentMain(StringBuilder sb, List<CgShaderParser.V2fField> fields,
                                             CgParsedPass pass, CgParsedShader shader, boolean overdraw,
                                             boolean cover, boolean fold) {
-        sb.append("void main() {\n");
+        sb.append("void main() {").append(MATERIAL_LOAD).append('\n');
         sb.append("  v2f _v2f_local;\n");
         for (CgShaderParser.V2fField f : fields) {
             sb.append("  _v2f_local.").append(f.name())

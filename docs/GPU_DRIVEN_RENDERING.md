@@ -282,7 +282,7 @@ draw has:
 | Same | So |
 |---|---|
 | **pipeline** | one material shader and keyword set; a different material ends the run |
-| **bindings** | the same textures, buffers and property values: two `CgMaterial` instances with different textures do not join (`graph.multi-draw.binding-breaks` counts these). Share one material and vary per instance through `CG_OBJECT_CUSTOM*` and atlases or texture arrays |
+| **bindings** | the same textures and buffers, and the same property values or one material arena: instances of one `#type spatial` shader that differ in their values join, each draw naming its material's slot (`CgMaterialArena`, `docs/SHADERS.md` § *A material's values*). Instances with different textures do not (`graph.multi-draw.binding-breaks` counts these): share one material and vary per instance through `CG_OBJECT_CUSTOM*` and atlases or texture arrays |
 | **scissor**, and no target copy between | a `sceneColor`/`sceneDepth` reader between two draws splits them |
 | **vertex format** | every mesh of a format is in its one pool, so any two join; `FRAME` meshes join within one ring page |
 | **indexing** | meshes with indices and meshes without never share a call |

@@ -9,7 +9,8 @@ recorder will run on a UI document's own thread (`render-graph` §3.1); GL happe
 |---|---|---|
 | `CgPipeline` | a key: shader asset + pass + keyword set + render state + instance kind, interned to an `int` | `of`/`byId` any thread; `precache`/`program`/`bind`/`instanceBase` render thread |
 | `CgBindingTable` | a recording's binding snapshots: block bytes copied, textures, storage buffers and buffer textures as handles, interned by content | filled by one recorder; `upload`/`bind` on the render thread after handover |
-| `CgInstanceKind` | what instances are: `QUAD`, `CURVE`, `OBJECT`, and the record stride each writes | — |
+| `CgInstanceKind` | what instances are: `QUAD`, `CURVE`, `OBJECT` (an id pair: record, material slot), and the record stride each writes | — |
+| `CgBlockVersion`, `CgMaterialArena` | a material block as it was when a value moved, in a page of its own or a slot of its shader's arena (one storage buffer of slots, Bevy's material slab) | made on any thread; slots given at frame build, written at `upload` |
 | `CgPassConstants` | the pass's view and environment blocks (`CgViewBlock`, `CgEnvironmentBlock`) as a value, one per pass | any |
 | `CgDrawChunk` / `CgChunkBuilder` | a run of draws under one property state (spatial, clip, effect node), with its instance records per kind and bounds per draw — Blink's paint chunk. A recording's own builder (`CgChunkBuilder.pooling`) refills its chunks after the recording's reset; `with` copies one that must outlive it | the builder: one recorder; the chunk: any, once ended |
 | `CgOrder`, `CgBatcher` | `LOOKBACK` (painter's order, WebRender's lookback, never across a domain) or `SORTED` (by the recorder's key, stable); the batcher groups a pass's draws by pipeline + snapshot + kind + mesh | the frame builder's |
@@ -35,6 +36,10 @@ if (p.bind()) { table.bind(bindings); CgMeshStore.get().draw(mesh, instances, fi
   the snapshot (`texture(unit, texture, sampler)`): equal samplers intern to one id, another makes another.
 - **A buffer in a snapshot is a `CgBufferHandle`**, resolved at `bind` the same way; a `CgGraphBuffer` is read by the
   raster pass the chunk is added to, so the graph orders the draw after the pass writing it.
+- **An arena block binds as its arena.** A snapshot holding one has a `share` with every snapshot equal but for which
+  version of that arena it holds: the executor joins and binds by shares, and each draw's id carries its slot
+  (`slotOf`, the frame builder's), so instances of one shader differing only in values draw in one multi-draw. A batch
+  whose ids carry no slot (its own records, another kind) binds its slot alone.
 - **A sampler's unit is its index among the shader's declared samplers.** `CgMaterialShader` wires every program
   that way at compile, so nothing per material is left to wire at execution.
 - **A draw carries its bases**: its first instance (where its batch's records start, `CgMeshStore.SHARED_RECORD` set

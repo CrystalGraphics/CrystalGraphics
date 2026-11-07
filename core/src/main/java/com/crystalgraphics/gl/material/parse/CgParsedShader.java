@@ -301,6 +301,14 @@ public record CgParsedShader(String shaderType, List<CgMaterialProperty> propert
         return !engineBuffers.contains("quad") && !engineBuffers.contains("curve");
     }
 
+    /**
+     * Whether its materials' values live in its arena ({@code CgMaterialArena}), each draw naming its material's slot, so
+     * draws of its materials join in one multi-draw: a {@code #type spatial} shader's, drawn by object records.
+     */
+    public boolean valuesInArena() {
+        return "spatial".equals(shaderType) && readsObjectRecord();
+    }
+
     /** Whether the compiler multiplies its Forward colour by the host's lightmap. */
     public boolean lit() {
         return !unlit && readsObjectRecord();

@@ -148,6 +148,12 @@ public final class CgBindingPoints {
      */
     public static Binding VERTICES;
 
+    /**
+     * A shader's material arena ({@code CgMaterialArena}): its materials' values side by side, the draw's slot named by
+     * its ids. A storage point only. {@code null} until {@link #init(CgCapabilities)} has been called.
+     */
+    public static Binding MATERIAL_ARENA;
+
     /** How many buffers a material's {@code Buffers { }} may declare. */
     public static final int MATERIAL_BUFFER_COUNT = 4;
 
@@ -286,6 +292,7 @@ public final class CgBindingPoints {
         PARTICLE_BEAMS = new Binding(--maxSsboBindings, tbo ? --maxTextureUnits : -1);
         BONE_PALETTES = new Binding(--maxSsboBindings, PARTICLE_BEAMS.tbo());
         VERTICES = new Binding(--maxSsboBindings, -1);
+        MATERIAL_ARENA = new Binding(--maxSsboBindings, -1);
         maxSsboBindings -= MATERIAL_BUFFER_COUNT;
         MATERIAL_BUFFERS_SSBO = maxSsboBindings;
 

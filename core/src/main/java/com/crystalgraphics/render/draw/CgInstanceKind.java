@@ -29,9 +29,10 @@ public enum CgInstanceKind {
 
     /**
      * A slot of the firing's {@link CgPrimitiveTable} over the mesh a draw names: world geometry. The record
-     * ({@code cg_env.glsl}'s {@code CgObjectData}) is the table's; an instance carries its id.
+     * ({@code cg_env.glsl}'s {@code CgObjectData}) is the table's; an instance carries its id, and beside it its
+     * material's arena slot ({@link CgMaterialArena}), which the frame builder writes.
      */
-    OBJECT(objectIdFormat(), 1);
+    OBJECT(objectIdFormat(), 2);
 
     /** The GLSL buffer the object records are read from, declared by {@code cg_env.glsl}: the table, or a draw's own. */
     public static final String OBJECT_BLOCK_NAME = "CgObjectDataBuffer";
@@ -41,7 +42,7 @@ public enum CgInstanceKind {
     private static final CgInstanceKind[] BY_ORDINAL = values();
 
     private final CgBufferFormat format;
-    /** Floats a record takes in the array: the format's, which rounds to 16 bytes, but for a scalar array's 4. */
+    /** Floats a record takes in the array: the format's, which rounds to 16 bytes, but for OBJECT's id pair, 8. */
     private final int floats;
 
     CgInstanceKind(CgBufferFormat format) {
@@ -105,9 +106,9 @@ public enum CgInstanceKind {
                 .build();
     }
 
-    /** {@code cg_env.glsl}'s {@code cg_ObjectIds} entry: a slot of the table, its bits carried in a float record. */
+    /** {@code cg_env.glsl}'s {@code cg_ObjectIds} entry: a slot of the table and a material slot, as bits in floats. */
     private static CgBufferFormat objectIdFormat() {
-        return CgBufferFormat.builder("cg_object_id", CgBufferFormat.MemoryLayout.STD430).uint("id").build();
+        return CgBufferFormat.builder("cg_object_id", CgBufferFormat.MemoryLayout.STD430).uint("id").uint("material").build();
     }
 
     private static CgBufferFormat curveFormat() {

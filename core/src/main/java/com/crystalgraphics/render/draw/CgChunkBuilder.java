@@ -280,15 +280,16 @@ public final class CgChunkBuilder {
         return this;
     }
 
-    /** Appends {@code slot}'s id to the open OBJECT draw. */
+    /** Appends {@code slot}'s id to the open OBJECT draw; the material slot beside it is the frame builder's. */
     private void id(int slot) {
         float[] ids = instances[OBJECT_KIND];
         int at = records[OBJECT_KIND];
-        if (ids == null || at == ids.length) {
-            ids = ids == null ? new float[64] : Arrays.copyOf(ids, ids.length * 2);
+        if (ids == null || at * 2 == ids.length) {
+            ids = ids == null ? new float[128] : Arrays.copyOf(ids, ids.length * 2);
             instances[OBJECT_KIND] = ids;
         }
-        ids[at] = Float.intBitsToFloat(slot);
+        ids[at * 2] = Float.intBitsToFloat(slot);
+        ids[at * 2 + 1] = 0f;
         if (each != null && each[drawing]) {
             if (recordCounts.length <= at) recordCounts = Arrays.copyOf(recordCounts, Math.max(recordCounts.length * 2, at + 1));
             recordCounts[at] = -1;

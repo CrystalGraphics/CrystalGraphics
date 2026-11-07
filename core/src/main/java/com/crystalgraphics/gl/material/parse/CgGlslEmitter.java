@@ -29,6 +29,60 @@ public final class CgGlslEmitter {
     /** The storage block a vertex stage pulls its mesh's vertices from: the format's words, bound at {@code VERTICES}. */
     public static final String VERTEX_BLOCK = "CgVertexWords";
 
+    /** The storage block a material's values are read from where they live in its shader's arena. */
+    public static final String ARENA_BLOCK = "CgMaterialArena";
+
+    /**
+     * A material's values where they live in its shader's arena ({@code CgMaterialArena}): the block as a struct padded
+     * to the arena's {@code stride}, an array of them at {@code slot}, and each value a global under its name, read from
+     * the draw's slot by {@code _cg_material()}, which the generated main calls first. Defines {@code CG_MATERIAL_ARENA}.
+     *
+     * <pre>{@code
+     * emitArena(format, CgBindingModel.MATERIAL_BLOCK, CgMaterialArena.stride(format.getFloatCount()));
+     * // struct CgMaterialData { vec4 _Color; vec4 _cg_pad[15]; };
+     * // CG_BIND(2, 0) layout(std140) readonly buffer CgMaterialArena { CgMaterialData cg_Materials[]; };
+     * // vec4 _Color;
+     * // void _cg_material() { uint s = CG_MATERIAL_SLOT; _Color = cg_Materials[s]._Color; }
+     * }</pre>
+     *
+     * <ul>
+     *   <li>The draw's slot is its id's where the whole arena is bound; a batch bound its own slot alone reads that one,
+     *       told by the array's length, and never reads an id.</li>
+     *   <li>std140, so the struct's members sit where the uniform block's did and the material's writer is unchanged.</li>
+     * </ul>
+     *
+     * @throws IllegalArgumentException if the block is not a whole number of vec4s or is larger than {@code stride}
+     */
+    public static String emitArena(CgBufferFormat format, CgBindingModel.Slot slot, int stride) {
+        int bytes = format.getFloatCount() * 4;
+        if (bytes % 16 != 0 || bytes > stride) {
+            throw new IllegalArgumentException("a block of " + bytes + " bytes in an arena of " + stride + " a slot");
+        }
+        StringBuilder sb = new StringBuilder(512);
+        sb.append("#define CG_MATERIAL_ARENA 1\nstruct CgMaterialData {\n");
+        for (int i = 0; i < format.getFieldCount(); i++) {
+            CgBufferField field = format.getField(i);
+            sb.append("    ").append(field.getType().getGlslName()).append(' ').append(field.getName()).append(";\n");
+        }
+        if (stride > bytes) sb.append("    vec4 _cg_pad[").append((stride - bytes) / 16).append("];\n");
+        sb.append("};\n");
+        sb.append(slot.glsl()).append("layout(std140) readonly buffer ").append(ARENA_BLOCK).append(" {\n")
+                .append("    CgMaterialData cg_Materials[];\n};\n");
+        sb.append("#define CG_MATERIAL_SLOT (cg_Materials.length() == 1 ? 0u")
+                .append(" : min(cg_ObjectIds[CG_INSTANCE_ID].y, uint(cg_Materials.length()) - 1u))\n");
+        for (int i = 0; i < format.getFieldCount(); i++) {
+            CgBufferField field = format.getField(i);
+            sb.append(field.getType().getGlslName()).append(' ').append(field.getName()).append(";\n");
+        }
+        sb.append("void _cg_material() {\n    uint s = CG_MATERIAL_SLOT;\n");
+        for (int i = 0; i < format.getFieldCount(); i++) {
+            String name = format.getField(i).getName();
+            sb.append("    ").append(name).append(" = cg_Materials[s].").append(name).append(";\n");
+        }
+        sb.append("}\n");
+        return sb.toString();
+    }
+
     /**
      * A format's attributes as a vertex stage pulls them (Unreal's manual vertex fetch): the store's words at
      * {@link CgBindingModel#VERTICES}, and a global per attribute under its name, which {@link #emitVertexFetch} fills.

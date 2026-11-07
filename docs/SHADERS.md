@@ -288,6 +288,21 @@ picks the variant (`CgPipelineForm.SKINNED`), in every pass; a shader of another
 material never declares them again. A material reads anything else through `Buffers { }` or an engine token
 (`#pragma cg_use`); nothing is injected into a shader at runtime.
 
+#### A material's values
+
+A material's non-sampler properties are one std140 block, `CgMaterialBlock`, read under their own names. A
+`#type spatial` shader drawn by object records keeps its materials' blocks side by side in its **material arena**
+(`CgMaterialArena`, Bevy's material slab): one storage buffer of slots at the same binding, each draw's instance id
+naming its material's slot, so draws of two instances of the shader that differ only in their values join in one
+multi-draw. The values are then globals, loaded from the draw's slot first thing in the generated `main`:
+
+```glsl
+fragColor = texture(_MainTex, i.uv) * _Color;   // the same either way
+```
+
+- A property name is a global: a local of the same name hides it, as it hid the block's member.
+- Textures are still bound per material: instances with different textures do not join until they are read by index.
+
 #### Stage defines — `CG_VERTEX_STAGE` / `CG_FRAGMENT_STAGE` / `CG_COMPUTE_STAGE`
 
 One `.shader` file becomes **two** GLSL programs, and `partitionGlobalDecls` hoists **every** `#`-line

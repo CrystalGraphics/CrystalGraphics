@@ -30,6 +30,7 @@ import com.crystalgraphics.render.draw.CgBindingTable;
 import com.crystalgraphics.render.draw.CgBlockVersion;
 import com.crystalgraphics.render.draw.CgBufferHandle;
 import com.crystalgraphics.render.draw.CgInstanceKind;
+import com.crystalgraphics.render.draw.CgMaterialArena;
 import com.crystalgraphics.render.draw.CgPipeline;
 import lombok.Getter;
 import org.apache.logging.log4j.LogManager;
@@ -1060,7 +1061,10 @@ public final class CgMaterial {
         }
         table.begin();
         if (propStore != null) {
-            if (propStore.hasUboProps()) table.block(CgBindingPoints.MATERIAL_PROPERTIES_UBO, blockVersion());
+            if (propStore.hasUboProps()) {
+                CgBlockVersion version = blockVersion();
+                table.block(version.arena() != null ? arenaPoint() : CgBindingPoints.MATERIAL_PROPERTIES_UBO, version);
+            }
             propStore.captureSamplers(table);
         }
         if (cgMaterialShader != null) captureEngineBlocks(table);
@@ -1108,16 +1112,32 @@ public final class CgMaterial {
 
     /**
      * The properties block as it is now, persistent: a new version only after a value moved (counted,
-     * {@code material.block-writes}), so an unchanged material uploads nothing frame to frame.
+     * {@code material.block-writes}), so an unchanged material uploads nothing frame to frame. In its shader's arena
+     * where its values live there.
      */
     private CgBlockVersion blockVersion() {
         CgBlockVersion current = blockVersion;
-        if (current != null && !capturePropsDirty) return current;
+        CgMaterialArena arena = arena();
+        if (current != null && !capturePropsDirty && current.arena() == arena) return current;
         CgBufferWriter packer = capturePacker();
         if (current != null) current.supersede();
-        blockVersion = current = CgBlockVersion.of(packer.rawData(), packer.rawCursor());
+        blockVersion = current = arena != null ? CgBlockVersion.in(arena, packer.rawData(), packer.rawCursor())
+                : CgBlockVersion.of(packer.rawData(), packer.rawCursor());
         CgTrace.add(CgChannels.GL, BLOCK_WRITES, 1);
         return current;
+    }
+
+    /** The arena's storage point; -1 before the binding points are known, as the block's is. */
+    private static int arenaPoint() {
+        return CgBindingPoints.MATERIAL_ARENA == null ? -1 : CgBindingPoints.MATERIAL_ARENA.ssbo();
+    }
+
+    /** Its shader's arena where its values live there ({@link CgParsedShader#valuesInArena}); null otherwise. */
+    @Nullable
+    private CgMaterialArena arena() {
+        CgParsedShader parsed = cgMaterialShader == null ? null : cgMaterialShader.ensureParsed();
+        if (parsed == null || !parsed.valuesInArena() || propStore == null || !propStore.hasUboProps()) return null;
+        return cgMaterialShader.arena(propStore.buildUboFormat().getFloatCount());
     }
 
     /** The properties block packed as it is now, repacked only after a value moved. */
@@ -1313,7 +1333,12 @@ public final class CgMaterial {
         }
 
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL_DETAIL, "doBind.uboBind")) {
-            if (matPropsUbo != null) matPropsUbo.bind();
+            if (matPropsUbo != null) {
+                // An arena program reads its values from a slot: this material's, bound alone
+                CgBlockVersion version = arena() != null ? blockVersion() : null;
+                if (version != null) CgBindingTable.bindAlone(version, arenaPoint());
+                else matPropsUbo.bind();
+            }
         }
 
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL_DETAIL, "doBind.samplers")) {

@@ -1885,7 +1885,7 @@ public final class CgExecutor {
         if (damage != null) CgTrace.add(CgChannels.GL, "graph.damage-kpx", (long) damage[2] * damage[3] / 1000L);
         if (packed.indirects > 0 && gpuCounts) {
             try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, WRITE_COMMANDS)) {
-                writeCommands(pass, packed);   // a dispatch never sits inside a render pass
+                writeCommands(frame.bindings, pass, packed);   // a dispatch never sits inside a render pass
             }
         }
         if (device) {
@@ -2038,11 +2038,11 @@ public final class CgExecutor {
                 } else {
                     try (CgTrace.Zone joining = CgTrace.zone(CgChannels.GL_DETAIL, BATCH_JOIN)) {
                         end = packed.objects[b] == null && packed.buffers[b * CgDrawChunk.BUFFERS] == null && multiDraw
-                                && b + 1 < packed.count && joinable(packed, b, b + 1)
-                                ? joinRun(packed, b) : b;
+                                && b + 1 < packed.count && joinable(frame.bindings, packed, b, b + 1)
+                                ? joinRun(frame.bindings, packed, b) : b;
                     }
                     if (multiDraw && end + 1 < packed.count && CgTrace.isEnabled(CgChannels.GL)
-                            && breaksOnBinding(packed, b, end + 1)) {
+                            && breaksOnBinding(frame.bindings, packed, b, end + 1)) {
                         CgTrace.add(CgChannels.GL, BINDING_BREAKS, 1);
                     }
                 }
@@ -2096,10 +2096,13 @@ public final class CgExecutor {
                     b = end;
                     continue;
                 }
-                if (packed.binding[b] != boundBinding) {
-                    boundBinding = packed.binding[b];
+                // A batch whose ids carry its material's slot binds the arena whole, by its share; any other its slot alone
+                boolean whole = slotsInIds(packed, b);
+                int bound = whole ? frame.bindings.share(packed.binding[b]) * 2 + 1 : packed.binding[b] * 2;
+                if (bound != boundBinding) {
+                    boundBinding = bound;
                     try (CgTrace.Zone binding = CgTrace.zone(CgChannels.GL_DETAIL, BATCH_BINDINGS)) {
-                        frame.bindings.bind(boundBinding);
+                        frame.bindings.bind(packed.binding[b], whole);
                     }
                 }
                 int first = b * CgDrawChunk.BUFFERS;
@@ -2122,7 +2125,7 @@ public final class CgExecutor {
                         standIn[s] = at;
                     }
                 }
-                if (DEVICE_SETS) deviceSets(pipeline, frame.bindings, packed.constants, boundBinding);
+                if (DEVICE_SETS) deviceSets(pipeline, frame.bindings, packed.constants, packed.binding[b]);
                 if (joinedDraw) {
                     try (CgTrace.Zone drawing = CgTrace.zone(CgChannels.GL_DETAIL, BATCH_DRAW)) {
                         if (command >= 0) {
@@ -2196,6 +2199,11 @@ public final class CgExecutor {
         return label;
     }
 
+    /** Whether batch {@code b}'s instances name records by ids the frame builder wrote, each with its material's slot. */
+    private static boolean slotsInIds(CgFrame.Raster packed, int b) {
+        return packed.kind[b] == OBJECT && packed.objects[b] == null;
+    }
+
     private static CgMesh mesh(CgFrame.Raster packed, int b) {
         return packed.kind[b] == CgInstanceKind.OBJECT.ordinal() ? packed.mesh[b] : UNIT_QUAD;
     }
@@ -2205,11 +2213,11 @@ public final class CgExecutor {
      * last: those after it that are {@link #joinable} with it, while the store takes their meshes. {@code b} itself,
      * nothing left joined, when none follows.
      */
-    private static int joinRun(CgFrame.Raster packed, int b) {
+    private static int joinRun(CgBindingTable table, CgFrame.Raster packed, int b) {
         CgMeshStore store = CgMeshStore.get();
         if (!join(store, packed, b)) return b;
         int end = b;
-        while (end + 1 < packed.count && joinable(packed, b, end + 1) && join(store, packed, end + 1)) end++;
+        while (end + 1 < packed.count && joinable(table, packed, b, end + 1) && join(store, packed, end + 1)) end++;
         if (end == b) store.dropJoined();
         return end;
     }
@@ -2219,11 +2227,14 @@ public final class CgExecutor {
                 packed.rangeCount[k], packed.first[k]);
     }
 
-    /** Batch {@code k} drawn directly under {@code b}'s pipeline, bindings and scissor, with no target copy before it. */
-    private static boolean joinable(CgFrame.Raster packed, int b, int k) {
+    /**
+     * Batch {@code k} drawn directly under {@code b}'s pipeline, bindings and scissor, with no target copy before it: its
+     * bindings {@code b}'s {@link CgBindingTable#share share}, so another material of one arena joins (Bevy's slab key).
+     */
+    private static boolean joinable(CgBindingTable table, CgFrame.Raster packed, int b, int k) {
         return packed.counts[k] == null && packed.objects[k] == null && packed.buffers[k * CgDrawChunk.BUFFERS] == null
                 && packed.copyBefore[k] == 0 && packed.pipeline[k] == packed.pipeline[b]
-                && packed.binding[k] == packed.binding[b] && packed.scissor[k] == packed.scissor[b]
+                && table.share(packed.binding[k]) == table.share(packed.binding[b]) && packed.scissor[k] == packed.scissor[b]
                 && packed.group[k] == packed.group[b];
     }
 
@@ -2231,9 +2242,9 @@ public final class CgExecutor {
      * Indirect batch {@code k} drawn in one multi-draw after {@code b}: as {@link #joinable}, reading the same object
      * records, from a mesh the store {@link CgMeshStore#joins joins} with {@code b}'s.
      */
-    private static boolean joinableIndirect(CgFrame.Raster packed, int b, int k) {
+    private static boolean joinableIndirect(CgBindingTable table, CgFrame.Raster packed, int b, int k) {
         return packed.counts[k] != null && packed.copyBefore[k] == 0
-                && packed.pipeline[k] == packed.pipeline[b] && packed.binding[k] == packed.binding[b]
+                && packed.pipeline[k] == packed.pipeline[b] && table.share(packed.binding[k]) == table.share(packed.binding[b])
                 && packed.scissor[k] == packed.scissor[b] && packed.objects[k] == packed.objects[b]
                 && sameBuffers(packed, b, k) && packed.group[k] == packed.group[b]
                 && CgMeshStore.get().joins(mesh(packed, b), mesh(packed, k));
@@ -2248,9 +2259,9 @@ public final class CgExecutor {
             CgTrace.name("graph.multi-draw.breaks.mesh")};
 
     /** Counts the first reason indirect batch {@code k} does not join {@code b}'s run, by {@link #joinableIndirect}'s terms. */
-    private static void countBreak(CgFrame.Raster packed, int b, int k) {
+    private static void countBreak(CgBindingTable table, CgFrame.Raster packed, int b, int k) {
         int why = packed.counts[k] == null ? 0 : packed.copyBefore[k] != 0 ? 1
-                : packed.pipeline[k] != packed.pipeline[b] ? 2 : packed.binding[k] != packed.binding[b] ? 3
+                : packed.pipeline[k] != packed.pipeline[b] ? 2 : table.share(packed.binding[k]) != table.share(packed.binding[b]) ? 3
                 : packed.scissor[k] != packed.scissor[b] ? 4
                 : packed.objects[k] != packed.objects[b] || !sameBuffers(packed, b, k) ? 5
                 : packed.group[k] != packed.group[b] ? 6 : 7;
@@ -2266,11 +2277,11 @@ public final class CgExecutor {
         return shared ? packed.first[b] | CgMeshStore.SHARED_RECORD : packed.first[b];
     }
 
-    /** Whether batch {@code k} would join {@code b}'s run but for its bindings: what bindless would join. */
-    private static boolean breaksOnBinding(CgFrame.Raster packed, int b, int k) {
+    /** Whether batch {@code k} would join {@code b}'s run but for its bindings, shares compared: what bindless would join. */
+    private static boolean breaksOnBinding(CgBindingTable table, CgFrame.Raster packed, int b, int k) {
         return packed.objects[b] == null && packed.counts[k] == null && packed.objects[k] == null
                 && packed.copyBefore[k] == 0 && packed.pipeline[k] == packed.pipeline[b]
-                && packed.binding[k] != packed.binding[b] && packed.scissor[k] == packed.scissor[b]
+                && table.share(packed.binding[k]) != table.share(packed.binding[b]) && packed.scissor[k] == packed.scissor[b]
                 && CgMeshStore.get().joins(mesh(packed, b), mesh(packed, k));
     }
 
@@ -2685,9 +2696,9 @@ public final class CgExecutor {
                 slot += commandCount;
             } else {
                 end = packed.objects[b] == null && packed.buffers[b * CgDrawChunk.BUFFERS] == null && multiDraw
-                        && b + 1 < packed.count && joinable(packed, b, b + 1) ? joinRun(packed, b) : b;
+                        && b + 1 < packed.count && joinable(table, packed, b, b + 1) ? joinRun(table, packed, b) : b;
                 if (multiDraw && end + 1 < packed.count && CgTrace.isEnabled(CgChannels.GL)
-                        && breaksOnBinding(packed, b, end + 1)) {
+                        && breaksOnBinding(table, packed, b, end + 1)) {
                     CgTrace.add(CgChannels.GL, BINDING_BREAKS, 1);
                 }
             }
@@ -2751,6 +2762,9 @@ public final class CgExecutor {
             // The words its vertex stage pulls from, which a joined run's meshes share
             int words = store.vertexWords(mesh);
             if (words != 0) CgBoundResources.storage(CgBindingPoints.VERTICES.ssbo(), words, 0, 0);
+            // A batch whose ids carry its material's slot binds the arena whole, made from its share; any other its slot
+            boolean whole = slotsInIds(packed, b);
+            int shared = whole ? table.share(binding) : binding;
             for (int set = 0; set < layout.sets().size(); set++) {
                 if (set == CgRHI.BINDLESS_SET) {
                     drawCache.set(rp, set, rhi.bindlessSet());
@@ -2758,18 +2772,19 @@ public final class CgExecutor {
                 }
                 CgBindingLayout bl = layout.sets().get(set);
                 if (bl.slots().isEmpty()) continue;
-                int snapshot = set == CgBindingModel.VIEW ? packed.constants : binding;
+                int snapshot = set == CgBindingModel.VIEW ? packed.constants : shared;
+                int memo = set == CgBindingModel.VIEW ? snapshot : snapshot * 2 + (whole ? 1 : 0);
                 int version = CgBoundResources.version(set);
-                if (set < setLayout.length && setLayout[set] == bl && setSnapshot[set] == snapshot
+                if (set < setLayout.length && setLayout[set] == bl && setSnapshot[set] == memo
                         && setVersion[set] == version) {
                     CgTrace.add(CgChannels.GL, SETS_KEPT, 1);
                     drawCache.set(rp, set, setMade[set]);
                     continue;
                 }
-                CgBindingSet made = deviceSets.set(rhi, table, snapshot, layout, set, null);
+                CgBindingSet made = deviceSets.set(rhi, table, snapshot, layout, set, null, whole);
                 if (set < setLayout.length) {
                     setLayout[set] = bl;
-                    setSnapshot[set] = snapshot;
+                    setSnapshot[set] = memo;
                     setVersion[set] = version;
                     setMade[set] = made;
                 }
@@ -2845,12 +2860,13 @@ public final class CgExecutor {
     /** The identity ids reaching {@code n} at least, uploaded where they reached less: rarely, as a draw's records grow. */
     private void uploadIdentity(int n) {
         int ids = Math.max(n, identityIds * 2);
-        if (identity.length < ids) {
-            float[] grown = new float[ids];
-            for (int i = 0; i < ids; i++) grown[i] = Float.intBitsToFloat(i);
+        if (identity.length < ids * 2) {
+            // (i, 0): record i, material slot 0, which an arena bound as one slot reads
+            float[] grown = new float[ids * 2];
+            for (int i = 0; i < ids; i++) grown[i * 2] = Float.intBitsToFloat(i);
             identity = grown;
         }
-        identityBuffer.uploadRaw(identity, ids);
+        identityBuffer.uploadRaw(identity, ids * 2);
         identityIds = ids;
     }
 
@@ -2941,7 +2957,7 @@ public final class CgExecutor {
      * count's own barrier came with the pass's access list. Where draws join, decides the runs a multi-draw draws
      * ({@link #runs}) and writes their commands in its form.
      */
-    private void writeCommands(CgRasterPass pass, CgFrame.Raster packed) {
+    private void writeCommands(CgBindingTable table, CgRasterPass pass, CgFrame.Raster packed) {
         int args = commands.reserve(packed.indirects, FORGET_BUFFER);
         bufferBarrier(args, CgAccess.COMPUTE_WRITE);
         if (runs.length < packed.count) runs = new int[Math.max(packed.count, runs.length * 2)];
@@ -2950,8 +2966,8 @@ public final class CgExecutor {
             if (packed.counts[b] == null) continue;
             int end = b;
             if (multiDraw) {
-                while (end + 1 < packed.count && joinableIndirect(packed, b, end + 1)) end++;
-                if (end + 1 < packed.count && CgTrace.isEnabled(CgChannels.GL)) countBreak(packed, b, end + 1);
+                while (end + 1 < packed.count && joinableIndirect(table, packed, b, end + 1)) end++;
+                if (end + 1 < packed.count && CgTrace.isEnabled(CgChannels.GL)) countBreak(table, packed, b, end + 1);
             }
             runs[b] = end;
             for (int k = b; k <= end; k++) slot += writeCommand(packed, k, slot);

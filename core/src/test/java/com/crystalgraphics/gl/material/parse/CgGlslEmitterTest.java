@@ -6,6 +6,7 @@ import com.crystalgraphics.api.material.CgAttachedBuffer;
 import com.crystalgraphics.api.vertex.CgAttribType;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
 import com.crystalgraphics.api.vertex.CgVertexSemantic;
+import com.crystalgraphics.render.shader.CgBindingModel;
 import org.junit.Test;
 
 import static org.junit.Assert.*;
@@ -211,6 +212,27 @@ public class CgGlslEmitterTest {
         assertTrue(out, out.contains("cg_BoneIndices = uvec4(bitfieldExtract(cg_VertexWords[v + 10u], 0, 8), "
                 + "bitfieldExtract(cg_VertexWords[v + 10u], 8, 8), bitfieldExtract(cg_VertexWords[v + 10u], 16, 8), "
                 + "bitfieldExtract(cg_VertexWords[v + 10u], 24, 8));"));
+    }
+
+    /** The block as a struct padded to the slot, its array at the material block's slot, each value loaded from the draw's. */
+    @Test
+    public void arena_theBlockAsAPaddedStructAndEachValueLoaded() {
+        CgBufferFormat block = CgBufferFormat.builder("CgMaterialBlock", MemoryLayout.STD140).vec4("_Color").float_("_Speed").build();
+        String out = CgGlslEmitter.emitArena(block, CgBindingModel.MATERIAL_BLOCK, 256);
+        int bytes = block.getFloatCount() * 4;
+        assertTrue(out, out.contains("struct CgMaterialData {\n    vec4 _Color;\n    float _Speed;\n    vec4 _cg_pad["
+                + (256 - bytes) / 16 + "];\n};\n"));
+        assertTrue(out, out.contains("CG_BIND(2, 0) layout(std140) readonly buffer CgMaterialArena {\n    CgMaterialData cg_Materials[];\n};"));
+        assertTrue(out, out.contains("\nvec4 _Color;\nfloat _Speed;\nvoid _cg_material() {"));
+        assertTrue(out, out.contains("    _Speed = cg_Materials[s]._Speed;\n"));
+        assertTrue(out, out.startsWith("#define CG_MATERIAL_ARENA 1\n"));
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void arena_aBlockLargerThanItsSlotIsRefused() {
+        CgBufferFormat block = CgBufferFormat.builder("CgMaterialBlock", MemoryLayout.STD140).mat4("a").mat4("b").mat4("c")
+                .mat4("d").mat4("e").build();
+        CgGlslEmitter.emitArena(block, CgBindingModel.MATERIAL_BLOCK, 256);
     }
 
     @Test(expected = IllegalStateException.class)

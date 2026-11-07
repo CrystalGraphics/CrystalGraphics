@@ -382,7 +382,9 @@ CgPostStack.get().crossfade(0.5f);
 **Object record** (`CgInstanceKind.OBJECT`, STD430, 48 floats): `modelMatrix` 0–15, `normalMatrix` 16–31 (the
 shader reads its 3×3; 28–29 the light, `CG_OBJECT_LIGHT`; 30 the emission scale less 1, `CG_OBJECT_EMISSION`;
 19, 23, 27 and 31 free for a record's writer, `CG_OBJECT_SPARE`, `(0, 0, 0, 1)` from `CgWorldRenderer`),
-`custom0`–`custom3` 32–47.
+`custom0`–`custom3` 32–47. An OBJECT instance carries `(record, material slot)` (`cg_ObjectIds`, `uvec2`): the record
+in the firing's table and its material's slot in its shader's arena (`CgMaterialArena`), which the frame builder writes;
+a draw of its own records reads identity ids, `(i, 0)`.
 
 **An immediate object draw** — a preview, a harness scene — goes through `CgImmediate` with its own pass
 constants:

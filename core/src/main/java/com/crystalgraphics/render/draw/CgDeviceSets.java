@@ -42,6 +42,8 @@ import java.util.Map;
  *       {@code bindings.slots-defaulted}: a draw that reads one draws wrongly, so a scene asserts none.</li>
  *   <li>A set holding a ring block is that frame's: the block's place moves each frame. A material's own block is a
  *       {@link CgBlockVersion}, so its set lasts.</li>
+ *   <li>A block in a {@link CgMaterialArena} fills the storage slot it maps to: the whole arena for draws whose ids
+ *       carry its slot, else its slot alone, as the caller says.</li>
  *   <li>A set no call has asked for in {@link #KEPT_FRAMES} frames is released (the device keeps it until its frames
  *       retire): a frame's own sets go with it, as Unreal resets a command buffer's pools.</li>
  *   <li>Render thread.</li>
@@ -66,6 +68,10 @@ public final class CgDeviceSets {
     private long made, reused, defaulted;
     /** The last slot {@link #fill} left to a default, for a caller naming it. */
     private String lastDefaulted = "";
+    /** The frame the set being filled is for. */
+    private long frame;
+    /** The set being filled binds an arena block as the whole arena, else as its slot alone. */
+    private boolean wholeArena;
 
     /**
      * Set {@code set} of {@code layout} for snapshot {@code id}: made, or the one made for equal contents before.
@@ -74,6 +80,16 @@ public final class CgDeviceSets {
      */
     public CgBindingSet set(CgRHI rhi, CgBindingTable table, int id, CgPipelineLayout layout, int set,
                             @Nullable CgBindings extras) {
+        return set(rhi, table, id, layout, set, extras, true);
+    }
+
+    /**
+     * {@link #set(CgRHI, CgBindingTable, int, CgPipelineLayout, int, CgBindings)}, an arena block bound as the whole arena
+     * where {@code wholeArena}, for draws whose ids carry its slot, else as its slot's range alone.
+     */
+    public CgBindingSet set(CgRHI rhi, CgBindingTable table, int id, CgPipelineLayout layout, int set,
+                            @Nullable CgBindings extras, boolean wholeArena) {
+        this.wholeArena = wholeArena;
         if (device != rhi) {
             release();
             device = rhi;
@@ -150,6 +166,7 @@ public final class CgDeviceSets {
     }
 
     private void fill(CgRHI rhi, CgBindingTable table, int id, int set, CgBindingLayout layout, @Nullable CgBindings extras) {
+        frame = CgFrameRing.frame();
         List<CgBindingLayout.Slot> slots = layout.slots();
         for (int i = 0; i < slots.size(); i++) {
             CgBindingLayout.Slot slot = slots.get(i);
@@ -183,11 +200,14 @@ public final class CgDeviceSets {
             }
             case UNIFORM_BUFFER -> {
                 for (int k = 0; k < table.blocks(id); k++) {
-                    if (CgBindingModel.ofBlock(table.blockBinding(id, k)) != packed) continue;
                     CgBlockVersion version = table.blockVersion(id, k);
+                    if (version != null && version.arena != null) continue;   // a storage block
+                    if (CgBindingModel.ofBlock(table.blockBinding(id, k)) != packed) continue;
                     int name = version != null ? version.buffer : table.uploadedBuffer();
                     long at = version != null ? version.offset : table.ringOffset(id, k);
                     if (name == 0) return false;
+                    // Read this frame: its range is not freed until the frame retires, as CgBindingTable.bind marks it
+                    if (version != null) version.lastUse = frame;
                     CgGLImports imports = CgGLImports.get();
                     long bytes = Math.max(16, (table.blockFloatCount(id, k) * 4L + 15) & ~15L);
                     contents.buffer(slot.binding(), slot.type(), imports.buffer(name), imports.bufferOffset(name) + at, bytes);
@@ -196,6 +216,19 @@ public final class CgDeviceSets {
                 return bound(slot, packed);
             }
             case STORAGE_BUFFER -> {
+                for (int k = 0; k < table.blocks(id); k++) {
+                    CgBlockVersion version = table.blockVersion(id, k);
+                    if (version == null || version.arena == null) continue;
+                    if (CgBindingModel.ofStorage(table.blockBinding(id, k)) != packed) continue;
+                    CgMaterialArena arena = version.arena;
+                    if (arena.buffer == 0) return false;
+                    CgGLImports imports = CgGLImports.get();
+                    long at = wholeArena ? 0 : (long) version.slot * arena.stride();
+                    long bytes = wholeArena ? (long) arena.capacity * arena.stride() : arena.stride();
+                    contents.buffer(slot.binding(), slot.type(), imports.buffer(arena.buffer),
+                            imports.bufferOffset(arena.buffer) + at, bytes);
+                    return true;
+                }
                 for (int s = 0; s < table.storages(id); s++) {
                     if (CgBindingModel.ofStorage(table.storagePoint(id, s)) != packed) continue;
                     return whole(slot, table.storage(id, s).bufferId());

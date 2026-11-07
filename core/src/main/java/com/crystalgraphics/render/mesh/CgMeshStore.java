@@ -221,6 +221,8 @@ public final class CgMeshStore {
     /** Makes {@code mesh} drawable this frame: placed, and its bytes staged if it is new or changed. */
     public void place(CgMesh mesh) {
         beginFrame();
+        // The joined draws' commands ring, made here in the prologue: a first join inside a pass would make it there
+        if (commands == null) commands = CgStreamBuffer.create(CgGL.GL_DRAW_INDIRECT_BUFFER, 64 << 10);
         if (mesh.usage() == CgMesh.Usage.FRAME) {
             placeOnRing(mesh);
             return;
@@ -701,7 +703,6 @@ public final class CgMeshStore {
 
     /** The {@code n} joined commands written to the frame ring, counted; answers where they start. */
     private int writeJoined(int n) {
-        if (commands == null) commands = CgStreamBuffer.create(CgGL.GL_DRAW_INDIRECT_BUFFER, 64 << 10);
         int bytes = n * COMMAND_WORDS * 4;
         ByteBuffer out = commands.map(bytes).order(ByteOrder.nativeOrder());
         long vertices = 0;
