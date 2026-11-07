@@ -128,7 +128,11 @@ The authoritative path is:
 4. on hit, return placement
 5. on miss, ask a worker and return null: the glyph draws nothing until it lands, a frame or more later (an MSDF
    glyph draws its bitmap stand-in once that lands). Generated on the calling thread only where the worker route
-   cannot deliver (a failed job, a full queue), or through `ensureGlyph`, for tooling
+   cannot deliver (a failed job, a full queue), or through `ensureGlyph`, for tooling.
+   **Drawn before warm**: both pools are priority queues. A job a draw waits on runs ahead of every warm
+   (`CgFontWarmer`) job, and asking for one still queued as warm promotes it. Bitmap workers run at normal
+   priority, MSDF workers at minimum: at minimum, a busy machine left drawn bitmap glyphs queued ~30-75 ms
+   each. `glyph.queueWaitUs.<bitmap|msdf>.<drawn|warm>` (async channel) is each job's wait for a worker
 6. commit results into atlas storage, a per-frame budget of them (`tickFrame`)
 7. renderer consumes resulting `CgGlyphPlacement`
 

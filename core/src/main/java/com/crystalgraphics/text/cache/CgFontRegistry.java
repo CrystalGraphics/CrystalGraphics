@@ -310,7 +310,7 @@ public class CgFontRegistry {
             int msdfQueueDepth = glyphGenerationExecutor.msdfQueueDepth();
             CgTrace.counter(CgChannels.TEXT, "glyph.msdfQueueDepth", msdfQueueDepth);
             CgTrace.counter(CgChannels.TEXT, "glyph.warmPending", warmer.pendingCount());
-            warmer.feed(frame, msdfQueueDepth, this::queueGlyph);
+            warmer.feed(frame, msdfQueueDepth, this::warmGlyph);
         }
     }
 
@@ -492,7 +492,7 @@ public class CgFontRegistry {
             if (cached != null) {
                 return cached;
             }
-            submitMsdfGlyphJob(font, atlasKey, msdfAtlasKey);
+            submitMsdfGlyphJob(font, atlasKey, msdfAtlasKey, true);
             return ensureMsdfGlyph(font, atlasKey, msdfAtlasKey, effectiveTargetPx, subPixelBucket, currentFrame,
                     false);
         }
@@ -543,7 +543,7 @@ public class CgFontRegistry {
         }
         CgGlyphGenerationJob job = CgGlyphGenerationJob.shadowCell(font.getKey(), font.getData(), atlasKey,
                 rasterFontKey, effectiveTargetPx);
-        if (!glyphGenerationExecutor.hasFailed(job) && glyphGenerationExecutor.submit(job)) {
+        if (!glyphGenerationExecutor.hasFailed(job) && glyphGenerationExecutor.submit(job, true)) {
             CgTrace.add(CgChannels.TEXT, "glyph.shadowCell.deferredToWorker", 1);
         } else {
             CgTrace.add(CgChannels.TEXT, "glyph.shadowCell.refused", 1);
@@ -552,16 +552,30 @@ public class CgFontRegistry {
     }
 
     /**
-     * Pre-queues a glyph for async generation if it is not already in the atlas.
+     * Asks a worker for a glyph not yet in the atlas, as a draw does: ahead of any warm glyph.
      *
-     * <p><strong>Unused: no caller exists.</strong> Its pre-queue pass ({@code CgResolvedGlyphs.flattenAndPrequeue})
-     * is gone, and {@link #resolveGlyph} asks a worker for every glyph it misses.</p>
+     * <pre>{@code
+     * registry.queueGlyph(font, new CgGlyphKey(font.getKey(), glyphId, false, 0), 22, 0, frame);
+     * }</pre>
+     *
+     * <p>A draw needs none of this: {@link #resolveGlyph} asks for every glyph it misses. For tooling that
+     * fills an atlas without drawing.</p>
      */
     public synchronized void queueGlyph(CgFont font,
                         CgGlyphKey key,
                         int effectiveTargetPx,
                         int subPixelBucket,
                         long currentFrame) {
+        queue(font, key, effectiveTargetPx, subPixelBucket, currentFrame, true);
+    }
+
+    /** The warmer's sink: as {@link #queueGlyph}, behind everything a draw asked for. */
+    private void warmGlyph(CgFont font, CgGlyphKey key, int effectiveTargetPx, int subPixelBucket, long currentFrame) {
+        queue(font, key, effectiveTargetPx, subPixelBucket, currentFrame, false);
+    }
+
+    private void queue(CgFont font, CgGlyphKey key, int effectiveTargetPx, int subPixelBucket, long currentFrame,
+                       boolean drawn) {
         if (font.isDisposed()) {
             throw new IllegalStateException("Cannot queue glyph on disposed font: " + font.getKey());
         }
@@ -574,7 +588,7 @@ public class CgFontRegistry {
             CgGlyphKey atlasKey = toMsdfAtlasGlyphKey(key, config);
             CgGlyphAtlas atlas = getMsdfAtlas(msdfAtlasKey.getConfig());
             if (atlas.get(atlasKey, currentFrame) == null) {
-                submitMsdfGlyphJob(font, atlasKey, msdfAtlasKey);
+                submitMsdfGlyphJob(font, atlasKey, msdfAtlasKey, drawn);
             }
             return;
         }
@@ -584,7 +598,7 @@ public class CgFontRegistry {
                         key.isSyntheticBold(), key.isSyntheticItalic()));
         CgGlyphAtlas atlas = getBitmapAtlas();
         if (atlas.get(atlasKey, currentFrame) == null) {
-            submitBitmapGlyphJob(font, atlasKey, rasterFontKey, effectiveTargetPx, subPixelBucket);
+            submitBitmapGlyphJob(font, atlasKey, rasterFontKey, effectiveTargetPx, subPixelBucket, drawn);
         }
     }
 
@@ -1001,7 +1015,7 @@ public class CgFontRegistry {
         }
         CgGlyphGenerationJob job = CgGlyphGenerationJob.bitmap(
                 font.getKey(), font.getData(), atlasKey, rasterFontKey, effectiveTargetPx, subPixelBucket);
-        if (!glyphGenerationExecutor.hasFailed(job) && glyphGenerationExecutor.submit(job)) {
+        if (!glyphGenerationExecutor.hasFailed(job) && glyphGenerationExecutor.submit(job, true)) {
             CgTrace.add(CgChannels.TEXT, "glyph.bitmap.deferredToWorker", 1);
             return null;
         }
@@ -1013,7 +1027,7 @@ public class CgFontRegistry {
     //  § 7. Async job submission
     //
     //  Submits glyph generation work to the background executor.  These
-    //  methods are called by queueGlyph() when a glyph is not yet
+    //  methods are called by queue() when a glyph is not yet
     //  in the atlas.  Results are collected by drainCompletedGlyphs()
     //  during the next frame tick.
     // ────────────────────────────────────────────────────────────────────
@@ -1022,7 +1036,8 @@ public class CgFontRegistry {
                                       CgGlyphKey atlasKey,
                                       CgRasterFontKey rasterFontKey,
                                       int effectiveTargetPx,
-                                      int subPixelBucket) {
+                                      int subPixelBucket,
+                                      boolean drawn) {
         CgGlyphGenerationJob job = CgGlyphGenerationJob.bitmap(
                 font.getKey(),
                 font.getData(),
@@ -1030,19 +1045,20 @@ public class CgFontRegistry {
                 rasterFontKey,
                 effectiveTargetPx,
                 subPixelBucket);
-        glyphGenerationExecutor.submit(job);
+        glyphGenerationExecutor.submit(job, drawn);
     }
 
     private void submitMsdfGlyphJob(CgFont font,
                                     CgGlyphKey atlasKey,
-                                    CgMsdfAtlasKey msdfAtlasKey) {
+                                    CgMsdfAtlasKey msdfAtlasKey,
+                                    boolean drawn) {
         CgGlyphGenerationJob job = CgGlyphGenerationJob.msdf(
                 font.getKey(),
                 font.getData(),
                 atlasKey,
                 msdfAtlasKey,
                 msdfAtlasKey.getConfig());
-        glyphGenerationExecutor.submit(job);
+        glyphGenerationExecutor.submit(job, drawn);
     }
 
     // ────────────────────────────────────────────────────────────────────

@@ -9012,7 +9012,7 @@ com/crystalgraphics/render/draw/CgDeviceStates
   access public,final
   extends java/lang/Object
   method public,static blend (Lcom/crystalgraphics/api/state/CgBlendState;)Lcom/crystalgraphics/platform/rhi/pipeline/CgGraphicsPipelineDesc$Blend;
-  method public,static depthStencil (Lcom/crystalgraphics/api/state/CgDepthState;Lcom/crystalgraphics/api/state/CgStencilState;)Lcom/crystalgraphics/platform/rhi/pipeline/CgGraphicsPipelineDesc$DepthStencil;
+  method public,static depthStencil (Lcom/crystalgraphics/api/state/CgDepthState;Lcom/crystalgraphics/api/state/CgStencilState;Z)Lcom/crystalgraphics/platform/rhi/pipeline/CgGraphicsPipelineDesc$DepthStencil;
   method public,static layout (Lcom/crystalgraphics/platform/rhi/CgRHI;Lcom/crystalgraphics/platform/rhi/shader/CgGlslCompiler$Explicit;)Lcom/crystalgraphics/platform/rhi/pipeline/CgPipelineLayout;
   method public,static layout (Lcom/crystalgraphics/platform/rhi/CgRHI;Lcom/crystalgraphics/platform/rhi/shader/CgGlslCompiler$ExplicitCompute;)Lcom/crystalgraphics/platform/rhi/pipeline/CgPipelineLayout;
   method public,static over (Lcom/crystalgraphics/api/state/CgRenderState;Lcom/crystalgraphics/api/state/CgRenderState;)Lcom/crystalgraphics/api/state/CgRenderState;
@@ -9148,7 +9148,7 @@ com/crystalgraphics/render/draw/CgPipeline
   extends java/lang/Object
   method public as (Lcom/crystalgraphics/render/draw/CgPipelineForm;)Lcom/crystalgraphics/render/draw/CgPipeline;
   method public bind ()Z
-  method public device (Lcom/crystalgraphics/api/state/CgRenderState;Lcom/crystalgraphics/platform/rhi/pipeline/CgGraphicsPipelineDesc$Topology;ZLjava/util/List;Lcom/crystalgraphics/platform/rhi/format/CgFormat;I)Lcom/crystalgraphics/platform/rhi/pipeline/CgGraphicsPipeline;
+  method public device (Lcom/crystalgraphics/api/state/CgRenderState;Lcom/crystalgraphics/platform/rhi/pipeline/CgGraphicsPipelineDesc$Topology;ZZLjava/util/List;Lcom/crystalgraphics/platform/rhi/format/CgFormat;I)Lcom/crystalgraphics/platform/rhi/pipeline/CgGraphicsPipeline;
   method public has (Lcom/crystalgraphics/render/draw/CgPipelineForm;)Z
   method public id ()I
   method public isBuilt ()Z
