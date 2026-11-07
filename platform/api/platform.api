@@ -4209,6 +4209,7 @@ com/crystalgraphics/platform/rhi/resource/CgGpuTexture
   extends java/lang/Object
   implements com/crystalgraphics/platform/rhi/resource/CgRHIResource
   method public label ()Ljava/lang/String;
+  method public sampledLayout (Lcom/crystalgraphics/platform/rhi/resource/CgTextureView;)I
   method public,abstract desc ()Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture$Desc;
 com/crystalgraphics/platform/rhi/resource/CgGpuTexture$Desc
   access public,final,record

@@ -16,6 +16,7 @@ import javax.annotation.Nullable;
  * CgBoundResources.recording = true;                       // device sets on
  * CgBoundResources.storage(point, name, offset, bytes);  // beside each storage bind; 0 bytes for the whole buffer
  * CgBoundResources.texture(unit, texture, -1);            // beside each texture bind; a level for one level alone
+ * int v = CgBoundResources.version(CgBindingModel.PASS);   // moves when anything of that set's changes
  * }</pre>
  *
  * <p>Render thread.</p>
@@ -32,6 +33,7 @@ public final class CgBoundResources {
     private static final CgTexture[] TEXTURE = new CgTexture[SETS * BINDINGS];
     private static final int[] LEVEL = new int[SETS * BINDINGS];
     private static final CgSampler[] SAMPLER = new CgSampler[SETS * BINDINGS];
+    private static final int[] VERSION = new int[SETS];
 
     private CgBoundResources() {}
 
@@ -39,16 +41,19 @@ public final class CgBoundResources {
     public static void texture(int unit, CgTexture texture, int level) {
         if (!recording) return;
         int i = index(CgBindingModel.ofTexture(unit));
-        if (i < 0) return;
+        if (i < 0 || TEXTURE[i] == texture && LEVEL[i] == level) return;
         TEXTURE[i] = texture;
         LEVEL[i] = level;
+        VERSION[i / BINDINGS]++;
     }
 
     /** The sampler bound at {@code unit}; null for the texture's own sampling. */
     public static void sampler(int unit, @Nullable CgSampler sampler) {
         if (!recording) return;
         int i = index(CgBindingModel.ofTexture(unit));
-        if (i >= 0) SAMPLER[i] = sampler;
+        if (i < 0 || SAMPLER[i] == sampler) return;
+        SAMPLER[i] = sampler;
+        VERSION[i / BINDINGS]++;
     }
 
     /** Forgets the textures noted for {@code set}: a pass on the device takes them from its snapshots. */
@@ -58,6 +63,12 @@ public final class CgBoundResources {
             TEXTURE[set * BINDINGS + b] = null;
             SAMPLER[set * BINDINGS + b] = null;
         }
+        VERSION[set]++;
+    }
+
+    /** A number that moves whenever anything recorded for {@code set} changes; 0 for a set it records nothing of. */
+    public static int version(int set) {
+        return set < SETS ? VERSION[set] : 0;
     }
 
     /** The texture bound for {@code packed}; null for none. */
@@ -88,10 +99,11 @@ public final class CgBoundResources {
 
     private static void put(int packed, int name, long offset, long bytes) {
         int i = index(packed);
-        if (i < 0) return;
+        if (i < 0 || NAME[i] == name && OFFSET[i] == offset && SIZE[i] == bytes) return;
         NAME[i] = name;
         OFFSET[i] = offset;
         SIZE[i] = bytes;
+        VERSION[i / BINDINGS]++;
     }
 
     /** The buffer name bound for {@code packed}; 0 for none. */

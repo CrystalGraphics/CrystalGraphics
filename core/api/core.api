@@ -8926,6 +8926,7 @@ com/crystalgraphics/render/draw/CgBoundResources
   method public,static sampler (ILcom/crystalgraphics/api/texture/CgSampler;)V
   method public,static storage (IIJJ)V
   method public,static texture (ILcom/crystalgraphics/api/texture/CgTexture;I)V
+  method public,static version (I)I
 com/crystalgraphics/render/draw/CgBufferHandle
   access public,abstract,interface
   extends java/lang/Object
