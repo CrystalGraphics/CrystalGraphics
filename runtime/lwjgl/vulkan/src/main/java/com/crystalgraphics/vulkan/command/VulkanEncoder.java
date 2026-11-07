@@ -328,6 +328,11 @@ public final class VulkanEncoder implements CgCommandList {
     public void transition(CgTransition t) {
         outsidePass("transition");
         if (explicit) {
+            // Before the command buffer is taken: landing the transfer queue's copies hands a hosted device's to its host
+            for (int i = 0; i < t.count(); i++) {
+                if (t.buffer(i) != null) use((VulkanBuffer) t.buffer(i));
+                else use((VulkanTexture) t.image(i));
+            }
             VkCommandBuffer cmd = cmd();
             fill(t, cmd, true);
             device.barriers += moves.record(cmd);
