@@ -135,8 +135,11 @@ public final class CgTextureCopy {
         ensureScratchFramebuffers();
         if (scratchReadFbo == 0 || scratchDrawFbo == 0) return false;
 
-        try (CgGlScope scope = CgGlState.save(CgGlSlot.FBO)) {
+        try (CgGlScope scope = CgGlState.save(CgGlSlot.FBO, CgGlSlot.SCISSOR)) {
             try {
+                // A blit is scissored: a growth while a pass's scissor stands copied that rectangle alone, and the
+                // reallocated layers came back empty
+                CgGL.glDisable(CgGL.GL_SCISSOR_TEST);
                 for (int layer = 0; layer < layerCount; layer++) {
                     CgGL.glBindFramebuffer(GL_READ_FRAMEBUFFER, scratchReadFbo);
                     CgGL.glFramebufferTextureLayer(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, srcTextureId, 0, layer);
