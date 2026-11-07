@@ -4,6 +4,9 @@ import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.rhi.command.CgCommandList;
 import com.crystalgraphics.platform.rhi.sync.CgTimerQuery;
+import com.crystalgraphics.variable.CgVar;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import java.util.ArrayDeque;
 import java.util.Arrays;
@@ -76,6 +79,15 @@ import java.util.Set;
  * <p>A zone opened with a budget slot ({@link #budgetSlot}), and every zone inside it, is timed whatever the
  * channel, and adds its nanoseconds to that slot under the budget frame it ran in ({@link #budgetFrame}): what
  * {@code CgGpuBudget} measures, frame by frame, as the GPU answers.</p>
+ *
+ * <h3>Slow zones</h3>
+ * A zone the GPU ran longer than {@code crystalgraphics.gpu.slowZoneMillis} (100) is logged once by name: past about two
+ * seconds Windows resets the driver and every monitor goes dark. {@link #WATCH} times a zone for that alone, whatever
+ * the channel, its inner zones left to the channel; each stage firing is timed in it.
+ *
+ * <pre>{@code
+ * CgGpuTrace.begin(stageName, CgGpuTrace.WATCH);   // timed always: a slow firing is named in the log
+ * }</pre>
  */
 public final class CgGpuTrace {
 
@@ -182,6 +194,16 @@ public final class CgGpuTrace {
     private static int budgetSlots;
     private static long budgetFrame;
 
+    /** A slot timing its zone whatever the channel, for the slow-zone log alone: zones inside it are not charged to it. */
+    public static final int WATCH = budgetSlot();
+    private static final CgVar.Int SLOW_MILLIS = CgVar.integer("crystalgraphics.gpu.slowZoneMillis", 100, 0, 2000, CgVar.DEV,
+            "A GPU zone that ran longer than this many milliseconds is logged once, by name: past about 2000 Windows resets"
+                    + " the driver. 0 for none.");
+    private static final Logger LOGGER = LogManager.getLogger("CgGpuTrace");
+    private static final Set<Integer> SLOW_TOLD = new HashSet<>();
+    private static long slowestNanos;
+    private static int slowestId = -1;
+
     /** Resolved but not yet written: frame index to (name id to nanos). */
     private static final Map<Long, Map<Integer, Long>> RESOLVED = new LinkedHashMap<>();
     private static int resolvedGeneration;
@@ -211,6 +233,34 @@ public final class CgGpuTrace {
         return CgTrace.isEnabled(GPU) && support != Support.UNSUPPORTED;
     }
 
+    /**
+     * The longest any timed zone ran on the GPU since {@link #forgetSlowZones}, in nanoseconds, and its name (null for
+     * none): what a gate holds under its limit.
+     *
+     * <pre>{@code
+     * CgGpuTrace.forgetSlowZones();        // once its pipelines are built
+     * ... frames ...
+     * assert CgGpuTrace.slowestNanos() < 500_000_000L : CgGpuTrace.slowestZone();
+     * }</pre>
+     */
+    public static long slowestNanos() {
+        return slowestNanos;
+    }
+
+    public static String slowestZone() {
+        return slowestId < 0 ? null : CgTraceNames.nameOf(slowestId);
+    }
+
+    /**
+     * Forgets the zones logged slow, so each is logged again, and the slowest: a gate's stretch starts here. A zone split
+     * across submissions while the CPU builds a pipeline counts the GPU's wait for it, so a gate starts once they are built.
+     */
+    public static void forgetSlowZones() {
+        SLOW_TOLD.clear();
+        slowestNanos = 0L;
+        slowestId = -1;
+    }
+
     /** Interns a zone name, prefixed — the form a hot call site holds in a constant. */
     public static int name(String name) {
         return CgTraceNames.intern(PREFIX + name);
@@ -231,7 +281,7 @@ public final class CgGpuTrace {
      * one {@link #end()}.
      */
     public static void begin(int nameId, int budget) {
-        if (budget == NO_BUDGET && openDepth > 0) budget = openBudget[openDepth - 1];
+        if (budget == NO_BUDGET && openDepth > 0 && openBudget[openDepth - 1] != WATCH) budget = openBudget[openDepth - 1];
         if (nameId != UNMEASURED && !measures(budget)) nameId = UNMEASURED;
         if (nameId != UNMEASURED && running) {
             stopQuery();
@@ -326,10 +376,20 @@ public final class CgGpuTrace {
             RESOLVED.clear();
             resolvedGeneration = generation;
         }
+        long slow = SLOW_MILLIS.get() * 1_000_000L;
         // Queries complete in issue order: the first unfinished one ends the scan.
         while (!PENDING.isEmpty() && available(PENDING.peekFirst())) {
             Pending done = PENDING.pollFirst();
             long nanos = done.timer != null ? done.timer.resultNanos() : CgGL.glGetQueryResultNanos(done.query);
+            if (done.label == TIMER && nanos > slowestNanos) {
+                slowestNanos = nanos;
+                slowestId = done.nameId;
+            }
+            if (slow > 0 && done.label == TIMER && nanos > slow && SLOW_TOLD.add(done.nameId)) {
+                LOGGER.warn("[gpu] {} ran {} ms on the GPU: past about 2000 ms Windows resets the driver. Turn the gpu"
+                        + " trace channel on to see which pass inside it; a frame split while a pipeline built counts that"
+                        + " wait too", CgTraceNames.nameOf(done.nameId), nanos / 1_000_000L);
+            }
             if (done.label != TIMER) {
                 releaseStamp(done.query);
                 if (done.traced) resolveStamp(done, nanos, generation);

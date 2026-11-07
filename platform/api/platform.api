@@ -5153,6 +5153,7 @@ com/crystalgraphics/trace/CgGpuTrace
   field public,static,final GROUP Ljava/lang/String;
   field public,static,final NO_BUDGET I
   field public,static,final PREFIX Ljava/lang/String;
+  field public,static,final WATCH I
   method public,static begin (I)V
   method public,static begin (II)V
   method public,static begin (Lcom/crystalgraphics/platform/rhi/command/CgCommandList;I)V
@@ -5165,6 +5166,7 @@ com/crystalgraphics/trace/CgGpuTrace
   method public,static dispose ()V
   method public,static end ()V
   method public,static end (Lcom/crystalgraphics/platform/rhi/command/CgCommandList;)V
+  method public,static forgetSlowZones ()V
   method public,static isMeasuring ()Z
   method public,static label (Ljava/lang/String;)I
   method public,static mark (I)V
@@ -5173,6 +5175,8 @@ com/crystalgraphics/trace/CgGpuTrace
   method public,static nextBudgetFrame ()V
   method public,static probe ()Lcom/crystalgraphics/trace/CgGpuTrace$Support;
   method public,static resetTotals ()V
+  method public,static slowestNanos ()J
+  method public,static slowestZone ()Ljava/lang/String;
   method public,static support ()Lcom/crystalgraphics/trace/CgGpuTrace$Support;
   method public,static totals ()Ljava/util/Map;
 com/crystalgraphics/trace/CgGpuTrace$Support
