@@ -123,8 +123,6 @@ final class CgCustomDataPass {
             if (tested == null) {
                 customDataStates.put(own, tested = own.withDepth(CgDepthState.TEST_ONLY).withBlend(CgBlendState.DISABLED));
             }
-            commands.modelOf(i, view);
-            commands.model.normal(commands.normal);
             commands.passDraw(chunks, data.withState(tested), draws.materials[i], recording, i);
         }
         pass.add(chunks.end());

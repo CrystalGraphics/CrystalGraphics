@@ -94,8 +94,6 @@ final class CgEmissivePass {
             boolean covers = (draws.phase[i] == CgWorldDraws.FORWARD || draws.phase[i] == CgWorldDraws.AFTER)
                     && draws.queues[i] >= CgRenderQueue.TRANSPARENT_THRESHOLD && draws.queues[i] < CgRenderQueue.OVERLAY_THRESHOLD;
             if (!emits[i] && !covers) continue;
-            commands.modelOf(i, view);
-            commands.model.normal(commands.normal);
             for (CgMaterial link = draws.materials[i]; link != null; link = link.getNextPass()) {
                 CgPipeline forward = covers ? link.pipeline(CgInstanceKind.OBJECT) : null;
                 if (forward != null && !forward.state().writesNothing()) {
@@ -149,8 +147,6 @@ final class CgEmissivePass {
         CgChunkBuilder chunks = recording.chunks().begin();
         for (int i = 0; i < draws.count; i++) {
             if (!emits[i]) continue;
-            commands.modelOf(i, view);
-            commands.model.normal(commands.normal);
             for (CgMaterial link = draws.materials[i]; link != null; link = link.getNextPass()) {
                 CgPipeline pipeline = link.hasEmissivePass() ? link.pipeline(CgRenderPassVariant.EMISSIVE, CgInstanceKind.OBJECT) : null;
                 if (pipeline != null) commands.emissionDraw(chunks, pipeline, link, recording, i);
@@ -210,8 +206,6 @@ final class CgEmissivePass {
         CgChunkBuilder chunks = recording.chunks().begin();
         for (int i = 0; i < draws.count; i++) {
             if (!emits[i]) continue;
-            commands.modelOf(i, view);
-            commands.model.normal(commands.normal);
             for (CgMaterial link = draws.materials[i]; link != null; link = link.getNextPass()) {
                 if (!link.hasEmissivePass()) continue;
                 CgPipeline pipeline = link.pipeline(CgRenderPassVariant.EMISSIVE, CgInstanceKind.OBJECT);

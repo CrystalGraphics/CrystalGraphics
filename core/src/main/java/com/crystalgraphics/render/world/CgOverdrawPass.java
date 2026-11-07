@@ -68,8 +68,6 @@ final class CgOverdrawPass {
         CgChunkBuilder chunks = recording.chunks().begin();
         for (int i = 0; i < draws.count; i++) {
             if (draws.phase[i] == CgWorldDraws.SKIP) continue;
-            commands.modelOf(i, view);
-            commands.model.normal(commands.normal);
             for (CgMaterial link = draws.materials[i]; link != null; link = link.getNextPass()) {
                 CgPipeline pipeline = link.pipeline(CgInstanceKind.OBJECT);
                 // A pass writing nothing is skipped; a pure haze's cost is its Distortion pass.

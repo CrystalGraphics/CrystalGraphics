@@ -1773,8 +1773,6 @@ public final class CgWorldRenderer {
 
         @Override
         public void drawDistortion(CgChunkBuilder chunks, CgRecording recording, int i) {
-            commands.modelOf(i, view);
-            commands.model.normal(commands.normal);
             for (CgMaterial link = draws.materials[i]; link != null; link = link.getNextPass()) {
                 if (!link.hasDistortionPass()) continue;
                 CgPipeline pipeline = link.pipeline(CgRenderPassVariant.DISTORTION, CgInstanceKind.OBJECT);

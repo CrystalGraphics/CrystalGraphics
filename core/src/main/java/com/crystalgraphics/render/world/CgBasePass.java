@@ -61,8 +61,6 @@ final class CgBasePass {
             if (draws.phase[i] == CgWorldDraws.SKIP || world.halfSize(i)) continue;
             if (depthOnlyPass ? draws.phase[i] != CgWorldDraws.FORWARD_AND_PREPASS && !world.prepassed(i)
                     : draws.phase[i] == CgWorldDraws.APART || (draws.phase[i] == CgWorldDraws.AFTER) != after) continue;
-            commands.modelOf(i, view);
-            commands.model.normal(commands.normal);
             boolean glows = sceneGlows && draws.emissions[i] > 0f && draws.queues[i] < CgRenderQueue.OVERLAY_THRESHOLD;
             for (CgMaterial link = draws.materials[i]; link != null; link = depthOnlyPass ? null : link.getNextPass()) {
                 CgPipeline pipeline = depthOnlyPass ? commands.depthPipeline(link) : link.pipeline(CgInstanceKind.OBJECT);

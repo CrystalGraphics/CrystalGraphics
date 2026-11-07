@@ -2503,7 +2503,6 @@ public final class CgExecutor {
         CgGpuTexture hostSized = hostColor != null ? hostColor : hostDepth;
         int w = current ? hostSized.desc().width() : storage.levelWidth(level);
         int h = current ? hostSized.desc().height() : storage.levelHeight(level);
-        CgMeshStore store = CgMeshStore.get();
         if (packed.count > 0) {
             frame.bindings.bind(packed.constants);
             CgBoundResources.forgetTextures(CgBindingModel.PASS);

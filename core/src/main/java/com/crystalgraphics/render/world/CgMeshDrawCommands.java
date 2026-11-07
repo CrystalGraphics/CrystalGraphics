@@ -36,13 +36,11 @@ import org.joml.Vector3f;
  * table and named by slot after. Every pass's processor draws through it. Render thread.
  *
  * <pre>{@code
- * commands.modelOf(i, view);
- * commands.model.normal(commands.normal);
  * commands.passDraw(chunks, material.pipeline(CgInstanceKind.OBJECT), material, recording, i);
  * }</pre>
  *
- * <p>{@link #model} and {@link #normal} are the draw's for {@link #writeInstance}: set them first, through
- * {@link #modelOf}.</p>
+ * <p>A record is placed under {@link #recordView}, the firing's view ({@link CgWorldRenderer}'s {@code prepare}): set
+ * before any pass of the firing draws.</p>
  */
 final class CgMeshDrawCommands {
 
@@ -180,8 +178,8 @@ final class CgMeshDrawCommands {
     }
 
     /**
-     * Draw {@code i}'s range, count and object record into the draw just begun, under {@link #model} and {@link #normal}:
-     * the record written the first time a pass of the firing draws it, named by its slot after (Unreal's GPUScene).
+     * Draw {@code i}'s range, count and object record into the draw just begun: the record written, its matrices
+     * computed, the first time a pass of the firing draws it, named by its slot after (Unreal's GPUScene).
      */
     void writeInstance(CgChunkBuilder chunks, int i) {
         if (draws.ranges[i * 3] >= 0) chunks.range(draws.ranges[i * 3], draws.ranges[i * 3 + 1], draws.ranges[i * 3 + 2]);
@@ -198,8 +196,18 @@ final class CgMeshDrawCommands {
         }
         int at = chunks.instance();
         keep(i, table, CgPrimitiveTable.slot(at));
+        modelOf(i, recordView);
+        model.normal(normal);
         float[] data = chunks.data();
         model.get(data, at);
+        record(data, at, i, draws.customs, i * 16);
+    }
+
+    /**
+     * Draw {@code i}'s record past its model matrix, at float {@code at}: the normal matrix ({@link #normal}), the
+     * skinned factory's palette base and width, its light, its emission, and the customs at {@code customsAt}.
+     */
+    private void record(float[] data, int at, int i, float[] customs, int customsAt) {
         normal.get(data, at + 16);
         if (draws.boneBases[i] >= 0) {
             data[at + 19] = draws.boneBases[i];   // CG_OBJECT_SPARE.x: the skinned factory's palette base
@@ -208,12 +216,12 @@ final class CgMeshDrawCommands {
         data[at + 28] = draws.lights[i * 2];   // CG_OBJECT_LIGHT: the normal matrix's unused column
         data[at + 29] = draws.lights[i * 2 + 1];
         data[at + 30] = draws.emissions[i] - 1f;   // CG_OBJECT_EMISSION, less 1 so a record left 0 means 1
-        System.arraycopy(draws.customs, i * 16, data, at + 32, 16);
+        System.arraycopy(customs, customsAt, data, at + 32, 16);
     }
 
     /**
      * Draw {@code i}'s records of {@link Draw#indirectEach}, far to near under this stage's view, each under the draw's
-     * transform at its own position, with {@link #normal} the draw's normal matrix.
+     * transform at its own position, under the draw's normal matrix.
      */
     void writeRecords(CgChunkBuilder chunks, int i) {
         chunks.indirectEach(draws.counts[i], draws.countModes[i], draws.countFactors[i]);
@@ -238,6 +246,8 @@ final class CgMeshDrawCommands {
             return;
         }
         keep(i, table, table.count());
+        modelOf(i, recordView);
+        model.normal(normal);
         for (int o = 0; o < n; o++) {
             int r = first + (int) recordOrder[o];
             recordModel.set(draws.transforms, i * 16);
@@ -247,15 +257,7 @@ final class CgMeshDrawCommands {
             int at = chunks.instance();
             float[] data = chunks.data();
             recordModel.get(data, at);
-            normal.get(data, at + 16);
-            if (draws.boneBases[i] >= 0) {
-                data[at + 19] = draws.boneBases[i];
-                data[at + 23] = wideBones(i);
-            }
-            data[at + 28] = draws.lights[i * 2];
-            data[at + 29] = draws.lights[i * 2 + 1];
-            data[at + 30] = draws.emissions[i] - 1f;
-            System.arraycopy(draws.recordCustoms, r * 16, data, at + 32, 16);
+            record(data, at, i, draws.recordCustoms, r * 16);
             chunks.countAt(draws.recordOffsets[r]);
         }
     }

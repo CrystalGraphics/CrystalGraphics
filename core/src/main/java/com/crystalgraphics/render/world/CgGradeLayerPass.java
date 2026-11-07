@@ -285,8 +285,6 @@ final class CgGradeLayerPass {
 
     /** Draw {@code i} in its layer forms: the programs the transparent pass draws it with, or a solid's cover. */
     void layerDraws(CgChunkBuilder chunks, CgRecording recording, CgHostView view, int i) {
-        commands.modelOf(i, view);
-        commands.model.normal(commands.normal);
         boolean glows = draws.emissions[i] > 0f && draws.queues[i] < CgRenderQueue.OVERLAY_THRESHOLD;
         boolean solid = draws.queues[i] < CgRenderQueue.TRANSPARENT_THRESHOLD;
         for (CgMaterial link = draws.materials[i]; link != null; link = link.getNextPass()) {

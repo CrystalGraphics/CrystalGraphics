@@ -69,8 +69,6 @@ final class CgHalfPass {
         CgChunkBuilder chunks = recording.chunks().begin();
         for (int i = 0; i < draws.count; i++) {
             if (draws.phase[i] != CgWorldDraws.HALF) continue;
-            commands.modelOf(i, view);
-            commands.model.normal(commands.normal);
             for (CgMaterial link = draws.materials[i]; link != null; link = link.getNextPass()) {
                 CgPipeline pipeline = link.pipeline(CgInstanceKind.OBJECT);
                 if (pipeline == null || commands.unready(pipeline, i)) continue;

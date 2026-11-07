@@ -116,8 +116,6 @@ final class CgCustomDepthPass {
             if (!inCustomDepth[i]) continue;
             CgPipeline depth = commands.depthPipeline(draws.materials[i]);
             if (depth == null) continue;
-            commands.modelOf(i, view);
-            commands.model.normal(commands.normal);
             commands.passDraw(chunks, customDepthPipeline(depth, draws.customDepths[i]), draws.materials[i], recording, i);
         }
         if (customStencil == null) customStencil = CgMaterial.newInstance(CgWorldRenderer.CUSTOM_STENCIL_SHADER);
