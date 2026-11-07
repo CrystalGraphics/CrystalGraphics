@@ -89,9 +89,15 @@ public final class CgDeviceStates {
                 CgGraphicsPipelineDesc.PolygonMode.FILL, false);
     }
 
-    public static DepthStencil depthStencil(CgDepthState depth, CgStencilState stencil) {
+    /**
+     * {@code depth} and {@code stencil} as a device pipeline's, the depth compare mirrored where {@code reversed}, as
+     * the GL path's depth function is mirrored for a reversed host: a material's LEQUAL means nearer or equal whichever
+     * way the host's depth runs.
+     */
+    public static DepthStencil depthStencil(CgDepthState depth, CgStencilState stencil, boolean reversed) {
         boolean test = depth != null && depth.test(), write = depth != null && depth.write();
         CgCompare compare = depth == null ? CgCompare.LESS : compare(depth.compareFunc());
+        if (reversed) compare = mirrored(compare);
         if (stencil == null || !stencil.enabled()) {
             return new DepthStencil(test, write, compare, false, StencilFace.KEEP, StencilFace.KEEP, 0xFF, 0xFF);
         }
@@ -147,6 +153,17 @@ public final class CgDeviceStates {
             sets.add(LAYOUTS.computeIfAbsent(slots, k -> rhi.createBindingLayout("set " + k, k, false)));
         }
         return new CgPipelineLayout(sets, pushConstantBytes);
+    }
+
+    /** {@code c} with near and far swapped. */
+    static CgCompare mirrored(CgCompare c) {
+        return switch (c) {
+            case LESS -> CgCompare.GREATER;
+            case LESS_EQUAL -> CgCompare.GREATER_EQUAL;
+            case GREATER -> CgCompare.LESS;
+            case GREATER_EQUAL -> CgCompare.LESS_EQUAL;
+            default -> c;
+        };
     }
 
     static CgCompare compare(int gl) {

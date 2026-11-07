@@ -2559,11 +2559,13 @@ public final class CgExecutor {
                 : storage.getFormat().hasDepth() ? deviceTexture(storage, -1) : null;
         boolean clearDepth = depthTexture != null && (load.mask() & CgGL.GL_DEPTH_BUFFER_BIT) != 0;
         boolean clearStencil = depthTexture != null && (load.mask() & CgGL.GL_STENCIL_BUFFER_BIT) != 0;
+        // Mirrored as CgGL.glClearDepth mirrors it: a load's depth is GL's convention, far at 1
+        float clearDepthValue = (float) (CgGL.isDepthReversed() ? 1.0 - load.depth() : load.depth());
         if (depthTexture != null) {
             int depthLayer = depthTexture == hostDepth ? 0 : pass.layer;
             // Under damage loaded and cleared over the damage alone, as colour is
             depth = new CgPassDesc.Depth(CgTextureView.attachment(depthTexture, level, depthLayer),
-                    clearDepth && damage == null ? CgPassDesc.LoadOp.CLEAR : CgPassDesc.LoadOp.LOAD, (float) load.depth(),
+                    clearDepth && damage == null ? CgPassDesc.LoadOp.CLEAR : CgPassDesc.LoadOp.LOAD, clearDepthValue,
                     clearStencil && damage == null ? CgPassDesc.LoadOp.CLEAR : CgPassDesc.LoadOp.LOAD, load.stencil(),
                     CgPassDesc.StoreOp.STORE, depthInPlace);
             depthFormat = depthTexture.desc().format();
@@ -2591,7 +2593,7 @@ public final class CgExecutor {
                 }
             }
             if ((clearDepth || clearStencil) && damage != null) {
-                rp.clearDepthStencil(clearDepth, (float) load.depth(), clearStencil, load.stencil(),
+                rp.clearDepthStencil(clearDepth, clearDepthValue, clearStencil, load.stencil(),
                         damage[0], damage[1], damage[2], damage[3]);
             }
             if (packed.count > 0) {
@@ -2723,7 +2725,7 @@ public final class CgExecutor {
             CgMesh mesh = mesh(packed, b);
             CgGraphicsPipeline device = linked == null ? null
                     : pipeline.device(passState, CgMeshStore.topology(mesh), !CgGL.isDepthZeroToOne(),
-                            deviceFormats, depthFormat, samples);
+                            CgGL.isDepthReversed(), deviceFormats, depthFormat, samples);
             if (device == null) {
                 if (loggedOnce.add("skipped " + pipeline)) {
                     LOGGER.warn("device raster: {} skipped in {}: {}", pipeline, pass.name(),

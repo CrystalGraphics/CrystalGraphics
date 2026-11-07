@@ -109,6 +109,7 @@ public final class CgPipeline {
     private List<CgFormat> deviceLastColors;
     private CgFormat deviceLastDepth;
     private int deviceLastSamples;
+    private boolean deviceLastReversed;
     private CgShader deviceLastProgram;
     private CgRHI deviceLastOf;
     /** Whether a miss of a shader with a permutation domain was logged: once a pipeline. */
@@ -500,7 +501,7 @@ public final class CgPipeline {
      * does not compile. Render thread.
      *
      * <pre>{@code
-     * CgGraphicsPipeline p = pipeline.device(passState, CgMeshStore.topology(mesh), true,
+     * CgGraphicsPipeline p = pipeline.device(passState, CgMeshStore.topology(mesh), true, false,
      *         List.of(CgFormat.RGBA16_FLOAT),
      *         CgFormat.DEPTH32_FLOAT, 1);
      * if (p != null) pass.setPipeline(p);
@@ -512,19 +513,21 @@ public final class CgPipeline {
      *
      * @param glDepth whether the engine's projections give GL's clip depth ({@code [-w, w]}), which the vertex stage then
      *                maps to the device's; false for projections already in zero-to-one depth
+     * @param reversed whether the host's depth runs far to near (Minecraft 26.2's): the depth compare is mirrored, as
+     *                 the GL path's depth function is
      * @param depth null for a pass with no depth target
      * @throws com.crystalgraphics.platform.rhi.shader.CgShaderModule.CompileException where its sources leave a resource
      *         unbound
      */
     @Nullable
     public CgGraphicsPipeline device(CgRenderState passState, CgGraphicsPipelineDesc.Topology topology, boolean glDepth,
-                                     List<CgFormat> colors, @Nullable CgFormat depth, int samples) {
+                                     boolean reversed, List<CgFormat> colors, @Nullable CgFormat depth, int samples) {
         CgShader linked = program();
         if (linked == null) return null;
         CgRHI rhi = CgRHI.get();
         if (deviceLast != null && deviceLastOf == rhi && deviceLastProgram == linked && deviceLastPass == passState
                 && deviceLastTopology == topology && deviceLastGlDepth == glDepth && deviceLastDepth == depth && deviceLastSamples == samples
-                && deviceLastColors.equals(colors)) {
+                && deviceLastReversed == reversed && deviceLastColors.equals(colors)) {
             return deviceLast;
         }
         String label = toString();
@@ -541,7 +544,7 @@ public final class CgPipeline {
                 linked.deviceModule(rhi, CgShaderModule.Stage.VERTEX, glDepth, label),
                 linked.deviceModule(rhi, CgShaderModule.Stage.FRAGMENT, glDepth, label),
                 List.of(), topology,
-                CgDeviceStates.raster(s.getCull()), CgDeviceStates.depthStencil(s.getDepth(), s.getStencil()), targets,
+                CgDeviceStates.raster(s.getCull()), CgDeviceStates.depthStencil(s.getDepth(), s.getStencil(), reversed), targets,
                 depth, samples);
         deviceLast = deviceCache(rhi).get(desc, linked.deviceKey(), !glDepth);
         deviceLastOf = rhi;
@@ -552,6 +555,7 @@ public final class CgPipeline {
         deviceLastColors = List.copyOf(colors);
         deviceLastDepth = depth;
         deviceLastSamples = samples;
+        deviceLastReversed = reversed;
         return deviceLast;
     }
 
