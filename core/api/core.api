@@ -156,6 +156,7 @@ com/crystalgraphics/api/CgBindingPoints
   field public,static SCENE_COLOR_TEXTURE_UNIT I
   field public,static SHAPE_TABLE Lcom/crystalgraphics/api/CgBindingPoints$Binding;
   field public,static TEXT_DATA_UBO I
+  field public,static VERTICES Lcom/crystalgraphics/api/CgBindingPoints$Binding;
   field public,static VIEW_UBO I
   field public,static,final DEPTH_TEXTURE_UNIFORM Ljava/lang/String;
   field public,static,final LIGHTMAP_TEXTURE_UNIFORM Ljava/lang/String;
@@ -6306,6 +6307,7 @@ com/crystalgraphics/gl/material/parse/CgBufferReaders
 com/crystalgraphics/gl/material/parse/CgGlslEmitter
   access public,final
   extends java/lang/Object
+  field public,static,final VERTEX_BLOCK Ljava/lang/String;
   method public,static emitSsbo (Lcom/crystalgraphics/api/buffer/CgBufferFormat;Ljava/lang/String;Ljava/lang/String;ZLcom/crystalgraphics/render/shader/CgBindingModel$Slot;)Ljava/lang/String;
   method public,static emitSsbo (Lcom/crystalgraphics/api/material/CgAttachedBuffer;Lcom/crystalgraphics/render/shader/CgBindingModel$Slot;)Ljava/lang/String;
   method public,static emitUbo (Lcom/crystalgraphics/api/buffer/CgBufferFormat;Ljava/lang/String;)Ljava/lang/String;
@@ -8997,15 +8999,12 @@ com/crystalgraphics/render/draw/CgDeviceSets
 com/crystalgraphics/render/draw/CgDeviceStates
   access public,final
   extends java/lang/Object
-  method public,static attribFormat (Lcom/crystalgraphics/api/vertex/CgVertexAttribute;)Lcom/crystalgraphics/platform/rhi/format/CgAttribFormat;
   method public,static blend (Lcom/crystalgraphics/api/state/CgBlendState;)Lcom/crystalgraphics/platform/rhi/pipeline/CgGraphicsPipelineDesc$Blend;
   method public,static depthStencil (Lcom/crystalgraphics/api/state/CgDepthState;Lcom/crystalgraphics/api/state/CgStencilState;)Lcom/crystalgraphics/platform/rhi/pipeline/CgGraphicsPipelineDesc$DepthStencil;
   method public,static layout (Lcom/crystalgraphics/platform/rhi/CgRHI;Lcom/crystalgraphics/platform/rhi/shader/CgGlslCompiler$Explicit;)Lcom/crystalgraphics/platform/rhi/pipeline/CgPipelineLayout;
   method public,static layout (Lcom/crystalgraphics/platform/rhi/CgRHI;Lcom/crystalgraphics/platform/rhi/shader/CgGlslCompiler$ExplicitCompute;)Lcom/crystalgraphics/platform/rhi/pipeline/CgPipelineLayout;
   method public,static over (Lcom/crystalgraphics/api/state/CgRenderState;Lcom/crystalgraphics/api/state/CgRenderState;)Lcom/crystalgraphics/api/state/CgRenderState;
   method public,static raster (Lcom/crystalgraphics/api/state/CgCullState;)Lcom/crystalgraphics/platform/rhi/pipeline/CgGraphicsPipelineDesc$Raster;
-  method public,static vertexBuffers (Lcom/crystalgraphics/api/vertex/CgVertexFormat;)Ljava/util/List;
-  method public,static vertexBuffers (Lcom/crystalgraphics/api/vertex/CgVertexFormat;Lcom/crystalgraphics/api/vertex/CgVertexFormat;)Ljava/util/List;
   method public,static writeMask (Ljava/util/List;I)I
 com/crystalgraphics/render/draw/CgDrawChunk
   access public,final
@@ -9129,7 +9128,7 @@ com/crystalgraphics/render/draw/CgPipeline
   extends java/lang/Object
   method public as (Lcom/crystalgraphics/render/draw/CgPipelineForm;)Lcom/crystalgraphics/render/draw/CgPipeline;
   method public bind ()Z
-  method public device (Lcom/crystalgraphics/api/state/CgRenderState;Lcom/crystalgraphics/api/vertex/CgVertexFormat;Lcom/crystalgraphics/platform/rhi/pipeline/CgGraphicsPipelineDesc$Topology;ZLjava/util/List;Lcom/crystalgraphics/platform/rhi/format/CgFormat;I)Lcom/crystalgraphics/platform/rhi/pipeline/CgGraphicsPipeline;
+  method public device (Lcom/crystalgraphics/api/state/CgRenderState;Lcom/crystalgraphics/platform/rhi/pipeline/CgGraphicsPipelineDesc$Topology;ZLjava/util/List;Lcom/crystalgraphics/platform/rhi/format/CgFormat;I)Lcom/crystalgraphics/platform/rhi/pipeline/CgGraphicsPipeline;
   method public has (Lcom/crystalgraphics/render/draw/CgPipelineForm;)Z
   method public id ()I
   method public isBuilt ()Z
@@ -9675,9 +9674,9 @@ com/crystalgraphics/render/mesh/CgMeshStore
   method public multiDraw (Z)V
   method public place (Lcom/crystalgraphics/api/mesh/CgMesh;)V
   method public range (Lcom/crystalgraphics/api/mesh/CgMesh;III[I)Z
-  method public ready (Lcom/crystalgraphics/api/mesh/CgMesh;)V
   method public releaseAll ()V
   method public upload ()V
+  method public vertexWords (Lcom/crystalgraphics/api/mesh/CgMesh;)I
   method public,static get ()Lcom/crystalgraphics/render/mesh/CgMeshStore;
   method public,static topology (Lcom/crystalgraphics/api/mesh/CgMesh;)Lcom/crystalgraphics/platform/rhi/pipeline/CgGraphicsPipelineDesc$Topology;
 com/crystalgraphics/render/mesh/CgOffsetAllocator
@@ -10396,6 +10395,7 @@ com/crystalgraphics/render/shader/CgBindingModel
   field public,static,final PASS I
   field public,static,final SCENE_COLOR I
   field public,static,final TEXT_DATA Lcom/crystalgraphics/render/shader/CgBindingModel$Slot;
+  field public,static,final VERTICES Lcom/crystalgraphics/render/shader/CgBindingModel$Slot;
   field public,static,final VIEW I
   field public,static,final VIEW_BLOCK I
   method public,static attached (Lcom/crystalgraphics/api/material/CgAttachedBuffer;I)Lcom/crystalgraphics/render/shader/CgBindingModel$Slot;

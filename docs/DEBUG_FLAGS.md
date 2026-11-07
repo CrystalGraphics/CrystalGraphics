@@ -178,7 +178,7 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 | Variable | Takes | Default | |
 |---|---|---|---|
 | `crystalgraphics.mesh.editStacks` | true, false | `false` | Each mesh edit records its stack, which the [cg-mesh] report of a mesh edited every frame prints. |
-| `crystalgraphics.mesh.multiDraw` | true, false | `true` | Runs of draws sharing pipeline, bindings and a slab joined into one multi-draw; false draws a call a draw, for a picture that must not change. Taken at each context's capability probe. |
+| `crystalgraphics.mesh.multiDraw` | true, false | `true` | Runs of draws sharing pipeline, bindings and a vertex format joined into one multi-draw; false draws a call a draw, for a picture that must not change. Taken at each context's capability probe. |
 
 ## `crystalgraphics.mirror`
 

@@ -142,6 +142,12 @@ public final class CgBindingPoints {
      */
     public static Binding BONE_PALETTES;
 
+    /**
+     * The mesh store's words a vertex stage pulls its vertices from ({@code CgVertexWords}): the drawn mesh's format's
+     * buffer, or its ring page. A storage point only. {@code null} until {@link #init(CgCapabilities)} has been called.
+     */
+    public static Binding VERTICES;
+
     /** How many buffers a material's {@code Buffers { }} may declare. */
     public static final int MATERIAL_BUFFER_COUNT = 4;
 
@@ -279,6 +285,7 @@ public final class CgBindingPoints {
         PARTICLE_ORDER = new Binding(--maxSsboBindings, tbo ? --maxTextureUnits : -1);
         PARTICLE_BEAMS = new Binding(--maxSsboBindings, tbo ? --maxTextureUnits : -1);
         BONE_PALETTES = new Binding(--maxSsboBindings, PARTICLE_BEAMS.tbo());
+        VERTICES = new Binding(--maxSsboBindings, -1);
         maxSsboBindings -= MATERIAL_BUFFER_COUNT;
         MATERIAL_BUFFERS_SSBO = maxSsboBindings;
 

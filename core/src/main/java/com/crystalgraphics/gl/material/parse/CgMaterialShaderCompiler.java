@@ -346,7 +346,7 @@ public final class CgMaterialShaderCompiler {
         // A sprite variant takes the sprite factory, which places quads from CG_VERTEX_ID: it draws CgMesh.quads, and a
         // vertex input it declared would be one no mesh provides (a Vulkan pipeline refuses it).
         if (spriteVariant(shader, config) || stripVariant(shader, config)) vertexFormat = CgVertexFormat.NONE;
-        // The skinned factory reads the skinned format's attributes; its indices are a uvec4 at either width.
+        // The skinned factory reads the skinned format's attributes, its indices a uvec4 at either width (CG_BONES_WIDE).
         if (skinnedVariant(config)) {
             if (!vertexFormat.equals(CgVertexFormat.SPATIAL)) {
                 throw new IllegalArgumentException(SKINNED + " skins a #type spatial shader, not #type "
@@ -382,6 +382,8 @@ public final class CgMaterialShaderCompiler {
     private static void appendSkinnedFactory(StringBuilder sb) {
         appendAttachedBuffers(sb, List.of(CgAttachedBuffer.of(CgBonePalettes.buffer(), CgBonePalettes.MACRO_NAME)));
         sb.append("#include \"").append(BONES_ENV).append("\"\n");
+        // Either width's vertex, as the draw's record says: Unreal's fetched skin weights read their index size likewise
+        sb.append(CgGlslEmitter.emitVertexFetch(CgVertexFormat.SKINNED, CgVertexFormat.SKINNED_WIDE, "CG_BONES_WIDE"));
         sb.append("vec3 _cg_skinPosition;\nvec3 _cg_skinNormal;\n")
           .append("void _cg_skin() {\n")
           .append("  vec4 r0, r1, r2;\n")
@@ -590,13 +592,15 @@ public final class CgMaterialShaderCompiler {
 
         sb.append("#include \"").append(ENV_INCLUDE).append("\"\n");
 
-        // Inject vertex attribute declarations for this format immediately after cg_env.glsl.
+        // The format's attributes, pulled from the mesh store's words, immediately after cg_env.glsl; the skinned factory
+        // fetches after its environment, which names the draw's width.
         // Known limitation: compileDepthAutoGen generates vertex bodies
         // that reference cg_Position by literal name — this only works correctly for formats
         // where the position attribute is named cg_Position (i.e. SPATIAL and SPATIAL-derived
         // formats). Custom formats with a differently-named position attribute must author an
         // explicit Depth pass to bypass auto-generation.
-        sb.append(CgGlslEmitter.emitVertexInputs(vertexFormat));
+        sb.append(CgGlslEmitter.emitVertexDeclarations(vertexFormat));
+        if (!skinnedVariant(config)) sb.append(CgGlslEmitter.emitVertexFetch(vertexFormat, null, null));
         // A strip variant draws no mesh: its #type's attributes stand at their defaults for a port naming one directly.
         if (stripVariant(shader, config)) {
             CgVertexFormat declared = CgVertexFormat.forShaderType(shader.shaderType());
@@ -649,12 +653,11 @@ public final class CgMaterialShaderCompiler {
           .append(pass.vertexBody()).append("\n")
           .append("}\n");
 
-        // Generated main()
+        // Generated main(): the vertex fetched, then skinned, before anything reads it
         appendVertexMain(sb, v2fFields);
-        if (skinnedVariant(config)) {
-            int open = sb.indexOf("{", sb.lastIndexOf("void main()")) + 1;
-            sb.insert(open, "\n  _cg_skin();");
-        }
+        String first = (vertexFormat.getAttributeCount() > 0 ? "\n  cg_FetchVertex();" : "")
+                + (skinnedVariant(config) ? "\n  _cg_skin();" : "");
+        if (!first.isEmpty()) sb.insert(sb.indexOf("{", sb.lastIndexOf("void main()")) + 1, first);
         if (normals) {
             // At the end of the generated main itself: a backend may rewrite main, so no macro renames it.
             String normal = vertexFormat.indexOf("cg_Normal") >= 0 ? "CG_NORMAL_MATRIX * cg_Normal" : "vec3(0.0)";

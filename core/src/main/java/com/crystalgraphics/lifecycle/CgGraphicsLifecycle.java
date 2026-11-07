@@ -82,7 +82,7 @@ import com.crystalgraphics.shadergraph.CgPreviewPool;
  *
  * <h3>Teardown order, geometry first</h3>
  * <ol>
- *   <li>{@link CgMeshStore#releaseAll()} — each slab's VAO, then its buffers</li>
+ *   <li>{@link CgMeshStore#releaseAll()} — its pools' buffers and its one VAO</li>
  *   <li>{@link CgQuadIndexBuffer#freeAll()} — shared quad IBO</li>
  * </ol>
  *
@@ -603,7 +603,7 @@ public final class CgGraphicsLifecycle {
         // Every link in flight lands before the sweeps below delete its program.
         CgLinkWorker.stop();
 
-        // Step 1: Meshes: the store's slabs, each slab's VAO, then its buffers. Meshes keep their data.
+        // Step 1: Meshes: the store's pools and its VAO. Meshes keep their data.
         CgMeshStore.get().releaseAll();
 
         // Step 2: Shared quad IBO.

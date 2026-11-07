@@ -4,6 +4,7 @@ import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgRenderPassVariant;
 import com.crystalgraphics.api.mesh.CgMesh;
+import com.crystalgraphics.api.vertex.CgVertexFormat;
 import com.crystalgraphics.api.state.CgColorMask;
 import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.compute.ops.CgGpuOps;
@@ -104,6 +105,12 @@ final class CgMeshDrawCommands {
         return true;
     }
 
+    /** 1 where draw {@code i}'s mesh is {@code SKINNED_WIDE}, whose vertex the skinned factory reads at 16-bit indices. */
+    private float wideBones(int i) {
+        CgMesh m = draws.lods[i] != null ? draws.lods[i].finest() : draws.meshes[i];
+        return m != null && m.format().equals(CgVertexFormat.SKINNED_WIDE) ? 1f : 0f;
+    }
+
     /** Whether draw {@code i}'s mesh is skinned, which picks every pipeline's skinned form. */
     boolean skinnedDraw(int i) {
         CgMesh m = draws.lods[i] != null ? draws.lods[i].finest() : draws.meshes[i];
@@ -194,7 +201,10 @@ final class CgMeshDrawCommands {
         float[] data = chunks.data();
         model.get(data, at);
         normal.get(data, at + 16);
-        if (draws.boneBases[i] >= 0) data[at + 19] = draws.boneBases[i];   // CG_OBJECT_SPARE.x: the skinned factory's palette base
+        if (draws.boneBases[i] >= 0) {
+            data[at + 19] = draws.boneBases[i];   // CG_OBJECT_SPARE.x: the skinned factory's palette base
+            data[at + 23] = wideBones(i);         // .y: CG_BONES_WIDE, the vertex's width
+        }
         data[at + 28] = draws.lights[i * 2];   // CG_OBJECT_LIGHT: the normal matrix's unused column
         data[at + 29] = draws.lights[i * 2 + 1];
         data[at + 30] = draws.emissions[i] - 1f;   // CG_OBJECT_EMISSION, less 1 so a record left 0 means 1
@@ -238,7 +248,10 @@ final class CgMeshDrawCommands {
             float[] data = chunks.data();
             recordModel.get(data, at);
             normal.get(data, at + 16);
-            if (draws.boneBases[i] >= 0) data[at + 19] = draws.boneBases[i];
+            if (draws.boneBases[i] >= 0) {
+                data[at + 19] = draws.boneBases[i];
+                data[at + 23] = wideBones(i);
+            }
             data[at + 28] = draws.lights[i * 2];
             data[at + 29] = draws.lights[i * 2 + 1];
             data[at + 30] = draws.emissions[i] - 1f;

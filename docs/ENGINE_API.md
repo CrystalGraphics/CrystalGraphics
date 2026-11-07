@@ -573,10 +573,11 @@ static final CgTexture2D SMOKE = CgTextures.of("mymod:cooked/fx/smoke.cgtex", Cg
 ### Meshes
 
 **A mesh is data** (`api/mesh/CgMesh`): built and edited on any thread, with no GPU in it. The graph and the world
-renderer draw it from `render/mesh/CgMeshStore`, which keeps every mesh's copy in pooled slabs per vertex format,
-uploads what changed before a frame's first pass, and draws with each draw's bases in the call (plan `mesh-rewrite`). Where
-`CgCapabilities.multiDraw()` holds, a run of draws sharing a pipeline, bindings and a slab is one multi-draw call
-(`render/graph/CLAUDE.md`, *Multi-draw*).
+renderer draw it from `render/mesh/CgMeshStore`, which keeps every mesh's copy in one pool per vertex format (one vertex
+buffer and one index buffer, grown by copy), uploads what changed in a frame's prologue, and draws with each draw's bases
+in the call, the vertex stage pulling its vertices from the format's words with no vertex input. Where
+`CgCapabilities.multiDraw()` holds, a run of draws sharing a pipeline, bindings and a vertex format is one multi-draw call
+(`render/graph/CLAUDE.md`, *Multi-draw*). A mesh drawn without being placed in the prologue throws.
 
 ```java
 CgMesh tri = CgMesh.build(CgVertexFormat.SPATIAL, m -> {
@@ -590,7 +591,7 @@ world.draw(ball, material).at(x, y, z).submit();
 ball.release();                                          // own meshes only; the GPU copy goes once frames retire
 
 // Rewritten every frame: on the frame ring, nothing to release; reserve() keeps its edits from allocating.
-// The GPU reads the ring more slowly than a slab, so a mesh drawn many times a frame stays DYNAMIC.
+// The GPU reads the ring more slowly than a pool, so a mesh drawn many times a frame stays DYNAMIC.
 CgMesh trail = CgMesh.build(CgVertexFormat.SPATIAL, CgMesh.Usage.FRAME, m -> {});
 trail.reserve(2 * maxPoints, 0);
 trail.edit(points, Trail::write);                        // each frame, before it draws
@@ -679,7 +680,7 @@ Two kinds, independent of each other:
 | Work | Any thread | The render thread | On Vulkan, beside the frame |
 |---|---|---|---|
 | A frame: `CgRecording` recorded, `CgFrameBuilder` built | yes: one thread per recording at a time, one builder per thread | `CgExecutor.execute` | — |
-| Meshes (`CgMesh`): build, edit, release | yes | the store places them and copies their bytes into slabs before the first pass | the copies, on the transfer queue |
+| Meshes (`CgMesh`): build, edit, release | yes | the store places them and copies their bytes into its pools before the first pass | the copies, on the transfer queue |
 | Textures (2D, arrays, 3D, cubemaps): make, fill, grow, delete | yes, through each texture's `CgDeferral` | what was queued lands before the next frame executes | a copy into a texture nothing else has used yet, and a whole upload of 256 KB or more into one the frame has used, on the transfer queue |
 | Shader buffers, `RETAINED`: make, write, delete | yes, through each buffer's `CgDeferral` | the upload lands (`glBufferSubData`) before the next frame executes | — (its memory is host-visible: landing is a CPU copy) |
 | Shader buffers, `FRAME` | no | written and uploaded by the frame that reads them | — |
@@ -746,7 +747,7 @@ Where the device has a queue family that only copies, these copies run on it whi
   which takes the transfer queue, and the old one is freed once the frames reading it finish. Only where it covers
   all of level 0 and no other level is specified, since those would be lost: an upload into a texture whose mipmaps
   were generated stays on the frame's queue;
-- **the mesh store's copies into its slabs**, between `CgGL.cgBeginTransfer` and `cgEndTransfer`.
+- **the mesh store's copies into its pools**, between `CgGL.cgBeginTransfer` and `cgEndTransfer`.
 
 Any other copy into a texture runs on the frame's queue. Copies there one after another share one barrier on each side,
 and one call where they share a source and a texture: a burst of glyph cells is a few calls behind one pair of
@@ -1125,7 +1126,7 @@ CgEngineLifecycle.shutdown();
 | Step | What | Why |
 |------|------|-----|
 | 0 | `CgTextRendererRegistry.get().deleteAll()` | Any `CgTextRenderer` still alive (backstop — individual owners should already have called `delete()`) |
-| 1 | `CgMeshStore.get().releaseAll()` | The store's slabs: each VAO, then its buffers. Meshes keep their data and are placed again by the next context, but for a `GPU_ONLY` one, which needs an edit first |
+| 1 | `CgMeshStore.get().releaseAll()` | The store's pools, their buffers and the one empty VAO its `CgGL` draws bind. Meshes keep their data and are placed again by the next context, but for a `GPU_ONLY` one, which needs an edit first |
 | 2 | `CgQuadIndexBuffer.freeAll()` | Shared quad IBO |
 | 5 | `CgTextureManager.get().freeAll()` | All cached textures + fallback |
 | 5c | `CgFontRegistry.get().releaseAll()` | Glyph atlas textures + background generation executor, reset in place (reusable immediately) |
@@ -1138,8 +1139,6 @@ CgEngineLifecycle.shutdown();
 | 8a | `CgPostStack.get().release()` | Its materials' references (the registry freed them at step 6); its transients are the graph's. Volumes and registered effects stay, for the next context |
 | 8b | `CgPreviewPool.deleteAll()` | Shader-graph preview targets, thumbnails and main previews. **Context-owned, not renderer-owned** — their storage is made by the executor outside any registry, so nothing below reaches it. Before step 9, since a target holds framebuffers |
 | 9 | `CgFrameBufferRegistry.get().deleteAll()` | All owned FBOs |
-
-> A slab deletes its VAO **before** its buffers: a VAO naming deleted buffers is stale GPU state.
 
 > **The backend closes last, and not in `shutdown()`.** Every deletion above goes through it, and a
 > device releases memory when its frames retire, so whoever built a device-backed backend closes it after:

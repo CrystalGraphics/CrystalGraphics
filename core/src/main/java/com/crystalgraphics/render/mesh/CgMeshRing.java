@@ -8,7 +8,6 @@ import com.crystalgraphics.util.trace.CgChannels;
 
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -57,14 +56,8 @@ final class CgMeshRing {
     }
 
     private final ArrayList<Page> pages = new ArrayList<>();
-    /** Every format's pool, whose vertex array over a page goes with the page. */
-    private final Collection<CgMeshPool> pools;
     private int open = -1;
     private long frame = Long.MIN_VALUE, frameNanos;
-
-    CgMeshRing(Collection<CgMeshPool> pools) {
-        this.pools = pools;
-    }
 
     /** Set by {@link #reserve}: the page written, the base vertex and first index, where the indices go in the map. */
     int page, baseVertex, firstIndex, indexPosition;
@@ -153,7 +146,6 @@ final class CgMeshRing {
             p.buffer.delete();
             pages.remove(last);
             CgTrace.marker(CgChannels.GL, "mesh.ringPage", "freed, " + (p.bytes >> 10) + " KB");
-            for (CgMeshPool pool : pools) pool.forgetRingPage(last);
         }
         CgTrace.counter(CgChannels.GL, PAGES, pages.size());
     }

@@ -22,7 +22,7 @@ import static org.junit.Assert.*;
  * No GL context is required — {@link CgCapabilities} is stubbed via reflection.</p>
  *
  * <p>These tests exercise the full pipeline path. The isolated unit tests for
- * {@link CgGlslEmitter#emitVertexInputs} live in {@link CgGlslEmitterTest}.</p>
+ * {@link CgGlslEmitter#emitVertexDeclarations} and its fetch live in {@link CgGlslEmitterTest}.</p>
  */
 public class CgVertexAttributeInjectionTest {
     // ── Capabilities stub — no GL context needed ──────────────────────────────
@@ -79,18 +79,18 @@ public class CgVertexAttributeInjectionTest {
     /**
      * Verifies that the full compiler pipeline injects the three SPATIAL vertex attribute
      * declarations (cg_Position, cg_TexCoord0, cg_Normal) into the vertex source.
-     * Exercises the main happy path: #type spatial → CgVertexFormat.SPATIAL → emitVertexInputs.
+     * Exercises the main happy path: #type spatial → CgVertexFormat.SPATIAL → emitVertexDeclarations.
      */
     @Test
     public void spatial_vertexSource_containsAllThreeAttributes() {
         String vert = compile(shaderOf("spatial")).vertexSource();
-        assertTrue("Must contain cg_Position as vec3",  vert.contains("in vec3 cg_Position;"));
-        assertTrue("Must contain cg_TexCoord0 as vec2", vert.contains("in vec2 cg_TexCoord0;"));
-        assertTrue("Must contain cg_Normal as vec3",    vert.contains("in vec3 cg_Normal;"));
+        assertTrue("Must contain cg_Position as vec3",  vert.contains("\nvec3 cg_Position;"));
+        assertTrue("Must contain cg_TexCoord0 as vec2", vert.contains("\nvec2 cg_TexCoord0;"));
+        assertTrue("Must contain cg_Normal as vec3",    vert.contains("\nvec3 cg_Normal;"));
     }
     /**
      * Verifies that the vertex attribute header comment embeds the format debug name.
-     * The comment is the first line emitted by emitVertexInputs and serves as a diagnostic marker.
+     * The comment is the first line emitted by emitVertexDeclarations and serves as a diagnostic marker.
      */
     @Test
     public void spatial_vertexSource_containsFormatKeyNameComment() {
@@ -107,7 +107,7 @@ public class CgVertexAttributeInjectionTest {
     public void spatial_vertexSource_attributesAppearAfterEnvInclude() {
         String vert = compile(shaderOf("spatial")).vertexSource();
         int envIdx = vert.indexOf("cg_env.glsl");
-        int posIdx = vert.indexOf("in vec3 cg_Position;");
+        int posIdx = vert.indexOf("\nvec3 cg_Position;");
         assertTrue("cg_env.glsl include must be present", envIdx >= 0);
         assertTrue("cg_Position must be present",         posIdx >= 0);
         assertTrue("Vertex attributes must appear AFTER cg_env.glsl include",
@@ -122,11 +122,11 @@ public class CgVertexAttributeInjectionTest {
     @Test
     public void pos3Uv2Col4ub_vertexSource_containsCorrectDeclarations() {
         String vert = compile(shaderOf("pos3_uv2_col4ub")).vertexSource();
-        assertTrue("3D position must be vec3",             vert.contains("in vec3 cg_Position;"));
-        assertTrue("UV must be vec2",                      vert.contains("in vec2 cg_TexCoord0;"));
+        assertTrue("3D position must be vec3",             vert.contains("\nvec3 cg_Position;"));
+        assertTrue("UV must be vec2",                      vert.contains("\nvec2 cg_TexCoord0;"));
         // normalized UNSIGNED_BYTE×4 → float family → vec4 (not uvec4)
-        assertTrue("Normalized ubyte4 color must be vec4", vert.contains("in vec4 cg_Color;"));
-        assertFalse("Must not emit non-normalized uvec4",  vert.contains("in uvec4 cg_Color;"));
+        assertTrue("Normalized ubyte4 color must be vec4", vert.contains("\nvec4 cg_Color;"));
+        assertFalse("Must not emit non-normalized uvec4",  vert.contains("\nuvec4 cg_Color;"));
         assertTrue("Comment must name the format",
                 vert.contains("// Vertex attributes (format: pos3_uv2_col4ub)"));
     }
@@ -154,10 +154,10 @@ public class CgVertexAttributeInjectionTest {
     @Test
     public void pos2Uv2Col4ub_vertexSource_positionIsVec2NotVec3() {
         String vert = compile(shaderOf("pos2_uv2_col4ub")).vertexSource();
-        assertTrue("2D position must be vec2", vert.contains("in vec2 cg_Position;"));
-        assertFalse("2D format must NOT produce vec3 position", vert.contains("in vec3 cg_Position;"));
-        assertTrue("UV must be vec2",          vert.contains("in vec2 cg_TexCoord0;"));
-        assertTrue("Normalized ubyte4 color must be vec4", vert.contains("in vec4 cg_Color;"));
+        assertTrue("2D position must be vec2", vert.contains("\nvec2 cg_Position;"));
+        assertFalse("2D format must NOT produce vec3 position", vert.contains("\nvec3 cg_Position;"));
+        assertTrue("UV must be vec2",          vert.contains("\nvec2 cg_TexCoord0;"));
+        assertTrue("Normalized ubyte4 color must be vec4", vert.contains("\nvec4 cg_Color;"));
     }
     /**
      * Verifies correct format propagation for the POS2 variant.
@@ -177,10 +177,10 @@ public class CgVertexAttributeInjectionTest {
     @Test
     public void customFormat_vertexSource_allThreeAttributesPresent() {
         String vert = compile(shaderOf("test_vtx_inj_custom")).vertexSource();
-        assertTrue("Custom vec3 position",   vert.contains("in vec3 vtx_pos;"));
-        assertTrue("Custom vec2 UV",         vert.contains("in vec2 vtx_uv;"));
+        assertTrue("Custom vec3 position",   vert.contains("\nvec3 vtx_pos;"));
+        assertTrue("Custom vec2 UV",         vert.contains("\nvec2 vtx_uv;"));
         // single-component FLOAT → "float" (not "vec1")
-        assertTrue("Custom float scalar",    vert.contains("in float vtx_weight;"));
+        assertTrue("Custom float scalar",    vert.contains("\nfloat vtx_weight;"));
         assertTrue("Comment must name custom format",
                 vert.contains("// Vertex attributes (format: test_vtx_inj_custom)"));
     }
@@ -247,11 +247,11 @@ public class CgVertexAttributeInjectionTest {
     public void spatial_fragmentSource_mustNotContainAnyVertexAttributeDeclaration() {
         String frag = compile(shaderOf("spatial")).fragmentSource();
         assertFalse("Fragment must NOT contain in vec3 cg_Position",
-                frag.contains("in vec3 cg_Position;"));
+                frag.contains("\nvec3 cg_Position;"));
         assertFalse("Fragment must NOT contain in vec2 cg_TexCoord0",
-                frag.contains("in vec2 cg_TexCoord0;"));
+                frag.contains("\nvec2 cg_TexCoord0;"));
         assertFalse("Fragment must NOT contain in vec3 cg_Normal",
-                frag.contains("in vec3 cg_Normal;"));
+                frag.contains("\nvec3 cg_Normal;"));
         assertFalse("Fragment must NOT contain the vertex-attributes comment header",
                 frag.contains("// Vertex attributes (format:"));
     }
@@ -262,9 +262,9 @@ public class CgVertexAttributeInjectionTest {
     @Test
     public void pos3Uv2Col4ub_fragmentSource_mustNotContainAnyVertexAttributeDeclaration() {
         String frag = compile(shaderOf("pos3_uv2_col4ub")).fragmentSource();
-        assertFalse("Fragment must NOT contain in vec3 a_pos",   frag.contains("in vec3 a_pos;"));
-        assertFalse("Fragment must NOT contain in vec2 a_uv",    frag.contains("in vec2 a_uv;"));
-        assertFalse("Fragment must NOT contain in vec4 a_color", frag.contains("in vec4 a_color;"));
+        assertFalse("Fragment must NOT contain in vec3 a_pos",   frag.contains("\nvec3 a_pos;"));
+        assertFalse("Fragment must NOT contain in vec2 a_uv",    frag.contains("\nvec2 a_uv;"));
+        assertFalse("Fragment must NOT contain in vec4 a_color", frag.contains("\nvec4 a_color;"));
         assertFalse("Fragment must NOT contain the vertex-attributes comment header",
                 frag.contains("// Vertex attributes (format:"));
     }
@@ -288,40 +288,5 @@ public class CgVertexAttributeInjectionTest {
             assertTrue("Exception message must list registered types",
                     msg.toLowerCase().contains("registered types"));
         }
-    }
-    // ── Test 8 — Attribute ordering ───────────────────────────────────────────
-    /**
-     * Verifies that SPATIAL vertex attribute declarations appear in definition order:
-     * cg_Position (location 0) → cg_TexCoord0 (location 1) → cg_Normal (location 2).
-     * Ordering matters because glBindAttribLocation assigns sequential locations by
-     * declaration order; swapped declarations would mis-wire the VAO.
-     */
-    @Test
-    public void spatial_vertexSource_attributesAppearInDefinitionOrder() {
-        String vert = compile(shaderOf("spatial")).vertexSource();
-        // Unreal's local vertex factory's order: position, normal, colour, then the UV sets.
-        int posIdx    = vert.indexOf("in vec3 cg_Position;");
-        int normIdx   = vert.indexOf("in vec3 cg_Normal;");
-        int colourIdx = vert.indexOf("in vec4 cg_Color;");
-        int uvIdx     = vert.indexOf("in vec2 cg_TexCoord0;");
-        int uv1Idx    = vert.indexOf("in vec2 cg_TexCoord1;");
-        assertTrue("every attribute must appear", posIdx >= 0 && normIdx >= 0 && colourIdx >= 0 && uvIdx >= 0 && uv1Idx >= 0);
-        assertTrue("location order 0 to 4", posIdx < normIdx && normIdx < colourIdx && colourIdx < uvIdx && uvIdx < uv1Idx);
-    }
-    /**
-     * Verifies attribute ordering for the custom 3-attribute format:
-     * vtx_pos (loc 0) → vtx_uv (loc 1) → vtx_weight (loc 2).
-     */
-    @Test
-    public void customFormat_vertexSource_attributesAppearInDefinitionOrder() {
-        String vert = compile(shaderOf("test_vtx_inj_custom")).vertexSource();
-        int posIdx    = vert.indexOf("in vec3 vtx_pos;");
-        int uvIdx     = vert.indexOf("in vec2 vtx_uv;");
-        int weightIdx = vert.indexOf("in float vtx_weight;");
-        assertTrue("vtx_pos must appear",    posIdx >= 0);
-        assertTrue("vtx_uv must appear",     uvIdx >= 0);
-        assertTrue("vtx_weight must appear", weightIdx >= 0);
-        assertTrue("vtx_pos must precede vtx_uv",    posIdx < uvIdx);
-        assertTrue("vtx_uv must precede vtx_weight", uvIdx < weightIdx);
     }
 }

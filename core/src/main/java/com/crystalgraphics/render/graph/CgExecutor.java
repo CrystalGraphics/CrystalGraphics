@@ -302,7 +302,7 @@ public final class CgExecutor {
      */
     private boolean stencilled;
     /**
-     * Whether a raster pass left a slab's vertex array bound: kept for the next raster pass, unbound before any other
+     * Whether a raster pass left the mesh store's vertex array bound: kept for the next raster pass, unbound before any other
      * step and at the execution's end, since an element-buffer bind under it would rewrite the vertex array.
      */
     private boolean vaoHeld;
@@ -2525,7 +2525,6 @@ public final class CgExecutor {
                 packed.palette.bindForDraw();
             }
             deviceSets.prepare(frame.bindings);
-            for (int b = 0; b < packed.count; b++) store.ready(mesh(packed, b));
         }
         CgLoad load = pass.load;
         boolean clearColor = (load.mask() & CgGL.GL_COLOR_BUFFER_BIT) != 0;
@@ -2713,7 +2712,7 @@ public final class CgExecutor {
             }
             CgMesh mesh = mesh(packed, b);
             CgGraphicsPipeline device = linked == null ? null
-                    : pipeline.device(passState, mesh.format(), CgMeshStore.topology(mesh), !CgGL.isDepthZeroToOne(),
+                    : pipeline.device(passState, CgMeshStore.topology(mesh), !CgGL.isDepthZeroToOne(),
                             deviceFormats, depthFormat, samples);
             if (device == null) {
                 if (loggedOnce.add("skipped " + pipeline)) {
@@ -2750,6 +2749,9 @@ public final class CgExecutor {
                 if (at != null) bindRecords(packed.buffers[first + s], at);
                 standIn[s] = at;
             }
+            // The words its vertex stage pulls from, which a joined run's meshes share
+            int words = store.vertexWords(mesh);
+            if (words != 0) CgBoundResources.storage(CgBindingPoints.VERTICES.ssbo(), words, 0, 0);
             for (int set = 0; set < layout.sets().size(); set++) {
                 if (set == CgRHI.BINDLESS_SET) {
                     drawCache.set(rp, set, rhi.bindlessSet());

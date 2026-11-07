@@ -12,8 +12,8 @@
 A `.shader` file is a single text file that contains both the vertex stage and the
 fragment stage of a CrystalShader material. One file is loaded via `CgMaterial.load(path)`
 and produces a linked GLSL program that works identically for both `glDrawElements`
-(non-instanced) and `glDrawElementsInstanced` (instanced) — no modification, no `#ifdef`,
-same VAO.
+(non-instanced) and `glDrawElementsInstanced` (instanced) — no modification, no `#ifdef`; its
+vertex stage pulls the mesh from the store's words, with no vertex input.
 
 The file is **structurally parsed** by `CgShaderParser` into a `CgParsedShader` value
 object, then **GLSL-generated** by `CgMaterialShaderCompiler` into full vertex + fragment

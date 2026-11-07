@@ -24,6 +24,7 @@ import com.crystalgraphics.gl.buffer.shader.CgUniformBuffer;
 import com.crystalgraphics.gl.material.CgMaterialShaderMap.ProgramKey;
 import com.crystalgraphics.gl.material.CgMaterialShaderMap.Sources;
 import com.crystalgraphics.gl.material.parse.CgBufferReaders;
+import com.crystalgraphics.gl.material.parse.CgGlslEmitter;
 import com.crystalgraphics.gl.material.parse.CgMaterialShaderCompiler;
 import com.crystalgraphics.gl.material.parse.CgParsedPass;
 import com.crystalgraphics.gl.material.parse.CgParsedShader;
@@ -1232,6 +1233,7 @@ public final class CgMaterialShader implements CgReloadable {
             CgUniformBuffer.wireBlock(shader, CgPassConstants.ENVIRONMENT_BLOCK, CgBindingPoints.ENVIRONMENT_UBO);
             CgShaderBuffer.wireBlock(shader, CgInstanceKind.OBJECT_BLOCK_NAME, CgBindingPoints.OBJECT_DATA);
             CgShaderBuffer.wireBlock(shader, CgInstanceKind.OBJECT_ID_BLOCK_NAME, CgBindingPoints.OBJECT_IDS);
+            CgShaderBuffer.wireBlock(shader, CgGlslEmitter.VERTEX_BLOCK, CgBindingPoints.VERTICES);
             if (map.block != null) map.block.wireShader(shader);
             for (CgAttachedBuffer ab : map.buffers) ab.getBuffer().wireShader(shader);
             // Only a skinned program declares the palettes; any other leaves the block absent, which this skips.

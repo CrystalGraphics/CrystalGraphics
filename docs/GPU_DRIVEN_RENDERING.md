@@ -284,14 +284,14 @@ draw has:
 | **pipeline** | one material shader and keyword set; a different material ends the run |
 | **bindings** | the same textures, buffers and property values: two `CgMaterial` instances with different textures do not join (`graph.multi-draw.binding-breaks` counts these). Share one material and vary per instance through `CG_OBJECT_CUSTOM*` and atlases or texture arrays |
 | **scissor**, and no target copy between | a `sceneColor`/`sceneDepth` reader between two draws splits them |
-| **slab** | meshes of one vertex format share a slab of 64K vertices and 256K indices until it fills; a bigger mesh gets its own. `FRAME` meshes join within one ring page |
+| **vertex format** | every mesh of a format is in its one pool, so any two join; `FRAME` meshes join within one ring page |
 | **indexing** | meshes with indices and meshes without never share a call |
 | **object records** (indirect draws) | the same records buffer: the frame's own, or one `objects()` buffer |
 
 - **`INSTANCES` draws of the frame's records never join**: every instance reads one record, and the joined variant has
   no shared record. `INDICES` and `VERTICES` draws do.
 - **Ordering decides adjacency.** The world renderer sorts opaque draws by sort layer, material, distance, mesh, so
-  draws of one material and slab tend to sit together; transparent draws sort back to front, a `.group()` as one.
+  draws of one material and format tend to sit together; transparent draws sort back to front, a `.group()` as one.
   Within a group, `.batchKey(k)` sorts before distance, so draws of one material given one key sit together and join;
   without it, effects of mixed materials alternate pipelines and nothing joins.
 - **`indirectEach` is one draw of many commands**: each `.each()` record is its own command and object record, and
@@ -326,7 +326,7 @@ Pass {
 
 | Use | Never | Why |
 |---|---|---|
-| `CG_VERTEX_ID`, `CG_VERTEX_CORNER` | `gl_VertexID` | a joined draw's base vertex is the mesh's place in the slab |
+| `CG_VERTEX_ID`, `CG_VERTEX_CORNER` | `gl_VertexID` | a joined draw's base vertex is the mesh's place in its pool |
 | `CG_INSTANCE_ID`, `CG_DRAW_INSTANCE` | `gl_InstanceID` | every draw's first instance is its batch's base; `CG_DRAW_INSTANCE` is the element an `INSTANCES` draw draws |
 | `CG_OBJECT_DATA`, `CG_OBJECT_TO_WORLD`, `CG_OBJECT_CUSTOM0..3` | a uniform per draw | a multi-draw changes no uniform between its commands |
 
@@ -359,7 +359,7 @@ What production engines do, and what follows here. Research: `plan/crystalgraphi
 6. **Meshes go through object records**: a kernel writes each element's record, and `.instances()` culls and levels
    them (§3). Haar and Aaltonen (SIGGRAPH 2015) and Wihlidal (GDC 2016) are the model.
 7. **Join by design.** One material per look with per-instance variation in customs and atlases; meshes of one vertex
-   format built together so they share a slab; vertex pulling (`#type none`) where a mesh is only a quad or a strip.
+   format, which share its pool; vertex pulling (`#type none`) where a mesh is only a quad or a strip.
 8. **Bounds**: authored for a definition (Niagara's fixed bounds), or a GPU reduce read back late and grown by the
    speed limit times the delay. A draw with no bounds cannot be culled on the CPU.
 9. **Transparency**: sort what blends (the (slot, depth) key); additive needs no order.

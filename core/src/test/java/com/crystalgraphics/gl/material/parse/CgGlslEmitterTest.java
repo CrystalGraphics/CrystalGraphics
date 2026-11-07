@@ -170,36 +170,55 @@ public class CgGlslEmitterTest {
         assertEquals("already", CgGlslEmitter.lowerFirst("already"));
     }
 
-    // ── emitVertexInputs tests ────────────────────────────────────────────────
+    // ── The vertex fetch ──────────────────────────────────────────────────────
 
     @Test
-    public void testEmitVertexInputs_spatialFormat() {
-        String out = CgGlslEmitter.emitVertexInputs(CgVertexFormat.SPATIAL);
-
-        assertTrue("Must contain cg_Position as vec3", out.contains("in vec3 cg_Position;"));
-        assertTrue("Must contain cg_TexCoord0 as vec2", out.contains("in vec2 cg_TexCoord0;"));
-        assertTrue("Must contain cg_Normal as vec3",    out.contains("in vec3 cg_Normal;"));
-        assertFalse("Must not contain ifdef wrapper", out.contains("#ifdef"));
-        assertTrue("Must have debug name comment", out.contains("// Vertex attributes (format: spatial)"));
+    public void spatial_declaresItsWordsAndAGlobalPerAttribute() {
+        String out = CgGlslEmitter.emitVertexDeclarations(CgVertexFormat.SPATIAL);
+        assertTrue(out, out.contains("CG_BIND(1, 4) layout(std430) readonly buffer CgVertexWords { uint cg_VertexWords[]; };"));
+        assertTrue(out, out.contains("\nvec3 cg_Position;") && out.contains("\nvec3 cg_Normal;") && out.contains("\nvec4 cg_Color;"));
+        assertFalse("no vertex input", out.contains("in vec"));
+        assertEquals("", CgGlslEmitter.emitVertexDeclarations(CgVertexFormat.NONE));
     }
 
+    /** SPATIAL's 40 bytes as ten words: three floats, two snorm16 pairs, unorm8 x4, four half pairs. */
     @Test
-    public void testEmitVertexInputs_normalizedUbyte_mapsToVec4() {
-        CgVertexFormat fmt = CgVertexFormat.builder("test_norm_ubyte")
-            .add(CgVertexSemantic.COLOR, "a_color", 4, CgAttribType.UNSIGNED_BYTE, true)
-            .build();
-        String out = CgGlslEmitter.emitVertexInputs(fmt);
-
-        assertTrue("Normalized ubyte4 must map to vec4", out.contains("in vec4 a_color;"));
+    public void spatial_fetchDecodesEachAttributeFromItsWords() {
+        String out = CgGlslEmitter.emitVertexFetch(CgVertexFormat.SPATIAL, null, null);
+        assertTrue(out, out.contains("uint v = uint(gl_VertexID) * 10u;"));
+        assertTrue(out, out.contains("cg_Position = vec3(uintBitsToFloat(cg_VertexWords[v + 0u]), "
+                + "uintBitsToFloat(cg_VertexWords[v + 1u]), uintBitsToFloat(cg_VertexWords[v + 2u]));"));
+        assertTrue(out, out.contains("cg_Normal = vec3(unpackSnorm2x16(cg_VertexWords[v + 3u]).x, "
+                + "unpackSnorm2x16(cg_VertexWords[v + 3u]).y, unpackSnorm2x16(cg_VertexWords[v + 4u]).x);"));
+        assertTrue(out, out.contains("cg_Color = vec4(unpackUnorm4x8(cg_VertexWords[v + 5u]).x, "
+                + "unpackUnorm4x8(cg_VertexWords[v + 5u]).y, unpackUnorm4x8(cg_VertexWords[v + 5u]).z, "
+                + "unpackUnorm4x8(cg_VertexWords[v + 5u]).w);"));
+        assertTrue(out, out.contains("cg_TexCoord3 = vec2(unpackHalf2x16(cg_VertexWords[v + 9u]).x, "
+                + "unpackHalf2x16(cg_VertexWords[v + 9u]).y);"));
     }
 
+    /** The skinned factory reads either width by the draw: 12 words with u8 indices, 13 with u16. */
     @Test
-    public void testEmitVertexInputs_nonNormalizedUbyte_mapsToUvec4() {
-        CgVertexFormat fmt = CgVertexFormat.builder("test_raw_ubyte")
-            .add(CgVertexSemantic.GENERIC, "a_flags", 4, CgAttribType.UNSIGNED_BYTE, false)
-            .build();
-        String out = CgGlslEmitter.emitVertexInputs(fmt);
+    public void skinned_fetchPicksTheWidthByItsCondition() {
+        String out = CgGlslEmitter.emitVertexFetch(CgVertexFormat.SKINNED, CgVertexFormat.SKINNED_WIDE, "CG_BONES_WIDE");
+        int wide = out.indexOf("if (CG_BONES_WIDE)"), narrow = out.indexOf("} else {");
+        assertTrue(out, wide >= 0 && narrow > wide);
+        assertTrue(out, out.indexOf("* 13u;") > wide && out.indexOf("* 13u;") < narrow);
+        assertTrue(out, out.indexOf("* 12u;") > narrow);
+        assertTrue(out, out.contains("cg_BoneIndices = uvec4(bitfieldExtract(cg_VertexWords[v + 10u], 0, 16), "
+                + "bitfieldExtract(cg_VertexWords[v + 10u], 16, 16), bitfieldExtract(cg_VertexWords[v + 11u], 0, 16), "
+                + "bitfieldExtract(cg_VertexWords[v + 11u], 16, 16));"));
+        assertTrue(out, out.contains("cg_BoneIndices = uvec4(bitfieldExtract(cg_VertexWords[v + 10u], 0, 8), "
+                + "bitfieldExtract(cg_VertexWords[v + 10u], 8, 8), bitfieldExtract(cg_VertexWords[v + 10u], 16, 8), "
+                + "bitfieldExtract(cg_VertexWords[v + 10u], 24, 8));"));
+    }
 
-        assertTrue("Non-normalized ubyte4 must map to uvec4", out.contains("in uvec4 a_flags;"));
+    @Test(expected = IllegalStateException.class)
+    public void aStrideOfPartWordsIsRefused() {
+        CgVertexFormat fmt = CgVertexFormat.builder("test_part_word")
+            .add(CgVertexSemantic.POSITION, "a_pos", 3, CgAttribType.FLOAT)
+            .add(CgVertexSemantic.GENERIC, "a_flag", 1, CgAttribType.UNSIGNED_BYTE, false)
+            .build();
+        CgGlslEmitter.emitVertexFetch(fmt, null, null);
     }
 }

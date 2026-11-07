@@ -6,6 +6,8 @@
 
 // Where the draw's palette starts, in bones: its object record's spare x (CgWorldRenderer's .bones(base)).
 #define CG_BONE_BASE int(CG_OBJECT_SPARE.x + 0.5)
+// Whether its mesh is SKINNED_WIDE, 16-bit indices in a 52-byte vertex: the record's spare y (CgMeshDrawCommands).
+#define CG_BONES_WIDE (CG_OBJECT_SPARE.y > 0.5)
 
 // Bone b of the draw's palette, the three rows of its 3x4 skinning transform.
 #define CG_BONE_ROW(b, r) (BONES_DATA((CG_BONE_BASE + int(b)) * 3 + (r)).row)

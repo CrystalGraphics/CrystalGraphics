@@ -1,5 +1,7 @@
 package com.crystalgraphics.render.mesh;
 
+import com.crystalgraphics.api.CgBindingPoints;
+import com.crystalgraphics.render.draw.CgBoundResources;
 import com.crystalgraphics.render.draw.CgDrawStateCache;
 import com.crystalgraphics.platform.rhi.resource.CgGpuBuffer;
 import com.crystalgraphics.platform.rhi.pipeline.CgGraphicsPipelineDesc;
@@ -29,11 +31,14 @@ import java.util.IdentityHashMap;
 import java.util.Map;
 
 /**
- * Where meshes' GPU copies live: a {@link CgMeshPool} per vertex format, and a placement per mesh that draws -- its
- * slab, base vertex and first index. The executor places every mesh a frame draws, uploads what changed before the
- * frame's first pass, and draws each with its bases in the call, so meshes in one slab share every binding and a
- * pipeline draws them alike one call each or joined. Every draw is by indices: a submesh without them is drawn by a
- * shared run of 0, 1, 2 ..., since GL gives an array draw's base vertex as 0 and Vulkan as its first vertex.
+ * Where meshes' GPU copies live: a {@link CgMeshPool} per vertex format, one vertex buffer and one index buffer that
+ * every mesh of the format shares, and a placement per mesh that draws -- its base vertex and first index there. The
+ * executor places every mesh a frame draws and uploads what changed in the frame's prologue, before its first pass;
+ * each draw passes its bases in the call, and its vertex stage pulls its vertices from the format's words
+ * ({@code CgVertexWords}, at {@code CgBindingPoints.VERTICES}) by {@code gl_VertexID}, with no vertex input. So any two
+ * meshes of a format share every binding, and a pipeline draws them alike one call each or joined. Every draw is by
+ * indices: a submesh without them is drawn by a shared run of 0, 1, 2 ..., since GL gives an array draw's base vertex as
+ * 0 and Vulkan as its first vertex.
  *
  * <pre>{@code
  * CgMeshStore store = CgMeshStore.get();
@@ -52,18 +57,23 @@ import java.util.Map;
  * } else {
  *     store.dropJoined();                   // and draw() each
  * }
+ *
+ * // On a device: the words its sets bind, recorded before they are made, then the draw
+ * CgBoundResources.storage(CgBindingPoints.VERTICES.ssbo(), store.vertexWords(mesh), 0, 0);
+ * store.drawOn(pass, cache, mesh, instances, first, -1, 0, -1);
  * }</pre>
  *
  * <ul>
+ *   <li>A draw of a mesh not placed and uploaded with the frame throws: an upload inside a pass breaks it on Vulkan.</li>
  *   <li>An edit takes a new range: one a frame in flight reads is never written. The old range is freed once the
- *       last frame that drew it has retired, as is a released mesh's.</li>
+ *       last frame that drew it has retired, as is a released mesh's, and a buffer a pool outgrew.</li>
  *   <li>The bytes are copied out of the mesh when it is placed, so an edit afterwards waits for the next frame.</li>
- *   <li>An upload is a copy from the frame ring into the slab, before the pass: on Vulkan on the transfer queue where
- *       the device has one ({@code CgGL.cgBeginTransfer}). Every slab write is such a copy, so the transfer queue only
+ *   <li>An upload is a copy from the frame ring into the pool, before the pass: on Vulkan on the transfer queue where
+ *       the device has one ({@code CgGL.cgBeginTransfer}). Every pool write is such a copy, so the transfer queue only
  *       ever reads what it wrote itself.</li>
- *   <li>A {@link CgMesh.Usage#FRAME} mesh takes no slab: each frame it is placed, its bytes are written straight into
- *       a page of the frame ring ({@link CgMeshRing}), and it draws from there with base-vertex calls. It holds
- *       nothing between frames, so it needs no release, and is forgotten after a frame it is not drawn in.</li>
+ *   <li>A {@link CgMesh.Usage#FRAME} mesh takes no range: each frame it is placed, its bytes are written straight into
+ *       a page of the frame ring ({@link CgMeshRing}), and it draws from there, its words the page's. It holds nothing
+ *       between frames, so it needs no release, and is forgotten after a frame it is not drawn in.</li>
  *   <li>Render thread only.</li>
  * </ul>
  */
@@ -76,7 +86,8 @@ public final class CgMeshStore {
     private static final int UPLOADS = CgTrace.name("mesh.uploads");
     private static final int UPLOAD_BYTES = CgTrace.name("mesh.upload-bytes");
     private static final int PLACED = CgTrace.name("mesh.placed");
-    private static final int SLAB_KB = CgTrace.name("mesh.slab-kb");
+    private static final int POOL_KB = CgTrace.name("mesh.pool-kb");
+    private static final int POOL_GROWS = CgTrace.name("mesh.pool-grows");
     private static final int DRAWN = CgTrace.name("mesh.drawn-vertices");
     private static final int DRAWN_INDIRECT = CgTrace.name("mesh.indirect-draws");
     private static final int RING_BYTES = CgTrace.name("mesh.ring-bytes");
@@ -127,7 +138,10 @@ public final class CgMeshStore {
     /** Where one mesh's copy is, and the revision and draw facts it was made from. */
     private static final class Placement {
         CgMesh mesh;
-        CgMeshPool.Slab slab;
+        /** Its format's pool: where its ranges are, or the format a ring placement is drawn as. */
+        CgMeshPool pool;
+        /** Whether it holds ranges in its pool; false for a ring placement and for a mesh with nothing to draw. */
+        boolean stored;
         int vertexNode, indexNode;
         int baseVertex, firstIndex, vertexCount, indexCount, mode;
         int revision, releases;
@@ -136,12 +150,10 @@ public final class CgMeshStore {
         long editedFrame;
         int editStreak;
         boolean editReported;
-        /** Placed in this upload batch, its bytes not yet copied: nothing may be copied out of it yet. */
+        /** Placed in this upload batch, its bytes not yet copied: nothing may be copied out of it, or drawn from it, yet. */
         boolean pending;
         /** A FRAME mesh on the ring: its page and offsets are this frame's, and {@link #placedFrame} says which frame. */
         boolean ring;
-        /** A ring placement's format's pool, which holds the page's vertex array. */
-        CgMeshPool pool;
         long placedFrame;
         int ringPage;
         int[] submeshes = new int[4];
@@ -154,15 +166,27 @@ public final class CgMeshStore {
     private static final int BY_INDICES = 1, BY_SEQUENCE = 2;
 
     private final Map<CgVertexFormat, CgMeshPool> pools = new HashMap<>();
+    /** The pools by {@link CgMeshPool#index}, which a recorded copy names. */
+    private final ArrayList<CgMeshPool> poolList = new ArrayList<>();
     private final IdentityHashMap<CgMesh, Placement> placements = new IdentityHashMap<>();
     private final ArrayList<Placement> live = new ArrayList<>();
     private final ArrayList<Placement> retiring = new ArrayList<>();
     private final ArrayList<Placement> spare = new ArrayList<>();
     private final ArrayList<Placement> batch = new ArrayList<>();
 
-    /** Per copy: source buffer (0 for staging), destination buffer, source and destination byte offsets, size. */
+    /** A copy's kind: what it reads and which of its pool's buffers it writes. */
+    private static final int KEEP_VERTICES = 0, KEEP_INDICES = 1, STAGE_VERTICES = 2, STAGE_INDICES = 3;
+    /** Per copy: kind, pool index, source and destination byte offsets, size. */
     private long[] copies = new long[5 * 32];
     private int copyCount;
+    /** Per pool growth this upload: the old buffer, the new one, the bytes the old one held. */
+    private long[] grown = new long[3 * 4];
+    private int grownCount;
+    private final CgMeshPool.GrowthCopies growth = this::grown;
+    /** Buffers a pool outgrew, and the frame each was last drawn from: deleted once that frame retires. */
+    private int[] retiredBuffers = new int[8];
+    private long[] retiredFrames = new long[8];
+    private int retiredCount;
     private ByteBuffer cpu = ByteBuffer.allocate(64 << 10).order(ByteOrder.nativeOrder());
     private CgStreamBuffer staging;
 
@@ -182,11 +206,12 @@ public final class CgMeshStore {
      * where GL and Vulkan agree on {@code gl_BaseVertex}. Grown in {@link #upload} to the largest such submesh placed.
      */
     private int sequence, sequenceLength, sequenceNeed;
+    /** The vertex array a {@code CgGL} draw binds: GL's core profile draws with one bound, and it holds no format. */
+    private int emptyArray;
 
     private final CgMeshChanges changes = new CgMeshChanges();
     private final int[] nodes = new int[2], submesh = new int[4];
     private long frame = Long.MIN_VALUE;
-    private long slabBytes;
 
     private CgMeshStore() {
     }
@@ -223,7 +248,7 @@ public final class CgMeshStore {
             }
             Placement next = allocate(mesh);
             countEdit(p, next);
-            if (p == null || changes.all || p.pending || p.slab == null) {
+            if (p == null || changes.all || p.pending || !p.stored || p.pool != next.pool) {
                 stage(next, 0, next.vertexCount, 0, next.indexCount);
                 mesh.dropCpuCopy();   // a GPU_ONLY mesh's bytes are in the staging now
             } else {
@@ -264,15 +289,15 @@ public final class CgMeshStore {
             p = spare.isEmpty() ? new Placement() : spare.remove(spare.size() - 1);
             p.mesh = mesh;
             p.ring = true;
-            p.slab = null;
+            p.stored = false;
             p.vertexNode = p.indexNode = -1;
             placements.put(mesh, p);
             ringLive.add(p);
         }
         p.placedFrame = frame;
         p.lastUse = frame;
-        if (ring == null) ring = new CgMeshRing(pools.values());
-        p.pool = pools.computeIfAbsent(mesh.format(), CgMeshPool::new);
+        if (ring == null) ring = new CgMeshRing();
+        p.pool = pool(mesh.format());
         int stride = mesh.format().getStride();
         synchronized (mesh) {
             p.releases = mesh.releases();
@@ -296,6 +321,16 @@ public final class CgMeshStore {
         CgTrace.add(CgChannels.GL, PLACED, 1);
     }
 
+    private CgMeshPool pool(CgVertexFormat format) {
+        CgMeshPool pool = pools.get(format);
+        if (pool == null) {
+            pool = new CgMeshPool(format, poolList.size());
+            pools.put(format, pool);
+            poolList.add(pool);
+        }
+        return pool;
+    }
+
     /** A placement for {@code mesh} as it is now, its ranges allocated. Under the mesh's lock. */
     private Placement allocate(CgMesh mesh) {
         Placement p = spare.isEmpty() ? new Placement() : spare.remove(spare.size() - 1);
@@ -306,19 +341,17 @@ public final class CgMeshStore {
         p.revision = changes.revision;
         p.releases = mesh.releases();
         p.lastUse = frame;
-        p.slab = null;
+        p.pool = pool(mesh.format());
+        p.stored = p.vertexCount > 0;
         p.vertexNode = p.indexNode = -1;
         p.baseVertex = p.firstIndex = 0;
         describe(p, mesh);
-        if (p.vertexCount > 0) {
-            CgMeshPool pool = pools.computeIfAbsent(mesh.format(), CgMeshPool::new);
-            int slabs = pool.slabs.size();
-            p.slab = pool.place(p.vertexCount, p.indexCount, nodes);
-            if (pool.slabs.size() != slabs) slabBytes += p.slab.bytes;
+        if (p.stored) {
+            p.pool.place(p.vertexCount, p.indexCount, nodes);
             p.vertexNode = nodes[0];
             p.indexNode = nodes[1];
-            p.baseVertex = p.vertexNode >= 0 ? p.slab.vertices.offset(p.vertexNode) : 0;
-            p.firstIndex = p.indexNode >= 0 ? p.slab.indices.offset(p.indexNode) : 0;
+            p.baseVertex = p.vertexNode >= 0 ? p.pool.vertices.offset(p.vertexNode) : 0;
+            p.firstIndex = p.indexNode >= 0 ? p.pool.indices.offset(p.indexNode) : 0;
         }
         p.pending = true;
         batch.add(p);
@@ -350,64 +383,71 @@ public final class CgMeshStore {
         sequenceNeed = Math.max(sequenceNeed, longest);
     }
 
-    /** Copies what {@code from} holds into {@code to} on the GPU: the part of the mesh that did not change. */
+    /** Copies what {@code from} holds into {@code to} on the GPU: the part of the mesh that did not change. One pool. */
     private void keep(Placement from, Placement to) {
         int stride = to.mesh.format().getStride();
         int vertices = Math.min(from.vertexCount, to.vertexCount), indices = Math.min(from.indexCount, to.indexCount);
         if (vertices > 0 && stride > 0) {
-            copy(from.slab.vertexBuffer, to.slab.vertexBuffer, (long) from.baseVertex * stride, (long) to.baseVertex * stride,
-                    (long) vertices * stride);
+            copy(KEEP_VERTICES, to.pool, (long) from.baseVertex * stride, (long) to.baseVertex * stride, (long) vertices * stride);
         }
         if (indices > 0) {
-            copy(from.slab.indexBuffer, to.slab.indexBuffer, (long) from.firstIndex * 4, (long) to.firstIndex * 4,
-                    (long) indices * 4);
+            copy(KEEP_INDICES, to.pool, (long) from.firstIndex * 4, (long) to.firstIndex * 4, (long) indices * 4);
         }
     }
 
     /** Copies vertices and indices out of the mesh into the CPU staging, and records their uploads. */
     private void stage(Placement p, int vertexFrom, int vertexTo, int indexFrom, int indexTo) {
-        if (p.slab == null) return;
+        if (!p.stored) return;
         int stride = p.mesh.format().getStride();
         if (vertexTo > vertexFrom && stride > 0) {
             int bytes = (vertexTo - vertexFrom) * stride;
             int at = reserve(bytes);
             p.mesh.readVertices(vertexFrom, vertexTo - vertexFrom, cpu);
-            copy(0, p.slab.vertexBuffer, at, (long) (p.baseVertex + vertexFrom) * stride, bytes);
+            copy(STAGE_VERTICES, p.pool, at, (long) (p.baseVertex + vertexFrom) * stride, bytes);
         }
         if (indexTo > indexFrom) {
             int bytes = (indexTo - indexFrom) * 4;
             int at = reserve(bytes);
             p.mesh.readIndices(indexFrom, indexTo - indexFrom, cpu);
-            copy(0, p.slab.indexBuffer, at, (long) (p.firstIndex + indexFrom) * 4, bytes);
+            copy(STAGE_INDICES, p.pool, at, (long) (p.firstIndex + indexFrom) * 4, bytes);
         }
     }
 
     private int reserve(int bytes) {
         if (cpu.remaining() < bytes) {
-            ByteBuffer grown = ByteBuffer.allocate(Math.max(cpu.capacity() * 2, cpu.position() + bytes))
+            ByteBuffer grownCpu = ByteBuffer.allocate(Math.max(cpu.capacity() * 2, cpu.position() + bytes))
                     .order(ByteOrder.nativeOrder());
             cpu.flip();
-            grown.put(cpu);
-            cpu = grown;
+            grownCpu.put(cpu);
+            cpu = grownCpu;
         }
         return cpu.position();
     }
 
-    private void copy(long from, long to, long fromOffset, long toOffset, long size) {
+    private void copy(int kind, CgMeshPool pool, long fromOffset, long toOffset, long size) {
         if (copyCount * 5 == copies.length) copies = Arrays.copyOf(copies, copies.length * 2);
         int at = copyCount++ * 5;
-        copies[at] = from;
-        copies[at + 1] = to;
+        copies[at] = kind;
+        copies[at + 1] = pool.index;
         copies[at + 2] = fromOffset;
         copies[at + 3] = toOffset;
         copies[at + 4] = size;
     }
 
+    private void grown(int from, int to, long bytes) {
+        if (grownCount * 3 == grown.length) grown = Arrays.copyOf(grown, grown.length * 2);
+        int at = grownCount++ * 3;
+        grown[at] = from;
+        grown[at + 1] = to;
+        grown[at + 2] = bytes;
+    }
+
     // ── Uploading ──────────────────────────────────────────────────────────────
 
     /**
-     * Copies everything placed since the last call into its slabs: the staged bytes through the frame ring, after
-     * what changed meshes kept from their old ranges. Before the frame's first raster pass.
+     * Copies everything placed since the last call into its pool: each pool grown first where a placement passed its
+     * buffers' end, then what changed meshes kept from their old ranges, then the staged bytes through the frame ring.
+     * In the frame's prologue, before its first raster pass.
      */
     public void upload() {
         if (sequenceNeed > sequenceLength) growSequence();
@@ -416,8 +456,13 @@ public final class CgMeshStore {
                 ring.commit();
             }
         }
-        if (copyCount == 0) {
-            batch.clear();
+        for (int i = 0; i < poolList.size(); i++) {
+            int[] old = poolList.get(i).grow(growth);
+            retireBuffer(old[0]);
+            retireBuffer(old[1]);
+        }
+        if (copyCount == 0 && grownCount == 0) {
+            endBatch();
             return;
         }
         int staged = cpu.position(), stagingBuffer = 0;
@@ -430,25 +475,35 @@ public final class CgMeshStore {
             stagingOffset = staging.commit(staged);
             stagingBuffer = staging.getGlBufferId();
         }
-        // Kept content first, a bracket of its own: a staged change lands over it. Every range written is one no frame
-        // in flight reads, and every range read only these copies wrote, so they may run on a transfer queue.
+        // Growth first, then kept content, then staged: each a bracket of its own, since each reads what the one before
+        // wrote. Every range written is one no frame in flight reads, and every range read only these copies wrote, so
+        // they may run on a transfer queue.
+        if (grownCount > 0) {
+            CgGL.cgBeginTransfer();
+            try {
+                for (int g = 0; g < grownCount; g++) {
+                    copyBuffer((int) grown[g * 3], (int) grown[g * 3 + 1], 0, 0, grown[g * 3 + 2]);
+                }
+            } finally {
+                CgGL.cgEndTransfer();
+            }
+            CgTrace.add(CgChannels.GL, POOL_GROWS, grownCount);
+        }
         for (int pass = 0; pass < 2; pass++) {
             boolean open = false;
             try {
                 for (int c = 0; c < copyCount; c++) {
-                    int at = c * 5;
-                    boolean fromStaging = copies[at] == 0;
+                    int at = c * 5, kind = (int) copies[at];
+                    boolean fromStaging = kind == STAGE_VERTICES || kind == STAGE_INDICES;
                     if (fromStaging != (pass == 1)) continue;
                     if (!open) {
                         CgGL.cgBeginTransfer();
                         open = true;
                     }
-                    int from = fromStaging ? stagingBuffer : (int) copies[at];
-                    long fromOffset = fromStaging ? stagingOffset + copies[at + 2] : copies[at + 2];
-                    CgGL.glBindBuffer(CgGL.GL_COPY_READ_BUFFER, from);
-                    CgGL.glBindBuffer(CgGL.GL_COPY_WRITE_BUFFER, (int) copies[at + 1]);
-                    CgGL.glCopyBufferSubData(CgGL.GL_COPY_READ_BUFFER, CgGL.GL_COPY_WRITE_BUFFER, fromOffset,
-                            copies[at + 3], copies[at + 4]);
+                    CgMeshPool pool = poolList.get((int) copies[at + 1]);
+                    int to = kind == KEEP_VERTICES || kind == STAGE_VERTICES ? pool.vertexBuffer : pool.indexBuffer;
+                    if (fromStaging) copyBuffer(stagingBuffer, to, stagingOffset + copies[at + 2], copies[at + 3], copies[at + 4]);
+                    else copyBuffer(to, to, copies[at + 2], copies[at + 3], copies[at + 4]);
                 }
             } finally {
                 if (open) CgGL.cgEndTransfer();
@@ -457,9 +512,32 @@ public final class CgMeshStore {
         CgTrace.add(CgChannels.GL, UPLOADS, copyCount);
         CgTrace.add(CgChannels.GL, UPLOAD_BYTES, staged);
         copyCount = 0;
+        grownCount = 0;
         cpu.clear();
+        endBatch();
+    }
+
+    private static void copyBuffer(int from, int to, long fromOffset, long toOffset, long size) {
+        CgGL.glBindBuffer(CgGL.GL_COPY_READ_BUFFER, from);
+        CgGL.glBindBuffer(CgGL.GL_COPY_WRITE_BUFFER, to);
+        CgGL.glCopyBufferSubData(CgGL.GL_COPY_READ_BUFFER, CgGL.GL_COPY_WRITE_BUFFER, fromOffset, toOffset, size);
+    }
+
+    /** The batch's placements are uploaded: drawable, and their ranges a source for the next edit's kept copy. */
+    private void endBatch() {
         for (int i = 0; i < batch.size(); i++) batch.get(i).pending = false;
         batch.clear();
+    }
+
+    /** Deletes {@code buffer} once the frames that may still draw from it have retired. */
+    private void retireBuffer(int buffer) {
+        if (buffer == 0) return;
+        if (retiredCount == retiredBuffers.length) {
+            retiredBuffers = Arrays.copyOf(retiredBuffers, retiredCount * 2);
+            retiredFrames = Arrays.copyOf(retiredFrames, retiredCount * 2);
+        }
+        retiredBuffers[retiredCount] = buffer;
+        retiredFrames[retiredCount++] = frame;
     }
 
     private void growSequence() {
@@ -477,7 +555,7 @@ public final class CgMeshStore {
 
     /**
      * Draws {@code mesh}, every submesh, {@code instances} times from instance {@code firstInstance} (or
-     * {@link #SHARED_RECORD} with a record), with a pipeline bound. Leaves the slab's vertex array bound; the caller
+     * {@link #SHARED_RECORD} with a record), with a pipeline bound. Leaves the store's vertex array bound; the caller
      * binds 0 when its draws are done.
      */
     public void draw(CgMesh mesh, int instances, int firstInstance) {
@@ -519,7 +597,7 @@ public final class CgMeshStore {
 
     /**
      * What an indirect draw of a range of {@code mesh} composes its command from, into {@code out}: where the range
-     * starts in the indices it is drawn by (the slab's, or the run of 0, 1, 2 ... for a submesh without), how many it
+     * starts in the indices it is drawn by (the pool's, or the run of 0, 1, 2 ... for a submesh without), how many it
      * holds, its base vertex, and 1. A range as {@link #draw}'s, of one submesh ({@code submesh} -1 is the first). False,
      * writing nothing, when the mesh has nothing to draw.
      */
@@ -540,7 +618,7 @@ public final class CgMeshStore {
 
     /**
      * Draws a range of {@code mesh} by the command at byte {@code offset} in buffer {@code args}, written from what
-     * {@link #range} answered for it. Leaves the slab's vertex array bound, as {@link #draw} does.
+     * {@link #range} answered for it. Leaves the store's vertex array bound, as {@link #draw} does.
      */
     public void drawIndirect(CgMesh mesh, int submesh, int args, long offset) {
         Placement p = placed(mesh);
@@ -555,9 +633,10 @@ public final class CgMeshStore {
     }
 
     /**
-     * Adds a draw to the call {@link #drawJoined} makes, if its mesh joins those added since that call last ran: from
-     * the same vertex array, in one topology, drawn by indices or without them as they are. False, adding nothing, when
-     * it does not. A range and first instance as {@link #draw(CgMesh, int, int, int, int, int)} takes.
+     * Adds a draw to the call {@link #drawJoined} makes, if its mesh joins those added since that call last ran: of the
+     * same format (from the same ring page, for a FRAME mesh), in one topology, drawn by indices or without them as they
+     * are. False, adding nothing, when it does not. A range and first instance as
+     * {@link #draw(CgMesh, int, int, int, int, int)} takes.
      *
      * <pre>{@code
      * int n = 0;
@@ -603,7 +682,7 @@ public final class CgMeshStore {
 
     /**
      * Draws everything {@link #join}ed since the last call as one {@code glMultiDrawElementsIndirect}, its commands
-     * written to the frame ring, with a pipeline bound. Leaves the vertex array bound, as {@link #draw} does.
+     * written to the frame ring, with a pipeline bound. Leaves the store's vertex array bound, as {@link #draw} does.
      */
     public void drawJoined() {
         Placement p = joinedFrom;
@@ -611,6 +690,17 @@ public final class CgMeshStore {
         dropJoined();
         if (n == 0) return;
         bind(p, p.joinsAs == BY_SEQUENCE ? sequence : -1);
+        int offset = writeJoined(n);
+        CgGL.glBindBuffer(CgGL.GL_DRAW_INDIRECT_BUFFER, commands.getGlBufferId());
+        CgGL.glMultiDrawElementsIndirect(p.mode, CgGL.GL_UNSIGNED_INT, offset, n, COMMAND_WORDS * 4);
+        CgGL.glBindBuffer(CgGL.GL_DRAW_INDIRECT_BUFFER, 0);
+        calls++;
+        CgTrace.add(CgChannels.GL, MULTI_DRAWS, 1);
+        CgTrace.add(CgChannels.GL, MULTI_COMMANDS, n);
+    }
+
+    /** The {@code n} joined commands written to the frame ring, counted; answers where they start. */
+    private int writeJoined(int n) {
         if (commands == null) commands = CgStreamBuffer.create(CgGL.GL_DRAW_INDIRECT_BUFFER, 64 << 10);
         int bytes = n * COMMAND_WORDS * 4;
         ByteBuffer out = commands.map(bytes).order(ByteOrder.nativeOrder());
@@ -621,13 +711,7 @@ public final class CgMeshStore {
         }
         drawing += vertices;
         CgTrace.add(CgChannels.GL, DRAWN, vertices);
-        int offset = commands.commit(bytes);
-        CgGL.glBindBuffer(CgGL.GL_DRAW_INDIRECT_BUFFER, commands.getGlBufferId());
-        CgGL.glMultiDrawElementsIndirect(p.mode, CgGL.GL_UNSIGNED_INT, offset, n, COMMAND_WORDS * 4);
-        CgGL.glBindBuffer(CgGL.GL_DRAW_INDIRECT_BUFFER, 0);
-        calls++;
-        CgTrace.add(CgChannels.GL, MULTI_DRAWS, 1);
-        CgTrace.add(CgChannels.GL, MULTI_COMMANDS, n);
+        return commands.commit(bytes);
     }
 
     /**
@@ -642,7 +726,7 @@ public final class CgMeshStore {
     /**
      * Draws {@code n} commands {@code stride} bytes apart from byte {@code offset} of buffer {@code args} as one
      * {@code glMultiDrawElementsIndirect}, each written from {@link #range} for a mesh that {@link #joins}
-     * {@code first}, with a pipeline bound. Leaves the vertex array bound, as {@link #draw} does.
+     * {@code first}, with a pipeline bound. Leaves the store's vertex array bound, as {@link #draw} does.
      *
      * <pre>{@code
      * store.range(mesh, -1, 0, -1, range);             // per command, written into args on the GPU
@@ -664,14 +748,6 @@ public final class CgMeshStore {
 
     // ── Drawing on a device ────────────────────────────────────────────────────
 
-    /**
-     * Places {@code mesh} for this frame now if it is not, uploading it: before a device pass draws it, as a placement
-     * inside one would upload through the GL front mid-pass.
-     */
-    public void ready(CgMesh mesh) {
-        placed(mesh);
-    }
-
     /** {@code mesh}'s topology as its device pipeline describes it. */
     public static CgGraphicsPipelineDesc.Topology topology(CgMesh mesh) {
         return switch (mesh.topology()) {
@@ -684,8 +760,18 @@ public final class CgMeshStore {
     }
 
     /**
-     * {@link #draw(CgMesh, int, int, int, int, int)} on a device's render pass, its streams set through {@code cache}:
-     * with the pass's pipeline for this mesh's format and topology set.
+     * The buffer {@code mesh}'s vertex stage pulls from, as a {@code CgGL} name: its format's words, or the ring page a
+     * FRAME mesh was written into. 0 for a mesh of a format with no attributes, or with nothing to draw. Whatever draws
+     * it on a device binds this at {@code CgBindingPoints.VERTICES} before its sets are made.
+     */
+    public int vertexWords(CgMesh mesh) {
+        Placement p = placed(mesh);
+        return p == null ? 0 : wordsOf(p);
+    }
+
+    /**
+     * {@link #draw(CgMesh, int, int, int, int, int)} on a device's render pass, its indices set through {@code cache}:
+     * with the pass's pipeline for this mesh's format and topology set, and its {@link #vertexWords} bound.
      */
     public void drawOn(CgRenderPass pass, CgDrawStateCache cache, CgMesh mesh, int instances, int firstInstance, int submesh,
                        int first, int count) {
@@ -703,7 +789,7 @@ public final class CgMeshStore {
             drawing += (long) n * instances;
             calls++;
             CgTrace.add(CgChannels.GL, DRAWN, (long) n * instances);
-            streamsOn(pass, cache, p, indexed);
+            indicesOn(pass, cache, p, indexed);
             pass.drawIndexed(n, instances, indexed ? p.firstIndex + firstIndex + start : start, p.baseVertex + firstVertex,
                     firstInstance);
         }
@@ -715,7 +801,7 @@ public final class CgMeshStore {
         Placement p = placed(mesh);
         if (p == null || p.submeshCount == 0) return;
         int s = Math.min(Math.max(submesh, 0), p.submeshCount - 1);
-        streamsOn(pass, cache, p, p.submeshes[s * 4 + 1] > 0);
+        indicesOn(pass, cache, p, p.submeshes[s * 4 + 1] > 0);
         pass.drawIndexedIndirect(args, offset, 1, COMMAND_WORDS * 4);
         calls++;
         CgTrace.add(CgChannels.GL, DRAWN_INDIRECT, 1);
@@ -727,18 +813,8 @@ public final class CgMeshStore {
         int n = joinedCount;
         dropJoined();
         if (n == 0) return;
-        streamsOn(pass, cache, p, p.joinsAs != BY_SEQUENCE);
-        if (commands == null) commands = CgStreamBuffer.create(CgGL.GL_DRAW_INDIRECT_BUFFER, 64 << 10);
-        int bytes = n * COMMAND_WORDS * 4;
-        ByteBuffer out = commands.map(bytes).order(ByteOrder.nativeOrder());
-        long vertices = 0;
-        for (int i = 0; i < n * COMMAND_WORDS; i += COMMAND_WORDS) {
-            out.putInt(joined[i]).putInt(joined[i + 1]).putInt(joined[i + 2]).putInt(joined[i + 3]).putInt(joined[i + 4]);
-            vertices += (long) joined[i] * joined[i + 1];
-        }
-        drawing += vertices;
-        CgTrace.add(CgChannels.GL, DRAWN, vertices);
-        int offset = commands.commit(bytes);
+        indicesOn(pass, cache, p, p.joinsAs != BY_SEQUENCE);
+        int offset = writeJoined(n);
         CgGLImports imports = CgGLImports.get();
         int name = commands.getGlBufferId();
         pass.drawIndexedIndirect(imports.buffer(name), imports.bufferOffset(name) + offset, n, COMMAND_WORDS * 4);
@@ -752,7 +828,7 @@ public final class CgMeshStore {
                                      int n, int stride) {
         Placement p = placed(first);
         if (p == null || p.joinsAs == 0) return;
-        streamsOn(pass, cache, p, p.joinsAs != BY_SEQUENCE);
+        indicesOn(pass, cache, p, p.joinsAs != BY_SEQUENCE);
         pass.drawIndexedIndirect(args, offset, n, stride);
         calls++;
         CgTrace.add(CgChannels.GL, DRAWN_INDIRECT, n);
@@ -760,72 +836,77 @@ public final class CgMeshStore {
         CgTrace.add(CgChannels.GL, MULTI_COMMANDS, n);
     }
 
-    /** Sets {@code p}'s vertex buffer and its indices (the run of 0, 1, 2 ... where it draws without) on {@code pass}. */
-    private void streamsOn(CgRenderPass pass, CgDrawStateCache cache, Placement p, boolean indexed) {
-        int vertexName, indexName;
-        if (p.ring) {
-            CgStreamBuffer page = p.ringPage >= 0 ? ring.page(p.ringPage).buffer : null;
-            vertexName = page == null ? 0 : page.getGlBufferId();
-            indexName = indexed ? vertexName : sequence;
-        } else {
-            vertexName = p.slab.vertexBuffer;
-            indexName = indexed ? p.slab.indexBuffer : sequence;
-        }
+    /** Sets {@code p}'s indices (the run of 0, 1, 2 ... where it draws without) on {@code pass}. */
+    private void indicesOn(CgRenderPass pass, CgDrawStateCache cache, Placement p, boolean indexed) {
+        int indexName = indexed ? indicesOf(p) : sequence;
         CgGLImports imports = CgGLImports.get();
-        if (vertexName != 0 && p.mesh.format().getStride() > 0) {
-            cache.vertexBuffer(pass, imports.buffer(vertexName), imports.bufferOffset(vertexName));
-        }
         cache.indexBuffer(pass, imports.buffer(indexName), imports.bufferOffset(indexName));
     }
 
-    /** Whether {@code p} and {@code q} share the vertex array, the indices and the topology a multi-draw needs. */
-    private static boolean joins(Placement p, Placement q) {
-        return p.joinsAs == q.joinsAs && p.mode == q.mode && p.ring == q.ring
-                && (p.ring ? p.ringPage == q.ringPage && p.pool == q.pool : p.slab == q.slab);
+    /** The words {@code p} is pulled from: its pool's vertex buffer, or its ring page; 0 for a format with none. */
+    private int wordsOf(Placement p) {
+        if (p.mesh.format().getStride() == 0) return 0;
+        if (p.ring) return p.ringPage >= 0 ? ring.page(p.ringPage).buffer.getGlBufferId() : 0;
+        return p.pool.vertexBuffer;
     }
 
-    /** {@code mesh}'s placement this frame, placed now if it was not placed with the frame; null with nothing to draw. */
+    /** The indices {@code p} is drawn by: its pool's index buffer, or its ring page. */
+    private int indicesOf(Placement p) {
+        if (p.ring) return p.ringPage >= 0 ? ring.page(p.ringPage).buffer.getGlBufferId() : 0;
+        return p.pool.indexBuffer;
+    }
+
+    /** Whether {@code p} and {@code q} share the words, the indices and the topology a multi-draw needs. */
+    private static boolean joins(Placement p, Placement q) {
+        return p.joinsAs == q.joinsAs && p.mode == q.mode && p.ring == q.ring && p.pool == q.pool
+                && (!p.ring || p.ringPage == q.ringPage);
+    }
+
+    /**
+     * {@code mesh}'s placement this frame; null with nothing to draw. Throws for a mesh not placed and uploaded with the
+     * frame, which would be an upload inside a pass.
+     */
     @Nullable
     private Placement placed(CgMesh mesh) {
-        beginFrame();   // a frame executed again draws in a later frame than it was placed in
+        beginFrame();
         Placement p = placements.get(mesh);
-        if (p == null || p.releases != mesh.releases() || (p.ring && p.placedFrame != frame)) {
-            // Not placed with the frame: placed now, which on Vulkan breaks the pass for its upload.
-            place(mesh);
-            upload();
-            p = placements.get(mesh);
+        if (p == null || p.releases != mesh.releases() || (p.ring && p.placedFrame != frame) || p.pending) {
+            throw new IllegalStateException(mesh + " is drawn unplaced: place every mesh a frame draws, and upload, in "
+                    + "its prologue (CgExecutor places a frame's before its first pass)");
         }
-        if (p == null || (p.slab == null && !p.ring)) return null;
+        if (!p.stored && !p.ring) return null;
         p.lastUse = frame;
         return p;
     }
 
-    /** Binds the vertex array {@code p} draws from, and its indices or {@code elements} where that is not -1. */
+    /**
+     * Binds the store's vertex array, {@code p}'s indices or {@code elements} where that is not -1, and the words its
+     * vertex stage pulls from.
+     */
     private void bind(Placement p, int elements) {
-        int vao;
-        if (p.ring) {
-            CgStreamBuffer page = p.ringPage >= 0 ? ring.page(p.ringPage).buffer : null;
-            vao = p.pool.ringVertexArray(Math.max(p.ringPage, 0), page);
-            if (elements < 0) elements = page != null ? page.getGlBufferId() : 0;
-        } else {
-            vao = p.slab.vao;
-            if (elements < 0) elements = p.slab.indexBuffer;
-        }
-        CgGL.glBindVertexArray(vao);
+        if (emptyArray == 0) emptyArray = CgGlNames.vertexArray();
+        CgGL.glBindVertexArray(emptyArray);
         // LWJGL 2 checks an indexed draw's offset against the element binding it saw bound, never the vertex array's.
-        CgGL.glBindBuffer(CgGL.GL_ELEMENT_ARRAY_BUFFER, elements);
+        CgGL.glBindBuffer(CgGL.GL_ELEMENT_ARRAY_BUFFER, elements < 0 ? indicesOf(p) : elements);
+        int words = wordsOf(p);
+        if (words != 0) {
+            CgGL.glBindBufferBase(CgGL.GL_SHADER_STORAGE_BUFFER, CgBindingPoints.VERTICES.ssbo(), words);
+            CgBoundResources.storage(CgBindingPoints.VERTICES.ssbo(), words, 0, 0);
+        }
     }
 
     // ── Frames, releases, teardown ─────────────────────────────────────────────
 
-    /** At a frame's first call: frees the ranges whose last frame has retired, and retires released meshes. */
+    /** At a frame's first call: frees the ranges and buffers whose last frame has retired, and retires released meshes. */
     private void beginFrame() {
         long now = CgFrameRing.frame();
         if (now == frame) return;
         frame = now;
         drawn = drawing;
         drawing = 0;
-        CgTrace.counter(CgChannels.GL, SLAB_KB, slabBytes >> 10);
+        long held = 0;
+        for (int i = 0; i < poolList.size(); i++) held += poolList.get(i).bytes();
+        CgTrace.counter(CgChannels.GL, POOL_KB, held >> 10);
         long safe = now - CgFrameRing.FRAMES;
         for (int i = retiring.size() - 1; i >= 0; i--) {
             Placement p = retiring.get(i);
@@ -834,6 +915,14 @@ public final class CgMeshStore {
             free(p);
             retiring.set(i, retiring.get(retiring.size() - 1));
             retiring.remove(retiring.size() - 1);
+        }
+        for (int i = retiredCount - 1; i >= 0; i--) {
+            if (retiredFrames[i] > safe) continue;
+            CgFrameRing.awaitRetired(retiredFrames[i]);
+            CgGL.glDeleteBuffers(retiredBuffers[i]);
+            retiredCount--;
+            retiredBuffers[i] = retiredBuffers[retiredCount];
+            retiredFrames[i] = retiredFrames[retiredCount];
         }
         for (int i = live.size() - 1; i >= 0; i--) {
             Placement p = live.get(i);
@@ -860,22 +949,25 @@ public final class CgMeshStore {
     }
 
     private void free(Placement p) {
-        if (p.slab != null) {
-            if (p.vertexNode >= 0) p.slab.vertices.free(p.vertexNode);
-            if (p.indexNode >= 0) p.slab.indices.free(p.indexNode);
+        if (p.stored) {
+            if (p.vertexNode >= 0) p.pool.vertices.free(p.vertexNode);
+            if (p.indexNode >= 0) p.pool.indices.free(p.indexNode);
         }
         p.mesh = null;
-        p.slab = null;
         p.pool = null;
+        p.stored = false;
         p.ring = false;
         spare.add(p);
     }
 
-    /** Frees every slab and the staging, and forgets every placement. Context teardown; the next draw places anew. */
+    /** Frees every pool and the staging, and forgets every placement. Context teardown; the next draw places anew. */
     public void releaseAll() {
-        for (CgMeshPool pool : pools.values()) pool.delete();
+        for (CgMeshPool pool : poolList) pool.delete();
         pools.clear();
-        CgMeshPool.forgetVertexArrays();
+        poolList.clear();
+        for (int i = 0; i < retiredCount; i++) CgGL.glDeleteBuffers(retiredBuffers[i]);
+        retiredCount = 0;
+        grownCount = 0;
         placements.clear();
         live.clear();
         retiring.clear();
@@ -893,7 +985,8 @@ public final class CgMeshStore {
         joinedCount = 0;
         if (sequence != 0) CgGL.glDeleteBuffers(sequence);
         sequence = sequenceLength = sequenceNeed = 0;
-        slabBytes = 0;
+        if (emptyArray != 0) CgGL.glDeleteVertexArrays(emptyArray);
+        emptyArray = 0;
         frame = Long.MIN_VALUE;
     }
 }

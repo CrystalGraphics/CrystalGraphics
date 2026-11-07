@@ -3,14 +3,15 @@ package com.crystalgraphics.gl.material.parse;
 import com.crystalgraphics.api.buffer.CgBufferField;
 import com.crystalgraphics.api.buffer.CgBufferFormat;
 import com.crystalgraphics.api.material.CgAttachedBuffer;
+import com.crystalgraphics.api.vertex.CgAttribType;
 import com.crystalgraphics.api.vertex.CgVertexAttribute;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
 import com.crystalgraphics.gl.buffer.shader.CgUniformBuffer;
 import com.crystalgraphics.render.shader.CgBindingModel;
 
 /**
- * Generates GLSL declaration blocks for user-attached buffers (SSBO, UBO)
- * and vertex attribute input declarations for a given {@link CgVertexFormat}.
+ * Generates GLSL declaration blocks for user-attached buffers (SSBO, UBO), and the vertex fetch of a
+ * {@link CgVertexFormat}: its attributes pulled from the mesh store's words.
  *
  * <p>No GL calls, no instance state. All core methods are package-private and take raw
  * {@code (CgBufferFormat, String)} parameters — no {@code CgShaderBuffer} required.
@@ -25,31 +26,109 @@ public final class CgGlslEmitter {
         throw new AssertionError("CgGlslEmitter is not instantiable");
     }
 
+    /** The storage block a vertex stage pulls its mesh's vertices from: the format's words, bound at {@code VERTICES}. */
+    public static final String VERTEX_BLOCK = "CgVertexWords";
+
     /**
-     * Generates {@code in <glslType> <name>;} declarations for all attributes in a vertex format.
+     * A format's attributes as a vertex stage pulls them (Unreal's manual vertex fetch): the store's words at
+     * {@link CgBindingModel#VERTICES}, and a global per attribute under its name, which {@link #emitVertexFetch} fills.
+     * Empty for a format with no attributes. The vertex stage only.
      *
-     * <p>Output shape:</p>
      * <pre>
-     * // Vertex attributes (format: spatial)
-     * in vec3 cg_Position;
-     * in vec2 cg_TexCoord0;
-     * in vec3 cg_Normal;
+     * CG_BIND(1, 4) layout(std430) readonly buffer CgVertexWords { uint cg_VertexWords[]; };
+     * vec3 cg_Position;
+     * vec3 cg_Normal;
+     * ...
      * </pre>
-     *
-     * <p>Only called from {@code buildVertexSource()} in {@link CgMaterialShaderCompiler} —
-     * never from the fragment stage, because vertex attributes are not visible there.</p>
-     *
-     * @param format the vertex format whose attributes to emit; must not be null
-     * @return GLSL {@code in} declaration block string, terminated with a newline
      */
-    static String emitVertexInputs(CgVertexFormat format) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("// Vertex attributes (format: ").append(format.getKey()).append(")\n");
+    static String emitVertexDeclarations(CgVertexFormat format) {
+        if (format.getAttributeCount() == 0) return "";
+        StringBuilder sb = new StringBuilder(256);
+        sb.append("// Vertex attributes (format: ").append(format.getKey()).append("), pulled\n");
+        sb.append(CgBindingModel.VERTICES.glsl()).append("layout(std430) readonly buffer ").append(VERTEX_BLOCK)
+          .append(" { uint cg_VertexWords[]; };\n");
         for (int i = 0; i < format.getAttributeCount(); i++) {
-            CgVertexAttribute attr = format.getAttribute(i);
-            sb.append("in ").append(attr.getGlslType()).append(' ').append(attr.getName()).append(";\n");
+            CgVertexAttribute a = format.getAttribute(i);
+            sb.append(a.getGlslType()).append(' ').append(a.getName()).append(";\n");
         }
         return sb.toString();
+    }
+
+    /**
+     * {@code void cg_FetchVertex()}, which fills {@link #emitVertexDeclarations}' globals from vertex {@code gl_VertexID}
+     * (the draw's base vertex included, on GL and Vulkan alike): each attribute decoded from the words as a vertex
+     * input would have read it, halves widened and normalised integers scaled. Empty for a format with no attributes.
+     *
+     * <pre>{@code
+     * emitVertexFetch(CgVertexFormat.SPATIAL, null, null);
+     * // the skinned factory: a draw of either width, picked by a condition uniform over the draw
+     * emitVertexFetch(CgVertexFormat.SKINNED, CgVertexFormat.SKINNED_WIDE, "CG_BONES_WIDE");
+     * }</pre>
+     *
+     * <ul>
+     *   <li>{@code alternate}, read where {@code when} holds, must name the same attributes with the same shader types.</li>
+     *   <li>A stride, and every component, must fall on its own size; a format that does not is refused here.</li>
+     * </ul>
+     */
+    static String emitVertexFetch(CgVertexFormat format, CgVertexFormat alternate, String when) {
+        if (format.getAttributeCount() == 0) return "";
+        StringBuilder sb = new StringBuilder(512);
+        sb.append("void cg_FetchVertex() {\n");
+        if (alternate == null) {
+            appendFetch(sb, format, "  ");
+        } else {
+            sb.append("  if (").append(when).append(") {\n");
+            appendFetch(sb, alternate, "    ");
+            sb.append("  } else {\n");
+            appendFetch(sb, format, "    ");
+            sb.append("  }\n");
+        }
+        return sb.append("}\n").toString();
+    }
+
+    private static final String SWIZZLE = "xyzw";
+
+    private static void appendFetch(StringBuilder sb, CgVertexFormat format, String indent) {
+        if ((format.getStride() & 3) != 0) {
+            throw new IllegalStateException(format.getKey() + ": a pulled vertex is whole words, not " + format.getStride() + " bytes");
+        }
+        sb.append(indent).append("uint v = uint(gl_VertexID) * ").append(format.getStride() >> 2).append("u;\n");
+        for (int i = 0; i < format.getAttributeCount(); i++) {
+            CgVertexAttribute a = format.getAttribute(i);
+            int n = a.isInteger() ? a.getComponents() : a.getShaderComponents();
+            sb.append(indent).append(a.getName()).append(" = ").append(a.getGlslType()).append('(');
+            for (int c = 0; c < n; c++) {
+                if (c > 0) sb.append(", ");
+                sb.append(component(a, c));
+            }
+            sb.append(");\n");
+        }
+    }
+
+    /** Component {@code c} of attribute {@code a} of the vertex whose first word is {@code v}, as GLSL. */
+    private static String component(CgVertexAttribute a, int c) {
+        CgAttribType type = a.getType();
+        int size = type.getByteSize(), at = a.getOffset() + c * size, shift = (at & 3) * 8;
+        if (at % size != 0) {
+            throw new IllegalStateException(a + ": component " + c + " starts at byte " + at + ", not on its size");
+        }
+        boolean norm = a.isNormalized();
+        if (norm && size == 4) throw new IllegalStateException(a + ": no normalised 32-bit integers");
+        String word = "cg_VertexWords[v + " + (at >> 2) + "u]";
+        return switch (type) {
+            case FLOAT -> "uintBitsToFloat(" + word + ")";
+            case UNSIGNED_INT -> word;
+            case INT -> "int(" + word + ")";
+            case HALF_FLOAT -> "unpackHalf2x16(" + word + ")." + SWIZZLE.charAt(shift / 16);
+            case UNSIGNED_SHORT -> norm ? "unpackUnorm2x16(" + word + ")." + SWIZZLE.charAt(shift / 16)
+                    : "bitfieldExtract(" + word + ", " + shift + ", 16)";
+            case SHORT -> norm ? "unpackSnorm2x16(" + word + ")." + SWIZZLE.charAt(shift / 16)
+                    : "bitfieldExtract(int(" + word + "), " + shift + ", 16)";
+            case UNSIGNED_BYTE -> norm ? "unpackUnorm4x8(" + word + ")." + SWIZZLE.charAt(shift / 8)
+                    : "bitfieldExtract(" + word + ", " + shift + ", 8)";
+            case BYTE -> norm ? "unpackSnorm4x8(" + word + ")." + SWIZZLE.charAt(shift / 8)
+                    : "bitfieldExtract(int(" + word + "), " + shift + ", 8)";
+        };
     }
 
     /**

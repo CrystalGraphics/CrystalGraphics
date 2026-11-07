@@ -34,7 +34,7 @@ public final class CgGlNames {
      * move plays with no refill at all, and the refill waits for play to settle (a refill behind a few queued frames of
      * a move still cost 13-29 ms). The engine's start takes about 300, and its loading frames have the deepest queues of
      * all (a refill there waited 346 ms): 1024 lasts through them. A name with no storage costs the driver nothing.
-     * Vertex arrays (one a mesh slab) and renderbuffers are few: 64.
+     * Vertex arrays and renderbuffers are few: 64.
      */
     public static final int RESERVE = 1024, FEW = 64;
     /** The most of a kind it will keep in hand. */

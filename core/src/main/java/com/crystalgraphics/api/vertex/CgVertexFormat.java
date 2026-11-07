@@ -87,20 +87,20 @@ public final class CgVertexFormat {
      * }</pre>
      *
      * <table>
-     *   <tr><th>Location</th><th>Shader reads</th><th>Stored</th><th>Unreal</th></tr>
-     *   <tr><td>0</td><td>{@code vec3 cg_Position}</td><td>3 floats</td><td>{@code Position}</td></tr>
-     *   <tr><td>1</td><td>{@code vec3 cg_Normal}</td><td>4 snorm16, w padding</td><td>{@code TangentZ}</td></tr>
-     *   <tr><td>2</td><td>{@code vec4 cg_Color}</td><td>4 unorm8</td><td>{@code Color}</td></tr>
-     *   <tr><td>3</td><td>{@code vec2 cg_TexCoord0}</td><td>2 halves</td><td>{@code TexCoords0}</td></tr>
-     *   <tr><td>4</td><td>{@code vec2 cg_TexCoord1}</td><td>2 halves</td><td>{@code TexCoords1}</td></tr>
-     *   <tr><td>5</td><td>{@code vec2 cg_TexCoord2}</td><td>2 halves</td><td>{@code TexCoords2}</td></tr>
-     *   <tr><td>6</td><td>{@code vec2 cg_TexCoord3}</td><td>2 halves</td><td>{@code TexCoords3}</td></tr>
+     *   <tr><th>Words</th><th>Shader reads</th><th>Stored</th><th>Unreal</th></tr>
+     *   <tr><td>0-2</td><td>{@code vec3 cg_Position}</td><td>3 floats</td><td>{@code Position}</td></tr>
+     *   <tr><td>3-4</td><td>{@code vec3 cg_Normal}</td><td>4 snorm16, w padding</td><td>{@code TangentZ}</td></tr>
+     *   <tr><td>5</td><td>{@code vec4 cg_Color}</td><td>4 unorm8</td><td>{@code Color}</td></tr>
+     *   <tr><td>6</td><td>{@code vec2 cg_TexCoord0}</td><td>2 halves</td><td>{@code TexCoords0}</td></tr>
+     *   <tr><td>7</td><td>{@code vec2 cg_TexCoord1}</td><td>2 halves</td><td>{@code TexCoords1}</td></tr>
+     *   <tr><td>8</td><td>{@code vec2 cg_TexCoord2}</td><td>2 halves</td><td>{@code TexCoords2}</td></tr>
+     *   <tr><td>9</td><td>{@code vec2 cg_TexCoord3}</td><td>2 halves</td><td>{@code TexCoords3}</td></tr>
      * </table>
      *
      * <ul>
      *   <li>A vertex given no colour is white, and a UV set it is not given repeats the set before it: Unreal's null
-     *       colour stream and its repeated last UV channel. Every attribute is always there, so one pool and one VAO
-     *       serve every mesh; four sets, not Unreal's per-mesh count, is 8 bytes a vertex for that.</li>
+     *       colour stream and its repeated last UV channel. Every attribute is always there, so one pool serves every
+     *       mesh; four sets, not Unreal's per-mesh count, is 8 bytes a vertex for that.</li>
      *   <li>UVs are halves: steps of 1/2048 below 1, 1/1024 to 2, 1/16 at 64. A UV tiled far past that needs a format of its own.</li>
      *   <li>Read stored bytes back with {@link CgVertexAttribute#read}, never {@code getFloat}.</li>
      * </ul>
@@ -129,10 +129,10 @@ public final class CgVertexFormat {
      * }</pre>
      *
      * <table>
-     *   <tr><th>Location</th><th>Shader reads</th><th>Stored</th><th>Unreal</th></tr>
-     *   <tr><td>0-6</td><td>as {@link #SPATIAL}</td><td>as {@link #SPATIAL}</td><td></td></tr>
-     *   <tr><td>7</td><td>{@code uvec4 cg_BoneIndices}</td><td>4 u8</td><td>{@code BlendIndices}</td></tr>
-     *   <tr><td>8</td><td>{@code vec4 cg_BoneWeights}</td><td>4 unorm8, summing to exactly 255</td><td>{@code BlendWeights}</td></tr>
+     *   <tr><th>Words</th><th>Shader reads</th><th>Stored</th><th>Unreal</th></tr>
+     *   <tr><td>0-9</td><td>as {@link #SPATIAL}</td><td>as {@link #SPATIAL}</td><td></td></tr>
+     *   <tr><td>10</td><td>{@code uvec4 cg_BoneIndices}</td><td>4 u8</td><td>{@code BlendIndices}</td></tr>
+     *   <tr><td>11</td><td>{@code vec4 cg_BoneWeights}</td><td>4 unorm8, summing to exactly 255</td><td>{@code BlendWeights}</td></tr>
      * </table>
      *
      * <ul>

@@ -48,7 +48,7 @@ See [`parse/CLAUDE.md`](parse/CLAUDE.md) for the full class map. Key external-fa
 2. `#define CG_VERTEX_STAGE 1`
 4. `#define CG_OBJECT_BUFFER_BINDING <CgBindingPoints.OBJECT_DATA>` + `#define CG_FRAME_BLOCK_BINDING <CgBindingPoints.FRAME_DATA>`
 5. `#include "crystalgraphics:shaders/env/cg_env.glsl"`
-5a. **Vertex attribute injection** — `CgGlslEmitter.emitVertexInputs(vertexFormat)` emits `in <type> <name>;` for every attribute in the resolved `CgVertexFormat` (resolved from `shader.shaderType()` via `CgVertexFormat.forShaderType()`). Not present in fragment source.
+5a. **Vertex pulling** — `CgGlslEmitter.emitVertexDeclarations(vertexFormat)` declares the store's words (`CgVertexWords` at `CgBindingModel.VERTICES`) and a global per attribute of the resolved `CgVertexFormat` (from `shader.shaderType()` via `CgVertexFormat.forShaderType()`); `emitVertexFetch` writes `cg_FetchVertex()`, which `main` calls first. The skinned variant fetches after `bones.glsl`, either width by `CG_BONES_WIDE`. Not present in fragment source.
 6. `CgMaterialBlock` UBO block (emitted via `CgGlslEmitter.emitUbo()` when non-sampler properties exist; no `binding=` qualifier — wired post-link by `wireShader()` at slot `CgBindingPoints.MATERIAL_PROPERTIES_UBO`)
 7. Sampler property uniform declarations (`uniform sampler2D/sampler2DArray/sampler3D/samplerCube <name>;` — one per sampler property)
 8. User-attached SSBO buffers (emitted by `CgGlslEmitter`)

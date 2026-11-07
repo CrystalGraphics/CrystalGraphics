@@ -78,7 +78,7 @@ public final class CgMesh {
         /**
          * Rewritten every frame it draws: its bytes go into the frame ring each frame, with no range of its own, so
          * it needs no {@link #release()} and holds nothing once a frame passes without it. {@link #reserve} keeps its
-         * edits from allocating. The GPU reads the ring from memory the CPU writes, more slowly than a slab: a mesh
+         * edits from allocating. The GPU reads the ring from memory the CPU writes, more slowly than a pool: a mesh
          * drawn many times a frame stays {@link #DYNAMIC}.
          */
         FRAME,

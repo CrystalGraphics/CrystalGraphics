@@ -6,12 +6,8 @@ import com.crystalgraphics.api.state.CgCullState;
 import com.crystalgraphics.api.state.CgDepthState;
 import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.api.state.CgStencilState;
-import com.crystalgraphics.api.vertex.CgAttribType;
-import com.crystalgraphics.api.vertex.CgVertexAttribute;
-import com.crystalgraphics.api.vertex.CgVertexFormat;
 import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.rhi.binding.CgBindingLayout;
-import com.crystalgraphics.platform.rhi.format.CgAttribFormat;
 import com.crystalgraphics.platform.rhi.format.CgCompare;
 import com.crystalgraphics.platform.rhi.pipeline.CgGraphicsPipelineDesc;
 import com.crystalgraphics.platform.rhi.pipeline.CgGraphicsPipelineDesc.Blend;
@@ -33,7 +29,7 @@ import java.util.Map;
 
 
 /**
- * The engine's render state, vertex formats and explicit programs as a device's pipeline description: the pieces
+ * The engine's render state and explicit programs as a device's pipeline description: the pieces
  * {@link CgPipeline#device} assembles, Unreal's {@code FGraphicsPipelineStateInitializer} from a material's state.
  *
  * <pre>{@code
@@ -118,50 +114,6 @@ public final class CgDeviceStates {
         for (CgColorMask c : masks) if (c.targetIndex() == index || c.targetIndex() < 0) m = c;   // the last applied wins
         if (m == null) return 0xF;
         return (m.r() ? 1 : 0) | (m.g() ? 2 : 0) | (m.b() ? 4 : 0) | (m.a() ? 8 : 0);
-    }
-
-    /** {@code format} as one interleaved vertex buffer at binding 0, attribute {@code i} at location {@code i}. */
-    public static List<CgGraphicsPipelineDesc.VertexBuffer> vertexBuffers(CgVertexFormat format) {
-        return vertexBuffers(format, format);
-    }
-
-    /**
-     * {@code program}'s locations fed from vertices laid out as {@code mesh}'s (Unreal's vertex declaration, the vertex
-     * factory's and not the shader's): a program may draw a mesh of another format, as a static material drawn over a
-     * skinned mesh. Location i reads the mesh's attribute i, as {@code CgMeshPool}'s arrays do; a location past the
-     * mesh's attributes is left unfed and reads GL's constant (0, 0, 0, 1).
-     */
-    public static List<CgGraphicsPipelineDesc.VertexBuffer> vertexBuffers(CgVertexFormat program, CgVertexFormat mesh) {
-        if (program == null || program.getAttributeCount() == 0) return List.of();
-        CgVertexFormat from = mesh != null ? mesh : program;
-        int n = Math.min(program.getAttributeCount(), from.getAttributeCount());
-        List<CgGraphicsPipelineDesc.VertexAttrib> attribs = new ArrayList<>(n);
-        for (int i = 0; i < n; i++) {
-            CgVertexAttribute a = from.getAttribute(i);
-            attribs.add(new CgGraphicsPipelineDesc.VertexAttrib(i, attribFormat(a), a.getOffset()));
-        }
-        return List.of(new CgGraphicsPipelineDesc.VertexBuffer(0, from.getStride(), false, attribs));
-    }
-
-    /** A vertex attribute's device format. */
-    public static CgAttribFormat attribFormat(CgVertexAttribute a) {
-        boolean norm = a.isNormalized(), integer = a.isInteger();
-        String base = switch (a.getType()) {
-            case FLOAT -> "FLOAT32";
-            case HALF_FLOAT -> "FLOAT16";
-            case UNSIGNED_BYTE -> norm ? "UNORM8" : integer ? "UINT8" : "USCALED8";
-            case BYTE -> norm ? "SNORM8" : integer ? "SINT8" : "SSCALED8";
-            case UNSIGNED_SHORT -> norm ? "UNORM16" : integer ? "UINT16" : "USCALED16";
-            case SHORT -> norm ? "SNORM16" : integer ? "SINT16" : "SSCALED16";
-            case UNSIGNED_INT -> "UINT32";
-            case INT -> "SINT32";
-        };
-        String name = a.getComponents() > 1 ? base + "X" + a.getComponents() : base;
-        try {
-            return CgAttribFormat.valueOf(name);
-        } catch (IllegalArgumentException e) {
-            throw new IllegalArgumentException(a.getName() + ": no device attribute format " + name, e);
-        }
     }
 
     /**

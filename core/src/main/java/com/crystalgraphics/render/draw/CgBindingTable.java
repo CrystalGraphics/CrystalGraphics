@@ -480,7 +480,7 @@ public final class CgBindingTable {
         uploadedBuffer = ring.getGlBufferId();
         for (int i = 0; i < count * MAX_BLOCKS; i++) ringOffsets[i] += base;
         if (writes == 0) return;
-        // Each new version copied from the ring into its page, as CgMeshStore writes its slabs: outside any pass.
+        // Each new version copied from the ring into its page, as CgMeshStore writes its pools: outside any pass.
         CgGL.cgBeginTransfer();
         try {
             CgGL.glBindBuffer(CgGL.GL_COPY_READ_BUFFER, uploadedBuffer);
