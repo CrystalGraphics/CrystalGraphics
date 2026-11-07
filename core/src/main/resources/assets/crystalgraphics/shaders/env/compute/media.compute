@@ -31,7 +31,7 @@ void IntegrateColumns() {
     vec3 light = vec3(0.0);
     float through = 1.0;
     int slices = MEDIA_TRANSMIT_SIZE().z;
-    for (int s = 0; s < slices; s++) {
+    for (int s = 0; s < slices; s++) {   // LOOP-BOUND: the transmittance texture's depth
         ivec3 at = ivec3(CG_DISPATCH_ID.xy, s);
         integrate_step(at, float(s), light, through);
         MEDIA_TRANSMIT_STORE(at, vec4(light, through));

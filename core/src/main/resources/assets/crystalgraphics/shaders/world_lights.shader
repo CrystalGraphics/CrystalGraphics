@@ -157,8 +157,10 @@ Pass {
         // which holds everything it is shaded with. A cell lists many small lights that reach few of its pixels: each
         // is rejected by its reach first.
         ivec2 span = shadows ? CG_LIGHTS_EXACT(e) : CG_LIGHTS_LIT(e);
-        for (int k = span.x; k < span.y; k++) {
-            int index = int(INDICES(from + k));
+        int count = span.y - span.x, walked = min(count, CG_LIGHT_CANDIDATES);
+        float offset = CG_LIGHT_OFFSET(px, CG_FRAME_INDEX);
+        for (int c = 0; c < walked; c++) {
+            int index = int(INDICES(from + span.x + CG_LIGHT_CANDIDATE(c, count, offset)));
             vec4 reach = VIEWED(index).positionRadius;
             if (dot(reach.xyz - p, reach.xyz - p) >= reach.w * reach.w) continue;
             vec4 kind = VIEWED(index).kind;
@@ -171,6 +173,7 @@ Pass {
 #endif
             if (lit > 0.0) sum += VIEWED(index).radiance.rgb * lit;
         }
+        sum *= CG_LIGHT_STRIDE(count);
         vec3 shadowedLight = vec3(0.0);
         vec2 shadowedVis = vec2(1.0);
         if (shadows) {

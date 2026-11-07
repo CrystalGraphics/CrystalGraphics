@@ -18,7 +18,7 @@ float fx_core_nearest(sampler2D path, int row, int first, int end, vec3 origin, 
     segment = first;
     float radius = 1.0;
     FxRing a = fx_ring(path, row, first);
-    for (int k = first; k < end; k++) {
+    for (int k = first; k < end; k++) {   // LOOP-BOUND: a path's points: its row's width
         FxRing b = fx_ring(path, row, k + 1);
         vec3 pa = origin + a.position, ab = origin + b.position - pa;
         float len = length(ab);
@@ -104,7 +104,7 @@ vec2 fx_core_span(sampler2D path, int row, int first, int end, int count, vec3 o
                   float scale) {
     vec2 span = vec2(0.0, 1.0e30);
     FxRing a = fx_ring(path, row, first);
-    for (int k = first; k < end; k++) {
+    for (int k = first; k < end; k++) {   // LOOP-BOUND: a path's points: its row's width
         FxRing b = fx_ring(path, row, k + 1);
         vec3 pa = origin + a.position, pb = origin + b.position;
         fx_span_add(fx_segment_span(eye, ray, pa, a.tangent, pb, b.tangent, a.radius * scale, b.radius * scale), span);

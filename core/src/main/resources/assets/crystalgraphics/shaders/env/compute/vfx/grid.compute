@@ -214,9 +214,9 @@ void Rasterize() {
     float radius = clamp(velocitySize.w * curve.x / cell, 1.0, G_RASTER_CELLS);
     vec3 q = (p + into.xyz) / cell;
     ivec3 lo = ivec3(floor(q - radius)), hi = ivec3(floor(q + radius));
-    for (int z = lo.z; z <= hi.z; z++) {
-        for (int y = lo.y; y <= hi.y; y++) {
-            for (int x = lo.x; x <= hi.x; x++) {
+    for (int z = lo.z; z <= hi.z; z++) {   // LOOP-BOUND: radius clamped to G_RASTER_CELLS
+        for (int y = lo.y; y <= hi.y; y++) {   // LOOP-BOUND: radius clamped to G_RASTER_CELLS
+            for (int x = lo.x; x <= hi.x; x++) {   // LOOP-BOUND: radius clamped to G_RASTER_CELLS
                 ivec3 c = ivec3(x, y, z);
                 if (any(lessThan(c, ivec3(0))) || any(greaterThanEqual(c, ivec3(G_SPAN)))) continue;
                 vec3 d = (vec3(c) + 0.5 - q) / radius;

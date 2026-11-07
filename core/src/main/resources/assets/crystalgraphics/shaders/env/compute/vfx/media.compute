@@ -53,7 +53,7 @@ float m_grid(int b, vec4 at, float cell, vec3 p) {
 void Gas() {
     vec3 p = media_point(CG_TEXEL, MEDIA_OUT_SIZE(), _MediaRay00, _MediaRay10, _MediaRay01, _MediaRay11);
     float sigma = 0.0;
-    for (int g = 0; g < _Gases; g++) sigma += m_gas(g, GASES(g * 2), GASES(g * 2 + 1).x, p);
+    for (int g = 0; g < min(_Gases, 16); g++)   // CgVfxFluidAtlas.CAPACITY sigma += m_gas(g, GASES(g * 2), GASES(g * 2 + 1).x, p);
     MEDIA_OUT_WRITE(vec4(media_before(_MediaIn, _MediaFirst, CG_TEXEL) + sigma, 0.0, 0.0, 0.0));
 }
 

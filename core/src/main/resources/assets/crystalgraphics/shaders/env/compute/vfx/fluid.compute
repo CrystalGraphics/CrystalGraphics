@@ -440,7 +440,7 @@ float f_fill_target(int b, vec3 p, out bool inside) {
     inside = cost > 0.5;
     if (!inside) return 0.0;
     float target = fill.w * reveal.y * smoothstep(0.0, F_FILL_EDGE, reveal.x - (cost - 1.0));
-    for (int i = 0; i < _Carves; i++) {
+    for (int i = 0; i < _Carves; i++) {   // LOOP-BOUND: the atlas's carves, a few a fluid
         vec4 a = CARVES(i * 3), c = CARVES(i * 3 + 1), open = CARVES(i * 3 + 2);
         if (int(a.x + 0.5) != b) continue;
         target *= 1.0 - open.x * (1.0 - smoothstep(c.w * 0.6, c.w, f_segment(p, a.yzw, c.xyz)));
@@ -461,7 +461,7 @@ void EmitDensity() {
     float dt = f_row(b, 0).y;
     vec3 p = vec3(f.cell) + 0.5;
     vec4 value = f_get(_Density, f, f.cell, false);
-    for (int e = 0; e < _Emitters; e++) {
+    for (int e = 0; e < _Emitters; e++) {   // LOOP-BOUND: the atlas's emitters, a few a fluid
         if (int(EMITTERS(e * 6).x + 0.5) != b) continue;
         float coverage = f_coverage(e, p);
         if (coverage <= 0.0) continue;
@@ -522,7 +522,7 @@ void EmitVelocity() {
     float dt = f_row(b, 0).y;
     vec3 p = vec3(f.cell) + 0.5;
     vec4 value = f_get(_Vel, f, f.cell, false);
-    for (int e = 0; e < _Emitters; e++) {
+    for (int e = 0; e < _Emitters; e++) {   // LOOP-BOUND: the atlas's emitters, a few a fluid
         if (int(EMITTERS(e * 6).x + 0.5) != b) continue;
         float coverage = f_coverage(e, p);
         if (coverage <= 0.0) continue;

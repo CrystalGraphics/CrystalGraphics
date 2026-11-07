@@ -183,7 +183,7 @@ void Coarse() {
     if (local == 0u) groupCount = 0u;
     barrier();
     uint mine = 0u;
-    for (uint i = local; i < lights; i += 64u) {
+    for (uint i = local; i < lights; i += 64u) {   // LOOP-BOUND: a work group's stride, the lights under _Grid.w (CAPACITY) shared by 64
         if (viewed_reaches(i, centre, extent)) mine++;
     }
     atomicAdd(groupCount, mine);
@@ -199,7 +199,7 @@ void Coarse() {
     barrier();
     // Overflowed: its cells read every light instead.
     if (groupStart == 0xFFFFFFFFu) return;
-    for (uint base = 0u; base < lights; base += 64u) {
+    for (uint base = 0u; base < lights; base += 64u) {   // LOOP-BOUND: a work group's stride, the lights under _Grid.w (CAPACITY) shared by 64
         uint i = base + local;
         uint hit = i < lights && viewed_reaches(i, centre, extent) ? 1u : 0u;
         uint place = group_scan(hit, local);
@@ -244,7 +244,7 @@ void Cell() {
     if (local < 5u) runCount[local] = 0u;
     barrier();
     uint mine[5] = uint[5](0u, 0u, 0u, 0u, 0u);
-    for (uint k = local; k < n; k += 64u) {
+    for (uint k = local; k < n; k += 64u) {   // LOOP-BOUND: a work group's stride, the lights under _Grid.w (CAPACITY) shared by 64
         uint i = parented ? PARENT_INDICES(int(from + k)) : k;
         if (viewed_reaches(i, centre, extent)) mine[run_of(i)]++;
     }
@@ -270,7 +270,7 @@ void Cell() {
     barrier();
     uint kept = groupKept;
     if (kept == 0u) return;
-    for (uint base = 0u; base < n; base += 64u) {
+    for (uint base = 0u; base < n; base += 64u) {   // LOOP-BOUND: a work group's stride, the lights under _Grid.w (CAPACITY) shared by 64
         uint k = base + local;
         uint i = k < n ? (parented ? PARENT_INDICES(int(from + k)) : k) : 0u;
         bool hit = k < n && viewed_reaches(i, centre, extent);

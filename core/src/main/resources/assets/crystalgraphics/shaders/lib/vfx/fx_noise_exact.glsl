@@ -26,7 +26,7 @@ float fx_exact_value_noise(vec3 p) {
 
 float fx_exact_value_fbm(vec3 p, int octaves) {
     float sum = 0.0, amplitude = 0.5, norm = 0.0;
-    for (int k = 0; k < octaves; k++) {
+    for (int k = 0; k < min(octaves, 16); k++) {   // past 16 an octave is under a texel
         sum += amplitude * fx_exact_value_noise(p);
         norm += amplitude;
         p = FX_EXACT_OCTAVE * p * 2.03;
@@ -38,7 +38,7 @@ float fx_exact_value_fbm(vec3 p, int octaves) {
 // 0..1, sharp crests where the noise crosses its middle.
 float fx_exact_value_ridged(vec3 p, int octaves) {
     float sum = 0.0, amplitude = 0.5, norm = 0.0;
-    for (int k = 0; k < octaves; k++) {
+    for (int k = 0; k < min(octaves, 16); k++) {   // past 16 an octave is under a texel
         float n = 1.0 - abs(fx_exact_value_noise(p) * 2.0 - 1.0);
         sum += amplitude * n * n;
         norm += amplitude;

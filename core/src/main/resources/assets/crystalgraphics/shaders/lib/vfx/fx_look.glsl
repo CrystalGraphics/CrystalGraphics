@@ -193,7 +193,7 @@ FxDrawn look_part(int part) {
             shape *= look_instance(inst + _LifeBindAt);
             tint *= look_instance(inst + _LifeBindAt + 1);
         }
-        for (int i = 0, l = at + _LifeRollAt; i < _LifeRolls; i++) {
+        for (int i = 0, l = at + _LifeRollAt; i < _LifeRolls; i++) {   // LOOP-BOUND: the shape's life rolls, one a module
             // CgVfxLifeRoll, Cascade's size and colour over life on a uniform: rolled again each step, keyed by its age;
             // a header, then two ends, or two curves by life where its code is 3 to 5; past 5, one end or the other
             // (Cascade's bUseExtremes).

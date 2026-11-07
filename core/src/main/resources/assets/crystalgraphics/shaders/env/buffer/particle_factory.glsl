@@ -179,7 +179,7 @@ void _cg_beam(float cameraOffset, float drawnBits, out CgMaterialVertex v, out C
     int index[3] = int[3](from, to, hereAt);
     vec3 points[3];
     int count = (flags & 2) != 0 ? 3 : 2;
-    for (int n = 0; n < count; n++) points[n] = origin + fx_beam_point(at, index[n], filled, noisePoints, end, c2);
+    for (int n = 0; n < count; n++) points[n] = origin + fx_beam_point(at, index[n], filled, noisePoints, end, c2);   // LOOP-BOUND: 2 or 3
     vec3 location = points[0];
     vec3 here = count == 3 ? points[2] : hereAt == to ? points[1] : points[0];
     vec3 right = fx_beam_unit(location - points[1], vec3(1.0, 0.0, 0.0));
@@ -325,7 +325,7 @@ void _cg_ribbon(float cameraOffset, float drawnBits, out CgMaterialVertex v, out
     float target = s0.x + float(unit);
     // The last position with at most the target's units before it.
     int lo = int(s1.x + 0.5), hi = int(s1.y + 0.5);
-    while (lo < hi) {
+    while (lo < hi) {   // LOOP-BOUND: a binary search
         int mid = (lo + hi + 1) >> 1;
         if (_CG_RIBBON(positionAt + mid * 4 + 1).y <= target) lo = mid; else hi = mid - 1;
     }

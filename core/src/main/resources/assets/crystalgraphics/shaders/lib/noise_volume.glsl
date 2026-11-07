@@ -42,7 +42,7 @@ vec3 cg_noise_time(float t) {
 // Octave k reads channel k mod 4.
 float cg_fbm3(sampler3D volume, vec3 p, int octaves) {
     float sum = 0.0, amplitude = 0.5, norm = 0.0;
-    for (int k = 0; k < octaves; k++) {
+    for (int k = 0; k < min(octaves, 16); k++) {   // past 16 an octave is under a texel
         sum += amplitude * cg_noise4(volume, p)[k & 3];
         norm += amplitude;
         p = CG_NOISE_OCTAVE * p * 2.03;
@@ -58,7 +58,7 @@ vec4 cg_value_fbm_grad3(sampler3D volume, vec3 p, int octaves) {
     vec4 sum = vec4(0.0);
     float amplitude = 0.5, norm = 0.0;
     mat3 chain = mat3(1.0);   // d(octave p) / dp
-    for (int k = 0; k < octaves; k++) {
+    for (int k = 0; k < min(octaves, 16); k++) {   // past 16 an octave is under a texel
         vec4 s = cg_noise4(volume, p);
         sum += amplitude * vec4(transpose(chain) * s.xyz, s.w);
         norm += amplitude;
@@ -72,7 +72,7 @@ vec4 cg_value_fbm_grad3(sampler3D volume, vec3 p, int octaves) {
 // 0..1, sharp crests where the noise crosses zero; gradient noise.
 float cg_ridged3(sampler3D volume, vec3 p, int octaves) {
     float sum = 0.0, amplitude = 0.5, norm = 0.0;
-    for (int k = 0; k < octaves; k++) {
+    for (int k = 0; k < min(octaves, 16); k++) {   // past 16 an octave is under a texel
         float n = 1.0 - abs(cg_noise4(volume, p)[k & 3]);
         sum += amplitude * n * n;
         norm += amplitude;
@@ -85,7 +85,7 @@ float cg_ridged3(sampler3D volume, vec3 p, int octaves) {
 // 0..1, sharp crests; value noise, its octaves 2.11 apart.
 float cg_value_ridged3(sampler3D volume, vec3 p, int octaves) {
     float sum = 0.0, amplitude = 0.5, norm = 0.0;
-    for (int k = 0; k < octaves; k++) {
+    for (int k = 0; k < min(octaves, 16); k++) {   // past 16 an octave is under a texel
         float n = 1.0 - abs(cg_noise4(volume, p)[k & 3] * 2.0 - 1.0);
         sum += amplitude * n * n;
         norm += amplitude;

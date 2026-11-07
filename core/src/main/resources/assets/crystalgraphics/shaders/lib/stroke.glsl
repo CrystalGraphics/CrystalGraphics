@@ -424,7 +424,7 @@ float _cell_exact_area(vec2 p, vec2 p0, vec2 p1, vec2 p2, vec2 p3, float winding
         vec2 ed = corners[e + 1] - a;
         if (dot(ed, ed) < 1.0e-12) continue;      // a collapsed edge: the tip of a shape
         int m = 0;
-        for (int i = 0; i < n; i++) {
+        for (int i = 0; i < n; i++) {   // LOOP-BOUND: a clipped quad: 8 corners at most
             vec2 cur = poly[i];
             vec2 prev = poly[(i + n - 1) % n];
             float dc = winding * (ed.x * (cur.y - a.y) - ed.y * (cur.x - a.x));
@@ -438,10 +438,10 @@ float _cell_exact_area(vec2 p, vec2 p0, vec2 p1, vec2 p2, vec2 p3, float winding
         }
         if (m == 0) return 0.0;
         n = m;
-        for (int i = 0; i < n; i++) poly[i] = clipped[i];
+        for (int i = 0; i < n; i++) poly[i] = clipped[i];   // LOOP-BOUND: 8 at most
     }
     float area = 0.0;
-    for (int i = 0; i < n; i++) {
+    for (int i = 0; i < n; i++) {   // LOOP-BOUND: a clipped quad: 8 corners at most
         vec2 c = poly[i];
         vec2 d = poly[(i + 1) % n];
         area += c.x * d.y - d.x * c.y;

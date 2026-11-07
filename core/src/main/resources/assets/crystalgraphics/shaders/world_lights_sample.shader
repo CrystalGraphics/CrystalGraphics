@@ -138,7 +138,7 @@ Pass {
             return -1;
         }
         float last = 0.0;
-        for (int k = 0; k < steps; k++) {
+        for (int k = 0; k < min(steps, 64); k++) {   // crystalgraphics.world.lightsScreenSteps' ceiling
             float t = (float(k) + jit) / float(steps) * len;
             vec3 q = a + dir * t;
             float rayDepth = -q.z;
@@ -175,7 +175,7 @@ Pass {
         // The entities round the camera, each a vertical capsule in its box (Unreal's capsule shadows' stand-in for a
         // character), skipped where the ray starts or ends inside it: the surface or the light is that entity's own.
         vec3 bw = aw + dir * t1;
-        for (int k = 0; k < ((_Skip & 64) != 0 ? 0 : _Entities); k++) {
+        for (int k = 0; k < min((_Skip & 64) != 0 ? 0 : _Entities, CG_ENTITY_BOXES_MOST); k++) {
             if (((entityTiles[k >> 4] >> uint(k & 15)) & 1u) == 0u) continue;
             vec3 lo = ENTITIES(k * 2).xyz - _EyeFrac.xyz, hi = ENTITIES(k * 2 + 1).xyz - _EyeFrac.xyz;
             if (all(greaterThan(aw, lo - 0.1)) && all(lessThan(aw, hi + 0.1))) continue;
@@ -270,8 +270,10 @@ Pass {
         vec3 at = block_of(to_world(p + n * 0.5));
         float pick = cg_shadow_noise(vec2(sampleCoord) + 113.0, CG_FRAME_INDEX), weightSum = 0.0;
         int chosen = -1;
-        for (int k = span.x; k < span.y; k++) {
-            int index = int(INDICES(from + k));
+        int count = span.y - span.x, walked = min(count, CG_LIGHT_CANDIDATES);
+        float stride = CG_LIGHT_STRIDE(count), offset = cg_shadow_noise(vec2(sampleCoord) + 191.0, CG_FRAME_INDEX);
+        for (int c = 0; c < walked; c++) {
+            int index = int(INDICES(from + span.x + CG_LIGHT_CANDIDATE(c, count, offset)));
             vec4 light = VIEWED(index).positionRadius;
             vec3 steps = abs(block_of(to_world(light.xyz)) - at);
             float weight = light.w - 0.5 - (steps.x + steps.y + steps.z);
@@ -319,8 +321,10 @@ Pass {
         ivec4 chosen = ivec4(-1);
         vec4 chosenWeight = vec4(0.0);
         float weightSum = 0.0;
-        for (int k = span.x; k < span.y; k++) {
-            int index = int(INDICES(from + k));
+        int count = span.y - span.x, walked = min(count, CG_LIGHT_CANDIDATES);
+        float stride = CG_LIGHT_STRIDE(count), offset = cg_shadow_noise(vec2(d) + 59.0, CG_FRAME_INDEX);
+        for (int c = 0; c < walked; c++) {
+            int index = int(INDICES(from + span.x + CG_LIGHT_CANDIDATE(c, count, offset)));
             vec4 reach = VIEWED(index).positionRadius;
             if (dot(reach.xyz - p, reach.xyz - p) >= reach.w * reach.w) continue;
             vec4 kind = VIEWED(index).kind;
@@ -352,7 +356,7 @@ Pass {
         bool area = light.kind.z > 0.001 || dot(light.segment.xyz, light.segment.xyz) > 1.0e-4;
         // MergeRays: the next sample of the same light takes this one's ray, unless the light has an area to sample.
         if (!area && mine < int(_SampleGrid.z) - 1 && chosen[mine + 1] == index) return vec2(float(index), 0.0);
-        float weight = weightSum / chosenWeight[mine];
+        float weight = weightSum * stride / chosenWeight[mine];
         if (!CG_VIEW_SHADOWED(light.kind)) return vec2(float(index), weight);
 
         // GetLightSampleTrace: toward a point of the light sampled over the solid angle its sphere covers, along its

@@ -31,8 +31,8 @@ int cg_NearestLights(vec3 p, out int idx[4]) {
     if (_cg_LightGrid.w < 0.5) return 0;
     vec3 w = p - _cg_LightEye.xyz;
     int e = cg_light_cell_at(p), from = int(WORLD_LIGHT_CELLS(e * 4 + 1)), n = int(WORLD_LIGHT_CELLS(e * 4)), found = 0;
-    for (int k = 0; k < n; k++) {
-        int at = int(WORLD_LIGHT_INDICES(from + k));
+    for (int c = 0, walked = min(n, CG_LIGHT_CANDIDATES); c < walked; c++) {
+        int at = int(WORLD_LIGHT_INDICES(from + CG_LIGHT_CANDIDATE(c, n, 0.5)));
         CgLight light = WORLD_LIGHTS(at);
         if (CG_LIGHT_OPAQUE_ONLY(light)) continue;
         vec3 d = light.positionRadius.xyz - w;

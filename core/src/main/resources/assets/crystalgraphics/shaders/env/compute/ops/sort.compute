@@ -120,7 +120,7 @@ void SortCount() {
     barrier();
     uvec2 run = groupRun();
     uint at = run.x + local;
-    for (uint b = 0u; b < run.y; b++, at += SORT_BLOCK) {
+    for (uint b = 0u; b < run.y; b++, at += SORT_BLOCK) {   // LOOP-BOUND: a group's run of blocks: the keys shared by the groups
         for (uint i = 0u; i < 4u; i++) {
             uint e = at + i * 128u;
             if (e < n) sortHistogram[digit(e) * 128u + local]++;
@@ -229,7 +229,7 @@ uint sortChunk(inout uint key, inout uint value, uint d, bool carry) {
     barrier();
     if (local < 16u) {
         uint start = 0u;
-        for (uint j = 0u; j < local; j++) start += sortChunkCounts[j];
+        for (uint j = 0u; j < local; j++) start += sortChunkCounts[j];   // LOOP-BOUND: under the group's size
         sortChunkStarts[local] = start;
     }
     barrier();
@@ -244,7 +244,7 @@ void SortScatter() {
     uint n = count();
     uvec2 run = groupRun();
     loadOffsets();
-    for (uint e = run.x + lane(); e < run.x + run.y * SORT_BLOCK; e += 128u) {
+    for (uint e = run.x + lane(); e < run.x + run.y * SORT_BLOCK; e += 128u) {   // LOOP-BOUND: a work group's stride over its run
         uint key = e < n ? KEYS(e) : 0u, value = e < n ? VALUES_IN(e) : 0u;
         uint to = sortChunk(key, value, e < n ? digitOf(key) : 16u, true);
         if (to != NOWHERE) {
@@ -258,7 +258,7 @@ void SortScatterKeys() {
     uint n = count();
     uvec2 run = groupRun();
     loadOffsets();
-    for (uint e = run.x + lane(); e < run.x + run.y * SORT_BLOCK; e += 128u) {
+    for (uint e = run.x + lane(); e < run.x + run.y * SORT_BLOCK; e += 128u) {   // LOOP-BOUND: a work group's stride over its run
         uint key = e < n ? KEYS(e) : 0u, value = 0u;
         uint to = sortChunk(key, value, e < n ? digitOf(key) : 16u, false);
         if (to != NOWHERE) KEYS_OUT_STORE(to, key);

@@ -355,6 +355,39 @@ Three things enforce this so it cannot regress silently:
 - **`--mode=shader-compile-audit`** puts the real driver over every shipped shader, kernel and keyword
   variant, collecting failures instead of crashing on the first. Run it on any GPU that disagrees.
 
+#### Loops — every count has a ceiling
+
+> **A loop runs a number of times a constant bounds: a literal, a constant or macro, or `min(data, CONSTANT)`.**
+
+A loop counted by data — a light list, an entity count, a property — runs as often as that data says, on every
+pixel. One warm frame of the loading screen walked a light-grid cell of thousands of lights at each of 16,000 pixels:
+the GPU ran past Windows' two-second timeout and the driver reset, blanking every monitor. A cap turns that into a
+cost.
+
+```glsl
+for (int k = 0; k < min(_Entities, CG_ENTITY_BOXES_MOST); k++) { ... }   // the CPU's cap, mirrored and named
+```
+
+- **A light list** takes `lights.glsl`'s candidates: at most `CG_LIGHT_CANDIDATES` a walk, evenly strided from a
+  per-pixel offset (`CG_LIGHT_OFFSET`), a sum over them scaled by `CG_LIGHT_STRIDE` — ReSTIR's uniform candidates,
+  so a crowded cell costs 64 lights and stays unbiased:
+
+  ```glsl
+  int count = span.y - span.x, walked = min(count, CG_LIGHT_CANDIDATES);
+  float offset = CG_LIGHT_OFFSET(px, CG_FRAME_INDEX);
+  for (int c = 0; c < walked; c++) sum += lit(INDICES(from + span.x + CG_LIGHT_CANDIDATE(c, count, offset)));
+  sum *= CG_LIGHT_STRIDE(count);
+  ```
+
+- **A count the CPU caps** is capped again where it is read, the constant named after its Java owner
+  (`CgWorldEntityBoxes.MAX`, `CgWorldLights.MOST_CASTERS`). An authored count (octaves, a blur radius) gets a cap
+  past which more is invisible.
+- **A loop bounded some other way** — a binary search, a work group's stride over a buffer, a compare-and-swap retry
+  — says why on its line: `while (lo < hi) {   // LOOP-BOUND: a binary search`.
+
+**`ShippedShaderLoopBoundsTest`** reads every shipped `.shader`, `.glsl` and `.compute` and fails on a loop with
+neither a visible constant bound nor a `LOOP-BOUND` note.
+
 ---
 
 ### Keyword Variants

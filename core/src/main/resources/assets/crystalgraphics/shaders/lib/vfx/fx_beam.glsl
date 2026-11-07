@@ -98,7 +98,7 @@ vec3 fx_beam_draw(int at, int j, int steps, float points, float frequency, bool 
         // A loop the data sizes, so the curve is compiled once (see fx_beam_point).
         vec3 c[2];
         int curves = j == steps ? 1 : 2;
-        for (int i = 0; i < curves; i++) c[i] = fx_beam_curve(at, float(min(s0 + i, last) + 1) / points);
+        for (int i = 0; i < curves; i++) c[i] = fx_beam_curve(at, float(min(s0 + i, last) + 1) / points);   // LOOP-BOUND: 1 or 2
         line = c[0] * (1.0 - frac) + (j == steps ? t : c[1]) * frac;
     } else {
         line = s + (t - s) * (float(j) / float(steps + 1));
@@ -126,7 +126,7 @@ vec3 fx_beam_point(int at, int k, int segments, int noisePoints, vec3 end, vec4 
     bool between = within != 0 && tess > 1 && j <= steps;
     vec3 d[4];
     int from = between ? -1 : 0, to = between ? 2 : 0;
-    for (int n = from; n <= to; n++) d[n + 1] = fx_beam_draw(at, j + n, steps, c2.x, c2.w, targetNoise);
+    for (int n = from; n <= to; n++) d[n + 1] = fx_beam_draw(at, j + n, steps, c2.x, c2.w, targetNoise);   // LOOP-BOUND: -1 to 2
     vec3 a = d[1];
     if (!between) return a;
     vec3 b = d[2];

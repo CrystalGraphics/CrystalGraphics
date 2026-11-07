@@ -39,7 +39,7 @@ bool cg_occluded(sampler2D pyramid, vec4 size, vec4 clipX, vec4 clipY, vec4 clip
     int tx0 = cg_occlusion_texel(x0, width), tx1 = cg_occlusion_texel(x1, width);
     int ty0 = cg_occlusion_texel(y0, height), ty1 = cg_occlusion_texel(y1, height);
     int level = 0;
-    while (level < levels - 1 && ((tx1 >> level) - (tx0 >> level) > 1 || (ty1 >> level) - (ty0 >> level) > 1)) level++;
+    while (level < levels - 1 && ((tx1 >> level) - (tx0 >> level) > 1 || (ty1 >> level) - (ty0 >> level) > 1)) level++;   // LOOP-BOUND: a mip chain's levels
     int lastX = max(1, width >> level) - 1, lastY = max(1, height >> level) - 1;
     int ax = min(tx0 >> level, lastX), bx = min(tx1 >> level, lastX);
     int ay = min(ty0 >> level, lastY), by = min(ty1 >> level, lastY);

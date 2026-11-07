@@ -31,7 +31,7 @@ bool fx_entities_enter(FxEntities e, vec3 previous, vec3 position, float pad, ou
     vec3 a = previous + e.origin, d = position - previous;
     vec3 inv = 1.0 / mix(d, vec3(1e-20), equal(d, vec3(0.0)));
     float best = 2.0;
-    for (int i = 0; i < e.count; i++) {
+    for (int i = 0; i < e.count; i++) {   // LOOP-BOUND: CgWorldEntityBoxes.MAX, CgVfxFluidAtlas.MAX_ENTITIES
         vec3 lo, hi;
         uint id;
         step_entity(i, lo, hi, id);

@@ -122,7 +122,7 @@ bool world_trace(vec3 aw, vec3 dir, float t0, float t1) {
     // The entities round the camera, each a vertical capsule in its box (Unreal's capsule shadows' stand-in for a
     // character), skipped where the ray starts or ends inside it: the surface or the light is that entity's own.
     vec3 bw = aw + dir * t1;
-    for (int k = 0; k < ((_Skip & 64) != 0 ? 0 : _Entities); k++) {
+    for (int k = 0; k < min((_Skip & 64) != 0 ? 0 : _Entities, CG_ENTITY_BOXES_MOST); k++) {
         if (((entityTiles[k >> 4] >> uint(k & 15)) & 1u) == 0u) continue;
         vec3 lo = ENTITIES(k * 2).xyz - _EyeFrac.xyz, hi = ENTITIES(k * 2 + 1).xyz - _EyeFrac.xyz;
         if (all(greaterThan(aw, lo - 0.1)) && all(lessThan(aw, hi + 0.1))) continue;
@@ -207,8 +207,10 @@ void Fill() {
     int e = cell_at(w), rays = 0;
     ivec2 sampled = run_in(e, CG_LIGHTS_SAMPLED(e)), exact = run_in(e, CG_LIGHTS_EXACT(e));
     vec3 sum = vec3(0.0), band1 = vec3(0.0);
-    for (int k = sampled.x; k < sampled.y; k++) {
-        CgLight light = LIGHTS(int(INDICES(k)));
+    float offset = CG_LIGHT_OFFSET(t.xy + t.z * 7, _Frame);
+    int count = sampled.y - sampled.x;
+    for (int c = 0, walked = min(count, CG_LIGHT_CANDIDATES); c < walked; c++) {
+        CgLight light = LIGHTS(int(INDICES(sampled.x + CG_LIGHT_CANDIDATE(c, count, offset))));
         if (CG_LIGHT_OPAQUE_ONLY(light)) continue;
         float falloff = cg_light_falloff(light.positionRadius.xyz, light.positionRadius.w, light.colorExponent.w,
                 light.spotCos, light.segmentCone, w);
@@ -217,17 +219,18 @@ void Fill() {
             rays++;
             if (shadowed(light, w)) continue;
         }
-        vec3 c = light.colorExponent.rgb * (falloff * light_scale(light));
-        sum += c;
-        band1 += dot(c, LUMINANCE_WEIGHTS) * normalize(light.positionRadius.xyz - w + vec3(0.0, 1.0e-6, 0.0));
+        vec3 lit = light.colorExponent.rgb * (falloff * light_scale(light)) * CG_LIGHT_STRIDE(count);
+        sum += lit;
+        band1 += dot(lit, LUMINANCE_WEIGHTS) * normalize(light.positionRadius.xyz - w + vec3(0.0, 1.0e-6, 0.0));
     }
-    for (int k = exact.x; k < exact.y; k++) {
-        CgLight light = LIGHTS(int(INDICES(k)));
+    count = exact.y - exact.x;
+    for (int c = 0, walked = min(count, CG_LIGHT_CANDIDATES); c < walked; c++) {
+        CgLight light = LIGHTS(int(INDICES(exact.x + CG_LIGHT_CANDIDATE(c, count, offset))));
         if (CG_LIGHT_OPAQUE_ONLY(light)) continue;
-        vec3 c = light.colorExponent.rgb * (cg_light_falloff(light.positionRadius.xyz, light.positionRadius.w,
-                light.colorExponent.w, light.spotCos, light.segmentCone, w) * light_scale(light));
-        sum += c;
-        band1 += dot(c, LUMINANCE_WEIGHTS) * normalize(light.positionRadius.xyz - w + vec3(0.0, 1.0e-6, 0.0));
+        vec3 lit = light.colorExponent.rgb * (cg_light_falloff(light.positionRadius.xyz, light.positionRadius.w,
+                light.colorExponent.w, light.spotCos, light.segmentCone, w) * light_scale(light) * CG_LIGHT_STRIDE(count));
+        sum += lit;
+        band1 += dot(lit, LUMINANCE_WEIGHTS) * normalize(light.positionRadius.xyz - w + vec3(0.0, 1.0e-6, 0.0));
     }
     // Over pi, then: the ambient band read non-directionally, pi * 0.282095^2, a quarter; band 1 its coefficient,
     // 0.488603 times the way to each light, which cg_LitSurface multiplies by its transfer at the normal.
@@ -249,7 +252,7 @@ float hg_phase(float g, float cosTheta) {
 // The radical inverse of i in base b: Unreal's Halton.
 float halton(int i, int b) {
     float result = 0.0, f = 1.0;
-    for (int n = i; n > 0; n /= b) {
+    for (int n = i; n > 0; n /= b) {   // LOOP-BOUND: a digit of i a step, i under 1024
         f /= float(b);
         result += f * float(n % b);
     }
@@ -339,20 +342,24 @@ void Scatter() {
     // its air_points, their mean weighted as a froxel's.
     float spread = 0.5 * cell;
     vec3 sum = vec3(0.0);
-    for (int k = 0; k < sampled.y - sampled.x; k++) {
+    float offset = CG_LIGHT_OFFSET(CG_TEXEL.xy + CG_TEXEL.z * 7, _Frame);
+    int count = sampled.y - sampled.x;
+    for (int c = 0, walked = min(count, CG_LIGHT_CANDIDATES); c < walked; c++) {
+        int k = CG_LIGHT_CANDIDATE(c, count, offset);
         if (k < 32 && (shadow & (1u << uint(k))) != 0u) continue;
         CgLight light = LIGHTS(int(INDICES(sampled.x + k)));
-        int n = air_points(light, middle, cell, samples, kept);
+        int n = min(air_points(light, middle, cell, samples, kept), MAX_AIR_SAMPLES);
         vec3 one = vec3(0.0);
-        for (int s = 0; s < n; s++) one += air_light(light, points[s], views[s], biasSqr, spread);
-        sum += one / float(n);
+        for (int s = 0; s < n; s++) one += air_light(light, points[s], views[s], biasSqr, spread);   // LOOP-BOUND: MAX_AIR_SAMPLES
+        sum += one / float(n) * CG_LIGHT_STRIDE(count);
     }
-    for (int k = exact.x; k < exact.y; k++) {
-        CgLight light = LIGHTS(int(INDICES(k)));
-        int n = air_points(light, middle, cell, samples, kept);
+    count = exact.y - exact.x;
+    for (int c = 0, walked = min(count, CG_LIGHT_CANDIDATES); c < walked; c++) {
+        CgLight light = LIGHTS(int(INDICES(exact.x + CG_LIGHT_CANDIDATE(c, count, offset))));
+        int n = min(air_points(light, middle, cell, samples, kept), MAX_AIR_SAMPLES);
         vec3 one = vec3(0.0);
-        for (int s = 0; s < n; s++) one += air_light(light, points[s], views[s], biasSqr, spread);
-        sum += one / float(n);
+        for (int s = 0; s < n; s++) one += air_light(light, points[s], views[s], biasSqr, spread);   // LOOP-BOUND: MAX_AIR_SAMPLES
+        sum += one / float(n) * CG_LIGHT_STRIDE(count);
     }
     vec4 lit = vec4(sum * sigma, 0.0);
     if (kept) lit = mix(lit, textureLod(_History, uv, 0.0), _HistoryWeight);

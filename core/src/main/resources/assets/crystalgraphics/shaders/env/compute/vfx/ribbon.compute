@@ -95,7 +95,7 @@ const uint HAS_NEXT = 4u;
 // The slot position p belongs to: the last list base at or below it.
 int ribbon_slot(int p) {
     int lo = 0, hi = _Slots - 1;
-    while (lo < hi) {
+    while (lo < hi) {   // LOOP-BOUND: a binary search
         int mid = (lo + hi + 1) >> 1;
         if (int(SLOTS(mid).place.x) <= p) lo = mid; else hi = mid - 1;
     }

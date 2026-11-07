@@ -69,7 +69,7 @@ vec3 cg_default_lit_light(vec3 diffuse, vec3 f0, float roughness, vec3 n, vec3 v
             cg_SceneDecode(CG_DIRECTIONAL_LIGHT_COLOR)) * CG_DIRECTIONAL_SHADOW(dlP); \
     int dlIdx[4]; \
     int dlCount = cg_NearestLights(dlP, dlIdx); \
-    for (int dlK = 0; dlK < dlCount; dlK++) { \
+    for (int dlK = 0; dlK < min(dlCount, 4); dlK++) { \
         int dlI = dlIdx[dlK]; \
         vec3 dlAt = cg_LightPosition(dlI); \
         float dlFall = cg_light_falloff(dlAt, cg_LightRadius(dlI), cg_LightFalloff(dlI), WORLD_LIGHTS(dlI).spotCos, \

@@ -34,7 +34,7 @@ void Expand() {
     if (j >= total) return;
     // The last row starting at or below j: an empty row shares its successor's start, so it is never the answer.
     uint lo = 0u, hi = rows();
-    while (hi - lo > 1u) {
+    while (hi - lo > 1u) {   // LOOP-BOUND: a binary search
         uint mid = (lo + hi) / 2u;
         if (STARTS(int(mid)) <= j) lo = mid; else hi = mid;
     }

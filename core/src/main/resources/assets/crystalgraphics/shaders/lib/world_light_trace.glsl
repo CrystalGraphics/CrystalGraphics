@@ -30,7 +30,7 @@ float cg_mesh_field_sample(sampler2D fields, int first, ivec3 n, vec3 v, float v
 // sphere-traced over the part of the segment inside it, at most 32 steps, a hit within two voxels of the ray's start
 // ignored as the object's own (Unreal's self-shadow bias).
 bool cg_trace_casters(sampler2D rows, sampler2D fields, int count, vec3 aw, vec3 dir, float t0, float t1) {
-    for (int k = 0; k < count; k++) {
+    for (int k = 0; k < min(count, 256); k++) {   // CgWorldLights.MOST_CASTERS
         vec4 r0 = texelFetch(rows, ivec2(k * 5, 0), 0), r1 = texelFetch(rows, ivec2(k * 5 + 1, 0), 0);
         vec4 r2 = texelFetch(rows, ivec2(k * 5 + 2, 0), 0), size = texelFetch(rows, ivec2(k * 5 + 3, 0), 0);
         vec4 scale = texelFetch(rows, ivec2(k * 5 + 4, 0), 0);

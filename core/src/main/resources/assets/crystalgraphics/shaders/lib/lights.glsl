@@ -78,6 +78,21 @@
 #define CG_LIGHTS_LIT(e) ivec2(0, CG_LIGHT_RUN_AT(e, 4))
 #define CG_LIGHTS_MINECRAFT(e) ivec2(CG_LIGHT_RUN_AT(e, 4), int(CELLS((e) * 4)))
 
+// A walk of a run of a cell's lights visits at most CG_LIGHT_CANDIDATES of them: a coarse grid's cell lists thousands (a
+// 256x256 target is 4x4 cells), and walking every one a pixel held the GPU past the driver's timeout. Past the cap it takes
+// evenly strided candidates from an offset in [0, 1), as ReSTIR samples its initial candidates uniformly; a sum over them
+// times CG_LIGHT_STRIDE stands for the run's.
+//     int count = span.y - span.x, walked = min(count, CG_LIGHT_CANDIDATES);
+//     for (int c = 0; c < walked; c++) sum += lit(INDICES(from + span.x + CG_LIGHT_CANDIDATE(c, count, offset)));
+//     sum *= CG_LIGHT_STRIDE(count);
+#define CG_LIGHT_CANDIDATES 64
+#define CG_LIGHT_STRIDE(count) (float(count) / float(max(min((count), CG_LIGHT_CANDIDATES), 1)))
+#define CG_LIGHT_CANDIDATE(c, count, offset) min(int((float(c) + (offset)) * CG_LIGHT_STRIDE(count)), (count) - 1)
+// A candidate offset a pixel and frame: the R2 sequence's.
+#define CG_LIGHT_OFFSET(at, frame) fract(dot(vec2(at), vec2(0.7548777, 0.5698403)) + 0.618034 * float(frame))
+// The entity boxes a ray tests at most: CgWorldEntityBoxes.MAX.
+#define CG_ENTITY_BOXES_MOST 64
+
 // A light kept out of the translucency lighting volume: transparent surfaces and particles are not lit by it.
 #define CG_LIGHT_OPAQUE_ONLY(light) ((light).air.y > 0.5)
 

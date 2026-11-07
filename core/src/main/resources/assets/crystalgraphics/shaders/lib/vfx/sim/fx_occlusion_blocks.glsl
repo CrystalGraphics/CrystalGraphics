@@ -32,7 +32,7 @@ void fx_occlusion_blocks(inout FxParticle p, FxStep s, vec4 m0, vec4 m1, vec4 m2
     }
     float covered = 0.0;
     int samples = fx_occlusion_samples(m0, m1, m2);
-    for (int i = 0; i < samples; i++) {
+    for (int i = 0; i < samples; i++) {   // LOOP-BOUND: fx_occlusion_samples, 256 at most
         vec2 o = fx_occlusion_offset(m0, m1, m2, i);
         vec3 at = p.position + _DepthViewX.xyz * o.x + _DepthViewY.xyz * o.y;
         if (fx_occlusion_blocked(world, depth.eye, at)) covered += 1.0;

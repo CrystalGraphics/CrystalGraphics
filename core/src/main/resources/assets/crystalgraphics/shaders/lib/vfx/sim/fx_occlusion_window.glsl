@@ -6,8 +6,8 @@
 
 // How many samples the window takes.
 int fx_occlusion_samples(vec4 m0, vec4 m1, vec4 m2) {
-    if (m0.x < 0.5) return (m1.y > 0.5 ? 1 : 0) + max(int(m0.w), 0) * max(int(m1.x), 0);
-    int steps = max(int(m2.x), 1);
+    if (m0.x < 0.5) return min((m1.y > 0.5 ? 1 : 0) + max(int(m0.w), 0) * max(int(m1.x), 0), 256);
+    int steps = clamp(int(m2.x), 1, 16);
     return steps * steps;
 }
 

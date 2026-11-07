@@ -7,6 +7,6 @@
 //     float sum = uintBitsToFloat(total);
 #pragma once
 
-#define CG_ATOMIC_ADD_FLOAT(MEM, V) { uint _cg_seen, _cg_was = (MEM); do { _cg_seen = _cg_was; _cg_was = atomicCompSwap((MEM), _cg_seen, floatBitsToUint(uintBitsToFloat(_cg_seen) + (V))); } while (_cg_was != _cg_seen); }
-#define CG_ATOMIC_MIN_FLOAT(MEM, V) { uint _cg_seen, _cg_was = (MEM); do { _cg_seen = _cg_was; _cg_was = atomicCompSwap((MEM), _cg_seen, floatBitsToUint(min(uintBitsToFloat(_cg_seen), (V)))); } while (_cg_was != _cg_seen); }
-#define CG_ATOMIC_MAX_FLOAT(MEM, V) { uint _cg_seen, _cg_was = (MEM); do { _cg_seen = _cg_was; _cg_was = atomicCompSwap((MEM), _cg_seen, floatBitsToUint(max(uintBitsToFloat(_cg_seen), (V)))); } while (_cg_was != _cg_seen); }
+#define CG_ATOMIC_ADD_FLOAT(MEM, V) { uint _cg_seen, _cg_was = (MEM); do { _cg_seen = _cg_was; _cg_was = atomicCompSwap((MEM), _cg_seen, floatBitsToUint(uintBitsToFloat(_cg_seen) + (V))); } while (_cg_was != _cg_seen); }   // LOOP-BOUND: a compare-and-swap retry, as long as others write
+#define CG_ATOMIC_MIN_FLOAT(MEM, V) { uint _cg_seen, _cg_was = (MEM); do { _cg_seen = _cg_was; _cg_was = atomicCompSwap((MEM), _cg_seen, floatBitsToUint(min(uintBitsToFloat(_cg_seen), (V)))); } while (_cg_was != _cg_seen); }   // LOOP-BOUND: a compare-and-swap retry, as long as others write
+#define CG_ATOMIC_MAX_FLOAT(MEM, V) { uint _cg_seen, _cg_was = (MEM); do { _cg_seen = _cg_was; _cg_was = atomicCompSwap((MEM), _cg_seen, floatBitsToUint(max(uintBitsToFloat(_cg_seen), (V)))); } while (_cg_was != _cg_seen); }   // LOOP-BOUND: a compare-and-swap retry, as long as others write
