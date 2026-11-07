@@ -42,6 +42,8 @@ public final class CgVfxBlastFlash {
     /** The wave in play, and when the scene clears: NaN until it bursts. */
     private CgEnergyWave current;
     private double clock, clearAt = Double.NaN;
+    /** The target the wave in play was fired at. */
+    private double targetX, targetY, targetZ;
     private int fired;
 
     /** On a system of its own. */
@@ -81,6 +83,9 @@ public final class CgVfxBlastFlash {
     }
 
     private void cycle(double x, double y, double z, double forwardX, double forwardZ) {
+        // A target moved (the scene placed again, or set on the ground) takes a new wave: the one in play flies at where
+        // it was and may never burst, which no wait would clear
+        if (current != null && (x != targetX || y != targetY || z != targetZ)) clear();
         if (current != null) {
             // From the burst, after the impact frame when it has one, so a frame switched off midway waits on nothing.
             if (Double.isNaN(clearAt) && current.burst()) clearAt = clock + CgVfxDemoControls.get().waitSeconds();
@@ -90,6 +95,9 @@ public final class CgVfxBlastFlash {
         }
         clearAt = Float.NaN;
         current = fire(x, y, z, forwardX, forwardZ);
+        targetX = x;
+        targetY = y;
+        targetZ = z;
     }
 
     private CgEnergyWave fire(double x, double y, double z, double forwardX, double forwardZ) {
