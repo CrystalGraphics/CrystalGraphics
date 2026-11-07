@@ -4,8 +4,10 @@ import dev.kikugie.stonecutter.settings.StonecutterSettingsExtension
 import org.gradle.api.Action
 import org.gradle.api.GradleException
 import org.gradle.api.Plugin
+import org.gradle.api.Project
 import org.gradle.api.initialization.Settings
 import org.gradle.api.invocation.Gradle
+import org.gradle.plugins.ide.idea.model.IdeaModel
 import java.io.File
 import javax.inject.Inject
 
@@ -136,6 +138,7 @@ abstract class SingleJarSettings @Inject constructor(private val settings: Setti
                 pins[path]?.forEach { (key, value) ->
                     if (!hasProperty(key)) extensions.extraProperties.set(key, value)
                 }
+                excludeNodeOutputs()
             }
         }
     }
@@ -180,3 +183,28 @@ class Targets {
         }
     }.distinct()
 }
+
+/**
+ * Nodes the build does not include are plain folders to IntelliJ, inside whichever project's module is nearest, and
+ * their `build` and `.gradle` would be indexed with its sources. That project excludes them: every `versions/<node>/`
+ * below it, to a depth that reaches a tree's branches (`runtime/mc/modern/<branch>/versions`). The outermost project
+ * claims a folder.
+ */
+private fun Project.excludeNodeOutputs() {
+    val claimed = rootProject.extensions.extraProperties.let {
+        if (!it.has(EXCLUDED_NODES)) it.set(EXCLUDED_NODES, mutableSetOf<File>())
+        @Suppress("UNCHECKED_CAST") (it.get(EXCLUDED_NODES) as MutableSet<File>)
+    }
+    val outputs = projectDir.walkTopDown().maxDepth(4)
+        .onEnter { it.name != "build" && it.name != ".gradle" && it.name != ".git" }
+        .filter { it.isDirectory && it.name == "versions" && it.parentFile.name != "build" }
+        .flatMap { it.listFiles(File::isDirectory).orEmpty().asSequence() }
+        .flatMap { sequenceOf(File(it, "build"), File(it, ".gradle")) }
+        .filter { claimed.add(it) }
+        .toList()
+    if (outputs.isEmpty()) return
+    pluginManager.apply("idea")
+    extensions.configure(IdeaModel::class.java) { module.excludeDirs.addAll(outputs) }
+}
+
+private const val EXCLUDED_NODES = "singlejar.excludedNodeOutputs"
