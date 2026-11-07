@@ -1148,6 +1148,7 @@ com/crystalgraphics/platform/gl/CgGLImports
   access public,abstract,interface
   extends java/lang/Object
   method public bufferDeleted (I)V
+  method public bufferRespecified (IJ)V
   method public forget (Lcom/crystalgraphics/platform/rhi/resource/CgGpuBuffer;)V
   method public forget (Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture;)V
   method public renderbufferDeleted (I)V
@@ -1912,6 +1913,7 @@ com/crystalgraphics/platform/gl/resource/GLImports
   method public buffer (I)Lcom/crystalgraphics/platform/rhi/resource/CgGpuBuffer;
   method public bufferDeleted (I)V
   method public bufferOffset (I)J
+  method public bufferRespecified (IJ)V
   method public defaultColor (II)Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture;
   method public defaultDepth (II)Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture;
   method public describe (I)Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture$Desc;

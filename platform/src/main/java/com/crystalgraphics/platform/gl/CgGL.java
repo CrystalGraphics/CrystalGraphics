@@ -1105,19 +1105,51 @@ public final class CgGL {
     }
 
     public static void glBindBuffer(int target, int buffer) {
+        bound(target, buffer);
         if (state().bufferChanged(target, buffer)) gl().glBindBuffer(target, buffer);
+    }
+
+    // The buffer last bound at each target through CgGL, which is the one a glBufferData there respecifies: a shader
+    // storage or uniform target is no state the shadow models, and a glGet would stall a threaded driver per upload.
+    private static final int[] BOUND_TARGET = new int[16], BOUND_NAME = new int[16];
+    private static int boundTargets;
+
+    private static void bound(int target, int buffer) {
+        for (int i = 0; i < boundTargets; i++) {
+            if (BOUND_TARGET[i] == target) {
+                BOUND_NAME[i] = buffer;
+                return;
+            }
+        }
+        if (boundTargets == BOUND_TARGET.length) return;
+        BOUND_TARGET[boundTargets] = target;
+        BOUND_NAME[boundTargets++] = buffer;
+    }
+
+    /** Tells the device's imports the buffer at {@code target} has {@code bytes} of new storage. */
+    private static void respecified(int target, long bytes) {
+        if (!CgGLImports.installed()) return;
+        for (int i = 0; i < boundTargets; i++) {
+            if (BOUND_TARGET[i] == target) {
+                if (BOUND_NAME[i] != 0) CgGLImports.get().bufferRespecified(BOUND_NAME[i], bytes);
+                return;
+            }
+        }
     }
 
     public static void glBufferData(int target, ByteBuffer data, int usage) {
         gl().glBufferData(target, data, usage);
+        respecified(target, data == null ? 0 : data.remaining());
     }
     
     public static void glBufferData(int target, ShortBuffer data, int usage) {
         gl().glBufferData(target, data, usage);
+        respecified(target, data == null ? 0 : data.remaining() * 2L);
     }
 
     public static void glBufferData(int target, long size, int usage) {
         gl().glBufferData(target, size, usage);
+        respecified(target, size);
     }
 
     public static void glBufferSubData(int target, long offset, ByteBuffer data) {
@@ -1135,6 +1167,7 @@ public final class CgGL {
     }
 
     public static void glBindBufferBase(int target, int index, int buffer) {
+        bound(target, buffer);   // GL binds the target's generic point too
         if (target == GL_SHADER_STORAGE_BUFFER && !state().storageBindingChanged(index, buffer, 0, 0)) return;
         if (target == GL_TRANSFORM_FEEDBACK_BUFFER && !state().feedbackBindingChanged(index, buffer, 0, 0)) return;
         if (CgGlCallSites.ON && target == GL_UNIFORM_BUFFER) CgGlCallSites.value("glBindBufferRange(UNIFORM)", index, (long) buffer * 961);
@@ -1142,6 +1175,7 @@ public final class CgGL {
     }
 
     public static void glBindBufferRange(int target, int index, int buffer, long offset, long size) {
+        bound(target, buffer);   // GL binds the target's generic point too
         if (target == GL_SHADER_STORAGE_BUFFER && !state().storageBindingChanged(index, buffer, offset, size)) return;
         if (target == GL_TRANSFORM_FEEDBACK_BUFFER && !state().feedbackBindingChanged(index, buffer, offset, size)) return;
         if (CgGlCallSites.ON && target == GL_UNIFORM_BUFFER) {
@@ -2130,6 +2164,7 @@ public final class CgGL {
      */
     public static void glBufferStorage(int target, long size, int flags) {
         gl().glBufferStorage(target, size, flags);
+        respecified(target, size);
     }
 
     // =========================================================================

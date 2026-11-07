@@ -127,4 +127,11 @@ public final class GLImports implements CgGLImports {
     }
 
     @Override public void bufferDeleted(int buffer) { buffers.remove(buffer); }
+
+    /** Adopted again at its next use where its size moved: the same size keeps it, as an orphaning stream does. */
+    @Override
+    public void bufferRespecified(int buffer, long bytes) {
+        GLBuffer b = buffers.get(buffer);
+        if (b != null && b.size() != bytes) buffers.remove(buffer);
+    }
 }

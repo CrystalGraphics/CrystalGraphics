@@ -76,6 +76,12 @@ public interface CgGLImports {
     /** {@code CgGL} deleted {@code buffer}: forget anything kept for it. */
     default void bufferDeleted(int buffer) {}
 
+    /**
+     * {@code CgGL} gave {@code buffer} new storage of {@code bytes} ({@code glBufferData}, {@code glBufferStorage}): what
+     * was kept for it at another size is stale.
+     */
+    default void bufferRespecified(int buffer, long bytes) {}
+
     /** The imports installed now; throws until a device installs them. */
     static CgGLImports get() {
         CgGLImports i = Slot.installed;
