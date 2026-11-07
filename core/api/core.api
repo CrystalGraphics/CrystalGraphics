@@ -7010,6 +7010,14 @@ com/crystalgraphics/i18n/CgKitStrings$Entry
   method public,final equals (Ljava/lang/Object;)Z
   method public,final hashCode ()I
   method public,final toString ()Ljava/lang/String;
+com/crystalgraphics/i18n/CgLangFiles
+  access public,final
+  extends java/lang/Object
+  method public,static mergeInto (Ljava/util/Map;Ljava/util/List;Ljava/lang/Iterable;Lcom/crystalgraphics/i18n/CgLangFiles$Opener;)V
+com/crystalgraphics/i18n/CgLangFiles$Opener
+  access public,abstract,interface
+  extends java/lang/Object
+  method public,abstract open (Ljava/lang/String;Ljava/lang/String;)Ljava/util/List;
 com/crystalgraphics/job/CgHostThread
   access public,final,enum
   extends java/lang/Enum
