@@ -13,6 +13,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
@@ -115,5 +116,20 @@ public class CgMtsdfAlphaChannelTest {
             while ((read = in.read(buffer)) != -1) out.write(buffer, 0, read);
             return out.toByteArray();
         }
+    }
+
+    /** Every copier keeps the mode: they once rebuilt through a constructor that put MTSDF back on. */
+    @Test
+    public void copiersKeepTheFieldMode() {
+        CgMsdfAtlasConfig msdf = CgMsdfAtlasConfig.defaultConfig().withMtsdf(false);
+        CgMsdfAtlasConfig[] copies = {
+                msdf.withPageSize(512), msdf.withAtlasScalePx(48), msdf.withPxRange(8f), msdf.withSpacingPx(3),
+                msdf.withMiterLimit(3f), msdf.withAlignOriginX(true), msdf.withAlignOriginY(false),
+                msdf.withOverlapSupport(false),
+                msdf.withErrorCorrection(msdf.errorCorrectionMode(), msdf.distanceCheckMode(),
+                        msdf.minDeviationRatio(), msdf.minImproveRatio()),
+                msdf.withEdgeColoring(msdf.edgeColoringMode(), 2.5d),
+        };
+        for (CgMsdfAtlasConfig copy : copies) assertFalse(copy.toString(), copy.mtsdf());
     }
 }

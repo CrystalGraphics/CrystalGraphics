@@ -282,7 +282,8 @@ public record CgMsdfAtlasConfig(int atlasScalePx, float pxRange, int pageSize, i
                 minDeviationRatio,
                 minImproveRatio,
                 edgeColoringMode,
-                edgeColoringAngleThreshold);
+                edgeColoringAngleThreshold,
+                mtsdf);
     }
 
     public CgMsdfAtlasConfig withAtlasScalePx(int newAtlasScalePx) {
@@ -300,7 +301,8 @@ public record CgMsdfAtlasConfig(int atlasScalePx, float pxRange, int pageSize, i
                 minDeviationRatio,
                 minImproveRatio,
                 edgeColoringMode,
-                edgeColoringAngleThreshold);
+                edgeColoringAngleThreshold,
+                mtsdf);
     }
 
     public CgMsdfAtlasConfig withPxRange(float newPxRange) {
@@ -318,7 +320,8 @@ public record CgMsdfAtlasConfig(int atlasScalePx, float pxRange, int pageSize, i
                 minDeviationRatio,
                 minImproveRatio,
                 edgeColoringMode,
-                edgeColoringAngleThreshold);
+                edgeColoringAngleThreshold,
+                mtsdf);
     }
 
     public CgMsdfAtlasConfig withSpacingPx(int newSpacingPx) {
@@ -336,7 +339,8 @@ public record CgMsdfAtlasConfig(int atlasScalePx, float pxRange, int pageSize, i
                 minDeviationRatio,
                 minImproveRatio,
                 edgeColoringMode,
-                edgeColoringAngleThreshold);
+                edgeColoringAngleThreshold,
+                mtsdf);
     }
 
     public CgMsdfAtlasConfig withMiterLimit(float newMiterLimit) {
@@ -354,7 +358,8 @@ public record CgMsdfAtlasConfig(int atlasScalePx, float pxRange, int pageSize, i
                 minDeviationRatio,
                 minImproveRatio,
                 edgeColoringMode,
-                edgeColoringAngleThreshold);
+                edgeColoringAngleThreshold,
+                mtsdf);
     }
 
     public CgMsdfAtlasConfig withAlignOriginX(boolean newAlignOriginX) {
@@ -372,7 +377,8 @@ public record CgMsdfAtlasConfig(int atlasScalePx, float pxRange, int pageSize, i
                 minDeviationRatio,
                 minImproveRatio,
                 edgeColoringMode,
-                edgeColoringAngleThreshold);
+                edgeColoringAngleThreshold,
+                mtsdf);
     }
 
     public CgMsdfAtlasConfig withAlignOriginY(boolean newAlignOriginY) {
@@ -390,7 +396,8 @@ public record CgMsdfAtlasConfig(int atlasScalePx, float pxRange, int pageSize, i
                 minDeviationRatio,
                 minImproveRatio,
                 edgeColoringMode,
-                edgeColoringAngleThreshold);
+                edgeColoringAngleThreshold,
+                mtsdf);
     }
 
     public CgMsdfAtlasConfig withOverlapSupport(boolean newOverlapSupport) {
@@ -408,7 +415,8 @@ public record CgMsdfAtlasConfig(int atlasScalePx, float pxRange, int pageSize, i
                 minDeviationRatio,
                 minImproveRatio,
                 edgeColoringMode,
-                edgeColoringAngleThreshold);
+                edgeColoringAngleThreshold,
+                mtsdf);
     }
 
     public CgMsdfAtlasConfig withErrorCorrection(int newErrorCorrectionMode,
@@ -429,7 +437,8 @@ public record CgMsdfAtlasConfig(int atlasScalePx, float pxRange, int pageSize, i
                 newMinDeviationRatio,
                 newMinImproveRatio,
                 edgeColoringMode,
-                edgeColoringAngleThreshold);
+                edgeColoringAngleThreshold,
+                mtsdf);
     }
 
     public CgMsdfAtlasConfig withEdgeColoring(CgMsdfEdgeColoringMode newEdgeColoringMode,
@@ -448,7 +457,8 @@ public record CgMsdfAtlasConfig(int atlasScalePx, float pxRange, int pageSize, i
                 minDeviationRatio,
                 minImproveRatio,
                 newEdgeColoringMode,
-                newAngleThreshold);
+                newAngleThreshold,
+                mtsdf);
     }
 
     public CgGlyphAtlas.Type resolveAtlasType() {
