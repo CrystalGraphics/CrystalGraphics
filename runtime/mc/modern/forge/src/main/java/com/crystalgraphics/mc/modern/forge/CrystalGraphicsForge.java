@@ -213,6 +213,7 @@ public final class CrystalGraphicsForge implements VariantEntry {
 
         /** From the entry point rather than from an annotation; see the class note. */
         static void register(FMLJavaModLoadingContext context) {
+            KeysForge.register(context);
             // Forge 56's EventBus 7: every event carries its own bus, and a mod-bus event hands out one
             // per mod's bus group. Forge 64 (26.1) made the reload event a global one.
             //? if >=26.1 {

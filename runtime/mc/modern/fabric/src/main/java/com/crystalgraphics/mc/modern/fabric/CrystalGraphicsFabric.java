@@ -1,6 +1,12 @@
 package com.crystalgraphics.mc.modern.fabric;
 
+import com.crystalgraphics.mc.modern.platform.KeyBindingsModern;
 import com.crystalgraphics.mc.modern.platform.PlatformServiceModern;
+//? if >=26.1 {
+/*import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
+*///?} else {
+import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
+//?}
 import com.crystalgraphics.mc.modern.platform.LifecycleModern;
 import com.crystalgraphics.mc.modern.platform.ResourceIds;
 import com.crystalgraphics.mc.modern.platform.net.NetworkModern;
@@ -79,6 +85,12 @@ public final class CrystalGraphicsFabric implements VariantEntry {
             registerGui();
             registerShutdown();
             ScreenInputFabric.register();
+            // CgKeyBindings: Fabric takes a key any time before its options load, so the window stays open
+            //? if >=26.1 {
+            /*KeyBindingsModern.INSTANCE.register(KeyMappingHelper::registerKeyMapping, true);
+            *///?} else {
+            KeyBindingsModern.INSTANCE.register(KeyBindingHelper::registerKeyBinding, true);
+            //?}
             // The world events, once a client tick and as entities join and leave the client level.
             ClientTickEvents.END_CLIENT_TICK.register(client -> LifecycleModern.clientTick());
             ClientTickEvents.START_CLIENT_TICK.register(client -> LifecycleModern.clientTickStart());

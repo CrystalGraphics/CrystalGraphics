@@ -70,6 +70,7 @@ and cursor seams are here too — see [UI-facing services](#ui-facing-services).
 | `service/CgProcessExit` | Interface + slot | Ending the process at once the way the host allows: `Runtime.halt` unless provided. 1.7.10 and legacy Forge provide `FMLCommonHandler.exitJava`, since FML traps a mod's own halt. For a diagnostic run that closes itself, never an ordinary shutdown |
 | `input/CgSystemInput` | Interface | The raw event sink and its two event types |
 | `input/CgInputListener`, `CgInputStage` | Interface, class + slot | How a host's input reaches code that is not the host's: a mod registers a listener on a stage (`CgInputStage.SCREEN`); each era's host builds the event in the engine's vocabulary and fires it, and a listener that consumes it keeps the screen from seeing it. `CgInputStage.HOST` answers the pointer grab (`InputHostModern`, `InputHostLegacy`, `InputHost1710`). [`docs/INPUT.md`](../../../../../../../docs/INPUT.md) |
+| `input/CgKeyBindings` | Static owner + `Host` slot | Keys a player can rebind: `declare(id, key, category, action)`, early (a `client` listener's `onPreInit`); each era's host registers a game binding and runs the action per press (`KeyBindingsModern`, `KeyBindingsLegacy`, `KeyBindings1710`). Client only. [`docs/INPUT.md`](../../../../../../../docs/INPUT.md) § *Key bindings* |
 | `input/CgKeyCodes`, `CgGlfwKeyCodes`, `CgMouseCodes`, `CgModifiers` | Constants | Code tables with no LWJGL import |
 
 **Who implements the bundle**: `PlatformService1710`, `PlatformServiceLegacy`, `PlatformServiceModern`,

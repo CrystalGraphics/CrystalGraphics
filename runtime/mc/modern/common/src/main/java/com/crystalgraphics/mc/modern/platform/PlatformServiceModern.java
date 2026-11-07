@@ -57,6 +57,7 @@ import com.crystalgraphics.platform.world.CgLevels;
 import com.crystalgraphics.platform.world.CgPlayerQuery;
 import com.crystalgraphics.platform.service.CgGameThreads;
 import com.crystalgraphics.platform.input.CgInputStage;
+import com.crystalgraphics.platform.input.CgKeyBindings;
 import com.crystalgraphics.platform.service.CgHostPaint;
 import com.crystalgraphics.platform.service.CgHostWindow;
 import com.crystalgraphics.platform.service.CgServers;
@@ -152,6 +153,9 @@ public final class PlatformServiceModern implements CgPlatformService {
         CgPlatform.provide(CgHostWindow.HOST, new HostWindowModern());
         CgPlatform.provide(CgHostPaint.HOST, new HostPaintModern());
         CgPlatform.provide(CgInputStage.HOST, new InputHostModern());
+        CgPlatform.provide(CgKeyBindings.HOST, KeyBindingsModern.INSTANCE);
+        CgKeyBindings.hostProvided();
+        CgEngineLifecycle.onClientTick(KeyBindingsModern.INSTANCE::tick);
         CgPlatform.provide(CgShaderPacks.HOST, CgShaderPacks.irisApi());   // Iris, Oculus
         // What WorldEventsModern.poll reports; the explosion and the broken block are the loaders' mixins'.
         //? if >=1.14 {

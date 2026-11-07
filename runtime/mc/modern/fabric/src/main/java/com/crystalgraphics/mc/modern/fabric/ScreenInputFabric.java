@@ -32,6 +32,8 @@ import org.lwjgl.glfw.GLFWScrollCallback;
  * <p>From 26.3 the same chain is SDL's event filter: returning false drops an event before Minecraft polls it. Keys
  * arrive as scancodes, buttons count from 1 and characters are {@code SDL_EVENT_TEXT_INPUT}, sent only while text input
  * is started. A filter can run for an event pushed from another thread; it acts only on the render thread's.</p>
+ *
+ * <p>A held key's repeats go as presses, as Forge's and NeoForge's screen events deliver them.</p>
  */
 final class ScreenInputFabric {
 
@@ -71,7 +73,7 @@ final class ScreenInputFabric {
                 return ScreenInputModern.mouseButton(event.button().button() & 0xFF, event.button().down());
             case SDLEvents.SDL_EVENT_KEY_DOWN:
             case SDLEvents.SDL_EVENT_KEY_UP:
-                return !event.key().repeat() && ScreenInputModern.key(event.key().scancode(), event.key().down());
+                return ScreenInputModern.key(event.key().scancode(), event.key().down());
             case SDLEvents.SDL_EVENT_TEXT_INPUT: {
                 String text = event.text().textString();
                 boolean taken = false;
@@ -100,7 +102,7 @@ final class ScreenInputFabric {
 
         GLFWKeyCallback prevKey = GLFW.glfwSetKeyCallback(window, null);
         GLFW.glfwSetKeyCallback(window, (win, key, scancode, action, mods) -> {
-            if (action != GLFW.GLFW_REPEAT && ScreenInputModern.key(key, action == GLFW.GLFW_PRESS)) return;
+            if (ScreenInputModern.key(key, action != GLFW.GLFW_RELEASE)) return;
             if (prevKey != null) prevKey.invoke(win, key, scancode, action, mods);
         });
 

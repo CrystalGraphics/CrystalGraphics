@@ -32,6 +32,7 @@ import com.crystalgraphics.platform.world.CgHostShapes;
 import com.crystalgraphics.platform.world.CgLevels;
 import com.crystalgraphics.platform.service.CgGameThreads;
 import com.crystalgraphics.platform.input.CgInputStage;
+import com.crystalgraphics.platform.input.CgKeyBindings;
 import com.crystalgraphics.platform.service.CgHostPaint;
 import com.crystalgraphics.platform.service.CgHostWindow;
 import com.crystalgraphics.platform.service.CgServers;
@@ -129,6 +130,9 @@ public final class PlatformServiceLegacy implements CgPlatformService {
         CgPlatform.provide(CgHostWindow.HOST, new HostWindowLegacy());
         CgPlatform.provide(CgHostPaint.HOST, new HostPaintLegacy());
         CgPlatform.provide(CgInputStage.HOST, new InputHostLegacy());
+        CgPlatform.provide(CgKeyBindings.HOST, KeyBindingsLegacy.INSTANCE);
+        CgKeyBindings.hostProvided();
+        CgEngineLifecycle.onClientTick(KeyBindingsLegacy.INSTANCE::tick);
         // WorldEventsLegacy polls the hurts, deaths and lightning; ExplosionHook and LevelEventHook the rest.
         CgWorldEvents.declare(CgWorldEvents.EXPLOSION | CgWorldEvents.BLOCK_BROKEN | CgWorldEvents.ENTITY_HURT
                 | CgWorldEvents.ENTITY_DIED | CgWorldEvents.LIGHTNING);

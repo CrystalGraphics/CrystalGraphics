@@ -1,6 +1,7 @@
 package com.crystalgraphics.mc.modern.neoforge;
 
 import com.crystalgraphics.lifecycle.CgEngineLifecycle;
+import com.crystalgraphics.mc.modern.platform.KeyBindingsModern;
 import com.crystalgraphics.mc.modern.platform.LifecycleModern;
 import com.crystalgraphics.mc.modern.platform.PlatformServiceModern;
 import com.crystalgraphics.mc.modern.platform.ServerModern;
@@ -55,6 +56,7 @@ import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.loading.FMLLoader;
 import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
 import net.neoforged.neoforge.client.event.RenderGuiEvent;
+import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
 import net.neoforged.neoforge.client.event.ScreenEvent;
 import net.neoforged.neoforge.client.event.ViewportEvent;
 import net.neoforged.neoforge.client.event.RenderHandEvent;
@@ -175,6 +177,7 @@ public final class CrystalGraphicsNeoForge implements VariantEntry {
 
             static void register(IEventBus modBus) {
                 modBus.addListener(ModBus::onRegisterReloadListeners);
+                modBus.addListener(ModBus::onRegisterKeyMappings);
                 // The GUI stages: RenderGuiEvent.Post once a frame (never the per-layer event), and each screen once
                 // drawn. Client-only types: NeoForge 1.20.4 refuses ScreenEvent on a dedicated server.
                 NeoForge.EVENT_BUS.addListener(ModBus::onRenderGui);
@@ -216,6 +219,10 @@ public final class CrystalGraphicsNeoForge implements VariantEntry {
 
             private static void onRenderGui(RenderGuiEvent.Post event) {
                 LifecycleModern.hud();
+            }
+
+            private static void onRegisterKeyMappings(RegisterKeyMappingsEvent event) {
+                KeyBindingsModern.INSTANCE.register(event::register, false);
             }
 
             private static void onScreenRender(ScreenEvent.Render.Post event) {

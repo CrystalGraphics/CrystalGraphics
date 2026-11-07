@@ -3103,6 +3103,27 @@ com/crystalgraphics/platform/input/CgInputStage$Registration
   extends java/lang/Object
   implements java/lang/AutoCloseable
   method public,abstract close ()V
+com/crystalgraphics/platform/input/CgKeyBindings
+  access public,final
+  extends java/lang/Object
+  field public,static,final HOST Lcom/crystalgraphics/platform/CgService;
+  method public,static all ()Ljava/util/List;
+  method public,static declare (Ljava/lang/String;ILjava/lang/String;Ljava/lang/Runnable;)Lcom/crystalgraphics/platform/input/CgKeyBindings$Binding;
+  method public,static hostProvided ()V
+com/crystalgraphics/platform/input/CgKeyBindings$Binding
+  access public,final
+  extends java/lang/Object
+  method public category ()Ljava/lang/String;
+  method public categoryKey ()Ljava/lang/String;
+  method public defaultKey ()I
+  method public id ()Ljava/lang/String;
+  method public nameKey ()Ljava/lang/String;
+  method public press ()V
+com/crystalgraphics/platform/input/CgKeyBindings$Host
+  access public,abstract,interface
+  extends java/lang/Object
+  field public,static,final NONE Lcom/crystalgraphics/platform/input/CgKeyBindings$Host;
+  method public,abstract declared (Lcom/crystalgraphics/platform/input/CgKeyBindings$Binding;)V
 com/crystalgraphics/platform/input/CgKeyCodes
   access public,final
   extends java/lang/Object

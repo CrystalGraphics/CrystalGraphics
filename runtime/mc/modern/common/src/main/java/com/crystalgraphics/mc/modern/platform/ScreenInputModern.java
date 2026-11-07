@@ -29,6 +29,7 @@ public final class ScreenInputModern {
 
     /** A button went down or up. @return whether a listener consumed it, and the screen must not see it */
     public static boolean mouseButton(int hostButton, boolean pressed) {
+        if (noScreen()) return false;
         int x = rawX();
         int y = rawY();
         lastX = x;
@@ -39,25 +40,35 @@ public final class ScreenInputModern {
 
     /** The wheel turned; {@code platformDelta} is the host's, positive up. */
     public static boolean scrolled(double platformDelta) {
+        if (noScreen()) return false;
         return CgInputStage.SCREEN.scrolled(new CgSystemInput.Mouse.Event(rawX(), rawY(), 0, 0,
                 CgMouseCodes.NONE, false, (float) -platformDelta, -1L));
     }
 
     /** A key with no character, in the host's numbering. */
     public static boolean key(int hostKey, boolean pressed) {
+        if (noScreen()) return false;
         return CgInputStage.SCREEN.key(new CgSystemInput.Keyboard.Event((char) 0,
                 CgPlatform.input().translateKeyboardCodes(hostKey), pressed, false, System.currentTimeMillis()));
     }
 
     /** A character with no key. */
     public static boolean character(int codepoint) {
+        if (noScreen()) return false;
         return CgInputStage.SCREEN.character(new CgSystemInput.Keyboard.Event((char) codepoint, CgKeyCodes.KEY_NONE,
                 true, false, System.currentTimeMillis()));
     }
 
     /** An input method's run in progress; an empty {@code text} ends it. */
     public static boolean composition(String text, int caret) {
+        if (noScreen()) return false;
         return CgInputStage.SCREEN.composition(text, caret);
+    }
+
+    /** No screen in front: the stage is the screen's, so nothing fires. Fabric's window callbacks run in play too. */
+    private static boolean noScreen() {
+        Minecraft mc = Minecraft.getInstance();
+        return mc == null || CgMinecraftClient.screen(mc) == null;
     }
 
     /** The pointer where it is, once a frame while a screen is up: 1.20 posts no move event to a foreign screen. */
