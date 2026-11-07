@@ -29,7 +29,7 @@ Pass {
 
     void fragment(in v2f i, out vec4 fragColor) {
         vec4 d = vec4(0.0);
-        for (int k = 0; k < _FieldCount; k++) d += textureLod(_Fields, vec3(i.uv, float(k)), 0.0);
+        for (int k = 0; k < min(_FieldCount, 64); k++) d += textureLod(_Fields, vec3(i.uv, float(k)), 0.0);
         fragColor = vec4(abs(d.xy) * 50.0, d.z, 1.0);
     }
 }

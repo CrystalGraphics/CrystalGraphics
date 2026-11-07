@@ -12,7 +12,7 @@ void fx_flock(inout FxParticle p, inout FxForces f, FxStep s, vec4 m0, vec4 m1, 
         for (int y = -1; y <= 1; y++) {
             for (int x = -1; x <= 1; x++) {
                 uvec2 run = fx_neighbour_run(n, c + ivec3(x, y, z));
-                for (uint k = run.x; k < run.y && seen < most; k++) {
+                for (uint k = run.x; k < run.y && seen < most; k++) {   // LOOP-BOUND: a neighbour cell's run, under most
                     FxNeighbour o = step_neighbour(k);
                     if (o.index == n.self || o.slot != n.slot) continue;
                     vec3 d = o.position - p.position;

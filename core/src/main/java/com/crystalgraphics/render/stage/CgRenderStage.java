@@ -259,7 +259,7 @@ public final class CgRenderStage {
             // The engine starts on the first stage a host fires if the host never announced its context.
             CgEngineLifecycle.ensureGraphicsContext(host.width(), host.height());
             if (renderers.isEmpty() || !CgGraphicsLifecycle.isInitialized()) return;
-            CgGpuTrace.begin(gpuName);
+            CgGpuTrace.begin(gpuName, CgGpuTrace.WATCH);   // timed always: a slow firing is logged by name
             firing++;
             try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, path)) {
                 recordAndExecute();

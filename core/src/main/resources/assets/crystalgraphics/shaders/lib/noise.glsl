@@ -65,7 +65,7 @@ float fbm6(vec2 p) {
 float fbm(vec2 p, int octaves) {
     const mat2 m = mat2(1.6, 1.2, -1.2, 1.6);
     float f = 0.0, amp = 0.5, total = 0.0;
-    for (int i = 0; i < octaves; i++) {
+    for (int i = 0; i < min(octaves, 16); i++) {   // past 16 an octave is under a texel
         f += amp * value_noise(p);
         total += amp;
         p = m * p;
@@ -78,7 +78,7 @@ float fbm(vec2 p, int octaves) {
 float fbm_ridged(vec2 p, int octaves) {
     const mat2 m = mat2(1.6, 1.2, -1.2, 1.6);
     float f = 0.0, amp = 0.5, total = 0.0;
-    for (int i = 0; i < octaves; i++) {
+    for (int i = 0; i < min(octaves, 16); i++) {   // past 16 an octave is under a texel
         float n = value_noise(p);
         f += amp * (1.0 - abs(2.0 * n - 1.0));
         total += amp;

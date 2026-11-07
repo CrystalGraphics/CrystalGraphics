@@ -90,7 +90,7 @@ Pass {
         float at[3] = float[3](along, min(along + 1.0 / 32.0, 1.0), max(along - 1.0 / 32.0, 0.0));
         vec3 q[3];
         int count = drawn ? 3 : 1;
-        for (int n = 0; n < count; n++) q[n] = strand(row, header, part, at[n], bolt, lift, boltSeed, fork);
+        for (int n = 0; n < count; n++) q[n] = strand(row, header, part, at[n], bolt, lift, boltSeed, fork);   // LOOP-BOUND: 1 or 3
         vec3 p = origin + q[0], ahead = drawn ? q[1] : q[0], behind = drawn ? q[2] : q[0];
         float taper = part < 0.5 ? 1.0 : 1.0 - 0.75 * along;
         vec3 world = fx_ribbon_vertex(p, ahead - behind, FX_CAMERA, drawn ? _Width * taper : 0.0, side);

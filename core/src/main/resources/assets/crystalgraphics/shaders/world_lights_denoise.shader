@@ -143,7 +143,7 @@ Pass {
         vec2 visSum = vis;
         uvec2 seed = cg_rand_pcg16(ivec3(px % 2, CG_FRAME_INDEX)).xy;
         uint count = uint(mix(_Spatial.y, 2.0 * _Spatial.y, disocclusion) + 0.5);
-        for (uint k = 0u; k < count; k++) {
+        for (uint k = 0u; k < count; k++) {   // LOOP-BOUND: twice _Spatial.y, 4 from CgWorldLights
             vec2 offset = cg_disk_concentric(cg_hammersley16(k, count, seed)) * _Spatial.x;
             ivec2 q = ivec2(vec2(px) + offset + 0.5);
             if (any(lessThan(q, ivec2(0))) || any(greaterThanEqual(q, size))) continue;

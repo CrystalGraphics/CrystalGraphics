@@ -4259,6 +4259,7 @@ com/crystalgraphics/compute/CgCompute
   method public reload ()V
   method public source ()Lcom/crystalgraphics/compute/source/CgComputeSource;
   method public toString ()Ljava/lang/String;
+  method public,static dispatchBuilds ()J
   method public,static finishPrecached ()V
   method public,static fromSource (Ljava/lang/String;Ljava/lang/String;)Lcom/crystalgraphics/compute/CgCompute;
   method public,static load (Ljava/lang/String;)Lcom/crystalgraphics/compute/CgCompute;
@@ -7357,6 +7358,8 @@ com/crystalgraphics/loading/CgLoadingScreen
   extends java/lang/Object
   method public,static add (Lcom/crystalgraphics/loading/CgLoadingProcess;)V
   method public,static draw (III)V
+  method public,static fireWarmFrame ()V
+  method public,static firstUseWork ()J
   method public,static frame ()V
   method public,static hideNow (Ljava/lang/String;)V
   method public,static holdUntilHidden (Ljava/lang/Runnable;)Z

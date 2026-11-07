@@ -118,7 +118,7 @@ void BlurRgba8() {
     ivec2 t = CG_TEXEL.xy, n = SRC_RGBA8_SIZE();
     vec4 sum = SRC_RGBA8_LOAD(t);
     float total = 1.0;
-    for (int k = 1; k <= _Radius; k++) {
+    for (int k = 1; k <= min(_Radius, 64); k++) {   // CgGpuOps.blur's 3 sigma, sigma at most 21
         float w = gaussian(k);
         sum += (SRC_RGBA8_LOAD(tap(t, -k, n)) + SRC_RGBA8_LOAD(tap(t, k, n))) * w;
         total += 2.0 * w;
@@ -130,7 +130,7 @@ void BlurRgba16f() {
     ivec2 t = CG_TEXEL.xy, n = SRC_RGBA16F_SIZE();
     vec4 sum = SRC_RGBA16F_LOAD(t);
     float total = 1.0;
-    for (int k = 1; k <= _Radius; k++) {
+    for (int k = 1; k <= min(_Radius, 64); k++) {   // CgGpuOps.blur's 3 sigma, sigma at most 21
         float w = gaussian(k);
         sum += (SRC_RGBA16F_LOAD(tap(t, -k, n)) + SRC_RGBA16F_LOAD(tap(t, k, n))) * w;
         total += 2.0 * w;
@@ -142,7 +142,7 @@ void BlurR16f() {
     ivec2 t = CG_TEXEL.xy, n = SRC_R16F_SIZE();
     vec4 sum = SRC_R16F_LOAD(t);
     float total = 1.0;
-    for (int k = 1; k <= _Radius; k++) {
+    for (int k = 1; k <= min(_Radius, 64); k++) {   // CgGpuOps.blur's 3 sigma, sigma at most 21
         float w = gaussian(k);
         sum += (SRC_R16F_LOAD(tap(t, -k, n)) + SRC_R16F_LOAD(tap(t, k, n))) * w;
         total += 2.0 * w;
@@ -154,7 +154,7 @@ void BlurR32f() {
     ivec2 t = CG_TEXEL.xy, n = SRC_R32F_SIZE();
     vec4 sum = SRC_R32F_LOAD(t);
     float total = 1.0;
-    for (int k = 1; k <= _Radius; k++) {
+    for (int k = 1; k <= min(_Radius, 64); k++) {   // CgGpuOps.blur's 3 sigma, sigma at most 21
         float w = gaussian(k);
         sum += (SRC_R32F_LOAD(tap(t, -k, n)) + SRC_R32F_LOAD(tap(t, k, n))) * w;
         total += 2.0 * w;

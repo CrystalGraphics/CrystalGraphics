@@ -168,6 +168,11 @@ public final class CgWorldLights {
      * lists share {@code PER_CELL} indices a cell, as Unreal's MaxCulledLightsPerCell does under its linked lists.
      */
     public static final int TILE = 64, SLICES = 32, PER_CELL = 32;
+    /**
+     * Cells the grid keeps across a target's shorter side: under {@code MIN_CELLS * TILE} pixels its cells shrink, to
+     * {@link #MIN_TILE} at least. A 256x256 target cut at TILE is 4x4 cells, each listing most of the view's lights.
+     */
+    static final int MIN_CELLS = 16, MIN_TILE = 8;
     /** Cells a parent cell spans each way: Unreal's r.LightCulling.TwoLevel.Exponent of 2. */
     public static final int PARENT = 4;
     /**
@@ -811,7 +816,7 @@ public final class CgWorldLights {
         return rays;
     }
 
-    /** A tile's share of the target across, as the last firing cut its grid: {@link #TILE} over its width. */
+    /** A tile's share of the target across, as the last firing cut its grid: {@link #tilePixels} over its width. */
     public float tileU() {
         return tileU;
     }
@@ -1053,13 +1058,14 @@ public final class CgWorldLights {
     /**
      * Each cell's lights, as Unreal 5 bins them (LightGridInjection.usf): the lights turned into the grid's space once, a
      * parent grid {@link #PARENT} cells a side culled first (LightGridInjection.cpp:1818-1851), then
-     * each cell from its parent's list. The grid is sized to the target, {@link #TILE} pixels a cell
+     * each cell from its parent's list. The grid is sized to the target, {@link #tilePixels} a cell
      * (LightGridInjection.cpp:659-670).
      */
     private void bin(CgRecording recording, CgPassConstants stage, CgComputePass pass, Matrix4fc projection,
                      Matrix4fc toWorld, float targetWidth, float targetHeight, CgTexture lightmap) {
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, ZONE_BIN)) {
-            int gx = Math.max(1, (int) Math.ceil(targetWidth / TILE)), gy = Math.max(1, (int) Math.ceil(targetHeight / TILE));
+            float tile = tilePixels(targetWidth, targetHeight);
+            int gx = Math.max(1, (int) Math.ceil(targetWidth / tile)), gy = Math.max(1, (int) Math.ceil(targetHeight / tile));
             gridX = gx;
             gridY = gy;
             binned = true;
@@ -1134,9 +1140,15 @@ public final class CgWorldLights {
         // The lights are placed from the eye, not the view's position: back to the view's, then into the view.
         toWorld.invert(toView).translate(eye);
         bob.mul(toView, toView);
-        tileU = TILE / targetWidth;
-        tileV = TILE / targetHeight;
+        float tile = tilePixels(targetWidth, targetHeight);
+        tileU = tile / targetWidth;
+        tileV = tile / targetHeight;
         CgWorldMedia.spread((rays[2] - rays[0]) / targetWidth, (rays[3] - rays[1]) / targetHeight, airSpread);
+    }
+
+    /** A cell's side in pixels: {@link #TILE}, smaller where that leaves under {@link #MIN_CELLS} across the shorter side. */
+    static float tilePixels(float targetWidth, float targetHeight) {
+        return Math.max(MIN_TILE, Math.min(TILE, (float) Math.floor(Math.min(targetWidth, targetHeight) / MIN_CELLS)));
     }
 
     /** The grid's values onto one of its kernels' dispatches. */

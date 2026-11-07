@@ -152,7 +152,7 @@ Pass {
         // AccumulateLightSample: each light once, its visible samples' weights summed, merged samples counted in.
         vec2 samples[4] = vec2[4](vec2(-1.0), vec2(-1.0), vec2(-1.0), vec2(-1.0));
         vec2 vis = vec2(0.0);
-        for (int s = 0; s < count; s++) {
+        for (int s = 0; s < count; s++) {   // LOOP-BOUND: _SampleGrid.z, 4 at most
             vec4 texel = texelFetch(_Samples, d * grid + ivec2(s % grid.x, s / grid.x), 0);
             samples[s] = texel.xy;
             // The sun's and block light's one ray, the first sample's.
@@ -163,7 +163,7 @@ Pass {
             float index = samples[s].x;
             if (index < 0.0) continue;
             bool first = true;
-            for (int e = 0; e < s; e++) first = first && samples[e].x != index;
+            for (int e = 0; e < s; e++) first = first && samples[e].x != index;   // LOOP-BOUND: under 4
             if (!first) continue;
             float weight = 0.0, merged = 1.0;
             for (int e = s; e < 4; e++) {

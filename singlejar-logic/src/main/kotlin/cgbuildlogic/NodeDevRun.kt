@@ -3,6 +3,7 @@ package cgbuildlogic
 import net.neoforged.moddevgradle.dsl.ModDevExtension
 import org.gradle.api.NamedDomainObjectContainer
 import org.gradle.api.Project
+import org.gradle.api.plugins.ExtraPropertiesExtension
 import org.gradle.api.tasks.SourceSetContainer
 import org.gradle.language.jvm.tasks.ProcessResources
 
@@ -33,7 +34,7 @@ val DEV_DESCRIPTORS = listOf("META-INF/mods.toml", "META-INF/neoforge.mods.toml"
  *   1.20.2, NeoForge 20.2 and 20.3) or through Unimined has no dev run; prodSmoke is its runtime check.
  * - Registers nothing in stub mode: requesting a run task is what makes a node real.
  * - Every `-D` system property on the Gradle command line starting with one of [forwardProperties] reaches
- *   the game.
+ *   the game; any other is warned about, once a build, since the game never sees it.
  * - `-PcgRenderDoc[=<renderdoc.dll>]` loads RenderDoc into the client before its window exists: [renderDocDevRun].
  * - The mods it depends on are the caller's to put on the run: `com.crystalgui` puts CrystalGUI's and
  *   CrystalGraphics' there. On Forge that includes CrystalGraphics' mixin config: [graphicsDevMixinArgs].
@@ -47,6 +48,7 @@ fun Project.registerNodeDevRun(descriptor: ModDescriptor, bundled: List<Project>
     val forwarded = System.getProperties().stringPropertyNames()
         .filter { name -> forwardProperties.any(name::startsWith) }
         .associateWith { System.getProperty(it) }
+    warnUnforwarded(forwardProperties)
     val main = extensions.getByType(SourceSetContainer::class.java).getByName("main")
 
     registerNodeVariants(descriptor)
@@ -99,4 +101,20 @@ fun Project.registerNodeDevRun(descriptor: ModDescriptor, bundled: List<Project>
             }
         }
     }
+}
+
+/** The JVM's own properties, which Gradle passes on its command line itself. */
+private val JVM_OWN = listOf("file.", "user.", "java.", "jdk.", "sun.", "os.", "line.", "path.", "http.", "https.", "javax.", "org.gradle.")
+
+/** Names the command line's `-D` properties no dev run forwards: a switch the game never sees reads as having no effect. */
+private fun Project.warnUnforwarded(forwardProperties: List<String>) {
+    val extra = rootProject.extensions.getByType(ExtraPropertiesExtension::class.java)
+    if (extra.has("cgWarnedUnforwarded")) return
+    extra.set("cgWarnedUnforwarded", true)
+    val unforwarded = gradle.startParameter.systemPropertiesArgs.keys
+        .filter { name -> forwardProperties.none(name::startsWith) && JVM_OWN.none(name::startsWith) }
+        .sorted()
+    if (unforwarded.isEmpty()) return
+    logger.warn("-D ${unforwarded.joinToString(", ")} never reach the game: a dev run forwards only "
+        + forwardProperties.joinToString(" and ") { "-D$it*" } + ". Name a game switch under one of those.")
 }

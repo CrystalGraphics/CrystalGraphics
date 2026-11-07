@@ -35,7 +35,7 @@ Pass {
 
     void fragment(in v2f i, out vec4 fragColor) {
         vec2 offset = vec2(0.0);
-        for (int k = 0; k < _FieldCount; k++) offset += texture(_Fields, vec3(i.uv, float(k))).xy;
+        for (int k = 0; k < min(_FieldCount, 64); k++) offset += texture(_Fields, vec3(i.uv, float(k))).xy;
         fragColor = texture(_Source, cg_mirror(i.uv + offset));
     }
 }

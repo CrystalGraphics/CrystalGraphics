@@ -165,7 +165,7 @@ void Cap() {
 // and e's rank in it. A closed slot's base is the next one's.
 int range_slot(int e, out int rank) {
     int lo = _SlotFirst, hi = _SlotFirst + _Slots - 1;
-    while (lo < hi) {
+    while (lo < hi) {   // LOOP-BOUND: a binary search
         int mid = (lo + hi + 1) >> 1;
         if (int(BASES(mid)) <= e) lo = mid; else hi = mid - 1;
     }

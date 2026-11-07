@@ -19,7 +19,7 @@ void fx_occlusion(inout FxParticle p, FxStep s, vec4 m0, vec4 m1, vec4 m2, FxDep
     vec2 centre = vec2(pixel) + 0.5;
     float onScreen = 0.0, visible = 0.0;
     int samples = fx_occlusion_samples(m0, m1, m2);
-    for (int i = 0; i < samples; i++) {
+    for (int i = 0; i < samples; i++) {   // LOOP-BOUND: fx_occlusion_samples, 256 at most
         vec2 at = centre + fx_occlusion_offset(m0, m1, m2, i) * blocksToPixels;
         if (any(lessThan(at, vec2(0.0))) || any(greaterThanEqual(at, _DepthSize.xy))) continue;
         onScreen += 1.0;

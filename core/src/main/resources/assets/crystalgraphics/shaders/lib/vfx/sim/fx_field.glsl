@@ -132,7 +132,7 @@ void fx_field_apply(FxFields F, int group, int target, float scale, inout FxPart
     uint seed = floatBitsToUint(p.seed), key = floatBitsToUint(p.age);
     vec3 w = F.origin + p.position;
     uint head = g.x;
-    for (uint i = 0u; i < g.y; i++) {
+    for (uint i = 0u; i < g.y; i++) {   // LOOP-BOUND: the group's field instances, as placed
         uvec4 h = fx_field_word(int(head));
         if (int(h.x) == target) {
             vec4 place = fx_field_v(head + 1u), inverse = fx_field_v(head + 2u);

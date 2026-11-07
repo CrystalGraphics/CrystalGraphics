@@ -68,7 +68,7 @@ int _cg_sgSum(int a, int b) { return a + b; }
 uint _cg_sgSum(uint a, uint b) { return a + b; }
 
 // One line each: a continued line is GLSL 4.20's. A tree over the next power of two, answered from slot 0.
-#define _CG_SG_REDUCE(T, NAME, OP) T NAME(T v) { uint i = gl_LocalInvocationIndex; _cg_sg[i] = _cg_sgPack(v); _CG_SG_SYNC(); for (uint s = uint(CG_GROUP_POW2) >> 1; s > 0u; s >>= 1) { if (i < s && i + s < uint(CG_GROUP_SIZE)) _cg_sg[i] = _cg_sgPack(OP(_cg_sgUnpack(_cg_sg[i], v), _cg_sgUnpack(_cg_sg[i + s], v))); _CG_SG_SYNC(); } T r = _cg_sgUnpack(_cg_sg[0], v); _CG_SG_SYNC(); return r; }
+#define _CG_SG_REDUCE(T, NAME, OP) T NAME(T v) { uint i = gl_LocalInvocationIndex; _cg_sg[i] = _cg_sgPack(v); _CG_SG_SYNC(); for (uint s = uint(CG_GROUP_POW2) >> 1; s > 0u; s >>= 1) { if (i < s && i + s < uint(CG_GROUP_SIZE)) _cg_sg[i] = _cg_sgPack(OP(_cg_sgUnpack(_cg_sg[i], v), _cg_sgUnpack(_cg_sg[i + s], v))); _CG_SG_SYNC(); } T r = _cg_sgUnpack(_cg_sg[0], v); _CG_SG_SYNC(); return r; }   // LOOP-BOUND: halves the group a step
 // Hillis-Steele: each step adds the slot s behind. RESULT reads this invocation's sum, or the one before it.
 #define _CG_SG_SCAN(T, NAME, RESULT) T NAME(T v) { uint i = gl_LocalInvocationIndex; _cg_sg[i] = _cg_sgPack(v); _CG_SG_SYNC(); for (uint s = 1u; s < uint(CG_GROUP_SIZE); s <<= 1) { T a = _cg_sgUnpack(_cg_sg[i], v); if (i >= s) a = _cg_sgSum(a, _cg_sgUnpack(_cg_sg[i - s], v)); _CG_SG_SYNC(); _cg_sg[i] = _cg_sgPack(a); _CG_SG_SYNC(); } T r = RESULT; _CG_SG_SYNC(); return r; }
 #define _CG_SG_BROADCAST(T) T _cg_sgBroadcast(T v, uint id) { _cg_sg[gl_LocalInvocationIndex] = _cg_sgPack(v); _CG_SG_SYNC(); T r = _cg_sgUnpack(_cg_sg[id], v); _CG_SG_SYNC(); return r; }

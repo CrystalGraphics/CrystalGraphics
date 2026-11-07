@@ -141,7 +141,7 @@ int cull_level(CullSet s, mat4 m) {
         float w = dot(_ClipW, vec4(c, 1.0));
         float screen = w <= radius ? 3.4e38 : radius * _ScreenY / w;
         level = -1;
-        for (int i = 0; i < levels; i++) {
+        for (int i = 0; i < levels; i++) {   // LOOP-BOUND: a mip chain's levels
             float height = i < 4 ? s.heights0[i] : s.heights1[i - 4];
             if (screen >= height) {
                 level = i;
@@ -207,7 +207,7 @@ void CullPlace() {
 // The row of this dispatch's sets whose span holds e: the last whose first (component c of at) is at or below it.
 int cull_row(int e, int c) {
     int lo = _SetFirst, hi = _SetFirst + _Sets - 1;
-    while (lo < hi) {
+    while (lo < hi) {   // LOOP-BOUND: a binary search
         int mid = (lo + hi + 1) >> 1;
         if (SETS(mid).at[c] <= e) lo = mid; else hi = mid - 1;
     }
