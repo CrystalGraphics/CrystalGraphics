@@ -4553,10 +4553,29 @@ com/crystalgraphics/platform/service/CgCursorService$Image
   method public,final toString ()Ljava/lang/String;
   method public,static of (Ljava/lang/String;[IIIII)Lcom/crystalgraphics/platform/service/CgCursorService$Image;
   method public,static standard (Ljava/lang/String;)Lcom/crystalgraphics/platform/service/CgCursorService$Image;
+com/crystalgraphics/platform/service/CgGameClasses
+  access public,final
+  extends java/lang/Object
+  field public,static,final HOST Lcom/crystalgraphics/platform/CgService;
+  method public,static bytes (Ljava/lang/String;)[B
+  method public,static fileBytes (Ljava/lang/String;)[B
+  method public,static forgetForTesting ()V
+  method public,static minecraftVersion ()Ljava/lang/String;
+  method public,static present ()Z
+  method public,static runtimeName (Ljava/lang/String;)Ljava/lang/String;
+com/crystalgraphics/platform/service/CgGameClasses$Host
+  access public,abstract,interface
+  extends java/lang/Object
+  field public,static,final NONE Lcom/crystalgraphics/platform/service/CgGameClasses$Host;
+  method public fileBytes (Ljava/lang/String;)[B
+  method public runtimeName (Ljava/lang/String;)Ljava/lang/String;
+  method public,abstract bytes (Ljava/lang/String;)[B
+  method public,abstract minecraftVersion ()Ljava/lang/String;
 com/crystalgraphics/platform/service/CgGameDirectory
   access public,final
   extends java/lang/Object
   field public,static,final HOST Lcom/crystalgraphics/platform/CgService;
+  method public,static forgetForTesting ()V
   method public,static game ()Ljava/nio/file/Path;
   method public,static world ()Ljava/nio/file/Path;
 com/crystalgraphics/platform/service/CgGameDirectory$Host

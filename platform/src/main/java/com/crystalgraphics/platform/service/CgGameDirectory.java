@@ -59,6 +59,11 @@ public final class CgGameDirectory {
         return h;
     }
 
+    /** Drops the cached host, for a test that provides the slot and clears it again. */
+    public static void forgetForTesting() {
+        host = null;
+    }
+
     /** The game directory: the host's, or the working directory. */
     public static Path game() {
         return host().game();

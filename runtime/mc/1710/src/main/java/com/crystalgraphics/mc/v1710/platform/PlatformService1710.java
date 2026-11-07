@@ -40,6 +40,7 @@ import com.crystalgraphics.platform.service.CgServers;
 import com.crystalgraphics.platform.world.CgPlayerQuery;
 import com.crystalgraphics.collision.mirror.CgMirrorHost;
 import com.crystalgraphics.serialization.format.nbt.CgHostFormats;
+import com.crystalgraphics.platform.service.CgGameClasses;
 import com.crystalgraphics.platform.service.CgModLoader;
 import com.crystalgraphics.platform.CgPlatformService;
 import com.crystalgraphics.platform.CgService;
@@ -54,6 +55,7 @@ import com.crystalgraphics.platform.audio.CgAudioDecoder;
 import com.crystalgraphics.platform.audio.CgAudioOutput;
 import com.crystalgraphics.platform.audio.CgHostDuck;
 import com.crystalgraphics.platform.service.CgI18n;
+import com.crystalgraphics.mc.v1710.platform.service.GameClasses1710;
 import com.crystalgraphics.mc.v1710.platform.service.ModLoader1710;
 import com.crystalgraphics.mc.v1710.platform.service.HostI18n1710;
 import com.crystalgraphics.platform.audio.CgHostVolume;
@@ -158,6 +160,7 @@ public final class PlatformService1710 implements CgPlatformService {
     public static void install(boolean client) {
         CgPlatform.register(PlatformService1710.getInstance());
         CgPlatform.provide(CgModLoader.HOST, new ModLoader1710());
+        CgPlatform.provide(CgGameClasses.HOST, new GameClasses1710());
         CgPlatform.provide(CgLevels.SERVICE, Levels1710.INSTANCE);
         CgPlatform.provide(CgPlayerQuery.SERVICE, PlayerQuery1710.INSTANCE);
         CgPlatform.provide(CgServers.HOST, Servers1710.INSTANCE);

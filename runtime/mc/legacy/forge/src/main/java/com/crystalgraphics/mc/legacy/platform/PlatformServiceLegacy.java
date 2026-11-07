@@ -6,6 +6,7 @@ import com.crystalgraphics.lwjgl2.Lwjgl2AudioOutput;
 import com.crystalgraphics.lwjgl2.Lwjgl2CursorService;
 import com.crystalgraphics.lwjgl2.Lwjgl2GLContext;
 import com.crystalgraphics.lwjgl2.Lwjgl2InputService;
+import com.crystalgraphics.mc.legacy.platform.service.GameClassesLegacy;
 import com.crystalgraphics.mc.legacy.platform.service.ModLoaderLegacy;
 import com.crystalgraphics.mc.legacy.platform.service.GameDirectoryService;
 import com.crystalgraphics.mc.legacy.platform.service.LifecycleService;
@@ -26,6 +27,7 @@ import com.crystalgraphics.mc.legacy.platform.world.MirrorHostLegacy;
 import com.crystalgraphics.mc.legacy.platform.world.PlayerQueryLegacy;
 import com.crystalgraphics.mc.legacy.platform.world.WorldStimulusLegacy;
 import com.crystalgraphics.platform.CgPlatform;
+import com.crystalgraphics.platform.service.CgGameClasses;
 import com.crystalgraphics.platform.service.CgModLoader;
 import com.crystalgraphics.platform.service.CgProcessExit;
 import com.crystalgraphics.platform.world.CgHostShapes;
@@ -107,6 +109,7 @@ public final class PlatformServiceLegacy implements CgPlatformService {
     public static void install(boolean client) {
         CgPlatform.register(getInstance());
         CgPlatform.provide(CgModLoader.HOST, new ModLoaderLegacy());
+        CgPlatform.provide(CgGameClasses.HOST, new GameClassesLegacy());
         CgPlatform.provide(CgLevels.SERVICE, LevelsLegacy.INSTANCE);
         CgPlatform.provide(CgPlayerQuery.SERVICE, PlayerQueryLegacy.INSTANCE);
         CgPlatform.provide(CgServers.HOST, ServersLegacy.INSTANCE);

@@ -16,6 +16,7 @@ import com.crystalgraphics.lwjgl3.Lwjgl3AudioOutput;
 import com.crystalgraphics.lwjgl3.StbVorbisDecoder;
 import com.crystalgraphics.lwjgl3.Lwjgl3GLContext;
 
+import com.crystalgraphics.mc.modern.platform.service.GameClassesModern;
 import com.crystalgraphics.mc.modern.platform.service.LifecycleService;
 import com.crystalgraphics.mc.modern.platform.service.ReloadService;
 import com.crystalgraphics.mc.modern.platform.service.RenderingService;
@@ -41,6 +42,7 @@ import com.crystalgraphics.platform.gl.CgGLBackend;
 import com.crystalgraphics.platform.gl.CgGLContext;
 import com.crystalgraphics.platform.gl.tracked.CgTrackedGLContext;
 import com.crystalgraphics.platform.service.CgCursorService;
+import com.crystalgraphics.platform.service.CgGameClasses;
 import com.crystalgraphics.platform.service.CgGameDirectory;
 import com.crystalgraphics.platform.service.CgInputService;
 import com.crystalgraphics.platform.service.CgLifecycleService;
@@ -124,6 +126,7 @@ public final class PlatformServiceModern implements CgPlatformService {
     public static void install(CgModLoader.Host loader) {
         CgPlatform.register(getInstance());
         CgPlatform.provide(CgModLoader.HOST, loader);
+        CgPlatform.provide(CgGameClasses.HOST, new GameClassesModern());
         CgPlatform.provide(CgLevels.SERVICE, LevelsModern.INSTANCE);
         CgPlatform.provide(CgPlayerQuery.SERVICE, PlayerQueryModern.INSTANCE);
         CgPlatform.provide(CgServers.HOST, ServersModern.INSTANCE);
