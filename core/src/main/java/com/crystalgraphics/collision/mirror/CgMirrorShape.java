@@ -6,7 +6,7 @@ import java.util.Arrays;
 
 /**
  * What a host says one block is, for the level mirror: its collision boxes, block-local, and its fluid. The caller
- * clears it and reuses it; {@link CgMirrorHost#describe} and {@link CgMirrorHost#resolveAt} fill it.
+ * clears it and reuses it; {@link CgMirrorHost.Host#describe} and {@link CgMirrorHost.Host#resolveAt} fill it.
  *
  * <pre>{@code
  * // a host describing a state whose shape follows from the state alone
@@ -66,7 +66,7 @@ public final class CgMirrorShape {
         return this;
     }
 
-    /** Its shape depends on where it stands, so the level thread resolves it there ({@link CgMirrorHost#resolveAt}). */
+    /** Its shape depends on where it stands, so the level thread resolves it there ({@link CgMirrorHost.Host#resolveAt}). */
     public CgMirrorShape positional() {
         positional = true;
         return this;

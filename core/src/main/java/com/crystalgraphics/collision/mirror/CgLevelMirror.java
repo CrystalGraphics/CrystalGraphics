@@ -7,7 +7,6 @@ import com.crystalgraphics.job.CgJobLane;
 import com.crystalgraphics.job.reply.CgPendingReply;
 import com.crystalgraphics.job.reply.CgReply;
 import com.crystalgraphics.net.CgNetwork;
-import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.world.CgEntityQuery;
 import com.crystalgraphics.platform.world.CgWorldQuery;
 import com.crystalgraphics.shape.bounds.CgAABB;
@@ -86,7 +85,7 @@ public final class CgLevelMirror {
         Object freeze(CgAABBc within);
     }
 
-    final CgMirrorHost host;
+    final CgMirrorHost.Host host;
     private final WeakReference<Object> level;
     private final CgWorldQuery world;
     private final CgEntityQuery entities;
@@ -145,7 +144,7 @@ public final class CgLevelMirror {
     private long statLevelNanos, statLevelMax, statWorkerNanos, statDirty, statBases, statResolved, statEntities, statPublishes;
     private final long[] statPhases = new long[PHASES.length], statPhaseMax = new long[PHASES.length];
 
-    private CgLevelMirror(CgMirrorHost host, Object level, CgWorldQuery world, CgEntityQuery entities, Freezer freezer) {
+    private CgLevelMirror(CgMirrorHost.Host host, Object level, CgWorldQuery world, CgEntityQuery entities, Freezer freezer) {
         this.host = host;
         this.level = new WeakReference<>(level);
         this.world = world;
@@ -165,7 +164,7 @@ public final class CgLevelMirror {
     public static synchronized CgLevelMirror of(Object level, CgWorldQuery world, CgEntityQuery entities, Freezer freezer) {
         CgLevelMirror m = MIRRORS.get(level);
         if (m != null) return m;
-        CgMirrorHost host = CgPlatform.get(CgMirrorHost.SERVICE);
+        CgMirrorHost.Host host = CgMirrorHost.host();
         if (!host.mirrors(level)) return null;
         if (!hooked) {
             hooked = true;

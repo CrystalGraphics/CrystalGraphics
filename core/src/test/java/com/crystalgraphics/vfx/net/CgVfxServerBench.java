@@ -7,7 +7,7 @@ import com.crystalgraphics.net.CgNetwork;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.service.CgNetworkChannel;
 import com.crystalgraphics.platform.world.CgLevels;
-import com.crystalgraphics.platform.world.CgPlayerQuery;
+import com.crystalgraphics.platform.world.CgPlayers;
 import com.crystalgraphics.platform.world.CgWorldQuery;
 import com.crystalgraphics.vfx.CgVfxAuthorityTest;
 import com.crystalgraphics.vfx.effect.beam.CgEnergyWave;
@@ -97,8 +97,8 @@ public class CgVfxServerBench {
     public void setUp() {
         CgNetTesting.reset();
         CgVfxCueClient.resetForTesting();
-        CgPlatform.provide(CgLevels.SERVICE, new Levels());
-        CgPlatform.provide(CgPlayerQuery.SERVICE, new Players());
+        CgPlatform.provide(CgLevels.HOST, new Levels());
+        CgPlatform.provide(CgPlayers.HOST, new Players());
         CgNetwork.install(new Loopback(), player -> ((Body) player).id);
         CgEngineLifecycle.serverStarting(null);
         CgVfxCueClient.install();
@@ -108,8 +108,8 @@ public class CgVfxServerBench {
     public void tearDown() {
         CgNetTesting.reset();
         CgVfxCueClient.resetForTesting();
-        CgPlatform.provide(CgLevels.SERVICE, null);
-        CgPlatform.provide(CgPlayerQuery.SERVICE, null);
+        CgPlatform.provide(CgLevels.HOST, null);
+        CgPlatform.provide(CgPlayers.HOST, null);
     }
 
     private static void tick() {

@@ -18,9 +18,9 @@ import java.util.Map;
  */
 public final class HostTagOps implements CgDynamicOps<Object> {
 
-    private final CgHostFormats tags;
+    private final CgHostFormats.Host tags;
 
-    public HostTagOps(CgHostFormats tags) {
+    HostTagOps(CgHostFormats.Host tags) {
         this.tags = tags;
     }
 

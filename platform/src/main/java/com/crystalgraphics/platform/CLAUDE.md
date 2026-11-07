@@ -43,9 +43,9 @@ and cursor seams are here too — see [UI-facing services](#ui-facing-services).
 | `world/CgWorldQuery` | Interface | One level's blocks: collision and its boxes (as no one, or as one entity meets them), the world border, fluid, light, what a block is made of, tint and biome colours (a client level's), heightmaps, precipitation, the particle sprite. Primitives; core composes the scans (`com.crystalgraphics.world.CgWorldQueries`) and every query (`collision.CgCollisionWorld`). Handed out per level by `CgLevels` |
 | `world/CgBlockCopy` | Interface | Where a host copies a box of its blocks from its sections (`CgWorldQuery.copyBlocks`): a palette entry per block, each distinct block described once under the host's key. What a collision snapshot is made from; a host without it is read block by block |
 | `world/CgEntityQuery` | Interface | One level's entities by int id: interpolated pose and box, flags (what a hit asks too: spectator, pickable, attackable, invulnerable; solid, what Minecraft stops other entities at), kind, parent (a dragon part's dragon), root vehicle, a box walk handing ids to a visitor, parts included, and `<V> V entity(id)` / `entity(UUID)`, the host's own entity (a snapshot throws). Core computes hands, head and feet (`CgEntityAttachments`) |
-| `world/CgLevels` | Interface + slot | The host's levels, both sides: a `CgWorldQuery` and a `CgEntityQuery` for any level, the client's answered by its client subclasses (`clientWorld()`, `clientEntities()`, `clientLevel()`), a level's dimension, a server's level by dimension, loaded chunks, where the world saves, and an entity object's id, position and life. One host class per era (`LevelsModern`, `LevelsLegacy`, `Levels1710`), provided from `Network*`; its client half from the client (`ClientModern`, `ClientLegacy`, `Client1710`). Read through `CgWorldQueries` and `CgEntityQueries` |
-| `world/CgPlayerQuery` | Interface + slot | The host's players, both sides: a player entity's profile id, the server's player by profile id or entity id, the client's own, and who has a chunk or an entity loaded. `PlayerQueryModern`, `PlayerQueryLegacy`, `PlayerQuery1710`; read through `CgPlayers` and `CgAudience` |
-| `world/CgHostShapes` | Interface + slot | The host's boxes and block shapes converted, both sides: what `CgAABB.of`/`set(Object)`/`toHost()` and `CgShape.of(Object)` reach. Provided beside `CgLevels` (`HostShapesModern`, `HostShapesLegacy`, `HostShapes1710`); `NONE` throws |
+| `world/CgLevels` | Static owner + `Host` slot | The host's levels, both sides: a `CgWorldQuery` and a `CgEntityQuery` for any level, the client's answered by its client subclasses (`clientWorld()`, `clientEntities()`, `clientLevel()`), a level's dimension, a server's level by dimension, loaded chunks, where the world saves, and an entity object's id, position and life; `single(world, entities)` for a test or the harness. One host class per era (`LevelsModern`, `LevelsLegacy`, `Levels1710`), provided from each era's install; its client half from the client (`ClientModern`, `ClientLegacy`, `Client1710`). Core's `CgWorldQueries` and `CgEntityQueries` are built on it |
+| `world/CgPlayers` | Static owner + `Host` slot | The host's players, both sides: a player entity's profile id (`idOf`), the server's player by profile id or entity id, the client's own (`local`), and who has a chunk or an entity loaded. `PlayersModern`, `PlayersLegacy`, `Players1710`; what `CgAudience` and networked objects are made from |
+| `world/CgHostShapes` | Static owner + `Host` slot | The host's boxes and block shapes converted, both sides: what `CgAABB.of`/`set(Object)`/`toHost()` and `CgShape.of(Object)` reach. `HostShapesModern`, `HostShapesLegacy`, `HostShapes1710`; without a host every conversion throws |
 | `world/CgBoxSink` | Interface | Where a host writes a box, so it fills the caller's own `CgAABB` with nothing between |
 | `world/CgModelSpace` | Interface + slot | The camera and the rotation the world's entity pose stack starts from, read live during the level render: what turns a model's pose matrix into a world point (`CgEntityAttachments.mark`). Modern hosts from 1.15; absent before and elsewhere |
 | `world/CgHostCamera` | Interface + slot | The offset and FOV scale the host adds to its camera each frame; core sums every shake into it (`CgCameraShake`) |
@@ -68,7 +68,7 @@ and cursor seams are here too — see [UI-facing services](#ui-facing-services).
 | `service/CgCacheDirectory` | Final class | `of(name)`: a folder under `<game>/crystalgraphics/cache/` for what can be rebuilt — the SPIR-V (`spirv`) and pipeline (`vulkan`) caches a host passes its compiler and device, GL program binaries (`glprogram`, `CgProgramBinaryCache`) and the framebuffer layouts found complete (`framebuffer`, `CgFrameBufferLayouts`); `driver()` names the GL driver, for a cache kept per driver. Null where `-Dcrystalgraphics.cache=false` or it cannot be made; `-Dcrystalgraphics.cache.dir` moves it |
 | `world/CgWorldEvents` | Final class | What the client learns happens in the world (explosion, block broken, entity hurt or killed, lightning), pushed by hosts to listeners, on the render thread |
 | `service/CgNetworkChannel` | Interface + slot | Carrying one frame to the server or a player, and its ceiling: the whole platform side of networking. `CgNetworkChannel.SERVICE`; everything above it is core's `net` |
-| `service/CgProcessExit` | Interface + slot | Ending the process at once the way the host allows: `Runtime.halt` unless provided. 1.7.10 and legacy Forge provide `FMLCommonHandler.exitJava`, since FML traps a mod's own halt. For a diagnostic run that closes itself, never an ordinary shutdown |
+| `service/CgProcessExit` | Static owner + `Host` slot | `halt(status)`: ending the process at once the way the host allows, `Runtime.halt` unless provided. 1.7.10 and legacy Forge provide `FMLCommonHandler.exitJava`, since FML traps a mod's own halt. For a diagnostic run that closes itself, never an ordinary shutdown |
 | `input/CgSystemInput` | Interface | The raw event sink and its two event types |
 | `input/CgInputListener`, `CgInputStage` | Interface, class + slot | How a host's input reaches code that is not the host's: a mod registers a listener on a stage (`CgInputStage.SCREEN`); each era's host builds the event in the engine's vocabulary and fires it, and a listener that consumes it keeps the screen from seeing it. `CgInputStage.HOST` answers the pointer grab (`InputHostModern`, `InputHostLegacy`, `InputHost1710`). [`docs/INPUT.md`](../../../../../../../docs/INPUT.md) |
 | `input/CgKeyBindings` | Static owner + `Host` slot | Keys a player can rebind: `declare(id, key, category, action)`, early (a `client` listener's `onPreInit`); each era's host registers a game binding and runs the action per press (`KeyBindingsModern`, `KeyBindingsLegacy`, `KeyBindings1710`). Client only. [`docs/INPUT.md`](../../../../../../../docs/INPUT.md) § *Key bindings* |
@@ -87,8 +87,9 @@ How a platform service is declared, provided and read. **`CgModLoader` (`platfor
 `CgService` SPI takes** (the user, 2026-10-31): a final class named for the concern is its static owner, as `CgGL`
 owns `CgGLBackend`; its nested `Host` interface is what a host implements, with a `NONE`; its slot is `HOST`; records
 it answers are nested too (`CgModLoader.Mod`). Callers use the owner's static calls and never the slot. The older
-slots (`CgLevels`, the audio ones, ...) are the previous shape, a bare interface with `SERVICE` and
-a facade in core, and are to be rewritten to this one.
+slots (the audio ones, `CgModelSpace`, `CgHostCamera`, ...) are the previous shape, a bare interface with `SERVICE`,
+and are to be rewritten to this one. Core may build on an owner where it adds logic of its own (`CgWorldQueries` and
+`CgEntityQueries` over `CgLevels`).
 
 ```java
 public final class CgModLoader {
@@ -104,29 +105,27 @@ public final class CgModLoader {
 CgPlatform.provide(CgModLoader.HOST, ModLoaderForge.INSTANCE);   // a host, once
 ```
 
-**The owner caches its host**, so a call is a field read rather than a slot lookup: a static volatile field set the
-first time the slot answers something other than `NONE`. **Never cache `NONE`, or anything built from its answer**: a
-call made before the host provides the slot (a class initialised early in mod loading) would pin the absent value for
-the session. The same holds for what the owner derives once (`CgModLoader.mods()`'s list).
+**The owner reads its slot on every call** (the user, 2026-11-07): a slot read is one volatile read and a flag, what a
+cached field would cost, and a cache pins whatever it first saw, a test's fake included. **Never cache anything built
+from `NONE`'s answer**: a call made before the host provides the slot would pin the absent value for the session. What
+an owner derives once at a cost (`CgModLoader.mods()`'s list) is kept only from a real host.
 
 ```java
-private static volatile Host host;
 private static Host host() {
-    Host h = host;
-    if (h != null) return h;
-    h = CgPlatform.get(HOST);
-    if (h != Host.NONE) host = h;   // asked before the host provides it: NONE's answer, asked again next time
-    return h;
+    return CgPlatform.get(HOST);
 }
 ```
 
-The rules, for both shapes. `CgLevels` and `CgPlayerQuery` are the worked example of the older one.
+**`NONE` never calls the owner**: a `Host.NONE` built through the owner's own factory would initialise the owner, whose
+`HOST` reads `Host.NONE` while it is still null. `CgLevels` builds its `NONE` from a private class for that reason.
+
+The rules, for both shapes.
 
 1. **One SPI per concern**, in `platform.<area>` (`platform.world`, ...), named for what it answers, with a `NONE`
    that answers nothing and one slot. A concern never has two slots.
 2. **One static owner per SPI, and only it reads the slot**: the SPI's own outer class in the new shape; in the older
-   one a facade in core (`CgWorldQueries`, `CgEntityQueries`, `CgPlayers`, `CgCamera`), an SPI with a single reader in
-   core read by that class alone. `WorldServiceReadersTest` holds it.
+   one a facade in core (`CgCamera`), an SPI with a single reader in core read by that class alone.
+   `WorldServiceReadersTest` holds it.
 3. **Per-level answers are bound views** (`of(level)`, `client()`), held while the level lives; hot paths hold the view.
 4. **Host objects cross as `Object` and ids**; a caller wanting the host's object asks a `<V> V` getter and casts at its
    own call site (`hit.entity()`, `CgPlayers.player(id)`).
@@ -135,16 +134,16 @@ The rules, for both shapes. `CgLevels` and `CgPlayerQuery` are the worked exampl
    `installClient()`, from the loader's client side) for client-only ones. Never from a backend getter, which runs
    only at the first frame, nor from the network's installer, which owns the channel alone. A both-sides SPI's client
    half is handed over by a client-only class (`ClientModern.install()`), never by a lambda in a class a server loads.
-6. **One host class per SPI per era**, named `<SPI without Cg><Era>` (`LevelsModern`, `PlayerQuery1710`); a client
+6. **One host class per SPI per era**, named `<SPI without Cg><Era>` (`LevelsModern`, `Players1710`); a client
    extra is a subclass, never a second slot.
 
 ```java
 // core
-CgEntityQuery here = CgEntityQueries.client();        // never CgPlatform.get(CgLevels.SERVICE)
+CgEntityQuery here = CgEntityQueries.client();        // over CgLevels.clientEntities(), never CgPlatform.get(CgLevels.HOST)
 ServerPlayer p = CgPlayers.player(profileId);
 
 // a host, in PlatformServiceModern.install, both sides
-CgPlatform.provide(CgLevels.SERVICE, LevelsModern.INSTANCE);
+CgPlatform.provide(CgLevels.HOST, LevelsModern.INSTANCE);
 // and in installClient
 ClientModern.install();
 ```

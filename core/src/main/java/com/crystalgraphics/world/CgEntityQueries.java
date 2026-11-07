@@ -1,6 +1,7 @@
 package com.crystalgraphics.world;
 
 import com.crystalgraphics.platform.world.CgEntityQuery;
+import com.crystalgraphics.platform.world.CgLevels;
 
 /**
  * The host's entities: the {@link CgEntityQuery} of any level, the client's or a server's, and what core asks of one
@@ -28,17 +29,17 @@ public final class CgEntityQueries {
 
     /** The entities of {@code level}: the loader's level, or an entity in it. {@code NONE} for anything else. */
     public static CgEntityQuery of(Object level) {
-        return CgWorldQueries.levels().entities(level);
+        return CgLevels.entities(level);
     }
 
     /** The entities of the level the client is in, following it from level to level; {@code NONE} on a server. */
     public static CgEntityQuery client() {
-        return CgWorldQueries.levels().clientEntities();
+        return CgLevels.clientEntities();
     }
 
     /** An entity's network id, the one its clients know it by; -1 for any other object. */
     public static int idOf(Object entity) {
-        return CgWorldQueries.levels().entityId(entity);
+        return CgLevels.entityId(entity);
     }
 
     /**
@@ -54,11 +55,11 @@ public final class CgEntityQueries {
 
     /** An entity's absolute position into {@code out[0..2]}. False, with {@code out} untouched, for a non-entity. */
     public static boolean position(Object entity, double[] out) {
-        return CgWorldQueries.levels().position(entity, out);
+        return CgLevels.position(entity, out);
     }
 
     /** Whether an entity is alive and in its level; false for any other object. */
     public static boolean alive(Object entity) {
-        return CgWorldQueries.levels().alive(entity);
+        return CgLevels.alive(entity);
     }
 }

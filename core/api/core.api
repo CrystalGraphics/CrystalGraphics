@@ -4206,10 +4206,14 @@ com/crystalgraphics/collision/mirror/CgMirrorColumn
   method public unloaded ()V
   method public write (IIILjava/lang/Object;Z)V
 com/crystalgraphics/collision/mirror/CgMirrorHost
+  access public,final
+  extends java/lang/Object
+  field public,static,final HOST Lcom/crystalgraphics/platform/CgService;
+  method public,static mirrors (Ljava/lang/Object;)Z
+com/crystalgraphics/collision/mirror/CgMirrorHost$Host
   access public,abstract,interface
   extends java/lang/Object
-  field public,static,final NONE Lcom/crystalgraphics/collision/mirror/CgMirrorHost;
-  field public,static,final SERVICE Lcom/crystalgraphics/platform/CgService;
+  field public,static,final NONE Lcom/crystalgraphics/collision/mirror/CgMirrorHost$Host;
   method public,abstract attach (Ljava/lang/Object;Lcom/crystalgraphics/collision/mirror/CgMirrorColumn;)Z
   method public,abstract chunk (Ljava/lang/Object;II)Ljava/lang/Object;
   method public,abstract copy (Ljava/lang/Object;I)Ljava/lang/Object;
@@ -12215,10 +12219,15 @@ com/crystalgraphics/serialization/format/file/YamlFileFormat
   extends com/crystalgraphics/serialization/format/file/TextFileFormat
   method public <init> ()V
 com/crystalgraphics/serialization/format/nbt/CgHostFormats
+  access public,final
+  extends java/lang/Object
+  field public,static,final HOST Lcom/crystalgraphics/platform/CgService;
+  method public,static ops ()Lcom/crystalgraphics/serialization/CgDynamicOps;
+  method public,static present ()Z
+com/crystalgraphics/serialization/format/nbt/CgHostFormats$Host
   access public,abstract,interface
   extends java/lang/Object
-  field public,static,final NONE Lcom/crystalgraphics/serialization/format/nbt/CgHostFormats;
-  field public,static,final SERVICE Lcom/crystalgraphics/platform/CgService;
+  field public,static,final NONE Lcom/crystalgraphics/serialization/format/nbt/CgHostFormats$Host;
   method public,abstract add (Ljava/lang/Object;Ljava/lang/Object;)V
   method public,abstract bytes ([B)Ljava/lang/Object;
   method public,abstract bytesOf (Ljava/lang/Object;)[B
@@ -12229,14 +12238,13 @@ com/crystalgraphics/serialization/format/nbt/CgHostFormats
   method public,abstract list ()Ljava/lang/Object;
   method public,abstract number (Ljava/lang/Number;)Ljava/lang/Object;
   method public,abstract numberOf (Ljava/lang/Object;)Ljava/lang/Number;
-  method public,abstract present ()Z
   method public,abstract put (Ljava/lang/Object;Ljava/lang/String;Ljava/lang/Object;)V
   method public,abstract string (Ljava/lang/String;)Ljava/lang/Object;
   method public,abstract stringOf (Ljava/lang/Object;)Ljava/lang/String;
 com/crystalgraphics/serialization/format/nbt/CgTestTags
   access public,final
   extends java/lang/Object
-  implements com/crystalgraphics/serialization/format/nbt/CgHostFormats
+  implements com/crystalgraphics/serialization/format/nbt/CgHostFormats$Host
   implements java/lang/AutoCloseable
   method public add (Ljava/lang/Object;Ljava/lang/Object;)V
   method public bytes ([B)Ljava/lang/Object;
@@ -12249,7 +12257,6 @@ com/crystalgraphics/serialization/format/nbt/CgTestTags
   method public list ()Ljava/lang/Object;
   method public number (Ljava/lang/Number;)Ljava/lang/Object;
   method public numberOf (Ljava/lang/Object;)Ljava/lang/Number;
-  method public present ()Z
   method public put (Ljava/lang/Object;Ljava/lang/String;Ljava/lang/Object;)V
   method public string (Ljava/lang/String;)Ljava/lang/Object;
   method public stringOf (Ljava/lang/Object;)Ljava/lang/String;
@@ -12268,7 +12275,6 @@ com/crystalgraphics/serialization/format/nbt/HostTagOps
   access public,final
   extends java/lang/Object
   implements com/crystalgraphics/serialization/CgDynamicOps
-  method public <init> (Lcom/crystalgraphics/serialization/format/nbt/CgHostFormats;)V
   method public createBoolean (Z)Ljava/lang/Object;
   method public createBytes ([B)Ljava/lang/Object;
   method public createList (Ljava/util/List;)Ljava/lang/Object;
@@ -19834,17 +19840,6 @@ com/crystalgraphics/world/CgEntityQueries
   method public,static of (Ljava/lang/Object;)Lcom/crystalgraphics/platform/world/CgEntityQuery;
   method public,static position (Ljava/lang/Object;[D)Z
   method public,static requireId (Ljava/lang/Object;)I
-com/crystalgraphics/world/CgPlayers
-  access public,final
-  extends java/lang/Object
-  method public,static idOf (Ljava/lang/Object;)Ljava/util/UUID;
-  method public,static isOperator (Ljava/lang/String;)Z
-  method public,static isOwner (Ljava/lang/String;)Z
-  method public,static local ()Ljava/lang/Object;
-  method public,static player (I)Ljava/lang/Object;
-  method public,static player (Ljava/util/UUID;)Ljava/lang/Object;
-  method public,static trackingChunk (Ljava/lang/Object;IILjava/util/function/Consumer;)V
-  method public,static trackingEntity (Ljava/lang/Object;Ljava/util/function/Consumer;)V
 com/crystalgraphics/world/CgWorldQueries
   access public,final
   extends java/lang/Object

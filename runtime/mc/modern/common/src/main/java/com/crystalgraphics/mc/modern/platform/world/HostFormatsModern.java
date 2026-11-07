@@ -31,12 +31,7 @@ import java.util.List;
  *       obfuscated, {@code a(String, Tag)}.</li>
  * </ul>
  */
-public final class HostFormatsModern implements CgHostFormats {
-
-    @Override
-    public boolean present() {
-        return true;
-    }
+public final class HostFormatsModern implements CgHostFormats.Host {
 
     @Override
     public Object compound() {

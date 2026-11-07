@@ -18,7 +18,7 @@ import com.crystalgraphics.shape.CgPose;
 import com.crystalgraphics.shape.bounds.CgAABB;
 import com.crystalgraphics.world.CgEntityAttachments;
 import com.crystalgraphics.world.CgEntityQueries;
-import com.crystalgraphics.world.CgPlayers;
+import com.crystalgraphics.platform.world.CgPlayers;
 import org.joml.Quaterniond;
 import org.joml.Quaterniondc;
 

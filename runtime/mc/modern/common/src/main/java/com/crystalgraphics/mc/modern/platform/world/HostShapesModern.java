@@ -13,7 +13,7 @@ import java.util.List;
  * beside {@link LevelsModern}. A block shape's boxes come from {@code toAabbs()}, a list per call, which
  * {@code CgShape.of} pays once per shape.
  */
-public final class HostShapesModern implements CgHostShapes {
+public final class HostShapesModern implements CgHostShapes.Host {
 
     @Override
     public void box(Object hostBox, CgBoxSink out) {

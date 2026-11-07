@@ -22,12 +22,7 @@ import java.util.List;
  * {@link CgHostFormats} over legacy Forge's tags, 1.8.9 to 1.12.2: one spelling throughout. Provided by
  * {@code NetworkLegacy} on both sides.
  */
-public final class HostFormatsLegacy implements CgHostFormats {
-
-    @Override
-    public boolean present() {
-        return true;
-    }
+public final class HostFormatsLegacy implements CgHostFormats.Host {
 
     @Override
     public Object compound() {

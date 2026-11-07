@@ -3,7 +3,6 @@ package com.crystalgraphics.serialization.format;
 import com.crystalgraphics.serialization.CgCodec;
 import com.crystalgraphics.serialization.CgDynamicOps;
 
-import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.io.CgAtomicFile;
 import com.crystalgraphics.serialization.format.file.BinaryFileFormat;
 import com.crystalgraphics.serialization.format.file.JsonFileFormat;
@@ -11,7 +10,6 @@ import com.crystalgraphics.serialization.format.file.JsoncFileFormat;
 import com.crystalgraphics.serialization.format.file.TomlFileFormat;
 import com.crystalgraphics.serialization.format.file.YamlFileFormat;
 import com.crystalgraphics.serialization.format.nbt.CgHostFormats;
-import com.crystalgraphics.serialization.format.nbt.HostTagOps;
 
 import javax.annotation.Nullable;
 import java.io.IOException;
@@ -130,11 +128,6 @@ public final class CgFiles {
 
     /** The host's tags as a codec format, for a codec read or written by hand. */
     public static CgDynamicOps<Object> nbt() {
-        CgHostFormats tags = CgPlatform.get(CgHostFormats.SERVICE);
-        if (!tags.present()) {
-            throw new IllegalStateException("no host tags here: crystalgraphics:host_formats has none (a test, the"
-                    + " harness)");
-        }
-        return new HostTagOps(tags);
+        return CgHostFormats.ops();
     }
 }

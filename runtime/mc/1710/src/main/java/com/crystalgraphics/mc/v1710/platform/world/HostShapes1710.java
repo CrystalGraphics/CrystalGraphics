@@ -12,7 +12,7 @@ import java.util.List;
  * {@link Levels1710}. A block's shape is the {@code List} of boxes its collision call fills; a box here is
  * mutable, so nothing converted from one is kept.
  */
-public final class HostShapes1710 implements CgHostShapes {
+public final class HostShapes1710 implements CgHostShapes.Host {
 
     @Override
     public void box(Object hostBox, CgBoxSink out) {

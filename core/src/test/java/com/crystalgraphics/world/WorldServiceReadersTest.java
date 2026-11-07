@@ -9,6 +9,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -24,16 +25,23 @@ import static org.junit.Assert.assertTrue;
  */
 public class WorldServiceReadersTest {
 
-    private static final Pattern GET = Pattern.compile("CgPlatform\\.get\\((Cg\\w+)\\.SERVICE\\)");
+    private static final Pattern GET = Pattern.compile("CgPlatform\\.get\\((Cg\\w+)\\.(?:SERVICE|HOST)\\)");
     private static final Map<String, List<String>> READERS = new HashMap<>();
 
     static {
-        READERS.put("CgLevels", Arrays.asList("world/CgWorldQueries.java"));
-        READERS.put("CgPlayerQuery", Arrays.asList("world/CgPlayers.java"));
+        // Static owners in platform: core asks their statics, never their slot
+        READERS.put("CgLevels", Collections.emptyList());
+        READERS.put("CgPlayers", Collections.emptyList());
+        READERS.put("CgHostShapes", Collections.emptyList());
+        READERS.put("CgProcessExit", Collections.emptyList());
+        // Static owners in core: the owner alone, and a test's provider putting back what it replaced
+        READERS.put("CgMirrorHost", Arrays.asList("collision/mirror/CgMirrorHost.java"));
+        READERS.put("CgHostFormats", Arrays.asList("serialization/format/nbt/CgHostFormats.java",
+                "serialization/format/nbt/CgTestTags.java"));
+        // The older shape: one facade in core
         READERS.put("CgHostCamera", Arrays.asList("world/CgCamera.java"));
         READERS.put("CgModelSpace", Arrays.asList("world/CgEntityAttachments.java"));
         READERS.put("CgHostDebug", Arrays.asList("collision/debug/CgCollisionShow.java"));
-        READERS.put("CgHostShapes", Arrays.asList("shape/CgShape.java", "shape/bounds/CgAABB.java"));
         READERS.put("CgWorldStimulus", Arrays.asList("probe/CgWorldProbe.java", "probe/CgCollisionProbe.java",
                 "net/object/CgNetProbe.java"));
     }
@@ -52,7 +60,7 @@ public class WorldServiceReadersTest {
                 }
             }
         }
-        assertTrue("ask the facade, never the slot:\n  " + String.join("\n  ", bad), bad.isEmpty());
+        assertTrue("ask the owner or facade, never the slot:\n  " + String.join("\n  ", bad), bad.isEmpty());
     }
 
     private static Path sources() {

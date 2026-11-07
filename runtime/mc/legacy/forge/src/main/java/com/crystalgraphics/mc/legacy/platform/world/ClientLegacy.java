@@ -13,7 +13,7 @@ public final class ClientLegacy {
     /** Gives the levels and players their client halves. Client only, once, from {@code PlatformServiceLegacy}. */
     public static void install() {
         LevelsLegacy.INSTANCE.client(new WorldQueryLegacy(), new EntityQueryLegacy(), ClientLegacy::world);
-        PlayerQueryLegacy.INSTANCE.client(ClientLegacy::player);
+        PlayersLegacy.INSTANCE.client(ClientLegacy::player);
     }
 
     static WorldClient world() {

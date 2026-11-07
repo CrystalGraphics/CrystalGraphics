@@ -73,19 +73,13 @@ public final class CgModLoader {
     /** The slot a host fills. */
     public static final CgService<Host> HOST = CgService.of("crystalgraphics:mod_loader", Host.NONE);
 
-    // Kept once a real host answers: one asked before the host provides it gets NONE's answer, uncached
-    private static volatile Host host;
     private static volatile List<Mod> mods;
 
     private CgModLoader() {
     }
 
     private static Host host() {
-        Host h = host;
-        if (h != null) return h;
-        h = CgPlatform.get(HOST);
-        if (h != Host.NONE) host = h;
-        return h;
+        return CgPlatform.get(HOST);
     }
 
     /** The loader's name: {@code "forge"}, {@code "neoforge"}, {@code "fabric"}, or {@code "none"}. */

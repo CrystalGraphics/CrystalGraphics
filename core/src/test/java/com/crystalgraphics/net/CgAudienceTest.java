@@ -14,7 +14,7 @@ import com.crystalgraphics.net.protocol.CgProtocols;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.service.CgNetworkChannel;
 import com.crystalgraphics.platform.world.CgLevels;
-import com.crystalgraphics.platform.world.CgPlayerQuery;
+import com.crystalgraphics.platform.world.CgPlayers;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -92,14 +92,14 @@ public class CgAudienceTest {
         for (Body body : Arrays.asList(home, near, nether)) {
             CgNetwork.playerJoined(body.id, body.dimension, () -> body);
         }
-        CgPlatform.provide(CgLevels.SERVICE, new Levels());
-        CgPlatform.provide(CgPlayerQuery.SERVICE, new Players());
+        CgPlatform.provide(CgLevels.HOST, new Levels());
+        CgPlatform.provide(CgPlayers.HOST, new Players());
     }
 
     @After
     public void tearDown() {
-        CgPlatform.provide(CgLevels.SERVICE, null);
-        CgPlatform.provide(CgPlayerQuery.SERVICE, null);
+        CgPlatform.provide(CgLevels.HOST, null);
+        CgPlatform.provide(CgPlayers.HOST, null);
         CgNetwork.resetForTesting();
         CgProtocols.resetForTesting();
     }
@@ -134,8 +134,8 @@ public class CgAudienceTest {
 
     @Test
     public void withoutAHostOnlyIdsReachAnyone() {
-        CgPlatform.provide(CgLevels.SERVICE, null);
-        CgPlatform.provide(CgPlayerQuery.SERVICE, null);
+        CgPlatform.provide(CgLevels.HOST, null);
+        CgPlatform.provide(CgPlayers.HOST, null);
         assertEquals(ids(), reached(CgAudience.near(home, 0, 64, 0, 1000)));
         assertEquals(ids(), reached(CgAudience.dimension("minecraft:overworld")));
         assertEquals(ids(home, near, nether), reached(CgAudience.all()));

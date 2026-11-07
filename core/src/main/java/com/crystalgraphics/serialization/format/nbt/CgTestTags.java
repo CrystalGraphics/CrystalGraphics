@@ -43,7 +43,7 @@ import java.util.regex.Pattern;
  *   <li>{@code [I;...]} and {@code [L;...]} parse to lists of ints and longs; codecs never write those arrays.</li>
  * </ul>
  */
-public final class CgTestTags implements CgHostFormats, AutoCloseable {
+public final class CgTestTags implements CgHostFormats.Host, AutoCloseable {
 
     /** A compound tag: keys in the order they were put. */
     public static final class Compound extends LinkedHashMap<String, Object> {
@@ -54,27 +54,23 @@ public final class CgTestTags implements CgHostFormats, AutoCloseable {
     }
 
     @Nullable
-    private final CgHostFormats previous;
+    private final CgHostFormats.Host previous;
 
-    private CgTestTags(@Nullable CgHostFormats previous) {
+    private CgTestTags(@Nullable CgHostFormats.Host previous) {
         this.previous = previous;
     }
 
     /** Installs test tags until {@link #close}. */
     public static CgTestTags install() {
-        CgTestTags tags = new CgTestTags(CgPlatform.isProvided(SERVICE) ? CgPlatform.get(SERVICE) : null);
-        CgPlatform.provide(SERVICE, tags);
+        CgHostFormats.Host held = CgPlatform.get(CgHostFormats.HOST);
+        CgTestTags tags = new CgTestTags(held == CgHostFormats.Host.NONE ? null : held);
+        CgPlatform.provide(CgHostFormats.HOST, tags);
         return tags;
     }
 
     @Override
     public void close() {
-        CgPlatform.provide(SERVICE, previous);
-    }
-
-    @Override
-    public boolean present() {
-        return true;
+        CgPlatform.provide(CgHostFormats.HOST, previous);
     }
 
     @Override

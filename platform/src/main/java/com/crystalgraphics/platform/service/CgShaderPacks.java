@@ -57,18 +57,11 @@ public final class CgShaderPacks {
     /** The slot a host fills. */
     public static final CgService<Host> HOST = CgService.of("crystalgraphics:shader_packs", Host.NONE);
 
-    // Kept once a real host answers: one asked before the host provides it gets NONE's answer, uncached
-    private static volatile Host host;
-
     private CgShaderPacks() {
     }
 
     private static Host host() {
-        Host h = host;
-        if (h != null) return h;
-        h = CgPlatform.get(HOST);
-        if (h != Host.NONE) host = h;
-        return h;
+        return CgPlatform.get(HOST);
     }
 
     /** The shader mod the game runs: {@code "iris"}, {@code "oculus"}, {@code "angelica"}, or {@code "none"}. */

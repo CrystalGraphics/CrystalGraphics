@@ -1,7 +1,7 @@
 package com.crystalgraphics.mc.modern.platform;
 
 import com.crystalgraphics.lifecycle.CgEngineLifecycle;
-import com.crystalgraphics.mc.modern.platform.world.PlayerQueryModern;
+import com.crystalgraphics.mc.modern.platform.world.PlayersModern;
 
 
 import net.minecraft.server.MinecraftServer;
@@ -25,7 +25,7 @@ public final class ServerModern {
 
     /** The server is starting, its worlds loaded: the player query reads it from now on. */
     public static void serverStarting(MinecraftServer server) {
-        PlayerQueryModern.INSTANCE.server(server);
+        PlayersModern.INSTANCE.server(server);
         ServersModern.INSTANCE.server(server);
         CgEngineLifecycle.serverStarting(server);
     }
@@ -38,7 +38,7 @@ public final class ServerModern {
     /** The server is stopping. */
     public static void serverStopping() {
         CgEngineLifecycle.serverStopping();
-        PlayerQueryModern.INSTANCE.server(null);
+        PlayersModern.INSTANCE.server(null);
         ServersModern.INSTANCE.server(null);
     }
 }

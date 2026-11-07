@@ -40,15 +40,15 @@ public class CgMirrorConsistencyTest {
 
     @Before
     public void setUp() {
-        CgPlatform.provide(CgMirrorHost.SERVICE, host);
-        CgPlatform.provide(CgLevels.SERVICE, new Queries(new CollisionFakes.Table()));
+        CgPlatform.provide(CgMirrorHost.HOST, host);
+        CgPlatform.provide(CgLevels.HOST, new Queries(new CollisionFakes.Table()));
     }
 
     @After
     public void tearDown() {
         CgLevelMirror.clearAll();
-        CgPlatform.provide(CgMirrorHost.SERVICE, null);
-        CgPlatform.provide(CgLevels.SERVICE, null);
+        CgPlatform.provide(CgMirrorHost.HOST, null);
+        CgPlatform.provide(CgLevels.HOST, null);
     }
 
     @Test

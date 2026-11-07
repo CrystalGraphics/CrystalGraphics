@@ -27,7 +27,7 @@ import com.crystalgraphics.mc.v1710.platform.world.HostFormats1710;
 import com.crystalgraphics.mc.v1710.platform.world.HostShapes1710;
 import com.crystalgraphics.mc.v1710.platform.world.Levels1710;
 import com.crystalgraphics.mc.v1710.platform.world.MirrorHost1710;
-import com.crystalgraphics.mc.v1710.platform.world.PlayerQuery1710;
+import com.crystalgraphics.mc.v1710.platform.world.Players1710;
 import com.crystalgraphics.platform.service.CgProcessExit;
 import com.crystalgraphics.platform.world.CgHostShapes;
 import com.crystalgraphics.platform.world.CgLevels;
@@ -37,7 +37,7 @@ import com.crystalgraphics.platform.input.CgKeyBindings;
 import com.crystalgraphics.platform.service.CgHostPaint;
 import com.crystalgraphics.platform.service.CgHostWindow;
 import com.crystalgraphics.platform.service.CgServers;
-import com.crystalgraphics.platform.world.CgPlayerQuery;
+import com.crystalgraphics.platform.world.CgPlayers;
 import com.crystalgraphics.collision.mirror.CgMirrorHost;
 import com.crystalgraphics.serialization.format.nbt.CgHostFormats;
 import com.crystalgraphics.platform.service.CgGameClasses;
@@ -161,14 +161,14 @@ public final class PlatformService1710 implements CgPlatformService {
         CgPlatform.register(PlatformService1710.getInstance());
         CgPlatform.provide(CgModLoader.HOST, new ModLoader1710());
         CgPlatform.provide(CgGameClasses.HOST, new GameClasses1710());
-        CgPlatform.provide(CgLevels.SERVICE, Levels1710.INSTANCE);
-        CgPlatform.provide(CgPlayerQuery.SERVICE, PlayerQuery1710.INSTANCE);
+        CgPlatform.provide(CgLevels.HOST, Levels1710.INSTANCE);
+        CgPlatform.provide(CgPlayers.HOST, Players1710.INSTANCE);
         CgPlatform.provide(CgServers.HOST, Servers1710.INSTANCE);
-        CgPlatform.provide(CgHostShapes.SERVICE, new HostShapes1710());
-        CgPlatform.provide(CgMirrorHost.SERVICE, new MirrorHost1710());
-        CgPlatform.provide(CgHostFormats.SERVICE, new HostFormats1710());
+        CgPlatform.provide(CgHostShapes.HOST, new HostShapes1710());
+        CgPlatform.provide(CgMirrorHost.HOST, new MirrorHost1710());
+        CgPlatform.provide(CgHostFormats.HOST, new HostFormats1710());
         // FML traps a mod's own Runtime.halt.
-        CgPlatform.provide(CgProcessExit.SERVICE, status -> FMLCommonHandler.instance().exitJava(status, true));
+        CgPlatform.provide(CgProcessExit.HOST, status -> FMLCommonHandler.instance().exitJava(status, true));
         FMLCommonHandler.instance().bus().register(new Ticks1710());
 
         // The cursor, filled here so no consumer has to. It is a CgService SLOT rather than a bundle

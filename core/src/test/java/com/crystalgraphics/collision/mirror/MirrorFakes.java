@@ -182,7 +182,7 @@ final class MirrorFakes {
     }
 
     /** The host: the fake level's chunks, copies and shapes, as a Minecraft host answers. */
-    static final class Host implements CgMirrorHost {
+    static final class Host implements CgMirrorHost.Host {
         @Override public boolean mirrors(Object level) { return level instanceof Level; }
         @Override public int minSection(Object level) { return 0; }
         @Override public int sections(Object level) { return SECTIONS; }

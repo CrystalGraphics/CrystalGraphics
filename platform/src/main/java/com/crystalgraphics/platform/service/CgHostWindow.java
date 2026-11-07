@@ -41,15 +41,8 @@ public final class CgHostWindow {
     private CgHostWindow() {
     }
 
-    // Kept once a real host answers: one asked before the host provides it gets NONE's answer, uncached
-    private static volatile Host host;
-
     private static Host host() {
-        Host h = host;
-        if (h != null) return h;
-        h = CgPlatform.get(HOST);
-        if (h != Host.NONE) host = h;
-        return h;
+        return CgPlatform.get(HOST);
     }
 
     /** The window's width in device pixels. */

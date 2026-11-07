@@ -14,7 +14,7 @@ import net.minecraft.world.chunk.Chunk;
  * fence's arms), so each is resolved where it stands, on the level's thread, through the level's own block queries; a
  * moving piston changes with no write and is resolved every publish. Provided by {@code Network1710} on both sides.
  */
-public final class MirrorHost1710 implements CgMirrorHost {
+public final class MirrorHost1710 implements CgMirrorHost.Host {
 
     private static final int SEA_LEVEL = 63;
 

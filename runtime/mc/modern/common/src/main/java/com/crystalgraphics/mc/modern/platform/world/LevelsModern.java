@@ -28,7 +28,7 @@ import java.util.function.Supplier;
  * answered by the client's own queries once {@link #client} gave them. Server-safe; provided by {@code NetworkModern}
  * on both sides.
  */
-public final class LevelsModern implements CgLevels {
+public final class LevelsModern implements CgLevels.Host {
 
     public static final LevelsModern INSTANCE = new LevelsModern();
 

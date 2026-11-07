@@ -1,6 +1,5 @@
 package com.crystalgraphics.world;
 
-import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.world.CgLevels;
 import com.crystalgraphics.platform.world.CgWorldQuery;
 
@@ -8,7 +7,7 @@ import java.nio.file.Path;
 
 /**
  * The host's levels and their blocks: the {@link CgWorldQuery} of any level, the client's or a server's, what a level is
- * (its dimension, its loaded chunks, where it saves), and where it is solid under or over a point. The only reader of
+ * (its dimension, its loaded chunks, where it saves), and where it is solid under or over a point. Built on
  * {@link CgLevels}; the scans are composed once from the per-block answers, so every host gets the same, NaN wherever
  * there is no level or the chunk is not loaded. What a ray, a cast or a volume meets is {@code CgCollisionWorld}'s.
  *
@@ -38,42 +37,37 @@ public final class CgWorldQueries {
 
     /** The blocks of {@code level}: the loader's level, or an entity in it. {@code NONE} for anything else. */
     public static CgWorldQuery of(Object level) {
-        return levels().world(level);
+        return CgLevels.world(level);
     }
 
     /** The blocks of the level the client is in, following it from level to level; {@code NONE} on a server. */
     public static CgWorldQuery client() {
-        return levels().clientWorld();
+        return CgLevels.clientWorld();
     }
 
     /** The loader's level the client is in; null on a server or between levels. */
     public static Object clientLevel() {
-        return levels().clientLevel();
+        return CgLevels.clientLevel();
     }
 
     /** The dimension a level, an entity or a player is in ({@code "minecraft:overworld"}); null for anything else. */
     public static String dimension(Object handle) {
-        return levels().dimension(handle);
+        return CgLevels.dimension(handle);
     }
 
     /** The server's level for a dimension id, {@code handle} being the server or anything on it; null for none. */
     public static Object level(Object handle, String dimension) {
-        return levels().level(handle, dimension);
+        return CgLevels.level(handle, dimension);
     }
 
     /** Whether chunk ({@code chunkX}, {@code chunkZ}) of a server level is loaded. Never loads it. */
     public static boolean chunkLoaded(Object level, int chunkX, int chunkZ) {
-        return levels().chunkLoaded(level, chunkX, chunkZ);
+        return CgLevels.chunkLoaded(level, chunkX, chunkZ);
     }
 
     /** Where the world a level, entity or player belongs to saves; null without a running server. */
     public static Path saveDirectory(Object handle) {
-        return levels().saveDirectory(handle);
-    }
-
-    /** The slot, for {@link CgEntityQueries}: one reader of {@link CgLevels} in core. */
-    static CgLevels levels() {
-        return CgPlatform.get(CgLevels.SERVICE);
+        return CgLevels.saveDirectory(handle);
     }
 
     /**

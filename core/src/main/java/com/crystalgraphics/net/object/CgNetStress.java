@@ -126,7 +126,7 @@ public final class CgNetStress {
             } catch (InterruptedException ignored) {
                 Thread.currentThread().interrupt();
             }
-            CgPlatform.get(CgProcessExit.SERVICE).halt(0);
+            CgProcessExit.halt(0);
         }, "net-stress exit");
         exit.setDaemon(true);
         exit.start();

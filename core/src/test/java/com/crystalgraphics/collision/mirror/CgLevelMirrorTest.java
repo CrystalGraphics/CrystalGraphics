@@ -35,16 +35,16 @@ public class CgLevelMirrorTest {
 
     @Before
     public void setUp() {
-        CgPlatform.provide(CgMirrorHost.SERVICE, host);
-        CgPlatform.provide(CgLevels.SERVICE, new Queries(entities));
+        CgPlatform.provide(CgMirrorHost.HOST, host);
+        CgPlatform.provide(CgLevels.HOST, new Queries(entities));
         level = new Level(false);
     }
 
     @After
     public void tearDown() {
         CgLevelMirror.clearAll();
-        CgPlatform.provide(CgMirrorHost.SERVICE, null);
-        CgPlatform.provide(CgLevels.SERVICE, null);
+        CgPlatform.provide(CgMirrorHost.HOST, null);
+        CgPlatform.provide(CgLevels.HOST, null);
     }
 
     /** Fills 2 x 2 columns with a random yard. */

@@ -21,7 +21,7 @@ import com.crystalgraphics.net.CgNetwork;
 import com.crystalgraphics.net.CgPeer;
 import com.crystalgraphics.trace.CgTraceNames;
 import com.crystalgraphics.world.CgEntityQueries;
-import com.crystalgraphics.world.CgPlayers;
+import com.crystalgraphics.platform.world.CgPlayers;
 
 /**
  * A kind of networked object: its fields, who sees it, whether it persists, and what it is on a client. Declared once,

@@ -1,6 +1,5 @@
 package com.crystalgraphics.shape;
 
-import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.world.CgHostShapes;
 import com.crystalgraphics.shape.bounds.CgAABB;
 import com.crystalgraphics.shape.primitive.CgBox;
@@ -46,7 +45,6 @@ public abstract class CgShape {
     private static final Map<Object, Object> HOST_SHAPES = Collections.synchronizedMap(new WeakHashMap<>());
     /** An empty host shape's entry. */
     private static final Object NOTHING = new Object();
-    private static CgHostShapes host = CgHostShapes.NONE;
 
     /**
      * A host block shape (modern's {@code VoxelShape}), host box, or {@code List} of host boxes, as a compound of boxes
@@ -55,16 +53,14 @@ public abstract class CgShape {
      * @throws IllegalArgumentException for an object the host does not know, and anywhere with no host
      */
     public static CgShape of(Object hostShape) {
-        CgHostShapes h = host;
-        if (h == CgHostShapes.NONE) host = h = CgPlatform.get(CgHostShapes.SERVICE);
-        boolean keep = h.immutable(hostShape);
+        boolean keep = CgHostShapes.immutable(hostShape);
         Object known = keep ? HOST_SHAPES.get(hostShape) : null;
         if (known != null) return known == NOTHING ? null : (CgShape) known;
         double[] boxes = new double[6 * 8];
-        int n = h.boxes(hostShape, boxes);
+        int n = CgHostShapes.boxes(hostShape, boxes);
         if (n * 6 > boxes.length) {
             boxes = new double[n * 6];
-            h.boxes(hostShape, boxes);
+            CgHostShapes.boxes(hostShape, boxes);
         }
         CgShape shape = null;
         if (n > 0) {

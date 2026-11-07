@@ -655,7 +655,7 @@ public final class CgRenderDemo {
                 if (firstSwitch[i] > 0) CgTraceRun.dump("switch-" + kinds[i].name(), firstSwitch[i], firstSwitch[i] + 300);
             }
             // A diagnostic run: it ends itself, so nothing has to find and stop the client
-            CgPlatform.get(CgProcessExit.SERVICE).halt(0);
+            CgProcessExit.halt(0);
             return;
         }
         wanted = (current + 1) % kinds.length;

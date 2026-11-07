@@ -6,7 +6,7 @@ package com.crystalgraphics.platform.world;
  *
  * <pre>{@code
  * CgAABB box = new CgAABB();                                    // once, and reused
- * CgPlatform.get(CgHostShapes.SERVICE).box(entity, box);        // the host writes into it
+ * CgHostShapes.box(entity, box);                               // the host writes into it
  * entities.box(id, partialTick, box);                           // as CgEntityQuery does
  * }</pre>
  */

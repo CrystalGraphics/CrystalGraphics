@@ -1,6 +1,5 @@
 package com.crystalgraphics.shape.bounds;
 
-import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.world.CgBoxSink;
 import com.crystalgraphics.platform.world.CgHostShapes;
 
@@ -40,9 +39,6 @@ import com.crystalgraphics.platform.world.CgHostShapes;
  */
 public final class CgAABB implements CgAABBc, CgBoxSink {
 
-    /** Resolved once a host provides it; read again only while absent, so a host registering late is seen. */
-    private static CgHostShapes host = CgHostShapes.NONE;
-
     public double minX, minY, minZ, maxX, maxY, maxZ;
 
     /** An empty box. */
@@ -74,21 +70,16 @@ public final class CgAABB implements CgAABBc, CgBoxSink {
 
     /** A host box, or an entity's box as it is now; allocates nothing. */
     public CgAABB set(Object hostBoxOrEntity) {
-        host().box(hostBoxOrEntity, this);
+        CgHostShapes.box(hostBoxOrEntity, this);
         return this;
     }
 
     /** This box as a new host box: {@code AABB mc = box.toHost();} fails at the assignment for the wrong type. */
     @SuppressWarnings("unchecked")
     public <T> T toHost() {
-        return (T) host().toHost(minX, minY, minZ, maxX, maxY, maxZ);
+        return (T) CgHostShapes.toHost(minX, minY, minZ, maxX, maxY, maxZ);
     }
 
-    private static CgHostShapes host() {
-        CgHostShapes h = host;
-        if (h == CgHostShapes.NONE) host = h = CgPlatform.get(CgHostShapes.SERVICE);
-        return h;
-    }
 
     @Override
     public CgAABB set(double minX, double minY, double minZ, double maxX, double maxY, double maxZ) {

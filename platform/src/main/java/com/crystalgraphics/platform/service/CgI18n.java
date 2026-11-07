@@ -43,18 +43,11 @@ public final class CgI18n {
     /** The slot a host fills. */
     public static final CgService<Host> HOST = CgService.of("crystalgraphics:i18n", Host.NONE);
 
-    // Kept once a real host answers; NONE is never kept, as a call before the host provides it must not pin it
-    private static volatile Host host;
-
     private CgI18n() {
     }
 
     private static Host host() {
-        Host h = host;
-        if (h != null) return h;
-        h = CgPlatform.get(HOST);
-        if (h != Host.NONE) host = h;
-        return h;
+        return CgPlatform.get(HOST);
     }
 
     /** {@code key}'s text in the player's language; null where the host has none. */

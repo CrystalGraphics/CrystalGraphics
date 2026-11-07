@@ -33,7 +33,7 @@ MACHINE.spawn(CgAnchor.at(level, x, y, z)).start().setFloat(HEAT, 0.8f);
   into allocating.
 - **Names**: a type is `namespace:path`, the namespace the hello compares; a field, event or command is short and
   matched within its type.
-- **`core/` names no Minecraft**: the hosts answer through `CgPlayerQuery` (players, tracking) and `CgLevels`
+- **`core/` names no Minecraft**: the hosts answer through `CgPlayers` (players, tracking) and `CgLevels`
   (levels, entity objects, the world for server behaviours), in `platform.world`, read through `CgPlayers`,
   `CgWorldQueries` and `CgEntityQueries`.
 - **Which side code runs on** is `CgNetwork.side()`: the server's thread is `SERVER`, a client's every other thread.

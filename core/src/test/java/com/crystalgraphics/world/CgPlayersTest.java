@@ -1,6 +1,7 @@
 package com.crystalgraphics.world;
 
 import com.crystalgraphics.net.object.CgNetTestRig;
+import com.crystalgraphics.platform.world.CgPlayers;
 import org.junit.Test;
 
 import static org.junit.Assert.assertNull;

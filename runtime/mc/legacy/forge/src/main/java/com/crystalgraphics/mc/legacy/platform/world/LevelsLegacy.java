@@ -20,7 +20,7 @@ import java.util.function.Supplier;
  * answered by the client's own queries once {@link #client} gave them. Server-safe; provided by {@code NetworkLegacy}
  * on both sides.
  */
-public final class LevelsLegacy implements CgLevels {
+public final class LevelsLegacy implements CgLevels.Host {
 
     public static final LevelsLegacy INSTANCE = new LevelsLegacy();
 

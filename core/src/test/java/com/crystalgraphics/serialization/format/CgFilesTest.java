@@ -49,7 +49,7 @@ public class CgFilesTest {
 
     @After
     public void tearDown() {
-        CgPlatform.provide(CgHostFormats.SERVICE, null);
+        CgPlatform.provide(CgHostFormats.HOST, null);
     }
 
     private static Character goku() {
@@ -81,7 +81,7 @@ public class CgFilesTest {
 
     @Test
     public void aValueCrossesTheHostsTagsAndBack() {
-        CgPlatform.provide(CgHostFormats.SERVICE, new Tags());
+        CgPlatform.provide(CgHostFormats.HOST, new Tags());
         Object tag = CgFiles.toNbt(Character.CODEC, goku());
         assertTrue("a compound", tag instanceof Map);
         assertEquals("a boolean is a byte", (byte) 1, ((Map<?, ?>) tag).get("ki"));
@@ -98,7 +98,7 @@ public class CgFilesTest {
 
     @Test
     public void anNbtKeyIsText() {
-        CgPlatform.provide(CgHostFormats.SERVICE, new Tags());
+        CgPlatform.provide(CgHostFormats.HOST, new Tags());
         Map<Integer, Integer> byNumber = new LinkedHashMap<>();
         byNumber.put(1, 2);
         CgCodec<Map<Integer, Integer>> ints = CgCodecs.mapOf(CgCodecs.INT, CgCodecs.INT);
@@ -108,8 +108,7 @@ public class CgFilesTest {
     }
 
     /** Tags as Java values: a compound a map, a list a list, a string a string. */
-    static final class Tags implements CgHostFormats {
-        @Override public boolean present() { return true; }
+    static final class Tags implements CgHostFormats.Host {
         @Override public Object compound() { return new LinkedHashMap<String, Object>(); }
         @SuppressWarnings("unchecked")
         @Override public void put(Object compound, String key, Object value) { ((Map<String, Object>) compound).put(key, value); }

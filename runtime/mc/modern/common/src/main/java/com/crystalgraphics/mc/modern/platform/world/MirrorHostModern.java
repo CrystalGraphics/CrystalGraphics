@@ -38,7 +38,7 @@ import javax.annotation.Nullable;
  *   <li>{@link #describe} runs on a worker: it reads only the state's cached shape and its fluid's own height.</li>
  * </ul>
  */
-public final class MirrorHostModern implements CgMirrorHost {
+public final class MirrorHostModern implements CgMirrorHost.Host {
 
     /** Whether the mixin reached {@code LevelChunk}: asked at the first mirror, once the game's classes are loaded. */
     private Boolean hooked;

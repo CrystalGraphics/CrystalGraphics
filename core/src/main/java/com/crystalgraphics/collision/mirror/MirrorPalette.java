@@ -9,14 +9,14 @@ import java.util.IdentityHashMap;
  */
 final class MirrorPalette extends ShapeStore {
 
-    private final CgMirrorHost host;
+    private final CgMirrorHost.Host host;
     private final IdentityHashMap<Object, Integer> states = new IdentityHashMap<>();
     private final CgMirrorShape scratch = new CgMirrorShape();
     @Nullable private Object lastState;
     private int lastEntry;
     private View view;
 
-    MirrorPalette(CgMirrorHost host) {
+    MirrorPalette(CgMirrorHost.Host host) {
         this.host = host;
     }
 

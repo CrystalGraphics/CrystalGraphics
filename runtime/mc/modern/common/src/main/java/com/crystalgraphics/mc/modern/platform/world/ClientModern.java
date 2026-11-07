@@ -11,6 +11,6 @@ public final class ClientModern {
     /** Once, from {@code PlatformServiceModern.gl()}. */
     public static void install() {
         LevelsModern.INSTANCE.client(new WorldQueryModern(), new EntityQueryModern(), () -> Minecraft.getInstance().level);
-        PlayerQueryModern.INSTANCE.client(() -> Minecraft.getInstance().player);
+        PlayersModern.INSTANCE.client(() -> Minecraft.getInstance().player);
     }
 }

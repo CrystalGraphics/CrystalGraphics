@@ -20,7 +20,7 @@ import net.minecraft.util.math.BlockPos;
  * thread, through the level's own block queries; a moving piston changes with no write and is resolved every publish.
  * Provided by {@code NetworkLegacy} on both sides.
  */
-public final class MirrorHostLegacy implements CgMirrorHost {
+public final class MirrorHostLegacy implements CgMirrorHost.Host {
 
     private final BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
     private float[] boxes = new float[6 * 16];

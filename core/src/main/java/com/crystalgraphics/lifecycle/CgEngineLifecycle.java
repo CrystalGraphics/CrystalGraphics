@@ -22,7 +22,7 @@ import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.trace.CgTraceRun;
 import com.crystalgraphics.util.trace.CgChannels;
-import com.crystalgraphics.world.CgPlayers;
+import com.crystalgraphics.platform.world.CgPlayers;
 
 /**
  * The engine's lifecycle, and the one place a host starts and stops it: core's start on both sides, in the phases every
@@ -54,7 +54,7 @@ import com.crystalgraphics.world.CgPlayers;
  *   <li>{@link #postInit} is the engine's own: it runs at the first client graphics start or server start, both after
  *       every mod's init on every loader. Everything mounted then starts loading.</li>
  *   <li>Each phase runs once; a second call does nothing. {@link #init} before {@link #preInit} throws.</li>
- *   <li>{@link #init} reads player ids through {@code CgPlayers}: provide {@code CgPlayerQuery} before it.</li>
+ *   <li>{@link #init} reads player ids through {@code CgPlayers}: provide {@code CgPlayers.Host} before it.</li>
  *   <li>A listener hears a phase after the engine's own work in it, as Unreal broadcasts {@code OnPostEngineInit}
  *       after {@code UEngine::Init}; one added after a phase hears it from {@link #addListener}.</li>
  * </ul>

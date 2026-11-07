@@ -23,7 +23,7 @@ import com.crystalgraphics.platform.world.CgWorldStimulus;
 import com.crystalgraphics.serialization.CgCodecs;
 import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.world.CgEntityQueries;
-import com.crystalgraphics.world.CgPlayers;
+import com.crystalgraphics.platform.world.CgPlayers;
 
 /**
  * Proves, in a running game, what networked objects do across a player's death: a player's mana kept, a buff without
@@ -118,7 +118,7 @@ public final class CgNetProbe {
             } catch (InterruptedException ignored) {
                 Thread.currentThread().interrupt();
             }
-            CgPlatform.get(CgProcessExit.SERVICE).halt(0);
+            CgProcessExit.halt(0);
         }, "net probe exit");
         exit.setDaemon(true);
         exit.start();

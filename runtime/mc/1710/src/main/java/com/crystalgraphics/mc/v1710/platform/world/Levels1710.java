@@ -20,7 +20,7 @@ import java.util.function.Supplier;
  * answered by the client's own queries once {@link #client} gave them. Server-safe; provided by {@code Network1710} on
  * both sides.
  */
-public final class Levels1710 implements CgLevels {
+public final class Levels1710 implements CgLevels.Host {
 
     public static final Levels1710 INSTANCE = new Levels1710();
 

@@ -48,23 +48,11 @@ public final class CgGameClasses {
     /** The slot a host fills. */
     public static final CgService<Host> HOST = CgService.of("crystalgraphics:game_classes", Host.NONE);
 
-    // Kept once a real host answers: one asked before the host provides it gets NONE's answer, uncached
-    private static volatile Host host;
-
     private CgGameClasses() {
     }
 
     private static Host host() {
-        Host h = host;
-        if (h != null) return h;
-        h = CgPlatform.get(HOST);
-        if (h != Host.NONE) host = h;
-        return h;
-    }
-
-    /** Drops the cached host, for a test that provides the slot and clears it again. */
-    public static void forgetForTesting() {
-        host = null;
+        return CgPlatform.get(HOST);
     }
 
     /** Whether a game answers: false in the harness and in tests. */

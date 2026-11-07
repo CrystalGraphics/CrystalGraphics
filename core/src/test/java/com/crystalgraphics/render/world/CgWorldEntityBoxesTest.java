@@ -45,7 +45,7 @@ public class CgWorldEntityBoxesTest {
     @Test
     public void theLivingNearestFirstInTheCamerasBlockFrame() {
         Line line = new Line();
-        CgPlatform.provide(CgLevels.SERVICE, CgLevels.single(CgWorldQuery.NONE, line));
+        CgPlatform.provide(CgLevels.HOST, CgLevels.single(CgWorldQuery.NONE, line));
         try {
             CgWorldEntityBoxes.around(0.25, 65.5, 0.75, 0f);
             CgWorldEntityBoxes.gather();
@@ -63,7 +63,7 @@ public class CgWorldEntityBoxesTest {
             assertEquals("not placed again: nothing gathered", 0, CgWorldEntityBoxes.count());
             assertEquals(1, line.asked);
         } finally {
-            CgPlatform.provide(CgLevels.SERVICE, null);
+            CgPlatform.provide(CgLevels.HOST, null);
         }
     }
 
@@ -91,7 +91,7 @@ public class CgWorldEntityBoxesTest {
                 for (int id = many.length - 1; id >= 1; id--) visitor.accept(id);   // farthest first
             }
         };
-        CgPlatform.provide(CgLevels.SERVICE, CgLevels.single(CgWorldQuery.NONE, crowd));
+        CgPlatform.provide(CgLevels.HOST, CgLevels.single(CgWorldQuery.NONE, crowd));
         try {
             CgWorldEntityBoxes.around(0, 0, 0, 0f);
             CgWorldEntityBoxes.gather();
@@ -99,7 +99,7 @@ public class CgWorldEntityBoxesTest {
             int[] w = CgWorldEntityBoxes.words();
             for (int i = 0; i < CgWorldEntityBoxes.MAX; i++) assertEquals(i + 1, w[i * 8 + 3]);
         } finally {
-            CgPlatform.provide(CgLevels.SERVICE, null);
+            CgPlatform.provide(CgLevels.HOST, null);
         }
     }
 }

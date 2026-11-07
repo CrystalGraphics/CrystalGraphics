@@ -31,7 +31,7 @@ public class HostShapesTest {
     record HostShape(List<HostBox> boxes) {
     }
 
-    static final class FakeHost implements CgHostShapes {
+    static final class FakeHost implements CgHostShapes.Host {
         @Override
         public void box(Object hostBox, CgBoxSink out) {
             HostBox b = (HostBox) hostBox;
@@ -61,12 +61,12 @@ public class HostShapesTest {
 
     @BeforeClass
     public static void provide() {
-        CgPlatform.provide(CgHostShapes.SERVICE, new FakeHost());
+        CgPlatform.provide(CgHostShapes.HOST, new FakeHost());
     }
 
     @AfterClass
     public static void clear() {
-        CgPlatform.provide(CgHostShapes.SERVICE, null);
+        CgPlatform.provide(CgHostShapes.HOST, null);
     }
 
     @Test

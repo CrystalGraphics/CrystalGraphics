@@ -3,7 +3,7 @@ package com.crystalgraphics.collision;
 import com.crystalgraphics.platform.world.CgBoxSink;
 import com.crystalgraphics.platform.world.CgEntityQuery;
 import com.crystalgraphics.platform.world.CgLevels;
-import com.crystalgraphics.platform.world.CgPlayerQuery;
+import com.crystalgraphics.platform.world.CgPlayers;
 import com.crystalgraphics.platform.world.CgWorldQuery;
 
 import java.nio.file.Path;
@@ -28,7 +28,7 @@ public final class CollisionFakes {
     }
 
     /** Levels answering nothing: a test overrides what it fakes, {@link #world} and {@link #entities} most often. */
-    public static class Levels implements CgLevels {
+    public static class Levels implements CgLevels.Host {
         @Override public CgWorldQuery world(Object level) { return CgWorldQuery.NONE; }
         @Override public CgEntityQuery entities(Object level) { return CgEntityQuery.NONE; }
         @Override public CgWorldQuery clientWorld() { return CgWorldQuery.NONE; }
@@ -44,7 +44,7 @@ public final class CollisionFakes {
     }
 
     /** Players answering nobody: a test overrides what it fakes. */
-    public static class Players implements CgPlayerQuery {
+    public static class Players implements CgPlayers.Host {
         @Override public UUID playerId(Object entity) { return null; }
         @Override public <V> V player(UUID id) { return null; }
         @Override public <V> V player(int entityId) { return null; }

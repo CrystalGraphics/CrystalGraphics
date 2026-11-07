@@ -4559,7 +4559,6 @@ com/crystalgraphics/platform/service/CgGameClasses
   field public,static,final HOST Lcom/crystalgraphics/platform/CgService;
   method public,static bytes (Ljava/lang/String;)[B
   method public,static fileBytes (Ljava/lang/String;)[B
-  method public,static forgetForTesting ()V
   method public,static minecraftVersion ()Ljava/lang/String;
   method public,static present ()Z
   method public,static runtimeName (Ljava/lang/String;)Ljava/lang/String;
@@ -4575,7 +4574,6 @@ com/crystalgraphics/platform/service/CgGameDirectory
   access public,final
   extends java/lang/Object
   field public,static,final HOST Lcom/crystalgraphics/platform/CgService;
-  method public,static forgetForTesting ()V
   method public,static game ()Ljava/nio/file/Path;
   method public,static world ()Ljava/nio/file/Path;
 com/crystalgraphics/platform/service/CgGameDirectory$Host
@@ -4700,10 +4698,14 @@ com/crystalgraphics/platform/service/CgNetworkChannel
   method public,abstract sendToServer ([B)V
   method public,abstract setInboundHandler (Ljava/util/function/BiConsumer;)V
 com/crystalgraphics/platform/service/CgProcessExit
+  access public,final
+  extends java/lang/Object
+  field public,static,final HOST Lcom/crystalgraphics/platform/CgService;
+  method public,static halt (I)V
+com/crystalgraphics/platform/service/CgProcessExit$Host
   access public,abstract,interface
   extends java/lang/Object
-  field public,static,final DIRECT Lcom/crystalgraphics/platform/service/CgProcessExit;
-  field public,static,final SERVICE Lcom/crystalgraphics/platform/CgService;
+  field public,static,final NONE Lcom/crystalgraphics/platform/service/CgProcessExit$Host;
   method public,abstract halt (I)V
 com/crystalgraphics/platform/service/CgReloadService
   access public,abstract,interface
@@ -4889,19 +4891,43 @@ com/crystalgraphics/platform/world/CgHostDebug
   field public,static,final SERVICE Lcom/crystalgraphics/platform/CgService;
   method public,abstract hitboxes ()Z
 com/crystalgraphics/platform/world/CgHostShapes
+  access public,final
+  extends java/lang/Object
+  field public,static,final HOST Lcom/crystalgraphics/platform/CgService;
+  method public,static box (Ljava/lang/Object;Lcom/crystalgraphics/platform/world/CgBoxSink;)V
+  method public,static boxes (Ljava/lang/Object;[D)I
+  method public,static immutable (Ljava/lang/Object;)Z
+  method public,static toHost (DDDDDD)Ljava/lang/Object;
+com/crystalgraphics/platform/world/CgHostShapes$Host
   access public,abstract,interface
   extends java/lang/Object
-  field public,static,final NONE Lcom/crystalgraphics/platform/world/CgHostShapes;
-  field public,static,final SERVICE Lcom/crystalgraphics/platform/CgService;
+  field public,static,final NONE Lcom/crystalgraphics/platform/world/CgHostShapes$Host;
   method public,abstract box (Ljava/lang/Object;Lcom/crystalgraphics/platform/world/CgBoxSink;)V
   method public,abstract boxes (Ljava/lang/Object;[D)I
   method public,abstract immutable (Ljava/lang/Object;)Z
   method public,abstract toHost (DDDDDD)Ljava/lang/Object;
 com/crystalgraphics/platform/world/CgLevels
+  access public,final
+  extends java/lang/Object
+  field public,static,final HOST Lcom/crystalgraphics/platform/CgService;
+  method public,static alive (Ljava/lang/Object;)Z
+  method public,static chunkLoaded (Ljava/lang/Object;II)Z
+  method public,static clientEntities ()Lcom/crystalgraphics/platform/world/CgEntityQuery;
+  method public,static clientLevel ()Ljava/lang/Object;
+  method public,static clientWorld ()Lcom/crystalgraphics/platform/world/CgWorldQuery;
+  method public,static dimension (Ljava/lang/Object;)Ljava/lang/String;
+  method public,static dimensionId (I)Ljava/lang/String;
+  method public,static entities (Ljava/lang/Object;)Lcom/crystalgraphics/platform/world/CgEntityQuery;
+  method public,static entityId (Ljava/lang/Object;)I
+  method public,static level (Ljava/lang/Object;Ljava/lang/String;)Ljava/lang/Object;
+  method public,static position (Ljava/lang/Object;[D)Z
+  method public,static saveDirectory (Ljava/lang/Object;)Ljava/nio/file/Path;
+  method public,static single (Lcom/crystalgraphics/platform/world/CgWorldQuery;Lcom/crystalgraphics/platform/world/CgEntityQuery;)Lcom/crystalgraphics/platform/world/CgLevels$Host;
+  method public,static world (Ljava/lang/Object;)Lcom/crystalgraphics/platform/world/CgWorldQuery;
+com/crystalgraphics/platform/world/CgLevels$Host
   access public,abstract,interface
   extends java/lang/Object
-  field public,static,final NONE Lcom/crystalgraphics/platform/world/CgLevels;
-  field public,static,final SERVICE Lcom/crystalgraphics/platform/CgService;
+  field public,static,final NONE Lcom/crystalgraphics/platform/world/CgLevels$Host;
   method public,abstract alive (Ljava/lang/Object;)Z
   method public,abstract chunkLoaded (Ljava/lang/Object;II)Z
   method public,abstract clientEntities ()Lcom/crystalgraphics/platform/world/CgEntityQuery;
@@ -4914,19 +4940,28 @@ com/crystalgraphics/platform/world/CgLevels
   method public,abstract position (Ljava/lang/Object;[D)Z
   method public,abstract saveDirectory (Ljava/lang/Object;)Ljava/nio/file/Path;
   method public,abstract world (Ljava/lang/Object;)Lcom/crystalgraphics/platform/world/CgWorldQuery;
-  method public,static dimensionId (I)Ljava/lang/String;
-  method public,static single (Lcom/crystalgraphics/platform/world/CgWorldQuery;Lcom/crystalgraphics/platform/world/CgEntityQuery;)Lcom/crystalgraphics/platform/world/CgLevels;
 com/crystalgraphics/platform/world/CgModelSpace
   access public,abstract,interface
   extends java/lang/Object
   field public,static,final NONE Lcom/crystalgraphics/platform/world/CgModelSpace;
   field public,static,final SERVICE Lcom/crystalgraphics/platform/CgService;
   method public,abstract frame ([D[F)Z
-com/crystalgraphics/platform/world/CgPlayerQuery
+com/crystalgraphics/platform/world/CgPlayers
+  access public,final
+  extends java/lang/Object
+  field public,static,final HOST Lcom/crystalgraphics/platform/CgService;
+  method public,static idOf (Ljava/lang/Object;)Ljava/util/UUID;
+  method public,static isOperator (Ljava/lang/String;)Z
+  method public,static isOwner (Ljava/lang/String;)Z
+  method public,static local ()Ljava/lang/Object;
+  method public,static player (I)Ljava/lang/Object;
+  method public,static player (Ljava/util/UUID;)Ljava/lang/Object;
+  method public,static trackingChunk (Ljava/lang/Object;IILjava/util/function/Consumer;)V
+  method public,static trackingEntity (Ljava/lang/Object;Ljava/util/function/Consumer;)V
+com/crystalgraphics/platform/world/CgPlayers$Host
   access public,abstract,interface
   extends java/lang/Object
-  field public,static,final NONE Lcom/crystalgraphics/platform/world/CgPlayerQuery;
-  field public,static,final SERVICE Lcom/crystalgraphics/platform/CgService;
+  field public,static,final NONE Lcom/crystalgraphics/platform/world/CgPlayers$Host;
   method public isOperator (Ljava/lang/String;)Z
   method public isOwner (Ljava/lang/String;)Z
   method public,abstract localPlayer ()Ljava/lang/Object;

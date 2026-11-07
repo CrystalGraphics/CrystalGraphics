@@ -5,7 +5,7 @@ import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
-import com.crystalgraphics.platform.world.CgPlayerQuery;
+import com.crystalgraphics.platform.world.CgPlayers;
 
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.player.EntityPlayer;
@@ -16,17 +16,17 @@ import net.minecraft.world.WorldServer;
 import net.minecraftforge.fml.common.FMLCommonHandler;
 
 /**
- * {@link CgPlayerQuery} over Forge 1.8–1.12.2's server players and this client's own; provided by
+ * {@link CgPlayers.Host} over Forge 1.8–1.12.2's server players and this client's own; provided by
  * {@code NetworkLegacy}, the client's player from {@link #client}. The host's own entity tracker and chunk map answer,
  * so both tracking answers are exact.
  */
-public final class PlayerQueryLegacy implements CgPlayerQuery {
+public final class PlayersLegacy implements CgPlayers.Host {
 
-    public static final PlayerQueryLegacy INSTANCE = new PlayerQueryLegacy();
+    public static final PlayersLegacy INSTANCE = new PlayersLegacy();
 
     private volatile Supplier<Object> localPlayer = () -> null;
 
-    private PlayerQueryLegacy() {
+    private PlayersLegacy() {
     }
 
     /** The client's half, from client code once: its own player. */

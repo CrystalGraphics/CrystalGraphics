@@ -44,11 +44,12 @@ listener each server tick before those changes go out, and `CgEngineLifecycle.se
 `except`. All but the first two and the last ask the host's levels and players (`platform.world`), which each host
 provides beside its channel, both sides, in facts only. `CgLevels` (`LevelsModern`, `LevelsLegacy`, `Levels1710`)
 answers a level's dimension, an entity's position, network id and life, and the world and entity queries over any
-level, a server's included, for what runs on the server tick (a beam's cast). `CgPlayerQuery` (`PlayerQueryModern`,
-`PlayerQueryLegacy`, `PlayerQuery1710`) answers a player's profile id, the server's player by id, and who has a chunk
-or an entity loaded. Modern Minecraft has no public answer to the last, so `PlayerQueryModern` ports vanilla's
-tracking rule; legacy and 1.7.10 ask their entity tracker. Core reads them only through its facades
-(`CgWorldQueries`, `CgEntityQueries`, `CgPlayers`): `platform/CLAUDE.md` § *The wiring standard*.
+level, a server's included, for what runs on the server tick (a beam's cast). `CgPlayers` (`PlayersModern`,
+`PlayersLegacy`, `Players1710`) answers a player's profile id, the server's player by id, and who has a chunk
+or an entity loaded. Modern Minecraft has no public answer to the last, so `PlayersModern` ports vanilla's
+tracking rule; legacy and 1.7.10 ask their entity tracker. Both are static owners (`CgLevels.world(level)`,
+`CgPlayers.player(id)`), and core's `CgWorldQueries` and `CgEntityQueries` are built on `CgLevels`:
+`platform/CLAUDE.md` § *The wiring standard*.
 
 **Networked objects** (`net.object`: `CgNetType`, `CgNetObject`) are server-owned objects of typed fields, mirrored
 to the clients that can see them: changes coalesce to one frame a tick, a player coming into view is sent the

@@ -6,7 +6,7 @@ import java.util.function.Supplier;
 
 import com.mojang.authlib.GameProfile;
 
-import com.crystalgraphics.platform.world.CgPlayerQuery;
+import com.crystalgraphics.platform.world.CgPlayers;
 
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
@@ -21,7 +21,7 @@ import net.minecraft.world.level.ChunkPos;
 //?}
 
 /**
- * {@link CgPlayerQuery} over the server's players and this client's own, 1.13.2 to 26.3. Server-safe; provided by
+ * {@link CgPlayers.Host} over the server's players and this client's own, 1.13.2 to 26.3. Server-safe; provided by
  * {@code NetworkModern} on both sides, which gives it the server at its start; the client's player comes from
  * {@link #client}.
  *
@@ -33,15 +33,15 @@ import net.minecraft.world.level.ChunkPos;
  *       1.14 brought in; its tracking range is Forge's and unseen here, so an entity's players are its chunk's.</li>
  * </ul>
  */
-public final class PlayerQueryModern implements CgPlayerQuery {
+public final class PlayersModern implements CgPlayers.Host {
 
-    public static final PlayerQueryModern INSTANCE = new PlayerQueryModern();
+    public static final PlayersModern INSTANCE = new PlayersModern();
 
     private volatile MinecraftServer server;
     private volatile Supplier<Object> localPlayer = () -> null;
     private final double[] at = new double[3];
 
-    private PlayerQueryModern() {
+    private PlayersModern() {
     }
 
     /** The running server, at its start; null once it stopped. */

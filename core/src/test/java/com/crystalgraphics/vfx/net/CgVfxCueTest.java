@@ -10,7 +10,7 @@ import com.crystalgraphics.net.object.CgNetField;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.service.CgNetworkChannel;
 import com.crystalgraphics.platform.world.CgLevels;
-import com.crystalgraphics.platform.world.CgPlayerQuery;
+import com.crystalgraphics.platform.world.CgPlayers;
 import com.crystalgraphics.platform.world.CgWorldQuery;
 import com.crystalgraphics.vfx.CgVfx;
 import com.crystalgraphics.vfx.CgVfxAuthorityTest;
@@ -218,8 +218,8 @@ public class CgVfxCueTest {
         CONFIRMED.clear();
         WAVE_CUES.clear();
         WAVES.clear();
-        CgPlatform.provide(CgLevels.SERVICE, levels);
-        CgPlatform.provide(CgPlayerQuery.SERVICE, new Players());
+        CgPlatform.provide(CgLevels.HOST, levels);
+        CgPlatform.provide(CgPlayers.HOST, new Players());
         CgNetwork.install(new Loopback(), player -> ((Body) player).id);
         CgEngineLifecycle.serverStarting(null);
         CgVfxCueClient.install();
@@ -228,8 +228,8 @@ public class CgVfxCueTest {
     @After
     public void tearDown() {
         reset();
-        CgPlatform.provide(CgLevels.SERVICE, null);
-        CgPlatform.provide(CgPlayerQuery.SERVICE, null);
+        CgPlatform.provide(CgLevels.HOST, null);
+        CgPlatform.provide(CgPlayers.HOST, null);
     }
 
     private static void reset() {

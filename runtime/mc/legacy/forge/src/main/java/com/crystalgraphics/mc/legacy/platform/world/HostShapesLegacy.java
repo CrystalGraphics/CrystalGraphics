@@ -15,7 +15,7 @@ import java.util.List;
  * {@link CgHostShapes} over {@code AxisAlignedBB} and entities on Forge 1.8.9 to 1.12.2. Server-safe; provided beside
  * {@link LevelsLegacy}. A block's shape is the {@code List} of boxes its collision call fills.
  */
-public final class HostShapesLegacy implements CgHostShapes {
+public final class HostShapesLegacy implements CgHostShapes.Host {
 
     @Override
     public void box(Object hostBox, CgBoxSink out) {

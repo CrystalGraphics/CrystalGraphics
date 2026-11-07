@@ -7,7 +7,7 @@ import java.util.UUID;
 import javax.annotation.Nullable;
 
 import com.crystalgraphics.world.CgEntityQueries;
-import com.crystalgraphics.world.CgPlayers;
+import com.crystalgraphics.platform.world.CgPlayers;
 import com.crystalgraphics.world.CgWorldQueries;
 
 /**

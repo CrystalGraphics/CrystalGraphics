@@ -25,12 +25,7 @@ import net.minecraft.nbt.NBTTagString;
  * {@link CgHostFormats} over 1.7.10's tags, whose readers are still SRG names. Provided by {@code Network1710} on
  * both sides.
  */
-public final class HostFormats1710 implements CgHostFormats {
-
-    @Override
-    public boolean present() {
-        return true;
-    }
+public final class HostFormats1710 implements CgHostFormats.Host {
 
     @Override
     public Object compound() {

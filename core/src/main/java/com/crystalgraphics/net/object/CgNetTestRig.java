@@ -25,7 +25,7 @@ import com.crystalgraphics.platform.service.CgNetworkChannel;
 import com.crystalgraphics.platform.world.CgBoxSink;
 import com.crystalgraphics.platform.world.CgEntityQuery;
 import com.crystalgraphics.platform.world.CgLevels;
-import com.crystalgraphics.platform.world.CgPlayerQuery;
+import com.crystalgraphics.platform.world.CgPlayers;
 import com.crystalgraphics.platform.world.CgWorldQuery;
 
 /**
@@ -108,8 +108,8 @@ public final class CgNetTestRig implements AutoCloseable {
         CgNetTestRig rig = new CgNetTestRig();
         CgNetwork.resetForTesting();
         CgProtocols.resetForTesting();
-        CgPlatform.provide(CgLevels.SERVICE, rig.levels);
-        CgPlatform.provide(CgPlayerQuery.SERVICE, rig.new Players());
+        CgPlatform.provide(CgLevels.HOST, rig.levels);
+        CgPlatform.provide(CgPlayers.HOST, rig.new Players());
         CgNetwork.install(rig.new Channel(), player -> ((Client) player).id);
         CgEngineLifecycle.serverStarting(null);
         for (int i = 0; i < clients; i++) rig.clients.add(rig.new Client(i));
@@ -228,8 +228,8 @@ public final class CgNetTestRig implements AutoCloseable {
         CgNetObjects.local = null;
         CgNetwork.resetForTesting();
         CgProtocols.resetForTesting();
-        CgPlatform.provide(CgLevels.SERVICE, null);
-        CgPlatform.provide(CgPlayerQuery.SERVICE, null);
+        CgPlatform.provide(CgLevels.HOST, null);
+        CgPlatform.provide(CgPlayers.HOST, null);
         CgPlatform.provide(CgNetworkChannel.SERVICE, null);
     }
 
@@ -418,7 +418,7 @@ public final class CgNetTestRig implements AutoCloseable {
         }
     }
 
-    private final class Players implements CgPlayerQuery {
+    private final class Players implements CgPlayers.Host {
         private final double[] at = new double[3];
 
         @Override
@@ -469,7 +469,7 @@ public final class CgNetTestRig implements AutoCloseable {
     }
 
     /** A rig level is its dimension's id: no blocks, and entities found by id. */
-    private final class Levels implements CgLevels {
+    private final class Levels implements CgLevels.Host {
         CgWorldQuery blocks = CgWorldQuery.NONE;
         CgEntityQuery entities = CgEntityQuery.NONE;
         final CgEntityQuery client = new LevelEntities(DIMENSION);

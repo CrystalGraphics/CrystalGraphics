@@ -31,7 +31,7 @@ import com.crystalgraphics.mc.modern.platform.world.HostShapesModern;
 import com.crystalgraphics.mc.modern.platform.world.HostVolumeModern;
 import com.crystalgraphics.mc.modern.platform.world.LevelsModern;
 import com.crystalgraphics.mc.modern.platform.world.MirrorHostModern;
-import com.crystalgraphics.mc.modern.platform.world.PlayerQueryModern;
+import com.crystalgraphics.mc.modern.platform.world.PlayersModern;
 
 import com.crystalgraphics.mc.modern.platform.world.WorldStimulusModern;
 import com.crystalgraphics.platform.CgPlatform;
@@ -56,7 +56,7 @@ import com.crystalgraphics.platform.world.CgHostCamera;
 import com.crystalgraphics.platform.world.CgHostDebug;
 import com.crystalgraphics.platform.world.CgHostShapes;
 import com.crystalgraphics.platform.world.CgLevels;
-import com.crystalgraphics.platform.world.CgPlayerQuery;
+import com.crystalgraphics.platform.world.CgPlayers;
 import com.crystalgraphics.platform.service.CgGameThreads;
 import com.crystalgraphics.platform.input.CgInputStage;
 import com.crystalgraphics.platform.input.CgKeyBindings;
@@ -127,12 +127,12 @@ public final class PlatformServiceModern implements CgPlatformService {
         CgPlatform.register(getInstance());
         CgPlatform.provide(CgModLoader.HOST, loader);
         CgPlatform.provide(CgGameClasses.HOST, new GameClassesModern());
-        CgPlatform.provide(CgLevels.SERVICE, LevelsModern.INSTANCE);
-        CgPlatform.provide(CgPlayerQuery.SERVICE, PlayerQueryModern.INSTANCE);
+        CgPlatform.provide(CgLevels.HOST, LevelsModern.INSTANCE);
+        CgPlatform.provide(CgPlayers.HOST, PlayersModern.INSTANCE);
         CgPlatform.provide(CgServers.HOST, ServersModern.INSTANCE);
-        CgPlatform.provide(CgHostShapes.SERVICE, new HostShapesModern());
-        CgPlatform.provide(CgMirrorHost.SERVICE, new MirrorHostModern());
-        CgPlatform.provide(CgHostFormats.SERVICE, new HostFormatsModern());
+        CgPlatform.provide(CgHostShapes.HOST, new HostShapesModern());
+        CgPlatform.provide(CgMirrorHost.HOST, new MirrorHostModern());
+        CgPlatform.provide(CgHostFormats.HOST, new HostFormatsModern());
     }
 
     /**
