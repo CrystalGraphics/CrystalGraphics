@@ -114,6 +114,15 @@ public interface CgGlStateProvider {
     }
 
     /**
+     * Whether the host keeps a cache of each unit's texture binding that skips a bind it believes made (Blaze3D's
+     * {@code GlStateManager}, Angelica's): a GL device's section, which binds behind {@code CgGL}, then reads the host's
+     * units as it opens so it can set them back. A host with none rebinds before it samples. {@link #isFree()} by default.
+     */
+    default boolean hostCachesTextures() {
+        return isFree();
+    }
+
+    /**
      * Whether a read costs no driver round trip -- a host cache answers every one.
      *
      * <p>A nested scope then re-reads instead of trusting the shadow, which is free and catches a host

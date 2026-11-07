@@ -51,6 +51,7 @@ import com.crystalgraphics.render.graph.CgBufferDesc;
 import com.crystalgraphics.render.graph.CgBufferUsage;
 import com.crystalgraphics.render.graph.CgComputePass;
 import com.crystalgraphics.render.graph.CgGraphBuffer;
+import com.crystalgraphics.render.graph.CgExecutor;
 import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.render.graph.CgLoad;
 import com.crystalgraphics.render.graph.CgRasterPass;
@@ -707,11 +708,12 @@ public final class CgWorldRenderer {
      * each in the multi-draw form a joined run binds, the half-size passes where {@code halfResolution}, the skinned
      * vertex factory's forms where {@code skinned} (the precache key's vertex factory, as Unreal's), with the keywords
      * enabled now. Only the variants those settings draw: a glow folded into its colour ({@code sceneFold}) where
-     * glows merge. {@link CgPipelineList}'s
+     * glows merge, and a transparent draw's graded layer written beside its colour where a device draws. {@link CgPipelineList}'s
      * precacher: a caller requests its materials through {@link CgPipelinePrecache}.
      */
     boolean precache(CgMaterial material, boolean halfResolution, boolean skinned, CgPipelineList.Settings settings) {
         boolean ready = true;
+        boolean layersOnDevice = CgExecutor.drawsOnDevice();
         for (CgMaterial link = material; link != null; link = link.getNextPass()) {
             ready &= builtAs(skinned, link.pipeline(CgInstanceKind.OBJECT));
             if (link.hasDepthPass()) ready &= builtAs(skinned, link.pipeline(CgRenderPassVariant.DEPTH, CgInstanceKind.OBJECT));
@@ -738,8 +740,14 @@ public final class CgWorldRenderer {
             if (forward != null && link.getRenderQueue() >= CgRenderQueue.TRANSPARENT_THRESHOLD) {
                 // A graded draw's layer: its Forward pass, folded or with its glow, under the layer's blend
                 ready &= builtAs(skinned, gradeLayerPass.layered(forward));
+                // And the transparent pass writing that layer itself, where a device draws it (T12 L3)
+                if (layersOnDevice) ready &= builtAs(skinned, forward.as(CgPipelineForm.LAYER));
                 if (link.hasEmissivePass()) {
                     if (settings.mergeEmission()) ready &= builtAs(skinned, gradeLayerPass.layered(forward.as(CgPipelineForm.FOLD)));
+                    if (settings.mergeEmission() && layersOnDevice) {
+                        CgPipeline folded = forward.as(CgPipelineForm.FOLD);
+                        ready &= builtAs(skinned, folded == null ? null : folded.as(CgPipelineForm.LAYER));
+                    }
                     ready &= builtAs(skinned, gradeLayerPass.layered(link.pipeline(CgRenderPassVariant.EMISSIVE, CgInstanceKind.OBJECT)));
                 }
             }
@@ -1672,6 +1680,8 @@ public final class CgWorldRenderer {
                 if (scene) emissivePass.recordSceneGlows(stage, recording, view);
             }
             if (which == TRANSPARENT) beforeTranslucency(stage);
+            // The graded layers made, and the one the transparent passes write beside the scene cleared (T12 L3)
+            if (scene) gradeLayerPass.prepareLayers(stage, recording, view, constants);
             if (drawn > 0) {
                 try (CgTrace.Zone z = CgTrace.zone(CgChannels.WORLD, REC_CULL)) {
                     cullSets(stage, recording, view, CULL_PASSES);

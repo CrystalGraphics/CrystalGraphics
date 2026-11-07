@@ -455,6 +455,14 @@ public final class CgExecutor {
         while (BY_DEPTH.size() < depths) BY_DEPTH.add(new CgExecutor(BY_DEPTH.size()));
     }
 
+    /**
+     * Whether an execution starting now draws through {@code CgRHI}, a device's: what a recorder choosing a form only a
+     * device draws (a second attachment's own blend) asks before it records.
+     */
+    public static boolean drawsOnDevice() {
+        return CgGLImports.installed() && CgGlslCompiler.installed();
+    }
+
     /** The host's targets are read again at their next composed bind: at a window resize, which may remake them. */
     public static void forgetHostTargets() {
         COMPOSED.forgetHost();
@@ -494,7 +502,7 @@ public final class CgExecutor {
     private void run(CgFrame frame) {
         boolean again = frame.executions++ > 0;
         kernelsSeen |= frame.kernels;
-        device = CgGLImports.installed() && CgGlslCompiler.installed();
+        device = drawsOnDevice();
         CgBoundResources.recording = DEVICE_SETS || device;
         if (device != onDevice) {
             onDevice = device;
@@ -2349,7 +2357,9 @@ public final class CgExecutor {
     }
 
     private static final int READ_HOST = CgTrace.name("graph.readHost"),
-            DEVICE_PREPARE = CgTrace.name("graph.device.prepare"), DEVICE_PASS = CgTrace.name("graph.device.pass");
+            DEVICE_PREPARE = CgTrace.name("graph.device.prepare"), DEVICE_PASS = CgTrace.name("graph.device.pass"),
+            DEVICE_SECTION = CgTrace.name("graph.device.section"), DEVICE_OPEN = CgTrace.name("graph.device.open"),
+            DEVICE_BATCHES = CgTrace.name("graph.device.batches"), DEVICE_END = CgTrace.name("graph.device.end");
 
     private void importHost() {
         int host = startFramebuffer, width = startViewport.get(2), height = startViewport.get(3);
@@ -2554,14 +2564,18 @@ public final class CgExecutor {
         CgRenderState passState = pass.state != null ? pass.state : CgRenderState.DEFAULT;
         CgTrace.zoneDone(CgChannels.GL, DEVICE_PREPARE, prepared);
         long passed = CgTrace.stamp(CgChannels.GL);
+        long t = passed;
         CgDeviceSection.begin();
+        CgTrace.zoneDone(CgChannels.GL, DEVICE_SECTION, t);
         stating = true;
         CgRenderPass rp = null;
         try {
             CgRHI rhi = CgRHI.get();
             devicePassDesc = new CgPassDesc("graph", deviceColors, depth, w, h);
             devicePassCurrent = current;
+            t = CgTrace.stamp(CgChannels.GL);
             rp = open(rhi, devicePassDesc);
+            CgTrace.zoneDone(CgChannels.GL, DEVICE_OPEN, t);
             if (clearColor && damage != null) {
                 for (int i = 0; i < deviceColors.size(); i++) {
                     rp.clearColor(i, load.r(), load.g(), load.b(), load.a(), damage[0], damage[1], damage[2], damage[3]);
@@ -2571,11 +2585,17 @@ public final class CgExecutor {
                 rp.clearDepthStencil(clearDepth, (float) load.depth(), clearStencil, load.stencil(),
                         damage[0], damage[1], damage[2], damage[3]);
             }
-            if (packed.count > 0) deviceBatches(frame, pass, packed, damage, rhi, passState, depthFormat, samples, w, h);
+            if (packed.count > 0) {
+                t = CgTrace.stamp(CgChannels.GL);
+                deviceBatches(frame, pass, packed, damage, rhi, passState, depthFormat, samples, w, h);
+                CgTrace.zoneDone(CgChannels.GL, DEVICE_BATCHES, t);
+            }
             rp = null;
             CgRenderPass ending = devicePass;
             devicePass = null;
+            t = CgTrace.stamp(CgChannels.GL);
             ending.end();
+            CgTrace.zoneDone(CgChannels.GL, DEVICE_END, t);
         } finally {
             // Ended on a throw too, or the section's end throws over it for the open pass
             if (devicePass != null) {
@@ -2586,7 +2606,9 @@ public final class CgExecutor {
             }
             stating = false;
             depthInPlace = false;
+            long ended = CgTrace.stamp(CgChannels.GL);
             CgDeviceSection.end();
+            CgTrace.zoneDone(CgChannels.GL, DEVICE_SECTION, ended);
             CgTrace.zoneDone(CgChannels.GL, DEVICE_PASS, passed);
             if (pass.targetCopy() != null) pass.targetCopy().release(POOL);
         }
@@ -2646,11 +2668,13 @@ public final class CgExecutor {
         boolean objectsBound = false;
         CgBindingPoints.Binding[] standIn = this.standIn;
         Arrays.fill(standIn, null);
+        Arrays.fill(setLayout, null);
         if (damage == null) rp.setScissor(0, 0, w, h);
         else rp.setScissor(damage[0], damage[1], damage[2], damage[3]);
         for (int b = 0; b < packed.count; b++) {
             if (b > 0 && (packed.copyBefore[b] & (CgTargetCopy.COLOR | CgTargetCopy.DEPTH)) != 0) {
                 rp = copyMidPass(rhi, pass, packed, b);
+                Arrays.fill(setLayout, null);
                 boundScissor = CgRasterPass.INHERIT;
                 if (damage == null) rp.setScissor(0, 0, w, h);
                 else rp.setScissor(damage[0], damage[1], damage[2], damage[3]);
@@ -2664,6 +2688,10 @@ public final class CgExecutor {
             } else {
                 end = packed.objects[b] == null && packed.buffers[b * CgDrawChunk.BUFFERS] == null && multiDraw
                         && b + 1 < packed.count && joinable(packed, b, b + 1) ? joinRun(packed, b) : b;
+                if (multiDraw && end + 1 < packed.count && CgTrace.isEnabled(CgChannels.GL)
+                        && breaksOnBinding(packed, b, end + 1)) {
+                    CgTrace.add(CgChannels.GL, BINDING_BREAKS, 1);
+                }
             }
             if (packed.scissor[b] != boundScissor) {
                 boundScissor = packed.scissor[b];
@@ -2676,11 +2704,12 @@ public final class CgExecutor {
                     rp.setScissor(scissorRect[0], scissorRect[1], scissorRect[2], scissorRect[3]);
                 }
             }
+            long t = CgTrace.stamp(CgChannels.GL_DETAIL);
             if (packed.pipeline[b] != boundPipeline) {
                 boundPipeline = packed.pipeline[b];
                 pipeline = CgPipeline.byId(boundPipeline);
                 linked = pipeline.program();
-                layout = linked == null ? null : CgDeviceStates.layout(rhi, linked.explicit(pipeline.toString()));
+                layout = linked == null ? null : deviceLayout(rhi, boundPipeline, pipeline, linked);
             }
             CgMesh mesh = mesh(packed, b);
             CgGraphicsPipeline device = linked == null ? null
@@ -2699,6 +2728,8 @@ public final class CgExecutor {
             drawCache.pipeline(rp, device);
             CgStencilState stencil = pipeline.state().getStencil();
             if (stencil != null && stencil.enabled()) drawCache.stencilReference(rp, stencil.ref());
+            CgTrace.zoneDone(CgChannels.GL_DETAIL, BATCH_PIPELINE, t);
+            t = CgTrace.stamp(CgChannels.GL_DETAIL);
             int binding = packed.binding[b];
             for (int i = 0; i < table.buffers(binding); i++) table.buffer(binding, i).noteBound();
             int first = b * CgDrawChunk.BUFFERS;
@@ -2724,10 +2755,27 @@ public final class CgExecutor {
                     drawCache.set(rp, set, rhi.bindlessSet());
                     continue;
                 }
-                if (layout.sets().get(set).slots().isEmpty()) continue;
-                drawCache.set(rp, set, deviceSets.set(rhi, table, set == CgBindingModel.VIEW ? packed.constants : binding,
-                        layout, set, null));
+                CgBindingLayout bl = layout.sets().get(set);
+                if (bl.slots().isEmpty()) continue;
+                int snapshot = set == CgBindingModel.VIEW ? packed.constants : binding;
+                int version = CgBoundResources.version(set);
+                if (set < setLayout.length && setLayout[set] == bl && setSnapshot[set] == snapshot
+                        && setVersion[set] == version) {
+                    CgTrace.add(CgChannels.GL, SETS_KEPT, 1);
+                    drawCache.set(rp, set, setMade[set]);
+                    continue;
+                }
+                CgBindingSet made = deviceSets.set(rhi, table, snapshot, layout, set, null);
+                if (set < setLayout.length) {
+                    setLayout[set] = bl;
+                    setSnapshot[set] = snapshot;
+                    setVersion[set] = version;
+                    setMade[set] = made;
+                }
+                drawCache.set(rp, set, made);
             }
+            CgTrace.zoneDone(CgChannels.GL_DETAIL, BATCH_BINDINGS, t);
+            t = CgTrace.stamp(CgChannels.GL_DETAIL);
             CgGLImports imports = CgGLImports.get();
             if (end > b || command >= 0 && packed.eachFrom[b] >= 0 && eachJoins(packed, b)) {
                 if (command >= 0) {
@@ -2737,6 +2785,7 @@ public final class CgExecutor {
                 } else {
                     store.drawJoinedOn(rp, drawCache);
                 }
+                CgTrace.zoneDone(CgChannels.GL_DETAIL, BATCH_DRAW, t);
                 b = end;
                 continue;
             }
@@ -2747,12 +2796,48 @@ public final class CgExecutor {
                     store.drawIndirectOn(rp, drawCache, mesh, packed.submesh[b], imports.buffer(name),
                             imports.bufferOffset(name) + commands.offset(command + k));
                 }
+                CgTrace.zoneDone(CgChannels.GL_DETAIL, BATCH_DRAW, t);
                 continue;
             }
             store.drawOn(rp, drawCache, mesh, packed.instances[b], packed.first[b], packed.submesh[b], packed.rangeFirst[b],
                     packed.rangeCount[b]);
+            CgTrace.zoneDone(CgChannels.GL_DETAIL, BATCH_DRAW, t);
         }
         for (CgBindingPoints.Binding at : standIn) if (at != null) bindEngineBuffer(at);
+    }
+
+    /**
+     * Each set index's last set this pass and what made it, as Unreal's pending state keeps its descriptors until a binding
+     * is dirty: a batch of the same layout, snapshot and {@link CgBoundResources} version binds it again unwritten. For one
+     * pass: between passes a buffer may be made again under its name.
+     */
+    private final CgBindingLayout[] setLayout = new CgBindingLayout[8];
+    private final int[] setSnapshot = new int[8], setVersion = new int[8];
+    private final CgBindingSet[] setMade = new CgBindingSet[8];
+    private static final int SETS_KEPT = CgTrace.name("bindings.sets-kept");
+
+    /** Each pipeline's device layout by id, made on its first batch; again where its program was linked again. */
+    private CgPipelineLayout[] deviceLayouts = new CgPipelineLayout[64];
+    private CgShader[] deviceLayoutsOf = new CgShader[64];
+    @Nullable
+    private CgRHI deviceLayoutsOn;
+
+    private CgPipelineLayout deviceLayout(CgRHI rhi, int id, CgPipeline pipeline, CgShader linked) {
+        if (deviceLayoutsOn != rhi) {
+            Arrays.fill(deviceLayouts, null);
+            Arrays.fill(deviceLayoutsOf, null);
+            deviceLayoutsOn = rhi;
+        }
+        if (id >= deviceLayouts.length) {
+            int n = Integer.highestOneBit(id) << 1;
+            deviceLayouts = Arrays.copyOf(deviceLayouts, n);
+            deviceLayoutsOf = Arrays.copyOf(deviceLayoutsOf, n);
+        }
+        if (deviceLayoutsOf[id] != linked) {
+            deviceLayouts[id] = CgDeviceStates.layout(rhi, linked.explicit(pipeline.toString()));
+            deviceLayoutsOf[id] = linked;
+        }
+        return deviceLayouts[id];
     }
 
     /** Binds a GPU buffer of records where an engine buffer's macros read the frame's own. */

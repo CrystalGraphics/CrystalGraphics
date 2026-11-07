@@ -233,15 +233,15 @@ public final class CgPipeline {
     }
 
     /**
-     * The colour attachments its program writes, a bit each: slot 0 always, slot 1 for {@link CgPipelineForm#VOLUME}
-     * and {@link CgPipelineForm#NORMALS}, and an MRT output's {@code : RTn} slots. A pass drawing into more than one masks every other slot off for it, so an
+     * The colour attachments its program writes, a bit each: slot 0 always, slot 1 for {@link CgPipelineForm#VOLUME},
+     * {@link CgPipelineForm#NORMALS} and {@link CgPipelineForm#LAYER}, and an MRT output's {@code : RTn} slots. A pass drawing into more than one masks every other slot off for it, so an
      * unwritten output never lands. Render thread.
      */
     public int slotWrites() {
         int revision = shader.getRevisionNumber();
         if (slotsRevision == revision) return slots;
         int bits = 1;
-        if (has(CgPipelineForm.VOLUME) || has(CgPipelineForm.NORMALS)) bits |= 2;
+        if (has(CgPipelineForm.VOLUME) || has(CgPipelineForm.NORMALS) || has(CgPipelineForm.LAYER)) bits |= 2;
         CgParsedShader parsed = shader.ensureParsed();
         CgParsedPass own = ownPass(parsed);
         if (own != null && own.fragOutput().isMrt()) {
@@ -538,7 +538,8 @@ public final class CgPipeline {
         List<CgGraphicsPipelineDesc.ColorTarget> targets = new ArrayList<>(colors.size());
         for (int i = 0; i < colors.size(); i++) {
             int mask = (writes & 1 << i) == 0 ? 0 : CgDeviceStates.writeMask(s.getColorMasks(), i);
-            targets.add(new CgGraphicsPipelineDesc.ColorTarget(colors.get(i), blend, mask));
+            CgGraphicsPipelineDesc.Blend own = i == 1 && s.getSecondBlend() != null ? CgDeviceStates.blend(s.getSecondBlend()) : blend;
+            targets.add(new CgGraphicsPipelineDesc.ColorTarget(colors.get(i), own, mask));
         }
         CgGraphicsPipelineDesc desc = new CgGraphicsPipelineDesc(label, CgDeviceStates.layout(rhi, linked.explicit(label)),
                 linked.deviceModule(rhi, CgShaderModule.Stage.VERTEX, glDepth, label),

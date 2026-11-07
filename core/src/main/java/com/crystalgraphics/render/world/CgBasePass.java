@@ -52,6 +52,10 @@ final class CgBasePass {
         if (!depthOnlyPass) world.mediated(pass);
         boolean normals = world.normalsInto != null && state == CgWorldRenderer.OPAQUE_STATE && !depthOnlyPass;
         if (normals) pass.attachmentIfTaken(world.normalsInto);
+        // The graded layer beside the scene: its draws write it too, as their second output (T12 L3)
+        CgGradeLayerPass layers = world.gradeLayerPass;
+        boolean layered = layers.outputSlot >= 0 && state == CgWorldRenderer.TRANSPARENT_STATE && !depthOnlyPass;
+        if (layered) pass.attachmentIfTaken(layers.gradeTargets[layers.outputSlot]);
         CgChunkBuilder chunks = recording.chunks().begin();
         for (int i = 0; i < draws.count; i++) {
             if (draws.phase[i] == CgWorldDraws.SKIP || world.halfSize(i)) continue;
@@ -62,10 +66,11 @@ final class CgBasePass {
             boolean glows = sceneGlows && draws.emissions[i] > 0f && draws.queues[i] < CgRenderQueue.OVERLAY_THRESHOLD;
             for (CgMaterial link = draws.materials[i]; link != null; link = depthOnlyPass ? null : link.getNextPass()) {
                 CgPipeline pipeline = depthOnlyPass ? commands.depthPipeline(link) : link.pipeline(CgInstanceKind.OBJECT);
+                boolean intoLayer = layered && layers.viaOutput[i];
                 if (glows && link.hasEmissivePass()) {
                     CgPipeline folded = pipeline != null && world.mergeEmission ? pipeline.as(CgPipelineForm.FOLD) : null;
                     if (folded != null) {
-                        commands.passDraw(chunks, folded, link, recording, i);
+                        commands.passDraw(chunks, intoLayer ? folded.as(CgPipelineForm.LAYER) : folded, link, recording, i);
                         continue;
                     }
                     // Its glow follows its colour: SORTED is stable, so a draw of the same key after it covers both.
@@ -79,6 +84,7 @@ final class CgBasePass {
                     CgPipeline normalled = pipeline.as(CgPipelineForm.NORMALS);
                     if (normalled != null) pipeline = normalled;
                 }
+                if (intoLayer) pipeline = pipeline.as(CgPipelineForm.LAYER);
                 commands.passDraw(chunks, pipeline, link, recording, i);
             }
         }

@@ -34,5 +34,13 @@ public interface CgGpuTexture extends CgRHIResource {
 
     Desc desc();
 
+    /**
+     * The layout a set written now records {@code view} sampled in, as the device names it: two sets of the same
+     * texture in different layouts are different sets. 0 on a device without layouts.
+     */
+    default int sampledLayout(CgTextureView view) {
+        return 0;
+    }
+
     @Override default String label() { return desc().label(); }
 }

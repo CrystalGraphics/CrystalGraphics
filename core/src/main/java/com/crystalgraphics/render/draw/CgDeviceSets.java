@@ -2,6 +2,7 @@ package com.crystalgraphics.render.draw;
 
 import com.crystalgraphics.api.texture.CgSampler;
 import com.crystalgraphics.api.texture.CgTexture;
+import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.gl.texture.CgFallbackTextures;
 import com.crystalgraphics.platform.gl.CgGLImports;
 import com.crystalgraphics.platform.rhi.CgRHI;
@@ -19,6 +20,7 @@ import com.crystalgraphics.util.trace.CgChannels;
 import javax.annotation.Nullable;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
@@ -40,16 +42,21 @@ import java.util.Map;
  *       {@code bindings.slots-defaulted}: a draw that reads one draws wrongly, so a scene asserts none.</li>
  *   <li>A set holding a ring block is that frame's: the block's place moves each frame. A material's own block is a
  *       {@link CgBlockVersion}, so its set lasts.</li>
- *   <li>Render thread; the sets it made live until {@link #release}.</li>
+ *   <li>A set no call has asked for in {@link #KEPT_FRAMES} frames is released (the device keeps it until its frames
+ *       retire): a frame's own sets go with it, as Unreal resets a command buffer's pools.</li>
+ *   <li>Render thread.</li>
  * </ul>
  */
 public final class CgDeviceSets {
 
     private static final int MADE = CgTrace.name("bindings.sets-made"), REUSED = CgTrace.name("bindings.sets-reused"),
-            DEFAULTED = CgTrace.name("bindings.slots-defaulted");
+            DEFAULTED = CgTrace.name("bindings.slots-defaulted"), RELEASED = CgTrace.name("bindings.sets-released");
     private static final int DEFAULT_BYTES = 4096;
+    /** Frames a set lasts unasked. */
+    static final int KEPT_FRAMES = 16;
 
-    private final Map<Key, CgBindingSet> sets = new HashMap<>();
+    private final Map<Key, Entry> sets = new HashMap<>();
+    private long swept = -1;
     private final Key probe = new Key();
     private final CgBindings contents = new CgBindings();
     @Nullable
@@ -71,21 +78,36 @@ public final class CgDeviceSets {
             release();
             device = rhi;
         }
+        long frame = CgFrameRing.frame();
+        if (frame != swept) sweep(frame);
         CgBindingLayout bl = layout.sets().get(set);
         contents.clear();
         fill(rhi, table, id, set, bl, extras);
         probe.of(bl, contents);
-        CgBindingSet found = sets.get(probe);
+        Entry found = sets.get(probe);
         if (found != null) {
+            found.asked = frame;
             reused++;
             CgTrace.add(CgChannels.GL, REUSED, 1);
-            return found;
+            return found.set;
         }
         CgBindingSet made = rhi.createBindingSet("set " + set, bl, contents);
-        sets.put(probe.copy(), made);
+        sets.put(probe.copy(), new Entry(made, frame));
         this.made++;
         CgTrace.add(CgChannels.GL, MADE, 1);
         return made;
+    }
+
+    /** Releases the sets no call asked for in {@link #KEPT_FRAMES} frames; once a frame. */
+    private void sweep(long frame) {
+        swept = frame;
+        for (Iterator<Entry> it = sets.values().iterator(); it.hasNext(); ) {
+            Entry e = it.next();
+            if (frame - e.asked <= KEPT_FRAMES) continue;
+            device.release(e.set);
+            it.remove();
+            CgTrace.add(CgChannels.GL, RELEASED, 1);
+        }
     }
 
     /**
@@ -119,7 +141,7 @@ public final class CgDeviceSets {
     /** Releases every set it made and its default buffer; the next {@link #set} starts again. */
     public void release() {
         if (device != null) {
-            for (CgBindingSet s : sets.values()) device.release(s);
+            for (Entry e : sets.values()) device.release(e.set);
             if (defaultBuffer != null) device.release(defaultBuffer);
         }
         sets.clear();
@@ -248,7 +270,17 @@ public final class CgDeviceSets {
         }
     }
 
-    /** A set's layout and contents by identity and number: what makes two sets the same set. */
+    private static final class Entry {
+        final CgBindingSet set;
+        long asked;
+
+        Entry(CgBindingSet set, long asked) {
+            this.set = set;
+            this.asked = asked;
+        }
+    }
+
+    /** A set's layout and contents by identity and number, each image's sampled layout too: what makes two sets the same set. */
     private static final class Key {
         CgBindingLayout layout;
         Object[] refs = new Object[16];
@@ -259,7 +291,7 @@ public final class CgDeviceSets {
             this.layout = layout;
             count = c.count();
             if (refs.length < count * 2) refs = new Object[count * 2];
-            if (nums.length < count * 3) nums = new long[count * 3];
+            if (nums.length < count * 4) nums = new long[count * 4];
             int h = System.identityHashCode(layout);
             for (int i = 0; i < count; i++) {
                 CgTextureView view = c.view(i);
@@ -267,12 +299,13 @@ public final class CgDeviceSets {
                 CgGpuSampler sampler = c.sampler(i);
                 refs[i * 2] = resource;
                 refs[i * 2 + 1] = sampler;
-                nums[i * 3] = c.binding(i);
-                nums[i * 3 + 1] = view != null ? (long) view.baseMip() << 32 | view.baseLayer() : c.offset(i);
-                nums[i * 3 + 2] = view != null ? (long) view.mips() << 32 | view.layers() : c.size(i);
+                nums[i * 4] = c.binding(i);
+                nums[i * 4 + 1] = view != null ? (long) view.baseMip() << 32 | view.baseLayer() : c.offset(i);
+                nums[i * 4 + 2] = view != null ? (long) view.mips() << 32 | view.layers() : c.size(i);
+                nums[i * 4 + 3] = view != null ? view.texture().sampledLayout(view) : 0;
                 h = h * 31 + System.identityHashCode(resource);
                 h = h * 31 + System.identityHashCode(sampler);
-                h = h * 31 + Long.hashCode(nums[i * 3 + 1]) + c.binding(i);
+                h = h * 31 + Long.hashCode(nums[i * 4 + 1]) + c.binding(i) + (int) nums[i * 4 + 3];
             }
             hash = h;
         }
@@ -281,7 +314,7 @@ public final class CgDeviceSets {
             Key k = new Key();
             k.layout = layout;
             k.refs = Arrays.copyOf(refs, count * 2);
-            k.nums = Arrays.copyOf(nums, count * 3);
+            k.nums = Arrays.copyOf(nums, count * 4);
             k.count = count;
             k.hash = hash;
             return k;
@@ -296,7 +329,7 @@ public final class CgDeviceSets {
         public boolean equals(Object o) {
             if (!(o instanceof Key k) || k.layout != layout || k.count != count) return false;
             for (int i = 0; i < count * 2; i++) if (k.refs[i] != refs[i]) return false;
-            for (int i = 0; i < count * 3; i++) if (k.nums[i] != nums[i]) return false;
+            for (int i = 0; i < count * 4; i++) if (k.nums[i] != nums[i]) return false;
             return true;
         }
     }

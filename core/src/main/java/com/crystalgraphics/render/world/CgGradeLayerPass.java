@@ -17,6 +17,8 @@ import com.crystalgraphics.render.draw.CgPassConstants;
 import com.crystalgraphics.render.draw.CgPipeline;
 import com.crystalgraphics.render.draw.CgPipelineForm;
 import com.crystalgraphics.render.graph.CgGraphTexture;
+import com.crystalgraphics.render.graph.CgLoad;
+import com.crystalgraphics.render.graph.CgExecutor;
 import com.crystalgraphics.render.graph.CgRasterPass;
 import com.crystalgraphics.render.graph.CgRecording;
 import com.crystalgraphics.render.graph.CgTextureDesc;
@@ -24,6 +26,8 @@ import com.crystalgraphics.render.post.volume.CgPostSettings;
 import com.crystalgraphics.render.stage.CgFrameKeys;
 import com.crystalgraphics.render.stage.CgHostView;
 import com.crystalgraphics.render.stage.CgStageFrame;
+import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.util.trace.CgChannels;
 import java.util.Arrays;
 import java.util.IdentityHashMap;
 import javax.annotation.Nullable;
@@ -34,6 +38,8 @@ import javax.annotation.Nullable;
  * unbent by their distortion (Unreal's {@code TranslucencyAfterDOF}).
  *
  * <pre>{@code
+ * if (scene) gradeLayerPass.prepareLayers(stage, recording, view, constants);      // before the transparent passes
+ * ... the transparent passes, the output slot's layer their second output ...
  * if (scene) gradeLayerPass.recordGradeLayers(stage, recording, view, constants);
  * if (apartDrawn > 0) gradeLayerPass.recordSeparate(stage, recording, view, constants);
  * }</pre>
@@ -64,6 +70,14 @@ final class CgGradeLayerPass {
 
     /** Per draw this firing, whether it goes into its look's layer; grown with the draws. */
     boolean[] inLayer = new boolean[64];
+    /** The slot whose layer the transparent passes write as their second output this firing; -1 for none. */
+    int outputSlot = -1;
+    /** Per draw this firing: in the output slot's layer already, drawn there by the transparent passes or its cover. */
+    boolean[] viaOutput = new boolean[64];
+    /** Whether {@link #prepareLayers} found a look to grade this firing. */
+    private boolean anySeen;
+    /** Graded draws drawn once, their layer the transparent pass's second output; drawn again into a layer. */
+    private static final int LAYER_ONCE = CgTrace.name("world.graded-once"), LAYER_AGAIN = CgTrace.name("world.graded-again");
 
     int separateWidth, separateHeight;
 
@@ -81,12 +95,18 @@ final class CgGradeLayerPass {
     }
 
     /**
-     * Each look's draws again into its layer, cleared, tested against the scene's depth and writing none: what they add
-     * premultiplied, and in alpha how much of what is behind them they cover. Published as {@link CgGradeLayers#KEY}.
+     * This firing's looks given slots and their layers made, before its transparent passes: the slot with the most
+     * transparent draws that can take it becomes the transparent passes' second output ({@link #outputSlot}), its layer
+     * cleared with the covers of its opaque draws in it, which are behind every transparent fragment over them. On the
+     * device alone; the rest wait for {@link #recordGradeLayers}.
      */
-    void recordGradeLayers(CgStageFrame stage, CgRecording recording, CgHostView view, CgPassConstants constants) {
+    void prepareLayers(CgStageFrame stage, CgRecording recording, CgHostView view, CgPassConstants constants) {
+        outputSlot = -1;
+        anySeen = false;
         Arrays.fill(gradeSeen, false);
         if (inLayer.length < draws.count) inLayer = new boolean[Math.max(draws.count, inLayer.length * 2)];
+        if (viaOutput.length < draws.count) viaOutput = new boolean[inLayer.length];
+        Arrays.fill(viaOutput, 0, draws.count, false);
         // This firing's transparent draws, and the opaque and masked ones the opaque firing drew: each hides what is
         // behind it in the scene, so its layer holds it too
         for (int i = 0; i < draws.count; i++) {
@@ -120,9 +140,9 @@ final class CgGradeLayerPass {
             gradeDepthWarned = true;
             return;
         }
+        anySeen = true;
         // A set the opaque firing drew draws its culled records: cull it here too, as the passes' are
         world.cullSets(stage, recording, view, CgWorldRenderer.CULL_LAYERS);
-        CgGraphTexture scene = stage.resources().get(CgFrameKeys.SCENE);
         int w = Math.max(1, Math.round(world.targetWidth)), h = Math.max(1, Math.round(world.targetHeight));
         for (int k = 0; k < CgGradeLayers.MAX; k++) {
             if (!gradeSeen[k]) continue;
@@ -132,17 +152,103 @@ final class CgGradeLayerPass {
                 gradeSizes[k * 2] = w;
                 gradeSizes[k * 2 + 1] = h;
             }
-            layerPass(stage, recording, view, constants, gradeTargets[k], k, false, scene);
+        }
+        if (!CgExecutor.drawsOnDevice() || CgRasterPass.refusesAttachment(fb)) return;
+        // The slot whose transparent draws the passes can carry most of
+        int best = 0;
+        for (int k = 0; k < CgGradeLayers.MAX; k++) {
+            if (!gradeSeen[k]) continue;
+            int n = 0;
+            for (int i = 0; i < draws.count; i++) if (draws.grades[i] == gradeSlots[k] && carried(i)) n++;
+            if (n > best) {
+                best = n;
+                outputSlot = k;
+            }
+        }
+        if (outputSlot < 0) return;
+        for (int i = 0; i < draws.count; i++) viaOutput[i] = draws.grades[i] == gradeSlots[outputSlot] && carried(i);
+        // Its layer cleared, its opaque draws' covers in it first
+        CgRasterPass pass = layerPassBegin(stage, recording, constants, gradeTargets[outputSlot], outputSlot, false,
+                stage.resources().get(CgFrameKeys.SCENE));
+        CgChunkBuilder chunks = recording.chunks().begin();
+        for (int i = 0; i < draws.count; i++) {
+            if (!inLayer[i] || draws.grades[i] != gradeSlots[outputSlot] || draws.phase[i] == CgWorldDraws.APART
+                    || draws.queues[i] >= CgRenderQueue.TRANSPARENT_THRESHOLD) continue;
+            layerDraws(chunks, recording, view, i);
+            viaOutput[i] = true;
+        }
+        pass.add(chunks.end());
+        pass.end();
+    }
+
+    /**
+     * Whether transparent draw {@code i} draws its layer in the transparent pass: in it this firing, no set, every
+     * program it draws there with a layer form already built (one not yet built is started, and the layer pass draws
+     * the draw meanwhile).
+     */
+    private boolean carried(int i) {
+        if (!inLayer[i] || draws.queues[i] < CgRenderQueue.TRANSPARENT_THRESHOLD || draws.sets[i] != null) return false;
+        byte phase = draws.phase[i];
+        if (phase != CgWorldDraws.FORWARD && phase != CgWorldDraws.FORWARD_AND_PREPASS && phase != CgWorldDraws.AFTER) return false;
+        boolean glows = draws.emissions[i] > 0f && draws.queues[i] < CgRenderQueue.OVERLAY_THRESHOLD;
+        boolean skinned = commands.skinnedDraw(i);
+        for (CgMaterial link = draws.materials[i]; link != null; link = link.getNextPass()) {
+            CgPipeline pipeline = link.pipeline(CgInstanceKind.OBJECT);
+            if (pipeline == null) continue;
+            if (glows && link.hasEmissivePass()) {
+                // Its glow only folded into its colour: a glow drawn apart is an Emissive pass, which takes no layer form
+                CgPipeline folded = world.mergeEmission ? pipeline.as(CgPipelineForm.FOLD) : null;
+                if (folded == null || !built(folded.as(CgPipelineForm.LAYER), skinned)) return false;
+                continue;
+            }
+            if (pipeline.state().writesNothing()) continue;
+            if (!built(pipeline.as(CgPipelineForm.LAYER), skinned)) return false;
+        }
+        return true;
+    }
+
+    private static boolean built(@Nullable CgPipeline layered, boolean skinned) {
+        return layered != null && CgWorldRenderer.built(skinned ? layered.as(CgPipelineForm.SKINNED) : layered);
+    }
+
+    /**
+     * Each look's draws into its layer, tested against the scene's depth and writing none: what they add premultiplied,
+     * and in alpha how much of what is behind them they cover. The output slot's layer holds the transparent passes'
+     * already: what they did not carry is added over it. Published as {@link CgGradeLayers#KEY}.
+     */
+    void recordGradeLayers(CgStageFrame stage, CgRecording recording, CgHostView view, CgPassConstants constants) {
+        if (!anySeen) return;
+        anySeen = false;
+        CgGraphTexture scene = stage.resources().get(CgFrameKeys.SCENE);
+        int once = 0, again = 0;
+        for (int k = 0; k < CgGradeLayers.MAX; k++) {
+            if (!gradeSeen[k]) continue;
+            boolean output = k == outputSlot;
+            int rest = 0;
+            for (int i = 0; i < draws.count; i++) {
+                if (!inLayer[i] || draws.grades[i] != gradeSlots[k] || draws.phase[i] == CgWorldDraws.APART) continue;
+                if (output && viaOutput[i]) {
+                    if (draws.queues[i] >= CgRenderQueue.TRANSPARENT_THRESHOLD) once++;
+                    else again++;   // an opaque draw's cover: drawn in the opaque firing, and here
+                } else {
+                    rest++;
+                }
+            }
+            again += rest;
+            if (!output || rest > 0) layerPass(stage, recording, view, constants, gradeTargets[k], k, false, scene, output);
             // Its separate draws apart, laid over it after the colour regions as they are over the scene
             boolean apartHere = false;
             for (int i = 0; i < draws.count && !apartHere; i++) apartHere = inLayer[i] && draws.phase[i] == CgWorldDraws.APART && draws.grades[i] == gradeSlots[k];
             if (apartHere) {
-                layerPass(stage, recording, view, constants, gradeApart[k], k, true, scene);
+                layerPass(stage, recording, view, constants, gradeApart[k], k, true, scene, false);
                 world.separate.layers[k] = gradeApart[k];
             }
             gradeLayers.layers[k] = gradeTargets[k];
             gradeLayers.looks[k] = gradeSlots[k];
         }
+        CgTrace.add(CgChannels.WORLD, LAYER_ONCE, once);
+        CgTrace.add(CgChannels.WORLD, LAYER_AGAIN, again);
+        outputSlot = -1;
         stage.resources().put(CgGradeLayers.KEY, gradeLayers);
         if (world.separate.any()) stage.resources().put(CgSeparateTranslucency.KEY, world.separate);
     }
@@ -152,20 +258,29 @@ final class CgGradeLayerPass {
      * without; with {@code k} below 0 every separate draw.
      */
     void layerPass(CgStageFrame stage, CgRecording recording, CgHostView view, CgPassConstants constants,
-                   CgGraphTexture target, int k, boolean apart, @Nullable CgGraphTexture scene) {
-        CgRasterPass pass = recording.raster(target, CgWorldRenderer.CLEAR_LAYER, constants, null, CgOrder.SORTED)
+                   CgGraphTexture target, int k, boolean apart, @Nullable CgGraphTexture scene, boolean over) {
+        CgRasterPass pass = layerPassBegin(stage, recording, constants, target, k, over, scene);
+        CgChunkBuilder chunks = recording.chunks().begin();
+        for (int i = 0; i < draws.count; i++) {
+            if (k < 0 ? draws.phase[i] != CgWorldDraws.APART : !inLayer[i] || draws.grades[i] != gradeSlots[k] || (draws.phase[i] == CgWorldDraws.APART) != apart) continue;
+            if (over && viaOutput[i]) continue;
+            layerDraws(chunks, recording, view, i);
+        }
+        pass.add(chunks.end());
+        pass.end();
+    }
+
+    /** A layer pass into {@code target}: cleared, or over what is in it; tested against the scene's depth. */
+    private CgRasterPass layerPassBegin(CgStageFrame stage, CgRecording recording, CgPassConstants constants,
+                                        CgGraphTexture target, int k, boolean over, @Nullable CgGraphTexture scene) {
+        CgRasterPass pass = recording.raster(target, over ? CgLoad.load() : CgWorldRenderer.CLEAR_LAYER, constants, null,
+                        CgOrder.SORTED)
                 .timed(k < 0 ? CgWorldRenderer.GPU_SEPARATE : CgWorldRenderer.GPU_GRADE)
                 .sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT)
                 .texture(CgBindingPoints.LIGHTMAP_TEXTURE_UNIT, stage.host().textures().lightmapTexture());
         if (scene != null) pass.sceneColor(CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT, scene);
         world.mediated(pass);
-        CgChunkBuilder chunks = recording.chunks().begin();
-        for (int i = 0; i < draws.count; i++) {
-            if (k < 0 ? draws.phase[i] != CgWorldDraws.APART : !inLayer[i] || draws.grades[i] != gradeSlots[k] || (draws.phase[i] == CgWorldDraws.APART) != apart) continue;
-            layerDraws(chunks, recording, view, i);
-        }
-        pass.add(chunks.end());
-        pass.end();
+        return pass;
     }
 
     /** Draw {@code i} in its layer forms: the programs the transparent pass draws it with, or a solid's cover. */
@@ -242,7 +357,7 @@ final class CgGradeLayerPass {
             separateWidth = w;
             separateHeight = h;
         }
-        layerPass(stage, recording, view, constants, separateTarget, -1, true, stage.resources().get(CgFrameKeys.SCENE));
+        layerPass(stage, recording, view, constants, separateTarget, -1, true, stage.resources().get(CgFrameKeys.SCENE), false);
         world.separate.target = separateTarget;
         stage.resources().put(CgSeparateTranslucency.KEY, world.separate);
     }

@@ -40,7 +40,8 @@ public interface GLHostState {
      * The host is {@code CgGL} in the same context, while it and the device draw side by side: what {@code CgGL}'s
      * shadow knows is the device's entry, set back as the section closes, so the shadow stays true and nothing is read
      * from GL again (a host's own cache behind it included). Its framebuffers and viewport are read first where the
-     * shadow does not know them: they are where the host's frame draws, which a pass of the device must not move.
+     * shadow does not know them: they are where the host's frame draws, which a pass of the device must not move. So are
+     * the texture units of a host that caches them (Minecraft 26.2 skipped binding its block atlas over one of ours).
      * What the device writes and the shadow cannot hold (image units) is forgotten on leaving.
      */
     static GLHostState sharedWithCgGL() {
@@ -60,6 +61,7 @@ public interface GLHostState {
                 CgGlState.drawFramebuffer();
                 CgGlState.readFramebuffer();
                 CgGlState.viewport(viewport);
+                CgGlState.manager().adoptHostUnits();
                 unsaid = CgGlState.manager().export(into) | 1 << CgGlSlot.IMAGES.ordinal();
                 if (!CgGL.CORE) {
                     alphaTest = CgGlState.save(alpha);
