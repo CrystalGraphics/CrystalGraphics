@@ -20,6 +20,7 @@ import org.joml.Matrix4f;
 import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.asset.load.CgVfxAssets;
+import com.crystalgraphics.compute.CgCompute;
 import com.crystalgraphics.gl.framebuffer.CgFrameBuffer;
 import com.crystalgraphics.gl.material.CgMaterialShader;
 import com.crystalgraphics.gl.texture.CgTextureAbstract;
@@ -485,6 +486,17 @@ public final class CgLoadingScreen {
     }
 
     /**
+     * Fires one warm frame now, as {@link #draw} does behind the screen each frame it shows: the world stages into a
+     * {@value #WARM_SIZE}x{@value #WARM_SIZE} target of its own, from its fixed view. For a gate measuring what one
+     * costs (the harness's {@code warm-frame-load}). Render thread, inside a host section.
+     */
+    public static void fireWarmFrame() {
+        try (CgGlScope ignored = CgGlState.saveAll()) {
+            warmFrame();
+        }
+    }
+
+    /**
      * Fires the world stages into a target of its own: pipelines settle and effects warm and rehearse only in a world
      * frame, and behind the screen a host may draw none (Minecraft's menus, a harness scene not started).
      */
@@ -576,10 +588,19 @@ public final class CgLoadingScreen {
         }
     }
 
-    /** Every first use the engine counts: what a hold waits to stop. */
-    private static long firstUseWork() {
+    /**
+     * Every first use the engine counts (pipelines built at their draw, kernels at their dispatch, compile waits, texture
+     * and asset loads): what a hold waits to stop. Unchanged across frames, nothing is being built.
+     *
+     * <pre>{@code
+     * long before = CgLoadingScreen.firstUseWork();
+     * ... a frame ...
+     * boolean settled = CgLoadingScreen.firstUseWork() == before;
+     * }</pre>
+     */
+    public static long firstUseWork() {
         CgVfxAssets assets = CgVfxAssets.instance();
-        return CgPipeline.misses() + CgMaterialShader.compileWaits() + CgTextureAbstract.loads()
+        return CgPipeline.misses() + CgCompute.dispatchBuilds() + CgMaterialShader.compileWaits() + CgTextureAbstract.loads()
                 + (assets == null ? 0L : assets.syncLoads());
     }
 

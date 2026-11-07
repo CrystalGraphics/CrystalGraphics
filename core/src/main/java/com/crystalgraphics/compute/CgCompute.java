@@ -164,6 +164,17 @@ public final class CgCompute implements CgReloadable {
         return generation;
     }
 
+    /** Kernels a dispatch built, or waited for, since the process started: render thread. */
+    private static long dispatchBuilds;
+
+    /**
+     * How many kernels a dispatch built or waited for, unprecached or not yet built: first-use work, as
+     * {@code CgPipeline.misses()} is for a draw. Render thread.
+     */
+    public static long dispatchBuilds() {
+        return dispatchBuilds;
+    }
+
     /** The compiled program for {@code kernel}, compiled and cached on the first call. Render thread. */
     synchronized CgKernelProgram program(CgKernel kernel) {
         for (CgCompute retired; (retired = RETIRED.poll()) != null; ) retired.release();
@@ -178,12 +189,14 @@ public final class CgCompute implements CgReloadable {
                     program = pending.finish();
                 }
                 CgTrace.add(CgChannels.GL, COMPILE_WAITS, 1);
+                dispatchBuilds++;
                 if (LOG_COMPILES.get()) LOGGER.warn("compute dispatch waited for: {} {}", path, key);
             } else {
                 try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, COMPILE)) {
                     program = build(source, decl(kernel), kernel);
                 }
                 CgTrace.add(CgChannels.GL, COMPILES, 1);
+                dispatchBuilds++;
                 if (LOG_COMPILES.get()) LOGGER.warn("compute compiled at dispatch: {} {}", path, key);
             }
             programs.put(key, program);
