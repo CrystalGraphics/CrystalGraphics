@@ -611,7 +611,7 @@ public class CgFontRegistry {
      * }</pre>
      *
      * <p>Returns having scheduled nothing: the work is offered to the glyph workers a few jobs at a
-     * time, and only on frames when nothing a draw asked for is waiting, so a warm never delays what
+     * time, and every glyph a draw asks for runs and commits ahead of it, so a warm never delays what
      * is on screen. Best-effort throughout; a glyph it never reaches is generated on demand.</p>
      *
      * <p><b>Distance field once per face, regardless of size.</b> Every size collapses to one atlas
@@ -619,8 +619,9 @@ public class CgFontRegistry {
      * reaches for it anyway: the upgrade during convergence, any rotated or sheared draw, and any
      * zoom past {@code CgTextScaleResolver.MSDF_ENTER_THRESHOLD}.</p>
      *
-     * <p><b>Bitmap once per size below that threshold</b>, at sub-pixel bucket 0 -- the bucket any
-     * run starting on a whole pixel lands in.</p>
+     * <p><b>Bitmap once per size below that threshold</b>, at sub-pixel bucket 0 only. A run's glyphs
+     * land on all four buckets, so this covers about a quarter of a label; warming all four quadrupled
+     * the atlas's packing cost (see {@code drainCompletedGlyphs}) and made every commit slower.</p>
      *
      * <p><b>Pass EFFECTIVE sizes, not the font's own.</b> The renderer rasterises at the CSS size
      * scaled by the pose, so warming {@code font.getTargetPx()} on a host with a UI scale of 2 fills

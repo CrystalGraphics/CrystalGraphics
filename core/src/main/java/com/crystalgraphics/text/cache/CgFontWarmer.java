@@ -69,8 +69,8 @@ final class CgFontWarmer {
     /**
      * Warm jobs handed to the pool on a frame that finds it EMPTY.
      *
-     * <p>One round for the workers: four jobs is about one frame's work at ~14 ms a glyph across four
-     * threads, so the pool is empty again by the next frame. Starving the render thread was suspected
+     * <p>One round for the workers: four jobs is one to three frames' work at 13-50 ms a glyph across
+     * four threads. Starving the render thread was suspected
      * and measured out: frames around a font switch ran 4-10 ms with this feeding.</p>
      *
      * <p><b>Empty, not "short".</b> Topping the queue up whenever it fell to eight kept it at eight to

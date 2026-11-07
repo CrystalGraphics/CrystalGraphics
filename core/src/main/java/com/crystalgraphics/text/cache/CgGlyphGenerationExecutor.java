@@ -100,7 +100,16 @@ final class CgGlyphGenerationExecutor {
 
     private final AtomicLong nextSequence = new AtomicLong();
     private final Map<CgGlyphGenerationJob, Boolean> failedJobs = new ConcurrentHashMap<>();
-    private final ConcurrentLinkedQueue<CgGlyphGenerationResult> completedResults = new ConcurrentLinkedQueue<>();
+    /**
+     * Finished results waiting for the render thread, drawn and warm apart: the commit is budgeted per frame, and in
+     * one queue a warm's results filled that budget while a label's glyph sat behind them for frames.
+     */
+    private final ConcurrentLinkedQueue<CgGlyphGenerationResult> drawnResults = new ConcurrentLinkedQueue<>();
+
+    private final ConcurrentLinkedQueue<CgGlyphGenerationResult> warmResults = new ConcurrentLinkedQueue<>();
+
+    /** Warm results not yet committed, by job, so a draw asking for one can move it to {@link #drawnResults}. */
+    private final Map<CgGlyphGenerationJob, CgGlyphGenerationResult> completedWarm = new ConcurrentHashMap<>();
     private final ConcurrentLinkedQueue<CgWorkerFontContext> workerContexts = new ConcurrentLinkedQueue<>();
 
     private final ThreadLocal<CgWorkerFontContext> threadLocalContext = ThreadLocal.withInitial(() -> {
@@ -232,7 +241,11 @@ final class CgGlyphGenerationExecutor {
         if (job.isShadowCell()) lastWanted.put(job, frame);
         ThreadPoolExecutor target = job.isDistanceField() ? msdfExecutor : bitmapExecutor;
         if (pendingJobs.putIfAbsent(job, Boolean.TRUE) != null) {
-            if (drawn) promote(target, job);
+            if (drawn) {
+                CgTrace.add(CgChannels.TEXT, "glyph.drawnAlreadyPending", 1);
+                promote(target, job);
+                hurry(job);
+            }
             return true;
         }
 
@@ -267,7 +280,16 @@ final class CgGlyphGenerationExecutor {
         }
     }
 
-    private void run(CgGlyphGenerationJob job) {
+    /** Moves a finished, uncommitted warm result to the front of the commit. */
+    private void hurry(CgGlyphGenerationJob job) {
+        CgGlyphGenerationResult result = completedWarm.remove(job);
+        if (result != null && warmResults.remove(result)) {
+            drawnResults.add(result);
+            CgTrace.add(CgChannels.TEXT, "glyph.hurried", 1);
+        }
+    }
+
+    private void run(CgGlyphGenerationJob job, boolean drawn) {
         if (job.isShadowCell() && isAbandoned(job)) {
             lastWanted.remove(job);
             pendingJobs.remove(job);
@@ -279,7 +301,13 @@ final class CgGlyphGenerationExecutor {
             if (result != null) {
                 // Un-marked at POLL time, not here -- see completedJobs.
                 completedJobs.put(result, job);
-                completedResults.add(result);
+                if (drawn) {
+                    drawnResults.add(result);
+                } else {
+                    // Queued before it is findable: whatever hurry() finds is in the queue, or already polled.
+                    warmResults.add(result);
+                    completedWarm.put(job, result);
+                }
             } else {
                 failedJobs.put(job, Boolean.TRUE);
             }
@@ -329,7 +357,7 @@ final class CgGlyphGenerationExecutor {
                     ? (drawn ? WAIT_MSDF_DRAWN : WAIT_MSDF_WARM)
                     : (drawn ? WAIT_BITMAP_DRAWN : WAIT_BITMAP_WARM);
             CgTrace.counter(CgChannels.ASYNC, wait, (System.nanoTime() - queuedNanos) / 1_000L);
-            CgGlyphGenerationExecutor.this.run(job);
+            CgGlyphGenerationExecutor.this.run(job, drawn);
         }
     }
 
@@ -350,7 +378,7 @@ final class CgGlyphGenerationExecutor {
      * <h4>Why the release moved out of the worker</h4>
      * <p>{@code pendingJobs} is the "somebody is already making this glyph" guard, and it used to
      * be cleared the instant generation <em>finished</em>. But a finished glyph is not a usable
-     * glyph: it sits in {@link #completedResults} until {@code drainCompletedGlyphs} commits it
+     * glyph: it sits in {@link #drawnResults} or {@link #warmResults} until {@code drainCompletedGlyphs} commits it
      * into the atlas, and that drain is deliberately budget-limited. Throughout that window the
      * atlas still misses, the dedup guard is already released, and so the very next frame submits
      * the same glyph again — and the frame after that, and so on until the commit finally lands.
@@ -408,11 +436,14 @@ final class CgGlyphGenerationExecutor {
      * heuristic, not a decision that has to be exact.
      */
     int completedBacklog() {
-        return completedResults.size();
+        return drawnResults.size() + warmResults.size();
     }
 
+    /** The next finished result to commit: everything a draw waits on first. */
     CgGlyphGenerationResult pollCompleted() {
-        CgGlyphGenerationResult result = completedResults.poll();
+        CgGlyphGenerationResult result = drawnResults.poll();
+        if (result != null) CgTrace.add(CgChannels.TEXT, "asyncCommit.drawn", 1);
+        else result = warmResults.poll();
         if (result != null) {
             // Release the dedup entry here rather than when generation finished -- see
             // completedJobs. The caller commits this within the same drain iteration, so the
@@ -422,13 +453,14 @@ final class CgGlyphGenerationExecutor {
             if (job != null) {
                 pendingJobs.remove(job);
                 lastWanted.remove(job);
+                completedWarm.remove(job, result);
             }
         }
         return result;
     }
 
     boolean hasPendingWork() {
-        return !pendingJobs.isEmpty() || !completedResults.isEmpty();
+        return !pendingJobs.isEmpty() || !drawnResults.isEmpty() || !warmResults.isEmpty();
     }
 
     int getPendingJobCount() {
@@ -487,7 +519,9 @@ final class CgGlyphGenerationExecutor {
         // Results generated but never polled would otherwise keep their jobs pending forever.
         completedJobs.clear();
         failedJobs.clear();
-        completedResults.clear();
+        drawnResults.clear();
+        warmResults.clear();
+        completedWarm.clear();
     }
 
     private CgGlyphGenerationResult generate(CgGlyphGenerationJob job) {
@@ -504,12 +538,19 @@ final class CgGlyphGenerationExecutor {
     }
 
     private void clearCompletedResults(CgFontKey fontKey) {
+        clearCompletedResults(drawnResults, fontKey);
+        clearCompletedResults(warmResults, fontKey);
+        completedWarm.values().removeIf(result -> result.getSourceFontKey().equals(fontKey));
+    }
+
+    private static void clearCompletedResults(ConcurrentLinkedQueue<CgGlyphGenerationResult> results,
+                                              CgFontKey fontKey) {
         ConcurrentLinkedQueue<CgGlyphGenerationResult> retained = new ConcurrentLinkedQueue<>();
         while (true) {
-            CgGlyphGenerationResult result = completedResults.poll();
+            CgGlyphGenerationResult result = results.poll();
             if (result == null) break;
             if (!result.getSourceFontKey().equals(fontKey)) retained.add(result);
         }
-        completedResults.addAll(retained);
+        results.addAll(retained);
     }
 }
