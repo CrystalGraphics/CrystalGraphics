@@ -11,6 +11,8 @@ import org.apache.logging.log4j.Logger;
 
 import com.crystalgraphics.lifecycle.CgLifecycleListener;
 import com.crystalgraphics.loading.task.CgLoadPlan;
+import com.crystalgraphics.platform.rhi.CgDeviceSection;
+import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.service.CgCacheDirectory;
 import com.crystalgraphics.variable.CgVar;
 
@@ -39,6 +41,7 @@ import com.crystalgraphics.variable.CgVar;
  *       is, logged once.</li>
  *   <li>{@code crystalgraphics.device.toolchain} turns it off.</li>
  *   <li>{@link #resize} each frame and {@link #close} with the context run only once {@link #install} returned.</li>
+ *   <li>{@link #install} installs the device as {@link CgRHI}: its frame is ended here, once a host frame.</li>
  * </ul>
  */
 public abstract class CgToolchainDevice implements CgLifecycleListener {
@@ -95,7 +98,15 @@ public abstract class CgToolchainDevice implements CgLifecycleListener {
 
     @Override
     public final void onFrame(long frame) {
-        if (installed) resize();
+        if (!installed) return;
+        resize();
+        // The host ends no frame of the device's: unended, nothing it records ever retires, and its readbacks never land
+        CgDeviceSection.begin();
+        try {
+            CgRHI.get().endFrame();
+        } finally {
+            CgDeviceSection.end();
+        }
     }
 
     @Override
