@@ -5,10 +5,10 @@ import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.state.CgGlState;
 import com.crystalgraphics.platform.service.CgHostPaint;
+import net.minecraft.client.Minecraft;
 
 //? if >=1.21.5 {
 /*import com.mojang.blaze3d.opengl.GlStateManager;
-import net.minecraft.client.Minecraft;
 *///?} else {
 import com.mojang.blaze3d.platform.GlStateManager;
 //?}
@@ -68,11 +68,10 @@ public final class HostGlHandoff {
     static void enter() {
         CgGL.fromHost();
         CgGlState.invalidateAllIfPresent();
-        // 1.21.5 binds a target only inside its own render passes, so a screen or HUD paint finds the
-        // last pass's still bound and the desktop composites into it, unseen.
-        //? if >=1.21.5 {
-        /*LifecycleModern.bindMainTarget(Minecraft.getInstance());
-        *///?}
+        // Bound, not assumed: below 1.21.5 the shadow answers "the main target" unasked, so a framebuffer left
+        // bound since Minecraft's last bindWrite turns our bind of the main target into an elided one, and
+        // the paint lands there unseen. From 1.21.5 Minecraft binds one only inside its own passes.
+        LifecycleModern.bindMainTarget(Minecraft.getInstance());
         // 26.2's world is reversed-Z with a 0..1 clip range; the desktop and its previews are not.
         OwnDepthConvention.enter();
     }

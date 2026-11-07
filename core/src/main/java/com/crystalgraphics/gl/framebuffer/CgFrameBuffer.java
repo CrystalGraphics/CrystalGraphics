@@ -780,7 +780,15 @@ public class CgFrameBuffer {
     }
 
     /**
-     * Unbinds this FBO by binding the default framebuffer (ID 0).
+     * Binds the default framebuffer (ID 0), which is never what was bound before inside a host: Minecraft draws into its
+     * main target. To put back what was bound, save it instead:
+     *
+     * <pre>{@code
+     * try (CgGlScope ignored = CgGlState.save(CgGlSlot.FBO, CgGlSlot.VIEWPORT)) {
+     *     target.bind();
+     *     draw();
+     * }   // the host's framebuffer and viewport back
+     * }</pre>
      */
     public void unbind() {
         CgGL.glBindFramebuffer(CgGL.GL_FRAMEBUFFER, 0);
