@@ -62,7 +62,7 @@ world ends; a throw logged under its name; a newer ask replacing an older one; w
 | **Swallowed exceptions** | a failed future says nothing | a failure reaches `onError`, or is logged under the job's name |
 | **Asked again before done** | two run, the older lands last | keyed: a newer one replaces a waiting one and supersedes a running one; the older never lands |
 | **Bursts of asks** | a timer of your own | `debounce(ms)`: runs once, after the last ask |
-| **Urgent behind slow** | an index blocks a completion | lanes: urgent work goes first, background never takes the last thread |
+| **Urgent behind slow** | an index blocks a completion | lanes: urgent work goes first, and the last thread is only ever interactive |
 | **Splitting a loop across cores** | a fork-join pool, or none | `CgJob.forEach(items, each)`, allocating nothing |
 | **Progress bars** | a volatile int and a guess | `ctx.progress()`, read from any thread, with an ETA |
 | **Testing threaded code** | sleeps and flakes | a loop you step by hand, with work run inline and a clock you turn |
@@ -354,7 +354,10 @@ CgJob.lane(CgJobLane.BACKGROUND).keyed(this, "index").run(() -> indexRecipes()).
 
 - **A job waiting past two seconds goes first, whatever its lane**, so background work under a steady stream of
   urgent work still runs.
-- **`BACKGROUND` never takes the last worker**: long work can never occupy every thread an urgent job needs.
+- **The last worker is only ever `INTERACTIVE`**: `LATENCY` and `BACKGROUND` work together never hold every thread,
+  so interactive work waits for nothing but other interactive work. With one thread configured, it runs anything.
+- **`BACKGROUND` holds at most half the machine** (`crystalgraphics.job.backgroundThreads`, its `forEach` helpers
+  included), however many job threads there are: the rest stay free for work somebody waits on.
 
 ---
 
@@ -657,9 +660,9 @@ public void aBurstOfEditsParsesOnce() {
 
 | Setting | Default | Does |
 |---|---|---|
-| `crystalgraphics.job.threads` | half the cores past two, at least one | threads jobs' work runs on |
+| `crystalgraphics.job.threads` | two fewer than the cores, at least one | threads jobs' work runs on |
 | `crystalgraphics.job.forEachThreads` | two fewer than the cores | threads `forEach` and effects' emitters run on, your thread one of them; 1 runs all on your thread |
-| `crystalgraphics.job.backgroundThreads` | half the cores | threads background work holds at once: the job workers and a job's `forEach` helpers together, so a load behind a loading screen never takes the whole machine |
+| `crystalgraphics.job.backgroundThreads` | half the cores | threads background work holds at once: background jobs and their `forEach` helpers together, so a load behind a loading screen never takes the whole machine |
 
 Both are read at launch (`-Dcrystalgraphics.job.threads=4`; [`DEBUG_FLAGS.md`](DEBUG_FLAGS.md)).
 

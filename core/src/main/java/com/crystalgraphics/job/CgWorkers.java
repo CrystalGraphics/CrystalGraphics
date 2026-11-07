@@ -68,10 +68,10 @@ final class CgWorkers {
     /**
      * A job worker's helpers, below normal as the job is: background work split with {@code forEach} never takes the
      * frame's helpers nor outranks the frame (T10: three distance fields on the frame's pool held all 8 cores). Sized
-     * so the job workers and these together hold {@link #BACKGROUND} threads.
+     * so the background jobs and these together hold {@link #BACKGROUND} threads.
      */
     private static final class BackgroundPool {
-        static final ForkJoinPool POOL = new ForkJoinPool(Math.max(1, BACKGROUND - CgJobPool.THREADS),
+        static final ForkJoinPool POOL = new ForkJoinPool(Math.max(1, BACKGROUND - CgJobPool.BACKGROUND_JOBS),
                 p -> new EachThread(p, "crystalgraphics-each-bg-", Thread.NORM_PRIORITY - 1), null, false);
     }
 
