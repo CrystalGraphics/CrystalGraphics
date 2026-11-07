@@ -1867,6 +1867,32 @@ public final class CgGL {
         return depthZeroToOne;
     }
 
+    // --- Clip control ----------------------------------------------------------
+
+    private static boolean clipZeroToOne;
+
+    /**
+     * Tells {@code CgGL} the clip-space depth range the context runs under between device sections: true for
+     * {@code glClipControl(GL_LOWER_LEFT, GL_ZERO_TO_ONE)}, which Minecraft 26.2 sets once on GL. A device section
+     * beside {@code CgGL} sets its own and puts this one back as it closes. GL's {@code -1..1} until a host says
+     * otherwise.
+     *
+     * <pre>{@code
+     * CgGL.setClipZeroToOne(deviceInfo.isZZeroToOne());   // once, as the host's backend is made
+     *
+     * glClipControl(GL_LOWER_LEFT, GL_NEGATIVE_ONE_TO_ONE);  // a host switching for a while says so
+     * CgGL.setClipZeroToOne(false);
+     * }</pre>
+     */
+    public static void setClipZeroToOne(boolean zeroToOne) {
+        clipZeroToOne = zeroToOne;
+    }
+
+    /** Whether the context's clip-space depth runs {@code 0..1} between device sections. */
+    public static boolean isClipZeroToOne() {
+        return clipZeroToOne;
+    }
+
     /** The same comparison made against a reversed depth buffer. */
     static int mirroredDepthFunc(int func) {
         switch (func) {

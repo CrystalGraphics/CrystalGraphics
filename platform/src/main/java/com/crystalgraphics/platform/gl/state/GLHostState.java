@@ -79,10 +79,10 @@ public interface GLHostState {
             }
 
             /**
-             * {@code CgGL} sets none of the device's conventions: it draws under GL's defaults. Nor does it track the
-             * pixel-transfer buffers, sampler objects or the depth range, which it assumes unbound and GL's default: a
-             * pack buffer left bound takes its next read into memory, a sampler left on a unit replaces a texture's own
-             * sampling.
+             * {@code CgGL} sets none of the device's conventions: it draws under GL's defaults, but for the clip control
+             * its host runs ({@link CgGL#isClipZeroToOne}). Nor does it track the pixel-transfer buffers, sampler objects
+             * or the depth range, which it assumes unbound and GL's default: a pack buffer left bound takes its next read
+             * into memory, a sampler left on a unit replaces a texture's own sampling.
              */
             @Override
             public void conventions(CgGLDriver gl) {
@@ -92,7 +92,8 @@ public interface GLHostState {
                 gl.glDisable(GL_FRAMEBUFFER_SRGB);
                 gl.glDisable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
                 gl.glDisable(GL_PROGRAM_POINT_SIZE);
-                gl.glClipControl(GL_LOWER_LEFT, GL_NEGATIVE_ONE_TO_ONE);
+                // Minecraft 26.2's world under -1..1 lands in the half of its reversed depth nearest the eye
+                gl.glClipControl(GL_LOWER_LEFT, CgGL.isClipZeroToOne() ? GL_ZERO_TO_ONE : GL_NEGATIVE_ONE_TO_ONE);
                 gl.glDepthRangef(0f, 1f);
                 gl.glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
                 gl.glPixelStorei(GL_PACK_ALIGNMENT, 4);

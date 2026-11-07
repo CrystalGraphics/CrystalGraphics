@@ -221,6 +221,7 @@ public final class PlatformServiceModern implements CgPlatformService {
                 HostStateVerifier.announceIfEnabled();
                 glBackend = new Blaze3dGLBackend();
                 HostStateModern.install();
+                OwnDepthConvention.install();
                 CgEngineLifecycle.addListener(new GLDeviceModern());
             }
         }

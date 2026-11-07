@@ -2,10 +2,8 @@ package com.crystalgraphics.mc.modern.platform;
 
 //? if >=26.2 {
 /*import com.crystalgraphics.platform.gl.CgGL;
+import com.mojang.blaze3d.systems.RenderSystem;
 import org.lwjgl.opengl.ARBClipControl;
-import org.lwjgl.opengl.GL;
-import org.lwjgl.opengl.GL11;
-import org.lwjgl.opengl.GLCapabilities;
 *///?}
 
 /**
@@ -29,6 +27,8 @@ import org.lwjgl.opengl.GLCapabilities;
  *       @see CgGL#setDepthReversed</li>
  *   <li>{@code leave} restores the host's clip control and nothing else: Minecraft sets its own clear
  *       depth before every clear.</li>
+ *   <li>{@link #install} first, as the GL backend is made: it tells {@code CgGL} the clip control Minecraft set,
+ *       which a device section puts back as it closes.</li>
  * </ul>
  */
 public final class OwnDepthConvention {
@@ -37,17 +37,20 @@ public final class OwnDepthConvention {
 
     //? if >=26.2 {
     /*private static final int GL_LOWER_LEFT = 0x8CA1;
-    private static final int GL_CLIP_ORIGIN = 0x935C;
-    private static final int GL_CLIP_DEPTH_MODE = 0x935D;
     private static final int GL_NEGATIVE_ONE_TO_ONE = 0x935E;
+    private static final int GL_ZERO_TO_ONE = 0x935F;
 
-    // The host's clip control, read on the first enter: Minecraft sets it once and never again, so no
-    // frame after the first needs a glGet.
-    private static boolean read;
-    private static boolean clipControl;
-    private static int hostOrigin;
-    private static int hostDepthMode;
+    // Whether enter switched Minecraft's zero-to-one off, for leave to switch back
+    private static boolean switched;
     *///?}
+
+    /** Tells {@code CgGL} Minecraft's clip control: once, on the render thread, as the GL backend is made. */
+    public static void install() {
+        //? if >=26.2 {
+        /*// Minecraft sets zero-to-one once, where the driver has clip control, and says so here
+        CgGL.setClipZeroToOne(RenderSystem.getDevice().getDeviceInfo().isZZeroToOne());
+        *///?}
+    }
 
     public static void enter() {
         //? if >=26.2 {
@@ -56,23 +59,22 @@ public final class OwnDepthConvention {
             CgGL.glClearDepth(1.0);
             return;
         }
-        if (!read) {
-            read = true;
-            GLCapabilities caps = GL.getCapabilities();
-            clipControl = caps.OpenGL45 || caps.GL_ARB_clip_control;
-            if (clipControl) {
-                hostOrigin = GL11.glGetInteger(GL_CLIP_ORIGIN);
-                hostDepthMode = GL11.glGetInteger(GL_CLIP_DEPTH_MODE);
-            }
+        if (CgGL.isClipZeroToOne()) {
+            ARBClipControl.glClipControl(GL_LOWER_LEFT, GL_NEGATIVE_ONE_TO_ONE);
+            CgGL.setClipZeroToOne(false);
+            switched = true;
         }
-        if (clipControl) ARBClipControl.glClipControl(GL_LOWER_LEFT, GL_NEGATIVE_ONE_TO_ONE);
         CgGL.glClearDepth(1.0);
         *///?}
     }
 
     public static void leave() {
         //? if >=26.2 {
-        /*if (clipControl && !GraphicsApi.vulkan()) ARBClipControl.glClipControl(hostOrigin, hostDepthMode);
+        /*if (switched) {
+            switched = false;
+            ARBClipControl.glClipControl(GL_LOWER_LEFT, GL_ZERO_TO_ONE);
+            CgGL.setClipZeroToOne(true);
+        }
         *///?}
     }
 }
