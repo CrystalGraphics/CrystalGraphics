@@ -113,6 +113,11 @@ public final class CgPropertyBlock {
         return field.getFloatOffset();
     }
 
+    /** Whether {@code name} is a value or a sampler property of this block. */
+    public boolean has(String name) {
+        return field(name) != null || samplers.contains(name);
+    }
+
     /** Whether value {@code name} is an int or a bool, written as its bits. */
     public boolean isInteger(String name) {
         CgBufferField field = field(name);

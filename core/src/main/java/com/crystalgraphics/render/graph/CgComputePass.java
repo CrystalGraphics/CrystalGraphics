@@ -5,8 +5,11 @@ import com.crystalgraphics.compute.CgKernel;
 import com.crystalgraphics.render.CgCpuMeter;
 import com.crystalgraphics.render.CgGpuBudget;
 import com.crystalgraphics.render.draw.CgBindingTable;
+import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
+import com.crystalgraphics.platform.rhi.command.CgAccess;
 import com.crystalgraphics.render.draw.CgPassConstants;
 
+import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -48,6 +51,11 @@ public final class CgComputePass extends CgPass {
     private boolean again;
     private boolean async;
     private boolean ended;
+    /** The target whose depth its kernels sample as {@code cg_DepthBuffer} ({@link #sceneDepth}), and the copy. */
+    @Nullable
+    private CgGraphTexture depthFrom;
+    @Nullable
+    private CgTargetCopy depthFromCopy, keptDepthFrom;
 
     CgComputePass(CgRecording recording, String name, CgPassConstants constants) {
         super(name, null, null);
@@ -68,6 +76,8 @@ public final class CgComputePass extends CgPass {
         async = false;
         ended = false;
         constantsBinding = -1;
+        depthFrom = null;
+        depthFromCopy = null;
     }
 
     @Override
@@ -78,6 +88,8 @@ public final class CgComputePass extends CgPass {
         shellsUsed = 0;
         budget = null;
         meter = null;
+        depthFrom = null;
+        depthFromCopy = null;
     }
 
     int shellCount() {
@@ -196,10 +208,51 @@ public final class CgComputePass extends CgPass {
         return this;
     }
 
+    /**
+     * Its kernels sample {@code from}'s depth as {@code cg_DepthBuffer}, copied once an execution, as a raster pass's
+     * {@link CgRasterPass#sceneDepth(int, CgGraphTexture)}: where a stage's passes read the scene, every one of them.
+     *
+     * <pre>{@code
+     * CgComputePass lights = recording.compute("world.lightsSample", stage.constants()).sceneDepth(stage.target());
+     * lights.dispatch(sample, width, height, 1).image("SAMPLES", samples);
+     * lights.end();
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Throws where {@code from}'s format has no depth, and at execution where the current target has none.</li>
+     *   <li>Give the pass the host's depth convention ({@code CgStageFrame.constants}), or eye depths disagree.</li>
+     * </ul>
+     */
+    public CgComputePass sceneDepth(CgGraphTexture from) {
+        requireOpen();
+        CgFrameBufferFormat format = from.desc() != null ? from.desc().format()
+                : from.framebuffer() != null ? from.framebuffer().getFormat() : null;
+        if (from.kind() != CgGraphTexture.Kind.CURRENT && !from.drawsBesideCurrentDepth()
+                && (format == null || !format.hasDepth())) {
+            throw new IllegalArgumentException(this + " reads the depth of " + from + ", which has none");
+        }
+        depthFrom = from;
+        if (depthFromCopy == null) depthFromCopy = keptDepthFrom != null ? keptDepthFrom : (keptDepthFrom = new CgTargetCopy());
+        recording.read(this, from, CgAccess.SAMPLED_READ);
+        return this;
+    }
+
+    @Nullable
+    CgGraphTexture depthFrom() {
+        return depthFrom;
+    }
+
+    @Nullable
+    CgTargetCopy depthFromCopy() {
+        return depthFromCopy;
+    }
+
     /** Ends the pass: every dispatch's bindings complete, its values and samplers captured. */
     public void end() {
         requireOpen();
-        constantsBinding = CgPassConstants.blocks(recording.bindings().begin(), constants, 0).end();
+        CgBindingTable frame = CgPassConstants.blocks(recording.bindings().begin(), constants, 0);
+        if (depthFrom != null) frame.texture(CgBindingPoints.DEPTH_TEXTURE_UNIT, depthFromCopy.depth);
+        constantsBinding = frame.end();
         for (int d = 0; d < dispatches.size(); d++) {
             CgDispatch dispatch = dispatches.get(d);
             dispatch.requireBound();

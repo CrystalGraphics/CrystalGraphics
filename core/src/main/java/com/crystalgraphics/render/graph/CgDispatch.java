@@ -1,6 +1,8 @@
 package com.crystalgraphics.render.graph;
 
 import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
+import com.crystalgraphics.api.material.CgMaterialValues;
+import com.crystalgraphics.api.texture.CgSampler;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.compute.CgKernel;
 import com.crystalgraphics.compute.emit.CgPropertyBlock;
@@ -19,6 +21,7 @@ import com.crystalgraphics.platform.gl.CgGL;
 
 import javax.annotation.Nullable;
 import java.util.Arrays;
+import java.util.function.Consumer;
 
 /**
  * One kernel run in a {@link CgComputePass}: what it is bound to, its property values and how many it runs. Made by the
@@ -347,6 +350,79 @@ public final class CgDispatch {
         samplers[unit] = texture;
         if (graph != null) pass.recording.read(pass, graph, CgAccess.SAMPLED_READ);
         return this;
+    }
+
+    /**
+     * Applies a material's value setter to this dispatch: each value and sampler it sets that the kernel declares, the
+     * rest skipped, as a material skips a property its shader lacks. One setter then serves a pass drawn as a material
+     * and one dispatched as a kernel.
+     *
+     * <pre>{@code
+     * Consumer<CgMaterialValues> grid = b -> b.vec4("_Rays", l, b, r, t).sampler("_Normals", 0, normals);
+     * pass.dispatch(gbuffer, width, height, 1).image("GBUFFER", target).values(grid);
+     * }</pre>
+     *
+     * <ul>
+     *   <li>A {@code vec3} or an array the kernel declares throws: kernels take neither.</li>
+     *   <li>A sampler's unit and sampler state are the kernel's: the setter's are ignored.</li>
+     * </ul>
+     */
+    public CgDispatch values(Consumer<CgMaterialValues> setter) {
+        if (adapter == null) adapter = new Values();
+        setter.accept(adapter);
+        return this;
+    }
+
+    @Nullable
+    private Values adapter;
+
+    /** What {@link #values} hands a setter: each call onto this dispatch, where the kernel has the name. */
+    private final class Values implements CgMaterialValues {
+        private boolean has(String name) {
+            return kernel.compute().properties().has(name);
+        }
+
+        @Override
+        public CgMaterialValues set1i(String name, int value) {
+            if (has(name)) set(name, value);
+            return this;
+        }
+
+        @Override
+        public CgMaterialValues set1f(String name, float value) {
+            if (has(name)) set(name, value);
+            return this;
+        }
+
+        @Override
+        public CgMaterialValues vec2(String name, float x, float y) {
+            if (has(name)) set(name, x, y);
+            return this;
+        }
+
+        @Override
+        public CgMaterialValues vec3(String name, float x, float y, float z) {
+            if (has(name)) throw new IllegalArgumentException(source.path() + ": '" + name + "' set as a vec3, which kernels refuse");
+            return this;
+        }
+
+        @Override
+        public CgMaterialValues vec4(String name, float x, float y, float z, float w) {
+            if (has(name)) set(name, x, y, z, w);
+            return this;
+        }
+
+        @Override
+        public CgMaterialValues array(String name, float[] values) {
+            if (has(name)) throw new IllegalArgumentException(source.path() + ": '" + name + "' set as an array, which kernels refuse");
+            return this;
+        }
+
+        @Override
+        public CgMaterialValues sampler(String name, int unit, CgTexture texture, CgSampler sampler) {
+            if (has(name)) texture(name, texture);
+            return this;
+        }
     }
 
     public CgDispatch set(String name, float value) {

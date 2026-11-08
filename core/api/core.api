@@ -4368,6 +4368,7 @@ com/crystalgraphics/compute/emit/CgPropertyBlock
   method public defaultsInto ([F)V
   method public floats ()I
   method public format ()Lcom/crystalgraphics/api/buffer/CgBufferFormat;
+  method public has (Ljava/lang/String;)Z
   method public hasValues ()Z
   method public isInteger (Ljava/lang/String;)Z
   method public isVolume (Ljava/lang/String;)Z
@@ -9276,6 +9277,7 @@ com/crystalgraphics/render/graph/CgComputePass
   method public dispatches ()Ljava/util/List;
   method public end ()V
   method public recording ()Lcom/crystalgraphics/render/graph/CgRecording;
+  method public sceneDepth (Lcom/crystalgraphics/render/graph/CgGraphTexture;)Lcom/crystalgraphics/render/graph/CgComputePass;
   method public timed (I)Lcom/crystalgraphics/render/graph/CgComputePass;
   method public timed (Lcom/crystalgraphics/render/CgGpuBudget;)Lcom/crystalgraphics/render/graph/CgComputePass;
 com/crystalgraphics/render/graph/CgDispatch
@@ -9295,6 +9297,7 @@ com/crystalgraphics/render/graph/CgDispatch
   method public skipBarrier (Ljava/lang/String;I)Lcom/crystalgraphics/render/graph/CgDispatch;
   method public skipCountBarrier (Ljava/lang/String;I)Lcom/crystalgraphics/render/graph/CgDispatch;
   method public texture (Ljava/lang/String;Lcom/crystalgraphics/api/texture/CgTexture;)Lcom/crystalgraphics/render/graph/CgDispatch;
+  method public values (Ljava/util/function/Consumer;)Lcom/crystalgraphics/render/graph/CgDispatch;
 com/crystalgraphics/render/graph/CgExecutor
   access public,final
   extends java/lang/Object

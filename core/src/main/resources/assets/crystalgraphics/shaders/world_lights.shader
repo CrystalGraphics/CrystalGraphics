@@ -43,7 +43,7 @@ Properties {
     _World         ("The voxel window's blocks",                   sampler3D) = "black"
     _WorldSections ("Which of its sections are filled",            sampler3D) = "black"
     _WorldDistance ("Its distance to solid over FX_WORLD_FAR",      sampler3D) = "white"
-    _GBuffer       ("Each pixel's normal in the view (world_lights_gbuffer)", sampler2D) = "black"
+    _GBuffer       ("Each pixel's normal in the view (lights/gbuffer.compute)", sampler2D) = "black"
     _WorldBaseX    ("Its lowest block, absolute: x",               int) = 0
     _WorldBaseY    ("y",                                           int) = 0
     _WorldBaseZ    ("z",                                           int) = 0
@@ -145,7 +145,7 @@ Pass {
     void fragment(in v2f i, out vec4 fragColor) {
         ivec2 px = ivec2(gl_FragCoord.xy);
         vec3 p = surface(px);
-        // Its normal, written once a firing for every lighting pass (world_lights_gbuffer).
+        // Its normal, written once a firing for every lighting pass (lights/gbuffer.compute).
         vec3 n = texelFetch(_GBuffer, px, 0).xyz;
         ivec3 cell = cg_light_cell(p, _ZParams.xyz, _Rays.xy, _Rays.zw, _Tile.xy, ivec2(_Grid.xy));
         int e = (cell.z * int(_Grid.y) + cell.y) * int(_Grid.x) + cell.x;

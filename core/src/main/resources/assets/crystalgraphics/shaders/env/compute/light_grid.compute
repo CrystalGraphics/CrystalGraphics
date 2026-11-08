@@ -20,7 +20,7 @@ struct CgLight { vec4 positionRadius; vec4 colorExponent; vec4 spotCos; vec4 seg
 // A light in the grid's view, and what the apply and MegaLights' sampling shade it with: kind is its run, exponent,
 // source radius and its shape bits (lights.glsl's CG_VIEW_SHADOWED, CG_VIEW_SPOT, CG_VIEW_TUBE), segment its tube in the view (w its cone's ramp), radiance its colour over
 // pi, faded by day and divided by the lightmap at its block (world_lights.shader), and in w the same as a luminance, the
-// sampling's weight (world_lights_sample.shader). Each the same for every pixel, so worked out here once.
+// sampling's weight (lights/sample.compute). Each the same for every pixel, so worked out here once.
 struct CgViewLight { vec4 positionRadius; vec4 spot; vec4 kind; vec4 segment; vec4 radiance; };
 
 Properties {

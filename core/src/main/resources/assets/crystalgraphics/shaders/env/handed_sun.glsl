@@ -1,6 +1,6 @@
 #pragma once
 // The sun's shadow handed to a program composing its own (Unreal's modulated shadow): CgWorldLights' cascaded shadow
-// map of our casters, read as world_lights_sample.shader reads it. Included by the compiler wherever a program's source
+// map of our casters, read as lights/sample.compute reads it. Included by the compiler wherever a program's source
 // names CG_DIRECTIONAL_SHADOW, which then binds _cg_SunMap, _cg_SunRows, _cg_Sun and _cg_SunEye. Only a transparent
 // firing has the map: in an opaque one the deferred pass shadows our pixels already, and this reads 1.
 //

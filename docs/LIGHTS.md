@@ -72,7 +72,7 @@ objects wrote. Minecraft writes none, so the pass **rebuilds one from Minecraft'
 | A G-buffer stores | Rebuilt from |
 |---|---|
 | Position | the depth at the pixel, unprojected |
-| Normal | the neighbouring depths: whichever neighbour each way is the smaller step, so a block's edge does not bend it (Wicked Engine's improved normal reconstruction), snapped to a world axis within 10 degrees, as blocks are; our meshes' own where the opaque pass drew them. Written once a firing (`world_lights_gbuffer.shader`, half floats) and read by the apply and every shadow pass, which each rebuilt it before, the shade and denoise passes once per neighbour they weigh |
+| Normal | the neighbouring depths: whichever neighbour each way is the smaller step, so a block's edge does not bend it (Wicked Engine's improved normal reconstruction), snapped to a world axis within 10 degrees, as blocks are; our meshes' own where the opaque pass drew them. Written once a firing (`lights/gbuffer.compute`, half floats) and read by the apply and every shadow pass, which each rebuilt it before, the shade and denoise passes once per neighbour they weigh |
 | Albedo | the scene's colour over Minecraft's lightmap value at the light's block: what the surface would be under white light |
 | Roughness, metalness | nothing: no specular |
 
@@ -168,11 +168,11 @@ lights.add(x, y, z, 2f, 0xFFFFE080, 4f, 0f).shadowed(false).sampled(false);   //
 
 | Pass | Unreal (MegaLights) | Here |
 |---|---|---|
-| Sample | `GenerateLightSamplesCS`: 4 samples a half-resolution pixel, a weighted reservoir over its tile's lights, weight `log2(luminance + 1)`; a sample of the same light merged into the next one's ray | `world_lights_sample.shader`, over the light grid's cell, the shadowed lights alone; every pixel by default (below) |
-| Trace | screen trace (hierarchical, 1 m, a hit within 0.005 of the depth), then the global distance field | screen trace (24 steps over 1 block, `crystalgraphics.world.lightsScreenTrace`, the same thickness), then `CgWorldVoxelWindow`'s distance field (blocks, 128x96x128 round the camera), then `CgWorldEntityBoxes`' entities as capsules, only those its 16x16 tile can meet (Unreal's capsule shadow tiles, `world_lights_tiles.shader`; `crystalgraphics.world.lightsEntityTiles=false` keeps all), then our meshes' distance fields |
-| Shade | `ShadeLightSamplesCS`: each pixel picks a nearby half-resolution pixel by bilinear, depth and normal weight; each visible light lit exactly, times its samples' weights | `world_lights_shade.shader` |
-| Temporal | `DenoiserTemporalCS`: history clamped in YCoCg to the neighbourhood, 4 to 12 frames by confidence, moments kept | `world_lights_temporal.shader`, one history for the first firing (`crystalgraphics.world.lightsShadowFrames`); the sun's and block light's visibility clamped and accumulated the same way, with their moments |
-| Spatial | `DenoiserSpatialCS`: where still noisy, a disk of 4 (8 after a disocclusion) samples by depth, normal and luminance | `world_lights_denoise.shader` (`crystalgraphics.world.lightsShadowSpatial`, pixels); the visibility by the same rule from its own moments, its difference standing for luminance |
+| Sample | `GenerateLightSamplesCS`: 4 samples a half-resolution pixel, a weighted reservoir over its tile's lights, weight `log2(luminance + 1)`; a sample of the same light merged into the next one's ray | `lights/sample.compute`, over the light grid's cell, the shadowed lights alone; every pixel by default (below) |
+| Trace | screen trace (hierarchical, 1 m, a hit within 0.005 of the depth), then the global distance field | screen trace (24 steps over 1 block, `crystalgraphics.world.lightsScreenTrace`, the same thickness), then `CgWorldVoxelWindow`'s distance field (blocks, 128x96x128 round the camera), then `CgWorldEntityBoxes`' entities as capsules, only those its 16x16 tile can meet (Unreal's capsule shadow tiles, `lights/tiles.compute`; `crystalgraphics.world.lightsEntityTiles=false` keeps all), then our meshes' distance fields |
+| Shade | `ShadeLightSamplesCS`: each pixel picks a nearby half-resolution pixel by bilinear, depth and normal weight; each visible light lit exactly, times its samples' weights | `lights/shade.compute` |
+| Temporal | `DenoiserTemporalCS`: history clamped in YCoCg to the neighbourhood, 4 to 12 frames by confidence, moments kept | `lights/temporal.compute`, one history for the first firing (`crystalgraphics.world.lightsShadowFrames`); the sun's and block light's visibility clamped and accumulated the same way, with their moments |
+| Spatial | `DenoiserSpatialCS`: where still noisy, a disk of 4 (8 after a disocclusion) samples by depth, normal and luminance | `lights/denoise.compute` (`crystalgraphics.world.lightsShadowSpatial`, pixels); the visibility by the same rule from its own moments, its difference standing for luminance |
 | Composite | adds into scene colour | `world_lights.shader` adds it beside the unshadowed lights |
 
 - **The sun** is not one of MegaLights' lights (Unreal's `r.MegaLights.DirectionalLights` is 0): our objects shadow it

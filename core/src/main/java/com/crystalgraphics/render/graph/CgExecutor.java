@@ -946,7 +946,11 @@ public final class CgExecutor {
         prologue(dispatches);
         try (CgTrace.Zone ignored = CgTrace.isEnabled(CgChannels.GL) ? CgTrace.zone(CgChannels.GL, CgTrace.name(pass.name())) : null) {
             frame.bindings.bind(packed.constants);
+            // After the constants, whose view of the copy it fills or, sampled in place, binds over
+            if (pass.depthFrom() != null) copyDepthFrom(pass, pass.depthFrom(), pass.depthFromCopy(), CgBindingPoints.DEPTH_TEXTURE_UNIT);
             for (int d = 0; d < dispatches.size(); d++) dispatch(frame, dispatches.get(d), packed.bindings[d]);
+        } finally {
+            if (pass.depthFromCopy() != null) pass.depthFromCopy().release(POOL);
         }
         CgTrace.add(CgChannels.GL, DISPATCH_COUNT, dispatches.size());
     }
@@ -989,6 +993,9 @@ public final class CgExecutor {
         frame.bindings.bind(packed.constants);
         CgBoundResources.forgetTextures(CgBindingModel.PASS);
         CgBoundResources.forgetTextures(CgBindingModel.MATERIAL);
+        // Through CgGL and before the device section, after the constants as a raster pass's copy: the bind is what the
+        // view set reads
+        if (pass.depthFrom() != null) copyDepthFrom(pass, pass.depthFrom(), pass.depthFromCopy(), CgBindingPoints.DEPTH_TEXTURE_UNIT);
         deviceSets.prepare(frame.bindings);
         if (CgKernelTarget.CHECKED) CgComputeCheck.prepare();
         for (int i = 0; i < dispatches.size(); i++) {
@@ -1011,6 +1018,7 @@ public final class CgExecutor {
             DEVICE_COMPUTE.close();
             endDeviceBarriers();
             deviceComputing = false;
+            if (pass.depthFromCopy() != null) pass.depthFromCopy().release(POOL);
         }
     }
 
@@ -2022,7 +2030,7 @@ public final class CgExecutor {
                 try (CgTrace.Zone copying = CgTrace.zone(CgChannels.GL_DETAIL, BATCH_COPY_FROM)) {
                     if (pass.depthFrom() != null) {
                         if (groups) CgGpuTrace.mark(DEPTH_FROM_GROUP);
-                        copyDepthFrom(pass);
+                        copyDepthFrom(pass, pass.depthFrom(), pass.depthFromCopy(), pass.depthFromUnit());
                     }
                     if (pass.colorFrom() != null) copyColorFrom(pass);
                 }
@@ -2521,7 +2529,7 @@ public final class CgExecutor {
             // Through CgGL and before the device section, as the GL path copies before its first batch: the copies'
             // binds are what the pass set reads
             depthInPlace = readOnlyDepth(frame, currentStep, pass);
-            if (pass.depthFrom() != null) copyDepthFrom(pass);
+            if (pass.depthFrom() != null) copyDepthFrom(pass, pass.depthFrom(), pass.depthFromCopy(), pass.depthFromUnit());
             if (pass.colorFrom() != null) copyColorFrom(pass);
             if ((packed.copyBefore[0] & (CgTargetCopy.COLOR | CgTargetCopy.DEPTH)) != 0) {
                 copyTarget(pass, packed.copyBefore[0], packed.copyRect, 0);
@@ -2886,13 +2894,11 @@ public final class CgExecutor {
     }
 
     /** Copies the depth of the target a pass reads besides its own, whole, and binds it. */
-    private void copyDepthFrom(CgRasterPass pass) {
-        CgGraphTexture from = pass.depthFrom();
-        CgTargetCopy copy = pass.depthFromCopy();
+    private void copyDepthFrom(CgPass pass, CgGraphTexture from, CgTargetCopy copy, int unit) {
         if (takes && from.kind() != CgGraphTexture.Kind.CURRENT && !from.drawsBesideCurrentDepth()
                 && storage(from).getDepthTexture() != null) {
             // Not attached here, and moved to SAMPLED_READ with the step: sampled where it is, as Unreal samples SceneDepth.
-            storage(from).getDepthTexture().bind(pass.depthFromUnit());
+            storage(from).getDepthTexture().bind(unit);
             CgTrace.add(CgChannels.GL, DEPTH_SAMPLED, 1);
             return;
         }
@@ -2902,7 +2908,7 @@ public final class CgExecutor {
             CgFrameBuffer storage = storage(from);
             copy.borrowDepth(sharedDepth(storage.getId(), storage.getFormat(), storage.getWidth(), storage.getHeight(), pass));
         }
-        copy.depth.bind(pass.depthFromUnit());
+        copy.depth.bind(unit);
     }
 
     /** The framebuffer whose depth {@code pass} draws into, or -1 where its target has none. */

@@ -404,6 +404,10 @@ public final class CgFrameBuilder {
         int constants = pass.constantsBinding;
         if (map[constants] < 0) map[constants] = frame.bindings.copy(table, constants);
         packed.constants = map[constants];
+        CgGraphTexture depthFrom = pass.depthFrom();
+        if (depthFrom != null) {
+            frame.readsCurrentDepth |= depthFrom.kind() == CgGraphTexture.Kind.CURRENT || depthFrom.drawsBesideCurrentDepth();
+        }
         for (int d = 0; d < dispatches.size(); d++) {
             int local = dispatches.get(d).bindings;
             if (map[local] < 0) map[local] = frame.bindings.copyUnique(table, local);
