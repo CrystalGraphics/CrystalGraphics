@@ -1902,6 +1902,7 @@ com/crystalgraphics/platform/gl/resource/GLBuffer
   method public hostVisible ()Z
   method public label ()Ljava/lang/String;
   method public mapped ()Ljava/nio/ByteBuffer;
+  method public owned ()Z
   method public size ()J
   method public texel (Lcom/crystalgraphics/platform/gl/driver/CgGLDriver;JJLcom/crystalgraphics/platform/rhi/format/CgFormat;)I
   method public,static adopt (Lcom/crystalgraphics/platform/gl/driver/CgGLDriver;I)Lcom/crystalgraphics/platform/gl/resource/GLBuffer;
@@ -1941,6 +1942,7 @@ com/crystalgraphics/platform/gl/resource/GLTexture
   method public <init> (Lcom/crystalgraphics/platform/gl/driver/CgGLDriver;Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture$Desc;)V
   method public delete (Lcom/crystalgraphics/platform/gl/driver/CgGLDriver;)V
   method public desc ()Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture$Desc;
+  method public owned ()Z
   method public sampled (Lcom/crystalgraphics/platform/gl/driver/CgGLDriver;Lcom/crystalgraphics/platform/rhi/resource/CgTextureView;)I
   method public,static adopt (ILcom/crystalgraphics/platform/rhi/resource/CgGpuTexture$Desc;)Lcom/crystalgraphics/platform/gl/resource/GLTexture;
   method public,static adoptRenderbuffer (ILcom/crystalgraphics/platform/rhi/resource/CgGpuTexture$Desc;)Lcom/crystalgraphics/platform/gl/resource/GLTexture;

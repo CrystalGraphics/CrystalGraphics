@@ -62,6 +62,9 @@ public final class GLBuffer implements CgGpuBuffer {
 
     @Override public boolean hostVisible() { return desc.hostVisible(); }
 
+    /** Whether its name is the device's own, freed by {@link #delete}; false for a name adopted from elsewhere. */
+    public boolean owned() { return owned; }
+
     @Override
     public ByteBuffer mapped() {
         if (mapped == null) throw new IllegalStateException(desc.label() + " is not host-visible");
