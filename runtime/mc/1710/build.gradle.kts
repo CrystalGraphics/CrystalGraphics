@@ -72,7 +72,7 @@ jvmdg.multiReleaseOriginal.set(false)
 
 
 tasks.named<JavaExec>("runClient") {
-    // Every dev client shares one shader toolchain folder (cgbuildlogic.SHADER_TOOLCHAIN_DEV_DIR).
+    // Every dev client shares one shader toolchain folder (cgbuildlogic.shaderToolchainDevDir).
     jvmArgs(shaderToolchainVmArgs())
     doFirst {
      //   val agent = findJarBySubstring("unimixins")

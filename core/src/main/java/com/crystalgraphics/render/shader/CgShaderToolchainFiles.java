@@ -35,7 +35,7 @@ import com.crystalgraphics.storage.download.CgDownloads;
  *   <li>Pinned in {@code assets/crystalgraphics/download/locations.json} under {@code shader-toolchain/}: the shared
  *       jars at the top, each platform's natives under {@code <platform>/}. Every file is checked against its pin.</li>
  *   <li>Kept in CrystalGraphics' cache, or in {@code -Dcrystalgraphics.shaderToolchain.dir}: one folder many
- *       clients share (every dev run's, {@code ~/.crystalgraphics/shader-toolchain}).</li>
+ *       clients share (a checkout's dev runs, {@code CrystalGraphics/build/shader-toolchain}; prodSmoke's, one per launcher).</li>
  *   <li>Blocking and on the network: never the render thread.</li>
  * </ul>
  */
