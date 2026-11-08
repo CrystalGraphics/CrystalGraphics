@@ -267,11 +267,13 @@ public final class CgVulkanDevice implements CgRHI, CgImplicitLayouts, AutoClose
                                      CgVulkanHost host) {
         VkPhysicalDeviceLimits l = props.limits();
         int samples = Integer.highestOneBit(l.framebufferColorSampleCounts() & l.framebufferDepthSampleCounts());
-        // Binding counts at GL's scale: the tracker sizes its tables by them, and Vulkan's are in the millions.
+        // Binding counts at GL's scale: the tracker sizes its tables by them, and Vulkan's are in the millions. Storage
+        // points are names CgBindingModel maps to sets, not a stage's descriptors: the tracker's 32, which holds the
+        // engine's and the materials' (CgBindingPoints.init)
         CgRHI.Globals.Limits limits = new CgRHI.Globals.Limits(l.maxImageDimension2D(), l.maxImageDimension3D(),
                 l.maxImageArrayLayers(), l.maxColorAttachments(), samples, Math.min(16, l.maxVertexInputAttributes()),
                 Math.min(32, l.maxPerStageDescriptorSamplers()), l.maxUniformBufferRange(),
-                Math.min(24, l.maxPerStageDescriptorUniformBuffers()), Math.min(16, l.maxPerStageDescriptorStorageBuffers()),
+                Math.min(24, l.maxPerStageDescriptorUniformBuffers()), 32,
                 l.maxTexelBufferElements(), (int) l.minUniformBufferOffsetAlignment(),
                 (int) l.minStorageBufferOffsetAlignment(), (int) l.minTexelBufferOffsetAlignment(),
                 l.maxViewportDimensions(0), l.maxSamplerAnisotropy(), new CgRHI.Globals.Compute(
