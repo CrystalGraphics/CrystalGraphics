@@ -1,6 +1,7 @@
 package com.crystalgraphics.platform.gl;
 
 import com.crystalgraphics.lwjgl3.Lwjgl3GLBackend;
+import com.crystalgraphics.lwjgl3.Lwjgl3GLContext;
 import com.crystalgraphics.lwjgl3.Lwjgl3GLDriver;
 import com.crystalgraphics.platform.gl.state.CgGlState;
 import com.crystalgraphics.platform.gl.driver.CgGLDriver;
@@ -51,6 +52,9 @@ public class GLHostSectionTest {
         try (GLTestWindow window = new GLTestWindow()) {
             // Shared with CgGL: CgGL on this context, which the section reads the host's framebuffers from
             CgGL.init(new Lwjgl3GLBackend());
+            // The section saves the host's alpha test, which asks the capabilities whether the profile has one
+            CgCapabilities.init(new Lwjgl3GLContext());
+            CgCapabilities.clearCache();
             CgGlState.reset();
             CgGLDevice device = new CgGLDevice(new Lwjgl3GLDriver(), new SpvcGlslTranslator(), 64, 64, false,
                     GLHostState.sharedWithCgGL());
@@ -68,6 +72,8 @@ public class GLHostSectionTest {
             assertTrue("GL errors: " + window.errors, window.errors.isEmpty());
         } finally {
             CgGlState.reset();
+            CgCapabilities.clearCache();
+            CgCapabilities.init(null);
             CgGL.init(null);
         }
     }
