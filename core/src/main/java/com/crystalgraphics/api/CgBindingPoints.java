@@ -2,6 +2,8 @@ package com.crystalgraphics.api;
 
 import com.crystalgraphics.gl.buffer.shader.CgShaderBufferRegistry;
 import com.crystalgraphics.platform.gl.CgCapabilities;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 /**
  * Engine-reserved binding slot constants for SSBO and UBO resources.
@@ -258,6 +260,8 @@ public final class CgBindingPoints {
      */
     public static final int USER_START_UBO = 0;
 
+    private static final Logger LOGGER = LogManager.getLogger("CgBindingPoints");
+
     private CgBindingPoints() {}
 
     /**
@@ -295,6 +299,11 @@ public final class CgBindingPoints {
         MATERIAL_ARENA = new Binding(--maxSsboBindings, -1);
         maxSsboBindings -= MATERIAL_BUFFER_COUNT;
         MATERIAL_BUFFERS_SSBO = maxSsboBindings;
+        if (!tbo && MATERIAL_BUFFERS_SSBO < 0) {
+            // A negative point binds nothing: every material buffer would read a device's zeroed default
+            LOGGER.error("{} storage buffer binding points are {} short of the engine's and the materials': material "
+                    + "buffers below 0 read nothing", caps.getMaxSsboBindings(), -MATERIAL_BUFFERS_SSBO);
+        }
 
         // ── UBO bindings ───────────────────────────────────────────────────────────────
         VIEW_UBO                = --maxUboBindings;
