@@ -3,7 +3,6 @@ package com.crystalgraphics.render.stage;
 import com.crystalgraphics.compute.ops.CgGpuOps;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.gl.framebuffer.CgFrameBuffer;
-import com.crystalgraphics.gl.texture.CgHostSamplers;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.state.CgGlScope;
 import com.crystalgraphics.platform.gl.state.CgGlSlot;
@@ -320,16 +319,10 @@ public final class CgStageFrame {
         try {
             graph.add(recording.seal());
             CgFrame frame = builder.build(graph);
-            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "stage.parkSamplers")) {
-                CgHostSamplers.park();
-            }
             try (CgGlScope ignored = CgGlState.save(SCISSOR)) {
                 CgGL.glDisable(CgGL.GL_SCISSOR_TEST);
                 CgExecutor.execute(frame);
             } finally {
-                try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "stage.unparkSamplers")) {
-                    CgHostSamplers.unpark();
-                }
                 builder.recycle(frame);
             }
         } finally {

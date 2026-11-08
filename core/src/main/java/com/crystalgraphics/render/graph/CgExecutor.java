@@ -44,6 +44,7 @@ import com.crystalgraphics.compute.source.CgImageDecl;
 import com.crystalgraphics.compute.source.CgImageDimension;
 import com.crystalgraphics.gl.buffer.CgBufferReadback;
 import com.crystalgraphics.gl.buffer.CgReadback;
+import com.crystalgraphics.gl.texture.CgHostSamplers;
 import com.crystalgraphics.gl.texture.CgSamplers;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.gl.buffer.CgStreamBuffer;
@@ -401,7 +402,11 @@ public final class CgExecutor {
         }
         if (BY_DEPTH.size() == depth) BY_DEPTH.add(new CgExecutor(depth));
         CgExecutor executor = BY_DEPTH.get(depth);
+        // The host's sampler objects override our textures' filtering on the units they hold (Minecraft 1.21.5+
+        // leaves three bound): parked for the outermost execution, which every caller's frame is.
+        boolean outermost = depth == 0;
         depth++;
+        if (outermost) CgHostSamplers.park();
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "graph.execute");
              CgGlScope ignored2 = restoreState ? CgGlState.saveAll() : null) {
             // A compatibility host's fixed-function alpha test discards our fragments too, and only a material
@@ -417,6 +422,7 @@ public final class CgExecutor {
             }
         } finally {
             CgSamplers.unbindOwn();   // ours never reach the host's textures, nor an outer execution's next draw
+            if (outermost) CgHostSamplers.unpark();
             depth--;
         }
     }
@@ -852,8 +858,9 @@ public final class CgExecutor {
                 KEPT.remove(release.buffer);
             } else if (pass instanceof CgPass.Copy copy) {
                 try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, STEP_COPY)) {
-                    CgFrameBuffer from = storage(copy.from), to = storage(copy.target);
-                    CgFrameBuffer.blitFrom(from.getId(), to.getId(), copy.x, copy.y, copy.x + copy.w, copy.y + copy.h,
+                    int from = copy.from.kind() == CgGraphTexture.Kind.CURRENT ? startFramebuffer
+                            : storage(copy.from).getId();
+                    CgFrameBuffer.blitFrom(from, storage(copy.target).getId(), copy.x, copy.y, copy.x + copy.w, copy.y + copy.h,
                             copy.tx, copy.ty, copy.tx + copy.tw, copy.ty + copy.th, CgGL.GL_COLOR_BUFFER_BIT,
                             copy.linear ? CgGL.GL_LINEAR : CgGL.GL_NEAREST);
                 }
@@ -892,16 +899,7 @@ public final class CgExecutor {
             } else if (pass instanceof CgPass.Release) {
                 sharedDepthSource = -1;
                 try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, STEP_RELEASE)) {
-                    CgFrameBuffer[] versions = pass.target.versions();
-                    if (versions != null) {
-                        for (int v = 0; v < versions.length; v++) {
-                            free(versions[v]);
-                            versions[v] = null;
-                        }
-                    } else {
-                        free(pass.target.framebuffer());
-                        pass.target.resolve(null);
-                    }
+                    freeTexture(pass.target);
                 }
             }
         } catch (RuntimeException failure) {
@@ -1497,6 +1495,34 @@ public final class CgExecutor {
      */
     public static void freeStorage(CgGraphBuffer buffer) {
         if (KEPT.remove(buffer)) freeKept(buffer);
+    }
+
+    /**
+     * Frees a requested or history texture's storage at once: teardown, where no frame will execute a recorded
+     * release. Anything that still names it draws nothing from it. Render thread, between executions.
+     *
+     * <pre>{@code
+     * for (CgGraphTexture kept : pictures) CgExecutor.freeStorage(kept);   // the context is going away
+     * }</pre>
+     */
+    public static void freeStorage(CgGraphTexture texture) {
+        if (texture.kind() != CgGraphTexture.Kind.REQUESTED && texture.kind() != CgGraphTexture.Kind.HISTORY) {
+            throw new IllegalArgumentException(texture + " is " + texture.kind() + ": the graph frees it");
+        }
+        freeTexture(texture);
+    }
+
+    private static void freeTexture(CgGraphTexture texture) {
+        CgFrameBuffer[] versions = texture.versions();
+        if (versions != null) {
+            for (int v = 0; v < versions.length; v++) {
+                free(versions[v]);
+                versions[v] = null;
+            }
+        } else {
+            free(texture.framebuffer());
+            texture.resolve(null);
+        }
     }
 
     private static void freeKept(CgGraphBuffer buffer) {

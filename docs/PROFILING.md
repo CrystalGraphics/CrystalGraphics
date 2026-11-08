@@ -179,8 +179,8 @@ Rules that follow:
   bounds at 0.48 ms of CPU against GL's 0.04, and after 600 at 0.08 against 0.01
   (`-Dcrystalgraphics.harness.opsCost.warmup=600`).
 - **A spike no zone explains is the machine until a bare window says otherwise.** A stall of tens of
-  milliseconds to seconds lands in whatever first waits on the driver -- a `glGet` (`glState.adopt`,
-  `stage.parkSamplers`), the swap, even `glfwPollEvents` -- so where it shows names no cause. Before any
+  milliseconds to seconds lands in whatever first waits on the driver -- a `glGet` (`glState.adopt`),
+  the swap, even `glfwPollEvents` -- so where it shows names no cause. Before any
   engine theory, run a bare GLFW window (clear and swap, nothing of ours) for two minutes with `nvidia-smi`
   sampling beside it: if it stalls too, the machine is part of it -- and readbacks make those stalls worse
   (below, *A readback's time*). The recipe, the script and what it found
@@ -524,7 +524,7 @@ CrystalGraphics' zones, by package — **before adding one, look here and in the
 | Shader graph | shadergraph, gpu | `shadergraph.emit`, `.previewEmit`; `preview.renderPending/render/draw`, `mainPreview.render/draw` — recording only: the passes execute inside the frame that records them, so their GPU time is that frame's; counters for what drew, was unchanged, is animated or still compiling, and `mainPreview.fallback` for a frame the main preview drew flat white | `shadergraph/CgShaderEmitter`, `CgPreviewEmitter`, `CgPreviewRenderer`, `CgMainPreviewRenderer` |
 | Batching | gl; gl.detail | `batch.*`, `quadRenderer.flush`, `curveRenderer.flush`, `frameRing.wait`; on gl.detail their `upload`/`bindBuffer`/`drawInstanced` and stream buffer `map`/`write`/`commit` | `gl/render/*`, `gl/buffer/*` |
 | Texture arrays | gl | uploads, growth | `gl/texture/CgTexture2DArray` |
-| World | world, gpu; gl | a stage's whole firing as its path (`world.opaque`, `world.transparent`), the world renderer's recording inside it (`world.recordOpaque/recordTransparent`), `world.opaqueDraws/transparentDraws/emissiveDraws` counts; `gpu:world.opaque/transparent`, and bloom's passes on their own (`gpu:world.emission`, `post.bloom`, the whole chain in one compute pass, `post.composite`, through `CgRasterPass.timed`); `post.record` the post stack's recording; on gl `stage.parkSamplers/unparkSamplers`, the host's sampler bindings read and put back around every firing | `render/stage/CgRenderStage`, `CgStageFrame`, `render/world/CgWorldRenderer` |
+| World | world, gpu; gl | a stage's whole firing as its path (`world.opaque`, `world.transparent`), the world renderer's recording inside it (`world.recordOpaque/recordTransparent`), `world.opaqueDraws/transparentDraws/emissiveDraws` counts; `gpu:world.opaque/transparent`, and bloom's passes on their own (`gpu:world.emission`, `post.bloom`, the whole chain in one compute pass, `post.composite`, through `CgRasterPass.timed`); `post.record` the post stack's recording | `render/stage/CgRenderStage`, `CgStageFrame`, `render/world/CgWorldRenderer` |
 | VFX | vfx; world | `vfx.sim` (world) with a `vfx.tick` per tick, `vfx.emitters` inside it (the render thread's share of the emitters, and its wait for the `crystalgraphics-vfx-*` workers, whose time counters land on their own threads); `vfx.submit` › `vfx.warm`, `vfx.effect.submit` per effect (`vfx.particles.meshes` inside it, a mesh draw per particle; `vfx.effect.submit/<namespace>` for an owner's, as `vfx.effect.tick/<namespace>` times its ticks inside `vfx.tick`), `vfx.paths.upload`, `vfx.particles.write` › `vfx.particles.fill` (records filled on the workers), `vfx.particles.light` (each record's `CgWorldLight.at` on the render thread, where there is a level) and `vfx.particles.upload`; `showcase.spheres`. The per-particle loops are time counters, not zones (`CgVfxTrace`): `vfx.sim.spawn/solve/age-ns`, `vfx.module.<kind>-ns` per module kind, `vfx.wave.stream/ground-fill/path-ns`; counts `vfx.ticks`, `vfx.ticks.capped` (a frame that stopped short of the clock, at 12 ticks or `vfx.simBudgetMs`: effects slowed down), `vfx.effects` and `vfx.effects/<namespace>` per owner, `vfx.particles.spawned/ticked/written`, `vfx.wave.path-rings`, `vfx.draws.<kind>`; a `vfx.blast` marker at each blast | `vfx/CgVfxSystem`, `CgVfxFrame`, `particle/CgVfxEmitterInstance`, `effect/beam/CgEnergyWave`, `render/CgVfxTube`, `demo/CgVfxShowcase` |
 | Networked objects | net | counters per type each server tick: `net.objects/<type>` live, `net.viewers/<type>` objects seen summed over players, `net.bytes/<type>` frame bytes, `net.refused/<type>` commands and predictions refused that tick. A dedicated server records them only where a trace frame is open; `CgNetObjects.report()` prints the same per type as text | `net/object/CgNetObjects` |
 | GL state | gl | `glState.open` and `glState.restore` per scope, `glState.open.all`/`.restore.all` for a scope of every slot (`saveAll`); `glState.adopt` per domain read from the provider, inside an open; counters `glState.scopes`, `.scopes.all`, `.adopt.count`, `.adopt.units`; `glState.glGet.<slot>`, the reads a host-cache provider sent to the driver (a domain it cannot answer, or a startup check) | `platform/gl/CgGlStateManager`, `gl/state/CgCheckedProvider` |
@@ -545,11 +545,11 @@ manager miss, raw `CgShader` compiles outside a material, hot reload (a harness 
 (`runtime/mc/**`) -- in Minecraft, its own world render is the unzoned part of a host frame.
 
 **A readback's time is not always its own either.** A `glGet` waits for the driver's own thread to drain what was
-queued, so the first readback of a stage (`stage.parkSamplers`, `glState.adopt`) takes a stall from anywhere: another
+queued, so the first readback of a stage (`glState.adopt`) takes a stall from anywhere: another
 process on the GPU, a present still pending. **And the reads make it worse**: a bare GLFW window making the reads a
 frame here makes (two sampler parks, 60 more `glGet`s) had three times the frames over 20 ms of the same window
 without them, 28-33 against 9-10 in two minutes, up to 96 ms against 41, with the time inside the reads
-(`BareGets.java`, `plan/gl-gpu-stalls-notes.md`). So a spike in `stage.parkSamplers` or `glState.adopt` is the
+(`BareGets.java`, `plan/gl-gpu-stalls-notes.md`). So a spike in `glState.adopt` is the
 machine's hiccup paid synchronously, at a price these reads set. Compare spike counts over interleaved runs, never
 one run.
 

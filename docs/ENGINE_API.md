@@ -17,6 +17,8 @@ CgRenderStage.HUD.register(0, frame -> frame.callback("mymod:badge", () -> drawB
 - A GUI stage fires once a frame from a hook that fires once, never per HUD element; not while the HUD is hidden (F1),
   and never on a server. Fabric below 1.16 has no `SCREEN`. From 26.1 both fire at the frame's end, after the GUI.
 - `fireOverlay(width, height, scale, mainFramebuffer)` is what a host calls: it fills the camera and fires.
+- `fireInto(target)` fires into a framebuffer of the caller's rather than the host's bound target, with the host
+  frame filled for it first: a second view of the world, as an editor's viewport draws one.
 
 ```java
 // Drawing at a stage

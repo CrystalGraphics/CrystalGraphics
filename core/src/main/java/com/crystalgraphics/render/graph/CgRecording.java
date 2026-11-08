@@ -309,12 +309,20 @@ public final class CgRecording {
         return pass;
     }
 
-    /** Copies a region of {@code from} into a region of {@code to}, scaling when they differ in size. */
+    /**
+     * Copies a region of {@code from} into a region of {@code to}, scaling when they differ in size: bottom-left pixels,
+     * colour slot 0. {@code from} may be {@link CgGraphTexture#current()}, as it stands after every write recorded
+     * before: what is behind a UI, read into a texture of its own.
+     *
+     * <pre>{@code
+     * rec.copy(CgGraphTexture.current(), x, y, w, h, capture, 0, 0, w, h, false);
+     * }</pre>
+     */
     public void copy(CgGraphTexture from, int x, int y, int w, int h, CgGraphTexture to, int tx, int ty, int tw, int th,
                      boolean linear) {
         requireOpen();
-        if (from.kind() == CgGraphTexture.Kind.CURRENT || to.kind() == CgGraphTexture.Kind.CURRENT) {
-            throw new IllegalArgumentException("a copy names its framebuffers; the current target has none");
+        if (to.kind() == CgGraphTexture.Kind.CURRENT) {
+            throw new IllegalArgumentException("a copy into the current target: draw into it instead");
         }
         if (from.isVolume() || to.isVolume() || from.isArray() || to.isArray()) {
             throw new IllegalArgumentException("a copy is between 2D textures, not volumes or arrays");

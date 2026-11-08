@@ -10,16 +10,16 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * {@code -Dcrystalgraphics.gl.threadCheck=true}: names every place that reaches {@link CgGL} inside a GL-free
- * section (a UI paint recording, or a GL device's section, where the call passes the device's state filter), or off
- * the thread that owns the context. Each distinct call site is logged once, with its stack, and a table of every site
- * and how often it ran is printed at exit. Off, it costs one constant branch per call.
+ * {@code -Dcrystalgraphics.gl.threadCheck=true}: names every place that reaches {@link CgGL} inside a GL device's
+ * section, where the call passes the device's state filter, or off the thread that owns the context. Each distinct call
+ * site is logged once, with its stack, and a table of every site and how often it ran is printed at exit. Off, it costs
+ * one constant branch per call.
  */
 final class CgGLAudit {
 
     private static final CgVar.Bool THREAD_CHECK = CgVar.bool("crystalgraphics.gl.threadCheck", false, CgVar.DEV | CgVar.RESTART,
-            "Log each CgGL call site inside a GL-free section (a UI paint recording) or off the context's thread, once,"
-                    + " with its stack; every site and its count to stderr at exit.");
+            "Log each CgGL call site inside a GL device's section or off the context's thread, once, with its stack;"
+                    + " every site and its count to stderr at exit.");
     static final boolean ON = THREAD_CHECK.get();
     /** Frames outside {@code platform.gl} that make a site: enough to tell callers apart, few enough to merge. */
     private static final int SITE_DEPTH = 4;
@@ -27,7 +27,6 @@ final class CgGLAudit {
     private static final String PACKAGE = CgGL.class.getPackage().getName() + ".";
 
     private static final Logger LOG = LogManager.getLogger("CrystalGraphics");
-    private static final ThreadLocal<String> SECTION = new ThreadLocal<>();
     private static final Map<String, int[]> SITES = new LinkedHashMap<>();
 
     static {
@@ -36,20 +35,7 @@ final class CgGLAudit {
 
     private CgGLAudit() {}
 
-    // Tracked whether or not the audit logs: CgGL.mayIssueGl reads it.
-    static void enter(String section) {
-        SECTION.set(section);
-    }
-
-    static void exit() {
-        SECTION.remove();
-    }
-
-    static boolean inSection() {
-        return SECTION.get() != null;
-    }
-
-    /** Open while a GL device's host section is ({@link CgGLDevice}): audited only, so {@link CgGL#mayIssueGl} is as it was. */
+    /** Open while a GL device's host section is ({@link CgGLDevice}). */
     private static boolean deviceSection;
 
     static void deviceSection(boolean open) {
@@ -57,9 +43,8 @@ final class CgGLAudit {
     }
 
     static void check(CgGLBackend backend) {
-        String section = SECTION.get();
         boolean offThread = backend != null && !backend.ownedByCurrentThread();
-        if (section == null && deviceSection && !offThread) section = "a GL device section";
+        String section = deviceSection && !offThread ? "a GL device section" : null;
         if (section == null && !offThread) return;
         String why = offThread ? "off the owner thread" + (section != null ? ", in " + section : "") : "in " + section;
 
@@ -102,7 +87,7 @@ final class CgGLAudit {
         }
         // System.err: log4j may have stopped by the time a shutdown hook runs.
         if (sites.isEmpty()) {
-            System.err.println("[gl-audit] no GL in a GL-free section or off the owner thread");
+            System.err.println("[gl-audit] no GL in a device section or off the owner thread");
             return;
         }
         sites.sort((a, b) -> Integer.compare(b.getValue()[0], a.getValue()[0]));

@@ -668,8 +668,6 @@ com/crystalgraphics/platform/gl/CgGL
   method public,static createIsolatedWorkerContext ()Lcom/crystalgraphics/platform/gl/CgGLWorkerContext;
   method public,static createWorkerContext ()Lcom/crystalgraphics/platform/gl/CgGLWorkerContext;
   method public,static drainErrors ()Ljava/util/List;
-  method public,static enterGlFree (Ljava/lang/String;)V
-  method public,static exitGlFree ()V
   method public,static fromHost ()V
   method public,static glActiveTexture (I)V
   method public,static glAlphaFunc (IF)V

@@ -8,6 +8,8 @@ import com.crystalgraphics.lifecycle.CgGraphicsLifecycle;
 import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.state.CgGlCensus;
+import com.crystalgraphics.platform.gl.state.CgGlScope;
+import com.crystalgraphics.platform.gl.state.CgGlSlot;
 import com.crystalgraphics.platform.gl.state.CgGlState;
 import com.crystalgraphics.trace.CgGpuTrace;
 import com.crystalgraphics.trace.CgTrace;
@@ -267,6 +269,27 @@ public final class CgRenderStage {
                 firing--;
                 CgGpuTrace.end();
             }
+        } finally {
+            CgGL.toHost();
+        }
+    }
+
+    /**
+     * {@link #fire} into {@code target} rather than the host's bound target: a view of the world of its own, as an
+     * editor's viewport draws one. The target is bound with its viewport for the firing and the host's binding put back
+     * after. Fill {@link #host()} for the target first, its size and id included, and put the host's frame back after.
+     *
+     * <pre>{@code
+     * stage.host().set(0f, target.getWidth(), target.getHeight(), target.getId()).view().set(x, y, z, view, projection);
+     * stage.fireInto(target);
+     * }</pre>
+     */
+    public void fireInto(CgFrameBuffer target) {
+        CgGL.fromHost();
+        try (CgGlScope ignored = CgGlState.save(CgGlSlot.FBO, CgGlSlot.VIEWPORT)) {
+            target.bind();
+            CgGL.glViewport(0, 0, target.getWidth(), target.getHeight());
+            fire();
         } finally {
             CgGL.toHost();
         }

@@ -9311,6 +9311,7 @@ com/crystalgraphics/render/graph/CgExecutor
   method public,static executeAgain (Lcom/crystalgraphics/render/graph/CgFrame;Z)V
   method public,static forgetHostTargets ()V
   method public,static freeStorage (Lcom/crystalgraphics/render/graph/CgGraphBuffer;)V
+  method public,static freeStorage (Lcom/crystalgraphics/render/graph/CgGraphTexture;)V
   method public,static makeStorage (Lcom/crystalgraphics/render/graph/CgGraphBuffer;)V
 com/crystalgraphics/render/graph/CgFrame
   access public,final
@@ -10662,6 +10663,7 @@ com/crystalgraphics/render/stage/CgRenderStage
   field public,static,final WORLD_OPAQUE Lcom/crystalgraphics/render/stage/CgRenderStage;
   field public,static,final WORLD_TRANSPARENT Lcom/crystalgraphics/render/stage/CgRenderStage;
   method public fire ()V
+  method public fireInto (Lcom/crystalgraphics/gl/framebuffer/CgFrameBuffer;)V
   method public fireOverlay (IIFI)V
   method public hasRenderers ()Z
   method public host ()Lcom/crystalgraphics/render/stage/CgHostFrame;

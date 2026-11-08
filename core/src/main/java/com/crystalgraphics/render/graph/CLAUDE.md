@@ -403,6 +403,16 @@ empty (`graph.passes.undamaged`). The rect is the target's bottom-left pixels; e
 its node moves (`graph.again.requested-kept`); with `false` they draw whole (`graph.again.requested-drawn`).
 `CgTargetCompare` reads two targets back and names where they differ, for a check mode.
 
+**A copy** (`CgRecording.copy`) blits a region of one 2D texture's slot 0 into another's, scaled when the two differ;
+its source may be `current()`, as it stands after every write recorded before: what is behind a UI, read into a
+texture of its own (CrystalGUI's backdrop). **Teardown**, where no frame will execute a recorded release, frees a
+requested or history texture's storage with `CgExecutor.freeStorage(texture)`, the buffer's twin.
+
+```java
+rec.copy(CgGraphTexture.current(), x, y, w, h, capture, 0, 0, w, h, false);
+CgExecutor.freeStorage(picture);   // the context is going away
+```
+
 ## Rules
 
 - **Order comes from reads and writes, not from creation.** A raster pass reads every `CgGraphTexture` its chunks'

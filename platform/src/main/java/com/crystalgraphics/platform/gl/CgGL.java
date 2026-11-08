@@ -114,31 +114,11 @@ public final class CgGL {
     private static final int CALLS = CgTrace.name("gl.calls"), STATE_SETS = CgTrace.name("gl.state-sets");
 
     /**
-     * Marks this thread as recording, until {@link #exitGlFree()}: nothing in between may reach GL. Under
-     * {@code -Dcrystalgraphics.gl.threadCheck=true} every call that does is logged with its caller; otherwise it does
-     * nothing.
-     *
-     * <pre>{@code
-     * CgGL.enterGlFree("ui recording");
-     * try { record(); } finally { CgGL.exitGlFree(); }
-     * }</pre>
-     */
-    public static void enterGlFree(String section) {
-        CgGLAudit.enter(section);
-    }
-
-    /** @see #enterGlFree */
-    public static void exitGlFree() {
-        CgGLAudit.exit();
-    }
-
-    /**
-     * Whether this thread may issue GL now: it owns the context and is not recording. What core's {@code CgDeferral}
-     * asks before doing a GPU object's work at once rather than handing it to the render thread; nothing else should
-     * need to.
+     * Whether this thread may issue GL now: it owns the context. What core's {@code CgDeferral} asks before doing a GPU
+     * object's work at once rather than handing it to the render thread; nothing else should need to.
      */
     public static boolean mayIssueGl() {
-        return backend != null && backend.ownedByCurrentThread() && !CgGLAudit.inSection();
+        return backend != null && backend.ownedByCurrentThread();
     }
 
     
