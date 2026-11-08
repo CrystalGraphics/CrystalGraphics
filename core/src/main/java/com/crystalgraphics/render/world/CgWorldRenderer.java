@@ -339,7 +339,7 @@ public final class CgWorldRenderer {
      */
     private static void parsePassesAhead() {
         // text.shader with them: its collector above parsed it on the render thread (109 ms on 1.7.10)
-        CgPipelinePrecache.parseAhead(UPSAMPLE_SHADER, CgVolumePass.RESOLVE_SHADER, CgVolumePass.COMPOSITE_SHADER, CgWorldDistortion.APPLY_SHADER,
+        CgPipelinePrecache.parseAhead(UPSAMPLE_SHADER, CgVolumePass.COMPOSITE_SHADER, CgWorldDistortion.APPLY_SHADER,
                 CgWorldLights.APPLY_SHADER, CgTextRenderer.TEXT_SHADER);
     }
 
@@ -439,7 +439,6 @@ public final class CgWorldRenderer {
         halfPass.upsampleBound = null;
         volumePass.resolve = null;
         volumePass.composite = null;
-        volumePass.resolveBound = null;
         volumePass.compositeBound = null;
         volumePass.volumeTarget = null;
         volumeOut = null;
@@ -762,10 +761,9 @@ public final class CgWorldRenderer {
         ready &= built(customDepthPass.customStencil.pipeline(CgInstanceKind.OBJECT));
         if (!halfResolution || !settings.halfResolution()) return ready;
         if (halfPass.upsample == null) halfPass.upsample = CgMaterial.newInstance(UPSAMPLE_SHADER);
-        if (volumePass.resolve == null) volumePass.resolve = CgMaterial.newInstance(CgVolumePass.RESOLVE_SHADER);
         if (volumePass.composite == null) volumePass.composite = CgMaterial.newInstance(CgVolumePass.COMPOSITE_SHADER);
         ready &= built(halfPass.upsample.pipeline(CgInstanceKind.OBJECT));
-        ready &= built(volumePass.resolve.pipeline(CgInstanceKind.OBJECT));
+        ready &= volumePass.resolveKernel().isReady();
         return built(volumePass.composite.pipeline(CgInstanceKind.OBJECT)) & ready;
     }
 

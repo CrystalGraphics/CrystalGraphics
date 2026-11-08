@@ -80,7 +80,7 @@
 - **Volumes** (`recordVolumes`, a half-size draw whose Forward pass blends `ONE ONE_MINUS_SRC_ALPHA`): drawn through
   `CgPipeline.as(VOLUME)` (folded first under the HDR scene, so their glow needs no march of its own) into a
   transient half-size target of two slots, RGBA16F light and the R16F eye depth each names with `CG_VOLUME_DEPTH`; then
-  `world_volume_resolve.shader` blends it over this firing ordinal's `CgGraphTexture.history` (four kept: a fifth
+  `env/compute/volume_resolve.compute`'s `Resolve` kernel blends it over this firing ordinal's `CgGraphTexture.history` (four kept: a fifth
   firing composites its frame alone), last frame reprojected through `cg_PrevViewProj` at that depth (the scene's where
   it names none) and clipped to the 3x3 neighbourhood's spread (Salvi's variance clipping). `CgStageFrame` decides
   validity; a history's first frame blends nothing. `world_volume_composite.shader` lays it over the target as the

@@ -5,12 +5,15 @@ import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.texture.CgTextureType;
+import com.crystalgraphics.compute.CgCompute;
+import com.crystalgraphics.compute.CgKernel;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
 import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.render.draw.CgOrder;
 import com.crystalgraphics.render.draw.CgPipeline;
 import com.crystalgraphics.render.draw.CgPipelineForm;
+import com.crystalgraphics.render.graph.CgComputePass;
 import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.render.graph.CgRasterPass;
 import com.crystalgraphics.render.graph.CgRecording;
@@ -37,7 +40,7 @@ final class CgVolumePass {
 
     static final int GPU_VOLUME = CgGpuTrace.name("world.volume"), GPU_VOLUME_RESOLVE = CgGpuTrace.name("world.volumeResolve");
 
-    static final String RESOLVE_SHADER = "crystalgraphics:shaders/world_volume_resolve.shader";
+    static final String RESOLVE_KERNELS = "crystalgraphics:shaders/env/compute/volume_resolve.compute";
 
     static final String COMPOSITE_SHADER = "crystalgraphics:shaders/world_volume_composite.shader";
 
@@ -51,9 +54,13 @@ final class CgVolumePass {
     static final CgFrameBufferFormat VOLUME_HISTORY_FORMAT = CgFrameBufferFormat.builder("cg_world_volume_history")
             .color(0, CgTextureType.RGBA16F).build();
 
-    CgMaterial resolve, composite;
+    CgMaterial composite;
 
-    CgTexture resolveBound, compositeBound;
+    CgTexture compositeBound;
+
+    /** {@code volume_resolve.compute}'s {@code Resolve}: made at the first warm-up or resolve. */
+    @Nullable
+    CgKernel resolve;
 
     /** One a firing ordinal, and the last a rehearsal's, so its passes never advance the real frame's. */
     final CgGraphTexture[] volumeHistories = new CgGraphTexture[VOLUME_HISTORIES + 1];
@@ -73,8 +80,8 @@ final class CgVolumePass {
 
     /**
      * The volumes ({@link CgWorldDraws#VOLUME}) into a half-size target, cleared: their light, premultiplied, and the eye depth
-     * each marched to ({@code CG_VOLUME_DEPTH}). Then resolved into this firing ordinal's history: last frame's,
-     * reprojected through {@code cg_PrevViewProj} and held to this frame's neighbourhood, blended with this one. Answers
+     * each marched to ({@code CG_VOLUME_DEPTH}). Then resolved into this firing ordinal's history by a kernel: last
+     * frame's, reprojected through {@code cg_PrevViewProj} and held to this frame's neighbourhood, blended with this one. Answers
      * what the transparent pass lays over the target: the history, or this frame's alone past the last ordinal kept.
      */
     @Nullable
@@ -121,24 +128,21 @@ final class CgVolumePass {
             volumeHistories[ordinal] = history;
             volumeMade[ordinal] = CgFrameRing.frame();
         }
-        if (resolve == null) resolve = CgMaterial.newInstance(RESOLVE_SHADER);
-        if (resolveBound != history) {
-            CgTexture now = volumeTarget.attachment(0), depth = volumeTarget.attachment(1), last = history.previous();
-            resolve.applyProperties(b -> b.sampler("_Now", 0, now).sampler("_NowDepth", 1, depth).sampler("_Last", 2, last));
-            resolveBound = history;
-        }
+        if (!resolveKernel().isReady()) return volumeTarget.attachment(0);
         boolean fresh = volumeMade[ordinal] == CgFrameRing.frame();
-        resolve.applyProperties(b -> b.set1f("_Fresh", fresh ? 1f : 0f));
-        CgPipeline pipeline = resolve.pipeline(CgInstanceKind.OBJECT);
-        if (pipeline == null) return volumeTarget.attachment(0);
-        CgRasterPass resolving = recording.raster(history, CgWorldRenderer.CLEAR, world.halfConstants, null, CgOrder.SORTED)
-                .sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT, stage.target()).timed(GPU_VOLUME_RESOLVE);
-        CgChunkBuilder resolved = recording.chunks().begin();
-        resolved.draw(pipeline, resolve.captureBindings(recording.bindings()), CgWorldRenderer.FULLSCREEN);
-        resolved.instance();
-        resolving.add(resolved.end());
+        CgComputePass resolving = recording.compute("world.volumeResolve", world.halfConstants).sceneDepth(stage.target())
+                .timed(GPU_VOLUME_RESOLVE);
+        resolving.dispatch(resolve, w, h, 1).image("RESOLVED", history).texture("_Now", volumeTarget.attachment(0))
+                .texture("_NowDepth", volumeTarget.attachment(1)).texture("_Last", history.previous())
+                .set("_Fresh", fresh ? 1f : 0f);
         resolving.end();
         return history;
+    }
+
+    /** {@link #resolve}, made and its build started. */
+    CgKernel resolveKernel() {
+        if (resolve == null) resolve = CgCompute.load(RESOLVE_KERNELS).kernel("Resolve").precache();
+        return resolve;
     }
 
     /** The volumes {@link #recordVolumes} resolved, laid over the target first in the transparent pass. */
