@@ -301,9 +301,9 @@ public final class CgVfxParticlePool {
     private long openings;
     /** Per slot: opened and not yet written a row, so its first step drops what an earlier opening of it left. */
     private boolean[] slotFresh = new boolean[0];
-    /** Where an instance row holds its kill lane, and the value saying the slot is fresh. */
+    /** Where an instance row holds its kill lane, and the values saying the slot is fresh or killed. */
     static final int FRESH_WORD = 11;
-    static final int FRESH = Float.floatToRawIntBits(2f);
+    static final int FRESH = Float.floatToRawIntBits(2f), KILL = Float.floatToRawIntBits(1f);
     /** Per slot: its ground as its last step gave it, relative to its origin; NaN for none. */
     private float[] slotGround = new float[0];
     /** Each slot's loop seconds at its last instance row: what a child's count curve reads ({@link CgVfxEvent#countAt}). */
@@ -1786,6 +1786,13 @@ public final class CgVfxParticlePool {
         stepSpawned[s] = 0;
         int need = instanceEnd + slotCount * instanceWords;
         if (instances.length < need) instances = Arrays.copyOf(instances, Math.max(need, instances.length * 2));
+        // A closed slot's row is a kill: what it still holds ends here, never stepped by a stale row.
+        for (int slot = 0; slot < slotCount; slot++) {
+            if (slotEmitter[slot] != null) continue;
+            int row = instanceEnd + slot * instanceWords;
+            Arrays.fill(instances, row, row + instanceWords, 0);
+            instances[row + FRESH_WORD] = KILL;
+        }
         instanceEnd = need;
     }
 
