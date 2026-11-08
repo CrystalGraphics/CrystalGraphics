@@ -19,7 +19,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Answers the one question {@code Blaze3dGLBackend} cannot answer about itself: <b>is Minecraft's
+ * Answers the one question a host section's close cannot answer about itself: <b>is Minecraft's
  * shadow of the GL state still true?</b>
  *
  * <pre>{@code
@@ -32,14 +32,14 @@ import java.util.Set;
  *
  * <h3>What it is for</h3>
  *
- * <p>A missing override in {@code Blaze3dGLBackend} produces no exception. Our call reaches the driver
- * as intended; only Minecraft's cache goes stale, and the damage lands on <i>Minecraft's</i> next draw
- * — a texture silently not bound, a blend silently not enabled. By the time anything looks wrong the
+ * <p>A domain missing from {@code HostStateModern}'s section slots produces no exception. Our call reaches
+ * the driver as intended; only Minecraft's cache goes stale, and the damage lands on <i>Minecraft's</i> next
+ * draw — a texture silently not bound, a blend silently not enabled. By the time anything looks wrong the
  * cause is several draws behind, in another codebase. This turns that into a line naming the domain.
  *
- * <p>The compile-time half is {@code Blaze3dMirrorTest}, which proves the override list has not shrunk.
- * It cannot prove the list is <i>complete</i>, because completeness is a fact about Minecraft. This can:
- * it asks the driver and the host and compares.
+ * <p>{@code Blaze3dMirrorTest} pins the slots and the backend's few overrides. It cannot prove the slots
+ * <i>complete</i>, because completeness is a fact about Minecraft. This can: it asks the driver and the
+ * host and compares, after the section has closed.
  *
  * <h3>Reading a private shadow</h3>
  *

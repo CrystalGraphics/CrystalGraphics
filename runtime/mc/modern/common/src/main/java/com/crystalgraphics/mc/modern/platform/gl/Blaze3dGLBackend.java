@@ -6,20 +6,17 @@ import com.crystalgraphics.lwjgl3.Lwjgl3GLBackend;
 //?} else {
 /*import com.crystalgraphics.lwjgl3.Lwjgl31GLBackend;
 *///?}
-import com.crystalgraphics.mc.modern.platform.Blaze3dTextureUnits;
 
-//? if >=1.21.5 {
-/*import com.mojang.blaze3d.opengl.GlStateManager;
-*///?} elif >=1.15 {
+//? if >=1.15 <1.21.5 {
 import com.mojang.blaze3d.platform.GlStateManager;
 //?}
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.lwjgl.opengl.GL;
 import org.lwjgl.opengl.GL11;
-import org.lwjgl.opengl.GL13;
 //? if >=1.21.11 {
-/*import org.lwjgl.opengl.GL33C;
+/*import org.lwjgl.opengl.GL13;
+import org.lwjgl.opengl.GL33C;
 *///?}
 //? if >=1.19.2 <1.21.5 {
 import com.mojang.blaze3d.vertex.BufferUploader;
@@ -30,47 +27,26 @@ import com.crystalgraphics.sdl.SdlWorkerContext;
 *///?}
 
 /**
- * {@link Lwjgl3GLBackend} plus the one thing tier 1 cannot do: <b>telling Minecraft what we changed.</b>
+ * {@link Lwjgl3GLBackend} plus the host bookkeeping a section's edges cannot do. Minecraft's {@code GlStateManager}
+ * skips a call its cache believes made; what the state shadow models of it, a host section sets back to Minecraft's
+ * belief as it closes ({@code HostStateModern.sectionSlots()}), so every call here reaches the driver from tier 1.
  *
- * <p>Minecraft caches GL state in {@code GlStateManager} and elides calls it believes redundant. A raw
- * {@code glEnable(GL_BLEND)} from us therefore leaves its cache saying "off", and the next vanilla draw
- * that wants blending skips the enable — so the damage lands on <i>Minecraft's</i> next draw, not ours,
- * which is what makes it expensive to trace back to here.
+ * <ul>
+ *   <li>The clear colour, which Minecraft caches below 1.21.5 and the shadow does not model, goes through
+ *       {@code GlStateManager}.</li>
+ *   <li>The first section turns off the {@code GL_DEBUG_OUTPUT} Minecraft enables.</li>
+ *   <li>1.19.2 to 1.21.4 forget {@code BufferUploader}'s vertex array as the section closes; 1.21.11 unbinds the
+ *       sampler objects it leaves on a unit we bind; 26.3 makes its worker context over SDL.</li>
+ * </ul>
  *
- * <p>So every method below overrides one whose domain that cache covers, and routes it through
- * {@code GlStateManager}'s own {@code _} methods — never {@code RenderSystem}'s wrappers, which only
- * forwarded to them and are gone from 1.21.5. Nothing else is overridden: the other ~110 entry points
- * reach the driver directly from tier 1, because Minecraft does not model them and telling it would be a
- * lie.
- *
- * <h3>The list is the contract</h3>
- *
- * <p>Measured on 1.20.1 and pinned by {@code Blaze3dMirrorTest}: {@code BLEND}, {@code DEPTH},
- * {@code CULL}, {@code POLY_OFFSET}, {@code STENCIL}, {@code SCISSOR}, {@code COLOR_MASK}, the active
- * unit and the per-unit texture bindings, plus the framebuffer and renderbuffer calls routed so its FBO
- * bookkeeping stays honest. 1.21.5 moved the class to {@code com.mojang.blaze3d.opengl} and stopped
- * modelling stencil, clear colour, renderbuffers and attachments, so those go to the driver there.
- *
- * <p><b>A missing override is a missing GL call, not an exception</b> — wrong rendering with nothing in
- * any log. {@code -Dcrystalgraphics.host.verify=true} is the runtime answer: it reads the driver after
- * each of our passes and compares it against {@code GlStateManager}'s own fields, naming the domain that
- * disagrees. The test is the compile-time half and only proves the list has not shrunk.
- *
- * <p>This class is per <b>era</b>: the {@code _} names are stable across 1.15–1.21.5; 1.14 has them
- * without the prefix, and a same-package {@code GlStateManager} shim spells them the later way there. Below 1.17 the
- * table also covers the alpha test, and routes no scissor (1.16.1-1.16.3 have none). The LWJGL2 pair needs none
- * of this — its backend has no host wrapper to route through.
+ * <p>{@code -Dcrystalgraphics.host.verify=true} compares the driver with {@code GlStateManager} after each world
+ * pass, naming a domain that disagrees.</p>
  */
 //? if >=1.14 {
 public final class Blaze3dGLBackend extends Lwjgl3GLBackend {
 //?} else {
 /*public final class Blaze3dGLBackend extends Lwjgl31GLBackend {
 *///?}
-
-    /** How many texture units Minecraft's own table models; a unit above it goes to the driver. */
-    private final int trackedTextureUnits = Blaze3dTextureUnits.count();
-
-    private int activeTextureUnit = 0;
 
     /** {@code GL_DEBUG_OUTPUT}, from KHR_debug. */
     private static final int DEBUG_OUTPUT = 0x92E0;
@@ -114,274 +90,30 @@ public final class Blaze3dGLBackend extends Lwjgl3GLBackend {
     }
     //?}
 
-    // 1.14 keeps its framebuffer calls in GLX, which caches nothing: tier 1 below 1.15.
-    //? if >=1.15 {
-    @Override
-    public void bindFramebuffer(int target, int fbo) {
-        GlStateManager._glBindFramebuffer(target, fbo);
-    }
-    //?}
-
-    // Blaze3D models the blit from 1.16 and the scissor from 1.16.4, which shares a node with 1.16.1: below
-    // those, tier 1 reaches the driver.
-    //? if >=1.16 {
-    @Override
-    public void blitFramebuffer(int srcX0, int srcY0, int srcX1, int srcY1,
-                                 int dstX0, int dstY0, int dstX1, int dstY1,
-                                 int mask, int filter) {
-        GlStateManager._glBlitFrameBuffer(srcX0, srcY0, srcX1, srcY1,
-                dstX0, dstY0, dstX1, dstY1, mask, filter);
-    }
-    //?}
-
-    //? if >=1.15 {
-    @Override
-    public int genFramebuffers() {
-        return GlStateManager.glGenFramebuffers();
-    }
-
-    @Override
-    public void deleteFramebuffers(int fbo) {
-        GlStateManager._glDeleteFramebuffers(fbo);
-    }
-    //?}
-
-    @Override
-    public void glBindTexture(int target, int texture) {
-        if (target == GL11.GL_TEXTURE_2D && activeTextureUnit < trackedTextureUnits) {
-            GlStateManager._bindTexture(texture);
-            // 1.21.11 samples through sampler objects it leaves bound, always with a mipmapped min filter;
-            // over our mip-less textures that is incomplete and reads black. It rebinds its own per draw.
-            //? if >=1.21.11 {
-            /*GL33C.glBindSampler(activeTextureUnit, 0);
-            *///?}
-            return;
-        }
-        // Minecraft tracks GL_TEXTURE_2D only; CG binds multiple targets.
-        super.glBindTexture(target, texture);
-    }
-
-    @Override
-    public void glDeleteTextures(int texture) {
-        GlStateManager._deleteTexture(texture);
-    }
+    // 1.21.11 samples through sampler objects it leaves bound, always with a mipmapped min filter; over our mip-less
+    // textures that is incomplete and reads black. It rebinds its own per draw.
+    //? if >=1.21.11 {
+    /*private int activeTextureUnit;
 
     @Override
     public void glActiveTexture(int texture) {
-        int unit = texture - GL13.GL_TEXTURE0;
-        // Leaving a unit above the table: GlStateManager still names the unit before it, and would skip the switch
-        // back, so the next bind meant for that unit lands on the high one.
-        boolean leavingUntracked = activeTextureUnit >= trackedTextureUnits;
-        activeTextureUnit = unit;
-        if (unit >= trackedTextureUnits || leavingUntracked) super.glActiveTexture(texture);
-        if (unit < trackedTextureUnits) GlStateManager._activeTexture(texture);
-    }
-
-    // 1.13's GlStateManager has no texParameter, pixelStore or stencil calls, and caches none of them.
-    //? if >=1.14 {
-    @Override
-    public void glTexParameteri(int target, int pname, int param) {
-        GlStateManager._texParameter(target, pname, param);
-    }
-    //?}
-
-    @Override
-    public void glEnable(int cap) {
-        // Before 1.17 the context is a compatibility profile and Blaze3D still tracks the alpha test.
-        //? if <1.17 {
-        /*if (cap == GL_ALPHA_TEST_LEGACY)         { GlStateManager._enableAlphaTest();      return; }
-        *///?}
-        //? if >=26.2 {
-        /*if (cap == GL11.GL_BLEND)                { blend(true);                               return; }
-        *///?} else {
-        if (cap == GL11.GL_BLEND)                { GlStateManager._enableBlend();             return; }
-        //?}
-        if (cap == GL11.GL_DEPTH_TEST)           { GlStateManager._enableDepthTest();         return; }
-        if (cap == GL11.GL_CULL_FACE)            { GlStateManager._enableCull();              return; }
-        //? if >=1.17 {
-        if (cap == GL11.GL_SCISSOR_TEST)         { GlStateManager._enableScissorTest();       return; }
-        //?}
-        if (cap == GL11.GL_POLYGON_OFFSET_FILL)  { GlStateManager._enablePolygonOffset();     return; }
-        super.glEnable(cap);
+        super.glActiveTexture(texture);
+        activeTextureUnit = texture - GL13.GL_TEXTURE0;
     }
 
     @Override
-    public void glDisable(int cap) {
-        //? if <1.17 {
-        /*if (cap == GL_ALPHA_TEST_LEGACY)         { GlStateManager._disableAlphaTest();     return; }
-        *///?}
-        //? if >=26.2 {
-        /*if (cap == GL11.GL_BLEND)                { blend(false);                              return; }
-        *///?} else {
-        if (cap == GL11.GL_BLEND)                { GlStateManager._disableBlend();            return; }
-        //?}
-        if (cap == GL11.GL_DEPTH_TEST)           { GlStateManager._disableDepthTest();        return; }
-        if (cap == GL11.GL_CULL_FACE)            { GlStateManager._disableCull();             return; }
-        //? if >=1.17 {
-        if (cap == GL11.GL_SCISSOR_TEST)         { GlStateManager._disableScissorTest();      return; }
-        //?}
-        if (cap == GL11.GL_POLYGON_OFFSET_FILL)  { GlStateManager._disablePolygonOffset();    return; }
-        super.glDisable(cap);
-    }
-
-    //? if <1.17 {
-    /*@Override
-    public void glAlphaFunc(int func, float ref) {
-        GlStateManager._alphaFunc(func, ref);
+    public void glBindTexture(int target, int texture) {
+        super.glBindTexture(target, texture);
+        if (target == GL11.GL_TEXTURE_2D) GL33C.glBindSampler(activeTextureUnit, 0);
     }
     *///?}
 
-    @Override
-    public void glBlendFunc(int sfactor, int dfactor) {
-        // Separate, so the cached alpha factors follow the ones GL just set.
-        GlStateManager._blendFuncSeparate(sfactor, dfactor, sfactor, dfactor);
-    }
-
-    @Override
-    public void glBlendFuncSeparate(int srcRGB, int dstRGB, int srcAlpha, int dstAlpha) {
-        GlStateManager._blendFuncSeparate(srcRGB, dstRGB, srcAlpha, dstAlpha);
-    }
-
-    @Override
-    public void glDepthMask(boolean flag) {
-        GlStateManager._depthMask(flag);
-    }
-
-    @Override
-    public void glViewport(int x, int y, int width, int height) {
-        GlStateManager._viewport(x, y, width, height);
-    }
-
-    //? if >=1.17 {
-    @Override
-    public void glScissor(int x, int y, int width, int height) {
-        GlStateManager._scissorBox(x, y, width, height);
-    }
-    //?}
-
-    @Override
-    public void glPolygonMode(int face, int mode) {
-        GlStateManager._polygonMode(face, mode);
-    }
-
-    @Override
-    public void glColorMask(boolean red, boolean green, boolean blue, boolean alpha) {
-        //? if >=26.1 {
-        /*GlStateManager._colorMask(writeMask(red, green, blue, alpha));
-        *///?} else {
-        GlStateManager._colorMask(red, green, blue, alpha);
-        //?}
-    }
-
-    //? if >=26.2 {
-    /*@Override
-    public void glColorMaski(int buf, boolean red, boolean green, boolean blue, boolean alpha) {
-        GlStateManager._colorMask(buf, writeMask(red, green, blue, alpha));
-    }
-
-    // 26.2 caches blend per draw buffer, and each of its eight switches issues a plain glEnable(GL_BLEND)
-    // -- which is what ours is -- so every one of them must learn it.
-    private static void blend(boolean on) {
-        for (int i = 0; i < 8; i++) {
-            if (on) GlStateManager._enableBlend(i);
-            else GlStateManager._disableBlend(i);
-        }
-    }
-
-    // 26.2 caches the equation beside the factors and skips a call its cache already matches.
-    @Override
-    public void glBlendEquationSeparate(int modeRGB, int modeAlpha) {
-        GlStateManager._blendEquationSeparate(modeRGB, modeAlpha);
-    }
-    *///?}
-
-    //? if >=26.1 {
-    /*// ColorTargetState.WRITE_RED/GREEN/BLUE/ALPHA.
-    private static int writeMask(boolean red, boolean green, boolean blue, boolean alpha) {
-        return (red ? 1 : 0) | (green ? 2 : 0) | (blue ? 4 : 0) | (alpha ? 8 : 0);
-    }
-    *///?}
-
-    @Override
-    public void glDepthFunc(int func) {
-        GlStateManager._depthFunc(func);
-    }
-
-    @Override
-    public void glPolygonOffset(float factor, float units) {
-        GlStateManager._polygonOffset(factor, units);
-    }
-
-    //? if >=1.14 {
-    @Override
-    public void glPixelStorei(int pname, int param) {
-        GlStateManager._pixelStore(pname, param);
-    }
-    //?}
-
-    // What 1.21.5 stopped modelling: tier 1's raw calls are the honest route there.
-    //? if >=1.15 <1.21.5 {
-    @Override
-    public void framebufferTexture2D(int target, int attachment, int texTarget, int texture, int level) {
-        GlStateManager._glFramebufferTexture2D(target, attachment, texTarget, texture, level);
-    }
-
-    @Override
-    public int checkFramebufferStatus(int target) {
-        return GlStateManager.glCheckFramebufferStatus(target);
-    }
-    //?}
-
-    //? if >=1.14 <1.21.5 {
-    @Override
-    public void glStencilFunc(int func, int ref, int mask) {
-        GlStateManager._stencilFunc(func, ref, mask);
-    }
-
-    @Override
-    public void glStencilOp(int sfail, int dpfail, int dppass) {
-        GlStateManager._stencilOp(sfail, dpfail, dppass);
-    }
-
-    @Override
-    public void glStencilMask(int mask) {
-        GlStateManager._stencilMask(mask);
-    }
-    //?}
-
+    // Cached below 1.21.5 and in no domain of the shadow's, so no section can set it back. Below 1.15 the
+    // same-package GlStateManager shim spells it.
     //? if <1.21.5 {
     @Override
     public void glClearColor(float r, float g, float b, float a) {
         GlStateManager._clearColor(r, g, b, a);
-    }
-    //?}
-
-    // 1.16 has no renderbuffer calls, and 1.15's cache nothing: tier 1 below 1.17.
-    //? if >=1.17 <1.21.5 {
-    @Override
-    public int glGenRenderbuffers() {
-        return GlStateManager.glGenRenderbuffers();
-    }
-
-    @Override
-    public void glDeleteRenderbuffers(int rbo) {
-        GlStateManager._glDeleteRenderbuffers(rbo);
-    }
-
-    @Override
-    public void glBindRenderbuffer(int target, int renderbuffer) {
-        GlStateManager._glBindRenderbuffer(target, renderbuffer);
-    }
-
-    @Override
-    public void glRenderbufferStorage(int target, int internalFormat, int width, int height) {
-        GlStateManager._glRenderbufferStorage(target, internalFormat, width, height);
-    }
-
-    @Override
-    public void glFramebufferRenderbuffer(int target, int attachment,
-                                          int renderbufferTarget, int renderbuffer) {
-        GlStateManager._glFramebufferRenderbuffer(target, attachment, renderbufferTarget, renderbuffer);
     }
     //?}
 }

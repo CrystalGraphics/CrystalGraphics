@@ -159,9 +159,12 @@ fallbacks went with D1.
 **A backend's `glShaderSource` gets ASCII only**: `CgGL.glShaderSource` turns every character above 127 into a space,
 includes and all, since LWJGL 2 narrows a `char` to a byte and a comment's `─` ended the source as a NUL.
 
-A host backend overrides only what its host caches: `Blaze3dGLBackend` routes through Minecraft's
-`GlStateManager`, `GlStateManagerGLBackend` through legacy Forge's. Everything else reaches the driver
-from tier 1. **A missing override is a missing GL call, not an exception.**
+**A host's GL cache is kept true at a section's edge, not per call.** The state provider names the domains the host
+relies on finding as it left them (`CgGlStateProvider.sectionSlots`: Minecraft's `GlStateManager` cache, its
+fixed-function program), and `CgGL.fromHost` opens a scope over them that `toHost` closes, setting each back to the
+host's belief. Every call reaches the driver from tier 1; a host backend (`Blaze3dGLBackend`,
+`GlStateManagerGLBackend`) routes only what its cache keeps and the shadow does not model, the clear colour. **A domain
+missing from the slots is a missing GL call, not an exception**: `-Dcrystalgraphics.host.verify=true` names it.
 
 ---
 

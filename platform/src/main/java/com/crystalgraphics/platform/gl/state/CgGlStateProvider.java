@@ -123,6 +123,27 @@ public interface CgGlStateProvider {
     }
 
     /**
+     * The domains the host's next draw relies on finding as it left them, as {@code 1 << slot.ordinal()} bits: those its
+     * own cache skips a call in when it believes the value set, and those it sets once and assumes (Minecraft's
+     * fixed-function program 0). Each host section holds a scope over them, so whatever the section changed there is set
+     * back to the host's belief at {@code CgGL.toHost()}. None by default: a host with no cache (or one, like Angelica's,
+     * that sees our calls) needs nothing.
+     *
+     * <pre>{@code
+     * @Override public int sectionSlots() { return bit(CgGlSlot.BLEND) | bit(CgGlSlot.DEPTH) | bit(CgGlSlot.TEXTURES); }
+     * }</pre>
+     *
+     * <ul>
+     *   <li>A domain here is read at the section's open: from the host's cache where it holds it, else {@code glGet}.</li>
+     *   <li>A cached domain the shadow does not model (Minecraft's clear colour) cannot be set back this way; the
+     *       host's backend routes that call through its cache instead.</li>
+     * </ul>
+     */
+    default int sectionSlots() {
+        return 0;
+    }
+
+    /**
      * Whether a read costs no driver round trip -- a host cache answers every one.
      *
      * <p>A nested scope then re-reads instead of trusting the shadow, which is free and catches a host

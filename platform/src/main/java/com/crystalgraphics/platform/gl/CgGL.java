@@ -3,6 +3,7 @@ package com.crystalgraphics.platform.gl;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.rhi.command.CgAccess;
 import com.crystalgraphics.platform.gl.state.CgGlState;
+import com.crystalgraphics.platform.gl.state.CgGlStateProvider;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.trace.CgTraceChannel;
 import com.crystalgraphics.variable.CgVar;
@@ -2309,9 +2310,11 @@ public final class CgGL {
      * }
      * }</pre>
      *
-     * <p><b>Why the pair exists.</b> On OpenGL there is nothing to hand over: Minecraft and CrystalGraphics
-     * share one context, and what changes hands is GL state, which scopes, invalidations and each host's own
-     * repair already handle. Both calls do nothing there. A host that owns a Vulkan device is different, and
+     * <p><b>Why the pair exists.</b> On OpenGL Minecraft and CrystalGraphics share one context, and what changes
+     * hands is GL state. A host whose own cache skips calls it believes made (Minecraft's {@code GlStateManager})
+     * declares those domains ({@link CgGlStateProvider#sectionSlots()}), and the section holds a scope over them:
+     * {@code toHost} sets them back to the host's belief, so its cache stays true without seeing a call of ours.
+     * A host that owns a Vulkan device is different, and
      * Minecraft 26.2 is the first. It records its frame as a series of render passes of its own, and keeps
      * every image in the layout its own tracking says it is in. Our draws go into command buffers of our own,
      * taken from the host's pool and run in its submit after everything it recorded before the section, and
@@ -2328,8 +2331,8 @@ public final class CgGL {
      * <ul>
      *   <li>Brackets nest, and only the outermost pair reaches the backend. {@code CgGraphicsLifecycle}'s
      *       entries bracket themselves, and a host's bracket may wrap one.</li>
-     *   <li>A host repairing its own state, such as Blaze3D's {@code GlStateManager} cache, does it after
-     *       {@link #toHost()}. That work is the host's, not ours.</li>
+     *   <li>A scope opened inside a section closes inside it: the section's own closes at {@code toHost}, and one
+     *       still open above it throws there.</li>
      *   <li>Inside a section only our code touches GL, so the state shadow is trusted across scopes there;
      *       the outermost {@code fromHost} forgets it, since the host had the context. Host code run inside
      *       one goes through {@link CgGlState#hostForeign}, which forgets it again.</li>
@@ -2346,6 +2349,9 @@ public final class CgGL {
             gl().fromHost();
             CgGlState.invalidateAllIfPresent();
             CgGlSamplers.forget();
+            fromHostDepth++;
+            CgGlState.manager().openHostSection();
+            return;
         }
         fromHostDepth++;
     }
@@ -2356,16 +2362,21 @@ public final class CgGL {
     }
 
     /**
-     * CrystalGraphics hands the frame back to the host, closing the bracket {@link #fromHost()} opened. On a
-     * device-backed backend the render pass we opened ends here and the host's images are left as it expects;
-     * on OpenGL nothing happens.
+     * CrystalGraphics hands the frame back to the host, closing the bracket {@link #fromHost()} opened. On OpenGL the
+     * host's cached domains are set back to its belief here; on a device-backed backend the render pass we opened
+     * ends and the host's images are left as it expects.
      *
      * @throws IllegalStateException when no bracket is open
      * @see CgGLBackend#toHost
      */
     public static void toHost() {
         if (fromHostDepth == 0) throw new IllegalStateException("toHost with no fromHost open");
-        if (--fromHostDepth == 0) gl().toHost();
+        if (--fromHostDepth > 0) return;
+        try {
+            CgGlState.manager().closeHostSection();
+        } finally {
+            gl().toHost();
+        }
     }
 
     /** @see CgGLBackend#ownedByCurrentThread */

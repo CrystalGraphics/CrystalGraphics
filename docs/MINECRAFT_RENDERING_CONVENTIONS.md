@@ -27,8 +27,9 @@ difference.
    `-PcgSmokeProps=crystalgraphics.host.census=true`, then `python singlejar-logic/census_diff.py <instance> <instance>`:
    the live GL state at each entry point (`opaque`, `transparent`, `gui`, `frame`), only where the clients
    disagree. This is also the only way to compare across the 26.1 obfuscation boundary.
-3. **Blaze3D's cache**: diff `GlStateManager`'s methods. Any state it newly caches must be routed through it
-   in `Blaze3dGLBackend`, or Minecraft skips its next set of that state against a stale cache.
+3. **Blaze3D's cache**: diff `GlStateManager`'s methods. Any state it newly caches must join `HostStateModern`'s
+   section slots (routed through it in `Blaze3dGLBackend` where the shadow does not model it), or Minecraft skips
+   its next set of that state against a stale cache.
 4. **Triage** each difference into a row below; fix what must be adapted, verified on the new version.
 
 ---
@@ -62,8 +63,8 @@ below is not reported as a thousand differences.
 | 2 | **Clip-space depth range** | GL default, −1..1 | **0..1** (`glClipControl(LOWER_LEFT, ZERO_TO_ONE)`) when `ARB_clip_control`/GL 4.5, else −1..1 | `GlDevice.<init>`; `DeviceInfo.isZZeroToOne` | `CgGL.setDepthReversed(reversed, zeroToOne)` from `DeviceInfo`; under Vulkan it also picks each program's zero-to-one vertex stage (`cgClipZeroToOne`), without which our world drew over everything Minecraft did; a projection built for the world pass follows it (0e6c7ed); `cg_DepthParams.y` (a45ad32); `OwnDepthConvention` restores −1..1 for our own targets | adapted |
 | 3 | **Projection planes** | `setPerspective`/`setOrtho(near, far)` | **far and near swapped** — both the world's perspective and the GUI's orthographic | `Projection.getMatrix` reads `zFar, zNear` first | World: the host's matrices arrive reversed and our demo builds its own the same way. **GUI: Minecraft's own GUI depth is reversed too** — matters when we draw Minecraft items and entities inside our UIs (the private plan `platform-native-renders`) | adapted (world) · recorded (GUI) |
 | 4 | **Main target depth format** | `TextureFormat.DEPTH32` | **`GpuFormat.D32_FLOAT`** | `MainTarget.allocateDepthAttachment`, `RenderTarget.createBuffers` | Depth snapshot probes its source's format (7da83a0); `cg_DepthBuffer` read through `cg_LinearEyeDepth` (a45ad32) | adapted |
-| 5 | **Blend equation cached** | never cached | **cached** beside the factors (`BlendState.modeRgb/modeAlpha`); `BlendFunction` carries a `BlendOp` (ADD, SUBTRACT, REVERSE_SUBTRACT, MIN, MAX) | `GlStateManager._blendEquationSeparate` | `Blaze3dGLBackend.glBlendEquationSeparate` routed through it (5dfef0e) | adapted |
-| 6 | **Blend enable and colour mask per target** | one | **per colour target**, up to 8 (`BLEND[]`, `_enableBlend(int)`, `_colorMask(int, int)`) | `GlStateManager` | `Blaze3dGLBackend` tells all eight on a `glEnable(GL_BLEND)`; `glColorMaski` routed | adapted |
+| 5 | **Blend equation cached** | never cached | **cached** beside the factors (`BlendState.modeRgb/modeAlpha`); `BlendFunction` carries a `BlendOp` (ADD, SUBTRACT, REVERSE_SUBTRACT, MIN, MAX) | `GlStateManager._blendEquationSeparate` | `CgHostStateCache` reads the equation beside the factors, and a host section's close sets it back | adapted |
+| 6 | **Blend enable and colour mask per target** | one | **per colour target**, up to 8 (`BLEND[]`, `_enableBlend(int)`, `_colorMask(int, int)`) | `GlStateManager` | a host section's close sets blend and the colour mask back from the cache's first target, which Minecraft keeps alike | adapted |
 | 7 | Blend factors | cached | still one global entry (`BLEND[0]`) | `_blendFuncSeparate` | routed, as before | recorded |
 | 8 | Colour clears | `glClearColor` + `glClear` | `glClearBufferfv` (`_clearBuffer`); no clear value cached | `GlStateManager._clearBuffer` | nothing to route | recorded |
 | 9 | Texture formats | `TextureFormat` = RGBA8, RED8, RED8I, DEPTH32 | **`GpuFormat`** — the full table (8/16-bit UNORM/SNORM/UINT/SINT, float, D16, D24S8, D32F, D32F_S8, S8) | `com.mojang.blaze3d.GpuFormat` | Nothing reads Minecraft's formats yet; native renders and texture sharing will | recorded |
@@ -100,7 +101,7 @@ It carries NeoForge's patches, so a difference is checked against a NeoForge-pat
 | 15 | Depth direction and format | standard, `LEQUAL`, `DEPTH32` | the same, now `CompareOp` + `DepthStencilState` | `RenderPipeline$Builder`, `DepthStencilState.DEFAULT` | unchanged | recorded |
 | 16 | Projection | `GameRenderer.getProjectionMatrix`: `perspective(near, far)` | `Projection.getMatrix`: `setPerspective(near, far, zZeroToOne)` | `Projection` | the host's matrices, unchanged in direction | recorded |
 | 17 | GL version asked for | the context the window gave (3.2 core through 1.21.4) | **3.3** (`GlBackend.VERSION_MAJOR/MINOR`) | `GlBackend` | our floor accepts either (814b1bd) | recorded |
-| 18 | Colour write mask | four booleans | a bitfield (`ColorTargetState.WRITE_*`), per colour target | `ColorTargetState` | `Blaze3dGLBackend.glColorMask` maps it from 26.1 | adapted |
+| 18 | Colour write mask | four booleans | a bitfield (`ColorTargetState.WRITE_*`), per colour target | `ColorTargetState` | `CgHostStateCache` reads the bitfield from 26.1 | adapted |
 | 19 | Wrapping a GL texture | `GlDevice.createExternalTexture` | **gone** | `GlDevice` | Nothing uses it yet; sharing our textures with Minecraft (native renders) will need another way | recorded |
 
 ### NeoForge's patches on top (every NeoForge 1.21.5+)

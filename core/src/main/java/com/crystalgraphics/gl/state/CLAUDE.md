@@ -258,8 +258,9 @@ The checks wait while the link worker has links or the loading screen draws (`Cg
 check's `glGet` waits for the driver's queue, deepest then, 100-400 ms each.
 A guessed field (the scissor box; vertex input from 1.19.2) is restored as guessed, and the provider's `excuse` keeps
 it out of both the checks and `state.roundTrip`. `-Dcrystalgraphics.host.stateCache=false`
-turns it off. What keeps *Minecraft's* cache true is the backend routing through it (`Blaze3dGLBackend`,
-`GlStateManagerGLBackend`); on modern nodes `-Dcrystalgraphics.host.verify=true` checks it.
+turns it off. What keeps *Minecraft's* cache true is the host section's own scope over the provider's section slots
+(`CgGlStateProvider.sectionSlots`), closed at `CgGL.toHost`; on modern nodes `-Dcrystalgraphics.host.verify=true`
+checks it.
 
 > **Trap, found by reading Angelica's source rather than assuming:** its `DepthState.enabled` is the depth
 > **write mask**, not the depth test — `glDepthMask` stores into it, and the test is a separate `depthTest`

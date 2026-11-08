@@ -1212,6 +1212,7 @@ com/crystalgraphics/platform/gl/CgGlStateManager
   method public bufferChanged (II)Z
   method public bufferDeleted (I)V
   method public capabilityChanged (IZ)Z
+  method public closeHostSection ()V
   method public colorMaskChanged (ZZZZ)Z
   method public colorMaskiChanged (IZZZZ)Z
   method public cullFaceChanged (I)Z
@@ -1236,6 +1237,7 @@ com/crystalgraphics/platform/gl/CgGlStateManager
   method public invalidateAtBoundary ()V
   method public isTrusted (Lcom/crystalgraphics/platform/gl/state/CgGlSlot;)Z
   method public lineWidthChanged (F)Z
+  method public openHostSection ()V
   method public ownedByCurrentThread ()Z
   method public pointSizeChanged (F)Z
   method public polygonModeChanged (II)Z
@@ -1954,7 +1956,7 @@ com/crystalgraphics/platform/gl/state/CgCheckedProvider
   access public,abstract
   extends com/crystalgraphics/platform/gl/state/CgGlGetProvider
   field public,static,final CHECKS I
-  method protected <init> (Ljava/lang/String;I)V
+  method protected <init> (Ljava/lang/String;II)V
   method protected,abstract answer (Lcom/crystalgraphics/platform/gl/state/CgGlSlot;Lcom/crystalgraphics/platform/gl/state/CgGlStateShadow;)V
   method protected,abstract answerTextures (Lcom/crystalgraphics/platform/gl/state/CgGlStateShadow;I)V
   method protected,abstract unitsMask ()I
@@ -1962,6 +1964,7 @@ com/crystalgraphics/platform/gl/state/CgCheckedProvider
   method public hostUnits ()I
   method public read (Lcom/crystalgraphics/platform/gl/state/CgGlSlot;Lcom/crystalgraphics/platform/gl/state/CgGlStateShadow;)V
   method public readTextureUnits (Lcom/crystalgraphics/platform/gl/state/CgGlStateShadow;I)I
+  method public sectionSlots ()I
   method public,static bit (Lcom/crystalgraphics/platform/gl/state/CgGlSlot;)I
   method public,static deferChecksWhile (Ljava/util/function/BooleanSupplier;)V
   method public,static install (Ljava/lang/String;Ljava/util/concurrent/Callable;)V
@@ -2061,6 +2064,7 @@ com/crystalgraphics/platform/gl/state/CgGlStateProvider
   method public isFree ()Z
   method public readBinding (Lcom/crystalgraphics/platform/gl/state/CgGlSlot;ILcom/crystalgraphics/platform/gl/state/CgGlStateShadow;)V
   method public readTextureUnits (Lcom/crystalgraphics/platform/gl/state/CgGlStateShadow;I)I
+  method public sectionSlots ()I
   method public,abstract read (Lcom/crystalgraphics/platform/gl/state/CgGlSlot;Lcom/crystalgraphics/platform/gl/state/CgGlStateShadow;)V
   method public,static glGet ()Lcom/crystalgraphics/platform/gl/state/CgGlStateProvider;
 com/crystalgraphics/platform/gl/state/CgGlStateProvider$GlGetHolder
@@ -2155,6 +2159,7 @@ com/crystalgraphics/platform/gl/state/CgHostStateCache
   method public answer (Lcom/crystalgraphics/platform/gl/state/CgGlSlot;Lcom/crystalgraphics/platform/gl/state/CgGlStateShadow;)Z
   method public excuse (Lcom/crystalgraphics/platform/gl/state/CgGlSlot;Lcom/crystalgraphics/platform/gl/state/CgGlStateShadow;Lcom/crystalgraphics/platform/gl/state/CgGlStateShadow;)V
   method public field (Ljava/lang/String;)Ljava/lang/reflect/Field;
+  method public held ()I
   method public missing ()I
   method public textures (Lcom/crystalgraphics/platform/gl/state/CgGlStateShadow;I)V
   method public unitsMask ()I

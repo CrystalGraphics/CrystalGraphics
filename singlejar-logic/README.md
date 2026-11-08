@@ -680,8 +680,8 @@ public abstract class CgRenderHook {
 
   The SRG names CrystalGraphics' hooks use are the same on all three plateaus; a node's
   `build/stubs/names.tsrg` is where to look one up.
-- **`GlStateManager` is told about every state it caches** (`GlStateManagerGLBackend`), as Blaze3D is on
-  the modern tree. Units above its texture table (8, read at runtime) go to the driver, as on modern.
+- **`GlStateManager`'s cache is set back as each host section closes** (`HostStateLegacy`'s section slots), as
+  Blaze3D's is on the modern tree; its texture table's length (8, more under OptiFine) is read at runtime.
 - The JOML companion loads here as a mod of its own: its `@Mod` carries `modid` as well as `value`.
 - **Members Minecraft renamed between plateaus go through one accessor per side**, with the directives
   inside it — CrystalGUI's `Game` and `client.ClientGame` — so the rest of a host reads the same on all

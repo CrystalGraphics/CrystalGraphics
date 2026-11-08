@@ -119,6 +119,18 @@ public final class CgHostStateCache {
         return missing;
     }
 
+    /**
+     * The domains it found the host's cache keeping, as {@link CgCheckedProvider#bit} bits: those the host skips a call
+     * in when it believes the value set, which a host section sets back ({@link CgGlStateProvider#sectionSlots()}).
+     * Stencil, polygon mode, line width and point size, which it answers without a cache, are not among them.
+     */
+    public int held() {
+        int held = bit(CgGlSlot.BLEND) | bit(CgGlSlot.DEPTH) | bit(CgGlSlot.CULL) | bit(CgGlSlot.POLYGON_OFFSET)
+                | bit(CgGlSlot.ALPHA_TEST) | bit(CgGlSlot.COLOR_MASK) | bit(CgGlSlot.TEXTURES)
+                | (viewport != null ? bit(CgGlSlot.VIEWPORT) : 0) | (scissorOn != null ? bit(CgGlSlot.SCISSOR) : 0);
+        return held & ~missing;
+    }
+
     /** The units it models, as a mask. */
     public int unitsMask() {
         return unitsMask;

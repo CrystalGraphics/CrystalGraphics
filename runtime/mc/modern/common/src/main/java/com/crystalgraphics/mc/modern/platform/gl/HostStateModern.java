@@ -64,7 +64,7 @@ public final class HostStateModern extends CgCheckedProvider {
     *///?}
 
     private HostStateModern(CgHostStateCache cache, Era extra) {
-        super("Blaze3D", cache.missing() | extra.slots);
+        super("Blaze3D", cache.missing() | extra.slots, cache.held() | ELIDED);
         this.cache = cache;
         //? if >=1.21.5 {
         /*encoder = extra.encoder;
@@ -75,6 +75,22 @@ public final class HostStateModern extends CgCheckedProvider {
         /*uploaderBindings = extra.uploaderBindings;
         *///?}
     }
+
+    /**
+     * What Minecraft's next draw relies on finding as it left it, beyond {@code GlStateManager}'s state objects, which a
+     * host section sets back: stencil from 1.14 to 1.21.4 (its {@code StencilState}); the program, unbound after each
+     * draw below 1.21.5 and its encoder's last from 1.21.5; the framebuffers from 1.21.5 ({@code GlStateManager}'s bound
+     * pair); the vertex input below 1.19.2 (none bound before 1.17, {@code BufferUploader}'s record to 1.19.1).
+     */
+    //? if >=1.21.5 {
+    /*private static final int ELIDED = bit(CgGlSlot.PROGRAM) | bit(CgGlSlot.FBO);
+    *///?} elif >=1.19.2 {
+    private static final int ELIDED = bit(CgGlSlot.STENCIL) | bit(CgGlSlot.PROGRAM);
+    //?} elif >=1.14 {
+    /*private static final int ELIDED = bit(CgGlSlot.STENCIL) | bit(CgGlSlot.PROGRAM) | bit(CgGlSlot.VERTEX_INPUT);
+    *///?} else {
+    /*private static final int ELIDED = bit(CgGlSlot.PROGRAM) | bit(CgGlSlot.VERTEX_INPUT);
+    *///?}
 
     /** Makes this the shadow's provider, or leaves {@code glGet} where Blaze3D's cache cannot be found. */
     public static void install() {

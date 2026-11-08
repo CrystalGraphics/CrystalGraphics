@@ -19,7 +19,8 @@ import java.util.function.BooleanSupplier;
  * final class HostStateMine extends CgCheckedProvider {
  *     private final CgHostStateCache cache = new CgHostStateCache(GlStateManager.class, 8, GlStateManager::setActiveTexture, driverUnit);
  *
- *     HostStateMine() { super("GlStateManager", cache.missing()); }   // pass every domain the host cannot answer
+ *     // every domain the host cannot answer, then every domain its cache skips calls in
+ *     HostStateMine() { super("GlStateManager", cache.missing(), cache.held()); }
  *
  *     @Override protected void answer(CgGlSlot slot, CgGlStateShadow t) {
  *         if (cache.answer(slot, t)) return;
@@ -65,13 +66,24 @@ public abstract class CgCheckedProvider extends CgGlGetProvider {
     private boolean reported;
     private final CgGlStateShadow truth = new CgGlStateShadow(), answer = new CgGlStateShadow();
 
+    /** {@link #sectionSlots()}: what the host's cache elides calls in. */
+    private final int section;
+
     /**
      * @param host    what the log calls the cache, as in "Blaze3D's BLEND disagrees with the driver"
      * @param missing the domains the host cannot answer, as {@code 1 << slot.ordinal()} bits
+     * @param section the domains its cache skips a call in when it believes the value set ({@link #sectionSlots()}):
+     *                a fact about the host, whether or not this provider can read them
      */
-    protected CgCheckedProvider(String host, int missing) {
+    protected CgCheckedProvider(String host, int missing, int section) {
         this.host = host;
         this.fallback = missing | CAPTURED;
+        this.section = section & ~CAPTURED;
+    }
+
+    @Override
+    public int sectionSlots() {
+        return section;
     }
 
     private static final CgVar.Bool STATE_CACHE = CgVar.bool("crystalgraphics.host.stateCache", true, CgVar.DEV,

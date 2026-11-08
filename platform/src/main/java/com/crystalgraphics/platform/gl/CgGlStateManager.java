@@ -598,6 +598,41 @@ public final class CgGlStateManager {
         if (!provider.hostKeepsShadow()) invalidateAll();
     }
 
+    /** The scope the open host section holds over its host's cached domains, or null. */
+    private CgGlScope hostSection;
+    private int hostSectionMask;
+    private CgGlSlot[] hostSectionSlots = NO_SLOTS;
+
+    /**
+     * Opens the host section's scope over {@link CgGlStateProvider#sectionSlots()}: what the section changes there is
+     * set back to the host's belief at {@link #closeHostSection()}, so the host's cache stays true without seeing a
+     * call of ours. Nothing where the host keeps no cache. {@code CgGL.fromHost()}'s, once the section is open.
+     */
+    public void openHostSection() {
+        int mask = provider.sectionSlots();
+        if (mask == 0) return;
+        if (mask != hostSectionMask) {
+            hostSectionSlots = slotsOf(mask);
+            hostSectionMask = mask;
+        }
+        hostSection = save(hostSectionSlots);
+    }
+
+    /** Closes {@link #openHostSection()}'s scope, before the section ends; a scope still open inside it throws. */
+    public void closeHostSection() {
+        CgGlScope section = hostSection;
+        if (section == null) return;
+        hostSection = null;
+        section.close();
+    }
+
+    private static CgGlSlot[] slotsOf(int mask) {
+        int n = Integer.bitCount(mask), i = 0;
+        CgGlSlot[] slots = new CgGlSlot[n];
+        for (CgGlSlot s : CgGlSlot.values()) if ((mask & (1 << s.ordinal())) != 0) slots[i++] = s;
+        return slots;
+    }
+
     public void invalidateAll() {
         forgetAll();
     }

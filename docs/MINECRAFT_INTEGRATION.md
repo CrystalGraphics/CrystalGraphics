@@ -214,14 +214,14 @@ once per frame at the right moment. Register on them instead (`ENGINE_API.md` §
 
 ### Forge 1.8–1.12.2 — `runtime/mc/legacy`
 
-1.7.10's shape, ported: `PlatformServiceLegacy` over tier 1, `GlStateManagerGLBackend` (Minecraft's GL
-state cache kept in step, eight texture units), and the render, frame, resize and shutdown hooks as
+1.7.10's shape, ported: `PlatformServiceLegacy` over tier 1, `GlStateManagerGLBackend` (the clear colour
+through Minecraft's GL state cache; the rest of it set back as each host section closes), and the render, frame, resize and shutdown hooks as
 SRG-named mixins that MixinBooter applies. `singlejar-logic/README.md` § *Forge 1.8 to 1.12.2*.
 
 ### Modern — `runtime/mc/modern` (Forge 1.13.2+, NeoForge 1.20.2+, Fabric 1.14.4+)
 
 The `common` branch holds everything a loader does not decide: `PlatformServiceModern` (over tier 1),
-`Blaze3dGLBackend` (tier 1 plus routing what Minecraft's `GlStateManager` caches through it),
+`Blaze3dGLBackend` (tier 1; what Minecraft's `GlStateManager` caches is set back as each host section closes),
 `HostStateVerifier`, and `LifecycleModern` — the one class a loader talks to. Each loader node is
 registration only, reached through one bootstrapper per loader (`ForgeBootstrap`, `NeoForgeBootstrap`,
 `FabricBootstrap`) that picks the node by the running version.

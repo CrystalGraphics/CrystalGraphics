@@ -25,11 +25,11 @@ the shutdown. A loader decides only which event (or node mixin) reaches it.
 
 | Class | What it does |
 |---|---|
-| `gl/Blaze3dGLBackend` | Tier 1's `Lwjgl3GLBackend`, plus routing every call whose state Minecraft's `GlStateManager` caches through `GlStateManager`'s own `_` methods, so its cache stays true. Everything else reaches the driver from tier 1. At the first host section it turns off the `GL_DEBUG_OUTPUT` Minecraft enables at its default `glDebugVerbosity`, for the context (`-Dcrystalgraphics.gl.keepHostDebugOutput=true` keeps it): on NVIDIA it made every GL call several times dearer, and switching it per section cost the driver 1.1 ms a switch |
+| `gl/Blaze3dGLBackend` | Tier 1's `Lwjgl3GLBackend`, plus the bookkeeping a section's edge cannot do: the clear colour through `GlStateManager` below 1.21.5, `BufferUploader`'s record dropped at `toHost` (1.19.2-1.21.4), 1.21.11's samplers unbound. Every other call reaches the driver; what Minecraft's cache keeps is set back as each host section closes (`HostStateModern`'s section slots). At the first host section it turns off the `GL_DEBUG_OUTPUT` Minecraft enables at its default `glDebugVerbosity`, for the context (`-Dcrystalgraphics.gl.keepHostDebugOutput=true` keeps it): on NVIDIA it made every GL call several times dearer, and switching it per section cost the driver 1.1 ms a switch |
 | `gl/GlStateManager` | A shim that spells 1.14's un-prefixed methods the later way |
 | `gl/HostStateModern` | The state shadow's provider on 1.13–26.2 GL: a scope opened at a host entry takes the host's state from `GlStateManager`'s fields instead of `glGet`, each domain checked against the driver for its first 600 reads (`gl/state/CLAUDE.md` § *Platform providers*) |
 | `HostStateVerifier` | `-Dcrystalgraphics.host.verify=true`: after each pass, compares the driver against `GlStateManager`'s fields and names the domain that disagrees |
-| `Blaze3dTextureUnits` | how many texture units Blaze3D's table models: `Blaze3dGLBackend` sends units above it to the driver and re-issues the switch back, which `GlStateManager` would elide |
+| `Blaze3dTextureUnits` | how many texture units Blaze3D's table models: the units `HostStateModern` reads and a host section sets back |
 | `CgMinecraftClient` | the client state Minecraft moved (26.2: the screen, the loading overlay and the HUD's hidden flag onto `mc.gui`, the main target onto the game renderer), spelled once. Use it instead of a directive at the call site |
 | `HostGlHandoff` | the modern body of `CgHostPaint` (`HostPaintModern` forwards to it): `enter()` drops our state shadow and binds the main target, `leave()` repairs Blaze3D's cache, bouncing through unit 1. Also `contextIsLive()` and `ensureContext()`, asked before a paint |
 | `HostKeys` | CrystalGraphics' key and button numbers in this Minecraft's own: GLFW's, SDL's from 26.3 |
@@ -37,8 +37,9 @@ the shutdown. A loader decides only which event (or node mixin) reaches it.
 | `ResourceIds`, `Windows` | a `ResourceLocation` and the game window, in whichever spelling the running version has |
 | `service/*` | `CgLifecycleService`, `CgReloadService`, `CgResourceService`, `CgRenderingService`, `CgSoundService` over Minecraft |
 
-**A missing `Blaze3dGLBackend` override is a missing GL call, not an exception** — wrong rendering with
-nothing in any log. `Blaze3dMirrorTest` pins the list; `HostStateVerifier` is the runtime check.
+**A domain missing from `HostStateModern`'s section slots is a missing GL call, not an exception** — wrong
+rendering with nothing in any log. `Blaze3dMirrorTest` pins the backend's few overrides; `HostStateVerifier` is the
+runtime check.
 
 ## Lifecycle
 
