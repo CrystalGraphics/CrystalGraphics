@@ -1481,6 +1481,7 @@ com/crystalgraphics/platform/gl/driver/CgGLDriver
   method public,abstract glStencilMaskSeparate (II)V
   method public,abstract glStencilOpSeparate (IIII)V
   method public,abstract glTextureBufferRange (IIIJJ)V
+  method public,abstract glTextureParameteri (III)V
   method public,abstract glTextureStorage2D (IIIII)V
   method public,abstract glTextureStorage2DMultisample (IIIII)V
   method public,abstract glTextureStorage3D (IIIIII)V
@@ -1558,6 +1559,7 @@ com/crystalgraphics/platform/gl/driver/GLC
   field public,static,final GL_DEPTH_RANGE I
   field public,static,final GL_DEPTH_STENCIL I
   field public,static,final GL_DEPTH_STENCIL_ATTACHMENT I
+  field public,static,final GL_DEPTH_STENCIL_TEXTURE_MODE I
   field public,static,final GL_DEPTH_TEST I
   field public,static,final GL_DEPTH_WRITEMASK I
   field public,static,final GL_DISPATCH_INDIRECT_BUFFER I
@@ -2356,6 +2358,7 @@ com/crystalgraphics/platform/gl/state/GLStateFilter
   method public glStencilMaskSeparate (II)V
   method public glStencilOpSeparate (IIII)V
   method public glTextureBufferRange (IIIJJ)V
+  method public glTextureParameteri (III)V
   method public glTextureStorage2D (IIIII)V
   method public glTextureStorage2DMultisample (IIIII)V
   method public glTextureStorage3D (IIIIII)V
@@ -4336,18 +4339,21 @@ com/crystalgraphics/platform/rhi/resource/CgTextureView
   access public,final,record
   extends java/lang/Record
   method public <init> (Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture;IIII)V
+  method public <init> (Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture;IIIIZ)V
   method public baseLayer ()I
   method public baseMip ()I
   method public height ()I
   method public layers ()I
   method public mips ()I
   method public overlaps (Lcom/crystalgraphics/platform/rhi/resource/CgTextureView;)Z
+  method public stencil ()Z
   method public texture ()Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture;
   method public width ()I
   method public,final equals (Ljava/lang/Object;)Z
   method public,final hashCode ()I
   method public,final toString ()Ljava/lang/String;
   method public,static attachment (Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture;II)Lcom/crystalgraphics/platform/rhi/resource/CgTextureView;
+  method public,static stencil (Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture;)Lcom/crystalgraphics/platform/rhi/resource/CgTextureView;
   method public,static whole (Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture;)Lcom/crystalgraphics/platform/rhi/resource/CgTextureView;
 com/crystalgraphics/platform/rhi/shader/CgGlslCompiler
   access public,abstract,interface

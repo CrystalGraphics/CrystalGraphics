@@ -10,23 +10,23 @@
 //     vec4 data = CG_CUSTOM_DATA(uv);                        // rgb and a, as CG_CUSTOM_DATA_OUT wrote them
 //     uvec2 model = CG_SHADING_MODEL_ID(uv);                 // the shading model and the type CG_SHADING_MODEL_OUT wrote
 
-// The texel of s under uv, a screen position: every one is the screen's size, so nothing is filtered.
-ivec2 cg_handed_texel(sampler2D s, vec2 uv) {
-    ivec2 size = textureSize(s, 0);
+// The texel of a texture size under uv, a screen position: every one is the screen's size, so nothing is filtered.
+ivec2 cg_handed_texel(ivec2 size, vec2 uv) {
     return clamp(ivec2(uv * vec2(size)), ivec2(0), size - 1);
 }
 
-#define CG_CUSTOM_STENCIL(uv) int(round(texelFetch(_cg_CustomStencil, cg_handed_texel(_cg_CustomStencil, (uv)), 0).r * 255.0))
+// CustomStencil is the stencil of CustomDepth itself, an unsigned integer (CgGraphTexture.stencil()).
+#define CG_CUSTOM_STENCIL(uv) int(texelFetch(_cg_CustomStencil, cg_handed_texel(textureSize(_cg_CustomStencil, 0), (uv)), 0).r)
 
 vec3 cg_handed_world_normal(vec2 uv) {
-    vec4 n = texelFetch(_cg_WorldNormal, cg_handed_texel(_cg_WorldNormal, uv), 0);
+    vec4 n = texelFetch(_cg_WorldNormal, cg_handed_texel(textureSize(_cg_WorldNormal, 0), uv), 0);
     return n.a > 0.0 ? normalize(n.xyz * 2.0 - 1.0) : vec3(0.0);
 }
 #define CG_SCENE_WORLD_NORMAL(uv) cg_handed_world_normal(uv)
 
 // What CG_CUSTOM_DATA_TARGET packed: x the ID byte + 256 * (model + 32 * type), y the colour's three bytes.
 vec2 cg_handed_packed(vec2 uv) {
-    return texelFetch(_cg_CustomData, cg_handed_texel(_cg_CustomData, uv), 0).xy;
+    return texelFetch(_cg_CustomData, cg_handed_texel(textureSize(_cg_CustomData, 0), uv), 0).xy;
 }
 
 vec4 cg_handed_custom_data(vec2 uv) {

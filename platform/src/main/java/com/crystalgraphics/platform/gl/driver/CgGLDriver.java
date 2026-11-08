@@ -140,6 +140,9 @@ public interface CgGLDriver {
 
     void glSamplerParameteri(int sampler, int name, int value);
 
+    /** A texture's own parameter: a stencil view's {@code GL_DEPTH_STENCIL_TEXTURE_MODE}. */
+    void glTextureParameteri(int texture, int name, int value);
+
     void glSamplerParameterf(int sampler, int name, float value);
 
     void glDeleteSamplers(int sampler);

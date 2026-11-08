@@ -1,10 +1,15 @@
 package com.crystalgraphics.render.graph;
 
+import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
 import com.crystalgraphics.platform.rhi.resource.CgTextureView;
 import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.texture.CgTextureSpec;
+import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.gl.framebuffer.CgFrameBuffer;
+import com.crystalgraphics.gl.texture.CgFallbackTextures;
+import com.crystalgraphics.render.draw.CgBoundResources;
+import org.apache.logging.log4j.LogManager;
 import com.crystalgraphics.gl.texture.CgTexture2D;
 
 import javax.annotation.Nullable;
@@ -64,6 +69,8 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
     /** Its {@link #level} and {@link #attachment} views, made at first ask. */
     private Level[] levelViews = new Level[0];
     private Attachment[] attachmentViews = new Attachment[0];
+    @Nullable
+    private Stencil stencilView;
 
     private CgGraphTexture(Kind kind, String name, @Nullable CgTextureDesc desc, @Nullable CgFrameBuffer framebuffer,
                            @Nullable CgGraphTexture of) {
@@ -288,11 +295,37 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
         return view;
     }
 
-    /** The graph texture binding {@code texture} samples: itself, or a level or attachment view's; null for any other. */
+    /**
+     * Its stencil, as a texture a draw samples: Unreal's CustomStencil, an SRV of the depth-stencil itself. Read as an
+     * unsigned integer through a {@code usampler2D}, nearest.
+     *
+     * <pre>{@code
+     * CgGraphTexture custom = stage.resources().get(CgFrameKeys.CUSTOM_DEPTH);
+     * int reads = rec.bindings().withTexture(probe.captureBindings(rec.bindings()), 0, custom.stencil());
+     * // in the shader: usampler2D _Stencil; uint bits = texelFetch(_Stencil, ivec2(gl_FragCoord.xy), 0).r;
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Read as the whole texture for ordering: a pass sampling it runs after every pass writing the texture.</li>
+     *   <li>Throws for a texture whose format has no stencil, here where the format is known.</li>
+     *   <li>Without a device the graph's storage takes no stencil view: it reads 0 there, logged once.</li>
+     * </ul>
+     */
+    public Stencil stencil() {
+        CgFrameBufferFormat format = desc != null ? desc.format() : framebuffer != null ? framebuffer.getFormat() : null;
+        if (format != null && (format.getDepthType() == null || !format.getDepthType().isStencil)) {
+            throw new IllegalArgumentException(this + " has no stencil");
+        }
+        if (stencilView == null) stencilView = new Stencil(this);
+        return stencilView;
+    }
+
+    /** The graph texture binding {@code texture} samples: itself, or a level, attachment or stencil view's; null for any other. */
     @Nullable
     static CgGraphTexture sampled(@Nullable CgTexture texture) {
         if (texture instanceof CgGraphTexture graph) return graph;
         if (texture instanceof Level view) return view.texture;
+        if (texture instanceof Stencil view) return view.texture;
         return texture instanceof Attachment view ? view.texture : null;
     }
 
@@ -611,6 +644,103 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
         @Override
         public String toString() {
             return texture + " attachment " + slot;
+        }
+    }
+
+    /** The stencil of a graph texture, sampled: {@link CgGraphTexture#stencil}. */
+    public static final class Stencil implements CgTexture {
+
+        /** Integers are never filtered: GL takes a linear filter over one as an incomplete texture. */
+        private static final int GL_NEAREST = 0x2600;
+        private static final CgTextureSpec SPEC = CgTextureSpec.builder().type(CgTextureType.STENCIL8)
+                .minFilter(GL_NEAREST).magFilter(GL_NEAREST).build();
+        private static boolean loggedNoDevice;
+
+        private final CgGraphTexture texture;
+        @Nullable
+        private CgTextureView view;
+
+        private Stencil(CgGraphTexture texture) {
+            this.texture = texture;
+        }
+
+        public CgGraphTexture texture() {
+            return texture;
+        }
+
+        @Override
+        public void bind() {
+            bind(0);
+        }
+
+        @Override
+        public void bind(int unit) {
+            CgBoundResources.texture(unit, this, -1);
+            if (rhiView() != null) return;   // the device samples the view itself
+            if (!loggedNoDevice) {
+                loggedNoDevice = true;
+                LogManager.getLogger("CgGraphTexture").warn("{}: no device, so no stencil view: it reads 0 until one is installed", texture);
+            }
+            if (CgFallbackTextures.ZERO_UINT != null) CgFallbackTextures.ZERO_UINT.bind(unit);
+        }
+
+        @Override
+        @Nullable
+        public CgTextureView rhiView() {
+            CgFrameBuffer storage = texture.framebuffer();
+            CgGpuTexture depth = storage == null ? null : storage.rhiDepth();
+            if (depth == null) return null;
+            if (view == null || view.texture() != depth) view = CgTextureView.stencil(depth);
+            return view;
+        }
+
+        @Override
+        public CgTextureSpec spec() {
+            return SPEC;
+        }
+
+        @Override
+        public int getId() {
+            CgTexture depth = depth();
+            return depth == null ? 0 : depth.getId();
+        }
+
+        @Nullable
+        private CgTexture depth() {
+            CgFrameBuffer storage = texture.framebuffer();
+            return storage == null ? null : storage.getDepthTexture();
+        }
+
+        @Override
+        public int getWidth() {
+            return texture.getWidth();
+        }
+
+        @Override
+        public int getHeight() {
+            return texture.getHeight();
+        }
+
+        @Override
+        public int getTarget() {
+            CgTexture depth = depth();
+            return depth == null ? 0 : depth.getTarget();
+        }
+
+        @Override
+        public boolean isDeleted() {
+            return false;
+        }
+
+        /** Refused, as for its texture. */
+        @Override
+        public void delete() {
+            texture.delete();
+        }
+
+        @Override
+        public String toString() {
+            return texture + " stencil";
         }
     }
 }

@@ -124,14 +124,15 @@ public final class CgMaterialProperties implements CgMaterialValues {
     /**
      * Adds each sampler's texture to a snapshot, at the unit its program reads it from: its index among the declared
      * samplers. A sampler with no texture set takes the engine texture its default names, else white of its kind (a
-     * {@code sampler3D} a white volume), as an Unreal texture parameter always has its default.
+     * {@code sampler3D} a white volume, a {@code usampler2D} the integer 0), as an Unreal texture parameter always has its default.
      */
     public void captureSamplers(CgBindingTable table) {
         for (int i = 0; i < samplerProps.size(); i++) {
             CgTexture texture = samplerProps.get(i).boundTexture();
             if (texture == null) {
-                texture = samplerProps.get(i).getType() == CgMaterialProperty.Type.SAMPLER3D
-                        ? CgFallbackTextures.WHITE_VOLUME : CgFallbackTextures.WHITE_1x1;
+                CgMaterialProperty.Type type = samplerProps.get(i).getType();
+                texture = type == CgMaterialProperty.Type.SAMPLER3D ? CgFallbackTextures.WHITE_VOLUME
+                        : type == CgMaterialProperty.Type.USAMPLER2D ? CgFallbackTextures.ZERO_UINT : CgFallbackTextures.WHITE_1x1;
             }
             if (texture != null) table.texture(i, texture, samplerProps.get(i).getSampler());
         }

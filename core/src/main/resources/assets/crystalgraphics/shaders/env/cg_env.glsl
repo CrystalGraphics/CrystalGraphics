@@ -22,10 +22,12 @@ CG_BIND(3, 0) uniform sampler2D cg_Textures2D[];
 CG_BIND(3, 0) uniform sampler2DArray cg_Textures2DArray[];
 CG_BIND(3, 0) uniform sampler3D cg_Textures3D[];
 CG_BIND(3, 0) uniform samplerCube cg_TexturesCube[];
+CG_BIND(3, 0) uniform usampler2D cg_UTextures2D[];
 #define CG_TEXTURE_sampler2D(h) cg_Textures2D[(h).x]
 #define CG_TEXTURE_sampler2DArray(h) cg_Textures2DArray[(h).x]
 #define CG_TEXTURE_sampler3D(h) cg_Textures3D[(h).x]
 #define CG_TEXTURE_samplerCube(h) cg_TexturesCube[(h).x]
+#define CG_TEXTURE_usampler2D(h) cg_UTextures2D[(h).x]
 #endif
 
 // The view, made once a firing, and the world's environment, which every pass of a frame shares (CgPassConstants).

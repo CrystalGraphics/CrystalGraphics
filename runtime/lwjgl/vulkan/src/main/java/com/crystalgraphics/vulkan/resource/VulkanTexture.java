@@ -361,8 +361,8 @@ public final class VulkanTexture implements CgGpuTexture {
 
     /** The view a pass renders into or a shader samples: one mip and layer, or the range the view names. */
     public long view(VkDevice device, CgTextureView v, boolean attachment) {
-        long key = ((long) v.baseMip() << 48) | ((long) v.mips() << 32) | ((long) v.baseLayer() << 16)
-                | ((long) v.layers() << 1) | (attachment ? 1 : 0);
+        long key = ((long) v.baseMip() << 48) | (v.stencil() ? 1L << 47 : 0) | ((long) v.mips() << 32)
+                | ((long) v.baseLayer() << 16) | ((long) v.layers() << 1) | (attachment ? 1 : 0);
         for (int i = 0; i < viewCount; i++) if (viewKeys[i] == key) return viewIds[i];
         int type;
         if (attachment) type = VK_IMAGE_VIEW_TYPE_2D;
@@ -370,8 +370,9 @@ public final class VulkanTexture implements CgGpuTexture {
         else if (desc.kind() == Kind.CUBE && v.layers() == 6) type = VK_IMAGE_VIEW_TYPE_CUBE;
         else if (desc.kind() == Kind.D2_ARRAY || v.layers() > 1) type = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
         else type = VK_IMAGE_VIEW_TYPE_2D;
-        // A shader samples one aspect of a depth-stencil image: its depth.
+        // A shader samples one aspect of a depth-stencil image: its depth, or its stencil where the view says so.
         int viewAspect = attachment || aspect == VK_IMAGE_ASPECT_COLOR_BIT ? aspect
+                : v.stencil() ? VK_IMAGE_ASPECT_STENCIL_BIT
                 : (aspect & VK_IMAGE_ASPECT_DEPTH_BIT) != 0 ? VK_IMAGE_ASPECT_DEPTH_BIT : aspect;
         try (MemoryStack stack = stackPush()) {
             VkImageViewCreateInfo ci = VkImageViewCreateInfo.calloc(stack).sType$Default()

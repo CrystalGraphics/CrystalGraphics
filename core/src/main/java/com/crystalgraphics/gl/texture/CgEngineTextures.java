@@ -27,7 +27,8 @@ import java.util.function.Supplier;
  * <ul>
  *   <li>An unknown name, or one whose texture does not exist yet, resolves to null: the sampler binds nothing.</li>
  *   <li>The texture's type must match the sampler's ({@code sampler3D} a 3D texture): {@link #volume} answers a
- *       {@code sampler3D}'s, {@code white} and {@code black} as volumes.</li>
+ *       {@code sampler3D}'s, {@code white} and {@code black} as volumes;
+ *       a {@code usampler2D}'s is {@code zero}, the one integer texture.</li>
  * </ul>
  */
 public final class CgEngineTextures {
@@ -40,6 +41,7 @@ public final class CgEngineTextures {
         register("white", () -> CgFallbackTextures.WHITE_1x1);
         register("black", () -> CgFallbackTextures.BLACK_1x1);
         register("transparent", () -> CgFallbackTextures.TRANSPARENT);
+        register("zero", () -> CgFallbackTextures.ZERO_UINT);
         register("normal", () -> CgFallbackTextures.FLAT_NORMAL);
         register("bump", () -> CgFallbackTextures.FLAT_NORMAL);
         VOLUMES.put("white", () -> CgFallbackTextures.WHITE_VOLUME);

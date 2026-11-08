@@ -155,7 +155,6 @@ public final class CgWorldRenderer {
             .depth(CgDepthState.TEST_WRITE).blend(CgBlendState.DISABLED).build();
     static final CgRenderState TRANSPARENT_STATE = CgRenderState.builder()
             .depth(CgDepthState.TEST_ONLY).blend(CgBlendState.ALPHA).build();
-    static final String CUSTOM_STENCIL_SHADER = "crystalgraphics:shaders/world_custom_stencil.shader";
     /** The host's depth copied into the custom data's own, where the host lends none. */
     static final String DEPTH_IN_SHADER = "crystalgraphics:shaders/world_depth_in.shader";
 
@@ -430,7 +429,7 @@ public final class CgWorldRenderer {
         commands.depthOnly.clear();
         customDepthPass.customDepthStates.clear();
         customDataPass.customDataStates.clear();
-        customDepthPass.customStencil = customDataPass.depthIn = null;
+        customDataPass.depthIn = null;
         customDataPass.customDataTarget = null;
         customDataPass.customDataProbed = -1;
         halfPass.upsample = null;
@@ -753,10 +752,6 @@ public final class CgWorldRenderer {
                 ready &= distortion.precache();
             }
         }
-        // CustomDepth draws each material by its depth pipeline, started above, under a stencil state: only the
-        // stencil copy is a program of its own. One for every material, since a draw marks itself.
-        if (customDepthPass.customStencil == null) customDepthPass.customStencil = CgMaterial.newInstance(CUSTOM_STENCIL_SHADER);
-        ready &= built(customDepthPass.customStencil.pipeline(CgInstanceKind.OBJECT));
         if (!halfResolution || !settings.halfResolution()) return ready;
         if (halfPass.upsample == null) halfPass.upsample = CgMaterial.newInstance(UPSAMPLE_SHADER);
         if (volumePass.composite == null) volumePass.composite = CgMaterial.newInstance(CgVolumePass.COMPOSITE_SHADER);

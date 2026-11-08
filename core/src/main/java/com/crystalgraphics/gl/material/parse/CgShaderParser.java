@@ -115,7 +115,7 @@ public final class CgShaderParser {
 
     /** The scene textures a post material reads, bound by {@code CgPostMaterial} from the firing's keys. */
     private static final String HANDED_SCENE_PROPERTIES = """
-            _cg_CustomStencil ("CustomStencil, the byte as a unorm", sampler2D) = "black"
+            _cg_CustomStencil ("CustomStencil, CustomDepth's stencil as an unsigned integer", usampler2D) = "zero"
             _cg_WorldNormal ("Our opaque surfaces' world normals, n * 0.5 + 0.5, alpha the eye depth", sampler2D) = "black"
             _cg_CustomData ("Custom data and the shading model, packed as handed_scene.glsl reads them", sampler2D) = "black"
             """;

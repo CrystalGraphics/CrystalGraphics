@@ -52,7 +52,7 @@ final class CgPropertiesParser {
         Set<String> s = new HashSet<>(Arrays.asList(
                 "float", "vec2", "vec3", "vec4",
                 "int", "boolean", "color", "Range",
-                "sampler2D", "sampler2DArray", "sampler3D", "samplerCube"));
+                "sampler2D", "usampler2D", "sampler2DArray", "sampler3D", "samplerCube"));
         VALID_PROPERTY_TYPES = Collections.unmodifiableSet(s);
     }
 
@@ -196,7 +196,7 @@ final class CgPropertiesParser {
         if (!VALID_PROPERTY_TYPES.contains(base)) {
             throw new CgShaderParseException(
                     "[" + resourcePath + "] Unknown property type '" + base + "' in Properties block. "
-                    + "Valid types: float, vec2, vec4, int, color, Range, sampler2D, "
+                    + "Valid types: float, vec2, vec4, int, color, Range, sampler2D, usampler2D, "
                     + "sampler2DArray, sampler3D, samplerCube. (vec3 is not supported — use vec4.) "
                     + "In: '" + line + "'");
         }

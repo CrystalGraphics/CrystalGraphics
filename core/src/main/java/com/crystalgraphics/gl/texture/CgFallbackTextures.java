@@ -2,6 +2,7 @@ package com.crystalgraphics.gl.texture;
 
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.texture.CgTextureSpec;
+import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.platform.gl.CgGL;
 
 import java.nio.ByteBuffer;
@@ -32,6 +33,12 @@ public final class CgFallbackTextures {
     /** 1×1 fully transparent black ({@code RGBA = 0, 0, 0, 0}). */
     public static CgTexture TRANSPARENT;
 
+    /**
+     * 1×1 unsigned integer 0 (R8UI): what an unset {@code usampler2D} reads, as a stencil no draw wrote. A float
+     * texture under an integer sampler is undefined (a validation error on Vulkan).
+     */
+    public static CgTexture ZERO_UINT;
+
     /** A 1×1×1 opaque white volume: what a pass with no world media reads through {@code cg_Media}, everything let through. */
     public static CgTexture WHITE_VOLUME;
 
@@ -49,6 +56,10 @@ public final class CgFallbackTextures {
         BLACK_1x1 = createPixel(0, 0, 0, 255);
         FLAT_NORMAL = createPixel(128, 128, 255, 255);
         TRANSPARENT = createPixel(0, 0, 0, 0);
+        ByteBuffer zeroByte = ByteBuffer.allocateDirect(1);
+        zeroByte.put((byte) 0).flip();
+        ZERO_UINT = CgTexture2D.createFromPixels(1, 1, zeroByte, CgTextureSpec.builder().type(CgTextureType.R8UI)
+                .minFilter(CgGL.GL_NEAREST).magFilter(CgGL.GL_NEAREST).build());
         CgTexture3D volume = CgTexture3D.createEmpty(1, 1, 1, CgTextureSpec.RGBA8_LINEAR);
         ByteBuffer white = ByteBuffer.allocateDirect(4);
         white.put((byte) 255).put((byte) 255).put((byte) 255).put((byte) 255).flip();
@@ -74,6 +85,8 @@ public final class CgFallbackTextures {
         FLAT_NORMAL = null;
         deleteAndNull(TRANSPARENT);
         TRANSPARENT = null;
+        deleteAndNull(ZERO_UINT);
+        ZERO_UINT = null;
         deleteAndNull(WHITE_VOLUME);
         WHITE_VOLUME = null;
         deleteAndNull(BLACK_VOLUME);

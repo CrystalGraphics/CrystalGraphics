@@ -194,10 +194,10 @@ public final class CgPostMaterial implements CgPostEffect {
         }
         if (material.handedScene()) {
             // Unreal's SceneTextures, from what this firing published; the fallbacks read stencil 0, no normal, no data.
-            CgGraphTexture stencil = post.resources().get(CgFrameKeys.CUSTOM_DEPTH);
+            CgGraphTexture custom = post.resources().get(CgFrameKeys.CUSTOM_DEPTH);
             CgGraphTexture normals = post.resources().get(CgFrameKeys.WORLD_NORMALS);
             CgGraphTexture data = post.resources().get(CgFrameKeys.CUSTOM_DATA);
-            bind("_cg_CustomStencil", stencil != null ? stencil : CgFallbackTextures.BLACK_1x1);
+            bind("_cg_CustomStencil", custom != null ? custom.stencil() : CgFallbackTextures.ZERO_UINT);
             bind("_cg_WorldNormal", normals != null ? normals : CgFallbackTextures.TRANSPARENT);
             bind("_cg_CustomData", data != null ? data : CgFallbackTextures.TRANSPARENT);
         }

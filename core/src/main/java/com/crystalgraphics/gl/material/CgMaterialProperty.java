@@ -51,6 +51,8 @@ public final class CgMaterialProperty {
         RANGE("Range", "float", 1),
 
         SAMPLER2D("sampler2D", "sampler2D", 0, true),
+        /** An unsigned integer texture (a stencil view, {@code CgGraphTexture.stencil()}): {@code texelFetch}, default "zero". */
+        USAMPLER2D("usampler2D", "usampler2D", 0, true),
         SAMPLER2D_ARRAY("sampler2DArray", "sampler2DArray", 0, true),
         SAMPLER3D("sampler3D", "sampler3D", 0, true),
         SAMPLER_CUBE("samplerCube", "samplerCube", 0, true);

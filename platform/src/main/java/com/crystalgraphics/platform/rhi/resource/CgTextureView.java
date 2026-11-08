@@ -7,9 +7,19 @@ package com.crystalgraphics.platform.rhi.resource;
  * <pre>{@code
  * CgTextureView all   = CgTextureView.whole(texture);            // sampling
  * CgTextureView layer = CgTextureView.attachment(array, 0, 3);    // render into mip 0 of layer 3
+ * CgTextureView bits  = CgTextureView.stencil(depthStencil);      // its stencil, a usampler2D's: texelFetch(s, p, 0).r
  * }</pre>
+ *
+ * <ul>
+ *   <li>A depth-stencil texture's view samples its depth, unless {@link #stencil}: then its stencil, as an unsigned
+ *       integer, through a nearest sampler.</li>
+ * </ul>
  */
-public record CgTextureView(CgGpuTexture texture, int baseMip, int mips, int baseLayer, int layers) {
+public record CgTextureView(CgGpuTexture texture, int baseMip, int mips, int baseLayer, int layers, boolean stencil) {
+
+    public CgTextureView(CgGpuTexture texture, int baseMip, int mips, int baseLayer, int layers) {
+        this(texture, baseMip, mips, baseLayer, layers, false);
+    }
 
     public static CgTextureView whole(CgGpuTexture texture) {
         CgGpuTexture.Desc d = texture.desc();
@@ -21,13 +31,20 @@ public record CgTextureView(CgGpuTexture texture, int baseMip, int mips, int bas
         return new CgTextureView(texture, mip, 1, layer, 1);
     }
 
+    /** The stencil of a depth-stencil texture's every mip and layer, sampled. */
+    public static CgTextureView stencil(CgGpuTexture texture) {
+        if (!texture.desc().format().hasStencil()) throw new IllegalArgumentException(texture + " has no stencil");
+        CgTextureView all = whole(texture);
+        return new CgTextureView(texture, 0, all.mips, 0, all.layers, true);
+    }
+
     /** The width of {@link #baseMip}. */
     public int width() { return Math.max(1, texture.desc().width() >> baseMip); }
 
     /** The height of {@link #baseMip}. */
     public int height() { return Math.max(1, texture.desc().height() >> baseMip); }
 
-    /** Whether the two share a subresource: the same texture, overlapping in mips and in layers. */
+    /** Whether the two share a subresource: the same texture, overlapping in mips and in layers, either aspect. */
     public boolean overlaps(CgTextureView o) {
         return texture == o.texture && baseMip < o.baseMip + o.mips && o.baseMip < baseMip + mips
                 && baseLayer < o.baseLayer + o.layers && o.baseLayer < baseLayer + layers;

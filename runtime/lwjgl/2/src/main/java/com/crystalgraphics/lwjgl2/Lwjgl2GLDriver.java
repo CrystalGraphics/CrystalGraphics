@@ -189,6 +189,7 @@ public final class Lwjgl2GLDriver implements CgGLDriver {
     @Override public int glCreateSamplers() { return GL45.glCreateSamplers(); }
 
     @Override public void glSamplerParameteri(int sampler, int name, int value) { GL33.glSamplerParameteri(sampler, name, value); }
+    @Override public void glTextureParameteri(int texture, int name, int value) { GL45.glTextureParameteri(texture, name, value); }
 
     @Override public void glSamplerParameterf(int sampler, int name, float value) { GL33.glSamplerParameterf(sampler, name, value); }
 

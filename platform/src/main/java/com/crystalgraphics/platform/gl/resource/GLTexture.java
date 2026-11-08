@@ -84,18 +84,22 @@ public final class GLTexture implements CgGpuTexture {
 
     /**
      * The texture name {@code view} samples: a texture view of the range, or this texture's own for the whole of one
-     * that is adopted (mutable storage takes no view) or has a single level.
+     * that is adopted (mutable storage takes no view) or has a single level. A stencil view is always a view of its
+     * own, in stencil mode: the texture's own name samples its depth.
      */
     public int sampled(CgGLDriver gl, CgTextureView view) {
-        if (view.baseMip() == 0 && view.mips() == desc.mips() && view.baseLayer() == 0
+        if (!view.stencil() && view.baseMip() == 0 && view.mips() == desc.mips() && view.baseLayer() == 0
                 && (desc.kind() == Kind.D3 || view.layers() == desc.depthOrLayers()) && (!owned || desc.mips() == 1)) {
             return name;
         }
+        if (view.stencil() && !owned) throw new IllegalStateException(desc.label() + ": its stencil is sampled through a "
+                + "texture view, which an adopted texture's mutable storage takes none of");
         int at = viewKeys.indexOf(view);
         if (at >= 0) return viewNames.get(at);
         int v = gl.glGenTextures();
         gl.glTextureView(v, target, name, GLFormats.internal(desc.format()), view.baseMip(), view.mips(), view.baseLayer(),
                 view.layers());
+        if (view.stencil()) gl.glTextureParameteri(v, GL_DEPTH_STENCIL_TEXTURE_MODE, GL_STENCIL_INDEX);
         viewKeys.add(view);
         viewNames.add(v);
         return v;

@@ -503,6 +503,7 @@ public final class GLStateFilter implements CgGLDriver {
     @Override public void glBindImageTexture(int unit, int texture, int level, boolean layered, int layer, int access, int format) { raw.glBindImageTexture(unit, texture, level, layered, layer, access, format); }
     @Override public int glCreateSamplers() { return raw.glCreateSamplers(); }
     @Override public void glSamplerParameteri(int sampler, int name, int value) { raw.glSamplerParameteri(sampler, name, value); }
+    @Override public void glTextureParameteri(int texture, int name, int value) { raw.glTextureParameteri(texture, name, value); }
     @Override public void glSamplerParameterf(int sampler, int name, float value) { raw.glSamplerParameterf(sampler, name, value); }
     @Override public long glGetTextureSamplerHandleARB(int texture, int sampler) { return raw.glGetTextureSamplerHandleARB(texture, sampler); }
     @Override public void glMakeTextureHandleResidentARB(long handle) { raw.glMakeTextureHandleResidentARB(handle); }

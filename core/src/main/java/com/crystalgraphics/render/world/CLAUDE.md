@@ -116,13 +116,12 @@
 - **CustomDepth** (`recordCustomDepth`, near the top of the transparent firing, after custom data, as Unreal's after
   its base pass, CustomDepthRendering.cpp): every draw in
   view marked `Draw.customDepth(stencil, writeMask)` (or a `CgAnimInstance.customDepth`), opaque or writing depth,
-  drawn by its depth pipeline into a transient DEPTH32F_STENCIL8 + R8 target of the stage's size, **tested against that
+  drawn by its depth pipeline into a transient DEPTH32F_STENCIL8 target of the stage's size, **tested against that
   target alone, never the scene's** (aaa-design §2.88: a mesh behind a wall is written), writing its stencil under its
-  mask, depth-fail kept under 0xFF and replaced under a partial mask. Then a full-screen draw of
-  `world_custom_stencil.shader` per stencil bit some draw writes (value under its mask), each testing that bit and
-  adding it into the R8, since no device samples a stencil aspect. Published as `CgFrameKeys.CUSTOM_DEPTH`; a pass reads its depth with `sceneDepth(unit, it)` and its
-  stencil as `round(r * 255)`. A set of instances refuses it. Its gate is `--mode=custom-depth`, exact on gl and vulkan.
-  `precache(material)` starts the copy's program; each material's CustomDepth draw is its depth pipeline's program.
+  mask, depth-fail kept under 0xFF and replaced under a partial mask. Published as `CgFrameKeys.CUSTOM_DEPTH`; a pass
+  reads its depth with `sceneDepth(unit, it)` and its stencil through `it.stencil()`, a `usampler2D` (Unreal's
+  CustomStencil, an SRV of the same texture). A set of instances refuses it. Its gate is `--mode=custom-depth`, exact on
+  gl and vulkan. Each material's CustomDepth draw is its depth pipeline's program: the pass has none of its own.
 - **World normals on demand**: the opaque pass writes `cg_world.normals` (`normalsFor`) while the lights cast shadows
   or the opaque firing carries `CgFrameKeys.WORLD_NORMALS_READ`, and the transparent firing publishes it as
   `WORLD_NORMALS`, the scene texture a post outline reads (Unreal's GBuffer normal). `--mode=custom-depth` checks it.
