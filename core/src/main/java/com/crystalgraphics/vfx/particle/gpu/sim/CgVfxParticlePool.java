@@ -399,8 +399,13 @@ public final class CgVfxParticlePool {
     private CgGraphBuffer lightSlots;
     private int cells;
     private float cellWidth = 1f;
-    /** Its entry in {@link #countBuffer}: how many records the newest version holds; -1 before its storage. */
+    /**
+     * Its entry in {@link #countBuffer}: how many records the newest version holds; -1 before its storage, and while no
+     * slot is open (its last tenant's close gives it back).
+     */
     private int liveEntry = -1;
+    /** Whether a step has been recorded since its storage was made: what sizing it ahead waits on, empty or not. */
+    private boolean everStepped;
     private int storage;
     /** Records {@link #drawn} holds: ahead of {@link #storage} from {@link #drawn()} until the step grows the records. */
     private int drawnStorage;
@@ -644,6 +649,7 @@ public final class CgVfxParticlePool {
         cellKeys = cellValues = cellRuns = null;
         if (beams != null) beams.forget();
         liveEntry = -1;
+        everStepped = false;
         storage = 0;
         paramsChanged = true;
         for (int[] row : idleRows.values()) freeRow(row);
@@ -900,7 +906,7 @@ public final class CgVfxParticlePool {
         betweenSteps("record");
         if (steps == 0) return false;
         if (openSlots == 0) {
-            // A slot closes only once its particles have died, so there is nothing to step.
+            // With no slot open it holds no particles (the last close gave its count back): nothing to step.
             takeSteps();
             return false;
         }
@@ -1404,6 +1410,7 @@ public final class CgVfxParticlePool {
     private void releaseStorage(CgRecording recording) {
         giveBack(liveEntry);
         liveEntry = -1;
+        everStepped = false;
         CgGraphBuffer[] owned = {records, drawn, outgrown, paramBuffer, curveBuffer, spawnBuffer,
                 cellKeys, cellValues, cellRuns, lightSlots, trailBuffer, headBuffer};
         for (CgGraphBuffer buffer : owned) if (buffer != null) recording.release(buffer);
@@ -1492,6 +1499,12 @@ public final class CgVfxParticlePool {
         openSlots--;
         while (slotCount > 0 && slotEmitter[slotCount - 1] == null) slotCount--;
         basesStale = true;
+        if (openSlots == 0) {
+            // Its last tenant gone, it holds no particles: no step runs to kill what a closing slot left alive, and the
+            // next tenant's first step, lights and grids would read the old count as live. Niagara resets an emitter's data.
+            giveBack(liveEntry);
+            liveEntry = -1;
+        }
     }
 
     /** The emitter open {@code slot} plays. */
@@ -2480,7 +2493,7 @@ public final class CgVfxParticlePool {
      */
     public void allocate() {
         betweenSteps("allocate");
-        if (expectedCapacity == 0 || liveEntry >= 0) return;   // stepped: its steps grow it
+        if (expectedCapacity == 0 || everStepped) return;   // stepped: its steps grow it
         int want = sizeClass(expectedCapacity);
         if (records != null) {
             if (want <= storage) return;
@@ -2521,6 +2534,7 @@ public final class CgVfxParticlePool {
         if (liveEntry < 0) {
             fitCounts(recording, 1);
             liveEntry = takeCount();
+            everStepped = true;
         }
         if (need > storage) {
             storage = sizeClass(need);
@@ -2581,7 +2595,7 @@ public final class CgVfxParticlePool {
      */
     public void lightSlotsAhead(int words) {
         betweenSteps("lightSlotsAhead");
-        if (liveEntry < 0 && words > 0) lightSlots = ahead(lightSlots, "vfx.pool.lights", words);
+        if (!everStepped && words > 0) lightSlots = ahead(lightSlots, "vfx.pool.lights", words);
     }
 
     /** The slots {@link #expect} sized it for. */
