@@ -11,7 +11,8 @@ package com.crystalgraphics.job;
  * <ul>
  *   <li>A job waiting past the starvation guard (two seconds) goes first whatever its lane, so background work under
  *       a steady stream of urgent work still runs.</li>
- *   <li>{@link #BACKGROUND} never takes the last worker: long work cannot occupy every thread an urgent job needs.</li>
+ *   <li>The last worker is only ever {@link #INTERACTIVE}: {@link #LATENCY} and {@link #BACKGROUND} work together never
+ *       hold every thread, so interactive work waits behind nothing but other interactive work.</li>
  *   <li>A loop made with its own executor ignores lanes.</li>
  * </ul>
  */

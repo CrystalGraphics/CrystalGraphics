@@ -1,71 +1,54 @@
 package com.crystalgraphics.text.cache;
 
 import com.crystalgraphics.api.font.CgFontKey;
+import com.crystalgraphics.job.CgJob;
+import com.crystalgraphics.job.CgJobLane;
+import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.util.trace.CgChannels;
 import com.crystalgraphics.variable.CgVar;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.RejectedExecutionException;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- * Async glyph-generation thread pool owned by {@link CgFontRegistry}.
+ * Glyph generation on the engine's job workers, owned by {@link CgFontRegistry}.
  *
- * <p>Accepts {@link CgGlyphGenerationJob}s, runs them on worker threads
- * via {@link CgWorkerFontContext}, and collects
- * {@link CgGlyphGenerationResult}s that the registry drains each frame
- * for atlas upload.</p>
+ * <p>Runs {@link CgGlyphGenerationJob}s through {@link CgJob#executor} with a per-thread
+ * {@link CgWorkerFontContext}, and keeps the finished {@link CgGlyphGenerationResult}s for the render thread, which
+ * commits them each frame within a budget. Glyphs are asked for from any thread a text is recorded on and committed on
+ * the render thread whatever asked, so nothing here reports through a job loop: the registry's frame is the drain.</p>
+ *
+ * <table>
+ *   <caption>Lanes</caption>
+ *   <tr><th>Job</th><th>Lane</th></tr>
+ *   <tr><td>a drawn bitmap glyph</td><td>{@code INTERACTIVE}: ~0.1 ms, and the screen waits on it</td></tr>
+ *   <tr><td>a drawn text-shadow cell</td><td>{@code LATENCY}: visible, a frame late is fine</td></tr>
+ *   <tr><td>a drawn distance field</td><td>{@code BACKGROUND}: 13-50 ms, and its bitmap stand-in already shows</td></tr>
+ *   <tr><td>anything warmed ({@link CgFontWarmer})</td><td>{@code BACKGROUND}</td></tr>
+ * </table>
+ *
+ * <p>Distance fields are background so they can never hold every worker: background never takes the last one, which
+ * keeps a bitmap from queueing behind them. One FIFO queue for both once left a frame-one bitmap waiting 6.5 s behind
+ * ~2000 distance fields.</p>
  */
 final class CgGlyphGenerationExecutor {
 
     private static final Logger LOGGER = Logger.getLogger(CgGlyphGenerationExecutor.class.getName());
+
     /**
-     * Worker threads generating glyphs in the background.
-     *
-     * <p>Glyph generation is pure CPU work — around 13 ms for an average glyph and 32 ms for dense
-     * CJK, essentially all of it inside a single native call. That invites the assumption that
-     * convergence scales inversely with worker count, and it mostly does not.
-     *
-     * <p><strong>Scaling this with core count was tried and is not worth it.</strong> On an 8-core
-     * machine, {@code cores - 2} (six workers) shortened atlas convergence on the CJK scene from
-     * 9.3s to only 8.4s. Frame time showed no effect at all: warmup means over three runs were
-     * 16.9ms, 19.0ms and 19.2ms with no relationship to worker count, so run-to-run variance on
-     * that scene comfortably exceeds whatever the change is worth. Per-glyph cost cannot improve by
-     * construction — more workers run more glyphs at once, not each one faster.
-     *
-     * <p>The reason it barely helped is that these workers were never the constraint. Instrumented
-     * across warmup, the pending-job queue drains to zero by 2 seconds and sits empty for most of
-     * the run: glyph demand arrives progressively as the scene reveals text, so the workers are
-     * idle far more than they are backed up. Convergence is mostly governed by when glyphs are
-     * first drawn, not by how fast they can be generated. Before assuming otherwise, check
-     * {@code pendingAsync} in the text-3d profile — if it is not pinned near
-     * {@link #MAX_PENDING_TASKS}, more workers cannot help.
-     *
-     * <p>Nor is the consuming side the constraint: the per-frame commit budget admits roughly 12
-     * glyphs (1 MB at ~82 KB per MTSDF glyph), about 2.6 seconds for 2000 glyphs. Raising that
-     * would achieve nothing either.
-     *
-     * <p>None of this is on the render thread in any case — glyphs not yet generated fall back to a
-     * bitmap raster, so all convergence buys is how long text renders at lower fidelity.
-     */
-    private static final int DEFAULT_WORKER_COUNT = Math.max(1,
-            Math.min(4, Math.max(1, Runtime.getRuntime().availableProcessors() - 1)));
-    /**
-     * Queue depth for pending generation jobs.
+     * Glyph tasks queued and not yet started, past which a submission is refused.
      *
      * <p>Sized for one frame's worth of a cold CJK screen, not for a trickle. A first frame can ask
-     * for every glyph it draws at once — measured at 8668 on text-3d — and with the previous bound of
-     * 256 and an {@code AbortPolicy}, ~97% of those submissions were rejected outright and no worker
-     * ever ran. Jobs are small (a key, a size, and a shared reference to the font bytes — not a
-     * copy), so a deep queue costs little beyond the references it holds.
+     * for every glyph it draws at once — measured at 8668 on text-3d — and with an earlier bound of
+     * 256, ~97% of those submissions were rejected outright and no worker ever ran. Jobs are small
+     * (a key, a size, and a shared reference to the font bytes — not a copy).
      *
      * <p>Rejection is still possible and still handled: callers that cannot tolerate a dropped job
      * fall back to generating synchronously.
@@ -80,40 +63,50 @@ final class CgGlyphGenerationExecutor {
             CgVar.DEV | CgVar.RESTART, "Every glyph job runs on the thread that asks for it, in the order asked, so the atlas"
                     + " fills the same way every run: for pixel comparisons of text, never for play.").get();
 
-    /** See {@link #bitmapExecutor} — these exist to beat a queue, not to add throughput. */
-    private static final int BITMAP_WORKER_COUNT = 4;
+    /** Microseconds from submission to a worker starting the job, by kind and by who waits on it. */
+    private static final String WAIT_BITMAP_DRAWN = "glyph.queueWaitUs.bitmap.drawn";
+    private static final String WAIT_BITMAP_WARM = "glyph.queueWaitUs.bitmap.warm";
+    private static final String WAIT_MSDF_DRAWN = "glyph.queueWaitUs.msdf.drawn";
+    private static final String WAIT_MSDF_WARM = "glyph.queueWaitUs.msdf.warm";
 
     private final Map<CgGlyphGenerationJob, Boolean> pendingJobs = new ConcurrentHashMap<>();
+
+    /** Warm jobs still queued, with the claim a promoted copy shares. @see #promote */
+    private final Map<CgGlyphGenerationJob, AtomicBoolean> queuedWarm = new ConcurrentHashMap<>();
+
     private final Map<CgGlyphGenerationJob, Boolean> failedJobs = new ConcurrentHashMap<>();
-    private final ConcurrentLinkedQueue<CgGlyphGenerationResult> completedResults = new ConcurrentLinkedQueue<>();
+
+    /**
+     * Finished results waiting for the render thread, drawn and warm apart: the commit is budgeted per frame, and in
+     * one queue a warm's results filled that budget while a label's glyph sat behind them for frames.
+     */
+    private final ConcurrentLinkedQueue<CgGlyphGenerationResult> drawnResults = new ConcurrentLinkedQueue<>();
+
+    private final ConcurrentLinkedQueue<CgGlyphGenerationResult> warmResults = new ConcurrentLinkedQueue<>();
+
+    /** Warm results not yet committed, by job, so a draw asking for one can move it to {@link #drawnResults}. */
+    private final Map<CgGlyphGenerationJob, CgGlyphGenerationResult> completedWarm = new ConcurrentHashMap<>();
+
     private final ConcurrentLinkedQueue<CgWorkerFontContext> workerContexts = new ConcurrentLinkedQueue<>();
 
+    /** Each worker's FreeType and msdfgen state, for this executor: the one replacing it after a shutdown starts fresh. */
     private final ThreadLocal<CgWorkerFontContext> threadLocalContext = ThreadLocal.withInitial(() -> {
         CgWorkerFontContext context = new CgWorkerFontContext();
         workerContexts.add(context);
         return context;
     });
 
-    private final ThreadPoolExecutor msdfExecutor;
+    /** Task copies queued and not yet started: all of them, and the distance fields among them. */
+    private final AtomicInteger queuedTasks = new AtomicInteger();
+    private final AtomicInteger queuedMsdf = new AtomicInteger();
 
     /**
-     * Dedicated pool for bitmap jobs, kept separate from {@link #msdfExecutor} on purpose.
-     *
-     * <p>The two job kinds have completely different latency requirements and completely different
-     * costs. A bitmap glyph takes ~0.08 ms and is what the user actually sees *now* — it is the
-     * fallback rendered while the real MSDF is still being built. An MSDF glyph takes ~13 ms and
-     * nobody is waiting on any individual one.
-     *
-     * <p>Sharing one FIFO queue made the cheap, latency-critical work queue behind the expensive,
-     * latency-indifferent work: with ~2000 MSDF jobs at 13 ms across 4 workers, a bitmap submitted
-     * on frame 1 waited about 6.5 seconds. Measured exactly that — text converged over ~9 s instead
-     * of the ~0.2 s the bitmaps themselves need.
-     *
-     * <p>Four threads: 8668 bitmaps at 0.08 ms is ~350 ms of work at two, which was itself a floor
-     * under how fast a cold screen could fill in. They run at minimum priority, so on a machine with
-     * fewer cores they yield to rendering rather than competing with it.
+     * Tasks inside {@link GlyphTask#run}. The workers are the engine's and outlive this executor, so the contexts are
+     * closed by whichever of {@link #shutdown} and the last of these finishes second. @see #closeContextsIfIdle
      */
-    private final ThreadPoolExecutor bitmapExecutor;
+    private final AtomicInteger running = new AtomicInteger();
+
+    private final AtomicBoolean contextsClosed = new AtomicBoolean();
 
     private volatile boolean shutdown;
 
@@ -137,107 +130,149 @@ final class CgGlyphGenerationExecutor {
      */
     private final Map<CgGlyphGenerationJob, Long> lastWanted = new ConcurrentHashMap<>();
 
-    CgGlyphGenerationExecutor() {
-        final AtomicInteger threadId = new AtomicInteger(1);
-        this.msdfExecutor = new ThreadPoolExecutor(
-                DEFAULT_WORKER_COUNT,
-                DEFAULT_WORKER_COUNT,
-                30L,
-                TimeUnit.SECONDS,
-                new ArrayBlockingQueue<>(MAX_PENDING_TASKS),
-                runnable -> {
-                    Thread thread = new Thread(runnable, "crystalgraphics-glyph-worker-" + threadId.getAndIncrement());
-                    thread.setDaemon(true);
-                    // Below normal priority: this work is never on the critical path — a glyph
-                    // that is not ready renders as a bitmap fallback — so it must never
-                    // preempt the render thread.
-                    //
-                    // It measurably did. During the first frame the render thread rasterizes
-                    // the entire visible text set (~4800 glyphs) while these workers saturate
-                    // every core generating MSDFs. A single FreeType glyph load, averaging
-                    // 41us, was measured at 9.4ms in one run and 51ms in another — the same
-                    // operation, an order of magnitude apart, which is preemption rather than
-                    // work. GC was ruled out (5 collections, 6.5ms worst pause, none during
-                    // frame 1) and so was first-load table parsing (0.04ms).
-                    //
-                    // Priority is a hint the OS may ignore, so this narrows the window rather
-                    // than closing it. It cannot make anything slower: these threads are
-                    // throughput work with no deadline.
-                    thread.setPriority(Thread.MIN_PRIORITY);
-                    return thread;
-                },
-                new ThreadPoolExecutor.AbortPolicy());
-        this.msdfExecutor.allowCoreThreadTimeOut(true);
-
-        final AtomicInteger bitmapThreadId = new AtomicInteger(1);
-        this.bitmapExecutor = new ThreadPoolExecutor(
-                BITMAP_WORKER_COUNT,
-                BITMAP_WORKER_COUNT,
-                30L,
-                TimeUnit.SECONDS,
-                new ArrayBlockingQueue<>(MAX_PENDING_TASKS),
-                runnable -> {
-                    Thread thread = new Thread(runnable,
-                            "crystalgraphics-bitmap-worker-" + bitmapThreadId.getAndIncrement());
-                    thread.setDaemon(true);
-                    // Same reasoning as the MSDF workers: never preempt rendering.
-                    thread.setPriority(Thread.MIN_PRIORITY);
-                    return thread;
-                },
-                new ThreadPoolExecutor.AbortPolicy());
-        this.bitmapExecutor.allowCoreThreadTimeOut(true);
-    }
-
     /** Called once a frame by the registry, before that frame's glyph requests. */
     void noteFrame(long frame) {
         this.frame = frame;
     }
 
-    boolean submit(final CgGlyphGenerationJob job) {
+    /**
+     * Asks a worker for {@code job}.
+     *
+     * <pre>{@code
+     * executor.submit(job, true);    // a draw is waiting on it: in its lane, ahead of every warm job
+     * executor.submit(job, false);   // speculation: background, behind everything a draw asked for
+     * }</pre>
+     *
+     * <p>A drawn submission of a job already queued as a warm one promotes it: a copy is queued in the drawn lane and
+     * whichever a worker reaches first runs it, once. One already running or generated is left alone.</p>
+     *
+     * @param drawn whether something on screen waits for this glyph
+     * @return false when the job has failed before or the queue is full
+     */
+    boolean submit(final CgGlyphGenerationJob job, boolean drawn) {
         if (shutdown || failedJobs.containsKey(job)) return false;
         if (job.isShadowCell()) lastWanted.put(job, frame);
-        if (pendingJobs.putIfAbsent(job, Boolean.TRUE) != null) return true;
-
-        ThreadPoolExecutor target = job.isDistanceField() ? msdfExecutor : bitmapExecutor;
-        try {
-            execute(target, () -> {
-                if (job.isShadowCell() && isAbandoned(job)) {
-                    lastWanted.remove(job);
-                    pendingJobs.remove(job);
-                    return;
-                }
-                CgGlyphGenerationResult result = null;
-                try {
-                    result = generate(job);
-                    if (result != null) {
-                        // Un-marked at POLL time, not here -- see completedJobs.
-                        completedJobs.put(result, job);
-                        completedResults.add(result);
-                    } else {
-                        failedJobs.put(job, Boolean.TRUE);
-                    }
-                } catch (Throwable throwable) {
-                    failedJobs.put(job, Boolean.TRUE);
-                    LOGGER.log(Level.WARNING, "Glyph generation failed for " + job, throwable);
-                } finally {
-                    // A generated-but-unpolled job stays pending; only failures release here.
-                    if (result == null) {
-                        pendingJobs.remove(job);
-                        lastWanted.remove(job);
-                    }
-                }
-            });
+        if (pendingJobs.putIfAbsent(job, Boolean.TRUE) != null) {
+            if (drawn) {
+                CgTrace.add(CgChannels.TEXT, "glyph.drawnAlreadyPending", 1);
+                promote(job);
+                hurry(job);
+            }
             return true;
-        } catch (RejectedExecutionException e) {
+        }
+        if (queuedTasks.get() >= MAX_PENDING_TASKS) {
             pendingJobs.remove(job);
             lastWanted.remove(job);
             return false;
         }
+        AtomicBoolean claim = new AtomicBoolean();
+        if (!drawn) queuedWarm.put(job, claim);
+        execute(new GlyphTask(job, drawn, claim));
+        return true;
     }
 
-    private static void execute(ThreadPoolExecutor target, Runnable task) {
+    /** Which lane a job runs in: the table in the class javadoc. */
+    private static CgJobLane laneOf(CgGlyphGenerationJob job, boolean drawn) {
+        if (!drawn || job.isDistanceField()) return CgJobLane.BACKGROUND;
+        return job.isShadowCell() ? CgJobLane.LATENCY : CgJobLane.INTERACTIVE;
+    }
+
+    /** Queues a drawn copy of a still-queued warm job; whichever copy a worker reaches first runs it. */
+    private void promote(CgGlyphGenerationJob job) {
+        // A distance field's drawn lane is its warm one, so a copy would only queue behind the original.
+        if (laneOf(job, true) == CgJobLane.BACKGROUND) return;
+        AtomicBoolean claim = queuedWarm.remove(job);
+        if (claim == null || claim.get()) return;
+        execute(new GlyphTask(job, true, claim));
+        CgTrace.add(CgChannels.TEXT, "glyph.promoted", 1);
+    }
+
+    /** Moves a finished, uncommitted warm result to the front of the commit. */
+    private void hurry(CgGlyphGenerationJob job) {
+        CgGlyphGenerationResult result = completedWarm.remove(job);
+        if (result != null && warmResults.remove(result)) {
+            drawnResults.add(result);
+            CgTrace.add(CgChannels.TEXT, "glyph.hurried", 1);
+        }
+    }
+
+    private void execute(GlyphTask task) {
+        queuedTasks.incrementAndGet();
+        if (task.job.isDistanceField()) queuedMsdf.incrementAndGet();
         if (DETERMINISTIC) task.run();
-        else target.execute(task);
+        else CgJob.executor(laneOf(task.job, task.drawn)).execute(task);
+    }
+
+    private void run(CgGlyphGenerationJob job, boolean drawn) {
+        if (job.isShadowCell() && isAbandoned(job)) {
+            lastWanted.remove(job);
+            pendingJobs.remove(job);
+            return;
+        }
+        CgGlyphGenerationResult result = null;
+        try {
+            result = generate(job);
+            if (result != null) {
+                // Un-marked at POLL time, not here -- see completedJobs.
+                completedJobs.put(result, job);
+                if (drawn) {
+                    drawnResults.add(result);
+                } else {
+                    // Queued before it is findable: whatever hurry() finds is in the queue, or already polled.
+                    warmResults.add(result);
+                    completedWarm.put(job, result);
+                }
+            } else {
+                failedJobs.put(job, Boolean.TRUE);
+            }
+        } catch (Throwable throwable) {
+            failedJobs.put(job, Boolean.TRUE);
+            LOGGER.log(Level.WARNING, "Glyph generation failed for " + job, throwable);
+        } finally {
+            // A generated-but-unpolled job stays pending; only failures release here.
+            if (result == null) {
+                pendingJobs.remove(job);
+                lastWanted.remove(job);
+            }
+        }
+    }
+
+    /**
+     * One queued glyph job. Two tasks may share a job and its claim, when a draw promoted a warm one; the first to
+     * claim it runs it and the other does nothing.
+     */
+    private final class GlyphTask implements Runnable {
+
+        private final CgGlyphGenerationJob job;
+        private final boolean drawn;
+        private final AtomicBoolean claim;
+        private final long queuedNanos = System.nanoTime();
+
+        GlyphTask(CgGlyphGenerationJob job, boolean drawn, AtomicBoolean claim) {
+            this.job = job;
+            this.drawn = drawn;
+            this.claim = claim;
+        }
+
+        @Override
+        public void run() {
+            queuedTasks.decrementAndGet();
+            if (job.isDistanceField()) queuedMsdf.decrementAndGet();
+            // Counted before the check, so shutdown() sees every task that may still reach a context.
+            running.incrementAndGet();
+            try {
+                if (shutdown || !claim.compareAndSet(false, true)) return;
+                queuedWarm.remove(job, claim);
+                String wait = job.isDistanceField()
+                        ? (drawn ? WAIT_MSDF_DRAWN : WAIT_MSDF_WARM)
+                        : (drawn ? WAIT_BITMAP_DRAWN : WAIT_BITMAP_WARM);
+                CgTrace.counter(CgChannels.ASYNC, wait, (System.nanoTime() - queuedNanos) / 1_000L);
+                CgGlyphGenerationExecutor.this.run(job, drawn);
+            } finally {
+                running.decrementAndGet();
+                if (shutdown) closeContextsIfIdle();
+            }
+        }
     }
 
     private boolean isAbandoned(CgGlyphGenerationJob job) {
@@ -252,7 +287,7 @@ final class CgGlyphGenerationExecutor {
      * <h4>Why the release moved out of the worker</h4>
      * <p>{@code pendingJobs} is the "somebody is already making this glyph" guard, and it used to
      * be cleared the instant generation <em>finished</em>. But a finished glyph is not a usable
-     * glyph: it sits in {@link #completedResults} until {@code drainCompletedGlyphs} commits it
+     * glyph: it sits in {@link #drawnResults} or {@link #warmResults} until {@code drainCompletedGlyphs} commits it
      * into the atlas, and that drain is deliberately budget-limited. Throughout that window the
      * atlas still misses, the dedup guard is already released, and so the very next frame submits
      * the same glyph again — and the frame after that, and so on until the commit finally lands.
@@ -310,11 +345,14 @@ final class CgGlyphGenerationExecutor {
      * heuristic, not a decision that has to be exact.
      */
     int completedBacklog() {
-        return completedResults.size();
+        return drawnResults.size() + warmResults.size();
     }
 
+    /** The next finished result to commit: everything a draw waits on first. */
     CgGlyphGenerationResult pollCompleted() {
-        CgGlyphGenerationResult result = completedResults.poll();
+        CgGlyphGenerationResult result = drawnResults.poll();
+        if (result != null) CgTrace.add(CgChannels.TEXT, "asyncCommit.drawn", 1);
+        else result = warmResults.poll();
         if (result != null) {
             // Release the dedup entry here rather than when generation finished -- see
             // completedJobs. The caller commits this within the same drain iteration, so the
@@ -324,13 +362,14 @@ final class CgGlyphGenerationExecutor {
             if (job != null) {
                 pendingJobs.remove(job);
                 lastWanted.remove(job);
+                completedWarm.remove(job, result);
             }
         }
         return result;
     }
 
     boolean hasPendingWork() {
-        return !pendingJobs.isEmpty() || !completedResults.isEmpty();
+        return !pendingJobs.isEmpty() || !drawnResults.isEmpty() || !warmResults.isEmpty();
     }
 
     int getPendingJobCount() {
@@ -338,16 +377,14 @@ final class CgGlyphGenerationExecutor {
     }
 
     /**
-     * Work waiting for a DISTANCE-FIELD worker, which is not what {@link #getPendingJobCount} counts.
+     * Distance fields queued and not yet started, which is not what {@link #getPendingJobCount} counts.
      *
-     * <p>{@code pendingJobs} spans both pools, and a cold page puts thousands of bitmap fallbacks in
-     * it -- so anything throttled on that count is really throttled on bitmap work it does not share
-     * a thread with. Gated on it, the ASCII warm did not run at all until a cold page's bitmap
-     * fallbacks had drained. The pools were split for this reason once already; this is the same rule
-     * for a counter.</p>
+     * <p>{@code pendingJobs} spans both kinds, and a cold page puts thousands of bitmap fallbacks in it
+     * -- so anything throttled on that count is really throttled on bitmap work in another lane. Gated
+     * on it, the ASCII warm did not run at all until a cold page's bitmap fallbacks had drained.</p>
      */
     int msdfQueueDepth() {
-        return msdfExecutor.getQueue().size();
+        return queuedMsdf.get();
     }
 
     void clearFont(CgFontKey fontKey) {
@@ -369,26 +406,37 @@ final class CgGlyphGenerationExecutor {
         return !hasPendingWork();
     }
 
+    /**
+     * Stops taking work and frees every worker's font state, without waiting. Irreversible: the registry replaces this
+     * executor.
+     *
+     * <p>The workers are the engine's, so nothing is shut down: queued tasks return at once when they are reached. A
+     * context is never closed under a task using it: with one still running, the last to finish closes them.</p>
+     */
     void shutdown() {
         if (shutdown) return;
-        
+
         shutdown = true;
-        msdfExecutor.shutdownNow();
-        bitmapExecutor.shutdownNow();
-        try {
-            msdfExecutor.awaitTermination(5L, TimeUnit.SECONDS);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
-        for (CgWorkerFontContext context : workerContexts) context.close();
-        
-        workerContexts.clear();
+        closeContextsIfIdle();
         pendingJobs.clear();
         lastWanted.clear();
+        queuedWarm.clear();
         // Results generated but never polled would otherwise keep their jobs pending forever.
         completedJobs.clear();
         failedJobs.clear();
-        completedResults.clear();
+        drawnResults.clear();
+        warmResults.clear();
+        completedWarm.clear();
+    }
+
+    /**
+     * Closes every worker's context once shut down with no task running; exactly once. A task counts itself running
+     * before it reads {@link #shutdown} and touches no context after reading it set, so none is in use here.
+     */
+    private void closeContextsIfIdle() {
+        if (running.get() > 0 || !contextsClosed.compareAndSet(false, true)) return;
+        for (CgWorkerFontContext context : workerContexts) context.close();
+        workerContexts.clear();
     }
 
     private CgGlyphGenerationResult generate(CgGlyphGenerationJob job) {
@@ -401,16 +449,23 @@ final class CgGlyphGenerationExecutor {
         List<CgGlyphGenerationJob> snapshot = new ArrayList<>(jobs.keySet());
         for (CgGlyphGenerationJob job : snapshot)
             if (job.getSourceFontKey().equals(fontKey)) jobs.remove(job);
-        
+
     }
 
     private void clearCompletedResults(CgFontKey fontKey) {
+        clearCompletedResults(drawnResults, fontKey);
+        clearCompletedResults(warmResults, fontKey);
+        completedWarm.values().removeIf(result -> result.getSourceFontKey().equals(fontKey));
+    }
+
+    private static void clearCompletedResults(ConcurrentLinkedQueue<CgGlyphGenerationResult> results,
+                                              CgFontKey fontKey) {
         ConcurrentLinkedQueue<CgGlyphGenerationResult> retained = new ConcurrentLinkedQueue<>();
         while (true) {
-            CgGlyphGenerationResult result = completedResults.poll();
+            CgGlyphGenerationResult result = results.poll();
             if (result == null) break;
             if (!result.getSourceFontKey().equals(fontKey)) retained.add(result);
         }
-        completedResults.addAll(retained);
+        results.addAll(retained);
     }
 }

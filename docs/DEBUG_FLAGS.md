@@ -147,7 +147,7 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 | `crystalgraphics.job.backgroundThreads` | 0 to 256 | `0` | Threads background work may hold at once, the job workers and their forEach helpers together; 0 for half the cores. Read at launch. |
 | `crystalgraphics.job.forEachPriority` | 1 to 10 | `4` | The frame's forEach helpers' Java thread priority: below normal leaves the GL driver's thread its core. Read at launch. |
 | `crystalgraphics.job.forEachThreads` | 0 to 256 | `0` | Threads CgJob.forEach and effects' emitters run on, the caller one of them; 0 for two fewer than the cores, 1 for all on the caller. Read at launch. |
-| `crystalgraphics.job.threads` | 0 to 256 | `0` | Threads jobs' work runs on; 0 for half the cores past two, at least one. Read at launch. |
+| `crystalgraphics.job.threads` | 0 to 256 | `0` | Threads jobs' work runs on; 0 for two fewer than the cores, at least one. Read at launch. |
 
 ## `crystalgraphics.loading`
 

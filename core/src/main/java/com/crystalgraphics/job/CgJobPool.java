@@ -13,13 +13,23 @@ final class CgJobPool {
 
     private static final Logger LOGGER = LogManager.getLogger("CrystalGraphics");
     private static final CgVar.Int THREADS_VAR = CgVar.integer("crystalgraphics.job.threads", 0, 0, 256,
-            CgVar.DEV | CgVar.RESTART, "Threads jobs' work runs on; 0 for half the cores past two, at least one.");
+            CgVar.DEV | CgVar.RESTART, "Threads jobs' work runs on; 0 for two fewer than the cores, at least one.");
+    /**
+     * Two fewer than the cores. Background jobs hold at most {@link #BACKGROUND_JOBS} of them and the last is only ever
+     * interactive, so the rest is room for work somebody waits on.
+     */
     static final int THREADS = THREADS_VAR.get() > 0 ? THREADS_VAR.get()
-            : Math.max(1, (Runtime.getRuntime().availableProcessors() - 2) / 2);
+            : Math.max(1, Runtime.getRuntime().availableProcessors() - 2);
+
+    /**
+     * Background jobs running at once: {@code CgWorkers.BACKGROUND} less the one helper their {@code forEach} keeps,
+     * so background work holds half the machine however many job threads there are.
+     */
+    static final int BACKGROUND_JOBS = Math.max(1, Math.min(THREADS, CgWorkers.BACKGROUND - 1));
 
     private static final class Pool {
         static final Object LOCK = new Object();
-        static final CgJobQueue QUEUE = new CgJobQueue(THREADS, System::nanoTime);
+        static final CgJobQueue QUEUE = new CgJobQueue(THREADS, BACKGROUND_JOBS, System::nanoTime);
 
         static {
             for (int i = 0; i < THREADS; i++) new JobThread(i).start();

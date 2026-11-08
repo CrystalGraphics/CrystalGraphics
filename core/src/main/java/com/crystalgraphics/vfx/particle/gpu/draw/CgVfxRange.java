@@ -90,6 +90,8 @@ public final class CgVfxRange {
     private static final int REC_PYRAMID = CgTrace.name("vfx.range.pyramid"), REC_UPLOAD = CgTrace.name("vfx.range.upload"),
             REC_KEY = CgTrace.name("vfx.range.key"), REC_SORT = CgTrace.name("vfx.range.sort"),
             REC_PLACE = CgTrace.name("vfx.range.place"), REC_END = CgTrace.name("vfx.range.end");
+    /** A view's visible particles as read back, a frame or two late. */
+    private static final int VISIBLE = CgTrace.name("vfx.range.visible");
 
     private static final String KERNELS = "crystalgraphics:shaders/env/compute/vfx/range.compute";
     private static final String[] PLANES = {"_Plane0", "_Plane1", "_Plane2", "_Plane3", "_Plane4", "_Plane5"};
@@ -163,6 +165,7 @@ public final class CgVfxRange {
         public void accept(ByteBuffer data) {
             int sum = 0;
             for (int at = data.position(); at + 4 <= data.limit(); at += 4) sum += data.getInt(at);
+            CgTrace.counter(CgChannels.WORLD, VISIBLE, sum);
             long frame = nextCountFrame();
             if (frame != countFrame) {
                 if (countFrame >= 0) visibleCount = countMax;

@@ -20,8 +20,8 @@ CgJob.forEach(shards, s -> s.step(area));                                   // s
 | `CgJobLoop` | Where jobs report back: pending jobs stepped in start order at `drain`, each key's latest job. Every thread has its own (ended with the game session); `create` makes one for a sequence or a test, `enter` makes it current. Hooks Minecraft's server and client ticks when first loaded |
 | `CgJobContext` | Handed to `Work`: `isCancelled`, `throwIfCancelled`, `progress` |
 | `CgJobKey`, `CgJobLane` | Single-flight identity (owner by identity, plus a kind); urgency |
-| `CgJobQueue` | Which queued job a free worker takes: starved first, then lane, then first come; background never the last thread |
-| `CgJobPool` | Jobs' work for every loop: `crystalgraphics-job-*`, below normal priority, `crystalgraphics.job.threads` (half the cores past two) |
+| `CgJobQueue` | Which queued job a free worker takes: starved first, then lane, then first come; the last thread only ever interactive |
+| `CgJobPool` | Jobs' work for every loop: `crystalgraphics-job-*`, below normal priority, `crystalgraphics.job.threads` (two fewer than the cores); background jobs capped so they and their `forEach` helpers hold `crystalgraphics.job.backgroundThreads` |
 | `CgWorkers` | `forEach`: the caller and `crystalgraphics-each-*` take items together, `crystalgraphics.job.forEachThreads` (two fewer than the cores); a job worker's on `crystalgraphics-each-bg-*`, below normal. Items are claimed by a CAS tagged with the run, and the caller waits only for claimed items, never a helper that claimed none (`forEach.join`, `forEach.idle-helpers`). One runner per thread; a run nested in an item runs inline |
 | `CgWorkerThread` | Marks both pools' threads, for `isWorkerThread` |
 | `reply/` | `CgReply` (one shape for an answer not here yet: `both`, `all`, `of`, `failed`), `CgPendingReply` (the producer's half), `CgStream`/`CgPendingStream` (in pieces), `CgReplyError` |

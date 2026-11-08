@@ -94,7 +94,11 @@ Unlike bitmap raster keys, this key intentionally does not track every immediate
 
 ### `CgGlyphGenerationExecutor`
 
-Background thread-pool owner for glyph-generation jobs.
+Runs glyph jobs on the engine's job workers through `CgJob.executor(lane)` (`docs/JOBS.md`), and keeps the
+finished results for the render thread's commit. It owns no threads: a drawn bitmap is `INTERACTIVE`, a drawn
+shadow cell `LATENCY`, a distance field and anything warmed `BACKGROUND`, which never holds every worker, so no
+bitmap queues behind a distance field. Not a job loop: glyphs are asked for from any thread and committed on the
+render thread whatever asked. `shutdown` never blocks; the last task running closes the workers' font contexts.
 
 ### `CgGlyphGenerationJob`
 
@@ -128,7 +132,10 @@ The authoritative path is:
 4. on hit, return placement
 5. on miss, ask a worker and return null: the glyph draws nothing until it lands, a frame or more later (an MSDF
    glyph draws its bitmap stand-in once that lands). Generated on the calling thread only where the worker route
-   cannot deliver (a failed job, a full queue), or through `ensureGlyph`, for tooling
+   cannot deliver (a failed job, a full queue), or through `ensureGlyph`, for tooling.
+   **Drawn before warm**, by lane: a job a draw waits on runs ahead of every warm (`CgFontWarmer`) job, asking
+   for one still queued as warm promotes it, and a drawn result commits first. `glyph.queueWaitUs.<bitmap|msdf>.
+   <drawn|warm>` (async channel) is each job's wait for a worker
 6. commit results into atlas storage, a per-frame budget of them (`tickFrame`)
 7. renderer consumes resulting `CgGlyphPlacement`
 

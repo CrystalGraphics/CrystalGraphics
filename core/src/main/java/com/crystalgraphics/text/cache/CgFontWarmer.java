@@ -16,20 +16,22 @@ import java.util.logging.Logger;
  *
  * <pre>{@code
  * registry.warmAscii(face, 14, 18);                       // queues; schedules nothing
- * warmer.feed(frame, executor.msdfQueueDepth(), this::queueGlyph);   // from tickFrame
+ * warmer.feed(frame, executor.msdfQueueDepth(), this::warmGlyph);    // from tickFrame
  * }</pre>
  *
  * <h3>The rule this class exists to hold</h3>
  *
- * <p><b>Speculation must never be in front of a glyph somebody is looking at.</b> Submitting every
- * resolved face's printable ASCII straight to the pool put over a thousand jobs ahead of whatever was
- * drawn next on a cold gallery, and the distance-field queue never fell below five while they drained.
- * Queue depth is read from the DISTANCE-FIELD pool alone: the registry's pending count spans
- * both pools, and the bitmap fallbacks a cold page raises would hold the gate shut for exactly the
- * window a warm is for.</p>
+ * <p><b>Speculation must never be in front of a glyph somebody is looking at.</b> The executor's queues
+ * hold that: a warm job runs after every job a draw asked for, and a draw asking for one still queued
+ * promotes it. What a queue cannot do is take back a worker already running a warm job, so this hands
+ * the pool a few at a time, and only when the distance-field queue is empty: a demanded glyph waits
+ * for at most the warm jobs already running. Depth is read from the DISTANCE-FIELD pool alone: the
+ * registry's pending count spans both pools, and the bitmap fallbacks a cold page raises would hold
+ * the gate shut for exactly the window a warm is for.</p>
  *
- * <p>Order is by letter frequency rather than codepoint, because a queue is FIFO and 0x20..0x7E puts
- * every lowercase letter in the last third — behind punctuation most labels never contain.</p>
+ * <p>Order is by letter frequency rather than codepoint: warm jobs run first come first served, and
+ * 0x20..0x7E puts every lowercase letter in the last third — behind punctuation most labels never
+ * contain.</p>
  *
  * <p>Best-effort throughout: a glyph this never reaches is generated on demand exactly as it would
  * have been.</p>
@@ -67,8 +69,8 @@ final class CgFontWarmer {
     /**
      * Warm jobs handed to the pool on a frame that finds it EMPTY.
      *
-     * <p>One round for the workers: four jobs is about one frame's work at ~14 ms a glyph across four
-     * threads, so the pool is empty again by the next frame. Starving the render thread was suspected
+     * <p>One round for the workers: four jobs is one to three frames' work at 13-50 ms a glyph across
+     * four threads. Starving the render thread was suspected
      * and measured out: frames around a font switch ran 4-10 ms with this feeding.</p>
      *
      * <p><b>Empty, not "short".</b> Topping the queue up whenever it fell to eight kept it at eight to
