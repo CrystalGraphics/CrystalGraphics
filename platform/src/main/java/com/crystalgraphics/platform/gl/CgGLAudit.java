@@ -11,8 +11,9 @@ import java.util.Map;
 
 /**
  * {@code -Dcrystalgraphics.gl.threadCheck=true}: names every place that reaches {@link CgGL} inside a GL-free
- * section, or off the thread that owns the context. Each distinct call site is logged once, with its stack, and a
- * table of every site and how often it ran is printed at exit. Off, it costs one constant branch per call.
+ * section (a UI paint recording, or a GL device's section, where the call passes the device's state filter), or off
+ * the thread that owns the context. Each distinct call site is logged once, with its stack, and a table of every site
+ * and how often it ran is printed at exit. Off, it costs one constant branch per call.
  */
 final class CgGLAudit {
 
@@ -48,9 +49,17 @@ final class CgGLAudit {
         return SECTION.get() != null;
     }
 
+    /** Open while a GL device's host section is ({@link CgGLDevice}): audited only, so {@link CgGL#mayIssueGl} is as it was. */
+    private static boolean deviceSection;
+
+    static void deviceSection(boolean open) {
+        deviceSection = open;
+    }
+
     static void check(CgGLBackend backend) {
         String section = SECTION.get();
         boolean offThread = backend != null && !backend.ownedByCurrentThread();
+        if (section == null && deviceSection && !offThread) section = "a GL device section";
         if (section == null && !offThread) return;
         String why = offThread ? "off the owner thread" + (section != null ? ", in " + section : "") : "in " + section;
 

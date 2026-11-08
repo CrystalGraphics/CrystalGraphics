@@ -233,6 +233,7 @@ public final class CgGLDevice implements CgRHI {
         gl.adopt(entry);
         encoder.invalidate();
         conventions();
+        CgGLAudit.deviceSection(true);
         CgTrace.zoneDone(GL_CHANNEL, FROM_HOST, t);
     }
 
@@ -241,6 +242,7 @@ public final class CgGLDevice implements CgRHI {
     public void toHost() {
         if (host == null) return;
         if (encoder.inPass()) throw new IllegalStateException("toHost with a pass open");
+        CgGLAudit.deviceSection(false);
         long t = CgTrace.stamp(GL_CHANNEL);
         gl.restore(entry);
         host.conventions(gl);
