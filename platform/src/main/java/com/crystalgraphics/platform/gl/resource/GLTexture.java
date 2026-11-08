@@ -79,6 +79,9 @@ public final class GLTexture implements CgGpuTexture {
 
     @Override public Desc desc() { return desc; }
 
+    /** Whether its name is the device's own, freed by {@link #delete}; false for a name adopted from elsewhere. */
+    public boolean owned() { return owned; }
+
     /**
      * The texture name {@code view} samples: a texture view of the range, or this texture's own for the whole of one
      * that is adopted (mutable storage takes no view) or has a single level.

@@ -15,6 +15,7 @@ import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
 import com.crystalgraphics.platform.rhi.resource.CgTextureView;
 import com.crystalgraphics.platform.rhi.shader.CgShaderModule;
 import com.crystalgraphics.vulkan.shader.SpvcGlslTranslator;
+import org.junit.Assume;
 import org.junit.Test;
 
 import java.nio.ByteBuffer;
@@ -85,6 +86,33 @@ public class GLImportsTest {
             assertNotSame("a deleted name is wrapped anew", imported, imports.texture(texture, desc));
             CgGpuTexture own = device.createTexture(desc);
             assertTrue("an RHI texture's name is a GL texture", glIsTexture(imports.name(own)));
+            device.close();
+            assertTrue("GL errors: " + window.errors, window.errors.isEmpty());
+        }
+    }
+
+    /** A name the device frees is GL's to hand to CgGL again: its import is made anew, at the new storage's size. */
+    @Test
+    public void aNameTheDeviceFreesIsImportedAnewWhenCgGLReusesIt() {
+        try (GLTestWindow window = new GLTestWindow()) {
+            CgGLDevice device = new CgGLDevice(new Lwjgl3GLDriver(), new SpvcGlslTranslator(), 64, 64, true);
+            GLImports imports = device.imports();
+            CgGpuBuffer own = device.createBuffer(new CgGpuBuffer.Desc("device buffer", 4096, CgGpuBuffer.Usage.ALL, false));
+            int name = imports.name(own);
+            assertEquals(4096, imports.buffer(name).size());
+
+            device.release(own);
+            for (int f = 0; f <= CgGLDevice.FRAMES_IN_FLIGHT; f++) device.endFrame();   // its frame retires: deleted
+            glFinish();
+            device.endFrame();
+            int reused = 0;
+            for (int i = 0; i < 64 && reused != name; i++) reused = glGenBuffers();
+            Assume.assumeTrue("the driver handed the freed name out again", reused == name);
+            glBindBuffer(GL_COPY_WRITE_BUFFER, name);
+            glBufferData(GL_COPY_WRITE_BUFFER, 256, GL_DYNAMIC_DRAW);
+            glBindBuffer(GL_COPY_WRITE_BUFFER, 0);
+
+            assertEquals("imported at the new storage's size", 256, imports.buffer(name).size());
             device.close();
             assertTrue("GL errors: " + window.errors, window.errors.isEmpty());
         }

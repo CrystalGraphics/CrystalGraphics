@@ -386,10 +386,14 @@ public final class CgGLDevice implements CgRHI {
     }
 
     private void delete(Object o) {
-        if (o instanceof GLBuffer b) b.delete(gl);
-        else if (o instanceof GLTexture t) {
+        // A freed name is GL's to hand out again, to CgGL at another size: what the imports adopted under it goes with it.
+        if (o instanceof GLBuffer b) {
+            if (b.owned() && imports != null) imports.bufferDeleted(b.name);
+            b.delete(gl);
+        } else if (o instanceof GLTexture t) {
             framebuffers.forget(t);
             dropHeapEntries(t);
+            if (t.owned() && imports != null) imports.textureDeleted(t.name);
             t.delete(gl);
         } else if (o instanceof GLSampler s) gl.glDeleteSamplers(s.name);
         else if (o instanceof GLGraphicsPipeline p) p.delete(gl);

@@ -17,7 +17,8 @@ import static com.crystalgraphics.platform.gl.driver.GLC.*;
 
 /**
  * {@link CgGLImports} on the GL device, sharing its context with {@code CgGL}: a name is wrapped in a texture or buffer
- * owning nothing, kept until {@code CgGL} deletes the name; an RHI resource's name is its own.
+ * owning nothing, kept until the name is deleted ({@code CgGL}'s delete, or the device freeing a resource of its own);
+ * an RHI resource's name is its own.
  */
 public final class GLImports implements CgGLImports {
 

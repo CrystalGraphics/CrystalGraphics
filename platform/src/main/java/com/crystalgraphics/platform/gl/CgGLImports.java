@@ -67,13 +67,19 @@ public interface CgGLImports {
     /** {@code buffer} is being released: drop the name given it. */
     default void forget(CgGpuBuffer buffer) {}
 
-    /** {@code CgGL} deleted {@code texture}: forget anything kept for it. */
+    /**
+     * {@code texture} was deleted, by {@code CgGL} or by the device freeing one of its own: forget anything kept for it,
+     * since its name may come back as another texture.
+     */
     default void textureDeleted(int texture) {}
 
     /** {@code CgGL} deleted {@code renderbuffer}: forget anything kept for it. */
     default void renderbufferDeleted(int renderbuffer) {}
 
-    /** {@code CgGL} deleted {@code buffer}: forget anything kept for it. */
+    /**
+     * {@code buffer} was deleted, by {@code CgGL} or by the device freeing one of its own: forget anything kept for it,
+     * since its name may come back at another size.
+     */
     default void bufferDeleted(int buffer) {}
 
     /**
