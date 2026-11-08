@@ -1,0 +1,148 @@
+// The depth pyramid (CgGpuOps.depthPyramid): level 0 the scene's eye depth at each texel, each level after it the
+// farthest of what it covers, six levels a dispatch. Seed makes level 0 from the depth buffer and levels 1 to 6; Reduce
+// makes up to six more from the last level made. AMD FidelityFX SPD's shape (MIT): a group of 256 reduces a 64-texel tile
+// of its first level through shared memory, a level at a time; Unreal's HZBBuildCS's batching, several levels a dispatch
+// (read for shape).
+//
+// A level is GL's size, max(1, n >> 1), so a texel folds two of the level above along an axis, three where that level is
+// odd (CgGpuOps.downsample's box). Three reach into the next group's tile, so each group also reduces a margin past its
+// own tile: X texels at a level, X = 2 * (the next level's X) + (this level odd), at most 31 at the first level made.
+#pragma kernel Seed 16 16 general
+#pragma kernel Reduce 16 16 general
+
+Properties {
+    _Levels ("Levels this dispatch makes past its first: 1 to 6", int) = 6
+}
+
+Images {
+    SRC  ("The level this dispatch starts from (Reduce)", r32f, readonly)
+    OUT0 ("Level 0: eye depth (Seed)",                     r32f, writeonly)
+    OUT1 ("The first level made",                           r32f, writeonly)
+    OUT2 ("The second",                                     r32f, writeonly)
+    OUT3 ("The third",                                      r32f, writeonly)
+    OUT4 ("The fourth",                                     r32f, writeonly)
+    OUT5 ("The fifth",                                      r32f, writeonly)
+    OUT6 ("The sixth",                                      r32f, writeonly)
+}
+
+// A level per array in turn: the first level made in A (63 texels a side at most), the next in B (31), and so on.
+shared float levelA[64 * 64];
+shared float levelB[32 * 32];
+
+const int TILE = 64;
+// Below every eye depth: a fold's start.
+const float NONE = -3.0e38;
+
+ivec2 levelSize(ivec2 first, int k) {
+    return max(first >> k, ivec2(1));
+}
+
+// Texels of a level of size n a texel of the next folds along an axis: one where n is 1, two where even, three where odd.
+ivec2 taps(ivec2 n) {
+    return ivec2(n.x == 1 ? 1 : 2 + (n.x & 1), n.y == 1 ? 1 : 2 + (n.y & 1));
+}
+
+// The margin past a group's tile that level k of this dispatch reduces, so its own texels of the last level are exact.
+ivec2 margin(ivec2 first, int k, int levels) {
+    ivec2 x = ivec2(0);
+    for (int j = levels - 1; j >= k; j--) {   // LOOP-BOUND: levels is at most six
+        ivec2 n = levelSize(first, j);
+        x = 2 * x + ivec2(n.x > 1 ? n.x & 1 : 0, n.y > 1 ? n.y & 1 : 0);
+    }
+    return x;
+}
+
+void store(int k, ivec2 p, float v) {
+    vec4 c = vec4(v, 0.0, 0.0, 1.0);
+    if (k == 1) OUT1_STORE(p, c);
+    else if (k == 2) OUT2_STORE(p, c);
+    else if (k == 3) OUT3_STORE(p, c);
+    else if (k == 4) OUT4_STORE(p, c);
+    else if (k == 5) OUT5_STORE(p, c);
+    else OUT6_STORE(p, c);
+}
+
+// The first level made, region texel r (the group's texel g): kept for the next level, written where the group owns it.
+void keepFirst(ivec2 first, ivec2 r, ivec2 g, float m) {
+    levelA[r.y * 64 + r.x] = m;
+    if (all(lessThan(r, ivec2(TILE >> 1))) && all(lessThan(g, levelSize(first, 1)))) store(1, g, m);
+}
+
+ivec2 firstRegion(ivec2 first, int levels) {
+    return ivec2(TILE >> 1) + margin(first, 1, levels);
+}
+
+// Levels 2 to levels from the first in levelA, each written where the group owns it.
+void reduceShared(ivec2 first, ivec2 group, int levels) {
+    for (int k = 2; k <= levels; k++) {   // LOOP-BOUND: levels is at most six
+        ivec2 above = levelSize(first, k - 1), n = levelSize(first, k);
+        ivec2 tile = ivec2(TILE >> k), start = group * tile, region = tile + margin(first, k, levels);
+        ivec2 aboveStart = group * (TILE >> (k - 1));
+        ivec2 aboveLast = max(min(above - 1 - aboveStart, ivec2(TILE >> (k - 1)) + margin(first, k - 1, levels) - 1), ivec2(0));
+        ivec2 t = taps(above);
+        bool fromA = (k & 1) == 0;
+        for (int i = CG_LOCAL_INDEX; i < region.x * region.y; i += 256) {   // LOOP-BOUND: a work group's stride over its region
+            ivec2 r = ivec2(i % region.x, i / region.x);
+            float m = NONE;
+            for (int dy = 0; dy < 3; dy++) {
+                for (int dx = 0; dx < 3; dx++) {
+                    if (dx >= t.x || dy >= t.y) continue;
+                    ivec2 a = min(2 * r + ivec2(dx, dy), aboveLast);
+                    m = max(m, fromA ? levelA[a.y * 64 + a.x] : levelB[a.y * 32 + a.x]);
+                }
+            }
+            if (fromA) levelB[r.y * 32 + r.x] = m;
+            else levelA[r.y * 64 + r.x] = m;
+            ivec2 g = start + r;
+            if (all(lessThan(r, tile)) && all(lessThan(g, n))) store(k, g, m);
+        }
+        barrier();
+    }
+}
+
+float seedAt(ivec2 p) {
+    return cg_LinearEyeDepth(texelFetch(cg_DepthBuffer, p, 0).r);
+}
+
+void Seed() {
+    ivec2 first = OUT0_SIZE(), group = CG_GROUP_ID.xy, t = taps(first);
+    int levels = clamp(_Levels, 1, 6);
+    ivec2 region = firstRegion(first, levels), tile0 = group * TILE;
+    for (int i = CG_LOCAL_INDEX; i < region.x * region.y; i += 256) {   // LOOP-BOUND: a work group's stride over its region
+        ivec2 r = ivec2(i % region.x, i / region.x), g = group * (TILE >> 1) + r;
+        float m = NONE;
+        for (int dy = 0; dy < 3; dy++) {
+            for (int dx = 0; dx < 3; dx++) {
+                if (dx >= t.x || dy >= t.y) continue;
+                ivec2 p = min(2 * g + ivec2(dx, dy), first - 1);
+                float v = seedAt(p);
+                m = max(m, v);
+                // Level 0 where the group owns it, each texel once: its first two taps, or a third that is the last.
+                bool own = all(greaterThanEqual(p, tile0)) && all(lessThan(p, tile0 + TILE));
+                bool once = (dx < 2 || p.x == first.x - 1) && (dy < 2 || p.y == first.y - 1);
+                if (own && once) OUT0_STORE(p, vec4(v, 0.0, 0.0, 1.0));
+            }
+        }
+        keepFirst(first, r, g, m);
+    }
+    barrier();
+    reduceShared(first, group, levels);
+}
+
+void Reduce() {
+    ivec2 first = SRC_SIZE(), group = CG_GROUP_ID.xy, t = taps(first);
+    int levels = clamp(_Levels, 1, 6);
+    ivec2 region = firstRegion(first, levels);
+    for (int i = CG_LOCAL_INDEX; i < region.x * region.y; i += 256) {   // LOOP-BOUND: a work group's stride over its region
+        ivec2 r = ivec2(i % region.x, i / region.x), g = group * (TILE >> 1) + r;
+        float m = NONE;
+        for (int dy = 0; dy < 3; dy++) {
+            for (int dx = 0; dx < 3; dx++) {
+                if (dx < t.x && dy < t.y) m = max(m, SRC_LOAD(min(2 * g + ivec2(dx, dy), first - 1)).r);
+            }
+        }
+        keepFirst(first, r, g, m);
+    }
+    barrier();
+    reduceShared(first, group, levels);
+}

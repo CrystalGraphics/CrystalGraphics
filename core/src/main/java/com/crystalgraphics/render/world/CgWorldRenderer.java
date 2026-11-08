@@ -275,11 +275,9 @@ public final class CgWorldRenderer {
         CgRenderStage.WORLD_OPAQUE.register(ORDER, this::recordOpaque);
         CgRenderStage.WORLD_TRANSPARENT.register(ORDER, this::recordTransparent);
         parsePassesAhead();
-        // The renderer's own programs no material brings in: the GPU cull's depth pyramid, and text in every form its
-        // permutation domain names (on screen and as labels, bitmap and MSDF), on the world's instances and on the
+        // The renderer's own programs no material brings in: text in every form its permutation domain names (on screen and as labels, bitmap and MSDF), on the world's instances and on the
         // quads CgTextRenderer draws: the loading screen's own lines and a HUD's missed it at their first draw.
         CgPipelinePrecache.register("crystalgraphics:world", list -> {
-            list.add(PYRAMID_SHADER);
             CgTextRenderer.precache(list);
             list.addPass(CgWorldMedia.LIGHT_SHADER);
         });
@@ -290,12 +288,12 @@ public final class CgWorldRenderer {
     }
 
     private static void precacheKernels() {
+        CgGpuOps.precacheDepthPyramid();   // the GPU cull's
         CgWorldLights.precacheKernels();
         CgWorldMedia.precacheKernels();
         CgWorldHaze.precacheKernels();
     }
 
-    private static final String PYRAMID_SHADER = "crystalgraphics:shaders/depth_pyramid.shader";
     private static final int BOOT_ZONE = CgTrace.name("world.programs.boot");
     private static final long BOOT_TIMEOUT_NANOS = 60_000_000_000L;
 

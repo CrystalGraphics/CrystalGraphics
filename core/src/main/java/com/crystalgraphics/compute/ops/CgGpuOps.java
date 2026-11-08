@@ -1,31 +1,22 @@
 package com.crystalgraphics.compute.ops;
 
-import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
-import com.crystalgraphics.api.material.CgMaterial;
-import com.crystalgraphics.api.mesh.CgMesh;
-import com.crystalgraphics.api.mesh.CgMeshTopology;
 import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.compute.CgCompute;
 import com.crystalgraphics.compute.CgKernel;
 import com.crystalgraphics.gl.buffer.CgReadback;
 import com.crystalgraphics.gl.framebuffer.CgFrameBuffer;
-import com.crystalgraphics.render.draw.CgChunkBuilder;
-import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.render.draw.CgPrimitiveTable;
-import com.crystalgraphics.render.draw.CgOrder;
 import com.crystalgraphics.render.draw.CgPassConstants;
-import com.crystalgraphics.render.draw.CgPipeline;
 import com.crystalgraphics.render.graph.CgBufferUsage;
 import com.crystalgraphics.render.graph.CgComputePass;
 import com.crystalgraphics.render.graph.CgDispatch;
 import com.crystalgraphics.render.graph.CgGraphBuffer;
 import com.crystalgraphics.render.graph.CgGraphTexture;
-import com.crystalgraphics.render.graph.CgLoad;
-import com.crystalgraphics.render.graph.CgRasterPass;
 import com.crystalgraphics.render.graph.CgRecording;
 import com.crystalgraphics.render.graph.CgRequest;
 import com.crystalgraphics.render.graph.CgTextureDesc;
+import com.crystalgraphics.trace.CgGpuTrace;
 
 import javax.annotation.Nullable;
 import java.nio.ByteBuffer;
@@ -133,8 +124,14 @@ public final class CgGpuOps {
     private static final String CULL_PATH = "crystalgraphics:shaders/env/compute/ops/cull.compute";
     private static final String INDIRECT_ARGS = "crystalgraphics:shaders/env/compute/args.compute";
     private static final String EXPAND_PATH = "crystalgraphics:shaders/env/compute/ops/expand.compute";
-    private static final String PYRAMID_SHADER = "crystalgraphics:shaders/depth_pyramid.shader";
-    private static final CgMesh FULLSCREEN = CgMesh.vertices(3, CgMeshTopology.TRIANGLES);
+    private static final String PYRAMID_PATH = "crystalgraphics:shaders/env/compute/ops/depth_pyramid.compute";
+    /** Levels one pyramid dispatch makes past its first: a 64-texel tile to one texel, and seven images bound. */
+    private static final int PYRAMID_BATCH = 6, PYRAMID_TILE = 64;
+    private static final int GPU_PYRAMID = CgGpuTrace.name("ops.depthPyramid");
+    private static final String[] PYRAMID_OUTS = {"OUT0", "OUT1", "OUT2", "OUT3", "OUT4", "OUT5", "OUT6"};
+    /** What a dispatch making fewer than six levels binds where the rest would go: never written. */
+    private static final CgGraphTexture PYRAMID_UNUSED = CgGraphTexture.transientTexture("ops.pyramid.unused",
+            new CgTextureDesc(1, 1, PYRAMID_FORMAT));
     /** An object record's bytes: what each instance and each kept record of a cull is. */
     private static final int RECORD_BYTES = CgPrimitiveTable.FLOATS * 4;
     /** Each instance buffer's keys start at a multiple of this in a batched cull: a binding offset is a whole 256 bytes. */
@@ -450,10 +447,10 @@ public final class CgGpuOps {
         precacheScan(Scan.EXCLUSIVE, Fold.SUM, Element.UINT);
     }
 
-    /** {@link #precacheSort}, for {@link #depthPyramid}: its seed material and its chain's kernel. */
+    /** {@link #precacheSort}, for {@link #depthPyramid}: its two kernels. */
     public static void precacheDepthPyramid() {
-        if (!CgKernel.isAhead()) CgMaterial.load(PYRAMID_SHADER).precache();
-        precache(downsampleKernel(IMAGE_TYPES.indexOf(PYRAMID_FORMAT.getColorSlot(0)), Filter.MAX));
+        precache(Files.pyramid().kernel("Seed"));
+        precache(Files.pyramid().kernel("Reduce"));
     }
 
     private static void precache(CgKernel kernel) {
@@ -648,7 +645,8 @@ public final class CgGpuOps {
      * The scene's depth as {@link #cull} reads it: level 0 the eye depth of each texel of {@code depthOf}'s depth
      * under {@code constants}' projection and depth convention, each level after it the farthest of what it covers.
      * {@code pyramid} is {@link #PYRAMID_FORMAT} with mips, the size of {@code depthOf}. Recorded where it stands: after
-     * whatever should hide the instances has drawn.
+     * whatever should hide the instances has drawn. One compute pass, a dispatch per six levels: two up to 4096 texels a
+     * side ({@code depth_pyramid.compute}, SPD's tile through shared memory).
      *
      * <pre>{@code
      * CgGraphTexture depth = CgGraphTexture.transientTexture("hiz",
@@ -660,18 +658,21 @@ public final class CgGpuOps {
     public static void depthPyramid(CgRecording recording, CgGraphTexture depthOf, CgPassConstants constants,
                                     CgGraphTexture pyramid) {
         if (pyramid.getLevels() < 2) throw new IllegalArgumentException(pyramid + " has one level: describe it withMips()");
-        CgMaterial seed = CgMaterial.load(PYRAMID_SHADER);
-        CgPipeline pipeline = seed.pipeline(CgInstanceKind.OBJECT);
-        CgRasterPass pass = recording.raster(pyramid, CgLoad.load(), constants, null, CgOrder.LOOKBACK)
-                .sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT, depthOf);
-        CgChunkBuilder chunks = recording.chunks().begin();
-        chunks.draw(pipeline, seed.captureBindings(recording.bindings()), FULLSCREEN);
-        chunks.instance();
-        pass.add(chunks.end());
+        int w = pyramid.getWidth(), h = pyramid.getHeight(), last = pyramid.getLevels() - 1;
+        CgComputePass pass = recording.compute("cg.depthPyramid", constants).sceneDepth(depthOf).timed(GPU_PYRAMID);
+        for (int from = 0; from < last; from += PYRAMID_BATCH) {
+            int made = Math.min(PYRAMID_BATCH, last - from);
+            int gx = (size(w, from) + PYRAMID_TILE - 1) / PYRAMID_TILE, gy = (size(h, from) + PYRAMID_TILE - 1) / PYRAMID_TILE;
+            CgDispatch d = pass.dispatchGroups(Files.pyramid().kernel(from == 0 ? "Seed" : "Reduce"), gx, gy, 1)
+                    .set("_Levels", made);
+            if (from == 0) d.image(PYRAMID_OUTS[0], pyramid, 0, -1);
+            else d.image("SRC", pyramid, from, -1);
+            for (int k = 1; k <= PYRAMID_BATCH; k++) {
+                if (k <= made) d.image(PYRAMID_OUTS[k], pyramid, from + k, -1);
+                else d.image(PYRAMID_OUTS[k], PYRAMID_UNUSED, 0, -1);
+            }
+        }
         pass.end();
-        CgComputePass chain = recording.compute("cg.depthPyramid");
-        downsample(chain, pyramid, Filter.MAX);
-        chain.end();
     }
 
     /**
@@ -983,7 +984,7 @@ public final class CgGpuOps {
 
     /** The ops' kernel files, each loaded the first time an op needs it. */
     private static final class Files {
-        private static volatile CgCompute fill, scan, sort, histogram, image, cull, expand;
+        private static volatile CgCompute fill, scan, sort, histogram, image, cull, expand, pyramid;
 
         static CgCompute fill() {
             CgCompute f = fill;
@@ -1045,6 +1046,15 @@ public final class CgGpuOps {
             synchronized (Files.class) {
                 if (image == null) image = CgCompute.load(IMAGE_PATH);
                 return image;
+            }
+        }
+
+        static CgCompute pyramid() {
+            CgCompute f = pyramid;
+            if (f != null) return f;
+            synchronized (Files.class) {
+                if (pyramid == null) pyramid = CgCompute.load(PYRAMID_PATH);
+                return pyramid;
             }
         }
     }
