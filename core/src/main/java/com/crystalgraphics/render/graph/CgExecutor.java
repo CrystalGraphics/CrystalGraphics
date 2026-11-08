@@ -2543,6 +2543,7 @@ public final class CgExecutor {
                 packed.palette.bindForDraw();
             }
             deviceSets.prepare(frame.bindings);
+            linkBatches(packed);
         }
         CgLoad load = pass.load;
         boolean clearColor = (load.mask() & CgGL.GL_COLOR_BUFFER_BIT) != 0;
@@ -2630,6 +2631,27 @@ public final class CgExecutor {
             CgTrace.zoneDone(CgChannels.GL, DEVICE_SECTION, ended);
             CgTrace.zoneDone(CgChannels.GL, DEVICE_PASS, passed);
             if (pass.targetCopy() != null) pass.targetCopy().release(POOL);
+        }
+    }
+
+    /** Each batch's program, resolved before the device section: what {@link #deviceBatches} draws with. */
+    private CgShader[] batchLinked = new CgShader[64];
+
+    /**
+     * Every batch's program through {@code CgGL}, before the device section: a program whose compile has landed is wired
+     * at its first resolve, which binds it, and inside a section that bind is past the device's state filter, so the
+     * device's next draw of an unchanged pipeline would run the program {@code CgGL} left bound.
+     */
+    private void linkBatches(CgFrame.Raster packed) {
+        if (batchLinked.length < packed.count) batchLinked = new CgShader[Math.max(packed.count, batchLinked.length * 2)];
+        int id = -1;
+        CgShader linked = null;
+        for (int b = 0; b < packed.count; b++) {
+            if (packed.pipeline[b] != id) {
+                id = packed.pipeline[b];
+                linked = CgPipeline.byId(id).program();
+            }
+            batchLinked[b] = linked;
         }
     }
 
@@ -2727,7 +2749,7 @@ public final class CgExecutor {
             if (packed.pipeline[b] != boundPipeline) {
                 boundPipeline = packed.pipeline[b];
                 pipeline = CgPipeline.byId(boundPipeline);
-                linked = pipeline.program();
+                linked = batchLinked[b];
                 layout = linked == null ? null : deviceLayout(rhi, boundPipeline, pipeline, linked);
             }
             CgMesh mesh = mesh(packed, b);
