@@ -29,6 +29,8 @@ public class CgVfxStartAtTest {
      * before it waits for the world to record them.
      */
     private static final int FRAMES = 24;
+    /** A clock a hair past the first update's: a system steps only once its clock has started and moved, by under a tick. */
+    private static final double SOON = 1e-6;
 
     /** An effect whose phase accumulates every tick, so a jump in age would show. */
     static final class Phased extends CgVfxEffect<Phased> {
@@ -57,13 +59,13 @@ public class CgVfxStartAtTest {
     public void anEffectStartedAtAnAgeMatchesOnePlayedFromZero() {
         CgVfxSystem fromZero = new CgVfxSystem();
         Phased played = fromZero.play(new Phased());
-        for (int f = 0; f <= FRAMES; f++) fromZero.update(f / 60.0);
+        for (int f = 0; f <= FRAMES; f++) update(fromZero, f / 60.0);
 
         CgVfxSystem late = new CgVfxSystem();
         Phased started = late.play(new Phased());
         started.startAt(played.age());
-        late.update(0.0);
-        late.update(0.0);
+        update(late, 0.0);
+        update(late, SOON);
 
         assertEquals(played.ticks, started.ticks);
         assertEquals(played.age(), started.age(), 0f);
@@ -97,14 +99,42 @@ public class CgVfxStartAtTest {
         assertEquals(earlyTime, early.embers.time(), 0f);
     }
 
+    /** Effects starting late in one update share one window: one effect's steps, however many start. */
+    @Test
+    public void effectsStartingTogetherShareOnePrewarm() {
+        CgVfxSystem vfx = new CgVfxSystem();
+        float[] ages = {3f, 0.5f, 4f, 1.25f, 3f, 2.5f};   // within EMBERS' loop and life: each still holds a slot
+        Phased[] late = new Phased[ages.length];
+        for (int i = 0; i < ages.length; i++) {
+            late[i] = vfx.play(new Phased());
+            late[i].startAt(ages[i]);
+        }
+        update(vfx, 0.0);
+        vfx.update(SOON);
+
+        CgVfxParticlePool pool = CgVfxParticlePool.of(vfx.gpuSteps(), EMBERS);
+        assertTrue("prewarmed in " + pool.queuedSteps() + " steps", pool.queuedSteps() > 0 && pool.queuedSteps() <= 17);
+        for (int i = 0; i < ages.length; i++) {
+            assertEquals(Math.round(ages[i] / CgVfxSystem.TICK), late[i].ticks);
+            assertEquals(ages[i], late[i].age(), 1e-3f);
+            assertTrue("a slot for the effect started at " + ages[i], vfx.gpuSteps().of(late[i].embers) != null);
+        }
+    }
+
     @Test
     public void pastTheCapItsAgeJumps() {
         CgVfxSystem vfx = new CgVfxSystem();
         Phased late = vfx.play(new Phased());
         late.startAt(CgVfxSystem.MAX_START_SECONDS + 20f);
-        vfx.update(0.0);
-        vfx.update(0.0);
+        update(vfx, 0.0);
+        update(vfx, SOON);
         assertEquals(Math.round(CgVfxSystem.MAX_START_SECONDS / CgVfxSystem.TICK), late.ticks);
         assertEquals(CgVfxSystem.MAX_START_SECONDS + 20f, late.age(), 0f);
+    }
+
+    /** An update, then its steps dropped as a world would record them: a system holds while one is unrecorded. */
+    private static void update(CgVfxSystem vfx, double seconds) {
+        vfx.update(seconds);
+        vfx.gpuSteps().discardQueued();
     }
 }

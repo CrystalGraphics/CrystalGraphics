@@ -747,58 +747,118 @@ public final class CgVfxSystem {
         }
     }
 
-    /** Steps each effect played with a start age to it, ahead of this update's ticks. */
+    /** This update's late starts: the effects {@link #startLate} warms together, and each one's ticks. */
+    private final List<CgVfxEffect<?>> late = new ArrayList<>();
+    private int[] lateTicks = new int[8], lateWindow = new int[8];
+    private float[] lateFrom = new float[8], lateTarget = new float[8];
+
+    /**
+     * Steps each effect played with a start age to it, ahead of this update's ticks. On the GPU every one of them is
+     * warmed in one window of at most {@link #PREWARM_STEPS} steps: a window an effect queued its steps on every pool
+     * with tenants, so effects starting together queued that many times over, all recorded and uploaded at once.
+     */
     private void startLate() {
+        late.clear();
         for (int i = 0; i < effects.size(); i++) {
             CgVfxEffect<?> effect = effects.get(i);
             if (effect.startAge <= 0f || effect.asleep) continue;
             float target = effect.startAge;
             effect.startAge = 0f;
             if (effect.state() == CgVfxEffect.State.DEAD) continue;
-            effect.seeking = true;
-            try {
-                fastForward(effect, target);
-            } catch (RuntimeException e) {
-                fail(effect, e);
-            } finally {
-                effect.seeking = false;
-                gpuSteps.endPrewarm();
+            int n = late.size();
+            if (n == lateTicks.length) {
+                lateTicks = Arrays.copyOf(lateTicks, n * 2);
+                lateWindow = Arrays.copyOf(lateWindow, n * 2);
+                lateFrom = Arrays.copyOf(lateFrom, n * 2);
+                lateTarget = Arrays.copyOf(lateTarget, n * 2);
             }
+            float stepped = Math.min(target, MAX_START_SECONDS);
+            lateTicks[n] = Math.round(stepped / TICK);
+            lateWindow[n] = Math.round(Math.min(stepped, PREWARM_SECONDS) / TICK);
+            lateFrom[n] = effect.age;
+            lateTarget[n] = target;
+            effect.seeking = true;
+            late.add(effect);
+        }
+        if (late.isEmpty()) return;
+        try {
+            fastForward();
+        } finally {
+            for (int i = 0; i < late.size(); i++) {
+                CgVfxEffect<?> effect = late.get(i);
+                if (effect == null) continue;
+                float stepped = Math.min(lateTarget[i], MAX_START_SECONDS);
+                if (lateTarget[i] > stepped) effect.age = lateFrom[i] + lateTarget[i];
+                effect.seeking = false;
+            }
+            late.clear();
+            gpuSteps.endPrewarm();
         }
     }
 
     /**
-     * Steps {@code effect} alone through {@code target} seconds on its fixed tick. On the GPU its emitters keep their
-     * books throughout and take slots only for the last {@link #PREWARM_SECONDS}, stepped in at most
-     * {@link #PREWARM_STEPS} steps while every other slot holds still: older particles would be dead by now.
+     * Steps {@link #late}'s effects through their start ages on the fixed tick. On the GPU their emitters keep their
+     * books throughout and take slots only for each one's last {@link #PREWARM_SECONDS}: those windows end together
+     * now, and are stepped in at most {@link #PREWARM_STEPS} steps while every other slot holds still. An effect that
+     * fails is dropped from the rest.
      */
-    private void fastForward(CgVfxEffect<?> effect, float target) {
-        float from = effect.age, stepped = Math.min(target, MAX_START_SECONDS);
-        int ticks = Math.round(stepped / TICK), windowTicks = Math.round(Math.min(stepped, PREWARM_SECONDS) / TICK);
-        int windowFrom = ticks - windowTicks;
-        int coarse = Math.max(1, (windowTicks + PREWARM_STEPS - 1) / PREWARM_STEPS), booked = 0;
-        for (int t = 0; t < ticks && effect.state() != CgVfxEffect.State.DEAD; t++) {
-            boolean inWindow = t >= windowFrom;
-            if (t == windowFrom) {
-                gpuSteps.beginPrewarm();
-                effect.admitScheduled(gpuSteps);
+    private void fastForward() {
+        int window = 0;
+        for (int i = 0; i < late.size(); i++) {
+            // Before its window an effect keeps its books alone, with nothing on the GPU.
+            CgVfxEffect<?> effect = late.get(i);
+            try {
+                for (int t = 0; t < lateTicks[i] - lateWindow[i] && effect.state() != CgVfxEffect.State.DEAD; t++) {
+                    tickLate(effect);
+                }
+            } catch (RuntimeException e) {
+                drop(i, e);
             }
-            effect.step(TICK);
-            if (effect.hasEmitterTicks()) {
-                effect.tickEmitters();
-                if (effect.failure != null) throw effect.failure;
-                // Before the window its instances keep their books alone: admitted at its start.
-                if (inWindow) effect.admitScheduled(gpuSteps);
+            if (late.get(i) != null) window = Math.max(window, lateWindow[i]);
+        }
+        gpuSteps.beginPrewarm();
+        int coarse = Math.max(1, (window + PREWARM_STEPS - 1) / PREWARM_STEPS), booked = 0;
+        for (int u = 0; u < window; u++) {
+            for (int i = 0; i < late.size(); i++) {
+                CgVfxEffect<?> effect = late.get(i);
+                if (effect == null || u < window - lateWindow[i] || effect.state() == CgVfxEffect.State.DEAD) continue;
+                try {
+                    // Its window's first tick admits it warm, then each tick admits what its emitters scheduled.
+                    if (u == window - lateWindow[i]) effect.admitScheduled(gpuSteps);
+                    if (tickLate(effect)) effect.admitScheduled(gpuSteps);
+                } catch (RuntimeException e) {
+                    drop(i, e);
+                }
             }
-            if (!inWindow) continue;
-            // The window's ticks booked, then stepped in at most PREWARM_STEPS steps of coarse ticks each.
-            gpuSteps.prewarmBook(booked * TICK);
-            if (++booked == coarse || t == ticks - 1) {
-                gpuSteps.prewarmStep(booked * TICK, air);
-                booked = 0;
+            try {
+                gpuSteps.prewarmBook(booked * TICK);
+                if (++booked == coarse || u == window - 1) {
+                    gpuSteps.prewarmStep(booked * TICK, air);
+                    booked = 0;
+                }
+            } catch (RuntimeException e) {
+                // A shared step: every effect still warming fails with it
+                for (int i = 0; i < late.size(); i++) if (late.get(i) != null) drop(i, e);
+                return;
             }
         }
-        if (target > stepped) effect.age = from + target;
+    }
+
+    /** One tick of a late effect and its emitters; whether it has emitter ticks, whose schedules then want admitting. */
+    private boolean tickLate(CgVfxEffect<?> effect) {
+        effect.step(TICK);
+        if (!effect.hasEmitterTicks()) return false;
+        effect.tickEmitters();
+        if (effect.failure != null) throw effect.failure;
+        return true;
+    }
+
+    /** {@link #late}'s effect {@code i} failed: failed, and out of the warm-up. */
+    private void drop(int i, RuntimeException e) {
+        CgVfxEffect<?> effect = late.get(i);
+        late.set(i, null);
+        effect.seeking = false;
+        fail(effect, e);
     }
 
     /** {@code effect}'s simulation: one per definition playing. */
