@@ -5,8 +5,9 @@
 // samples. A pixel filters only where its relative spread or its history's spatial spread says it is noisy. The sun's
 // and the block light's visibility (VISIBILITY) are filtered by the same rule, each from its own moments, a neighbour
 // weighed by how near its visibility is within the pixel's spread: a lit pixel keeps no shadow from a pixel beside it.
-// The pass samples the stage's depth (CgComputePass.sceneDepth).
-#pragma kernel Denoise 8 8 image
+// The pass samples the stage's depth (CgComputePass.sceneDepth). Its 5x5 reads of the moments come from the group's
+// tile, loaded into shared memory once with a border of 2, as MegaLightsDenoiserSpatial.usf does.
+#pragma kernel Denoise 8 8 general
 #include "crystalgraphics:shaders/lib/math.glsl"
 #include "crystalgraphics:shaders/lib/color.glsl"
 #include "crystalgraphics:shaders/lib/light_shadow.glsl"
@@ -29,6 +30,16 @@ Properties {
 Images {
     FILTERED   ("The filtered lighting, alpha 1 where lit",               rgba16f, writeonly)
     VISIBILITY ("The filtered sun and block light visibility, alpha 1",   rgba16f, writeonly)
+}
+
+// The group's 8x8 moments and a border of 2 each way, each texel clamped to the target as the reads were.
+const int TILE = 12;
+shared vec4 tileMoments[TILE * TILE];
+
+// The moments at px + o, o within 2 of a texel of this group: from the tile.
+vec4 moments_near(ivec2 px, ivec2 o) {
+    ivec2 t = px + o - (CG_GROUP_ID.xy * CG_LOCAL_SIZE.xy - 2);
+    return tileMoments[t.y * TILE + t.x];
 }
 
 float eye_depth(ivec2 px) {
@@ -73,7 +84,7 @@ void filter_at(ivec2 px, out vec4 lighting, out vec4 visibility) {
         for (int y = -2; y <= 2; y++) {
             for (int x = -2; x <= 2; x++) {
                 float w = exp2(-2.0 * float(x * x + y * y) / 9.0);
-                moments += texelFetch(_Moments, clamp(px + ivec2(x, y), ivec2(0), size - 1), 0) * w;
+                moments += moments_near(px, ivec2(x, y)) * w;
                 weightSum += w;
             }
         }
@@ -96,7 +107,7 @@ void filter_at(ivec2 px, out vec4 lighting, out vec4 visibility) {
         for (int y = -2; y <= 2; y++) {
             for (int x = -2; x <= 2; x++) {
                 if (x == 0 && y == 0 || abs(x) == 2 && abs(y) == 2) continue;
-                float c = texelFetch(_Moments, clamp(px + ivec2(x, y), ivec2(0), size - 1), 0).w;
+                float c = moments_near(px, ivec2(x, y)).w;
                 sum += c;
                 squares += c * c;
                 n += 1.0;
@@ -147,6 +158,14 @@ void filter_at(ivec2 px, out vec4 lighting, out vec4 visibility) {
 }
 
 void Denoise() {
+    // Every invocation loads, then waits: a general kernel's barrier is reached by the whole group
+    ivec2 base = CG_GROUP_ID.xy * CG_LOCAL_SIZE.xy - 2, size = textureSize(_Moments, 0);
+    for (int i = CG_LOCAL_INDEX; i < TILE * TILE; i += CG_GROUP_SIZE) {   // LOOP-BOUND: 144 over the group's 64
+        tileMoments[i] = texelFetch(_Moments, clamp(base + ivec2(i % TILE, i / TILE), ivec2(0), size - 1), 0);
+    }
+    memoryBarrierShared();
+    barrier();
+    if (!CG_IN_RANGE) return;
     vec4 lighting, visibility;
     filter_at(CG_TEXEL.xy, lighting, visibility);
     FILTERED_WRITE(lighting);
