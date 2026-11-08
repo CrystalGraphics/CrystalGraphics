@@ -767,6 +767,9 @@ public final class CgTracker {
      */
     public void toDevice() {
         if (transfer) throw new IllegalStateException("A device section begins inside a transfer");
+        // A section's dispatches are recorded past the tracker: no barrier flushed before it covers what follows it.
+        forgetPending();
+        flushedAt = -1;
         if (!async) {
             flushPendingClears();
             if (pass != null) endPass();

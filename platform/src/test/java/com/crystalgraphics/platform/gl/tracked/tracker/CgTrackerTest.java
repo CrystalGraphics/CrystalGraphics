@@ -207,4 +207,22 @@ public class CgTrackerTest {
         assertEquals(1, tracker.stats.barriersCovered);
         assertEquals(4, device.log().stream().filter(l -> l.startsWith("bufferBarrier")).count());
     }
+
+    @Test
+    public void aDeviceSectionLeavesNoBufferBarrierCovered() {
+        CgBindingLayout layout = device.createBindingLayout("k", List.of(new CgBindingLayout.Slot(0, CgBindingLayout.Type.STORAGE_BUFFER)), true);
+        CgShaderModule cs = device.createShaderModule(CgShaderModule.Stage.COMPUTE, CgNullRHI.emptySpirv(), "cs");
+        CgComputePipeline kernel = device.createComputePipeline("k", cs, CgPipelineLayout.of(layout));
+        CgAllocation counts = tracker.allocate(64, false, false, "counts"), other = tracker.allocate(64, false, false, "other");
+        int write = CgAccess.COMPUTE_WRITE, read = CgAccess.COMPUTE_READ;
+
+        dispatchOver(kernel, counts);
+        tracker.bufferBarrier(other, write, read);
+        dispatchOver(kernel, other);                 // flushes the barrier: counts' dispatch is ordered by it
+        tracker.toDevice();                          // a section's dispatches write counts past the tracker
+        tracker.bufferBarrier(counts, write, read);  // so this one is kept
+
+        assertEquals(0, tracker.stats.barriersCovered);
+        assertEquals(2, device.log().stream().filter(l -> l.startsWith("bufferBarrier")).count());
+    }
 }
