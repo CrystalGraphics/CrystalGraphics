@@ -82,7 +82,6 @@ com/crystalgraphics/render/graph/CgTargetCopy.java
 com/crystalgraphics/render/mesh/CgMeshPool.java
 com/crystalgraphics/render/mesh/CgMeshRing.java
 com/crystalgraphics/render/mesh/CgMeshStore.java
-com/crystalgraphics/render/post/look/CgFilmLut.java
 com/crystalgraphics/render/stage/CgHostTextures.java
 com/crystalgraphics/render/stage/CgRenderStage.java
 com/crystalgraphics/render/stage/CgStageFrame.java

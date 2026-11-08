@@ -5,7 +5,7 @@ import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgMeshTopology;
 import com.crystalgraphics.api.material.CgMaterialValues;
-import com.crystalgraphics.gl.texture.CgTexture3D;
+import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
 import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.render.draw.CgOrder;
@@ -99,7 +99,7 @@ public final class CgPostComposite {
     /** What the composite's properties hold. */
     private static final class Inputs {
         CgGraphTexture scene, bloom, subject;
-        CgTexture3D lut;
+        CgTexture lut;
         float intensity = Float.NaN, r, g, b;
         float tonemapWeight = 1f;
         boolean conserve, filmic;
@@ -109,7 +109,7 @@ public final class CgPostComposite {
         int seed;
         final float[] grade = new float[GRADE.length * 4];
         final CgGraphTexture[] layers = new CgGraphTexture[LAYER_SLOTS], layerBlooms = new CgGraphTexture[LAYER_SLOTS];
-        final CgTexture3D[] layerLuts = new CgTexture3D[LAYER_SLOTS];
+        final CgTexture[] layerLuts = new CgTexture[LAYER_SLOTS];
         final float[] layerIntensity = new float[LAYER_SLOTS];
 
         boolean same(Inputs o) {
@@ -254,7 +254,7 @@ public final class CgPostComposite {
      * log shaper, already in the target's encoding; mixed {@code weight} (0 to 1) of the way from the roll to white.
      * Wants the HDR scene ({@link #scene}).
      */
-    public CgPostComposite tonemap(CgTexture3D lut, float weight, boolean filmic) {
+    public CgPostComposite tonemap(CgTexture lut, float weight, boolean filmic) {
         inputs.lut = lut;
         inputs.tonemapWeight = Math.max(0f, Math.min(1f, weight));
         inputs.filmic = filmic;
@@ -277,10 +277,10 @@ public final class CgPostComposite {
      * scene ({@link #scene}). Its bloom is {@link #layerBloom}.
      *
      * <pre>{@code
-     * post.composite().layer(k, layers.layer(k), lut.texture(layers.look(k)));   // at BEFORE_COMPOSITE
+     * post.composite().layer(k, layers.layer(k), lut.texture(post.recording(), layers.look(k)));   // at BEFORE_COMPOSITE
      * }</pre>
      */
-    public CgPostComposite layer(int k, CgGraphTexture layer, @Nullable CgTexture3D lut) {
+    public CgPostComposite layer(int k, CgGraphTexture layer, @Nullable CgTexture lut) {
         inputs.layers[k] = layer;
         inputs.layerLuts[k] = lut;
         return on(CgCompositeFeature.LAYERS);

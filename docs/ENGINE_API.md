@@ -288,7 +288,7 @@ CgPostStack.get().volume(20, new CgPostSettings().impact(CgImpact.LINES, 1f));  
   colour (`fade(0xFF000000, 1f)`, Unreal's camera fade: the composite's last step, in the target's encoding). Flash and
   impact frames are scaled by the player's `FLASHES` comfort setting; a fade is not.
 - **Unreal 4.21's tonemapper** over the HDR scene: bloom added, the exposure and vignette, then its colour table (the legacy
-  film curve; `CgFilmLut`, rebaked only when the film settings move), already in the target's encoding. Off until a
+  film curve; `CgFilmLut`, built on the GPU only when the film settings move), already in the target's encoding. Off until a
   volume turns it on, so Minecraft's frames stay byte for byte without one:
 
   ```java

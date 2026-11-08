@@ -27,7 +27,7 @@ public class CgFilmLutTest {
     @Test
     public void theLegacyCurveIsTheOneTheFrameBound() {
         // The combine pass's constants: ColorMatrix*_ColorCurve* and ColorCurve_* as the frame bound them.
-        CgFilmLut.Curve c = new CgFilmLut.Curve(0.03, 4, 1, 0.18, 1);
+        CgFilmLut.Curve c = new CgFilmLut.Curve().set(0.03, 4, 1, 0.18, 1);
         assertEquals(-0.11625, c.cd1, 1e-5);
         assertEquals(-0.0054, c.cd3cm3, 1e-5);
         assertEquals(1.03, c.cm2, 1e-5);
@@ -71,7 +71,7 @@ public class CgFilmLutTest {
         CgFilmLut.tonemap(lut, 4, 4, 4, out);
         for (double c : out) assertTrue("4x white under its shoulder: " + c, c > 0.9 && c < 1.0);
         double[] curved = new double[3];
-        new CgFilmLut.FilmCurve(0.88, 0.55, 0.26, 0, 0.04).apply(new double[] {0, 0, 0}, curved);
+        new CgFilmLut.FilmCurve().set(0.88, 0.55, 0.26, 0, 0.04).apply(new double[] {0, 0, 0}, curved);
         for (double c : curved) assertEquals("black stays black", 0, c, 1e-6);
     }
 

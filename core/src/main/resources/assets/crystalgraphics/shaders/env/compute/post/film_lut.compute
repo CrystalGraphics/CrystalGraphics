@@ -1,0 +1,187 @@
+// The tonemapper's table built on the GPU (CgFilmLut): Unreal's combined LUT (PostProcessCombineLUTs), one thread a
+// cell, r along x, g along y, b along z. Each cell is CgFilmLut.bake's: the log-encoded colour at the cell decoded,
+// white-balanced into ACEScg, graded, through 4.21's legacy curve or 5.1's film curve, tinted, sRGB-encoded and divided
+// by 1.05. The CPU packs the grade, the curve's constants and the colour matrices (CgFilmLut.pack); this evaluates.
+#pragma kernel Combine 4 4 4 image
+
+Buffers {
+    PARAMS ("CgFilmLut.pack's rows: the grade, the mode, both curves' constants, the matrices", vec4, readonly)
+}
+
+Images {
+    TABLE ("The table, encoded and divided by 1.05", rgba32f, writeonly, 3d)
+}
+
+// Rows of PARAMS (CgFilmLut.ROW_*).
+const int ROW_IN = 0, ROW_OUT = 3, ROW_CONTROLS = 6, ROW_RANGE = 21, ROW_TINT = 22, ROW_MODE = 23, ROW_LEGACY = 24,
+          ROW_FILMIC = 27, ROW_AP1_TO_AP0 = 30, ROW_AP0_TO_AP1 = 33, ROW_BLUE = 36, ROW_BLUE_INV = 39, ROW_EXPAND = 42;
+// The log encoding's range in stops, its grey and where grey sits (Unreal's LogToLin).
+const float LOG_RANGE = 14.0, LOG_GREY = 0.18, LOG_GREY_AT = 444.0 / 1023.0;
+const float SCALE = 1.05;
+const vec3 AP1_Y = vec3(0.2722287168, 0.6740817658, 0.0536895174);
+
+vec3 rows(int at, vec3 v) {
+    return vec3(dot(PARAMS(at).xyz, v), dot(PARAMS(at + 1).xyz, v), dot(PARAMS(at + 2).xyz, v));
+}
+
+// Java's Math.pow for x >= 0: GLSL's pow is undefined at 0.
+float power(float x, float y) {
+    return x > 0.0 ? pow(x, y) : y == 0.0 ? 1.0 : 0.0;
+}
+
+float clamped(float v, float lo, float hi) {
+    return max(lo, min(hi, v));
+}
+
+float smooth01(float e0, float e1, float x) {
+    float t = clamped((x - e0) / (e1 - e0), 0.0, 1.0);
+    return t * t * (3.0 - 2.0 * t);
+}
+
+float log_to_lin(float x) {
+    return exp2((x - LOG_GREY_AT) * LOG_RANGE) * LOG_GREY;
+}
+
+float srgb(float x) {
+    return x < 0.00313067 ? x * 12.92 : pow(x, 1.0 / 2.4) * 1.055 - 0.055;
+}
+
+// ColorCorrect of channel k by a region's controls (0 shadows, 1 midtones, 2 highlights): CgColorGrade.correct.
+float correct(int region, float c, float luma, int k) {
+    int at = ROW_CONTROLS + region * 5;
+    float v = max(0.0, luma + (c - luma) * PARAMS(at)[k]);
+    v = power(v * (1.0 / 0.18), PARAMS(at + 1)[k]) * 0.18;
+    v = power(v, PARAMS(at + 2)[k]);
+    return v * PARAMS(at + 3)[k] + PARAMS(at + 4)[k];
+}
+
+// ColorCorrectAll on ACEScg: CgColorGrade.correctAll.
+vec3 correct_all(vec3 c) {
+    float luma = dot(c, AP1_Y);
+    float shadows = 1.0 - smooth01(0.0, PARAMS(ROW_RANGE).x, luma);
+    float highlights = smooth01(PARAMS(ROW_RANGE).y, 1.0, luma);
+    float midtones = 1.0 - shadows - highlights;
+    vec3 o;
+    for (int k = 0; k < 3; k++) {
+        o[k] = correct(0, c[k], luma, k) * shadows + correct(1, c[k], luma, k) * midtones
+                + correct(2, c[k], luma, k) * highlights;
+    }
+    return o;
+}
+
+// 4.21's FilmPostProcess on linear sRGB: CgFilmLut.Curve.apply.
+vec3 legacy_curve(vec3 c) {
+    vec4 a = PARAMS(ROW_LEGACY), b = PARAMS(ROW_LEGACY + 1), d = PARAMS(ROW_LEGACY + 2);
+    float cd1 = a.x, cd3cm3 = a.y, cm2 = a.z, cm0cd0 = a.w, cd2 = b.x, ch0cm1 = b.y, ch3 = b.z, ch1 = b.w;
+    float ch2 = d.x, saturation = d.y;
+    float mean = (c.r + c.g + c.b) / 3.0;
+    vec3 o;
+    for (int k = 0; k < 3; k++) {
+        float m = max(0.0, mean + (c[k] - mean) * saturation);
+        float dark = max(0.0, cm0cd0 - m), high = max(m, ch0cm1), mid = clamped(m, cm0cd0, ch0cm1);
+        o[k] = (high * ch1 + ch2) / (high + ch3) + (mid * cm2 + (dark * cd1) / (dark + cd2) + cd3cm3) - 0.002;
+    }
+    return o;
+}
+
+float fc_saturation(vec3 c) {
+    float lo = min(c.r, min(c.g, c.b)), hi = max(c.r, max(c.g, c.b));
+    return (max(hi, 1e-10) - max(lo, 1e-10)) / max(hi, 1e-2);
+}
+
+float fc_yc(vec3 c) {
+    float chroma = sqrt(max(0.0, c.b * (c.b - c.g) + c.g * (c.g - c.r) + c.r * (c.r - c.b)));
+    return (c.b + c.g + c.r + 1.75 * chroma) / 3.0;
+}
+
+float fc_sigmoid(float x) {
+    float t = max(1.0 - abs(0.5 * x), 0.0);
+    return 0.5 * (1.0 + sign(x) * (1.0 - t * t));
+}
+
+float fc_glow(float yc, float gain, float mid) {
+    if (yc <= 2.0 / 3.0 * mid) return gain;
+    if (yc >= 2.0 * mid) return 0.0;
+    return gain * (mid / yc - 0.5);
+}
+
+float fc_hue(vec3 c) {
+    if (c.r == c.g && c.g == c.b) return 0.0;
+    float h = degrees(atan(sqrt(3.0) * (c.g - c.b), 2.0 * c.r - c.g - c.b));
+    if (h < 0.0) h += 360.0;
+    return clamped(h, 0.0, 360.0);
+}
+
+// 5.1's FilmToneMap on ACEScg: CgFilmLut.FilmCurve.apply.
+vec3 film_curve(vec3 ap1) {
+    vec4 f0 = PARAMS(ROW_FILMIC), f1 = PARAMS(ROW_FILMIC + 1), f2 = PARAMS(ROW_FILMIC + 2);
+    float slope = f0.x, toe = f0.y, black = f0.w, white = f1.x;
+    float toeScale = f1.y, shoulderScale = f1.z, toeMatch = f1.w, shoulderMatch = f2.x;
+    vec3 ap0 = rows(ROW_AP1_TO_AP0, ap1);
+    float sat = fc_saturation(ap0);
+    float s = fc_sigmoid((sat - 0.4) / 0.2);
+    ap0 *= 1.0 + fc_glow(fc_yc(ap0), 0.05 * s, 0.08);
+    float hue = fc_hue(ap0);
+    float centred = hue < -180.0 ? hue + 360.0 : hue > 180.0 ? hue - 360.0 : hue;
+    float w = smooth01(0.0, 1.0, 1.0 - abs(2.0 * centred / 135.0));
+    w *= w;
+    ap0.r += w * sat * (0.03 - ap0.r) * (1.0 - 0.82);
+    vec3 work = max(rows(ROW_AP0_TO_AP1, ap0), vec3(0.0));
+    float y = dot(work, AP1_Y);
+    work = y + (work - y) * 0.96;
+    float straightMatch = (1.0 - toe) / slope - toeMatch;
+    vec3 o;
+    for (int k = 0; k < 3; k++) {
+        // A black channel is the toe's limit, -black: its log is minus infinity, which GLSL leaves undefined
+        if (work[k] <= 0.0) {
+            o[k] = -black;
+            continue;
+        }
+        float lg = log2(work[k]) * 0.30102999566398120;
+        float straight = slope * (lg + straightMatch);
+        float toeColour = -black + 2.0 * toeScale / (1.0 + exp(-2.0 * slope / toeScale * (lg - toeMatch)));
+        float shoulderColour = 1.0 + white - 2.0 * shoulderScale / (1.0 + exp(2.0 * slope / shoulderScale * (lg - shoulderMatch)));
+        if (!(lg < toeMatch)) toeColour = straight;
+        if (!(lg > shoulderMatch)) shoulderColour = straight;
+        float t = clamped((lg - toeMatch) / (shoulderMatch - toeMatch), 0.0, 1.0);
+        if (isnan(t)) t = 0.0;
+        if (shoulderMatch < toeMatch) t = 1.0 - t;
+        t = (3.0 - 2.0 * t) * t * t;
+        o[k] = t <= 0.0 ? toeColour : t >= 1.0 ? shoulderColour : toeColour + (shoulderColour - toeColour) * t;
+    }
+    float ty = dot(o, AP1_Y);
+    return max(vec3(0.0), ty + (o - ty) * 0.93);
+}
+
+void Combine() {
+    ivec3 cell = CG_TEXEL;
+    float last = float(TABLE_SIZE().x - 1);
+    float zero = log_to_lin(0.0);
+    vec3 c = vec3(log_to_lin(float(cell.x) / last), log_to_lin(float(cell.y) / last), log_to_lin(float(cell.z) / last)) - zero;
+    vec4 mode = PARAMS(ROW_MODE);
+    vec3 tint = PARAMS(ROW_TINT).xyz;
+    vec3 encoded;
+    if (mode.x == 0.0) {
+        vec3 t = legacy_curve(rows(ROW_OUT, correct_all(rows(ROW_IN, c))));
+        for (int k = 0; k < 3; k++) encoded[k] = min(1.0, srgb(max(t[k] * tint[k], 0.0)) / SCALE);
+    } else {
+        float amount = mode.y, blue = mode.z, expand = mode.w, gamma = PARAMS(ROW_FILMIC + 2).y;
+        vec3 ap1 = rows(ROW_IN, c);
+        float luma = dot(ap1, AP1_Y);
+        if (expand > 0.0 && luma > 0.0) {
+            vec3 n = ap1 / luma - 1.0;
+            float share = (1.0 - exp2(-4.0 * dot(n, n))) * (1.0 - exp2(-4.0 * expand * luma * luma));
+            ap1 += (rows(ROW_EXPAND, ap1) - ap1) * share;
+        }
+        ap1 = correct_all(ap1);
+        ap1 += (rows(ROW_BLUE, ap1) - ap1) * blue;
+        if (amount > 0.0) ap1 += (film_curve(ap1) - ap1) * amount;
+        ap1 += (rows(ROW_BLUE_INV, ap1) - ap1) * blue;
+        vec3 t = rows(ROW_OUT, ap1);
+        for (int k = 0; k < 3; k++) {
+            float film = max(0.0, t[k]) * tint[k];
+            encoded[k] = clamped(srgb(power(film, gamma)) / SCALE, 0.0, 1.0);
+        }
+    }
+    TABLE_WRITE(vec4(encoded, 1.0));
+}

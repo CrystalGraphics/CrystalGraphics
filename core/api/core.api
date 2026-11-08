@@ -9853,13 +9853,13 @@ com/crystalgraphics/render/post/composite/CgPostComposite
   method public grade ([F)Lcom/crystalgraphics/render/post/composite/CgPostComposite;
   method public impact (Lcom/crystalgraphics/render/post/volume/CgImpact;FFF)Lcom/crystalgraphics/render/post/composite/CgPostComposite;
   method public impact (Lcom/crystalgraphics/render/post/volume/CgImpactFrame;FIFFLcom/crystalgraphics/render/graph/CgGraphTexture;)Lcom/crystalgraphics/render/post/composite/CgPostComposite;
-  method public layer (ILcom/crystalgraphics/render/graph/CgGraphTexture;Lcom/crystalgraphics/gl/texture/CgTexture3D;)Lcom/crystalgraphics/render/post/composite/CgPostComposite;
+  method public layer (ILcom/crystalgraphics/render/graph/CgGraphTexture;Lcom/crystalgraphics/api/texture/CgTexture;)Lcom/crystalgraphics/render/post/composite/CgPostComposite;
   method public layerBloom (ILcom/crystalgraphics/render/graph/CgGraphTexture;F)Lcom/crystalgraphics/render/post/composite/CgPostComposite;
   method public linear ()Lcom/crystalgraphics/render/post/composite/CgPostComposite;
   method public record (Lcom/crystalgraphics/render/graph/CgRecording;Lcom/crystalgraphics/render/graph/CgGraphTexture;Lcom/crystalgraphics/render/draw/CgPassConstants;)V
   method public release ()V
   method public scene (Lcom/crystalgraphics/render/graph/CgGraphTexture;)Lcom/crystalgraphics/render/post/composite/CgPostComposite;
-  method public tonemap (Lcom/crystalgraphics/gl/texture/CgTexture3D;FZ)Lcom/crystalgraphics/render/post/composite/CgPostComposite;
+  method public tonemap (Lcom/crystalgraphics/api/texture/CgTexture;FZ)Lcom/crystalgraphics/render/post/composite/CgPostComposite;
   method public vignette (F)Lcom/crystalgraphics/render/post/composite/CgPostComposite;
 com/crystalgraphics/render/post/debug/CgPostDebug
   access public,final
@@ -9914,10 +9914,10 @@ com/crystalgraphics/render/post/look/CgFilmLut
   field public,static,final SCALE F
   field public,static,final SIZE I
   method public <init> ()V
-  method public release ()V
-  method public texture (Lcom/crystalgraphics/render/post/volume/CgPostSettings;)Lcom/crystalgraphics/gl/texture/CgTexture3D;
+  method public texture (Lcom/crystalgraphics/render/graph/CgRecording;Lcom/crystalgraphics/render/post/volume/CgPostSettings;)Lcom/crystalgraphics/render/graph/CgGraphTexture;
   method public,static ap1ToSrgb ()[D
   method public,static bake (Lcom/crystalgraphics/render/post/volume/CgPostSettings;[F)V
+  method public,static precache ()V
   method public,static shape (D)D
   method public,static srgbToAp1 ()[D
   method public,static tonemap ([FDDD[D)V

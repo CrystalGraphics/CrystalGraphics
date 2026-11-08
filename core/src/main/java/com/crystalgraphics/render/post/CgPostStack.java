@@ -1,5 +1,7 @@
 package com.crystalgraphics.render.post;
 
+import com.crystalgraphics.compute.CgKernel;
+import com.crystalgraphics.render.post.look.CgFilmLut;
 import com.crystalgraphics.render.world.CgPipelinePrecache;
 import com.crystalgraphics.render.post.bloom.CgBloom;
 import com.crystalgraphics.render.post.composite.CgCompositeFeature;
@@ -101,6 +103,8 @@ public final class CgPostStack {
         // A step a shader: each reads and parses its file to name its permutations, together 100 ms and more of a frame
         CgPipelinePrecache.Steps steps = CgPipelinePrecache.steps("crystalgraphics:post");
         for (String pass : WARMED) steps.step(pipelines -> pipelines.addPass(pass));
+        // The tonemapper's table, built on the GPU at the first look that tonemaps: its file parsed on a worker first
+        steps.ahead(() -> CgKernel.ahead(CgFilmLut::precache)).step(list -> list.kernels(CgFilmLut::precache));
         steps.start();
     }
 

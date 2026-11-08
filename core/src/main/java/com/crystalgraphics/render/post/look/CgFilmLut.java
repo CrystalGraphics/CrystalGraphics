@@ -1,30 +1,40 @@
 package com.crystalgraphics.render.post.look;
 
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
-import java.nio.FloatBuffer;
 import java.util.Arrays;
 
+import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.texture.CgTextureType;
-import com.crystalgraphics.gl.texture.CgTexture3D;
-import com.crystalgraphics.platform.gl.CgGL;
+import com.crystalgraphics.compute.CgCompute;
+import com.crystalgraphics.compute.CgKernel;
+import com.crystalgraphics.render.graph.CgBufferDesc;
+import com.crystalgraphics.render.graph.CgBufferUsage;
+import com.crystalgraphics.render.graph.CgComputePass;
+import com.crystalgraphics.render.graph.CgGraphBuffer;
+import com.crystalgraphics.render.graph.CgGraphTexture;
+import com.crystalgraphics.render.graph.CgRecording;
+import com.crystalgraphics.render.graph.CgTextureDesc;
 import com.crystalgraphics.render.post.volume.CgPostSettings;
+import com.crystalgraphics.trace.CgGpuTrace;
+import com.crystalgraphics.variable.CgVar;
 
 /**
  * The tonemapper's colour table: Unreal's combined LUT (its {@code PostProcessCombineLUTs}), 4.21's with the legacy
- * film curve or with {@code filmic()} 5.1's with its ACES-fitted film curve, 32 cells a side, baked on the CPU whenever
- * the settings change and held as a 3D texture. The composite reads it through Unreal's log shaper ({@link #shape}) and
- * scales what it reads by {@link #SCALE}.
+ * film curve or with {@code filmic()} 5.1's with its ACES-fitted film curve, 32 cells a side, built on the GPU by one
+ * dispatch whenever the settings change (Unreal's, with {@code r.LUT.UpdateEveryFrame} off) and kept as a 3D graph
+ * texture. The CPU computes only the parameters. The composite reads it through Unreal's log shaper ({@link #shape})
+ * and scales what it reads by {@link #SCALE}.
  *
  * <pre>{@code
  * CgFilmLut lut = new CgFilmLut();
- * CgTexture3D table = lut.texture(settings);   // render thread; rebaked only when the film settings moved
+ * CgGraphTexture table = lut.texture(recording, settings);   // render thread; built only when the settings moved
  *
  * float[] cells = new float[CgFilmLut.CELLS * 3];
- * CgFilmLut.bake(new CgPostSettings().tonemap().filmHeal(0.18f), cells);   // any thread: r fastest, then g, then b
+ * CgFilmLut.bake(new CgPostSettings().tonemap().filmHeal(0.18f), cells);   // the same table on the CPU, any thread
  * }</pre>
  *
  * <ul>
+ *   <li>{@link #bake} is the reference the GPU's table is checked against ({@code post-looks}), cell for cell; the
+ *       renderer never calls it.</li>
  *   <li>Each cell is the log-encoded colour at its corner, decoded, white-balanced, graded in ACEScg
  *       ({@link CgColorGrade}) and taken back, through the legacy film curve, tinted, sRGB-encoded and divided by
  *       1.05, as 4.21's combine writes it.</li>
@@ -73,26 +83,92 @@ public final class CgFilmLut {
     /** The log encoding's range in stops, its grey and where grey sits (Unreal's LogToLin). */
     private static final double RANGE = 14, GREY = 0.18, GREY_AT = 444.0 / 1023.0;
 
-    private final float[] cells = new float[CELLS * 3];
-    private final ByteBuffer upload = ByteBuffer.allocateDirect(CELLS * 16).order(ByteOrder.nativeOrder());
-    private final float[] baked = new float[15], now = new float[15];
-    private final CgColorGrade grading = new CgColorGrade();
-    private final double[] bakedGrade = new double[CgColorGrade.PACKED];
-    private CgTexture3D texture;
+    /** Rows of the kernel's parameters ({@code film_lut.compute}'s {@code ROW_*}), each a vec4. */
+    static final int ROW_MODE = 23, ROW_LEGACY = 24, ROW_FILMIC = 27, ROW_AP1_TO_AP0 = 30, ROW_AP0_TO_AP1 = 33,
+            ROW_BLUE = 36, ROW_BLUE_INV = 39, ROW_EXPAND = 42, ROWS = 45;
+    private static final String KERNELS = "crystalgraphics:shaders/env/compute/post/film_lut.compute";
+    private static final CgFrameBufferFormat TABLE_FORMAT = CgFrameBufferFormat.builder("cg_film_lut")
+            .color(0, CgTextureType.RGBA32F).build();
+    static final int GPU_FILM_LUT = CgGpuTrace.name("post.filmLut");
+    /** Unreal's {@code r.LUT.UpdateEveryFrame}: the table built every frame, settings moved or not, to time it. */
+    private static final boolean EVERY_FRAME = CgVar.bool("crystalgraphics.post.lutEveryFrame", false, CgVar.DEV,
+            "The tonemapper's table is built every frame its look tonemaps, not only when its settings move.").get();
 
-    /** The table for {@code s}'s film settings and grade: rebaked and uploaded when they changed. Render thread. */
-    public CgTexture3D texture(CgPostSettings s) {
+    private final float[] rows = new float[ROWS * 4];
+    private final float[] built = new float[15], now = new float[15];
+    private final CgColorGrade grading = new CgColorGrade();
+    private final double[] builtGrade = new double[CgColorGrade.PACKED];
+    private final Curve legacy = new Curve();
+    private final FilmCurve filmCurve = new FilmCurve();
+    private CgGraphTexture table;
+    private CgGraphBuffer params;
+    private CgKernel kernel;
+
+    /**
+     * The table for {@code s}'s film settings and grade, built in {@code recording} when they changed since the last
+     * build: one dispatch of a cell a thread. Render thread.
+     */
+    public CgGraphTexture texture(CgRecording recording, CgPostSettings s) {
         double[] grade = grading.update(s);
         film(s, now);
-        if (texture != null && Arrays.equals(now, baked) && Arrays.equals(grade, bakedGrade)) return texture;
-        System.arraycopy(now, 0, baked, 0, now.length);
-        System.arraycopy(grade, 0, bakedGrade, 0, grade.length);
-        bake(s, cells);
-        FloatBuffer f = upload.clear().asFloatBuffer();
-        for (int i = 0; i < CELLS; i++) f.put(cells[i * 3]).put(cells[i * 3 + 1]).put(cells[i * 3 + 2]).put(1f);
-        if (texture == null) texture = CgTexture3D.createEmpty(SIZE, SIZE, SIZE, CgTextureType.RGBA32F.toTextureSpec());
-        texture.uploadRegion(0, 0, 0, 0, SIZE, SIZE, SIZE, upload, CgGL.GL_RGBA, CgGL.GL_FLOAT);
-        return texture;
+        if (table != null && !EVERY_FRAME && Arrays.equals(now, built) && Arrays.equals(grade, builtGrade)) return table;
+        System.arraycopy(now, 0, built, 0, now.length);
+        System.arraycopy(grade, 0, builtGrade, 0, grade.length);
+        if (table == null) {
+            table = CgGraphTexture.requested("cg_film_lut", CgTextureDesc.volume(SIZE, SIZE, SIZE, TABLE_FORMAT));
+            params = CgGraphBuffer.persistent("cg_film_lut.params", CgBufferDesc.of(ROWS * 16L, CgBufferUsage.STORAGE,
+                    CgBufferUsage.COPY));
+        }
+        pack(s, grade);
+        recording.update(params, 0, rows, 0, rows.length);
+        CgComputePass pass = recording.compute("cg.filmLut").timed(GPU_FILM_LUT);
+        pass.dispatch(kernel(), SIZE, SIZE, SIZE).image("TABLE", table).bind("PARAMS", params);
+        pass.end();
+        return table;
+    }
+
+    /** Starts the kernel's program, as a loading screen does. Render thread. */
+    public static void precache() {
+        CgCompute.load(KERNELS).kernel("Combine").precache();
+    }
+
+    private CgKernel kernel() {
+        if (kernel == null) kernel = CgCompute.load(KERNELS).kernel("Combine");
+        return kernel;
+    }
+
+    /**
+     * {@code s}'s parameters into {@link #rows}: its {@code grade} ({@link CgColorGrade#pack}'s 23 rows), the mode, both
+     * curves' constants and the colour matrices, which the kernel takes as they are, computed here in doubles.
+     */
+    private void pack(CgPostSettings s, double[] grade) {
+        Arrays.fill(rows, 0f);
+        for (int i = 0; i < CgColorGrade.PACKED; i++) rows[i] = (float) grade[i];
+        put(ROW_MODE, s.tonemapsFilmic() ? 1 : 0, s.toneCurve(), s.blueCorrection(), s.expandGamut());
+        Curve c = legacy.set(s.filmContrast(), s.filmDynamicRange(), s.filmToe(), s.filmHeal(), s.filmSaturation());
+        put(ROW_LEGACY, c.cd1, c.cd3cm3, c.cm2, c.cm0cd0);
+        put(ROW_LEGACY + 1, c.cd2, c.ch0cm1, c.ch3, c.ch1);
+        put(ROW_LEGACY + 2, c.ch2, c.saturation, 0, 0);
+        FilmCurve f = filmCurve.set(s.filmSlope(), s.filmCurveToe(), s.filmShoulder(), s.filmBlackClip(), s.filmWhiteClip());
+        put(ROW_FILMIC, f.slope, f.toe, f.shoulder, f.black);
+        put(ROW_FILMIC + 1, f.white, f.toeScale, f.shoulderScale, f.toeMatch);
+        put(ROW_FILMIC + 2, f.shoulderMatch, 2.2 / s.displayGamma(), 0, 0);
+        matrix(ROW_AP1_TO_AP0, AP1_TO_AP0);
+        matrix(ROW_AP0_TO_AP1, AP0_TO_AP1);
+        matrix(ROW_BLUE, BLUE_CORRECT_AP1);
+        matrix(ROW_BLUE_INV, BLUE_CORRECT_INV_AP1);
+        matrix(ROW_EXPAND, EXPAND);
+    }
+
+    private void put(int row, double x, double y, double z, double w) {
+        rows[row * 4] = (float) x;
+        rows[row * 4 + 1] = (float) y;
+        rows[row * 4 + 2] = (float) z;
+        rows[row * 4 + 3] = (float) w;
+    }
+
+    private void matrix(int row, double[] m) {
+        for (int r = 0; r < 3; r++) put(row + r, m[r * 3], m[r * 3 + 1], m[r * 3 + 2], 0);
     }
 
     /** What of {@code s} the table is baked from, besides the grade, into {@code out}. */
@@ -112,12 +188,6 @@ public final class CgFilmLut {
         out[12] = s.blueCorrection();
         out[13] = s.expandGamut();
         out[14] = s.displayGamma();
-    }
-
-    /** Frees the table; the next {@link #texture} makes it again. */
-    public void release() {
-        if (texture != null) texture.delete();
-        texture = null;
     }
 
     /** Where linear {@code c} reads the table, 0 to 1 a side: Unreal's {@code LinToLog(c + LogToLin(0))}, to cell centres. */
@@ -161,7 +231,7 @@ public final class CgFilmLut {
             bakeFilmic(s, grade, out);
             return;
         }
-        Curve curve = new Curve(s.filmContrast(), s.filmDynamicRange(), s.filmToe(), s.filmHeal(), s.filmSaturation());
+        Curve curve = new Curve().set(s.filmContrast(), s.filmDynamicRange(), s.filmToe(), s.filmHeal(), s.filmSaturation());
         double[] c = new double[3], t = new double[3];
         double zero = logToLin(0);
         for (int b = 0; b < SIZE; b++) {
@@ -209,7 +279,7 @@ public final class CgFilmLut {
      * {@code 2.2 / DisplayGamma}, encoded and divided by 1.05, clipped as its 10-bit table stores it.
      */
     private static void bakeFilmic(CgPostSettings s, double[] grade, float[] out) {
-        FilmCurve curve = new FilmCurve(s.filmSlope(), s.filmCurveToe(), s.filmShoulder(), s.filmBlackClip(), s.filmWhiteClip());
+        FilmCurve curve = new FilmCurve().set(s.filmSlope(), s.filmCurveToe(), s.filmShoulder(), s.filmBlackClip(), s.filmWhiteClip());
         double amount = s.toneCurve(), blue = s.blueCorrection(), expand = s.expandGamut();
         double gamma = 2.2 / s.displayGamma();
         double[] c = new double[3], ap1 = new double[3], t = new double[3], m = new double[3];
@@ -254,11 +324,14 @@ public final class CgFilmLut {
         }
     }
 
-    /** 5.1's {@code FilmToneMap} (TonemapCommon.ush): ACES' glow and red modifier, then the fitted toe, line and shoulder. */
+    /**
+     * 5.1's {@code FilmToneMap} (TonemapCommon.ush): ACES' glow and red modifier, then the fitted toe, line and shoulder.
+     * Its constants {@link #set} again for each table, so a fading look makes none.
+     */
     static final class FilmCurve {
-        final double slope, toe, shoulder, black, white, toeScale, shoulderScale, toeMatch, shoulderMatch;
+        double slope, toe, shoulder, black, white, toeScale, shoulderScale, toeMatch, shoulderMatch;
 
-        FilmCurve(double slope, double toe, double shoulder, double black, double white) {
+        FilmCurve set(double slope, double toe, double shoulder, double black, double white) {
             this.slope = slope;
             this.toe = toe;
             this.shoulder = shoulder;
@@ -276,6 +349,7 @@ public final class CgFilmLut {
             toeMatch = tm;
             double straightMatch = (1 - toe) / slope - toeMatch;
             shoulderMatch = shoulder / slope - straightMatch;
+            return this;
         }
 
         /** ACEScg {@code ap1} through the curve into {@code out}, positive ACEScg. */
@@ -357,10 +431,10 @@ public final class CgFilmLut {
      * builds them: a toe, a straight mid section and a shoulder healing toward white.
      */
     static final class Curve {
-        final double cd1, cd3cm3, cm2, cm0cd0, cd2, ch0cm1, ch3, ch1, ch2;
-        final double saturation;
+        double cd1, cd3cm3, cm2, cm0cd0, cd2, ch0cm1, ch3, ch1, ch2;
+        double saturation;
 
-        Curve(double contrast, double dynamicRange, double toeAmount, double healAmount, double saturation) {
+        Curve set(double contrast, double dynamicRange, double toeAmount, double healAmount, double saturation) {
             this.saturation = clamp(saturation, 0, 2);
             double c = clamp(contrast, 0, 1) + 1;
             double range = Math.pow(2, clamp(dynamicRange, 1, 4));
@@ -390,6 +464,7 @@ public final class CgFilmLut {
                 cd1 = 0;
                 cd2 = 1;
             }
+            return this;
         }
 
         /** {@code c}, linear sRGB, through the curve in place. */
