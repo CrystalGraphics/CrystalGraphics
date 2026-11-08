@@ -74,8 +74,9 @@ before the level renders, so anything painted from a GUI hook lands under the wo
   run the same way on the transfer queue Minecraft creates and never submits to (`transferQueue()`, the same range),
   each batch submitted at once and waited for inside Minecraft's submit. Minecraft creates its device with the
   features of ours the GPU has (`vulkan.MinecraftDeviceFeatures`, through each loader's `DeviceFeaturesHook` on
-  26.2): `independentBlend`, which the world's normal target needs, and `drawIndirectFirstInstance`, which with Minecraft's own
-  required `multiDrawIndirect` and `shaderDrawParameters` joins runs of draws into one call. At the shutdown signal
+  26.2): `independentBlend`, which the world's normal target needs, `drawIndirectFirstInstance`, which with Minecraft's own
+  required `multiDrawIndirect` and `shaderDrawParameters` joins runs of draws into one call, `drawIndirectCount`, and
+  descriptor indexing for the bindless texture heap (all four features or none, as the owned device). At the shutdown signal
   our device's close is queued on Blaze3D's destroy queue, which runs it once our last submit has completed or
   inside `VulkanDevice.close`, before the device goes.
 - **SDL3 from 26.3.** 26.3 ships no GLFW: `PlatformServiceModern` registers `runtime/lwjgl/sdl`'s

@@ -194,6 +194,8 @@ public final class Blaze3dVulkanHost
     // Asked of Minecraft's device where the GPU has it (DeviceFeaturesHook).
     @Override public boolean independentBlend() { return MinecraftDeviceFeatures.independentBlend(); }
     @Override public boolean textureCompressionBC() { return MinecraftDeviceFeatures.textureCompressionBC(); }
+    @Override public boolean indirectCount() { return MinecraftDeviceFeatures.indirectCount(); }
+    @Override public boolean bindless() { return MinecraftDeviceFeatures.bindless(); }
     // Minecraft requires multiDrawIndirect and shaderDrawParameters; drawIndirectFirstInstance is asked for beside them.
     @Override public boolean multiDrawIndirect() { return MinecraftDeviceFeatures.multiDrawIndirect(); }
     @Override public boolean drawParameters() { return MinecraftDeviceFeatures.drawParameters(); }
