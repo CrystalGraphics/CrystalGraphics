@@ -1,0 +1,169 @@
+// Unreal's Gaussian bloom as compute (CgBloom), in its compute form's shape (FFilterCS, FDownsampleCS): each kernel is
+// one pass of PostProcessBloomSetup's chain, the same taps as its pixel shader. Up to three blooms run in every
+// dispatch, one a z: the frame's and each graded layer's (CgGradeLayers), each with its own targets (OUT<b>, _In<b>,
+// _Add<b>) and its own rows (CgBloom.Chain's), so a frame with graded looks runs one chain, not one a look.
+#pragma kernel Source 8 8 image
+#pragma kernel Down 8 8 image
+#pragma kernel Across 8 8 image
+#pragma kernel Layer 8 8 image
+
+Properties {
+    _Scene  ("The linear HDR scene", sampler2D) = "black"
+    _Layer0 ("Graded layer 0: rgb the light it added", sampler2D) = "black"
+    _Layer1 ("Graded layer 1", sampler2D) = "black"
+    _In0    ("Bloom 0's input: the stage blurred, or the pass before", sampler2D) = "black"
+    _In1    ("Bloom 1's", sampler2D) = "black"
+    _In2    ("Bloom 2's", sampler2D) = "black"
+    _Add0   ("Bloom 0's layer before, added", sampler2D) = "black"
+    _Add1   ("Bloom 1's", sampler2D) = "black"
+    _Add2   ("Bloom 2's", sampler2D) = "black"
+    _Stage  ("The stage this dispatch draws, 0 the half-size one", int) = 0
+}
+
+Buffers {
+    ROWS ("CgBloom.Chain's rows: each bloom's source, then each stage's info, tint and taps", vec4, readonly)
+}
+
+Images {
+    OUT0 ("Bloom 0's output", r11f_g11f_b10f, writeonly)
+    OUT1 ("Bloom 1's", r11f_g11f_b10f, writeonly)
+    OUT2 ("Bloom 2's", r11f_g11f_b10f, writeonly)
+}
+
+// CgBloom.Chain's layout: SOURCE_ROWS a bloom, then a block of BLOCK rows a stage and bloom: info (taps, -1 not drawn;
+// 1 for a half-width horizontal pass; 1 where it adds the layer before), tint, the horizontal taps, the vertical taps.
+const int SOURCE_ROWS = 2, BLOOMS = 3, MAX_TAPS = 32, BLOCK = 2 + 2 * MAX_TAPS;
+const float HIGHLIGHT = 32.0;
+
+int block(int stage, int b) {
+    return SOURCE_ROWS * BLOOMS + (stage * BLOOMS + b) * BLOCK;
+}
+
+ivec2 out_size(int b) {
+    return b == 0 ? OUT0_SIZE() : b == 1 ? OUT1_SIZE() : OUT2_SIZE();
+}
+
+// Bloom b's output at this thread's own texel.
+void out_write(int b, vec3 c) {
+    if (b == 0) OUT0_WRITE(vec4(c, 1.0));
+    else if (b == 1) OUT1_WRITE(vec4(c, 1.0));
+    else OUT2_WRITE(vec4(c, 1.0));
+}
+
+// A pass's taps (ROWS from first, count of them) over s: each its uv offset in xy and weight in z.
+vec3 taps(sampler2D s, vec2 uv, int first, int count) {
+    vec3 sum = vec3(0.0);
+    for (int k = 0; k < MAX_TAPS; k++) {   // LOOP-BOUND: a kernel's taps, at most 32 (SM5's)
+        if (k >= count) break;
+        vec4 tap = ROWS(first + k);
+        sum += textureLod(s, uv + tap.xy, 0.0).rgb * tap.z;
+    }
+    return sum;
+}
+
+// Bloom b's taps over its input: a branch a bloom (b is the group's), never a select, which samples all three a tap.
+vec3 in_taps(int b, vec2 uv, int first, int count) {
+    if (b == 0) return taps(_In0, uv, first, count);
+    if (b == 1) return taps(_In1, uv, first, count);
+    return taps(_In2, uv, first, count);
+}
+
+// Unreal's high-quality downsample of s at uv: four bilinear taps a texel's corners apart, a 4x4 box.
+vec3 box(sampler2D s, vec2 uv) {
+    vec2 texel = 1.0 / vec2(textureSize(s, 0));
+    return 0.25 * (textureLod(s, uv + texel * vec2(-1.0, 1.0), 0.0).rgb + textureLod(s, uv + texel * vec2(1.0, 1.0), 0.0).rgb
+            + textureLod(s, uv + texel * vec2(-1.0, -1.0), 0.0).rgb + textureLod(s, uv + texel * vec2(1.0, -1.0), 0.0).rgb);
+}
+
+vec3 add_at(int b, vec2 uv) {
+    if (b == 0) return textureLod(_Add0, uv, 0.0).rgb;
+    if (b == 1) return textureLod(_Add1, uv, 0.0).rgb;
+    return textureLod(_Add2, uv, 0.0).rgb;
+}
+
+// The texel of this thread's bloom, or false past its output (each bloom's output has its own size).
+bool here(out int b, out ivec2 p) {
+    b = CG_TEXEL.z;
+    p = CG_TEXEL.xy;
+    return b < BLOOMS && all(lessThan(p, out_size(b)));
+}
+
+vec2 uv_of(int b, ivec2 p) {
+    return (vec2(p) + 0.5) / vec2(out_size(b));
+}
+
+// The light bloom b's source reads at q: the scene less the graded layers' (the frame's), or a layer's own.
+vec3 light(int b, ivec2 q) {
+    vec4 s0 = ROWS(b * SOURCE_ROWS), s1 = ROWS(b * SOURCE_ROWS + 1);
+    vec3 c;
+    if (s0.x == 0.0) {
+        ivec2 size = textureSize(_Scene, 0);
+        q = min(q, size - 1);
+        c = texelFetch(_Scene, q, 0).rgb - texelFetch(_Layer0, q, 0).rgb * s1.x - texelFetch(_Layer1, q, 0).rgb * s1.y;
+    } else if (s0.x == 1.0) {
+        c = texelFetch(_Layer0, min(q, textureSize(_Layer0, 0) - 1), 0).rgb;
+    } else {
+        c = texelFetch(_Layer1, min(q, textureSize(_Layer1, 0) - 1), 0).rgb;
+    }
+    return max(c, vec3(0.0));
+}
+
+// Bloom's source: each 2x2 block of its light averaged into a half-size texel, each texel's excess past the threshold
+// held toward HIGHLIGHT (Karis's weighting), or Unreal's BloomSetup on the average (excess.shader's two forms).
+void Source() {
+    int b;
+    ivec2 p;
+    if (!here(b, p)) return;
+    vec4 s0 = ROWS(b * SOURCE_ROWS);
+    float threshold = s0.y;
+    ivec2 q = p * 2;
+    vec3 c0 = light(b, q), c1 = light(b, q + ivec2(1, 0)), c2 = light(b, q + ivec2(0, 1)), c3 = light(b, q + ivec2(1, 1));
+    if (s0.z > 0.5) {
+        vec3 c = 0.25 * (c0 + c1 + c2 + c3);
+        // Luminance() is dot(rgb, (0.3, 0.59, 0.11)) in Unreal's Common.ush
+        if (threshold > -1.0) c *= clamp((dot(c, vec3(0.3, 0.59, 0.11)) - threshold) * 0.5, 0.0, 1.0);
+        out_write(b, max(c, vec3(0.0)));
+        return;
+    }
+    vec3 e0 = max(c0 - threshold, 0.0), e1 = max(c1 - threshold, 0.0), e2 = max(c2 - threshold, 0.0), e3 = max(c3 - threshold, 0.0);
+    vec3 sum = e0 / (1.0 + max(e0.r, max(e0.g, e0.b)) / HIGHLIGHT) + e1 / (1.0 + max(e1.r, max(e1.g, e1.b)) / HIGHLIGHT)
+            + e2 / (1.0 + max(e2.r, max(e2.g, e2.b)) / HIGHLIGHT) + e3 / (1.0 + max(e3.r, max(e3.g, e3.b)) / HIGHLIGHT);
+    out_write(b, sum * 0.25);
+}
+
+// A downsample level: Unreal's high-quality box of the level above.
+void Down() {
+    int b;
+    ivec2 p;
+    if (!here(b, p)) return;
+    vec2 uv = uv_of(b, p);
+    if (b == 0) out_write(b, box(_In0, uv));
+    else if (b == 1) out_write(b, box(_In1, uv));
+    else out_write(b, box(_In2, uv));
+}
+
+// A stage's horizontal pass: its taps over the stage, at its full width or half (a fast blur, r.FastBlurThreshold).
+void Across() {
+    int b;
+    ivec2 p;
+    if (!here(b, p)) return;
+    int at = block(_Stage, b);
+    int count = int(ROWS(at).x);
+    if (count < 0) return;
+    out_write(b, in_taps(b, uv_of(b, p), at + 2, count));
+}
+
+// A stage's vertical pass: its taps over the horizontal pass, times the layer's tint, adding the layer before.
+void Layer() {
+    int b;
+    ivec2 p;
+    if (!here(b, p)) return;
+    int at = block(_Stage, b);
+    vec4 info = ROWS(at);
+    int count = int(info.x);
+    if (count < 0) return;
+    vec2 uv = uv_of(b, p);
+    vec3 sum = in_taps(b, uv, at + 2 + MAX_TAPS, count) * ROWS(at + 1).rgb;
+    if (info.z > 0.5) sum += add_at(b, uv);
+    out_write(b, sum);
+}

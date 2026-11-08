@@ -103,21 +103,24 @@ public final class CgPostStack {
         // A step a shader: each reads and parses its file to name its permutations, together 100 ms and more of a frame
         CgPipelinePrecache.Steps steps = CgPipelinePrecache.steps("crystalgraphics:post");
         for (String pass : WARMED) steps.step(pipelines -> pipelines.addPass(pass));
-        // The tonemapper's table, built on the GPU at the first look that tonemaps: its file parsed on a worker first
-        steps.ahead(() -> CgKernel.ahead(CgFilmLut::precache)).step(list -> list.kernels(CgFilmLut::precache));
+        // The bloom's and the tonemapper's table's kernels: their files parsed on a worker first
+        steps.ahead(() -> CgKernel.ahead(CgPostStack::precacheKernels)).step(list -> list.kernels(CgPostStack::precacheKernels));
         steps.start();
     }
 
+    private static void precacheKernels() {
+        CgBloom.precache();
+        CgFilmLut.precache();
+    }
+
     /**
-     * Bloom's and the composite's passes, each in every keyword set a setting can switch to, as its shader's permutation
-     * domain names them (bloom's source, the HDR scene, bloom, a fade); the HDR scene's way in; and the distortion's bend,
+     * The composite's passes, each in every keyword set a setting can switch to, as its shader's permutation
+     * domain names them (the HDR scene, bloom, a fade); the HDR scene's way in; and the distortion's bend,
      * which a tier below Medium never draws. The looks' keywords
      * follow volumes, not settings: each volume registers its own as it is made, and an asset's preparer requests them
      * ahead of it ({@link #lookPasses}).
      */
     private static final String[] WARMED = {
-            "crystalgraphics:shaders/post/bloom/down.shader", "crystalgraphics:shaders/post/bloom/excess.shader",
-            "crystalgraphics:shaders/post/bloom/gaussian.shader",
             "crystalgraphics:shaders/world_scene_in.shader", "crystalgraphics:shaders/world_scene_out.shader",
             "crystalgraphics:shaders/post/distortion_bend.shader", CgTranslucencyComposition.SHADER,
             "crystalgraphics:shaders/post/composite.shader", "crystalgraphics:shaders/post/composite_copy.shader"};

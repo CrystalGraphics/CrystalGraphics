@@ -9809,6 +9809,7 @@ com/crystalgraphics/render/post/bloom/CgBloom
   method public threshold ()F
   method public threshold (F)Lcom/crystalgraphics/render/post/bloom/CgBloom;
   method public tint (FFF)Lcom/crystalgraphics/render/post/bloom/CgBloom;
+  method public,static precache ()V
 com/crystalgraphics/render/post/bloom/CgBloom$Mode
   access public,final,enum
   extends java/lang/Enum

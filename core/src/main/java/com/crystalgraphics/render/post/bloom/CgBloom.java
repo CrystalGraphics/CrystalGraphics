@@ -3,19 +3,15 @@ package com.crystalgraphics.render.post.bloom;
 import java.util.Arrays;
 
 import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
-import com.crystalgraphics.api.material.CgMaterial;
-import com.crystalgraphics.api.mesh.CgMesh;
-import com.crystalgraphics.api.mesh.CgMeshTopology;
-import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.texture.CgTextureType;
-import com.crystalgraphics.render.draw.CgChunkBuilder;
-import com.crystalgraphics.render.draw.CgInstanceKind;
-import com.crystalgraphics.render.draw.CgOrder;
-import com.crystalgraphics.render.draw.CgPassConstants;
-import com.crystalgraphics.render.draw.CgPipeline;
+import com.crystalgraphics.compute.CgCompute;
+import com.crystalgraphics.compute.CgKernel;
+import com.crystalgraphics.render.graph.CgBufferDesc;
+import com.crystalgraphics.render.graph.CgBufferUsage;
+import com.crystalgraphics.render.graph.CgComputePass;
+import com.crystalgraphics.render.graph.CgDispatch;
+import com.crystalgraphics.render.graph.CgGraphBuffer;
 import com.crystalgraphics.render.graph.CgGraphTexture;
-import com.crystalgraphics.render.graph.CgLoad;
-import com.crystalgraphics.render.graph.CgRasterPass;
 import com.crystalgraphics.render.graph.CgRecording;
 import com.crystalgraphics.render.graph.CgTextureDesc;
 import com.crystalgraphics.render.post.CgPostContext;
@@ -52,6 +48,8 @@ import javax.annotation.Nullable;
  *       ({@link #ENGINE_SIZES}): each channel's excess past {@link #threshold}, spread as the chain it replaced spread it,
  *       times a volume's {@code bloom}. A look that asks gets Unreal's: its layers, its {@code BloomThreshold} and its
  *       setup.</li>
+ *   <li>Each graded layer ({@link CgGradeLayers}) blooms its own light by its own look, in the same dispatches as the
+ *       frame's: one chain however many looks.</li>
  *   <li>Nothing emitted this firing, nothing recorded.</li>
  *   <li>Settings are read on the render thread and may be written from any: a float, read at most a frame late.</li>
  * </ul>
@@ -95,27 +93,16 @@ public final class CgBloom implements CgPostEffect {
      * the height, at 480p); a layer whose stage would be shorter blurs the deepest one this tall. Every stage passes at 1080p.
      */
     static final int SHORTEST_STAGE = 8;
+    /** The blooms one chain runs: the frame's and each graded layer's ({@link CgGradeLayers#MAX}). */
+    static final int BLOOMS = 1 + CgGradeLayers.MAX;
 
-    private static final String EXCESS = "crystalgraphics:shaders/post/bloom/excess.shader";
-    private static final String DOWN = "crystalgraphics:shaders/post/bloom/down.shader";
-    private static final String GAUSSIAN = "crystalgraphics:shaders/post/bloom/gaussian.shader";
+    private static final String KERNELS = "crystalgraphics:shaders/env/compute/post/bloom.compute";
+    /** Unreal's bloom format; written from kernels as the media's R16F is. */
     private static final CgFrameBufferFormat FORMAT = CgFrameBufferFormat.builder("cg_bloom")
             .color(0, CgTextureType.R11F_G11F_B10F).build();
-    private static final CgMesh FULLSCREEN = CgMesh.vertices(3, CgMeshTopology.TRIANGLES);
-    private static final int GPU_EXCESS = CgGpuTrace.name("post.bloom.excess");
-    private static final int GPU_DOWN = CgGpuTrace.name("post.bloom.down");
-    private static final int[] GPU_LAYER = new int[STAGES];
-    private static final CgLoad CLEAR = CgLoad.clear(0f, 0f, 0f, 0f);
+    private static final int GPU_BLOOM = CgGpuTrace.name("post.bloom");
 
-    static {
-        for (int stage = 0; stage < STAGES; stage++) GPU_LAYER[stage] = CgGpuTrace.name("post.bloom.layer" + (stage + 1));
-    }
-
-    private final Source source = new Source("cg_bloom_excess");
-    private final Layers layers = new Layers();
-    /** Each graded layer's own bloom, from its own light, by its look. */
-    private final Source[] layerSource = {new Source("cg_bloom_layer0"), new Source("cg_bloom_layer1")};
-    private final Layers[] layerLayers = {new Layers(), new Layers()};
+    private final Chain chain = new Chain();
     /** The engine's layers, for the frame and for each graded layer: {@link #engine} sets their bloom and threshold. */
     private final CgPostSettings engine = engineLayers();
     private final CgPostSettings[] layerEngine = {engineLayers(), engineLayers()};
@@ -162,6 +149,12 @@ public final class CgBloom implements CgPostEffect {
         return threshold;
     }
 
+    /** Starts the chain's kernels, as a loading screen does. Render thread. */
+    public static void precache() {
+        CgCompute kernels = CgCompute.load(KERNELS);
+        for (String k : Chain.NAMES) kernels.kernel(k).precache();
+    }
+
     @Override
     public CgPostPoint point() {
         return CgPostPoint.BEFORE_COMPOSITE;
@@ -176,28 +169,27 @@ public final class CgBloom implements CgPostEffect {
     @Override
     public void record(CgPostContext post) {
         CgGraphTexture scene = post.resources().get(CgFrameKeys.SCENE);
-        CgGradeLayers graded = scene != null ? post.resources().get(CgGradeLayers.KEY) : null;
-        if (graded != null) recordLayers(post, graded);
-        if (post.settings().bloom() <= 0f || scene == null) return;
-        CgPostSettings look = shape(post.settings(), engine, threshold);
-        CgGraphTexture half = source.record(post, scene, look, graded);
-        CgGraphTexture glow = half == null ? null : layers.record(post.recording(), half, look, post.constants());
-        if (glow == null) return;
-        post.resources().put(LEVELS, layers.levels());
-        post.composite().bloom(glow, intensity, tintR, tintG, tintB, mode == Mode.ENERGY_CONSERVING);
-        post.composite().linear();
-    }
-
-    /** Each graded layer's bloom, from its light alone and by its look: Unreal's where it asks, else the engine's layers. */
-    private void recordLayers(CgPostContext post, CgGradeLayers graded) {
-        for (int k = 0; k < CgGradeLayers.MAX; k++) {
+        if (scene == null) return;
+        CgGradeLayers graded = post.resources().get(CgGradeLayers.KEY);
+        Chain c = chain;
+        c.begin(scene, graded);
+        int frame = -1;
+        if (post.settings().bloom() > 0f) frame = c.add(Chain.FRAME, shape(post.settings(), engine, threshold));
+        int[] layer = {-1, -1};
+        for (int k = 0; graded != null && k < CgGradeLayers.MAX; k++) {
             CgPostSettings look = graded.look(k);
             if (look == null || look.bloom() <= 0f) continue;
             float t = look.overrides(CgPostSettings.BLOOM_THRESHOLD) ? look.bloomThreshold() : threshold;
-            CgPostSettings shaped = shape(look, layerEngine[k], t);
-            CgGraphTexture half = layerSource[k].record(post, graded.layer(k), shaped, null);
-            CgGraphTexture glow = half == null ? null : layerLayers[k].record(post.recording(), half, shaped, post.constants());
-            if (glow != null) post.composite().layerBloom(k, glow, intensity);
+            layer[k] = c.add(Chain.LAYER0 + k, shape(look, layerEngine[k], t));
+        }
+        if (!c.record(post.recording())) return;
+        if (frame >= 0) {
+            post.resources().put(LEVELS, c.levels(frame));
+            post.composite().bloom(c.glow(frame), intensity, tintR, tintG, tintB, mode == Mode.ENERGY_CONSERVING);
+            post.composite().linear();
+        }
+        for (int k = 0; k < CgGradeLayers.MAX; k++) {
+            if (layer[k] >= 0) post.composite().layerBloom(k, c.glow(layer[k]), intensity);
         }
     }
 
@@ -250,123 +242,204 @@ public final class CgBloom implements CgPostEffect {
         return Math.exp(-16.7 * d * d);
     }
 
-    private static void draw(CgRecording recording, CgGraphTexture target, CgMaterial material, CgLoad load,
-                             CgPassConstants constants, float[] block, int zone) {
-        CgPipeline pipeline = material.pipeline(CgInstanceKind.OBJECT);
-        constants.read(block, 0).resolution(target.getWidth(), target.getHeight());
-        CgRasterPass pass = recording.raster(target, load, constants, null, CgOrder.SORTED).timed(zone);
-        CgChunkBuilder chunks = recording.chunks().begin();
-        chunks.draw(pipeline, material.captureBindings(recording.bindings()), FULLSCREEN);
-        chunks.instance();
-        pass.add(chunks.end());
-        pass.end();
-    }
-
     /**
-     * Bloom's source: a scene's light at half its size, less every graded layer's light in {@code layers}; each channel's
-     * excess past the threshold ({@link CgPostSettings#bloomsExcess}) or Unreal's setup on its 2x2 average.
-     */
-    private static final class Source {
-        private final String name;
-        private final CgPassConstants constants = new CgPassConstants();
-        private final float[] block = new float[CgPassConstants.FLOATS];
-        private CgMaterial material;
-        private CgGraphTexture target, boundScene, boundLayer0, boundLayer1;
-        private float boundThreshold = Float.NaN;
-        private boolean boundSetup, boundLayers;
-
-        Source(String name) {
-            this.name = name;
-        }
-
-        /** Null while the pass's program is not ready. */
-        @Nullable
-        CgGraphTexture record(CgPostContext post, CgGraphTexture scene, CgPostSettings look, @Nullable CgGradeLayers layers) {
-            int w = Math.max(1, scene.getWidth() / 2), h = Math.max(1, scene.getHeight() / 2);
-            if (target == null || target.getWidth() != w || target.getHeight() != h) {
-                target = CgGraphTexture.transientTexture(name, new CgTextureDesc(w, h, FORMAT));
-            }
-            if (material == null) material = CgMaterial.newInstance(EXCESS);
-            boolean unreal = !look.bloomsExcess();
-            // The excess form subtracts its threshold, so Unreal's -1 (the whole scene) is 0 there
-            float threshold = unreal ? look.bloomThreshold() : Math.max(0f, look.bloomThreshold());
-            CgGraphTexture l0 = layers != null ? layers.layer(0) : null, l1 = layers != null ? layers.layer(1) : null;
-            boolean less = l0 != null || l1 != null;
-            if (scene != boundScene || threshold != boundThreshold || unreal != boundSetup || less != boundLayers
-                    || l0 != boundLayer0 || l1 != boundLayer1) {
-                material.toggleKeyword("UNREAL_SETUP", unreal);
-                material.toggleKeyword("LAYERS", less);
-                material.applyProperties(b -> {
-                    b.sampler("_Scene", 0, scene).set1f("_Threshold", threshold)
-                            .vec4("_Layers", l0 != null ? 1f : 0f, l1 != null ? 1f : 0f, 0f, 0f);
-                    if (l0 != null) b.sampler("_Layer0", 0, l0);
-                    if (l1 != null) b.sampler("_Layer1", 0, l1);
-                });
-                boundScene = scene;
-                boundThreshold = threshold;
-                boundSetup = unreal;
-                boundLayers = less;
-                boundLayer0 = l0;
-                boundLayer1 = l1;
-            }
-            if (material.pipeline(CgInstanceKind.OBJECT) == null) return null;
-            post.constants().write(block, 0);
-            draw(post.recording(), target, material, CLEAR, constants, block, GPU_EXCESS);
-            return target;
-        }
-
-        void release() {
-            material = null;
-            target = boundScene = boundLayer0 = boundLayer1 = null;
-            boundThreshold = Float.NaN;
-        }
-    }
-
-    /**
-     * Unreal's Gaussian layers as raster passes: the half-size source downsampled to a 64th by Unreal's high-quality
-     * chain (four bilinear taps, a 4x4 box), then from the 64th up each layer a separable Gaussian of its stage, its
-     * vertical pass adding the layer before. Stage 0's layer holds the glow, which the composite adds whole.
+     * Unreal's Gaussian layers as compute, every bloom of the firing in one chain of dispatches ({@code bloom.compute}):
+     * each bloom's source at half size, downsampled to a 64th by Unreal's high-quality chain (four bilinear taps, a 4x4
+     * box), then from the 64th up each layer a separable Gaussian of its stage, its vertical pass adding the layer
+     * before. Stage 0's layer holds the glow, which the composite adds whole. Each bloom has its own targets and its own
+     * rows; a dispatch's z is the bloom.
      *
      * <p>Follows 5.1's {@code AddGaussianBloomPasses} (PostProcessBloomSetup.cpp): layer {@code i} blurs stage
      * {@code i - 1} with a kernel of {@code Bloom<i>Size * BloomSizeScale} percent of that stage's width, its weights times
-     * {@code Bloom<i>Tint * BloomIntensity / 6}; and {@code Compute1DGaussianFilterKernel} (PostProcessWeightedSampleSum.cpp)
-     * for the taps, and its fast blur ({@code r.FastBlurThreshold} 7): from a radius of 7 texels the horizontal pass draws
-     * at half width, which the vertical pass reads bilinearly.</p>
-     *
-     * <p>A texture a stage, as Unreal's: stages 1 to 5 ({@code down[k]} stage {@code k + 1}); each layer's horizontal
-     * pass, at full width and, for a fast blur, at half; each layer's sum. Levels of one texture cost a level pin a pass.
-     * Unlike Unreal's, a layer blurs no stage shorter than {@link #SHORTEST_STAGE}: its stage is {@code at[layer]}.</p>
+     * {@code Bloom<i>Tint * BloomIntensity / 6}; {@code Compute1DGaussianFilterKernel} (PostProcessWeightedSampleSum.cpp)
+     * for the taps, and its fast blur ({@code r.FastBlurThreshold} 7): from a radius of 7 texels the horizontal pass
+     * draws at half width, which the vertical pass reads bilinearly. Unlike Unreal's, a layer blurs no stage shorter
+     * than {@link #SHORTEST_STAGE}: its stage is {@code at[layer]}.</p>
      */
-    private static final class Layers {
-        private final CgGraphTexture[] down = new CgGraphTexture[STAGES - 1], across = new CgGraphTexture[STAGES],
-                acrossHalf = new CgGraphTexture[STAGES], layers = new CgGraphTexture[STAGES];
-        private int width, height;
-        /** The stage each layer blurs, and the deepest stage drawn: past it, no downsample draws. */
-        private final int[] at = new int[STAGES];
-        private int deepest;
-        /** Per stage: whether its horizontal pass draws at half width. */
-        private final boolean[] fast = new boolean[STAGES];
-        private final CgMaterial[] downs = new CgMaterial[STAGES - 1], horizontal = new CgMaterial[STAGES],
-                vertical = new CgMaterial[STAGES];
-        private CgGraphTexture boundSource;
-        /** Each pass's taps (offset u, offset v, weight, 0). */
-        private final float[][] taps = new float[STAGES * 2][MAX_TAPS * 4];
-        /** Per stage: what its taps were set for (percent, width, height, tint), then the stage it adds (-1 none). */
-        private final float[] bound = new float[STAGES * 7];
-        private final float[] block = new float[CgPassConstants.FLOATS];
-        private final CgPassConstants constants = new CgPassConstants();
-        private final double[] kernel = new double[MAX_TAPS * 2];
+    private static final class Chain {
 
-        /**
-         * Records the layers from {@code source} under {@code settings}' layers; answers the texture holding the glow, or
-         * null, recording nothing, while a program is not ready or no layer has a size.
-         */
+        static final String[] NAMES = {"Source", "Down", "Across", "Layer"};
+        /** What a bloom reads: the frame's scene less the graded layers' light, or a graded layer's own. */
+        static final int FRAME = 0, LAYER0 = 1;
+        /** {@code bloom.compute}'s rows: a bloom's source rows, then a block a stage and bloom. */
+        static final int SOURCE_ROWS = 2, BLOCK = 2 + 2 * MAX_TAPS, ROWS = SOURCE_ROWS * BLOOMS + STAGES * BLOOMS * BLOCK;
+        private static final String[] OUT = {"OUT0", "OUT1", "OUT2"}, IN = {"_In0", "_In1", "_In2"},
+                ADD = {"_Add0", "_Add1", "_Add2"};
+
+        private final Bloom[] blooms = {new Bloom(), new Bloom(), new Bloom()};
+        private int count;
+        private CgGraphTexture scene;
         @Nullable
-        CgGraphTexture record(CgRecording recording, CgGraphTexture source, CgPostSettings settings, CgPassConstants frame) {
-            int w = source.getWidth(), h = source.getHeight();
-            if (layers[0] == null || width != w || height != h) {
+        private CgGradeLayers graded;
+        private final float[] rows = new float[ROWS * 4], uploaded = new float[ROWS * 4];
+        private CgGraphBuffer buffer;
+        private final CgKernel[] kernels = new CgKernel[NAMES.length];
+        private final double[] kernel = new double[MAX_TAPS * 2];
+        /** A 1x1 target a dispatch binds where it runs fewer blooms than it declares. */
+        private CgGraphTexture unused;
+
+        void begin(CgGraphTexture scene, @Nullable CgGradeLayers graded) {
+            this.scene = scene;
+            this.graded = graded;
+            count = 0;
+        }
+
+        /** Adds a bloom of {@code source} ({@link #FRAME}, or {@link #LAYER0} + k) by {@code look}; its index. */
+        int add(int source, CgPostSettings look) {
+            Bloom b = blooms[count];
+            b.source = source;
+            b.look = look;
+            return count++;
+        }
+
+        CgGraphTexture glow(int b) {
+            return blooms[b].layers[0];
+        }
+
+        CgGraphTexture[] levels(int b) {
+            return blooms[b].layers;
+        }
+
+        /** Records every bloom added since {@link #begin} in one compute pass; false, recording nothing, where no layer has a size. */
+        boolean record(CgRecording recording) {
+            if (count == 0) return false;
+            for (int k = 0; k < NAMES.length; k++) if (kernels[k] == null) kernels[k] = CgCompute.load(KERNELS).kernel(NAMES[k]);
+            int width = 1, height = 1, deepest = 0;
+            boolean any = false;
+            for (int i = 0; i < count; i++) {
+                Bloom b = blooms[i];
+                b.size(sourceOf(b.source));
+                width = Math.max(width, b.width);
+                height = Math.max(height, b.height);
+                deepest = Math.max(deepest, b.deepest);   // a bloom with fewer stages reads none of the deeper ones
+                any |= b.weigh(this, i);
+            }
+            if (!any) return false;
+            if (buffer == null) {
+                buffer = CgGraphBuffer.persistent("cg_bloom.rows", CgBufferDesc.of(ROWS * 16L, CgBufferUsage.STORAGE,
+                        CgBufferUsage.COPY));
+                Arrays.fill(uploaded, Float.NaN);
+            }
+            if (!Arrays.equals(rows, uploaded)) {
+                recording.update(buffer, 0, rows, 0, rows.length);
+                System.arraycopy(rows, 0, uploaded, 0, rows.length);
+            }
+            if (unused == null) unused = CgGraphTexture.transientTexture("cg_bloom_unused", new CgTextureDesc(1, 1, FORMAT));
+            CgComputePass pass = recording.compute("cg.bloom").timed(GPU_BLOOM);
+            CgDispatch d = pass.dispatch(kernels[0], width, height, count).bind("ROWS", buffer).texture("_Scene", scene);
+            if (graded != null && graded.layer(0) != null) d.texture("_Layer0", graded.layer(0));
+            if (graded != null && graded.layer(1) != null) d.texture("_Layer1", graded.layer(1));
+            outs(d, -1, Pass.SOURCE);
+            for (int k = 0; k < deepest; k++) {
+                d = pass.dispatch(kernels[1], Math.max(1, width >> (k + 1)), Math.max(1, height >> (k + 1)), count);
+                ins(d, k, Pass.DOWN);
+                outs(d, k, Pass.DOWN);
+            }
+            for (int stage = STAGES - 1; stage >= 0; stage--) {
+                if (!drawsAny(stage)) continue;
+                int sw = 1, sh = 1;
+                for (int i = 0; i < count; i++) {
+                    sw = Math.max(sw, blooms[i].layers[stage].getWidth());
+                    sh = Math.max(sh, blooms[i].layers[stage].getHeight());
+                }
+                d = pass.dispatch(kernels[2], sw, sh, count).bind("ROWS", buffer).set("_Stage", stage);
+                ins(d, stage, Pass.ACROSS);
+                outs(d, stage, Pass.ACROSS);
+                d = pass.dispatch(kernels[3], sw, sh, count).bind("ROWS", buffer).set("_Stage", stage);
+                ins(d, stage, Pass.LAYER);
+                outs(d, stage, Pass.LAYER);
+            }
+            pass.end();
+            return true;
+        }
+
+        private enum Pass { SOURCE, DOWN, ACROSS, LAYER }
+
+        private boolean drawsAny(int stage) {
+            for (int i = 0; i < count; i++) if (blooms[i].drawn[stage]) return true;
+            return false;
+        }
+
+        /** Each bloom's input at {@code stage} (or downsample {@code stage}) bound; a bloom slot not run binds nothing. */
+        private void ins(CgDispatch d, int stage, Pass p) {
+            for (int i = 0; i < count; i++) {
+                Bloom b = blooms[i];
+                switch (p) {
+                    case DOWN -> d.texture(IN[i], stage == 0 ? b.half : b.down[stage - 1]);
+                    case ACROSS -> d.texture(IN[i], b.level(stage));
+                    case LAYER -> {
+                        d.texture(IN[i], b.fast[stage] ? b.acrossHalf[stage] : b.across[stage]);
+                        if (b.before[stage] >= 0) d.texture(ADD[i], b.layers[b.before[stage]]);
+                    }
+                    default -> { }
+                }
+            }
+        }
+
+        /** Each bloom's output bound, and every slot past the blooms run to the unused 1x1. */
+        private void outs(CgDispatch d, int stage, Pass p) {
+            for (int i = 0; i < BLOOMS; i++) {
+                if (i >= count) {
+                    d.image(OUT[i], unused);
+                    continue;
+                }
+                Bloom b = blooms[i];
+                d.image(OUT[i], switch (p) {
+                    case SOURCE -> b.half;
+                    case DOWN -> b.down[stage];
+                    case ACROSS -> b.fast[stage] ? b.acrossHalf[stage] : b.across[stage];
+                    case LAYER -> b.layers[stage];
+                });
+            }
+        }
+
+        private CgGraphTexture sourceOf(int source) {
+            if (source == FRAME || graded == null) return scene;
+            CgGraphTexture layer = graded.layer(source - LAYER0);
+            return layer != null ? layer : scene;
+        }
+
+        /** Row {@code row}'s four floats. */
+        void put(int row, float x, float y, float z, float w) {
+            rows[row * 4] = x;
+            rows[row * 4 + 1] = y;
+            rows[row * 4 + 2] = z;
+            rows[row * 4 + 3] = w;
+        }
+
+        void release() {
+            for (Bloom b : blooms) b.release();
+            Arrays.fill(kernels, null);
+            buffer = null;
+            unused = null;
+            scene = null;
+            graded = null;
+            count = 0;
+        }
+
+        /** One bloom's targets, its stages' state, and what its rows were last written for. */
+        private final class Bloom {
+            int source;
+            CgPostSettings look;
+            CgGraphTexture half;
+            final CgGraphTexture[] down = new CgGraphTexture[STAGES - 1], across = new CgGraphTexture[STAGES],
+                    acrossHalf = new CgGraphTexture[STAGES], layers = new CgGraphTexture[STAGES];
+            int width, height, deepest;
+            /** The stage each layer blurs. */
+            final int[] at = new int[STAGES];
+            final boolean[] fast = new boolean[STAGES], drawn = new boolean[STAGES];
+            /** The stage each stage's vertical pass adds, -1 none. */
+            final int[] before = new int[STAGES];
+            /** Per stage: what its rows were written for (percent, width, height, tint, before, slot), NaN for never. */
+            final float[] bound = new float[STAGES * 8];
+
+            /** Its targets for a source of {@code source}'s size: made again when the size moved. */
+            void size(CgGraphTexture source) {
+                int w = Math.max(1, source.getWidth() / 2), h = Math.max(1, source.getHeight() / 2);
+                if (half != null && width == w && height == h) return;
                 width = w;
                 height = h;
+                half = CgGraphTexture.transientTexture("cg_bloom_half", new CgTextureDesc(w, h, FORMAT));
                 deepest = 0;
                 while (deepest < STAGES - 1 && (h >> (deepest + 1)) >= SHORTEST_STAGE) deepest++;
                 for (int stage = 0; stage < STAGES; stage++) {
@@ -381,140 +454,95 @@ public final class CgBloom implements CgPostEffect {
                             new CgTextureDesc(Math.max(1, sw / 2), sh, FORMAT));
                     layers[stage] = CgGraphTexture.transientTexture("cg_bloom_layers", new CgTextureDesc(sw, sh, FORMAT));
                 }
-                boundSource = null;
+                Arrays.fill(bound, Float.NaN);
             }
-            ensureMaterials(source);
-            float tintScale = settings.bloom() / STAGES;
-            // From the 64th in: each layer with a size blurs its stage, adding the one before; the half-size stage always
-            // draws, with no taps of its own where its layer has no size, so the glow is stage 0's as Unreal's last pass is.
-            int before = -1;
-            for (int stage = STAGES - 1; stage >= 0; stage--) {
-                if (!drawn(settings, stage, before)) {
-                    bound[stage * 7 + 6] = Float.NEGATIVE_INFINITY;
-                    continue;
+
+            /** The level a stage's horizontal pass blurs: the half-size source, or a downsample. */
+            CgGraphTexture level(int stage) {
+                return at[stage] == 0 ? half : down[at[stage] - 1];
+            }
+
+            /**
+             * Writes its rows as slot {@code slot}: its source's, and from the 64th in, each stage it draws (its layer has
+             * a size, or it is the half-size stage under one that drew) with its taps and tint. False where none draws.
+             */
+            boolean weigh(Chain chain, int slot) {
+                boolean unreal = !look.bloomsExcess();
+                // The excess form subtracts its threshold, so Unreal's -1 (the whole scene) is 0 there
+                float threshold = unreal ? look.bloomThreshold() : Math.max(0f, look.bloomThreshold());
+                boolean frame = source == FRAME && graded != null;
+                chain.put(slot * SOURCE_ROWS, source, threshold, unreal ? 1f : 0f, 0f);
+                chain.put(slot * SOURCE_ROWS + 1, frame && graded.layer(0) != null ? 1f : 0f,
+                        frame && graded.layer(1) != null ? 1f : 0f, 0f, 0f);
+                float tintScale = look.bloom() / STAGES;
+                int last = -1;
+                for (int stage = STAGES - 1; stage >= 0; stage--) {
+                    drawn[stage] = look.bloomSize(stage + 1) * look.bloomSizeScale() > 1e-8f || stage == 0 && last >= 0;
+                    before[stage] = drawn[stage] ? last : -1;
+                    if (!drawn[stage]) {
+                        chain.put(block(stage, slot), -1f, 0f, 0f, 0f);
+                        bound[stage * 8] = Float.NaN;   // its rows now say so: drawn again, they are written again
+                        continue;
+                    }
+                    taps(chain, slot, stage, tintScale);
+                    last = stage;
                 }
-                if (!weigh(stage, settings, tintScale, before)) return null;
-                before = stage;
+                return last >= 0;
             }
-            if (before < 0) return null;
-            for (int k = 0; k < deepest; k++) if (downs[k].pipeline(CgInstanceKind.OBJECT) == null) return null;
-            for (int stage = 0; stage < STAGES; stage++) {
-                if (bound[stage * 7 + 6] == Float.NEGATIVE_INFINITY) continue;
-                if (horizontal[stage].pipeline(CgInstanceKind.OBJECT) == null || vertical[stage].pipeline(CgInstanceKind.OBJECT) == null) {
-                    return null;
+
+            private int block(int stage, int slot) {
+                return SOURCE_ROWS * BLOOMS + (stage * BLOOMS + slot) * BLOCK;
+            }
+
+            /** Stage {@code stage}'s info, tint and taps as slot {@code slot}, recomputed when what they depend on moved. */
+            private void taps(Chain chain, int slot, int stage, float tintScale) {
+                int w = layers[stage].getWidth(), h = layers[stage].getHeight();
+                float percent = look.bloomSize(stage + 1) * look.bloomSizeScale();
+                float r = look.bloomTint(stage + 1, 0) * tintScale, g = look.bloomTint(stage + 1, 1) * tintScale,
+                        b = look.bloomTint(stage + 1, 2) * tintScale;
+                int at = stage * 8;
+                if (bound[at] == percent && bound[at + 1] == w && bound[at + 2] == h && bound[at + 3] == r
+                        && bound[at + 4] == g && bound[at + 5] == b && bound[at + 6] == before[stage] && bound[at + 7] == slot) {
+                    return;
+                }
+                bound[at] = percent;
+                bound[at + 1] = w;
+                bound[at + 2] = h;
+                bound[at + 3] = r;
+                bound[at + 4] = g;
+                bound[at + 5] = b;
+                bound[at + 6] = before[stage];
+                bound[at + 7] = slot;
+                double radius = radius(w, percent);
+                int n = percent > 1e-8f ? kernel(radius, chain.kernel) : 0;
+                fast[stage] = n > 0 && radius >= FAST_BLUR_RADIUS;
+                int row = block(stage, slot);
+                chain.put(row, n, fast[stage] ? 1f : 0f, before[stage] >= 0 ? 1f : 0f, 0f);
+                chain.put(row + 1, r, g, b, 0f);
+                // Offsets stay in the source's texels: a half-width target's texel centres fall between two of them
+                for (int i = 0; i < MAX_TAPS; i++) {
+                    boolean on = i < n;
+                    chain.put(row + 2 + i, on ? (float) (chain.kernel[i * 2] / w) : 0f, 0f,
+                            on ? (float) chain.kernel[i * 2 + 1] : 0f, 0f);
+                    chain.put(row + 2 + MAX_TAPS + i, 0f, on ? (float) (chain.kernel[i * 2] / h) : 0f,
+                            on ? (float) chain.kernel[i * 2 + 1] : 0f, 0f);
                 }
             }
-            frame.write(block, 0);
-            // Unreal's ENoAction: one opaque triangle covers the target, so a clear is a wasted write (3 us a pass)
-            for (int k = 0; k < deepest; k++) draw(recording, down[k], downs[k], CgLoad.load(), constants, block, GPU_DOWN);
-            for (int stage = STAGES - 1; stage >= 0; stage--) {
-                if (bound[stage * 7 + 6] == Float.NEGATIVE_INFINITY) continue;
-                draw(recording, (fast[stage] ? acrossHalf : across)[stage], horizontal[stage], CgLoad.load(), constants, block,
-                        GPU_LAYER[stage]);
-                draw(recording, layers[stage], vertical[stage], CgLoad.load(), constants, block, GPU_LAYER[stage]);
-            }
-            return layers[0];
-        }
 
-        /** Each layer's sum, the glow first: what the last {@link #record} drew. Never changed by the caller. */
-        CgGraphTexture[] levels() {
-            return layers;
-        }
-
-        /** Whether {@code stage} draws: its layer has a size, or it is the half-size stage under one that drew. */
-        private static boolean drawn(CgPostSettings s, int stage, int before) {
-            return s.bloomSize(stage + 1) * s.bloomSizeScale() > 1e-8f || stage == 0 && before >= 0;
-        }
-
-        /** Forgets its materials, which the material registry frees with the context. */
-        void release() {
-            Arrays.fill(downs, null);
-            Arrays.fill(horizontal, null);
-            Arrays.fill(vertical, null);
-            boundSource = null;
-            Arrays.fill(down, null);
-            Arrays.fill(across, null);
-            Arrays.fill(acrossHalf, null);
-            Arrays.fill(layers, null);
-            Arrays.fill(bound, Float.NaN);
-        }
-
-        /** Each pass's material, its source set: made once, set again when its textures are made anew; the vertical's in weigh. */
-        private void ensureMaterials(CgGraphTexture source) {
-            if (source == boundSource && downs[0] != null) return;
-            boundSource = source;
-            Arrays.fill(bound, Float.NaN);
-            for (int k = 0; k < STAGES - 1; k++) {
-                if (downs[k] == null) downs[k] = CgMaterial.newInstance(DOWN);
-                CgTexture from = k == 0 ? source : down[k - 1];
-                downs[k].applyProperties(b -> b.sampler("_Source", 0, from));
+            void release() {
+                half = null;
+                Arrays.fill(down, null);
+                Arrays.fill(across, null);
+                Arrays.fill(acrossHalf, null);
+                Arrays.fill(layers, null);
+                Arrays.fill(bound, Float.NaN);
+                look = null;
             }
-            for (int stage = 0; stage < STAGES; stage++) {
-                if (horizontal[stage] == null) horizontal[stage] = CgMaterial.newInstance(GAUSSIAN);
-                if (vertical[stage] == null) vertical[stage] = CgMaterial.newInstance(GAUSSIAN);
-                CgTexture level = at[stage] == 0 ? source : down[at[stage] - 1];
-                horizontal[stage].applyProperties(b -> b.sampler("_Source", 0, level));
-            }
-        }
-
-        /**
-         * Sets stage {@code stage}'s two passes for its layer, adding stage {@code before} (-1 none), when its size, the
-         * size scale, its tint, the stage's size or what it adds moved; answers false while a material is not made.
-         */
-        private boolean weigh(int stage, CgPostSettings s, float tintScale, int before) {
-            CgMaterial h = horizontal[stage], v = vertical[stage];
-            if (h == null || v == null) return false;
-            int w = layers[stage].getWidth(), hgt = layers[stage].getHeight();
-            float percent = s.bloomSize(stage + 1) * s.bloomSizeScale();
-            float r = s.bloomTint(stage + 1, 0) * tintScale, g = s.bloomTint(stage + 1, 1) * tintScale,
-                    b = s.bloomTint(stage + 1, 2) * tintScale;
-            int at = stage * 7;
-            if (bound[at] == percent && bound[at + 1] == w && bound[at + 2] == hgt && bound[at + 3] == r && bound[at + 4] == g
-                    && bound[at + 5] == b && bound[at + 6] == before) {
-                return true;
-            }
-            bound[at] = percent;
-            bound[at + 1] = w;
-            bound[at + 2] = hgt;
-            bound[at + 3] = r;
-            bound[at + 4] = g;
-            bound[at + 5] = b;
-            bound[at + 6] = before;
-            double radius = radius(w, percent);
-            int count = percent > 1e-8f ? kernel(radius, kernel) : 0;
-            fast[stage] = count > 0 && radius >= FAST_BLUR_RADIUS;
-            // Offsets stay in the source's texels: a half-width target's texel centres fall between two of them
-            CgTexture acrossTarget = (fast[stage] ? acrossHalf : across)[stage];
-            float[] sideways = taps[stage * 2], downward = taps[stage * 2 + 1];
-            Arrays.fill(sideways, 0f);
-            Arrays.fill(downward, 0f);
-            for (int i = 0; i < count; i++) {
-                sideways[i * 4] = (float) (kernel[i * 2] / w);
-                sideways[i * 4 + 2] = (float) kernel[i * 2 + 1];
-                downward[i * 4 + 1] = (float) (kernel[i * 2] / hgt);
-                downward[i * 4 + 2] = (float) kernel[i * 2 + 1];
-            }
-            float n = count;
-            h.applyProperties(m -> m.array("_Taps", sideways).set1f("_Count", n).vec4("_Tint", 1f, 1f, 1f, 1f));
-            v.applyProperties(m -> m.sampler("_Source", 0, acrossTarget).array("_Taps", downward).set1f("_Count", n)
-                    .vec4("_Tint", r, g, b, 1f));
-            // Unreal's Additive input: the layer before it, sampled bilinearly
-            v.toggleKeyword("ADDITIVE", before >= 0);
-            if (before >= 0) {
-                CgTexture added = layers[before];
-                v.applyProperties(m -> m.sampler("_Additive", 1, added));
-            }
-            return true;
         }
     }
 
     /** Forgets what it made on the GPU. At context teardown, through the stack. */
     public void release() {
-        source.release();
-        layers.release();
-        for (int k = 0; k < CgGradeLayers.MAX; k++) {
-            layerSource[k].release();
-            layerLayers[k].release();
-        }
+        chain.release();
     }
 }
