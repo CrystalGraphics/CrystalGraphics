@@ -1601,13 +1601,12 @@ public final class CgMaterial {
     }
 
     /**
-     * Returns the numeric render queue priority for this material (default: 2000 = Geometry).
-     * For real materials, delegates to {@link CgMaterialShader#getRenderQueue()} so the value
-     * always reflects the last successful compile.
+     * Returns the numeric render queue priority for this material (default: 2000 = Geometry): its shader's as of the
+     * last successful compile ({@link CgMaterialShader#getRenderQueue()}), moved by its state's blend
+     * ({@link CgMaterialState#queue}).
      */
     public int getRenderQueue() {
-        if (cgMaterialShader != null) return cgMaterialShader.getRenderQueue();
-        return renderQueue;
+        return state.queue(cgMaterialShader != null ? cgMaterialShader.getRenderQueue() : renderQueue);
     }
 
     // ── Lifecycle ─────────────────────────────────────────────────────────────

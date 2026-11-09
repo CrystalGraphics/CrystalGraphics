@@ -48,8 +48,9 @@ import java.util.Objects;
  *       on an opaque or clipped draw, a {@code "Prepass"} shader, or with a depth write.</li>
  *   <li>Without a depth test it shows through walls too: pair it with an occlusion test of its own (a particle's
  *       {@code crystalgraphics:occlusion} module).</li>
- *   <li>The queue stays the shader's: an additive mode on an opaque-queue shader still draws in the opaque pass.</li>
- *   <li>Separate translucency orders a translucent draw only: on an opaque-queue shader it does nothing.</li>
+ *   <li>Its blend picks its pass, as Unreal's blend mode does ({@link #queue}): a translucent mode on an opaque-queue
+ *       shader draws in the transparent pass, {@link CgBlendMode#OPAQUE} on a transparent one in the opaque pass.</li>
+ *   <li>Separate translucency orders a translucent draw only: with {@link CgBlendMode#OPAQUE} it does nothing.</li>
  * </ul>
  */
 public final class CgMaterialState {
@@ -85,6 +86,26 @@ public final class CgMaterialState {
     @Nullable
     public CgBlendMode blend() {
         return blend;
+    }
+
+    /**
+     * The queue a material in this state draws in, from its shader's: Unreal picks the pass by the material's blend
+     * mode ({@code FBasePassMeshProcessor::TryAddMeshBatch}, {@code IsTranslucentBlendMode}). A translucent blend on a
+     * shader of the opaque queues draws in {@link CgRenderQueue#TRANSPARENT}; {@link CgBlendMode#OPAQUE} on a shader of
+     * the transparent queues draws in {@link CgRenderQueue#GEOMETRY}, or {@link CgRenderQueue#ALPHA_TEST} when it clips.
+     * The background and overlay queues, which Unreal has no pass for, stay the shader's.
+     *
+     * <pre>{@code
+     * int q = CgMaterialState.builder().blend(CgBlendMode.ALPHA).build().queue(CgRenderQueue.ALPHA_TEST);   // TRANSPARENT
+     * }</pre>
+     */
+    public int queue(int shaderQueue) {
+        if (blend == null || shaderQueue < CgRenderQueue.GEOMETRY || shaderQueue >= CgRenderQueue.OVERLAY_THRESHOLD) {
+            return shaderQueue;
+        }
+        boolean opaqueQueue = shaderQueue < CgRenderQueue.TRANSPARENT_THRESHOLD;
+        if (blend != CgBlendMode.OPAQUE) return opaqueQueue ? CgRenderQueue.TRANSPARENT : shaderQueue;
+        return opaqueQueue ? shaderQueue : clip ? CgRenderQueue.ALPHA_TEST : CgRenderQueue.GEOMETRY;
     }
 
     /** Whether it clips: Unreal's Masked, the shader's {@code "Depth" = "Clip"}. */

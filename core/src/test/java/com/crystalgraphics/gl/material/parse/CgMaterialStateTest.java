@@ -3,6 +3,7 @@ package com.crystalgraphics.gl.material.parse;
 import com.crystalgraphics.api.material.CgAttachedBuffer;
 import com.crystalgraphics.api.material.CgBlendMode;
 import com.crystalgraphics.api.material.CgMaterialState;
+import com.crystalgraphics.api.material.CgRenderQueue;
 import com.crystalgraphics.api.state.CgCullState;
 import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.platform.gl.CgCapabilities;
@@ -27,6 +28,21 @@ import static org.junit.Assert.assertTrue;
  * the shader authored with it would: every blend mode, the clip, and what a state is refused.
  */
 public class CgMaterialStateTest {
+
+    @Test
+    public void itsBlendPicksItsPassAsUnrealsBlendModeDoes() {
+        CgMaterialState alpha = CgMaterialState.builder().blend(CgBlendMode.ALPHA).build();
+        assertEquals("translucent on a masked shader", CgRenderQueue.TRANSPARENT, alpha.queue(CgRenderQueue.ALPHA_TEST));
+        assertEquals("translucent on an opaque shader", CgRenderQueue.TRANSPARENT, alpha.queue(CgRenderQueue.GEOMETRY));
+        assertEquals("a transparent shader keeps its queue", CgRenderQueue.AFTER_DISTORTION, alpha.queue(CgRenderQueue.AFTER_DISTORTION));
+        CgMaterialState opaque = CgMaterialState.builder().blend(CgBlendMode.OPAQUE).build();
+        assertEquals("opaque on a transparent shader", CgRenderQueue.GEOMETRY, opaque.queue(CgRenderQueue.TRANSPARENT));
+        assertEquals("masked on a transparent shader", CgRenderQueue.ALPHA_TEST,
+                CgMaterialState.builder().blend(CgBlendMode.OPAQUE).clip().build().queue(CgRenderQueue.TRANSPARENT));
+        assertEquals("the shader's own", CgRenderQueue.ALPHA_TEST, CgMaterialState.SHADER.queue(CgRenderQueue.ALPHA_TEST));
+        assertEquals("overlay stays", CgRenderQueue.OVERLAY, alpha.queue(CgRenderQueue.OVERLAY));
+        assertEquals("background stays", CgRenderQueue.BACKGROUND, alpha.queue(CgRenderQueue.BACKGROUND));
+    }
 
     private static final List<CgAttachedBuffer> NO_BUFFERS = Collections.emptyList();
 
