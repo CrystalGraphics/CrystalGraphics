@@ -174,6 +174,7 @@ Fabric's dev mod is `tasks.jar` bundling each module's `downgradedJar` —
 | Ask what a shape hits, give something a hitbox, test shapes against each other | [`docs/COLLISION.md`](docs/COLLISION.md) | `collision/CLAUDE.md`, `shape/CLAUDE.md` |
 | Load anything (files, textures, meshes, shaders, a kit), behind the loading screen or during play | **[`docs/LOADING.md`](docs/LOADING.md)** | `loading/CLAUDE.md`, `lifecycle/CLAUDE.md` |
 | Run work off the game's thread, or split it across cores | [`docs/JOBS.md`](docs/JOBS.md) | `job/CLAUDE.md` |
+| Play a sound: by name, in the world, riding an entity, music, subtitles, a mix | [`docs/AUDIO.md`](docs/AUDIO.md) | `audio/CLAUDE.md` |
 | Keep a product's files, a cache, or download something verified and resumable | [`docs/STORAGE.md`](docs/STORAGE.md) | `storage/CLAUDE.md` |
 | Wire anything into Minecraft | [`docs/MINECRAFT_INTEGRATION.md`](docs/MINECRAFT_INTEGRATION.md) | each host's `CLAUDE.md` |
 | Diagnose with a JVM flag | [`docs/DEBUG_FLAGS.md`](docs/DEBUG_FLAGS.md) | — |

@@ -516,7 +516,7 @@ sequencer.listen(CgSequenceEventListener.Side.OURS, (player, phase, event, args)
   the play stops.
 - **They are heard after the frame's tracks are applied**, in the order play crossed them: a listener sees the
   frame's values. `sequencer.heardSecondsAgo()` says how long before the frame's end the key fell, so a sound starts
-  on its own sample rather than the frame's ([audio](audio.md)):
+  on its own sample rather than the frame's ([audio](../AUDIO.md#11-starting-on-a-sample)):
 
   ```java
   sequencer.listen(CgSequenceEventListener.Side.OURS, (player, phase, event, args) ->

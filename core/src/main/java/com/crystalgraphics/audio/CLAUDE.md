@@ -1,7 +1,7 @@
 # audio — the engine's sound, as Unreal's AudioMixer
 
 A mixer on an audio thread of its own, fed from the frame by a command queue, writing to the host's output stream
-(`platform.audio.CgAudioOutput`). **Using it: `docs/vfx/audio.md`.**
+(`platform.audio.CgAudioOutput`). **Using it: `docs/AUDIO.md`.**
 
 ```java
 CgAudioEngine audio = CgWorld.client().add(new CgAudioEngine());
@@ -41,6 +41,5 @@ audio.play(new CgAudioTone(440, 0.25f, 1.0), 1f);
 - **Nothing here calls a host's sound engine**: even Minecraft's own sound events play through this mixer, read from
   the packs' `sounds.json` through `CgHostResources`. The host's sliders arrive through `platform.audio.CgHostVolume`;
   a mix's hush on the host's own sounds leaves through `CgHostDuck`, posted only where it moved.
-- **Sequences and cues find the engine in their world**: `CgSequencer.audio()`, the client world's for cues. Nothing
-  adds one by default; whoever runs sequences adds it beside the sequencer, and a caller that only plays a sound
-  takes `CgAudioEngine.of(world)`, which adds it at the first ask.
+- **Every caller finds the engine with `CgAudioEngine.active(world)`**: `CgSounds`, cues, `CgSequencer.audio()`. The
+  first ask adds it where the host has an audio output; nobody adds one by hand.

@@ -63,6 +63,7 @@ The build view (Java levels, toolchains, what a consumer build includes) is `doc
 | [`docs/LIGHTS.md`](LIGHTS.md) | The world's lights: adding them, how they light Minecraft (deferred, the G-buffer rebuilt from depth and colour), falloff, day and night, the light grid, lights from effects, what is planned |
 | [`docs/COLLISION.md`](COLLISION.md) | Questions about space: shapes, world queries (overlap, cast, ray), hits, hitboxes over time, shields, hitboxes on every side, snapshots, exact tests, the debug view, recipes |
 | [`docs/JOBS.md`](JOBS.md) | Work off the game's thread: jobs handed back at the next tick, keys and debounce, lanes, repeating simulations, `forEach` across cores, cancelling, progress, replies |
+| [`docs/AUDIO.md`](AUDIO.md) | Playing sound: `CgSounds`, names and loading, classes and voices, placing and following, attenuation, mixes, subtitles, sounds in cues and sequences |
 | [`docs/STORAGE.md`](STORAGE.md) | A product's files: the layout, config stores, verified cache installs, resumable downloads, and the per-product locations file that repairs dead links |
 | [`docs/NETWORKING.md`](NETWORKING.md) | Sending between server and clients: messages, requests, and networked objects (state mirrored to whoever sees it, per-player data, events, commands, server behaviours, prediction, saving, the test rig) |
 | [`docs/SERIALIZATION.md`](SERIALIZATION.md) | Codecs and where their values go: writing one, mutable objects, decoding into a live object, files in binary, JSON and YAML, Minecraft's NBT, changing a saved shape |
