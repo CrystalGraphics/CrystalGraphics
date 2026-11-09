@@ -236,9 +236,9 @@ final class CgVfxGpuSteps {
     private final StepView view = new StepView();
     /**
      * This frame's booked spawns, a CPU tick's each: its tenant, (first, candidates, bursts), (born, from xyz, to xyz,
-     * the loop's seconds at the tick's start and end, the legacy start time).
+     * the loop's seconds at the tick's start and end, the legacy start time, the books' time and length of the tick).
      */
-    private static final int PENDING_FLOATS = 10;
+    private static final int PENDING_FLOATS = 12;
     private Tenant[] pendingTenant = new Tenant[0];
     private int[] pendingInts = new int[0];
     private float[] pendingFloats = new float[0];
@@ -313,6 +313,12 @@ final class CgVfxGpuSteps {
 
     boolean isEmpty() {
         return tenants.isEmpty();
+    }
+
+    /** Whether a killed slot waits for a step to end its particles or close. */
+    boolean killsPending() {
+        for (int i = 0; i < tenants.size(); i++) if (tenants.get(i).killed) return true;
+        return false;
     }
 
     int tenants() {
@@ -403,9 +409,10 @@ final class CgVfxGpuSteps {
             Tenant tenant = tenants.get(i);
             CgVfxEmitterInstance instance = tenant.instance;
             float scale = tenant.timeRate(warmOnly);
-            if (tenant.parent == null && !tenant.killed && scale > 0f && !(warmOnly && !tenant.warm)) {
-                // Its effect no longer steps it: deactivated, so its emitter's inactive response applies.
-                boolean coasting = instance.time() == tenant.timeAfter;
+            if (tenant.parent == null && !tenant.killed && scale > 0f) {
+                // Its effect no longer steps it: deactivated, so its emitter's inactive response applies. A slot a
+                // prewarm holds still is not coasting; its kill is still taken, or a seek's replaced copy draws on paused.
+                boolean coasting = instance.time() == tenant.timeAfter && !(warmOnly && !tenant.warm);
                 if (coasting && instance.emitter().state().inactiveResponse() == CgVfxInactiveResponse.KILL) instance.kill();
                 // Its children come after it in the list, so they see the kill this tick.
                 if (instance.books().takeKill()) kill(instance);
@@ -469,6 +476,8 @@ final class CgVfxGpuSteps {
         pendingFloats[f + 7] = b.stepLoopFrom();
         pendingFloats[f + 8] = b.stepLoopTo();
         pendingFloats[f + 9] = b.stepStartTime();
+        pendingFloats[f + 10] = b.stepTime();
+        pendingFloats[f + 11] = b.stepDt();
         pending++;
     }
 
@@ -501,6 +510,11 @@ final class CgVfxGpuSteps {
             Tenant tenant = pendingTenant[k];
             if (!tenant.killed && !tenant.cleared && byInstance.get(tenant.instance) == tenant) {
                 int i = k * 3, f = k * PENDING_FLOATS;
+                // A Cascade emitter's bursts are born at the step's end, after the tick that booked them.
+                if (tenant.instance.emitter().spawning().burstsAtStepEnd()) {
+                    tenant.instance.books().burstsBornLate(pendingInts[i], pendingInts[i + 2], pendingFloats[f + 10],
+                            pendingFloats[f + 11], (dt - pendingFloats[f]) * tenant.timeRate(warmOnly));
+                }
                 tenant.pool.spawn(tenant.slot, pendingInts[i], pendingInts[i + 1], pendingInts[i + 2], pendingFloats[f],
                         CgVfxSystem.TICK, pendingFloats[f + 1], pendingFloats[f + 2], pendingFloats[f + 3],
                         pendingFloats[f + 4], pendingFloats[f + 5], pendingFloats[f + 6], pendingFloats[f + 7], pendingFloats[f + 8],

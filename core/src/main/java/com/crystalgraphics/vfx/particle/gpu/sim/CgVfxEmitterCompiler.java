@@ -682,6 +682,7 @@ public final class CgVfxEmitterCompiler {
 
                 """.replace("@ALONG@", switch (shape.spawning()) {
                     case INTERPOLATED -> ALONG;
+                    case CASCADE -> CASCADE_ALONG;
                     case CASCADE_LEGACY -> LEGACY_ALONG;
                     case CASCADE_GPU -> GPU_ALONG;
                 })
@@ -942,9 +943,9 @@ public final class CgVfxEmitterCompiler {
         for (int e = 0; e < shape.events(); e++) {
             switch (shape.trigger(e)) {
                 case LANDING -> event(s, shape, e, "p.resting && !wasResting", "impact", "vec3(0.0, 1.0, 0.0)", "FX_HIT_GROUND", "0u");
-                // At 0, the first step: a particle placed at age 0 ends it at exactly dt.
+                // At 0, the step it is born in, whatever of the step it aged (none for a Cascade burst).
                 case AGE -> event(s, shape, e, "(p.age - s.dt < " + eventValue(shape, e) + " || " + eventValue(shape, e)
-                        + " <= 0.0 && p.age <= s.dt) && " + eventValue(shape, e) + " <= p.age", "p.velocity",
+                        + " <= 0.0 && CG_ELEMENT >= live) && " + eventValue(shape, e) + " <= p.age", "p.velocity",
                         "step_normal(p.velocity)", "0.0", "0u");
                 case COLLISION -> event(s, shape, e, "p.hit.w > 0.0 && float(p.collisions) <= " + eventLimit(shape, e),
                         "impact", "p.hit.xyz", "p.hit.w", "p.collisions");
@@ -1463,12 +1464,23 @@ public final class CgVfxEmitterCompiler {
             """;
 
     /**
-     * Cascade's GPU sprites ({@code ParticleGpuSimulation.cpp} 4.21, {@code BuildNewParticles}): as interpolated, but
-     * burst spawn i of a tick's n is placed i / n along the source's move, the first where the source was.
+     * Cascade's CPU spawning ({@code ParticleEmitterInstances.cpp} 4.21): rate spawns as interpolated, each aged its
+     * spawn time; a burst's spawn time is 0 (:2064) and its update modules ran before it spawned (:834-837), so it is
+     * born at the step's end, where the source was, and draws its spawn frame at age 0.
+     */
+    private static final String CASCADE_ALONG = """
+                    float along = i >= bursts ? float(i - bursts + 1) / float(n - bursts) : 0.0;
+                    born = i >= bursts ? mix(when.x, when.y, along) : _Step.x;
+            """;
+
+    /**
+     * Cascade's GPU sprites ({@code ParticleGpuSimulation.cpp} 4.21, {@code BuildNewParticles}): as Cascade's CPU
+     * spawning, but burst spawn i of a tick's n is placed i / n along the source's move, the first where the source was;
+     * injected after the simulation with a start time of 0, it too is born at the step's end.
      */
     private static final String GPU_ALONG = """
                     float along = i >= bursts ? float(i - bursts + 1) / float(n - bursts) : float(i) / float(bursts);
-                    born = i >= bursts ? mix(when.x, when.y, along) : when.x;
+                    born = i >= bursts ? mix(when.x, when.y, along) : _Step.x;
             """;
 
     /**

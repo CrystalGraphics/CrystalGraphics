@@ -470,13 +470,25 @@ CgVfxEmitter.builder("sparks").capacity(500).spawning(CgVfxSpawning.CASCADE_LEGA
 - **`spawning`** is how a tick's new particles are timed and placed along the emitter's move:
   - absent (`CgVfxSpawning.INTERPOLATED`): bursts are born at the tick's start where the source was; rate spawns are
     spread across the tick and along the source's move, each stepped with the forces for the rest of the tick;
+  - `cascade`, Cascade's CPU emitters: as absent, except that bursts are born at the end of the frame's step, so a
+    burst draws its first frame at age 0 (its curves at their start, a mesh's sub-image at its first) and ages from
+    the next. Cascade updates its particles before it spawns, and a burst's spawn time is 0;
   - `cascade_legacy`, Cascade's `bUseLegacySpawningBehavior`:
     - every rate spawn of a tick is born at the tick's shared start time and placed that far along its velocity;
     - a burst is placed by its share of the tick;
     - spawn `i` of `n` is placed `(i + 1) / n` along the source's move, once it moved past a centimetre;
     - in the tick it spawns, each is moved by its velocity once more;
-  - `cascade_gpu`, Cascade's GPU sprites: as absent, except that burst spawn `i` of `n` is placed `i / n` along the
+  - `cascade_gpu`, Cascade's GPU sprites: as `cascade`, except that burst spawn `i` of `n` is placed `i / n` along the
     move, the first where the source was. A Cascade GPU emitter spawns this way whatever its legacy flag says.
+- **On its first frame an effect's age is that frame's length** while its `cascade` bursts are at age 0: Cascade's
+  emitter time also advances by the frame before the frame's spawns.
+- **A `cascade` burst's age at a frame depends on the frames stepped**, so a seek lands on the frame play showed only
+  when it is stepped as play was: give the effect a seek delta, Niagara's `SeekDelta`, and its prewarm steps in those
+  frames, ending at its start age.
+
+  ```java
+  owner.play(new CgVfxSystemInstance<>(HIT, x, y, z).startAt(age).seekDelta(1f / 60f));   // back a 60 Hz frame
+  ```
 - **`legacy_emitter_time`** is Cascade's `bUseLegacyEmitterTime`: a loop's seconds are the instance's age modulo its
   duration plus its delay. Without it, the loop's age carries its remainder over each loop (Niagara's looped age). The
   two differ only where a duration or delay is rolled again each loop, or where only the first loop waits its delay:

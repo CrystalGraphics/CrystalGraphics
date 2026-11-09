@@ -178,7 +178,10 @@ public final class CgVfxSystem {
     public static final float MAX_START_SECONDS = 30f;
     /** The most of an effect's last seconds before its start age whose particles a prewarm makes. */
     public static final float PREWARM_SECONDS = 2f;
-    /** GPU steps a prewarm takes at most, each a dispatch per pool: the window is stepped this coarsely. */
+    /**
+     * GPU steps a prewarm takes at most, each a dispatch per pool: the window is stepped this coarsely, unless an
+     * effect's {@link CgVfxEffect#seekDelta} asks for finer.
+     */
     private static final int PREWARM_STEPS = 16;
     private static final Logger LOGGER = LogManager.getLogger("CgVfxSystem");
     private static volatile String[] skipped = parts(SKIP.get());
@@ -445,6 +448,8 @@ public final class CgVfxSystem {
         }
         try (CgTrace.Zone ignored = CgTrace.zone(CgVfxTrace.CHANNEL, ADOPT_ZONE)) {
             adoptDefinitions();
+            // Killed since the last update (a seek's replaced copy): its slots' kill rides this update's steps
+            removeDead();
             startLate();
         }
         int ticks = 0;
@@ -523,11 +528,13 @@ public final class CgVfxSystem {
         // frame's DeltaTime: stepped only on frames owing a tick, a display faster than 120 Hz redraws the same step and
         // the particles beat. The books stay on the tick; the GPU leads them by the owed remainder.
         float dt = ticks * TICK + owed - gpuLead;
-        if (ticks > 0 || dt > 0f) {
+        boolean advancing = ticks > 0 || dt > 0f;
+        // Paused, a kill still steps (by 0): its particles end and its slot closes rather than draw on
+        if (advancing || gpuSteps.killsPending()) {
             try (CgTrace.Zone steps = CgTrace.zone(CgVfxTrace.CHANNEL, GPU_STEPS_ZONE)) {
-                gpuSteps.step(Math.max(dt, 0f), air);
+                gpuSteps.step(advancing ? Math.max(dt, 0f) : 0f, air);
             }
-            gpuLead = owed;
+            if (advancing) gpuLead = owed;
         }
         removeDead();
         for (int i = 0; i < owners.size(); i++) {
@@ -817,7 +824,15 @@ public final class CgVfxSystem {
             if (late.get(i) != null) window = Math.max(window, lateWindow[i]);
         }
         gpuSteps.beginPrewarm();
-        int coarse = Math.max(1, (window + PREWARM_STEPS - 1) / PREWARM_STEPS), booked = 0;
+        // Ticks a step: the finest seek delta asked for, else coarse; steps end at the window's end, where play's frames do
+        int seek = 0;
+        for (int i = 0; i < late.size(); i++) {
+            CgVfxEffect<?> effect = late.get(i);
+            if (effect == null || effect.seekDelta <= 0f) continue;
+            int k = Math.max(1, Math.round(effect.seekDelta / TICK));
+            seek = seek == 0 ? k : Math.min(seek, k);
+        }
+        int coarse = seek > 0 ? seek : Math.max(1, (window + PREWARM_STEPS - 1) / PREWARM_STEPS), booked = 0;
         for (int u = 0; u < window; u++) {
             for (int i = 0; i < late.size(); i++) {
                 CgVfxEffect<?> effect = late.get(i);
@@ -832,7 +847,8 @@ public final class CgVfxSystem {
             }
             try {
                 gpuSteps.prewarmBook(booked * TICK);
-                if (++booked == coarse || u == window - 1) {
+                booked++;
+                if ((window - 1 - u) % coarse == 0) {
                     gpuSteps.prewarmStep(booked * TICK, air);
                     booked = 0;
                 }

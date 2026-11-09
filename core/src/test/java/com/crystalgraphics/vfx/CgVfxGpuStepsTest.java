@@ -10,6 +10,7 @@ import com.crystalgraphics.vfx.particle.gpu.CgVfxEvent;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxParticlePool;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxEmitterState;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxInactiveResponse;
+import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawning;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
@@ -270,6 +271,35 @@ public class CgVfxGpuStepsTest {
         assertTrue(dropped.finished());
         frame(steps, air);
         assertEquals(0, CgVfxParticlePool.of(steps, core).openSlots());
+    }
+
+    @Test
+    public void aCascadeBurstBornAtTheStepsEndHoldsItsSlotThatMuchLonger() {
+        CgVfxEmitter flash = CgVfxEmitter.builder("flash").state(CgVfxEmitterState.ONCE).capacity(8).burst(0f, 4)
+                .life(0.25f, 0.25f).build();
+        int interpolated = framesToFinish(flash), cascade = framesToFinish(flash.toBuilder().spawning(CgVfxSpawning.CASCADE).build());
+        // 60 frames a second, two ticks each: booked in the first, born at the frame's end, a frame later.
+        assertEquals(interpolated + 1, cascade);
+    }
+
+    /** Frames of two ticks until {@code emitter}'s instance, booked from its first, has finished. */
+    private static int framesToFinish(CgVfxEmitter emitter) {
+        CgVfxGpuSteps steps = new CgVfxGpuSteps();
+        CgVfxAir air = new CgVfxAir().wind(0f, 0f, 0f);
+        CgVfxEmitterInstance instance = new CgVfxEmitterInstance(emitter, 0.6f);
+        instance.start(0f, 0f, 0f);
+        int frames = 0;
+        while (frames < 600 && !(frames > 0 && instance.finished())) {
+            for (int t = 0; t < 2; t++) {
+                boolean fresh = !instance.books().scheduled();
+                instance.books().schedule(DT, 0.0, 0.0, 0.0);
+                if (fresh) steps.admit(instance);
+                steps.book(t * DT);
+            }
+            steps.step(2f * DT, air);
+            frames++;
+        }
+        return frames;
     }
 
     @Test

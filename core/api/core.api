@@ -11827,6 +11827,7 @@ com/crystalgraphics/sequence/spawn/CgSequenceSystem
   extends java/lang/Object
   implements com/crystalgraphics/sequence/spawn/CgSequenceSpawned
   method public emitter (Ljava/lang/String;)Lcom/crystalgraphics/sequence/spawn/CgSequenceSystem;
+  method public seek (F)V
   method public,abstract activate (Z)V
   method public,abstract active ()Z
   method public,abstract age (F)V
@@ -14688,6 +14689,7 @@ com/crystalgraphics/vfx/CgVfxEffect
   method public,final scalability (Lcom/crystalgraphics/vfx/scalability/CgVfxScalability;)Lcom/crystalgraphics/vfx/CgVfxEffect;
   method public,final scale (FFF)Lcom/crystalgraphics/vfx/CgVfxEffect;
   method public,final seed ()F
+  method public,final seekDelta (F)Lcom/crystalgraphics/vfx/CgVfxEffect;
   method public,final set (Lcom/crystalgraphics/vfx/look/CgVfxParam$Color;FFFF)Lcom/crystalgraphics/vfx/CgVfxEffect;
   method public,final set (Lcom/crystalgraphics/vfx/look/CgVfxParam$Color;I)Lcom/crystalgraphics/vfx/CgVfxEffect;
   method public,final set (Lcom/crystalgraphics/vfx/look/CgVfxParam$Color;IF)Lcom/crystalgraphics/vfx/CgVfxEffect;
@@ -16401,6 +16403,7 @@ com/crystalgraphics/vfx/particle/CgVfxEmitterInstance$Books
   method public boxX ()F
   method public boxY ()F
   method public boxZ ()F
+  method public burstsBornLate (IIFFF)V
   method public coast (F)V
   method public entityBox (FFFFFF)V
   method public entityBoxReach ()F
@@ -16438,6 +16441,7 @@ com/crystalgraphics/vfx/particle/CgVfxEmitterInstance$Books
   method public spawnedSoFar ()I
   method public stepBursts ()I
   method public stepCandidates ()I
+  method public stepDt ()F
   method public stepFirstSpawn ()I
   method public stepLoopFrom ()F
   method public stepLoopTo ()F
@@ -19190,9 +19194,11 @@ com/crystalgraphics/vfx/particle/spawn/CgVfxSpawnRate$Bound
 com/crystalgraphics/vfx/particle/spawn/CgVfxSpawning
   access public,final,enum
   extends java/lang/Enum
+  field public,static,final CASCADE Lcom/crystalgraphics/vfx/particle/spawn/CgVfxSpawning;
   field public,static,final CASCADE_GPU Lcom/crystalgraphics/vfx/particle/spawn/CgVfxSpawning;
   field public,static,final CASCADE_LEGACY Lcom/crystalgraphics/vfx/particle/spawn/CgVfxSpawning;
   field public,static,final INTERPOLATED Lcom/crystalgraphics/vfx/particle/spawn/CgVfxSpawning;
+  method public burstsAtStepEnd ()Z
   method public key ()Ljava/lang/String;
   method public,static of (Ljava/lang/Object;)Lcom/crystalgraphics/vfx/particle/spawn/CgVfxSpawning;
   method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/vfx/particle/spawn/CgVfxSpawning;

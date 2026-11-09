@@ -47,6 +47,14 @@ public interface CgSequenceSystem extends CgSequenceSpawned {
     void age(float seconds);
 
     /**
+     * Lands it where play showed it {@code seconds} after it started, a seek's either way: forward or back, it is played
+     * again from its start unless it is already there. {@link #age} unless a system does better.
+     */
+    default void seek(float seconds) {
+        age(seconds);
+    }
+
+    /**
      * Its emitter of handle {@code handle} as a system of its own, which a track naming the handle drives: activating
      * it starts that emitter alone (the system too, if it is not playing), deactivating it stops its spawning. Null if
      * it has no such handle, or drives no emitter apart.

@@ -131,7 +131,7 @@ public final class CgVfxSystemSpawner implements CgSequenceSpawner {
         // A keyed transform moves its component each frame, as Sequencer's transform track does
         boolean follow = spawnable.follow() || at instanceof CgSequencePlacement p && p.live();
         return new Spawned(vfx, CgVfxAssets.ref(CgParticleKinds.SYSTEM, id), at, follow,
-                (float) player.definition().seconds(1), group(player), held, params, points);
+                (float) (1.0 / player.definition().displayRate().asDecimal()), group(player), held, params, points);
     }
 
     /** The sort group every effect {@code player} spawns joins: its systems' and its prefabs'. */
@@ -147,7 +147,7 @@ public final class CgVfxSystemSpawner implements CgSequenceSpawner {
         private final CgAttachment at;
         private final CgVfxSortGroup group;
         private final boolean follow;
-        /** A sequence tick in seconds: Niagara's seek delta. */
+        /** A display frame of its sequence in seconds, never a tick of its resolution: Niagara's seek delta. */
         private final float seekDelta;
         private final double[] point = new double[3];
         private final Quaternionf turn = new Quaternionf();
@@ -199,7 +199,8 @@ public final class CgVfxSystemSpawner implements CgSequenceSpawner {
             else made.orient(turn);
             Vector3f s = at.scale(null, scale);
             if (s.x != 1f || s.y != 1f || s.z != 1f) made.scale(s.x, s.y, s.z);
-            if (age > 0f) made.startAt(age);
+            // Warmed in sequence frames, as Niagara seeks a component by its SeekDelta
+            if (age > 0f) made.startAt(age).seekDelta(seekDelta);
             made.sortGroup(group);
             bind(made);
             for (String h : held) {
@@ -323,6 +324,12 @@ public final class CgVfxSystemSpawner implements CgSequenceSpawner {
         public void age(float seconds) {
             if (instance == null || Math.abs(instance.age() - seconds) <= seekDelta) return;
             play(seconds);
+        }
+
+        @Override
+        public void seek(float seconds) {
+            // Niagara's DesiredAge seek resets on any step back; a scrub lands within a tick of play's frame, or plays again
+            if (instance == null || Math.abs(instance.age() - seconds) > 0.5f * CgVfxSystem.TICK) play(seconds);
         }
 
         @Override

@@ -137,7 +137,7 @@ public class CgVfxEmitterCompilerTest {
                 .life(1f, 2f).shape(CgSphere.of(0.12)).surface().shapeVelocity(Map.of("range", List.of(2.0, 5.0)), false)
                 .build();
         CgVfxShape shape = CgVfxShape.of(flung);
-        assertTrue(CgVfxEmitterCompiler.source(shape).contains("step_rotate(q, local * vec3(1.0, 1.0 - s4.z, 1.0)) * "));
+        assertTrue(CgVfxEmitterCompiler.source(shape).contains("step_rotate(q, (local + way * front) * vec3(1.0, 1.0 - s4.z, 1.0)) * "));
         assertTrue(!CgVfxEmitterCompiler.source(CgVfxShape.of(EVERY_KIND)).contains("1.0 - s4.z"));
         CgVfxEmitterCompiler.compile(shape).kernel("Step").decl();
     }

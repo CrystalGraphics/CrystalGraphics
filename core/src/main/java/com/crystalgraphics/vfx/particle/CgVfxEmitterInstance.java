@@ -645,6 +645,25 @@ public final class CgVfxEmitterInstance {
         }
     }
 
+    /**
+     * Rebooks spawns {@code first} to {@code first + count}, booked born at the start of the {@code dt} tick at
+     * {@code time}, as born {@code late} seconds after it: a Cascade burst, born at the end of the frame's step.
+     */
+    private void bornLate(int first, int count, float time, float dt, float late) {
+        for (int k = first; k < first + count; k++) {
+            if (share < 1f && keyed(CgVfxGpuEmitter.KEY_THIN, k) >= share) continue;
+            float life = lifeOf(k);
+            float booked = time + dt * (float) Math.ceil(life / dt), death = time + dt * (float) Math.ceil((life + late) / dt);
+            lastDeath = Math.max(lastDeath, death);
+            if (dying == null) continue;
+            // A short life may already have been retired by a later tick of the frame.
+            long was = (long) Math.ceil((booked + dt) / BUCKET);
+            if (was <= retired) alive++;
+            else dying[(int) (was % dying.length)]--;
+            dying[(int) ((long) Math.ceil((death + dt) / BUCKET) % dying.length)]++;
+        }
+    }
+
     /** The life spawn {@code k} rolls; one in a form at its longest, which the kernel alone evaluates. */
     private float lifeOf(int k) {
         return emitter.lifeFormed ? emitter.lifeMax
@@ -1166,6 +1185,20 @@ public final class CgVfxEmitterInstance {
         /** When {@link #schedule}'s last step began: the time the pool's view of that step reads. */
         public float stepTime() {
             return stepTime;
+        }
+
+        /** {@link #schedule}'s last step's length. */
+        public float stepDt() {
+            return stepDt;
+        }
+
+        /**
+         * Its {@code count} bursts from spawn {@code first}, booked in the {@code dt} step at {@code time}, are born
+         * {@code late} seconds into it rather than at its start: where a Cascade emitter's bursts are born at the end of
+         * the frame's step ({@code CgVfxSpawning.burstsAtStepEnd}), their deaths and the capacity they hold move with them.
+         */
+        public void burstsBornLate(int first, int count, float time, float dt, float late) {
+            if (count > 0 && late > 0f) bornLate(first, count, time, dt, late);
         }
 
         /** The first spawn index {@link #schedule}'s last step queued. */

@@ -241,7 +241,8 @@ public final class CgCueInspector extends CgWorldSubsystem {
             } else if (from <= EPSILON || ends && from >= d - EPSILON) {
                 seek(ends ? d - STEP : 0);
             } else {
-                seek(from - STEP);
+                // On a whole frame: an age read back in float lands a hair short, a sequence tick early
+                seek(Math.max(0, Math.round(from / STEP) - 1) * STEP);
             }
         }
         return this;

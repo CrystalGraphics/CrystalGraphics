@@ -443,6 +443,8 @@ public final class CgVfxCueEffects implements CgCueEffects {
             playing.kill();
             float age = (float) (seconds * rate());
             playing = CgVfxEffect.seeded(seed, () -> spawn(cue, entry, at, age));
+            // Warmed in the inspector's frames, so it lands where stepping forward did
+            playing.seekDelta((float) (CgCueInspector.STEP * rate()));
         }
 
         @Override

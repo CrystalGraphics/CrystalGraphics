@@ -10,6 +10,7 @@ import com.crystalgraphics.vfx.particle.spawn.CgVfxEmitterState;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 /**
@@ -119,6 +120,32 @@ public class CgVfxStartAtTest {
             assertEquals(ages[i], late[i].age(), 1e-3f);
             assertTrue("a slot for the effect started at " + ages[i], vfx.gpuSteps().of(late[i].embers) != null);
         }
+    }
+
+    /** A seek delta steps the window in play's frames, past the coarse cap: a scrub lands on the frame play showed. */
+    @Test
+    public void aSeekDeltaStepsThePrewarmInItsFrames() {
+        CgVfxSystem vfx = new CgVfxSystem();
+        Phased late = vfx.play(new Phased());
+        late.startAt(0.5f).seekDelta(1f / 60f);
+        update(vfx, 0.0);
+        vfx.update(SOON);
+        // 30 frames of two ticks, then the update's own step
+        assertEquals(30 + 1, CgVfxParticlePool.of(vfx.gpuSteps(), EMBERS).queuedSteps());
+    }
+
+    /** A seek replaces its effect while paused: the replaced copy's particles end and its slot closes, no time passing. */
+    @Test
+    public void aCopyKilledForASeekEndsWhilePaused() {
+        CgVfxSystem vfx = new CgVfxSystem();
+        Phased first = vfx.play(new Phased());
+        for (int f = 0; f <= 6; f++) update(vfx, f / 60.0);
+        first.kill();
+        vfx.play(new Phased()).startAt(6 / 60f).seekDelta(1f / 60f);
+        update(vfx, 6 / 60.0);
+        update(vfx, 6 / 60.0);
+        assertNull("the replaced copy let go of its slot", vfx.gpuSteps().of(first.embers));
+        assertEquals(1, vfx.gpuSteps().tenants());
     }
 
     @Test

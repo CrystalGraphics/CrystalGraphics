@@ -131,6 +131,8 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
     private final Vector3f followScale = new Vector3f(1f), ownScale = new Vector3f(1f), worldScale = new Vector3f(1f);
     /** Seconds into its life it starts at, for its system's first update to fast-forward to; 0 once there. */
     float startAge;
+    /** The step its prewarm takes toward its start age ({@link #seekDelta}); 0 for the system's coarse steps. */
+    float seekDelta;
     /** Fast-forwarding to its start age: shakes and moments are not played. */
     boolean seeking;
     /** What its emitters threw on a worker, for the render thread to kill it over. */
@@ -678,7 +680,8 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
     /**
      * Starts it {@code seconds} into its life: its system's next update steps it there at once, on its fixed tick, so its
      * phase is what it would be had it played from zero. Its particles are prewarmed over the last
-     * {@link CgVfxSystem#PREWARM_SECONDS} at most, in coarse steps; older ones are not made. Call before its first tick:
+     * {@link CgVfxSystem#PREWARM_SECONDS} at most, in coarse steps unless {@link #seekDelta} names them; older ones are
+     * not made. Call before its first tick:
      * before playing it, or just after.
      *
      * <pre>{@code
@@ -695,6 +698,26 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
     public final E startAt(float seconds) {
         if (age > 0f) throw new IllegalStateException("startAt after its first tick: it has started");
         startAge = Math.max(0f, seconds);
+        return self();
+    }
+
+    /**
+     * The step its particles are prewarmed in toward {@link #startAt}'s age, Niagara's {@code SeekDelta}: a scrub that
+     * steps the frames play stepped lands on the frame play showed. Unset, the window is stepped coarsely.
+     *
+     * <pre>{@code
+     * owner.play(new Burst(look, x, y, z).startAt(age).seekDelta(1f / 60f));   // a dev tool stepping back a 60 Hz frame
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Rounded to whole ticks of {@link CgVfxSystem#TICK}, at least one; the steps end at the start age.</li>
+     *   <li>Several effects starting late in one update share their steps: the finest of their seek deltas.</li>
+     *   <li>A Cascade burst draws at age 0 on the step it spawns in, so its age at a frame depends on the steps taken:
+     *       a seek matches play only stepped as play was.</li>
+     * </ul>
+     */
+    public final E seekDelta(float seconds) {
+        seekDelta = Math.max(0f, seconds);
         return self();
     }
 
@@ -902,6 +925,7 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
         ownScale.set(1f);
         worldScale.set(1f);
         startAge = 0f;
+        seekDelta = 0f;
         seeking = false;
         failure = null;
         killed = false;

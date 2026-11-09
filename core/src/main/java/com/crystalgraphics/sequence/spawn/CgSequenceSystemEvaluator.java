@@ -107,7 +107,7 @@ public final class CgSequenceSystemEvaluator implements CgSequenceEvaluator {
                         system.activate(false);
                         // Lasting: a seek starts it at its age in the section (a system by startAt), never from 0.
                         if (range.jumped() && !was && keys.emitter() == null) {
-                            system.age((float) player.definition().seconds(now - channel.tick(last)));
+                            system.seek((float) player.definition().seconds(now - channel.tick(last)));
                         }
                     }
                     case DEACTIVATE -> system.deactivate();
@@ -140,7 +140,7 @@ public final class CgSequenceSystemEvaluator implements CgSequenceEvaluator {
         CgSequenceChannel.Particle op = last < 0 ? null : CgSequenceChannel.Particle.values()[channel.intValue(last)];
         if (op == CgSequenceChannel.Particle.ACTIVATE || op == CgSequenceChannel.Particle.TRIGGER) {
             system.activate(false);
-            system.age((float) player.definition().seconds(now - channel.tick(last)));
+            system.seek((float) player.definition().seconds(now - channel.tick(last)));
         } else if (op == CgSequenceChannel.Particle.KILL) {
             system.kill();
         } else if (system.active()) {
