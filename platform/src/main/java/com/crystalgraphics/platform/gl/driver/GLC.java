@@ -142,4 +142,9 @@ public final class GLC {
     public static final int GL_TIMESTAMP = 0x8E28, GL_QUERY_RESULT = 0x8866, GL_QUERY_RESULT_AVAILABLE = 0x8867;
     /** The longest object label a driver takes. */
     public static final int GL_MAX_LABEL_LENGTH = 0x82E8;
+    /** Program interfaces and their properties (GL 4.3's program introspection). */
+    public static final int GL_UNIFORM = 0x92E1, GL_UNIFORM_BLOCK = 0x92E2, GL_SHADER_STORAGE_BLOCK = 0x92E6,
+            GL_ACTIVE_RESOURCES = 0x92F5, GL_TYPE = 0x92FA, GL_BLOCK_INDEX = 0x92FD, GL_BUFFER_BINDING = 0x9302,
+            GL_REFERENCED_BY_VERTEX_SHADER = 0x9306, GL_REFERENCED_BY_FRAGMENT_SHADER = 0x930A,
+            GL_REFERENCED_BY_COMPUTE_SHADER = 0x930B, GL_LOCATION = 0x930E;
 }

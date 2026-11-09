@@ -237,7 +237,9 @@ public final class CgKernelEmitter {
 
     /**
      * Where a kernel's own resources bind: GL points, or compiled as written ({@code CG_EXPLICIT}) bindings of the
-     * material set, from {@link CgBindingModel}'s numbers.
+     * material set, from {@link CgBindingModel}'s numbers. Compiled by the GL driver itself ({@code CG_GL_NATIVE}), each
+     * index's point is a define the GL device writes; {@code GLNativeGlslCompiler} reads the bindings from the
+     * {@code CG_EXPLICIT} lines above it, and the push block's size from {@code CG_PUSH_CONSTANT_BYTES}.
      */
     private static void slots(StringBuilder sb) {
         sb.append("#ifdef CG_EXPLICIT\n")
@@ -248,6 +250,10 @@ public final class CgKernelEmitter {
           .append("#define CG_KSAMPLER(i) set = ").append(CgBindingModel.MATERIAL).append(", binding = ")
           .append(CgBindingModel.FIRST_TEXTURE).append(" + (i)\n")
           .append("#define CG_KERNEL_WORDS ").append(KERNEL_WORDS).append('\n')
+          .append("#define CG_PUSH_CONSTANT_BYTES ").append(PUSH_BYTES).append('\n')
+          .append("#ifdef CG_GL_NATIVE\n#undef CG_KBUFFER\n#undef CG_KIMAGE\n#undef CG_KSAMPLER\n")
+          .append("#define CG_KBUFFER(i) binding = CG_GL_KBUFFER_##i\n#define CG_KIMAGE(i) binding = CG_GL_KIMAGE_##i\n")
+          .append("#define CG_KSAMPLER(i) binding = CG_GL_KSAMPLER_##i\n#endif\n")
           .append("#else\n#define CG_KBUFFER(i) binding = i\n#define CG_KIMAGE(i) binding = i\n")
           .append("#define CG_KSAMPLER(i) binding = i\n#endif\n");
     }

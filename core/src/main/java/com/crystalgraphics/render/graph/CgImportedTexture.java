@@ -40,6 +40,7 @@ final class CgImportedTexture implements CgTexture {
     @Override
     public void bind(int unit) {
         CgBoundResources.texture(unit, this, -1);
+        if (CgBoundResources.notesOnly) return;
         CgTexture.active(unit);
         CgTexture.bind(target, name);
     }

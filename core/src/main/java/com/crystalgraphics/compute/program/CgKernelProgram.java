@@ -576,6 +576,11 @@ public final class CgKernelProgram {
         }
     }
 
+    /** Buffer {@code name}'s place among the kernel's buffers: its binding is {@code FIRST_KERNEL_BUFFER} past it. */
+    public int bufferIndex(String name) {
+        return buffer(name).index();
+    }
+
     private CgBufferDecl buffer(String name) {
         CgBufferDecl b = source.buffer(name);
         if (b == null) throw new IllegalArgumentException("[" + source.path() + "] no buffer '" + name + "'");

@@ -216,6 +216,18 @@ public interface CgGLDriver {
 
     String glGetProgramInfoLog(int program);
 
+    /** One of {@code interfaces}'s properties for {@code program}: {@code GL_ACTIVE_RESOURCES}, how many it has. */
+    int glGetProgramInterfacei(int program, int programInterface, int name);
+
+    /** The active resource {@code index} of {@code programInterface}'s name. */
+    String glGetProgramResourceName(int program, int programInterface, int index);
+
+    /** One property of the active resource {@code index}: its {@code GL_TYPE}, {@code GL_BUFFER_BINDING}, ... */
+    int glGetProgramResourcei(int program, int programInterface, int index, int property);
+
+    /** A uniform's value as an int: a sampler's or an image's unit. */
+    int glGetUniformi(int program, int location);
+
     void glDeleteProgram(int program);
 
     void glUseProgram(int program);

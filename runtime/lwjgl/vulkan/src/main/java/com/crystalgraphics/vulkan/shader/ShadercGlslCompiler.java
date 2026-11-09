@@ -4,6 +4,7 @@ import java.util.TreeMap;
 import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.rhi.binding.CgBindingLayout;
 import com.crystalgraphics.platform.rhi.shader.CgGlslCompiler;
+import com.crystalgraphics.platform.rhi.shader.CgGlslSources;
 import com.crystalgraphics.platform.rhi.shader.CgShaderModule;
 import org.lwjgl.system.MemoryStack;
 
@@ -17,8 +18,6 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 import static org.lwjgl.system.MemoryStack.stackPush;
 import static org.lwjgl.system.MemoryUtil.memFree;
@@ -55,8 +54,6 @@ import static org.lwjgl.util.shaderc.Shaderc.*;
  */
 public final class ShadercGlslCompiler implements CgGlslCompiler, AutoCloseable {
 
-    private static final Pattern VERSION = Pattern.compile("(?m)^[ \\t]*#[ \\t]*version\\b.*$");
-    private static final Pattern MAIN = Pattern.compile("\\bvoid\\s+main\\s*\\(\\s*(?:void)?\\s*\\)");
     private static final String DEFINES = "#define gl_VertexID gl_VertexIndex\n#define gl_InstanceID gl_InstanceIndex\n";
     /** What a source compiled as written is told: it binds as {@code CgBindingModel} writes, and pushes its words. */
     private static final String EXPLICIT = "#define CG_EXPLICIT 1\n";
@@ -387,47 +384,13 @@ public final class ShadercGlslCompiler implements CgGlslCompiler, AutoCloseable 
         return kind == shaderc_glsl_vertex_shader ? "vertex" : kind == shaderc_glsl_fragment_shader ? "fragment" : "compute";
     }
 
-    /**
-     * 26.2's two defines and {@code more} after {@code #version}, and a {@code #line} so errors keep the source's
-     * numbering.
-     */
+    /** 26.2's two defines and {@code more} after {@code #version}. */
     private static String withDefines(String source, String label, String more) {
-        Matcher m = VERSION.matcher(source);
-        if (!m.find()) throw new CgShaderModule.CompileException(label + ": no #version");
-        int line = 2 + count(source, m.end());
-        return source.substring(0, m.end()) + "\n" + DEFINES + more + "#line " + line + source.substring(m.end());
+        return CgGlslSources.withDefines(source, label, DEFINES + more);
     }
 
-    /** {@code main} renamed, and a {@code main} after it that calls it and maps clip z from [-w, w] to [0, w]. */
     private static String wrapMain(String source, String label) {
-        Matcher m = MAIN.matcher(withoutComments(source));
-        if (!m.find()) throw new CgShaderModule.CompileException(label + ": the vertex stage has no main()");
-        return source.substring(0, m.start()) + "void cg_main_user()" + source.substring(m.end())
-                + "\nvoid main() {\n    cg_main_user();\n    gl_Position.z = (gl_Position.z + gl_Position.w) * 0.5;\n}\n";
-    }
-
-    private static int count(String s, int end) {
-        int n = 0;
-        for (int i = 0; i < end; i++) if (s.charAt(i) == '\n') n++;
-        return n;
-    }
-
-    /** Comments as spaces, so a match's offsets are the source's. */
-    private static String withoutComments(String s) {
-        char[] c = s.toCharArray();
-        for (int i = 0; i < c.length; i++) {
-            if (c[i] == '/' && i + 1 < c.length && c[i + 1] == '/') {
-                while (i < c.length && c[i] != '\n') c[i++] = ' ';
-            } else if (c[i] == '/' && i + 1 < c.length && c[i + 1] == '*') {
-                while (i < c.length && !(c[i] == '*' && i + 1 < c.length && c[i + 1] == '/')) {
-                    if (c[i] != '\n') c[i] = ' ';
-                    i++;
-                }
-                if (i < c.length) c[i] = ' ';
-                if (i + 1 < c.length) c[++i] = ' ';
-            }
-        }
-        return new String(c);
+        return CgGlslSources.wrapMain(source, label);
     }
 
     @Override

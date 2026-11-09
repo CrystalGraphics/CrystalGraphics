@@ -162,7 +162,8 @@ Fabric's dev mod is `tasks.jar` bundling each module's `downgradedJar` —
 | Draw at a host's render stage, or meshes into the world | [`docs/ENGINE_API.md`](docs/ENGINE_API.md) § *Render stages*, § *CgWorldRenderer* | `render/world/CLAUDE.md` |
 | Create a framebuffer, texture, mesh or shader buffer | [`docs/ENGINE_API.md`](docs/ENGINE_API.md) | `api/framebuffer`, `api/texture`, `api/mesh`, `gl/buffer/shader` |
 | Upload, compute or read back off the render thread or beside the frame | [`docs/ENGINE_API.md`](docs/ENGINE_API.md) § *Async* | `gpu/`, `gl/texture`, `render/graph` |
-| Save and restore GL state across a pass | [`docs/ENGINE_API.md`](docs/ENGINE_API.md) § *GL State Save/Restore* | `gl/state/CLAUDE.md` |
+| Know who sets GPU state, on GL and Vulkan, and what crosses to the host | **[`docs/RENDER_STATE.md`](docs/RENDER_STATE.md)** | `platform/gl/state` |
+| Save and restore GL state across a pass (`CgGL` callers, until H7) | [`docs/ENGINE_API.md`](docs/ENGINE_API.md) § *GL State Save/Restore* | `gl/state/CLAUDE.md` |
 | Render text on screen | `docs/font/README.md` | `text/CLAUDE.md` |
 | Draw 2D quads, curves or text through the renderers | [`docs/ENGINE_API.md`](docs/ENGINE_API.md) § *Instanced renderers* | `gl/render/CLAUDE.md` |
 | Load a resource file (shader source, config, image) | [`docs/ENGINE_API.md`](docs/ENGINE_API.md) § *Resource I/O* | `util/io/CgIO` |

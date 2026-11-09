@@ -1,5 +1,6 @@
 package com.crystalgraphics.gl.texture;
 
+import com.crystalgraphics.platform.rhi.resource.CgTextureRegion;
 import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
 import com.crystalgraphics.platform.gl.format.GLFormats;
 import com.crystalgraphics.gl.CgGlNames;
@@ -200,6 +201,11 @@ public final class CgTextureCubemap extends CgTextureAbstract {
                     pixelFormat, pixelType);
             return;
         }
+        if (image != null) {
+            CgDeviceTextures.write(image, new CgTextureRegion(level, x, y, face, width, height, 1), pixels, pixelFormat,
+                    pixelType);
+            return;
+        }
         try (CgGlScope restore = gpu.restoring()) {
             CgGL.glBindTexture(CgGL.GL_TEXTURE_CUBE_MAP, textureId);
             try (CgTightUnpack ignored = CgTightUnpack.begin()) {
@@ -223,6 +229,11 @@ public final class CgTextureCubemap extends CgTextureAbstract {
     }
 
     private void land(CgUploadLease lease) {
+        if (image != null) {
+            CgDeviceTextures.write(image, new CgTextureRegion(lease.level(), lease.x(), lease.y(), lease.z(), lease.width(),
+                    lease.height(), 1), lease, 0, lease.size());
+            return;
+        }
         CgGL.glBindTexture(CgGL.GL_TEXTURE_CUBE_MAP, textureId);
         try (CgTightUnpack ignored = CgTightUnpack.begin()) {
             lease.texSubImage2D(FACE_TARGETS[lease.z()]);
@@ -233,6 +244,12 @@ public final class CgTextureCubemap extends CgTextureAbstract {
 
     /** Level 0 of every face at {@code size}, the texture made first if it has no id yet. */
     private void storage(int size) {
+        if (CgDeviceTextures.installed()) {
+            int chain = spec.getMipmaps().isEnabled() ? CgTexture.fullChain(size, size) : 1;
+            CgDeviceTextures.release(storeOnDevice(CgGpuTexture.Kind.CUBE, GLFormats.of(spec.getGlInternalFormat()), size,
+                    size, 6, chain, spec));
+            return;
+        }
         boolean made = textureId == 0;
         if (made) textureId = CgGlNames.texture();
         CgGL.glBindTexture(CgGL.GL_TEXTURE_CUBE_MAP, textureId);
@@ -254,6 +271,10 @@ public final class CgTextureCubemap extends CgTextureAbstract {
 
     /** The spec's filters and wrap, and its mipmaps from what the faces hold now. */
     private void applySpec() {
+        if (image != null) {   // its parameters were set with its storage
+            if (spec.getMipmaps().isEnabled()) CgDeviceTextures.mipmaps(image);
+            return;
+        }
         CgGL.glBindTexture(CgGL.GL_TEXTURE_CUBE_MAP, textureId);
         try {
             spec.applyTo(CgGL.GL_TEXTURE_CUBE_MAP);

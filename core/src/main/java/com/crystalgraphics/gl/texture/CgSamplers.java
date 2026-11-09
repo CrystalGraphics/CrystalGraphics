@@ -47,6 +47,7 @@ public final class CgSamplers {
     /** Binds {@code sampler}'s object to {@code unit} for {@code texture}, or none for {@code null}. */
     public static void bind(int unit, @Nullable CgSampler sampler, CgTexture texture) {
         CgBoundResources.sampler(unit, sampler);
+        if (CgBoundResources.notesOnly) return;
         int name = sampler == null ? 0 : name(sampler, texture.getLevels() > 1);
         if (unit < UNITS) {
             if (BOUND[unit] == name) return;

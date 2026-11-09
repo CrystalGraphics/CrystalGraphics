@@ -17,10 +17,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.jar.Manifest;
 
-import com.crystalgraphics.platform.gl.CgGLDevice;
-import com.crystalgraphics.platform.gl.driver.CgGLDriver;
+import com.crystalgraphics.platform.gl.pipeline.GLNativeTranslator;
 import com.crystalgraphics.platform.gl.pipeline.GLShaderTranslator;
-import com.crystalgraphics.platform.gl.state.GLHostState;
 import com.crystalgraphics.platform.service.CgCacheDirectory;
 import com.crystalgraphics.platform.rhi.shader.CgGlslCompiler;
 import com.crystalgraphics.vulkan.shader.ShadercGlslCompiler;
@@ -28,13 +26,12 @@ import com.crystalgraphics.vulkan.shader.SpvcGlslTranslator;
 
 /**
  * The shader toolchain, shaderc and SPIRV-Cross on LWJGL 3.4, loaded apart from the host's own LWJGL, whatever version
- * that is, LWJGL 2 included: what lets a GL-era host make a GL device. The jars come from
+ * that is, LWJGL 2 included: what a GL-era host's device compiles with once it is on disk. The jars come from
  * {@code CgShaderToolchainFiles.fetch}.
  *
  * <pre>{@code
  * CgShaderToolchain toolchain = CgShaderToolchain.load(jars, CgCacheDirectory.of("shader-toolchain").resolve("natives"));
- * CgGLDevice device = new CgGLDevice(driver, toolchain.translator(), w, h, false, GLHostState.sharedWithCgGL());
- * device.installBesideCgGL(toolchain.compiler(CgCacheDirectory.of("spirv")));
+ * toolchain.installOver(translator);   // the GLNativeTranslator the device was made with
  * }</pre>
  *
  * <ul>
@@ -93,13 +90,13 @@ public final class CgShaderToolchain {
     }
 
     /**
-     * A GL device beside {@code CgGL} in the current context, on {@code driver}, made with this toolchain and
-     * installed whole ({@link CgGLDevice#installBesideCgGL}), its modules kept in the engine's cache. Render thread,
-     * the host's context current.
+     * A GL device started on the driver's own compiler takes this toolchain from now on: SPIR-V through
+     * {@code translator}, and shaderc as the process's compiler, its modules kept in the engine's cache. What the
+     * driver compiled before stays. Render thread.
      */
-    public CgGLDevice glDeviceBesideCgGL(CgGLDriver driver, int width, int height) {
-        CgGLDevice device = new CgGLDevice(driver, translator(), width, height, false, GLHostState.sharedWithCgGL());
-        return device.installBesideCgGL(compiler(CgCacheDirectory.of("spirv")));
+    public void installOver(GLNativeTranslator translator) {
+        translator.spirv(translator());
+        CgGlslCompiler.install(compiler(CgCacheDirectory.of("spirv")));
     }
 
     /** SPIRV-Cross as a GL device's translator, SPIR-V back to GLSL 4.60. */

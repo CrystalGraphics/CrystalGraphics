@@ -536,6 +536,16 @@ public final class GLStateFilter implements CgGLDriver {
     @Override public int glGetNamedFramebufferAttachmentParameteri(int framebuffer, int attachment, int name) { return raw.glGetNamedFramebufferAttachmentParameteri(framebuffer, attachment, name); }
     @Override public String glGetProgramInfoLog(int program) { return raw.glGetProgramInfoLog(program); }
     @Override public void glDeleteProgram(int program) { raw.glDeleteProgram(program); }
+    @Override public int glGetProgramInterfacei(int program, int programInterface, int name) {
+        return raw.glGetProgramInterfacei(program, programInterface, name);
+    }
+    @Override public String glGetProgramResourceName(int program, int programInterface, int index) {
+        return raw.glGetProgramResourceName(program, programInterface, index);
+    }
+    @Override public int glGetProgramResourcei(int program, int programInterface, int index, int property) {
+        return raw.glGetProgramResourcei(program, programInterface, index, property);
+    }
+    @Override public int glGetUniformi(int program, int location) { return raw.glGetUniformi(program, location); }
     @Override public void glProgramParameteri(int program, int name, int value) { raw.glProgramParameteri(program, name, value); }
     @Override public int glGetProgramBinary(int program, ByteBuffer out) { return raw.glGetProgramBinary(program, out); }
     @Override public void glProgramBinary(int program, int format, ByteBuffer binary) { raw.glProgramBinary(program, format, binary); }

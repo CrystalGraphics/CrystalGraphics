@@ -359,6 +359,27 @@ public final class Lwjgl3GLDriver implements CgGLDriver {
 
     @Override public void glDeleteProgram(int program) { GL46.glDeleteProgram(program); }
 
+    @Override
+    public int glGetProgramInterfacei(int program, int programInterface, int name) {
+        return GL46.glGetProgramInterfacei(program, programInterface, name);
+    }
+
+    @Override
+    public String glGetProgramResourceName(int program, int programInterface, int index) {
+        return GL46.glGetProgramResourceName(program, programInterface, index);
+    }
+
+    @Override
+    public int glGetProgramResourcei(int program, int programInterface, int index, int property) {
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            IntBuffer value = stack.mallocInt(1);
+            GL46.glGetProgramResourceiv(program, programInterface, index, stack.ints(property), null, value);
+            return value.get(0);
+        }
+    }
+
+    @Override public int glGetUniformi(int program, int location) { return GL46.glGetUniformi(program, location); }
+
     @Override public void glUseProgram(int program) { GL46.glUseProgram(program); }
 
     @Override public void glProgramParameteri(int program, int name, int value) { GL46.glProgramParameteri(program, name, value); }

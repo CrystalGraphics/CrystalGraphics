@@ -12,6 +12,7 @@ import com.crystalgraphics.mc.CgReloadable;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.CgGLImports;
 import com.crystalgraphics.platform.rhi.CgRHI;
+import com.crystalgraphics.platform.rhi.format.CgFormat;
 import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
 import com.crystalgraphics.platform.gl.state.CgGlSlot;
 import com.crystalgraphics.trace.CgTrace;
@@ -147,6 +148,7 @@ public abstract class CgTextureAbstract implements CgTexture, CgReloadable {
         checkUsable();
         gpu.flush();
         CgBoundResources.texture(unit, this, -1);
+        if (CgBoundResources.notesOnly) return;
         if (SKIP_HELD) {
             CgGL.cgBindTexture(unit, getTarget(), textureId);
             return;
@@ -279,6 +281,37 @@ public abstract class CgTextureAbstract implements CgTexture, CgReloadable {
             }
             textureId = 0;
         });
+    }
+
+    // ── Device storage ──────────────────────────────────────────────
+
+    /**
+     * Render thread: storage on the device of {@code kind} and {@code format}, {@code width x height x depthOrLayers},
+     * {@code chain} levels, made where it has none of that shape: its {@code CgGL} name taken with it, {@code sampling}'s
+     * parameters set there, through all {@code chain} levels. Answers the storage it replaced, which the caller releases
+     * (once it has copied out of it) through {@link CgDeviceTextures#release}; null where nothing changed or it had none.
+     */
+    @Nullable
+    protected final CgGpuTexture storeOnDevice(CgGpuTexture.Kind kind, CgFormat format, int width, int height,
+                                               int depthOrLayers, int chain, CgTextureSpec sampling) {
+        if (CgDeviceTextures.fits(image, format, width, height, depthOrLayers, chain)) return null;
+        CgGpuTexture old = image;
+        if (old == null && textureId != 0 && owned) CgGL.glDeleteTextures(textureId);   // made through CgGL before the device
+        image = CgDeviceTextures.create(source(), kind, format, width, height, depthOrLayers, chain);
+        textureId = CgGLImports.get().name(image);
+        int target = getTarget();
+        CgGL.glBindTexture(target, textureId);
+        try {
+            sampling.applySampling(target);
+            CgGL.glTexParameteri(target, CgGL.GL_TEXTURE_MAX_LEVEL, chain - 1);
+            if (chain > 1) {
+                CgGL.glTexParameteri(target, CgGL.GL_TEXTURE_MIN_FILTER, sampling.getMinFilter() == CgGL.GL_NEAREST
+                        ? CgGL.GL_NEAREST_MIPMAP_NEAREST : CgGL.GL_LINEAR_MIPMAP_LINEAR);
+            }
+        } finally {
+            CgGL.glBindTexture(target, 0);
+        }
+        return old;
     }
 
     // ── Internal ────────────────────────────────────────────────────

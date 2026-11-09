@@ -1,5 +1,6 @@
 package com.crystalgraphics.platform.gl.tracked.gl;
 
+import com.crystalgraphics.platform.gl.format.GLPixels;
 import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.rhi.command.CgCommandList;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
@@ -105,9 +106,9 @@ public class CgTrackedTexturesTest {
 
     @Test
     public void anRgbUploadIsWidenedToRgbaAcrossGlsPaddedRows() {
-        GlPixels.Store store = new GlPixels.Store();       // alignment 4: a 2-pixel RGB row is 6 bytes, padded to 8
+        GLPixels.Store store = new GLPixels.Store();       // alignment 4: a 2-pixel RGB row is 6 bytes, padded to 8
         ByteBuffer rgb = ByteBuffer.wrap(new byte[] {1, 2, 3, 4, 5, 6, 0, 0, 7, 8, 9, 10, 11, 12, 0, 0});
-        ByteBuffer rgba = GlPixels.unpack(rgb, CgGL.GL_RGB, CgGL.GL_UNSIGNED_BYTE, 2, 2, 1, store, CgFormat.RGBA8_UNORM);
+        ByteBuffer rgba = GLPixels.unpack(rgb, CgGL.GL_RGB, CgGL.GL_UNSIGNED_BYTE, 2, 2, 1, store, CgFormat.RGBA8_UNORM);
         byte[] out = new byte[16];
         rgba.get(out);
         assertArrayEquals(new byte[] {1, 2, 3, -1, 4, 5, 6, -1, 7, 8, 9, -1, 10, 11, 12, -1}, out);
@@ -188,9 +189,9 @@ public class CgTrackedTexturesTest {
 
     @Test
     public void halfFloatRoundingCarriesIntoTheExponent() {
-        assertEquals(0x3C00, GlPixels.floatToHalf(1f) & 0xFFFF);
-        assertEquals(0x4000, GlPixels.floatToHalf(1.9995117f) & 0xFFFF);
-        assertEquals(65504f, GlPixels.halfToFloat(GlPixels.floatToHalf(65504f)), 0f);
-        assertEquals(0.5f, GlPixels.halfToFloat(GlPixels.floatToHalf(0.5f)), 0f);
+        assertEquals(0x3C00, GLPixels.floatToHalf(1f) & 0xFFFF);
+        assertEquals(0x4000, GLPixels.floatToHalf(1.9995117f) & 0xFFFF);
+        assertEquals(65504f, GLPixels.halfToFloat(GLPixels.floatToHalf(65504f)), 0f);
+        assertEquals(0.5f, GLPixels.halfToFloat(GLPixels.floatToHalf(0.5f)), 0f);
     }
 }

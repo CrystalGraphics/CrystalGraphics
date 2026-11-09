@@ -1,4 +1,4 @@
-package com.crystalgraphics.platform.gl.tracked.gl;
+package com.crystalgraphics.platform.gl.format;
 
 import com.crystalgraphics.platform.rhi.format.CgFormat;
 import com.crystalgraphics.platform.gl.CgGL;
@@ -11,21 +11,21 @@ import java.nio.ByteOrder;
  * the unpack and pack state, the (format, type) pair, RGB widened to RGBA — into and out of the device's tightly
  * packed texels. A combination not here throws, naming it.
  */
-public final class GlPixels {
+public final class GLPixels {
 
-    static final int GL_BGRA = 0x80E1, GL_UNSIGNED_INT_8_8_8_8_REV = 0x8367;
-    static final int GL_SRGB = 0x8C40, GL_SRGB8 = 0x8C41, GL_SRGB_ALPHA = 0x8C42, GL_RGB10_A2UI = 0x906F;
-    static final int GL_PACK_ROW_LENGTH = 0x0D02, GL_PACK_SKIP_ROWS = 0x0D03, GL_PACK_SKIP_PIXELS = 0x0D04;
+    public static final int GL_BGRA = 0x80E1, GL_UNSIGNED_INT_8_8_8_8_REV = 0x8367;
+    public static final int GL_SRGB = 0x8C40, GL_SRGB8 = 0x8C41, GL_SRGB_ALPHA = 0x8C42, GL_RGB10_A2UI = 0x906F;
+    public static final int GL_PACK_ROW_LENGTH = 0x0D02, GL_PACK_SKIP_ROWS = 0x0D03, GL_PACK_SKIP_PIXELS = 0x0D04;
 
     /** GL's pixel store, for one direction. */
-    static final class Store {
-        int alignment = 4, rowLength, skipRows, skipPixels, imageHeight, skipImages;
+    public static final class Store {
+        public int alignment = 4, rowLength, skipRows, skipPixels, imageHeight, skipImages;
     }
 
-    private GlPixels() {}
+    private GLPixels() {}
 
     /** The device format for a GL internal format. */
-    static CgFormat device(int internalFormat) {
+    public static CgFormat device(int internalFormat) {
         switch (internalFormat) {
             case CgGL.GL_R8: case CgGL.GL_RED:              return CgFormat.R8_UNORM;
             case CgGL.GL_R8_SNORM:                          return CgFormat.R8_SNORM;
@@ -76,7 +76,7 @@ public final class GlPixels {
     }
 
     /** {@code pixels} as the device's tightly packed texels of {@code dst}: {@code width x height x depth}. */
-    static ByteBuffer unpack(ByteBuffer pixels, int format, int type, int width, int height, int depth, Store store, CgFormat dst) {
+    public static ByteBuffer unpack(ByteBuffer pixels, int format, int type, int width, int height, int depth, Store store, CgFormat dst) {
         int comps = components(format);
         int bpp = pixelBytes(format, type);
         int rowLength = store.rowLength > 0 ? store.rowLength : width;
@@ -115,7 +115,7 @@ public final class GlPixels {
     }
 
     /** Device texels of {@code src} into {@code out} as GL's {@code (format, type)} under {@code store}. */
-    static void pack(ByteBuffer texels, CgFormat src, int width, int height, int format, int type, Store store, ByteBuffer out) {
+    public static void pack(ByteBuffer texels, CgFormat src, int width, int height, int format, int type, Store store, ByteBuffer out) {
         int bpp = pixelBytes(format, type);
         int rowLength = store.rowLength > 0 ? store.rowLength : width;
         int rowBytes = rowBytes(rowLength, bpp, componentBytes(type), store.alignment);
@@ -140,7 +140,7 @@ public final class GlPixels {
     // ── layouts ────────────────────────────────────────────────────────────────
 
     /** Whether {@code store} reads {@code width x height} pixels of {@code (format, type)} as one run from the start. */
-    static boolean tight(Store store, int format, int type, int width, int height) {
+    public static boolean tight(Store store, int format, int type, int width, int height) {
         if (store.skipPixels != 0 || store.skipRows != 0 || store.skipImages != 0) return false;
         if (store.rowLength != 0 && store.rowLength != width) return false;
         if (store.imageHeight != 0 && store.imageHeight != height) return false;
@@ -149,7 +149,7 @@ public final class GlPixels {
     }
 
     /** Whether GL's {@code (format, type)} is {@code dst}'s tightly packed texels as they are. */
-    static boolean sameLayout(int format, int type, CgFormat dst) {
+    public static boolean sameLayout(int format, int type, CgFormat dst) {
         switch (dst) {
             case R8_UNORM: return format == CgGL.GL_RED && type == CgGL.GL_UNSIGNED_BYTE;
             case RG8_UNORM: return format == CgGL.GL_RG && type == CgGL.GL_UNSIGNED_BYTE;
@@ -332,14 +332,14 @@ public final class GlPixels {
 
     private static int q(float v, int max) { return Math.round(Math.max(0f, Math.min(1f, v)) * max); }
 
-    static float halfToFloat(short h) {
+    public static float halfToFloat(short h) {
         int bits = h & 0xFFFF, sign = (bits & 0x8000) << 16, exp = (bits >>> 10) & 0x1F, mant = bits & 0x3FF;
         if (exp == 0) return (sign != 0 ? -1 : 1) * mant * 5.9604645e-8f;           // subnormal: mant * 2^-24
         if (exp == 31) return Float.intBitsToFloat(sign | 0x7F800000 | (mant << 13));
         return Float.intBitsToFloat(sign | ((exp + 112) << 23) | (mant << 13));
     }
 
-    static short floatToHalf(float f) {
+    public static short floatToHalf(float f) {
         int bits = Float.floatToIntBits(f), sign = (bits >>> 16) & 0x8000, exp = ((bits >>> 23) & 0xFF) - 112;
         int mant = bits & 0x7FFFFF;
         if (((bits >>> 23) & 0xFF) == 0xFF) return (short) (sign | 0x7C00 | (mant != 0 ? 0x200 : 0));

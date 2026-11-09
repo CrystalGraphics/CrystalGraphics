@@ -1,5 +1,6 @@
 package com.crystalgraphics.platform.gl.tracked.gl;
 
+import com.crystalgraphics.platform.gl.format.GLPixels;
 import com.crystalgraphics.platform.rhi.command.CgCommandList;
 import com.crystalgraphics.platform.rhi.format.CgCompare;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
@@ -106,7 +107,7 @@ public final class TrackedTextures implements TrackedPrograms.Samplers, TrackedP
     private final CgTextureView[] incomplete = new CgTextureView[KINDS];
     /** Per image unit: texture, level, layer (-1: every layer), format, access. */
     private final int[][] imageUnits = new int[IMAGE_UNITS][5];
-    public final GlPixels.Store unpack = new GlPixels.Store(), pack = new GlPixels.Store();
+    public final GLPixels.Store unpack = new GLPixels.Store(), pack = new GLPixels.Store();
     private int active;
 
     public TrackedTextures(CgTracker tracker, TrackedGlErrors errors, TrackedBuffers buffers) {
@@ -195,7 +196,7 @@ public final class TrackedTextures implements TrackedPrograms.Samplers, TrackedP
     public void image(int target, int level, int internalFormat, int width, int height, int depth, int format, int type, ByteBuffer pixels) {
         GlTexture t = boundFor(target, "glTexImage");
         if (t == null) return;
-        CgFormat f = GlPixels.device(internalFormat);
+        CgFormat f = GLPixels.device(internalFormat);
         int layer = face(target);
         if (level == 0) {
             int layers = t.kind == KIND_CUBE ? 6 : depth;
@@ -256,7 +257,7 @@ public final class TrackedTextures implements TrackedPrograms.Samplers, TrackedP
     private GlTexture compressedLevel(int target, int level, int internalFormat, int width, int height, int imageSize) {
         GlTexture t = boundFor(target, "glCompressedTexImage2D");
         if (t == null) return null;
-        CgFormat f = GlPixels.device(internalFormat);
+        CgFormat f = GLPixels.device(internalFormat);
         if (!f.compressed()) { errors.invalidEnum("glCompressedTexImage2D", internalFormat); return null; }
         if (imageSize != f.bytes(width, height, 1)) {
             errors.invalidValue("glCompressedTexImage2D: " + imageSize + " bytes for a " + width + "x" + height + " " + f);
@@ -314,7 +315,7 @@ public final class TrackedTextures implements TrackedPrograms.Samplers, TrackedP
         if (width == 0 || height == 0 || depth == 0) return;
         int layer = t.kind == KIND_CUBE ? face(target) : z;
         long at = a.offset() + offset;
-        if (GlPixels.sameLayout(format, type, t.format) && GlPixels.tight(unpack, format, type, width, height)
+        if (GLPixels.sameLayout(format, type, t.format) && GLPixels.tight(unpack, format, type, width, height)
                 && at % 4 == 0 && at % t.format.bytes() == 0) {
             CgTrackerStats stats = tracker.stats();
             long breaks = stats.passBreaks;
@@ -339,7 +340,7 @@ public final class TrackedTextures implements TrackedPrograms.Samplers, TrackedP
 
     public void multisample(int target, int samples, int internalFormat, int width, int height) {
         GlTexture t = boundFor(target, "glTexImage2DMultisample");
-        if (t != null) allocate(t, GlPixels.device(internalFormat), width, height, 1, samples);
+        if (t != null) allocate(t, GLPixels.device(internalFormat), width, height, 1, samples);
     }
 
     public void generateMipmap(int target) {
@@ -379,7 +380,7 @@ public final class TrackedTextures implements TrackedPrograms.Samplers, TrackedP
         GlTexture t = boundFor(target, "glTexBuffer");
         if (t == null) return;
         t.buffer = buffer;
-        t.texelFormat = GlPixels.device(internalFormat);
+        t.texelFormat = GLPixels.device(internalFormat);
     }
 
     public int genSampler() {
@@ -431,9 +432,9 @@ public final class TrackedTextures implements TrackedPrograms.Samplers, TrackedP
             case CgGL.GL_UNPACK_IMAGE_HEIGHT: unpack.imageHeight = param; break;
             case CgGL.GL_UNPACK_SKIP_IMAGES: unpack.skipImages = param; break;
             case CgGL.GL_PACK_ALIGNMENT: pack.alignment = param; break;
-            case GlPixels.GL_PACK_ROW_LENGTH: pack.rowLength = param; break;
-            case GlPixels.GL_PACK_SKIP_ROWS: pack.skipRows = param; break;
-            case GlPixels.GL_PACK_SKIP_PIXELS: pack.skipPixels = param; break;
+            case GLPixels.GL_PACK_ROW_LENGTH: pack.rowLength = param; break;
+            case GLPixels.GL_PACK_SKIP_ROWS: pack.skipRows = param; break;
+            case GLPixels.GL_PACK_SKIP_PIXELS: pack.skipPixels = param; break;
             default: errors.invalidEnum("glPixelStorei", pname);
         }
     }
@@ -446,7 +447,7 @@ public final class TrackedTextures implements TrackedPrograms.Samplers, TrackedP
         int layers = t.kind == KIND_3D ? Math.max(1, t.depth >> level) : t.depth;
         ByteBuffer texels = ByteBuffer.allocateDirect(w * h * layers * t.format.bytes()).order(ByteOrder.nativeOrder());
         tracker.transfer().readTexture(t.image, region(level, 0, 0, 0, w, h, layers), texels);
-        GlPixels.pack(texels, t.format, w, h * layers, format, type, pack, out);
+        GLPixels.pack(texels, t.format, w, h * layers, format, type, pack, out);
     }
 
     // ── sampling ───────────────────────────────────────────────────────────────
@@ -504,7 +505,7 @@ public final class TrackedTextures implements TrackedPrograms.Samplers, TrackedP
             throw new IllegalStateException(image.name() + " reads image unit " + unit + ", which has no texture");
         if (!t.image.desc().usage().contains(CgGpuTexture.Usage.STORAGE))
             throw new UnsupportedOperationException("Texture " + t.name + ": " + t.format + " cannot be a storage image here");
-        if (GlPixels.device(u[3]) != t.format)
+        if (GLPixels.device(u[3]) != t.format)
             throw new UnsupportedOperationException("Texture " + t.name + " bound as an image in a format other than its own");
         if (t.kind == KIND_3D && u[2] >= 0)
             throw new UnsupportedOperationException("One slice of a 3D texture as an image: bind it layered");
@@ -616,7 +617,7 @@ public final class TrackedTextures implements TrackedPrograms.Samplers, TrackedP
     private void upload(GlTexture t, int level, int x, int y, int z, int w, int h, int d, int format, int type, ByteBuffer pixels) {
         if (pixels == null || w == 0 || h == 0 || d == 0) return;
         ByteBuffer texels;
-        if (GlPixels.sameLayout(format, type, t.format) && GlPixels.tight(unpack, format, type, w, h)) {
+        if (GLPixels.sameLayout(format, type, t.format) && GLPixels.tight(unpack, format, type, w, h)) {
             // writeTexture stages it: unpacking would only copy it once more. One view a source, re-positioned.
             if (pixels != uploadSource) {
                 uploadSource = pixels;
@@ -626,7 +627,7 @@ public final class TrackedTextures implements TrackedPrograms.Samplers, TrackedP
             texels.clear();
             texels.position(pixels.position()).limit(pixels.position() + w * h * d * t.format.bytes());
         } else {
-            texels = GlPixels.unpack(pixels, format, type, w, h, d, unpack, t.format);
+            texels = GLPixels.unpack(pixels, format, type, w, h, d, unpack, t.format);
         }
         CgTrackerStats stats = tracker.stats();
         long breaks = stats.passBreaks;
@@ -725,9 +726,9 @@ public final class TrackedTextures implements TrackedPrograms.Samplers, TrackedP
             case CgGL.GL_UNPACK_IMAGE_HEIGHT: return TrackedRenderState.one(out, unpack.imageHeight);
             case CgGL.GL_UNPACK_SKIP_IMAGES: return TrackedRenderState.one(out, unpack.skipImages);
             case CgGL.GL_PACK_ALIGNMENT: return TrackedRenderState.one(out, pack.alignment);
-            case GlPixels.GL_PACK_ROW_LENGTH: return TrackedRenderState.one(out, pack.rowLength);
-            case GlPixels.GL_PACK_SKIP_ROWS: return TrackedRenderState.one(out, pack.skipRows);
-            case GlPixels.GL_PACK_SKIP_PIXELS: return TrackedRenderState.one(out, pack.skipPixels);
+            case GLPixels.GL_PACK_ROW_LENGTH: return TrackedRenderState.one(out, pack.rowLength);
+            case GLPixels.GL_PACK_SKIP_ROWS: return TrackedRenderState.one(out, pack.skipRows);
+            case GLPixels.GL_PACK_SKIP_PIXELS: return TrackedRenderState.one(out, pack.skipPixels);
             default: return -1;
         }
     }

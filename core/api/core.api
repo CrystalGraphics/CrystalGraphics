@@ -2151,6 +2151,7 @@ com/crystalgraphics/api/texture/CgTextureSpec
   field public,static,final RGBA8_NEAREST_CLAMP_BORDER Lcom/crystalgraphics/api/texture/CgTextureSpec;
   field public,static,final RGBA8_NEAREST_MIRRORED Lcom/crystalgraphics/api/texture/CgTextureSpec;
   field public,static,final RGBA8_NEAREST_REPEAT Lcom/crystalgraphics/api/texture/CgTextureSpec;
+  method public applySampling (I)V
   method public applyTo (I)V
   method public equals (Ljava/lang/Object;)Z
   method public getCompareFunc ()I
@@ -4547,6 +4548,7 @@ com/crystalgraphics/compute/program/CgKernelProgram
   extends java/lang/Object
   method public buffer (Ljava/lang/String;I)Lcom/crystalgraphics/compute/program/CgKernelProgram;
   method public buffer (Ljava/lang/String;IJJ)Lcom/crystalgraphics/compute/program/CgKernelProgram;
+  method public bufferIndex (Ljava/lang/String;)I
   method public checkPoint ()I
   method public counter (Ljava/lang/String;IJ)Lcom/crystalgraphics/compute/program/CgKernelProgram;
   method public counterPoint (I)I
@@ -6803,6 +6805,17 @@ com/crystalgraphics/gl/shader/CgShaderFactory
   extends java/lang/Object
   method public,static fromSource (Ljava/lang/String;Ljava/lang/String;Lcom/crystalgraphics/api/vertex/CgVertexFormat;)Lcom/crystalgraphics/gl/shader/CgShader;
   method public,static submit (Ljava/lang/String;Ljava/lang/String;Lcom/crystalgraphics/api/vertex/CgVertexFormat;)Lcom/crystalgraphics/gl/shader/CgShader;
+com/crystalgraphics/gl/texture/CgDeviceTextures
+  access public,final
+  extends java/lang/Object
+  method public,static create (Ljava/lang/String;Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture$Kind;Lcom/crystalgraphics/api/texture/CgTextureSpec;IIII)Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture;
+  method public,static create (Ljava/lang/String;Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture$Kind;Lcom/crystalgraphics/platform/rhi/format/CgFormat;IIII)Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture;
+  method public,static fits (Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture;Lcom/crystalgraphics/platform/rhi/format/CgFormat;IIII)Z
+  method public,static installed ()Z
+  method public,static mipmaps (Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture;)V
+  method public,static release (Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture;)V
+  method public,static write (Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture;Lcom/crystalgraphics/platform/rhi/resource/CgTextureRegion;Lcom/crystalgraphics/gpu/CgUploadLease;II)V
+  method public,static write (Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture;Lcom/crystalgraphics/platform/rhi/resource/CgTextureRegion;Ljava/nio/ByteBuffer;II)V
 com/crystalgraphics/gl/texture/CgEngineTextures
   access public,final
   extends java/lang/Object
@@ -6916,6 +6929,7 @@ com/crystalgraphics/gl/texture/CgTextureAbstract
   method protected source ()Ljava/lang/String;
   method protected,final ensureLoaded ()V
   method protected,final loadOnFirstUse ()V
+  method protected,final storeOnDevice (Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture$Kind;Lcom/crystalgraphics/platform/rhi/format/CgFormat;IIIILcom/crystalgraphics/api/texture/CgTextureSpec;)Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture;
   method protected,static pixelFormatForChannels (I)I
   method public bind ()V
   method public bind (I)V
@@ -6996,6 +7010,7 @@ com/crystalgraphics/gpu/CgUploadLease
   method public put (Ljava/nio/FloatBuffer;)Lcom/crystalgraphics/gpu/CgUploadLease;
   method public put ([BII)Lcom/crystalgraphics/gpu/CgUploadLease;
   method public put ([FII)Lcom/crystalgraphics/gpu/CgUploadLease;
+  method public range (II)Ljava/nio/ByteBuffer;
   method public release ()V
   method public run ()V
   method public size ()I
@@ -7003,6 +7018,8 @@ com/crystalgraphics/gpu/CgUploadLease
   method public texSubImage2D (IIIII)V
   method public texSubImage3D (I)V
   method public type ()I
+  method public unpackBuffer ()I
+  method public unpackOffset ()I
   method public width ()I
   method public x ()I
   method public y ()I
@@ -8966,6 +8983,7 @@ com/crystalgraphics/render/draw/CgBlockVersion
 com/crystalgraphics/render/draw/CgBoundResources
   access public,final
   extends java/lang/Object
+  field public,static notesOnly Z
   field public,static recording Z
   method public,static block (IIJJ)V
   method public,static forgetTextures (I)V
@@ -10493,15 +10511,16 @@ com/crystalgraphics/render/shader/CgToolchainDevice
   access public,abstract
   extends java/lang/Object
   implements com/crystalgraphics/lifecycle/CgLifecycleListener
+  method protected <init> ()V
   method protected,abstract close ()V
   method protected,abstract ineligible ()Ljava/lang/String;
-  method protected,abstract install (Ljava/util/List;)V
   method protected,abstract resize ()V
+  method protected,abstract start ()V
+  method protected,abstract toolchain (Ljava/util/List;)V
   method protected,static natives ()Ljava/nio/file/Path;
-  method public <init> ()V
   method public,final onContextDestroy ()V
   method public,final onFrame (J)V
-  method public,final onLoad (Lcom/crystalgraphics/loading/task/CgLoadPlan;)V
+  method public,static startAll ()V
 com/crystalgraphics/render/stage/CgDirectionalLights
   access public,final
   extends java/lang/Object

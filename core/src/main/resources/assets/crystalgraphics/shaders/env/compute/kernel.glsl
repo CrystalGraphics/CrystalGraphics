@@ -14,7 +14,13 @@
 // Compiled as written (CG_EXPLICIT), a push constant with the append counts' words, in vec4s: a GL device feeds it as
 // a uniform block, whose std140 strides a scalar array 16 bytes (CgKernelEmitter.PUSH_BYTES).
 #ifdef CG_EXPLICIT
-layout(push_constant) uniform CgKernelPush { ivec4 cg_DispatchBase; ivec4 cg_DispatchCount; ivec4 cg_KernelWords[CG_KERNEL_WORDS / 4]; };
+// Compiled by the GL driver itself (CG_GL_NATIVE), the uniform block that push constant becomes, at CG_GL_PUSH
+#ifdef CG_GL_NATIVE
+layout(binding = CG_GL_PUSH, std140) uniform
+#else
+layout(push_constant) uniform
+#endif
+CgKernelPush { ivec4 cg_DispatchBase; ivec4 cg_DispatchCount; ivec4 cg_KernelWords[CG_KERNEL_WORDS / 4]; };
 #define CG_PUSHED_BASE  cg_DispatchBase.xyz
 #define CG_PUSHED_COUNT cg_DispatchCount.xyz
 #else

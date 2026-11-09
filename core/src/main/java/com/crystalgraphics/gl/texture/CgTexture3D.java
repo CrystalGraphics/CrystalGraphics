@@ -1,6 +1,7 @@
 package com.crystalgraphics.gl.texture;
 
 
+import com.crystalgraphics.platform.rhi.resource.CgTextureRegion;
 import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
 import com.crystalgraphics.platform.gl.format.GLFormats;
 import com.crystalgraphics.gl.CgGlNames;
@@ -140,6 +141,10 @@ public final class CgTexture3D extends CgTextureAbstract {
         CgTexture3D tex = new CgTexture3D(0, width, height, depth, spec, null);
         tex.levels = levels;
         tex.gpu.run(() -> {
+            if (CgDeviceTextures.installed()) {
+                tex.store3D();
+                return;
+            }
             int id = CgGlNames.texture();
             tex.textureId = id;
             try {
@@ -204,6 +209,11 @@ public final class CgTexture3D extends CgTextureAbstract {
                     pixelFormat, pixelType);
             return;
         }
+        if (image != null) {
+            CgDeviceTextures.write(image, new CgTextureRegion(level, x, y, z, width, height, depth), pixels, pixelFormat,
+                    pixelType);
+            return;
+        }
         try (CgGlScope restore = gpu.restoring()) {
             CgGL.glBindTexture(GL_TEXTURE_3D, textureId);
             try (CgTightUnpack ignored = CgTightUnpack.begin()) {
@@ -222,6 +232,11 @@ public final class CgTexture3D extends CgTextureAbstract {
     }
 
     private void land(CgUploadLease lease) {
+        if (image != null) {
+            CgDeviceTextures.write(image, new CgTextureRegion(lease.level(), lease.x(), lease.y(), lease.z(), lease.width(),
+                    lease.height(), lease.depth()), lease, 0, lease.size());
+            return;
+        }
         CgGL.glBindTexture(GL_TEXTURE_3D, textureId);
         try (CgTightUnpack ignored = CgTightUnpack.begin()) {
             lease.texSubImage3D(GL_TEXTURE_3D);
@@ -234,6 +249,10 @@ public final class CgTexture3D extends CgTextureAbstract {
     public void generateMipmaps() {
         checkUsable();
         gpu.run(() -> {
+            if (image != null) {
+                CgDeviceTextures.mipmaps(image);
+                return;
+            }
             CgGL.glBindTexture(GL_TEXTURE_3D, textureId);
             try {
                 CgGL.glGenerateMipmap(GL_TEXTURE_3D);
@@ -266,6 +285,11 @@ public final class CgTexture3D extends CgTextureAbstract {
                 missing = true;
                 width = height = depth = 1;
                 gpu.run(() -> {
+                    if (CgDeviceTextures.installed()) {
+                        store3D();
+                        if (spec.getMipmaps().isEnabled()) CgDeviceTextures.mipmaps(image);
+                        return;
+                    }
                     make();
                     applySpec();
                 });
@@ -278,6 +302,15 @@ public final class CgTexture3D extends CgTextureAbstract {
         height = h;
         depth = images.length;
         gpu.run(() -> {
+            if (CgDeviceTextures.installed()) {
+                store3D();
+                for (int i = 0; i < images.length; i++) {
+                    CgDeviceTextures.write(image, new CgTextureRegion(0, 0, 0, i, w, h, 1), images[i].pixels(), format,
+                            GL_UNSIGNED_BYTE);
+                }
+                if (spec.getMipmaps().isEnabled()) CgDeviceTextures.mipmaps(image);
+                return;
+            }
             make();
             CgGL.glBindTexture(GL_TEXTURE_3D, textureId);
             try (CgTightUnpack ignored = CgTightUnpack.begin()) {
@@ -292,6 +325,12 @@ public final class CgTexture3D extends CgTextureAbstract {
     }
 
     /** Level 0 at its size, the texture made first if it has no id yet. */
+    /** Its storage on the device at its size and levels, what it replaced released. */
+    private void store3D() {
+        CgDeviceTextures.release(storeOnDevice(CgGpuTexture.Kind.D3, GLFormats.of(spec.getGlInternalFormat()), width,
+                height, depth, getLevels(), spec));
+    }
+
     private void make() {
         if (textureId == 0) textureId = CgGlNames.texture();
         CgGL.glBindTexture(GL_TEXTURE_3D, textureId);
