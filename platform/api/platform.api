@@ -1149,6 +1149,7 @@ com/crystalgraphics/platform/gl/CgGLImports
   method public bufferRespecified (IJ)V
   method public forget (Lcom/crystalgraphics/platform/rhi/resource/CgGpuBuffer;)V
   method public forget (Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture;)V
+  method public framebufferBarrier (IIILcom/crystalgraphics/platform/rhi/command/CgTransition;)Z
   method public renderbufferDeleted (I)V
   method public textureDeleted (I)V
   method public,abstract buffer (I)Lcom/crystalgraphics/platform/rhi/resource/CgGpuBuffer;
@@ -2724,6 +2725,7 @@ com/crystalgraphics/platform/gl/tracked/gl/CgTrackedBuffer
   method public unmap ()V
 com/crystalgraphics/platform/gl/tracked/gl/GlEnums
   access public,final
+  method public framebufferBarrier (IIILcom/crystalgraphics/platform/rhi/command/CgTransition;)Z
   extends java/lang/Object
   method public,static accesses (I)I
   method public,static topology (I)Lcom/crystalgraphics/platform/rhi/pipeline/CgGraphicsPipelineDesc$Topology;
@@ -2805,6 +2807,7 @@ com/crystalgraphics/platform/gl/tracked/gl/TrackedFramebuffers
 com/crystalgraphics/platform/gl/tracked/gl/TrackedGlErrors
   access public,final
   extends java/lang/Object
+  method public barrier (IIILcom/crystalgraphics/platform/gl/tracked/gl/TrackedFramebuffers$Moves;)V
   method public <init> ()V
   method public invalidEnum (Ljava/lang/String;I)V
   method public invalidFramebufferOperation (Ljava/lang/String;)V
@@ -2828,6 +2831,10 @@ com/crystalgraphics/platform/gl/tracked/gl/TrackedPrograms
   method public currentName ()I
   method public deleteProgram (I)V
   method public deleteShader (I)V
+com/crystalgraphics/platform/gl/tracked/gl/TrackedFramebuffers$Moves
+  access public,abstract,interface
+  extends java/lang/Object
+  method public,abstract texture (Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture;IIIIII)V
   method public detach (II)V
   method public feedDisabledInputs (Lcom/crystalgraphics/platform/gl/tracked/tracker/CgDrawState;)V
   method public floatArray (ILjava/nio/FloatBuffer;)V

@@ -4,7 +4,9 @@ import com.crystalgraphics.platform.gl.CgGLImports;
 import com.crystalgraphics.platform.gl.tracked.gl.TrackedBuffers;
 import com.crystalgraphics.platform.gl.tracked.gl.TrackedFramebuffers;
 import com.crystalgraphics.platform.gl.tracked.gl.TrackedTextures;
+import com.crystalgraphics.platform.gl.tracked.tracker.CgTracker;
 import com.crystalgraphics.platform.rhi.CgRHI;
+import com.crystalgraphics.platform.rhi.command.CgTransition;
 import com.crystalgraphics.platform.rhi.memory.CgAllocation;
 import com.crystalgraphics.platform.rhi.resource.CgGpuBuffer;
 import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
@@ -19,6 +21,7 @@ public final class CgTrackedImports implements CgGLImports {
     private final TrackedBuffers buffers;
     private final TrackedFramebuffers framebuffers;
     private final CgRHI device;
+    private final CgTracker tracker;
     private final Map<CgGpuTexture, Integer> adopted = new IdentityHashMap<>();
     private final Map<CgGpuBuffer, Integer> adoptedBuffers = new IdentityHashMap<>();
 
@@ -27,6 +30,13 @@ public final class CgTrackedImports implements CgGLImports {
         this.buffers = backend.bufferObjects();
         this.framebuffers = backend.framebufferObjects();
         this.device = backend.device();
+        this.tracker = backend.tracker();
+    }
+
+    @Override
+    public boolean framebufferBarrier(int fbo, int from, int to, CgTransition into) {
+        framebuffers.barrier(fbo, from, to, into::texture);
+        return true;
     }
 
     @Override
@@ -67,7 +77,16 @@ public final class CgTrackedImports implements CgGLImports {
         return a;
     }
 
-    @Override public CgGpuBuffer buffer(int name) { return storage(name).buffer(); }
+    /**
+     * Marked used this frame, as a draw through the tracker marks what it binds: a buffer handed to device work is in
+     * flight, so an upload to it must not write over it in place.
+     */
+    @Override
+    public CgGpuBuffer buffer(int name) {
+        CgAllocation a = storage(name);
+        tracker.markUsed(a);
+        return a.buffer();
+    }
 
     @Override public long bufferOffset(int name) { return storage(name).offset(); }
 

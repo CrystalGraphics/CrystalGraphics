@@ -48,6 +48,10 @@ public final class CgShaderStorageBuffer extends CgShaderBuffer {
     /** On the frame ring, by range at the latest upload -- and by the storage's CURRENT name, which growth replaces. */
     @Override
     protected void bindInternal() {
+        if (CgBoundResources.notesOnly) {
+            noteInternal();
+            return;
+        }
         int bytes = dataBuffer.getCommittedBytes();
         if (dataBuffer.offsetMovesPerUpload() && bytes > 0) {
             CgGL.glBindBufferRange(CgGL.GL_SHADER_STORAGE_BUFFER, bindingLocation, dataBuffer.getGlBuffer(),

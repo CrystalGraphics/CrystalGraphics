@@ -663,3 +663,8 @@ public final class CgTexture2D extends CgTextureAbstract {
         return tex;
     }
 }
+        if (CgBoundResources.notesOnly) {
+            if (level < 0 || level >= getLevels()) throw new IllegalArgumentException("level " + level + " of " + getLevels());
+            CgBoundResources.texture(unit, this, level);
+            return;
+        }

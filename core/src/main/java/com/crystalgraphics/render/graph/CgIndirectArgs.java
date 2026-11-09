@@ -117,7 +117,24 @@ final class CgIndirectArgs {
 
     /** Writes the commands {@link #write} queued, in one dispatch. Before the commands' barrier. */
     void flush() {
-        if (rows == 0) return;
+        if (!stage()) return;
+        CgKernelProgram program = many();
+        program.use();
+        program.buffer("COUNT", stagedCount).buffer("ARGS", buffer, stagedArgs, stagedArgsBytes)
+                .buffer("PARAMS", params.getGlBuffer(), stagedParams, stagedParamsBytes)
+                .dispatch(stagedElements);
+    }
+
+    /** What {@link #stage} staged: the count buffer, the args' span, the params' span, the elements to dispatch. */
+    int stagedCount, stagedElements;
+    long stagedArgs, stagedArgsBytes, stagedParams, stagedParamsBytes;
+
+    /**
+     * Uploads the queued rows' parameters and notes what their dispatch binds, for {@link #flush} or a caller
+     * dispatching {@link #program} on the device; false when nothing is queued.
+     */
+    boolean stage() {
+        if (rows == 0) return false;
         // Each row's command in words from the span bound: two flushes binding the whole buffer overlap, which
         // synchronization validation reads as a write after write.
         long base = offset(firstSlot);
@@ -125,14 +142,29 @@ final class CgIndirectArgs {
             int slot = Float.floatToRawIntBits(table[at]);
             table[at] = Float.intBitsToFloat((int) ((offset(slot) - base) >>> 2));
         }
-        int at = params.uploadFloats(table, rows * ROW);
-        CgKernelProgram program = many();
-        program.use();
-        program.buffer("COUNT", rowsCount).buffer("ARGS", buffer, base, offset(lastSlot) - base + COMMAND_BYTES)
-                .buffer("PARAMS", params.getGlBuffer(), at, params.getCommittedBytes())
-                .dispatch(rows * 5);
+        stagedParams = params.uploadFloats(table, rows * ROW);
+        stagedParamsBytes = params.getCommittedBytes();
+        stagedCount = rowsCount;
+        stagedArgs = base;
+        stagedArgsBytes = offset(lastSlot) - base + COMMAND_BYTES;
+        stagedElements = rows * 5;
         rows = 0;
         CgTrace.add(CgChannels.GL, DISPATCHES, 1);
+        return true;
+    }
+
+    /** The commands' buffer and the params ring, by name: what a staged dispatch binds. */
+    int argsBuffer() {
+        return buffer;
+    }
+
+    int paramsBuffer() {
+        return params.getGlBuffer();
+    }
+
+    /** The kernel writing the commands. */
+    CgKernelProgram program() {
+        return many();
     }
 
     private CgKernelProgram many() {

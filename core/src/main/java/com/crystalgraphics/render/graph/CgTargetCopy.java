@@ -61,6 +61,19 @@ final class CgTargetCopy {
     private static final CgFrameBufferFormat[] probedFormat = new CgFrameBufferFormat[PROBED];
     private static final int[] probedDepthMask = new int[PROBED];
 
+    /**
+     * Where a device run's copies find the device textures behind a framebuffer name: the executor's, installed for
+     * its run. Null where copies blit through {@code CgGL}.
+     */
+    interface Sources {
+        @Nullable CgGpuTexture color(int framebuffer);
+
+        @Nullable CgGpuTexture depth(int framebuffer);
+    }
+
+    @Nullable
+    static Sources sources;
+
     final CgTexture color = new View(true), depth = new View(false);
     @Nullable
     private CgFrameBuffer storage;
@@ -142,8 +155,8 @@ final class CgTargetCopy {
             y1 = Math.min(height, rects[at + 3]);
         }
         if (x1 <= x0 || y1 <= y0) colorMask = 0;
-        try (CgGlScope scope = CgGlState.save(SCISSOR)) {
-            CgGL.glDisable(CgGL.GL_SCISSOR_TEST);   // a blit is scissored
+        try (CgGlScope scope = sources != null ? null : CgGlState.save(SCISSOR)) {
+            if (sources == null) CgGL.glDisable(CgGL.GL_SCISSOR_TEST);   // a CgGL blit is scissored
             if (colorSource == depthSource && x0 == 0 && y0 == 0 && x1 == width && y1 == height) {
                 blit(colorSource, colorMask | depthMask, 0, 0, width, height);
             } else {
@@ -233,8 +246,34 @@ final class CgTargetCopy {
         int zone = (mask & CgGL.GL_COLOR_BUFFER_BIT) == 0 ? DEPTH_ZONE : mask == CgGL.GL_COLOR_BUFFER_BIT ? COLOR_ZONE : BOTH_ZONE;
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, zone)) {
             CgExecutor.blitting(source, storage.getId());
-            CgFrameBuffer.blitFrom(source, storage.getId(), x0, y0, x1, y1, x0, y0, x1, y1, mask, CgGL.GL_NEAREST);
+            if (sources != null) {
+                blitOnDevice(sources, source, mask, x0, y0, x1, y1);
+            } else {
+                CgFrameBuffer.blitFrom(source, storage.getId(), x0, y0, x1, y1, x0, y0, x1, y1, mask, CgGL.GL_NEAREST);
+            }
             CgExecutor.blitted(source, storage.getId());
+        }
+    }
+
+    /** {@link #blit} on the device's command list, in a device section. */
+    private void blitOnDevice(Sources from, int source, int mask, int x0, int y0, int x1, int y1) {
+        CgGpuTexture color = (mask & CgGL.GL_COLOR_BUFFER_BIT) != 0 ? from.color(source) : null;
+        CgGpuTexture depth = (mask & CgGL.GL_DEPTH_BUFFER_BIT) != 0 ? from.depth(source) : null;
+        if ((mask & CgGL.GL_COLOR_BUFFER_BIT) != 0 && color == null || (mask & CgGL.GL_DEPTH_BUFFER_BIT) != 0 && depth == null) {
+            throw new IllegalStateException("framebuffer " + source + " has no device texture to copy from");
+        }
+        CgDeviceSection.begin();
+        try {
+            if (color != null) {
+                CgRHI.get().encoder().blit(CgTextureView.attachment(color, 0, 0), x0, y0, x1, y1,
+                        CgTextureView.attachment(storage.rhiColor(0), 0, 0), x0, y0, x1, y1, CgGpuSampler.Filter.NEAREST);
+            }
+            if (depth != null) {
+                CgRHI.get().encoder().blit(CgTextureView.attachment(depth, 0, 0), x0, y0, x1, y1,
+                        CgTextureView.attachment(storage.rhiDepth(), 0, 0), x0, y0, x1, y1, CgGpuSampler.Filter.NEAREST);
+            }
+        } finally {
+            CgDeviceSection.end();
         }
     }
 

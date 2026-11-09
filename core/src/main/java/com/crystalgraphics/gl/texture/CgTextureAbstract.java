@@ -148,6 +148,7 @@ public abstract class CgTextureAbstract implements CgTexture, CgReloadable {
         gpu.flush();
         CgBoundResources.texture(unit, this, -1);
         if (SKIP_HELD) {
+        if (CgBoundResources.notesOnly) return;
             CgGL.cgBindTexture(unit, getTarget(), textureId);
             return;
         }

@@ -4547,6 +4547,7 @@ com/crystalgraphics/compute/program/CgKernelProgram
   method public buffer (Ljava/lang/String;I)Lcom/crystalgraphics/compute/program/CgKernelProgram;
   method public buffer (Ljava/lang/String;IJJ)Lcom/crystalgraphics/compute/program/CgKernelProgram;
   method public checkPoint ()I
+  method public bufferIndex (Ljava/lang/String;)I
   method public counter (Ljava/lang/String;IJ)Lcom/crystalgraphics/compute/program/CgKernelProgram;
   method public counterPoint (I)I
   method public counterPoint (Ljava/lang/String;)I
@@ -8980,6 +8981,7 @@ com/crystalgraphics/render/draw/CgChunkBuilder
   extends java/lang/Object
   method public <init> (Lcom/crystalgraphics/render/draw/CgBindingTable;)V
   method public begin ()Lcom/crystalgraphics/render/draw/CgChunkBuilder;
+  field public,static notesOnly Z
   method public begin (III)Lcom/crystalgraphics/render/draw/CgChunkBuilder;
   method public bindings ()Lcom/crystalgraphics/render/draw/CgBindingTable;
   method public bindings (Lcom/crystalgraphics/render/draw/CgBindingTable;)Lcom/crystalgraphics/render/draw/CgChunkBuilder;

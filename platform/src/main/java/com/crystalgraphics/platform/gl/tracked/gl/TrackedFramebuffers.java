@@ -313,11 +313,21 @@ public final class TrackedFramebuffers {
     // ── status and queries ─────────────────────────────────────────────────────
 
     /**
+    /** Where {@link #barrier(int, int, int, Moves)} puts each attachment's move. */
+    public interface Moves {
+        void texture(CgGpuTexture texture, int baseMip, int mips, int baseLayer, int layers, int from, int to);
+    }
+
      * A transition of framebuffer {@code name}'s draw attachments as attached, 0 the window's; the depth-stencil's
      * with {@link CgAccess#COLOR_WRITE} read as {@link CgAccess#DEPTH_WRITE}.
      */
     public void barrier(int name, int from, int to) {
         if (name != 0 && !fbos.exists(name)) {
+        barrier(name, from, to, tracker::textureBarrier);
+    }
+
+    /** {@link #barrier(int, int, int)}'s moves into {@code out}: a frame graph's own batch. */
+    public void barrier(int name, int from, int to, Moves out) {
             errors.invalidValue("cgFramebufferBarrier: " + name + " was never generated");
             return;
         }
@@ -326,7 +336,7 @@ public final class TrackedFramebuffers {
         if (name == 0) {
             for (int i = 0; i < t.colors().size(); i++) {
                 CgTextureView v = t.colors().get(i);
-                tracker.textureBarrier(v.texture(), v.baseMip(), v.mips(), v.baseLayer(), v.layers(),
+                out.texture(v.texture(), v.baseMip(), v.mips(), v.baseLayer(), v.layers(),
                         unsampled(v, color(from), CgAccess.COLOR_WRITE), unsampled(v, color(to), CgAccess.COLOR_WRITE));
             }
         } else {
@@ -335,7 +345,7 @@ public final class TrackedFramebuffers {
             for (int i = 0; i < COLORS; i++) {
                 CgTextureView v = view(f.colors[i]);
                 if (v != null) {
-                    tracker.textureBarrier(v.texture(), v.baseMip(), v.mips(), v.baseLayer(), v.layers(),
+                    out.texture(v.texture(), v.baseMip(), v.mips(), v.baseLayer(), v.layers(),
                             unsampled(v, color(from), CgAccess.COLOR_WRITE), unsampled(v, color(to), CgAccess.COLOR_WRITE));
                 }
             }
@@ -343,7 +353,8 @@ public final class TrackedFramebuffers {
         CgTextureView d = t.depth();
         if (d != null) {
             // Whole: a shader samples a depth texture's every level, so they move together.
-            tracker.textureBarrier(d.texture(), unsampled(d, depth(from), CgAccess.DEPTH_WRITE),
+            CgGpuTexture image = d.texture();
+            out.texture(image, 0, image.desc().mips(), 0, CgTracker.layers(image), unsampled(d, depth(from), CgAccess.DEPTH_WRITE),
                     unsampled(d, depth(to), CgAccess.DEPTH_WRITE));
         }
     }

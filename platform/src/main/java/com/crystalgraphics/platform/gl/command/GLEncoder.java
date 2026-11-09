@@ -56,6 +56,8 @@ public final class GLEncoder implements CgCommandList {
     private final Pass pass = new Pass();
     private final Compute compute = new Compute();
     private boolean inPass;
+    /** The open pass is a compute pass: a barrier between its dispatches is GL's {@code glMemoryBarrier}, allowed. */
+    private boolean computing;
 
     // the bindings a draw or dispatch commits
     private final GLBindingSet[] sets = new GLBindingSet[4];
@@ -95,6 +97,11 @@ public final class GLEncoder implements CgCommandList {
 
     private void outsidePass(String what) {
         if (inPass) throw new IllegalStateException(what + " inside a pass");
+    }
+
+    /** As {@link #outsidePass}, but between a compute pass's dispatches too: a barrier. */
+    private void outsideRenderPass(String what) {
+        if (inPass && !computing) throw new IllegalStateException(what + " inside a render pass");
     }
 
     // ── bindings ──────────────────────────────────────────────────────────────
@@ -227,14 +234,14 @@ public final class GLEncoder implements CgCommandList {
 
     @Override
     public void transition(CgTransition t) {
-        outsidePass("transition");
+        outsideRenderPass("transition");
         int bits = 0;
         for (int i = 0; i < t.count(); i++) bits |= barrierBits(t.from(i), t.to(i));
         if (bits != 0) gl.glMemoryBarrier(bits);
     }
 
     /** GL has no split barrier: the moves are made at {@link #endTransitions}. */
-    @Override public void beginTransitions(CgTransition t) { outsidePass("beginTransitions"); }
+    @Override public void beginTransitions(CgTransition t) { outsideRenderPass("beginTransitions"); }
 
     @Override public void endTransitions(CgTransition t) { transition(t); }
 
@@ -402,6 +409,7 @@ public final class GLEncoder implements CgCommandList {
     public CgComputePass beginCompute(String label) {
         outsidePass("beginCompute");
         inPass = true;
+        computing = true;
         gl.glPushDebugGroup(label);
         resetBindings();
         compute.pipeline = null;
@@ -865,6 +873,7 @@ public final class GLEncoder implements CgCommandList {
             pipeline = null;
             gl.glPopDebugGroup();
             inPass = false;
+            computing = false;
         }
     }
 

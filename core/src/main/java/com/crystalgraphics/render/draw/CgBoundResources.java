@@ -26,6 +26,12 @@ public final class CgBoundResources {
     /** Whether binds are recorded. */
     public static boolean recording;
 
+    /**
+     * While true a bind records and issues nothing through {@code CgGL}: inside a pass the device draws or dispatches,
+     * whose sets are made from what is recorded. Off for anything still drawn through {@code CgGL}.
+     */
+    public static boolean notesOnly;
+
     private static final int SETS = 3, BINDINGS = 64;
     private static final int[] NAME = new int[SETS * BINDINGS];
     private static final long[] OFFSET = new long[SETS * BINDINGS], SIZE = new long[SETS * BINDINGS];

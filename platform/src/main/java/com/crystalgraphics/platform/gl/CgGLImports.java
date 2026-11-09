@@ -1,5 +1,6 @@
 package com.crystalgraphics.platform.gl;
 
+import com.crystalgraphics.platform.rhi.command.CgTransition;
 import com.crystalgraphics.platform.rhi.resource.CgGpuBuffer;
 import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
 
@@ -60,6 +61,15 @@ public interface CgGLImports {
 
     /** A {@code CgGL} name for {@code buffer}, the same each ask; its storage starts at offset 0. */
     int name(CgGpuBuffer buffer);
+
+    /**
+     * Framebuffer {@code fbo}'s attachments (0 the window's) moved from {@code from} to {@code to}, added to
+     * {@code into}: what a frame graph records for a target it knows only by name. False where the device names no image
+     * for it (GL, whose framebuffer barrier is a memory barrier).
+     */
+    default boolean framebufferBarrier(int fbo, int from, int to, CgTransition into) {
+        return false;
+    }
 
     /** {@code texture} is being released: drop the name given it, which {@code CgGL} must not use again. */
     default void forget(CgGpuTexture texture) {}
