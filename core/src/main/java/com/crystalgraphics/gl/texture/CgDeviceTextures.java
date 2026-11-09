@@ -38,7 +38,7 @@ import java.util.Set;
  */
 public final class CgDeviceTextures {
 
-    /** Uploads arrive tightly packed ({@code CgTightUnpack}'s rule): rows padded to nothing. */
+    /** Uploads arrive tightly packed: rows padded to nothing. */
     private static final GLPixels.Store TIGHT = new GLPixels.Store();
 
     static {

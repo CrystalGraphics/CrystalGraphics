@@ -48,8 +48,6 @@ import com.crystalgraphics.compute.source.CgImageDecl;
 import com.crystalgraphics.compute.source.CgImageDimension;
 import com.crystalgraphics.gl.buffer.CgBufferReadback;
 import com.crystalgraphics.gl.buffer.CgReadback;
-import com.crystalgraphics.gl.texture.CgHostSamplers;
-import com.crystalgraphics.gl.texture.CgSamplers;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.gl.buffer.CgStreamBuffer;
 import com.crystalgraphics.gl.buffer.shader.CgEngineBufferRegistry;
@@ -241,7 +239,7 @@ public final class CgExecutor {
     // The rest of an execution's body, so a driver wait in any of it is named (T10.5).
     private static final int UPLOADS = CgTrace.name("graph.uploads"), GPU_TIMER = CgTrace.name("graph.gpuTimer"),
             AWAIT_ASYNC = CgTrace.name("graph.awaitAsync"),
-            BARRIER = CgTrace.name("graph.barrier"), UNPIN = CgTrace.name("graph.unpin"),
+            BARRIER = CgTrace.name("graph.barrier"),
             STEP_READBACK = CgTrace.name("graph.readback"), STEP_COPY = CgTrace.name("graph.copy"),
             STEP_UPLOAD = CgTrace.name("graph.upload"), STEP_CALLBACK = CgTrace.name("graph.callback"),
             STEP_COMPILE = CgTrace.name("graph.compile"), STEP_RELEASE = CgTrace.name("graph.release"),
@@ -382,17 +380,12 @@ public final class CgExecutor {
         }
         if (BY_DEPTH.size() == depth) BY_DEPTH.add(new CgExecutor(depth));
         CgExecutor executor = BY_DEPTH.get(depth);
-        // The host's sampler objects override our textures' filtering on the units they hold (Minecraft 1.21.5+
-        // leaves three bound): parked for the outermost execution, which every caller's frame is.
-        boolean outermost = depth == 0;
         depth++;
-        if (outermost) CgHostSamplers.park();
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "graph.execute");
              CgGlScope ignored2 = restoreState ? CgGlState.saveAll() : null) {
             // A compatibility host's fixed-function alpha test discards our fragments too, and only a material
             // declaring AlphaTest means one: 1.7.10 leaves GREATER 0.1 on, which drops every faint additive draw.
             if (restoreState) CgAlphaState.DISABLED.apply();
-            CgSamplers.forget();   // the host may have bound samplers of its own since
             try {
                 executor.run(frame);
             } finally {
@@ -400,8 +393,6 @@ public final class CgExecutor {
                 if (BESIDE.detach()) CgGL.glBindFramebuffer(CgGL.GL_FRAMEBUFFER, bound);
             }
         } finally {
-            CgSamplers.unbindOwn();   // ours never reach the host's textures, nor an outer execution's next draw
-            if (outermost) CgHostSamplers.unpark();
             depth--;
         }
     }
@@ -810,9 +801,6 @@ public final class CgExecutor {
             if (pass instanceof CgRasterPass raster) {
                 raster(frame, raster, frame.rasters[s]);
                 if (frame.rasters[s].writesDepth && depthDestination(raster) == sharedDepthSource) sharedDepthSource = -1;
-                try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, UNPIN)) {
-                    unpinLevels(frame, s);
-                }
             } else if (pass instanceof CgComputePass compute) {
                 if (async) {
                     computeAsync(frame, s, compute);
@@ -827,7 +815,6 @@ public final class CgExecutor {
                     }
                 }
                 if (CgBufferInspector.watching()) inspect(compute);
-                unpinLevels(frame, s);
             } else if (pass instanceof CgPass.Fill || pass instanceof CgPass.Update || pass instanceof CgPass.BufferCopy) {
                 try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, BUFFER_STEP)) {
                     bufferStep(pass);
@@ -1002,16 +989,6 @@ public final class CgExecutor {
      * words and dispatch. Its barriers record inside the compute pass ({@link CgGraphBarriers}).
      */
     private void computeDevice(CgFrame frame, CgComputePass pass, CgFrame.Compute packed) {
-        boolean was = CgBoundResources.notesOnly;
-        CgBoundResources.notesOnly = true;   // its binds are what its sets are made from, never CgGL's
-        try {
-            computeOnDevice(frame, pass, packed);
-        } finally {
-            CgBoundResources.notesOnly = was;
-        }
-    }
-
-    private void computeOnDevice(CgFrame frame, CgComputePass pass, CgFrame.Compute packed) {
         List<CgDispatch> dispatches = pass.dispatches();
         CgRHI rhi = CgRHI.get();
         CgTrace.add(CgChannels.GL, DEVICE_COMPUTES, 1);
@@ -2129,16 +2106,6 @@ public final class CgExecutor {
      * pass over its target's attachments, each batch's pipeline, sets and draw through the state cache.
      */
     private void rasterDevice(CgFrame frame, CgRasterPass pass, CgFrame.Raster packed, @Nullable int[] damage) {
-        boolean was = CgBoundResources.notesOnly;
-        CgBoundResources.notesOnly = true;   // its binds are what its sets are made from, never CgGL's
-        try {
-            rasterOnDevice(frame, pass, packed, damage);
-        } finally {
-            CgBoundResources.notesOnly = was;
-        }
-    }
-
-    private void rasterOnDevice(CgFrame frame, CgRasterPass pass, CgFrame.Raster packed, @Nullable int[] damage) {
         CgTrace.add(CgChannels.GL, DEVICE_PASSES, 1);
         long prepared = CgTrace.stamp(CgChannels.GL);
         checkDevicePass(pass, packed);
@@ -2740,12 +2707,6 @@ public final class CgExecutor {
         scissorRect[3] = Math.max(0, y1 - y0);
     }
 
-    /** What a step sampled one level of samples every level again: no pin outlives the pass that made it. */
-    private static void unpinLevels(CgFrame frame, int s) {
-        for (int i = frame.accessFrom[s]; i < frame.accessFrom[s + 1]; i++) {
-            if (frame.accessView[i] instanceof CgGraphTexture texture && texture.framebuffer() != null) texture.unpinLevels();
-        }
-    }
 
     /**
      * Copies what {@code bits} name from the pass's target for the draws sampling it, colour in the rect at {@code at}
@@ -2915,8 +2876,10 @@ public final class CgExecutor {
         otherBound = startNoted;
     }
 
-    /** A readback's copy, issued here; its sink hears from {@link CgReadback#poll} once the GPU has finished. */
-    /** {@code r}'s copy on the device: its step's barriers have made the source readable as a copy's. */
+    /**
+     * {@code r}'s copy on the device, its step's barriers having made the source readable as a copy's; its sink hears
+     * from {@link CgReadback#poll} once the GPU has finished.
+     */
     private static void readback(CgPass.Readback r) {
         r.delivering = true;
         if (r.buffer != null) {

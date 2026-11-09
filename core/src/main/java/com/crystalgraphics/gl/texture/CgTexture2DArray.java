@@ -6,22 +6,16 @@ import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
 import com.crystalgraphics.platform.rhi.resource.CgTextureRegion;
 import com.crystalgraphics.platform.gl.format.GLFormats;
-import com.crystalgraphics.gl.CgGlNames;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.texture.CgTextureSpec;
 import com.crystalgraphics.gpu.CgUploadLease;
 import com.crystalgraphics.gpu.CgUploads;
-import com.crystalgraphics.platform.gl.CgGL;
-import com.crystalgraphics.platform.gl.state.CgGlScope;
-import com.crystalgraphics.util.CgBufferUtils;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 import com.crystalgraphics.util.io.CgTextureIO.CgImageData;
 import com.crystalgraphics.util.io.CgTextureIO;
 import java.nio.ByteBuffer;
 import java.nio.FloatBuffer;
-import java.nio.ShortBuffer;
-import java.util.Arrays;
 import java.util.Objects;
 import java.util.function.Consumer;
 import javax.annotation.Nullable;
@@ -30,13 +24,8 @@ import java.util.logging.Logger;
 import lombok.Getter;
 
 /**
- * 2D-array GL texture (target {@code GL_TEXTURE_2D_ARRAY = 0x8C1A}). Single
- * concrete impl of {@link CgTexture} for 2D-arrays.
- *
- * <p>Each "layer" of the array is a 2D image of identical width/height. All
- * layers share the same pixel format, mipmap config, and sampler params.
- * Storage is allocated via {@link GL12#glTexImage3D} and per-layer upload
- * happens via {@link GL12#glTexSubImage3D}.</p>
+ * A 2D-array texture: layers of one size, format and sampling, on the device. Built from files, or allocated empty and
+ * filled layer region by layer region, growing as it fills.
  *
  * <h3>From files</h3>
  * <p>{@link #create(CgTextureSpec, String...)} is a layer an image, cached by the paths and the spec and loaded at its
@@ -55,22 +44,21 @@ import lombok.Getter;
  *       {@link #isMissing()}.</li>
  * </ul>
  *
- * <h3>Growth without a GPU readback</h3>
- * <p>Every {@link #uploadLayerRegion} call also mirrors its data into that layer's
- * {@link PageData} (see {@link #growLayers}'s javadoc for why). This only applies to the
- * incremental "allocate empty, upload sub-rects over time" pattern ({@link #allocateEmpty} +
- * {@link #uploadLayerRegion}); an array from files is not mirrored.</p>
+ * <h3>Filled over time</h3>
+ * <pre>{@code
+ * CgTexture2DArray atlas = CgTexture2DArray.allocateEmpty(1024, 1024, 4, CgTextureSpec.R8_LINEAR);
+ * atlas.uploadLayerRegion(2, x, y, w, h, GL_RED, GL_UNSIGNED_BYTE, glyph);
+ * atlas.growLayers(8);   // layers 0-3 kept, copied on the GPU; read getId() at each use
+ * }</pre>
  */
 public final class CgTexture2DArray extends CgTextureAbstract {
 
     private static final Logger LOGGER = Logger.getLogger(CgTexture2DArray.class.getName());
 
-    // ── GL constants ────────────────────────────────────────────────
     private static final int GL_TEXTURE_2D_ARRAY = 0x8C1A;
 
-    // ── Type-specific state ─────────────────────────────────────────
-    /** Not final — {@link #growLayers(int)} reallocates storage in place and bumps this. */
-    @Getter private int depth;
+    /** Grows ahead of the storage: {@link #growLayers(int)} sets it at once, the storage on the render thread. */
+    @Getter private volatile int depth;
 
     @Override
     protected CgGpuTexture.Desc rhiDesc() {
@@ -81,15 +69,7 @@ public final class CgTexture2DArray extends CgTextureAbstract {
     /** Source paths for reload; {@code null} for createDirect (no reload support). */
     @Getter private final String[] sourcePaths;
 
-    /**
-     * Per-layer CPU-side upload mirror — see class javadoc "Growth without a GPU readback".
-     * Sized to at least {@link #depth}, grown alongside it; an entry stays {@code null} for a
-     * layer that never received an upload (nothing to preserve across growth for a layer
-     * nobody ever wrote to).
-     */
-    private PageData[] pages = new PageData[0];
-
-    /** Layers the GL storage has, which {@link #depth} runs ahead of while growth waits for the render thread. */
+    /** Layers the storage has, which {@link #depth} runs ahead of while growth waits for the render thread. */
     private int storageDepth;
 
     private final Consumer<CgUploadLease> landing = this::land;
@@ -98,7 +78,6 @@ public final class CgTexture2DArray extends CgTextureAbstract {
         super(0, width, height, spec);
         this.depth = depth;
         this.sourcePaths = sourcePaths;
-        ensurePageCapacity(depth);
     }
 
     // ── Factories ────────────────────────────────────────────────────
@@ -132,32 +111,11 @@ public final class CgTexture2DArray extends CgTextureAbstract {
     }
 
     /**
-     * Allocates an empty {@code layers}-deep array texture with no initial pixel
-     * data — one {@code glTexImage3D} call with a {@code null} data pointer,
-     * orphaning/reserving storage for every layer up front. Pairs with
-     * {@link #uploadLayerRegion} to push data into individual layers afterward.
+     * An empty {@code layers}-deep array that {@link #uploadLayerRegion} fills and {@link #growLayers} deepens. Not
+     * registered with {@link CgTextureManager}; caller owns the lifecycle.
      *
-     * <p>Not registered with {@link CgTextureManager}; caller owns the lifecycle.
-     * No reload support (there is no source path to reload from). This is the
-     * "N-layer atlas built up incrementally over many frames" entry point, as
-     * opposed to {@link #create}/{@link #createDirect}'s "N whole images,
-     * uploaded once" model.</p>
-     *
-     * <p>Any thread, as are its uploads and growth: where no GL may run, the texture waits for the render thread,
-     * before the next frame executes, and {@link #getId} is 0 until then off it.</p>
-     *
-     * @param width  layer width in pixels (must be positive)
-     * @param height layer height in pixels (must be positive)
-     * @param layers initial number of layers to reserve (must be positive).
-     *               Not a hard ceiling — see {@link #growLayers(int)} to add
-     *               more layers later without losing this instance's identity.
-     * @param spec   format/filter/wrap; {@link CgTextureSpec#getGlType()} is used
-     *               only for this initial allocation call (no real data is
-     *               transferred with a null pointer) — {@link #uploadLayerRegion}
-     *               takes its own explicit format/type per call, which does not
-     *               need to match this spec's type (e.g. uploading {@code float}
-     *               data into an {@code RGBA16F}-internal-format array, whose
-     *               spec type may be {@code GL_HALF_FLOAT}).
+     * <p>Any thread, as are its uploads and growth: off the render thread the work waits for it, before the next frame
+     * executes, and {@link #getId} is 0 until then.</p>
      */
     public static CgTexture2DArray allocateEmpty(int width, int height, int layers, CgTextureSpec spec) {
         if (width <= 0 || height <= 0)
@@ -167,8 +125,7 @@ public final class CgTexture2DArray extends CgTextureAbstract {
 
         CgTexture2DArray tex = new CgTexture2DArray(width, height, layers, spec, null);
         tex.gpu.run(() -> {
-            if (tex.image == null && !CgDeviceTextures.installed()) tex.textureId = CgGlNames.texture();
-            tex.reallocateStorage(layers);
+            CgDeviceTextures.release(tex.store(layers, 1));
             tex.storageDepth = layers;
         });
         return tex;
@@ -177,177 +134,33 @@ public final class CgTexture2DArray extends CgTextureAbstract {
     // ── Per-layer sub-rect upload ───────────────────────────────────────
 
     /**
-     * Uploads pixel data into a sub-rectangle of a single layer, via
-     * {@code glTexSubImage3D}. Pairs with {@link #allocateEmpty}. Also mirrors
-     * {@code data} into this layer's CPU-side buffer — see class javadoc
-     * "Growth without a GPU readback".
+     * Writes a sub-rectangle of one layer: rows bottom first, tightly packed, in {@code format} and {@code type}, which
+     * may differ from its storage's (floats into an {@code RGBA16F} array convert as they land). Any thread.
      *
-     * <p>{@code format}/{@code type} describe {@code data}'s actual layout and
-     * are supplied explicitly by the caller rather than derived from this
-     * texture's spec — the spec describes GPU-side storage, not what a given
-     * upload call's CPU-side data looks like (e.g. this array's internal
-     * format may be {@code RGBA16F} while a caller uploads plain {@code float}
-     * data via {@code GL_FLOAT}, letting the driver quantize on upload).</p>
-     *
-     * @param layer  target layer index, {@code [0, getDepth())}
-     * @param x      sub-rectangle left edge within the layer, in pixels
-     * @param y      sub-rectangle top edge within the layer, in pixels
-     * @param w      sub-rectangle width, in pixels
-     * @param h      sub-rectangle height, in pixels
-     * @param format GL pixel format of {@code data} (e.g. {@code GL_RED}, {@code GL_RGBA})
-     * @param type   GL pixel type of {@code data} (e.g. {@code GL_UNSIGNED_BYTE}, {@code GL_FLOAT})
-     * @param data   tightly-packed pixel data, {@code w * h * channels(format)} elements
+     * @param layer target layer index, {@code [0, getDepth())}
      */
-    public void uploadLayerRegion(int layer, int x, int y, int w, int h,
-                                   int format, int type, ByteBuffer data) {
+    public void uploadLayerRegion(int layer, int x, int y, int w, int h, int format, int type, ByteBuffer data) {
         checkUsable();
-        synchronized (this) {
-            mirrorByteUpload(layer, x, y, w, h, format, type, data);
-        }
-        CgUploadLease lease = CgUploads.copyOf(data, converts(format, type)).into(landing, 0, x, y, layer, w, h, 1, format, type);
-        // From an unpack buffer on the render thread too: NVIDIA's GL converts the whole array at the first
-        // client-memory upload after a grow's GPU copy into it, about 1.4 ms per 4 MB layer, and from a buffer it does not.
-        gpu.run(lease);
-    }
-
-    /** {@code float}-data variant of {@link #uploadLayerRegion(int, int, int, int, int, int, int, ByteBuffer)}. */
-    public void uploadLayerRegion(int layer, int x, int y, int w, int h,
-                                   int format, int type, FloatBuffer data) {
-        checkUsable();
-        synchronized (this) {
-            mirrorFloatUpload(layer, x, y, w, h, format, data);
-        }
-        if (gpu.immediate() && !CgDeviceTextures.installed()) {   // the device's write takes bytes: a lease below
-            try (CgGlScope restore = gpu.restoring()) {
-                uploadFloats(layer, x, y, w, h, format, type, data);
-            }
-            return;
-        }
         gpu.run(CgUploads.copyOf(data, converts(format, type)).into(landing, 0, x, y, layer, w, h, 1, format, type));
     }
 
-    /** A queued layer region, from its lease. Not taken from callers: the CPU mirror needs a source it can read. */
+    /** {@code float}-data variant of {@link #uploadLayerRegion(int, int, int, int, int, int, int, ByteBuffer)}. */
+    public void uploadLayerRegion(int layer, int x, int y, int w, int h, int format, int type, FloatBuffer data) {
+        checkUsable();
+        gpu.run(CgUploads.copyOf(data, converts(format, type)).into(landing, 0, x, y, layer, w, h, 1, format, type));
+    }
+
     private void land(CgUploadLease lease) {
-        if (image != null) {
-            CgDeviceTextures.write(image, new CgTextureRegion(0, lease.x(), lease.y(), lease.z(), lease.width(),
-                    lease.height(), 1), lease, 0, lease.size());
-            return;
-        }
-        CgGL.glBindTexture(GL_TEXTURE_2D_ARRAY, textureId);
-        try (CgTightUnpack ignored = CgTightUnpack.begin()) {
-            lease.texSubImage3D(GL_TEXTURE_2D_ARRAY);
-        } finally {
-            CgGL.glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
-        }
-    }
-
-    private void uploadFloats(int layer, int x, int y, int w, int h, int format, int type, FloatBuffer data) {
-        // Hand the driver GL_FLOAT and let it convert, rather than quantising CPU-side first.
-        //
-        // Converting in Java was tried and is a clear pessimisation. It sends a quarter of the
-        // bytes, but the scalar clamp/round/put loop costs far more than the transfer it saves:
-        // measured on matched 28224-component uploads, 2.403 ms converting versus 0.035 ms just
-        // handing over floats, and ~8x worse per component in warm steady state (2.72 ns vs
-        // 0.34 ns). The driver's own conversion is native and vectorised; a Java loop cannot
-        // compete with it, and the bus was never the bottleneck. See git history for
-        // uploadLayerRegionAsUnorm8 and the half-float variant before it, which made the same
-        // trade and measured ~2%.
-        long bytes = (long) data.remaining() << 2;
-        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "texArray.upload.texSubImage")) {
-            rawUpload(layer, x, y, w, h, format, type, data);
-        }
-        CgTrace.add(CgChannels.GL, "texArray.upload.bytes", bytes);
-    }
-
-
-    // NOTE: there is deliberately no upload-batching API here (a begin/end pair hoisting the bind
-    // and GL_UNPACK_ALIGNMENT setup out of a run of uploads). It was built twice and removed
-    // twice; see CgFontRegistry#drainCompletedGlyphs for the measurements and for what would have
-    // to be true of a workload to justify bringing it back.
-
-    private void rawUpload(int layer, int x, int y, int w, int h, int format, int type, ByteBuffer data) {
-        CgGL.glBindTexture(GL_TEXTURE_2D_ARRAY, textureId);
-        try (CgTightUnpack ignored = CgTightUnpack.begin()) {
-            CgGL.glTexSubImage3D(GL_TEXTURE_2D_ARRAY, 0, x, y, layer, w, h, 1, format, type, data);
-        } finally {
-            CgGL.glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
-        }
-    }
-
-    private void rawUpload(int layer, int x, int y, int w, int h, int format, int type, FloatBuffer data) {
-        CgGL.glBindTexture(GL_TEXTURE_2D_ARRAY, textureId);
-        try (CgTightUnpack ignored = CgTightUnpack.begin()) {
-            CgGL.glTexSubImage3D(GL_TEXTURE_2D_ARRAY, 0, x, y, layer, w, h, 1, format, type, data);
-        } finally {
-            CgGL.glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
-        }
-    }
-
-    private void rawUpload(int layer, int x, int y, int w, int h, int format, int type, ShortBuffer data) {
-        CgGL.glBindTexture(GL_TEXTURE_2D_ARRAY, textureId);
-        try (CgTightUnpack ignored = CgTightUnpack.begin()) {
-            CgGL.glTexSubImage3D(GL_TEXTURE_2D_ARRAY, 0, x, y, layer, w, h, 1, format, type, data);
-        } finally {
-            CgGL.glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
-        }
-    }
-
-    // ── Per-layer CPU mirroring ──────────────────────────────────────────
-
-    /** Ensures layer {@code layer}'s {@link PageData} exists, then delegates the write to it. */
-    private void mirrorByteUpload(int layer, int x, int y, int w, int h, int format, int type, ByteBuffer data) {
-        ensurePageCapacity(layer + 1);
-        if (pages[layer] == null) {
-            pages[layer] = PageData.ofBytes(format, type, width, height);
-        }
-        pages[layer].writeSubRect(x, y, w, h, data);
-    }
-
-    /** {@code float}-data variant of {@link #mirrorByteUpload}. */
-    private void mirrorFloatUpload(int layer, int x, int y, int w, int h, int format, FloatBuffer data) {
-        ensurePageCapacity(layer + 1);
-        if (pages[layer] == null) {
-            pages[layer] = PageData.ofFloats(format, width, height);
-        }
-        pages[layer].writeSubRect(x, y, w, h, data);
-    }
-
-    private void ensurePageCapacity(int neededDepth) {
-        if (neededDepth <= pages.length) return;
-        pages = Arrays.copyOf(pages, neededDepth);
+        CgDeviceTextures.write(storage(), new CgTextureRegion(0, lease.x(), lease.y(), lease.z(), lease.width(),
+                lease.height(), 1), lease, 0, lease.size());
     }
 
     // ── Grow ─────────────────────────────────────────────────────────────
 
     /**
-     * Grows this array's layer depth, its layers kept: every reference to this
-     * instance keeps working. On a device its storage is new, and with it its
-     * {@link #getId()}: read the id at each bind, never keep it.
-     *
-     * <p>GL has no "extend an array texture" call — {@code glTexImage3D} always
-     * (re)defines a texture's storage from scratch, discarding whatever was
-     * there. An earlier version of this method recovered the old content with a
-     * {@code glGetTexImage} readback before reallocating — correct, but
-     * {@code glGetTexImage} is a <strong>pipeline-stalling</strong> call: it
-     * blocks the calling thread until the GPU finishes every pending operation
-     * up to that texture's last write, which showed up as real, visible frame
-     * hitches on every growth event. Instead, this reallocates storage and then
-     * simply replays each existing layer's already-current CPU-side mirror (see
-     * class javadoc) back in via plain, non-blocking uploads — no GPU
-     * involvement in the "read old data" step at all, because there isn't one.</p>
-     *
-     * <p>Intended as a cold-path operation — growth events should be rare
-     * relative to per-frame work (e.g. a glyph atlas doubling its page budget
-     * only when it actually runs out of room), not something called every frame.</p>
-     *
-     * <p><b>Rebinds the 2D-array target.</b> This binds other textures (the scratch array) and
-     * leaves the target unbound on exit — {@link #reallocateStorage} unbinds in its
-     * {@code finally}. Any future caller that hoists a bind across a run of uploads must account
-     * for that, because growth fires <em>indirectly</em>: nothing can predict which individual
-     * upload will be the one that exhausts the layers. Getting it wrong is silent — the uploads
-     * afterwards land on texture 0 and are simply lost. That is not a hypothetical; it is what
-     * happened the one time this was not accounted for (see
-     * {@code CgFontRegistry#drainCompletedGlyphs}).</p>
+     * Deepens it to {@code newLayerCount} layers, its layers kept: new storage, the old layers copied into it on the GPU.
+     * Every reference to this instance keeps working, but its {@link #getId()} changes: read the id at each use, never
+     * keep it. Any thread; a cold path, for an atlas that ran out of room.
      *
      * @param newLayerCount new depth; must exceed the current {@link #getDepth()}
      */
@@ -357,111 +170,17 @@ public final class CgTexture2DArray extends CgTextureAbstract {
             throw new IllegalArgumentException(
                     "newLayerCount (" + newLayerCount + ") must exceed current depth (" + depth + ")");
         }
-        synchronized (this) {
-            depth = newLayerCount;
-            ensurePageCapacity(newLayerCount);
-        }
+        depth = newLayerCount;
         gpu.run(() -> {
-            // The mirror is replayed from here, while a worker may be writing it.
-            synchronized (this) {
-                try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "texArray.grow")) {
-                    growStorage(storageDepth, newLayerCount);
-                }
-                storageDepth = newLayerCount;
+            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "texArray.grow")) {
+                grow(storageDepth, newLayerCount);
             }
+            storageDepth = newLayerCount;
         });
     }
 
-    /** Grows the GL storage from {@code oldDepth} layers to {@code newLayerCount}, keeping its content and its id. */
-    private void growStorage(int oldDepth, int newLayerCount) {
-        if (image != null) {
-            growOnDevice(oldDepth, newLayerCount);
-            return;
-        }
-
-        // Preferred path: park the existing layers in a scratch texture, reallocate THIS texture
-        // in place, then copy them back — both hops GPU-side, no CPU round trip.
-        //
-        // In place rather than adopting a bigger texture: CgGL code keeps the name. Two GPU copies
-        // against a full re-upload measured 3.8 ms against 65.7 ms and climbing with atlas size.
-        if (CgTextureCopy.isSupported()) {
-            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "texArray.growGpuCopy")) {
-                // Scratch goes through this class's own allocateEmpty rather than a raw
-                // glGenTextures/glTexImage3D pair: same format/filter/wrap setup as any other
-                // array texture (no chance of the two drifting apart), a real object with a
-                // delete() rather than a naked GL name, and no raw GL object creation sitting
-                // in a feature path. allocateEmpty deliberately does not register with
-                // CgTextureManager — the caller owns the lifecycle, which is exactly what a
-                // transient scratch wants.
-                CgTexture2DArray scratch = allocateEmpty(width, height, oldDepth, spec);
-                boolean copied = false;
-                try {
-                    // Hop 1: current contents -> scratch, while the original still holds them.
-                    if (CgTextureCopy.copyArrayLayers(textureId, scratch.getId(), width, height, oldDepth)) {
-                        reallocateStorage(newLayerCount);
-                        // Hop 2: scratch -> the freshly (and larger) reallocated original.
-                        copied = CgTextureCopy.copyArrayLayers(scratch.getId(), textureId, width, height, oldDepth);
-                        if (!copied) {
-                            // Storage was already reallocated, so the old texels are gone from
-                            // the original and only the CPU mirror can restore them. Fall through
-                            // to the replay loop below rather than leaving the atlas corrupt.
-                            LOGGER.warning("GPU copy-back failed during array growth; replaying layers from CPU mirror");
-                        }
-                    }
-                } finally {
-                    scratch.delete();
-                }
-
-                if (copied) {
-                    CgTrace.add(CgChannels.GL, "texArray.growGpuCopy.count", 1);
-                    return;
-                }
-                // Fall through. reallocateStorage may or may not have run; the code below is
-                // idempotent with respect to it (reallocating twice is harmless, and the replay
-                // restores every layer either way).
-            }
-        }
-
-        // Fallback: reallocate in place, then replay every layer from its CPU mirror.
-        // Split into two scopes deliberately -- "realloc" is the unavoidable glTexImage3D that
-        // resizes GPU storage, while "replayLayers" is the CPU->GPU re-upload. Measuring them
-        // separately is what established that the replay, not the realloc, is the real cost.
-        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "texArray.realloc")) {
-            reallocateStorage(newLayerCount);
-        }
-        ensurePageCapacity(newLayerCount);
-
-        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "texArray.replayLayers")) {
-            int replayed = 0;
-            long replayedBytes = 0;
-            for (int i = 0; i < oldDepth; i++) {
-                PageData page = pages[i];
-                if (page == null) {
-                    continue; // this layer never received an upload — nothing to replay.
-                }
-                if (page.byteData != null) {
-                    page.byteData.position(0);
-                    rawUpload(i, 0, 0, width, height, page.format, page.type, page.byteData);
-                    replayedBytes += page.byteData.remaining();
-                } else {
-                    page.floatData.position(0);
-                    rawUpload(i, 0, 0, width, height, page.format, page.type, page.floatData);
-                    replayedBytes += (long) page.floatData.remaining() << 2;
-                }
-                replayed++;
-            }
-            CgTrace.counter(CgChannels.GL, "texArray.replayLayers.count", replayed);
-            CgTrace.add(CgChannels.GL, "texArray.replayLayers.bytes", replayedBytes);
-        }
-    }
-
-    /**
-     * {@link #growStorage} on the device: storage of {@code newLayerCount} layers, the old layers copied into it on the
-     * GPU, the old released. Its name changes with it; nothing keeps one past a {@link #getId()}.
-     */
-    private void growOnDevice(int oldDepth, int newLayerCount) {
-        CgGpuTexture old = storeOnDevice(CgGpuTexture.Kind.D2_ARRAY, GLFormats.of(spec.getGlInternalFormat()), width,
-                height, newLayerCount, 1, spec);
+    private void grow(int oldDepth, int newLayerCount) {
+        CgGpuTexture old = store(newLayerCount, 1);
         if (old == null) return;
         int layers = Math.min(oldDepth, old.desc().depthOrLayers());
         if (layers > 0) {
@@ -477,26 +196,11 @@ public final class CgTexture2DArray extends CgTextureAbstract {
         CgTrace.add(CgChannels.GL, "texArray.growGpuCopy.count", 1);
     }
 
-    /**
-     * Reallocates this texture's GL storage to {@code layerCount} layers, keeping the same GL
-     * texture id (see {@link #growLayers}'s comment on why the id must not change). Discards
-     * all existing texel content — the caller is responsible for restoring it.
-     */
-    private void reallocateStorage(int layerCount) {
-        if (CgDeviceTextures.installed()) {
-            CgDeviceTextures.release(storeOnDevice(CgGpuTexture.Kind.D2_ARRAY, GLFormats.of(spec.getGlInternalFormat()),
-                    width, height, layerCount, 1, spec));
-            return;
-        }
-        CgGL.glBindTexture(GL_TEXTURE_2D_ARRAY, textureId);
-        try {
-            CgGL.glTexImage3D(GL_TEXTURE_2D_ARRAY, 0,
-                    spec.getGlInternalFormat(), width, height, layerCount, 0,
-                    spec.getGlBaseFormat(), spec.getGlType(), (ByteBuffer) null);
-            spec.applyTo(GL_TEXTURE_2D_ARRAY);
-        } finally {
-            CgGL.glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
-        }
+    /** {@link #storeOnDevice} of {@code layers} layers at its size: what it replaced, for the caller to release. */
+    @Nullable
+    private CgGpuTexture store(int layers, int chain) {
+        return storeOnDevice(CgGpuTexture.Kind.D2_ARRAY, GLFormats.of(spec.getGlInternalFormat()), width, height, layers,
+                chain);
     }
 
     // ── Files ─────────────────────────────────────────────────────────
@@ -528,10 +232,10 @@ public final class CgTexture2DArray extends CgTextureAbstract {
         }
         ByteBuffer[] layers = new ByteBuffer[images.length];
         for (int i = 0; i < layers.length; i++) layers[i] = centred(images[i], w, h, channels);
-        int format = pixelFormatForChannels(channels), lw = w, lh = h;
+        int format = pixelFormatForChannels(channels);
         width = w;
         height = h;
-        gpu.run(() -> uploadLayers(lw, lh, format, layers));
+        gpu.run(() -> uploadLayers(format, layers));
     }
 
     /** {@code image} centred on a {@code w} x {@code h} layer, clear round it; its own pixels where it fills one. */
@@ -550,139 +254,16 @@ public final class CgTexture2DArray extends CgTextureAbstract {
         return layer;
     }
 
-    private void uploadLayers(int w, int h, int format, ByteBuffer[] layers) {
-        if (CgDeviceTextures.installed()) {
-            int chain = mips();
-            CgDeviceTextures.release(storeOnDevice(CgGpuTexture.Kind.D2_ARRAY, GLFormats.of(spec.getGlInternalFormat()), w,
-                    h, layers.length, chain, spec));
-            for (int i = 0; i < layers.length; i++) {
-                CgDeviceTextures.write(image, new CgTextureRegion(0, 0, 0, i, w, h, 1), layers[i], format, GL_UNSIGNED_BYTE);
-            }
-            if (chain > 1) CgDeviceTextures.mipmaps(image);
-            storageDepth = layers.length;
-            return;
+    private void uploadLayers(int format, ByteBuffer[] layers) {
+        int chain = mips();
+        CgDeviceTextures.release(store(layers.length, chain));
+        for (int i = 0; i < layers.length; i++) {
+            CgDeviceTextures.write(image, new CgTextureRegion(0, 0, 0, i, width, height, 1), layers[i], format,
+                    GL_UNSIGNED_BYTE);
         }
-        boolean made = textureId == 0;
-        if (made) textureId = CgGlNames.texture();
-        CgGL.glBindTexture(GL_TEXTURE_2D_ARRAY, textureId);
-        try {
-            CgGL.glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, spec.getGlInternalFormat(), w, h, layers.length, 0, format,
-                    GL_UNSIGNED_BYTE, (ByteBuffer) null);
-            try (CgTightUnpack ignored = CgTightUnpack.begin()) {
-                for (int i = 0; i < layers.length; i++) {
-                    CgGL.glTexSubImage3D(GL_TEXTURE_2D_ARRAY, 0, 0, 0, i, w, h, 1, format, GL_UNSIGNED_BYTE, layers[i]);
-                }
-            }
-            spec.applyTo(GL_TEXTURE_2D_ARRAY);
-            storageDepth = layers.length;
-        } catch (RuntimeException e) {
-            if (made) {
-                CgGL.glDeleteTextures(textureId);
-                textureId = 0;
-            }
-            throw e;
-        } finally {
-            CgGL.glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
-        }
+        if (chain > 1) CgDeviceTextures.mipmaps(image);
+        storageDepth = layers.length;
     }
 
     @Override public int getTarget() { return GL_TEXTURE_2D_ARRAY; }
-
-    /**
-     * One layer's CPU-side upload mirror — owns both the storage and the sub-rect write logic
-     * for that layer, so the outer class only ever has to say "write this rect into this
-     * layer" rather than reaching into raw buffers itself. Exactly one of {@link #byteData}/
-     * {@link #floatData} is populated, matching whichever {@link #uploadLayerRegion} overload
-     * this layer's uploads actually use. Created once, on this layer's first upload — via
-     * {@link #ofBytes}/{@link #ofFloats} — sized for one full layer in this exact
-     * {@code format}/{@code type}; the buffers' contents then mutate in place on every
-     * subsequent {@link #writeSubRect}, so the record itself never needs replacing.
-     */
-    private record PageData(int format, int type, int width, int height, ByteBuffer byteData, FloatBuffer floatData) {
-
-        static PageData ofBytes(int format, int type, int width, int height) {
-            int bpp = bytesPerPixel(format, type);
-            return new PageData(format, type, width, height, CgBufferUtils.createByteBuffer(width * height * bpp), null);
-        }
-
-        static PageData ofFloats(int format, int width, int height) {
-            int channels = channelsForFormat(format);
-            return new PageData(format, CgGL.GL_FLOAT, width, height, null, CgBufferUtils.createFloatBuffer(width * height * channels));
-        }
-
-        /**
-         * Writes {@code data} (left untouched — read via an independent
-         * {@link ByteBuffer#duplicate()} view, not {@code data} itself, so the caller's buffer
-         * is still positioned at 0 for the real GL upload that follows) into this page's
-         * mirror at {@code (x, y, w, h)}, one row at a time via bulk relative
-         * {@link ByteBuffer#put(ByteBuffer)} — no scratch array needed, just narrowing the
-         * duplicate's limit/position to exactly one row's bytes per iteration.
-         */
-        void writeSubRect(int x, int y, int w, int h, ByteBuffer data) {
-            int bpp = bytesPerPixel(format, type);
-            int rowBytes = w * bpp;
-            ByteBuffer src = data.duplicate();
-            int destStride = width * bpp;
-            for (int row = 0; row < h; row++) {
-                int rowStart = row * rowBytes;
-                src.limit(rowStart + rowBytes);
-                src.position(rowStart);
-                byteData.position((y + row) * destStride + x * bpp);
-                byteData.put(src);
-            }
-            byteData.position(0);
-        }
-
-        /** {@code float}-data variant of {@link #writeSubRect(int, int, int, int, ByteBuffer)}. */
-        void writeSubRect(int x, int y, int w, int h, FloatBuffer data) {
-            int channels = channelsForFormat(format);
-            int rowFloats = w * channels;
-            FloatBuffer src = data.duplicate();
-            int destStride = width * channels;
-            for (int row = 0; row < h; row++) {
-                int rowStart = row * rowFloats;
-                src.limit(rowStart + rowFloats);
-                src.position(rowStart);
-                floatData.position((y + row) * destStride + x * channels);
-                floatData.put(src);
-            }
-            floatData.position(0);
-        }
-
-        /**
-         * Bytes per pixel for a plain (non-packed) {@code (baseFormat, type)} pair —
-         * component count from {@code baseFormat} times bytes-per-component from
-         * {@code type}. Used only to size/index this page's byte mirror.
-         */
-        private static int bytesPerPixel(int baseFormat, int type) {
-            int bytesPerComponent;
-            if (type == CgGL.GL_UNSIGNED_BYTE || type == CgGL.GL_BYTE) {
-                bytesPerComponent = 1;
-            } else if (type == CgGL.GL_UNSIGNED_SHORT || type == CgGL.GL_SHORT || type == CgGL.GL_HALF_FLOAT) {
-                bytesPerComponent = 2;
-            } else if (type == CgGL.GL_UNSIGNED_INT || type == CgGL.GL_INT || type == CgGL.GL_FLOAT) {
-                bytesPerComponent = 4;
-            } else {
-                throw new UnsupportedOperationException(
-                        "Cannot size a mirror buffer for packed/exotic pixel type 0x"
-                                + Integer.toHexString(type) + " — only plain per-component types "
-                                + "(UNSIGNED_BYTE/BYTE/UNSIGNED_SHORT/SHORT/HALF_FLOAT/UNSIGNED_INT/INT/FLOAT) "
-                                + "are supported for CgTexture2DArray layer mirroring.");
-            }
-            return channelsForFormat(baseFormat) * bytesPerComponent;
-        }
-
-        /** Component count for a GL base/pixel format constant (e.g. {@code GL_RED} → 1, {@code GL_RGBA} → 4). */
-        private static int channelsForFormat(int baseFormat) {
-            if (baseFormat == CgGL.GL_RED || baseFormat == CgGL.GL_RED_INTEGER || baseFormat == CgGL.GL_DEPTH_COMPONENT) {
-                return 1;
-            } else if (baseFormat == CgGL.GL_RG || baseFormat == CgGL.GL_RG_INTEGER) {
-                return 2;
-            } else if (baseFormat == CgGL.GL_RGB) {
-                return 3;
-            } else {
-                return 4; // GL_RGBA / GL_RGBA_INTEGER
-            }
-        }
-    }
 }

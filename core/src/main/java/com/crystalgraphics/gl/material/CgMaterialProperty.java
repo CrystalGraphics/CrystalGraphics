@@ -4,7 +4,7 @@ import com.crystalgraphics.api.buffer.CgBufferFormat;
 import com.crystalgraphics.gl.shader.CgShader;
 import com.crystalgraphics.api.texture.CgSampler;
 import com.crystalgraphics.api.texture.CgTexture;
-import com.crystalgraphics.gl.texture.CgSamplers;
+import com.crystalgraphics.render.draw.CgBoundResources;
 import com.crystalgraphics.gl.buffer.staging.CgBufferWriter;
 import com.crystalgraphics.gl.material.parse.CgParsedShader;
 import com.crystalgraphics.gl.texture.CgEngineTextures;
@@ -459,7 +459,7 @@ public final class CgMaterialProperty {
 
         if (samplerUnit >= 0 && samplerTexture != null) {
             samplerTexture.bind(samplerUnit);
-            CgSamplers.bind(samplerUnit, sampler, samplerTexture);
+            CgBoundResources.sampler(samplerUnit, sampler);
         }
     }
 

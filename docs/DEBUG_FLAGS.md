@@ -63,6 +63,7 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 | Variable | Takes | Default | |
 |---|---|---|---|
 | `crystalgraphics.compute.checked` | true, false | `false` | Kernels run as compute bounds-check every buffer and image access: one out of range is skipped, and the first of each dispatch logged once with its .compute line. Every access tests its index. Read at launch. |
+| `crystalgraphics.compute.emulateSubgroups` | true, false | `false` | Kernels run their subgroup operations emulated over the work group, as on a device without subgroups. Read at launch. |
 | `crystalgraphics.compute.logCompiles` | true, false | `false` | Log each kernel program compiled or started, by file and program key, with whether a dispatch waited. |
 | `crystalgraphics.compute.selfTest` | true, false | `false` | At the first frames, run a kernel of every shape and every GPU op on this context and check each result against Java; logs [crystalgraphics] compute self-test <tier>: PASS\|FAIL, which prodSmoke gathers. |
 | `crystalgraphics.compute.tier` | text | empty | V or G43: kernels run as that tier would, where the context has what it needs, refused naming what is missing where not; G40 and G33 run none. Empty for the best. Taken at each context's capability probe. |
@@ -96,7 +97,7 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 
 | Variable | Takes | Default | |
 |---|---|---|---|
-| `crystalgraphics.device.toolchain` | true, false | `true` | Whether a host whose platform ships no shader compiler fetches the toolchain and draws through a device. |
+| `crystalgraphics.device.toolchain` | true, false | `true` | Whether a host whose platform ships no shader compiler draws through a device. |
 
 ## `crystalgraphics.fixedSeed`
 
@@ -118,7 +119,7 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 | `crystalgraphics.gl.gatherBarriers` | true, false | `true` | Joins the barriers between cgBeginBarriers and cgEndBarriers into one glMemoryBarrier on GL; off, one each. Read at launch. |
 | `crystalgraphics.gl.keepHostDebugOutput` | true, false | `false` | Keep the GL debug output Minecraft enables at its default glDebugVerbosity; modern GL nodes turn it off at the first host section (on NVIDIA it slowed every call several times). debugStacks and debugPerf keep it too. Read at launch. |
 | `crystalgraphics.gl.lazySamplerPark` | true, false | `true` | A stage's park clears a unit's sampler at our first texture bind there, not all 16 at once. Read at launch. |
-| `crystalgraphics.gl.threadCheck` | true, false | `false` | Log each CgGL call site inside a GL-free section (a UI paint recording) or off the context's thread, once, with its stack; every site and its count to stderr at exit. Read at launch. |
+| `crystalgraphics.gl.threadCheck` | true, false | `false` | Log each CgGL call site inside a GL device's section or off the context's thread, once, with its stack; every site and its count to stderr at exit. Read at launch. |
 | `crystalgraphics.gl.uniformShadow` | true, false | `true` | Skips a uniform set to what that program's uniform already holds. Read at launch. |
 
 ## `crystalgraphics.gpu`
@@ -244,6 +245,7 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 | Variable | Takes | Default | |
 |---|---|---|---|
 | `crystalgraphics.post.debug` | text | empty | level<N>: a stage of bloom's layers, 0 the glow the composite reads. overdraw: transparent fragments per pixel as a heat ramp (blue 1, green 4, red 16, white 32). distortion: the distortion target, \|offset\| x 50 in red and green, the split in blue. |
+| `crystalgraphics.post.lutEveryFrame` | true, false | `false` | The tonemapper's table is built every frame its look tonemaps, not only when its settings move. |
 
 ## `crystalgraphics.rehearsal`
 
@@ -258,12 +260,6 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 | `crystalgraphics.resourceOverrideDirs` | text | empty | Source roots searched before the classpath, separated by the platform's path separator and tried in order ahead of the ones a dev run finds itself, so an edited asset is read from its source tree; set, the shader preprocessor caches nothing unless hot reload watches. Read at launch. |
 | `crystalgraphics.resourceOverrideDirs.auto` | true, false | `true` | A dev run's own source resource folders as override roots, found from what its launcher passed (CgDevResourceRoots); a production client has none. Read at launch. |
 
-## `crystalgraphics.rhi`
-
-| Variable | Takes | Default | |
-|---|---|---|---|
-| `crystalgraphics.rhi.deviceSets` | true, false | `false` | Each batch also makes its view, pass and material sets on the device, logging a slot left to a default. Read at launch. |
-
 ## `crystalgraphics.shader`
 
 | Variable | Takes | Default | |
@@ -273,6 +269,7 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 | `crystalgraphics.shader.isolatedCompile` | true, false | `true` | Compile programs in a context sharing nothing with the render thread's, each moved over as a binary: NVIDIA holds the render thread's calls while a shared context compiles. Read at launch. |
 | `crystalgraphics.shader.linkWorker` | true, false | `true` | Compile and link programs on a worker thread in a shared GL context; false links on the render thread. Read at launch. |
 | `crystalgraphics.shader.linksInFlight` | 1 to 16 | `4` | Links the worker hands the GL driver at once. Read at launch. |
+| `crystalgraphics.shader.native` | true, false | `false` | Keep a GL-era host's device on the driver's own GLSL compiler: the shader toolchain is never fetched. |
 | `crystalgraphics.shader.parallelCompile` | true, false | `true` | Materials compile ahead of their first bind where the driver links on its own threads; false compiles at the first bind: for a driver that misreports completion. Read at launch. |
 | `crystalgraphics.shader.strip` | true, false | `true` | Strip comments, decided #if branches, unreached functions and unused macros from GLSL before the driver compiles it; false hands it the source as written. Read at launch. |
 
@@ -311,7 +308,6 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 |---|---|---|---|
 | `crystalgraphics.texture.bc7` | true, false | `true` | Cooked BC7 textures uploaded as their blocks where the context has BPTC; false decodes them to RGBA8 as they load. Taken at each context's capability probe. |
 | `crystalgraphics.texture.logFirstUse` | true, false | `false` | Log each texture from files loaded at its first use: its source, the thread that paid for it and how long. |
-| `crystalgraphics.texture.skipHeld` | true, false | `true` | Binding a texture to a unit that holds it switches no unit; off, as before. Read at launch. |
 
 ## `crystalgraphics.trace`
 
@@ -340,7 +336,7 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 | `crystalgraphics.uploads.ahead` | 0 to 2147483647 | `33554432` | Bytes of upload blocks made at the first frame, before a load needs them. Read at launch. |
 | `crystalgraphics.uploads.block` | 65536 to 1073741824 | `8388608` | Bytes in an upload block; a lease over half a block gets one of its own. Read at launch. |
 | `crystalgraphics.uploads.cap` | 0 to 2147483647 | `134217728` | Bytes the unpack pool grows to: past it a lease finding no room takes direct memory, and direct blocks are not pooled. Read at launch. |
-| `crystalgraphics.uploads.tier` | unpack, direct | `unpack` | unpack: leases from a persistently mapped unpack buffer where the context has persistent mapping. direct: from direct memory, the driver copying at the call, as a context without it does (macOS 4.1, 3.3). Read at launch. |
+| `crystalgraphics.uploads.tier` | unpack, direct | `unpack` | unpack: leases from persistently mapped device buffers, copied on the GPU. direct: from direct memory, which the device writes at the call. Read at launch. |
 
 ## `crystalgraphics.vfx`
 

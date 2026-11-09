@@ -12,7 +12,6 @@ com/crystalgraphics/api/state/CgScissorRect.java
 com/crystalgraphics/api/state/CgStencilState.java
 com/crystalgraphics/api/state/CgTextureState.java
 com/crystalgraphics/api/texture/CgMipmapConfig.java
-com/crystalgraphics/api/texture/CgTexture.java
 com/crystalgraphics/api/texture/CgTextureSpec.java
 com/crystalgraphics/api/texture/CgTextureType.java
 com/crystalgraphics/api/vertex/CgAttribType.java
@@ -39,17 +38,9 @@ com/crystalgraphics/gl/shader/CgLinkWorker.java
 com/crystalgraphics/gl/shader/CgProgram.java
 com/crystalgraphics/gl/shader/CgProgramBinaryCache.java
 com/crystalgraphics/gl/texture/CgFallbackTextures.java
-com/crystalgraphics/gl/texture/CgHostSamplers.java
-com/crystalgraphics/gl/texture/CgSamplers.java
 com/crystalgraphics/gl/texture/CgTexture2D.java
-com/crystalgraphics/gl/texture/CgTexture2DArray.java
-com/crystalgraphics/gl/texture/CgTexture3D.java
-com/crystalgraphics/gl/texture/CgTextureAbstract.java
-com/crystalgraphics/gl/texture/CgTextureCopy.java
 com/crystalgraphics/gl/texture/CgTextureCubemap.java
-com/crystalgraphics/gl/texture/CgTightUnpack.java
 com/crystalgraphics/gpu/CgDeferral.java
-com/crystalgraphics/gpu/CgUploadLease.java
 com/crystalgraphics/gpu/CgUploads.java
 com/crystalgraphics/lifecycle/CgEngineLifecycle.java
 com/crystalgraphics/lifecycle/CgGraphicsLifecycle.java

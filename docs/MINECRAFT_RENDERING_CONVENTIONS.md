@@ -120,9 +120,9 @@ GUI paint back at −1..1 and 1.0), and found what no code diff could:
 
 | # | What the host leaves at our entry | Versions | Ours | Status |
 |---|---|---|---|---|
-| 22 | **Sampler objects bound on units 0–2**, which override a texture's own filtering, wrapping and LOD | 1.21.11 → 26.2 (`GlRenderPass` binds one per draw, never unbinds, caches none) | `CgHostSamplers` unbinds them for every outermost graph execution (`CgExecutor`: a stage's firing, CrystalGUI's frame; 2747aba, CrystalGUI acd355d7): every unit, unread, since reading the bindings back was a `glGet` per unit; Minecraft rebinds its own per draw | adapted |
+| 22 | **Sampler objects bound on units 0–2**, which override a texture's own filtering, wrapping and LOD | 1.21.11 → 26.2 (`GlRenderPass` binds one per draw, never unbinds, caches none) | The GL device binds a sampler object with every texture it draws with (`render/draw/CgDeviceSamplers`), so the host's never reach our textures, and `GLHostState` unbinds every unit at the hand-back; Minecraft rebinds its own per draw | adapted |
 | 23 | **Scissor test on** at the world passes (26.2 Fabric), and a small box set (1.21.11 NeoForge) | 26.2; any | The world passes save `SCISSOR` and disable the test (2747aba); CrystalGUI's frame already did | adapted |
-| 24 | `UNPACK_ROW_LENGTH` 64–512 and skips set | 1.21.11 → 26.2 | `CgTightUnpack` resets the unpack state around our uploads | adapted |
+| 24 | `UNPACK_ROW_LENGTH` 64–512 and skips set | 1.21.11 → 26.2 | The GL device states tight packing before each texture write and read (`GLEncoder`; `GLContextState` keeps all twelve pixel-store values, so a section pays for it once) | adapted |
 | 25 | Alpha writes off (`COLOR_WRITEMASK 1 1 1 0`) at a GUI paint | 1.21.11 → 26.2 | `CgUiPaintContext.beginFrame` sets all four | adapted |
 | 26 | `PROGRAM_POINT_SIZE` on | 1.21.11 → 26.2 | A points shader of ours must write `gl_PointSize` there | recorded |
 | 27 | `TEXTURE_CUBE_MAP_SEAMLESS` on | 1.21.11 → 26.2 | Our cube maps sample seamlessly there, and not on 1.20.1 | recorded |

@@ -1,7 +1,5 @@
 package com.crystalgraphics.gpu;
 
-import com.crystalgraphics.platform.gl.CgGL;
-import com.crystalgraphics.platform.gl.CgGLImports;
 import com.crystalgraphics.platform.rhi.resource.CgGpuBuffer;
 
 import java.nio.ByteBuffer;
@@ -143,73 +141,6 @@ public final class CgUploadLease implements Runnable {
     public int depth() { return depth; }
     public int format() { return format; }
     public int type() { return type; }
-
-    /** Engine, render thread: the bound texture's region from this lease, as {@code glTexSubImage2D}. */
-    public void texSubImage2D(int target) {
-        if (block.buffer == null) {
-            CgGL.glTexSubImage2D(target, level, x, y, width, height, format, type, at());
-            return;
-        }
-        CgGL.glBindBuffer(CgGL.GL_PIXEL_UNPACK_BUFFER, unpackName());
-        try {
-            CgGL.glTexSubImage2D(target, level, x, y, width, height, format, type, (long) offset);
-        } finally {
-            CgGL.glBindBuffer(CgGL.GL_PIXEL_UNPACK_BUFFER, 0);
-        }
-    }
-
-    /**
-     * Engine, render thread: level {@code mip} of the bound texture, {@code w} x {@code h}, from byte {@code from} of
-     * this lease in its format and type. For a lease holding several levels one after another.
-     */
-    public void texSubImage2D(int target, int mip, int w, int h, int from) {
-        if (block.buffer == null) {
-            CgGL.glTexSubImage2D(target, mip, 0, 0, w, h, format, type, range(from, size - from));
-            return;
-        }
-        CgGL.glBindBuffer(CgGL.GL_PIXEL_UNPACK_BUFFER, unpackName());
-        try {
-            CgGL.glTexSubImage2D(target, mip, 0, 0, w, h, format, type, (long) offset + from);
-        } finally {
-            CgGL.glBindBuffer(CgGL.GL_PIXEL_UNPACK_BUFFER, 0);
-        }
-    }
-
-    /**
-     * Engine, render thread: level {@code mip} of the bound texture as {@code internalFormat}'s blocks, {@code length}
-     * bytes from byte {@code from} of this lease, as {@code glCompressedTexImage2D}.
-     */
-    public void compressedTexImage2D(int target, int mip, int internalFormat, int w, int h, int from, int length) {
-        if (block.buffer == null) {
-            CgGL.glCompressedTexImage2D(target, mip, internalFormat, w, h, range(from, length));
-            return;
-        }
-        CgGL.glBindBuffer(CgGL.GL_PIXEL_UNPACK_BUFFER, unpackName());
-        try {
-            CgGL.glCompressedTexImage2D(target, mip, internalFormat, w, h, length, (long) offset + from);
-        } finally {
-            CgGL.glBindBuffer(CgGL.GL_PIXEL_UNPACK_BUFFER, 0);
-        }
-    }
-
-    /** Engine, render thread: the bound texture's box from this lease, as {@code glTexSubImage3D}. */
-    public void texSubImage3D(int target) {
-        if (block.buffer == null) {
-            CgGL.glTexSubImage3D(target, level, x, y, z, width, height, depth, format, type, at());
-            return;
-        }
-        CgGL.glBindBuffer(CgGL.GL_PIXEL_UNPACK_BUFFER, unpackName());
-        try {
-            CgGL.glTexSubImage3D(target, level, x, y, z, width, height, depth, format, type, (long) offset);
-        } finally {
-            CgGL.glBindBuffer(CgGL.GL_PIXEL_UNPACK_BUFFER, 0);
-        }
-    }
-
-    /** {@code CgGL}'s name for {@link #unpackBuffer()}, for a texture's {@code CgGL} form. */
-    private int unpackName() {
-        return CgGLImports.get().name(block.buffer);
-    }
 
     /** Engine: the device buffer holding it, which a GPU copy reads; null where it is direct memory. */
     public CgGpuBuffer unpackBuffer() {

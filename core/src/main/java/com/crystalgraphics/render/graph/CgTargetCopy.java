@@ -321,12 +321,6 @@ final class CgTargetCopy {
         }
 
         @Override
-        public void bind() {
-            CgTexture texture = texture();
-            if (texture != null) texture.bind();
-        }
-
-        @Override
         public void bind(int unit) {
             CgTexture texture = texture();
             if (texture != null) texture.bind(unit);

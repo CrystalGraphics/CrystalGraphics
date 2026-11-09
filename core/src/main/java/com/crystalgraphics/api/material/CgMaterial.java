@@ -24,7 +24,6 @@ import com.crystalgraphics.gl.material.parse.CgParsedPass;
 import com.crystalgraphics.gl.material.parse.CgPermutationDomain;
 import com.crystalgraphics.gl.material.parse.CgParsedShader;
 import com.crystalgraphics.gl.material.parse.CgShaderParser;
-import com.crystalgraphics.gl.texture.CgSamplers;
 import com.crystalgraphics.render.CgWarmBudget;
 import com.crystalgraphics.render.draw.CgBindingTable;
 import com.crystalgraphics.render.draw.CgBlockVersion;

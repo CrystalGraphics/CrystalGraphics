@@ -50,8 +50,6 @@ import com.crystalgraphics.gl.shader.CgLinkWorker;
 import com.crystalgraphics.gl.framebuffer.CgFrameBufferRegistry;
 import com.crystalgraphics.gl.material.CgMaterialShaderRegistry;
 import com.crystalgraphics.render.mesh.CgMeshStore;
-import com.crystalgraphics.gl.texture.CgSamplers;
-import com.crystalgraphics.gl.texture.CgTextureCopy;
 import com.crystalgraphics.gl.texture.CgFallbackTextures;
 import com.crystalgraphics.noise.CgNoiseVolumes;
 import com.crystalgraphics.noise.CgWaveletNoise;
@@ -642,7 +640,6 @@ public final class CgGraphicsLifecycle {
         CgCompute.releaseAll();
         CgStreamBuffer.releaseShared();   // the staging every retained shader buffer copies through
         CgReadback.releaseAll();
-        CgSamplers.releaseAll();   // the sampler objects bindings named
 
         // Step 7b: User-created SSBO/UBO resources managed by CgShaderBufferRegistry.
         //   Must be freed before the GL context is lost.
@@ -681,10 +678,6 @@ public final class CgGraphicsLifecycle {
 
         // Step 9: All owned framebuffers — must be first.
         CgFrameBufferRegistry.get().deleteAll();
-
-        // Scratch framebuffers used by the GPU-side texture copy path (lazily created —
-        // no-op if no texture ever grew). Safe to reuse after this; they are recreated on demand.
-        CgTextureCopy.dispose();
 
         // Upload staging, once every texture above has given back its queued leases.
         CgUploads.releaseAll();

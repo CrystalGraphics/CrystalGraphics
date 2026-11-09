@@ -39,8 +39,7 @@ import lombok.Getter;
  *   <li>{@link #DEPTH24_SHADOW} — 24-bit depth with hardware PCF (shadow map sampling)</li>
  * </ul>
  *
- * <p>Also exposes the GL-side helper {@link #applyTo(int)} which writes this spec's
- * filter/wrap/compare params to the currently bound texture.</p>
+ * <p>Its filter, wrap and compare are the device sampler a binding reads where it names no {@link CgSampler}.</p>
  *
  * <p>Equal when every field is: the texture manager caches an image once per spec.</p>
  */
@@ -208,48 +207,4 @@ public final class CgTextureSpec {
             .compareMode(CgGL.GL_COMPARE_R_TO_TEXTURE)
             .compareFunc(CgGL.GL_LEQUAL)
             .build();
-
-    // ── GL-side helper ───────────────────────────────────────────────────────────
-
-    /**
-     * Applies this spec's filter, wrap, shadow-compare, and mipmap parameters to
-     * the currently bound texture at {@code target}.
-     *
-     * <p>Wrap-R is only written for 3D ({@code GL_TEXTURE_3D}) and
-     * 2D-array ({@code GL_TEXTURE_2D_ARRAY}) targets.</p>
-     *
-     * <p>Shadow comparison params are written only when {@link #compareMode} is not
-     * {@code GL_NONE}.</p>
-     *
-     * <p>If the spec has mipmap config enabled, min/mag filters are overridden with
-     * the mipmap-aware filters and {@code glGenerateMipmap} is called.</p>
-     */
-    public void applyTo(int target) {
-        applySampling(target);
-        if (mipmaps != null && mipmaps.isEnabled()) CgGL.glGenerateMipmap(target);
-    }
-
-    /**
-     * {@link #applyTo}'s parameters without generating mipmaps: for a texture whose device makes its chain, sampled
-     * through {@code CgGL} by name.
-     */
-    public void applySampling(int target) {
-        CgGL.glTexParameteri(target, CgGL.GL_TEXTURE_MIN_FILTER, minFilter);
-        CgGL.glTexParameteri(target, CgGL.GL_TEXTURE_MAG_FILTER, magFilter);
-        CgGL.glTexParameteri(target, CgGL.GL_TEXTURE_WRAP_S, wrapS);
-        CgGL.glTexParameteri(target, CgGL.GL_TEXTURE_WRAP_T, wrapT);
-        // Wrap-R is only meaningful for 3D and 2D-array targets.
-        if (target == CgGL.GL_TEXTURE_3D || target == CgGL.GL_TEXTURE_2D_ARRAY) {
-            CgGL.glTexParameteri(target, CgGL.GL_TEXTURE_WRAP_R, wrapR);
-        }
-        // Shadow comparison — only when explicitly enabled (DEPTH24_SHADOW etc.)
-        if (compareMode != CgGL.GL_NONE) {
-            CgGL.glTexParameteri(target, CgGL.GL_TEXTURE_COMPARE_MODE, compareMode);
-            CgGL.glTexParameteri(target, CgGL.GL_TEXTURE_COMPARE_FUNC, compareFunc);
-        }
-        if (mipmaps != null && mipmaps.isEnabled()) {
-            CgGL.glTexParameteri(target, CgGL.GL_TEXTURE_MIN_FILTER, mipmaps.getMinFilter());
-            CgGL.glTexParameteri(target, CgGL.GL_TEXTURE_MAG_FILTER, mipmaps.getMagFilter());
-        }
-    }
 }

@@ -18,12 +18,12 @@ directly.
 
 | Type | Role |
 |------|------|
-| `CgTexture` | The single common interface: `bind()`, `bind(unit)`, `getId()`, `getTarget()`, `getWidth()/getHeight()`, `delete()`, `isDeleted()`, `isMissing()` (its files would not load). A texture from files loads at its first use: `gl/texture/CLAUDE.md`. |
+| `CgTexture` | The single common interface: `bind(unit)` (noted for the pass being recorded), `getId()`, `getTarget()`, `getWidth()/getHeight()`, `delete()`, `isDeleted()`, `isMissing()` (its files would not load). A texture from files loads at its first use: `gl/texture/CLAUDE.md`. |
 | `CgTextures` | The shorthand for textures from files: `of(path[, spec])` 2D, `frames(pattern, count)` and `array(spec, paths...)` 2D array, `volume(pattern, count)` and `volume(spec, paths...)` 3D, `cubemap(spec, six paths)`, `stackedCube(path, spec)` one image of six faces stacked (`w x 6w`). A `.hdr` path is a Radiance image, loaded as RGBA16F half floats (`util/io/CgRadianceHdr`). |
 | `CgTextureType` | Typed enum of ~42 GL format constants. Single source of truth for the (internalFormat, baseFormat, type) triple. Used by `CgTextureSpec` and `CgFrameBufferFormat`. |
 | `CgTextureSpec` | Immutable Lombok `@Builder` describing format (`CgTextureType`), mipmap policy (`CgMipmapConfig`), filter, wrap, and optional shadow comparison. Pre-built constants: `RGBA8_LINEAR`, `RGBA8_NEAREST`, `RGBA16F_LINEAR`, `DEPTH24_SHADOW`, and more. |
 | `CgMipmapConfig` | Mipmap policy: whether to generate mipmaps and which filters to use. Named constants: `NONE`, `TRILINEAR`, `NEAREST`. |
-| `CgSampler` | A binding's sampling in place of the texture's own (Unreal's shared sampler source): `Filter` (`NEAREST`, `BILINEAR`, `TRILINEAR`), `Address` per axis (`WRAP`, `CLAMP`, `MIRROR`), `anisotropy(n)`. A value; `builder()`, presets (`BILINEAR_CLAMP`, `TRILINEAR_WRAP`, ...). Bound through `CgShaderBindings.sampler(name, unit, texture, sampler)`; the GL objects are `gl/texture/CgSamplers`'. |
+| `CgSampler` | A binding's sampling in place of the texture's own (Unreal's shared sampler source): `Filter` (`NEAREST`, `BILINEAR`, `TRILINEAR`), `Address` per axis (`WRAP`, `CLAMP`, `MIRROR`), `anisotropy(n)`. A value; `builder()`, presets (`BILINEAR_CLAMP`, `TRILINEAR_WRAP`, ...). Bound through `CgShaderBindings.sampler(name, unit, texture, sampler)`; the device's sampler objects are `render/draw/CgDeviceSamplers`'. |
 
 ## CgTextureType
 
@@ -113,10 +113,6 @@ CgTextureSpec.DEPTH24_SHADOW              // PCF shadow sampling
 CgTextureType.DEPTH24.toTextureSpec()     // neutral depth spec (no compare)
 ```
 
-### GL Helper
-
-`applyTo(int target)` — writes filter, wrap, shadow compare, and mipmap params to the currently bound texture.
-
 ## CgMipmapConfig
 
 Controls mipmap generation for textures.
@@ -172,7 +168,7 @@ CgTextureSpec spec = CgTextureSpec.builder()
 - Public API surface: one interface (`CgTexture`) + one format enum (`CgTextureType`) + one spec (`CgTextureSpec`) + one mipmap policy (`CgMipmapConfig`).
 - All concrete texture creation goes through static factories on impl classes in `gl/texture/`.
 - Never call `glGet*`; spec params are recorded at upload time and never queried back.
-- Filter/wrap writes are centralized on `CgTextureSpec.applyTo(target)`.
+- A spec's filter, wrap and compare are the device sampler a binding reads where it names no `CgSampler`.
 - `CgTextureType` constants: zero hex, all GL values from LWJGL imports.
 - `CgTextureSpec` constants: zero hex, all built via `CgTextureType.X.toTextureSpec()` or `builder().type(...)`.
 

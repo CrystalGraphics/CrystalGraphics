@@ -6,7 +6,7 @@ import com.crystalgraphics.api.material.CgMaterialValues;
 import com.crystalgraphics.api.texture.CgSampler;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.gl.texture.CgFallbackTextures;
-import com.crystalgraphics.gl.texture.CgSamplers;
+import com.crystalgraphics.render.draw.CgBoundResources;
 import com.crystalgraphics.gl.buffer.staging.CgBufferWriter;
 import com.crystalgraphics.render.draw.CgBindingTable;
 import org.apache.logging.log4j.LogManager;
@@ -152,7 +152,7 @@ public final class CgMaterialProperties implements CgMaterialValues {
                 int unit = p.getSamplerUnit() >= 0 ? p.getSamplerUnit() : i;
                 if (named != null) {
                     named.bind(unit);
-                    CgSamplers.bind(unit, p.getSampler(), named);
+                    CgBoundResources.sampler(unit, p.getSampler());
                 }
             }
         }

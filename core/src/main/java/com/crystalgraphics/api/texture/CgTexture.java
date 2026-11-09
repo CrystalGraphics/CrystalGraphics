@@ -5,7 +5,6 @@ import javax.annotation.Nullable;
 import com.crystalgraphics.platform.rhi.resource.CgTextureView;
 import com.crystalgraphics.asset.tree.CgBinaryAsset;
 import com.crystalgraphics.gl.texture.CgTextureManager;
-import com.crystalgraphics.platform.gl.CgGL;
 
 /**
  * Common abstraction over an owned GL texture object.
@@ -26,17 +25,13 @@ import com.crystalgraphics.platform.gl.CgGL;
 public interface CgTexture extends CgBinaryAsset {
 
     /**
-     * Binds this texture to its native GL target on the currently active
-     * texture unit (does not change the active unit).
-     */
-    void bind();
-
-    /**
-     * Activates {@code GL_TEXTURE0 + unit} and binds this texture to its
-     * native GL target. Equivalent to a {@code glActiveTexture} +
-     * {@code glBindTexture} pair.
+     * Binds it at {@code unit} for the draw or dispatch being recorded: what that pass's device set reads there.
      *
-     * @param unit zero-based texture unit (0 corresponds to GL_TEXTURE0)
+     * <pre>{@code
+     * albedo.bind(0);   // in a pass's bindings, before its draws
+     * }</pre>
+     *
+     * @param unit zero-based texture unit
      */
     void bind(int unit);
 
@@ -111,24 +106,5 @@ public interface CgTexture extends CgBinaryAsset {
     /** Levels in a full mip chain of a {@code width} by {@code height} texture, down to 1x1. */
     static int fullChain(int width, int height) {
         return 32 - Integer.numberOfLeadingZeros(Math.max(1, Math.max(width, height)));
-    }
-
-    // ── Static helpers ────────────────────────────────────────────────────
-
-    /** Sets the GL texture state
-     * @param target to set (GL_TEXTURE_2D, GL_TEXTURE_2D_ARRAY, GL_TEXTURE_3D, GL_TEXTURE_CUBEMAP)
-     * @param textureId
-     */
-    static void bind(int target, int textureId) {
-        CgGL.glBindTexture(target, textureId);
-    }
-
-    /**
-     * @param unit texture unit to set active. (0-31, depends on hardware)
-     */
-    static void active(int unit) {
-        // Normalize the range to 0-31, if fed raw unit value
-        if (unit > CgGL.GL_TEXTURE0) unit -= CgGL.GL_TEXTURE0;
-        CgGL.glActiveTexture(CgGL.GL_TEXTURE0 + unit);
     }
 }

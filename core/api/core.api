@@ -2117,7 +2117,6 @@ com/crystalgraphics/api/texture/CgTexture
   method public reload ()V
   method public rhiView ()Lcom/crystalgraphics/platform/rhi/resource/CgTextureView;
   method public spec ()Lcom/crystalgraphics/api/texture/CgTextureSpec;
-  method public,abstract bind ()V
   method public,abstract bind (I)V
   method public,abstract delete ()V
   method public,abstract getHeight ()I
@@ -2125,8 +2124,6 @@ com/crystalgraphics/api/texture/CgTexture
   method public,abstract getTarget ()I
   method public,abstract getWidth ()I
   method public,abstract isDeleted ()Z
-  method public,static active (I)V
-  method public,static bind (II)V
   method public,static fullChain (II)I
 com/crystalgraphics/api/texture/CgTextureSpec
   access public,final
@@ -2144,8 +2141,6 @@ com/crystalgraphics/api/texture/CgTextureSpec
   field public,static,final RGBA8_NEAREST_CLAMP_BORDER Lcom/crystalgraphics/api/texture/CgTextureSpec;
   field public,static,final RGBA8_NEAREST_MIRRORED Lcom/crystalgraphics/api/texture/CgTextureSpec;
   field public,static,final RGBA8_NEAREST_REPEAT Lcom/crystalgraphics/api/texture/CgTextureSpec;
-  method public applySampling (I)V
-  method public applyTo (I)V
   method public equals (Ljava/lang/Object;)Z
   method public getCompareFunc ()I
   method public getCompareMode ()I
@@ -6808,30 +6803,13 @@ com/crystalgraphics/gl/texture/CgFallbackTextures
   field public,static ZERO_UINT Lcom/crystalgraphics/api/texture/CgTexture;
   method public,static destroy ()V
   method public,static init ()V
-com/crystalgraphics/gl/texture/CgHostSamplers
-  access public,final
-  extends java/lang/Object
-  field public,static,final UNITS I
-  method public,static park ()V
-  method public,static unpark ()V
-com/crystalgraphics/gl/texture/CgSamplers
-  access public,final
-  extends java/lang/Object
-  method public,static bind (ILcom/crystalgraphics/api/texture/CgSampler;Lcom/crystalgraphics/api/texture/CgTexture;)V
-  method public,static forget ()V
-  method public,static releaseAll ()V
-  method public,static unbindOwn ()V
 com/crystalgraphics/gl/texture/CgTexture2D
   access public,final
   extends com/crystalgraphics/gl/texture/CgTextureAbstract
-  method public bind ()V
-  method public bind (I)V
-  method public bindLevel (I)V
   method public bindLevel (II)V
   method public getLevels ()I
   method public getSourcePath ()Ljava/lang/String;
   method public getTarget ()I
-  method public unpinLevels ()V
   method public upload (IILjava/nio/ByteBuffer;II)V
   method public upload (Lcom/crystalgraphics/util/io/CgTextureIO$CgImageData;)V
   method public uploadRegion (IIIIILcom/crystalgraphics/gpu/CgUploadLease;II)V
@@ -6902,9 +6880,9 @@ com/crystalgraphics/gl/texture/CgTextureAbstract
   method protected source ()Ljava/lang/String;
   method protected,final ensureLoaded ()V
   method protected,final loadOnFirstUse ()V
-  method protected,final storeOnDevice (Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture$Kind;Lcom/crystalgraphics/platform/rhi/format/CgFormat;IIIILcom/crystalgraphics/api/texture/CgTextureSpec;)Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture;
+  method protected,final storage ()Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture;
+  method protected,final storeOnDevice (Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture$Kind;Lcom/crystalgraphics/platform/rhi/format/CgFormat;IIII)Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture;
   method protected,static pixelFormatForChannels (I)I
-  method public bind ()V
   method public bind (I)V
   method public delete ()V
   method public getHeight ()I
@@ -6918,12 +6896,6 @@ com/crystalgraphics/gl/texture/CgTextureAbstract
   method public spec ()Lcom/crystalgraphics/api/texture/CgTextureSpec;
   method public,final reload ()V
   method public,static loads ()J
-com/crystalgraphics/gl/texture/CgTextureCopy
-  access public,final
-  extends java/lang/Object
-  method public,static copyArrayLayers (IIIII)Z
-  method public,static dispose ()V
-  method public,static isSupported ()Z
 com/crystalgraphics/gl/texture/CgTextureCubemap
   access public,final
   extends com/crystalgraphics/gl/texture/CgTextureAbstract
@@ -6971,7 +6943,6 @@ com/crystalgraphics/gpu/CgUploadLease
   extends java/lang/Object
   implements java/lang/Runnable
   method public bytes ()Ljava/nio/ByteBuffer;
-  method public compressedTexImage2D (IIIIIII)V
   method public depth ()I
   method public direct ()Z
   method public format ()I
@@ -6986,9 +6957,6 @@ com/crystalgraphics/gpu/CgUploadLease
   method public release ()V
   method public run ()V
   method public size ()I
-  method public texSubImage2D (I)V
-  method public texSubImage2D (IIIII)V
-  method public texSubImage3D (I)V
   method public type ()I
   method public unpackBuffer ()Lcom/crystalgraphics/platform/rhi/resource/CgGpuBuffer;
   method public unpackOffset ()I
@@ -8953,7 +8921,6 @@ com/crystalgraphics/render/draw/CgBlockVersion
 com/crystalgraphics/render/draw/CgBoundResources
   access public,final
   extends java/lang/Object
-  field public,static notesOnly Z
   field public,static recording Z
   method public,static block (ILcom/crystalgraphics/platform/rhi/resource/CgGpuBuffer;JJ)V
   method public,static forgetTextures (I)V
@@ -9390,7 +9357,6 @@ com/crystalgraphics/render/graph/CgGraphTexture
   extends com/crystalgraphics/render/graph/CgGraphResource
   implements com/crystalgraphics/api/texture/CgTexture
   method public attachment (I)Lcom/crystalgraphics/render/graph/CgGraphTexture$Attachment;
-  method public bind ()V
   method public bind (I)V
   method public delete ()V
   method public desc ()Lcom/crystalgraphics/render/graph/CgTextureDesc;
@@ -9426,7 +9392,6 @@ com/crystalgraphics/render/graph/CgGraphTexture$Attachment
   access public,final
   extends java/lang/Object
   implements com/crystalgraphics/api/texture/CgTexture
-  method public bind ()V
   method public bind (I)V
   method public delete ()V
   method public getHeight ()I
@@ -9453,7 +9418,6 @@ com/crystalgraphics/render/graph/CgGraphTexture$Level
   access public,final
   extends java/lang/Object
   implements com/crystalgraphics/api/texture/CgTexture
-  method public bind ()V
   method public bind (I)V
   method public delete ()V
   method public getHeight ()I
@@ -9470,7 +9434,6 @@ com/crystalgraphics/render/graph/CgGraphTexture$Stencil
   access public,final
   extends java/lang/Object
   implements com/crystalgraphics/api/texture/CgTexture
-  method public bind ()V
   method public bind (I)V
   method public delete ()V
   method public getHeight ()I

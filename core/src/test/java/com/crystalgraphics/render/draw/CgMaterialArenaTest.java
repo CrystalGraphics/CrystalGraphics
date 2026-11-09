@@ -11,7 +11,6 @@ public class CgMaterialArenaTest {
 
     private static final int POINT = 7;
     private static final CgTexture IMAGE = new CgTexture() {
-        @Override public void bind() {}
         @Override public void bind(int unit) {}
         @Override public int getId() { return 1; }
         @Override public int getWidth() { return 4; }
