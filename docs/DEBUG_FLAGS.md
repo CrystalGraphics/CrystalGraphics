@@ -92,6 +92,12 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 | `crystalgraphics.demo.time` | text | empty | The VFX demos' time switch at start: the nearest of its rates to this one, for a run left unattended. |
 | `crystalgraphics.demo.under` | text | empty | x,z: the scene placed with its point (x, z) under the eye, for a profile looking down at one part of it (lights: -11,4 the fireflies, -20,-12 a firework); empty, ahead of the eye. Read at launch. |
 
+## `crystalgraphics.device`
+
+| Variable | Takes | Default | |
+|---|---|---|---|
+| `crystalgraphics.device.toolchain` | true, false | `true` | Whether a host whose platform ships no shader compiler fetches the toolchain and draws through a device. |
+
 ## `crystalgraphics.fixedSeed`
 
 | Variable | Takes | Default | |
@@ -115,10 +121,17 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 | `crystalgraphics.gl.threadCheck` | true, false | `false` | Log each CgGL call site inside a GL-free section (a UI paint recording) or off the context's thread, once, with its stack; every site and its count to stderr at exit. Read at launch. |
 | `crystalgraphics.gl.uniformShadow` | true, false | `true` | Skips a uniform set to what that program's uniform already holds. Read at launch. |
 
+## `crystalgraphics.gpu`
+
+| Variable | Takes | Default | |
+|---|---|---|---|
+| `crystalgraphics.gpu.slowZoneMillis` | 0 to 2000 | `100` | A GPU zone that ran longer than this many milliseconds is logged once, by name: past about 2000 Windows resets the driver. 0 for none. |
+
 ## `crystalgraphics.graph`
 
 | Variable | Takes | Default | |
 |---|---|---|---|
+| `crystalgraphics.graph.aliasing` | true, false | `true` | Transient 2D textures share memory where the device can place them (Vulkan); false pools them by description, as GL does: Unreal's r.RDG.TransientAllocator 0, for comparing the two. Read at launch. |
 | `crystalgraphics.graph.asyncAll` | true, false | `false` | Every compute pass that can go async does, as if marked async(): a check of the waits, which the compute scenes must pass under synchronization validation. Read at launch. |
 | `crystalgraphics.graph.barriers` | true, false | `true` | Barriers where a kernel takes part; false keeps the bookkeeping and issues none: what synchronization validation must catch on --mode=compute-graph. |
 | `crystalgraphics.graph.splits` | true, false | `true` | Split a transition whose next access is a read two or more steps on, from its producer's end to its consumer; false records every transition whole before its consumer. |
@@ -178,7 +191,7 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 | Variable | Takes | Default | |
 |---|---|---|---|
 | `crystalgraphics.mesh.editStacks` | true, false | `false` | Each mesh edit records its stack, which the [cg-mesh] report of a mesh edited every frame prints. |
-| `crystalgraphics.mesh.multiDraw` | true, false | `true` | Runs of draws sharing pipeline, bindings and a vertex format joined into one multi-draw; false draws a call a draw, for a picture that must not change. Taken at each context's capability probe. |
+| `crystalgraphics.mesh.multiDraw` | true, false | `true` | Runs of draws sharing pipeline, bindings and a slab joined into one multi-draw; false draws a call a draw, for a picture that must not change. Taken at each context's capability probe. |
 
 ## `crystalgraphics.mirror`
 
@@ -244,6 +257,12 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 |---|---|---|---|
 | `crystalgraphics.resourceOverrideDirs` | text | empty | Source roots searched before the classpath, separated by the platform's path separator and tried in order ahead of the ones a dev run finds itself, so an edited asset is read from its source tree; set, the shader preprocessor caches nothing unless hot reload watches. Read at launch. |
 | `crystalgraphics.resourceOverrideDirs.auto` | true, false | `true` | A dev run's own source resource folders as override roots, found from what its launcher passed (CgDevResourceRoots); a production client has none. Read at launch. |
+
+## `crystalgraphics.rhi`
+
+| Variable | Takes | Default | |
+|---|---|---|---|
+| `crystalgraphics.rhi.deviceSets` | true, false | `false` | Each batch also makes its view, pass and material sets on the device, logging a slot left to a default. Read at launch. |
 
 ## `crystalgraphics.shader`
 
@@ -353,7 +372,6 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 | `crystalgraphics.vulkan.asyncCompute` | text | empty | Empty: async() compute passes on a compute-only queue family where there is one (an owned device), in order on a hosted one. false: in order everywhere. graphics: a second queue of the frame's family. true: a hosted device (Minecraft) runs async on its host's compute queue, waiting only on the host's end-of-frame submit, which serialised the GPU. Read at launch. |
 | `crystalgraphics.vulkan.presentMode` | text | empty | immediate, mailbox or fifo: forces one the surface offers (an owned device); empty lets the host choose. Read at launch. |
 | `crystalgraphics.vulkan.syncValidation` | true, false | `false` | With the validation layer on, its synchronization checks too. Read at launch. |
-| `crystalgraphics.vulkan.validationStacks` | true, false | `false` | With the validation layer on, a Java stack under each error: the layer reports inside the failing call, so it names the engine's caller. Read at launch. |
 | `crystalgraphics.vulkan.transfer` | true, false | `true` | New textures' copies and the mesh store's run on a transfer queue where there is one; false keeps them on the frame's queue (ENGINE_API.md, Async). Read at launch. |
 
 ## `crystalgraphics.warmBudget`
