@@ -75,6 +75,9 @@ public final class CgGpuOps {
      */
     public enum Filter { AVERAGE, MIN, MAX }
 
+    /** What a blur reads past its region: the edge texel held, or the region folded back in (CSS's mirror). */
+    public enum Edge { CLAMP, MIRROR }
+
     /** Where {@link #readRows} delivers: the count as the GPU wrote it, and the rows. */
     @FunctionalInterface
     public interface Rows {
@@ -139,12 +142,25 @@ public final class CgGpuOps {
     /** Per image type: its kernels and images in image.compute. */
     static final String[] DOWNSAMPLE_KERNELS = {"DownsampleRgba8", "DownsampleRgba16f", "DownsampleR16f", "DownsampleR32f"},
             BLUR_KERNELS = {"BlurRgba8", "BlurRgba16f", "BlurR16f", "BlurR32f"},
+            REDUCE_KERNELS = {"ReduceRgba8", "ReduceRgba16f", "ReduceR16f", "ReduceR32f"},
+            SHRINK_KERNELS = {"ShrinkRgba8", "ShrinkRgba16f", "ShrinkR16f", "ShrinkR32f"},
             SOURCES = {"SRC_RGBA8", "SRC_RGBA16F", "SRC_R16F", "SRC_R32F"},
             TARGETS = {"DST_RGBA8", "DST_RGBA16F", "DST_R16F", "DST_R32F"};
     /** A blur's scratch, per image type. */
     private static final CgFrameBufferFormat[] SCRATCH = new CgFrameBufferFormat[IMAGE_TYPES.size()];
     private static final CgKernel[][] DOWNSAMPLE_VARIANTS = new CgKernel[IMAGE_TYPES.size()][Filter.values().length];
-    private static final CgKernel[][] BLUR_VARIANTS = new CgKernel[IMAGE_TYPES.size()][2];
+    /** Per image type: across, down, and each linear-sampled. */
+    private static final CgKernel[][] BLUR_VARIANTS = new CgKernel[IMAGE_TYPES.size()][4];
+    private static final CgKernel[] REDUCE_VARIANTS = new CgKernel[IMAGE_TYPES.size()];
+    private static final CgKernel[] SHRINK_VARIANTS = new CgKernel[IMAGE_TYPES.size()];
+    /** The widest sigma a blur keeps, in texels: its kernel reaches three of it, at most 64 texels. */
+    public static final float MAX_BLUR_SIGMA = 64f / 3f;
+    /** The largest sigma a scaled blur runs at, in its working texels: past it the region is reduced. Skia's is 4. */
+    private static final float MAX_WORKING_SIGMA = 4f;
+    /** The most a scaled blur reduces by. */
+    private static final int MAX_SCALE = 4;
+    /** Source texels a shrink averages per target texel and axis in one pass (image.compute's MAX_SHRINK_SPAN less 2). */
+    private static final int MAX_SHRINK = 32;
 
     static {
         for (int f = 0; f < SCRATCH.length; f++) {
@@ -451,6 +467,21 @@ public final class CgGpuOps {
     public static void precacheDepthPyramid() {
         precache(Files.pyramid().kernel("Seed"));
         precache(Files.pyramid().kernel("Reduce"));
+    }
+
+    /** {@link #precacheSort}, for {@link #blur} and {@link #blurScaled} over images of {@code type}. */
+    public static void precacheBlur(CgTextureType type) {
+        int f = IMAGE_TYPES.indexOf(type);
+        if (f < 0) throw new IllegalArgumentException(type + ": the image ops take " + IMAGE_TYPES);
+        for (int at = 0; at < 4; at++) precache(blurKernel(f, (at & 1) != 0, (at & 2) != 0));
+        precache(reduceKernel(f));
+    }
+
+    /** {@link #precacheSort}, for {@link #shrink} over images of {@code type}. */
+    public static void precacheShrink(CgTextureType type) {
+        int f = IMAGE_TYPES.indexOf(type);
+        if (f < 0) throw new IllegalArgumentException(type + ": the image ops take " + IMAGE_TYPES);
+        precache(shrinkKernel(f));
     }
 
     private static void precache(CgKernel kernel) {
@@ -803,12 +834,157 @@ public final class CgGpuOps {
             throw new IllegalArgumentException("level " + sourceLevel + " of " + source + " and level " + targetLevel
                     + " of " + target + " are not one size");
         }
-        int radius = (int) Math.ceil(3 * sigma);
+        dispatchBlur(pass, f, source, sourceLevel, 0, 0, w, h, target, targetLevel, 0, 0, sigma, sigma, Edge.CLAMP, false);
+    }
+
+    /**
+     * A Gaussian blur of the region {@code (x, y, w, h)} of level 0 of {@code source}, landing with its corner at
+     * {@code (tx, ty)} of level 0 of {@code target} (its format; the same texture blurs in place). Each axis has its own
+     * sigma, in texels, and taps past the region read by {@code edge}, never what lies outside it.
+     *
+     * <pre>{@code
+     * CgGpuOps.blur(pass, capture, 0, h - band, w, band, capture, 0, h - band, 6f, 6f, CgGpuOps.Edge.MIRROR);  // a band
+     * CgGpuOps.blur(pass, coverage, 0, 0, iw, ih, shadow, 0, 0, 3f, 1.5f, CgGpuOps.Edge.CLAMP);   // into a texture of its own
+     * }</pre>
+     *
+     * <p>A sigma reaches three of itself; past {@link #MAX_BLUR_SIGMA} the kernel is cut short, still normalised. A wide
+     * blur belongs at a reduced size ({@link #blurScaled}).</p>
+     */
+    public static void blur(CgComputePass pass, CgGraphTexture source, int x, int y, int w, int h,
+                            CgGraphTexture target, int tx, int ty, float sigmaX, float sigmaY, Edge edge) {
+        if (!(sigmaX > 0f) || !(sigmaY > 0f) || Float.isInfinite(sigmaX) || Float.isInfinite(sigmaY)) {
+            throw new IllegalArgumentException("sigmas of " + sigmaX + " and " + sigmaY);
+        }
+        int f = imageType(source);
+        if (imageType(target) != f) throw new IllegalArgumentException(source + " and " + target + " differ in format");
+        requireRegion(source, x, y, w, h);
+        requireRegion(target, tx, ty, w, h);
+        dispatchBlur(pass, f, source, 0, x, y, w, h, target, 0, tx, ty, sigmaX, sigmaY, edge, false);
+    }
+
+    /**
+     * Skia's scale-then-blur: the region {@code (x, y, w, h)} of {@code source} blurred by {@code sigma} source texels,
+     * reduced first, box averaged, by however many times smaller {@code target} is: 1, 2 or 4, {@link #blurScale} the
+     * one to pick. The result covers the aligned blocks over the region, at {@code (x / scale, y / scale)}, so one
+     * normalised uv means the same place in both.
+     *
+     * <pre>{@code
+     * CgGraphTexture blurred = ...;                       // source's size / CgGpuOps.blurScale(sigma), its format
+     * CgGpuOps.blurScaled(pass, capture, 0, top, w, band, blurred, sigma, CgGpuOps.Edge.MIRROR);
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Two taps are one bilinear fetch (Skia's linear-sampled kernel): half the reads of {@link #blur}, within the
+     *       filter's weight precision (about 1/256) of the exact Gaussian. For a picture; {@link #blur} for a value.</li>
+     *   <li>A reduced texel past the region's edge averages the edge's texels: nothing outside the region is read.</li>
+     *   <li>Sigma at the reduced size is at most four texels: a blur past {@code 3 * 4} reduced texels is narrower than
+     *       asked, still normalised.</li>
+     * </ul>
+     */
+    public static void blurScaled(CgComputePass pass, CgGraphTexture source, int x, int y, int w, int h,
+                                  CgGraphTexture target, float sigma, Edge edge) {
+        int sw = source.getWidth(), sh = source.getHeight();
+        int scale = 0;
+        for (int s = 1; s <= MAX_SCALE && scale == 0; s *= 2) {
+            if (target.getWidth() == (sw + s - 1) / s && target.getHeight() == (sh + s - 1) / s) scale = s;
+        }
+        if (scale == 0) throw new IllegalArgumentException(target + " is not " + source + " divided by 1, 2 or 4");
+        if (scale == 1) {
+            if (!(sigma > 0f) || Float.isInfinite(sigma)) throw new IllegalArgumentException("a sigma of " + sigma);
+            int f = imageType(source);
+            if (imageType(target) != f) throw new IllegalArgumentException(source + " and " + target + " differ in format");
+            requireRegion(source, x, y, w, h);
+            dispatchBlur(pass, f, source, 0, x, y, w, h, target, 0, x, y, sigma, sigma, edge, true);
+            return;
+        }
+        if (!(sigma > 0f) || Float.isInfinite(sigma)) throw new IllegalArgumentException("a sigma of " + sigma);
+        int f = imageType(source);
+        if (imageType(target) != f) throw new IllegalArgumentException(source + " and " + target + " differ in format");
+        requireRegion(source, x, y, w, h);
+        int tx0 = x / scale, ty0 = y / scale;
+        int tw = (x + w + scale - 1) / scale - tx0, th = (y + h + scale - 1) / scale - ty0;
+        pass.dispatch(reduceKernel(f), tw, th, 1).texture("_Src", source).image(TARGETS[f], target)
+                .set("_Region", tx0, ty0, tx0 + tw, ty0 + th).set("_Source", x, y, x + w, y + h).set("_Scale", scale);
+        float reduced = Math.min(sigma / scale, MAX_WORKING_SIGMA);
+        dispatchBlur(pass, f, target, 0, tx0, ty0, tw, th, target, 0, tx0, ty0, reduced, reduced, edge, true);
+    }
+
+    /** The reduction {@link #blurScaled} wants for {@code sigma}: 1, 2 or 4, keeping the reduced sigma at most 4. */
+    public static int blurScale(float sigma) {
+        int scale = 1;
+        while (sigma / scale > MAX_WORKING_SIGMA && scale < MAX_SCALE) scale *= 2;
+        return scale;
+    }
+
+    /**
+     * The region {@code (x, y, w, h)} of level 0 of {@code source}, in texels and fractional, shrunk into the rect
+     * {@code (tx, ty, tw, th)} of level 0 of {@code target} (its format): each target texel the average of the source
+     * area it covers, a texel the area's edge cuts weighted by the part inside. An area resample, Pillow's {@code BOX}
+     * and OpenCV's {@code INTER_AREA}: at any ratio, nothing skipped and nothing read twice. A thumbnail, a preview, a
+     * picture fitted into a smaller box.
+     *
+     * <pre>{@code
+     * CgGpuOps.shrink(pass, window, 0, 0, 1920, 1080, thumbnail, 0, 0, 192, 108);       // a tenth, every texel averaged
+     * CgGpuOps.shrink(pass, page, 12.5f, 40f, 300.25f, 200f, preview, 0, 0, 96, 64);   // a box of a page, at its edges
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Rows are the texture's own, as every image op's: row 0 at the bottom of a framebuffer's colour.</li>
+     *   <li>Nothing outside the region is read. The region is no smaller than the rect: it shrinks.</li>
+     *   <li>Past {@code 32} source texels a target texel on an axis it runs twice, through scratch, up to 1024.</li>
+     * </ul>
+     */
+    public static void shrink(CgComputePass pass, CgGraphTexture source, float x, float y, float w, float h,
+                              CgGraphTexture target, int tx, int ty, int tw, int th) {
+        int f = imageType(source);
+        if (imageType(target) != f) throw new IllegalArgumentException(source + " and " + target + " differ in format");
+        requireRegion(target, tx, ty, tw, th);
+        if (!(x >= 0f) || !(y >= 0f) || !(x + w <= source.getWidth()) || !(y + h <= source.getHeight())
+                || !(w >= tw) || !(h >= th)) {
+            throw new IllegalArgumentException("region " + x + "," + y + " " + w + "x" + h + " of " + source
+                    + " shrunk to " + tw + "x" + th + ": it must lie inside it and be no smaller");
+        }
+        if (w > (float) tw * MAX_SHRINK * MAX_SHRINK || h > (float) th * MAX_SHRINK * MAX_SHRINK) {
+            throw new IllegalArgumentException(w + "x" + h + " shrunk to " + tw + "x" + th + ": past "
+                    + MAX_SHRINK * MAX_SHRINK + " times on an axis");
+        }
+        if (w > (float) tw * MAX_SHRINK || h > (float) th * MAX_SHRINK) {
+            int mw = Math.max(tw, (int) Math.ceil(w / MAX_SHRINK)), mh = Math.max(th, (int) Math.ceil(h / MAX_SHRINK));
+            CgGraphTexture mid = pass.recording().scratch("ops.shrink", mw, mh, SCRATCH[f]);
+            dispatchShrink(pass, f, source, x, y, w, h, mid, 0, 0, mw, mh);
+            source = mid;
+            x = 0f;
+            y = 0f;
+            w = mw;
+            h = mh;
+        }
+        dispatchShrink(pass, f, source, x, y, w, h, target, tx, ty, tw, th);
+    }
+
+    private static void dispatchShrink(CgComputePass pass, int f, CgGraphTexture source, float x, float y, float w,
+                                       float h, CgGraphTexture target, int tx, int ty, int tw, int th) {
+        pass.dispatch(shrinkKernel(f), tw, th, 1).texture("_Src", source).image(TARGETS[f], target)
+                .set("_Region", tx, ty, tx + tw, ty + th).set("_Source", x, y, x + w, y + h);
+    }
+
+    private static void requireRegion(CgGraphTexture texture, int x, int y, int w, int h) {
+        if (w <= 0 || h <= 0 || x < 0 || y < 0 || x + w > texture.getWidth() || y + h > texture.getHeight()) {
+            throw new IllegalArgumentException("region " + x + "," + y + " " + w + "x" + h + " outside " + texture);
+        }
+    }
+
+    /** Across into a scratch the region's size, then down into place; taps kept inside the region by {@code edge}. */
+    private static void dispatchBlur(CgComputePass pass, int f, CgGraphTexture source, int sourceLevel,
+                                     int x, int y, int w, int h, CgGraphTexture target, int targetLevel,
+                                     int tx, int ty, float sigmaX, float sigmaY, Edge edge, boolean linear) {
+        int mirror = edge == Edge.MIRROR ? 1 : 0;
         CgGraphTexture across = pass.recording().scratch("ops.blur", w, h, SCRATCH[f]);
-        pass.dispatch(blurKernel(f, false), w, h, 1).image(SOURCES[f], source, sourceLevel, -1)
-                .image(TARGETS[f], across).set("_Radius", radius).set("_Sigma", sigma);
-        pass.dispatch(blurKernel(f, true), w, h, 1).image(SOURCES[f], across)
-                .image(TARGETS[f], target, targetLevel, -1).set("_Radius", radius).set("_Sigma", sigma);
+        pass.dispatch(blurKernel(f, false, linear), w, h, 1).texture("_Src", source).set("_Level", sourceLevel)
+                .image(TARGETS[f], across).set("_Radius", (int) Math.ceil(3 * sigmaX)).set("_Sigma", sigmaX)
+                .set("_Region", x, y, x + w, y + h).set("_Target", 0, 0, 0, 0).set("_Mirror", mirror);
+        pass.dispatch(blurKernel(f, true, linear), w, h, 1).texture("_Src", across).set("_Level", 0)
+                .image(TARGETS[f], target, targetLevel, -1).set("_Radius", (int) Math.ceil(3 * sigmaY))
+                .set("_Sigma", sigmaY).set("_Region", 0, 0, w, h).set("_Target", tx, ty, 0, 0).set("_Mirror", mirror);
     }
 
     /** Level {@code level}'s extent of an axis of {@code size} texels at level 0. */
@@ -837,12 +1013,27 @@ public final class CgGpuOps {
         return k;
     }
 
-    private static CgKernel blurKernel(int type, boolean vertical) {
-        CgKernel k = BLUR_VARIANTS[type][vertical ? 1 : 0];
+    private static CgKernel reduceKernel(int type) {
+        CgKernel k = REDUCE_VARIANTS[type];
+        if (k == null) REDUCE_VARIANTS[type] = k = Files.image().kernel(REDUCE_KERNELS[type]);
+        return k;
+    }
+
+    private static CgKernel shrinkKernel(int type) {
+        CgKernel k = SHRINK_VARIANTS[type];
+        if (k == null) SHRINK_VARIANTS[type] = k = Files.image().kernel(SHRINK_KERNELS[type]);
+        return k;
+    }
+
+    private static CgKernel blurKernel(int type, boolean vertical, boolean linear) {
+        int at = (vertical ? 1 : 0) + (linear ? 2 : 0);
+        CgKernel k = BLUR_VARIANTS[type][at];
         if (k == null) {
             k = Files.image().kernel(BLUR_KERNELS[type]);
-            if (vertical) k = k.withKeywords("VERTICAL");
-            BLUR_VARIANTS[type][vertical ? 1 : 0] = k;
+            if (vertical && linear) k = k.withKeywords("VERTICAL", "LINEAR");
+            else if (vertical) k = k.withKeywords("VERTICAL");
+            else if (linear) k = k.withKeywords("LINEAR");
+            BLUR_VARIANTS[type][at] = k;
         }
         return k;
     }

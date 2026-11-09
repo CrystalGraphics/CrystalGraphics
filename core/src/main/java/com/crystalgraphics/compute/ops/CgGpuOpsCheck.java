@@ -63,7 +63,7 @@ public final class CgGpuOpsCheck {
     private static final int PAD = 16;
     private static final int SENTINEL = 0xC0FFEE11, DRAWN = 1000, SEED = 0x1234567, RESULTS = 16, BINS = 50;
     private static final int[][] IMAGE_SIZES = {{16, 16}, {13, 7}, {1, 9}, {37, 64}};
-    private static final float SIGMA = 1.6f, LEVEL_SIGMA = 0.8f;
+    private static final float SIGMA = 1.6f, LEVEL_SIGMA = 0.8f, SCALED_SIGMA = 5f;
     private static boolean ran;
     /** The first run's reads, while they arrive. */
     private static CgReplayedReads requested;
@@ -385,7 +385,9 @@ public final class CgGpuOpsCheck {
     }
 
     /**
-     * One format at one size: a chain per filter, a blur into another texture, and level 1 of a chain blurred in place.
+     * One format at one size: a chain per filter, a blur into another texture, level 1 of a chain blurred in place, a
+     * region blurred into place with mirrored edges, a region blurred at half size (scale-then-blur), a fractional
+     * region shrunk to a third, and the whole image shrunk to one texel.
      * Inputs are read back as stored, so an expectation starts from the format's own values.
      */
     private static final class ImageCase {
@@ -395,7 +397,12 @@ public final class CgGpuOpsCheck {
         /** One rounding to the format, at a value of 1: a texel may differ by it per write. */
         final double ulp;
         final CgFrameBuffer[] chains = new CgFrameBuffer[Filter.values().length];
-        final CgFrameBuffer blurSource, blurTarget, levelBlur;
+        final CgFrameBuffer blurSource, blurTarget, levelBlur, regionTarget, scaledTarget, shrinkTarget, meanTarget;
+        /** The region the region and scaled blurs read, and where the region blur lands. */
+        final int rx, ry, rw, rh, tx, ty;
+        /** A shrink's fractional source box, and the rect it lands in at the corner of {@link #shrinkTarget}. */
+        final float shx, shy, shw, shh;
+        final int stw, sth;
         /** What {@link #expect} reads through, while it runs. */
         CgReplayedReads reads;
 
@@ -418,15 +425,35 @@ public final class CgGpuOpsCheck {
             blurSource = texture(format, 1, data);
             blurTarget = texture(format, 1, data);
             levelBlur = texture(format, full, data);
+            regionTarget = texture(format, 1, data);
+            scaledTarget = texture(format, 1, data, (w + 1) / 2, (h + 1) / 2);
+            rw = Math.max(1, w / 2);
+            rh = Math.max(1, h / 2);
+            rx = w / 4;
+            ry = h / 4;
+            tx = w - rw;
+            ty = h - rh;
+            stw = Math.max(1, w / 3);
+            sth = Math.max(1, h / 3);
+            shw = Math.max(stw, w * 0.75f);
+            shh = Math.max(sth, h * 0.7f);
+            shx = (w - shw) * 0.4f;
+            shy = (h - shh) * 0.6f;
+            shrinkTarget = texture(format, 1, data, stw + 1, sth + 1);
+            meanTarget = texture(format, 1, data, 1, 1);
         }
 
         CgFrameBuffer texture(CgFrameBufferFormat format, int levels, float[] data) {
-            CgFrameBuffer fb = CgFrameBuffer.createOwned("ops-check " + name, w, h, format, levels);
-            ByteBuffer pixels = ByteBuffer.allocateDirect(data.length * 4).order(ByteOrder.nativeOrder());
-            for (float v : data) pixels.putFloat(v);
+            return texture(format, levels, data, w, h);
+        }
+
+        CgFrameBuffer texture(CgFrameBufferFormat format, int levels, float[] data, int width, int height) {
+            CgFrameBuffer fb = CgFrameBuffer.createOwned("ops-check " + name, width, height, format, levels);
+            ByteBuffer pixels = ByteBuffer.allocateDirect(width * height * 16).order(ByteOrder.nativeOrder());
+            for (int i = 0; i < width * height * 4; i++) pixels.putFloat(data[i]);
             pixels.flip();
             CgGL.glBindTexture(CgGL.GL_TEXTURE_2D, fb.getColorTexture(0).getId());
-            CgGL.glTexSubImage2D(CgGL.GL_TEXTURE_2D, 0, 0, 0, w, h, CgGL.GL_RGBA, CgGL.GL_FLOAT, pixels);
+            CgGL.glTexSubImage2D(CgGL.GL_TEXTURE_2D, 0, 0, 0, width, height, CgGL.GL_RGBA, CgGL.GL_FLOAT, pixels);
             return fb;
         }
 
@@ -439,6 +466,14 @@ public final class CgGpuOpsCheck {
             CgGraphTexture level = CgGraphTexture.imported("level blur", levelBlur);
             CgGpuOps.downsample(pass, level, 0, 1, Filter.AVERAGE);
             CgGpuOps.blur(pass, level, 1, level, 1, LEVEL_SIGMA);
+            CgGraphTexture source = CgGraphTexture.imported("blur source", blurSource);
+            CgGpuOps.blur(pass, source, rx, ry, rw, rh, CgGraphTexture.imported("region target", regionTarget), tx, ty,
+                    SIGMA, LEVEL_SIGMA, CgGpuOps.Edge.MIRROR);
+            CgGpuOps.blurScaled(pass, source, rx, ry, rw, rh, CgGraphTexture.imported("scaled target", scaledTarget),
+                    SCALED_SIGMA, CgGpuOps.Edge.MIRROR);
+            CgGpuOps.shrink(pass, source, shx, shy, shw, shh, CgGraphTexture.imported("shrink target", shrinkTarget),
+                    1, 1, stw, sth);
+            CgGpuOps.shrink(pass, source, 0, 0, w, h, CgGraphTexture.imported("mean target", meanTarget), 0, 0, 1, 1);
         }
 
         void expect(List<String> failures, CgReplayedReads reads) {
@@ -457,6 +492,109 @@ public final class CgGpuOpsCheck {
             float[] half = downsample(read(levelBlur, 0), 0, Filter.AVERAGE);
             compare(failures, "blur level 1 in place", read(levelBlur, 1),
                     blur(blur(half, 1, LEVEL_SIGMA, false), 1, LEVEL_SIGMA, true), 1, 3);
+
+            float[] region = crop(source, w, rx, ry, rw, rh);
+            float[] mirrored = blurMirrored(blurMirrored(region, rw, rh, SIGMA, false), rw, rh, LEVEL_SIGMA, true);
+            compareRegion(failures, "region blur, mirrored", crop(read(regionTarget, 0), w, tx, ty, rw, rh), mirrored,
+                    rw, 2 * ulp);
+            int sx = rx / 2, sy = ry / 2, sw = (rx + rw + 1) / 2 - sx, sh = (ry + rh + 1) / 2 - sy;
+            float[] reduced = new float[sw * sh * 4];
+            for (int y = 0; y < sh; y++) {
+                for (int x = 0; x < sw; x++) {
+                    for (int c = 0; c < 4; c++) {
+                        double sum = 0;
+                        for (int j = 0; j < 2; j++) {
+                            for (int i = 0; i < 2; i++) {
+                                int px = Math.max(rx, Math.min(2 * (sx + x) + i, rx + rw - 1));
+                                int py = Math.max(ry, Math.min(2 * (sy + y) + j, ry + rh - 1));
+                                sum += source[(py * w + px) * 4 + c];
+                            }
+                        }
+                        reduced[(y * sw + x) * 4 + c] = (float) (sum / 4);
+                    }
+                }
+            }
+            float scaledSigma = Math.min(SCALED_SIGMA / 2, 4f);
+            float[] scaled = blurMirrored(blurMirrored(reduced, sw, sh, scaledSigma, false), sw, sh, scaledSigma, true);
+            // Two taps a bilinear fetch: the filter's weights are good to about 1/256
+            compareRegion(failures, "scaled blur", crop(reads.rgba(scaledTarget.levelId(0), (w + 1) / 2, (h + 1) / 2, type),
+                    (w + 1) / 2, sx, sy, sw, sh), scaled, sw, 2 * ulp + 1.0 / 128);
+
+            compareRegion(failures, "shrink", crop(reads.rgba(shrinkTarget.levelId(0), stw + 1, sth + 1, type), stw + 1,
+                    1, 1, stw, sth), shrink(source, shx, shy, shw, shh, stw, sth), stw, 4 * ulp);
+            compareRegion(failures, "shrink to one texel", reads.rgba(meanTarget.levelId(0), 1, 1, type),
+                    shrink(source, 0, 0, w, h, 1, 1), 1, 4 * ulp);
+        }
+
+        /** The box {@code (x, y, bw, bh)} of the source area averaged into {@code tw x th}, as image.compute's shrink. */
+        float[] shrink(float[] src, double x, double y, double bw, double bh, int tw, int th) {
+            double scaleX = bw / tw, scaleY = bh / th;
+            float[] out = new float[tw * th * 4];
+            for (int ty = 0; ty < th; ty++) {
+                for (int tx = 0; tx < tw; tx++) {
+                    double x0 = x + tx * scaleX, x1 = Math.min(x0 + scaleX, x + bw);
+                    double y0 = y + ty * scaleY, y1 = Math.min(y0 + scaleY, y + bh);
+                    for (int c = 0; c < 4; c++) {
+                        double sum = 0, total = 0;
+                        for (int py = (int) Math.floor(y0); py < Math.ceil(y1); py++) {
+                            double wy = Math.min(y1, py + 1) - Math.max(y0, py);
+                            for (int px = (int) Math.floor(x0); px < Math.ceil(x1); px++) {
+                                double weight = (Math.min(x1, px + 1) - Math.max(x0, px)) * wy;
+                                sum += src[(py * w + px) * 4 + c] * weight;
+                                total += weight;
+                            }
+                        }
+                        out[(ty * tw + tx) * 4 + c] = (float) (sum / total);
+                    }
+                }
+            }
+            return out;
+        }
+
+        /** The {@code rw x rh} texels at {@code (x, y)} of an RGBA image {@code width} wide. */
+        static float[] crop(float[] image, int width, int x, int y, int rw, int rh) {
+            float[] out = new float[rw * rh * 4];
+            for (int j = 0; j < rh; j++) System.arraycopy(image, ((y + j) * width + x) * 4, out, j * rw * 4, rw * 4);
+            return out;
+        }
+
+        /** One axis of the Gaussian over a whole {@code n x m} image, its edges mirrored, the edge texel repeated. */
+        static float[] blurMirrored(float[] src, int n, int m, float sigma, boolean vertical) {
+            int radius = (int) Math.ceil(3 * sigma), span = vertical ? m : n;
+            float[] out = new float[src.length];
+            for (int y = 0; y < m; y++) {
+                for (int x = 0; x < n; x++) {
+                    for (int c = 0; c < 4; c++) {
+                        double sum = 0, total = 0;
+                        for (int k = -radius; k <= radius; k++) {
+                            double weight = Math.exp(-0.5 * k * k / ((double) sigma * sigma));
+                            int q = Math.floorMod((vertical ? y : x) + k, 2 * span);
+                            int p = q < span ? q : 2 * span - 1 - q;
+                            sum += src[((vertical ? p : y) * n + (vertical ? x : p)) * 4 + c] * weight;
+                            total += weight;
+                        }
+                        out[(y * n + x) * 4 + c] = (float) (sum / total);
+                    }
+                }
+            }
+            return out;
+        }
+
+        /** Every channel of an {@code n}-wide region within {@code tolerance}, scaled to the value's size. */
+        void compareRegion(List<String> failures, String op, float[] made, float[] want, int n, double tolerance) {
+            int wrong = 0, firstAt = -1;
+            for (int i = 0; i < want.length; i++) {
+                if (i % 4 >= channels) continue;
+                if (!(Math.abs(made[i] - want[i]) <= tolerance * Math.max(1, Math.abs(want[i])) + 1e-6) && wrong++ == 0) {
+                    firstAt = i;
+                }
+            }
+            if (wrong > 0) {
+                int texel = firstAt / 4;
+                failures.add(name + " " + op + " differs in " + wrong + " of " + want.length / 4 * channels
+                        + " channels, the first at (" + texel % n + ", " + texel / n + ")." + firstAt % 4 + ": "
+                        + made[firstAt] + ", not " + want[firstAt]);
+            }
         }
 
         /** Level {@code level + 1} from {@code src}, level {@code level}, as image.compute folds it. */
@@ -541,6 +679,10 @@ public final class CgGpuOpsCheck {
             blurSource.delete();
             blurTarget.delete();
             levelBlur.delete();
+            regionTarget.delete();
+            scaledTarget.delete();
+            shrinkTarget.delete();
+            meanTarget.delete();
         }
     }
 

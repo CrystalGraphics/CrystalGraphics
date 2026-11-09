@@ -83,6 +83,7 @@ simple element shader, one look per kind of item, varied by blend mode.
 | `imageArray(blend)`, `maskArray(blend)` | the same from the layer of a 2D array `atlasLayer` names |
 | `curve()` | lines, strokes, triangles and cells, alpha-blended (§ 4) |
 | `box()` | a rounded, bordered, flat, textured or nine-slice box, premultiplied: the shape its quad names (below) |
+| `coverage()`, `strokeCoverage()`, `colourCoverage()` | screen only: vector shapes rastered into a texture as exact coverage (below) |
 
 ```java
 canvas.quad(CgCanvasMaterials.SCREEN.maskArray(CgBlendMode.ADDITIVE)).texture(0, digits).atlasLayer(d)
@@ -255,6 +256,102 @@ ruling.size(w, h).cell(16f * zoom, 16f * zoom).line(1f).color(0x30FFFFFF).radii(
 - **`apply()` before each quad**: like a gradient's window, the quad takes the material's values as it is submitted.
 - One grid per drawer, for the same reason as a gradient. A line width of 0 draws nothing.
 - The first line sits on the box's edge, so the grid moves with the box: move `at` to scroll it.
+
+### Glass
+
+**Glass** is a pane over what is behind it: a blurred copy of the backdrop in its middle, the sharp copy bent through
+a lens at its bezel, saturated, tinted toward a colour's brightness and colour, lit at its rim and grained. Windows'
+acrylic and Mica, and Apple's liquid glass, are all settings of it. It is drawn by a `CgCanvasGlass`, which owns its
+material; the backdrop is yours: a copy of the target behind the pane and a blur of it.
+
+```java
+CgCanvasGlass pane = new CgCanvasGlass(CgCanvasMaterials.SCREEN);    // once, kept
+
+// Each frame, after what the pane covers is drawn:
+CgCanvasGlass.Look look = CgCanvasGlass.LIQUID;
+// ... capture the target behind the pane into `sharp`, then blur it by look.blur() into `blurred` (below) ...
+pane.size(w, h).radii(16, 16, 16, 16, 16, 16, 16, 16)
+    .backdrop(blurred, sharp)
+    .backdropMap(u0, v0, w / (float) texW, 0f, 0f, -h / (float) texH)   // the pane's corner and axes in their uv
+    .captureRect(cu0, cv0, cu1, cv1)                                     // the part of them it may sample
+    .look(look)
+    .apply();
+canvas.quad(pane.material()).at(x, y).size(w, h).submit();
+```
+
+The looks, each a different material rather than a different amount:
+
+| Look | Is |
+|---|---|
+| `DEFAULT` | a pane over a blur with a lens at its edge, lit and grained |
+| `CLEAR` | plain glass: no blur, a gentle lens, a faint highlight |
+| `FROSTED` | a wide blur under a light tint, no lens |
+| `LIQUID` | Apple's liquid glass: a little blur, a wide strong lens, a bright rim, some dispersion |
+| `ACRYLIC` | Windows' acrylic: a wide blur, a dark tint taking much of the brightness |
+| `MICA` | Windows' Mica: a very wide blur, its brightness mostly the tint's |
+| `PRISM` | dispersion: the colour channels refracted apart |
+
+```java
+pane.look(CgCanvasGlass.FROSTED).tint(0x40FFE0C0).apply();        // a look, then a value of your own
+pane.look(CgCanvasGlass.ACRYLIC.withBlur(20f)).apply();            // a Look is a record: change one field
+pane.lens(0f, 1f).specular(0f).noise(0f).apply();                  // frosted to the edge: those layers compile out
+```
+
+- **The look's `blur()` is for whoever makes the blurred backdrop**, in pixels, three sigma: the glass samples
+  the blur it is given.
+- **The backdrop map is affine** from the pane's uv (0..1, top-left) to the backdrops': a rotated pane reads a
+  rotated patch. A capture of a framebuffer runs v upward, so its `uy` is negative.
+- **A lens samples past the pane's edge**, about `2.2 * bezel * (1 + 0.2 * chromatic)` pixels: capture that much
+  around it. Past the capture rect a tap folds back in once, as Chromium extends a backdrop.
+- Both backdrops hold premultiplied colour; the glass covers whatever is transparent in them.
+- A layer whose value is 0 (`ior` 1 or `bezel` 0, `chromatic`, `specular`, `noise`) is compiled out. One pane per
+  drawer; `apply()` before each quad.
+
+**The blur** is the engine's (`CgGpuOps`, compute): Skia's scale-then-blur over the captured region, its edges
+mirrored, into a texture the source's size over 1, 2 or 4:
+
+```java
+float sigma = look.blur() / 3f;
+CgGraphTexture blurred = ...;                     // capture's size / CgGpuOps.blurScale(sigma), its format, kept
+CgComputePass pass = recording.compute("mymod.glass.blur");
+CgGpuOps.blurScaled(pass, capture, 0, capture.getHeight() - bandH, bandW, bandH, blurred, sigma, CgGpuOps.Edge.MIRROR);
+pass.end();
+```
+
+### Coverage into a texture
+
+To draw a vector shape many times, or to blur it, raster it once into a texture as **coverage**: each fill cell
+adds its exact area into alpha, so a tessellated shape is exact, and the texture then draws as a tinted image.
+Skia's path atlas. Three screen materials, by how the pieces combine:
+
+| Material | Pieces | Writes |
+|---|---|---|
+| `SCREEN.coverage()` | a fill's cells, which partition it: their areas sum | `(1, 1, 1, coverage)` |
+| `SCREEN.strokeCoverage()` | a stroke's segments, which overlap at every joint: their max | `(1, 1, 1, coverage)` |
+| `SCREEN.colourCoverage()` | a fill with colours of its own | its premultiplied colour times the area, summed |
+
+```java
+// Into a texture cleared to transparent, on a canvas recording into it:
+canvas.cell(CgCanvasMaterials.SCREEN.coverage()).points(...).submit();          // each cell of the fill
+canvas.curve(CgCanvasMaterials.SCREEN.strokeCoverage()).line(...).submit();   // each segment of the outline
+// Then drawn anywhere, tinted:
+frame.canvas().quad(CgCanvasMaterials.SCREEN.image()).texture(0, icon).at(x, y).size(w, h).color(tint).submit();
+```
+
+- A summed raster runs past 1 where cells overlap: a float format (RGBA16F) keeps it, and the box clamps it.
+- Each takes the exact pixel centre, so a shape's cells partition its pixels; for a 2D camera only.
+
+### Shrinking a texture
+
+A thumbnail is not a canvas draw: it is `CgGpuOps.shrink`, a compute op, each texel the average of the source area it
+covers at any ratio (`SHADERS.md` § *Ops*). Shrink into a texture of its own, then draw that as an image.
+
+```java
+CgComputePass pass = recording.compute("thumbnail");
+CgGpuOps.shrink(pass, window, 0, 0, window.getWidth(), window.getHeight(), thumbnail, 0, 0, 192, 108);
+pass.end();
+canvas.quad(CgCanvasMaterials.SCREEN.image()).texture(0, thumbnail).at(x, y).size(192, 108).submit();
+```
 
 ### A material of your own
 

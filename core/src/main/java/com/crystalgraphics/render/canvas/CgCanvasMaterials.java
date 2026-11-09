@@ -12,8 +12,9 @@ import java.util.List;
 
 /**
  * The canvas's default materials, so a HUD, a marker or a whole UI needs no shader of its own: an image, a mask, either
- * from a layer of a 2D array, a curve, and a box (rounded, bordered, textured or nine-sliced, by {@link CgShapeTable}).
- * Gradients and grids are {@link CgCanvasGradient} and {@link CgCanvasGrid}. Unreal's simple element shader: one look
+ * from a layer of a 2D array, a curve, a box (rounded, bordered, textured or nine-sliced, by {@link CgShapeTable}), and
+ * curves rastered into a texture as exact coverage.
+ * Gradients, grids and glass are {@link CgCanvasGradient}, {@link CgCanvasGrid} and {@link CgCanvasGlass}. Unreal's simple element shader: one look
  * per kind of item, varied by blend mode.
  *
  * <pre>{@code
@@ -63,6 +64,10 @@ public final class CgCanvasMaterials {
     public static final String BOX_SHADER = "crystalgraphics:shaders/canvas/box.shader";
     public static final String GRADIENT_SHADER = "crystalgraphics:shaders/canvas/gradient.shader";
     public static final String GRID_SHADER = "crystalgraphics:shaders/canvas/grid.shader";
+    public static final String GLASS_SHADER = "crystalgraphics:shaders/canvas/glass.shader";
+    public static final String COVERAGE_SHADER = "crystalgraphics:shaders/canvas/coverage.shader";
+    public static final String STROKE_COVERAGE_SHADER = "crystalgraphics:shaders/canvas/coverage_max.shader";
+    public static final String COLOUR_COVERAGE_SHADER = "crystalgraphics:shaders/canvas/coverage_colour.shader";
 
     // Before SCREEN and WORLD: their constructors size by them.
     private static final CgBlendMode[] BLENDS = CgBlendMode.values();
@@ -75,7 +80,7 @@ public final class CgCanvasMaterials {
 
     private final boolean screen;
     private final CgMaterial[] made = new CgMaterial[KINDS * BLENDS.length];
-    private CgMaterial curve, box;
+    private CgMaterial curve, box, coverage, strokeCoverage, colourCoverage;
     /** The gradient and grid variants {@link #precache} keeps built; theirs, since a pipeline is a material's. */
     private final List<CgMaterial> probes = new ArrayList<>();
 
@@ -117,6 +122,42 @@ public final class CgCanvasMaterials {
         return curve;
     }
 
+    /**
+     * Curves rastered into a texture as coverage, on the screen's canvas only: a fill's cells add their exact areas
+     * into alpha, (1, 1, 1, coverage), so a tessellated shape is exact and the texture draws later as a tinted image
+     * (Skia's path atlas). Draw into a target cleared to transparent.
+     *
+     * <pre>{@code
+     * canvas.cell(CgCanvasMaterials.SCREEN.coverage()).points(...).submit();          // a fill's cells
+     * canvas.curve(CgCanvasMaterials.SCREEN.strokeCoverage()).line(...).submit();   // a stroke's segments
+     * canvas.cell(CgCanvasMaterials.SCREEN.colourCoverage()).points(...).submit();    // a fill with colours of its own
+     * }</pre>
+     */
+    public synchronized CgMaterial coverage() {
+        if (coverage == null) coverage = rasterMaterial(COVERAGE_SHADER);
+        return coverage;
+    }
+
+    /** {@link #coverage()} combined by max: a stroke's segments overlap at their joints, where a sum would bead. */
+    public synchronized CgMaterial strokeCoverage() {
+        if (strokeCoverage == null) strokeCoverage = rasterMaterial(STROKE_COVERAGE_SHADER);
+        return strokeCoverage;
+    }
+
+    /** {@link #coverage()} for a fill with colours of its own: premultiplied colour times area, summed. */
+    public synchronized CgMaterial colourCoverage() {
+        if (colourCoverage == null) colourCoverage = rasterMaterial(COLOUR_COVERAGE_SHADER);
+        return colourCoverage;
+    }
+
+    /** Its blend is the shader's own: none of CgBlendMode's sums alpha alone or takes a max. */
+    private CgMaterial rasterMaterial(String shader) {
+        if (!screen) throw new IllegalStateException("coverage rasters on the screen's canvas: CgCanvasMaterials.SCREEN");
+        CgMaterial m = CgMaterial.newInstance(shader);
+        m.precache();
+        return m;
+    }
+
     /** Boxes by shape, premultiplied: {@code quad(box()).custom2(shape)}. @see CgShapeTable */
     public synchronized CgMaterial box() {
         if (box == null) {
@@ -144,6 +185,10 @@ public final class CgCanvasMaterials {
 
     CgMaterial newGrid() {
         return CgMaterial.newInstance(GRID_SHADER, state(CgBlendMode.PREMULTIPLIED));
+    }
+
+    CgMaterial newGlass() {
+        return CgMaterial.newInstance(GLASS_SHADER, state(CgBlendMode.ALPHA));
     }
 
     private synchronized CgMaterial get(int kind, CgBlendMode blend) {
@@ -179,11 +224,14 @@ public final class CgCanvasMaterials {
         }
         list.addPass(SCREEN.curve(), CgInstanceKind.CURVE);
         list.addPass(WORLD.curve(), CgInstanceKind.CURVE);
+        list.addPass(SCREEN.coverage(), CgInstanceKind.CURVE);
+        list.addPass(SCREEN.strokeCoverage(), CgInstanceKind.CURVE);
+        list.addPass(SCREEN.colourCoverage(), CgInstanceKind.CURVE);
         list.addPass(SCREEN.box(), CgInstanceKind.QUAD);
         for (CgMaterial probe : SCREEN.probes()) list.addPass(probe, CgInstanceKind.QUAD);
     }
 
-    /** Every gradient and grid variant a screen draws: mask or none, linear or radial. */
+    /** Every gradient and grid variant a screen draws, mask or none, linear or radial, and two of glass. */
     private synchronized List<CgMaterial> probes() {
         if (probes.isEmpty()) {
             for (int v = 0; v < 4; v++) {
@@ -196,6 +244,15 @@ public final class CgCanvasMaterials {
                 CgMaterial grid = newGrid();
                 grid.toggleKeyword(CgCanvasGrid.WITH_MASK, v != 0);
                 probes.add(grid);
+            }
+            // Frosted, and every layer on: CgCanvasGlass's defaults.
+            for (int v = 0; v < 2; v++) {
+                CgMaterial glass = newGlass();
+                for (String layer : new String[] {CgCanvasGlass.WITH_REFRACTION, CgCanvasGlass.WITH_CHROMATIC,
+                        CgCanvasGlass.WITH_SPECULAR, CgCanvasGlass.WITH_NOISE}) {
+                    glass.toggleKeyword(layer, v != 0);
+                }
+                probes.add(glass);
             }
         }
         return probes;
@@ -211,6 +268,9 @@ public final class CgCanvasMaterials {
         Arrays.fill(made, null);
         curve = null;
         box = null;
+        coverage = null;
+        strokeCoverage = null;
+        colourCoverage = null;
         probes.clear();
     }
 }

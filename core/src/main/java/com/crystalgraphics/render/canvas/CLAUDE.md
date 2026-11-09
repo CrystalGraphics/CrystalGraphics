@@ -16,8 +16,8 @@ firing's camera. **Using it: [`docs/CANVAS.md`](../../../../../../../../docs/CAN
 | `CgQuadBatch.java` | Quad items: the `Quad` builder and the class-wide instance buffer (`#pragma cg_use quad`) |
 | `CgCurveBatch.java` | Curve, triangle and cell items over the curve record (`#pragma cg_use curve`) |
 | `CgInstanceRun.java` | One batcher's open run: breaks on material, its `changes()`, state, textures or a stale binding snapshot; seals into the recording or `CgImmediate` |
-| `CgCanvasMaterials.java` | The default materials, `SCREEN` and `WORLD`: image, mask, their 2D-array forms, curve, box; one shared instance per kind and blend, `newBox`/`newCurve` for a caller's own; the blend the material state's. Their shaders are `shaders/canvas/` (with `text.shader`), and `lib/canvas.glsl` |
-| `CgCanvasGradient.java`, `CgCanvasGrid.java` | A gradient (CSS's line or a radial, eight stops a draw) and a grid over a box: each owns its material and packs its properties for the next quad |
+| `CgCanvasMaterials.java` | The default materials, `SCREEN` and `WORLD`: image, mask, their 2D-array forms, curve, box, and screen coverage rasters; one shared instance per kind and blend, `newBox`/`newCurve` for a caller's own; the blend the material state's. Their shaders are `shaders/canvas/` (with `text.shader`), and `lib/canvas.glsl` |
+| `CgCanvasGradient.java`, `CgCanvasGrid.java`, `CgCanvasGlass.java` | A gradient (CSS's line or a radial, eight stops a draw), a grid and a pane of glass (its `Look` presets): each owns its material and packs its properties for the next quad. A thumbnail is no canvas draw: `CgGpuOps.shrink` |
 | `CgQuadRecord.java` | The quad record's float offsets, for code that bakes records itself (`CgTextBatch`, `CgWorldText`) |
 | `CgClipTable.java` | A recording's rounded clips (`#pragma cg_use clip`) |
 | `CgShapeTable.java` | A recording's box shapes, so every box is a quad of one pipeline (`#pragma cg_use shape`); `canvas.shapes()`, drawn by `CgCanvasMaterials.box()` |

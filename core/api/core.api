@@ -4452,9 +4452,13 @@ com/crystalgraphics/compute/ops/CgGpuOps
   access public,final
   extends java/lang/Object
   field public,static,final IMAGE_TYPES Ljava/util/List;
+  field public,static,final MAX_BLUR_SIGMA F
   field public,static,final PYRAMID_FORMAT Lcom/crystalgraphics/api/framebuffer/CgFrameBufferFormat;
+  method public,static blur (Lcom/crystalgraphics/render/graph/CgComputePass;Lcom/crystalgraphics/render/graph/CgGraphTexture;IIIILcom/crystalgraphics/render/graph/CgGraphTexture;IIFFLcom/crystalgraphics/compute/ops/CgGpuOps$Edge;)V
   method public,static blur (Lcom/crystalgraphics/render/graph/CgComputePass;Lcom/crystalgraphics/render/graph/CgGraphTexture;ILcom/crystalgraphics/render/graph/CgGraphTexture;IF)V
   method public,static blur (Lcom/crystalgraphics/render/graph/CgComputePass;Lcom/crystalgraphics/render/graph/CgGraphTexture;Lcom/crystalgraphics/render/graph/CgGraphTexture;F)V
+  method public,static blurScale (F)I
+  method public,static blurScaled (Lcom/crystalgraphics/render/graph/CgComputePass;Lcom/crystalgraphics/render/graph/CgGraphTexture;IIIILcom/crystalgraphics/render/graph/CgGraphTexture;FLcom/crystalgraphics/compute/ops/CgGpuOps$Edge;)V
   method public,static bounds (Lcom/crystalgraphics/render/graph/CgComputePass;Lcom/crystalgraphics/render/graph/CgGraphBuffer;IILcom/crystalgraphics/compute/ops/CgGpuCount;Lcom/crystalgraphics/render/graph/CgGraphBuffer;I)V
   method public,static compact (Lcom/crystalgraphics/render/graph/CgComputePass;Lcom/crystalgraphics/render/graph/CgGraphBuffer;Lcom/crystalgraphics/render/graph/CgGraphBuffer;Lcom/crystalgraphics/compute/ops/CgGpuCount;Lcom/crystalgraphics/render/graph/CgGraphBuffer;Lcom/crystalgraphics/render/graph/CgGraphBuffer;I)V
   method public,static copy (Lcom/crystalgraphics/render/graph/CgComputePass;Lcom/crystalgraphics/render/graph/CgGraphBuffer;Lcom/crystalgraphics/render/graph/CgGraphBuffer;Lcom/crystalgraphics/compute/ops/CgGpuCount;)V
@@ -4473,18 +4477,28 @@ com/crystalgraphics/compute/ops/CgGpuOps
   method public,static fill (Lcom/crystalgraphics/render/graph/CgComputePass;Lcom/crystalgraphics/render/graph/CgGraphBuffer;ILcom/crystalgraphics/compute/ops/CgGpuCount;)V
   method public,static histogram (Lcom/crystalgraphics/render/graph/CgComputePass;Lcom/crystalgraphics/render/graph/CgGraphBuffer;Lcom/crystalgraphics/compute/ops/CgGpuCount;Lcom/crystalgraphics/render/graph/CgGraphBuffer;II)V
   method public,static iota (Lcom/crystalgraphics/render/graph/CgComputePass;Lcom/crystalgraphics/render/graph/CgGraphBuffer;IILcom/crystalgraphics/compute/ops/CgGpuCount;)V
+  method public,static precacheBlur (Lcom/crystalgraphics/api/texture/CgTextureType;)V
   method public,static precacheCull (Z)V
   method public,static precacheDepthPyramid ()V
   method public,static precacheFill ()V
   method public,static precacheHistogram ()V
   method public,static precacheIndirect ()V
   method public,static precacheScan (Lcom/crystalgraphics/compute/ops/CgGpuOps$Scan;Lcom/crystalgraphics/compute/ops/CgGpuOps$Fold;Lcom/crystalgraphics/compute/ops/CgGpuOps$Element;)V
+  method public,static precacheShrink (Lcom/crystalgraphics/api/texture/CgTextureType;)V
   method public,static precacheSort (Lcom/crystalgraphics/compute/ops/CgGpuOps$Element;Lcom/crystalgraphics/compute/ops/CgGpuOps$Order;)V
   method public,static readRows (Lcom/crystalgraphics/render/graph/CgRecording;Lcom/crystalgraphics/render/graph/CgGraphBuffer;JILcom/crystalgraphics/compute/ops/CgGpuCount;Lcom/crystalgraphics/compute/ops/CgGpuOps$Rows;)Lcom/crystalgraphics/render/graph/CgRequest;
   method public,static reduce (Lcom/crystalgraphics/render/graph/CgComputePass;Lcom/crystalgraphics/compute/ops/CgGpuOps$Fold;Lcom/crystalgraphics/compute/ops/CgGpuOps$Element;Lcom/crystalgraphics/render/graph/CgGraphBuffer;Lcom/crystalgraphics/compute/ops/CgGpuCount;Lcom/crystalgraphics/render/graph/CgGraphBuffer;I)V
   method public,static scan (Lcom/crystalgraphics/render/graph/CgComputePass;Lcom/crystalgraphics/compute/ops/CgGpuOps$Scan;Lcom/crystalgraphics/compute/ops/CgGpuOps$Fold;Lcom/crystalgraphics/compute/ops/CgGpuOps$Element;Lcom/crystalgraphics/render/graph/CgGraphBuffer;Lcom/crystalgraphics/compute/ops/CgGpuCount;Lcom/crystalgraphics/render/graph/CgGraphBuffer;)V
+  method public,static shrink (Lcom/crystalgraphics/render/graph/CgComputePass;Lcom/crystalgraphics/render/graph/CgGraphTexture;FFFFLcom/crystalgraphics/render/graph/CgGraphTexture;IIII)V
   method public,static sort (Lcom/crystalgraphics/render/graph/CgComputePass;ILcom/crystalgraphics/compute/ops/CgGpuOps$Order;Lcom/crystalgraphics/render/graph/CgGraphBuffer;Lcom/crystalgraphics/render/graph/CgGraphBuffer;Lcom/crystalgraphics/compute/ops/CgGpuCount;)V
   method public,static sort (Lcom/crystalgraphics/render/graph/CgComputePass;Lcom/crystalgraphics/compute/ops/CgGpuOps$Element;Lcom/crystalgraphics/compute/ops/CgGpuOps$Order;Lcom/crystalgraphics/render/graph/CgGraphBuffer;Lcom/crystalgraphics/render/graph/CgGraphBuffer;Lcom/crystalgraphics/compute/ops/CgGpuCount;)V
+com/crystalgraphics/compute/ops/CgGpuOps$Edge
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final CLAMP Lcom/crystalgraphics/compute/ops/CgGpuOps$Edge;
+  field public,static,final MIRROR Lcom/crystalgraphics/compute/ops/CgGpuOps$Edge;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/compute/ops/CgGpuOps$Edge;
+  method public,static values ()[Lcom/crystalgraphics/compute/ops/CgGpuOps$Edge;
 com/crystalgraphics/compute/ops/CgGpuOps$Element
   access public,final,enum
   extends java/lang/Enum
@@ -8786,6 +8800,56 @@ com/crystalgraphics/render/canvas/CgCanvas$Source
   extends java/lang/Object
   method public,abstract constants ()Lcom/crystalgraphics/render/draw/CgPassConstants;
   method public,abstract open (Lcom/crystalgraphics/render/canvas/CgCanvas;)V
+com/crystalgraphics/render/canvas/CgCanvasGlass
+  access public,final
+  extends java/lang/Object
+  field public,static,final ACRYLIC Lcom/crystalgraphics/render/canvas/CgCanvasGlass$Look;
+  field public,static,final CLEAR Lcom/crystalgraphics/render/canvas/CgCanvasGlass$Look;
+  field public,static,final DEFAULT Lcom/crystalgraphics/render/canvas/CgCanvasGlass$Look;
+  field public,static,final FROSTED Lcom/crystalgraphics/render/canvas/CgCanvasGlass$Look;
+  field public,static,final LIQUID Lcom/crystalgraphics/render/canvas/CgCanvasGlass$Look;
+  field public,static,final MICA Lcom/crystalgraphics/render/canvas/CgCanvasGlass$Look;
+  field public,static,final PRISM Lcom/crystalgraphics/render/canvas/CgCanvasGlass$Look;
+  method public <init> (Lcom/crystalgraphics/render/canvas/CgCanvasMaterials;)V
+  method public apply ()Lcom/crystalgraphics/render/canvas/CgCanvasGlass;
+  method public backdrop (Lcom/crystalgraphics/api/texture/CgTexture;Lcom/crystalgraphics/api/texture/CgTexture;)Lcom/crystalgraphics/render/canvas/CgCanvasGlass;
+  method public backdropMap (FFFFFF)Lcom/crystalgraphics/render/canvas/CgCanvasGlass;
+  method public captureRect (FFFF)Lcom/crystalgraphics/render/canvas/CgCanvasGlass;
+  method public chromatic (F)Lcom/crystalgraphics/render/canvas/CgCanvasGlass;
+  method public highlight (FFFF)Lcom/crystalgraphics/render/canvas/CgCanvasGlass;
+  method public lens (FF)Lcom/crystalgraphics/render/canvas/CgCanvasGlass;
+  method public light (FF)Lcom/crystalgraphics/render/canvas/CgCanvasGlass;
+  method public look (Lcom/crystalgraphics/render/canvas/CgCanvasGlass$Look;)Lcom/crystalgraphics/render/canvas/CgCanvasGlass;
+  method public luminosity (F)Lcom/crystalgraphics/render/canvas/CgCanvasGlass;
+  method public material ()Lcom/crystalgraphics/api/material/CgMaterial;
+  method public noise (F)Lcom/crystalgraphics/render/canvas/CgCanvasGlass;
+  method public radii (FFFFFFFF)Lcom/crystalgraphics/render/canvas/CgCanvasGlass;
+  method public saturation (F)Lcom/crystalgraphics/render/canvas/CgCanvasGlass;
+  method public size (FF)Lcom/crystalgraphics/render/canvas/CgCanvasGlass;
+  method public specular (F)Lcom/crystalgraphics/render/canvas/CgCanvasGlass;
+  method public tint (I)Lcom/crystalgraphics/render/canvas/CgCanvasGlass;
+com/crystalgraphics/render/canvas/CgCanvasGlass$Look
+  access public,final,record
+  extends java/lang/Record
+  method public <init> (FFIFFFFFFFFFF)V
+  method public bezel ()F
+  method public blur ()F
+  method public chromatic ()F
+  method public glow ()F
+  method public ior ()F
+  method public luminosity ()F
+  method public noise ()F
+  method public rim ()F
+  method public rimAmbient ()F
+  method public rimWidth ()F
+  method public saturation ()F
+  method public specular ()F
+  method public tint ()I
+  method public withBlur (F)Lcom/crystalgraphics/render/canvas/CgCanvasGlass$Look;
+  method public withTint (I)Lcom/crystalgraphics/render/canvas/CgCanvasGlass$Look;
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
 com/crystalgraphics/render/canvas/CgCanvasGradient
   access public,final
   extends java/lang/Object
@@ -8816,14 +8880,20 @@ com/crystalgraphics/render/canvas/CgCanvasMaterials
   access public,final
   extends java/lang/Object
   field public,static,final BOX_SHADER Ljava/lang/String;
+  field public,static,final COLOUR_COVERAGE_SHADER Ljava/lang/String;
+  field public,static,final COVERAGE_SHADER Ljava/lang/String;
   field public,static,final CURVE_SHADER Ljava/lang/String;
+  field public,static,final GLASS_SHADER Ljava/lang/String;
   field public,static,final GRADIENT_SHADER Ljava/lang/String;
   field public,static,final GRID_SHADER Ljava/lang/String;
   field public,static,final IMAGE_ARRAY_SHADER Ljava/lang/String;
   field public,static,final IMAGE_SHADER Ljava/lang/String;
   field public,static,final SCREEN Lcom/crystalgraphics/render/canvas/CgCanvasMaterials;
+  field public,static,final STROKE_COVERAGE_SHADER Ljava/lang/String;
   field public,static,final WORLD Lcom/crystalgraphics/render/canvas/CgCanvasMaterials;
   method public box ()Lcom/crystalgraphics/api/material/CgMaterial;
+  method public colourCoverage ()Lcom/crystalgraphics/api/material/CgMaterial;
+  method public coverage ()Lcom/crystalgraphics/api/material/CgMaterial;
   method public curve ()Lcom/crystalgraphics/api/material/CgMaterial;
   method public image ()Lcom/crystalgraphics/api/material/CgMaterial;
   method public image (Lcom/crystalgraphics/api/material/CgBlendMode;)Lcom/crystalgraphics/api/material/CgMaterial;
@@ -8832,6 +8902,7 @@ com/crystalgraphics/render/canvas/CgCanvasMaterials
   method public maskArray (Lcom/crystalgraphics/api/material/CgBlendMode;)Lcom/crystalgraphics/api/material/CgMaterial;
   method public newBox ()Lcom/crystalgraphics/api/material/CgMaterial;
   method public newCurve ()Lcom/crystalgraphics/api/material/CgMaterial;
+  method public strokeCoverage ()Lcom/crystalgraphics/api/material/CgMaterial;
   method public,static precache (Lcom/crystalgraphics/render/world/CgPipelineList;)V
   method public,static releaseAll ()V
 com/crystalgraphics/render/canvas/CgClipTable
