@@ -124,8 +124,8 @@ public final class CgSounds {
      * Once {@code at} is gone the sound plays on where it last was; {@link #stop} it to cut it there.
      *
      * <pre>{@code
-     * CgSounds.playAttached("minecraft:entity.blaze.ambient", CgEntityAttachments.of(entities, id, CgEntityAttachments.CENTRE));
-     * CgSounds.playAttached("kakarot:sound/S_charge_loop", goku.attachment("hand_r"));    // a socket, as posed
+     * CgSounds.playAttached("minecraft:entity.blaze.ambient", CgEntityAttachments.of(mobId));
+     * CgSounds.playAttached("mymod:sounds/charge.ogg", CgEntityAttachments.of(playerId, CgEntityAttachments.RIGHT_HAND));
      * }</pre>
      */
     public static long playAttached(String sound, CgAttachment at) {

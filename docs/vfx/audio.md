@@ -66,8 +66,7 @@ Unreal's `UGameplayStatics` plays the same way.
 CgSounds.play2D("minecraft:ui.button.click");                         // at the listener, the UI class
 long boom = CgSounds.playAt("minecraft:entity.generic.explode", x, y, z);   // in the world, the SFX class
 CgSounds.stop(boom);
-CgSounds.playAttached("minecraft:entity.blaze.ambient",                 // following something as it moves
-        CgEntityAttachments.of(entities, id, CgEntityAttachments.CENTRE));
+CgSounds.playAttached("minecraft:entity.blaze.ambient", CgEntityAttachments.of(mobId));   // following it as it moves
 
 CgSound hum = CgSounds.load("mymod:sounds/engine_hum.ogg");           // a file of your own
 long id = CgSounds.loop(hum, CgSoundClass.AMBIENT, 0.6f);

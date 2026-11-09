@@ -19748,7 +19748,6 @@ com/crystalgraphics/vfx/system/CgVfxCueEffects
   method public <init> (Lcom/crystalgraphics/vfx/CgVfxSystem;Lcom/crystalgraphics/cue/CgCueManager;)V
   method public burst (Lcom/crystalgraphics/cue/CgCueDefinition;Lcom/crystalgraphics/cue/CgCueDefinition$Effects;Lcom/crystalgraphics/cue/CgCueParameters;F)V
   method public lasting (Lcom/crystalgraphics/cue/CgCueDefinition;)Lcom/crystalgraphics/cue/CgCueEffects$Lasting;
-  method public update (F)V
   method public,static installClient (Lcom/crystalgraphics/vfx/CgVfxSystem;)V
 com/crystalgraphics/vfx/system/CgVfxExecutionSource
   access public,final,enum
@@ -20005,3 +20004,7 @@ com/crystalgraphics/world/CgWorldQueries
   method public,static level (Ljava/lang/Object;Ljava/lang/String;)Ljava/lang/Object;
   method public,static of (Ljava/lang/Object;)Lcom/crystalgraphics/platform/world/CgWorldQuery;
   method public,static saveDirectory (Ljava/lang/Object;)Ljava/nio/file/Path;
+  method public,static of (I)Lcom/crystalgraphics/world/CgAttachment;
+  method public,static of (II)Lcom/crystalgraphics/world/CgAttachment;
+  method public,static of (Ljava/lang/Object;)Lcom/crystalgraphics/world/CgAttachment;
+  method public,static of (Ljava/lang/Object;I)Lcom/crystalgraphics/world/CgAttachment;

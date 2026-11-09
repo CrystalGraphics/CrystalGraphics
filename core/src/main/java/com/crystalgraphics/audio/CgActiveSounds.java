@@ -185,7 +185,7 @@ public final class CgActiveSounds {
      * ({@code bStopWhenAttachedToDestroyed}, false by default). Null lets it stay where it is.
      *
      * <pre>{@code
-     * sounds.follow(id, CgEntityAttachments.of(entities, mob, CgEntityAttachments.CENTRE), false);
+     * sounds.follow(id, CgEntityAttachments.of(mobId), false);
      * }</pre>
      */
     public CgActiveSounds follow(long id, @Nullable CgAttachment at, boolean stopWhenGone) {

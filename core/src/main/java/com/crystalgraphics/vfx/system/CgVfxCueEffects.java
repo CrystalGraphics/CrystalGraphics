@@ -4,7 +4,6 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Set;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -18,7 +17,6 @@ import org.joml.Quaternionf;
 import org.joml.Vector3f;
 
 import com.crystalgraphics.asset.camera.CgCameraShakeDefinition;
-import com.crystalgraphics.audio.CgActiveSounds;
 import com.crystalgraphics.audio.CgAudioEngine;
 import com.crystalgraphics.audio.CgSoundClass;
 import com.crystalgraphics.cue.CgCueDefinition;
@@ -97,11 +95,6 @@ public final class CgVfxCueEffects implements CgCueEffects {
     private final double[] viewer = new double[3];
     private final Quaternionf turn = new Quaternionf();
     private final Vector3f spawnScale = new Vector3f(), parentScale = new Vector3f();
-    /** Sounds attached to their target, each moved with it while it plays. */
-    private long[] followIds = new long[16];
-    private CgAttachment[] followTargets = new CgAttachment[16];
-    private String[] followSockets = new String[16];
-    private int following;
     /** The inspector's parts it has released, for the next bursts it follows. */
     private final ArrayDeque<Inspected> spareParts = new ArrayDeque<>();
 
@@ -156,7 +149,7 @@ public final class CgVfxCueEffects implements CgCueEffects {
         }
         CgAttachment a = TARGETS.get(id);
         if (a == null) {
-            a = CgEntityAttachments.of(CgEntityQueries.client(), id, CgEntityAttachments.CENTRE);
+            a = CgEntityAttachments.of(id);
             TARGETS.put(id, a);
         }
         return a;
@@ -286,48 +279,14 @@ public final class CgVfxCueEffects implements CgCueEffects {
         placedPoint(placement, at);
         long id = audio.play(s.sound(), CgSoundClass.SFX, point[0], point[1], point[2], 1f, 1f, loop, Double.NaN, at.seed());
         // SpawnSoundAttached for attach_to_target, one-shot or looping; otherwise it stays where it started
-        if (id != 0 && at.target() != null && placement.attach() == Placement.Attach.ATTACH_TO_TARGET) {
-            follow(id, at.target(), placement.socket());
+        CgAttachment target = at.target();
+        if (id != 0 && target != null && placement.attach() == Placement.Attach.ATTACH_TO_TARGET) {
+            String socket = placement.socket();
+            // A socket the target lacks is its own place, as GetSocketTransform answers for an unknown name
+            CgAttachment on = socket == null ? target : (p, t) -> target.point(socket, p, t) || target.place(p, t);
+            audio.activeSounds().follow(id, on, false);
         }
         return id;
-    }
-
-    private void follow(long id, CgAttachment target, @Nullable String socket) {
-        if (following == followIds.length) {
-            followIds = Arrays.copyOf(followIds, following * 2);
-            followTargets = Arrays.copyOf(followTargets, following * 2);
-            followSockets = Arrays.copyOf(followSockets, following * 2);
-        }
-        followIds[following] = id;
-        followTargets[following] = target;
-        followSockets[following] = socket;
-        following++;
-    }
-
-    /** Each attached sound moved to its target's socket, else the target; one that ended is dropped. */
-    @Override
-    public void update(float dt) {
-        if (following == 0) return;
-        CgAudioEngine audio = CgWorld.client().subsystem(CgAudioEngine.class);
-        CgActiveSounds sounds = audio == null ? null : audio.activeSounds();
-        int kept = 0;
-        for (int i = 0; i < following; i++) {
-            long id = followIds[i];
-            if (sounds == null || !sounds.playing(id)) continue;
-            CgAttachment target = followTargets[i];
-            String socket = followSockets[i];
-            // A target that has gone leaves the sound where it last was
-            if (socket != null && target.point(socket, point) || target.place(point, null)) {
-                sounds.at(id, point[0], point[1], point[2]);
-            }
-            followIds[kept] = id;
-            followTargets[kept] = target;
-            followSockets[kept] = socket;
-            kept++;
-        }
-        Arrays.fill(followTargets, kept, following, null);
-        Arrays.fill(followSockets, kept, following, null);
-        following = kept;
     }
 
     /** Where {@code placement} puts an entry on the cue's target now (its socket, else the target), else the cue's point. */
