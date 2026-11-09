@@ -61,118 +61,30 @@ import java.util.function.Consumer;
 import java.util.logging.Logger;
 
 /**
- * Batched text renderer for bitmap, MSDF, and MTSDF glyph atlases.
- *
- * <p>The renderer consumes a pre-built {@link CgTextLayout}, resolves glyphs
- * through {@link CgFontRegistry}, sorts them by GL state, then submits quads
- * through its own owned {@link CgQuadBatch} — each glyph becomes one
- * instanced-quad record (transform baked per-glyph via {@code Quad.pose()}), not a
- * batch of raw vertices. Material bind/unbind, keyword toggling, and atlas texture
- * swaps on batch-key transitions are handled directly by this class — see
- * {@link #transitionToMaterial}.</p>
- *
- * <h3>Multi-Page Atlas Batching</h3>
- * <p>The renderer supports multi-page atlases by converting glyph atlas regions
- * into {@link CgGlyphPlacement} records that carry page identity (index and GL
- * texture ID), plane bounds, and per-page distance-field configuration ({@code pxRange}).
- * Quads are sorted by a packed {@code long} key (atlas mode, page texture, pxRange — see
- * {@link #submitBatchedQuads}) so bitmap batches draw before distance-field batches. On
- * batch-state transitions the active material keywords, atlas texture, and pxRange property
- * are swapped (triggering a flush of whatever was pending under the previous state).</p>
- *
- * <p>Within a batch, quads wait in a bucket per paint layer and batch key, drained in layer order when the batch
- * flushes ({@link #drainBuckets}): draws alternating atlases or shadow cells cost a transition per bucket, not per
- * draw. Each draw keeps its own layering; across draws, every shadow lies beneath every glyph.</p>
- *
- * <h3>Three-Space Model</h3>
- * <p>The text rendering pipeline enforces a strict three-space separation
- * (analogous to CSS Transforms — layout is unaffected by draw-time transforms):</p>
- * <ol>
- *   <li><strong>Logical layout space</strong> — coordinates used by {@link CgTextLayout}
- *       for width, height, line breaking, glyph advances, kerning, and caret math.
- *       These never change based on draw-time transforms. Owning types: {@code CgShapedRun},
- *       {@code CgTextLayout}, {@code CgFontMetrics}, {@code CgFontKey}.</li>
- *   <li><strong>Physical raster space</strong> — the actual raster size used for glyph
- *       rendering at draw time, derived from {@code baseTargetPx × poseScale} via
- *       {@link CgTextScaleResolver}. Physical bearings and extents live in
- *       {@link CgGlyphPlacement} (multi-page) and are normalized back into logical
- *       space at the quad-placement boundary before combining with pen positions.</li>
- *   <li><strong>Composite space</strong> — PoseStack/model-view/projection transforms
- *       applied by the GPU shaders at render time. The PoseStack in 2D mode represents
- *       UI scale; in 3D mode it represents model-view positioning.</li>
- * </ol>
- *
- * <h3>Metric Normalization</h3>
- * <p>Physical atlas metrics are normalized to logical space at the quad-placement
- * boundary using {@link #logicalMetricScale(int, int)}:
- * {@code scaleFactor = baseTargetPx / (float) effectiveTargetPx}. This is applied
- * to plane bounds from {@link CgGlyphPlacement}. The normalization ensures
- * that UI scale changes affect raster quality without corrupting spacing or
- * kerning.</p>
- *
- * <h3>Projection and Context Model</h3>
- * <p>Rather than requiring callers to pass a raw {@code FloatBuffer projectionMatrix}
- * (or even a {@link CgTextRenderContext}) on every draw call, the renderer owns a
- * single {@link CgTextRenderContext} internally (see {@link #context()}). Callers
- * reach it via {@link #context()} for resize/projection updates or history resets,
- * and replace it wholesale via {@link #context(CgTextRenderContext)} to switch modes.
- * The {@link PoseStack} — which changes per draw — is still passed directly to the
- * draw method.</p>
- *
- * <h3>World-Space Extension</h3>
- * <p>World-space/3D text uses the same {@link #draw()}/{@link Draw#submit()} entry point
- * as 2D UI text — calling {@link #context(CgTextRenderContext)} with one built via
- * {@link CgTextRenderContext#world} instead of {@link CgTextRenderContext#orthographic}
- * is what switches it on. That context's {@link PerspectiveScaleResolver} enforces
- * always-MSDF rendering and projection-aware quality/LOD policy via
- * {@link ProjectedSizeEstimator}; depth-tested render state is applied in this class
- * via {@link CgTextRenderContext#isWorldText()} — see {@link #flush}.
- * The PoseStack in world mode represents
- * model-view positioning (entity rotation, billboard transforms), not UI zoom. Layout
- * metrics remain in logical space regardless of camera distance or FOV.</p>
- *
- * <p><b>Text placed in the world needs no renderer of its own</b>: {@link CgWorldRenderer#text} queues a {@link Draw}
- * at a point and draws it at every world firing, under that firing's camera, batched with every other label.</p>
+ * Draws text: a layout's glyphs from the font registry's atlases (bitmap, MSDF or MTSDF, chosen by size and
+ * pose), outlined and shadowed, as quads on the canvas recording on the calling thread
+ * ({@link CgCanvas#current()}), else on one of its own drawn when the batch ends.
  *
  * <pre>{@code
- * world.text("Spawn").at(x, y + 2, z).height(0.5f).font(font).stroke(0.08f, 0xFF000000).submit();
+ * CgTextRenderer text = CgTextRenderer.create();
+ * text.draw().text("Hello").font(font).at(x, y).color(0xFFFFFFFF).submit();       // one draw, its own batch
+ *
+ * text.beginBatch();                                                                // many draws, batched together
+ * text.draw().text(name).font(font).at(x, y).stroke(0.08f, 0xFF000000).submit();
+ * text.draw().layout(prebuilt).family(family).at(x, y + 30).pose(poseStack).submit();
+ * text.endBatch();
+ *
+ * text.delete();                                                                    // when done with it
  * }</pre>
  *
- * <h3>Owned Batch Lifecycle</h3>
- * <p>{@code CgTextRenderer} owns a private {@link CgQuadBatch} — no caller-provided
- * layer or buffer source is required. The renderer is frame-agnostic: {@link #beginBatch()}/
- * {@link #endBatch()} mark a batching window, not a render frame. The atlas LRU
- * clock used internally for glyph bookkeeping is read directly from
- * {@link CgFrameClock#frameIndex()} — callers no longer supply a
- * {@code frame} argument. Callers that issue several
- * {@code draw()} calls that should share one upload+draw wrap them in
- * {@link #beginBatch()}/{@link #endBatch()}. {@code draw()} also tolerates being called
- * with no active batch: each such call transparently wraps itself in its own
- * begin/flush/end, exactly as if a single-call {@code beginBatch()}/{@code endBatch()}
- * pair had been used. This makes {@code CgTextRenderer} usable as a standalone,
- * directly-instantiated object with no owning render pass — unlike UI's
- * {@code CgUiRenderer}, which is always driven by a larger owning context.</p>
- *
- * <h3>Authoritative Hot Path</h3>
- * <p>The current pipeline is centered on the paged-atlas path:</p>
- * <ol>
- *   <li>{@link Draw#submit()} hands the whole {@link Draw} request to {@link #drawInternal},
- *       which resolves layout/family precedence and raster tier</li>
- *   <li>{@link com.crystalgraphics.text.layout.CgTextLayoutEngine} produces a {@link CgTextLayout} when built from raw text
- *       — see {@link CgTextLayoutCache} for how repeated text content skips re-shaping</li>
- *   <li>{@code CgResolvedGlyphs.resolve} is the sole entry into glyph resolution: on a cache
- *       hit (the steady-state common case — see that class's javadoc) it skips straight to a
- *       cached result; on a miss it walks the layout once into per-glyph scratch buffers,
- *       then resolves each glyph's {@link CgGlyphPlacement} via the atlas (itself {@code O(1)}
- *       per glyph — see {@code CgGlyphAtlas}'s javadoc)</li>
- *   <li>{@link #submitBatchedQuads} sorts quads by GL state and submits them to the owned batch renderer</li>
- * </ol>
- *
- * <h3>Draw API</h3>
- * <p>{@link #draw()}/{@link #retainedDraw()} return a fluent {@link Draw} request object —
- * see that class's javadoc for the full chain-method surface and field-priority rules.
- * This replaced a fixed-arity {@code draw(...)} overload matrix that grew combinatorially
- * with every new optional parameter.</p>
+ * <ul>
+ *   <li>Layout is in logical pixels and never moves with the pose; the pose only picks the raster size
+ *       ({@link CgTextScaleResolver}), so a UI scale changes sharpness, never spacing.</li>
+ *   <li>{@link #context(CgTextRenderContext)} switches the space: {@link CgTextRenderContext#orthographic} for the
+ *       screen, {@link CgTextRenderContext#world} for always-MSDF, depth-tested text in the world.</li>
+ *   <li>Labels in the world need no renderer of their own: {@link CgWorldRenderer#text} queues a {@link Draw}.</li>
+ *   <li>One thread at a time.</li>
+ * </ul>
  */
 public class CgTextRenderer {
 
@@ -182,17 +94,12 @@ public class CgTextRenderer {
 
     public static final String TEXT_SHADER = "crystalgraphics:shaders/text.shader";
 
-    /**
-     * The shader every renderer draws with, cached per path so it takes part in hot reload (F3+T) and teardown.
-     * {@link #warmUpMaterial} compiles its variants; each renderer draws through an instance of its own,
-     * {@link #textMaterial}, which shares the compiled programs.
-     */
+    /** {@code text.shader}; each renderer draws an instance of it, {@link #textMaterial}, sharing its programs. */
     public static final CgMaterial TEXT_MATERIAL = CgMaterial.load(TEXT_SHADER);
 
     /**
-     * Names {@code text.shader} to a precache list in every form a draw takes: on screen and as labels, bitmap and
-     * MSDF, on the world's instances and on quads. Through this class, so its {@code TextData} block is attached first:
-     * the shader compiled without it fails to link.
+     * Names {@code text.shader} to a precache list in every form a draw takes. Through this class, so its
+     * {@code TextData} block is attached first.
      *
      * <pre>{@code
      * CgPipelinePrecache.register("crystalgraphics:world", CgTextRenderer::precache);
@@ -203,15 +110,7 @@ public class CgTextRenderer {
         list.addPass(TEXT_SHADER, CgInstanceKind.QUAD);
     }
 
-    /**
-     * Text-only per-renderer uniform data — currently just {@code u_Projection}: a renderer's projection is its own
-     * (an orthographic UI one, as often as not), where the pass's {@code cg_ProjMatrix} is whoever records the pass.
-     * Also the natural home for any future text-only uniform that
-     * isn't a good fit for either {@link #TEXT_MATERIAL}'s Properties block (per-batch-key, not
-     * per-draw) or {@code CgQuadBatch}'s per-instance record (per-glyph, not per-renderer) —
-     * {@code u_ModelView} was here before this migration but is gone now: model-view is baked
-     * per-glyph-instance via {@code Quad.pose()}, see {@link #addQuadFromPlacement}.
-     */
+    /** {@code TextData}: the renderer's own projection, since the pass's is whoever records it. */
     private static final CgBufferFormat TEXT_DATA_FORMAT = CgBufferFormat
             .builder("TextData", CgBufferFormat.MemoryLayout.STD140)
             .mat4("u_Projection")
@@ -222,11 +121,7 @@ public class CgTextRenderer {
             .vec4("u_TextCut")
             .build();
 
-    /**
-     * {@code TextData}, which {@code text.shader} declares through {@code #pragma cg_use text}. Nothing writes or
-     * uploads it: each renderer's {@link #textBlock} overrides it on that renderer's material, and every chunk keeps
-     * those bytes by value.
-     */
+    /** {@code TextData}'s declaration; each renderer overrides it with {@link #textBlock}, kept by value per chunk. */
     private static final CgUniformBuffer TEXT_DATA_UBO = CgShaderBufferRegistry.get().getOrCreateUboInternal(
             TEXT_DATA_FORMAT, "TextData", CgBindingPoints.TEXT_DATA_UBO, CgBufferLifetime.FRAME);
 
@@ -271,15 +166,7 @@ public class CgTextRenderer {
     /** Where glyphs land when no canvas records on the calling thread: drawn at each flush. */
     private final CgCanvas immediate = new CgCanvas();
     private boolean batchActive;
-    /**
-     * Projection this renderer's queued-but-unflushed quads were computed against; invalid at the start of every
-     * batch (see {@link #beginBatch()}). Used only to decide whether a {@link #context(CgTextRenderContext)}
-     * change mid-batch must flush first (see {@link #syncProjection}) — unlike the model-view
-     * transform, which is baked per-glyph-instance via {@code Quad.pose()} (see
-     * {@link #submitBatchedQuads}) and needs no such tracking at all. Compared by value, not
-     * reference, since {@link CgTextRenderContext#getProjection()} is a live, mutable matrix
-     * owned by the context.
-     */
+    /** The projection the queued quads were computed against; a different one mid-batch flushes first. */
     private final Matrix4f activeProjection = new Matrix4f();
 
     /** Whether {@link #activeProjection} is what {@link #textBlock} holds; false after anything that may have moved it. */
@@ -297,61 +184,26 @@ public class CgTextRenderer {
      */
     private Runnable postBatchRestore;
 
-    /**
-     * Batch identity {@link #textMaterial} is currently configured for, or {@link #NO_ACTIVE_BATCH}
-     * when nothing is known to be configured.
-     *
-     * <p>These were locals in {@link #submitBatchedQuads}, which meant every {@code draw()} call
-     * began with no knowledge of the material's state and unconditionally transitioned on its first
-     * quad — a flush plus keyword toggle plus property re-apply, per draw. For a UI frame issuing a
-     * thousand labels that all share one atlas and one shader mode, that was a thousand transitions
-     * where one would do, and it dominated the frame.
-     *
-     * <p>Reset at {@link #beginBatch()} rather than trusted across batches. Between batches the GL
-     * binding is torn down and an arbitrary {@link #restoreStateWith} hook may have run, so the
-     * assumption that the material is still configured as recorded no longer holds. That costs one
-     * redundant transition per batch and removes the need to reason about what happens in between;
-     * the win is inside the batch, where the thousand draws are.
-     */
+    /** The batch state {@link #textMaterial} holds, or {@link #NO_ACTIVE_BATCH}; reset at each batch. */
     private long activeBatchBits = -1L;
 
-    /**
-     * Sentinel for "no batch state is known". Not a valid batch identity: {@link CgTextSortKey}
-     * reserves bit 63 clear so keys sort correctly under Java's signed {@code Arrays.sort(long[])},
-     * so a negative value can never collide with a real batch and be mistaken for a match.
-     */
+    /** No known state. Never a key: {@link CgTextSortKey} keeps bit 63 clear. */
     private static final long NO_ACTIVE_BATCH = -1L;
 
-    /**
-     * Owns the layout→atlas-placement resolution pipeline for this renderer — a distinct
-     * concern from everything else in this class (batch lifecycle, material/projection
-     * transitions, GPU quad submission). See {@link CgResolvedGlyphs}'s class javadoc.
-     */
+    /** Layout to atlas placements. @see CgResolvedGlyphs */
     private final CgResolvedGlyphs resolvedGlyphs = new CgResolvedGlyphs(registry);
 
     /** Per-renderer, since two renderers can be mid-draw under different projections. */
     private final CgTextCuller culler = new CgTextCuller();
     private final CgTextShadowPlan shadowPlan = new CgTextShadowPlan(registry);
 
-    /**
-     * Grow-only per-glyph sort-key scratch for {@link #submitBatchedQuads} — see its javadoc
-     * for the bit layout. Never needs more than {@code glyphCount} entries, so it's grown
-     * directly off that count rather than tracking its own separate capacity field.
-     */
+    /** Sort keys for {@link #submitBatchedQuads}, grown to the glyph count. */
     private long[] scratchSortKeys = new long[0];
 
-    /**
-     * Last-resort identity pose used by {@link Draw#submit()}/{@link Draw#measure()} when
-     * neither {@link Draw#pose(PoseStack)} nor {@link #poseStack(PoseStack)} was set. Shared, never
-     * mutated.
-     */
+    /** The pose of a draw that set none, with no renderer fallback. */
     private static final PoseStack IDENTITY_POSE_STACK = new PoseStack();
     
-    /**
-     * Reusable scratch for {@link #pixelSnapDelta} — the inverse of the current draw call's
-     * model-view (recomputed once per {@link #submitBatchedQuads} call, not per-glyph) plus two
-     * throwaway vectors, kept as fields purely to avoid a small allocation per glyph.
-     */
+    /** Scratch for {@link #pixelSnapDelta}. */
     private final Matrix4f scratchInverseModelView = new Matrix4f();
     private final Vector3f scratchLocalDelta = new Vector3f();
     /** Reused by the pose-phase probe in drawInternal; never escapes the frame thread. */
@@ -362,15 +214,9 @@ public class CgTextRenderer {
         scratchSortKeys = Arrays.copyOf(scratchSortKeys, Math.max(count, scratchSortKeys.length * 2));
     }
     
-        /**
-     * Registers a hook that runs at the end of every {@link #endBatch()} — including the
-     * standalone auto-batch that {@link Draw#submit()} opens/closes around a single
-     * one-shot draw when no batch is already active, which is the common case for
-     * {@code ctx.text().draw()...submit()} call sites.
-     *
-     * @param restoreAction closure re-establishing the caller's own GL state (e.g.
-     *                       re-binding its own material/texture); pass {@code null} to
-     *                       clear a previously registered hook
+    /**
+     * A hook run at the end of every batch, the one a lone {@code submit()} opens included: for a caller
+     * putting its own state back. Null clears it.
      */
     public CgTextRenderer restoreStateWith(Runnable restoreAction) {
         this.postBatchRestore = restoreAction;
@@ -396,9 +242,8 @@ public class CgTextRenderer {
     }
 
     /**
-     * The rounded clip every glyph, decoration and shadow drawn from now on is drawn inside: a
-     * {@link CgClipTable} entry of this frame, or 0 for none. Per quad, so it needs no flush and a change
-     * mid-batch keeps the batch.
+     * The {@link CgClipTable} entry later glyphs, decorations and shadows are clipped by; 0 is none. Per quad,
+     * so it keeps the batch.
      *
      * <pre>{@code
      * renderer.clip(recording.clips().add(...));
@@ -412,15 +257,8 @@ public class CgTextRenderer {
     }
 
     /**
-     * The spatial and effect nodes every glyph, decoration and shadow drawn from now on is drawn in: a draw's pose is
-     * then in the spatial node's space, and the palette places it. 0 and 0 for the pass's own space. Per quad, like
-     * {@link #clip}.
-     *
-     * <pre>{@code
-     * renderer.node(scrollContent, 0);
-     * renderer.draw().text(row).at(x, yInContent).submit();
-     * renderer.node(0, 0);
-     * }</pre>
+     * The spatial and effect nodes later draws are in; a draw's pose is then in the spatial node's space.
+     * 0 and 0 for the pass's own. Per quad, as {@link #clip}.
      */
     public CgTextRenderer node(int spatial, int effect) {
         this.spatialNode = spatial;
@@ -430,14 +268,8 @@ public class CgTextRenderer {
 
     // ── Owned render context ────────────────────────────────────────────────
     /**
-     * Defaults to an orthographic context sized to {@link CgGraphicsLifecycle}'s current
-     * known window dimensions (0×0 before the engine's first resize/init) — size it via
-     * {@link CgTextRenderContext#updateOrtho} before first use if needed, or replace it
-     * entirely via {@link #context(CgTextRenderContext)}. Fluent Lombok accessors:
-     * {@link #context()} (getter), {@link #context(CgTextRenderContext)} (setter — the way
-     * to switch between orthographic/2D and world/3D modes, since the two differ in which
-     * {@link CgTextScaleResolver} they hold; build the replacement via
-     * {@link CgTextRenderContext#orthographic} or {@link CgTextRenderContext#world}).
+     * The space draws are in: orthographic over the window by default ({@link #create()} keeps it sized to it).
+     * Replace it to switch to world text.
      */
     @Getter
     @Setter
@@ -447,13 +279,7 @@ public class CgTextRenderer {
             CgGraphicsLifecycle.getCurrentWidth(), CgGraphicsLifecycle.getCurrentHeight());
 
     // ── Optional fallback pose stack ─────────────────────────────────────────
-    /**
-     * Not instantiated by default — {@code null} until a caller opts in via
-     * {@link #poseStack(PoseStack)}. In the common case a caller supplies its own
-     * {@link PoseStack} directly to every draw via {@link Draw#pose(PoseStack)}; this
-     * field only exists as a niche fallback for {@link Draw#submit()} when that wasn't
-     * called.
-     */
+    /** The pose a draw takes when it sets none; null by default. */
     @Getter
     @Setter
     @Accessors(fluent = true)
@@ -473,32 +299,8 @@ public class CgTextRenderer {
     }
 
     /**
-     * Creates the renderer façade, including its owned {@link CgQuadBatch}, and
-     * registers it with {@link CgTextRendererRegistry} — the registry doesn't own release
-     * timing (callers must still call {@link #delete()} promptly when done), but sweeps
-     * any renderer still alive at GL context teardown as a backstop, matching every other
-     * GPU-resource registry in this codebase.
-     *
-     * <p>Flags the renderer as screen-sized, so its owned {@link CgTextRenderContext} tracks
-     * the display window's resolution automatically — every {@link CgGraphicsLifecycle#onResize}
-     * call resizes it in place, no manual per-frame dimension check needed. This is the default
-     * and the right choice for the common case (UI overlays, HUDs) — use {@link #createManualSized()}
-     * only when the context should NOT follow the real display window.</p>
-     */
-    /**
-     * Compiles {@link #TEXT_MATERIAL}'s shader variants ahead of the first draw.
-     *
-     * <p>Material variants compile lazily on first {@code bind()} with a given keyword set, so
-     * without this the first string drawn pays for it — measured at ~134 ms on a frame that had
-     * already started rendering. Called from {@code CgEngineLifecycle.ensureGraphicsContext}, where a stall
-     * costs nothing.
-     *
-     * <p>Compiles <strong>both</strong> keyword states. {@code MSDF_MODE} on and off are separate
-     * cached programs, and text routinely uses both in one frame — bitmap fallback while an MSDF
-     * glyph is still generating. Warming only one would leave the other to compile mid-frame and
-     * defeat the point.
-     *
-     * <p>GL thread only, and only meaningful with a live context.
+     * Compiles {@code text.shader} with {@code MSDF_MODE} on and off before the first draw, which would
+     * otherwise pay for it mid-frame. Render thread, with a live context.
      */
     public static void warmUpMaterial() {
         for (boolean msdf : new boolean[]{false, true}) {
@@ -509,6 +311,10 @@ public class CgTextRenderer {
         TEXT_MATERIAL.toggleKeyword("MSDF_MODE", false);
     }
 
+    /**
+     * A renderer whose context follows the window's size. Registered so a renderer still alive at teardown is
+     * swept; {@link #delete()} it when done.
+     */
     public static CgTextRenderer create() {
         CgTextRenderer renderer = new CgTextRenderer();
         CgTextRendererRegistry.get().register(renderer);
@@ -517,13 +323,8 @@ public class CgTextRenderer {
     }
 
     /**
-     * Creates the renderer façade like {@link #create()}, but does NOT flag it as screen-sized —
-     * its owned {@link CgTextRenderContext} is never auto-resized by {@link CgGraphicsLifecycle#onResize}
-     * and must be sized manually by the caller.
-     *
-     * <p>Use this for renderers sized to something other than the real display window — an
-     * offscreen FBO capture, an atlas dump, a fixed test viewport — where auto-tracking window
-     * resize would silently desync the projection from the actual target size.</p>
+     * A renderer whose context the caller sizes: for a target other than the window (an offscreen capture, a
+     * fixed viewport).
      */
     public static CgTextRenderer createManualSized() {
         CgTextRenderer renderer = create();
@@ -536,17 +337,10 @@ public class CgTextRenderer {
     // ══════════════════════════════════════════════════════════════════════════════════════════
 
     /**
-     * Opens a batching window: {@code draw()} calls made until the matching
-     * {@link #endBatch()} record into the same underlying {@link CgQuadBatch} pass and
-     * are flushed together wherever the GL state permits (same shader/texture/render state).
-     * This has no relation to a render frame — it is purely a batching scope, hence the name;
-     * nothing here reads or depends on frame boundaries.
+     * Opens a batch: draws until {@link #endBatch()} share quads wherever their state allows. Optional; a
+     * draw outside one is its own.
      *
-     * <p>Not required — {@code draw()} tolerates being called with no active batch,
-     * auto-wrapping itself. Call this only when issuing multiple draws that should batch
-     * together.</p>
-     *
-     * @throws IllegalStateException if a batch is already active, or the renderer is deleted
+     * @throws IllegalStateException if a batch is open, or the renderer is deleted
      */
     public void beginBatch() {
         if (deleted) throw new IllegalStateException("CgTextRenderer has been deleted");
@@ -559,13 +353,7 @@ public class CgTextRenderer {
         batchActive = true;
     }
 
-    /**
-     * Closes the batching window opened by {@link #beginBatch()}, flushing any pending
-     * quads and unbinding whatever shader/texture/state is currently active, then invoking
-     * {@link #restoreStateWith}'s hook, if one was registered.
-     *
-     * <p>Lenient: does nothing if no batch is active.</p>
-     */
+    /** Lands the batch's quads and runs {@link #restoreStateWith}'s hook. Does nothing with no batch open. */
     public void endBatch() {
         if (!batchActive) return;
 
@@ -577,14 +365,7 @@ public class CgTextRenderer {
     }
 
 
-    /**
-     * Flushes whatever is currently staged under {@link #textMaterial}, as {@link #transitionToMaterial} last set it,
-     * with {@link #textBlock} as it is now. No-op if nothing is staged.
-     *
-     * <p>Text draws under {@code text.shader}'s declared depth (test and write). A per-context override applied
-     * after the bind never reached a draw — measured on {@code text-3d}, render-graph G2 — and is gone; a pass that
-     * owns its depth decides it from G3 on.</p>
-     */
+    /** Lands what is staged under {@link #textMaterial} as it now is. Nothing staged, nothing done. */
     private void flush() {
         flushes++;
         drainBuckets();
@@ -595,11 +376,7 @@ public class CgTextRenderer {
         }
     }
 
-    /**
-     * Writes {@code projection} into {@link #textBlock} for the glyphs about to be submitted, first flushing quads this
-     * renderer queued under another one: a chunk keeps the block as it is when the chunk ends, so a context switch
-     * mid-batch would otherwise re-project glyphs already queued. One small write per {@code draw()}, not per glyph.
-     */
+    /** Writes {@code projection} into {@link #textBlock}, flushing first if queued glyphs used another. */
     private void syncProjection(Matrix4f projection) {
         if (projectionValid) {
             if (activeProjection.equals(projection)) return;
@@ -624,19 +401,8 @@ public class CgTextRenderer {
     }
 
     /**
-     * Transitions {@link #textMaterial} to the given batch state, flushing whatever was
-     * pending under the previous state first. Callers (just {@link #drainBuckets}) are
-     * responsible for only calling this when the state actually changed — this method always
-     * flushes and applies unconditionally, it does not re-check for a no-op transition itself.
-     *
-     * <p>Records {@code batchBits} into {@link #activeBatchBits} as the last step, so the record of
-     * what the material holds is updated in the same place the material is.
-     *
-     * <p>Every transition explicitly sets {@code MSDF_MODE} — one keyword covers both
-     * distance-field atlas types (MSDF and MTSDF), since the fragment logic is identical for
-     * both today (see {@code text.shader}). It is always an explicit enable-or-disable, never a bare
-     * {@code enableKeyword()}: a keyword a previous transition left on would otherwise persist into the next
-     * batch's variant.</p>
+     * Puts {@link #textMaterial} in {@code batchBits}'s state: its atlas and {@code MSDF_MODE} set
+     * explicitly either way. Callers call it only on a change.
      */
     private void transitionToMaterial(long batchBits, boolean isDistanceField, int atlasId) {
         flush();
@@ -666,70 +432,40 @@ public class CgTextRenderer {
     static final float ALIGN_CENTER = 0f, ALIGN_OUTSET = 1f, ALIGN_INSET = 2f;
     
     /**
-     * Whether the most recent draw resolved any glyph below the tier it requested.
-     *
-     * <p>True when a distance-field draw had to take bitmap glyphs because generation was refused by
-     * the per-frame budget. The picture is then provisional, and a caller that only paints on damage
-     * must ask for another frame or keep the degraded one indefinitely — which for a stroked draw
-     * means losing the stroke entirely, since a bitmap glyph has no field for the shader to read.</p>
+     * How many draws resolved a glyph or shadow below what they asked for: still generating, or refused by
+     * the frame's budget. Rises only; a damage-driven caller compares it around its paint and asks for another frame.
      *
      * <pre>{@code
      * long before = renderer.degradedDrawCount();
      * ...submit();
-     * if (renderer.degradedDrawCount() != before) repaint();   // ask again next frame
+     * if (renderer.degradedDrawCount() != before) repaint();
      * }</pre>
-     *
-     * <p><b>A COUNT rather than a flag about the last draw</b>, so a caller brackets whatever it
-     * likes — one draw, a widget's whole paint, a frame — instead of having to read it between a
-     * submit and the next one. It only ever rises.</p>
      */
     @Getter
     private long degradedDrawCount;
 
     private final Draw scratchDraw = new Draw(null);
 
-    /**
-     * Starts a fluent draw request using this renderer's single reused scratch instance —
-     * zero allocation. Build it and call {@link Draw#submit()} in the same expression;
-     * do not hold the returned reference past that, since any other {@code draw()} call
-     * on this renderer (even from an unrelated call site) resets and reuses the same
-     * instance. For a draw descriptor you want to hold across frames, use
-     * {@link #retainedDraw()} instead.
-     *
-     * <p>Replaces the fixed-arity {@code draw(...)} overloads above for new call sites —
-     * new optional parameters become new chain methods instead of new overloads.</p>
-     *
-     * <pre>{@code
-     * renderer.draw().text("Hello").font(myFont).at(x, y).color(0xFFFFFFFF).pose(pose).submit();
-     * }</pre>
-     */
+    /** A draw: this renderer's one scratch, to build and {@link Draw#submit()} in one expression. */
     public Draw draw() {
         if (deleted) throw new IllegalStateException("CgTextRenderer has been deleted");
         return scratchDraw.reset();
     }
 
-    /**
-     * Allocates a standalone, retained-mode {@link Draw} instance the caller owns and may
-     * hold across frames — e.g. build once, then call {@link Draw#submit()} every tick,
-     * mutating only whatever field changed. Independent of {@link #draw()}'s shared
-     * immediate-mode scratch instance and of any other renderer's or call site's
-     * {@code retainedDraw()} result.
-     */
+    /** A draw of the caller's own, held across frames; change what changed and submit each frame. */
     public Draw retainedDraw() {
         if (deleted) throw new IllegalStateException("CgTextRenderer has been deleted");
         return new Draw(null);
     }
 
     /**
-     * A retained draw whose {@link Draw#submit()} hands it to {@code queue} instead of drawing: for an owner that
-     * draws later, under a pose it only knows then, with {@link #drawQueued}. {@code CgWorldRenderer}'s labels are
-     * these: the caller fills every field a draw has, and the world draws it under each firing's camera.
+     * A retained draw whose {@link Draw#submit()} hands it to {@code queue}, for an owner that draws it later
+     * under a pose it knows then ({@link #drawQueued}). {@code CgWorldRenderer}'s labels are these.
      *
      * <pre>{@code
      * Draw label = renderer.queuedDraw(pending::add);
      * label.text("Spawn").font(font).stroke(0.1f, 0xFF000000).submit();   // into pending
-     * // later, at record time:
-     * for (Draw d : pending) renderer.drawQueued(d.pose(pose));
+     * for (Draw d : pending) renderer.drawQueued(d.pose(pose));           // at record time
      * }</pre>
      */
     public Draw queuedDraw(Consumer<Draw> queue) {
@@ -871,83 +607,25 @@ public class CgTextRenderer {
     private static CgRenderState labelStateFrom, labelDepthState, labelColorState;
 
     /**
-     * Fluent, mutable draw request — the replacement for {@code CgTextRenderer}'s fixed-arity
-     * {@code draw(...)} overload matrix. Obtain one via {@link #draw()} (shared scratch,
-     * zero-allocation, immediate-mode: submit right away) or {@link #retainedDraw()}
-     * (standalone, retained-mode: holdable across frames).
+     * One draw: what to draw, where and how. {@link #submit()} needs text ({@link #text}, {@link #paragraph}
+     * or {@link #layout}, the last winning) and a font ({@link #family} over {@link #font}), which a non-empty layout
+     * supplies itself. Position defaults to (0, 0), colour to opaque white, the pose to the renderer's or identity.
      *
-     * <h3>Field priority, not exclusivity</h3>
-     * <p>{@link #layout(CgTextLayout)}, {@link #paragraph(CgShapedParagraph)}, and
-     * {@link #text(String)} may all be set; if so, {@code layout} wins over {@code paragraph},
-     * which wins over {@code text} — each is strictly "more already-done" than the next.
-     * Likewise {@link #family(CgFontFamily)} wins over {@link #font(CgFont)} when both are set,
-     * since a family is the strictly more capable superset (a single font is just wrapped into
-     * one internally via {@link CgFontFamily#of(CgFont, CgFont...)}).</p>
-     *
-     * <h3>{@code layout} vs. {@code paragraph}: scale-reactive wrap</h3>
-     * <p>A prebuilt {@link #layout(CgTextLayout)} is honored verbatim — its wrap points never
-     * change, matching this class's documented "logical layout space never changes based on
-     * draw-time transforms" model. {@link #paragraph(CgShapedParagraph)} is different: on every
-     * {@link #submit()}, its {@link #constraints(float, float)} are divided by the current
-     * orthographic PoseStack scale (the same scale already resolved for raster crispness — see
-     * {@link CgTextScaleResolver}) before re-wrapping via {@link CgShapedParagraph#layout}, so a
-     * caller's {@code maxWidth} keeps meaning "this many on-screen pixels" regardless of the
-     * live transform, instead of silently doubling in screen space the way a prebuilt
-     * {@code CgTextLayout} does under a 2x PoseStack scale. The re-wrap is cheap and memoized
-     * (see that method's javadoc) — only the frame where the effective scale actually steps
-     * pays for line-breaking again. Not applied for world-space text (see
-     * {@link PerspectiveScaleResolver}'s "Layout Invariance" — camera distance must never
-     * reflow a billboard/world paragraph).</p>
-     *
-     * <h3>Required fields</h3>
-     * <p>{@link #submit()} throws {@link IllegalStateException} unless at least one of
-     * {@code layout}/{@code text} has been set. {@code family}/{@code font} are also required
-     * <em>except</em> when {@code layout} was set to a non-empty {@link CgTextLayout} — its own
-     * {@link CgBakedGlyphs} already carries a {@code CgFontKey} per glyph, so a representative
-     * one is derived straight from that instead of forcing a redundant {@code font(...)}/
-     * {@code family(...)} call. {@link #pose(PoseStack)} is optional: an unset pose falls back to the owning
-     * {@link CgTextRenderer}'s {@link CgTextRenderer#poseStack(PoseStack)}, and finally to a
-     * shared identity pose if neither was ever set — so callers with no real transform (plain
-     * screen-space text) can skip {@code pose(...)} entirely.
-     * {@link #at(float, float)} and {@link #color(int)} default to {@code (0, 0)} and opaque
-     * white ({@code 0xFFFFFFFF}) respectively if never called.</p>
-     *
-     * <h3>Example</h3>
      * <pre>{@code
-     * // One-shot: build and submit in the same expression, zero allocation
-     * // (renderer.draw() reuses a single scratch instance internally).
-     * renderer.draw()
-     *         .text("Hello world")
-     *         .font(myFont)
-     *         .at(20.0f, 40.0f)
-     *         .color(0xFFFFFFFF)
-     *         .pose(poseStack)
-     *         .submit();
+     * renderer.draw().text("Hello world").font(font).at(20f, 40f).color(0xFFFFFFFF).submit();
      *
-     * // A prebuilt CgTextLayout wins over text(), and family() wins over font() —
-     * // useful when you already have both and want the more specific one to apply.
-     * renderer.draw()
-     *         .layout(prebuiltLayout)
-     *         .family(myFontFamily)
-     *         .at(x, y)
-     *         .color(argb)
-     *         .pose(poseStack)
-     *         .submit();
+     * CgTextRenderer.Draw fps = renderer.retainedDraw().font(hudFont).at(8f, 8f);   // held across frames
+     * fps.text(currentFps).submit();                                                // each frame
      *
-     * // Retained: held across frames, only the text changes each tick.
-     * // Independent of renderer.draw()'s shared immediate-mode scratch instance.
-     * CgTextRenderer.Draw hudDraw = renderer.retainedDraw()
-     *         .font(hudFont).at(8.0f, 8.0f).color(0xFFFFFFFF).pose(poseStack);
-     * // ... later, once per frame:
-     * hudDraw.text(currentFpsString).submit();
-     *
-     * // Manually-batched: several draws sharing one upload+draw. submit() returns the
-     * // owning CgTextRenderer, so the last call in the batch can chain into endBatch().
-     * renderer.beginBatch();
-     * renderer.draw().text(line1).font(font).at(20.0f, 20.0f).color(0xFFFFFFFF).pose(poseStack).submit();
-     * renderer.draw().text(line2).font(font).at(20.0f, 40.0f).color(0xFFFFFFFF).pose(poseStack)
-     *         .submit().endBatch();
+     * renderer.draw().text(title).family(family).targetPx(24).stroke(0.08f, 0xFF000000)
+     *         .shadowCount(1).shadow(0, 1f, 1f, 2f, 0f, 0x80000000, false).submit();
      * }</pre>
+     *
+     * <ul>
+     *   <li>A {@link #layout} is drawn as built; a {@link #paragraph} or {@link #text} wraps at {@link #constraints} in
+     *       screen pixels, re-wrapped as the UI scale changes (never for world text).</li>
+     *   <li>{@link #draw()}'s scratch is reset by the next {@code draw()}: never hold it.</li>
+     * </ul>
      */
     public final class Draw {
         private CgTextLayout layout;
@@ -1056,10 +734,7 @@ public class CgTextRenderer {
         }
 
         /**
-         * Sets a retained, shaped-but-not-wrapped paragraph — re-wrapped at
-         * {@link #constraints(float, float)} on every {@link #submit()}, scale-adjusted for
-         * orthographic/UI draws (see this class's javadoc, "{@code layout} vs. {@code paragraph}").
-         * Wins over {@link #text(String)}; loses to {@link #layout(CgTextLayout)} if both are set.
+         * A shaped paragraph, wrapped at {@link #constraints} on each submit. Over {@link #text}, under {@link #layout}.
          */
         public Draw paragraph(CgShapedParagraph paragraph) {
             this.paragraph = paragraph;
@@ -1084,22 +759,13 @@ public class CgTextRenderer {
             return this;
         }
 
-        /**
-         * Explicit raster target size in pixels. When set, resizes whichever of
-         * {@code font}/{@code family} is in effect. When unset (default {@code -1}), the
-         * font/family is used as-is — it must already be size-bound if building a layout
-         * from {@link #text(String)}.
-         */
+        /** The raster size in pixels the font or family is resized to; unset, it must already be sized. */
         public Draw targetPx(int targetPx) {
             this.targetPx = targetPx;
             return this;
         }
 
-        /**
-         * Wrap/height constraints used when building a layout from {@link #text(String)}/
-         * {@link #paragraph(CgShapedParagraph)}. {@code <= 0} on either axis means unbounded
-         * (the default).
-         */
+        /** Where {@link #text} and {@link #paragraph} wrap and stop; 0 or less is unbounded. */
         public Draw constraints(float maxWidth, float maxHeight) {
             this.maxWidth = maxWidth;
             this.maxHeight = maxHeight;
@@ -1119,43 +785,26 @@ public class CgTextRenderer {
             return this;
         }
 
-        /**
-         * The current PoseStack providing model-view transform. Optional — if omitted,
-         * {@link #submit()}/{@link #measure()} fall back to the owning {@link CgTextRenderer}'s
-         * {@link CgTextRenderer#poseStack(PoseStack)} if one is set, and finally to a shared
-         * identity pose (no transform) if neither was ever set.
-         */
+        /** The model-view; unset, the renderer's {@link CgTextRenderer#poseStack}, then identity. */
         public Draw pose(PoseStack pose) {
             this.pose = pose;
             return this;
         }
 
         /**
-         * Outlines this draw's glyphs, {@code widthEm} wide in {@code argb}. A width of 0 or a
-         * transparent colour — the default — draws none.
+         * An outline {@code widthEm} of the em wide, outside the contour; 0 or a transparent colour draws none.
          *
          * <pre>{@code
-         * .stroke(0.06f, 0xFF101418)                                // 6% of em, outside the contour
-         * .stroke(0.06f, argb).strokeAlign(CgStrokeAlign.CENTER)    // webkit's behaviour
-         * .stroke(0.06f, argb).strokeOverFill(true)                 // painted on top of the fill
+         * .stroke(0.06f, 0xFF101418)
+         * .stroke(0.06f, argb).strokeAlign(CgStrokeAlign.CENTER)
+         * .stroke(0.06f, argb).strokeOverFill(true)
          * }</pre>
          *
-         * <p><b>Width is in em</b>: the same draw is rasterised at whatever size the pose resolves
-         * to, so pixels would mean a different fraction of the letterform each frame. The stored
-         * distance field bounds it at {@link CgTextStroke#MAX_FIELD_WIDTH_EM}, and asking for more
-         * clamps rather than throwing — that type carries the full account of the bound.</p>
-         *
-         * <p><b>A stroke pulls the draw onto the distance-field tier.</b> A bitmap glyph carries
-         * coverage rather than distance, so there is nothing to offset a second threshold from and an
-         * outline is not degraded there but absent. The size thresholds decide which tier draws a
-         * FILL better and at 20px they answer bitmap, which stays the right answer for the fill and
-         * the wrong one for the label.</p>
-         *
-         * <p>It stops at {@code CgMsdfAtlasConfig.minAntialiasablePx()}, which is per BAND — 7px for
-         * a face banded wide, 15px for one carrying a dense script — because below there the field
-         * cannot resolve its own edge, which is msdfgen's
-         * rule rather than a preference. Under that size the stroke is dropped and the glyph keeps the
-         * bitmap tier: there is no outline worth the fill it would cost.</p>
+         * <ul>
+         *   <li>In em, since the raster size follows the pose. Clamped at {@link CgTextStroke#MAX_FIELD_WIDTH_EM}.</li>
+         *   <li>Moves the draw to the distance-field tier, down to {@code CgMsdfAtlasConfig.minAntialiasablePx()}; smaller,
+         *       the stroke is dropped.</li>
+         * </ul>
          */
         public Draw stroke(float widthEm, int argb) {
             this.strokeWidthEm = widthEm;
@@ -1195,9 +844,8 @@ public class CgTextRenderer {
         }
 
         /**
-         * Whether the outline is part of every shadow's shape: {@code false}, the default, shadows the glyphs alone,
-         * as Unreal's {@code bApplyOutlineToDropShadows}; {@code true} shadows the outlined glyphs, as CSS
-         * {@code text-shadow} does.
+         * Whether shadows take the outline's shape: false, the default, as Unreal's
+         * {@code bApplyOutlineToDropShadows}; true as CSS {@code text-shadow}.
          */
         public Draw shadowsStroked(boolean stroked) {
             this.shadowsStroked = stroked;
@@ -1220,12 +868,7 @@ public class CgTextRenderer {
             return this;
         }
 
-        /**
-         * The same four values from a {@link CgTextStroke}, for a caller that already holds one.
-         *
-         * <p><b>Not the main path</b> — the setters above take the values themselves, so a painter
-         * resolving a stroke every frame builds no record to carry them.</p>
-         */
+        /** The four stroke values from a {@link CgTextStroke} already held. */
         public Draw stroke(CgTextStroke stroke) {
             CgTextStroke s = stroke == null ? CgTextStroke.NONE : stroke;
             return stroke(s.widthEm(), s.argb())
@@ -1234,21 +877,16 @@ public class CgTextRenderer {
         }
 
         /**
-         * How many text shadows this draw casts; set each with {@link #shadow}. {@code 0}, the default,
-         * casts none.
+         * How many shadows it casts, each set with {@link #shadow}; 0 by default. Growing it keeps those set.
          *
          * <pre>{@code
          * draw.shadowCount(2)
-         *     .shadow(0, 0f, 0f, 4f, 0f, 0xFF44CCFF, false)   // a glow, painted on top
-         *     .shadow(1, 1f, 1f, 0f, 0f, 0x80000000, false);  // a sharp drop shadow beneath it
+         *     .shadow(0, 0f, 0f, 4f, 0f, 0xFF44CCFF, false)   // a glow, on top
+         *     .shadow(1, 1f, 1f, 0f, 0f, 0x80000000, false);  // a drop shadow beneath it
          * }</pre>
          *
-         * <p>Painted as Chrome paints {@code text-shadow}: every glyph casts its own shadow, blurred in
-         * local space so it scales and skews with the pose. The first shadow is painted on top and every
-         * shadow beneath the text, whichever atlas each lives in.</p>
-         *
-         * <p>Growing the count keeps the shadows already set, so a second source of shadows can append:
-         * {@code draw.shadowCount(draw.shadowCount() + extra)}.</p>
+         * <p>As Chrome paints {@code text-shadow}: per glyph, blurred in local space, the first on top and all beneath
+         * the text.</p>
          */
         public Draw shadowCount(int count) {
             shadows.count(count);
@@ -1285,22 +923,10 @@ public class CgTextRenderer {
         }
 
         /**
-         * Shadow {@code index} of this draw.
-         *
-         * <ul>
-         *   <li>{@code offsetX}, {@code offsetY}: local pixels, positive right and down.</li>
-         *   <li>{@code sigma}: the Gaussian's standard deviation in local pixels. A CSS blur radius is twice
-         *       it. Negative reads as 0.</li>
-         *   <li>{@code spread}: grows the glyph outline by a true distance before blurring, so corners
-         *       round. Negative reads as 0, as CSS Text Decoration 4 forbids it for text.</li>
-         *   <li>{@code argb}: straight ARGB, already resolved; its alpha is the shadow's whole opacity,
-         *       whatever the text's own colour is. Fully transparent casts nothing.</li>
-         *   <li>{@code inset}: shadows the canvas into the glyph, over the text, inside the stroke.</li>
-         * </ul>
-         *
-         * <p>A stroke set on this draw is part of the shadow's shape only under {@link #shadowsStroked}. A shadow a
-         * worker has not built yet
-         * is left out of this frame and counted in {@link CgTextRenderer#getDegradedDrawCount()}.</p>
+         * Shadow {@code index}: an offset in local pixels (right and down), {@code sigma} the blur's standard
+         * deviation (half a CSS blur radius), {@code spread} grown before blurring, {@code argb} its whole colour and
+         * opacity, {@code inset} inside the glyph. Negative sigma or spread reads as 0; transparent casts nothing. One a
+         * worker has not built yet is left out and counted in {@link CgTextRenderer#getDegradedDrawCount()}.
          */
         public Draw shadow(int index, float offsetX, float offsetY, float sigma, float spread, int argb,
                            boolean inset) {
@@ -1309,18 +935,10 @@ public class CgTextRenderer {
         }
 
         /**
-         * Validates required fields and hands this request off to {@link #drawInternal},
-         * which reads whatever raw fields it needs directly off {@code this} — resolution
-         * (family/font sizing, layout-from-text, prebuilt-layout precedence) lives there,
-         * not here, so a new optional {@link Draw} field never requires touching this
-         * method's signature. Returns the owning {@link CgTextRenderer} so a manually-opened
-         * batch's final {@code submit()} call can chain straight into
-         * {@link CgTextRenderer#endBatch()} — see the class javadoc's example.
+         * Draws it, in the open batch or one of its own.
          *
-         * @return the owning {@link CgTextRenderer}, for chaining into {@link CgTextRenderer#endBatch()}
-         * @throws IllegalStateException if neither {@code layout} nor {@code text} was set, or
-         *                                neither {@code family} nor {@code font} was set and
-         *                                {@code layout} (if set) has no glyphs to derive one from
+         * @return the renderer, so a batch's last submit can chain into {@link CgTextRenderer#endBatch()}
+         * @throws IllegalStateException without text, or without a font where the layout gives none
          */
         public CgTextRenderer submit() {
             if (deleted) throw new IllegalStateException("CgTextRenderer has been deleted");
@@ -1347,17 +965,10 @@ public class CgTextRenderer {
         }
 
         /**
-         * Resolves (without drawing) the exact {@link CgTextLayout} {@link #submit()} would
-         * draw right now — same font/scale/paragraph-reflow resolution, including the
-         * pose-scale-aware constraint division for {@link #paragraph}/{@link #text}. Useful
-         * for measuring a section's on-screen size (e.g. {@code totalHeight()}) to position
-         * whatever comes after it, without the caller ever computing scale itself: this asks
-         * the renderer the same question it's about to answer for real. Cheap even when
-         * called every frame just for measurement — {@link CgShapedParagraph#layout} memoizes
-         * identical {@code (maxWidth, maxHeight)} pairs, and {@link #submit()} immediately
-         * after re-resolves to the same cached result.
+         * The layout {@link #submit()} would draw now, wrapped for the current pose, without drawing: to place
+         * what follows it. Cheap per frame; the wrap is memoised.
          *
-         * @throws IllegalStateException under the same conditions as {@link #submit()}
+         * @throws IllegalStateException as {@link #submit()}
          */
         public CgTextLayout measure() {
             if (deleted) throw new IllegalStateException("CgTextRenderer has been deleted");
@@ -1425,13 +1036,6 @@ public class CgTextRenderer {
             return 0;
         }
 
-        /**
-         * Resolves the {@link PoseStack} this draw should use: an explicit {@link #pose(PoseStack)}
-         * wins, then the owning renderer's fallback {@link CgTextRenderer#poseStack(PoseStack)},
-         * then a shared identity {@link PoseStack} — so callers that genuinely don't need a
-         * transform (screen-space HUD text with no camera/zoom involved) can omit {@code pose(...)}
-         * entirely instead of being forced to construct a throwaway identity stack themselves.
-         */
         private PoseStack effectivePose() {
             if (pose != null) return pose;
             if (CgTextRenderer.this.poseStack != null) return CgTextRenderer.this.poseStack;
@@ -1445,12 +1049,8 @@ public class CgTextRenderer {
 
     public void delete() {
         if (deleted) return;
-        // AN OPEN BATCH IS ABANDONED, NOT ENDED. endBatch() flushes and then runs postBatchRestore, and
-        // both BIND A MATERIAL -- this renderer's for the flush, the caller's own for the restore. During
-        // CgEngineLifecycle.shutdown both are already gone, because materials are swept before
-        // this registry is. Deleting a renderer is not a request to draw with it, and a caller being
-        // torn down has no state worth restoring; doing either threw "CgMaterial has been deleted" out
-        // of teardown on every harness run that had text on screen.
+        // An open batch is dropped, not ended: ending draws and restores, and at teardown the materials are
+        // already gone.
         if (batchActive) {
             projectionValid = false;
             batchActive = false;
@@ -1465,22 +1065,7 @@ public class CgTextRenderer {
     //  INTERNAL PIPELINE
     // ══════════════════════════════════════════════════════════════════════════════════════════
 
-    /**
-     * Renderer core shared by the 2D and world-space entry points. Reads whatever raw
-     * fields it needs directly off {@code draw} — new optional {@link Draw} fields never
-     * require touching this signature — and resolves the family/font/layout precedence
-     * rules documented on {@link Draw}'s class javadoc.
-     *
-     * <p>Resolves the effective raster tier, delegates layout flattening/prequeueing and
-     * atlas placement resolution to {@link #resolvedGlyphs}, then sorts and submits
-     * ({@link #submitBatchedQuads}).</p>
-     */
-    /**
-     * Holds everything {@link #drawInternal} needs beyond {@code CgTextLayout} resolution
-     * itself (font key, resolved raster tier) alongside the resolved layout — shared by
-     * {@link #drawInternal} and {@link Draw#measure()} so measuring a paragraph's on-screen
-     * size never drifts from what actually gets drawn.
-     */
+    /** What {@link #drawInternal} and {@link Draw#measure()} share, so a measure never drifts from the draw. */
     private record ResolvedDraw(CgFontKey fontKey, int effectiveTargetPx, boolean wantMsdf, CgTextLayout layout) {
     }
 
@@ -1491,13 +1076,8 @@ public class CgTextRenderer {
 
 
     /**
-     * Resolves font/family, raster tier (via {@link CgTextScaleResolver}), and the final
-     * {@link CgTextLayout} for {@code draw} — the family/font/layout precedence rules
-     * documented on {@link Draw}'s class javadoc, plus the pose-scale-aware constraint
-     * division for {@link Draw#paragraph}/{@link Draw#text} (see {@link Draw}'s "{@code layout}
-     * vs. {@code paragraph}" section). Pure resolution — no glyph placement, no GPU submission,
-     * so it's safe to call from {@link Draw#measure()} without side effects beyond the
-     * {@link CgTextRenderContext} raster-history bookkeeping every draw already does.
+     * Font, raster tier and layout for {@code draw}, wrapped for the pose. No placement and no drawing, so
+     * {@link Draw#measure()} calls it too.
      */
     private ResolvedDraw resolveDraw(Draw draw, PoseStack.Pose pose) {
         CgFontFamily resolvedFamily = null; // stays null on the layout-derived branch below --
@@ -1551,32 +1131,16 @@ public class CgTextRenderer {
         // later unrotated draw of the same font to MSDF while it sits in the band.
         context.setHistory(fontKey, effectiveTargetPx, sizeWantsMsdf);
 
-        // A rotated or sheared transform forces the distance-field tier at any size. Bitmap
-        // glyphs are pre-rasterized at one orientation and only survive resampling while the
-        // sampling grid stays parallel to the raster grid; off-axis, they go soft and
-        // stair-stepped. Quarter-turns and flips stay on the bitmap tier -- they are texel-exact.
-        // See OrthographicScaleResolver#isAxisAligned.
-        //
-        // Short-circuited on sizeWantsMsdf so the matrix inspection is skipped entirely for the
-        // draws that were already going to be MSDF anyway -- which includes all world-space text,
-        // since PerspectiveScaleResolver#shouldUseMsdf is unconditionally true.
+        // Off-axis, bitmap glyphs resample soft: a rotation or shear takes the distance-field tier. Quarter
+        // turns and flips stay bitmap.
         boolean wantMsdf = sizeWantsMsdf;
         if (!wantMsdf && !OrthographicScaleResolver.isAxisAligned(pose.pose())) {
             wantMsdf = true;
             CgTrace.add(CgChannels.TEXT, "text.msdfForcedByTransform", 1);
         }
 
-        // A VISIBLE STROKE FORCES IT TOO, for the same kind of reason: a bitmap glyph is coverage with
-        // no distance to offset a second threshold from, so on that tier an outline is not degraded --
-        // it is absent. The size thresholds are about which tier draws a FILL better, and at 20px they
-        // answer bitmap; that answer is still right for the fill and wrong for the label as a whole,
-        // because the alternative on offer is no outline at all.
-        //
-        // It stops where the field stops being able to resolve its own edge, which is msdfgen's own
-        // rule rather than a taste: @see CgMsdfAtlasConfig#minAntialiasablePx. Below that a promoted
-        // draw would trade a crisp unstroked label for a soft stroked one, which is the trade this
-        // deliberately refused when the tier was first written -- the correction is that the refusal
-        // was applied at 33px, where the field antialiases perfectly well, rather than at 15.
+        // A stroke needs a distance field (bitmap has none to outline), down to the size the field can
+        // antialiase (CgMsdfAtlasConfig#minAntialiasablePx).
         if (!wantMsdf && strokeRequested(draw)
                 && effectiveTargetPx >= registry.getResolvedMsdfConfig(fontKey).minAntialiasablePx()) {
             wantMsdf = true;
@@ -1591,22 +1155,8 @@ public class CgTextRenderer {
             // frozen CgTextLayout.
             resolvedLayout = draw.layout;
         } else {
-            // draw.maxWidth/maxHeight are expressed in the same design-space pixels as
-            // fontKey's base size. Divide by the PoseStack's true scale so maxWidth keeps
-            // meaning "this many on-screen pixels" regardless of the live UI zoom -- see
-            // Draw's class javadoc. Never applied to world-space text: world paragraphs must
-            // not reflow as the camera moves (see PerspectiveScaleResolver's "Layout
-            // Invariance").
-            //
-            // Deliberately NOT effectiveTargetPx/baseTargetPx here (what raster-tier crispness
-            // uses) -- effectiveTargetPx is clamped to MAX_EFFECTIVE_PX (256) to cap atlas cell
-            // size at extreme zoom, so that ratio silently under-reports the true scale once a
-            // glyph's raw target size exceeds the clamp (e.g. a 22px font at 20x zoom wants a
-            // 440px raster, clamped to 256 -- the ratio then implies only ~11.6x, not 20x). The
-            // wrap width would then divide by the wrong, smaller scale and let more text fit
-            // per line than the PoseStack's real (unclamped) transform actually displays,
-            // overflowing past maxWidth on screen. extractMaxScale reads the PoseStack directly
-            // and is never clamped, so it stays correct past the raster clamp.
+            // Constraints are screen pixels: divided by the pose's own scale, not effective/base px, which is clamped
+            // at MAX_EFFECTIVE_PX. Never for world text, which must not reflow with the camera.
             float scale = context.isWorldText() ? 1f : OrthographicScaleResolver.extractMaxScale(pose.pose());
             float effectiveMaxWidth = scaleConstraint(draw.maxWidth, scale);
             float effectiveMaxHeight = scaleConstraint(draw.maxHeight, scale);
@@ -1623,11 +1173,7 @@ public class CgTextRenderer {
         return new ResolvedDraw(fontKey, effectiveTargetPx, wantMsdf, resolvedLayout);
     }
 
-    /**
-     * Divides {@code value} by {@code scale}, leaving an unbounded ({@code <= 0}) value
-     * unbounded, and skipping the division entirely when {@code scale} is (effectively) 1 or
-     * non-positive -- the common case, and avoids float noise on an exact no-op.
-     */
+    /** {@code value / scale}, unbounded staying unbounded and a scale of about 1 skipped. */
     private static float scaleConstraint(float value, float scale) {
         if (value <= 0f || scale <= 0f || Math.abs(scale - 1f) < 0.0001f) {
             return value;
@@ -1635,6 +1181,7 @@ public class CgTextRenderer {
         return value / scale;
     }
 
+    /** Resolves {@code draw}, places its glyphs and submits them. */
     private void drawInternal(Draw draw, PoseStack.Pose pose) {
         ResolvedDraw resolved = resolveDraw(draw, pose);
         CgFontKey fontKey = resolved.fontKey();
@@ -1695,15 +1242,7 @@ public class CgTextRenderer {
         }
         CgTrace.counter(CgChannels.TEXT, "draw.glyphCount", glyphCount);
 
-        // DID THIS DRAW GET THE TIER IT ASKED FOR? Glyph generation is budgeted per frame, and a
-        // glyph refused by the budget falls back to bitmap FOR THE FRAME -- deliberately, so a large
-        // paragraph costs a few frames at lower fidelity instead of a hitch. That trade assumes
-        // somebody paints again. A retained, damage-driven UI does not: nothing about the tree
-        // changed, so the degraded picture is kept forever, and since a bitmap glyph carries no
-        // distance field, any stroke on it silently disappears with it.
-        //
-        // So the caller is told, and can ask for another frame. Self-limiting by construction: the
-        // count stops rising the moment draws get what they want. @see #degradedDrawCount
+        // A glyph refused by the budget draws bitmap this frame; count it so a damage-driven caller paints again.
         for (int i = 0; i < glyphCount; i++) {
             CgGlyphPlacement placement = resolvedGlyphs.placements[i];
             // NO PLACEMENT AT ALL is the most degraded answer there is, not a neutral one: the glyph
@@ -1720,24 +1259,10 @@ public class CgTextRenderer {
             }
         }
 
-        // A stroke the tier cannot express resolves to none here rather than at the call site, so
-        // a caller may set one unconditionally and let the glyph tier decide -- which is what a CSS
-        // cascade does, having no idea which tier it will land on.
-        //
-        // It rides on the QUADS from here, not on the material: it used to be uploaded as material
-        // properties, which every draw with a different stroke then had to flush and re-apply for.
+        // A stroke the tier cannot draw resolves to none here, so a caller may always set one. It rides on the quads.
         boolean stroked = wantMsdf && strokeRequested(draw);
-        // TEXELS, not screen pixels: a fraction of the em in the GLYPH's own space, which the
-        // transform then stretches like everything else. That is what CSS does -- a stroke is painted
-        // in local space and transformed with the element -- and it is the only form an anisotropic
-        // transform can carry, since converting a screen-pixel width needs ONE scale factor and
-        // scale(2,1) does not have one.
-        //
-        // Algebraically identical to the screen-space form this replaces wherever that one worked:
-        // it sent width * targetPx * scale, and the shader divided by a screenPxRange of
-        // pxRange * targetPx * scale / atlasScalePx, so the scale cancelled and left exactly this.
-        // Zoom and world text are unaffected for the same reason, which is why neither needs a case
-        // here any more.
+        // In the glyph's own texels: a stroke is painted in local space and transformed with the text, the only
+        // form an anisotropic transform can carry.
         float strokeWidthTexels = stroked
                 ? draw.strokeWidthEm * registry.getResolvedMsdfConfig(fontKey).atlasScalePx()
                 : 0f;
@@ -1777,77 +1302,19 @@ public class CgTextRenderer {
     //  BATCH + SUBMIT
     // ══════════════════════════════════════════════════════════════════════════════════════════
 
-    // Sort-key packing lives in CgTextSortKey: the bit layout, the width arithmetic, and the
-    // batch-identity mask are one cohesive concern with invariants worth stating once and
-    // enforcing (the widths are checked to sum to 64, and out-of-range indices throw rather than
-    // aliasing two entries onto one key). See that class for why bit 63 stays clear and why
-    // `kind` sorts below the batch fields rather than above them.
 
 
     /**
-     * Turns one draw call's glyphs and decorations into the <strong>fewest possible GL batches</strong>,
-     * then submits them in that order.
+     * One draw's glyphs, decorations and shadows as quads, sorted into the fewest material transitions: by
+     * paint step, then atlas and mode ({@link CgTextSortKey}). An underline batches with its font's glyphs.
      *
-     * <p>Every change of atlas texture or shader mode costs a flush plus a material rebind, so the
-     * cost of a draw is set by how many times that state changes, not by how many quads it emits.
-     * This method's whole job is to make that number as small as it can be: it groups everything
-     * that can share a state into contiguous runs, so a draw performs exactly as many transitions
-     * as it has genuinely distinct states — and never one more because two entries that could have
-     * shared a batch happened to arrive in the wrong order.
-     *
-     * <p>Since the glyph atlases were merged into one per texture format, "distinct state" no
-     * longer means "distinct font": two fonts now report the same texture id and batch together.
-     * A mixed-font run costs the same as a single-font one.
-     *
-     * <h4>What happens, and how often</h4>
-     * <ol>
-     *   <li><b>Once per call</b> — count visible glyphs, resolve decoration rects, build a
-     *       {@link CgTextSortKey} per entry, and sort. The key is laid out so a single numeric
-     *       sort produces batch order directly; see that class for the bit layout.</li>
-     *   <li><b>Once per call</b> — write the projection into {@link #textBlock} via
-     *       {@link #syncProjection}, flushing first if this renderer has quads queued under a
-     *       different one. The model-view transform needs no equivalent check: it is baked
-     *       per-instance rather than held as shared state.</li>
-     *   <li><b>Once per batch boundary</b> — {@link #transitionToMaterial} flushes the quads
-     *       accumulated under the previous state and adopts the new one.</li>
-     *   <li><b>Once per entry</b> — emit one instanced-quad record via
-     *       {@link CgQuadBatch#quad()}, with the transform baked in through
-     *       {@code Quad.pose(modelView)}.</li>
-     * </ol>
-     *
-     * <h4>Glyphs and decorations share the ordering, not the data</h4>
-     * <p>They remain two separate sources for their entire lifetime — a {@code CgGlyphPlacement[]}
-     * and a {@code List<CgResolvedGlyphs.ResolvedDecoration>}, resolved by two separate methods on
-     * {@link CgResolvedGlyphs}. The only thing they share is the sort key's layout and this one
-     * pass.
-     *
-     * <p>That sharing is what makes decorations free: a decoration's batch bits come from the same
-     * atlas its font's glyphs use (see {@link CgResolvedGlyphs.ResolvedDecoration}), so an underline
-     * drawn alongside text lands in the same sorted run as that text and adds
-     * <strong>zero</strong> transitions. A transition happens only where the state genuinely
-     * changes — a different atlas, or bitmap versus distance field — never because an entry
-     * happened to be a decoration rather than a glyph.
-     *
-     * <h4>Sorting</h4>
-     * <p>{@link Arrays#sort(long[], int, int)} — the JDK's primitive dual-pivot quicksort, which
-     * already detects nearly-sorted runs and drops to insertion sort for small ranges — does the
-     * whole sort with no per-entry allocation and no hand-rolled fast path. Note it sorts
-     * <em>signed</em>, which is why {@link CgTextSortKey} keeps bit 63 clear.
-     *
-     * <h4>Shadows sort with the text, one paint step each</h4>
-     * <p>Every shadow's instances are keyed at their own stage, ahead of the batch fields, so painter's
-     * order holds across atlases while a shadow and its text in one atlas stay one run. The kinds each
-     * glyph paints in each shadow were decided by {@link CgTextShadowPlan}.</p>
-     *
-     * @param glyphCount        number of entries in {@link CgResolvedGlyphs#placements} to consider;
-     *                          null or geometry-less placements are skipped
-     * @param decorations       baked decoration rects for this draw, resolved here rather than by
-     *                          the caller
-     * @param baseTargetPx      the font's declared size, the denominator for metric normalisation
-     * @param effectiveTargetPx the size glyphs were actually rasterised at this frame
-     * @param wantMsdf          whether this draw prefers distance-field glyphs
-     * @param draw              the request, read for its position, colour and shadows
-     * @param modelView         transform baked into each emitted quad
+     * @param glyphCount        entries of {@link CgResolvedGlyphs#placements}; empty ones are skipped
+     * @param decorations       the draw's decoration rects
+     * @param baseTargetPx      the font's declared size, for metric normalisation
+     * @param effectiveTargetPx the size glyphs were rasterised at
+     * @param wantMsdf          whether the draw prefers distance-field glyphs
+     * @param draw              the request
+     * @param modelView         baked into each quad
      */
     private void submitBatchedQuads(int glyphCount, CgTextDecorationRect[] decorations,
                                     int baseTargetPx, int effectiveTargetPx, boolean wantMsdf,
@@ -1877,27 +1344,13 @@ public class CgTextRenderer {
             syncProjection(context.projection());
         }
 
-        // Pixel-snap is an ORTHO-ONLY correction: pixelSnapDelta floors the modelView-transformed
-        // position, which is only meaningful when modelView maps into screen-pixel space. For
-        // world text it maps into world units (a whole text block often spans < 1 unit), so
-        // flooring collapses every glyph onto the same integer world coordinate -- and the
-        // inverse-transform back to local space then multiplies that error by 1/worldScale.
+        // Snap to pixels on screen only: in the world a block spans under a unit and every glyph would floor together.
         boolean pixelSnap = !context.isWorldText();
         if (pixelSnap) scratchInverseModelView.set(modelView).invert();
         float devicePerLocal = effectiveTargetPx / (float) Math.max(1, baseTargetPx);
 
-        // PAINT ORDER: outer shadows at 0..n-1 with the LAST shadow first, the underline and overline at n, the
-        // text's two passes at n+1 and n+2, its line-through at n+3, inset shadows at n+4..2n+3. It is the key's
-        // outermost field, so one sort gives painter's order across batches, and a list longer than the field
-        // holds is submitted as successive sorts in the same order. The lines split around the text as CSS Text
-        // Decoration 3 paints them: under the glyphs and their stroke, and a line-through over both.
-        //
-        // TWO TEXT PASSES, Slate's outline then fill (ElementBatcher's BuildShapedTextSequence): a glyph's stroke
-        // drawn with its fill would cover the glyph before it. See glyphPass for what each pass draws.
-        //
-        // EACH ITS OWN STEP, never "a decoration after a glyph in the same step": the key sorts by atlas before
-        // kind, and a decoration's white texel is often in the bitmap atlas while the glyphs are distance
-        // fields, so within one step every line painted under the text.
+        // Paint steps, the key's outermost field: outer shadows (last first), under-lines, the two text passes (Slate's
+        // outline then fill), line-through, inset shadows. Each its own step: within one, the atlas sorts first.
         int textPaint = shadows + 1;
         int lastPaint = 2 * shadows + 3;
         long emitted = 0;
@@ -1953,13 +1406,7 @@ public class CgTextRenderer {
                     strokeArgb, strokeWidthTexels, strokeAlign, strokeOver);
         }
 
-        // A COUNTER, summed over every draw in the frame -- unlike draw.glyphCount, which is a
-        // SAMPLE and therefore reports only the last draw's count. Mistaking the sample for a
-        // per-frame total makes quadLoop look ~150x more expensive per glyph than it is (45 vs
-        // ~6771 in text-3d), which is exactly how a perfectly healthy loop gets "optimised".
-        //
-        // Note "visible" here means hasGeometry(), NOT on-screen: there is no viewport cull at
-        // this level, so a layout positioned off-screen still emits every one of its quads.
+        // A counter over the frame (draw.glyphCount is the last draw's sample). Unculled: off-screen quads count.
         CgTrace.add(CgChannels.TEXT, "draw.quadsEmitted", emitted);
     }
 
@@ -1996,15 +1443,8 @@ public class CgTextRenderer {
         int shadows = shadowList.count();
         float node = CgPalette.pack(spatialNode, effectNode);
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT_DETAIL, "draw.quadLoop")) {
-        // Per-iteration timing, off unless -Dcrystalgraphics.text.traceQuadLoop=true.
-        //
-        // Exists to answer one question that the scope total cannot: when quadLoop occasionally
-        // costs 133 ms instead of 1.1 ms for the *same* 8103 quads, 5 flushes and 5 material
-        // transitions, is that ONE blocking call inside the loop, or the whole loop running slowly
-        // because the thread lost the CPU? Those have opposite fixes, and the aggregate time is
-        // identical either way. maxIter answers it directly: ~130 ms in one iteration means a
-        // blocking call (a buffer flush waiting on the GPU); ~16 us spread over every iteration
-        // means preemption and there is nothing here to fix.
+        // Per-iteration timing (-Dcrystalgraphics.text.traceQuadLoop=true): one blocking call inside the loop or
+        // the thread preempted.
         long traceMaxNanos = 0, traceMaxIndex = -1, traceSlowIters = 0, traceIterStart = 0;
         if (Trace.QUAD_LOOP) traceIterStart = System.nanoTime();
         for (int s = 0; s < count; s++) {
@@ -2424,29 +1864,15 @@ public class CgTextRenderer {
     }
 
     /**
-     * Local-space correction that, added to {@code (qx, qy)}, makes this glyph's on-screen
-     * position (after {@code modelView}) land on a whole pixel — {@code GL_NEAREST} sampling
-     * isn't invariant under sub-pixel translation, so an unsnapped position can drop/duplicate
-     * a texel row at an edge. Floors (not rounds) to match the sub-pixel bucket convention.
-     *
-     * <p><strong>Orthographic/UI text only.</strong> This is only meaningful when
-     * {@code modelView} maps into screen-pixel space. Under a world-space {@code modelView}
-     * it transforms into world units instead, where an entire text block routinely spans less
-     * than one unit — {@link Math#floor} then snaps every glyph to the same integer coordinate,
-     * and the inverse-transform back to local space scales that error up by {@code 1/worldScale}.
-     * Callers must gate on {@link CgTextRenderContext#isWorldText()}; do not rely on
-     * {@code isDistanceField} as a proxy for "not world text" (see {@code submitSortedQuads}).</p>
+     * The local-space offset that puts the glyph on a whole pixel on screen after {@code modelView}, X on the
+     * sub-pixel grid. Screen text only: callers gate on {@link CgTextRenderContext#isWorldText()}.
      */
     private static void pixelSnapDelta(Matrix4f modelView, Matrix4f invModelView,
                                         float qx, float qy, Vector3f outLocalDelta) {
         outLocalDelta.set(qx, qy, 0f);
         modelView.transformPosition(outLocalDelta);
-        // X ROUNDS TO THE SUB-PIXEL GRID FIRST, then takes the whole-pixel part; the quarter left
-        // over is what the glyph's own raster variant already carries (CgGlyphKey.SUB_PIXEL_BUCKETS,
-        // and CgResolvedGlyphs.selectSubPixelBucket which takes the remainder of this same
-        // rounding). Flooring the raw value instead decides the two halves independently, and a
-        // position a hair below an integer then floors down while the bucket rounds up -- 0.75
-        // device px of error. Y has no buckets, so it stays a whole-pixel floor.
+        // X rounds to the sub-pixel grid first, the bucket (CgGlyphKey.SUB_PIXEL_BUCKETS) taking the rest; flooring
+        // separately is off by 0.75 px. Y floors.
         int quartersX = Math.round(outLocalDelta.x * CgGlyphKey.SUB_PIXEL_BUCKETS);
         float snappedX = (float) Math.floor(quartersX / (double) CgGlyphKey.SUB_PIXEL_BUCKETS);
         float screenDeltaX = snappedX - outLocalDelta.x;
@@ -2459,15 +1885,7 @@ public class CgTextRenderer {
     //  UTILITIES
     // ══════════════════════════════════════════════════════════════════════════════════════════
 
-    /**
-     * Shared layout helper used by the string-based draw overloads.
-     *
-     * <p>This is the string-to-layout boundary for the renderer. Checks {@link CgTextLayoutCache}
-     * first — see that class's javadoc; on a miss, builds a default-knobs {@link CgTextLayout.Request}.
-     * Renderer code should treat the returned {@link CgTextLayout} as the stable hand-off
-     * format for glyph resolution, and must not mutate it — a cache hit may hand the same
-     * instance to multiple unrelated callers.</p>
-     */
+    /** The layout of {@code text}, from {@link CgTextLayoutCache}; shared, never mutate it. */
     static CgTextLayout layout(String text, CgFont font, float maxWidth, float maxHeight) {
         if (text == null) throw new IllegalArgumentException("text must not be null");
 
