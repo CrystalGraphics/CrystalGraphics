@@ -33,6 +33,7 @@ public final class CgHostFrame {
     private int width;
     private int height;
     private int mainFramebuffer;
+    private float guiScale = 1f;
 
     /** The frame's interpolation between game ticks, 0 to 1. */
     public float partialTick() {
@@ -51,6 +52,25 @@ public final class CgHostFrame {
     /** The GL framebuffer the host draws its world into, which holds the scene's depth. */
     public int mainFramebuffer() {
         return mainFramebuffer;
+    }
+
+    /**
+     * The host GUI's device pixels per GUI pixel (Minecraft's GUI scale), 1 where the host has none. A GUI stage's
+     * canvas is in device pixels; {@code CgStageFrame.guiScaledCanvas()} draws in GUI-scaled pixels by it, and a size in
+     * GUI-scaled pixels is this many window pixels:
+     *
+     * <pre>{@code
+     * float hotbarHeight = 22 * frame.host().guiScale();   // in the window's pixels
+     * }</pre>
+     */
+    public float guiScale() {
+        return guiScale;
+    }
+
+    /** Host side: the GUI's scale, set by {@link CgRenderStage#fireOverlay}. */
+    public CgHostFrame guiScale(float scale) {
+        this.guiScale = scale > 0f ? scale : 1f;
+        return this;
     }
 
     /** Where the frame is seen from: the host's camera, for a world stage. Filled by the host through its setters. */

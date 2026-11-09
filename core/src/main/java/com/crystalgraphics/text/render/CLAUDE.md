@@ -40,7 +40,7 @@ One per canvas, made on its first `text()`. Per draw:
 
 1. **Camera** — the canvas's (`cameraProjection/View/Width/Height`). Perspective (`projection.m23() != 0`) is world
    text: always distance-field, its bitmap placeholder at a fixed twice the font's size, never re-wrapped or snapped. Otherwise screen text, rastered at device pixels through `pixelPose` (the camera's
-   NDC-to-pixel scale × view × pose), so a GUI stage's logical pixels stay sharp.
+   NDC-to-pixel scale × view × pose), so a camera in other units than the target's pixels still rasters sharp.
 2. **Cull** — `canvas.visible(pose, box)`, the layout box grown by a line and the shadow reach. Skipped for a draw
    with a spatial node (its place is the node's) and when capturing.
 3. **Replay or record** — a draw the same as last time (`Replay`: the layout object, `sameAs`, pose, camera,

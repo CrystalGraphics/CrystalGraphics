@@ -97,7 +97,7 @@ CgTextLayout.of(new CgStyledText(plain, spans), group).shape();   // CgStyleSpan
 ## 3. Drawing
 
 Text draws on a `CgCanvas`: a stage's `frame.canvas()`, or a canvas of your own (`../CANVAS.md` § 8). It is
-placed in the canvas's space and projected by its camera: GUI pixels on a GUI stage, rastered at the screen's
+placed in the canvas's space and projected by its camera: the window's pixels on a GUI stage, rastered at the target's
 device pixels; the world on a world stage (§ 4). Nothing to create, size or delete.
 
 ### The three forms

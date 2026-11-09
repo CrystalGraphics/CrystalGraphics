@@ -10657,6 +10657,8 @@ com/crystalgraphics/render/stage/CgHostFrame
   extends java/lang/Object
   method public <init> ()V
   method public environment ()Lcom/crystalgraphics/render/stage/CgHostEnvironment;
+  method public guiScale ()F
+  method public guiScale (F)Lcom/crystalgraphics/render/stage/CgHostFrame;
   method public height ()I
   method public mainFramebuffer ()I
   method public partialTick ()F
@@ -10730,6 +10732,7 @@ com/crystalgraphics/render/stage/CgStageFrame
   method public constants ()Lcom/crystalgraphics/render/draw/CgPassConstants;
   method public defaults (Lcom/crystalgraphics/render/draw/CgPassConstants;)Lcom/crystalgraphics/render/draw/CgPassConstants;
   method public depthPyramid ()Lcom/crystalgraphics/render/graph/CgGraphTexture;
+  method public guiScaledCanvas ()Lcom/crystalgraphics/render/canvas/CgCanvas;
   method public historyValid ()Z
   method public host ()Lcom/crystalgraphics/render/stage/CgHostFrame;
   method public ordinal ()I

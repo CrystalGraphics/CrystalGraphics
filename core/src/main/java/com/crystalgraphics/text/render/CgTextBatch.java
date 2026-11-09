@@ -116,7 +116,7 @@ public final class CgTextBatch {
 
     /**
      * This draw's projection times view; view times pose; and that in the target's pixels, which picks the raster
-     * size and snaps: a GUI stage's camera is in logical pixels, its glyphs rasterised in device pixels.
+     * size and snaps: glyphs rasterise in device pixels whatever units the camera is in.
      */
     private final Matrix4f camera = new Matrix4f(), viewPose = new Matrix4f(), pixelPose = new Matrix4f();
     private static final Matrix4f IDENTITY = new Matrix4f();

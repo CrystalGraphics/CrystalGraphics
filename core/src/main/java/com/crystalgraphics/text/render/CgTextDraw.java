@@ -35,8 +35,8 @@ import java.util.function.Consumer;
  *   <li>{@link #submit()} needs text ({@link #text}, {@link #paragraph} or {@link #layout}, the last winning) and a
  *       font ({@link #family} over {@link #font}), which a non-empty layout supplies itself.</li>
  *   <li>Defaults: at (0, 0), opaque white, identity pose, no clip, the pass's own node, {@link CgTextGamma#initial()}.</li>
- *   <li>Placed in the canvas's space and projected by its camera: GUI pixels on a GUI stage, the world on a world
- *       stage. Under a perspective camera it is world text: always distance-field, its tier from its size on screen.</li>
+ *   <li>Placed in the canvas's space and projected by its camera: the window's pixels on a GUI stage, the world on a
+ *       world stage. Under a perspective camera it is world text: always distance-field, its tier from its size on screen.</li>
  *   <li>A {@link #layout} is drawn as built; a {@link #paragraph} or {@link #text} wraps at {@link #constraints} in
  *       screen pixels, re-wrapped as the pose's scale changes (never for world text).</li>
  *   <li>{@code canvas.text()} is the canvas's one scratch, reset by the next call: never hold it.</li>

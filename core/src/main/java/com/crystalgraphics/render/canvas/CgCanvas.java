@@ -28,7 +28,7 @@ import java.util.Arrays;
  * target at a time, or, recording nothing, draws at {@link #flush()}.
  *
  * <p>At a render stage the firing gives one: drawn into during a renderer's turn, it lands in that firing under its
- * camera -- a world stage's camera-relative space, a GUI stage's pixels -- with nothing to begin, end or flush.</p>
+ * camera -- a world stage's camera-relative space, a GUI stage's window pixels -- with nothing to begin, end or flush.</p>
  *
  * <pre>{@code
  * CgRenderStage.HUD.register(CgRenderStage.WORLD_WIDGETS, frame -> {

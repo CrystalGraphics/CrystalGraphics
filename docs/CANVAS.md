@@ -31,7 +31,7 @@ you submit lands in that firing.
 
 | You are | Use | Space |
 |---|---|---|
-| Inside a stage renderer (`CgRenderStage.register`) | `frame.canvas()` | the stage's: GUI pixels on `HUD`/`SCREEN`, camera-relative world on `WORLD_OPAQUE`/`WORLD_TRANSPARENT` |
+| Inside a stage renderer (`CgRenderStage.register`) | `frame.canvas()` | the stage's: the window's pixels on `HUD`/`SCREEN`, camera-relative world on `WORLD_OPAQUE`/`WORLD_TRANSPARENT` |
 | Outside any stage: a preview, a harness scene, the loading screen | `new CgCanvas()`, then `flush()` | `CgImmediate.constants()`, into whatever target is bound |
 | Recording a frame of your own (a UI, an offscreen picture) | `new CgCanvas()` with `recordInto(...)` | the constants you give it (§ 8) |
 
@@ -165,8 +165,25 @@ A value that changes per item belongs in `custom0..2`, which keeps one draw.
 
 ## 6. On the screen and in the world
 
-**GUI stages (`HUD`, `SCREEN`)**: coordinates are the GUI's logical pixels, origin top left, the same as
-Minecraft's GUI. Pick your layer with the order you register at:
+**GUI stages (`HUD`, `SCREEN`)**: pick the unit when you take the canvas, once a turn.
+
+| Take | Coordinates | For |
+|---|---|---|
+| `frame.canvas()` | the window's pixels, origin top left, as Unreal's canvas | your own layout: sized from the window, or fitted to a reference canvas |
+| `frame.guiScaledCanvas()` | Minecraft's GUI pixels: scaled by its GUI Scale setting | sitting beside vanilla's interface at its size |
+
+```java
+CgRenderStage.HUD.register(CgRenderStage.VIEWPORT_WIDGETS, frame -> {
+    CgCanvas gui = frame.guiScaledCanvas();                               // every item after is in GUI pixels
+    gui.quad(ICON).at(4, 4).size(16, 16).submit();                   // 16 GUI pixels: 64 on the window at scale 4
+    gui.text().text("Ready").font(font).at(24, 6).submit();          // still rastered sharp at the window's pixels
+});
+```
+
+- Both are the same canvas: taking the other one mid-turn switches what follows, and order is kept.
+- `frame.host().guiScale()` is the scale itself (1 in the harness), for converting a size by hand.
+
+Pick your layer with the order you register at:
 
 | Order | What it is |
 |---|---|
@@ -179,7 +196,7 @@ Something that follows a point in the world projects it with the world's camera:
 ```java
 CgRenderStage.HUD.register(CgRenderStage.WORLD_WIDGETS, frame -> {
     CgHostView view = CgRenderStage.WORLD_OPAQUE.host().view();
-    // project (x, y, z) - view's position through view and projection into the GUI's pixels, then:
+    // project (x, y, z) - view's position through view and projection into the window's pixels, then:
     frame.canvas().quad(DIGIT).texture(0, DIGITS).at(sx - w / 2, sy - h / 2).size(w, h).submit();
 });
 ```
@@ -220,8 +237,8 @@ fps.text(Integer.toString(currentFps)).submit();                   // each frame
 float height = fps.measure().totalHeight();                        // without drawing
 ```
 
-- **It draws under the canvas's camera.** On a GUI stage it rasters at the screen's device pixels, so GUI-scaled
-  text stays sharp; on a world stage it is world text, distance-field and sized by how big it is on screen.
+- **It draws under the canvas's camera.** It rasters at the target's device pixels whatever the pose's scale, so
+  text scaled up stays sharp; on a world stage it is world text, distance-field and sized by how big it is on screen.
 - **It is culled** against the camera before anything is resolved: off-screen text costs a frustum test.
 - **`submit()` returns false** while a glyph or shadow is still building on a worker; it draws what is ready,
   and the rest arrives a frame or two later.
@@ -285,7 +302,6 @@ CgImmediate.execute(frame);
 | A new canvas every frame | Works, but allocates | Keep one in a field |
 | Changing `CgImmediate.constants()` between an immediate canvas's draws | Text read the camera at each draw, quads at `flush()`: they disagree | `flush()` first, then change the camera |
 | Writing a material's block in place between items | Earlier items draw with the new values | Change it through `applyProperties`/`overrideBlock`, or per item with `custom0..2` |
-| A HUD sized in window pixels on a GUI stage | Drawn the GUI scale times too large: the stage is in GUI pixels | Size in GUI pixels, or draw under a `1 / guiScale` pose; text still rasters at device pixels |
 | A `world(...)` item on a GUI stage | The GUI canvas has no camera origin: placed as if at 0 | Project to pixels (§ 6) |
 | Forgetting to precache the material | Its first frame waits for the compile | [`PRECACHE.md`](PRECACHE.md) |
 

@@ -90,9 +90,11 @@ public final class CgStageFrame {
 
         @Override
         public CgPassConstants constants() {
-            return CgStageFrame.this.constants();
+            return canvasCamera();
         }
     };
+    /** Whether this turn's canvas draws GUI-scaled ({@link #guiScaledCanvas}) rather than in the window's pixels. */
+    private boolean guiPixels;
 
     /** Firings a host frame remembered for the next: the n-th is compared with last frame's n-th. */
     private static final int ORDINALS = 4;
@@ -246,7 +248,7 @@ public final class CgStageFrame {
     /**
      * What a renderer draws quads, curves and text into during its turn (Unreal's canvas): on {@link #target()} under
      * {@link #constants()} -- at a world stage the camera's space, camera-relative, its origin the camera's absolute
-     * position; at a GUI stage the GUI's pixels. What a turn draws lands when the turn ends, in a pass of its own.
+     * position; at a GUI stage the window's pixels. What a turn draws lands when the turn ends, in a pass of its own.
      *
      * <pre>{@code
      * CgRenderStage.HUD.register(CgRenderStage.WORLD_WIDGETS, frame ->
@@ -255,21 +257,66 @@ public final class CgStageFrame {
      *
      * <ul>
      *   <li>Inside {@link CgStageRenderer#render} only: a {@link #callback}'s body runs at execution, outside any turn.</li>
+     *   <li>The same canvas as {@link #guiScaledCanvas()}: asking for one after the other switches what later items
+     *       draw under, earlier ones kept as drawn and in order.</li>
      * </ul>
      */
     public CgCanvas canvas() {
+        return canvasIn(false);
+    }
+
+    /**
+     * {@link #canvas()} in the host GUI's pixels: everything drawn on it is scaled by {@link CgHostFrame#guiScale()},
+     * so it sits at the size of Minecraft's own interface and follows its GUI Scale setting. Text still rasters at the
+     * window's pixels, so it stays sharp.
+     *
+     * <pre>{@code
+     * CgRenderStage.HUD.register(CgRenderStage.VIEWPORT_WIDGETS, frame -> {
+     *     CgCanvas gui = frame.guiScaledCanvas();             // once a turn: every item after is GUI-scaled
+     *     gui.quad(ICON).at(4, 4).size(16, 16).submit();       // 16 GUI pixels: 64 on the window at scale 4
+     *     gui.text().text("Ready").font(font).at(24, 6).submit();
+     * });
+     * }</pre>
+     *
+     * <ul>
+     *   <li>A GUI stage's only: at a world stage it throws.</li>
+     *   <li>Taking {@link #canvas()} later in the same turn goes back to window pixels for what follows.</li>
+     * </ul>
+     */
+    public CgCanvas guiScaledCanvas() {
+        if (host.view().projection().m23() != 0f) {
+            throw new IllegalStateException(stage.id() + " is not a GUI stage: it has no GUI pixels");
+        }
+        return canvasIn(true);
+    }
+
+    private CgCanvas canvasIn(boolean gui) {
+        if (gui != guiPixels) {
+            guiPixels = gui;
+            if (canvas.recording()) canvas.constants(canvasCamera());   // lands what was drawn under the other camera
+        }
         return canvas;
     }
 
-    private void openCanvas(CgCanvas canvas) {
+    /** The canvas's camera: {@link #constants()}, scaled to the host GUI's pixels for a {@link #guiScaledCanvas()}. */
+    private CgPassConstants canvasCamera() {
         CgPassConstants camera = constants();
-        canvas.recordInto(recording, target(), CgLoad.load(), camera);
+        if (guiPixels) {
+            float s = host.guiScale();
+            camera.projection.scale(s, s, 1f);
+        }
+        return camera;
+    }
+
+    private void openCanvas(CgCanvas canvas) {
+        canvas.recordInto(recording, target(), CgLoad.load(), canvasCamera());
         CgHostView view = host.view();
         canvas.origin(view.x(), view.y(), view.z());
     }
 
-    /** A renderer's turn starts: what it draws on the canvas records into this firing. */
+    /** A renderer's turn starts: what it draws on the canvas records into this firing, in window pixels. */
     void turnBegins() {
+        guiPixels = false;
         canvas.arm(canvasOpener);
     }
 
