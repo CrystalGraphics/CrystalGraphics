@@ -202,6 +202,7 @@ public final class CgSequenceKinds {
             .property("midtones", CgValueType.struct(CgCameraKinds.GRADE))
             .property("highlights", CgValueType.struct(CgCameraKinds.GRADE))
             .property("affected", CgValueType.struct(AFFECTED))
+            .property("gain_adapts", BOOL)
             .property("enabled", BOOL)
             .register();
 

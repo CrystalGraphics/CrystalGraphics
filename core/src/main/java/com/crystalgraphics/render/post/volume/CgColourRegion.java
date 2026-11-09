@@ -25,6 +25,8 @@ import com.crystalgraphics.render.post.look.CgFilmLut;
 import com.crystalgraphics.render.stage.CgHostView;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.world.CgGradeLayers;
+import com.crystalgraphics.render.world.CgWorldLight;
+import com.crystalgraphics.render.world.CgWorldLights;
 
 /**
  * Grades the world's pixels inside a shape: Unreal 5.1's {@code AColorCorrectRegion}. Its shape's alpha at each pixel's
@@ -68,6 +70,8 @@ public final class CgColourRegion implements CgPostEffect {
     /** {@code FColorGradePerRangeSettings}' five controls, each four floats: rgb and a scalar times them. */
     public enum Control { SATURATION, CONTRAST, GAMMA, GAIN, OFFSET }
 
+    /** How much of an adapting gain's night boost plays: a tool's live scale while it is judged by eye, 1 otherwise. */
+    private static volatile float gainTuning = 1f;
     public static final String SHADER = "crystalgraphics:shaders/post/colour_region.shader";
     private static final double[] TO_AP1 = CgFilmLut.srgbToAp1(), FROM_AP1 = CgFilmLut.ap1ToSrgb();
     private static final String[] TO_AP1_ROWS = {"_ToAp10", "_ToAp11", "_ToAp12"}, FROM_AP1_ROWS = {"_FromAp10", "_FromAp11", "_FromAp12"};
@@ -82,7 +86,9 @@ public final class CgColourRegion implements CgPostEffect {
     private Shape shape = Shape.SPHERE;
     private int priority;
     private float intensity = 1f, inner = 0.5f, outer = 1f, falloff = 1f;
-    private boolean invert;
+    private boolean invert, gainAdapts;
+    /** The block and sky light at its centre this firing, where its gain adapts. */
+    private float blockLight, skyLight;
     private Temperature temperatureType = Temperature.COLOUR_TEMPERATURE;
     private float temperature = 6500f, tint;
     private float shadowsMax = 0.09f, highlightsMin = 0.5f;
@@ -95,9 +101,16 @@ public final class CgColourRegion implements CgPostEffect {
 
     private final CgMaterial material = CgMaterial.newInstance(SHADER);
     private final CgPostMaterial draw = CgPostMaterial.of(material, CgPostPoint.BEFORE_SEPARATE_TRANSLUCENCY, 0);
+    /** The same grade over a graded layer: its offsets by the layer's coverage ({@code _Coverage}). */
+    private final CgMaterial layerMaterial = CgMaterial.newInstance(SHADER);
+    private final CgPostMaterial layerDraw = CgPostMaterial.of(layerMaterial, CgPostPoint.BEFORE_SEPARATE_TRANSLUCENCY, 0);
     private final Matrix3f toLocal = new Matrix3f();
     private final float[] rows = new float[12], half = new float[3];
     private final Consumer<CgMaterialValues> write = this::write;
+    private final Consumer<CgMaterialValues> writeLayer = b -> {
+        write(b);
+        b.set1f("_Coverage", 1f);
+    };
     /** The keyword set its program has: shape, advanced and temperature packed; -1 before the first. */
     private int keyed = -1;
 
@@ -141,6 +154,33 @@ public final class CgColourRegion implements CgPostEffect {
     public CgColourRegion invert(boolean invert) {
         this.invert = invert;
         return this;
+    }
+
+    /**
+     * Lights by its gain as a flash lights a surface, however dark the world is where it stands: each channel's lift
+     * ({@code gain - 1}) divided by the ambient Minecraft lit its centre with (the host's lightmap at its block and sky
+     * light), as {@link CgWorldLights} divide their light by it. A day under open sky (ambient 1) plays its gain as
+     * authored; at night the same flash multiplies harder, keeping colours, blacks and contrast. Not Unreal's.
+     *
+     * <pre>{@code
+     * new CgColourRegion().grade(Range.GLOBAL, Control.GAIN, 2f, 2f, 2f, 1f).gainAdapts(true);   // x2 by day, more by night
+     * }</pre>
+     */
+    public CgColourRegion gainAdapts(boolean adapts) {
+        this.gainAdapts = adapts;
+        return this;
+    }
+
+    /**
+     * Scales every adapting region's night boost, as a tuning tool slides it (the harness's kit-cues): 0 plays the gain
+     * as authored at any hour, 1 its full adaptation.
+     */
+    public static void gainTuning(float scale) {
+        gainTuning = Math.max(0f, scale);
+    }
+
+    public static float gainTuning() {
+        return gainTuning;
     }
 
     /** Its temperature in Kelvin and its tint, each -1 to 1; 6500 K and no tint, the default, grade no temperature. */
@@ -258,13 +298,17 @@ public final class CgColourRegion implements CgPostEffect {
             rows[r * 4 + 2] = c;
             rows[r * 4 + 3] = -(a * cx + b * cy + c * cz);
         }
+        int light = CgWorldLight.at(x, y, z);
+        blockLight = CgWorldLight.block(light);
+        skyLight = CgWorldLight.sky(light);
         material.applyProperties(write);
         draw.record(post);
         // The light a graded layer holds is graded too: Unreal grades the scene before bloom, effects' light with it
         CgGradeLayers layers = post.resources().get(CgGradeLayers.KEY);
         if (layers == null) return;
+        layerMaterial.applyProperties(writeLayer);
         for (int k = 0; k < CgGradeLayers.MAX; k++) {
-            if (layers.look(k) != null) draw.recordOver(post, layers.layer(k));
+            if (layers.look(k) != null) layerDraw.recordOver(post, layers.layer(k));
         }
     }
 
@@ -275,6 +319,7 @@ public final class CgColourRegion implements CgPostEffect {
         b.vec4("_Shape", inner, outer, falloff, intensity);
         b.vec4("_Options", invert ? 1f : 0f, temperature, tint, 0f);
         b.vec4("_Ranges", shadowsMax, highlightsMin, 0f, 0f);
+        b.vec4("_Adapt", gainAdapts ? gainTuning : 0f, blockLight, skyLight, 0f);
         for (int r = 0; r < 3; r++) {
             b.vec4(TO_AP1_ROWS[r], (float) TO_AP1[r * 3], (float) TO_AP1[r * 3 + 1], (float) TO_AP1[r * 3 + 2], 0f);
             b.vec4(FROM_AP1_ROWS[r], (float) FROM_AP1[r * 3], (float) FROM_AP1[r * 3 + 1], (float) FROM_AP1[r * 3 + 2], 0f);
@@ -301,8 +346,14 @@ public final class CgColourRegion implements CgPostEffect {
         boolean advanced = advanced(), legacy = temperatureGraded() && temperatureType == Temperature.LEGACY;
         int key = shape.ordinal() | (advanced ? 4 : 0) | (legacy ? 8 : 0);
         if (key == keyed) return;
-        for (String k : ALL_KEYWORDS) material.disableKeyword(k);
-        for (String k : keywords(shape, advanced, legacy ? Temperature.LEGACY : null)) material.enableKeyword(k);
+        for (String k : ALL_KEYWORDS) {
+            material.disableKeyword(k);
+            layerMaterial.disableKeyword(k);
+        }
+        for (String k : keywords(shape, advanced, legacy ? Temperature.LEGACY : null)) {
+            material.enableKeyword(k);
+            layerMaterial.enableKeyword(k);
+        }
         keyed = key;
     }
 
@@ -356,6 +407,7 @@ public final class CgColourRegion implements CgPostEffect {
                 case "shadows" -> range(r, Range.SHADOWS, (Map<?, ?>) v, path + ".shadows");
                 case "midtones" -> range(r, Range.MIDTONES, (Map<?, ?>) v, path + ".midtones");
                 case "highlights" -> range(r, Range.HIGHLIGHTS, (Map<?, ?>) v, path + ".highlights");
+                case "gain_adapts" -> r.gainAdapts = Boolean.TRUE.equals(v);
                 case "affected" -> throw new CgAssetException(path + ".affected: per-actor colour regions are not played yet");
                 default -> throw new CgAssetException(path + "." + key + ": a colour region has no " + key);
             }

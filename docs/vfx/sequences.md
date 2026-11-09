@@ -343,6 +343,11 @@ spawnables:
   A `property` track keys any field: `colour_region.colour.gain` with its components `value: { r, g, b, a }`.
   `affected` (per-actor regions) and a white-balance or colour temperature away from 6500 K fail as the play starts,
   naming them: not played yet. The legacy temperature plays.
+- **`gain_adapts: true`** (not Unreal's) lights by its gain as a flash lights a surface, however dark the world is
+  where it stands: each channel's lift (`gain - 1`) is divided by the ambient Minecraft lit the region's centre with,
+  the lightmap at its block and sky light, as the world's lights divide theirs. A day under open sky plays the gain as
+  authored; at night the same flash multiplies harder, so colours, blacks and contrast hold where an offset would add
+  a grey film. `CgColourRegion.gainAdapts(true)` from Java.
 
 ```yaml
 spawnables:

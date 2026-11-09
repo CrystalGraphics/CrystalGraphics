@@ -236,7 +236,8 @@ public final class CgPostMaterial implements CgPostEffect {
 
     private void draw(CgRecording recording, CgGraphTexture into, CgLoad load, CgPostContext post, CgPipeline pipeline,
                       CgGraphTexture colourOf) {
-        CgRasterPass pass = recording.raster(into, load, post.constants(), null, CgOrder.SORTED);
+        CgRasterPass pass = recording.raster(into, load, post.constants(), null, CgOrder.SORTED)
+                .texture(CgBindingPoints.LIGHTMAP_TEXTURE_UNIT, post.stage().host().textures().lightmapTexture());
         // A pass into a target of its own reads the scene's colour and depth, not the target it clears.
         CgGraphTexture screen = post.target();
         CgPipeline drawn = depthless(pipeline);

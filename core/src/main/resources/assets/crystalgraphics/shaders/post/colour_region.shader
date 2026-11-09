@@ -18,6 +18,8 @@ Properties {
     _ToRegion2 ("Row 2", vec4) = (0, 0, 1, 0)
     _Shape     ("Inner, outer, falloff, intensity", vec4) = (0.5, 1, 1, 1)
     _Options   ("Invert, temperature (K), tint, unused", vec4) = (0, 6500, 0, 0)
+    _Adapt     ("x: how much of the gain's night boost plays (0 none); yz: the block and sky light at its centre", vec4) = (0, 15, 15, 0)
+    _Coverage  ("1 over a graded layer: its offsets added by the layer's coverage, the rest added behind it", float) = 0.0
     _Ranges    ("Shadows' max, highlights' min", vec4) = (0.09, 0.5, 0, 0)
     _ToAp10    ("Linear sRGB to ACEScg, row 0", vec4) = (1, 0, 0, 0)
     _ToAp11    ("Row 1", vec4) = (0, 1, 0, 0)
@@ -63,6 +65,16 @@ Pass {
         return c * (gain.xyz * gain.w) + (off.xyz + off.w);
     }
 
+    // A gain lighting as a flash does where the world is lit by less than a full day: each channel's lift divided by
+    // the ambient the host's lightmap lit the region's centre with, as the world lights divide theirs (lights/shade.compute).
+    vec4 region_gain(vec4 gain) {
+        if (_Adapt.x <= 0.0) return gain;
+        vec3 lm = CG_LIGHTMAP(_Adapt.yz);
+        vec3 ambient = max(mix(lm / 12.92, pow((lm + 0.055) / 1.055, vec3(2.4)), step(vec3(0.04045), lm)), vec3(0.02));
+        vec3 g = gain.xyz * gain.w;
+        return vec4(1.0 + (g - 1.0) * mix(vec3(1.0), 1.0 / ambient, _Adapt.x), 1.0);
+    }
+
     void vertex(out v2f o) {
         o.uv = post_fullscreen_uv(CG_VERTEX_ID);
         gl_Position = vec4(o.uv * 2.0 - 1.0, 0.0, 1.0);
@@ -105,15 +117,18 @@ Pass {
         vec3 scene = read.rgb;
         if (!CG_LINEAR_SCENE) scene = cg_SceneDecode(scene);
         vec3 c = vec3(dot(_ToAp10.xyz, scene), dot(_ToAp11.xyz, scene), dot(_ToAp12.xyz, scene));
-        vec3 basic = region_grade(c, _G0, _G1, _G2, _G3, _G4);
+        // Over a layer of premultiplied light, an offset is light added to the pixel: the layer takes its coverage's
+        // share and what it lets through takes the rest, so the two sum to the scene graded whole
+        float cover = mix(1.0, read.a, _Coverage);
+        vec3 basic = region_grade(c, _G0, _G1, _G2, region_gain(_G3), _G4 * cover);
         vec3 graded = basic;
 #ifdef ADVANCED
         float luma = dot(basic, vec3(0.30000001, 0.58999997, 0.11000000));
         float shadows = 1.0 - smoothstep(0.0, _Ranges.x, luma);
         float highlights = smoothstep(_Ranges.y, _Ranges.y + 1.0, luma);
-        graded = region_grade(basic, _S0, _S1, _S2, _S3, _S4) * shadows
-                + region_grade(basic, _M0, _M1, _M2, _M3, _M4) * (1.0 - (shadows + highlights))
-                + region_grade(basic, _H0, _H1, _H2, _H3, _H4) * highlights;
+        graded = region_grade(basic, _S0, _S1, _S2, region_gain(_S3), _S4 * cover) * shadows
+                + region_grade(basic, _M0, _M1, _M2, region_gain(_M3), _M4 * cover) * (1.0 - (shadows + highlights))
+                + region_grade(basic, _H0, _H1, _H2, region_gain(_H3), _H4 * cover) * highlights;
 #endif
         vec3 rgb = vec3(dot(_FromAp10.xyz, graded), dot(_FromAp11.xyz, graded), dot(_FromAp12.xyz, graded));
 #ifdef TEMPERATURE_LEGACY

@@ -23,7 +23,7 @@ import com.crystalgraphics.sequence.definition.CgSequenceDefinition;
 public class CgColourRegionTest {
 
     private static final String FLASH = "_v: 1\ntick_resolution: 20\ndisplay_rate: 20\nrange: [0, 40]\n"
-            + "spawnables:\n  - { id: s1, name: flash, colour_region: { priority: 1, falloff: 0.2, colour: { gain: [2, 2, 2, 1] } } }\n"
+            + "spawnables:\n  - { id: s1, name: flash, colour_region: { priority: 1, falloff: 0.2, gain_adapts: true, colour: { gain: [2, 2, 2, 1] } } }\n"
             + "tracks:\n  - id: t1\n    kind: property\n    binding: { spawnable: s1 }\n    property: colour_region.colour.gain\n"
             + "    sections:\n      - { id: x1, range: [0, 40], value: { a: { keys: [[0, 2.0], [40, 1.0]] } } }\n";
 

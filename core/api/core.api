@@ -10044,6 +10044,7 @@ com/crystalgraphics/render/post/volume/CgColourRegion
   method public fade (FF)Lcom/crystalgraphics/render/post/volume/CgColourRegion;
   method public falloff ()F
   method public falloff (F)Lcom/crystalgraphics/render/post/volume/CgColourRegion;
+  method public gainAdapts (Z)Lcom/crystalgraphics/render/post/volume/CgColourRegion;
   method public grade (Lcom/crystalgraphics/render/post/volume/CgColourRegion$Range;Lcom/crystalgraphics/render/post/volume/CgColourRegion$Control;FFFF)Lcom/crystalgraphics/render/post/volume/CgColourRegion;
   method public grade (Lcom/crystalgraphics/render/post/volume/CgColourRegion$Range;Lcom/crystalgraphics/render/post/volume/CgColourRegion$Control;I)F
   method public grade (Lcom/crystalgraphics/render/post/volume/CgColourRegion$Range;Lcom/crystalgraphics/render/post/volume/CgColourRegion$Control;IF)Lcom/crystalgraphics/render/post/volume/CgColourRegion;
@@ -10064,6 +10065,8 @@ com/crystalgraphics/render/post/volume/CgColourRegion
   method public temperature (FF)Lcom/crystalgraphics/render/post/volume/CgColourRegion;
   method public temperature (Lcom/crystalgraphics/render/post/volume/CgColourRegion$Temperature;FF)Lcom/crystalgraphics/render/post/volume/CgColourRegion;
   method public tint ()F
+  method public,static gainTuning ()F
+  method public,static gainTuning (F)V
   method public,static keywords (Lcom/crystalgraphics/render/post/volume/CgColourRegion$Shape;ZLcom/crystalgraphics/render/post/volume/CgColourRegion$Temperature;)[Ljava/lang/String;
   method public,static keywords (Ljava/util/Map;)[Ljava/lang/String;
   method public,static of (Ljava/util/Map;Ljava/lang/String;)Lcom/crystalgraphics/render/post/volume/CgColourRegion;
