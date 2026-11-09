@@ -4,7 +4,7 @@ import com.crystalgraphics.api.font.CgFont;
 import com.crystalgraphics.api.font.CgFontKey;
 import com.crystalgraphics.api.font.CgFontStyle;
 import com.crystalgraphics.api.font.CgGlyphKey;
-import com.crystalgraphics.api.text.CgTextStroke;
+import com.crystalgraphics.text.style.CgTextLayer;
 import com.crystalgraphics.msdfgen.FreeTypeMSDFIntegration;
 import com.crystalgraphics.text.cache.CgGlyphGenerationResult;
 import com.crystalgraphics.text.cache.CgMsdfAtlasKey;
@@ -254,8 +254,8 @@ public class CgStrokeFieldRangeTest {
         assertEquals("CgMsdfAtlasConfig.maxStrokeWidthEm has drifted from the formula it states",
                 oursEm, config.maxStrokeWidthEm(), 1e-6);
 
-        assertEquals("CgTextStroke.MAX_FIELD_WIDTH_EM has drifted from the NARROW band it describes",
-                oursEm, CgTextStroke.MAX_FIELD_WIDTH_EM, 1e-6);
+        assertEquals("CgTextLayer.MAX_FIELD_WIDTH_EM has drifted from the NARROW band it describes",
+                oursEm, CgTextLayer.MAX_FIELD_WIDTH_EM, 1e-6);
 
         // The band a face with no dense script gets, which is the one a Latin label is drawn in. It
         // is the number the parity claim rests on, so it is pinned ABOVE the reference rather than

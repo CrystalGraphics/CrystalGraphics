@@ -116,7 +116,9 @@ canvas.text().layout(laid).at(x, y).submit();                                  /
 | `font(f)` · `family(f)` | the faces. Given both, `family` wins | required, unless drawing a non-empty `layout` |
 | `targetPx(px)` | re-sizes the font or family for this draw only | the size it was loaded at |
 | `at(x, y)` | the first line's top-left, in layout px | `(0, 0)` |
-| `color(argb)` | the text's colour; a styled span keeps its own | opaque white |
+| `style(s)` | how it looks: its font where the draw names none, its layers, spacing and skew (below) | `CgTextStyle.PLAIN`, one white fill |
+| `color(argb)` | a tint over every layer of the style; a styled span's colour replaces its fill's | opaque white |
+| `contained(b)` | `true` moves the text in by its outline and shadow offsets, as Slate's runs; `false` lets them overflow, as CSS | `true` |
 | `pose(poseStack)` · `pose(matrix)` | the transform into the canvas's space, read at `submit()` | identity |
 | `constraints(maxWidth, maxHeight)` | the wrap box for `text` and `paragraph`; ignored by `layout`. `0` or less is unbounded | unbounded |
 | `measure()` | returns the `CgTextLayout` `submit()` would draw, without drawing | |
@@ -132,42 +134,42 @@ float heightPx = title.measure().totalHeight();       // layout px, wrapped exac
 title.at(x, y).submit();
 ```
 
-### Outline
+### Styles
+
+How text looks, apart from what it says, is a `CgTextStyle`: a face and a stack of layers, painted bottom to top. One
+style is shared by every draw that names it, and a `text_styles/` asset compiles to one (`../vfx/assets.md`).
 
 ```java
-canvas.text().text("Boss").font(large).at(x, y)
-        .stroke(0.06f, 0xFF101418)                     // 0.06 em wide, near-black
-        .strokeAlign(CgStrokeAlign.OUTSET)             // OUTSET (default): outside the contour; CENTER; INSET
-        .strokeOverFill(false)                         // false (default): behind the fill; true: over it
-        .submit();
+static final CgTextStyle TITLE = CgTextStyle.builder("mymod:text_styles/title")
+        .size(24f)                                                                   // points at 96 DPI: 32 px
+        .layer(CgTextLayer.shadow("shadow").offset(0f, 2f).blur(2f).paint(0x80000000))   // a soft drop shadow
+        .layer(CgTextLayer.outline("outline").width(2f).paint(0xFF101418))              // 2 px, near-black
+        .layer(CgTextLayer.fill("fill"))                                                 // white
+        .build();
+
+canvas.text().style(TITLE).text("Boss").font(large).at(x, y).submit();
+canvas.text().style(TITLE).text("Boss").font(large).color(0x80FFFFFF).at(x, y).submit();   // the whole look, faded
 ```
 
-- The width is in **em**, a fraction of the font size, so the outline keeps its proportion at any zoom.
-  It clamps at `CgTextStroke.MAX_FIELD_WIDTH_EM`.
-- `strokeWidth(em)` and `strokeColor(argb)` set one half. A width of `0` or a transparent colour draws none.
-- A stroke puts the draw on distance-field glyphs: a bitmap glyph has no outline to offset.
-
-### Shadows
+A glow, a gradient and a material:
 
 ```java
-canvas.text().text("Level up").font(large).at(x, y)
-        .shadowCount(2)
-        .shadow(0, 0, 0, 4, 0, 0xFF44CCFF, false)      // a cyan glow, painted on top
-        .shadow(1, 2, 2, 1, 0, 0x80000000, false)      // a soft drop shadow beneath it
-        .submit();
+CgTextLayer.shadow("glow").spread(2f).blur(4f).blend(CgTextLayer.Blend.ADDITIVE).paint(0x80FFD040);
+CgTextLayer.fill("fill").paint(CgTextPaint.gradient(CgTextPaint.Space.GLYPH, 90f, 0f, 0xFFFFF0A0, 1f, 0xFFE09000));
+CgTextLayer.fill("fill").paint(CgTextPaint.material(shimmer));              // a Text-domain material
 ```
 
-`shadow(index, offsetX, offsetY, sigma, spread, argb, inset)`:
-
-- `offsetX`, `offsetY` — layout px, positive right and down.
-- `sigma` — the blur's standard deviation in layout px. A CSS blur radius is twice this.
-- `spread` — grows the glyph outline by that many layout px before blurring.
-- `argb` — the shadow's colour; its alpha is the shadow's whole opacity.
-- `inset` — shades inside the glyph, over the text, instead of beneath it.
-
-Shadow `0` is painted on top; every shadow sits beneath the text, and a stroke is part of the shadow's
-shape. To shadow only some glyphs — a highlighted word — give each glyph a scope with
-`shadowScopes(int[])` and restrict a shadow to one with `shadowScope(index, scope)`.
+- **Lengths are pixels at the style's size**, and scale with the text: a 2 px outline on a 32 px style is 4 px on text
+  drawn at 64 px. Size a style at the size you draw it, and its lengths read as pixels.
+- An outline **under** a fill is the glyph grown by its width; **over** a fill it is the ring alone, as a CSS stroke.
+  `align` puts it outside the edge (the default), centred on it, or inside. Its width clamps at what the font's distance
+  field holds: `CgFontRegistry.maxStrokeWidthEm(family)`, at least `CgTextLayer.MAX_FIELD_WIDTH_EM`.
+- A shadow is the glyph offset, grown by `spread` and blurred by `blur` (a Gaussian sigma; a CSS blur radius is twice
+  it). `outlined(true)` casts the style's first outline's shape too; `inset(true)` shades inside the glyph, clipped to it.
+- A shadow takes a colour or a material, never a gradient; that fails at build or load.
+- A style with an outline or a skew puts the draw on distance-field glyphs: a bitmap glyph has neither.
+- To limit a layer to some glyphs (a highlighted word), give each glyph a scope with `scopes(int[])` and restrict the
+  layer with `layerScope(layer, scope)`.
 
 ### Batching
 
@@ -183,8 +185,9 @@ for (Row row : rows) {
 
 The split is bitmap against distance-field glyphs, which draw with different shader variants from
 separate atlases. A draw mixes them while a glyph is still on its bitmap fallback, or when blurred
-shadows sit under distance-field text. Within a draw its shadows paint first, then its outline, then its
-fill; a quad, curve or other draw submitted between two labels splits the run, as it must to keep order.
+shadows sit under distance-field text. Within a draw every glyph of a layer lands before the next layer's, so a
+style's layers paint bottom to top; a quad, curve or other draw submitted between two labels splits the run, as it
+must to keep order.
 
 ---
 

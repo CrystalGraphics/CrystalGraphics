@@ -646,13 +646,13 @@ public final class CgWorldRenderer {
     /**
      * Starts a label: {@code text} at a point in the world, facing the camera unless turned, depth-tested against the
      * scene and drawn after the transparent draws, as a name tag. Place it on the {@link CgWorldText.Label}, then
-     * {@code font(...)} or {@code family(...)} gives its {@code CgTextDraw}, with all a draw has (strokes,
-     * shadows, constraints); {@code submit()} that. It lives for the frame. Render thread.
+     * {@code font(...)} or {@code family(...)} gives its {@code CgTextDraw}, with all a draw has (a style,
+     * constraints); {@code submit()} that. It lives for the frame. Render thread.
      *
      * <pre>{@code
      * world.text("Attract + Orbit").at(x, y + 6, z).height(0.5f).font(font).submit();          // centred on its point
      * world.text("12").at(x, y, z).anchor(0.5f, 0f).font(font).color(0xFFFF5040)
-     *         .stroke(0.12f, 0xFF000000).shadowCount(1).shadow(0, 2f, 2f, 1.5f, 0f, 0x80000000, false).submit();
+     *         .style(DAMAGE).submit();                                                          // a CgTextStyle
      * world.text(sign).at(x, y, z).rotation(facingSouth).family(family).targetPx(48).constraints(400f, 0f).submit();
      * }</pre>
      *

@@ -31,6 +31,26 @@ import java.util.Objects;
  */
 public final class CgTextLayer {
 
+    /**
+     * The widest outline every face's distance field describes cleanly, in em: half the narrow band's range, less a
+     * texel the generator keeps back and one for the bilinear footprint, 4.5 of 80 texels. A face with no dense script
+     * is banded wider and carries 0.131 em: ask {@code CgFontRegistry.maxStrokeWidthEm(family)} for the one that
+     * applies.
+     *
+     * <ul>
+     *   <li>An outline reads the stored field, which saturates past its range; the shader clamps a wider one to what
+     *       the field holds, a pixel short of saturation, rather than filling the glyph's cell.</li>
+     *   <li>Path stroking is not the way past it: FreeType's stroker self-intersects in tight concavities. Widening
+     *       the stored range is. @see CgStrokeFieldRangeTest</li>
+     *   <li>An outline pulls its draw onto the distance-field tier down to the size the field can antialias
+     *       ({@code CgMsdfAtlasConfig.minAntialiasablePx()}); smaller, the glyph is a bitmap and the outline is not
+     *       drawn.</li>
+     *   <li>A mitre reads the median of the field and a round join the true distance (MTSDF's fourth channel); they
+     *       differ at corners alone.</li>
+     * </ul>
+     */
+    public static final float MAX_FIELD_WIDTH_EM = 4.5f / 80f;
+
     /** What the layer draws of the glyphs. */
     public enum Kind { FILL, OUTLINE, SHADOW }
 

@@ -80,13 +80,14 @@ public final class CgTextLayoutEngine {
                         ? new ArrayList<>()
                         : CgShapedRunCache.runs(paragraph, family, direction, tabStop,
                                 () -> shapeParagraphText(paragraph, family, direction, tabStop));
-                slices.add(new CgShapedParagraph.Slice(paragraph, runs, new CgReshapeContext(paragraph)));
+                slices.add(new CgShapedParagraph.Slice(paragraph, spaced(runs, knobs.letterSpacing()),
+                        new CgReshapeContext(paragraph)));
             }
         }
 
         RunReshaper reshaper;
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT, "shape.reshaper")) {
-            reshaper = createRunReshaper(CgFontFamilyGroup.ofRegular(family));
+            reshaper = createRunReshaper(CgFontFamilyGroup.ofRegular(family), knobs.letterSpacing());
         }
         List<CgShapedRun> ellipsisRuns;
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT, "shape.ellipsis")) {
@@ -126,10 +127,11 @@ public final class CgTextLayoutEngine {
                 List<CgStyleSpan> paragraphSpans = rebaseSpans(text.spans(), range[0], range[1]);
                 runs = splitAndShapeRunsStyled(paragraph, paragraphSpans, group, knobs.direction());
             }
-            slices.add(new CgShapedParagraph.Slice(paragraph, runs, new CgReshapeContext(paragraph)));
+            slices.add(new CgShapedParagraph.Slice(paragraph, spaced(runs, knobs.letterSpacing()),
+                    new CgReshapeContext(paragraph)));
         }
 
-        RunReshaper reshaper = createRunReshaper(group);
+        RunReshaper reshaper = createRunReshaper(group, knobs.letterSpacing());
         List<CgShapedRun> ellipsisRuns = shapeEllipsis(knobs.ellipsisMarker(), regular, knobs.direction());
 
         return new CgShapedParagraph(slices, regular.getLayoutMetrics(), reshaper, ellipsisRuns, knobs);
@@ -541,6 +543,42 @@ public final class CgTextLayoutEngine {
         return result;
     }
 
+    /** {@code runs} with {@link #spaced(CgShapedRun, float)} applied; the same list when there is none. */
+    private static List<CgShapedRun> spaced(List<CgShapedRun> runs, float letterSpacing) {
+        if (letterSpacing == 0f) return runs;
+        List<CgShapedRun> out = new ArrayList<>(runs.size());
+        for (CgShapedRun r : runs) out.add(spaced(r, letterSpacing));
+        return out;
+    }
+
+    /**
+     * {@code r} with {@code letterSpacing} added to the advance of each character's last glyph, as Slate adds its
+     * {@code LetterSpacing} to each advance it shapes ({@code SlateTextShaper.cpp:436}). A cluster of several glyphs
+     * spaces once. The shared run is never changed: a new one is made.
+     */
+    private static CgShapedRun spaced(CgShapedRun r, float letterSpacing) {
+        if (letterSpacing == 0f || r.glyphIds().length == 0) return r;
+        float[] advances = r.advancesX().clone();
+        int[] clusters = r.clusterIds();
+        float added = 0f;
+        for (int i = 0; i < advances.length; i++) {
+            if (i == advances.length - 1 || clusters[i + 1] != clusters[i]) {
+                advances[i] += letterSpacing;
+                added += letterSpacing;
+            }
+        }
+        return new CgShapedRun()
+                .fontKey(r.fontKey()).resolvedFont(r.resolvedFont()).rtl(r.rtl())
+                .glyphIds(r.glyphIds()).clusterIds(clusters)
+                .advancesX(advances).offsetsX(r.offsetsX()).offsetsY(r.offsetsY())
+                .totalAdvance(r.totalAdvance() + added)
+                .sourceStart(r.sourceStart()).sourceEnd(r.sourceEnd())
+                .argbColor(r.argbColor()).decorations(r.decorations()).decorationArgb(r.decorationArgb())
+                .fontFeatures(r.fontFeatures()).baselineShift(r.baselineShift())
+                .safeToBreakBefore(r.safeToBreakBefore())
+                .syntheticBold(r.syntheticBold()).syntheticItalic(r.syntheticItalic());
+    }
+
     /** Rebuilds {@code r} with its source position shifted by {@code offset} — same shape data. */
     private static CgShapedRun offsetRunSource(CgShapedRun r, int offset) {
         if (offset == 0) return r;
@@ -730,7 +768,7 @@ public final class CgTextLayoutEngine {
      *              overload it's the real group, so a bold run's intra-run word-wrap re-shape
      *              resolves the bold face instead of always the regular one
      */
-    private static RunReshaper createRunReshaper(final CgFontFamilyGroup group) {
+    private static RunReshaper createRunReshaper(final CgFontFamilyGroup group, final float letterSpacing) {
         return (context, run, subStart, subEnd) -> {
             CgFontFamily family = group.resolve(run.fontKey().getStyle());
             HBFont hbFont = family.requireShapingFont(run.fontKey());
@@ -745,7 +783,7 @@ public final class CgTextLayoutEngine {
             // span the line breaker had to split). Without copying these over, any styled
             // run that genuinely needs splitting across lines silently reverts to
             // plain/unstyled for the split-off fragment(s).
-            return fragment
+            return spaced(fragment, letterSpacing)
                     .argbColor(run.argbColor())
                     .decorations(run.decorations())
                     .decorationArgb(run.decorationArgb())

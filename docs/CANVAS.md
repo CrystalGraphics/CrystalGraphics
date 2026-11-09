@@ -519,8 +519,7 @@ CgRenderStage.HUD.register(CgRenderStage.VIEWPORT_WIDGETS + 1, frame -> {
     CgCanvas canvas = frame.canvas();
     canvas.quad(PANEL).at(8, 8).size(120, 24).color(0xC0101418).submit();
     canvas.text().text("Ready").font(font).at(14, 12).color(0xFFFFFFFF).submit();     // over the panel
-    canvas.text().text(name).family(family).at(14, 40)
-            .stroke(0.08f, 0xFF000000).shadowCount(1).shadow(0, 1f, 1f, 1.5f, 0f, 0x80000000, false).submit();
+    canvas.text().style(NAME_TAG).text(name).family(family).at(14, 40).submit();       // outlined, shadowed
 });
 
 CgTextDraw fps = canvas.retainedText().font(font).at(8, 8);       // held across frames, on that canvas
@@ -533,12 +532,12 @@ float height = fps.measure().totalHeight();                        // without dr
 - **It is culled** against the camera before anything is resolved: off-screen text costs a frustum test.
 - **`submit()` returns false** while a glyph or shadow is still building on a worker; it draws what is ready,
   and the rest arrives a frame or two later.
-- **A draw's shadows, outline and fill layer within the draw**; across draws, submit order holds: a later label
-  covers an earlier one, shadow and all.
+- **A draw's style paints its layers bottom to top within the draw** (`CgTextStyle`); across draws, submit order
+  holds: a later label covers an earlier one, shadow and all.
 - `canvas.text()` is a scratch like `quad()`: build and submit in one expression.
 - Labels in the world that persist and move have their own path, `CgWorldRenderer.get().text(...)`: billboarded
   or turned, depth-tested, kept on the GPU across frames ([`ENGINE_API.md`](ENGINE_API.md)).
-- Outlines, shadows, fonts and layout: [`font/README.md`](font/README.md).
+- Styles (fills, outlines, shadows, gradients, materials), fonts and layout: [`font/README.md`](font/README.md).
 
 ---
 

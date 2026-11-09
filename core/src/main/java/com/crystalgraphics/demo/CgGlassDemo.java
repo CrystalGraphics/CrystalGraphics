@@ -87,7 +87,7 @@ public final class CgGlassDemo {
             at[i * 3 + 1] = y + LIFT;
             at[i * 3 + 2] = z + acrossZ * offset;
             world.text(NAMES[i]).at(at[i * 3], at[i * 3 + 1] + HEIGHT * 0.5 + 0.45, at[i * 3 + 2]).height(0.4f)
-                    .font(font).stroke(0.08f, 0xFF000000).submit();
+                    .font(font).style(CgDemoStyles.LABEL).submit();
         }
         active = true;
     }

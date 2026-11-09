@@ -13,20 +13,22 @@ public class CgTextShadowListTest {
     public void growingTheCountKeepsTheShadowsAlreadySet() {
         CgTextShadowList list = new CgTextShadowList();
         list.count(1);
-        list.set(0, 1f, 2f, 3f, 0f, 0xFF000000, false);
+        list.set(0, 1f, 2f, 3f, 0f, 0xFF000000, false, true);
         list.count(5);
-        list.set(4, 0f, 0f, 1f, 0f, 0xFF00FF00, true);
+        list.set(4, 0f, 0f, 1f, 0f, 0xFF00FF00, true, false);
         assertEquals(1f, list.x(0), 0f);
         assertEquals(3f, list.sigma(0), 0f);
+        assertTrue(list.outlined(0));
         assertTrue(list.inset(4));
+        assertFalse(list.outlined(4));
     }
 
     @Test
     public void aScopedShadowAppliesToItsGlyphsAloneAndNotToDecorations() {
         CgTextShadowList list = new CgTextShadowList();
         list.count(2);
-        list.set(0, 0f, 0f, 0f, 0f, 0xFF000000, false);
-        list.set(1, 0f, 0f, 2f, 0f, 0xFFFFD700, false);
+        list.set(0, 0f, 0f, 0f, 0f, 0xFF000000, false, false);
+        list.set(1, 0f, 0f, 2f, 0f, 0xFFFFD700, false, false);
         list.scope(1, 7);
         list.glyphScopes(new int[]{-1, 7, 7});
 
@@ -36,37 +38,5 @@ public class CgTextShadowListTest {
         assertFalse("past the scoped glyphs", list.appliesTo(1, 3));
         assertTrue(list.scoped(1));
         assertFalse(list.scoped(0));
-    }
-
-    @Test
-    public void aCopyIsTheSameUntilEitherChangesAndKeepsItsOwnScopes() {
-        int[] scopes = {0, 1};
-        CgTextShadowList list = new CgTextShadowList();
-        list.count(1);
-        list.set(0, 1f, 1f, 2f, 0f, 0xC0000000, false);
-        list.glyphScopes(scopes);
-        CgTextShadowList copy = new CgTextShadowList();
-        copy.set(list);
-        assertTrue(copy.sameAs(list));
-
-        scopes[1] = 5;   // the caller rewrites the array it lent: the copy holds what it was
-        assertFalse(copy.sameAs(list));
-        scopes[1] = 1;
-        list.set(0, 1f, 1f, 2f, 0f, 0xFF000000, false);
-        assertFalse(copy.sameAs(list));
-        list.count(0);
-        copy.count(0);
-        list.glyphScopes(null);
-        copy.set(list);
-        assertTrue(copy.sameAs(list));
-    }
-
-    @Test
-    public void reachIsOffsetThreeSigmaAndSpreadOverShadowsThatCast() {
-        CgTextShadowList list = new CgTextShadowList();
-        list.count(2);
-        list.set(0, 2f, -5f, 1.5f, 1f, 0xFF000000, false);   // 5 + ceil(4.5) + 1
-        list.set(1, 40f, 0f, 0f, 0f, 0x00000000, false);     // transparent: casts nothing
-        assertEquals(11f, list.reach(), 0f);
     }
 }

@@ -1841,10 +1841,11 @@ com/crystalgraphics/api/text/CgParagraphKnobs
   access public,final,record
   extends java/lang/Record
   field public,static,final DEFAULT Lcom/crystalgraphics/api/text/CgParagraphKnobs;
-  method public <init> (Lcom/crystalgraphics/api/text/CgTextDirection;FLcom/crystalgraphics/api/text/CgTextAlign;ILjava/lang/String;F)V
+  method public <init> (Lcom/crystalgraphics/api/text/CgTextDirection;FLcom/crystalgraphics/api/text/CgTextAlign;ILjava/lang/String;FF)V
   method public align ()Lcom/crystalgraphics/api/text/CgTextAlign;
   method public direction ()Lcom/crystalgraphics/api/text/CgTextDirection;
   method public ellipsisMarker ()Ljava/lang/String;
+  method public letterSpacing ()F
   method public lineHeightOverride ()F
   method public maxLines ()I
   method public tabStopWidth ()F
@@ -1911,21 +1912,6 @@ com/crystalgraphics/api/text/CgShapedRun
   method public toString ()Ljava/lang/String;
   method public totalAdvance ()F
   method public totalAdvance (F)Lcom/crystalgraphics/api/text/CgShapedRun;
-com/crystalgraphics/api/text/CgStrokeAlign
-  access public,final,enum
-  extends java/lang/Enum
-  field public,static,final CENTER Lcom/crystalgraphics/api/text/CgStrokeAlign;
-  field public,static,final INSET Lcom/crystalgraphics/api/text/CgStrokeAlign;
-  field public,static,final OUTSET Lcom/crystalgraphics/api/text/CgStrokeAlign;
-  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/api/text/CgStrokeAlign;
-  method public,static values ()[Lcom/crystalgraphics/api/text/CgStrokeAlign;
-com/crystalgraphics/api/text/CgStrokeJoin
-  access public,final,enum
-  extends java/lang/Enum
-  field public,static,final MITRE Lcom/crystalgraphics/api/text/CgStrokeJoin;
-  field public,static,final ROUND Lcom/crystalgraphics/api/text/CgStrokeJoin;
-  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/api/text/CgStrokeJoin;
-  method public,static values ()[Lcom/crystalgraphics/api/text/CgStrokeJoin;
 com/crystalgraphics/api/text/CgStyleSpan
   access public,final,record
   extends java/lang/Record
@@ -2033,6 +2019,7 @@ com/crystalgraphics/api/text/CgTextLayout$Request
   method public build ()Lcom/crystalgraphics/api/text/CgTextLayout;
   method public direction (Lcom/crystalgraphics/api/text/CgTextDirection;)Lcom/crystalgraphics/api/text/CgTextLayout$Request;
   method public ellipsis (Ljava/lang/String;)Lcom/crystalgraphics/api/text/CgTextLayout$Request;
+  method public letterSpacing (F)Lcom/crystalgraphics/api/text/CgTextLayout$Request;
   method public lineHeightOverride (F)Lcom/crystalgraphics/api/text/CgTextLayout$Request;
   method public markup (Lcom/crystalgraphics/text/richtext/CgMarkupParser;)Lcom/crystalgraphics/api/text/CgTextLayout$Request;
   method public markup (Ljava/lang/String;)Lcom/crystalgraphics/api/text/CgTextLayout$Request;
@@ -2041,23 +2028,6 @@ com/crystalgraphics/api/text/CgTextLayout$Request
   method public maxWidth (F)Lcom/crystalgraphics/api/text/CgTextLayout$Request;
   method public shape ()Lcom/crystalgraphics/api/text/CgShapedParagraph;
   method public tabStopWidth (F)Lcom/crystalgraphics/api/text/CgTextLayout$Request;
-com/crystalgraphics/api/text/CgTextStroke
-  access public,final,record
-  extends java/lang/Record
-  field public,static,final MAX_FIELD_WIDTH_EM F
-  field public,static,final NONE Lcom/crystalgraphics/api/text/CgTextStroke;
-  method public <init> (FILcom/crystalgraphics/api/text/CgStrokeAlign;Z)V
-  method public align ()Lcom/crystalgraphics/api/text/CgStrokeAlign;
-  method public argb ()I
-  method public isVisible ()Z
-  method public strokeOverFill ()Z
-  method public widthEm ()F
-  method public withAlign (Lcom/crystalgraphics/api/text/CgStrokeAlign;)Lcom/crystalgraphics/api/text/CgTextStroke;
-  method public withStrokeOverFill (Z)Lcom/crystalgraphics/api/text/CgTextStroke;
-  method public,final equals (Ljava/lang/Object;)Z
-  method public,final hashCode ()I
-  method public,final toString ()Ljava/lang/String;
-  method public,static of (FI)Lcom/crystalgraphics/api/text/CgTextStroke;
 com/crystalgraphics/api/texture/CgMipmapConfig
   access public,final
   extends java/lang/Object
@@ -5395,6 +5365,10 @@ com/crystalgraphics/cue/CgCuePlaying$Provider
   access public,abstract,interface
   extends java/lang/Object
   method public,abstract write (D[F)V
+com/crystalgraphics/demo/CgDemoStyles
+  access public,final
+  extends java/lang/Object
+  field public,static,final LABEL Lcom/crystalgraphics/text/style/CgTextStyle;
 com/crystalgraphics/demo/CgGlassDemo
   access public,final
   extends java/lang/Object
@@ -14136,15 +14110,17 @@ com/crystalgraphics/text/layout/CgTextLayoutCache
   method public,static estimatedBytes ()J
   method public,static get (Lcom/crystalgraphics/text/layout/CgTextLayoutCache$Key;)Lcom/crystalgraphics/api/text/CgTextLayout;
   method public,static key (Ljava/lang/String;Ljava/lang/Object;FF)Lcom/crystalgraphics/text/layout/CgTextLayoutCache$Key;
+  method public,static key (Ljava/lang/String;Ljava/lang/Object;FFF)Lcom/crystalgraphics/text/layout/CgTextLayoutCache$Key;
   method public,static put (Lcom/crystalgraphics/text/layout/CgTextLayoutCache$Key;Lcom/crystalgraphics/api/text/CgTextLayout;)V
   method public,static size ()I
 com/crystalgraphics/text/layout/CgTextLayoutCache$Key
   access public,final,record
   extends java/lang/Record
-  method public <init> (Ljava/lang/String;Ljava/lang/Object;FF)V
+  method public <init> (Ljava/lang/String;Ljava/lang/Object;FFF)V
   method public equals (Ljava/lang/Object;)Z
   method public fontOrFamily ()Ljava/lang/Object;
   method public hashCode ()I
+  method public letterSpacing ()F
   method public maxHeight ()F
   method public maxWidth ()F
   method public text ()Ljava/lang/String;
@@ -14419,6 +14395,7 @@ com/crystalgraphics/text/render/CgTextDraw
   method public family (Lcom/crystalgraphics/api/font/CgFontFamily;)Lcom/crystalgraphics/text/render/CgTextDraw;
   method public font (Lcom/crystalgraphics/api/font/CgFont;)Lcom/crystalgraphics/text/render/CgTextDraw;
   method public gamma (Lcom/crystalgraphics/text/render/CgTextGamma;)Lcom/crystalgraphics/text/render/CgTextDraw;
+  method public layerScope (II)Lcom/crystalgraphics/text/render/CgTextDraw;
   method public layout (Lcom/crystalgraphics/api/text/CgTextLayout;)Lcom/crystalgraphics/text/render/CgTextDraw;
   method public measure ()Lcom/crystalgraphics/api/text/CgTextLayout;
   method public measureSize (Lorg/joml/Vector2f;)Lorg/joml/Vector2f;
@@ -14428,20 +14405,9 @@ com/crystalgraphics/text/render/CgTextDraw
   method public pose (Lorg/joml/Matrix4f;)Lcom/crystalgraphics/text/render/CgTextDraw;
   method public reset ()Lcom/crystalgraphics/text/render/CgTextDraw;
   method public sameAs (Lcom/crystalgraphics/text/render/CgTextDraw;)Z
+  method public scopes ([I)Lcom/crystalgraphics/text/render/CgTextDraw;
   method public set (Lcom/crystalgraphics/text/render/CgTextDraw;)Lcom/crystalgraphics/text/render/CgTextDraw;
-  method public shadow (IFFFFIZ)Lcom/crystalgraphics/text/render/CgTextDraw;
-  method public shadowCount ()I
-  method public shadowCount (I)Lcom/crystalgraphics/text/render/CgTextDraw;
-  method public shadowScope (II)Lcom/crystalgraphics/text/render/CgTextDraw;
-  method public shadowScopes ([I)Lcom/crystalgraphics/text/render/CgTextDraw;
-  method public shadowsStroked (Z)Lcom/crystalgraphics/text/render/CgTextDraw;
-  method public stroke (FI)Lcom/crystalgraphics/text/render/CgTextDraw;
-  method public stroke (Lcom/crystalgraphics/api/text/CgTextStroke;)Lcom/crystalgraphics/text/render/CgTextDraw;
-  method public strokeAlign (Lcom/crystalgraphics/api/text/CgStrokeAlign;)Lcom/crystalgraphics/text/render/CgTextDraw;
-  method public strokeColor (I)Lcom/crystalgraphics/text/render/CgTextDraw;
-  method public strokeJoin (Lcom/crystalgraphics/api/text/CgStrokeJoin;)Lcom/crystalgraphics/text/render/CgTextDraw;
-  method public strokeOverFill (Z)Lcom/crystalgraphics/text/render/CgTextDraw;
-  method public strokeWidth (F)Lcom/crystalgraphics/text/render/CgTextDraw;
+  method public style (Lcom/crystalgraphics/text/style/CgTextStyle;)Lcom/crystalgraphics/text/render/CgTextDraw;
   method public submit ()Z
   method public targetPx (I)Lcom/crystalgraphics/text/render/CgTextDraw;
   method public text (Ljava/lang/String;)Lcom/crystalgraphics/text/render/CgTextDraw;
@@ -14599,6 +14565,7 @@ com/crystalgraphics/text/shadow/CgShadowCoverage
 com/crystalgraphics/text/style/CgTextLayer
   access public,final
   extends java/lang/Object
+  field public,static,final MAX_FIELD_WIDTH_EM F
   method public align ()Lcom/crystalgraphics/text/style/CgTextLayer$Align;
   method public blend ()Lcom/crystalgraphics/text/style/CgTextLayer$Blend;
   method public blur ()F
@@ -14685,6 +14652,7 @@ com/crystalgraphics/text/style/CgTextPaint
   method public,static colour (I)Lcom/crystalgraphics/text/style/CgTextPaint;
   method public,static gradient (Lcom/crystalgraphics/text/style/CgTextPaint$Space;F[F[I)Lcom/crystalgraphics/text/style/CgTextPaint;
   method public,static gradient (Lcom/crystalgraphics/text/style/CgTextPaint$Space;F[Ljava/lang/Number;)Lcom/crystalgraphics/text/style/CgTextPaint;
+  method public,static material (Lcom/crystalgraphics/api/material/CgMaterialDefinition;)Lcom/crystalgraphics/text/style/CgTextPaint;
   method public,static material (Ljava/lang/String;)Lcom/crystalgraphics/text/style/CgTextPaint;
 com/crystalgraphics/text/style/CgTextPaint$Kind
   access public,final,enum
@@ -14706,6 +14674,7 @@ com/crystalgraphics/text/style/CgTextStyle
   access public,final
   extends java/lang/Object
   field public,static,final COMPILER Lcom/crystalgraphics/asset/load/CgAssetCompiler;
+  field public,static,final PLAIN Lcom/crystalgraphics/text/style/CgTextStyle;
   method public bold ()Z
   method public equals (Ljava/lang/Object;)Z
   method public font ()Ljava/lang/String;

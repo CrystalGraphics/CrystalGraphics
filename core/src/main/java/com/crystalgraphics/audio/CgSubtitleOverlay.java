@@ -18,7 +18,6 @@ import com.crystalgraphics.gl.texture.CgTexture2D;
 import com.crystalgraphics.render.CgFrameClock;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.settings.CgGraphicsSettings;
-import com.crystalgraphics.text.render.CgTextDraw;
 
 
 import javax.annotation.Nullable;
@@ -44,7 +43,15 @@ final class CgSubtitleOverlay {
     private static final int FONT_PX = Math.round(10f * 96f / 72f);
     /** {@code GetSubtitleRegion}'s bottom, the safe zone's sides, {@code SUBTITLE_CHAR_HEIGHT} and the line spacing. */
     private static final float REGION_BOTTOM = 0.9f, SAFE_SIDE = 0.1f, CHAR_HEIGHT = 24f, LINE_SPACING = 1.1f;
-    private static final int TEXT = 0xFFFFFFFF, OUTLINE = 0xFF000000;
+    /** Unreal's canvas look: white, outlined by four 1 px passes at the diagonals beneath it. */
+    private static final CgTextStyle CANVAS_LOOK = CgTextStyle.builder("crystalgraphics:subtitle_canvas")
+            .size(FONT_PX * 72f / 96f)
+            .layer(CgTextLayer.shadow("outline_nw").offset(-1f, -1f).paint(0xFF000000))
+            .layer(CgTextLayer.shadow("outline_ne").offset(1f, -1f).paint(0xFF000000))
+            .layer(CgTextLayer.shadow("outline_sw").offset(-1f, 1f).paint(0xFF000000))
+            .layer(CgTextLayer.shadow("outline_se").offset(1f, 1f).paint(0xFF000000))
+            .layer(CgTextLayer.fill("fill"))
+            .build();
 
     /** A line as shown: what it says, by whom, in which look, and from when. */
     private static final class Shown {
@@ -151,10 +158,8 @@ final class CgSubtitleOverlay {
             plain.width = region;
         }
         float bottom = height * REGION_BOTTOM - CHAR_HEIGHT;
-        canvas.text().layout(plain.layout).font(canvasFont).at(width * SAFE_SIDE, bottom - plain.layout.totalHeight())
-                .color(TEXT).shadowCount(4)
-                .shadow(0, -1f, -1f, 0f, 0f, OUTLINE, false).shadow(1, 1f, -1f, 0f, 0f, OUTLINE, false)
-                .shadow(2, -1f, 1f, 0f, 0f, OUTLINE, false).shadow(3, 1f, 1f, 0f, 0f, OUTLINE, false).submit();
+        canvas.text().style(CANVAS_LOOK).layout(plain.layout).font(canvasFont).contained(false)
+                .at(width * SAFE_SIDE, bottom - plain.layout.totalHeight()).submit();
     }
 
     /** {@code shown} in its style, {@code t} seconds into {@code fade}. */
@@ -203,18 +208,9 @@ final class CgSubtitleOverlay {
         };
         float x = block.anchorX() * width + block.offsetX() * k - block.alignmentX() * layout.totalWidth() - inset + slide;
         float y = block.anchorY() * height + block.offsetY() * k - block.alignmentY() * layout.totalHeight();
-        int fill = 0xFFFFFFFF, outlineColour = 0;
-        float outline = 0f;
-        for (CgTextLayer l : look.layers()) {
-            if (l.kind() == CgTextLayer.Kind.FILL) fill = l.paint().colour();
-            else if (l.kind() == CgTextLayer.Kind.OUTLINE && outline == 0f) {
-                outline = Math.round(l.width() * k);
-                outlineColour = l.paint().colour();
-            }
-        }
-        CgTextDraw draw = canvas.text().layout(layout).font(font).at(x, y).color(argb(alpha, fill));
-        if (outline > 0f) draw.shadowCount(1).shadow(0, 0f, 0f, 0f, outline, argb(alpha, outlineColour), false);
-        draw.submit();
+        // At k times the style's size, so its outline is k times its width; placed by the laid-out box alone.
+        canvas.text().style(look).layout(layout).font(font).contained(false).at(x, y).color(argb(alpha, 0xFFFFFFFF))
+                .submit();
     }
 
     private void underline(CgSubtitleStyle.Text named, float k, float alpha, float slide) {

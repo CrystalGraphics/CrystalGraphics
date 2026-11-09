@@ -9,6 +9,8 @@ import com.crystalgraphics.api.font.CgDefaultFont;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.text.CgTextAlign;
 import com.crystalgraphics.api.text.CgTextLayout;
+import com.crystalgraphics.text.style.CgTextLayer;
+import com.crystalgraphics.text.style.CgTextStyle;
 import com.crystalgraphics.job.CgJob;
 import com.crystalgraphics.job.CgJobLane;
 import com.crystalgraphics.job.reply.CgReply;
@@ -127,6 +129,15 @@ public final class CgLogoLoadingView implements CgLoadingView {
             "List what loads under the loading screen's bar: each running task, its owner and how far along, a line each.");
     /** At most this many lines; the oldest running first. */
     private static final int MAX_LINES = 6;
+    /** White, edged a pixel each way in the backdrop's navy at the smallest size, 12 px. */
+    private static final CgTextStyle TASK_LOOK = CgTextStyle.builder("crystalgraphics:loading_task")
+            .size(12f * 72f / 96f)
+            .layer(CgTextLayer.shadow("edge_nw").offset(-1f, -1f).paint(0xFF0A2A40).opacity(0.6f))
+            .layer(CgTextLayer.shadow("edge_ne").offset(1f, -1f).paint(0xFF0A2A40).opacity(0.6f))
+            .layer(CgTextLayer.shadow("edge_sw").offset(-1f, 1f).paint(0xFF0A2A40).opacity(0.6f))
+            .layer(CgTextLayer.shadow("edge_se").offset(1f, 1f).paint(0xFF0A2A40).opacity(0.6f))
+            .layer(CgTextLayer.fill("fill").opacity(0.9f))
+            .build();
     @Nullable private CgFont font;
     private int fontPx;
     private boolean noFont;
@@ -148,10 +159,7 @@ public final class CgLogoLoadingView implements CgLoadingView {
             lines = now;
             layout = CgTextLayout.of(now, font).maxWidth(width).align(CgTextAlign.CENTER).build();
         }
-        int ink = argb(alpha * 0.9f, 0xFFFFFFFF), edge = argb(alpha * 0.6f, 0xFF0A2A40);
-        canvas.text().layout(layout).font(font).at(x, y).color(ink).shadowCount(4)
-                .shadow(0, -1f, -1f, 0f, 0f, edge, false).shadow(1, 1f, -1f, 0f, 0f, edge, false)
-                .shadow(2, -1f, 1f, 0f, 0f, edge, false).shadow(3, 1f, 1f, 0f, 0f, edge, false).submit();
+        canvas.text().style(TASK_LOOK).layout(layout).font(font).at(x, y).color(argb(alpha, 0xFFFFFFFF)).submit();
         canvas.flush();
     }
 

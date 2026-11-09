@@ -3,6 +3,8 @@ package com.crystalgraphics.demo;
 import com.crystalgraphics.api.font.CgFont;
 import com.crystalgraphics.api.font.CgDefaultFont;
 import com.crystalgraphics.api.text.CgTextLayout;
+import com.crystalgraphics.text.style.CgTextLayer;
+import com.crystalgraphics.text.style.CgTextStyle;
 import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.collision.CgCollisionWorld;
 import com.crystalgraphics.demo.collision.CgCollisionDemo;
@@ -213,8 +215,13 @@ public final class CgRenderDemo {
     private final Runnable capture = () -> capture(captured.mainFramebuffer(), captured.width(), captured.height());
 
     // The HUD: HUDRenderer's lines and look, 14 px where the window's shorter side is 600 pixels, in proportion above.
-    private static final int HUD_COLOR = 0xFFFF4F5E, HUD_OUTLINE = 0xFF000000, HUD_PX = 14;
-    private static final float HUD_SIDE = 600f, HUD_OUTLINE_EM = 0.12f;
+    private static final int HUD_PX = 14;
+    private static final float HUD_SIDE = 600f;
+    /** Red, outlined 0.12 em in black: at 75 pt, 100 px, a width of 12. */
+    private static final CgTextStyle HUD_LOOK = CgTextStyle.builder("crystalgraphics:demo_hud").size(75f)
+            .layer(CgTextLayer.outline("outline").width(12f).paint(0xFF000000))
+            .layer(CgTextLayer.fill("fill").paint(0xFFFF4F5E))
+            .build();
     private static final long SAMPLE_WINDOW_NANOS = 500_000_000L;
     /** The demo's keys, then the scenes' own. */
     private static final int[] KEYS = keys(new int[]{CgKeyCodes.KEY_H, CgKeyCodes.KEY_N, CgKeyCodes.KEY_C,
@@ -933,7 +940,7 @@ public final class CgRenderDemo {
             hudCamera.resolution(w, h);
             hud.recordInto(frame.recording(), frame.target(), CgLoad.load(), hudCamera);
             try {
-                hud.text().layout(hudLayout).font(hudFont).at(4f, 4f).color(HUD_COLOR).stroke(HUD_OUTLINE_EM, HUD_OUTLINE).submit();
+                hud.text().style(HUD_LOOK).layout(hudLayout).font(hudFont).at(4f, 4f).submit();
             } finally {
                 hud.stop();
             }

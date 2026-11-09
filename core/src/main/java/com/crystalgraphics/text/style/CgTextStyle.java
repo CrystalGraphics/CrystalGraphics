@@ -76,6 +76,9 @@ public final class CgTextStyle {
 
     private static final List<CgTextLayer> DEFAULT_LAYERS = List.of(CgTextLayer.fill("fill").build());
 
+    /** No font, one white fill: what a draw is in until it names a style. */
+    public static final CgTextStyle PLAIN = new CgTextStyle(null, null, false, 24f, 0, 0f, Transform.NONE, List.of());
+
     @Nullable
     private final String id;
     @Nullable

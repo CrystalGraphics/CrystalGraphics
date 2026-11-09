@@ -4,37 +4,41 @@ import com.crystalgraphics.api.PoseStack;
 import com.crystalgraphics.api.font.CgFont;
 import com.crystalgraphics.api.font.CgFontFamily;
 import com.crystalgraphics.api.text.CgShapedParagraph;
-import com.crystalgraphics.api.text.CgStrokeAlign;
-import com.crystalgraphics.api.text.CgStrokeJoin;
 import com.crystalgraphics.api.text.CgTextLayout;
-import com.crystalgraphics.api.text.CgTextStroke;
 import com.crystalgraphics.render.canvas.CgClipTable;
 import com.crystalgraphics.render.property.CgPalette;
+import com.crystalgraphics.text.style.CgTextLayer;
+import com.crystalgraphics.text.style.CgTextStyle;
 import org.joml.Matrix4f;
 import org.joml.Vector2f;
 
 import javax.annotation.Nullable;
+import java.util.Arrays;
 import java.util.Objects;
 import java.util.function.Consumer;
 
 /**
- * One text item: what to draw, where and how. From a canvas it draws there, in order with the canvas's other items:
+ * One text item: what to draw, where, and in which {@link CgTextStyle}. From a canvas it draws there, in order with
+ * the canvas's other items:
  *
  * <pre>{@code
- * canvas.text().text("Hello").font(font).at(20f, 40f).color(0xFFFFFFFF).submit();
- * canvas.text().layout(prebuilt).family(family).pose(poseStack).stroke(0.08f, 0xFF000000).submit();
- * canvas.text().text(title).family(family).targetPx(24)
- *         .shadowCount(1).shadow(0, 1f, 1f, 2f, 0f, 0x80000000, false).submit();
+ * canvas.text().text("Hello").font(font).at(20f, 40f).submit();                  // white: the plain style
+ * canvas.text().style(TITLE).text("Level up!").at(x, y).submit();                // the style's font and layers
+ * canvas.text().style(TITLE).text(name).family(family).targetPx(24).color(0x80FFFFFF).submit();  // on your font, faded
  *
- * CgTextDraw fps = canvas.retainedText().font(hudFont).at(8f, 8f);   // held across frames, on that canvas
- * fps.text(currentFps).submit();                                     // each frame
- * float h = fps.measure().totalHeight();                             // without drawing
+ * CgTextDraw fps = canvas.retainedText().style(HUD).at(8f, 8f);   // held across frames, on that canvas
+ * fps.text(currentFps).submit();                                  // each frame
+ * float h = fps.measure().totalHeight();                          // without drawing
  * }</pre>
  *
  * <ul>
  *   <li>{@link #submit()} needs text ({@link #text}, {@link #paragraph} or {@link #layout}, the last winning) and a
- *       font ({@link #family} over {@link #font}), which a non-empty layout supplies itself.</li>
- *   <li>Defaults: at (0, 0), opaque white, identity pose, no clip, the pass's own node, {@link CgTextGamma#initial()}.</li>
+ *       font: {@link #family} over {@link #font} over the style's, which a non-empty layout supplies itself.</li>
+ *   <li>{@link #color} tints every layer of the style, as a widget's colour does Slate's; a span's colour tints its
+ *       glyphs' fills.</li>
+ *   <li>A style's lengths are at its own size and scale with the text: drawn at twice it, an outline is twice as wide.</li>
+ *   <li>Defaults: the plain style (a white fill), at (0, 0), no tint, identity pose, no clip, the pass's own node,
+ *       {@link CgTextGamma#initial()}.</li>
  *   <li>Placed in the canvas's space and projected by its camera: the window's pixels on a GUI stage, the world on a
  *       world stage. Under a perspective camera it is world text: always distance-field, its tier from its size on screen.</li>
  *   <li>A {@link #layout} is drawn as built; a {@link #paragraph} or {@link #text} wraps at {@link #constraints} in
@@ -44,7 +48,7 @@ import java.util.function.Consumer;
  */
 public final class CgTextDraw {
 
-    /** What {@code text.shader} reads for a {@link CgStrokeAlign}: on the contour, outside it, inside it. */
+    /** What {@code text.shader} reads for an outline's {@link CgTextLayer.Align}: on the edge, outside it, inside it. */
     static final float ALIGN_CENTER = 0f, ALIGN_OUTSET = 1f, ALIGN_INSET = 2f;
 
     @Nullable
@@ -65,17 +69,19 @@ public final class CgTextDraw {
     PoseStack poseStack;
     @Nullable
     Matrix4f poseMatrix;
-    float strokeWidthEm;
-    int strokeArgb;
-    float strokeAlign = ALIGN_OUTSET;
-    float strokeOver;
-    boolean strokeRound = true;
-    boolean shadowsStroked;
+    CgTextStyle style = CgTextStyle.PLAIN;
+    /** Per glyph of the layout, its scope; null when no layer is scoped. Held, not copied. */
+    @Nullable
+    int[] glyphScopes;
+    /** Per layer of the style, the glyph scope it applies to, or -1 for every glyph; grow-only. */
+    int[] layerScopes = new int[0];
+    int scopedLayers;
     boolean contained = true;
     int clip;
     int spatialNode, effectNode;
     CgTextGamma gamma = CgTextGamma.initial();
-    final CgTextShadowList shadows = new CgTextShadowList();
+    @Nullable
+    private String transformedFrom, transformed;
 
     CgTextDraw(@Nullable CgTextBatch owner, @Nullable Consumer<CgTextDraw> queue) {
         this.owner = owner;
@@ -108,17 +114,13 @@ public final class CgTextDraw {
         rgba = 0xFFFFFFFF;
         poseStack = null;
         poseMatrix = null;
-        strokeWidthEm = 0f;
-        strokeArgb = 0;
-        strokeAlign = ALIGN_OUTSET;
-        strokeOver = 0f;
-        strokeRound = true;
-        shadowsStroked = false;
+        style = CgTextStyle.PLAIN;
+        glyphScopes = null;
+        scopedLayers = 0;
         contained = true;
         clip = 0;
         spatialNode = effectNode = 0;
         gamma = CgTextGamma.initial();
-        shadows.clear();
         return this;
     }
 
@@ -130,11 +132,9 @@ public final class CgTextDraw {
         return layout == other.layout && paragraph == other.paragraph && Objects.equals(text, other.text)
                 && font == other.font && family == other.family && maxWidth == other.maxWidth
                 && maxHeight == other.maxHeight && targetPx == other.targetPx && x == other.x && y == other.y
-                && rgba == other.rgba && strokeWidthEm == other.strokeWidthEm && strokeArgb == other.strokeArgb
-                && strokeAlign == other.strokeAlign && strokeOver == other.strokeOver
-                && strokeRound == other.strokeRound && shadowsStroked == other.shadowsStroked
-                && contained == other.contained && clip == other.clip && spatialNode == other.spatialNode
-                && effectNode == other.effectNode && gamma.equals(other.gamma) && shadows.sameAs(other.shadows);
+                && rgba == other.rgba && style == other.style && contained == other.contained && clip == other.clip
+                && spatialNode == other.spatialNode && effectNode == other.effectNode && gamma.equals(other.gamma)
+                && sameScopes(other);
     }
 
     /** Takes every field of {@code other} but its pose. */
@@ -150,18 +150,16 @@ public final class CgTextDraw {
         x = other.x;
         y = other.y;
         rgba = other.rgba;
-        strokeWidthEm = other.strokeWidthEm;
-        strokeArgb = other.strokeArgb;
-        strokeAlign = other.strokeAlign;
-        strokeOver = other.strokeOver;
-        strokeRound = other.strokeRound;
-        shadowsStroked = other.shadowsStroked;
+        style = other.style;
+        glyphScopes = other.glyphScopes == null ? null : other.glyphScopes.clone();
+        scopedLayers = other.scopedLayers;
+        if (layerScopes.length < other.scopedLayers) layerScopes = new int[other.layerScopes.length];
+        System.arraycopy(other.layerScopes, 0, layerScopes, 0, other.scopedLayers);
         contained = other.contained;
         clip = other.clip;
         spatialNode = other.spatialNode;
         effectNode = other.effectNode;
         gamma = other.gamma;
-        shadows.set(other.shadows);
         return this;
     }
 
@@ -215,7 +213,7 @@ public final class CgTextDraw {
         return this;
     }
 
-    /** The text's colour, {@code 0xAARRGGBB}; a styled span keeps its own. */
+    /** A tint over every layer of its style, {@code 0xAARRGGBB}: opaque white, the default, leaves them as they are. */
     public CgTextDraw color(int argb) {
         this.rgba = argb;
         return this;
@@ -236,71 +234,20 @@ public final class CgTextDraw {
     }
 
     /**
-     * An outline {@code widthEm} of the em wide, outside the contour; 0 or a transparent colour draws none.
+     * The style it is drawn in: its font where the draw names none, its layers, spacing and skew. The plain style (one
+     * white fill) by default.
      *
      * <pre>{@code
-     * .stroke(0.06f, 0xFF101418)
-     * .stroke(0.06f, argb).strokeAlign(CgStrokeAlign.CENTER)
-     * .stroke(0.06f, argb).strokeOverFill(true)
+     * canvas.text().style(TITLE).text("Level up!").at(x, y).submit();
      * }</pre>
-     *
-     * <ul>
-     *   <li>In em, since the raster size follows the pose. Clamped at {@link CgTextStroke#MAX_FIELD_WIDTH_EM}.</li>
-     *   <li>Moves the draw to the distance-field tier, down to {@code CgMsdfAtlasConfig.minAntialiasablePx()};
-     *       smaller, the stroke is dropped.</li>
-     * </ul>
      */
-    public CgTextDraw stroke(float widthEm, int argb) {
-        this.strokeWidthEm = widthEm;
-        this.strokeArgb = argb;
-        return this;
-    }
-
-    /** The four stroke values of a {@link CgTextStroke}; null for none. */
-    public CgTextDraw stroke(@Nullable CgTextStroke stroke) {
-        CgTextStroke s = stroke == null ? CgTextStroke.NONE : stroke;
-        return stroke(s.widthEm(), s.argb()).strokeAlign(s.align()).strokeOverFill(s.strokeOverFill());
-    }
-
-    /** The outline's width alone, in em. */
-    public CgTextDraw strokeWidth(float widthEm) {
-        this.strokeWidthEm = widthEm;
-        return this;
-    }
-
-    /** The outline's colour alone; alpha 0 draws nothing. */
-    public CgTextDraw strokeColor(int argb) {
-        this.strokeArgb = argb;
-        return this;
-    }
-
-    /** Where the outline sits on the contour. {@link CgStrokeAlign#OUTSET} by default. */
-    public CgTextDraw strokeAlign(CgStrokeAlign align) {
-        this.strokeAlign = align == CgStrokeAlign.CENTER ? ALIGN_CENTER
-                : align == CgStrokeAlign.INSET ? ALIGN_INSET : ALIGN_OUTSET;
-        return this;
-    }
-
-    /** {@code true} paints the outline over the fill; {@code false}, the default, behind it. */
-    public CgTextDraw strokeOverFill(boolean strokeOverFill) {
-        this.strokeOver = strokeOverFill ? 1f : 0f;
-        return this;
-    }
-
-    /** How the outline turns corners. {@link CgStrokeJoin#ROUND} by default, as Unreal's. */
-    public CgTextDraw strokeJoin(CgStrokeJoin join) {
-        this.strokeRound = join != CgStrokeJoin.MITRE;
-        return this;
-    }
-
-    /** Whether shadows take the outline's shape: false, Unreal's default; true as CSS {@code text-shadow}. */
-    public CgTextDraw shadowsStroked(boolean stroked) {
-        this.shadowsStroked = stroked;
+    public CgTextDraw style(CgTextStyle style) {
+        this.style = Objects.requireNonNull(style, "style");
         return this;
     }
 
     /**
-     * Whether the outline and the shadows' offsets stay inside the text's box, as Slate's runs keep them:
+     * Whether its style's outlines and shadow offsets stay inside the text's box, as Slate's runs keep them:
      * {@code true}, the default, moves the text in by their reach and {@link #measureSize} counts it; {@code false}
      * draws at {@link #at} and lets both overflow, as CSS does.
      */
@@ -310,56 +257,41 @@ public final class CgTextDraw {
     }
 
     /**
-     * How many shadows it casts, each set with {@link #shadow}; 0 by default. Growing it keeps those set.
+     * Scopes glyphs for {@link #layerScope}: {@code scopeByGlyph[i]} is the scope of the layout's glyph {@code i}.
+     * Read at submit, not copied. A scoped layer draws nothing for decorations.
      *
      * <pre>{@code
-     * draw.shadowCount(2)
-     *     .shadow(0, 0f, 0f, 4f, 0f, 0xFF44CCFF, false)   // a glow, on top
-     *     .shadow(1, 1f, 1f, 0f, 0f, 0x80000000, false);  // a drop shadow beneath it
-     * }</pre>
-     *
-     * <p>As Chrome paints {@code text-shadow}: per glyph, blurred in local space, the first on top and all beneath
-     * this draw's text.</p>
-     */
-    public CgTextDraw shadowCount(int count) {
-        shadows.count(count);
-        return this;
-    }
-
-    /** How many shadows it casts. */
-    public int shadowCount() {
-        return shadows.count();
-    }
-
-    /**
-     * Scopes glyphs for {@link #shadowScope}: {@code scopeByGlyph[i]} is the scope of the layout's glyph {@code i}.
-     * Read at submit, not copied. A scoped shadow casts nothing for decorations.
-     *
-     * <pre>{@code
-     * draw.shadowScopes(scopes).shadowCount(2)
-     *     .shadow(0, 1f, 1f, 1f, 0f, black, false)                     // every glyph
-     *     .shadow(1, 0f, 0f, 3f, 0f, gold, false).shadowScope(1, 0);    // scope 0's alone
+     * draw.style(withHighlight).scopes(scopes).layerScope(3, 0);   // the style's layer 3 on scope 0's glyphs alone
      * }</pre>
      */
-    public CgTextDraw shadowScopes(int[] scopeByGlyph) {
-        shadows.glyphScopes(scopeByGlyph);
+    public CgTextDraw scopes(int[] scopeByGlyph) {
+        this.glyphScopes = scopeByGlyph;
         return this;
     }
 
-    /** Restricts shadow {@code index} to the glyphs whose scope is {@code scope}; -1 is every glyph. */
-    public CgTextDraw shadowScope(int index, int scope) {
-        shadows.scope(index, scope);
+    /** Restricts the style's layer {@code layer} (its index, bottom first) to the glyphs whose scope is {@code scope}. */
+    public CgTextDraw layerScope(int layer, int scope) {
+        if (layer >= layerScopes.length) layerScopes = Arrays.copyOf(layerScopes, Math.max(layer + 1, layerScopes.length * 2));
+        for (int i = scopedLayers; i < layer; i++) layerScopes[i] = -1;
+        scopedLayers = Math.max(scopedLayers, layer + 1);
+        layerScopes[layer] = scope;
         return this;
     }
 
-    /**
-     * Shadow {@code index}: an offset in local pixels (right and down), {@code sigma} the blur's standard deviation
-     * (half a CSS blur radius), {@code spread} grown before blurring, {@code argb} its whole colour and opacity,
-     * {@code inset} inside the glyph. Negative sigma or spread reads as 0; transparent casts nothing.
-     */
-    public CgTextDraw shadow(int index, float offsetX, float offsetY, float sigma, float spread, int argb, boolean inset) {
-        shadows.set(index, offsetX, offsetY, sigma, spread, argb, inset);
-        return this;
+    /** The glyph scope layer {@code layer} applies to, or -1 for every glyph. */
+    int scopeOf(int layer) {
+        return layer < scopedLayers ? layerScopes[layer] : -1;
+    }
+
+    /** Glyph {@code glyph}'s scope, or {@link Integer#MIN_VALUE} where it has none. */
+    int glyphScope(int glyph) {
+        return glyphScopes != null && glyph < glyphScopes.length ? glyphScopes[glyph] : Integer.MIN_VALUE;
+    }
+
+    private boolean sameScopes(CgTextDraw other) {
+        if (!Arrays.equals(glyphScopes, other.glyphScopes) || scopedLayers != other.scopedLayers) return false;
+        for (int i = 0; i < scopedLayers; i++) if (layerScopes[i] != other.layerScopes[i]) return false;
+        return true;
     }
 
     /** The {@link CgClipTable} entry it is clipped by; 0 is none. */
@@ -435,6 +367,7 @@ public final class CgTextDraw {
         if (targetPx > 0 && (family != null || font != null)) return targetPx;
         if (family != null) return family.getPrimarySource().getKey().getTargetPx();
         if (font != null) return font.getTargetPx();
+        if (layout == null && style.font() != null) return stylePx();
         if (layout != null && layout.baked().fontKeys().length > 0) return layout.baked().fontKeys()[0].getTargetPx();
         return 0;
     }
@@ -443,8 +376,9 @@ public final class CgTextDraw {
         if (layout == null && paragraph == null && text == null) {
             throw new IllegalStateException("a text draw needs text(...), paragraph(...) or layout(...) before " + call + "()");
         }
-        if (layout == null && family == null && font == null) {
-            throw new IllegalStateException("a text draw needs font(...) or family(...) before " + call + "()");
+        if (layout == null && family == null && font == null && style.font() == null) {
+            throw new IllegalStateException("a text draw needs font(...), family(...) or a style with a font before "
+                    + call + "()");
         }
     }
 
@@ -455,8 +389,30 @@ public final class CgTextDraw {
         return poseStack != null ? poseStack.last().pose() : null;
     }
 
-    boolean strokeRequested() {
-        return strokeWidthEm > 0f && (strokeArgb >>> 24) != 0;
+    /** The style's size in whole pixels: the size its own font is drawn at. */
+    int stylePx() {
+        return Math.max(1, Math.round(style.px()));
+    }
+
+    /** The style's font at its own size, where the draw names no font of its own; null otherwise. */
+    @Nullable
+    CgFont styleFont() {
+        return font == null && family == null && layout == null && style.font() != null ? style.font(stylePx()) : null;
+    }
+
+    /** Its text in its style's case: allocates only when the text changes. */
+    String transformedText() {
+        if (style.transform() == CgTextStyle.Transform.NONE || text == null) return text;
+        if (!text.equals(transformedFrom)) {
+            transformedFrom = text;
+            transformed = style.transform(text);
+        }
+        return transformed;
+    }
+
+    /** Local pixels a Slate unit of its style is: its text's size over the style's own. */
+    float unit() {
+        return basePx() / Math.max(1e-6f, style.px());
     }
 
     /** Where the glyphs' origin lands: {@link #at}, moved in under {@link #contained}. */
@@ -468,19 +424,35 @@ public final class CgTextDraw {
         return contained ? y + outlineReach() + shadowReach(false, true) : y;
     }
 
-    private float outlineReach() {
-        if (!strokeRequested()) return 0f;
-        float share = strokeAlign == ALIGN_INSET ? 0f : strokeAlign == ALIGN_CENTER ? 0.5f : 1f;
-        return strokeWidthEm * share * basePx();
+    /** How far its outermost outline reaches past the glyphs, local pixels. */
+    float outlineReach() {
+        float reach = 0f;
+        for (CgTextLayer l : style.layers()) {
+            if (l.kind() != CgTextLayer.Kind.OUTLINE) continue;
+            float share = l.align() == CgTextLayer.Align.INSIDE ? 0f : l.align() == CgTextLayer.Align.CENTRE ? 0.5f : 1f;
+            reach = Math.max(reach, l.width() * share);
+        }
+        return reach * unit();
     }
 
     /** The outer shadows' furthest offset along one axis, before the text ({@code before}) or after it. */
     private float shadowReach(boolean horizontal, boolean before) {
         float reach = 0f;
-        for (int i = 0; i < shadows.count(); i++) {
-            if (shadows.inset(i)) continue;
-            float offset = horizontal ? shadows.x(i) : shadows.y(i);
+        for (CgTextLayer l : style.layers()) {
+            if (l.kind() != CgTextLayer.Kind.SHADOW || l.inset()) continue;
+            float offset = horizontal ? l.offsetX() : l.offsetY();
             reach = Math.max(reach, before ? -offset : offset);
+        }
+        return reach * unit();
+    }
+
+    /** How far the style paints past the layout, local pixels: the cull's slack. */
+    float reach() {
+        float reach = outlineReach();
+        for (CgTextLayer l : style.layers()) {
+            if (l.kind() != CgTextLayer.Kind.SHADOW) continue;
+            float offset = Math.max(Math.abs(l.offsetX()), Math.abs(l.offsetY()));
+            reach = Math.max(reach, (offset + (float) Math.ceil(3f * l.blur()) + l.spread()) * unit());
         }
         return reach;
     }

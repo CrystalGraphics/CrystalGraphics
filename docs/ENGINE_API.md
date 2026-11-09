@@ -120,7 +120,7 @@ world.draw(shard, crystal).instances(shards, CgGpuCount.at(alive, 0, capacity)).
 world.draw(CgMeshShapes.sphereLods(), smoke).at(x, y, z).transform(scale).submit();
 
 // A label: a CgTextDraw at a point, facing the camera or turned as a sign; depth-tested
-world.text("Spawn").at(x, y + 2, z).height(0.5f).font(font).stroke(0.08f, 0xFF000000).submit();
+world.text("Spawn").at(x, y + 2, z).height(0.5f).font(font).style(LABEL).submit();     // a CgTextStyle
 world.text(sign).at(x, y, z).rotation(facingSouth).anchor(0f, 0f).family(family).targetPx(48).submit();
 ```
 
@@ -923,7 +923,7 @@ begin, end or delete.
 ```java
 CgRenderStage.HUD.register(CgRenderStage.WORLD_WIDGETS, frame -> {
     frame.canvas().quad(DIGIT).texture(0, DIGITS).at(x, y).size(w, h).uv(u0, v0, u1, v1).color(argb).submit();
-    frame.canvas().text().text(damage).font(font).at(x, y - 12).color(argb).stroke(0.1f, 0xFF000000).submit();
+    frame.canvas().text().style(DAMAGE).text(damage).font(font).at(x, y - 12).color(argb).submit();
 });
 CgRenderStage.WORLD_TRANSPARENT.register(0, frame ->                       // camera-relative; world() is absolute
     frame.canvas().quad(GLOW).world(x, y, z).pose(facing).at(-0.5f, -0.5f).size(1f, 1f).submit());

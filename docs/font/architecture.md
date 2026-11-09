@@ -36,7 +36,6 @@ Which package owns what. For how a string moves through them, read
 | `CgBakedGlyphs`, `CgTextDecorationRect` | Flat per-glyph pen positions, ids and colours, and decoration rectangles, computed once per layout |
 | `CgStyledText`, `CgStyleSpan`, `CgFontFeature`, `CgTextDecoration` | Plain text plus styled ranges: bold, italic, colour, decorations, OpenType features, baseline shift |
 | `CgTextAlign`, `CgTextDirection` | Per-line alignment; paragraph direction for BiDi |
-| `CgTextStroke`, `CgStrokeAlign` | An outline: width in em, colour, alignment, over or under the fill |
 
 ### `text/richtext` — markup
 
@@ -144,4 +143,4 @@ public face is `api/font/CgSystemFonts`.
 5. `text/render/CgResolvedGlyphs.java` — glyphs to placements
 6. `text/cache/CgFontRegistry.java` — glyph supply
 7. `text/atlas/CgGlyphAtlas.java` — storage
-8. `text/render/CgTextShadowPlan.java` and `api/text/CgTextStroke.java` — effects
+8. `text/style/CgTextStyle.java`, `CgTextLayer.java` and `text/render/CgTextShadowPlan.java` — how it looks

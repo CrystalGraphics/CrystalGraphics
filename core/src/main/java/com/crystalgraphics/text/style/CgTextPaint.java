@@ -10,6 +10,8 @@ import java.util.Objects;
 import javax.annotation.Nullable;
 
 import com.crystalgraphics.api.material.CgMaterialDefinition;
+import com.crystalgraphics.api.material.CgMaterialDomain;
+import com.crystalgraphics.asset.tree.CgAssetException;
 
 /**
  * What a {@link CgTextLayer} is painted with: a colour, a gradient, or a text material (Unreal's font material). The
@@ -19,7 +21,7 @@ import com.crystalgraphics.api.material.CgMaterialDefinition;
  * CgTextPaint white = CgTextPaint.colour(0xFFFFFFFF);
  * CgTextPaint gold = CgTextPaint.gradient(CgTextPaint.Space.GLYPH, 90f,     // top to bottom of each glyph
  *         0f, 0xFFFFF0A0, 1f, 0xFFE09000);                                   // stops: t, then colour
- * CgTextPaint shimmer = CgTextPaint.material("mymod:materials/ui/shimmer");  // a Text-domain material
+ * CgTextPaint shimmer = CgTextPaint.material(shimmerDefinition);              // a Text-domain material
  * }</pre>
  *
  * <ul>
@@ -106,10 +108,21 @@ public final class CgTextPaint {
                 colours.clone(), null, null);
     }
 
-    /** A Text-domain material by id; the asset loader resolves it, a Java-built style at its first draw. */
+    /** A Text-domain material by id, as a file names one: the asset loader compiles it with the style. */
     public static CgTextPaint material(String id) {
         return new CgTextPaint(Kind.MATERIAL, 0xFFFFFFFF, Space.RUN, 0f, new float[0], new int[0],
                 Objects.requireNonNull(id, "id"), null);
+    }
+
+    /**
+     * A Text-domain material already compiled: a style built in Java.
+     *
+     * @throws CgAssetException when it is not a Text-domain material
+     */
+    public static CgTextPaint material(CgMaterialDefinition definition) {
+        definition.requireDomain(CgMaterialDomain.TEXT, "a text paint");
+        return new CgTextPaint(Kind.MATERIAL, 0xFFFFFFFF, Space.RUN, 0f, new float[0], new int[0], definition.id(),
+                definition);
     }
 
     /** This material paint with its compiled definition: the loader's. */

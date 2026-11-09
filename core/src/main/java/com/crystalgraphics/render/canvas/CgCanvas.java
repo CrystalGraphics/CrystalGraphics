@@ -35,7 +35,7 @@ import java.util.Arrays;
  *     CgCanvas canvas = frame.canvas();
  *     canvas.quad(DIGIT).texture(0, DIGITS).at(x, y).size(w, h).uv(u0, v0, u1, v1).color(argb).submit();
  *     canvas.curve(LINE).line(x0, y0, x1, y1).width(2f).color(argb).submit();
- *     canvas.text().text("12").font(font).at(x, y).stroke(0.1f, 0xFF000000).submit();
+ *     canvas.text().style(DAMAGE).text("12").font(font).at(x, y).submit();     // a CgTextStyle
  * });
  *
  * CgRenderStage.WORLD_TRANSPARENT.register(0, frame -> {

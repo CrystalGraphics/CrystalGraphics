@@ -227,6 +227,9 @@ final class CgTextShadowPlan {
                 continue;
             }
             boolean inset = shadows.inset(s);
+            // Only a shadow that casts the outline grows by it (Slate's bApplyOutlineToDropShadows).
+            boolean shadowStroked = stroked && shadows.outlined(s);
+            float outwardShadow = shadowStroked ? outwardLocal : 0f, inwardShadow = shadowStroked ? inwardLocal : 0f;
             float spreadLocal = shadows.spread(s);
             spreadTexels[s] = spreadLocal * texelsPerLocal;
             // Skia: sigma mapped by the transform; CgShadowCell caps it.
@@ -248,9 +251,9 @@ final class CgTextShadowPlan {
                 if (!blurred) {
                     float reachTexels = p.pxRange() * 0.5f - 1f;
                     float wantTexels = inset
-                            ? inwardLocal * texelsPerLocal + spreadTexels[s]
-                            : outwardLocal * texelsPerLocal + spreadTexels[s];
-                    if (!inset && spreadLocal == 0f && !stroked) {
+                            ? inwardShadow * texelsPerLocal + spreadTexels[s]
+                            : outwardShadow * texelsPerLocal + spreadTexels[s];
+                    if (!inset && spreadLocal == 0f && !shadowStroked) {
                         kind = PLAIN;
                     } else if (p.isDistanceField() && wantTexels <= reachTexels
                             // A spread reads the true distance, which only MTSDF's alpha carries.
@@ -261,7 +264,7 @@ final class CgTextShadowPlan {
                     }
                 } else if (inset && p.isMtsdf()) {
                     float reachTexels = p.pxRange() * 0.5f - 1f;
-                    float shrinkTexels = inwardLocal * texelsPerLocal + spreadTexels[s];
+                    float shrinkTexels = inwardShadow * texelsPerLocal + spreadTexels[s];
                     // Three sigma past the shrunk edge is where the Gaussian is spent.
                     float fitSigma = (reachTexels - shrinkTexels) / 3f;
                     if (sigmaTexels <= fitSigma) {
@@ -284,10 +287,10 @@ final class CgTextShadowPlan {
                 }
                 if (cell == null) {
                     cell = inset
-                            ? CgShadowCell.forInsetShadow(deviceSigma, (inwardLocal + spreadLocal) * devicePerLocal,
-                                    inwardLocal * devicePerLocal, shadows.x(s) * devicePerLocal,
+                            ? CgShadowCell.forInsetShadow(deviceSigma, (inwardShadow + spreadLocal) * devicePerLocal,
+                                    inwardShadow * devicePerLocal, shadows.x(s) * devicePerLocal,
                                     shadows.y(s) * devicePerLocal)
-                            : CgShadowCell.forOuterShadow(deviceSigma, (outwardLocal + spreadLocal) * devicePerLocal,
+                            : CgShadowCell.forOuterShadow(deviceSigma, (outwardShadow + spreadLocal) * devicePerLocal,
                                     effectiveTargetPx, registry.maxShadowCellPx());
                 }
                 CgFontKey glyphFont = baked.fontKeys()[g];
@@ -330,7 +333,7 @@ final class CgTextShadowPlan {
         boolean worldText, scoped;
         long evictionGeneration;
         float[] x = new float[0], y = new float[0], sigma = new float[0], spread = new float[0];
-        boolean[] inset = new boolean[0], casts = new boolean[0];
+        boolean[] inset = new boolean[0], casts = new boolean[0], outlined = new boolean[0];
         int[] scope = new int[0];
         /** Each glyph's scope when a shadow is scoped, as {@link CgTextShadowList#glyphScope} answers it. */
         int[] glyphScopes = new int[0];
@@ -349,7 +352,8 @@ final class CgTextShadowPlan {
             }
             for (int i = 0; i < shadowCount; i++) {
                 if (s.x(i) != x[i] || s.y(i) != y[i] || s.sigma(i) != sigma[i] || s.spread(i) != spread[i]
-                        || s.inset(i) != inset[i] || s.casts(i) != casts[i] || s.scopeOf(i) != scope[i]) {
+                        || s.inset(i) != inset[i] || s.casts(i) != casts[i] || s.scopeOf(i) != scope[i]
+                        || s.outlined(i) != outlined[i]) {
                     return false;
                 }
             }
@@ -381,6 +385,7 @@ final class CgTextShadowPlan {
                 spread = new float[n];
                 inset = new boolean[n];
                 casts = new boolean[n];
+                outlined = new boolean[n];
                 scope = new int[n];
                 this.spreadTexels = new float[n];
             }
@@ -392,6 +397,7 @@ final class CgTextShadowPlan {
                 spread[i] = s.spread(i);
                 inset[i] = s.inset(i);
                 casts[i] = s.casts(i);
+                outlined[i] = s.outlined(i);
                 scope[i] = s.scopeOf(i);
                 scoped |= scope[i] >= 0;
             }
