@@ -32,7 +32,7 @@ A sequence file loads once into a `CgSequenceDefinition` that every player of it
 channel's keys as flat columns, every binding resolved, and an **evaluation field** saying what is active at each tick.
 
 ```yaml
-# mymod:sequences/beam.yaml
+# assets/mymod/sequences/beam.yaml: the sequence mymod:beam (its id drops the sequences/ folder)
 _v: 1
 tick_resolution: 60000
 display_rate: 30
@@ -224,7 +224,7 @@ if (pop.finished()) hide(number);
 ```
 
 ```yaml
-# mymod:sequences/hud/pop.yaml: a widget's tracks are property tracks on the widget and its parts
+# assets/mymod/sequences/hud/pop.yaml, the sequence mymod:hud/pop: a widget's tracks are property tracks on the widget and its parts
 roles:
   - { id: b1, name: number, kind: caster }
 tracks:
@@ -251,7 +251,7 @@ A `subsequence` section plays another sequence inside this one. Its roles are th
 sequence's time as Unreal's subsequence sections place them:
 
 ```yaml
-# mymod:sequences/combo.yaml, at 1,000 ticks a second
+# assets/mymod/sequences/combo.yaml, the sequence mymod:combo, at 1,000 ticks a second
 tracks:
   - id: t1
     kind: subsequence

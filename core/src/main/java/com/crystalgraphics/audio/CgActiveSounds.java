@@ -288,6 +288,16 @@ public final class CgActiveSounds {
         return best < 0 ? 0 : (long) generation[best] << 32 | best;
     }
 
+    /** Where {@code id} is into {@code out}; false for one unplaced or ended. */
+    boolean position(long id, double[] out) {
+        int i = slot(id);
+        if (i < 0 || !placed[i]) return false;
+        out[0] = x[i];
+        out[1] = y[i];
+        out[2] = z[i];
+        return true;
+    }
+
     /** How many sounds are playing, voiced or virtual. */
     int count() {
         int n = 0;

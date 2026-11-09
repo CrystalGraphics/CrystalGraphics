@@ -133,12 +133,14 @@ final class CgSequenceCompiler {
         List<CgSequenceTrack> tracks = new ArrayList<>();
         Map<String, List<SectionRef>> triggered = new LinkedHashMap<>();
         List<Child> children = new ArrayList<>();
+        List<CgSequenceDefinition.SoundAttach> attachments = new ArrayList<>();
         int depth = 0;
         for (Map<?, ?> t : elements(tree, "tracks")) {
             CgSequenceTrack track = track(t, tracks.size());
             tracks.add(track);
             for (CgSequenceSection s : track.sections()) {
                 if (s.trigger() != null) triggered.computeIfAbsent(s.trigger(), k -> new ArrayList<>()).add(new SectionRef(track.index(), s.index()));
+                if (track.kind().equals("sound") && s.fields().get("attach") != null) attachments.add(soundAttach(track, s));
                 if (track.kind().equals("subsequence") || track.kind().equals("animation")) {
                     Child child = track.kind().equals("animation") ? notifies(track, s) : child(track, s);
                     if (child != null) {
@@ -155,7 +157,33 @@ final class CgSequenceCompiler {
                 Collections.unmodifiableList(roles), Collections.unmodifiableList(locators),
                 Collections.unmodifiableList(spawnables), Collections.unmodifiableList(composites),
                 Collections.unmodifiableList(tracks), CgSequenceField.build(tracks), Collections.unmodifiableMap(triggered),
-                Collections.unmodifiableList(children), depth);
+                Collections.unmodifiableList(children), Collections.unmodifiableList(attachments), depth);
+    }
+
+    /**
+     * A sound section's {@code attach}: keys {@code [tick, point]} in tick order. Only a track that binds nothing takes
+     * one, as Unreal reads {@code AttachActorData} only on a root audio track: a bound track's sound rides its binding.
+     */
+    private CgSequenceDefinition.SoundAttach soundAttach(CgSequenceTrack track, CgSequenceSection s) {
+        String path = "tracks." + track.id() + ".sections." + s.id() + ".attach";
+        if (track.binding().subject() != CgSequenceBinding.Subject.NONE) {
+            throw fail(path, "a bound sound track rides its binding: attach is for a track that binds nothing");
+        }
+        if (!(s.fields().get("attach") instanceof List<?> keys) || keys.isEmpty()) throw fail(path, "attach is a list of [tick, point] keys");
+        int[] ticks = new int[keys.size()];
+        List<CgSequenceBinding> points = new ArrayList<>();
+        for (int i = 0; i < keys.size(); i++) {
+            String at = path + "[" + i + "]";
+            if (!(keys.get(i) instanceof List<?> key) || key.size() != 2 || !(key.get(0) instanceof Number tick)) {
+                throw fail(at, "a key is [tick, point]");
+            }
+            ticks[i] = tick.intValue();
+            if (i > 0 && ticks[i] <= ticks[i - 1]) throw fail(at, "keys are in tick order, each after the last");
+            CgSequenceBinding point = binding(key.get(1), at);
+            if (point.subject() == CgSequenceBinding.Subject.NONE) throw fail(at, "a key's point names a role, a spawnable or a locator");
+            points.add(point);
+        }
+        return new CgSequenceDefinition.SoundAttach(track.index(), s.index(), ticks, Collections.unmodifiableList(points));
     }
 
     /** A post block's {@code materials}, each material a hard reference compiled before the sequence. */

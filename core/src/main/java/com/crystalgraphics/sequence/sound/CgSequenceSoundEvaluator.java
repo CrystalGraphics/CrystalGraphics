@@ -9,6 +9,7 @@ import javax.annotation.Nullable;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.joml.Quaternionf;
 
 import com.crystalgraphics.audio.CgAudioEngine;
 import com.crystalgraphics.audio.CgSoundAttenuation;
@@ -17,7 +18,9 @@ import com.crystalgraphics.audio.CgSoundRef;
 import com.crystalgraphics.sequence.CgSequenceEvaluator;
 import com.crystalgraphics.sequence.CgSequencePlayer;
 import com.crystalgraphics.sequence.CgSequencer;
+import com.crystalgraphics.sequence.definition.CgSequenceBinding;
 import com.crystalgraphics.sequence.definition.CgSequenceChannel;
+import com.crystalgraphics.sequence.definition.CgSequenceDefinition;
 import com.crystalgraphics.sequence.definition.CgSequenceSection;
 import com.crystalgraphics.sequence.definition.CgSequenceTrack;
 import com.crystalgraphics.sequence.time.CgSequenceEvaluationRange;
@@ -27,11 +30,14 @@ import com.crystalgraphics.world.CgAttachment;
  * The {@code sound} kind: Unreal's audio track ({@code MovieSceneAudioSystem}). A section's sound starts as play
  * crosses its start, on its sample, and stops at the section's end unless it plays until finished; a looping one
  * joined late starts at its age in the section, a one-shot only inside the one-shot window. Placed at its binding,
- * moving with it; unbound, unplaced.
+ * moving with it. Unbound, it rides its {@code attach} keys' points, stepped ({@code AttachActorData}, read by
+ * {@code MovieSceneAudioSystem} only on a root track), else plays unplaced.
  *
  * <pre>{@code
  * # a section of a sound track
  * - { from: 12, to: 60, fields: { sound: dragonforge:sounds/kame_loop.ogg, looping: true, start_offset: 0 } }
+ * # on a track that binds nothing: the right hand until tick 30, then the beam's tip
+ * - { from: 0, to: 90, fields: { sound: mymod:sounds/charge.ogg, attach: [[0, { role: caster, socket: hand_r }], [30, { spawnable: beam, node: tip }]] } }
  * }</pre>
  *
  * <ul>
@@ -40,6 +46,8 @@ import com.crystalgraphics.world.CgAttachment;
  *   <li>Its sound compiles at bind. A section it cannot play yet (a voice line's {@code speaker}, a {@code pitch}
  *       channel, a cue no kit table holds) is skipped with one warning naming it, and the rest of the sequence
  *       plays.</li>
+ *   <li>A point not there yet (a spawnable not spawned) leaves the sound unplaced until it is; one gone leaves it where
+ *       it last was.</li>
  * </ul>
  */
 public final class CgSequenceSoundEvaluator implements CgSequenceEvaluator {
@@ -56,6 +64,8 @@ public final class CgSequenceSoundEvaluator implements CgSequenceEvaluator {
         long touched = -1;
         /** A one-shot that played, or was skipped: never started again in this play. */
         boolean done;
+        /** Whether its sound was placed and follows {@link #at}. */
+        boolean placed;
 
         Playing(CgSequencePlayer player, CgSoundRef sound, @Nullable CgAttachment at, double startOffset, boolean looping,
                 boolean untilFinished) {
@@ -65,6 +75,32 @@ public final class CgSequenceSoundEvaluator implements CgSequenceEvaluator {
             this.startOffset = startOffset;
             this.looping = looping;
             this.untilFinished = untilFinished;
+        }
+    }
+
+    /** An unbound section's {@code attach}: the point of the key in force at the section's tick, else the last place. */
+    private static final class Stepped implements CgAttachment {
+        final CgSequenceDefinition.SoundAttach keys;
+        final CgAttachment[] points;
+        final double[] last = new double[3];
+        boolean known;
+        float tick;
+
+        Stepped(CgSequencePlayer player, CgSequenceDefinition.SoundAttach keys, String where) {
+            this.keys = keys;
+            points = new CgAttachment[keys.points().size()];
+            for (int i = 0; i < points.length; i++) points[i] = player.attachment(keys.points().get(i), where + ".attach[" + i + "]");
+        }
+
+        @Override
+        public boolean place(double[] point, @Nullable Quaternionf turn) {
+            if (points[keys.keyAt(tick)].place(point, turn)) {
+                System.arraycopy(point, 0, last, 0, 3);
+                known = true;
+            } else if (known) {
+                System.arraycopy(last, 0, point, 0, 3);
+            }
+            return known;
         }
     }
 
@@ -102,10 +138,23 @@ public final class CgSequenceSoundEvaluator implements CgSequenceEvaluator {
             skip(e.getMessage());
             return;
         }
-        CgAttachment at = track.binding() == null ? null : player.attachment(track.binding(), where);
+        CgSequenceDefinition.SoundAttach keys = player.definition().soundAttach(track.index(), section.index());
+        CgAttachment at = keys != null ? new Stepped(player, keys, where)
+                : track.binding().subject() == CgSequenceBinding.Subject.NONE ? null : player.attachment(track.binding(), where);
         double offset = section.fields().get("start_offset") instanceof Number n ? player.definition().seconds(n.intValue()) : 0;
         player.data(track, section, new Playing(player, sound, at, offset, Boolean.TRUE.equals(section.fields().get("looping")),
                 Boolean.TRUE.equals(section.fields().get("play_until_finished"))));
+    }
+
+    /**
+     * {@code p}'s sound placed at {@code point} and following its attachment from here, as the engine updates it: an
+     * attached audio component. Placed as it plays, the engine gave it its attenuation; placed {@code late}, it takes
+     * its own, else the default.
+     */
+    private void place(CgAudioEngine audio, Playing p, boolean late) {
+        audio.activeSounds().at(p.id, point[0], point[1], point[2]).follow(p.id, p.at, false);
+        if (late) audio.activeSounds().attenuation(p.id, p.sound.attenuation() != null ? p.sound.attenuation() : CgSoundAttenuation.DEFAULT);
+        p.placed = true;
     }
 
     private static void skip(String why) {
@@ -118,7 +167,9 @@ public final class CgSequenceSoundEvaluator implements CgSequenceEvaluator {
         CgAudioEngine audio = sequencer.audio();
         if (audio == null) return;
         p.touched = pass;
+        if (p.at instanceof Stepped stepped) stepped.tick = tick;
         if (p.id != 0 && audio.activeSounds().playing(p.id)) {
+            if (!p.placed && p.at != null && p.at.place(point, null)) place(audio, p, true);
             CgSequenceChannel volume = s.channel("volume");
             if (volume != null && volume.size() > 0) audio.activeSounds().gain(p.id, volume.eval(tick));
             return;
@@ -146,11 +197,8 @@ public final class CgSequenceSoundEvaluator implements CgSequenceEvaluator {
             p.id = audio.play(p.sound, CgSoundClass.SFX, x, point[1], point[2], gain, 1f, p.looping, Double.NaN, player.seed());
             audio.activeSounds().startOffset(p.id, sinceStart + p.startOffset);
         }
-        // Following its binding from here, as the engine updates it: an attached audio component.
-        if (!Double.isNaN(x)) audio.activeSounds().follow(p.id, p.at, false);
-        if (!Double.isNaN(x) && p.sound.attenuation() == null && p.sound.kind() != CgSoundRef.Kind.EVENT) {
-            audio.activeSounds().attenuation(p.id, CgSoundAttenuation.DEFAULT);
-        }
+        p.placed = false;
+        if (!Double.isNaN(x)) place(audio, p, false);
         if (!p.looping) p.done = true;
         if (!live.contains(p)) live.add(p);
     }

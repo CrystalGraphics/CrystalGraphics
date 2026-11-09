@@ -11501,7 +11501,7 @@ com/crystalgraphics/sequence/definition/CgSequenceDefinition
   extends java/lang/Record
   field public,static,final COMPILER Lcom/crystalgraphics/asset/load/CgAssetCompiler;
   field public,static,final MAX_DEPTH I
-  method public <init> (Ljava/lang/String;Lcom/crystalgraphics/sequence/time/CgFrameRate;Lcom/crystalgraphics/sequence/time/CgFrameRate;IILcom/crystalgraphics/sequence/definition/CgSequenceDefinition$Evaluation;Lcom/crystalgraphics/object/value/CgUnits;Ljava/util/List;Ljava/util/List;Ljava/util/List;Ljava/util/List;Ljava/util/List;Lcom/crystalgraphics/sequence/definition/CgSequenceField;Ljava/util/Map;Ljava/util/List;I)V
+  method public <init> (Ljava/lang/String;Lcom/crystalgraphics/sequence/time/CgFrameRate;Lcom/crystalgraphics/sequence/time/CgFrameRate;IILcom/crystalgraphics/sequence/definition/CgSequenceDefinition$Evaluation;Lcom/crystalgraphics/object/value/CgUnits;Ljava/util/List;Ljava/util/List;Ljava/util/List;Ljava/util/List;Ljava/util/List;Lcom/crystalgraphics/sequence/definition/CgSequenceField;Ljava/util/Map;Ljava/util/List;Ljava/util/List;I)V
   method public children ()Ljava/util/List;
   method public compositeSection (Ljava/lang/String;)Lcom/crystalgraphics/sequence/definition/CgSequenceDefinition$CompositeSection;
   method public compositeSections ()Ljava/util/List;
@@ -11515,6 +11515,8 @@ com/crystalgraphics/sequence/definition/CgSequenceDefinition
   method public role (Ljava/lang/String;)I
   method public roles ()Ljava/util/List;
   method public seconds (I)D
+  method public soundAttach (II)Lcom/crystalgraphics/sequence/definition/CgSequenceDefinition$SoundAttach;
+  method public soundAttachments ()Ljava/util/List;
   method public spawnables ()Ljava/util/List;
   method public start ()I
   method public tickResolution ()Lcom/crystalgraphics/sequence/time/CgFrameRate;
@@ -11586,6 +11588,18 @@ com/crystalgraphics/sequence/definition/CgSequenceDefinition$SectionRef
   extends java/lang/Record
   method public <init> (II)V
   method public section ()I
+  method public track ()I
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
+com/crystalgraphics/sequence/definition/CgSequenceDefinition$SoundAttach
+  access public,final,record
+  extends java/lang/Record
+  method public <init> (II[ILjava/util/List;)V
+  method public keyAt (F)I
+  method public points ()Ljava/util/List;
+  method public section ()I
+  method public ticks ()[I
   method public track ()I
   method public,final equals (Ljava/lang/Object;)Z
   method public,final hashCode ()I
@@ -19964,7 +19978,11 @@ com/crystalgraphics/world/CgEntityAttachments
   method public,static mark (IILorg/joml/Matrix4fc;FFF)V
   method public,static mark (IILorg/joml/Vector3dc;)V
   method public,static name (I)Ljava/lang/String;
+  method public,static of (I)Lcom/crystalgraphics/world/CgAttachment;
+  method public,static of (II)Lcom/crystalgraphics/world/CgAttachment;
   method public,static of (Lcom/crystalgraphics/platform/world/CgEntityQuery;II)Lcom/crystalgraphics/world/CgAttachment;
+  method public,static of (Ljava/lang/Object;)Lcom/crystalgraphics/world/CgAttachment;
+  method public,static of (Ljava/lang/Object;I)Lcom/crystalgraphics/world/CgAttachment;
   method public,static point (IIF[D[D)[D
   method public,static point (I[D[D)[D
   method public,static provide (Lcom/crystalgraphics/world/CgEntityAttachments$Provider;)Lcom/crystalgraphics/world/CgEntityAttachments$Registration;
@@ -20004,7 +20022,3 @@ com/crystalgraphics/world/CgWorldQueries
   method public,static level (Ljava/lang/Object;Ljava/lang/String;)Ljava/lang/Object;
   method public,static of (Ljava/lang/Object;)Lcom/crystalgraphics/platform/world/CgWorldQuery;
   method public,static saveDirectory (Ljava/lang/Object;)Ljava/nio/file/Path;
-  method public,static of (I)Lcom/crystalgraphics/world/CgAttachment;
-  method public,static of (II)Lcom/crystalgraphics/world/CgAttachment;
-  method public,static of (Ljava/lang/Object;)Lcom/crystalgraphics/world/CgAttachment;
-  method public,static of (Ljava/lang/Object;I)Lcom/crystalgraphics/world/CgAttachment;

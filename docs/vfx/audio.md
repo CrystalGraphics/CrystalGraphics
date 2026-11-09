@@ -109,6 +109,17 @@ A sequence's `sound` track plays each section's sound as Unreal's audio track do
 - A looping one joined late, by a seek or a late joiner, starts at its age in the section. A one-shot already passed
   is not played.
 - Bound to a role, it plays at the role and moves with it; unbound, it is heard everywhere.
+- An unbound track's section can ride points instead, with `attach` keys `[tick, point]` (Unreal's
+  `AttachActorData`). Each point is a binding's form (`{ role }`, `{ role, socket }`, `{ role, node }`,
+  `{ spawnable, node }`, `{ locator }`). The keys step: the first holds before its tick, and the sound jumps to each
+  next key's point at its tick. A point not there yet (a spawnable not spawned) leaves the sound unplaced until it is.
+  On a bound track `attach` fails at load: a bound sound rides its binding.
+
+  ```yaml
+  - { id: t2, kind: sound, sections: [
+      { id: charge, range: [0, 900], sound: mymod:sounds/charge.ogg, looping: true,
+        attach: [[0, { role: caster, socket: hand_r }], [300, { spawnable: beam, node: tip }]] } ] }
+  ```
 - A `volume` channel scales it as it plays.
 - A section the engine cannot play (a `pitch` channel, a cue or speaker no kit holds) is skipped with one warning
   naming it, and the rest of the sequence plays: a missing voice line never stops a cut.

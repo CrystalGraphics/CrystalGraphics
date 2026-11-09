@@ -493,6 +493,8 @@ public final class CgSequenceKinds {
             .property("looping", BOOL)
             .property("play_until_finished", BOOL)
             .property("attenuation", VALUE)
+            // keys [tick, point], stepped: an unbound track's sound riding a point (AttachActorData)
+            .property("attach", CgValueType.listOf(CgValueType.listOf(CgValueType.oneOf(INT, BINDING))))
             .register());
 
     static final CgType SUBTITLE = track("subtitle", section("subtitle")
