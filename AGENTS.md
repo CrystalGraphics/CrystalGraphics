@@ -165,7 +165,7 @@ Fabric's dev mod is `tasks.jar` bundling each module's `downgradedJar` —
 | Know who sets GPU state, on GL and Vulkan, and what crosses to the host | **[`docs/RENDER_STATE.md`](docs/RENDER_STATE.md)** | `platform/gl/state` |
 | Save and restore GL state across a pass (`CgGL` callers, until H7) | [`docs/ENGINE_API.md`](docs/ENGINE_API.md) § *GL State Save/Restore* | `gl/state/CLAUDE.md` |
 | Render text on screen | `docs/font/README.md` | `text/CLAUDE.md` |
-| Draw 2D quads, curves or text, in the world or on the screen | [`docs/ENGINE_API.md`](docs/ENGINE_API.md) § *The canvas* | `render/canvas/CLAUDE.md` |
+| Draw 2D quads, curves or text, in the world or on the screen (a HUD, damage numbers, markers) | **[`docs/CANVAS.md`](docs/CANVAS.md)** | `render/canvas/CLAUDE.md` |
 | Load a resource file (shader source, config, image) | [`docs/ENGINE_API.md`](docs/ENGINE_API.md) § *Resource I/O* | `util/io/CgIO` |
 | Init, resize or tear down a context | [`docs/ENGINE_API.md`](docs/ENGINE_API.md) § *CgGraphicsLifecycle* | — |
 | Test rendering without Minecraft | [Render testing](#render-testing--the-gl-debug-harness) | `gl-debug-harness/AGENTS.md` |

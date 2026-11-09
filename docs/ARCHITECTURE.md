@@ -73,6 +73,7 @@ The build view (Java levels, toolchains, what a consumer build includes) is `doc
 | [`docs/DEBUG_FLAGS.md`](DEBUG_FLAGS.md) | Every engine switch, generated from the variable registry (`CgVar`, platform's `com.crystalgraphics.variable`): its sources, declaring a new one, and the table |
 | [`docs/NATIVE_BUILD_PROCESS.md`](NATIVE_BUILD_PROCESS.md) | Rebuilding the FreeType/HarfBuzz/msdfgen natives |
 | [`docs/HOTSWAP_SETUP.md`](HOTSWAP_SETUP.md) | Hotswapping into a running 1.7.10 client |
+| **[`docs/CANVAS.md`](CANVAS.md)** | **Drawing anything flat**: quads, curves and text on a HUD, the screen or in the world, through a stage's canvas or one of your own; materials, order and batching, recording a frame |
 | **[`docs/RENDER_STATE.md`](RENDER_STATE.md)** | **Who owns GPU state**: pipelines on Vulkan, the GL device's emulated PSOs and state filter (and why GL 4.6 still needs one), the host hand-over at a section's edge, foreign GL inside a frame |
 | **[`docs/MINECRAFT_RENDERING_CONVENTIONS.md`](MINECRAFT_RENDERING_CONVENTIONS.md)** | **Before drawing into Minecraft's frame, and with every new Minecraft version**: how each version changed that frame (26.2's reversed depth, float depth, blend and sampler state left behind) and what the engine does about each |
 

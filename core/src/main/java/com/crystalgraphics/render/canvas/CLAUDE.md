@@ -8,7 +8,7 @@
 An item names its material, state and textures; consecutive matching items are one draw; order is kept across
 kinds. A canvas records into raster passes, or, recording nothing, draws at `flush()` through `CgImmediate`. The
 same canvas serves the world and the screen: a stage's frame hands one out (`CgStageFrame.canvas()`), under that
-firing's camera.
+firing's camera. **Using it: [`docs/CANVAS.md`](../../../../../../../../docs/CANVAS.md).**
 
 | File | Role |
 |------|------|

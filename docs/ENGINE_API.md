@@ -932,7 +932,7 @@ now.flush();
 
 - An item draws under its material's values as they are when it is submitted.
 - Text drawn while a canvas records on the thread (`CgCanvas.current()`) lands in it, in order with the rest.
-- Recording into passes of your own (`recordInto`, scissors, views) is `CgCanvas`'s javadoc.
+The whole guide, for consumers: **[`CANVAS.md`](CANVAS.md)**.
 
 **Package guide**: `render/canvas/CLAUDE.md`
 
