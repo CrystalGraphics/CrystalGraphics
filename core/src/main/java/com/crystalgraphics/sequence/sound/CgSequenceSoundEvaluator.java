@@ -46,8 +46,8 @@ import com.crystalgraphics.world.CgAttachment;
  *   <li>Its sound compiles at bind. A section it cannot play yet (a voice line's {@code speaker}, a {@code pitch}
  *       channel, a cue no kit table holds) is skipped with one warning naming it, and the rest of the sequence
  *       plays.</li>
- *   <li>A point not there yet (a spawnable not spawned) leaves the sound unplaced until it is; one gone leaves it where
- *       it last was.</li>
+ *   <li>An {@code attach} key whose point resolves nothing (a spawnable not spawned, or gone) leaves the sound
+ *       unplaced, heard everywhere, until one does. A binding that goes leaves its sound where it last was.</li>
  * </ul>
  */
 public final class CgSequenceSoundEvaluator implements CgSequenceEvaluator {
@@ -78,29 +78,21 @@ public final class CgSequenceSoundEvaluator implements CgSequenceEvaluator {
         }
     }
 
-    /** An unbound section's {@code attach}: the point of the key in force at the section's tick, else the last place. */
+    /** An unbound section's {@code attach}: the point of the key in force at the section's tick. */
     private static final class Stepped implements CgAttachment {
         final CgSequenceDefinition.SoundAttach keys;
         final CgAttachment[] points;
-        final double[] last = new double[3];
-        boolean known;
         float tick;
 
         Stepped(CgSequencePlayer player, CgSequenceDefinition.SoundAttach keys, String where) {
             this.keys = keys;
             points = new CgAttachment[keys.points().size()];
-            for (int i = 0; i < points.length; i++) points[i] = player.attachment(keys.points().get(i), where + ".attach[" + i + "]");
+            for (int i = 0; i < points.length; i++) points[i] = player.pointOf(keys.points().get(i), where + ".attach[" + i + "]");
         }
 
         @Override
         public boolean place(double[] point, @Nullable Quaternionf turn) {
-            if (points[keys.keyAt(tick)].place(point, turn)) {
-                System.arraycopy(point, 0, last, 0, 3);
-                known = true;
-            } else if (known) {
-                System.arraycopy(last, 0, point, 0, 3);
-            }
-            return known;
+            return points[keys.keyAt(tick)].place(point, turn);
         }
     }
 
@@ -169,7 +161,14 @@ public final class CgSequenceSoundEvaluator implements CgSequenceEvaluator {
         p.touched = pass;
         if (p.at instanceof Stepped stepped) stepped.tick = tick;
         if (p.id != 0 && audio.activeSounds().playing(p.id)) {
-            if (!p.placed && p.at != null && p.at.place(point, null)) place(audio, p, true);
+            boolean there = p.at != null && p.at.place(point, null);
+            if (there && !p.placed) {
+                place(audio, p, true);
+            } else if (!there && p.placed && p.at instanceof Stepped) {
+                // The key's point resolves nothing: detached, unspatialized until one does (MovieSceneAudioSystem)
+                audio.activeSounds().unplace(p.id);
+                p.placed = false;
+            }
             CgSequenceChannel volume = s.channel("volume");
             if (volume != null && volume.size() > 0) audio.activeSounds().gain(p.id, volume.eval(tick));
             return;

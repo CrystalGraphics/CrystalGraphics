@@ -197,6 +197,19 @@ public final class CgActiveSounds {
         return this;
     }
 
+    /**
+     * Takes {@code id} out of the world: heard everywhere, unattenuated, following nothing. Unreal's audio component
+     * detached with nothing to ride ({@code bAllowSpatialization} off); {@link #at} places it again.
+     */
+    public CgActiveSounds unplace(long id) {
+        int i = slot(id);
+        if (i >= 0) {
+            placed[i] = false;
+            follows[i] = null;
+        }
+        return this;
+    }
+
     /** How {@code id} fades and pans with distance once placed; null, it is heard everywhere at full volume. */
     public CgActiveSounds attenuation(long id, @Nullable CgSoundAttenuation a) {
         int i = slot(id);

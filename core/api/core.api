@@ -3141,6 +3141,7 @@ com/crystalgraphics/audio/CgActiveSounds
   method public startsAt (J)D
   method public stop (J)V
   method public time (J)D
+  method public unplace (J)Lcom/crystalgraphics/audio/CgActiveSounds;
   method public update (DLcom/crystalgraphics/audio/CgAudioListener;ZLcom/crystalgraphics/platform/audio/CgHostVolume;)V
   method public virtual (J)Z
   method public voice (J)Lcom/crystalgraphics/audio/CgAudioSource;
@@ -11136,6 +11137,7 @@ com/crystalgraphics/sequence/CgSequencePlayer
   method public placement (I)Lcom/crystalgraphics/world/CgAttachment;
   method public playbackSettings ()Lcom/crystalgraphics/sequence/CgSequencePlaybackSettings;
   method public playbackSettings (Lcom/crystalgraphics/sequence/CgSequencePlaybackSettings;)Lcom/crystalgraphics/sequence/CgSequencePlayer;
+  method public pointOf (Lcom/crystalgraphics/sequence/definition/CgSequenceBinding;Ljava/lang/String;)Lcom/crystalgraphics/world/CgAttachment;
   method public range ()Lcom/crystalgraphics/sequence/time/CgSequenceEvaluationRange;
   method public rate ()F
   method public rate (F)Lcom/crystalgraphics/sequence/CgSequencePlayer;

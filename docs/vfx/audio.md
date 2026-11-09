@@ -112,7 +112,8 @@ A sequence's `sound` track plays each section's sound as Unreal's audio track do
 - An unbound track's section can ride points instead, with `attach` keys `[tick, point]` (Unreal's
   `AttachActorData`). Each point is a binding's form (`{ role }`, `{ role, socket }`, `{ role, node }`,
   `{ spawnable, node }`, `{ locator }`). The keys step: the first holds before its tick, and the sound jumps to each
-  next key's point at its tick. A point not there yet (a spawnable not spawned) leaves the sound unplaced until it is.
+  next key's point at its tick. While the point in force resolves nothing (a spawnable not spawned, or gone), the
+  sound is unplaced, heard everywhere.
   On a bound track `attach` fails at load: a bound sound rides its binding.
 
   ```yaml

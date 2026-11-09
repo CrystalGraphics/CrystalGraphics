@@ -140,6 +140,23 @@ public class CgSequenceSoundTest {
         world.close();
     }
 
+    /** A key whose point resolves nothing leaves the sound unplaced, heard everywhere, as Unreal detaches it. */
+    @Test
+    public void aKeyResolvingNothingUnplacesTheSound() {
+        play(RIDE.replace("locators:\n", "roles:\n  - { id: r1, name: caster, kind: caster, absent: skip }\nlocators:\n")
+                .replace("[500, { locator: b }]", "[500, { role: caster }]"));
+        double[] at = new double[3];
+        sequencer.evaluate(0.2f);
+        audio.activeSounds().update(0.2, audio.listener(), false, CgHostVolume.NONE);
+        long hum = audio.activeSounds().latest();
+        assertTrue("placed at the locator", audio.activeSounds().position(hum, at));
+        sequencer.evaluate(0.4f);                                   // tick 600: the caster, never filled
+        audio.activeSounds().update(0.4, audio.listener(), false, CgHostVolume.NONE);
+        assertTrue(audio.activeSounds().playing(hum));
+        assertFalse("unplaced while its point is nothing", audio.activeSounds().position(hum, at));
+        world.close();
+    }
+
     /** A bound track rides its binding: attach on it fails at load, naming the section. */
     @Test
     public void attachOnABoundTrackFailsAtLoad() {
