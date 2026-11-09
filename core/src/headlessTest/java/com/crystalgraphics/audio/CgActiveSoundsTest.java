@@ -14,6 +14,7 @@ import java.util.Map;
 import org.junit.Test;
 
 import com.crystalgraphics.platform.audio.CgHostVolume;
+import com.crystalgraphics.world.CgAttachment;
 
 /** The active sounds: voices given by priority, groups culled by their rule, loops kept virtual, mixes faded. */
 public class CgActiveSoundsTest {
@@ -122,6 +123,31 @@ public class CgActiveSoundsTest {
         assertNotNull(a.voice(hum));
         assertEquals("2.5 s in, a 2 s loop is 0.5 s through", 0.5, sink.offsets.get(1), 1e-9);
         assertEquals(2.5, a.time(hum), 1e-9);
+    }
+
+    /** A sound following something moves with it; once it is gone it plays on where it was, or stops if told. */
+    @Test
+    public void aFollowingSoundMovesWithItsParentAndOutlivesIt() {
+        CgActiveSounds a = new CgActiveSounds(64, new Recording());
+        double[] where = {10, 0, 0};
+        boolean[] alive = {true};
+        CgAttachment mob = (point, turn) -> {
+            System.arraycopy(where, 0, point, 0, 3);
+            return alive[0];
+        };
+        long hum = play(a, 5, true), engine = play(a, 5, true);
+        a.attenuation(hum, TWENTY).follow(hum, mob, false);
+        a.attenuation(engine, TWENTY).follow(engine, mob, true);
+        update(a, 0.016, 0);
+        assertNotNull("heard at 10 blocks", a.voice(hum));
+        where[0] = 50;
+        update(a, 0.016, 0);
+        assertTrue("moved out of range with it", a.virtual(hum));
+        where[0] = 5;
+        alive[0] = false;
+        update(a, 0.016, 0);
+        assertTrue("left where it last was, still playing", a.playing(hum) && a.virtual(hum));
+        assertFalse("stopped with its parent", a.playing(engine));
     }
 
     /** A one-shot out of range ends: there is no point in it to come back to. */

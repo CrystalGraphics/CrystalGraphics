@@ -12,6 +12,7 @@ audio.play(new CgAudioTone(440, 0.25f, 1.0), 1f);
 
 | Class | Owns |
 |---|---|
+| `CgSounds` | the user's shorthand, one call a job, on the client world's engine (`engine()`, made at first use): `play2D`/`playAt`/`playAttached` by name (`UGameplayStatics::PlaySound2D`, `PlaySoundAtLocation`, `SpawnSoundAttached`), `loopAttached`, `load`, `play`/`loop` a loaded sound, `stop`, `preload`, `ref`, `push`/`pop` a mix; each name compiled once; nothing without an audio output |
 | `CgAudioEngine` | the client world's sound: the audio thread (`FMixerDevice`'s render thread), the command queue, the host's master slider and the game's pause, posted each `SUBMIT` |
 | `CgAudioMixer` | one buffer at a time: voices summed, the main gain, the clamp (`OnProcessAudioStream`). Plain Java: tests render it into an array |
 | `CgAudioClock` | the frame's audio time (Quartz's clock): a start at a time lands on its sample |
@@ -19,7 +20,7 @@ audio.play(new CgAudioTone(440, 0.25f, 1.0), 1f);
 | `CgAudioTone` | a sine: the test signal |
 | `CgSound`, `CgAudioSounds` | a loaded sound (`USoundWave`: resident 16-bit samples, or compressed bytes it streams from) and the loader that reads and decodes each path once |
 | `CgSoundVoice`, `CgSoundStream` | a resident sound playing, resampled linearly (pooled); a streamed one, played from a ring the engine's decode thread keeps a second ahead |
-| `CgActiveSounds` | every sound playing, on the frame thread (`FActiveSound`s): weighed by priority × volume, culled by group, the top 64 voiced, loops virtual (`FAudioVirtualLoop`). Talks to the engine only through its `Sink` |
+| `CgActiveSounds` | every sound playing, on the frame thread (`FActiveSound`s): weighed by priority × volume, culled by group, the top 64 voiced, loops virtual (`FAudioVirtualLoop`), each following its `CgAttachment` where it has one. Talks to the engine only through its `Sink` |
 | `CgSoundClass`, `CgSoundMix` | the class chain (`USoundClass`), its host slider and submix; mixes that fade class adjustments in and out (`USoundMix`) |
 | `CgSoundConcurrency` | a cap per kind and the rule for what goes (`USoundConcurrency`) |
 | `CgSubmix`, `CgSubmixEffect`, `CgLowPass`, `CgReverb` | the submix tree the mixer renders leaf to root, its effect chains (`FMixerSubmix`), a one-pole low-pass, a room reverb (Freeverb) on `reverb` |

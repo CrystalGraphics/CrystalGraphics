@@ -57,6 +57,34 @@ long id = audio.play(punch, CgSoundClass.SFX, x, y, z, 1f, 1f, false, Double.NaN
 - A cue name no table holds, or a speaker no cast holds, fails where its asset loads, naming it: a cue fails to load.
   A sequence skips that section instead (below).
 
+## `CgSounds`: one call each
+
+`CgSounds` is the shorthand for what most code does with sound, on the client world's engine, made at its first use.
+Unreal's `UGameplayStatics` plays the same way.
+
+```java
+CgSounds.play2D("minecraft:ui.button.click");                         // at the listener, the UI class
+long boom = CgSounds.playAt("minecraft:entity.generic.explode", x, y, z);   // in the world, the SFX class
+CgSounds.stop(boom);
+CgSounds.playAttached("minecraft:entity.blaze.ambient",                 // following something as it moves
+        CgEntityAttachments.of(entities, id, CgEntityAttachments.CENTRE));
+
+CgSound hum = CgSounds.load("mymod:sounds/engine_hum.ogg");           // a file of your own
+long id = CgSounds.loop(hum, CgSoundClass.AMBIENT, 0.6f);
+
+CgSounds.preload("kakarot:sound/V_PL_SKL_01");                        // at load, on a worker
+CgSounds.push(UNDERWATER);                                            // a mix, until popped
+CgSounds.engine().activeSounds().at(id, x, y, z);                     // anything past these
+```
+
+- `play2D` is unplaced and unattenuated, in `UI` unless told, which plays on behind a pause; `playAt` is placed and
+  attenuated as its sound says, in `SFX` unless told.
+- `playAttached` and `loopAttached` follow a `CgAttachment` (an entity, a socket, a sequence's spawnable), its place
+  asked each update. Once it is gone the sound plays on where it last was, or stops where told to; a loop always stops.
+- A play answers the sound's id, 0 where nothing played.
+- A name with no namespace, or one the host lacks, plays nothing and is logged once.
+- With no audio output (a dedicated server, the harness) nothing plays, `load` answers null and no engine is made.
+
 ## In cues and sequences
 
 A cue's `sounds` play as Unreal's gameplay cue notifies play them. One in its application or removal plays once. One

@@ -3124,6 +3124,7 @@ com/crystalgraphics/audio/CgActiveSounds
   method public attenuation (JLcom/crystalgraphics/audio/CgSoundAttenuation;)Lcom/crystalgraphics/audio/CgActiveSounds;
   method public culled ()I
   method public fadeOut (JFF)V
+  method public follow (JLcom/crystalgraphics/world/CgAttachment;Z)Lcom/crystalgraphics/audio/CgActiveSounds;
   method public gain (JF)Lcom/crystalgraphics/audio/CgActiveSounds;
   method public group (JLcom/crystalgraphics/audio/CgSoundConcurrency;)Lcom/crystalgraphics/audio/CgActiveSounds;
   method public hostDuck (Lcom/crystalgraphics/platform/audio/CgHostVolume$Category;)F
@@ -3470,6 +3471,26 @@ com/crystalgraphics/audio/CgSoundVoice
   method public position ()D
   method public render ([FIIIIF)Z
   method public reset (Lcom/crystalgraphics/audio/CgSound;IFZD)Lcom/crystalgraphics/audio/CgSoundVoice;
+com/crystalgraphics/audio/CgSounds
+  access public,final
+  extends java/lang/Object
+  method public,static engine ()Lcom/crystalgraphics/audio/CgAudioEngine;
+  method public,static load (Ljava/lang/String;)Lcom/crystalgraphics/audio/CgSound;
+  method public,static load (Ljava/lang/String;Z)Lcom/crystalgraphics/audio/CgSound;
+  method public,static loop (Lcom/crystalgraphics/audio/CgSound;Lcom/crystalgraphics/audio/CgSoundClass;F)J
+  method public,static loopAttached (Lcom/crystalgraphics/audio/CgSound;Lcom/crystalgraphics/world/CgAttachment;Lcom/crystalgraphics/audio/CgSoundClass;F)J
+  method public,static play (Lcom/crystalgraphics/audio/CgSound;Lcom/crystalgraphics/audio/CgSoundClass;F)J
+  method public,static play2D (Ljava/lang/String;)J
+  method public,static play2D (Ljava/lang/String;Lcom/crystalgraphics/audio/CgSoundClass;FF)J
+  method public,static playAt (Ljava/lang/String;DDD)J
+  method public,static playAt (Ljava/lang/String;Lcom/crystalgraphics/audio/CgSoundClass;DDDFF)J
+  method public,static playAttached (Ljava/lang/String;Lcom/crystalgraphics/world/CgAttachment;)J
+  method public,static playAttached (Ljava/lang/String;Lcom/crystalgraphics/world/CgAttachment;Lcom/crystalgraphics/audio/CgSoundClass;FFZ)J
+  method public,static pop (Lcom/crystalgraphics/audio/CgSoundMix;)V
+  method public,static preload (Ljava/lang/String;)V
+  method public,static push (Lcom/crystalgraphics/audio/CgSoundMix;)V
+  method public,static ref (Ljava/lang/String;)Lcom/crystalgraphics/audio/CgSoundRef;
+  method public,static stop (J)V
 com/crystalgraphics/audio/CgSubmix
   access public,final
   extends java/lang/Object

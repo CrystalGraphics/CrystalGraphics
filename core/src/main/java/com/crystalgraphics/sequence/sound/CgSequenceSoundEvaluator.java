@@ -118,9 +118,7 @@ public final class CgSequenceSoundEvaluator implements CgSequenceEvaluator {
         CgAudioEngine audio = sequencer.audio();
         if (audio == null) return;
         p.touched = pass;
-        if (p.at != null) p.at.place(point, null);
         if (p.id != 0 && audio.activeSounds().playing(p.id)) {
-            if (p.at != null) audio.activeSounds().at(p.id, point[0], point[1], point[2]);
             CgSequenceChannel volume = s.channel("volume");
             if (volume != null && volume.size() > 0) audio.activeSounds().gain(p.id, volume.eval(tick));
             return;
@@ -138,7 +136,7 @@ public final class CgSequenceSoundEvaluator implements CgSequenceEvaluator {
         float gain = 1f;
         CgSequenceChannel volume = s.channel("volume");
         if (volume != null && volume.size() > 0) gain = volume.eval(tick);
-        double x = p.at == null ? Double.NaN : point[0];
+        double x = p.at == null || !p.at.place(point, null) ? Double.NaN : point[0];
         if (crossed) {
             // On its sample: where its start fell in this frame, on the audio clock.
             double atTime = audio.clock().now() - player.passRemainingSeconds() - sinceStart / Math.max(1e-6f, player.rate());
@@ -148,7 +146,9 @@ public final class CgSequenceSoundEvaluator implements CgSequenceEvaluator {
             p.id = audio.play(p.sound, CgSoundClass.SFX, x, point[1], point[2], gain, 1f, p.looping, Double.NaN, player.seed());
             audio.activeSounds().startOffset(p.id, sinceStart + p.startOffset);
         }
-        if (p.at != null && p.sound.attenuation() == null && p.sound.kind() != CgSoundRef.Kind.EVENT) {
+        // Following its binding from here, as the engine updates it: an attached audio component.
+        if (!Double.isNaN(x)) audio.activeSounds().follow(p.id, p.at, false);
+        if (!Double.isNaN(x) && p.sound.attenuation() == null && p.sound.kind() != CgSoundRef.Kind.EVENT) {
             audio.activeSounds().attenuation(p.id, CgSoundAttenuation.DEFAULT);
         }
         if (!p.looping) p.done = true;

@@ -397,33 +397,19 @@ child project would be one a loader could forget, leaving a working GL backend b
 | `CgWorldQueries.client()`, `CgEntityQueries.client()` (core) | the client level's blocks and entities, over `CgLevels`; `NONE` with no level, on a server and in the harness |
 | `CgCamera` (core) | a write a host opts into: a camera offset; `NONE` ignores it |
 
-**The clipboard is on `CgInputService`, not a service of its own.** It is not conceptually input, but it
-is reached the same way — one loader-owned handle, needed by exactly the code that handles keys — and
-every implementation that provides one already provides the rest of the interface. Two methods do not earn
-a registration slot.
+**A sound by name is not a platform service** but the engine's own: `audio.CgSounds.play2D(name)` (unplaced, the
+`UI` class) or `playAt`, a host event read from the packs' `sounds.json` through `CgHostResources`. Minecraft's sound engine is never
+called.
 
-### No defaults in the bundle
+### Absent is a configuration, not an oversight
 
-**Every method on `CgPlatformService` and `CgInputService` is abstract, and `CgSoundService` ships no
-`NOOP` constant.** This is a deliberate rule, not an oversight:
+**A slot's absent-value is mandatory**: it exists for a capability whose absence is legitimate. A dedicated server
+has no keyboard, a headless test no clipboard, the harness no resource packs, and none of them has to register a
+stub to stay quiet: `NONE` answers nothing held, an empty clipboard, no pack. `CgService.get()` announces an absence
+once, on first read, so "nobody provided it" and "somebody chose the no-op" stay distinguishable in a log.
 
-> A default is an answer chosen on behalf of someone who never saw the question. A new platform compiles
-> cleanly while silently inheriting "no sound, no clipboard", and nothing reports it — inheriting a no-op
-> is indistinguishable from deciding on one. The same applies when a service is *added* here later: with
-> defaults, every existing bundle keeps compiling and quietly does without the new capability.
-
-Abstract methods make the compiler the reminder. **A platform with nothing to offer is still free to say
-so** — an empty `play`, a `getClipboard` returning `""` are both correct answers. They just have to be
-written in that platform's own source, where a reader can see the decision was made.
-`translateMouseCodes` is the subtlest: the identity mapping is right on every platform seen so far, which
-is precisely why inheriting it without looking would be a mistake on the first platform where it isn't.
-
-**A `CgService` slot is the deliberate opposite, and that is the whole point of having two halves.** Its
-absent-value is mandatory rather than forbidden, because a slot exists for a capability whose absence is a
-*legitimate configuration* rather than an oversight — the cursor is the worked example: an unpresented
-cursor is cosmetic, and a dedicated server, a headless test and a windowless fixture must not have to
-register a stub to stay quiet. `CgService.get()` still announces the absence once, on first read, so
-"nobody provided it" and "somebody chose the no-op" stay distinguishable in a log.
+**The bundle has no defaults**, the opposite rule: its two methods are what every platform must answer, and the
+compiler is the reminder.
 
 ### Java level
 
