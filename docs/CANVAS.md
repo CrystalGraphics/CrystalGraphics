@@ -203,19 +203,33 @@ to face where you want. For meshes, lights and anything with volume, use `CgWorl
 
 ## 7. Text
 
-Text drawn while a canvas records on the same thread lands in it, in order with your quads:
+Text is an item like any other: `canvas.text()` returns a draw, and its `submit()` lands it in order with your
+quads.
 
 ```java
 CgRenderStage.HUD.register(CgRenderStage.VIEWPORT_WIDGETS + 1, frame -> {
-    frame.canvas().quad(PANEL).at(8, 8).size(120, 24).color(0xC0101418).submit();
-    text.draw().text("Ready").font(font).at(14, 12).color(0xFFFFFFFF).submit();       // over the panel
+    CgCanvas canvas = frame.canvas();
+    canvas.quad(PANEL).at(8, 8).size(120, 24).color(0xC0101418).submit();
+    canvas.text().text("Ready").font(font).at(14, 12).color(0xFFFFFFFF).submit();     // over the panel
+    canvas.text().text(name).family(family).at(14, 40)
+            .stroke(0.08f, 0xFF000000).shadowCount(1).shadow(0, 1f, 1f, 1.5f, 0f, 0x80000000, false).submit();
 });
+
+CgTextDraw fps = canvas.retainedText().font(font).at(8, 8);       // held across frames, on that canvas
+fps.text(Integer.toString(currentFps)).submit();                   // each frame
+float height = fps.measure().totalHeight();                        // without drawing
 ```
 
-- The text renderer projects with its own context (`text.context()`), not the stage's: keep it the size of
-  what the stage draws in.
-- Labels in the world have their own path, `CgWorldRenderer.get().text(...)`: billboarded or turned, depth-tested,
-  batched across every label ([`ENGINE_API.md`](ENGINE_API.md)).
+- **It draws under the canvas's camera.** On a GUI stage it rasters at the screen's device pixels, so GUI-scaled
+  text stays sharp; on a world stage it is world text, distance-field and sized by how big it is on screen.
+- **It is culled** against the camera before anything is resolved: off-screen text costs a frustum test.
+- **`submit()` returns false** while a glyph or shadow is still building on a worker; it draws what is ready,
+  and the rest arrives a frame or two later.
+- **A draw's shadows, outline and fill layer within the draw**; across draws, submit order holds: a later label
+  covers an earlier one, shadow and all.
+- `canvas.text()` is a scratch like `quad()`: build and submit in one expression.
+- Labels in the world that persist and move have their own path, `CgWorldRenderer.get().text(...)`: billboarded
+  or turned, depth-tested, kept on the GPU across frames ([`ENGINE_API.md`](ENGINE_API.md)).
 - Outlines, shadows, fonts and layout: [`font/README.md`](font/README.md).
 
 ---
@@ -269,7 +283,9 @@ CgImmediate.execute(frame);
 | A shader without `#pragma cg_use quad` / `curve` | Refused at parse | Add the pragma |
 | A `new CgCanvas()` inside a stage renderer | Draws immediately, outside the stage's order and target | `frame.canvas()` |
 | A new canvas every frame | Works, but allocates | Keep one in a field |
+| Changing `CgImmediate.constants()` between an immediate canvas's draws | Text read the camera at each draw, quads at `flush()`: they disagree | `flush()` first, then change the camera |
 | Writing a material's block in place between items | Earlier items draw with the new values | Change it through `applyProperties`/`overrideBlock`, or per item with `custom0..2` |
+| A HUD sized in window pixels on a GUI stage | Drawn the GUI scale times too large: the stage is in GUI pixels | Size in GUI pixels, or draw under a `1 / guiScale` pose; text still rasters at device pixels |
 | A `world(...)` item on a GUI stage | The GUI canvas has no camera origin: placed as if at 0 | Project to pixels (§ 6) |
 | Forgetting to precache the material | Its first frame waits for the compile | [`PRECACHE.md`](PRECACHE.md) |
 
@@ -287,3 +303,7 @@ CgImmediate.execute(frame);
 | `sink(recorder)`, `CgPassRecorder` | `CgCanvas` itself |
 | `delete()`, `onContextDestroy` cleanup | nothing |
 | `CgQuadRenderer.Record` offsets | `CgQuadRecord` |
+| `CgTextRenderer.create()`, `text.draw()` | `canvas.text()` |
+| `text.retainedDraw()`, `queuedDraw(q)` | `canvas.retainedText()`, `CgTextDraw.queued(q)` |
+| `text.context(CgTextRenderContext.orthographic/world(...))` | the canvas's camera: the stage's, the recording's constants, or `CgImmediate.constants()` |
+| `beginBatch()` / `endBatch()`, `getDegradedDrawCount()` | nothing; `submit()` returns whether the draw was whole |

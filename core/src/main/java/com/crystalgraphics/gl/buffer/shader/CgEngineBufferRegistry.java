@@ -7,7 +7,7 @@ import com.crystalgraphics.render.canvas.CgQuadBatch;
 import com.crystalgraphics.render.canvas.CgCurveBatch;
 import com.crystalgraphics.render.property.CgPalette;
 import com.crystalgraphics.render.stage.CgDirectionalLights;
-import com.crystalgraphics.text.render.CgTextRenderer;
+import com.crystalgraphics.text.render.CgTextMaterials;
 
 import java.util.Arrays;
 import java.util.ArrayList;
@@ -112,7 +112,7 @@ public final class CgEngineBufferRegistry {
                 });
         // The text renderer's own block (projection, gamma, cut), a uniform block filled per renderer. Last, so the
         // tokens before it keep their bindings.
-        register("text", CgTextRenderer::textData, "TEXT_DATA");
+        register("text", CgTextMaterials::textData, "TEXT_DATA");
     }
 
     private CgEngineBufferRegistry() {}

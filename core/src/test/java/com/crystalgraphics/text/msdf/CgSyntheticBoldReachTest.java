@@ -74,7 +74,7 @@ public class CgSyntheticBoldReachTest {
             System.out.printf("[bold-reach] inward  reach: plain %.2f, bold %.2f (lost %.2f)%n",
                     plainInward, boldInward, plainInward - boldInward);
 
-            // The numbers CgTextRenderer#syntheticBoldShiftTexels and text.shader are built on. A
+            // The numbers synthetic bold in text.shader is built on. A
             // quarter-texel tolerance: the ends are sampled from a discrete grid, so the extreme texel
             // is wherever the glyph happens to put one, not exactly on the boundary.
             System.out.printf("[bold-reach] (the shift itself, if it cost anything: %.2f texels)%n",

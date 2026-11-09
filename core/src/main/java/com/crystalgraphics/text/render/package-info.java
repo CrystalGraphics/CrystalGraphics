@@ -1,48 +1,18 @@
 /**
- * Text rendering pipeline — draw-time orchestration, batching, and GL submission.
+ * Text as a canvas item: {@code canvas.text()} returns a {@link com.crystalgraphics.text.render.CgTextDraw}, and its
+ * {@code submit()} has the canvas's {@link com.crystalgraphics.text.render.CgTextBatch} resolve the layout's glyphs
+ * from the font registry's atlases, plan its shadows and land its quads on the canvas in paint order.
  *
- * <p>This package owns the draw-side of the text pipeline: everything from
- * receiving a {@link com.crystalgraphics.api.text.CgTextLayout}
- * through to the final {@code glDrawElements} calls. Residents:</p>
  * <ul>
- *   <li>{@link com.crystalgraphics.text.render.CgTextRenderer} —
- *       top-level render façade (layout → placements → sort → layer submit → draw)</li>
- *   <li>{@link com.crystalgraphics.text.render.context.CgTextRenderContext} —
- *       projection and scale-resolver state, for both 2D UI and 3D world text
- *       (no separate world-space context class; see its class javadoc)</li>
- *   <li>{@link com.crystalgraphics.text.render.context.CgTextScaleResolver} —
- *       effective raster tier resolution (orthographic, world-space)</li>
- *   <li>{@link com.crystalgraphics.text.render.context.ProjectedSizeEstimator} —
- *       MVP-based screen pixel coverage estimation for world-text raster tier</li>
- *   <li>{@link com.crystalgraphics.text.render.CgResolvedGlyphs} —
- *       resolves one draw's layout into flat per-glyph atlas placements</li>
+ *   <li>{@link com.crystalgraphics.text.render.CgTextRaster} — the size glyphs are rastered at, and bitmap or
+ *       distance field</li>
+ *   <li>{@link com.crystalgraphics.text.render.CgResolvedGlyphs} — a draw's layout as flat per-glyph placements</li>
+ *   <li>{@link com.crystalgraphics.text.render.CgTextShadowPlan} — what each glyph paints in each shadow</li>
+ *   <li>{@link com.crystalgraphics.text.render.CgTextMaterials} — {@code text.shader}'s fixed instances</li>
+ *   <li>{@link com.crystalgraphics.text.render.CgTextCapture} — a world label's records kept on the GPU</li>
  * </ul>
  *
- * <h3>Batch Infrastructure</h3>
- * <p>{@link com.crystalgraphics.text.render.CgTextRenderer} owns a private
- * {@code CgQuadBatch}. {@code beginBatch()}/{@code endBatch()} optionally batch multiple draws
- * together; {@code draw()} otherwise auto-wraps itself standalone. There is a single
- * {@code draw()} entry point for both 2D UI text and 3D world-space text — which
- * {@code CgTextScaleResolver} strategy the {@code CgTextRenderContext} argument holds
- * (built via {@code orthographic(...)} vs {@code world(...)}) determines which
- * behavior applies; there is no separate world-space context class. GL state
- * (shader bind/unbind, texture bind/unbind,
- * {@code CgRenderState} apply/clear) is managed directly by the renderer on
- * batch-key transitions.
- *
- * <p>No GPU object is owned in this package: glyph records go into the quad renderer's
- * engine buffer, and only CPU-side staging is the text renderer's own.</p>
- *
- * <h3>Boundary with cache/generation</h3>
- * <p>The renderer calls into
- * {@link com.crystalgraphics.text.cache.CgFontRegistry} (in the
- * {@code gl.text.cache} package) for glyph cache resolution. The registry owns
- * atlas allocation, generation scheduling, and cache key types — the renderer
- * only consumes the resulting
- * {@link com.crystalgraphics.api.font.CgGlyphPlacement} records.</p>
- *
- * @see com.crystalgraphics.text.cache.CgFontRegistry
- * @see com.crystalgraphics.gl.text.cache
- * @see com.crystalgraphics.gl.text.atlas
+ * <p>No GPU object is owned here: quads go into the canvas's stream. Glyph supply, atlases and cache keys are
+ * {@link com.crystalgraphics.text.cache.CgFontRegistry}'s.</p>
  */
 package com.crystalgraphics.text.render;

@@ -282,7 +282,7 @@ leaves.
 ## Buffers a material reads
 
 A material reads what its source declares: `Buffers { }`, bound by name with `material.buffer(name, buffer)`, and the
-engine tokens it names with `#pragma cg_use <token>` (`CgEngineBufferRegistry`; `text` is the text renderer's
+engine tokens it names with `#pragma cg_use <token>` (`CgEngineBufferRegistry`; `text` is `CgTextMaterials`'
 `TextData`, a uniform block). Nothing is injected into a shader at runtime, so a program's reads are fixed by its
 source (rhi SH6, Unreal's shader parameters). A renderer giving each of its materials its own contents for an engine
 uniform block uses `overrideBlock(block, contents)`, which a capture keeps by value.

@@ -2,6 +2,9 @@ package com.crystalgraphics.render.canvas;
 
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.state.CgRenderState;
+import com.crystalgraphics.api.texture.CgTexture;
+import com.crystalgraphics.render.CgImmediate;
+import com.crystalgraphics.render.CgViewFrustum;
 import com.crystalgraphics.render.draw.CgBindingTable;
 import com.crystalgraphics.render.draw.CgDrawChunk;
 import com.crystalgraphics.render.draw.CgOrder;
@@ -10,13 +13,17 @@ import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.render.graph.CgLoad;
 import com.crystalgraphics.render.graph.CgRasterPass;
 import com.crystalgraphics.render.graph.CgRecording;
+import com.crystalgraphics.text.render.CgTextBatch;
+import com.crystalgraphics.text.render.CgTextDraw;
+import org.joml.Matrix4f;
+import org.joml.Matrix4fc;
 
 import javax.annotation.Nullable;
 import java.util.Arrays;
 
 /**
  * What 2D draws go into -- quads, curves, cells, triangles, text -- in the world or on the screen (Unreal's
- * {@code FCanvas} over its render graph). Each item names its material and textures; consecutive items that match are
+ * {@code FCanvas} over its render graph). Guide: {@code docs/CANVAS.md}. Each item names its material and textures; consecutive items that match are
  * one draw, and items keep the order they were submitted in. A canvas records into raster passes of a recording, one
  * target at a time, or, recording nothing, draws at {@link #flush()}.
  *
@@ -28,6 +35,7 @@ import java.util.Arrays;
  *     CgCanvas canvas = frame.canvas();
  *     canvas.quad(DIGIT).texture(0, DIGITS).at(x, y).size(w, h).uv(u0, v0, u1, v1).color(argb).submit();
  *     canvas.curve(LINE).line(x0, y0, x1, y1).width(2f).color(argb).submit();
+ *     canvas.text().text("12").font(font).at(x, y).stroke(0.1f, 0xFF000000).submit();
  * });
  *
  * CgRenderStage.WORLD_TRANSPARENT.register(0, frame -> {
@@ -85,6 +93,9 @@ public final class CgCanvas {
     public interface Source {
         /** Calls {@code canvas.recordInto(...)}. */
         void open(CgCanvas canvas);
+
+        /** The constants it will record under, read before it opens (text culls and sizes by them). */
+        CgPassConstants constants();
     }
 
     /** A batcher's draws not yet landed. */
@@ -96,11 +107,6 @@ public final class CgCanvas {
         void drop();
     }
 
-    private static final ThreadLocal<CgCanvas> CURRENT = new ThreadLocal<>();
-    /** The canvas that was current when this one became so, current again at {@link #stop}. */
-    @Nullable
-    private CgCanvas outer;
-    private boolean current;
     @Nullable
     private Source source;
     @Nullable
@@ -109,16 +115,14 @@ public final class CgCanvas {
 
     private final CgQuadBatch quads = new CgQuadBatch(this);
     private final CgCurveBatch curves = new CgCurveBatch(this);
-
-    /**
-     * The canvas recording on the calling thread -- a render stage's during a renderer's turn, or one of the caller's
-     * between its {@link #recordInto} and {@link #stop} -- for code drawing on behalf of whoever called it (the text
-     * renderer); null where none records.
-     */
     @Nullable
-    public static CgCanvas current() {
-        return CURRENT.get();
-    }
+    private CgTextBatch text;
+
+    /** The camera later items draw under, as last recorded into or set. @see #cameraProjection */
+    private final Matrix4f cameraProjection = new Matrix4f(), cameraView = new Matrix4f();
+    private float cameraWidth = 1f, cameraHeight = 1f;
+    private final CgViewFrustum frustum = new CgViewFrustum();
+    private final Matrix4f localToClip = new Matrix4f();
 
     // ── Drawing ─────────────────────────────────────────────────────────
 
@@ -137,12 +141,48 @@ public final class CgCanvas {
 
     /**
      * {@code count} quad records already in {@link CgQuadRecord}'s layout, from record {@code from} of {@code src}, in
-     * spatial node {@code spatial}: for a caller that bakes its own, as the text renderer does, so a run of them is one
-     * copy. {@code origin}, {@code right} and {@code up} are final.
+     * spatial node {@code spatial}, {@code texture} at unit 0 where not null: for code that bakes its own, as text does,
+     * so a run of them is one copy. {@code origin}, {@code right} and {@code up} are final.
      */
-    public CgCanvas quads(CgMaterial material, @Nullable CgRenderState state, float[] src, int from, int count, int spatial) {
-        quads.records(material, state, src, from, count, spatial);
+    public CgCanvas quads(CgMaterial material, @Nullable CgRenderState state, @Nullable CgTexture texture, float[] src,
+                          int from, int count, int spatial) {
+        quads.records(material, state, texture, src, from, count, spatial);
         return this;
+    }
+
+    /**
+     * A text item: the canvas's one scratch draw, to build and {@link CgTextDraw#submit()} in one expression.
+     *
+     * <pre>{@code
+     * canvas.text().text("Ready").font(font).at(x, y).color(0xFFFFFFFF).submit();
+     * }</pre>
+     */
+    public CgTextDraw text() {
+        return textBatch().draw();
+    }
+
+    /** A text draw of the caller's own on this canvas, held across frames: change what changed, submit each frame. */
+    public CgTextDraw retainedText() {
+        return textBatch().retained();
+    }
+
+    /** Draws {@code draw}, made anywhere, on this canvas. @return whether everything drew as asked */
+    public boolean text(CgTextDraw draw) {
+        return textBatch().draw(draw);
+    }
+
+    /**
+     * How many text draws on this canvas resolved a glyph or shadow below what they asked for, still generating.
+     * Rises only: a damage-driven painter compares it around its paint and paints again when it moved.
+     */
+    public long textDegradedDraws() {
+        return text == null ? 0 : text.degradedDraws();
+    }
+
+    private CgTextBatch textBatch() {
+        CgTextBatch t = text;
+        if (t == null) text = t = new CgTextBatch(this);
+        return t;
     }
 
     /** A Bézier stroke or a line under {@code material}: the canvas's one scratch builder. */
@@ -187,6 +227,63 @@ public final class CgCanvas {
         return quads.pending() || curves.pending();
     }
 
+    // ── Camera ──────────────────────────────────────────────────────────
+
+    /**
+     * The projection later items draw under: the pass's while recording, an armed stage's before it opens, else
+     * {@code CgImmediate.constants()}'s. Read-only.
+     */
+    public Matrix4fc cameraProjection() {
+        refreshCamera();
+        return cameraProjection;
+    }
+
+    /** The view later items draw under. @see #cameraProjection */
+    public Matrix4fc cameraView() {
+        refreshCamera();
+        return cameraView;
+    }
+
+    /** The target's width in pixels later items draw at. @see #cameraProjection */
+    public float cameraWidth() {
+        refreshCamera();
+        return cameraWidth;
+    }
+
+    /** The target's height in pixels later items draw at. @see #cameraProjection */
+    public float cameraHeight() {
+        refreshCamera();
+        return cameraHeight;
+    }
+
+    /**
+     * Whether the rect {@code (x0, y0)-(x1, y1)} in {@code pose}'s space can reach the target: false only when it lies
+     * wholly outside the camera's view. For an item kind that skips its work for what is off screen, as text resolves
+     * no glyph for it. A rect in a spatial node's space cannot be tested: the node moves it after recording.
+     *
+     * <pre>{@code
+     * if (!canvas.visible(pose, x - slack, y - slack, x + w + slack, y + h + slack)) return;
+     * }</pre>
+     */
+    public boolean visible(@Nullable Matrix4fc pose, float x0, float y0, float x1, float y1) {
+        refreshCamera();
+        localToClip.set(cameraProjection).mul(cameraView);
+        if (pose != null) localToClip.mul(pose);
+        return frustum.set(localToClip).testRect(x0, y0, x1, y1);
+    }
+
+    private void refreshCamera() {
+        if (recording != null) return;
+        takeCamera(source != null ? source.constants() : CgImmediate.constants());
+    }
+
+    private void takeCamera(CgPassConstants constants) {
+        cameraProjection.set(constants.projection);
+        cameraView.set(constants.view);
+        cameraWidth = Math.max(1f, constants.width());
+        cameraHeight = Math.max(1f, constants.height());
+    }
+
     // ── World space ─────────────────────────────────────────────────────
 
     /**
@@ -215,12 +312,11 @@ public final class CgCanvas {
     // ── Recording ───────────────────────────────────────────────────────
 
     /**
-     * Makes this the thread's current canvas with nowhere chosen yet: the first draw has {@code source} choose
-     * ({@link Source#open}), so a stretch that draws nothing records nothing. Ended by {@link #stop}.
+     * Arms the canvas with nowhere chosen yet: the first draw has {@code source} choose ({@link Source#open}), so a
+     * stretch that draws nothing records nothing. Ended by {@link #stop}.
      */
     public void arm(Source source) {
         sealActive();
-        push();
         this.source = source;
     }
 
@@ -241,20 +337,6 @@ public final class CgCanvas {
         if (a == null) return;
         active = null;
         a.seal();
-    }
-
-    private void push() {
-        if (current) return;
-        outer = CURRENT.get();
-        CURRENT.set(this);
-        current = true;
-    }
-
-    private void pop() {
-        if (!current) return;
-        CURRENT.set(outer);
-        outer = null;
-        current = false;
     }
 
     private final float[] passBlock = new float[CgPassConstants.FLOATS];
@@ -292,7 +374,6 @@ public final class CgCanvas {
      */
     public void recordInto(CgRecording recording, CgGraphTexture target, CgLoad load, CgPassConstants constants) {
         sealActive();
-        push();
         source = null;
         endPass();
         stateChanges++;
@@ -300,6 +381,7 @@ public final class CgCanvas {
         this.target = target;
         this.load = load;
         constants.write(pendingBlock, 0);
+        takeCamera(constants);
         if (load.mask() != 0) openPass();
     }
 
@@ -309,6 +391,7 @@ public final class CgCanvas {
         if (Arrays.equals(scratchBlock, pendingBlock)) return;
         sealActive();
         System.arraycopy(scratchBlock, 0, pendingBlock, 0, CgPassConstants.FLOATS);
+        takeCamera(constants);
         stateChanges++;
     }
 
@@ -391,8 +474,8 @@ public final class CgCanvas {
     }
 
     /**
-     * Lands everything drawn, ends the open pass and records nowhere: what is drawn after it draws at {@link #flush()}, and
-     * the thread's current canvas is the one before. Drops the chunks {@link #taken} holds.
+     * Lands everything drawn, ends the open pass and records nowhere: what is drawn after it draws at {@link #flush()}.
+     * Drops the chunks {@link #taken} holds.
      */
     public void stop() {
         endPass();
@@ -400,7 +483,6 @@ public final class CgCanvas {
         target = null;
         source = null;
         clearTape();
-        pop();
     }
 
     /** Records nowhere, without ending the open pass or landing what is drawn: for a recording its owner is discarding. */
@@ -412,7 +494,6 @@ public final class CgCanvas {
         target = null;
         source = null;
         clearTape();
-        pop();
     }
 
     private void clearTape() {

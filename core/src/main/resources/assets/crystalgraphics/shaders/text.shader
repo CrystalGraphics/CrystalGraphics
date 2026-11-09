@@ -1,8 +1,7 @@
 // =============================================================================
 // CrystalShader -- text.shader
-// Consolidated bitmap/MSDF/MTSDF text material, replacing the three raw shaders
-// (bitmap_text/msdf_text/mtsdf_text .vert/.frag) previously hand-maintained by
-// CgTextRenderer.
+// Bitmap, MSDF and MTSDF glyphs, their outlines, shadows and lines: what a canvas's text items draw
+// (CgTextBatch), under the pass's camera like every other canvas item.
 // =============================================================================
 
 #type none
@@ -46,7 +45,7 @@
 // A retained world label's glyphs (CgWorldText), drawn as OBJECT instances: each record is in its label's own space,
 // and its node is the label's object record, whose model matrix places it under the firing's view.
 #pragma cg_feature WORLD_LABEL
-#pragma cg_permutation MSDF_MODE WORLD_LABEL   // the text renderer switches both: four programs precached
+#pragma cg_permutation MSDF_MODE WORLD_LABEL   // four fixed instances (CgTextMaterials), never toggled
 
 #include "crystalgraphics:shaders/lib/texel.glsl"
 #include "crystalgraphics:shaders/lib/rect_blur.glsl"
@@ -95,7 +94,7 @@ Properties {
     //
     // -4 and -5 are in the quad's unit parameter and sample nothing, so they are tested first, in either
     // mode. A sharp shadow of unstroked, unspread text is not an instance kind at all: it is an ordinary
-    // glyph in the shadow's colour. @see CgTextRenderer#planShadows
+    // glyph in the shadow's colour. @see CgTextShadowPlan
 }
 
 struct v2f {
@@ -126,29 +125,21 @@ Pass {
         DepthWrite OFF
     }
 
-    // Per-glyph model-view is baked CPU-side into origin/right/up (see CgQuadBatch.Quad#pose,
-    // called by CgTextRenderer#addQuadFromPlacement) and delivered per-instance via the
-    // CG_QUAD_* macros below (cg_env.glsl) -- no per-draw uniform transform.
+    // A draw's pose is baked into each record's origin/right/up; the pass's camera projects it, as every canvas item.
+    // A label's placement already holds the view, so only the projection follows it.
     //
-    // u_TextGammaSmall/Large/Ramp, beside it, are the renderer's CgTextGamma: two levels of (gamma, contrast,
-    // 1 / gamma) and (smallPx, largePx, enabled). They correct the FILL's coverage only -- shadows are blurred
-    // masks and a stroke's ring has a colour of its own.
-    //
-    // u_Projection reaches this shader through `#pragma cg_use text`, CgTextRenderer's "TextData" block
-    // (flat STD140 scope -- referenced directly, no block prefix). Deliberately
-    // NOT the engine's shared cg_ProjMatrix (CgFrameBlock): that's frame-owner state (the actual
-    // scene camera), and CgTextRenderContext's projection is renderer-local (often an
-    // orthographic UI projection unrelated to the scene camera) -- reusing cg_ProjMatrix would
-    // clobber whatever the real frame projection is for anything else sharing that frame.
+    // TextData (#pragma cg_use text) is the material instance's CgTextGamma, two levels of (gamma, contrast,
+    // 1 / gamma) and (smallPx, largePx, enabled), and a label depth pass's cut. Gamma corrects the FILL's coverage
+    // only: shadows are blurred masks and a stroke's ring has a colour of its own.
     void vertex(out v2f o) {
 #ifdef WORLD_LABEL
         int label = int(QUAD_DATA(CG_INSTANCE_ID).node);
         mat4 place = cg_Objects[label].modelMatrix;
         vec3 local = QUAD_DATA(CG_INSTANCE_ID).origin + CG_VERTEX_CORNER.x * QUAD_DATA(CG_INSTANCE_ID).right
                 + CG_VERTEX_CORNER.y * QUAD_DATA(CG_INSTANCE_ID).up;
-        gl_Position = u_Projection * (place * vec4(local, 1.0));
+        gl_Position = cg_ProjMatrix * (place * vec4(local, 1.0));
 #else
-        gl_Position = u_Projection * vec4(CG_QUAD_WORLD_POS, 1.0);
+        gl_Position = cg_ProjMatrix * cg_ViewMatrix * vec4(CG_QUAD_WORLD_POS, 1.0);
 #endif
         o.uv         = CG_QUAD_UV;
         o.color      = CG_QUAD_COLOR;
@@ -432,7 +423,7 @@ Pass {
                                       u_TextGammaSmall, u_TextGammaLarge, u_TextGammaRamp) * i.color.a;
         fragColor = vec4(i.color.rgb, alpha * boxClip);
 #endif
-        // A world label's depth pass writes its solid core alone (CgTextRenderer.drawCapturedDepth).
+        // A world label's depth pass writes its solid core alone (CgTextBatch.drawCapturedDepth).
         if (fragColor.a < u_TextCut.x) discard;
     }
 }

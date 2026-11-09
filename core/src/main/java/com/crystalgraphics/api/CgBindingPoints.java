@@ -181,7 +181,7 @@ public final class CgBindingPoints {
     public static int MATERIAL_PROPERTIES_UBO = -1;
 
     /**
-     * UBO binding slot for {@code CgTextRenderer}'s shared {@code "TextData"} block
+     * UBO binding slot for {@code CgTextBatch}'s shared {@code "TextData"} block
      * ({@code u_projection} — renderer-local, deliberately separate from the engine's shared
      * per-frame {@code cg_ProjMatrix}). Set to {@code maxUniformBufferBindings - 3} by
      * {@link #init(CgCapabilities)}, following the same top-of-range pattern as

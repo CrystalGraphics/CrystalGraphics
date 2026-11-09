@@ -3,7 +3,7 @@ package com.crystalgraphics.text.render;
 import java.util.Arrays;
 
 /**
- * One draw's text-shadow list, first shadow on top, as {@link CgTextRenderer.Draw} collects it: local
+ * One draw's text-shadow list, first shadow on top, as {@link CgTextDraw} collects it: local
  * pixels, a Gaussian standard deviation, straight ARGB.
  *
  * <p>Grow-only, so a draw that sets its shadows every frame allocates nothing. What each glyph paints in

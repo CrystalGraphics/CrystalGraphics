@@ -54,7 +54,7 @@ public final class CgBindingModel {
 
     /** {@code CgObjectDataBuffer}, the firing's object records or a draw's own: written in {@code cg_env.glsl}. */
     public static final Slot OBJECTS = new Slot(PASS, 0);
-    /** {@code CgTextRenderer}'s {@code TextData} block. */
+    /** {@code CgTextBatch}'s {@code TextData} block. */
     public static final Slot TEXT_DATA = new Slot(PASS, 1);
     /** {@code CgBonePalettes}, read by a skinned variant. */
     public static final Slot BONES = new Slot(PASS, 2);

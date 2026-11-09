@@ -17,7 +17,6 @@ import com.crystalgraphics.loading.watchdog.CgLoadWatchdog;
 import com.crystalgraphics.platform.service.CgProcessExit;
 import com.crystalgraphics.loading.task.CgLoadTask;
 import com.crystalgraphics.platform.CgPlatform;
-import com.crystalgraphics.lifecycle.CgGraphicsLifecycle;
 import com.crystalgraphics.platform.input.CgKeyCodes;
 import com.crystalgraphics.platform.service.CgInputService;
 import com.crystalgraphics.render.CgFrameClock;
@@ -28,7 +27,10 @@ import com.crystalgraphics.render.stage.CgHostFrame;
 import com.crystalgraphics.render.stage.CgHostView;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.world.CgWorldRenderer;
-import com.crystalgraphics.text.render.CgTextRenderer;
+import com.crystalgraphics.render.canvas.CgCanvas;
+import com.crystalgraphics.render.draw.CgPassConstants;
+import com.crystalgraphics.render.graph.CgLoad;
+import com.crystalgraphics.render.stage.CgStageFrame;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.trace.CgTraceReport;
 import com.crystalgraphics.trace.CgTraceRun;
@@ -226,7 +228,9 @@ public final class CgRenderDemo {
 
     /** After every other static: the constructor reads {@code MODE} and {@code KEYS}. */
     public static final CgRenderDemo INSTANCE = new CgRenderDemo();
-    private CgTextRenderer hud;
+    /** The HUD's canvas, recorded into the stage's target under a screen camera of the target's pixels. */
+    private final CgCanvas hud = new CgCanvas();
+    private final CgPassConstants hudCamera = new CgPassConstants();
     private CgFont hudFont, labelFont;
     private int hudPx, hudSide;
     private boolean hudFailed, hudDirty = true;
@@ -235,7 +239,6 @@ public final class CgRenderDemo {
     private int particleSampleCount, particles, frames;
     private long windowStart;
     private double fps;
-    private final Runnable drawHud = this::drawHud;
 
     private CgRenderDemo() {
         for (int i = 0; i < kinds.length; i++) {
@@ -259,7 +262,7 @@ public final class CgRenderDemo {
             hudSide = CgLoadingScreen.shown() && CgLoadingScreen.windowHeight() > 0
                     ? Math.min(CgLoadingScreen.windowWidth(), CgLoadingScreen.windowHeight())
                     : Math.min(frame.host().width(), frame.host().height());
-            frame.callback("demo.hud", drawHud);
+            drawHud(frame);
         });
         if (!CAPTURE.isEmpty()) {
             // After the composite: with the HDR scene on, the host's target holds the world only from then.
@@ -298,8 +301,6 @@ public final class CgRenderDemo {
         current = -1;
         prewarming = -1;
         allWarm = false;
-        if (hud != null && !hud.isDeleted()) hud.delete();
-        hud = null;
     }
 
     // ── scenes ────────────────────────────────────────────────────────────────
@@ -863,7 +864,7 @@ public final class CgRenderDemo {
      * Samples this frame for the FPS and the particles drawn (the median over the latest half second), and draws the
      * HUD; its text is laid out again only when a line changed.
      */
-    private void drawHud() {
+    private void drawHud(CgStageFrame frame) {
         if (hudFailed) return;
         long now = System.nanoTime();
         frames++;
@@ -896,15 +897,16 @@ public final class CgRenderDemo {
                 hudLayout = CgTextLayout.of(hudText(), hudFont).build();
                 hudDirty = false;
             }
-            if (hud == null) hud = CgTextRenderer.create();
-            // Drawn in a world pass with the host's depth bound: its z = 0 glyphs put on the nearest depth (+1 reversed,
-            // -1 standard) pass the test against every pixel, the showcase's sky seal included. The depth row stays
-            // non-zero, or the culler's far plane is all zeros and culls every glyph. Again each frame, since a resize
-            // rebuilds the ortho.
-            hud.context().projection().m22(-1.0e-4f).m32(CgGraphicsLifecycle.hostDepthReversed() ? 1f : -1f);
-            hud.beginBatch();
-            hud.draw().layout(hudLayout).font(hudFont).at(4f, 4f).color(HUD_COLOR).stroke(HUD_OUTLINE_EM, HUD_OUTLINE).submit();
-            hud.endBatch();
+            int w = Math.max(1, frame.host().width()), h = Math.max(1, frame.host().height());
+            hudCamera.view.identity();
+            hudCamera.projection.setOrtho(0f, w, h, 0f, -1f, 1f);
+            hudCamera.resolution(w, h);
+            hud.recordInto(frame.recording(), frame.target(), CgLoad.load(), hudCamera);
+            try {
+                hud.text().layout(hudLayout).font(hudFont).at(4f, 4f).color(HUD_COLOR).stroke(HUD_OUTLINE_EM, HUD_OUTLINE).submit();
+            } finally {
+                hud.stop();
+            }
         } catch (RuntimeException e) {
             hudFailed = true;
             LOGGER.error("[CgRenderDemo] the HUD failed; it stays off", e);

@@ -9,7 +9,6 @@ import com.crystalgraphics.api.text.CgTextDecorationRect;
 import com.crystalgraphics.api.text.CgTextLayout;
 import com.crystalgraphics.text.atlas.CgGlyphAtlas;
 import com.crystalgraphics.text.cache.CgFontRegistry;
-import com.crystalgraphics.text.render.context.CgTextRenderContext;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 
@@ -18,11 +17,11 @@ import java.util.Arrays;
 import java.util.List;
 
 /**
- * Resolves one {@code CgTextRenderer.drawInternal} call's {@link CgTextLayout} into flat,
+ * Resolves one {@code CgTextBatch.drawInternal} call's {@link CgTextLayout} into flat,
  * per-glyph atlas-placement data — font key/font, glyph id, subpixel bucket, pen position,
  * and finally each glyph's {@link CgGlyphPlacement}. Pure layout/atlas-cache concern: nothing
  * here touches GL, {@code CgQuadBatch}, or {@code CgMaterial} — that boundary starts once
- * {@code CgTextRenderer} reads {@link #glyphX}/{@link #glyphY}/{@link #placements} back out.
+ * {@code CgTextBatch} reads {@link #glyphX}/{@link #glyphY}/{@link #placements} back out.
  *
  * <h3>Why a cache is needed even with an O(1) atlas</h3>
  * <p>{@link #resolve} checks {@link CgGlyphPlacementCache} before doing any bake-array pass
@@ -40,7 +39,7 @@ import java.util.List;
  * <h3>Decoration resolution</h3>
  * <p>{@link #resolveDecorations} is the same kind of concern as glyph resolution — turning a
  * baked, atlas-agnostic description ({@link CgTextDecorationRect}) into something with a real
- * atlas texel and screen-space geometry — so it lives here rather than in {@code CgTextRenderer},
+ * atlas texel and screen-space geometry — so it lives here rather than in {@code CgTextBatch},
  * which only ever sees the already-resolved {@link ResolvedDecoration} list. It stays a
  * genuinely separate output from {@link #placements}, never merged into one array or one
  * cache — see that method's javadoc for why.</p>
@@ -61,7 +60,7 @@ final class CgResolvedGlyphs {
     private CgGlyphPlacement[] scratchPlacements = new CgGlyphPlacement[0];
 
     /** Pen position for glyph {@code i} of the most recent {@link #resolve} call relative to the layout's
-     * origin, valid for {@code [0, <returned glyphCount>)} -- read by {@code CgTextRenderer}, which adds
+     * origin, valid for {@code [0, <returned glyphCount>)} -- read by {@code CgTextBatch}, which adds
      * {@link #originX}/{@link #originY}. Points at either the scratch arrays (fresh resolve) or a cache
      * entry's own arrays (cache hit), which is why the origin is kept apart: an entry serves the layout
      * wherever it is drawn. */
@@ -71,7 +70,7 @@ final class CgResolvedGlyphs {
     float originX, originY;
     /** Effective per-glyph color for the most recent {@link #resolve} call — already resolved
      * as {@code span override != 0 ? span override : draw's default rgba}, read by
-     * {@code CgTextRenderer}. */
+     * {@code CgTextBatch}. */
     int[] argbColor = new int[0];
     /** Resolved atlas placement for glyph {@code i} of the most recent {@link #resolve} call. */
     CgGlyphPlacement[] placements = new CgGlyphPlacement[0];
@@ -122,7 +121,7 @@ final class CgResolvedGlyphs {
     private boolean hasDeferredGlyphs;
 
     int resolve(CgTextLayout layout, float x, float y, long frame,
-                CgTextRenderContext context, int effectiveTargetPx, boolean wantMsdf,
+                boolean world, int effectiveTargetPx, boolean wantMsdf,
                 CgFontKey fontKey, int rgba, float posedOriginX) {
         hasDeferredGlyphs = false;
         cached = false;
@@ -142,7 +141,7 @@ final class CgResolvedGlyphs {
         // has its distance-field early-return to prevent, reintroduced one level up where matches()
         // cannot see it. Costs nothing to exclude: the bitmap/MSDF handoff is the same 32px as
         // CgGlyphKey.SUB_PIXEL_BUCKET_MAX_PX, so anything taking the MSDF path has no buckets anyway.
-        boolean subPixelApplies = !context.isWorldText() && !wantMsdf;
+        boolean subPixelApplies = !world && !wantMsdf;
 
         // The RAW phase drives the buckets and a coarser one keys the entry -- see posePhaseKey.
         // Keying on the raw fraction would mint a fresh entry for every sub-pixel step of a moving
@@ -174,15 +173,14 @@ final class CgResolvedGlyphs {
         // entry's distanceField was false (so effectiveTargetPx must match exactly -- see that
         // class's javadoc) and it drifted, or the atlas changed and the refresh limit or the
         // per-frame refresh budget let it through. effectiveTargetPx is
-        // sampled here specifically to see whether it's drifting frame-to-frame during MSDF
-        // atlas warmup for world-space text (PerspectiveScaleResolver recomputes it every frame).
+        // sampled here to see whether it drifts frame to frame during MSDF atlas warmup.
         CgTrace.add(CgChannels.TEXT, "placementCache.miss", 1);
         CgTrace.counter(CgChannels.TEXT, "placementCache.miss.effectiveTargetPx", effectiveTargetPx);
         long missStartNanos = System.nanoTime();
 
         int glyphCount;
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT_DETAIL, "glyph.flatten")) {
-            glyphCount = flatten(layout, context, effectiveTargetPx, wantMsdf, rgba, posePhase);
+            glyphCount = flatten(layout, world, effectiveTargetPx, wantMsdf, rgba, posePhase);
         }
         // Salvage already-converged placements from the stale entry we're replacing, so a
         // refresh only re-queries the glyphs that can actually still improve. See
@@ -258,7 +256,7 @@ final class CgResolvedGlyphs {
      *
      * @return the number of glyphs flattened (may be 0 for an all-whitespace layout)
      */
-    private int flatten(CgTextLayout layout, CgTextRenderContext context, int effectiveTargetPx, boolean wantMsdf,
+    private int flatten(CgTextLayout layout, boolean world, int effectiveTargetPx, boolean wantMsdf,
                         int rgba, float posePhase) {
         CgBakedGlyphs baked = layout.baked();
         int glyphCount = baked.glyphCount();
@@ -267,7 +265,7 @@ final class CgResolvedGlyphs {
         for (int i = 0; i < glyphCount; i++) {
             CgFontKey fontKey = baked.fontKeys()[i];
             int glyphId = baked.glyphIds()[i];
-            int subPixel = resolveSubPixelBucket(context, fontKey, effectiveTargetPx,
+            int subPixel = resolveSubPixelBucket(world, fontKey, effectiveTargetPx,
                     posePhase, baked.penX()[i]);
             int overrideColor = baked.argbColor()[i];
             scratchFontKeys[i] = fontKey;
@@ -304,7 +302,7 @@ final class CgResolvedGlyphs {
      *       {@link #ensurePlacements} literally could not fire while this existed.</li>
      * </ul>
      *
-     * <p>Allowing the mix is nearly free at draw time: {@code CgTextRenderer}'s sort key is
+     * <p>Allowing the mix is nearly free at draw time: {@code CgTextBatch}'s sort key is
      * ordered {@code (mode, atlasId, pxRange)}, and since the atlas texture-array migration
      * one atlas family is a single texture id with a single pxRange regardless of page count.
      * So a mixed draw costs exactly <strong>two</strong> batches — one bitmap, one
@@ -346,7 +344,7 @@ final class CgResolvedGlyphs {
                 }
             }
             // The primary pass always runs with the same wantMsdf that flatten() built
-            // scratchGlyphKeys[i] with (see CgTextRenderer.drawInternal), so it can reuse
+            // scratchGlyphKeys[i] with (see CgTextBatch.drawInternal), so it can reuse
             // that key instead of allocating a second one for the same glyph this frame.
             // Only the rarer bitmap-fallback retry (mode differs) needs a fresh key.
             CgGlyphKey glyphKey = scratchGlyphKeys[i].isMsdf() == wantMsdf
@@ -423,7 +421,7 @@ final class CgResolvedGlyphs {
         if (effectiveTargetPx >= CgGlyphKey.SUB_PIXEL_BUCKET_MAX_PX) return 0;
 
         // THE REMAINDER OF THE SAME ROUNDING THE QUAD USES -- see CgGlyphKey.SUB_PIXEL_BUCKETS and
-        // CgTextRenderer.pixelSnapDelta. A threshold table decided this independently of the quad's
+        // CgTextBatch.pixelSnapDelta. A threshold table decided this independently of the quad's
         // floor, so a position landing a hair under an integer (7.9999997, which float arithmetic
         // produces constantly) took the top bucket while the quad floored down, putting the ink
         // 0.75 device px out. Rounding both to the quarter grid and splitting it makes that
@@ -446,13 +444,13 @@ final class CgResolvedGlyphs {
      * <p>That mismatch used to be handled by bailing out whenever the raster size differed from the
      * font key's — which is EVERY ui scale except 1, so bitmap UI text on a scaled display had no
      * sub-pixel positioning at all and could only move in whole device pixels. Since bitmap glyphs
-     * are also pixel-snapped ({@code CgTextRenderer.pixelSnapDelta}, because {@code GL_NEAREST} is
+     * are also pixel-snapped ({@code CgTextBatch.pixelSnapDelta}, because {@code GL_NEAREST} is
      * not invariant under sub-pixel translation), the result was text that visibly jumped a pixel at
      * a time while a window resized. Converting the offset instead keeps the buckets.</p>
      */
-    private static int resolveSubPixelBucket(CgTextRenderContext context, CgFontKey fontKey,
+    private static int resolveSubPixelBucket(boolean world, CgFontKey fontKey,
                                              int effectiveTargetPx, float rawPosePhase, float penX) {
-        if (context.isWorldText()) return 0;
+        if (world) return 0;
 
         // WHERE THE GLYPH ACTUALLY LANDS, in device pixels, is the only thing that decides its
         // bucket -- and that is the ACCUMULATED pen plus whatever sub-pixel phase the pose carries.
@@ -478,7 +476,7 @@ final class CgResolvedGlyphs {
     /**
      * Pre-resolved, single-draw-call-lifetime view of one {@link CgTextDecorationRect} — its
      * atlas texel already looked up and its quad geometry already computed, so
-     * {@code CgTextRenderer.submitSortedQuads} can sort/emit it exactly like a
+     * {@code CgTextBatch.submitSortedQuads} can sort/emit it exactly like a
      * {@link CgGlyphPlacement} without the two ever being the same type or living in the same
      * cache. {@code isDistanceField}/{@code pxRange} come straight off the atlas's own
      * {@link CgGlyphAtlas.WhiteTexel} (see that record's javadoc) — always equal to what a

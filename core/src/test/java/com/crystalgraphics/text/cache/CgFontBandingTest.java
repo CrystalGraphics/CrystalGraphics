@@ -3,7 +3,7 @@ package com.crystalgraphics.text.cache;
 import com.crystalgraphics.api.font.CgFont;
 import com.crystalgraphics.api.font.CgFontStyle;
 import com.crystalgraphics.text.msdf.CgMsdfAtlasConfig;
-import com.crystalgraphics.text.render.context.CgTextScaleResolver;
+import com.crystalgraphics.text.render.CgTextRaster;
 import org.junit.Test;
 
 import java.io.File;
@@ -71,7 +71,7 @@ public class CgFontBandingTest {
     /**
      * <b>The tier must never hold the field at a size the field cannot antialias.</b>
      *
-     * <p>{@code MSDF_ENTER_THRESHOLD} is a fossil of the pxRange 6 era, when it WAS the field's own
+     * <p>{@code CgTextRaster.MSDF_ENTER} is a fossil of the pxRange 6 era, when it WAS the field's own
      * floor; the floor has since moved to 15 and 7 and the threshold has not. That gap is fine and
      * deliberate -- they answer different questions -- but the ordering between them is not
      * negotiable. Let a band's floor rise past the exit threshold and the engine keeps the field tier
@@ -86,11 +86,11 @@ public class CgFontBandingTest {
         for (CgMsdfAtlasConfig band : new CgMsdfAtlasConfig[]{narrow, wide}) {
             int floor = band.minAntialiasablePx();
             System.out.println("[tier] band pxRange " + band.pxRange() + " floor " + floor
-                    + "px, tier exits the field at " + CgTextScaleResolver.MSDF_EXIT_THRESHOLD + "px");
+                    + "px, tier exits the field at " + CgTextRaster.MSDF_EXIT + "px");
             assertTrue("a face on pxRange " + band.pxRange() + " antialiases only from " + floor
                             + "px, but the tier keeps the field down to "
-                            + CgTextScaleResolver.MSDF_EXIT_THRESHOLD + "px -- below its own floor",
-                    CgTextScaleResolver.MSDF_EXIT_THRESHOLD >= floor);
+                            + CgTextRaster.MSDF_EXIT + "px -- below its own floor",
+                    CgTextRaster.MSDF_EXIT >= floor);
         }
     }
 

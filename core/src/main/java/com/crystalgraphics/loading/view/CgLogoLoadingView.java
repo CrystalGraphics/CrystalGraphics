@@ -14,7 +14,6 @@ import com.crystalgraphics.job.CgJobLane;
 import com.crystalgraphics.job.reply.CgReply;
 import com.crystalgraphics.loading.task.CgLoadTask;
 import com.crystalgraphics.loading.task.CgLoadTracker;
-import com.crystalgraphics.text.render.CgTextRenderer;
 import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.api.texture.CgMipmapConfig;
 import com.crystalgraphics.api.texture.CgTextureSpec;
@@ -128,7 +127,6 @@ public final class CgLogoLoadingView implements CgLoadingView {
             "List what loads under the loading screen's bar: each running task, its owner and how far along, a line each.");
     /** At most this many lines; the oldest running first. */
     private static final int MAX_LINES = 6;
-    @Nullable private CgTextRenderer text;
     @Nullable private CgFont font;
     private int fontPx;
     private boolean noFont;
@@ -150,13 +148,11 @@ public final class CgLogoLoadingView implements CgLoadingView {
             lines = now;
             layout = CgTextLayout.of(now, font).maxWidth(width).align(CgTextAlign.CENTER).build();
         }
-        if (text == null) text = CgTextRenderer.create();
         int ink = argb(alpha * 0.9f, 0xFFFFFFFF), edge = argb(alpha * 0.6f, 0xFF0A2A40);
-        text.beginBatch();
-        text.draw().layout(layout).font(font).at(x, y).color(ink).shadowCount(4)
+        canvas.text().layout(layout).font(font).at(x, y).color(ink).shadowCount(4)
                 .shadow(0, -1f, -1f, 0f, 0f, edge, false).shadow(1, 1f, -1f, 0f, 0f, edge, false)
                 .shadow(2, -1f, 1f, 0f, 0f, edge, false).shadow(3, 1f, 1f, 0f, 0f, edge, false).submit();
-        text.endBatch();
+        canvas.flush();
     }
 
     /** {@code owner  task  42%}, a line per running task. */

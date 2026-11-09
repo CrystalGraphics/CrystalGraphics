@@ -84,7 +84,7 @@ public class EngineOnTrackedBackendTest {
         CgBindingPoints.init(CgCapabilities.detect());
         CgFallbackTextures.init();
         // text.shader's engine token (`cg_use text`) is the text renderer's block: its class must have loaded.
-        Class.forName("com.crystalgraphics.text.render.CgTextRenderer");
+        Class.forName("com.crystalgraphics.text.render.CgTextMaterials");
     }
 
     @AfterClass

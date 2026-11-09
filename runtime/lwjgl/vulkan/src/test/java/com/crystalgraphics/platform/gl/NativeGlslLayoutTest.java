@@ -67,7 +67,7 @@ public class NativeGlslLayoutTest {
             CgGlState.setProvider(new CgTrackedStateProvider(tracked));
             CgBindingPoints.init(CgCapabilities.detect());
             CgFallbackTextures.init();
-            Class.forName("com.crystalgraphics.text.render.CgTextRenderer");
+            Class.forName("com.crystalgraphics.text.render.CgTextMaterials");
             List<String> walkFailures = new ArrayList<>();
             ShippedPrograms.linkEveryVariant(walkFailures);
             assertTrue(String.join("\n", walkFailures), walkFailures.isEmpty());

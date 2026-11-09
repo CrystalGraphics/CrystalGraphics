@@ -15,7 +15,7 @@ import com.crystalgraphics.text.atlas.CgGlyphAtlasPage;
 import com.crystalgraphics.text.atlas.CgGlyphAtlas;
 import com.crystalgraphics.text.msdf.CgMsdfAtlasConfig;
 import com.crystalgraphics.text.msdf.CgMsdfGenerator;
-import com.crystalgraphics.text.render.CgTextRenderer;
+import com.crystalgraphics.text.render.CgTextBatch;
 import com.crystalgraphics.text.shadow.CgShadowCell;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
@@ -30,7 +30,7 @@ import java.util.logging.Logger;
  *
  * <h3>Pipeline Role</h3>
  * <p>{@code CgFontRegistry} is the <em>supply side</em> of the text rendering
- * pipeline.  The renderer ({@link CgTextRenderer})
+ * pipeline.  The renderer ({@link CgTextBatch})
  * calls into the registry to convert a {@link CgGlyphKey} into an atlas-resident
  * {@link CgGlyphPlacement}. The registry owns atlas textures, generation
  * scheduling, and frame-tick bookkeeping; the renderer only consumes the
@@ -61,7 +61,7 @@ import java.util.logging.Logger;
  * captured at the effective raster size, not in logical layout units.  The
  * registry must never normalize these values into logical space; that
  * responsibility belongs exclusively to the renderer boundary
- * ({@code CgTextRenderer.appendQuads}).</p>
+ * ({@code CgTextBatch.appendQuads}).</p>
  *
  * <h3>Effective-Size-Aware Lookup</h3>
  * <p>When text is rendered under a PoseStack transform, the effective physical
@@ -85,14 +85,14 @@ import java.util.logging.Logger;
  * default-config path is a singleton.</p>
  *
  * <p><strong>Resolved:</strong> {@link #tickFrame(long)} still takes a caller-supplied
- * frame number, but {@code CgTextRenderer.draw(...)} no longer exposes a {@code frame}
+ * frame number, but {@code CgTextBatch.draw(...)} no longer exposes a {@code frame}
  * parameter — it reads {@code CgFrameClock.frameIndex()} internally, the
  * single authoritative per-real-frame counter incremented by
  * {@code CgGraphicsLifecycle.tickFrame()} (see that class's javadoc). All production
  * draw call sites therefore stamp glyphs from the same clock. {@link #tickFrame(long)}
  * itself remains a public entry point for harness code that intentionally drives a
  * synthetic, faster-than-real-time clock to force MSDF convergence before a screenshot
- * capture (e.g. {@code AtlasDumpScene}, {@code TextScene2D}, {@code WorldTextRenderHelper}).</p>
+ * capture (e.g. {@code AtlasDumpScene}, {@code TextScene2D}).</p>
  *
  * @see CgRasterFontKey
  * @see CgMsdfAtlasKey
@@ -617,7 +617,7 @@ public class CgFontRegistry {
      * <p><b>Distance field once per face, regardless of size.</b> Every size collapses to one atlas
      * entry, and it is warmed even when every size passed is a bitmap size, because the renderer
      * reaches for it anyway: the upgrade during convergence, any rotated or sheared draw, and any
-     * zoom past {@code CgTextScaleResolver.MSDF_ENTER_THRESHOLD}.</p>
+     * zoom past {@code CgTextRaster.MSDF_ENTER}.</p>
      *
      * <p><b>Bitmap once per size below that threshold</b>, at sub-pixel bucket 0 only. A run's glyphs
      * land on all four buckets, so this covers about a quarter of a label; warming all four quadrupled
@@ -1261,7 +1261,7 @@ public class CgFontRegistry {
      * {@code fontKey} at this raster tier — the same key transformation
      * {@link #ensureGlyph} uses, so a decoration line drawn alongside this font's glyphs
      * samples from the exact atlas/page those glyphs are already on, needing no extra material
-     * transition. Used by {@code CgTextRenderer} to draw underline/strikethrough quads.
+     * transition. Used by {@code CgTextBatch} to draw underline/strikethrough quads.
      *
      * @param effectiveTargetPx ignored when {@code msdf} is {@code true} (MSDF atlases are
      *                          keyed by font identity only, not raster size — see

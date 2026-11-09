@@ -7,7 +7,6 @@ import com.crystalgraphics.api.font.CgGlyphKey;
 import com.crystalgraphics.api.font.CgGlyphPlacement;
 import com.crystalgraphics.api.text.CgBakedGlyphs;
 import com.crystalgraphics.text.cache.CgFontRegistry;
-import com.crystalgraphics.text.render.context.CgTextScaleResolver;
 import com.crystalgraphics.text.shadow.CgMaskBlurFilter;
 import com.crystalgraphics.text.shadow.CgShadowCell;
 import com.crystalgraphics.trace.CgTrace;
@@ -42,7 +41,7 @@ import java.util.Map;
  * <p><b>A blurred inset reads the field when the field can hold it.</b> An inset cell carries the glyph's
  * own outline as its clip, and a cell is a bitmap at the raster size, which says nothing about the size on
  * screen for world text (always distance-field, rasterised around the font's own size) and stops growing at
- * {@link CgTextScaleResolver#MAX_EFFECTIVE_PX} for UI text. Seen larger than that, the clip stair-steps
+ * {@link CgTextRaster#MAX_PX} for UI text. Seen larger than that, the clip stair-steps
  * and its soft edge darkens the canvas just outside the crisp glyph. From an MTSDF field the clip is the
  * glyph's own edge at any size, and the hole is a Gaussian falloff of its true distance, exact along a
  * straight edge. The blur has to fit the field's reach: when it does not, world text and a capped UI raster
@@ -206,7 +205,7 @@ final class CgTextShadowPlan {
         int baseTargetPx = fontKey.getTargetPx();
         // Whether a cell can be magnified on screen: world text's raster never follows its size there, and a
         // UI raster at the cap may be drawn at any size above it.
-        boolean rasterCapped = worldText || effectiveTargetPx >= CgTextScaleResolver.MAX_EFFECTIVE_PX;
+        boolean rasterCapped = worldText || effectiveTargetPx >= CgTextRaster.MAX_PX;
         // Device pixels per local pixel, as the raster tier sees it.
         float devicePerLocal = effectiveTargetPx / (float) Math.max(1, baseTargetPx);
         float atlasScalePx = registry.getResolvedMsdfConfig(fontKey).atlasScalePx();
@@ -216,8 +215,8 @@ final class CgTextShadowPlan {
         boolean stroked = strokeWidthTexels > 0f;
         float strokeLocal = stroked ? strokeWidthTexels / texelsPerLocal : 0f;
         float outwardLocal = !stroked ? 0f
-                : strokeAlign == CgTextRenderer.ALIGN_CENTER ? strokeLocal * 0.5f
-                : strokeAlign == CgTextRenderer.ALIGN_INSET ? 0f : strokeLocal;
+                : strokeAlign == CgTextDraw.ALIGN_CENTER ? strokeLocal * 0.5f
+                : strokeAlign == CgTextDraw.ALIGN_INSET ? 0f : strokeLocal;
         float inwardLocal = strokeLocal - outwardLocal;
 
         boolean anyDeferred = false;

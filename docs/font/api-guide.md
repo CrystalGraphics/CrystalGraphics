@@ -1,12 +1,12 @@
 # Text API
 
-Three steps: load **fonts**, describe a **layout**, **draw** it through a `CgTextRenderer`.
+Three steps: load **fonts**, describe a **layout**, **draw** it on a canvas ([`../CANVAS.md`](../CANVAS.md)).
 
 ```java
 CgFont inter = CgFont.load("assets/mymod/fonts/Inter-Regular.ttf", CgFontStyle.REGULAR, 16);   // 16 px font
-CgTextRenderer text = CgTextRenderer.create();                                                 // once, on the GL thread
 
-text.draw().text("Inventory").font(inter).at(8, 12).color(0xFFFFFFFF).submit();                 // every frame
+CgRenderStage.HUD.register(CgRenderStage.VIEWPORT_WIDGETS, frame ->                            // every frame
+        frame.canvas().text().text("Inventory").font(inter).at(8, 12).color(0xFFFFFFFF).submit());
 ```
 
 Everything below is a variation on those three lines.
@@ -96,16 +96,16 @@ CgTextLayout.of(new CgStyledText(plain, spans), group).shape();   // CgStyleSpan
 
 ## 3. Drawing
 
-`CgTextRenderer.create()` makes a renderer whose screen context follows the window. Use
-`createManualSized()` when it should not, and size it yourself with
-`text.context().update(viewportWidthPx, viewportHeightPx)`. Call `delete()` when you are done with it.
+Text draws on a `CgCanvas`: a stage's `frame.canvas()`, or a canvas of your own (`../CANVAS.md` § 8). It is
+placed in the canvas's space and projected by its camera: GUI pixels on a GUI stage, rastered at the screen's
+device pixels; the world on a world stage (§ 4). Nothing to create, size or delete.
 
 ### The three forms
 
 ```java
-text.draw().text("Score: " + score).font(regular).at(x, y).submit();          // laid out and cached for you
-text.draw().paragraph(paragraph).family(family).constraints(240, 0).at(x, y).submit();
-text.draw().layout(laid).at(x, y).submit();                                    // drawn exactly as laid out
+canvas.text().text("Score: " + score).font(regular).at(x, y).submit();        // laid out and cached for you
+canvas.text().paragraph(paragraph).family(family).constraints(240, 0).at(x, y).submit();
+canvas.text().layout(laid).at(x, y).submit();                                  // drawn exactly as laid out
 ```
 
 ### The request
@@ -117,17 +117,17 @@ text.draw().layout(laid).at(x, y).submit();                                    /
 | `targetPx(px)` | re-sizes the font or family for this draw only | the size it was loaded at |
 | `at(x, y)` | the first line's top-left, in layout px | `(0, 0)` |
 | `color(argb)` | the text's colour; a styled span keeps its own | opaque white |
-| `pose(poseStack)` | the transform into the screen or world | the renderer's pose, else identity |
+| `pose(poseStack)` · `pose(matrix)` | the transform into the canvas's space, read at `submit()` | identity |
 | `constraints(maxWidth, maxHeight)` | the wrap box for `text` and `paragraph`; ignored by `layout`. `0` or less is unbounded | unbounded |
 | `measure()` | returns the `CgTextLayout` `submit()` would draw, without drawing | |
-| `submit()` | draws, and returns the renderer | |
+| `submit()` | draws; returns false while a glyph or shadow is still building | |
 
-**`constraints` are on-screen pixels on a 2D draw:** the renderer divides them by the pose's scale
+**`constraints` are on-screen pixels on a 2D draw:** the draw divides them by the pose's scale
 before wrapping, so a 240 px column stays 240 px wide as the pose zooms, and the line breaks change
 instead. On world text they are layout pixels, and never re-wrap as the camera moves.
 
 ```java
-CgTextRenderer.Draw title = text.draw().text(label).font(regular).constraints(300, 0).pose(pose);
+CgTextDraw title = canvas.text().text(label).font(regular).constraints(300, 0).pose(pose);
 float heightPx = title.measure().totalHeight();       // layout px, wrapped exactly as submit() will
 title.at(x, y).submit();
 ```
@@ -135,7 +135,7 @@ title.at(x, y).submit();
 ### Outline
 
 ```java
-text.draw().text("Boss").font(large).at(x, y)
+canvas.text().text("Boss").font(large).at(x, y)
         .stroke(0.06f, 0xFF101418)                     // 0.06 em wide, near-black
         .strokeAlign(CgStrokeAlign.OUTSET)             // OUTSET (default): outside the contour; CENTER; INSET
         .strokeOverFill(false)                         // false (default): behind the fill; true: over it
@@ -150,7 +150,7 @@ text.draw().text("Boss").font(large).at(x, y)
 ### Shadows
 
 ```java
-text.draw().text("Level up").font(large).at(x, y)
+canvas.text().text("Level up").font(large).at(x, y)
         .shadowCount(2)
         .shadow(0, 0, 0, 4, 0, 0xFF44CCFF, false)      // a cyan glow, painted on top
         .shadow(1, 2, 2, 1, 0, 0x80000000, false)      // a soft drop shadow beneath it
@@ -171,53 +171,39 @@ shape. To shadow only some glyphs — a highlighted word — give each glyph a s
 
 ### Batching
 
-Every glyph is one instance of a shared quad. A single `draw()` renders all of its glyphs in **one
-instanced draw call**, whatever fonts and sizes it mixes: every glyph lives in one shared atlas, its
-pages the layers of one array texture.
-
-The one split is bitmap against distance-field glyphs, which draw with different shader variants from
-separate atlases. A draw mixes them while a glyph is still on its bitmap fallback, or when blurred
-shadows sit under distance-field text. Glyphs are sorted by variant before drawing, so a draw that
-mixes both costs at most two calls. Shadows paint as their own step, before the text, so a shadow on
-the other variant from its text can add one more.
-
-`beginBatch()` and `endBatch()` extend that across draws. Every `draw()` in between goes into the same
-instanced calls, so a screen of labels costs what one label does:
+Every glyph is one quad on the canvas, and the canvas joins neighbouring quads of one material and atlas
+into one draw: every glyph lives in one shared atlas, its pages the layers of one array texture. So a screen
+of labels from one font costs what one label does, with nothing to open or close:
 
 ```java
-text.beginBatch();
 for (Row row : rows) {
-    text.draw().text(row.label).font(regular).at(8, row.y).submit();
+    canvas.text().text(row.label).font(regular).at(8, row.y).submit();
 }
-text.endBatch();
 ```
 
-Outside a batch, each `draw()` opens and closes one of its own.
+The split is bitmap against distance-field glyphs, which draw with different shader variants from
+separate atlases. A draw mixes them while a glyph is still on its bitmap fallback, or when blurred
+shadows sit under distance-field text. Within a draw its shadows paint first, then its outline, then its
+fill; a quad, curve or other draw submitted between two labels splits the run, as it must to keep order.
 
 ---
 
 ## 4. World-space text
 
-The same draws, through a perspective context. Glyphs switch to distance fields and stay sharp at any
-distance; the line breaks never change with distance.
+The same draws, on a canvas under a perspective camera: a world stage's `frame.canvas()`. Glyphs switch to
+distance fields, their tier picked from their size on screen; the line breaks never change with distance.
 
 ```java
-CgTextRenderContext screen = text.context();          // the default, kept to switch back
-CgTextRenderContext world  = CgTextRenderContext.world(projection, viewportWidthPx, viewportHeightPx);
-
-// each frame
-text.context(world);
-text.draw().layout(signText).at(0, 0).pose(pose).submit();   // pose: the camera's view, then the text's placement
-text.context(screen);
+CgRenderStage.WORLD_TRANSPARENT.register(0, frame ->
+        frame.canvas().text().layout(signText).at(0, 0).pose(placement).submit());   // camera-relative placement
 ```
 
-- `projection` is the scene camera's own projection matrix; a different one misplaces the text silently.
-- `viewportWidthPx` and `viewportHeightPx` are the size in pixels of the viewport the scene is drawn
-  into: the framebuffer area `glViewport` was given, not a GUI-scaled size. On a resize, pass the new
-  ones with `world.updateProjection(projection, viewportWidthPx, viewportHeightPx)`.
-- Nothing needs updating as the camera moves: a distance field is generated once, at one atlas scale,
-  and stays sharp at any distance. (`updateProjectedSize` records an estimate that no longer drives
-  anything.)
+- The canvas's camera decides: a projection with perspective is world text. Nothing to switch or update as
+  the camera moves or the window resizes.
+- A canvas of your own draws world text under `CgImmediate.constants()` with a perspective projection, its
+  view there or in each pose.
+- Many labels that persist and move: `CgWorldRenderer.get().text(...)`, which keeps their glyphs on the GPU
+  ([`../ENGINE_API.md`](../ENGINE_API.md)).
 
 ---
 
@@ -232,7 +218,7 @@ CgShapedParagraph shaped = CgTextLayout.of(content, family).shape();       // on
 CgTextLayout measured = shaped.layout(availableWidth, 0);                  // on layout; layout px
 return new Size(measured.totalWidth(), measured.totalHeight());
 
-text.draw().layout(shaped.layout(boxWidth, 0)).family(family)             // on paint
+canvas.text().layout(shaped.layout(boxWidth, 0)).family(family)           // on paint
         .at(boxX, boxY).color(color).submit();
 ```
 
@@ -243,13 +229,13 @@ width shape and wrap once.
 
 ## Easy to get wrong
 
-- **`draw()` returns one shared request.** Build and `submit()` it in a single expression.
-  `retainedDraw()` gives one of your own to keep across frames.
+- **`canvas.text()` returns one shared request.** Build and `submit()` it in a single expression.
+  `canvas.retainedText()` gives one of your own to keep across frames.
 - **`constraints` does not re-wrap a `layout`.** A built layout draws exactly as built; use `text` or
   `paragraph` for text that should wrap to its box.
 - **A family's fonts share one size.** Resize the whole family with `family.atSize(px)`.
 - **Fonts from `CgSystemFonts.load` are cached.** Never `dispose()` them.
-- **A draw can come out provisional** while glyphs are still being generated. A caller that paints only on
-  damage compares `text.getDegradedDrawCount()` before and after, and asks for another frame if it rose.
-- **A renderer is made on the GL thread and used by one thread at a time.** Drawing immediately is the GL thread's;
-  a renderer drawing while a canvas records on its thread (`CgCanvas.current()`) may draw from any thread, and layout from any thread at all.
+- **A draw can come out provisional** while glyphs are still being generated: `submit()` returns false. A
+  caller that paints only on damage asks for another frame then.
+- **Threads follow the canvas.** A recording canvas may draw text from any thread, one thread at a time; an
+  immediate canvas's `flush()` is the render thread's. Layout runs on any thread at all.

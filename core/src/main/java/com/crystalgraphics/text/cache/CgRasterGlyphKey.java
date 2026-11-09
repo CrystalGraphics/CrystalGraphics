@@ -1,7 +1,7 @@
 package com.crystalgraphics.text.cache;
 
 import com.crystalgraphics.api.font.CgGlyphKey;
-import com.crystalgraphics.text.render.context.CgTextScaleResolver;
+import com.crystalgraphics.text.render.CgTextRaster;
 
 /**
  * Internal cache discriminator for effective-size-aware individual glyph lookup.
@@ -23,7 +23,7 @@ import com.crystalgraphics.text.render.context.CgTextScaleResolver;
  * uploaded to an atlas.</p>
  *
  * @see CgRasterFontKey
- * @see CgTextScaleResolver
+ * @see CgTextRaster
  */
 record CgRasterGlyphKey(CgRasterFontKey rasterFontKey, int glyphId, boolean msdf, int subPixelBucket,
                         boolean syntheticBold, boolean syntheticItalic) {

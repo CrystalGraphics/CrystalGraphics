@@ -20,13 +20,13 @@ import java.util.Map;
  *
  * <h3>Not instantiable — every member is static</h3>
  * <p>There is exactly one cache, shared by every {@link CgResolvedGlyphs} (and so every
- * {@code CgTextRenderer}) instance in the process. This is deliberate, not an oversight: the
+ * {@code CgTextBatch}) instance in the process. This is deliberate, not an oversight: the
  * cache is keyed by {@link CgTextLayout} identity, which is a property of the layout itself,
  * not of which renderer happens to be drawing it — two renderers drawing the same cached
  * layout with the same parameters should both benefit from the same entry, and a single
  * shared pool uses far less memory than N renderers each keeping their own. This matches
  * {@code CgGlyphAtlas} (two atlases process-wide, one per texture format, every font sharing
- * them via the {@code CgFontRegistry} singleton) and {@code CgTextRenderer.SHAPE_CACHE}'s own
+ * them via the {@code CgFontRegistry} singleton) and {@code CgTextBatch.SHAPE_CACHE}'s own
  * global scope — every cache in this pipeline is global for the same reason.</p>
  */
 public final class CgGlyphPlacementCache {
@@ -306,11 +306,8 @@ public final class CgGlyphPlacementCache {
      * {@code CgFontRegistry.toMsdfAtlasGlyphKey} hardcodes {@code subPixelBucket=0} and
      * rewrites the font key to the atlas's fixed {@code atlasScalePx}, ignoring
      * {@code effectiveTargetPx} entirely. {@link #matches} skips that check when
-     * {@code distanceField} is true — this matters in practice, since world-space text
-     * recomputes a projected-size hint every frame (see {@code PerspectiveScaleResolver}), so
-     * {@code effectiveTargetPx} can shift on essentially every camera movement even though
-     * distance-field output never changes; without this exclusion, panning/zooming the camera
-     * would bust the cache on nearly every frame.
+     * {@code distanceField} is true, so a raster size that moves while the distance-field output
+     * cannot (a zoom past the threshold) does not bust the cache.
      *
      * <p>{@code argbColor} is the already-resolved effective color per glyph (span override,
      * or the draw's default {@code rgba} baked into {@link Key} — see that field's javadoc).</p>

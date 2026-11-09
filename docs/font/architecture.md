@@ -45,14 +45,13 @@ Which package owns what. For how a string moves through them, read
 `CgMarkupParser.MINECRAFT` (`CgMinecraftColorCodeParser`: `§` codes). Both are also registered by name,
 `"html"` and `"minecraft"`, and a third party registers its own with `CgMarkupParser.register`.
 
-### `text/render` — the renderer's public face
+### `text/render` — text on a canvas
 
 | Class | Is |
 |---|---|
-| `CgTextRenderer`, `CgTextRenderer.Draw` | The renderer, and the fluent draw request |
-| `CgTextRenderContext` | Projection and viewport, orthographic or world, plus per-font raster history |
-| `CgTextGamma` | The coverage correction the renderer applies to light text |
-| `CgTextRendererRegistry` | Tracks every renderer so context teardown can free any left alive |
+| `CgTextDraw` | The fluent draw request: `canvas.text()`, `canvas.retainedText()`, `CgTextDraw.queued(q)` |
+| `CgTextBatch` | A canvas's text: resolves, plans and lands each draw's quads; with no canvas, captures world labels |
+| `CgTextGamma` | The coverage correction applied to light text |
 
 ---
 
@@ -104,12 +103,12 @@ Called by the cache layer, never by the renderer.
 - `CgGlyphPlacementCache` — those placements, cached per layout (layout, tier, font, colour, sub-pixel phase), relative
   to the layout's origin so moving text reuses them; only an entry that wanted distance-field and fell back is
   refreshed when the atlas gains glyphs.
-- `CgTextCuller` — skips a draw whose whole layout is off-screen.
+- `CgTextMaterials` — `text.shader`'s fixed instances, one per tier, space and gamma.
 - `CgTextShadowList`, `CgTextShadowPlan` — a draw's shadows, and what each glyph paints for each.
 - `CgTextSortKey` — packs each glyph and decoration into a sortable key; its batch bits are the tier and
   the atlas texture.
-- `context/` — `CgTextScaleResolver` with `OrthographicScaleResolver` (UI) and `PerspectiveScaleResolver`
-  (world), which turn a pose into a raster size; `ProjectedSizeEstimator`.
+- `CgTextRaster` — the raster size a pose asks for (screen: its scale with hysteresis; world: fixed), bitmap or
+  distance field, and the axis test that sends a rotated draw to the distance field.
 
 ### `text/font` — font files without natives
 
@@ -141,7 +140,7 @@ public face is `api/font/CgSystemFonts`.
 1. `api/text/CgTextLayout.java` — the request and the result
 2. `text/layout/CgTextLayoutEngine.java` — shape and wrap
 3. `api/font/CgFontFamily.java` — fallback
-4. `text/render/CgTextRenderer.java` — the draw request and the draw path
+4. `text/render/CgTextDraw.java` and `CgTextBatch.java` — the draw request and the draw path
 5. `text/render/CgResolvedGlyphs.java` — glyphs to placements
 6. `text/cache/CgFontRegistry.java` — glyph supply
 7. `text/atlas/CgGlyphAtlas.java` — storage

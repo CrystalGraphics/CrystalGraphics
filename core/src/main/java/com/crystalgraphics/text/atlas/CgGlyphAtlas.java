@@ -226,8 +226,7 @@ public class CgGlyphAtlas {
      * <p>Recording the verdict once turns those into an {@code O(1)} hit returning
      * {@link #EMPTY_PLACEMENT_MARKER}-shaped data (zero plane bounds, so
      * {@link CgGlyphPlacement#hasGeometry()} is {@code false} and every draw path already
-     * skips it — see {@code CgTextRenderer#submitSortedQuads}'s {@code visibleGlyphCount}
-     * filter, which is why a 1781-glyph layout only ever submitted 1242 quads).
+     * skips it, which is why a 1781-glyph layout only ever submitted 1242 quads).
      */
     private final Map<CgGlyphKey, CgGlyphPlacement> emptyGlyphs = new HashMap<>();
 

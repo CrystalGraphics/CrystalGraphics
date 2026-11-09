@@ -60,7 +60,7 @@ import com.crystalgraphics.gl.texture.CgTextureManager;
 import com.crystalgraphics.settings.CgSettings;
 import com.crystalgraphics.text.cache.CgFontRegistry;
 import com.crystalgraphics.NativeLoader;
-import com.crystalgraphics.text.render.CgTextRendererRegistry;
+import com.crystalgraphics.text.render.CgTextMaterials;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.trace.CgTraceRun;
 import com.crystalgraphics.util.trace.CgChannels;
@@ -442,7 +442,6 @@ public final class CgGraphicsLifecycle {
     private static void resizeTargets(int width, int height) {
         CgExecutor.forgetHostTargets();
         CgFrameBufferRegistry.get().onResize(width, height);
-        CgTextRendererRegistry.get().onResize(width, height);
 
         currentWidth = width;
         currentHeight = height;
@@ -651,9 +650,8 @@ public final class CgGraphicsLifecycle {
         //   Must be freed before the GL context is lost.
         CgShaderBufferRegistry.get().deleteAll();
 
-        // Step 6a: All CgTextRenderer instances still alive (backstop for callers that
-        //   forgot to call delete() themselves).
-        CgTextRendererRegistry.get().deleteAll();
+        // Step 6a: text's material instances; the material registry frees them, so the cache only forgets them.
+        CgTextMaterials.releaseAll();
         
         // Step 6b: Font/glyph atlas textures + background generation executor, then reset
         //   the shared registry back to a freshly-constructed, immediately reusable state

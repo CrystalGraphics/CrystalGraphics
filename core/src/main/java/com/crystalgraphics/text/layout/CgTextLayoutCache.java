@@ -14,7 +14,7 @@ import java.util.Map;
 /**
  * Global, bounded LRU cache of {@code CgTextLayoutEngine.shape(...)/wrap(...)} results — i.e. shaped
  * text (HarfBuzz + BiDi + UAX#14 line breaking already applied) — keyed by <em>content</em>,
- * not identity. Used by {@code CgTextRenderer.layout(String, ...)} so a caller using
+ * not identity. Used by {@code CgTextBatch.layout(String, ...)} so a caller using
  * {@code Draw.text(String)} with repeated content (the common case — most UI text is the same
  * label/button text every frame, even when the caller rebuilds the {@code String} fresh each
  * time) skips shaping entirely on a hit, instead of paying that cost on every single call.
@@ -37,7 +37,7 @@ import java.util.Map;
  * doesn't depend on GC timing.</p>
  *
  * <h3>Not instantiable — every member is static</h3>
- * <p>There is exactly one cache, shared by every {@code CgTextRenderer} instance in the
+ * <p>There is exactly one cache, shared by every {@code CgTextBatch} instance in the
  * process — matching {@link CgGlyphPlacementCache} and {@code CgGlyphAtlas}'s own global
  * scope.</p>
  *

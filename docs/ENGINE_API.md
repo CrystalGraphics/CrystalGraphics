@@ -117,7 +117,7 @@ world.draw(shard, crystal).instances(shards, CgGpuCount.at(alive, 0, capacity)).
 // A level per screen height (CgMeshLods, Unity's LODGroup): picked per draw at record time
 world.draw(CgMeshShapes.sphereLods(), smoke).at(x, y, z).transform(scale).submit();
 
-// A label: a CgTextRenderer.Draw at a point, facing the camera or turned as a sign; depth-tested
+// A label: a CgTextDraw at a point, facing the camera or turned as a sign; depth-tested
 world.text("Spawn").at(x, y + 2, z).height(0.5f).font(font).stroke(0.08f, 0xFF000000).submit();
 world.text(sign).at(x, y, z).rotation(facingSouth).anchor(0f, 0f).family(family).targetPx(48).submit();
 ```
@@ -126,7 +126,7 @@ world.text(sign).at(x, y, z).rotation(facingSouth).anchor(0f, 0f).family(family)
   [`GPU_DRIVEN_RENDERING.md`](GPU_DRIVEN_RENDERING.md).
 - A draw of `CgMeshLods` takes the level for the screen height its bounds cover, and none below the last level's.
 - **Labels** (`world.text`) draw after every transparent draw of the firing, unsorted among them: a glow in front
-  of a label does not cover it. A label is a queued `CgTextRenderer.Draw` (strokes, shadows, families, paragraphs),
+  of a label does not cover it. A label is a queued `CgTextDraw` (strokes, shadows, families, paragraphs),
   drawn under each firing's camera; `height` is a line's height in blocks. Labels are retained: a label's glyphs are
   captured when what it draws changes and kept on the GPU, and a frame otherwise writes one matrix a label. 10,000
   outlined, shadowed labels are 3 draws and about 230 ns a label (`--mode=world-labels`). Their text writes depth
@@ -921,6 +921,7 @@ begin, end or delete.
 ```java
 CgRenderStage.HUD.register(CgRenderStage.WORLD_WIDGETS, frame -> {
     frame.canvas().quad(DIGIT).texture(0, DIGITS).at(x, y).size(w, h).uv(u0, v0, u1, v1).color(argb).submit();
+    frame.canvas().text().text(damage).font(font).at(x, y - 12).color(argb).stroke(0.1f, 0xFF000000).submit();
 });
 CgRenderStage.WORLD_TRANSPARENT.register(0, frame ->                       // camera-relative; world() is absolute
     frame.canvas().quad(GLOW).world(x, y, z).pose(facing).at(-0.5f, -0.5f).size(1f, 1f).submit());
@@ -931,7 +932,8 @@ now.flush();
 ```
 
 - An item draws under its material's values as they are when it is submitted.
-- Text drawn while a canvas records on the thread (`CgCanvas.current()`) lands in it, in order with the rest.
+- Text is an item too (`canvas.text()`): culled against the canvas's camera, rastered at device pixels on the
+  screen and from its size on screen in the world.
 The whole guide, for consumers: **[`CANVAS.md`](CANVAS.md)**.
 
 **Package guide**: `render/canvas/CLAUDE.md`
@@ -1155,12 +1157,12 @@ CgEngineLifecycle.shutdown();
 
 | Step | What | Why |
 |------|------|-----|
-| 0 | `CgTextRendererRegistry.get().deleteAll()` | Any `CgTextRenderer` still alive (backstop — individual owners should already have called `delete()`) |
 | 1 | `CgMeshStore.get().releaseAll()` | The store's pools, their buffers and the one empty VAO its `CgGL` draws bind. Meshes keep their data and are placed again by the next context, but for a `GPU_ONLY` one, which needs an edit first |
 | 2 | `CgQuadIndexBuffer.freeAll()` | Shared quad IBO |
 | 5 | `CgTextureManager.get().freeAll()` | All cached textures + fallback |
 | 5c | `CgFontRegistry.get().releaseAll()` | Glyph atlas textures + background generation executor, reset in place (reusable immediately) |
 | 6 | `CgMaterialRegistry.get().deleteAll()` | Material instances + GL shader programs |
+| 6a | `CgTextMaterials.releaseAll()` | Text's fixed material instances, made again at the next context's first text |
 | 6b | `CgCompute.releaseAll()` | Kernel programs and their blocks; the parsed files stay for the next context |
 | 6c | `CgStreamBuffer.releaseShared()` | The staging ring retained shader buffers are uploaded through |
 | 6d | `CgReadback.releaseAll()` | Pooled staging buffers and the fences of readbacks still in flight; each pending sink is told it failed |
@@ -1187,4 +1189,3 @@ All registries are **singletons accessed via `.get()`**. You normally interact w
 | `CgFrameBufferRegistry` | `CgFrameBufferRegistry.get()` | Screen-sized FBOs that auto-resize | `getOrCreate(name, format)` for screen-sized FBOs |
 | `CgShaderBufferRegistry` | `CgShaderBufferRegistry.get()` | User-attached SSBO/UBO objects | `deleteAll()` on teardown (via lifecycle) |
 | `CgFontRegistry` | `CgFontRegistry.get()` | Glyph atlas textures (bitmap/MSDF/MTSDF) + background generation executor | `releaseAll()` on teardown (via lifecycle); parameterized constructors remain public for harness testing of custom atlas sizes/configs — see `text/cache/CLAUDE.md` |
-| `CgTextRendererRegistry` | `CgTextRendererRegistry.get()` | Tracks every `CgTextRenderer` for teardown; auto-resizes screen-sized ones (`create()`, the default — opt out via `createManualSized()`) on `onResize()` | Does not own renderer *lifecycle* the way other registries do — owners still call `delete()` themselves; `deleteAll()` on teardown is a backstop, not the primary path — see `text/render/CLAUDE.md` |

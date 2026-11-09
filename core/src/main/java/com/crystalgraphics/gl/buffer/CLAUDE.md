@@ -32,7 +32,8 @@ Which shader buffers go on the ring is a question of lifetime, not type: every f
 uploads it first. Instance data meets it by being written just before its draw. A block written once meets it
 when every reader passes a point that copies it into the frame: `CgMaterial.bind` does, for the material's
 properties (uploaded only when their bytes changed, or on its first bind of a frame); the frame block is a
-recorded pass's constants, packed into the frame's binding table; the text renderer re-uploads its block per frame.
+recorded pass's constants, packed into the frame's binding table; text's block is each `CgTextMaterials` instance's
+own, uploaded at its bind.
 Retained storage stays for a mod's own registry buffers, whose readers pass no such point. The copy is not made at
 a frame's first host section: on Minecraft's Vulkan host that is the frame end's, before Minecraft's submit, where a
 ring's wait for the frame three back is refused.

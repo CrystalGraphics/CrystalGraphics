@@ -105,7 +105,8 @@ public final class CgQuadBatch {
         return run.pending();
     }
 
-    void records(CgMaterial material, @Nullable CgRenderState state, float[] src, int from, int count, int spatial) {
+    void records(CgMaterial material, @Nullable CgRenderState state, @Nullable CgTexture texture, float[] src, int from,
+                 int count, int spatial) {
         if (count <= 0) return;
         float x0 = Float.POSITIVE_INFINITY, y0 = Float.POSITIVE_INFINITY;
         float x1 = Float.NEGATIVE_INFINITY, y1 = Float.NEGATIVE_INFINITY;
@@ -120,7 +121,8 @@ public final class CgQuadBatch {
             x1 = Math.max(x1, ox + Math.max(0f, rx) + Math.max(0f, ux) + 1f);
             y1 = Math.max(y1, oy + Math.max(0f, ry) + Math.max(0f, uy) + 1f);
         }
-        run.item(material, state, NO_TEXTURES, 0);
+        if (texture != null) recordTexture[0] = texture;
+        run.item(material, state, texture != null ? recordTexture : NO_TEXTURES, texture != null ? 1 : 0);
         run.spatial(spatial);
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "canvas.quadRecords")) {
             CgTrace.add(CgChannels.GL, "canvas.quads", count);
@@ -129,6 +131,8 @@ public final class CgQuadBatch {
     }
 
     private static final CgTexture[] NO_TEXTURES = new CgTexture[0];
+    /** Unit 0 of a run of baked records. */
+    private final CgTexture[] recordTexture = new CgTexture[1];
 
     /**
      * One quad: build it and {@link #submit()} in one expression. Allocation-free; a retained one

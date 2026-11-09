@@ -46,7 +46,7 @@ import javax.annotation.Nullable;
  *
  * <ul>
  *   <li>Render thread, and only inside {@link CgStageRenderer#render}: the recording is executed and reset after.</li>
- *   <li>During a renderer's turn, {@link #canvas()} -- quads, curves and a {@code CgTextRenderer}'s text -- draws
+ *   <li>During a renderer's turn, {@link #canvas()} -- quads, curves and text -- draws
  *       into this firing, on {@link #target()} under {@link #constants()}: the world's camera at a world stage, the
  *       GUI's pixels at a GUI stage. What a turn drew lands when it ends, in a pass of its own.</li>
  *   <li>The stage parks the host's sampler objects and turns its scissor off around execution: what the host leaves
@@ -82,7 +82,17 @@ public final class CgStageFrame {
     private CgGraphTexture target;
     /** {@link #canvas()}: opened at its first draw in a turn, so a turn that draws nothing records nothing. */
     private final CgCanvas canvas = new CgCanvas();
-    private final CgCanvas.Source canvasOpener = this::openCanvas;
+    private final CgCanvas.Source canvasOpener = new CgCanvas.Source() {
+        @Override
+        public void open(CgCanvas canvas) {
+            openCanvas(canvas);
+        }
+
+        @Override
+        public CgPassConstants constants() {
+            return CgStageFrame.this.constants();
+        }
+    };
 
     /** Firings a host frame remembered for the next: the n-th is compared with last frame's n-th. */
     private static final int ORDINALS = 4;

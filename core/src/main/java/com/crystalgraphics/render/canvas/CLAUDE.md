@@ -12,11 +12,11 @@ firing's camera. **Using it: [`docs/CANVAS.md`](../../../../../../../../docs/CAN
 
 | File | Role |
 |------|------|
-| `CgCanvas.java` | The canvas: draw builders, set-target/scissor/constants/view, the per-thread current canvas, replay's tape. Its javadoc has the examples |
+| `CgCanvas.java` | The canvas: draw builders, `text()`, set-target/scissor/constants/view, its camera (`cameraProjection/View/Width/Height`) and `visible(...)` cull, replay's tape. Its javadoc has the examples |
 | `CgQuadBatch.java` | Quad items: the `Quad` builder and the class-wide instance buffer (`#pragma cg_use quad`) |
 | `CgCurveBatch.java` | Curve, triangle and cell items over the curve record (`#pragma cg_use curve`) |
 | `CgInstanceRun.java` | One batcher's open run: breaks on material, its `changes()`, state, textures or a stale binding snapshot; seals into the recording or `CgImmediate` |
-| `CgQuadRecord.java` | The quad record's float offsets, for code that bakes records itself (`CgTextRenderer`, `CgWorldText`) |
+| `CgQuadRecord.java` | The quad record's float offsets, for code that bakes records itself (`CgTextBatch`, `CgWorldText`) |
 | `CgClipTable.java` | A recording's rounded clips (`#pragma cg_use clip`) |
 | `CgShapeTable.java` | A recording's box shapes, so every box is a quad of one pipeline (`#pragma cg_use shape`) |
 | `CgCurveSplitter.java` | Cubic to quadratic splitting, GPU-free |
@@ -30,8 +30,12 @@ firing's camera. **Using it: [`docs/CANVAS.md`](../../../../../../../../docs/CAN
   re-given (`overrideBlock`) or the run keeps the old values.
 - **One active batcher**: a quad after a curve seals the curve's run first, so painter's order holds without flushes.
 - **Inside a stage firing, draw into `frame.canvas()`**, never a canvas of your own: it opens lazily on the firing's
-  target and constants, so a renderer that draws nothing records nothing. Code drawing for its caller (the text
-  renderer) reads `CgCanvas.current()`.
+  target and constants, so a renderer that draws nothing records nothing. Code drawing for its caller takes the
+  canvas as a parameter.
+- **Text is an item** (`text/render/CLAUDE.md`): `text()` lands a draw's quads through the canvas's `CgTextBatch`,
+  made on first use. It reads the canvas's camera at each draw — the recording's constants, else the armed source's,
+  else `CgImmediate.constants()` — so an immediate canvas's camera changes only between a `flush()` and the next draw.
+- **`visible(pose, box)` is the canvas's frustum cull**, against its camera; text culls each draw with it.
 - **World space is camera-relative**: a stage's canvas has the camera as `origin`; `Quad.world(x, y, z)` places at
   an absolute position in doubles.
 - The pragma declares a record during parsing, before anything compiles. There is deliberately no Java-side attach:
