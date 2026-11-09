@@ -1,6 +1,7 @@
 package com.crystalgraphics.mc.v1710.mixins.early.impl.client;
 
-import com.crystalgraphics.platform.CgPlatform;
+import com.crystalgraphics.lifecycle.CgEngineLifecycle;
+import com.crystalgraphics.lifecycle.CgGraphicsLifecycle;
 import net.minecraft.client.Minecraft;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -19,12 +20,12 @@ public class MixinMinecraft {
 
     @Inject(method = "resize", at = @At("TAIL"))
     private void onResize(int width, int height, CallbackInfo ci) {
-        CgPlatform.lifecycle().onResize(width, height);
+        CgGraphicsLifecycle.onResize(width, height);
     }
 
     @Inject(method = "toggleFullscreen", at = @At("TAIL"))
     private void updateDisplayMode(CallbackInfo ci) {
-        CgPlatform.lifecycle().onResize(displayWidth, displayHeight);
+        CgGraphicsLifecycle.onResize(displayWidth, displayHeight);
     }
 
     @Inject(method = "refreshResources", at = @At("TAIL"))
@@ -32,19 +33,10 @@ public class MixinMinecraft {
     }
 
     /**
-     * <b>Frees the GL context's resources at game exit.</b>
+     * Frees the GL context's resources at game exit.
      *
-     * <p>{@code onContextDestroy} was implemented on every loader's lifecycle service and <b>called by
-     * none of them</b>, so {@code CgEngineLifecycle.shutdown()} never ran on 1.7.10 — every
-     * registry's {@code deleteAll}, every glyph atlas, every framebuffer, and CrystalGUI's own
-     * {@code UiGpu.destroy()} with its {@code createOwned} targets that no registry sweep can
-     * reach. The process was exiting anyway, which is why nobody noticed; that is a reason it did not
-     * hurt, not a reason it was right.</p>
-     *
-     * <p><b>HEAD, not TAIL.</b> The one window in which a listener can release its own GL objects is
-     * while the context is still whole — {@code onContextDestroy}'s own contract says so — and by the tail of
-     * this method Minecraft has torn the display down. A free after that is undefined rather than
-     * merely late.</p>
+     * <p><b>HEAD, not TAIL</b>: a listener frees its GL objects only while the context is whole, and by the tail
+     * Minecraft has torn the display down.</p>
      *
      * <p>{@code shutdownMinecraftApplet} rather than {@code shutdown}, because it is the one every exit
      * path reaches: {@code Minecraft.run}'s {@code finally} calls it, which covers the ordinary quit,
@@ -52,7 +44,7 @@ public class MixinMinecraft {
      */
     @Inject(method = "shutdownMinecraftApplet", at = @At("HEAD"))
     private void onShutdown(CallbackInfo ci) {
-        CgPlatform.lifecycle().onContextDestroy();
+        CgEngineLifecycle.shutdown();
     }
 
     /**

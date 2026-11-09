@@ -1,7 +1,7 @@
 package com.crystalgraphics.mc.modern.platform.service;
 
 import com.crystalgraphics.mc.modern.platform.ResourceIds;
-import com.crystalgraphics.platform.service.CgResourceService;
+import com.crystalgraphics.platform.service.CgHostResources;
 import net.minecraft.client.Minecraft;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.packs.resources.Resource;
@@ -15,17 +15,16 @@ import java.util.Set;
 import java.util.Optional;
 //?}
 
-/**
- * Modern implementation of {@link CgResourceService}.
- * Delegates asset loading to Minecraft's {@code ResourceManager}.
- *
- * <p>Returns {@code null} on not-found — never throws. Used by {@code CgIO.openStream()}
- * when the platform is registered; falls through to classpath if not yet registered.</p>
- */
-public final class ResourceService implements CgResourceService {
+/** {@link CgHostResources} over the client's {@code ResourceManager}: null where no pack has a path, never a throw. */
+public final class HostResourcesModern implements CgHostResources.Host {
+
+    public static final HostResourcesModern INSTANCE = new HostResourcesModern();
+
+    private HostResourcesModern() {
+    }
 
     @Override
-    public InputStream openStream(String domain, String path) {
+    public InputStream open(String domain, String path) {
         try {
             // Before 1.19 getResource throws on a missing resource instead of answering empty.
             //? if >=1.19 {

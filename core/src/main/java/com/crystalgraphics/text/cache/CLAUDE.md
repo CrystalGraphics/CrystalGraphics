@@ -60,7 +60,7 @@ executor forever after the first context teardown.
 **Resolved**: a text draw (`CgTextDraw.submit()` — see `text/render/CLAUDE.md`) never takes a
 `frame` parameter — it reads `CgFrameClock.frameIndex()` internally, the single authoritative
 per-real-frame counter incremented by `CgGraphicsLifecycle.tickFrame()` (wired via
-`CgLifecycleService.onFrameRendered()`). Every production draw call site now stamps
+each host's frame-end hook). Every production draw call site now stamps
 glyphs from that same shared clock. `tickFrame(long frame)` itself is still a public,
 un-debounced entry point — harness scenes that need a synthetic, faster-than-real-time
 clock to force MSDF convergence before a screenshot (`AtlasDumpScene`, `TextScene2D`)

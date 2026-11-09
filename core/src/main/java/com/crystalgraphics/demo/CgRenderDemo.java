@@ -16,9 +16,8 @@ import com.crystalgraphics.loading.task.CgLoadPlan;
 import com.crystalgraphics.loading.watchdog.CgLoadWatchdog;
 import com.crystalgraphics.platform.service.CgProcessExit;
 import com.crystalgraphics.loading.task.CgLoadTask;
-import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.input.CgKeyCodes;
-import com.crystalgraphics.platform.service.CgInputService;
+import com.crystalgraphics.platform.input.CgInput;
 import com.crystalgraphics.render.CgFrameClock;
 import com.crystalgraphics.render.post.CgPostStack;
 import com.crystalgraphics.render.post.bloom.CgBloom;
@@ -803,11 +802,10 @@ public final class CgRenderDemo {
 
     /** Acts on each key as it goes down, unless a screen has the keys or Ctrl is held. */
     private void keys(boolean screenOpen) {
-        CgInputService input = CgPlatform.input();
-        boolean ctrl = input.isKeyDown(CgKeyCodes.KEY_LCONTROL) || input.isKeyDown(CgKeyCodes.KEY_RCONTROL);
-        boolean shift = input.isKeyDown(CgKeyCodes.KEY_LSHIFT) || input.isKeyDown(CgKeyCodes.KEY_RSHIFT);
+        boolean ctrl = CgInput.isKeyDown(CgKeyCodes.KEY_LCONTROL) || CgInput.isKeyDown(CgKeyCodes.KEY_RCONTROL);
+        boolean shift = CgInput.isKeyDown(CgKeyCodes.KEY_LSHIFT) || CgInput.isKeyDown(CgKeyCodes.KEY_RSHIFT);
         for (int i = 0; i < KEYS.length; i++) {
-            boolean down = input.isKeyDown(KEYS[i]);
+            boolean down = CgInput.isKeyDown(KEYS[i]);
             if (down && !held[i] && !screenOpen && !ctrl) press(KEYS[i], shift);
             held[i] = down;
         }

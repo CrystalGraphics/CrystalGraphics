@@ -5,7 +5,10 @@ import com.crystalgraphics.lwjgl2.JOrbisDecoder;
 import com.crystalgraphics.lwjgl2.Lwjgl2AudioOutput;
 import com.crystalgraphics.lwjgl2.Lwjgl2CursorService;
 import com.crystalgraphics.lwjgl2.Lwjgl2GLContext;
-import com.crystalgraphics.lwjgl2.Lwjgl2InputService;
+import com.crystalgraphics.lwjgl2.ClipboardLwjgl2;
+import com.crystalgraphics.lwjgl2.InputLwjgl2;
+import com.crystalgraphics.platform.input.CgClipboard;
+import com.crystalgraphics.platform.input.CgInput;
 import com.crystalgraphics.mc.v1710.CrystalGraphicsVersion;
 import com.crystalgraphics.mc.v1710.platform.gl.GLBackend1710;
 import com.crystalgraphics.mc.v1710.platform.gl.GLDevice1710;
@@ -32,7 +35,6 @@ import com.crystalgraphics.platform.service.CgProcessExit;
 import com.crystalgraphics.platform.world.CgHostShapes;
 import com.crystalgraphics.platform.world.CgLevels;
 import com.crystalgraphics.platform.service.CgGameThreads;
-import com.crystalgraphics.platform.input.CgInputStage;
 import com.crystalgraphics.platform.input.CgKeyBindings;
 import com.crystalgraphics.platform.service.CgHostPaint;
 import com.crystalgraphics.platform.service.CgHostWindow;
@@ -62,11 +64,7 @@ import com.crystalgraphics.platform.audio.CgHostVolume;
 import com.crystalgraphics.platform.world.CgWorldStimulus;
 
 /**
- * Complete MC 1.7.10 platform bundle. Implements {@link CgPlatformService} by composing
- * the 1.7.10 service adapters. Register via {@code CgPlatform.register(new PlatformService1710())}.
- *
- * <p>{@link RenderingService1710} and {@link LifecycleService1710} instances are exposed
- * via package-visible accessors if needed.</p>
+ * 1.7.10's platform: the GL bundle over tier 1, and {@link #install} filling every slot this era answers.
  */
 public final class PlatformService1710 implements CgPlatformService {
     
@@ -76,31 +74,9 @@ public final class PlatformService1710 implements CgPlatformService {
     public static void init() { if (INSTANCE != null) return; INSTANCE = new PlatformService1710();}
     public static PlatformService1710 getInstance() { if (INSTANCE == null) init(); return INSTANCE;}
     
-    // ── Services ─────────────────────────────────────────────────────────────
-
-    // BUILT ON DEMAND, and typed as the SPI interfaces rather than the implementations.
-    //
-    // These used to be eager `public final` fields, which meant registering the platform at preInit
-    // constructed all nine -- and on a DEDICATED SERVER that dies at the first one:
-    // NoClassDefFoundError: org/lwjgl/LWJGLException, from Lwjgl2GLBackend. Every service here imports
-    // either org.lwjgl or net.minecraft.client, neither of which exists server-side, so CrystalGraphics
-    // could not load on a server at all -- and every mod depending on it was marked errored with it.
-    //
-    // Two halves to the fix and both are needed. LAZY, so a server that asks for no rendering
-    // constructs none; and the fields are declared as the INTERFACE, so the LWJGL-touching class is
-    // named only inside a method body. A field descriptor is resolved eagerly enough to matter, which
-    // is the same rule that keeps JOML and Taffy on CrystalGUI's headless classpath -- a method-body
-    // reference is not, which is why `input()` on a server is fine right up until somebody calls it.
-    //
-    // Nothing outside this class referenced the fields, so the public API is unchanged.
-    private CgRenderingService renderingImpl;
-    private CgLifecycleService lifecycleImpl;
-    private CgResourceService  resourceImpl;
-    private CgReloadService    reloadImpl;
+    // Built on demand and typed as the SPI: both name LWJGL, which a dedicated server lacks.
     private CgGLBackend        glDispatchImpl;
     private CgGLContext        glContextImpl;
-    private CgInputService     inputImpl;
-    private CgSoundService     soundImpl;
 
     @Override public CgGLBackend gl() {
         if (glDispatchImpl == null) {
@@ -115,36 +91,6 @@ public final class PlatformService1710 implements CgPlatformService {
         return glContextImpl;
     }
 
-    @Override public CgResourceService resources() {
-        if (resourceImpl == null) resourceImpl = new ResourceService1710();
-        return resourceImpl;
-    }
-
-    @Override public CgRenderingService rendering() {
-        if (renderingImpl == null) renderingImpl = new RenderingService1710();
-        return renderingImpl;
-    }
-
-    @Override public CgLifecycleService lifecycle() {
-        if (lifecycleImpl == null) lifecycleImpl = new LifecycleService1710();
-        return lifecycleImpl;
-    }
-
-    @Override public CgReloadService reload() {
-        if (reloadImpl == null) reloadImpl = new ReloadService1710();
-        return reloadImpl;
-    }
-
-    @Override public CgInputService input() {
-        if (inputImpl == null) inputImpl = new Lwjgl2InputService();
-        return inputImpl;
-    }
-
-    @Override public CgSoundService sound() {
-        if (soundImpl == null) soundImpl = new SoundService1710();
-        return soundImpl;
-    }
-    
     // ── Lifecycle ─────────────────────────────────────────────────────────────
 
     /**
@@ -184,6 +130,9 @@ public final class PlatformService1710 implements CgPlatformService {
         // server that never fills it is the supported case rather than a degraded one.
         if (client) {
             CgPlatform.provide(CgCursorService.SERVICE, new Lwjgl2CursorService());
+            CgPlatform.provide(CgInput.HOST, InputLwjgl2.INSTANCE);
+            CgPlatform.provide(CgClipboard.HOST, ClipboardLwjgl2.INSTANCE);
+            CgPlatform.provide(CgHostResources.HOST, HostResources1710.INSTANCE);
             CgPlatform.provide(CgShaderPacks.HOST, CgShaderPacks.irisApi());   // Angelica
             // The client's levels and player, client only for the same reason.
             Client1710.install();
@@ -199,7 +148,6 @@ public final class PlatformService1710 implements CgPlatformService {
             CgPlatform.provide(CgGameThreads.HOST, new GameThreads1710());
             CgPlatform.provide(CgHostWindow.HOST, new HostWindow1710());
             CgPlatform.provide(CgHostPaint.HOST, new HostPaint1710());
-            CgPlatform.provide(CgInputStage.HOST, new InputHost1710());
             CgPlatform.provide(CgKeyBindings.HOST, KeyBindings1710.INSTANCE);
             CgKeyBindings.hostProvided();
             CgEngineLifecycle.onClientTick(KeyBindings1710.INSTANCE::tick);
@@ -258,7 +206,7 @@ public final class PlatformService1710 implements CgPlatformService {
         if (!FMLCommonHandler.instance().getSide().isClient()) return;
 
         CrystalGraphicsVersion.processAllRequirements();
-        ReloadService1710.attachToResourceManager();
+        HostResources1710.listenForReloads();
     }
 
 }

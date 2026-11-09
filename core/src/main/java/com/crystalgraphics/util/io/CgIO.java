@@ -1,8 +1,7 @@
 package com.crystalgraphics.util.io;
 
 import com.crystalgraphics.variable.CgVar;
-import com.crystalgraphics.platform.CgPlatform;
-import com.crystalgraphics.platform.service.CgResourceService;
+import com.crystalgraphics.platform.service.CgHostResources;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -218,18 +217,13 @@ public class CgIO {
             }
         }
 
-        // 2. Platform resource service (returns null before CgPlatform.register() — falls through to classpath)
+        // 2. The host's resource packs; nothing without a host, which falls through to the classpath
         try {
-            CgResourceService svc = CgPlatform.resources();
-            if (svc != null) {
-                String stripped = normalized.substring(ASSETS_PREFIX.length());
-                int slash = stripped.indexOf('/');
-                if (slash > 0) {
-                    String domain = stripped.substring(0, slash);
-                    String rest = stripped.substring(slash + 1);
-                    InputStream stream = svc.openStream(domain, rest);
-                    if (stream != null) return stream;
-                }
+            String stripped = normalized.substring(ASSETS_PREFIX.length());
+            int slash = stripped.indexOf('/');
+            if (slash > 0) {
+                InputStream stream = CgHostResources.open(stripped.substring(0, slash), stripped.substring(slash + 1));
+                if (stream != null) return stream;
             }
         } catch (Throwable ignored) {}
 

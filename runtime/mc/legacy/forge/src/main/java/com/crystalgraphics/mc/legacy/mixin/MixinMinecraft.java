@@ -1,6 +1,7 @@
 package com.crystalgraphics.mc.legacy.mixin;
 
-import com.crystalgraphics.platform.CgPlatform;
+import com.crystalgraphics.lifecycle.CgEngineLifecycle;
+import com.crystalgraphics.lifecycle.CgGraphicsLifecycle;
 import net.minecraft.client.Minecraft;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
@@ -20,18 +21,18 @@ public abstract class MixinMinecraft {
 
     @Inject(method = "func_71370_a", remap = false, require = 1, at = @At("TAIL"))
     private void cg$resize(int width, int height, CallbackInfo ci) {
-        CgPlatform.lifecycle().onResize(width, height);
+        CgGraphicsLifecycle.onResize(width, height);
     }
 
     @Inject(method = "func_71352_k", remap = false, require = 1, at = @At("TAIL"))
     private void cg$fullscreen(CallbackInfo ci) {
         Minecraft mc = Minecraft.getMinecraft();
-        CgPlatform.lifecycle().onResize(mc.displayWidth, mc.displayHeight);
+        CgGraphicsLifecycle.onResize(mc.displayWidth, mc.displayHeight);
     }
 
     @Inject(method = "func_71405_e", remap = false, require = 1, at = @At("HEAD"))
     private void cg$shutdown(CallbackInfo ci) {
-        CgPlatform.lifecycle().onContextDestroy();
+        CgEngineLifecycle.shutdown();
     }
 
     /**

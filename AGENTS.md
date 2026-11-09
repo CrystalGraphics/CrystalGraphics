@@ -92,9 +92,9 @@ This is the load-bearing architectural law. Read it before writing code that tou
 platform/        ← the SPI: CgGLBackend, CgGLContext, the services, CgService slots;
                    and CgTrackedGLBackend, GL's semantics over a CgRHI
     ↑
-core/            ← rendering logic — calls CgGL and CgPlatform.lifecycle() etc.
+core/            ← rendering logic — calls CgGL and the slots' owners (CgHostResources, CgInput, ...)
     ↑
-runtime/lwjgl/*  ← tier 1: the GL backend, context and input per LWJGL; CgVulkanDevice
+runtime/lwjgl/*  ← tier 1: the GL backend, context, input devices and clipboard per toolkit; CgVulkanDevice
     ↑
 runtime/mc/*     ← a host: registers a bundle over tier 1, adds what names Minecraft
 ```
@@ -108,7 +108,7 @@ harness's `--rhi=vulkan`, a recording device in tests. Three additions live insi
 ```java
 // In core/ — never a raw GL call, never an LWJGL import:
 CgGL.glBindFramebuffer(target, id);
-CgPlatform.reload().onReload();
+InputStream in = CgHostResources.open("mymod", "textures/icon.png");   // a slot, through its owner
 
 // A host, once, from an entry point that runs on both sides: the bundle and every platform slot
 PlatformServiceModern.install(ModLoaderForge.INSTANCE);     // or PlatformService1710.install(client), PlatformServiceLegacy.install(client)

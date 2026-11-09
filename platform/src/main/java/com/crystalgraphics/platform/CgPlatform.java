@@ -4,29 +4,24 @@ import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.CgGLContext;
 import com.crystalgraphics.platform.gl.CgGLBackend;
-import com.crystalgraphics.platform.service.CgInputService;
-import com.crystalgraphics.platform.service.CgLifecycleService;
-import com.crystalgraphics.platform.service.CgReloadService;
-import com.crystalgraphics.platform.service.CgRenderingService;
-import com.crystalgraphics.platform.service.CgResourceService;
-import com.crystalgraphics.platform.service.CgSoundService;
 
 import java.util.List;
 import java.util.Objects;
 
 /**
- * Central registry for all platform service implementations.
+ * The platform registry, both halves: the GL bundle a platform {@linkplain #register registers}, and the
+ * {@link CgService} slots each capability's owner declares and a host {@linkplain #provide provides}.
  *
- * <p>Call {@link #register(CgPlatformService)} once during platform initialisation
- * (e.g. from {@code PlatformRegistry1710.onPreInit()} in the 1.7.10 module).
- * All getters except {@link #resources()} throw {@link IllegalStateException} if
- * invoked before registration. {@link #resources()} returns {@code null} before
- * registration so that {@code CgIO.openStream} can fall back to classpath loading
- * during early boot without exception overhead.</p>
+ * <pre>{@code
+ * CgPlatform.register(new PlatformServiceModern());                     // the GL backend and context
+ * CgPlatform.provide(CgHostResources.HOST, HostResourcesModern.INSTANCE);   // one slot
+ * }</pre>
  *
- * <p>The registry uses direct argument passing rather than {@code ServiceLoader}
- * because FML's classloader makes {@code ServiceLoader} unreliable in the
- * MC 1.7.10 environment.</p>
+ * <ul>
+ *   <li>{@link #gl()} and {@link #capabilities()} throw before {@link #register}; a slot never throws, answering its
+ *       absent-value until provided.</li>
+ *   <li>Arguments, not {@code ServiceLoader}: FML's class loader makes it unreliable on 1.7.10.</li>
+ * </ul>
  */
 public final class CgPlatform {
 
@@ -69,64 +64,14 @@ public final class CgPlatform {
         return service.capabilities();
     }
 
-    /**
-     * Returns the resource service, or {@code null} if {@link #register} has not yet been called.
-     * Safe to call during early boot — {@code CgIO.openStream} uses this to fall through to
-     * classpath loading before the platform is initialised.
-     */
-    public static CgResourceService resources() {
-        ensureCreated();
-        return service.resources();
-    }
-
-    /** Returns the rendering service. @throws IllegalStateException if called before {@link #register}. */
-    public static CgRenderingService rendering() {
-        ensureCreated();
-        return service.rendering();
-    }
-
-    /** Returns the lifecycle service. @throws IllegalStateException if called before {@link #register}. */
-    public static CgLifecycleService lifecycle() {
-        ensureCreated();
-        return service.lifecycle();
-    }
-
-    /** Returns the reload service. @throws IllegalStateException if called before {@link #register}. */
-    public static CgReloadService reload() {
-        ensureCreated();
-        return service.reload();
-    }
-
-    /** Returns the input and clipboard service. @throws IllegalStateException if called before {@link #register}. */
-    public static CgInputService input() {
-        ensureCreated();
-        return service.input();
-    }
-
-    /** Returns the UI sound service. @throws IllegalStateException if called before {@link #register}. */
-    public static CgSoundService sound() {
-        ensureCreated();
-        return service.sound();
-    }
-
     public static void ensureCreated() {
         if (service == null) throw new IllegalStateException("CgPlatform not yet registered — call register() first");
     }
 
     // ── The open half: services this framework does not own ─────────────────────────────────────
     //
-    // Everything above is the CLOSED bundle -- nine methods with no defaults, so the compiler forces a
-    // new loader to answer all of them. That enforcement is why it is a bundle, and it can only work for
-    // services this project owns. A consumer of CrystalGraphics has services of its own that must not be
-    // named here, and the only way to have one used to be a second static registry beside this class.
-    //
-    // Two registries is a failure this project has already paid for: a loader has to find every registry
-    // there is, so it can wire up one and forget another, leaving a working backend beside a dead service
-    // with nothing to report it. A downstream mod declaring its own rebuilds that hazard one layer out.
-    //
-    // So a consumer DECLARES a `CgService` slot in its own module, and fills and reads it through here.
-    // Registration then looks like what it is -- going into the platform stack -- and `services()` can
-    // enumerate what this platform is actually carrying. @see CgService
+    // One registry for every slot, CrystalGraphics' and its consumers' alike: a second registry is one a loader can
+    // forget to fill, leaving a dead service with nothing to report it. `services()` lists what is carried.
 
     /**
      * Fills a service slot, or clears it when given null.

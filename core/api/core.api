@@ -3203,6 +3203,7 @@ com/crystalgraphics/audio/CgAudioEngine
   method public subtitleFramesDrawn ()I
   method public subtitles ()Lcom/crystalgraphics/audio/CgSubtitles;
   method public underruns ()I
+  method public,static of (Lcom/crystalgraphics/frame/CgWorld;)Lcom/crystalgraphics/audio/CgAudioEngine;
 com/crystalgraphics/audio/CgAudioListener
   access public,final
   extends java/lang/Object
@@ -3270,7 +3271,7 @@ com/crystalgraphics/audio/CgHostSoundEvents
   method public pick (Ljava/lang/String;)Lcom/crystalgraphics/audio/CgHostSoundEvents$Variant;
   method public subtitle (Ljava/lang/String;)Ljava/lang/String;
   method public,static current ()Lcom/crystalgraphics/audio/CgHostSoundEvents;
-  method public,static read (Lcom/crystalgraphics/platform/service/CgResourceService;)Lcom/crystalgraphics/audio/CgHostSoundEvents;
+  method public,static read (Lcom/crystalgraphics/platform/service/CgHostResources$Host;)Lcom/crystalgraphics/audio/CgHostSoundEvents;
 com/crystalgraphics/audio/CgHostSoundEvents$Variant
   access public,final,record
   extends java/lang/Record

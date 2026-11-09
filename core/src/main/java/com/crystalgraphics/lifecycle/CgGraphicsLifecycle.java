@@ -22,7 +22,6 @@ import com.crystalgraphics.platform.gl.state.CgGlCensus;
 import com.crystalgraphics.platform.gl.state.CgGlScope;
 import com.crystalgraphics.platform.gl.state.CgGlState;
 import com.crystalgraphics.platform.service.CgCacheDirectory;
-import com.crystalgraphics.platform.service.CgLifecycleService;
 import com.crystalgraphics.job.CgJob;
 import com.crystalgraphics.job.CgJobLane;
 import com.crystalgraphics.vfx.CgVfxRegistry;
@@ -33,6 +32,7 @@ import com.crystalgraphics.vfx.prefab.CgVfxPrefabAssets;
 import com.crystalgraphics.vfx.system.CgVfxSystemAssets;
 import com.crystalgraphics.api.font.CgDefaultFont;
 import com.crystalgraphics.api.material.CgMaterialRegistry;
+import com.crystalgraphics.render.canvas.CgCanvasMaterials;
 import com.crystalgraphics.render.post.CgPostStack;
 import com.crystalgraphics.render.shader.CgToolchainDevice;
 import com.crystalgraphics.render.world.CgPipelinePrecache;
@@ -79,7 +79,7 @@ import com.crystalgraphics.shadergraph.CgPreviewPool;
  *
  * <p>Its start and stop are issued by {@link CgEngineLifecycle}, the engine's lifecycle:
  * {@code CgEngineLifecycle.ensureGraphicsContext}, {@code destroyContext} and {@code shutdown}. A
- * host calls {@link #tickFrame()} and {@link #onResize} here directly, through {@code CgLifecycleService}.</p>
+ * host calls {@link #tickFrame()} and {@link #onResize} here directly, from its frame-end and resize hooks.</p>
  *
  * <h3>Teardown order, geometry first</h3>
  * <ol>
@@ -477,14 +477,10 @@ public final class CgGraphicsLifecycle {
      * Wire additional systems here as needed, mirroring how {@link #destroyContext()}
      * enumerates every registry for teardown.
      *
-     * <p><strong>Already wired — do not call this yourself.</strong> Each platform's
-     * {@code CgLifecycleService.onFrameRendered()} implementation calls this exactly
-     * once per real rendered frame (world frame or GUI-only frame alike): 1.7.10's
-     * {@code LifecycleService1710}, 1.20.x's {@code LifecycleService}, and the
-     * harness's {@code LifecycleServiceHarness} each delegate their {@code
-     * onFrameRendered()} straight here. That is the only place this method should be
-     * invoked from — see {@link CgLifecycleService#onFrameRendered()}'s contract.
-     * Feature-level code ({@code CgUiPaintContext}, demo overlays, scenes, etc.) must
+     * <p><strong>Already wired — do not call this yourself.</strong> Each host's frame-end hook calls this exactly
+     * once per real rendered frame, world frame or GUI-only frame alike: 1.7.10's and legacy Forge's
+     * {@code CgRenderHook} at {@code updateCameraAndRender}'s tail, the modern {@code FrameHooks.endFrame}, and the
+     * harness's frame loop. Feature-level code ({@code CgUiPaintContext}, demo overlays, scenes, etc.) must
      * never call this directly; doing so would advance {@code CgFrameClock} and the MSDF
      * per-frame generation budget an extra time outside the platform's actual frame
      * cadence.</p>
@@ -650,8 +646,10 @@ public final class CgGraphicsLifecycle {
         //   Must be freed before the GL context is lost.
         CgShaderBufferRegistry.get().deleteAll();
 
-        // Step 6a: text's material instances; the material registry frees them, so the cache only forgets them.
+        // Step 6a: text's and the canvas's material instances; the material registry frees them, so the caches only
+        // forget them.
         CgTextMaterials.releaseAll();
+        CgCanvasMaterials.releaseAll();
         
         // Step 6b: Font/glyph atlas textures + background generation executor, then reset
         //   the shared registry back to a freshly-constructed, immediately reusable state

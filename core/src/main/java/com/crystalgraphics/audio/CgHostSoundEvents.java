@@ -15,8 +15,7 @@ import javax.annotation.Nullable;
 
 import com.crystalgraphics.mc.CgAssetReloader;
 import com.crystalgraphics.mc.CgReloadListener;
-import com.crystalgraphics.platform.CgPlatform;
-import com.crystalgraphics.platform.service.CgResourceService;
+import com.crystalgraphics.platform.service.CgHostResources;
 import com.crystalgraphics.serialization.format.CgJsonOps;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -73,14 +72,13 @@ public final class CgHostSoundEvents {
     /** The host's table, read at first use after a reload. */
     public static CgHostSoundEvents current() {
         CgHostSoundEvents c = current;
-        if (c == null) current = c = read(CgPlatform.resources());
+        if (c == null) current = c = read(CgHostResources.host());
         return c;
     }
 
-    /** Every namespace's {@code sounds.json} in {@code resources}, lowest pack first; none where it is null. */
-    public static CgHostSoundEvents read(@Nullable CgResourceService resources) {
+    /** Every namespace's {@code sounds.json} in {@code resources}, lowest pack first. */
+    public static CgHostSoundEvents read(CgHostResources.Host resources) {
         CgHostSoundEvents table = new CgHostSoundEvents();
-        if (resources == null) return table;
         for (String namespace : resources.namespaces()) {
             for (InputStream in : resources.openStack(namespace, "sounds.json")) {
                 try (InputStream s = in) {

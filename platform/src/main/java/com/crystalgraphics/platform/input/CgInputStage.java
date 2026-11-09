@@ -1,7 +1,5 @@
 package com.crystalgraphics.platform.input;
 
-import com.crystalgraphics.platform.CgPlatform;
-import com.crystalgraphics.platform.CgService;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -30,23 +28,10 @@ import java.util.Map;
  *       reaches all of them.</li>
  *   <li>A listener that throws is logged and counts as not having consumed.</li>
  *   <li>Fire on the thread the host delivers input on. A stage with no listener costs one array read.</li>
+ *   <li>What is held as an event lands, and whether the game holds the pointer, is {@link CgInput}'s.</li>
  * </ul>
  */
 public final class CgInputStage {
-
-    /** What only the host can answer. One class per era, {@code InputHost<Era>}. */
-    public interface Host {
-
-        /** Whether the game holds the cursor, so a pointer event is not over anything. */
-        boolean pointerGrabbed();
-
-        Host NONE = new Host() {
-            @Override public boolean pointerGrabbed() { return false; }
-        };
-    }
-
-    /** The slot a host fills, on a client. */
-    public static final CgService<Host> HOST = CgService.of("crystalgraphics:input_host", Host.NONE);
 
     /** A listener's place on a stage; {@link #close} removes it. */
     public interface Registration extends AutoCloseable { @Override void close();}
@@ -195,12 +180,5 @@ public final class CgInputStage {
             }
         }
         return false;
-    }
-
-    // -- Answered by the host --------------------------------------------------------------------------------------
-
-    /** Whether the game holds the cursor. */
-    public static boolean pointerGrabbed() {
-        return CgPlatform.get(HOST).pointerGrabbed();
     }
 }

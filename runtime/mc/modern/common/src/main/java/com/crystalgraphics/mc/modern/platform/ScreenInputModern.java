@@ -1,6 +1,6 @@
 package com.crystalgraphics.mc.modern.platform;
 
-import com.crystalgraphics.platform.CgPlatform;
+import com.crystalgraphics.platform.input.CgInput;
 import com.crystalgraphics.platform.input.CgInputStage;
 import com.crystalgraphics.platform.input.CgKeyCodes;
 import com.crystalgraphics.platform.input.CgMouseCodes;
@@ -35,7 +35,7 @@ public final class ScreenInputModern {
         lastX = x;
         lastY = y;
         return CgInputStage.SCREEN.mouseButton(new CgSystemInput.Mouse.Event(x, y, 0, 0,
-                CgPlatform.input().translateMouseCodes(hostButton), pressed, 0f, System.currentTimeMillis()));
+                CgInput.mouseButton(hostButton), pressed, 0f, System.currentTimeMillis()));
     }
 
     /** The wheel turned; {@code platformDelta} is the host's, positive up. */
@@ -49,7 +49,7 @@ public final class ScreenInputModern {
     public static boolean key(int hostKey, boolean pressed) {
         if (noScreen()) return false;
         return CgInputStage.SCREEN.key(new CgSystemInput.Keyboard.Event((char) 0,
-                CgPlatform.input().translateKeyboardCodes(hostKey), pressed, false, System.currentTimeMillis()));
+                CgInput.key(hostKey), pressed, false, System.currentTimeMillis()));
     }
 
     /** A character with no key. */

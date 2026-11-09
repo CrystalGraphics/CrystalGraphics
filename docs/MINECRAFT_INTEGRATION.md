@@ -314,8 +314,8 @@ world frame it fires while no world draws builds the world's own Vulkan pipeline
 
 ### Hot reload — `CgAssetReloader`
 
-`core/src/main/java/com/crystalgraphics/mc/CgAssetReloader`, reached through each host's
-`CgReloadService` on **F3+T** and on resource-pack changes. In order, each step isolated so one failure
+`core/src/main/java/com/crystalgraphics/mc/CgAssetReloader`, called by each host's resource reload listener
+(`HostResources1710`, `HostResourcesLegacy`, `LifecycleModern.reload`) on **F3+T** and on resource-pack changes. In order, each step isolated so one failure
 does not stop the next:
 
 1. `CgTextureManager.get().reloadAll()` — re-uploads every texture
