@@ -1,5 +1,7 @@
 package com.crystalgraphics.render.draw;
 
+import com.crystalgraphics.platform.rhi.resource.CgGpuBuffer;
+
 import javax.annotation.Nullable;
 import java.util.Arrays;
 
@@ -29,8 +31,9 @@ public final class CgBlockVersion {
     /** The arena whose slot it takes ({@link #in}); null for a range of a page. */
     @Nullable
     final CgMaterialArena arena;
-    /** Where it was written: a page's buffer, its range's node and its byte offset; buffer 0 until written. */
-    int buffer, node = -1, offset;
+    /** Where it was written: a page's buffer, its range's node and its byte offset; buffer null until written. */
+    CgGpuBuffer buffer;
+    int node = -1, offset;
     CgBindingTable.BlockStore.Page page;
     /** In an arena, under its lock: its slot, -1 for none; the frames built naming it and not yet uploaded. */
     int slot = -1, pins;

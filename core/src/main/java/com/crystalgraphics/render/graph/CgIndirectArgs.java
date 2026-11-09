@@ -19,14 +19,14 @@ import java.util.function.IntConsumer;
  * binds only its slot and no two writes overlap. Render thread.
  *
  * <pre>{@code
+ * CgIndirectArgs commands = new CgIndirectArgs(this::dispatchCommands);   // stage() and dispatch program() there
  * int args = commands.reserve(indirects, freed);  // the buffer, big enough for the pass's commands
  * commands.write(slot, count, countOffset, mode, factor, range, records, most, first);
  * commands.flush();                                // write queues: the pass's commands in one dispatch
- * store.drawIndirect(mesh, submesh, commands.buffer(), commands.offset(slot));
- *
- * // Consecutive slots of meshes that join draw as one call
- * store.drawIndirectJoined(mesh, commands.buffer(), commands.offset(slot), n, commands.stride());
+ * store.drawIndirectOn(pass, cache, mesh, submesh, args, commands.offset(slot));
  * }</pre>
+ *
+ * <p>A write naming another count buffer than the rows queued flushes them first, through the same dispatch.</p>
  */
 final class CgIndirectArgs {
 
@@ -38,6 +38,8 @@ final class CgIndirectArgs {
     private static final int ROW = 11;
     private static final int DISPATCHES = CgTrace.name("graph.args-dispatches");
 
+    /** Stages the queued rows and dispatches {@link #program} over them: the executor's, on the device. */
+    private final Runnable dispatch;
     private int buffer;
     private int capacity;
     private CgKernel many;
@@ -52,6 +54,10 @@ final class CgIndirectArgs {
     /** Bytes from one command to the next: a command rounded up to the storage offset alignment. */
     private int stride;
 
+    CgIndirectArgs(Runnable dispatch) {
+        this.dispatch = dispatch;
+    }
+
     /** Where command {@code slot} starts in the buffer. */
     long offset(int slot) {
         return (long) slot * stride;
@@ -62,12 +68,12 @@ final class CgIndirectArgs {
         return stride;
     }
 
-    /** The GL buffer the commands are in, as last reserved. */
+    /** The buffer the commands are in, as last reserved, by the name the graph knows it by. */
     int buffer() {
         return buffer;
     }
 
-    /** The buffer, grown to hold {@code commands}; the GL name it had is answered to {@code freed} when it grows. */
+    /** The buffer, grown to hold {@code commands}; the name it had is answered to {@code freed} when it grows. */
     int reserve(int commands, IntConsumer freed) {
         if (stride == 0) {
             int align = Math.max(4, CgCapabilities.detect().storageOffsetAlignment());
@@ -86,7 +92,7 @@ final class CgIndirectArgs {
     }
 
     /**
-     * Writes command {@code slot}: the {@code uint} at byte {@code countOffset} in GL buffer {@code count}, times
+     * Writes command {@code slot}: the {@code uint} at byte {@code countOffset} in buffer {@code count}, times
      * {@code factor}, read as {@code mode}, over {@code range} as {@code CgMeshStore.range} answered it. An
      * {@code INSTANCES} command draws at most {@code most} instances, -1 for any number. {@code firstInstance} is where
      * the batch's records start, {@code CgMeshStore.SHARED_RECORD} set where every instance reads that one.
@@ -117,12 +123,7 @@ final class CgIndirectArgs {
 
     /** Writes the commands {@link #write} queued, in one dispatch. Before the commands' barrier. */
     void flush() {
-        if (!stage()) return;
-        CgKernelProgram program = many();
-        program.use();
-        program.buffer("COUNT", stagedCount).buffer("ARGS", buffer, stagedArgs, stagedArgsBytes)
-                .buffer("PARAMS", params.getGlBuffer(), stagedParams, stagedParamsBytes)
-                .dispatch(stagedElements);
+        if (rows > 0) dispatch.run();
     }
 
     /** What {@link #stage} staged: the count buffer, the args' span, the params' span, the elements to dispatch. */
@@ -130,8 +131,8 @@ final class CgIndirectArgs {
     long stagedArgs, stagedArgsBytes, stagedParams, stagedParamsBytes;
 
     /**
-     * Uploads the queued rows' parameters and notes what their dispatch binds, for {@link #flush} or a caller
-     * dispatching {@link #program} on the device; false when nothing is queued.
+     * Uploads the queued rows' parameters and notes what their dispatch binds, for the dispatch {@link #flush} runs;
+     * false when nothing is queued.
      */
     boolean stage() {
         if (rows == 0) return false;
@@ -153,13 +154,13 @@ final class CgIndirectArgs {
         return true;
     }
 
-    /** The commands' buffer and the params ring, by name: what a staged dispatch binds. */
+    /** The commands' buffer, by name, and the params ring: what a staged dispatch binds. */
     int argsBuffer() {
         return buffer;
     }
 
-    int paramsBuffer() {
-        return params.getGlBuffer();
+    CgStreamBuffer params() {
+        return params;
     }
 
     /** The kernel writing the commands. */
@@ -172,7 +173,7 @@ final class CgIndirectArgs {
         return many.program();
     }
 
-    /** At context teardown; the GL name is answered to {@code freed}. */
+    /** At the device's teardown; the buffer's name is answered to {@code freed}. */
     void delete(IntConsumer freed) {
         rows = 0;
         params.delete();   // its executor goes with it (CgExecutor.destroyAll)

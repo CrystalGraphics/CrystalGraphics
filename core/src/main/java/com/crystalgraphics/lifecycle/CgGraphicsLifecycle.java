@@ -41,7 +41,6 @@ import com.crystalgraphics.vfx.CgVfx;
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.gl.CgGlNames;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
-import com.crystalgraphics.gl.buffer.CgQuadIndexBuffer;
 import com.crystalgraphics.gl.buffer.CgStreamBuffer;
 import com.crystalgraphics.gl.buffer.CgReadback;
 import com.crystalgraphics.render.CgGpuBudget;
@@ -84,7 +83,6 @@ import com.crystalgraphics.shadergraph.CgPreviewPool;
  * <h3>Teardown order, geometry first</h3>
  * <ol>
  *   <li>{@link CgMeshStore#releaseAll()} — its pools' buffers and its one VAO</li>
- *   <li>{@link CgQuadIndexBuffer#freeAll()} — shared quad IBO</li>
  * </ol>
  *
  * <p>After all GL objects are freed, backend-capability caches are reset so that
@@ -626,7 +624,6 @@ public final class CgGraphicsLifecycle {
         CgMeshStore.get().releaseAll();
 
         // Step 2: Shared quad IBO.
-        CgQuadIndexBuffer.freeAll();
 
         // Step 5: Free all cached textures.
         CgTextureManager.get().freeAll();

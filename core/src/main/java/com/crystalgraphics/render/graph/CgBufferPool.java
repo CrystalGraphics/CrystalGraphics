@@ -1,8 +1,5 @@
 package com.crystalgraphics.render.graph;
 
-import com.crystalgraphics.gl.CgGlNames;
-import com.crystalgraphics.platform.gl.CgCapabilities;
-import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.CgGLImports;
 import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.rhi.resource.CgGpuBuffer;
@@ -16,7 +13,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.IntConsumer;
 
 /**
- * GL buffers for transient graph buffers, kept between frames by size class: a buffer released after its last use is
+ * Device buffers for transient graph buffers, kept between frames by size class: a buffer released after its last use is
  * the next transient's of that class, in the same frame or a later one, and one idle for {@link #IDLE_NANOS} is
  * freed. Render thread only; a steady frame allocates nothing.
  */
@@ -24,8 +21,7 @@ final class CgBufferPool {
 
     /**
      * Five minutes, whatever the frame rate: a buffer one beat of a move uses is still here when the move plays again.
-     * Remade, each is a {@code glGenBuffers} and new storage, both waits for a threaded driver (T10: 32 remade in a warm
-     * play at 120 frames). The pools hold at most a peak frame's transients; what a resize leaves behind goes after this.
+     * Remade, each is new storage (T10: 32 remade in a warm play at 120 frames). The pools hold at most a peak frame's transients; what a resize leaves behind goes after this.
      */
     static final long IDLE_NANOS = TimeUnit.MINUTES.toNanos(5);
 
@@ -81,37 +77,26 @@ final class CgBufferPool {
         return buckets[classes++] = new Bucket();
     }
 
-    /** Device-local storage of {@code bytes}: immutable where the context has buffer storage. */
-    /** A buffer of {@code bytes}: on the installed device where {@code CgGLImports} is, reached by its name. */
+    /** A device-local buffer of {@code bytes}, known to the graph by the name {@code CgGLImports} gives it. */
     static int create(long bytes) {
-        if (CgGLImports.installed()) {
-            CgGpuBuffer b = CgRHI.get().createBuffer(new CgGpuBuffer.Desc("graph buffer", bytes, CgGpuBuffer.Usage.ALL, false));
-            int name = CgGLImports.get().name(b);
-            made.put(name, b);
-            return name;
-        }
-        int buffer = CgGlNames.buffer();
+        CgGpuBuffer b;
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL_DETAIL, STORAGE)) {
-            CgGL.glBindBuffer(CgGL.GL_COPY_WRITE_BUFFER, buffer);
-            if (CgCapabilities.detect().isBufferStorageSupported()) CgGL.glBufferStorage(CgGL.GL_COPY_WRITE_BUFFER, bytes, 0);
-            else CgGL.glBufferData(CgGL.GL_COPY_WRITE_BUFFER, bytes, CgGL.GL_DYNAMIC_COPY);
-            CgGL.glBindBuffer(CgGL.GL_COPY_WRITE_BUFFER, 0);
+            b = CgRHI.get().createBuffer(new CgGpuBuffer.Desc("graph buffer", bytes, CgGpuBuffer.Usage.ALL, false));
         }
-        return buffer;
+        int name = CgGLImports.get().name(b);
+        made.put(name, b);
+        return name;
     }
 
-    /** Deletes a buffer {@link #create} made, through the device that made it. */
+    /** Releases a buffer {@link #create} made, destroyed once the frames reading it retire. */
     static void free(int buffer) {
         CgGpuBuffer b = made.remove(buffer);
-        if (b == null) {
-            CgGL.glDeleteBuffers(buffer);
-            return;
-        }
+        if (b == null) return;
         CgGLImports.get().forget(b);
         CgRHI.get().release(b);
     }
 
-    /** The device buffer behind a name {@link #create} gave, or null where {@code CgGL} made it. */
+    /** The device buffer behind a name {@link #create} gave; null for another. */
     static CgGpuBuffer rhiBuffer(int buffer) {
         return made.get(buffer);
     }

@@ -1,8 +1,5 @@
 package com.crystalgraphics.gl.buffer;
 
-import com.crystalgraphics.gl.CgGlNames;
-import com.crystalgraphics.platform.gl.CgCapabilities;
-import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 
@@ -12,24 +9,23 @@ import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 
 /**
- * A vertex stream, or a {@code CgBufferLifetime.FRAME} SSBO or UBO ({@link CgStreamBuffer#createFrameLocal}), on the frame ring: one region per frame in flight, filled by bump allocation, each upload
- * at a fresh offset that nothing in flight reads. The {@link CgCapabilities.StreamBufferTier#PERSISTENT} and
- * {@link CgCapabilities.StreamBufferTier#RING} tiers; they differ only in how the bytes are reached.
+ * A vertex stream, or a {@code CgBufferLifetime.FRAME} SSBO or UBO, on the frame ring: one persistently mapped device
+ * buffer with a region per frame in flight, filled by bump allocation, each upload at a fresh offset that nothing in
+ * flight reads.
  *
- * <p>Built by {@link CgStreamBuffer#create} and {@link CgStreamBuffer#createFrameLocal}; a caller sees only the {@code CgStreamBuffer} contract, and
- * must honour the offset {@link #commit} returns, which differs on every upload.</p>
+ * <p>Built by {@link CgStreamBuffer#create} and {@link CgStreamBuffer#createFrameLocal}; a caller sees only the
+ * {@code CgStreamBuffer} contract, and must honour the offset {@link #commit} returns, which differs on every upload.</p>
  *
  * <pre>{@code
  * ByteBuffer out = stream.map(bytes);
  * // ... write ...
- * int offset = stream.commit(bytes);     // where this upload's first byte sits in the GL buffer
- * binding.rebindPointersIfNeeded(offset);
+ * int offset = stream.commit(bytes);     // where this upload's first byte sits in gpuBuffer()
  * }</pre>
  *
- * <p>A frame that outgrows its region gets fresh storage with every region doubled, once: an orphan on
- * the mapped ring, keeping the buffer's name; a new buffer on the persistent ring, whose storage is immutable,
- * which bumps {@link #getGeneration()} so bindings re-point. Nothing here waits inside a frame: the only wait
- * is {@link CgFrameRing#awaitRetired} at a frame's first upload, for the frame {@link CgFrameRing#FRAMES} back.</p>
+ * <p>A frame that outgrows its region gets a new buffer with every region doubled, once, which bumps
+ * {@link #getGeneration()} so bindings re-point; the old one is destroyed once the frames reading it retire. Nothing here
+ * waits inside a frame: the only wait is {@link CgFrameRing#awaitRetired} at a frame's first upload, for the frame
+ * {@link CgFrameRing#FRAMES} back.</p>
  */
 final class FrameRingStreamBuffer extends CgStreamBuffer {
 
@@ -37,19 +33,13 @@ final class FrameRingStreamBuffer extends CgStreamBuffer {
     private static final int ALIGNMENT = 256;
     /** Growth stops doubling here; a single upload larger still gets a region of its own size. */
     private static final int MAX_REGION_BYTES = 64 << 20;
-    private static final int PERSISTENT_FLAGS =
-            CgGL.GL_MAP_WRITE_BIT | CgGL.GL_MAP_PERSISTENT_BIT | CgGL.GL_MAP_COHERENT_BIT;
+    private static final int OVERFLOW = CgTrace.name("frameRing.overflow");
 
-    private final boolean persistent;
-    /** The whole buffer, mapped once for the storage's life. Persistent tier only. */
-    private ByteBuffer persistentMapping;
-    /** {@link #persistentMapping} as floats; rebuilt with it on every {@link #allocate}. */
-    private FloatBuffer persistentFloats;
-    private IntBuffer persistentInts;
-    /** {@link #persistentMapping} as one byte view, positioned per {@link #write}. */
-    private ByteBuffer persistentBytes;
-    /** The mapped tier's last mapping, offered back to the driver so its wrapper can be reused. */
-    private ByteBuffer lastMapping;
+    /** The whole buffer's mapping, and views of it as floats, ints and bytes; rebuilt with every {@link #allocate}. */
+    private ByteBuffer mapping;
+    private FloatBuffer floats;
+    private IntBuffer ints;
+    private ByteBuffer bytes;
 
     private int regionBytes;
     private long frame = -1;
@@ -57,9 +47,8 @@ final class FrameRingStreamBuffer extends CgStreamBuffer {
     private int cursor;
     private int mappedAt;
 
-    FrameRingStreamBuffer(int target, int capacityBytes, boolean persistent) {
-        super(target, capacityBytes);
-        this.persistent = persistent;
+    FrameRingStreamBuffer(Use use, int capacityBytes) {
+        super(use, capacityBytes);
         this.regionBytes = alignUp(Math.max(capacityBytes, ALIGNMENT));
         allocate();
     }
@@ -67,51 +56,34 @@ final class FrameRingStreamBuffer extends CgStreamBuffer {
     @Override
     public ByteBuffer map(int sizeBytes) {
         reserve(sizeBytes);
-        if (persistent) {
-            ByteBuffer view = persistentMapping.duplicate();
-            view.limit(mappedAt + sizeBytes).position(mappedAt);
-            return view.slice().order(ByteOrder.nativeOrder());   // slice() resets the order
-        }
-        bind();
-        ByteBuffer mapped = CgGL.glMapBufferRange(target, mappedAt, sizeBytes,
-                CgGL.GL_MAP_WRITE_BIT | CgGL.GL_MAP_UNSYNCHRONIZED_BIT
-                        | CgGL.GL_MAP_INVALIDATE_RANGE_BIT | CgGL.GL_MAP_FLUSH_EXPLICIT_BIT, lastMapping);
-        if (mapped == null) {
-            throw new IllegalStateException("glMapBufferRange returned null (offset=" + mappedAt + ", size=" + sizeBytes + ")");
-        }
-        lastMapping = mapped;
-        return mapped;
+        ByteBuffer view = mapping.duplicate();
+        view.limit(mappedAt + sizeBytes).position(mappedAt);
+        return view.slice().order(ByteOrder.nativeOrder());   // slice() resets the order
     }
 
-    /** The persistent tier writes through one view of the whole mapping, positioned per upload. */
+    /** Writes through one view of the whole mapping, positioned per upload. */
     @Override
     public FloatBuffer mapFloats(int sizeBytes) {
-        if (!persistent) return super.mapFloats(sizeBytes);
         reserve(sizeBytes);   // may allocate(), which rebuilds the view
-        persistentFloats.clear();
-        persistentFloats.position(mappedAt >> 2);
-        return persistentFloats;
+        floats.clear();
+        floats.position(mappedAt >> 2);
+        return floats;
     }
 
     @Override
     public IntBuffer mapInts(int sizeBytes) {
-        if (!persistent) return super.mapInts(sizeBytes);
-        reserve(sizeBytes);   // may allocate(), which rebuilds the view
-        persistentInts.clear();
-        persistentInts.position(mappedAt >> 2);
-        return persistentInts;
+        reserve(sizeBytes);
+        ints.clear();
+        ints.position(mappedAt >> 2);
+        return ints;
     }
 
     @Override
     public void write(byte[] src, int from, int count) {
-        if (!persistent) {
-            super.write(src, from, count);
-            return;
-        }
-        reserve(count);   // may allocate(), which rebuilds the view
-        persistentBytes.clear();
-        persistentBytes.position(mappedAt);
-        persistentBytes.put(src, from, count);
+        reserve(count);
+        bytes.clear();
+        bytes.position(mappedAt);
+        bytes.put(src, from, count);
     }
 
     @Override
@@ -119,35 +91,7 @@ final class FrameRingStreamBuffer extends CgStreamBuffer {
         return true;
     }
 
-    /**
-     * A small block on the mapped tier (a frame-local UBO) as one {@code glBufferSubData} at its reserved offset,
-     * not a map and unmap: that pair costs about 0.19 ms a call whatever the size, as measured on the text UBO
-     * (the orphan tier's, before rhi X2). The bytes land where nothing in flight reads, as a mapped
-     * write would. The persistent tier declines: its write is already a plain copy into the mapping.
-     */
-    @Override
-    protected boolean uploadSmall(float[] data, int floatCount, int byteCount) {
-        if (persistent) return false;
-        reserve(byteCount);
-        if (scratch == null || scratch.capacity() < byteCount) {
-            scratch = ByteBuffer.allocateDirect(Math.max(byteCount, SMALL_UPLOAD_THRESHOLD_BYTES)).order(ByteOrder.nativeOrder());
-            scratchFloats = scratch.asFloatBuffer();
-        }
-        scratchFloats.clear();
-        scratchFloats.put(data, 0, floatCount);
-        scratch.position(0).limit(byteCount);
-        bind();
-        CgGL.glBufferSubData(target, mappedAt, scratch);
-        cursor += alignUp(byteCount);
-        writeOffset = mappedAt;
-        return true;
-    }
-
-    /** {@link #uploadSmall}'s staging, grow-only. */
-    private ByteBuffer scratch;
-    private FloatBuffer scratchFloats;
-
-    /** Sets {@link #mappedAt} to room for {@code sizeBytes} in this frame's region, growing or re-storing first. */
+    /** Sets {@link #mappedAt} to room for {@code sizeBytes} in this frame's region, growing first where it must. */
     private void reserve(int sizeBytes) {
         long now = CgFrameRing.frame();
         if (now != frame) beginFrame(now);
@@ -158,21 +102,20 @@ final class FrameRingStreamBuffer extends CgStreamBuffer {
             overflowed();
             allocate();
         } else if (cursor + need > regionBytes) {
-            // Doubled now, not only at the next frame: a block uploaded per draw from a small start would
-            // otherwise take fresh storage at every upload that overflows, all frame long.
+            // Doubled now, not only at the next frame: a block uploaded per draw from a small start would otherwise take
+            // a new buffer at every upload that overflows, all frame long.
             regionBytes = alignUp(Math.min(regionBytes * 2, Math.max(regionBytes, MAX_REGION_BYTES)));
             overflowed();
             allocate();
         }
-
         mappedAt = regionBase + cursor;
     }
 
-    /** Counted and marked: new storage waits for a threaded driver to drain its queue, so each is a stall to name. */
+    /** Counted and marked: a new buffer mid-frame is a cost to name. */
     private void overflowed() {
-        CgTrace.add(CgChannels.GL, "frameRing.overflow", 1);
+        CgTrace.add(CgChannels.GL, OVERFLOW, 1);
         if (CgTrace.isEnabled(CgChannels.GL)) {
-            CgTrace.marker(CgChannels.GL, "frameRing.overflow", target + " to " + regionBytes + " B a region");
+            CgTrace.marker(CgChannels.GL, "frameRing.overflow", use + " to " + regionBytes + " B a region");
         }
     }
 
@@ -181,22 +124,14 @@ final class FrameRingStreamBuffer extends CgStreamBuffer {
         return mappedAt;
     }
 
+    /** A coherent mapping: the write is visible to every command recorded after it. */
     @Override
     public int commit(int usedBytes) {
-        if (!persistent) {
-            CgGL.glFlushMappedBufferRange(target, 0, usedBytes);   // relative to the mapped range
-            CgGL.glUnmapBuffer(target);
-        }
-        // A coherent persistent mapping needs neither: the write is visible to every command issued after it.
         cursor += alignUp(usedBytes);
         writeOffset = mappedAt;
         return mappedAt;
     }
 
-    /**
-     * No second re-store after an overflow: the overflow already doubled the regions, and new storage waits for a
-     * threaded driver to drain its queue (T10: 23 ms on a cut's opening frame).
-     */
     private void beginFrame(long now) {
         frame = now;
         CgFrameRing.awaitRetired(now - CgFrameRing.FRAMES);
@@ -204,40 +139,23 @@ final class FrameRingStreamBuffer extends CgStreamBuffer {
         regionBase = CgFrameRing.region(now) * regionBytes;
     }
 
-    /** New storage, sized for every region; the old storage lives on until the draws reading it finish. */
+    /** A new buffer sized for every region; the old one lives on until the frames reading it retire. */
     private void allocate() {
         capacityBytes = regionBytes * CgFrameRing.FRAMES;
-        if (persistent) {
-            if (persistentMapping != null) {
-                // Immutable storage cannot be respecified. GL keeps the old buffer alive for the draws
-                // still reading it; the name goes back to the pool, which is why bindings watch generation.
-                CgGL.glDeleteBuffers(glBuffer);
-                glBuffer = CgGlNames.buffer();
-                generation++;
-            }
-            bind();
-            CgGL.glBufferStorage(target, capacityBytes, PERSISTENT_FLAGS);
-            persistentMapping = CgGL.glMapBufferRange(target, 0, capacityBytes, PERSISTENT_FLAGS, null);
-            if (persistentMapping == null) {
-                throw new IllegalStateException("persistent glMapBufferRange returned null (size=" + capacityBytes + ")");
-            }
-            persistentFloats = persistentMapping.order(ByteOrder.nativeOrder()).asFloatBuffer();
-            persistentInts = persistentMapping.asIntBuffer();
-            persistentBytes = persistentMapping.duplicate();
-        } else {
-            bind();
-            CgGL.glBufferData(target, capacityBytes, CgGL.GL_STREAM_DRAW);
+        if (gpu != null) {
+            release(gpu);
+            generation++;
         }
+        gpu = make(capacityBytes, true);
+        mapping = gpu.mapped().duplicate().order(ByteOrder.nativeOrder());
+        floats = mapping.asFloatBuffer();
+        ints = mapping.asIntBuffer();
+        bytes = mapping.duplicate();
         cursor = 0;
         regionBase = CgFrameRing.region(Math.max(frame, 0)) * regionBytes;
     }
 
     private static int alignUp(int value) {
         return (value + ALIGNMENT - 1) & ~(ALIGNMENT - 1);
-    }
-
-    @Override
-    protected void deleteGlResources() {
-        CgGL.glDeleteBuffers(glBuffer);   // also ends a persistent mapping
     }
 }

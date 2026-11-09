@@ -1,440 +1,278 @@
 package com.crystalgraphics.gl.buffer;
 
 import com.crystalgraphics.api.buffer.CgObjectBuffer;
-import com.crystalgraphics.gl.CgGlNames;
 import com.crystalgraphics.gpu.CgUploadLease;
-import lombok.Getter;
-import com.crystalgraphics.platform.gl.CgCapabilities;
-import com.crystalgraphics.platform.gl.CgCapabilities.StreamBufferTier;
-import com.crystalgraphics.platform.gl.CgGL;
+import com.crystalgraphics.platform.gl.CgGLImports;
+import com.crystalgraphics.platform.rhi.CgRHI;
+import com.crystalgraphics.platform.rhi.resource.CgGpuBuffer;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
+import lombok.Getter;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
+import java.util.EnumSet;
+import java.util.Set;
 
 /**
- * A GL buffer rewritten while the GPU may still be reading earlier contents -- vertex streams, and the
+ * A device buffer rewritten while the GPU may still be reading earlier contents: vertex streams, staging, and the
  * storage under every shader buffer.
  *
- * <p>Three kinds, from three factories, on the frame ring's {@link StreamBufferTier} that {@link CgCapabilities}
- * picks once per context ({@link StreamBufferTier#PERSISTENT} &gt; {@link StreamBufferTier#RING}):</p>
+ * <p>Two kinds, from three factories:</p>
  * <ul>
- *   <li>{@link #create(int, int)} -- a <b>stream</b>: each upload lands at a new offset, valid for the frame that
- *       wrote it.</li>
- *   <li>{@link #createForShaderBuffer(int, int)} -- <b>shader-buffer storage</b>, always at offset 0 and readable
- *       until the next upload: each upload staged in the frame ring and copied in on the GPU. For a buffer whose
- *       readers pass no point that could re-upload it (a mod's own registry buffer).</li>
- *   <li>{@link #createFrameLocal(int, int)} -- a <b>frame-local SSBO or UBO</b>, what a shader buffer created with
- *       {@code CgBufferLifetime.FRAME} stands on: uploaded in every frame that reads it, bound by range at each
- *       upload's offset. Every engine-owned shader buffer.</li>
+ *   <li>{@link #create} -- a <b>stream</b> on the frame ring: each upload lands at a new offset in this frame's region
+ *       of a persistently mapped buffer, valid for the frame that wrote it.</li>
+ *   <li>{@link #createFrameLocal} -- a <b>frame-local SSBO or UBO</b>, the same ring, bound by range at each upload's
+ *       offset: what a shader buffer created with {@code CgBufferLifetime.FRAME} stands on.</li>
+ *   <li>{@link #createForShaderBuffer} -- <b>retained storage</b>, at offset 0 and readable until the next upload:
+ *       each upload staged in a shared ring and copied in on the GPU (Unreal's {@code RHIUpdateBuffer}).</li>
  * </ul>
  *
- * <p>{@code -Dcrystalgraphics.stream.tier=persistent|ring} forces a tier -- for a driver that misbehaves on the one
- * chosen, and for comparing them.</p>
- *
  * <pre>{@code
- * CgStreamBuffer stream = CgStreamBuffer.create(capacityBytes);
- *
+ * CgStreamBuffer stream = CgStreamBuffer.create(CgStreamBuffer.Use.VERTEX, capacityBytes);
  * ByteBuffer out = stream.map(bytes);
  * // ... write `bytes` ...
- * int offset = stream.commit(bytes);     // where the data starts: point the draw here
- * // ... draw ...
- * stream.afterSubmit();                  // a no-op today; kept for callers that already call it
+ * int offset = stream.commit(bytes);       // where the data starts: point the draw here
+ * pass.setVertexBuffer(0, stream.gpuBuffer(), offset);
  * }</pre>
  *
- * <p>Easy to get wrong: a stream upload read in a later frame reads another frame's bytes -- a vertex
- * stream is not somewhere to keep data. And {@link #commit} returns the offset; binding at 0 draws the
- * wrong bytes.</p>
+ * <ul>
+ *   <li>A stream upload read in a later frame reads another frame's bytes: a vertex stream is not somewhere to keep
+ *       data. And {@link #commit} returns the offset; binding at 0 draws the wrong bytes.</li>
+ *   <li>Read {@link #gpuBuffer()} when binding, never keep it: growth replaces it, and bumps {@link #getGeneration()}.</li>
+ *   <li>Render thread only.</li>
+ * </ul>
  */
 public abstract class CgStreamBuffer implements CgObjectBuffer {
 
-    /**
-     * Uploads at or below this many bytes take {@link #uploadSmall} instead of map/commit.
-     *
-     * <p>{@code glMapBufferRange}/{@code glUnmapBuffer} carry a fixed per-call driver cost —
-     * buffer bookkeeping, orphan allocation, mapping setup — that is irrelevant when amortised
-     * over a large batch and dominant for a tiny one. Measured on this codebase's own text UBO:
-     * 2,286 uploads of 64 bytes each cost <strong>438 ms of map time for 146 KB total</strong>
-     * (~0.19 ms per call), while the SSBO instance path pushed <strong>106 MB through the same
-     * code in 57 ms</strong>. Per byte the small writes were ~5,500x more expensive — the cost
-     * tracks call count, not size.
-     *
-     * <p>256 bytes is comfortably above the small-constant-block case this targets (a mat4 is
-     * 64) and far below any real streaming batch, so no bulk path changes behaviour.</p>
-     */
-    protected static final int SMALL_UPLOAD_THRESHOLD_BYTES = 256;
+    /** What a buffer is read as: its device usage, and its name in a profile. */
+    public enum Use {
+        VERTEX("vertex", CgGpuBuffer.Usage.VERTEX, CgGpuBuffer.Usage.STORAGE),
+        /** A page of meshes' bytes: vertices pulled as words, and the indices a draw takes. */
+        MESH("mesh", CgGpuBuffer.Usage.STORAGE, CgGpuBuffer.Usage.INDEX),
+        INDEX("index", CgGpuBuffer.Usage.INDEX),
+        UNIFORM("ubo", CgGpuBuffer.Usage.UNIFORM),
+        STORAGE("ssbo", CgGpuBuffer.Usage.STORAGE),
+        INDIRECT("indirect", CgGpuBuffer.Usage.INDIRECT, CgGpuBuffer.Usage.STORAGE),
+        STAGING("staging", CgGpuBuffer.Usage.COPY_SRC);
 
-    /**
-     * The GL buffer object. Stable, except that {@link StreamBufferTier#PERSISTENT} storage is immutable, so growing it
-     * takes a new buffer -- and bumps {@link #generation}, which is what a VAO binding watches.
-     */
-    @Getter
-    protected int glBuffer;
+        final String label;
+        final Set<CgGpuBuffer.Usage> usage;
 
-    /** Bumped whenever {@link #glBuffer} is replaced. A binding re-points its attributes when this changes, as
-     * it does when the offset changes; comparing names instead would miss a name the driver hands back. */
+        Use(String label, CgGpuBuffer.Usage first, CgGpuBuffer.Usage... rest) {
+            this.label = label;
+            EnumSet<CgGpuBuffer.Usage> all = EnumSet.of(first, rest);
+            all.add(CgGpuBuffer.Usage.COPY_SRC);
+            all.add(CgGpuBuffer.Usage.COPY_DST);
+            this.usage = all;
+        }
+    }
+
+    /** The storage now; growth replaces it. */
+    protected CgGpuBuffer gpu;
+
+    /** Bumped whenever {@link #gpu} is replaced: a binding made from it re-points when this changes. */
     @Getter
     protected int generation;
 
-    /** The GL buffer target this buffer was created for (e.g. {@code GL_ARRAY_BUFFER}, {@code GL_UNIFORM_BUFFER}). */
     @Getter
-    protected final int target;
+    protected final Use use;
 
-    /** Current allocated GL buffer size in bytes. Updated whenever the buffer grows. */
+    /** Bytes the storage holds now. */
     @Getter
     protected int capacityBytes;
 
-    /** Byte offset of the most recently committed upload within the GL buffer; always 0 on shader-buffer storage. */
+    /** Byte offset of the most recently committed upload; always 0 on retained storage. */
     @Getter
     protected int writeOffset;
 
-    /**
-     * Set to {@code true} by {@link #delete()}. Checked by {@link #bind()} to guard
-     * against use-after-free. Declared {@code volatile} so deletion on one thread is
-     * immediately visible to bind calls on the render thread.
-     */
+    /** Size of the latest upload: with {@link #getWriteOffset()}, the range a draw reads. */
+    @Getter
+    protected int committedBytes;
+
     protected volatile boolean deleted;
 
-    /**
-     * Allocates a new GL buffer object via {@code glGenBuffers} and records the target and capacity.
-     * Subclass constructors are responsible for calling {@code glBufferData} to initialise the storage.
-     *
-     * @param target        GL buffer target (e.g. {@code GL_ARRAY_BUFFER})
-     * @param capacityBytes initial allocated size in bytes
-     */
-    protected CgStreamBuffer(int target, int capacityBytes) {
-        this.glBuffer = CgGlNames.buffer();
-        this.target = target;
-        this.capacityBytes = capacityBytes;
-        this.writeOffset = 0;
+    // Interned once, never per upload: uploadFloats is the hottest path in the engine, and a name built inline is
+    // concatenated before the channel can say it is off.
+    private final int profileWriteName;
+    private final int profileBytesName;
 
-        // Interned once here, never per upload: uploadFloats is the single hottest path in the
-        // engine (every vertex, instance, UBO and SSBO write goes through it), and a name built
-        // inline is concatenated before the channel can say it is off.
-        String prefix = "streamBuffer." + targetLabel() + ".";
-        this.profileMapName = CgTrace.name(prefix + "map");
+    protected CgStreamBuffer(Use use, int capacityBytes) {
+        this.use = use;
+        this.capacityBytes = capacityBytes;
+        String prefix = "streamBuffer." + use.label + ".";
         this.profileWriteName = CgTrace.name(prefix + "write");
-        this.profileCommitName = CgTrace.name(prefix + "commit");
         this.profileBytesName = CgTrace.name(prefix + "bytes");
-        this.profileSmallUploadName = CgTrace.name(prefix + "smallUpload");
     }
 
-    // Pre-built profiling names — see the constructor for why these are not built inline.
-    private final int profileMapName;
-    private final int profileWriteName;
-    private final int profileCommitName;
-    private final int profileBytesName;
-    private final int profileSmallUploadName;
+    /** The device buffer holding the storage now. */
+    public CgGpuBuffer gpuBuffer() {
+        return gpu;
+    }
 
     /**
-     * Reserves {@code sizeBytes} bytes for writing and returns a {@code ByteBuffer} pointing
-     * to that region. The returned buffer is valid until {@link #commit(int)} is called.
-     * Implementations auto-grow the GL buffer if {@code sizeBytes > capacityBytes}.
-     *
-     * @param sizeBytes number of bytes to reserve
-     * @return writable {@code ByteBuffer} of at least {@code sizeBytes} capacity
+     * Reserves {@code sizeBytes} for writing and answers a buffer over that region, valid until {@link #commit}.
+     * Grows the storage where it must.
      */
     public abstract ByteBuffer map(int sizeBytes);
 
-    /**
-     * Where the region the last {@link #map} returned starts in the buffer: what {@link #commit} will return. Valid
-     * between the two, for a caller that aligns what it writes to the buffer rather than to the region.
-     */
+    /** Where the region the last {@link #map} returned starts: what {@link #commit} will return. */
     public int mappedOffset() {
         return 0;
     }
 
     /**
-     * Finalises the CPU-side upload and returns the byte offset where the data starts in the GL buffer.
-     *
-     * <p>This call only finalises the CPU write; do not assume the GPU has consumed the data when it
-     * returns.</p>
-     *
-     * @param usedBytes number of bytes actually written since {@link #map(int)}
-     * @return byte offset in the GL buffer where this upload's data begins -- a new one per upload on a
-     *         vertex stream, always {@code 0} on shader-buffer storage
+     * Ends the write of {@code usedBytes} since {@link #map} and answers where they start in {@link #gpuBuffer()}: a new
+     * offset per upload on the ring, always 0 on retained storage.
      */
     public abstract int commit(int usedBytes);
 
-    /**
-     * Called after the draw that consumes the most recent upload. A no-op: the frame ring fences once per
-     * frame ({@link CgFrameRing}), not per upload. Kept because callers already call it.
-     */
-    public void afterSubmit() {
-    }
-
-    /**
-     * Convenience method: maps, copies {@code floatCount} floats from {@code data[0..floatCount-1]},
-     * commits, and returns the byte offset where the data starts.
-
-     *
-     * @param data       source float array
-     * @param floatCount number of floats to copy
-     * @return byte offset in the GL buffer where the uploaded data begins
-     */
+    /** Maps, copies {@code floatCount} floats of {@code data}, commits, and answers where they start. */
     public int uploadFloats(float[] data, int floatCount) {
         int byteCount = floatCount * Float.BYTES;
-
-        // Small writes bypass map/unmap entirely — see SMALL_UPLOAD_THRESHOLD_BYTES.
-        if (byteCount <= SMALL_UPLOAD_THRESHOLD_BYTES && uploadSmall(data, floatCount, byteCount)) {
-            CgTrace.add(CgChannels.GL, profileSmallUploadName, 1);
-            committedBytes = byteCount;
-            return writeOffset;
-        }
-
-        // Split into three scopes because this is the single upload path shared by EVERY
-        // stream buffer — vertex, instance, UBO, SSBO alike. If a GL stall lives in here
-        // it is a pipeline-wide problem, not a per-feature one, so the scopes are named by GL
-        // target: a cost that shows up only under one target is a usage-pattern issue, while
-        // one spread across all of them is the shared machinery.
-        FloatBuffer out;
-        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL_DETAIL, profileMapName)) {
-            out = mapFloats(byteCount);
-        }
+        FloatBuffer out = mapFloats(byteCount);
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL_DETAIL, profileWriteName)) {
             out.put(data, 0, floatCount);
         }
-        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL_DETAIL, profileCommitName)) {
-            CgTrace.add(CgChannels.GL, profileBytesName, byteCount);
-            committedBytes = byteCount;
-            return commit(byteCount);
-        }
+        CgTrace.add(CgChannels.GL, profileBytesName, byteCount);
+        committedBytes = byteCount;
+        return commit(byteCount);
     }
 
     /**
-     * Shader-buffer storage: a lease's bytes as its contents from offset 0, the storage respecified (and grown if need
-     * be) first. Render thread. The frame ring refuses: what it holds belongs to the frame that wrote it.
+     * Retained storage: a lease's bytes as its contents from offset 0, grown first if need be, copied on the GPU. The
+     * frame ring refuses: what it holds belongs to the frame that wrote it.
      */
     public void uploadFrom(CgUploadLease lease) {
-        if (offsetMovesPerUpload()) throw new UnsupportedOperationException("a frame-local stream is written by the frame that reads it");
-        int size = lease.size();
-        capacityBytes = Math.max(capacityBytes, size);
-        bind();
-        try {
-            CgGL.glBufferData(target, capacityBytes, CgGL.GL_STREAM_DRAW);
-            lease.bufferSubData(target, 0L);
-        } finally {
-            unbind();
-        }
-        writeOffset = 0;
-        committedBytes = size;
-        CgTrace.add(CgChannels.GL, profileBytesName, size);
+        throw new UnsupportedOperationException("a frame-local stream is written by the frame that reads it");
     }
 
     /**
      * {@link #map} as floats, positioned at the first float to write: write from {@code position()} on, then
-     * {@link #commit}. The view is kept while {@link #map} hands back the same object -- LWJGL does, for a mapping at
-     * the same address and size -- since a view per upload was the largest allocation on the frame thread.
+     * {@link #commit}.
      *
      * <pre>{@code
      * FloatBuffer out = ring.mapFloats(bytes);
-     * int base = out.position();             // not always 0: the persistent tier writes through one view of it all
+     * int base = out.position();             // not always 0: the ring writes through one view of it all
      * out.position(base + 4).put(block);     // a block 16 bytes in
      * int offset = ring.commit(bytes);
      * }</pre>
      */
     public FloatBuffer mapFloats(int sizeBytes) {
-        ByteBuffer mapped = map(sizeBytes);
-        if (mapped != floatSource) {
-            floatSource = mapped;
-            floatView = mapped.order(ByteOrder.nativeOrder()).asFloatBuffer();
-        }
-        floatView.clear();
-        return floatView;
+        return map(sizeBytes).order(ByteOrder.nativeOrder()).asFloatBuffer();
     }
 
-    /**
-     * Writes {@code count} bytes of {@code src} from {@code from} as one upload: {@link #map} and a put, then
-     * {@link #commit} as after a map. A tier that can writes them without a view of its own, as {@link #mapFloats} does.
-     *
-     * <pre>{@code
-     * staging.write(bytes, 0, n);
-     * int offset = staging.commit(n);
-     * }</pre>
-     */
+    /** {@link #mapFloats} for words a CPU writes as ints. */
+    public IntBuffer mapInts(int sizeBytes) {
+        return map(sizeBytes).order(ByteOrder.nativeOrder()).asIntBuffer();
+    }
+
+    /** Writes {@code count} bytes of {@code src} from {@code from} as one upload: then {@link #commit}, as after a map. */
     public void write(byte[] src, int from, int count) {
         map(count).put(src, from, count);
     }
 
-    /** The mapping {@link #floatView} was made over. Compared by identity, never written through. */
-    private ByteBuffer floatSource;
-    private FloatBuffer floatView;
-
-    /** {@link #mapFloats} for words a CPU writes as ints: positioned at the first int to write. */
-    public IntBuffer mapInts(int sizeBytes) {
-        ByteBuffer mapped = map(sizeBytes);
-        if (mapped != intSource) {
-            intSource = mapped;
-            intView = mapped.order(ByteOrder.nativeOrder()).asIntBuffer();
-        }
-        intView.clear();
-        return intView;
-    }
-
-    private ByteBuffer intSource;
-    private IntBuffer intView;
-
-    /** Size of the latest {@link #uploadFloats}: with {@link #getWriteOffset()}, the range a draw reads. */
-    @Getter
-    protected int committedBytes;
-
-    /**
-     * Whether each upload lands at a new offset, so a binding must say where: {@code glBindBufferRange},
-     * not {@code glBindBufferBase}. True on the frame ring.
-     */
+    /** Whether each upload lands at a new offset, so a binding must say where. True on the frame ring. */
     public boolean offsetMovesPerUpload() {
         return false;
     }
 
-    /**
-     * Fast path for tiny uploads, bypassing map/unmap. Default returns {@code false}, meaning
-     * "not supported — use the normal path".
-     *
-     * <p>An override sets {@link #writeOffset} to where the bytes went: the reserved offset on the mapped frame
-     * ring.</p>
-     *
-     * @return {@code true} if the upload was performed; {@code false} to fall back to map/commit
-     */
-    protected boolean uploadSmall(float[] data, int floatCount, int byteCount) {
-        return false;
+    /** {@code CgGL}'s name for the storage now, for what still reaches it through {@code CgGL}. */
+    public int getGlBuffer() {
+        return CgGLImports.get().name(gpu);
     }
 
-    /**
-     * Short GL-target name for profiling scope names — see {@link #uploadFloats}. Only called
-     * when the profiler is enabled would be ideal, but the cost is a switch on an int, which is
-     * negligible next to the map/unmap it labels.
-     */
-    private String targetLabel() {
-        switch (target) {
-            case CgGL.GL_ARRAY_BUFFER:
-                return "vertex";
-            case CgGL.GL_UNIFORM_BUFFER:
-                return "ubo";
-            case CgGL.GL_SHADER_STORAGE_BUFFER:
-                return "ssbo";
-            case CgGL.GL_TEXTURE_BUFFER:
-                return "tbo";
-            case CgGL.GL_ELEMENT_ARRAY_BUFFER:
-                return "index";
-            default:
-                return "other";
-        }
-    }
-
-    /** Binds this buffer's GL object to its {@link #target}. */
-    public void bind() {
-        CgGL.glBindBuffer(target, glBuffer);
-    }
-
-    /** Unbinds by binding {@code 0} to {@link #target}. */
-    public void unbind() {
-        CgGL.glBindBuffer(target, 0);
-    }
-
-    /**
-     * Returns the GL buffer object ID of the underlying stream buffer.
-     * Useful for passing to {@code glBindBufferBase} / {@code glTexBuffer} manually,
-     * or for interop with external GL code.
-     */
     @Override
     public int getGlBufferId() {
-        return glBuffer;
+        return gpu == null ? 0 : getGlBuffer();
     }
 
-    /** {@inheritDoc} */
     @Override
-    public boolean isDeleted() {return deleted;}
+    public boolean isDeleted() {
+        return deleted;
+    }
 
     @Override
     public void delete() {
-        if (!deleted) {
-            deleteGlResources();
-            deleted = true;
-        }
+        if (deleted) return;
+        deleted = true;
+        if (gpu != null) release(gpu);
+        gpu = null;
     }
 
-    /** Deletes the underlying GL buffer object. Must not be called more than once. */
-    protected void deleteGlResources() {}
+    /** A device buffer for this use of {@code bytes}: mapped for its life where {@code streamed}, else device-local. */
+    protected final CgGpuBuffer make(long bytes, boolean streamed) {
+        String label = "cg_stream_" + use.label;
+        CgGpuBuffer.Desc desc = streamed ? new CgGpuBuffer.Desc(label, bytes, use.usage, true, false, true)
+                : new CgGpuBuffer.Desc(label, bytes, use.usage, false);
+        return CgRHI.get().createBuffer(desc);
+    }
 
-    
+    /** Gives {@code buffer} back, destroyed once the frames in flight that may read it have retired. */
+    protected static void release(CgGpuBuffer buffer) {
+        if (CgGLImports.installed()) CgGLImports.get().forget(buffer);
+        CgRHI.get().release(buffer);
+    }
+
     /**
-     * A stream on {@code target}, on {@link CgCapabilities#vertexStreamTier()}. On a ring tier every
-     * {@link #commit} returns a new offset, valid for the frame that wrote it.
-     *
-     * @param target GL target (e.g. {@code GL_ARRAY_BUFFER}, {@code GL_ELEMENT_ARRAY_BUFFER}, {@code GL_SHADER_STORAGE_BUFFER})
-     * @param capacityBytes initial GL buffer capacity in bytes
+     * A stream for {@code use} on the frame ring: every {@link #commit} returns a new offset, valid for the frame that
+     * wrote it.
      */
-    public static CgStreamBuffer create(int target, int capacityBytes) {
-        return new FrameRingStreamBuffer(target, capacityBytes,
-                CgCapabilities.detect().vertexStreamTier() == StreamBufferTier.PERSISTENT);
+    public static CgStreamBuffer create(Use use, int capacityBytes) {
+        return new FrameRingStreamBuffer(use, capacityBytes);
     }
 
     /**
-     * Storage for a shader buffer (UBO, SSBO) whose every upload lands at offset 0 and stays readable until the next:
-     * staged in the frame ring and copied in on the GPU. For a buffer read in frames that never upload it and whose
-     * readers pass no point that could -- a mod's own registry buffer. Everything else takes {@link #createFrameLocal}.
+     * Storage for a shader buffer whose every upload lands at offset 0 and stays readable until the next: staged in the
+     * frame ring and copied in on the GPU. For a buffer read in frames that never upload it -- a mod's own registry
+     * buffer. Everything else takes {@link #createFrameLocal}.
      *
      * <pre>{@code
-     * CgStreamBuffer config = CgStreamBuffer.createForShaderBuffer(CgGL.GL_UNIFORM_BUFFER, bytes);
+     * CgStreamBuffer config = CgStreamBuffer.createForShaderBuffer(CgStreamBuffer.Use.UNIFORM, bytes);
      * config.uploadFloats(values, n);    // once; draws in later frames read it at offset 0
      * }</pre>
-     *
-     * @param target        GL buffer target (e.g. {@code GL_UNIFORM_BUFFER}, {@code GL_SHADER_STORAGE_BUFFER})
-     * @param capacityBytes initial GL buffer capacity in bytes
      */
-    public static CgStreamBuffer createForShaderBuffer(int target, int capacityBytes) {
-        return new RetainedStreamBuffer(target, capacityBytes);
+    public static CgStreamBuffer createForShaderBuffer(Use use, int capacityBytes) {
+        return new RetainedStreamBuffer(use, capacityBytes);
     }
 
-    /** What every shader-buffer storage shares, at context teardown. Render thread. */
+    /** What every retained storage shares, at the device's teardown. Render thread. */
     public static void releaseShared() {
         RetainedStreamBuffer.releaseStaging();
     }
 
-    /**
-     * Storage for a <b>frame-local</b> SSBO or UBO: one whose every reading frame uploads it first, so no
-     * draw reads bytes an earlier frame wrote -- the ring reuses a region three frames on, while a draw of an
-     * earlier frame may still read it. That is the whole test, and it is about the data's lifetime, not the
-     * buffer type. Per-instance data meets it by being written right before the draw (the quad, curve and object
-     * buffers). A block written once meets it when every reader passes a point that copies it into the frame:
-     * {@code CgMaterial.bind} does for its properties and for the frame block, the text renderer for its own.
-     *
-     * <pre>{@code
-     * CgStreamBuffer storage = CgStreamBuffer.createFrameLocal(CgGL.GL_SHADER_STORAGE_BUFFER, bytes);
-     * int offset = storage.uploadFloats(data, count);
-     * CgGL.glBindBufferRange(CgGL.GL_SHADER_STORAGE_BUFFER, binding, storage.getGlBuffer(),
-     *         offset, storage.getCommittedBytes());   // the name too: the persistent tier replaces it on growth
-     * }</pre>
-     *
-     * <p>What it buys: every upload lands at a fresh offset with no orphan, no driver rename and, on the
-     * persistent tier, no GL call at all -- where a tracked device renamed every orphaning upload into a new
-     * allocation. Offsets are 256-aligned, the largest {@code GL_UNIFORM_BUFFER_OFFSET_ALIGNMENT} and
-     * storage-buffer alignment GL or Vulkan allows.</p>
-     *
-     * <p>Any target but those two takes {@link #createForShaderBuffer}: only they bind by range.</p>
-     */
     /** {@link #createFrameLocal} for uniform blocks: a binding table's ring. */
     public static CgStreamBuffer frameLocalUniforms(int capacityBytes) {
-        return createFrameLocal(CgGL.GL_UNIFORM_BUFFER, capacityBytes);
+        return createFrameLocal(Use.UNIFORM, capacityBytes);
     }
 
     /** {@link #createFrameLocal} for storage buffers. */
     public static CgStreamBuffer frameLocalStorage(int capacityBytes) {
-        return createFrameLocal(CgGL.GL_SHADER_STORAGE_BUFFER, capacityBytes);
+        return createFrameLocal(Use.STORAGE, capacityBytes);
     }
 
-    public static CgStreamBuffer createFrameLocal(int target, int capacityBytes) {
-        StreamBufferTier tier = CgCapabilities.detect().vertexStreamTier();
-        if (target != CgGL.GL_SHADER_STORAGE_BUFFER && target != CgGL.GL_UNIFORM_BUFFER) {
-            return createForShaderBuffer(target, capacityBytes);
-        }
-        // Instance data starts sized for a frame's flushes. A UBO starts at its own block: there is one per
-        // material, and hundreds at 256 KB a region would be hundreds of megabytes; a busy one grows.
-        int start = target == CgGL.GL_UNIFORM_BUFFER ? capacityBytes : Math.max(capacityBytes, FRAME_LOCAL_START_BYTES);
-        return new FrameRingStreamBuffer(target, start, tier == StreamBufferTier.PERSISTENT);
+    /**
+     * Storage for a <b>frame-local</b> SSBO or UBO: one whose every reading frame uploads it first, so no draw reads
+     * bytes an earlier frame wrote -- the ring reuses a region three frames on, while a draw of an earlier frame may
+     * still read it. Per-instance data meets it by being written right before the draw; a block written once meets it
+     * when every reader passes a point that copies it into the frame ({@code CgMaterial.bind}).
+     *
+     * <pre>{@code
+     * CgStreamBuffer storage = CgStreamBuffer.createFrameLocal(CgStreamBuffer.Use.STORAGE, bytes);
+     * int offset = storage.uploadFloats(data, count);
+     * contents.buffer(binding, STORAGE_BUFFER, storage.gpuBuffer(), offset, storage.getCommittedBytes());
+     * }</pre>
+     *
+     * <p>Offsets are 256-aligned, the largest uniform and storage offset alignment GL or Vulkan allows.</p>
+     */
+    public static CgStreamBuffer createFrameLocal(Use use, int capacityBytes) {
+        if (use != Use.STORAGE && use != Use.UNIFORM) return createForShaderBuffer(use, capacityBytes);
+        // Instance data starts sized for a frame's flushes. A UBO starts at its own block: there is one per material, and
+        // hundreds at 256 KB a region would be hundreds of megabytes; a busy one grows.
+        int start = use == Use.UNIFORM ? capacityBytes : Math.max(capacityBytes, FRAME_LOCAL_START_BYTES);
+        return new FrameRingStreamBuffer(use, start);
     }
 
     private static final int FRAME_LOCAL_START_BYTES = 256 << 10;

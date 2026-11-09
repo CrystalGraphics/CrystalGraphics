@@ -44,31 +44,21 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * One kernel and keyword set, compiled for the current context and wired: its buffers, images, samplers and blocks at
- * the bindings the emitter names. Dispatched directly here, or by a frame graph's compute pass.
+ * One kernel and keyword set, compiled: its pipeline on the device, and the sets its buffers, images, samplers and
+ * blocks bind at, as the emitter names them. A frame graph's compute pass dispatches it.
  *
  * <pre>{@code
  * CgKernelProgram simulate = CgCompute.load("mymod:shaders/particles.compute").kernel("Simulate").program();
- * simulate.properties().set1f("_Drag", 0.1f);
- * try (CgGlScope scope = simulate.scope()) {
- *     simulate.use()
- *             .buffer("STATE", stateBuffer)
- *             .dispatch(particleCount);
- * }
- * CgGL.cgBufferBarrier(stateBuffer, CgAccess.COMPUTE_WRITE, CgAccess.VERTEX_READ);   // before a draw reads it
- * }</pre>
- *
- * <p>On a device, the same dispatch through its compute pass, every resource bound in its sets first:</p>
- * <pre>{@code
  * compute.setPipeline(simulate.devicePipeline(rhi));
  * compute.setBindingSet(2, kernelSet);                 // CgDeviceSets, from simulate.deviceLayout()
  * simulate.dispatchOn(compute, particleCount, 1, 1);
  * }</pre>
  *
  * <ul>
- *   <li>Render thread only, as every GL object; {@link #use} first, inside a {@link #scope}.</li>
+ *   <li>Render thread only.</li>
  *   <li>A dispatch orders nothing after it: the caller barriers what reads its writes, the frame graph its own.</li>
- *   <li>An append buffer's count is a separate {@code uint} bound with {@link #counter}, and the caller zeroes it.</li>
+ *   <li>An append buffer's count is a separate {@code uint}, its word pushed with {@link #counterWordOn}; the caller
+ *       zeroes it.</li>
  * </ul>
  */
 public final class CgKernelProgram {
@@ -82,23 +72,11 @@ public final class CgKernelProgram {
     /** What it was emitted for. */
     private final CgKernelTarget target;
     private final CgProgram program;
-    private final int dispatchLocation;
     private final int[] counterPoints;
-    /** Per append buffer, its count's word uniform; -1 for any other buffer. */
-    private final int[] counterWords;
     /** Where checked mode's report slot binds, after every buffer and count; -1 unchecked. */
     private final int checkPoint;
     private final int[] groupLimits = new int[3];
-    private final IntBuffer dispatch = CgBufferUtils.createIntBuffer(6);
     private final CgMaterialProperties properties;
-    private final List<CgMaterialProperty> samplers = new ArrayList<>();
-    /**
-     * Its own values' block, made at the first direct dispatch: a graph binds every block itself, and making one maps new
-     * storage, which waits for a threaded driver's queue (734 ms behind the loading screen, Forge 1.20.1).
-     */
-    private CgUniformBuffer propertyBlock;
-    private CgUniformBuffer viewBlock, environmentBlock;
-    private float[] frameValues, environmentValues;
 
     private CgGlslCompiler.ExplicitCompute explicit;
     /** The device its pipeline is on; null before the first {@link #devicePipeline}. */
@@ -118,20 +96,13 @@ public final class CgKernelProgram {
         this.target = target;
         this.program = program;
         this.properties = new CgMaterialProperties(copies(source.properties()));
-        for (CgMaterialProperty p : properties.all()) if (p.getType().isSampler()) samplers.add(p);
         this.counterPoints = new int[source.buffers().size()];
-        this.counterWords = new int[source.buffers().size()];
         for (CgBufferDecl b : source.buffers()) counterPoints[b.index()] = CgKernelEmitter.counterPoint(source, b);
         this.checkPoint = target.checked() ? CgKernelEmitter.checkPoint(source) : -1;
         CgCapabilities caps = CgCapabilities.detect();
         for (int axis = 0; axis < 3; axis++) groupLimits[axis] = caps.maxComputeWorkGroupCount(axis);
         try (CgGlScope scope = CgGlState.save(CgGlSlot.PROGRAM)) {
             CgGL.glUseProgram(program.getId());
-            this.dispatchLocation = CgGL.glGetUniformLocation(program.getId(), CgKernelEmitter.DISPATCH_UNIFORM);
-            for (CgBufferDecl b : source.buffers()) {
-                counterWords[b.index()] = counterPoints[b.index()] < 0 ? -1
-                        : CgGL.glGetUniformLocation(program.getId(), CgKernelEmitter.counterWord(b));
-            }
             wire();
         }
     }
@@ -264,41 +235,7 @@ public final class CgKernelProgram {
         if (location >= 0) CgGL.glUniform1i(location, unit);
     }
 
-    // ── Use ───────────────────────────────────────────────────────────────────
-
-    /** Saves what a dispatch changes, restored when the scope closes. */
-    public static CgGlScope scope() {
-        return CgGlState.save(CgGlSlot.PROGRAM, CgGlSlot.STORAGE_BUFFERS, CgGlSlot.IMAGES, CgGlSlot.TEXTURES,
-                CgGlSlot.INDIRECT_BUFFERS);
-    }
-
-    /** Makes this the current program. */
-    public CgKernelProgram use() {
-        CgGL.glUseProgram(program.getId());
-        return this;
-    }
-
-    /** {@code glBuffer} whole as buffer {@code name}. */
-    public CgKernelProgram buffer(String name, int glBuffer) {
-        CgGL.glBindBufferBase(CgGL.GL_SHADER_STORAGE_BUFFER, buffer(name).index(), glBuffer);
-        return this;
-    }
-
-    /** {@code size} bytes of {@code glBuffer} from {@code offset}, aligned to the device's storage offset alignment. */
-    public CgKernelProgram buffer(String name, int glBuffer, long offset, long size) {
-        CgGL.glBindBufferRange(CgGL.GL_SHADER_STORAGE_BUFFER, buffer(name).index(), glBuffer, offset, size);
-        return this;
-    }
-
-    /** Append buffer {@code name}'s count: the {@code uint} at {@code offset} in {@code glBuffer}, any multiple of 4. */
-    public CgKernelProgram counter(String name, int glBuffer, long offset) {
-        CgBufferDecl b = buffer(name);
-        if (b.access() != CgBufferAccess.APPEND) throw new IllegalArgumentException(name + " is no append buffer");
-        long base = counterBase(offset);
-        CgGL.glBindBufferRange(CgGL.GL_SHADER_STORAGE_BUFFER, counterPoints[b.index()], glBuffer, base, offset - base + 4);
-        counterWord(b.index(), offset);
-        return this;
-    }
+    // ── Bindings ──────────────────────────────────────────────────────────────
 
     /** Where a count at byte {@code offset} binds from: the storage-aligned offset at or below it. */
     public static long counterBase(long offset) {
@@ -306,138 +243,9 @@ public final class CgKernelProgram {
         return offset / align * align;
     }
 
-    /**
-     * Tells the program where in its bound range the count of the append buffer declared {@code index}-th sits, for a
-     * count at byte {@code offset} bound from {@link #counterBase}. {@link #use} first.
-     */
-    public void counterWord(int index, long offset) {
-        if (counterWords[index] >= 0) CgGL.glUniform1i(counterWords[index], (int) ((offset - counterBase(offset)) >>> 2));
-    }
-
-    /** Mip {@code level} of {@code texture} as image {@code name}: every layer of an array, cube or 3D texture. */
-    public CgKernelProgram image(String name, CgTexture texture, int level) {
-        return image(name, texture.getId(), level);
-    }
-
-    /** As {@link #image(String, CgTexture, int)}, for a GL texture name. */
-    public CgKernelProgram image(String name, int glTexture, int level) {
-        CgImageDecl image = image(name);
-        CgGL.glBindImageTexture(image.index(), glTexture, level, image.dimension() != CgImageDimension.D2, 0,
-                access(image), image.format().glFormat);
-        return this;
-    }
-
-    /** One layer of an array, cube or 3D texture, as a 2D image {@code name}. */
-    public CgKernelProgram image(String name, CgTexture texture, int level, int layer) {
-        CgImageDecl image = image(name);
-        CgGL.glBindImageTexture(image.index(), texture.getId(), level, false, layer, access(image), image.format().glFormat);
-        return this;
-    }
-
-    /** A sampler property's texture, bound at the next dispatch. */
-    public CgKernelProgram texture(String property, CgTexture texture) {
-        for (int unit = 0; unit < samplers.size(); unit++) {
-            if (samplers.get(unit).getName().equals(property)) {
-                samplers.get(unit).setTexture(unit, texture);
-                return this;
-            }
-        }
-        throw new IllegalArgumentException("[" + source.path() + "] no sampler property '" + property + "'");
-    }
-
-    /** This program's {@code Properties} values, uploaded at every dispatch: set them as a material's. */
+    /** This program's {@code Properties} values: set them as a material's. */
     public CgMaterialValues properties() {
         return properties;
-    }
-
-    /** The view and environment blocks a kernel reads {@code cg_Time}, the camera and the sun from, uploaded at every dispatch. */
-    public CgKernelProgram frame(CgPassConstants constants) {
-        if (viewBlock == null) {
-            viewBlock = new CgUniformBuffer(CgPassConstants.VIEW_BLOCK, CgPassConstants.VIEW_FORMAT,
-                    CgBindingPoints.VIEW_UBO, CgBufferLifetime.FRAME);
-            environmentBlock = new CgUniformBuffer(CgPassConstants.ENVIRONMENT_BLOCK, CgPassConstants.ENVIRONMENT_FORMAT,
-                    CgBindingPoints.ENVIRONMENT_UBO, CgBufferLifetime.FRAME);
-            frameValues = new float[CgPassConstants.FLOATS];
-            environmentValues = new float[CgPassConstants.ENVIRONMENT_FLOATS];
-        }
-        constants.write(frameValues, 0);
-        System.arraycopy(frameValues, CgPassConstants.VIEW_FLOATS, environmentValues, 0, CgPassConstants.ENVIRONMENT_FLOATS);
-        return this;
-    }
-
-    // ── Dispatch ──────────────────────────────────────────────────────────────
-
-    /** {@code count} elements in one dimension. */
-    public void dispatch(int count) {
-        dispatch(count, 1, 1);
-    }
-
-    /**
-     * {@code x * y * z} elements: groups round up, and a count past the device's group limit runs as several
-     * dispatches, each from its own {@code CG_DISPATCH_BASE}.
-     */
-    public void dispatch(int x, int y, int z) {
-        if (x <= 0 || y <= 0 || z <= 0) return;
-        prepare();
-        dispatchBound(x, y, z);
-    }
-
-    /**
-     * {@link #dispatch(int, int, int)} with only what is bound now: a frame graph binds every block, sampler and
-     * buffer itself, and so skips this program's own {@link #properties()} and {@link #frame}. {@link #use} first.
-     */
-    public void dispatchBound(int x, int y, int z) {
-        if (x <= 0 || y <= 0 || z <= 0) return;
-        int gx = groups(x, kernel.sizeX()), gy = groups(y, kernel.sizeY()), gz = groups(z, kernel.sizeZ());
-        for (int bz = 0; bz < gz; bz += groupLimits[2]) {
-            for (int by = 0; by < gy; by += groupLimits[1]) {
-                for (int bx = 0; bx < gx; bx += groupLimits[0]) {
-                    setDispatch(bx * kernel.sizeX(), by * kernel.sizeY(), bz * kernel.sizeZ(), x, y, z);
-                    if (checkPoint >= 0) CgComputeCheck.bind(checkPoint, this);
-                    CgGL.glDispatchCompute(Math.min(groupLimits[0], gx - bx), Math.min(groupLimits[1], gy - by),
-                            Math.min(groupLimits[2], gz - bz));
-                }
-            }
-        }
-    }
-
-    /** Whole work groups: {@code CG_DISPATCH_COUNT} is every invocation they hold. */
-    public void dispatchGroups(int x, int y, int z) {
-        dispatch(x * kernel.sizeX(), y * kernel.sizeY(), z * kernel.sizeZ());
-    }
-
-    /** Group counts from three {@code uint}s at {@code offset} in {@code glBuffer}, written on the GPU. */
-    public void dispatchIndirect(int glBuffer, long offset) {
-        prepare();
-        dispatchIndirectBound(glBuffer, offset);
-    }
-
-    /** {@link #dispatchIndirect} with only what is bound now, as {@link #dispatchBound}. */
-    public void dispatchIndirectBound(int glBuffer, long offset) {
-        setDispatch(0, 0, 0, -1, -1, -1);
-        if (checkPoint >= 0) CgComputeCheck.bind(checkPoint, this);
-        CgGL.glBindBuffer(CgGL.GL_DISPATCH_INDIRECT_BUFFER, glBuffer);
-        CgGL.glDispatchComputeIndirect(offset);
-    }
-
-    private void prepare() {
-        if (propertyBlock == null && properties.hasUboProps()) {
-            propertyBlock = new CgUniformBuffer(CgKernelEmitter.PROPERTY_BLOCK, properties.buildUboFormat(),
-                    CgBindingPoints.MATERIAL_PROPERTIES_UBO, CgBufferLifetime.FRAME);
-        }
-        if (propertyBlock != null) {
-            properties.writeUboProps(propertyBlock.writer());
-            propertyBlock.endRecord();
-            propertyBlock.upload();
-            propertyBlock.bind();
-        }
-        if (viewBlock != null) {
-            viewBlock.uploadRaw(frameValues, CgPassConstants.VIEW_FLOATS);
-            viewBlock.bind();
-            environmentBlock.uploadRaw(environmentValues, CgPassConstants.ENVIRONMENT_FLOATS);
-            environmentBlock.bind();
-        }
-        properties.bindSamplerTextures();
     }
 
     // ── On a device ───────────────────────────────────────────────────────────
@@ -478,8 +286,9 @@ public final class CgKernelProgram {
     }
 
     /**
-     * {@link #dispatchBound} through {@code pass}, its pipeline set and every set bound: the dispatch's base and count
-     * pushed, a count past the group limit run as several.
+     * {@code x * y * z} elements through {@code pass}, its pipeline set and every set bound: groups round up, the
+     * dispatch's base and count pushed, and a count past the device's group limit runs as several, each from its own
+     * {@code CG_DISPATCH_BASE}.
      */
     public void dispatchOn(CgComputePass pass, int x, int y, int z) {
         if (x <= 0 || y <= 0 || z <= 0) return;
@@ -495,13 +304,16 @@ public final class CgKernelProgram {
         }
     }
 
-    /** {@link #dispatchIndirectBound} through {@code pass}: group counts from three {@code uint}s at {@code offset}. */
+    /** Group counts from three {@code uint}s at {@code offset} of {@code args}, written on the GPU, through {@code pass}. */
     public void dispatchIndirectOn(CgComputePass pass, CgGpuBuffer args, long offset) {
         pushDispatch(pass, 0, 0, 0, -1, -1, -1);
         pass.dispatchIndirect(args, offset);
     }
 
-    /** {@link #counterWord} for {@link #dispatchOn}: the word pushed with the next dispatch. */
+    /**
+     * Where in its bound range the count of the append buffer declared {@code index}-th sits, for a count at byte
+     * {@code offset} bound from {@link #counterBase}: the word pushed with the next {@link #dispatchOn}.
+     */
     public void counterWordOn(int index, long offset) {
         if (counterPoints[index] < 0) return;
         int word = counterPoints[index] - source.buffers().size();
@@ -535,11 +347,6 @@ public final class CgKernelProgram {
         deviceModule = null;
     }
 
-    private void setDispatch(int baseX, int baseY, int baseZ, int countX, int countY, int countZ) {
-        dispatch.put(0, baseX).put(1, baseY).put(2, baseZ).put(3, countX).put(4, countY).put(5, countZ);
-        CgGL.glUniform1(dispatchLocation, dispatch);
-    }
-
     private static int groups(int count, int size) {
         return (count + size - 1) / size;
     }
@@ -569,11 +376,6 @@ public final class CgKernelProgram {
     public void delete() {
         program.delete();
         releaseDevice();
-        if (propertyBlock != null) propertyBlock.delete();
-        if (viewBlock != null) {
-            viewBlock.delete();
-            environmentBlock.delete();
-        }
     }
 
     /** Buffer {@code name}'s place among the kernel's buffers: its binding is {@code FIRST_KERNEL_BUFFER} past it. */
@@ -585,17 +387,6 @@ public final class CgKernelProgram {
         CgBufferDecl b = source.buffer(name);
         if (b == null) throw new IllegalArgumentException("[" + source.path() + "] no buffer '" + name + "'");
         return b;
-    }
-
-    private CgImageDecl image(String name) {
-        CgImageDecl i = source.image(name);
-        if (i == null) throw new IllegalArgumentException("[" + source.path() + "] no image '" + name + "'");
-        return i;
-    }
-
-    private static int access(CgImageDecl image) {
-        return image.access() == CgImageAccess.READONLY ? CgGL.GL_READ_ONLY
-                : image.access() == CgImageAccess.WRITEONLY ? CgGL.GL_WRITE_ONLY : CgGL.GL_READ_WRITE;
     }
 
     /** Each program holds its own values: a parsed property is the file's, shared by every kernel. */

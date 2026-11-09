@@ -1,16 +1,16 @@
 package com.crystalgraphics.gl.buffer;
 
-import com.crystalgraphics.platform.gl.CgGL;
+import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 
 /**
- * The frame clock every streaming ring shares: one fence per frame, and the answer to "has the GPU finished
- * frame N yet".
+ * The frame clock every streaming ring shares, and the answer to "has the GPU finished frame N yet": each frame's end
+ * notes the device frame its work went into, and a wait for it is the device's.
  *
- * <p>A ring keeps a region per frame in flight and reuses frame N's region in frame N + {@link #FRAMES}. Before
- * it writes there it asks this class to wait for frame N — which, three frames later, has almost always long
- * since finished, so the wait costs a {@code glClientWaitSync} that returns at once.</p>
+ * <p>A ring keeps a region per frame in flight and reuses frame N's region in frame N + {@link #FRAMES}. Before it
+ * writes there it asks this class to wait for frame N, which three frames later has almost always long since
+ * retired.</p>
  *
  * <pre>{@code
  * // A ring, at its first upload of a frame:
@@ -22,8 +22,8 @@ import com.crystalgraphics.util.trace.CgChannels;
  * CgFrameRing.endFrame();
  * }</pre>
  *
- * <p>A host that never ends a frame leaves {@link #frame()} where it is; a ring then fills its one region and
- * orphans, which is correct and merely unpipelined. GL thread only.</p>
+ * <p>A host that never ends a frame leaves {@link #frame()} where it is; a ring then fills its one region and grows,
+ * which is correct and merely unpipelined. Render thread only.</p>
  */
 public final class CgFrameRing {
 
@@ -32,10 +32,9 @@ public final class CgFrameRing {
 
     /** Blocked on the GPU: a wait, so a report keeps it out of the cost tables. */
     private static final int WAIT = CgTrace.waitName("frameRing.wait");
-    private static final long WAIT_SLICE_NS = 1_000_000L;
-    private static final long WAIT_LIMIT_NS = 5_000_000_000L;
 
-    private static final long[] fences = new long[FRAMES];
+    /** Per region: the device frame its ring frame's work went into, -1 for none noted. */
+    private static final long[] deviceFrames = {-1, -1, -1};
     private static final long[] fenceFrame = new long[FRAMES];
     private static long frame;
     private static long retired = -1;
@@ -48,8 +47,8 @@ public final class CgFrameRing {
     }
 
     /**
-     * The newest frame the GPU is known to have finished, -1 for none: whatever was issued in it or before has
-     * finished too, known with no query.
+     * The newest frame the GPU is known to have finished, -1 for none: whatever was issued in it or before has finished
+     * too, known with no query.
      */
     public static long retired() {
         return retired;
@@ -60,12 +59,10 @@ public final class CgFrameRing {
         return (int) (frame % FRAMES);
     }
 
-    /** Places this frame's fence and starts the next frame. */
+    /** Notes the device frame this frame's work went into, and starts the next frame. */
     public static void endFrame() {
         int slot = region(frame);
-        // Frame (frame - FRAMES)'s fence: nobody waited on it, so nobody needed it. Later fences retire it.
-        if (fences[slot] != 0) CgGL.glDeleteSync(fences[slot]);
-        fences[slot] = CgGL.glFenceSync(CgGL.GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+        deviceFrames[slot] = CgRHI.installed() ? CgRHI.get().frameIndex() : -1;
         fenceFrame[slot] = frame;
         frame++;
     }
@@ -73,44 +70,29 @@ public final class CgFrameRing {
     /**
      * Blocks until the GPU has finished {@code target}, and everything before it.
      *
-     * @throws IllegalStateException if the GPU has not finished it within five seconds -- a hang, not a wait
+     * @throws IllegalStateException on a hosted device that has not: its host submits, and a wait would never end
      */
     public static void awaitRetired(long target) {
         if (target <= retired) return;
         int slot = region(target);
-        long fence = fences[slot];
-        if (fence == 0 || fenceFrame[slot] != target) {
-            // No fence was ever placed for it: the host has not ended that frame, so there is nothing in
-            // flight to wait for from it.
+        long device = deviceFrames[slot];
+        if (device < 0 || fenceFrame[slot] != target) {
+            // Nothing was noted for it: the host has not ended that frame, so nothing of it is in flight.
             return;
         }
-        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, WAIT)) {
-            waitFor(fence, target);
+        CgRHI rhi = CgRHI.get();
+        if (device > rhi.retiredFrame()) {
+            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, WAIT)) {
+                rhi.waitRetired(device);
+            }
         }
-        CgGL.glDeleteSync(fence);
-        fences[slot] = 0;
+        deviceFrames[slot] = -1;
         retired = target;
     }
 
-    private static void waitFor(long fence, long target) {
-        long waited = 0;
-        while (true) {
-            int result = CgGL.glClientWaitSync(fence, CgGL.GL_SYNC_FLUSH_COMMANDS_BIT, WAIT_SLICE_NS);
-            if (result == CgGL.GL_ALREADY_SIGNALED || result == CgGL.GL_CONDITION_SATISFIED) break;
-            if (result == CgGL.GL_WAIT_FAILED) throw new IllegalStateException("glClientWaitSync failed on frame " + target);
-            waited += WAIT_SLICE_NS;
-            if (waited >= WAIT_LIMIT_NS) {
-                throw new IllegalStateException("frame " + target + " not finished by the GPU within 5s -- possible GPU hang");
-            }
-        }
-    }
-
-    /** Drops every fence. For context teardown; the next context starts at frame 0. */
+    /** Forgets every frame. At the device's teardown; the next device starts at frame 0. */
     public static void reset() {
-        for (int i = 0; i < FRAMES; i++) {
-            if (fences[i] != 0) CgGL.glDeleteSync(fences[i]);
-            fences[i] = 0;
-        }
+        for (int i = 0; i < FRAMES; i++) deviceFrames[i] = -1;
         frame = 0;
         retired = -1;
     }

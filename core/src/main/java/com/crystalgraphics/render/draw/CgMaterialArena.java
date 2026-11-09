@@ -1,6 +1,7 @@
 package com.crystalgraphics.render.draw;
 
 import com.crystalgraphics.gl.buffer.CgFrameRing;
+import com.crystalgraphics.platform.rhi.resource.CgGpuBuffer;
 
 import java.util.Arrays;
 
@@ -39,8 +40,9 @@ public final class CgMaterialArena {
     private int[] free = new int[16];
     private int freeCount, highWater;
 
-    /** Render thread, the block store's: the buffer and the slots it holds. */
-    int buffer, capacity;
+    /** Render thread, the block store's: the buffer, null before its first slot, and the slots it holds. */
+    CgGpuBuffer buffer;
+    int capacity;
 
     public CgMaterialArena(String name, int floats) {
         this.name = name;

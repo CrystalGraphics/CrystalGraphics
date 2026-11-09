@@ -203,14 +203,13 @@ public final class CgDeviceSets {
                     CgBlockVersion version = table.blockVersion(id, k);
                     if (version != null && version.arena != null) continue;   // a storage block
                     if (CgBindingModel.ofBlock(table.blockBinding(id, k)) != packed) continue;
-                    int name = version != null ? version.buffer : table.uploadedBuffer();
+                    CgGpuBuffer buffer = version != null ? version.buffer : table.uploadedBuffer();
                     long at = version != null ? version.offset : table.ringOffset(id, k);
-                    if (name == 0) return false;
-                    // Read this frame: its range is not freed until the frame retires, as CgBindingTable.bind marks it
+                    if (buffer == null) return false;
+                    // Read this frame: its range is not freed until the frame retires
                     if (version != null) version.lastUse = frame;
-                    CgGLImports imports = CgGLImports.get();
                     long bytes = Math.max(16, (table.blockFloatCount(id, k) * 4L + 15) & ~15L);
-                    contents.buffer(slot.binding(), slot.type(), imports.buffer(name), imports.bufferOffset(name) + at, bytes);
+                    contents.buffer(slot.binding(), slot.type(), buffer, at, bytes);
                     return true;
                 }
                 return bound(slot, packed);
@@ -221,12 +220,10 @@ public final class CgDeviceSets {
                     if (version == null || version.arena == null) continue;
                     if (CgBindingModel.ofStorage(table.blockBinding(id, k)) != packed) continue;
                     CgMaterialArena arena = version.arena;
-                    if (arena.buffer == 0) return false;
-                    CgGLImports imports = CgGLImports.get();
+                    if (arena.buffer == null) return false;
                     long at = wholeArena ? 0 : (long) version.slot * arena.stride();
                     long bytes = wholeArena ? (long) arena.capacity * arena.stride() : arena.stride();
-                    contents.buffer(slot.binding(), slot.type(), imports.buffer(arena.buffer),
-                            imports.bufferOffset(arena.buffer) + at, bytes);
+                    contents.buffer(slot.binding(), slot.type(), arena.buffer, at, bytes);
                     return true;
                 }
                 for (int s = 0; s < table.storages(id); s++) {
@@ -255,11 +252,9 @@ public final class CgDeviceSets {
 
     /** What the executor has bound for {@code packed} ({@link CgBoundResources}): a snapshot's buffers, the pass's. */
     private boolean bound(CgBindingLayout.Slot slot, int packed) {
-        int name = CgBoundResources.name(packed);
-        if (name == 0) return false;
-        CgGLImports imports = CgGLImports.get();
-        CgGpuBuffer buffer = imports.buffer(name);
-        long offset = imports.bufferOffset(name) + CgBoundResources.offset(packed);
+        CgGpuBuffer buffer = CgBoundResources.buffer(packed);
+        if (buffer == null) return false;
+        long offset = CgBoundResources.offset(packed);
         long size = CgBoundResources.size(packed);
         contents.buffer(slot.binding(), slot.type(), buffer, offset, size != 0 ? size : buffer.size() - offset);
         return true;

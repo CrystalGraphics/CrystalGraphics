@@ -482,19 +482,6 @@ public final class CgPipeline {
     }
 
     /**
-     * Applies the declared render state and binds the program; false, binding nothing, when there is no program.
-     * The pass's own state goes first. A program not built is built here, classified and counted ({@link #misses()}); a
-     * world draw is held instead until its pipelines are ({@code CgWorldRenderer.skipUnready}).
-     */
-    public boolean bind() {
-        CgShader bound = program();
-        if (bound == null) return false;
-        state.apply();
-        bound.bind();
-        return true;
-    }
-
-    /**
      * This pipeline as {@code CgRHI.get()}'s graphics pipeline into targets of these formats: its program as written, no
      * vertex input (its vertex stage pulls the mesh, {@code CgMeshStore}), its render state over {@code passState}, the
      * outputs it does not write ({@link #slotWrites()}) masked off. Built once per description; null when the program

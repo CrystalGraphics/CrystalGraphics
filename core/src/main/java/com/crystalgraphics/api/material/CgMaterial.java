@@ -154,12 +154,6 @@ public final class CgMaterial {
      */
     private int renderQueue = 2000;
 
-    /**
-     * The most recently bound {@link CgShader} from the last {@link #bind()} or
-     * {@link #bindForPass(CgRenderPassVariant)} call. Used by {@link #unbind()} to
-     * deactivate the correct program. {@code null} before the first successful bind.
-     */
-    private CgShader lastBoundShader = null;
 
 
     /**
@@ -212,12 +206,6 @@ public final class CgMaterial {
     private final Set<String> enabledKeywords = new LinkedHashSet<>();
     /** One view of {@link #enabledKeywords} for every bind: a program lookup hits by its identity. */
     private final Set<String> enabledView = Collections.unmodifiableSet(enabledKeywords);
-
-    /**
-     * Programs that have had per-instance state wired: matPropsUbo block binding and sampler
-     * unit assignments. Cleared on hot-reload so newly compiled variants are re-wired on first bind.
-     */
-    private final Set<CgShader> wiredPrograms = new HashSet<>();
 
     /**
      * Property-apply consumers buffered before {@code propStore} was first initialised.
@@ -561,7 +549,7 @@ public final class CgMaterial {
             materialPropsDirty = true;
             capturePropsDirty = true;
         }
-        if (propStore.consumeSamplerUnitChanged()) wiredPrograms.clear();
+        propStore.consumeSamplerUnitChanged();
         return this;
     }
 
@@ -808,92 +796,6 @@ public final class CgMaterial {
         } finally {
             CgWarmBudget.spend(System.nanoTime() - start);
         }
-    }
-
-    /**
-     * Binds this material for rendering using the current set of enabled keywords.
-     *
-     * <p>The keyword set is compiled lazily on first call and cached
-     * for subsequent calls. After a hot-reload all cached programs are cleared and the first
-     * bind triggers recompilation.</p>
-     *
-     * <h3>Operations performed in order</h3>
-     * <ol>
-     *   <li>If the shader asset is dirty, triggers {@link CgMaterialShader#recompile()} and
-     *       {@link #onShaderRecompiled()} to rebuild per-instance state.</li>
-     *   <li>If the shader's revision changed since last bind, calls {@link #onShaderRecompiled()}.</li>
-     *   <li>{@link CgMaterialShader#getOrCompile(Set)} — retrieves or compiles the program.</li>
-     *   <li>Delegates the remaining bind steps to {@link #doBind(CgShader, CgRenderPassVariant)}.</li>
-     * </ol>
-     */
-    public void bind() {
-        checkNotDeleted();
-
-        if (cgMaterialShader != null) {
-            // Before the revision check, which a commit here moves: a bind is never allowed to draw half-wired.
-            cgMaterialShader.awaitPending();
-            if (cgMaterialShader.isDirty()) {
-                try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "material.recompile")) {
-                    cgMaterialShader.recompile();
-                }
-                wiredPrograms.clear();
-                onShaderRecompiled();
-            } else if (cgMaterialShader.getRevisionNumber() != lastKnownRevision) {
-                wiredPrograms.clear();
-                onShaderRecompiled();
-            }
-
-            int revision = cgMaterialShader.getRevisionNumber();
-            int mask = keywordMask();
-            // The declared list too: a reload that parses and then fails to compile moves it without the revision,
-            // and a bit would then name another keyword than the one its variant was cached under.
-            List<String> declared = getDeclaredFeatureNames();
-            boolean sparse = declared.size() > DENSE_KEYWORDS;
-            if (variantsRevision != revision || variantsDeclared != declared
-                    || (variants == null && sparseVariants == null)) {
-                variants = mask < 0 || sparse ? null : new CgShader[1 << declared.size()];
-                sparseVariants = mask >= 0 && sparse ? new SparseVariants() : null;
-                variantsRevision = revision;
-                variantsDeclared = declared;
-            }
-            CgShader shader = mask < 0 ? null : sparseVariants != null ? (CgShader) sparseVariants.get(mask)
-                    : variants != null && mask < variants.length ? variants[mask] : null;
-            if (shader == null) {
-                // Compiles-and-caches the variant for this exact keyword set on first use, so the
-                // first bind after a keyword toggle pays a full GLSL compile+link. Scoped because
-                // that cost is otherwise invisible: it surfaces inside whatever draw happened to
-                // trigger the toggle, not at any obvious "compiling now" call site.
-                try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "material.getOrCompileVariant")) {
-                    shader = cgMaterialShader.getOrCompileForwardPass(enabledView);
-                }
-                if (shader == null) return;
-                if (mask >= 0 && variants != null && mask < variants.length) variants[mask] = shader;
-                else if (mask >= 0 && sparseVariants != null) sparseVariants.put(mask, shader);
-            }
-            lastBoundShader = shader;
-            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "material.doBind")) {
-                doBind(shader, CgRenderPassVariant.FORWARD);
-            }
-        }
-        // forTest without cgMaterialShader — no-op
-    }
-
-    /**
-     * Unbinds the shader and its property UBO.
-     *
-     * <p>Deliberately does <strong>not</strong> restore GL state. Nothing here saved any: the enclosing
-     * render pass owns the handback to Minecraft, and material-to-material isolation is handled by
-     * {@code CgGlStateManager} when the next material applies its render state — see the note in
-     * {@code doBind}.</p>
-     *
-     * <p>Still never call {@code renderState.clear()} from this path: that resets domains to GL defaults
-     * rather than to what the pass began with, which is not what unbinding a material should mean.</p>
-     */
-    public void unbind() {
-        if (deleted) return;
-        if (lastBoundShader != null) lastBoundShader.unbind();
-        if (matPropsUbo != null) matPropsUbo.unbind();
-        CgSamplers.unbindOwn();   // a binding's sampler never reaches what the host draws next
     }
 
     // ── Recording ─────────────────────────────────────────────────────────────
@@ -1248,114 +1150,6 @@ public final class CgMaterial {
     private volatile CgRenderState[] passStates;
 
     /**
-     * Binds the compiled program for the given pass variant.
-     *
-     * <p>FORWARD uses the active enabled-keyword set. DEPTH always uses an empty
-     * keyword set — keywords apply to forward passes only. The render state for the targeted
-     * pass is applied. Per-instance property UBO is wired and uploaded as needed.</p>
-     *
-     * <p>Designed for orchestrators that drive a depth pass externally, as the world renderer's prepass does.</p>
-     *
-     * @param variant the pass variant to bind; must not be null
-     */
-    public void bindForPass(CgRenderPassVariant variant) {
-        checkNotDeleted();
-        if (cgMaterialShader == null) return;
-
-        cgMaterialShader.awaitPending();
-        if (cgMaterialShader.isDirty()) {
-            cgMaterialShader.recompile();
-            wiredPrograms.clear();
-            onShaderRecompiled();
-        } else if (cgMaterialShader.getRevisionNumber() != lastKnownRevision) {
-            wiredPrograms.clear();
-            onShaderRecompiled();
-        }
-
-        CgShader shader;
-        if (variant == CgRenderPassVariant.FORWARD) {
-            shader = cgMaterialShader.getOrCompileForwardPass(enabledView);
-        } else {
-            shader = cgMaterialShader.getOrCompile(variant.lightModeName(), Collections.emptySet());
-        }
-        if (shader == null) return;
-        lastBoundShader = shader;
-        doBind(shader, variant);
-    }
-
-    /**
-     * Shared bind body: wires the per-instance UBO, saves GL state, uploads dirty properties,
-     * binds the UBO and sampler properties, applies per-pass render state, and activates the
-     * GL program. Called by both {@link #bind()} and {@link #bindForPass(CgRenderPassVariant)}
-     * after shader resolution.
-     *
-     * @param shader  the fully compiled and wired GL program for this frame
-     */
-    private void wirePerInstance(CgShader shader) {
-        shader.bind();
-        if (matPropsUbo != null) matPropsUbo.wireShader(shader);
-        if (propStore != null) propStore.wireSamplerUnits(shader);
-        shader.unbind();
-    }
-
-    private void doBind(CgShader shader, CgRenderPassVariant variant) {
-        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL_DETAIL, "doBind.wire")) {
-            if (!wiredPrograms.contains(shader)) {
-                wirePerInstance(shader);
-                wiredPrograms.add(shader);
-            }
-        }
-
-        // No per-bind GL state scope here. Two independent reasons, both learned the hard way:
-        //
-        // 1. It CANNOT be a scope, because material bind/unbind is not last-in-first-out.
-        //    CgQuadRenderer.useMaterial calls bind() on every call but unbind() only when the material
-        //    changes, and UI painting opens nested FBO/viewport scopes while a material is bound. A
-        //    stack-based scope closed under those conditions throws "closed out of order" — which is
-        //    exactly what happened when this was briefly reinstated. The old glGet-based version did not
-        //    crash only because overwriting its single `stateScope` field leaked the previous capture
-        //    silently, restoring stale values or none at all.
-        //
-        // 2. It is NOT NEEDED. The enclosing pass (an executor's raster pass, a callback pass's scope)
-        //    restores Minecraft's state at pass exit, and per-material
-        //    isolation falls out of getPassRenderState(variant).apply() below: every DECLARED domain is
-        //    written through CgGlStateManager, so it overrides whatever the previous material left.
-        //    Undeclared domains are deliberately left alone — callers configure ambient state around
-        //    materials (CgUiPaintContext enables blending for UI text), and a variant that reverted
-        //    undeclared domains to the scope baseline switched that blending off and rendered every
-        //    glyph as an opaque block.
-        //
-        // What this removes is ~25 glGet* driver synchronisation points per bind; one observed frame
-        // spent 346.8 ms in them.
-
-        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL_DETAIL, "doBind.propsUpload")) {
-            if (matPropsUbo != null) syncProps();
-        }
-
-        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL_DETAIL, "doBind.uboBind")) {
-            if (matPropsUbo != null) {
-                // An arena program reads its values from a slot: this material's, bound alone
-                CgBlockVersion version = arena() != null ? blockVersion() : null;
-                if (version != null) CgBindingTable.bindAlone(version, arenaPoint());
-                else matPropsUbo.bind();
-            }
-        }
-
-        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL_DETAIL, "doBind.samplers")) {
-            if (propStore != null && propStore.hasSamplerProps())
-                propStore.bindSamplerTextures();
-        }
-
-        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL_DETAIL, "doBind.renderState")) {
-            getPassRenderState(variant).apply();
-        }
-
-        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL_DETAIL, "doBind.shaderBind")) {
-            shader.bind();
-        }
-    }
-
-    /**
      * Returns {@code true} when this material has an explicitly authored Depth pass in the
      * last successful parse. Based on parse-time pass presence — use to gate calls to
      * {@link #bindForPass(CgRenderPassVariant) bindForPass(DEPTH)}.
@@ -1589,18 +1383,6 @@ public final class CgMaterial {
     }
 
     /**
-     * Returns the most recently bound {@link CgShader} from the last {@link #bind()} or
-     * {@link #bindForPass(CgRenderPassVariant)} call. Useful for advanced wiring of per-frame
-     * UBOs or texture units after bind. {@code null} before the first successful bind.
-     *
-     * @return the last-bound compiled shader handle, or {@code null} if not yet bound
-     */
-    public CgShader getShader() {
-        checkNotDeleted();
-        return lastBoundShader;
-    }
-
-    /**
      * Returns the numeric render queue priority for this material (default: 2000 = Geometry): its shader's as of the
      * last successful compile ({@link CgMaterialShader#getRenderQueue()}), moved by its state's blend
      * ({@link CgMaterialState#queue}).
@@ -1632,7 +1414,6 @@ public final class CgMaterial {
     public void recompile() {
         if (cgMaterialShader == null) return;
         cgMaterialShader.recompile();
-        wiredPrograms.clear();
         onShaderRecompiled();
     }
 
@@ -1686,13 +1467,6 @@ public final class CgMaterial {
             } else {
                 matPropsUbo.resetFormat(newFormat);
             }
-
-        // Wire this material's per-instance state to the newly compiled STANDARD forward variant
-        CgShader shader = cgMaterialShader.getOrCompileForwardPass(Collections.emptySet());
-        if (shader != null) {
-            wirePerInstance(shader);
-            wiredPrograms.add(shader);
-        }
 
             // Upload property defaults immediately after successful compile/link (T7 behaviour).
             materialPropsDirty = true;
@@ -1797,43 +1571,6 @@ public final class CgMaterial {
         return this;
     }
 
-    /**
-     * Executes {@code drawCommand} once per material in this draw chain, binding each
-     * material's Forward pass before the draw and unbinding it after.
-     *
-     * <p>This is the canonical way to draw a mesh with a chained multi-draw material.
-     * If {@link #getNextPass()} is {@code null}, only this material draws.</p>
-     *
-     * @param drawCommand the draw of geometry the caller bound (e.g. {@code () -> CgGL.glDrawArrays(CgGL.GL_TRIANGLES, 0, 3)})
-     */
-    public void drawChain(Runnable drawCommand) {
-        CgMaterial pass = this;
-        while (pass != null) {
-            pass.bind();
-            drawCommand.run();
-            pass.unbind();
-            pass = pass.nextPass;
-        }
-    }
 
-    /**
-     * Executes {@code drawCommand} once per material in this draw chain, binding each
-     * material for the given {@link CgRenderPassVariant} before the draw and unbinding after.
-     *
-     * <p>Use this overload in renderer code where the pass variant must be explicit
-     * (e.g. {@code FORWARD} in a forward pass). If {@link #getNextPass()} is
-     * {@code null}, only this material draws.</p>
-     *
-     * @param variant     the pass variant to activate for each material in the chain
-     * @param drawCommand the draw of geometry the caller bound (e.g. {@code () -> CgGL.glDrawArrays(CgGL.GL_TRIANGLES, 0, 3)})
-     */
-    public void drawChain(CgRenderPassVariant variant, Runnable drawCommand) {
-        CgMaterial pass = this;
-        while (pass != null) {
-            pass.bindForPass(variant);
-            drawCommand.run();
-            pass.unbind();
-            pass = pass.nextPass;
-        }
-    }
+
 }
