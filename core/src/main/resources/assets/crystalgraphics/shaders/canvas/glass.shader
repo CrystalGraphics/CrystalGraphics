@@ -218,7 +218,9 @@ Pass {
 
         // The quad's colour tints rgb; its alpha scales the pane.
         c.rgb *= i.color.rgb;
-        if (linearScene) c.rgb = srgb_to_linear(max(c.rgb, vec3(0.0)));
+        // Held to 0..1, as the screen's 8-bit target holds it: saturation above 1 and the highlight pass white, which the
+        // HDR scene keeps and the post stack rolls toward white and blooms.
+        if (linearScene) c.rgb = srgb_to_linear(clamp(c.rgb, 0.0, 1.0));
         c.a = coverage * _LayerOpacity * CG_QUAD_OPACITY * i.color.a;
         fragColor = vec4(c.rgb, c.a * boxClip);
     }

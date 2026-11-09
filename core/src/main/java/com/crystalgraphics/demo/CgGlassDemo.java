@@ -13,10 +13,10 @@ import com.crystalgraphics.render.world.CgWorldRenderer;
 import org.joml.Matrix4f;
 
 /**
- * Every look of {@link CgCanvasGlass} on a rounded pane in the world: a row of seven across the view, each turned to
- * the camera and swaying, over a rainbow banner scrolling behind it, its name above. Drawn through the transparent
- * stage's canvas after the world renderer, as a mod draws glass; each pane captures and blurs what is behind it
- * ({@link CgCanvasBackdrop}), the banner, the world and the panes before it.
+ * Every look of {@link CgCanvasGlass} on a rounded pane in the world: a row of seven side by side, fixed where the scene
+ * was placed and facing where the camera stood then, each over the world itself, its name above. Drawn through the
+ * transparent stage's canvas after the world renderer, as a mod draws glass; each pane captures and blurs what is
+ * behind it ({@link CgCanvasBackdrop}).
  *
  * <pre>{@code
  * CgGlassDemo glass = new CgGlassDemo(font);
@@ -35,8 +35,6 @@ public final class CgGlassDemo {
     /** A block is 40 of a look's pixels. */
     private static final float UNITS_PER_PIXEL = 1f / 40f;
     private static final float WIDTH = 2.4f, HEIGHT = 1.6f, RADIUS = 0.3f, SPACING = 3.2f, LIFT = 2.2f;
-    private static final float BANNER_WIDTH = 3.1f, BANNER_HEIGHT = 2.4f, BANNER_BACK = 0.7f;
-    private static final int STRIPES = 14;
 
     private final CgFont font;
     private final CgCanvasGlass[] panes = new CgCanvasGlass[LOOKS.length];
@@ -46,9 +44,10 @@ public final class CgGlassDemo {
     private final Matrix4f pose = new Matrix4f();
 
     private boolean active;
-    private double x, y, z;
-    private double seconds;
-    /** Where pane {@code i} stands, absolute, refreshed each submit. */
+    /** The point the row was laid out for, and the turn every pane takes: set when the point moves, kept otherwise. */
+    private double laidX = Double.NaN, laidZ = Double.NaN;
+    private float yaw;
+    /** Where pane {@code i} stands, absolute. */
     private final double[] at = new double[LOOKS.length * 3];
 
     public CgGlassDemo(CgFont font) {
@@ -73,19 +72,24 @@ public final class CgGlassDemo {
         return all;
     }
 
-    /** The row this frame, centred on {@code (x, y, z)}, the ground under it, across the camera's line to it. */
+    /**
+     * The row this frame, centred on {@code (x, y, z)}, the ground under it. Laid out across the camera's line to the
+     * point when the point moves (the demo moves it only for a new scene, a new level or a jump), and fixed there.
+     */
     public void submit(CgWorldRenderer world, CgHostView view, double x, double y, double z, double seconds) {
-        this.x = x;
-        this.y = y;
-        this.z = z;
-        this.seconds = seconds;
-        double toX = view.x() - x, toZ = view.z() - z, length = Math.max(1e-6, Math.hypot(toX, toZ));
-        double acrossX = -toZ / length, acrossZ = toX / length;
+        if (x != laidX || z != laidZ) {
+            laidX = x;
+            laidZ = z;
+            double toX = view.x() - x, toZ = view.z() - z, length = Math.max(1e-6, Math.hypot(toX, toZ));
+            yaw = (float) Math.atan2(toX, toZ);
+            for (int i = 0; i < LOOKS.length; i++) {
+                double offset = (i - (LOOKS.length - 1) * 0.5) * SPACING;
+                at[i * 3] = x - toZ / length * offset;
+                at[i * 3 + 2] = z + toX / length * offset;
+            }
+        }
         for (int i = 0; i < LOOKS.length; i++) {
-            double offset = (i - (LOOKS.length - 1) * 0.5) * SPACING;
-            at[i * 3] = x + acrossX * offset;
             at[i * 3 + 1] = y + LIFT;
-            at[i * 3 + 2] = z + acrossZ * offset;
             world.text(NAMES[i]).at(at[i * 3], at[i * 3 + 1] + HEIGHT * 0.5 + 0.45, at[i * 3 + 2]).height(0.4f)
                     .font(font).style(CgDemoStyles.LABEL).submit();
         }
@@ -94,14 +98,10 @@ public final class CgGlassDemo {
 
     private void draw(CgStageFrame frame) {
         if (!active) return;
-        CgHostView view = frame.host().view();
         CgCanvas canvas = frame.canvas();
+        pose.rotationY(yaw);
         for (int i = 0; i < LOOKS.length; i++) {
             double px = at[i * 3], py = at[i * 3 + 1], pz = at[i * 3 + 2];
-            float yaw = (float) Math.atan2(view.x() - px, view.z() - pz)
-                    + 0.35f * (float) Math.sin(seconds * 0.7 + i * 0.9);
-            pose.rotationY(yaw);
-            banner(canvas, px, py, pz, i);
             CgQuadBatch.Quad quad = canvas.quad(panes[i].material()).world(px, py, pz).pose(pose)
                     .at(-WIDTH * 0.5f, -HEIGHT * 0.5f).size(WIDTH, HEIGHT);
             CgCanvasGlass.Look look = looks[i];
@@ -110,28 +110,6 @@ public final class CgGlassDemo {
                     .apply();
             quad.submit();
         }
-    }
-
-    /** Rainbow stripes scrolling across a panel behind pane {@code i}, turned as it is. */
-    private void banner(CgCanvas canvas, double px, double py, double pz, int i) {
-        float stripe = BANNER_WIDTH / STRIPES;
-        for (int s = 0; s < STRIPES; s++) {
-            float hue = (float) ((s / (double) STRIPES + seconds * 0.08 + i / 7.0) % 1.0);
-            canvas.quad(CgCanvasMaterials.WORLD.image()).world(px, py, pz).pose(pose)
-                    .at(-BANNER_WIDTH * 0.5f + s * stripe, -BANNER_HEIGHT * 0.5f, -BANNER_BACK)
-                    .size(stripe, BANNER_HEIGHT).color(hue(hue)).submit();
-        }
-    }
-
-    /** A saturated colour around the wheel, opaque ARGB. */
-    private static int hue(float h) {
-        float r = channel(h + 1f / 3f), g = channel(h), b = channel(h - 1f / 3f);
-        return 0xFF000000 | Math.round(r * 255f) << 16 | Math.round(g * 255f) << 8 | Math.round(b * 255f);
-    }
-
-    private static float channel(float h) {
-        float t = ((h % 1f) + 1f) % 1f;
-        return Math.max(0f, Math.min(1f, Math.abs(t * 6f - 3f) - 1f));
     }
 
     /** Draws nothing until the next submit. */
