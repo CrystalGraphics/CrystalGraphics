@@ -465,7 +465,7 @@ public final class CgExecutor {
     /** The host's targets are read again at their next composed bind: at a window resize, which may remake them. */
     public static void forgetHostTargets() {
         BESIDE.forgetHost();
-        for (CgExecutor executor : BY_DEPTH) executor.hostRead = -1;
+        if (CgGLImports.installed()) CgGLImports.get().forgetAttachments();
     }
 
     /**
@@ -2016,25 +2016,15 @@ public final class CgExecutor {
 
     // ── Raster on the device (GL6 part 4) ──────────────────────────────────────
 
-    /** The host framebuffer's attachment parameters, which {@code CgGL} does not name. */
-    private static final int GL_ATTACHMENT_NAME = 0x8CD1, GL_ATTACHMENT_TEXTURE = 0x1702;
-    private static final CgGlSlot[] FRAMEBUFFER = {CgGlSlot.FBO};
-    /** The host framebuffer {@link #readHost} read, at what viewport size; -1 for none. */
-    private int hostRead = -1, hostReadWidth, hostReadHeight;
     /** Its colour and depth as RHI textures (a texture's, a renderbuffer's, the default framebuffer's); null for none. */
     @Nullable
     private CgGpuTexture hostColor, hostDepth;
-    /** Its attachments' names and kinds ({@code GL_TEXTURE}, {@code GL_RENDERBUFFER}, 0 for none), and descriptions. */
-    private int hostColorName, hostDepthName, hostColorType, hostDepthType;
-    @Nullable
-    private CgGpuTexture.Desc hostColorDesc, hostDepthDesc;
     /** The host's depth as a texture a pass samples in place ({@link #readOnlyDepth}). */
     private final CgImportedTexture hostDepthTexture = new CgImportedTexture();
 
     /**
-     * Reads the host framebuffer's attachments and imports its textures (RDG's {@code RegisterExternalTexture}). The
-     * names are read once a host framebuffer and size, again after {@link #forgetHostTargets}; the textures every time,
-     * since a name's image may change under it (the tracked backend renames one an upload replaces whole).
+     * The host framebuffer's attachments as RHI textures (RDG's {@code RegisterExternalTexture}), asked of the imports at
+     * every pass: they keep what they learned until {@link #forgetHostTargets}.
      */
     private void readHost() {
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, READ_HOST)) {
@@ -2050,53 +2040,13 @@ public final class CgExecutor {
     private void importHost() {
         int host = startFramebuffer, width = startViewport.get(2), height = startViewport.get(3);
         CgGLImports imports = CgGLImports.get();
-        if (host == 0) {
-            // Unreal's back buffer: the window's own buffers, framebuffer 0 on GL, the surface on a device presenting one
-            hostColor = imports.defaultColor(width, height);
-            hostDepth = imports.defaultDepth(width, height);
-            return;
-        }
-        if (host != hostRead || width != hostReadWidth || height != hostReadHeight) {
-            // The binding as found: a CgGL pass reads the host mid-pass, its own target bound
-            try (CgGlScope ignored = CgGlState.save(FRAMEBUFFER)) {
-                CgGL.glBindFramebuffer(CgGL.GL_FRAMEBUFFER, host);
-                hostColorType = attachmentType(CgGL.GL_COLOR_ATTACHMENT0);
-                hostDepthType = attachmentType(CgGL.GL_DEPTH_ATTACHMENT);
-                hostColorName = hostColorType == 0 ? 0 : attachmentName(CgGL.GL_COLOR_ATTACHMENT0);
-                hostDepthName = hostDepthType == 0 ? 0 : attachmentName(CgGL.GL_DEPTH_ATTACHMENT);
-            }
-            hostColorDesc = describe(imports, hostColorType, hostColorName);
-            hostDepthDesc = describe(imports, hostDepthType, hostDepthName);
-            hostRead = host;
-            hostReadWidth = width;
-            hostReadHeight = height;
-        }
-        hostColor = imported(imports, hostColorType, hostColorName, hostColorDesc);
-        hostDepth = imported(imports, hostDepthType, hostDepthName, hostDepthDesc);
+        // Framebuffer 0 is Unreal's back buffer: the window's own buffers on GL, the surface on a device presenting one
+        hostColor = texture(imports.attachment(host, false, width, height));
+        hostDepth = texture(imports.attachment(host, true, width, height));
     }
 
-    /** What is at {@code point} of the bound framebuffer: {@code GL_TEXTURE}, {@code GL_RENDERBUFFER}, or 0 for nothing. */
-    private static int attachmentType(int point) {
-        int type = CgGL.glGetFramebufferAttachmentParameteriv(CgGL.GL_FRAMEBUFFER, point,
-                CgGL.GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE);
-        return type == GL_ATTACHMENT_TEXTURE || type == CgGL.GL_RENDERBUFFER ? type : 0;
-    }
-
-    /** The name of the texture or renderbuffer at {@code point} of the bound framebuffer. */
-    private static int attachmentName(int point) {
-        return CgGL.glGetFramebufferAttachmentParameteriv(CgGL.GL_FRAMEBUFFER, point, GL_ATTACHMENT_NAME);
-    }
-
-    @Nullable
-    private static CgGpuTexture.Desc describe(CgGLImports imports, int type, int name) {
-        if (type == 0) return null;
-        return type == CgGL.GL_RENDERBUFFER ? imports.describeRenderbuffer(name) : imports.describe(name);
-    }
-
-    @Nullable
-    private static CgGpuTexture imported(CgGLImports imports, int type, int name, @Nullable CgGpuTexture.Desc desc) {
-        if (desc == null) return null;
-        return type == CgGL.GL_RENDERBUFFER ? imports.renderbuffer(name, desc) : imports.texture(name, desc);
+    private static CgGpuTexture texture(@Nullable CgTextureView view) {
+        return view == null ? null : view.texture();
     }
 
     /**
@@ -2966,40 +2916,17 @@ public final class CgExecutor {
     }
 
     /** A readback's copy, issued here; its sink hears from {@link CgReadback#poll} once the GPU has finished. */
+    /** {@code r}'s copy on the device: its step's barriers have made the source readable as a copy's. */
     private static void readback(CgPass.Readback r) {
         r.delivering = true;
-        if (readbackDevice(r)) return;
         if (r.buffer != null) {
             CgReadback.buffer(bufferStorage(r.buffer, false), r.offset, r.size, r);
             return;
         }
         CgFrameBuffer storage = storage(r.texture);
-        if (storage.isVolume() || storage.isArray()) {
-            CgReadback.slices(storage.getColorTexture(0).getId(), r.level, r.x, r.y, r.z, r.w, r.h, r.d,
-                    storage.getFormat().getColorSlot(0), r);
-        } else {
-            CgReadback.pixels(storage.levelId(r.level), r.x, r.y, r.w, r.h, storage.getFormat().getColorSlot(0), r);
-        }
-    }
-
-    /**
-     * {@code r}'s copy on the device (its step's barriers have made the source readable as a copy's); false where its
-     * texture has no device image, which the {@code CgGL} copy then reads.
-     */
-    private static boolean readbackDevice(CgPass.Readback r) {
-        CgGLImports imports = CgGLImports.get();
-        if (r.buffer != null) {
-            int id = bufferStorage(r.buffer, false);
-            CgReadback.buffer(imports.buffer(id), imports.bufferOffset(id) + r.offset, r.size, r);
-            return true;
-        }
-        CgFrameBuffer storage = storage(r.texture);
-        CgTextureView view = storage.getColorTexture(0).rhiView();
-        if (view == null) return false;
         boolean slices = storage.isVolume() || storage.isArray();
-        CgReadback.texture(view.texture(), new CgTextureRegion(r.level, r.x, r.y, slices ? r.z : 0, r.w, r.h,
-                slices ? r.d : 1), r);
-        return true;
+        CgReadback.texture(image(storage.getColorTexture(0)), new CgTextureRegion(r.level, r.x, r.y, slices ? r.z : 0,
+                r.w, r.h, slices ? r.d : 1), r);
     }
 
     /** A released storage's framebuffer deleted, its states forgotten. */

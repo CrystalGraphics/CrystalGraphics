@@ -28,6 +28,13 @@ public final class GLContextState {
     public static final int[] TARGETS = {GL_DRAW_INDIRECT_BUFFER, GL_DISPATCH_INDIRECT_BUFFER, GL_PARAMETER_BUFFER,
             GL_PIXEL_PACK_BUFFER, GL_PIXEL_UNPACK_BUFFER};
 
+    /** The pixel-store parameters kept, by index into {@link #pixelStore}. */
+    public static final int[] PIXEL_STORE = {GL_UNPACK_ALIGNMENT, GL_UNPACK_ROW_LENGTH, GL_UNPACK_SKIP_ROWS,
+            GL_UNPACK_SKIP_PIXELS, GL_UNPACK_IMAGE_HEIGHT, GL_UNPACK_SKIP_IMAGES, GL_PACK_ALIGNMENT, GL_PACK_ROW_LENGTH,
+            GL_PACK_SKIP_ROWS, GL_PACK_SKIP_PIXELS, GL_PACK_IMAGE_HEIGHT, GL_PACK_SKIP_IMAGES};
+    /** {@link #PIXEL_STORE}'s values for rows packed one after another from the start: every device copy's layout. */
+    public static final int[] TIGHT = {1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0};
+
     /** 1 on, 0 off, per {@link #CAPS}; blending is per draw buffer, in {@link #blendEnabled}. */
     public final int[] caps = new int[CAPS.length];
     public final int[] blendEnabled = new int[DRAW_BUFFERS];
@@ -50,7 +57,7 @@ public final class GLContextState {
     public float viewportX, viewportY, viewportW, viewportH, depthNear, depthFar;
     public int scissorX, scissorY, scissorW, scissorH;
     public int clipOrigin, clipDepth;
-    public int unpackAlignment, packAlignment;
+    public final int[] pixelStore = new int[PIXEL_STORE.length];
 
     public final int[] uniformBuffer = new int[POINTS], storageBuffer = new int[POINTS];
     public final long[] uniformOffset = new long[POINTS], uniformSize = new long[POINTS],
@@ -64,6 +71,11 @@ public final class GLContextState {
 
     public static int cap(int cap) {
         for (int i = 0; i < CAPS.length; i++) if (CAPS[i] == cap) return i;
+        return -1;
+    }
+
+    public static int pixelStore(int name) {
+        for (int i = 0; i < PIXEL_STORE.length; i++) if (PIXEL_STORE[i] == name) return i;
         return -1;
     }
 
@@ -101,7 +113,8 @@ public final class GLContextState {
         Arrays.fill(targetBuffer, UNKNOWN);
         viewportX = viewportY = viewportW = viewportH = depthNear = depthFar = Float.NaN;
         scissorX = scissorY = scissorW = scissorH = UNKNOWN;
-        clipOrigin = clipDepth = unpackAlignment = packAlignment = UNKNOWN;
+        clipOrigin = clipDepth = UNKNOWN;
+        Arrays.fill(pixelStore, UNKNOWN);
         Arrays.fill(uniformOffset, UNKNOWN_LONG);
         Arrays.fill(uniformSize, UNKNOWN_LONG);
         Arrays.fill(storageOffset, UNKNOWN_LONG);
@@ -150,8 +163,7 @@ public final class GLContextState {
         scissorH = o.scissorH;
         clipOrigin = o.clipOrigin;
         clipDepth = o.clipDepth;
-        unpackAlignment = o.unpackAlignment;
-        packAlignment = o.packAlignment;
+        System.arraycopy(o.pixelStore, 0, pixelStore, 0, PIXEL_STORE.length);
         System.arraycopy(o.uniformBuffer, 0, uniformBuffer, 0, POINTS);
         System.arraycopy(o.uniformOffset, 0, uniformOffset, 0, POINTS);
         System.arraycopy(o.uniformSize, 0, uniformSize, 0, POINTS);

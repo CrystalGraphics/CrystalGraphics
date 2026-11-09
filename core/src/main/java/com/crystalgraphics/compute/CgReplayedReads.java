@@ -1,17 +1,17 @@
 package com.crystalgraphics.compute;
 
 import com.crystalgraphics.api.texture.CgTextureType;
+import com.crystalgraphics.gl.buffer.CgBufferReadback;
 import com.crystalgraphics.gl.buffer.CgReadback;
 import com.crystalgraphics.platform.gl.CgGL;
-import com.crystalgraphics.platform.gl.state.CgGlScope;
-import com.crystalgraphics.platform.gl.state.CgGlState;
+import com.crystalgraphics.platform.rhi.CgDeviceSection;
+import com.crystalgraphics.platform.rhi.CgRHI;
+import com.crystalgraphics.platform.rhi.resource.CgTextureView;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.ArrayList;
 import java.util.List;
-
-import static com.crystalgraphics.platform.gl.state.CgGlSlot.FBO;
 
 /**
  * The reads of a check that runs GPU work and compares what it wrote, made so the check never waits on the GPU: it
@@ -77,16 +77,14 @@ public final class CgReplayedReads {
         return new CgReplayedReads(Mode.REPLAYING, keys, arrived);
     }
 
-    /** The first {@code count} words of a GL buffer. */
+    /** The first {@code count} words of a buffer, known by its {@code CgGL} name. */
     public int[] words(int buffer, int count) {
         ByteBuffer bytes = bytes("words " + count, count * 4, () -> {
-            CgGL.glBindBuffer(CgGL.GL_COPY_READ_BUFFER, buffer);
-            ByteBuffer mapped = CgGL.glMapBufferRange(CgGL.GL_COPY_READ_BUFFER, 0, count * 4L, CgGL.GL_MAP_READ_BIT, null);
+            int[] words = new int[count];
+            CgBufferReadback.readWords(buffer, 0, words, 0, count);
             ByteBuffer copy = ByteBuffer.allocate(count * 4).order(ByteOrder.nativeOrder());
-            copy.put(mapped.order(ByteOrder.nativeOrder())).flip();
-            CgGL.glUnmapBuffer(CgGL.GL_COPY_READ_BUFFER);
-            CgGL.glBindBuffer(CgGL.GL_COPY_READ_BUFFER, 0);
-            return copy;
+            for (int w : words) copy.putInt(w);
+            return copy.flip();
         }, sink -> CgReadback.buffer(buffer, 0, count * 4L, sink));
         int[] words = new int[count];
         for (int i = 0; i < count; i++) words[i] = bytes.getInt(i * 4);
@@ -101,11 +99,12 @@ public final class CgReplayedReads {
         int size = width * height * CgReadback.pixelBytes(type);
         return bytes("pixels " + width + "x" + height + " " + type, size, () -> {
             ByteBuffer out = ByteBuffer.allocateDirect(size).order(ByteOrder.nativeOrder());
-            try (CgGlScope ignored = CgGlState.save(FBO)) {
-                CgGL.glBindFramebuffer(CgGL.GL_READ_FRAMEBUFFER, framebuffer);
-                CgGL.glPixelStorei(CgGL.GL_PACK_ALIGNMENT, 1);
-                CgGL.glReadPixels(0, 0, width, height, type.glBaseFormat, type.glType, out);
-                CgGL.glPixelStorei(CgGL.GL_PACK_ALIGNMENT, 4);   // GL's default
+            CgDeviceSection.begin();
+            try {
+                CgTextureView color = CgReadback.colorOf(framebuffer, width, height, type);
+                CgRHI.get().encoder().readTexture(color.texture(), CgReadback.region(color, 0, 0, width, height), out);
+            } finally {
+                CgDeviceSection.end();
             }
             return out;
         }, sink -> CgReadback.pixels(framebuffer, 0, 0, width, height, type, sink));

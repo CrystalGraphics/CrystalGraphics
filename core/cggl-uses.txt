@@ -22,7 +22,6 @@ com/crystalgraphics/compute/CgReplayedReads.java
 com/crystalgraphics/compute/ops/CgGpuOpsCheck.java
 com/crystalgraphics/compute/program/CgKernelProgram.java
 com/crystalgraphics/gl/CgGlNames.java
-com/crystalgraphics/gl/buffer/CgBufferReadback.java
 com/crystalgraphics/gl/buffer/CgReadback.java
 com/crystalgraphics/gl/buffer/shader/CgShaderBuffer.java
 com/crystalgraphics/gl/buffer/shader/CgShaderStorageBuffer.java

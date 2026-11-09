@@ -1149,9 +1149,11 @@ com/crystalgraphics/platform/gl/CgGLImports
   method public bufferRespecified (IJ)V
   method public forget (Lcom/crystalgraphics/platform/rhi/resource/CgGpuBuffer;)V
   method public forget (Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture;)V
+  method public forgetAttachments ()V
   method public framebufferBarrier (IIILcom/crystalgraphics/platform/rhi/command/CgTransition;)Z
   method public renderbufferDeleted (I)V
   method public textureDeleted (I)V
+  method public,abstract attachment (IZII)Lcom/crystalgraphics/platform/rhi/resource/CgTextureView;
   method public,abstract buffer (I)Lcom/crystalgraphics/platform/rhi/resource/CgGpuBuffer;
   method public,abstract bufferOffset (I)J
   method public,abstract defaultColor (II)Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture;
@@ -1544,6 +1546,7 @@ com/crystalgraphics/platform/gl/driver/GLC
   field public,static,final GL_COMPRESSED_RGBA_BPTC_UNORM I
   field public,static,final GL_COMPRESSED_SRGB_ALPHA_BPTC_UNORM I
   field public,static,final GL_COMPUTE_SHADER I
+  field public,static,final GL_COMPUTE_SHADER_BIT I
   field public,static,final GL_CONDITION_SATISFIED I
   field public,static,final GL_CONSTANT_ALPHA I
   field public,static,final GL_CONSTANT_COLOR I
@@ -1625,7 +1628,9 @@ com/crystalgraphics/platform/gl/driver/GLC
   field public,static,final GL_MAX_COLOR_ATTACHMENTS I
   field public,static,final GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS I
   field public,static,final GL_MAX_COMPUTE_SHARED_MEMORY_SIZE I
+  field public,static,final GL_MAX_COMPUTE_WORK_GROUP_COUNT I
   field public,static,final GL_MAX_COMPUTE_WORK_GROUP_INVOCATIONS I
+  field public,static,final GL_MAX_COMPUTE_WORK_GROUP_SIZE I
   field public,static,final GL_MAX_IMAGE_UNITS I
   field public,static,final GL_MAX_LABEL_LENGTH I
   field public,static,final GL_MAX_SAMPLES I
@@ -1657,6 +1662,11 @@ com/crystalgraphics/platform/gl/driver/GLC
   field public,static,final GL_ONE_MINUS_SRC_ALPHA I
   field public,static,final GL_ONE_MINUS_SRC_COLOR I
   field public,static,final GL_PACK_ALIGNMENT I
+  field public,static,final GL_PACK_IMAGE_HEIGHT I
+  field public,static,final GL_PACK_ROW_LENGTH I
+  field public,static,final GL_PACK_SKIP_IMAGES I
+  field public,static,final GL_PACK_SKIP_PIXELS I
+  field public,static,final GL_PACK_SKIP_ROWS I
   field public,static,final GL_PARAMETER_BUFFER I
   field public,static,final GL_PARAMETER_BUFFER_BINDING I
   field public,static,final GL_PIXEL_BUFFER_BARRIER_BIT I
@@ -1770,6 +1780,9 @@ com/crystalgraphics/platform/gl/driver/GLC
   field public,static,final GL_STENCIL_TEST I
   field public,static,final GL_STENCIL_VALUE_MASK I
   field public,static,final GL_STENCIL_WRITEMASK I
+  field public,static,final GL_SUBGROUP_SIZE_KHR I
+  field public,static,final GL_SUBGROUP_SUPPORTED_FEATURES_KHR I
+  field public,static,final GL_SUBGROUP_SUPPORTED_STAGES_KHR I
   field public,static,final GL_SYNC_FLUSH_COMMANDS_BIT I
   field public,static,final GL_TEXTURE I
   field public,static,final GL_TEXTURE0 I
@@ -1812,6 +1825,11 @@ com/crystalgraphics/platform/gl/driver/GLC
   field public,static,final GL_UNIFORM_BUFFER_SIZE I
   field public,static,final GL_UNIFORM_BUFFER_START I
   field public,static,final GL_UNPACK_ALIGNMENT I
+  field public,static,final GL_UNPACK_IMAGE_HEIGHT I
+  field public,static,final GL_UNPACK_ROW_LENGTH I
+  field public,static,final GL_UNPACK_SKIP_IMAGES I
+  field public,static,final GL_UNPACK_SKIP_PIXELS I
+  field public,static,final GL_UNPACK_SKIP_ROWS I
   field public,static,final GL_UNSIGNED_BYTE I
   field public,static,final GL_UNSIGNED_INT I
   field public,static,final GL_UNSIGNED_INT_10F_11F_11F_REV I
@@ -1976,6 +1994,7 @@ com/crystalgraphics/platform/gl/resource/GLImports
   extends java/lang/Object
   implements com/crystalgraphics/platform/gl/CgGLImports
   method public <init> (Lcom/crystalgraphics/platform/gl/driver/CgGLDriver;Lcom/crystalgraphics/platform/gl/command/GLFramebuffers;)V
+  method public attachment (IZII)Lcom/crystalgraphics/platform/rhi/resource/CgTextureView;
   method public buffer (I)Lcom/crystalgraphics/platform/rhi/resource/CgGpuBuffer;
   method public bufferDeleted (I)V
   method public bufferOffset (I)J
@@ -1984,6 +2003,7 @@ com/crystalgraphics/platform/gl/resource/GLImports
   method public defaultDepth (II)Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture;
   method public describe (I)Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture$Desc;
   method public describeRenderbuffer (I)Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture$Desc;
+  method public forgetAttachments ()V
   method public name (Lcom/crystalgraphics/platform/rhi/resource/CgGpuBuffer;)I
   method public name (Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture;)I
   method public renderbuffer (ILcom/crystalgraphics/platform/rhi/resource/CgGpuTexture$Desc;)Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture;
@@ -2238,7 +2258,6 @@ com/crystalgraphics/platform/gl/state/GLContextState
   field public frontFace I
   field public offsetFactor F
   field public offsetUnits F
-  field public packAlignment I
   field public polygonMode I
   field public program I
   field public readFramebuffer I
@@ -2246,7 +2265,6 @@ com/crystalgraphics/platform/gl/state/GLContextState
   field public scissorW I
   field public scissorX I
   field public scissorY I
-  field public unpackAlignment I
   field public vertexArray I
   field public viewportH F
   field public viewportW F
@@ -2261,6 +2279,7 @@ com/crystalgraphics/platform/gl/state/GLContextState
   field public,final blendSrcRgb [I
   field public,final caps [I
   field public,final colorMask [I
+  field public,final pixelStore [I
   field public,final stencilDepthFail [I
   field public,final stencilFail [I
   field public,final stencilFunc [I
@@ -2279,8 +2298,10 @@ com/crystalgraphics/platform/gl/state/GLContextState
   field public,final unitTexture [I
   field public,static,final CAPS [I
   field public,static,final DRAW_BUFFERS I
+  field public,static,final PIXEL_STORE [I
   field public,static,final POINTS I
   field public,static,final TARGETS [I
+  field public,static,final TIGHT [I
   field public,static,final UNITS I
   field public,static,final UNKNOWN I
   field public,static,final UNKNOWN_LONG J
@@ -2288,6 +2309,7 @@ com/crystalgraphics/platform/gl/state/GLContextState
   method public copyFrom (Lcom/crystalgraphics/platform/gl/state/GLContextState;)V
   method public invalidate ()V
   method public,static cap (I)I
+  method public,static pixelStore (I)I
   method public,static target (I)I
 com/crystalgraphics/platform/gl/state/GLHostState
   access public,abstract,interface
@@ -2716,6 +2738,7 @@ com/crystalgraphics/platform/gl/tracked/CgTrackedImports
   extends java/lang/Object
   implements com/crystalgraphics/platform/gl/CgGLImports
   method public <init> (Lcom/crystalgraphics/platform/gl/tracked/CgTrackedGLBackend;)V
+  method public attachment (IZII)Lcom/crystalgraphics/platform/rhi/resource/CgTextureView;
   method public buffer (I)Lcom/crystalgraphics/platform/rhi/resource/CgGpuBuffer;
   method public bufferDeleted (I)V
   method public bufferOffset (I)J
@@ -2806,6 +2829,7 @@ com/crystalgraphics/platform/gl/tracked/gl/TrackedFramebuffers
   method public <init> (Lcom/crystalgraphics/platform/gl/tracked/tracker/CgTracker;Lcom/crystalgraphics/platform/gl/tracked/gl/TrackedGlErrors;Lcom/crystalgraphics/platform/gl/tracked/gl/TrackedTextures;Lcom/crystalgraphics/platform/gl/tracked/gl/TrackedBuffers;)V
   method public applyDraw ()Z
   method public attachmentParameter (III)I
+  method public attachmentView (IZ)Lcom/crystalgraphics/platform/rhi/resource/CgTextureView;
   method public barrier (III)V
   method public barrier (IIILcom/crystalgraphics/platform/gl/tracked/gl/TrackedFramebuffers$Moves;)V
   method public bind (II)V

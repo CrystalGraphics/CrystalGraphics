@@ -1,7 +1,8 @@
 package com.crystalgraphics.gl.buffer;
 
-import com.crystalgraphics.gl.CgGlNames;
-import com.crystalgraphics.platform.gl.CgGL;
+import com.crystalgraphics.platform.gl.CgGLImports;
+import com.crystalgraphics.platform.rhi.CgDeviceSection;
+import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 
@@ -9,9 +10,8 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 
 /**
- * Reads a GL buffer's words back now, through a buffer of its own: a buffer made for the GPU need not be mappable
- * (immutable storage without {@code GL_MAP_READ_BIT}). Every read is a stall, counted as {@code buffer.readbacks} and
- * {@code buffer.readback-bytes}: what the compute tiers below indirect draws, and the CPU tier, pay. Render thread.
+ * Reads a buffer's words back now, waiting for the GPU. Every read is a stall, counted as {@code buffer.readbacks} and
+ * {@code buffer.readback-bytes}. Render thread, on a device that owns its submission: a hosted one refuses to wait.
  *
  * <pre>{@code
  * int[] count = new int[1];
@@ -25,42 +25,28 @@ public final class CgBufferReadback {
     private static final int READBACKS = CgTrace.name("buffer.readbacks");
     private static final int READBACK_BYTES = CgTrace.name("buffer.readback-bytes");
 
-    private static int buffer;
-    private static long size;
-    private static ByteBuffer view;
+    private static ByteBuffer scratch = ByteBuffer.allocateDirect(64).order(ByteOrder.nativeOrder());
 
     private CgBufferReadback() {}
 
-    /** {@code count} words at byte {@code offset} in GL buffer {@code name}, into {@code into} from index {@code at}. */
+    /** {@code count} words at byte {@code offset} in buffer {@code name}, into {@code into} from index {@code at}. */
     public static void readWords(int name, long offset, int[] into, int at, int count) {
         if (count == 0) return;
-        long bytes = count * 4L;
+        int bytes = count * 4;
         CgTrace.add(CgChannels.GL, READBACKS, 1);
         CgTrace.add(CgChannels.GL, READBACK_BYTES, bytes);
-        if (bytes > size) {
-            if (buffer == 0) buffer = CgGlNames.buffer();
-            size = Math.max(bytes, size * 2);
-            CgGL.glBindBuffer(CgGL.GL_COPY_WRITE_BUFFER, buffer);
-            CgGL.glBufferData(CgGL.GL_COPY_WRITE_BUFFER, size, CgGL.GL_STREAM_READ);
+        if (scratch.capacity() < bytes) scratch = ByteBuffer.allocateDirect(Math.max(bytes, scratch.capacity() * 2)).order(ByteOrder.nativeOrder());
+        scratch.clear().limit(bytes);
+        CgGLImports imports = CgGLImports.get();
+        CgDeviceSection.begin();
+        try {
+            CgRHI.get().encoder().readBuffer(imports.buffer(name), imports.bufferOffset(name) + offset, scratch);
+        } finally {
+            CgDeviceSection.end();
         }
-        CgGL.glBindBuffer(CgGL.GL_COPY_READ_BUFFER, name);
-        CgGL.glBindBuffer(CgGL.GL_COPY_WRITE_BUFFER, buffer);
-        CgGL.glCopyBufferSubData(CgGL.GL_COPY_READ_BUFFER, CgGL.GL_COPY_WRITE_BUFFER, offset, 0, bytes);
-        ByteBuffer mapped = CgGL.glMapBufferRange(CgGL.GL_COPY_WRITE_BUFFER, 0, bytes, CgGL.GL_MAP_READ_BIT, view);
-        if (mapped == null) throw new IllegalStateException("a read-back of " + bytes + " bytes could not be mapped");
-        view = mapped;
-        mapped.order(ByteOrder.nativeOrder());
-        for (int i = 0; i < count; i++) into[at + i] = mapped.getInt(i * 4);
-        CgGL.glUnmapBuffer(CgGL.GL_COPY_WRITE_BUFFER);
-        CgGL.glBindBuffer(CgGL.GL_COPY_READ_BUFFER, 0);
-        CgGL.glBindBuffer(CgGL.GL_COPY_WRITE_BUFFER, 0);
+        for (int i = 0; i < count; i++) into[at + i] = scratch.getInt(i * 4);
     }
 
-    /** The buffer reads go through. At context teardown. */
-    public static void release() {
-        if (buffer != 0) CgGL.glDeleteBuffers(buffer);
-        buffer = 0;
-        size = 0;
-        view = null;
-    }
+    /** At the device's teardown: nothing of the device is kept. */
+    public static void release() {}
 }

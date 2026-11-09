@@ -161,8 +161,9 @@ public interface GLHostState {
             s.scissorH = four[3];
             s.clipOrigin = gl.glGetInteger(GL_CLIP_ORIGIN);
             s.clipDepth = gl.glGetInteger(GL_CLIP_DEPTH_MODE);
-            s.unpackAlignment = gl.glGetInteger(GL_UNPACK_ALIGNMENT);
-            s.packAlignment = gl.glGetInteger(GL_PACK_ALIGNMENT);
+            for (int i = 0; i < GLContextState.PIXEL_STORE.length; i++) {
+                s.pixelStore[i] = gl.glGetInteger(GLContextState.PIXEL_STORE[i]);
+            }
             for (int i = 0; i < GLContextState.POINTS; i++) {
                 s.uniformBuffer[i] = indexed(gl, GL_UNIFORM_BUFFER_BINDING, i, one);
                 s.uniformOffset[i] = gl.glGetInteger64i(GL_UNIFORM_BUFFER_START, i);

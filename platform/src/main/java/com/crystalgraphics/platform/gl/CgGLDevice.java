@@ -200,18 +200,36 @@ public final class CgGLDevice implements CgRHI {
                 gl.glGetInteger(GL_SHADER_STORAGE_BUFFER_OFFSET_ALIGNMENT),
                 gl.glGetInteger(GL_TEXTURE_BUFFER_OFFSET_ALIGNMENT), gl.glGetInteger(GL_MAX_VIEWPORT_DIMS),
                 gl.glGetFloat(GL_MAX_TEXTURE_MAX_ANISOTROPY),
-                new Globals.Compute(gl.glGetInteger(GL_MAX_COMPUTE_SHARED_MEMORY_SIZE),
-                        gl.glGetInteger(GL_MAX_COMPUTE_WORK_GROUP_INVOCATIONS), Globals.Compute.MINIMUM.sizeX(),
-                        Globals.Compute.MINIMUM.sizeY(), Globals.Compute.MINIMUM.sizeZ(), Globals.Compute.MINIMUM.countX(),
-                        Globals.Compute.MINIMUM.countY(), Globals.Compute.MINIMUM.countZ(), 1, 0));
+                compute(gl));
         globals = new Globals("OpenGL", gl.glGetString(GL_VENDOR) + " " + gl.glGetString(GL_RENDERER), version, limits,
                 true, limits.maxAnisotropy() > 1f, true, true, gl46 || gl.hasExtension("GL_ARB_indirect_parameters"),
-                true, false, true, true, gl.hasExtension("GL_ARB_bindless_texture"));
+                true, false, gl46 || gl.hasExtension("GL_ARB_shader_draw_parameters"), true,
+                gl.hasExtension("GL_ARB_bindless_texture"));
 
         if (host == null) conventions();
         framebuffers = new GLFramebuffers(gl);
         encoder = new GLEncoder(this, gl, framebuffers, limits.uniformOffsetAlignment());
         makeSurface(width, height);
+    }
+
+    /** The context's compute limits; subgroups where {@code KHR_shader_subgroup} lists the compute stage. */
+    private static Globals.Compute compute(CgGLDriver gl) {
+        int[] size = new int[3], count = new int[3], one = new int[1];
+        for (int axis = 0; axis < 3; axis++) {
+            gl.glGetIntegeri_v(GL_MAX_COMPUTE_WORK_GROUP_SIZE, axis, one);
+            size[axis] = one[0];
+            gl.glGetIntegeri_v(GL_MAX_COMPUTE_WORK_GROUP_COUNT, axis, one);
+            count[axis] = one[0];
+        }
+        int subgroupSize = 1, subgroupOps = 0;
+        if (gl.hasExtension("GL_KHR_shader_subgroup") && !CgDisabledExtensions.all().contains("GL_KHR_shader_subgroup")
+                && (gl.glGetInteger(GL_SUBGROUP_SUPPORTED_STAGES_KHR) & GL_COMPUTE_SHADER_BIT) != 0) {
+            subgroupSize = gl.glGetInteger(GL_SUBGROUP_SIZE_KHR);
+            subgroupOps = gl.glGetInteger(GL_SUBGROUP_SUPPORTED_FEATURES_KHR);   // the same bits as Vulkan's
+        }
+        return new Globals.Compute(gl.glGetInteger(GL_MAX_COMPUTE_SHARED_MEMORY_SIZE),
+                gl.glGetInteger(GL_MAX_COMPUTE_WORK_GROUP_INVOCATIONS), size[0], size[1], size[2], count[0], count[1],
+                count[2], subgroupSize, subgroupOps);
     }
 
     /** Vulkan's conventions: depth in [0, 1], images' rows in memory as Vulkan writes them (present flips). */
@@ -220,8 +238,6 @@ public final class CgGLDevice implements CgRHI {
         gl.glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
         gl.glEnable(GL_PROGRAM_POINT_SIZE);
         gl.glEnable(GL_FRAMEBUFFER_SRGB);
-        gl.glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-        gl.glPixelStorei(GL_PACK_ALIGNMENT, 1);
     }
 
     /** The host drew since the last section: what it believes becomes what the filter knows. No-op when owned. */
@@ -317,10 +333,7 @@ public final class CgGLDevice implements CgRHI {
 
     @Override
     public void describe(BiConsumer<String, String> fact) {
-        fact.accept("api", "OpenGL " + globals.driver());
-        fact.accept("bindless", String.valueOf(globals.bindless()));
-        fact.accept("indirectCount", String.valueOf(globals.indirectCount()));
-        fact.accept("computeInvocations", String.valueOf(globals.limits().compute().invocations()));
+        GLReport.describe(gl, fact);
     }
 
     @Override

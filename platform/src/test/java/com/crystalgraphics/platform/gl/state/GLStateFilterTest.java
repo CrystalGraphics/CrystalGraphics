@@ -85,4 +85,17 @@ public class GLStateFilterTest {
         gl.glStencilMaskSeparate(GL_BACK, 0x0F);
         assertEquals(List.of("glStencilMaskSeparate", "glStencilMaskSeparate"), calls);
     }
+
+    @Test
+    public void pixelStoreAHostLeftIsStatedAgainOncePerSection() {
+        for (int section = 0; section < 2; section++) {
+            gl.adopt(new GLContextState());                    // the host's own uploads set row length and skips
+            for (int upload = 0; upload < 2; upload++) {
+                for (int i = 0; i < GLContextState.PIXEL_STORE.length; i++) {
+                    gl.glPixelStorei(GLContextState.PIXEL_STORE[i], GLContextState.TIGHT[i]);
+                }
+            }
+        }
+        assertEquals(2 * GLContextState.PIXEL_STORE.length, calls.size());
+    }
 }

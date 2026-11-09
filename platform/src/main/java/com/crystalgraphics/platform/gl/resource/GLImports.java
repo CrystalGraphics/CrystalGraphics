@@ -9,7 +9,9 @@ import com.crystalgraphics.platform.gl.command.GLFramebuffers;
 import com.crystalgraphics.platform.gl.driver.CgGLDriver;
 import com.crystalgraphics.platform.rhi.resource.CgGpuBuffer;
 import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
+import com.crystalgraphics.platform.rhi.resource.CgTextureView;
 
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -24,7 +26,10 @@ public final class GLImports implements CgGLImports {
 
     private static final int GL_RENDERBUFFER_WIDTH = 0x8D42, GL_RENDERBUFFER_HEIGHT = 0x8D43,
             GL_RENDERBUFFER_INTERNAL_FORMAT = 0x8D44, GL_RENDERBUFFER_SAMPLES = 0x8CAB,
-            GL_FRAMEBUFFER_ATTACHMENT_DEPTH_SIZE = 0x8216, GL_FRAMEBUFFER_ATTACHMENT_STENCIL_SIZE = 0x8217;
+            GL_FRAMEBUFFER_ATTACHMENT_DEPTH_SIZE = 0x8216, GL_FRAMEBUFFER_ATTACHMENT_STENCIL_SIZE = 0x8217,
+            GL_ATTACHMENT_TYPE = 0x8CD0, GL_ATTACHMENT_NAME = 0x8CD1, GL_ATTACHMENT_LEVEL = 0x8CD2,
+            GL_ATTACHMENT_LAYER = 0x8CD4, GL_ATTACHED_TEXTURE = 0x1702,
+            GL_ATTACHED_RENDERBUFFER = 0x8D41, GL_COLOR_POINT_0 = 0x8CE0, GL_DEPTH_POINT = 0x8D00;
 
     private final CgGLDriver gl;
     private final GLFramebuffers framebuffers;
@@ -32,6 +37,13 @@ public final class GLImports implements CgGLImports {
     private final Map<Integer, GLBuffer> buffers = new HashMap<>();
     private final Map<Integer, GLTexture> renderbuffers = new HashMap<>();
     private GLTexture backColor, backDepth;
+    /**
+     * {@link #attachment}'s answers, each a few driver queries that wait for its queue: per entry the framebuffer, the
+     * point (1 for depth), the size asked at, and the level and layer attached. A host has a handful of targets.
+     */
+    private int[] attachedAt = new int[16];
+    private CgTextureView[] attached = new CgTextureView[4];
+    private int attachedCount;
 
     /** @param framebuffers the device's: an import replaced or deleted drops those it is attached to */
     public GLImports(CgGLDriver gl, GLFramebuffers framebuffers) {
@@ -103,6 +115,52 @@ public final class GLImports implements CgGLImports {
     }
 
     @Override
+    public CgTextureView attachment(int fbo, boolean depth, int width, int height) {
+        if (fbo == 0) {
+            CgGpuTexture back = depth ? defaultDepth(width, height) : defaultColor(width, height);
+            return back == null ? null : CgTextureView.attachment(back, 0, 0);
+        }
+        int point = depth ? 1 : 0;
+        for (int i = 0; i < attachedCount; i++) {
+            int at = i * 4;
+            if (attachedAt[at] == fbo && attachedAt[at + 1] == point && attachedAt[at + 2] == width
+                    && attachedAt[at + 3] == height) {
+                return attached[i];
+            }
+        }
+        int glPoint = depth ? GL_DEPTH_POINT : GL_COLOR_POINT_0;
+        int type = gl.glGetNamedFramebufferAttachmentParameteri(fbo, glPoint, GL_ATTACHMENT_TYPE);
+        CgTextureView t = null;
+        if (type == GL_ATTACHED_RENDERBUFFER) {
+            int name = gl.glGetNamedFramebufferAttachmentParameteri(fbo, glPoint, GL_ATTACHMENT_NAME);
+            t = CgTextureView.attachment(renderbuffer(name, describeRenderbuffer(name)), 0, 0);
+        } else if (type == GL_ATTACHED_TEXTURE) {
+            int name = gl.glGetNamedFramebufferAttachmentParameteri(fbo, glPoint, GL_ATTACHMENT_NAME);
+            GLTexture known = textures.get(name);
+            t = CgTextureView.attachment(known != null ? known : texture(name, describe(name)),
+                    gl.glGetNamedFramebufferAttachmentParameteri(fbo, glPoint, GL_ATTACHMENT_LEVEL),
+                    Math.max(0, gl.glGetNamedFramebufferAttachmentParameteri(fbo, glPoint, GL_ATTACHMENT_LAYER)));
+        }
+        if (attachedCount == attached.length) {
+            attached = Arrays.copyOf(attached, attachedCount * 2);
+            attachedAt = Arrays.copyOf(attachedAt, attachedCount * 8);
+        }
+        int at = attachedCount * 4;
+        attachedAt[at] = fbo;
+        attachedAt[at + 1] = point;
+        attachedAt[at + 2] = width;
+        attachedAt[at + 3] = height;
+        attached[attachedCount++] = t;
+        return t;
+    }
+
+    @Override
+    public void forgetAttachments() {
+        Arrays.fill(attached, null);
+        attachedCount = 0;
+    }
+
+    @Override
     public CgGpuBuffer buffer(int name) {
         GLBuffer b = buffers.get(name);
         if (b == null) buffers.put(name, b = GLBuffer.adopt(gl, name));
@@ -118,13 +176,19 @@ public final class GLImports implements CgGLImports {
     @Override
     public void textureDeleted(int texture) {
         GLTexture t = textures.remove(texture);
-        if (t != null) framebuffers.forget(t);
+        if (t != null) {
+            framebuffers.forget(t);
+            forgetAttachments();
+        }
     }
 
     @Override
     public void renderbufferDeleted(int renderbuffer) {
         GLTexture t = renderbuffers.remove(renderbuffer);
-        if (t != null) framebuffers.forget(t);
+        if (t != null) {
+            framebuffers.forget(t);
+            forgetAttachments();
+        }
     }
 
     @Override public void bufferDeleted(int buffer) { buffers.remove(buffer); }

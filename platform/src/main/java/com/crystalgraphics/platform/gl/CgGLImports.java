@@ -3,6 +3,7 @@ package com.crystalgraphics.platform.gl;
 import com.crystalgraphics.platform.rhi.command.CgTransition;
 import com.crystalgraphics.platform.rhi.resource.CgGpuBuffer;
 import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
+import com.crystalgraphics.platform.rhi.resource.CgTextureView;
 
 /**
  * Engine objects still made through {@link CgGL} as RHI resources, and RHI resources as {@code CgGL} names, while the
@@ -49,6 +50,28 @@ public interface CgGLImports {
 
     /** The default framebuffer's depth beside {@link #defaultColor}; null where it has none. */
     CgGpuTexture defaultDepth(int width, int height);
+
+    /**
+     * Framebuffer {@code fbo}'s colour attachment 0, or with {@code depth} its depth, as the RHI texture's level and
+     * layer attached: a target known by its GL name ({@link #defaultColor} and {@link #defaultDepth} for 0,
+     * {@code width} x {@code height}). Null where nothing is attached there.
+     *
+     * <pre>{@code
+     * CgTextureView color = imports.attachment(hostFbo, false, w, h);
+     * CgTextureView depth = imports.attachment(hostFbo, true, w, h);   // null for a target without one
+     * encoder.readTexture(color.texture(), new CgTextureRegion(color.baseMip(), 0, 0, color.baseLayer(), w, h, 1), out);
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Answers are kept per framebuffer and size until an attached texture is deleted or {@link #forgetAttachments}:
+     *       attaching another level to the same framebuffer is not seen. {@code CgFrameBuffer.levelId} gives each level
+     *       a framebuffer of its own.</li>
+     * </ul>
+     */
+    CgTextureView attachment(int fbo, boolean depth, int width, int height);
+
+    /** What {@link #attachment} learned of framebuffers is stale: a host's targets may be remade, as at a resize. */
+    default void forgetAttachments() {}
 
     /** The RHI buffer holding {@code name}'s storage now. */
     CgGpuBuffer buffer(int name);

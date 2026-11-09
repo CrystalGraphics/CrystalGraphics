@@ -306,6 +306,16 @@ public final class TrackedFramebuffers {
         return t == null ? null : t.image;
     }
 
+    /** Framebuffer {@code fbo}'s colour attachment 0, or its depth, as attached; the surface's for 0; null for none. */
+    public CgTextureView attachmentView(int fbo, boolean depth) {
+        if (fbo == 0) {
+            CgGpuTexture surface = depth ? device.surfaceDepth() : device.surfaceColor();
+            return surface == null ? null : CgTextureView.attachment(surface, 0, 0);
+        }
+        Framebuffer f = fbos.get(fbo);
+        return f == null ? null : view(depth ? f.depth : f.colors[0]);
+    }
+
     private CgTextureView view(Attachment a) {
         CgGpuTexture image = image(a);
         return image == null ? null : CgTextureView.attachment(image, a.level, a.layer);

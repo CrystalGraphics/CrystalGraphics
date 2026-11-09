@@ -7,7 +7,6 @@ import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
 import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
 import com.crystalgraphics.platform.gl.state.CgGlStateShadow;
-import com.crystalgraphics.platform.gl.tracked.CgTrackedGLBackend;
 import com.crystalgraphics.variable.CgVar;
 
 import java.util.Arrays;
@@ -280,8 +279,8 @@ public final class CgCapabilities {
             CgGL.installIfAbsent();
             local = detectUncached();
             cachedCaps = local;
-            // Published so the fixed-function guards in CgGL cost a field load. @see CgGL#CORE
-            CgGL.CORE = local.coreProfile;
+            // Published so CgGL's fixed-function guards cost a field load, until CgGL goes (rhi H7). @see CgGL#CORE
+            CgGL.CORE = local.coreProfile = (CgGL.glGetInteger(0x9126) & 0x1) != 0;   // GL_CONTEXT_PROFILE_MASK
             CgGpuReport.log();
         }
         return local;
@@ -302,134 +301,78 @@ public final class CgCapabilities {
     //  Detection
     // ─────────────────────────────────────────────────────────────────────────
 
-    /** GL 4.1, or {@code ARB_get_program_binary} listed. */
-    private static boolean programBinary() {
-        if (CgGL.glGetInteger(CgGL.GL_MAJOR_VERSION) * 10 + CgGL.glGetInteger(CgGL.GL_MINOR_VERSION) >= 41) return true;
-        for (int i = 0, n = CgGL.glGetInteger(CgGL.GL_NUM_EXTENSIONS); i < n; i++) {
-            if ("GL_ARB_get_program_binary".equals(CgGL.glGetStringi(CgGL.GL_EXTENSIONS, i))) return true;
-        }
-        return false;
-    }
-
     /**
-     * Detects capabilities from the current OpenGL context (uncached).
+     * Detects capabilities from the installed device (uncached): its globals and limits, what a GL context lists no
+     * longer asked. Render thread, with a device installed.
      *
-     * <p>Must be called on the render thread with an active GL context.
-     * Prefer {@link #detect()} for most use cases.</p>
-     *
-     * <p>Depth and stencil support are assumed to be universally available
-     * on the target hardware range (OpenGL 2.0+ / Intel HD 3000 and above).</p>
-     *
-     * @return a new {@code CgCapabilities} reflecting the current context
+     * @return a new {@code CgCapabilities} reflecting the installed device
      * @see #detect()
      */
     public static CgCapabilities detectUncached() {
-        if (context == null) throw new IllegalStateException("CgGLContext not initialised — call CgCapabilities.init() before detect()");
-        CgGLContext gl = CgDisabledExtensions.filter(context);
-        boolean threeThreeByExtension = gl.OpenGL32() && gl.GL_ARB_instanced_arrays() && gl.GL_ARB_sampler_objects()
-                && gl.GL_ARB_explicit_attrib_location() && gl.GL_ARB_timer_query();
-        if (!gl.OpenGL33() && !threeThreeByExtension) {
-            throw new IllegalStateException("CrystalGraphics needs OpenGL 3.3, or 3.2 with the extensions 3.3 "
-                    + "absorbed, and this context has neither");
-        }
+        if (!CgRHI.installed()) throw new IllegalStateException("no device installed: capabilities are the device's");
+        CgRHI rhi = CgRHI.get();
+        CgRHI.Globals device = rhi.globals();
+        CgRHI.Globals.Limits limits = device.limits();
+        CgRHI.Globals.Compute compute = limits.compute();
         CgCapabilities caps = new CgCapabilities();
 
-        // ── Render limits ─────────────────────────────────────────────────────
-        caps.maxDrawBuffers      = CgGL.glGetInteger(CgGL.GL_MAX_DRAW_BUFFERS);
-        caps.maxTextureUnits     = CgGL.glGetInteger(CgGL.GL_MAX_TEXTURE_IMAGE_UNITS);
-        caps.maxTextureSize      = CgGL.glGetInteger(CgGL.GL_MAX_TEXTURE_SIZE);
-        caps.maxRenderbufferSize = CgGL.glGetInteger(0x84E8 /* GL_MAX_RENDERBUFFER_SIZE */);
-        caps.maxColorAttachments = CgGL.glGetInteger(0x8CDF /* GL_MAX_COLOR_ATTACHMENTS */);
-        caps.maxVertexAttribs    = CgGL.glGetInteger(CgGL.GL_MAX_VERTEX_ATTRIBS);
-
-        // ── Depth / Stencil ───────────────────────────────────────────────────
+        caps.maxDrawBuffers      = limits.maxColorAttachments();
+        caps.maxTextureUnits     = limits.maxTextureUnits();
+        caps.maxTextureSize      = limits.maxTextureSize();
+        caps.maxRenderbufferSize = limits.maxTextureSize();
+        caps.maxColorAttachments = limits.maxColorAttachments();
+        caps.maxVertexAttribs    = limits.maxVertexAttributes();
         caps.depth   = true;
         caps.stencil = true;
+        caps.copyImageSubData = true;
 
-        // ── Texture copy ──────────────────────────────────────────────────────
-        caps.copyImageSubData = gl.OpenGL43();
-        caps.directStateAccess = !(CgGL.backend() instanceof CgTrackedGLBackend) && gl.GL_ARB_direct_state_access() && DSA.get();
-
-        // ── Streaming ─────────────────────────────────────────────────────────
-        caps.arbSync           = gl.OpenGL32() || gl.GL_ARB_sync();
-        caps.hasMapBufferRange = gl.OpenGL30() || gl.GL_ARB_map_buffer_range();
-        caps.mappingIsFree     = gl.mappingIsFree();
-        caps.bufferStorage     = gl.OpenGL44() || gl.GL_ARB_buffer_storage();
+        caps.arbSync           = true;
+        caps.hasMapBufferRange = true;
+        caps.mappingIsFree     = context != null && context.mappingIsFree();
+        caps.bufferStorage     = true;
         caps.vertexStreamTier  = vertexStreamTier(caps);
 
-        // ── Shader buffers (GL43 SSBO > ARB SSBO > NONE; TBO detected) ───────────────
-        caps.shaderStorageBufferCore   = gl.OpenGL43();
-        caps.shaderStorageBufferArb    = !caps.shaderStorageBufferCore && gl.GL_ARB_shader_storage_buffer_object();
-        caps.textureBufferMaterialPath = !caps.shaderStorageBufferCore && !caps.shaderStorageBufferArb && gl.OpenGL33();
-        caps.maxSsboBindings           = (caps.shaderStorageBufferCore || caps.shaderStorageBufferArb) ? CgGL.glGetInteger(CgGL.GL_MAX_SHADER_STORAGE_BUFFER_BINDINGS) : 0;
-        caps.maxUniformBufferBindings  = CgGL.glGetInteger(CgGL.GL_MAX_UNIFORM_BUFFER_BINDINGS);
-        caps.gpuShaderInt64            = gl.OpenGL40();
-        caps.maxSamples                = CgGL.glGetInteger(CgGL.GL_MAX_SAMPLES);
-        caps.maxTextureBufferSize      = CgGL.glGetInteger(CgGL.GL_MAX_TEXTURE_BUFFER_SIZE);
-        caps.parallelShaderCompile     = gl.parallelShaderCompile();
+        caps.shaderStorageBufferCore   = true;
+        caps.maxSsboBindings           = limits.maxStorageBufferBindings();
+        caps.maxUniformBufferBindings  = limits.maxUniformBufferBindings();
+        caps.gpuShaderInt64            = true;
+        caps.maxSamples                = limits.maxSamples();
+        caps.maxTextureBufferSize      = limits.maxTexelBufferElements();
+        caps.parallelShaderCompile     = context != null && CgDisabledExtensions.filter(context).parallelShaderCompile();
 
-        // GL_CONTEXT_PROFILE_MASK (0x9126); bit 0x1 = GL_CONTEXT_CORE_PROFILE_BIT.
-        caps.coreProfile = (CgGL.glGetInteger(0x9126) & 0x1) != 0;
-
-        // ── Compute and GPU-driven draws ──────────────────────────────────────
-        CgRHI.Globals device = CgGL.backend() instanceof CgTrackedGLBackend tracked ? tracked.device().globals() : null;
-        // What the driver compiles, not the version the context names: NVIDIA answers a 3.2 core request with a
-        // context named 3.3 that compiles any GLSL it knows
-        boolean glsl450 = device != null || gl.OpenGL45() || compiles(450);
-        caps.glslVersion = device != null ? 450 : gl.OpenGL46() ? 460 : glsl450 ? 450 : gl.OpenGL44() ? 440
-                : gl.OpenGL43() ? 430 : gl.OpenGL42() ? 420 : gl.OpenGL40() ? 400 : 330;
-        boolean ssbo = caps.shaderStorageBufferCore || caps.shaderStorageBufferArb;
-        caps.compute           = device != null || (gl.OpenGL43() || gl.GL_ARB_compute_shader()) && ssbo;
-        caps.storageImages     = device != null || gl.OpenGL42() || gl.GL_ARB_shader_image_load_store();
-        caps.floatAtomics      = device == null && gl.GL_NV_shader_atomic_float();
-        caps.drawIndirect      = device != null || gl.OpenGL40() || gl.GL_ARB_draw_indirect();
-        caps.multiDrawIndirect = device != null ? device.multiDrawIndirect() : gl.OpenGL43() || gl.GL_ARB_multi_draw_indirect();
-        caps.indirectCount     = device != null ? device.indirectCount() : gl.OpenGL46() || gl.GL_ARB_indirect_parameters();
-        boolean drawParameters = device != null ? device.drawParameters() : gl.OpenGL46() || gl.GL_ARB_shader_draw_parameters();
-        boolean firstInstance  = device != null ? device.indirectFirstInstance() : gl.OpenGL42() || gl.GL_ARB_base_instance();
-        if (!drawParameters || !firstInstance) {
-            // Every draw carries its bases, read by cg_env.glsl: on the way to GL 4.6, the floor (rhi D8).
+        caps.glslVersion = 450;
+        caps.compute           = true;
+        caps.storageImages     = true;
+        caps.drawIndirect      = true;
+        caps.multiDrawIndirect = device.multiDrawIndirect();
+        caps.indirectCount     = device.indirectCount();
+        if (!device.drawParameters() || !device.indirectFirstInstance()) {
+            // Every draw carries its bases, read by cg_env.glsl (rhi D8).
             throw new IllegalStateException("CrystalGraphics needs a draw's base vertex and instance: GL 4.6, or "
                     + "ARB_shader_draw_parameters with ARB_base_instance; a Vulkan device's shaderDrawParameters and "
                     + "drawIndirectFirstInstance");
         }
-        if (!glsl450) {
-            // Materials compile to one target, GLSL 4.50 (CgMaterialShaderCompiler.VERSION).
-            throw new IllegalStateException("CrystalGraphics needs a driver that compiles GLSL 4.50, as GL 4.5's does: "
-                    + "its materials compile to it");
-        }
         caps.multiDraw         = caps.multiDrawIndirect && MULTI_DRAW.get();
-        caps.feedbackCount     = device == null && (gl.OpenGL40() || gl.GL_ARB_transform_feedback2());
-        caps.asyncCompute      = device != null && device.asyncCompute();
-        caps.bindless          = device == null && gl.GL_ARB_bindless_texture();
-        caps.independentBlend  = device == null || device.independentBlend();
-        caps.bc7               = (device != null ? tracked(CgFormat.BC7_RGBA_UNORM_SRGB)
-                : gl.OpenGL42() || gl.GL_ARB_texture_compression_bptc()) && BC7.get();
-        caps.computeTier       = computeTier(caps, device != null);
-        caps.programBinaryFormats = device == null && programBinary() ? CgGL.glGetInteger(CgGL.GL_NUM_PROGRAM_BINARY_FORMATS) : 0;
-        caps.storageOffsetAlignment = ssbo || device != null ? CgGL.glGetInteger(CgGL.GL_SHADER_STORAGE_BUFFER_OFFSET_ALIGNMENT) : 0;
-        if (caps.compute) {
-            caps.maxComputeSharedMemory = CgGL.glGetInteger(CgGL.GL_MAX_COMPUTE_SHARED_MEMORY_SIZE);
-            caps.maxComputeInvocations = CgGL.glGetInteger(CgGL.GL_MAX_COMPUTE_WORK_GROUP_INVOCATIONS);
-            for (int axis = 0; axis < 3; axis++) {
-                caps.maxComputeWorkGroupSize[axis] = CgGL.glGetIntegeri(CgGL.GL_MAX_COMPUTE_WORK_GROUP_SIZE, axis);
-                caps.maxComputeWorkGroupCount[axis] = CgGL.glGetIntegeri(CgGL.GL_MAX_COMPUTE_WORK_GROUP_COUNT, axis);
-            }
-            if ((device != null || gl.GL_KHR_shader_subgroup())
-                    && (CgGL.glGetInteger(CgGL.GL_SUBGROUP_SUPPORTED_STAGES_KHR) & GL_COMPUTE_SHADER_BIT) != 0) {
-                caps.subgroupSize = CgGL.glGetInteger(CgGL.GL_SUBGROUP_SIZE_KHR);
-                caps.subgroupOperations = CgGL.glGetInteger(CgGL.GL_SUBGROUP_SUPPORTED_FEATURES_KHR);
-            }
-        }
+        caps.asyncCompute      = device.asyncCompute();
+        caps.bindless          = device.bindless();
+        caps.independentBlend  = device.independentBlend();
+        caps.bc7               = rhi.supports(CgFormat.BC7_RGBA_UNORM_SRGB, CgGpuTexture.Usage.SAMPLED) && BC7.get();
+        caps.computeTier       = computeTier(caps, true);
+        caps.storageOffsetAlignment = limits.storageOffsetAlignment();
+        caps.maxComputeSharedMemory = compute.sharedMemory();
+        caps.maxComputeInvocations = compute.invocations();
+        caps.maxComputeWorkGroupSize[0] = compute.sizeX();
+        caps.maxComputeWorkGroupSize[1] = compute.sizeY();
+        caps.maxComputeWorkGroupSize[2] = compute.sizeZ();
+        caps.maxComputeWorkGroupCount[0] = compute.countX();
+        caps.maxComputeWorkGroupCount[1] = compute.countY();
+        caps.maxComputeWorkGroupCount[2] = compute.countZ();
+        caps.subgroupSize = compute.subgroupSize();
+        caps.subgroupOperations = compute.subgroupOperations();
         caps.subgroups = (caps.subgroupOperations & SUBGROUP_BASIC) != 0;
 
         caps.shaderBufferPath = shaderBufferPath(caps);
         return caps;
-    }
-
-    /** Whether the tracked backend's device samples {@code format}. */
-    private static boolean tracked(CgFormat format) {
-        return ((CgTrackedGLBackend) CgGL.backend()).device().supports(format, CgGpuTexture.Usage.SAMPLED);
     }
 
     /** The best path, or {@code -Dcrystalgraphics.shaderBuffer.tier}'s where this context has it. */
@@ -519,7 +462,6 @@ public final class CgCapabilities {
     /** {@link #subgroupOperations()} bits, as {@code VkSubgroupFeatureFlags} and {@code KHR_shader_subgroup} name them. */
     public static final int SUBGROUP_BASIC = 0x1, SUBGROUP_VOTE = 0x2, SUBGROUP_ARITHMETIC = 0x4, SUBGROUP_BALLOT = 0x8,
             SUBGROUP_SHUFFLE = 0x10;
-    private static final int GL_COMPUTE_SHADER_BIT = 0x20;
 
     /** Subgroup operations in kernels: {@code KHR_shader_subgroup} listing the compute stage; any device. */
     public boolean subgroups() { return subgroups; }
@@ -650,15 +592,4 @@ public final class CgCapabilities {
         return result;
     }
 
-    /** Whether the driver compiles a vertex shader at GLSL {@code version}, core. */
-    private static boolean compiles(int version) {
-        int shader = CgGL.glCreateShader(CgGL.GL_VERTEX_SHADER);
-        try {
-            CgGL.glShaderSource(shader, "#version " + version + " core\nvoid main() { gl_Position = vec4(0.0); }\n");
-            CgGL.glCompileShader(shader);
-            return CgGL.glGetShaderi(shader, CgGL.GL_COMPILE_STATUS) != 0;
-        } finally {
-            CgGL.glDeleteShader(shader);
-        }
-    }
 }

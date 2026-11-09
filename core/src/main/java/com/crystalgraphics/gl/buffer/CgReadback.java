@@ -3,16 +3,13 @@ package com.crystalgraphics.gl.buffer;
 import com.crystalgraphics.platform.rhi.sync.CgGpuReadback;
 import com.crystalgraphics.platform.rhi.resource.CgTextureRegion;
 import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
+import com.crystalgraphics.platform.rhi.resource.CgTextureView;
 import com.crystalgraphics.platform.rhi.resource.CgGpuBuffer;
 import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.rhi.CgDeviceSection;
 import com.crystalgraphics.api.texture.CgTextureType;
-import com.crystalgraphics.gl.CgGlNames;
-import com.crystalgraphics.platform.gl.CgCapabilities;
-import com.crystalgraphics.platform.gl.CgCapabilities.StreamBufferTier;
 import com.crystalgraphics.platform.gl.CgGL;
-import com.crystalgraphics.platform.gl.state.CgGlScope;
-import com.crystalgraphics.platform.gl.state.CgGlState;
+import com.crystalgraphics.platform.gl.CgGLImports;
 import com.crystalgraphics.trace.CgGpuTrace;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
@@ -25,19 +22,20 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
 
-import static com.crystalgraphics.platform.gl.state.CgGlSlot.FBO;
-
 /**
- * Reads a buffer range or a framebuffer region back without a stall: copied on the GPU into a buffer the CPU maps
- * (once, persistently, where buffer storage is), and handed to a sink on the render thread once
- * {@link CgFrameRing} has retired the frame it was issued in, about {@link CgFrameRing#FRAMES} frames later. Unity's {@code AsyncGPUReadback}. In a frame graph, {@code CgRecording.readback} records one, ordered after
- * whatever writes what it reads.
+ * Reads a buffer range or a texture region back without a stall: copied by the device into its readback memory and
+ * handed to a sink on the render thread once the frame it was issued in has retired, a few frames later. Unreal's
+ * {@code FRHIGPUBufferReadback}, Unity's {@code AsyncGPUReadback}. In a frame graph, {@code CgRecording.readback}
+ * records one, ordered after whatever writes what it reads.
  *
  * <pre>{@code
- * // GL buffer counts: the uint at byte 0, a few frames from now
+ * // a buffer's uint at byte 0, a few frames from now
  * CgReadback.buffer(counts, 0, 4, data -> alive = data.getInt(0));
  *
- * // a framebuffer's colour attachment 0, read as its texture type: rows bottom first, tightly packed
+ * // a texture's region, texels as it holds them, tightly packed
+ * CgReadback.texture(heightMap, CgTextureRegion.of2D(0, 0, 0, 64, 64), data -> keep(data));
+ *
+ * // a framebuffer's colour attachment 0 as its type: rows bottom first
  * CgReadback.pixels(heightFbo.getId(), 0, 0, 64, 64, CgTextureType.R32F, data -> data.asFloatBuffer().get(heights));
  *
  * // told when it can never arrive
@@ -47,21 +45,13 @@ import static com.crystalgraphics.platform.gl.state.CgGlSlot.FBO;
  * });
  * }</pre>
  *
- * <p>On the installed device, the copy is the device's and its staging the device's readback memory (Unreal's
- * {@code FRHIGPUBufferReadback}), the source already readable as a copy's:</p>
- *
- * <pre>{@code
- * CgReadback.buffer(imports.buffer(counts), imports.bufferOffset(counts), 4, data -> alive = data.getInt(0));
- * CgReadback.texture(heightMap, CgTextureRegion.of2D(0, 0, 0, 64, 64), data -> keep(data));
- * }</pre>
- *
  * <ul>
- *   <li>Render thread, at a point where the source holds what is wanted: the copy is ordered after the GPU work
- *       issued before it, as any GL command is.</li>
+ *   <li>Render thread, at a point where the source holds what is wanted and is readable as a copy's: the copy is
+ *       ordered after the work recorded before it.</li>
  *   <li>The data is valid only during {@link Sink#accept}, in native byte order: copy out what is kept.</li>
  *   <li>Sinks run from {@link #poll}, once a frame in {@code CgGraphicsLifecycle.tickFrame}, oldest first. A sink that
  *       throws is told it failed; the rest are still delivered.</li>
- *   <li>Teardown drops what is in flight ({@link #releaseAll}), telling each sink.</li>
+ *   <li>A device's teardown drops what is in flight ({@link #releaseAll}), telling each sink.</li>
  * </ul>
  */
 public final class CgReadback {
@@ -82,7 +72,7 @@ public final class CgReadback {
     private static final int BYTES = CgTrace.name("readback.bytes");
     private static final int DELIVERED = CgTrace.name("readback.delivered");
     private static final int FRAMES = CgTrace.name("readback.frames");
-    private static final int FENCE = CgTrace.name("readback.fence"), DELIVER = CgTrace.name("readback.deliver");
+    private static final int DELIVER = CgTrace.name("readback.deliver");
     /** A sink's zone, {@code readback.sink.<the class its lambda was written in>}. */
     private static final ClassValue<Integer> SINK_NAMES = new ClassValue<Integer>() {
         @Override
@@ -96,83 +86,65 @@ public final class CgReadback {
     /** The frame's queue's time copying into staging, on {@code gl.detail}: what a copy queue could take. */
     private static final int GPU_COPY = CgGpuTrace.name("readback.copy");
 
-    /** Staging kept between readbacks; one past this is deleted when its readback lands. */
+    /** Staging kept between readbacks; one past this is released when its readback lands. */
     private static final int KEPT = 16;
-    /**
-     * The smallest staging buffer, so small reads share a size and reuse kept staging: new staging waits for a
-     * threaded driver to drain its queue (its storage and its map), 20 ms on a cut's opening frame.
-     */
+    /** The smallest staging buffer, so small reads share a size and reuse kept staging: new staging is new memory. */
     private static final long SMALLEST = 64 * 1024;
 
     private static final ArrayDeque<CgReadback> PENDING = new ArrayDeque<>();
     private static final List<CgReadback> IDLE = new ArrayList<>();
     private static long polls;
-    /** The framebuffer {@link #slices} attaches each slice to, made at first use. */
-    private static int sliceReader;
 
-    /** Staging mapped once, coherent, where buffer storage is: a map is a sync on a threaded driver (Dolphin's OGL staging). */
-    private static final int PERSISTENT_FLAGS = CgGL.GL_MAP_READ_BIT | CgGL.GL_MAP_PERSISTENT_BIT | CgGL.GL_MAP_COHERENT_BIT;
-
-    private int buffer;
-    /** Its staging on a device instead of {@link #buffer}, and that device; null for a {@code CgGL} one. */
+    /** Its staging on the device, and that device. */
     private CgGpuReadback staging;
     private CgRHI stagingOf;
     private long capacity;
     private long bytes;
-    private long fence;
     private long requestedAt;
-    /** The {@link CgFrameRing} frame it was issued in: its fence covers this copy. */
-    private long ringFrame;
     private Sink sink;
-    private ByteBuffer view;
-    /** The whole staging, mapped for its life; null where each delivery maps it. */
-    private ByteBuffer persistent;
 
     private CgReadback() {}
 
-    /** Reads {@code size} bytes of GL buffer {@code name} from {@code offset}. */
+    /** Reads {@code size} bytes of buffer {@code name}, known by its {@code CgGL} name, from {@code offset}. */
     public static void buffer(int name, long offset, long size, Sink sink) {
+        CgGLImports imports = CgGLImports.get();
+        buffer(imports.buffer(name), imports.bufferOffset(name) + offset, size, sink);
+    }
+
+    /**
+     * Reads {@code size} bytes of {@code source} from {@code offset}: copied by the device in a device section, its
+     * source already readable as a copy's ({@code CgAccess.COPY_READ}).
+     */
+    public static void buffer(CgGpuBuffer source, long offset, long size, Sink sink) {
         if (size <= 0) throw new IllegalArgumentException("a readback of " + size + " bytes");
         CgReadback r = take(size);
         boolean gpu = gpuZone();
         if (gpu) CgGpuTrace.begin(GPU_COPY);
-        CgGL.glBindBuffer(CgGL.GL_COPY_READ_BUFFER, name);
-        CgGL.glBindBuffer(CgGL.GL_COPY_WRITE_BUFFER, r.buffer);
-        CgGL.glCopyBufferSubData(CgGL.GL_COPY_READ_BUFFER, CgGL.GL_COPY_WRITE_BUFFER, offset, 0, size);
-        CgGL.glBindBuffer(CgGL.GL_COPY_READ_BUFFER, 0);
-        CgGL.glBindBuffer(CgGL.GL_COPY_WRITE_BUFFER, 0);
-        if (gpu) CgGpuTrace.end();
-        r.start(size, sink);
-    }
-
-    /**
-     * Reads {@code size} bytes of {@code source} from {@code offset} on the installed device: copied by the device in a
-     * device section, its source already readable as a copy's ({@code CgAccess.COPY_READ}).
-     */
-    public static void buffer(CgGpuBuffer source, long offset, long size, Sink sink) {
-        if (size <= 0) throw new IllegalArgumentException("a readback of " + size + " bytes");
-        CgReadback r = takeStaged(size);
         CgDeviceSection.begin();
         try {
             r.staging.enqueue(CgRHI.get().encoder(), source, offset, size);
         } finally {
             CgDeviceSection.end();
+            if (gpu) CgGpuTrace.end();
         }
         r.start(size, sink);
     }
 
     /**
-     * Reads {@code region} of {@code source} on the installed device, texels tightly packed with rows from the first in
-     * memory, as {@link #pixels} lays them out; its source already readable as a copy's.
+     * Reads {@code region} of {@code source}, texels tightly packed with rows from the first in memory, as
+     * {@link #pixels} lays them out; its source already readable as a copy's.
      */
     public static void texture(CgGpuTexture source, CgTextureRegion region, Sink sink) {
         long size = source.desc().format().bytes(region.width(), region.height(), region.depth());
-        CgReadback r = takeStaged(size);
+        CgReadback r = take(size);
+        boolean gpu = gpuZone();
+        if (gpu) CgGpuTrace.begin(GPU_COPY);
         CgDeviceSection.begin();
         try {
             r.staging.enqueue(CgRHI.get().encoder(), source, region);
         } finally {
             CgDeviceSection.end();
+            if (gpu) CgGpuTrace.end();
         }
         r.start(size, sink);
     }
@@ -182,71 +154,37 @@ public final class CgReadback {
     }
 
     /**
-     * Reads a {@code width} x {@code height} region at {@code (x, y)} of {@code framebuffer}'s colour attachment 0, as
-     * {@code type}'s base format and pixel type: {@code width * height * } {@link #pixelBytes} bytes, rows bottom first.
+     * Reads a {@code width} x {@code height} region at {@code (x, y)} of {@code framebuffer}'s colour attachment 0,
+     * which holds {@code type}: {@code width * height * } {@link #pixelBytes} bytes, rows bottom first. Framebuffer 0 is
+     * the window's.
+     *
+     * @throws IllegalArgumentException where nothing is attached, or the attachment's texels are not {@code type}'s size
      */
     public static void pixels(int framebuffer, int x, int y, int width, int height, CgTextureType type, Sink sink) {
-        if (!type.isColor()) throw new IllegalArgumentException("a readback reads colour, not " + type);
         if (width <= 0 || height <= 0) throw new IllegalArgumentException("a readback of " + width + "x" + height);
-        int row = width * pixelBytes(type);
-        long size = (long) row * height;
-        CgReadback r = take(size);
-        boolean gpu = gpuZone();
-        if (gpu) CgGpuTrace.begin(GPU_COPY);
-        try (CgGlScope ignored = CgGlState.save(FBO)) {
-            CgGL.glBindFramebuffer(CgGL.GL_READ_FRAMEBUFFER, framebuffer);
-            CgGL.glBindBuffer(CgGL.GL_PIXEL_PACK_BUFFER, r.buffer);
-            boolean unaligned = (row & 3) != 0;
-            if (unaligned) CgGL.glPixelStorei(CgGL.GL_PACK_ALIGNMENT, 1);
-            CgGL.glReadPixels(x, y, width, height, type.glBaseFormat, type.glType, 0L);
-            if (unaligned) CgGL.glPixelStorei(CgGL.GL_PACK_ALIGNMENT, 4);   // GL's default
-            // UNBOUND AT ONCE: a bound pack buffer takes every later glReadPixels in the process, a host's screenshot
-            // included.
-            CgGL.glBindBuffer(CgGL.GL_PIXEL_PACK_BUFFER, 0);
-        } finally {
-            if (gpu) CgGpuTrace.end();
-        }
-        r.start(size, sink);
+        CgTextureView color = colorOf(framebuffer, x + width, y + height, type);
+        texture(color.texture(), region(color, x, y, width, height), sink);
     }
 
     /**
-     * Reads a {@code width} x {@code height} x {@code depth} box at {@code (x, y, z)} of level {@code level} of 3D
-     * texture {@code texture}, as {@code type}'s base format and pixel type: slices from {@code z} up, each laid out as
-     * {@link #pixels} lays out a region.
-     *
-     * <pre>{@code
-     * CgReadback.slices(grid.getId(), 0, 0, 0, 0, 64, 64, 64, CgTextureType.R16F, data -> keep(data));
-     * }</pre>
+     * {@code framebuffer}'s colour attachment 0 as a device texture's level and layer, read as {@code type}: what
+     * {@link #pixels} reads. {@code width} x {@code height} is framebuffer 0's size at least.
      */
-    public static void slices(int texture, int level, int x, int y, int z, int width, int height, int depth,
-                              CgTextureType type, Sink sink) {
+    public static CgTextureView colorOf(int framebuffer, int width, int height, CgTextureType type) {
         if (!type.isColor()) throw new IllegalArgumentException("a readback reads colour, not " + type);
-        if (width <= 0 || height <= 0 || depth <= 0) {
-            throw new IllegalArgumentException("a readback of " + width + "x" + height + "x" + depth);
+        CgTextureView color = CgGLImports.get().attachment(framebuffer, false, width, height);
+        if (color == null) throw new IllegalArgumentException("framebuffer " + framebuffer + " has no colour attachment 0");
+        long texel = color.texture().desc().format().bytes(1, 1, 1);
+        if (texel != pixelBytes(type)) {
+            throw new IllegalArgumentException("framebuffer " + framebuffer + " holds " + color.texture().desc().format()
+                    + ", not " + type);
         }
-        int row = width * pixelBytes(type);
-        long slice = (long) row * height, size = slice * depth;
-        CgReadback r = take(size);
-        boolean gpu = gpuZone();
-        if (gpu) CgGpuTrace.begin(GPU_COPY);
-        try (CgGlScope ignored = CgGlState.save(FBO)) {
-            // Read through a framebuffer bound for reading alone: a slice of a 3D image is no draw target on a device.
-            if (sliceReader == 0) sliceReader = CgGlNames.framebuffer();
-            CgGL.glBindFramebuffer(CgGL.GL_READ_FRAMEBUFFER, sliceReader);
-            CgGL.glBindBuffer(CgGL.GL_PIXEL_PACK_BUFFER, r.buffer);
-            boolean unaligned = (row & 3) != 0;
-            if (unaligned) CgGL.glPixelStorei(CgGL.GL_PACK_ALIGNMENT, 1);
-            for (int s = 0; s < depth; s++) {
-                CgGL.glFramebufferTextureLayer(CgGL.GL_READ_FRAMEBUFFER, CgGL.GL_COLOR_ATTACHMENT0, texture, level, z + s);
-                CgGL.glReadPixels(x, y, width, height, type.glBaseFormat, type.glType, s * slice);
-            }
-            if (unaligned) CgGL.glPixelStorei(CgGL.GL_PACK_ALIGNMENT, 4);
-            CgGL.glFramebufferTextureLayer(CgGL.GL_READ_FRAMEBUFFER, CgGL.GL_COLOR_ATTACHMENT0, 0, 0, 0);
-            CgGL.glBindBuffer(CgGL.GL_PIXEL_PACK_BUFFER, 0);
-        } finally {
-            if (gpu) CgGpuTrace.end();
-        }
-        r.start(size, sink);
+        return color;
+    }
+
+    /** The region at {@code (x, y)} of {@code view}'s level and layer. */
+    public static CgTextureRegion region(CgTextureView view, int x, int y, int width, int height) {
+        return new CgTextureRegion(view.baseMip(), x, y, view.baseLayer(), width, height, 1);
     }
 
     /** Bytes per pixel of {@code type} read as its base format and pixel type. */
@@ -265,45 +203,19 @@ public final class CgReadback {
     }
 
     /**
-     * Hands what the GPU has finished to its sink, oldest first. Once a frame, render thread. Where the host ends
-     * frames, a readback is done once {@link CgFrameRing} has retired the frame it was issued in, so nothing is
-     * queried: a fence query waits for a threaded driver to drain its queue. The ring's wait for the frame
-     * {@link CgFrameRing#FRAMES} back is the only one, as a ring's first upload would take it anyway.
+     * Hands what the GPU has finished to its sink, oldest first. Once a frame, render thread: the device retires frames
+     * in order, so the first not done ends the poll.
      */
     public static void poll() {
         polls++;
-        long frame = CgFrameRing.frame();
-        if (frame >= CgFrameRing.FRAMES && !PENDING.isEmpty()) CgFrameRing.awaitRetired(frame - CgFrameRing.FRAMES);
         while (!PENDING.isEmpty()) {
             CgReadback r = PENDING.peekFirst();
-            if (r.staging != null) {
-                if (!r.staging.ready()) return;   // the device retires frames in order: nothing newer is done either
-                PENDING.pollFirst();
-                try (CgTrace.Zone z = CgTrace.zone(CgChannels.GL, DELIVER)) {
-                    ByteBuffer data = r.staging.data();
-                    data.clear().limit((int) r.bytes);
-                    r.accept(data.order(ByteOrder.nativeOrder()));
-                }
-                r.recycle();
-                continue;
-            }
-            int state;
-            if (r.fence == 0L) {
-                if (r.ringFrame > CgFrameRing.retired()) return;
-                state = CgGL.GL_ALREADY_SIGNALED;
-            } else {
-                // A host that has ended no frame: only the readback's own fence can say.
-                try (CgTrace.Zone z = CgTrace.zone(CgChannels.GL, FENCE)) {
-                    state = CgGL.glClientWaitSync(r.fence, 0, 0L);
-                }
-            }
-            if (state == CgGL.GL_TIMEOUT_EXPIRED) return;   // fences signal in order: nothing newer is done either
+            if (!r.staging.ready()) return;
             PENDING.pollFirst();
-            if (r.fence != 0L) CgGL.glDeleteSync(r.fence);
-            r.fence = 0L;
             try (CgTrace.Zone z = CgTrace.zone(CgChannels.GL, DELIVER)) {
-                if (state == CgGL.GL_WAIT_FAILED) r.fail("its fence failed");
-                else r.deliver();
+                ByteBuffer data = r.staging.data();
+                data.clear().limit((int) r.bytes);
+                r.accept(data.order(ByteOrder.nativeOrder()));
             }
             r.recycle();
         }
@@ -314,18 +226,15 @@ public final class CgReadback {
         return PENDING.size();
     }
 
-    /** Drops what is in flight, telling each sink, and frees every staging buffer. At context teardown. */
+    /** Drops what is in flight, telling each sink, and frees every staging buffer. At the device's teardown. */
     public static void releaseAll() {
         for (CgReadback r : PENDING) {
-            if (r.fence != 0L) CgGL.glDeleteSync(r.fence);
-            r.fail("the context was torn down");
+            r.fail("the device was torn down");
             r.free();
         }
         for (CgReadback r : IDLE) r.free();
         PENDING.clear();
         IDLE.clear();
-        if (sliceReader != 0) CgGL.glDeleteFramebuffers(sliceReader);
-        sliceReader = 0;
     }
 
     /** The size class {@code size} bytes stage in. */
@@ -334,7 +243,7 @@ public final class CgReadback {
     }
 
     /** One staged on the installed device with at least {@code size} bytes: an idle one of that size class, else new. */
-    private static CgReadback takeStaged(long size) {
+    private static CgReadback take(long size) {
         long capacity = capacity(size);
         CgRHI rhi = CgRHI.get();
         for (int i = IDLE.size() - 1; i >= 0; i--) {
@@ -348,63 +257,13 @@ public final class CgReadback {
         return r;
     }
 
-    /** One with staging of at least {@code size} bytes: an idle one of that size class, else new. */
-    private static CgReadback take(long size) {
-        long capacity = capacity(size);
-        for (int i = IDLE.size() - 1; i >= 0; i--) {
-            if (IDLE.get(i).staging == null && IDLE.get(i).capacity == capacity) return IDLE.remove(i);
-        }
-        CgReadback r = new CgReadback();
-        r.capacity = capacity;
-        r.buffer = CgGlNames.buffer();
-        CgGL.glBindBuffer(CgGL.GL_COPY_WRITE_BUFFER, r.buffer);
-        if (CgCapabilities.detect().vertexStreamTier() == StreamBufferTier.PERSISTENT) {
-            CgGL.glBufferStorage(CgGL.GL_COPY_WRITE_BUFFER, capacity, PERSISTENT_FLAGS);
-            r.persistent = CgGL.glMapBufferRange(CgGL.GL_COPY_WRITE_BUFFER, 0, capacity, PERSISTENT_FLAGS, null);
-            if (r.persistent == null) throw new IllegalStateException("persistent glMapBufferRange returned null (size=" + capacity + ")");
-            r.persistent.order(ByteOrder.nativeOrder());
-        } else {
-            CgGL.glBufferData(CgGL.GL_COPY_WRITE_BUFFER, capacity, CgGL.GL_STREAM_READ);
-        }
-        CgGL.glBindBuffer(CgGL.GL_COPY_WRITE_BUFFER, 0);
-        return r;
-    }
-
     private void start(long size, Sink sink) {
         this.bytes = size;
         this.sink = sink;
         this.requestedAt = polls;
-        this.ringFrame = CgFrameRing.frame();
-        // Only a host that has ended no frame reads it (poll): glFenceSync answers a handle, so on a threaded driver
-        // it waits for the queue, 2-5 ms a readback mid-move (T10).
-        fence = staging != null || ringFrame > 0 ? 0L : CgGL.glFenceSync(CgGL.GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
         PENDING.addLast(this);
         CgTrace.add(CgChannels.GL, REQUESTS, 1);
         CgTrace.add(CgChannels.GL, BYTES, size);
-    }
-
-    private void deliver() {
-        if (persistent != null) {
-            persistent.clear().limit((int) bytes);
-            accept(persistent);
-            return;
-        }
-        CgGL.glBindBuffer(CgGL.GL_COPY_READ_BUFFER, buffer);
-        try {
-            ByteBuffer mapped = CgGL.glMapBufferRange(CgGL.GL_COPY_READ_BUFFER, 0, bytes, CgGL.GL_MAP_READ_BIT, view);
-            if (mapped == null) {
-                fail("its staging could not be mapped");
-                return;
-            }
-            view = mapped;
-            try {
-                accept(mapped.order(ByteOrder.nativeOrder()));
-            } finally {
-                CgGL.glUnmapBuffer(CgGL.GL_COPY_READ_BUFFER);
-            }
-        } finally {
-            CgGL.glBindBuffer(CgGL.GL_COPY_READ_BUFFER, 0);
-        }
     }
 
     private void accept(ByteBuffer data) {
@@ -436,9 +295,8 @@ public final class CgReadback {
         }
     }
 
-    /** Its staging freed: the device's released, or the {@code CgGL} buffer deleted. */
+    /** Its staging released. */
     private void free() {
-        if (staging != null) staging.release();
-        else CgGL.glDeleteBuffers(buffer);
+        staging.release();
     }
 }

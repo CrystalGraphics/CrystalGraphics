@@ -5720,12 +5720,13 @@ com/crystalgraphics/gl/buffer/CgReadback
   extends java/lang/Object
   method public,static buffer (IJJLcom/crystalgraphics/gl/buffer/CgReadback$Sink;)V
   method public,static buffer (Lcom/crystalgraphics/platform/rhi/resource/CgGpuBuffer;JJLcom/crystalgraphics/gl/buffer/CgReadback$Sink;)V
+  method public,static colorOf (IIILcom/crystalgraphics/api/texture/CgTextureType;)Lcom/crystalgraphics/platform/rhi/resource/CgTextureView;
   method public,static pending ()I
   method public,static pixelBytes (Lcom/crystalgraphics/api/texture/CgTextureType;)I
   method public,static pixels (IIIIILcom/crystalgraphics/api/texture/CgTextureType;Lcom/crystalgraphics/gl/buffer/CgReadback$Sink;)V
   method public,static poll ()V
+  method public,static region (Lcom/crystalgraphics/platform/rhi/resource/CgTextureView;IIII)Lcom/crystalgraphics/platform/rhi/resource/CgTextureRegion;
   method public,static releaseAll ()V
-  method public,static slices (IIIIIIIILcom/crystalgraphics/api/texture/CgTextureType;Lcom/crystalgraphics/gl/buffer/CgReadback$Sink;)V
   method public,static texture (Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture;Lcom/crystalgraphics/platform/rhi/resource/CgTextureRegion;Lcom/crystalgraphics/gl/buffer/CgReadback$Sink;)V
 com/crystalgraphics/gl/buffer/CgReadback$Sink
   access public,abstract,interface
