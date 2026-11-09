@@ -1030,6 +1030,7 @@ com/crystalgraphics/api/material/CgMaterialDomain
   field public,static,final DECAL Lcom/crystalgraphics/api/material/CgMaterialDomain;
   field public,static,final POST Lcom/crystalgraphics/api/material/CgMaterialDomain;
   field public,static,final SURFACE Lcom/crystalgraphics/api/material/CgMaterialDomain;
+  field public,static,final TEXT Lcom/crystalgraphics/api/material/CgMaterialDomain;
   method public,static ofSource (Ljava/lang/String;)Lcom/crystalgraphics/api/material/CgMaterialDomain;
   method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/api/material/CgMaterialDomain;
   method public,static values ()[Lcom/crystalgraphics/api/material/CgMaterialDomain;
@@ -2578,6 +2579,7 @@ com/crystalgraphics/asset/kind/CgLookKinds
   field public,static,final MESH Lcom/crystalgraphics/object/CgType;
   field public,static,final PARAMETERS Lcom/crystalgraphics/object/CgType;
   field public,static,final TEXTURE Lcom/crystalgraphics/object/CgType;
+  field public,static,final TEXT_STYLE Lcom/crystalgraphics/object/CgType;
 com/crystalgraphics/asset/kind/CgModuleTypes
   access public,final
   extends java/lang/Object
@@ -3555,20 +3557,16 @@ com/crystalgraphics/audio/CgSubtitleStyle$Fade
 com/crystalgraphics/audio/CgSubtitleStyle$Text
   access public,final,record
   extends java/lang/Record
-  method public <init> (Ljava/lang/String;FIFIFFLjava/lang/String;FFFFFFLcom/crystalgraphics/audio/CgSubtitleStyle$Underline;)V
+  method public <init> (Lcom/crystalgraphics/asset/load/CgAssetRef;FFLjava/lang/String;FFFFFFLcom/crystalgraphics/audio/CgSubtitleStyle$Underline;)V
   method public alignmentX ()F
   method public alignmentY ()F
   method public anchorX ()F
   method public anchorY ()F
-  method public colour ()I
-  method public font ()Ljava/lang/String;
   method public justify ()Ljava/lang/String;
   method public lineHeight ()F
   method public offsetX ()F
   method public offsetY ()F
-  method public outlineColour ()I
-  method public outlineSize ()F
-  method public size ()F
+  method public style ()Lcom/crystalgraphics/asset/load/CgAssetRef;
   method public underline ()Lcom/crystalgraphics/audio/CgSubtitleStyle$Underline;
   method public wrap ()F
   method public,final equals (Ljava/lang/Object;)Z
@@ -14567,6 +14565,154 @@ com/crystalgraphics/text/shadow/CgShadowCoverage
   method public,final hashCode ()I
   method public,final toString ()Ljava/lang/String;
   method public,static fromDistance ([DIIIIF)Lcom/crystalgraphics/text/shadow/CgShadowCoverage;
+com/crystalgraphics/text/style/CgTextLayer
+  access public,final
+  extends java/lang/Object
+  method public align ()Lcom/crystalgraphics/text/style/CgTextLayer$Align;
+  method public blend ()Lcom/crystalgraphics/text/style/CgTextLayer$Blend;
+  method public blur ()F
+  method public equals (Ljava/lang/Object;)Z
+  method public hashCode ()I
+  method public id ()Ljava/lang/String;
+  method public inset ()Z
+  method public join ()Lcom/crystalgraphics/text/style/CgTextLayer$Join;
+  method public kind ()Lcom/crystalgraphics/text/style/CgTextLayer$Kind;
+  method public offsetX ()F
+  method public offsetY ()F
+  method public opacity ()F
+  method public outlined ()Z
+  method public paint ()Lcom/crystalgraphics/text/style/CgTextPaint;
+  method public spread ()F
+  method public toString ()Ljava/lang/String;
+  method public width ()F
+  method public,static fill (Ljava/lang/String;)Lcom/crystalgraphics/text/style/CgTextLayer$Builder;
+  method public,static outline (Ljava/lang/String;)Lcom/crystalgraphics/text/style/CgTextLayer$Builder;
+  method public,static shadow (Ljava/lang/String;)Lcom/crystalgraphics/text/style/CgTextLayer$Builder;
+com/crystalgraphics/text/style/CgTextLayer$Align
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final CENTRE Lcom/crystalgraphics/text/style/CgTextLayer$Align;
+  field public,static,final INSIDE Lcom/crystalgraphics/text/style/CgTextLayer$Align;
+  field public,static,final OUTSIDE Lcom/crystalgraphics/text/style/CgTextLayer$Align;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/text/style/CgTextLayer$Align;
+  method public,static values ()[Lcom/crystalgraphics/text/style/CgTextLayer$Align;
+com/crystalgraphics/text/style/CgTextLayer$Blend
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final ADDITIVE Lcom/crystalgraphics/text/style/CgTextLayer$Blend;
+  field public,static,final ALPHA Lcom/crystalgraphics/text/style/CgTextLayer$Blend;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/text/style/CgTextLayer$Blend;
+  method public,static values ()[Lcom/crystalgraphics/text/style/CgTextLayer$Blend;
+com/crystalgraphics/text/style/CgTextLayer$Builder
+  access public,final
+  extends java/lang/Object
+  method public align (Lcom/crystalgraphics/text/style/CgTextLayer$Align;)Lcom/crystalgraphics/text/style/CgTextLayer$Builder;
+  method public blend (Lcom/crystalgraphics/text/style/CgTextLayer$Blend;)Lcom/crystalgraphics/text/style/CgTextLayer$Builder;
+  method public blur (F)Lcom/crystalgraphics/text/style/CgTextLayer$Builder;
+  method public build ()Lcom/crystalgraphics/text/style/CgTextLayer;
+  method public inset (Z)Lcom/crystalgraphics/text/style/CgTextLayer$Builder;
+  method public join (Lcom/crystalgraphics/text/style/CgTextLayer$Join;)Lcom/crystalgraphics/text/style/CgTextLayer$Builder;
+  method public offset (FF)Lcom/crystalgraphics/text/style/CgTextLayer$Builder;
+  method public opacity (F)Lcom/crystalgraphics/text/style/CgTextLayer$Builder;
+  method public outlined (Z)Lcom/crystalgraphics/text/style/CgTextLayer$Builder;
+  method public paint (I)Lcom/crystalgraphics/text/style/CgTextLayer$Builder;
+  method public paint (Lcom/crystalgraphics/text/style/CgTextPaint;)Lcom/crystalgraphics/text/style/CgTextLayer$Builder;
+  method public spread (F)Lcom/crystalgraphics/text/style/CgTextLayer$Builder;
+  method public width (F)Lcom/crystalgraphics/text/style/CgTextLayer$Builder;
+com/crystalgraphics/text/style/CgTextLayer$Join
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final MITRE Lcom/crystalgraphics/text/style/CgTextLayer$Join;
+  field public,static,final ROUND Lcom/crystalgraphics/text/style/CgTextLayer$Join;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/text/style/CgTextLayer$Join;
+  method public,static values ()[Lcom/crystalgraphics/text/style/CgTextLayer$Join;
+com/crystalgraphics/text/style/CgTextLayer$Kind
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final FILL Lcom/crystalgraphics/text/style/CgTextLayer$Kind;
+  field public,static,final OUTLINE Lcom/crystalgraphics/text/style/CgTextLayer$Kind;
+  field public,static,final SHADOW Lcom/crystalgraphics/text/style/CgTextLayer$Kind;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/text/style/CgTextLayer$Kind;
+  method public,static values ()[Lcom/crystalgraphics/text/style/CgTextLayer$Kind;
+com/crystalgraphics/text/style/CgTextPaint
+  access public,final
+  extends java/lang/Object
+  field public,static,final WHITE Lcom/crystalgraphics/text/style/CgTextPaint;
+  method public angle ()F
+  method public at (F)I
+  method public colour ()I
+  method public definition ()Lcom/crystalgraphics/api/material/CgMaterialDefinition;
+  method public equals (Ljava/lang/Object;)Z
+  method public hashCode ()I
+  method public kind ()Lcom/crystalgraphics/text/style/CgTextPaint$Kind;
+  method public material ()Ljava/lang/String;
+  method public space ()Lcom/crystalgraphics/text/style/CgTextPaint$Space;
+  method public stop (I)F
+  method public stopColour (I)I
+  method public stops ()I
+  method public toString ()Ljava/lang/String;
+  method public,static colour (I)Lcom/crystalgraphics/text/style/CgTextPaint;
+  method public,static gradient (Lcom/crystalgraphics/text/style/CgTextPaint$Space;F[F[I)Lcom/crystalgraphics/text/style/CgTextPaint;
+  method public,static gradient (Lcom/crystalgraphics/text/style/CgTextPaint$Space;F[Ljava/lang/Number;)Lcom/crystalgraphics/text/style/CgTextPaint;
+  method public,static material (Ljava/lang/String;)Lcom/crystalgraphics/text/style/CgTextPaint;
+com/crystalgraphics/text/style/CgTextPaint$Kind
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final COLOUR Lcom/crystalgraphics/text/style/CgTextPaint$Kind;
+  field public,static,final GRADIENT Lcom/crystalgraphics/text/style/CgTextPaint$Kind;
+  field public,static,final MATERIAL Lcom/crystalgraphics/text/style/CgTextPaint$Kind;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/text/style/CgTextPaint$Kind;
+  method public,static values ()[Lcom/crystalgraphics/text/style/CgTextPaint$Kind;
+com/crystalgraphics/text/style/CgTextPaint$Space
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final GLYPH Lcom/crystalgraphics/text/style/CgTextPaint$Space;
+  field public,static,final LINE Lcom/crystalgraphics/text/style/CgTextPaint$Space;
+  field public,static,final RUN Lcom/crystalgraphics/text/style/CgTextPaint$Space;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/text/style/CgTextPaint$Space;
+  method public,static values ()[Lcom/crystalgraphics/text/style/CgTextPaint$Space;
+com/crystalgraphics/text/style/CgTextStyle
+  access public,final
+  extends java/lang/Object
+  field public,static,final COMPILER Lcom/crystalgraphics/asset/load/CgAssetCompiler;
+  method public bold ()Z
+  method public equals (Ljava/lang/Object;)Z
+  method public font ()Ljava/lang/String;
+  method public font (I)Lcom/crystalgraphics/api/font/CgFont;
+  method public hashCode ()I
+  method public id ()Ljava/lang/String;
+  method public layers ()Ljava/util/List;
+  method public letterSpacing ()I
+  method public px ()F
+  method public size ()F
+  method public skew ()F
+  method public toString ()Ljava/lang/String;
+  method public toTree ()Ljava/util/Map;
+  method public transform ()Lcom/crystalgraphics/text/style/CgTextStyle$Transform;
+  method public transform (Ljava/lang/String;)Ljava/lang/String;
+  method public,static builder (Ljava/lang/String;)Lcom/crystalgraphics/text/style/CgTextStyle$Builder;
+  method public,static compile (Lcom/crystalgraphics/asset/tree/CgAssetData;Lcom/crystalgraphics/asset/load/CgAssetCompiler$Dependencies;)Lcom/crystalgraphics/text/style/CgTextStyle;
+  method public,static register ()V
+com/crystalgraphics/text/style/CgTextStyle$Builder
+  access public,final
+  extends java/lang/Object
+  method public bold (Z)Lcom/crystalgraphics/text/style/CgTextStyle$Builder;
+  method public build ()Lcom/crystalgraphics/text/style/CgTextStyle;
+  method public font (Ljava/lang/String;)Lcom/crystalgraphics/text/style/CgTextStyle$Builder;
+  method public layer (Lcom/crystalgraphics/text/style/CgTextLayer$Builder;)Lcom/crystalgraphics/text/style/CgTextStyle$Builder;
+  method public layer (Lcom/crystalgraphics/text/style/CgTextLayer;)Lcom/crystalgraphics/text/style/CgTextStyle$Builder;
+  method public letterSpacing (I)Lcom/crystalgraphics/text/style/CgTextStyle$Builder;
+  method public size (F)Lcom/crystalgraphics/text/style/CgTextStyle$Builder;
+  method public skew (F)Lcom/crystalgraphics/text/style/CgTextStyle$Builder;
+  method public transform (Lcom/crystalgraphics/text/style/CgTextStyle$Transform;)Lcom/crystalgraphics/text/style/CgTextStyle$Builder;
+com/crystalgraphics/text/style/CgTextStyle$Transform
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final LOWER Lcom/crystalgraphics/text/style/CgTextStyle$Transform;
+  field public,static,final NONE Lcom/crystalgraphics/text/style/CgTextStyle$Transform;
+  field public,static,final UPPER Lcom/crystalgraphics/text/style/CgTextStyle$Transform;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/text/style/CgTextStyle$Transform;
+  method public,static values ()[Lcom/crystalgraphics/text/style/CgTextStyle$Transform;
 com/crystalgraphics/util/CgBoxedInts
   access public,final
   extends java/lang/Object

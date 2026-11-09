@@ -17,8 +17,9 @@ import static com.crystalgraphics.object.CgValueType.VEC4;
 
 /**
  * The look kinds: {@code material}, {@code texture},
- * {@code mesh}, {@code parameters} and {@code curve}. Unreal's {@code UMaterialInstanceConstant}, texture and mesh
- * settings, {@code UMaterialParameterCollection} and {@code UCurveFloat}/{@code Vector}/{@code LinearColor}.
+ * {@code mesh}, {@code parameters}, {@code curve} and {@code text_style}. Unreal's {@code UMaterialInstanceConstant},
+ * texture and mesh settings, {@code UMaterialParameterCollection}, {@code UCurveFloat}/{@code Vector}/{@code LinearColor}
+ * and {@code FTextBlockStyle}.
  *
  * <p>Registered by {@link CgAssetKinds#register()}.</p>
  */
@@ -159,6 +160,50 @@ public final class CgLookKinds {
             .property("type", CgValueType.enumOf("float", "vector", "colour")).required().flags(CgPropertyFlag.HEADLESS)
             .property("curves", CgValueType.listOf(CURVE)).required().flags(CgPropertyFlag.HEADLESS)
             .property("adjust", CgValueType.struct(ADJUST))
+            .register();
+
+    // ── Text style ───────────────────────────────────────────────────────────────────────
+
+    static final CgType TEXT_GRADIENT = CgTypes.struct("crystalgraphics:text_style.gradient")
+            .property("space", CgValueType.enumOf("glyph", "line", "run"))
+            .property("angle", FLOAT).forms(CgValueForm.CONSTANT)
+            .property("stops", CgValueType.listOf(CgValueType.listOf(CgValueType.VALUE))).required()
+            .register();
+
+    static final CgType TEXT_GRADIENT_PAINT = CgTypes.struct("crystalgraphics:text_style.gradient_paint")
+            .property("gradient", CgValueType.struct(TEXT_GRADIENT)).required()
+            .register();
+
+    static final CgType TEXT_MATERIAL_PAINT = CgTypes.struct("crystalgraphics:text_style.material_paint")
+            .property("material", hard("material")).required()
+            .register();
+
+    /** One layer of a text style: a fill, an outline or a shadow, and its paint. */
+    static final CgType TEXT_LAYER = CgTypes.element("crystalgraphics:text_style.layer")
+            .property("kind", CgValueType.enumOf("fill", "outline", "shadow"))
+            .property("paint", CgValueType.oneOf(INT, CgValueType.struct(TEXT_GRADIENT_PAINT),
+                    CgValueType.struct(TEXT_MATERIAL_PAINT)))
+            .property("opacity", FLOAT).forms(CgValueForm.CONSTANT).range(0, 1)
+            .property("blend", CgValueType.enumOf("alpha", "additive"))
+            .property("width", FLOAT).forms(CgValueForm.CONSTANT).range(0, null)
+            .property("join", CgValueType.enumOf("round", "mitre"))
+            .property("align", CgValueType.enumOf("outside", "centre", "inside"))
+            .property("offset", CgValueType.VEC2)
+            .property("outlined", BOOL)
+            .property("spread", FLOAT).forms(CgValueForm.CONSTANT)
+            .property("blur", FLOAT).forms(CgValueForm.CONSTANT).range(0, null)
+            .property("inset", BOOL)
+            .register();
+
+    /** {@code text_styles/}: a face and its layers ({@code FTextBlockStyle} with its {@code FSlateFontInfo}). */
+    public static final CgType TEXT_STYLE = CgTypes.kind("crystalgraphics:text_style").folder("text_styles").version(1)
+            .property("font", CgValueType.binaryRef("fonts"))
+            .property("bold", BOOL)
+            .property("size", FLOAT).forms(CgValueForm.CONSTANT).range(0, null)
+            .property("letter_spacing", INT).forms(CgValueForm.CONSTANT)
+            .property("skew", FLOAT).forms(CgValueForm.CONSTANT).range(-5, 5)
+            .property("transform", CgValueType.enumOf("none", "upper", "lower"))
+            .property("layers", CgValueType.idList(TEXT_LAYER))
             .register();
 
     static void register() {

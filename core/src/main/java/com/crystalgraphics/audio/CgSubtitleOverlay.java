@@ -1,12 +1,10 @@
 package com.crystalgraphics.audio;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.Objects;
 
 import com.crystalgraphics.api.font.CgFont;
+import com.crystalgraphics.text.style.CgTextLayer;
+import com.crystalgraphics.text.style.CgTextStyle;
 import com.crystalgraphics.api.font.CgFontStyle;
 import com.crystalgraphics.api.font.CgGenericFamily;
 import com.crystalgraphics.api.font.CgSystemFontFace;
@@ -21,7 +19,6 @@ import com.crystalgraphics.render.CgFrameClock;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.settings.CgGraphicsSettings;
 import com.crystalgraphics.text.render.CgTextDraw;
-import com.crystalgraphics.util.io.CgIO;
 
 
 import javax.annotation.Nullable;
@@ -80,7 +77,6 @@ final class CgSubtitleOverlay {
     private final CgRenderStage.Registration registration;
     private final Shown current = new Shown(), leaving = new Shown();
     private final Laid plain = new Laid(), line = new Laid(), name = new Laid();
-    private final Map<String, CgFont> fonts = new HashMap<>();
     /** The HUD stage's canvas this frame, in the device pixels everything is laid out in. */
     private CgCanvas canvas;
     @Nullable
@@ -181,8 +177,10 @@ final class CgSubtitleOverlay {
 
     /** One Slate text block: placed by its slot's anchor, offset and alignment of its laid-out size, then {@code slide} px along x. */
     private void text(CgSubtitleStyle.Text block, String text, Laid laid, float k, float alpha, float slide) {
-        int px = Math.max(1, Math.round(block.size() * 96f / 72f * k));
-        CgFont font = font(block.font(), px);
+        CgTextStyle look = block.style().loaded();
+        if (look == null) return;   // requested as the kit registered; drawn once it has loaded
+        int px = Math.max(1, Math.round(look.px() * k));
+        CgFont font = look.font(px);
         float wrap = block.wrap() > 0f ? block.wrap() * k : width;
         if (laid.layout == null || laid.font != font || laid.width != wrap || !text.equals(laid.text)) {
             CgTextAlign align = switch (block.justify()) {
@@ -205,9 +203,17 @@ final class CgSubtitleOverlay {
         };
         float x = block.anchorX() * width + block.offsetX() * k - block.alignmentX() * layout.totalWidth() - inset + slide;
         float y = block.anchorY() * height + block.offsetY() * k - block.alignmentY() * layout.totalHeight();
-        CgTextDraw draw = canvas.text().layout(layout).font(font).at(x, y).color(argb(alpha, block.colour()));
-        float outline = Math.round(block.outlineSize() * k);
-        if (outline > 0f) draw.shadowCount(1).shadow(0, 0f, 0f, 0f, outline, argb(alpha, block.outlineColour()), false);
+        int fill = 0xFFFFFFFF, outlineColour = 0;
+        float outline = 0f;
+        for (CgTextLayer l : look.layers()) {
+            if (l.kind() == CgTextLayer.Kind.FILL) fill = l.paint().colour();
+            else if (l.kind() == CgTextLayer.Kind.OUTLINE && outline == 0f) {
+                outline = Math.round(l.width() * k);
+                outlineColour = l.paint().colour();
+            }
+        }
+        CgTextDraw draw = canvas.text().layout(layout).font(font).at(x, y).color(argb(alpha, fill));
+        if (outline > 0f) draw.shadowCount(1).shadow(0, 0f, 0f, 0f, outline, argb(alpha, outlineColour), false);
         draw.submit();
     }
 
@@ -218,21 +224,6 @@ final class CgSubtitleOverlay {
         float w = u.width() * k, h = u.height() * k;
         canvas.quad(CgCanvasMaterials.SCREEN.image()).texture(0, image).at(named.anchorX() * width + u.offsetX() * k - w / 2f + slide, named.anchorY() * height + u.offsetY() * k - h / 2f)
                 .size(w, h).uv(0f, 0f, 1f, 1f).color(argb(alpha, 0xFFFFFFFF)).submit();
-    }
-
-    /** {@code path}'s font at {@code px}: a kit's file, read once. */
-    private CgFont font(String path, int px) {
-        String key = path + '@' + px;
-        CgFont font = fonts.get(key);
-        if (font != null) return font;
-        try (InputStream in = CgIO.openStream(path)) {
-            if (in == null) throw new IllegalStateException("no font file " + path);
-            font = CgFont.load(in.readAllBytes(), path, CgFontStyle.REGULAR, px);
-        } catch (IOException e) {
-            throw new IllegalStateException("font " + path + ": " + e.getMessage(), e);
-        }
-        fonts.put(key, font);
-        return font;
     }
 
     /** {@code argb} with its alpha times {@code alpha}. */

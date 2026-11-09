@@ -5,11 +5,9 @@ import com.crystalgraphics.object.CgType;
 import com.crystalgraphics.object.CgTypes;
 import com.crystalgraphics.object.CgValueType;
 
-import static com.crystalgraphics.object.CgValueType.BOOL;
 import static com.crystalgraphics.object.CgValueType.COLOUR;
 import static com.crystalgraphics.object.CgValueType.FLOAT;
 import static com.crystalgraphics.object.CgValueType.INT;
-import static com.crystalgraphics.object.CgValueType.STRING;
 import static com.crystalgraphics.object.CgValueType.TREE;
 import static com.crystalgraphics.object.CgValueType.VEC2;
 
@@ -26,24 +24,18 @@ public final class CgKitFiles {
     private CgKitFiles() {
     }
 
-    static final CgType OUTLINE = CgTypes.struct("crystalgraphics:subtitle_style.outline")
-            .property("size", FLOAT).required()
-            .property("colour", COLOUR).required()
-            .register();
-
     static final CgType UNDERLINE = CgTypes.struct("crystalgraphics:subtitle_style.underline")
             .property("image", CgValueType.NAMESPACED_ID).required()
             .property("size", VEC2).required()
             .property("offset", VEC2)
             .register();
 
-    /** A run of text placed as a Slate text block in a canvas slot: the line, or the speaker's name. */
+    /**
+     * A run of text placed as a Slate text block in a canvas slot: the line, or the speaker's name. Its look is a
+     * {@code text_style}.
+     */
     static final CgType TEXT = CgTypes.struct("crystalgraphics:subtitle_style.text")
-            .property("font", CgValueType.NAMESPACED_ID).required()
-            .property("size", FLOAT).required()
-            .property("bold", BOOL)
-            .property("colour", COLOUR)
-            .property("outline", CgValueType.struct(OUTLINE))
+            .property("style", CgValueType.NAMESPACED_ID).required()
             .property("line_height", FLOAT).defaultValue(1.0)
             .property("wrap", FLOAT)
             .property("justify", CgValueType.enumOf("left", "centre", "right"))

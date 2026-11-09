@@ -9,9 +9,10 @@ import com.crystalgraphics.asset.curve.CgCurveDefinition;
 import com.crystalgraphics.cue.CgCueDefinition;
 import com.crystalgraphics.render.post.stage.CgStageDefinition;
 import com.crystalgraphics.sequence.definition.CgSequenceDefinition;
+import com.crystalgraphics.text.style.CgTextStyle;
 
 /**
- * Registers the engine's own kind compilers: materials, parameter collections, curves, camera rigs and shakes, sequences, skeletons, cues and stages. Runs on both sides,
+ * Registers the engine's own kind compilers: materials, parameter collections, curves, camera rigs and shakes, sequences, skeletons, cues, stages and text styles. Runs on both sides,
  * when the process's assets are made ({@link CgVfxAssets}), so a dedicated server compiles what a client does.
  *
  * <pre>{@code
@@ -40,5 +41,6 @@ public final class CgBuiltInCompilers {
         CgSkeletonDefinition.register();
         CgCueDefinition.register();
         CgStageDefinition.register();
+        CgTextStyle.register();
     }
 }
