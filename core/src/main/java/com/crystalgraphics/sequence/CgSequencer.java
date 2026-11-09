@@ -397,9 +397,7 @@ public final class CgSequencer extends CgWorldSubsystem {
     /** Its world's audio, what its sound tracks play through; null on a server or where the host has no output. */
     @Nullable
     public CgAudioEngine audio() {
-        if (world() == null) return null;
-        CgAudioEngine audio = world().subsystem(CgAudioEngine.class);
-        return audio != null && audio.active() ? audio : null;
+        return world() == null || server() ? null : CgAudioEngine.active(world());
     }
 
     public boolean server() {

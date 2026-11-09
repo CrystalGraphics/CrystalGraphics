@@ -1,8 +1,6 @@
 package com.crystalgraphics.audio;
 
 import com.crystalgraphics.frame.CgWorld;
-import com.crystalgraphics.platform.CgPlatform;
-import com.crystalgraphics.platform.audio.CgAudioOutput;
 import com.crystalgraphics.world.CgAttachment;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -59,8 +57,9 @@ public final class CgSounds {
     }
 
     /**
-     * The client world's engine, made at the first ask; null where the host has no audio output. For what these calls
-     * do not cover: placing a playing sound, its attenuation, priority and concurrency, submixes, subtitles.
+     * The client world's engine ({@link CgAudioEngine#active}), made at the first ask; null where the host has no audio
+     * output. For what these calls do not cover: placing a playing sound, its attenuation, priority and concurrency,
+     * submixes, subtitles.
      *
      * <pre>{@code
      * CgAudioEngine audio = CgSounds.engine();
@@ -69,9 +68,7 @@ public final class CgSounds {
      */
     @Nullable
     public static CgAudioEngine engine() {
-        if (!CgPlatform.isProvided(CgAudioOutput.SERVICE)) return null;
-        CgAudioEngine audio = CgAudioEngine.of(CgWorld.client());
-        return audio.active() ? audio : null;
+        return CgAudioEngine.active(CgWorld.client());
     }
 
     /**

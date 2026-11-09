@@ -17,7 +17,7 @@ import java.util.function.Supplier;
  *
  * <pre>{@code
  * CgVfxAssets.instance().preparer(CgSequenceKinds.SEQUENCE,
- *         new CgSequenceSoundPreparer(() -> CgWorld.client().subsystem(CgAudioEngine.class)));
+ *         new CgSequenceSoundPreparer(() -> CgAudioEngine.active(CgWorld.client())));
  * }</pre>
  *
  * <ul>

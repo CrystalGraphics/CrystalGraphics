@@ -153,6 +153,26 @@ public final class CgAudioEngine extends CgWorldSubsystem {
         }
     }
 
+    /**
+     * {@code world}'s sound if it plays: the engine added there, else one added at this first ask where the host has an
+     * audio output; null on a dedicated server, with no output, or after the output failed. What every caller that
+     * plays into a world asks, so the first sound of any kind starts the engine.
+     *
+     * <pre>{@code
+     * CgAudioEngine audio = CgAudioEngine.active(CgWorld.client());
+     * if (audio != null) audio.play(click, CgSoundClass.UI, 1f);
+     * }</pre>
+     */
+    @Nullable
+    public static CgAudioEngine active(CgWorld world) {
+        CgAudioEngine audio = world.subsystem(CgAudioEngine.class);
+        if (audio == null) {
+            if (!CgPlatform.isProvided(CgAudioOutput.SERVICE)) return null;
+            audio = of(world);
+        }
+        return audio.active() ? audio : null;
+    }
+
     /** On {@code output}, and the host's decoder. */
     public CgAudioEngine(@Nullable CgAudioOutput output) {
         this(output, null);

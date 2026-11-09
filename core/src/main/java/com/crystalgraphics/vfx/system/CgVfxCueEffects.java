@@ -273,8 +273,8 @@ public final class CgVfxCueEffects implements CgCueEffects {
      * socket, the target, or the cue's point. Its id; 0 where this client plays no sound.
      */
     private long sound(Sound s, CgCueParameters at, boolean loop) {
-        CgAudioEngine audio = CgWorld.client().subsystem(CgAudioEngine.class);
-        if (audio == null || !audio.active()) return 0;
+        CgAudioEngine audio = CgAudioEngine.active(CgWorld.client());
+        if (audio == null) return 0;
         Placement placement = s.where().placement();
         placedPoint(placement, at);
         long id = audio.play(s.sound(), CgSoundClass.SFX, point[0], point[1], point[2], 1f, 1f, loop, Double.NaN, at.seed());
@@ -644,7 +644,7 @@ public final class CgVfxCueEffects implements CgCueEffects {
 
         /** {@code UAudioComponent::FadeOut(LoopingFadeOutDuration, LoopingFadeVolumeLevel)} on each looping sound. */
         private void fadeSounds() {
-            CgAudioEngine audio = loopSounds.isEmpty() ? null : CgWorld.client().subsystem(CgAudioEngine.class);
+            CgAudioEngine audio = loopSounds.isEmpty() ? null : CgAudioEngine.active(CgWorld.client());
             if (audio != null) {
                 for (int i = 0; i < loopSounds.size(); i++) {
                     Sound s = loopSoundEntries.get(i);
@@ -669,7 +669,7 @@ public final class CgVfxCueEffects implements CgCueEffects {
             for (int i = 0; i < alive.size(); i++) alive.get(i).kill();
             waiting.clear();
             waitingLoops.clear();
-            CgAudioEngine audio = loopSounds.isEmpty() ? null : CgWorld.client().subsystem(CgAudioEngine.class);
+            CgAudioEngine audio = loopSounds.isEmpty() ? null : CgAudioEngine.active(CgWorld.client());
             if (audio != null) for (int i = 0; i < loopSounds.size(); i++) audio.activeSounds().stop(loopSounds.get(i));
             loopSounds.clear();
             loopSoundEntries.clear();
