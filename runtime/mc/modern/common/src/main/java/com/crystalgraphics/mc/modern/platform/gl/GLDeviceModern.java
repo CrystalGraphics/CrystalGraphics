@@ -10,6 +10,9 @@ import org.lwjgl.Version;
 import com.crystalgraphics.lwjgl3.Lwjgl3GLDriver;
 import com.crystalgraphics.mc.modern.platform.Windows;
 import com.crystalgraphics.platform.gl.CgGLDevice;
+import com.crystalgraphics.platform.gl.pipeline.GLNativeGlslCompiler;
+import com.crystalgraphics.platform.gl.pipeline.GLNativeTranslator;
+import com.crystalgraphics.platform.gl.state.GLHostState;
 import com.crystalgraphics.render.shader.CgToolchainDevice;
 import com.crystalgraphics.vulkan.toolchain.CgShaderToolchain;
 
@@ -17,8 +20,9 @@ import com.mojang.blaze3d.platform.Window;
 import net.minecraft.client.Minecraft;
 
 /**
- * The GL device on a client Minecraft renders with GL: the shader toolchain fetched behind the loading screen,
- * then a {@link CgGLDevice} beside {@code CgGL} in Minecraft's context, on {@link Lwjgl3GLDriver}.
+ * The GL device on a client Minecraft renders with GL: a {@link CgGLDevice} beside {@code CgGL} in Minecraft's
+ * context, on {@link Lwjgl3GLDriver}, from the graphics start, the shader toolchain taking over its compiles once
+ * fetched.
  *
  * <pre>{@code
  * CgEngineLifecycle.addListener(new GLDeviceModern());   // once, where the GL backend is made
@@ -28,6 +32,7 @@ public final class GLDeviceModern extends CgToolchainDevice {
 
     private static final Logger LOGGER = LogManager.getLogger(GLDeviceModern.class);
 
+    private final GLNativeTranslator translator = new GLNativeTranslator();
     private CgGLDevice device;
 
     @Override
@@ -45,11 +50,17 @@ public final class GLDeviceModern extends CgToolchainDevice {
     }
 
     @Override
-    protected void install(List<Path> jars) {
+    protected void start() {
         Window window = Windows.of(Minecraft.getInstance());
-        int width = window.getWidth(), height = window.getHeight();
-        device = CgShaderToolchain.load(jars, natives()).glDeviceBesideCgGL(new Lwjgl3GLDriver(), width, height);
+        device = new CgGLDevice(new Lwjgl3GLDriver(), translator, window.getWidth(), window.getHeight(), false,
+                GLHostState.sharedWithCgGL());
+        device.installBesideCgGL(new GLNativeGlslCompiler(device.driver()));
         LOGGER.info("[device] the GL device draws beside CgGL: {}, {}", device.globals().vendor(), device.globals().driver());
+    }
+
+    @Override
+    protected void toolchain(List<Path> jars) {
+        CgShaderToolchain.load(jars, natives()).installOver(translator);
     }
 
     @Override

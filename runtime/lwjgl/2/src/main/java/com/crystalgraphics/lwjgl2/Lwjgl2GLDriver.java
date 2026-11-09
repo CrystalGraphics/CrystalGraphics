@@ -537,6 +537,36 @@ public final class Lwjgl2GLDriver implements CgGLDriver {
         return GL20.glGetProgramInfoLog(program, Math.max(1, GL20.glGetProgrami(program, GL_INFO_LOG_LENGTH)));
     }
 
+    /** {@code GL_NAME_LENGTH}: how long a resource's name is, its null included. */
+    private static final int GL_NAME_LENGTH = 0x92F9;
+    private final IntBuffer resourceProperty = BufferUtils.createIntBuffer(1), resourceValue = BufferUtils.createIntBuffer(1);
+
+    @Override
+    public int glGetProgramInterfacei(int program, int programInterface, int name) {
+        return GL43.glGetProgramInterfacei(program, programInterface, name);
+    }
+
+    @Override
+    public String glGetProgramResourceName(int program, int programInterface, int index) {
+        int length = glGetProgramResourcei(program, programInterface, index, GL_NAME_LENGTH);
+        return GL43.glGetProgramResourceName(program, programInterface, index, Math.max(1, length));
+    }
+
+    @Override
+    public int glGetProgramResourcei(int program, int programInterface, int index, int property) {
+        resourceProperty.put(0, property);
+        resourceValue.clear();
+        GL43.glGetProgramResource(program, programInterface, index, resourceProperty, null, resourceValue);
+        return resourceValue.get(0);
+    }
+
+    @Override
+    public int glGetUniformi(int program, int location) {
+        resourceValue.clear();
+        GL20.glGetUniform(program, location, resourceValue);
+        return resourceValue.get(0);
+    }
+
     @Override
     public int glGetProgramBinary(int program, ByteBuffer out) {
         one.clear();

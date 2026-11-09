@@ -10490,13 +10490,12 @@ com/crystalgraphics/render/shader/CgToolchainDevice
   implements com/crystalgraphics/lifecycle/CgLifecycleListener
   method protected,abstract close ()V
   method protected,abstract ineligible ()Ljava/lang/String;
-  method protected,abstract install (Ljava/util/List;)V
   method protected,abstract resize ()V
   method protected,static natives ()Ljava/nio/file/Path;
   method public <init> ()V
   method public,final onContextDestroy ()V
   method public,final onFrame (J)V
-  method public,final onLoad (Lcom/crystalgraphics/loading/task/CgLoadPlan;)V
+  method public,static startAll ()V
 com/crystalgraphics/render/stage/CgDirectionalLights
   access public,final
   extends java/lang/Object
@@ -10506,10 +10505,13 @@ com/crystalgraphics/render/stage/CgDirectionalLights
   method public active (F)Lcom/crystalgraphics/render/stage/CgDirectionalLights$Light;
   method public add (I)Lcom/crystalgraphics/render/stage/CgDirectionalLights$Light;
   method public,static declare ()V
+  method protected <init> ()V
   method public,static get ()Lcom/crystalgraphics/render/stage/CgDirectionalLights;
 com/crystalgraphics/render/stage/CgDirectionalLights$Light
   access public,final
   extends java/lang/Object
+  method protected,abstract start ()V
+  method protected,abstract toolchain (Ljava/util/List;)V
   implements java/lang/AutoCloseable
   method public blue ()F
   method public brightness ()F
@@ -10527,7 +10529,6 @@ com/crystalgraphics/render/stage/CgDistortionField
   access public,final
   extends java/lang/Object
   field public,static,final MAX I
-  method public <init> ()V
   method public count ()I
   method public offsets ()Lcom/crystalgraphics/render/graph/CgGraphTexture;
   method public set (Lcom/crystalgraphics/render/graph/CgGraphTexture;I)V

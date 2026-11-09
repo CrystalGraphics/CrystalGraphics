@@ -1438,6 +1438,9 @@ com/crystalgraphics/platform/gl/driver/CgGLDriver
   method public,abstract glGetProgramBinary (ILjava/nio/ByteBuffer;)I
   method public,abstract glGetProgramInfoLog (I)Ljava/lang/String;
   method public,abstract glGetProgrami (II)I
+  method public,abstract glGetProgramInterfacei (III)I
+  method public,abstract glGetProgramResourceName (III)Ljava/lang/String;
+  method public,abstract glGetProgramResourcei (IIII)I
   method public,abstract glGetQueryObjecti64 (II)J
   method public,abstract glGetShaderInfoLog (I)Ljava/lang/String;
   method public,abstract glGetShaderi (II)I
@@ -1447,6 +1450,7 @@ com/crystalgraphics/platform/gl/driver/CgGLDriver
   method public,abstract glGetTextureSubImage (IIIIIIIIIIIJ)V
   method public,abstract glGetTextureSubImage (IIIIIIIIIILjava/nio/ByteBuffer;)V
   method public,abstract glInvalidateNamedFramebufferData (I[II)V
+  method public,abstract glGetUniformi (II)I
   method public,abstract glIsEnabled (I)Z
   method public,abstract glIsEnabledi (II)Z
   method public,abstract glLinkProgram (I)V
@@ -1503,6 +1507,7 @@ com/crystalgraphics/platform/gl/driver/GLC
   access public,final
   extends java/lang/Object
   field public,static,final GL_ACTIVE_TEXTURE I
+  field public,static,final GL_ACTIVE_RESOURCES I
   field public,static,final GL_ALREADY_SIGNALED I
   field public,static,final GL_ALWAYS I
   field public,static,final GL_ARRAY_BUFFER I
@@ -1516,7 +1521,9 @@ com/crystalgraphics/platform/gl/driver/GLC
   field public,static,final GL_BLEND_SRC_ALPHA I
   field public,static,final GL_BLEND_SRC_RGB I
   field public,static,final GL_BUFFER I
+  field public,static,final GL_BLOCK_INDEX I
   field public,static,final GL_BUFFER_SIZE I
+  field public,static,final GL_BUFFER_BINDING I
   field public,static,final GL_BUFFER_UPDATE_BARRIER_BIT I
   field public,static,final GL_BYTE I
   field public,static,final GL_CCW I
@@ -1605,6 +1612,7 @@ com/crystalgraphics/platform/gl/driver/GLC
   field public,static,final GL_LINE_STRIP I
   field public,static,final GL_LINK_STATUS I
   field public,static,final GL_LOWER_LEFT I
+  field public,static,final GL_LOCATION I
   field public,static,final GL_MAJOR_VERSION I
   field public,static,final GL_MAP_COHERENT_BIT I
   field public,static,final GL_MAP_PERSISTENT_BIT I
@@ -1688,6 +1696,9 @@ com/crystalgraphics/platform/gl/driver/GLC
   field public,static,final GL_RED I
   field public,static,final GL_RED_INTEGER I
   field public,static,final GL_RENDERBUFFER I
+  field public,static,final GL_REFERENCED_BY_COMPUTE_SHADER I
+  field public,static,final GL_REFERENCED_BY_FRAGMENT_SHADER I
+  field public,static,final GL_REFERENCED_BY_VERTEX_SHADER I
   field public,static,final GL_RENDERER I
   field public,static,final GL_REPEAT I
   field public,static,final GL_REPLACE I
@@ -1728,6 +1739,7 @@ com/crystalgraphics/platform/gl/driver/GLC
   field public,static,final GL_SHADER_IMAGE_ACCESS_BARRIER_BIT I
   field public,static,final GL_SHADER_STORAGE_BARRIER_BIT I
   field public,static,final GL_SHADER_STORAGE_BUFFER I
+  field public,static,final GL_SHADER_STORAGE_BLOCK I
   field public,static,final GL_SHADER_STORAGE_BUFFER_BINDING I
   field public,static,final GL_SHADER_STORAGE_BUFFER_OFFSET_ALIGNMENT I
   field public,static,final GL_SHADER_STORAGE_BUFFER_SIZE I
@@ -1790,7 +1802,10 @@ com/crystalgraphics/platform/gl/driver/GLC
   field public,static,final GL_TRIANGLE_FAN I
   field public,static,final GL_TRIANGLE_STRIP I
   field public,static,final GL_UNIFORM_BARRIER_BIT I
+  field public,static,final GL_TYPE I
+  field public,static,final GL_UNIFORM I
   field public,static,final GL_UNIFORM_BUFFER I
+  field public,static,final GL_UNIFORM_BLOCK I
   field public,static,final GL_UNIFORM_BUFFER_BINDING I
   field public,static,final GL_UNIFORM_BUFFER_OFFSET_ALIGNMENT I
   field public,static,final GL_UNIFORM_BUFFER_SIZE I
@@ -1889,6 +1904,24 @@ com/crystalgraphics/platform/gl/pipeline/GLShaderModule
   method public label ()Ljava/lang/String;
   method public stage ()Lcom/crystalgraphics/platform/rhi/shader/CgShaderModule$Stage;
 com/crystalgraphics/platform/gl/pipeline/GLShaderTranslator
+com/crystalgraphics/platform/gl/pipeline/GLNativeGlslCompiler
+  access public,final
+  extends java/lang/Object
+  implements com/crystalgraphics/platform/rhi/shader/CgGlslCompiler
+  method public <init> (Lcom/crystalgraphics/platform/gl/driver/CgGLDriver;)V
+  method public compile (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/lang/String;)Lcom/crystalgraphics/platform/rhi/shader/CgGlslCompiler$Program;
+  method public compileCompute (Ljava/lang/String;Ljava/lang/String;)Lcom/crystalgraphics/platform/rhi/shader/CgGlslCompiler$ComputeProgram;
+  method public compileExplicit (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/lang/String;)Lcom/crystalgraphics/platform/rhi/shader/CgGlslCompiler$Explicit;
+  method public compileExplicitCompute (Ljava/lang/String;Ljava/lang/String;)Lcom/crystalgraphics/platform/rhi/shader/CgGlslCompiler$ExplicitCompute;
+com/crystalgraphics/platform/gl/pipeline/GLNativeTranslator
+  access public,final
+  extends java/lang/Object
+  implements com/crystalgraphics/platform/gl/pipeline/GLShaderTranslator
+  method public <init> ()V
+  method public glsl (Ljava/nio/ByteBuffer;Lcom/crystalgraphics/platform/rhi/shader/CgShaderModule$Stage;Lcom/crystalgraphics/platform/gl/binding/GLBindingPoints;Ljava/lang/String;)Ljava/lang/String;
+  method public spirv (Lcom/crystalgraphics/platform/gl/pipeline/GLShaderTranslator;)V
+  method public version ()Ljava/lang/String;
+  method public,static isNative (Ljava/nio/ByteBuffer;)Z
   access public,abstract,interface
   extends java/lang/Object
   method public version ()Ljava/lang/String;
@@ -2347,6 +2380,9 @@ com/crystalgraphics/platform/gl/state/GLStateFilter
   method public glObjectLabel (IILjava/lang/String;)V
   method public glPixelStorei (II)V
   method public glPolygonMode (II)V
+  method public glGetProgramInterfacei (III)I
+  method public glGetProgramResourceName (III)Ljava/lang/String;
+  method public glGetProgramResourcei (IIII)I
   method public glPolygonOffset (FF)V
   method public glPopDebugGroup ()V
   method public glProgramBinary (IILjava/nio/ByteBuffer;)V
@@ -2356,6 +2392,7 @@ com/crystalgraphics/platform/gl/state/GLStateFilter
   method public glSamplerParameterf (IIF)V
   method public glSamplerParameteri (III)V
   method public glScissor (IIII)V
+  method public glGetUniformi (II)I
   method public glShaderSource (ILjava/lang/String;)V
   method public glStencilFuncSeparate (IIII)V
   method public glStencilMaskSeparate (II)V
@@ -4540,6 +4577,13 @@ com/crystalgraphics/platform/rhi/sync/CgTimerQuery
   method public,abstract resultNanos ()J
 com/crystalgraphics/platform/service/CgCacheDirectory
   access public,final
+com/crystalgraphics/platform/rhi/shader/CgGlslSources
+  access public,final
+  extends java/lang/Object
+  method public,static lineAt (Ljava/lang/String;I)I
+  method public,static withDefines (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
+  method public,static withoutComments (Ljava/lang/String;)Ljava/lang/String;
+  method public,static wrapMain (Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
   extends java/lang/Object
   field public,static,final DIR Lcom/crystalgraphics/variable/CgVar$Text;
   field public,static,final ENABLED Lcom/crystalgraphics/variable/CgVar$Bool;

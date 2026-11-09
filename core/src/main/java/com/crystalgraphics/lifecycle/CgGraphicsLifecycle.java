@@ -34,6 +34,7 @@ import com.crystalgraphics.vfx.system.CgVfxSystemAssets;
 import com.crystalgraphics.api.font.CgDefaultFont;
 import com.crystalgraphics.api.material.CgMaterialRegistry;
 import com.crystalgraphics.render.post.CgPostStack;
+import com.crystalgraphics.render.shader.CgToolchainDevice;
 import com.crystalgraphics.render.world.CgPipelinePrecache;
 import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.vfx.CgVfx;
@@ -246,6 +247,9 @@ public final class CgGraphicsLifecycle {
                 // material's first bind. It runs inside the host's world pass, and left its bindings and
                 // render state behind.
                 try (CgGlScope ignored = CgGlState.saveAll()) {
+                    // A GL-era host's device, before anything compiles: its first programs are the driver's own
+                    CgToolchainDevice.startAll();
+                    CgStartSteps.step("device");
                     resizeTargets(width, height);
                     CgBindingPoints.init(CgCapabilities.detect());
                     CgFallbackTextures.init();
@@ -296,6 +300,8 @@ public final class CgGraphicsLifecycle {
         // The engine's own passes, built together behind the loading screen rather than each at its first draw;
         // no world stage fires until they are
         CgWorldRenderer.get().beginBoot();
+        // Never after a host's shader toolchain fetch: offline it fails only after its retries and timeouts, and the
+        // driver compiles these as fast as the toolchain would
         CgLoadPlan.get().task("crystalgraphics:programs").render(task -> {
             boolean done = CgWorldRenderer.get().bootStep();
             int total = CgPipelinePrecache.total();

@@ -24,11 +24,12 @@ import com.crystalgraphics.storage.download.CgDownloads;
  * shader compiler hands {@code CgShaderToolchain.load}.
  *
  * <pre>{@code
- * plan.task("crystalgraphics:shader-toolchain")
- *         .work(ctx -> jars = CgShaderToolchainFiles.fetch(ctx.progress()))   // a worker
- *         .render(task -> install(jars))                                     // the render thread, once fetched
- *         .start();
+ * CgJob.lane(CgJobLane.BACKGROUND).run(() -> fetched = CgShaderToolchainFiles.fetch(CgProgress.NONE));   // a worker
+ * // the render thread, each frame until it has landed:
+ * if (fetched != null) install(fetched);
  * }</pre>
+ *
+ * <p>Never a loading-screen task: offline it fails only after its retries and timeouts.</p>
  *
  * <ul>
  *   <li>Empty when this platform has no pinned natives or the fetch failed, with why logged: the host stays where it is.</li>
