@@ -135,8 +135,8 @@ Every `create()`/`createManualSized()` call registers with the singleton
   screen-sized renderers (the `create()` default) currently in orthographic mode —
   it skips renderers built via `createManualSized()` and any renderer whose context reports
   `isWorldText()` (calling `updateOrtho` on a world context would clobber the
-  perspective projection). `HUDRenderer`/`CgFontDemo` use `create()` since
-  their dimensions are proven to come from the same source that drives
+  perspective projection). `HUDRenderer` uses `create()` since
+  its dimensions are proven to come from the same source that drives
   `CgGraphicsLifecycle.onResize()`; `CgUiPaintContext` deliberately uses
   `createManualSized()` instead — its dimensions come from `UIWindow`'s own independent
   resize path, with no proven lockstep guarantee, so it still manually calls

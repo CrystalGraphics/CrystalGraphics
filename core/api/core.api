@@ -5355,13 +5355,6 @@ com/crystalgraphics/cue/CgCuePlaying$Provider
   access public,abstract,interface
   extends java/lang/Object
   method public,abstract write (D[F)V
-com/crystalgraphics/demo/CgFontDemo
-  access public,final
-  extends java/lang/Object
-  field public,static,final INSTANCE Lcom/crystalgraphics/demo/CgFontDemo;
-  method public dispose ()V
-  method public onMouseWheel (I)V
-  method public render (II)V
 com/crystalgraphics/demo/CgLightsDemo
   access public,final
   extends java/lang/Object
