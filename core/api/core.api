@@ -10697,8 +10697,10 @@ com/crystalgraphics/render/stage/CgRenderStage
   extends java/lang/Object
   field public,static,final HUD Lcom/crystalgraphics/render/stage/CgRenderStage;
   field public,static,final SCREEN Lcom/crystalgraphics/render/stage/CgRenderStage;
+  field public,static,final VIEWPORT_WIDGETS I
   field public,static,final WORLD_OPAQUE Lcom/crystalgraphics/render/stage/CgRenderStage;
   field public,static,final WORLD_TRANSPARENT Lcom/crystalgraphics/render/stage/CgRenderStage;
+  field public,static,final WORLD_WIDGETS I
   method public fire ()V
   method public fireInto (Lcom/crystalgraphics/gl/framebuffer/CgFrameBuffer;)V
   method public fireOverlay (IIFI)V

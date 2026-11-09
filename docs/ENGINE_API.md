@@ -16,6 +16,10 @@ CgRenderStage.HUD.register(0, frame -> frame.callback("mymod:badge", () -> drawB
 
 - A GUI stage fires once a frame from a hook that fires once, never per HUD element; not while the HUD is hidden (F1),
   and never on a server. Fabric below 1.16 has no `SCREEN`. From 26.1 both fire at the frame's end, after the GUI.
+- **Two named orders on a GUI stage**, Unreal's layers: `CgRenderStage.VIEWPORT_WIDGETS` (0) is the game's interface,
+  windows and menus; `CgRenderStage.WORLD_WIDGETS` (-100) is what follows a point in the world (a damage number, a
+  name plate), drawn under it as Unreal's screen-space widget components are. Project the point with
+  `WORLD_OPAQUE.host().view()`.
 - `fireOverlay(width, height, scale, mainFramebuffer)` is what a host calls: it fills the camera and fires.
 - `fireInto(target)` fires into a framebuffer of the caller's rather than the host's bound target, with the host
   frame filled for it first: a second view of the world, as an editor's viewport draws one.
