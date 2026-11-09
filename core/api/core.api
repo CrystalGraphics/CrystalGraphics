@@ -10767,6 +10767,7 @@ com/crystalgraphics/render/stage/CgHostView
   access public,final
   extends java/lang/Object
   method public <init> ()V
+  method public project (DDDFFLorg/joml/Vector2f;)Z
   method public projection ()Lorg/joml/Matrix4fc;
   method public set (DDDLjava/nio/FloatBuffer;Ljava/nio/FloatBuffer;)Lcom/crystalgraphics/render/stage/CgHostView;
   method public set (DDDLorg/joml/Matrix4fc;Lorg/joml/Matrix4fc;)Lcom/crystalgraphics/render/stage/CgHostView;
@@ -10817,6 +10818,7 @@ com/crystalgraphics/render/stage/CgStageFrame
   method public host ()Lcom/crystalgraphics/render/stage/CgHostFrame;
   method public ordinal ()I
   method public pass (Lcom/crystalgraphics/render/draw/CgPassConstants;Lcom/crystalgraphics/render/draw/CgOrder;)Lcom/crystalgraphics/render/graph/CgRasterPass;
+  method public projectWorld (DDDLorg/joml/Vector2f;)Z
   method public recording ()Lcom/crystalgraphics/render/graph/CgRecording;
   method public resources ()Lcom/crystalgraphics/render/stage/CgFrameResources;
   method public retarget (Lcom/crystalgraphics/render/graph/CgGraphTexture;)V
@@ -11345,6 +11347,34 @@ com/crystalgraphics/sequence/binding/CgSequenceRole
   method public node (Ljava/lang/String;)Lcom/crystalgraphics/world/CgAttachment;
   method public variants ()Ljava/util/Collection;
   method public,abstract attachment (Ljava/lang/String;)Lcom/crystalgraphics/world/CgAttachment;
+com/crystalgraphics/sequence/binding/CgSequenceWidget
+  access public,final
+  extends java/lang/Object
+  implements com/crystalgraphics/sequence/CgSequenceTarget
+  method public <init> ()V
+  method public angle ()F
+  method public angle (F)Lcom/crystalgraphics/sequence/binding/CgSequenceWidget;
+  method public argb ()I
+  method public child (Ljava/lang/String;Lcom/crystalgraphics/sequence/binding/CgSequenceWidget;)Lcom/crystalgraphics/sequence/binding/CgSequenceWidget;
+  method public colour (I)Lcom/crystalgraphics/sequence/binding/CgSequenceWidget;
+  method public contentArgb ()I
+  method public contentColour (I)Lcom/crystalgraphics/sequence/binding/CgSequenceWidget;
+  method public get (I[F)V
+  method public part (Lcom/crystalgraphics/sequence/definition/CgSequenceBinding$Part;Ljava/lang/String;)Lcom/crystalgraphics/sequence/CgSequenceTarget;
+  method public pose (FFFLorg/joml/Matrix4f;)Lorg/joml/Matrix4f;
+  method public renderOpacity ()F
+  method public renderOpacity (F)Lcom/crystalgraphics/sequence/binding/CgSequenceWidget;
+  method public scale (FF)Lcom/crystalgraphics/sequence/binding/CgSequenceWidget;
+  method public scaleX ()F
+  method public scaleY ()F
+  method public set (I[FI)V
+  method public shear (FF)Lcom/crystalgraphics/sequence/binding/CgSequenceWidget;
+  method public shearX ()F
+  method public shearY ()F
+  method public slot (Ljava/lang/String;)I
+  method public translation (FF)Lcom/crystalgraphics/sequence/binding/CgSequenceWidget;
+  method public translationX ()F
+  method public translationY ()F
 com/crystalgraphics/sequence/camera/CgCameraAnimationEvaluator
   access public,final
   extends java/lang/Object

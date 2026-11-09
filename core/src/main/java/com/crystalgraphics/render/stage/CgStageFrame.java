@@ -25,6 +25,7 @@ import com.crystalgraphics.render.graph.CgRecording;
 import com.crystalgraphics.render.graph.CgRequest;
 import com.crystalgraphics.render.graph.CgTextureDesc;
 import org.joml.Matrix4f;
+import org.joml.Vector2f;
 
 import javax.annotation.Nullable;
 
@@ -288,6 +289,27 @@ public final class CgStageFrame {
             throw new IllegalStateException(stage.id() + " is not a GUI stage: it has no GUI pixels");
         }
         return canvasIn(true);
+    }
+
+    /**
+     * Where the absolute world point ({@code x}, {@code y}, {@code z}) is on this GUI stage's canvas, into {@code out}:
+     * seen by the world's camera ({@code WORLD_OPAQUE}'s), in the canvas's pixels, the GUI's after
+     * {@link #guiScaledCanvas()}. False behind the camera. What a {@link CgRenderStage#WORLD_WIDGETS} renderer follows.
+     *
+     * <pre>{@code
+     * CgRenderStage.HUD.register(CgRenderStage.WORLD_WIDGETS, frame -> {
+     *     if (frame.projectWorld(x, y + 2, z, at)) frame.canvas().quad(MARKER).at(at.x - 8, at.y - 8).size(16, 16).submit();
+     * });
+     * }</pre>
+     *
+     * A GUI stage's only: at a world stage it throws.
+     */
+    public boolean projectWorld(double x, double y, double z, Vector2f out) {
+        if (host.view().projection().m23() != 0f) {
+            throw new IllegalStateException(stage.id() + " is not a GUI stage: project with its view instead");
+        }
+        float s = guiPixels ? host.guiScale() : 1f;
+        return CgRenderStage.WORLD_OPAQUE.host().view().project(x, y, z, host.width() / s, host.height() / s, out);
     }
 
     private CgCanvas canvasIn(boolean gui) {

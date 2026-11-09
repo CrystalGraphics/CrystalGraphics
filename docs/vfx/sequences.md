@@ -216,12 +216,37 @@ pause menu.
 CgSequencer gameplay = CgSequencer.of(CgWorld.client());        // moves, cues, cameras: dilated, paused with the game
 CgSequencer ui = CgSequencer.widgets(CgWorld.client());          // added on first ask; client only
 
+// The widget and its parts, at their designer values: CgSequenceWidget takes UMG's properties
+CgSequenceWidget digits = new CgSequenceWidget();
+CgSequenceWidget banner = new CgSequenceWidget().scale(1.5f, 1f).angle(2f);
+CgSequenceWidget number = new CgSequenceWidget().child("digits", digits).child("banner", banner);
+
 // Each widget keeps its player and replays it, as a widget keeps one state per animation:
-final class Number implements CgSequenceTarget { ... }          // its parts' slots: scale, opacity, colour...
 CgSequencePlayer pop = ui.play(POP, Map.of("number", number));   // once, when the number is made
 pop.jumpTo(0);                                                   // each hit: from the start, nothing allocated
 if (pop.finished()) hide(number);
 ```
+
+You draw it, at a GUI stage, from its values each frame. `pose` is its render transform about a pivot, in Slate's
+order (scale, shear, rotation, translation), and `projectWorld` puts a world point on the canvas:
+
+```java
+Vector2f at = new Vector2f();                                                    // kept: reused every frame
+Matrix4f pose = new Matrix4f();
+CgRenderStage.HUD.register(CgRenderStage.WORLD_WIDGETS, frame -> {
+    if (!frame.projectWorld(targetX, targetY + 1, targetZ, at)) return;            // behind the camera
+    float unit = frame.host().height() / 1080f;                                  // laid out for 1080 high
+    banner.pose(at.x, at.y, unit, pose);
+    frame.canvas().quad(IMAGE).texture(0, BANNER).at(-112, -28).size(224, 56).pose(pose).color(banner.argb()).submit();
+});
+```
+
+| Property | Slot of `CgSequenceWidget` | Unreal |
+|---|---|---|
+| `translation`, `scale`, `shear` (degrees), `angle` (degrees) | x, y | `FWidgetTransform` |
+| `render_opacity` | x | `UWidget::RenderOpacity`, multiplied into both colours |
+| `colour_and_opacity` | r, g, b, a | an image's `ColorAndOpacity` |
+| `content_colour_and_opacity` | r, g, b, a | a border's `ContentColorAndOpacity` |
 
 ```yaml
 # assets/mymod/sequences/hud/pop.yaml, the sequence mymod:hud/pop: a widget's tracks are property tracks on the widget and its parts
@@ -240,8 +265,10 @@ tracks:
   first.
 - **A replay lands on its first frame at the next evaluation** and plays on from there (`jumpTo`, Unreal's
   `JumpToFrame`).
-- **A part a section binds** (`node: digits`) is what the target's `part` returns for it; a slot or a part the target
-  lacks fails the play, naming both.
+- **A part a section binds** (`node: digits`) is what the target's `part` returns for it, a `CgSequenceWidget`'s child
+  of that name; a slot or a part the target lacks fails the play, naming both.
+- **A widget's children are found by name, never laid out**: a parent's opacity does not reach its children, and you
+  place and stack each yourself.
 - A dedicated server's world takes no widget sequencer: adding one throws.
 
 ### Subsequences
