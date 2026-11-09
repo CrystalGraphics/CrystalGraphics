@@ -51,6 +51,27 @@ public final class CgShapeTable {
     /** Flags, the entry's second value. */
     public static final int BORDER = 1, SPLIT_BORDER = 2;
 
+    /**
+     * How a nine-slice's centre and edges fill their span, CSS's {@code border-image-repeat}: stretched once, tiled at
+     * the source's size and cut at the end, tiled a whole number of times rescaled to fit, or whole tiles spaced evenly.
+     */
+    public static final int STRETCH = 0, REPEAT = 1, ROUND = 2, SPACE = 3;
+    /** The most tiles an axis draws, whatever the span. */
+    public static final int MAX_TILES = 1024;
+
+    /** The tiles {@code mode} draws across {@code span} from a source {@code source} long: at least one. */
+    public static float tiles(int mode, float span, float source) {
+        if (mode == STRETCH || source <= 0f || span <= 0f) return 1f;
+        float raw = span / source;
+        float count = switch (mode) {
+            case REPEAT -> raw;
+            case ROUND -> Math.max(1f, Math.round(raw));
+            case SPACE -> (float) Math.floor(raw);
+            default -> 1f;
+        };
+        return count < 1f ? 1f : Math.min(count, MAX_TILES);
+    }
+
     private static final CgBufferFormat FORMAT = CgBufferFormat.builder("ShapeEntry", CgBufferFormat.MemoryLayout.STD430)
             .vec4("meta").vec4("radiiX").vec4("radiiY").vec4("borderWidths")
             .vec4("fillColor").vec4("borderColor").vec4("borderTop").vec4("borderBottom")
@@ -262,7 +283,7 @@ public final class CgShapeTable {
         /**
          * A {@link #NINE_SLICE} fill: the slices' insets in the box's units, the sprite's outer and inner uv rects
          * ({@code u0 v0 u3 v3}, {@code u1 v1 u2 v2}), the centre's tile counts and source size, how each axis repeats
-         * (an ordinal: 0 stretch, 1 repeat, 2 round, 3 space) and whether the centre is drawn.
+         * ({@link #STRETCH}, {@link #REPEAT}, {@link #ROUND}, {@link #SPACE}) and whether the centre is drawn.
          */
         public Shape slices(float left, float top, float right, float bottom,
                             float u0, float v0, float u3, float v3, float u1, float v1, float u2, float v2,
@@ -274,6 +295,19 @@ public final class CgShapeTable {
             set(44, tilesX, tilesY, sourceWidth, sourceHeight);
             set(48, repeatX, repeatY, fillCentre ? 1f : 0f, 0f);
             return this;
+        }
+
+        /**
+         * As the full {@code slices}, the centre's tile counts worked out from the box's size and the centre's source
+         * size ({@code centreWidth x centreHeight}, in the box's units) by each axis's mode.
+         */
+        public Shape slices(float left, float top, float right, float bottom,
+                            float u0, float v0, float u3, float v3, float u1, float v1, float u2, float v2,
+                            float centreWidth, float centreHeight, int repeatX, int repeatY, boolean fillCentre) {
+            float spanX = Math.max(0f, values[2] - left - right), spanY = Math.max(0f, values[3] - top - bottom);
+            return slices(left, top, right, bottom, u0, v0, u3, v3, u1, v1, u2, v2,
+                    tiles(repeatX, spanX, centreWidth), tiles(repeatY, spanY, centreHeight), centreWidth, centreHeight,
+                    repeatX, repeatY, fillCentre);
         }
 
         /** The shape's index in the table: an equal one's, when there is one. */

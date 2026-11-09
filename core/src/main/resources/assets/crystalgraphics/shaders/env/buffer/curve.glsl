@@ -64,7 +64,7 @@
 //   Vertex:    gl_Position = cg_ProjMatrix * vec4(CG_CURVE_WORLD_POS, 1.0);
 //
 //   Fragment, stroke reading (the common case -- see curve_instance_coverage in stroke.glsl,
-//   which is the one place both curve.shader and gui_curve.shader should actually call this from):
+//   which is the one place every curve material calls this from):
 //              float t; float d = sdf_bezier(i.posXy, CG_CURVE_P0.xy, CG_CURVE_P1.xy, CG_CURVE_P2.xy, t);
 //              float halfW = mix(CG_CURVE_WIDTHS.x, CG_CURVE_WIDTHS.y, t);
 //              vec4 col = mix(CG_CURVE_COLOR0, CG_CURVE_COLOR1, t);

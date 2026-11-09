@@ -82,7 +82,7 @@ public final class CgClipTable {
     /** The floats one entry takes in {@link #read}, and where in them its parent and node are. */
     public static final int ENTRY_FLOATS = FLOATS, PARENT_FLOAT = 3, NODE_FLOAT = 32;
 
-    /** A UI shape's reconstruction width for an edge off the pixel grid (CrystalGUI's gui_box); 1 on it. */
+    /** A UI shape's reconstruction width for an edge off the pixel grid (the canvas box's); 1 on it. */
     private static final float ROTATED_RAMP = 1.5f;
 
     /** Lazy, like the quad renderer's: the binding points exist only once a context has initialised. */

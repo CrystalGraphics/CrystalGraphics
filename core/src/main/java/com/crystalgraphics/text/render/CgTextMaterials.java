@@ -27,7 +27,7 @@ import java.util.Map;
  */
 public final class CgTextMaterials {
 
-    public static final String TEXT_SHADER = "crystalgraphics:shaders/text.shader";
+    public static final String TEXT_SHADER = "crystalgraphics:shaders/canvas/text.shader";
 
     /** {@code TextData}: the gamma correction and a label depth pass's discard. */
     private static final CgBufferFormat TEXT_DATA_FORMAT = CgBufferFormat

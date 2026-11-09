@@ -31,7 +31,7 @@ import javax.annotation.Nullable;
  * canvas.cell(FILL).points(x0, y0, x1, y1, x2, y2, x3, y3).softEdges(CELL_LEFT | CELL_RIGHT).color(argb).submit();
  * }</pre>
  *
- * <p>A material it draws declares the record; {@code crystalgraphics:shaders/curve.shader} is the reference:</p>
+ * <p>A material it draws declares the record; {@code crystalgraphics:shaders/canvas/curve.shader} is the reference:</p>
  *
  * <pre>{@code
  * #type none
@@ -759,7 +759,7 @@ public final class CgCurveBatch {
      *   <li>A {@linkplain #softEdges soft} edge covers the exact area of the pixel inside it; a seam is decided at the
      *       pixel centre, half-open, so exactly one of two neighbours claims each pixel on it.</li>
      *   <li>Use cells rather than two triangles: a triangle knows one wall, and its seams show as bright rows.</li>
-     *   <li>Coverage is in post-pose units as pixels: for a 2D material in window pixels, as {@code gui_curve.shader}.</li>
+     *   <li>Coverage is in post-pose units as pixels: for a 2D material in window pixels, as the screen curve.</li>
      * </ul>
      */
     public final class Cell {

@@ -14,16 +14,15 @@ for code that uses it.
 ## 1. The short version
 
 ```java
-public static final CgMaterial DIGIT = CgMaterial.load("mymod:shaders/digit.shader");   // #pragma cg_use quad
 public static final CgTexture2D DIGITS = CgTextures.of("mymod:textures/hud/digits.png");
 
 CgRenderStage.HUD.register(CgRenderStage.WORLD_WIDGETS, frame ->
-        frame.canvas().quad(DIGIT).texture(0, DIGITS)
+        frame.canvas().quad(CgCanvasMaterials.SCREEN.image()).texture(0, DIGITS)
              .at(x, y).size(w, h).uv(u0, v0, u1, v1).color(0xFFFFD040).submit());
 ```
 
-That is a whole HUD renderer. The stage hands you its canvas, under its camera and onto its target, and what
-you submit lands in that firing.
+That is a whole HUD renderer, with no shader of its own. The stage hands you its canvas, under its camera and
+onto its target, and what you submit lands in that firing.
 
 ---
 
@@ -44,13 +43,15 @@ renderer that draws nothing this frame records nothing, and it is closed for you
 
 ```java
 CgCanvas canvas = frame.canvas();
+CgMaterial image = CgCanvasMaterials.SCREEN.image();
 
-canvas.quad(FLAT).at(x, y).size(w, h).color(argb).submit();                          // a coloured box
-canvas.quad(IMAGE).texture(0, icon).at(x, y).size(32, 32).submit();                  // an image
-canvas.quad(IMAGE).texture(0, atlas).uv(u0, v0, u1, v1).at(x, y).size(w, h).submit(); // a sprite from a sheet
-canvas.quad(IMAGE).texture(0, sheet).atlasLayer(3).at(x, y).size(w, h).submit();     // a layer of a 2D array
-canvas.quad(BAR).at(x, y).size(w * fill, h).custom0(fill, 0f, 0f, 0f).submit();       // a per-quad parameter
-canvas.quad(SPIN).at(-8, -8).size(16, 16).pose(rotation).submit();                   // rotated about its pose's origin
+canvas.quad(image).at(x, y).size(w, h).color(argb).submit();                          // a coloured box
+canvas.quad(image).texture(0, icon).at(x, y).size(32, 32).submit();                  // an image
+canvas.quad(image).texture(0, atlas).uv(u0, v0, u1, v1).at(x, y).size(w, h).submit(); // a sprite from a sheet
+canvas.quad(CgCanvasMaterials.SCREEN.imageArray(CgBlendMode.ALPHA)).texture(0, sheet)
+        .atlasLayer(3).at(x, y).size(w, h).submit();                                  // a layer of a 2D array
+canvas.quad(image).at(-8, -8).size(16, 16).pose(rotation).submit();                   // rotated about its pose's origin
+canvas.quad(BAR).at(x, y).size(w * fill, h).custom0(fill, 0f, 0f, 0f).submit();       // a material of your own
 ```
 
 | Call | Default | Note |
@@ -70,7 +71,192 @@ canvas.quad(SPIN).at(-8, -8).size(16, 16).pose(rotation).submit();              
 by the next call; never keep it. To keep a builder across frames, `canvas.retainedQuad()` gives one of your
 own, which needs `.material(m)` before each `submit()`.
 
-### The material
+### Default materials
+
+`CgCanvasMaterials` ships what a HUD, a marker or a whole UI needs, so most consumers write no shader: Unreal's
+simple element shader, one look per kind of item, varied by blend mode.
+
+| | `SCREEN` (over what is there: GUI stages, immediate canvases) and `WORLD` (depth-tested, world stages) |
+|---|---|
+| `image()`, `image(blend)` | the item's texture times its colour; no texture draws the colour alone |
+| `mask(blend)` | the item's colour, its alpha times the texture's: a silhouette in any colour |
+| `imageArray(blend)`, `maskArray(blend)` | the same from the layer of a 2D array `atlasLayer` names |
+| `curve()` | lines, strokes, triangles and cells, alpha-blended (§ 4) |
+| `box()` | a rounded, bordered, flat, textured or nine-slice box, premultiplied: the shape its quad names (below) |
+
+```java
+canvas.quad(CgCanvasMaterials.SCREEN.maskArray(CgBlendMode.ADDITIVE)).texture(0, digits).atlasLayer(d)
+        .at(x, y).size(w, h).color(0xFFFFE080).submit();                  // a glow in the shape of a digit
+frame.canvas().quad(CgCanvasMaterials.WORLD.image()).world(x, y, z).pose(facing)
+        .at(-0.5f, -0.5f).size(1f, 1f).texture(0, icon).submit();          // a marker in the world, behind walls
+```
+
+- Blends: `ALPHA`, `PREMULTIPLIED` (a premultiplied texture), `ADDITIVE` (weighed by alpha), `MODULATE`,
+  `SUBTRACT`. `OPAQUE` throws: an image at full alpha under `ALPHA` covers.
+- Each is one shared instance: never set a property on it. Values of your own are a `CgMaterial.newInstance` of
+  `CgCanvasMaterials.IMAGE_SHADER` (with `MASK` on for a mask).
+- The screen's alpha and additive ones, its box, curve, gradients and grids are built at load; the rest at their first
+  ask, a frame or two before they draw.
+- **Every screen material antialiases its own edges** when a quad is rotated or sheared, and an image or box filters
+  its texels, with no MSAA; axis-aligned items are untouched. The width is one unit of the canvas's space: a window
+  pixel on `frame.canvas()`, softer by the scale on `guiScaledCanvas()`. In the world the scene's own antialiasing does.
+- A material of your own with the same look, for a property you set (a texture you keep, `_LayerOpacity` to fade a
+  group): `newBox()`, `newCurve()`.
+
+### Boxes
+
+A **box** is a rectangle with rounded corners, a border, and a fill: a colour, a stretched texture, or a nine-slice
+sprite. It is what a health bar, a panel, a button or a tooltip's background is drawn with, and it is how
+CrystalGUI draws every `background` and `border` in CSS. Each corner has its own elliptical radius, each side its own
+border width, and every edge is antialiased, rotated or not.
+
+Drawing one takes two steps: describe the shape in the canvas's **shape table**, which answers an index, then draw a
+quad under `CgCanvasMaterials.SCREEN.box()` that names that index with `custom2`. The shape says what the box looks
+like; the quad says where it goes. Every box, whatever its shape, is the same pipeline, so a screen of boxes is a few
+draws: they part only where their textures differ.
+
+```java
+CgCanvas canvas = frame.canvas();
+CgMaterial box = CgCanvasMaterials.SCREEN.box();
+
+// A flat rounded rect with a 1-pixel border: a health bar's frame
+int frameShape = canvas.shapes().begin(CgShapeTable.FLAT, 120, 12)
+        .radii(6, 6, 6, 6, 6, 6, 6, 6)                        // (rx, ry) per corner: TL, TR, BR, BL
+        .border(1, 1, 1, 1, 0xFF000000)                        // widths left, top, right, bottom, then colour
+        .fill(0xC0202020)
+        .end();
+canvas.quad(box).custom2(frameShape).at(x, y).size(120, 12).submit();
+
+// Its fill, as wide as the health left: a shape of its own size
+float w = 118 * health;
+int fillShape = canvas.shapes().begin(CgShapeTable.FLAT, w, 10).radii(5, 5, 5, 5, 5, 5, 5, 5).fill(0xFF3FBF4F).end();
+canvas.quad(box).custom2(fillShape).at(x + 1, y + 1).size(w, 10).submit();
+```
+
+The kinds a shape can be:
+
+| Kind | Fills with | Use it for |
+|---|---|---|
+| `FLAT` | the shape's `fill(argb)` colour | panels, bars, buttons, badges |
+| `TEXTURE` | the quad's texture, stretched over the box | a rounded portrait, an icon with a border |
+| `NINE_SLICE` | the quad's texture cut into nine regions (`slices`): corners kept at their size, edges and centre stretched or tiled | a themed window frame or button from one sprite, at any size |
+
+And two that need no shape, since every table holds them:
+
+| Index | Draws |
+|---|---|
+| `CgShapeTable.PLAIN` (0: a quad with no `custom2`) | the texture times the colour: an ordinary image under the box material, so it batches with boxes |
+| `CgShapeTable.PREMULTIPLIED` (1) | the same for a texture whose colour is already premultiplied: a layer drawn over a transparent clear |
+
+```java
+// A round, bordered portrait: TEXTURE samples the quad's texture
+int portrait = canvas.shapes().begin(CgShapeTable.TEXTURE, 64, 64).radii(32, 32, 32, 32, 32, 32, 32, 32)
+        .border(2, 2, 2, 2, 0xFFFFD040).end();
+canvas.quad(box).texture(0, face).custom2(portrait).at(x, y).size(64, 64).submit();
+
+// A window frame from a 48x48 sprite with 8-pixel corners, its centre tiled at the sprite's size
+int window = canvas.shapes().begin(CgShapeTable.NINE_SLICE, w, h)
+        .slices(8, 8, 8, 8,                                    // insets, in the box's units
+                0f, 0f, 1f, 1f,                                // the sprite's outer uv rect (u0 v0 u3 v3)
+                8 / 48f, 8 / 48f, 40 / 48f, 40 / 48f,          // its inner rect, where the corners end (u1 v1 u2 v2)
+                32, 32,                                        // the centre's size in the sprite
+                CgShapeTable.REPEAT, CgShapeTable.REPEAT,      // how each axis fills: STRETCH, REPEAT, ROUND, SPACE
+                true)                                          // draw the centre
+        .end();
+canvas.quad(box).texture(0, frameSprite).custom2(window).at(x, y).size(w, h).submit();
+
+// An inset field's bevel: the top edge dark, the bottom light, the sides the uniform colour
+int field = canvas.shapes().begin(CgShapeTable.FLAT, 200, 22).radii(3, 3, 3, 3, 3, 3, 3, 3)
+        .border(1, 1, 1, 1, 0xFF404040, 0xFF202020, 0xFF606060).fill(0xFF303030).end();
+```
+
+- **The shape's size is the box's.** Give `begin` the size the quad is drawn at: the corners, the border and the
+  slices are measured in it, and a quad drawn larger stretches them.
+- **The quad's colour tints the fill, never the border**: one shape serves a hovered and an idle button.
+- **Equal shapes share an index**: describing the same shape every frame costs a lookup, not a new entry.
+- **Shapes live in the canvas's recording**, so a box draws into a stage's canvas (`frame.canvas()`);
+  `canvas.shapes()` throws on a canvas recording nothing. An index means nothing in another recording or frame.
+- `begin(...)...end()` is one scratch builder: build and end it in one expression, before the next `begin`.
+- `ROUND` tiles a whole number of times, rescaled to fit; `SPACE` draws whole tiles with even gaps, as CSS's
+  `border-image-repeat`. `CgShapeTable.tiles(mode, span, source)` is the count either gives.
+- The box is premultiplied out; `WORLD.box()` is the same, tested against the scene's depth.
+
+### Gradients
+
+A **gradient** is a box filled with colours that blend from one to the next: CSS's `linear-gradient` and
+`radial-gradient`. A wash fading a panel into the world behind it, a glow under a selected slot, a sky. It is drawn
+by a `CgCanvasGradient`, which owns its material: set it up for the box, then draw a quad over the box under its
+`material()`.
+
+```java
+CgCanvasGradient wash = new CgCanvasGradient(CgCanvasMaterials.SCREEN);   // once, kept: it owns its material
+
+// Each frame: dark at the top, gone at the bottom
+wash.size(w, h)                    // the box, in the units the quad is drawn in
+    .angle(180f)                   // CSS's angle: 0 up, 90 right, 180 down, 270 left
+    .clearStops()
+    .stop(0f, 0xC0101418)          // position along the line, then straight ARGB
+    .stop(1f, 0x00101418);
+for (int i = 0, n = wash.windows(); i < n; i++) {
+    wash.window(i);                // writes this window's stops into the material
+    canvas.quad(wash.material()).at(x, y).size(w, h).submit();
+}
+```
+
+One quad draws up to eight stops; `windows()` is how many quads the stops take (one for up to eight), and each
+`window(i)` sets the material for its quad. Most gradients are one window, and the loop is always right.
+
+```java
+// A radial glow from the bottom centre, the box's top corners rounded
+glow.size(w, h)
+    .radial(w / 2, h, w / 2, h)                 // centre (x, y) and radii (rx, ry), from the box's top-left
+    .radii(8, 8, 8, 8, 0, 0, 0, 0)
+    .clearStops().stop(0f, 0xFFFFE080).stop(0.6f, 0x40FFE080).stop(1f, 0x00FFE080);
+
+// A hard stop: two colours at one position, a two-tone bar
+bar.size(w, h).angle(90f).clearStops()
+   .stop(0f, 0xFF3FBF4F).stop(health, 0xFF3FBF4F).stop(health, 0xFF5A1010).stop(1f, 0xFF5A1010);
+```
+
+- **Positions run 0 to 1 along the gradient line.** For an angle that is CSS's line, through the box's centre, so 0
+  and 1 land on the corners at any angle; for a radial, 0 is the centre and 1 the ellipse.
+- **Before the first stop and past the last, the end colours fill**, as in CSS.
+- **Stops must ascend**: one below the stop before is raised to it.
+- **Colours blend premultiplied**, as CSS specifies: a fade to transparent keeps its hue instead of passing through
+  grey. The result is dithered, so a shallow fade does not band.
+- **Write a window, submit its quad, then the next.** A quad takes the material's values as it is submitted; a window
+  written after it does not reach it.
+- **One gradient per drawer.** Its material holds the last window written; two drawers sharing one overwrite each
+  other.
+- The quad's colour tints the whole gradient. `radii(...)` rounds the gradient's own corners.
+
+### Grids
+
+A **grid** is a box ruled with lines at a fixed spacing: a map's cells, an editor's canvas, a graph's background. It
+is drawn by a `CgCanvasGrid`, one quad however many cells, and stays clean at any zoom: a line thinner than a pixel
+is drawn a pixel wide and faded rather than flickering, and cells smaller than a pixel dissolve into an even tint
+rather than moiré (Ben Golus's "Pristine Grid").
+
+```java
+CgCanvasGrid ruling = new CgCanvasGrid(CgCanvasMaterials.SCREEN);   // once, kept
+
+ruling.size(w, h)                      // the box
+      .cell(16f, 16f)                  // the spacing, each axis on its own
+      .line(1f)                        // the line's width
+      .color(0x30FFFFFF)               // straight ARGB
+      .apply();                        // writes it into the material
+canvas.quad(ruling.material()).at(x, y).size(w, h).submit();
+
+// Zoomed: scale the cell with the view and keep the line at a pixel; rounded corners
+ruling.size(w, h).cell(16f * zoom, 16f * zoom).line(1f).color(0x30FFFFFF).radii(6, 6, 6, 6, 6, 6, 6, 6).apply();
+```
+
+- Cells, lines and the box are in the units the quad is drawn in. A cell is at least half a unit.
+- **`apply()` before each quad**: like a gradient's window, the quad takes the material's values as it is submitted.
+- One grid per drawer, for the same reason as a gradient. A line width of 0 draws nothing.
+- The first line sits on the box's edge, so the grid moves with the box: move `at` to scroll it.
+
+### A material of your own
 
 A material the canvas draws quads with declares the quad record, and places each corner from it:
 
@@ -103,7 +289,8 @@ Pass {
 }
 ```
 
-`crystalgraphics:shaders/hud_image.shader` is exactly this, ready to use. What the vertex stage can read:
+`crystalgraphics:shaders/canvas/image.shader` is the default image's, its blend left to the material state. What
+the vertex stage can read:
 `CG_QUAD_WORLD_POS`, `CG_QUAD_UV`, `CG_QUAD_COLOR`, `CG_QUAD_ATLAS_LAYER`, `CG_QUAD_CUSTOM0`, `CG_QUAD_CUSTOM1`,
 `CG_QUAD_CUSTOM2`, `CG_QUAD_NORMAL`. Antialiased edges off the pixel grid (a rotated quad) use the
 `CG_QUAD_EDGE_*` macros in `shaders/env/buffer/quad.glsl`.
@@ -135,7 +322,8 @@ canvas.cell(FILL).points(x0, y0, x1, y1, x2, y2, x3, y3)
 - **Gradients** on triangles and cells: `gradient(start, end, originX, originY, dirX, dirY)`, per pixel.
 - **Cells** are for tessellated fills: mark the edges on the shape's outline `softEdges`, leave the cuts between
   cells hard, and neighbours meet with no seam. A lone shape wants `triangle`.
-- The material declares `#pragma cg_use curve`. `crystalgraphics:shaders/curve.shader` is the shipped one.
+- The material declares `#pragma cg_use curve`. `CgCanvasMaterials.SCREEN.curve()` and `WORLD.curve()` are the
+  shipped ones.
 
 ---
 

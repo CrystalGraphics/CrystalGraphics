@@ -37,6 +37,7 @@ import com.crystalgraphics.platform.world.CgWorldBegin;
 import com.crystalgraphics.platform.service.CgShaderPacks;
 import javax.annotation.Nullable;
 import com.crystalgraphics.render.CgViewFrustum;
+import com.crystalgraphics.render.canvas.CgCanvasMaterials;
 import com.crystalgraphics.render.draw.CgBufferHandle;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
 import com.crystalgraphics.render.draw.CgDrawChunk;
@@ -275,9 +276,11 @@ public final class CgWorldRenderer {
         CgRenderStage.WORLD_TRANSPARENT.register(ORDER, this::recordTransparent);
         parsePassesAhead();
         // The renderer's own programs no material brings in: text in every form (canvas quads and world labels, bitmap
-        // and MSDF); the loading screen's lines and a HUD's missed it at their first draw.
+        // and MSDF) and the canvas's default materials; the loading screen's lines and a HUD's missed it at their first
+        // draw.
         CgPipelinePrecache.register("crystalgraphics:world", list -> {
             CgTextMaterials.precache(list);
+            CgCanvasMaterials.precache(list);
             list.addPass(CgWorldMedia.LIGHT_SHADER);
         });
         // What the first light, smoke or haze dispatches, compiled at a scene's first frame otherwise; their files parsed

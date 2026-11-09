@@ -934,6 +934,9 @@ now.flush();
 ```
 
 - An item draws under its material's values as they are when it is submitted.
+- `CgCanvasMaterials` ships an image, a mask, their 2D-array forms, a curve and a box (rounded, bordered, nine-slice:
+  `canvas.shapes()`), on the screen and in the world, in each blend mode; `CgCanvasGradient` and `CgCanvasGrid`
+  draw gradients and grids. Most consumers need no shader of their own.
 - Text is an item too (`canvas.text()`): culled against the canvas's camera, rastered at device pixels on the
   screen and from its size on screen in the world.
 The whole guide, for consumers: **[`CANVAS.md`](CANVAS.md)**.

@@ -530,6 +530,20 @@ public final class CgCanvas {
         return recording != null;
     }
 
+    /**
+     * The recording's shapes, which a {@code CgCanvasMaterials.box()} quad names with {@code custom2}: an armed stage
+     * canvas opens. Throws on a canvas recording nothing, which has no table to name.
+     */
+    public CgShapeTable shapes() {
+        if (recording == null && source != null) {
+            Source s = source;
+            source = null;
+            s.open(this);
+        }
+        if (recording == null) throw new IllegalStateException("shapes draw into a recording: a stage's canvas");
+        return recording.shapes();
+    }
+
     /** The recording's table: a chunk's snapshots live as long as the recording that holds it. */
     public CgBindingTable bindings() {
         if (recording == null) throw new IllegalStateException("drawing with nowhere to record");

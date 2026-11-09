@@ -11,11 +11,11 @@ import com.crystalgraphics.api.font.CgFontStyle;
 import com.crystalgraphics.api.font.CgGenericFamily;
 import com.crystalgraphics.api.font.CgSystemFontFace;
 import com.crystalgraphics.api.font.CgSystemFonts;
-import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.text.CgTextAlign;
 import com.crystalgraphics.api.text.CgTextLayout;
 import com.crystalgraphics.api.texture.CgTextures;
 import com.crystalgraphics.render.canvas.CgCanvas;
+import com.crystalgraphics.render.canvas.CgCanvasMaterials;
 import com.crystalgraphics.gl.texture.CgTexture2D;
 import com.crystalgraphics.render.CgFrameClock;
 import com.crystalgraphics.render.stage.CgRenderStage;
@@ -48,7 +48,6 @@ final class CgSubtitleOverlay {
     /** {@code GetSubtitleRegion}'s bottom, the safe zone's sides, {@code SUBTITLE_CHAR_HEIGHT} and the line spacing. */
     private static final float REGION_BOTTOM = 0.9f, SAFE_SIDE = 0.1f, CHAR_HEIGHT = 24f, LINE_SPACING = 1.1f;
     private static final int TEXT = 0xFFFFFFFF, OUTLINE = 0xFF000000;
-    private static final String IMAGE = "crystalgraphics:shaders/hud_image.shader";
 
     /** A line as shown: what it says, by whom, in which look, and from when. */
     private static final class Shown {
@@ -170,7 +169,7 @@ final class CgSubtitleOverlay {
         if (band != null) {
             float alpha = fade.band(t) * (band.colour() >>> 24) / 255f;
             float centre = band.anchorY() * height + band.offsetY() * k, half = band.height() * k / 2f;
-            canvas.quad(CgMaterial.load(IMAGE)).at(0f, centre - half).size(width, 2f * half).uv(0f, 0f, 1f, 1f)
+            canvas.quad(CgCanvasMaterials.SCREEN.image()).at(0f, centre - half).size(width, 2f * half).uv(0f, 0f, 1f, 1f)
                     .color(argb(alpha, encode(band.colour()))).submit();
         }
         float alpha = fade.text(t), slide = fade.slide(t) * k;
@@ -217,7 +216,7 @@ final class CgSubtitleOverlay {
         CgTexture2D image = CgTextures.of(u.image());
         // Centred on its offset, as the widget's image slot centres it.
         float w = u.width() * k, h = u.height() * k;
-        canvas.quad(CgMaterial.load(IMAGE)).texture(0, image).at(named.anchorX() * width + u.offsetX() * k - w / 2f + slide, named.anchorY() * height + u.offsetY() * k - h / 2f)
+        canvas.quad(CgCanvasMaterials.SCREEN.image()).texture(0, image).at(named.anchorX() * width + u.offsetX() * k - w / 2f + slide, named.anchorY() * height + u.offsetY() * k - h / 2f)
                 .size(w, h).uv(0f, 0f, 1f, 1f).color(argb(alpha, 0xFFFFFFFF)).submit();
     }
 

@@ -6,16 +6,8 @@
 // of every consumer of that schema, whether the instance is a stroked quadratic or a filled
 // triangle (see curve_instance_coverage, the one dispatch point between the two).
 //
-// WHY THIS IS A LIB RATHER THAN COPIED INTO EACH SHADER. There are two curve materials and there
-// will likely be more: crystalgraphics:shaders/curve.shader (3D, DepthTest LEQUAL) and
-// crystalgui:shaders/gui_curve.shader (UI, DepthTest ALWAYS + a _LayerOpacity property). Those
-// differ ONLY in render state and in what they do with the final alpha -- a Pass's RenderState is
-// fixed at author time and cannot vary per keyword variant, so they genuinely have to be separate
-// materials. What they must NOT have is separate copies of the maths below.
-//
-// That is not hypothetical tidiness. The cap handling here was wrong three times in a row, each fix
-// surviving the previous one, and every one of them rendered something confident and plausible
-// rather than failing. Two copies means the fourth fix lands in one file and the other keeps the bug.
+// A lib rather than inside canvas/curve.shader: every curve material (CrystalGUI's coverage passes too) shares one copy.
+// The cap handling was wrong three times in a row, each time plausibly; two copies let a fix land in one alone.
 
 // Cap styles -- must match CgCurveBatch.CAP_*. Packed 2 bits per end (start in bits 0-1, end in
 // bits 2-3 -- see CgCurveBatch.packCaps), so 4 values is exactly the room available; ARROW is
@@ -255,7 +247,7 @@ float stroke_coverage(vec2 p, vec2 a, vec2 b, vec2 c,
 // SAME three points a quadratic stroke would use as control points -- a filled triangle is not a
 // different kind of data, only a different thing to do with three points. That is also why this
 // lives in stroke.glsl rather than a separate file: both coverage functions are consumed by
-// exactly the same two materials (curve.shader / gui_curve.shader), so splitting them would only
+// exactly the same materials, so splitting them would only
 // add an #include line everywhere for no benefit.
 //
 // CORNER ROUNDING IS A DILATION, NOT AN ERODE-THEN-DILATE. sdf_rounded_box shrinks the box's own
@@ -366,7 +358,7 @@ float fill_coverage(vec2 p, vec2 p0, vec2 p1, vec2 p2, float cornerRadius, float
 // of the same file. Opposite edges combine by the sum rule (exact for two parallel walls through one
 // pixel), the two pairs multiply (exact for a rectangle, the separable approximation at a corner).
 // The pixel is ONE UNIT of p's space, so this reading belongs to a material whose points are window
-// pixels: gui_curve.shader.
+// pixels: a screen curve.
 //
 // A HARD EDGE IS A SEAM AND IS DECIDED AT THE PIXEL CENTRE, HALF-OPEN. Two cells sharing a seam must
 // claim every pixel on it exactly once, or a translucent fill blends twice and an opaque one drops a
@@ -471,7 +463,7 @@ float cell_coverage(vec2 p, vec2 p0, vec2 p1, vec2 p2, vec2 p3, int flags) {
     return clamp(left + right - 1.0, 0.0, 1.0) * clamp(top + bottom - 1.0, 0.0, 1.0);
 }
 
-// The one place stroke-vs-fill is decided, so curve.shader and gui_curve.shader can never disagree
+// The one place stroke-vs-fill is decided, so no two curve materials can disagree
 // about it -- same reasoning as everything else in this file. Dispatches on CG_STROKE_FLAG_FILL in
 // `flags` (see CgCurveBatch.packFill/packCaps).
 //

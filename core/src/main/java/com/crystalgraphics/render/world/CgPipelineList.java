@@ -121,7 +121,7 @@ public final class CgPipelineList {
      * the shader's and its keywords', so a probe material builds each.
      *
      * <pre>{@code
-     * pipelines.add("crystalgraphics:shaders/text.shader");            // MSDF_MODE x WORLD_LABEL: four programs
+     * pipelines.add("crystalgraphics:shaders/canvas/text.shader");            // MSDF_MODE x WORLD_LABEL: four programs
      * pipelines.add("mymod:shaders/rune.shader", "GLOW");              // its domain's combinations, each with GLOW
      * }</pre>
      */

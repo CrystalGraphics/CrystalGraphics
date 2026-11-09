@@ -490,7 +490,7 @@ essentially every shader wants them. Buffers that only a minority of shaders nee
 > **A rounded clip is an instance field, not a render target.** `CgClipTable.add` records a rounded box in its
 > own space (rect, radii, a border's inner edge), the inverse of the pose that put it in the bound target, and
 > the entry it sits inside; it answers an index. An instance stamped with it multiplies its output by the
-> coverage of every entry up the chain (`MAX_DEPTH`, 4), each antialiased as a `gui_box` shape's own edge, so any
+> coverage of every entry up the chain (`MAX_DEPTH`, 4), each antialiased as a canvas box shape's own edge, so any
 > rotation or skew clips exactly. Changing the clip never flushes; the renderers upload and bind the table
 > when they draw. An entry means nothing in another target and nothing next frame. `addPixelRect` is the square
 > case at whole pixels: the pixel-centre test a scissor makes, with no batch break, and a rect nested in another of
@@ -1030,12 +1030,9 @@ Located at `src/main/resources/assets/crystalgraphics/shaders/lib/`. All files u
 | `rng.glsl` | `cg_rng4(seed, element, step, stream)` (PCG4D, counter-based: any element draws its own numbers in any order), `cg_rng`, `cg_rng_unit` (the top 24 bits in [0, 1)), `cg_rng_unit4`, `cg_rng_direction`. Integer-exact on every tier; `compute.ops.CgRng` gives the same bits in Java |
 | `text_gamma.glsl` | `text_gamma_terms`, `text_gamma_coverage` — Skia's text gamma and contrast (`SkMaskGamma`), per fragment rather than a table; what `CgTextGamma` drives in `text.shader` |
 
-> **`stroke.glsl` exists so there is exactly one copy of the cap logic.** `curve.shader` and
-> CrystalGUI's `gui_curve.shader` must differ in render state (`LEQUAL` vs `ALWAYS`) and in one
-> `_LayerOpacity` multiply, and a Pass's `RenderState` cannot vary per keyword variant — so they are
-> genuinely two materials. They are not two implementations. The cap handling was wrong three times in
-> a row and every version rendered something plausible rather than failing, which is precisely the
-> situation where a duplicated body gets fixed in one file only.
+> **`stroke.glsl` exists so there is exactly one copy of the cap logic**: `canvas/curve.shader` and CrystalGUI's
+> coverage passes all include it. The cap handling was wrong three times in a row and every version rendered something
+> plausible, which is where a duplicated body gets fixed in one file only.
 
 Use with `#include "crystalgraphics:shaders/lib/color.glsl"` etc. (`#pragma once` prevents double-expansion when multiple files include `math.glsl`.)
 

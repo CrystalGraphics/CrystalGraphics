@@ -118,7 +118,7 @@ public face is `api/font/CgSystemFonts`.
 
 ### The material
 
-`assets/crystalgraphics/shaders/text.shader`: one material for bitmap, MSDF and MTSDF glyphs, with a single
+`assets/crystalgraphics/shaders/canvas/text.shader`: one material for bitmap, MSDF and MTSDF glyphs, with a single
 `MSDF_MODE` keyword. It also draws strokes, shadows and gamma, with the helpers in
 `shaders/lib/text_gamma.glsl`, `shaders/lib/rect_blur.glsl` (a decoration's shadow) and
 `shaders/lib/texel.glsl` (bitmap glyphs off-axis).
