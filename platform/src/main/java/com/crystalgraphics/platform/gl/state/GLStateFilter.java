@@ -85,8 +85,9 @@ public final class GLStateFilter implements CgGLDriver {
         if (!Float.isNaN(s.depthNear)) glDepthRangef(s.depthNear, s.depthFar);
         if (s.scissorX != u) glScissor(s.scissorX, s.scissorY, s.scissorW, s.scissorH);
         if (s.clipOrigin != u) glClipControl(s.clipOrigin, s.clipDepth);
-        if (s.unpackAlignment != u) glPixelStorei(GL_UNPACK_ALIGNMENT, s.unpackAlignment);
-        if (s.packAlignment != u) glPixelStorei(GL_PACK_ALIGNMENT, s.packAlignment);
+        for (int i = 0; i < GLContextState.PIXEL_STORE.length; i++) {
+            if (s.pixelStore[i] != u) glPixelStorei(GLContextState.PIXEL_STORE[i], s.pixelStore[i]);
+        }
         for (int i = 0; i < GLContextState.POINTS; i++) {
             if (s.uniformBuffer[i] != u) point(GL_UNIFORM_BUFFER, i, s.uniformBuffer[i], s.uniformOffset[i], s.uniformSize[i]);
             if (s.storageBuffer[i] != u) point(GL_SHADER_STORAGE_BUFFER, i, s.storageBuffer[i], s.storageOffset[i],
@@ -440,12 +441,10 @@ public final class GLStateFilter implements CgGLDriver {
 
     @Override
     public void glPixelStorei(int name, int value) {
-        if (name == GL_UNPACK_ALIGNMENT) {
-            if (now.unpackAlignment == value) return;
-            now.unpackAlignment = value;
-        } else if (name == GL_PACK_ALIGNMENT) {
-            if (now.packAlignment == value) return;
-            now.packAlignment = value;
+        int i = GLContextState.pixelStore(name);
+        if (i >= 0) {
+            if (now.pixelStore[i] == value) return;
+            now.pixelStore[i] = value;
         }
         raw.glPixelStorei(name, value);
     }

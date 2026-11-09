@@ -220,8 +220,6 @@ public final class CgGLDevice implements CgRHI {
         gl.glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
         gl.glEnable(GL_PROGRAM_POINT_SIZE);
         gl.glEnable(GL_FRAMEBUFFER_SRGB);
-        gl.glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-        gl.glPixelStorei(GL_PACK_ALIGNMENT, 1);
     }
 
     /** The host drew since the last section: what it believes becomes what the filter knows. No-op when owned. */

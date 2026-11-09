@@ -11,6 +11,7 @@ import com.crystalgraphics.platform.gl.pipeline.GLGraphicsPipeline;
 import com.crystalgraphics.platform.gl.resource.GLBuffer;
 import com.crystalgraphics.platform.gl.resource.GLSampler;
 import com.crystalgraphics.platform.gl.resource.GLTexture;
+import com.crystalgraphics.platform.gl.state.GLContextState;
 import com.crystalgraphics.platform.gl.sync.GLTimerQuery;
 import com.crystalgraphics.platform.rhi.binding.CgBindingLayout;
 import com.crystalgraphics.platform.rhi.binding.CgBindingSet;
@@ -270,10 +271,21 @@ public final class GLEncoder implements CgCommandList {
         gl.glClearNamedBufferSubData(((GLBuffer) dst).name, GL_R32UI, dstOffset, size, GL_RED_INTEGER, GL_UNSIGNED_INT, word);
     }
 
+    /**
+     * Rows tightly packed for the transfer that follows. A host sharing the context leaves its own: Minecraft's last
+     * {@code NativeImage} upload leaves its row length and skips, and a glyph read under them comes out sheared.
+     */
+    private void tight() {
+        for (int i = 0; i < GLContextState.PIXEL_STORE.length; i++) {
+            gl.glPixelStorei(GLContextState.PIXEL_STORE[i], GLContextState.TIGHT[i]);
+        }
+    }
+
     @Override
     public void writeTexture(CgGpuTexture dst, CgTextureRegion r, ByteBuffer data) {
         GLTexture t = (GLTexture) dst;
         CgFormat f = t.desc().format();
+        tight();
         gl.glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
         if (t.target == GL_TEXTURE_2D) {
             if (f.compressed()) gl.glCompressedTextureSubImage2D(t.name, r.mip(), r.x(), r.y(), r.width(), r.height(),
@@ -294,6 +306,7 @@ public final class GLEncoder implements CgCommandList {
         outsidePass("copyBufferToTexture");
         GLTexture t = (GLTexture) dst;
         CgFormat f = t.desc().format();
+        tight();
         gl.glBindBuffer(GL_PIXEL_UNPACK_BUFFER, ((GLBuffer) src).name);
         if (t.target == GL_TEXTURE_2D) gl.glTextureSubImage2D(t.name, r.mip(), r.x(), r.y(), r.width(), r.height(),
                 GLFormats.format(f), GLFormats.type(f), srcOffset);
@@ -347,6 +360,7 @@ public final class GLEncoder implements CgCommandList {
         outsidePass("readTexture");
         GLTexture t = (GLTexture) src;
         CgFormat f = t.desc().format();
+        tight();
         gl.glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
         gl.glGetTextureSubImage(t.name, r.mip(), r.x(), r.y(), r.z(), r.width(), r.height(), r.depth(), GLFormats.format(f),
                 GLFormats.type(f), out);
@@ -364,6 +378,7 @@ public final class GLEncoder implements CgCommandList {
         GLTexture t = (GLTexture) src;
         GLBuffer b = (GLBuffer) dst;
         CgFormat f = t.desc().format();
+        tight();
         gl.glBindBuffer(GL_PIXEL_PACK_BUFFER, b.name);
         gl.glGetTextureSubImage(t.name, r.mip(), r.x(), r.y(), r.z(), r.width(), r.height(), r.depth(), GLFormats.format(f),
                 GLFormats.type(f), (int) Math.min(Integer.MAX_VALUE, b.size() - dstOffset), dstOffset);
