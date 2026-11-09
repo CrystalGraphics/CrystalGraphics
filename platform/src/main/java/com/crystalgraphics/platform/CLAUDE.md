@@ -244,7 +244,7 @@ where a scope left open at `end()` was opened.
 
 `CgTrackedGLBackend` answers every `CgGLBackend` call on a `CgRHI` instead of a GL driver, so nothing above
 `CgGL` changes. Its devices are `CgNullRHI` in tests and `CgVulkanDevice` (`runtime/lwjgl/vulkan`,
-`plan/device-vulkan.md`), which the harness runs with `--device=vulkan`.
+`plan/device-vulkan.md`), which the harness runs with `--rhi=vulkan`.
 
 ```java
 CgTrackedGLBackend gl = new CgTrackedGLBackend(device, new ShadercGlslCompiler(), true);

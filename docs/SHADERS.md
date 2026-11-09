@@ -1822,7 +1822,7 @@ String glsl = kernel.glsl();                // the source it compiles from on th
   kernel on the driver.
 
 ```bash
-./gradlew :gl-debug-harness:runHarness --args="--mode=compute-tiers --seconds=5 --device=vulkan"
+./gradlew :gl-debug-harness:runHarness --args="--mode=compute-tiers --seconds=5 --rhi=vulkan"
 ./gradlew :gl-debug-harness:runHarness --args="--mode=gpu-ops --seconds=30"
 ./gradlew prodSmoke -PcgTargets=<labels> -PcgSmokeProps=crystalgraphics.compute.selfTest=true
 ```

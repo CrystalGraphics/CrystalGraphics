@@ -2243,7 +2243,7 @@ Harness gates (`./gradlew :gl-debug-harness:runHarness --args="--mode=<gate>"`, 
 | `vfx-range` | drawing by slot, and size over speed |
 | `vfx-forms` | module inputs and spawn values in forms: each form on the GPU against its Java evaluation |
 
-Each must pass at every forced tier (`-Dcrystalgraphics.compute.tier=G43|G40|G33`) and on `--device=vulkan`. Scenes to
+Each must pass at every forced tier (`-Dcrystalgraphics.compute.tier=G43|G40|G33`) and on `--rhi=vulkan`. Scenes to
 look at: `vfx-spheres` (the waves' lanes, `crystalgraphics.harness.vfx.moments` for a contact sheet of every moment),
 `vfx-showcase`, `vfx-modules` (a station per feature, below), `vfx-fluid` (gas and smoke: the ported engines' scenes,
 a smoke grenade, particles pushing fluids, grids, a mushroom cloud), `vfx-blasts` (360,000 particles), `vfx-lab` (CrystalGUI's

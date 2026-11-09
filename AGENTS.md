@@ -65,11 +65,11 @@ submodule (`gl-debug-harness/`, Java 25) and runs from CrystalGUI's root; author
 ```bash
 ./gradlew :gl-debug-harness:runHarness --args="--list"
 ./gradlew :gl-debug-harness:runHarness --args="--mode=forward-renderer"       # CgWorldRenderer through both world stages
-./gradlew :gl-debug-harness:runHarness --args="--mode=cgui-desktop --device=vulkan"  # any scene on the Vulkan device
+./gradlew :gl-debug-harness:runHarness --args="--mode=cgui-desktop --rhi=vulkan"  # any scene on the Vulkan device
 # Every scene: gl-debug-harness/AGENTS.md § Quick Start. Outputs land in gl-debug-harness/harness-output/{scene}/
 ```
 
-`--device=gl` (the default), `tracked` or `vulkan` picks what `CgGL` runs on. Scenes call no raw GL; writing
+`--rhi=gl` (the default) or `vulkan` picks the device. Scenes call no raw GL; writing
 and registering one is the harness's `AGENTS.md`.
 
 ---
@@ -101,7 +101,7 @@ runtime/mc/*     ← a host: registers a bundle over tier 1, adds what names Min
 
 **`CgGLBackend` is the seam, and `CgGL`'s 132 methods keep GL's semantics on every backend.** A GL backend
 calls the driver; `CgTrackedGLBackend` answers the same calls on a `CgRHI` — `CgVulkanDevice` in the
-harness's `--device=vulkan`, a recording device in tests. Three additions live inside a host on either:
+harness's `--rhi=vulkan`, a recording device in tests. Three additions live inside a host on either:
 `importHostTexture`, `fromHost`/`toHost` (the bracket around every host entry — nothing on GL), and
 `ownedByCurrentThread`. The platform guide has each, and the tracked backend's rules.
 

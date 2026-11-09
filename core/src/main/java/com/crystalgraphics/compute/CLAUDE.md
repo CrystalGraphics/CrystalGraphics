@@ -95,7 +95,7 @@ on every device against CPU-written data, subgroups native and emulated.
 (`crystalgraphics:shaders/env/compute/self_test.compute`), each result worked out in Java. It runs two ways:
 
 ```bash
-./gradlew :gl-debug-harness:runHarness --args="--mode=compute-tiers --device=vulkan"
+./gradlew :gl-debug-harness:runHarness --args="--mode=compute-tiers --rhi=vulkan"
 # any installed client, a frame or two after its first: run once with its reads requested, then again with them
 # answered (CgReplayedReads), so it never waits, Minecraft's Vulkan device included
 ./gradlew prodSmoke -PcgTargets=<labels> -PcgSmokeProps=crystalgraphics.compute.selfTest=true

@@ -450,7 +450,7 @@ CgExecutor.freeStorage(picture);   // the context is going away
 ## Gate scene
 
 `--mode=graph-executor-test` draws one picture through `CgQuadRenderer`, `CgImmediate`, and a frame recorded and built
-on a worker thread; the three PNGs in its output directory must be byte-identical, on `--device=gl` and `vulkan`.
+on a worker thread; the three PNGs in its output directory must be byte-identical, on `--rhi=gl` and `--rhi=vulkan`.
 `--mode=compute-graph` is the compute half: kernels, a history, an indirect dispatch and a raster pass in one frame
 built on a worker, matched against the CPU's picture, executed again too; with synchronization validation clean.
 `--mode=indirect-draw` is the indirect half: four indirect draws, one per mode and one past its mesh, each matched
