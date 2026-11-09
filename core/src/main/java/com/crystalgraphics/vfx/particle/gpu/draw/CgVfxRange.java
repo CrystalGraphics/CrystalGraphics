@@ -35,6 +35,7 @@ import com.crystalgraphics.vfx.particle.renderer.CgVfxMeshFacing;
 import com.crystalgraphics.vfx.scalability.CgVfxBudget;
 import org.joml.Matrix4f;
 import org.joml.Matrix4fc;
+import org.joml.Vector3f;
 import org.joml.Vector4f;
 
 import java.nio.ByteBuffer;
@@ -218,6 +219,8 @@ public final class CgVfxRange {
     }
 
     private static final Matrix4f VIEW_PROJECTION = new Matrix4f();
+    /** The eye from the host's camera position: 0 for Minecraft's camera-relative view, the camera for a whole one. */
+    private static final Vector3f EYE_AT = new Vector3f();
     private static final Vector4f PLANE = new Vector4f();
     private static ByteBuffer staging = ByteBuffer.allocate(0);
 
@@ -681,6 +684,7 @@ public final class CgVfxRange {
         int depthBits = anySorted ? DEPTH_BITS : 0;
         Matrix4fc projection = view.projection(), eye = view.view();
         Matrix4f vp = VIEW_PROJECTION;
+        Vector3f eyeAt = eye.originAffine(EYE_AT);
 
         CgComputePass pass = recording.compute("vfx.range").timed(GPU_RANGE).charged(CgVfxBudget.FRAME);
         boolean ordered = Ties.ordered();
@@ -755,7 +759,8 @@ public final class CgVfxRange {
                             .set("_FieldAt", p.record().word(CgVfxRecord.Tail.FIELD))
                             .bind("SLOTS", slots).bind("FACINGS", facings)
                             .set("_CamForward", -eye.m02(), -eye.m12(), -eye.m22(), 0f)
-                            .set("_CamUp", eye.m01(), eye.m11(), eye.m21(), 0f));
+                            .set("_CamUp", eye.m01(), eye.m11(), eye.m21(), 0f)
+                            .set("_EyeAt", eyeAt.x, eyeAt.y, eyeAt.z, 0f));
                 }
             }
             // Its ribbons, from the order Place just wrote (CgVfxRibbonGeneration).

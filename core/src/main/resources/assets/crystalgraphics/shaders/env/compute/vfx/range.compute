@@ -49,6 +49,7 @@ Properties {
     _Eye         ("Projection [2][2], [2][3], [3][2], [3][3]",       vec4)      = (-1, -1, 0, 0)
     _CamForward  ("The camera's forward, world axes",                vec4)      = (0, 0, -1, 0)
     _CamUp       ("The camera's up, world axes",                     vec4)      = (0, 1, 0, 0)
+    _EyeAt       ("The eye from the host's camera position: 0 for a camera-relative view", vec4) = (0, 0, 0, 0)
     _Pyramid     ("The scene's depth, CgGpuOps.depthPyramid's",      sampler2D) = "white"
     _PyramidSize ("Its width, height and levels; no levels, no test", vec4)     = (0, 0, 0, 0)
     // CgWorldVoxelWindow.PROPERTIES
@@ -323,7 +324,7 @@ void Objects() {
         if (_FieldAt >= 0 && (_Drawn & 32) == 0) turned = turned * range_quat(range_rotator(fieldTurn));
         vec3 size = r.place.w * r.scale.xyz * fieldScale * ORIGINS(lo).scale.xyz;
         mat3 model = _Sequence != 0 ? turned * mat3(vec3(size.x, 0.0, 0.0), vec3(0.0, size.y, 0.0), vec3(0.0, 0.0, size.z))
-                : range_facing(lo, -(SLOTS(lo).xyz + r.place.xyz), r.motion.xyz, spin, turned, size,
+                : range_facing(lo, _EyeAt.xyz - (SLOTS(lo).xyz + r.place.xyz), r.motion.xyz, spin, turned, size,
                         RECORDS(e * _RecordVectors + FX_RECORD_LIFE_SEED).y);
         o.model0 = vec4(model[0], 0.0);
         o.model1 = vec4(model[1], 0.0);
