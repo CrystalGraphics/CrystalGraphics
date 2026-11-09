@@ -82,7 +82,7 @@ public final class CgCanvasMaterials {
     private final CgMaterial[] made = new CgMaterial[KINDS * BLENDS.length];
     private CgMaterial curve, box, coverage, strokeCoverage, colourCoverage;
     /** The gradient and grid variants {@link #precache} keeps built; theirs, since a pipeline is a material's. */
-    private final List<CgMaterial> probes = new ArrayList<>();
+    private final List<CgMaterial> probes = new ArrayList<>(), glassProbes = new ArrayList<>();
 
     private CgCanvasMaterials(boolean screen) {
         this.screen = screen;
@@ -229,9 +229,10 @@ public final class CgCanvasMaterials {
         list.addPass(SCREEN.colourCoverage(), CgInstanceKind.CURVE);
         list.addPass(SCREEN.box(), CgInstanceKind.QUAD);
         for (CgMaterial probe : SCREEN.probes()) list.addPass(probe, CgInstanceKind.QUAD);
+        for (CgMaterial glass : WORLD.glassProbes()) list.addPass(glass, CgInstanceKind.QUAD);
     }
 
-    /** Every gradient and grid variant a screen draws, mask or none, linear or radial, and two of glass. */
+    /** Every gradient and grid variant a screen draws, mask or none, linear or radial, and its two of glass. */
     private synchronized List<CgMaterial> probes() {
         if (probes.isEmpty()) {
             for (int v = 0; v < 4; v++) {
@@ -245,17 +246,24 @@ public final class CgCanvasMaterials {
                 grid.toggleKeyword(CgCanvasGrid.WITH_MASK, v != 0);
                 probes.add(grid);
             }
-            // Frosted, and every layer on: CgCanvasGlass's defaults.
+            probes.addAll(glassProbes());
+        }
+        return probes;
+    }
+
+    /** Glass frosted, and with every layer on: CgCanvasGlass's defaults. */
+    private synchronized List<CgMaterial> glassProbes() {
+        if (glassProbes.isEmpty()) {
             for (int v = 0; v < 2; v++) {
                 CgMaterial glass = newGlass();
                 for (String layer : new String[] {CgCanvasGlass.WITH_REFRACTION, CgCanvasGlass.WITH_CHROMATIC,
                         CgCanvasGlass.WITH_SPECULAR, CgCanvasGlass.WITH_NOISE}) {
                     glass.toggleKeyword(layer, v != 0);
                 }
-                probes.add(glass);
+                glassProbes.add(glass);
             }
         }
-        return probes;
+        return glassProbes;
     }
 
     /** Forgets every instance, at a context's teardown: the material registry frees them. */
@@ -272,5 +280,6 @@ public final class CgCanvasMaterials {
         strokeCoverage = null;
         colourCoverage = null;
         probes.clear();
+        glassProbes.clear();
     }
 }

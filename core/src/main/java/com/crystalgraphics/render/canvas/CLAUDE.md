@@ -18,6 +18,7 @@ firing's camera. **Using it: [`docs/CANVAS.md`](../../../../../../../../docs/CAN
 | `CgInstanceRun.java` | One batcher's open run: breaks on material, its `changes()`, state, textures or a stale binding snapshot; seals into the recording or `CgImmediate` |
 | `CgCanvasMaterials.java` | The default materials, `SCREEN` and `WORLD`: image, mask, their 2D-array forms, curve, box, and screen coverage rasters; one shared instance per kind and blend, `newBox`/`newCurve` for a caller's own; the blend the material state's. Their shaders are `shaders/canvas/` (with `text.shader`), and `lib/canvas.glsl` |
 | `CgCanvasGradient.java`, `CgCanvasGrid.java`, `CgCanvasGlass.java` | A gradient (CSS's line or a radial, eight stops a draw), a grid and a pane of glass (its `Look` presets): each owns its material and packs its properties for the next quad. A thumbnail is no canvas draw: `CgGpuOps.shrink` |
+| `CgCanvasBackdrop.java` | What is behind a pane of glass: a copy of the pixels a quad covers and its blur, captured between the canvas's passes (`CgCanvas.breakPass`), on the screen or in the world. It owns the two textures |
 | `CgQuadRecord.java` | The quad record's float offsets, for code that bakes records itself (`CgTextBatch`, `CgWorldText`) |
 | `CgClipTable.java` | A recording's rounded clips (`#pragma cg_use clip`) |
 | `CgShapeTable.java` | A recording's box shapes, so every box is a quad of one pipeline (`#pragma cg_use shape`); `canvas.shapes()`, drawn by `CgCanvasMaterials.box()` |

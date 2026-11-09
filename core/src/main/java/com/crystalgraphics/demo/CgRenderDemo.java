@@ -113,7 +113,7 @@ public final class CgRenderDemo {
     private static final Logger LOGGER = LogManager.getLogger("CgRenderDemo");
 
     private static final String MODE = CgVar.text("crystalgraphics.demo", "", CgVar.DEV | CgVar.RESTART,
-            "false draws no world demo; a scene's name (blasts, beams, modules, fluid, blast, collision, lights, shadows) starts on it;"
+            "false draws no world demo; a scene's name (blasts, beams, modules, fluid, blast, collision, lights, shadows, glass) starts on it;"
                     + " empty on"
                     + " blasts.").get();
     private static final boolean ENABLED = !"false".equals(MODE);
@@ -185,6 +185,7 @@ public final class CgRenderDemo {
             new Kind("collision", 24, this::collision),
             new Kind("lights", 30, this::lights),
             new Kind("shadows", 22, this::shadows),
+            new Kind("glass", 22, this::glass),
     };
 
     private boolean installed;
@@ -569,6 +570,37 @@ public final class CgRenderDemo {
             @Override
             public String hud() {
                 return CgShadowsDemo.hud();
+            }
+        };
+    }
+
+    private Scene glass() {
+        if (labelFont == null) labelFont = CgDefaultFont.regular(48);
+        CgGlassDemo glass = new CgGlassDemo(labelFont);
+        return new Scene() {
+            @Override
+            public void submit(CgWorldRenderer world, CgHostView view, double x, double y, double z, double seconds) {
+                glass.submit(world, view, x, y, z, seconds);
+            }
+
+            @Override
+            public void precache() {
+                glass.precache();
+            }
+
+            @Override
+            public boolean ready() {
+                return glass.ready();
+            }
+
+            @Override
+            public void clear() {
+                glass.clear();
+            }
+
+            @Override
+            public void delete() {
+                glass.delete();
             }
         };
     }

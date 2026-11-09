@@ -468,6 +468,34 @@ public final class CgCanvas {
         closePass();
     }
 
+    /**
+     * The recording later chunks land in, for work recorded between its passes (a copy of what it drew, a compute
+     * pass): opens an armed canvas, lands what is drawn and ends the open pass. Null when it records nowhere.
+     *
+     * <pre>{@code
+     * CgRecording rec = canvas.breakPass();
+     * rec.copy(canvas.target(), x, y, w, h, picture, 0, 0, w, h, false);   // what was drawn so far
+     * canvas.quad(material).at(x, y).size(w, h).submit();                  // a new pass, loading the target
+     * }</pre>
+     */
+    @Nullable
+    public CgRecording breakPass() {
+        sealActive();
+        if (recording == null && source != null) {
+            Source s = source;
+            source = null;
+            s.open(this);
+        }
+        endPass();
+        return recording;
+    }
+
+    /** The texture later chunks draw into; null when it records nowhere. */
+    @Nullable
+    public CgGraphTexture target() {
+        return target;
+    }
+
     private void closePass() {
         pass.end();
         pass = null;

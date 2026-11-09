@@ -174,6 +174,7 @@ public final class CgQuadBatch {
         private final Vector3f scratchOrigin = new Vector3f();
         private final Vector3f scratchRight = new Vector3f();
         private final Vector3f scratchUp = new Vector3f();
+        private final float[] placed = new float[9];
 
         private Quad() {
             reset();
@@ -332,14 +333,10 @@ public final class CgQuadBatch {
         }
 
         /**
-         * Queues it into its canvas, where it lands with the items around it.
-         *
-         * @throws IllegalStateException without a material or a {@link #size}
+         * Where it lands in its canvas's space: its corner, then the edges across its width and down its height, nine
+         * floats from {@code out[0]}. What {@link CgCanvasBackdrop} projects to find the pixels a pane covers.
          */
-        public CgCanvas submit() {
-            if (material == null) throw new IllegalStateException("a quad with no material");
-            if (!sizeSet) throw new IllegalStateException("a quad needs size(width, height)");
-
+        void place(float[] out) {
             float ox = x, oy = y, oz = z;
             float rx = width, ry = 0f, rz = 0f;
             float ux = 0f, uy = height, uz = 0f;
@@ -359,6 +356,34 @@ public final class CgQuadBatch {
                 oy += (float) (anchorY - canvas.originY());
                 oz += (float) (anchorZ - canvas.originZ());
             }
+            out[0] = ox; out[1] = oy; out[2] = oz;
+            out[3] = rx; out[4] = ry; out[5] = rz;
+            out[6] = ux; out[7] = uy; out[8] = uz;
+        }
+
+        /** Its size, as {@link #size} set it. */
+        float width() {
+            return width;
+        }
+
+        float height() {
+            return height;
+        }
+
+        /**
+         * Queues it into its canvas, where it lands with the items around it.
+         *
+         * @throws IllegalStateException without a material or a {@link #size}
+         */
+        public CgCanvas submit() {
+            if (material == null) throw new IllegalStateException("a quad with no material");
+            if (!sizeSet) throw new IllegalStateException("a quad needs size(width, height)");
+
+            float[] p = placed;
+            place(p);
+            float ox = p[0], oy = p[1], oz = p[2];
+            float rx = p[3], ry = p[4], rz = p[5];
+            float ux = p[6], uy = p[7], uz = p[8];
 
             run.item(material, state, textures, textureUnits);
             run.spatial(spatial);

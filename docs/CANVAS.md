@@ -261,22 +261,34 @@ ruling.size(w, h).cell(16f * zoom, 16f * zoom).line(1f).color(0x30FFFFFF).radii(
 
 **Glass** is a pane over what is behind it: a blurred copy of the backdrop in its middle, the sharp copy bent through
 a lens at its bezel, saturated, tinted toward a colour's brightness and colour, lit at its rim and grained. Windows'
-acrylic and Mica, and Apple's liquid glass, are all settings of it. It is drawn by a `CgCanvasGlass`, which owns its
-material; the backdrop is yours: a copy of the target behind the pane and a blur of it.
+acrylic and Mica, and Apple's liquid glass, are all settings of it. On the screen or in the world: the backdrop is read
+where each pixel is, so a pane under any pose and any camera bends what is behind it. A `CgCanvasGlass` draws it and
+owns its material; a `CgCanvasBackdrop` captures and blurs what is behind it and owns those textures.
 
 ```java
 CgCanvasGlass pane = new CgCanvasGlass(CgCanvasMaterials.SCREEN);    // once, kept
+CgCanvasBackdrop backdrop = new CgCanvasBackdrop("mymod.glass");      // once, kept
 
 // Each frame, after what the pane covers is drawn:
 CgCanvasGlass.Look look = CgCanvasGlass.LIQUID;
-// ... capture the target behind the pane into `sharp`, then blur it by look.blur() into `blurred` (below) ...
-pane.size(w, h).radii(16, 16, 16, 16, 16, 16, 16, 16)
-    .backdrop(blurred, sharp)
-    .backdropMap(u0, v0, w / (float) texW, 0f, 0f, -h / (float) texH)   // the pane's corner and axes in their uv
-    .captureRect(cu0, cv0, cu1, cv1)                                     // the part of them it may sample
-    .look(look)
+CgQuadBatch.Quad quad = canvas.quad(pane.material()).at(x, y).size(w, h);     // built, not yet submitted
+pane.look(look).size(w, h).radii(16f)
+    .backdrop(backdrop.capture(canvas, quad, look.blur(), pane.reach()))     // what is behind that quad, blurred
     .apply();
-canvas.quad(pane.material()).at(x, y).size(w, h).submit();
+quad.submit();
+```
+
+**In the world** it is the same at a world stage, with `CgCanvasMaterials.WORLD` (depth-tested) and a look scaled to
+blocks: a look's lengths are pixels, and `scaled(f)` makes a block `1 / f` of them.
+
+```java
+CgRenderStage.WORLD_TRANSPARENT.register(100, frame -> {
+    CgCanvas canvas = frame.canvas();
+    CgCanvasGlass.Look look = CgCanvasGlass.FROSTED.scaled(1 / 32f);
+    CgQuadBatch.Quad quad = canvas.quad(pane.material()).world(x, y, z).pose(facing).at(-1f, -0.5f).size(2f, 1f);
+    pane.look(look).size(2f, 1f).radii(0.25f).backdrop(backdrop.capture(canvas, quad, look.blur(), pane.reach())).apply();
+    quad.submit();
+});
 ```
 
 The looks, each a different material rather than a different amount:
@@ -297,26 +309,20 @@ pane.look(CgCanvasGlass.ACRYLIC.withBlur(20f)).apply();            // a Look is 
 pane.lens(0f, 1f).specular(0f).noise(0f).apply();                  // frosted to the edge: those layers compile out
 ```
 
-- **The look's `blur()` is for whoever makes the blurred backdrop**, in pixels, three sigma: the glass samples
-  the blur it is given.
-- **The backdrop map is affine** from the pane's uv (0..1, top-left) to the backdrops': a rotated pane reads a
-  rotated patch. A capture of a framebuffer runs v upward, so its `uy` is negative.
-- **A lens samples past the pane's edge**, about `2.2 * bezel * (1 + 0.2 * chromatic)` pixels: capture that much
-  around it. Past the capture rect a tap folds back in once, as Chromium extends a backdrop.
-- Both backdrops hold premultiplied colour; the glass covers whatever is transparent in them.
+- **Capture after what should show through is drawn**, and submit the pane straight after: a capture ends the
+  canvas's pass and records a copy of the pixels the quad covers, padded by the blur and the lens's `reach()`, then
+  the blur. Panes take turns: each captures again, so the second sees the first through it.
+- **The blur is in the target's pixels**, whatever the look's other lengths are in: Skia's scale-then-blur on compute
+  (`CgGpuOps.blurScaled`), its edges mirrored as Chromium extends a backdrop.
+- **The backdrop's colour is what shows**; its alpha is not read. Past the captured rect a tap folds back in once.
+- In the linear HDR scene the blur runs linear and the colour work (saturation, tint, highlight) in sRGB, as on
+  the screen: a look reads the same in both.
 - A layer whose value is 0 (`ior` 1 or `bezel` 0, `chromatic`, `specular`, `noise`) is compiled out. One pane per
   drawer; `apply()` before each quad.
-
-**The blur** is the engine's (`CgGpuOps`, compute): Skia's scale-then-blur over the captured region, its edges
-mirrored, into a texture the source's size over 1, 2 or 4:
-
-```java
-float sigma = look.blur() / 3f;
-CgGraphTexture blurred = ...;                     // capture's size / CgGpuOps.blurScale(sigma), its format, kept
-CgComputePass pass = recording.compute("mymod.glass.blur");
-CgGpuOps.blurScaled(pass, capture, 0, capture.getHeight() - bandH, bandW, bandH, blurred, sigma, CgGpuOps.Edge.MIRROR);
-pass.end();
-```
+- **A backdrop composed by hand** (CrystalGUI lays its own layers over the scene): `backdrop.capture(recording, source,
+  w, h, type, x0, y0, x1, y1)`, draw into `backdrop.sharp()`, then `backdrop.blur(recording, px)`, and give the pane
+  `backdrop(backdrop, offsetX, offsetY, x0, y0, x1, y1)`: where the bound target's pixel (0, 0) is in the backdrop.
+- `--mode=canvas-glass` is the gate.
 
 ### Coverage into a texture
 

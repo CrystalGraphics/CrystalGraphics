@@ -9,33 +9,32 @@ import java.util.function.Consumer;
 /**
  * A pane of glass over what is behind it: a blurred and a sharp copy of the backdrop, refracted through a lens at the
  * bezel, saturated, tinted toward a colour's brightness and colour, lit at the rim and grained. Windows' acrylic with
- * a lens (the liquid glass look). Set it up for a box, then draw a quad over the box under {@link #material()}.
+ * a lens (the liquid glass look). On the screen or in the world: the backdrop is read where each pixel is, so any pose
+ * and any camera bends it right.
  *
  * <pre>{@code
- * CgCanvasGlass pane = new CgCanvasGlass(CgCanvasMaterials.SCREEN);   // once: it owns its material
+ * CgCanvasGlass pane = new CgCanvasGlass(CgCanvasMaterials.SCREEN);           // once: it owns its material
+ * CgCanvasBackdrop backdrop = new CgCanvasBackdrop("mymod.glass");            // once: it owns the textures
  *
- * pane.size(w, h).radii(12, 12, 12, 12, 12, 12, 12, 12)
- *     .backdrop(blurred, sharp)                                     // two copies of what is behind it
- *     .backdropMap(u0, v0, w / texW, 0f, 0f, -h / texH)             // where the box's corner and axes land in them
- *     .captureRect(cu0, cv0, cu1, cv1)                              // the part of them it may sample
- *     .look(CgCanvasGlass.LIQUID)                     // CLEAR, FROSTED, LIQUID, ACRYLIC, MICA, PRISM
+ * CgQuadBatch.Quad quad = canvas.quad(pane.material()).at(x, y).size(w, h);   // built, not yet submitted
+ * pane.look(CgCanvasGlass.LIQUID).size(w, h).radii(12f)
+ *     .backdrop(backdrop.capture(canvas, quad, CgCanvasGlass.LIQUID.blur(), pane.reach()))
  *     .apply();
- * canvas.quad(pane.material()).at(x, y).size(w, h).submit();
+ * quad.submit();
  *
  * pane.look(CgCanvasGlass.FROSTED).tint(0x40FFE0C0).apply();        // a preset, then a value of your own
  * pane.lens(0f, 1f).specular(0f).noise(0f).apply();                 // those layers compile out
  * }</pre>
  *
- * <p>A look's {@link Look#blur()} is the radius its blurred backdrop is made with: the glass samples the blur it is
- * given.</p>
+ * <p>In the world it is {@link CgCanvasMaterials#WORLD}'s, depth-tested, its lengths in blocks:
+ * {@code LIQUID.scaled(1 / 32f)} is the look with a block 32 of its pixels. {@link CgCanvasBackdrop} has the example.</p>
  *
  * <ul>
- *   <li>The backdrops are textures the caller made: a capture of the target behind the box and a blur of it. Both
- *       hold premultiplied colour, and the glass covers whatever is transparent in them.</li>
- *   <li>The map is affine, from the box's uv (0..1, top-left origin) to the backdrops' uv: a rotated box reads a
- *       rotated patch. A capture of a framebuffer runs v upward, so its {@code uy} is negative.</li>
- *   <li>A lens samples past the box's edge, by about {@code 2.2 * bezel * (1 + 0.2 * chromatic)}: capture that much
- *       around it. Past the capture rect a tap folds back in once.</li>
+ *   <li>Size, radii, bezel and rim width are in the units the quad is drawn in; a look's are pixels until
+ *       {@link Look#scaled}. Its {@link Look#blur()} is the backdrop's, in the target's pixels.</li>
+ *   <li>The backdrop's colour is what shows: its alpha is not read.</li>
+ *   <li>A lens samples past the box's edge, by {@link #reach()}: a backdrop captures that much around it. Past the
+ *       captured rect a tap folds back in once.</li>
  *   <li>{@link #apply} writes its material for the next quad; one instance per drawer.</li>
  *   <li>A layer whose value is 0 ({@code ior} 1 or {@code bezel} 0, {@code chromatic}, {@code specular},
  *       {@code noise}) is compiled out.</li>
@@ -79,6 +78,15 @@ public final class CgCanvasGlass {
             return new Look(blur, saturation, tint, luminosity, bezel, ior, chromatic, specular, glow, rim, rimWidth,
                     rimAmbient, noise);
         }
+
+        /**
+         * Its bezel and rim width times {@code unitsPerPixel}, for a box measured in other units than pixels: a pane in
+         * the world, a block {@code 1 / unitsPerPixel} of the look's pixels. The blur stays the target's pixels.
+         */
+        public Look scaled(float unitsPerPixel) {
+            return new Look(blur, saturation, tint, luminosity, bezel * unitsPerPixel, ior, chromatic, specular, glow,
+                    rim, rimWidth * unitsPerPixel, rimAmbient, noise);
+        }
     }
 
     /** A pane over a blur, a lens at its edge, lit and grained: what a pane is when nothing says otherwise. */
@@ -113,8 +121,9 @@ public final class CgCanvasGlass {
     private CgTexture blurred, sharp;
     private float width, height;
     private final float[] radii = new float[8];
-    private float u0, v0 = 1f, ux = 1f, vx, uy, vy = -1f;
-    private float cu0, cv0, cu1 = 1f, cv1 = 1f;
+    private int gridWidth = 1, gridHeight = 1;
+    private float offsetX, offsetY;
+    private int bx0, by0, bx1 = 1, by1 = 1;
     private int tintArgb = DEFAULT.tint();
     private float saturation = DEFAULT.saturation(), luminosity = DEFAULT.luminosity();
     private float bezel = DEFAULT.bezel(), ior = DEFAULT.ior(), chromatic = DEFAULT.chromatic();
@@ -147,26 +156,36 @@ public final class CgCanvasGlass {
         return this;
     }
 
-    /** The blurred and the sharp copy of what is behind it: the interior shows the first, the bezel the second. */
-    public CgCanvasGlass backdrop(CgTexture blurred, CgTexture sharp) {
-        this.blurred = blurred;
-        this.sharp = sharp;
+    /** The same radius at every corner. */
+    public CgCanvasGlass radii(float radius) {
+        return radii(radius, radius, radius, radius, radius, radius, radius, radius);
+    }
+
+    /** What is behind it, as {@code backdrop} last captured: drawn into the target it captured. */
+    public CgCanvasGlass backdrop(CgCanvasBackdrop backdrop) {
+        return backdrop(backdrop, 0f, 0f, backdrop.x0(), backdrop.y0(), backdrop.x1(), backdrop.y1());
+    }
+
+    /**
+     * What is behind it, drawn into another target than the one captured: where the bound target's pixel (0, 0) is in
+     * the backdrop's texels, and the rect of them it may sample, bottom-left. CrystalGUI's glass in a layer.
+     */
+    public CgCanvasGlass backdrop(CgCanvasBackdrop backdrop, float offsetX, float offsetY, int x0, int y0, int x1,
+                                  int y1) {
+        this.blurred = backdrop.blurred();
+        this.sharp = backdrop.sharp();
+        this.gridWidth = Math.max(1, backdrop.gridWidth());
+        this.gridHeight = Math.max(1, backdrop.gridHeight());
+        this.offsetX = offsetX;
+        this.offsetY = offsetY;
+        this.bx0 = x0; this.by0 = y0;
+        this.bx1 = x1; this.by1 = y1;
         return this;
     }
 
-    /** The box's uv origin in the backdrops' uv, and the uv steps across its width and down its height. */
-    public CgCanvasGlass backdropMap(float u0, float v0, float ux, float vx, float uy, float vy) {
-        this.u0 = u0; this.v0 = v0;
-        this.ux = ux; this.vx = vx;
-        this.uy = uy; this.vy = vy;
-        return this;
-    }
-
-    /** The part of the backdrops it may sample, in their uv: {@code (u0, vBottom, u1, vTop)}. */
-    public CgCanvasGlass captureRect(float u0, float vBottom, float u1, float vTop) {
-        this.cu0 = u0; this.cv0 = vBottom;
-        this.cu1 = u1; this.cv1 = vTop;
-        return this;
+    /** How far its lens samples past its edge, in its own units: what a backdrop captures around it. */
+    public float reach() {
+        return ior > 1.001f && bezel > 0f ? 2.2f * bezel * (1f + 0.2f * chromatic) : 0f;
     }
 
     /** Every value of {@code look} but its blur, which is the backdrop's maker's. */
@@ -242,13 +261,30 @@ public final class CgCanvasGlass {
     /** Writes it into its material, for the next quad. */
     public CgCanvasGlass apply() {
         if (blurred == null || sharp == null) throw new IllegalStateException("glass without a backdrop");
+        keywords();
+        material.applyProperties(writer);
+        return this;
+    }
+
+    /**
+     * Starts compiling the program its values now draw with, and answers whether it is built: a look precached ahead
+     * of its first pane. Render thread; poll it each frame until true.
+     *
+     * <pre>{@code
+     * boolean ready = pane.look(CgCanvasGlass.LIQUID).precache();
+     * }</pre>
+     */
+    public boolean precache() {
+        keywords();
+        return material.precache();
+    }
+
+    private void keywords() {
         boolean refracts = ior > 1.001f && bezel > 0f;
         material.toggleKeyword(WITH_REFRACTION, refracts);
         material.toggleKeyword(WITH_CHROMATIC, refracts && chromatic > 0f);
         material.toggleKeyword(WITH_SPECULAR, specular > 0f);
         material.toggleKeyword(WITH_NOISE, noise > 0f);
-        material.applyProperties(writer);
-        return this;
     }
 
     private void write(CgMaterialValues b) {
@@ -257,10 +293,11 @@ public final class CgCanvasGlass {
         b.vec4("_CornerRadiusX", radii[0], radii[2], radii[4], radii[6]);
         b.vec4("_CornerRadiusY", radii[1], radii[3], radii[5], radii[7]);
         b.vec2("_BoxSize", width, height);
-        b.vec2("_BackdropOrigin", u0, v0);
-        b.vec2("_BackdropAxisX", ux, vx);
-        b.vec2("_BackdropAxisY", uy, vy);
-        b.vec4("_CaptureRect", cu0, cv0, cu1, cv1);
+        b.vec2("_GridSize", gridWidth, gridHeight);
+        b.vec2("_TargetOffset", offsetX, offsetY);
+        // Half a texel in, so a bilinear tap never reaches past it.
+        b.vec4("_CaptureRect", (bx0 + 0.5f) / gridWidth, (by0 + 0.5f) / gridHeight, (bx1 - 0.5f) / gridWidth,
+                (by1 - 0.5f) / gridHeight);
         b.colorARGB("_Tint", tintArgb);
         b.set1f("_Saturation", saturation);
         b.set1f("_Luminosity", luminosity);

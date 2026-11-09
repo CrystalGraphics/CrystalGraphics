@@ -1,6 +1,7 @@
-// Liquid glass over a blurred and a sharp backdrop, set up by CgCanvasGlass.
+// Liquid glass over a blurred and a sharp backdrop, set up by CgCanvasGlass and CgCanvasBackdrop.
 //     refract -> pick blurred/sharp -> saturate -> luminosity -> tint -> specular -> noise -> SDF mask
-// Acrylic's order, refraction where a lens puts it. Each optional layer is a keyword.
+// Acrylic's order, refraction where a lens puts it. Each optional layer is a keyword. The backdrop is read where the
+// pixel is, so a pane under any pose and camera, the world's included, reads what is behind it.
 //
 // The refraction comes from a surface height profile across the bezel (height -> normal -> Snell's law -> offset),
 // not from the SDF distance, which gives a bevel rather than a lens.
@@ -22,34 +23,33 @@
 #include "crystalgraphics:shaders/lib/noise.glsl"
 #include "crystalgraphics:shaders/lib/color.glsl"
 
-Tags { "RenderType" = "Transparent" }
+// Target: the backdrop is a copy of the target, already in its encoding.
+Tags { "RenderType" = "Transparent" "ColorSpace" = "Target" }
 Queue = "Transparent"
 
 Properties {
     _MainTex   ("Blurred backdrop", sampler2D) = "white"
     _SharpTex  ("Sharp backdrop",   sampler2D) = "white"
-    // Where the element sits in the shared capture: an affine map, so a rotated element reads a rotated patch. v is
-    // inverted: framebuffers are bottom-left origin.
-    _BackdropOrigin ("uv of the element's origin", vec2) = (0.0, 1.0)
-    _BackdropAxisX  ("uv step across its width",   vec2) = (1.0, 0.0)
-    _BackdropAxisY  ("uv step down its height",    vec2) = (0.0, -1.0)
-    // WHAT IT MAY SAMPLE, (u0, vBottom, u1, vTop): its rect padded by the lens's reach and bounded by its clip.
+    _GridSize     ("The backdrops' size in texels",                  vec2) = (1.0, 1.0)
+    // Where the bound target's pixel (0, 0) is in the backdrops' texels: 0 when drawn into the target captured.
+    _TargetOffset ("The target's corner in the backdrops",           vec2) = (0.0, 0.0)
+    // What it may sample, (u0, v0, u1, v1) bottom-left: what was captured around it, half a texel in.
     _CaptureRect  ("u0,v0,u1,v1", vec4) = (0.0, 0.0, 1.0, 1.0)
 
     _CornerRadiusX ("Corner Radii X (TL,TR,BR,BL)", vec4) = (0.0, 0.0, 0.0, 0.0)
     _CornerRadiusY ("Corner Radii Y (TL,TR,BR,BL)", vec4) = (0.0, 0.0, 0.0, 0.0)
-    _BoxSize       ("Box Size (px)",                vec2) = (0.0, 0.0)
+    _BoxSize       ("Box size, in its quad's units", vec2) = (0.0, 0.0)
 
     _Tint       ("Tint (over the blur)", color) = (0.0, 0.0, 0.0, 0.0)
     _Saturation ("Saturation of backdrop", float) = 1.0
     // The share of the backdrop's brightness the tint's replaces: acrylic 0.96, Mica 1.0.
     _Luminosity ("Luminosity blend toward the tint", float) = 0.0
-    _Bezel      ("Bezel width (px)",       float) = 8.0
+    _Bezel      ("Bezel width, in the box's units", float) = 8.0
     _Ior        ("Index of refraction",    float) = 1.5
     _Specular   ("Specular strength",      float) = 0.0
     _Glow       ("Broad glow along the light axis", float) = 0.10
     _EdgeHighlight ("Thin rim band strength",       float) = 0.25
-    _EdgeWidth  ("Rim band width (px)",             float) = 3.0
+    _EdgeWidth  ("Rim band width, in the box's units", float) = 3.0
     _RimAmbient ("Rim ambient (0 directional, 1 even)", float) = 0.5
     _Chromatic  ("Chromatic aberration",            float) = 0.20
     _Noise      ("Grain amount",           float) = 0.0
@@ -93,9 +93,9 @@ Pass {
         return pow(max(0.0, 1.0 - t * t * t * t), 0.25);
     }
 
-    // The SDF's outward normal by central difference: no derivative builtins, which once reached a vertex stage.
-    vec2 cg_sdfGradient(vec2 p, vec2 halfSize) {
-        const float e = 1.0;
+    // The SDF's outward normal by central difference over e, about a pixel: no derivative builtins here, which once
+    // reached a vertex stage.
+    vec2 cg_sdfGradient(vec2 p, vec2 halfSize, float e) {
         float dx = sdf_rounded_box(p + vec2(e, 0.0), halfSize, _CornerRadiusX, _CornerRadiusY)
                  - sdf_rounded_box(p - vec2(e, 0.0), halfSize, _CornerRadiusX, _CornerRadiusY);
         float dy = sdf_rounded_box(p + vec2(0.0, e), halfSize, _CornerRadiusX, _CornerRadiusY)
@@ -103,17 +103,11 @@ Pass {
         return normalize(vec2(dx, dy) + vec2(1e-6, 0.0));
     }
 
-    // A backdrop sample un-premultiplied: a capture holds premultiplied colour. Floored at one 8-bit step.
-    vec4 cg_backdrop(sampler2D tex, vec2 uv) {
-        vec4 c = texture(tex, uv);
-        c.rgb /= max(c.a, 1.0 / 255.0);
-        return c;
-    }
-
-    // Element uv to backdrop uv through the element's pose. Mirrored once at the sampleable rect, as Chromium extends
-    // a backdrop: clamping smeared the edge's last column across the bezel; folding more than once striped it.
-    vec2 cg_backdropUv(vec2 uv) {
-        vec2 b = _BackdropOrigin + _BackdropAxisX * uv.x + _BackdropAxisY * uv.y;
+    // The backdrop's colour at a point in its texels: what shows, its alpha unread (a target's alpha is whatever its
+    // owner left). Mirrored once at the sampleable rect, as Chromium extends a backdrop: clamping smeared the edge's
+    // last column across the bezel; folding more than once striped it.
+    vec2 cg_backdropUv(vec2 px) {
+        vec2 b = px / _GridSize;
         vec2 lo = _CaptureRect.xy;
         vec2 size = max(_CaptureRect.zw - lo, vec2(1e-6));
         vec2 t = clamp((b - lo) / size, -1.0, 2.0);
@@ -121,9 +115,9 @@ Pass {
     }
 
     // One lens tap: sharp at the bezel, where the refraction is, blurred in the interior.
-    vec4 cg_lensTap(vec2 uv, float edge) {
-        vec2 b = cg_backdropUv(uv);
-        return mix(cg_backdrop(_SharpTex, b), cg_backdrop(_MainTex, b), smoothstep(0.0, 1.0, edge));
+    vec3 cg_lensTap(vec2 px, float edge) {
+        vec2 b = cg_backdropUv(px);
+        return mix(texture(_SharpTex, b).rgb, texture(_MainTex, b).rgb, smoothstep(0.0, 1.0, edge));
     }
 
     void vertex(out v2f o) {
@@ -139,6 +133,12 @@ Pass {
         float ramp = CG_QUAD_EDGE_ROTATED ? CG_QUAD_EDGE_FILTER : 1.0;
         vec2 halfSize = _BoxSize * 0.5;
         vec2 localPos = (uv - 0.5) * _BoxSize;
+        // The box's units per target pixel, each screen axis: its pose at this pixel, perspective included. Inverted,
+        // it carries the lens's offset from the box's units into pixels.
+        mat2 unitsPerPx = mat2(dFdx(localPos), dFdy(localPos));
+        float det = determinant(unitsPerPx);
+        mat2 pxPerUnit = abs(det) > 1e-12 ? inverse(unitsPerPx) : mat2(0.0);
+        vec2 px = gl_FragCoord.xy + _TargetOffset;
         float dist = sdf_rounded_box(localPos, halfSize, _CornerRadiusX, _CornerRadiusY);
         // Exactly one pixel of ramp, not sdf_coverage's two: glass replaces what is behind it, and a softer edge
         // let the unblurred backdrop bleed through every straight edge's last row.
@@ -153,7 +153,7 @@ Pass {
         float slope = 0.0;
 
 #if defined(WITH_REFRACTION) || defined(WITH_SPECULAR)
-        grad = cg_sdfGradient(localPos, halfSize);
+        grad = cg_sdfGradient(localPos, halfSize, max(0.5 * length(fwidth(localPos)), 1e-4));
         // The normal's tilt by central difference, clamped: at x = 0 it is unbounded.
         const float d = 0.02;
         slope = (cg_glassHeight(edge + d) - cg_glassHeight(edge - d)) / (2.0 * d);
@@ -166,23 +166,23 @@ Pass {
         float theta1 = atan(slope);
         float theta2 = asin(clamp(sin(theta1) / max(1.0, _Ior), -1.0, 1.0));
         float shift  = tan(theta1 - theta2) * bezel;
-        disp = grad * shift / max(vec2(1.0), _BoxSize);
+        disp = pxPerUnit * (grad * shift);
 #endif
 
 #ifdef WITH_CHROMATIC
         // Three taps at three displacement scales, one channel each: each wavelength refracts by its own angle. Red
         // bends most, blue least.
-        vec4 cR = cg_lensTap(uv + disp * (1.0 + 0.20 * _Chromatic), edge);
-        vec4 cG = cg_lensTap(uv + disp * (1.0 + 0.10 * _Chromatic), edge);
-        vec4 cB = cg_lensTap(uv + disp, edge);
-        vec4 c = vec4(cR.r, cG.g, cB.b, 1.0);
+        vec4 c = vec4(cg_lensTap(px + disp * (1.0 + 0.20 * _Chromatic), edge).r,
+                      cg_lensTap(px + disp * (1.0 + 0.10 * _Chromatic), edge).g,
+                      cg_lensTap(px + disp, edge).b, 1.0);
 #else
-        vec4 c = cg_lensTap(uv + disp, edge);
+        vec4 c = vec4(cg_lensTap(px + disp, edge), 1.0);
 #endif
 
-        // Opaque once un-premultiplied: a capture is transparent where nothing was drawn, and glass covers it. Its
-        // alpha is its shape, applied at the end.
-        c.a = 1.0;
+        // The colour work in sRGB, as a browser composites, so a look reads the same on the screen and in the linear HDR
+        // scene; the blur stays linear. Tinted in linear light, a 12% white pane came out 38% white.
+        bool linearScene = CG_LINEAR_SCENE;
+        if (linearScene) c.rgb = linear_to_srgb(max(c.rgb, vec3(0.0)));
 
         // A heavy blur greys the scene; saturation brings its colour back.
         float lum = luminance(c.rgb);
@@ -218,6 +218,7 @@ Pass {
 
         // The quad's colour tints rgb; its alpha scales the pane.
         c.rgb *= i.color.rgb;
+        if (linearScene) c.rgb = srgb_to_linear(max(c.rgb, vec3(0.0)));
         c.a = coverage * _LayerOpacity * CG_QUAD_OPACITY * i.color.a;
         fragColor = vec4(c.rgb, c.a * boxClip);
     }
