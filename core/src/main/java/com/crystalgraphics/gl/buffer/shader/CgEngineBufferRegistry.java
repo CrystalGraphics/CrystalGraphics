@@ -111,8 +111,9 @@ public final class CgEngineBufferRegistry {
                     return CgParameterCollection.glsl();
                 });
         // The text renderer's own block (projection, gamma, cut), a uniform block filled per renderer. Last, so the
-        // tokens before it keep their bindings.
-        register("text", CgTextMaterials::textData, "TEXT_DATA");
+        // tokens before it keep their bindings. Its env file is the text layer, which reads quad's and clip's slots.
+        register("text", CgTextMaterials::textData, "TEXT_DATA", "crystalgraphics:shaders/env/buffer/text.glsl",
+                "quad", "clip");
     }
 
     private CgEngineBufferRegistry() {}

@@ -773,7 +773,7 @@ public final class CgTextBatch {
                 float pxRange;
                 float u0, v0, u1, v1;
                 int rgba, atlasLayer;
-                // The instance's custom slots, as lib/text_layer.glsl lays them out.
+                // The instance's custom slots, as env/buffer/text.glsl lays them out.
                 float c0x = 0f, c0y = 0f, c0z = 0f, c0w = 0f, c1x = 0f, c1y = 0f, c1z = 0f, c1w = 0f, c2 = 0f;
                 // A glyph's quad shears about its baseline with the style's skew; a decoration's never does.
                 boolean sheared = false;

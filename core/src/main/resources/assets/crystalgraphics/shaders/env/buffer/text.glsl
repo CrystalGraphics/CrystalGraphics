@@ -24,7 +24,8 @@
 //   -5    either  (offsetU, offsetV, invSixSigmaU)   (invSixSigmaV, spreadU, spreadV, 0)          the rect
 // -4 and -5 sample nothing and are tested first. @see CgTextShadowPlan
 //
-// Needs cg_use quad, clip and text, and MSDF_MODE as the shader's own feature.
+// The text token's env file (cg_use text, which brings quad and clip): included after their declarations, which a
+// material's own #include is not. MSDF_MODE is the shader's own feature.
 
 #include "crystalgraphics:shaders/lib/texel.glsl"
 #include "crystalgraphics:shaders/lib/rect_blur.glsl"

@@ -1,5 +1,6 @@
 // The canvas's text: each layer of a text style on bitmap, MSDF and MTSDF glyphs (CgTextBatch), painted by a colour
-// or a gradient. The layer itself is lib/text_layer.glsl's, which a Text-domain material calls with its own paint.
+// or a gradient. The layer itself is cg_text_layer (env/buffer/text.glsl, cg_use text), which a Text-domain material calls with
+// its own paint.
 
 #type none
 #pragma cg_use quad
@@ -14,8 +15,6 @@
 // and its node is the label's object record, whose model matrix places it under the firing's view.
 #pragma cg_feature WORLD_LABEL
 #pragma cg_permutation MSDF_MODE WORLD_LABEL   // four fixed instances (CgTextMaterials), never toggled
-
-#include "crystalgraphics:shaders/lib/text_layer.glsl"
 
 Tags {
     "RenderType" = "Transparent"

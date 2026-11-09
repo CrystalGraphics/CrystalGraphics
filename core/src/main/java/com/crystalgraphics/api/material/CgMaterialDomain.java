@@ -24,7 +24,7 @@ public enum CgMaterialDomain {
     DECAL,
     /**
      * Paints a text style's layer (Unreal's UI domain, as a Slate font material): its program includes
-     * {@code lib/text_layer.glsl} and returns a colour, which the glyph's coverage multiplies afterwards.
+     * {@code env/buffer/text.glsl} and returns a colour, which the glyph's coverage multiplies afterwards.
      */
     TEXT;
 
