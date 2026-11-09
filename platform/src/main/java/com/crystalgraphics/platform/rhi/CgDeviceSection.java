@@ -17,6 +17,8 @@ package com.crystalgraphics.platform.rhi;
  * <ul>
  *   <li>Nothing goes through the other front between {@link #begin} and {@link #end}: its uploads and binds come
  *       before.</li>
+ *   <li>Sections nest: only the outermost hands the device over and back, so work that may land inside one (a texture's
+ *       upload) opens its own.</li>
  *   <li>Render thread.</li>
  * </ul>
  */
@@ -30,21 +32,31 @@ public final class CgDeviceSection {
     }
 
     private static volatile Host host;
+    private static int depth;
 
     private CgDeviceSection() {}
 
     /** Installs {@code h}; null when its device goes. */
     public static void install(Host h) {
         host = h;
+        depth = 0;
     }
 
     public static void begin() {
+        if (depth++ > 0) return;
         Host h = host;
         if (h != null) h.begin();
     }
 
     public static void end() {
+        if (depth == 0) throw new IllegalStateException("a device section ended that was not begun");
+        if (--depth > 0) return;
         Host h = host;
         if (h != null) h.end();
+    }
+
+    /** Whether a section is open now. */
+    public static boolean open() {
+        return depth > 0;
     }
 }

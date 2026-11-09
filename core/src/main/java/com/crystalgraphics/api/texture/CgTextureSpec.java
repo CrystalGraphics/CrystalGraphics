@@ -225,6 +225,15 @@ public final class CgTextureSpec {
      * the mipmap-aware filters and {@code glGenerateMipmap} is called.</p>
      */
     public void applyTo(int target) {
+        applySampling(target);
+        if (mipmaps != null && mipmaps.isEnabled()) CgGL.glGenerateMipmap(target);
+    }
+
+    /**
+     * {@link #applyTo}'s parameters without generating mipmaps: for a texture whose device makes its chain, sampled
+     * through {@code CgGL} by name.
+     */
+    public void applySampling(int target) {
         CgGL.glTexParameteri(target, CgGL.GL_TEXTURE_MIN_FILTER, minFilter);
         CgGL.glTexParameteri(target, CgGL.GL_TEXTURE_MAG_FILTER, magFilter);
         CgGL.glTexParameteri(target, CgGL.GL_TEXTURE_WRAP_S, wrapS);
@@ -238,11 +247,9 @@ public final class CgTextureSpec {
             CgGL.glTexParameteri(target, CgGL.GL_TEXTURE_COMPARE_MODE, compareMode);
             CgGL.glTexParameteri(target, CgGL.GL_TEXTURE_COMPARE_FUNC, compareFunc);
         }
-        // Mipmap — override min/mag filter and generate mip chain
         if (mipmaps != null && mipmaps.isEnabled()) {
             CgGL.glTexParameteri(target, CgGL.GL_TEXTURE_MIN_FILTER, mipmaps.getMinFilter());
             CgGL.glTexParameteri(target, CgGL.GL_TEXTURE_MAG_FILTER, mipmaps.getMagFilter());
-            CgGL.glGenerateMipmap(target);
         }
     }
 }

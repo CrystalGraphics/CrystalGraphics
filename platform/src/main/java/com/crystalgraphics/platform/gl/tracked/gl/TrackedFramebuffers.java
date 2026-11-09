@@ -1,5 +1,6 @@
 package com.crystalgraphics.platform.gl.tracked.gl;
 
+import com.crystalgraphics.platform.gl.format.GLPixels;
 import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.rhi.command.CgAccess;
 import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
@@ -148,7 +149,7 @@ public final class TrackedFramebuffers {
         if (r.image != null) tracker.release(r.image);
         int s = Math.max(1, Math.min(samples, device.globals().limits().maxSamples()));
         r.image = device.createTexture(new CgGpuTexture.Desc("renderbuffer " + r.name, CgGpuTexture.Kind.D2,
-                GlPixels.device(internalFormat), width, height, 1, 1, s,
+                GLPixels.device(internalFormat), width, height, 1, 1, s,
                 EnumSet.of(CgGpuTexture.Usage.ATTACHMENT, CgGpuTexture.Usage.COPY_SRC, CgGpuTexture.Usage.COPY_DST)));
     }
 
@@ -312,22 +313,22 @@ public final class TrackedFramebuffers {
 
     // ── status and queries ─────────────────────────────────────────────────────
 
-    /**
     /** Where {@link #barrier(int, int, int, Moves)} puts each attachment's move. */
     public interface Moves {
         void texture(CgGpuTexture texture, int baseMip, int mips, int baseLayer, int layers, int from, int to);
     }
 
+    /**
      * A transition of framebuffer {@code name}'s draw attachments as attached, 0 the window's; the depth-stencil's
      * with {@link CgAccess#COLOR_WRITE} read as {@link CgAccess#DEPTH_WRITE}.
      */
     public void barrier(int name, int from, int to) {
-        if (name != 0 && !fbos.exists(name)) {
         barrier(name, from, to, tracker::textureBarrier);
     }
 
     /** {@link #barrier(int, int, int)}'s moves into {@code out}: a frame graph's own batch. */
     public void barrier(int name, int from, int to, Moves out) {
+        if (name != 0 && !fbos.exists(name)) {
             errors.invalidValue("cgFramebufferBarrier: " + name + " was never generated");
             return;
         }
@@ -509,14 +510,14 @@ public final class TrackedFramebuffers {
     }
 
     /** {@code glReadPixels} into client memory: read back, then GL's pack. */
-    public void readPixels(int x, int y, int width, int height, int format, int type, GlPixels.Store pack, ByteBuffer out) {
+    public void readPixels(int x, int y, int width, int height, int format, int type, GLPixels.Store pack, ByteBuffer out) {
         CgTarget src = target(read);
         if (src == null) { errors.invalidFramebufferOperation("glReadPixels with nothing attached"); return; }
         CgTextureView v = format == CgGL.GL_DEPTH_COMPONENT ? src.depth() : readView(src);
         CgFormat f = v.texture().desc().format();
         ByteBuffer texels = ByteBuffer.allocateDirect(width * height * f.bytes()).order(ByteOrder.nativeOrder());
         tracker.transfer().readTexture(v.texture(), new CgTextureRegion(v.baseMip(), x, y, v.baseLayer(), width, height, 1), texels);
-        GlPixels.pack(texels, f, width, height, format, type, pack, out);
+        GLPixels.pack(texels, f, width, height, format, type, pack, out);
     }
 
     /** {@code glReadPixels} into the pixel-pack buffer, without waiting: only where GL's layout is the device's texels. */
@@ -527,7 +528,7 @@ public final class TrackedFramebuffers {
         if (src == null) { errors.invalidFramebufferOperation("glReadPixels with nothing attached"); return; }
         CgTextureView v = readView(src);
         CgFormat f = v.texture().desc().format();
-        if (!GlPixels.sameLayout(format, type, f)) throw new UnsupportedOperationException("glReadPixels of " + f + " into a buffer as 0x"
+        if (!GLPixels.sameLayout(format, type, f)) throw new UnsupportedOperationException("glReadPixels of " + f + " into a buffer as 0x"
                 + Integer.toHexString(format) + "/0x" + Integer.toHexString(type));
         CgAllocation a = pbo.storage.allocation();
         tracker.transfer().copyTextureToBuffer(v.texture(), new CgTextureRegion(v.baseMip(), x, y, v.baseLayer(), width, height, 1),

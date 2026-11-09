@@ -214,6 +214,24 @@ public final class CgUploadLease implements Runnable {
         CgGL.glBufferSubData(target, to, at());
     }
 
+    /** Engine: the unpack buffer holding it, a {@code CgGL} name; 0 where it is direct memory. */
+    public int unpackBuffer() {
+        return block.buffer;
+    }
+
+    /** Engine: where in {@link #unpackBuffer} it starts. */
+    public int unpackOffset() {
+        return offset;
+    }
+
+    /** Engine, render thread: {@code length} of its bytes from byte {@code from}, for a device's write to read. */
+    public ByteBuffer range(int from, int length) {
+        ByteBuffer m = at();
+        m.position(offset + from);
+        m.limit(offset + from + length);
+        return m;
+    }
+
     /** Lands it through its sink, then gives it back: what the deferral runs. */
     @Override
     public void run() {
@@ -233,14 +251,6 @@ public final class CgUploadLease implements Runnable {
         this.size = size;
         this.exposed = null;
         this.sink = null;
-    }
-
-    /** The block's memory positioned at byte {@code from} of this lease, {@code length} bytes. */
-    private ByteBuffer range(int from, int length) {
-        ByteBuffer m = at();
-        m.position(offset + from);
-        m.limit(offset + from + length);
-        return m;
     }
 
     /** The block's memory positioned at this lease, limited to it. */

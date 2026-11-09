@@ -1,7 +1,10 @@
 package com.crystalgraphics.gl.texture;
 
 
+import com.crystalgraphics.platform.rhi.CgDeviceSection;
+import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
+import com.crystalgraphics.platform.rhi.resource.CgTextureRegion;
 import com.crystalgraphics.platform.gl.format.GLFormats;
 import com.crystalgraphics.gl.CgGlNames;
 import com.crystalgraphics.api.texture.CgTexture;
@@ -164,7 +167,7 @@ public final class CgTexture2DArray extends CgTextureAbstract {
 
         CgTexture2DArray tex = new CgTexture2DArray(width, height, layers, spec, null);
         tex.gpu.run(() -> {
-            tex.textureId = CgGlNames.texture();
+            if (tex.image == null && !CgDeviceTextures.installed()) tex.textureId = CgGlNames.texture();
             tex.reallocateStorage(layers);
             tex.storageDepth = layers;
         });
@@ -214,7 +217,7 @@ public final class CgTexture2DArray extends CgTextureAbstract {
         synchronized (this) {
             mirrorFloatUpload(layer, x, y, w, h, format, data);
         }
-        if (gpu.immediate()) {
+        if (gpu.immediate() && !CgDeviceTextures.installed()) {   // the device's write takes bytes: a lease below
             try (CgGlScope restore = gpu.restoring()) {
                 uploadFloats(layer, x, y, w, h, format, type, data);
             }
@@ -225,6 +228,11 @@ public final class CgTexture2DArray extends CgTextureAbstract {
 
     /** A queued layer region, from its lease. Not taken from callers: the CPU mirror needs a source it can read. */
     private void land(CgUploadLease lease) {
+        if (image != null) {
+            CgDeviceTextures.write(image, new CgTextureRegion(0, lease.x(), lease.y(), lease.z(), lease.width(),
+                    lease.height(), 1), lease, 0, lease.size());
+            return;
+        }
         CgGL.glBindTexture(GL_TEXTURE_2D_ARRAY, textureId);
         try (CgTightUnpack ignored = CgTightUnpack.begin()) {
             lease.texSubImage3D(GL_TEXTURE_2D_ARRAY);
@@ -312,10 +320,9 @@ public final class CgTexture2DArray extends CgTextureAbstract {
     // ── Grow ─────────────────────────────────────────────────────────────
 
     /**
-     * Grows this array's layer depth in place — same GL texture id, so every
-     * existing reference to this {@code CgTexture2DArray} instance (and every
-     * {@code sampler2DArray} binding already pointing at its id) keeps working
-     * with no rewiring.
+     * Grows this array's layer depth, its layers kept: every reference to this
+     * instance keeps working. On a device its storage is new, and with it its
+     * {@link #getId()}: read the id at each bind, never keep it.
      *
      * <p>GL has no "extend an array texture" call — {@code glTexImage3D} always
      * (re)defines a texture's storage from scratch, discarding whatever was
@@ -367,18 +374,16 @@ public final class CgTexture2DArray extends CgTextureAbstract {
 
     /** Grows the GL storage from {@code oldDepth} layers to {@code newLayerCount}, keeping its content and its id. */
     private void growStorage(int oldDepth, int newLayerCount) {
+        if (image != null) {
+            growOnDevice(oldDepth, newLayerCount);
+            return;
+        }
 
         // Preferred path: park the existing layers in a scratch texture, reallocate THIS texture
         // in place, then copy them back — both hops GPU-side, no CPU round trip.
         //
-        // Why the scratch texture rather than simply allocating a bigger texture and adopting
-        // it: this instance's GL texture id must not change. CgGlyphPlacement caches
-        // atlasTextureId per glyph and CgTextRenderer batches draws on it (see its sort-key
-        // packing), so swapping ids would leave every cached placement pointing at a texture
-        // that no longer exists. Reallocating in place keeps that invariant intact (it is why
-        // the class javadoc calls out "same texture id"), and the cost of the extra hop is
-        // negligible: two GPU-local copies versus a full CPU->GPU re-upload measured at
-        // 3.8ms -> 65.7ms and climbing with atlas size. The realloc itself is 0.01ms.
+        // In place rather than adopting a bigger texture: CgGL code keeps the name. Two GPU copies
+        // against a full re-upload measured 3.8 ms against 65.7 ms and climbing with atlas size.
         if (CgTextureCopy.isSupported()) {
             try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "texArray.growGpuCopy")) {
                 // Scratch goes through this class's own allocateEmpty rather than a raw
@@ -451,11 +456,38 @@ public final class CgTexture2DArray extends CgTextureAbstract {
     }
 
     /**
+     * {@link #growStorage} on the device: storage of {@code newLayerCount} layers, the old layers copied into it on the
+     * GPU, the old released. Its name changes with it; nothing keeps one past a {@link #getId()}.
+     */
+    private void growOnDevice(int oldDepth, int newLayerCount) {
+        CgGpuTexture old = storeOnDevice(CgGpuTexture.Kind.D2_ARRAY, GLFormats.of(spec.getGlInternalFormat()), width,
+                height, newLayerCount, 1, spec);
+        if (old == null) return;
+        int layers = Math.min(oldDepth, old.desc().depthOrLayers());
+        if (layers > 0) {
+            CgTextureRegion region = new CgTextureRegion(0, 0, 0, 0, width, height, layers);
+            CgDeviceSection.begin();
+            try {
+                CgRHI.get().encoder().copyTexture(old, region, image, region);
+            } finally {
+                CgDeviceSection.end();
+            }
+        }
+        CgDeviceTextures.release(old);
+        CgTrace.add(CgChannels.GL, "texArray.growGpuCopy.count", 1);
+    }
+
+    /**
      * Reallocates this texture's GL storage to {@code layerCount} layers, keeping the same GL
      * texture id (see {@link #growLayers}'s comment on why the id must not change). Discards
      * all existing texel content — the caller is responsible for restoring it.
      */
     private void reallocateStorage(int layerCount) {
+        if (CgDeviceTextures.installed()) {
+            CgDeviceTextures.release(storeOnDevice(CgGpuTexture.Kind.D2_ARRAY, GLFormats.of(spec.getGlInternalFormat()),
+                    width, height, layerCount, 1, spec));
+            return;
+        }
         CgGL.glBindTexture(GL_TEXTURE_2D_ARRAY, textureId);
         try {
             CgGL.glTexImage3D(GL_TEXTURE_2D_ARRAY, 0,
@@ -519,6 +551,17 @@ public final class CgTexture2DArray extends CgTextureAbstract {
     }
 
     private void uploadLayers(int w, int h, int format, ByteBuffer[] layers) {
+        if (CgDeviceTextures.installed()) {
+            int chain = mips();
+            CgDeviceTextures.release(storeOnDevice(CgGpuTexture.Kind.D2_ARRAY, GLFormats.of(spec.getGlInternalFormat()), w,
+                    h, layers.length, chain, spec));
+            for (int i = 0; i < layers.length; i++) {
+                CgDeviceTextures.write(image, new CgTextureRegion(0, 0, 0, i, w, h, 1), layers[i], format, GL_UNSIGNED_BYTE);
+            }
+            if (chain > 1) CgDeviceTextures.mipmaps(image);
+            storageDepth = layers.length;
+            return;
+        }
         boolean made = textureId == 0;
         if (made) textureId = CgGlNames.texture();
         CgGL.glBindTexture(GL_TEXTURE_2D_ARRAY, textureId);

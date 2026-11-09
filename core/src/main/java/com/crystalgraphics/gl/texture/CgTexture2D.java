@@ -14,6 +14,7 @@ import com.crystalgraphics.platform.gl.format.GLFormats;
 import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
 import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
+import com.crystalgraphics.platform.rhi.resource.CgTextureRegion;
 import com.crystalgraphics.util.io.CgBc7;
 import com.crystalgraphics.util.CgHalfFloat;
 import com.crystalgraphics.util.io.CgCookedTexture;
@@ -371,6 +372,10 @@ public final class CgTexture2D extends CgTextureAbstract {
                     pixelFormat, pixelType);
             return;
         }
+        if (image != null) {
+            CgDeviceTextures.write(image, CgTextureRegion.of2D(level, x, y, width, height), pixels, pixelFormat, pixelType);
+            return;
+        }
         try (CgGlScope restore = gpu.restoring()) {
             CgGL.glBindTexture(GL_TEXTURE_2D, textureId);
             try (CgTightUnpack ignored = CgTightUnpack.begin()) {
@@ -398,6 +403,11 @@ public final class CgTexture2D extends CgTextureAbstract {
     }
 
     private void land(CgUploadLease lease) {
+        if (image != null) {
+            CgDeviceTextures.write(image, CgTextureRegion.of2D(lease.level(), lease.x(), lease.y(), lease.width(),
+                    lease.height()), lease, 0, lease.size());
+            return;
+        }
         CgGL.glBindTexture(GL_TEXTURE_2D, textureId);
         try (CgTightUnpack ignored = CgTightUnpack.begin()) {
             lease.texSubImage2D(GL_TEXTURE_2D);
@@ -413,6 +423,10 @@ public final class CgTexture2D extends CgTextureAbstract {
     /** The whole image with its storage, the texture made first if it has no id yet; deleted again if that throws. */
     private void whole(int width, int height, @Nullable ByteBuffer pixels, @Nullable CgUploadLease lease,
                        int pixelFormat, int pixelType) {
+        if (CgDeviceTextures.installed()) {
+            wholeOnDevice(width, height, pixels, lease, pixelFormat, pixelType);
+            return;
+        }
         boolean made = textureId == 0;
         if (made) textureId = CgGlNames.texture();
         try {
@@ -424,6 +438,26 @@ public final class CgTexture2D extends CgTextureAbstract {
             }
             throw e;
         }
+    }
+
+    /**
+     * {@link #whole} on the device: storage of this size made where it has none of it, level 0 written, the chain made
+     * where the spec generates one.
+     */
+    private void wholeOnDevice(int width, int height, @Nullable ByteBuffer pixels, @Nullable CgUploadLease lease,
+                               int pixelFormat, int pixelType) {
+        int chain = spec.getMipmaps().isEnabled() ? CgTexture.fullChain(width, height) : levels;
+        store2D(GLFormats.of(spec.getGlInternalFormat()), width, height, chain, spec);
+        CgTextureRegion region = CgTextureRegion.of2D(0, 0, 0, width, height);
+        if (pixels != null) CgDeviceTextures.write(image, region, pixels, pixelFormat, pixelType);
+        else if (lease != null) CgDeviceTextures.write(image, region, lease, 0, lease.size());
+        if (spec.getMipmaps().isEnabled()) CgDeviceTextures.mipmaps(image);
+    }
+
+    /** {@link #storeOnDevice} of a 2D texture, what it replaced released and its level pin dropped. */
+    private void store2D(CgFormat format, int width, int height, int chain, CgTextureSpec sampling) {
+        CgDeviceTextures.release(storeOnDevice(CgGpuTexture.Kind.D2, format, width, height, 1, chain, sampling));
+        pinned = false;
     }
 
     /** Level 0 from {@code pixels}, or from {@code lease} into storage made empty; then the levels and the spec. */
@@ -563,6 +597,15 @@ public final class CgTexture2D extends CgTextureAbstract {
     }
 
     private void landCooked(CgUploadLease lease, int internal, boolean blocks, int[] at, int[] lengths) {
+        if (CgDeviceTextures.installed()) {
+            CgTextureSpec sampling = spec.getMipmaps().isEnabled() ? spec.toBuilder().mipmaps(CgMipmapConfig.NONE).build() : spec;
+            store2D(GLFormats.of(internal), lease.width(), lease.height(), at.length, sampling);
+            for (int l = 0; l < at.length; l++) {
+                int lw = Math.max(1, lease.width() >> l), lh = Math.max(1, lease.height() >> l);
+                CgDeviceTextures.write(image, CgTextureRegion.of2D(l, 0, 0, lw, lh), lease, at[l], lengths[l]);
+            }
+            return;
+        }
         boolean made = textureId == 0;
         if (made) textureId = CgGlNames.texture();
         CgGL.glBindTexture(GL_TEXTURE_2D, textureId);
@@ -620,6 +663,11 @@ public final class CgTexture2D extends CgTextureAbstract {
      * }</pre>
      */
     public void bindLevel(int unit, int level) {
+        if (CgBoundResources.notesOnly) {
+            if (level < 0 || level >= getLevels()) throw new IllegalArgumentException("level " + level + " of " + getLevels());
+            CgBoundResources.texture(unit, this, level);
+            return;
+        }
         CgTexture.active(unit);
         bindLevel(level);
         CgBoundResources.texture(unit, this, level);
@@ -663,8 +711,3 @@ public final class CgTexture2D extends CgTextureAbstract {
         return tex;
     }
 }
-        if (CgBoundResources.notesOnly) {
-            if (level < 0 || level >= getLevels()) throw new IllegalArgumentException("level " + level + " of " + getLevels());
-            CgBoundResources.texture(unit, this, level);
-            return;
-        }
