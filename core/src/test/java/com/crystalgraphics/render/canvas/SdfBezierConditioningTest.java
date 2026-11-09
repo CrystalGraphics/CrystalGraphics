@@ -1,4 +1,4 @@
-package com.crystalgraphics.gl.render;
+package com.crystalgraphics.render.canvas;
 
 import org.junit.Test;
 

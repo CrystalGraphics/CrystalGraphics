@@ -145,7 +145,7 @@ public final class CgPipelineList {
 
     /**
      * As {@link #addPass(String, String...)}, for a shader drawn on {@code kind}'s instances: a screen-space quad or curve
-     * material (a UI's), drawn through {@code CgQuadRenderer} or {@code CgVectorRenderer}.
+     * material (a UI's), drawn through {@code CgQuadBatch} or {@code CgCurveBatch}.
      *
      * <pre>{@code
      * pipelines.addPass("mymod:shaders/gui_panel.shader", CgInstanceKind.QUAD);        // its domain's combinations

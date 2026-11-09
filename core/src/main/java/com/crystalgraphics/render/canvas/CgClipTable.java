@@ -1,4 +1,4 @@
-package com.crystalgraphics.gl.render;
+package com.crystalgraphics.render.canvas;
 
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.buffer.CgBufferFormat;
@@ -26,7 +26,7 @@ import java.util.Arrays;
  *
  * // A 200x120 box under `pose`, 8px corners, a 1px border cut away.
  * int panel = clips.add(0, pose, targetHeight, 0, 0, 200, 120, EIGHTS, EIGHTS, ONES);
- * quadRenderer.quad().at(x, y).size(w, h).clip(panel).color(argb).submit();
+ * canvas.quad(material).at(x, y).size(w, h).clip(panel).color(argb).submit();
  *
  * // A card inside it, clipped by both.
  * int card = clips.add(panel, cardPose, targetHeight, 0, 0, 80, 40, FOURS, FOURS, null);

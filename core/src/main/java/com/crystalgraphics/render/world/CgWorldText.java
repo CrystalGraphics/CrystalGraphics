@@ -3,14 +3,14 @@ package com.crystalgraphics.render.world;
 import com.crystalgraphics.api.font.CgFont;
 import com.crystalgraphics.api.font.CgFontFamily;
 import com.crystalgraphics.api.text.CgTextLayout;
-import com.crystalgraphics.gl.render.CgQuadRenderer;
+import com.crystalgraphics.render.canvas.CgQuadRecord;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
 import com.crystalgraphics.render.draw.CgPrimitiveTable;
 import com.crystalgraphics.render.graph.CgBufferDesc;
 import com.crystalgraphics.render.graph.CgBufferUsage;
 import com.crystalgraphics.render.graph.CgGraphBuffer;
 import com.crystalgraphics.render.graph.CgLoad;
-import com.crystalgraphics.render.graph.CgPassRecorder;
+import com.crystalgraphics.render.canvas.CgCanvas;
 import com.crystalgraphics.render.graph.CgRecording;
 import com.crystalgraphics.render.stage.CgHostView;
 import com.crystalgraphics.render.stage.CgStageFrame;
@@ -46,8 +46,8 @@ public final class CgWorldText {
     /** Where a label's point sits on it: the middle of the block, its top or its bottom. */
     private static final float CENTRE = 0.5f;
 
-    private static final int RECORD = CgQuadRenderer.Record.FLOATS;
-    private static final int NODE = CgQuadRenderer.Record.NODE;
+    private static final int RECORD = CgQuadRecord.FLOATS;
+    private static final int NODE = CgQuadRecord.NODE;
     private static final int OBJECT = CgPrimitiveTable.FLOATS;
     /** The ranks a label's depth pass draws, from 0: the lines under the text, its outline, its fill, the lines over it. */
     private static final int TEXT_RANKS = 3;
@@ -59,7 +59,7 @@ public final class CgWorldText {
     private final List<Label> labels = new ArrayList<>();
     private int count;
     private final Consumer<CgTextRenderer.Draw> queue = this::submitted;
-    private final CgPassRecorder recorder = new CgPassRecorder();
+    private final CgCanvas recorder = new CgCanvas();
     private final Matrix4f projection = new Matrix4f();
     private final Matrix4f place = new Matrix4f();
     private final Vector3f eye = new Vector3f();

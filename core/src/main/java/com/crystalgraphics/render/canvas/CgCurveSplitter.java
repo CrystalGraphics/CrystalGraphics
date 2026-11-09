@@ -1,12 +1,12 @@
-package com.crystalgraphics.gl.render;
+package com.crystalgraphics.render.canvas;
 
 /**
- * CPU-side cubic → quadratic Bézier splitting for {@link CgVectorRenderer}, plus the colour
+ * CPU-side cubic → quadratic Bézier splitting for {@link CgCurveBatch}, plus the colour
  * interpolation that keeps a split curve's gradient continuous across segment boundaries.
  *
- * <h3>Why this is not just private methods on {@link CgVectorRenderer}</h3>
+ * <h3>Why this is not just private methods on {@link CgCurveBatch}</h3>
  * <p>It is pure maths with no GPU state, and it must stay <em>reachable without one</em>.
- * {@link CgVectorRenderer} holds a {@code static final CgShaderBuffer} that allocates against
+ * {@link CgCurveBatch} holds a {@code static final CgShaderBuffer} that allocates against
  * {@code CgBindingPoints} at class-init, so merely calling a static method on that class — even a
  * pure-maths one — initializes it and throws unless {@code CgEngineLifecycle.ensureGraphicsContext} has already run.
  * That is exactly why {@code CgEngineBufferRegistry} seeds the {@code curve} token with a method
@@ -55,8 +55,8 @@ final class CgCurveSplitter {
      * Worth remembering that a coverage test taking {@code max()} over segments cannot see it at all,
      * because {@code max} is not how the GPU composites overlapping instances.</p>
      *
-     * <p>Lives here rather than on {@code CgVectorRenderer} for the exact reason this whole class
-     * does: it is pure integer arithmetic, but calling ANY static method on {@code CgVectorRenderer}
+     * <p>Lives here rather than on {@code CgCurveBatch} for the exact reason this whole class
+     * does: it is pure integer arithmetic, but calling ANY static method on {@code CgCurveBatch}
      * forces its class-init, which allocates its static {@code CgShaderBuffer}. A GL-free test
      * calling {@code packCaps} directly hit exactly that {@code ExceptionInInitializerError}.</p>
      */

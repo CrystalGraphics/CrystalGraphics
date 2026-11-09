@@ -409,9 +409,17 @@ public final class CgBindingTable {
         return uploadedBuffer;
     }
 
+    /** How many times it was {@link #reset}: an id held across an unchanged count is still valid. */
+    public int resets() {
+        return resets;
+    }
+
+    private int resets;
+
     /** Forgets every snapshot; ids from before are invalid. */
     public void reset() {
         if (building >= 0) throw new IllegalStateException("reset() inside a snapshot");
+        resets++;
         for (int id = 0; id < Math.min(count, arenaSlots.length); id++) {
             if (arenaPinned[id]) {
                 CgBlockVersion v = arenaVersion(id);

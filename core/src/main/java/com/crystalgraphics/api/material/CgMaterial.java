@@ -184,6 +184,17 @@ public final class CgMaterial {
     /** Whether a block-backed property's value moved since the block was last packed. */
     private boolean materialPropsDirty = true;
 
+    /** Bumped by every call that may change what it draws: values, textures, keywords, buffers, blocks. */
+    private int changes;
+
+    /**
+     * How many times something that may change what it draws was set: a canvas starts a new draw where this moved, so
+     * a value set between two items takes effect at the second.
+     */
+    public int changes() {
+        return changes;
+    }
+
     /** The parse {@link #propStore} was built from: a new parse rebuilds it, keeping the values set. */
     @Nullable
     private CgParsedShader propsParse;
@@ -545,6 +556,7 @@ public final class CgMaterial {
      * @return this for chaining
      */
     public CgMaterial applyProperties(Consumer<CgMaterialValues> consumer) {
+        changes++;
         checkNotDeleted();
         // From the parse alone, so setting a property compiles nothing.
         syncPropsToParse();
@@ -623,6 +635,7 @@ public final class CgMaterial {
      * @throws IllegalArgumentException if {@code name} is not declared as a feature in this shader
      */
     public void enableKeyword(String name) {
+        changes++;
         checkNotDeleted();
         // The declared features are a parse product: validating a keyword compiles nothing.
         if (cgMaterialShader != null) cgMaterialShader.ensureParsed();
@@ -640,6 +653,7 @@ public final class CgMaterial {
      * @param name keyword name to disable
      */
     public void disableKeyword(String name) {
+        changes++;
         checkNotDeleted();
         enabledKeywords.remove(name);
     }
@@ -757,6 +771,7 @@ public final class CgMaterial {
      * @param name keyword name to query
      */
     public void toggleKeyword(String name, boolean enabled) {
+        changes++;
         if (enabled && !isKeywordEnabled(name)) enableKeyword(name);
         else if (!enabled && isKeywordEnabled(name)) disableKeyword(name);
     }
@@ -1100,6 +1115,7 @@ public final class CgMaterial {
      * @throws IllegalArgumentException if the shader declares no buffer {@code name}
      */
     public CgMaterial buffer(String name, CgBufferHandle buffer) {
+        changes++;
         checkNotDeleted();
         CgParsedShader parsed = cgMaterialShader == null ? null : cgMaterialShader.ensureParsed();
         if (parsed == null || parsed.buffer(name) == null) {
@@ -1168,6 +1184,7 @@ public final class CgMaterial {
      * <p>Captures only: a {@link #bind()} still reads the block itself.</p>
      */
     public CgMaterial overrideBlock(CgUniformBuffer block, CgBufferWriter contents) {
+        changes++;
         if (blockOverrides == null) blockOverrides = new IdentityHashMap<>();
         blockOverrides.put(block, contents);
         return this;
@@ -1309,7 +1326,7 @@ public final class CgMaterial {
         // No per-bind GL state scope here. Two independent reasons, both learned the hard way:
         //
         // 1. It CANNOT be a scope, because material bind/unbind is not last-in-first-out.
-        //    CgQuadRenderer.useMaterial calls bind() on every call but unbind() only when the material
+        //    CgQuadBatch.useMaterial calls bind() on every call but unbind() only when the material
         //    changes, and UI painting opens nested FBO/viewport scopes while a material is bound. A
         //    stack-based scope closed under those conditions throws "closed out of order" — which is
         //    exactly what happened when this was briefly reinstated. The old glGet-based version did not

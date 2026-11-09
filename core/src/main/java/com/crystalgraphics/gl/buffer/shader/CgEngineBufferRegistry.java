@@ -1,10 +1,10 @@
 package com.crystalgraphics.gl.buffer.shader;
 
 import com.crystalgraphics.api.material.CgParameterCollection;
-import com.crystalgraphics.gl.render.CgClipTable;
-import com.crystalgraphics.gl.render.CgShapeTable;
-import com.crystalgraphics.gl.render.CgQuadRenderer;
-import com.crystalgraphics.gl.render.CgVectorRenderer;
+import com.crystalgraphics.render.canvas.CgClipTable;
+import com.crystalgraphics.render.canvas.CgShapeTable;
+import com.crystalgraphics.render.canvas.CgQuadBatch;
+import com.crystalgraphics.render.canvas.CgCurveBatch;
 import com.crystalgraphics.render.property.CgPalette;
 import com.crystalgraphics.render.stage.CgDirectionalLights;
 import com.crystalgraphics.text.render.CgTextRenderer;
@@ -24,13 +24,13 @@ import java.util.function.Supplier;
  * <h3>Why an opt-in registry rather than {@code cg_env.glsl}</h3>
  * <p>{@code CgViewBlock} and {@code CgObjectDataBuffer} are declared unconditionally in
  * {@code cg_env.glsl} because effectively every shader wants them. A quad-instance buffer is not in
- * that class — only a small minority of shaders draw through {@code CgQuadRenderer} — so declaring it
+ * that class — only a small minority of shaders draw through {@code CgQuadBatch} — so declaring it
  * everywhere would bind it for shaders that never read it.</p>
  *
  * <p>The alternative that was in use before this registry — every caller remembering to call
- * {@code CgQuadRenderer.attachTo(material)} in Java — put the requirement arbitrarily far from the
+ * {@code CgQuadBatch.attachTo(material)} in Java — put the requirement arbitrarily far from the
  * shader that actually creates it, and failed in a way that pointed at the wrong thing entirely: the
- * buffer is only attached on a material's first {@code useMaterial()}, so anything that compiled the
+ * buffer is only attached on a material's first draw, so anything that compiled the
  * shader earlier (notably {@code CgMaterial.enableKeyword}, which recompiles on the spot when the
  * shader has not been parsed yet) produced GLSL with {@code QUAD_DATA} undeclared. The resulting
  * compile failure left the parsed feature list empty, and surfaced as
@@ -40,10 +40,10 @@ import java.util.function.Supplier;
  *
  * <h3>Built-ins are seeded here, by method reference</h3>
  * <p>Providers hold a {@link Supplier}, not a buffer, and the built-in {@code quad} entry below is
- * seeded with {@code CgQuadRenderer::instanceBuffer}. A method reference does <em>not</em> trigger
+ * seeded with {@code CgQuadBatch::instanceBuffer}. A method reference does <em>not</em> trigger
  * that class's static initialization, and {@code MACRO_NAME} is a compile-time constant that gets
  * inlined — so seeding the token costs nothing and, crucially, does not allocate
- * {@code CgQuadRenderer}'s shared buffer, which is only valid once {@code CgEngineLifecycle.ensureGraphicsContext}
+ * {@code CgQuadBatch}'s shared buffer, which is only valid once {@code CgEngineLifecycle.ensureGraphicsContext}
  * has run. The supplier is invoked at attach time, when a GL context exists.</p>
  *
  * <p>That laziness is why the table lives here rather than each provider registering from its own
@@ -63,9 +63,9 @@ public final class CgEngineBufferRegistry {
         register("palette", CgPalette::buffer, CgPalette.MACRO_NAME,
                 "crystalgraphics:shaders/env/buffer/palette.glsl");
         // A quad or curve is positioned through its spatial node, so either brings the palette with it.
-        register("quad", CgQuadRenderer::instanceBuffer, CgQuadRenderer.MACRO_NAME,
+        register("quad", CgQuadBatch::instanceBuffer, CgQuadBatch.MACRO_NAME,
                 "crystalgraphics:shaders/env/buffer/quad.glsl", "palette");
-        register("curve", CgVectorRenderer::instanceBuffer, CgVectorRenderer.MACRO_NAME,
+        register("curve", CgCurveBatch::instanceBuffer, CgCurveBatch.MACRO_NAME,
                 "crystalgraphics:shaders/env/buffer/curve.glsl", "palette");
         register("clip", CgClipTable::buffer, CgClipTable.MACRO_NAME,
                 "crystalgraphics:shaders/env/buffer/clip.glsl", "palette");

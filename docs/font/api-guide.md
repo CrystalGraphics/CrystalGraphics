@@ -252,4 +252,4 @@ width shape and wrap once.
 - **A draw can come out provisional** while glyphs are still being generated. A caller that paints only on
   damage compares `text.getDegradedDrawCount()` before and after, and asks for another frame if it rose.
 - **A renderer is made on the GL thread and used by one thread at a time.** Drawing immediately is the GL thread's;
-  a renderer recording into a sink (`sink(recorder)`) may draw from any thread, and layout from any thread at all.
+  a renderer drawing while a canvas records on its thread (`CgCanvas.current()`) may draw from any thread, and layout from any thread at all.

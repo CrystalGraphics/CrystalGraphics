@@ -20,7 +20,7 @@
  *
  * <h3>Batch Infrastructure</h3>
  * <p>{@link com.crystalgraphics.text.render.CgTextRenderer} owns a private
- * {@code CgQuadRenderer}. {@code beginBatch()}/{@code endBatch()} optionally batch multiple draws
+ * {@code CgQuadBatch}. {@code beginBatch()}/{@code endBatch()} optionally batch multiple draws
  * together; {@code draw()} otherwise auto-wraps itself standalone. There is a single
  * {@code draw()} entry point for both 2D UI text and 3D world-space text — which
  * {@code CgTextScaleResolver} strategy the {@code CgTextRenderContext} argument holds

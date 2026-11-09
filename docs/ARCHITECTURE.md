@@ -145,10 +145,10 @@ Every package guide (`CLAUDE.md`) under `src/main/java/com/crystalgraphics/`. Re
 | `api/state/CLAUDE.md` | `CgRenderState`, `CgDepthState`, `CgBlendState`, `CgCullState`, `CgStencilState`, `CgTextureState` (`CgGlSlot` moved to `platform.gl.state`) |
 | `gl/state/CLAUDE.md` | Nothing — the package is empty. Kept as a signpost to the state framework in `platform.gl` / `platform.gl.state`, and a record of what was removed |
 
-### Instanced renderers
+### The canvas
 | Path | What it covers |
 |---|---|
-| `gl/render/CLAUDE.md` | `CgQuadRenderer`, `CgVectorRenderer`, `CgInstanceRun`, `CgClipTable`, `CgShapeTable` |
+| `render/canvas/CLAUDE.md` | `CgCanvas`, `CgQuadBatch`, `CgCurveBatch`, `CgInstanceRun`, `CgClipTable`, `CgShapeTable` |
 
 ### Font / Text
 | Path | What it covers |

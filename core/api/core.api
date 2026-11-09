@@ -866,6 +866,7 @@ com/crystalgraphics/api/material/CgMaterial
   method public bindForPass (Lcom/crystalgraphics/api/material/CgRenderPassVariant;)V
   method public buffer (Ljava/lang/String;Lcom/crystalgraphics/render/draw/CgBufferHandle;)Lcom/crystalgraphics/api/material/CgMaterial;
   method public captureBindings (Lcom/crystalgraphics/render/draw/CgBindingTable;)I
+  method public changes ()I
   method public declaredKeywords ()Ljava/util/List;
   method public declaresBuffer (Ljava/lang/String;)Z
   method public delete ()V
@@ -6510,203 +6511,6 @@ com/crystalgraphics/gl/material/parse/CgShaderParser$V2fField
   method public,final equals (Ljava/lang/Object;)Z
   method public,final hashCode ()I
   method public,final toString ()Ljava/lang/String;
-com/crystalgraphics/gl/render/CgAbstractRenderer
-  access public,abstract
-  extends java/lang/Object
-  field protected begun Z
-  method protected onEnd ()V
-  method protected,abstract hasPendingWork ()Z
-  method protected,abstract onBegin ()V
-  method public <init> ()V
-  method public delete ()V
-  method public,abstract flush ()V
-  method public,final begin ()V
-  method public,final end ()V
-  method public,final isDirty ()Z
-com/crystalgraphics/gl/render/CgClipTable
-  access public,final
-  extends java/lang/Object
-  field public,static,final ENTRY_FLOATS I
-  field public,static,final MACRO_NAME Ljava/lang/String;
-  field public,static,final MAX_DEPTH I
-  field public,static,final NODE_FLOAT I
-  field public,static,final PARENT_FLOAT I
-  method public <init> ()V
-  method public add (IILorg/joml/Matrix4f;FFFFF[F[F[F)I
-  method public add (ILorg/joml/Matrix4f;FFFFF[F[F[F)I
-  method public addCopy ([FIII)I
-  method public addPixelRect (IIIIIIF)I
-  method public bindForDraw ()V
-  method public copyFrom (Lcom/crystalgraphics/gl/render/CgClipTable;)V
-  method public count ()I
-  method public node (I)I
-  method public parent (I)I
-  method public read (I[FI)V
-  method public reset ()V
-  method public,static buffer ()Lcom/crystalgraphics/gl/buffer/shader/CgShaderBuffer;
-com/crystalgraphics/gl/render/CgQuadRenderer
-  access public,final
-  extends com/crystalgraphics/gl/render/CgAbstractRenderer
-  field public,static,final MACRO_NAME Ljava/lang/String;
-  method public bindTexture (ILcom/crystalgraphics/api/texture/CgTexture;)Lcom/crystalgraphics/gl/render/CgQuadRenderer;
-  method public delete ()V
-  method public flush ()V
-  method public quad ()Lcom/crystalgraphics/gl/render/CgQuadRenderer$Quad;
-  method public records ([FIII)Lcom/crystalgraphics/gl/render/CgQuadRenderer;
-  method public retainedQuad ()Lcom/crystalgraphics/gl/render/CgQuadRenderer$Quad;
-  method public sink (Lcom/crystalgraphics/render/draw/CgChunkSink;)V
-  method public useMaterial (Lcom/crystalgraphics/api/material/CgMaterial;)Lcom/crystalgraphics/gl/render/CgQuadRenderer;
-  method public useMaterial (Lcom/crystalgraphics/api/material/CgMaterial;Lcom/crystalgraphics/api/state/CgRenderState;)Lcom/crystalgraphics/gl/render/CgQuadRenderer;
-  method public,static create ()Lcom/crystalgraphics/gl/render/CgQuadRenderer;
-  method public,static instanceBuffer ()Lcom/crystalgraphics/gl/buffer/shader/CgShaderBuffer;
-com/crystalgraphics/gl/render/CgQuadRenderer$Quad
-  access public,final
-  extends java/lang/Object
-  method public at (FF)Lcom/crystalgraphics/gl/render/CgQuadRenderer$Quad;
-  method public at (FFF)Lcom/crystalgraphics/gl/render/CgQuadRenderer$Quad;
-  method public atlasLayer (I)Lcom/crystalgraphics/gl/render/CgQuadRenderer$Quad;
-  method public clip (I)Lcom/crystalgraphics/gl/render/CgQuadRenderer$Quad;
-  method public color (I)Lcom/crystalgraphics/gl/render/CgQuadRenderer$Quad;
-  method public custom0 (FFFF)Lcom/crystalgraphics/gl/render/CgQuadRenderer$Quad;
-  method public custom0 (I)Lcom/crystalgraphics/gl/render/CgQuadRenderer$Quad;
-  method public custom1 (FFFF)Lcom/crystalgraphics/gl/render/CgQuadRenderer$Quad;
-  method public custom1 (I)Lcom/crystalgraphics/gl/render/CgQuadRenderer$Quad;
-  method public custom2 (F)Lcom/crystalgraphics/gl/render/CgQuadRenderer$Quad;
-  method public node (II)Lcom/crystalgraphics/gl/render/CgQuadRenderer$Quad;
-  method public pose (Lorg/joml/Matrix4f;)Lcom/crystalgraphics/gl/render/CgQuadRenderer$Quad;
-  method public size (FF)Lcom/crystalgraphics/gl/render/CgQuadRenderer$Quad;
-  method public submit ()Lcom/crystalgraphics/gl/render/CgQuadRenderer;
-  method public uv (FFFF)Lcom/crystalgraphics/gl/render/CgQuadRenderer$Quad;
-com/crystalgraphics/gl/render/CgQuadRenderer$Record
-  access public,final
-  extends java/lang/Object
-  field public,static,final ATLAS_LAYER I
-  field public,static,final CLIP I
-  field public,static,final COLOR I
-  field public,static,final CUSTOM0 I
-  field public,static,final CUSTOM1 I
-  field public,static,final CUSTOM2 I
-  field public,static,final FLOATS I
-  field public,static,final NODE I
-  field public,static,final ORIGIN I
-  field public,static,final RIGHT I
-  field public,static,final UP I
-  field public,static,final UV0 I
-  field public,static,final UV1 I
-com/crystalgraphics/gl/render/CgShapeTable
-  access public,final
-  extends java/lang/Object
-  field public,static,final BORDER I
-  field public,static,final ENTRY_FLOATS I
-  field public,static,final FIRST_SHAPE I
-  field public,static,final FLAT I
-  field public,static,final MACRO_NAME Ljava/lang/String;
-  field public,static,final NINE_SLICE I
-  field public,static,final PLAIN I
-  field public,static,final PREMULTIPLIED I
-  field public,static,final SPLIT_BORDER I
-  field public,static,final TEXTURE I
-  method public <init> ()V
-  method public addCopy ([FI)I
-  method public begin (IFF)Lcom/crystalgraphics/gl/render/CgShapeTable$Shape;
-  method public bindForDraw ()V
-  method public copyFrom (Lcom/crystalgraphics/gl/render/CgShapeTable;)V
-  method public count ()I
-  method public read (I[FI)V
-  method public reset ()V
-  method public,static buffer ()Lcom/crystalgraphics/gl/buffer/shader/CgShaderBuffer;
-com/crystalgraphics/gl/render/CgShapeTable$Shape
-  access public,final
-  extends java/lang/Object
-  method public <init> (Lcom/crystalgraphics/gl/render/CgShapeTable;)V
-  method public border (FFFFI)Lcom/crystalgraphics/gl/render/CgShapeTable$Shape;
-  method public border (FFFFIII)Lcom/crystalgraphics/gl/render/CgShapeTable$Shape;
-  method public end ()I
-  method public fill (I)Lcom/crystalgraphics/gl/render/CgShapeTable$Shape;
-  method public radii (FFFFFFFF)Lcom/crystalgraphics/gl/render/CgShapeTable$Shape;
-  method public slices (FFFFFFFFFFFFFFFFIIZ)Lcom/crystalgraphics/gl/render/CgShapeTable$Shape;
-com/crystalgraphics/gl/render/CgVectorRenderer
-  access public,final
-  extends com/crystalgraphics/gl/render/CgAbstractRenderer
-  field public,static,final CAP_ARROW I
-  field public,static,final CAP_BUTT I
-  field public,static,final CAP_ROUND I
-  field public,static,final CAP_SQUARE I
-  field public,static,final CELL_BOTTOM I
-  field public,static,final CELL_LEFT I
-  field public,static,final CELL_RIGHT I
-  field public,static,final CELL_TOP I
-  field public,static,final EDGE_NONE I
-  field public,static,final EDGE_P1_P2 I
-  field public,static,final EDGE_P2_P0 I
-  field public,static,final FEATHER_ANTIALIAS F
-  field public,static,final MACRO_NAME Ljava/lang/String;
-  field public,static,final MAX_CUBIC_SEGMENTS I
-  method public cell ()Lcom/crystalgraphics/gl/render/CgVectorRenderer$Cell;
-  method public curve ()Lcom/crystalgraphics/gl/render/CgVectorRenderer$Curve;
-  method public delete ()V
-  method public flush ()V
-  method public retainedCell ()Lcom/crystalgraphics/gl/render/CgVectorRenderer$Cell;
-  method public retainedCurve ()Lcom/crystalgraphics/gl/render/CgVectorRenderer$Curve;
-  method public retainedTriangle ()Lcom/crystalgraphics/gl/render/CgVectorRenderer$Triangle;
-  method public sink (Lcom/crystalgraphics/render/draw/CgChunkSink;)V
-  method public triangle ()Lcom/crystalgraphics/gl/render/CgVectorRenderer$Triangle;
-  method public useMaterial (Lcom/crystalgraphics/api/material/CgMaterial;)Lcom/crystalgraphics/gl/render/CgVectorRenderer;
-  method public useMaterial (Lcom/crystalgraphics/api/material/CgMaterial;Lcom/crystalgraphics/api/state/CgRenderState;)Lcom/crystalgraphics/gl/render/CgVectorRenderer;
-  method public,static create ()Lcom/crystalgraphics/gl/render/CgVectorRenderer;
-  method public,static instanceBuffer ()Lcom/crystalgraphics/gl/buffer/shader/CgShaderBuffer;
-com/crystalgraphics/gl/render/CgVectorRenderer$Cell
-  access public,final
-  extends java/lang/Object
-  method public clip (I)Lcom/crystalgraphics/gl/render/CgVectorRenderer$Cell;
-  method public color (I)Lcom/crystalgraphics/gl/render/CgVectorRenderer$Cell;
-  method public gradient (IIFFFF)Lcom/crystalgraphics/gl/render/CgVectorRenderer$Cell;
-  method public node (II)Lcom/crystalgraphics/gl/render/CgVectorRenderer$Cell;
-  method public points (FFFFFFFF)Lcom/crystalgraphics/gl/render/CgVectorRenderer$Cell;
-  method public pose (Lorg/joml/Matrix4f;)Lcom/crystalgraphics/gl/render/CgVectorRenderer$Cell;
-  method public softEdges (I)Lcom/crystalgraphics/gl/render/CgVectorRenderer$Cell;
-  method public submit ()Lcom/crystalgraphics/gl/render/CgVectorRenderer;
-com/crystalgraphics/gl/render/CgVectorRenderer$Curve
-  access public,final
-  extends java/lang/Object
-  method public cap (I)Lcom/crystalgraphics/gl/render/CgVectorRenderer$Curve;
-  method public cap (II)Lcom/crystalgraphics/gl/render/CgVectorRenderer$Curve;
-  method public clip (I)Lcom/crystalgraphics/gl/render/CgVectorRenderer$Curve;
-  method public color (I)Lcom/crystalgraphics/gl/render/CgVectorRenderer$Curve;
-  method public colors (II)Lcom/crystalgraphics/gl/render/CgVectorRenderer$Curve;
-  method public cubic (FFFFFFFF)Lcom/crystalgraphics/gl/render/CgVectorRenderer$Curve;
-  method public feather (F)Lcom/crystalgraphics/gl/render/CgVectorRenderer$Curve;
-  method public from (FF)Lcom/crystalgraphics/gl/render/CgVectorRenderer$Curve;
-  method public from (FFF)Lcom/crystalgraphics/gl/render/CgVectorRenderer$Curve;
-  method public line (FFFF)Lcom/crystalgraphics/gl/render/CgVectorRenderer$Curve;
-  method public node (II)Lcom/crystalgraphics/gl/render/CgVectorRenderer$Curve;
-  method public pose (Lorg/joml/Matrix4f;)Lcom/crystalgraphics/gl/render/CgVectorRenderer$Curve;
-  method public submit ()Lcom/crystalgraphics/gl/render/CgVectorRenderer;
-  method public to (FF)Lcom/crystalgraphics/gl/render/CgVectorRenderer$Curve;
-  method public to (FFF)Lcom/crystalgraphics/gl/render/CgVectorRenderer$Curve;
-  method public via (FF)Lcom/crystalgraphics/gl/render/CgVectorRenderer$Curve;
-  method public via (FFF)Lcom/crystalgraphics/gl/render/CgVectorRenderer$Curve;
-  method public width (F)Lcom/crystalgraphics/gl/render/CgVectorRenderer$Curve;
-  method public width (FF)Lcom/crystalgraphics/gl/render/CgVectorRenderer$Curve;
-com/crystalgraphics/gl/render/CgVectorRenderer$Triangle
-  access public,final
-  extends java/lang/Object
-  method public clip (I)Lcom/crystalgraphics/gl/render/CgVectorRenderer$Triangle;
-  method public color (I)Lcom/crystalgraphics/gl/render/CgVectorRenderer$Triangle;
-  method public cornerRadius (F)Lcom/crystalgraphics/gl/render/CgVectorRenderer$Triangle;
-  method public feather (F)Lcom/crystalgraphics/gl/render/CgVectorRenderer$Triangle;
-  method public gradient (IIFFFF)Lcom/crystalgraphics/gl/render/CgVectorRenderer$Triangle;
-  method public node (II)Lcom/crystalgraphics/gl/render/CgVectorRenderer$Triangle;
-  method public p0 (FF)Lcom/crystalgraphics/gl/render/CgVectorRenderer$Triangle;
-  method public p0 (FFF)Lcom/crystalgraphics/gl/render/CgVectorRenderer$Triangle;
-  method public p1 (FF)Lcom/crystalgraphics/gl/render/CgVectorRenderer$Triangle;
-  method public p1 (FFF)Lcom/crystalgraphics/gl/render/CgVectorRenderer$Triangle;
-  method public p2 (FF)Lcom/crystalgraphics/gl/render/CgVectorRenderer$Triangle;
-  method public p2 (FFF)Lcom/crystalgraphics/gl/render/CgVectorRenderer$Triangle;
-  method public points (FFFFFF)Lcom/crystalgraphics/gl/render/CgVectorRenderer$Triangle;
-  method public pose (Lorg/joml/Matrix4f;)Lcom/crystalgraphics/gl/render/CgVectorRenderer$Triangle;
-  method public silhouetteEdge (I)Lcom/crystalgraphics/gl/render/CgVectorRenderer$Triangle;
-  method public submit ()Lcom/crystalgraphics/gl/render/CgVectorRenderer;
 com/crystalgraphics/gl/shader/CgLinkWorker
   access public,final
   extends java/lang/Object
@@ -8907,6 +8711,218 @@ com/crystalgraphics/render/CgWarmBudget
   method public,static spend (J)V
   method public,static spendAfter (J)V
   method public,static start ()V
+com/crystalgraphics/render/canvas/CgCanvas
+  access public,final
+  extends java/lang/Object
+  field public,static,final MAX_SCISSORS I
+  method public <init> ()V
+  method public abandon ()V
+  method public add (Lcom/crystalgraphics/render/draw/CgDrawChunk;)V
+  method public arm (Lcom/crystalgraphics/render/canvas/CgCanvas$Source;)V
+  method public bindings ()Lcom/crystalgraphics/render/draw/CgBindingTable;
+  method public cell (Lcom/crystalgraphics/api/material/CgMaterial;)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Cell;
+  method public chunksTaken ()J
+  method public constants (Lcom/crystalgraphics/render/draw/CgPassConstants;)V
+  method public curve (Lcom/crystalgraphics/api/material/CgMaterial;)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Curve;
+  method public endPass ()V
+  method public flush ()V
+  method public noScissor ()V
+  method public origin (DDD)Lcom/crystalgraphics/render/canvas/CgCanvas;
+  method public pending ()Z
+  method public popScissor ()V
+  method public pushScissor (IFFFF)V
+  method public pushScissor (IIII)V
+  method public quad (Lcom/crystalgraphics/api/material/CgMaterial;)Lcom/crystalgraphics/render/canvas/CgQuadBatch$Quad;
+  method public quads (Lcom/crystalgraphics/api/material/CgMaterial;Lcom/crystalgraphics/api/state/CgRenderState;[FIII)Lcom/crystalgraphics/render/canvas/CgCanvas;
+  method public recordInto (Lcom/crystalgraphics/render/graph/CgRecording;Lcom/crystalgraphics/render/graph/CgGraphTexture;Lcom/crystalgraphics/render/graph/CgLoad;Lcom/crystalgraphics/render/draw/CgPassConstants;)V
+  method public recording ()Z
+  method public retainedCell ()Lcom/crystalgraphics/render/canvas/CgCurveBatch$Cell;
+  method public retainedCurve ()Lcom/crystalgraphics/render/canvas/CgCurveBatch$Curve;
+  method public retainedQuad ()Lcom/crystalgraphics/render/canvas/CgQuadBatch$Quad;
+  method public retainedTriangle ()Lcom/crystalgraphics/render/canvas/CgCurveBatch$Triangle;
+  method public scissor (IIII)V
+  method public stateChanges ()J
+  method public stop ()V
+  method public taken (J)Lcom/crystalgraphics/render/draw/CgDrawChunk;
+  method public triangle (Lcom/crystalgraphics/api/material/CgMaterial;)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Triangle;
+  method public view (IFF)V
+  method public,static current ()Lcom/crystalgraphics/render/canvas/CgCanvas;
+com/crystalgraphics/render/canvas/CgCanvas$Source
+  access public,abstract,interface
+  extends java/lang/Object
+  method public,abstract open (Lcom/crystalgraphics/render/canvas/CgCanvas;)V
+com/crystalgraphics/render/canvas/CgClipTable
+  access public,final
+  extends java/lang/Object
+  field public,static,final ENTRY_FLOATS I
+  field public,static,final MACRO_NAME Ljava/lang/String;
+  field public,static,final MAX_DEPTH I
+  field public,static,final NODE_FLOAT I
+  field public,static,final PARENT_FLOAT I
+  method public <init> ()V
+  method public add (IILorg/joml/Matrix4f;FFFFF[F[F[F)I
+  method public add (ILorg/joml/Matrix4f;FFFFF[F[F[F)I
+  method public addCopy ([FIII)I
+  method public addPixelRect (IIIIIIF)I
+  method public bindForDraw ()V
+  method public copyFrom (Lcom/crystalgraphics/render/canvas/CgClipTable;)V
+  method public count ()I
+  method public node (I)I
+  method public parent (I)I
+  method public read (I[FI)V
+  method public reset ()V
+  method public,static buffer ()Lcom/crystalgraphics/gl/buffer/shader/CgShaderBuffer;
+com/crystalgraphics/render/canvas/CgCurveBatch
+  access public,final
+  extends java/lang/Object
+  field public,static,final CAP_ARROW I
+  field public,static,final CAP_BUTT I
+  field public,static,final CAP_ROUND I
+  field public,static,final CAP_SQUARE I
+  field public,static,final CELL_BOTTOM I
+  field public,static,final CELL_LEFT I
+  field public,static,final CELL_RIGHT I
+  field public,static,final CELL_TOP I
+  field public,static,final EDGE_NONE I
+  field public,static,final EDGE_P1_P2 I
+  field public,static,final EDGE_P2_P0 I
+  field public,static,final FEATHER_ANTIALIAS F
+  field public,static,final MACRO_NAME Ljava/lang/String;
+  field public,static,final MAX_CUBIC_SEGMENTS I
+  method public,static instanceBuffer ()Lcom/crystalgraphics/gl/buffer/shader/CgShaderBuffer;
+com/crystalgraphics/render/canvas/CgCurveBatch$Cell
+  access public,final
+  extends java/lang/Object
+  method public clip (I)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Cell;
+  method public color (I)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Cell;
+  method public gradient (IIFFFF)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Cell;
+  method public material (Lcom/crystalgraphics/api/material/CgMaterial;)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Cell;
+  method public node (II)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Cell;
+  method public points (FFFFFFFF)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Cell;
+  method public pose (Lorg/joml/Matrix4f;)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Cell;
+  method public softEdges (I)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Cell;
+  method public state (Lcom/crystalgraphics/api/state/CgRenderState;)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Cell;
+  method public submit ()Lcom/crystalgraphics/render/canvas/CgCanvas;
+com/crystalgraphics/render/canvas/CgCurveBatch$Curve
+  access public,final
+  extends java/lang/Object
+  method public cap (I)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Curve;
+  method public cap (II)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Curve;
+  method public clip (I)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Curve;
+  method public color (I)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Curve;
+  method public colors (II)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Curve;
+  method public cubic (FFFFFFFF)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Curve;
+  method public feather (F)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Curve;
+  method public from (FF)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Curve;
+  method public from (FFF)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Curve;
+  method public line (FFFF)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Curve;
+  method public material (Lcom/crystalgraphics/api/material/CgMaterial;)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Curve;
+  method public node (II)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Curve;
+  method public pose (Lorg/joml/Matrix4f;)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Curve;
+  method public state (Lcom/crystalgraphics/api/state/CgRenderState;)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Curve;
+  method public submit ()Lcom/crystalgraphics/render/canvas/CgCanvas;
+  method public to (FF)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Curve;
+  method public to (FFF)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Curve;
+  method public via (FF)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Curve;
+  method public via (FFF)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Curve;
+  method public width (F)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Curve;
+  method public width (FF)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Curve;
+com/crystalgraphics/render/canvas/CgCurveBatch$Triangle
+  access public,final
+  extends java/lang/Object
+  method public clip (I)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Triangle;
+  method public color (I)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Triangle;
+  method public cornerRadius (F)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Triangle;
+  method public feather (F)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Triangle;
+  method public gradient (IIFFFF)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Triangle;
+  method public material (Lcom/crystalgraphics/api/material/CgMaterial;)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Triangle;
+  method public node (II)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Triangle;
+  method public p0 (FF)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Triangle;
+  method public p0 (FFF)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Triangle;
+  method public p1 (FF)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Triangle;
+  method public p1 (FFF)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Triangle;
+  method public p2 (FF)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Triangle;
+  method public p2 (FFF)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Triangle;
+  method public points (FFFFFF)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Triangle;
+  method public pose (Lorg/joml/Matrix4f;)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Triangle;
+  method public silhouetteEdge (I)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Triangle;
+  method public state (Lcom/crystalgraphics/api/state/CgRenderState;)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Triangle;
+  method public submit ()Lcom/crystalgraphics/render/canvas/CgCanvas;
+com/crystalgraphics/render/canvas/CgQuadBatch
+  access public,final
+  extends java/lang/Object
+  field public,static,final MACRO_NAME Ljava/lang/String;
+  method public,static instanceBuffer ()Lcom/crystalgraphics/gl/buffer/shader/CgShaderBuffer;
+com/crystalgraphics/render/canvas/CgQuadBatch$Quad
+  access public,final
+  extends java/lang/Object
+  method public at (FF)Lcom/crystalgraphics/render/canvas/CgQuadBatch$Quad;
+  method public at (FFF)Lcom/crystalgraphics/render/canvas/CgQuadBatch$Quad;
+  method public atlasLayer (I)Lcom/crystalgraphics/render/canvas/CgQuadBatch$Quad;
+  method public clip (I)Lcom/crystalgraphics/render/canvas/CgQuadBatch$Quad;
+  method public color (I)Lcom/crystalgraphics/render/canvas/CgQuadBatch$Quad;
+  method public custom0 (FFFF)Lcom/crystalgraphics/render/canvas/CgQuadBatch$Quad;
+  method public custom0 (I)Lcom/crystalgraphics/render/canvas/CgQuadBatch$Quad;
+  method public custom1 (FFFF)Lcom/crystalgraphics/render/canvas/CgQuadBatch$Quad;
+  method public custom1 (I)Lcom/crystalgraphics/render/canvas/CgQuadBatch$Quad;
+  method public custom2 (F)Lcom/crystalgraphics/render/canvas/CgQuadBatch$Quad;
+  method public material (Lcom/crystalgraphics/api/material/CgMaterial;)Lcom/crystalgraphics/render/canvas/CgQuadBatch$Quad;
+  method public node (II)Lcom/crystalgraphics/render/canvas/CgQuadBatch$Quad;
+  method public pose (Lorg/joml/Matrix4f;)Lcom/crystalgraphics/render/canvas/CgQuadBatch$Quad;
+  method public size (FF)Lcom/crystalgraphics/render/canvas/CgQuadBatch$Quad;
+  method public state (Lcom/crystalgraphics/api/state/CgRenderState;)Lcom/crystalgraphics/render/canvas/CgQuadBatch$Quad;
+  method public submit ()Lcom/crystalgraphics/render/canvas/CgCanvas;
+  method public texture (ILcom/crystalgraphics/api/texture/CgTexture;)Lcom/crystalgraphics/render/canvas/CgQuadBatch$Quad;
+  method public uv (FFFF)Lcom/crystalgraphics/render/canvas/CgQuadBatch$Quad;
+  method public world (DDD)Lcom/crystalgraphics/render/canvas/CgQuadBatch$Quad;
+com/crystalgraphics/render/canvas/CgQuadRecord
+  access public,final
+  extends java/lang/Object
+  field public,static,final ATLAS_LAYER I
+  field public,static,final CLIP I
+  field public,static,final COLOR I
+  field public,static,final CUSTOM0 I
+  field public,static,final CUSTOM1 I
+  field public,static,final CUSTOM2 I
+  field public,static,final FLOATS I
+  field public,static,final NODE I
+  field public,static,final ORIGIN I
+  field public,static,final RIGHT I
+  field public,static,final UP I
+  field public,static,final UV0 I
+  field public,static,final UV1 I
+com/crystalgraphics/render/canvas/CgShapeTable
+  access public,final
+  extends java/lang/Object
+  field public,static,final BORDER I
+  field public,static,final ENTRY_FLOATS I
+  field public,static,final FIRST_SHAPE I
+  field public,static,final FLAT I
+  field public,static,final MACRO_NAME Ljava/lang/String;
+  field public,static,final NINE_SLICE I
+  field public,static,final PLAIN I
+  field public,static,final PREMULTIPLIED I
+  field public,static,final SPLIT_BORDER I
+  field public,static,final TEXTURE I
+  method public <init> ()V
+  method public addCopy ([FI)I
+  method public begin (IFF)Lcom/crystalgraphics/render/canvas/CgShapeTable$Shape;
+  method public bindForDraw ()V
+  method public copyFrom (Lcom/crystalgraphics/render/canvas/CgShapeTable;)V
+  method public count ()I
+  method public read (I[FI)V
+  method public reset ()V
+  method public,static buffer ()Lcom/crystalgraphics/gl/buffer/shader/CgShaderBuffer;
+com/crystalgraphics/render/canvas/CgShapeTable$Shape
+  access public,final
+  extends java/lang/Object
+  method public <init> (Lcom/crystalgraphics/render/canvas/CgShapeTable;)V
+  method public border (FFFFI)Lcom/crystalgraphics/render/canvas/CgShapeTable$Shape;
+  method public border (FFFFIII)Lcom/crystalgraphics/render/canvas/CgShapeTable$Shape;
+  method public end ()I
+  method public fill (I)Lcom/crystalgraphics/render/canvas/CgShapeTable$Shape;
+  method public radii (FFFFFFFF)Lcom/crystalgraphics/render/canvas/CgShapeTable$Shape;
+  method public slices (FFFFFFFFFFFFFFFFIIZ)Lcom/crystalgraphics/render/canvas/CgShapeTable$Shape;
 com/crystalgraphics/render/draw/CgBatcher
   access public,final
   extends java/lang/Object
@@ -8955,6 +8971,7 @@ com/crystalgraphics/render/draw/CgBindingTable
   method public end ()I
   method public endUnique ()I
   method public reset ()V
+  method public resets ()I
   method public sampler (II)Lcom/crystalgraphics/api/texture/CgSampler;
   method public share (I)I
   method public size ()I
@@ -9025,11 +9042,6 @@ com/crystalgraphics/render/draw/CgChunkBuilder
   method public reset ()V
   method public sortKey (J)Lcom/crystalgraphics/render/draw/CgChunkBuilder;
   method public,static pooling (Lcom/crystalgraphics/render/draw/CgBindingTable;Lcom/crystalgraphics/render/draw/CgPrimitiveTable;)Lcom/crystalgraphics/render/draw/CgChunkBuilder;
-com/crystalgraphics/render/draw/CgChunkSink
-  access public,abstract,interface
-  extends java/lang/Object
-  method public,abstract add (Lcom/crystalgraphics/render/draw/CgDrawChunk;)V
-  method public,abstract bindings ()Lcom/crystalgraphics/render/draw/CgBindingTable;
 com/crystalgraphics/render/draw/CgDeviceSamplers
   access public,final
   extends java/lang/Object
@@ -9532,29 +9544,6 @@ com/crystalgraphics/render/graph/CgPass
   method public name ()Ljava/lang/String;
   method public target ()Lcom/crystalgraphics/render/graph/CgGraphTexture;
   method public toString ()Ljava/lang/String;
-com/crystalgraphics/render/graph/CgPassRecorder
-  access public,final
-  extends java/lang/Object
-  field public,static,final MAX_SCISSORS I
-  implements com/crystalgraphics/render/draw/CgChunkSink
-  method public <init> ()V
-  method public abandon ()V
-  method public add (Lcom/crystalgraphics/render/draw/CgDrawChunk;)V
-  method public bindings ()Lcom/crystalgraphics/render/draw/CgBindingTable;
-  method public chunksTaken ()J
-  method public constants (Lcom/crystalgraphics/render/draw/CgPassConstants;)V
-  method public endPass ()V
-  method public noScissor ()V
-  method public popScissor ()V
-  method public pushScissor (IFFFF)V
-  method public pushScissor (IIII)V
-  method public recordInto (Lcom/crystalgraphics/render/graph/CgRecording;Lcom/crystalgraphics/render/graph/CgGraphTexture;Lcom/crystalgraphics/render/graph/CgLoad;Lcom/crystalgraphics/render/draw/CgPassConstants;)V
-  method public recording ()Z
-  method public scissor (IIII)V
-  method public stateChanges ()J
-  method public stop ()V
-  method public taken (J)Lcom/crystalgraphics/render/draw/CgDrawChunk;
-  method public view (IFF)V
 com/crystalgraphics/render/graph/CgRasterPass
   access public,final
   extends com/crystalgraphics/render/graph/CgPass
@@ -9590,7 +9579,7 @@ com/crystalgraphics/render/graph/CgRecording
   method public bindings ()Lcom/crystalgraphics/render/draw/CgBindingTable;
   method public callback (Ljava/lang/String;Lcom/crystalgraphics/render/graph/CgGraphTexture;Ljava/lang/Runnable;[Lcom/crystalgraphics/render/graph/CgGraphTexture;)Lcom/crystalgraphics/render/graph/CgRequest;
   method public chunks ()Lcom/crystalgraphics/render/draw/CgChunkBuilder;
-  method public clips ()Lcom/crystalgraphics/gl/render/CgClipTable;
+  method public clips ()Lcom/crystalgraphics/render/canvas/CgClipTable;
   method public compile (Lcom/crystalgraphics/render/draw/CgPipeline;)Lcom/crystalgraphics/render/graph/CgRequest;
   method public compute (Ljava/lang/String;)Lcom/crystalgraphics/render/graph/CgComputePass;
   method public compute (Ljava/lang/String;Lcom/crystalgraphics/render/draw/CgPassConstants;)Lcom/crystalgraphics/render/graph/CgComputePass;
@@ -9617,7 +9606,7 @@ com/crystalgraphics/render/graph/CgRecording
   method public scratch (Ljava/lang/String;IILcom/crystalgraphics/api/framebuffer/CgFrameBufferFormat;)Lcom/crystalgraphics/render/graph/CgGraphTexture;
   method public scratch (Ljava/lang/String;JLcom/crystalgraphics/render/graph/CgBufferUsage;)Lcom/crystalgraphics/render/graph/CgGraphBuffer;
   method public seal ()Lcom/crystalgraphics/render/graph/CgRecording;
-  method public shapes ()Lcom/crystalgraphics/gl/render/CgShapeTable;
+  method public shapes ()Lcom/crystalgraphics/render/canvas/CgShapeTable;
   method public spatial ()Lcom/crystalgraphics/render/property/CgSpatialTree;
   method public update (Lcom/crystalgraphics/render/graph/CgGraphBuffer;JLjava/nio/ByteBuffer;)V
   method public update (Lcom/crystalgraphics/render/graph/CgGraphBuffer;J[FII)V
@@ -9654,12 +9643,12 @@ com/crystalgraphics/render/graph/CgReplay
   access public,final
   extends java/lang/Object
   method public <init> ()V
-  method public capture (Lcom/crystalgraphics/render/graph/CgPassRecorder;JLcom/crystalgraphics/render/graph/CgRecording;Lcom/crystalgraphics/render/draw/CgBindingTable;IIII)Z
+  method public capture (Lcom/crystalgraphics/render/canvas/CgCanvas;JLcom/crystalgraphics/render/graph/CgRecording;Lcom/crystalgraphics/render/draw/CgBindingTable;IIII)Z
   method public chunks ()I
   method public clear ()V
   method public differs (Lcom/crystalgraphics/render/graph/CgReplay;)Ljava/lang/String;
   method public kept ()Z
-  method public replay (Lcom/crystalgraphics/render/graph/CgPassRecorder;Lcom/crystalgraphics/render/graph/CgRecording;III)Z
+  method public replay (Lcom/crystalgraphics/render/canvas/CgCanvas;Lcom/crystalgraphics/render/graph/CgRecording;III)Z
 com/crystalgraphics/render/graph/CgRequest
   access public,final
   extends java/lang/Object
@@ -10725,6 +10714,7 @@ com/crystalgraphics/render/stage/CgStageFrame
   access public,final
   extends java/lang/Object
   method public callback (Ljava/lang/String;Ljava/lang/Runnable;)Lcom/crystalgraphics/render/graph/CgRequest;
+  method public canvas ()Lcom/crystalgraphics/render/canvas/CgCanvas;
   method public constants ()Lcom/crystalgraphics/render/draw/CgPassConstants;
   method public defaults (Lcom/crystalgraphics/render/draw/CgPassConstants;)Lcom/crystalgraphics/render/draw/CgPassConstants;
   method public depthPyramid ()Lcom/crystalgraphics/render/graph/CgGraphTexture;
@@ -14211,7 +14201,6 @@ com/crystalgraphics/text/render/CgTextRenderer
   method public queuedDraw (Ljava/util/function/Consumer;)Lcom/crystalgraphics/text/render/CgTextRenderer$Draw;
   method public restoreStateWith (Ljava/lang/Runnable;)Lcom/crystalgraphics/text/render/CgTextRenderer;
   method public retainedDraw ()Lcom/crystalgraphics/text/render/CgTextRenderer$Draw;
-  method public sink (Lcom/crystalgraphics/render/draw/CgChunkSink;)Lcom/crystalgraphics/text/render/CgTextRenderer;
   method public,static create ()Lcom/crystalgraphics/text/render/CgTextRenderer;
   method public,static createManualSized ()Lcom/crystalgraphics/text/render/CgTextRenderer;
   method public,static precache (Lcom/crystalgraphics/render/world/CgPipelineList;)V

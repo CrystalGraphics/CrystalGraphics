@@ -3,6 +3,7 @@ package com.crystalgraphics.render.graph;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.gl.material.CgMaterialTestSupport;
+import com.crystalgraphics.render.canvas.CgCanvas;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
 import com.crystalgraphics.render.draw.CgDrawChunk;
 import com.crystalgraphics.render.draw.CgInstanceKind;
@@ -227,7 +228,7 @@ public class CgFrameBuilderTest {
     @Test
     public void aScissorChainIsIssuedFromWhereItChanged() {
         CgRecording rec = new CgRecording();
-        CgPassRecorder recorder = new CgPassRecorder();
+        CgCanvas recorder = new CgCanvas();
         recorder.recordInto(rec, CgGraphTexture.requested("surface", DESC), CgLoad.load(), constants);
         recorder.pushScissor(0, 0, 64, 64);
         recorder.pushScissor(3, 0f, 0f, 20f, 20f);

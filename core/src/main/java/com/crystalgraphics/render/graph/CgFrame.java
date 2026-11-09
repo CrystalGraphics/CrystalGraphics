@@ -2,8 +2,8 @@ package com.crystalgraphics.render.graph;
 
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.mesh.CgMesh;
-import com.crystalgraphics.gl.render.CgClipTable;
-import com.crystalgraphics.gl.render.CgShapeTable;
+import com.crystalgraphics.render.canvas.CgClipTable;
+import com.crystalgraphics.render.canvas.CgShapeTable;
 import com.crystalgraphics.render.property.CgPalette;
 import com.crystalgraphics.render.property.CgPropertyValues;
 import com.crystalgraphics.render.draw.CgBindingTable;

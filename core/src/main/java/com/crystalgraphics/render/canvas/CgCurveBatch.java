@@ -1,18 +1,16 @@
-package com.crystalgraphics.gl.render;
+package com.crystalgraphics.render.canvas;
 
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.buffer.CgBufferFormat;
 import com.crystalgraphics.api.buffer.CgBufferLifetime;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.state.CgRenderState;
+import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.gl.buffer.shader.CgShaderBuffer;
 import com.crystalgraphics.gl.buffer.shader.CgShaderBufferRegistry;
 import com.crystalgraphics.gl.buffer.staging.CgBufferWriter;
 import com.crystalgraphics.gl.buffer.staging.CgStagingBuffer;
-import com.crystalgraphics.render.draw.CgChunkSink;
 import com.crystalgraphics.render.draw.CgInstanceKind;
-import com.crystalgraphics.trace.CgTrace;
-import com.crystalgraphics.util.trace.CgChannels;
 import com.crystalgraphics.api.buffer.CgGpuType;
 import com.crystalgraphics.render.property.CgPalette;
 import org.joml.Matrix4f;
@@ -23,7 +21,7 @@ import javax.annotation.Nullable;
 /**
  * Instanced 2D vector-primitive renderer — CrystalGraphics' general "hand me a few points and a
  * colour, and say whether to stroke or fill them" engine seam, and the vector-graphics counterpart
- * to {@link CgQuadRenderer}'s box-model one. Built on the same SSBO-backed instancing
+ * to {@link CgQuadBatch}'s box-model one. Built on the same SSBO-backed instancing
  * foundation and deliberately mirroring its API shape method-for-method.
  *
  * <h3>What it draws today is a list; what it IS is a shared record</h3>
@@ -41,7 +39,7 @@ import javax.annotation.Nullable;
  *
  * <p>That is the actual reason for the name, and the thing worth internalising before adding a
  * third capability: this class is not "the curve-and-triangle renderer" any more than {@link
- * CgQuadRenderer} is "the UI-box-and-text-glyph-and-rounded-rect renderer" — it is named for its
+ * CgQuadBatch} is "the UI-box-and-text-glyph-and-rounded-rect renderer" — it is named for its
  * <b>instance record</b> (a handful of points, a colour pair, a width pair, a feather, a flags
  * field), not for the enumerable set of things that happen to be drawn with it today. A stroke and
  * a fill are two <em>readings</em> of one schema; the next vector primitive this engine needs is
@@ -62,7 +60,7 @@ import javax.annotation.Nullable;
  * Splitting once on the CPU is both cheaper and exact.</p>
  *
  * <p>The class itself has already been renamed once, from {@code CgCurveRenderer} — an accurate
- * name right up until {@link #triangle()} made it not one. {@code CgVectorRenderer} was chosen over
+ * name right up until {@link #triangle()} made it not one. {@code CgCurveBatch} was chosen over
  * alternatives like {@code CgPathRenderer} or {@code CgShapeRenderer} specifically to name the
  * general capability rather than any one visual result: "vector" commits to nothing about whether
  * the output is stroked or filled, curved or straight, which is the property that let this survive
@@ -111,7 +109,7 @@ import javax.annotation.Nullable;
  *
  * <h3>Widths are post-pose units</h3>
  * <p>{@link Curve#pose(Matrix4f)} bakes the transform into the control points on the CPU, exactly
- * as {@code CgQuadRenderer.Quad} does. A scalar half-width sitting beside them does not transform
+ * as {@code CgQuadBatch.Quad} does. A scalar half-width sitting beside them does not transform
  * on its own, so a scaled pose would otherwise give a correctly-scaled curve wearing a
  * wrong-thickness stroke. {@link Curve#submit()} therefore scales {@code widths} and
  * {@code feather} by the pose's uniform scale factor. Widths are consequently expressed in
@@ -122,15 +120,16 @@ import javax.annotation.Nullable;
  * than picking one loudly: the larger of the X/Y scales is used, which keeps a stroke from
  * disappearing under an anisotropic zoom.</p>
  *
- * <h3>Per-frame lifecycle — identical to {@link CgQuadRenderer}</h3>
+ * <h3>Drawing</h3>
+ * <p>A canvas's curves, triangles and cells: what {@link CgCanvas#curve}, {@link CgCanvas#triangle} and
+ * {@link CgCanvas#cell} build, landing where the canvas does.</p>
  * <pre>{@code
- * renderer.useMaterial(material);  // every frame; rebinds on every call
- * renderer.begin();
- * renderer.curve().line(x0, y0, x1, y1).width(2f).color(argb).submit();
- * renderer.curve().from(x0, y0).via(cx, cy).to(x1, y1).width(4f, 1f).colors(a, b).submit();
- * renderer.curve().cubic(x0,y0, c1x,c1y, c2x,c2y, x1,y1).width(2f).submit(); // -> N instances
- * renderer.flush();                // the only upload + draw
- * renderer.end();
+ * CgRenderStage.HUD.register(0, frame -> {
+ *     CgCanvas canvas = frame.canvas();
+ *     canvas.curve(CURVE).line(x0, y0, x1, y1).width(2f).color(argb).submit();
+ *     canvas.curve(CURVE).from(x0, y0).via(cx, cy).to(x1, y1).width(4f, 1f).colors(a, b).submit();
+ *     canvas.curve(CURVE).cubic(x0, y0, c1x, c1y, c2x, c2y, x1, y1).width(2f).submit();   // -> N instances
+ * });
  * }</pre>
  *
  * <h3>Shader side</h3>
@@ -148,17 +147,17 @@ import javax.annotation.Nullable;
  * {@code cg_InstanceId} is flat), and the SDF wants the raw control points anyway.</p>
  *
  * <p>The shipped {@code crystalgraphics:shaders/curve.shader} is the reference consumer, in the
- * same way {@code text.shader} is {@code CgQuadRenderer}'s.</p>
+ * same way {@code text.shader} is {@code CgQuadBatch}'s.</p>
  */
-public final class CgVectorRenderer extends CgAbstractRenderer {
+public final class CgCurveBatch {
 
-    /** Fixed per-instance record format shared by every {@code CgVectorRenderer} instance. */
+    /** Fixed per-instance record format shared by every {@code CgCurveBatch} instance. */
     private static final CgBufferFormat INSTANCE_FORMAT = CgInstanceKind.CURVE.format();
 
-    private static final String GPU_BUFFER_NAME = "CgVectorRendererInstances";
+    private static final String GPU_BUFFER_NAME = "CgCurveBatchInstances";
 
     /**
-     * Fixed {@code attach()} macro name every {@code CgVectorRenderer} consumer uses. Shaders declare
+     * Fixed {@code attach()} macro name every {@code CgCurveBatch} consumer uses. Shaders declare
      * {@code #pragma cg_use curve} rather than naming this string, so it never appears at a call
      * site. {@code CgShaderParser}'s reverse check derives the convenience-macro family
      * ({@code CG_CURVE_}) from this name automatically, so no parser change is needed to police it.
@@ -299,17 +298,11 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
     private static final int INITIAL_CAPACITY_INSTANCES = 64;
 
 
-    /**
-     * Shared static shader buffer — one SSBO backs every {@code CgVectorRenderer} instance,
-     * at the engine-reserved {@link CgBindingPoints#CURVE_RENDERER} pair.
-     *
-     * <p>Same lazy-class-init contract as {@code CgQuadRenderer.GPU_BUFFER}:
-     * {@link CgBindingPoints#init} must have run before this class is first touched, which is why
-     * {@code CgEngineBufferRegistry} seeds the {@code curve} token with a <em>method reference</em>
-     * to {@link #instanceBuffer()} rather than a field read.</p>
-     */
-    private static final CgShaderBuffer GPU_BUFFER = CgShaderBufferRegistry.get()
-            .getOrCreateInternal(GPU_BUFFER_NAME, INSTANCE_FORMAT, CgBindingPoints.CURVE_RENDERER, CgBufferLifetime.FRAME);
+    /** The instance buffer the {@code curve} pragma token names, made at its first ask. @see CgQuadBatch */
+    private static final class Buffer {
+        static final CgShaderBuffer INSTANCES = CgShaderBufferRegistry.get()
+                .getOrCreateInternal(GPU_BUFFER_NAME, INSTANCE_FORMAT, CgBindingPoints.CURVE_RENDERER, CgBufferLifetime.FRAME);
+    }
 
     /** Standalone CPU accumulation pair — per renderer instance, so callers batch independently. */
     private final CgStagingBuffer accumStaging;
@@ -321,21 +314,8 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
     /** Reused scratch {@link Cell} instance returned by {@link #cell()}. */
     private final Cell scratchCell = new Cell();
 
-    /** The material {@link #useMaterial(CgMaterial)} last switched to, or {@code null} if never called. */
-    private CgMaterial currentMaterial;
-
-    /** Turns each run of queued records into a recorded draw, and a flush into an immediate execution. */
-    private final CgInstanceRun run = new CgInstanceRun(CgInstanceKind.CURVE);
-
-    /**
-     * Creates a new {@code CgVectorRenderer}. Each instance owns its own CPU accumulation buffer but
-     * shares the static mesh, format and GPU buffer with every other instance.
-     */
-    public static CgVectorRenderer create() {
-        CgStagingBuffer staging = new CgStagingBuffer(INSTANCE_FORMAT.getFloatCount(),
-                Math.max(1, INITIAL_CAPACITY_INSTANCES / 4));
-        return new CgVectorRenderer(staging, new CgBufferWriter(staging, INSTANCE_FORMAT));
-    }
+    /** Turns each run of queued records into a recorded draw, where the calling code draws. */
+    private final CgInstanceRun run;
 
     /**
      * Field offsets into {@link #INSTANCE_FORMAT}, resolved once — see {@link CgBufferWriter#offsetOf}.
@@ -364,9 +344,14 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
         return Math.max(a, Math.max(b, c));
     }
 
-    private CgVectorRenderer(CgStagingBuffer accumStaging, CgBufferWriter accumWriter) {
-        this.accumStaging = accumStaging;
-        this.accumWriter = accumWriter;
+    private final CgCanvas canvas;
+    private static final CgTexture[] NO_TEXTURES = new CgTexture[0];
+
+    CgCurveBatch(CgCanvas canvas) {
+        this.canvas = canvas;
+        this.accumStaging = new CgStagingBuffer(INSTANCE_FORMAT.getFloatCount(), Math.max(1, INITIAL_CAPACITY_INSTANCES / 4));
+        this.accumWriter = new CgBufferWriter(accumStaging, INSTANCE_FORMAT);
+        this.run = new CgInstanceRun(CgInstanceKind.CURVE, canvas, accumStaging);
         this.offP0 = accumWriter.offsetOf("p0", CgGpuType.VEC3);
         this.offP1 = accumWriter.offsetOf("p1", CgGpuType.VEC3);
         this.offP2 = accumWriter.offsetOf("p2", CgGpuType.VEC3);
@@ -380,55 +365,13 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
         this.offNode = accumWriter.offsetOf("node", CgGpuType.FLOAT);
     }
 
-    /**
-     * The shared instance buffer, without needing a renderer instance.
-     *
-     * <p>Exists for {@code CgEngineBufferRegistry}, which seeds the {@code curve}
-     * {@code #pragma cg_use} token with a reference to this method. Being a method reference it
-     * does not trigger this class's static initialization at registration time — which matters,
-     * because {@link #GPU_BUFFER} allocates against {@code CgBindingPoints} and is only valid after
-     * {@code CgEngineLifecycle.ensureGraphicsContext}.</p>
-     */
+    /** The instance buffer the {@code curve} pragma token names. Engine. */
     public static CgShaderBuffer instanceBuffer() {
-        return GPU_BUFFER;
+        return Buffer.INSTANCES;
     }
 
-    /**
-     * Marks {@code material} as the one this renderer's next {@code curve()...submit()} calls belong
-     * to. Required before any {@link Curve#submit()} call, and must be called again every frame.
-     *
-     * <p>Semantics are identical to {@code CgQuadRenderer.useMaterial}: auto-flush when the material
-     * reference actually changes (instances already queued were computed for the previous material),
-     * and an unconditional rebind on <em>every</em> call, because other rendering code sharing this
-     * GL context can bind a different program between two frames of your own.</p>
-     */
-    public CgVectorRenderer useMaterial(CgMaterial material) {
-        return useMaterial(material, null);
-    }
-
-    /**
-     * As {@link #useMaterial(CgMaterial)}, drawing under {@code state} instead of the render state the material's
-     * pass declares: for a caller that decides a slot per draw which a shader cannot, as the text renderer decides
-     * depth.
-     */
-    public CgVectorRenderer useMaterial(CgMaterial material, @Nullable CgRenderState state) {
-        if (material != currentMaterial) {
-            flush();
-            currentMaterial = material;
-        }
-        run.use(material, state, accumStaging);
-        return this;
-    }
-
-    @Override
-    protected void onBegin() {
-        accumStaging.reset();
-        run.begin();
-    }
-
-    @Override
-    protected boolean hasPendingWork() {
-        return !accumStaging.isEmpty() || run.pending();
+    boolean pending() {
+        return run.pending();
     }
 
     /**
@@ -437,12 +380,9 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
      * hold the returned reference past that, since any other {@code curve()} call on this renderer
      * resets and reuses the same instance. For a descriptor you want to hold across frames, use
      * {@link #retainedCurve()}.
-     *
-     * <p><strong>{@link Curve#submit()} only queues instance records on the CPU</strong> — it does
-     * not upload or draw. Call {@link #flush()} once for everything batched together.</p>
      */
-    public Curve curve() {
-        return scratchCurve.reset();
+    Curve curve(CgMaterial material) {
+        return scratchCurve.reset().material(material);
     }
 
     /**
@@ -450,7 +390,7 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
      * frames — build once, then {@link Curve#submit()} every tick, mutating only what changed.
      * Independent of {@link #curve()}'s shared immediate-mode scratch instance.
      */
-    public Curve retainedCurve() {
+    Curve retainedCurve() {
         return new Curve();
     }
 
@@ -509,11 +449,30 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
         private final Vector3f scratchP1 = new Vector3f();
         private final Vector3f scratchP2 = new Vector3f();
 
+        @Nullable
+        private CgMaterial material;
+        @Nullable
+        private CgRenderState state;
+
         private Curve() {
             reset();
         }
 
+        /** What it draws with. */
+        public Curve material(CgMaterial material) {
+            this.material = material;
+            return this;
+        }
+
+        /** The render state it draws under in place of its pass's. */
+        public Curve state(@Nullable CgRenderState state) {
+            this.state = state;
+            return this;
+        }
+
         Curve reset() {
+            material = null;
+            state = null;
             p0x = p0y = p0z = 0f;
             p1x = p1y = p1z = 0f;
             p2x = p2y = p2z = 0f;
@@ -691,18 +650,14 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
          * Writes this curve as one instance record — or, after {@link #cubic}, as one record per
          * split segment — into the owning renderer's CPU accumulation buffer.
          *
-         * <p>Queues only. Call {@link CgVectorRenderer#flush()} to upload and draw.</p>
+         * <p>Queues only: it lands where the calling code draws (see the class).</p>
          *
-         * @throws IllegalStateException if {@link #begin()} was not called, if no geometry was set,
-         *                               or if {@link #useMaterial(CgMaterial)} was never called
+         * @throws IllegalStateException without geometry or a material
          */
-        public CgVectorRenderer submit() {
-            if (!begun) throw new IllegalStateException("CgVectorRenderer not begun");
+        public CgCanvas submit() {
             if (!geometrySet) throw new IllegalStateException(
-                    "CgVectorRenderer.Curve requires geometry — call line(...), to(...) or cubic(...) before submit()");
-            if (currentMaterial == null) throw new IllegalStateException(
-                    "CgVectorRenderer.Curve requires useMaterial(material) before submit() — "
-                            + "without it, this renderer's buffer may not be attached to whatever material is bound");
+                    "CgCurveBatch.Curve requires geometry — call line(...), to(...) or cubic(...) before submit()");
+            if (material == null) throw new IllegalStateException("a curve with no material");
 
             float widthScale = poseScale();
             float feath = resolveFeather(feather, widthScale);
@@ -747,7 +702,7 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
                         argb0, argb1, feath);
             }
 
-            return CgVectorRenderer.this;
+            return canvas;
         }
 
         /**
@@ -792,7 +747,8 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
 
             // A square cap reaches a half-width past the end along the tangent and across it: 1.41 half-widths.
             float reach = Math.max(wStart, wEnd) * 1.5f + feath + 1f;
-            run.spatial(spatial, accumStaging);
+            run.item(material, state, NO_TEXTURES, 0);
+            run.spatial(spatial);
             run.bounds(min3(ax, bx, cx) - reach, min3(ay, by, cy) - reach, max3(ax, bx, cx) + reach,
                     max3(ay, by, cy) + reach);
             accumWriter.beginRecord()
@@ -823,12 +779,12 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
      * #curve()} entirely — a triangle is not a second renderer, only a second thing to do with the
      * same three-point instance schema. See the class doc's "Filled triangles" section.</p>
      */
-    public Triangle triangle() {
-        return scratchTriangle.reset();
+    Triangle triangle(CgMaterial material) {
+        return scratchTriangle.reset().material(material);
     }
 
     /** Retained-mode twin of {@link #triangle()}, mirroring {@link #retainedCurve()}. */
-    public Triangle retainedTriangle() {
+    Triangle retainedTriangle() {
         return new Triangle();
     }
 
@@ -836,7 +792,7 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
      * Fluent, mutable filled-triangle submission request — the second thing this renderer's shared
      * {@code p0/p1/p2} instance schema can mean, alongside {@link Curve}'s stroked quadratic.
      *
-     * <h3>Why a triangle shares {@code CgVectorRenderer} rather than getting its own renderer</h3>
+     * <h3>Why a triangle shares {@code CgCurveBatch} rather than getting its own renderer</h3>
      * <p>This is the standard 2D vector-graphics model — SVG, Canvas2D, Skia and NanoVG all let one
      * path be either filled or stroked at draw time, not two unrelated primitive types. It also
      * costs nothing here specifically: three points, a colour and a feather already exist in the
@@ -873,11 +829,30 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
         private final Vector3f scratchP1 = new Vector3f();
         private final Vector3f scratchP2 = new Vector3f();
 
+        @Nullable
+        private CgMaterial material;
+        @Nullable
+        private CgRenderState state;
+
         private Triangle() {
             reset();
         }
 
+        /** What it draws with. */
+        public Triangle material(CgMaterial material) {
+            this.material = material;
+            return this;
+        }
+
+        /** The render state it draws under in place of its pass's. */
+        public Triangle state(@Nullable CgRenderState state) {
+            this.state = state;
+            return this;
+        }
+
         Triangle reset() {
+            material = null;
+            state = null;
             p0x = p0y = p0z = 0f;
             p1x = p1y = p1z = 0f;
             p2x = p2y = p2z = 0f;
@@ -974,7 +949,7 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
          *
          * <p>Defaults to {@link #EDGE_NONE}, which is right for a lone triangle: with nothing adjoining
          * it, softening any edge would just make it blurry. It is a tessellated MESH that needs this,
-         * because there most edges are seams — see {@link CgVectorRenderer#FILL_EDGE_SHIFT}.</p>
+         * because there most edges are seams — see {@link CgCurveBatch#FILL_EDGE_SHIFT}.</p>
          *
          * @param edge {@link #EDGE_NONE}, {@link #EDGE_P1_P2} or {@link #EDGE_P2_P0}
          */
@@ -1023,16 +998,12 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
 
         /**
          * Writes this triangle as one instance record into the owning renderer's CPU accumulation
-         * buffer. Queues only — call {@link CgVectorRenderer#flush()} to upload and draw.
+         * buffer, landing where its canvas does.
          *
-         * @throws IllegalStateException if {@link #begin()} was not called, or if {@link
-         *                               #useMaterial(CgMaterial)} was never called
+         * @throws IllegalStateException without a material
          */
-        public CgVectorRenderer submit() {
-            if (!begun) throw new IllegalStateException("CgVectorRenderer not begun");
-            if (currentMaterial == null) throw new IllegalStateException(
-                    "CgVectorRenderer.Triangle requires useMaterial(material) before submit() — "
-                            + "without it, this renderer's buffer may not be attached to whatever material is bound");
+        public CgCanvas submit() {
+            if (material == null) throw new IllegalStateException("a triangle with no material");
 
             float ax = p0x, ay = p0y, az = p0z;
             float bx = p1x, by = p1y, bz = p1z;
@@ -1066,7 +1037,8 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
             }
 
             float reach = radius + feath + 1f;
-            run.spatial(spatial, accumStaging);
+            run.item(material, state, NO_TEXTURES, 0);
+            run.spatial(spatial);
             run.bounds(min3(ax, bx, cx) - reach, min3(ay, by, cy) - reach, max3(ax, bx, cx) + reach,
                     max3(ay, by, cy) + reach);
             accumWriter.beginRecord()
@@ -1084,7 +1056,7 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
                     .floatAt(offNode, node)
                     .endRecord();
 
-            return CgVectorRenderer.this;
+            return canvas;
         }
     }
 
@@ -1093,17 +1065,17 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
      * See {@link Cell} for what one is.
      *
      * <pre>{@code
-     * renderer.cell().points(x0, y0, x1, y1, x2, y2, x3, y3)
-     *         .softEdges(CgVectorRenderer.CELL_LEFT | CgVectorRenderer.CELL_RIGHT)
+     * canvas.cell(fill).points(x0, y0, x1, y1, x2, y2, x3, y3)
+     *         .softEdges(CgCurveBatch.CELL_LEFT | CgCurveBatch.CELL_RIGHT)
      *         .color(argb).submit();
      * }</pre>
      */
-    public Cell cell() {
-        return scratchCell.reset();
+    Cell cell(CgMaterial material) {
+        return scratchCell.reset().material(material);
     }
 
     /** Retained-mode twin of {@link #cell()}, mirroring {@link #retainedCurve()}. */
-    public Cell retainedCell() {
+    Cell retainedCell() {
         return new Cell();
     }
 
@@ -1133,7 +1105,7 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
      * <h3>How it differs from its siblings</h3>
      *
      * <ul>
-     *   <li><b>{@code CgQuadRenderer.Quad}</b> is a parallelogram — an origin and two edge vectors, so
+     *   <li><b>{@code CgQuadBatch.Quad}</b> is a parallelogram — an origin and two edge vectors, so
      *       the fourth corner is implied — carrying a texture and UVs, and its edges are whatever the
      *       rasteriser makes of them. A cell has four independent corners, no texture, and its edges are
      *       computed per pixel in the fragment shader: the two are different renderers for a reason.</li>
@@ -1172,11 +1144,30 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
 
         private final Vector3f scratch = new Vector3f();
 
+        @Nullable
+        private CgMaterial material;
+        @Nullable
+        private CgRenderState state;
+
         private Cell() {
             reset();
         }
 
+        /** What it draws with. */
+        public Cell material(CgMaterial material) {
+            this.material = material;
+            return this;
+        }
+
+        /** The render state it draws under in place of its pass's. */
+        public Cell state(@Nullable CgRenderState state) {
+            this.state = state;
+            return this;
+        }
+
         Cell reset() {
+            material = null;
+            state = null;
             x0 = y0 = x1 = y1 = x2 = y2 = x3 = y3 = 0f;
             argb = 0xFFFFFFFF;
             argbEnd = 0xFFFFFFFF;
@@ -1253,14 +1244,12 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
         }
 
         /**
-         * Writes this cell as one instance record. Queues only — {@link CgVectorRenderer#flush()} draws.
+         * Writes this cell as one instance record, landing where its canvas does.
          *
-         * @throws IllegalStateException if {@link #begin()} or {@link #useMaterial(CgMaterial)} was not called
+         * @throws IllegalStateException without a material
          */
-        public CgVectorRenderer submit() {
-            if (!begun) throw new IllegalStateException("CgVectorRenderer not begun");
-            if (currentMaterial == null) throw new IllegalStateException(
-                    "CgVectorRenderer.Cell requires useMaterial(material) before submit()");
+        public CgCanvas submit() {
+            if (material == null) throw new IllegalStateException("a cell with no material");
 
             float ax = x0, ay = y0, bx = x1, by = y1, cx = x2, cy = y2, dx = x3, dy = y3;
             float z = 0f;
@@ -1277,7 +1266,8 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
                 ox = axis[0]; oy = axis[1]; dxg = axis[2]; dyg = axis[3];
             }
 
-            run.spatial(spatial, accumStaging);
+            run.item(material, state, NO_TEXTURES, 0);
+            run.spatial(spatial);
             run.bounds(Math.min(min3(ax, bx, cx), dx) - 1f, Math.min(min3(ay, by, cy), dy) - 1f,
                     Math.max(max3(ax, bx, cx), dx) + 1f, Math.max(max3(ay, by, cy), dy) + 1f);
             accumWriter.beginRecord()
@@ -1295,7 +1285,7 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
                     .floatAt(offNode, node)
                     .endRecord();
 
-            return CgVectorRenderer.this;
+            return canvas;
         }
     }
 
@@ -1340,39 +1330,6 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
         cachedPoseScale = Math.max(sx, sy);
         poseScaleValid = true;
         return cachedPoseScale;
-    }
-
-    /**
-     * Draws everything queued since the last flush, now, into the bound framebuffer: each run under one
-     * {@link #useMaterial} is one recorded draw, executed through {@code CgImmediate} under the frame block the
-     * caller prepared.
-     */
-    @Override
-    public void flush() {
-        if (!begun) {
-            accumStaging.reset();
-            return;
-        }
-        if (accumStaging.isEmpty() && !run.pending()) return;
-        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "curveRenderer.flush")) {
-            CgTrace.add(CgChannels.GL, "curveRenderer.flush.count", 1);
-            CgTrace.add(CgChannels.GL, "curveRenderer.instances", accumStaging.vertexCount());
-            run.flush(accumStaging);
-        }
-    }
-
-    /** Forgets the material; the shader buffer is registry-owned and outlives any renderer. */
-    /**
-     * Hands every later flush's chunk to {@code sink} — a {@code CgPassRecorder} recording a frame — instead of
-     * executing it; null executes at once again.
-     */
-    public void sink(@Nullable CgChunkSink sink) {
-        run.sink = sink;
-    }
-
-    @Override
-    public void delete() {
-        currentMaterial = null;
     }
 
     // Colour unpacking lives on CgBufferWriter#color, and the cubic-splitting maths in

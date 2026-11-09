@@ -1,4 +1,4 @@
-package com.crystalgraphics.gl.render;
+package com.crystalgraphics.render.canvas;
 
 import org.joml.Matrix4f;
 import org.joml.Vector3f;

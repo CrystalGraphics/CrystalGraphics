@@ -15,8 +15,7 @@ import com.crystalgraphics.gl.material.parse.CgParsedPass;
 import com.crystalgraphics.gl.material.parse.CgParsedShader;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgMeshShapes;
-import com.crystalgraphics.gl.render.CgQuadRenderer;
-import com.crystalgraphics.gl.render.CgVectorRenderer;
+import com.crystalgraphics.render.canvas.CgCanvas;
 import com.crystalgraphics.api.texture.CgSampler;
 import com.crystalgraphics.api.texture.CgTextureSpec;
 import com.crystalgraphics.gl.texture.CgFallbackTextures;
@@ -280,29 +279,18 @@ public class EngineOnTrackedBackendTest {
             new Matrix4f().get(data, at + 16);
         }
 
-        // CgQuadRenderer's instance buffer, and a sampler left at its default.
-        CgQuadRenderer quads = CgQuadRenderer.create();
-        quads.begin();
-        quads.useMaterial(CgMaterial.fromSource(QUAD_SHADER));
-        quads.quad().at(4, 4).size(24, 24).color(0xFF40C0FF).submit();
-        quads.flush();
-        quads.end();
-
-        // CgVectorRenderer's, read from both stages.
-        CgVectorRenderer strokes = CgVectorRenderer.create();
-        strokes.begin();
-        strokes.useMaterial(CgMaterial.load("crystalgraphics:shaders/curve.shader"));
-        strokes.curve().from(4, 60).via(32, 8).to(60, 60).width(3f).color(0xFFFFC24D).submit();
-        strokes.flush();
-        strokes.end();
+        // The quad instance buffer with a sampler left at its default, then the curve buffer, read from both stages.
+        CgCanvas canvas = new CgCanvas();
+        canvas.quad(CgMaterial.fromSource(QUAD_SHADER)).at(4, 4).size(24, 24).color(0xFF40C0FF).submit();
+        canvas.curve(CgMaterial.load("crystalgraphics:shaders/curve.shader"))
+                .from(4, 60).via(32, 8).to(60, 60).width(3f).color(0xFFFFC24D).submit();
+        canvas.flush();
 
         gl.endFrame();
         assertTrue("a draw was refused or dropped: " + gl.stats() + " error 0x" + Integer.toHexString(gl.glGetError())
                 + System.lineSeparator() + String.join(System.lineSeparator(), device.logSince(mark)),
                 device.draws() - draws >= 3);   // the object, the quads, the curve
         assertTrue(device.passes().size() > passes);
-        quads.delete();
-        strokes.delete();
     }
 
     /**

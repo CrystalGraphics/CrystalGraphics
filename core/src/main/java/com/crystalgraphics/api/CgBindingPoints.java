@@ -65,7 +65,7 @@ public final class CgBindingPoints {
     public static Binding OBJECT_IDS;
 
     /**
-     * Reserved binding pair for {@code CgQuadRenderer}'s shared {@code "CgQuadRendererInstances"}
+     * Reserved binding pair for {@code CgQuadBatch}'s shared {@code "CgQuadBatchInstances"}
      * buffer — {@code ssbo} one below {@link #OBJECT_DATA}'s, {@code tbo} one below
      * {@link #OBJECT_DATA}'s, continuing the same top-of-range countdown. Engine-reserved,
      * must not be used by user-attached SSBOs/TBOs — see
@@ -75,7 +75,7 @@ public final class CgBindingPoints {
     public static Binding QUAD_RENDERER;
 
     /**
-     * Reserved binding pair for {@code CgVectorRenderer}'s shared {@code "CgVectorRendererInstances"}
+     * Reserved binding pair for {@code CgCurveBatch}'s shared {@code "CgCurveBatchInstances"}
      * buffer — one below {@link #QUAD_RENDERER}'s on both paths, continuing the same top-of-range
      * countdown. Engine-reserved, must not be used by user-attached SSBOs/TBOs — see
      * {@code CgShaderBufferRegistry.getOrCreateInternal}. {@code null} until

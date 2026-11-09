@@ -126,7 +126,7 @@ Pass {
         DepthWrite OFF
     }
 
-    // Per-glyph model-view is baked CPU-side into origin/right/up (see CgQuadRenderer.Quad#pose,
+    // Per-glyph model-view is baked CPU-side into origin/right/up (see CgQuadBatch.Quad#pose,
     // called by CgTextRenderer#addQuadFromPlacement) and delivered per-instance via the
     // CG_QUAD_* macros below (cg_env.glsl) -- no per-draw uniform transform.
     //

@@ -24,12 +24,12 @@ import com.crystalgraphics.gl.buffer.staging.CgBufferWriter;
 import com.crystalgraphics.gl.buffer.shader.CgShaderBufferRegistry;
 import com.crystalgraphics.gl.buffer.shader.CgUniformBuffer;
 import com.crystalgraphics.lifecycle.CgGraphicsLifecycle;
-import com.crystalgraphics.gl.render.CgClipTable;
-import com.crystalgraphics.gl.render.CgQuadRenderer;
+import com.crystalgraphics.render.canvas.CgClipTable;
+import com.crystalgraphics.render.canvas.CgCanvas;
+import com.crystalgraphics.render.canvas.CgQuadRecord;
 import com.crystalgraphics.render.CgFrameClock;
 import com.crystalgraphics.render.draw.CgBufferHandle;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
-import com.crystalgraphics.render.draw.CgChunkSink;
 import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.render.draw.CgPipeline;
 import com.crystalgraphics.render.property.CgPalette;
@@ -65,7 +65,7 @@ import java.util.logging.Logger;
  *
  * <p>The renderer consumes a pre-built {@link CgTextLayout}, resolves glyphs
  * through {@link CgFontRegistry}, sorts them by GL state, then submits quads
- * through its own owned {@link CgQuadRenderer} — each glyph becomes one
+ * through its own owned {@link CgQuadBatch} — each glyph becomes one
  * instanced-quad record (transform baked per-glyph via {@code Quad.pose()}), not a
  * batch of raw vertices. Material bind/unbind, keyword toggling, and atlas texture
  * swaps on batch-key transitions are handled directly by this class — see
@@ -139,7 +139,7 @@ import java.util.logging.Logger;
  * }</pre>
  *
  * <h3>Owned Batch Lifecycle</h3>
- * <p>{@code CgTextRenderer} owns a private {@link CgQuadRenderer} — no caller-provided
+ * <p>{@code CgTextRenderer} owns a private {@link CgQuadBatch} — no caller-provided
  * layer or buffer source is required. The renderer is frame-agnostic: {@link #beginBatch()}/
  * {@link #endBatch()} mark a batching window, not a render frame. The atlas LRU
  * clock used internally for glyph bookkeeping is read directly from
@@ -208,7 +208,7 @@ public class CgTextRenderer {
      * (an orthographic UI one, as often as not), where the pass's {@code cg_ProjMatrix} is whoever records the pass.
      * Also the natural home for any future text-only uniform that
      * isn't a good fit for either {@link #TEXT_MATERIAL}'s Properties block (per-batch-key, not
-     * per-draw) or {@code CgQuadRenderer}'s per-instance record (per-glyph, not per-renderer) —
+     * per-draw) or {@code CgQuadBatch}'s per-instance record (per-glyph, not per-renderer) —
      * {@code u_ModelView} was here before this migration but is gone now: model-view is baked
      * per-glyph-instance via {@code Quad.pose()}, see {@link #addQuadFromPlacement}.
      */
@@ -268,7 +268,8 @@ public class CgTextRenderer {
     private final CgFontRegistry registry = CgFontRegistry.get();
 
     // ── Owned batch lifecycle ────────────────────────────────────────────────
-    private final CgQuadRenderer quadRenderer;
+    /** Where glyphs land when no canvas records on the calling thread: drawn at each flush. */
+    private final CgCanvas immediate = new CgCanvas();
     private boolean batchActive;
     /**
      * Projection this renderer's queued-but-unflushed quads were computed against; invalid at the start of every
@@ -427,17 +428,6 @@ public class CgTextRenderer {
         return this;
     }
 
-    /**
-     * Hands every later flush's glyphs to {@code sink} as a chunk — a {@code CgPassRecorder} recording a frame —
-     * instead of drawing them; null draws at once again.
-     */
-    public CgTextRenderer sink(@Nullable CgChunkSink sink) {
-        flush();
-        quadRenderer.sink(sink);
-        projectionValid = false;
-        return this;
-    }
-
     // ── Owned render context ────────────────────────────────────────────────
     /**
      * Defaults to an orthographic context sized to {@link CgGraphicsLifecycle}'s current
@@ -479,13 +469,11 @@ public class CgTextRenderer {
     private boolean deleted;
 
     private CgTextRenderer() {
-        this.quadRenderer = CgQuadRenderer.create();
         textMaterial.overrideBlock(TEXT_DATA_UBO, textBlock);
-        quadRenderer.useMaterial(textMaterial);
     }
 
     /**
-     * Creates the renderer façade, including its owned {@link CgQuadRenderer}, and
+     * Creates the renderer façade, including its owned {@link CgQuadBatch}, and
      * registers it with {@link CgTextRendererRegistry} — the registry doesn't own release
      * timing (callers must still call {@link #delete()} promptly when done), but sweeps
      * any renderer still alive at GL context teardown as a backstop, matching every other
@@ -549,7 +537,7 @@ public class CgTextRenderer {
 
     /**
      * Opens a batching window: {@code draw()} calls made until the matching
-     * {@link #endBatch()} record into the same underlying {@link CgQuadRenderer} pass and
+     * {@link #endBatch()} record into the same underlying {@link CgQuadBatch} pass and
      * are flushed together wherever the GL state permits (same shader/texture/render state).
      * This has no relation to a render frame — it is purely a batching scope, hence the name;
      * nothing here reads or depends on frame boundaries.
@@ -569,7 +557,6 @@ public class CgTextRenderer {
         // whatever was recorded about the shared material can no longer be trusted.
         activeBatchBits = NO_ACTIVE_BATCH;
         batchActive = true;
-        quadRenderer.begin();
     }
 
     /**
@@ -583,7 +570,6 @@ public class CgTextRenderer {
         if (!batchActive) return;
 
         flush();
-        quadRenderer.end();
         projectionValid = false;
         batchActive = false;
 
@@ -602,16 +588,11 @@ public class CgTextRenderer {
     private void flush() {
         flushes++;
         drainBuckets();
-        if (!quadRenderer.isDirty()) return;
-
+        if (!immediate.pending()) return;
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "gl.flush")) {
             CgTrace.add(CgChannels.GL, "gl.flush.count", 1);
-            quadRenderer.useMaterial(textMaterial);
-
-            quadRenderer.flush();
+            immediate.flush();
         }
-
-        // No need to unbind as they are wasteful — useMaterial() unbinds-old on the next call.
     }
 
     /**
@@ -638,6 +619,8 @@ public class CgTextRenderer {
                 .vec4("u_TextGammaLarge", large.exponent(), large.contrast(), 1f / large.exponent(), 0f)
                 .vec4("u_TextGammaRamp", gamma.smallPx(), gamma.largePx(), gamma.isIdentity() ? 0f : 1f, 0f)
                 .vec4("u_TextCut", cut, 0f, 0f, 0f);
+        // Written past the material: re-given so its change starts a new draw, glyphs before keeping the old block.
+        textMaterial.overrideBlock(TEXT_DATA_UBO, textBlock);
     }
 
     /**
@@ -778,7 +761,7 @@ public class CgTextRenderer {
      */
     public boolean capture(Draw draw, CgTextCapture into) {
         if (deleted) throw new IllegalStateException("CgTextRenderer has been deleted");
-        if (bucketCount != 0 || quadRenderer.isDirty()) {
+        if (bucketCount != 0 || immediate.pending()) {
             throw new IllegalStateException("capture() with quads queued: end the batch first");
         }
         if (draw.layout == null && draw.paragraph == null && draw.text == null) {
@@ -1469,12 +1452,10 @@ public class CgTextRenderer {
         // torn down has no state worth restoring; doing either threw "CgMaterial has been deleted" out
         // of teardown on every harness run that had text on screen.
         if (batchActive) {
-            quadRenderer.end();
             projectionValid = false;
             batchActive = false;
         }
         replays.clear();
-        quadRenderer.delete();
         textMaterial.delete();
         CgTextRendererRegistry.get().unregister(this);
         deleted = true;
@@ -1830,7 +1811,7 @@ public class CgTextRenderer {
      *   <li><b>Once per batch boundary</b> — {@link #transitionToMaterial} flushes the quads
      *       accumulated under the previous state and adopts the new one.</li>
      *   <li><b>Once per entry</b> — emit one instanced-quad record via
-     *       {@link CgQuadRenderer#quad()}, with the transform baked in through
+     *       {@link CgQuadBatch#quad()}, with the transform baked in through
      *       {@code Quad.pose(modelView)}.</li>
      * </ol>
      *
@@ -2222,20 +2203,20 @@ public class CgTextRenderer {
     // layering; across draws in one batch every shadow lies beneath every glyph. A bucket holds final instance
     // records, so draining one is a copy per run of spatial node.
 
-    private static final int RECORD = CgQuadRenderer.Record.FLOATS;
-    private static final int R_ORIGIN = CgQuadRenderer.Record.ORIGIN, R_RIGHT = CgQuadRenderer.Record.RIGHT,
-            R_UP = CgQuadRenderer.Record.UP, R_UV0 = CgQuadRenderer.Record.UV0, R_UV1 = CgQuadRenderer.Record.UV1,
-            R_COLOR = CgQuadRenderer.Record.COLOR, R_ATLAS_LAYER = CgQuadRenderer.Record.ATLAS_LAYER,
-            R_CUSTOM0 = CgQuadRenderer.Record.CUSTOM0, R_CUSTOM1 = CgQuadRenderer.Record.CUSTOM1,
-            R_CUSTOM2 = CgQuadRenderer.Record.CUSTOM2, R_CLIP = CgQuadRenderer.Record.CLIP,
-            R_NODE = CgQuadRenderer.Record.NODE;
+    private static final int RECORD = CgQuadRecord.FLOATS;
+    private static final int R_ORIGIN = CgQuadRecord.ORIGIN, R_RIGHT = CgQuadRecord.RIGHT,
+            R_UP = CgQuadRecord.UP, R_UV0 = CgQuadRecord.UV0, R_UV1 = CgQuadRecord.UV1,
+            R_COLOR = CgQuadRecord.COLOR, R_ATLAS_LAYER = CgQuadRecord.ATLAS_LAYER,
+            R_CUSTOM0 = CgQuadRecord.CUSTOM0, R_CUSTOM1 = CgQuadRecord.CUSTOM1,
+            R_CUSTOM2 = CgQuadRecord.CUSTOM2, R_CLIP = CgQuadRecord.CLIP,
+            R_NODE = CgQuadRecord.NODE;
 
     private static final class Bucket {
         int rank;
         long batchBits;
         boolean distanceField;
         int atlasId;
-        /** Records in {@code CgQuadRenderer.Record}'s layout; padding is never written, so stays 0. */
+        /** Records in {@code CgQuadRecord}'s layout; padding is never written, so stays 0. */
         float[] records = new float[RECORD * 64];
         /** Per record, its spatial node: a run of one node is one copy. */
         int[] spatial = new int[64];
@@ -2388,20 +2369,21 @@ public class CgTextRenderer {
         lastBucket = null;
         sortBuckets(n);
         CgTrace.add(CgChannels.TEXT, "draw.buckets", n);
+        // The canvas recording on this thread -- a stage's turn, a paint context's frame -- else drawn at the flush.
+        CgCanvas current = CgCanvas.current();
+        CgCanvas into = current != null ? current : immediate;
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT_DETAIL, "draw.drainBuckets")) {
             for (int i = 0; i < n; i++) {
                 Bucket b = buckets.get(i);
                 if (b.batchBits != activeBatchBits) {
                     transitionToMaterial(b.batchBits, b.distanceField, b.atlasId);
-                    // records() appends under the material as last captured: capture it as the transition left it.
-                    quadRenderer.useMaterial(textMaterial);
                 }
                 int[] spatial = b.spatial;
                 for (int from = 0, to; from < b.count; from = to) {
                     int node = spatial[from];
                     to = from + 1;
                     while (to < b.count && spatial[to] == node) to++;
-                    quadRenderer.records(b.records, from, to - from, node);
+                    into.quads(textMaterial, null, b.records, from, to - from, node);
                 }
                 b.count = 0;
             }

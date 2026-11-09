@@ -37,14 +37,15 @@ Main responsibilities:
 - delegating layout flattening/prequeueing and atlas placement resolution to `CgResolvedGlyphs`
 - sorting placements by a packed `long` GL-state sort key (mode/textureId/pxRange — see
   `submitBatchedQuads`), avoiding a per-glyph key object
-- submitting quads to its own owned `CgQuadRenderer`
+- handing baked quad records to the canvas recording on the thread (`CgCanvas.current()`), else its own
 - transitioning shader/texture/render-state on batch-state changes (`transitionToMaterial`),
   flushing whatever was pending under the previous combination first
 
 **Owned batch lifecycle (current architecture, post batch-ownership migration —
 see `CrystalGraphics/docs/plan/text-material.md` §2.6/§2.7).**
-`CgTextRenderer` owns a private `CgQuadRenderer`, created in `create(caps, registry)`: each glyph is
-one quad record. No caller-provided layer is in the draw path -- the renderer is self-contained.
+Each glyph is one quad record. Drained, the records go to the canvas recording on the calling thread -- a stage's
+`frame.canvas()` during a renderer's turn, a paint context's while it records -- in order with what else it draws;
+with none, to the renderer's own immediate canvas, drawn at `flush()`.
 
 - `beginBatch()`/`endBatch()` (no args) open/close a batching window: `draw()` calls
   made in between record into the same underlying batch and are flushed together
@@ -166,8 +167,7 @@ upload+draw on every single call regardless of whether a `beginBatch()` is still
 open — silently defeating the entire cross-call batching win this architecture
 exists to deliver, with no signal to the caller that batching stopped working.
 Treat a forgotten `endBatch()` as a caller bug that should fail fast, matching the
-convention of every other begin/end pair in this codebase (`CgQuadRenderer`, `CgUiRenderer` -- neither
-defensively auto-flushes).
+convention of every other begin/end pair in this codebase.
 
 **Inside a batch, quads wait in buckets.** Each quad goes to the bucket of its (paint rank, batch key): the rank is
 its paint step less the draw's shadow count, so outer shadows are negative, then decorations under the text (0), the
@@ -185,9 +185,8 @@ rank, submit order within a bucket: a transition per bucket, not per draw, howev
 shadow cells. 10,000 outlined, shadowed labels went from 15,723 flushes a frame to 3 (`--mode=world-labels`).
 - Each draw keeps its own layering. Across draws in one batch, every shadow lies beneath every glyph: two texts that
   overlap inside one batch layer by kind, not by submit order.
-- Anything a caller changes on the sink between draws (scissor, constants, view) must end the batch first, or quads
-  queued before it draw under it. `sink()` itself drains first. CrystalGUI's paint context ends its text path at every
-  such change.
+- Anything a caller changes on the canvas between draws (scissor, constants, view) must end the batch first, or quads
+  queued before it draw under it. CrystalGUI's paint context ends its text path at every such change.
 - A quad keeps its draw's pose, clip and nodes in a pose entry (`pushPose`); `draw.drainBuckets` times the replay.
 
 **A draw the same as before is replayed** (`Replay`): the same layout object, every `Draw` field (`sameAs`), pose,
@@ -320,7 +319,7 @@ It matters only for world-space raster-tier decisions, not for logical layout me
 
 Resolves one `drawInternal` call's `CgTextLayout` into flat per-glyph atlas-placement data —
 font key/font, glyph id, subpixel bucket, pen position, and finally each glyph's
-`CgGlyphPlacement`. Pure layout/atlas-cache concern, no GL/`CgQuadRenderer`/`CgMaterial`
+`CgGlyphPlacement`. Pure layout/atlas-cache concern, no GL/`CgQuadBatch`/`CgMaterial`
 dependency — that boundary starts once `CgTextRenderer` reads its `glyphX`/`glyphY`/`placements`
 back out. Owned per-`CgTextRenderer` instance with grow-only scratch arrays, reused across draws.
 

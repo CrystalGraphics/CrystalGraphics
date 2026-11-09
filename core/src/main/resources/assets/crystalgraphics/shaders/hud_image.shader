@@ -1,6 +1,6 @@
 // =============================================================================
 // CrystalShader -- hud_image.shader
-// An image over a GUI stage (HUD, SCREEN), drawn by CgQuadRenderer: the image times the quad's colour.
+// An image over a GUI stage (HUD, SCREEN), drawn by CgQuadBatch: the image times the quad's colour.
 // =============================================================================
 
 #type none

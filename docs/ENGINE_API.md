@@ -911,11 +911,30 @@ A material drawn under another blend, cull, depth write or clip than its shader'
 
 **Package guide**: `api/state/CLAUDE.md`
 
-### Instanced renderers
+### The canvas — quads, curves and text
 
-Everything 2D draws through `CgQuadRenderer` (quads: UI boxes, glyphs, blits) or `CgVectorRenderer` (strokes, triangles, cells): records queued on the CPU, turned into recorded draws by `CgInstanceRun` -- into the recording inside one, through `CgImmediate` on `flush()` outside one. `CgTextRenderer` owns a `CgQuadRenderer`.
+Everything 2D draws into a `CgCanvas` (Unreal's `FCanvas`): quads (UI boxes, glyphs, blits, HUD images), curves,
+triangles and cells, each item naming its material and textures. Matching neighbours are one draw and order is kept.
+At a stage, the firing's canvas lands in that firing under its camera, in the world or on the screen; nothing to
+begin, end or delete.
 
-**Package guides**: `gl/render/CLAUDE.md` · `gl/buffer/staging/CLAUDE.md`
+```java
+CgRenderStage.HUD.register(CgRenderStage.WORLD_WIDGETS, frame -> {
+    frame.canvas().quad(DIGIT).texture(0, DIGITS).at(x, y).size(w, h).uv(u0, v0, u1, v1).color(argb).submit();
+});
+CgRenderStage.WORLD_TRANSPARENT.register(0, frame ->                       // camera-relative; world() is absolute
+    frame.canvas().quad(GLOW).world(x, y, z).pose(facing).at(-0.5f, -0.5f).size(1f, 1f).submit());
+
+CgCanvas now = new CgCanvas();                                             // outside any stage: drawn at flush()
+now.quad(IMAGE).texture(0, image).at(x, y).size(w, h).submit();
+now.flush();
+```
+
+- An item draws under its material's values as they are when it is submitted.
+- Text drawn while a canvas records on the thread (`CgCanvas.current()`) lands in it, in order with the rest.
+- Recording into passes of your own (`recordInto`, scissors, views) is `CgCanvas`'s javadoc.
+
+**Package guide**: `render/canvas/CLAUDE.md`
 
 ### Font/Text System
 

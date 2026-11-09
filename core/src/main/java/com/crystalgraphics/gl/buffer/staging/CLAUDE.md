@@ -33,7 +33,7 @@ awareness of shaders, textures, or render state.
 > everywhere at once. Note the packing order and the vector order deliberately differ (`ARGB` in,
 > `rgba` out); that mismatch is the reason it is worth writing exactly once. Channel order is pinned
 > by `CgBufferWriterColorTest`, including a bit-identical check against the hand-rolled `/ 255f` it
-> replaced in `CgQuadRenderer` — the path every glyph in the engine draws through.
+> replaced in `CgQuadBatch` — the path every glyph in the engine draws through.
 
 ## Data Flow
 

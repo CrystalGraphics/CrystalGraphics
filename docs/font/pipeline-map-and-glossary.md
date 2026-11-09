@@ -30,7 +30,7 @@ read [`architecture.md`](architecture.md).
    cache, or glyph by glyph from `CgFontRegistry`, which queues any it lacks.
 7. **Shadows.** `CgTextShadowPlan` decides what each glyph paints for each shadow.
 8. **Submit.** Every glyph, decoration and shadow becomes a sort key and an instanced quad. Sorted, they go
-   through the renderer's `CgQuadRenderer` into `text.shader`.
+   through the renderer's `CgQuadBatch` into `text.shader`.
 
 ---
 

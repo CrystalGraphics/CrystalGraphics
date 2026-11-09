@@ -14,13 +14,13 @@ import static org.junit.Assert.assertTrue;
  * on top of each individual field's own alignment. Before this was fixed, {@code build()}
  * used the raw field-sum cursor as the stride with no final rounding; every format that
  * existed at the time happened to sum to an exact multiple of 16 by coincidence, so this
- * went uncaught until {@code CgQuadRenderer.INSTANCE_FORMAT} added a trailing
+ * went uncaught until {@code CgQuadBatch.INSTANCE_FORMAT} added a trailing
  * {@code float atlasLayer} field after {@code vec3×3 + vec2×2 + vec4}, landing at 84
  * bytes — not a multiple of 16. The GPU still rounds every array-of-struct element to 16
  * bytes regardless of what the CPU assumes, so an unrounded CPU-side stride desyncs every
  * record after the first: each subsequent instance's fields get read from the wrong byte
  * offset, worse with each index — this is the exact bug that produced garbled text one
- * glyph at a time in {@code CgQuadRenderer}-based rendering once a struct's raw field sum
+ * glyph at a time in {@code CgQuadBatch}-based rendering once a struct's raw field sum
  * stopped landing on a 16-byte boundary by luck.
  */
 public class CgBufferFormatTest {
@@ -41,7 +41,7 @@ public class CgBufferFormatTest {
     @Test
     public void build_roundsStrideUpTo16_whenTrailingScalarBreaksAlignment() {
         // Same as above plus one trailing float: raw field sum is 84 bytes — NOT a
-        // multiple of 16 — reproducing CgQuadRenderer.INSTANCE_FORMAT's exact shape
+        // multiple of 16 — reproducing CgQuadBatch.INSTANCE_FORMAT's exact shape
         // (origin/right/up/uv0/uv1/color/atlasLayer). Must round up to 96, not stay at 84.
         CgBufferFormat f = CgBufferFormat.builder("TrailingScalar", CgBufferFormat.MemoryLayout.STD430)
                 .vec3("origin").vec3("right").vec3("up")

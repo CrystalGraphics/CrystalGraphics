@@ -21,7 +21,7 @@ import java.util.List;
  * Resolves one {@code CgTextRenderer.drawInternal} call's {@link CgTextLayout} into flat,
  * per-glyph atlas-placement data — font key/font, glyph id, subpixel bucket, pen position,
  * and finally each glyph's {@link CgGlyphPlacement}. Pure layout/atlas-cache concern: nothing
- * here touches GL, {@code CgQuadRenderer}, or {@code CgMaterial} — that boundary starts once
+ * here touches GL, {@code CgQuadBatch}, or {@code CgMaterial} — that boundary starts once
  * {@code CgTextRenderer} reads {@link #glyphX}/{@link #glyphY}/{@link #placements} back out.
  *
  * <h3>Why a cache is needed even with an O(1) atlas</h3>

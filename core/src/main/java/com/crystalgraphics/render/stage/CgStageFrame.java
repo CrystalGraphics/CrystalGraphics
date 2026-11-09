@@ -19,6 +19,7 @@ import com.crystalgraphics.render.graph.CgFrameGraph;
 import com.crystalgraphics.render.graph.CgFrameScope;
 import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.render.graph.CgLoad;
+import com.crystalgraphics.render.canvas.CgCanvas;
 import com.crystalgraphics.render.graph.CgRasterPass;
 import com.crystalgraphics.render.graph.CgRecording;
 import com.crystalgraphics.render.graph.CgRequest;
@@ -45,6 +46,9 @@ import javax.annotation.Nullable;
  *
  * <ul>
  *   <li>Render thread, and only inside {@link CgStageRenderer#render}: the recording is executed and reset after.</li>
+ *   <li>During a renderer's turn, {@link #canvas()} -- quads, curves and a {@code CgTextRenderer}'s text -- draws
+ *       into this firing, on {@link #target()} under {@link #constants()}: the world's camera at a world stage, the
+ *       GUI's pixels at a GUI stage. What a turn drew lands when it ends, in a pass of its own.</li>
  *   <li>The stage parks the host's sampler objects and turns its scissor off around execution: what the host leaves
  *       there overrides a texture's own filtering, and clips every draw to its box.</li>
  *   <li>{@link #callback} draws immediately at its place in the stage, with GL state restored after — for work that
@@ -76,6 +80,9 @@ public final class CgStageFrame {
     private static final int PYRAMIDS = CgTrace.name("stage.pyramids-built"), PYRAMID_ASKS = CgTrace.name("stage.pyramid-asks");
     @Nullable
     private CgGraphTexture target;
+    /** {@link #canvas()}: opened at its first draw in a turn, so a turn that draws nothing records nothing. */
+    private final CgCanvas canvas = new CgCanvas();
+    private final CgCanvas.Source canvasOpener = this::openCanvas;
 
     /** Firings a host frame remembered for the next: the n-th is compared with last frame's n-th. */
     private static final int ORDINALS = 4;
@@ -224,6 +231,41 @@ public final class CgStageFrame {
         CgGpuOps.depthPyramid(recording, target(), constants(), pyramid);
         CgTrace.add(CgChannels.GL, PYRAMIDS, 1);
         return pyramid;
+    }
+
+    /**
+     * What a renderer draws quads, curves and text into during its turn (Unreal's canvas): on {@link #target()} under
+     * {@link #constants()} -- at a world stage the camera's space, camera-relative, its origin the camera's absolute
+     * position; at a GUI stage the GUI's pixels. What a turn draws lands when the turn ends, in a pass of its own.
+     *
+     * <pre>{@code
+     * CgRenderStage.HUD.register(CgRenderStage.WORLD_WIDGETS, frame ->
+     *         frame.canvas().quad(DIGIT).texture(0, DIGITS).at(x, y).size(w, h).color(argb).submit());
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Inside {@link CgStageRenderer#render} only: a {@link #callback}'s body runs at execution, outside any turn.</li>
+     * </ul>
+     */
+    public CgCanvas canvas() {
+        return canvas;
+    }
+
+    private void openCanvas(CgCanvas canvas) {
+        CgPassConstants camera = constants();
+        canvas.recordInto(recording, target(), CgLoad.load(), camera);
+        CgHostView view = host.view();
+        canvas.origin(view.x(), view.y(), view.z());
+    }
+
+    /** A renderer's turn starts: what it draws on the canvas records into this firing. */
+    void turnBegins() {
+        canvas.arm(canvasOpener);
+    }
+
+    /** A renderer's turn ends: what it drew on the canvas lands, in a pass of its own. */
+    void turnEnds() {
+        canvas.stop();
     }
 
     /** Runs {@code body} at this point in the stage, on the host's target, with GL state restored after. */

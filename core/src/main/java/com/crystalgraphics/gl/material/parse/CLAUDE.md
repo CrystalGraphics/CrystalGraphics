@@ -138,9 +138,9 @@ reaches GLSL and changes no program. Authoring: `docs/SHADERS.md` § *Keywords a
 **Where it lives:** `CgStructureParser.parseUsePragmas(String source, String resourcePath)`, with
 cross-checking in `CgShaderParser.validateEngineBufferUsage(...)`.
 
-Declares that a shader reads an engine-provided shader buffer — `quad` (`CgQuadRenderer`'s
+Declares that a shader reads an engine-provided shader buffer — `quad` (`CgQuadBatch`'s
 per-instance buffer, unlocking `QUAD_DATA` and the `CG_QUAD_*` macros) or `curve`
-(`CgVectorRenderer`'s, unlocking `CURVE_DATA` and `CG_CURVE_*`). Tokens land in
+(`CgCurveBatch`'s, unlocking `CURVE_DATA` and `CG_CURVE_*`). Tokens land in
 `CgParsedShader.engineBuffers()`.
 
 The reverse check needs no per-token maintenance: the convenience-macro family is derived textually

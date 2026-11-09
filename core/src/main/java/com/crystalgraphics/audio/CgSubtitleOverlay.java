@@ -15,7 +15,7 @@ import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.text.CgTextAlign;
 import com.crystalgraphics.api.text.CgTextLayout;
 import com.crystalgraphics.api.texture.CgTextures;
-import com.crystalgraphics.gl.render.CgQuadRenderer;
+import com.crystalgraphics.render.canvas.CgCanvas;
 import com.crystalgraphics.gl.texture.CgTexture2D;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.render.CgFrameClock;
@@ -86,11 +86,8 @@ final class CgSubtitleOverlay {
     private final Map<String, CgFont> fonts = new HashMap<>();
     @Nullable
     private CgTextRenderer renderer;
-    /** The band: a quad of the image material's default white. */
-    @Nullable
-    private CgQuadRenderer bands;
-    @Nullable
-    private CgQuadRenderer images;
+    /** The band and the underline images, drawn at once in the stage's callback. */
+    private final CgCanvas quads = new CgCanvas();
     @Nullable
     private CgFont canvasFont;
     private double now;
@@ -131,10 +128,6 @@ final class CgSubtitleOverlay {
         registration.close();
         if (renderer != null && !renderer.isDeleted()) renderer.delete();
         renderer = null;
-        if (bands != null) bands.delete();
-        if (images != null) images.delete();
-        bands = null;
-        images = null;
     }
 
     private void draw() {
@@ -190,12 +183,9 @@ final class CgSubtitleOverlay {
         if (band != null) {
             float alpha = fade.band(t) * (band.colour() >>> 24) / 255f;
             float centre = band.anchorY() * height + band.offsetY() * k, half = band.height() * k / 2f;
-            if (bands == null) bands = CgQuadRenderer.create().useMaterial(CgMaterial.load(IMAGE));
-            bands.begin();
-            bands.quad().at(0f, centre - half).size(width, 2f * half).uv(0f, 0f, 1f, 1f)
+            quads.quad(CgMaterial.load(IMAGE)).at(0f, centre - half).size(width, 2f * half).uv(0f, 0f, 1f, 1f)
                     .color(argb(alpha, encode(band.colour()))).submit();
-            bands.flush();
-            bands.end();
+            quads.flush();
         }
         float alpha = fade.text(t), slide = fade.slide(t) * k;
         renderer.beginBatch();
@@ -241,15 +231,11 @@ final class CgSubtitleOverlay {
     private void underline(CgSubtitleStyle.Text named, float k, float alpha, float slide) {
         CgSubtitleStyle.Underline u = named.underline();
         CgTexture2D image = CgTextures.of(u.image());
-        if (images == null) images = CgQuadRenderer.create().useMaterial(CgMaterial.load(IMAGE));
-        images.bindTexture(0, image);
-        images.begin();
         // Centred on its offset, as the widget's image slot centres it.
         float w = u.width() * k, h = u.height() * k;
-        images.quad().at(named.anchorX() * width + u.offsetX() * k - w / 2f + slide, named.anchorY() * height + u.offsetY() * k - h / 2f)
+        quads.quad(CgMaterial.load(IMAGE)).texture(0, image).at(named.anchorX() * width + u.offsetX() * k - w / 2f + slide, named.anchorY() * height + u.offsetY() * k - h / 2f)
                 .size(w, h).uv(0f, 0f, 1f, 1f).color(argb(alpha, 0xFFFFFFFF)).submit();
-        images.flush();
-        images.end();
+        quads.flush();
     }
 
     /** {@code path}'s font at {@code px}: a kit's file, read once. */

@@ -406,7 +406,12 @@ public final class CgRenderStage {
                 entry.lastFrame = hostFrame;
             }
             try (CgTrace.Zone z = CgTrace.zone(CgChannels.WORLD, entry.zone)) {
-                entry.renderer.render(frame);
+                frame.turnBegins();
+                try {
+                    entry.renderer.render(frame);
+                } finally {
+                    frame.turnEnds();
+                }
             }
         }
     }

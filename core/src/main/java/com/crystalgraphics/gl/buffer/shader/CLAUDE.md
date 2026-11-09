@@ -70,7 +70,7 @@ Engine buffers take from the **high end** of each range; user buffers from the *
 | Resource | Slot | Constant |
 |----------|------|----------|
 | SSBO (per-object, engine) | ssbo `maxSsboBindings - 1` (e.g. 7) | `CgBindingPoints.OBJECT_DATA` (a `Binding(ssbo, tbo)` record — call `.resolve()` for the active path) |
-| SSBO (`CgQuadRenderer`, engine) | one slot below `OBJECT_DATA`'s | `CgBindingPoints.QUAD_RENDERER` (same `Binding` shape) |
+| SSBO (`CgQuadBatch`, engine) | one slot below `OBJECT_DATA`'s | `CgBindingPoints.QUAD_RENDERER` (same `Binding` shape) |
 | UBO (per-frame, engine)   | `maxUniformBufferBindings - 1` (e.g. 35) | `CgBindingPoints.FRAME_DATA_UBO` |
 | User SSBOs | `CgBindingPoints.USER_START_SSBO` (0) upward | pass 0-based `userIndex` to factories |
 | User UBOs  | `CgBindingPoints.USER_START_UBO` (0) upward | pass 0-based `userIndex` to factories |
@@ -112,7 +112,7 @@ The engine object buffer is named `"CgObjectDataBuffer"` (the SSBO block in `cg_
 Engine-provided buffers a `.shader` opts into by name:
 
 ```glsl
-#pragma cg_use quad     // → CgQuadRenderer's per-instance buffer, macro QUAD_DATA
+#pragma cg_use quad     // → CgQuadBatch's per-instance buffer, macro QUAD_DATA
 ```
 
 `CgMaterialShader.recompile()` resolves the token here and attaches the buffer **after parse, before
@@ -124,7 +124,7 @@ unconditionally because nearly every shader wants them. A quad buffer is wanted 
 and the declaration costs a storage binding — so it is opt-in.
 
 **Why providers hold a `Supplier`, not a buffer:** the built-in `quad` entry is seeded with the
-method reference `CgQuadRenderer::sharedBuffer`, which does *not* trigger that class's static
+method reference `CgQuadBatch::sharedBuffer`, which does *not* trigger that class's static
 initialization at registration time. That matters — its buffer allocates against `CgBindingPoints`
 and is only valid once `CgBindingPoints.init` has run. The supplier is invoked at attach time,
 when a GL context exists.
@@ -148,7 +148,7 @@ the headless parser tests. Seeding here has no ordering requirement: the registr
 parser's first lookup, which is exactly when a token is needed.
 
 > **Do not add a Java-side attach helper for these.** One existed
-> (`CgQuadRenderer.attachTo(material)`) and was removed: attaching at first use loses to anything
+> (`CgQuadBatch.attachTo(material)`) and was removed: attaching at first use loses to anything
 > that compiles the shader earlier, and the resulting undeclared-symbol failure surfaced as an
 > unrelated `#pragma cg_feature` complaint. The pragma is the wiring.
 

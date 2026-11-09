@@ -1,7 +1,7 @@
 // =============================================================================
 // CrystalShader -- curve.shader
-// Reference material for CgVectorRenderer (gl/render/CgVectorRenderer.java), in the
-// same way text.shader is CgQuadRenderer's. Draws an antialiased, optionally
+// Reference material for CgCurveBatch (render/canvas/CgCurveBatch.java), in the
+// same way text.shader is CgQuadBatch's. Draws an antialiased, optionally
 // tapered and gradient-filled quadratic Bezier stroke, one instance per curve.
 //
 // Everything this file needs per instance comes from the CG_CURVE_* macros in

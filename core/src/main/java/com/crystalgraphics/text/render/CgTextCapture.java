@@ -1,14 +1,14 @@
 package com.crystalgraphics.text.render;
 
 import com.crystalgraphics.api.text.CgTextLayout;
-import com.crystalgraphics.gl.render.CgQuadRenderer;
+import com.crystalgraphics.render.canvas.CgQuadRecord;
 
 import javax.annotation.Nullable;
 import java.util.Arrays;
 
 /**
  * One draw's quads kept rather than drawn, as {@link CgTextRenderer#capture} records them: batch by batch, each a run of
- * records in {@link CgQuadRenderer.Record}'s layout, in the draw's own space. For text drawn frame after frame under a
+ * records in {@link CgQuadRecord}'s layout, in the draw's own space. For text drawn frame after frame under a
  * pose that moves while its content stays: keep the records in a buffer and draw them with
  * {@link CgTextRenderer#drawCaptured}, which costs nothing per glyph. {@code CgWorldText}'s labels are these.
  *
@@ -95,7 +95,7 @@ public final class CgTextCapture {
             records = Arrays.copyOf(records, capacity);
             counts = Arrays.copyOf(counts, capacity);
         }
-        int floats = count * CgQuadRenderer.Record.FLOATS;
+        int floats = count * CgQuadRecord.FLOATS;
         float[] into = records[batches];
         if (into == null || into.length < floats) records[batches] = into = new float[Math.max(floats, 64)];
         System.arraycopy(src, 0, into, 0, floats);
