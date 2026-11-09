@@ -1,6 +1,8 @@
 package com.crystalgraphics.sequence;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
@@ -17,6 +19,7 @@ import com.crystalgraphics.asset.kind.CgSequenceKinds;
 import com.crystalgraphics.asset.load.CgAssetCompiler;
 import com.crystalgraphics.asset.tree.CgAssetData;
 import com.crystalgraphics.asset.tree.CgAssetException;
+import com.crystalgraphics.frame.CgTickFunction;
 import com.crystalgraphics.frame.CgWorld;
 import com.crystalgraphics.object.CgType;
 import com.crystalgraphics.sequence.definition.CgSequenceDefinition;
@@ -84,6 +87,61 @@ public class CgSequencerTest {
     private static CgSequencer sequencer() {
         CgWorld world = new CgWorld();
         return world.add(new CgSequencer());
+    }
+
+    /** fov rising 10 a second over the range: its value is the seconds played times ten. */
+    private static final String RAMP = HEAD + "tracks:\n  - id: t1\n    kind: property\n    binding: { role: caster }\n"
+            + "    property: fov\n    sections:\n      - { id: s1, range: [0, 800], value: { keys: [[0, 0, linear], [800, 8, linear]] } }\n";
+
+    @Test
+    public void aWidgetSequencerPlaysOnRealTimeThroughDilationAndPause() {
+        CgWorld world = new CgWorld().timeDilation(0.25f).paused(() -> true);
+        CgSequencer gameplay = world.add(new CgSequencer());
+        CgSequencer widgets = CgSequencer.widgets(world);
+        CgSequenceDefinition d = compile(RAMP, Map.of());
+        CgSequencePlayer slow = gameplay.play(d, Map.of("caster", new Role("fov")));
+        CgSequencePlayer pop = widgets.play(d, Map.of("caster", new Role("fov")));
+
+        gameplay.advance(0.2f);
+        widgets.advance(0.2f);
+        assertEquals(0.05, slow.seconds(), 1e-6);
+        assertEquals(0.2, pop.seconds(), 1e-6);
+        // The schedule runs the widget tick behind a pause, the gameplay one not.
+        for (CgTickFunction f : world.schedule().order()) {
+            assertEquals(f.name(), f.name().endsWith(".widgets"), f.whilePaused());
+        }
+    }
+
+    @Test
+    public void eachRoleIsFoundByItsOwnLookup() {
+        CgWorld world = new CgWorld();
+        CgSequencer widgets = CgSequencer.widgets(world);   // added first: a type lookup would hand it to gameplay
+        assertNull(CgSequencer.of(world));
+        CgSequencer gameplay = world.add(new CgSequencer());
+        assertSame(gameplay, CgSequencer.of(world));
+        assertSame(widgets, CgSequencer.widgets(world));
+        assertEquals(CgSequencer.Role.WIDGETS, widgets.role());
+        try {
+            new CgWorld(true).add(new CgSequencer(CgSequencer.Role.WIDGETS));
+            fail("a server's world took a widget sequencer");
+        } catch (IllegalStateException expected) {
+        }
+    }
+
+    @Test
+    public void aFinishedPlayerReplaysFromTheStartWithItsBindings() {
+        CgSequencer widgets = CgSequencer.widgets(new CgWorld());
+        Role number = new Role("fov");
+        CgSequencePlayer pop = widgets.play(compile(RAMP, Map.of()), Map.of("caster", number));
+        while (!pop.finished()) widgets.evaluate(0.1f);
+        int players = widgets.players().size();
+
+        pop.jumpTo(0);
+        widgets.evaluate(0.1f);                          // a jump's frame lands on its point, as JumpToFrame
+        assertEquals(0f, number.get("fov"), 1e-4f);
+        widgets.evaluate(0.3f);
+        assertEquals(3f, number.get("fov"), 1e-4f);
+        assertEquals(players, widgets.players().size());
     }
 
     @Test

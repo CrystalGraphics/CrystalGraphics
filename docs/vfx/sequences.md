@@ -205,6 +205,45 @@ tracks:
   leaving the section ends it unless it keeps its state (`MovieSceneCameraShakeSystem`).
 - A cue's `sequences` entry plays this way, at the entry's placement ([networking](networking.md) § *Cues*).
 
+### Interface animation: the widget sequencer
+
+A world holds a second sequencer for what animates your interface: a damage number popping over a target, a banner
+sliding in. It is Unreal's widget animation: UMG plays its animations on a linker of their own, ticked from the
+interface's frame. So it runs on real time, a hit-stop or slow motion never slows it, and it keeps playing behind the
+pause menu.
+
+```java
+CgSequencer gameplay = CgSequencer.of(CgWorld.client());        // moves, cues, cameras: dilated, paused with the game
+CgSequencer ui = CgSequencer.widgets(CgWorld.client());          // added on first ask; client only
+
+// Each widget keeps its player and replays it, as a widget keeps one state per animation:
+final class Number implements CgSequenceTarget { ... }          // its parts' slots: scale, opacity, colour...
+CgSequencePlayer pop = ui.play(POP, Map.of("number", number));   // once, when the number is made
+pop.jumpTo(0);                                                   // each hit: from the start, nothing allocated
+if (pop.finished()) hide(number);
+```
+
+```yaml
+# mymod:sequences/hud/pop.yaml: a widget's tracks are property tracks on the widget and its parts
+roles:
+  - { id: b1, name: number, kind: caster }
+tracks:
+  - id: t1
+    kind: property
+    binding: { role: number, node: digits }
+    property: render_opacity
+    sections:
+      - { id: s1, range: [0, 400], value: { keys: [[0, 0.2, linear], [67, 1, linear], [267, 1, linear], [400, 0, linear]] } }
+```
+
+- **Find either by its own lookup**, never `world.subsystem(CgSequencer.class)`, which returns whichever was added
+  first.
+- **A replay lands on its first frame at the next evaluation** and plays on from there (`jumpTo`, Unreal's
+  `JumpToFrame`).
+- **A part a section binds** (`node: digits`) is what the target's `part` returns for it; a slot or a part the target
+  lacks fails the play, naming both.
+- A dedicated server's world takes no widget sequencer: adding one throws.
+
 ### Subsequences
 
 A `subsequence` section plays another sequence inside this one. Its roles are this one's of the same name, or those its

@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.function.BooleanSupplier;
+import java.util.function.Predicate;
 
 /**
  * A simulation world: its subsystems and its schedule of tick functions. The client level's is {@link #client()}; an
@@ -183,6 +184,15 @@ public final class CgWorld implements AutoCloseable {
     /** The subsystem of {@code type}, or null. */
     public synchronized <T extends CgWorldSubsystem> T subsystem(Class<T> type) {
         for (CgWorldSubsystem s : subsystems) if (type.isInstance(s)) return type.cast(s);
+        return null;
+    }
+
+    /**
+     * The first subsystem of {@code type} that {@code which} accepts, or null: for a type a world holds more than one
+     * of, as {@code CgSequencer}'s roles.
+     */
+    public synchronized <T extends CgWorldSubsystem> T subsystem(Class<T> type, Predicate<? super T> which) {
+        for (CgWorldSubsystem s : subsystems) if (type.isInstance(s) && which.test(type.cast(s))) return type.cast(s);
         return null;
     }
 

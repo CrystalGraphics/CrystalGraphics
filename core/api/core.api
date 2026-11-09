@@ -5697,6 +5697,7 @@ com/crystalgraphics/frame/CgWorld
   method public schedule ()Lcom/crystalgraphics/frame/CgTickSchedule;
   method public server ()Z
   method public subsystem (Ljava/lang/Class;)Lcom/crystalgraphics/frame/CgWorldSubsystem;
+  method public subsystem (Ljava/lang/Class;Ljava/util/function/Predicate;)Lcom/crystalgraphics/frame/CgWorldSubsystem;
   method public tick ()V
   method public ticks ()J
   method public timeDilation ()F
@@ -11147,6 +11148,7 @@ com/crystalgraphics/sequence/CgSequencer
   field public,static,final STOPPED_ZONE Ljava/lang/String;
   field public,static,final TRACKS_ZONE Ljava/lang/String;
   method public <init> ()V
+  method public <init> (Lcom/crystalgraphics/sequence/CgSequencer$Role;)V
   method public audio ()Lcom/crystalgraphics/audio/CgAudioEngine;
   method public environment ()Lcom/crystalgraphics/sequence/CgSequenceTarget;
   method public environment (Lcom/crystalgraphics/sequence/CgSequenceTarget;)Lcom/crystalgraphics/sequence/CgSequencer;
@@ -11161,12 +11163,22 @@ com/crystalgraphics/sequence/CgSequencer
   method public playClip (Lcom/crystalgraphics/sequence/definition/CgSequenceDefinition;Lcom/crystalgraphics/sequence/CgSequenceTarget;Ljava/lang/String;)Lcom/crystalgraphics/sequence/CgSequencePlayer;
   method public players ()Ljava/util/List;
   method public register (Lcom/crystalgraphics/sequence/CgSequenceEvaluator;)V
+  method public role ()Lcom/crystalgraphics/sequence/CgSequencer$Role;
   method public server ()Z
   method public significance ()I
   method public significance (I)Lcom/crystalgraphics/sequence/CgSequencer;
   method public spawner (Ljava/lang/String;Lcom/crystalgraphics/sequence/spawn/CgSequenceSpawner;)Lcom/crystalgraphics/sequence/CgSequencer;
   method public unlisten (Lcom/crystalgraphics/sequence/event/CgSequenceEventListener$Side;Lcom/crystalgraphics/sequence/event/CgSequenceEventListener;)V
   method public viewer (Ljava/util/function/Predicate;)Lcom/crystalgraphics/sequence/CgSequencer;
+  method public,static of (Lcom/crystalgraphics/frame/CgWorld;)Lcom/crystalgraphics/sequence/CgSequencer;
+  method public,static widgets (Lcom/crystalgraphics/frame/CgWorld;)Lcom/crystalgraphics/sequence/CgSequencer;
+com/crystalgraphics/sequence/CgSequencer$Role
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final WIDGETS Lcom/crystalgraphics/sequence/CgSequencer$Role;
+  field public,static,final WORLD Lcom/crystalgraphics/sequence/CgSequencer$Role;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/sequence/CgSequencer$Role;
+  method public,static values ()[Lcom/crystalgraphics/sequence/CgSequencer$Role;
 com/crystalgraphics/sequence/animation/CgSequenceAnimationEvaluator
   access public,final
   extends java/lang/Object

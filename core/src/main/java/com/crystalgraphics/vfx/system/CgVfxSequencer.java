@@ -59,7 +59,7 @@ public final class CgVfxSequencer {
                                       @Nullable Function<String, CgSequenceDefinition> cameraSequences) {
         CgSequencer sequencer;
         synchronized (world) {
-            sequencer = world.subsystem(CgSequencer.class);
+            sequencer = CgSequencer.of(world);
             if (sequencer == null) sequencer = world.add(new CgSequencer());
         }
         CgVfxSystemSpawner systems = new CgVfxSystemSpawner(vfx);

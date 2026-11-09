@@ -15,6 +15,7 @@ import org.apache.logging.log4j.Logger;
 import com.crystalgraphics.audio.CgAudioEngine;
 import com.crystalgraphics.frame.CgTickFunction;
 import com.crystalgraphics.frame.CgTickGroup;
+import com.crystalgraphics.frame.CgWorld;
 import com.crystalgraphics.frame.CgWorldSubsystem;
 import com.crystalgraphics.util.trace.CgChannels;
 import com.crystalgraphics.trace.CgTrace;
@@ -46,7 +47,17 @@ import com.crystalgraphics.world.CgAttachment;
  * sequencer.evaluate(dt);                                       // what its tick does; a test or a tool calls it
  * }</pre>
  *
+ * <p>A world holds up to two, one a {@link Role}: its gameplay sequencer ({@link #of}) and its widget sequencer
+ * ({@link #widgets}), UMG's, for interface animation that must not slow with hit-stop or stop at a pause.</p>
+ *
+ * <pre>{@code
+ * CgSequencer gameplay = CgSequencer.of(CgWorld.client());
+ * CgSequencer ui = CgSequencer.widgets(CgWorld.client());
+ * }</pre>
+ *
  * <ul>
+ *   <li>Find one by {@link #of} or {@link #widgets}, never {@code world.subsystem(CgSequencer.class)}: that returns
+ *       whichever was added first.</li>
  *   <li>Each frame, in order: <b>advance</b> each player's range; <b>import</b> where it crossed a segment, its
  *       entries changing; <b>evaluate</b> each kind's entries across every player, in the order the evaluators were
  *       registered (the built-in state kinds first).</li>
@@ -75,6 +86,19 @@ public final class CgSequencer extends CgWorldSubsystem {
             TRACKS_ZONE = "sequence.tracks", SPAWNED_ZONE = "sequence.spawned", ADVANCE_ZONE = "sequence.advance",
             STOPPED_ZONE = "sequence.stopped", END_PASS_ZONE = "sequence.endPass";
 
+    /**
+     * Which clock a sequencer plays on: Unreal's linker roles. A world's sequencer advances on the world's dilated
+     * time and holds while the game is paused; a widget sequencer is UMG's, ticked from the UI's own frame
+     * ({@code UUMGSequenceTickManager}, on Slate's pre-tick): never dilated, and still running behind a pause menu.
+     */
+    public enum Role {
+        /** Gameplay: moves, cues, cameras. Dilated, paused with the game. */
+        WORLD,
+        /** Interface animation: a damage number's pop, a widget's fade. Real time, never paused or dilated. */
+        WIDGETS
+    }
+
+    private final Role role;
     private final List<CgSequencePlayer> players = new ArrayList<>();
     private final List<CgSequenceEvaluator> evaluators = new ArrayList<>();
     /** Each evaluator's trace zone, {@code sequence.tracks/<kind>}, named at its first evaluation. */
@@ -92,7 +116,17 @@ public final class CgSequencer extends CgWorldSubsystem {
     @Nullable
     private Predicate<? super CgSequenceTarget> viewer;
 
+    /** A world's sequencer: {@link Role#WORLD}. */
     public CgSequencer() {
+        this(Role.WORLD);
+    }
+
+    /**
+     * A sequencer on {@code role}'s clock. A widget sequencer is a client's alone: adding one to a server's world
+     * throws.
+     */
+    public CgSequencer(Role role) {
+        this.role = role;
         for (String kind : CgSequenceStateEvaluator.KINDS) evaluators.add(new CgSequenceStateEvaluator(kind, blender));
         evaluators.add(new CgSequenceSystemEvaluator());
         evaluators.add(new CgSequenceSoundEvaluator(this));
@@ -106,15 +140,50 @@ public final class CgSequencer extends CgWorldSubsystem {
 
     @Override
     protected void initialize() {
+        if (role == Role.WIDGETS) {
+            if (server()) throw new IllegalStateException("a widget sequencer draws: a server's world has none");
+            // UMG's own linker, ticked from Slate's pre-tick on its delta (UMGSequenceTickManager.cpp:49-56, 126, 288):
+            // real time, and on through a pause.
+            tick = world().schedule().add(CgTickGroup.SEQUENCES, "crystalgraphics:sequencer.widgets", this::advance).whilePaused(true);
+            return;
+        }
         // On a server, headless evaluation each game tick (AUTHORITY); on a client, each frame. On the world's dilated
         // time, as Unreal's players advance (MovieSceneSequencePlayer.cpp: DeltaSeconds already times the effective
         // time dilation).
-        tick = server() ? world().schedule().add(CgTickGroup.AUTHORITY, "crystalgraphics:sequencer", this::evaluateDilated).onServer(true)
-                : world().schedule().add(CgTickGroup.SEQUENCES, "crystalgraphics:sequencer", this::evaluateDilated);
+        tick = server() ? world().schedule().add(CgTickGroup.AUTHORITY, "crystalgraphics:sequencer", this::advance).onServer(true)
+                : world().schedule().add(CgTickGroup.SEQUENCES, "crystalgraphics:sequencer", this::advance);
     }
 
-    private void evaluateDilated(float dt) {
-        evaluate(dt * world().timeDilation());
+    /** What its tick runs: {@code dt} on its role's clock. */
+    void advance(float dt) {
+        evaluate(role == Role.WIDGETS ? dt : dt * world().timeDilation());
+    }
+
+    /** The clock it plays on. */
+    public Role role() {
+        return role;
+    }
+
+    /** {@code world}'s gameplay sequencer ({@link Role#WORLD}), or null before one is added. */
+    @Nullable
+    public static CgSequencer of(CgWorld world) {
+        return world.subsystem(CgSequencer.class, s -> s.role == Role.WORLD);
+    }
+
+    /**
+     * {@code world}'s widget sequencer ({@link Role#WIDGETS}), added on first ask: what interface animation plays on.
+     * Client only.
+     *
+     * <pre>{@code
+     * CgSequencePlayer pop = CgSequencer.widgets(CgWorld.client()).play(POP, Map.of("number", target));
+     * pop.jumpTo(0);   // the next hit replays the same player: no allocation
+     * }</pre>
+     */
+    public static CgSequencer widgets(CgWorld world) {
+        synchronized (world) {
+            CgSequencer s = world.subsystem(CgSequencer.class, q -> q.role == Role.WIDGETS);
+            return s != null ? s : world.add(new CgSequencer(Role.WIDGETS));
+        }
     }
 
     @Override
