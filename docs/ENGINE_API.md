@@ -850,6 +850,9 @@ Measured by: `deferral.apply`, the workers' `upload.lease-copy`, and the GPU zon
 
 ### GL State Save/Restore
 
+**For the `CgGL` callers not yet on the RHI, and deleted with them in `rhi` H7.** On the RHI a draw's state is its
+pipeline's and nothing saves or restores: [`RENDER_STATE.md`](RENDER_STATE.md).
+
 Wrap any block of GL work in a `CgGlScope` to guarantee state restoration on exit — even on exceptions. Always save only the slots you intend to modify.
 
 > Imports come from **`com.crystalgraphics.platform.gl.state`** (`CgGlState`, `CgGlScope`, `CgGlSlot`); `CgGlStateManager` is in `platform.gl`.
