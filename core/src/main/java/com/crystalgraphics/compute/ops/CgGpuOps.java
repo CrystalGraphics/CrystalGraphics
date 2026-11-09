@@ -950,7 +950,7 @@ public final class CgGpuOps {
         }
         if (w > (float) tw * MAX_SHRINK || h > (float) th * MAX_SHRINK) {
             int mw = Math.max(tw, (int) Math.ceil(w / MAX_SHRINK)), mh = Math.max(th, (int) Math.ceil(h / MAX_SHRINK));
-            CgGraphTexture mid = pass.recording().scratch("ops.shrink", mw, mh, SCRATCH[f]);
+            CgGraphTexture mid = pass.recording().scratch("ops.shrink", scratchSize(mw), scratchSize(mh), SCRATCH[f]);
             dispatchShrink(pass, f, source, x, y, w, h, mid, 0, 0, mw, mh);
             source = mid;
             x = 0f;
@@ -978,13 +978,24 @@ public final class CgGpuOps {
                                      int x, int y, int w, int h, CgGraphTexture target, int targetLevel,
                                      int tx, int ty, float sigmaX, float sigmaY, Edge edge, boolean linear) {
         int mirror = edge == Edge.MIRROR ? 1 : 0;
-        CgGraphTexture across = pass.recording().scratch("ops.blur", w, h, SCRATCH[f]);
+        CgGraphTexture across = pass.recording().scratch("ops.blur", scratchSize(w), scratchSize(h), SCRATCH[f]);
         pass.dispatch(blurKernel(f, false, linear), w, h, 1).texture("_Src", source).set("_Level", sourceLevel)
                 .image(TARGETS[f], across).set("_Radius", (int) Math.ceil(3 * sigmaX)).set("_Sigma", sigmaX)
                 .set("_Region", x, y, x + w, y + h).set("_Target", 0, 0, 0, 0).set("_Mirror", mirror);
         pass.dispatch(blurKernel(f, true, linear), w, h, 1).texture("_Src", across).set("_Level", 0)
                 .image(TARGETS[f], target, targetLevel, -1).set("_Radius", (int) Math.ceil(3 * sigmaY))
                 .set("_Sigma", sigmaY).set("_Region", 0, 0, w, h).set("_Target", tx, ty, 0, 0).set("_Mirror", mirror);
+    }
+
+    /**
+     * A scratch's extent for a region {@code n} texels across: the next of 64, 96, 128, 192, 256 ... (half octaves), so
+     * a region that changes size each frame reuses a few pooled textures rather than making one a frame. Each op reads
+     * and writes its region only.
+     */
+    static int scratchSize(int n) {
+        int size = 64;
+        while (size < n) size = (size & (size - 1)) == 0 ? size + size / 2 : size / 3 * 4;
+        return size;
     }
 
     /** Level {@code level}'s extent of an axis of {@code size} texels at level 0. */

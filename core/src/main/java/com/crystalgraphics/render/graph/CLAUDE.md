@@ -423,6 +423,10 @@ CgExecutor.freeStorage(picture);   // the context is going away
   requested texture; an imported, persistent or history buffer) or carries a request.
 - **Transients live from their first to their last use** in the executed order, from a pool keyed by description
   (textures) or size class (buffers): two that never live at once share storage.
+  The texture pool frees one idle five minutes, and past `crystalgraphics.graph.poolMb` (400) one unused ten frames,
+  as Unreal's pool does past `r.RenderTargetPoolMin`: a transient sized from something that moves (a region on
+  screen) is rounded to a size class first (`CgGpuOps.scratchSize`), or every frame's size is new storage.
+  `graph.pool-framebuffers` and `graph.pool-kb` count what it holds, on every backend.
 - **A compute pass runs where compute does**: a dispatch on a context without it throws when it is recorded
   (`CgKernel.requireCompute`).
 - **An `async()` compute pass runs on the device's compute queue** where it has one (the owned device), and in order
