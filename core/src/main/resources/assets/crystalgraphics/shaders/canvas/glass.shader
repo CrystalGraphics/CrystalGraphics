@@ -95,11 +95,9 @@ Pass {
 
     // The SDF's outward normal by central difference over e, about a pixel: no derivative builtins here, which once
     // reached a vertex stage.
-    vec2 cg_sdfGradient(vec2 p, vec2 halfSize, float e) {
-        float dx = sdf_rounded_box(p + vec2(e, 0.0), halfSize, _CornerRadiusX, _CornerRadiusY)
-                 - sdf_rounded_box(p - vec2(e, 0.0), halfSize, _CornerRadiusX, _CornerRadiusY);
-        float dy = sdf_rounded_box(p + vec2(0.0, e), halfSize, _CornerRadiusX, _CornerRadiusY)
-                 - sdf_rounded_box(p - vec2(0.0, e), halfSize, _CornerRadiusX, _CornerRadiusY);
+    vec2 cg_sdfGradient(vec2 p, vec2 halfSize, vec4 rx, vec4 ry, float e) {
+        float dx = sdf_rounded_box(p + vec2(e, 0.0), halfSize, rx, ry) - sdf_rounded_box(p - vec2(e, 0.0), halfSize, rx, ry);
+        float dy = sdf_rounded_box(p + vec2(0.0, e), halfSize, rx, ry) - sdf_rounded_box(p - vec2(0.0, e), halfSize, rx, ry);
         return normalize(vec2(dx, dy) + vec2(1e-6, 0.0));
     }
 
@@ -144,16 +142,27 @@ Pass {
         // let the unblurred backdrop bleed through every straight edge's last row.
         float coverage = clamp(0.5 - dist / (max(fwidth(dist), 1e-4) * ramp), 0.0, 1.0);
 
+        // A target pixel in the box's units: the floors below are a pixel whatever the box is measured in.
+        float unitPx = max(length(fwidth(localPos)), 1e-6);
+
+        // The lens's surface: the box with every corner rounded at least a bezel wide. Under the box's own corners the
+        // band reached the medial axis, where the nearest edge switches and the normal flips: a crease down each
+        // diagonal. The outline and the rim keep the box's corners.
+        float bezel = max(unitPx, _Bezel);
+        float most = min(halfSize.x, halfSize.y);
+        vec4 lensRx = min(max(_CornerRadiusX, vec4(bezel)), vec4(most));
+        vec4 lensRy = min(max(_CornerRadiusY, vec4(bezel)), vec4(most));
+        float lensDist = sdf_rounded_box(localPos, halfSize, lensRx, lensRy);
+
         // 0 at the boundary, 1 where the glass goes flat. No bezel is no rim: frosted to the edge.
-        float bezel = max(1.0, _Bezel);
-        float edge  = _Bezel > 0.0 ? clamp(-dist / bezel, 0.0, 1.0) : 1.0;
+        float edge  = _Bezel > 0.0 ? clamp(-lensDist / bezel, 0.0, 1.0) : 1.0;
 
         vec2 disp = vec2(0.0, 0.0);
         vec2 grad = vec2(0.0, 0.0);
         float slope = 0.0;
 
 #if defined(WITH_REFRACTION) || defined(WITH_SPECULAR)
-        grad = cg_sdfGradient(localPos, halfSize, max(0.5 * length(fwidth(localPos)), 1e-4));
+        grad = cg_sdfGradient(localPos, halfSize, lensRx, lensRy, 0.5 * unitPx);
         // The normal's tilt by central difference, clamped: at x = 0 it is unbounded.
         const float d = 0.02;
         slope = (cg_glassHeight(edge + d) - cg_glassHeight(edge - d)) / (2.0 * d);
@@ -200,8 +209,8 @@ Pass {
         // Two terms, the thin rim dominant (0.25 against 0.10): a broad term alone reads as bloom.
         float glow = _Glow * pow(proj, 1.5) * (1.0 - edge);
 
-        // 1 at the boundary, 0 one band in; in pixels, whatever the bezel.
-        float band = clamp(1.0 + dist / max(0.5, _EdgeWidth), 0.0, 1.0);
+        // 1 at the boundary, 0 one band in; in the box's units, whatever the bezel.
+        float band = clamp(1.0 + dist / max(0.5 * unitPx, _EdgeWidth), 0.0, 1.0);
 
         // The rim is an ambient floor plus the directional pair: proj alone is 0 at the corners perpendicular to the
         // light, and the outline vanished there. _RimAmbient 0 is fully directional, 1 an even hairline.
