@@ -17,9 +17,7 @@ import com.crystalgraphics.loading.watchdog.CgLoadWatchdog;
 import com.crystalgraphics.platform.service.CgProcessExit;
 import com.crystalgraphics.loading.task.CgLoadTask;
 import com.crystalgraphics.platform.CgPlatform;
-import com.crystalgraphics.platform.gl.CgGL;
-import com.crystalgraphics.platform.gl.state.CgGlScope;
-import com.crystalgraphics.platform.gl.state.CgGlState;
+import com.crystalgraphics.lifecycle.CgGraphicsLifecycle;
 import com.crystalgraphics.platform.input.CgKeyCodes;
 import com.crystalgraphics.platform.service.CgInputService;
 import com.crystalgraphics.render.CgFrameClock;
@@ -687,24 +685,22 @@ public final class CgRenderDemo {
     private boolean warmAhead(CgLoadTask task) {
         if (allWarm) return true;
         if (scenes[wanted] == null) return false;
-        // The tick leaves state to the host; a compile commit may bind.
-        try (CgGlScope ignored = CgGlState.saveAll()) {
-            if (!warm(wanted)) return false;
-            if (prewarming >= 0) {
-                if (!warm(prewarming)) return false;
-                prewarming = -1;
-            }
-            int built = 0;
-            for (Scene s : scenes) if (s != null) built++;
-            task.progress((built + Math.max(rehearsal, 0)) / (2f * kinds.length));
-            for (int i = 0; i < kinds.length; i++) {
-                if (scenes[i] != null) continue;
-                build(i);
-                prewarming = i;
-                return false;
-            }
-            return allWarm = rehearsed();
+        // Inside the frame's host section (CgLoadPlan), whose close sets back what a compile commit bound
+        if (!warm(wanted)) return false;
+        if (prewarming >= 0) {
+            if (!warm(prewarming)) return false;
+            prewarming = -1;
         }
+        int built = 0;
+        for (Scene s : scenes) if (s != null) built++;
+        task.progress((built + Math.max(rehearsal, 0)) / (2f * kinds.length));
+        for (int i = 0; i < kinds.length; i++) {
+            if (scenes[i] != null) continue;
+            build(i);
+            prewarming = i;
+            return false;
+        }
+        return allWarm = rehearsed();
     }
 
     /**
@@ -905,7 +901,7 @@ public final class CgRenderDemo {
             // -1 standard) pass the test against every pixel, the showcase's sky seal included. The depth row stays
             // non-zero, or the culler's far plane is all zeros and culls every glyph. Again each frame, since a resize
             // rebuilds the ortho.
-            hud.context().projection().m22(-1.0e-4f).m32(CgGL.isDepthReversed() ? 1f : -1f);
+            hud.context().projection().m22(-1.0e-4f).m32(CgGraphicsLifecycle.hostDepthReversed() ? 1f : -1f);
             hud.beginBatch();
             hud.draw().layout(hudLayout).font(hudFont).at(4f, 4f).color(HUD_COLOR).stroke(HUD_OUTLINE_EM, HUD_OUTLINE).submit();
             hud.endBatch();

@@ -14,7 +14,6 @@ import com.crystalgraphics.api.texture.CgTextureSpec;
 import com.crystalgraphics.easing.CgEasings;
 import com.crystalgraphics.easing.CgKeyframes;
 import com.crystalgraphics.gl.texture.CgTexture2D;
-import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.render.world.CgPipelinePrecache;
 import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.settings.CgQuality;
@@ -2616,7 +2615,7 @@ public final class CgVfxModules {
             }
             pixels.flip();
             synchronized (sheets) {
-                if (!deleted) texture.uploadRegion(0, 0, 0, w, h, pixels, CgGL.GL_RGBA, CgGL.GL_UNSIGNED_BYTE);
+                if (!deleted) texture.uploadRegion(0, 0, 0, w, h, pixels);
             }
         });
         return texture;
