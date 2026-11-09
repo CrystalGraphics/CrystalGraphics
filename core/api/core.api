@@ -8689,6 +8689,7 @@ com/crystalgraphics/object/value/CgUnits
   method public,final hashCode ()I
   method public,final toString ()Ljava/lang/String;
   method public,static of (Ljava/lang/Object;Lcom/crystalgraphics/object/value/CgUnits;)Lcom/crystalgraphics/object/value/CgUnits;
+  method public,static permutes (Lcom/crystalgraphics/object/value/CgQuantity;)Z
   method public,static rotatorToHost (DDD)[F
   method public,static rotatorToHost (DDD[F)[F
 com/crystalgraphics/object/value/CgValue
@@ -16250,6 +16251,8 @@ com/crystalgraphics/vfx/particle/CgVfxEmitter
   method public renderers ()Ljava/util/List;
   method public rollKeys ()[I
   method public scaled (F)Lcom/crystalgraphics/vfx/particle/CgVfxEmitter;
+  method public seededStreams ()Ljava/util/List;
+  method public seeds ()Ljava/util/Map;
   method public sizeAt (F)F
   method public sizeBySpeed ([FI)V
   method public slot ()Lcom/crystalgraphics/vfx/look/CgVfxSlot;
@@ -16329,6 +16332,7 @@ com/crystalgraphics/vfx/particle/CgVfxEmitter$Builder
   method public scale (FFF)Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Builder;
   method public scale (FFFFFF)Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Builder;
   method public scaleOverLife (Lcom/crystalgraphics/easing/CgKeyframes;Lcom/crystalgraphics/easing/CgKeyframes;Lcom/crystalgraphics/easing/CgKeyframes;)Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Builder;
+  method public seed (Ljava/lang/String;Lcom/crystalgraphics/vfx/particle/spawn/CgVfxSeed;)Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Builder;
   method public sequence (Lcom/crystalgraphics/vfx/sequence/CgVfxNodeClip;)Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Builder;
   method public sequence (Lcom/crystalgraphics/vfx/sequence/CgVfxNodeClip;F)Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Builder;
   method public shape (Lcom/crystalgraphics/shape/CgShape;)Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Builder;
@@ -16339,6 +16343,7 @@ com/crystalgraphics/vfx/particle/CgVfxEmitter$Builder
   method public sizeBySpeed (FFFF)Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Builder;
   method public sockets (Lcom/crystalgraphics/vfx/particle/CgVfxSockets;)Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Builder;
   method public spawnFrom (Lcom/crystalgraphics/vfx/particle/spawn/CgVfxSpawnFrom;)Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Builder;
+  method public spawning ()Lcom/crystalgraphics/vfx/particle/spawn/CgVfxSpawning;
   method public spawning (Lcom/crystalgraphics/vfx/particle/spawn/CgVfxSpawning;)Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Builder;
   method public speed (FF)Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Builder;
   method public spin (FF)Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Builder;
@@ -16447,6 +16452,7 @@ com/crystalgraphics/vfx/particle/CgVfxEmitterInstance$Books
   method public stepLoopTo ()F
   method public stepStartTime ()F
   method public stepTime ()F
+  method public streamWords ([II)I
   method public takeClear ()Z
   method public takeKill ()Z
   method public time ()F
@@ -17641,7 +17647,7 @@ com/crystalgraphics/vfx/particle/form/CgVfxFormInput$Function
   access public,final,record
   extends java/lang/Record
   implements com/crystalgraphics/vfx/particle/form/CgVfxFormInput
-  method public <init> (Ljava/lang/String;ILjava/lang/String;Lcom/crystalgraphics/vfx/particle/form/CgVfxFormInput;Lcom/crystalgraphics/vfx/particle/form/CgVfxFormInput;Lcom/crystalgraphics/object/CgPropertyMeta$Rolls;)V
+  method public <init> (Ljava/lang/String;ILjava/lang/String;Lcom/crystalgraphics/vfx/particle/form/CgVfxFormInput;Lcom/crystalgraphics/vfx/particle/form/CgVfxFormInput;Lcom/crystalgraphics/object/CgPropertyMeta$Rolls;ZLjava/lang/String;)V
   method public channel (Lcom/crystalgraphics/vfx/particle/form/CgVfxFormContext;I)F
   method public components ()I
   method public first ()Lcom/crystalgraphics/vfx/particle/form/CgVfxFormInput;
@@ -17649,7 +17655,10 @@ com/crystalgraphics/vfx/particle/form/CgVfxFormInput$Function
   method public form ()Lcom/crystalgraphics/object/value/CgValueForm;
   method public formClass ()Lcom/crystalgraphics/object/layout/CgFormClass;
   method public key ()I
+  method public locked ()Ljava/lang/String;
   method public name ()Ljava/lang/String;
+  method public perChannel ()Z
+  method public rollOf (I)I
   method public rolls ()Lcom/crystalgraphics/object/CgPropertyMeta$Rolls;
   method public second ()Lcom/crystalgraphics/vfx/particle/form/CgVfxFormInput;
   method public,final equals (Ljava/lang/Object;)Z
@@ -17725,7 +17734,9 @@ com/crystalgraphics/vfx/particle/form/CgVfxSpawnForm
   method public element ()Ljava/lang/String;
   method public firstEnd ()F
   method public input ()Ljava/lang/String;
+  method public quantity ()Lcom/crystalgraphics/object/value/CgQuantity;
   method public scaled (F)Lcom/crystalgraphics/vfx/particle/form/CgVfxSpawnForm;
+  method public seed ()Ljava/lang/Object;
   method public target ()Lcom/crystalgraphics/vfx/particle/form/CgVfxSpawnInput;
   method public value ()Ljava/lang/Object;
   method public,final equals (Ljava/lang/Object;)Z
@@ -17737,6 +17748,7 @@ com/crystalgraphics/vfx/particle/form/CgVfxSpawnForm
 com/crystalgraphics/vfx/particle/form/CgVfxSpawnInput
   access public,final,enum
   extends java/lang/Enum
+  field public,static,final ALPHA Lcom/crystalgraphics/vfx/particle/form/CgVfxSpawnInput;
   field public,static,final COLOR Lcom/crystalgraphics/vfx/particle/form/CgVfxSpawnInput;
   field public,static,final CONE_ANGLE Lcom/crystalgraphics/vfx/particle/form/CgVfxSpawnInput;
   field public,static,final CYLINDER_HEIGHT Lcom/crystalgraphics/vfx/particle/form/CgVfxSpawnInput;
@@ -17991,6 +18003,7 @@ com/crystalgraphics/vfx/particle/gpu/CgVfxGpuEmitter
   method public publishes ()Z
   method public rasterized ()[F
   method public rollKeys ()[I
+  method public seededStreams ()Ljava/util/List;
   method public sizeBySpeed ([FI)V
   method public sockets ()Lcom/crystalgraphics/vfx/particle/CgVfxSockets;
   method public spawnForms ()Ljava/util/List;
@@ -18201,6 +18214,7 @@ com/crystalgraphics/vfx/particle/gpu/sim/CgVfxParticlePool
   field public,static,final INSTANCE_HEADER I
   field public,static,final ORDER I
   field public,static,final SPAWN_ROW_WORDS I
+  field public,static,final STREAM_WORD I
   field public,static,final TEXTURE_ENTRIES I
   method public allocate ()V
   method public beamFirst (I)I
@@ -18259,7 +18273,7 @@ com/crystalgraphics/vfx/particle/gpu/sim/CgVfxParticlePool
   method public shape ()Lcom/crystalgraphics/vfx/particle/gpu/sim/CgVfxShape;
   method public slotCount ()I
   method public spawn (III)V
-  method public spawn (IIIIFFFFFFFFFFF)V
+  method public spawn (IIIIFFFFFFFFFFF[II)V
   method public spawnTrail (III[IIF)V
   method public stepped ()Z
   method public storage ()I
@@ -18409,6 +18423,7 @@ com/crystalgraphics/vfx/particle/gpu/sim/CgVfxShape
   method public record ()Lcom/crystalgraphics/vfx/particle/gpu/sim/CgVfxRecord;
   method public reports ()Z
   method public rowVectors ()I
+  method public seeded ()Ljava/util/List;
   method public socketParamsAt ()I
   method public sockets ()I
   method public socketsAt ()I
@@ -19087,6 +19102,73 @@ com/crystalgraphics/vfx/particle/spawn/CgVfxOwnerScale
   method public,static of (I)Ljava/util/Set;
   method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/vfx/particle/spawn/CgVfxOwnerScale;
   method public,static values ()[Lcom/crystalgraphics/vfx/particle/spawn/CgVfxOwnerScale;
+com/crystalgraphics/vfx/particle/spawn/CgVfxRandomStream
+  access public,final
+  extends java/lang/Object
+  field public,static,final A I
+  field public,static,final C I
+  method public,static fraction (I)F
+  method public,static next (I)I
+  method public,static skip (IJ)I
+com/crystalgraphics/vfx/particle/spawn/CgVfxSeed
+  access public,final,record
+  extends java/lang/Record
+  method public <init> ([ILjava/lang/String;ZZZZ)V
+  method public fromInstance ()Z
+  method public instanceIsIndex ()Z
+  method public parameter ()Ljava/lang/String;
+  method public pick (III)I
+  method public randomSelection ()Z
+  method public resetOnLoop ()Z
+  method public values ()[I
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
+  method public,static follows (Ljava/lang/Object;)Ljava/lang/String;
+  method public,static of (Ljava/lang/String;Ljava/lang/Object;)Lcom/crystalgraphics/vfx/particle/spawn/CgVfxSeed;
+com/crystalgraphics/vfx/particle/spawn/CgVfxSeededStream
+  access public,final,record
+  extends java/lang/Record
+  field public,static,final MAX I
+  field public,static,final TRIES I
+  method public <init> (Ljava/lang/String;Lcom/crystalgraphics/vfx/particle/spawn/CgVfxSeed;ILjava/util/List;I[ILcom/crystalgraphics/vfx/particle/spawn/CgVfxSeededStream$Rejection;)V
+  method public advance (I)I
+  method public axis ()[I
+  method public draws ()I
+  method public element ()Ljava/lang/String;
+  method public input (Lcom/crystalgraphics/vfx/particle/form/CgVfxSpawnInput;)Lcom/crystalgraphics/vfx/particle/spawn/CgVfxSeededStream$Input;
+  method public inputs ()Ljava/util/List;
+  method public rejection ()Lcom/crystalgraphics/vfx/particle/spawn/CgVfxSeededStream$Rejection;
+  method public seed ()Lcom/crystalgraphics/vfx/particle/spawn/CgVfxSeed;
+  method public shape ()I
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
+  method public,static drawsOf (Lcom/crystalgraphics/vfx/particle/form/CgVfxFormInput;Ljava/lang/String;)I
+com/crystalgraphics/vfx/particle/spawn/CgVfxSeededStream$Input
+  access public,final,record
+  extends java/lang/Record
+  method public <init> (Lcom/crystalgraphics/vfx/particle/form/CgVfxSpawnInput;I[IZ)V
+  method public afterTries ()Z
+  method public draw ()[I
+  method public first ()I
+  method public target ()Lcom/crystalgraphics/vfx/particle/form/CgVfxSpawnInput;
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
+com/crystalgraphics/vfx/particle/spawn/CgVfxSeededStream$Rejection
+  access public,final,record
+  extends java/lang/Record
+  method public <init> (IIIZ)V
+  method public axis (IF)F
+  method public directions ()I
+  method public drawsThroughTries (I)I
+  method public first ()I
+  method public height ()I
+  method public zeroRadius ()Z
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
 com/crystalgraphics/vfx/particle/spawn/CgVfxSpawnBurst
   access public,final,record
   extends java/lang/Record
@@ -19199,6 +19281,7 @@ com/crystalgraphics/vfx/particle/spawn/CgVfxSpawning
   field public,static,final CASCADE_LEGACY Lcom/crystalgraphics/vfx/particle/spawn/CgVfxSpawning;
   field public,static,final INTERPOLATED Lcom/crystalgraphics/vfx/particle/spawn/CgVfxSpawning;
   method public burstsAtStepEnd ()Z
+  method public cascade ()Z
   method public key ()Ljava/lang/String;
   method public,static of (Ljava/lang/Object;)Lcom/crystalgraphics/vfx/particle/spawn/CgVfxSpawning;
   method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/vfx/particle/spawn/CgVfxSpawning;

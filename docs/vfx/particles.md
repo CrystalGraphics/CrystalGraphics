@@ -494,6 +494,42 @@ CgVfxEmitter.builder("sparks").capacity(500).spawning(CgVfxSpawning.CASCADE_LEGA
   two differ only where a duration or delay is rolled again each loop, or where only the first loop waits its delay:
   Cascade's period still holds that delay.
 
+### Seeded spawns: Cascade's random streams
+
+A seeded value or module draws from a random stream of its own seed rather than the spawn hash, so the same seed gives the
+same particles every play: a hit spark's rays always fly in its game's few fixed patterns. It is Cascade's `_Seeded`
+modules and their `FRandomStream`.
+
+```yaml
+- module: crystalgraphics:shape_location
+  inputs:
+    shape: sphere
+    surface_only: true
+    seed: { values: [14, 15, 21, 25], random_selection: true }    # every draw of the module, in Cascade's order
+    sphere_radius: { range: [1.0, 5.0] }
+- module: crystalgraphics:initialize_particle
+  inputs:
+    lifetime: { range: [0.4, 0.6], seed: { values: [7] } }       # one value's own stream
+```
+
+```java
+CgVfxEmitter.builder("rays").spawning(CgVfxSpawning.CASCADE)...
+        .seed("shape", new CgVfxSeed(new int[]{14, 15, 21, 25}, null, false, false, true, true))
+```
+
+- **A seed picks one of its `values` an instance**, again each loop unless `reset_on_loop: false`; with
+  `random_selection` off it takes the first. Every client picks the same.
+- **A module's seed covers its every draw**, in its Cascade order: a sphere's location, its direction's three, its
+  radius, its velocity scale. A cylinder draws its direction again until it falls in its circle. A value's own seed
+  covers that value; `seed: { follows: color }` draws after the named value, from its stream.
+- **What draws**: a constant or a curve none, a pick or a range one, a vector range three, `locked` axes copying a draw.
+- **A spawn shape from Cascade samples as Cascade's does**: an emitter of `spawning: cascade`, `cascade_legacy` or
+  `cascade_gpu` draws a sphere's or a cylinder's direction per axis, within its `directions` (`+x-x+y-y+z-z` unless
+  given), so it crowds the diagonals. Any other emitter's sphere is uniform, and `directions` fails at load there.
+- **Fails at load, by name**: a seed on a value a start colour or scale rolls (the look's own rolls), a seed inside a
+  seeded module, a `follows` naming a value with no seed, a seeded form with no Cascade count, a seeded trail.
+- **An event's children draw from the spawn hash**: their order is the GPU's, not a stream's.
+
 ## How each particle looks: colour and size per axis
 
 An emitter gives each particle a colour and a size on each axis, which **multiply what its renderers draw**, as

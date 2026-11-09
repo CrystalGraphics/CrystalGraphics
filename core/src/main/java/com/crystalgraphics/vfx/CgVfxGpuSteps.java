@@ -14,6 +14,7 @@ import com.crystalgraphics.vfx.particle.ribbon.CgVfxTrailHeads;
 import com.crystalgraphics.vfx.particle.ribbon.CgVfxTrailRows;
 import com.crystalgraphics.vfx.particle.ribbon.CgVfxTrailSource;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxInactiveResponse;
+import com.crystalgraphics.vfx.particle.spawn.CgVfxSeededStream;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
@@ -239,9 +240,12 @@ final class CgVfxGpuSteps {
      * the loop's seconds at the tick's start and end, the legacy start time, the books' time and length of the tick).
      */
     private static final int PENDING_FLOATS = 12;
+    /** A booked tick's seeded streams' words ({@code Books.streamWords}): a split and two states a stream. */
+    private static final int PENDING_STREAMS = 1 + 2 * CgVfxSeededStream.MAX;
     private Tenant[] pendingTenant = new Tenant[0];
     private int[] pendingInts = new int[0];
     private float[] pendingFloats = new float[0];
+    private int[] pendingStreams = new int[0];
     private int pending;
 
     /**
@@ -459,6 +463,7 @@ final class CgVfxGpuSteps {
             pendingTenant = Arrays.copyOf(pendingTenant, n);
             pendingInts = Arrays.copyOf(pendingInts, n * 3);
             pendingFloats = Arrays.copyOf(pendingFloats, n * PENDING_FLOATS);
+            pendingStreams = Arrays.copyOf(pendingStreams, n * PENDING_STREAMS);
         }
         CgVfxEmitterInstance.Books b = tenant.instance.books();
         pendingTenant[pending] = tenant;
@@ -478,6 +483,7 @@ final class CgVfxGpuSteps {
         pendingFloats[f + 9] = b.stepStartTime();
         pendingFloats[f + 10] = b.stepTime();
         pendingFloats[f + 11] = b.stepDt();
+        b.streamWords(pendingStreams, pending * PENDING_STREAMS);
         pending++;
     }
 
@@ -518,7 +524,7 @@ final class CgVfxGpuSteps {
                 tenant.pool.spawn(tenant.slot, pendingInts[i], pendingInts[i + 1], pendingInts[i + 2], pendingFloats[f],
                         CgVfxSystem.TICK, pendingFloats[f + 1], pendingFloats[f + 2], pendingFloats[f + 3],
                         pendingFloats[f + 4], pendingFloats[f + 5], pendingFloats[f + 6], pendingFloats[f + 7], pendingFloats[f + 8],
-                        pendingFloats[f + 9]);
+                        pendingFloats[f + 9], pendingStreams, k * PENDING_STREAMS);
             }
         }
         dropPending();

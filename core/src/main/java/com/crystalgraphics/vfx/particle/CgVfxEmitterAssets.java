@@ -64,6 +64,7 @@ import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawnBurst;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawnFrom;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawnPerUnit;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawnRate;
+import com.crystalgraphics.vfx.particle.spawn.CgVfxSeed;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawning;
 
 /**
@@ -160,7 +161,7 @@ public final class CgVfxEmitterAssets {
         init.put("sprite_rotation", written(e, CgVfxSpawnInput.SPRITE_ROTATION, range(0f, (float) (2 * Math.PI))));
         if (!same(e.colorFrom, WHITE) || !same(e.colorTo, WHITE)) init.put("color", vector(e.colorFrom, e.colorTo));
         if (!same(e.scaleFrom, UNIT) || !same(e.scaleTo, UNIT)) init.put("mesh_scale", vector(e.scaleFrom, e.scaleTo));
-        for (CgVfxSpawnInput stored : new CgVfxSpawnInput[]{CgVfxSpawnInput.COLOR, CgVfxSpawnInput.MESH_SCALE}) {
+        for (CgVfxSpawnInput stored : new CgVfxSpawnInput[]{CgVfxSpawnInput.COLOR, CgVfxSpawnInput.ALPHA, CgVfxSpawnInput.MESH_SCALE}) {
             for (CgVfxSpawnForm form : e.spawnForms()) if (form.target() == stored) init.put(stored.input(), form.value());
         }
         List<Object> sized = new ArrayList<>();
@@ -328,6 +329,25 @@ public final class CgVfxEmitterAssets {
                 in.put("sphere_radius", radius);
                 band(e.name, s, in);
             }
+            case CgVfxSpawnShape.CASCADE_CYLINDER -> {
+                int packed = s.flags;
+                in.put("shape", "cylinder");
+                in.put("cylinder_axis", "xyz".substring((packed >> CgVfxSpawnShape.CYLINDER_HEIGHT_SHIFT) & 3,
+                        ((packed >> CgVfxSpawnShape.CYLINDER_HEIGHT_SHIFT) & 3) + 1));
+                in.put("cylinder_radius", e.spawnForm(CgVfxSpawnInput.RADIUS) != null ? e.spawnForm(CgVfxSpawnInput.RADIUS).value()
+                        : (packed & 1 << CgVfxSpawnShape.CYLINDER_DRAWN_BIT) != 0 ? map("range", list(s.a, s.b)) : (Object) (double) s.b);
+                in.put("cylinder_height", written(e, CgVfxSpawnInput.CYLINDER_HEIGHT, (double) (2f * s.c)));
+                int dirs = packed & CgVfxSpawnShape.ALL_DIRECTIONS;
+                if (dirs != CgVfxSpawnShape.ALL_DIRECTIONS) in.put("directions", directions(dirs, SOURCE_AXES));
+                writePlacement(s, in);
+            }
+            case CgVfxSpawnShape.CASCADE_SPHERE -> {
+                in.put("shape", "sphere");
+                in.put("sphere_radius", e.spawnForm(CgVfxSpawnInput.RADIUS) != null ? e.spawnForm(CgVfxSpawnInput.RADIUS).value()
+                        : (s.flags & CgVfxSpawnShape.RADIUS_DRAWN) != 0 ? map("range", list(s.a, s.b)) : (Object) (double) s.b);
+                if ((int) s.c != CgVfxSpawnShape.ALL_DIRECTIONS) in.put("directions", directions((int) s.c, e.seedAxes()));
+                writePlacement(s, in);
+            }
             case CgVfxSpawnShape.BOX -> {
                 in.put("shape", "box");
                 in.put("box_size", list(2f * s.a, 2f * s.b, 2f * s.c));
@@ -383,7 +403,23 @@ public final class CgVfxEmitterAssets {
             if (s.radial) velocity.put("radial", true);
             in.put("add_velocity", velocity);
         }
+        CgVfxSeed seed = e.seeds().get("shape");
+        if (seed != null) in.put("seed", seed(seed));
         return in.size() == 1 && "point".equals(in.get("shape")) ? null : in;
+    }
+
+    /** A seed as its file struct, Unreal's defaults left out. */
+    private static Map<String, Object> seed(CgVfxSeed seed) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        List<Object> values = new ArrayList<>(seed.values().length);
+        for (int v : seed.values()) values.add(v);
+        out.put("values", values);
+        if (seed.parameter() != null) out.put("parameter", seed.parameter());
+        if (seed.fromInstance()) out.put("from_instance", true);
+        if (seed.instanceIsIndex()) out.put("instance_is_index", true);
+        if (!seed.resetOnLoop()) out.put("reset_on_loop", false);
+        if (seed.randomSelection()) out.put("random_selection", true);
+        return out;
     }
 
     /** A sphere's or cylinder's hollow (a shell, a ring) as Unreal's surface band, and its surface or edge. */
@@ -508,6 +544,7 @@ public final class CgVfxEmitterAssets {
         tree = toHost(tree, deps == null ? CgUnits.HOST : deps.units());
         CgVfxEmitter.Builder b = CgVfxEmitter.builder(name);
         if (template != null) b.carry(template);
+        b.seedAxes((deps == null ? CgUnits.HOST : deps.units()).axes());
         // Unreal's defaults for what a file leaves out: opaque throughout.
         b.opacity(CgKeyframes.constant(1f));
         Map<?, ?> props = tree.get("properties") instanceof Map<?, ?> p ? p : Map.of();
@@ -1381,15 +1418,31 @@ public final class CgVfxEmitterAssets {
             b.size(width[0] * SPRITE_SIZE_TO_OURS, width[1] * SPRITE_SIZE_TO_OURS);
         }
         float[][] wide = sized == null && size != null ? spriteScale(name, size) : null;
-        float alpha = in.get("alpha") instanceof Number a ? a.floatValue() : 1f;
+        // A start alpha: a constant or a plain range the row's starts roll; any other form (seeded, a curve by the loop)
+        // stored at birth (Cascade's StartAlpha, read at spawn by its emitter time).
+        float alpha = 1f, alphaTo = 1f;
+        Object givenAlpha = in.get("alpha");
+        if (givenAlpha instanceof Number a) {
+            alpha = alphaTo = a.floatValue();
+        } else if (givenAlpha instanceof Map<?, ?> am && am.size() == 1 && am.get("range") instanceof List<?> ends
+                && ends.size() == 2 && ends.get(0) instanceof Number lo && ends.get(1) instanceof Number hi) {
+            alpha = lo.floatValue();
+            alphaTo = hi.floatValue();
+        } else if (givenAlpha != null) {
+            b.spawnForm(valueForm(CgVfxSpawnInput.ALPHA, element, givenAlpha));
+        }
         CgVfxSpawnForm colored = spawnForm(CgVfxSpawnInput.COLOR, element, "color", in.get("color"));
         if (colored != null) {
             // Stored at birth; the row's starts keep the alpha an rgb form leaves to them.
             b.spawnForm(colored);
-            b.colors(new float[]{1f, 1f, 1f, alpha}, new float[]{1f, 1f, 1f, alpha});
+            b.colors(new float[]{1f, 1f, 1f, alpha}, new float[]{1f, 1f, 1f, alphaTo});
         } else if (in.get("color") != null) {
             float[][] c = colourEnds(in.get("color"), alpha);
-            b.colors(c[0], c[1]);
+            float[] to = c[1].clone();
+            to[3] = alphaTo;
+            b.colors(c[0].clone(), to);
+        } else if (alpha != 1f || alphaTo != 1f) {
+            b.colors(new float[]{1f, 1f, 1f, alpha}, new float[]{1f, 1f, 1f, alphaTo});
         }
         CgVfxSpawnForm scaled = spawnForm(CgVfxSpawnInput.MESH_SCALE, element, "mesh_scale", in.get("mesh_scale"));
         if (scaled != null) {
@@ -1598,7 +1651,8 @@ public final class CgVfxEmitterAssets {
     /** {@code value} as a spawn form: null for a constant or a range, which the spawn row's two ends give. */
     @Nullable
     private static CgVfxSpawnForm spawnForm(CgVfxSpawnInput target, String element, String input, Object value) {
-        if (!isForm(value) || ((Map<?, ?>) value).containsKey("range")) return null;
+        // A plain range rides the spawn row's two ends; one seeded draws from its stream, which a form does.
+        if (!isForm(value) || ((Map<?, ?>) value).containsKey("range") && !((Map<?, ?>) value).containsKey("seed")) return null;
         return CgVfxSpawnForm.of(target, element, input, value);
     }
 
@@ -1623,9 +1677,16 @@ public final class CgVfxEmitterAssets {
         switch (shape) {
             case "point" -> s.kind = CgVfxSpawnShape.POINT;
             case "sphere" -> {
-                s.kind = CgVfxSpawnShape.SPHERE;
-                s.b = radius(b, element, "sphere_radius", in.get("sphere_radius"));
-                band(s, in);
+                if (b.spawning().cascade()) {
+                    cascadeSphere(name, b, s, in, element);
+                } else {
+                    if (in.get("directions") != null && !"+x-x+y-y+z-z".equals(in.get("directions"))) {
+                        throw new IllegalArgumentException(name + ": shape_location's directions are Cascade's sphere's: a cascade spawning emitter's");
+                    }
+                    s.kind = CgVfxSpawnShape.SPHERE;
+                    s.b = radius(b, element, "sphere_radius", in.get("sphere_radius"));
+                    band(s, in);
+                }
             }
             case "box" -> {
                 float[] size = vec(in.get("box_size"), 3);
@@ -1636,6 +1697,13 @@ public final class CgVfxEmitterAssets {
                 placement(s, in);
             }
             case "cylinder" -> {
+                if (b.spawning().cascade()) {
+                    cascadeCylinder(name, b, s, in, element);
+                    break;
+                }
+                if (in.get("directions") != null && !"+x-x+y-y+z-z".equals(in.get("directions"))) {
+                    throw new IllegalArgumentException(name + ": shape_location's directions are Cascade's cylinder's: a cascade spawning emitter's");
+                }
                 // Unreal's cylinder stands on its z, the host's y and ours; along its x or y it is ours turned there.
                 Object axis = in.get("cylinder_axis");
                 if ("x".equals(axis)) axisTurn = new float[]{0f, 0f, -HALF_SQRT2, HALF_SQRT2};
@@ -1697,6 +1765,9 @@ public final class CgVfxEmitterAssets {
                         numOr(in.get("triangle_thickness"), 0f), name);
             }
             default -> throw new IllegalArgumentException(name + ": shape_location's shape " + shape + " is not read yet");
+        }
+        if (in.get("seed") != null) {
+            b.seed("shape", CgVfxSeed.of(name + "'s shape_location", in.get("seed")));
         }
         s.hemisphere = Boolean.TRUE.equals(in.get("hemisphere"));
         s.radial = false;
@@ -1890,8 +1961,10 @@ public final class CgVfxEmitterAssets {
             b.meshRotation(was.over(new CgVfxMeshRotation.Step(false, axes(name, list(mean[0], mean[1], mean[2]), 3))));
             return;
         }
-        if (!(rate instanceof Map<?, ?> rm && rm.get("range") != null) && spawnForm(CgVfxSpawnInput.MESH_ROTATION_RATE, element, "rate", rate) != null) {
-            // A pick or a curve by the loop, drawn at birth as Cascade's MeshRotationRate is: the particle's rolled rate.
+        if (!(rate instanceof Map<?, ?> rm && rm.get("range") != null && rm.get("seed") == null)
+                && spawnForm(CgVfxSpawnInput.MESH_ROTATION_RATE, element, "rate", rate) != null) {
+            // A pick, a curve by the loop or a seeded range, drawn at birth as Cascade's MeshRotationRate is: the
+            // particle's rolled rate.
             if (was.scaled() || !Arrays.equals(was.rateFrom(), was.rateTo()) || !Arrays.equals(was.rateFrom(), new float[3])) {
                 throw new IllegalArgumentException(name + ": mesh_rotation_rate's stored rate is read first and alone, before any other");
             }
@@ -1949,6 +2022,121 @@ public final class CgVfxEmitterAssets {
         if (formed == null) return num(value);
         b.spawnForm(formed);
         return formed.firstEnd();
+    }
+
+    /**
+     * Cascade's sphere ({@code LocationPrimitiveSphere::SpawnEx}, 4.21:1310-1376): its directions, its radius a constant
+     * or a range it draws itself, any other form its radius form; a surface band is Niagara's and refused.
+     */
+    private static void cascadeSphere(String name, CgVfxEmitter.Builder b, CgVfxSpawnShape.Builder s, Map<?, ?> in, String element) {
+        if (in.get("surface_thickness") instanceof Number t && t.floatValue() != 0f) {
+            throw new IllegalArgumentException(name + ": Cascade's sphere has no surface_thickness");
+        }
+        if (Boolean.TRUE.equals(in.get("edge_only"))) throw new IllegalArgumentException(name + ": Cascade's sphere has no edge_only");
+        int directions = directions(name, in.get("directions"), b.seedAxes());
+        Object r = in.get("sphere_radius");
+        if (r == null || r instanceof Number) {
+            float v = r == null ? 0f : num(r);
+            s.cascadeSphere(v, v, false, directions, name);
+        } else if (r instanceof Map<?, ?> m && m.size() == 1 && m.get("range") instanceof List<?> ends && ends.size() == 2
+                && ends.get(0) instanceof Number lo && ends.get(1) instanceof Number hi) {
+            s.cascadeSphere(lo.floatValue(), hi.floatValue(), true, directions, name);
+        } else {
+            CgVfxSpawnForm formed = CgVfxSpawnForm.of(CgVfxSpawnInput.RADIUS, element, "sphere_radius", r);
+            b.spawnForm(formed);
+            // Both ends at its top: the launch's front, the form less that, carries the rest.
+            float top = formed.bounds()[1];
+            s.cascadeSphere(top, top, false, directions, name);
+        }
+        placement(s, in);
+    }
+
+    /**
+     * Cascade's cylinder ({@code LocationPrimitiveCylinder::SpawnEx}, 4.21:1006-1130), in its source's axes: its radius
+     * a constant or a range it draws, any other form its radius form; its height a constant, or its height form.
+     */
+    private static void cascadeCylinder(String name, CgVfxEmitter.Builder b, CgVfxSpawnShape.Builder s, Map<?, ?> in, String element) {
+        if (Boolean.TRUE.equals(in.get("edge_only"))) throw new IllegalArgumentException(name + ": Cascade's cylinder has no edge_only");
+        if (in.get("surface_thickness") instanceof Number t && t.floatValue() != 0f) {
+            throw new IllegalArgumentException(name + ": Cascade's cylinder has no surface_thickness");
+        }
+        Object axis = in.get("cylinder_axis");
+        int heightAxis = axis == null || "z".equals(axis) ? 2 : "x".equals(axis) ? 0 : "y".equals(axis) ? 1 : -1;
+        if (heightAxis < 0) throw new IllegalArgumentException(name + ": no cylinder axis " + axis);
+        int directions = directions(name, in.get("directions"), SOURCE_AXES);
+        float least, most;
+        boolean drawn = false;
+        Object r = in.get("cylinder_radius");
+        if (r == null || r instanceof Number) {
+            least = most = r == null ? 0f : num(r);
+        } else if (r instanceof Map<?, ?> m && m.size() == 1 && m.get("range") instanceof List<?> ends && ends.size() == 2
+                && ends.get(0) instanceof Number lo && ends.get(1) instanceof Number hi) {
+            least = lo.floatValue();
+            most = hi.floatValue();
+            drawn = true;
+        } else {
+            CgVfxSpawnForm formed = CgVfxSpawnForm.of(CgVfxSpawnInput.RADIUS, element, "cylinder_radius", r);
+            b.spawnForm(formed);
+            least = most = formed.bounds()[1];
+        }
+        Object h = in.get("cylinder_height");
+        float half;
+        if (h == null || h instanceof Number) {
+            half = (h == null ? 0f : num(h)) / 2f;
+        } else {
+            CgVfxSpawnForm height = valueForm(CgVfxSpawnInput.CYLINDER_HEIGHT, element, h);
+            half = Math.max(Math.abs(height.bounds()[0]), Math.abs(height.bounds()[1])) / 2f;
+            b.spawnForm(height);
+        }
+        s.cascadeCylinder(least, most, drawn, half, directions, heightAxis, b.seedAxes(), name);
+        placement(s, in);
+    }
+
+    /** The source's own axes, unmapped: a Cascade cylinder's directions stay in them. */
+    private static final int[] SOURCE_AXES = {1, 2, 3};
+
+    /**
+     * The source's axes a Cascade primitive may leave along ({@code +x-x+y-y+z-z}), as the sampling frame's bits:
+     * host axis h reads source axis {@code |axes[h]| - 1}, its signs swapped where that is negative ({@code CgUnits}).
+     */
+    static int directions(String name, Object given, int[] axes) {
+        if (given == null) return CgVfxSpawnShape.ALL_DIRECTIONS;
+        if (!(given instanceof String d)) throw new IllegalArgumentException(name + ": directions " + given + " is not a string");
+        String rest = d.toLowerCase(Locale.ROOT);
+        boolean[] plus = new boolean[3], minus = new boolean[3];
+        for (int a = 0; a < 3; a++) {
+            String axis = "xyz".substring(a, a + 1);
+            plus[a] = rest.contains("+" + axis);
+            minus[a] = rest.contains("-" + axis);
+            rest = rest.replace("+" + axis, "").replace("-" + axis, "");
+        }
+        if (!rest.isEmpty()) throw new IllegalArgumentException(name + ": directions " + d + ": signed axes, +x to -z");
+        int bits = 0;
+        for (int h = 0; h < 3; h++) {
+            int a = Math.abs(axes[h]) - 1;
+            boolean flip = axes[h] < 0;
+            if (flip ? minus[a] : plus[a]) bits |= 1 << (2 * h);
+            if (flip ? plus[a] : minus[a]) bits |= 2 << (2 * h);
+        }
+        return bits;
+    }
+
+    /** {@link #directions(String, Object, int[])}'s inverse, in the source's order. */
+    static String directions(int bits, int[] axes) {
+        boolean[] plus = new boolean[3], minus = new boolean[3];
+        for (int h = 0; h < 3; h++) {
+            int a = Math.abs(axes[h]) - 1;
+            boolean flip = axes[h] < 0;
+            (flip ? minus : plus)[a] = (bits & 1 << (2 * h)) != 0;
+            (flip ? plus : minus)[a] = (bits & 2 << (2 * h)) != 0;
+        }
+        StringBuilder d = new StringBuilder();
+        for (int a = 0; a < 3; a++) {
+            String axis = "xyz".substring(a, a + 1);
+            if (plus[a]) d.append('+').append(axis);
+            if (minus[a]) d.append('-').append(axis);
+        }
+        return d.toString();
     }
 
     private static void band(CgVfxSpawnShape.Builder s, Map<?, ?> in) {
@@ -3566,7 +3754,39 @@ public final class CgVfxEmitterAssets {
                         + ": required, and modules.yaml declares no default");
             }
         }
+        if (in.get("seed") != null && !"shape_location".equals(moduleId(entry))) seedOnItsValue(entry, in);
         return in;
+    }
+
+    /**
+     * A seeded module other than a location draws one value a spawn, so its stream is that value's: its seed moves onto
+     * it ({@code core.md} § Values). A module drawing none draws nothing from its seed; one drawing two fails by name.
+     */
+    private static void seedOnItsValue(Map<?, ?> entry, Map<Object, Object> in) {
+        Object seed = in.remove("seed");
+        Object drawing = null;
+        for (Map.Entry<Object, Object> e : in.entrySet()) {
+            if (!draws(e.getValue())) continue;
+            if (drawing != null) {
+                throw new IllegalArgumentException(entry.get("module") + " (" + idOf(entry, "?") + "): a seed over two drawing values, "
+                        + drawing + " and " + e.getKey() + ", is not read yet");
+            }
+            drawing = e.getKey();
+        }
+        if (drawing == null) return;
+        Map<Object, Object> value = new LinkedHashMap<>((Map<?, ?>) in.get(drawing));
+        if (value.containsKey("seed")) {
+            throw new IllegalArgumentException(entry.get("module") + "'s " + drawing + " has a seed of its own inside a seeded module");
+        }
+        value.put("seed", seed);
+        in.put(drawing, value);
+    }
+
+    /** Whether a value draws from a stream: a range, a pick, or a random_range. */
+    private static boolean draws(Object v) {
+        if (!(v instanceof Map<?, ?> m)) return false;
+        if (m.containsKey("range") || m.containsKey("pick")) return true;
+        return m.get("fn") instanceof String fn && fn.endsWith(":random_range");
     }
 
     /** Whether every input {@code p}'s gate names holds the value it asks for; a list is any of its values. */

@@ -25,6 +25,7 @@ import com.crystalgraphics.vfx.particle.gpu.CgVfxWords;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxDrawLayout;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxDrawnChannel;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawning;
+import com.crystalgraphics.vfx.particle.spawn.CgVfxSeededStream;
 
 import javax.annotation.Nullable;
 import java.util.Arrays;
@@ -83,6 +84,7 @@ public final class CgVfxShape {
     private final int presentMask, stackAt;
     /** The spawn kinds its Step compiles, and its own definition's: {@link #placeKinds()}. */
     private final int placeKinds, ownPlaces, textureSets;
+    private final List<CgVfxSeededStream> seeded;
     private final CgTexture[][] textures;
     private final boolean[][] volumes;
     private final CgVfxDrawLayout drawLayout;
@@ -519,20 +521,32 @@ public final class CgVfxShape {
         int kind = (int) Float.intBitsToFloat(spawn[PLACE_KIND_WORD]);
         boolean kindBound = false;
         for (int w : userWords) kindBound |= w == PLACE_KIND_WORD;
-        ownPlaces = kindBound || kind < 0 || kind > 8 ? ALL_PLACES : 1 << kind;
+        ownPlaces = kindBound || kind < 0 || kind > 10 ? ALL_PLACES : 1 << kind;
         placeKinds = ownPlaces | places;
         // Its pool's table: as many sets of a textured kind's textures as its definitions sample, its Step compiling
         // the kind once a set (each call takes fixed samplers), as Niagara binds each emitter's per dispatch.
         this.textureSets = Math.max(1, Math.min(textureSets, CgVfxParticlePool.TEXTURE_ENTRIES));
         if (textured > 0) key.append("|tex:").append(this.textureSets);
         key.append("|place:").append(Integer.toHexString(placeKinds));
+        seeded = emitter.seededStreams();
+        for (int i = 0; i < seeded.size(); i++) {
+            CgVfxSeededStream st = seeded.get(i);
+            key.append(i == 0 ? "|seeded:" : ";").append(st.draws()).append('@').append(st.shape());
+            for (CgVfxSeededStream.Input in : st.inputs()) key.append(',').append(in.target()).append(':').append(in.first())
+                    .append(Arrays.toString(in.draw()));
+        }
         this.key = key.toString();
     }
 
     /** The spawn row's word holding its spawn shape's kind ({@code CgVfxSpawnShape.write}: vec4 6, x). */
     static final int PLACE_KIND_WORD = 24;
-    /** Every spawn kind, {@code CgVfxSpawnShape}'s POINT to TRIANGLE. */
-    static final int ALL_PLACES = 0x1FF;
+    /** Every spawn kind, {@code CgVfxSpawnShape}'s POINT to CASCADE_CYLINDER. */
+    static final int ALL_PLACES = 0x7FF;
+
+    /** Its seeded streams' layout ({@code CgVfxGpuEmitter.seededStreams}), the same for every definition of the shape. */
+    public List<CgVfxSeededStream> seeded() {
+        return seeded;
+    }
 
     /** The spawn kinds its Step places by, a bit each: its own and every one sharing its pool. */
     public int placeKinds() {
@@ -585,7 +599,8 @@ public final class CgVfxShape {
         if (c instanceof CgVfxFormInput.Curve curve) return "CURVE:" + curve.by();
         if (c instanceof CgVfxFormInput.Array array) return "ARRAY:" + array.by();
         if (c instanceof CgVfxFormInput.Function f) {
-            return "FN:" + f.fn() + "(" + formKey(f.first()) + "," + formKey(f.second()) + ")";
+            return "FN:" + f.fn() + (f.perChannel() ? ":" + (f.locked() == null ? "c" : f.locked()) : "") + "(" + formKey(f.first())
+                    + "," + formKey(f.second()) + ")";
         }
         // A user parameter is a lane, its value never in the code; a particle's attribute is read scaled in it.
         if (c instanceof CgVfxFormInput.Binding b) return b.path().startsWith("user.") ? "BIND:user" : "BIND:" + b.path() + "*" + b.scale();

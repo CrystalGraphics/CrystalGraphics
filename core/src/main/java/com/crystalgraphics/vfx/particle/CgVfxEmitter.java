@@ -20,6 +20,8 @@ import com.crystalgraphics.vfx.look.CgVfxSlot;
 import com.crystalgraphics.vfx.particle.form.CgVfxFormCompiler;
 import com.crystalgraphics.vfx.particle.form.CgVfxModuleForm;
 import com.crystalgraphics.vfx.particle.form.CgVfxSpawnForm;
+import com.crystalgraphics.object.value.CgUnits;
+import com.crystalgraphics.vfx.particle.form.CgVfxFormInput;
 import com.crystalgraphics.vfx.particle.form.CgVfxSpawnInput;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxDrawLayout;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEvent;
@@ -29,6 +31,8 @@ import com.crystalgraphics.vfx.particle.gpu.CgVfxWords;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxDataInterfaces;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxEmitterState;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxOwnerScale;
+import com.crystalgraphics.vfx.particle.spawn.CgVfxSeed;
+import com.crystalgraphics.vfx.particle.spawn.CgVfxSeededStream;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawnBurst;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawnFrom;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawning;
@@ -42,6 +46,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -167,6 +172,11 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
     final int ownerScale;
     /** Its spawn values given in a form, one a target; how far a radius form moves its birth out at most. */
     final List<CgVfxSpawnForm> spawnForms;
+    /** Its seeded modules' seeds by element, and the streams they draw from. */
+    final Map<String, CgVfxSeed> seeds;
+    final List<CgVfxSeededStream> seeded;
+    /** The axes its seeded draws were authored in, {@code CgUnits}' order: Cascade draws a vector's source x, y, z. */
+    final int[] seedAxes;
     @Nullable
     final CgVfxSockets sockets;
     @Nullable
@@ -277,6 +287,8 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         sizeBySpeed = b.sizeBySpeed.clone();
         subUv = b.subUv;
         spawnForms = List.copyOf(b.spawnForms);
+        seeds = Collections.unmodifiableMap(new LinkedHashMap<>(b.seeds));
+        seedAxes = b.seedAxes.clone();
         sockets = b.sockets;
         meshRotation = b.meshRotation;
         lifeRolls = List.copyOf(b.lifeRolls);
@@ -341,6 +353,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
             peak = Math.max(peak, sizeAt(p) * axis);
         }
         sizePeak = peak * start;
+        seeded = layoutStreams();
     }
 
     public static Builder builder(String name) {
@@ -693,6 +706,112 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
     }
 
     @Override
+    public List<CgVfxSeededStream> seededStreams() {
+        return seeded;
+    }
+
+    /** The axes its seeds' vectors were authored in ({@code CgUnits.axes()}). */
+    int[] seedAxes() {
+        return seedAxes.clone();
+    }
+
+    /** Its seeded modules' seeds by element name ({@code shape}). */
+    public Map<String, CgVfxSeed> seeds() {
+        return seeds;
+    }
+
+    /**
+     * Each seed's stream, its draws in its module's Cascade order: the shape's location, then a Cascade sphere's
+     * direction and radius, then its velocity scale ({@code LocationPrimitiveSphere::SpawnEx}, 4.21:1310-1376).
+     */
+    private List<CgVfxSeededStream> layoutStreams() {
+        List<CgVfxSeededStream> out = new ArrayList<>();
+        for (Map.Entry<String, CgVfxSeed> e : seeds.entrySet()) {
+            if (!e.getKey().equals("shape")) throw new IllegalArgumentException(name + ": a seeded " + e.getKey() + " is not read yet");
+            String who = name + "'s seeded shape_location";
+            List<CgVfxSeededStream.Input> inputs = new ArrayList<>();
+            int at = draws(who, CgVfxSpawnInput.OFFSET, 0, inputs, false);
+            int shape = -1;
+            CgVfxSeededStream.Rejection rejection = null;
+            CgVfxSpawnShape.Builder s = spawn.given();
+            if (s.kind == CgVfxSpawnShape.CASCADE_SPHERE) {
+                shape = at;
+                at += 3 + ((s.flags & CgVfxSpawnShape.RADIUS_DRAWN) != 0 ? 1 : 0);
+                at = draws(who, CgVfxSpawnInput.RADIUS, at, inputs, false);
+                at = draws(who, CgVfxSpawnInput.SHAPE_VELOCITY, at, inputs, false);
+            } else if (s.kind == CgVfxSpawnShape.CASCADE_CYLINDER) {
+                // Its location, radius and height, its tries at a direction, then its velocity scale (4.21:1006-1130).
+                boolean drawn = (s.flags & 1 << CgVfxSpawnShape.CYLINDER_DRAWN_BIT) != 0;
+                at += drawn ? 1 : 0;
+                shape = at - (drawn ? 1 : 0);
+                at = draws(who, CgVfxSpawnInput.RADIUS, at, inputs, false);
+                at = draws(who, CgVfxSpawnInput.CYLINDER_HEIGHT, at, inputs, false);
+                boolean zero = !drawn && s.a == 0f && s.b == 0f && spawnForm(CgVfxSpawnInput.RADIUS) == null;
+                rejection = new CgVfxSeededStream.Rejection(at, s.flags & CgVfxSpawnShape.ALL_DIRECTIONS,
+                        (s.flags >> CgVfxSpawnShape.CYLINDER_HEIGHT_SHIFT) & 3, zero);
+                at += draws(who, CgVfxSpawnInput.SHAPE_VELOCITY, 0, inputs, true);
+            } else if (s.kind != CgVfxSpawnShape.POINT) {
+                throw new IllegalArgumentException(who + ": a seeded " + s.kind + " shape is not read yet: Cascade's sphere, "
+                        + "cylinder or a point");
+            }
+            int[] axis = new int[3];
+            for (int h = 0; h < 3; h++) axis[h] = Math.abs(seedAxes[h]) - 1;
+            out.add(new CgVfxSeededStream(id(e.getKey()), e.getValue(), at, List.copyOf(inputs), shape, axis, rejection));
+        }
+        // A value seeded on its own draws from its own stream, whatever module it sits in; one that follows another
+        // value of its entry draws from that value's, after it (Cascade's Color_Seeded: its colour, then its alpha).
+        List<CgVfxSpawnForm> followers = new ArrayList<>();
+        for (CgVfxSpawnForm f : spawnForms) {
+            if (f.seed() == null) continue;
+            if (CgVfxSeed.follows(f.seed()) != null) {
+                followers.add(f);
+                continue;
+            }
+            String who = name + "'s " + f.target().module() + " " + f.input();
+            for (CgVfxSeededStream st : out) {
+                if (st.input(f.target()) != null) throw new IllegalArgumentException(who + " has a seed of its own inside a seeded module");
+            }
+            List<CgVfxSeededStream.Input> inputs = new ArrayList<>();
+            int n = draws(who, f.target(), 0, inputs, false);
+            if (n > 0) out.add(new CgVfxSeededStream(f.element() + "/" + f.input(), CgVfxSeed.of(who, f.seed()), n, List.copyOf(inputs), -1,
+                    new int[]{0, 1, 2}, null));
+        }
+        for (CgVfxSpawnForm f : followers) {
+            String who = name + "'s " + f.target().module() + " " + f.input();
+            String led = f.element() + "/" + CgVfxSeed.follows(f.seed());
+            int at = -1;
+            for (int i = 0; i < out.size(); i++) if (out.get(i).element().equals(led)) at = i;
+            if (at < 0) throw new IllegalArgumentException(who + " follows " + CgVfxSeed.follows(f.seed()) + ", which has no seed of its own");
+            CgVfxSeededStream st = out.get(at);
+            List<CgVfxSeededStream.Input> inputs = new ArrayList<>(st.inputs());
+            int n = draws(who, f.target(), st.draws(), inputs, false);
+            out.set(at, new CgVfxSeededStream(st.element(), st.seed(), n, List.copyOf(inputs), st.shape(), st.axis(), st.rejection()));
+        }
+        if (out.size() > CgVfxSeededStream.MAX) throw new IllegalArgumentException(name + ": " + out.size() + " seeded streams, past " + CgVfxSeededStream.MAX);
+        if (!out.isEmpty() && cascadeTrail()) throw new IllegalArgumentException(name + ": a Cascade trail's spawn rows hold no seeded streams");
+        return List.copyOf(out);
+    }
+
+    /**
+     * {@code target}'s form's draws from {@code at}, added to {@code inputs}, counted from the end of its shape's tries
+     * where {@code afterTries}; where its draws end.
+     */
+    private int draws(String who, CgVfxSpawnInput target, int at, List<CgVfxSeededStream.Input> inputs, boolean afterTries) {
+        CgVfxSpawnForm f = spawnForm(target);
+        if (f == null) return at;
+        CgVfxFormInput c = f.compiled();
+        int n = CgVfxSeededStream.drawsOf(c, who + "'s " + f.input());
+        if (n == 0) return at;
+        int[] draw = new int[n];
+        // A vector's host roll r is the source's channel |axes[r]| - 1 where its quantity swaps with the axes: the order
+        // Cascade draws in.
+        boolean permuted = target.components() == 3 && n == 3 && CgUnits.permutes(f.quantity());
+        for (int r = 0; r < draw.length; r++) draw[r] = permuted ? Math.abs(seedAxes[r]) - 1 : r;
+        inputs.add(new CgVfxSeededStream.Input(target, at, draw, afterTries));
+        return at + n;
+    }
+
+    @Override
     @Nullable
     public CgVfxSockets sockets() {
         return sockets;
@@ -969,6 +1088,8 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         private CgVfxSpawnShape.Builder spawn = new CgVfxSpawnShape.Builder();
         private float sweep, inherit, maxStep = 8f;
         private final List<CgVfxSpawnForm> spawnForms = new ArrayList<>();
+        private final Map<String, CgVfxSeed> seeds = new LinkedHashMap<>();
+        private int[] seedAxes = {1, 2, 3};
         @Nullable
         private CgVfxSockets sockets;
         @Nullable
@@ -1036,6 +1157,8 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
             sizeBySpeed = e.sizeBySpeed.clone();
             subUv = e.subUv;
             spawnForms.addAll(e.spawnForms);
+            seeds.putAll(e.seeds);
+            seedAxes = e.seedAxes.clone();
             sockets = e.sockets;
             meshRotation = e.meshRotation;
             lifeRolls.addAll(e.lifeRolls);
@@ -1179,6 +1302,11 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         public Builder spawning(CgVfxSpawning spawning) {
             this.spawning = Objects.requireNonNull(spawning, "spawning");
             return this;
+        }
+
+        /** How its spawns are timed and placed, as given so far. */
+        public CgVfxSpawning spawning() {
+            return spawning;
         }
 
         /**
@@ -1745,6 +1873,38 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
                 spawnForms.add(CgVfxSpawnForm.of(CgVfxSpawnInput.SPRITE_SIZE, ids.getOrDefault("init", "init"), "sprite_size",
                         CgVfxSpawnForm.skewed(min, max, skew)));
             }
+            return this;
+        }
+
+        /**
+         * Draws {@code element}'s inputs from a Cascade stream of {@code seed} ({@link CgVfxSeed}), as Cascade's
+         * {@code _Seeded} modules do: the same seed gives the same particles every play.
+         *
+         * <pre>{@code
+         * CgVfxEmitter.builder("rays").spawning(CgVfxSpawning.CASCADE)...
+         *         .seed("shape", new CgVfxSeed(new int[]{14, 15, 21}, null, false, false, true, true))
+         * }</pre>
+         *
+         * <ul>
+         *   <li>{@code shape} is the one element read: a Cascade sphere's or a point's location.</li>
+         *   <li>Its forms must have a Cascade draw count (a constant, curve, pick, range or per-channel range), or
+         *       {@link #build} throws naming the input.</li>
+         * </ul>
+         */
+        public Builder seed(String element, CgVfxSeed seed) {
+            seeds.put(Objects.requireNonNull(element, "element"), Objects.requireNonNull(seed, "seed"));
+            return this;
+        }
+
+        /** The axes its seeds' vectors were authored in: what {@link #seedAxes(int[])} was given. */
+        int[] seedAxes() {
+            return seedAxes.clone();
+        }
+
+        /** The axes its seeds' vectors were authored in ({@code CgUnits.axes()}): a file's units'. */
+        Builder seedAxes(int[] axes) {
+            if (axes.length != 3) throw new IllegalArgumentException("axes " + Arrays.toString(axes));
+            seedAxes = axes.clone();
             return this;
         }
 

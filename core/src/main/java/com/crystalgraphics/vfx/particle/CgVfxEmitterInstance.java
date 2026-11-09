@@ -16,6 +16,7 @@ import com.crystalgraphics.vfx.particle.ribbon.CgVfxAnimTrailSource;
 import com.crystalgraphics.vfx.particle.ribbon.CgVfxTrailHeads;
 import com.crystalgraphics.vfx.particle.ribbon.CgVfxTrailRows;
 import com.crystalgraphics.vfx.particle.ribbon.CgVfxTrailSource;
+import com.crystalgraphics.vfx.particle.spawn.CgVfxSeededStream;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawning;
 
 import javax.annotation.Nullable;
@@ -98,6 +99,12 @@ public final class CgVfxEmitterInstance {
     /** {@link #killParticles} asked since its system last looked ({@link Books#takeClear}). */
     private boolean clearPending;
     private int stepFirst, stepCandidates, stepBursts;
+    /**
+     * Each seeded stream's state before its next spawn's draws; the step's at its first spawn, and where a loop
+     * restarted the streams this step (-1 for nowhere) with their states there.
+     */
+    private int[] streamState = new int[0], stepStreamA = new int[0], stepStreamB = new int[0];
+    private int stepSplit = -1;
     /** Where the source was at the step's start, and at the last step's end; whether there was a last step. */
     private float fromX, fromY, fromZ, lastX, lastY, lastZ;
     private boolean stepped;
@@ -322,6 +329,7 @@ public final class CgVfxEmitterInstance {
         spawned = 0;
         burstsDone = 0;
         loop = 0;
+        seedStreams();
         loopStart = emitter.state.delayBefore(seed, emitter.delayKey, 0);
         loopLength = emitter.state.durationOf(seed, emitter.durationKey, 0);
         loopsOver = false;
@@ -623,6 +631,44 @@ public final class CgVfxEmitterInstance {
         turned = true;
     }
 
+    /** Each seeded stream from its seed's first loop's pick (Cascade's {@code PrepRandomSeedInstancePayload} at init). */
+    private void seedStreams() {
+        List<CgVfxSeededStream> streams = emitter.seeded;
+        if (streamState.length != streams.size()) {
+            streamState = new int[streams.size()];
+            stepStreamA = new int[streams.size()];
+            stepStreamB = new int[streams.size()];
+        }
+        for (int i = 0; i < streams.size(); i++) {
+            CgVfxSeededStream st = streams.get(i);
+            streamState[i] = st.seed().pick(seed, 0, st.element().hashCode());
+        }
+        stepSplit = -1;
+    }
+
+    /** The step's streams at its first spawn. */
+    private void stepStreams() {
+        stepSplit = -1;
+        System.arraycopy(streamState, 0, stepStreamA, 0, streamState.length);
+    }
+
+    /**
+     * A new loop: each stream whose seed resets on looping starts again from a new pick (Cascade's
+     * {@code EmitterLoopingNotify}, {@code ParticleModules_Location.cpp} 4.21:206-213); every stream's state there kept
+     * for the step's spawns from this one on.
+     */
+    private void restartStreams() {
+        List<CgVfxSeededStream> streams = emitter.seeded;
+        if (streams.isEmpty()) return;
+        if (stepSplit >= 0) throw new IllegalStateException(emitter.name() + " looped twice in a step");
+        stepSplit = spawned;
+        for (int i = 0; i < streams.size(); i++) {
+            CgVfxSeededStream st = streams.get(i);
+            if (st.seed().resetOnLoop()) streamState[i] = st.seed().pick(seed, loop, st.element().hashCode());
+            stepStreamB[i] = streamState[i];
+        }
+    }
+
     /**
      * A spawn candidate born {@code born} of the way through the step: thinned by the share as the kernel thins it, its
      * death kept if it spawns.
@@ -634,6 +680,9 @@ public final class CgVfxEmitterInstance {
     /** {@link #scheduleOne(float, float)} living the life spawn {@code lifeKey} rolls, -1 its own: a trail's first's. */
     private void scheduleOne(float dt, float born, int lifeKey) {
         int k = spawned++;
+        // Every candidate draws, thinned or not, as the Step walks them.
+        List<CgVfxSeededStream> streams = emitter.seeded;
+        for (int i = 0; i < streams.size(); i++) streamState[i] = streams.get(i).advance(streamState[i]);
         if (share < 1f && keyed(CgVfxGpuEmitter.KEY_THIN, k) >= share) return;
         float life = lifeOf(lifeKey < 0 ? k : lifeKey);
         // It ages the rest of this step, then a step at a time, and goes at the end of the step its age reaches its life.
@@ -723,6 +772,7 @@ public final class CgVfxEmitterInstance {
                 return;
             }
             loop++;
+            restartStreams();
             if (!emitter.legacyEmitterTime) loopStart += duration + state.delayBefore(seed, emitter.delayKey, loop);
             loopLength = state.durationOf(seed, emitter.durationKey, loop);
             burstsDone = 0;
@@ -1060,6 +1110,7 @@ public final class CgVfxEmitterInstance {
             stepTime = time;
             stepFirst = spawned;
             stepStartTime = 0f;
+            stepStreams();
             retire(time);
             CgVfxEmitter e = emitter;
             fireBursts();
@@ -1242,6 +1293,22 @@ public final class CgVfxEmitterInstance {
         /** Its seed's bits: what {@code fx_rand} and {@link #rand(int, int, int)} take. */
         public int seedBits() {
             return seed;
+        }
+
+        /**
+         * This step's seeded streams as its spawn row carries them, {@code 1 + 2 * streams} words into {@code out} from
+         * {@code at}: the spawn the streams restart at (-1 for none), then each stream's state at the step's first spawn
+         * and at that restart.
+         */
+        public int streamWords(int[] out, int at) {
+            int n = streamState.length;
+            if (n == 0) return 0;
+            out[at] = stepSplit;
+            for (int i = 0; i < n; i++) {
+                out[at + 1 + 2 * i] = stepStreamA[i];
+                out[at + 2 + 2 * i] = stepStreamB[i];
+            }
+            return 1 + 2 * n;
         }
 
         public float share() {

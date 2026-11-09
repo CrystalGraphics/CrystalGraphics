@@ -9,6 +9,7 @@ import com.crystalgraphics.asset.kind.CgModuleTypes;
 import com.crystalgraphics.asset.kind.CgParticleKinds;
 import com.crystalgraphics.object.CgProperty;
 import com.crystalgraphics.object.CgPropertyMeta;
+import com.crystalgraphics.object.value.CgQuantity;
 
 /**
  * One spawn value an emitter gives in a form (a pick, a curve by random, id or the loop's seconds) rather than a plain
@@ -39,16 +40,32 @@ public record CgVfxSpawnForm(CgVfxSpawnInput target, String element, String inpu
     private static final int SKEW_SAMPLES = 17;
     /** {@code value} for {@code input} of the element {@code element}, {@code target}'s module, compiled against its spec declaration. */
     public static CgVfxSpawnForm of(CgVfxSpawnInput target, String element, String input, Object value) {
-        String module = NS + target.module();
-        CgProperty property = null;
-        if (target == CgVfxSpawnInput.SHAPE_VELOCITY) property = CgParticleKinds.SHAPE_ADD_VELOCITY.property(input);
-        else for (CgProperty p : CgModuleTypes.builtIn().get(module).inputs().properties()) if (p.name().equals(input)) property = p;
-        if (property == null) throw new IllegalArgumentException(module + " has no input " + input);
+        CgProperty property = property(target, input);
         // A start Look rolls at draw is rolled at birth once stored: one roll a particle either way.
         CgPropertyMeta.Rolls rolls = property.meta().rolls() == CgPropertyMeta.Rolls.DRAW ? CgPropertyMeta.Rolls.PARTICLE
                 : property.meta().rolls();
         CgVfxFormInput compiled = new CgVfxFormCompiler(new CgVfxCurveBlock(), id -> null).compile(element, property, value, rolls);
         return new CgVfxSpawnForm(target, element, input, value, compiled);
+    }
+
+    /** {@code target}'s module's input {@code input}, as the format declares it. */
+    static CgProperty property(CgVfxSpawnInput target, String input) {
+        String module = NS + target.module();
+        CgProperty property = null;
+        if (target == CgVfxSpawnInput.SHAPE_VELOCITY) property = CgParticleKinds.SHAPE_ADD_VELOCITY.property(input);
+        else for (CgProperty p : CgModuleTypes.builtIn().get(module).inputs().properties()) if (p.name().equals(input)) property = p;
+        if (property == null) throw new IllegalArgumentException(module + " has no input " + input);
+        return property;
+    }
+
+    /** Its input's quantity: whether a vector of it swaps channels with the axes ({@code CgUnits.permutes}). */
+    public CgQuantity quantity() {
+        return property(target, input).quantity();
+    }
+
+    /** The seed it draws by, its value's own ({@code { range: [...], seed: {...} }}); null for none. */
+    public Object seed() {
+        return value instanceof Map<?, ?> m ? m.get("seed") : null;
     }
 
     /** A size {@code min + (max - min) x^skew} by a random draw: most small and a few large (aaa-design 2.60). */

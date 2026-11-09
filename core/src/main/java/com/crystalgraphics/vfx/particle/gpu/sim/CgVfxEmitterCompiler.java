@@ -13,6 +13,7 @@ import com.crystalgraphics.vfx.particle.gpu.CgVfxLane;
 
 import com.crystalgraphics.util.io.CgIO;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawning;
+import com.crystalgraphics.vfx.particle.spawn.CgVfxSeededStream;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -25,6 +26,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.function.IntFunction;
 
 /**
  * Writes a shape's Step kernel: one {@code append} kernel that runs a particle step for every particle of a pool
@@ -279,7 +281,7 @@ public final class CgVfxEmitterCompiler {
             first[CgVfxRecord.Tail.PREVIOUS.ordinal()] = Math.min(first[CgVfxRecord.Tail.PREVIOUS.ordinal()], code.length() + 1);
         }
         // A start in a form is the launch's to store: the Look stage reads it.
-        if (shape.spawnFormOf(CgVfxSpawnInput.COLOR) >= 0) {
+        if (shape.spawnFormOf(CgVfxSpawnInput.COLOR) >= 0 || shape.spawnFormOf(CgVfxSpawnInput.ALPHA) >= 0) {
             first[CgVfxRecord.Tail.COLOR.ordinal()] = Math.min(first[CgVfxRecord.Tail.COLOR.ordinal()], code.length() + 2);
         }
         if (shape.spawnFormOf(CgVfxSpawnInput.MESH_SCALE) >= 0) {
@@ -439,6 +441,7 @@ public final class CgVfxEmitterCompiler {
                     """);
         }
         s.append("const int STEP_SPAWN_ROW = ").append(CgVfxParticlePool.SPAWN_ROW_WORDS / 4).append(";\n");
+        streams(s, shape);
         if (shape.events() > 0) {
             s.append("const int STEP_EVENT_NODES = ").append(shape.eventField(CgVfxShape.EVENT_NODES)).append(";\n");
             s.append("const int STEP_EVENT_CLIP = ").append(shape.eventField(CgVfxShape.EVENT_CLIP)).append(";\n");
@@ -574,7 +577,8 @@ public final class CgVfxEmitterCompiler {
 
                 // CgVfxSpawnShape: where spawn k of the instance at inst is born in its shape's sampling frame (axis
                 // +Y), and the way out of the shape's middle there; a cylinder's half height is the launch's.
-                void step_place(uint seed, uint k, int row, int inst, float halfHeight, out vec3 pos, out vec3 way) {
+                void step_place(uint seed, uint k, int row, int inst, float halfHeight, inout float front, out vec3 pos,
+                                out vec3 way) {
                     seed ^= step_key(row, STEP_KEY_SHAPE);
                     vec4 s6 = step_vector(row, inst, 6), n = step_vector(row, inst, 7);
                     int kind = int(s6.x), flags = int(s6.y), placement = flags & 3;
@@ -600,7 +604,9 @@ public final class CgVfxEmitterCompiler {
                     vec3 localScale = (ownerScale & 32) != 0 ? owner : vec3(1.0);
                     vec3 launchScale = ((ownerScale & 16) != 0 ? owner : vec3(1.0)) * localScale;
                     vec3 local, way;
-                    step_place(seed, k, row, inst, @HALF_HEIGHT@, local, way);
+                    step_fallback_seed = seed;
+                    step_fallback_k = k;
+                    step_place(seed, k, row, inst, @HALF_HEIGHT@, front, local, way);
                     vec3 outward = step_rotate(q, way), dir;
                     int mode = int(s4.w);
                     if (mode == 0) dir = outward;
@@ -672,7 +678,7 @@ public final class CgVfxEmitterCompiler {
                     vec4 to = uintBitsToFloat(SPAWNS(at + 3));
 @TRAIL_SPAWN@                    int bursts = int(when.z);
 @ALONG@                    float loop = mix(from.w, to.w, along);
-                    if (!step_launch(seed, k, k, row, inst, mix(from.xyz, to.xyz, along), vec3(0.0, 1.0, 0.0), step_instance(inst + 7),
+@STREAMS@                    if (!step_launch(seed, k, k, row, inst, mix(from.xyz, to.xyz, along), vec3(0.0, 1.0, 0.0), step_instance(inst + 7),
                             @FRONT@, loop, p)) return false;
                     p.velocity += step_vector(row, inst, 2).z * (to.xyz - from.xyz) / when.w;
 @LEGACY@@READ@                    p.id = k;
@@ -687,6 +693,7 @@ public final class CgVfxEmitterCompiler {
                     case CASCADE_GPU -> GPU_ALONG;
                 })
                 .replace("@LEGACY@", shape.spawning() == CgVfxSpawning.CASCADE_LEGACY ? LEGACY_PLACE : "")
+                .replace("@STREAMS@", shape.seeded().isEmpty() ? "" : streamsAtSpawn(shape))
                 .replace("@HEADS@", heads(shape)).replace("@SPEED@", spawnValue(shape, CgVfxSpawnInput.SPEED, "s0.x", "s0.x + (s0.y - s0.x) * " + roll(CgVfxGpuEmitter.KEY_SPEED), ""))
                 .replace("@LIFE@", spawnValue(shape, CgVfxSpawnInput.LIFETIME, "s0.z", "s0.z + (s0.w - s0.z) * " + roll(CgVfxGpuEmitter.KEY_LIFE), ""))
                 .replace("@SIZE@", spawnValue(shape, CgVfxSpawnInput.SPRITE_SIZE, "s1.x", "s1.x + (s1.y - s1.x) * " + roll(CgVfxGpuEmitter.KEY_SIZE), ""))
@@ -1156,6 +1163,8 @@ public final class CgVfxEmitterCompiler {
                 float d = dot(from, from);
                 way = d > 1e-12 ? from * inversesqrt(d) : vec3(0.0, 1.0, 0.0);
                 """});
+        if (has(kinds, 9)) groups.add(new String[]{"kind == 9", cascadeSphere(shape)});
+        if (has(kinds, 10)) groups.add(new String[]{"kind == 10", cascadeCylinder(shape)});
         if (has(kinds, 6) && shape.spawnsOnMesh()) {
             groups.add(new String[]{"kind == 6", "step_mesh(k, n, placement, s6, u1, u2, u3, u4, pos, way);\n"});
         }
@@ -1163,6 +1172,95 @@ public final class CgVfxEmitterCompiler {
                 ring(sphere, cylinder, cone, capsule)});
         chain(s, groups);
         s.append("}\n");
+    }
+
+    /**
+     * Cascade's sphere ({@code LocationPrimitiveSphere::SpawnEx}, 4.21:1310-1376, {@code DetermineUnitDirection} :717):
+     * a draw an axis, 2r - 1 where both signs are allowed, r or -r for one, 0 for none; its offset that times the radius
+     * (n.x to n.y, drawn where n.w says, plus a radius form's front), each axis held to the unit direction's times the
+     * radius; on its surface the direction itself. Seeded, its draws are its stream's, the source's x, y, z in order.
+     */
+    private static String cascadeSphere(CgVfxShape shape) {
+        String f0 = "u1", f1 = "u2", f2 = "u3", fr = "u4";
+        for (int st = 0; st < shape.seeded().size(); st++) {
+            CgVfxSeededStream stream = shape.seeded().get(st);
+            if (stream.shape() < 0) continue;
+            int at = stream.shape();
+            String[] host = new String[3];
+            for (int h = 0; h < 3; h++) host[h] = "step_draw(" + st + ", " + (at + stream.axis()[h]) + ")";
+            f0 = host[0];
+            f1 = host[1];
+            f2 = host[2];
+            fr = "step_draw(" + st + ", " + (at + 3) + ")";
+        }
+        return """
+                int dirs = int(n.z);
+                vec3 d = vec3(step_cascade_axis(dirs, 0, F0), step_cascade_axis(dirs, 1, F1), step_cascade_axis(dirs, 2, F2));
+                float r = mix(n.x, n.y, (int(n.w) & 1) != 0 ? FR : 0.0) + front;
+                front = 0.0;
+                float len = length(d);
+                vec3 nd = len > 0.0 ? d / len : vec3(0.0);
+                vec3 most = abs(nd) * abs(r);
+                pos = clamp((placement == 1 ? nd : d) * r, -most, most);
+                way = len > 0.0 ? nd : vec3(0.0, 1.0, 0.0);
+                """.replace("F0", f0).replace("F1", f1).replace("F2", f2).replace("FR", fr);
+    }
+
+    /**
+     * Cascade's cylinder ({@code LocationPrimitiveCylinder::SpawnEx}, 4.21:1006-1130) in its source's axes: tries at a
+     * direction until its radial part falls in the circle, its height that times the half height, its radial part the
+     * radius times it (on its side's circle on the surface, its caps aside), each axis held to its unit part; then mapped
+     * to the host by n.w's axes. Seeded, its draws are its stream's, the accepted try's.
+     */
+    private static String cascadeCylinder(CgVfxShape shape) {
+        String dir = null, fr = "u4";
+        for (int st = 0; st < shape.seeded().size(); st++) {
+            CgVfxSeededStream stream = shape.seeded().get(st);
+            if (stream.rejection() == null) continue;
+            String end = "step_tries_end_" + st + "(step_stream[" + st + "])";
+            dir = "vec3(step_cascade_axis(dirs, 0, step_draw(" + st + ", " + end + " - 3)), step_cascade_axis(dirs, 1, step_draw("
+                    + st + ", " + end + " - 2)), step_cascade_axis(dirs, 2, step_draw(" + st + ", " + end + " - 1)))";
+            fr = "step_draw(" + st + ", " + stream.shape() + ")";
+        }
+        String tries = dir != null ? "vec3 d = " + dir + ";\n" : """
+                vec3 d;
+                for (int t = 0; t < CASCADE_TRIES; t++) {
+                    d = vec3(step_cascade_axis(dirs, 0, fx_rand(seed, k, uint(20 + 3 * t))),
+                             step_cascade_axis(dirs, 1, fx_rand(seed, k, uint(21 + 3 * t))),
+                             step_cascade_axis(dirs, 2, fx_rand(seed, k, uint(22 + 3 * t))));
+                    if (r == 0.0 || d[i0] * d[i0] + d[i1] * d[i1] <= 1.0) break;
+                }
+                """.replace("CASCADE_TRIES", Integer.toString(CgVfxSeededStream.TRIES));
+        return ("""
+                int packed = int(n.w), dirs = packed & 63, hi = (packed >> 6) & 3;
+                int i0 = hi == 0 ? 1 : 0, i1 = hi == 2 ? 1 : 2;
+                float r = mix(n.x, n.y, ((packed >> 8) & 1) != 0 ? FR : 0.0) + front, hh = halfHeight;
+                front = 0.0;
+                """ + tries + """
+                vec2 d2 = vec2(d[i0], d[i1]);
+                float l2 = dot(d2, d2);
+                vec2 n2 = l2 > 1e-8 ? d2 * inversesqrt(l2) : vec2(0.0);
+                vec3 o, most, out3;
+                o[hi] = d[hi] * hh;
+                bool cap = placement == 1 && abs(abs(o[hi]) - hh) <= 1e-8;
+                vec2 radial = placement == 1 && !cap ? n2 * r : d2 * r;
+                o[i0] = radial.x;
+                o[i1] = radial.y;
+                most[i0] = abs(n2.x * r);
+                most[i1] = abs(n2.y * r);
+                most[hi] = abs(hh);
+                o = clamp(o, -most, most);
+                out3[i0] = n2.x;
+                out3[i1] = n2.y;
+                out3[hi] = 0.0;
+                for (int a = 0; a < 3; a++) {
+                    int src = (packed >> (10 + 2 * a)) & 3;
+                    bool flip = ((packed >> (16 + a)) & 1) != 0;
+                    pos[a] = flip ? -o[src] : o[src];
+                    way[a] = flip ? -out3[src] : out3[src];
+                }
+                if (dot(way, way) < 1e-12) way = vec3(0.0, 1.0, 0.0);
+                """).replace("FR", fr);
     }
 
     private static boolean has(int kinds, int kind) {
@@ -1344,7 +1442,8 @@ public final class CgVfxEmitterCompiler {
         int n = target.components();
         StringBuilder s = new StringBuilder(n > 1 ? "vec" + n + "(" : "(").append(times);
         for (int k = 0; k < n; k++) {
-            s.append(k > 0 ? ", " : "").append(formExpr(shape.spawnLayout(f), form, Math.min(k, form.components() - 1), first, "seed", "k", "loop"));
+            s.append(k > 0 ? ", " : "").append(formExpr(shape.spawnLayout(f), form, Math.min(k, form.components() - 1), first, "seed", "k",
+                    "loop", seededDraw(shape, target)));
         }
         return s.append(')').toString();
     }
@@ -1436,15 +1535,25 @@ public final class CgVfxEmitterCompiler {
                 """;
     }
 
-    /** A colour start's form as a vec4: an rgb form's alpha -1, which the Look stage takes from the row's starts. */
+    /**
+     * A colour start's forms as a vec4: the colour's channels and a seeded alpha's, -1 where neither gives one, which the
+     * Look stage takes from the row's starts.
+     */
     private static String colorStart(CgVfxShape shape) {
-        int f = shape.spawnFormOf(CgVfxSpawnInput.COLOR);
-        if (f < 0) return "vec4(1.0)";
-        CgVfxFormInput form = shape.spawnForm(f).compiled();
+        int f = shape.spawnFormOf(CgVfxSpawnInput.COLOR), a = shape.spawnFormOf(CgVfxSpawnInput.ALPHA);
+        if (f < 0 && a < 0) return "vec4(1.0)";
+        CgVfxFormInput form = f < 0 ? null : shape.spawnForm(f).compiled();
         StringBuilder s = new StringBuilder("vec4(");
         for (int k = 0; k < 4; k++) {
-            s.append(k > 0 ? ", " : "").append(k < form.components()
-                    ? formExpr(shape.spawnLayout(f), form, k, null, "seed", "k", "loop") : "-1.0");
+            s.append(k > 0 ? ", " : "");
+            if (k == 3 && a >= 0) {
+                s.append(formExpr(shape.spawnLayout(a), shape.spawnForm(a).compiled(), 0, null, "seed", "k", "loop",
+                        seededDraw(shape, CgVfxSpawnInput.ALPHA)));
+            } else if (form != null && k < form.components()) {
+                s.append(formExpr(shape.spawnLayout(f), form, k, null, "seed", "k", "loop", seededDraw(shape, CgVfxSpawnInput.COLOR)));
+            } else {
+                s.append("-1.0");
+            }
         }
         return s.append(')').toString();
     }
@@ -1454,7 +1563,120 @@ public final class CgVfxEmitterCompiler {
         int f = shape.spawnFormOf(CgVfxSpawnInput.RADIUS);
         if (f < 0) return "0.0";
         String radius = "step_vector(row, inst, 7).y";
-        return "(" + formExpr(shape.spawnLayout(f), shape.spawnForm(f).compiled(), 0, radius, "seed", "k", "loop") + " - " + radius + ")";
+        return "(" + formExpr(shape.spawnLayout(f), shape.spawnForm(f).compiled(), 0, radius, "seed", "k", "loop",
+                seededDraw(shape, CgVfxSpawnInput.RADIUS)) + " - " + radius + ")";
+    }
+
+    /**
+     * The seeded streams' state at this spawn ({@code CgVfxSeededStream}): the spawn row's state at its first spawn, or
+     * at the loop that restarted them within it ({@code Books.streamWords}, from {@code CgVfxParticlePool.STREAM_WORD}),
+     * past the draws of the spawns before this one: skipped, or a cylinder's walked try by try.
+     */
+    private static String streamsAtSpawn(CgVfxShape shape) {
+        StringBuilder b = new StringBuilder("""
+                                    {
+                                        uint split = SPAWNS(at + 4).y, first = SPAWNS(at).y;
+                                        bool late = split != 0xFFFFFFFFu && k >= split;
+                """);
+        for (int st = 0; st < shape.seeded().size(); st++) {
+            int w = CgVfxParticlePool.STREAM_WORD + 1 + 2 * st;
+            String a = "SPAWNS(at + " + w / 4 + ")." + XYZW.charAt(w % 4), bb = "SPAWNS(at + " + (w + 1) / 4 + ")." + XYZW.charAt((w + 1) % 4);
+            if (shape.seeded().get(st).rejection() == null) {
+                b.append("                        step_stream[").append(st).append("] = late ? step_skip(").append(bb)
+                        .append(", (k - split) * STEP_STREAM_DRAWS[").append(st).append("]) : step_skip(").append(a)
+                        .append(", (k - first) * STEP_STREAM_DRAWS[").append(st).append("]);\n");
+            } else {
+                // A cylinder's draws vary with its tries: walked from the row's first spawn.
+                b.append("                        {\n                            uint s = late ? ").append(bb).append(" : ").append(a)
+                        .append(";\n                            for (uint i = late ? split : first; i < k; i++) s = step_skip(s, uint(step_tries_end_")
+                        .append(st).append("(s)) + STEP_STREAM_DRAWS[").append(st).append("]);\n                            step_stream[")
+                        .append(st).append("] = s;\n                        }\n");
+            }
+        }
+        return b.append("                        step_seeded = true;\n                    }\n").toString();
+    }
+
+    /**
+     * Cascade's random streams, a seeded shape's ({@code CgVfxRandomStream}'s twin): {@code step_draw(st, j)} is draw
+     * {@code j} of this spawn from stream {@code st}. A spawn made off the spawn rows (an event's child) has no stream
+     * state and draws from the spawn hash.
+     */
+    private static void streams(StringBuilder s, CgVfxShape shape) {
+        s.append("""
+                uint step_fallback_seed, step_fallback_k;
+                bool step_seeded = false;
+
+                // FRandomStream's state n draws on: Seed * 196314165 + 907633515, raised to n in log time.
+                uint step_skip(uint state, uint n) {
+                    uint a = 196314165u, c = 907633515u, accA = 1u, accC = 0u;
+                    for (; n > 0u; n >>= 1u) {
+                        if ((n & 1u) != 0u) {
+                            accA *= a;
+                            accC = accC * a + c;
+                        }
+                        c = c * a + c;
+                        a *= a;
+                    }
+                    return state * accA + accC;
+                }
+                """);
+        int n = shape.seeded().size();
+        if (n == 0) {
+            s.append("float step_draw(int st, int j) {\n    return fx_rand(step_fallback_seed ^ uint(0x5EED0000 + st), step_fallback_k, uint(j));\n}\n");
+            s.append("""
+                    // Cascade's DetermineUnitDirection on axis a of dirs (+ at bit 2a, - at 2a + 1).
+                    float step_cascade_axis(int dirs, int a, float r) {
+                        bool plus = ((dirs >> (2 * a)) & 1) != 0, minus = ((dirs >> (2 * a + 1)) & 1) != 0;
+                        return plus && minus ? r * 2.0 - 1.0 : plus ? r : minus ? -r : 0.0;
+                    }
+                    """);
+            return;
+        }
+        s.append("const int STEP_STREAMS = ").append(n).append(";\nconst uint STEP_STREAM_DRAWS[").append(n).append("] = uint[](");
+        for (int i = 0; i < n; i++) s.append(i > 0 ? ", " : "").append(shape.seeded().get(i).draws()).append('u');
+        s.append(");\nuint step_stream[").append(n).append("];\n");
+        s.append("""
+                // Draw j of this spawn from stream st: GetFraction, the state's low 23 bits over 2^23.
+                float step_draw(int st, int j) {
+                    if (!step_seeded) return fx_rand(step_fallback_seed ^ uint(0x5EED0000 + st), step_fallback_k, uint(j));
+                    return float(step_skip(step_stream[st], uint(j) + 1u) & 0x7FFFFFu) * (1.0 / 8388608.0);
+                }
+
+                // Cascade's DetermineUnitDirection on source axis a of dirs (+ at bit 2a, - at 2a + 1).
+                float step_cascade_axis(int dirs, int a, float r) {
+                    bool plus = ((dirs >> (2 * a)) & 1) != 0, minus = ((dirs >> (2 * a + 1)) & 1) != 0;
+                    return plus && minus ? r * 2.0 - 1.0 : plus ? r : minus ? -r : 0.0;
+                }
+                """);
+        for (int st = 0; st < n; st++) {
+            CgVfxSeededStream.Rejection r = shape.seeded().get(st).rejection();
+            if (r == null) continue;
+            int i0 = r.height() == 0 ? 1 : 0, i1 = r.height() == 2 ? 1 : 2;
+            // CgVfxSeededStream.Rejection.drawsThroughTries' twin.
+            s.append("int step_tries_end_").append(st).append("(uint state) {\n");
+            if (r.zeroRadius()) {
+                s.append("    return ").append(r.first() + 3).append(";\n}\n");
+                continue;
+            }
+            s.append("    uint s = step_skip(state, ").append(r.first()).append("u);\n")
+                    .append("    for (int t = 1; ; t++) {\n        vec3 d;\n")
+                    .append("        for (int a = 0; a < 3; a++) {\n            s = s * 196314165u + 907633515u;\n")
+                    .append("            d[a] = step_cascade_axis(").append(r.directions()).append(", a, float(s & 0x7FFFFFu) * (1.0 / 8388608.0));\n        }\n")
+                    .append("        if (d[").append(i0).append("] * d[").append(i0).append("] + d[").append(i1).append("] * d[").append(i1)
+                    .append("] <= 1.0 || t >= ").append(CgVfxSeededStream.TRIES).append(") return ").append(r.first()).append(" + 3 * t;\n    }\n}\n");
+        }
+    }
+
+    /** {@code target}'s seeded draws: roll r of its form as its stream's draw; null where nothing seeds it. */
+    private static IntFunction<String> seededDraw(CgVfxShape shape, CgVfxSpawnInput target) {
+        for (int st = 0; st < shape.seeded().size(); st++) {
+            CgVfxSeededStream.Input in = shape.seeded().get(st).input(target);
+            if (in == null) continue;
+            int stream = st;
+            String base = in.afterTries() ? "step_tries_end_" + st + "(step_stream[" + st + "]) + " : "";
+            return r -> "step_draw(" + stream + ", " + base + (in.first() + in.draw()[Math.min(r, in.draw().length - 1)]) + ")";
+        }
+        return null;
     }
 
     /** Where along the tick a spawn is born: bursts at its start, rate spawns spread to its end. */
@@ -2001,17 +2223,25 @@ public final class CgVfxEmitterCompiler {
      */
     private static String formExpr(CgVfxFormLayout layout, CgVfxFormInput c, int k, String first, String seed, String id,
                                    String loop) {
+        return formExpr(layout, c, k, first, seed, id, loop, null);
+    }
+
+    /** As above, its rolls {@code drawOf}'s draws where a seed gives them ({@link #seededDraw}). */
+    private static String formExpr(CgVfxFormLayout layout, CgVfxFormInput c, int k, String first, String seed, String id,
+                                   String loop, IntFunction<String> drawOf) {
         CgVfxFormLayout.Node n = layout.node(c);
         String keyed = n.key() < 0 ? seed : seed + " ^ step_key(row, " + n.key() + ")";
         String lane = "." + XYZW.charAt(k);
         String at0 = "step_param(row + " + n.at() + ")" + lane, at1 = "step_param(row + " + (n.at() + 1) + ")" + lane;
         if (c instanceof CgVfxFormInput.Constant) return at0;
         if (c instanceof CgVfxFormInput.Range r) {
-            return "mix(" + (n.top() ? first : at0) + ", " + (n.top() ? at0 : at1) + ", fx_rand(" + keyed + ", " + id + ", "
-                    + r.rollOf(k) + "u))";
+            String roll = drawOf != null ? drawOf.apply(r.rollOf(k)) : "fx_rand(" + keyed + ", " + id + ", " + r.rollOf(k) + "u)";
+            return "mix(" + (n.top() ? first : at0) + ", " + (n.top() ? at0 : at1) + ", " + roll + ")";
         }
         if (c instanceof CgVfxFormInput.Pick) {
-            return "(fx_rand(" + keyed + ", " + id + ", 0u) < 0.5 ? " + (n.top() ? first : at0) + " : " + (n.top() ? at0 : at1) + ")";
+            // Seeded, Cascade's extreme: its second end above a half (GetValue1Extreme).
+            String test = drawOf != null ? drawOf.apply(0) + " <= 0.5" : "fx_rand(" + keyed + ", " + id + ", 0u) < 0.5";
+            return "(" + test + " ? " + (n.top() ? first : at0) + " : " + (n.top() ? at0 : at1) + ")";
         }
         if (c instanceof CgVfxFormInput.Curve curve) {
             return "step_curve(row + " + n.at() + ", " + lookup(curve.by(), keyed, id, loop) + ")" + lane;
@@ -2024,7 +2254,8 @@ public final class CgVfxEmitterCompiler {
             String a = formExpr(layout, f.first(), Math.min(k, f.first().components() - 1), null, seed, id, loop);
             String b = formExpr(layout, f.second(), Math.min(k, f.second().components() - 1), null, seed, id, loop);
             if (f.fn().endsWith(":add")) return "(" + a + " + " + b + ")";
-            return "mix(" + a + ", " + b + ", fx_rand(" + keyed + ", " + id + ", 0u))";
+            String roll = drawOf != null ? drawOf.apply(f.rollOf(k)) : "fx_rand(" + keyed + ", " + id + ", " + f.rollOf(k) + "u)";
+            return "mix(" + a + ", " + b + ", " + roll + ")";
         }
         CgVfxFormInput.Binding b = (CgVfxFormInput.Binding) c;
         // A user parameter's is its instance lane, written each step remapped and scaled.

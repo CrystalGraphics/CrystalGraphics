@@ -51,16 +51,9 @@ public final class CgModuleTypes {
 
     /**
      * A seeded module's {@code seed} input: Cascade's {@code FParticleRandomSeedInfo} ({@code ParticleModule.h:86-139},
-     * UE 4.21), its fields and defaults Unreal's ({@code modules.md} § Declaration).
+     * UE 4.21), its fields and defaults Unreal's ({@code modules.md} § Declaration). A drawing value form takes it too.
      */
-    public static final CgType SEED = CgTypes.struct("crystalgraphics:seed")
-            .property("values", CgValueType.listOf(CgValueType.INT))
-            .property("parameter", CgValueType.STRING)
-            .property("from_instance", CgValueType.BOOL).defaultValue(false)
-            .property("instance_is_index", CgValueType.BOOL).defaultValue(false)
-            .property("reset_on_loop", CgValueType.BOOL).defaultValue(true)
-            .property("random_selection", CgValueType.BOOL).defaultValue(false)
-            .register();
+    public static final CgType SEED = CgCommonStructs.SEED;
 
     /** Declares {@link #SEED}: a native type, so before the registry freezes. */
     static void register() {

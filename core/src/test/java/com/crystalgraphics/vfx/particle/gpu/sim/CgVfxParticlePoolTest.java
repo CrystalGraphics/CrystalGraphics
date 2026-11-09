@@ -487,8 +487,8 @@ public class CgVfxParticlePoolTest {
         float tick = 1f / 120f;
         pool.beginStep(3 * tick, 0f, 0f, 0f);
         pool.instance(slot, 0, 1f, 0f, new At(0, 0f));
-        pool.spawn(slot, 0, 4, 1, 0f, tick, 0f, 0f, 0f, 1f, 0f, 0f, 0f, tick, 0f);
-        pool.spawn(slot, 4, 2, 0, 2 * tick, tick, 1f, 0f, 0f, 2f, 0f, 0f, 2 * tick, 3 * tick, 0f);
+        pool.spawn(slot, 0, 4, 1, 0f, tick, 0f, 0f, 0f, 1f, 0f, 0f, 0f, tick, 0f, null, -1);
+        pool.spawn(slot, 4, 2, 0, 2 * tick, tick, 1f, 0f, 0f, 2f, 0f, 0f, 2 * tick, 3 * tick, 0f, null, -1);
         pool.endStep();
         int[] rows = pool.spawnWords();
         int second = pool.stepSpawnAt(0) + CgVfxParticlePool.SPAWN_ROW_WORDS;

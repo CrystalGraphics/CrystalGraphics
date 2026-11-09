@@ -51,6 +51,8 @@ import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxShape;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxOwnerScale;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxLightRendererProperties;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxEmitterState;
+import com.crystalgraphics.vfx.particle.spawn.CgVfxRandomStream;
+import com.crystalgraphics.vfx.particle.spawn.CgVfxSeededStream;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawnBurst;
 
 /**
@@ -304,6 +306,69 @@ public class CgVfxEmitterAssetsTest {
         CgVfxLifeRoll roll = CgVfxEmitterAssets.compile("rays", tree, null, unreal).lifeRolls().get(0);
         assertArrayEquals(new float[]{1f, 40f, 20f}, roll.from(), 0f);
         assertArrayEquals(new float[]{1f, 50f, 40f}, roll.to(), 0f);
+    }
+
+    /**
+     * A seeded Cascade sphere draws its directions from its seed's stream (LocationPrimitiveSphere_Seeded, 4.21): pinned
+     * to seed 14, its first burst's five leave along Cascade's five, in the host's axes.
+     */
+    @Test
+    public void aSeededCascadeSphereLeavesAlongItsSeedsDirections() {
+        CgAssetCompiler.Dependencies unreal = new CgAssetCompiler.Dependencies() {
+            @Override public Object definition(CgType kind, String id) {
+                return null;
+            }
+            @Override public CgUnits units() {
+                return CgUnits.UNREAL;
+            }
+        };
+        Map<String, Object> tree = new LinkedHashMap<>();
+        tree.put("_v", 1);
+        tree.put("properties", Map.of("capacity", 64, "spawning", "cascade"));
+        tree.put("emitter_update", List.of(Map.of("id", "state", "module", "crystalgraphics:emitter_state",
+                "inputs", Map.of("loop", "once", "duration", 1.0)),
+                Map.of("id", "burst", "module", "crystalgraphics:spawn_burst", "inputs", Map.of("time", 0.0, "count", 5))));
+        Map<String, Object> shape = new LinkedHashMap<>();
+        shape.put("shape", "sphere");
+        shape.put("offset", List.of(0.0, 0.0, 0.0));
+        shape.put("surface_only", true);
+        shape.put("directions", "+x-x+y-y+z-z");
+        shape.put("seed", Map.of("values", List.of(14), "random_selection", true));
+        shape.put("sphere_radius", Map.of("range", List.of(1.0, 5.0)));
+        shape.put("add_velocity", Map.of("outward", 1.0));
+        tree.put("particle_spawn", List.of(Map.of("id", "rays", "module", "crystalgraphics:shape_location", "inputs", shape)));
+        CgVfxEmitter e = CgVfxEmitterAssets.compile("beam", tree, null, unreal);
+
+        CgVfxSeededStream stream = e.seededStreams().get(0);
+        assertEquals("three direction draws, then the radius's", 4, stream.draws());
+        assertEquals(0, stream.shape());
+        assertArrayEquals("host x, y, z draw Unreal's x, z, y", new int[]{0, 2, 1}, stream.axis());
+
+        CgVfxEmitterInstance instance = new CgVfxEmitterInstance(e, 0.37f);
+        instance.start(0f, 0f, 0f);
+        instance.books().schedule(1f / 120f, 0, 0, 0);
+        assertEquals(5, instance.books().stepCandidates());
+        int[] words = new int[1 + 2 * CgVfxSeededStream.MAX];
+        assertEquals(3, instance.books().streamWords(words, 0));
+        assertEquals("no loop restarts it", -1, words[0]);
+        assertEquals("its first spawn starts at the seed", 14, words[1]);
+
+        // REA's cascade_seeded_sphere.py at seed 14, Unreal's (x, y, z).
+        float[][] cascade = {{0.6049f, 0.6945f, 0.3896f}, {-0.7503f, -0.5566f, -0.3568f}, {0.5210f, -0.8426f, -0.1361f},
+                {0.5509f, -0.8031f, -0.2269f}, {0.5091f, 0.6361f, 0.5798f}};
+        for (int k = 0; k < 5; k++) {
+            // The Step's placement, mirrored: this spawn's state, its three draws, step_cascade_axis with every sign.
+            int state = CgVfxRandomStream.skip(words[1], (long) k * stream.draws());
+            float[] host = new float[3];
+            for (int h = 0; h < 3; h++) {
+                float f = CgVfxRandomStream.fraction(CgVfxRandomStream.skip(state, stream.shape() + stream.axis()[h] + 1));
+                host[h] = f * 2f - 1f;
+            }
+            float n = (float) Math.sqrt(host[0] * host[0] + host[1] * host[1] + host[2] * host[2]);
+            float[] want = cascade[k];
+            assertArrayEquals("spawn " + k, new float[]{want[0], want[2], want[1]},
+                    new float[]{host[0] / n, host[1] / n, host[2] / n}, 2e-3f);
+        }
     }
 
     /** Size modules compose in their order: a set restarts from the spawn size (Cascade's SizeScale), a multiply multiplies. */

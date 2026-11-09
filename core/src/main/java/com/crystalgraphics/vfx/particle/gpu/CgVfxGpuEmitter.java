@@ -17,6 +17,7 @@ import java.util.List;
 import com.crystalgraphics.vfx.particle.form.CgVfxFormCompiler;
 import com.crystalgraphics.vfx.particle.form.CgVfxModuleForm;
 import com.crystalgraphics.vfx.particle.form.CgVfxSpawnForm;
+import com.crystalgraphics.vfx.particle.spawn.CgVfxSeededStream;
 
 /**
  * An emitter definition as a GPU pool reads it: its module stack, its renderer and its spawn numbers.
@@ -225,6 +226,14 @@ public interface CgVfxGpuEmitter {
      * }</pre>
      */
     default List<CgVfxSpawnForm> spawnForms() {
+        return List.of();
+    }
+
+    /**
+     * Its seeded modules' streams ({@link CgVfxSeededStream}): which spawn values draw from a Cascade stream rather than
+     * the spawn hash, and in what order. Their layout is part of the shape; their seeds are the books'.
+     */
+    default List<CgVfxSeededStream> seededStreams() {
         return List.of();
     }
 

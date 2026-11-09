@@ -27,14 +27,28 @@ import org.joml.Vector3f;
  * cone filled by volume, where it does neither. A mesh's triangle is picked by area through an alias table
  * ({@link CgVfxSpawnMeshes}) and a point in it by one uniform barycentric: Effekseer's point cache draws each weight on
  * its own, which crowds the corners. Cascade's triangle is the exception, matched as it is: three uniforms over their
- * sum, which crowds its middle ({@code ParticleModules_Location.cpp}, {@code LocationPrimitiveTriangle::SpawnEx}).</p>
+ * sum, which crowds its middle ({@code ParticleModules_Location.cpp}, {@code LocationPrimitiveTriangle::SpawnEx}). So is
+ * Cascade's sphere ({@code LocationPrimitiveSphere::SpawnEx}, 4.21:1310-1376): a draw per axis in its allowed directions,
+ * the offset that unit vector times its radius held inside the sphere, which crowds the diagonals. Cascade's cylinder
+ * ({@code LocationPrimitiveCylinder::SpawnEx}, 4.21:1006-1130) draws again until the radial part falls in the circle,
+ * and works in its source's axes, its height on whichever it names.</p>
  */
 final class CgVfxSpawnShape {
 
-    static final int POINT = 0, SPHERE = 1, BOX = 2, CYLINDER = 3, CONE = 4, CAPSULE = 5, MESH = 6, ENTITY = 7, TRIANGLE = 8;
+    static final int POINT = 0, SPHERE = 1, BOX = 2, CYLINDER = 3, CONE = 4, CAPSULE = 5, MESH = 6, ENTITY = 7, TRIANGLE = 8, CASCADE_SPHERE = 9, CASCADE_CYLINDER = 10;
     static final int VOLUME = 0, SURFACE = 1, EDGE = 2, VERTICES = 3;
     static final int OUTWARD = 0, INWARD = 1, DIRECTION = 2;
     static final float TAU = (float) (2 * Math.PI);
+    /** A Cascade sphere's allowed directions, a bit each in the sampling frame: +x, -x, +y, -y, +z, -z. */
+    static final int ALL_DIRECTIONS = 63;
+    /** A Cascade sphere's flag: its radius is a range drawn once a spawn. */
+    static final int RADIUS_DRAWN = 1;
+    /**
+     * A Cascade cylinder's packed word: its allowed directions in its source's axes (bits 0-5), its height's source axis
+     * (6-7), {@link #RADIUS_DRAWN} (8), then for each host axis the source axis it reads (10-15, two bits each) and
+     * whether it reads it negated (16-18).
+     */
+    static final int CYLINDER_HEIGHT_SHIFT = 6, CYLINDER_DRAWN_BIT = 8, CYLINDER_AXIS_SHIFT = 10, CYLINDER_SIGN_SHIFT = 16;
 
     static final CgVfxSpawnShape DEFAULT = new Builder().build("");
 
@@ -94,6 +108,12 @@ final class CgVfxSpawnShape {
             CgVfxSpawnMeshes.Section m = CgVfxSpawnMeshes.of(mesh());
             if (s.placement == VERTICES) out.vec4(m.firstVertex(), m.vertices(), s.a, 0f);
             else out.vec4(m.firstTriangle(), m.triangles(), s.a, 0f);
+        } else if (s.kind == CASCADE_SPHERE) {
+            // Its radius's two ends, its allowed directions, its flags.
+            out.vec4(s.a, s.b, s.c, s.flags);
+        } else if (s.kind == CASCADE_CYLINDER) {
+            // Its radius's two ends, its half height, its packed word.
+            out.vec4(s.a, s.b, s.c, s.flags);
         } else if (s.kind == TRIANGLE) {
             // Its height, its base's half (height times the half apex's tangent), its thickness.
             out.vec4(s.a, s.a * (float) Math.tan(s.b / 2f), s.c, 0f);
@@ -109,6 +129,8 @@ final class CgVfxSpawnShape {
         Builder s = given;
         float far = switch (s.kind) {
             case SPHERE -> s.b;
+            case CASCADE_SPHERE -> Math.max(Math.abs(s.a), Math.abs(s.b));
+            case CASCADE_CYLINDER -> (float) Math.hypot(Math.max(Math.abs(s.a), Math.abs(s.b)), s.c);
             case BOX -> (float) Math.sqrt(s.a * s.a + s.b * s.b + s.c * s.c);
             case CYLINDER -> (float) Math.sqrt(s.b * s.b + s.c * s.c);
             case CONE -> s.a;
@@ -142,7 +164,7 @@ final class CgVfxSpawnShape {
         Builder s = new Builder(this);
         s.a *= scale;
         if (s.kind != CONE && s.kind != TRIANGLE) s.b *= scale;
-        s.c *= scale;
+        if (s.kind != CASCADE_SPHERE) s.c *= scale;
         s.midX *= scale;
         s.midY *= scale;
         s.midZ *= scale;
@@ -162,8 +184,11 @@ final class CgVfxSpawnShape {
         boolean radial;
         /** Its numbers by kind: a sphere's inner and outer radius, a box's half extents, a cylinder's inner and outer
          * radius and half height, a cone's range and half angle, a capsule's half length and radius, a mesh's scale, a
-         * triangle's height, apex angle (radians) and thickness. */
+         * triangle's height, apex angle (radians) and thickness; a Cascade sphere's least and most radius and its allowed
+         * directions ({@link #ALL_DIRECTIONS}'s bits). */
         float a, b, c, arc = TAU;
+        /** A Cascade sphere's {@link #RADIUS_DRAWN}; a Cascade cylinder's packed word. */
+        int flags;
         CgMesh mesh;
         String meshPath;
         /** A cone's axis, and the least and most angle from it, radians: Niagara's inner and outer half angles. */
@@ -265,6 +290,49 @@ final class CgVfxSpawnShape {
             axisY = 1f;
         }
 
+        /**
+         * Cascade's sphere: its radius from {@code least} to {@code most}, drawn once a spawn where {@code drawn}, else
+         * {@code most}; {@code directions} the axes it may leave along ({@link #ALL_DIRECTIONS}'s bits, sampling frame).
+         */
+        void cascadeSphere(float least, float most, boolean drawn, int directions, String name) {
+            if (directions < 0 || directions > ALL_DIRECTIONS) throw new IllegalArgumentException(name + ": directions " + directions);
+            kind = CASCADE_SPHERE;
+            mesh = null;
+            meshPath = null;
+            a = least;
+            b = most;
+            c = directions;
+            flags = drawn ? RADIUS_DRAWN : 0;
+            axisX = axisZ = midX = midY = midZ = 0f;
+            axisY = 1f;
+        }
+
+        /**
+         * Cascade's cylinder, in its source's axes: its radius from {@code least} to {@code most} (drawn where
+         * {@code drawn}), its half height, the source directions it may leave along ({@link #ALL_DIRECTIONS}'s bits
+         * by source axis), its height's source axis, and {@code axes}, the host's from the source's ({@code CgUnits}).
+         */
+        void cascadeCylinder(float least, float most, boolean drawn, float halfHeight, int directions, int heightAxis, int[] axes,
+                             String name) {
+            if (directions < 0 || directions > ALL_DIRECTIONS || heightAxis < 0 || heightAxis > 2) {
+                throw new IllegalArgumentException(name + ": a Cascade cylinder of directions " + directions + " on axis " + heightAxis);
+            }
+            int packed = directions | heightAxis << CYLINDER_HEIGHT_SHIFT | (drawn ? 1 << CYLINDER_DRAWN_BIT : 0);
+            for (int h = 0; h < 3; h++) {
+                packed |= (Math.abs(axes[h]) - 1) << (CYLINDER_AXIS_SHIFT + 2 * h);
+                if (axes[h] < 0) packed |= 1 << (CYLINDER_SIGN_SHIFT + h);
+            }
+            kind = CASCADE_CYLINDER;
+            mesh = null;
+            meshPath = null;
+            a = least;
+            b = most;
+            c = halfHeight;
+            flags = packed;
+            axisX = axisZ = midX = midY = midZ = 0f;
+            axisY = 1f;
+        }
+
         void entity() {
             kind = ENTITY;
             mesh = null;
@@ -315,6 +383,9 @@ final class CgVfxSpawnShape {
             if (kind == TRIANGLE && (placement != VOLUME || hemisphere || arc < TAU || ordered > 0)) {
                 throw new IllegalArgumentException(name + ": a triangle fills itself: no surface(), edge(), hemisphere(), arc() or ordered()");
             }
+            if ((kind == CASCADE_SPHERE || kind == CASCADE_CYLINDER) && (placement == EDGE || hemisphere || arc < TAU || ordered > 0)) {
+                throw new IllegalArgumentException(name + ": Cascade's primitives have no edge(), hemisphere(), arc() or ordered()");
+            }
             if (kind == ENTITY && (ordered > 0 || arc < TAU || !Float.isNaN(pointX) || atX != 0f || atY != 0f || atZ != 0f)) {
                 throw new IllegalArgumentException(name + ": an entity's box is where it stands, axis aligned: no ordered(), "
                         + "arc(), pointing() or at()");
@@ -339,6 +410,7 @@ final class CgVfxSpawnShape {
             placement = s.placement;
             ordered = s.ordered;
             mode = s.mode;
+            flags = s.flags;
             hemisphere = s.hemisphere;
             radial = s.radial;
             a = s.a;

@@ -225,9 +225,9 @@ FxDrawn look_part(int part) {
         vec3 scaleRoll = vec3(fx_rand(bits, 0u, 24u), fx_rand(bits, 0u, 25u), fx_rand(bits, 0u, 26u));
         vec4 color = mix(CURVES(starts), CURVES(starts + 1), colorRoll);
         if (_ColorAt >= 0) {
-            // A start stored at birth (CgVfxSpawnInput.COLOR); an alpha below 0 keeps the rolled one.
+            // A start stored at birth (CgVfxSpawnInput.COLOR, ALPHA); a channel below 0 keeps the rolled one.
             vec4 born = vec4(look_word(_ColorAt), look_word(_ColorAt + 1), look_word(_ColorAt + 2), look_word(_ColorAt + 3));
-            color = vec4(born.rgb, born.a < 0.0 ? color.a : born.a);
+            color = vec4(born.r < 0.0 ? color.rgb : born.rgb, born.a < 0.0 ? color.a : born.a);
         }
         color *= tint;
         // Niagara's Occlusion data interface, as its module applies it: alpha times the step's visibility fraction.

@@ -57,7 +57,9 @@ public enum CgVfxSpawnInput {
     ORBIT_ROTATION("orbit", "rotation", 3, -1, false),
     ORBIT_RATE("orbit", "rotation_rate", 3, -1, false),
     SPRITE_ROTATION_RATE("sprite_rotation_rate", "rate", 1, -1, false),
-    SHAPE_VELOCITY("shape_location", "outward", 1, -1, false);
+    SHAPE_VELOCITY("shape_location", "outward", 1, -1, false),
+    /** A seeded start alpha, stored at birth beside the start colour (Cascade's Color_Seeded StartAlpha). */
+    ALPHA("initialize_particle", "alpha", 1, -1, false);
 
     private final String module, input;
     private final int components, word;

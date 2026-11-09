@@ -134,6 +134,8 @@ public final class CgVfxParticlePool {
      * born at its start and the rest spread across it.
      */
     public static final int SPAWN_ROW_WORDS = 36;
+    /** A spawn row's first seeded-stream word: after a legacy spawn's start time. */
+    public static final int STREAM_WORD = 17;
 
     /**
      * An event row, as a Step kernel appends it and a child's reads it: where it fired within its slot's origin's block,
@@ -1982,7 +1984,7 @@ public final class CgVfxParticlePool {
         int at = stepInstanceAt[steps] + slot * instanceWords + 4;
         float x = Float.intBitsToFloat(instances[at]), y = Float.intBitsToFloat(instances[at + 1]),
                 z = Float.intBitsToFloat(instances[at + 2]);
-        spawn(slot, firstSpawn, candidates, candidates, 0f, 1f, x, y, z, x, y, z, 0f, 0f, 0f);
+        spawn(slot, firstSpawn, candidates, candidates, 0f, 1f, x, y, z, x, y, z, 0f, 0f, 0f, null, -1);
     }
 
     /**
@@ -1998,12 +2000,14 @@ public final class CgVfxParticlePool {
      * <pre>{@code
      * pool.spawn(slot, b.stepFirstSpawn(), b.stepCandidates(), b.stepBursts(), tickStart, TICK,
      *         b.fromX(), b.fromY(), b.fromZ(), b.sourceX(), b.sourceY(), b.sourceZ(), b.stepLoopFrom(), b.stepLoopTo(),
-     *         b.stepStartTime());
+     *         b.stepStartTime(), words, b.streamWords(words, 0) > 0 ? 0 : -1);
      * }</pre>
+     *
+     * {@code streams} from {@code streamsAt} are its seeded streams' words ({@code Books.streamWords}); -1 for none.
      */
     public void spawn(int slot, int firstSpawn, int candidates, int bursts, float bornFrom, float tickSeconds,
                       float fromX, float fromY, float fromZ, float toX, float toY, float toZ, float loopFrom, float loopTo,
-                      float startTime) {
+                      float startTime, int[] streams, int streamsAt) {
         inStep("spawn");
         openSlot(slot, "spawn");
         // A birth up to a tick before the step: the GPU's clock runs ahead of the booked ticks, and the Step ages a spawn
@@ -2039,6 +2043,12 @@ public final class CgVfxParticlePool {
         Arrays.fill(w, at + 16, at + SPAWN_ROW_WORDS, 0);
         // A trail row's first word: an ordinary row's are free, so a legacy spawn's start time rides there.
         w[at + 16] = Float.floatToRawIntBits(startTime);
+        // Then its seeded streams: where they restart, and each one's state at the row's first spawn and there.
+        int seeded = slotEmitter[slot].seededStreams().size();
+        if (seeded > 0) {
+            if (streamsAt < 0) throw new IllegalArgumentException(slotEmitter[slot].name() + " is seeded: its spawn row needs its streams");
+            System.arraycopy(streams, streamsAt, w, at + STREAM_WORD, 1 + 2 * seeded);
+        }
         spawnEnd += SPAWN_ROW_WORDS;
         stepSpawnRows[s]++;
         stepSpawned[s] += candidates;

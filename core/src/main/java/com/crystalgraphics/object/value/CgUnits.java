@@ -382,7 +382,8 @@ public record CgUnits(double metres, double seconds, int[] axes, double radians,
         };
     }
 
-    private static boolean permutes(CgQuantity q) {
+    /** Whether a vector of {@code q} swaps its channels with the axes (a position does; a rotation's angles never). */
+    public static boolean permutes(CgQuantity q) {
         return switch (q) {
             case POSITION, OFFSET, LENGTH, SPEED, ACCELERATION, DIRECTION, SCALE, ANGULAR_SPEED -> true;
             default -> false;

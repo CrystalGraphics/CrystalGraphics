@@ -7,6 +7,7 @@ import com.crystalgraphics.shape.primitive.CgBox;
 import com.crystalgraphics.shape.primitive.CgPlane;
 import com.crystalgraphics.shape.primitive.CgSphere;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
+import com.crystalgraphics.vfx.particle.CgVfxEmitterAssets;
 import com.crystalgraphics.vfx.particle.CgVfxField;
 import com.crystalgraphics.vfx.particle.CgVfxModule;
 import com.crystalgraphics.vfx.particle.CgVfxModuleTypes;
@@ -21,6 +22,7 @@ import com.crystalgraphics.vfx.sequence.CgVfxNodeClip;
 import org.junit.Test;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -140,6 +142,55 @@ public class CgVfxEmitterCompilerTest {
         assertTrue(CgVfxEmitterCompiler.source(shape).contains("step_rotate(q, (local + way * front) * vec3(1.0, 1.0 - s4.z, 1.0)) * "));
         assertTrue(!CgVfxEmitterCompiler.source(CgVfxShape.of(EVERY_KIND)).contains("1.0 - s4.z"));
         CgVfxEmitterCompiler.compile(shape).kernel("Step").decl();
+    }
+
+    /** A seeded Cascade sphere places by Cascade's per-axis draws, taken from its seed's stream at its spawn's place in it. */
+    @Test
+    public void aSeededCascadeSphereDrawsFromItsStream() {
+        Map<String, Object> tree = new LinkedHashMap<>();
+        tree.put("_v", 1);
+        tree.put("properties", Map.of("capacity", 64, "spawning", "cascade"));
+        tree.put("emitter_update", List.of(Map.of("id", "state", "module", "crystalgraphics:emitter_state",
+                "inputs", Map.of("loop", "once", "duration", 1.0)),
+                Map.of("id", "burst", "module", "crystalgraphics:spawn_burst", "inputs", Map.of("time", 0.0, "count", 5))));
+        tree.put("particle_spawn", List.of(Map.of("id", "rays", "module", "crystalgraphics:shape_location", "inputs",
+                Map.of("shape", "sphere", "surface_only", true, "directions", "+x+y-y+z-z",
+                        "seed", Map.of("values", List.of(14, 15)), "sphere_radius", Map.of("range", List.of(1.0, 5.0)),
+                        "add_velocity", Map.of("outward", Map.of("range", List.of(1.0, 2.0)))))));
+        CgVfxShape shape = CgVfxShape.of(CgVfxEmitterAssets.compile("rays", tree, null));
+        String glsl = CgVfxEmitterCompiler.source(shape);
+        assertTrue("its directions, radius and velocity scale", glsl.contains("const uint STEP_STREAM_DRAWS[1] = uint[](5u);"));
+        assertTrue("its directions from its stream", glsl.contains("step_cascade_axis(dirs, 0, step_draw(0, 0))"));
+        assertTrue("its velocity scale after its radius", glsl.contains("step_draw(0, 4)"));
+        CgVfxEmitterCompiler.compile(shape).kernel("Step").decl();
+    }
+
+    /** A seeded Cascade cylinder walks its row's spawns' tries to reach its own, and draws its direction from its last try. */
+    @Test
+    public void aSeededCascadeCylinderWalksItsTries() {
+        Map<String, Object> shape = new LinkedHashMap<>();
+        shape.put("shape", "cylinder");
+        shape.put("cylinder_axis", "x");
+        shape.put("directions", "+x+y-y+z-z");
+        shape.put("cylinder_radius", Map.of("range", List.of(1.0, 2.0)));
+        shape.put("cylinder_height", 4.0);
+        shape.put("add_velocity", Map.of("outward", Map.of("range", List.of(1.0, 2.0))));
+        Map<String, Object> seeded = new LinkedHashMap<>(shape);
+        seeded.put("seed", Map.of("values", List.of(7)));
+        for (Map<String, Object> in : List.of(shape, seeded)) {
+            Map<String, Object> tree = new LinkedHashMap<>();
+            tree.put("_v", 1);
+            tree.put("properties", Map.of("capacity", 64, "spawning", "cascade"));
+            tree.put("emitter_update", List.of(Map.of("id", "state", "module", "crystalgraphics:emitter_state",
+                    "inputs", Map.of("loop", "once", "duration", 1.0)),
+                    Map.of("id", "burst", "module", "crystalgraphics:spawn_burst", "inputs", Map.of("time", 0.0, "count", 5))));
+            tree.put("particle_spawn", List.of(Map.of("id", "ring", "module", "crystalgraphics:shape_location", "inputs", in)));
+            CgVfxShape s = CgVfxShape.of(CgVfxEmitterAssets.compile("ring", tree, null));
+            String glsl = CgVfxEmitterCompiler.source(s);
+            assertTrue(glsl.contains("int packed = int(n.w)"));
+            assertEquals("its tries walked where seeded", in == seeded, glsl.contains("int step_tries_end_0(uint state)"));
+            CgVfxEmitterCompiler.compile(s).kernel("Step").decl();
+        }
     }
 
     @Test

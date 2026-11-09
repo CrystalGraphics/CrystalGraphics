@@ -84,6 +84,7 @@ public final class CgVfxFormCompiler {
             case CONSTANT:
                 return new CgVfxFormInput.Constant(name, numbers(value, n));
             case RANGE: {
+                if (m.get("rounding") != null) throw new IllegalArgumentException(moduleId + "'s " + name + ": a range's rounding is not read yet");
                 List<?> ends = (List<?>) m.get("range");
                 return new CgVfxFormInput.Range(name, key, numbers(ends.get(0), n), numbers(ends.get(1), n),
                         Boolean.TRUE.equals(m.get("per_channel")), (String) m.get("locked"), rolls);
@@ -117,7 +118,8 @@ public final class CgVfxFormCompiler {
                 }
                 return new CgVfxFormInput.Function(name, key, fn,
                         compile(moduleId, name + "." + (add ? "a" : "min"), n, rolls, CgValueForm.of(a), a),
-                        compile(moduleId, name + "." + (add ? "b" : "max"), n, rolls, CgValueForm.of(b), b), rolls);
+                        compile(moduleId, name + "." + (add ? "b" : "max"), n, rolls, CgValueForm.of(b), b), rolls,
+                        Boolean.TRUE.equals(m.get("per_channel")), (String) m.get("locked"));
             }
             case DATA: {
                 for (String k : CgValueForm.DATA.keys()) {

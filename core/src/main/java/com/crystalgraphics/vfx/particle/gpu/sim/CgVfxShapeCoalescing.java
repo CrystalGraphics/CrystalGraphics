@@ -481,7 +481,7 @@ public final class CgVfxShapeCoalescing {
             by = curve;
         }
         if (by == null) return null;
-        return between != null ? between : new CgVfxFormInput.Function(by.name(), 0, BETWEEN, by, by, CgPropertyMeta.Rolls.PARTICLE);
+        return between != null ? between : new CgVfxFormInput.Function(by.name(), 0, BETWEEN, by, by, CgPropertyMeta.Rolls.PARTICLE, false, null);
     }
 
     /** {@code f} given in {@code as}'s class, drawing the same values. */
@@ -492,10 +492,10 @@ public final class CgVfxShapeCoalescing {
             if (f instanceof CgVfxFormInput.Range r && !r.perChannel()) {
                 // The range's own key and rolls: the same roll picks between the same two values.
                 return new CgVfxFormInput.Function(r.name(), r.key(), BETWEEN, flat(r.name() + ".min", r.min(), by),
-                        flat(r.name() + ".max", r.max(), by), r.rolls());
+                        flat(r.name() + ".max", r.max(), by), r.rolls(), false, null);
             }
             if (f instanceof CgVfxFormInput.Curve curve) {
-                return new CgVfxFormInput.Function(curve.name(), 0, BETWEEN, curve, curve, CgPropertyMeta.Rolls.PARTICLE);
+                return new CgVfxFormInput.Function(curve.name(), 0, BETWEEN, curve, curve, CgPropertyMeta.Rolls.PARTICLE, false, null);
             }
         }
         throw new IllegalStateException(f.name() + " in " + CgVfxShape.formKey(f) + " has no raise to " + CgVfxShape.formKey(as));
@@ -519,7 +519,7 @@ public final class CgVfxShapeCoalescing {
         if (as instanceof CgVfxFormInput.Function fn) {
             float[] second = fn.fn().equals(BETWEEN) ? v : new float[v.length];
             return new CgVfxFormInput.Function(name, 0, fn.fn(), constant(name + ".a", v, fn.first()),
-                    constant(name + ".b", second, fn.second()), fn.rolls());
+                    constant(name + ".b", second, fn.second()), fn.rolls(), fn.perChannel(), fn.locked());
         }
         throw new IllegalStateException(name + " has no raise to " + CgVfxShape.formKey(as));
     }

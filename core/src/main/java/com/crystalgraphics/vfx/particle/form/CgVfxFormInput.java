@@ -253,7 +253,7 @@ public sealed interface CgVfxFormInput {
      * expanded inline; its class is the most general of its arguments'.
      */
     record Function(String name, int key, String fn, CgVfxFormInput first, CgVfxFormInput second,
-                    CgPropertyMeta.Rolls rolls) implements CgVfxFormInput {
+                    CgPropertyMeta.Rolls rolls, boolean perChannel, String locked) implements CgVfxFormInput {
         public CgValueForm form() {
             return CgValueForm.FUNCTION;
         }
@@ -271,7 +271,12 @@ public sealed interface CgVfxFormInput {
             float a = first.channel(ctx, Math.min(c, first.components() - 1));
             float b = second.channel(ctx, Math.min(c, second.components() - 1));
             if (fn.endsWith(":add")) return a + b;
-            return a + (b - a) * roll(ctx, key, rolls, 0);
+            return a + (b - a) * roll(ctx, key, rolls, rollOf(c));
+        }
+
+        /** Which roll channel {@code c} takes, as a range's ({@link Range#rollOf}): a random_range's per channel. */
+        public int rollOf(int c) {
+            return new Range(name, key, new float[0], new float[0], perChannel, locked, rolls).rollOf(c);
         }
     }
 

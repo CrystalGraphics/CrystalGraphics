@@ -81,6 +81,8 @@ public record CgVfxLifeRoll(Target target, float[] from, float[] to, int[] rolls
 
     /** A range form, {@code { range, per_channel, locked }}, of {@code n} channels (2 or 3), or of one number for every one. */
     public static CgVfxLifeRoll of(Target target, Map<?, ?> form, int n) {
+        // A start look rolls in Range from the particle's seed, never a Cascade stream: none reaches it yet.
+        if (form.get("seed") != null) throw new IllegalArgumentException("a seeded " + target + " start roll is not read yet");
         if (form.get("pick") instanceof List<?> pick) {
             return new CgVfxLifeRoll(target, axes(pick.get(0), n), axes(pick.get(1), n), new int[3], null, null, true);
         }

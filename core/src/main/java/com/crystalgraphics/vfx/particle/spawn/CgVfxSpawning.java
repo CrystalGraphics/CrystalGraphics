@@ -54,6 +54,11 @@ public enum CgVfxSpawning {
         return this == CASCADE || this == CASCADE_GPU;
     }
 
+    /** Whether its emitter is Cascade's, legacy, GPU or not: its sphere then samples as Cascade's does. */
+    public boolean cascade() {
+        return this != INTERPOLATED;
+    }
+
     /** Its name in a file; null for {@link #INTERPOLATED}, which a file leaves out. */
     public String key() {
         return this == INTERPOLATED ? null : name().toLowerCase(Locale.ROOT);

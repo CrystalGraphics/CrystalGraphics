@@ -191,13 +191,31 @@ public final class CgCommonStructs {
         return CgTypes.struct("crystalgraphics:value." + key).property(key, value).required().register();
     }
 
+    /**
+     * Cascade's {@code FParticleRandomSeedInfo} (4.21 {@code ParticleModule.h:86-139}): a seeded module's input, or a
+     * drawing value's own, whose draws then come from that seed's stream.
+     */
+    static final CgType SEED = CgTypes.struct("crystalgraphics:seed")
+            .property("values", CgValueType.listOf(INT))
+            .property("parameter", STRING)
+            .property("from_instance", BOOL).defaultValue(false)
+            .property("instance_is_index", BOOL).defaultValue(false)
+            .property("reset_on_loop", BOOL).defaultValue(true)
+            .property("random_selection", BOOL).defaultValue(false)
+            .property("follows", STRING)
+            .register();
     static final CgType RANGE_FORM = CgTypes.struct("crystalgraphics:value.range")
             .property("range", CgValueType.ARRAY).required()
             .property("per_channel", BOOL)
             .property("locked", STRING)
             .property("rolls", CgValueType.enumOf("tick"))
+            .property("rounding", CgValueType.enumOf("nearest"))
+            .property("seed", CgValueType.struct(SEED))
             .register();
-    static final CgType PICK_FORM = form("pick", CgValueType.ARRAY);
+    static final CgType PICK_FORM = CgTypes.struct("crystalgraphics:value.pick")
+            .property("pick", CgValueType.ARRAY).required()
+            .property("seed", CgValueType.struct(SEED))
+            .register();
     static final CgType CURVE_FORM = CgTypes.struct("crystalgraphics:value.curve")
             .property("curve", CURVE).required()
             .property("by", STRING)
@@ -231,6 +249,9 @@ public final class CgCommonStructs {
     static final CgType FN_FORM = CgTypes.struct("crystalgraphics:value.fn")
             .property("fn", STRING).required()
             .property("inputs", mapOfValues())
+            .property("per_channel", BOOL)
+            .property("locked", STRING)
+            .property("seed", CgValueType.struct(SEED))
             .register();
     static final CgType MESH_FORM = form("mesh", STRING);
     static final CgType TEXTURE_FORM = form("texture", STRING);
