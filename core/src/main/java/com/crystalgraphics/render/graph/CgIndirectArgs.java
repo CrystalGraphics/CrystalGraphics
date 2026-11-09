@@ -5,7 +5,6 @@ import com.crystalgraphics.compute.CgKernel;
 import com.crystalgraphics.compute.program.CgKernelProgram;
 import com.crystalgraphics.gl.buffer.CgStreamBuffer;
 import com.crystalgraphics.platform.gl.CgCapabilities;
-import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.render.draw.CgIndirect;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
@@ -45,7 +44,7 @@ final class CgIndirectArgs {
     /** Queued rows as float bits, for {@link CgStreamBuffer#uploadFloats}; {@link #rowsCount} the count buffer they read. */
     private float[] table = new float[64 * ROW];
     /** Made with its executor, as the executor's own rings are: made at the first indirect draw, a map waits mid-frame. */
-    private final CgStreamBuffer params = CgStreamBuffer.createFrameLocal(CgGL.GL_SHADER_STORAGE_BUFFER, table.length * 4);
+    private final CgStreamBuffer params = CgStreamBuffer.frameLocalStorage(table.length * 4);
     private int rows;
     private int rowsCount;
     /** The queued rows' first and last slots: the span their dispatch binds of the buffer. */

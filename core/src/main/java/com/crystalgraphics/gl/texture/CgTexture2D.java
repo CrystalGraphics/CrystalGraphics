@@ -348,6 +348,23 @@ public final class CgTexture2D extends CgTextureAbstract {
      */
     public void uploadRegion(int level, int x, int y, int width, int height, ByteBuffer pixels, int pixelFormat,
                              int pixelType) {
+        uploadPixels(level, x, y, width, height, pixels, pixelFormat, pixelType);
+    }
+
+    /**
+     * {@link #uploadRegion(int, int, int, int, int, ByteBuffer, int, int)} in its own format: RGBA8's bytes, R32F's
+     * floats. Any thread.
+     *
+     * <pre>{@code
+     * lightmap.uploadRegion(0, 0, 0, 16, 16, rgba);   // an RGBA8 texture's 16x16 texels, 4 bytes each
+     * }</pre>
+     */
+    public void uploadRegion(int level, int x, int y, int width, int height, ByteBuffer pixels) {
+        uploadPixels(level, x, y, width, height, pixels, spec.getGlBaseFormat(), spec.getGlType());
+    }
+
+    private void uploadPixels(int level, int x, int y, int width, int height, ByteBuffer pixels, int pixelFormat,
+                              int pixelType) {
         checkUsable();
         if (!gpu.immediate()) {
             uploadRegion(level, x, y, width, height, CgUploads.copyOf(pixels, converts(pixelFormat, pixelType)),

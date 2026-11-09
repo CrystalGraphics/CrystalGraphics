@@ -73,7 +73,6 @@ com/crystalgraphics/render/graph/CgComposedTargets.java
 com/crystalgraphics/render/graph/CgDispatch.java
 com/crystalgraphics/render/graph/CgExecutor.java
 com/crystalgraphics/render/graph/CgFrameBuilder.java
-com/crystalgraphics/render/graph/CgIndirectArgs.java
 com/crystalgraphics/render/graph/CgLoad.java
 com/crystalgraphics/render/graph/CgRasterPass.java
 com/crystalgraphics/render/graph/CgRehearsal.java

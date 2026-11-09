@@ -188,6 +188,16 @@ public final class CgTexture3D extends CgTextureAbstract {
      */
     public void uploadRegion(int level, int x, int y, int z, int width, int height, int depth, ByteBuffer pixels,
                              int pixelFormat, int pixelType) {
+        uploadPixels(level, x, y, z, width, height, depth, pixels, pixelFormat, pixelType);
+    }
+
+    /** {@link #uploadRegion(int, int, int, int, int, int, int, ByteBuffer, int, int)} in its own format. Any thread. */
+    public void uploadRegion(int level, int x, int y, int z, int width, int height, int depth, ByteBuffer pixels) {
+        uploadPixels(level, x, y, z, width, height, depth, pixels, spec.getGlBaseFormat(), spec.getGlType());
+    }
+
+    private void uploadPixels(int level, int x, int y, int z, int width, int height, int depth, ByteBuffer pixels,
+                              int pixelFormat, int pixelType) {
         checkUsable();
         if (!gpu.immediate()) {
             uploadRegion(level, x, y, z, width, height, depth, CgUploads.copyOf(pixels, converts(pixelFormat, pixelType)),

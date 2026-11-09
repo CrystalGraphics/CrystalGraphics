@@ -416,6 +416,16 @@ public abstract class CgStreamBuffer implements CgObjectBuffer {
      *
      * <p>Any target but those two takes {@link #createForShaderBuffer}: only they bind by range.</p>
      */
+    /** {@link #createFrameLocal} for uniform blocks: a binding table's ring. */
+    public static CgStreamBuffer frameLocalUniforms(int capacityBytes) {
+        return createFrameLocal(CgGL.GL_UNIFORM_BUFFER, capacityBytes);
+    }
+
+    /** {@link #createFrameLocal} for storage buffers. */
+    public static CgStreamBuffer frameLocalStorage(int capacityBytes) {
+        return createFrameLocal(CgGL.GL_SHADER_STORAGE_BUFFER, capacityBytes);
+    }
+
     public static CgStreamBuffer createFrameLocal(int target, int capacityBytes) {
         StreamBufferTier tier = CgCapabilities.detect().vertexStreamTier();
         if (target != CgGL.GL_SHADER_STORAGE_BUFFER && target != CgGL.GL_UNIFORM_BUFFER) {

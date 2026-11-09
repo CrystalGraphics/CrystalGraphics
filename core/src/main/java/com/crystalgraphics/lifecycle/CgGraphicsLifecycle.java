@@ -320,6 +320,19 @@ public final class CgGraphicsLifecycle {
     }
 
     /**
+     * Whether the host's frame draws with reversed depth now (Minecraft 26.2's world), as a stage's constants take it.
+     * @see CgPassConstants#hostDepth()
+     */
+    public static boolean hostDepthReversed() {
+        return CgGL.isDepthReversed();
+    }
+
+    /** Whether the host's reversed depth runs {@code 0..1} in clip space; false where it is not reversed. */
+    public static boolean hostDepthZeroToOne() {
+        return CgGL.isDepthZeroToOne();
+    }
+
+    /**
      * Runs {@code body} with depth unmirrored, for work on our own targets: init and resize usually arrive
      * inside a world pass, which on 26.2 mirrors every depth function and clear for Minecraft's reversed-Z
      * world. @see CgGL#setDepthReversed

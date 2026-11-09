@@ -23,6 +23,7 @@ import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.CgBufferUtils;
 import com.crystalgraphics.util.trace.CgChannels;
+import java.nio.ByteBuffer;
 import java.nio.IntBuffer;
 import java.util.Arrays;
 import java.util.TreeMap;
@@ -781,11 +782,10 @@ public class CgFrameBuffer {
 
     /**
      * Binds the default framebuffer (ID 0), which is never what was bound before inside a host: Minecraft draws into its
-     * main target. To put back what was bound, save it instead:
+     * main target. To put back what was bound, draw into it instead:
      *
      * <pre>{@code
-     * try (CgGlScope ignored = CgGlState.save(CgGlSlot.FBO, CgGlSlot.VIEWPORT)) {
-     *     target.bind();
+     * try (CgFrameBuffer.Drawing ignored = target.drawInto()) {
      *     draw();
      * }   // the host's framebuffer and viewport back
      * }</pre>
@@ -986,6 +986,137 @@ public class CgFrameBuffer {
 
     private static int attachmentParameter(int attachment, int parameter) {
         return CgGL.glGetFramebufferAttachmentParameteriv(CgGL.GL_READ_FRAMEBUFFER, attachment, parameter);
+    }
+
+    // ── A host drawing into it ─────────────────────────────────────────────────
+
+    /**
+     * Binds it with its whole viewport for what a host draws next, until {@link Drawing#close()} puts back the
+     * framebuffer and viewport bound before: a host's offscreen target, its stages fired into it. Render thread.
+     *
+     * <pre>{@code
+     * try (CgFrameBuffer.Drawing ignored = target.drawInto()) {
+     *     stage.host().set(0f, target.getWidth(), target.getHeight(), target.getId());
+     *     stage.fire();
+     * }
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Drawings nest; close them in reverse.</li>
+     *   <li>Inside a host section where there is one: what the host caches is set back at the section's close.</li>
+     * </ul>
+     */
+    public Drawing drawInto() {
+        requireFramebuffer("draw into");
+        Drawing drawing = new Drawing(CgGlState.save(FBO, CgGlSlot.VIEWPORT));
+        bind();
+        CgGL.glViewport(0, 0, width, height);
+        return drawing;
+    }
+
+    /** What {@link #drawInto()} bound; closing it puts back what was bound before. */
+    public static final class Drawing implements AutoCloseable {
+        private CgGlScope saved;
+
+        private Drawing(CgGlScope saved) {
+            this.saved = saved;
+        }
+
+        @Override
+        public void close() {
+            if (saved == null) return;
+            saved.close();
+            saved = null;
+        }
+    }
+
+    /**
+     * Its colour slot 0's pixels over {@code (x, y, w, h)}, read now, waiting for the GPU: RGBA8, rows bottom first.
+     * For a tool or a test's check, never a frame's work. Render thread.
+     *
+     * <pre>{@code
+     * ByteBuffer rgba = target.readColor(0, 0, target.getWidth(), target.getHeight());
+     * int red = rgba.get((y * target.getWidth() + x) * 4) & 0xFF;   // y counted from the bottom
+     * }</pre>
+     */
+    public ByteBuffer readColor(int x, int y, int w, int h) {
+        return readPixels(fboId, x, y, w, h, CgGL.GL_UNSIGNED_BYTE, CgBufferUtils.createByteBuffer(w * h * 4));
+    }
+
+    /** {@link #readColor(int, int, int, int)} into {@code into}, which holds at least {@code w * h * 4} bytes: read each frame. */
+    public ByteBuffer readColor(int x, int y, int w, int h, ByteBuffer into) {
+        into.clear();
+        return readPixels(fboId, x, y, w, h, CgGL.GL_UNSIGNED_BYTE, into);
+    }
+
+    /**
+     * {@code texture}'s level 0 (an array's layer {@code layer}), read now and waiting for the GPU, as RGBA8: rows from
+     * the texture's row 0, which is how it was uploaded. A single-channel texture answers its red in R. Render thread.
+     *
+     * <pre>{@code
+     * ByteBuffer page = CgFrameBuffer.readTexture(atlas, 2);   // layer 2 of an array
+     * }</pre>
+     */
+    public static ByteBuffer readTexture(CgTexture texture, int layer) {
+        return readAttached(texture, layer, 0, CgGL.GL_UNSIGNED_BYTE, 4);
+    }
+
+    /**
+     * {@code texture}'s mip {@code level}, read now and waiting for the GPU, as RGBA32F in native order: a check of a
+     * float target's exact values. Rows as {@link #readTexture}'s. Render thread.
+     *
+     * <pre>{@code
+     * FloatBuffer texels = CgFrameBuffer.readTextureFloats(chain.getColorTexture(0), 2).asFloatBuffer();
+     * }</pre>
+     */
+    public static ByteBuffer readTextureFloats(CgTexture texture, int level) {
+        return readAttached(texture, 0, level, CgGL.GL_FLOAT, 16);
+    }
+
+    private static ByteBuffer readAttached(CgTexture texture, int layer, int level, int type, int texelBytes) {
+        int fbo = CgGL.glGenFramebuffers();
+        try (CgGlScope ignored = CgGlState.save(FBO_ONLY)) {
+            CgGL.glBindFramebuffer(CgGL.GL_FRAMEBUFFER, fbo);
+            if (texture.getTarget() == CgGL.GL_TEXTURE_2D_ARRAY) {
+                CgGL.glFramebufferTextureLayer(CgGL.GL_FRAMEBUFFER, CgGL.GL_COLOR_ATTACHMENT0, texture.getId(), level, layer);
+            } else {
+                CgGL.glFramebufferTexture2D(CgGL.GL_FRAMEBUFFER, CgGL.GL_COLOR_ATTACHMENT0, texture.getTarget(),
+                        texture.getId(), level);
+            }
+            int status = CgGL.glCheckFramebufferStatus(CgGL.GL_FRAMEBUFFER);
+            if (status != CgGL.GL_FRAMEBUFFER_COMPLETE) {
+                throw new IllegalStateException(texture + " cannot be read: framebuffer status 0x" + Integer.toHexString(status));
+            }
+            int w = Math.max(1, texture.getWidth() >> level), h = Math.max(1, texture.getHeight() >> level);
+            return readPixels(fbo, 0, 0, w, h, type, CgBufferUtils.createByteBuffer(w * h * texelBytes));
+        } finally {
+            CgGL.glDeleteFramebuffers(fbo);
+        }
+    }
+
+    private static ByteBuffer readPixels(int framebuffer, int x, int y, int w, int h, int type, ByteBuffer pixels) {
+        try (CgGlScope ignored = CgGlState.save(FBO_ONLY)) {
+            CgGL.glBindFramebuffer(CgGL.GL_READ_FRAMEBUFFER, framebuffer);
+            CgGL.glPixelStorei(CgGL.GL_PACK_ALIGNMENT, 1);
+            CgGL.glReadPixels(x, y, w, h, CgGL.GL_RGBA, type, pixels);
+        }
+        return pixels;
+    }
+
+    /**
+     * Copies its colour slot 0 into {@code framebuffer} at the same size, unfiltered: a host's main target into the
+     * window ({@code 0}) at the frame's end. The binding is left as it was.
+     */
+    public void copyColorTo(int framebuffer) {
+        requireFramebuffer("copy from");
+        blitFrom(fboId, framebuffer, 0, 0, width, height, 0, 0, width, height, CgGL.GL_COLOR_BUFFER_BIT, CgGL.GL_NEAREST);
+    }
+
+    /** {@link #copyColorTo} with its depth too: both framebuffers' depth formats must match. */
+    public void copyColorAndDepthTo(int framebuffer) {
+        requireFramebuffer("copy from");
+        blitFrom(fboId, framebuffer, 0, 0, width, height, 0, 0, width, height,
+                CgGL.GL_COLOR_BUFFER_BIT | CgGL.GL_DEPTH_BUFFER_BIT, CgGL.GL_NEAREST);
     }
 
     // ── Clear ──────────────────────────────────────────────────────────────────

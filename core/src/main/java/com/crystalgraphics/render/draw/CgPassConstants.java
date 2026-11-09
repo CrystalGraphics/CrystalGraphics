@@ -2,6 +2,7 @@ package com.crystalgraphics.render.draw;
 
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.buffer.CgBufferFormat;
+import com.crystalgraphics.lifecycle.CgGraphicsLifecycle;
 import org.joml.Matrix4f;
 import org.joml.Matrix4fc;
 import org.joml.Vector3f;
@@ -133,6 +134,17 @@ public final class CgPassConstants {
         this.depthReversed = reversed;
         this.depthZeroToOne = zeroToOne;
         return this;
+    }
+
+    /**
+     * {@link #depth} as the host's frame draws now: for a pass into the host's own target, drawn as the host's world is.
+     *
+     * <pre>{@code
+     * host.resolution(w, h).time(CgFrameClock.seconds()).hostDepth().cameraFromView();
+     * }</pre>
+     */
+    public CgPassConstants hostDepth() {
+        return depth(CgGraphicsLifecycle.hostDepthReversed(), CgGraphicsLifecycle.hostDepthZeroToOne());
     }
 
     /**

@@ -4340,6 +4340,7 @@ com/crystalgraphics/compute/emit/CgKernelTarget
   access public,final,record
   extends java/lang/Record
   field public,static,final CHECKED Z
+  field public,static,final EMULATE_SUBGROUPS Z
   field public,static,final GL43 Lcom/crystalgraphics/compute/emit/CgKernelTarget;
   field public,static,final NATIVE_SUBGROUPS I
   method public <init> (IZIIIIIZ)V
@@ -5807,6 +5808,8 @@ com/crystalgraphics/gl/buffer/CgStreamBuffer
   method public,static create (II)Lcom/crystalgraphics/gl/buffer/CgStreamBuffer;
   method public,static createForShaderBuffer (II)Lcom/crystalgraphics/gl/buffer/CgStreamBuffer;
   method public,static createFrameLocal (II)Lcom/crystalgraphics/gl/buffer/CgStreamBuffer;
+  method public,static frameLocalStorage (I)Lcom/crystalgraphics/gl/buffer/CgStreamBuffer;
+  method public,static frameLocalUniforms (I)Lcom/crystalgraphics/gl/buffer/CgStreamBuffer;
   method public,static releaseShared ()V
 com/crystalgraphics/gl/buffer/shader/CgBonePalettes
   access public,final
@@ -6074,8 +6077,11 @@ com/crystalgraphics/gl/framebuffer/CgFrameBuffer
   method public clearDepthStencil (DI)V
   method public clearStencil ()V
   method public clearStencil (I)V
+  method public copyColorAndDepthTo (I)V
+  method public copyColorTo (I)V
   method public delete ()V
   method public drawBuffers ([I)V
+  method public drawInto ()Lcom/crystalgraphics/gl/framebuffer/CgFrameBuffer$Drawing;
   method public getColorAttachment (I)Lcom/crystalgraphics/gl/framebuffer/CgFrameBuffer$Attachment;
   method public getColorLevels ()I
   method public getColorTexture (I)Lcom/crystalgraphics/api/texture/CgTexture;
@@ -6096,6 +6102,8 @@ com/crystalgraphics/gl/framebuffer/CgFrameBuffer
   method public levelHeight (I)I
   method public levelId (I)I
   method public levelWidth (I)I
+  method public readColor (IIII)Ljava/nio/ByteBuffer;
+  method public readColor (IIIILjava/nio/ByteBuffer;)Ljava/nio/ByteBuffer;
   method public reattachColor (ILcom/crystalgraphics/api/texture/CgTexture;)V
   method public reattachColorRaw (III)V
   method public reattachDepth (Lcom/crystalgraphics/api/texture/CgTexture;)V
@@ -6117,6 +6125,8 @@ com/crystalgraphics/gl/framebuffer/CgFrameBuffer
   method public,static depthTypeOf (I)Lcom/crystalgraphics/api/texture/CgTextureType;
   method public,static deviceDescs (Ljava/lang/String;IILcom/crystalgraphics/api/framebuffer/CgFrameBufferFormat;I)Ljava/util/List;
   method public,static optimalDepthBlitMask (I)I
+  method public,static readTexture (Lcom/crystalgraphics/api/texture/CgTexture;I)Ljava/nio/ByteBuffer;
+  method public,static readTextureFloats (Lcom/crystalgraphics/api/texture/CgTexture;I)Ljava/nio/ByteBuffer;
   method public,static wrap (Ljava/lang/String;III)Lcom/crystalgraphics/gl/framebuffer/CgFrameBuffer;
 com/crystalgraphics/gl/framebuffer/CgFrameBuffer$Attachment
   access public,final
@@ -6126,6 +6136,11 @@ com/crystalgraphics/gl/framebuffer/CgFrameBuffer$Attachment
   method public getType ()Lcom/crystalgraphics/api/texture/CgTextureType;
   method public hasTexture ()Z
   method public isRenderbuffer ()Z
+com/crystalgraphics/gl/framebuffer/CgFrameBuffer$Drawing
+  access public,final
+  extends java/lang/Object
+  implements java/lang/AutoCloseable
+  method public close ()V
 com/crystalgraphics/gl/framebuffer/CgFrameBuffer$Images
   access public,abstract,interface
   extends java/lang/Object
@@ -6840,6 +6855,7 @@ com/crystalgraphics/gl/texture/CgTexture2D
   method public upload (IILjava/nio/ByteBuffer;II)V
   method public upload (Lcom/crystalgraphics/util/io/CgTextureIO$CgImageData;)V
   method public uploadRegion (IIIIILcom/crystalgraphics/gpu/CgUploadLease;II)V
+  method public uploadRegion (IIIIILjava/nio/ByteBuffer;)V
   method public uploadRegion (IIIIILjava/nio/ByteBuffer;II)V
   method public,static create (Ljava/lang/String;)Lcom/crystalgraphics/gl/texture/CgTexture2D;
   method public,static create (Ljava/lang/String;Lcom/crystalgraphics/api/texture/CgTextureSpec;)Lcom/crystalgraphics/gl/texture/CgTexture2D;
@@ -6873,6 +6889,7 @@ com/crystalgraphics/gl/texture/CgTexture3D
   method public getSourcePaths ()[Ljava/lang/String;
   method public getTarget ()I
   method public uploadRegion (IIIIIIILcom/crystalgraphics/gpu/CgUploadLease;II)V
+  method public uploadRegion (IIIIIIILjava/nio/ByteBuffer;)V
   method public uploadRegion (IIIIIIILjava/nio/ByteBuffer;II)V
   method public,static create (Lcom/crystalgraphics/api/texture/CgTextureSpec;[Ljava/lang/String;)Lcom/crystalgraphics/gl/texture/CgTexture3D;
   method public,static createDirect (Lcom/crystalgraphics/api/texture/CgTextureSpec;[Ljava/lang/String;)Lcom/crystalgraphics/gl/texture/CgTexture3D;
@@ -7322,6 +7339,8 @@ com/crystalgraphics/lifecycle/CgGraphicsLifecycle
   extends java/lang/Object
   method public,static getCurrentHeight ()I
   method public,static getCurrentWidth ()I
+  method public,static hostDepthReversed ()Z
+  method public,static hostDepthZeroToOne ()Z
   method public,static isContextDestroyed ()Z
   method public,static isInitialized ()Z
   method public,static isStoodDown ()Z
@@ -9136,6 +9155,7 @@ com/crystalgraphics/render/draw/CgPassConstants
   method public entityLights (Z)Lcom/crystalgraphics/render/draw/CgPassConstants;
   method public fog (FFFFF)Lcom/crystalgraphics/render/draw/CgPassConstants;
   method public history (Lorg/joml/Matrix4fc;IZ)Lcom/crystalgraphics/render/draw/CgPassConstants;
+  method public hostDepth ()Lcom/crystalgraphics/render/draw/CgPassConstants;
   method public linearScene (Z)Lcom/crystalgraphics/render/draw/CgPassConstants;
   method public noFog ()Lcom/crystalgraphics/render/draw/CgPassConstants;
   method public origin (DDD)Lcom/crystalgraphics/render/draw/CgPassConstants;

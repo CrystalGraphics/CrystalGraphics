@@ -33,6 +33,14 @@ public record CgKernelTarget(int subgroupOperations, boolean floatAtomics, int m
             "Kernels run as compute bounds-check every buffer and image access: one out of range is skipped, and the first"
                     + " of each dispatch logged once with its .compute line. Every access tests its index.").get();
 
+    /**
+     * {@code -Dcrystalgraphics.compute.emulateSubgroups=true}: every kernel's {@code CG_SUBGROUP_*} on the work-group
+     * emulation, as a device without subgroups runs it, so a scene's check covers that path on a device that has them.
+     */
+    public static final boolean EMULATE_SUBGROUPS = CgVar.bool("crystalgraphics.compute.emulateSubgroups", false,
+            CgVar.DEV | CgVar.RESTART, "Kernels run their subgroup operations emulated over the work group, as on a device"
+                    + " without subgroups.").get();
+
     /** GL 4.3's guaranteed limits, with every subgroup operation and no float atomics. */
     public static final CgKernelTarget GL43 = new CgKernelTarget(NATIVE_SUBGROUPS, false, 32768, 1024, 1024, 1024, 64, false);
 
@@ -56,7 +64,8 @@ public record CgKernelTarget(int subgroupOperations, boolean floatAtomics, int m
             throw new IllegalStateException("this context runs no compute shaders: kernels run at tier "
                     + caps.computeTier());
         }
-        return new CgKernelTarget(caps.subgroupOperations(), caps.floatAtomics(), caps.maxComputeSharedMemory(),
+        return new CgKernelTarget(EMULATE_SUBGROUPS ? 0 : caps.subgroupOperations(), caps.floatAtomics(),
+                caps.maxComputeSharedMemory(),
                 caps.maxComputeInvocations(), caps.maxComputeWorkGroupSize(0), caps.maxComputeWorkGroupSize(1),
                 caps.maxComputeWorkGroupSize(2), CHECKED);
     }
