@@ -368,6 +368,8 @@ public final class CgAssetRegistry {
                 broadcast(added);
                 broadcast(Collections.singletonList(new CgAssetRegistryEvent(CgAssetRegistryEvent.Type.SCANNED, namespace, null, null)));
             }
+            // Its references resolve only now that the kit's entries are in
+            CgSubtitleStyle.prefetch(namespace);
         }
     }
 

@@ -48,7 +48,8 @@ import com.crystalgraphics.widget.CgWidgetTree;
  *
  * <ul>
  *   <li>A file that does not validate fails the kit's registration, naming it and each issue.</li>
- *   <li>The widget and its sequences are requested as the kit registers; a line is drawn once they have loaded.</li>
+ *   <li>The widget and its sequences are requested once the kit's scan has registered them ({@link #prefetch}); a
+ *       line is drawn once they have loaded.</li>
  *   <li>{@code line}, {@code name} and each of {@code withName} name widgets of the tree: a name it lacks fails the
  *       first line drawn, naming it.</li>
  * </ul>
@@ -84,7 +85,15 @@ public record CgSubtitleStyle(String namespace, CgAssetRef<CgWidgetTree> widget,
         if (!Files.isRegularFile(file)) return;
         CgSubtitleStyle style = read(namespace, file);
         BY_KIT.put(namespace, style);
-        // Read now, at the kit's registration: the first subtitle drawn is mid-move
+    }
+
+    /**
+     * Requests the kit {@code namespace}'s widget and sequences, once its scan has registered them: the first subtitle
+     * drawn is mid-move. Nothing where the kit has no style.
+     */
+    public static void prefetch(String namespace) {
+        CgSubtitleStyle style = BY_KIT.get(namespace);
+        if (style == null) return;
         style.widget().request(CgLoadPriority.PREFETCH);
         if (style.show() != null) style.show().request(CgLoadPriority.PREFETCH);
         if (style.hide() != null) style.hide().request(CgLoadPriority.PREFETCH);
