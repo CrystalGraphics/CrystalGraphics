@@ -209,7 +209,7 @@ tracks:
 
 A world holds a second sequencer for what animates your interface, Unreal's widget animation: on real time, never
 slowed by a hit-stop, playing on behind the pause menu. A widget's animations bind its parts by name. Both are
-[widgets](widgets.md) § *Animating it*.
+[`WIDGETS.md`](../WIDGETS.md) § *6. Animating it*.
 
 ### Subsequences
 

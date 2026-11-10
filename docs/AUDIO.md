@@ -390,7 +390,7 @@ strings:
 
 ### A game's look
 
-A kit's `subtitle_style.yaml` draws its lines in the game's own subtitle widget ([widgets](vfx/widgets.md)): the line
+A kit's `subtitle_style.yaml` draws its lines in the game's own subtitle widget ([`WIDGETS.md`](WIDGETS.md)): the line
 and its speaker are set into the widget's text blocks, and the widget's own animations bring a line in and take it out.
 Where everything sits, its fonts and outlines, and how it scales with the screen are the widget's tree, its text styles
 and the kit's `ui.yaml`. A kit without one draws in Unreal's canvas look: 13 px, white, a 1 px black outline, centred

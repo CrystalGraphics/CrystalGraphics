@@ -1,7 +1,7 @@
 # widget — UMG's widget trees
 
 A `widgets/` asset is a widget blueprint's tree: named widgets laid out by Slate's rules and painted onto a canvas, its
-parts animated by name on the widget sequencer. **Using it**: `docs/vfx/widgets.md`.
+parts animated by name on the widget sequencer. **Using it**: `docs/WIDGETS.md`.
 
 | Class | Owns |
 |---|---|
