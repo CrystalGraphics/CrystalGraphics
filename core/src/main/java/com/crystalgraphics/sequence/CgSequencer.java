@@ -89,12 +89,16 @@ public final class CgSequencer extends CgWorldSubsystem {
     /**
      * Which clock a sequencer plays on: Unreal's linker roles. A world's sequencer advances on the world's dilated
      * time and holds while the game is paused; a widget sequencer is UMG's, ticked from the UI's own frame
-     * ({@code UUMGSequenceTickManager}, on Slate's pre-tick): never dilated, and still running behind a pause menu.
+     * ({@code UUMGSequenceTickManager}, on Slate's pre-tick) and still running behind a pause menu.
      */
     public enum Role {
         /** Gameplay: moves, cues, cameras. Dilated, paused with the game. */
         WORLD,
-        /** Interface animation: a damage number's pop, a widget's fade. Real time, never paused or dilated. */
+        /**
+         * Interface animation: a damage number's pop, a widget's fade. Runs behind a pause menu, and a character's
+         * hitstop never reaches it. It follows the world's {@link CgWorld#timeDilation}, unlike UMG, so a dev slow-motion
+         * or frame step slows the HUD with the rest; nothing in gameplay sets that dilation.
+         */
         WIDGETS
     }
 
@@ -143,7 +147,7 @@ public final class CgSequencer extends CgWorldSubsystem {
         if (role == Role.WIDGETS) {
             if (server()) throw new IllegalStateException("a widget sequencer draws: a server's world has none");
             // UMG's own linker, ticked from Slate's pre-tick on its delta (UMGSequenceTickManager.cpp:49-56, 126, 288):
-            // real time, and on through a pause.
+            // on through a pause. Dilated, unlike UMG: see Role.WIDGETS.
             tick = world().schedule().add(CgTickGroup.SEQUENCES, "crystalgraphics:sequencer.widgets", this::advance).whilePaused(true);
             return;
         }
@@ -156,7 +160,7 @@ public final class CgSequencer extends CgWorldSubsystem {
 
     /** What its tick runs: {@code dt} on its role's clock. */
     void advance(float dt) {
-        evaluate(role == Role.WIDGETS ? dt : dt * world().timeDilation());
+        evaluate(dt * world().timeDilation());
     }
 
     /** The clock it plays on. */

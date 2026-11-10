@@ -203,8 +203,9 @@ fragColor = vec4(i.color.rgb * i.color.a * texture(Texture, i.uv).a, 0.0);
 ## 6. Animating it
 
 A widget's animations are sequences on the world's **widget sequencer**, Unreal's widget animation: UMG plays them on
-a linker of their own, ticked from the interface's frame. They run on real time, so a hit-stop or slow motion never
-slows them, and they keep playing behind the pause menu.
+a linker of their own, ticked from the interface's frame. A character's hit-stop never slows them, and they keep
+playing behind the pause menu. They do follow the world's time dilation (`CgWorld.timeDilation`), unlike UMG's, so a
+dev slow-motion or frame step slows the HUD with everything else; gameplay never sets it.
 
 ```yaml
 # assets/mymod/sequences/hud/pop_in.yaml: the banner fades in over 0.4 s

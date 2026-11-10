@@ -51,7 +51,7 @@ import com.crystalgraphics.world.CgWorldQueries;
  * <ul>
  *   <li>A component starts at the layer's next tick ({@link CgTickGroup#PLAYS}), so its sequence is evaluated before
  *       it is first drawn; under {@link Builder#most} the newest waiting start first.</li>
- *   <li>Its sequences play on its world's widget sequencer: real time, through a pause.</li>
+ *   <li>Its sequences play on its world's widget sequencer: through a pause, at the world's time dilation.</li>
  *   <li>A level change releases every component: their attachments were the old level's.</li>
  *   <li>Its tree's UI materials and text styles' faces are built as the tree loads ({@link CgWidgetPreparer}): add
  *       components of a loaded tree only.</li>

@@ -94,7 +94,7 @@ public class CgSequencerTest {
             + "    property: fov\n    sections:\n      - { id: s1, range: [0, 800], value: { keys: [[0, 0, linear], [800, 8, linear]] } }\n";
 
     @Test
-    public void aWidgetSequencerPlaysOnRealTimeThroughDilationAndPause() {
+    public void aWidgetSequencerIsDilatedWithTheWorldAndPlaysThroughAPause() {
         CgWorld world = new CgWorld().timeDilation(0.25f).paused(() -> true);
         CgSequencer gameplay = world.add(new CgSequencer());
         CgSequencer widgets = CgSequencer.widgets(world);
@@ -105,7 +105,7 @@ public class CgSequencerTest {
         gameplay.advance(0.2f);
         widgets.advance(0.2f);
         assertEquals(0.05, slow.seconds(), 1e-6);
-        assertEquals(0.2, pop.seconds(), 1e-6);
+        assertEquals("a dev slow-motion slows the HUD too", 0.05, pop.seconds(), 1e-6);
         // The schedule runs the widget tick behind a pause, the gameplay one not.
         for (CgTickFunction f : world.schedule().order()) {
             assertEquals(f.name(), f.name().endsWith(".widgets"), f.whilePaused());

@@ -10,7 +10,7 @@ root; a new track kind is a subpackage of its own when it brings types besides i
 
 | Package | Owns |
 |---|---|
-| `sequence` | `CgSequencer` (a world's linker and its phases; one a `Role`: `of(world)` the gameplay one, dilated and paused with the game, `widgets(world)` UMG's, on real time through a pause), `CgSequencePlayer` (one play: its clock, roles, spawnables, montage sections, seek), `CgSequenceEvaluator` (a kind's work: the SPI), `CgSequenceTarget` (what a track writes: named slots) |
+| `sequence` | `CgSequencer` (a world's linker and its phases; one a `Role`: `of(world)` the gameplay one, dilated and paused with the game, `widgets(world)` UMG's, on through a pause, dilated with the world unlike UMG so a dev slow-motion reaches the HUD), `CgSequencePlayer` (one play: its clock, roles, spawnables, montage sections, seek), `CgSequenceEvaluator` (a kind's work: the SPI), `CgSequenceTarget` (what a track writes: named slots) |
 | `sequence.definition` | The compiled sequence, read-only once built: `CgSequenceDefinition`, its compiler `CgSequenceCompiler`, `CgSequenceTrack`, `CgSequenceSection`, `CgSequenceChannel` (keys as columns), `CgSequenceBinding`, `CgSequenceCondition`, `CgSequenceField` (what is active over which ticks) |
 | `sequence.time` | Ticks and sub-frames, frame rates, the playback position and each update's evaluation range |
 | `sequence.state` | The state kinds (`transform`, `parameter`, `material`, `property`, `visibility`, `global`): `CgSequenceStateEvaluator`, `CgSequenceBlender` (blend by type and weight, pre-animated state restored), `CgSequenceGlobals` |
