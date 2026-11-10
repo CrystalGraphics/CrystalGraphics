@@ -11,9 +11,6 @@ import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.gl.framebuffer.CgFrameBuffer;
 import com.crystalgraphics.platform.gl.CgGL;
-import com.crystalgraphics.platform.gl.state.CgGlScope;
-import com.crystalgraphics.platform.gl.state.CgGlSlot;
-import com.crystalgraphics.platform.gl.state.CgGlState;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 
@@ -46,15 +43,13 @@ final class CgTargetCopy {
     static final int COLOR = 1, DEPTH = 2;
     /** With {@link #DEPTH}: no draw of the pass wrote depth before it, so a copy shared between passes serves. */
     static final int CLEAN = 4;
-    /** What a copy saves round its blit: one array, not one a copy. */
-    private static final CgGlSlot[] SCISSOR = {CgGlSlot.SCISSOR};
 
     /** Copy formats by the source's: its colour slot 0 and depth, as textures. Render thread. */
     private static final Map<CgFrameBufferFormat, CgFrameBufferFormat> FORMATS = new HashMap<>();
 
     /**
-     * Current targets probed, most recent first: each framebuffer, the copy format and the depth blit mask that match
-     * it. Several, since a host's stages may alternate targets and each probe is a {@code glGet}.
+     * Current targets probed, most recent first: each framebuffer, the copy format and whether it has depth ({@link
+     * #DEPTH} or 0). Several, since a host's stages may alternate targets.
      */
     private static final int PROBED = 4;
     private static final int[] probedSource = {-1, -1, -1, -1};
@@ -62,8 +57,7 @@ final class CgTargetCopy {
     private static final int[] probedDepthMask = new int[PROBED];
 
     /**
-     * Where a device run's copies find the device textures behind a framebuffer name: the executor's, installed for
-     * its run. Null where copies blit through {@code CgGL}.
+     * Where a run's copies find the device textures behind a framebuffer name: the executor's, installed for its run.
      */
     interface Sources {
         @Nullable CgGpuTexture color(int framebuffer);
@@ -92,8 +86,7 @@ final class CgTargetCopy {
     /**
      * Copies what {@code bits} name from {@code width} x {@code height} framebuffer {@code source}: the current target
      * when {@code sourceFormat} is null, else a target of that format. Colour is copied in the rect at {@code at}
-     * of {@code rects}, GL pixels x0, y0, x1, y1, or whole where its x1 is below 0. Leaves the framebuffer binding and
-     * scissor as found. Answers the colour pixels copied.
+     * of {@code rects}, GL pixels x0, y0, x1, y1, or whole where its x1 is below 0. Answers the colour pixels copied.
      */
     long copy(int source, @Nullable CgFrameBufferFormat sourceFormat, int width, int height, int bits,
               int[] rects, int at, CgTexturePool pool) {
@@ -105,7 +98,7 @@ final class CgTargetCopy {
             depthMask = probedDepthMask[probed];
         } else {
             format = FORMATS.computeIfAbsent(sourceFormat, f -> copyFormat(f.getColorSlot(0), f.getDepthType()));
-            depthMask = sourceFormat.hasDepth() ? CgGL.GL_DEPTH_BUFFER_BIT : 0;
+            depthMask = sourceFormat.hasDepth() ? DEPTH : 0;
         }
         return copy(source, source, format, depthMask, width, height, bits, rects, at, pool);
     }
@@ -138,7 +131,7 @@ final class CgTargetCopy {
 
     private long copy(int colorSource, int depthSource, CgFrameBufferFormat format, int depthMask, int width, int height,
                       int bits, int[] rects, int at, CgTexturePool pool) {
-        int colorMask = (bits & COLOR) != 0 && format.colorSlotCount() > 0 ? CgGL.GL_COLOR_BUFFER_BIT : 0;
+        int colorMask = (bits & COLOR) != 0 && format.colorSlotCount() > 0 ? COLOR : 0;
         if ((bits & DEPTH) == 0) depthMask = 0;
         if (depthMask != 0) depthLender = null;
         if ((colorMask | depthMask) == 0 || width <= 0 || height <= 0) return 0L;
@@ -155,14 +148,11 @@ final class CgTargetCopy {
             y1 = Math.min(height, rects[at + 3]);
         }
         if (x1 <= x0 || y1 <= y0) colorMask = 0;
-        try (CgGlScope scope = sources != null ? null : CgGlState.save(SCISSOR)) {
-            if (sources == null) CgGL.glDisable(CgGL.GL_SCISSOR_TEST);   // a CgGL blit is scissored
-            if (colorSource == depthSource && x0 == 0 && y0 == 0 && x1 == width && y1 == height) {
-                blit(colorSource, colorMask | depthMask, 0, 0, width, height);
-            } else {
-                blit(depthSource, depthMask, 0, 0, width, height);
-                blit(colorSource, colorMask, x0, y0, x1, y1);
-            }
+        if (colorSource == depthSource && x0 == 0 && y0 == 0 && x1 == width && y1 == height) {
+            blit(colorSource, colorMask | depthMask, 0, 0, width, height);
+        } else {
+            blit(depthSource, depthMask, 0, 0, width, height);
+            blit(colorSource, colorMask, x0, y0, x1, y1);
         }
         return colorMask == 0 ? 0L : (long) (x1 - x0) * (y1 - y0);
     }
@@ -197,7 +187,7 @@ final class CgTargetCopy {
         CgTextureView to = storage.getDepthTexture().rhiView();
         if (to == null) throw new IllegalStateException("a depth copy of " + from + " has no device texture");
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, DEPTH_ZONE)) {
-            // The framebuffers' states moved round it as round a CgGL blit: what explicit Vulkan barriers read
+            // The framebuffers' states moved round it as round a copy's blit: what explicit Vulkan barriers read
             CgExecutor.blitting(source, storage.getId());
             CgDeviceSection.begin();
             try {
@@ -233,33 +223,35 @@ final class CgTargetCopy {
         System.arraycopy(probedSource, 0, probedSource, 1, PROBED - 1);
         System.arraycopy(probedFormat, 0, probedFormat, 1, PROBED - 1);
         System.arraycopy(probedDepthMask, 0, probedDepthMask, 1, PROBED - 1);
-        CgTextureType type = CgFrameBuffer.depthTypeOf(source);
+        CgGpuTexture depth = sources().depth(source);
+        CgTextureType type = depth == null ? null : depthType(depth.desc().format());
         probedSource[0] = source;
         probedFormat[0] = copyFormat(CgTextureType.RGBA8, type);
-        probedDepthMask[0] = type == null ? 0 : CgFrameBuffer.optimalDepthBlitMask(source);
+        probedDepthMask[0] = type == null ? 0 : DEPTH;
         return 0;
     }
 
-    /** Blits {@code mask} from {@code source} into the same rect of the copy. */
+    /** Blits {@code mask}, {@link #COLOR} and {@link #DEPTH} bits, from {@code source} into the same rect of the copy. */
     private void blit(int source, int mask, int x0, int y0, int x1, int y1) {
         if (mask == 0) return;
-        int zone = (mask & CgGL.GL_COLOR_BUFFER_BIT) == 0 ? DEPTH_ZONE : mask == CgGL.GL_COLOR_BUFFER_BIT ? COLOR_ZONE : BOTH_ZONE;
+        int zone = (mask & COLOR) == 0 ? DEPTH_ZONE : mask == COLOR ? COLOR_ZONE : BOTH_ZONE;
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, zone)) {
             CgExecutor.blitting(source, storage.getId());
-            if (sources != null) {
-                blitOnDevice(sources, source, mask, x0, y0, x1, y1);
-            } else {
-                CgFrameBuffer.blitFrom(source, storage.getId(), x0, y0, x1, y1, x0, y0, x1, y1, mask, CgGL.GL_NEAREST);
-            }
+            blitOnDevice(sources(), source, mask, x0, y0, x1, y1);
             CgExecutor.blitted(source, storage.getId());
         }
     }
 
+    private static Sources sources() {
+        if (sources == null) throw new IllegalStateException("a target copy outside the executor's run");
+        return sources;
+    }
+
     /** {@link #blit} on the device's command list, in a device section. */
     private void blitOnDevice(Sources from, int source, int mask, int x0, int y0, int x1, int y1) {
-        CgGpuTexture color = (mask & CgGL.GL_COLOR_BUFFER_BIT) != 0 ? from.color(source) : null;
-        CgGpuTexture depth = (mask & CgGL.GL_DEPTH_BUFFER_BIT) != 0 ? from.depth(source) : null;
-        if ((mask & CgGL.GL_COLOR_BUFFER_BIT) != 0 && color == null || (mask & CgGL.GL_DEPTH_BUFFER_BIT) != 0 && depth == null) {
+        CgGpuTexture color = (mask & COLOR) != 0 ? from.color(source) : null;
+        CgGpuTexture depth = (mask & DEPTH) != 0 ? from.depth(source) : null;
+        if ((mask & COLOR) != 0 && color == null || (mask & DEPTH) != 0 && depth == null) {
             throw new IllegalStateException("framebuffer " + source + " has no device texture to copy from");
         }
         CgDeviceSection.begin();

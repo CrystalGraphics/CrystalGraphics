@@ -387,9 +387,12 @@ public final class CgExecutor {
         depth++;
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "graph.execute");
              CgGlScope ignored2 = restoreState ? CgGlState.saveAll() : null) {
+            CgTargetCopy.Sources was = CgTargetCopy.sources;
+            CgTargetCopy.sources = executor.copySources;
             try {
                 executor.run(frame);
             } finally {
+                CgTargetCopy.sources = was;
                 int bound = CgGlState.drawFramebuffer();   // what the last callback left, as before the detach moved here
                 if (BESIDE.detach()) CgGL.glBindFramebuffer(CgGL.GL_FRAMEBUFFER, bound);
             }
@@ -1165,12 +1168,12 @@ public final class CgExecutor {
     /** Step {@code s} on the compute queue; the storage it touches is pending until the frame's queue waits for it. */
     private void computeAsync(CgFrame frame, int s, CgComputePass pass) {
         if (CgKernelTarget.CHECKED) CgComputeCheck.prepare();
-        CgGL.cgBeginAsync();
+        CgRHI.get().encoder().beginAsync();
         long point;
         try {
             compute(frame, pass, frame.computes[s]);
         } finally {
-            point = CgGL.cgEndAsync();
+            point = CgRHI.get().encoder().endAsync();
         }
         CgTrace.add(CgChannels.GL, ASYNC_PASSES, 1);
         if (point == 0) return;   // the device ran it in order
@@ -1216,7 +1219,7 @@ public final class CgExecutor {
 
     private void waitAsync(long point) {
         if (point <= asyncWaited) return;
-        CgGL.cgWaitAsync(point);
+        CgRHI.get().encoder().waitAsync(point);
         asyncWaited = point;
         CgTrace.add(CgChannels.GL, ASYNC_WAITS, 1);
         int kept = 0;
@@ -2519,6 +2522,7 @@ public final class CgExecutor {
             copy.borrowDepth(sharedDepth(startFramebuffer, null, startViewport.get(2), startViewport.get(3), pass));
         } else {
             CgFrameBuffer storage = storage(from);
+            copiedStorage = storage;
             copy.borrowDepth(sharedDepth(storage.getId(), storage.getFormat(), storage.getWidth(), storage.getHeight(), pass));
         }
         copy.depth.bind(unit);
@@ -2567,6 +2571,7 @@ public final class CgExecutor {
             copy.copyColor(startFramebuffer, null, startViewport.get(2), startViewport.get(3), POOL);
         } else {
             CgFrameBuffer storage = storage(from);
+            copiedStorage = storage;
             copy.copyColor(storage.getId(), storage.getFormat(), storage.getWidth(), storage.getHeight(), POOL);
         }
         copy.color.bind(pass.colorFromUnit());
@@ -2714,18 +2719,12 @@ public final class CgExecutor {
      * of {@code rects}, and binds the copies.
      */
     private void copyTarget(CgRasterPass pass, int bits, int[] rects, int at) {
-        CgTargetCopy.Sources was = CgTargetCopy.sources;
-        CgTargetCopy.sources = copySources;
-        try {
-            copyTargetFrom(pass, bits, rects, at);
-        } finally {
-            CgTargetCopy.sources = was;
-        }
+        copyTargetFrom(pass, bits, rects, at);
     }
 
     /**
-     * The device textures a copy reads, on a device run: the host's current target as {@link #readHost} found it, or
-     * the graph target named last by {@link #storage}.
+     * The device textures a copy reads, installed for the run: the host's current target as {@link #readHost} found it,
+     * or the graph target a copy named last ({@link #copiedStorage}).
      */
     private final CgTargetCopy.Sources copySources = new CgTargetCopy.Sources() {
         @Override
