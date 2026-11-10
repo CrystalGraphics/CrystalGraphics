@@ -241,11 +241,12 @@ public final class CgWorldText {
         recorder.recordInto(stage.recording(), stage.target(), CgLoad.load(), stage.constants());
         try {
             chunks.bindings(recorder.bindings()).begin(0, 0, 0);
+            boolean linear = CgTextBatch.blendsLinearly(stage.target());
             for (int b = 0; b < batches.size(); b++) {
                 Batch batch = batches.get(b);
                 if (batch.used <= batch.holes) continue;
                 if (!depth) {
-                    CgTextBatch.drawCaptured(chunks, batch.key, batch.gpu, batch.used, matrixBuffer);
+                    CgTextBatch.drawCaptured(chunks, batch.key, batch.gpu, batch.used, matrixBuffer, linear);
                 } else if (batch.rank >= 0 && batch.rank <= TEXT_RANKS) {
                     CgTextBatch.drawCapturedDepth(chunks, batch.key, batch.gpu, batch.used, matrixBuffer);
                 }

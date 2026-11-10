@@ -13,6 +13,7 @@ import com.crystalgraphics.api.state.CgDepthState;
 import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.api.text.CgTextDecorationRect;
 import com.crystalgraphics.api.text.CgTextLayout;
+import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.render.CgFrameClock;
 import com.crystalgraphics.render.canvas.CgCanvas;
 import com.crystalgraphics.render.canvas.CgQuadRecord;
@@ -21,6 +22,8 @@ import com.crystalgraphics.render.draw.CgBufferHandle;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
 import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.render.draw.CgPipeline;
+import com.crystalgraphics.render.graph.CgGraphTexture;
+import com.crystalgraphics.render.graph.CgTextureDesc;
 import com.crystalgraphics.render.property.CgPalette;
 import com.crystalgraphics.text.atlas.CgGlyphAtlas;
 import com.crystalgraphics.text.cache.CgFontRegistry;
@@ -56,7 +59,7 @@ import java.util.Map;
  * CgTextBatch labels = new CgTextBatch(null);
  * labels.camera(projection, view, width, height);
  * boolean whole = labels.capture(label, kept);   // false: a glyph or shadow is still building
- * labels.drawCaptured(chunks, kept.batch(b), gpuRecords, kept.count(b), placements);
+ * labels.drawCaptured(chunks, kept.batch(b), gpuRecords, kept.count(b), placements, linear);
  * }</pre>
  *
  * <ul>
@@ -274,18 +277,21 @@ public final class CgTextBatch {
      *
      * <pre>{@code
      * chunks.bindings(recording.bindings()).begin(0, 0, 0);
-     * text.drawCaptured(chunks, batch, glyphs, glyphCount, labels);   // labels: CgInstanceKind.OBJECT records
+     * boolean linear = CgTextBatch.blendsLinearly(stage.target());
+     * text.drawCaptured(chunks, batch, glyphs, glyphCount, labels, linear);   // labels: CgInstanceKind.OBJECT records
      * canvas.add(chunks.end());
      * }</pre>
      *
      * <ul>
      *   <li>{@code records} and {@code labels} need {@code STORAGE}; a graph buffer is read after the pass writing it.</li>
      *   <li>A record's {@code node} is an index into {@code labels}, as a float; the placement holds the view.</li>
+     *   <li>{@code linearTarget}: the pass draws into a float target ({@link #blendsLinearly}), whose fills take the
+     *       linear-blend correction in place of text gamma.</li>
      * </ul>
      */
     public static void drawCaptured(CgChunkBuilder chunks, long batch, CgBufferHandle records, int count,
-                                    CgBufferHandle labels) {
-        drawCaptured(chunks, batch, records, count, labels, false);
+                                    CgBufferHandle labels, boolean linearTarget) {
+        drawCaptured(chunks, batch, records, count, labels, false, linearTarget);
     }
 
     /**
@@ -294,13 +300,14 @@ public final class CgTextBatch {
      */
     public static void drawCapturedDepth(CgChunkBuilder chunks, long batch, CgBufferHandle records, int count,
                                          CgBufferHandle labels) {
-        drawCaptured(chunks, batch, records, count, labels, true);
+        drawCaptured(chunks, batch, records, count, labels, true, false);
     }
 
     private static void drawCaptured(CgChunkBuilder chunks, long batch, CgBufferHandle records, int count,
-                                     CgBufferHandle labels, boolean depthPass) {
+                                     CgBufferHandle labels, boolean depthPass, boolean linearTarget) {
         if (count <= 0) return;
-        CgMaterial material = CgTextMaterials.label(CgTextSortKey.isDistanceField(batch), depthPass, CgTextGamma.initial());
+        CgMaterial material = CgTextMaterials.label(CgTextSortKey.isDistanceField(batch), depthPass, CgTextGamma.initial(),
+                linearTarget);
         CgPipeline pipeline = material.pipeline(CgInstanceKind.OBJECT);
         if (pipeline == null) return;
         CgBindingTable table = chunks.bindings();
@@ -468,6 +475,7 @@ public final class CgTextBatch {
     private void land(CgTextDraw draw, float[] src, @Nullable Replay replay) {
         int n = replay != null ? replay.runs : runs;
         List<CgTextLayer> layers = draw.style.layers();
+        boolean linear = canvas != null && blendsLinearly(canvas.target());
         CgTrace.add(CgChannels.TEXT, "draw.runs", n);
         for (int r = 0; r < n; r++) {
             boolean df = replay != null ? replay.distanceField[r] : runDistanceField[r];
@@ -488,10 +496,22 @@ public final class CgTextBatch {
                 state = CgTextMaterials.paintState(material, !world, additive);
                 if (state == null) continue;   // its program is still building: held, as any draw is
             } else {
-                material = CgTextMaterials.of(df, !world, draw.gamma, additive);
+                material = CgTextMaterials.of(df, !world, draw.gamma, additive, linear);
             }
             canvas.quads(material, state, CgGlyphAtlas.texture(atlasId), src, from, count, draw.spatialNode);
         }
+    }
+
+    /**
+     * Whether {@code target} is a float target (the HDR scene), where a blend mixes light: text gamma there would
+     * thicken coverage a second time, so text's fills take the linear-blend correction instead. False for null or a
+     * host's own target.
+     */
+    public static boolean blendsLinearly(@Nullable CgGraphTexture target) {
+        CgTextureDesc desc = target != null ? target.desc() : null;
+        if (desc == null) return false;
+        CgTextureType colour = desc.format().getColorSlot(0);
+        return colour != null && colour.isFloat();
     }
 
     /** The draw's glyphs resolved and its quads recorded into {@link #records}, past the cull and a replay. */

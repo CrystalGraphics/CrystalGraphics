@@ -39,10 +39,22 @@ float text_gamma_coverage(float coverage, vec4 terms, vec4 level) {
     return mix(coverage, corrected, weight);
 }
 
+// The inverse, for a target that blends linearly (the HDR scene): the coverage whose linear blend lands where a blend
+// in the encoded space would, against the same guessed background. Linear blending otherwise thickens light text on
+// dark, pushing an edge pixel a third covered to two thirds bright, which reads as a stair step.
+float text_linear_coverage(float coverage, vec4 terms, vec4 level) {
+    float src = terms.x, linSrc = terms.y, linDst = terms.z;
+    if (abs(linSrc - linDst) < (1.0 / 256.0)) return coverage;
+    float encodedOut = coverage * src + (1.0 - coverage) * (1.0 - src);
+    return clamp((pow(encodedOut, level.x) - linDst) / (linSrc - linDst), 0.0, 1.0);
+}
+
 // Coverage under CgTextGamma for an em of emPx screen pixels: the small level, faded into the large one across
-// ramp = (smallPx, largePx, enabled). Terms are text_gamma_terms of the glyph's colour under each level.
+// ramp = (smallPx, largePx, enabled, linear target). Terms are text_gamma_terms of the glyph's colour under each level;
+// a linear target's are under its large level, the target's gamma.
 float text_gamma_fill(float coverage, float emPx, vec4 termsSmall, vec4 termsLarge, vec4 small, vec4 large,
                       vec4 ramp) {
+    if (ramp.w > 0.5) return text_linear_coverage(coverage, termsLarge, large);
     if (ramp.z < 0.5) return coverage;
     float t = ramp.y > ramp.x ? smoothstep(ramp.x, ramp.y, emPx) : step(ramp.x, emPx);
     float smallCoverage = text_gamma_coverage(coverage, termsSmall, small);

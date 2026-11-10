@@ -127,6 +127,14 @@ public enum CgTextureType {
         return !isDepth && !isStencil;
     }
 
+    /**
+     * Whether it holds floats (half, full or packed 11/11/10): a colour target that stores light linearly, so a blend
+     * into it mixes light, not encoded values.
+     */
+    public boolean isFloat() {
+        return glType == CgGL.GL_HALF_FLOAT || glType == CgGL.GL_FLOAT || this == R11F_G11F_B10F;
+    }
+
     /** Whether it is stored as 4x4 blocks (BC7): uploaded with {@code glCompressedTexImage2D}, never drawn to. */
     public boolean isCompressed() {
         return this == BC7 || this == BC7_SRGB;

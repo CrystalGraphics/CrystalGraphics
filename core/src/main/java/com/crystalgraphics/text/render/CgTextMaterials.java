@@ -53,7 +53,7 @@ public final class CgTextMaterials {
     static final float DEPTH_PASS_CUT = 0.5f;
 
     private record Key(boolean msdf, boolean screen, boolean label, boolean depthPass, CgTextGamma gamma,
-                       boolean additive) {
+                       boolean additive, boolean linear) {
     }
 
     private record PaintKey(CgMaterialDefinition definition, boolean msdf) {
@@ -85,9 +85,12 @@ public final class CgTextMaterials {
         list.addPass(TEXT_SHADER, CgInstanceKind.QUAD);
     }
 
-    /** A canvas glyph's material: {@code msdf} for distance-field atlases, {@code screen} under a screen camera. */
-    static CgMaterial of(boolean msdf, boolean screen, CgTextGamma gamma, boolean additive) {
-        return get(new Key(msdf, screen, false, false, gamma, additive));
+    /**
+     * A canvas glyph's material: {@code msdf} for distance-field atlases, {@code screen} under a screen camera,
+     * {@code linear} into a float target, whose fills take the linear-blend correction in place of {@code gamma}.
+     */
+    static CgMaterial of(boolean msdf, boolean screen, CgTextGamma gamma, boolean additive, boolean linear) {
+        return get(new Key(msdf, screen, false, false, linear ? CgTextGamma.NONE : gamma, additive, linear));
     }
 
     /**
@@ -115,9 +118,10 @@ public final class CgTextMaterials {
         });
     }
 
-    /** A retained world label's material; {@code depthPass} discards below half coverage. */
-    static CgMaterial label(boolean msdf, boolean depthPass, CgTextGamma gamma) {
-        return get(new Key(msdf, false, true, depthPass, gamma, false));
+    /** A retained world label's material; {@code depthPass} discards below half coverage, {@code linear} as {@link #of}. */
+    static CgMaterial label(boolean msdf, boolean depthPass, CgTextGamma gamma, boolean linear) {
+        boolean corrected = linear && !depthPass;
+        return get(new Key(msdf, false, true, depthPass, corrected ? CgTextGamma.NONE : gamma, false, corrected));
     }
 
     private static synchronized CgMaterial get(Key key) {
@@ -127,7 +131,7 @@ public final class CgTextMaterials {
             m = state != null ? CgMaterial.newInstance(TEXT_SHADER, state) : CgMaterial.newInstance(TEXT_SHADER);
             m.toggleKeyword("MSDF_MODE", key.msdf());
             m.toggleKeyword("WORLD_LABEL", key.label());
-            m.overrideBlock(TEXT_DATA_UBO, block(key.gamma(), key.depthPass() ? DEPTH_PASS_CUT : 0f));
+            m.overrideBlock(TEXT_DATA_UBO, key.linear() ? linearBlock() : block(key.gamma(), key.depthPass() ? DEPTH_PASS_CUT : 0f));
             m.applyProperties(v -> v.sampler("_Gradients", 1, CgTextGradients.texture()));
             MATERIALS.put(key, m);
         }
@@ -144,6 +148,20 @@ public final class CgTextMaterials {
                 .vec4("u_TextCut", cut, 0f, 0f, 0f);
         return w;
     }
+
+    /** A float target's: fills corrected for its linear blend at the encoding's gamma (text_linear_coverage). */
+    private static CgBufferWriter linearBlock() {
+        CgBufferWriter w = new CgBufferWriter(new CgStagingBuffer(TEXT_DATA_FORMAT.getFloatCount()), TEXT_DATA_FORMAT);
+        w.beginRecord()
+                .vec4("u_TextGammaSmall", ENCODING_GAMMA, 0f, 1f / ENCODING_GAMMA, 0f)
+                .vec4("u_TextGammaLarge", ENCODING_GAMMA, 0f, 1f / ENCODING_GAMMA, 0f)
+                .vec4("u_TextGammaRamp", 0f, 0f, 0f, 1f)
+                .vec4("u_TextCut", 0f, 0f, 0f, 0f);
+        return w;
+    }
+
+    /** sRGB's, near enough: what a blend in the encoded space blends in. */
+    private static final float ENCODING_GAMMA = 2.2f;
 
     /** Drops every instance: the context is going, and the materials with it. */
     public static synchronized void releaseAll() {

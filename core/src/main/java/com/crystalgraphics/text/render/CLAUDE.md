@@ -66,6 +66,10 @@ submit order**: a later label covers an earlier one, shadow and all.
   additive)`; a material paint its own Text-domain material (`paint`, `paintState`). A gradient's quads carry its
   ramp row in `CG_QUAD_CUSTOM0`; a material's, the run's UVs (Slate's font-material UVs span the run).
 - **Every layer outputs premultiplied colour**, blended `ONE, ONE_MINUS_SRC_ALPHA`; an additive layer adds instead.
+- **Text gamma only where the blend is encoded**: a canvas drawing into a float target (the HDR scene,
+  `blendsLinearly`) ignores the draw's gamma; its fills take the inverse correction instead (`text_linear_coverage`):
+  the coverage whose linear blend lands where an encoded one would. Skia's gamma on top of a linear blend made a 10%
+  edge pixel draw about 90% filled, a stair-stepped edge on all world text. The HUD keeps its gamma.
 - **The draw's colour tints every layer**; a span's colour replaces its fill's colour (0 in the batch: no span colour).
 - **Lengths are in the style's pixels**, times `CgTextDraw.unit()`: the draw's size over the style's.
 - **Skew shears each quad about its baseline** in the bake, so it costs no vertex of its own.
@@ -87,7 +91,7 @@ if (!drawn.sameAs(label) || kept.evictions() != CgGlyphAtlas.evictions()) {
     drawn.set(label);
     boolean whole = labels.capture(label, kept);    // false: capture again next frame
 }
-CgTextBatch.drawCaptured(chunks, kept.batch(b), glyphBuffer, count, labelMatrices);
+CgTextBatch.drawCaptured(chunks, kept.batch(b), glyphBuffer, count, labelMatrices, CgTextBatch.blendsLinearly(target));
 ```
 
 - `drawCapturedDepth` is the depth pass: the records' solid core (alpha 0.5 and up, `u_TextCut`) into depth alone.
