@@ -28,7 +28,8 @@ public final class HostPaintLegacy implements CgHostPaint.Host {
     public void enter() {
         CgDeviceSection.begin();
         Minecraft mc = Minecraft.getMinecraft();
-        into = CgExecutor.into(OpenGlHelper.isFramebufferEnabled() ? mc.getFramebuffer().framebufferObject : 0, mc.displayWidth, mc.displayHeight);
+        // A GUI over the frame: the main target's colour alone, as Minecraft's GUI tests no world depth
+        into = CgExecutor.intoColor(OpenGlHelper.isFramebufferEnabled() ? mc.getFramebuffer().framebufferObject : 0, mc.displayWidth, mc.displayHeight);
     }
 
     @Override

@@ -1,5 +1,6 @@
 package com.crystalgraphics.demo;
 
+import com.crystalgraphics.loading.CgLoadingScreen;
 import com.crystalgraphics.api.font.CgFont;
 import com.crystalgraphics.api.font.CgDefaultFont;
 import com.crystalgraphics.api.text.CgTextLayout;
@@ -13,7 +14,6 @@ import com.crystalgraphics.frame.CgWorld;
 import com.crystalgraphics.gl.buffer.CgReadback;
 import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.lifecycle.CgLifecycleListener;
-import com.crystalgraphics.loading.CgLoadingScreen;
 import com.crystalgraphics.loading.task.CgLoadPlan;
 import com.crystalgraphics.loading.watchdog.CgLoadWatchdog;
 import com.crystalgraphics.platform.service.CgProcessExit;
@@ -233,6 +233,8 @@ public final class CgRenderDemo {
     private final boolean[] held = new boolean[KEYS.length];
     private static float bloomIntensity = 1f;
     private boolean hudShown = true;
+    /** Whether the host hides its GUI (F1), as the last world frame read it. */
+    private boolean guiHidden;
 
     /** After every other static: the constructor reads {@code MODE} and {@code KEYS}. */
     public static final CgRenderDemo INSTANCE = new CgRenderDemo();
@@ -261,15 +263,21 @@ public final class CgRenderDemo {
         // PLAYS: what the scenes play starts this frame, in EFFECTS after.
         CgWorld.client().schedule().add(CgTickGroup.PLAYS, "crystalgraphics:demo", dt -> frame(CgWorld.client().view()))
                 .whilePaused(true);
-        // After the post stack's composite, so the HUD lands on the host's target and not in the HDR scene.
+        // The keys and whether the GUI is hidden, from the world's frame, which carries the host's environment
         CgRenderStage.WORLD_TRANSPARENT.register(CgPostStack.ORDER + 1000, frame -> {
             CgHostEnvironment world = frame.host().environment();
             keys(world.screenOpen());
-            if (world.guiHidden() || !hudShown) return;
-            // Behind the loading screen the stage draws into its 256-pixel target: the window's size warms the real one
-            hudSide = CgLoadingScreen.shown() && CgLoadingScreen.windowHeight() > 0
-                    ? Math.min(CgLoadingScreen.windowWidth(), CgLoadingScreen.windowHeight())
-                    : Math.min(frame.host().width(), frame.host().height());
+            guiHidden = world.guiHidden();
+            // Behind the loading screen, into its warm target at the window's size: the real HUD's glyphs made there
+            if (CgLoadingScreen.shown() && CgLoadingScreen.windowHeight() > 0 && hudShown) {
+                hudSide = Math.min(CgLoadingScreen.windowWidth(), CgLoadingScreen.windowHeight());
+                drawHud(frame);
+            }
+        });
+        // The HUD on the HUD stage, over the finished world: Minecraft draws clouds and weather after the world stages
+        CgRenderStage.HUD.register(CgRenderStage.VIEWPORT_WIDGETS - 1, frame -> {
+            if (guiHidden || !hudShown) return;
+            hudSide = Math.min(frame.host().width(), frame.host().height());
             drawHud(frame);
         });
         if (!CAPTURE.isEmpty()) {

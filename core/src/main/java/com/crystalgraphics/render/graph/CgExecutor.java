@@ -496,6 +496,21 @@ public final class CgExecutor {
         return into(framebuffer, width, height, color == null ? null : color.texture(), depth == null ? null : depth.texture());
     }
 
+    /**
+     * {@link #into(int, int, int)} with the framebuffer's colour alone: a GUI drawn over the host's finished frame, which
+     * tests nothing against the world's depth, as Minecraft's own GUI does not.
+     *
+     * <pre>{@code
+     * try (CgExecutor.Into ignored = CgExecutor.intoColor(mainFbo, width, height)) {
+     *     CgRenderStage.HUD.fire();
+     * }
+     * }</pre>
+     */
+    public static Into intoColor(int framebuffer, int width, int height) {
+        CgTextureView color = CgFrameBuffer.attachment(framebuffer, false, width, height);
+        return into(framebuffer, width, height, color == null ? null : color.texture(), null);
+    }
+
     /** Whether a current target is open: a host's hook names one before anything draws. */
     public static boolean hasCurrentTarget() {
         return current != null;

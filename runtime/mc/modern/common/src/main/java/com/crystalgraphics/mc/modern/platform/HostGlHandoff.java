@@ -52,11 +52,12 @@ public final class HostGlHandoff {
     /** What the open paint draws into: Minecraft's main target. */
     private static CgExecutor.Into into;
 
-    /** Takes the frame for a paint, its current target the main target. */
+    /** Takes the frame for a paint, its current target the main target's colour. */
     static void enter() {
         CgDeviceSection.begin();
         Minecraft mc = Minecraft.getInstance();
-        into = CgExecutor.into(LifecycleModern.bindMainTarget(mc), Windows.of(mc).getWidth(), Windows.of(mc).getHeight());
+        // A GUI over the finished frame: the main target's colour alone, as Minecraft's GUI tests no depth
+        into = CgExecutor.intoColor(LifecycleModern.bindMainTarget(mc), Windows.of(mc).getWidth(), Windows.of(mc).getHeight());
     }
 
     /** Hands Minecraft back its frame, as it believes it left it. */
