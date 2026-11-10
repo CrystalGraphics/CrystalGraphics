@@ -157,7 +157,7 @@ public final class CrystalGraphicsFabric implements VariantEntry {
             //?} elif >=1.15 {
             /*HudRenderCallback.EVENT.register(tickDelta -> LifecycleModern.hud());
             *///?}
-            // Each screen once it has drawn. Fabric API below 1.16 has no screen events: no SCREEN stage there.
+            // Each screen once it has drawn. Fabric API below 1.16 has no screen events: mixin/FrameEndHook fires it.
             //? if >=26.1 {
             /*ScreenEvents.AFTER_INIT.register((client, screen, width, height) ->
                     ScreenEvents.afterExtract(screen).register((s, g, mx, my, td) -> LifecycleModern.screen()));

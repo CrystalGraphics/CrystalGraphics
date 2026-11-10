@@ -256,7 +256,7 @@ each; from 26.1 they are noted at the hook and fired at the frame end, since 26.
 | Forge 1.19–1.20.4 | `RenderGuiEvent.Post` | `ScreenEvent.Render.Post` |
 | Forge 1.20.6–1.21.5 · 1.21.6–1.21.7 · 1.21.8+ | a layer, `AddGuiOverlayLayersEvent` · node mixin `HudHook` (`Gui.render` TAIL) · a layer | `ScreenEvent.Render.Post` |
 | NeoForge | `RenderGuiEvent.Post` | `ScreenEvent.Render.Post` |
-| Fabric 1.14.4 · 1.15.2 · 1.16.5+ · 26.1+ | node mixin `HudHook` · `HudRenderCallback` · the same · `HudElementRegistry` | none · none · `ScreenEvents.afterRender` · `afterExtract` |
+| Fabric 1.14.4 · 1.15.2 · 1.16.5+ · 26.1+ | node mixin `HudHook` · `HudRenderCallback` · the same · `HudElementRegistry` | `FrameEndHook`, while a screen is open · the same · `ScreenEvents.afterRender` · `afterExtract` |
 | Legacy Forge, 1.7.10 | `RenderGameOverlayEvent.Post`, `ALL` (`OverlayStagesLegacy`, `OverlayStages1710`) | `GuiScreenEvent.DrawScreenEvent.Post` |
 
 The exact version splits are in each loader branch's `AGENTS.md`. **The frame ends after the GUI**, from
