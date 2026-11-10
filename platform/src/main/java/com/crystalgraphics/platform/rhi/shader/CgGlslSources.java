@@ -59,6 +59,16 @@ public final class CgGlslSources {
         return new String(c);
     }
 
+    /** {@code source} with every character above 127 a space: a GL driver may refuse one even in a comment. */
+    public static String ascii(String source) {
+        int n = source.length(), i = 0;
+        while (i < n && source.charAt(i) < 128) i++;
+        if (i == n) return source;
+        char[] chars = source.toCharArray();
+        for (int k = i; k < n; k++) if (chars[k] >= 128) chars[k] = ' ';
+        return new String(chars);
+    }
+
     /** The line {@code at} is on, from 1. */
     public static int lineAt(String s, int at) {
         return 1 + lines(s, at);

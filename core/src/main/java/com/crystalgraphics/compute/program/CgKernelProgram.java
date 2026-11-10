@@ -1,44 +1,28 @@
 package com.crystalgraphics.compute.program;
 
-import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.material.CgMaterialValues;
 import com.crystalgraphics.api.shader.CgShaderPreprocessor;
-import com.crystalgraphics.gl.shader.CgProgram;
-import com.crystalgraphics.api.texture.CgTexture;
+import com.crystalgraphics.gl.shader.CgShaderCompile;
 import com.crystalgraphics.compute.emit.CgKernelEmitter;
 import com.crystalgraphics.compute.emit.CgKernelTarget;
-import com.crystalgraphics.compute.source.CgBufferAccess;
 import com.crystalgraphics.compute.source.CgBufferDecl;
 import com.crystalgraphics.compute.source.CgComputeSource;
-import com.crystalgraphics.compute.source.CgImageAccess;
-import com.crystalgraphics.compute.source.CgImageDecl;
-import com.crystalgraphics.compute.source.CgImageDimension;
 import com.crystalgraphics.compute.source.CgKernelDecl;
-import com.crystalgraphics.api.buffer.CgBufferLifetime;
-import com.crystalgraphics.gl.buffer.shader.CgEngineBufferRegistry;
-import com.crystalgraphics.gl.buffer.shader.CgShaderBuffer;
-import com.crystalgraphics.gl.buffer.shader.CgUniformBuffer;
 import com.crystalgraphics.gl.material.CgMaterialProperties;
 import com.crystalgraphics.gl.material.CgMaterialProperty;
 import com.crystalgraphics.platform.gl.CgCapabilities;
-import com.crystalgraphics.platform.gl.CgGL;
-import com.crystalgraphics.platform.gl.state.CgGlScope;
-import com.crystalgraphics.platform.gl.state.CgGlSlot;
-import com.crystalgraphics.platform.gl.state.CgGlState;
 import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.rhi.command.CgComputePass;
 import com.crystalgraphics.platform.rhi.pipeline.CgComputePipeline;
 import com.crystalgraphics.platform.rhi.pipeline.CgPipelineLayout;
 import com.crystalgraphics.platform.rhi.resource.CgGpuBuffer;
 import com.crystalgraphics.platform.rhi.shader.CgGlslCompiler;
+import com.crystalgraphics.platform.rhi.shader.CgGlslSources;
 import com.crystalgraphics.platform.rhi.shader.CgShaderModule;
 import com.crystalgraphics.render.draw.CgDeviceStates;
-import com.crystalgraphics.render.draw.CgPassConstants;
-import com.crystalgraphics.util.CgBufferUtils;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.nio.IntBuffer;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -67,50 +51,46 @@ public final class CgKernelProgram {
     private final CgKernelDecl kernel;
     private final Set<String> keywords;
     private final String glsl;
-    /** {@link #glsl} with its includes expanded: what {@link #explicit} compiles. */
+    /** {@link #glsl} with its includes expanded: what {@link #explicit} compiled. */
     private final String expanded;
     /** What it was emitted for. */
     private final CgKernelTarget target;
-    private final CgProgram program;
     private final int[] counterPoints;
     /** Where checked mode's report slot binds, after every buffer and count; -1 unchecked. */
     private final int checkPoint;
     private final int[] groupLimits = new int[3];
     private final CgMaterialProperties properties;
 
-    private CgGlslCompiler.ExplicitCompute explicit;
+    private final CgGlslCompiler.ExplicitCompute explicit;
     /** The device its pipeline is on; null before the first {@link #devicePipeline}. */
     private CgRHI pipelineOf;
     private CgShaderModule deviceModule;
     private CgComputePipeline devicePipeline;
     private CgPipelineLayout deviceLayout;
     private ByteBuffer push;
+    private boolean deleted;
 
     private CgKernelProgram(CgComputeSource source, CgKernelDecl kernel, Set<String> keywords, String glsl,
-                            String expanded, CgKernelTarget target, CgProgram program) {
+                            String expanded, CgKernelTarget target, CgGlslCompiler.ExplicitCompute explicit) {
         this.source = source;
         this.kernel = kernel;
         this.keywords = keywords;
         this.glsl = glsl;
         this.expanded = expanded;
         this.target = target;
-        this.program = program;
+        this.explicit = explicit;
         this.properties = new CgMaterialProperties(copies(source.properties()));
         this.counterPoints = new int[source.buffers().size()];
         for (CgBufferDecl b : source.buffers()) counterPoints[b.index()] = CgKernelEmitter.counterPoint(source, b);
         this.checkPoint = target.checked() ? CgKernelEmitter.checkPoint(source) : -1;
         CgCapabilities caps = CgCapabilities.detect();
         for (int axis = 0; axis < 3; axis++) groupLimits[axis] = caps.maxComputeWorkGroupCount(axis);
-        try (CgGlScope scope = CgGlState.save(CgGlSlot.PROGRAM)) {
-            CgGL.glUseProgram(program.getId());
-            wire();
-        }
     }
 
     /**
-     * Compiles {@code kernel} of {@code source} with {@code keywords} for the current context.
+     * Compiles {@code kernel} of {@code source} with {@code keywords} for the current device.
      *
-     * @throws IllegalStateException with the driver's log, and the emitted source, if it fails to compile or link
+     * @throws IllegalStateException with the compiler's log, and the emitted source, if it fails to compile
      */
     public static CgKernelProgram build(CgComputeSource source, CgKernelDecl kernel, Set<String> keywords) {
         return build(source, kernel, keywords, CgKernelTarget.current());
@@ -123,8 +103,8 @@ public final class CgKernelProgram {
     }
 
     /**
-     * {@link #build}, returning before the driver has linked: where it links on threads of its own
-     * ({@code KHR_parallel_shader_compile}), the link runs while frames go on.
+     * {@link #build}, returning before it has compiled: where the compiler runs on any thread, the compile runs on a
+     * worker while frames go on ({@link CgShaderCompile}).
      *
      * <pre>{@code
      * CgKernelProgram.Pending pending = CgKernelProgram.submit(source, decl, keywords, CgKernelTarget.current());
@@ -139,100 +119,65 @@ public final class CgKernelProgram {
 
     /** {@link #submit(CgComputeSource, CgKernelDecl, Set, CgKernelTarget)} from sources made already, on a worker. */
     public static Pending submit(Sources made, CgKernelDecl kernel, Set<String> keywords) {
-        CgProgram program = CgProgram.create();
-        try (CgProgram.Labelled named = CgProgram.labelled(made.source().path() + " " + kernel.name() + keywords)) {
-            program.submitComputeLink(made.expanded(), made.driver());
-        }
-        return new Pending(made.source(), kernel, keywords, made.glsl(), made.expanded(), made.target(), program);
+        String label = made.source().path() + " " + kernel.name() + keywords;
+        String expanded = made.expanded();
+        return new Pending(made.source(), kernel, keywords, made.glsl(), expanded, made.target(),
+                CgShaderCompile.start(() -> CgGlslCompiler.get().compileExplicitCompute(expanded, label)));
     }
 
     /**
-     * A kernel's GLSL for a target, emitted and with its includes expanded: what {@link #submit} hands the driver. CPU
-     * only, so a worker makes it ahead of the frame that submits.
+     * A kernel's GLSL for a target, emitted and with its includes expanded: what {@link #submit} compiles. CPU only, so a
+     * worker makes it ahead of the frame that submits.
      */
-    public record Sources(CgComputeSource source, CgKernelTarget target, String glsl, String expanded, String driver) {
+    public record Sources(CgComputeSource source, CgKernelTarget target, String glsl, String expanded) {
         public static Sources of(CgComputeSource source, CgKernelDecl kernel, Set<String> keywords, CgKernelTarget target) {
-            String glsl = CgKernelEmitter.emit(source, kernel, keywords, target);
-            String expanded = CgGL.checkSource(new CgShaderPreprocessor().process(glsl, source.path())).toString();
-            return new Sources(source, target, glsl, expanded, CgProgram.forDriver(expanded));
+            // GL's native float atomics are NV_shader_atomic_float, which a device's compiler refuses: the
+            // compare-and-swap form, the bytes alike.
+            String glsl = CgKernelEmitter.emit(source, kernel, keywords, target.withFloatAtomics(false));
+            return new Sources(source, target, glsl, CgGlslSources.ascii(new CgShaderPreprocessor().process(glsl, source.path())));
         }
     }
 
-    /** A kernel's program linking: {@link #finish} makes it, waiting for the driver only if it has not finished. */
+    /** A kernel's program compiling: {@link #finish} makes it, waiting for its compile only if it has not finished. */
     public static final class Pending {
         private final CgComputeSource source;
         private final CgKernelDecl kernel;
         private final Set<String> keywords;
         private final String glsl, expanded;
         private final CgKernelTarget target;
-        private final CgProgram program;
+        private final CgShaderCompile<CgGlslCompiler.ExplicitCompute> compile;
 
         private Pending(CgComputeSource source, CgKernelDecl kernel, Set<String> keywords, String glsl, String expanded,
-                        CgKernelTarget target, CgProgram program) {
+                        CgKernelTarget target, CgShaderCompile<CgGlslCompiler.ExplicitCompute> compile) {
             this.source = source;
             this.kernel = kernel;
             this.keywords = keywords;
             this.glsl = glsl;
             this.expanded = expanded;
             this.target = target;
-            this.program = program;
+            this.compile = compile;
         }
 
         /** Whether {@link #finish} would return without waiting. */
         public boolean isDone() {
-            return program.isLinkDone();
+            return compile.isDone();
         }
 
-        /** @throws IllegalStateException with the driver's log, and the emitted source, if it failed to compile or link */
+        /** @throws IllegalStateException with the compiler's log, and the emitted source, if it failed to compile */
         public CgKernelProgram finish() {
+            CgGlslCompiler.ExplicitCompute explicit;
             try {
-                program.finishLink();
-            } catch (IllegalStateException e) {
-                program.delete();
+                explicit = compile.get();
+            } catch (RuntimeException e) {
                 throw new IllegalStateException("[" + source.path() + "] kernel " + kernel.name() + keywords + ": "
                         + e.getMessage() + "\n--- emitted ---\n" + numbered(expanded), e);
             }
-            return new CgKernelProgram(source, kernel, keywords, glsl, expanded, target, program);
+            return new CgKernelProgram(source, kernel, keywords, glsl, expanded, target, explicit);
         }
 
-        /** Drops a link nobody will finish. */
+        /** Drops a compile nobody will finish: it runs to its end unread. */
         public void delete() {
-            program.delete();
         }
-    }
-
-    /**
-     * The engine's environment, whose GL points are sized from the driver's limits: by name until GL3. What the kernel
-     * declares itself the emitter bound ({@link CgKernelEmitter}).
-     */
-    private void wire() {
-        int id = program.getId();
-        for (String token : source.engineBuffers()) {
-            CgShaderBuffer buffer = CgEngineBufferRegistry.get(token).buffer().get();
-            storageBlock(id, buffer.getName(), buffer.getBindingLocation());
-        }
-        uniformBlock(id, CgPassConstants.VIEW_BLOCK, CgBindingPoints.VIEW_UBO);
-        uniformBlock(id, CgPassConstants.ENVIRONMENT_BLOCK, CgBindingPoints.ENVIRONMENT_UBO);
-        uniformBlock(id, CgKernelEmitter.PROPERTY_BLOCK, CgBindingPoints.MATERIAL_PROPERTIES_UBO);
-        unit(id, CgBindingPoints.DEPTH_TEXTURE_UNIFORM, CgBindingPoints.DEPTH_TEXTURE_UNIT);
-        unit(id, CgBindingPoints.SCENE_COLOR_TEXTURE_UNIFORM, CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT);
-        unit(id, CgBindingPoints.LIGHTMAP_TEXTURE_UNIFORM, CgBindingPoints.LIGHTMAP_TEXTURE_UNIT);
-        unit(id, CgBindingPoints.MEDIA_TEXTURE_UNIFORM, CgBindingPoints.MEDIA_TEXTURE_UNIT);
-    }
-
-    private static void storageBlock(int program, String name, int point) {
-        int index = CgGL.glGetProgramResourceIndex(program, CgGL.GL_SHADER_STORAGE_BLOCK, name);
-        if (index != CgGL.GL_INVALID_INDEX) CgGL.glShaderStorageBlockBinding(program, index, point);
-    }
-
-    private static void uniformBlock(int program, String name, int point) {
-        int index = CgGL.glGetUniformBlockIndex(program, name);
-        if (index != CgGL.GL_INVALID_INDEX) CgGL.glUniformBlockBinding(program, index, point);
-    }
-
-    private static void unit(int program, String uniform, int unit) {
-        int location = CgGL.glGetUniformLocation(program, uniform);
-        if (location >= 0) CgGL.glUniform1i(location, unit);
     }
 
     // ── Bindings ──────────────────────────────────────────────────────────────
@@ -250,19 +195,8 @@ public final class CgKernelProgram {
 
     // ── On a device ───────────────────────────────────────────────────────────
 
-    /**
-     * The kernel as written ({@code CG_EXPLICIT}): its module and the sets it declares. Compiled on first ask.
-     *
-     * @throws CgShaderModule.CompileException where it leaves a resource unbound, or no compiler is installed
-     */
+    /** The kernel as written ({@code CG_EXPLICIT}): its module and the sets it declares. */
     public CgGlslCompiler.ExplicitCompute explicit() {
-        if (explicit == null) {
-            // GL's native float atomics are NV_shader_atomic_float, which a device's compiler refuses: its module takes
-            // the compare-and-swap form, the bytes alike
-            String forDevice = target.floatAtomics()
-                    ? Sources.of(source, kernel, keywords, target.withFloatAtomics(false)).expanded() : expanded;
-            explicit = CgGlslCompiler.get().compileExplicitCompute(forDevice, label());
-        }
         return explicit;
     }
 
@@ -363,18 +297,16 @@ public final class CgKernelProgram {
     /** The GLSL this was compiled from, before its includes were expanded. */
     public String glsl() { return glsl; }
 
-    public int programId() { return program.getId(); }
-
     /** The binding point of append buffer {@code name}'s count. */
     public int counterPoint(String name) { return counterPoints[buffer(name).index()]; }
 
     /** The binding point of the count of the append buffer declared {@code index}-th; -1 for any other buffer. */
     public int counterPoint(int index) { return counterPoints[index]; }
 
-    public boolean isDeleted() { return program.isDeleted(); }
+    public boolean isDeleted() { return deleted; }
 
     public void delete() {
-        program.delete();
+        deleted = true;
         releaseDevice();
     }
 

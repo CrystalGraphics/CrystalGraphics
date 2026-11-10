@@ -161,7 +161,6 @@ CgTextureSpec spec = CgTextureSpec.builder()
 - **gl/texture** holds the concrete impls. They `implements CgTexture` directly.
 - **api/framebuffer/CgFrameBufferFormat** uses `CgTextureType` as slot descriptors.
 - **api/material/CgMaterialValues** has `sampler(String, int, CgTexture[, CgSampler])` for a material's textures.
-- **api/state/CgTextureState** has `fixed(CgTexture, unit, sampler)` for layer state.
 
 ## Design Rules
 

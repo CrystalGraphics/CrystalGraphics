@@ -1,7 +1,6 @@
 package com.crystalgraphics.gl.material;
 
 import com.crystalgraphics.api.buffer.CgBufferFormat;
-import com.crystalgraphics.gl.shader.CgShader;
 import com.crystalgraphics.api.material.CgMaterialValues;
 import com.crystalgraphics.api.texture.CgSampler;
 import com.crystalgraphics.api.texture.CgTexture;
@@ -114,11 +113,6 @@ public final class CgMaterialProperties implements CgMaterialValues {
         // Indexed, here and in bindSamplerTextures: both run per bind, and an unmodifiable list's iterator is two
         // objects a call that the JIT was not eliminating.
         for (int i = 0; i < uboProps.size(); i++) uboProps.get(i).writeToUbo(w);
-    }
-
-    /** Wires each sampler's texture-unit uniform assignment into {@code shader}. Shader must be bound. */
-    public void wireSamplerUnits(CgShader shader) {
-        for (CgMaterialProperty p : samplerProps) p.wireSamplerUnit(shader);
     }
 
     /**

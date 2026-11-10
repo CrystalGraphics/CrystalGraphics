@@ -18,7 +18,7 @@ vertex stage pulls the mesh from the store's words, with no vertex input.
 The file is **structurally parsed** by `CgShaderParser` into a `CgParsedShader` value
 object, then **GLSL-generated** by `CgMaterialShaderCompiler` into full vertex + fragment
 source strings, preprocessed once by `CgShaderPreprocessor`, and compiled by the
-existing `CgShaderFactory.fromSource(vert, frag, format)` pipeline.
+device compile (`CgShader`).
 
 ---
 

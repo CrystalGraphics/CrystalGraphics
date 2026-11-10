@@ -6,8 +6,6 @@ import com.crystalgraphics.api.buffer.CgBufferFormat;
 import com.crystalgraphics.api.buffer.CgBufferLifetime;
 import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.gl.buffer.CgStreamBuffer;
-import com.crystalgraphics.gl.shader.CgShader;
-import com.crystalgraphics.platform.gl.CgGL;
 
 /**
  * SSBO-backed {@link CgShaderBuffer} implementation.
@@ -53,20 +51,6 @@ public final class CgShaderStorageBuffer extends CgShaderBuffer {
             CgBoundResources.storage(bindingLocation, dataBuffer.gpuBuffer(), dataBuffer.getWriteOffset(), bytes);
         } else {
             CgBoundResources.storage(bindingLocation, dataBuffer.gpuBuffer(), 0, 0);
-        }
-    }
-
-    /**
-     * Wires the SSBO block {@link #getName()} to {@link #bindingLocation} via
-     * {@code glShaderStorageBlockBinding}. Called once per program link.
-     * If the block is absent (optimised out or not declared), silently skips.
-     */
-    @Override
-    public void wireShader(CgShader shader) {
-        int programId = shader.getProgram().getId();
-        int idx = CgGL.glGetProgramResourceIndex(programId, CgGL.GL_SHADER_STORAGE_BLOCK, getName());
-        if (idx != CgGL.GL_INVALID_INDEX) {
-            CgGL.glShaderStorageBlockBinding(programId, idx, bindingLocation);
         }
     }
 }

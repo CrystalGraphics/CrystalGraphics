@@ -6,15 +6,12 @@ import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgRenderPassVariant;
 import com.crystalgraphics.api.material.CgRenderQueue;
 import com.crystalgraphics.gl.shader.CgShader;
-import com.crystalgraphics.gl.shader.CgProgram;
 import com.crystalgraphics.gl.buffer.shader.CgEngineBufferRegistry;
 import com.crystalgraphics.gl.buffer.shader.CgShaderBuffer;
 import com.crystalgraphics.gl.buffer.shader.CgUniformBuffer;
 import com.crystalgraphics.gl.material.parse.CgMaterialShaderCompiler;
 import com.crystalgraphics.gl.material.parse.CgParsedPass;
 import com.crystalgraphics.gl.material.parse.CgParsedShader;
-import com.crystalgraphics.gl.shader.CgLinkWorker;
-import com.crystalgraphics.gl.shader.CgShaderFactory;
 import com.crystalgraphics.job.CgJob;
 import com.crystalgraphics.job.CgJobLane;
 import com.crystalgraphics.trace.CgTrace;
@@ -30,7 +27,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -70,7 +66,7 @@ final class CgMaterialShaderMap {
         }
     }
 
-    /** One pass's generated GLSL, and the same preprocessed: what {@code CgShaderFactory} takes. */
+    /** One pass's generated GLSL, and the same preprocessed: what a {@link CgShader} compiles. */
     @Desugar
     record Sources(CgMaterialShaderCompiler.CompiledSource compiled, String vertex, String fragment) {
     }
@@ -92,13 +88,8 @@ final class CgMaterialShaderMap {
     /** The engine tokens the parse names ({@code #pragma cg_use}), declared for every program in it. */
     final List<CgAttachedBuffer> buffers;
 
-    /** {@link #reads} bits: the program samples the scene depth, or the scene colour. */
-    static final int READS_DEPTH = 1, READS_COLOR = 2;
-
-    /** Every program kept, wired, by pass and keywords. */
+    /** Every program kept, by pass and keywords. */
     final Map<ProgramKey, CgShader> programs = new LinkedHashMap<>();
-    /** What each wired program samples of the scene, from its own reflection. */
-    private final Map<CgShader, Integer> reads = new IdentityHashMap<>();
     /** The depth pass waits for the first pass that asks for it: the map came from a forward-only compile. */
     boolean autoGenSkipped;
 
@@ -158,13 +149,13 @@ final class CgMaterialShaderMap {
         return passName.equals(DEPTH);
     }
 
-    /** A program from preprocessed sources: submitted to the driver when {@code defer}, compiled now otherwise. */
+    /** A program from preprocessed sources: compiling on a worker when {@code defer}, compiled now otherwise. */
     static CgShader build(String label, Sources sources, String pass, boolean defer) {
         CgTrace.marker(CgChannels.GL, "material.compile", label);   // which program a frame compiled
-        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, defer ? "material.glSubmit" : "material.glCompile");
-             CgProgram.Labelled named = CgProgram.labelled(label + " " + pass)) {
-            return defer ? CgShaderFactory.submit(sources.vertex(), sources.fragment(), sources.compiled().vertexFormat())
-                    : CgShaderFactory.fromSource(sources.vertex(), sources.fragment(), sources.compiled().vertexFormat());
+        String name = label + " " + pass;
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, defer ? "material.submit" : "material.compileNow")) {
+            return defer ? CgShader.submit(sources.vertex(), sources.fragment(), sources.compiled().vertexFormat(), name)
+                    : CgShader.compile(sources.vertex(), sources.fragment(), sources.compiled().vertexFormat(), name);
         }
     }
 
@@ -200,7 +191,7 @@ final class CgMaterialShaderMap {
     }
 
     /**
-     * Starts compiling a variant without waiting for the driver, its sources made on a worker first, and says whether
+     * Starts compiling a variant without waiting for it, its sources made on a worker first, and says whether
      * {@link #get} would now answer it without compiling or waiting: true once it is kept, or has failed. Polled frame
      * to frame; a generated pass is made by the compile that made the map, never here.
      */
@@ -209,7 +200,7 @@ final class CgMaterialShaderMap {
         if (programs.containsKey(key) || failedVariants.containsKey(key)) return true;
         CgShader submitted = pendingVariants.get(key);
         if (submitted != null) {
-            if (!submitted.isReady() || CgLinkWorker.linking()) return false;
+            if (!submitted.isReady()) return false;
             keep(key, pendingVariants.remove(key));
             return true;
         }
@@ -243,7 +234,7 @@ final class CgMaterialShaderMap {
         return programs.containsKey(new ProgramKey(passName, Collections.emptySet()));
     }
 
-    /** Why a variant failed, the driver's or shaderc's log; null when it compiled or was never tried. */
+    /** Why a variant failed, the compiler's log; null when it compiled or was never tried. */
     @Nullable
     String variantError(String passName, Set<String> keywords) {
         return failedVariants.get(new ProgramKey(passName, keywords));
@@ -278,24 +269,10 @@ final class CgMaterialShaderMap {
         return depth;
     }
 
-    /** Notes what a wired program samples of the scene. */
-    void reflected(CgShader program, int bits) {
-        reads.put(program, bits);
-    }
-
-    /** What {@code program} samples of the scene, as {@link #READS_DEPTH} bits; -1 for a program not wired here. */
-    int reads(CgShader program) {
-        Integer bits = reads.get(program);
-        return bits == null ? -1 : bits;
-    }
-
     /** Drops a program the compile that made the map found failed. */
     void drop(ProgramKey key) {
         CgShader program = programs.remove(key);
-        if (program != null) {
-            reads.remove(program);
-            program.delete();
-        }
+        if (program != null) program.delete();
         version++;
     }
 
@@ -303,7 +280,6 @@ final class CgMaterialShaderMap {
     void delete() {
         for (CgShader s : programs.values()) s.delete();
         programs.clear();
-        reads.clear();
         for (CgShader s : pendingVariants.values()) s.delete();
         pendingVariants.clear();
         variantsAhead.clear();
@@ -316,14 +292,11 @@ final class CgMaterialShaderMap {
     private void ensureAutoGen() {
         if (!autoGenSkipped) return;
         autoGenSkipped = false;
-        CgShader depth;
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "material.lateAutoGen")) {
-            depth = autoGenDepth(false);
+            autoGenDepth(false);
         } catch (RuntimeException e) {
             LOGGER.error("'{}' depth auto-gen failed: {}", label, e.getMessage());
-            return;
         }
-        if (depth != null) CgMaterialShader.wire(depth, this);
     }
 
     /** Whether the parse has the pass, or it is the depth pass the compile generated. */
@@ -355,7 +328,7 @@ final class CgMaterialShaderMap {
         pendingVariants.put(key, build(label, sources, key.toString(), true));
     }
 
-    /** A variant's program, linked (waiting for the driver if it must), wired and kept; null, logged, if it failed. */
+    /** A variant's program, compiled (waiting for its compile if it must) and kept; null, logged, if it failed. */
     @Nullable
     private CgShader keep(ProgramKey key, CgShader program) {
         if (!program.isCompiled()) {
@@ -365,7 +338,6 @@ final class CgMaterialShaderMap {
             LOGGER.error("Failed to compile keyword variant for '" + label + "' pass '" + key.passName() + "': " + err);
             return null;
         }
-        CgMaterialShader.wire(program, this);
         programs.put(key, program);
         version++;
         return program;

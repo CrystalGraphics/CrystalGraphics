@@ -107,7 +107,7 @@ Every package guide (`CLAUDE.md`) under `src/main/java/com/crystalgraphics/`. Re
 | Path | What it covers |
 |---|---|
 | `api/shader/CLAUDE.md` | `CgShaderPreprocessor` (#include/pragma-once/cycle detection), the GLSL library |
-| `gl/shader/CLAUDE.md` | `CgShaderFactory`, `StandaloneCgShader` |
+| `gl/shader/CLAUDE.md` | `CgShader`, `CgShaderCompile` |
 
 ### Framebuffers
 | Path | What it covers |
@@ -144,7 +144,7 @@ Every package guide (`CLAUDE.md`) under `src/main/java/com/crystalgraphics/`. Re
 ### GL State
 | Path | What it covers |
 |---|---|
-| `api/state/CLAUDE.md` | `CgRenderState`, `CgDepthState`, `CgBlendState`, `CgCullState`, `CgStencilState`, `CgTextureState` (`CgGlSlot` moved to `platform.gl.state`) |
+| `api/state/CLAUDE.md` | `CgRenderState`, `CgDepthState`, `CgBlendState`, `CgCullState`, `CgStencilState` (`CgGlSlot` moved to `platform.gl.state`) |
 | `gl/state/CLAUDE.md` | Nothing — the package is empty. Kept as a signpost to the state framework in `platform.gl` / `platform.gl.state`, and a record of what was removed |
 
 ### The canvas

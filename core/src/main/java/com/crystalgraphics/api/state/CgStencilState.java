@@ -18,9 +18,6 @@ import com.crystalgraphics.platform.gl.CgGL;
  * {@code passOp} = dppass.</p>
  *
  * <p>{@link #DISABLED} leaves the stencil test off and the write mask fully open (0xFF).</p>
- *
- * <p>{@link #clear()} always disables the stencil test and resets the write mask to 0xFF,
- * ensuring stencil state does not leak between passes.</p>
  */
 @Desugar
 public record CgStencilState(
@@ -68,37 +65,5 @@ public record CgStencilState(
     public static CgStencilState write(int value, int writeMask, boolean depthFailWrites) {
         return new CgStencilState(true, value, 0xFF, writeMask, CgGL.GL_ALWAYS, CgGL.GL_REPLACE, CgGL.GL_KEEP,
                 depthFailWrites ? CgGL.GL_REPLACE : CgGL.GL_KEEP);
-    }
-
-    /**
-     * Applies this stencil state to the current GL context.
-     *
-     * <p>If enabled, calls {@code glEnable(GL_STENCIL_TEST)}, sets the comparison function,
-     * write mask, and stencil operations. If disabled, calls {@code glDisable(GL_STENCIL_TEST)}.</p>
-     */
-    /**
-     * Makes this state current.
-     *
-     * <p>Calls {@code CgGL} directly; {@code CgGL} decides whether each call reaches the driver, so a
-     * repeated apply of the same value costs nothing.</p>
-     */
-    public void apply() {
-        if (!enabled) {
-            CgGL.glDisable(CgGL.GL_STENCIL_TEST);
-            return;
-        }
-        CgGL.glEnable(CgGL.GL_STENCIL_TEST);
-        CgGL.glStencilFunc(compFunc, ref, readMask);
-        CgGL.glStencilMask(writeMask);
-        CgGL.glStencilOp(failOp, zfailOp, passOp);
-    }
-
-    /**
-     * Restores GL stencil defaults: test disabled, write mask 0xFF.
-     * Always resets the write mask so subsequent depth/stencil clears are unobstructed.
-     */
-    public void clear() {
-        CgGL.glDisable(CgGL.GL_STENCIL_TEST);
-        CgGL.glStencilMask(0xFF);
     }
 }

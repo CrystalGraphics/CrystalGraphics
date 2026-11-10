@@ -5,10 +5,8 @@ import com.crystalgraphics.render.draw.CgBoundResources;
 import com.crystalgraphics.api.buffer.CgBufferFormat;
 import com.crystalgraphics.api.buffer.CgBufferLifetime;
 import com.crystalgraphics.api.CgBindingPoints;
-import com.crystalgraphics.gl.shader.CgShader;
 import com.crystalgraphics.gl.buffer.CgStreamBuffer;
 import com.crystalgraphics.gl.buffer.staging.CgBufferWriter;
-import com.crystalgraphics.platform.gl.CgGL;
 
 /**
  * UBO-backed {@link CgShaderBuffer} for a uniform block.
@@ -62,9 +60,9 @@ import com.crystalgraphics.platform.gl.CgGL;
  * (48 bytes, vec4-aligned columns, named write). Always verify the write sequence
  * matches the GLSL layout exactly.</p>
  *
- * <h3>Shader wiring</h3>
- * <p>A program linked through {@code CgGL} is wired by {@link #wireShader(CgShader)}: its block named
- * {@link #getName()} to this buffer's binding point.</p>
+ * <h3>Shader binding</h3>
+ * <p>The material compiler declares its block, named {@link #getName()}, at this buffer's binding: a device
+ * pass's sets read it there.</p>
  */
 public final class CgUniformBuffer extends CgShaderBuffer {
 
@@ -72,8 +70,7 @@ public final class CgUniformBuffer extends CgShaderBuffer {
      * Engine-internal constructor. Creates a format-aware UBO targeting any binding slot,
      * including engine-reserved slots 0–4. User code must use {@link #create} instead.
      *
-     * @param name            the GLSL uniform block name this UBO is wired to (also used
-     *                        by {@link #wireShader(CgShader)} for block index lookup)
+     * @param name            the GLSL uniform block name this UBO is declared as
      * @param format          typed format descriptor (mandatory)
      * @param bindingLocation the GL binding slot to use
      */
@@ -154,28 +151,6 @@ public final class CgUniformBuffer extends CgShaderBuffer {
             CgBoundResources.block(bindingLocation, dataBuffer.gpuBuffer(), dataBuffer.getWriteOffset(), bytes);
         } else {
             CgBoundResources.block(bindingLocation, dataBuffer.gpuBuffer(), 0, 0);
-        }
-    }
-
-    /** Wires {@code shader}'s uniform block {@code name} to {@code binding}, with no buffer object of its own. */
-    public static void wireBlock(CgShader shader, String name, int binding) {
-        int program = shader.getProgram().getId();
-        int index = CgGL.glGetUniformBlockIndex(program, name);
-        if (index != CgGL.GL_INVALID_INDEX) CgGL.glUniformBlockBinding(program, index, binding);
-    }
-
-    /**
-     * Wires the uniform block {@link #getName()} in {@code shader} to this UBO's
-     * {@link #bindingLocation} via {@code glUniformBlockBinding}. No-op if the block is absent.
-     *
-     * @param shader the currently-bound shader program; must not be null
-     */
-    @Override
-    public void wireShader(CgShader shader) {
-        int programId = shader.getProgram().getId();
-        int idx = CgGL.glGetUniformBlockIndex(programId, getName());
-        if (idx != CgGL.GL_INVALID_INDEX) {
-            CgGL.glUniformBlockBinding(programId, idx, bindingLocation);
         }
     }
 }

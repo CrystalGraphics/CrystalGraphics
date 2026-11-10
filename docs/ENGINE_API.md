@@ -845,7 +845,7 @@ CgPixelReadback thumbnails = new CgPixelReadback(3);                            
 | Copies into a texture the frame's queue already uses (a glyph page filling) | at most 0.01 ms a frame, and a transfer copy would need two cross-queue waits |
 | Readback copies, on the frame's queue | at most 0.3 ms a frame, for a debug view |
 | `FRAME` shader buffers | written by the frame that reads them, by definition |
-| A shader variant's compile, at its first draw: 7-110 ms on GL | `render-shader-compile`, proposed. Meanwhile `CgMaterial.precache()` and `CgKernel.precache()` start one early, and a program linked once loads from its kept binary in later launches where the driver gives binaries (`CgProgramBinaryCache`; not macOS, which lists none) |
+| A shader variant's compile, at its first draw: 7-110 ms on GL | `render-shader-compile`, proposed. Meanwhile `CgMaterial.precache()` and `CgKernel.precache()` start one early |
 | Framebuffers and programs: made on the render thread | — |
 
 Measured by: `deferral.apply`, the workers' `upload.lease-copy`, and the GPU zones `upload.deferred` and `upload.meshes`

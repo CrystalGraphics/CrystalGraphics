@@ -202,7 +202,7 @@ program's source hash, so an edited `.shader`, `.glsl` or `.compute` builds its 
 the list is refreshed. Refresh it before a release (`docs/PRECACHE.md` § *The shipped pipeline list*, and
 `docs/CGUI_BUILD.md` § *Releasing* in CrystalGUI); when you change a shipped shader, say so in your report.
 
-**Public API first** — always use the highest abstraction layer available. `CgMaterial.load()` not `CgShaderFactory.fromSource()`; `CgMeshLoader.load()` not `GL15.glGenBuffers()`. Check package guides to find what already exists before writing raw GL.
+**Public API first** — always use the highest abstraction layer available. `CgMaterial.load()` not raw GLSL; `CgMeshLoader.load()` not `GL15.glGenBuffers()`. Check package guides to find what already exists before writing raw GL.
 
 **GL-thread rule** — all GL object creation, upload, and deletion must happen on the GL thread within an active context. This includes: `CgFrameBuffer.create()`, shader compilation. Violations produce silent garbage or driver crashes. **Meshes are data**, built and edited on any thread, and the mesh store places them on the render thread. **Textures are the exception, through `CgDeferral`** (`gpu/`): an object owns one, all its device work goes through it, and where the device may not be driven the work waits for the render thread, before the next frame executes. A new GPU object that must work off the render thread does the same rather than branching on `CgGL.mayIssueGl()` itself.
 

@@ -10,29 +10,10 @@ import java.util.List;
  * Composite render state assembled from typed slots.
  *
  * <p>One {@code CgRenderState} per render layer or material pass. Each slot (blend,
- * depth, cull, stencil, alpha) may be {@code null} — a null slot means the material
- * source did not declare that block, and {@link #apply()} will skip it entirely.
- * Only {@link #DEFAULT} is guaranteed to have every slot populated.</p>
- *
- * <h3>Null-slot semantics</h3>
- * <p>{@code builder().build()} leaves all slots null. The {@link CgRenderStateParser}
- * sets only the slots it finds in source, so a material with no {@code Depth} block
- * produces a state with {@code depth == null} — meaning the depth settings of the
- * prior pass are left unchanged. This prevents the transparent pass from silently
- * overwriting ZWrite / DepthFunc when the material doesn't declare a Depth block.</p>
- *
- * <h3>Apply/Clear Contract</h3>
- * <p>{@link #apply()} applies only the slots that are non-null.</p>
- *
- * <p>{@link #clear()} restores a declared slot by applying its GL-default constant
- * ({@code CgDepthState.GL_DEFAULT}, {@code CgCullState.NONE}, …) rather than calling a
- * {@code clear()} of its own — restoring is just applying a known value, so there is no
- * second code path that can disagree with {@code apply()}. Blend and stencil are reset
- * <em>unconditionally</em> even when undeclared, because both are global GL state that
- * must not leak into the next pass whatever the material said.</p>
- *
- * <p>Every one of these routes through {@code CgGL}, which deduplicates against its
- * shadow, so clearing a slot already at its default costs nothing.</p>
+ * depth, cull, stencil, alpha) may be {@code null}: the material source did not declare
+ * that block, and the pipeline takes the pass's ({@code CgDeviceStates}). So a
+ * transparent pass's depth write stands for a material with no {@code Depth} block.
+ * Only {@link #DEFAULT} has every slot populated.</p>
  *
  * <p>The render state does <strong>not</strong> own shaders or textures — those are
  * the caller's responsibility.</p>
@@ -68,8 +49,7 @@ public final class CgRenderState {
     private CgAlphaState      alpha;
     private List<CgColorMask> colorMasks;
     /**
-     * The blend into colour attachment 1 where it is not {@link #blend}'s: a graded layer's, beside the scene. Device
-     * pipelines only; {@link #apply()} has no blend per attachment.
+     * The blend into colour attachment 1 where it is not {@link #blend}'s: a graded layer's, beside the scene.
      */
     private CgBlendState      secondBlend;
 
@@ -83,41 +63,6 @@ public final class CgRenderState {
         this.colorMasks = new ArrayList<>(b.colorMasks);
     }
 
-    /**
-     * Applies all non-null slots. Null slots are silently skipped — the corresponding
-     * GL state is left as the previous pass left it.
-     */
-    public void apply() {
-        // Each declared domain applies itself through CgGL, which decides whether the call reaches the
-        // driver. Undeclared domains are deliberately left alone — that is what a null slot means, and it
-        // is what stops a transparent pass silently overwriting ZWrite for a material with no Depth block.
-        if (alpha   != null) alpha.apply();
-        if (blend   != null) blend.apply();
-        if (depth   != null) depth.apply();
-        if (cull    != null) cull.apply();
-        if (stencil != null) stencil.apply();
-        for (int i = 0; i < colorMasks.size(); i++) colorMasks.get(i).apply();   // indexed: an iterator a bind
-    }
-
-    /**
-     * Resets the domains this state touches back to GL defaults.
-     *
-     * <p>Used by the batch render layers, which bracket a flush as {@code apply(); flush(); clear();} so a
-     * layer cannot leak state into the next one.</p>
-     */
-    public void clear() {
-        if (alpha != null) CgAlphaState.DISABLED.apply();
-        CgBlendState.DISABLED.apply();                 // always fired, as before
-        if (depth != null) CgDepthState.GL_DEFAULT.apply();
-        if (cull  != null) CgCullState.NONE.apply();
-        CgStencilState.DISABLED.apply();               // always fired, as before
-        if (!colorMasks.isEmpty()) CgColorMask.ALL.apply();
-    }
-
-    /**
-     * Returns a builder with all slots null. Set only the slots needed by the
-     * material; unset slots will be skipped by {@link #apply()}.
-     */
     /** A copy with {@code blend} in place of this state's blend slot. */
     public CgRenderState withBlend(CgBlendState blend) {
         return copy().blend(blend).build();

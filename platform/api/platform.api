@@ -4473,6 +4473,7 @@ com/crystalgraphics/platform/rhi/shader/CgGlslCompiler
   extends java/lang/Object
   method public compileExplicit (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/lang/String;)Lcom/crystalgraphics/platform/rhi/shader/CgGlslCompiler$Explicit;
   method public compileExplicitCompute (Ljava/lang/String;Ljava/lang/String;)Lcom/crystalgraphics/platform/rhi/shader/CgGlslCompiler$ExplicitCompute;
+  method public compilesOnAnyThread ()Z
   method public,abstract compile (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/lang/String;)Lcom/crystalgraphics/platform/rhi/shader/CgGlslCompiler$Program;
   method public,abstract compileCompute (Ljava/lang/String;Ljava/lang/String;)Lcom/crystalgraphics/platform/rhi/shader/CgGlslCompiler$ComputeProgram;
   method public,static get ()Lcom/crystalgraphics/platform/rhi/shader/CgGlslCompiler;
@@ -4619,6 +4620,7 @@ com/crystalgraphics/platform/rhi/shader/CgGlslCompiler$Uniform
 com/crystalgraphics/platform/rhi/shader/CgGlslSources
   access public,final
   extends java/lang/Object
+  method public,static ascii (Ljava/lang/String;)Ljava/lang/String;
   method public,static lineAt (Ljava/lang/String;I)I
   method public,static withDefines (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
   method public,static withoutComments (Ljava/lang/String;)Ljava/lang/String;

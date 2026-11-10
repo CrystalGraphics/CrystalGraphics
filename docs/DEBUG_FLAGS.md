@@ -264,9 +264,7 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 
 | Variable | Takes | Default | |
 |---|---|---|---|
-| `crystalgraphics.shader.binaryCache` | true, false | `true` | Keep linked GL programs' binaries across launches where the driver gives them; false compiles every program from source. |
 | `crystalgraphics.shader.devmode` | true, false | `false` | #line directives around each include in preprocessed shader source, so a compiler's line numbers name the file. Read at launch. |
-| `crystalgraphics.shader.isolatedCompile` | true, false | `true` | Compile programs in a context sharing nothing with the render thread's, each moved over as a binary: NVIDIA holds the render thread's calls while a shared context compiles. Read at launch. |
 | `crystalgraphics.shader.linkWorker` | true, false | `true` | Compile and link programs on a worker thread in a shared GL context; false links on the render thread. Read at launch. |
 | `crystalgraphics.shader.linksInFlight` | 1 to 16 | `4` | Links the worker hands the GL driver at once. Read at launch. |
 | `crystalgraphics.shader.native` | true, false | `false` | Keep a GL-era host's device on the driver's own GLSL compiler: the shader toolchain is never fetched. |

@@ -36,7 +36,6 @@ import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.render.draw.CgDrawChunk;
 import com.crystalgraphics.api.buffer.CgBufferLifetime;
 import com.crystalgraphics.api.mesh.CgMesh;
-import com.crystalgraphics.api.state.CgAlphaState;
 import com.crystalgraphics.api.state.CgColorMask;
 import com.crystalgraphics.api.state.CgStencilState;
 import com.crystalgraphics.api.texture.CgTexture;
@@ -388,9 +387,6 @@ public final class CgExecutor {
         depth++;
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "graph.execute");
              CgGlScope ignored2 = restoreState ? CgGlState.saveAll() : null) {
-            // A compatibility host's fixed-function alpha test discards our fragments too, and only a material
-            // declaring AlphaTest means one: 1.7.10 leaves GREATER 0.1 on, which drops every faint additive draw.
-            if (restoreState) CgAlphaState.DISABLED.apply();
             try {
                 executor.run(frame);
             } finally {
@@ -2479,7 +2475,7 @@ public final class CgExecutor {
             deviceLayoutsOf = Arrays.copyOf(deviceLayoutsOf, n);
         }
         if (deviceLayoutsOf[id] != linked) {
-            deviceLayouts[id] = CgDeviceStates.layout(rhi, linked.explicit(pipeline.toString()));
+            deviceLayouts[id] = CgDeviceStates.layout(rhi, linked.explicit());
             deviceLayoutsOf[id] = linked;
         }
         return deviceLayouts[id];

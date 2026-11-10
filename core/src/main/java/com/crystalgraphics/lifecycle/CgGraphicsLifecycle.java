@@ -46,7 +46,6 @@ import com.crystalgraphics.gl.buffer.CgReadback;
 import com.crystalgraphics.render.CgGpuBudget;
 import com.crystalgraphics.gl.buffer.shader.CgShaderBufferRegistry;
 import com.crystalgraphics.gl.material.CgMaterialShader;
-import com.crystalgraphics.gl.shader.CgLinkWorker;
 import com.crystalgraphics.gl.framebuffer.CgFrameBufferRegistry;
 import com.crystalgraphics.gl.material.CgMaterialShaderRegistry;
 import com.crystalgraphics.render.mesh.CgMeshStore;
@@ -213,12 +212,8 @@ public final class CgGraphicsLifecycle {
             // waits for the whole link (cold vfx-modules 113 s -> 58 s).
             if (CgCapabilities.detect().isParallelShaderCompile()) CgGL.glMaxShaderCompilerThreads(0xFFFFFFFF);
             CgStartSteps.step("capabilities");
-            // Links on a shared context of their own: under a threaded driver, every status query on this one waits for
-            // the compiles queued before it.
-            CgLinkWorker.start();
-            // While links run or the loading screen shows: a check's glGet waits for the driver's queue, deepest then
-            CgCheckedProvider.deferChecksWhile(() -> CgLinkWorker.linking() || CgLoadingScreen.hostDraws());
-            CgStartSteps.step("link worker");
+            // While the loading screen shows: a check's glGet waits for the driver's queue, deepest then
+            CgCheckedProvider.deferChecksWhile(CgLoadingScreen::hostDraws);
             // Before anything queues: a name generated later waits for the driver's queue, deepest while loading
             CgGlNames.fill();
             CgStartSteps.step("names");
@@ -610,9 +605,6 @@ public final class CgGraphicsLifecycle {
         try (CgGlScope ignored = CgGlState.saveAll()) {
             CgEngineLifecycle.contextDestroying();
         }
-        // Every link in flight lands before the sweeps below delete its program.
-        CgLinkWorker.stop();
-
         // Step 1: Meshes: the store's pools and its VAO. Meshes keep their data.
         CgMeshStore.get().releaseAll();
 

@@ -149,7 +149,7 @@ public abstract class CgCheckedProvider extends CgGlGetProvider {
      * start), and a start's first reads fall in its links. Render thread, once.
      *
      * <pre>{@code
-     * CgCheckedProvider.deferChecksWhile(CgLinkWorker::linking);
+     * CgCheckedProvider.deferChecksWhile(CgLoadingScreen::hostDraws);
      * }</pre>
      */
     public static void deferChecksWhile(BooleanSupplier defer) {

@@ -3,11 +3,9 @@ package com.crystalgraphics.gl.buffer.shader;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.platform.gl.CgCapabilities;
-import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.api.buffer.CgBufferFormat;
 import com.crystalgraphics.api.buffer.CgBufferLifetime;
 import com.crystalgraphics.api.buffer.CgObjectBuffer;
-import com.crystalgraphics.gl.shader.CgShader;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.gl.buffer.CgStreamBuffer;
 import com.crystalgraphics.gl.buffer.staging.CgBufferWriter;
@@ -70,13 +68,9 @@ import java.util.function.Consumer;
  * is 0-based; {@link CgBindingPoints} is added internally. Use
  * {@link #createInternal(String, CgBufferFormat, int)} for engine-reserved binding points.</p>
  *
- * <h3>Shader wiring</h3>
- * <p>A program linked through {@code CgGL} is wired to it by {@link #wireShader(CgShader)}:</p>
- * <ul>
- *   <li>SSBO — calls {@code glShaderStorageBlockBinding} to associate the named block with
- *       {@link #bindingLocation}. Post-link wiring; idempotent.</li>
- *   <li>UBO — calls {@code glUniformBlockBinding} to associate block index with slot.</li>
- * </ul>
+ * <h3>Shader binding</h3>
+ * <p>The material compiler declares its block, named {@link #getName()}, at {@link #bindingLocation}'s binding: a
+ * device pass's sets read it there.</p>
  *
  * <h3>SSBO write lifecycle</h3>
  * <pre>{@code
@@ -102,7 +96,7 @@ public abstract class CgShaderBuffer implements CgObjectBuffer {
      * Debug/sampler/block name for this buffer.
      * <ul>
      *   <li>SSBO — debug label, appears in error messages and registry keys.</li>
-     *   <li>UBO — block name used in {@code glGetUniformBlockIndex} during {@link #bind(CgShader)}.</li>
+     *   <li>UBO — the GLSL block name it is declared as.</li>
      * </ul>
      */
     @Getter
@@ -259,16 +253,6 @@ public abstract class CgShaderBuffer implements CgObjectBuffer {
                     + "this context's path is " + path);
         }
         return new CgShaderStorageBuffer(name, format, path, bindingPoint, lifetime);
-    }
-
-    /**
-     * Wires {@code shader}'s storage block named {@code name} to {@code binding}, with no buffer object of its own: for
-     * a block whose buffer is bound per draw by someone else, as the executor binds the object records. The shader is
-     * bound.
-     */
-    public static void wireBlock(CgShader shader, String name, CgBindingPoints.Binding binding) {
-        int index = CgGL.glGetProgramResourceIndex(shader.getProgram().getId(), CgGL.GL_SHADER_STORAGE_BLOCK, name);
-        if (index != CgGL.GL_INVALID_INDEX) CgGL.glShaderStorageBlockBinding(shader.getProgram().getId(), index, binding.ssbo());
     }
 
     /**
@@ -534,25 +518,4 @@ public abstract class CgShaderBuffer implements CgObjectBuffer {
 
 
     // ── Abstract backend contract ─────────────────────────────────────────────
-
-    /**
-     * Wires this buffer to the given shader program WITHOUT establishing the
-     * per-context GL binding. Calls only {@link #wireShader(CgShader)}.
-     *
-     * <p>Use this after each program link to set per-program block/sampler
-     * associations. The per-context binding ({@code glBindBufferBase} /
-     * {@code glActiveTexture+glBindTexture}) is handled separately in
-     * {@link #bind()}, and for a {@link CgBufferLifetime#FRAME} buffer by every upload.</p>
-     *
-     * <p>{@code shader} must not be null and must be the currently-bound program —
-     * the GL program must be active via {@code shader.bind()} before this call,
-     * as GL uniform/block-index queries require the program to be active.</p>
-     *
-     * <p>If this buffer is attached to a {@link CgMaterial},
-     * {@code wireShader} is called automatically on each material compile — do not call
-     * this manually in that case.</p>
-     *
-     * @param shader the currently-bound shader program; must not be null
-     */
-    public abstract void wireShader(CgShader shader);
 }

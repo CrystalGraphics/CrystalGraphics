@@ -527,9 +527,9 @@ public final class CgPipeline {
             CgGraphicsPipelineDesc.Blend own = i == 1 && s.getSecondBlend() != null ? CgDeviceStates.blend(s.getSecondBlend()) : blend;
             targets.add(new CgGraphicsPipelineDesc.ColorTarget(colors.get(i), own, mask));
         }
-        CgGraphicsPipelineDesc desc = new CgGraphicsPipelineDesc(label, CgDeviceStates.layout(rhi, linked.explicit(label)),
-                linked.deviceModule(rhi, CgShaderModule.Stage.VERTEX, glDepth, label),
-                linked.deviceModule(rhi, CgShaderModule.Stage.FRAGMENT, glDepth, label),
+        CgGraphicsPipelineDesc desc = new CgGraphicsPipelineDesc(label, CgDeviceStates.layout(rhi, linked.explicit()),
+                linked.deviceModule(rhi, CgShaderModule.Stage.VERTEX, glDepth),
+                linked.deviceModule(rhi, CgShaderModule.Stage.FRAGMENT, glDepth),
                 List.of(), topology,
                 CgDeviceStates.raster(s.getCull()), CgDeviceStates.depthStencil(s.getDepth(), s.getStencil(), reversed), targets,
                 depth, samples);
@@ -567,9 +567,9 @@ public final class CgPipeline {
         String label = toString();
         CgPipelineCache cache = deviceCache(rhi);
         cache.adopt(cache.startRecorded(linked.deviceKey(), recipe -> recipe.desc(label,
-                CgDeviceStates.layout(rhi, linked.explicit(label)),
-                linked.deviceModule(rhi, CgShaderModule.Stage.VERTEX, !recipe.zeroToOne(), label),
-                linked.deviceModule(rhi, CgShaderModule.Stage.FRAGMENT, false, label))));
+                CgDeviceStates.layout(rhi, linked.explicit()),
+                linked.deviceModule(rhi, CgShaderModule.Stage.VERTEX, !recipe.zeroToOne()),
+                linked.deviceModule(rhi, CgShaderModule.Stage.FRAGMENT, false))));
     }
 
     @Override

@@ -20,7 +20,7 @@ seams are here too — see [UI-facing services](#ui-facing-services).
 | `gl/CgGL` | Final class | The static facade `core/` calls; normalises names and forwards to the backend |
 | `gl/CgGLContext` | Interface | Capability detection, probed once on the GL thread |
 | `gl/CgCapabilities` | Class | The immutable capability snapshot built from the context |
-| `gl/CgGlProgramNames` | Class | Each program's uniform locations and block indices, read by the link worker where it linked the program, so `CgGL`'s name queries never wait on a threaded driver from the render thread |
+| `gl/CgGlProgramNames` | Class | `CgGL`'s cache of program uniform locations and block indices; nothing fills it since programs are device pipelines, and it goes with `CgGL` (H7 step 8) |
 | `gl/CgGlStateManager`, `gl/state/*` | — | `CgGL`'s state shadow, scopes and providers (`core/.../gl/state/CLAUDE.md`); and the GL device's: `GLContextState` (Unreal's context state), `GLStateFilter` (its driver over the raw one, dropping a call setting what the context has), `GLHostState` (what a host sharing the context believes, read at `fromHost`, set back at `toHost`) |
 | `gl/CENSUS.md` | Generated | Every `CgGLBackend` method and who reaches it; `python platform/tools/gl_census.py` |
 | `gl/tracked/CgTrackedGLBackend`, `CgTrackedGLContext`, `CgTrackedStateProvider` | Classes | `CgGLBackend` over a `CgRHI` — [the tracked backend](#the-tracked-backend-and-the-device-d3) — its capabilities, and the scopes' state provider on it |
