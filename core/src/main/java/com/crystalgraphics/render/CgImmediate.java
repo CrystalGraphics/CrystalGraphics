@@ -49,7 +49,7 @@ import java.util.List;
  * try (CgImmediate.Compute run = CgImmediate.compute("bake")) {
  *     run.dispatch(bake, count).bind("CELLS", cells);
  * }                                  // executed: barriers derived as in a graph, GL state restored
- * CgGL.cgBufferBarrier(glBuffer, CgAccess.COMPUTE_WRITE, CgAccess.VERTEX_READ);   // a reader outside the graph
+ * list.bufferBarrier(buffer, CgAccess.COMPUTE_WRITE, CgAccess.VERTEX_READ);   // a reader outside the graph
  * }</pre>
  *
  * <ul>

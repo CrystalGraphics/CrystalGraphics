@@ -2222,7 +2222,7 @@ public final class CgExecutor {
                 : storage.getFormat().hasDepth() ? deviceTexture(storage, -1) : null;
         boolean clearDepth = depthTexture != null && (load.mask() & CgGL.GL_DEPTH_BUFFER_BIT) != 0;
         boolean clearStencil = depthTexture != null && (load.mask() & CgGL.GL_STENCIL_BUFFER_BIT) != 0;
-        // Mirrored as CgGL.glClearDepth mirrors it: a load's depth is GL's convention, far at 1
+        // A load's depth is GL's convention, far at 1: mirrored for a host whose depth runs far to near
         float clearDepthValue = (float) (CgGL.isDepthReversed() ? 1.0 - load.depth() : load.depth());
         if (depthTexture != null) {
             int depthLayer = depthTexture == hostDepth ? 0 : pass.layer;
