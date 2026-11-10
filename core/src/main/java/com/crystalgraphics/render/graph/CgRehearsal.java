@@ -1,7 +1,6 @@
 package com.crystalgraphics.render.graph;
 
-import com.crystalgraphics.platform.gl.CgGL;
-import com.crystalgraphics.platform.gl.state.CgGlState;
+import com.crystalgraphics.platform.rhi.CgDeviceSection;
 import com.crystalgraphics.render.CgWarmBudget;
 import com.crystalgraphics.trace.CgGpuTrace;
 import com.crystalgraphics.variable.CgVar;
@@ -168,8 +167,7 @@ public final class CgRehearsal {
 
     private void pass() {
         // A host section of its own, as a stage's firing is: it runs between the host's frames.
-        if (!CgGL.inHostSection()) CgGlState.invalidateAllIfPresent();
-        CgGL.fromHost();
+        CgDeviceSection.begin();
         active = true;
         try {
             CgGpuTrace.begin(GPU_NAME);
@@ -183,7 +181,7 @@ public final class CgRehearsal {
             active = false;
             graph.clear();
             recording.reset();
-            CgGL.toHost();
+            CgDeviceSection.end();
         }
         passes++;
     }

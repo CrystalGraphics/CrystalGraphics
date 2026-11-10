@@ -1,5 +1,6 @@
 package com.crystalgraphics.vfx;
 
+import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgMaterialDefinition;
 import com.crystalgraphics.api.mesh.CgMesh;
@@ -14,7 +15,6 @@ import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.gl.texture.CgTexture2D;
 import com.crystalgraphics.job.CgJob;
 import com.crystalgraphics.gl.material.CgMaterialShader;
-import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.render.CgWarmBudget;
 import com.crystalgraphics.frame.CgWorld;
 import com.crystalgraphics.render.graph.CgRehearsal;
@@ -1452,7 +1452,7 @@ public final class CgVfxSystem {
         if (effect.activated) return true;
         CgVfxLook look = effect.look();
         // A server's copy, or a system with no GL on its thread (a test), has no kernels to wait for.
-        if (!effect.authoritative() && CgGL.mayIssueGl() && !readyLooks.contains(look)) {
+        if (!effect.authoritative() && CgRHI.onDeviceThread() && !readyLooks.contains(look)) {
             CgPipelinePrecache.Request kernels = lookKernels.computeIfAbsent(look, l -> CgPipelinePrecache.request(p -> {
                 try {
                     p.kernels(() -> precacheKernels(l));

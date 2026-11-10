@@ -21,8 +21,6 @@ import com.crystalgraphics.gl.framebuffer.CgFrameBuffer;
 import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.compute.CgCheckBuffers;
 import com.crystalgraphics.platform.gl.CgGL;
-import com.crystalgraphics.platform.gl.state.CgGlScope;
-import com.crystalgraphics.platform.gl.state.CgGlState;
 import com.crystalgraphics.render.CgImmediate;
 import com.crystalgraphics.render.graph.CgComputePass;
 import com.crystalgraphics.render.graph.CgGraphBuffer;
@@ -131,43 +129,41 @@ public final class CgGpuOpsCheck {
 
     /** {@link #run()}, reading through {@code reads}. */
     public static Result run(CgReplayedReads reads) {
-        try (CgGlScope ignored = CgGlState.saveAll()) {
-            List<String> failures = new ArrayList<>();
-            List<Case> cases = new ArrayList<>();
-            for (int n : COUNTS) {
-                cases.add(new Case("fixed " + n, n, n, -1));
-                cases.add(new Case("gpu " + n, n, n + 37, n));
-            }
-            cases.add(new Case("gpu clamped", 300, 300, 350));
-            List<ImageCase> images = new ArrayList<>();
-            for (CgTextureType type : CgGpuOps.IMAGE_TYPES) for (int[] size : IMAGE_SIZES) images.add(new ImageCase(type, size[0], size[1]));
-            CgCompute check = CgCompute.load(PATH);
-            int drawn = buffer(DRAWN * 4);
-            try {
-                CgRecording rec = new CgRecording();
-                CgComputePass pass = rec.compute("ops-check");
-                for (Case c : cases) c.record(pass);
-                for (ImageCase c : images) c.record(pass);
-                pass.dispatch(check.kernel("Rng"), DRAWN).bind("DRAWN", CgGraphBuffer.imported("drawn", drawn, DRAWN * 16L))
-                        .set("_Seed", SEED);
-                pass.end();
-                CgImmediate.execute(rec);
-
-                for (Case c : cases) c.expect(failures, reads);
-                for (ImageCase c : images) c.expect(failures, reads);
-                int[] r = new int[4], want = new int[DRAWN * 4];
-                for (int e = 0; e < DRAWN; e++) {
-                    CgRng.rng4(SEED, e, 3, 1, r);
-                    System.arraycopy(r, 0, want, e * 4, 4);
-                }
-                expectWords(failures, "rng", reads.words(drawn, DRAWN * 4), want);
-            } finally {
-                CgCheckBuffers.release(drawn);
-                for (Case c : cases) c.delete();
-                for (ImageCase c : images) c.delete();
-            }
-            return new Result(CgCapabilities.detect().computeTier().name(), List.copyOf(failures));
+        List<String> failures = new ArrayList<>();
+        List<Case> cases = new ArrayList<>();
+        for (int n : COUNTS) {
+            cases.add(new Case("fixed " + n, n, n, -1));
+            cases.add(new Case("gpu " + n, n, n + 37, n));
         }
+        cases.add(new Case("gpu clamped", 300, 300, 350));
+        List<ImageCase> images = new ArrayList<>();
+        for (CgTextureType type : CgGpuOps.IMAGE_TYPES) for (int[] size : IMAGE_SIZES) images.add(new ImageCase(type, size[0], size[1]));
+        CgCompute check = CgCompute.load(PATH);
+        int drawn = buffer(DRAWN * 4);
+        try {
+            CgRecording rec = new CgRecording();
+            CgComputePass pass = rec.compute("ops-check");
+            for (Case c : cases) c.record(pass);
+            for (ImageCase c : images) c.record(pass);
+            pass.dispatch(check.kernel("Rng"), DRAWN).bind("DRAWN", CgGraphBuffer.imported("drawn", drawn, DRAWN * 16L))
+                    .set("_Seed", SEED);
+            pass.end();
+            CgImmediate.execute(rec);
+
+            for (Case c : cases) c.expect(failures, reads);
+            for (ImageCase c : images) c.expect(failures, reads);
+            int[] r = new int[4], want = new int[DRAWN * 4];
+            for (int e = 0; e < DRAWN; e++) {
+                CgRng.rng4(SEED, e, 3, 1, r);
+                System.arraycopy(r, 0, want, e * 4, 4);
+            }
+            expectWords(failures, "rng", reads.words(drawn, DRAWN * 4), want);
+        } finally {
+            CgCheckBuffers.release(drawn);
+            for (Case c : cases) c.delete();
+            for (ImageCase c : images) c.delete();
+        }
+        return new Result(CgCapabilities.detect().computeTier().name(), List.copyOf(failures));
     }
 
     /** One count: its inputs, every op's output buffer, and what each must hold. */

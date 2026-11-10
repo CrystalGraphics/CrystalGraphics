@@ -42,16 +42,16 @@ before the level renders, so anything painted from a GUI hook lands under the wo
 ## 26.1+: the main target, and 26.2 under Vulkan
 
 - **Our own framebuffer over Minecraft's main target.** 26.1 made `GlDevice` package-private and 26.2
-  dropped `GlTexture.getFbo`, so `LifecycleModern.bindMainTarget` builds one FBO through `CgGL`, attached
+  dropped `GlTexture.getFbo`, so `LifecycleModern.bindMainTarget` builds one FBO with DSA (under the tracked backend's names on Vulkan), attached
   as Minecraft's `FrameBufferCache` attaches it (colour and depth, level 0), keyed on the two texture
   ids and deleted on teardown. The main target is `mc.getMainRenderTarget()` on 26.1 and
   `mc.gameRenderer.mainRenderTarget()` on 26.2.
 - **Reversed-Z on 26.2, on OpenGL too.** Minecraft 26.2 sets clip control to `ZERO_TO_ONE` once at
   device init, swaps near and far in its projection, clears depth to 0 and tests `GREATER_THAN_OR_EQUAL`.
-  The world passes run with `CgGL.setDepthReversed(true)`, which mirrors every compare function and clear
-  value a caller writes (`LifecycleModern.worldDepth`), so no material changes. Our own drawing -- the
-  CrystalGUI desktop and shader-graph previews -- runs between `OwnDepthConvention.enter()` and `leave()`,
-  which put GL's default clip range and a clear depth of 1.0 back for its duration. `cg_DepthBuffer` holds
+  The world passes run with `CgGraphicsLifecycle.hostDepth(true, ...)`, under which every pipeline into the host's
+  depth mirrors its compare and every clear its value (`LifecycleModern.worldDepth`), so no material changes. Our own
+  drawing -- the CrystalGUI desktop and shader-graph previews -- is unaffected: the device sets its own clip range in
+  each section and puts Minecraft's back (`HostStateModern`). `cg_DepthBuffer` holds
   reversed values there, so a shader comparing against it is wrong on 26.2; polygon offset pulls the other
   way. Every piece is a no-op below 26.2.
 - **Vulkan.** 26.2 can run Blaze3D on Vulkan, and then `CgGL` runs on the tracked backend over a
@@ -61,7 +61,7 @@ before the level renders, so anything painted from a GUI hook lands under the wo
   buffers of its own from Blaze3D's per-submit pool and hands them to Minecraft's submit at `toHost`;
   `bindMainTarget` imports the main target's images, which our passes leave in `GENERAL`; the frame closes
   in `FrameHooks.endFrame`, before Minecraft's submit. The GL-only repairs stand aside: Blaze3D's texture
-  units, `HostStateVerifier`, `OwnDepthConvention`'s clip control, `HostGlHandoff.leave`.
+  units, `HostStateVerifier`, `HostStateModern`.
   `LifecycleModern.canRender()` stands the engine down (`CgGraphicsLifecycle.standDown`) only when the
   hosted device cannot be built, with the cause in the log; on GL it asks GLFW for a current context, and
   from 26.3, which has no GLFW, takes a device that is not Vulkan as GL. 26.3 under Vulkan stands down for

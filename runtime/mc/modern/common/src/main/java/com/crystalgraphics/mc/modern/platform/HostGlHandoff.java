@@ -2,9 +2,9 @@ package com.crystalgraphics.mc.modern.platform;
 
 import com.crystalgraphics.lifecycle.CgGraphicsLifecycle;
 import com.crystalgraphics.lifecycle.CgEngineLifecycle;
-import com.crystalgraphics.platform.gl.CgGL;
-import com.crystalgraphics.platform.gl.state.CgGlState;
+import com.crystalgraphics.platform.rhi.CgDeviceSection;
 import com.crystalgraphics.platform.service.CgHostPaint;
+import com.crystalgraphics.render.graph.CgExecutor;
 import net.minecraft.client.Minecraft;
 
 
@@ -17,9 +17,8 @@ import net.minecraft.client.Minecraft;
  * try { paint(); } finally { CgHostPaint.leave(); }
  * }</pre>
  *
- * <p>There are two state shadows here, each blind to the other: CrystalGraphics' {@code CgGlState} and Blaze3D's
- * {@code GlStateManager}. {@link #enter()} drops ours on the way in; the host section's close puts Minecraft's back on
- * the way out.</p>
+ * <p>{@link #enter()} opens a host section, which reads Blaze3D's {@code GlStateManager} and sets it back at
+ * {@link #leave()} ({@code HostStateModern}), and names the main target as what the paint draws into.</p>
  */
 public final class HostGlHandoff {
 
@@ -50,29 +49,23 @@ public final class HostGlHandoff {
         if (width > 0 && height > 0) CgEngineLifecycle.ensureGraphicsContext(width, height);
     }
 
-    /**
-     * Minecraft writes GL state behind CrystalGraphics' back every frame, so our shadow must be dropped
-     * before we paint or each stale field is a bind we skip. Cheap: it drops trust, it does not read the
-     * driver.
-     */
+    /** What the open paint draws into: Minecraft's main target. */
+    private static CgExecutor.Into into;
+
+    /** Takes the frame for a paint, its current target the main target. */
     static void enter() {
-        CgGL.fromHost();
-        CgGlState.invalidateAllIfPresent();
-        // Bound, not assumed: below 1.21.5 the shadow answers "the main target" unasked, so a framebuffer left
-        // bound since Minecraft's last bindWrite turns our bind of the main target into an elided one, and
-        // the paint lands there unseen. From 1.21.5 Minecraft binds one only inside its own passes.
-        LifecycleModern.bindMainTarget(Minecraft.getInstance());
-        // 26.2's world is reversed-Z with a 0..1 clip range; the desktop and its previews are not.
-        OwnDepthConvention.enter();
+        CgDeviceSection.begin();
+        Minecraft mc = Minecraft.getInstance();
+        into = CgExecutor.into(LifecycleModern.bindMainTarget(mc), Windows.of(mc).getWidth(), Windows.of(mc).getHeight());
     }
 
-    /**
-     * Hands Minecraft back its frame. The section's close sets every domain Blaze3D's cache keeps back to its belief
-     * ({@code HostStateModern.sectionSlots()}): the active unit and each unit's binding among them, which Minecraft
-     * would otherwise skip binding over ours and present its framebuffer sampling our texture.
-     */
+    /** Hands Minecraft back its frame, as it believes it left it. */
     static void leave() {
-        OwnDepthConvention.leave();
-        CgGL.toHost();
+        try {
+            if (into != null) into.close();
+        } finally {
+            into = null;
+            CgDeviceSection.end();
+        }
     }
 }

@@ -1,9 +1,9 @@
 package com.crystalgraphics.render.stage;
 
+import com.crystalgraphics.lifecycle.CgGraphicsLifecycle;
 import com.crystalgraphics.compute.ops.CgGpuOps;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.gl.framebuffer.CgFrameBuffer;
-import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.render.CgFrameClock;
 import com.crystalgraphics.render.draw.CgOrder;
 import com.crystalgraphics.render.draw.CgPassConstants;
@@ -168,7 +168,7 @@ public final class CgStageFrame {
     public CgPassConstants defaults(CgPassConstants constants) {
         constants.time(CgFrameClock.seconds())
                 .resolution(host.width(), host.height())
-                .depth(CgGL.isDepthReversed(), CgGL.isDepthZeroToOne())
+                .depth(CgGraphicsLifecycle.hostDepthReversed(), CgGraphicsLifecycle.hostDepthZeroToOne())
                 .linearScene(target != null);
         return CgWorldAtmosphere.apply(host.environment(), constants);
     }

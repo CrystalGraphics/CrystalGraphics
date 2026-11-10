@@ -2,7 +2,6 @@ package com.crystalgraphics.platform.gl.tracked;
 
 import com.crystalgraphics.platform.gl.state.CgGlState;
 import com.crystalgraphics.platform.gl.CgGLImports;
-import com.crystalgraphics.platform.rhi.CgDeviceSection;
 import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.rhi.command.CgAccess;
 import com.crystalgraphics.platform.rhi.pipeline.CgComputePipeline;
@@ -157,8 +156,8 @@ public final class CgTrackedGLBackend extends CgGLBackend {
 
     /**
      * Makes this the process's device front, whole (Unreal's {@code RHIInit}, one place): its device as {@link CgRHI},
-     * device sections as this backend's {@link #toHost}/{@link #fromHost}, its compiler, its names as RHI resources
-     * ({@link CgTrackedImports}) and its state as {@code CgGlState}'s. A host installs nothing of these itself.
+     * its compiler, its names as RHI resources ({@link CgTrackedImports}) and its state as {@code CgGlState}'s. A host
+     * installs nothing of these itself.
      *
      * <pre>{@code
      * CgTrackedGLBackend gl = new CgTrackedGLBackend(device, compiler, false).compileInBackground().install();
@@ -167,12 +166,6 @@ public final class CgTrackedGLBackend extends CgGLBackend {
      */
     public CgTrackedGLBackend install() {
         CgRHI.install(device);
-        // Not a host section: ending one per section handed the host a command buffer per graph pass
-        CgDeviceSection.install(new CgDeviceSection.Host() {
-            @Override public void begin() { tracker.toDevice(); }
-
-            @Override public void end() {}
-        });
         CgGlslCompiler.install(compiler);
         CgGLImports.install(new CgTrackedImports(this));
         CgGlState.setProvider(new CgTrackedStateProvider(this));

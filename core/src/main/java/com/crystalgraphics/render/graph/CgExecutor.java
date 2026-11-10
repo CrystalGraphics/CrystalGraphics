@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.graph;
 
+import com.crystalgraphics.lifecycle.CgGraphicsLifecycle;
 import com.crystalgraphics.platform.rhi.memory.CgTransientMemory;
 import com.crystalgraphics.platform.rhi.resource.CgTextureRegion;
 import com.crystalgraphics.platform.rhi.resource.CgGpuSampler;
@@ -58,9 +59,6 @@ import com.crystalgraphics.platform.rhi.command.CgAccess;
 import com.crystalgraphics.platform.gl.CgCapabilities.ComputeTier;
 import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.platform.gl.CgGL;
-import com.crystalgraphics.platform.gl.state.CgGlScope;
-import com.crystalgraphics.platform.gl.state.CgGlSlot;
-import com.crystalgraphics.platform.gl.state.CgGlState;
 import com.crystalgraphics.render.CgCpuMeter;
 import com.crystalgraphics.render.CgGpuBudget;
 import com.crystalgraphics.render.draw.CgBufferHandle;
@@ -344,16 +342,8 @@ public final class CgExecutor {
                 CgBindingPoints.OBJECT_IDS, CgBufferLifetime.RETAINED);
     }
 
-    /** Executes {@code frame} and restores GL state after. Render thread, inside a frame. */
+    /** Executes {@code frame}. Render thread, inside a frame. */
     public static void execute(CgFrame frame) {
-        execute(frame, true);
-    }
-
-    /**
-     * Executes {@code frame}; without {@code restoreState}, the state its last pass set is left bound, as an
-     * immediate draw always left it. Render thread, inside a frame.
-     */
-    public static void execute(CgFrame frame, boolean restoreState) {
         if (!drawsOnDevice()) {
             refuse(frame);
             return;
@@ -387,8 +377,7 @@ public final class CgExecutor {
         if (BY_DEPTH.size() == depth) BY_DEPTH.add(new CgExecutor(depth));
         CgExecutor executor = BY_DEPTH.get(depth);
         depth++;
-        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "graph.execute");
-             CgGlScope ignored2 = restoreState ? CgGlState.saveAll() : null) {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "graph.execute")) {
             CgTargetCopy.Sources was = CgTargetCopy.sources;
             CgTargetCopy.sources = executor.copySources;
             try {
@@ -419,7 +408,7 @@ public final class CgExecutor {
         frame.keepRequested = keepRequested;
         frame.wholePasses = !keepRequested;
         try {
-            execute(frame, true);
+            execute(frame);
         } finally {
             frame.keepRequested = false;
             frame.wholePasses = false;
@@ -462,14 +451,16 @@ public final class CgExecutor {
         return REFUSED_HOSTS.contains(framebuffer);
     }
 
-    /** What executions take as their current target while it is open ({@link #into}); null for the host's bound one. */
+    /** The current targets {@link #into} opened, innermost last; reused, so opening one allocates nothing. */
+    private static final Into[] INTO = new Into[8];
+    private static int intoDepth;
+    /** What executions take as their current target while it is open ({@link #into}); null where none is. */
     @Nullable
     private static Into current;
 
     /**
-     * Makes {@code target} the current target of every execution until it closes, in place of the host's bound
-     * framebuffer: a stage fired into a framebuffer of ours, a loading view drawn into one. Nothing is bound. Render
-     * thread.
+     * Makes {@code target} the current target of every execution until it closes: a stage fired into a framebuffer of
+     * ours, a loading view drawn into one. Nothing is bound. Render thread.
      *
      * <pre>{@code
      * try (CgExecutor.Into ignored = CgExecutor.into(target)) {
@@ -478,47 +469,78 @@ public final class CgExecutor {
      * }</pre>
      *
      * <ul>
-     *   <li>They nest; close them in reverse.</li>
+     *   <li>They nest; close them in reverse, through try-with-resources: one is reused once closed, so never keep it.</li>
+     *   <li>An execution drawing into the current target with none open throws.</li>
      * </ul>
      */
     public static Into into(CgFrameBuffer target) {
         return into(target.getId(), target.getWidth(), target.getHeight(), target.rhiColor(0), target.rhiDepth());
     }
 
+    /**
+     * {@link #into(CgFrameBuffer)} for a host's framebuffer by its name, {@code width} x {@code height}: where a host's
+     * hook draws (Minecraft's main target), its colour and depth imported once, here. Framebuffer 0 is the window's.
+     *
+     * <pre>{@code
+     * try (CgExecutor.Into ignored = CgExecutor.into(mainFbo, width, height)) {
+     *     CgImmediate.flush(chunk, CgOrder.SORTED);
+     * }
+     * }</pre>
+     */
+    public static Into into(int framebuffer, int width, int height) {
+        CgTextureView color = CgFrameBuffer.attachment(framebuffer, false, width, height);
+        CgTextureView depth = CgFrameBuffer.attachment(framebuffer, true, width, height);
+        return into(framebuffer, width, height, color == null ? null : color.texture(), depth == null ? null : depth.texture());
+    }
+
+    /** Whether a current target is open: a host's hook names one before anything draws. */
+    public static boolean hasCurrentTarget() {
+        return current != null;
+    }
+
     private static Into into(int id, int width, int height, @Nullable CgGpuTexture color, @Nullable CgGpuTexture depth) {
-        Into into = new Into(id, width, height, color, depth, current);
+        if (intoDepth == INTO.length) throw new IllegalStateException("current targets nest deeper than " + INTO.length);
+        Into into = INTO[intoDepth];
+        if (into == null) into = INTO[intoDepth] = new Into(intoDepth);
+        into.open(id, width, height, color, depth);
+        intoDepth++;
         current = into;
         return into;
     }
 
     /** A current target {@link #into} named; closing it puts back the one before. */
     public static final class Into implements AutoCloseable {
-        final int id, width, height;
+        private final int level;
+        int id, width, height;
         @Nullable
-        final CgGpuTexture color, depth;
-        @Nullable
-        private final Into previous;
-        private boolean closed;
+        CgGpuTexture color, depth;
+        private boolean open;
 
-        private Into(int id, int width, int height, @Nullable CgGpuTexture color, @Nullable CgGpuTexture depth,
-                     @Nullable Into previous) {
+        private Into(int level) {
+            this.level = level;
+        }
+
+        private void open(int id, int width, int height, @Nullable CgGpuTexture color, @Nullable CgGpuTexture depth) {
             this.id = id;
             this.width = width;
             this.height = height;
             this.color = color;
             this.depth = depth;
-            this.previous = previous;
+            open = true;
         }
 
         @Override
         public void close() {
-            if (closed) return;
-            closed = true;
-            current = previous;
+            if (!open) return;
+            if (level != intoDepth - 1) throw new IllegalStateException("a current target closed out of order");
+            open = false;
+            color = depth = null;
+            intoDepth--;
+            current = intoDepth == 0 ? null : INTO[intoDepth - 1];
         }
     }
 
-    /** The host's targets are read again at their next composed bind: at a window resize, which may remake them. */
+    /** The host's targets are imported afresh: at a window resize, which may remake them. */
     public static void forgetHostTargets() {
         if (CgGLImports.installed()) CgGLImports.get().forgetAttachments();
     }
@@ -573,15 +595,17 @@ public final class CgExecutor {
         splitCount = 0;
         runStart = runEnd = -1;
         multiDraw = caps.multiDraw() && CgMeshStore.get().multiDraw();
-        // The current target: the one the engine named ({@link #into}), else the host's bound one, from the state shadow,
-        // since a glGet waits for the driver to drain the queue.
+        // The current target: the one the host's hook or the engine named (into)
         startInto = current;
         if (startInto != null) {
             startFramebuffer = startInto.id;
             startViewport.put(0, 0).put(1, 0).put(2, startInto.width).put(3, startInto.height);
-        } else if (takes || frame.readsCurrentDepth || frame.rastersCurrent) {
-            startFramebuffer = CgGlState.drawFramebuffer();
-            CgGlState.viewport(startViewport);
+        } else if (frame.readsCurrentDepth || frame.rastersCurrent) {
+            throw new IllegalStateException("an execution draws into the current target with none named: open"
+                    + " CgExecutor.into round it");
+        } else {
+            startFramebuffer = 0;
+            startViewport.put(0, 0).put(1, 0).put(2, 0).put(3, 0);
         }
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, UPLOADS)) {
             frame.bindings.upload(ring);
@@ -2071,19 +2095,8 @@ public final class CgExecutor {
             DEVICE_BATCHES = CgTrace.name("graph.device.batches"), DEVICE_END = CgTrace.name("graph.device.end");
 
     private void importHost() {
-        if (startInto != null) {
-            hostColor = startInto.color;
-            hostDepth = startInto.depth;
-            return;
-        }
-        int host = startFramebuffer, width = startViewport.get(2), height = startViewport.get(3);
-        // Framebuffer 0 is Unreal's back buffer: the window's own buffers on GL, the surface on a device presenting one
-        hostColor = texture(CgFrameBuffer.attachment(host, false, width, height));
-        hostDepth = texture(CgFrameBuffer.attachment(host, true, width, height));
-    }
-
-    private static CgGpuTexture texture(@Nullable CgTextureView view) {
-        return view == null ? null : view.texture();
+        hostColor = startInto == null ? null : startInto.color;
+        hostDepth = startInto == null ? null : startInto.depth;
     }
 
     /**
@@ -2223,7 +2236,7 @@ public final class CgExecutor {
         boolean clearDepth = depthTexture != null && (load.mask() & CgGL.GL_DEPTH_BUFFER_BIT) != 0;
         boolean clearStencil = depthTexture != null && (load.mask() & CgGL.GL_STENCIL_BUFFER_BIT) != 0;
         // A load's depth is GL's convention, far at 1: mirrored for a host whose depth runs far to near
-        float clearDepthValue = (float) (CgGL.isDepthReversed() ? 1.0 - load.depth() : load.depth());
+        float clearDepthValue = (float) (CgGraphicsLifecycle.hostDepthReversed() ? 1.0 - load.depth() : load.depth());
         if (depthTexture != null) {
             int depthLayer = depthTexture == hostDepth ? 0 : pass.layer;
             // Under damage loaded and cleared over the damage alone, as colour is
@@ -2406,8 +2419,8 @@ public final class CgExecutor {
             }
             CgMesh mesh = mesh(packed, b);
             CgGraphicsPipeline device = linked == null ? null
-                    : pipeline.device(passState, CgMeshStore.topology(mesh), !CgGL.isDepthZeroToOne(),
-                            CgGL.isDepthReversed(), deviceFormats, depthFormat, samples);
+                    : pipeline.device(passState, CgMeshStore.topology(mesh), !CgGraphicsLifecycle.hostDepthZeroToOne(),
+                            CgGraphicsLifecycle.hostDepthReversed(), deviceFormats, depthFormat, samples);
             if (device == null) {
                 if (loggedOnce.add("skipped " + pipeline)) {
                     LOGGER.warn("device raster: {} skipped in {}: {}", pipeline, pass.name(),

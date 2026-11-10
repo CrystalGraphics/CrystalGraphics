@@ -1,5 +1,6 @@
 package com.crystalgraphics.vfx.particle.gpu.sim;
 
+import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.render.world.CgWorldEntityBoxes;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.form.CgVfxCurveBlock;
@@ -10,7 +11,6 @@ import com.crystalgraphics.compute.CgCompute;
 import com.crystalgraphics.compute.CgKernel;
 import com.crystalgraphics.compute.ops.CgGpuCount;
 import com.crystalgraphics.compute.ops.CgGpuOps;
-import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.lifecycle.CgLifecycleListener;
 import com.crystalgraphics.render.graph.CgBufferDesc;
@@ -894,7 +894,7 @@ public final class CgVfxParticlePool {
      * shape's precache once, and started if nothing has. Render thread.
      */
     private boolean kernelsReady() {
-        if (kernelsReady || steps == 0 || openSlots == 0 || !CgGL.mayIssueGl()) return true;
+        if (kernelsReady || steps == 0 || openSlots == 0 || !CgRHI.onDeviceThread()) return true;
         if (kernels == null) kernels = CgKernel.collect(() -> precache(shape));
         for (int i = 0; i < kernels.size(); i++) if (!kernels.get(i).isReady()) return false;
         kernelsReady = true;

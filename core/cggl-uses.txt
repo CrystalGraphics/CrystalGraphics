@@ -1,6 +1,5 @@
 # Files allowed to name CgGL or org.lwjgl.opengl: shrinks only (rhi.md §2.12). Regenerate:
 #   python plan/crystalgraphics/rhi/steps/cggl_ledger.py . --write
-com/crystalgraphics/api/framebuffer/CgFrameBufferFormat.java
 com/crystalgraphics/api/material/CgBlendMode.java
 com/crystalgraphics/api/material/CgMaterialRegistry.java
 com/crystalgraphics/api/state/CgAlphaState.java
@@ -23,11 +22,7 @@ com/crystalgraphics/gl/material/parse/CgShaderParser.java
 com/crystalgraphics/gl/texture/CgFallbackTextures.java
 com/crystalgraphics/gl/texture/CgTexture2D.java
 com/crystalgraphics/gl/texture/CgTextureCubemap.java
-com/crystalgraphics/gpu/CgDeferral.java
-com/crystalgraphics/gpu/CgUploads.java
-com/crystalgraphics/lifecycle/CgEngineLifecycle.java
 com/crystalgraphics/lifecycle/CgGraphicsLifecycle.java
-com/crystalgraphics/loading/CgLoadingScreen.java
 com/crystalgraphics/noise/CgNoiseVolumes.java
 com/crystalgraphics/noise/CgWaveletNoise.java
 com/crystalgraphics/render/graph/CgDispatch.java
@@ -35,20 +30,14 @@ com/crystalgraphics/render/graph/CgExecutor.java
 com/crystalgraphics/render/graph/CgFrameBuilder.java
 com/crystalgraphics/render/graph/CgLoad.java
 com/crystalgraphics/render/graph/CgRasterPass.java
-com/crystalgraphics/render/graph/CgRehearsal.java
 com/crystalgraphics/render/graph/CgTargetCopy.java
 com/crystalgraphics/render/stage/CgHostTextures.java
-com/crystalgraphics/render/stage/CgRenderStage.java
-com/crystalgraphics/render/stage/CgStageFrame.java
 com/crystalgraphics/render/world/CgWorldDistortion.java
 com/crystalgraphics/render/world/CgWorldRenderer.java
 com/crystalgraphics/text/atlas/CgGlyphAtlasPage.java
-com/crystalgraphics/vfx/CgVfx.java
 com/crystalgraphics/vfx/CgVfxFrame.java
-com/crystalgraphics/vfx/CgVfxSystem.java
 com/crystalgraphics/vfx/fluid/CgVfxColormap.java
 com/crystalgraphics/vfx/look/CgVfxFlipbook.java
 com/crystalgraphics/vfx/particle/CgVfxField.java
-com/crystalgraphics/vfx/particle/gpu/sim/CgVfxParticlePool.java
 com/crystalgraphics/vfx/particle/gpu/sim/CgVfxShape.java
 com/crystalgraphics/vfx/path/CgVfxPathTexture.java

@@ -481,7 +481,7 @@ public final class CgTexture2D extends CgTextureAbstract {
         checkUsable();
         checkOwned();
         // Before any probe, off the render thread, the answer is unknown: decoding draws the same, only larger.
-        CgCapabilities caps = CgGL.mayIssueGl() ? CgCapabilities.detect() : CgCapabilities.detected();
+        CgCapabilities caps = CgRHI.onDeviceThread() ? CgCapabilities.detect() : CgCapabilities.detected();
         boolean blocks = caps != null && caps.bc7();
         CgTextureType type = file.srgb() ? CgTextureType.BC7_SRGB : CgTextureType.BC7;
         int w = file.width(), h = file.height(), n = file.levels();

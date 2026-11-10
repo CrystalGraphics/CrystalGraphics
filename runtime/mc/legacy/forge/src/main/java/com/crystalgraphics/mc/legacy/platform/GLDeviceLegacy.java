@@ -10,7 +10,6 @@ import com.crystalgraphics.lwjgl2.Lwjgl2GLDriver;
 import com.crystalgraphics.platform.gl.CgGLDevice;
 import com.crystalgraphics.platform.gl.pipeline.GLNativeGlslCompiler;
 import com.crystalgraphics.platform.gl.pipeline.GLNativeTranslator;
-import com.crystalgraphics.platform.gl.state.GLHostState;
 import com.crystalgraphics.render.shader.CgToolchainDevice;
 import com.crystalgraphics.vulkan.toolchain.CgShaderToolchain;
 
@@ -39,8 +38,8 @@ public final class GLDeviceLegacy extends CgToolchainDevice {
     @Override
     protected void start() {
         Minecraft mc = Minecraft.getMinecraft();
-        device = new CgGLDevice(new Lwjgl2GLDriver(), translator, mc.displayWidth, mc.displayHeight, false,
-                GLHostState.sharedWithCgGL());
+        Lwjgl2GLDriver driver = new Lwjgl2GLDriver();
+        device = new CgGLDevice(driver, translator, mc.displayWidth, mc.displayHeight, false, HostStateLegacy.create(driver));
         device.installBesideCgGL(new GLNativeGlslCompiler(device.driver()));
         LOGGER.info("[device] the GL device draws beside CgGL: {}, {}", device.globals().vendor(), device.globals().driver());
     }

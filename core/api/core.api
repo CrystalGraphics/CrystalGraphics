@@ -6597,12 +6597,10 @@ com/crystalgraphics/gpu/CgDeferral
   access public,final
   extends java/lang/Object
   method public <init> ()V
-  method public <init> ([Lcom/crystalgraphics/platform/gl/state/CgGlSlot;)V
   method public clear ()V
   method public flush ()V
   method public immediate ()Z
   method public pending ()Z
-  method public restoring ()Lcom/crystalgraphics/platform/gl/state/CgGlScope;
   method public run (Ljava/lang/Runnable;)V
   method public spreadOverFrames ()Lcom/crystalgraphics/gpu/CgDeferral;
   method public,static applyAll ()V
@@ -6958,6 +6956,7 @@ com/crystalgraphics/lifecycle/CgGraphicsLifecycle
   extends java/lang/Object
   method public,static getCurrentHeight ()I
   method public,static getCurrentWidth ()I
+  method public,static hostDepth (ZZ)V
   method public,static hostDepthReversed ()Z
   method public,static hostDepthZeroToOne ()Z
   method public,static isContextDestroyed ()Z
@@ -9299,11 +9298,12 @@ com/crystalgraphics/render/graph/CgExecutor
   method public,static destroyAll ()V
   method public,static drawsOnDevice ()Z
   method public,static execute (Lcom/crystalgraphics/render/graph/CgFrame;)V
-  method public,static execute (Lcom/crystalgraphics/render/graph/CgFrame;Z)V
   method public,static executeAgain (Lcom/crystalgraphics/render/graph/CgFrame;Z)V
   method public,static forgetHostTargets ()V
   method public,static freeStorage (Lcom/crystalgraphics/render/graph/CgGraphBuffer;)V
   method public,static freeStorage (Lcom/crystalgraphics/render/graph/CgGraphTexture;)V
+  method public,static hasCurrentTarget ()Z
+  method public,static into (III)Lcom/crystalgraphics/render/graph/CgExecutor$Into;
   method public,static into (Lcom/crystalgraphics/gl/framebuffer/CgFrameBuffer;)Lcom/crystalgraphics/render/graph/CgExecutor$Into;
   method public,static makeStorage (Lcom/crystalgraphics/render/graph/CgGraphBuffer;)V
 com/crystalgraphics/render/graph/CgExecutor$Into

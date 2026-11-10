@@ -13,7 +13,6 @@ import com.crystalgraphics.platform.gl.CgGLImports;
 import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
 import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
-import com.crystalgraphics.platform.gl.state.CgGlSlot;
 import com.crystalgraphics.trace.CgTrace;
 import javax.annotation.Nullable;
 import com.crystalgraphics.util.trace.CgChannels;
@@ -61,7 +60,7 @@ public abstract class CgTextureAbstract implements CgTexture, CgReloadable {
      * This texture's GL work, in order, each piece handing back the binding it moved. Spread over frames: {@code bind} and
      * {@code getId} land it first, so a burst of decoded textures lands within a frame's budget unless one is used.
      */
-    protected final CgDeferral gpu = new CgDeferral(CgGlSlot.TEXTURES).spreadOverFrames();
+    protected final CgDeferral gpu = new CgDeferral().spreadOverFrames();
     /** Width of the texture at mip level 0, in pixels; 0 until a texture from files loads. */
     protected int width;
     /** Height of the texture at mip level 0, in pixels; 0 until a texture from files loads. */

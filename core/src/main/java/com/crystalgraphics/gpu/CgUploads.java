@@ -2,7 +2,6 @@ package com.crystalgraphics.gpu;
 
 import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
-import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.CgGLImports;
 import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.rhi.resource.CgGpuBuffer;
@@ -113,7 +112,7 @@ public final class CgUploads {
     public static CgUploadLease lease(int bytes, boolean converts) {
         if (bytes <= 0) throw new IllegalArgumentException("a lease of " + bytes + " bytes");
         int need = align(bytes);
-        boolean renderThread = CgGL.mayIssueGl();
+        boolean renderThread = CgRHI.onDeviceThread();
         CgUploadLease lease;
         boolean missed = false;
         synchronized (LOCK) {

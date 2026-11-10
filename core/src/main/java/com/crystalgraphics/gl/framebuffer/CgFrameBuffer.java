@@ -643,7 +643,7 @@ public class CgFrameBuffer {
         requireTarget("clear");
         boolean color = (mask & CgGL.GL_COLOR_BUFFER_BIT) != 0, depth = (mask & CgGL.GL_DEPTH_BUFFER_BIT) != 0,
                 stencil = (mask & CgGL.GL_STENCIL_BUFFER_BIT) != 0;
-        float clearDepth = (float) (CgGL.isDepthReversed() ? 1.0 - depthValue : depthValue);
+        float clearDepth = (float) (CgGraphicsLifecycle.hostDepthReversed() ? 1.0 - depthValue : depthValue);
         CgDeviceSection.begin();
         try {
             for (int layer = 0; layer < getLayers(); layer++) {

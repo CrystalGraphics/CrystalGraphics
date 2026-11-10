@@ -1,5 +1,6 @@
 package com.crystalgraphics.loading;
 
+import com.crystalgraphics.lifecycle.CgGraphicsLifecycle;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -30,9 +31,6 @@ import com.crystalgraphics.loading.task.CgLoadTracker;
 import com.crystalgraphics.loading.view.CgLoadingView;
 import com.crystalgraphics.loading.view.CgLogoLoadingView;
 import com.crystalgraphics.loading.watchdog.CgLoadWatchdog;
-import com.crystalgraphics.platform.gl.CgGL;
-import com.crystalgraphics.platform.gl.state.CgGlScope;
-import com.crystalgraphics.platform.gl.state.CgGlState;
 import com.crystalgraphics.render.graph.CgExecutor;
 import com.crystalgraphics.render.CgWarmBudget;
 import com.crystalgraphics.render.draw.CgInstanceKind;
@@ -473,17 +471,13 @@ public final class CgLoadingScreen {
             fadeFrames++;
             fadeLastLeave = Math.min(1f, left / FADE_OUT);
         }
-        // Every slot: the view binds its program and sets its render state, and a host drawing with fixed function
-        // (1.7.10) draws through whatever program is left bound
-        try (CgGlScope ignored = CgGlState.saveAll()) {
-            if (warm) warmFrame();
-            // Never wait for the view's build here: it held the frame 220 ms cold
-            if (!viewReady) return;
-            // The host's framebuffer (or one of ours it names) as the current target, nothing bound
-            try (CgExecutor.Into into = CgExecutor.into(CgFrameBuffer.wrap("cg_loading_host", framebuffer, width, height))) {
-                view.draw(width, height, shownProgress, Math.min(1f, appeared / FADE_IN),
-                        shown() ? 0f : Math.min(1f, left / FADE_OUT), shown() ? reason : null);
-            }
+        if (warm) warmFrame();
+        // Never wait for the view's build here: it held the frame 220 ms cold
+        if (!viewReady) return;
+        // The host's framebuffer (or one of ours it names) as the current target, nothing bound
+        try (CgExecutor.Into into = CgExecutor.into(framebuffer, width, height)) {
+            view.draw(width, height, shownProgress, Math.min(1f, appeared / FADE_IN),
+                    shown() ? 0f : Math.min(1f, left / FADE_OUT), shown() ? reason : null);
         }
     }
 
@@ -493,9 +487,7 @@ public final class CgLoadingScreen {
      * costs (the harness's {@code warm-frame-load}). Render thread, inside a host section.
      */
     public static void fireWarmFrame() {
-        try (CgGlScope ignored = CgGlState.saveAll()) {
-            warmFrame();
-        }
+        warmFrame();
     }
 
     /**
@@ -507,14 +499,14 @@ public final class CgLoadingScreen {
             warmTarget = CgFrameBuffer.create("cg_loading_world", WARM_SIZE, WARM_SIZE, CgFrameBufferFormat
                     .builder("cg_loading_world").color(0, CgTextureType.RGBA8).depth(worldDepth).build());
         }
-        if (worldReversed) CgGL.setDepthReversed(true, worldZeroToOne);
+        if (worldReversed) CgGraphicsLifecycle.hostDepth(true, worldZeroToOne);
         try (CgExecutor.Into ignored = CgExecutor.into(warmTarget)) {
             for (CgRenderStage stage : WORLD) {
                 stage.host().set(0f, WARM_SIZE, WARM_SIZE, warmTarget.getId()).view().set(0, 0, 0, WARM_VIEW, WARM_PROJECTION);
                 stage.fire();
             }
         } finally {
-            if (worldReversed) CgGL.setDepthReversed(false, worldZeroToOne);
+            if (worldReversed) CgGraphicsLifecycle.hostDepth(false, false);
         }
         worldFired = false;
     }
@@ -534,7 +526,7 @@ public final class CgLoadingScreen {
         worldDepth = depth;
         worldReversed = reversed;
         worldZeroToOne = zeroToOne;
-        // A projection built for the pass is built reversed under a reversed convention (CgGL.setDepthReversed)
+        // A projection built for the pass is built reversed under a reversed convention (CgGraphicsLifecycle.hostDepth)
         if (reversed) WARM_PROJECTION.setPerspective(WARM_FOV, 1f, WARM_FAR, WARM_NEAR, zeroToOne);
         else WARM_PROJECTION.setPerspective(WARM_FOV, 1f, WARM_NEAR, WARM_FAR, zeroToOne);
         if (warmTarget != null) {

@@ -1,6 +1,8 @@
 package com.crystalgraphics.mc.legacy.platform;
 
-import com.crystalgraphics.platform.gl.CgGL;
+import net.minecraft.client.Minecraft;
+import com.crystalgraphics.render.graph.CgExecutor;
+import com.crystalgraphics.platform.rhi.CgDeviceSection;
 import com.crystalgraphics.platform.service.CgHostPaint;
 import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.client.renderer.OpenGlHelper;
@@ -19,14 +21,24 @@ import net.minecraft.client.renderer.OpenGlHelper;
  */
 public final class HostPaintLegacy implements CgHostPaint.Host {
 
+    /** What the open paint draws into: Minecraft's framebuffer. */
+    private CgExecutor.Into into;
+
     @Override
     public void enter() {
-        CgGL.fromHost();
+        CgDeviceSection.begin();
+        Minecraft mc = Minecraft.getMinecraft();
+        into = CgExecutor.into(OpenGlHelper.isFramebufferEnabled() ? mc.getFramebuffer().framebufferObject : 0, mc.displayWidth, mc.displayHeight);
     }
 
     @Override
     public void leave() {
-        CgGL.toHost();
+        try {
+            if (into != null) into.close();
+        } finally {
+            into = null;
+            CgDeviceSection.end();
+        }
         GlStateManager.setActiveTexture(OpenGlHelper.defaultTexUnit);
         OpenGlHelper.glUseProgram(0);
         GlStateManager.enableTexture2D();

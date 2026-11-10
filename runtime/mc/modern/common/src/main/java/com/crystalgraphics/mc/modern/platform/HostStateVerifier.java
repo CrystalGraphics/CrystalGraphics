@@ -1,7 +1,7 @@
 package com.crystalgraphics.mc.modern.platform;
 
-import com.crystalgraphics.platform.gl.state.CgHostStateCache;
 
+import com.crystalgraphics.platform.gl.state.GLCheckedHostState;
 //? if >=1.21.5 {
 /*import com.mojang.blaze3d.opengl.GlStateManager;
 *///?} else {
@@ -63,7 +63,7 @@ public final class HostStateVerifier {
      * {@code CRYSTALGRAPHICS_HOST_VERIFY=true} in the environment does the same job.
      */
     private static final boolean ENABLED =
-            CgHostStateCache.VERIFY.get() || "true".equalsIgnoreCase(System.getenv("CRYSTALGRAPHICS_HOST_VERIFY"));
+            GLCheckedHostState.VERIFY.get() || "true".equalsIgnoreCase(System.getenv("CRYSTALGRAPHICS_HOST_VERIFY"));
 
     /**
      * Through log4j, so it lands in the client's own {@code latest.log} beside everything else.

@@ -29,7 +29,7 @@ import java.util.List;
  * a harness scene, a draw inside a callback pass, a renderer that still flushes.
  *
  * <pre>{@code
- * try (CgImmediate draw = CgImmediate.begin(constants)) {   // GL state restored on close
+ * try (CgImmediate draw = CgImmediate.begin(constants)) {   // executed on close
  *     CgChunkBuilder c = draw.chunks();
  *     c.draw(material.pipeline(CgInstanceKind.QUAD), material.captureBindings(draw.bindings()));
  *     int at = c.instance();
@@ -37,7 +37,7 @@ import java.util.List;
  * }
  *
  * CgImmediate.constants().projection.setOrtho(0, w, h, 0, -1, 1);   // what flushed draws are drawn under
- * CgImmediate.flush(chunk, CgOrder.SORTED);                          // state left as drawn
+ * CgImmediate.flush(chunk, CgOrder.SORTED);                          // built and executed
  * }</pre>
  *
  * <p>A caller recording a frame of its own draws into a {@code CgCanvas} recording into it, and executes the
@@ -48,7 +48,7 @@ import java.util.List;
  * CgGraphBuffer cells = CgGraphBuffer.imported("cells", glBuffer, bytes);
  * try (CgImmediate.Compute run = CgImmediate.compute("bake")) {
  *     run.dispatch(bake, count).bind("CELLS", cells);
- * }                                  // executed: barriers derived as in a graph, GL state restored
+ * }                                  // executed: barriers derived as in a graph
  * list.bufferBarrier(buffer, CgAccess.COMPUTE_WRITE, CgAccess.VERTEX_READ);   // a reader outside the graph
  * }</pre>
  *
@@ -71,13 +71,13 @@ public final class CgImmediate implements AutoCloseable {
     private CgImmediate() {
     }
 
-    /** Builds and executes {@code recording} now, sealing it, and restores GL state after. Render thread, inside a frame. */
+    /** Builds and executes {@code recording} now, sealing it. Render thread, inside a frame. */
     public static void execute(CgRecording recording) {
         try {
             GRAPH.add(recording.seal());
             CgFrame frame = BUILDER.build(GRAPH);
             GRAPH.clear();
-            CgExecutor.execute(frame, true);
+            CgExecutor.execute(frame);
             BUILDER.recycle(frame);
         } finally {
             GRAPH.clear();
@@ -113,7 +113,7 @@ public final class CgImmediate implements AutoCloseable {
         CgImmediate immediate = acquire(CONSTANTS, null, order);
         try {
             immediate.pass.add(chunk);
-            immediate.execute(false);
+            immediate.execute();
         } finally {
             depth--;
         }
@@ -129,12 +129,12 @@ public final class CgImmediate implements AutoCloseable {
         return recording.bindings();
     }
 
-    /** Builds and executes what was recorded, and restores GL state. */
+    /** Builds and executes what was recorded. */
     @Override
     public void close() {
         try {
             pass.add(recording.chunks().endInPlace());
-            execute(true);
+            execute();
         } finally {
             depth--;
         }
@@ -193,13 +193,13 @@ public final class CgImmediate implements AutoCloseable {
         }
     }
 
-    private void execute(boolean restoreState) {
+    private void execute() {
         try {
             pass.end();
             GRAPH.add(recording.seal());
             CgFrame frame = BUILDER.build(GRAPH);
             GRAPH.clear();
-            CgExecutor.execute(frame, restoreState);
+            CgExecutor.execute(frame);
             BUILDER.recycle(frame);
         } finally {
             GRAPH.clear();

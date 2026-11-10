@@ -1,7 +1,6 @@
 package com.crystalgraphics.platform.gl;
 
 import com.crystalgraphics.platform.rhi.shader.CgGlslCompiler;
-import com.crystalgraphics.platform.rhi.CgDeviceSection;
 import com.crystalgraphics.platform.gl.binding.GLBindingLayout;
 import com.crystalgraphics.platform.gl.binding.GLBindingSet;
 import com.crystalgraphics.platform.gl.command.GLEncoder;
@@ -247,8 +246,10 @@ public final class CgGLDevice implements CgRHI {
         long t = CgTrace.stamp(GL_CHANNEL);
         host.read(entry);
         gl.adopt(entry);
+        host.guessed(gl.state());
         encoder.invalidate();
         conventions();
+        host.entered(gl);
         CgGLAudit.deviceSection(true);
         CgTrace.zoneDone(GL_CHANNEL, FROM_HOST, t);
     }
@@ -303,22 +304,17 @@ public final class CgGLDevice implements CgRHI {
     }
 
     /**
-     * Makes this the process's device beside {@code CgGL} in the same context, whole (Unreal's {@code RHIInit}, one
-     * place): as {@link CgRHI}, device sections as {@link #fromHost}/{@link #toHost}, {@code compiler}, and its
-     * {@link #imports()}. Made with {@link GLHostState#sharedWithCgGL()}.
+     * Makes this the process's device in a host's context, whole (Unreal's {@code RHIInit}, one place): as
+     * {@link CgRHI}, whose host sections ({@code CgDeviceSection}) are {@link #fromHost}/{@link #toHost}, {@code compiler},
+     * and its {@link #imports()}.
      *
      * <pre>{@code
-     * CgGLDevice device = new CgGLDevice(driver, translator, w, h, false, GLHostState.sharedWithCgGL());
+     * CgGLDevice device = new CgGLDevice(driver, translator, w, h, false, GLHostState.byQuery(driver));
      * device.installBesideCgGL(new ShadercGlslCompiler(CgCacheDirectory.of("spirv")));
      * }</pre>
      */
     public CgGLDevice installBesideCgGL(CgGlslCompiler compiler) {
         CgRHI.install(this);
-        CgDeviceSection.install(new CgDeviceSection.Host() {
-            @Override public void begin() { fromHost(); }
-
-            @Override public void end() { toHost(); }
-        });
         CgGlslCompiler.install(compiler);
         CgGLImports.install(imports());
         return this;

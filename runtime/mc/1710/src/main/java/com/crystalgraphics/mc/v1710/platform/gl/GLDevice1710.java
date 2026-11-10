@@ -39,8 +39,9 @@ public final class GLDevice1710 extends CgToolchainDevice {
     @Override
     protected void start() {
         Minecraft mc = Minecraft.getMinecraft();
-        device = new CgGLDevice(new Lwjgl2GLDriver(), translator, mc.displayWidth, mc.displayHeight, false,
-                GLHostState.sharedWithCgGL());
+        // No state cache to read (Angelica answers glGet from its own mirror where it runs)
+        Lwjgl2GLDriver driver = new Lwjgl2GLDriver();
+        device = new CgGLDevice(driver, translator, mc.displayWidth, mc.displayHeight, false, GLHostState.byQuery(driver));
         device.installBesideCgGL(new GLNativeGlslCompiler(device.driver()));
         LOGGER.info("[device] the GL device draws beside CgGL: {}, {}", device.globals().vendor(), device.globals().driver());
     }

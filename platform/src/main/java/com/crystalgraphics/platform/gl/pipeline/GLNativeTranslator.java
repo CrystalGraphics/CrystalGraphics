@@ -14,7 +14,7 @@ import java.nio.charset.StandardCharsets;
  *
  * <pre>{@code
  * GLNativeTranslator translator = new GLNativeTranslator();
- * CgGLDevice device = new CgGLDevice(driver, translator, w, h, false, GLHostState.sharedWithCgGL());
+ * CgGLDevice device = new CgGLDevice(driver, translator, w, h, false, GLHostState.byQuery(driver));
  * translator.spirv(toolchain.translator());   // once the toolchain lands, any thread
  * }</pre>
  *

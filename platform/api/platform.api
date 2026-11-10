@@ -2021,22 +2021,6 @@ com/crystalgraphics/platform/gl/resource/GLTexture
   method public,static adoptRenderbuffer (ILcom/crystalgraphics/platform/rhi/resource/CgGpuTexture$Desc;)Lcom/crystalgraphics/platform/gl/resource/GLTexture;
   method public,static backBuffer (Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture$Desc;)Lcom/crystalgraphics/platform/gl/resource/GLTexture;
   method public,static target (Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture$Desc;)I
-com/crystalgraphics/platform/gl/state/CgCheckedProvider
-  access public,abstract
-  extends com/crystalgraphics/platform/gl/state/CgGlGetProvider
-  field public,static,final CHECKS I
-  method protected <init> (Ljava/lang/String;II)V
-  method protected,abstract answer (Lcom/crystalgraphics/platform/gl/state/CgGlSlot;Lcom/crystalgraphics/platform/gl/state/CgGlStateShadow;)V
-  method protected,abstract answerTextures (Lcom/crystalgraphics/platform/gl/state/CgGlStateShadow;I)V
-  method protected,abstract unitsMask ()I
-  method public hostCachesTextures ()Z
-  method public hostUnits ()I
-  method public read (Lcom/crystalgraphics/platform/gl/state/CgGlSlot;Lcom/crystalgraphics/platform/gl/state/CgGlStateShadow;)V
-  method public readTextureUnits (Lcom/crystalgraphics/platform/gl/state/CgGlStateShadow;I)I
-  method public sectionSlots ()I
-  method public,static bit (Lcom/crystalgraphics/platform/gl/state/CgGlSlot;)I
-  method public,static deferChecksWhile (Ljava/util/function/BooleanSupplier;)V
-  method public,static install (Ljava/lang/String;Ljava/util/concurrent/Callable;)V
 com/crystalgraphics/platform/gl/state/CgGlCensus
   access public,final
   extends java/lang/Object
@@ -2220,18 +2204,24 @@ com/crystalgraphics/platform/gl/state/CgGlStateShadow
   method public differences (Lcom/crystalgraphics/platform/gl/state/CgGlStateShadow;)Ljava/lang/String;
   method public differences (Lcom/crystalgraphics/platform/gl/state/CgGlStateShadow;I)Ljava/lang/String;
   method public,static indirectIndex (I)I
-com/crystalgraphics/platform/gl/state/CgHostStateCache
-  access public,final
+com/crystalgraphics/platform/gl/state/GLCheckedHostState
+  access public
   extends java/lang/Object
+  field public,static,final CHECKS I
   field public,static,final VERIFY Lcom/crystalgraphics/variable/CgVar$Bool;
-  method public <init> (Ljava/lang/Class;ILjava/util/function/IntConsumer;Ljava/util/function/IntSupplier;)V
-  method public answer (Lcom/crystalgraphics/platform/gl/state/CgGlSlot;Lcom/crystalgraphics/platform/gl/state/CgGlStateShadow;)Z
-  method public excuse (Lcom/crystalgraphics/platform/gl/state/CgGlSlot;Lcom/crystalgraphics/platform/gl/state/CgGlStateShadow;Lcom/crystalgraphics/platform/gl/state/CgGlStateShadow;)V
-  method public field (Ljava/lang/String;)Ljava/lang/reflect/Field;
-  method public held ()I
-  method public missing ()I
-  method public textures (Lcom/crystalgraphics/platform/gl/state/CgGlStateShadow;I)V
-  method public unitsMask ()I
+  implements com/crystalgraphics/platform/gl/state/GLHostState
+  method public <init> (Ljava/lang/String;Lcom/crystalgraphics/platform/gl/driver/CgGLDriver;Lcom/crystalgraphics/platform/gl/state/GLCheckedHostState$Answers;Z)V
+  method public conventions (Lcom/crystalgraphics/platform/gl/driver/CgGLDriver;)V
+  method public entered (Lcom/crystalgraphics/platform/gl/driver/CgGLDriver;)V
+  method public guessed (Lcom/crystalgraphics/platform/gl/state/GLContextState;)V
+  method public read (Lcom/crystalgraphics/platform/gl/state/GLContextState;)V
+  method public,static deferChecksWhile (Ljava/util/function/BooleanSupplier;)V
+com/crystalgraphics/platform/gl/state/GLCheckedHostState$Answers
+  access public,abstract,interface
+  extends java/lang/Object
+  method public alphaTest ()I
+  method public excuse (Lcom/crystalgraphics/platform/gl/state/GLHostState$Domain;Lcom/crystalgraphics/platform/gl/state/GLContextState;)V
+  method public,abstract answer (Lcom/crystalgraphics/platform/gl/state/GLHostState$Domain;Lcom/crystalgraphics/platform/gl/state/GLContextState;)Z
 com/crystalgraphics/platform/gl/state/GLContextState
   access public,final
   extends java/lang/Object
@@ -2295,18 +2285,46 @@ com/crystalgraphics/platform/gl/state/GLContextState
   field public,static,final UNKNOWN_LONG J
   method public <init> ()V
   method public copyFrom (Lcom/crystalgraphics/platform/gl/state/GLContextState;)V
+  method public differences (Lcom/crystalgraphics/platform/gl/state/GLContextState;)Ljava/lang/String;
   method public invalidate ()V
   method public,static cap (I)I
   method public,static pixelStore (I)I
   method public,static target (I)I
+com/crystalgraphics/platform/gl/state/GLHostCache
+  access public,final
+  extends java/lang/Object
+  method public <init> (Ljava/lang/Class;ILjava/util/function/IntConsumer;Ljava/util/function/IntSupplier;)V
+  method public alphaTest ()I
+  method public field (Ljava/lang/String;)Ljava/lang/reflect/Field;
+  method public missing ()I
+  method public read (Lcom/crystalgraphics/platform/gl/state/GLHostState$Domain;Lcom/crystalgraphics/platform/gl/state/GLContextState;)Z
+  method public unitsMask ()I
 com/crystalgraphics/platform/gl/state/GLHostState
   access public,abstract,interface
   extends java/lang/Object
   method public conventions (Lcom/crystalgraphics/platform/gl/driver/CgGLDriver;)V
+  method public entered (Lcom/crystalgraphics/platform/gl/driver/CgGLDriver;)V
+  method public guessed (Lcom/crystalgraphics/platform/gl/state/GLContextState;)V
   method public left ()V
   method public,abstract read (Lcom/crystalgraphics/platform/gl/state/GLContextState;)V
   method public,static byQuery (Lcom/crystalgraphics/platform/gl/driver/CgGLDriver;)Lcom/crystalgraphics/platform/gl/state/GLHostState;
-  method public,static sharedWithCgGL ()Lcom/crystalgraphics/platform/gl/state/GLHostState;
+com/crystalgraphics/platform/gl/state/GLHostState$Domain
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final BLEND Lcom/crystalgraphics/platform/gl/state/GLHostState$Domain;
+  field public,static,final COLOR_MASK Lcom/crystalgraphics/platform/gl/state/GLHostState$Domain;
+  field public,static,final CULL Lcom/crystalgraphics/platform/gl/state/GLHostState$Domain;
+  field public,static,final DEPTH Lcom/crystalgraphics/platform/gl/state/GLHostState$Domain;
+  field public,static,final FRAMEBUFFERS Lcom/crystalgraphics/platform/gl/state/GLHostState$Domain;
+  field public,static,final POLYGON Lcom/crystalgraphics/platform/gl/state/GLHostState$Domain;
+  field public,static,final PROGRAM Lcom/crystalgraphics/platform/gl/state/GLHostState$Domain;
+  field public,static,final SCISSOR Lcom/crystalgraphics/platform/gl/state/GLHostState$Domain;
+  field public,static,final STENCIL Lcom/crystalgraphics/platform/gl/state/GLHostState$Domain;
+  field public,static,final TEXTURES Lcom/crystalgraphics/platform/gl/state/GLHostState$Domain;
+  field public,static,final VERTEX_ARRAY Lcom/crystalgraphics/platform/gl/state/GLHostState$Domain;
+  field public,static,final VIEWPORT Lcom/crystalgraphics/platform/gl/state/GLHostState$Domain;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/platform/gl/state/GLHostState$Domain;
+  method public,static values ()[Lcom/crystalgraphics/platform/gl/state/GLHostState$Domain;
 com/crystalgraphics/platform/gl/state/GLStateFilter
   access public,final
   extends java/lang/Object
@@ -3465,13 +3483,7 @@ com/crystalgraphics/platform/rhi/CgDeviceSection
   extends java/lang/Object
   method public,static begin ()V
   method public,static end ()V
-  method public,static install (Lcom/crystalgraphics/platform/rhi/CgDeviceSection$Host;)V
   method public,static open ()Z
-com/crystalgraphics/platform/rhi/CgDeviceSection$Host
-  access public,abstract,interface
-  extends java/lang/Object
-  method public,abstract begin ()V
-  method public,abstract end ()V
 com/crystalgraphics/platform/rhi/CgRHI
   access public,abstract,interface
   extends java/lang/Object
@@ -3514,6 +3526,7 @@ com/crystalgraphics/platform/rhi/CgRHI
   method public,static get ()Lcom/crystalgraphics/platform/rhi/CgRHI;
   method public,static install (Lcom/crystalgraphics/platform/rhi/CgRHI;)V
   method public,static installed ()Z
+  method public,static onDeviceThread ()Z
 com/crystalgraphics/platform/rhi/CgRHI$Current
   access public,final
   extends java/lang/Object

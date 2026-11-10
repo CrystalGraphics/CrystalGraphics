@@ -6,8 +6,6 @@ import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.gl.framebuffer.CgFrameBuffer;
 import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.platform.gl.CgGL;
-import com.crystalgraphics.platform.gl.state.CgGlScope;
-import com.crystalgraphics.platform.gl.state.CgGlState;
 import com.crystalgraphics.render.CgImmediate;
 import com.crystalgraphics.render.graph.CgComputePass;
 import com.crystalgraphics.render.graph.CgGraphBuffer;
@@ -112,16 +110,14 @@ public final class CgComputeSelfTest {
         }
     }
 
-    /** Every kernel run and checked on the current context, waiting on the GPU. Render thread; GL state is put back. */
+    /** Every kernel run and checked on the current context, waiting on the GPU. Render thread. */
     public static Result run() {
         return run(CgReplayedReads.immediate());
     }
 
     /** {@link #run()}, reading through {@code reads}. */
     public static Result run(CgReplayedReads reads) {
-        try (CgGlScope ignored = CgGlState.saveAll()) {
-            return new CgComputeSelfTest.Run(reads).run();
-        }
+        return new CgComputeSelfTest.Run(reads).run();
     }
 
     /** One run: its buffers, images and failures. */

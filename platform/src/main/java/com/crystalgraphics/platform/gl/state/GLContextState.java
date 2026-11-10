@@ -174,4 +174,64 @@ public final class GLContextState {
         System.arraycopy(o.unitSampler, 0, unitSampler, 0, UNITS);
         System.arraycopy(o.targetBuffer, 0, targetBuffer, 0, TARGETS.length);
     }
+
+    /**
+     * The first field this holds that {@code truth} holds otherwise, as {@code "name this vs truth"}, or null: a field
+     * this holds unknown is skipped, so a state filled for one domain compares that domain alone.
+     */
+    public String differences(GLContextState truth) {
+        String d;
+        if ((d = ints("caps", caps, truth.caps)) != null || (d = ints("blendEnabled", blendEnabled, truth.blendEnabled)) != null
+                || (d = ints("blendSrcRgb", blendSrcRgb, truth.blendSrcRgb)) != null
+                || (d = ints("blendDstRgb", blendDstRgb, truth.blendDstRgb)) != null
+                || (d = ints("blendSrcAlpha", blendSrcAlpha, truth.blendSrcAlpha)) != null
+                || (d = ints("blendDstAlpha", blendDstAlpha, truth.blendDstAlpha)) != null
+                || (d = ints("blendEqRgb", blendEqRgb, truth.blendEqRgb)) != null
+                || (d = ints("blendEqAlpha", blendEqAlpha, truth.blendEqAlpha)) != null
+                || (d = ints("colorMask", colorMask, truth.colorMask)) != null
+                || (d = one("program", program, truth.program)) != null
+                || (d = one("vertexArray", vertexArray, truth.vertexArray)) != null
+                || (d = one("drawFramebuffer", drawFramebuffer, truth.drawFramebuffer)) != null
+                || (d = one("readFramebuffer", readFramebuffer, truth.readFramebuffer)) != null
+                || (d = one("cullFace", cullFace, truth.cullFace)) != null
+                || (d = one("frontFace", frontFace, truth.frontFace)) != null
+                || (d = one("polygonMode", polygonMode, truth.polygonMode)) != null
+                || (d = real("offsetFactor", offsetFactor, truth.offsetFactor)) != null
+                || (d = real("offsetUnits", offsetUnits, truth.offsetUnits)) != null
+                || (d = one("depthFunc", depthFunc, truth.depthFunc)) != null
+                || (d = one("depthMask", depthMask, truth.depthMask)) != null
+                || (d = ints("stencilFunc", stencilFunc, truth.stencilFunc)) != null
+                || (d = ints("stencilRef", stencilRef, truth.stencilRef)) != null
+                || (d = ints("stencilValueMask", stencilValueMask, truth.stencilValueMask)) != null
+                || (d = ints("stencilFail", stencilFail, truth.stencilFail)) != null
+                || (d = ints("stencilDepthFail", stencilDepthFail, truth.stencilDepthFail)) != null
+                || (d = ints("stencilPass", stencilPass, truth.stencilPass)) != null
+                || (d = ints("stencilWriteMask", stencilWriteMask, truth.stencilWriteMask)) != null
+                || (d = real("viewportX", viewportX, truth.viewportX)) != null
+                || (d = real("viewportY", viewportY, truth.viewportY)) != null
+                || (d = real("viewportW", viewportW, truth.viewportW)) != null
+                || (d = real("viewportH", viewportH, truth.viewportH)) != null
+                || (d = one("scissorX", scissorX, truth.scissorX)) != null || (d = one("scissorY", scissorY, truth.scissorY)) != null
+                || (d = one("scissorW", scissorW, truth.scissorW)) != null || (d = one("scissorH", scissorH, truth.scissorH)) != null
+                || (d = ints("unitTexture", unitTexture, truth.unitTexture)) != null
+                || (d = ints("unitSampler", unitSampler, truth.unitSampler)) != null) {
+            return d;
+        }
+        return null;
+    }
+
+    private static String one(String name, int mine, int truth) {
+        return mine == UNKNOWN || mine == truth ? null : name + " " + mine + " vs " + truth;
+    }
+
+    private static String real(String name, float mine, float truth) {
+        return Float.isNaN(mine) || mine == truth ? null : name + " " + mine + " vs " + truth;
+    }
+
+    private static String ints(String name, int[] mine, int[] truth) {
+        for (int i = 0; i < mine.length; i++) {
+            if (mine[i] != UNKNOWN && mine[i] != truth[i]) return name + "[" + i + "] " + mine[i] + " vs " + truth[i];
+        }
+        return null;
+    }
 }

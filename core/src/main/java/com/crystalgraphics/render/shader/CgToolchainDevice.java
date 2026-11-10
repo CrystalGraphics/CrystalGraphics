@@ -29,7 +29,8 @@ import com.crystalgraphics.variable.CgVar;
  *     private final GLNativeTranslator translator = new GLNativeTranslator();
  *     @Override protected String ineligible() { return null; }
  *     @Override protected void start() {
- *         device = new CgGLDevice(new Lwjgl2GLDriver(), translator, w, h, false, GLHostState.sharedWithCgGL());
+ *         CgGLDriver driver = new Lwjgl2GLDriver();
+ *         device = new CgGLDevice(driver, translator, w, h, false, GLHostState.byQuery(driver));
  *         device.installBesideCgGL(new GLNativeGlslCompiler(device.driver()));
  *     }
  *     @Override protected void toolchain(List<Path> jars) {

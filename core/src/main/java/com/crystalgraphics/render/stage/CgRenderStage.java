@@ -1,17 +1,13 @@
 package com.crystalgraphics.render.stage;
 
+import com.crystalgraphics.platform.rhi.CgDeviceSection;
 import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.gl.framebuffer.CgFrameBuffer;
 import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.lifecycle.CgGraphicsLifecycle;
 import com.crystalgraphics.lifecycle.CgEngineLifecycle;
-import com.crystalgraphics.platform.gl.CgGL;
-import com.crystalgraphics.platform.gl.state.CgGlCensus;
-import com.crystalgraphics.platform.gl.state.CgGlScope;
 import com.crystalgraphics.render.graph.CgExecutor;
-import com.crystalgraphics.platform.gl.state.CgGlSlot;
-import com.crystalgraphics.platform.gl.state.CgGlState;
 import com.crystalgraphics.trace.CgGpuTrace;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
@@ -275,27 +271,25 @@ public final class CgRenderStage {
         // GameShuttisngDownEvent, and by then every registry is deleted: a stage reaching CgMaterial.load threw
         // "CgMaterialRegistry has been deleted" out of a render event, which surfaced as a crash on quitting.
         if (CgGraphicsLifecycle.isContextDestroyed() || CgGraphicsLifecycle.isStoodDown()) return;
-        // Stage entry: the host and every mod hooking the same point drew just before this, through APIs the state
-        // manager cannot see. Inside a section already open, only our own code ran since it did: what it set (the
-        // main target and its viewport) stands.
-        if (!CgGL.inHostSection()) CgGlState.invalidateAllIfPresent();
-        // What the host handed us, off unless -Dcrystalgraphics.host.census.
-        CgGlCensus.at(path);
-        CgGL.fromHost();
+        CgDeviceSection.begin();
         try {
             // The engine starts on the first stage a host fires if the host never announced its context.
             CgEngineLifecycle.ensureGraphicsContext(host.width(), host.height());
             if (renderers.isEmpty() || !CgGraphicsLifecycle.isInitialized()) return;
-            CgGpuTrace.begin(gpuName, CgGpuTrace.WATCH);   // timed always: a slow firing is logged by name
-            firing++;
-            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, path)) {
-                recordAndExecute();
-            } finally {
-                firing--;
-                CgGpuTrace.end();
+            // The host's target, where the engine named none (fireInto, a rehearsal)
+            try (CgExecutor.Into ignored = CgExecutor.hasCurrentTarget() ? null
+                    : CgExecutor.into(host.mainFramebuffer(), host.width(), host.height())) {
+                CgGpuTrace.begin(gpuName, CgGpuTrace.WATCH);   // timed always: a slow firing is logged by name
+                firing++;
+                try (CgTrace.Zone ignored2 = CgTrace.zone(CgChannels.WORLD, path)) {
+                    recordAndExecute();
+                } finally {
+                    firing--;
+                    CgGpuTrace.end();
+                }
             }
         } finally {
-            CgGL.toHost();
+            CgDeviceSection.end();
         }
     }
 
@@ -310,11 +304,8 @@ public final class CgRenderStage {
      * }</pre>
      */
     public void fireInto(CgFrameBuffer target) {
-        CgGL.fromHost();
         try (CgExecutor.Into ignored = CgExecutor.into(target)) {
             fire();
-        } finally {
-            CgGL.toHost();
         }
     }
 

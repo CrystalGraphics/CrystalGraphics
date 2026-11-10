@@ -1,53 +1,49 @@
 package com.crystalgraphics.platform.gl.state;
 
+import com.crystalgraphics.platform.gl.state.GLHostState.Domain;
 import com.crystalgraphics.variable.CgVar;
-import com.crystalgraphics.platform.gl.CgGL;
 
 import java.lang.reflect.Array;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.function.IntConsumer;
 import java.util.function.IntSupplier;
 
-import static com.crystalgraphics.platform.gl.state.CgCheckedProvider.bit;
+import static com.crystalgraphics.platform.gl.driver.GLC.*;
 
 /**
  * Reads a host GL state cache shaped like Minecraft's {@code GlStateManager}, on every version that has one (legacy
- * Forge 1.8.9 to 26.2), for a {@link CgCheckedProvider} to answer from.
+ * Forge 1.8.9 to 26.2), into a {@link GLContextState} a {@link GLCheckedHostState} answers from.
  *
  * <pre>{@code
- * CgHostStateCache cache = new CgHostStateCache(GlStateManager.class, 8,
+ * GLHostCache cache = new GLHostCache(GlStateManager.class, 8,
  *         unit -> GlStateManager.setActiveTexture(unit),            // how the host switches units, through its cache
  *         () -> GL11.glGetInteger(GL13.GL_ACTIVE_TEXTURE));         // the driver's unit, read once at construction
- * if (cache.answer(slot, t)) return;                                // what it holds; false for PROGRAM, FBO, VERTEX_INPUT
- * cache.textures(t, units);
+ * if (cache.read(domain, state)) return true;                      // what it holds; false for PROGRAM, FRAMEBUFFERS, VERTEX_ARRAY
  * }</pre>
  *
  * <ul>
  *   <li>Fields are found by shape, so SRG, intermediary and MCP names all work: each state object carries the GL cap
  *       of its {@code BooleanState}. Mojang's names are tried first.</li>
- *   <li>{@link #missing()} is what it found no state for: the alpha test from 1.17, the viewport on legacy Forge and
- *       from 1.21.5. Where it keeps no scissor (legacy Forge to 1.16.3) the test is answered off, as at every hook.</li>
+ *   <li>{@link #missing()} is what it found no state for: the viewport on legacy Forge and from 1.21.5. Where it keeps
+ *       no scissor (legacy Forge to 1.16.3) the test is answered off, as at every hook; the box is never answered.</li>
+ *   <li>Stencil and polygon mode are answered as Minecraft holds them at every hook: no stencil test, filled
+ *       polygons.</li>
  *   <li>Construct it on the render thread: where the active unit's field is renamed, it is found by switching the
  *       unit through the host and back.</li>
  *   <li>{@code -Dcrystalgraphics.host.stateCache.byShape=true} skips the names, as on a renamed host, for a dev run.</li>
  * </ul>
  */
-public final class CgHostStateCache {
+public final class GLHostCache {
 
     private static final boolean BY_SHAPE = CgVar.bool("crystalgraphics.host.stateCache.byShape", false,
             CgVar.DEV | CgVar.RESTART, "Find GlStateManager's fields by shape, as production Forge (SRG) and Fabric"
                     + " (intermediary) do: a dev run checks that path, and the install line names what missed.").get();
 
-    /** After each pass, the driver against the host's own state cache; a host reads it when it installs. */
-    public static final CgVar.Bool VERIFY = CgVar.bool("crystalgraphics.host.verify", false, CgVar.DEV | CgVar.RESTART,
-            "After each pass, compare the driver against the host's GlStateManager and name the domain that disagrees"
-                    + " (modern nodes; also CRYSTALGRAPHICS_HOST_VERIFY=true).");
-
-    private static final int GL_BLEND = 3042, GL_DEPTH_TEST = 2929, GL_CULL_FACE = 2884, GL_POLYGON_OFFSET_FILL = 32823,
-            GL_POLYGON_OFFSET_LINE = 10754, GL_SCISSOR_TEST = 3089, GL_ALPHA_TEST = 3008;
+    private static final int GL_ALPHA_TEST = 0x0BC0;
 
     private final Class<?> gsm;
     private final int units, unitsMask;
@@ -55,7 +51,7 @@ public final class CgHostStateCache {
 
     private Flag blendOn, depthOn, cullOn, fillOn, lineOn, scissorOn, alphaOn;
     private Object blend, depth, cull, offset, alpha, colorMask, textures, viewport;
-    private Field depthMask, depthFunc, cullFace, offsetFactor, offsetUnits, alphaFunc, alphaRef, colorMaskInt;
+    private Field depthMask, depthFunc, cullFace, offsetFactor, offsetUnits, colorMaskInt;
     private Field binding, activeTexture;
     private Field[] blendFactors, colorBits, viewportBox;
 
@@ -65,7 +61,7 @@ public final class CgHostStateCache {
      * @param setActiveTexture  switches the unit through the host's cache, given {@code GL_TEXTURE0 + unit}
      * @param driverActiveTexture the driver's {@code GL_ACTIVE_TEXTURE}, read at most once, here
      */
-    public CgHostStateCache(Class<?> gsm, int units, IntConsumer setActiveTexture, IntSupplier driverActiveTexture)
+    public GLHostCache(Class<?> gsm, int units, IntConsumer setActiveTexture, IntSupplier driverActiveTexture)
             throws IllegalAccessException {
         this.gsm = gsm;
         this.units = units;
@@ -80,18 +76,18 @@ public final class CgHostStateCache {
             blendOn = Flag.of(blend, GL_BLEND);
             blendFactors = fieldsOf(blend.getClass(), int.class);
         }
-        if (blendOn == null || (blendFactors.length != 4 && blendFactors.length != 6)) missing |= bit(CgGlSlot.BLEND);
+        if (blendOn == null || (blendFactors.length != 4 && blendFactors.length != 6)) missing |= bit(Domain.BLEND);
         if (depth != null) {
             depthOn = Flag.of(depth, GL_DEPTH_TEST);
             depthMask = first(depth.getClass(), boolean.class);
             depthFunc = first(depth.getClass(), int.class);
         }
-        if (depthOn == null || depthMask == null || depthFunc == null) missing |= bit(CgGlSlot.DEPTH);
+        if (depthOn == null || depthMask == null || depthFunc == null) missing |= bit(Domain.DEPTH);
         if (cull != null) {
             cullOn = Flag.of(cull, GL_CULL_FACE);
             cullFace = first(cull.getClass(), int.class);
         }
-        if (cullOn == null) missing |= bit(CgGlSlot.CULL);
+        if (cullOn == null) missing |= bit(Domain.CULL);
         if (offset != null) {
             fillOn = Flag.of(offset, GL_POLYGON_OFFSET_FILL);
             lineOn = Flag.of(offset, GL_POLYGON_OFFSET_LINE);
@@ -101,34 +97,19 @@ public final class CgHostStateCache {
                 offsetUnits = floats[1];
             }
         }
-        if (fillOn == null || offsetFactor == null) missing |= bit(CgGlSlot.POLYGON_OFFSET);
+        if (fillOn == null || offsetFactor == null) missing |= bit(Domain.POLYGON);
         if (alpha != null) {
             alphaOn = Flag.of(alpha, GL_ALPHA_TEST);
-            alphaFunc = first(alpha.getClass(), int.class);
-            alphaRef = first(alpha.getClass(), float.class);
         }
-        if (alphaOn == null || alphaFunc == null || alphaRef == null) missing |= bit(CgGlSlot.ALPHA_TEST);
         scissorOn = scissor == null ? null : Flag.of(scissor, GL_SCISSOR_TEST);
         findColorMask();
         findTextures(setActiveTexture, driverActiveTexture);
         findViewport();
     }
 
-    /** The domains it found no state for, as {@link CgCheckedProvider#bit} bits. */
+    /** The domains it found no state for, as {@code 1 << domain.ordinal()} bits. */
     public int missing() {
         return missing;
-    }
-
-    /**
-     * The domains it found the host's cache keeping, as {@link CgCheckedProvider#bit} bits: those the host skips a call
-     * in when it believes the value set, which a host section sets back ({@link CgGlStateProvider#sectionSlots()}).
-     * Stencil, polygon mode, line width and point size, which it answers without a cache, are not among them.
-     */
-    public int held() {
-        int held = bit(CgGlSlot.BLEND) | bit(CgGlSlot.DEPTH) | bit(CgGlSlot.CULL) | bit(CgGlSlot.POLYGON_OFFSET)
-                | bit(CgGlSlot.ALPHA_TEST) | bit(CgGlSlot.COLOR_MASK) | bit(CgGlSlot.TEXTURES)
-                | (viewport != null ? bit(CgGlSlot.VIEWPORT) : 0) | (scissorOn != null ? bit(CgGlSlot.SCISSOR) : 0);
-        return held & ~missing;
     }
 
     /** The units it models, as a mask. */
@@ -141,47 +122,55 @@ public final class CgHostStateCache {
         return named(gsm, name);
     }
 
-    /**
-     * Fills {@code slot}'s fields of {@code t}: from the cache, or for stencil, polygon mode, line width and point size
-     * with what Minecraft holds at every hook. False for a domain it does not answer, which the caller's is.
-     */
-    public boolean answer(CgGlSlot slot, CgGlStateShadow t) {
+    /** 1 where the host believes its alpha test on, 0 off, {@link GLContextState#UNKNOWN} where it keeps none (1.17+). */
+    public int alphaTest() {
         try {
-            switch (slot) {
+            return alphaOn == null ? GLContextState.UNKNOWN : alphaOn.get() ? 1 : 0;
+        } catch (IllegalAccessException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    /**
+     * Fills {@code domain}'s fields of {@code s}: from the cache, or for stencil and polygon mode with what Minecraft
+     * holds at every hook. False for a domain it does not answer (program, framebuffers, vertex array) or did not find.
+     */
+    public boolean read(Domain domain, GLContextState s) {
+        if ((missing & bit(domain)) != 0) return false;
+        try {
+            switch (domain) {
                 case BLEND: {
-                    t.blendEnabled = blendOn.get();
-                    t.blendSrcRgb = blendFactors[0].getInt(blend);
-                    t.blendDstRgb = blendFactors[1].getInt(blend);
                     boolean equations = blendFactors.length == 6;   // 26.2 keeps the equation beside each pair
-                    t.blendSrcAlpha = blendFactors[equations ? 3 : 2].getInt(blend);
-                    t.blendDstAlpha = blendFactors[equations ? 4 : 3].getInt(blend);
-                    t.blendEqRgb = equations ? blendFactors[2].getInt(blend) : CgGL.GL_FUNC_ADD;
-                    t.blendEqAlpha = equations ? blendFactors[5].getInt(blend) : CgGL.GL_FUNC_ADD;
+                    // glBlendFunc and glEnable(GL_BLEND) set every draw buffer
+                    Arrays.fill(s.blendEnabled, blendOn.get() ? 1 : 0);
+                    Arrays.fill(s.blendSrcRgb, blendFactors[0].getInt(blend));
+                    Arrays.fill(s.blendDstRgb, blendFactors[1].getInt(blend));
+                    Arrays.fill(s.blendSrcAlpha, blendFactors[equations ? 3 : 2].getInt(blend));
+                    Arrays.fill(s.blendDstAlpha, blendFactors[equations ? 4 : 3].getInt(blend));
+                    Arrays.fill(s.blendEqRgb, equations ? blendFactors[2].getInt(blend) : GL_FUNC_ADD);
+                    Arrays.fill(s.blendEqAlpha, equations ? blendFactors[5].getInt(blend) : GL_FUNC_ADD);
                     return true;
                 }
                 case DEPTH:
-                    t.depthTest = depthOn.get();
-                    t.depthMask = depthMask.getBoolean(depth);
-                    t.depthFunc = depthFunc.getInt(depth);
+                    s.caps[GLContextState.cap(GL_DEPTH_TEST)] = depthOn.get() ? 1 : 0;
+                    s.depthMask = depthMask.getBoolean(depth) ? 1 : 0;
+                    s.depthFunc = depthFunc.getInt(depth);
                     return true;
                 case CULL:
-                    t.cullEnabled = cullOn.get();
-                    t.cullFace = cullFace != null ? cullFace.getInt(cull) : CgGL.GL_BACK;
-                    t.frontFace = CgGL.GL_CCW;
-                    return true;
-                case ALPHA_TEST:
-                    t.alphaTest = alphaOn.get();
-                    t.alphaFunc = alphaFunc.getInt(alpha);
-                    t.alphaRef = alphaRef.getFloat(alpha);
+                    s.caps[GLContextState.cap(GL_CULL_FACE)] = cullOn.get() ? 1 : 0;
+                    s.cullFace = cullFace != null ? cullFace.getInt(cull) : GL_BACK;
+                    s.frontFace = GL_CCW;
                     return true;
                 case STENCIL:
                     // Vanilla never tests stencil; NeoForge sets all of it with each draw that does.
-                    t.stencilTest = false;
-                    t.stencilFunc = CgGL.GL_ALWAYS;
-                    t.stencilRef = 0;
-                    t.stencilValueMask = -1;
-                    t.stencilWriteMask = -1;
-                    t.stencilFail = t.stencilZFail = t.stencilZPass = CgGL.GL_KEEP;
+                    s.caps[GLContextState.cap(GL_STENCIL_TEST)] = 0;
+                    Arrays.fill(s.stencilFunc, GL_ALWAYS);
+                    Arrays.fill(s.stencilRef, 0);
+                    Arrays.fill(s.stencilValueMask, -1);
+                    Arrays.fill(s.stencilWriteMask, -1);
+                    Arrays.fill(s.stencilFail, GL_KEEP);
+                    Arrays.fill(s.stencilDepthFail, GL_KEEP);
+                    Arrays.fill(s.stencilPass, GL_KEEP);
                     return true;
                 case COLOR_MASK: {
                     int nibble;
@@ -191,39 +180,29 @@ public final class CgHostStateCache {
                         nibble = (colorBits[0].getBoolean(colorMask) ? 1 : 0) | (colorBits[1].getBoolean(colorMask) ? 2 : 0)
                                 | (colorBits[2].getBoolean(colorMask) ? 4 : 0) | (colorBits[3].getBoolean(colorMask) ? 8 : 0);
                     }
-                    int packed = 0;
-                    for (int i = 0; i < 8; i++) packed |= (nibble & 0xF) << (i * 4);
-                    t.colorMaskPacked = packed;
+                    Arrays.fill(s.colorMask, nibble & 0xF);
                     return true;
                 }
                 case VIEWPORT:
-                    if (viewport == null) return false;
-                    t.viewportX = viewportBox[0].getInt(viewport);
-                    t.viewportY = viewportBox[1].getInt(viewport);
-                    t.viewportW = viewportBox[2].getInt(viewport);
-                    t.viewportH = viewportBox[3].getInt(viewport);
+                    s.viewportX = viewportBox[0].getInt(viewport);
+                    s.viewportY = viewportBox[1].getInt(viewport);
+                    s.viewportW = viewportBox[2].getInt(viewport);
+                    s.viewportH = viewportBox[3].getInt(viewport);
                     return true;
                 case SCISSOR:
-                    t.scissorTest = scissorOn != null && scissorOn.get();   // off at every hook where none is kept
-                    // The box is set with every enable, so what stands here is never read.
-                    t.scissorX = t.scissorY = 0;
-                    t.scissorW = t.scissorH = 1;
+                    // Off at every hook where none is kept; the box is set with every enable, so never answered.
+                    s.caps[GLContextState.cap(GL_SCISSOR_TEST)] = scissorOn != null && scissorOn.get() ? 1 : 0;
                     return true;
-                case POLYGON_OFFSET:
-                    t.polygonOffsetFill = fillOn.get();
-                    t.polygonOffsetLine = lineOn != null && lineOn.get();
-                    t.polygonOffsetPoint = false;
-                    t.polygonOffsetFactor = offsetFactor.getFloat(offset);
-                    t.polygonOffsetUnits = offsetUnits.getFloat(offset);
+                case POLYGON:
+                    s.caps[GLContextState.cap(GL_POLYGON_OFFSET_FILL)] = fillOn.get() ? 1 : 0;
+                    s.caps[GLContextState.cap(GL_POLYGON_OFFSET_LINE)] = lineOn != null && lineOn.get() ? 1 : 0;
+                    s.caps[GLContextState.cap(GL_POLYGON_OFFSET_POINT)] = 0;
+                    s.offsetFactor = offsetFactor.getFloat(offset);
+                    s.offsetUnits = offsetUnits.getFloat(offset);
+                    s.polygonMode = GL_FILL;
                     return true;
-                case POLYGON_MODE:
-                    t.polygonModeFront = t.polygonModeBack = CgGL.GL_FILL;
-                    return true;
-                case LINE_WIDTH:
-                    t.lineWidth = 1f;
-                    return true;
-                case POINT_SIZE:
-                    t.pointSize = 1f;
+                case TEXTURES:
+                    for (int unit = 0; unit < units; unit++) s.unitTexture[unit] = binding.getInt(Array.get(textures, unit));
                     return true;
                 default:
                     return false;
@@ -233,27 +212,8 @@ public final class CgHostStateCache {
         }
     }
 
-    /** The active unit and each unit in {@code units}' 2D binding. */
-    public void textures(CgGlStateShadow t, int units) {
-        try {
-            int active = activeTexture.getInt(null);
-            if (active >= CgGL.GL_TEXTURE0) active -= CgGL.GL_TEXTURE0;   // a version keeping the enum
-            t.activeTextureUnit = active;
-            for (int unit = 0; unit < this.units; unit++) {
-                if ((units & (1 << unit)) != 0) t.boundTexture2D[unit] = binding.getInt(Array.get(textures, unit));
-            }
-        } catch (IllegalAccessException e) {
-            throw new IllegalStateException(e);
-        }
-    }
-
-    /** The scissor box, which it guesses: see {@link CgCheckedProvider#excuse}. */
-    public void excuse(CgGlSlot slot, CgGlStateShadow answer, CgGlStateShadow truth) {
-        if (slot != CgGlSlot.SCISSOR) return;
-        answer.scissorX = truth.scissorX;
-        answer.scissorY = truth.scissorY;
-        answer.scissorW = truth.scissorW;
-        answer.scissorH = truth.scissorH;
+    private static int bit(Domain domain) {
+        return 1 << domain.ordinal();
     }
 
     // ── Finding the cache ─────────────────────────────────────────────────
@@ -280,7 +240,7 @@ public final class CgHostStateCache {
                 return;
             }
         }
-        missing |= bit(CgGlSlot.COLOR_MASK);
+        missing |= bit(Domain.COLOR_MASK);
     }
 
     private void findTextures(IntConsumer setActiveTexture, IntSupplier driverActiveTexture) throws IllegalAccessException {
@@ -298,14 +258,14 @@ public final class CgHostStateCache {
         }
         Object table = f == null ? null : f.get(null);
         if (table == null || Array.getLength(table) < units) {
-            missing |= bit(CgGlSlot.TEXTURES);
+            missing |= bit(Domain.TEXTURES);
             return;
         }
         textures = table;
         binding = first(table.getClass().getComponentType(), int.class);
         activeTexture = named(gsm, "activeTexture");
         if (activeTexture == null) activeTexture = probeActiveTexture(setActiveTexture, driverActiveTexture);
-        if (activeTexture == null || activeTexture.getType() != int.class) missing |= bit(CgGlSlot.TEXTURES);
+        if (activeTexture == null || activeTexture.getType() != int.class) missing |= bit(Domain.TEXTURES);
     }
 
     /** The static int switching units writes, where it is renamed: set to a unit none holds, then back. */
@@ -317,7 +277,7 @@ public final class CgHostStateCache {
         while (unit < units && contains(before, unit)) unit++;
         if (unit == units) return null;
         int original = driverActiveTexture.getAsInt();
-        setActiveTexture.accept(CgGL.GL_TEXTURE0 + unit);
+        setActiveTexture.accept(GL_TEXTURE0 + unit);
         Field found = null;
         boolean ambiguous = false;
         for (int i = 0; i < ints.length; i++) {
@@ -339,7 +299,7 @@ public final class CgHostStateCache {
             viewportBox = ints;
             return;
         }
-        missing |= bit(CgGlSlot.VIEWPORT);
+        missing |= bit(Domain.VIEWPORT);
     }
 
     /** {@code BooleanState}'s class, from a flag already found, or null. */
