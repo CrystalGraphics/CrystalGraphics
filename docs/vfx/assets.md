@@ -477,6 +477,19 @@ if (loading.ready()) VFX.play(new CgVfxSystemInstance<>(CHARGE, x, y, z));      
 VFX.play(new CgVfxSystemInstance<>(CHARGE.get(), x, y, z));   // the definition alone: never changes while it plays
 ```
 
+A data file of your own names assets by id, and reads them as refs with `CgAssetRef.codec(kind)`: Unreal's soft object
+path, saved as its path. Decoding loads nothing; an id naming no asset fails where it is used.
+
+```java
+record Rank(int from, CgAssetRef<CgTextStyle> style) {
+    static final CgCodec<Rank> CODEC = CgCodecs.record(
+        CgCodecs.field("from", CgCodecs.INT, Rank::from),
+        CgCodecs.field("style", CgAssetRef.codec(CgLookKinds.TEXT_STYLE), Rank::style),   // style: mymod:hud/gold
+        Rank::new);
+}
+List<Rank> ranks = CgFiles.YAML.read(CgAssetMounts.file("mymod:hud/ranks.yaml"), CgCodecs.listOf(Rank.CODEC));
+```
+
 What makes a newer definition: a file saved in a dev run (its source folder is watched), an editor's edit, or
 `CgVfxAssets.instance().saved("mymod:vfx/systems/kamehameha/charge.yaml")` from a tool of your own. A saved file is
 compared with the one it replaces and turned into the edits an editor would make, so both reach what plays the same way.

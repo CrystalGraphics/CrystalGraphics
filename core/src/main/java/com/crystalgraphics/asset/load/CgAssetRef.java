@@ -6,6 +6,8 @@ import java.util.List;
 import javax.annotation.Nullable;
 
 import com.crystalgraphics.object.CgType;
+import com.crystalgraphics.serialization.CgCodec;
+import com.crystalgraphics.serialization.CgCodecs;
 
 /**
  * Names an asset by kind and id and holds its published definition. Declared at init on both sides, loading nothing;
@@ -50,6 +52,27 @@ public final class CgAssetRef<D> {
         this.assets = assets;
         this.kind = kind;
         this.id = id;
+    }
+
+    /**
+     * A {@code kind} asset's id, read as its ref and written as its id: a mod's own data file naming assets, as
+     * Unreal's soft object path serializes as its path. Decoding declares the ref and loads nothing.
+     *
+     * <pre>{@code
+     * record Grade(int from, CgAssetRef<CgTextStyle> style) {
+     *     static final CgCodec<Grade> CODEC = CgCodecs.record(
+     *         CgCodecs.field("from", CgCodecs.INT, Grade::from),
+     *         CgCodecs.field("style", CgAssetRef.codec(CgLookKinds.TEXT_STYLE), Grade::style),   // style: mymod:hud/gold
+     *         Grade::new);
+     * }
+     * }</pre>
+     *
+     * <ul>
+     *   <li>An id naming no asset decodes; it fails where it is used, by name, as any ref does.</li>
+     * </ul>
+     */
+    public static <D> CgCodec<CgAssetRef<D>> codec(CgType kind) {
+        return CgCodecs.xmap(CgCodecs.STRING, id -> CgVfxAssets.ref(kind, id), CgAssetRef::id);
     }
 
     /**

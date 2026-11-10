@@ -15,6 +15,8 @@ import com.crystalgraphics.asset.kind.CgParticleKinds;
 import com.crystalgraphics.asset.registry.CgAssetRegistry;
 import com.crystalgraphics.asset.tree.CgAssetData;
 import com.crystalgraphics.job.CgJobLoop;
+import com.crystalgraphics.serialization.CgCodec;
+import com.crystalgraphics.serialization.CgPlainOps;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -60,6 +62,15 @@ public class CgVfxAssetsTest {
     public void theSameAssetIsTheSameRef() {
         assertSame(assets.declare(CgParticleKinds.SYSTEM, "mymod:kamehameha/charge"),
                 assets.declare(CgParticleKinds.SYSTEM, "mymod:kamehameha/charge"));
+    }
+
+    @Test
+    public void anIdDecodesToItsRefAndBack() {
+        CgVfxAssets.install(assets);
+        CgCodec<CgAssetRef<CgAssetData>> codec = CgAssetRef.codec(CgParticleKinds.SYSTEM);
+        CgAssetRef<CgAssetData> ref = codec.decode(CgPlainOps.INSTANCE, "mymod:kamehameha/charge");
+        assertSame("the one ref of that asset", assets.declare(CgParticleKinds.SYSTEM, "mymod:kamehameha/charge"), ref);
+        assertEquals("mymod:kamehameha/charge", codec.encode(CgPlainOps.INSTANCE, ref));
     }
 
     @Test

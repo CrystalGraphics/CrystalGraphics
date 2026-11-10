@@ -17,6 +17,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
 
+import javax.annotation.Nullable;
+
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -84,6 +86,28 @@ public final class CgAssetMounts {
         List<Path> dev = new ArrayList<>();
         for (File f : CgIO.overrideRoots()) dev.add(f.toPath());
         namespaces = mount(CgVfxAssets.instance().registry(), dev, CgModLoader.roots()).mounted();
+    }
+
+    /**
+     * The file {@code id} names in its mounted namespace, {@code <namespace>:<path>}: a mod's own data beside its
+     * assets, read with {@code CgFiles}. A dev run's source folder answers before its jar, so an edit is read.
+     *
+     * <pre>{@code
+     * Path grades = CgAssetMounts.file("mymod:hud/combo/grades.yaml");
+     * List<Grade> table = CgFiles.YAML.read(grades, CgCodecs.listOf(Grade.CODEC));
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Only a mounted namespace has one: null before {@link #mount()} and for a namespace holding no assets.</li>
+     *   <li>The path may not exist: reading it fails, naming it.</li>
+     * </ul>
+     */
+    @Nullable
+    public static synchronized Path file(String id) {
+        int colon = id.indexOf(':');
+        if (colon <= 0) throw new IllegalArgumentException("not <namespace>:<path>: " + id);
+        Path root = ROOTS.get(id.substring(0, colon));
+        return root == null ? null : root.resolve(id.substring(colon + 1));
     }
 
     /**
