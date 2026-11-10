@@ -6,6 +6,7 @@ import com.crystalgraphics.gl.buffer.CgReadback;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.rhi.CgDeviceSection;
 import com.crystalgraphics.platform.rhi.CgRHI;
+import com.crystalgraphics.platform.rhi.resource.CgTextureRegion;
 import com.crystalgraphics.platform.rhi.resource.CgTextureView;
 
 import java.nio.ByteBuffer;
@@ -96,18 +97,23 @@ public final class CgReplayedReads {
      * {@code type}'s base format and pixel type, rows bottom first: what {@link CgReadback#pixels} reads.
      */
     public ByteBuffer pixels(int framebuffer, int width, int height, CgTextureType type) {
+        return pixels(CgReadback.colorOf(framebuffer, width, height, type), width, height, type);
+    }
+
+    /** As {@link #pixels(int, int, int, CgTextureType)}, of {@code view}'s level and layer: a mip level of a target. */
+    public ByteBuffer pixels(CgTextureView view, int width, int height, CgTextureType type) {
         int size = width * height * CgReadback.pixelBytes(type);
+        CgTextureRegion region = CgReadback.region(view, 0, 0, width, height);
         return bytes("pixels " + width + "x" + height + " " + type, size, () -> {
             ByteBuffer out = ByteBuffer.allocateDirect(size).order(ByteOrder.nativeOrder());
             CgDeviceSection.begin();
             try {
-                CgTextureView color = CgReadback.colorOf(framebuffer, width, height, type);
-                CgRHI.get().encoder().readTexture(color.texture(), CgReadback.region(color, 0, 0, width, height), out);
+                CgRHI.get().encoder().readTexture(view.texture(), region, out);
             } finally {
                 CgDeviceSection.end();
             }
             return out;
-        }, sink -> CgReadback.pixels(framebuffer, 0, 0, width, height, type, sink));
+        }, sink -> CgReadback.texture(view.texture(), region, sink));
     }
 
     /**
@@ -115,7 +121,12 @@ public final class CgReplayedReads {
      * a channel the type lacks 0, and alpha 1. For an 8-bit, half-float or float colour type.
      */
     public float[] rgba(int framebuffer, int width, int height, CgTextureType type) {
-        ByteBuffer bytes = pixels(framebuffer, width, height, type);
+        return rgba(CgReadback.colorOf(framebuffer, width, height, type), width, height, type);
+    }
+
+    /** {@link #rgba(int, int, int, CgTextureType)} of {@code view}'s level and layer. */
+    public float[] rgba(CgTextureView view, int width, int height, CgTextureType type) {
+        ByteBuffer bytes = pixels(view, width, height, type);
         int channels = type.glBaseFormat == CgGL.GL_RED ? 1 : type.glBaseFormat == CgGL.GL_RG ? 2
                 : type.glBaseFormat == CgGL.GL_RGB ? 3 : 4;
         int size = type.glType == CgGL.GL_UNSIGNED_BYTE ? 1 : type.glType == CgGL.GL_HALF_FLOAT ? 2 : 4;

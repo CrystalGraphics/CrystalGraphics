@@ -87,7 +87,7 @@ final class CgCustomDataPass {
         CgTextureType depth = null;
         if (!CgGraphTexture.takesCurrentDepth(fb)) {
             if (fb != customDataProbed) {
-                customDataDepth = CgFrameBuffer.depthTypeOf(fb);
+                customDataDepth = CgFrameBuffer.depthTypeOf(fb, w, h);
                 customDataProbed = fb;
             }
             depth = customDataDepth;

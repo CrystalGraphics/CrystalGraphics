@@ -360,7 +360,7 @@ public final class CgRenderStage {
             if (rehearsalTarget != null && !rehearsalTarget.isDeleted()) rehearsalTarget.delete();
             // The host's depth type and size: copies of the current target are cached by both and taken at the host's
             // viewport, so the cast reuses the rehearsal's and a copy never reads past the target.
-            CgTextureType depth = CgFrameBuffer.depthTypeOf(hostTarget);
+            CgTextureType depth = CgFrameBuffer.depthTypeOf(hostTarget, host.width(), host.height());
             rehearsalTarget = CgFrameBuffer.createOwned("cg_rehearsal", host.width(), host.height(),
                     CgFrameBufferFormat.builder("cg_rehearsal").color(0, CgTextureType.RGBA8)
                             .depth(depth != null ? depth : CgTextureType.DEPTH24_STENCIL8).build());

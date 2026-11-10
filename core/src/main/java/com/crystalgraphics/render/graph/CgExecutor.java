@@ -2077,10 +2077,9 @@ public final class CgExecutor {
             return;
         }
         int host = startFramebuffer, width = startViewport.get(2), height = startViewport.get(3);
-        CgGLImports imports = CgGLImports.get();
         // Framebuffer 0 is Unreal's back buffer: the window's own buffers on GL, the surface on a device presenting one
-        hostColor = texture(imports.attachment(host, false, width, height));
-        hostDepth = texture(imports.attachment(host, true, width, height));
+        hostColor = texture(CgFrameBuffer.attachment(host, false, width, height));
+        hostDepth = texture(CgFrameBuffer.attachment(host, true, width, height));
     }
 
     private static CgGpuTexture texture(@Nullable CgTextureView view) {

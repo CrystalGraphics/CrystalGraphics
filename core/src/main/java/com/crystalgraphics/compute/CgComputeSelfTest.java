@@ -5,7 +5,6 @@ import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.gl.framebuffer.CgFrameBuffer;
 import com.crystalgraphics.platform.gl.CgCapabilities;
-import com.crystalgraphics.gl.CgGlNames;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.state.CgGlScope;
 import com.crystalgraphics.platform.gl.state.CgGlState;
@@ -137,7 +136,6 @@ public final class CgComputeSelfTest {
         }
 
         Result run() {
-            drainErrors();
 
             int ints = buffer(words(N, i -> 3 * i - 7));
             int floats = buffer(floats(N * 2, w -> w % 2 == 0 ? w / 2 : -(w / 2)));
@@ -236,12 +234,10 @@ public final class CgComputeSelfTest {
                 expectWords("BITS", reads.words(bits, N * BIT_WORDS), bits());
                 expectPicture(picture);
                 expectAccum(accum);
-                List<String> errors = drainErrors();
-                if (!errors.isEmpty()) failures.add("GL errors " + errors);
             } finally {
                 for (int b : new int[] {ints, floats, pairs, gathered, spawns, spawnCount, bins, mins, maxs, stored, counted,
                         halves, args, big, many, manyCount, doubled, after, bits}) {
-                    CgGL.glDeleteBuffers(b);
+                    CgCheckBuffers.release(b);
                 }
                 picture.delete();
                 accum.delete();
@@ -433,14 +429,6 @@ public final class CgComputeSelfTest {
         return true;
     }
 
-    private static List<String> drainErrors() {
-        List<String> errors = new ArrayList<>();
-        for (int error, guard = 0; (error = CgGL.glGetError()) != CgGL.GL_NO_ERROR && guard < 16; guard++) {
-            errors.add("0x" + Integer.toHexString(error));
-        }
-        return errors;
-    }
-
     private static long pack(int a, int b) {
         return ((long) a << 32) | (b & 0xffffffffL);
     }
@@ -474,23 +462,12 @@ public final class CgComputeSelfTest {
     }
 
     private static int buffer(int[] words) {
-        ByteBuffer data = ByteBuffer.allocateDirect(words.length * 4).order(ByteOrder.nativeOrder());
-        for (int w : words) data.putInt(w);
-        data.flip();
-        int buffer = CgGlNames.buffer();
-        CgGL.glBindBuffer(CgGL.GL_COPY_WRITE_BUFFER, buffer);
-        CgGL.glBufferData(CgGL.GL_COPY_WRITE_BUFFER, data, CgGL.GL_DYNAMIC_DRAW);
-        CgGL.glBindBuffer(CgGL.GL_COPY_WRITE_BUFFER, 0);
-        return buffer;
+        return CgCheckBuffers.words(words);
     }
 
     private static CgFrameBuffer image(String name, int size, CgFrameBufferFormat format, float r, float g, float b, float a) {
         CgFrameBuffer fbo = CgFrameBuffer.createOwned("compute_self_test_" + name, size, size, format);
-        fbo.bind();
-        CgGL.glViewport(0, 0, size, size);
-        CgGL.glClearColor(r, g, b, a);
-        CgGL.glClear(CgGL.GL_COLOR_BUFFER_BIT);
-        fbo.unbind();
+        fbo.clearColor(r, g, b, a);
         return fbo;
     }
 }

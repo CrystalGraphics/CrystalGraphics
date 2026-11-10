@@ -39,7 +39,6 @@ import com.crystalgraphics.render.world.CgPipelinePrecache;
 import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.vfx.CgVfx;
 import com.crystalgraphics.api.CgBindingPoints;
-import com.crystalgraphics.gl.CgGlNames;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.gl.buffer.CgStreamBuffer;
 import com.crystalgraphics.gl.buffer.CgReadback;
@@ -214,9 +213,6 @@ public final class CgGraphicsLifecycle {
             CgStartSteps.step("capabilities");
             // While the loading screen shows: a check's glGet waits for the driver's queue, deepest then
             CgCheckedProvider.deferChecksWhile(CgLoadingScreen::hostDraws);
-            // Before anything queues: a name generated later waits for the driver's queue, deepest while loading
-            CgGlNames.fill();
-            CgStartSteps.step("names");
             CgStartSteps.pause();
             return;
         }
@@ -511,7 +507,6 @@ public final class CgGraphicsLifecycle {
                 try (CgTrace.Zone z = CgTrace.zone(CgChannels.MISC, UPLOADS)) {
                     CgUploads.tick();
                 }
-                CgGlNames.refill();   // between frames, where a threaded driver's queue is short
                 try (CgTrace.Zone z = CgTrace.zone(CgChannels.MISC, BUDGET)) {
                     CgGpuBudget.tick();
                 }
@@ -669,9 +664,6 @@ public final class CgGraphicsLifecycle {
 
         // Upload staging, once every texture above has given back its queued leases.
         CgUploads.releaseAll();
-
-        // Names generated ahead and unused.
-        CgGlNames.release();
 
         // Its fences name the dying context.
         CgFrameRing.reset();

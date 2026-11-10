@@ -64,8 +64,6 @@ public final class CgTargetCompare {
     }
 
     private static void read(CgFrameBuffer target, int x, int y, int width, int height, ByteBuffer into) {
-        target.bind();
-        into.clear();
-        CgGL.glReadPixels(x, y, width, height, CgGL.GL_RGBA, CgGL.GL_UNSIGNED_BYTE, into);
+        target.readColor(x, y, width, height, into);
     }
 }

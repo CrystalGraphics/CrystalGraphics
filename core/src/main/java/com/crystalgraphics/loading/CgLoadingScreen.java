@@ -33,6 +33,7 @@ import com.crystalgraphics.loading.watchdog.CgLoadWatchdog;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.state.CgGlScope;
 import com.crystalgraphics.platform.gl.state.CgGlState;
+import com.crystalgraphics.render.graph.CgExecutor;
 import com.crystalgraphics.render.CgWarmBudget;
 import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.render.draw.CgPipeline;
@@ -478,10 +479,11 @@ public final class CgLoadingScreen {
             if (warm) warmFrame();
             // Never wait for the view's build here: it held the frame 220 ms cold
             if (!viewReady) return;
-            CgGL.glBindFramebuffer(CgGL.GL_FRAMEBUFFER, framebuffer);
-            CgGL.glViewport(0, 0, width, height);
-            view.draw(width, height, shownProgress, Math.min(1f, appeared / FADE_IN),
-                    shown() ? 0f : Math.min(1f, left / FADE_OUT), shown() ? reason : null);
+            // The host's framebuffer (or one of ours it names) as the current target, nothing bound
+            try (CgExecutor.Into into = CgExecutor.into(CgFrameBuffer.wrap("cg_loading_host", framebuffer, width, height))) {
+                view.draw(width, height, shownProgress, Math.min(1f, appeared / FADE_IN),
+                        shown() ? 0f : Math.min(1f, left / FADE_OUT), shown() ? reason : null);
+            }
         }
     }
 
@@ -506,10 +508,7 @@ public final class CgLoadingScreen {
                     .builder("cg_loading_world").color(0, CgTextureType.RGBA8).depth(worldDepth).build());
         }
         if (worldReversed) CgGL.setDepthReversed(true, worldZeroToOne);
-        // The executor takes what is bound as the host's target: a scene's init leaves its own bound, at the window's viewport
-        warmTarget.bind();
-        CgGL.glViewport(0, 0, WARM_SIZE, WARM_SIZE);
-        try {
+        try (CgExecutor.Into ignored = CgExecutor.into(warmTarget)) {
             for (CgRenderStage stage : WORLD) {
                 stage.host().set(0f, WARM_SIZE, WARM_SIZE, warmTarget.getId()).view().set(0, 0, 0, WARM_VIEW, WARM_PROJECTION);
                 stage.fire();

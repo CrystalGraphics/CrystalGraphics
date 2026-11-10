@@ -1,5 +1,8 @@
 package com.crystalgraphics.render.graph;
 
+import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
+import com.crystalgraphics.gl.framebuffer.CgFrameBuffer;
+import com.crystalgraphics.platform.rhi.command.CgAccess;
 import com.crystalgraphics.platform.gl.CgGLImports;
 import com.crystalgraphics.platform.rhi.CgDeviceSection;
 import com.crystalgraphics.platform.rhi.CgRHI;
@@ -60,15 +63,53 @@ final class CgGraphBarriers {
         if (alone) end(false);
     }
 
-    /** Framebuffer {@code fbo}'s attachments, 0 the window's. */
+    /** Framebuffer {@code fbo}'s attachments, 0 the window's: an owned one's textures, else the host's through the imports. */
     void framebuffer(int fbo, int from, int to) {
         boolean alone = depth == 0;
         if (alone) begin();
-        if (!CgGLImports.get().framebufferBarrier(fbo, from, to, batch)) {
+        CgFrameBuffer ours = CgFrameBuffer.owned(fbo);
+        if (ours != null) {
+            ownedMoves(ours, from, to);
+        } else if (!CgGLImports.get().framebufferBarrier(fbo, from, to, batch)) {
             memoryFrom |= from;
             memoryTo |= to;
         }
         if (alone) end(false);
+    }
+
+    /**
+     * Every attachment of {@code fbo}, drawn to or not: colour at the access less a read-only depth's, depth at its depth
+     * form. An attach-only image stays in its attachment layout for any read but a copy.
+     */
+    private void ownedMoves(CgFrameBuffer fbo, int from, int to) {
+        CgFrameBufferFormat format = fbo.getFormat();
+        for (int slot : format.getActiveColorSlotIds()) {
+            CgGpuTexture t = fbo.rhiColor(slot);
+            if (t != null) whole(t, colorAccess(t, from), colorAccess(t, to));
+        }
+        CgGpuTexture d = fbo.rhiDepth();
+        if (d != null) whole(d, depthAccess(d, from), depthAccess(d, to));
+    }
+
+    private void whole(CgGpuTexture t, int from, int to) {
+        int layers = t.desc().kind() == CgGpuTexture.Kind.D3 ? 1 : t.desc().depthOrLayers();
+        batch.texture(t, 0, t.desc().mips(), 0, layers, from, to);
+    }
+
+    private static int colorAccess(CgGpuTexture t, int access) {
+        return unsampled(t, access & ~CgAccess.DEPTH_READ, CgAccess.COLOR_WRITE);
+    }
+
+    private static int depthAccess(CgGpuTexture t, int access) {
+        int a = (access & CgAccess.DEPTH_READ) != 0 ? CgAccess.DEPTH_READ | CgAccess.SAMPLED_READ
+                : (access & CgAccess.COLOR_WRITE) == 0 ? access : access & ~CgAccess.COLOR_WRITE | CgAccess.DEPTH_WRITE;
+        return unsampled(t, a, CgAccess.DEPTH_WRITE);
+    }
+
+    private static int unsampled(CgGpuTexture t, int access, int attachment) {
+        if (t.desc().usage().contains(CgGpuTexture.Usage.SAMPLED)) return access;
+        if ((access & (CgAccess.COPY_READ | CgAccess.COPY_WRITE | CgAccess.RESTING)) != 0 || access == 0) return access;
+        return attachment;
     }
 
     /** Closes a batch, recorded whole at the outermost; {@code compute} the open compute pass, if any. */

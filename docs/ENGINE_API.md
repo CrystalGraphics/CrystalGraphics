@@ -490,9 +490,10 @@ CgFrameBufferFormat fmt = CgFrameBufferFormat.builder("my_fbo")
         .depthRbo(CgTextureType.DEPTH24_STENCIL8)  // (or: depth → renderbuffer)
         .build();
 CgFrameBuffer fbo = CgFrameBuffer.create("my_fbo", width, height, fmt); // or CgFrameBuffer.createScreenSized("my_fbo", fmt);
-fbo.bind();     // ... render ...
-fbo.unbind();
-fbo.delete();   // only valid on owned FBOs; CgFrameBuffer.wrap() creates non-owned
+try (CgExecutor.Into ignored = CgExecutor.into(fbo)) {   // the current target of what executes, nothing bound
+    stage.fire();
+}
+fbo.delete();   // only valid on owned FBOs; CgFrameBuffer.wrap() names a host's
 ```
 
 `CgFrameBufferRegistry` — cache for screen-sized FBOs that auto-resize on window resize.
@@ -866,9 +867,7 @@ Wrap any block of GL work in a `CgGlScope` to guarantee state restoration on exi
 ```java
 // Save specific slots:
 try (CgGlScope scope = CgGlState.save(CgGlSlot.FBO, CgGlSlot.PROGRAM)) {
-    fbo.bind();
-    shader.bind();
-    // draw
+    // GL calls changing the framebuffer and program
 }  // FBO and PROGRAM restored automatically on close
 
 // Convenience shorthands:

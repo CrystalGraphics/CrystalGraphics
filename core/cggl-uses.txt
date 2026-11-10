@@ -12,13 +12,9 @@ com/crystalgraphics/api/texture/CgMipmapConfig.java
 com/crystalgraphics/api/texture/CgTextureSpec.java
 com/crystalgraphics/api/texture/CgTextureType.java
 com/crystalgraphics/api/vertex/CgAttribType.java
-com/crystalgraphics/compute/CgComputeSelfTest.java
 com/crystalgraphics/compute/CgReplayedReads.java
-com/crystalgraphics/compute/ops/CgGpuOpsCheck.java
-com/crystalgraphics/gl/CgGlNames.java
 com/crystalgraphics/gl/buffer/CgReadback.java
 com/crystalgraphics/gl/framebuffer/CgFrameBuffer.java
-com/crystalgraphics/gl/framebuffer/CgPixelReadback.java
 com/crystalgraphics/gl/material/parse/CgMaterialShaderCompiler.java
 com/crystalgraphics/gl/material/parse/CgParsedShader.java
 com/crystalgraphics/gl/material/parse/CgRenderStateParser.java
@@ -41,7 +37,6 @@ com/crystalgraphics/render/graph/CgFrameBuilder.java
 com/crystalgraphics/render/graph/CgLoad.java
 com/crystalgraphics/render/graph/CgRasterPass.java
 com/crystalgraphics/render/graph/CgRehearsal.java
-com/crystalgraphics/render/graph/CgTargetCompare.java
 com/crystalgraphics/render/graph/CgTargetCopy.java
 com/crystalgraphics/render/stage/CgHostTextures.java
 com/crystalgraphics/render/stage/CgRenderStage.java

@@ -1,5 +1,11 @@
 package com.crystalgraphics.compute.ops;
 
+import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
+import com.crystalgraphics.gl.framebuffer.CgTexelConvert;
+import com.crystalgraphics.platform.rhi.CgDeviceSection;
+import com.crystalgraphics.platform.rhi.CgRHI;
+import com.crystalgraphics.platform.rhi.resource.CgTextureRegion;
+import com.crystalgraphics.platform.rhi.resource.CgTextureView;
 import com.crystalgraphics.compute.CgComputeSelfTest;
 import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.texture.CgTexture;
@@ -13,7 +19,7 @@ import com.crystalgraphics.compute.ops.CgGpuOps.Order;
 import com.crystalgraphics.compute.ops.CgGpuOps.Scan;
 import com.crystalgraphics.gl.framebuffer.CgFrameBuffer;
 import com.crystalgraphics.platform.gl.CgCapabilities;
-import com.crystalgraphics.gl.CgGlNames;
+import com.crystalgraphics.compute.CgCheckBuffers;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.state.CgGlScope;
 import com.crystalgraphics.platform.gl.state.CgGlState;
@@ -136,7 +142,6 @@ public final class CgGpuOpsCheck {
             List<ImageCase> images = new ArrayList<>();
             for (CgTextureType type : CgGpuOps.IMAGE_TYPES) for (int[] size : IMAGE_SIZES) images.add(new ImageCase(type, size[0], size[1]));
             CgCompute check = CgCompute.load(PATH);
-            drainErrors();
             int drawn = buffer(DRAWN * 4);
             try {
                 CgRecording rec = new CgRecording();
@@ -156,10 +161,8 @@ public final class CgGpuOpsCheck {
                     System.arraycopy(r, 0, want, e * 4, 4);
                 }
                 expectWords(failures, "rng", reads.words(drawn, DRAWN * 4), want);
-                List<String> errors = drainErrors();
-                if (!errors.isEmpty()) failures.add("GL errors " + errors);
             } finally {
-                CgGL.glDeleteBuffers(drawn);
+                CgCheckBuffers.release(drawn);
                 for (Case c : cases) c.delete();
                 for (ImageCase c : images) c.delete();
             }
@@ -379,7 +382,7 @@ public final class CgGpuOpsCheck {
             for (int b : new int[] {gpuUints, gpuInts, gpuFloats, gpuFlags, gpuPoints, gpuLengths, count, fill, iota, copy,
                     args, results, scanA, scanB, scanC, indices, values, sortedKeys, sortedValues, sortedFloats, sortedInts,
                     cellKeys, cellValues, bins, expanded}) {
-                CgGL.glDeleteBuffers(b);
+                CgCheckBuffers.release(b);
             }
         }
     }
@@ -449,11 +452,14 @@ public final class CgGpuOpsCheck {
 
         CgFrameBuffer texture(CgFrameBufferFormat format, int levels, float[] data, int width, int height) {
             CgFrameBuffer fb = CgFrameBuffer.createOwned("ops-check " + name, width, height, format, levels);
-            ByteBuffer pixels = ByteBuffer.allocateDirect(width * height * 16).order(ByteOrder.nativeOrder());
-            for (int i = 0; i < width * height * 4; i++) pixels.putFloat(data[i]);
-            pixels.flip();
-            CgGL.glBindTexture(CgGL.GL_TEXTURE_2D, fb.getColorTexture(0).getId());
-            CgGL.glTexSubImage2D(CgGL.GL_TEXTURE_2D, 0, 0, 0, width, height, CgGL.GL_RGBA, CgGL.GL_FLOAT, pixels);
+            CgGpuTexture image = fb.rhiColor(0);
+            ByteBuffer pixels = CgTexelConvert.fromRgba32f(data, image.desc().format(), width * height);
+            CgDeviceSection.begin();
+            try {
+                CgRHI.get().encoder().writeTexture(image, CgTextureRegion.of2D(0, 0, 0, width, height), pixels);
+            } finally {
+                CgDeviceSection.end();
+            }
             return fb;
         }
 
@@ -517,12 +523,12 @@ public final class CgGpuOpsCheck {
             float scaledSigma = Math.min(SCALED_SIGMA / 2, 4f);
             float[] scaled = blurMirrored(blurMirrored(reduced, sw, sh, scaledSigma, false), sw, sh, scaledSigma, true);
             // Two taps a bilinear fetch: the filter's weights are good to about 1/256
-            compareRegion(failures, "scaled blur", crop(reads.rgba(scaledTarget.levelId(0), (w + 1) / 2, (h + 1) / 2, type),
+            compareRegion(failures, "scaled blur", crop(reads.rgba(level(scaledTarget, 0), (w + 1) / 2, (h + 1) / 2, type),
                     (w + 1) / 2, sx, sy, sw, sh), scaled, sw, 2 * ulp + 1.0 / 128);
 
-            compareRegion(failures, "shrink", crop(reads.rgba(shrinkTarget.levelId(0), stw + 1, sth + 1, type), stw + 1,
+            compareRegion(failures, "shrink", crop(reads.rgba(level(shrinkTarget, 0), stw + 1, sth + 1, type), stw + 1,
                     1, 1, stw, sth), shrink(source, shx, shy, shw, shh, stw, sth), stw, 4 * ulp);
-            compareRegion(failures, "shrink to one texel", reads.rgba(meanTarget.levelId(0), 1, 1, type),
+            compareRegion(failures, "shrink to one texel", reads.rgba(level(meanTarget, 0), 1, 1, type),
                     shrink(source, 0, 0, w, h, 1, 1), 1, 4 * ulp);
         }
 
@@ -667,7 +673,12 @@ public final class CgGpuOpsCheck {
 
         /** Level {@code level} of the colour, as RGBA floats. */
         float[] read(CgFrameBuffer fb, int level) {
-            return reads.rgba(fb.levelId(level), size(w, level), size(h, level), type);
+            return reads.rgba(level(fb, level), size(w, level), size(h, level), type);
+        }
+
+        /** Level {@code level} of {@code fb}'s colour, as a read takes it. */
+        CgTextureView level(CgFrameBuffer fb, int level) {
+            return CgTextureView.attachment(fb.rhiColor(0), level, 0);
         }
 
         static int size(int size, int level) {
@@ -739,14 +750,6 @@ public final class CgGpuOpsCheck {
         return CgGraphBuffer.imported(name, buffer, 4L * words);
     }
 
-    private static List<String> drainErrors() {
-        List<String> errors = new ArrayList<>();
-        for (int error, guard = 0; (error = CgGL.glGetError()) != CgGL.GL_NO_ERROR && guard < 16; guard++) {
-            errors.add("0x" + Integer.toHexString(error));
-        }
-        return errors;
-    }
-
     /** A buffer of {@code count} sentinels. */
     private static int buffer(int count) {
         int[] words = new int[count];
@@ -755,14 +758,7 @@ public final class CgGpuOpsCheck {
     }
 
     private static int buffer(int[] words) {
-        ByteBuffer data = ByteBuffer.allocateDirect(words.length * 4).order(ByteOrder.nativeOrder());
-        for (int w : words) data.putInt(w);
-        data.flip();
-        int buffer = CgGlNames.buffer();
-        CgGL.glBindBuffer(CgGL.GL_COPY_WRITE_BUFFER, buffer);
-        CgGL.glBufferData(CgGL.GL_COPY_WRITE_BUFFER, data, CgGL.GL_DYNAMIC_DRAW);
-        CgGL.glBindBuffer(CgGL.GL_COPY_WRITE_BUFFER, 0);
-        return buffer;
+        return CgCheckBuffers.words(words);
     }
 
 

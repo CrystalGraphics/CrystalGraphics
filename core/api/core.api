@@ -4195,6 +4195,12 @@ com/crystalgraphics/collision/mirror/CgMirrorVersion
   method public entities ()Lcom/crystalgraphics/platform/world/CgEntityQuery;
   method public epoch ()J
   method public frozen ()Ljava/lang/Object;
+com/crystalgraphics/compute/CgCheckBuffers
+  access public,final
+  extends java/lang/Object
+  method public,static of (Ljava/nio/ByteBuffer;)I
+  method public,static release (I)V
+  method public,static words ([I)I
 com/crystalgraphics/compute/CgCompute
   access public,final
   extends java/lang/Object
@@ -4257,8 +4263,10 @@ com/crystalgraphics/compute/CgReplayedReads
   extends java/lang/Object
   method public failure ()Ljava/lang/String;
   method public pixels (IIILcom/crystalgraphics/api/texture/CgTextureType;)Ljava/nio/ByteBuffer;
+  method public pixels (Lcom/crystalgraphics/platform/rhi/resource/CgTextureView;IILcom/crystalgraphics/api/texture/CgTextureType;)Ljava/nio/ByteBuffer;
   method public replay ()Lcom/crystalgraphics/compute/CgReplayedReads;
   method public rgba (IIILcom/crystalgraphics/api/texture/CgTextureType;)[F
+  method public rgba (Lcom/crystalgraphics/platform/rhi/resource/CgTextureView;IILcom/crystalgraphics/api/texture/CgTextureType;)[F
   method public waiting ()Z
   method public words (II)[I
   method public,static immediate ()Lcom/crystalgraphics/compute/CgReplayedReads;
@@ -5665,20 +5673,6 @@ com/crystalgraphics/frame/CgWorldSubsystem
   method protected,abstract initialize ()V
   method protected,final world ()Lcom/crystalgraphics/frame/CgWorld;
   method public <init> ()V
-com/crystalgraphics/gl/CgGlNames
-  access public,final
-  extends java/lang/Object
-  field public,static,final FEW I
-  field public,static,final MAX_RESERVE I
-  field public,static,final RESERVE I
-  method public,static buffer ()I
-  method public,static fill ()V
-  method public,static framebuffer ()I
-  method public,static refill ()V
-  method public,static release ()V
-  method public,static renderbuffer ()I
-  method public,static texture ()I
-  method public,static vertexArray ()I
 com/crystalgraphics/gl/buffer/CgBufferReadback
   access public,final
   extends java/lang/Object
@@ -5984,33 +5978,13 @@ com/crystalgraphics/gl/framebuffer/CgFrameBuffer
   extends java/lang/Object
   field protected deleted Z
   field protected depthAttachment Lcom/crystalgraphics/gl/framebuffer/CgFrameBuffer$Attachment;
-  field protected fboId I
   field protected height I
   field protected width I
   field protected,final colorAttachments Ljava/util/TreeMap;
   field protected,final format Lcom/crystalgraphics/api/framebuffer/CgFrameBufferFormat;
+  field protected,final id I
   field protected,final name Ljava/lang/String;
   field protected,final owned Z
-  method protected deleteFramebuffer (I)V
-  method protected deleteRenderbuffer (I)V
-  method protected doBindFbo (II)V
-  method protected doBindRenderbuffer (I)V
-  method protected doCheckFramebufferStatus ()I
-  method protected doFramebufferRenderbuffer (III)V
-  method protected doFramebufferTexture2D (IIIII)V
-  method protected doFramebufferTextureLayer (III)V
-  method protected doGenFramebuffer ()I
-  method protected doGenRenderbuffer ()I
-  method protected doRenderbufferStorage (III)V
-  method protected doRenderbufferStorageMultisample (IIII)V
-  method public bind ()V
-  method public bindDraw ()V
-  method public bindLayer (I)V
-  method public bindLevel (I)V
-  method public bindRead ()V
-  method public blitFrom (II)V
-  method public blitFrom (IIIII)V
-  method public blitFrom (Lcom/crystalgraphics/gl/framebuffer/CgFrameBuffer;II)V
   method public clear (IFFFFDI)V
   method public clearAll (FFFF)V
   method public clearColor (FFFF)V
@@ -6023,13 +5997,9 @@ com/crystalgraphics/gl/framebuffer/CgFrameBuffer
   method public copyColorAndDepthTo (I)V
   method public copyColorTo (I)V
   method public delete ()V
-  method public drawBuffers ([I)V
-  method public drawInto ()Lcom/crystalgraphics/gl/framebuffer/CgFrameBuffer$Drawing;
-  method public getColorAttachment (I)Lcom/crystalgraphics/gl/framebuffer/CgFrameBuffer$Attachment;
   method public getColorLevels ()I
   method public getColorTexture (I)Lcom/crystalgraphics/api/texture/CgTexture;
   method public getDepth ()I
-  method public getDepthAttachment ()Lcom/crystalgraphics/gl/framebuffer/CgFrameBuffer$Attachment;
   method public getDepthTexture ()Lcom/crystalgraphics/api/texture/CgTexture;
   method public getFormat ()Lcom/crystalgraphics/api/framebuffer/CgFrameBufferFormat;
   method public getHeight ()I
@@ -6041,22 +6011,15 @@ com/crystalgraphics/gl/framebuffer/CgFrameBuffer
   method public isOwned ()Z
   method public isScreenSized ()Z
   method public isVolume ()Z
-  method public layerId (I)I
   method public levelHeight (I)I
-  method public levelId (I)I
   method public levelWidth (I)I
   method public readColor (IIII)Ljava/nio/ByteBuffer;
   method public readColor (IIIILjava/nio/ByteBuffer;)Ljava/nio/ByteBuffer;
-  method public reattachColor (ILcom/crystalgraphics/api/texture/CgTexture;)V
-  method public reattachColorRaw (III)V
-  method public reattachDepth (Lcom/crystalgraphics/api/texture/CgTexture;)V
   method public resize (II)V
   method public rhiColor (I)Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture;
   method public rhiDepth ()Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture;
-  method public supportsMrt ()Z
-  method public unbind ()V
   method public,static allOnDevice (Lcom/crystalgraphics/api/framebuffer/CgFrameBufferFormat;)Z
-  method public,static blitFrom (IIIIIIIIIIII)V
+  method public,static attachment (IZII)Lcom/crystalgraphics/platform/rhi/resource/CgTextureView;
   method public,static create (Ljava/lang/String;IILcom/crystalgraphics/api/framebuffer/CgFrameBufferFormat;)Lcom/crystalgraphics/gl/framebuffer/CgFrameBuffer;
   method public,static createArray (Ljava/lang/String;IIILcom/crystalgraphics/api/framebuffer/CgFrameBufferFormat;)Lcom/crystalgraphics/gl/framebuffer/CgFrameBuffer;
   method public,static createOnDevice (Ljava/lang/String;IILcom/crystalgraphics/api/framebuffer/CgFrameBufferFormat;I)Lcom/crystalgraphics/gl/framebuffer/CgFrameBuffer;
@@ -6065,9 +6028,9 @@ com/crystalgraphics/gl/framebuffer/CgFrameBuffer
   method public,static createOwned (Ljava/lang/String;IILcom/crystalgraphics/api/framebuffer/CgFrameBufferFormat;I)Lcom/crystalgraphics/gl/framebuffer/CgFrameBuffer;
   method public,static createScreenSized (Ljava/lang/String;Lcom/crystalgraphics/api/framebuffer/CgFrameBufferFormat;)Lcom/crystalgraphics/gl/framebuffer/CgFrameBuffer;
   method public,static createVolume (Ljava/lang/String;IIILcom/crystalgraphics/api/framebuffer/CgFrameBufferFormat;)Lcom/crystalgraphics/gl/framebuffer/CgFrameBuffer;
-  method public,static depthTypeOf (I)Lcom/crystalgraphics/api/texture/CgTextureType;
+  method public,static depthTypeOf (III)Lcom/crystalgraphics/api/texture/CgTextureType;
   method public,static deviceDescs (Ljava/lang/String;IILcom/crystalgraphics/api/framebuffer/CgFrameBufferFormat;I)Ljava/util/List;
-  method public,static optimalDepthBlitMask (I)I
+  method public,static owned (I)Lcom/crystalgraphics/gl/framebuffer/CgFrameBuffer;
   method public,static readTexture (Lcom/crystalgraphics/api/texture/CgTexture;I)Ljava/nio/ByteBuffer;
   method public,static readTextureFloats (Lcom/crystalgraphics/api/texture/CgTexture;I)Ljava/nio/ByteBuffer;
   method public,static wrap (Ljava/lang/String;III)Lcom/crystalgraphics/gl/framebuffer/CgFrameBuffer;
@@ -6077,13 +6040,7 @@ com/crystalgraphics/gl/framebuffer/CgFrameBuffer$Attachment
   method public getSlot ()I
   method public getTexture ()Lcom/crystalgraphics/api/texture/CgTexture;
   method public getType ()Lcom/crystalgraphics/api/texture/CgTextureType;
-  method public hasTexture ()Z
   method public isRenderbuffer ()Z
-com/crystalgraphics/gl/framebuffer/CgFrameBuffer$Drawing
-  access public,final
-  extends java/lang/Object
-  implements java/lang/AutoCloseable
-  method public close ()V
 com/crystalgraphics/gl/framebuffer/CgFrameBuffer$Images
   access public,abstract,interface
   extends java/lang/Object
@@ -6115,6 +6072,10 @@ com/crystalgraphics/gl/framebuffer/CgPixelReadback$Pixels
   method public,final equals (Ljava/lang/Object;)Z
   method public,final hashCode ()I
   method public,final toString ()Ljava/lang/String;
+com/crystalgraphics/gl/framebuffer/CgTexelConvert
+  access public,final
+  extends java/lang/Object
+  method public,static fromRgba32f ([FLcom/crystalgraphics/platform/rhi/format/CgFormat;I)Ljava/nio/ByteBuffer;
 com/crystalgraphics/gl/material/CgMaterialProperties
   access public,final
   extends java/lang/Object

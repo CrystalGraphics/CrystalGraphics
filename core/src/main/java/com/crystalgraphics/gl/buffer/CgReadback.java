@@ -9,6 +9,7 @@ import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.rhi.CgDeviceSection;
 import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.platform.gl.CgGL;
+import com.crystalgraphics.gl.framebuffer.CgFrameBuffer;
 import com.crystalgraphics.platform.gl.CgGLImports;
 import com.crystalgraphics.trace.CgGpuTrace;
 import com.crystalgraphics.trace.CgTrace;
@@ -172,7 +173,7 @@ public final class CgReadback {
      */
     public static CgTextureView colorOf(int framebuffer, int width, int height, CgTextureType type) {
         if (!type.isColor()) throw new IllegalArgumentException("a readback reads colour, not " + type);
-        CgTextureView color = CgGLImports.get().attachment(framebuffer, false, width, height);
+        CgTextureView color = CgFrameBuffer.attachment(framebuffer, false, width, height);
         if (color == null) throw new IllegalArgumentException("framebuffer " + framebuffer + " has no colour attachment 0");
         long texel = color.texture().desc().format().bytes(1, 1, 1);
         if (texel != pixelBytes(type)) {
