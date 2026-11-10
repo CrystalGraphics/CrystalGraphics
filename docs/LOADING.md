@@ -152,15 +152,13 @@ a frame held past `crystalgraphics.loading.stallMs` (100 ms) is sampled and clas
 | compile a shader at its draw | precache it: the compile runs on a worker (`CgShaderCompile`) and its pipelines are built ahead |
 | upload a big texture in one call | make and fill it on a worker (it lands through `CgDeferral`, at most 4 ms and 4 MB a frame), or upload a slice per `render` step |
 | query a program you just linked (`glGetUniformLocation`, `glGetProgramResourceIndex`) | let the material resolve uniforms; a query forces the link to finish now |
-| read GL state (`glGet*`): on 1.7.10, which keeps no state cache, every read waits for the driver | track your own state; save and restore through a `CgGlState` scope |
 | initialise a heavy class graph (a big static initializer, a font, a registry) | touch it from a worker first, and join before the render thread uses it (below) |
 | wait for a job (`join`, `get`, a spin) | `then`, or `after` between tasks |
 
 **Threads, carefully:**
 
-- **No GL off the render thread before the context is claimed.** Until the render thread's first GL call,
-  `CgGL.mayIssueGl` passes on any thread: a texture made "ahead" on a worker then uploads from it and crashes the JVM.
-  Worker-made textures belong in a plan task's `work`, which starts after the graphics start.
+- **Device work off the render thread waits for it.** A texture made on a worker defers its uploads (`CgDeferral`):
+  `CgRHI.onDeviceThread()` is false on every thread before the device starts, and on every thread but its own after.
 - **Class initialization ahead deadlocks if two threads meet.** Two threads initialising classes that name each other
   wait on each other forever. Warm a class graph on one worker, and join it before the render thread can reach the same
   classes (the engine's `clientStarting` work is joined before the first install that may reach it).

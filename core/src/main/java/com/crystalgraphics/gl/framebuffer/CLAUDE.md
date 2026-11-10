@@ -13,11 +13,11 @@ Every framebuffer has an `int` name (`getId()`), what the frame graph, readbacks
 
 - **Owned**: a name the engine gives it, from `0x40000000` up, above any a GL driver hands out.
   `CgFrameBuffer.owned(id)` finds it until deleted.
-- **Wrapped** (`wrap(name, fbo, w, h)`): a host's framebuffer, its attachments imported (`CgGLImports`);
+- **Wrapped** (`wrap(name, fbo, w, h)`): a host's framebuffer, its attachments imported (`CgHostImports`);
   framebuffer 0 is the window's. Owns nothing; `delete()` does nothing.
 
 `CgFrameBuffer.attachment(fbo, depth, w, h)` answers a texture view for either kind: an owned one's own, else the
-import. Use it, never `CgGLImports.attachment`, wherever a name may be ours.
+import. Use it, never `CgHostImports.attachment`, wherever a name may be ours.
 
 ## What it does
 

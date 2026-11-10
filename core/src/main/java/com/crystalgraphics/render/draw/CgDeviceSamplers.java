@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.draw;
 
+import java.util.IdentityHashMap;
 import com.crystalgraphics.api.texture.CgSampler;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.texture.CgTextureSpec;
@@ -41,8 +42,14 @@ public final class CgDeviceSamplers {
     public static CgGpuSampler of(CgRHI rhi, @Nullable CgSampler sampler, CgTexture texture) {
         if (madeOn != rhi) {
             MADE.clear();
+            BY_SOURCE[0].clear();
+            BY_SOURCE[1].clear();
             madeOn = rhi;
         }
+        Object source = sampler != null ? sampler : texture.spec() != null ? texture.spec() : NO_SPEC;
+        Map<Object, CgGpuSampler> bySource = BY_SOURCE[texture.getLevels() > 1 ? 1 : 0];
+        CgGpuSampler known = bySource.get(source);
+        if (known != null) return known;
         Desc desc = sampler != null ? desc(sampler, texture.getLevels() > 1) : own(texture);
         // No mip filter over a single level: GL takes the texture as incomplete then, and it reads (0, 0, 0, 1)
         if (desc.mip() != MipFilter.NONE && texture.getLevels() <= 1) desc = singleLevel(desc);
@@ -51,8 +58,18 @@ public final class CgDeviceSamplers {
             made = rhi.createSampler(desc);
             MADE.put(desc, made);
         }
+        bySource.put(source, made);
         return made;
     }
+
+    /**
+     * Each sampler made, by the immutable {@code CgSampler} or {@code CgTextureSpec} it was made from, for a single
+     * level (0) and for several (1): asked for every texture a draw binds, so a known one is found without a description.
+     */
+    @SuppressWarnings("unchecked")
+    private static final Map<Object, CgGpuSampler>[] BY_SOURCE = new Map[]{new IdentityHashMap<>(), new IdentityHashMap<>()};
+    /** The key of a texture with no spec of its own. */
+    private static final Object NO_SPEC = new Object();
 
     private static Desc singleLevel(Desc d) {
         return new Desc(d.min(), d.mag(), MipFilter.NONE, d.u(), d.v(), d.w(), d.compare(), d.minLod(), d.maxLod(),

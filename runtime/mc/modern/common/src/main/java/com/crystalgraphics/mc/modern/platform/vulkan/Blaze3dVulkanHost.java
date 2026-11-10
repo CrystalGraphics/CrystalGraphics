@@ -5,7 +5,6 @@ package com.crystalgraphics.mc.modern.platform.vulkan;
 /*import com.crystalgraphics.platform.rhi.format.CgFormat;
 import com.crystalgraphics.platform.gl.state.GLCheckedHostState;
 import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
-import com.crystalgraphics.platform.gl.tracked.CgTrackedGLBackend;
 import com.crystalgraphics.vulkan.host.HostedVulkanHost;
 import com.mojang.blaze3d.GpuFormat;
 import com.mojang.blaze3d.systems.GpuDevice;
@@ -37,9 +36,9 @@ import static org.lwjgl.vulkan.VK13.VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
  * answers only what is Minecraft's.
  *
  * <pre>{@code
- * CgGLBackend gl = Blaze3dVulkanHost.start(width, height);   // the host, a device over it, GL's semantics over that
+ * Blaze3dVulkanHost.start(width, height);                    // the host and our device over it, installed
  *
- * int color = Blaze3dVulkanHost.current().importTexture(mainTarget.getColorTexture());   // a name to attach
+ * int main = Blaze3dVulkanHost.current().framebuffer(target.getColorTexture(), target.getDepthTexture());
  * ...
  * Blaze3dVulkanHost.endMinecraftFrame();                     // once per Minecraft frame, before its submit
  * Blaze3dVulkanHost.shutdown();                              // at the game's shutdown signal
@@ -70,12 +69,11 @@ public final class Blaze3dVulkanHost
         this.encoder = minecraft.createCommandEncoder();
     }
 
-    // Everything CgGL runs on under Vulkan: this host, a device over it, and GL's semantics over that.
-    public static CgTrackedGLBackend start(int width, int height) {
+    // This host and our device over it, installed as the process's.
+    public static void start(int width, int height) {
         Blaze3dVulkanHost host = fromMinecraft();
-        CgTrackedGLBackend gl = host.openBackend(width, height);
+        host.openDevice(width, height);
         current = host;
-        return gl;
     }
 
     // The host start() built, or null before it.

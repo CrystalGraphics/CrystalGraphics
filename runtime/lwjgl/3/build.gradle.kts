@@ -1,12 +1,10 @@
 import cgbuildlogic.abstractModule
 import java.io.File as JFile
 
-// runtime/lwjgl/3 — §12 tier 1 for LWJGL3: the GL backend, the context, the input service and
-// the clipboard, written against LWJGL 3 and nothing else.
+// runtime/lwjgl/3 — §12 tier 1 for LWJGL3: the GL device's driver, the input service and the clipboard,
+// written against LWJGL 3 and nothing else.
 //
-// One copy in the merged jar, compiled once, never remapped, shared by every 1.13+ target. What
-// Minecraft caches and we must therefore tell it about is `Blaze3dGLBackend extends
-// Lwjgl3GLBackend` in `runtime/mc/modern/common` — the override list is contracts C5. Every new Minecraft
+// One copy in the merged jar, compiled once, never remapped, shared by every 1.13+ target. Every new Minecraft
 // version on this LWJGL family adds nothing here.
 //
 // PINNED TO 3.2.2 (F1), which is what MC 1.13–1.16 ship: compiling against the OLDEST LWJGL3 in the
@@ -46,25 +44,6 @@ dependencies {
     // The Ogg Vorbis decoder: stb_vorbis, which every LWJGL 3 client ships.
     compileOnly("org.lwjgl:lwjgl-stb:$lwjgl3Version")
 }
-
-// Lwjgl31GLBackend: Lwjgl3GLBackend without the core-profile GLxxC classes, which LWJGL added in 3.2 --
-// Minecraft 1.13 ships 3.1.6. Generated rather than kept, so the two cannot drift; the plain GLxx classes
-// carry the same functions on every LWJGL 3.
-val lwjgl31Sources = layout.buildDirectory.dir("generated/sources/lwjgl31")
-val generateLwjgl31Backend = tasks.register("generateLwjgl31Backend") {
-    val source = layout.projectDirectory.file("src/main/java/com/crystalgraphics/lwjgl3/Lwjgl3GLBackend.java")
-    inputs.file(source)
-    outputs.dir(lwjgl31Sources)
-    doLast {
-        val text = source.asFile.readText()
-            .replace(Regex("\\bGL(\\d+)C\\b"), "GL$1")
-            .replace("class Lwjgl3GLBackend ", "class Lwjgl31GLBackend ")
-            .replaceFirst("\npublic class", "\n// GENERATED from Lwjgl3GLBackend by generateLwjgl31Backend -- edit that file.\npublic class")
-        lwjgl31Sources.get().file("com/crystalgraphics/lwjgl3/Lwjgl31GLBackend.java").asFile
-            .apply { parentFile.mkdirs() }.writeText(text)
-    }
-}
-sourceSets.main { java.srcDir(generateLwjgl31Backend) }
 
 // The tier boundary, enforced rather than described (F4).
 tasks.named<JavaCompile>("compileJava") {

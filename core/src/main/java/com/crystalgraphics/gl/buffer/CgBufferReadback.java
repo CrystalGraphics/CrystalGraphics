@@ -1,6 +1,6 @@
 package com.crystalgraphics.gl.buffer;
 
-import com.crystalgraphics.platform.gl.CgGLImports;
+import com.crystalgraphics.platform.rhi.CgDeviceNames;
 import com.crystalgraphics.platform.rhi.CgDeviceSection;
 import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.trace.CgTrace;
@@ -37,10 +37,9 @@ public final class CgBufferReadback {
         CgTrace.add(CgChannels.GL, READBACK_BYTES, bytes);
         if (scratch.capacity() < bytes) scratch = ByteBuffer.allocateDirect(Math.max(bytes, scratch.capacity() * 2)).order(ByteOrder.nativeOrder());
         scratch.clear().limit(bytes);
-        CgGLImports imports = CgGLImports.get();
         CgDeviceSection.begin();
         try {
-            CgRHI.get().encoder().readBuffer(imports.buffer(name), imports.bufferOffset(name) + offset, scratch);
+            CgRHI.get().encoder().readBuffer(CgDeviceNames.buffer(name), offset, scratch);
         } finally {
             CgDeviceSection.end();
         }

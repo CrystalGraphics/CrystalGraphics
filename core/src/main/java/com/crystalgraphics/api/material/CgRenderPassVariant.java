@@ -5,7 +5,7 @@ package com.crystalgraphics.api.material;
  * {@code "LightMode"} tag value written inside a {@code Pass { Tags { } }} block in a
  * CrystalShader {@code .shader} file.
  *
- * <p>It lets a renderer call {@code material.bindForPass(CgRenderPassVariant.DEPTH)} without knowing the
+ * <p>It lets a renderer ask {@code material.pipeline(CgRenderPassVariant.DEPTH, kind)} without knowing the
  * shader's internal pass structure. There is no shadow-caster variant: the world's shadows are ray-traced from
  * each pixel (Unreal's MegaLights, {@code CgWorldLights}), so nothing is drawn from a light's side.</p>
  *
@@ -16,8 +16,8 @@ package com.crystalgraphics.api.material;
  * </ul>
  *
  * <h3>FORWARD routing</h3>
- * <p>Forward dispatch always routes via
- * {@link CgMaterial#bindForPass(CgRenderPassVariant)} →
+ * <p>Forward always routes via
+ * {@code CgMaterial.pipeline(variant, kind)} →
  * {@code cgMaterialShader.getOrCompileForwardPass(keywords)}, which resolves the
  * authored {@code "Name"} tag of the first Forward pass internally. The
  * {@link #lightModeName()} value ({@code "Forward"}) is <em>not</em> used as the
@@ -34,8 +34,7 @@ public enum CgRenderPassVariant {
     FORWARD("Forward"),
 
     /**
-     * Depth-only pre-pass (v2 — not executed in MVP).
-     * <p>{@code bindForPass(DEPTH)} silently no-ops if no Depth pass was compiled.</p>
+     * Depth-only pre-pass: authored, or generated for an opaque material ({@link CgMaterial#hasCompiledDepthPass()}).
      * <p>Keywords are always {@code emptySet()}.</p>
      */
     DEPTH("Depth"),

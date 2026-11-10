@@ -9,10 +9,8 @@
  * <p>The one thing this tier owns that {@code runtime/lwjgl/3} cannot: <b>Minecraft caches GL state
  * in {@code GlStateManager} and elides calls it believes redundant</b>, so a raw {@code glEnable}
  * from tier 1 leaves that cache stale and the next vanilla draw skips the enable.
- * {@code Blaze3dGLBackend extends Lwjgl3GLBackend} overrides exactly the methods that touch a cached
- * domain and routes them through {@code RenderSystem}/{@code GlStateManager}; the override list is
- * contracts C5, a test pins it, and {@code -Dcrystalgraphics.host.verify=true} names the domain that
- * disagrees at runtime.
+ * {@code HostStateModern} reads the cache as each host section opens and sets the driver back to it as the section
+ * closes; {@code -Dcrystalgraphics.host.verify=true} names a domain that disagrees at runtime.
  *
  * <p>Anything here that needs no Minecraft type belongs one tier down, in {@code runtime/lwjgl/3}.
  */

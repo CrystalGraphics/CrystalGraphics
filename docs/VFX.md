@@ -2263,8 +2263,8 @@ In game and in the harness, `vfx-modules` is a station per feature, replayed eve
 Unit tests (`./gradlew :core:test --tests "<class>"`): `CgVfxLookTest`, `CgVfxEndingTest`,
 `CgPropertyRowsTest`, `CgVfxCueTest`, `CgVfxAuthorityTest`, `CgVfxHitsTest`, `CgVfxOwnerTest`, `CgVfxStartAtTest`,
 `CgVfxSmokeFillTest`, `CgVfxSortGroupTest`.
-Every shipped shader, each keyword variant, links under shaderc in `:runtime:lwjgl:vulkan:test --tests
-com.crystalgraphics.vulkan.EngineOnTrackedBackendTest`.
+Every shipped shader, each keyword variant, builds a pipeline on both devices in `:runtime:lwjgl:vulkan:test --tests
+com.crystalgraphics.platform.gl.DevicePipelinesTest`.
 
 Profiling ([`PROFILING.md`](PROFILING.md)), trace channel `crystalgraphics.vfx`: zones `vfx.tick`,
 `vfx.emitters.workers`, `vfx.effect.tick/<namespace>`, `vfx.effect.submit/<namespace>`, and on the GPU

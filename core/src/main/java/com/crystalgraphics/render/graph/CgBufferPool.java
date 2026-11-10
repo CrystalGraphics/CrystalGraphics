@@ -1,6 +1,6 @@
 package com.crystalgraphics.render.graph;
 
-import com.crystalgraphics.platform.gl.CgGLImports;
+import com.crystalgraphics.platform.rhi.CgDeviceNames;
 import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.rhi.resource.CgGpuBuffer;
 import com.crystalgraphics.trace.CgTrace;
@@ -31,7 +31,7 @@ final class CgBufferPool {
     private int classes;
     /** {@link System#nanoTime()} at the last frame's end: what a release is stamped with. */
     private long now = System.nanoTime();
-    /** Buffers made on the installed device, by the {@code CgGL} name the graph knows them by. */
+    /** Buffers made on the installed device, by the device name the graph knows them by. */
     private static final Map<Integer, CgGpuBuffer> made = new HashMap<>();
 
     /** A buffer of at least {@code desc}'s bytes. */
@@ -77,13 +77,13 @@ final class CgBufferPool {
         return buckets[classes++] = new Bucket();
     }
 
-    /** A device-local buffer of {@code bytes}, known to the graph by the name {@code CgGLImports} gives it. */
+    /** A device-local buffer of {@code bytes}, known to the graph by the name {@code CgDeviceNames} gives it. */
     static int create(long bytes) {
         CgGpuBuffer b;
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL_DETAIL, STORAGE)) {
             b = CgRHI.get().createBuffer(new CgGpuBuffer.Desc("graph buffer", bytes, CgGpuBuffer.Usage.ALL, false));
         }
-        int name = CgGLImports.get().name(b);
+        int name = CgDeviceNames.name(b);
         made.put(name, b);
         return name;
     }
@@ -92,7 +92,7 @@ final class CgBufferPool {
     static void free(int buffer) {
         CgGpuBuffer b = made.remove(buffer);
         if (b == null) return;
-        CgGLImports.get().forget(b);
+        CgDeviceNames.forget(b);
         CgRHI.get().release(b);
     }
 

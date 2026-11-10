@@ -1,14 +1,13 @@
 package com.crystalgraphics.gl.material.parse;
 
 
-import com.crystalgraphics.api.state.CgAlphaState;
+import com.crystalgraphics.platform.gl.driver.GLC;
 import com.crystalgraphics.api.state.CgBlendState;
 import com.crystalgraphics.api.state.CgColorMask;
 import com.crystalgraphics.api.state.CgCullState;
 import com.crystalgraphics.api.state.CgDepthState;
 import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.api.state.CgStencilState;
-import com.crystalgraphics.platform.gl.CgGL;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -59,16 +58,16 @@ final class CgRenderStateParser {
         boolean depthTestKwSeen   = false;
         boolean depthWriteKwSeen  = false;
         boolean depthTestEnabled  = true;            // default: depth test on
-        int     depthFunc         = CgGL.GL_LEQUAL;  // default compare function
+        int     depthFunc         = GLC.GL_LEQUAL;  // default compare function
         boolean depthWriteEnabled = true;            // default: writes enabled
 
         // Blend — Blend sets src/dst; BlendEquation can override the equation independently
         boolean blendKwSeen  = false;
         boolean blendEnabled = false;
-        int srcRgb   = CgGL.GL_ONE,  dstRgb   = CgGL.GL_ZERO;
-        int srcAlpha = CgGL.GL_ONE,  dstAlpha = CgGL.GL_ZERO;
-        int blendEqRgb   = CgGL.GL_FUNC_ADD;
-        int blendEqAlpha = CgGL.GL_FUNC_ADD;
+        int srcRgb   = GLC.GL_ONE,  dstRgb   = GLC.GL_ZERO;
+        int srcAlpha = GLC.GL_ONE,  dstAlpha = GLC.GL_ZERO;
+        int blendEqRgb   = GLC.GL_FUNC_ADD;
+        int blendEqAlpha = GLC.GL_FUNC_ADD;
         boolean equationKwSeen = false;
 
         int i = 0;
@@ -118,8 +117,8 @@ final class CgRenderStateParser {
                     if ("off".equals(firstTok.toLowerCase(Locale.ROOT))) {
                         // Blend OFF — disabled, reset to one/zero
                         blendEnabled = false;
-                        srcRgb   = CgGL.GL_ONE;  dstRgb   = CgGL.GL_ZERO;
-                        srcAlpha = CgGL.GL_ONE;  dstAlpha = CgGL.GL_ZERO;
+                        srcRgb   = GLC.GL_ONE;  dstRgb   = GLC.GL_ZERO;
+                        srcAlpha = GLC.GL_ONE;  dstAlpha = GLC.GL_ZERO;
                     } else {
                         // Blend srcFactor dstFactor [, srcAlphaFactor dstAlphaFactor]
                         int src = CgShaderKeywords.BLEND_FACTORS.parse(firstTok, "Blend src factor");
@@ -170,26 +169,15 @@ final class CgRenderStateParser {
                     String val = requireToken(toks, i++, "Cull", resourcePath);
                     int face   = CgShaderKeywords.CULL_MODES.parse(val, "Cull");
                     builder.cull(face == 0        ? CgCullState.NONE
-                               : face == CgGL.GL_BACK ? CgCullState.BACK
+                               : face == GLC.GL_BACK ? CgCullState.BACK
                                : CgCullState.FRONT);
                     break;
                 }
 
-                case "AlphaTest": {
-                    String funcTok = requireToken(toks, i++, "AlphaTest func", resourcePath);
-                    int func       = CgShaderKeywords.COMPARE_FUNCS.parse(funcTok, "AlphaTest");
-                    String cutoffTok = requireToken(toks, i++, "AlphaTest cutoff", resourcePath);
-                    float cutoff;
-                    try {
-                        cutoff = Float.parseFloat(cutoffTok);
-                    } catch (NumberFormatException e) {
-                        throw new CgShaderParseException(
-                                "[" + resourcePath + "] AlphaTest cutoff must be a float literal, got: '"
-                                + cutoffTok + "'");
-                    }
-                    builder.alpha(new CgAlphaState(true, func, cutoff));
-                    break;
-                }
+                case "AlphaTest":
+                    // Fixed-function state no device has: a material discards in its fragment stage
+                    throw new CgShaderParseException("[" + resourcePath + "] AlphaTest is not a render state: discard in the"
+                            + " fragment stage (if (color.a <= cutoff) discard;)");
 
                 case "ColorMask": {
                     String maskTok = requireToken(toks, i++, "ColorMask", resourcePath);
@@ -260,10 +248,10 @@ final class CgRenderStateParser {
         int ref      = 0;
         int readMask = 0xFF;
         int writeMask= 0xFF;
-        int compFunc = CgGL.GL_ALWAYS;
-        int passOp   = CgGL.GL_KEEP;
-        int failOp   = CgGL.GL_KEEP;
-        int zfailOp  = CgGL.GL_KEEP;
+        int compFunc = GLC.GL_ALWAYS;
+        int passOp   = GLC.GL_KEEP;
+        int failOp   = GLC.GL_KEEP;
+        int zfailOp  = GLC.GL_KEEP;
 
         int i = start;
         while (i < toks.size()) {

@@ -94,8 +94,8 @@ void freeAll();                                                                 
 
 Every texture's storage is a device texture (`CgDeviceTextures`, `CgTextureAbstract.storeOnDevice`): made with the
 shape its first whole upload or `createEmpty` gives it, written by `writeTexture` or a lease's GPU copy, its chain by
-`generateMipmaps`. `CgGL` reaches it by the name `CgGLImports` gives it, and that name changes when the storage is
-remade (a grow, a resize): read `getId()` at each use.
+`generateMipmaps`. The engine knows it by the name `CgDeviceNames` gives it, and that name changes when the storage
+is remade (a grow, a resize): read `getId()` at each use.
 
 A texture has no sampling state of its own. Its spec's filter, wrap and compare are the sampler a binding reads where
 it names no `CgSampler` (`render/draw/CgDeviceSamplers`). `bind(unit)` notes it for the pass being recorded, and

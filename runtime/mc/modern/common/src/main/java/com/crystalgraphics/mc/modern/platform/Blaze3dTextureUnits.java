@@ -16,10 +16,10 @@ import org.apache.logging.log4j.LogManager;
  * How many texture units Minecraft's own GL state tracker models, read from Blaze3D.
  *
  * <pre>{@code
- * int table = Blaze3dTextureUnits.count();   // a unit below it binds through GlStateManager, one above through the driver
+ * int table = Blaze3dTextureUnits.count();   // the units GlStateManager's table models
  * }</pre>
  *
- * <p>{@code Blaze3dGLBackend} routes by it, and {@code HostStateModern} answers the units below it from the cache.
+ * <p>{@code HostStateModern} reads the units below it from the cache and sets them back as a section closes.
  * Read rather than hardcoded, so a later Minecraft is correct without an edit; a refusal falls back and logs which
  * value was used.</p>
  *

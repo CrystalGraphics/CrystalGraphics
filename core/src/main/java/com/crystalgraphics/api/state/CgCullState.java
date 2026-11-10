@@ -1,7 +1,7 @@
 package com.crystalgraphics.api.state;
 
+import com.crystalgraphics.platform.gl.driver.GLC;
 import com.github.bsideup.jabel.Desugar;
-import com.crystalgraphics.platform.gl.CgGL;
 
 /**
  * Immutable face-culling state slot for {@link CgRenderState}.
@@ -19,9 +19,9 @@ import com.crystalgraphics.platform.gl.CgGL;
 public record CgCullState(boolean enabled, int face, int frontFace) {
 
     /** Culling disabled; {@code face} stays a valid face, {@code GL_BACK}. */
-    public static final CgCullState NONE = new CgCullState(false, CgGL.GL_BACK);
-    public static final CgCullState BACK = new CgCullState(true, CgGL.GL_BACK);
-    public static final CgCullState FRONT = new CgCullState(true, CgGL.GL_FRONT);
+    public static final CgCullState NONE = new CgCullState(false, GLC.GL_BACK);
+    public static final CgCullState BACK = new CgCullState(true, GLC.GL_BACK);
+    public static final CgCullState FRONT = new CgCullState(true, GLC.GL_FRONT);
 
     /**
      * Convenience constructor defaulting {@code frontFace} to counter-clockwise, the GL default.
@@ -30,7 +30,7 @@ public record CgCullState(boolean enabled, int face, int frontFace) {
      * {@code frontFace} was added.</p>
      */
     public CgCullState(boolean enabled, int face) {
-        this(enabled, face, CgGL.GL_CCW);
+        this(enabled, face, GLC.GL_CCW);
     }
 
 

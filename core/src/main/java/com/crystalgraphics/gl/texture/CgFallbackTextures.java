@@ -1,9 +1,9 @@
 package com.crystalgraphics.gl.texture;
 
+import com.crystalgraphics.platform.gl.driver.GLC;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.texture.CgTextureSpec;
 import com.crystalgraphics.api.texture.CgTextureType;
-import com.crystalgraphics.platform.gl.CgGL;
 
 import java.nio.ByteBuffer;
 
@@ -59,16 +59,16 @@ public final class CgFallbackTextures {
         ByteBuffer zeroByte = ByteBuffer.allocateDirect(1);
         zeroByte.put((byte) 0).flip();
         ZERO_UINT = CgTexture2D.createFromPixels(1, 1, zeroByte, CgTextureSpec.builder().type(CgTextureType.R8UI)
-                .minFilter(CgGL.GL_NEAREST).magFilter(CgGL.GL_NEAREST).build());
+                .minFilter(GLC.GL_NEAREST).magFilter(GLC.GL_NEAREST).build());
         CgTexture3D volume = CgTexture3D.createEmpty(1, 1, 1, CgTextureSpec.RGBA8_LINEAR);
         ByteBuffer white = ByteBuffer.allocateDirect(4);
         white.put((byte) 255).put((byte) 255).put((byte) 255).put((byte) 255).flip();
-        volume.uploadRegion(0, 0, 0, 0, 1, 1, 1, white, CgGL.GL_RGBA, CgGL.GL_UNSIGNED_BYTE);
+        volume.uploadRegion(0, 0, 0, 0, 1, 1, 1, white, GLC.GL_RGBA, GLC.GL_UNSIGNED_BYTE);
         WHITE_VOLUME = volume;
         CgTexture3D black = CgTexture3D.createEmpty(1, 1, 1, CgTextureSpec.RGBA8_LINEAR);
         ByteBuffer zero = ByteBuffer.allocateDirect(4);
         zero.put((byte) 0).put((byte) 0).put((byte) 0).put((byte) 0).flip();
-        black.uploadRegion(0, 0, 0, 0, 1, 1, 1, zero, CgGL.GL_RGBA, CgGL.GL_UNSIGNED_BYTE);
+        black.uploadRegion(0, 0, 0, 0, 1, 1, 1, zero, GLC.GL_RGBA, GLC.GL_UNSIGNED_BYTE);
         BLACK_VOLUME = black;
     }
 

@@ -1,24 +1,22 @@
 package com.crystalgraphics.platform.gl;
 
 /**
- * A GL context sharing the render thread's objects, kept current on one worker thread: what programs are compiled and
- * linked on, so their commands and status queries queue on its context and never on the render thread's. Made by
- * {@link CgGL#createWorkerContext()}.
+ * A GL context of its own, kept current on one worker thread: what the GL device's programs are compiled and linked
+ * on, so their commands and status queries queue on its context and never on the render thread's. Made by
+ * {@code CgGLDriver.createIsolatedContext()}.
  *
  * <pre>{@code
- * CgGLWorkerContext context = CgGL.createWorkerContext();   // render thread, its context current; null: none
+ * CgGLWorkerContext context = driver.createIsolatedContext();   // render thread, its context current; null: none
  * worker = new Thread(() -> {
  *     context.makeCurrent();
- *     try { ... CgGL calls on programs and shaders ... } finally { context.release(); }
+ *     try { ... the driver's calls on programs and shaders ... } finally { context.release(); }
  * });
  * // render thread, once the worker has ended:
  * context.destroy();
  * }</pre>
  *
  * <ul>
- *   <li>Only objects a share group shares cross it: programs, shaders, buffers, textures. Never bind a VAO or a
- *       framebuffer on it.</li>
- *   <li>An object it changed is complete for the render thread only after {@code glFinish} on it.</li>
+ *   <li>It shares nothing: a program crosses to the render thread as a program binary.</li>
  *   <li>{@link #destroy} on the render thread, after {@link #release} on the worker: GLFW destroys windows on the main
  *       thread alone.</li>
  * </ul>

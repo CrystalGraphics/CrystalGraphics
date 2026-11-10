@@ -1,10 +1,10 @@
 package com.crystalgraphics.noise;
 
+import com.crystalgraphics.platform.gl.driver.GLC;
 import com.crystalgraphics.api.texture.CgTextureSpec;
 import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.gl.texture.CgEngineTextures;
 import com.crystalgraphics.gl.texture.CgTexture3D;
-import com.crystalgraphics.platform.gl.CgGL;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -41,8 +41,8 @@ public final class CgWaveletNoise {
     public static final int TILE = 128;
     private static final long SEED = 0x5EEDL;
     private static final CgTextureSpec SPEC = CgTextureSpec.builder().type(CgTextureType.R16F)
-            .minFilter(CgGL.GL_LINEAR).magFilter(CgGL.GL_LINEAR)
-            .wrapS(CgGL.GL_REPEAT).wrapT(CgGL.GL_REPEAT).wrapR(CgGL.GL_REPEAT).build();
+            .minFilter(GLC.GL_LINEAR).magFilter(GLC.GL_LINEAR)
+            .wrapS(GLC.GL_REPEAT).wrapT(GLC.GL_REPEAT).wrapR(GLC.GL_REPEAT).build();
 
     /** Mantaflow's {@code _aCoeffs}: the downsampling filter, 32 taps. */
     private static final float[] A = {
@@ -71,7 +71,7 @@ public final class CgWaveletNoise {
         if (pending == null) {
             pending = CgTexture3D.createEmpty(1, 1, 1, SPEC, 1);
             pending.uploadRegion(0, 0, 0, 0, 1, 1, 1, ByteBuffer.allocateDirect(2).order(ByteOrder.nativeOrder()),
-                    CgGL.GL_RED, CgGL.GL_HALF_FLOAT);
+                    GLC.GL_RED, GLC.GL_HALF_FLOAT);
         }
         if (baked != null) {
             upload(baked);
@@ -111,7 +111,7 @@ public final class CgWaveletNoise {
 
     private static void upload(ByteBuffer texels) {
         CgTexture3D v = CgTexture3D.createEmpty(TILE, TILE, TILE, SPEC, 1);
-        v.uploadRegion(0, 0, 0, 0, TILE, TILE, TILE, texels.duplicate(), CgGL.GL_RED, CgGL.GL_HALF_FLOAT);
+        v.uploadRegion(0, 0, 0, 0, TILE, TILE, TILE, texels.duplicate(), GLC.GL_RED, GLC.GL_HALF_FLOAT);
         volume = v;
     }
 

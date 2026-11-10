@@ -873,22 +873,6 @@ base.setNextPass(outline);
 
 // A recorded draw takes the chain: base, then outline, on the same instances
 CgWorldRenderer.get().draw(mesh, base).at(x, y, z).submit();
-
-// A hand-bound draw of geometry the caller bound:
-base.drawChain(CgRenderPassVariant.FORWARD, () -> CgGL.glDrawArraysInstanced(CgGL.GL_TRIANGLES, 0, vertexCount, n);   // geometry the caller bound)
-```
-
-For explicit single-pass control (no chain):
-
-```java
-material.bind();                                     // activates Forward pass, current keywords
-CgGL.glDrawArraysInstanced(CgGL.GL_TRIANGLES, 0, vertexCount, n);   // geometry the caller bound
-material.unbind();
-
-// Depth-only (no keywords applied):
-material.bindForPass(CgRenderPassVariant.DEPTH);
-CgGL.glDrawArraysInstanced(CgGL.GL_TRIANGLES, 0, vertexCount, n);
-material.unbind();
 ```
 
 #### MRT (Multiple Render Targets)
@@ -1411,16 +1395,8 @@ try (CgImmediate.Compute run = CgImmediate.compute("bake")) {   // a graph of on
 }
 ```
 
-`CgKernelProgram` is the direct form: it binds GL names itself and orders nothing after it.
-
-```java
-CgKernelProgram simulate = particles.kernel("Simulate").withKeywords("WIND").program();   // render thread
-simulate.properties().set1f("_Drag", 0.1f);
-try (CgGlScope scope = CgKernelProgram.scope()) {           // saves what a dispatch changes
-    simulate.use().buffer("STATE", stateBuffer).frame(constants).dispatch(particleCount);
-}
-CgGL.cgBufferBarrier(stateBuffer, CgAccess.COMPUTE_WRITE, CgAccess.VERTEX_READ);   // the reader barriers
-```
+`CgKernelProgram` is the direct form, dispatched on a device compute pass of the caller's (`dispatchOn`): it orders
+nothing after it, so the caller states the reader's barrier (`CgCommandList.bufferBarrier`).
 
 #### Before the first dispatch
 

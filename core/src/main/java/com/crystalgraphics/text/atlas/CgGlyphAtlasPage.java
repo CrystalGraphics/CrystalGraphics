@@ -1,9 +1,9 @@
 package com.crystalgraphics.text.atlas;
 
+import com.crystalgraphics.platform.gl.driver.GLC;
 import com.crystalgraphics.api.font.CgGlyphKey;
 import com.crystalgraphics.api.font.CgGlyphPlacement;
 import com.crystalgraphics.gl.texture.CgTexture2DArray;
-import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.text.atlas.packing.CgPackingStrategy;
 import com.crystalgraphics.text.atlas.packing.MaxRectsPacker;
 
@@ -46,9 +46,9 @@ public class CgGlyphAtlasPage {
     private static final Logger LOGGER = Logger.getLogger(CgGlyphAtlasPage.class.getName());
 
     // ── GL constants (upload-format only — no texture-object constants needed anymore) ──
-    private static final int GL_RED           = CgGL.GL_RED;
-    private static final int GL_RGBA          = CgGL.GL_RGBA;
-    private static final int GL_UNSIGNED_BYTE = CgGL.GL_UNSIGNED_BYTE;
+    private static final int GL_RED           = GLC.GL_RED;
+    private static final int GL_RGBA          = GLC.GL_RGBA;
+    private static final int GL_UNSIGNED_BYTE = GLC.GL_UNSIGNED_BYTE;
 
     private static final int INITIAL_UPLOAD_BUFFER_SIZE = 64 * 64;
     private static final byte[] WHITE_RGBA8 = {(byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF};

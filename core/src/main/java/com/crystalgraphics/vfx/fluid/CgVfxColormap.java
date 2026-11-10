@@ -1,10 +1,10 @@
 package com.crystalgraphics.vfx.fluid;
 
+import com.crystalgraphics.platform.gl.driver.GLC;
 import com.crystalgraphics.api.texture.CgTextureSpec;
 import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.gl.texture.CgTexture2D;
 import com.crystalgraphics.noise.CgNoiseBake;
-import com.crystalgraphics.platform.gl.CgGL;
 
 import java.util.Arrays;
 
@@ -37,8 +37,8 @@ public final class CgVfxColormap {
     /** Flow's {@code NvFlowRayMarchColormapParams_default_xPoints}. */
     private static final float[] FLOW_X = {0f, 0.05f, 0.15f, 0.6f, 0.85f, 1f};
     private static final CgTextureSpec SPEC = CgTextureSpec.builder().type(CgTextureType.RGBA16F)
-            .minFilter(CgGL.GL_LINEAR).magFilter(CgGL.GL_LINEAR)
-            .wrapS(CgGL.GL_CLAMP_TO_EDGE).wrapT(CgGL.GL_CLAMP_TO_EDGE).build();
+            .minFilter(GLC.GL_LINEAR).magFilter(GLC.GL_LINEAR)
+            .wrapS(GLC.GL_CLAMP_TO_EDGE).wrapT(GLC.GL_CLAMP_TO_EDGE).build();
 
     /**
      * Flow's {@code rgbaPoints_smoke} at colour scale 1: grey smoke scattering 0.9 of its light, its opacity rising off

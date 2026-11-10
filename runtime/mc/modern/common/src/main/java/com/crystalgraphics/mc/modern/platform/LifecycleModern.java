@@ -42,8 +42,6 @@ import java.util.function.UnaryOperator;
 *///?}
 //? if >=26.2 {
 /*import com.crystalgraphics.mc.modern.platform.vulkan.Blaze3dVulkanHost;
-import com.crystalgraphics.platform.gl.CgGL;
-import org.lwjgl.opengl.GL11;
 *///?}
 
 /**
@@ -376,8 +374,7 @@ public final class LifecycleModern {
     }
     *///?}
 
-    // The main target's framebuffer. Under Vulkan (26.2) its textures are Minecraft's images, attached under
-    // the tracked backend's names for them.
+    // The main target's framebuffer. Under Vulkan (26.2) a host framebuffer of our device's over Minecraft's images.
     //? if >=26.2 {
     /*private static int mainFbo(RenderTarget main) {
         if (GraphicsApi.vulkan()) Blaze3dVulkanHost.current().matchSurface(main.width, main.height);
@@ -385,8 +382,7 @@ public final class LifecycleModern {
     }
 
     private static int name(GpuTexture texture) {
-        if (texture == null) return 0;
-        return GraphicsApi.vulkan() ? Blaze3dVulkanHost.current().importTexture(texture) : ((GlTexture) texture).glId();
+        return texture == null ? 0 : ((GlTexture) texture).glId();
     }
     *///?} elif >=26.1 {
     /*private static int mainFbo(RenderTarget main) {
@@ -417,11 +413,7 @@ public final class LifecycleModern {
         int depthAttachment = stencil ? GL30.GL_DEPTH_STENCIL_ATTACHMENT : GL30.GL_DEPTH_ATTACHMENT;
         //? if >=26.2 {
         if (GraphicsApi.vulkan()) {
-            // Under the tracked backend's names for Minecraft's images
-            mainFbo = CgGL.glGenFramebuffers();
-            CgGL.glBindFramebuffer(GL30.GL_FRAMEBUFFER, mainFbo);
-            CgGL.glFramebufferTexture2D(GL30.GL_FRAMEBUFFER, GL30.GL_COLOR_ATTACHMENT0, GL11.GL_TEXTURE_2D, name(color), 0);
-            CgGL.glFramebufferTexture2D(GL30.GL_FRAMEBUFFER, depthAttachment, GL11.GL_TEXTURE_2D, name(depth), 0);
+            mainFbo = Blaze3dVulkanHost.current().framebuffer(color, depth);
         } else {
             mainFbo = GL45C.glCreateFramebuffers();
             GL45C.glNamedFramebufferTexture(mainFbo, GL30.GL_COLOR_ATTACHMENT0, name(color), 0);
@@ -440,7 +432,7 @@ public final class LifecycleModern {
 
     private static void deleteMainFbo() {
         //? if >=26.2 {
-        if (mainFbo != -1 && GraphicsApi.vulkan()) CgGL.glDeleteFramebuffers(mainFbo);
+        if (mainFbo != -1 && GraphicsApi.vulkan()) Blaze3dVulkanHost.current().forgetFramebuffer(mainFbo);
         else if (mainFbo != -1) GL30.glDeleteFramebuffers(mainFbo);
         //?} else {
         /^if (mainFbo != -1) GL30.glDeleteFramebuffers(mainFbo);
@@ -489,7 +481,7 @@ public final class LifecycleModern {
         *///?}
         if (GraphicsApi.vulkan()) {
             try {
-                CgPlatform.gl();
+                CgPlatform.startDevice();
                 return null;
             } catch (RuntimeException | LinkageError failed) {
                 LogManager.getLogger("CrystalGraphics").error("[cg] cannot host on Minecraft's Vulkan device", failed);

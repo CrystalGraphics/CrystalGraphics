@@ -1,10 +1,10 @@
 package com.crystalgraphics.render.draw;
 
+import com.crystalgraphics.platform.rhi.CgDeviceNames;
 import com.crystalgraphics.api.texture.CgSampler;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.gl.texture.CgFallbackTextures;
-import com.crystalgraphics.platform.gl.CgGLImports;
 import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.rhi.binding.CgBindingLayout;
 import com.crystalgraphics.platform.rhi.binding.CgBindingSet;
@@ -18,9 +18,9 @@ import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 
 import javax.annotation.Nullable;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
@@ -58,6 +58,8 @@ public final class CgDeviceSets {
     static final int KEPT_FRAMES = 16;
 
     private final Map<Key, Entry> sets = new HashMap<>();
+    /** The same entries, by index: the sweep walks them with no iterator. */
+    private final ArrayList<Entry> live = new ArrayList<>();
     private long swept = -1;
     private final Key probe = new Key();
     private final CgBindings contents = new CgBindings();
@@ -108,7 +110,9 @@ public final class CgDeviceSets {
             return found.set;
         }
         CgBindingSet made = rhi.createBindingSet("set " + set, bl, contents);
-        sets.put(probe.copy(), new Entry(made, frame));
+        Entry entry = new Entry(made, frame, probe.copy());
+        sets.put(entry.key, entry);
+        live.add(entry);
         this.made++;
         CgTrace.add(CgChannels.GL, MADE, 1);
         return made;
@@ -117,18 +121,21 @@ public final class CgDeviceSets {
     /** Releases the sets no call asked for in {@link #KEPT_FRAMES} frames; once a frame. */
     private void sweep(long frame) {
         swept = frame;
-        for (Iterator<Entry> it = sets.values().iterator(); it.hasNext(); ) {
-            Entry e = it.next();
+        for (int i = live.size() - 1; i >= 0; i--) {
+            Entry e = live.get(i);
             if (frame - e.asked <= KEPT_FRAMES) continue;
             device.release(e.set);
-            it.remove();
+            sets.remove(e.key);
+            int last = live.size() - 1;
+            live.set(i, live.get(last));
+            live.remove(last);
             CgTrace.add(CgChannels.GL, RELEASED, 1);
         }
     }
 
     /**
-     * Loads every texture {@code table}'s snapshots record and lands its pending uploads: outside a device section, as
-     * those go through {@code CgGL}. Before the first {@link #set} of a frame.
+     * Loads every texture {@code table}'s snapshots record and lands its pending uploads: outside any render pass, as
+     * an upload is a copy. Before the first {@link #set} of a frame.
      */
     public void prepare(CgBindingTable table) {
         for (int id = 0; id < table.size(); id++) {
@@ -157,10 +164,11 @@ public final class CgDeviceSets {
     /** Releases every set it made and its default buffer; the next {@link #set} starts again. */
     public void release() {
         if (device != null) {
-            for (Entry e : sets.values()) device.release(e.set);
+            for (int i = 0; i < live.size(); i++) device.release(live.get(i).set);
             if (defaultBuffer != null) device.release(defaultBuffer);
         }
         sets.clear();
+        live.clear();
         defaultBuffer = null;
         device = null;
     }
@@ -263,9 +271,8 @@ public final class CgDeviceSets {
     /** {@code name}'s whole storage at {@code slot}. */
     private boolean whole(CgBindingLayout.Slot slot, int name) {
         if (name == 0) return false;
-        CgGLImports imports = CgGLImports.get();
-        CgGpuBuffer buffer = imports.buffer(name);
-        long offset = imports.bufferOffset(name);
+        CgGpuBuffer buffer = CgDeviceNames.buffer(name);
+        long offset = 0L;
         contents.buffer(slot.binding(), slot.type(), buffer, offset, buffer.size() - offset);
         return true;
     }
@@ -300,11 +307,13 @@ public final class CgDeviceSets {
 
     private static final class Entry {
         final CgBindingSet set;
+        final Key key;
         long asked;
 
-        Entry(CgBindingSet set, long asked) {
+        Entry(CgBindingSet set, long asked, Key key) {
             this.set = set;
             this.asked = asked;
+            this.key = key;
         }
     }
 

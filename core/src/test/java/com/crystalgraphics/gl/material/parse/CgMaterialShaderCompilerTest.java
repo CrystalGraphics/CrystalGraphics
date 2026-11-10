@@ -1,7 +1,7 @@
 package com.crystalgraphics.gl.material.parse;
 
+import com.crystalgraphics.platform.gl.driver.GLC;
 import com.crystalgraphics.platform.gl.CgCapabilities;
-import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.api.material.CgAttachedBuffer;
 import com.crystalgraphics.api.state.CgBlendState;
 import com.crystalgraphics.api.state.CgDepthState;
@@ -99,8 +99,8 @@ public class CgMaterialShaderCompilerTest {
         assertEquals("Emissive", pass.name());
         CgBlendState blend = pass.renderState().getBlend();
         assertTrue(blend.enabled());
-        assertEquals("ONE ONE: emitted light is written with an alpha of 0", CgGL.GL_ONE, blend.srcRgb());
-        assertEquals(CgGL.GL_ONE, blend.dstRgb());
+        assertEquals("ONE ONE: emitted light is written with an alpha of 0", GLC.GL_ONE, blend.srcRgb());
+        assertEquals(GLC.GL_ONE, blend.dstRgb());
         assertSame(CgDepthState.NONE, pass.renderState().getDepth());
     }
 
@@ -109,7 +109,7 @@ public class CgMaterialShaderCompilerTest {
         String authored = EMISSIVE.replace("\"Name\" = \"Glow\" }\n",
                 "\"Name\" = \"Glow\" }\n    RenderState { Blend SRC_ALPHA ONE }\n");
         CgParsedPass pass = parse(authored).getPassByLightMode("Emissive");
-        assertEquals(CgGL.GL_SRC_ALPHA, pass.renderState().getBlend().srcRgb());
+        assertEquals(GLC.GL_SRC_ALPHA, pass.renderState().getBlend().srcRgb());
     }
 
     @Test
@@ -211,7 +211,7 @@ public class CgMaterialShaderCompilerTest {
         assertEquals("Distortion", distortion.name());
         assertEquals(forward.vertexBody(), distortion.vertexBody());
         assertTrue(distortion.globalDecls().contains("shared_bend") && distortion.globalDecls().contains("own_split"));
-        assertEquals(CgGL.GL_ONE, distortion.renderState().getBlend().dstRgb());
+        assertEquals(GLC.GL_ONE, distortion.renderState().getBlend().dstRgb());
         assertSame(CgDepthState.NONE, distortion.renderState().getDepth());
         String frag = CgMaterialShaderCompiler.compile(shader, distortion, NO_BUFFERS, null,
                 CgMaterialShaderCompiler.CompileConfig.DEFAULT).fragmentSource();

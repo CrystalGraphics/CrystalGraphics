@@ -1,5 +1,6 @@
 package com.crystalgraphics.api.material;
 
+import com.crystalgraphics.platform.gl.driver.GLC;
 import com.crystalgraphics.api.texture.CgSampler;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.texture.CgMipmapConfig;
@@ -16,7 +17,6 @@ import com.crystalgraphics.asset.codec.CgAssetYaml;
 import com.crystalgraphics.util.io.CgIO;
 import com.crystalgraphics.gl.material.CgMaterialProperty;
 import com.crystalgraphics.gl.material.CgMaterialShaderRegistry;
-import com.crystalgraphics.platform.gl.CgGL;
 
 import javax.annotation.Nullable;
 import java.io.IOException;
@@ -197,13 +197,13 @@ public final class CgMaterialRegistry {
         CgSampler sampler = s.sampler();
         if (sampler == null) {
             return b.mipmaps(s.mips() ? CgMipmapConfig.TRILINEAR : CgMipmapConfig.NONE)
-                    .wrapS(CgGL.GL_REPEAT).wrapT(CgGL.GL_REPEAT).wrapR(CgGL.GL_REPEAT).build();
+                    .wrapS(GLC.GL_REPEAT).wrapT(GLC.GL_REPEAT).wrapR(GLC.GL_REPEAT).build();
         }
         boolean nearest = sampler.filter() == CgSampler.Filter.NEAREST;
-        int mag = nearest ? CgGL.GL_NEAREST : CgGL.GL_LINEAR;
+        int mag = nearest ? GLC.GL_NEAREST : GLC.GL_LINEAR;
         if (s.mips()) {
-            int min = nearest ? CgGL.GL_NEAREST_MIPMAP_NEAREST : sampler.filter() == CgSampler.Filter.BILINEAR
-                    ? CgGL.GL_LINEAR_MIPMAP_NEAREST : CgGL.GL_LINEAR_MIPMAP_LINEAR;
+            int min = nearest ? GLC.GL_NEAREST_MIPMAP_NEAREST : sampler.filter() == CgSampler.Filter.BILINEAR
+                    ? GLC.GL_LINEAR_MIPMAP_NEAREST : GLC.GL_LINEAR_MIPMAP_LINEAR;
             b.mipmaps(CgMipmapConfig.enabled(min, mag));
         } else {
             b.mipmaps(CgMipmapConfig.NONE).minFilter(mag);
@@ -213,9 +213,9 @@ public final class CgMaterialRegistry {
 
     private static int wrap(CgSampler.Address address) {
         return switch (address) {
-            case WRAP -> CgGL.GL_REPEAT;
-            case MIRROR -> CgGL.GL_MIRRORED_REPEAT;
-            case CLAMP -> CgGL.GL_CLAMP_TO_EDGE;
+            case WRAP -> GLC.GL_REPEAT;
+            case MIRROR -> GLC.GL_MIRRORED_REPEAT;
+            case CLAMP -> GLC.GL_CLAMP_TO_EDGE;
         };
     }
 

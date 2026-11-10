@@ -1,12 +1,12 @@
 package com.crystalgraphics.render.graph;
 
+import com.crystalgraphics.platform.gl.driver.GLC;
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.state.CgColorMask;
 import com.crystalgraphics.api.state.CgDepthState;
 import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.gl.texture.CgFallbackTextures;
-import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.render.property.CgPropertyValues;
 import com.crystalgraphics.render.property.CgSpatialTree;
 import com.crystalgraphics.render.draw.CgBatcher;
@@ -526,7 +526,7 @@ public final class CgFrameBuilder {
         Arrays.fill(refChunk, 0, refs, null);
         part.close();
         part = CgTrace.zone(CgChannels.GL_DETAIL, PACK_COPIES);
-        boolean writesDepth = (pass.load.mask() & CgGL.GL_DEPTH_BUFFER_BIT) != 0;
+        boolean writesDepth = (pass.load.mask() & GLC.GL_DEPTH_BUFFER_BIT) != 0;
         for (int b = 0; b < packed.count && !writesDepth; b++) {
             writesDepth = (writesOf(CgPipeline.byId(packed.pipeline[b]), pass.state) & CgTargetCopy.DEPTH) != 0;
         }
@@ -598,7 +598,7 @@ public final class CgFrameBuilder {
         // A pass into part of a layer is not in its target's pixels: its copies are whole.
         boolean regions = width > 0f && height > 0f && pass.viewOwner() == 0 && pass.viewX() == 0f && pass.viewY() == 0f;
         int depthUnseen = sampled & CgTargetCopy.DEPTH;
-        boolean depthWritten = (pass.load.mask() & CgGL.GL_DEPTH_BUFFER_BIT) != 0;
+        boolean depthWritten = (pass.load.mask() & GLC.GL_DEPTH_BUFFER_BIT) != 0;
         int run = -1;   // the batch holding the copy the current readers share
         boolean copied = false;
         clear(dirty);

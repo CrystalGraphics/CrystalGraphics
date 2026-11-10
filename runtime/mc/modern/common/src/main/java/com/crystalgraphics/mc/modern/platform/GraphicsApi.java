@@ -10,9 +10,9 @@ package com.crystalgraphics.mc.modern.platform;
  *
  * <pre>{@code
  * if (GraphicsApi.vulkan()) {
- *     // CgGL runs on the tracked backend over Minecraft's own Vulkan device
+ *     // our Vulkan device, hosted by Minecraft's own
  * } else {
- *     // CgGL is GL, and Blaze3D's GlStateManager cache is ours to keep true
+ *     // the GL device, in Minecraft's context, reading Blaze3D's GlStateManager cache
  * }
  * }</pre>
  *

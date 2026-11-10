@@ -10,7 +10,7 @@ used by three.
 
 | Package | AGENTS.md | What it contains |
 |---|---|---|
-| `com.crystalgraphics.mc.modern.platform` | [platform/CLAUDE.md](src/main/java/com/crystalgraphics/mc/modern/platform/CLAUDE.md) | `PlatformServiceModern`, `Blaze3dGLBackend`, `HostStateVerifier`, the services, and `LifecycleModern` — the one class a loader talks to |
+| `com.crystalgraphics.mc.modern.platform` | [platform/CLAUDE.md](src/main/java/com/crystalgraphics/mc/modern/platform/CLAUDE.md) | `PlatformServiceModern`, `GLDeviceModern`, `HostStateModern`, `HostStateVerifier`, the services, and `LifecycleModern` — the one class a loader talks to |
 
 The world-render hooks are loader events wherever one exists; the exceptions are node mixins in the
 loader branches (Forge 1.21.3+, Fabric 1.14.4–1.15.2), never here.
@@ -42,7 +42,7 @@ before the level renders, so anything painted from a GUI hook lands under the wo
 ## 26.1+: the main target, and 26.2 under Vulkan
 
 - **Our own framebuffer over Minecraft's main target.** 26.1 made `GlDevice` package-private and 26.2
-  dropped `GlTexture.getFbo`, so `LifecycleModern.bindMainTarget` builds one FBO with DSA (under the tracked backend's names on Vulkan), attached
+  dropped `GlTexture.getFbo`, so `LifecycleModern.bindMainTarget` builds one FBO with DSA on GL (on Vulkan the main target's images are named by `VulkanHostImports.framebuffer`), attached
   as Minecraft's `FrameBufferCache` attaches it (colour and depth, level 0), keyed on the two texture
   ids and deleted on teardown. The main target is `mc.getMainRenderTarget()` on 26.1 and
   `mc.gameRenderer.mainRenderTarget()` on 26.2.
@@ -54,10 +54,10 @@ before the level renders, so anything painted from a GUI hook lands under the wo
   each section and puts Minecraft's back (`HostStateModern`). `cg_DepthBuffer` holds
   reversed values there, so a shader comparing against it is wrong on 26.2; polygon offset pulls the other
   way. Every piece is a no-op below 26.2.
-- **Vulkan.** 26.2 can run Blaze3D on Vulkan, and then `CgGL` runs on the tracked backend over a
+- **Vulkan.** 26.2 can run Blaze3D on Vulkan, and then the engine draws through a
   `CgVulkanDevice` hosted on Minecraft's own device (`vulkan.Blaze3dVulkanHost`, which answers tier 1's `HostedVulkanHost` for Minecraft; device-seam D5). Which
   API is running is `GraphicsApi.vulkan()`, read off Minecraft's device at the first host section;
-  `PlatformServiceModern.gl()` builds the matching backend there. Each host section records into command
+  `PlatformServiceModern.startDevice()` starts the matching device. Each host section records into command
   buffers of its own from Blaze3D's per-submit pool and hands them to Minecraft's submit at `toHost`;
   `bindMainTarget` imports the main target's images, which our passes leave in `GENERAL`; the frame closes
   in `FrameHooks.endFrame`, before Minecraft's submit. The GL-only repairs stand aside: Blaze3D's texture

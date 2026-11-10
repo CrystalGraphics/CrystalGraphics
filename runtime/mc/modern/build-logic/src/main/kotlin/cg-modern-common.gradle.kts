@@ -41,9 +41,8 @@ dependencies {
     "api"(project(":platform"))
     // implementation — core is an internal dependency consumed by common.
     "implementation"(project(":core"))
-    // api — tier 1 for this LWJGL family (§12). `api` rather than `implementation` because
-    // `PlatformServiceModern` hands a `Lwjgl3GLContext` back through a public getter, so a loader
-    // module reading it needs the type. One compiled copy serves every 1.13+ target; the merge adds
+    // api — tier 1 for this LWJGL family (§12). `api` rather than `implementation` because a loader
+    // module registers its GLFW services. One compiled copy serves every 1.13+ target; the merge adds
     // it once, which is why it is a `libraryProject` in cg-single-jar and not bundled per loader.
     "api"(project(":runtime:lwjgl:3"))
     // Tier 1 for Vulkan, on every node as in the merged jar: from 26.2 Blaze3dVulkanHost hosts CgVulkanDevice on

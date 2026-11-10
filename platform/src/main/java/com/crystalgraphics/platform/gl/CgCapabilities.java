@@ -2,45 +2,29 @@ package com.crystalgraphics.platform.gl;
 
 import lombok.AccessLevel;
 import lombok.Getter;
-import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
 import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
-import com.crystalgraphics.platform.gl.state.CgGlStateShadow;
 import com.crystalgraphics.variable.CgVar;
 
 import java.util.Arrays;
 import java.util.Locale;
 
 /**
- * Immutable snapshot of OpenGL capabilities relevant to CrystalGraphics,
- * detected once per GL context lifecycle.
+ * What the installed device can do, as the engine's tiers ask it: limits and flags read from its {@link CgRHI.Globals},
+ * once per device.
  *
- * <p>This class is populated at construction time (via the static {@link #detect()} factory
- * method) by reading flags from the platform's {@link CgGLContext} implementation,
- * and exposes boolean flags and integer limits used by the framebuffer
- * and shader abstraction layers to select the appropriate backend.</p>
+ * <pre>{@code
+ * CgCapabilities caps = CgCapabilities.detect();   // render thread, a device installed
+ * if (caps.bc7()) ...
+ * }</pre>
  *
- * <h3>The GL 3.3 floor</h3>
- * <p>Detection throws below OpenGL 3.3, and without a draw's bases in its shaders and calls (4.6, or
- * {@code ARB_shader_draw_parameters} with {@code ARB_base_instance}), so everything core in 3.3 — framebuffers, VAOs, instancing,
- * samplers, timer queries — is simply there and has no flag. A 3.2 context with the four extensions 3.3
- * absorbed from them passes too: vanilla Minecraft 1.17 to 1.21.4 asks for 3.2 core, and NVIDIA hands
- * back exactly 3.2 on hardware that runs 4.6, which on Fabric is the context we get. What is flagged is above the floor —
- * SSBOs (4.3 or ARB), {@code glCopyImageSubData} (4.3), persistent mapping (4.4 or ARB), 64-bit shader
- * integers (4.0) — and what {@code CgStreamBuffer}'s waterfall chooses its tier from, fence sync and
- * {@code glMapBufferRange} included.</p>
- *
- * <h3>Lifecycle</h3>
- * <p>Instances are immutable and may be freely shared.  However, they
- * capture the capabilities of the OpenGL context that was current at the
- * time of {@link #detect()}.  If the context is destroyed and recreated,
- * a new {@code CgCapabilities} must be detected.</p>
- *
- * <h3>Thread Safety</h3>
- * <p>Instances are immutable and therefore thread-safe.  The
- * {@link #detect()} factory method must be called on the render thread
- * with a current OpenGL context.</p>
+ * <ul>
+ *   <li>A device below the engine's floor never installs, so what the floor guarantees has no flag.</li>
+ *   <li>A new device (a resize never makes one; a host's restart does) needs {@link #clearCache()}:
+ *       {@code CgPlatform.register} clears it.</li>
+ *   <li>Instances are immutable and may be shared across threads; {@link #detect()} runs on the render thread.</li>
+ * </ul>
  */
 @Getter
 public final class CgCapabilities {
@@ -63,8 +47,6 @@ public final class CgCapabilities {
             "Runs of draws sharing pipeline, bindings and a slab joined into one multi-draw; false draws a call a draw, for"
                     + " a picture that must not change. Taken at each context's capability probe.");
     
-    @Getter private static CgGLContext context;
-    public static void init(CgGLContext ctx) {  context = ctx; }
     
     private static String cachedParsedVersionKey   = null;
     private static int[]  cachedParsedVersionValue = null;
@@ -105,7 +87,7 @@ public final class CgCapabilities {
      * {@code G33} are still detected but nothing runs there (the lowered form was removed: {@code docs/LOWERED_COMPUTE.md}).
      */
     public enum ComputeTier {
-        /** A device: compute passes on the tracked backend's device. */
+        /** A device: compute passes on the device's compute queue. */
         V,
         /** GL compute shaders and storage images, with indirect counts and subgroups where the context lists them. */
         G43,
@@ -117,7 +99,7 @@ public final class CgCapabilities {
         /** What this tier needs that the context lacks, or null. */
         String missing(CgCapabilities caps, boolean device) {
             switch (this) {
-                case V:   return device ? null : "a device (the tracked backend)";
+                case V:   return device ? null : "a device";
                 case G43: return caps.compute && caps.storageImages ? null : "compute shaders and storage images (GL 4.3)";
                 case G40: return device ? "transform feedback, which a device does not carry"
                         : caps.feedbackCount ? null : "transform feedback 2 (GL 4.0)";
@@ -144,13 +126,13 @@ public final class CgCapabilities {
     @Getter(AccessLevel.NONE) int maxTextureUnits;
 
     /**
-     * The fragment stage's texture units, at most the {@link CgGlStateShadow#MAX_TEXTURE_UNITS} the state shadow
-     * tracks. A host's own state cache does not lower it: its backend sends units above the cache's table to the
-     * driver.
+     * The fragment stage's texture units, at most {@value #MAX_UNITS}: the most a binding table names.
      */
     public int getMaxTextureUnits() {
-        return Math.min(maxTextureUnits, CgGlStateShadow.MAX_TEXTURE_UNITS);
+        return Math.min(maxTextureUnits, MAX_UNITS);
     }
+
+    private static final int MAX_UNITS = 32;
     /** Maximum 2D texture dimension (width/height). */
     int maxTextureSize;
     /** Maximum renderbuffer dimension. */
@@ -172,11 +154,10 @@ public final class CgCapabilities {
      * <p>Gated on core 4.3 only, deliberately not also probing {@code GL_ARB_copy_image}:
      * {@code CgTextureCopy} already falls back to a framebuffer blit that works on the GL 3.0
      * baseline, so the ARB path would only cover the narrow band of drivers that expose the
-     * extension without 4.3 — not worth an extra probe on every {@code CgGLContext}
-     * implementation.</p>
+     * extension without 4.3 — not worth an extra probe.</p>
      */
     @Getter(AccessLevel.NONE) boolean copyImageSubData;
-    /** GL 4.5 or ARB_direct_state_access, on a GL driver: framebuffers blitted by name ({@link CgGL#cgBlitFramebuffer}). */
+    /** GL 4.5 or ARB_direct_state_access, on a GL driver: framebuffers blitted by name. */
     @Getter(AccessLevel.NONE) boolean directStateAccess;
 
     // ── Streaming — what CgStreamBuffer's waterfall picks a tier from ─────────
@@ -184,8 +165,6 @@ public final class CgCapabilities {
     boolean arbSync;
     /** Whether {@code glMapBufferRange} is available (Core GL30 or {@code GL_ARB_map_buffer_range}). */
     @Getter(AccessLevel.NONE) boolean hasMapBufferRange;
-    /** @see CgGLContext#mappingIsFree() */
-    @Getter(AccessLevel.NONE) boolean mappingIsFree;
     /** Whether immutable, persistently mappable storage is available (Core GL44 or {@code GL_ARB_buffer_storage}). */
     @Getter(AccessLevel.NONE) boolean bufferStorage;
     /** Chosen from the three flags above and the override. @see StreamBufferTier */
@@ -217,19 +196,11 @@ public final class CgCapabilities {
     /** Texels a buffer texture may read: 65536 at least. */
     @Getter int maxTextureBufferSize;
     /**
-     * Whether a program's {@code GL_COMPLETION_STATUS_KHR} may be polled ({@code GL_KHR_parallel_shader_compile} or
-     * the ARB twin): a compile can then be submitted and drawn from only once the driver has finished it.
-     */
-    @Getter boolean parallelShaderCompile;
-    /**
      * How many program binary formats the driver gives (GL 4.1 or {@code ARB_get_program_binary}): above 0, a linked
-     * program's binary may be kept and loaded in a later launch. 0 on the tracked backend, and on macOS, whose GL
+     * program's binary may be kept and loaded in a later launch. 0 on macOS, whose GL
      * lists none.
      */
     @Getter int programBinaryFormats;
-    /** Whether the current context is a core profile. Fixed-function state
-     *  such as {@code GL_ALPHA_TEST} is unavailable in core profile contexts. */
-    boolean coreProfile;
     int glslVersion;
 
     // ── Compute and GPU-driven draws ──────────────────────────────────────────
@@ -258,29 +229,17 @@ public final class CgCapabilities {
     // ─────────────────────────────────────────────────────────────────────────
 
     /**
-     * Returns a lazily-cached capabilities snapshot.
+     * The installed device's capabilities, read at the first call and kept until {@link #clearCache()}. Render thread.
      *
-     * <p>The first call probes the current OpenGL context and caches the result;
-     * subsequent calls return the cached instance.  Must be called on the render thread
-     * with an active GL context (at least on the first invocation).</p>
-     *
-     * <p>If the GL context is destroyed and recreated, call {@link #clearCache()} to
-     * force re-detection on the next call.</p>
-     *
-     * @return the cached {@code CgCapabilities} for the current context
+     * @return the cached {@code CgCapabilities} for the installed device
      * @see #detectUncached()
      * @see #clearCache()
      */
     public static CgCapabilities detect() {
         CgCapabilities local = cachedCaps;
         if (local == null) {
-            if (context == null) context = CgPlatform.capabilities();
-            // The probe reads limits through CgGL, and may be the first GL anything asks for.
-            CgGL.installIfAbsent();
             local = detectUncached();
             cachedCaps = local;
-            // Published so CgGL's fixed-function guards cost a field load, until CgGL goes (rhi H7). @see CgGL#CORE
-            CgGL.CORE = local.coreProfile = (CgGL.glGetInteger(0x9126) & 0x1) != 0;   // GL_CONTEXT_PROFILE_MASK
             CgGpuReport.log();
         }
         return local;
@@ -328,7 +287,6 @@ public final class CgCapabilities {
 
         caps.arbSync           = true;
         caps.hasMapBufferRange = true;
-        caps.mappingIsFree     = context != null && context.mappingIsFree();
         caps.bufferStorage     = true;
         caps.vertexStreamTier  = vertexStreamTier(caps);
 
@@ -338,7 +296,6 @@ public final class CgCapabilities {
         caps.gpuShaderInt64            = true;
         caps.maxSamples                = limits.maxSamples();
         caps.maxTextureBufferSize      = limits.maxTexelBufferElements();
-        caps.parallelShaderCompile     = context != null && CgDisabledExtensions.filter(context).parallelShaderCompile();
 
         caps.glslVersion = 450;
         caps.compute           = true;
@@ -441,9 +398,6 @@ public final class CgCapabilities {
     /** Whether {@code glMapBufferRange} is supported (Core GL30 or {@code GL_ARB_map_buffer_range}). */
     public boolean isMapBufferRangeSupported() { return hasMapBufferRange; }
 
-    /** @see CgGLContext#mappingIsFree() */
-    public boolean isMappingFree() { return mappingIsFree; }
-
     /** Whether {@code glBufferStorage} and persistent mapping are supported (Core GL44 or {@code GL_ARB_buffer_storage}). */
     public boolean isBufferStorageSupported() { return bufferStorage; }
 
@@ -544,7 +498,7 @@ public final class CgCapabilities {
      * Parses a raw GL version string (e.g. {@code "4.6.0 NVIDIA 537.58"}) into a
      * {@code {major, minor}} array.
      *
-     * <p>Accepts the raw string returned by {@code CgGL.glGetString(CgGL.GL_VERSION)}
+     * <p>Accepts the raw string returned by {@code glGetString(GL_VERSION)}
      * as well as simple {@code "major.minor"} expressions.  The parser locates the first
      * occurrence of a {@code digit(s).digit(s)} pattern in the input, ignoring any prefix
      * text (e.g. {@code "OpenGL ES"}) and any trailing driver/vendor information.</p>

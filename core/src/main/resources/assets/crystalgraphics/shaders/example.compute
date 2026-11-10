@@ -4,8 +4,8 @@
 // preprocessor, keywords, engine buffers and Properties:
 //
 //     CgKernelProgram integrate = CgCompute.load("crystalgraphics:shaders/example.compute").kernel("Integrate").program();
-//     try (CgGlScope scope = CgKernelProgram.scope()) {
-//         integrate.use().buffer("STATE", stateBuffer).dispatch(particleCount);
+//     try (CgImmediate.Compute run = CgImmediate.compute("integrate")) {
+//         run.dispatch(integrate, particleCount).bind("STATE", stateBuffer);
 //     }
 //
 // No #version and no main(): the compiler writes both, per kernel and device.

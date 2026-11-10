@@ -1,11 +1,11 @@
 package com.crystalgraphics.mc.modern.platform.gl;
 
+import com.crystalgraphics.platform.gl.GLDebug;
 import com.crystalgraphics.platform.gl.driver.CgGLDriver;
 import com.crystalgraphics.platform.gl.state.GLHostState;
 //? if <26.3 {
 import com.crystalgraphics.platform.service.CgShaderPacks;
 import com.crystalgraphics.mc.modern.platform.Blaze3dTextureUnits;
-import com.crystalgraphics.platform.gl.CgGLBackend;
 import com.crystalgraphics.platform.gl.state.GLCheckedHostState;
 import com.crystalgraphics.platform.gl.state.GLContextState;
 import com.crystalgraphics.platform.gl.state.GLHostCache;
@@ -72,8 +72,8 @@ public final class HostStateModern extends GLCheckedHostState {
     /** {@code GL_DEBUG_OUTPUT}, from KHR_debug. */
     private static final int DEBUG_OUTPUT = 0x92E0;
     // gl.debugStacks and gl.debugPerf turn it on for themselves.
-    private static final boolean KEEP_DEBUG_OUTPUT = CgGLBackend.KEEP_HOST_DEBUG_OUTPUT.get()
-            || CgGLBackend.DEBUG_STACKS.get() || CgGLBackend.DEBUG_PERF.get();
+    private static final boolean KEEP_DEBUG_OUTPUT = GLDebug.KEEP_HOST_DEBUG_OUTPUT.get()
+            || GLDebug.DEBUG_STACKS.get() || GLDebug.DEBUG_PERF.get();
 
     private boolean debugOutputChecked;
 

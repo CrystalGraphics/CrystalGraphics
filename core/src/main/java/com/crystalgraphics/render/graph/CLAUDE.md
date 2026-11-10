@@ -176,13 +176,13 @@ own passes' CPU as `timed(budget)` budgets their GPU.
 
 **Transitions are the executor's** (`CgResourceStates`, Unreal RDG's subresource states): before each access it
 compares the storage's state — per GL name, so pooled transients, a history's two versions and a buffer used across
-frames each come out right — and states what must move. On a device (`CgGL.cgTakesTransitions()`, the tracked backend)
-every access's: buffers as barriers, images with their layouts, a single-level texture and the current target as one
-framebuffer (`cgFramebufferBarrier`), any other by subresource (`cgTextureBarrier`); a texture outliving the execution is
-taken from where it rests (`CgAccess.RESTING`) and returned there at its end, and while the graph runs the device infers
-nothing (`cgGraphStates`), a callback's body excepted. On GL only those a kernel takes part in, as the reader's
+frames each come out right — and states what must move. On a device that takes them (`CgRHI.takesTransitions()`, Vulkan)
+every access's: buffers as barriers, images with their layouts, a host's target as one framebuffer
+(`CgHostImports.framebufferBarrier`), any other by subresource; a texture outliving the execution is taken from where it
+rests (`CgAccess.RESTING`) and returned there at its end. The device infers no state of its own: what the executor does
+not state does not move. On GL only those a kernel takes part in, as the reader's
 `glMemoryBarrier` bits; GL orders the rest. A transition whose next access is a read two or more steps on is split from
-its producer's end to its consumer (`cgEndBarriersSplit`), as RDG splits one. `-Dcrystalgraphics.graph.barriers=false`
+its producer's end to its consumer (`CgGraphBarriers.endSplit`), as RDG splits one. `-Dcrystalgraphics.graph.barriers=false`
 keeps the bookkeeping and issues nothing; synchronization validation must then fail `--mode=compute-graph`.
 
 Two rules keep a pass of many small dispatches from waiting dispatch by dispatch, Unreal RDG's:

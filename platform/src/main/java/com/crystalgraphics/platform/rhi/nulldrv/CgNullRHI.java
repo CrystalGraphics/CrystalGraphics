@@ -1,5 +1,7 @@
 package com.crystalgraphics.platform.rhi.nulldrv;
 
+import com.crystalgraphics.platform.rhi.shader.CgGlslCompiler;
+import com.crystalgraphics.platform.rhi.CgHostImports;
 import com.crystalgraphics.platform.rhi.resource.CgGpuHeap;
 import com.crystalgraphics.platform.rhi.memory.CgTransientMemory;
 import com.crystalgraphics.platform.rhi.CgRHI;
@@ -40,11 +42,11 @@ import java.util.function.BiConsumer;
 
 /**
  * A {@link CgRHI} with no GPU: it keeps buffer contents, logs every command, and refuses what a Vulkan
- * device's validation would. What the tracked backend's tests and headless replays run on.
+ * device's validation would. What the engine's headless tests run on.
  *
  * <pre>{@code
  * CgNullRHI device = new CgNullRHI(64, 64);
- * // ... drive the tracked backend ...
+ * // ... the engine records and executes ...
  * assertEquals(List.of("beginPass fbo colors=[#1:CLEAR]", "setPipeline #4", "draw 6 1 0 0", "endPass"),
  *         device.logSince(mark));
  * }</pre>
@@ -157,7 +159,7 @@ public final class CgNullRHI implements CgRHI {
 
     /**
      * Stops keeping the log and the pass list, for a long run: every command is still validated. A harness
-     * scene on the tracked backend makes thousands a frame.
+     * scene on it makes thousands a frame.
      */
     public CgNullRHI withoutLog() {
         logging = false;
@@ -168,6 +170,21 @@ public final class CgNullRHI implements CgRHI {
 
     private void record(String line) {
         if (logging) log.add(line);
+    }
+
+    /**
+     * Makes this the process's device, as a test's: as {@link CgRHI}, {@code compiler}, and host imports of its surface
+     * alone.
+     *
+     * <pre>{@code
+     * CgNullRHI device = new CgNullRHI(64, 64).install(new ShadercGlslCompiler());
+     * }</pre>
+     */
+    public CgNullRHI install(CgGlslCompiler compiler) {
+        CgRHI.install(this);
+        CgGlslCompiler.install(compiler);
+        CgHostImports.install(CgHostImports.surface(this));
+        return this;
     }
 
     /** Objects created and not yet destroyed. */
@@ -1144,7 +1161,7 @@ public final class CgNullRHI implements CgRHI {
         @Override
         public void discard(CgGpuTexture texture) {
             use(texture);
-            record("discard #" + ((Obj) texture).id);
+            if (logging) record("discard #" + ((Obj) texture).id);
         }
     }
 

@@ -1,10 +1,11 @@
 package com.crystalgraphics.vulkan;
 
+import com.crystalgraphics.platform.rhi.shader.CgGlslCompiler;
+import com.crystalgraphics.platform.rhi.CgHostImports;
 import org.lwjgl.vulkan.VkMemoryRequirements;
 import com.crystalgraphics.vulkan.resource.VulkanHeap;
 import com.crystalgraphics.platform.rhi.resource.CgGpuHeap;
 import com.crystalgraphics.platform.rhi.memory.CgTransientMemory;
-import com.crystalgraphics.platform.gl.tracked.CgImplicitLayouts;
 import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.service.CgCacheDirectory;
 import com.crystalgraphics.platform.rhi.resource.CgRHIResource;
@@ -125,16 +126,14 @@ import static org.lwjgl.vulkan.VK11.VK_FORMAT_FEATURE_TRANSFER_SRC_BIT;
 import static org.lwjgl.vulkan.VK11.vkGetPhysicalDeviceProperties2;
 
 /**
- * {@code CgRHI} over Vulkan 1.2 with dynamic rendering and push descriptors — what the tracked backend draws
- * through when {@code CgGL} runs on Vulkan (plan/device-vulkan.md). Everything from outside comes through its
- * {@link CgVulkanHost}.
+ * {@code CgRHI} over Vulkan 1.2 with dynamic rendering and push descriptors (plan/device-vulkan.md). Everything from
+ * outside comes through its {@link CgVulkanHost}.
  *
  * <pre>{@code
  * CgVulkanDevice device = new CgVulkanDevice(host, width, height);
- * CgTrackedGLBackend gl = new CgTrackedGLBackend(device, new ShadercGlslCompiler(), debug);
- * CgGL.init(gl);
- * ... the engine draws through CgGL ...
- * gl.endFrame();                  // the host submits and presents
+ * device.install(new ShadercGlslCompiler(CgCacheDirectory.of("spirv")));   // the process's device
+ * ... the engine draws ...
+ * device.endFrame();              // the host submits and presents
  * device.resize(w, h);            // the window's framebuffer changed
  * device.close();                 // before the host closes
  * }</pre>
@@ -147,7 +146,7 @@ import static org.lwjgl.vulkan.VK11.vkGetPhysicalDeviceProperties2;
  * <p>The default framebuffer is an image of the device's own, RGBA8 with depth-stencil, which the host presents;
  * its row 0 is GL's bottom. Owner thread only.</p>
  */
-public final class CgVulkanDevice implements CgRHI, CgImplicitLayouts, AutoCloseable {
+public final class CgVulkanDevice implements CgRHI, AutoCloseable {
 
     /** {@link CgRHI#onClose}'s tasks: run first as it closes. */
     private final List<Runnable> closing = new ArrayList<>();
@@ -538,7 +537,7 @@ public final class CgVulkanDevice implements CgRHI, CgImplicitLayouts, AutoClose
      * CgGpuTexture main = device.wrap(vkImage, VK_FORMAT_R8G8B8A8_UNORM, new CgGpuTexture.Desc("main",
      *         CgGpuTexture.Kind.D2, CgFormat.RGBA8_UNORM, width, height, 1, 1, 1, CgGpuTexture.Usage.ALL),
      *         VK_IMAGE_LAYOUT_GENERAL);
-     * int name = CgGL.importHostTexture(main);   // a GL name a framebuffer can attach
+     * int fbo = device.hostImports().framebuffer(main, depth);   // the target a hook draws into
      * ...
      * device.release(main);                      // when the host replaces the image: its views go
      * }</pre>
@@ -903,13 +902,28 @@ public final class CgVulkanDevice implements CgRHI, CgImplicitLayouts, AutoClose
     /** The events split transitions set and wait on. */
     public VulkanEvents events() { return events; }
 
-    @Override
-    public void implicitLayouts(boolean on) {
-        encoder.implicitLayouts(on);
+    /**
+     * Makes this the process's device, whole (Unreal's {@code RHIInit}, one place): as {@link CgRHI}, {@code compiler},
+     * and its {@link CgHostImports} (framebuffer 0 the surface).
+     */
+    public CgVulkanDevice install(CgGlslCompiler compiler) {
+        CgRHI.install(this);
+        CgGlslCompiler.install(compiler);
+        CgHostImports.install(hostImports);
+        return this;
+    }
+
+    private final VulkanHostImports hostImports = new VulkanHostImports(this);
+
+    /** The host's images as this device's resources: the surface, and a host's own target named over its images. */
+    public VulkanHostImports hostImports() {
+        return hostImports;
     }
     @Override public long retiredFrame() { return host.retiredFrame(); }
     @Override public void whenRetired(long frame, Runnable action) { host.whenFrameRetired(frame, action); }
     @Override public boolean ownsSubmission() { return host.ownsSubmission(); }
+
+    @Override public boolean takesTransitions() { return true; }
     @Override public void fromHost() { host.fromHost(); }
     @Override
     public void toHost() {

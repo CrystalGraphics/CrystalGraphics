@@ -1,7 +1,7 @@
 package com.crystalgraphics.api.texture;
 
 
-import com.crystalgraphics.platform.gl.CgGL;
+import com.crystalgraphics.platform.gl.driver.GLC;
 import lombok.Builder;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
@@ -77,23 +77,23 @@ public final class CgTextureSpec {
 
     /** Minification filter. Default {@code GL_LINEAR}. */
     @Builder.Default
-    private final int minFilter = CgGL.GL_LINEAR;
+    private final int minFilter = GLC.GL_LINEAR;
 
     /** Magnification filter. Default {@code GL_LINEAR}. */
     @Builder.Default
-    private final int magFilter = CgGL.GL_LINEAR;
+    private final int magFilter = GLC.GL_LINEAR;
 
     /** Wrap mode for the S coordinate. Default {@code GL_CLAMP_TO_EDGE}. */
     @Builder.Default
-    private final int wrapS = CgGL.GL_CLAMP_TO_EDGE;
+    private final int wrapS = GLC.GL_CLAMP_TO_EDGE;
 
     /** Wrap mode for the T coordinate. Default {@code GL_CLAMP_TO_EDGE}. */
     @Builder.Default
-    private final int wrapT = CgGL.GL_CLAMP_TO_EDGE;
+    private final int wrapT = GLC.GL_CLAMP_TO_EDGE;
 
     /** Wrap mode for the R coordinate (3D / 2D-array targets only). Default {@code GL_CLAMP_TO_EDGE}. */
     @Builder.Default
-    private final int wrapR = CgGL.GL_CLAMP_TO_EDGE;
+    private final int wrapR = GLC.GL_CLAMP_TO_EDGE;
 
     // ── Shadow comparison (depth textures only) ──────────────────────────────────
 
@@ -103,14 +103,14 @@ public final class CgTextureSpec {
      * Only meaningful for depth-format textures; ignored by the GL driver for color formats.
      */
     @Builder.Default
-    private final int compareMode = CgGL.GL_NONE;
+    private final int compareMode = GLC.GL_NONE;
 
     /**
      * Shadow compare function. Default {@code GL_LEQUAL}.
      * Only applied when {@link #compareMode} != {@code GL_NONE}.
      */
     @Builder.Default
-    private final int compareFunc = CgGL.GL_LEQUAL;
+    private final int compareFunc = GLC.GL_LEQUAL;
 
     // ── Pre-built constants (all via CgTextureType, zero hex) ───────────────────
 
@@ -121,53 +121,53 @@ public final class CgTextureSpec {
     /** 8-bit RGBA with nearest filtering (pixel-art / sharp sprites). */
     public static final CgTextureSpec RGBA8_NEAREST = CgTextureSpec.builder()
             .type(CgTextureType.RGBA8)
-            .minFilter(CgGL.GL_NEAREST).magFilter(CgGL.GL_NEAREST)
+            .minFilter(GLC.GL_NEAREST).magFilter(GLC.GL_NEAREST)
             .build();
 
     /** 8-bit RGBA, linear filtering, clamp-to-border. */
     public static final CgTextureSpec RGBA8_LINEAR_CLAMP_BORDER = CgTextureSpec.builder()
             .type(CgTextureType.RGBA8)
-            .wrapS(CgGL.GL_CLAMP_TO_BORDER).wrapT(CgGL.GL_CLAMP_TO_BORDER).wrapR(CgGL.GL_CLAMP_TO_BORDER)
+            .wrapS(GLC.GL_CLAMP_TO_BORDER).wrapT(GLC.GL_CLAMP_TO_BORDER).wrapR(GLC.GL_CLAMP_TO_BORDER)
             .build();
 
     /** 8-bit RGBA with nearest filtering, clamp-to-border. */
     public static final CgTextureSpec RGBA8_NEAREST_CLAMP_BORDER = CgTextureSpec.builder()
             .type(CgTextureType.RGBA8)
-            .minFilter(CgGL.GL_NEAREST).magFilter(CgGL.GL_NEAREST)
-            .wrapS(CgGL.GL_CLAMP_TO_BORDER).wrapT(CgGL.GL_CLAMP_TO_BORDER).wrapR(CgGL.GL_CLAMP_TO_BORDER)
+            .minFilter(GLC.GL_NEAREST).magFilter(GLC.GL_NEAREST)
+            .wrapS(GLC.GL_CLAMP_TO_BORDER).wrapT(GLC.GL_CLAMP_TO_BORDER).wrapR(GLC.GL_CLAMP_TO_BORDER)
             .build();
 
     /** 8-bit RGBA, linear filtering, repeat. */
     public static final CgTextureSpec RGBA8_LINEAR_REPEAT = CgTextureSpec.builder()
             .type(CgTextureType.RGBA8)
-            .wrapS(CgGL.GL_REPEAT).wrapT(CgGL.GL_REPEAT).wrapR(CgGL.GL_REPEAT)
+            .wrapS(GLC.GL_REPEAT).wrapT(GLC.GL_REPEAT).wrapR(GLC.GL_REPEAT)
             .build();
 
     /** 8-bit RGBA with nearest filtering, repeat. */
     public static final CgTextureSpec RGBA8_NEAREST_REPEAT = CgTextureSpec.builder()
             .type(CgTextureType.RGBA8)
-            .minFilter(CgGL.GL_NEAREST).magFilter(CgGL.GL_NEAREST)
-            .wrapS(CgGL.GL_REPEAT).wrapT(CgGL.GL_REPEAT).wrapR(CgGL.GL_REPEAT)
+            .minFilter(GLC.GL_NEAREST).magFilter(GLC.GL_NEAREST)
+            .wrapS(GLC.GL_REPEAT).wrapT(GLC.GL_REPEAT).wrapR(GLC.GL_REPEAT)
             .build();
 
     /** 8-bit RGBA, linear filtering, mirrored-repeat. */
     public static final CgTextureSpec RGBA8_LINEAR_MIRRORED = CgTextureSpec.builder()
             .type(CgTextureType.RGBA8)
-            .wrapS(CgGL.GL_MIRRORED_REPEAT).wrapT(CgGL.GL_MIRRORED_REPEAT).wrapR(CgGL.GL_MIRRORED_REPEAT)
+            .wrapS(GLC.GL_MIRRORED_REPEAT).wrapT(GLC.GL_MIRRORED_REPEAT).wrapR(GLC.GL_MIRRORED_REPEAT)
             .build();
 
     /** 8-bit RGBA with nearest filtering, mirrored-repeat. */
     public static final CgTextureSpec RGBA8_NEAREST_MIRRORED = CgTextureSpec.builder()
             .type(CgTextureType.RGBA8)
-            .minFilter(CgGL.GL_NEAREST).magFilter(CgGL.GL_NEAREST)
-            .wrapS(CgGL.GL_MIRRORED_REPEAT).wrapT(CgGL.GL_MIRRORED_REPEAT).wrapR(CgGL.GL_MIRRORED_REPEAT)
+            .minFilter(GLC.GL_NEAREST).magFilter(GLC.GL_NEAREST)
+            .wrapS(GLC.GL_MIRRORED_REPEAT).wrapT(GLC.GL_MIRRORED_REPEAT).wrapR(GLC.GL_MIRRORED_REPEAT)
             .build();
 
     
     /** 8-bit R, linear filtering, repeat. For single-channel data (noise, masks, heightmaps). */
     public static final CgTextureSpec R8_LINEAR_REPEAT = CgTextureSpec.builder()
             .type(CgTextureType.R8)
-            .wrapS(CgGL.GL_REPEAT).wrapT(CgGL.GL_REPEAT).wrapR(CgGL.GL_REPEAT)
+            .wrapS(GLC.GL_REPEAT).wrapT(GLC.GL_REPEAT).wrapR(GLC.GL_REPEAT)
             .build();
     
     /**
@@ -177,14 +177,14 @@ public final class CgTextureSpec {
      */
     public static final CgTextureSpec R8_NEAREST = CgTextureSpec.builder()
             .type(CgTextureType.R8)
-            .minFilter(CgGL.GL_NEAREST).magFilter(CgGL.GL_NEAREST)
+            .minFilter(GLC.GL_NEAREST).magFilter(GLC.GL_NEAREST)
             .build();
     
     /** 8-bit R, nearest filtering, repeat. For single-channel data (noise, masks, heightmaps). */
     public static final CgTextureSpec R8_NEAREST_REPEAT = CgTextureSpec.builder()
             .type(CgTextureType.R8)
-            .minFilter(CgGL.GL_NEAREST).magFilter(CgGL.GL_NEAREST)
-            .wrapS(CgGL.GL_REPEAT).wrapT(CgGL.GL_REPEAT).wrapR(CgGL.GL_REPEAT)
+            .minFilter(GLC.GL_NEAREST).magFilter(GLC.GL_NEAREST)
+            .wrapS(GLC.GL_REPEAT).wrapT(GLC.GL_REPEAT).wrapR(GLC.GL_REPEAT)
             .build();
 
     /**
@@ -204,7 +204,7 @@ public final class CgTextureSpec {
      */
     public static final CgTextureSpec DEPTH24_SHADOW = CgTextureSpec.builder()
             .type(CgTextureType.DEPTH24)
-            .compareMode(CgGL.GL_COMPARE_R_TO_TEXTURE)
-            .compareFunc(CgGL.GL_LEQUAL)
+            .compareMode(GLC.GL_COMPARE_R_TO_TEXTURE)
+            .compareFunc(GLC.GL_LEQUAL)
             .build();
 }

@@ -1,13 +1,12 @@
 package com.crystalgraphics.platform.gl.resource;
 
+import com.crystalgraphics.platform.rhi.CgHostImports;
 import java.util.Set;
 import java.util.EnumSet;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
 import com.crystalgraphics.platform.gl.format.GLFormats;
-import com.crystalgraphics.platform.gl.CgGLImports;
 import com.crystalgraphics.platform.gl.command.GLFramebuffers;
 import com.crystalgraphics.platform.gl.driver.CgGLDriver;
-import com.crystalgraphics.platform.rhi.resource.CgGpuBuffer;
 import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
 import com.crystalgraphics.platform.rhi.resource.CgTextureView;
 
@@ -18,11 +17,10 @@ import java.util.Map;
 import static com.crystalgraphics.platform.gl.driver.GLC.*;
 
 /**
- * {@link CgGLImports} on the GL device, sharing its context with {@code CgGL}: a name is wrapped in a texture or buffer
- * owning nothing, kept until the name is deleted ({@code CgGL}'s delete, or the device freeing a resource of its own);
- * an RHI resource's name is its own.
+ * {@link CgHostImports} on the GL device: a host's texture or renderbuffer, by its GL name, wrapped in a texture owning
+ * nothing, kept per name and wrapped again where the host remade it at another size or format.
  */
-public final class GLImports implements CgGLImports {
+public final class GLImports implements CgHostImports {
 
     private static final int GL_RENDERBUFFER_WIDTH = 0x8D42, GL_RENDERBUFFER_HEIGHT = 0x8D43,
             GL_RENDERBUFFER_INTERNAL_FORMAT = 0x8D44, GL_RENDERBUFFER_SAMPLES = 0x8CAB,
@@ -34,7 +32,6 @@ public final class GLImports implements CgGLImports {
     private final CgGLDriver gl;
     private final GLFramebuffers framebuffers;
     private final Map<Integer, GLTexture> textures = new HashMap<>();
-    private final Map<Integer, GLBuffer> buffers = new HashMap<>();
     private final Map<Integer, GLTexture> renderbuffers = new HashMap<>();
     private GLTexture backColor, backDepth;
     /**
@@ -51,8 +48,15 @@ public final class GLImports implements CgGLImports {
         this.framebuffers = framebuffers;
     }
 
+    /** A host texture's handle is its GL name; a device texture comes back as it is. */
     @Override
-    public CgGpuTexture texture(int name, CgGpuTexture.Desc desc) {
+    public CgGpuTexture texture(Object handle) {
+        if (handle instanceof CgGpuTexture t) return t;
+        if (!(handle instanceof Integer name)) throw new IllegalArgumentException("not a GL texture name: " + handle);
+        return texture(name, describe(name));
+    }
+
+    private CgGpuTexture texture(int name, CgGpuTexture.Desc desc) {
         GLTexture t = textures.get(name);
         if (t == null || !t.desc().equals(desc)) {
             if (t != null) framebuffers.forget(t);
@@ -61,8 +65,7 @@ public final class GLImports implements CgGLImports {
         return t;
     }
 
-    @Override
-    public CgGpuTexture.Desc describe(int name) {
+    private CgGpuTexture.Desc describe(int name) {
         int internal = gl.glGetTextureLevelParameteri(name, 0, GL_TEXTURE_INTERNAL_FORMAT);
         int w = gl.glGetTextureLevelParameteri(name, 0, GL_TEXTURE_WIDTH);
         int h = gl.glGetTextureLevelParameteri(name, 0, GL_TEXTURE_HEIGHT);
@@ -72,8 +75,7 @@ public final class GLImports implements CgGLImports {
         return new CgGpuTexture.Desc("texture " + name, CgGpuTexture.Kind.D2, format, w, h, 1, 1, 1, usage);
     }
 
-    @Override
-    public CgGpuTexture renderbuffer(int name, CgGpuTexture.Desc desc) {
+    private CgGpuTexture renderbuffer(int name, CgGpuTexture.Desc desc) {
         GLTexture t = renderbuffers.get(name);
         if (t == null || !t.desc().equals(desc)) {
             if (t != null) framebuffers.forget(t);
@@ -82,8 +84,7 @@ public final class GLImports implements CgGLImports {
         return t;
     }
 
-    @Override
-    public CgGpuTexture.Desc describeRenderbuffer(int name) {
+    private CgGpuTexture.Desc describeRenderbuffer(int name) {
         CgFormat format = GLFormats.of(gl.glGetNamedRenderbufferParameteri(name, GL_RENDERBUFFER_INTERNAL_FORMAT));
         int w = gl.glGetNamedRenderbufferParameteri(name, GL_RENDERBUFFER_WIDTH);
         int h = gl.glGetNamedRenderbufferParameteri(name, GL_RENDERBUFFER_HEIGHT);
@@ -136,8 +137,11 @@ public final class GLImports implements CgGLImports {
             t = CgTextureView.attachment(renderbuffer(name, describeRenderbuffer(name)), 0, 0);
         } else if (type == GL_ATTACHED_TEXTURE) {
             int name = gl.glGetNamedFramebufferAttachmentParameteri(fbo, glPoint, GL_ATTACHMENT_NAME);
+            // A host remaking its target (a resize) is often handed the same names back: described again, and no
+            // framebuffer of ours kept over the deleted storage, which GL leaves attached to it
             GLTexture known = textures.get(name);
-            t = CgTextureView.attachment(known != null ? known : texture(name, describe(name)),
+            if (known != null) framebuffers.forget(known);
+            t = CgTextureView.attachment(texture(name, describe(name)),
                     gl.glGetNamedFramebufferAttachmentParameteri(fbo, glPoint, GL_ATTACHMENT_LEVEL),
                     Math.max(0, gl.glGetNamedFramebufferAttachmentParameteri(fbo, glPoint, GL_ATTACHMENT_LAYER)));
         }
@@ -160,43 +164,4 @@ public final class GLImports implements CgGLImports {
         attachedCount = 0;
     }
 
-    @Override
-    public CgGpuBuffer buffer(int name) {
-        GLBuffer b = buffers.get(name);
-        if (b == null) buffers.put(name, b = GLBuffer.adopt(gl, name));
-        return b;
-    }
-
-    @Override public long bufferOffset(int name) { return 0; }
-
-    @Override public int name(CgGpuTexture texture) { return ((GLTexture) texture).name; }
-
-    @Override public int name(CgGpuBuffer buffer) { return ((GLBuffer) buffer).name; }
-
-    @Override
-    public void textureDeleted(int texture) {
-        GLTexture t = textures.remove(texture);
-        if (t != null) {
-            framebuffers.forget(t);
-            forgetAttachments();
-        }
-    }
-
-    @Override
-    public void renderbufferDeleted(int renderbuffer) {
-        GLTexture t = renderbuffers.remove(renderbuffer);
-        if (t != null) {
-            framebuffers.forget(t);
-            forgetAttachments();
-        }
-    }
-
-    @Override public void bufferDeleted(int buffer) { buffers.remove(buffer); }
-
-    /** Adopted again at its next use where its size moved: the same size keeps it, as an orphaning stream does. */
-    @Override
-    public void bufferRespecified(int buffer, long bytes) {
-        GLBuffer b = buffers.get(buffer);
-        if (b != null && b.size() != bytes) buffers.remove(buffer);
-    }
 }

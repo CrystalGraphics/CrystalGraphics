@@ -1,11 +1,11 @@
 package com.crystalgraphics.gl.material.parse;
 
+import com.crystalgraphics.platform.gl.driver.GLC;
 import com.github.bsideup.jabel.Desugar;
 import com.crystalgraphics.api.material.CgBlendMode;
 import com.crystalgraphics.api.material.CgMaterialState;
 import com.crystalgraphics.api.material.CgRenderPassVariant;
 import com.crystalgraphics.api.material.CgRenderQueue;
-import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.api.state.CgDepthState;
 import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.compute.source.CgBufferDecl;
@@ -277,7 +277,7 @@ public record CgParsedShader(String shaderType, List<CgMaterialProperty> propert
      * translucent draw. Tested at {@code ALWAYS} rather than off, so the compiler knows its Emissive pass has no scene
      * test to make.
      */
-    private static final CgDepthState UNTESTED = new CgDepthState(true, false, CgGL.GL_ALWAYS);
+    private static final CgDepthState UNTESTED = new CgDepthState(true, false, GLC.GL_ALWAYS);
 
     private static CgRenderState forwardUnder(CgRenderState rs, CgMaterialState state, boolean unclip) {
         if (state.blend() != null) rs = rs.withBlend(state.blend().state());

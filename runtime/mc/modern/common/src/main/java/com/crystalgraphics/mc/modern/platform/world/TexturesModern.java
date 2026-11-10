@@ -101,7 +101,7 @@ public final class TexturesModern {
     }
     //?}
 
-    // What CgGL.importHostTexture takes on a GL host: the GL name, boxed. The Vulkan host imports its own, above.
+    // What CgHostImports.texture takes on a GL host: the GL name, boxed. The Vulkan host imports its own, above.
     //? if >=26.1 {
     /*private static Object handle(GpuTexture texture, boolean atlas) {
         return texture == null ? null : boxed(((GlTexture) texture).glId(), atlas);

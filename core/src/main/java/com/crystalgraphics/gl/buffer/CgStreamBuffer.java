@@ -1,8 +1,8 @@
 package com.crystalgraphics.gl.buffer;
 
+import com.crystalgraphics.platform.rhi.CgDeviceNames;
 import com.crystalgraphics.api.buffer.CgObjectBuffer;
 import com.crystalgraphics.gpu.CgUploadLease;
-import com.crystalgraphics.platform.gl.CgGLImports;
 import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.rhi.resource.CgGpuBuffer;
 import com.crystalgraphics.trace.CgTrace;
@@ -179,9 +179,9 @@ public abstract class CgStreamBuffer implements CgObjectBuffer {
         return false;
     }
 
-    /** {@code CgGL}'s name for the storage now, for what still reaches it through {@code CgGL}. */
+    /** The device name ({@code CgDeviceNames}) of the storage now. */
     public int getGlBuffer() {
-        return CgGLImports.get().name(gpu);
+        return CgDeviceNames.name(gpu);
     }
 
     @Override
@@ -212,7 +212,7 @@ public abstract class CgStreamBuffer implements CgObjectBuffer {
 
     /** Gives {@code buffer} back, destroyed once the frames in flight that may read it have retired. */
     protected static void release(CgGpuBuffer buffer) {
-        if (CgGLImports.installed()) CgGLImports.get().forget(buffer);
+        CgDeviceNames.forget(buffer);
         CgRHI.get().release(buffer);
     }
 

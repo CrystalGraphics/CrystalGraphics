@@ -480,7 +480,7 @@ Easy to get wrong: `effectiveGroup()` is valid only after the schedule has run; 
 
 ### Framebuffers
 
-`CgFrameBuffer` is the unified FBO abstraction. Create it via `CgFrameBufferFormat` builder — the format describes all attachments, the FBO dispatches through `CgGL`.
+`CgFrameBuffer` is the unified FBO abstraction. Create it via `CgFrameBufferFormat` builder — the format describes all attachments, each a device texture.
 
 ```java
 CgFrameBufferFormat fmt = CgFrameBufferFormat.builder("my_fbo")
@@ -754,11 +754,7 @@ Where the device has a queue family that only copies, these copies run on it whi
 
 - **a copy into a texture only the transfer queue has used**: every new texture's first uploads, glyph pages' growth
   included;
-- **an upload of 256 KB or more replacing a whole texture the frame has used**: it is written into a new texture,
-  which takes the transfer queue, and the old one is freed once the frames reading it finish. Only where it covers
-  all of level 0 and no other level is specified, since those would be lost: an upload into a texture whose mipmaps
-  were generated stays on the frame's queue;
-- **the mesh store's copies into its pools**, between `CgGL.cgBeginTransfer` and `cgEndTransfer`.
+- **the mesh store's copies into its pools**, between `CgCommandList.beginTransfer` and `endTransfer`.
 
 Any other copy into a texture runs on the frame's queue. Copies there one after another share one barrier on each side,
 and one call where they share a source and a texture: a burst of glyph cells is a few calls behind one pair of
@@ -773,11 +769,12 @@ the frame's queue.
 A copy of your own goes there through the bracket:
 
 ```java
-CgGL.cgBeginTransfer();
+CgCommandList list = CgRHI.get().encoder();
+list.beginTransfer();
 try {
-    CgGL.glCopyBufferSubData(GL_COPY_READ_BUFFER, GL_COPY_WRITE_BUFFER, from, to, size);   // and more
+    list.copyBuffer(from, 0, to, 0, size);   // and more
 } finally {
-    CgGL.cgEndTransfer();
+    list.endTransfer();
 }
 ```
 
@@ -855,34 +852,9 @@ Measured by: `deferral.apply`, the workers' `upload.lease-copy`, and the GPU zon
 
 ## Infrastructure
 
-### GL State Save/Restore
-
-**For the `CgGL` callers not yet on the RHI, and deleted with them in `rhi` H7.** On the RHI a draw's state is its
-pipeline's and nothing saves or restores: [`RENDER_STATE.md`](RENDER_STATE.md).
-
-Wrap any block of GL work in a `CgGlScope` to guarantee state restoration on exit — even on exceptions. Always save only the slots you intend to modify.
-
-> Imports come from **`com.crystalgraphics.platform.gl.state`** (`CgGlState`, `CgGlScope`, `CgGlSlot`); `CgGlStateManager` is in `platform.gl`.
-
-```java
-// Save specific slots:
-try (CgGlScope scope = CgGlState.save(CgGlSlot.FBO, CgGlSlot.PROGRAM)) {
-    // GL calls changing the framebuffer and program
-}  // FBO and PROGRAM restored automatically on close
-
-// Convenience shorthands:
-CgGlState.saveProgram()   // → save(PROGRAM)
-CgGlState.saveFull()      // → save(FBO, PROGRAM, TEXTURES, VERTEX_INPUT)
-CgGlState.saveAll()       // → every slot (used by CgExecutor around a frame)
-```
-
-`CgGlSlot` constants: `FBO` · `PROGRAM` · `TEXTURES` · `VERTEX_INPUT` · `BLEND` · `DEPTH` · `CULL` · `STENCIL` · `COLOR_MASK` · `VIEWPORT` · `SCISSOR` · `POLYGON_OFFSET` · `ALPHA_TEST` · `LINE_WIDTH` · `POLYGON_MODE` · `POINT_SIZE`, and three **captured at first write** — `STORAGE_BUFFERS` · `IMAGES` · `INDIRECT_BUFFERS`: a scope declaring them reads nothing when it opens, saves each binding point the first time it is written inside it, and restores only those (`gl/state/CLAUDE.md`)
-
-**Package guides**: `api/state/CLAUDE.md` · `gl/state/CLAUDE.md`
-
 ### Capabilities
 
-`CgCapabilities.detect()` — cached per context; **throws below OpenGL 4.5, or without a draw's bases** (4.6, or `ARB_shader_draw_parameters` with `ARB_base_instance`): materials compile to one target, GLSL 4.50 (`CgMaterialShaderCompiler.VERSION`). Above the floor it answers `shaderBufferPath()` (GL 4.3 or ARB storage blocks, forceable with `-Dcrystalgraphics.shaderBuffer.tier=<path>`; the TBO path is detected and unhooked, `docs/TBO_PATH.md`), `vertexStreamTier()` (persistent or mapped ring, see `gl/buffer/CLAUDE.md`), `isCopyImageSubDataSupported()`, the limits (`getMaxDrawBuffers()`, `getMaxTextureUnits()`, …) and `isCoreProfile()`. For compute and GPU-driven draws it answers what a consumer needs — `compute()`, `storageImages()`, `subgroups()`, `floatAtomics()`, `drawIndirect()`, `multiDrawIndirect()`, `indirectCount()`, `feedbackCount()`, `asyncCompute()`, `bindless()`, `multiDraw()` (whether the mesh store joins draws; `-Dcrystalgraphics.mesh.multiDraw=false` turns it off) — each joined from a core version, its ARB extension and, on the tracked backend, the device; and `computeTier()` (`V` · `G43` · `G40` · `G33` · `CPU`), forceable with `-Dcrystalgraphics.compute.tier=<tier>`, which throws naming what a context lacks.
+`CgCapabilities.detect()` — the installed device's, cached until a new one: materials compile to one target, GLSL 4.50 (`CgMaterialShaderCompiler.VERSION`). It answers `shaderBufferPath()` (GL 4.3 or ARB storage blocks, forceable with `-Dcrystalgraphics.shaderBuffer.tier=<path>`; the TBO path is detected and unhooked, `docs/TBO_PATH.md`), `vertexStreamTier()` (persistent or mapped ring, see `gl/buffer/CLAUDE.md`), `isCopyImageSubDataSupported()`, the limits (`getMaxDrawBuffers()`, `getMaxTextureUnits()`, …). For compute and GPU-driven draws it answers what a consumer needs — `compute()`, `storageImages()`, `subgroups()`, `floatAtomics()`, `drawIndirect()`, `multiDrawIndirect()`, `indirectCount()`, `feedbackCount()`, `asyncCompute()`, `bindless()`, `multiDraw()` (whether the mesh store joins draws; `-Dcrystalgraphics.mesh.multiDraw=false` turns it off) — each joined from a core version, its ARB extension and, on Vulkan, the device; and `computeTier()` (`V` · `G43` · `G40` · `G33` · `CPU`), forceable with `-Dcrystalgraphics.compute.tier=<tier>`, which throws naming what a context lacks.
 
 **`CgGpuReport`** is the full answer, for diagnosis rather than decisions: every feature a compute or draw tier is chosen
 from (`core`, the extension that gives it, or `no`) and the limits that bound it, from the driver on GL and from
@@ -890,7 +862,6 @@ from (`core`, the extension that gives it, or `no`) and the limits that bound it
 gathers every client's into `build/prodSmoke/gpu-report.txt`, and the harness's `--mode=capability-report` prints it
 as a table.
 
-Nothing core in 3.3 has an ARB or EXT fallback; what is above it (SSBO, `glCopyImageSubData`) keeps its gate and its fallback. **A 3.2 context with 3.3's extensions passes**: vanilla 1.17–1.21.4 asks for 3.2 core and NVIDIA returns exactly that, so Fabric and pre-early-window Forge run on one. On it LWJGL 3 loads no 3.3 entry point, which is why `Lwjgl3GLBackend.glVertexAttribDivisor` falls back to the ARB name.
 
 ### Render State
 
@@ -1162,7 +1133,7 @@ CgEngineLifecycle.shutdown();
 
 | Step | What | Why |
 |------|------|-----|
-| 1 | `CgMeshStore.get().releaseAll()` | The store's pools, their buffers and the one empty VAO its `CgGL` draws bind. Meshes keep their data and are placed again by the next context, but for a `GPU_ONLY` one, which needs an edit first |
+| 1 | `CgMeshStore.get().releaseAll()` | The store's pools and their buffers. Meshes keep their data and are placed again by the next context, but for a `GPU_ONLY` one, which needs an edit first |
 | 2 | `CgQuadIndexBuffer.freeAll()` | Shared quad IBO |
 | 5 | `CgTextureManager.get().freeAll()` | All cached textures + fallback |
 | 5c | `CgFontRegistry.get().releaseAll()` | Glyph atlas textures + background generation executor, reset in place (reusable immediately) |

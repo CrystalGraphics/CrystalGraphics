@@ -1,27 +1,21 @@
 package com.crystalgraphics.platform;
 
-import com.crystalgraphics.platform.gl.CgGLBackend;
-import com.crystalgraphics.platform.gl.CgGLContext;
 
 /**
- * What a platform registers whole: its GL backend and the context that backend reports. Every other platform
- * capability is a {@link CgService} slot its owner declares ({@code CgModLoader}, {@code CgHostResources},
- * {@code CgInput}, ...), provided one at a time.
+ * A platform's bundle, registered once by its host: each capability is a {@link CgService} slot its owner declares
+ * ({@code CgModLoader}, {@code CgHostResources}, {@code CgInput}, ...), provided one at a time, and the host's device
+ * is made as its context starts.
  *
  * <pre>{@code
  * CgPlatform.register(new PlatformServiceModern());
  * }</pre>
- *
- * <ul>
- *   <li>Neither getter may answer null.</li>
- *   <li>Registering builds no graphics: {@code CgGL} takes {@link #gl()} at its first host section, on a client's
- *       render thread.</li>
- * </ul>
  */
 public interface CgPlatformService {
-    /** The GL dispatch. */
-    CgGLBackend gl();
 
-    /** The GL context's capabilities. */
-    CgGLContext capabilities();
+    /**
+     * Makes the host's device, on the render thread with its context current, as the graphics start begins and before
+     * anything asks the device for its capabilities. Nothing where the host has none of its own to make (a harness
+     * that installed one already). A dedicated server never reaches it.
+     */
+    default void startDevice() {}
 }

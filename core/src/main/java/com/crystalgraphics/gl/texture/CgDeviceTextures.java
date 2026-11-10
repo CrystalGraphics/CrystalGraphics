@@ -1,8 +1,8 @@
 package com.crystalgraphics.gl.texture;
 
+import com.crystalgraphics.platform.rhi.CgDeviceNames;
 import com.crystalgraphics.api.texture.CgTextureSpec;
 import com.crystalgraphics.gpu.CgUploadLease;
-import com.crystalgraphics.platform.gl.CgGLImports;
 import com.crystalgraphics.platform.gl.format.GLFormats;
 import com.crystalgraphics.platform.gl.format.GLPixels;
 import com.crystalgraphics.platform.rhi.CgDeviceSection;
@@ -20,7 +20,7 @@ import java.util.Set;
 /**
  * A texture's storage on the installed device: made by {@link CgRHI#createTexture}, written and mipmapped through its
  * command list, each in a device section of its own. What every texture class holds, as Unreal's textures hold an RHI
- * texture; {@code CgGL} code still reaching one does so by the name {@link CgGLImports} gives it.
+ * texture; the engine's int texture ids are the names {@link CgDeviceNames} gives them.
  *
  * <pre>{@code
  * CgGpuTexture image = CgDeviceTextures.create("atlas", CgGpuTexture.Kind.D2, spec, w, h, 1, levels);
@@ -49,7 +49,7 @@ public final class CgDeviceTextures {
 
     /** Whether textures are made on a device now. */
     public static boolean installed() {
-        return CgRHI.installed() && CgGLImports.installed();
+        return CgRHI.installed();
     }
 
     /**
@@ -131,7 +131,7 @@ public final class CgDeviceTextures {
     /** {@code image} released through the device, its name dropped first. Null passes. */
     public static void release(@Nullable CgGpuTexture image) {
         if (image == null) return;
-        CgGLImports.get().forget(image);
+        CgDeviceNames.forget(image);
         CgRHI.get().release(image);
     }
 

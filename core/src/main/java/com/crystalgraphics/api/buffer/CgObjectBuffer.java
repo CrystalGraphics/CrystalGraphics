@@ -15,7 +15,7 @@ public interface CgObjectBuffer {
     /** The device buffer holding its storage now; null before it is made. */
     CgGpuBuffer gpuBuffer();
 
-    /** {@code CgGL}'s name for {@link #gpuBuffer()}, for what still reaches it through {@code CgGL}; 0 before it is made. */
+    /** The device name ({@code CgDeviceNames}) of {@link #gpuBuffer()}, as the graph knows it; 0 before it is made. */
     int getGlBufferId();
 
     /** Frees its storage. Idempotent. */

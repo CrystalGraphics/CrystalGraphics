@@ -1,14 +1,11 @@
 package com.crystalgraphics.platform.gl;
 
+import com.crystalgraphics.platform.rhi.CgHostImports;
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.gl.shader.CgShader;
 import com.crystalgraphics.gl.texture.CgFallbackTextures;
 import com.crystalgraphics.lwjgl3.Lwjgl3GLDriver;
-import com.crystalgraphics.platform.gl.state.CgGlState;
-import com.crystalgraphics.platform.gl.tracked.CgTrackedGLBackend;
-import com.crystalgraphics.platform.gl.tracked.CgTrackedGLContext;
-import com.crystalgraphics.platform.gl.tracked.CgTrackedStateProvider;
 import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
 import com.crystalgraphics.platform.rhi.nulldrv.CgNullRHI;
@@ -48,22 +45,17 @@ public class DevicePipelinesTest {
             long vkWindow = glfwCreateWindow(64, 64, "device pipelines", NULL, NULL);
             OwnedVulkanHost host = new OwnedVulkanHost(vkWindow, true);
             CgVulkanDevice vulkan = new CgVulkanDevice(host, 64, 64);
-            CgTrackedGLBackend tracked = new CgTrackedGLBackend(new CgNullRHI(64, 64), compiler, true);
             List<String> failures = new ArrayList<>();
             try {
-                CgGL.init(tracked);
-                CgCapabilities.init(new CgTrackedGLContext());
+                gl.install(compiler);
                 CgCapabilities.clearCache();
-                CgGlState.reset();
-                CgGlState.setProvider(new CgTrackedStateProvider(tracked));
                 CgBindingPoints.init(CgCapabilities.detect());
                 CgFallbackTextures.init();
-                CgGlslCompiler.install(compiler);
                 int[] built = new int[2];
                 CgRHI[] devices = {gl, vulkan};
                 for (int d = 0; d < devices.length; d++) {
                     CgRHI device = devices[d];
-                    CgRHI.install(device);
+                    if (device == vulkan) vulkan.install(compiler);
                     int at = d;
                     int visited = ShippedPrograms.forEachVariant(failures, false, (path, shader, pass, keywords) -> {
                         CgPipeline p = CgPipeline.pass(shader, pass, keywords, shader.getRenderState(pass), CgInstanceKind.OBJECT);
@@ -93,7 +85,7 @@ public class DevicePipelinesTest {
             } finally {
                 CgRHI.install(null);
                 CgGlslCompiler.install(null);
-                CgGlState.reset();
+                CgHostImports.install(null);
                 vulkan.close();
                 host.close();
                 glfwDestroyWindow(vkWindow);

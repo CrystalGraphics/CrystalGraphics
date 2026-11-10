@@ -1,5 +1,6 @@
 package com.crystalgraphics.platform.gl;
 
+import com.crystalgraphics.platform.rhi.CgHostImports;
 import com.crystalgraphics.platform.rhi.shader.CgGlslCompiler;
 import com.crystalgraphics.platform.gl.binding.GLBindingLayout;
 import com.crystalgraphics.platform.gl.binding.GLBindingSet;
@@ -167,6 +168,13 @@ public final class CgGLDevice implements CgRHI {
         this(driver, translator, width, height, presents, null);
     }
 
+    private static boolean parallelCompile(CgGLDriver gl) {
+        for (String name : new String[]{"GL_KHR_parallel_shader_compile", "GL_ARB_parallel_shader_compile"}) {
+            if (gl.hasExtension(name) && !CgDisabledExtensions.has(name)) return true;
+        }
+        return false;
+    }
+
     /** @param host what a host sharing the context believes it has; null when nothing else draws in it */
     public CgGLDevice(CgGLDriver driver, GLShaderTranslator translator, int width, int height, boolean presents,
                       GLHostState host) {
@@ -176,6 +184,9 @@ public final class CgGLDevice implements CgRHI {
         CgGLDriver gl = this.gl;
         this.translator = translator;
         this.presents = presents;
+        // Before the first link: without it NVIDIA links on its driver thread, and the next query of any program waits
+        // for the whole link (cold vfx-modules 113 s -> 58 s)
+        if (parallelCompile(gl)) driver.glMaxShaderCompilerThreads(0xFFFFFFFF);
         String version = gl.glGetString(GL_VERSION);
         int at = gl.glGetInteger(GL_MAJOR_VERSION) * 10 + gl.glGetInteger(GL_MINOR_VERSION);
         if (at < 45) {
@@ -250,7 +261,6 @@ public final class CgGLDevice implements CgRHI {
         encoder.invalidate();
         conventions();
         host.entered(gl);
-        CgGLAudit.deviceSection(true);
         CgTrace.zoneDone(GL_CHANNEL, FROM_HOST, t);
     }
 
@@ -259,7 +269,6 @@ public final class CgGLDevice implements CgRHI {
     public void toHost() {
         if (host == null) return;
         if (encoder.inPass()) throw new IllegalStateException("toHost with a pass open");
-        CgGLAudit.deviceSection(false);
         long t = CgTrace.stamp(GL_CHANNEL);
         gl.restore(entry);
         host.conventions(gl);
@@ -297,26 +306,25 @@ public final class CgGLDevice implements CgRHI {
         return true;
     }
 
-    /** The device's {@link CgGLImports}: {@code CgGL}'s names as its resources and its resources by name. */
+    /** The device's {@link CgHostImports}: the host's textures and framebuffers as its resources. */
     public GLImports imports() {
         if (imports == null) imports = new GLImports(gl, framebuffers);
         return imports;
     }
 
     /**
-     * Makes this the process's device in a host's context, whole (Unreal's {@code RHIInit}, one place): as
-     * {@link CgRHI}, whose host sections ({@code CgDeviceSection}) are {@link #fromHost}/{@link #toHost}, {@code compiler},
-     * and its {@link #imports()}.
+     * Makes this the process's device, whole (Unreal's {@code RHIInit}, one place): as {@link CgRHI}, whose host sections
+     * ({@code CgDeviceSection}) are {@link #fromHost}/{@link #toHost}, {@code compiler}, and its {@link #imports()}.
      *
      * <pre>{@code
      * CgGLDevice device = new CgGLDevice(driver, translator, w, h, false, GLHostState.byQuery(driver));
-     * device.installBesideCgGL(new ShadercGlslCompiler(CgCacheDirectory.of("spirv")));
+     * device.install(new ShadercGlslCompiler(CgCacheDirectory.of("spirv")));
      * }</pre>
      */
-    public CgGLDevice installBesideCgGL(CgGlslCompiler compiler) {
+    public CgGLDevice install(CgGlslCompiler compiler) {
         CgRHI.install(this);
         CgGlslCompiler.install(compiler);
-        CgGLImports.install(imports());
+        CgHostImports.install(imports());
         return this;
     }
 
@@ -395,14 +403,11 @@ public final class CgGLDevice implements CgRHI {
     }
 
     private void delete(Object o) {
-        // A freed name is GL's to hand out again, to CgGL at another size: what the imports adopted under it goes with it.
         if (o instanceof GLBuffer b) {
-            if (b.owned() && imports != null) imports.bufferDeleted(b.name);
             b.delete(gl);
         } else if (o instanceof GLTexture t) {
             framebuffers.forget(t);
             dropHeapEntries(t);
-            if (t.owned() && imports != null) imports.textureDeleted(t.name);
             t.delete(gl);
         } else if (o instanceof GLSampler s) gl.glDeleteSamplers(s.name);
         else if (o instanceof GLGraphicsPipeline p) p.delete(gl);

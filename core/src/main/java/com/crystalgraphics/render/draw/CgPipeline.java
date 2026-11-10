@@ -514,7 +514,7 @@ public final class CgPipeline {
         CgRHI rhi = CgRHI.get();
         if (deviceLast != null && deviceLastOf == rhi && deviceLastProgram == linked && deviceLastPass == passState
                 && deviceLastTopology == topology && deviceLastGlDepth == glDepth && deviceLastDepth == depth && deviceLastSamples == samples
-                && deviceLastReversed == reversed && deviceLastColors.equals(colors)) {
+                && deviceLastReversed == reversed && sameFormats(deviceLastColors, colors)) {
             return deviceLast;
         }
         String label = toString();
@@ -600,5 +600,13 @@ public final class CgPipeline {
             h = h * 31 + kind.ordinal();
             return h * 31 + forms;
         }
+    }
+
+    /** {@code a.equals(b)} without the iterator {@code List.equals} makes: asked every batch. */
+    private static boolean sameFormats(List<CgFormat> a, List<CgFormat> b) {
+        int n = a.size();
+        if (n != b.size()) return false;
+        for (int i = 0; i < n; i++) if (a.get(i) != b.get(i)) return false;
+        return true;
     }
 }

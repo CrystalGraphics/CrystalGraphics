@@ -49,8 +49,7 @@ returning first for an invocation past the count, in every shape but `general`.
 
 ## Bindings
 
-What the kernel declares is bound at emission (`layout(binding = n)`, read back by the tracked backend as GL reads
-it); the engine's environment (its blocks, scene samplers and engine buffers) is wired by name on GL until GL3:
+What the kernel declares is bound at emission (`layout(binding = n)`, read back by the device's reflection); the engine's environment (its blocks, scene samplers and engine buffers) is wired by name on GL until GL3:
 
 | What | Where |
 |---|---|

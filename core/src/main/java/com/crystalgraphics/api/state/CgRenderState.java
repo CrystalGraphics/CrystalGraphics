@@ -10,7 +10,7 @@ import java.util.List;
  * Composite render state assembled from typed slots.
  *
  * <p>One {@code CgRenderState} per render layer or material pass. Each slot (blend,
- * depth, cull, stencil, alpha) may be {@code null}: the material source did not declare
+ * depth, cull, stencil) may be {@code null}: the material source did not declare
  * that block, and the pipeline takes the pass's ({@code CgDeviceStates}). So a
  * transparent pass's depth write stands for a material with no {@code Depth} block.
  * Only {@link #DEFAULT} has every slot populated.</p>
@@ -22,7 +22,6 @@ import java.util.List;
  * @see CgDepthState
  * @see CgCullState
  * @see CgStencilState
- * @see CgAlphaState
  * @see CgColorMask
  */
 @Getter
@@ -31,12 +30,12 @@ public final class CgRenderState {
 
     /**
      * Default opaque-geometry state: blend disabled, depth test+write (LEqual),
-     * back-face culling, stencil disabled, alpha test disabled, color mask all channels.
+     * back-face culling, stencil disabled, color mask all channels.
      * All five slots are explicitly set — this is the only instance guaranteed non-null
      * on every slot.
      */
     public static final CgRenderState DEFAULT = builder()
-            .alpha(CgAlphaState.DISABLED).blend(CgBlendState.DISABLED)
+            .blend(CgBlendState.DISABLED)
             .depth(CgDepthState.TEST_WRITE).cull(CgCullState.BACK)
             .stencil(CgStencilState.DISABLED).build();
 
@@ -46,7 +45,6 @@ public final class CgRenderState {
     private CgBlendState      blend;
     private CgDepthState      depth;
     private CgCullState       cull;
-    private CgAlphaState      alpha;
     private List<CgColorMask> colorMasks;
     /**
      * The blend into colour attachment 1 where it is not {@link #blend}'s: a graded layer's, beside the scene.
@@ -54,7 +52,6 @@ public final class CgRenderState {
     private CgBlendState      secondBlend;
 
     private CgRenderState(Builder b) {
-        this.alpha      = b.alpha;
         this.blend      = b.blend;
         this.secondBlend = b.secondBlend;
         this.depth      = b.depth;
@@ -90,12 +87,12 @@ public final class CgRenderState {
 
     /** A copy whose only colour mask is {@code mask}: what a depth-only variant of a pass draws under. */
     public CgRenderState withColorMask(CgColorMask mask) {
-        return builder().alpha(alpha).blend(blend).secondBlend(secondBlend).depth(depth).cull(cull).stencil(stencil)
+        return builder().blend(blend).secondBlend(secondBlend).depth(depth).cull(cull).stencil(stencil)
                 .colorMask(mask).build();
     }
 
     private Builder copy() {
-        return builder().alpha(alpha).blend(blend).secondBlend(secondBlend).depth(depth).cull(cull).stencil(stencil)
+        return builder().blend(blend).secondBlend(secondBlend).depth(depth).cull(cull).stencil(stencil)
                 .colorMasks(colorMasks);
     }
 
@@ -115,7 +112,6 @@ public final class CgRenderState {
     public static Builder builder() { return new Builder(); }
 
     public static final class Builder {
-        private CgAlphaState            alpha;
         private CgBlendState            blend;
         private CgBlendState            secondBlend;
         private CgDepthState            depth;
@@ -125,7 +121,6 @@ public final class CgRenderState {
 
         private Builder() {}
 
-        public Builder alpha(CgAlphaState alpha)   { this.alpha   = alpha;   return this; }
         public Builder blend(CgBlendState blend)   { this.blend   = blend;   return this; }
         /** Colour attachment 1's blend, where it differs from {@link #blend}'s. */
         public Builder secondBlend(CgBlendState b) { this.secondBlend = b;   return this; }

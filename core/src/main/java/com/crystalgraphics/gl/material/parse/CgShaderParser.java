@@ -1,5 +1,6 @@
 package com.crystalgraphics.gl.material.parse;
 
+import com.crystalgraphics.platform.gl.driver.GLC;
 import com.github.bsideup.jabel.Desugar;
 import com.crystalgraphics.api.material.CgMaterialUsage;
 import com.crystalgraphics.api.material.CgRenderQueue;
@@ -10,7 +11,6 @@ import com.crystalgraphics.api.state.CgDepthState;
 import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.gl.buffer.shader.CgEngineBufferRegistry;
 import com.crystalgraphics.gl.material.CgMaterialProperty;
-import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.util.io.CgIO;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -78,16 +78,16 @@ public final class CgShaderParser {
      * {@link CgBlendState#ADDITIVE}'s SRC_ALPHA ONE: emitted light is written with an alpha of 0.
      */
     private static final CgRenderState EMISSIVE_STATE = CgRenderState.builder()
-            .blend(new CgBlendState(true, CgGL.GL_ONE, CgGL.GL_ONE, CgGL.GL_ONE, CgGL.GL_ONE,
-                    CgGL.GL_FUNC_ADD, CgGL.GL_FUNC_ADD))
+            .blend(new CgBlendState(true, GLC.GL_ONE, GLC.GL_ONE, GLC.GL_ONE, GLC.GL_ONE,
+                    GLC.GL_FUNC_ADD, GLC.GL_FUNC_ADD))
             .depth(CgDepthState.NONE).cull(CgCullState.BACK).build();
 
     /**
      * Every Distortion pass's blend, whatever its RenderState says, since it is the target's encoding: offsets and
      * split add, alpha keeps the nearest haze's closeness.
      */
-    private static final CgBlendState DISTORTION_BLEND = new CgBlendState(true, CgGL.GL_ONE, CgGL.GL_ONE,
-            CgGL.GL_ONE, CgGL.GL_ONE, CgGL.GL_FUNC_ADD, CgGL.GL_MAX);
+    private static final CgBlendState DISTORTION_BLEND = new CgBlendState(true, GLC.GL_ONE, GLC.GL_ONE,
+            GLC.GL_ONE, GLC.GL_ONE, GLC.GL_FUNC_ADD, GLC.GL_MAX);
 
     /** A Distortion pass with no RenderState block adds into the distortion target, which has no depth either. */
     private static final CgRenderState DISTORTION_STATE = EMISSIVE_STATE.withBlend(DISTORTION_BLEND);

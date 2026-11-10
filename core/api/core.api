@@ -1613,17 +1613,6 @@ com/crystalgraphics/api/shader/CgShaderStages$Stage
   field public,static,final VERTEX Lcom/crystalgraphics/api/shader/CgShaderStages$Stage;
   method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/api/shader/CgShaderStages$Stage;
   method public,static values ()[Lcom/crystalgraphics/api/shader/CgShaderStages$Stage;
-com/crystalgraphics/api/state/CgAlphaState
-  access public,final,record
-  extends java/lang/Record
-  field public,static,final DISABLED Lcom/crystalgraphics/api/state/CgAlphaState;
-  method public <init> (ZIF)V
-  method public cutoff ()F
-  method public enabled ()Z
-  method public func ()I
-  method public,final equals (Ljava/lang/Object;)Z
-  method public,final hashCode ()I
-  method public,final toString ()Ljava/lang/String;
 com/crystalgraphics/api/state/CgBlendState
   access public,final,record
   extends java/lang/Record
@@ -1698,14 +1687,12 @@ com/crystalgraphics/api/state/CgRenderState
   access public,final
   extends java/lang/Object
   field public,static,final DEFAULT Lcom/crystalgraphics/api/state/CgRenderState;
-  method public getAlpha ()Lcom/crystalgraphics/api/state/CgAlphaState;
   method public getBlend ()Lcom/crystalgraphics/api/state/CgBlendState;
   method public getColorMasks ()Ljava/util/List;
   method public getCull ()Lcom/crystalgraphics/api/state/CgCullState;
   method public getDepth ()Lcom/crystalgraphics/api/state/CgDepthState;
   method public getSecondBlend ()Lcom/crystalgraphics/api/state/CgBlendState;
   method public getStencil ()Lcom/crystalgraphics/api/state/CgStencilState;
-  method public setAlpha (Lcom/crystalgraphics/api/state/CgAlphaState;)V
   method public setBlend (Lcom/crystalgraphics/api/state/CgBlendState;)V
   method public setColorMasks (Ljava/util/List;)V
   method public setCull (Lcom/crystalgraphics/api/state/CgCullState;)V
@@ -1723,7 +1710,6 @@ com/crystalgraphics/api/state/CgRenderState
 com/crystalgraphics/api/state/CgRenderState$Builder
   access public,final
   extends java/lang/Object
-  method public alpha (Lcom/crystalgraphics/api/state/CgAlphaState;)Lcom/crystalgraphics/api/state/CgRenderState$Builder;
   method public blend (Lcom/crystalgraphics/api/state/CgBlendState;)Lcom/crystalgraphics/api/state/CgRenderState$Builder;
   method public build ()Lcom/crystalgraphics/api/state/CgRenderState;
   method public colorMask (Lcom/crystalgraphics/api/state/CgColorMask;)Lcom/crystalgraphics/api/state/CgRenderState$Builder;
@@ -10492,7 +10478,6 @@ com/crystalgraphics/render/shader/CgToolchainDevice
   implements com/crystalgraphics/lifecycle/CgLifecycleListener
   method protected <init> ()V
   method protected,abstract close ()V
-  method protected,abstract ineligible ()Ljava/lang/String;
   method protected,abstract resize ()V
   method protected,abstract start ()V
   method protected,abstract toolchain (Ljava/util/List;)V

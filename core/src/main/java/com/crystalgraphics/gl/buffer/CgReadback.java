@@ -1,5 +1,7 @@
 package com.crystalgraphics.gl.buffer;
 
+import com.crystalgraphics.platform.rhi.CgDeviceNames;
+import com.crystalgraphics.platform.gl.driver.GLC;
 import com.crystalgraphics.platform.rhi.sync.CgGpuReadback;
 import com.crystalgraphics.platform.rhi.resource.CgTextureRegion;
 import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
@@ -8,9 +10,7 @@ import com.crystalgraphics.platform.rhi.resource.CgGpuBuffer;
 import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.rhi.CgDeviceSection;
 import com.crystalgraphics.api.texture.CgTextureType;
-import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.gl.framebuffer.CgFrameBuffer;
-import com.crystalgraphics.platform.gl.CgGLImports;
 import com.crystalgraphics.trace.CgGpuTrace;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
@@ -106,10 +106,9 @@ public final class CgReadback {
 
     private CgReadback() {}
 
-    /** Reads {@code size} bytes of buffer {@code name}, known by its {@code CgGL} name, from {@code offset}. */
+    /** Reads {@code size} bytes of buffer {@code name}, known by its device name ({@code CgDeviceNames}), from {@code offset}. */
     public static void buffer(int name, long offset, long size, Sink sink) {
-        CgGLImports imports = CgGLImports.get();
-        buffer(imports.buffer(name), imports.bufferOffset(name) + offset, size, sink);
+        buffer(CgDeviceNames.buffer(name), offset, size, sink);
     }
 
     /**
@@ -191,15 +190,15 @@ public final class CgReadback {
     /** Bytes per pixel of {@code type} read as its base format and pixel type. */
     public static int pixelBytes(CgTextureType type) {
         int t = type.glType;
-        if (t == CgGL.GL_UNSIGNED_INT_2_10_10_10_REV || t == CgGL.GL_UNSIGNED_INT_10F_11F_11F_REV
-                || t == CgGL.GL_UNSIGNED_INT_24_8) return 4;
-        if (t == CgGL.GL_FLOAT_32_UNSIGNED_INT_24_8_REV) return 8;
+        if (t == GLC.GL_UNSIGNED_INT_2_10_10_10_REV || t == GLC.GL_UNSIGNED_INT_10F_11F_11F_REV
+                || t == GLC.GL_UNSIGNED_INT_24_8) return 4;
+        if (t == GLC.GL_FLOAT_32_UNSIGNED_INT_24_8_REV) return 8;
         int f = type.glBaseFormat;
-        int components = f == CgGL.GL_RED || f == CgGL.GL_RED_INTEGER || f == CgGL.GL_DEPTH_COMPONENT
-                || f == CgGL.GL_STENCIL_INDEX ? 1 : f == CgGL.GL_RG || f == CgGL.GL_RG_INTEGER ? 2
-                : f == CgGL.GL_RGB || f == CgGL.GL_RGB_INTEGER ? 3 : 4;
-        int size = t == CgGL.GL_UNSIGNED_BYTE || t == CgGL.GL_BYTE ? 1
-                : t == CgGL.GL_UNSIGNED_SHORT || t == CgGL.GL_SHORT || t == CgGL.GL_HALF_FLOAT ? 2 : 4;
+        int components = f == GLC.GL_RED || f == GLC.GL_RED_INTEGER || f == GLC.GL_DEPTH_COMPONENT
+                || f == GLC.GL_STENCIL_INDEX ? 1 : f == GLC.GL_RG || f == GLC.GL_RG_INTEGER ? 2
+                : f == GLC.GL_RGB || f == GLC.GL_RGB_INTEGER ? 3 : 4;
+        int size = t == GLC.GL_UNSIGNED_BYTE || t == GLC.GL_BYTE ? 1
+                : t == GLC.GL_UNSIGNED_SHORT || t == GLC.GL_SHORT || t == GLC.GL_HALF_FLOAT ? 2 : 4;
         return components * size;
     }
 

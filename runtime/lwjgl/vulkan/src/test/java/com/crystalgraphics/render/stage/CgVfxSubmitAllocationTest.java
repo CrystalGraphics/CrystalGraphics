@@ -1,5 +1,7 @@
 package com.crystalgraphics.render.stage;
 
+import com.crystalgraphics.render.world.CgPipelinePrecache;
+import com.crystalgraphics.render.graph.CgExecutor;
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.asset.kind.CgParticleKinds;
 import com.crystalgraphics.asset.load.CgAssetRef;
@@ -17,11 +19,6 @@ import com.crystalgraphics.job.CgJob;
 import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.rhi.nulldrv.CgNullRHI;
 import com.crystalgraphics.platform.gl.CgCapabilities;
-import com.crystalgraphics.platform.gl.CgGL;
-import com.crystalgraphics.platform.gl.state.CgGlState;
-import com.crystalgraphics.platform.gl.tracked.CgTrackedGLBackend;
-import com.crystalgraphics.platform.gl.tracked.CgTrackedGLContext;
-import com.crystalgraphics.platform.gl.tracked.CgTrackedStateProvider;
 import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.trace.CgAllocationSources;
 import com.crystalgraphics.trace.CgThreadAllocation;
@@ -55,7 +52,7 @@ import static org.junit.Assume.assumeTrue;
 /**
  * A frame of playing effects allocates nothing on the render thread once warm: {@link CgVfxSystem#update}, then
  * {@link CgVfxSystem#submit} into the world renderer, then both world stages recorded, built and executed on the
- * tracked backend over the recording device, as a host's frame runs them. Also the Nova Cannon played from its files,
+ * null device, as a host's frame runs them. Also the Nova Cannon played from its files,
  * the asset frame boundary in every frame: phase C's "no allocation".
  */
 public class CgVfxSubmitAllocationTest {
@@ -105,12 +102,8 @@ public class CgVfxSubmitAllocationTest {
     @BeforeClass
     public static void install() {
         compiler = new ShadercGlslCompiler();
-        CgTrackedGLBackend gl = new CgTrackedGLBackend(new CgNullRHI(64, 64).withoutLog().withCompute(DESKTOP), compiler, true);
-        CgGL.init(gl);
-        CgCapabilities.init(new CgTrackedGLContext());
+        new CgNullRHI(64, 64).withoutLog().withCompute(DESKTOP).install(compiler);
         CgCapabilities.clearCache();
-        CgGlState.reset();
-        CgGlState.setProvider(new CgTrackedStateProvider(gl));
         CgBindingPoints.init(CgCapabilities.detect());
         CgFallbackTextures.init();
     }
@@ -118,7 +111,6 @@ public class CgVfxSubmitAllocationTest {
     @AfterClass
     public static void uninstall() {
         CgFrameRing.reset();
-        CgGlState.reset();
         compiler.close();
     }
 
@@ -138,14 +130,16 @@ public class CgVfxSubmitAllocationTest {
             clock[0] += 1.0 / 60.0;
             vfx.update(clock[0]);
             vfx.submit(world);
-            for (CgRenderStage stage : WORLD) {
-                stage.host().set(0f, 64, 64, 0).view().set(0, 0, 0, view, projection);
-                stage.recordAndExecute();   // fire() less the host section and the lifecycle, which want a platform
+            try (CgExecutor.Into ignored = CgExecutor.into(0, 64, 64)) {   // the null device's surface
+                for (CgRenderStage stage : WORLD) {
+                    stage.host().set(0f, 64, 64, 0).view().set(0, 0, 0, view, projection);
+                    stage.recordAndExecute();   // fire() less the host section and the lifecycle, which want a platform
+                }
             }
             CgFrameRing.endFrame();
         };
         try {
-            for (int i = 0; i < 3_000; i++) frame.run();
+            warm(frame);
             long perFrame = Long.MAX_VALUE;
             // The least of eight: a one-off is no frame's, and the last JIT compiles land within the first few
             for (int round = 0; round < ROUNDS; round++) {
@@ -197,14 +191,16 @@ public class CgVfxSubmitAllocationTest {
             clock[0] += 1.0 / 60.0;
             vfx.update(clock[0]);
             vfx.submit(world);
-            for (CgRenderStage stage : WORLD) {
-                stage.host().set(0f, 64, 64, 0).view().set(0, 0, 0, view, projection);
-                stage.recordAndExecute();
+            try (CgExecutor.Into ignored = CgExecutor.into(0, 64, 64)) {
+                for (CgRenderStage stage : WORLD) {
+                    stage.host().set(0f, 64, 64, 0).view().set(0, 0, 0, view, projection);
+                    stage.recordAndExecute();
+                }
             }
             CgFrameRing.endFrame();
         };
         try {
-            for (int i = 0; i < 3_000; i++) frame.run();
+            warm(frame);
             long perFrame = Long.MAX_VALUE;
             for (int round = 0; round < ROUNDS; round++) {
                 long before = CgThreadAllocation.current();
@@ -218,5 +214,16 @@ public class CgVfxSubmitAllocationTest {
         } finally {
             vfx.delete();
         }
+    }
+
+    /**
+     * Frames until the engine is warm: 3,000 for the JIT, then on until every precached pipeline has compiled, which on
+     * the worker pool takes longer than 3,000 frames of the null device. Fails if they never do.
+     */
+    private static void warm(Runnable frame) {
+        for (int i = 0; i < 3_000; i++) frame.run();
+        long deadline = System.nanoTime() + 60_000_000_000L;
+        while (CgPipelinePrecache.remaining() > 0 && System.nanoTime() < deadline) frame.run();
+        assertEquals("precached pipelines never compiled", 0, CgPipelinePrecache.remaining());
     }
 }

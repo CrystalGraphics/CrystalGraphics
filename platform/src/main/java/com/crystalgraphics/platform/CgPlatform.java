@@ -1,25 +1,22 @@
 package com.crystalgraphics.platform;
 
 import com.crystalgraphics.platform.gl.CgCapabilities;
-import com.crystalgraphics.platform.gl.CgGL;
-import com.crystalgraphics.platform.gl.CgGLContext;
-import com.crystalgraphics.platform.gl.CgGLBackend;
 
 import java.util.List;
 import java.util.Objects;
 
 /**
- * The platform registry, both halves: the GL bundle a platform {@linkplain #register registers}, and the
- * {@link CgService} slots each capability's owner declares and a host {@linkplain #provide provides}.
+ * The platform registry: the bundle a platform {@linkplain #register registers}, and the {@link CgService} slots each
+ * capability's owner declares and a host {@linkplain #provide provides}.
  *
  * <pre>{@code
- * CgPlatform.register(new PlatformServiceModern());                     // the GL backend and context
+ * CgPlatform.register(new PlatformServiceModern());                         // once, the host's bundle
  * CgPlatform.provide(CgHostResources.HOST, HostResourcesModern.INSTANCE);   // one slot
  * }</pre>
  *
  * <ul>
- *   <li>{@link #gl()} and {@link #capabilities()} throw before {@link #register}; a slot never throws, answering its
- *       absent-value until provided.</li>
+ *   <li>{@link #ensureCreated} throws before {@link #register}; a slot never throws, answering its absent-value until
+ *       provided.</li>
  *   <li>Arguments, not {@code ServiceLoader}: FML's class loader makes it unreliable on 1.7.10.</li>
  * </ul>
  */
@@ -33,35 +30,21 @@ public final class CgPlatform {
      * Register a complete platform bundle. Must be called exactly once, before any
      * core engine code runs. Calling more than once replaces all existing registrations.
      *
-     * <p>Builds no graphics, so a host registers from code that runs on both sides. {@link CgGL} takes
-     * {@link CgPlatformService#gl()} at the first {@link CgGL#fromHost()} or {@link CgCapabilities#detect()},
-     * and {@code CgCapabilities} takes {@link CgPlatformService#capabilities()} at its first probe. Only a
-     * client reaches either, on its render thread. Code that uses {@code CgGL} before its first host
-     * section, as a harness does, installs the backend itself:</p>
-     * <pre>{@code
-     * CgPlatform.register(platform);
-     * CgGL.init(platform.gl());
-     * }</pre>
+     * <p>Builds no graphics, so a host registers from code that runs on both sides; its device is made on a client's
+     * render thread, as its context starts.</p>
      *
      * @param platform the platform bundle providing the services; must not be {@code null}
      */
     public static void register(CgPlatformService platform) {
         service = Objects.requireNonNull(platform, "CgPlatformService must not be null");
-        // What a previous bundle installed; the new one is taken on first use.
-        CgGL.init(null);
-        CgCapabilities.init(null);
+        // What a previous bundle's device answered
+        CgCapabilities.clearCache();
     }
 
-    /** Returns the GL dispatch. @throws IllegalStateException if called before {@link #register}. */
-    public static CgGLBackend gl() {
+    /** The registered platform's {@link CgPlatformService#startDevice}: the graphics start's, once. */
+    public static void startDevice() {
         ensureCreated();
-        return service.gl();
-    }
-
-    /** Returns the GL context. @throws IllegalStateException if called before {@link #register}. */
-    public static CgGLContext capabilities() {
-        ensureCreated();
-        return service.capabilities();
+        service.startDevice();
     }
 
     public static void ensureCreated() {

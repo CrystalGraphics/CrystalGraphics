@@ -1,9 +1,9 @@
 package com.crystalgraphics.vfx.particle;
 
+import com.crystalgraphics.platform.gl.driver.GLC;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.gl.texture.CgTexture3D;
-import com.crystalgraphics.platform.gl.CgGL;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -148,7 +148,7 @@ public final class CgVfxField {
             CgTexture3D made = CgTexture3D.createEmpty(width, height, depth, CgTextureType.RGBA32F.toTextureSpec());
             ByteBuffer texels = ByteBuffer.allocateDirect(width * height * depth * 16).order(ByteOrder.nativeOrder());
             for (int i = 0; i < vectors.length; i += 3) texels.putFloat(vectors[i]).putFloat(vectors[i + 1]).putFloat(vectors[i + 2]).putFloat(0f);
-            made.uploadRegion(0, 0, 0, 0, width, height, depth, texels.flip(), CgGL.GL_RGBA, CgGL.GL_FLOAT);
+            made.uploadRegion(0, 0, 0, 0, width, height, depth, texels.flip(), GLC.GL_RGBA, GLC.GL_FLOAT);
             texture = new CgTexture[]{made};
         }
         return texture;

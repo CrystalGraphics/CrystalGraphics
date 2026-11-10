@@ -1,13 +1,17 @@
 package com.crystalgraphics.lwjgl3;
 
+import java.util.function.Supplier;
+import com.crystalgraphics.platform.gl.GLDebug;
 import com.crystalgraphics.platform.gl.CgGLWorkerContext;
 import com.crystalgraphics.platform.gl.driver.CgGLDriver;
 import org.lwjgl.opengl.ARBBindlessTexture;
 import org.lwjgl.opengl.ARBDrawBuffersBlend;
 import org.lwjgl.opengl.ARBIndirectParameters;
+import org.lwjgl.opengl.ARBParallelShaderCompile;
 import org.lwjgl.opengl.GL;
 import org.lwjgl.opengl.GL46;
 import org.lwjgl.opengl.GLCapabilities;
+import org.lwjgl.opengl.KHRParallelShaderCompile;
 import org.lwjgl.system.MemoryStack;
 
 import java.nio.ByteBuffer;
@@ -20,12 +24,34 @@ import static org.lwjgl.system.MemoryUtil.NULL;
 /**
  * {@link CgGLDriver} on LWJGL 3: each call the GL function of its name. Written against the plain {@code GLxx} classes,
  * which every LWJGL 3 a client ships has.
+ *
+ * <pre>{@code
+ * CgGLDriver driver = new Lwjgl3GLDriver();                                // a GLFW window's context
+ * CgGLDriver sdl = new Lwjgl3GLDriver(SdlWorkerContext::isolated);         // an SDL3 window's (Minecraft 26.3)
+ * }</pre>
  */
 public final class Lwjgl3GLDriver implements CgGLDriver {
+
+    private final Supplier<? extends CgGLWorkerContext> isolatedContexts;
 
     private static final int GL_EXTENSIONS = 0x1F03, GL_NUM_EXTENSIONS = 0x821D, GL_DEBUG_SOURCE_APPLICATION = 0x824A;
 
     private Set<String> extensions;
+
+    /** On the context's thread, with it current: arms {@link GLDebug}'s error stacks where they are asked for. */
+    /** A driver in a GLFW window's context: its link worker's context is a hidden GLFW window's. */
+    public Lwjgl3GLDriver() {
+        this(Lwjgl3WorkerContext::isolated);
+    }
+
+    /**
+     * A driver in a context some other windowing library made: {@code isolatedContexts} makes the link worker's, a
+     * context at the current one's version sharing none of its objects, or null where it cannot.
+     */
+    public Lwjgl3GLDriver(Supplier<? extends CgGLWorkerContext> isolatedContexts) {
+        this.isolatedContexts = isolatedContexts;
+        GlDebugStacks.installIfAsked();
+    }
 
     /**
      * Which of the functions whose extension spells them apart the current context has as core. LWJGL loads a core
@@ -60,6 +86,16 @@ public final class Lwjgl3GLDriver implements CgGLDriver {
 
     @Override public int glGetInteger(int name) { return GL46.glGetInteger(name); }
 
+    @Override
+    public void glMaxShaderCompilerThreads(int count) {
+        GLCapabilities caps = GL.getCapabilities();
+        if (caps.GL_KHR_parallel_shader_compile) {
+            KHRParallelShaderCompile.glMaxShaderCompilerThreadsKHR(count);
+        } else if (caps.GL_ARB_parallel_shader_compile) {
+            ARBParallelShaderCompile.glMaxShaderCompilerThreadsARB(count);
+        }
+    }
+
     @Override public float glGetFloat(int name) { return GL46.glGetFloat(name); }
 
     @Override
@@ -72,7 +108,7 @@ public final class Lwjgl3GLDriver implements CgGLDriver {
         return extensions.contains(name);
     }
 
-    @Override public CgGLWorkerContext createIsolatedContext() { return Lwjgl3WorkerContext.create(false); }
+    @Override public CgGLWorkerContext createIsolatedContext() { return isolatedContexts.get(); }
 
     @Override public boolean glIsEnabled(int cap) { return GL46.glIsEnabled(cap); }
 

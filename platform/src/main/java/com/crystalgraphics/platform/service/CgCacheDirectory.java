@@ -1,13 +1,11 @@
 package com.crystalgraphics.platform.service;
 
 import com.crystalgraphics.platform.CgPlatform;
-import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.variable.CgVar;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -15,8 +13,6 @@ import java.nio.file.Paths;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -72,28 +68,6 @@ public final class CgCacheDirectory {
         } catch (IOException | SecurityException e) {
             LOG.warn("No {} cache: {} cannot be made ({})", name, dir, e.toString());
             return null;
-        }
-    }
-
-    /**
-     * The current GL driver as a folder or file name: its renderer, vendor and version hashed, so what one driver made
-     * or answered is never read under another. Render thread, its context current.
-     *
-     * <pre>{@code
-     * Path mine = CgCacheDirectory.of("glprogram").resolve(CgCacheDirectory.driver());
-     * }</pre>
-     */
-    public static String driver() {
-        try {
-            MessageDigest sha = MessageDigest.getInstance("SHA-1");
-            for (int name : new int[]{CgGL.GL_RENDERER, CgGL.GL_VENDOR, CgGL.GL_VERSION}) {
-                sha.update(String.valueOf(CgGL.glGetString(name)).getBytes(StandardCharsets.UTF_8));
-            }
-            StringBuilder hex = new StringBuilder();
-            for (byte b : sha.digest()) hex.append(Character.forDigit((b >> 4) & 15, 16)).append(Character.forDigit(b & 15, 16));
-            return hex.substring(0, 16);
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException(e);
         }
     }
 

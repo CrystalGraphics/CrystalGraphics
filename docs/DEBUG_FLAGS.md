@@ -79,7 +79,7 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 
 | Variable | Takes | Default | |
 |---|---|---|---|
-| `crystalgraphics.demo` | text | empty | false draws no world demo; a scene's name (blasts, beams, modules, fluid, blast, collision, lights, shadows) starts on it; empty on blasts. Read at launch. |
+| `crystalgraphics.demo` | text | empty | false draws no world demo; a scene's name (blasts, beams, modules, fluid, blast, collision, lights, shadows, glass, text) starts on it; empty on blasts. Read at launch. |
 | `crystalgraphics.demo.blasts` | 1 to 100000 | `120` | Blasts in the demo's blasts scene; 120 keep about 360,000 particles alive. Read at launch. |
 | `crystalgraphics.demo.blasts.fields` | true, false | `false` | Every burst places a radial pull its particles read through physics_field, all in one group. Read at launch. |
 | `crystalgraphics.demo.capture` | text | empty | A PNG path: the world, with no GUI over it, written there captureAt world frames after the demo was placed. Read at launch. |
@@ -93,12 +93,6 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 | `crystalgraphics.demo.time` | text | empty | The VFX demos' time switch at start: the nearest of its rates to this one, for a run left unattended. |
 | `crystalgraphics.demo.under` | text | empty | x,z: the scene placed with its point (x, z) under the eye, for a profile looking down at one part of it (lights: -11,4 the fireflies, -20,-12 a firework); empty, ahead of the eye. Read at launch. |
 
-## `crystalgraphics.device`
-
-| Variable | Takes | Default | |
-|---|---|---|---|
-| `crystalgraphics.device.toolchain` | true, false | `true` | Whether a host whose platform ships no shader compiler draws through a device. |
-
 ## `crystalgraphics.fixedSeed`
 
 | Variable | Takes | Default | |
@@ -109,18 +103,12 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 
 | Variable | Takes | Default | |
 |---|---|---|---|
-| `crystalgraphics.gl.callSites` | true, false | `false` | Tallies every GL call by function, caller and open trace zones, for gl-calls.txt: very slow. Read at launch. |
-| `crystalgraphics.gl.countCalls` | true, false | `false` | Counts gl.calls and gl.state-sets each frame: slow, a thread-local add per GL call. Read at launch. |
 | `crystalgraphics.gl.debugPerf` | true, false | `false` | Each distinct driver performance message once, with the stack of the call it came on, and counts: names a CPU stall (pixel transfer is synchronized). The harness asks for a debug context under it. Read at launch. |
 | `crystalgraphics.gl.debugStacks` | true, false | `false` | Log the Java stack of the first GL errors, so a debug message names the call (LWJGL 3 hosts on a debug context: every dev client has one). Read at launch. |
 | `crystalgraphics.gl.debugStacks.limit` | 1 to 1048576 | `5` | GL errors debugStacks logs a stack for. Read at launch. |
 | `crystalgraphics.gl.disableExtensions` | text | empty | Extensions treated as absent, by name, separated by commas or spaces: a driver whose implementation misbehaves, and the harness's downlevel contexts. A feature core in the context's version stays; force a tier for that. Read at launch. |
 | `crystalgraphics.gl.dsa` | true, false | `true` | Blits between framebuffers by name where the context has direct state access, binding neither; false binds them. |
-| `crystalgraphics.gl.gatherBarriers` | true, false | `true` | Joins the barriers between cgBeginBarriers and cgEndBarriers into one glMemoryBarrier on GL; off, one each. Read at launch. |
 | `crystalgraphics.gl.keepHostDebugOutput` | true, false | `false` | Keep the GL debug output Minecraft enables at its default glDebugVerbosity; modern GL nodes turn it off at the first host section (on NVIDIA it slowed every call several times). debugStacks and debugPerf keep it too. Read at launch. |
-| `crystalgraphics.gl.lazySamplerPark` | true, false | `true` | A stage's park clears a unit's sampler at our first texture bind there, not all 16 at once. Read at launch. |
-| `crystalgraphics.gl.threadCheck` | true, false | `false` | Log each CgGL call site inside a GL device's section or off the context's thread, once, with its stack; every site and its count to stderr at exit. Read at launch. |
-| `crystalgraphics.gl.uniformShadow` | true, false | `true` | Skips a uniform set to what that program's uniform already holds. Read at launch. |
 
 ## `crystalgraphics.gpu`
 
@@ -135,15 +123,14 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 | `crystalgraphics.graph.aliasing` | true, false | `true` | Transient 2D textures share memory where the device can place them (Vulkan); false pools them by description, as GL does: Unreal's r.RDG.TransientAllocator 0, for comparing the two. Read at launch. |
 | `crystalgraphics.graph.asyncAll` | true, false | `false` | Every compute pass that can go async does, as if marked async(): a check of the waits, which the compute scenes must pass under synchronization validation. Read at launch. |
 | `crystalgraphics.graph.barriers` | true, false | `true` | Barriers where a kernel takes part; false keeps the bookkeeping and issues none: what synchronization validation must catch on --mode=compute-graph. |
+| `crystalgraphics.graph.poolMb` | 0.0 to 65536.0 | `400.0` | Megabytes of transient graph textures held before one unused for a few frames is freed. |
 | `crystalgraphics.graph.splits` | true, false | `true` | Split a transition whose next access is a read two or more steps on, from its producer's end to its consumer; false records every transition whole before its consumer. |
 
 ## `crystalgraphics.host`
 
 | Variable | Takes | Default | |
 |---|---|---|---|
-| `crystalgraphics.host.census` | true, false | `false` | The GL state a host hands us per entry point (opaque, transparent, gui, frame), about 90 values each, once; singlejar-logic/census_diff.py lays two clients side by side where they differ. Read at launch. |
-| `crystalgraphics.host.census.at` | 1 to 1048576 | `120` | The visit to each entry point the census reads. Read at launch. |
-| `crystalgraphics.host.stateCache` | true, false | `true` | Scopes read the host's state from its GlStateManager; false reads it with glGet (HostStateModern 1.13-26.2 on GL, HostStateLegacy). Taken when the host installs its provider. |
+| `crystalgraphics.host.stateCache` | true, false | `true` | A device section reads the host's state from its GlStateManager; false reads it with glGet (HostStateModern 1.13-26.2 on GL, HostStateLegacy). Taken as the host's GL device starts. |
 | `crystalgraphics.host.stateCache.byShape` | true, false | `false` | Find GlStateManager's fields by shape, as production Forge (SRG) and Fabric (intermediary) do: a dev run checks that path, and the install line names what missed. Read at launch. |
 | `crystalgraphics.host.verify` | true, false | `false` | After each pass, compare the driver against the host's GlStateManager and name the domain that disagrees (modern nodes; also CRYSTALGRAPHICS_HOST_VERIFY=true). Read at launch. |
 
@@ -185,7 +172,7 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 |---|---|---|---|
 | `crystalgraphics.material.dumpGlsl` | true, false | `false` | Log every material pass's generated vertex and fragment GLSL as it compiles. |
 | `crystalgraphics.material.logCompileWaits` | true, false | `false` | Log each program a draw had to wait for (material.compile-waits), by shader and pass. |
-| `crystalgraphics.material.sourcesAhead` | true, false | `true` | A submitted recompile reads, parses and generates its GLSL on a worker first, so the frame that submits only hands it to the driver; false does all of it on that frame. |
+| `crystalgraphics.material.sourcesAhead` | true, false | `true` | A submitted recompile reads, parses and generates its GLSL on a worker first, so the frame that submits only starts its compile; false does all of it on that frame. |
 
 ## `crystalgraphics.mesh`
 
@@ -265,26 +252,14 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 | Variable | Takes | Default | |
 |---|---|---|---|
 | `crystalgraphics.shader.devmode` | true, false | `false` | #line directives around each include in preprocessed shader source, so a compiler's line numbers name the file. Read at launch. |
-| `crystalgraphics.shader.linkWorker` | true, false | `true` | Compile and link programs on a worker thread in a shared GL context; false links on the render thread. Read at launch. |
-| `crystalgraphics.shader.linksInFlight` | 1 to 16 | `4` | Links the worker hands the GL driver at once. Read at launch. |
 | `crystalgraphics.shader.native` | true, false | `false` | Keep a GL-era host's device on the driver's own GLSL compiler: the shader toolchain is never fetched. |
 | `crystalgraphics.shader.parallelCompile` | true, false | `true` | Materials compile ahead of their first bind where the driver links on its own threads; false compiles at the first bind: for a driver that misreports completion. Read at launch. |
-| `crystalgraphics.shader.strip` | true, false | `true` | Strip comments, decided #if branches, unreached functions and unused macros from GLSL before the driver compiles it; false hands it the source as written. Read at launch. |
 
 ## `crystalgraphics.shaderBuffer`
 
 | Variable | Takes | Default | |
 |---|---|---|---|
 | `crystalgraphics.shaderBuffer.tier` | text | empty | SSBO_GL43 or SSBO_ARB: engine buffers read that way; TBO is detected but unhooked (docs/TBO_PATH.md). Empty for the best. Taken at each context's capability probe. |
-
-## `crystalgraphics.state`
-
-| Variable | Takes | Default | |
-|---|---|---|---|
-| `crystalgraphics.state.noDedup` | true, false | `false` | Never eliminate a GL call: tells "the shadow is lying" from a semantic regression in one run. Read at launch. |
-| `crystalgraphics.state.rereadEachScope` | true, false | `false` | Every outermost scope re-reads what it declares, inside a host section too: the rule before section trust. glState.adopt times the reads either way. Read at launch. |
-| `crystalgraphics.state.roundTrip` | true, false | `false` | Read every scope's domains on open and after it restores and name any that differ (on 1.7.10 with Angelica, against the raw driver too), and report every write no open scope declares, with its stack. Totals every 1000 scopes; any count but 0 is a bug. Taken by each state manager as it is made. |
-| `crystalgraphics.state.verify` | true, false | `false` | Verify the shadow against the driver before eliminating any call, logging the domain with tracked against actual. Very slow: diagnosis only. Taken by each state manager as it is made. |
 
 ## `crystalgraphics.stream`
 

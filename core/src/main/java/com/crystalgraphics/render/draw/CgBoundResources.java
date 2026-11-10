@@ -1,8 +1,8 @@
 package com.crystalgraphics.render.draw;
 
+import com.crystalgraphics.platform.rhi.CgDeviceNames;
 import com.crystalgraphics.api.texture.CgSampler;
 import com.crystalgraphics.api.texture.CgTexture;
-import com.crystalgraphics.platform.gl.CgGLImports;
 import com.crystalgraphics.platform.rhi.resource.CgGpuBuffer;
 import com.crystalgraphics.render.shader.CgBindingModel;
 
@@ -97,15 +97,14 @@ public final class CgBoundResources {
         if (recording) put(CgBindingModel.ofStorage(point), buffer, offset, bytes);
     }
 
-    /** {@link #storage(int, CgGpuBuffer, long, long)} for a buffer known by its {@code CgGL} name, 0 for none. */
+    /** {@link #storage(int, CgGpuBuffer, long, long)} for a buffer known by its device name, 0 for none. */
     public static void storage(int point, int name, long offset, long bytes) {
         if (!recording) return;
         if (name == 0) {
             put(CgBindingModel.ofStorage(point), null, 0, 0);
             return;
         }
-        CgGLImports imports = CgGLImports.get();
-        put(CgBindingModel.ofStorage(point), imports.buffer(name), imports.bufferOffset(name) + offset, bytes);
+        put(CgBindingModel.ofStorage(point), CgDeviceNames.buffer(name), offset, bytes);
     }
 
     /** A uniform buffer bound at engine point {@code point}. */

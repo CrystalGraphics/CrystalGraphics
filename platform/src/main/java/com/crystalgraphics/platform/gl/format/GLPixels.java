@@ -1,7 +1,7 @@
 package com.crystalgraphics.platform.gl.format;
 
+import com.crystalgraphics.platform.gl.driver.GLC;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
-import com.crystalgraphics.platform.gl.CgGL;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -27,49 +27,49 @@ public final class GLPixels {
     /** The device format for a GL internal format. */
     public static CgFormat device(int internalFormat) {
         switch (internalFormat) {
-            case CgGL.GL_R8: case CgGL.GL_RED:              return CgFormat.R8_UNORM;
-            case CgGL.GL_R8_SNORM:                          return CgFormat.R8_SNORM;
-            case CgGL.GL_R8UI:                              return CgFormat.R8_UINT;
-            case CgGL.GL_R8I:                               return CgFormat.R8_SINT;
-            case CgGL.GL_RG8: case CgGL.GL_RG:              return CgFormat.RG8_UNORM;
-            case CgGL.GL_RG8UI:                             return CgFormat.RG8_UINT;
-            case CgGL.GL_RG8I:                              return CgFormat.RG8_SINT;
-            case CgGL.GL_RGBA8: case CgGL.GL_RGBA: case CgGL.GL_RGB8: case CgGL.GL_RGB: return CgFormat.RGBA8_UNORM;
-            case CgGL.GL_RGBA8_SNORM:                       return CgFormat.RGBA8_SNORM;
-            case CgGL.GL_RGBA8UI:                           return CgFormat.RGBA8_UINT;
-            case CgGL.GL_RGBA8I:                            return CgFormat.RGBA8_SINT;
-            case CgGL.GL_SRGB8_ALPHA8: case GL_SRGB8: case GL_SRGB: case GL_SRGB_ALPHA: return CgFormat.RGBA8_SRGB;
-            case CgGL.GL_COMPRESSED_RGBA_BPTC_UNORM:        return CgFormat.BC7_RGBA_UNORM;
-            case CgGL.GL_COMPRESSED_SRGB_ALPHA_BPTC_UNORM:  return CgFormat.BC7_RGBA_UNORM_SRGB;
-            case CgGL.GL_R16F:                              return CgFormat.R16_FLOAT;
-            case CgGL.GL_R16UI:                             return CgFormat.R16_UINT;
-            case CgGL.GL_R16I:                              return CgFormat.R16_SINT;
-            case CgGL.GL_RG16F:                             return CgFormat.RG16_FLOAT;
-            case CgGL.GL_RG16UI:                            return CgFormat.RG16_UINT;
-            case CgGL.GL_RG16I:                             return CgFormat.RG16_SINT;
-            case CgGL.GL_RGBA16F: case CgGL.GL_RGB16F:      return CgFormat.RGBA16_FLOAT;
-            case CgGL.GL_RGBA16UI:                          return CgFormat.RGBA16_UINT;
-            case CgGL.GL_RGBA16I:                           return CgFormat.RGBA16_SINT;
-            case CgGL.GL_R32F:                              return CgFormat.R32_FLOAT;
-            case CgGL.GL_R32UI:                             return CgFormat.R32_UINT;
-            case CgGL.GL_R32I:                              return CgFormat.R32_SINT;
-            case CgGL.GL_RG32F:                             return CgFormat.RG32_FLOAT;
-            case CgGL.GL_RG32UI:                            return CgFormat.RG32_UINT;
-            case CgGL.GL_RG32I:                             return CgFormat.RG32_SINT;
-            case CgGL.GL_RGBA32F: case CgGL.GL_RGB32F:      return CgFormat.RGBA32_FLOAT;
-            case CgGL.GL_RGBA32UI:                          return CgFormat.RGBA32_UINT;
-            case CgGL.GL_RGBA32I:                           return CgFormat.RGBA32_SINT;
-            case CgGL.GL_RGB10_A2:                          return CgFormat.RGB10A2_UNORM;
+            case GLC.GL_R8: case GLC.GL_RED:              return CgFormat.R8_UNORM;
+            case GLC.GL_R8_SNORM:                          return CgFormat.R8_SNORM;
+            case GLC.GL_R8UI:                              return CgFormat.R8_UINT;
+            case GLC.GL_R8I:                               return CgFormat.R8_SINT;
+            case GLC.GL_RG8: case GLC.GL_RG:              return CgFormat.RG8_UNORM;
+            case GLC.GL_RG8UI:                             return CgFormat.RG8_UINT;
+            case GLC.GL_RG8I:                              return CgFormat.RG8_SINT;
+            case GLC.GL_RGBA8: case GLC.GL_RGBA: case GLC.GL_RGB8: case GLC.GL_RGB: return CgFormat.RGBA8_UNORM;
+            case GLC.GL_RGBA8_SNORM:                       return CgFormat.RGBA8_SNORM;
+            case GLC.GL_RGBA8UI:                           return CgFormat.RGBA8_UINT;
+            case GLC.GL_RGBA8I:                            return CgFormat.RGBA8_SINT;
+            case GLC.GL_SRGB8_ALPHA8: case GL_SRGB8: case GL_SRGB: case GL_SRGB_ALPHA: return CgFormat.RGBA8_SRGB;
+            case GLC.GL_COMPRESSED_RGBA_BPTC_UNORM:        return CgFormat.BC7_RGBA_UNORM;
+            case GLC.GL_COMPRESSED_SRGB_ALPHA_BPTC_UNORM:  return CgFormat.BC7_RGBA_UNORM_SRGB;
+            case GLC.GL_R16F:                              return CgFormat.R16_FLOAT;
+            case GLC.GL_R16UI:                             return CgFormat.R16_UINT;
+            case GLC.GL_R16I:                              return CgFormat.R16_SINT;
+            case GLC.GL_RG16F:                             return CgFormat.RG16_FLOAT;
+            case GLC.GL_RG16UI:                            return CgFormat.RG16_UINT;
+            case GLC.GL_RG16I:                             return CgFormat.RG16_SINT;
+            case GLC.GL_RGBA16F: case GLC.GL_RGB16F:      return CgFormat.RGBA16_FLOAT;
+            case GLC.GL_RGBA16UI:                          return CgFormat.RGBA16_UINT;
+            case GLC.GL_RGBA16I:                           return CgFormat.RGBA16_SINT;
+            case GLC.GL_R32F:                              return CgFormat.R32_FLOAT;
+            case GLC.GL_R32UI:                             return CgFormat.R32_UINT;
+            case GLC.GL_R32I:                              return CgFormat.R32_SINT;
+            case GLC.GL_RG32F:                             return CgFormat.RG32_FLOAT;
+            case GLC.GL_RG32UI:                            return CgFormat.RG32_UINT;
+            case GLC.GL_RG32I:                             return CgFormat.RG32_SINT;
+            case GLC.GL_RGBA32F: case GLC.GL_RGB32F:      return CgFormat.RGBA32_FLOAT;
+            case GLC.GL_RGBA32UI:                          return CgFormat.RGBA32_UINT;
+            case GLC.GL_RGBA32I:                           return CgFormat.RGBA32_SINT;
+            case GLC.GL_RGB10_A2:                          return CgFormat.RGB10A2_UNORM;
             case GL_RGB10_A2UI:                             return CgFormat.RGB10A2_UINT;
-            case CgGL.GL_R11F_G11F_B10F:                    return CgFormat.RG11B10_UFLOAT;
-            case CgGL.GL_RGBA4:                             return CgFormat.RGBA4_UNORM;
-            case CgGL.GL_RGB5_A1:                           return CgFormat.RGB5A1_UNORM;
-            case CgGL.GL_DEPTH_COMPONENT16:                 return CgFormat.DEPTH16_UNORM;
-            case CgGL.GL_DEPTH_COMPONENT24: case CgGL.GL_DEPTH_COMPONENT: return CgFormat.DEPTH24_PLUS;
-            case CgGL.GL_DEPTH_COMPONENT32: case CgGL.GL_DEPTH_COMPONENT32F: return CgFormat.DEPTH32_FLOAT;
-            case CgGL.GL_DEPTH24_STENCIL8: case CgGL.GL_DEPTH_STENCIL: return CgFormat.DEPTH24_PLUS_STENCIL8;
-            case CgGL.GL_DEPTH32F_STENCIL8:                 return CgFormat.DEPTH32_FLOAT_STENCIL8;
-            case CgGL.GL_STENCIL_INDEX8:                    return CgFormat.STENCIL8;
+            case GLC.GL_R11F_G11F_B10F:                    return CgFormat.RG11B10_UFLOAT;
+            case GLC.GL_RGBA4:                             return CgFormat.RGBA4_UNORM;
+            case GLC.GL_RGB5_A1:                           return CgFormat.RGB5A1_UNORM;
+            case GLC.GL_DEPTH_COMPONENT16:                 return CgFormat.DEPTH16_UNORM;
+            case GLC.GL_DEPTH_COMPONENT24: case GLC.GL_DEPTH_COMPONENT: return CgFormat.DEPTH24_PLUS;
+            case GLC.GL_DEPTH_COMPONENT32: case GLC.GL_DEPTH_COMPONENT32F: return CgFormat.DEPTH32_FLOAT;
+            case GLC.GL_DEPTH24_STENCIL8: case GLC.GL_DEPTH_STENCIL: return CgFormat.DEPTH24_PLUS_STENCIL8;
+            case GLC.GL_DEPTH32F_STENCIL8:                 return CgFormat.DEPTH32_FLOAT_STENCIL8;
+            case GLC.GL_STENCIL_INDEX8:                    return CgFormat.STENCIL8;
             default: throw new UnsupportedOperationException("Internal format 0x" + Integer.toHexString(internalFormat)
                     + " has no device format");
         }
@@ -151,47 +151,47 @@ public final class GLPixels {
     /** Whether GL's {@code (format, type)} is {@code dst}'s tightly packed texels as they are. */
     public static boolean sameLayout(int format, int type, CgFormat dst) {
         switch (dst) {
-            case R8_UNORM: return format == CgGL.GL_RED && type == CgGL.GL_UNSIGNED_BYTE;
-            case RG8_UNORM: return format == CgGL.GL_RG && type == CgGL.GL_UNSIGNED_BYTE;
-            case RGBA8_UNORM: case RGBA8_SRGB: return format == CgGL.GL_RGBA && type == CgGL.GL_UNSIGNED_BYTE;
-            case R8_UINT: return format == CgGL.GL_RED_INTEGER && type == CgGL.GL_UNSIGNED_BYTE;
-            case RGBA8_UINT: return format == CgGL.GL_RGBA_INTEGER && type == CgGL.GL_UNSIGNED_BYTE;
-            case R16_FLOAT: return format == CgGL.GL_RED && type == CgGL.GL_HALF_FLOAT;
-            case RG16_FLOAT: return format == CgGL.GL_RG && type == CgGL.GL_HALF_FLOAT;
-            case RGBA16_FLOAT: return format == CgGL.GL_RGBA && type == CgGL.GL_HALF_FLOAT;
-            case R32_FLOAT: return format == CgGL.GL_RED && type == CgGL.GL_FLOAT;
-            case RG32_FLOAT: return format == CgGL.GL_RG && type == CgGL.GL_FLOAT;
-            case RGBA32_FLOAT: return format == CgGL.GL_RGBA && type == CgGL.GL_FLOAT;
-            case R32_UINT: return format == CgGL.GL_RED_INTEGER && type == CgGL.GL_UNSIGNED_INT;
-            case RGB10A2_UNORM: return format == CgGL.GL_RGBA && type == CgGL.GL_UNSIGNED_INT_2_10_10_10_REV;
-            case RG11B10_UFLOAT: return format == CgGL.GL_RGB && type == CgGL.GL_UNSIGNED_INT_10F_11F_11F_REV;
-            case DEPTH32_FLOAT: return format == CgGL.GL_DEPTH_COMPONENT && type == CgGL.GL_FLOAT;
+            case R8_UNORM: return format == GLC.GL_RED && type == GLC.GL_UNSIGNED_BYTE;
+            case RG8_UNORM: return format == GLC.GL_RG && type == GLC.GL_UNSIGNED_BYTE;
+            case RGBA8_UNORM: case RGBA8_SRGB: return format == GLC.GL_RGBA && type == GLC.GL_UNSIGNED_BYTE;
+            case R8_UINT: return format == GLC.GL_RED_INTEGER && type == GLC.GL_UNSIGNED_BYTE;
+            case RGBA8_UINT: return format == GLC.GL_RGBA_INTEGER && type == GLC.GL_UNSIGNED_BYTE;
+            case R16_FLOAT: return format == GLC.GL_RED && type == GLC.GL_HALF_FLOAT;
+            case RG16_FLOAT: return format == GLC.GL_RG && type == GLC.GL_HALF_FLOAT;
+            case RGBA16_FLOAT: return format == GLC.GL_RGBA && type == GLC.GL_HALF_FLOAT;
+            case R32_FLOAT: return format == GLC.GL_RED && type == GLC.GL_FLOAT;
+            case RG32_FLOAT: return format == GLC.GL_RG && type == GLC.GL_FLOAT;
+            case RGBA32_FLOAT: return format == GLC.GL_RGBA && type == GLC.GL_FLOAT;
+            case R32_UINT: return format == GLC.GL_RED_INTEGER && type == GLC.GL_UNSIGNED_INT;
+            case RGB10A2_UNORM: return format == GLC.GL_RGBA && type == GLC.GL_UNSIGNED_INT_2_10_10_10_REV;
+            case RG11B10_UFLOAT: return format == GLC.GL_RGB && type == GLC.GL_UNSIGNED_INT_10F_11F_11F_REV;
+            case DEPTH32_FLOAT: return format == GLC.GL_DEPTH_COMPONENT && type == GLC.GL_FLOAT;
             default: return false;
         }
     }
 
     private static int components(int format) {
         switch (format) {
-            case CgGL.GL_RED: case CgGL.GL_RED_INTEGER: case CgGL.GL_DEPTH_COMPONENT: case CgGL.GL_STENCIL_INDEX: return 1;
-            case CgGL.GL_RG: case CgGL.GL_RG_INTEGER: return 2;
-            case CgGL.GL_RGB: case CgGL.GL_RGB_INTEGER: return 3;
-            case CgGL.GL_RGBA: case CgGL.GL_RGBA_INTEGER: case GL_BGRA: return 4;
+            case GLC.GL_RED: case GLC.GL_RED_INTEGER: case GLC.GL_DEPTH_COMPONENT: case GLC.GL_STENCIL_INDEX: return 1;
+            case GLC.GL_RG: case GLC.GL_RG_INTEGER: return 2;
+            case GLC.GL_RGB: case GLC.GL_RGB_INTEGER: return 3;
+            case GLC.GL_RGBA: case GLC.GL_RGBA_INTEGER: case GL_BGRA: return 4;
             default: throw new UnsupportedOperationException("Pixel format 0x" + Integer.toHexString(format));
         }
     }
 
     private static int componentBytes(int type) {
         switch (type) {
-            case CgGL.GL_UNSIGNED_BYTE: case CgGL.GL_BYTE: return 1;
-            case CgGL.GL_UNSIGNED_SHORT: case CgGL.GL_SHORT: case CgGL.GL_HALF_FLOAT: return 2;
+            case GLC.GL_UNSIGNED_BYTE: case GLC.GL_BYTE: return 1;
+            case GLC.GL_UNSIGNED_SHORT: case GLC.GL_SHORT: case GLC.GL_HALF_FLOAT: return 2;
             default: return 4;
         }
     }
 
     private static int pixelBytes(int format, int type) {
-        if (type == CgGL.GL_UNSIGNED_INT_2_10_10_10_REV || type == CgGL.GL_UNSIGNED_INT_10F_11F_11F_REV
-                || type == GL_UNSIGNED_INT_8_8_8_8_REV || type == CgGL.GL_UNSIGNED_INT_24_8) return 4;
-        if (type == CgGL.GL_FLOAT_32_UNSIGNED_INT_24_8_REV) return 8;
+        if (type == GLC.GL_UNSIGNED_INT_2_10_10_10_REV || type == GLC.GL_UNSIGNED_INT_10F_11F_11F_REV
+                || type == GL_UNSIGNED_INT_8_8_8_8_REV || type == GLC.GL_UNSIGNED_INT_24_8) return 4;
+        if (type == GLC.GL_FLOAT_32_UNSIGNED_INT_24_8_REV) return 8;
         return components(format) * componentBytes(type);
     }
 
@@ -216,13 +216,13 @@ public final class GLPixels {
             int o = at + c * size;
             float v;
             switch (type) {
-                case CgGL.GL_UNSIGNED_BYTE:  v = (in.get(o) & 0xFF) / 255f; break;
-                case CgGL.GL_BYTE:           v = Math.max(in.get(o) / 127f, -1f); break;
-                case CgGL.GL_UNSIGNED_SHORT: v = (in.getShort(o) & 0xFFFF) / 65535f; break;
-                case CgGL.GL_SHORT:          v = Math.max(in.getShort(o) / 32767f, -1f); break;
-                case CgGL.GL_HALF_FLOAT:     v = halfToFloat(in.getShort(o)); break;
-                case CgGL.GL_FLOAT:          v = in.getFloat(o); break;
-                case CgGL.GL_UNSIGNED_INT:   v = (float) ((in.getInt(o) & 0xFFFFFFFFL) / 4294967295.0); break;
+                case GLC.GL_UNSIGNED_BYTE:  v = (in.get(o) & 0xFF) / 255f; break;
+                case GLC.GL_BYTE:           v = Math.max(in.get(o) / 127f, -1f); break;
+                case GLC.GL_UNSIGNED_SHORT: v = (in.getShort(o) & 0xFFFF) / 65535f; break;
+                case GLC.GL_SHORT:          v = Math.max(in.getShort(o) / 32767f, -1f); break;
+                case GLC.GL_HALF_FLOAT:     v = halfToFloat(in.getShort(o)); break;
+                case GLC.GL_FLOAT:          v = in.getFloat(o); break;
+                case GLC.GL_UNSIGNED_INT:   v = (float) ((in.getInt(o) & 0xFFFFFFFFL) / 4294967295.0); break;
                 default: throw new UnsupportedOperationException("Pixel type 0x" + Integer.toHexString(type));
             }
             px[format == GL_BGRA && c < 3 ? 2 - c : c] = v;
@@ -236,11 +236,11 @@ public final class GLPixels {
         for (int c = 0; c < comps; c++) {
             int o = at + c * size;
             switch (type) {
-                case CgGL.GL_UNSIGNED_BYTE:  px[c] = in.get(o) & 0xFF; break;
-                case CgGL.GL_BYTE:           px[c] = in.get(o); break;
-                case CgGL.GL_UNSIGNED_SHORT: px[c] = in.getShort(o) & 0xFFFF; break;
-                case CgGL.GL_SHORT:          px[c] = in.getShort(o); break;
-                case CgGL.GL_UNSIGNED_INT: case CgGL.GL_INT: px[c] = in.getInt(o); break;
+                case GLC.GL_UNSIGNED_BYTE:  px[c] = in.get(o) & 0xFF; break;
+                case GLC.GL_BYTE:           px[c] = in.get(o); break;
+                case GLC.GL_UNSIGNED_SHORT: px[c] = in.getShort(o) & 0xFFFF; break;
+                case GLC.GL_SHORT:          px[c] = in.getShort(o); break;
+                case GLC.GL_UNSIGNED_INT: case GLC.GL_INT: px[c] = in.getInt(o); break;
                 default: throw new UnsupportedOperationException("Integer pixel type 0x" + Integer.toHexString(type));
             }
         }
@@ -316,9 +316,9 @@ public final class GLPixels {
         for (int c = 0; c < comps; c++) {
             float v = px[format == GL_BGRA && c < 3 ? 2 - c : c];
             switch (type) {
-                case CgGL.GL_UNSIGNED_BYTE: out.put(at + c, unorm8(v)); break;
-                case CgGL.GL_FLOAT: out.putFloat(at + 4 * c, v); break;
-                case CgGL.GL_HALF_FLOAT: out.putShort(at + 2 * c, floatToHalf(v)); break;
+                case GLC.GL_UNSIGNED_BYTE: out.put(at + c, unorm8(v)); break;
+                case GLC.GL_FLOAT: out.putFloat(at + 4 * c, v); break;
+                case GLC.GL_HALF_FLOAT: out.putShort(at + 2 * c, floatToHalf(v)); break;
                 default: throw new UnsupportedOperationException("Reading back as type 0x" + Integer.toHexString(type));
             }
         }

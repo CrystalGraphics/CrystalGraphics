@@ -7,7 +7,7 @@
 //     CG_BIND(2, 0) layout(std140) uniform CgMaterialBlock { ... };
 //
 // Compiled by the GL driver itself (CG_GL_NATIVE, before the shader toolchain), the binding point the GL device gives
-// (set, binding), which GLNativeTranslator defines. Empty for CgGL, whose programs are wired by name after link.
+// (set, binding), which GLNativeTranslator defines.
 #ifdef VULKAN
 #define CG_BIND(set_, binding_) layout(set = set_, binding = binding_)
 #elif defined(CG_GL_NATIVE)

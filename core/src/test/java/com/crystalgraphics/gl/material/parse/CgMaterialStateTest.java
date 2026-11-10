@@ -1,5 +1,6 @@
 package com.crystalgraphics.gl.material.parse;
 
+import com.crystalgraphics.platform.gl.driver.GLC;
 import com.crystalgraphics.api.material.CgAttachedBuffer;
 import com.crystalgraphics.api.material.CgBlendMode;
 import com.crystalgraphics.api.material.CgMaterialState;
@@ -7,7 +8,6 @@ import com.crystalgraphics.api.material.CgRenderQueue;
 import com.crystalgraphics.api.state.CgCullState;
 import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.platform.gl.CgCapabilities;
-import com.crystalgraphics.platform.gl.CgGL;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -245,7 +245,7 @@ public class CgMaterialStateTest {
         CgRenderState forward = stated.getPassByLightMode("Forward").renderState();
         assertTrue(forward.getDepth().test());
         assertFalse("it writes no depth", forward.getDepth().write());
-        assertEquals(CgGL.GL_ALWAYS, forward.getDepth().compareFunc());
+        assertEquals(GLC.GL_ALWAYS, forward.getDepth().compareFunc());
         CgParsedPass emissive = stated.getPassByLightMode("Emissive");
         String glow = CgMaterialShaderCompiler.compile(stated, emissive, NO_BUFFERS, null,
                 CgMaterialShaderCompiler.CompileConfig.DEFAULT).fragmentSource();

@@ -1,5 +1,8 @@
 package com.crystalgraphics.mc.legacy.platform;
 
+import java.lang.reflect.Modifier;
+import java.lang.reflect.Field;
+import java.lang.reflect.Array;
 import com.crystalgraphics.platform.gl.driver.CgGLDriver;
 import com.crystalgraphics.platform.gl.state.GLCheckedHostState;
 import com.crystalgraphics.platform.gl.state.GLContextState;
@@ -38,7 +41,7 @@ public final class HostStateLegacy {
     /** Minecraft's host state over {@code gl}, or {@code glGet}'s where the cache cannot be found. Render thread. */
     public static GLHostState create(CgGLDriver gl) {
         try {
-            GLHostCache cache = new GLHostCache(GlStateManager.class, GlStateManagerGLBackend.trackedTextureUnits(),
+            GLHostCache cache = new GLHostCache(GlStateManager.class, textureUnits(),
                     GlStateManager::setActiveTexture, () -> GL11.glGetInteger(GL13.GL_ACTIVE_TEXTURE));
             return new GLCheckedHostState("GlStateManager", gl, new Answers(cache), false);
         } catch (ReflectiveOperationException | RuntimeException | LinkageError refused) {
@@ -85,5 +88,42 @@ public final class HostStateLegacy {
         public int alphaTest() {
             return cache.alphaTest();
         }
+    }
+
+    /** What vanilla's {@code GlStateManager.textureState} holds on every legacy plateau. */
+    private static final int VANILLA_TEXTURE_UNITS = 8;
+
+    /**
+     * The units {@code GlStateManager}'s texture table holds, read from it: 8 in vanilla, more where OptiFine widens the
+     * table. By name in a dev run, else by shape (SRG): the static array whose element holds an int and no boolean.
+     */
+    private static int textureUnits() {
+        try {
+            Field table = null;
+            for (Field field : GlStateManager.class.getDeclaredFields()) {
+                if (!Modifier.isStatic(field.getModifiers()) || !field.getType().isArray()) continue;
+                if (field.getName().equals("textureState")) {
+                    table = field;
+                    break;
+                }
+                boolean binding = false, flag = false;
+                for (Field member : field.getType().getComponentType().getDeclaredFields()) {
+                    if (Modifier.isStatic(member.getModifiers())) continue;
+                    binding |= member.getType() == int.class;
+                    flag |= member.getType() == boolean.class;
+                }
+                if (binding && !flag && table == null) table = field;
+            }
+            if (table != null) {
+                table.setAccessible(true);
+                int length = Array.getLength(table.get(null));
+                LogManager.getLogger("CrystalGraphics").info("[cg] GlStateManager models {} texture units", length);
+                return length;
+            }
+        } catch (ReflectiveOperationException | RuntimeException refused) {
+            LogManager.getLogger("CrystalGraphics").info("[cg] could not read GlStateManager's texture table ({}); "
+                    + "assuming {} units", refused, VANILLA_TEXTURE_UNITS);
+        }
+        return VANILLA_TEXTURE_UNITS;
     }
 }

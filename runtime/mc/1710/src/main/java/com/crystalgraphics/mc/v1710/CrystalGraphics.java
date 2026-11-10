@@ -26,8 +26,8 @@ import org.apache.logging.log4j.Logger;
  * lives under {@code com.crystalgraphics.gl}.</p>
  *
  * <p>There is <strong>no coremod</strong> any more. The ASM transformer that used to redirect GL call sites
- * process-wide was deleted along with the state mirror it fed: GL state now comes from
- * {@code AngelicaStateProvider}, which reads Angelica's own mirror, and falls back to {@code glGet}.</p>
+ * process-wide was deleted along with the state mirror it fed: the GL device reads the host's state at each host
+ * section by query ({@code GLHostState.byQuery}).</p>
  */
 @Mod(
     modid = CrystalGraphics.MODID,

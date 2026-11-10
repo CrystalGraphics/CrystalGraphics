@@ -27,11 +27,10 @@ import com.crystalgraphics.variable.CgVar;
  * final class GLDevice1710 extends CgToolchainDevice {
  *     private CgGLDevice device;
  *     private final GLNativeTranslator translator = new GLNativeTranslator();
- *     @Override protected String ineligible() { return null; }
  *     @Override protected void start() {
  *         CgGLDriver driver = new Lwjgl2GLDriver();
  *         device = new CgGLDevice(driver, translator, w, h, false, GLHostState.byQuery(driver));
- *         device.installBesideCgGL(new GLNativeGlslCompiler(device.driver()));
+ *         device.install(new GLNativeGlslCompiler(device.driver()));
  *     }
  *     @Override protected void toolchain(List<Path> jars) {
  *         CgShaderToolchain t = CgShaderToolchain.load(jars, natives());
@@ -41,25 +40,22 @@ import com.crystalgraphics.variable.CgVar;
  *     @Override protected void resize() { ... device.resize(w, h); }
  *     @Override protected void close() { ... }
  * }
- * CgEngineLifecycle.addListener(new GLDevice1710());   // once, where the host makes its backend
+ * CgEngineLifecycle.addListener(new GLDevice1710());   // once, from the platform's startDevice
  * }</pre>
  *
  * <ul>
  *   <li>{@link #start} runs in the graphics start's first stage, before anything compiles. The fetch is a background
  *       job, never a loading-screen task: offline it fails only after its retries and timeouts. What compiles before
  *       the toolchain lands is the driver's for the session; what compiles after, the toolchain's.</li>
- *   <li>Where {@link #start} throws (a context below the device's floor) the host draws on {@code CgGL}, logged once;
- *       where the toolchain cannot be had (no natives pinned, offline, {@link #toolchain} throwing) the device keeps
+ *   <li>Where {@link #start} throws, the graphics start fails with its cause: the device is how the host draws.
+ *       Where the toolchain cannot be had (no natives pinned, offline, {@link #toolchain} throwing) the device keeps
  *       the driver's compiler for the session.</li>
- *   <li>{@code crystalgraphics.device.toolchain=false} makes no device; {@code crystalgraphics.shader.native=true}
- *       never fetches the toolchain.</li>
+ *   <li>{@code crystalgraphics.shader.native=true} never fetches the toolchain.</li>
  *   <li>{@link #resize} each frame and {@link #close} with the context run only once {@link #start} returned.</li>
  * </ul>
  */
 public abstract class CgToolchainDevice implements CgLifecycleListener {
 
-    private static final CgVar.Bool ENABLED = CgVar.bool("crystalgraphics.device.toolchain", true, CgVar.DEV,
-            "Whether a host whose platform ships no shader compiler draws through a device.");
     private static final CgVar.Bool NATIVE = CgVar.bool("crystalgraphics.shader.native", false, CgVar.DEV,
             "Keep a GL-era host's device on the driver's own GLSL compiler: the shader toolchain is never fetched.");
     private static final Logger LOGGER = LogManager.getLogger(CgToolchainDevice.class);
@@ -72,9 +68,6 @@ public abstract class CgToolchainDevice implements CgLifecycleListener {
     protected CgToolchainDevice() {
         MADE.add(this);
     }
-
-    /** Why this host makes no device, logged once; null when it does. */
-    protected abstract @Nullable String ineligible();
 
     /** Makes the device, its compiler the driver's own, and installs it. Render thread, the context current. */
     protected abstract void start() throws Exception;
@@ -99,20 +92,15 @@ public abstract class CgToolchainDevice implements CgLifecycleListener {
     }
 
     private void startOnce() {
-        if (tried || !ENABLED.get()) return;
+        if (tried) return;
         tried = true;
-        String why = ineligible();
-        if (why != null) {
-            LOGGER.info("[device] no device beside the host: {}", why);
-            return;
-        }
         try {
             start();
-            started = true;
-            if (!NATIVE.get()) fetch();
-        } catch (Exception | LinkageError e) {
-            LOGGER.warn("[device] the device did not start, so this host draws on CgGL", e);
+        } catch (Exception e) {
+            throw new IllegalStateException("the device did not start, and this host draws through nothing else", e);
         }
+        started = true;
+        if (!NATIVE.get()) fetch();
     }
 
     private void fetch() {

@@ -1,5 +1,6 @@
 package com.crystalgraphics.gl.texture;
 
+import com.crystalgraphics.platform.gl.driver.GLC;
 import com.crystalgraphics.platform.rhi.resource.CgTextureRegion;
 import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
 import com.crystalgraphics.platform.gl.format.GLFormats;
@@ -14,7 +15,6 @@ import com.crystalgraphics.util.io.CgTextureIO;
 import com.crystalgraphics.util.io.CgTextureIO.CgImageData;
 
 import lombok.Getter;
-import com.crystalgraphics.platform.gl.CgGL;
 
 import javax.annotation.Nullable;
 import java.io.IOException;
@@ -24,12 +24,12 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- * Cubemap GL texture (target {@code CgGL.GL_TEXTURE_CUBE_MAP = 0x8513}). Single
+ * Cubemap GL texture (target {@code GLC.GL_TEXTURE_CUBE_MAP = 0x8513}). Single
  * concrete impl of {@link CgTexture} for cubemaps.
  *
  * <p>A cubemap is six square 2D images uploaded to six discrete face targets
- * ({@code CgGL.GL_TEXTURE_CUBE_MAP_POSITIVE_X} through
- * {@code CgGL.GL_TEXTURE_CUBE_MAP_NEGATIVE_Z}, GL constants 0x8515..0x851A). All
+ * ({@code GLC.GL_TEXTURE_CUBE_MAP_POSITIVE_X} through
+ * {@code GLC.GL_TEXTURE_CUBE_MAP_NEGATIVE_Z}, GL constants 0x8515..0x851A). All
  * faces must be the same size and share the same pixel format, mipmap config,
  * and sampler params.</p>
  *
@@ -263,7 +263,7 @@ public final class CgTextureCubemap extends CgTextureAbstract {
     /** The stacked image cut into its six faces: each a run of rows, top first. */
     private void loadStacked() {
         ByteBuffer pixels = null;
-        int w = 0, h = 0, texel = 0, format = CgGL.GL_RGBA, type = GL_UNSIGNED_BYTE;
+        int w = 0, h = 0, texel = 0, format = GLC.GL_RGBA, type = GL_UNSIGNED_BYTE;
         if (CgRadianceHdr.is(stacked)) {
             if (spec.getType() != CgTextureType.RGBA16F) {
                 throw new IllegalStateException(stacked + " is float colour, but its cube is " + spec.getType()
@@ -275,7 +275,7 @@ public final class CgTextureCubemap extends CgTextureAbstract {
                 w = image.width();
                 h = image.height();
                 texel = 8;
-                type = CgGL.GL_HALF_FLOAT;
+                type = GLC.GL_HALF_FLOAT;
             } catch (IOException e) {
                 LOGGER.log(Level.WARNING, "[CgTextureCubemap] " + e.getMessage());
             }
@@ -314,6 +314,6 @@ public final class CgTextureCubemap extends CgTextureAbstract {
         upload(w, faces, format, type);
     }
 
-    @Override public int getTarget() { return CgGL.GL_TEXTURE_CUBE_MAP; }
+    @Override public int getTarget() { return GLC.GL_TEXTURE_CUBE_MAP; }
 
 }

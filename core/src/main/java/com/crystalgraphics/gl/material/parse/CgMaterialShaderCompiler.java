@@ -1,5 +1,6 @@
 package com.crystalgraphics.gl.material.parse;
 
+import com.crystalgraphics.platform.gl.driver.GLC;
 import com.crystalgraphics.compute.source.CgBufferDecl;
 import com.crystalgraphics.gl.buffer.shader.CgBonePalettes;
 import com.crystalgraphics.gl.buffer.shader.CgEngineBufferRegistry;
@@ -13,7 +14,6 @@ import com.crystalgraphics.api.shader.CgPreprocessorException;
 import com.crystalgraphics.api.state.CgBlendState;
 import com.crystalgraphics.api.state.CgCullState;
 import com.crystalgraphics.api.state.CgDepthState;
-import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.gl.buffer.shader.CgUniformBuffer;
 import com.crystalgraphics.gl.material.CgMaterialProperty;
@@ -252,10 +252,10 @@ public final class CgMaterialShaderCompiler {
         CgBlendState fb = f.getBlend(), eb = e.getBlend();
         if (fb == null || !fb.enabled()) return EmissionMerge.NONE;   // an opaque Forward pass would overwrite the glow beneath
         if (fb.equals(eb)) return EmissionMerge.SAME_BLEND;
-        boolean premultiplied = fb.srcRgb() == CgGL.GL_ONE && fb.dstRgb() == CgGL.GL_ONE_MINUS_SRC_ALPHA
-                && fb.blendEquationRgb() == CgGL.GL_FUNC_ADD;
-        boolean adds = eb != null && eb.enabled() && eb.srcRgb() == CgGL.GL_ONE && eb.dstRgb() == CgGL.GL_ONE
-                && eb.blendEquationRgb() == CgGL.GL_FUNC_ADD;
+        boolean premultiplied = fb.srcRgb() == GLC.GL_ONE && fb.dstRgb() == GLC.GL_ONE_MINUS_SRC_ALPHA
+                && fb.blendEquationRgb() == GLC.GL_FUNC_ADD;
+        boolean adds = eb != null && eb.enabled() && eb.srcRgb() == GLC.GL_ONE && eb.dstRgb() == GLC.GL_ONE
+                && eb.blendEquationRgb() == GLC.GL_FUNC_ADD;
         return premultiplied && adds ? EmissionMerge.ADDED : EmissionMerge.NONE;
     }
 
@@ -267,8 +267,8 @@ public final class CgMaterialShaderCompiler {
     public static boolean sceneFolds(CgParsedShader shader) {
         if (emissionMerge(shader) == EmissionMerge.NONE) return false;
         CgBlendState blend = shader.getPassByLightMode(CgParsedPass.LIGHT_MODE_FORWARD).renderState().getBlend();
-        return blend.blendEquationRgb() == CgGL.GL_FUNC_ADD
-                && (blend.srcRgb() == CgGL.GL_ONE || blend.srcRgb() == CgGL.GL_SRC_ALPHA);
+        return blend.blendEquationRgb() == GLC.GL_FUNC_ADD
+                && (blend.srcRgb() == GLC.GL_ONE || blend.srcRgb() == GLC.GL_SRC_ALPHA);
     }
 
     /**
@@ -277,8 +277,8 @@ public final class CgMaterialShaderCompiler {
      * takes the transparent pass's, which tests.
      */
     private static boolean sameTest(CgDepthState forward, CgDepthState emissive) {
-        boolean forwardTests = forward == null || forward.test() && forward.compareFunc() != CgGL.GL_ALWAYS;
-        boolean emissiveTests = emissive == null || !(emissive.test() && emissive.compareFunc() == CgGL.GL_ALWAYS);
+        boolean forwardTests = forward == null || forward.test() && forward.compareFunc() != GLC.GL_ALWAYS;
+        boolean emissiveTests = emissive == null || !(emissive.test() && emissive.compareFunc() == GLC.GL_ALWAYS);
         return forwardTests == emissiveTests;
     }
 
@@ -1162,9 +1162,9 @@ public final class CgMaterialShaderCompiler {
         if (CgParsedPass.LIGHT_MODE_EMISSIVE.equals(pass.lightMode())) return 2;   // added onto the scene by bloom
         CgBlendState blend = pass.renderState().getBlend();
         if (blend == null || !blend.enabled()) return 0;
-        if (blend.dstRgb() == CgGL.GL_ONE) return 2;
-        if (blend.srcRgb() == CgGL.GL_DST_COLOR && blend.dstRgb() == CgGL.GL_ZERO) return 3;   // modulate
-        return blend.srcRgb() == CgGL.GL_ONE ? 1 : 0;
+        if (blend.dstRgb() == GLC.GL_ONE) return 2;
+        if (blend.srcRgb() == GLC.GL_DST_COLOR && blend.dstRgb() == GLC.GL_ZERO) return 3;   // modulate
+        return blend.srcRgb() == GLC.GL_ONE ? 1 : 0;
     }
 
     /**
@@ -1174,15 +1174,15 @@ public final class CgMaterialShaderCompiler {
      */
     private static void appendSceneDecode(StringBuilder sb, CgParsedPass pass) {
         CgBlendState blend = pass.renderState().getBlend();
-        boolean over = blend != null && blend.enabled() && blend.dstRgb() == CgGL.GL_ONE_MINUS_SRC_ALPHA;
-        if (over && blend.srcRgb() == CgGL.GL_ONE) {
+        boolean over = blend != null && blend.enabled() && blend.dstRgb() == GLC.GL_ONE_MINUS_SRC_ALPHA;
+        if (over && blend.srcRgb() == GLC.GL_ONE) {
             sb.append("  if (CG_LINEAR_SCENE) {\n")
               .append("    float _cg_cover = cg_SceneCoverage(_cg_fragColor.a);\n")
               .append("    _cg_fragColor.rgb = _cg_fragColor.a > 0.0")
               .append(" ? cg_SceneDecode(_cg_fragColor.rgb / _cg_fragColor.a) * _cg_cover")
               .append(" : cg_SceneDecode(_cg_fragColor.rgb);\n")
               .append("    _cg_fragColor.a = _cg_cover;\n  }\n");
-        } else if (over && blend.srcRgb() == CgGL.GL_SRC_ALPHA) {
+        } else if (over && blend.srcRgb() == GLC.GL_SRC_ALPHA) {
             sb.append("  if (CG_LINEAR_SCENE) _cg_fragColor = vec4(cg_SceneDecode(_cg_fragColor.rgb),")
               .append(" cg_SceneCoverage(_cg_fragColor.a));\n");
         } else {
@@ -1197,8 +1197,8 @@ public final class CgMaterialShaderCompiler {
      */
     private static void appendTargetEncode(StringBuilder sb, CgParsedPass pass) {
         CgBlendState blend = pass.renderState().getBlend();
-        boolean premultiplied = blend != null && blend.enabled() && blend.srcRgb() == CgGL.GL_ONE
-                && blend.dstRgb() == CgGL.GL_ONE_MINUS_SRC_ALPHA;
+        boolean premultiplied = blend != null && blend.enabled() && blend.srcRgb() == GLC.GL_ONE
+                && blend.dstRgb() == GLC.GL_ONE_MINUS_SRC_ALPHA;
         if (premultiplied) {
             sb.append("  if (CG_ENCODED_TARGET) _cg_fragColor.rgb = _cg_fragColor.a > 0.0")
               .append(" ? cg_SceneEncode(_cg_fragColor.rgb / _cg_fragColor.a) * _cg_fragColor.a")
@@ -1222,8 +1222,8 @@ public final class CgMaterialShaderCompiler {
      */
     private static void appendMediaDim(StringBuilder sb, CgParsedPass pass, boolean emissive) {
         CgBlendState blend = pass.renderState().getBlend();
-        boolean whole = emissive || blend != null && blend.enabled() && blend.srcRgb() == CgGL.GL_ONE;
-        boolean alpha = !emissive && blend != null && blend.enabled() && blend.srcRgb() == CgGL.GL_SRC_ALPHA;
+        boolean whole = emissive || blend != null && blend.enabled() && blend.srcRgb() == GLC.GL_ONE;
+        boolean alpha = !emissive && blend != null && blend.enabled() && blend.srcRgb() == GLC.GL_SRC_ALPHA;
         if (!whole && !alpha) return;
         sb.append("  float _cg_media = cg_MediaTransmit(gl_FragCoord.xy / CG_RESOLUTION, cg_LinearEyeDepth(gl_FragCoord.z));\n");
         sb.append(whole ? "  _cg_fragColor *= _cg_media;\n" : "  _cg_fragColor.a *= _cg_media;\n");
@@ -1237,7 +1237,7 @@ public final class CgMaterialShaderCompiler {
     private static void appendEmissiveOpacity(StringBuilder sb, CgParsedShader shader, CgParsedPass pass) {
         if (!shader.emissiveOpacity() || CgParsedPass.LIGHT_MODE_DISTORTION.equals(pass.lightMode())) return;
         CgBlendState blend = pass.renderState().getBlend();
-        if (blend != null && blend.enabled() && blend.srcRgb() == CgGL.GL_ONE && blend.dstRgb() == CgGL.GL_ONE) {
+        if (blend != null && blend.enabled() && blend.srcRgb() == GLC.GL_ONE && blend.dstRgb() == GLC.GL_ONE) {
             sb.append("  _cg_fragColor = vec4(_cg_fragColor.rgb * _cg_fragColor.a, 0.0);\n");
         }
     }
@@ -1256,8 +1256,8 @@ public final class CgMaterialShaderCompiler {
         boolean distortion = CgParsedPass.LIGHT_MODE_DISTORTION.equals(pass.lightMode());
         CgDepthState depth = pass.renderState().getDepth();
         // The overdraw view's target has no depth either: its test is the pass's own, as a discard.
-        boolean overdrawTested = overdraw && (depth == null || depth.test() && depth.compareFunc() != CgGL.GL_ALWAYS);
-        if ((emissive || distortion || cover) && !(depth != null && depth.test() && depth.compareFunc() == CgGL.GL_ALWAYS)
+        boolean overdrawTested = overdraw && (depth == null || depth.test() && depth.compareFunc() != GLC.GL_ALWAYS);
+        if ((emissive || distortion || cover) && !(depth != null && depth.test() && depth.compareFunc() == GLC.GL_ALWAYS)
                 || overdrawTested) {
             // The bloom and distortion targets have no depth, so this is the pass's depth test: the scene's depth, a copy at its own size
             // read by uv. "DepthTest ALWAYS" leaves occlusion to the shader, as a volume drawn on its back faces needs.
@@ -1310,7 +1310,7 @@ public final class CgMaterialShaderCompiler {
                     sb.append("  if (CG_LINEAR_SCENE) _cg_fragColor.rgb = min(_cg_fragColor.rgb, vec3(1.0));\n");
                 }
             }
-            if (fold && pass.renderState().getBlend().srcRgb() == CgGL.GL_SRC_ALPHA) {
+            if (fold && pass.renderState().getBlend().srcRgb() == GLC.GL_SRC_ALPHA) {
                 // Weighed by the alpha the Emissive pass would blend with, not the coverage the decode remapped it to.
                 sb.append("  if (_cg_fragColor.a > 0.0) _cg_fragColor.rgb += _cg_glow.rgb * (_cg_glow.a / _cg_fragColor.a);\n");
             } else if (fold) {

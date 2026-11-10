@@ -1,7 +1,7 @@
 package com.crystalgraphics.api.state;
 
+import com.crystalgraphics.platform.gl.driver.GLC;
 import com.github.bsideup.jabel.Desugar;
-import com.crystalgraphics.platform.gl.CgGL;
 
 /**
  * Immutable depth-test state slot for {@link CgRenderState}.
@@ -29,19 +29,19 @@ public record CgDepthState(boolean test, boolean write, int compareFunc) {
      * a reset-to-defaults wants; {@code NONE} is the value a pass that must not touch depth at all wants.
      * Conflating them would silently leave depth writes disabled after a reset.</p>
      */
-    public static final CgDepthState GL_DEFAULT = new CgDepthState(false, true, CgGL.GL_LESS);
+    public static final CgDepthState GL_DEFAULT = new CgDepthState(false, true, GLC.GL_LESS);
 
-    public static final CgDepthState NONE = new CgDepthState(false, false, CgGL.GL_ALWAYS);
+    public static final CgDepthState NONE = new CgDepthState(false, false, GLC.GL_ALWAYS);
 
     /** Depth test enabled (LEqual), writes disabled. Reads depth without modifying it. */
-    public static final CgDepthState TEST_ONLY = new CgDepthState(true, false, CgGL.GL_LEQUAL);
+    public static final CgDepthState TEST_ONLY = new CgDepthState(true, false, GLC.GL_LEQUAL);
 
     /** Depth test and write enabled with {@code GL_LEQUAL}. Standard 3D opaque geometry. */
-    public static final CgDepthState TEST_WRITE = new CgDepthState(true, true, CgGL.GL_LEQUAL);
+    public static final CgDepthState TEST_WRITE = new CgDepthState(true, true, GLC.GL_LEQUAL);
 
     /** Depth test and write enabled with {@code GL_EQUAL}. For secondary passes at equal depth. */
-    public static final CgDepthState TEST_WRITE_EQUAL = new CgDepthState(true, true, CgGL.GL_EQUAL);
+    public static final CgDepthState TEST_WRITE_EQUAL = new CgDepthState(true, true, GLC.GL_EQUAL);
 
     /** Depth test and write enabled with {@code GL_ALWAYS}. Always overwrites depth. */
-    public static final CgDepthState TEST_WRITE_ALWAYS = new CgDepthState(true, true, CgGL.GL_ALWAYS);
+    public static final CgDepthState TEST_WRITE_ALWAYS = new CgDepthState(true, true, GLC.GL_ALWAYS);
 }

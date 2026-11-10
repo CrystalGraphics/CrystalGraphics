@@ -14,7 +14,7 @@ import java.util.Arrays;
 
 /**
  * A graph compute pass's dispatches on the device: its compute pass, opened in a device section at the first dispatch,
- * closed before anything goes through {@code CgGL} (a barrier) and opened again after, as Unreal RDG places barriers
+ * closed before what cannot run inside one (a copy, a barrier) and opened again after, as Unreal RDG places barriers
  * between passes. Its pipeline and sets are bound once each while it stays open.
  *
  * <pre>{@code
@@ -22,7 +22,7 @@ import java.util.Arrays;
  * CgComputePass on = compute.pass(rhi);       // opens the section and the pass
  * compute.pipeline(pipeline, layout);
  * compute.set(2, kernelSet);
- * compute.close();                            // before CgGL; the next pass(rhi) opens again, counted as a split
+ * compute.close();                            // before a copy; the next pass(rhi) opens again, counted as a split
  * }</pre>
  */
 final class CgDeviceCompute {
@@ -63,7 +63,7 @@ final class CgDeviceCompute {
         return open != null;
     }
 
-    /** Ends the pass and its section: before anything through {@code CgGL}. */
+    /** Ends the pass and its section: before anything that runs outside a compute pass. */
     void close() {
         if (open == null) return;
         CgComputePass ending = open;
@@ -80,7 +80,7 @@ final class CgDeviceCompute {
         if (p == pipeline) return;
         open.setPipeline(p);
         pipeline = p;
-        if (!l.equals(layout)) Arrays.fill(sets, null);
+        if (l != layout && !l.equals(layout)) Arrays.fill(sets, null);   // layouts are shared: identity first, no iterator
         layout = l;
     }
 

@@ -1,7 +1,7 @@
 import cgbuildlogic.abstractModule
 import java.io.File as JFile
 
-// runtime/lwjgl/vulkan — tier 1 for Vulkan, beside runtime/lwjgl/2 and /3: what the tracked backend needs from
+// runtime/lwjgl/vulkan — tier 1 for Vulkan, beside runtime/lwjgl/2 and /3: what the Vulkan device needs from
 // LWJGL's Vulkan bindings, with no Minecraft type. The GLSL compiler (shaderc and SPIRV-Cross, the way Minecraft
 // 26.2 compiles its own shaders) and CgVulkanDevice with its hosts.
 //
@@ -46,8 +46,10 @@ dependencies {
 
     testImplementation(project(":platform"))
     testImplementation(testFixtures(project(":platform")))
-    // The engine itself, for EngineOnTrackedBackendTest. Its own tests carry LWJGL 2, which this cannot.
+    // The engine itself, for the device tests. Its own tests carry LWJGL 2, which this cannot.
     testImplementation(project(":core"))
+    // Core's consumerApi does not reach a test classpath: the world renderer's text names FreeType, as in core's tests
+    testImplementation(project(":freetype-msdfgen-harfbuzz-bindings"))
     testImplementation("org.joml:joml:${rootProject.properties["dep.joml"]}")
     testRuntimeOnly("org.apache.logging.log4j:log4j-core:2.26.1")
     // Asset files are YAML (CgFiles.YAML): core's consumerApi does not reach this test classpath.
@@ -94,7 +96,7 @@ tasks.test {
     providers.gradleProperty("glShaderReport").orNull?.let { systemProperty("crystalgraphics.test.glShaderReport", it) }
     // GLCommandListTest rewrites the LWJGL 2 runner's GLSL fixtures: -PupdateGlFixtures=true
     providers.gradleProperty("updateGlFixtures").orNull?.let { systemProperty("crystalgraphics.test.updateGlFixtures", it) }
-    // EngineOnTrackedBackendTest holds every shipped material's every variant: past Gradle's 512 MB. Direct memory keeps
+    // DevicePipelinesTest holds every shipped material's every variant: past Gradle's 512 MB. Direct memory keeps
     // the default's limit, which would follow the heap: an upload test leaking leases must still meet it.
     maxHeapSize = "2g"
     jvmArgs("-XX:MaxDirectMemorySize=512m")

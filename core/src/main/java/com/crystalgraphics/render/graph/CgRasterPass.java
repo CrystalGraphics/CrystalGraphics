@@ -1,11 +1,11 @@
 package com.crystalgraphics.render.graph;
 
+import com.crystalgraphics.platform.gl.driver.GLC;
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.platform.rhi.command.CgAccess;
-import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.render.CgGpuBudget;
 import com.crystalgraphics.render.draw.CgBindingTable;
 import com.crystalgraphics.render.draw.CgDrawChunk;
@@ -129,7 +129,7 @@ public final class CgRasterPass extends CgPass {
     /** Makes this pass a new one into {@code target}: its recording's, after a reset, so a steady frame allocates none. */
     void reuse(String name, CgGraphTexture target, int level, int layer, CgLoad load, CgPassConstants constants,
                @Nullable CgRenderState state, CgOrder order) {
-        if (target.drawsBesideCurrentDepth() && (load.mask() & CgGL.GL_DEPTH_BUFFER_BIT) != 0) {
+        if (target.drawsBesideCurrentDepth() && (load.mask() & GLC.GL_DEPTH_BUFFER_BIT) != 0) {
             throw new IllegalArgumentException(name + " would clear the host's depth: " + target + " draws beside it");
         }
         this.name = name;

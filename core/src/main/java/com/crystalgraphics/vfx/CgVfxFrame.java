@@ -1,5 +1,6 @@
 package com.crystalgraphics.vfx;
 
+import com.crystalgraphics.platform.gl.driver.GLC;
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgRenderPassVariant;
@@ -8,7 +9,6 @@ import com.crystalgraphics.api.mesh.CgMeshLods;
 import com.crystalgraphics.api.mesh.CgMeshTopology;
 import com.crystalgraphics.api.state.CgBlendState;
 import com.crystalgraphics.compute.ops.CgGpuCount;
-import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.render.draw.CgIndirect;
 import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.api.mesh.CgMeshLoader;
@@ -1060,7 +1060,7 @@ public final class CgVfxFrame {
      */
     private static boolean blendsInOrder(CgMaterial material) {
         CgBlendState blend = material.getPassRenderState(CgRenderPassVariant.FORWARD).getBlend();
-        return blend != null && blend.enabled() && blend.dstRgb() != CgGL.GL_ONE;
+        return blend != null && blend.enabled() && blend.dstRgb() != GLC.GL_ONE;
     }
 
     /**

@@ -1,6 +1,7 @@
 package com.crystalgraphics.render.graph;
 
-import com.crystalgraphics.platform.gl.CgGL;
+import com.crystalgraphics.platform.gl.driver.GLC;
+
 
 /**
  * What a raster pass does with its target before drawing: keep what is there, or clear it.
@@ -38,17 +39,17 @@ public final class CgLoad {
 
     /** Clear colour to {@code (r, g, b, a)}, premultiplied. */
     public static CgLoad clear(float r, float g, float b, float a) {
-        return new CgLoad(CgGL.GL_COLOR_BUFFER_BIT, r, g, b, a, 1, 0);
+        return new CgLoad(GLC.GL_COLOR_BUFFER_BIT, r, g, b, a, 1, 0);
     }
 
     /** This load, clearing depth to {@code value} as well. */
     public CgLoad andDepth(double value) {
-        return new CgLoad(mask | CgGL.GL_DEPTH_BUFFER_BIT, r, g, b, a, value, stencil);
+        return new CgLoad(mask | GLC.GL_DEPTH_BUFFER_BIT, r, g, b, a, value, stencil);
     }
 
     /** This load, clearing stencil to {@code value} as well: a target with a stencil attachment. */
     public CgLoad andStencil(int value) {
-        return new CgLoad(mask | CgGL.GL_STENCIL_BUFFER_BIT, r, g, b, a, depth, value);
+        return new CgLoad(mask | GLC.GL_STENCIL_BUFFER_BIT, r, g, b, a, depth, value);
     }
 
     /** The stencil it clears to, where {@link #mask()} holds {@code GL_STENCIL_BUFFER_BIT}. */

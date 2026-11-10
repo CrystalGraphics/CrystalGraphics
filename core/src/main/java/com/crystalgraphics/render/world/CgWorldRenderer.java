@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.world;
 
+import com.crystalgraphics.platform.gl.driver.GLC;
 import com.crystalgraphics.render.post.debug.CgPostDebug;
 import com.crystalgraphics.render.post.volume.CgPostSettings;
 import com.crystalgraphics.shape.CgShape;
@@ -32,7 +33,6 @@ import com.crystalgraphics.gl.buffer.shader.CgBonePalettes;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgMeshLods;
 import com.crystalgraphics.api.mesh.CgMeshTopology;
-import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.world.CgWorldBegin;
 import com.crystalgraphics.platform.service.CgShaderPacks;
 import javax.annotation.Nullable;
@@ -1892,8 +1892,8 @@ public final class CgWorldRenderer {
     private static boolean covers(CgMaterial material) {
         CgPipeline forward = material.pipeline(CgInstanceKind.OBJECT);
         CgBlendState blend = forward == null ? null : forward.state().getBlend();
-        return blend != null && blend.enabled() && blend.srcRgb() == CgGL.GL_ONE
-                && blend.dstRgb() == CgGL.GL_ONE_MINUS_SRC_ALPHA;
+        return blend != null && blend.enabled() && blend.srcRgb() == GLC.GL_ONE
+                && blend.dstRgb() == GLC.GL_ONE_MINUS_SRC_ALPHA;
     }
 
     /** Whether every Emissive pass of draw {@code i}'s chain folds into its Forward draw under the scene. */

@@ -14,14 +14,14 @@ This is the top of the CrystalShader material stack.
 
 | Type | Role |
 |------|------|
-| `CgMaterial` | User-facing material handle backed by a shared `CgMaterialShader` asset. `load(path)` returns the cached instance per path. `newInstance(path)` creates a fresh non-cached instance. `bind()` activates the Forward pass with enabled keywords; detects hot-reload via revision check, then delegates shared bind logic to private `doBind(CgShader, CgRenderPassVariant)`. `bindForPass(CgRenderPassVariant)` activates a specific pass variant (FORWARD uses active keywords; DEPTH uses empty keywords); also delegates to `doBind`. `doBind` (private) owns: UBO wiring, GL state save, UBO upload, sampler binding, render state apply, and `shader.bind()`. `drawChain(CgRenderPassVariant, Runnable)` executes all chained passes in authored order — use this instead of `bindForPass`+`unbind` for correct multi-pass support. `getPassRenderState(CgRenderPassVariant)` returns the render state for the given pass. `hasDepthPass()` — true when an explicit authored `[Depth]` pass is present in the parsed result (parse-state only, does NOT include auto-generated depth variants). `hasCompiledDepthPass()` — true when a compiled Depth GL program exists in the cache (compile-state); includes both explicit and auto-generated depth variants from `recompile()`. Always false for transparent materials. `getMaterialId()` — stable per-instance integer ID from an `AtomicInteger` counter; the material slot of `CgWorldRenderer`'s sort key. `enableKeyword(name)` / `disableKeyword(name)` toggle feature flags; throws for undeclared names. `unbind()` deactivates shader using `lastBoundShader`. `delete()` frees only the per-instance property UBO. Buffers are declared in the source, never attached (§ *Buffers a material reads*). |
+| `CgMaterial` | User-facing material handle backed by a shared `CgMaterialShader` asset. `load(path)` returns the cached instance per path. `newInstance(path)` creates a fresh non-cached instance. `pipeline(kind)` and `pipeline(variant, kind)` are what a recorder draws with (§ *Recording*); `captureBindings(table)` its properties, textures and buffers. `getPassRenderState(CgRenderPassVariant)` returns the render state for the given pass. `hasDepthPass()` — true when an explicit authored `[Depth]` pass is present in the parsed result (parse-state only, does NOT include auto-generated depth variants). `hasCompiledDepthPass()` — true when a compiled Depth program exists (compile-state); includes both explicit and auto-generated depth variants from `recompile()`. Always false for transparent materials. `getMaterialId()` — stable per-instance integer ID from an `AtomicInteger` counter; the material slot of `CgWorldRenderer`'s sort key. `enableKeyword(name)` / `disableKeyword(name)` toggle feature flags; throws for undeclared names. `setNextPass(next)` chains a material the world passes draw right after it. `delete()` frees only the per-instance property UBO. Buffers are declared in the source, never attached (§ *Buffers a material reads*). |
 | `CgParameterCollection` | Values every material reads, set once (Unreal's material parameter collection): `of(namespace)`, `scalar(name, default)` and `vector(name, argb)` answer typed handles, `set`/`get` on the render thread without allocating. Each collection is placed in the `globals` engine buffer (`CgParameterCollectionBuffer`) at its first use, scalars packed by four then vectors, in definition order; `glsl()` is the `#define CG_GLOBAL_<ns>_<name>` lines the compiler appends after `env/buffer/globals.glsl`, and `upload()` the world renderer's once a frame. A collection placed after a shader compiled against it recompiles that shader (`CgAssetReloader.changed` on the provider's `generatedPath()`). `docs/SHADERS.md` § *Global parameters* |
 | `CgParameterCollections` | The `parameters` kind's compiler (`CgBuiltInCompilers`): an asset declares its collection, `base` and `overrides` applied; compiled again with the same layout it answers the same collection, a changed layout throws |
 | `CgMaterialState` | A material's render state where it is not its shader's (Unreal's base property overrides): `builder().blend(CgBlendMode).clip().cull(..)/twoSided().depthWrite(b).separateTranslucency()`; the last orders a translucent draw after every other (`CgWorldRenderer.add`). Blend and clip are its shader asset's (`changesProgram`, `programKey`); cull and depth write are applied per pass by `CgMaterial.getPassRenderState` through `onPass`. `CgMaterial.newInstance(path, state)`, `fromSource(source, state)`, `state()`. `docs/SHADERS.md` § *A material's state* |
 | `CgBlendMode` | `OPAQUE`, `ALPHA`, `PREMULTIPLIED`, `ADDITIVE`, `MODULATE`, `SUBTRACT`: each the `CgBlendState` of the `Blend` line it stands for (`state()`) |
-| `CgRenderPassVariant` | Public enum bridging orchestrators to per-pass LightMode routing. `FORWARD("Forward")`, `DEPTH("Depth")`, `EMISSIVE("Emissive")` (the world's bloom; `CgMaterial.hasEmissivePass()`), `DISTORTION("Distortion")` (offsets the world renderer applies to the scene; `CgMaterial.hasDistortionPass()`). `lightModeName()` returns the canonical LightMode tag value. Used by `bindForPass(CgRenderPassVariant)`, `getPassRenderState(CgRenderPassVariant)`, and `hasDepthPass()`. No shadow-caster variant: the world's shadows are ray-traced from each pixel (`CgWorldLights`), so no material draws from a light's side. |
+| `CgRenderPassVariant` | Public enum bridging orchestrators to per-pass LightMode routing. `FORWARD("Forward")`, `DEPTH("Depth")`, `EMISSIVE("Emissive")` (the world's bloom; `CgMaterial.hasEmissivePass()`), `DISTORTION("Distortion")` (offsets the world renderer applies to the scene; `CgMaterial.hasDistortionPass()`). `lightModeName()` returns the canonical LightMode tag value. Used by `pipeline(CgRenderPassVariant, CgInstanceKind)`, `getPassRenderState(CgRenderPassVariant)`, and `hasDepthPass()`. No shadow-caster variant: the world's shadows are ray-traced from each pixel (`CgWorldLights`), so no material draws from a light's side. |
 | `CgAttachedBuffer` | Immutable descriptor for an engine token's buffer, declared for a compile by `#pragma cg_use`: an SSBO or a UBO. Created via `CgAttachedBuffer.of(buffer, macroName)` (SSBO, STD430) or `CgAttachedBuffer.of(CgUniformBuffer)` (UBO, STD140). `isUbo()` returns `true` for UBO entries (macroName is null). SSBO fields: `buffer`, `macroName`, `structName` (= `format.getGlslName()`), `ssboArrayName` (`_cg_{lowerFirst}Arr`), `tboGetterName` (`_cg_get{structName}`). UBO entries: only `buffer` is set; macroName/structName/ssboArrayName/tboGetterName are all null. Block/sampler/UBO block name is always `buffer.getName()` — required for `wireShader()`. |
-| `CgMaterialRegistry` | Singleton load/reload/delete lifecycle manager. `get()` returns the singleton. `getOrCreate(String)` / `getOrCreate(CgMaterialKey)` check cache; on miss call `CgMaterial.create()` (which uses `CgMaterialShaderRegistry` internally), cache, and return. `reloadAll()` delegates to `CgMaterialShaderRegistry.get().reloadAll()` — marks all shader assets dirty; materials detect revision change on next `bind()`. `deleteAll()` deletes all cached material instances (freeing per-instance UBOs), then cascades to `CgMaterialShaderRegistry.get().deleteAll()` to free GL shader programs. Registered for teardown in `CgEngineLifecycle.shutdown()`. `getOrCreate(definition, drawKeyword)` is a `CgMaterialDefinition`'s material (`CgMaterial.of(definition)` with none): one a definition and draw keyword, by identity, its archetype under `definition.state()`, its keywords, constants and textures with their samplers, a texture made in code bound as the object (`Texture.resolve`), each file made as its `texture` asset says (`texture(path)`: sRGB or linear, mips, a `.hdr` as RGBA16F, `cube: true` as six stacked faces), each texture bound only to its kind's sampler (a cube's `samplerCube`, an array's `sampler2DArray`, a volume's `sampler3D`); `release(definition)` deletes an old generation's |
+| `CgMaterialRegistry` | Singleton load/reload/delete lifecycle manager. `get()` returns the singleton. `getOrCreate(String)` / `getOrCreate(CgMaterialKey)` check cache; on miss call `CgMaterial.create()` (which uses `CgMaterialShaderRegistry` internally), cache, and return. `reloadAll()` delegates to `CgMaterialShaderRegistry.get().reloadAll()` — marks all shader assets dirty; a material's next capture rebuilds its properties from the new parse. `deleteAll()` deletes all cached material instances (freeing per-instance UBOs), then cascades to `CgMaterialShaderRegistry.get().deleteAll()` to free GL shader programs. Registered for teardown in `CgEngineLifecycle.shutdown()`. `getOrCreate(definition, drawKeyword)` is a `CgMaterialDefinition`'s material (`CgMaterial.of(definition)` with none): one a definition and draw keyword, by identity, its archetype under `definition.state()`, its keywords, constants and textures with their samplers, a texture made in code bound as the object (`Texture.resolve`), each file made as its `texture` asset says (`texture(path)`: sRGB or linear, mips, a `.hdr` as RGBA16F, `cube: true` as six stacked faces), each texture bound only to its kind's sampler (a cube's `samplerCube`, an array's `sampler2DArray`, a volume's `sampler3D`); `release(definition)` deletes an old generation's |
 | `CgMaterialKey` | `@Desugar record` wrapping a resource-path string. `of(String)` factory. Value equality. Used as a typed alternative to raw strings. |
 | `CgMaterialDefinition`, `CgMaterialDefinitions` | A `material` asset compiled (`CgMaterialDefinitions.register()` makes it the kind's compiler): its parent chain merged, every `values`/`textures` key and keyword checked against the archetype, its `CgMaterialPermutation` (interned program key: archetype, keywords, blend class, clip, shading; a value-only child shares its parent's), constants, row layout (`CgMaterialRowLayout`), `Draw` state, domain and shading model. `route(p)` and `requireRow(p, who)` (a key refused on a non-row property), `requireDomain(d, who)`, `state()`. `CgMaterialDefinition.of(id, shader)` writes the file's tree (`tree()`) and compiles it (`build()`); `CgMaterialDefinitions.derive(parent, overrides)` is a child made in code, interned per parent generation (a `WeakHashMap` on the definition) by its overrides in canonical form (floats by bits, keywords sorted) |
 | `CgMaterialArchetypes` | Where an archetype is read: `FILES` through `CgIO`, a kit's `<ns>:shaders/<name>.shader` falling back to the engine's `crystalgraphics:shaders/vfx/archetype/<name>.shader` (`resolve`); its domain from `Tags { "Domain" = ... }` |
@@ -47,31 +47,17 @@ CgWorldRenderer.get().draw(mesh, material).at(x, y, z).custom(0, r, g, b, 1f).su
 
 > **Reserved texture unit**: `CgBindingPoints.DEPTH_TEXTURE_UNIT` is reserved by the engine for
 > `cg_DepthBuffer`. Do not bind user `Properties` samplers to that unit — the engine will
-> silently overwrite the binding on every `material.bind()` call.
+> silently overwrite the binding on every draw.
 
-### CgMaterial.bind() and CgMaterial.bindForPass(CgRenderPassVariant)
+### Passes
 
-`bind()` activates the Forward-lit pass with the current enabled keyword set. Use it for standard opaque/transparent geometry draws.
+`getPassRenderState(CgRenderPassVariant)` returns the `CgRenderState` for the given pass, compiling nothing.
 
-`bindForPass(CgRenderPassVariant variant)` activates a specific pass variant:
-- `FORWARD` — same as `bind()` but called explicitly (uses active keywords)
-- `DEPTH` — activates `Depth` pass with empty keywords
-
-```java
-// Forward draw:
-material.bind();
-CgGL.glDrawArraysInstanced(CgGL.GL_TRIANGLES, 0, vertexCount, n);   // geometry the caller bound
-material.unbind();
-
-// Depth-only draw (a prepass):
-material.bindForPass(CgRenderPassVariant.DEPTH);
-CgGL.glDrawArraysInstanced(CgGL.GL_TRIANGLES, 0, vertexCount, n);
-material.unbind();
-```
-
-`getPassRenderState(CgRenderPassVariant)` returns the `CgRenderState` for the given pass, without binding. Useful for querying cull mode, depth write, etc. without activating the GL program.
-
-`hasDepthPass()` — true when an explicit authored `[Depth]` pass is present in the last successful parse (`hasParsedPass("Depth")`). Parse-state only — does NOT include auto-generated depth variants. `hasCompiledDepthPass()` — true when a compiled depth GL program exists in the cache (under key `"Depth"`). Compile-state — includes both explicit and auto-generated depth variants produced by `recompile()`. This is the correct query for `CgDepthPrepassRenderer` to decide whether to use `bindForPass(DEPTH)`. Always false for transparent materials (depth auto-gen is opaque-only).
+`hasDepthPass()` — true when an explicit authored `[Depth]` pass is present in the last successful parse
+(`hasParsedPass("Depth")`). Parse-state only — does NOT include auto-generated depth variants. `hasCompiledDepthPass()` —
+true when a compiled depth program exists (under key `"Depth"`): includes both explicit and auto-generated depth
+variants produced by `recompile()`. The query a depth prepass asks before `pipeline(DEPTH, kind)`. Always false for
+transparent materials (depth auto-gen is opaque-only).
 
 ### CgMaterial.applyProperties(consumer)
 ```java
@@ -81,13 +67,11 @@ material.applyProperties(b -> {
 });
 ```
 Routes writes through the material's `CgMaterialProperties` instance (its `CgMaterialValues`). Values are stored persistently on the property objects and survive
-across frames until overwritten. The properties block is repacked on the next `bind()` only if a
-value actually moved — writing the same value again, or only a sampler, costs a comparison — and then
-uploaded only if its bytes differ from the last upload or it is the frame's first bind (counter
-`material.propsPack`). Returns `this` for chaining. Unknown names are silently
+across frames until overwritten. The next capture (`captureBindings`) repacks the properties only if a
+value actually moved — writing the same value again, or only a sampler, costs a comparison. Returns `this` for chaining. Unknown names are silently
 ignored. A material has no other values: matrices and buffers are blocks the engine binds.
 
-**Safe to call before first `bind()`, and compiles nothing**: properties are built from the shader's
+**Safe to call before any compile, and compiles nothing**: properties are built from the shader's
 *parse* (`CgMaterialShader.ensureParsed()`), so a write before any compile lands at once. Only a source that
 does not parse buffers the consumer, replayed once it does.
 
@@ -95,8 +79,8 @@ does not parse buffers the consumer, replayed once it does.
 
 Shaders declare optional compile-time feature flags using `#pragma cg_feature` in their preamble.
 Each enabled keyword injects `#define NAME 1` into both vertex and fragment sources.
-Every unique keyword-set combination is compiled into a separate GL program and cached lazily
-on the first `bind()` call with that combination.
+Every unique keyword-set combination is compiled into a separate program and cached lazily, at the
+first draw of a pipeline with that combination.
 
 **Declaring keywords in a `.shader` file:**
 ```glsl
@@ -142,7 +126,7 @@ void fragment(in v2f i, out vec4 fragColor) {
 
 **Enabling / disabling keywords at runtime:**
 ```java
-material.enableKeyword("NORMAL_MAP");        // next bind() compiles + caches this variant
+material.enableKeyword("NORMAL_MAP");        // the next pipeline(kind) asked uses this variant
 material.disableKeyword("FOG_ON");           // reverts to variant without FOG_ON
 boolean on = material.isKeywordEnabled("FOG_ON");  // false by default
 ```
@@ -154,8 +138,8 @@ boolean on = material.isKeywordEnabled("FOG_ON");  // false by default
   throws `IllegalArgumentException` for undeclared names.
 - `#pragma cg_feature` lines are **never emitted** in the generated GLSL — they are stripped
   during parsing. Only the `#define NAME 1` lines (for enabled keywords) appear in compiled output.
-- `enableKeyword()` is safe to call before the first `bind()` — triggers a lazy compile if needed.
-- Each unique keyword combination shares the same `propStore` and UBO — only the GL program differs.
+- `enableKeyword()` is safe to call before any compile: it parses, never compiles.
+- Each unique keyword combination shares the same `propStore` and UBO — only the program differs.
 
 ### CgMaterial.load(resourcePath) / load(CgMaterialKey)
 ```java
@@ -177,24 +161,9 @@ Internal `CgMaterial.create(resourcePath)` steps (package-private, only called b
 
 Throws `IllegalStateException` if compile/link fails — never returns a broken material.
 
-### CgMaterial.bind()
-
-No-arg bind activated after `pipeline.beginFrame()` and after writing per-object records:
-```java
-material.bind();
-CgGL.glDrawArrays(CgGL.GL_TRIANGLES, 0, vertexCount);   // geometry the caller bound
-material.unbind();
-```
-
-Bind steps (in order):
-1. If `dirty`, calls `recompile()` — hot-reload from `resourcePath`
-2. Stage property values into ephemeral bindings
-3. `shader.bind()` — activates GL program and flushes all bindings
-4. `objectBuffer.bind(shader)` — binds SSBO and wires it
-
 ### CgMaterial.precache() — compiling without stalling a frame
 
-The first `bind()` compiles and links on the spot, which is tens of milliseconds a program. A caller that
+A pipeline's first draw compiles its program on the spot, which is tens of milliseconds a program. A caller that
 swaps materials while drawing every frame (the shader graph's previews) polls instead, and keeps drawing the
 old material until the new one is ready:
 
@@ -205,25 +174,23 @@ if (next.precache()) {          // compiled, or failed: next.lastCompileError() 
     current.delete();
     current = next;
 }
-current.bind();
+draw(current.pipeline(kind));   // the old picture until the new one is ready
 ```
 
 - `precache()` submits every program of the material (`CgMaterialShader.submitRecompile`) and answers false
-  on that frame, always; after that it polls `GL_COMPLETION_STATUS_KHR` where the driver has
-  `KHR`/`ARB_parallel_shader_compile` (`CgCapabilities.isParallelShaderCompile()`), and answers true where it
-  does not — the driver has had one frame of its own threads.
-- A `bind()` before it answers true waits for the compile there, exactly as an unprecached material does.
+  on that frame, always; after that it polls whether the compile has landed.
+- A draw before it answers true waits for the compile there, exactly as an unprecached material does.
 - It answers false without submitting while `CgWarmBudget` is spent for the frame, so many materials precached at
   once spread over frames.
 - It compiles the Forward pass only. The auto-generated depth program is built, synchronously,
-  the first time `bindForPass(DEPTH)` or `hasCompiledDepthPass()` asks — a preview never does, and they
+  the first time a Depth pipeline or `hasCompiledDepthPass()` asks — a preview never does, and they
   were half of what an edit compiled.
 - `-Dcrystalgraphics.shader.parallelCompile=false` makes it answer true at once: the escape hatch.
 
 ### Recording — `pipeline(kind)` and `captureBindings(table)`
 
-What a recorder asks of a material (`render-graph` G0; `render/draw/CLAUDE.md`). **Neither touches GL**, so a
-recorder may run on any thread:
+What a recorder asks of a material (`render-graph` G0; `render/draw/CLAUDE.md`). **Neither touches the device**,
+so a recorder may run on any thread:
 
 ```java
 CgPipeline p = material.pipeline(CgInstanceKind.QUAD);   // Forward pass, keywords enabled now; a CPU key
@@ -234,20 +201,20 @@ CgPipeline glow = material.pipeline(CgRenderPassVariant.EMISSIVE, CgInstanceKind
 - Forward and Emissive pipelines take the enabled keywords and are cached per kind and keyword set, so asking every
   frame allocates nothing; any other pass is built on each call, with no keywords.
 
-- The program behind `p` is compiled on the render thread when a batch first draws with it (`p.bind()`), or
-  polled with `p.precache()`.
+- The program behind `p` is compiled on the render thread when a batch first draws with it, or polled with
+  `p.precache()`.
 - `captureBindings` puts a sampler's texture at its **index among the declared samplers**, the unit every
   program is wired with at compile — whatever unit `sampler(name, unit, texture)` was given.
 - Equal snapshots intern to one id; a property changed after the capture does not change what it holds.
 - A buffer the shader's `Buffers { }` declares is bound with `material.buffer(name, buffer)` and captured the same
-  way; a capture with one unbound throws. `bind()` binds none (SHADERS.md § *Reading a kernel's buffers*).
+  way; a capture with one unbound throws (SHADERS.md § *Reading a kernel's buffers*).
 
 ### CgMaterial.reload()
 Called by `CgMaterialRegistry.reloadAll()` during hot-reload (F3+T).
-Sets `dirty = true`; the full load→parse→compile→relink pipeline runs lazily on the next `bind()`.
+Sets `dirty = true`; the full load→parse→compile pipeline runs lazily at the next use.
 
 ### CgMaterial.recompile()
-Full hot-reload pipeline (called lazily from `bind()` when `dirty`):
+Full hot-reload pipeline (called lazily at the next use when `dirty`):
 1. `CgIO.loadSource(resourcePath)` — re-read `.shader` file
 2. `CgShaderParser.parse()` — re-parse
 3. `CgMaterialShaderCompiler.compile()` — regenerate GLSL

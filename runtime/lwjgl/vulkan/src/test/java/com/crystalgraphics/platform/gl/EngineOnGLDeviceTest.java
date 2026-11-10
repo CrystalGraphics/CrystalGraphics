@@ -1,14 +1,11 @@
 package com.crystalgraphics.platform.gl;
 
+import org.lwjgl.system.MemoryUtil;
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.gl.texture.CgFallbackTextures;
 import com.crystalgraphics.lwjgl3.Lwjgl3GLDriver;
 import com.crystalgraphics.platform.gl.binding.GLBindingLayout;
 import com.crystalgraphics.platform.gl.binding.GLBindingPoints;
-import com.crystalgraphics.platform.gl.state.CgGlState;
-import com.crystalgraphics.platform.gl.tracked.CgTrackedGLBackend;
-import com.crystalgraphics.platform.gl.tracked.CgTrackedGLContext;
-import com.crystalgraphics.platform.gl.tracked.CgTrackedStateProvider;
 import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.rhi.binding.CgBindingLayout;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
@@ -54,15 +51,20 @@ public class EngineOnGLDeviceTest {
 
     private record Recorded(String label, String vertex, String fragment) {}
 
-    /** The tracked backend's compiler, recording each material program's source, in its bound and bindless forms. */
+    /** The device's compiler, recording each material program's source, in its bound and bindless forms. */
     private record Recording(CgGlslCompiler linker, Consumer<Recorded> out) implements CgGlslCompiler {
         @Override
         public Program compile(String vertex, String fragment, Map<String, Integer> attribs, String label) {
+            return linker.compile(vertex, fragment, attribs, label);
+        }
+
+        @Override
+        public Explicit compileExplicit(String vertex, String fragment, Map<String, Integer> attribs, String label) {
             if (vertex.contains("CG_BIND(")) {
                 out.accept(new Recorded(label, vertex, fragment));
                 out.accept(new Recorded(label + " bindless", bindless(vertex), bindless(fragment)));
             }
-            return linker.compile(vertex, fragment, attribs, label);
+            return linker.compileExplicit(vertex, fragment, attribs, label);
         }
 
         private static String bindless(String glsl) {
@@ -73,6 +75,16 @@ public class EngineOnGLDeviceTest {
         @Override
         public ComputeProgram compileCompute(String glsl, String label) {
             return linker.compileCompute(glsl, label);
+        }
+
+        @Override
+        public ExplicitCompute compileExplicitCompute(String glsl, String label) {
+            return linker.compileExplicitCompute(glsl, label);
+        }
+
+        @Override
+        public boolean compilesOnAnyThread() {
+            return linker.compilesOnAnyThread();
         }
     }
 
@@ -88,19 +100,11 @@ public class EngineOnGLDeviceTest {
         try (GLTestWindow window = new GLTestWindow()) {
             device = new CgGLDevice(new Lwjgl3GLDriver(), translator, 64, 64, true);
             shaderc = shaderc_compiler_initialize();
-            Thread owner = Thread.currentThread();
-            List<Recorded> elsewhere = Collections.synchronizedList(new ArrayList<>());
-            Consumer<Recorded> sink = r -> {
-                if (Thread.currentThread() == owner) build(r);
-                else elsewhere.add(r);
-            };
+            // Built after the walk: a compile's caller holds LWJGL's thread stack, which a second shaderc inside it overflows
+            List<Recorded> programs = Collections.synchronizedList(new ArrayList<>());
             try (ShadercGlslCompiler linker = new ShadercGlslCompiler()) {
-                CgTrackedGLBackend tracked = new CgTrackedGLBackend(new CgNullRHI(64, 64), new Recording(linker, sink), true);
-                CgGL.init(tracked);
-                CgCapabilities.init(new CgTrackedGLContext());
+                new CgNullRHI(64, 64).install(new Recording(linker, programs::add));
                 CgCapabilities.clearCache();
-                CgGlState.reset();
-                CgGlState.setProvider(new CgTrackedStateProvider(tracked));
                 CgBindingPoints.init(CgCapabilities.detect());
                 CgFallbackTextures.init();
                 Class.forName("com.crystalgraphics.text.render.CgTextMaterials");
@@ -108,13 +112,12 @@ public class EngineOnGLDeviceTest {
                 ShippedPrograms.linkEveryVariant(walkFailures);
                 assertTrue(String.join("\n", walkFailures), walkFailures.isEmpty());
             } finally {
-                CgGlState.reset();
             }
-            for (Recorded r : elsewhere) build(r);
+            for (Recorded r : programs) build(r);
             assertTrue("no program was recorded: the test proves nothing", recorded > 10);
             shaderc_compiler_release(shaderc);
             device.close();
-            String report = "programs " + recorded + " (" + elsewhere.size() + " compiled off the test thread), built on the"
+            String report = "programs " + recorded + ", built on the"
                     + " device " + built + "\n"
                     + "GLSL path: SPIRV-Cross " + translate / 1_000_000 + " ms, driver compile+link " + glslDriver / 1_000_000
                     + " ms\n"
@@ -156,7 +159,6 @@ public class EngineOnGLDeviceTest {
                     List.of(), CgGraphicsPipelineDesc.Topology.TRIANGLES, CgGraphicsPipelineDesc.Raster.DEFAULT,
                     CgGraphicsPipelineDesc.DepthStencil.OFF, targets, CgFormat.DEPTH32_FLOAT, 1));
             device.release(pipeline);
-            device.endFrame();
             built++;
         } catch (RuntimeException e) {
             failures.add(r.label() + ": " + firstLines(e.getMessage()));
@@ -173,6 +175,10 @@ public class EngineOnGLDeviceTest {
                 }
             }
             return;
+        } finally {
+            device.release(vs);
+            device.release(fs);
+            device.endFrame();
         }
 
         // the two paths, measured on what the driver does: the same GLSL text, compiled or ingested as SPIR-V
@@ -233,7 +239,7 @@ public class EngineOnGLDeviceTest {
         shaderc_compile_options_set_target_env(options, shaderc_target_env_vulkan, shaderc_env_version_vulkan_1_2);
         shaderc_compile_options_set_vulkan_rules_relaxed(options, false);
         shaderc_compile_options_set_auto_map_locations(options, true);
-        long result = shaderc_compile_into_spv(shaderc, source, kind, "material", "main", options);
+        long result = compileHeap(shaderc, source, kind, "material", options);
         try {
             if (shaderc_result_get_compilation_status(result) != shaderc_compilation_status_success) {
                 if (failures.size() < 3) failures.add(shaderc_result_get_error_message(result));
@@ -247,11 +253,21 @@ public class EngineOnGLDeviceTest {
         }
     }
 
+    /** shaderc on {@code source} from the native heap: a material's largest variants outgrow LWJGL's thread stack. */
+    private static long compileHeap(long compiler, String source, int kind, String name, long options) {
+        ByteBuffer text = MemoryUtil.memUTF8(source, false);
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            return shaderc_compile_into_spv(compiler, text, kind, stack.UTF8(name), stack.UTF8("main"), options);
+        } finally {
+            MemoryUtil.memFree(text);
+        }
+    }
+
     /** GL SPIR-V of {@code glsl}, or null where shaderc refuses it. */
     private static ByteBuffer glSpirv(long compiler, String glsl, int kind) {
         long options = shaderc_compile_options_initialize();
         shaderc_compile_options_set_target_env(options, shaderc_target_env_opengl, shaderc_env_version_opengl_4_5);
-        long result = shaderc_compile_into_spv(compiler, glsl, kind, "gl", "main", options);
+        long result = compileHeap(compiler, glsl, kind, "gl", options);
         try {
             if (shaderc_result_get_compilation_status(result) != shaderc_compilation_status_success) return null;
             ByteBuffer b = shaderc_result_get_bytes(result);

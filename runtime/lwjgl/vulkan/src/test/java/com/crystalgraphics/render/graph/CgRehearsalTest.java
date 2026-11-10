@@ -6,11 +6,6 @@ import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.gl.texture.CgFallbackTextures;
 import com.crystalgraphics.platform.rhi.nulldrv.CgNullRHI;
 import com.crystalgraphics.platform.gl.CgCapabilities;
-import com.crystalgraphics.platform.gl.CgGL;
-import com.crystalgraphics.platform.gl.state.CgGlState;
-import com.crystalgraphics.platform.gl.tracked.CgTrackedGLBackend;
-import com.crystalgraphics.platform.gl.tracked.CgTrackedGLContext;
-import com.crystalgraphics.platform.gl.tracked.CgTrackedStateProvider;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
 import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.render.draw.CgOrder;
@@ -52,12 +47,8 @@ public class CgRehearsalTest {
     public static void install() {
         compiler = new ShadercGlslCompiler();
         device = new CgNullRHI(64, 64);
-        CgTrackedGLBackend gl = new CgTrackedGLBackend(device, compiler, true);
-        CgGL.init(gl);
-        CgCapabilities.init(new CgTrackedGLContext());
+        device.install(compiler);
         CgCapabilities.clearCache();
-        CgGlState.reset();
-        CgGlState.setProvider(new CgTrackedStateProvider(gl));
         CgBindingPoints.init(CgCapabilities.detect());
         CgFallbackTextures.init();
     }
@@ -65,7 +56,6 @@ public class CgRehearsalTest {
     @AfterClass
     public static void uninstall() {
         CgFrameRing.reset();   // its fences are this backend's: the next class installs another
-        CgGlState.reset();
         compiler.close();
     }
 

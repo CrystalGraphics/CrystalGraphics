@@ -1,9 +1,9 @@
 package com.crystalgraphics.compute;
 
+import com.crystalgraphics.platform.gl.driver.GLC;
 import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.gl.buffer.CgBufferReadback;
 import com.crystalgraphics.gl.buffer.CgReadback;
-import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.rhi.CgDeviceSection;
 import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.rhi.resource.CgTextureRegion;
@@ -78,7 +78,7 @@ public final class CgReplayedReads {
         return new CgReplayedReads(Mode.REPLAYING, keys, arrived);
     }
 
-    /** The first {@code count} words of a buffer, known by its {@code CgGL} name. */
+    /** The first {@code count} words of a buffer, known by its device name ({@code CgDeviceNames}). */
     public int[] words(int buffer, int count) {
         ByteBuffer bytes = bytes("words " + count, count * 4, () -> {
             int[] words = new int[count];
@@ -127,9 +127,9 @@ public final class CgReplayedReads {
     /** {@link #rgba(int, int, int, CgTextureType)} of {@code view}'s level and layer. */
     public float[] rgba(CgTextureView view, int width, int height, CgTextureType type) {
         ByteBuffer bytes = pixels(view, width, height, type);
-        int channels = type.glBaseFormat == CgGL.GL_RED ? 1 : type.glBaseFormat == CgGL.GL_RG ? 2
-                : type.glBaseFormat == CgGL.GL_RGB ? 3 : 4;
-        int size = type.glType == CgGL.GL_UNSIGNED_BYTE ? 1 : type.glType == CgGL.GL_HALF_FLOAT ? 2 : 4;
+        int channels = type.glBaseFormat == GLC.GL_RED ? 1 : type.glBaseFormat == GLC.GL_RG ? 2
+                : type.glBaseFormat == GLC.GL_RGB ? 3 : 4;
+        int size = type.glType == GLC.GL_UNSIGNED_BYTE ? 1 : type.glType == GLC.GL_HALF_FLOAT ? 2 : 4;
         float[] out = new float[width * height * 4];
         for (int p = 0; p < width * height; p++) {
             for (int c = 0; c < 4; c++) {
