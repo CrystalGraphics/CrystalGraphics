@@ -538,6 +538,42 @@ float height = fps.measure().totalHeight();                        // without dr
 - Labels in the world that persist and move have their own path, `CgWorldRenderer.get().text(...)`: billboarded
   or turned, depth-tested, kept on the GPU across frames ([`ENGINE_API.md`](ENGINE_API.md)).
 - Styles (fills, outlines, shadows, gradients, materials), fonts and layout: [`font/README.md`](font/README.md).
+- **A draw's colour fades each layer on its own**: half faded, an outlined, shadowed word shows its outline through
+  its fill. To fade it as one picture, retain it (below).
+
+### Retained: fading, tinting or glowing as one picture
+
+`CgCanvasRetainer` is UMG's Retainer Box: items painted into a texture of its own, cleared transparent, then drawn
+from it as images. Drawn under the premultiplied image, a region fades and tints as one flat picture; drawn under the
+additive mask, its silhouette glows in a colour. A damage number that fades out is the use.
+
+```java
+static final CgCanvasRetainer RETAINED = new CgCanvasRetainer("mymod.hud");   // once, kept
+// in a load task, so they are built before the first frame
+image = CgCanvasMaterials.SCREEN.image(CgBlendMode.PREMULTIPLIED);
+glow = CgCanvasMaterials.SCREEN.mask(CgBlendMode.ADDITIVE);
+
+CgRenderStage.HUD.register(CgRenderStage.WORLD_WIDGETS, frame -> {
+    // 1. Paint, before the canvas's first item: 300 by 200 units, at the largest scale it is drawn at
+    CgCanvas paint = RETAINED.paint(frame.recording(), 300, 200, scale);
+    paint.text().style(DAMAGE).text(damage).at(10, 10).submit();      // a region per thing: this one at (0, 0)
+    paint.text().style(TITLE).text("Critical!").at(10, 110).submit(); // and this one at (0, 100)
+    RETAINED.end();
+
+    // 2. Draw regions of it, each as one quad: placed, posed and coloured as any quad
+    CgCanvas canvas = frame.canvas();
+    RETAINED.quad(canvas, image, 0, 0, 300, 100).at(x, y).pose(pose).color(0x80FFFFFF).submit();   // half faded
+    RETAINED.quad(canvas, glow, 0, 0, 300, 100).at(x, y).pose(pose).color(0x60FFE080).submit();    // its glow
+});
+```
+
+- **Paint every frame it is drawn**, before the first item on `frame.canvas()`. A texture's first draw in the frame
+  that samples it has come out empty on NVIDIA, and painting each frame follows a window's resize.
+- **Several things share one**: a region each, all painted in one pass, then one quad per region.
+- **`scale` is texels a unit**: the largest a region is drawn at, so it is never magnified.
+- **What it holds is premultiplied**: the `PREMULTIPLIED` image, never `ALPHA`, which darkens its edges. The quad's
+  colour is straight; the material premultiplies it.
+- It grows to fit and never shrinks. `release(recording)` when done with it, `delete()` at a context's teardown.
 
 ---
 

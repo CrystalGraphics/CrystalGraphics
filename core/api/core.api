@@ -8923,6 +8923,15 @@ com/crystalgraphics/render/canvas/CgCanvasMaterials
   method public strokeCoverage ()Lcom/crystalgraphics/api/material/CgMaterial;
   method public,static precache (Lcom/crystalgraphics/render/world/CgPipelineList;)V
   method public,static releaseAll ()V
+com/crystalgraphics/render/canvas/CgCanvasRetainer
+  access public,final
+  extends java/lang/Object
+  method public <init> (Ljava/lang/String;)V
+  method public delete ()V
+  method public end ()V
+  method public paint (Lcom/crystalgraphics/render/graph/CgRecording;FFF)Lcom/crystalgraphics/render/canvas/CgCanvas;
+  method public quad (Lcom/crystalgraphics/render/canvas/CgCanvas;Lcom/crystalgraphics/api/material/CgMaterial;FFFF)Lcom/crystalgraphics/render/canvas/CgQuadBatch$Quad;
+  method public release (Lcom/crystalgraphics/render/graph/CgRecording;)V
 com/crystalgraphics/render/canvas/CgClipTable
   access public,final
   extends java/lang/Object

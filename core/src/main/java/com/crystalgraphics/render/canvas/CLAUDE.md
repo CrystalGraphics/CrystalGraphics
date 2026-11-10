@@ -19,6 +19,7 @@ firing's camera. **Using it: [`docs/CANVAS.md`](../../../../../../../../docs/CAN
 | `CgCanvasMaterials.java` | The default materials, `SCREEN` and `WORLD`: image, mask, their 2D-array forms, curve, box, and screen coverage rasters; one shared instance per kind and blend, `newBox`/`newCurve` for a caller's own; the blend the material state's. Their shaders are `shaders/canvas/` (with `text.shader`), and `lib/canvas.glsl` |
 | `CgCanvasGradient.java`, `CgCanvasGrid.java`, `CgCanvasGlass.java` | A gradient (CSS's line or a radial, eight stops a draw), a grid and a pane of glass (its `Look` presets): each owns its material and packs its properties for the next quad. A thumbnail is no canvas draw: `CgGpuOps.shrink` |
 | `CgCanvasBackdrop.java` | What is behind a pane of glass: a copy of the pixels a quad covers and its blur, captured between the canvas's passes (`CgCanvas.breakPass`), on the screen or in the world. It owns the two textures |
+| `CgCanvasRetainer.java` | UMG's Retainer Box: items painted through a canvas of its own into a requested texture, cleared transparent, then drawn from it as quads, under the premultiplied image (fades as one picture) or the additive mask (its silhouette glows). The one sanctioned canvas of your own inside a firing: it draws into its texture alone |
 | `CgQuadRecord.java` | The quad record's float offsets, for code that bakes records itself (`CgTextBatch`, `CgWorldText`) |
 | `CgClipTable.java` | A recording's rounded clips (`#pragma cg_use clip`) |
 | `CgShapeTable.java` | A recording's box shapes, so every box is a quad of one pipeline (`#pragma cg_use shape`); `canvas.shapes()`, drawn by `CgCanvasMaterials.box()` |
@@ -34,7 +35,7 @@ firing's camera. **Using it: [`docs/CANVAS.md`](../../../../../../../../docs/CAN
 - **One active batcher**: a quad after a curve seals the curve's run first, so painter's order holds without flushes.
 - **Inside a stage firing, draw into `frame.canvas()`**, never a canvas of your own: it opens lazily on the firing's
   target and constants, so a renderer that draws nothing records nothing. Code drawing for its caller takes the
-  canvas as a parameter.
+  canvas as a parameter. The exception is `CgCanvasRetainer`'s, which draws into its own texture alone.
 - **Text is an item** (`text/render/CLAUDE.md`): `text()` lands a draw's quads through the canvas's `CgTextBatch`,
   made on first use. It reads the canvas's camera at each draw — the recording's constants, else the armed source's,
   else `CgImmediate.constants()` — so an immediate canvas's camera changes only between a `flush()` and the next draw.
