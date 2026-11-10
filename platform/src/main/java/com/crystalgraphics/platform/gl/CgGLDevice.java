@@ -141,9 +141,9 @@ public final class CgGLDevice implements CgRHI {
 
     private record HeapKey(CgTextureView view, GLSampler sampler) {}
 
-    /** What the device calls past GL 3.3, by the extension that brought each into 4.x core. */
-    private static final List<String> PAST_33 = List.of(
-            "GL_ARB_direct_state_access", "GL_ARB_clip_control", "GL_ARB_compute_shader",
+    /** What the device calls past GL 3.2, by the extension that brought each into 3.3 or 4.x core. */
+    private static final List<String> PAST_32 = List.of(
+            "GL_ARB_sampler_objects", "GL_ARB_timer_query", "GL_ARB_texture_rgb10_a2ui", "GL_ARB_direct_state_access", "GL_ARB_clip_control", "GL_ARB_compute_shader",
             "GL_ARB_shader_storage_buffer_object", "GL_ARB_shader_image_load_store", "GL_ARB_base_instance",
             "GL_ARB_draw_indirect", "GL_ARB_multi_draw_indirect", "GL_ARB_buffer_storage", "GL_ARB_texture_storage",
             "GL_ARB_texture_storage_multisample", "GL_ARB_copy_image", "GL_ARB_clear_buffer_object",
@@ -190,12 +190,13 @@ public final class CgGLDevice implements CgRHI {
         String version = gl.glGetString(GL_VERSION);
         int at = gl.glGetInteger(GL_MAJOR_VERSION) * 10 + gl.glGetInteger(GL_MINOR_VERSION);
         if (at < 45) {
-            // A context named older may still do 4.5's work: NVIDIA answers a 3.2 core request with 3.3 and every
-            // later ARB extension. What the device calls past 3.3, extension by extension, then GLSL 4.60 compiled.
+            // A context named older may still do 4.5's work: Minecraft 1.17-1.21.4 asks for 3.2 core, which NVIDIA
+            // answers as 3.2 with every later ARB extension. What the device calls past 3.2, extension by extension,
+            // then GLSL 4.60 compiled.
             List<String> missing = new ArrayList<>();
-            for (String extension : PAST_33) if (!gl.hasExtension(extension)) missing.add(extension);
-            if (at < 33 || !missing.isEmpty() || !compiles(gl, 460)) {
-                throw new IllegalStateException("CgGLDevice needs GL 4.5, or 3.3 with the extensions 4.5 absorbed and "
+            for (String extension : PAST_32) if (!gl.hasExtension(extension)) missing.add(extension);
+            if (at < 32 || !missing.isEmpty() || !compiles(gl, 460)) {
+                throw new IllegalStateException("CgGLDevice needs GL 4.5, or 3.2 with the extensions 4.5 absorbed and "
                         + "GLSL 4.60, not " + version + (missing.isEmpty() ? "" : "; missing " + missing));
             }
         }
