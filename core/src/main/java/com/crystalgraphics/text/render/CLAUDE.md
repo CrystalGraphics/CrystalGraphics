@@ -30,7 +30,7 @@ How text looks is `text/style`'s `CgTextStyle`: a face and a stack of `CgTextLay
 
 The fluent request. `canvas.text()` is the canvas's one scratch, reset by the next call; `canvas.retainedText()`
 is one a caller holds across frames. `CgTextDraw.queued(queue)` hands itself to `queue` at `submit()` instead of
-drawing (`CgWorldText`'s labels); `detached()` belongs to no canvas.
+drawing (`CgCanvasLabels`' labels); `detached()` belongs to no canvas.
 
 - Priorities, not exclusions: `layout` > `paragraph` > `text`, `family` > `font`.
 - `pose(PoseStack)` or `pose(Matrix4f)` is read at `submit()`, so a caller may keep pushing its stack.
@@ -81,8 +81,9 @@ submit order**: a later label covers an earlier one, shadow and all.
 **Captured text** (`capture`, `drawCaptured`, `drawCapturedDepth`, `CgTextCapture`): a draw's records kept rather
 than landed, in the draw's own space, for text whose content stays while its pose moves. A batch with no canvas
 (`new CgTextBatch(null)`) takes its camera from `camera(...)`. `drawCaptured` draws them as one OBJECT draw of
-`text.shader`'s `WORLD_LABEL` variant, each record placed by the object record its `node` names. `CgWorldText`
-keeps every label this way: 10,000 shadowed labels went from 34 ms a frame to 4.3.
+`text.shader`'s `WORLD_LABEL` variant, each record placed by the object record its `node` names. The canvas's
+`CgCanvasLabels` is the one user, keeping every `world.text` label this way: 10,000 shadowed labels went from 34 ms a
+frame to 4.3. Text that persists and moves draws through it, not through these calls.
 
 ```java
 CgTextBatch labels = new CgTextBatch(null);

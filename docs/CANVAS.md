@@ -535,8 +535,10 @@ float height = fps.measure().totalHeight();                        // without dr
 - **A draw's style paints its layers bottom to top within the draw** (`CgTextStyle`); across draws, submit order
   holds: a later label covers an earlier one, shadow and all.
 - `canvas.text()` is a scratch like `quad()`: build and submit in one expression.
-- Labels in the world that persist and move have their own path, `CgWorldRenderer.get().text(...)`: billboarded
-  or turned, depth-tested, kept on the GPU across frames ([`ENGINE_API.md`](ENGINE_API.md)).
+- **Text that persists and moves is kept on the GPU**: `CgCanvasLabels` captures each label's glyphs once and
+  draws every label from them, a matrix a label a frame (10,000 outlined, shadowed labels in 3 draws). In the world,
+  `CgWorldRenderer.get().text(...)` draws through one, billboarded or turned and depth-tested
+  ([`ENGINE_API.md`](ENGINE_API.md)); its javadoc has the example for labels of your own.
 - Styles (fills, outlines, shadows, gradients, materials), fonts and layout: [`font/README.md`](font/README.md).
 - **A draw's colour fades each layer on its own**: half faded, an outlined, shadowed word shows its outline through
   its fill. To fade it as one picture, retain it (below).

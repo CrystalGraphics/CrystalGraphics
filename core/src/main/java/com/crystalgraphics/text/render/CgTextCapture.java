@@ -10,7 +10,7 @@ import java.util.Arrays;
  * One draw's quads kept rather than drawn, as {@link CgTextBatch#capture} records them: batch by batch, each a run of
  * records in {@link CgQuadRecord}'s layout, in the draw's own space. For text drawn frame after frame under a
  * pose that moves while its content stays: keep the records in a buffer and draw them with
- * {@link CgTextBatch#drawCaptured}, which costs nothing per glyph. {@code CgWorldText}'s labels are these.
+ * {@link CgTextBatch#drawCaptured}, which costs nothing per glyph. {@code CgCanvasLabels}' labels are these.
  *
  * <pre>{@code
  * CgTextCapture kept = new CgTextCapture();

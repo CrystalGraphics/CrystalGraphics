@@ -37,6 +37,8 @@ import com.crystalgraphics.platform.world.CgWorldBegin;
 import com.crystalgraphics.platform.service.CgShaderPacks;
 import javax.annotation.Nullable;
 import com.crystalgraphics.render.CgViewFrustum;
+import com.crystalgraphics.render.canvas.CgCanvas;
+import com.crystalgraphics.render.canvas.CgCanvasLabels;
 import com.crystalgraphics.render.canvas.CgCanvasMaterials;
 import com.crystalgraphics.render.draw.CgBufferHandle;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
@@ -238,7 +240,11 @@ public final class CgWorldRenderer {
     /** This transparent firing's froxel transmittance, bound at {@code MEDIA_TEXTURE_UNIT}; null with nothing in the air. */
     @Nullable
     private CgGraphTexture mediaOut;
-    private final CgWorldText text = new CgWorldText();
+    /** The world's labels ({@link #text}), and the canvas their two passes record through. */
+    private final CgCanvasLabels labels = new CgCanvasLabels("world.text");
+    private final CgCanvas labelPasses = new CgCanvas();
+    /** This firing's labels placed and their depth drawn by {@link #recordLabelDepth}. */
+    private boolean labelDepthDrawn;
     private final Hazes hazes = new Hazes();
     private boolean[] distorts = new boolean[64];
 
@@ -444,7 +450,7 @@ public final class CgWorldRenderer {
         volumeOut = null;
         Arrays.fill(volumePass.volumeHistories, null);
         distortion.release();
-        text.release();
+        labels.release();
         sceneTarget.release();
     }
 
@@ -645,7 +651,7 @@ public final class CgWorldRenderer {
 
     /**
      * Starts a label: {@code text} at a point in the world, facing the camera unless turned, depth-tested against the
-     * scene and drawn after the transparent draws, as a name tag. Place it on the {@link CgWorldText.Label}, then
+     * scene and drawn after the transparent draws, as a name tag. Place it on the {@link CgCanvasLabels.Label}, then
      * {@code font(...)} or {@code family(...)} gives its {@code CgTextDraw}, with all a draw has (a style,
      * constraints); {@code submit()} that. It lives for the frame. Render thread.
      *
@@ -664,32 +670,84 @@ public final class CgWorldRenderer {
      *   <li>A glyph not yet in the atlas draws a frame or more late, as all text does.</li>
      * </ul>
      */
-    public CgWorldText.Label text(String text) {
-        CgWorldText.Label label = label();
+    public CgCanvasLabels.Label text(String text) {
+        CgCanvasLabels.Label label = label();
         label.draw().text(text);
         return label;
     }
 
     /** As {@link #text(String)}, of a shaped paragraph, wrapped by the draw's {@code constraints}. */
-    public CgWorldText.Label text(CgShapedParagraph paragraph) {
-        CgWorldText.Label label = label();
+    public CgCanvasLabels.Label text(CgShapedParagraph paragraph) {
+        CgCanvasLabels.Label label = label();
         label.draw().paragraph(paragraph);
         return label;
     }
 
     /** The next label, dropping the last frame's draws first as {@link #add} does: a frame of labels alone keeps them. */
-    private CgWorldText.Label label() {
+    private CgCanvasLabels.Label label() {
         long now = CgFrameRing.frame();
         if (now != frame) {
             clear();
             frame = now;
         }
-        return text.next();
+        return labels.text();
+    }
+
+    /**
+     * The world's labels: what {@link #text} queues on, drawn into every transparent firing. For a caller queuing many,
+     * or reading what is queued. Render thread.
+     */
+    public CgCanvasLabels labels() {
+        long now = CgFrameRing.frame();
+        if (now != frame) {
+            clear();
+            frame = now;
+        }
+        return labels;
+    }
+
+    /**
+     * Places the frame's labels and draws their text into {@code stage}'s depth, before the stage's transparent draws and
+     * glows, so a glow behind a label is hidden from bloom as from the picture.
+     */
+    private void recordLabelDepth(CgStageFrame stage, CgHostView view) {
+        labelDepthDrawn = false;
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, "world.text")) {
+            labels.prepare(stage.recording(), view, stage.host().width(), stage.host().height());
+            labelPass(stage, true);
+        }
+        labelDepthDrawn = true;
+    }
+
+    /** The frame's labels' colour, after every transparent draw of the firing. */
+    private void recordLabels(CgStageFrame stage, CgHostView view) {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, "world.text")) {
+            if (!labelDepthDrawn) {
+                labels.prepare(stage.recording(), view, stage.host().width(), stage.host().height());
+                labelPass(stage, true);
+            }
+            labelDepthDrawn = false;
+            labelPass(stage, false);
+        }
+    }
+
+    private void labelPass(CgStageFrame stage, boolean depth) {
+        if (!labels.any()) return;
+        labelPasses.recordInto(stage.recording(), stage.target(), CgLoad.load(), stage.constants());
+        try {
+            if (depth) {
+                labels.drawDepth(labelPasses);
+            } else {
+                labels.draw(labelPasses);
+            }
+        } finally {
+            labelPasses.stop();
+        }
     }
 
     /** As {@link #text(String)}, of a finished layout: its fonts are its own, so {@code draw()} may submit as it is. */
-    public CgWorldText.Label text(CgTextLayout layout) {
-        CgWorldText.Label label = label();
+    public CgCanvasLabels.Label text(CgTextLayout layout) {
+        CgCanvasLabels.Label label = label();
         label.draw().layout(layout);
         return label;
     }
@@ -1456,7 +1514,7 @@ public final class CgWorldRenderer {
     }
 
     private void clear() {
-        text.clear();
+        labels.clear();
         draws.clear();
     }
 
@@ -1534,7 +1592,7 @@ public final class CgWorldRenderer {
                 pointLights.record(stage, view, toWorld, targetWidth, targetHeight);
                 pointLights.apply(stage, stage.recording(), false, false);
                 beforeTranslucency(stage);
-                if (!CgRehearsal.active()) text.record(stage, view);
+                if (!CgRehearsal.active()) recordLabels(stage, view);
             }
             return;
         }
@@ -1646,7 +1704,7 @@ public final class CgWorldRenderer {
             volumeFolds = scene && mergeEmission;
             // Before any glow: a label's text then hides the glows behind it, as it hides their colour.
             step = CgTrace.zone(CgChannels.GL_DETAIL, TOP_LABELS);
-            if (which == TRANSPARENT && !CgRehearsal.active()) text.recordDepth(stage, view);
+            if (which == TRANSPARENT && !CgRehearsal.active()) recordLabelDepth(stage, view);
             step.close();
             step = CgTrace.zone(CgChannels.GL_DETAIL, TOP_CUSTOM);
             if (which == TRANSPARENT && stage.resources().has(CgFrameKeys.CUSTOM_DATA_READ)) customDataPass.recordCustomData(stage, recording, view);
@@ -1702,7 +1760,7 @@ public final class CgWorldRenderer {
                 emissivePass.recordSubject(stage, recording, view, stage.resources().get(CgFrameKeys.SUBJECT_READ));
             }
             if (which == TRANSPARENT && overdraw && drawn > 0) overdrawPass.recordOverdraw(stage, recording, view);
-            if (which == TRANSPARENT && !CgRehearsal.active()) text.record(stage, view);
+            if (which == TRANSPARENT && !CgRehearsal.active()) recordLabels(stage, view);
             after.close();
         }
     }

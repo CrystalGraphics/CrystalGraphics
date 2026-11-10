@@ -1,187 +1,211 @@
-package com.crystalgraphics.render.world;
+package com.crystalgraphics.render.canvas;
 
 import com.crystalgraphics.api.font.CgFont;
 import com.crystalgraphics.api.font.CgFontFamily;
 import com.crystalgraphics.api.text.CgTextLayout;
-import com.crystalgraphics.render.canvas.CgQuadRecord;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
 import com.crystalgraphics.render.draw.CgPrimitiveTable;
 import com.crystalgraphics.render.graph.CgBufferDesc;
 import com.crystalgraphics.render.graph.CgBufferUsage;
 import com.crystalgraphics.render.graph.CgGraphBuffer;
-import com.crystalgraphics.render.graph.CgLoad;
-import com.crystalgraphics.render.canvas.CgCanvas;
 import com.crystalgraphics.render.graph.CgRecording;
 import com.crystalgraphics.render.stage.CgHostView;
-import com.crystalgraphics.render.stage.CgStageFrame;
 import com.crystalgraphics.text.atlas.CgGlyphAtlas;
-import com.crystalgraphics.text.render.CgTextCapture;
 import com.crystalgraphics.text.render.CgTextBatch;
+import com.crystalgraphics.text.render.CgTextCapture;
 import com.crystalgraphics.text.render.CgTextDraw;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 import org.joml.Matrix4f;
 import org.joml.Matrix4fc;
-import org.joml.Quaternionf;
 import org.joml.Quaternionfc;
 import org.joml.Vector3f;
 
+import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.function.Consumer;
 
 /**
- * Text in the world: labels {@link CgWorldRenderer#text} queues for the frame, drawn into each transparent world stage
- * depth-tested against the scene, as Minecraft's name tags: their text's depth before the stage's transparent draws and
- * glows, which hides a glow behind it from bloom too, and their colour after every transparent draw.
- * Each label is a queued {@link CgTextDraw}, drawn at every firing under that firing's camera.
+ * Labels in the world kept on the GPU across frames: text at a point, facing the camera or turned as a sign, each
+ * placed by a matrix of its own. Thousands of labels whose words rarely change while where they stand changes every
+ * frame: a label's glyphs are captured once into buffers shared by every label and drawn from there by
+ * {@code text.shader}'s {@code WORLD_LABEL} variant, and a frame that changed nothing but their places writes one
+ * matrix a label. 10,000 outlined, shadowed labels draw in 3 draws at about 230 ns a label.
  *
- * <p>Labels are retained: a label's glyphs are captured once ({@link CgTextBatch#capture}) into a buffer per batch
- * shared by every label, and drawn from there by {@code text.shader}'s {@code WORLD_LABEL} variant, each placed by its
- * label's matrix. A frame whose labels changed nothing but where they stand writes one matrix a label.</p>
+ * <p>The world's own is {@code CgWorldRenderer.get().labels()}, drawn into every transparent world firing, depth-tested
+ * as a name tag: {@code world.text(...)} queues on it.</p>
+ *
+ * <pre>{@code
+ * CgCanvasLabels labels = CgWorldRenderer.get().labels();
+ * labels.text().at(x, y + 2, z).height(0.5f).font(font).style(LABEL).text("Spawn").submit();   // each frame
+ * labels.text().at(x, y, z).rotation(facingSouth).anchor(0f, 0f).family(family).targetPx(48).text(sign).submit();
+ * }</pre>
+ *
+ * <p>Labels of your own, drawn into a canvas recording into a target under a host view:</p>
+ *
+ * <pre>{@code
+ * CgCanvasLabels tags = new CgCanvasLabels("mymod.tags");      // once, kept
+ * tags.clear();                                                // each frame, then queue them with text()
+ * tags.prepare(frame.recording(), view, width, height);        // captures what changed, places, uploads
+ * tags.drawDepth(canvas);                                      // a nearer label's text hides a farther one's
+ * tags.draw(canvas);
+ * }</pre>
+ *
+ * <ul>
+ *   <li>{@code height} is a line's height in blocks: the draw's {@code basePx()} maps to it.</li>
+ *   <li>Its draw takes colour and gradient fills, outlines, lines and shadows; an additive or material layer throws,
+ *       since every record draws under one material.</li>
+ *   <li>The {@code i}th label queued is the same label frame to frame: one queued in another order is captured
+ *       again.</li>
+ *   <li>A label is unlit and unfogged.</li>
+ *   <li>A label gone for a frame keeps its records, hidden, for {@value #KEEP_HIDDEN} frames: one back with the same
+ *       draw costs no capture.</li>
+ *   <li>Into a float target (the HDR scene) its fills take the linear-blend correction in place of the draw's gamma
+ *       ({@link CgTextBatch#blendsLinearly}), read from the canvas drawn into.</li>
+ *   <li>{@link #release} at a context's teardown; nothing else frees it.</li>
+ * </ul>
  */
-public final class CgWorldText {
-
-    /** Where a label's point sits on it: the middle of the block, its top or its bottom. */
-    private static final float CENTRE = 0.5f;
+public final class CgCanvasLabels {
 
     private static final int RECORD = CgQuadRecord.FLOATS;
     private static final int NODE = CgQuadRecord.NODE;
     private static final int OBJECT = CgPrimitiveTable.FLOATS;
-    /** The ranks a label's depth pass draws, from 0: the lines under the text, its outline, its fill, the lines over it. */
+    /** The ranks the depth pass draws, from 0: the lines under the text, its outline, its fill, the lines over it. */
     private static final int TEXT_RANKS = 3;
     /** Frames a label gone from the frame keeps its ranges for. */
     private static final int KEEP_HIDDEN = 300;
     /** A batch is compacted once this many records, and half of it, are holes. */
     private static final int COMPACT_AFTER = 4096;
+    private static final Matrix4f NO_VIEW = new Matrix4f();
+    /** Where a label's point sits on it: the middle of the block, its top or its bottom. */
+    private static final float CENTRE = 0.5f;
 
+    private final String name;
     private final List<Label> labels = new ArrayList<>();
     private int count;
     private final Consumer<CgTextDraw> queue = this::submitted;
-    private final CgCanvas recorder = new CgCanvas();
-    private static final Matrix4f NO_VIEW = new Matrix4f();
     private final Matrix4f place = new Matrix4f();
     private final Vector3f eye = new Vector3f();
-    private final Quaternionf facing = new Quaternionf();
-    /** Captures the labels' glyphs, under the firing's projection: a label's tier is fixed, its pose its own. */
-    private CgTextBatch text;
-
-    // Retained: what each label drew last, the batches its records are in, and every label's matrix.
+    /** Captures the labels' glyphs, under the camera's projection: a label's tier is fixed, its pose its own. */
+    private final CgTextBatch capturer = new CgTextBatch(null);
     private final List<Kept> kept = new ArrayList<>();
     private int keptCount;
     private final List<Batch> batches = new ArrayList<>();
     private float[] matrices = new float[0];
+    private int matrixCount;
+    @Nullable
     private CgGraphBuffer matrixBuffer;
     private int matrixCapacity;
     private final CgChunkBuilder chunks = new CgChunkBuilder(null);
-    /** This firing's labels placed and their depth drawn by {@link #recordDepth}; {@link #record} draws only colour. */
-    private boolean depthDrawn;
+    private long evictions;
+    private int captured;
 
-    CgWorldText() {
+    /** @param name what its buffers are called in a trace */
+    public CgCanvasLabels(String name) {
+        this.name = name;
     }
 
-    /** The next label to fill: one of the frame's, reused frame to frame. */
-    Label next() {
-        if (text == null) text = new CgTextBatch(null);
+    /**
+     * The next label this frame: place it, then {@code font(...)}, {@code family(...)} or {@code draw()} gives its
+     * {@link CgTextDraw}, whose {@code submit()} queues it. Render thread.
+     */
+    public Label text() {
         if (count == labels.size()) labels.add(new Label(CgTextDraw.queued(queue)));
         return labels.get(count).reset();
     }
 
-    /** A label's draw submitted: kept if it is the one {@link #next} handed out, else ignored. */
+    /** A label's draw submitted: kept if it is the one {@link #text} handed out, else ignored. */
     private void submitted(CgTextDraw draw) {
         if (count < labels.size() && labels.get(count).draw == draw) count++;
     }
 
-    void clear() {
+    /** Drops the frame's labels: the next frame queues its own. Their records stay, hidden, for a label that returns. */
+    public void clear() {
         for (int i = 0; i < count; i++) labels.get(i).draw.reset();
         count = 0;
     }
 
     /**
-     * Places the frame's labels and draws their text into {@code stage}'s depth, before the stage's transparent draws and
-     * glows, so a glow behind a label is hidden from bloom as from the picture. {@link #record} then draws their colour.
-     * Render thread.
+     * Captures what changed, places every label under {@code view} and uploads both into {@code recording}: once a
+     * firing, before {@link #drawDepth} and {@link #draw}. {@code width} and {@code height} are the target's pixels.
      */
-    void recordDepth(CgStageFrame stage, CgHostView view) {
-        depthDrawn = false;
-        if (count == 0 && keptCount == 0) return;
-        begin(stage, view);
-        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, "world.text")) {
-            prepareRetained(stage, view);
-            drawRetained(stage, true);
-        }
-        depthDrawn = true;
-    }
-
-    /** Records the frame's labels into {@code stage}'s target, under its view: their colour, after {@link #recordDepth}. Render thread. */
-    void record(CgStageFrame stage, CgHostView view) {
-        if (count == 0 && keptCount == 0) return;
-        begin(stage, view);
-        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, "world.text")) {
-            if (!depthDrawn) {
-                prepareRetained(stage, view);
-                drawRetained(stage, true);
+    public void prepare(CgRecording recording, CgHostView view, int width, int height) {
+        capturer.camera(view.projection(), NO_VIEW, width, height);
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, "world.text.content")) {
+            evictions = CgGlyphAtlas.evictions();
+            captured = 0;
+            for (int i = 0; i < count; i++) {
+                Label label = labels.get(i);
+                CgTextLayout layout = capture(i, label.draw);
+                int px = label.draw.basePx();
+                pose(i, layout == null || px <= 0 ? null : placement(label, view, layout, px));
             }
-            depthDrawn = false;
-            drawRetained(stage, false);
         }
+        upload(count, recording);
     }
 
-    private void begin(CgStageFrame stage, CgHostView view) {
-        text.camera(view.projection(), NO_VIEW, stage.host().width(), stage.host().height());
-    }
-
-    /** Into {@code m}: view, the label's offset from the eye, its turn or the view's undone, its size and anchor. */
-    private void placement(Matrix4f m, Label label, CgHostView view, CgTextLayout layout, int px) {
+    /** Label to view space: its offset from the eye, turned or facing the eye, its size and anchor. */
+    private Matrix4f placement(Label label, CgHostView view, CgTextLayout layout, int px) {
         float scale = label.height / px;
-        m.set(view.view()).translate((float) (label.x - view.x()), (float) (label.y - view.y()), (float) (label.z - view.z()));
+        float dx = (float) (label.x - view.x()), dy = (float) (label.y - view.y()), dz = (float) (label.z - view.z());
         if (label.rotation != null) {
-            m.rotate(label.rotation);
+            place.set(view.view()).translate(dx, dy, dz).rotate(label.rotation);
         } else {
-            // Undo the view's turn, so the label lies in the eye's plane: a billboard.
-            view.view().getNormalizedRotation(facing).conjugate();
-            m.rotate(facing);
+            // A billboard undoes the view's turn, which leaves the eye-space point, the size and the anchor.
+            view.view().transformPosition(eye.set(dx, dy, dz));
+            place.translation(eye);
         }
-        m.scale(scale, -scale, scale)
+        return place.scale(scale, -scale, scale)
                 .translate(-layout.totalWidth() * label.anchorX, -layout.totalHeight() * (1f - label.anchorY), 0f);
     }
 
-    // ── Retained ────────────────────────────────────────────────────────────
-
-    /** Captures what changed, writes the batches and every label's matrix: once a firing, before either pass. */
-    private void prepareRetained(CgStageFrame stage, CgHostView view) {
-        CgRecording recording = stage.recording();
-        long evictions = CgGlyphAtlas.evictions();
-        int captured = 0;
-        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, "world.text.content")) {
-            for (int i = 0; i < count; i++) {
-                Label label = labels.get(i);
-                if (i == keptCount) {
-                    if (keptCount == kept.size()) kept.add(new Kept(CgTextDraw.detached()));
-                    keptCount++;
-                }
-                Kept k = kept.get(i);
-                if (k.whole && k.capture.evictions() == evictions && k.drawn.sameAs(label.draw)) {
-                    // Back after a gap: its ranges were zeroed, its capture kept.
-                    if (k.hidden > 0) {
-                        place(i, k);
-                        k.hidden = 0;
-                    }
-                    continue;
-                }
-                k.hidden = 0;
-                k.drawn.set(label.draw);
-                try (CgTrace.Zone capture = CgTrace.zone(CgChannels.WORLD, "world.text.capture")) {
-                    k.whole = text.capture(label.draw, k.capture);
-                }
-                place(i, k);
-                captured++;
-            }
+    /**
+     * Label {@code i} draws {@code draw} this frame: captured again where it differs from what it drew last, the last
+     * capture was incomplete or the atlas evicted since. The layout it draws; null where it has none.
+     */
+    @Nullable
+    private CgTextLayout capture(int i, CgTextDraw draw) {
+        while (i >= keptCount) {
+            if (keptCount == kept.size()) kept.add(new Kept(CgTextDraw.detached()));
+            keptCount++;
         }
+        Kept k = kept.get(i);
+        if (k.whole && k.capture.evictions() == evictions && k.drawn.sameAs(draw)) {
+            // Back after a gap: its ranges were zeroed, its capture kept.
+            if (k.hidden > 0) {
+                write(i, k);
+                k.hidden = 0;
+            }
+        } else {
+            k.hidden = 0;
+            k.drawn.set(draw);
+            try (CgTrace.Zone capture = CgTrace.zone(CgChannels.WORLD, "world.text.capture")) {
+                k.whole = capturer.capture(draw, k.capture);
+            }
+            write(i, k);
+            captured++;
+        }
+        return k.capture.layout();
+    }
+
+    /** Label {@code i}'s matrix: null hides it this frame. */
+    private void pose(int i, @Nullable Matrix4fc pose) {
+        if (matrices.length < (i + 1) * OBJECT) matrices = Arrays.copyOf(matrices, Math.max(i + 1, 64) * 2 * OBJECT);
+        if (pose == null) {
+            Arrays.fill(matrices, i * OBJECT, i * OBJECT + 16, 0f);
+        } else {
+            pose.get(matrices, i * OBJECT);
+        }
+    }
+
+    /**
+     * Closes the frame at {@code count} labels: those from it on are hidden, and gone for good after
+     * {@value #KEEP_HIDDEN} frames. Uploads what changed, and every label's place.
+     */
+    private void upload(int count, CgRecording recording) {
         CgTrace.add(CgChannels.WORLD, "world.text.captured", captured);
-        // A label gone this frame keeps its ranges, zeroed, for a while: one back with the same draw rewrites them
-        // without a capture. Gone longer, its ranges become holes.
         for (int i = count; i < kept.size(); i++) {
             Kept k = kept.get(i);
             if (k.ranges == 0) continue;
@@ -189,7 +213,7 @@ public final class CgWorldText {
                 for (int r = 0; r < k.ranges; r++) k.batch[r].clear(k.offset[r], k.capacity[r], false);
             }
             if (++k.hidden > KEEP_HIDDEN) {
-                vacate(k, 0);
+                vacate(k);
                 k.drawn.reset();
                 k.whole = false;
                 k.hidden = 0;
@@ -201,64 +225,65 @@ public final class CgWorldText {
             if (batch.holes > COMPACT_AFTER && batch.holes * 2 > batch.used) compact(batch);
         }
 
-        if (matrices.length < count * OBJECT) matrices = Arrays.copyOf(matrices, Math.max(count, 64) * 2 * OBJECT);
-        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, "world.text.place")) {
-            Matrix4fc v = view.view();
-            for (int i = 0; i < count; i++) {
-                Label label = labels.get(i);
-                CgTextLayout layout = kept.get(i).capture.layout();
-                int px = label.draw.basePx();
-                if (layout == null || px <= 0) {
-                    Arrays.fill(matrices, i * OBJECT, i * OBJECT + 16, 0f);
-                    continue;
-                }
-                if (label.rotation != null) {
-                    placement(place, label, view, layout, px);
-                } else {
-                    // A billboard undoes the view's turn, which leaves the eye-space point, the size and the anchor.
-                    float s = label.height / px;
-                    eye.set((float) (label.x - view.x()), (float) (label.y - view.y()), (float) (label.z - view.z()));
-                    v.transformPosition(eye);
-                    place.translation(eye).scale(s, -s, s)
-                            .translate(-layout.totalWidth() * label.anchorX, -layout.totalHeight() * (1f - label.anchorY), 0f);
-                }
-                place.get(matrices, i * OBJECT);
-            }
-        }
+        matrixCount = count;
         if (count > matrixCapacity) {
             matrixCapacity = Math.max(count, 64) * 2;
             if (matrixBuffer != null) recording.release(matrixBuffer);
-            matrixBuffer = CgGraphBuffer.persistent("world.text.labels",
+            matrixBuffer = CgGraphBuffer.persistent(name + ".labels",
                     CgBufferDesc.elements(matrixCapacity, OBJECT * Float.BYTES, CgBufferUsage.STORAGE, CgBufferUsage.COPY));
         }
         if (count > 0) recording.update(matrixBuffer, 0, matrices, 0, count * OBJECT);
-
-        for (int b = 0; b < batches.size(); b++) batches.get(b).upload(recording);
+        for (int b = 0; b < batches.size(); b++) batches.get(b).upload(recording, name);
     }
 
-    /** The text and its lines into depth, so a nearer label's text hides a farther one's; else every batch's colour. */
-    private void drawRetained(CgStageFrame stage, boolean depth) {
-        recorder.recordInto(stage.recording(), stage.target(), CgLoad.load(), stage.constants());
-        try {
-            chunks.bindings(recorder.bindings()).begin(0, 0, 0);
-            boolean linear = CgTextBatch.blendsLinearly(stage.target());
-            for (int b = 0; b < batches.size(); b++) {
-                Batch batch = batches.get(b);
-                if (batch.used <= batch.holes) continue;
-                if (!depth) {
-                    CgTextBatch.drawCaptured(chunks, batch.key, batch.gpu, batch.used, matrixBuffer, linear);
-                } else if (batch.rank >= 0 && batch.rank <= TEXT_RANKS) {
-                    CgTextBatch.drawCapturedDepth(chunks, batch.key, batch.gpu, batch.used, matrixBuffer);
-                }
+    /** Whether there is anything to draw: a label this frame, or one hidden and kept. */
+    public boolean any() {
+        return matrixCount > 0;
+    }
+
+    /**
+     * The labels' text and lines into {@code canvas}'s depth alone, where half covered or more: before any colour, so a
+     * nearer label's text hides a farther one's whatever their order.
+     */
+    public void drawDepth(CgCanvas canvas) {
+        record(canvas, true);
+    }
+
+    /** The labels' colour into {@code canvas}, after {@link #drawDepth}. */
+    public void draw(CgCanvas canvas) {
+        record(canvas, false);
+    }
+
+    private void record(CgCanvas canvas, boolean depth) {
+        if (matrixCount == 0) return;
+        chunks.bindings(canvas.bindings()).begin(0, 0, 0);
+        boolean linear = CgTextBatch.blendsLinearly(canvas.target());
+        for (int b = 0; b < batches.size(); b++) {
+            Batch batch = batches.get(b);
+            if (batch.used <= batch.holes) continue;
+            if (!depth) {
+                CgTextBatch.drawCaptured(chunks, batch.key, batch.gpu, batch.used, matrixBuffer, linear);
+            } else if (batch.rank >= 0 && batch.rank <= TEXT_RANKS) {
+                CgTextBatch.drawCapturedDepth(chunks, batch.key, batch.gpu, batch.used, matrixBuffer);
             }
-            recorder.add(chunks.end());
-        } finally {
-            recorder.stop();
         }
+        canvas.add(chunks.end());
     }
 
-    /** Writes label {@code i}'s new capture into the batches, in its old ranges where they fit. */
-    private void place(int i, Kept k) {
+    /** Drops every label and its buffers: at context teardown, which frees their storage. */
+    public void release() {
+        clear();
+        labels.clear();
+        kept.clear();
+        keptCount = 0;
+        batches.clear();
+        matrixBuffer = null;
+        matrixCapacity = 0;
+        matrixCount = 0;
+    }
+
+    /** Writes label {@code i}'s capture into the batches, in its old ranges where they fit. */
+    private void write(int i, Kept k) {
         CgTextCapture c = k.capture;
         int old = k.ranges;
         for (int b = 0; b < c.batches(); b++) {
@@ -293,10 +318,10 @@ public final class CgWorldText {
         Arrays.fill(k.taken, false);
     }
 
-    /** Clears a label's ranges from {@code from} on into holes. */
-    private void vacate(Kept k, int from) {
-        for (int r = from; r < k.ranges; r++) k.batch[r].clear(k.offset[r], k.capacity[r], true);
-        k.ranges = from;
+    /** Clears a label's ranges into holes. */
+    private static void vacate(Kept k) {
+        for (int r = 0; r < k.ranges; r++) k.batch[r].clear(k.offset[r], k.capacity[r], true);
+        k.ranges = 0;
     }
 
     /** The batch of {@code (rank, key)}, made in rank order, after every batch of its rank already made. */
@@ -331,18 +356,6 @@ public final class CgWorldText {
         batch.used = at;
         batch.holes = 0;
         batch.dirty(0, at);
-    }
-
-    /** Drops the frame's labels and the retained buffers: at context teardown, which frees their storage. */
-    void release() {
-        clear();
-        labels.clear();
-        kept.clear();
-        keptCount = 0;
-        batches.clear();
-        matrixBuffer = null;
-        matrixCapacity = 0;
-        text = null;
     }
 
     /** One label as last captured, and where its records are. */
@@ -436,15 +449,11 @@ public final class CgWorldText {
             dirtyTo = Math.max(dirtyTo, to);
         }
 
-        void upload(CgRecording recording) {
+        void upload(CgRecording recording, String name) {
             if (used > capacity) {
                 int grown = Math.max(used + used / 2, 1024);
                 CgBufferDesc desc = CgBufferDesc.elements(grown, RECORD * Float.BYTES, CgBufferUsage.STORAGE, CgBufferUsage.COPY);
-                if (gpu == null) {
-                    gpu = CgGraphBuffer.persistent("world.text.glyphs", desc);
-                } else {
-                    gpu = recording.resize(gpu, desc);
-                }
+                gpu = gpu == null ? CgGraphBuffer.persistent(name + ".glyphs", desc) : recording.resize(gpu, desc);
                 capacity = grown;
             }
             if (dirtyFrom < dirtyTo) {
@@ -459,7 +468,7 @@ public final class CgWorldText {
     /**
      * One label's place in the world: a point, a height, which point of the text stands there, and a turn. How it
      * draws is its {@link CgTextDraw}, from {@link #font}, {@link #family} or {@link #draw()}, submitted to
-     * queue it. Build it from {@link CgWorldRenderer#text}.
+     * queue it. Build it from {@link #text}, or {@code CgWorldRenderer.text}.
      */
     public static final class Label {
         private final CgTextDraw draw;

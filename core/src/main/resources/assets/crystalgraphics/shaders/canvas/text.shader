@@ -11,7 +11,7 @@
 // median of .rgb (CgMsdfFieldStorageTest). .a, the true distance, drives wide effects, where 8 bits may band: dither,
 // narrow the range, or move the atlas back to RGBA16F, in that order.
 #pragma cg_feature MSDF_MODE
-// A retained world label's glyphs (CgWorldText), drawn as OBJECT instances: each record is in its label's own space,
+// A retained world label's glyphs (CgCanvasLabels), drawn as OBJECT instances: each record is in its label's own space,
 // and its node is the label's object record, whose model matrix places it under the firing's view.
 #pragma cg_feature WORLD_LABEL
 #pragma cg_permutation MSDF_MODE WORLD_LABEL   // four fixed instances (CgTextMaterials), never toggled
