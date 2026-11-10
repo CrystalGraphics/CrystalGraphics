@@ -422,18 +422,12 @@ public final class CgStageFrame {
     /** The slot an execution saves, as an array once: varargs make one a call. */
     private static final CgGlSlot[] SCISSOR = {CgGlSlot.SCISSOR};
 
-    /** As {@link #execute()}, with {@code target} bound as the host's: a rehearsal's firing. */
+    /** As {@link #execute()}, with {@code target} the current target in place of the host's: a rehearsal's firing. */
     void executeInto(CgFrameBuffer target) {
-        try (CgGlScope ignored = CgGlState.save(FRAMEBUFFER)) {
-            target.bind();
-            // The executor takes the bound viewport as the current target's size
-            CgGL.glViewport(0, 0, target.getWidth(), target.getHeight());
+        try (CgExecutor.Into ignored = CgExecutor.into(target)) {
             execute();
         }
     }
-
-    /** The slot {@link #executeInto} restores. */
-    private static final CgGlSlot[] FRAMEBUFFER = {CgGlSlot.FBO, CgGlSlot.VIEWPORT};
 
     /** Builds and executes what was recorded, then resets for the next firing. */
     void execute() {

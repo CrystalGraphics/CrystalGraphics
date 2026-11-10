@@ -35,7 +35,6 @@ com/crystalgraphics/loading/CgLoadingScreen.java
 com/crystalgraphics/noise/CgNoiseVolumes.java
 com/crystalgraphics/noise/CgWaveletNoise.java
 com/crystalgraphics/render/CgImmediate.java
-com/crystalgraphics/render/graph/CgComposedTargets.java
 com/crystalgraphics/render/graph/CgDispatch.java
 com/crystalgraphics/render/graph/CgExecutor.java
 com/crystalgraphics/render/graph/CgFrameBuilder.java

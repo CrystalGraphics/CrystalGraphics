@@ -220,7 +220,7 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
 
     /** Whether framebuffer {@code framebuffer} lends its depth to a {@link #besideCurrentDepth} texture. */
     public static boolean takesCurrentDepth(int framebuffer) {
-        return framebuffer != 0 && !CgComposedTargets.refused(framebuffer);
+        return framebuffer != 0 && !CgExecutor.refusedHost(framebuffer);
     }
 
     /** Whether its depth is the current target's ({@link #besideCurrentDepth}). */

@@ -117,9 +117,8 @@ the foreign code's state. Two rules keep that from happening:
 - **Between sections, anything may run.** At the next `fromHost` the filter's view is the host's belief again.
 - **Inside a section, nothing else writes GL** unless the filter is told: `GLStateFilter.invalidate()` makes every
   field unknown, so the next call of each reaches GL. A render stage's callback (`CgStageFrame.callback`,
-  `CgRenderStage`'s hook), a GL body by contract, becomes a section break of its own in H7: the device's pass ends,
-  the body runs with the context as the host expects, and the device resumes with its view invalidated. The consumer
-  writing the callback manages no state either.
+  `CgRenderStage`'s hook) runs engine work, never GL: what it executes takes the callback's target as its current
+  target (`CgExecutor.into`).
 
 ## What predates this, and goes in H7
 

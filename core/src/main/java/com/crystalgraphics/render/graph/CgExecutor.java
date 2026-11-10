@@ -79,6 +79,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import javax.annotation.Nullable;
+import java.util.concurrent.ConcurrentHashMap;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -162,8 +163,8 @@ public final class CgExecutor {
             POOL_KB = CgTrace.name("graph.pool-kb");
     /** KiB of placed transient textures alive at once at the last frame's most. */
     private static final int TRANSIENT_PEAK_KB = CgTrace.name("graph.transient-peak-kb");
-    /** What a callback beside the current target's depth draws into. */
-    private static final CgComposedTargets BESIDE = new CgComposedTargets(false);
+    /** Host framebuffers that lent no depth or attachment of theirs, read by recorders on any thread. */
+    private static final Set<Integer> REFUSED_HOSTS = ConcurrentHashMap.newKeySet();
     private static final CgBufferPool BUFFERS = new CgBufferPool();
     private static final CgResourceStates STATES = new CgResourceStates();
     /**
@@ -278,9 +279,10 @@ public final class CgExecutor {
     private final int[] range = new int[4];
     /** Per indirect batch starting a run of the pass about to draw, the run's last batch: itself when none joins it. */
     private int[] runs = new int[64];
-    /** The framebuffer and viewport bound when this execution began, where a pass reads the current target's depth. */
+    /** The current target when this execution began: its framebuffer and viewport, and {@link #into}'s where it named one. */
     private int startFramebuffer;
-    private boolean startNoted, otherBound;
+    @Nullable
+    private Into startInto;
     /** The last sizes a {@link CgGraphTexture#besideCurrentDepth} target and its host disagreed at, logged once. */
     private static long besideMismatch;
     private final IntBuffer startViewport = ByteBuffer.allocateDirect(16 * 4).order(ByteOrder.nativeOrder()).asIntBuffer();
@@ -393,8 +395,6 @@ public final class CgExecutor {
                 executor.run(frame);
             } finally {
                 CgTargetCopy.sources = was;
-                int bound = CgGlState.drawFramebuffer();   // what the last callback left, as before the detach moved here
-                if (BESIDE.detach()) CgGL.glBindFramebuffer(CgGL.GL_FRAMEBUFFER, bound);
             }
         } finally {
             depth--;
@@ -457,9 +457,69 @@ public final class CgExecutor {
 
     private static boolean refusedLogged;
 
+    /** Whether host framebuffer {@code framebuffer} lent no depth or attachment of its own this context. */
+    static boolean refusedHost(int framebuffer) {
+        return REFUSED_HOSTS.contains(framebuffer);
+    }
+
+    /** What executions take as their current target while it is open ({@link #into}); null for the host's bound one. */
+    @Nullable
+    private static Into current;
+
+    /**
+     * Makes {@code target} the current target of every execution until it closes, in place of the host's bound
+     * framebuffer: a stage fired into a framebuffer of ours, a loading view drawn into one. Nothing is bound. Render
+     * thread.
+     *
+     * <pre>{@code
+     * try (CgExecutor.Into ignored = CgExecutor.into(target)) {
+     *     stage.fire();
+     * }
+     * }</pre>
+     *
+     * <ul>
+     *   <li>They nest; close them in reverse.</li>
+     * </ul>
+     */
+    public static Into into(CgFrameBuffer target) {
+        return into(target.getId(), target.getWidth(), target.getHeight(), target.rhiColor(0), target.rhiDepth());
+    }
+
+    private static Into into(int id, int width, int height, @Nullable CgGpuTexture color, @Nullable CgGpuTexture depth) {
+        Into into = new Into(id, width, height, color, depth, current);
+        current = into;
+        return into;
+    }
+
+    /** A current target {@link #into} named; closing it puts back the one before. */
+    public static final class Into implements AutoCloseable {
+        final int id, width, height;
+        @Nullable
+        final CgGpuTexture color, depth;
+        @Nullable
+        private final Into previous;
+        private boolean closed;
+
+        private Into(int id, int width, int height, @Nullable CgGpuTexture color, @Nullable CgGpuTexture depth,
+                     @Nullable Into previous) {
+            this.id = id;
+            this.width = width;
+            this.height = height;
+            this.color = color;
+            this.depth = depth;
+            this.previous = previous;
+        }
+
+        @Override
+        public void close() {
+            if (closed) return;
+            closed = true;
+            current = previous;
+        }
+    }
+
     /** The host's targets are read again at their next composed bind: at a window resize, which may remake them. */
     public static void forgetHostTargets() {
-        BESIDE.forgetHost();
         if (CgGLImports.installed()) CgGLImports.get().forgetAttachments();
     }
 
@@ -479,7 +539,6 @@ public final class CgExecutor {
         if (transients != null) transients.delete();
         transients = null;
         BUFFERS.delete();
-        BESIDE.delete();
         for (CgGraphBuffer buffer : KEPT) freeKept(buffer);
         KEPT.clear();
         STATES.clear();
@@ -514,11 +573,13 @@ public final class CgExecutor {
         splitCount = 0;
         runStart = runEnd = -1;
         multiDraw = caps.multiDraw() && CgMeshStore.get().multiDraw();
-        // The current target, noted before any pass binds its own: rebound for a pass into it after one into another,
-        // and what a copy of it reads. From the state shadow, since a glGet waits for the driver to drain the queue.
-        startNoted = takes || frame.readsCurrentDepth || frame.rastersCurrent;
-        otherBound = false;
-        if (startNoted) {
+        // The current target: the one the engine named ({@link #into}), else the host's bound one, from the state shadow,
+        // since a glGet waits for the driver to drain the queue.
+        startInto = current;
+        if (startInto != null) {
+            startFramebuffer = startInto.id;
+            startViewport.put(0, 0).put(1, 0).put(2, startInto.width).put(3, startInto.height);
+        } else if (takes || frame.readsCurrentDepth || frame.rastersCurrent) {
             startFramebuffer = CgGlState.drawFramebuffer();
             CgGlState.viewport(startViewport);
         }
@@ -845,23 +906,11 @@ public final class CgExecutor {
                 }
                 upload.request.complete();
             } else if (pass instanceof CgPass.Callback callback) {
-                sharedDepthSource = -1;   // its body may draw anything
-                boolean bound = otherBound;   // the scope restores the binding it found
+                sharedDepthSource = -1;   // what it executes may draw anything
                 try (CgTrace.Zone zone = CgTrace.zone(CgChannels.GL, STEP_CALLBACK);
-                     CgGlScope ignored = CgGlState.saveAll()) {
-                    boolean drawsBeside = callback.target != null && callback.target.drawsBesideCurrentDepth()
-                            && bindBeside(callback.target);
-                    if (!drawsBeside) bindTarget(callback.target, 0, 0);
-                    if (takes) restMoved(true);   // its body is GL's: the device infers, from images at rest
-                    boolean stated = takes && CgGL.cgGraphStates(false);
-                    try {
-                        callback.body.run();
-                    } finally {
-                        if (takes) CgGL.cgGraphStates(stated);
-                        if (drawsBeside) BESIDE.detach();
-                    }
+                     Into ignored = intoCallback(callback.target)) {
+                    callback.body.run();
                 }
-                otherBound = bound;
                 callback.request.complete();
             } else if (pass instanceof CgPass.Compile compile) {
                 try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, STEP_COMPILE)) {
@@ -1538,7 +1587,10 @@ public final class CgExecutor {
             return false;
         }
         CgGraphTexture target = pass.target;
-        if (hostDepth(pass)) return CgGL.cgDepthTexture(startFramebuffer) != 0;   // the host's, imported
+        if (hostDepth(pass)) {   // the host's, sampled in place where it is a texture, not a renderbuffer or the window's
+            readHost();
+            return hostDepth != null && hostDepth.desc().usage().contains(CgGpuTexture.Usage.SAMPLED);
+        }
         if (attachmentOf(pass) != null || target.getLevels() != 1 || target.getLayers() != 1) return false;
         CgFrameBuffer storage = target.kind() == CgGraphTexture.Kind.TRANSIENT ? target.framebuffer() : storage(target);
         return storage != null && storage.getDepthTexture() != null;
@@ -2019,6 +2071,11 @@ public final class CgExecutor {
             DEVICE_BATCHES = CgTrace.name("graph.device.batches"), DEVICE_END = CgTrace.name("graph.device.end");
 
     private void importHost() {
+        if (startInto != null) {
+            hostColor = startInto.color;
+            hostDepth = startInto.depth;
+            return;
+        }
         int host = startFramebuffer, width = startViewport.get(2), height = startViewport.get(3);
         CgGLImports imports = CgGLImports.get();
         // Framebuffer 0 is Unreal's back buffer: the window's own buffers on GL, the surface on a device presenting one
@@ -2040,8 +2097,8 @@ public final class CgExecutor {
         String refused = hostDepth == null ? "framebuffer " + startFramebuffer + " has no depth to draw beside"
                 : startFramebuffer == 0 ? "the default framebuffer lends no attachment to a framebuffer of ours" : null;
         if (refused != null) {
-            if (!CgComposedTargets.refused(startFramebuffer)) LOGGER.warn("{} draws without the host's depth: {}", target, refused);
-            CgComposedTargets.refuse(startFramebuffer);
+            if (!refusedHost(startFramebuffer)) LOGGER.warn("{} draws without the host's depth: {}", target, refused);
+            REFUSED_HOSTS.add(startFramebuffer);
             return null;
         }
         int w = hostDepth.desc().width(), h = hostDepth.desc().height();
@@ -2096,8 +2153,8 @@ public final class CgExecutor {
         if (refused == null) return deviceTexture(extra, 0);
         if (!pass.attachmentOptional()) throw new IllegalStateException(pass + ": " + refused);
         if (current) {
-            if (!CgComposedTargets.refused(startFramebuffer)) LOGGER.warn("{} draws without its second attachment: {}", pass, refused);
-            CgComposedTargets.refuse(startFramebuffer);
+            if (!refusedHost(startFramebuffer)) LOGGER.warn("{} draws without its second attachment: {}", pass, refused);
+            REFUSED_HOSTS.add(startFramebuffer);
         } else if (loggedOnce.add("second " + pass.name())) {
             LOGGER.warn("{} draws without its second attachment: {}", pass, refused);
         }
@@ -2766,7 +2823,7 @@ public final class CgExecutor {
         if (depthInPlace && (bits & CgTargetCopy.DEPTH) != 0) {
             // Read-only in this pass: sampled where it is, no copy.
             if (hostDepth(pass)) {
-                hostDepthTexture.point(CgGL.cgDepthTexture(startFramebuffer), CgGL.GL_TEXTURE_2D, startViewport.get(2), startViewport.get(3), hostDepth);
+                hostDepthTexture.point(startFramebuffer, CgGL.GL_TEXTURE_2D, startViewport.get(2), startViewport.get(3), hostDepth);
                 hostDepthTexture.bind(pass.sceneDepthUnit());
             } else {
                 storage(target).getDepthTexture().bind(pass.sceneDepthUnit());
@@ -2814,66 +2871,19 @@ public final class CgExecutor {
     }
 
     /**
-     * Binds {@code target} beside the current target's depth ({@link CgGraphTexture#besideCurrentDepth}), and its
-     * viewport. False, binding nothing, where the current target lends none: logged once, and the pass draws into the
-     * target alone.
+     * The current target what a callback executes takes ({@link #into}): its target's storage, beside the host's depth
+     * where it draws beside it; null, the current target as it is, for none.
      */
-    private boolean bindBeside(CgGraphTexture target) {
-        return bindBeside(target, null);
-    }
-
-    /** As {@link #bindBeside(CgGraphTexture)}, with {@code second} at colour attachment 1 where given. */
-    private boolean bindBeside(CgGraphTexture target, @Nullable CgGraphTexture second) {
-        CgFrameBuffer scene = storage(target);
-        CgFrameBuffer extra = second != null ? storage(second) : null;
-        int x = startViewport.get(0), y = startViewport.get(1), w = startViewport.get(2), h = startViewport.get(3);
-        if (extra != null && (extra.getWidth() != scene.getWidth() || extra.getHeight() != scene.getHeight())) {
-            throw new IllegalStateException(second + " is " + extra.getWidth() + "x" + extra.getHeight() + ", beside "
-                    + target + " of " + scene.getWidth() + "x" + scene.getHeight());
-        }
-        if (x != 0 || y != 0 || scene.getWidth() != w || scene.getHeight() != h) {
-            // A recorder sizing it from a stale size, as across a resize: this pass alone, not the framebuffer, refused.
-            long sizes = (long) scene.getWidth() << 48 | (long) scene.getHeight() << 32 | (long) w << 16 | h;
-            if (sizes != besideMismatch) {
-                besideMismatch = sizes;
-                LOGGER.warn("{} is {}x{}, beside a target of {}x{} at {},{}: drawn without the host's depth", target,
-                        scene.getWidth(), scene.getHeight(), w, h, x, y);
-            }
-            return false;
-        }
-        String refused = extra == null
-                ? BESIDE.bind(startFramebuffer, w, h, scene.getColorTexture(0).getId(), scene.getFormat().getColorSlot(0))
-                : BESIDE.bind(startFramebuffer, w, h, scene.getColorTexture(0).getId(), scene.getFormat().getColorSlot(0),
-                        extra.getColorTexture(0).getId(), extra.getFormat().getColorSlot(0));
-        if (refused != null) {
-            if (!CgComposedTargets.refused(startFramebuffer)) LOGGER.warn("{} draws without the host's depth: {}", target, refused);
-            CgComposedTargets.refuse(startFramebuffer);
-            return false;
-        }
-        CgGL.glViewport(0, 0, w, h);
-        otherBound = startNoted;
-        return true;
-    }
-
-    /**
-     * Binds level {@code level} (or an array's layer {@code layer}) of a pass's target and its viewport. The current
-     * target is left as it is, unless a pass of this execution bound another: then what was bound when it began is
-     * bound again.
-     */
-    private void bindTarget(CgGraphTexture target, int level, int layer) {
-        if (target == null || target.kind() == CgGraphTexture.Kind.CURRENT) {
-            if (otherBound) {
-                CgGL.glBindFramebuffer(CgGL.GL_FRAMEBUFFER, startFramebuffer);
-                CgGL.glViewport(startViewport.get(0), startViewport.get(1), startViewport.get(2), startViewport.get(3));
-                otherBound = false;
-            }
-            return;
-        }
+    @Nullable
+    private Into intoCallback(@Nullable CgGraphTexture target) {
+        if (target == null || target.kind() == CgGraphTexture.Kind.CURRENT) return null;
         CgFrameBuffer storage = storage(target);
-        if (layer != 0) storage.bindLayer(layer);
-        else storage.bindLevel(level);
-        CgGL.glViewport(0, 0, storage.levelWidth(level), storage.levelHeight(level));
-        otherBound = startNoted;
+        CgGpuTexture depth = storage.rhiDepth();
+        if (target.drawsBesideCurrentDepth()) {
+            readHost();
+            depth = besideDepth(target, storage.getWidth(), storage.getHeight());
+        }
+        return into(storage.getId(), storage.getWidth(), storage.getHeight(), storage.rhiColor(0), depth);
     }
 
     /**

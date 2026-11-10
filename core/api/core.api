@@ -9343,7 +9343,13 @@ com/crystalgraphics/render/graph/CgExecutor
   method public,static forgetHostTargets ()V
   method public,static freeStorage (Lcom/crystalgraphics/render/graph/CgGraphBuffer;)V
   method public,static freeStorage (Lcom/crystalgraphics/render/graph/CgGraphTexture;)V
+  method public,static into (Lcom/crystalgraphics/gl/framebuffer/CgFrameBuffer;)Lcom/crystalgraphics/render/graph/CgExecutor$Into;
   method public,static makeStorage (Lcom/crystalgraphics/render/graph/CgGraphBuffer;)V
+com/crystalgraphics/render/graph/CgExecutor$Into
+  access public,final
+  extends java/lang/Object
+  implements java/lang/AutoCloseable
+  method public close ()V
 com/crystalgraphics/render/graph/CgFrame
   access public,final
   extends java/lang/Object
