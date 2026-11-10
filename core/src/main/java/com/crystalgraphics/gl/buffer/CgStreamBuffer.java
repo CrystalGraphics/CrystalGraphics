@@ -174,6 +174,15 @@ public abstract class CgStreamBuffer implements CgObjectBuffer {
         map(count).put(src, from, count);
     }
 
+    /**
+     * The range a binding of the latest upload covers from {@link #getWriteOffset()}: at least its bytes. The frame ring
+     * rounds a storage upload's up to a power of two inside its region, so a set bound at a dynamic offset keeps its
+     * range while the upload's size stays under it.
+     */
+    public int bindingBytes() {
+        return committedBytes;
+    }
+
     /** Whether each upload lands at a new offset, so a binding must say where. True on the frame ring. */
     public boolean offsetMovesPerUpload() {
         return false;

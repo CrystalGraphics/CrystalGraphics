@@ -34,6 +34,9 @@ public final class CgDrawStateCache {
 
     private CgGraphicsPipeline pipeline;
     private final CgBindingSet[] sets = new CgBindingSet[SETS];
+    /** Each set's dynamic offsets as bound, and how many. */
+    private final int[][] offsets = new int[SETS][CgDeviceSets.MAX_DYNAMIC];
+    private final int[] offsetCounts = new int[SETS];
     private CgGpuBuffer vertices, indices;
     private long vertexOffset, indexOffset;
     private int stencil = -1;
@@ -63,18 +66,32 @@ public final class CgDrawStateCache {
         return n;
     }
 
+    private boolean sameOffsets(int index, int[] dynamicOffsets, int count) {
+        if (offsetCounts[index] != count) return false;
+        for (int i = 0; i < count; i++) if (offsets[index][i] != dynamicOffsets[i]) return false;
+        return true;
+    }
+
     private void forgetFrom(int first) {
         for (int i = first; i < SETS; i++) sets[i] = null;
     }
 
+    /** {@code set} at {@code index}, a set with no dynamic slot. */
     public void set(CgRenderPass pass, int index, CgBindingSet set) {
-        if (sets[index] == set) {
+        set(pass, index, set, CgBindingSet.NO_OFFSETS, 0);
+    }
+
+    /** {@code set} at {@code index} with its dynamic offsets ({@link CgDeviceSets#offsets}): skipped where both are set. */
+    public void set(CgRenderPass pass, int index, CgBindingSet set, int[] dynamicOffsets, int count) {
+        if (sets[index] == set && sameOffsets(index, dynamicOffsets, count)) {
             skipped++;
             CgTrace.add(CgChannels.GL, SKIPPED, 1);
             return;
         }
-        pass.setBindingSet(index, set);
+        pass.setBindingSet(index, set, dynamicOffsets, count);
         sets[index] = set;
+        System.arraycopy(dynamicOffsets, 0, offsets[index], 0, count);
+        offsetCounts[index] = count;
         bound++;
         CgTrace.add(CgChannels.GL, BOUND, 1);
     }

@@ -289,6 +289,8 @@ com/crystalgraphics/platform/gl/binding/GLBindingSet
   access public,final
   extends java/lang/Object
   field public,final contents Lcom/crystalgraphics/platform/rhi/binding/CgBindings;
+  field public,final dynamicCount I
+  field public,final dynamicIndex [I
   implements com/crystalgraphics/platform/rhi/binding/CgBindingSet
   method public <init> (Ljava/lang/String;Lcom/crystalgraphics/platform/rhi/binding/CgBindingLayout;Lcom/crystalgraphics/platform/rhi/binding/CgBindings;)V
   method public label ()Ljava/lang/String;
@@ -1720,12 +1722,14 @@ com/crystalgraphics/platform/rhi/CgRHI$Globals$Compute
 com/crystalgraphics/platform/rhi/CgRHI$Globals$Limits
   access public,final,record
   extends java/lang/Record
-  method public <init> (IIIIIIIIIIIIIIIFLcom/crystalgraphics/platform/rhi/CgRHI$Globals$Compute;)V
+  method public <init> (IIIIIIIIIIIIIIIIIFLcom/crystalgraphics/platform/rhi/CgRHI$Globals$Compute;)V
   method public compute ()Lcom/crystalgraphics/platform/rhi/CgRHI$Globals$Compute;
   method public max3DTextureSize ()I
   method public maxAnisotropy ()F
   method public maxArrayLayers ()I
   method public maxColorAttachments ()I
+  method public maxDynamicStorageBuffers ()I
+  method public maxDynamicUniformBuffers ()I
   method public maxSamples ()I
   method public maxStorageBufferBindings ()I
   method public maxTexelBufferElements ()I
@@ -1745,13 +1749,17 @@ com/crystalgraphics/platform/rhi/binding/CgBindingLayout
   access public,abstract,interface
   extends java/lang/Object
   implements com/crystalgraphics/platform/rhi/resource/CgRHIResource
+  method public dynamicCount ()I
   method public,abstract pushed ()Z
   method public,abstract slots ()Ljava/util/List;
+  method public,static dynamicIndex (Ljava/util/List;I)I
 com/crystalgraphics/platform/rhi/binding/CgBindingLayout$Slot
   access public,final,record
   extends java/lang/Record
   method public <init> (ILcom/crystalgraphics/platform/rhi/binding/CgBindingLayout$Type;)V
+  method public <init> (ILcom/crystalgraphics/platform/rhi/binding/CgBindingLayout$Type;Z)V
   method public binding ()I
+  method public dynamic ()Z
   method public type ()Lcom/crystalgraphics/platform/rhi/binding/CgBindingLayout$Type;
   method public,final equals (Ljava/lang/Object;)Z
   method public,final hashCode ()I
@@ -1769,6 +1777,7 @@ com/crystalgraphics/platform/rhi/binding/CgBindingLayout$Type
 com/crystalgraphics/platform/rhi/binding/CgBindingSet
   access public,abstract,interface
   extends java/lang/Object
+  field public,static,final NO_OFFSETS [I
   implements com/crystalgraphics/platform/rhi/resource/CgRHIResource
   method public,abstract layout ()Lcom/crystalgraphics/platform/rhi/binding/CgBindingLayout;
 com/crystalgraphics/platform/rhi/binding/CgBindings
@@ -1867,13 +1876,14 @@ com/crystalgraphics/platform/rhi/command/CgCommandList
 com/crystalgraphics/platform/rhi/command/CgComputePass
   access public,abstract,interface
   extends java/lang/Object
+  method public setBindingSet (ILcom/crystalgraphics/platform/rhi/binding/CgBindingSet;)V
   method public,abstract dispatch (III)V
   method public,abstract dispatchIndirect (Lcom/crystalgraphics/platform/rhi/resource/CgGpuBuffer;J)V
   method public,abstract end ()V
   method public,abstract pushBindings (Lcom/crystalgraphics/platform/rhi/binding/CgBindings;)V
   method public,abstract pushConstants (II)V
   method public,abstract pushConstants (ILjava/nio/ByteBuffer;)V
-  method public,abstract setBindingSet (ILcom/crystalgraphics/platform/rhi/binding/CgBindingSet;)V
+  method public,abstract setBindingSet (ILcom/crystalgraphics/platform/rhi/binding/CgBindingSet;[II)V
   method public,abstract setPipeline (Lcom/crystalgraphics/platform/rhi/pipeline/CgComputePipeline;)V
 com/crystalgraphics/platform/rhi/command/CgPassDesc
   access public,final,record
@@ -1934,6 +1944,7 @@ com/crystalgraphics/platform/rhi/command/CgPassDesc$StoreOp
 com/crystalgraphics/platform/rhi/command/CgRenderPass
   access public,abstract,interface
   extends java/lang/Object
+  method public setBindingSet (ILcom/crystalgraphics/platform/rhi/binding/CgBindingSet;)V
   method public,abstract clearColor (IFFFFIIII)V
   method public,abstract clearDepthStencil (ZFZIIIII)V
   method public,abstract draw (IIII)V
@@ -1946,7 +1957,7 @@ com/crystalgraphics/platform/rhi/command/CgRenderPass
   method public,abstract pushBindings (Lcom/crystalgraphics/platform/rhi/binding/CgBindings;)V
   method public,abstract pushConstants (II)V
   method public,abstract pushConstants (ILjava/nio/ByteBuffer;)V
-  method public,abstract setBindingSet (ILcom/crystalgraphics/platform/rhi/binding/CgBindingSet;)V
+  method public,abstract setBindingSet (ILcom/crystalgraphics/platform/rhi/binding/CgBindingSet;[II)V
   method public,abstract setDepthBias (FF)V
   method public,abstract setIndexBuffer (Lcom/crystalgraphics/platform/rhi/resource/CgGpuBuffer;JZ)V
   method public,abstract setPipeline (Lcom/crystalgraphics/platform/rhi/pipeline/CgGraphicsPipeline;)V
@@ -2422,11 +2433,11 @@ com/crystalgraphics/platform/rhi/pipeline/CgPipelineLayout
   extends java/lang/Record
   field public,static,final MAX_PUSH_CONSTANT_BYTES I
   method public <init> (Ljava/util/List;I)V
+  method public equals (Ljava/lang/Object;)Z
+  method public hashCode ()I
   method public pushConstantBytes ()I
   method public pushSet ()I
   method public sets ()Ljava/util/List;
-  method public,final equals (Ljava/lang/Object;)Z
-  method public,final hashCode ()I
   method public,final toString ()Ljava/lang/String;
   method public,static of ([Lcom/crystalgraphics/platform/rhi/binding/CgBindingLayout;)Lcom/crystalgraphics/platform/rhi/pipeline/CgPipelineLayout;
 com/crystalgraphics/platform/rhi/pipeline/CgPipelineRecipes

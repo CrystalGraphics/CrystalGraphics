@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.graph;
 
+import com.crystalgraphics.render.draw.CgDeviceSets;
 import com.crystalgraphics.platform.rhi.CgDeviceSection;
 import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.rhi.binding.CgBindingSet;
@@ -38,6 +39,9 @@ final class CgDeviceCompute {
     @Nullable
     private CgPipelineLayout layout;
     private final CgBindingSet[] sets = new CgBindingSet[CgRHI.BINDLESS_SET + 1];
+    /** Each set's dynamic offsets as bound, and how many. */
+    private final int[][] offsets = new int[CgRHI.BINDLESS_SET + 1][CgDeviceSets.MAX_DYNAMIC];
+    private final int[] offsetCounts = new int[CgRHI.BINDLESS_SET + 1];
 
     /** A graph pass starts: its first {@link #pass} is no split. */
     void begin(String label) {
@@ -85,8 +89,21 @@ final class CgDeviceCompute {
     }
 
     void set(int index, CgBindingSet s) {
-        if (sets[index] == s) return;
-        open.setBindingSet(index, s);
+        set(index, s, CgBindingSet.NO_OFFSETS, 0);
+    }
+
+    /** {@code s} at {@code index} with its dynamic offsets; skipped where both are bound. */
+    void set(int index, CgBindingSet s, int[] dynamicOffsets, int count) {
+        if (sets[index] == s && sameOffsets(index, dynamicOffsets, count)) return;
+        open.setBindingSet(index, s, dynamicOffsets, count);
         sets[index] = s;
+        System.arraycopy(dynamicOffsets, 0, offsets[index], 0, count);
+        offsetCounts[index] = count;
+    }
+
+    private boolean sameOffsets(int index, int[] dynamicOffsets, int count) {
+        if (offsetCounts[index] != count) return false;
+        for (int i = 0; i < count; i++) if (offsets[index][i] != dynamicOffsets[i]) return false;
+        return true;
     }
 }

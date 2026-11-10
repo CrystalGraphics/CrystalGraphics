@@ -1079,7 +1079,8 @@ public final class CgExecutor {
         if (CgKernelTarget.CHECKED) CgComputeCheck.prepare();
         for (int i = 0; i < dispatches.size(); i++) {
             CgDispatch d = dispatches.get(i);
-            for (String token : d.source.engineBuffers()) CgEngineBufferRegistry.get(token).buffer().get().bind();
+            List<String> tokens = d.source.engineBuffers();
+            for (int t = 0; t < tokens.size(); t++) CgEngineBufferRegistry.get(tokens.get(t)).buffer().get().bind();
             d.kernel.program().devicePipeline(rhi);
             for (int b = 0; b < d.buffers.length; b++) {
                 if (d.buffers[b] != null) bufferStorage(d.buffers[b], false);
@@ -1156,7 +1157,7 @@ public final class CgExecutor {
                 String what = d.source.path() + " " + d.decl.name() + " " + deviceSets.lastDefaulted();
                 if (deviceSetsLogged.add(what)) LOGGER.warn("device compute: {} defaulted", what);
             }
-            DEVICE_COMPUTE.set(set, s);
+            DEVICE_COMPUTE.set(set, s, deviceSets.offsets(), deviceSets.offsetCount());
         }
         switch (d.form) {
             case ELEMENTS -> program.dispatchOn(DEVICE_COMPUTE.pass(rhi), d.x, d.y, d.z);
@@ -2501,7 +2502,7 @@ public final class CgExecutor {
                 if (set < setLayout.length && setLayout[set] == bl && setSnapshot[set] == memo
                         && setVersion[set] == version) {
                     CgTrace.add(CgChannels.GL, SETS_KEPT, 1);
-                    drawCache.set(rp, set, setMade[set]);
+                    drawCache.set(rp, set, setMade[set], setOffsets[set], setOffsetCount[set]);
                     continue;
                 }
                 CgBindingSet made = deviceSets.set(rhi, table, snapshot, layout, set, null, whole);
@@ -2510,8 +2511,10 @@ public final class CgExecutor {
                     setSnapshot[set] = memo;
                     setVersion[set] = version;
                     setMade[set] = made;
+                    System.arraycopy(deviceSets.offsets(), 0, setOffsets[set], 0, deviceSets.offsetCount());
+                    setOffsetCount[set] = deviceSets.offsetCount();
                 }
-                drawCache.set(rp, set, made);
+                drawCache.set(rp, set, made, deviceSets.offsets(), deviceSets.offsetCount());
             }
             CgTrace.zoneDone(CgChannels.GL_DETAIL, BATCH_BINDINGS, t);
             t = CgTrace.stamp(CgChannels.GL_DETAIL);
@@ -2552,6 +2555,9 @@ public final class CgExecutor {
     private final CgBindingLayout[] setLayout = new CgBindingLayout[8];
     private final int[] setSnapshot = new int[8], setVersion = new int[8];
     private final CgBindingSet[] setMade = new CgBindingSet[8];
+    /** Each kept set's dynamic offsets: a snapshot's blocks are where they were for the batch that made it. */
+    private final int[][] setOffsets = new int[8][CgDeviceSets.MAX_DYNAMIC];
+    private final int[] setOffsetCount = new int[8];
     private static final int SETS_KEPT = CgTrace.name("bindings.sets-kept");
 
     /** Each pipeline's device layout by id, made on its first batch; again where its program was linked again. */
@@ -2725,8 +2731,8 @@ public final class CgExecutor {
             DEVICE_COMPUTE.pipeline(pipeline, layout);
             for (int set = 0; set < layout.sets().size(); set++) {
                 if (set == CgRHI.BINDLESS_SET || layout.sets().get(set).slots().isEmpty()) continue;
-                DEVICE_COMPUTE.set(set, deviceSets.set(rhi, table, constants, layout, set,
-                        set == CgBindingModel.MATERIAL ? k : null));
+                CgBindingSet s = deviceSets.set(rhi, table, constants, layout, set, set == CgBindingModel.MATERIAL ? k : null);
+                DEVICE_COMPUTE.set(set, s, deviceSets.offsets(), deviceSets.offsetCount());
             }
             program.dispatchOn(DEVICE_COMPUTE.pass(rhi), commands.stagedElements, 1, 1);
         } finally {

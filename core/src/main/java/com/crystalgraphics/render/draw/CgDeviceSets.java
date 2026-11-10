@@ -34,14 +34,15 @@ import java.util.Map;
  * table.upload(ring);                                                 // the ring blocks' places first
  * sets.prepare(table);                                               // textures loaded, outside a device section
  * CgBindingSet material = sets.set(rhi, table, id, layout, CgBindingModel.MATERIAL, null);
- * CgBindingSet pass = sets.set(rhi, table, id, layout, CgBindingModel.PASS, passResources);
+ * pass.setBindingSet(CgBindingModel.MATERIAL, material, sets.offsets(), sets.offsetCount());   // read before the next set()
  * }</pre>
  *
  * <ul>
  *   <li>A slot nothing fills takes a default (white for a texture, a zeroed-at-birth buffer), counted as
  *       {@code bindings.slots-defaulted}: a draw that reads one draws wrongly, so a scene asserts none.</li>
- *   <li>A set holding a ring block is that frame's: the block's place moves each frame. A material's own block is a
- *       {@link CgBlockVersion}, so its set lasts.</li>
+ *   <li>A buffer in a dynamic slot ({@link CgDeviceStates} marks them) is keyed without its offset, which
+ *       {@link #offsets} gives for the bind: a set holding a buffer the frame ring moves each frame lasts. One past the
+ *       device's dynamic limit is keyed by its offset, its set that frame's.</li>
  *   <li>A block in a {@link CgMaterialArena} fills the storage slot it maps to: the whole arena for draws whose ids
  *       carry its slot, else its slot alone, as the caller says.</li>
  *   <li>A set no call has asked for in {@link #KEPT_FRAMES} frames is released (the device keeps it until its frames
@@ -54,6 +55,8 @@ public final class CgDeviceSets {
     private static final int MADE = CgTrace.name("bindings.sets-made"), REUSED = CgTrace.name("bindings.sets-reused"),
             DEFAULTED = CgTrace.name("bindings.slots-defaulted"), RELEASED = CgTrace.name("bindings.sets-released");
     private static final int DEFAULT_BYTES = 4096;
+    /** Dynamic slots a pipeline's sets hold at most, whatever the device allows. */
+    public static final int MAX_DYNAMIC = 16;
     /** Frames a set lasts unasked. */
     static final int KEPT_FRAMES = 16;
 
@@ -63,6 +66,10 @@ public final class CgDeviceSets {
     private long swept = -1;
     private final Key probe = new Key();
     private final CgBindings contents = new CgBindings();
+    /** The last set's dynamic offsets, in binding order; and each content entry's place among them, or -1. */
+    private final int[] offsets = new int[MAX_DYNAMIC];
+    private int offsetCount;
+    private int[] entryDynamic = new int[16];
     @Nullable
     private CgRHI device;
     @Nullable
@@ -101,7 +108,8 @@ public final class CgDeviceSets {
         CgBindingLayout bl = layout.sets().get(set);
         contents.clear();
         fill(rhi, table, id, set, bl, extras);
-        probe.of(bl, contents);
+        dynamicOffsets(bl);
+        probe.of(bl, contents, entryDynamic);
         Entry found = sets.get(probe);
         if (found != null) {
             found.asked = frame;
@@ -116,6 +124,29 @@ public final class CgDeviceSets {
         this.made++;
         CgTrace.add(CgChannels.GL, MADE, 1);
         return made;
+    }
+
+    /** {@link #contents}' dynamic entries: their places noted, their offsets into {@link #offsets}. */
+    private void dynamicOffsets(CgBindingLayout layout) {
+        int n = contents.count();
+        if (entryDynamic.length < n) entryDynamic = new int[Math.max(n, entryDynamic.length * 2)];
+        offsetCount = layout.dynamicCount();
+        if (offsetCount > MAX_DYNAMIC) throw new IllegalStateException(layout.label() + " has " + offsetCount + " dynamic slots");
+        for (int i = 0; i < n; i++) {
+            int at = offsetCount == 0 ? -1 : CgBindingLayout.dynamicIndex(layout.slots(), contents.binding(i));
+            entryDynamic[i] = at;
+            if (at >= 0) offsets[at] = Math.toIntExact(contents.offset(i));
+        }
+    }
+
+    /** The dynamic offsets of the set {@link #set} last answered, in binding order: read before the next call. */
+    public int[] offsets() {
+        return offsets;
+    }
+
+    /** How many of {@link #offsets} the last set takes. */
+    public int offsetCount() {
+        return offsetCount;
     }
 
     /** Releases the sets no call asked for in {@link #KEPT_FRAMES} frames; once a frame. */
@@ -317,14 +348,17 @@ public final class CgDeviceSets {
         }
     }
 
-    /** A set's layout and contents by identity and number, each image's sampled layout too: what makes two sets the same set. */
+    /**
+     * A set's layout and contents by identity and number, each image's sampled layout too: what makes two sets the same
+     * set. A dynamic slot's offset is the bind's, so not in it.
+     */
     private static final class Key {
         CgBindingLayout layout;
         Object[] refs = new Object[16];
         long[] nums = new long[16];
         int count, hash;
 
-        void of(CgBindingLayout layout, CgBindings c) {
+        void of(CgBindingLayout layout, CgBindings c, int[] dynamic) {
             this.layout = layout;
             count = c.count();
             if (refs.length < count * 2) refs = new Object[count * 2];
@@ -337,7 +371,7 @@ public final class CgDeviceSets {
                 refs[i * 2] = resource;
                 refs[i * 2 + 1] = sampler;
                 nums[i * 4] = c.binding(i);
-                nums[i * 4 + 1] = view != null ? (long) view.baseMip() << 32 | view.baseLayer() : c.offset(i);
+                nums[i * 4 + 1] = view != null ? (long) view.baseMip() << 32 | view.baseLayer() : dynamic[i] >= 0 ? 0 : c.offset(i);
                 nums[i * 4 + 2] = view != null ? (long) view.mips() << 32 | view.layers() : c.size(i);
                 nums[i * 4 + 3] = view != null ? view.texture().sampledLayout(view) : 0;
                 h = h * 31 + System.identityHashCode(resource);

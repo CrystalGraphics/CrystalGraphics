@@ -5722,6 +5722,7 @@ com/crystalgraphics/gl/buffer/CgStreamBuffer
   method protected <init> (Lcom/crystalgraphics/gl/buffer/CgStreamBuffer$Use;I)V
   method protected,final make (JZ)Lcom/crystalgraphics/platform/rhi/resource/CgGpuBuffer;
   method protected,static release (Lcom/crystalgraphics/platform/rhi/resource/CgGpuBuffer;)V
+  method public bindingBytes ()I
   method public delete ()V
   method public getCapacityBytes ()I
   method public getCommittedBytes ()I
@@ -9026,10 +9027,13 @@ com/crystalgraphics/render/draw/CgDeviceSamplers
 com/crystalgraphics/render/draw/CgDeviceSets
   access public,final
   extends java/lang/Object
+  field public,static,final MAX_DYNAMIC I
   method public <init> ()V
   method public defaulted ()J
   method public lastDefaulted ()Ljava/lang/String;
   method public made ()J
+  method public offsetCount ()I
+  method public offsets ()[I
   method public prepare (Lcom/crystalgraphics/render/draw/CgBindingTable;)V
   method public release ()V
   method public reused ()J
@@ -9090,6 +9094,7 @@ com/crystalgraphics/render/draw/CgDrawStateCache
   method public pipeline (Lcom/crystalgraphics/platform/rhi/command/CgRenderPass;Lcom/crystalgraphics/platform/rhi/pipeline/CgGraphicsPipeline;)V
   method public reset ()V
   method public set (Lcom/crystalgraphics/platform/rhi/command/CgRenderPass;ILcom/crystalgraphics/platform/rhi/binding/CgBindingSet;)V
+  method public set (Lcom/crystalgraphics/platform/rhi/command/CgRenderPass;ILcom/crystalgraphics/platform/rhi/binding/CgBindingSet;[II)V
   method public skipped ()J
   method public stencilReference (Lcom/crystalgraphics/platform/rhi/command/CgRenderPass;I)V
   method public vertexBuffer (Lcom/crystalgraphics/platform/rhi/command/CgRenderPass;Lcom/crystalgraphics/platform/rhi/resource/CgGpuBuffer;J)V

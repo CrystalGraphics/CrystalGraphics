@@ -1,5 +1,6 @@
 package com.crystalgraphics.vulkan.command;
 
+import java.nio.IntBuffer;
 import com.crystalgraphics.platform.rhi.binding.CgBindingLayout;
 import com.crystalgraphics.platform.rhi.command.CgPassDesc;
 import com.crystalgraphics.platform.rhi.command.CgRenderPass;
@@ -46,6 +47,10 @@ final class VulkanPass implements CgRenderPass {
     private VulkanPipeline pipeline;
     /** Sets bound by index, bound again with each pipeline: a new layout may disturb them. */
     private final VulkanBindingSet[] sets = new VulkanBindingSet[8];
+    /** Each set's dynamic offsets as bound, and how many: given again at each bind. */
+    private final int[][] offsets = new int[8][MAX_DYNAMIC];
+    private final int[] offsetCounts = new int[8];
+    private static final int MAX_DYNAMIC = 16;
 
     VulkanPass(CgVulkanDevice device, VulkanEncoder encoder, CgPassDesc desc, int laid) {
         this.laid = laid;
@@ -75,7 +80,7 @@ final class VulkanPass implements CgRenderPass {
         if (index >= pipeline.desc.layout().sets().size()) return;
         try (MemoryStack stack = stackPush()) {
             vkCmdBindDescriptorSets(cmd(), VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.pipelineLayout, index,
-                    stack.longs(sets[index].set), null);
+                    stack.longs(sets[index].set), dynamicOffsets(stack, index));
         }
     }
 
@@ -87,9 +92,24 @@ final class VulkanPass implements CgRenderPass {
                 encoder.graphicsPushed);
     }
 
+    /** Set {@code index}'s dynamic offsets on {@code stack}; null where it has none. */
+    private IntBuffer dynamicOffsets(MemoryStack stack, int index) {
+        int n = offsetCounts[index];
+        if (n == 0) return null;
+        IntBuffer b = stack.mallocInt(n);
+        for (int i = 0; i < n; i++) b.put(i, offsets[index][i]);
+        return b;
+    }
+
     @Override
-    public void setBindingSet(int set, CgBindingSet bindings) {
+    public void setBindingSet(int set, CgBindingSet bindings, int[] dynamicOffsets, int count) {
+        int dynamic = bindings.layout().dynamicCount();
+        if (count != dynamic || count > MAX_DYNAMIC) {
+            throw new IllegalArgumentException(bindings.label() + " takes " + dynamic + " dynamic offsets; " + count + " given");
+        }
         sets[set] = (VulkanBindingSet) bindings;
+        System.arraycopy(dynamicOffsets, 0, offsets[set], 0, count);
+        offsetCounts[set] = count;
         if (pipeline != null) bind(set);
     }
 

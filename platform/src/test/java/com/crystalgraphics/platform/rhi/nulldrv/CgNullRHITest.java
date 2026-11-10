@@ -48,6 +48,8 @@ public class CgNullRHITest extends CgCommandListContract {
     /** Nothing left to check: every command was refused or taken as it was recorded. */
     @Override protected void checkFrame() {}
 
+    @Override protected boolean runsShaders() { return false; }
+
     private CgGpuBuffer buffer() {
         return device.createBuffer(new CgGpuBuffer.Desc("b", 256, CgGpuBuffer.Usage.ALL, true));
     }

@@ -55,6 +55,11 @@ public abstract class CgCommandListContract {
     /** After a test's frame has ended: whatever the device found wrong with it fails the test here. */
     protected abstract void checkFrame();
 
+    /** Whether the device runs what it records, so a test may read results back: the null device only records. */
+    protected boolean runsShaders() {
+        return true;
+    }
+
     protected static final String VERTEX = "#version 450\nvoid main() {\n"
             + "    gl_Position = vec4(float(gl_VertexIndex & 1), float(gl_VertexIndex >> 1), 0.5, 1.0);\n}\n";
     private static final String WHITE = "#version 450\nlayout(location = 0) out vec4 o;\nvoid main() { o = vec4(1.0); }\n";
@@ -189,6 +194,51 @@ public abstract class CgCommandListContract {
         CgTransition moves = new CgTransition().buffer(written, CgAccess.COMPUTE_WRITE, CgAccess.UNIFORM_READ);
         cmd.transition(moves);
         endFrame();
+    }
+
+    @Test
+    public void aSetBoundAtTwoDynamicOffsetsReadsEach() {
+        CgBindingLayout params = rhi().createBindingLayout("params",
+                List.of(new CgBindingLayout.Slot(0, CgBindingLayout.Type.UNIFORM_BUFFER, true)), false);
+        CgBindingLayout out = layout("out", CgBindingLayout.Type.STORAGE_BUFFER, true);
+        CgComputePipeline kernel = rhi().createComputePipeline("contract",
+                module(CgShaderModule.Stage.COMPUTE, KERNEL), new CgPipelineLayout(List.of(params, out), 4));
+        int align = Math.max(16, rhi().globals().limits().uniformOffsetAlignment());
+        CgGpuBuffer blocks = rhi().createBuffer(new CgGpuBuffer.Desc("blocks", align * 2L, CgGpuBuffer.Usage.ALL, true));
+        ByteBuffer m = blocks.mapped().order(ByteOrder.nativeOrder());
+        for (int i = 0; i < align * 2; i++) m.put(i, (byte) 0);
+        m.putFloat(0, 3f).putFloat(align, 5f);
+        CgBindingSet set = rhi().createBindingSet("params", params,
+                new CgBindings().buffer(0, CgBindingLayout.Type.UNIFORM_BUFFER, blocks, 0, 16));
+        CgGpuBuffer written = buffer("written");
+        int[] offsets = new int[1];
+        CgCommandList cmd = rhi().encoder();
+        cmd.beginStorageOverlap();
+        CgComputePass pass = cmd.beginCompute("contract");
+        pass.setPipeline(kernel);
+        pass.pushBindings(new CgBindings().buffer(0, CgBindingLayout.Type.STORAGE_BUFFER, written, 0, 256));
+        for (int i = 0; i < 2; i++) {
+            offsets[0] = i * align;                       // one set, its block read at each place
+            pass.setBindingSet(0, set, offsets, 1);
+            pass.pushConstants(0, i);
+            pass.dispatch(1, 1, 1);
+        }
+        pass.end();
+        cmd.endStorageOverlap();
+        if (!runsShaders()) {
+            endFrame();
+            return;
+        }
+        CgGpuReadback back = new CgGpuReadback(rhi(), "written back", 8);
+        cmd.transition(new CgTransition().buffer(written, CgAccess.COMPUTE_WRITE, CgAccess.COPY_READ));
+        back.enqueue(cmd, written, 0, 8);
+        endFrame();
+        framesUntil(back::ready);
+        ByteBuffer d = back.data().order(ByteOrder.nativeOrder());
+        assertEquals("the block at offset 0", 3, d.getInt(0));
+        assertEquals("the same set's block at the next offset", 5, d.getInt(4));
+        back.release();
+        checkFrame();
     }
 
     @Test

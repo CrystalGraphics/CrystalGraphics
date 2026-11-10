@@ -287,9 +287,16 @@ public interface CgRHI {
                    boolean multiDrawIndirect, boolean indirectCount, boolean indirectFirstInstance,
                    boolean asyncCompute, boolean drawParameters, boolean independentBlend, boolean bindless) {
 
+        /**
+         * @param maxDynamicUniformBuffers dynamic uniform slots a pipeline's sets may hold together (Vulkan's
+         *                                 {@code maxDescriptorSetUniformBuffersDynamic}, at least 8)
+         * @param maxDynamicStorageBuffers the same of storage slots ({@code maxDescriptorSetStorageBuffersDynamic}, at
+         *                                 least 4)
+         */
         public record Limits(int maxTextureSize, int max3DTextureSize, int maxArrayLayers, int maxColorAttachments,
                              int maxSamples, int maxVertexAttributes, int maxTextureUnits, int maxUniformBlockSize,
-                             int maxUniformBufferBindings, int maxStorageBufferBindings, int maxTexelBufferElements,
+                             int maxUniformBufferBindings, int maxDynamicUniformBuffers, int maxStorageBufferBindings,
+                             int maxDynamicStorageBuffers, int maxTexelBufferElements,
                              int uniformOffsetAlignment, int storageOffsetAlignment, int texelOffsetAlignment,
                              int maxViewportSize, float maxAnisotropy, Compute compute) {}
 

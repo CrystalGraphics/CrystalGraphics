@@ -48,7 +48,8 @@ public final class CgShaderStorageBuffer extends CgShaderBuffer {
     protected void noteInternal() {
         int bytes = dataBuffer.getCommittedBytes();
         if (dataBuffer.offsetMovesPerUpload() && bytes > 0) {
-            CgBoundResources.storage(bindingLocation, dataBuffer.gpuBuffer(), dataBuffer.getWriteOffset(), bytes);
+            CgBoundResources.storage(bindingLocation, dataBuffer.gpuBuffer(), dataBuffer.getWriteOffset(),
+                    dataBuffer.bindingBytes());
         } else {
             CgBoundResources.storage(bindingLocation, dataBuffer.gpuBuffer(), 0, 0);
         }

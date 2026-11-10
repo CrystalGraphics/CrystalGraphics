@@ -272,8 +272,8 @@ public final class CgVulkanDevice implements CgRHI, AutoCloseable {
         CgRHI.Globals.Limits limits = new CgRHI.Globals.Limits(l.maxImageDimension2D(), l.maxImageDimension3D(),
                 l.maxImageArrayLayers(), l.maxColorAttachments(), samples, Math.min(16, l.maxVertexInputAttributes()),
                 Math.min(32, l.maxPerStageDescriptorSamplers()), l.maxUniformBufferRange(),
-                Math.min(24, l.maxPerStageDescriptorUniformBuffers()), 32,
-                l.maxTexelBufferElements(), (int) l.minUniformBufferOffsetAlignment(),
+                Math.min(24, l.maxPerStageDescriptorUniformBuffers()), l.maxDescriptorSetUniformBuffersDynamic(), 32,
+                l.maxDescriptorSetStorageBuffersDynamic(), l.maxTexelBufferElements(), (int) l.minUniformBufferOffsetAlignment(),
                 (int) l.minStorageBufferOffsetAlignment(), (int) l.minTexelBufferOffsetAlignment(),
                 l.maxViewportDimensions(0), l.maxSamplerAnisotropy(), new CgRHI.Globals.Compute(
                         l.maxComputeSharedMemorySize(), l.maxComputeWorkGroupInvocations(),
@@ -601,10 +601,14 @@ public final class CgVulkanDevice implements CgRHI, AutoCloseable {
         if (pushed && slots.size() > maxPushDescriptors)
             throw new UnsupportedOperationException(label + " has " + slots.size() + " bindings; a push-descriptor set "
                     + "holds " + maxPushDescriptors);
+        // A push-descriptor set has no dynamic descriptors: its offsets are pushed with it
+        for (int i = 0; pushed && i < slots.size(); i++) {
+            if (slots.get(i).dynamic()) throw new IllegalArgumentException(label + ": a pushed set with a dynamic slot");
+        }
         try (MemoryStack stack = stackPush()) {
             VkDescriptorSetLayoutBinding.Buffer bindings = VkDescriptorSetLayoutBinding.calloc(slots.size(), stack);
             for (int i = 0; i < slots.size(); i++) {
-                bindings.get(i).binding(slots.get(i).binding()).descriptorType(descriptorType(slots.get(i).type()))
+                bindings.get(i).binding(slots.get(i).binding()).descriptorType(descriptorType(slots.get(i)))
                         .descriptorCount(1).stageFlags(VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT
                                 | VK_SHADER_STAGE_COMPUTE_BIT);
             }
@@ -628,8 +632,9 @@ public final class CgVulkanDevice implements CgRHI, AutoCloseable {
             VkWriteDescriptorSet.Buffer writes = VkWriteDescriptorSet.calloc(n, stack);
             for (int i = 0; i < n; i++) {
                 CgBindingLayout.Type type = contents.type(i);
+                boolean dynamic = CgBindingLayout.dynamicIndex(layout.slots(), contents.binding(i)) >= 0;
                 VkWriteDescriptorSet w = writes.get(i).sType$Default().dstSet(made[1]).dstBinding(contents.binding(i))
-                        .descriptorCount(1).descriptorType(descriptorType(type));
+                        .descriptorCount(1).descriptorType(descriptorType(type, dynamic));
                 if (type == CgBindingLayout.Type.SAMPLED_TEXTURE || type == CgBindingLayout.Type.STORAGE_IMAGE) {
                     boolean sampled = type == CgBindingLayout.Type.SAMPLED_TEXTURE;
                     VulkanTexture t = (VulkanTexture) contents.view(i).texture();
@@ -642,8 +647,10 @@ public final class CgVulkanDevice implements CgRHI, AutoCloseable {
                     w.pTexelBufferView(stack.longs(texelView((VulkanBuffer) contents.buffer(i), contents.offset(i),
                             contents.size(i), contents.texelFormat(i))));
                 } else {
+                    // A dynamic slot's offset is the bind's, added to this base
                     w.pBufferInfo(VkDescriptorBufferInfo.calloc(1, stack).buffer(((VulkanBuffer) contents.buffer(i)).buffer)
-                            .offset(contents.offset(i)).range(contents.size(i) > 0 ? contents.size(i) : VK_WHOLE_SIZE));
+                            .offset(dynamic ? 0 : contents.offset(i))
+                            .range(contents.size(i) > 0 ? contents.size(i) : VK_WHOLE_SIZE));
                 }
             }
             vkUpdateDescriptorSets(device, writes, null);
@@ -680,6 +687,17 @@ public final class CgVulkanDevice implements CgRHI, AutoCloseable {
     /** Every stage a pipeline here has: push constants are visible to all of them. */
     public static final int PUSH_CONSTANT_STAGES = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT
             | VK_SHADER_STAGE_COMPUTE_BIT;
+
+    /** {@code slot}'s descriptor type: a dynamic buffer's own. */
+    public static int descriptorType(CgBindingLayout.Slot slot) {
+        return descriptorType(slot.type(), slot.dynamic());
+    }
+
+    private static int descriptorType(CgBindingLayout.Type type, boolean dynamic) {
+        if (!dynamic) return descriptorType(type);
+        return type == CgBindingLayout.Type.UNIFORM_BUFFER ? VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC
+                : VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC;
+    }
 
     public static int descriptorType(CgBindingLayout.Type type) {
         switch (type) {

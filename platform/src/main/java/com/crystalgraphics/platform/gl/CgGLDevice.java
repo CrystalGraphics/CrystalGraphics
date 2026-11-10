@@ -205,6 +205,9 @@ public final class CgGLDevice implements CgRHI {
                 gl.glGetInteger(GL_MAX_COLOR_ATTACHMENTS), gl.glGetInteger(GL_MAX_SAMPLES),
                 gl.glGetInteger(GL_MAX_VERTEX_ATTRIBS), gl.glGetInteger(GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS),
                 gl.glGetInteger(GL_MAX_UNIFORM_BLOCK_SIZE), gl.glGetInteger(GL_MAX_UNIFORM_BUFFER_BINDINGS),
+                // A dynamic offset is the bind's glBindBufferRange offset: as many as there are points of its kind
+                gl.glGetInteger(GL_MAX_UNIFORM_BUFFER_BINDINGS),
+                gl.glGetInteger(GL_MAX_SHADER_STORAGE_BUFFER_BINDINGS),
                 gl.glGetInteger(GL_MAX_SHADER_STORAGE_BUFFER_BINDINGS), gl.glGetInteger(GL_MAX_TEXTURE_BUFFER_SIZE),
                 gl.glGetInteger(GL_UNIFORM_BUFFER_OFFSET_ALIGNMENT),
                 gl.glGetInteger(GL_SHADER_STORAGE_BUFFER_OFFSET_ALIGNMENT),

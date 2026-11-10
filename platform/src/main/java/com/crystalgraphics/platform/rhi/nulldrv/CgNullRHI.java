@@ -78,7 +78,7 @@ public final class CgNullRHI implements CgRHI {
     }
 
     private static final CgRHI.Globals INFO = new CgRHI.Globals("recording", "CrystalGraphics", "0",
-            new CgRHI.Globals.Limits(16384, 2048, 2048, 8, 8, 16, 32, 65536, 24, 16, 1 << 26,
+            new CgRHI.Globals.Limits(16384, 2048, 2048, 8, 8, 16, 32, 65536, 24, 8, 16, 4, 1 << 26,
                     256, 256, 16, 16384, 16f, CgRHI.Globals.Compute.MINIMUM), true, true, true, true, true, true, true, true, true,
             true);
     private CgRHI.Globals info = INFO;
@@ -149,7 +149,8 @@ public final class CgNullRHI implements CgRHI {
         CgRHI.Globals.Limits l = INFO.limits();
         info = new CgRHI.Globals(INFO.name(), INFO.vendor(), INFO.driver(), new CgRHI.Globals.Limits(l.maxTextureSize(),
                 l.max3DTextureSize(), l.maxArrayLayers(), l.maxColorAttachments(), l.maxSamples(), l.maxVertexAttributes(),
-                l.maxTextureUnits(), l.maxUniformBlockSize(), l.maxUniformBufferBindings(), l.maxStorageBufferBindings(),
+                l.maxTextureUnits(), l.maxUniformBlockSize(), l.maxUniformBufferBindings(), l.maxDynamicUniformBuffers(),
+                l.maxStorageBufferBindings(), l.maxDynamicStorageBuffers(),
                 l.maxTexelBufferElements(), l.uniformOffsetAlignment(), l.storageOffsetAlignment(), l.texelOffsetAlignment(),
                 l.maxViewportSize(), l.maxAnisotropy(), compute), INFO.timestamps(), INFO.anisotropy(), INFO.nonSolidFill(),
                 INFO.multiDrawIndirect(), INFO.indirectCount(), INFO.indirectFirstInstance(), INFO.asyncCompute(),
@@ -508,11 +509,19 @@ public final class CgNullRHI implements CgRHI {
                     + bytes + " pushed at " + offset);
     }
 
-    private void bindSet(CgBindingSet[] sets, int index, CgBindingSet set) {
+    private void bindSet(CgBindingSet[] sets, int index, CgBindingSet set, int[] offsets, int count) {
         use(set);
         if (index < 0 || index >= sets.length) throw new IllegalArgumentException("set " + index + ": sets are 0-" + (sets.length - 1));
+        int dynamic = set.layout().dynamicCount();
+        if (count != dynamic) throw new IllegalArgumentException(set.label() + " takes " + dynamic + " dynamic offsets; " + count + " given");
+        // The stricter alignment of the two kinds a dynamic slot may be
+        int align = Math.max(info.limits().uniformOffsetAlignment(), info.limits().storageOffsetAlignment());
+        for (int i = 0; i < count; i++) {
+            if (offsets[i] < 0 || offsets[i] % align != 0)
+                throw new IllegalArgumentException(set.label() + ": dynamic offset " + offsets[i] + " is not a multiple of " + align);
+        }
         sets[index] = set;
-        if (logging) record("setBindingSet " + index + " " + ref(set));
+        if (logging) record("setBindingSet " + index + " " + ref(set) + (count == 0 ? "" : " at " + Arrays.toString(Arrays.copyOf(offsets, count))));
     }
 
     /** What {@code t} holds, hashed, to tell a batch ended as begun from one changed between. */
@@ -949,9 +958,9 @@ public final class CgNullRHI implements CgRHI {
         }
 
         @Override
-        public void setBindingSet(int set, CgBindingSet bindings) {
+        public void setBindingSet(int set, CgBindingSet bindings, int[] dynamicOffsets, int count) {
             live();
-            bindSet(sets, set, bindings);
+            bindSet(sets, set, bindings, dynamicOffsets, count);
         }
 
         @Override
@@ -1328,9 +1337,9 @@ public final class CgNullRHI implements CgRHI {
         }
 
         @Override
-        public void setBindingSet(int set, CgBindingSet bindings) {
+        public void setBindingSet(int set, CgBindingSet bindings, int[] dynamicOffsets, int count) {
             live();
-            bindSet(sets, set, bindings);
+            bindSet(sets, set, bindings, dynamicOffsets, count);
         }
 
         @Override
