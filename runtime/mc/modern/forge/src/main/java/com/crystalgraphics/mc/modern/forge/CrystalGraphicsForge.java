@@ -6,6 +6,7 @@ import com.crystalgraphics.mc.modern.platform.LifecycleModern;
 import com.crystalgraphics.mc.modern.platform.PlatformServiceModern;
 import com.crystalgraphics.mc.modern.platform.ServerModern;
 import com.crystalgraphics.mc.modern.platform.ResourceIds;
+import com.crystalgraphics.mc.modern.platform.command.CommandsModern;
 import com.crystalgraphics.mc.modern.platform.net.NetworkModern;
 import com.crystalgraphics.mc.modern.platform.world.HostCameraModern;
 import com.crystalgraphics.mc.shared.CrashVariant;
@@ -32,6 +33,12 @@ import net.minecraftforge.fmlserverevents.FMLServerStoppingEvent;
 /*import net.minecraftforge.fml.event.server.FMLServerAboutToStartEvent;
 import net.minecraftforge.fml.event.server.FMLServerStoppingEvent;
 *///?}
+//? if >=1.16.5 {
+import net.minecraftforge.event.RegisterCommandsEvent;
+//?}
+//? if >=1.18 {
+import net.minecraftforge.client.event.RegisterClientCommandsEvent;
+//?}
 //? if >=1.20.2 {
 /*import net.minecraftforge.network.PacketDistributor;
 import net.minecraftforge.network.ChannelBuilder;
@@ -264,6 +271,15 @@ public final class CrystalGraphicsForge implements VariantEntry {
             *///?} elif >=1.14.4 {
             MinecraftForge.EVENT_BUS.addListener(Events::onLoggedIn);
             MinecraftForge.EVENT_BUS.addListener(Events::onLoggedOut);
+            //?}
+
+            // Client commands: Forge 40 (1.18.2) first; before it there is no hook, and CgCommands.supports says so.
+            //? if >=1.21.6 {
+            /*RegisterClientCommandsEvent.BUS.addListener(event -> CommandsModern.registerClient(event.getDispatcher()));
+            CommandsModern.clientCommands(true);
+            *///?} elif >=1.18 {
+            MinecraftForge.EVENT_BUS.addListener(Events::onRegisterClientCommands);
+            CommandsModern.clientCommands(true);
             //?}
             // And as entities join and leave the client level: Forge has no leave event before 1.16.5.
             //? if >=1.21.6 {
@@ -609,6 +625,12 @@ public final class CrystalGraphicsForge implements VariantEntry {
             event.setFOV(HostCameraModern.fov(event.getFOV()));
         }
 
+        //? if >=1.18 <1.21.6 {
+        private static void onRegisterClientCommands(RegisterClientCommandsEvent event) {
+            CommandsModern.registerClient(event.getDispatcher());
+        }
+        //?}
+
         //? if >=1.19 {
         private static void onGameShuttingDown(GameShuttingDownEvent event) {
             LifecycleModern.shutdown();
@@ -631,12 +653,19 @@ public final class CrystalGraphicsForge implements VariantEntry {
             /*ServerAboutToStartEvent.BUS.addListener(event -> ServerModern.serverStarting(event.getServer()));
             ServerStoppingEvent.BUS.addListener(event -> ServerModern.serverStopping());
             TickEvent.ServerTickEvent.Post.BUS.addListener(event -> ServerModern.serverTick());
+            RegisterCommandsEvent.BUS.addListener(event -> CommandsModern.registerServer(event.getDispatcher()));
             PlayerEvent.PlayerLoggedInEvent.BUS.addListener(ServerEvents::onPlayerJoin);
             PlayerEvent.PlayerLoggedOutEvent.BUS.addListener(ServerEvents::onPlayerLeave);
             *///?} else {
             MinecraftForge.EVENT_BUS.addListener(ServerEvents::onServerStarting);
             MinecraftForge.EVENT_BUS.addListener(ServerEvents::onServerStopping);
             MinecraftForge.EVENT_BUS.addListener(ServerEvents::onServerTick);
+            // Before 1.16.5 there is no registration event: the server's own dispatcher, as it starts.
+            //? if >=1.16.5 {
+            MinecraftForge.EVENT_BUS.addListener(ServerEvents::onRegisterCommands);
+            //?} else {
+            /*MinecraftForge.EVENT_BUS.addListener(ServerEvents::onServerStartingCommands);
+            *///?}
             MinecraftForge.EVENT_BUS.addListener(ServerEvents::onPlayerJoin);
             MinecraftForge.EVENT_BUS.addListener(ServerEvents::onPlayerLeave);
             //?}
@@ -657,6 +686,16 @@ public final class CrystalGraphicsForge implements VariantEntry {
 
         private static void onServerStopping(FMLServerStoppingEvent event) {
             ServerModern.serverStopping();
+        }
+        *///?}
+
+        //? if >=1.16.5 <1.21.6 {
+        private static void onRegisterCommands(RegisterCommandsEvent event) {
+            CommandsModern.registerServer(event.getDispatcher());
+        }
+        //?} elif <1.16.5 {
+        /*private static void onServerStartingCommands(FMLServerAboutToStartEvent event) {
+            CommandsModern.registerServer(event.getServer().getCommands().getDispatcher());
         }
         *///?}
 

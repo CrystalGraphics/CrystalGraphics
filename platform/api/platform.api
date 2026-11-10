@@ -95,6 +95,71 @@ com/crystalgraphics/platform/audio/CgHostVolume$Category
   field public,static,final WEATHER Lcom/crystalgraphics/platform/audio/CgHostVolume$Category;
   method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/platform/audio/CgHostVolume$Category;
   method public,static values ()[Lcom/crystalgraphics/platform/audio/CgHostVolume$Category;
+com/crystalgraphics/platform/command/CgBrigadier
+  access public,final
+  extends java/lang/Object
+  method public,static present ()Z
+com/crystalgraphics/platform/command/CgCommandArgs
+  access public,final
+  extends java/lang/Object
+  method public,static choice (Ljava/util/function/Supplier;)Lcom/mojang/brigadier/suggestion/SuggestionProvider;
+  method public,static choice (Ljava/util/function/Supplier;Ljava/util/function/Function;)Lcom/mojang/brigadier/suggestion/SuggestionProvider;
+  method public,static matches (Ljava/lang/String;Ljava/lang/String;)Z
+  method public,static one (Ljava/lang/String;Ljava/util/Collection;Ljava/lang/String;)Ljava/lang/String;
+  method public,static varNames ()Lcom/mojang/brigadier/suggestion/SuggestionProvider;
+com/crystalgraphics/platform/command/CgCommandSource
+  access public,abstract,interface
+  extends java/lang/Object
+  method public,abstract fail (Ljava/lang/String;)V
+  method public,abstract host ()Ljava/lang/Object;
+  method public,abstract id ()Ljava/util/UUID;
+  method public,abstract kind ()Lcom/crystalgraphics/platform/command/CgCommandSource$Kind;
+  method public,abstract level ()I
+  method public,abstract name ()Ljava/lang/String;
+  method public,abstract reply (Ljava/lang/String;)V
+  method public,static of (Lcom/crystalgraphics/platform/command/CgCommandSource$Kind;Ljava/lang/String;ILjava/util/function/Consumer;)Lcom/crystalgraphics/platform/command/CgCommandSource;
+  method public,static of (Lcom/crystalgraphics/platform/command/CgCommandSource$Kind;Ljava/lang/String;ILjava/util/function/Consumer;Ljava/util/function/Consumer;)Lcom/crystalgraphics/platform/command/CgCommandSource;
+com/crystalgraphics/platform/command/CgCommandSource$Kind
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final CLIENT Lcom/crystalgraphics/platform/command/CgCommandSource$Kind;
+  field public,static,final COMMAND_BLOCK Lcom/crystalgraphics/platform/command/CgCommandSource$Kind;
+  field public,static,final CONSOLE Lcom/crystalgraphics/platform/command/CgCommandSource$Kind;
+  field public,static,final ENTITY Lcom/crystalgraphics/platform/command/CgCommandSource$Kind;
+  field public,static,final PLAYER Lcom/crystalgraphics/platform/command/CgCommandSource$Kind;
+  field public,static,final RCON Lcom/crystalgraphics/platform/command/CgCommandSource$Kind;
+  field public,static,final REMOTE Lcom/crystalgraphics/platform/command/CgCommandSource$Kind;
+  field public,static,final UI Lcom/crystalgraphics/platform/command/CgCommandSource$Kind;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/platform/command/CgCommandSource$Kind;
+  method public,static values ()[Lcom/crystalgraphics/platform/command/CgCommandSource$Kind;
+com/crystalgraphics/platform/command/CgCommands
+  access public,final
+  extends java/lang/Object
+  field public,static,final HOST Lcom/crystalgraphics/platform/CgService;
+  method public,static client (Lcom/crystalgraphics/platform/command/CgCommands$Contribution;)V
+  method public,static install (Lcom/crystalgraphics/platform/command/CgCommands$Side;Lcom/mojang/brigadier/CommandDispatcher;Ljava/util/function/Function;)V
+  method public,static refresh (Ljava/lang/Object;)V
+  method public,static run (Lcom/crystalgraphics/platform/command/CgCommands$Side;Lcom/crystalgraphics/platform/command/CgCommandSource;Ljava/lang/String;)I
+  method public,static server (Lcom/crystalgraphics/platform/command/CgCommands$Contribution;)V
+  method public,static suggest (Lcom/crystalgraphics/platform/command/CgCommands$Side;Lcom/crystalgraphics/platform/command/CgCommandSource;Ljava/lang/String;I)Ljava/util/concurrent/CompletableFuture;
+  method public,static supports (Lcom/crystalgraphics/platform/command/CgCommands$Side;)Z
+com/crystalgraphics/platform/command/CgCommands$Contribution
+  access public,abstract,interface
+  extends java/lang/Object
+  method public,abstract build (Lcom/mojang/brigadier/CommandDispatcher;Ljava/util/function/Function;)V
+com/crystalgraphics/platform/command/CgCommands$Host
+  access public,abstract,interface
+  extends java/lang/Object
+  field public,static,final NONE Lcom/crystalgraphics/platform/command/CgCommands$Host;
+  method public supports (Lcom/crystalgraphics/platform/command/CgCommands$Side;)Z
+  method public,abstract refresh (Ljava/lang/Object;)V
+com/crystalgraphics/platform/command/CgCommands$Side
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final CLIENT Lcom/crystalgraphics/platform/command/CgCommands$Side;
+  field public,static,final SERVER Lcom/crystalgraphics/platform/command/CgCommands$Side;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/platform/command/CgCommands$Side;
+  method public,static values ()[Lcom/crystalgraphics/platform/command/CgCommands$Side;
 com/crystalgraphics/platform/gl/CgCapabilities
   access public,final
   extends java/lang/Object

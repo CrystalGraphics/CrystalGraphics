@@ -1,6 +1,7 @@
 package com.crystalgraphics.mc.v1710.platform;
 
 import com.crystalgraphics.lifecycle.CgEngineLifecycle;
+import net.minecraftforge.client.ClientCommandHandler;
 import com.crystalgraphics.lwjgl2.JOrbisDecoder;
 import com.crystalgraphics.lwjgl2.Lwjgl2AudioOutput;
 import com.crystalgraphics.lwjgl2.Lwjgl2CursorService;
@@ -207,6 +208,7 @@ public final class PlatformService1710 implements CgPlatformService {
 
         CrystalGraphicsVersion.processAllRequirements();
         HostResources1710.listenForReloads();
+        ClientCommandHandler.instance.registerCommand(new Command1710("cgc", true));
     }
 
 }

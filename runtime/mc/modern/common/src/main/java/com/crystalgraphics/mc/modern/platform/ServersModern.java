@@ -29,7 +29,7 @@ public final class ServersModern implements CgServers.Host {
     }
 
     /** The running server, or null; for the thread binding. */
-    MinecraftServer minecraftServer() {
+    public MinecraftServer minecraftServer() {
         return server;
     }
 

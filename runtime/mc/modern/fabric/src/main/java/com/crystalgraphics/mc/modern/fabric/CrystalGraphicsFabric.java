@@ -85,6 +85,10 @@ public final class CrystalGraphicsFabric implements VariantEntry {
             registerGui();
             registerShutdown();
             ScreenInputFabric.register();
+            // Client commands: Fabric API has none on 1.14.4-1.15.2.
+            //? if >=1.16 {
+            ClientCommandsFabric.register();
+            //?}
             // CgKeyBindings: Fabric takes a key any time before its options load, so the window stays open
             //? if >=26.1 {
             /*KeyBindingsModern.INSTANCE.register(KeyMappingHelper::registerKeyMapping, true);

@@ -1,4 +1,5 @@
 import cgbuildlogic.abstractModule
+import cgbuildlogic.consumerApi
 import cgbuildlogic.publishedModule
 import java.io.File as JFile
 
@@ -26,11 +27,22 @@ repositories {
         name = "WagYourTail Maven"
         url = uri("https://maven.wagyourtail.xyz/releases")
     }
+    maven {
+        name = "Minecraft Libraries"
+        url = uri("https://libraries.minecraft.net/")
+    }
     mavenCentral()
 }
 
 dependencies {
     compileOnly("xyz.wagyourtail.jvmdowngrader:jvmdowngrader-java-api:$downgraderVer:downgraded-8")
+
+    // Brigadier is the command model (platform.command). consumerApi: a standalone consumer (the harness, a console)
+    // resolves it from the metadata and the jar bundles none, as for JOML. The oldest a node ships (1.13.2's 1.0.14): the
+    // calls made here exist through 1.3.11, so a Minecraft host runs on its own. 1.7.10 and Forge 1.8.9-1.12.2 have
+    // none and never load it (CgBrigadier). The tests run on the newest.
+    consumerApi("com.mojang:brigadier:1.0.14")
+    testImplementation("com.mojang:brigadier:1.3.11")
 
     // The state manager's deduplication decisions are pure logic — no GL context, no backend — so they are
     // unit-testable here. Whether CgGL calls them from the right places still needs a live context.

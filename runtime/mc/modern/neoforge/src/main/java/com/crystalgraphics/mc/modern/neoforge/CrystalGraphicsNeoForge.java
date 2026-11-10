@@ -6,6 +6,7 @@ import com.crystalgraphics.mc.modern.platform.LifecycleModern;
 import com.crystalgraphics.mc.modern.platform.PlatformServiceModern;
 import com.crystalgraphics.mc.modern.platform.ServerModern;
 import com.crystalgraphics.mc.modern.platform.ResourceIds;
+import com.crystalgraphics.mc.modern.platform.command.CommandsModern;
 import com.crystalgraphics.mc.modern.platform.net.NetworkModern;
 import com.crystalgraphics.mc.modern.platform.world.HostCameraModern;
 import com.crystalgraphics.mc.shared.CrashVariant;
@@ -16,6 +17,8 @@ import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
+import net.neoforged.neoforge.client.event.RegisterClientCommandsEvent;
+import net.neoforged.neoforge.event.RegisterCommandsEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.event.server.ServerAboutToStartEvent;
 import net.neoforged.neoforge.event.server.ServerStoppingEvent;
@@ -134,6 +137,7 @@ public final class CrystalGraphicsNeoForge implements VariantEntry {
             NeoForge.EVENT_BUS.addListener(Events::onServerStarting);
             NeoForge.EVENT_BUS.addListener(Events::onServerStopping);
             NeoForge.EVENT_BUS.addListener(Events::onServerTick);
+            NeoForge.EVENT_BUS.addListener(Events::onRegisterCommands);
             NeoForge.EVENT_BUS.addListener(Events::onPlayerJoin);
             NeoForge.EVENT_BUS.addListener(Events::onPlayerLeave);
 
@@ -148,6 +152,11 @@ public final class CrystalGraphicsNeoForge implements VariantEntry {
 
         private static void onServerStopping(ServerStoppingEvent event) {
             ServerModern.serverStopping();
+        }
+
+        /** Fires at every server start and {@code /reload}, with a fresh dispatcher. */
+        private static void onRegisterCommands(RegisterCommandsEvent event) {
+            CommandsModern.registerServer(event.getDispatcher());
         }
 
         // 1.20.5 split the tick events by phase into classes of their own.
@@ -197,6 +206,8 @@ public final class CrystalGraphicsNeoForge implements VariantEntry {
                 /*NeoForge.EVENT_BUS.addListener(ModBus::onClientTickStart);
                 *///?}
                 NeoForge.EVENT_BUS.addListener(ModBus::onLoggedIn);
+                NeoForge.EVENT_BUS.addListener(ModBus::onRegisterClientCommands);
+                CommandsModern.clientCommands(true);
                 NeoForge.EVENT_BUS.addListener(ModBus::onLoggedOut);
                 // NeoForge 21.7 refuses a clientbound payload with no client-side handler, and the common
                 // registrar's no longer counts as one.
@@ -251,6 +262,10 @@ public final class CrystalGraphicsNeoForge implements VariantEntry {
 
             private static void onEntityLeave(EntityLeaveLevelEvent event) {
                 if (event.getLevel().isClientSide()) LifecycleModern.entityLeft(event.getEntity());
+            }
+
+            private static void onRegisterClientCommands(RegisterClientCommandsEvent event) {
+                CommandsModern.registerClient(event.getDispatcher());
             }
 
             private static void onLoggedIn(ClientPlayerNetworkEvent.LoggingIn event) {

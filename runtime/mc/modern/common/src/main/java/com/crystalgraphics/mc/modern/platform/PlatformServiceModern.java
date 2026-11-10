@@ -45,6 +45,8 @@ import com.crystalgraphics.platform.service.CgCursorService;
 import com.crystalgraphics.platform.service.CgGameClasses;
 import com.crystalgraphics.platform.service.CgGameDirectory;
 import com.crystalgraphics.platform.service.CgModLoader;
+import com.crystalgraphics.platform.command.CgCommands;
+import com.crystalgraphics.mc.modern.platform.command.CommandsModern;
 import com.crystalgraphics.platform.service.CgShaderPacks;
 import com.crystalgraphics.platform.world.CgHostCamera;
 import com.crystalgraphics.platform.world.CgHostDebug;
@@ -115,6 +117,7 @@ public final class PlatformServiceModern implements CgPlatformService {
         CgPlatform.provide(CgHostShapes.HOST, new HostShapesModern());
         CgPlatform.provide(CgMirrorHost.HOST, new MirrorHostModern());
         CgPlatform.provide(CgHostFormats.HOST, new HostFormatsModern());
+        CgPlatform.provide(CgCommands.HOST, CommandsModern.INSTANCE);
     }
 
     /**

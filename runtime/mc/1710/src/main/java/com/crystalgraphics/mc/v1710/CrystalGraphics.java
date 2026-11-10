@@ -2,6 +2,7 @@ package com.crystalgraphics.mc.v1710;
 
 import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.mc.shared.CrashVariant;
+import com.crystalgraphics.mc.v1710.platform.Command1710;
 import com.crystalgraphics.mc.v1710.platform.PlatformService1710;
 import com.crystalgraphics.mc.v1710.platform.net.Network1710;
 import cpw.mods.fml.common.Mod;
@@ -118,6 +119,7 @@ public final class CrystalGraphics{
     @Mod.EventHandler
     public void onServerStarting(FMLServerStartingEvent event) {
         CgEngineLifecycle.serverStarting(null);
+        event.registerServerCommand(new Command1710("cg", false));
     }
 
     /** Closes every connection, so no caller is left waiting out a timeout for a stopped server. */

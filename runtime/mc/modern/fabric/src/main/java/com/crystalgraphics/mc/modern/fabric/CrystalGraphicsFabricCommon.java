@@ -4,6 +4,7 @@ import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.mc.modern.platform.net.NetworkModern;
 import com.crystalgraphics.mc.modern.platform.PlatformServiceModern;
 import com.crystalgraphics.mc.modern.platform.ServerModern;
+import com.crystalgraphics.mc.modern.platform.command.CommandsModern;
 import com.crystalgraphics.mc.modern.platform.ResourceIds;
 import com.crystalgraphics.mc.shared.CrashVariant;
 import com.crystalgraphics.platform.service.CgNetworkChannel;
@@ -11,6 +12,11 @@ import com.crystalgraphics.platform.service.CgNetworkChannel;
 import com.crystalgraphics.mc.shared.VariantEntry;
 
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
+//? if >=1.19.2 {
+import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
+//?} else {
+/*import net.fabricmc.fabric.api.command.v1.CommandRegistrationCallback;
+*///?}
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
@@ -63,6 +69,12 @@ public final class CrystalGraphicsFabricCommon implements VariantEntry {
         ServerLifecycleEvents.SERVER_STARTING.register(ServerModern::serverStarting);
         ServerLifecycleEvents.SERVER_STOPPING.register(server -> ServerModern.serverStopping());
         ServerTickEvents.END_SERVER_TICK.register(server -> ServerModern.serverTick());
+        // Server commands: v2 from 1.19.2 (it adds the registry context), v1 before.
+        //? if >=1.19.2 {
+        CommandRegistrationCallback.EVENT.register((dispatcher, buildContext, selection) -> CommandsModern.registerServer(dispatcher));
+        //?} else {
+        /*CommandRegistrationCallback.EVENT.register((dispatcher, dedicated) -> CommandsModern.registerServer(dispatcher));
+        *///?}
         // getPlayer() arrived in 1.17; before it the handler exposes the field.
         //? if >=1.17 {
         ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> NetworkModern.playerJoined(handler.getPlayer()));

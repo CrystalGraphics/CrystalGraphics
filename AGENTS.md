@@ -171,6 +171,7 @@ Fabric's dev mod is `tasks.jar` bundling each module's `downgradedJar` —
 | Init, resize or tear down a context | [`docs/ENGINE_API.md`](docs/ENGINE_API.md) § *CgGraphicsLifecycle* | — |
 | Test rendering without Minecraft | [Render testing](#render-testing--the-gl-debug-harness) | `gl-debug-harness/AGENTS.md` |
 | Send between client and server, or keep state in sync on the clients that see it | [`docs/NETWORKING.md`](docs/NETWORKING.md) | `net/CLAUDE.md` |
+| Add a command, or complete one, on every version | [`docs/COMMANDS.md`](docs/COMMANDS.md) | `platform/.../command` |
 | Write a codec, save to a file (binary, JSON, TOML, YAML) or NBT, or decode into a live object | [`docs/SERIALIZATION.md`](docs/SERIALIZATION.md) | `serialization/CLAUDE.md` |
 | Ask what a shape hits, give something a hitbox, test shapes against each other | [`docs/COLLISION.md`](docs/COLLISION.md) | `collision/CLAUDE.md`, `shape/CLAUDE.md` |
 | Load anything (files, textures, meshes, shaders, a kit), behind the loading screen or during play | **[`docs/LOADING.md`](docs/LOADING.md)** | `loading/CLAUDE.md`, `lifecycle/CLAUDE.md` |
