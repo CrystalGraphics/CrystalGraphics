@@ -1,0 +1,24 @@
+# Kakarot's "Critical!" (Lang_Critical_en.png) as live text, the text demo's station beside its damage number.
+# Segoe UI Bold, whose stroke is the art's 8 px, slanted 0.45 as the art's stems are. The fill runs white to yellow down
+# the capitals, an orange glow rises inside its lower edges, and the cover fill keeps the upper half white over that
+# glow. Round it, the art's edge gradient: a dark #742C00 outline stepping lighter outward (#803400, #914000, #C96A00)
+# into a thin orange rim at about 3.5 px, which closes the small counters as the art's does.
+
+_v: 1
+font: system:Segoe UI
+bold: true
+size: 37.5
+skew: 0.45
+layers:
+  - { id: glow, kind: shadow, spread: 3.48, blur: 0.53, paint: 0xF0EF9A40 }
+  - { id: band3, kind: shadow, spread: 2.82, blur: 0.47, paint: 0xFFC96A00 }
+  - { id: band2, kind: shadow, spread: 2.15, blur: 0.47, paint: 0xFF914000 }
+  - { id: band, kind: shadow, spread: 1.87, blur: 0.47, paint: 0xFF803400 }
+  - { id: ink, kind: outline, width: 1.67, paint: 0xFF742C00 }
+  - id: fill
+    kind: fill
+    paint: { gradient: { space: line, angle: 90, stops: [[0.348, 0xFFFFFFFF], [0.394, 0xFFFFFFF5], [0.440, 0xFFFFFFDB], [0.533, 0xFFFFFFA6], [0.626, 0xFFFFFF76], [0.718, 0xFFFFFF42], [0.765, 0xFFFFFD42]] } }
+  - { id: ember, kind: shadow, inset: true, offset: [0, -4], blur: 1.4, paint: 0xffffa51b }
+  - id: cover
+    kind: fill
+    paint: { gradient: { space: line, angle: 90, stops: [[0.348, 0xFFFFFFFF], [0.394, 0xFFFFFFF5], [0.440, 0xFFFFFFDB], [0.490, 0x80FFFFC0], [0.550, 0x00FFFF9A]] } }

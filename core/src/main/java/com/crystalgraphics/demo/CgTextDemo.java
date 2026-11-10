@@ -6,6 +6,10 @@ import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgMaterialDefinition;
 import com.crystalgraphics.api.text.CgNumberFormat;
 import com.crystalgraphics.api.text.CgTextLayout;
+import com.crystalgraphics.asset.kind.CgLookKinds;
+import com.crystalgraphics.asset.load.CgAssetRef;
+import com.crystalgraphics.asset.load.CgLoadPriority;
+import com.crystalgraphics.asset.load.CgVfxAssets;
 import com.crystalgraphics.render.canvas.CgCanvas;
 import com.crystalgraphics.render.stage.CgHostView;
 import com.crystalgraphics.render.stage.CgRenderStage;
@@ -22,8 +26,8 @@ import org.joml.Quaternionf;
 
 
 /**
- * Sixteen text styles in the world, a station each on a 4×4 grid fixed where it was placed and facing where the camera
- * stood then, a caption under each word naming what it shows: gradients over a glyph and a line; outlines under a fill,
+ * Seventeen text styles in the world, a station each: a 4×4 grid and Kakarot's "Critical!" left of its front row,
+ * fixed where it was placed and facing where the camera stood then, a caption under each word naming what it shows: gradients over a glyph and a line; outlines under a fill,
  * over it and alone; stacked outlines; hard, soft, outlined, inset and additive shadows; skew, letter spacing and case;
  * a counting damage number; and seven shader stations, each a Text-domain material (one shader, {@code text_fx},
  * its effect a value): galaxy, fire, an HSV rainbow, electricity, plasma, a hologram and a glitch. Drawn through the
@@ -46,19 +50,24 @@ public final class CgTextDemo {
     /** Blocks a pixel of the font is: a line about 1.4 blocks tall. */
     private static final float BLOCKS_PER_PX = 1.4f / PX;
     private static final int COLUMNS = 4;
+    /** Hard shadows an extruded outline is drawn with: under a pixel a step at the damage number's 4.7 px. */
+    private static final int EXTRUSION_STEPS = 5;
+    /** The 4x4 grid, and the critical's word beside the damage number, left of the front row. */
+    private static final int STATIONS = 17, CRITICAL_STATION = 16;
     private static final float SPACING = 7.5f, DEPTH = 5.5f, RISE = 1.4f, LIFT = 2.2f;
 
     /**
-     * A critical hit's digits, measured from Kakarot's own atlas (Num_Dmg00_02.png, digits 46 px tall, as this font's
-     * are at 64 px, so its pixels are this style's): a 2.2 px outline and a hard shadow of the outline's shape 4.7 px
-     * down, both (53, 12, 1); the fill's yellow-to-red sampled down the digits; a slant of 0.57; a 38 px advance.
-     * The gradient's stops sit where the default face's digits stand in its line (0.16 to 0.80 of it).
+     * A critical hit's digits, measured from Kakarot's own atlas (Num_Dmg00_02.png): Arial Black, whose digits carry
+     * the atlas's ink weight, sized so they stand its 46 px; a 2.2 px outline, its shape extruded 4.7 px down as the
+     * atlas's dark mass is (one offset copy leaves a step at every corner), both (53, 12, 1); the fill's yellow-to-red
+     * sampled down the digits from their top row; a slant of 0.57; a 38 px advance. The gradient's stops sit where the face's digits stand
+     * in its line (0.26 to 0.79 of it).
      */
-    private static final CgTextStyle DAMAGE = style("damage").skew(0.57f).letterSpacing(38)
-            .layer(CgTextLayer.shadow("drop").offset(0.6f, 4.7f).outlined(true).paint(0xFF350C01))
+    private static final CgTextStyle DAMAGE = extruded(style("damage").font("system:Arial Black").size(46.6f)
+            .skew(0.57f).letterSpacing(-55), 0.6f, 4.7f, 0xFF350C01)
             .layer(CgTextLayer.outline("outline").width(2.2f).paint(0xFF350C01))
             .layer(CgTextLayer.fill("fill").paint(CgTextPaint.gradient(Space.LINE, 90f,
-                    0.226f, 0xFFFBC12F, 0.480f, 0xFFFA6E24, 0.671f, 0xFFF92E13, 0.798f, 0xFFF8140C)))
+                    0.264f, 0xFFFECE30, 0.317f, 0xFFFFC530, 0.527f, 0xFFFF7124, 0.684f, 0xFFFF2F13, 0.789f, 0xFFFE120C)))
             .build();
 
     private static final CgTextStyle NEON = style("neon")
@@ -133,6 +142,7 @@ public final class CgTextDemo {
             "Skew and a motion trail of offset shadows",
             "Shader: torn bands under a static RGB split",
             "Twelve hard shadows: an extruded 3D face",
+            "Kakarot's \"Critical!\": live text, not word art",
     };
 
     private final CgFont font = CgDefaultFont.bold(PX);
@@ -140,8 +150,13 @@ public final class CgTextDemo {
     /** One program for every shader station: each its definition of text_fx.shader with its own effect. */
     private final CgMaterial warm;
     private final CgTextStyle[] styles;
+    /** Kakarot's "Critical!" as live text: an asset, so an edit to its file draws on the next frame (hot reload). */
+    private static final CgAssetRef<CgTextStyle> CRITICAL_WORD =
+            CgVfxAssets.ref(CgLookKinds.TEXT_STYLE, "crystalgraphics:demo/critical");
+    /** The definition of {@link #CRITICAL_WORD} whose face was last read, so each reload reads its own once. */
+    private CgTextStyle criticalFaced;
     private final String[] words = {"12.3k", "NEON", "HOLLOW", "GALAXY", "INFERNO", "RAINBOW", "ELECTRIC", "Embossed",
-            "POW!", "STACKED", "PLASMA", "HOLOGRAM", "level up!", "SPEED", "GLITCH", "EXTRUDE"};
+            "POW!", "STACKED", "PLASMA", "HOLOGRAM", "level up!", "SPEED", "GLITCH", "EXTRUDE", "Critical!"};
     private final CgRenderStage.Registration drawing;
     private final Matrix4f pose = new Matrix4f();
 
@@ -152,7 +167,7 @@ public final class CgTextDemo {
     private float yaw;
     private final Quaternionf facing = new Quaternionf();
     /** Where station {@code i}'s word stands, absolute, refreshed each submit. */
-    private final double[] at = new double[16 * 3];
+    private final double[] at = new double[STATIONS * 3];
     private long shownDamage = -1;
 
     public CgTextDemo(CgFont labelFont) {
@@ -195,21 +210,33 @@ public final class CgTextDemo {
                 .layer(CgTextLayer.fill("signal").paint(CgTextPaint.material(glitch)))
                 .build();
         styles = new CgTextStyle[]{DAMAGE, NEON, HOLLOW, galaxyStyle, infernoStyle, rainbowStyle, electricStyle, EMBOSSED,
-                COMIC, STACKED, plasmaStyle, hologramStyle, UPPER, SPEED, glitchStyle, EXTRUDE};
+                COMIC, STACKED, plasmaStyle, hologramStyle, UPPER, SPEED, glitchStyle, EXTRUDE, null};
         warm = CgMaterial.newInstance(plasma, null);
         warm.toggleKeyword("MSDF_MODE", true);
         // After the world renderer's draws and before the post stack, as world text with additive layers is drawn.
         drawing = CgRenderStage.WORLD_TRANSPARENT.register(CgWorldRenderer.ORDER + 10, this::draw);
     }
 
-    /** Starts compiling the shader stations' program. */
+    /** Starts compiling the shader stations' program and loading the critical's style, and reads the damage's face. */
     public void precache() {
+        DAMAGE.font(Math.round(DAMAGE.px()));
+        CRITICAL_WORD.request(CgLoadPriority.PLAYING);
         ready();
     }
 
     /** Whether the shader stations' program is built: it draws nothing until then. */
     public boolean ready() {
         return warm.precache();
+    }
+
+    /** The critical's style as last loaded, its face read once per definition; null until it has loaded. */
+    private CgTextStyle critical() {
+        CgTextStyle style = CRITICAL_WORD.loaded();
+        if (style != null && style != criticalFaced) {
+            style.font(Math.round(style.px()));
+            criticalFaced = style;
+        }
+        return style;
     }
 
     /** {@code text_fx.shader} as effect {@code effect}: a station's Text-domain material. */
@@ -233,15 +260,15 @@ public final class CgTextDemo {
             double backX = -toX / length, backZ = -toZ / length, acrossX = toZ / length, acrossZ = -toX / length;
             yaw = (float) Math.atan2(toX, toZ);
             facing.rotationY(yaw);
-            for (int i = 0; i < 16; i++) {
-                int row = i / COLUMNS, column = i % COLUMNS;
+            for (int i = 0; i < STATIONS; i++) {
+                int row = i == CRITICAL_STATION ? 0 : i / COLUMNS, column = i == CRITICAL_STATION ? -1 : i % COLUMNS;
                 double offset = (column - (COLUMNS - 1) * 0.5) * SPACING;
                 at[i * 3] = x + acrossX * offset + backX * row * DEPTH;
                 at[i * 3 + 1] = y + LIFT + row * RISE;
                 at[i * 3 + 2] = z + acrossZ * offset + backZ * row * DEPTH;
             }
         }
-        for (int i = 0; i < 16; i++) {
+        for (int i = 0; i < STATIONS; i++) {
             world.text(CAPTIONS[i]).at(at[i * 3], at[i * 3 + 1] - 1.05, at[i * 3 + 2]).height(0.28f).rotation(facing)
                     .font(labelFont).style(CgDemoStyles.LABEL).submit();
         }
@@ -265,6 +292,7 @@ public final class CgTextDemo {
         for (int row = 3; row >= 0; row--) {
             for (int column = 0; column < COLUMNS; column++) word(canvas, view, row * COLUMNS + column);
         }
+        word(canvas, view, CRITICAL_STATION);
     }
 
     private void word(CgCanvas canvas, CgHostView view, int i) {
@@ -272,8 +300,10 @@ public final class CgTextDemo {
         float scale = BLOCKS_PER_PX * (i == 0 ? 1f + 0.12f * punch(seconds) : 1f);
         pose.translation((float) (px - view.x()), (float) (py - view.y()), (float) (pz - view.z()))
                 .rotateY(yaw).scale(scale, -scale, scale);
-        CgTextDraw draw = canvas.text().style(i == 1 && neonOut() ? NEON_OFF : styles[i]).text(words[i]).font(font)
-                .contained(false);
+        CgTextStyle style = i == CRITICAL_STATION ? critical() : i == 1 && neonOut() ? NEON_OFF : styles[i];
+        if (style == null) return;
+        CgTextDraw draw = canvas.text().style(style).text(words[i]).contained(false);
+        if (style.font() == null) draw.font(font);
         CgTextLayout laid = draw.measure();
         draw.at(-laid.totalWidth() * 0.5f, -laid.totalHeight() * 0.5f).pose(pose).submit();
     }
@@ -313,6 +343,15 @@ public final class CgTextDemo {
     /** A style at the demo's size, every length in pixels of its 64 px font. */
     private static CgTextStyle.Builder style(String name) {
         return CgTextStyle.builder("crystalgraphics:demo_text_" + name).size(SIZE);
+    }
+
+    /** {@code b} with its outline's shape swept to ({@code dx}, {@code dy}): a hard shadow every fifth of the way. */
+    private static CgTextStyle.Builder extruded(CgTextStyle.Builder b, float dx, float dy, int argb) {
+        for (int step = EXTRUSION_STEPS; step >= 1; step--) {
+            float t = step / (float) EXTRUSION_STEPS;
+            b.layer(CgTextLayer.shadow("extrusion" + step).offset(dx * t, dy * t).outlined(true).paint(argb));
+        }
+        return b;
     }
 
     private static CgTextStyle extrude() {
