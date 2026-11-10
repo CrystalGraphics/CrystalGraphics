@@ -57,6 +57,11 @@ Flat, per-glyph baked layout data for one `CgTextLayout` — pen positions (rela
 
 Computed once by the layout engine's bake step so renderer-side consumers (`CgResolvedGlyphs`) can do a flat translate-only loop instead of re-walking the `lines` tree and re-resolving fonts by key on every draw.
 
+### `CgNumberFormat`
+
+Numbers as a HUD shows them: `compact(value)` is `847`, `2.7k`, `206.4k`, `2.4m`, `2.2b`, `1.5t`, a tenth rounded half up,
+rolling to the next unit at 1,000 of one. Integer arithmetic. Allocates its string: format a value once, not per frame.
+
 ### `CgTextLayout`
 
 Final public layout result.

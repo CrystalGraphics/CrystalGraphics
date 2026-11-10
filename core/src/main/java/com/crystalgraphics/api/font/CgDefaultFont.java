@@ -1,7 +1,7 @@
 package com.crystalgraphics.api.font;
 
 /**
- * The engine's default font: the platform's installed sans-serif ({@link CgGenericFamily#SANS_SERIF}: Segoe UI on
+ * The engine's default font: the platform's installed sans-serif ({@link CgGenericFamily#SANS_SERIF}: Arial on
  * Windows), opened ahead on a worker as the client starts, so no frame waits on the font scan.
  *
  * <pre>{@code

@@ -15,6 +15,9 @@ import javax.annotation.Nullable;
 
 import com.crystalgraphics.api.font.CgFont;
 import com.crystalgraphics.api.font.CgFontStyle;
+import com.crystalgraphics.api.font.CgGenericFamily;
+import com.crystalgraphics.api.font.CgSystemFontFace;
+import com.crystalgraphics.api.font.CgSystemFonts;
 import com.crystalgraphics.api.material.CgMaterialDefinition;
 import com.crystalgraphics.api.material.CgMaterialDomain;
 import com.crystalgraphics.asset.kind.CgLookKinds;
@@ -58,6 +61,12 @@ import com.crystalgraphics.util.io.CgIO;
  *   - { id: fill, paint: { gradient: { angle: 90, stops: [[0, 0xFFFFF0A0], [1, 0xFFE09000]] } } }
  * }</pre>
  *
+ * <pre>{@code
+ * # an installed family rather than a file: the platform's sans-serif (Arial on Windows), bold
+ * font: system:sans-serif
+ * bold: true
+ * }</pre>
+ *
  * <ul>
  *   <li>{@code size} is in points at Slate's 96 DPI: {@link #px()} pixels at scale 1. Every layer length is in those
  *       pixels and scales with the text.</li>
@@ -73,6 +82,8 @@ public final class CgTextStyle {
 
     /** The text style kind's compiler. */
     public static final CgAssetCompiler<CgTextStyle> COMPILER = CgTextStyle::compile;
+
+    private static final String SYSTEM = "system:";
 
     private static final List<CgTextLayer> DEFAULT_LAYERS = List.of(CgTextLayer.fill("fill").build());
 
@@ -199,7 +210,7 @@ public final class CgTextStyle {
         return id;
     }
 
-    /** Its font file, {@code <ns>:fonts/<path>}. */
+    /** Its font: a file, {@code <ns>:fonts/<path>}, or an installed family, {@code system:<family>}. */
     @Nullable
     public String font() {
         return font;
@@ -249,23 +260,41 @@ public final class CgTextStyle {
     }
 
     /**
-     * Its font at {@code px} pixels, read from its file once and kept per size. Client, the render thread or a
-     * loading task: the first call per size reads the face.
+     * Its font at {@code px} pixels, read once and kept per size. Client, the render thread or a loading task: the
+     * first call per size reads the face, and the first {@code system:} font scans the installed fonts, so call it
+     * from a load task before the first draw.
      *
-     * @throws IllegalStateException when the file is missing or unreadable
+     * @throws IllegalStateException when the file is missing or unreadable, or no installed family has the name
      */
     public synchronized CgFont font(int px) {
         CgFont f = fonts.get(px);
         if (f != null) return f;
         if (font == null) throw new IllegalStateException((id == null ? "a text style" : id) + " has no font");
+        CgFontStyle style = bold ? CgFontStyle.BOLD : CgFontStyle.REGULAR;
+        if (font.startsWith(SYSTEM)) {
+            f = installed(font.substring(SYSTEM.length()), style, px);
+            fonts.put(px, f);
+            return f;
+        }
         try (InputStream in = CgIO.openStream(font)) {
             if (in == null) throw new IllegalStateException("no font file " + font);
-            f = CgFont.load(in.readAllBytes(), font, bold ? CgFontStyle.BOLD : CgFontStyle.REGULAR, px);
+            f = CgFont.load(in.readAllBytes(), font, style, px);
         } catch (IOException e) {
             throw new IllegalStateException("font " + font + ": " + e.getMessage(), e);
         }
         fonts.put(px, f);
         return f;
+    }
+
+    /** {@code family}'s installed face: a CSS generic as the platform means it, else the family by name. */
+    private CgFont installed(String family, CgFontStyle style, int px) {
+        CgSystemFonts fonts = CgSystemFonts.get();
+        CgGenericFamily generic = CgGenericFamily.fromCss(family);
+        CgSystemFontFace face = generic != null ? fonts.generic(generic, style) : fonts.find(family, style);
+        if (face == null) {
+            throw new IllegalStateException((id == null ? "a text style" : id) + ": no installed font family " + family);
+        }
+        return fonts.load(face, style, px);
     }
 
     /** As its file writes it, with no parent: the tree {@link #compile} reads back to an equal style. */
@@ -317,7 +346,11 @@ public final class CgTextStyle {
             this.id = id;
         }
 
-        /** Its font file, {@code <ns>:fonts/<path>.otf} or {@code .ttf}. */
+        /**
+         * Its font: a file, {@code <ns>:fonts/<path>.otf} or {@code .ttf}; or an installed family,
+         * {@code system:<family>}, a CSS generic ({@code system:sans-serif}, {@code system:monospace}) or a family by
+         * name ({@code system:Segoe UI}). A named family the machine lacks fails at {@link CgTextStyle#font(int)}.
+         */
         public Builder font(String font) {
             this.font = Objects.requireNonNull(font, "font");
             return this;

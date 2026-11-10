@@ -98,7 +98,7 @@ This is the granularity at which fallback resolution reasons about “one candid
 
 ### `CgDefaultFont`
 
-The engine's default font: the installed sans-serif (`CgSystemFonts.generic(SANS_SERIF)`, Segoe UI on Windows), opened regular and bold on the start's GL-free worker (`CgGraphicsLifecycle.workAhead`). `regular(px)`, `bold(px)`, `at(style, px)`. Nothing is shipped; CrystalGUI keeps IBM Plex Sans as its own default.
+The engine's default font: the installed sans-serif (`CgSystemFonts.generic(SANS_SERIF)`, Arial on Windows, as a browser's), opened regular and bold on the start's GL-free worker (`CgGraphicsLifecycle.workAhead`). `regular(px)`, `bold(px)`, `at(style, px)`. Nothing is shipped; CrystalGUI keeps IBM Plex Sans as its own default.
 
 ### `CgSystemFonts` · `CgSystemFontFace` · `CgGenericFamily` · `CgFontFallback`
 

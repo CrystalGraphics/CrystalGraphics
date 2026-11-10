@@ -159,6 +159,10 @@ CgTextLayer.fill("fill").paint(CgTextPaint.gradient(CgTextPaint.Space.GLYPH, 90f
 CgTextLayer.fill("fill").paint(CgTextPaint.material(shimmer));              // a Text-domain material
 ```
 
+- **Its font** is a file (`.font("mymod:fonts/title.ttf")`) or an installed family: `.font("system:sans-serif")`, any
+  CSS generic, as a browser resolves it (Arial on Windows), or a family by name (`system:Segoe UI`), which fails at the
+  style's first `font(px)` where the machine lacks it. `.bold(true)` takes its bold face. A draw's own `font` or `family`
+  wins over the style's. Call `style.font(Math.round(style.px()))` in a load task: the first one reads the face.
 - **Lengths are pixels at the style's size**, and scale with the text: a 2 px outline on a 32 px style is 4 px on text
   drawn at 64 px. Size a style at the size you draw it, and its lengths read as pixels.
 - An outline **under** a fill is the glyph grown by its width; **over** a fill it is the ring alone, as a CSS stroke.
