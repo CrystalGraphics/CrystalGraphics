@@ -1837,6 +1837,10 @@ com/crystalgraphics/api/text/CgFontFeature
   method public,final hashCode ()I
   method public,final toString ()Ljava/lang/String;
   method public,static enable (Ljava/lang/String;)Lcom/crystalgraphics/api/text/CgFontFeature;
+com/crystalgraphics/api/text/CgNumberFormat
+  access public,final
+  extends java/lang/Object
+  method public,static compact (J)Ljava/lang/String;
 com/crystalgraphics/api/text/CgParagraphKnobs
   access public,final,record
   extends java/lang/Record
@@ -5410,6 +5414,15 @@ com/crystalgraphics/demo/CgShadowsDemo
   method public,static toggleShadows ()V
   method public,static toggleSpatial ()V
   method public,static toggleTemporal ()V
+com/crystalgraphics/demo/CgTextDemo
+  access public,final
+  extends java/lang/Object
+  method public <init> (Lcom/crystalgraphics/api/font/CgFont;)V
+  method public clear ()V
+  method public delete ()V
+  method public precache ()V
+  method public ready ()Z
+  method public submit (Lcom/crystalgraphics/render/world/CgWorldRenderer;Lcom/crystalgraphics/render/stage/CgHostView;DDDD)V
 com/crystalgraphics/demo/CgVfxBlastFlash
   access public,final
   extends java/lang/Object
