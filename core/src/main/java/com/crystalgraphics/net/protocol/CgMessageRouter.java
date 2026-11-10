@@ -4,6 +4,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import javax.annotation.Nullable;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -142,7 +143,9 @@ public final class CgMessageRouter<T> {
         int id = nextRequestId++;
         // Wraps rather than overflowing negative: NO_ID is -1, and a negative id would collide with it.
         if (nextRequestId < 0) nextRequestId = 1;
-        pending.put(id, new Pending<>(method, onOk, onError, deadlineMillis));
+        synchronized (pending) {
+            pending.put(id, new Pending<>(method, onOk, onError, deadlineMillis));
+        }
         outbound.accept(new CgEnvelope.Request<>(id, method, payload));
         return id;
     }
@@ -164,7 +167,10 @@ public final class CgMessageRouter<T> {
      * be re-entered by a reply it has already given up on.</p>
      */
     public void cancel(int id) {
-        Pending<T> gone = pending.remove(id);
+        Pending<T> gone;
+        synchronized (pending) {
+            gone = pending.remove(id);
+        }
         if (gone == null) return;
         if (gone.onError != null) gone.onError.accept(CgProtocolErrors.CANCELLED);
         outbound.accept(new CgEnvelope.Cancel(id));
@@ -210,7 +216,10 @@ public final class CgMessageRouter<T> {
     }
 
     private void acceptResponse(CgEnvelope.Response<T> response) {
-        Pending<T> waiting = pending.remove(response.id());
+        Pending<T> waiting;
+        synchronized (pending) {
+            waiting = pending.remove(response.id());
+        }
         if (waiting == null) {
             // Timed out, cancelled, or a peer answering twice. Not an error worth raising -- all three
             // are ordinary races -- but worth one line, because a flood of them means a broken peer.
@@ -254,27 +263,32 @@ public final class CgMessageRouter<T> {
      * @return how many requests were given up on
      */
     public int tickTimeouts(long nowMillis) {
-        if (pending.isEmpty()) return 0;
-        List<Integer> expired = null;
-        for (Map.Entry<Integer, Pending<T>> entry : pending.entrySet()) {
-            long deadline = entry.getValue().deadlineMillis;
-            if (deadline > 0 && nowMillis >= deadline) {
-                if (expired == null) expired = new ArrayList<>();
-                expired.add(entry.getKey());
+        List<Pending<T>> expired = null;
+        synchronized (pending) {
+            if (pending.isEmpty()) return 0;
+            for (Iterator<Pending<T>> it = pending.values().iterator(); it.hasNext(); ) {
+                Pending<T> waiting = it.next();
+                if (waiting.deadlineMillis > 0 && nowMillis >= waiting.deadlineMillis) {
+                    if (expired == null) expired = new ArrayList<>();
+                    expired.add(waiting);
+                    it.remove();
+                }
             }
         }
         if (expired == null) return 0;
-        for (int id : expired) {
-            Pending<T> gone = pending.remove(id);
-            if (gone != null && gone.onError != null) gone.onError.accept(CgProtocolErrors.TIMEOUT);
+        for (Pending<T> gone : expired) {
+            if (gone.onError != null) gone.onError.accept(CgProtocolErrors.TIMEOUT);
         }
         return expired.size();
     }
 
     /** Fails every outstanding request. For a connection that has gone away. */
     public void failAllPending(String error) {
-        List<Pending<T>> all = new ArrayList<>(pending.values());
-        pending.clear();
+        List<Pending<T>> all;
+        synchronized (pending) {
+            all = new ArrayList<>(pending.values());
+            pending.clear();
+        }
         serving.clear();
         for (Pending<T> gone : all) {
             if (gone.onError != null) gone.onError.accept(error);
@@ -282,7 +296,21 @@ public final class CgMessageRouter<T> {
     }
 
     public int pendingRequests() {
-        return pending.size();
+        synchronized (pending) {
+            return pending.size();
+        }
+    }
+
+    /**
+     * The method of the request {@code id} answers, or null when none of ours is waiting on it: so a connection can
+     * deliver a response where it delivers that method. @see CgProtocolConnection#dispatchThrough
+     */
+    @Nullable
+    String pendingMethod(int id) {
+        synchronized (pending) {
+            Pending<T> waiting = pending.get(id);
+            return waiting == null ? null : waiting.method;
+        }
     }
 
     // ── Internals ───────────────────────────────────────────────────────────

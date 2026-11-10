@@ -287,20 +287,50 @@ public final class CgProtocolConnection<T> {
     // ── Running ─────────────────────────────────────────────────────────────
 
     /**
-     * Delivers every message to its handler through {@code executor} instead of on the thread that ticks: for a peer
-     * whose handlers touch a tree another thread owns, so the host's tick need not be that thread. Null delivers
-     * inline, as by default. Messages reach it in arrival order.
+     * Delivers the messages whose method starts with {@code methodPrefix} through {@code executor} instead of on the
+     * thread that ticks: for a subsystem whose handlers touch a tree another thread owns. A response follows the
+     * request it answers. Everything else, every other mod's messages included, stays on the ticking thread.
      *
      * <pre>{@code
-     * connection.dispatchThrough(work -> sequence.execute(work));   // the UI's handlers run on the UI's sequence
+     * connection.dispatchThrough("ui/", work -> sequence.execute(work));   // the UI's methods run on its sequence
+     * connection.dispatchThrough("ui/", null);                             // back to the ticking thread
      * }</pre>
+     *
+     * <ul>
+     *   <li>Scope the prefix to your own methods: a prefix like {@code ""} would take every mod's handlers off the
+     *       game thread, which they are promised.</li>
+     *   <li>Messages reach an executor in arrival order. The first matching prefix, in the order given, wins.</li>
+     * </ul>
      */
-    public void dispatchThrough(@Nullable Executor executor) {
-        this.dispatcher = executor;
+    public void dispatchThrough(String methodPrefix, @Nullable Executor executor) {
+        synchronized (dispatchers) {
+            dispatchers.remove(methodPrefix);
+            if (executor != null) dispatchers.put(methodPrefix, executor);
+            routes = dispatchers.isEmpty() ? null : new LinkedHashMap<>(dispatchers);
+        }
     }
 
+    private final Map<String, Executor> dispatchers = new LinkedHashMap<>();
+
+    /** A snapshot of {@link #dispatchers} the tick reads without a lock; null when there are none. */
     @Nullable
-    private volatile Executor dispatcher;
+    private volatile Map<String, Executor> routes;
+
+    @Nullable
+    private Executor dispatcherFor(CgEnvelope envelope) {
+        Map<String, Executor> through = routes;
+        if (through == null) return null;
+        String method;
+        if (envelope instanceof CgEnvelope.Request<?> request) method = request.method();
+        else if (envelope instanceof CgEnvelope.Notification<?> notification) method = notification.method();
+        else if (envelope instanceof CgEnvelope.Response<?> response) method = router.pendingMethod(response.id());
+        else method = null;   // a cancel only unmarks a request being served
+        if (method == null) return null;
+        for (Map.Entry<String, Executor> route : through.entrySet()) {
+            if (method.startsWith(route.getKey())) return route.getValue();
+        }
+        return null;
+    }
 
     /**
      * Pump, drain, expire. <b>Call once per tick, on the thread that owns whatever the handlers touch.</b>
@@ -333,7 +363,7 @@ public final class CgProtocolConnection<T> {
                 LOGGER.warn("Dropping an undecodable message: {}", malformed.getMessage());
                 continue;
             }
-            Executor through = dispatcher;
+            Executor through = dispatcherFor(envelope);
             if (through == null) router.accept(envelope);
             else {
                 CgEnvelope decoded = envelope;

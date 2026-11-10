@@ -7651,7 +7651,7 @@ com/crystalgraphics/net/protocol/CgProtocolConnection
   method public attachment (Ljava/lang/Class;Ljava/util/function/Function;)Ljava/lang/Object;
   method public call (Ljava/lang/String;Lcom/crystalgraphics/serialization/CgStateMap;Ljava/util/function/Consumer;Ljava/util/function/Consumer;)V
   method public close (Ljava/lang/String;)V
-  method public dispatchThrough (Ljava/util/concurrent/Executor;)V
+  method public dispatchThrough (Ljava/lang/String;Ljava/util/concurrent/Executor;)V
   method public flush ()V
   method public hasAttachment (Ljava/lang/Class;)Z
   method public isClosed ()Z

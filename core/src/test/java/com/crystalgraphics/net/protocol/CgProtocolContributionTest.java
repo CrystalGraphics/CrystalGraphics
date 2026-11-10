@@ -208,4 +208,25 @@ public class CgProtocolContributionTest {
 
         assertEquals("the supplied pump runs once per tick", 2, pumps[0]);
     }
+
+    /** A subsystem routing its methods to its own thread takes only those: another mod's stay on the tick. */
+    @Test
+    public void dispatchThroughTakesOnlyItsOwnMethods() {
+        connect();
+        List<Runnable> uiThread = new ArrayList<>();
+        List<String> handled = new ArrayList<>();
+        a.dispatchThrough("ui/", uiThread::add);
+        a.router().onNotify("ui/open", payload -> handled.add("ui/open"));
+        a.router().onNotify("mymod:hit", payload -> handled.add("mymod:hit"));
+        b.router().onRequest("ui/ask", (payload, respond) -> respond.ok(null));
+        a.router().request("ui/ask", null, answer -> handled.add("ui/ask answered"), null);
+        b.router().notify("ui/open", null);
+        b.router().notify("mymod:hit", null);
+        settle();
+
+        assertEquals("another mod's message is handled on the tick", List.of("mymod:hit"), handled);
+        assertEquals("the routed notification and the answer to the routed request wait", 2, uiThread.size());
+        uiThread.forEach(Runnable::run);
+        assertEquals(List.of("mymod:hit", "ui/open", "ui/ask answered"), handled);
+    }
 }
