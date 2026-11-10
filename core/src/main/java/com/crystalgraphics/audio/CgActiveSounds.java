@@ -6,6 +6,7 @@ import java.util.List;
 import javax.annotation.Nullable;
 
 import com.crystalgraphics.platform.audio.CgHostVolume;
+import com.crystalgraphics.world.CgAttachment;
 
 /**
  * Every sound playing, on the frame thread: Unreal's active sounds. Each update weighs them (their gain, their class
@@ -73,6 +74,10 @@ public final class CgActiveSounds {
     private final double[] x = new double[MAX_SOUNDS], y = new double[MAX_SOUNDS], z = new double[MAX_SOUNDS];
     private final double[] time = new double[MAX_SOUNDS], startAt = new double[MAX_SOUNDS];
     private final CgSoundAttenuation[] attenuation = new CgSoundAttenuation[MAX_SOUNDS];
+    /** What each rides, asked its place each update; and whether it stops once that is gone. */
+    private final CgAttachment[] follows = new CgAttachment[MAX_SOUNDS];
+    private final boolean[] stopWhenGone = new boolean[MAX_SOUNDS];
+    private final double[] point = new double[3];
     /** Where each was last update, for its velocity. */
     private final double[] lastX = new double[MAX_SOUNDS], lastY = new double[MAX_SOUNDS], lastZ = new double[MAX_SOUNDS];
     private final boolean[] moved = new boolean[MAX_SOUNDS];
@@ -131,6 +136,7 @@ public final class CgActiveSounds {
             this.loop[i] = loop;
             placed[i] = false;
             attenuation[i] = null;
+            follows[i] = null;
             moved[i] = false;
             checked[i] = false;
             occHz[i] = occHzTo[i] = CgSoundAttenuation.MAX_FILTER_HZ;
@@ -168,6 +174,38 @@ public final class CgActiveSounds {
             x[i] = px;
             y[i] = py;
             z[i] = pz;
+        }
+        return this;
+    }
+
+    /**
+     * Keeps {@code id} where {@code at} is, asked each update before it is weighed: Unreal's audio component attached
+     * to a component, its every move passed to the active sound ({@code UAudioComponent::OnUpdateTransform}). Once
+     * {@code at} is gone the sound stops where {@code stopWhenGone}, else plays on where it last was
+     * ({@code bStopWhenAttachedToDestroyed}, false by default). Null lets it stay where it is.
+     *
+     * <pre>{@code
+     * sounds.follow(id, CgEntityAttachments.of(mobId), false);
+     * }</pre>
+     */
+    public CgActiveSounds follow(long id, @Nullable CgAttachment at, boolean stopWhenGone) {
+        int i = slot(id);
+        if (i >= 0) {
+            follows[i] = at;
+            this.stopWhenGone[i] = stopWhenGone;
+        }
+        return this;
+    }
+
+    /**
+     * Takes {@code id} out of the world: heard everywhere, unattenuated, following nothing. Unreal's audio component
+     * detached with nothing to ride ({@code bAllowSpatialization} off); {@link #at} places it again.
+     */
+    public CgActiveSounds unplace(long id) {
+        int i = slot(id);
+        if (i >= 0) {
+            placed[i] = false;
+            follows[i] = null;
         }
         return this;
     }
@@ -263,6 +301,16 @@ public final class CgActiveSounds {
         return best < 0 ? 0 : (long) generation[best] << 32 | best;
     }
 
+    /** Where {@code id} is into {@code out}; false for one unplaced or ended. */
+    boolean position(long id, double[] out) {
+        int i = slot(id);
+        if (i < 0 || !placed[i]) return false;
+        out[0] = x[i];
+        out[1] = y[i];
+        out[2] = z[i];
+        return true;
+    }
+
     /** How many sounds are playing, voiced or virtual. */
     int count() {
         int n = 0;
@@ -322,6 +370,7 @@ public final class CgActiveSounds {
         sound[i] = null;
         owner[i] = null;
         group[i] = null;
+        follows[i] = null;
         state[i] = FREE;
         generation[i]++;
     }
@@ -397,6 +446,19 @@ public final class CgActiveSounds {
             if (state[i] == VIRTUAL && !loop[i] && time[i] >= sound[i].seconds()) {
                 end(i);
                 continue;
+            }
+            if (follows[i] != null) {
+                if (follows[i].place(point, null)) {
+                    placed[i] = true;
+                    x[i] = point[0];
+                    y[i] = point[1];
+                    z[i] = point[2];
+                } else if (stopWhenGone[i]) {
+                    end(i);
+                    continue;
+                } else {
+                    follows[i] = null;
+                }
             }
             double dx = x[i] - lx, dy = y[i] - ly, dz = z[i] - lz;
             distance[i] = placed[i] ? Math.sqrt(dx * dx + dy * dy + dz * dz) : 0;

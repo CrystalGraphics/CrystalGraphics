@@ -108,6 +108,16 @@ public final class CgPassConstants {
         return this;
     }
 
+    /** The target's width in pixels. */
+    public float width() {
+        return width;
+    }
+
+    /** The target's height in pixels. */
+    public float height() {
+        return height;
+    }
+
     /** The target's size in pixels. */
     public CgPassConstants resolution(float width, float height) {
         this.width = width;

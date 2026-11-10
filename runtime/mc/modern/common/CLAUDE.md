@@ -80,5 +80,5 @@ before the level renders, so anything painted from a GUI hook lands under the wo
   our device's close is queued on Blaze3D's destroy queue, which runs it once our last submit has completed or
   inside `VulkanDevice.close`, before the device goes.
 - **SDL3 from 26.3.** 26.3 ships no GLFW: `PlatformServiceModern` registers `runtime/lwjgl/sdl`'s
-  `SdlInputService` and `SdlCursorService` there, chosen per node with `//? if >=26.3`, since a 26.3 node
+  `InputSdl`, `ClipboardSdl` and `SdlCursorService` there, chosen per node with `//? if >=26.3`, since a 26.3 node
   cannot load a GLFW class at all.

@@ -31,10 +31,10 @@
 //   #pragma cg_use quad
 //
 // Registered tokens (see CgEngineBufferRegistry):
-//   quad -- CgQuadRenderer's per-instance buffer. Unlocks QUAD_DATA(n) and the
+//   quad -- CgQuadBatch's per-instance buffer. Unlocks QUAD_DATA(n) and the
 //          convenience macros CG_QUAD_WORLD_POS / CG_QUAD_UV / CG_QUAD_COLOR /
 //          CG_QUAD_NORMAL / CG_QUAD_ATLAS_LAYER. Required by any shader drawn
-//          through CgQuadRenderer -- UI quads, text glyphs, SDF rects.
+//          through CgQuadBatch -- UI quads, text glyphs, SDF rects.
 //
 // This is OPT-IN, unlike CgFrameBlock/CgObjectDataBuffer which cg_env.glsl
 // declares unconditionally: only a minority of shaders draw instanced quads, and
@@ -49,7 +49,7 @@
 // pragma that was present and correct.
 //
 // This example shader is a spatial/lit material and does NOT draw through
-// CgQuadRenderer, so it deliberately declares no cg_use.
+// CgQuadBatch, so it deliberately declares no cg_use.
 
 // -- Material-level tags -------------------------------------------------------
 // "RenderType" and the queue decide depth auto-generation:

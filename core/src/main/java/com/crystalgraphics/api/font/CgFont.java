@@ -32,7 +32,7 @@ import java.util.logging.Logger;
  *       size-bound variants via {@link #atSize(int)}.</li>
  *   <li><strong>Size-bound</strong> — created with a concrete target pixel size. This
  *       is the renderable/shapable form used by {@link com.crystalgraphics.text.layout.CgTextLayoutEngine} and
- *       {@code CgTextRenderer}.</li>
+ *       {@code CgTextBatch}.</li>
  * </ul>
  *
  * <p>This preserves the existing atlas/shaping architecture, which still requires a

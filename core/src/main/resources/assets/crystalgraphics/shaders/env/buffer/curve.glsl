@@ -1,4 +1,4 @@
-// CgVectorRenderer's shader environment.
+// CgCurveBatch's shader environment.
 //
 // INJECTED BY `#pragma cg_use curve`, immediately after the instance buffer's own
 // declaration -- see CgEngineBufferRegistry, which holds the path, and
@@ -11,8 +11,8 @@
 // `#ifdef CG_FRAGMENT_STAGE`, which raw .vert/.frag get none of.
 #pragma once
 
-// -- CgVectorRenderer convenience macros --------------------------------------
-// CgVectorRenderer (gl/render/CgVectorRenderer.java) is an SSBO-backed instanced renderer for
+// -- CgCurveBatch convenience macros --------------------------------------
+// CgCurveBatch (render/canvas/CgCurveBatch.java) is an SSBO-backed instanced renderer for
 // small 2D vector primitives -- not "curves" specifically, though that is still most of what draws
 // through it today. The buffer's schema is generic on purpose: vec3 p0/p1/p2 (a handful of points,
 // pose baked in CPU-side), vec4 color0/color1, vec2 widths, float feather, float flags. Same
@@ -21,7 +21,7 @@
 // bigger, riskier change than renaming the Java class was, and the macros still say exactly what
 // they resolve to regardless of the C-style prefix's history.
 //
-// TWO READINGS OF ONE RECORD, CHOSEN BY THE PACKED flags FIELD -- see CgVectorRenderer's own class
+// TWO READINGS OF ONE RECORD, CHOSEN BY THE PACKED flags FIELD -- see CgCurveBatch's own class
 // doc for the "why one renderer, not two" reasoning, and cg_curve_pad below for where the fill
 // reading is actually branched on:
 //   * STROKE (the default): p0/p1/p2 are quadratic Bezier control points, color0/color1 are the
@@ -59,12 +59,12 @@
 // so the identical derivation is exactly right for both readings with no branch here -- only the
 // PADDING amount differs by mode, which is why that logic lives in cg_curve_pad and not here. That
 // is also why the CPU writes no bounds: they cannot desync from the points if they are computed
-// from them. Planar by construction -- see CgVectorRenderer's class doc on why v1 is 2D.
+// from them. Planar by construction -- see CgCurveBatch's class doc on why v1 is 2D.
 //
 //   Vertex:    gl_Position = cg_ProjMatrix * vec4(CG_CURVE_WORLD_POS, 1.0);
 //
 //   Fragment, stroke reading (the common case -- see curve_instance_coverage in stroke.glsl,
-//   which is the one place both curve.shader and gui_curve.shader should actually call this from):
+//   which is the one place every curve material calls this from):
 //              float t; float d = sdf_bezier(i.posXy, CG_CURVE_P0.xy, CG_CURVE_P1.xy, CG_CURVE_P2.xy, t);
 //              float halfW = mix(CG_CURVE_WIDTHS.x, CG_CURVE_WIDTHS.y, t);
 //              vec4 col = mix(CG_CURVE_COLOR0, CG_CURVE_COLOR1, t);
@@ -117,7 +117,7 @@
 //
 // The 6.0 below is a literal, not a shared macro with stroke.glsl's CG_STROKE_ARROW_LENGTH:
 // cg_env.glsl is auto-included before any material's own #include lines (see the class doc on
-// CgUiPaintContext... no, on CgQuadRenderer/CgVectorRenderer), so it must stay meaningful even for a
+// CgUiPaintContext... no, on CgQuadBatch/CgCurveBatch), so it must stay meaningful even for a
 // shader that never includes stroke.glsl. If CG_STROKE_ARROW_LENGTH ever changes, this must change
 // with it -- there is deliberately no single source of truth to keep this file self-contained.
 //
@@ -126,7 +126,7 @@
 // 3) == 3`. This also correctly evaluates false for a FILL instance (bit 4 set, low 4 bits 0),
 // which is why the check does not need to test the FILL flag separately.
 //
-// A CELL (bit 8, CgVectorRenderer.FLAG_CELL -- a literal here for the same reason as the 6.0) keeps its
+// A CELL (bit 8, CgCurveBatch.FLAG_CELL -- a literal here for the same reason as the 6.0) keeps its
 // fourth corner in `widths`, so `widths` is a position rather than a reach: the hull takes it as a
 // point and pads by the one pixel an exact-area edge can extend to.
 bool cg_curve_is_cell(float flags) {

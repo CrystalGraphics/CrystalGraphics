@@ -2,26 +2,18 @@
 
 #include "crystalgraphics:shaders/lib/sdf.glsl"
 
-// Stroke AND fill coverage for CgVectorRenderer's shared p0/p1/p2 instance schema -- the whole body
+// Stroke AND fill coverage for CgCurveBatch's shared p0/p1/p2 instance schema -- the whole body
 // of every consumer of that schema, whether the instance is a stroked quadratic or a filled
 // triangle (see curve_instance_coverage, the one dispatch point between the two).
 //
-// WHY THIS IS A LIB RATHER THAN COPIED INTO EACH SHADER. There are two curve materials and there
-// will likely be more: crystalgraphics:shaders/curve.shader (3D, DepthTest LEQUAL) and
-// crystalgui:shaders/gui_curve.shader (UI, DepthTest ALWAYS + a _LayerOpacity property). Those
-// differ ONLY in render state and in what they do with the final alpha -- a Pass's RenderState is
-// fixed at author time and cannot vary per keyword variant, so they genuinely have to be separate
-// materials. What they must NOT have is separate copies of the maths below.
-//
-// That is not hypothetical tidiness. The cap handling here was wrong three times in a row, each fix
-// surviving the previous one, and every one of them rendered something confident and plausible
-// rather than failing. Two copies means the fourth fix lands in one file and the other keeps the bug.
+// A lib rather than inside canvas/curve.shader: every curve material (CrystalGUI's coverage passes too) shares one copy.
+// The cap handling was wrong three times in a row, each time plausibly; two copies let a fix land in one alone.
 
-// Cap styles -- must match CgVectorRenderer.CAP_*. Packed 2 bits per end (start in bits 0-1, end in
-// bits 2-3 -- see CgVectorRenderer.packCaps), so 4 values is exactly the room available; ARROW is
+// Cap styles -- must match CgCurveBatch.CAP_*. Packed 2 bits per end (start in bits 0-1, end in
+// bits 2-3 -- see CgCurveBatch.packCaps), so 4 values is exactly the room available; ARROW is
 // the last one that fits without widening the packing.
 // The reconstruction filter every coverage function here antialiases with, in pixels. Keep equal
-// to CG_QUAD_EDGE_FILTER in env/buffer/quad.glsl and CgVectorRenderer.AA_FILTER_PX.
+// to CG_QUAD_EDGE_FILTER in env/buffer/quad.glsl and CgCurveBatch.AA_FILTER_PX.
 #define CG_STROKE_AA_FILTER 1.5
 
 #define CG_STROKE_CAP_BUTT   0
@@ -38,23 +30,23 @@
 #define CG_STROKE_ARROW_LENGTH 6.0
 
 // Bits 13-14 -- this end is an INTERIOR JOINT of a split cubic rather than a real end of the stroke.
-// See CgVectorRenderer.FLAG_JOINT_START: a joint is a seam and must partition, so it takes a hard
+// See CgCurveBatch.FLAG_JOINT_START: a joint is a seam and must partition, so it takes a hard
 // half-open cut rather than the antialiased butt cap a caller-requested CAP_BUTT gets.
 #define CG_STROKE_FLAG_JOINT_START 8192
 #define CG_STROKE_FLAG_JOINT_END   16384
 
 // Bit 4 of the packed flags -- set for a FILLED triangle instance, unset for a stroke. See
-// CgVectorRenderer.packFill(). Lives above the cap constants because both stroke_coverage's cap
+// CgCurveBatch.packFill(). Lives above the cap constants because both stroke_coverage's cap
 // dispatch and curve_instance_coverage's fill/stroke dispatch read from the same packed int.
 #define CG_STROKE_FLAG_FILL 16
 
 // Bit 5 -- set alongside FLAG_FILL when the instance's `gradient` field carries a real axis, so the
 // fill interpolates color0 -> color1 across the triangle instead of taking color0 flat. See
-// CgVectorRenderer.FLAG_GRADIENT and Triangle.gradient(...).
+// CgCurveBatch.FLAG_GRADIENT and Triangle.gradient(...).
 #define CG_STROKE_FLAG_GRADIENT 32
 
 // Bits 6-7 -- which edge of a filled triangle is on the shape's real outline, and therefore the only one
-// that may be antialiased. See CgVectorRenderer.FILL_EDGE_SHIFT for why a tessellated fill cannot just be
+// that may be antialiased. See CgCurveBatch.FILL_EDGE_SHIFT for why a tessellated fill cannot just be
 // given a feather: most of its edges are seams shared with a neighbour, and softening those fades every
 // one of them into a visible line from both sides.
 #define CG_STROKE_FILL_EDGE_SHIFT 6
@@ -63,7 +55,7 @@
 #define CG_STROKE_FILL_EDGE_P2_P0 2
 
 // Bit 8 -- a CELL: p0, p1, p2 and `widths` are its four corners in order. Bits 9-12 say which of its
-// four edges (p0p1, p1p2, p2p3, p3p0) are on the shape's outline. See CgVectorRenderer.Cell and
+// four edges (p0p1, p1p2, p2p3, p3p0) are on the shape's outline. See CgCurveBatch.Cell and
 // cell_coverage below.
 #define CG_STROKE_FLAG_CELL 256
 #define CG_STROKE_CELL_EDGE_SHIFT 9
@@ -241,7 +233,7 @@ float stroke_coverage(vec2 p, vec2 a, vec2 b, vec2 c,
     // under-covers its outer, and on a stroke a few pixels wide nearly every pixel is in that band.
     //
     // Deliberately NOT sdf_coverage(), which derives its own ramp from fwidth: the ramp is the
-    // caller's (CgVectorRenderer.FEATHER_ANTIALIAS). Flooring it with fwidth(signedDist) was tried
+    // caller's (CgCurveBatch.FEATHER_ANTIALIAS). Flooring it with fwidth(signedDist) was tried
     // and measured to change nothing -- fwidth never exceeded the feather -- and it would cost this
     // function its freedom from derivative builtins, and the note above about needing no
     // CG_VERTEX_STAGE guard with it.
@@ -251,11 +243,11 @@ float stroke_coverage(vec2 p, vec2 a, vec2 b, vec2 c,
 // Antialiased coverage of a FILLED triangle p0->p1->p2 at point `p`, in [0,1]. `cornerRadius`
 // softens the corners; `feather` is the edge ramp, same convention as stroke_coverage's.
 //
-// The instance schema is shared with strokes (see CgVectorRenderer's class doc), so this reads the
+// The instance schema is shared with strokes (see CgCurveBatch's class doc), so this reads the
 // SAME three points a quadratic stroke would use as control points -- a filled triangle is not a
 // different kind of data, only a different thing to do with three points. That is also why this
 // lives in stroke.glsl rather than a separate file: both coverage functions are consumed by
-// exactly the same two materials (curve.shader / gui_curve.shader), so splitting them would only
+// exactly the same materials, so splitting them would only
 // add an #include line everywhere for no benefit.
 //
 // CORNER ROUNDING IS A DILATION, NOT AN ERODE-THEN-DILATE. sdf_rounded_box shrinks the box's own
@@ -366,7 +358,7 @@ float fill_coverage(vec2 p, vec2 p0, vec2 p1, vec2 p2, float cornerRadius, float
 // of the same file. Opposite edges combine by the sum rule (exact for two parallel walls through one
 // pixel), the two pairs multiply (exact for a rectangle, the separable approximation at a corner).
 // The pixel is ONE UNIT of p's space, so this reading belongs to a material whose points are window
-// pixels: gui_curve.shader.
+// pixels: a screen curve.
 //
 // A HARD EDGE IS A SEAM AND IS DECIDED AT THE PIXEL CENTRE, HALF-OPEN. Two cells sharing a seam must
 // claim every pixel on it exactly once, or a translucent fill blends twice and an opaque one drops a
@@ -471,15 +463,15 @@ float cell_coverage(vec2 p, vec2 p0, vec2 p1, vec2 p2, vec2 p3, int flags) {
     return clamp(left + right - 1.0, 0.0, 1.0) * clamp(top + bottom - 1.0, 0.0, 1.0);
 }
 
-// The one place stroke-vs-fill is decided, so curve.shader and gui_curve.shader can never disagree
+// The one place stroke-vs-fill is decided, so no two curve materials can disagree
 // about it -- same reasoning as everything else in this file. Dispatches on CG_STROKE_FLAG_FILL in
-// `flags` (see CgVectorRenderer.packFill/packCaps).
+// `flags` (see CgCurveBatch.packFill/packCaps).
 //
 // `t` is meaningless for a fill (there is no "closest point along a path" for a filled region), so
 // it is set to 0 -- which, fed into the caller's existing `mix(color0, color1, t)`, resolves to
 // exactly `color0`. That is why a fill instance's colour is always `color0`: not a special case in
 // the fragment shader, just what mix() does at t=0. `widths.x` doubles as cornerRadius in fill mode
-// (see CgVectorRenderer.Triangle) -- `widths` has no other meaning once a triangle has no taper.
+// (see CgCurveBatch.Triangle) -- `widths` has no other meaning once a triangle has no taper.
 float curve_instance_coverage(vec2 p, vec2 p0, vec2 p1, vec2 p2,
                               vec2 widths, float feather, int flags, vec4 gradient, out float t) {
     if ((flags & CG_STROKE_FLAG_CELL) != 0) {

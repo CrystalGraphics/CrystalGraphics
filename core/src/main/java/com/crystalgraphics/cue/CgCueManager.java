@@ -795,7 +795,7 @@ public final class CgCueManager extends CgWorldSubsystem {
         CgAssetRef<CgSequenceDefinition> ref = sequenceRefs.get(entry.sequence());
         CgSequenceDefinition definition = ref == null ? null : ref.loaded();
         if (definition == null) return null;
-        CgSequencer sequencer = world().subsystem(CgSequencer.class);
+        CgSequencer sequencer = CgSequencer.of(world());
         if (sequencer == null) {
             if (sequencesLogged.add(entry.sequence())) LOGGER.warn("{}: its sequence {} plays nothing: this world has no sequencer", cue.id(), entry.sequence());
             return null;

@@ -44,8 +44,8 @@ constructors remain. `CgEngineLifecycle.shutdown()` calls
 `CgTextureManager.get().freeAll()`/`CgMaterialRegistry.get().deleteAll()`.
 
 The `(int atlasSize)`/`(int atlasSize, CgMsdfAtlasConfig config)` constructors stay
-public and are **not** dead API — `gl-debug-harness`'s `TextScene2D`/`AtlasDumpScene`/
-`WorldTextRenderHelper` deliberately construct their own non-singleton instances via
+public and are **not** dead API — `gl-debug-harness`'s `TextScene2D`/`AtlasDumpScene`
+deliberately construct their own non-singleton instances via
 these to test atlas packing at specific page sizes/configs. Only the parameterless
 default-config path is a singleton; do not make the parameterized constructors private
 or route them through `get()` — that would break real, intentional test usage.
@@ -57,15 +57,14 @@ dead — `CgGraphicsLifecycle` supports initializing a new GL context right afte
 instance at the end, rather than leaving the shared singleton stuck with a dead
 executor forever after the first context teardown.
 
-**Resolved**: `CgTextRenderer`'s draw path (`Draw.submit()` — see `text/render/CLAUDE.md`,
-there is no fixed-arity `draw(...)` method anymore) never takes a `frame` parameter — it
-reads `CgFrameClock.frameIndex()` internally, the single authoritative
+**Resolved**: a text draw (`CgTextDraw.submit()` — see `text/render/CLAUDE.md`) never takes a
+`frame` parameter — it reads `CgFrameClock.frameIndex()` internally, the single authoritative
 per-real-frame counter incremented by `CgGraphicsLifecycle.tickFrame()` (wired via
-`CgLifecycleService.onFrameRendered()`). Every production draw call site now stamps
+each host's frame-end hook). Every production draw call site now stamps
 glyphs from that same shared clock. `tickFrame(long frame)` itself is still a public,
 un-debounced entry point — harness scenes that need a synthetic, faster-than-real-time
-clock to force MSDF convergence before a screenshot (`AtlasDumpScene`, `TextScene2D`,
-`WorldTextRenderHelper`) still call it directly with their own frame numbers, independent
+clock to force MSDF convergence before a screenshot (`AtlasDumpScene`, `TextScene2D`)
+still call it directly with their own frame numbers, independent
 of the real per-frame counter. That is intentional, not a bug: those loops need many
 synthetic ticks within a single real frame, which the debounced
 `CgGraphicsLifecycle.tickFrame()` path cannot provide.

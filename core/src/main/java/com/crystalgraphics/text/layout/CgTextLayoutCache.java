@@ -14,7 +14,7 @@ import java.util.Map;
 /**
  * Global, bounded LRU cache of {@code CgTextLayoutEngine.shape(...)/wrap(...)} results — i.e. shaped
  * text (HarfBuzz + BiDi + UAX#14 line breaking already applied) — keyed by <em>content</em>,
- * not identity. Used by {@code CgTextRenderer.layout(String, ...)} so a caller using
+ * not identity. Used by {@code CgTextBatch.layout(String, ...)} so a caller using
  * {@code Draw.text(String)} with repeated content (the common case — most UI text is the same
  * label/button text every frame, even when the caller rebuilds the {@code String} fresh each
  * time) skips shaping entirely on a hit, instead of paying that cost on every single call.
@@ -37,7 +37,7 @@ import java.util.Map;
  * doesn't depend on GC timing.</p>
  *
  * <h3>Not instantiable — every member is static</h3>
- * <p>There is exactly one cache, shared by every {@code CgTextRenderer} instance in the
+ * <p>There is exactly one cache, shared by every {@code CgTextBatch} instance in the
  * process — matching {@link CgGlyphPlacementCache} and {@code CgGlyphAtlas}'s own global
  * scope.</p>
  *
@@ -75,7 +75,12 @@ public final class CgTextLayoutCache {
      * and reuse it for both {@link #get} and {@link #put} rather than rebuilding it twice.
      */
     public static Key key(String text, Object fontOrFamily, float maxWidth, float maxHeight) {
-        return new Key(text, fontOrFamily, maxWidth, maxHeight);
+        return new Key(text, fontOrFamily, maxWidth, maxHeight, 0f);
+    }
+
+    /** {@link #key(String, Object, float, float)} for text laid out with {@code letterSpacing} pixels after each character. */
+    public static Key key(String text, Object fontOrFamily, float maxWidth, float maxHeight, float letterSpacing) {
+        return new Key(text, fontOrFamily, maxWidth, maxHeight, letterSpacing);
     }
 
     /** @return the cached layout if present, else {@code null} */
@@ -199,13 +204,14 @@ public final class CgTextLayoutCache {
      * otherwise: {@code CgTextLayout.Request.build} passes a key of the family's fonts and its knobs, since it is
      * handed a family built fresh each call.
      */
-    public record Key(String text, Object fontOrFamily, float maxWidth, float maxHeight) {
+    public record Key(String text, Object fontOrFamily, float maxWidth, float maxHeight, float letterSpacing) {
         @Override
         public int hashCode() {
             int h = text.hashCode();
             h = 31 * h + (byIdentity(fontOrFamily) ? System.identityHashCode(fontOrFamily) : fontOrFamily.hashCode());
             h = 31 * h + Float.floatToIntBits(maxWidth);
             h = 31 * h + Float.floatToIntBits(maxHeight);
+            h = 31 * h + Float.floatToIntBits(letterSpacing);
             return h;
         }
 
@@ -213,7 +219,7 @@ public final class CgTextLayoutCache {
         public boolean equals(Object o) {
             if (this == o) return true;
             if (!(o instanceof Key k)) return false;
-            return maxWidth == k.maxWidth && maxHeight == k.maxHeight
+            return maxWidth == k.maxWidth && maxHeight == k.maxHeight && letterSpacing == k.letterSpacing
                     && (byIdentity(fontOrFamily) ? fontOrFamily == k.fontOrFamily : fontOrFamily.equals(k.fontOrFamily))
                     && text.equals(k.text);
         }

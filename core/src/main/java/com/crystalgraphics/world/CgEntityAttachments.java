@@ -390,7 +390,7 @@ public final class CgEntityAttachments {
      * end, since a server draws no model to mark.
      *
      * <pre>{@code
-     * CgAttachment hands = CgEntityAttachments.of(CgEntityQueries.client(), playerId, CgEntityAttachments.HANDS_FORWARD);
+     * CgAttachment hands = CgEntityAttachments.of(CgEntityQueries.of(serverLevel), playerId, CgEntityAttachments.HANDS_FORWARD);   // a server's
      * owner.play(new Charge(look, x, y, z).follow(hands));
      * hands.point("mymod:right_palm", out);   // any declared point of the same entity, as posed at its last place
      * }</pre>
@@ -404,6 +404,56 @@ public final class CgEntityAttachments {
     public static synchronized CgAttachment of(CgEntityQuery entities, int entity, int point) {
         if (point < 0 || point >= NAMES.size()) throw new IllegalArgumentException("undeclared point " + point);
         return new Attached(entities, entity, point);
+    }
+
+    /**
+     * Point {@code point} of the client's entity {@code entity}: {@link #of(CgEntityQuery, int, int)} over
+     * {@link CgEntityQueries#client()}, marks first.
+     *
+     * <pre>{@code
+     * owner.play(new Charge(look, x, y, z).follow(CgEntityAttachments.of(playerId, CgEntityAttachments.RIGHT_HAND)));
+     * }</pre>
+     */
+    public static CgAttachment of(int entity, int point) {
+        return of(CgEntityQueries.client(), entity, point);
+    }
+
+    /**
+     * The client's entity {@code entity} at its {@link #CENTRE}: what a sound or an aura on the whole body follows.
+     *
+     * <pre>{@code
+     * CgSounds.playAttached("minecraft:entity.blaze.ambient", CgEntityAttachments.of(mobId));
+     * }</pre>
+     */
+    public static CgAttachment of(int entity) {
+        return of(CgEntityQueries.client(), entity, CENTRE);
+    }
+
+    /**
+     * Point {@code point} of a client entity, the host's own object: {@link #of(int, int)} by its network id.
+     *
+     * <pre>{@code
+     * CgSounds.playAttached("mymod:sounds/charge.ogg", CgEntityAttachments.of(player, CgEntityAttachments.RIGHT_HAND));
+     * }</pre>
+     *
+     * @throws IllegalArgumentException for null or an object that is not an entity (an {@code Integer} id included:
+     *                                  pass an id as an {@code int})
+     */
+    public static CgAttachment of(Object entity, int point) {
+        return of(CgEntityQueries.requireId(entity), point);
+    }
+
+    /**
+     * A client entity, the host's own object, at its {@link #CENTRE}.
+     *
+     * <pre>{@code
+     * CgSounds.playAttached("minecraft:entity.blaze.ambient", CgEntityAttachments.of(blaze));
+     * }</pre>
+     *
+     * @throws IllegalArgumentException for null or an object that is not an entity
+     */
+    public static CgAttachment of(Object entity) {
+        return of(CgEntityQueries.requireId(entity), CENTRE);
     }
 
     /** One entity's point, posed by one world's entities. */

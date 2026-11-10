@@ -60,7 +60,7 @@ public class CgGlyphKey {
      * the remainder into the bucket. Deciding them separately puts the ink up to {@code 0.75} of a
      * pixel out whenever floating point lands the position a hair below an integer, since the quad
      * floors down while the bucket rounds up. See {@code CgResolvedGlyphs.selectSubPixelBucket} and
-     * {@code CgTextRenderer.pixelSnapDelta}, which are the two halves.</p>
+     * {@code CgTextBatch.pixelSnapDelta}, which are the two halves.</p>
      */
     public static final int SUB_PIXEL_BUCKETS = 4;
 

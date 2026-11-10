@@ -15,6 +15,7 @@ import com.crystalgraphics.camera.CgCameraSystem;
 import com.crystalgraphics.collision.CgCollisionWorld;
 import com.crystalgraphics.frame.CgTickFunction;
 import com.crystalgraphics.frame.CgTickGroup;
+import com.crystalgraphics.frame.CgWorld;
 import com.crystalgraphics.frame.CgWorldSubsystem;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.audio.CgAudioDecoder;
@@ -134,6 +135,42 @@ public final class CgAudioEngine extends CgWorldSubsystem {
     /** On the host's {@link CgAudioOutput} and {@link CgAudioDecoder}. */
     public CgAudioEngine() {
         this(null, null);
+    }
+
+    /**
+     * {@code world}'s sound, added on the host's output at the first ask: for a caller that plays a sound without
+     * running sequences of its own.
+     *
+     * <pre>{@code
+     * CgAudioEngine audio = CgAudioEngine.of(CgWorld.client());
+     * if (audio.active()) audio.play(click, CgSoundClass.UI, Double.NaN, Double.NaN, Double.NaN, 1f, 1f, false, Double.NaN, 0L);
+     * }</pre>
+     */
+    public static CgAudioEngine of(CgWorld world) {
+        synchronized (world) {
+            CgAudioEngine audio = world.subsystem(CgAudioEngine.class);
+            return audio != null ? audio : world.add(new CgAudioEngine());
+        }
+    }
+
+    /**
+     * {@code world}'s sound if it plays: the engine added there, else one added at this first ask where the host has an
+     * audio output; null on a dedicated server, with no output, or after the output failed. What every caller that
+     * plays into a world asks, so the first sound of any kind starts the engine.
+     *
+     * <pre>{@code
+     * CgAudioEngine audio = CgAudioEngine.active(CgWorld.client());
+     * if (audio != null) audio.play(click, CgSoundClass.UI, 1f);
+     * }</pre>
+     */
+    @Nullable
+    public static CgAudioEngine active(CgWorld world) {
+        CgAudioEngine audio = world.subsystem(CgAudioEngine.class);
+        if (audio == null) {
+            if (!CgPlatform.isProvided(CgAudioOutput.SERVICE)) return null;
+            audio = of(world);
+        }
+        return audio.active() ? audio : null;
     }
 
     /** On {@code output}, and the host's decoder. */

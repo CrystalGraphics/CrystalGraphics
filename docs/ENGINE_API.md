@@ -10,13 +10,19 @@ each time it fires; the frame executes on the host's target at once. CrystalGrap
 once it has drawn), and every host fires them; a mod defines its own.
 
 ```java
-// Over the HUD: the frame's camera is orthographic over the GUI's logical pixels, origin top left
+// Over the HUD: the frame's camera is orthographic over the window's pixels, origin top left
 CgRenderStage.HUD.register(0, frame -> frame.callback("mymod:badge", () -> drawBadge(frame.constants())));
 ```
 
 - A GUI stage fires once a frame from a hook that fires once, never per HUD element; not while the HUD is hidden (F1),
   and never on a server. Fabric below 1.16 has no `SCREEN`. From 26.1 both fire at the frame's end, after the GUI.
-- `fireOverlay(width, height, scale, mainFramebuffer)` is what a host calls: it fills the camera and fires.
+- **Two named orders on a GUI stage**, Unreal's layers: `CgRenderStage.VIEWPORT_WIDGETS` (0) is the game's interface,
+  windows and menus; `CgRenderStage.WORLD_WIDGETS` (-100) is what follows a point in the world (a damage number, a
+  name plate), drawn under it as Unreal's screen-space widget components are. Project the point with
+  `frame.projectWorld(x, y, z, out)`, onto the canvas's pixels by the world's camera.
+- `fireOverlay(width, height, scale, mainFramebuffer)` is what a host calls: it fills the camera and fires. The
+  camera is the window's device pixels, as Unreal's canvas is; `frame.guiScaledCanvas()` draws in the host GUI's pixels
+  instead (`CANVAS.md` § 6), and `frame.host().guiScale()` is the scale itself.
 - `fireInto(target)` fires into a framebuffer of the caller's rather than the host's bound target, with the host
   frame filled for it first: a second view of the world, as an editor's viewport draws one.
 
@@ -113,8 +119,8 @@ world.draw(shard, crystal).instances(shards, CgGpuCount.at(alive, 0, capacity)).
 // A level per screen height (CgMeshLods, Unity's LODGroup): picked per draw at record time
 world.draw(CgMeshShapes.sphereLods(), smoke).at(x, y, z).transform(scale).submit();
 
-// A label: a CgTextRenderer.Draw at a point, facing the camera or turned as a sign; depth-tested
-world.text("Spawn").at(x, y + 2, z).height(0.5f).font(font).stroke(0.08f, 0xFF000000).submit();
+// A label: a CgTextDraw at a point, facing the camera or turned as a sign; depth-tested
+world.text("Spawn").at(x, y + 2, z).height(0.5f).font(font).style(LABEL).submit();     // a CgTextStyle
 world.text(sign).at(x, y, z).rotation(facingSouth).anchor(0f, 0f).family(family).targetPx(48).submit();
 ```
 
@@ -122,7 +128,7 @@ world.text(sign).at(x, y, z).rotation(facingSouth).anchor(0f, 0f).family(family)
   [`GPU_DRIVEN_RENDERING.md`](GPU_DRIVEN_RENDERING.md).
 - A draw of `CgMeshLods` takes the level for the screen height its bounds cover, and none below the last level's.
 - **Labels** (`world.text`) draw after every transparent draw of the firing, unsorted among them: a glow in front
-  of a label does not cover it. A label is a queued `CgTextRenderer.Draw` (strokes, shadows, families, paragraphs),
+  of a label does not cover it. A label is a queued `CgTextDraw` (strokes, shadows, families, paragraphs),
   drawn under each firing's camera; `height` is a line's height in blocks. Labels are retained: a label's glyphs are
   captured when what it draws changes and kept on the GPU, and a frame otherwise writes one matrix a label. 10,000
   outlined, shadowed labels are 3 draws and about 230 ns a label (`--mode=world-labels`). Their text writes depth
@@ -907,11 +913,36 @@ A material drawn under another blend, cull, depth write or clip than its shader'
 
 **Package guide**: `api/state/CLAUDE.md`
 
-### Instanced renderers
+### The canvas — quads, curves and text
 
-Everything 2D draws through `CgQuadRenderer` (quads: UI boxes, glyphs, blits) or `CgVectorRenderer` (strokes, triangles, cells): records queued on the CPU, turned into recorded draws by `CgInstanceRun` -- into the recording inside one, through `CgImmediate` on `flush()` outside one. `CgTextRenderer` owns a `CgQuadRenderer`.
+Everything 2D draws into a `CgCanvas` (Unreal's `FCanvas`): quads (UI boxes, glyphs, blits, HUD images), curves,
+triangles and cells, each item naming its material and textures. Matching neighbours are one draw and order is kept.
+At a stage, the firing's canvas lands in that firing under its camera, in the world or on the screen; nothing to
+begin, end or delete.
 
-**Package guides**: `gl/render/CLAUDE.md` · `gl/buffer/staging/CLAUDE.md`
+```java
+CgRenderStage.HUD.register(CgRenderStage.WORLD_WIDGETS, frame -> {
+    frame.canvas().quad(DIGIT).texture(0, DIGITS).at(x, y).size(w, h).uv(u0, v0, u1, v1).color(argb).submit();
+    frame.canvas().text().style(DAMAGE).text(damage).font(font).at(x, y - 12).color(argb).submit();
+});
+CgRenderStage.WORLD_TRANSPARENT.register(0, frame ->                       // camera-relative; world() is absolute
+    frame.canvas().quad(GLOW).world(x, y, z).pose(facing).at(-0.5f, -0.5f).size(1f, 1f).submit());
+
+CgCanvas now = new CgCanvas();                                             // outside any stage: drawn at flush()
+now.quad(IMAGE).texture(0, image).at(x, y).size(w, h).submit();
+now.flush();
+```
+
+- An item draws under its material's values as they are when it is submitted.
+- `CgCanvasMaterials` ships an image, a mask, their 2D-array forms, a curve and a box (rounded, bordered, nine-slice:
+  `canvas.shapes()`), on the screen and in the world, in each blend mode; `CgCanvasGradient`, `CgCanvasGrid` and
+  `CgCanvasGlass` (with acrylic, Mica and liquid looks) draw gradients, grids and glass. Most consumers need no
+  shader of their own.
+- Text is an item too (`canvas.text()`): culled against the canvas's camera, rastered at device pixels on the
+  screen and from its size on screen in the world.
+The whole guide, for consumers: **[`CANVAS.md`](CANVAS.md)**.
+
+**Package guide**: `render/canvas/CLAUDE.md`
 
 ### Font/Text System
 
@@ -1132,12 +1163,12 @@ CgEngineLifecycle.shutdown();
 
 | Step | What | Why |
 |------|------|-----|
-| 0 | `CgTextRendererRegistry.get().deleteAll()` | Any `CgTextRenderer` still alive (backstop — individual owners should already have called `delete()`) |
 | 1 | `CgMeshStore.get().releaseAll()` | The store's pools, their buffers and the one empty VAO its `CgGL` draws bind. Meshes keep their data and are placed again by the next context, but for a `GPU_ONLY` one, which needs an edit first |
 | 2 | `CgQuadIndexBuffer.freeAll()` | Shared quad IBO |
 | 5 | `CgTextureManager.get().freeAll()` | All cached textures + fallback |
 | 5c | `CgFontRegistry.get().releaseAll()` | Glyph atlas textures + background generation executor, reset in place (reusable immediately) |
 | 6 | `CgMaterialRegistry.get().deleteAll()` | Material instances + GL shader programs |
+| 6a | `CgTextMaterials.releaseAll()` | Text's fixed material instances, made again at the next context's first text |
 | 6b | `CgCompute.releaseAll()` | Kernel programs and their blocks; the parsed files stay for the next context |
 | 6c | `CgStreamBuffer.releaseShared()` | The staging ring retained shader buffers are uploaded through |
 | 6d | `CgReadback.releaseAll()` | Pooled staging buffers and the fences of readbacks still in flight; each pending sink is told it failed |
@@ -1164,4 +1195,3 @@ All registries are **singletons accessed via `.get()`**. You normally interact w
 | `CgFrameBufferRegistry` | `CgFrameBufferRegistry.get()` | Screen-sized FBOs that auto-resize | `getOrCreate(name, format)` for screen-sized FBOs |
 | `CgShaderBufferRegistry` | `CgShaderBufferRegistry.get()` | User-attached SSBO/UBO objects | `deleteAll()` on teardown (via lifecycle) |
 | `CgFontRegistry` | `CgFontRegistry.get()` | Glyph atlas textures (bitmap/MSDF/MTSDF) + background generation executor | `releaseAll()` on teardown (via lifecycle); parameterized constructors remain public for harness testing of custom atlas sizes/configs — see `text/cache/CLAUDE.md` |
-| `CgTextRendererRegistry` | `CgTextRendererRegistry.get()` | Tracks every `CgTextRenderer` for teardown; auto-resizes screen-sized ones (`create()`, the default — opt out via `createManualSized()`) on `onResize()` | Does not own renderer *lifecycle* the way other registries do — owners still call `delete()` themselves; `deleteAll()` on teardown is a backstop, not the primary path — see `text/render/CLAUDE.md` |

@@ -12,8 +12,8 @@ import static org.junit.Assert.*;
  *
  * <p>The reverse check is the one that matters. Before this existed, a shader could read
  * {@code CG_QUAD_WORLD_POS} without declaring anything and compile fine <em>as long as</em> some
- * Java caller had already run {@code CgQuadRenderer.attachTo(material)}. When nothing had — because
- * the buffer is only attached on a material's first {@code useMaterial()}, and
+ * Java caller had already run {@code CgQuadBatch.attachTo(material)}. When nothing had — because
+ * the buffer is only attached on a material's first draw, and
  * {@code CgMaterial.enableKeyword} recompiles on the spot before that — the shader compiled with
  * {@code QUAD_DATA} undeclared, and the failure surfaced as
  * {@code "Keyword 'WITH_BORDER' is not declared as #pragma cg_feature"}: a message naming a pragma

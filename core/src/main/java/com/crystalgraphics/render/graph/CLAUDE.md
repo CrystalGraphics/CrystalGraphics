@@ -367,7 +367,7 @@ anything outliving the frame is not taken twice — a frame shown again must not
 naming both.
 
 `CgImmediate` (one package up) is the same three stages in one `try` block, for a caller with no graph — and
-`CgImmediate.flush(chunk, order)` is what `CgQuadRenderer`/`CgVectorRenderer.flush()` call, under the frame block
+`CgImmediate.flush(chunk, order)` is what `CgQuadBatch`/`CgCurveBatch.flush()` call, under the frame block
 the caller prepared (`render-graph` G2).
 
 **What a recorded draw keeps of an immediate one** (G2's gate found each): a draw runs under the material as the
@@ -376,14 +376,12 @@ caller sets after binding rides on the pipeline (`CgPipeline.withState`), or the
 overwrite it at the draw; and a texture bound by hand goes in through `bindTexture(unit, texture)`, winning the
 unit as GL's last bind did.
 
-**Recorded flushes** (G4; lookback G5.3): a renderer given a `CgChunkSink` (`CgQuadRenderer.sink`, `CgVectorRenderer.sink`,
-`CgTextRenderer.sink`) hands each flush's chunk to it instead of drawing. `CgPassRecorder` is the sink a recorder
-owns: `recordInto(recording, target, load, constants)` picks the target, `scissor`/`noScissor` and `constants` are
-its set-state, a change of constants starts a pass, `endPass()` splits; nothing is read from GL. The caller executes
-the recording once with `CgImmediate.execute(recording)`. A recorded draw executes after its renderer has moved on,
-so a snapshot keeps by value what an immediate draw read live: a texture as the handle it was given, an attached
-uniform block as its bytes. A renderer's binding table resets once a frame, not per `begin()`, since
-recorded chunks still name its snapshots. A recorder's passes are `LOOKBACK`: a recorded chunk is one spatial node's
+**The canvas** (G4; lookback G5.3; `render/canvas`): `CgCanvas` records 2D items into raster passes:
+`recordInto(recording, target, load, constants)` picks the target, `scissor`/`noScissor` and `constants` are its
+set-state, a change of constants starts a pass, `endPass()` splits; nothing is read from GL. The caller executes the
+recording once with `CgImmediate.execute(recording)`. A recorded draw executes after the canvas has moved on, so a
+snapshot keeps by value what an immediate draw read live: a texture as the handle it was given, an attached uniform
+block as its bytes; the canvas's binding table resets once a frame. A canvas's passes are `LOOKBACK`: a recorded chunk is one spatial node's
 (the run ends it where the records' node changes) and each draw carries its records' bounds there, so a draw moves
 back past the draws it does not touch, within its node's domain.
 
@@ -425,6 +423,10 @@ CgExecutor.freeStorage(picture);   // the context is going away
   requested texture; an imported, persistent or history buffer) or carries a request.
 - **Transients live from their first to their last use** in the executed order, from a pool keyed by description
   (textures) or size class (buffers): two that never live at once share storage.
+  The texture pool frees one idle five minutes, and past `crystalgraphics.graph.poolMb` (400) one unused ten frames,
+  as Unreal's pool does past `r.RenderTargetPoolMin`: a transient sized from something that moves (a region on
+  screen) is rounded to a size class first (`CgGpuOps.scratchSize`), or every frame's size is new storage.
+  `graph.pool-framebuffers` and `graph.pool-kb` count what it holds, on every backend.
 - **A compute pass runs where compute does**: a dispatch on a context without it throws when it is recorded
   (`CgKernel.requireCompute`).
 - **An `async()` compute pass runs on the device's compute queue** where it has one (the owned device), and in order
@@ -449,7 +451,7 @@ CgExecutor.freeStorage(picture);   // the context is going away
 
 ## Gate scene
 
-`--mode=graph-executor-test` draws one picture through `CgQuadRenderer`, `CgImmediate`, and a frame recorded and built
+`--mode=graph-executor-test` draws one picture through `CgQuadBatch`, `CgImmediate`, and a frame recorded and built
 on a worker thread; the three PNGs in its output directory must be byte-identical, on `--rhi=gl` and `--rhi=vulkan`.
 `--mode=compute-graph` is the compute half: kernels, a history, an indirect dispatch and a raster pass in one frame
 built on a worker, matched against the CPU's picture, executed again too; with synchronization validation clean.

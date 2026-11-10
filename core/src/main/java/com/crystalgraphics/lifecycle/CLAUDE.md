@@ -14,7 +14,7 @@ are not public. `stopped()` writes the trace run's exit files (`trace.CgTraceRun
   to (never `CgNetwork`). Each tick runs its listeners, then the network's share; the client's runs with no
   connection too.
 - `CgGraphicsLifecycle` does the graphics work: what a context builds, the teardown order, and the two calls a host
-  makes on it directly, `tickFrame` and `onResize` (through `CgLifecycleService`).
+  makes on it directly from its frame-end and resize hooks, `tickFrame` and `onResize`.
 - On a client, post-init follows the graphics start: what loads is precached by the effects it installs.
 - **Mods declare their listeners; nothing hard-wires a consumer.** `CgListenerDiscovery` reads
   `META-INF/crystalgraphics/listeners` (`<common|client> <class>` a line) from every `CgModLoader` root and the engine's

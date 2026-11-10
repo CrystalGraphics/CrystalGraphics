@@ -135,7 +135,7 @@ public final class CgVfx {
         assets.preparer(CgParticleKinds.SYSTEM, new CgVfxSystemPreparer(vfx));
         assets.preparer(CgBodyKinds.PREFAB, new CgVfxPrefabPreparer(vfx));
         assets.preparer(CgSequenceKinds.SEQUENCE,
-                new CgSequenceSoundPreparer(() -> CgWorld.client().subsystem(CgAudioEngine.class)));
+                new CgSequenceSoundPreparer(() -> CgAudioEngine.active(CgWorld.client())));
         assets.preparer(CgSequenceKinds.SEQUENCE, new CgPostVolumePreparer());
         assets.preparer(CgStageKinds.STAGE, new CgStagePreparer());
         assets.preparer(CgLookKinds.MATERIAL, new CgMaterialPreparer());

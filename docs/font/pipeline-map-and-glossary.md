@@ -30,7 +30,7 @@ read [`architecture.md`](architecture.md).
    cache, or glyph by glyph from `CgFontRegistry`, which queues any it lacks.
 7. **Shadows.** `CgTextShadowPlan` decides what each glyph paints for each shadow.
 8. **Submit.** Every glyph, decoration and shadow becomes a sort key and an instanced quad. Sorted, they go
-   through the renderer's `CgQuadRenderer` into `text.shader`.
+   through the renderer's `CgQuadBatch` into `text.shader`.
 
 ---
 
@@ -103,11 +103,12 @@ Text darker than mid-grey, shadows and strokes are drawn as rasterised.
 
 Each drawable packs into a `CgTextSortKey`, most significant first: **stage** (shadows, then text, then
 inset shadows — painter's order), **mode** (bitmap or distance field), **atlas texture**, distance range,
-and kind (glyph or decoration). One sort puts everything that shares GL state together, and a transition
-happens only where mode or texture changes. With one atlas per mode, that is at most one split, bitmap
-against distance field, per stage.
+and kind (glyph or decoration). One sort puts everything that shares a material together, and a run breaks
+only where mode or texture changes. With one atlas per mode, that is at most one split, bitmap against
+distance field, per stage.
 
-`beginBatch()` / `endBatch()` keep the quads of many draws in one pass, so they share those calls.
+Each run lands on the canvas as quads under its material; the canvas joins neighbouring runs of one material
+and atlas, so many draws share calls with nothing to open or close.
 
 ---
 
@@ -115,7 +116,7 @@ against distance field, per stage.
 
 | | Screen | World |
 |---|---|---|
-| Context | `CgTextRenderContext.orthographic(viewportWidthPx, viewportHeightPx)` | `CgTextRenderContext.world(cameraProjection, viewportWidthPx, viewportHeightPx)` |
+| Camera | the canvas's, orthographic (a GUI stage, a 2D recording) | the canvas's, with perspective (a world stage) |
 | Raster size | from the pose's scale | a fixed 2× the font's size |
 | Tier | size, transform or stroke | always distance field |
 | `paragraph` re-wrap | constraints divided by the pose's scale | never; the layout does not change with the camera |

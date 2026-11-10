@@ -2,8 +2,8 @@ package com.crystalgraphics.text.cache;
 
 import com.crystalgraphics.api.font.CgFontStyle;
 import com.crystalgraphics.api.font.CgFontKey;
-import com.crystalgraphics.text.render.CgTextRenderer;
-import com.crystalgraphics.text.render.context.CgTextScaleResolver;
+import com.crystalgraphics.text.render.CgTextBatch;
+import com.crystalgraphics.text.render.CgTextRaster;
 import lombok.Getter;
 
 /**
@@ -17,7 +17,7 @@ import lombok.Getter;
  *
  * <h3>Visibility Contract</h3>
  * <p>The class is {@code public} because the renderer
- * ({@link CgTextRenderer})
+ * ({@link CgTextBatch})
  * needs to reference it for atlas-key construction.  However, the constructor
  * and most accessors are package-private — only {@link CgFontRegistry} should
  * create instances.  External code should treat this type as <em>opaque</em>:
@@ -36,7 +36,7 @@ import lombok.Getter;
  * effective draw size.</p>
  *
  * @see CgRasterGlyphKey
- * @see CgTextScaleResolver
+ * @see CgTextRaster
  */
 public final class CgRasterFontKey {
 

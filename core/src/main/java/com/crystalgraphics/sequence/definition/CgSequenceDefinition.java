@@ -53,13 +53,15 @@ import com.crystalgraphics.sequence.time.CgFrameRate;
  * @param field             what is active over which ticks
  * @param triggered         the sections each event starts, by event name
  * @param children          the subsequences its subsequence sections play
+ * @param soundAttachments  its unbound sound sections' {@code attach} keys
  * @param depth             how many levels of subsequences lie under it: 0 for none
  */
 public record CgSequenceDefinition(String id, CgFrameRate tickResolution, CgFrameRate displayRate, int start, int end,
                                    Evaluation evaluation, CgUnits units, List<Role> roles, List<Locator> locators,
                                    List<Spawnable> spawnables, List<CompositeSection> compositeSections,
                                    List<CgSequenceTrack> tracks, CgSequenceField field,
-                                   Map<String, List<SectionRef>> triggered, List<Child> children, int depth) {
+                                   Map<String, List<SectionRef>> triggered, List<Child> children,
+                                   List<SoundAttach> soundAttachments, int depth) {
 
     /** How deep subsequences nest: a deeper one fails at load. */
     public static final int MAX_DEPTH = 4;
@@ -114,6 +116,26 @@ public record CgSequenceDefinition(String id, CgFrameRate tickResolution, CgFram
     public record Child(int track, int section, CgSequenceDefinition definition, int[] roles) {
         /** A role filled by the target the section's track binds: its role, or its puppet. */
         public static final int SECTION = -2;
+    }
+
+    /**
+     * An unbound sound section's {@code attach} keys: from each tick, the point it rides (Unreal's audio section
+     * {@code AttachActorData}). Stepped, the first key holding before its tick.
+     */
+    public record SoundAttach(int track, int section, int[] ticks, List<CgSequenceBinding> points) {
+        /** The key in force at {@code tick}. */
+        public int keyAt(float tick) {
+            int k = 0;
+            while (k + 1 < ticks.length && ticks[k + 1] <= tick) k++;
+            return k;
+        }
+    }
+
+    /** Section {@code section} of track {@code track}'s attach keys; null where it has none. */
+    @Nullable
+    public SoundAttach soundAttach(int track, int section) {
+        for (SoundAttach a : soundAttachments) if (a.track() == track && a.section() == section) return a;
+        return null;
     }
 
     /** The sequence kind's compiler. */

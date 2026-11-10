@@ -15,7 +15,7 @@ The build view (Java levels, toolchains, what a consumer build includes) is `doc
 | `core/` | 25 + 8 copy | All rendering: materials, meshes, the pipeline, fonts, text, atlases. Calls `CgPlatform`/`CgGL` for every GL or lifecycle operation; never imports Minecraft, a loader or LWJGL |
 | `freetype-msdfgen-harfbuzz-bindings/` | 8 | JNI text shaping, with its natives |
 | `runtime/lwjgl/2`, `runtime/lwjgl/3` | 25 + 8 copy | **Tier 1**: GL backend, context, input and cursor per LWJGL (`Lwjgl2*`, `Lwjgl3*`, `Glfw*`). **Name no Minecraft class** (import guard), so one copy serves every host of that LWJGL and the harness. LWJGL3 is pinned to 3.2.2, the oldest in range, so a symbol a 1.16 client lacks is a compile error |
-| `runtime/lwjgl/sdl` | 25 + 8 copy | **Tier 1 for a host windowed by SDL3** (Minecraft 26.3+, which ships no GLFW): `SdlInputService` (keys by scancode, modifiers, mouse buttons, the clipboard) and `SdlCursorService`, beside `platform`'s `CgSdlKeyCodes`. A 26.3 node's `PlatformServiceModern` registers these where an older one registers the `Glfw*` pair. Pinned to LWJGL 3.4.3, the oldest with SDL3 |
+| `runtime/lwjgl/sdl` | 25 + 8 copy | **Tier 1 for a host windowed by SDL3** (Minecraft 26.3+, which ships no GLFW): `InputSdl` (keys by scancode, modifiers, mouse buttons), `ClipboardSdl` and `SdlCursorService`, beside `platform`'s `CgSdlKeyCodes`. A 26.3 node's `PlatformServiceModern` registers these where an older one registers the `Glfw*` pair. Pinned to LWJGL 3.4.3, the oldest with SDL3 |
 | `runtime/lwjgl/vulkan` | 25 + 8 copy | **Tier 1 for Vulkan** (`plan/device-vulkan.md`): `CgVulkanDevice`, a `CgRHI` over a `host.CgVulkanHost` — `host.OwnedVulkanHost` when nothing else owns the device, `host.HostedVulkanHost` when a game does and submits it; `shader.ShadercGlslCompiler`, the tracked backend's GLSL to SPIR-V over shaderc and SPIRV-Cross, as Minecraft 26.2 compiles its own; and the device's parts in `resource`, `binding`, `command`, `memory` and `format`. Pinned to LWJGL 3.4.1, the oldest a 26.2+ client ships. Its tests run core on the tracked backend (`EngineOnTrackedBackendTest`), since core's own tests carry LWJGL 2, and the RHI's command contract on a real device (`VulkanCommandListTest`) |
 | `runtime/mc/1710/` | 25 → 8 | Forge 1.7.10 on RetroFuturaGradle: `PlatformService1710`, the `CgRenderHook`/`MixinMinecraft` mixins, Angelica's state provider |
 | `runtime/mc/legacy/` | 8 | Forge 1.8–1.12.2, a Stonecutter tree (nodes 1.8.9, 1.10.2, 1.12.2) on Unimined: `PlatformServiceLegacy`, `GlStateManagerGLBackend`, SRG-named mixins MixinBooter applies |
@@ -63,6 +63,7 @@ The build view (Java levels, toolchains, what a consumer build includes) is `doc
 | [`docs/LIGHTS.md`](LIGHTS.md) | The world's lights: adding them, how they light Minecraft (deferred, the G-buffer rebuilt from depth and colour), falloff, day and night, the light grid, lights from effects, what is planned |
 | [`docs/COLLISION.md`](COLLISION.md) | Questions about space: shapes, world queries (overlap, cast, ray), hits, hitboxes over time, shields, hitboxes on every side, snapshots, exact tests, the debug view, recipes |
 | [`docs/JOBS.md`](JOBS.md) | Work off the game's thread: jobs handed back at the next tick, keys and debounce, lanes, repeating simulations, `forEach` across cores, cancelling, progress, replies |
+| [`docs/AUDIO.md`](AUDIO.md) | Playing sound: `CgSounds`, names and loading, classes and voices, placing and following, attenuation, mixes, subtitles, sounds in cues and sequences |
 | [`docs/STORAGE.md`](STORAGE.md) | A product's files: the layout, config stores, verified cache installs, resumable downloads, and the per-product locations file that repairs dead links |
 | [`docs/NETWORKING.md`](NETWORKING.md) | Sending between server and clients: messages, requests, and networked objects (state mirrored to whoever sees it, per-player data, events, commands, server behaviours, prediction, saving, the test rig) |
 | [`docs/SERIALIZATION.md`](SERIALIZATION.md) | Codecs and where their values go: writing one, mutable objects, decoding into a live object, files in binary, JSON and YAML, Minecraft's NBT, changing a saved shape |
@@ -73,6 +74,7 @@ The build view (Java levels, toolchains, what a consumer build includes) is `doc
 | [`docs/DEBUG_FLAGS.md`](DEBUG_FLAGS.md) | Every engine switch, generated from the variable registry (`CgVar`, platform's `com.crystalgraphics.variable`): its sources, declaring a new one, and the table |
 | [`docs/NATIVE_BUILD_PROCESS.md`](NATIVE_BUILD_PROCESS.md) | Rebuilding the FreeType/HarfBuzz/msdfgen natives |
 | [`docs/HOTSWAP_SETUP.md`](HOTSWAP_SETUP.md) | Hotswapping into a running 1.7.10 client |
+| **[`docs/CANVAS.md`](CANVAS.md)** | **Drawing anything flat**: quads, curves and text on a HUD, the screen or in the world, through a stage's canvas or one of your own; materials, order and batching, recording a frame |
 | **[`docs/RENDER_STATE.md`](RENDER_STATE.md)** | **Who owns GPU state**: pipelines on Vulkan, the GL device's emulated PSOs and state filter (and why GL 4.6 still needs one), the host hand-over at a section's edge, foreign GL inside a frame |
 | **[`docs/MINECRAFT_RENDERING_CONVENTIONS.md`](MINECRAFT_RENDERING_CONVENTIONS.md)** | **Before drawing into Minecraft's frame, and with every new Minecraft version**: how each version changed that frame (26.2's reversed depth, float depth, blend and sampler state left behind) and what the engine does about each |
 
@@ -145,10 +147,10 @@ Every package guide (`CLAUDE.md`) under `src/main/java/com/crystalgraphics/`. Re
 | `api/state/CLAUDE.md` | `CgRenderState`, `CgDepthState`, `CgBlendState`, `CgCullState`, `CgStencilState`, `CgTextureState` (`CgGlSlot` moved to `platform.gl.state`) |
 | `gl/state/CLAUDE.md` | Nothing — the package is empty. Kept as a signpost to the state framework in `platform.gl` / `platform.gl.state`, and a record of what was removed |
 
-### Instanced renderers
+### The canvas
 | Path | What it covers |
 |---|---|
-| `gl/render/CLAUDE.md` | `CgQuadRenderer`, `CgVectorRenderer`, `CgInstanceRun`, `CgClipTable`, `CgShapeTable` |
+| `render/canvas/CLAUDE.md` | `CgCanvas`, `CgQuadBatch`, `CgCurveBatch`, `CgInstanceRun`, `CgClipTable`, `CgShapeTable` |
 
 ### Font / Text
 | Path | What it covers |

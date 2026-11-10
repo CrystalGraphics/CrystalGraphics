@@ -1,7 +1,7 @@
 # audio — the engine's sound, as Unreal's AudioMixer
 
 A mixer on an audio thread of its own, fed from the frame by a command queue, writing to the host's output stream
-(`platform.audio.CgAudioOutput`). **Using it: `docs/vfx/audio.md`.**
+(`platform.audio.CgAudioOutput`). **Using it: `docs/AUDIO.md`.**
 
 ```java
 CgAudioEngine audio = CgWorld.client().add(new CgAudioEngine());
@@ -12,6 +12,7 @@ audio.play(new CgAudioTone(440, 0.25f, 1.0), 1f);
 
 | Class | Owns |
 |---|---|
+| `CgSounds` | the user's shorthand, one call a job, on the client world's engine (`engine()`, made at first use): `play2D`/`playAt`/`playAttached` by name (`UGameplayStatics::PlaySound2D`, `PlaySoundAtLocation`, `SpawnSoundAttached`), `loopAttached`, `load`, `play`/`loop` a loaded sound, `stop`, `preload`, `ref`, `push`/`pop` a mix; each name compiled once; nothing without an audio output |
 | `CgAudioEngine` | the client world's sound: the audio thread (`FMixerDevice`'s render thread), the command queue, the host's master slider and the game's pause, posted each `SUBMIT` |
 | `CgAudioMixer` | one buffer at a time: voices summed, the main gain, the clamp (`OnProcessAudioStream`). Plain Java: tests render it into an array |
 | `CgAudioClock` | the frame's audio time (Quartz's clock): a start at a time lands on its sample |
@@ -19,12 +20,12 @@ audio.play(new CgAudioTone(440, 0.25f, 1.0), 1f);
 | `CgAudioTone` | a sine: the test signal |
 | `CgSound`, `CgAudioSounds` | a loaded sound (`USoundWave`: resident 16-bit samples, or compressed bytes it streams from) and the loader that reads and decodes each path once |
 | `CgSoundVoice`, `CgSoundStream` | a resident sound playing, resampled linearly (pooled); a streamed one, played from a ring the engine's decode thread keeps a second ahead |
-| `CgActiveSounds` | every sound playing, on the frame thread (`FActiveSound`s): weighed by priority × volume, culled by group, the top 64 voiced, loops virtual (`FAudioVirtualLoop`). Talks to the engine only through its `Sink` |
+| `CgActiveSounds` | every sound playing, on the frame thread (`FActiveSound`s): weighed by priority × volume, culled by group, the top 64 voiced, loops virtual (`FAudioVirtualLoop`), each following its `CgAttachment` where it has one. Talks to the engine only through its `Sink` |
 | `CgSoundClass`, `CgSoundMix` | the class chain (`USoundClass`), its host slider and submix; mixes that fade class adjustments in and out (`USoundMix`) |
 | `CgSoundConcurrency` | a cap per kind and the rule for what goes (`USoundConcurrency`) |
 | `CgSubmix`, `CgSubmixEffect`, `CgLowPass`, `CgReverb` | the submix tree the mixer renders leaf to root, its effect chains (`FMixerSubmix`), a one-pole low-pass, a room reverb (Freeverb) on `reverb` |
 | `CgSoundRef`, `CgKitSounds`, `CgHostSoundEvents` | a sound as an asset names it, compiled at load; games' cue names through each kit's `sounds.yaml` and voice lines through its cast's sheets; the host's `sounds.json` merged across packs, each event flattened at its first pick |
-| `CgSubtitles`, `CgSubtitleOverlay`, `CgSubtitleStyle` | the sounds' subtitles (`FSubtitleManager`): queued per sound id over its duration, or driven by a sequence's section, the highest priority shown; drawn over the HUD stage in its game's `subtitle_style.yaml` (Slate text blocks at 96 DPI, `hud_image.shader` for the band and the underline), else Unreal's canvas look |
+| `CgSubtitles`, `CgSubtitleOverlay`, `CgSubtitleStyle` | the sounds' subtitles (`FSubtitleManager`): queued per sound id over its duration, or driven by a sequence's section, the highest priority shown; drawn over the HUD stage in its game's `subtitle_style.yaml` (Slate text blocks at 96 DPI, `CgCanvasMaterials.SCREEN.image()` for the band and the underline), else Unreal's canvas look |
 | `CgSoundAttenuation`, `CgAudioListener` | what distance does to a placed sound (`FSoundAttenuationSettings`); the listener, moved to the camera's final pose at `SUBMIT`, and the stereo pan law (`Get3DChannelMap`) |
 
 ## Rules
@@ -38,7 +39,7 @@ audio.play(new CgAudioTone(440, 0.25f, 1.0), 1f);
 - **A sound's state is frame-thread arrays**, never an object per play: `CgActiveSounds` is sized once.
 - **A dedicated server plays nothing**: with no `CgAudioOutput` the engine starts no thread.
 - **Nothing here calls a host's sound engine**: even Minecraft's own sound events play through this mixer, read from
-  the packs' `sounds.json` through `CgResourceService`. The host's sliders arrive through `platform.audio.CgHostVolume`;
+  the packs' `sounds.json` through `CgHostResources`. The host's sliders arrive through `platform.audio.CgHostVolume`;
   a mix's hush on the host's own sounds leaves through `CgHostDuck`, posted only where it moved.
-- **Sequences and cues find the engine in their world**: `CgSequencer.audio()`, the client world's for cues. Nothing
-  adds one by default; whoever runs sequences adds it beside the sequencer.
+- **Every caller finds the engine with `CgAudioEngine.active(world)`**: `CgSounds`, cues, `CgSequencer.audio()`. The
+  first ask adds it where the host has an audio output; nobody adds one by hand.

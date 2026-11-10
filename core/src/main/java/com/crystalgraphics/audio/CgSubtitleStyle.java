@@ -12,34 +12,40 @@ import javax.annotation.Nullable;
 
 import com.crystalgraphics.api.texture.CgTextures;
 import com.crystalgraphics.asset.codec.CgAssetYaml;
+import com.crystalgraphics.asset.load.CgAssetRef;
+import com.crystalgraphics.asset.load.CgLoadPriority;
 import com.crystalgraphics.asset.load.CgPreload;
+import com.crystalgraphics.asset.load.CgVfxAssets;
 import com.crystalgraphics.asset.kind.CgKitFiles;
+import com.crystalgraphics.asset.kind.CgLookKinds;
 import com.crystalgraphics.asset.tree.CgAssetData;
 import com.crystalgraphics.object.validate.CgValidation;
+import com.crystalgraphics.text.style.CgTextStyle;
 
 /**
  * How a game draws its subtitles: a kit's {@code subtitle_style.yaml}, in the game's UI units, which scale with the
  * screen's height from {@code reference_height}. A line whose kit has none is drawn in Unreal's canvas look.
  *
  * <pre>{@code
- * # assets/kakarot_kit/subtitle_style.yaml
+ * # assets/mygame_kit/subtitle_style.yaml
  * _v: 1
  * reference_height: 1080
- * line: { font: kakarot_kit:fonts/Art/UI/Xcmn_Font/CMN/FOT-RodinNTLGPro-B.otf, size: 20,
- *         outline: { size: 3, colour: 0xFF000000 }, anchor: [0.5, 0.5], alignment: [0.5, 0], offset: [-10, 328] }
+ * line: { style: mygame_kit:text_styles/subtitle, anchor: [0.5, 1], alignment: [0.5, 1], offset: [0, -80] }
  * band: { colour: 0x80030305, anchor: [0.5, 0.5], height: 200, offset: [0, 330] }
  * fade_in: { text: [[0, 0], [0.2, 1]], slide: [[0, 100], [0.2, 0]], interp: cubic }    # in from the right, eased
  * }</pre>
  *
  * <pre>{@code
- * CgSubtitleStyle.registerKit("kakarot_kit", Paths.get("assets/kakarot_kit"));   // the asset registry does this
- * CgSubtitleStyle style = CgSubtitleStyle.of("kakarot_kit");                       // null: the canvas look
- * float px = style.line().size() * style.scale(screenHeight) * 96f / 72f;
+ * CgSubtitleStyle.registerKit("mygame_kit", Paths.get("assets/mygame_kit"));   // the asset registry does this
+ * CgSubtitleStyle style = CgSubtitleStyle.of("mygame_kit");                       // null: the canvas look
+ * CgTextStyle look = style.line().style().loaded();                              // its font, size and layers
+ * float px = look.px() * style.scale(screenHeight);
  * }</pre>
  *
  * <ul>
  *   <li>A file that does not validate fails the kit's registration, naming it and each issue.</li>
- *   <li>A size is in points at Slate's 96 DPI; everything else in UI units, times {@link #scale}.</li>
+ *   <li>A text block's look is a {@code text_style}, requested as the kit registers; everything else is in UI units,
+ *       times {@link #scale}.</li>
  * </ul>
  */
 public record CgSubtitleStyle(float referenceHeight, float uiScale, int lines, Text line, @Nullable Text name,
@@ -49,7 +55,7 @@ public record CgSubtitleStyle(float referenceHeight, float uiScale, int lines, T
     private static final Map<String, CgSubtitleStyle> BY_KIT = new ConcurrentHashMap<>();
 
     /** A Slate text block in a canvas slot: where its box sits is {@code anchor} on the screen, then {@code offset}, less {@code alignment} of its own size. */
-    public record Text(String font, float size, int colour, float outlineSize, int outlineColour, float lineHeight,
+    public record Text(CgAssetRef<CgTextStyle> style, float lineHeight,
                        float wrap, String justify, float anchorX, float anchorY, float alignmentX, float alignmentY,
                        float offsetX, float offsetY, @Nullable Underline underline) {
     }
@@ -135,6 +141,8 @@ public record CgSubtitleStyle(float referenceHeight, float uiScale, int lines, T
         CgSubtitleStyle style = read(file);
         BY_KIT.put(namespace, style);
         // Read now, at the kit's registration: the first subtitle drawn is mid-move
+        style.line().style().request(CgLoadPriority.PREFETCH);
+        if (style.name() != null) style.name().style().request(CgLoadPriority.PREFETCH);
         Underline underline = style.name() == null ? null : style.name().underline();
         if (underline != null) CgPreload.request(l -> l.texture(CgTextures.of(underline.image())));
     }
@@ -159,10 +167,8 @@ public record CgSubtitleStyle(float referenceHeight, float uiScale, int lines, T
     }
 
     private static Text text(Map<?, ?> m) {
-        Map<?, ?> outline = m.get("outline") instanceof Map<?, ?> o ? o : Map.of();
         Map<?, ?> u = m.get("underline") instanceof Map<?, ?> x ? x : null;
-        return new Text((String) m.get("font"), num(m, "size", 0f), colour(m.get("colour"), 0xFFFFFFFF),
-                num(outline, "size", 0f), colour(outline.get("colour"), 0xFF000000), num(m, "line_height", 1f),
+        return new Text(CgVfxAssets.ref(CgLookKinds.TEXT_STYLE, (String) m.get("style")), num(m, "line_height", 1f),
                 num(m, "wrap", 0f), m.get("justify") instanceof String j ? j : "left",
                 vec(m, "anchor", 0), vec(m, "anchor", 1), vec(m, "alignment", 0), vec(m, "alignment", 1),
                 vec(m, "offset", 0), vec(m, "offset", 1),

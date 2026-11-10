@@ -10,7 +10,6 @@ import com.crystalgraphics.mc.v1710.platform.world.WorldEvents1710;
 import com.crystalgraphics.render.stage.CgHostFrame;
 import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.lifecycle.CgGraphicsLifecycle;
-import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.gl.CgGL;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.EntityRenderer;
@@ -92,8 +91,7 @@ public class CgRenderHook {
     }
 
     /**
-     * Canonical per-frame tick point (see {@code CgLifecycleService.onFrameRendered()}'s
-     * javadoc). Fires at the tail of {@code updateCameraAndRender}, which has no early
+     * Canonical per-frame tick point ({@code CgGraphicsLifecycle.tickFrame()}). Fires at the tail of {@code updateCameraAndRender}, which has no early
      * returns — see the class javadoc for the full verification. This covers world
      * rendering, no-world GUI screens (main menu, etc.), and the skip-render-world case
      * uniformly, closing the gap left by hooking {@code renderWorld} alone.
@@ -127,7 +125,7 @@ public class CgRenderHook {
         if (section) CgGL.fromHost();
         try {
             LoadingScreen1710.draw(mc);
-            CgPlatform.lifecycle().onFrameRendered();
+            CgGraphicsLifecycle.tickFrame();
         } finally {
             if (section) CgGL.toHost();
         }

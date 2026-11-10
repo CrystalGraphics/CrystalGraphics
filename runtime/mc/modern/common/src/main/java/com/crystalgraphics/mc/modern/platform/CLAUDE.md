@@ -35,7 +35,7 @@ the shutdown. A loader decides only which event (or node mixin) reaches it.
 | `HostKeys` | CrystalGraphics' key and button numbers in this Minecraft's own: GLFW's, SDL's from 26.3 |
 | `FrameHooks` | the end-of-frame resize check and `CgGraphicsLifecycle.tickFrame()` |
 | `ResourceIds`, `Windows` | a `ResourceLocation` and the game window, in whichever spelling the running version has |
-| `service/*` | `CgLifecycleService`, `CgReloadService`, `CgResourceService`, `CgRenderingService`, `CgSoundService` over Minecraft |
+| `service/HostResourcesModern` | `CgHostResources` over the client's `ResourceManager`; `LifecycleModern.reload()` sends a reload to `CgAssetReloader` |
 
 **A domain missing from `HostStateModern`'s section slots is a missing GL call, not an exception** — wrong
 rendering with nothing in any log. `Blaze3dMirrorTest` pins the backend's few overrides; `HostStateVerifier` is the

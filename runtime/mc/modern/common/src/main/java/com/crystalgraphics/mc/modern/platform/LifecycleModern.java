@@ -12,6 +12,7 @@ import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.lifecycle.CgLifecycleListener;
 import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.loading.CgLoadingScreen;
+import com.crystalgraphics.mc.CgAssetReloader;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.state.CgGlScope;
@@ -503,7 +504,7 @@ public final class LifecycleModern {
 
     /** A resource reload landed — drop every cache built from assets. */
     public static void reload() {
-        CgPlatform.reload().onReload();
+        CgAssetReloader.reload();
         resourcesLoaded = true;
     }
 

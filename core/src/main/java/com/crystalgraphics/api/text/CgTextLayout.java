@@ -174,6 +174,10 @@ public record CgTextLayout(List<List<CgShapedRun>> lines, float totalWidth, floa
         @Setter
         @Accessors(fluent = true, chain = true)
         private float tabStopWidth;
+        /** Logical pixels added after each character; see {@link CgParagraphKnobs#letterSpacing()}. */
+        @Setter
+        @Accessors(fluent = true, chain = true)
+        private float letterSpacing;
 
         private Request(String plainText, CgStyledText styledText, CgFontFamily family, CgFontFamilyGroup group) {
             this.plainText = plainText;
@@ -209,7 +213,8 @@ public record CgTextLayout(List<List<CgShapedRun>> lines, float totalWidth, floa
 
         /** The "built, not yet wrapped" checkpoint — see {@link CgShapedParagraph}. */
         public CgShapedParagraph shape() {
-            CgParagraphKnobs knobs = new CgParagraphKnobs(direction, tabStopWidth, align, maxLines, ellipsis, lineHeightOverride);
+            CgParagraphKnobs knobs = new CgParagraphKnobs(direction, tabStopWidth, align, maxLines, ellipsis, lineHeightOverride,
+                    letterSpacing);
             CgStyledText resolved = styledText != null ? styledText : parser != null ? parser.parse(plainText) : null;
             if (resolved != null) {
                 if (group == null) throw new IllegalStateException("markup(...) needs a CgFontFamilyGroup — use of(text, group), not of(text, family/font)");
@@ -227,7 +232,8 @@ public record CgTextLayout(List<List<CgShapedRun>> lines, float totalWidth, floa
          */
         public CgTextLayout build() {
             if (styledText != null || parser != null || family == null) return shape().layout(maxWidth, maxHeight);
-            CgParagraphKnobs knobs = new CgParagraphKnobs(direction, tabStopWidth, align, maxLines, ellipsis, lineHeightOverride);
+            CgParagraphKnobs knobs = new CgParagraphKnobs(direction, tabStopWidth, align, maxLines, ellipsis, lineHeightOverride,
+                    letterSpacing);
             CgTextLayoutCache.Key key = CgTextLayoutCache.key(plainText,
                     new BuildKey(CgShapedRunCache.familyKey(family), knobs), maxWidth, maxHeight);
             CgTextLayout cached = CgTextLayoutCache.get(key);

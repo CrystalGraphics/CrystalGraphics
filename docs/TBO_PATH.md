@@ -34,7 +34,7 @@ The seams were left in place so reconnecting is restoring code, not redesigning:
 | Program interface | `CgShaderBuffer.wireBlock` set the sampler uniform; `CgShaderProgram`'s `storage` skipped block lookups (now `gl.shader.CgProgram`) |
 | User buffers | `CgBindingPoints.USER_START_TBO` (unit 5, above Minecraft's 0–4) in `CgShaderBuffer.create` and `CgShaderBufferRegistry.getOrCreate` |
 | The compiler's version | `glslVersion` answered 330 off the SSBO path; `appendMaterialBuffers` refused more samplers plus buffers than the units below the reserved ones |
-| Rules kept for it | `CgVectorRenderer`'s curve record stays float-typed at a 16-byte stride, so it would read through texels unchanged |
+| Rules kept for it | `CgCurveBatch`'s curve record stays float-typed at a 16-byte stride, so it would read through texels unchanged |
 | Storage | a TBO cannot bind an offset, so it took retained storage (`createForShaderBuffer`) whatever lifetime was asked |
 | Tests | `CgGlslEmitterTest`'s `emitTbo` cases, the TBO halves of both `ShippedShaderStagePurityTest`s, `CgMaterialBuffersTest.texturePathReadsTexels`, `CgShaderBufferRegistryTest.userStartTboIsAboveMcUnits`; the parse tests stubbed the path as `TBO` |
 

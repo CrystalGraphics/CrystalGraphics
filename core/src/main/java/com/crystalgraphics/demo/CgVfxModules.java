@@ -2832,7 +2832,7 @@ public final class CgVfxModules {
         public void label(float x, float y, float z, float height, String text, int color) {
             if (font == null) return;
             world.text(text).at(currentX + x, currentY + y, currentZ + z).height(height).font(font).color(color)
-                    .stroke(0.08f, 0xFF000000).submit();
+                    .style(CgDemoStyles.LABEL).submit();
         }
     };
     private double currentX, currentY, currentZ;
@@ -2868,10 +2868,10 @@ public final class CgVfxModules {
                 int split = s.name().indexOf(": ");
                 String title = split < 0 ? s.name() : s.name().substring(0, split);
                 world.text(title).at(currentX, currentY + 10.2, currentZ).height(1.1f).font(font)
-                        .stroke(0.08f, 0xFF000000).submit();
+                        .style(CgDemoStyles.LABEL).submit();
                 if (split >= 0) {
                     world.text(s.name().substring(split + 2)).at(currentX, currentY + 9.1, currentZ).height(0.6f)
-                            .font(font).color(0xFFB8D8FF).stroke(0.08f, 0xFF000000).submit();
+                            .font(font).color(0xFFB8D8FF).style(CgDemoStyles.LABEL).submit();
                 }
             }
             if (s.props() != null) s.props().accept(props);

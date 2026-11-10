@@ -67,7 +67,7 @@ public record CgMsdfAtlasConfig(int atlasScalePx, float pxRange, int pageSize, i
      * wider outline by breaking CJK.
      *
      * <p><b>It was 6, and 6 was right for what it was for.</b> The smallest range whose field can
-     * still antialias at the size the MSDF tier starts being used ({@code MSDF_ENTER_THRESHOLD}, 33px)
+     * still antialias at the size the MSDF tier starts being used ({@code CgTextRaster.MSDF_ENTER}, 33px)
      * is exactly 6: it resolves from 32px, where 5 needs 40px and would put the field at sizes it
      * cannot resolve its own edge at. So the range was tuned for the FILL at its minimum size, and
      * spent nothing on anything else -- correct, since every extra texel of range costs cell area on

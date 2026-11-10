@@ -26,11 +26,7 @@ public class CgSubtitleStyleTest {
             ui_scale: 1.0
             lines: 1
             line:
-              font: stylekit:fonts/line.otf
-              size: 20
-              bold: false
-              colour: 0xFFFFFFFF
-              outline: { size: 3, colour: 0xFF000000 }
+              style: stylekit:text_styles/line
               line_height: 1.0
               wrap: 1940
               justify: left
@@ -38,11 +34,7 @@ public class CgSubtitleStyleTest {
               alignment: [0.5, 0]
               offset: [-10, 328]
             name:
-              font: stylekit:fonts/name.otf
-              size: 22
-              bold: true
-              colour: 0xFF000000
-              outline: { size: 3, colour: 0xFFFFFFFF }
+              style: stylekit:text_styles/name
               anchor: [0.5, 0.5]
               alignment: [0, 0]
               offset: [-425, 273]
@@ -70,14 +62,11 @@ public class CgSubtitleStyleTest {
         assertNotNull(s);
         assertEquals("a unit is a pixel at the reference height", 1f, s.scale(1080f), 1e-6f);
         assertEquals("and two at twice it", 2f, s.scale(2160f), 1e-6f);
-        assertEquals("stylekit:fonts/line.otf", s.line().font());
-        assertEquals(20f, s.line().size(), 0f);
-        assertEquals(3f, s.line().outlineSize(), 0f);
-        assertEquals(0xFF000000, s.line().outlineColour());
+        assertEquals("its look is a text style", "stylekit:text_styles/line", s.line().style().id());
         assertEquals(-10f, s.line().offsetX(), 0f);
         assertEquals(328f, s.line().offsetY(), 0f);
         assertEquals(0.5f, s.line().alignmentX(), 0f);
-        assertEquals(0xFF000000, s.name().colour());
+        assertEquals("stylekit:text_styles/name", s.name().style().id());
         assertEquals(352f, s.name().underline().width(), 0f);
         assertEquals(0x80030305, s.band().colour());
         assertEquals(330f, s.band().offsetY(), 0f);
@@ -112,7 +101,7 @@ public class CgSubtitleStyleTest {
 
     @Test
     public void aStyleThatDoesNotValidateFailsByName() throws IOException {
-        Path bad = kit(STYLE.replace("reference_height: 1080\n", "").replace("size: 20", "size: big"));
+        Path bad = kit(STYLE.replace("reference_height: 1080\n", "").replace("wrap: 1940", "wrap: wide"));
         try {
             CgSubtitleStyle.read(bad.resolve("subtitle_style.yaml"));
             fail("an invalid style read");

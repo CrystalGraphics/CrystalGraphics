@@ -92,7 +92,7 @@ Where each class lives is `platform/CLAUDE.md`, which loads itself for anyone ed
 | **Consume** | Take an event: return true, and nothing after you, the screen included, sees it. | — |
 | **Registration** | What `register` returns; `close()` takes the listener off. | `CgInputStage.Registration` |
 | **Host** | The code for one Minecraft era that builds each event and fires the stage. It decides nothing. | `ScreenInputModern`, `ScreenInputLegacy`, `ScreenInput1710` |
-| **Pointer grab** | Whether the game holds the cursor (it is the camera): the one fact an event cannot tell you. | `CgInputStage.pointerGrabbed()` |
+| **Pointer grab** | Whether the game holds the cursor (it is the camera): a fact an event cannot tell you. | `CgInput.pointerGrabbed()` |
 | **Key binding** | A key the player can rebind, in the game's controls, with an action run when it is pressed. | `CgKeyBindings.Binding` |
 
 How they fit together:
@@ -246,6 +246,27 @@ other methods are still called: check your own state in them too.
 - **To convert to GUI units**, divide by the game's GUI scale; to Minecraft's own key numbers, you do not need to:
   stay in `CgKeyCodes`.
 
+### What is held now, and the clipboard
+
+An event says what changed; what is held as it lands, and whether the game holds the pointer, is asked of `CgInput`,
+in the same codes. The clipboard is `CgClipboard`.
+
+```java
+@Override public boolean key(CgSystemInput.Keyboard.Event e) {
+    boolean ctrl = (CgInput.modifiers() & CgModifiers.CTRL) != 0;
+    if (ctrl && e.key() == CgKeyCodes.KEY_V && e.pressed()) { field.insert(CgClipboard.get()); return true; }
+    if (ctrl && e.key() == CgKeyCodes.KEY_C && e.pressed()) { CgClipboard.set(field.selection()); return true; }
+    return false;
+}
+boolean dragging = CgInput.isMouseDown(CgMouseCodes.LEFT_BUTTON);
+```
+
+- **The window toolkit answers both** (GLFW, SDL from 26.3, LWJGL 2), filled by each host's client install; a host
+  building an event turns the toolkit's numbers into the engine's with `CgInput.key` and `mouseButton`.
+- **With no toolkit** (a dedicated server, a test) nothing is held and the clipboard is empty: a test provides its
+  own (`CgPlatform.provide(CgInput.HOST, ...)`).
+- `CgClipboard.get()` is never null; text it cannot read is `""`.
+
 ---
 
 ## 6. Taking an event
@@ -339,8 +360,8 @@ anything.
 | Forge 1.7.10 | a mixin on `GuiScreen.handleInput`, which has no event; drained every frame while a listener wants input | `MixinGuiScreen`, `ScreenInput1710` |
 
 Every modern loader builds its events in `ScreenInputModern`, which also fires the frame's move from the hook that
-fires `CgRenderStage.SCREEN`. The pointer grab is `CgInputStage.HOST` (`InputHostModern`, `InputHostLegacy`,
-`InputHost1710`).
+fires `CgRenderStage.SCREEN`. What is held and the pointer grab are `CgInput`'s host: `InputModern` (Minecraft's grab
+over GLFW, or SDL from 26.3), `InputLwjgl2` on legacy Forge and 1.7.10.
 
 Key bindings:
 
@@ -417,6 +438,7 @@ event before gameplay sees it. Key bindings follow Minecraft's own `KeyMapping`,
 
 ### Where is the code?
 
-`com.crystalgraphics.platform.input` (`CgInputStage`, `CgInputListener`, `CgKeyBindings`, the code tables); each era's
+`com.crystalgraphics.platform.input` (`CgInputStage`, `CgInputListener`, `CgKeyBindings`, `CgInput`, `CgClipboard`, the
+code tables); each toolkit's devices and clipboard under `runtime/lwjgl/` (`InputGlfw`, `ClipboardGlfw`, ...); each era's
 host under `runtime/mc/` (`ScreenInput*`, `InputHost*`, `KeyBindings*`). CrystalGUI's desktop is one listener,
 `HostInputListener`.

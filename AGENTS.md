@@ -92,9 +92,9 @@ This is the load-bearing architectural law. Read it before writing code that tou
 platform/        ← the SPI: CgGLBackend, CgGLContext, the services, CgService slots;
                    and CgTrackedGLBackend, GL's semantics over a CgRHI
     ↑
-core/            ← rendering logic — calls CgGL and CgPlatform.lifecycle() etc.
+core/            ← rendering logic — calls CgGL and the slots' owners (CgHostResources, CgInput, ...)
     ↑
-runtime/lwjgl/*  ← tier 1: the GL backend, context and input per LWJGL; CgVulkanDevice
+runtime/lwjgl/*  ← tier 1: the GL backend, context, input devices and clipboard per toolkit; CgVulkanDevice
     ↑
 runtime/mc/*     ← a host: registers a bundle over tier 1, adds what names Minecraft
 ```
@@ -108,7 +108,7 @@ harness's `--rhi=vulkan`, a recording device in tests. Three additions live insi
 ```java
 // In core/ — never a raw GL call, never an LWJGL import:
 CgGL.glBindFramebuffer(target, id);
-CgPlatform.reload().onReload();
+InputStream in = CgHostResources.open("mymod", "textures/icon.png");   // a slot, through its owner
 
 // A host, once, from an entry point that runs on both sides: the bundle and every platform slot
 PlatformServiceModern.install(ModLoaderForge.INSTANCE);     // or PlatformService1710.install(client), PlatformServiceLegacy.install(client)
@@ -165,7 +165,7 @@ Fabric's dev mod is `tasks.jar` bundling each module's `downgradedJar` —
 | Know who sets GPU state, on GL and Vulkan, and what crosses to the host | **[`docs/RENDER_STATE.md`](docs/RENDER_STATE.md)** | `platform/gl/state` |
 | Save and restore GL state across a pass (`CgGL` callers, until H7) | [`docs/ENGINE_API.md`](docs/ENGINE_API.md) § *GL State Save/Restore* | `gl/state/CLAUDE.md` |
 | Render text on screen | `docs/font/README.md` | `text/CLAUDE.md` |
-| Draw 2D quads, curves or text through the renderers | [`docs/ENGINE_API.md`](docs/ENGINE_API.md) § *Instanced renderers* | `gl/render/CLAUDE.md` |
+| Draw 2D quads, curves or text, in the world or on the screen (a HUD, damage numbers, markers) | **[`docs/CANVAS.md`](docs/CANVAS.md)** | `render/canvas/CLAUDE.md` |
 | Load a resource file (shader source, config, image) | [`docs/ENGINE_API.md`](docs/ENGINE_API.md) § *Resource I/O* | `util/io/CgIO` |
 | Init, resize or tear down a context | [`docs/ENGINE_API.md`](docs/ENGINE_API.md) § *CgGraphicsLifecycle* | — |
 | Test rendering without Minecraft | [Render testing](#render-testing--the-gl-debug-harness) | `gl-debug-harness/AGENTS.md` |
@@ -174,6 +174,7 @@ Fabric's dev mod is `tasks.jar` bundling each module's `downgradedJar` —
 | Ask what a shape hits, give something a hitbox, test shapes against each other | [`docs/COLLISION.md`](docs/COLLISION.md) | `collision/CLAUDE.md`, `shape/CLAUDE.md` |
 | Load anything (files, textures, meshes, shaders, a kit), behind the loading screen or during play | **[`docs/LOADING.md`](docs/LOADING.md)** | `loading/CLAUDE.md`, `lifecycle/CLAUDE.md` |
 | Run work off the game's thread, or split it across cores | [`docs/JOBS.md`](docs/JOBS.md) | `job/CLAUDE.md` |
+| Play a sound: by name, in the world, riding an entity, music, subtitles, a mix | [`docs/AUDIO.md`](docs/AUDIO.md) | `audio/CLAUDE.md` |
 | Keep a product's files, a cache, or download something verified and resumable | [`docs/STORAGE.md`](docs/STORAGE.md) | `storage/CLAUDE.md` |
 | Wire anything into Minecraft | [`docs/MINECRAFT_INTEGRATION.md`](docs/MINECRAFT_INTEGRATION.md) | each host's `CLAUDE.md` |
 | Diagnose with a JVM flag | [`docs/DEBUG_FLAGS.md`](docs/DEBUG_FLAGS.md) | — |

@@ -690,9 +690,9 @@ public final class CgVfxFluidDemo {
             Station s = stations.get(i);
             float size = Math.max(1.1f, s.view() / 26f);
             double lx = x + s.x(), ly = floors[i] + s.label(), lz = z + s.z();
-            world.text(s.title()).at(lx, ly + size, lz).height(size).font(font).stroke(0.08f, 0xFF000000).submit();
+            world.text(s.title()).at(lx, ly + size, lz).height(size).font(font).style(CgDemoStyles.LABEL).submit();
             world.text(s.subtitle()).at(lx, ly, lz).height(size * 0.55f).font(font).color(0xFFB8D8FF)
-                    .stroke(0.08f, 0xFF000000).submit();
+                    .style(CgDemoStyles.LABEL).submit();
         }
     }
 

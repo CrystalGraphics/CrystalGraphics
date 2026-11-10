@@ -24,7 +24,7 @@
  * </ul>
  *
  * <h3>Boundary with rendering</h3>
- * <p>The renderer ({@link com.crystalgraphics.text.render.CgTextRenderer})
+ * <p>The renderer ({@link com.crystalgraphics.text.render.CgTextBatch})
  * calls into {@link com.crystalgraphics.text.cache.CgFontRegistry}
  * to obtain {@link com.crystalgraphics.api.font.CgGlyphPlacement}
  * records. The cache owns atlas textures and generation scheduling; the renderer

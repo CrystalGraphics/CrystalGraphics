@@ -15,7 +15,6 @@ com/crystalgraphics/api/texture/CgMipmapConfig.java
 com/crystalgraphics/api/texture/CgTextureSpec.java
 com/crystalgraphics/api/texture/CgTextureType.java
 com/crystalgraphics/api/vertex/CgAttribType.java
-com/crystalgraphics/audio/CgSubtitleOverlay.java
 com/crystalgraphics/compute/CgComputeSelfTest.java
 com/crystalgraphics/compute/CgReplayedReads.java
 com/crystalgraphics/compute/ops/CgGpuOpsCheck.java

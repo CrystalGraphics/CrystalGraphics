@@ -3,8 +3,8 @@
 The seam between CrystalGraphics' `core/` and whatever runs it — a Minecraft loader, the harness, an
 application. `core/` imports only this package, never `net.minecraft.*`, `org.lwjgl.*` or a loader.
 
-**It also serves CrystalGUI**, which has no platform registry of its own: its input, sound, clipboard
-and cursor seams are here too — see [UI-facing services](#ui-facing-services).
+**It also serves CrystalGUI**, which has no platform registry of its own: its input, clipboard and cursor
+seams are here too — see [UI-facing services](#ui-facing-services).
 
 ---
 
@@ -13,7 +13,7 @@ and cursor seams are here too — see [UI-facing services](#ui-facing-services).
 | File | Kind | What it owns |
 |---|---|---|
 | `CgPlatform` | Final class | The registry, both halves: `register(CgPlatformService)` and the `CgService` slots |
-| `CgPlatformService` | Interface | The CLOSED bundle a platform registers — eight methods, no defaults |
+| `CgPlatformService` | Interface | The GL bundle a platform registers: `gl()` and `capabilities()`. Every other capability is a slot |
 | `CgService` | Class | An OPEN slot: a consumer declares it, a platform fills it, it carries its own absent-value |
 | `com.crystalgraphics.variable.CgVar`, `CgVars` | Classes | Every engine switch and setting as a typed variable: sources code < file < `-D` < console < remote, listed for a console and `docs/DEBUG_FLAGS.md`. A flag a runtime reads is declared on a platform class here, never read raw |
 | `gl/CgGLBackend` | Abstract class | Every raw GL call — the seam an implementation answers |
@@ -33,12 +33,7 @@ and cursor seams are here too — see [UI-facing services](#ui-facing-services).
 | `gl/CgGLDevice` | Class | `CgRHI` on GL 4.6, as Unreal's OpenGL RHI: commands run as called, a pipeline's state applied before each draw where it differs (the PSO fallback), framebuffers cached by attachments, frames retired by fences. Its contract runner is `GLCommandListTest` (the Vulkan module's tests, where shaderc and spvc are) |
 | `gl/driver/` | Interface, constants | `CgGLDriver`, the GL 4.6 calls the device makes, DSA only (Unreal's `FOpenGL`), one per LWJGL era (`Lwjgl3GLDriver`; `Lwjgl2GLDriver`, LWJGL 2.9.4's own bindings, GL 4.5 plus `ARB_indirect_parameters` and `ARB_bindless_texture`: no trampoline); `GLC`, their constants. LWJGL 2's contract runner is `Lwjgl2CommandListTest`, its GLSL the fixtures `GLCommandListTest` keeps (`-PupdateGlFixtures=true`) |
 | `gl/resource/`, `binding/`, `pipeline/`, `command/`, `sync/`, `format/` | Classes | The device's types by `rhi/`'s subsystems. `binding/GLBindingPoints`: a pipeline layout's sets as ranges of binding points per class, push constants after them; `pipeline/GLShaderTranslator`: Vulkan SPIR-V to GLSL under those points (`SpvcGlslTranslator`); `pipeline/GLLinkWorker`, `GLProgramBuild`: programs linked on a thread in a context of their own, loaded as binaries (`CgGLDevice.linkWorker()`); `pipeline/GLProgramBinaries`: programs kept across launches (`CgGLDevice.programCache`); `command/GLEncoder`, the command list and its passes |
-| `service/CgResourceService` | Interface | `openStream(domain, path)` — `null` on not-found; `openStack(domain, path)`, every pack's copy lowest first (what `sounds.json` merges from); `namespaces()` |
-| `service/CgRenderingService` | Interface | Viewport size and the legacy single-call frame |
-| `service/CgLifecycleService` | Interface | Context init, destroy, resize, and the frame tick |
-| `service/CgReloadService` | Interface | `onReload()` — F3+T and resource-pack changes |
-| `service/CgInputService` | Interface | Key and mouse codes, modifier and button state, **and the clipboard** |
-| `service/CgSoundService` | Interface | UI sounds |
+| `service/CgHostResources` | Static owner + `Host` slot | The host's resource packs: `open(namespace, path)` (null where none has it), `openStack` (every pack's copy, lowest first: what `sounds.json` merges from), `namespaces()`. What `CgIO` opens through before the classpath. Client only; `HostResourcesModern`, `HostResourcesLegacy`, `HostResources1710`, whose `listenForReloads` sends F3+T and a pack change to `CgAssetReloader` |
 | `service/CgCursorService` | Interface + slot | Presenting a cursor image; `CgCursorService.SERVICE` |
 | `world/CgWorldQuery` | Interface | One level's blocks: collision and its boxes (as no one, or as one entity meets them), the world border, fluid, light, what a block is made of, tint and biome colours (a client level's), heightmaps, precipitation, the particle sprite. Primitives; core composes the scans (`com.crystalgraphics.world.CgWorldQueries`) and every query (`collision.CgCollisionWorld`). Handed out per level by `CgLevels` |
 | `world/CgBlockCopy` | Interface | Where a host copies a box of its blocks from its sections (`CgWorldQuery.copyBlocks`): a palette entry per block, each distinct block described once under the host's key. What a collision snapshot is made from; a host without it is read block by block |
@@ -70,14 +65,16 @@ and cursor seams are here too — see [UI-facing services](#ui-facing-services).
 | `service/CgNetworkChannel` | Interface + slot | Carrying one frame to the server or a player, and its ceiling: the whole platform side of networking. `CgNetworkChannel.SERVICE`; everything above it is core's `net` |
 | `service/CgProcessExit` | Static owner + `Host` slot | `halt(status)`: ending the process at once the way the host allows, `Runtime.halt` unless provided. 1.7.10 and legacy Forge provide `FMLCommonHandler.exitJava`, since FML traps a mod's own halt. For a diagnostic run that closes itself, never an ordinary shutdown |
 | `input/CgSystemInput` | Interface | The raw event sink and its two event types |
-| `input/CgInputListener`, `CgInputStage` | Interface, class + slot | How a host's input reaches code that is not the host's: a mod registers a listener on a stage (`CgInputStage.SCREEN`); each era's host builds the event in the engine's vocabulary and fires it, and a listener that consumes it keeps the screen from seeing it. `CgInputStage.HOST` answers the pointer grab (`InputHostModern`, `InputHostLegacy`, `InputHost1710`). [`docs/INPUT.md`](../../../../../../../docs/INPUT.md) |
+| `input/CgInputListener`, `CgInputStage` | Interface, class | How a host's input reaches code that is not the host's: a mod registers a listener on a stage (`CgInputStage.SCREEN`); each era's host builds the event in the engine's vocabulary and fires it, and a listener that consumes it keeps the screen from seeing it. [`docs/INPUT.md`](../../../../../../../docs/INPUT.md) |
 | `input/CgKeyBindings` | Static owner + `Host` slot | Keys a player can rebind: `declare(id, key, category, action)`, early (a `client` listener's `onPreInit`); each era's host registers a game binding and runs the action per press (`KeyBindingsModern`, `KeyBindingsLegacy`, `KeyBindings1710`). Client only. [`docs/INPUT.md`](../../../../../../../docs/INPUT.md) § *Key bindings* |
+| `input/CgInput` | Static owner + `Host` slot | The host's input as it stands, every answer an event cannot carry in one place: `isKeyDown`, `isMouseDown`, `modifiers`, `mouseButtons`, `pointerGrabbed` (the game holds the cursor), and a toolkit's codes in the engine's (`key`, `mouseButton`) for a host building an event. The toolkit's host where it answers all of it (`InputLwjgl2` on 1.7.10 and legacy Forge, `InputGlfw` in the harness), else an era's over it (`InputModern`: Minecraft's pointer grab over `InputGlfw`, `InputSdl` from 26.3). Client only. [`docs/INPUT.md`](../../../../../../../docs/INPUT.md) § *What is held now* |
+| `input/CgClipboard` | Static owner + `Host` slot | The system clipboard's text: `get()` (never null), `set(text)`. `ClipboardGlfw`, `ClipboardLwjgl2` (AWT), `ClipboardSdl`. Client only |
 | `input/CgKeyCodes`, `CgGlfwKeyCodes`, `CgMouseCodes`, `CgModifiers` | Constants | Code tables with no LWJGL import |
 
 **Who implements the bundle**: `PlatformService1710`, `PlatformServiceLegacy`, `PlatformServiceModern`,
-the harness's `PlatformServiceHarness` and core's `TestPlatformService`. Their GL backend, context and
-input come from tier 1 (`runtime/lwjgl/2`, `runtime/lwjgl/3`); a Minecraft host adds only what names
-Minecraft.
+the harness's `PlatformServiceHarness` and CrystalGUI's `TestPlatformService`. Their GL backend, context,
+input devices and clipboard come from tier 1 (`runtime/lwjgl/2`, `runtime/lwjgl/3`, `runtime/lwjgl/sdl`); a Minecraft
+host adds only what names Minecraft.
 
 ---
 
@@ -360,25 +357,21 @@ in every variant, and a frame through the pipeline, quad and vector renderers.
 
 ---
 
-## `CgLifecycleService` — the frame tick
+## The engine's lifecycle is called, not provided
 
-`onContextDestroy()`, `onResize(w, h)`, `onFrameRendered()`, all on the GL thread; the context starts from
-`CgEngineLifecycle.ensureGraphicsContext` at a frame's end. **`onFrameRendered()` is the only sanctioned per-frame tick** for engine singletons
-(`CgGraphicsLifecycle.tickFrame()` → `CgFontRegistry.tickFrame()`); feature code never calls
-`tickFrame()` itself. It must fire once per rendered frame, GUI-only frames included:
+A host tells the engine what happened by calling it directly: no slot stands between, since no host decides
+anything there. All on the GL thread:
 
-| Host | Where it fires |
+| Call | From |
 |---|---|
-| 1.7.10, Forge 1.8–1.12.2 | `updateCameraAndRender` TAIL — no early return, covers the world, a GUI with no world, and skip-render-world alike |
-| Modern (1.13+) | `FrameHooks.endFrame()`, from `LifecycleModern.frameEnd()` after the GUI — a loader frame event, or on Fabric a node mixin; see `runtime/mc/modern/common/CLAUDE.md` § *The frame end* |
+| `CgGraphicsLifecycle.tickFrame()` | the frame end, **once per rendered frame**, GUI-only frames included: 1.7.10's and legacy Forge's `CgRenderHook` at `updateCameraAndRender` TAIL; modern `FrameHooks.endFrame()`, from `LifecycleModern.frameEnd()` after the GUI (`runtime/mc/modern/common/CLAUDE.md` § *The frame end*); the harness's `PlatformServiceHarness.endFrame()` |
+| `CgGraphicsLifecycle.onResize(w, h)` | the resize and fullscreen hooks (`MixinMinecraft`); modern `FrameHooks`' end-of-frame check |
+| `CgEngineLifecycle.shutdown()` | the shutdown hook, while the context is whole |
+| `CgAssetReloader.reload()` | each host's resource reload: `HostResources1710.listenForReloads()`, `HostResourcesLegacy.listenForReloads()`, `LifecycleModern.reload()` |
 
-The hosts fire the world's render stages from their own hooks (`CgRenderStage.WORLD_OPAQUE`,
-`WORLD_TRANSPARENT`); `CgRenderingService` answers the viewport only.
-
-## `CgReloadService`
-
-One method, `onReload()`, called directly — no callback registration. Each host bridges its own reload
-event to it (`ReloadService1710.attachToResourceManager()` on 1.7.10, a reload listener on the others).
+**`tickFrame()` is the only sanctioned per-frame tick** for engine singletons (`CgFontRegistry.tickFrame()`);
+feature code never calls it. The hosts fire the world's render stages from their own hooks
+(`CgRenderStage.WORLD_OPAQUE`, `WORLD_TRANSPARENT`); the window's size is `CgHostWindow`'s.
 
 ---
 
@@ -392,46 +385,31 @@ Every host supplies its own.
 
 ## UI-facing services
 
-Three services exist for CrystalGUI rather than for CrystalGraphics' own rendering. They sit here, in the
-parent project's SPI, because CrystalGraphics is always present wherever CrystalGUI is — so a second
-registry in the child project bought nothing and cost a failure mode: a loader could register one and not
-the other, coming up with a working GL backend and a dead keyboard, with nothing to report it.
+Some slots exist for CrystalGUI rather than CrystalGraphics' own rendering. They sit here, in the parent
+project's SPI, because CrystalGraphics is always present wherever CrystalGUI is: a second registry in the
+child project would be one a loader could forget, leaving a working GL backend beside a dead keyboard.
 
 | Reached via | Provides |
 |---|---|
-| `CgPlatform.input()` | `translateKeyboardCodes`, `translateMouseCodes`, `getCurrentModifiers`, `isKeyDown`, `isMouseDown`, `howManyMouseButtons`, `getClipboard`, `setClipboard` |
-| `CgPlatform.sound()` | `play(String soundId)` |
+| `CgInput` | what is held now, and a toolkit's codes in the engine's: CrystalGUI reads it through `PlatformPort` |
+| `CgClipboard` | the clipboard's text |
 | `CgPlatform.get(CgCursorService.SERVICE)` | presenting a cursor picture; CrystalGUI decides which |
 | `CgWorldQueries.client()`, `CgEntityQueries.client()` (core) | the client level's blocks and entities, over `CgLevels`; `NONE` with no level, on a server and in the harness |
 | `CgCamera` (core) | a write a host opts into: a camera offset; `NONE` ignores it |
 
-**The clipboard is on `CgInputService`, not a service of its own.** It is not conceptually input, but it
-is reached the same way — one loader-owned handle, needed by exactly the code that handles keys — and
-every implementation that provides one already provides the rest of the interface. Two methods do not earn
-a registration slot.
+**A sound by name is not a platform service** but the engine's own: `audio.CgSounds.play2D(name)` (unplaced, the
+`UI` class) or `playAt`, a host event read from the packs' `sounds.json` through `CgHostResources`. Minecraft's sound engine is never
+called.
 
-### No defaults in the bundle
+### Absent is a configuration, not an oversight
 
-**Every method on `CgPlatformService` and `CgInputService` is abstract, and `CgSoundService` ships no
-`NOOP` constant.** This is a deliberate rule, not an oversight:
+**A slot's absent-value is mandatory**: it exists for a capability whose absence is legitimate. A dedicated server
+has no keyboard, a headless test no clipboard, the harness no resource packs, and none of them has to register a
+stub to stay quiet: `NONE` answers nothing held, an empty clipboard, no pack. `CgService.get()` announces an absence
+once, on first read, so "nobody provided it" and "somebody chose the no-op" stay distinguishable in a log.
 
-> A default is an answer chosen on behalf of someone who never saw the question. A new platform compiles
-> cleanly while silently inheriting "no sound, no clipboard", and nothing reports it — inheriting a no-op
-> is indistinguishable from deciding on one. The same applies when a service is *added* here later: with
-> defaults, every existing bundle keeps compiling and quietly does without the new capability.
-
-Abstract methods make the compiler the reminder. **A platform with nothing to offer is still free to say
-so** — an empty `play`, a `getClipboard` returning `""` are both correct answers. They just have to be
-written in that platform's own source, where a reader can see the decision was made.
-`translateMouseCodes` is the subtlest: the identity mapping is right on every platform seen so far, which
-is precisely why inheriting it without looking would be a mistake on the first platform where it isn't.
-
-**A `CgService` slot is the deliberate opposite, and that is the whole point of having two halves.** Its
-absent-value is mandatory rather than forbidden, because a slot exists for a capability whose absence is a
-*legitimate configuration* rather than an oversight — the cursor is the worked example: an unpresented
-cursor is cosmetic, and a dedicated server, a headless test and a windowless fixture must not have to
-register a stub to stay quiet. `CgService.get()` still announces the absence once, on first read, so
-"nobody provided it" and "somebody chose the no-op" stay distinguishable in a log.
+**The bundle has no defaults**, the opposite rule: its two methods are what every platform must answer, and the
+compiler is the reminder.
 
 ### Java level
 

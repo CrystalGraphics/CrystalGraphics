@@ -2,6 +2,7 @@ package com.crystalgraphics.audio;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 
 import java.io.IOException;
@@ -14,12 +15,14 @@ import java.util.Map;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
+import com.crystalgraphics.asset.tree.CgAssetException;
 import com.crystalgraphics.asset.codec.CgAssetYaml;
 import com.crystalgraphics.asset.kind.CgSequenceKinds;
 import com.crystalgraphics.asset.tree.CgAssetData;
 import com.crystalgraphics.frame.CgWorld;
 import com.crystalgraphics.platform.audio.CgAudioDecoder;
 import com.crystalgraphics.platform.audio.CgAudioStream;
+import com.crystalgraphics.platform.audio.CgHostVolume;
 import com.crystalgraphics.sequence.CgSequencePlayer;
 import com.crystalgraphics.sequence.CgSequencer;
 import com.crystalgraphics.sequence.definition.CgSequenceDefinition;
@@ -75,7 +78,15 @@ public class CgSequenceSoundTest {
     private CgAudioEngine audio;
     private CgSequencer sequencer;
 
+    private static CgSequenceDefinition compile(String yaml) {
+        return CgSequenceDefinition.compile(CgAssetData.of("mymod:move", CgSequenceKinds.SEQUENCE, (Map<?, ?>) CgAssetYaml.read(yaml), null));
+    }
+
     private CgSequencePlayer play() {
+        return play(MOVE);
+    }
+
+    private CgSequencePlayer play(String yaml) {
         world = new CgWorld();
         audio = world.add(new CgAudioEngine(format -> new CgAudioStream() {
             @Override public int free() { return 0; }
@@ -85,9 +96,7 @@ public class CgSequenceSoundTest {
             @Override public void close() { }
         }, SINES));
         sequencer = world.add(new CgSequencer());
-        CgSequenceDefinition move = CgSequenceDefinition.compile(CgAssetData.of("mymod:move", CgSequenceKinds.SEQUENCE,
-                (Map<?, ?>) CgAssetYaml.read(MOVE), null));
-        return sequencer.play(move, Map.of());
+        return sequencer.play(compile(yaml), Map.of());
     }
 
     /** A section crossed inside a frame starts where it fell, on the audio clock; its end stops it. */
@@ -105,6 +114,55 @@ public class CgSequenceSoundTest {
         assertFalse("its section ended", audio.activeSounds().playing(hit));
         assertTrue(audio.activeSounds().playing(hum));
         world.close();
+    }
+
+    /** Two fixed locators, and an unbound sound riding the first, then from tick 500 the second. */
+    private static final String RIDE = "_v: 1\ntick_resolution: 1000\ndisplay_rate: 50\nrange: [0, 2000]\nlocators:\n"
+            + "  - { id: a, name: left, location: [10, 0, 0] }\n  - { id: b, name: right, location: [-10, 0, 0] }\ntracks:\n"
+            + "  - { id: t1, kind: sound, sections: [\n"
+            + "      { id: hum, range: [0, 1800], sound: seqtest:sound/S_hum, looping: true,"
+            + " attach: [[0, { locator: a }], [500, { locator: b }]] } ] }\n";
+
+    /** An unbound section rides its attach keys' points, stepped, as Unreal's root audio track rides AttachActorData. */
+    @Test
+    public void anUnboundSoundRidesItsAttachKeysStepped() {
+        play(RIDE);
+        double[] at = new double[3];
+        sequencer.evaluate(0.2f);                                   // tick 200: the first key
+        audio.activeSounds().update(0.2, audio.listener(), false, CgHostVolume.NONE);
+        long hum = audio.activeSounds().latest();
+        assertTrue("placed", audio.activeSounds().position(hum, at));
+        assertTrue("at the left locator", at[0] > 0);
+        sequencer.evaluate(0.4f);                                   // tick 600: past the second key
+        audio.activeSounds().update(0.4, audio.listener(), false, CgHostVolume.NONE);
+        audio.activeSounds().position(hum, at);
+        assertTrue("moved to the right locator at its key", at[0] < 0);
+        world.close();
+    }
+
+    /** A key whose point resolves nothing leaves the sound unplaced, heard everywhere, as Unreal detaches it. */
+    @Test
+    public void aKeyResolvingNothingUnplacesTheSound() {
+        play(RIDE.replace("locators:\n", "roles:\n  - { id: r1, name: caster, kind: caster, absent: skip }\nlocators:\n")
+                .replace("[500, { locator: b }]", "[500, { role: caster }]"));
+        double[] at = new double[3];
+        sequencer.evaluate(0.2f);
+        audio.activeSounds().update(0.2, audio.listener(), false, CgHostVolume.NONE);
+        long hum = audio.activeSounds().latest();
+        assertTrue("placed at the locator", audio.activeSounds().position(hum, at));
+        sequencer.evaluate(0.4f);                                   // tick 600: the caster, never filled
+        audio.activeSounds().update(0.4, audio.listener(), false, CgHostVolume.NONE);
+        assertTrue(audio.activeSounds().playing(hum));
+        assertFalse("unplaced while its point is nothing", audio.activeSounds().position(hum, at));
+        world.close();
+    }
+
+    /** A bound track rides its binding: attach on it fails at load, naming the section. */
+    @Test
+    public void attachOnABoundTrackFailsAtLoad() {
+        String bound = RIDE.replace("kind: sound, sections", "kind: sound, binding: { locator: a }, sections");
+        CgAssetException e = assertThrows(CgAssetException.class, () -> compile(bound));
+        assertTrue(e.getMessage(), e.getMessage().contains("tracks.t1.sections.hum.attach"));
     }
 
     /** Joined late, a looping section starts at its age in the section; a one-shot already passed is dropped. */

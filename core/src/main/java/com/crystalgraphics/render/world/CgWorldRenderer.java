@@ -37,13 +37,14 @@ import com.crystalgraphics.platform.world.CgWorldBegin;
 import com.crystalgraphics.platform.service.CgShaderPacks;
 import javax.annotation.Nullable;
 import com.crystalgraphics.render.CgViewFrustum;
+import com.crystalgraphics.render.canvas.CgCanvasMaterials;
 import com.crystalgraphics.render.draw.CgBufferHandle;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
 import com.crystalgraphics.render.draw.CgDrawChunk;
 import com.crystalgraphics.render.draw.CgIndirect;
 import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.render.draw.CgOrder;
-import com.crystalgraphics.text.render.CgTextRenderer;
+import com.crystalgraphics.text.render.CgTextMaterials;
 import com.crystalgraphics.render.draw.CgPassConstants;
 import com.crystalgraphics.render.draw.CgPipeline;
 import com.crystalgraphics.render.draw.CgPipelineForm;
@@ -274,10 +275,12 @@ public final class CgWorldRenderer {
         CgRenderStage.WORLD_OPAQUE.register(ORDER, this::recordOpaque);
         CgRenderStage.WORLD_TRANSPARENT.register(ORDER, this::recordTransparent);
         parsePassesAhead();
-        // The renderer's own programs no material brings in: text in every form its permutation domain names (on screen and as labels, bitmap and MSDF), on the world's instances and on the
-        // quads CgTextRenderer draws: the loading screen's own lines and a HUD's missed it at their first draw.
+        // The renderer's own programs no material brings in: text in every form (canvas quads and world labels, bitmap
+        // and MSDF) and the canvas's default materials; the loading screen's lines and a HUD's missed it at their first
+        // draw.
         CgPipelinePrecache.register("crystalgraphics:world", list -> {
-            CgTextRenderer.precache(list);
+            CgTextMaterials.precache(list);
+            CgCanvasMaterials.precache(list);
             list.addPass(CgWorldMedia.LIGHT_SHADER);
         });
         // What the first light, smoke or haze dispatches, compiled at a scene's first frame otherwise; their files parsed
@@ -337,7 +340,7 @@ public final class CgWorldRenderer {
     private static void parsePassesAhead() {
         // text.shader with them: its collector above parsed it on the render thread (109 ms on 1.7.10)
         CgPipelinePrecache.parseAhead(UPSAMPLE_SHADER, CgVolumePass.COMPOSITE_SHADER, CgWorldDistortion.APPLY_SHADER,
-                CgWorldLights.APPLY_SHADER, CgTextRenderer.TEXT_SHADER);
+                CgWorldLights.APPLY_SHADER, CgTextMaterials.TEXT_SHADER);
     }
 
     /**
@@ -643,19 +646,19 @@ public final class CgWorldRenderer {
     /**
      * Starts a label: {@code text} at a point in the world, facing the camera unless turned, depth-tested against the
      * scene and drawn after the transparent draws, as a name tag. Place it on the {@link CgWorldText.Label}, then
-     * {@code font(...)} or {@code family(...)} gives its {@code CgTextRenderer.Draw}, with all a draw has (strokes,
-     * shadows, constraints); {@code submit()} that. It lives for the frame. Render thread.
+     * {@code font(...)} or {@code family(...)} gives its {@code CgTextDraw}, with all a draw has (a style,
+     * constraints); {@code submit()} that. It lives for the frame. Render thread.
      *
      * <pre>{@code
      * world.text("Attract + Orbit").at(x, y + 6, z).height(0.5f).font(font).submit();          // centred on its point
      * world.text("12").at(x, y, z).anchor(0.5f, 0f).font(font).color(0xFFFF5040)
-     *         .stroke(0.12f, 0xFF000000).shadowCount(1).shadow(0, 2f, 2f, 1.5f, 0f, 0x80000000, false).submit();
+     *         .style(DAMAGE).submit();                                                          // a CgTextStyle
      * world.text(sign).at(x, y, z).rotation(facingSouth).family(family).targetPx(48).constraints(400f, 0f).submit();
      * }</pre>
      *
      * <ul>
      *   <li>{@code height} is a line's height in blocks: the draw's {@code basePx()} maps to it. Its raster tier (bitmap
-     *       or distance field) follows how tall it stands on screen, as {@code CgTextRenderer}'s world text does.</li>
+     *       or distance field) follows how tall it stands on screen, as any world text does.</li>
      *   <li>The draw's {@code pose} is the world's, set at each firing; its {@code at} offsets it in its own pixels.</li>
      *   <li>A label is unlit and unfogged, and writes no depth: labels behind a nearer one show through it.</li>
      *   <li>A glyph not yet in the atlas draws a frame or more late, as all text does.</li>

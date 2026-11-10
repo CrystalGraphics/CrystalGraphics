@@ -15,7 +15,7 @@ Use this file as the first stop when you need to orient yourself across the inte
 - `text/atlas` — atlas storage and page allocation
 - `text/atlas/packing` — rectangle packing algorithms used by atlas pages
 - `text/msdf` — distance-field generation logic and config
-- `text/render` — draw-time orchestration, batching, VBO submission, render contexts
+- `text/render` — draw-time: a canvas's text items, their quads, shadows and materials
 - `text/shadow` — text-shadow cells: the Skia mask blur (`CgMaskBlurFilter`, `CgGaussFilter`), the cell key and
   recipe (`CgShadowCell`) and the coverage it is built from (`CgShadowCoverage`). **Names no FreeType and no
   msdfgen**: the glyph workers answer `CgShadowCell.GlyphSource`
@@ -33,9 +33,9 @@ locks, it crashes in the atlas packer within a few frames.
 | `CgGlyphPlacementCache`, `CgTextLayoutCache` (access-ordered maps: a `get` mutates) | their class monitor |
 | a `CgFont`'s FreeType face and the HarfBuzz font over it | `CgFont.faceLock()` — shaping, rasterising, a code point's glyph index. Rasterising moves the face to another size, which shaping must not see |
 
-**Order: registry, then face**; nothing takes them the other way. A `CgTextRenderer` is one thread's at a time, and
-what it configures is its own — a material instance, the atlas it binds, its `TextData` block, handed to the material
-with `CgMaterial.overrideBlock` because the block is attached to the shader every instance shares. Atlases issue no
+**Order: registry, then face**; nothing takes them the other way. A canvas's `CgTextBatch` is one thread's at a time,
+as its canvas; the materials it draws under (`CgTextMaterials`) are fixed instances, never changed after they are
+made, so threads share them. Atlases issue no
 GL where none may run: their textures' `CgDeferral` makes and fills them on the render thread before a frame
 executes.
 
@@ -88,21 +88,16 @@ This layer decides:
 
 ### 4. Render
 
-`text/render/CgTextRenderer` consumes a public layout, asks the cache for placements, groups placements into batches, fills a VBO, and submits draw calls.
+Text is a canvas item: `canvas.text()` returns a `CgTextDraw`, and its `submit()` has the canvas's
+`text/render/CgTextBatch` consume the layout, ask the cache for placements and land the quads on the canvas.
 
 This layer decides:
 
-- effective raster tier for this draw
-- batch grouping by texture / atlas mode / pxRange
-- shader selection and binding
-- final GL submission
+- effective raster tier for this draw, from the canvas's camera
+- paint order of a draw's shadows, lines, outline and fill
+- which `CgTextMaterials` instance each run of quads draws under
 
-Draw calls go through `CgTextRenderer.draw()`/`retainedDraw()`, which return a fluent
-`CgTextRenderer.Draw` request object (chain methods, terminated by `.submit()`) — there
-is no fixed-arity `draw(...)` method. `CgTextRendererRegistry` tracks every renderer
-instance for teardown and (by default, via `create()`; opt out via `createManualSized()`)
-automatic resize. See
-`text/render/CLAUDE.md` for the full API.
+See `text/render/CLAUDE.md`.
 
 ## Best reading order through the implementation
 
@@ -111,7 +106,7 @@ If you need the whole system, read in this order:
 1. `text/layout/CgTextLayoutEngine`
 2. `api/font/CgFontFamily`
 3. `api/text/CgTextLayout`
-4. `text/render/CgTextRenderer`
+4. `text/render/CgTextBatch`
 5. `text/cache/CgFontRegistry`
 6. `text/atlas/CgGlyphAtlas`
 7. `text/msdf/CgMsdfGenerator`
@@ -122,7 +117,7 @@ This gives the clearest “string to draw” story.
 
 ### Public text types already moved
 
-`CgTextLayout` and `CgShapedRun` are no longer implementation classes. They now live in `api/text` because callers see them directly. (`CgTextConstraints` was a separate, unrelated type that has since been deleted entirely — plain `float maxWidth`/`maxHeight` replaced it, see `CgTextRenderer.Draw#constraints`.)
+`CgTextLayout` and `CgShapedRun` are no longer implementation classes. They now live in `api/text` because callers see them directly. (`CgTextConstraints` was a separate, unrelated type that has since been deleted entirely — plain `float maxWidth`/`maxHeight` replaced it, see `CgTextDraw#constraints`.)
 
 ### There is no `api/font` layout bridge class anymore
 
@@ -148,7 +143,7 @@ Renderer code should ask for placements and consume them. It should not start re
 ## Common refactor mistakes to avoid
 
 - Moving layout internals into public packages just to avoid bridge code
-- Letting `CgTextRenderer` absorb cache or atlas ownership
+- Letting `CgTextBatch` absorb cache or atlas ownership
 - Reintroducing a source-text copy on `CgShapedRun` instead of threading it through `CgReshapeContext`
 - Splitting package-private cache helpers away from `CgFontRegistry` without moving the owner too
 - Adding shader-generation or atlas-storage logic into the wrong neighborhood

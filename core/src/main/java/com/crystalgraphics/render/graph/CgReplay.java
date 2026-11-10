@@ -1,8 +1,9 @@
 package com.crystalgraphics.render.graph;
 
+import com.crystalgraphics.render.canvas.CgCanvas;
 import com.crystalgraphics.api.texture.CgTexture;
-import com.crystalgraphics.gl.render.CgClipTable;
-import com.crystalgraphics.gl.render.CgShapeTable;
+import com.crystalgraphics.render.canvas.CgClipTable;
+import com.crystalgraphics.render.canvas.CgShapeTable;
 import com.crystalgraphics.render.draw.CgBindingTable;
 import com.crystalgraphics.render.draw.CgDrawChunk;
 import com.crystalgraphics.render.draw.CgInstanceKind;
@@ -13,8 +14,8 @@ import javax.annotation.Nullable;
 import java.util.Arrays;
 
 /**
- * A stretch of recording kept to be added to a later recording: the chunks a {@link CgPassRecorder} took between two
- * {@link CgPassRecorder#chunksTaken} readings, with the clip entries and shapes the stretch added and the snapshots it
+ * A stretch of recording kept to be added to a later recording: the chunks a {@link CgCanvas} took between two
+ * {@link CgCanvas#chunksTaken} readings, with the clip entries and shapes the stretch added and the snapshots it
  * binds. What lets drawing that would come out the same be recorded again without drawing it (render-graph G6).
  *
  * <pre>{@code
@@ -88,7 +89,7 @@ public final class CgReplay {
      *
      * @param bindings where the snapshots are copied: a table that outlives the recording
      */
-    public boolean capture(CgPassRecorder recorder, long from, CgRecording recording, CgBindingTable bindings,
+    public boolean capture(CgCanvas recorder, long from, CgRecording recording, CgBindingTable bindings,
                            int clipsBefore, int baseClip, int spatial, int effect) {
         clear();
         clipCount = 0;
@@ -147,7 +148,7 @@ public final class CgReplay {
      * spatial node {@code spatial} and effect node {@code effect}. Answers false, adding no chunk, when nothing is
      * kept or a clip will not fit.
      */
-    public boolean replay(CgPassRecorder recorder, CgRecording recording, int baseClip, int spatial, int effect) {
+    public boolean replay(CgCanvas recorder, CgRecording recording, int baseClip, int spatial, int effect) {
         if (!kept) return false;
         boolean same = baseClip == this.baseClip && spatial == this.spatial && effect == this.effect;
         CgClipTable clips = recording.clips();

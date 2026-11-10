@@ -28,6 +28,8 @@ package com.crystalgraphics.api.text;
  *                          ellipsis (truncated content is simply dropped)
  * @param lineHeightOverride when {@code > 0}, replaces every line's computed height uniformly
  *                          instead of the real per-line max-over-metrics computation
+ * @param letterSpacing     logical pixels added after each character, as Slate's {@code LetterSpacing} is added to
+ *                          each advance as it shapes; 0 is none, negative tightens
  */
 public record CgParagraphKnobs(
         CgTextDirection direction,
@@ -35,10 +37,11 @@ public record CgParagraphKnobs(
         CgTextAlign align,
         int maxLines,
         String ellipsisMarker,
-        float lineHeightOverride
+        float lineHeightOverride,
+        float letterSpacing
 ) {
     public static final CgParagraphKnobs DEFAULT =
-            new CgParagraphKnobs(CgTextDirection.AUTO, 0f, CgTextAlign.LEFT, 0, null, 0f);
+            new CgParagraphKnobs(CgTextDirection.AUTO, 0f, CgTextAlign.LEFT, 0, null, 0f, 0f);
 
     public CgParagraphKnobs {
         if (direction == null) direction = CgTextDirection.AUTO;

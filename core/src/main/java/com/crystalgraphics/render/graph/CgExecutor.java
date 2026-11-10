@@ -158,6 +158,9 @@ public final class CgExecutor {
                     + " as GL does: Unreal's r.RDG.TransientAllocator 0, for comparing the two.").get();
     /** KiB of 2D transient textures held: heaps where placed, the pooled framebuffers' images where not. */
     private static final int TRANSIENT_KB = CgTrace.name("graph.transient-kb");
+    /** The texture pool's framebuffers and their bytes, on every backend: transient-kb is the device heap's alone. */
+    private static final int POOL_FRAMEBUFFERS = CgTrace.name("graph.pool-framebuffers"),
+            POOL_KB = CgTrace.name("graph.pool-kb");
     /** KiB of placed transient textures alive at once at the last frame's most. */
     private static final int TRANSIENT_PEAK_KB = CgTrace.name("graph.transient-peak-kb");
     /** What a callback beside the current target's depth draws into. */
@@ -368,6 +371,8 @@ public final class CgExecutor {
                 try (CgTrace.Zone trim = CgTrace.zone(CgChannels.GL, TRIM_POOLS)) {
                     POOL.endFrame(FORGET_STORAGE);
                     BUFFERS.endFrame(FORGET_BUFFER);
+                    CgTrace.counter(CgChannels.GL, POOL_FRAMEBUFFERS, POOL.framebuffers());
+                    CgTrace.counter(CgChannels.GL, POOL_KB, POOL.footprintBytes() >> 10);
                     // The last frame's end waited for all its async work, as run() takes it.
                     if (transients != null) {
                         transients.endFrame(asyncLatest, FORGET_STORAGE);

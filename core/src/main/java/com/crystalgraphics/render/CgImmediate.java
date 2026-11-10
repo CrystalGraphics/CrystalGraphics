@@ -40,7 +40,7 @@ import java.util.List;
  * CgImmediate.flush(chunk, CgOrder.SORTED);                          // state left as drawn
  * }</pre>
  *
- * <p>A caller recording a frame of its own hands its renderers a {@code CgPassRecorder} as their sink, and executes the
+ * <p>A caller recording a frame of its own draws into a {@code CgCanvas} recording into it, and executes the
  * recording with {@link #execute(CgRecording)} when it is done.</p>
  *
  * <p>Kernels, the same way, on buffers the caller owns:</p>

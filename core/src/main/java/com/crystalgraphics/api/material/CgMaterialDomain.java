@@ -11,6 +11,7 @@ import java.util.regex.Pattern;
  * <pre>{@code
  * Tags { "Domain" = "Decal" }        // in the archetype: projected through the froxel bins
  * Tags { "Domain" = "Post" }         // drawn by the post stack at a point
+ * Tags { "Domain" = "Text" }         // a text style's paint: a colour over a glyph's coverage
  * // no tag: SURFACE, drawn through the world renderer
  * }</pre>
  */
@@ -20,7 +21,12 @@ public enum CgMaterialDomain {
     /** Drawn by the post stack at a point ({@code CgPostMaterial}); a material with a {@code post} block. */
     POST,
     /** Projected onto what is behind it. */
-    DECAL;
+    DECAL,
+    /**
+     * Paints a text style's layer (Unreal's UI domain, as a Slate font material): its program includes
+     * {@code env/buffer/text.glsl} and returns a colour, which the glyph's coverage multiplies afterwards.
+     */
+    TEXT;
 
     private static final Pattern TAG = Pattern.compile("\"Domain\"\\s*=\\s*\"(\\w+)\"");
 
@@ -35,7 +41,7 @@ public enum CgMaterialDomain {
         try {
             return valueOf(m.group(1).toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException e) {
-            throw new IllegalArgumentException("\"Domain\" = \"" + m.group(1) + "\" is no domain: Surface, Post or Decal");
+            throw new IllegalArgumentException("\"Domain\" = \"" + m.group(1) + "\" is no domain: Surface, Post, Decal or Text");
         }
     }
 }

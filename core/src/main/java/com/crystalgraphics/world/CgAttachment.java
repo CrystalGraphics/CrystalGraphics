@@ -13,7 +13,7 @@ import org.joml.Vector3f;
  * <pre>{@code
  * owner.play(new Flame(look, x, y, z).follow(kurama.attachment("hand_r")));   // a socket, as posed this frame
  * owner.play(new Charge(look, x, y, z).follow(player.placement(0)));          // a sequence's spawnable, at its locator
- * owner.play(new Aura(look, x, y, z).follow(CgEntityAttachments.of(entities, id, CgEntityAttachments.CENTRE)));   // an entity's
+ * owner.play(new Aura(look, x, y, z).follow(CgEntityAttachments.of(entityId)));   // an entity's centre
  *
  * CgAttachment fixed = (point, turn) -> {                                      // your own
  *     point[0] = 10; point[1] = 64; point[2] = -3;

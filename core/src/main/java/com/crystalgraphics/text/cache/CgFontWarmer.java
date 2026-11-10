@@ -2,7 +2,7 @@ package com.crystalgraphics.text.cache;
 
 import com.crystalgraphics.api.font.CgFont;
 import com.crystalgraphics.api.font.CgGlyphKey;
-import com.crystalgraphics.text.render.context.CgTextScaleResolver;
+import com.crystalgraphics.text.render.CgTextRaster;
 
 import java.util.ArrayDeque;
 import java.util.logging.Level;
@@ -159,7 +159,7 @@ final class CgFontWarmer {
                         font.getTargetPx()));
 
                 for (int px : effectiveTargetPx) {
-                    if (px <= 0 || px >= CgTextScaleResolver.MSDF_ENTER_THRESHOLD) continue;
+                    if (px <= 0 || px >= CgTextRaster.MSDF_ENTER) continue;
                     enqueueWarm(new WarmRequest(font,
                             new CgGlyphKey(font.getKey(), glyphId, false, 0), px));
                 }

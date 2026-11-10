@@ -6,22 +6,23 @@ import com.crystalgraphics.mc.modern.platform.gl.GLDeviceModern;
 import com.crystalgraphics.mc.modern.platform.gl.HostStateModern;
 // 26.3 ships SDL3 and no GLFW, so a 26.3 node cannot even load the GLFW pair.
 //? if >=26.3 {
-/*import com.crystalgraphics.sdl.SdlCursorService;
-import com.crystalgraphics.sdl.SdlInputService;
+/*import com.crystalgraphics.sdl.ClipboardSdl;
+import com.crystalgraphics.sdl.InputSdl;
+import com.crystalgraphics.sdl.SdlCursorService;
 *///?} else {
+import com.crystalgraphics.lwjgl3.ClipboardGlfw;
 import com.crystalgraphics.lwjgl3.GlfwCursorService;
-import com.crystalgraphics.lwjgl3.GlfwInputService;
+import com.crystalgraphics.lwjgl3.InputGlfw;
 //?}
 import com.crystalgraphics.lwjgl3.Lwjgl3AudioOutput;
 import com.crystalgraphics.lwjgl3.StbVorbisDecoder;
 import com.crystalgraphics.lwjgl3.Lwjgl3GLContext;
 
 import com.crystalgraphics.mc.modern.platform.service.GameClassesModern;
-import com.crystalgraphics.mc.modern.platform.service.LifecycleService;
-import com.crystalgraphics.mc.modern.platform.service.ReloadService;
-import com.crystalgraphics.mc.modern.platform.service.RenderingService;
-import com.crystalgraphics.mc.modern.platform.service.ResourceService;
-import com.crystalgraphics.mc.modern.platform.service.SoundService;
+import com.crystalgraphics.mc.modern.platform.service.HostResourcesModern;
+import com.crystalgraphics.platform.input.CgClipboard;
+import com.crystalgraphics.platform.input.CgInput;
+import com.crystalgraphics.platform.service.CgHostResources;
 import com.crystalgraphics.mc.modern.platform.world.ClientModern;
 import com.crystalgraphics.mc.modern.platform.world.HostCameraModern;
 import com.crystalgraphics.mc.modern.platform.world.HostDebugModern;
@@ -44,21 +45,14 @@ import com.crystalgraphics.platform.gl.tracked.CgTrackedGLContext;
 import com.crystalgraphics.platform.service.CgCursorService;
 import com.crystalgraphics.platform.service.CgGameClasses;
 import com.crystalgraphics.platform.service.CgGameDirectory;
-import com.crystalgraphics.platform.service.CgInputService;
-import com.crystalgraphics.platform.service.CgLifecycleService;
 import com.crystalgraphics.platform.service.CgModLoader;
-import com.crystalgraphics.platform.service.CgReloadService;
 import com.crystalgraphics.platform.service.CgShaderPacks;
-import com.crystalgraphics.platform.service.CgRenderingService;
-import com.crystalgraphics.platform.service.CgResourceService;
-import com.crystalgraphics.platform.service.CgSoundService;
 import com.crystalgraphics.platform.world.CgHostCamera;
 import com.crystalgraphics.platform.world.CgHostDebug;
 import com.crystalgraphics.platform.world.CgHostShapes;
 import com.crystalgraphics.platform.world.CgLevels;
 import com.crystalgraphics.platform.world.CgPlayers;
 import com.crystalgraphics.platform.service.CgGameThreads;
-import com.crystalgraphics.platform.input.CgInputStage;
 import com.crystalgraphics.platform.input.CgKeyBindings;
 import com.crystalgraphics.platform.service.CgHostPaint;
 import com.crystalgraphics.platform.service.CgHostWindow;
@@ -82,22 +76,11 @@ import java.nio.file.Paths;
 *///?}
 
 /**
- * The modern platform bundle. Implements {@link CgPlatformService} by composing
- * the modern service adapters. A loader installs it, with every platform slot, through {@link #install} and
- * {@link #installClient}.
+ * The modern platform: the GL bundle, and every slot this era answers, through {@link #install} (both sides) and
+ * {@link #installClient} (the client's).
  *
- * <p><b>Every service is built on demand and every field is typed as its SPI interface.</b> This used
- * to read "no GL calls are made in the constructor or static initializer" — true about what the code
- * <em>does</em>, and irrelevant to whether a class can be <em>loaded</em>, which is the trap that stopped
- * CrystalGraphics loading on a 1.7.10 dedicated server at all. See the note on the fields below.</p>
- *
- * <h3>An assembler, not an implementation</h3>
- *
- * <p>Nothing here does GL or GLFW work of its own. Every service is either the era's own tier-2 class
- * or a <b>tier-1</b> one from {@code runtime/lwjgl/3}, which knows nothing about Minecraft and is
- * handed the one fact it needs — {@link #windowHandle()}, as a supplier. That is §12's rule in one
- * file: a class lives in the lowest tier its dependencies allow, and a value from a higher tier is
- * passed in rather than reached for.
+ * <p>An assembler: each slot is this era's own class or a tier-1 one ({@code runtime/lwjgl/3}, {@code sdl}) handed
+ * the one Minecraft fact it needs, {@link #windowHandle()}, as a supplier.</p>
  *
  * <p>{@link #gl()} is the exception worth naming: the backend it builds <em>is</em> tier 2, because
  * telling Minecraft what state we changed is the one thing tier 1 must not know how to do. See
@@ -155,7 +138,6 @@ public final class PlatformServiceModern implements CgPlatformService {
         CgPlatform.provide(CgGameThreads.HOST, new GameThreadsModern());
         CgPlatform.provide(CgHostWindow.HOST, new HostWindowModern());
         CgPlatform.provide(CgHostPaint.HOST, new HostPaintModern());
-        CgPlatform.provide(CgInputStage.HOST, new InputHostModern());
         CgPlatform.provide(CgKeyBindings.HOST, KeyBindingsModern.INSTANCE);
         CgKeyBindings.hostProvided();
         CgEngineLifecycle.onClientTick(KeyBindingsModern.INSTANCE::tick);
@@ -174,41 +156,23 @@ public final class PlatformServiceModern implements CgPlatformService {
         // which is what lets it sit in tier 1 knowing nothing about this era.
         //? if >=26.3 {
         /*CgPlatform.provide(CgCursorService.SERVICE, new SdlCursorService());
+        CgPlatform.provide(CgInput.HOST, new InputModern(InputSdl.INSTANCE));
+        CgPlatform.provide(CgClipboard.HOST, ClipboardSdl.INSTANCE);
         *///?} else {
         CgPlatform.provide(CgCursorService.SERVICE,
                 new GlfwCursorService(PlatformServiceModern::windowHandle));
+        CgPlatform.provide(CgInput.HOST, new InputModern(new InputGlfw(PlatformServiceModern::windowHandle)));
+        CgPlatform.provide(CgClipboard.HOST, new ClipboardGlfw(PlatformServiceModern::windowHandle));
         //?}
+        CgPlatform.provide(CgHostResources.HOST, HostResourcesModern.INSTANCE);
         // The graphics start's GL-free work, begun behind mod loading rather than at the first frame
         CgEngineLifecycle.clientStarting();
     }
 
-    // BUILT ON DEMAND, and typed as the SPI interfaces rather than the implementations.
-    //
-    // This is the 1.7.10 fix, applied ahead of the failure rather than after it. There it was
-    // `public final` fields built at preInit, and a DEDICATED SERVER died at the first one:
-    // NoClassDefFoundError: org/lwjgl/LWJGLException. Here it was worse -- the fields sat inside a
-    // `static final INSTANCE`, so all eight were built at CLASS INIT, one step earlier in the
-    // lifecycle than 1710's, and the `@Mod` constructor that calls getInstance() runs on BOTH SIDES.
-    //
-    // Lwjgl3GLContext is the concrete hazard -- it holds `private volatile GLCapabilities caps`, an
-    // org.lwjgl.opengl FIELD DESCRIPTOR, and a dedicated server has no LWJGL on its classpath.
-    // ResourceService and RenderingService name net.minecraft.client types,
-    // which a server distribution does not ship either; those are method-body references today and so
-    // survive loading, but only by luck, and nothing stops the next edit adding a field.
-    //
-    // Two halves and both are needed. LAZY, so a server that asks for no rendering constructs none; and
-    // the fields are declared as the INTERFACE, so the LWJGL-touching class is named only inside a
-    // method body. A field descriptor is resolved eagerly enough to matter -- the same rule that keeps
-    // JOML and Taffy on CrystalGUI's headless classpath -- while a method-body reference is not, which
-    // is why gl() on a server is fine right up until somebody calls it.
-    //
-    // `serverSmoke` checks it on every node with a dev run: it asserts no client-only class was loaded.
+    // Built on demand and typed as the SPI: Lwjgl3GLContext holds an org.lwjgl field, which a dedicated server cannot
+    // load, and the constructor runs on both sides. `serverSmoke` asserts no client-only class was loaded.
     private CgGLBackend        glBackend;
     private CgGLContext        glContext;
-    private CgLifecycleService lifecycle;
-    private CgReloadService    reload;
-    private CgResourceService  resources;
-    private CgRenderingService rendering;
 
     @Override public CgGLBackend gl() {
         if (glBackend == null) {
@@ -243,56 +207,10 @@ public final class PlatformServiceModern implements CgPlatformService {
         //?}
     }
 
-    @Override public CgLifecycleService lifecycle() {
-        if (lifecycle == null) lifecycle = new LifecycleService();
-        return lifecycle;
-    }
-
-    @Override public CgReloadService reload() {
-        if (reload == null) reload = new ReloadService();
-        return reload;
-    }
-
-    @Override public CgResourceService resources() {
-        if (resources == null) resources = new ResourceService();
-        return resources;
-    }
-
-    @Override public CgRenderingService rendering() {
-        if (rendering == null) rendering = new RenderingService();
-        return rendering;
-    }
-
-    // ── UI services — see the class javadoc ───────────────────────────────────────────────────────
-
-    /** @see GlfwInputService */
-    private CgInputService input;
-
-    /** @see SoundService */
-    private CgSoundService sound;
-
-
-    @Override public CgInputService input() {
-        // The window is the one Minecraft fact tier 1 needs, and it takes it as a supplier -- see
-        // GlfwInputService. Built lazily and held as the SPI type, like every field here, so a
-        // dedicated server never loads a class that names GLFW.
-        //? if >=26.3 {
-        /*if (input == null) input = new SdlInputService();
-        *///?} else {
-        if (input == null) input = new GlfwInputService(PlatformServiceModern::windowHandle);
-        //?}
-        return input;
-    }
-
     /** The GLFW window, or 0 before one exists. The value tier 1 is handed rather than reaching for. */
     static long windowHandle() {
         Minecraft mc = Minecraft.getInstance();
         if (mc == null || Windows.of(mc) == null) return 0L;
         return Windows.handle(mc);
-    }
-
-    @Override public CgSoundService sound() {
-        if (sound == null) sound = new SoundService();
-        return sound;
     }
 }

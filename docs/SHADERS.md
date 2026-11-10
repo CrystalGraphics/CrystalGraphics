@@ -457,10 +457,10 @@ essentially every shader wants them. Buffers that only a minority of shaders nee
 
 | Token | Provides | Needed by |
 |---|---|---|
-| `quad` | `QUAD_DATA(n)` + `CG_QUAD_WORLD_POS` / `CG_QUAD_UV` / `CG_QUAD_COLOR` / `CG_QUAD_NORMAL` / `CG_QUAD_ATLAS_LAYER` / `CG_QUAD_CUSTOM0`-`CG_QUAD_CUSTOM1` (two free vec4s per instance, written with `Quad.custom0`/`custom1` — `CG_OBJECT_CUSTOM*`'s contract at quad granularity, and where a per-quad parameter belongs rather than in a property that breaks the batch), and for screen-space materials the edge and texel antialiasing below | Any shader drawn through `CgQuadRenderer` — UI quads, text glyphs, SDF rects |
-| `curve` | `CURVE_DATA(n)` + `CG_CURVE_WORLD_POS` / `CG_CURVE_P0`–`P2` / `CG_CURVE_COLOR0`–`1` / `CG_CURVE_WIDTHS` / `CG_CURVE_FEATHER` / `CG_CURVE_FLAGS` | Any shader drawn through `CgVectorRenderer` — Bézier strokes, graph wires, connectors |
+| `quad` | `QUAD_DATA(n)` + `CG_QUAD_WORLD_POS` / `CG_QUAD_UV` / `CG_QUAD_COLOR` / `CG_QUAD_NORMAL` / `CG_QUAD_ATLAS_LAYER` / `CG_QUAD_CUSTOM0`-`CG_QUAD_CUSTOM1` (two free vec4s per instance, written with `Quad.custom0`/`custom1` — `CG_OBJECT_CUSTOM*`'s contract at quad granularity, and where a per-quad parameter belongs rather than in a property that breaks the batch), and for screen-space materials the edge and texel antialiasing below | Any shader drawn through `CgQuadBatch` — UI quads, text glyphs, SDF rects |
+| `curve` | `CURVE_DATA(n)` + `CG_CURVE_WORLD_POS` / `CG_CURVE_P0`–`P2` / `CG_CURVE_COLOR0`–`1` / `CG_CURVE_WIDTHS` / `CG_CURVE_FEATHER` / `CG_CURVE_FLAGS` | Any shader drawn through `CgCurveBatch` — Bézier strokes, graph wires, connectors |
 | `palette` | `PALETTE_DATA(n)` + `cg_spatial_point`/`_vector`/`_covector`/`_scale`, `cg_effect_opacity`, and fragment-only `cg_spatial_from_fragment` — the raster pass's property trees (`CgPalette`): each spatial node's affine into the target, each effect node's opacity. `quad`, `curve` and `clip` bring it; `CG_QUAD_*` and `CG_CURVE_*` positions are already mapped through it | Never declared by hand. A material that honours group opacity multiplies by `CG_QUAD_OPACITY`/`CG_CURVE_OPACITY` |
-| `clip` | `CLIP_DATA(n)` + `CG_CLIP_QUAD_COVERAGE` / `CG_CLIP_CURVE_COVERAGE` — the coverage of the `CgClipTable` entry the instance names (`Quad.clip`, `Curve.clip`, `CgTextRenderer.clip`), 1 for entry 0. Fragment stage only; read it before any `discard` | Any quad or curve material a rounded clip must reach: every CrystalGUI UI material, and `text.shader`. A material that does not multiply by it draws past the corners |
+| `clip` | `CLIP_DATA(n)` + `CG_CLIP_QUAD_COVERAGE` / `CG_CLIP_CURVE_COVERAGE` — the coverage of the `CgClipTable` entry the instance names (`Quad.clip`, `Curve.clip`, `CgTextDraw.clip`), 1 for entry 0. Fragment stage only; read it before any `discard` | Any quad or curve material a rounded clip must reach: every CrystalGUI UI material, and `text.shader`. A material that does not multiply by it draws past the corners |
 | `rows` | Every numeric property (`float`, `Range`, `vec2`, `vec4`, `color`, and arrays of `vec4` or `color`) read per draw: the material's value, or the draw's row in `CgPropertyRows` (FRAME lifetime, a vec4 a value) where its binder says so. The shader reads `_X` as before; an array is `_X(i)` in every shader. A draw's row starts at `CG_PROPERTY_ROW`, `int(CG_OBJECT_CUSTOM3.x)` unless the shader defines it | The VFX layers, whose properties a look binds to its parameters ([below](#per-draw-properties-cg_use-rows)) |
 | `particle` | `PARTICLE_DATA(n)` + `CG_PARTICLE_POSITION` / `CG_PARTICLE_SIZE` / `CG_PARTICLE_VELOCITY` / `CG_PARTICLE_PROGRESS` / `CG_PARTICLE_SEED` / `CG_PARTICLE_SPIN` / `CG_PARTICLE_HEAT` / `CG_PARTICLE_OPACITY` / `CG_PARTICLE_LIGHT` / `CG_PARTICLE_ID` / `CG_PARTICLE_FLOOR` / `CG_PARTICLE_COLOR` / `CG_PARTICLE_SCALE` / `CG_PARTICLE_AGE` (seconds, what a flipbook loops on) — a GPU pool's drawn parts (`CgParticleBuffer`, `pool.drawn()`, six vec4s each: place, motion, state, light packed as block + 16 sky with its spawn id and its floor, colour, scale), written after each step by the pool's Look stage at each particle's record index, apart from the simulated record (`CgVfxRecord`, a layout per shape); a draw reads its own range `[base, base + count)` of Range's order. It brings `rows`: the renderer sets the factory's `_cg_*` settings per draw | Particle renderers: the vfx engine's quads and arcs (plan `vfx-particles`) |
 | `globals` | `CG_GLOBAL_<namespace>_<name>` for every parameter of every `CgParameterCollection`, a `float` or a `vec4`: Unreal's material parameter collections ([below](#global-parameters-cg_use-globals)) | Any material reading values set once for every material: a skill darkening the stage, a tint |
@@ -481,7 +481,7 @@ essentially every shader wants them. Buffers that only a minority of shaders nee
 > material; every CrystalGUI quad material has it, `text.shader`'s bitmap path has the texel filter, and a
 > 3D quad material must not use any of it (half a pixel means nothing under a perspective projection).
 
-> **A record names a spatial and an effect node** (`Quad.node`, `Curve.node`, `CgTextRenderer.node`), recorded in a
+> **A record names a spatial and an effect node** (`Quad.node`, `Curve.node`, `CgTextDraw.node`), recorded in a
 > `CgRecording`'s `spatial()` and `effects()` trees; node 0 is the target's own space, at opacity 1. The executor writes
 > each raster pass's palette from the recorded values and a `CgPropertyValues` (`CgFrameGraph.add(recording, values)`),
 > so a compositor moves or fades what was recorded by writing values and executing the built frame again. A pass into
@@ -490,7 +490,7 @@ essentially every shader wants them. Buffers that only a minority of shaders nee
 > **A rounded clip is an instance field, not a render target.** `CgClipTable.add` records a rounded box in its
 > own space (rect, radii, a border's inner edge), the inverse of the pose that put it in the bound target, and
 > the entry it sits inside; it answers an index. An instance stamped with it multiplies its output by the
-> coverage of every entry up the chain (`MAX_DEPTH`, 4), each antialiased as a `gui_box` shape's own edge, so any
+> coverage of every entry up the chain (`MAX_DEPTH`, 4), each antialiased as a canvas box shape's own edge, so any
 > rotation or skew clips exactly. Changing the clip never flushes; the renderers upload and bind the table
 > when they draw. An entry means nothing in another target and nothing next frame. `addPixelRect` is the square
 > case at whole pixels: the pixel-centre test a scissor makes, with no batch break, and a rect nested in another of
@@ -520,7 +520,7 @@ the provider class's static init (which would allocate against `CgBindingPoints`
 | Declares an unregistered token | `CgShaderParseException` listing registered tokens |
 | Duplicate or malformed token | `CgShaderParseException` |
 
-> **Do not attach these from Java.** A `CgQuadRenderer.attachTo(material)` helper used to exist and
+> **Do not attach these from Java.** A `CgQuadBatch.attachTo(material)` helper used to exist and
 > was removed. Attaching at first use loses to anything that compiles the shader earlier — notably
 > `CgMaterial.enableKeyword`, which recompiles on the spot when the shader has not been parsed yet.
 > The result was GLSL built with `QUAD_DATA` undeclared, and because a failed compile leaves the
@@ -1024,18 +1024,15 @@ Located at `src/main/resources/assets/crystalgraphics/shaders/lib/`. All files u
 | `noise.glsl` | `hash12`/`hash22`/`hash13` (sin-free), `value_noise`, `fbm4`/`fbm6`, `fbm(p, octaves)`, `fbm_ridged` |
 | `sdf.glsl` | `sdf_rounded_box` (uniform / per-corner / elliptical), `sdf_segment`, `sdf_bezier` (exact quadratic, with a straight-line fallback), `sdf_coverage` (**fragment-only, guarded**) |
 | `texel.glsl` | `cg_texel_aa_sample(tex, uv, uvRect, filterPx)` — pixel-art filtering: nearest everywhere, one screen pixel of blend at a texel boundary. **Fragment-only, guarded.** Takes the reconstruction width as an argument rather than reading a constant, which is what keeps it free of any engine buffer |
-| `stroke.glsl` | `stroke_coverage(p, p0,p1,p2, widths, feather, cap, out t)` — the whole shared body of every `CgVectorRenderer` consumer: taper, caps, feathered edge |
+| `stroke.glsl` | `stroke_coverage(p, p0,p1,p2, widths, feather, cap, out t)` — the whole shared body of every `CgCurveBatch` consumer: taper, caps, feathered edge |
 | `rect_blur.glsl` | `rect_shadow_outer`, `rect_shadow_inset`, `rect_blur_coverage` — Skia Graphite's analytic Gaussian rect blur with `erf` in place of its integral table; what a text decoration's shadow is. **Fragment-only, guarded** |
 | `occlusion.glsl` | `cg_occluded(pyramid, size, clipX..clipW, eye, lo, hi)`: whether a box hides behind a `CgGpuOps.depthPyramid` pyramid, everything as arguments. What `CgGpuOps.cull` and VFX Range test |
 | `rng.glsl` | `cg_rng4(seed, element, step, stream)` (PCG4D, counter-based: any element draws its own numbers in any order), `cg_rng`, `cg_rng_unit` (the top 24 bits in [0, 1)), `cg_rng_unit4`, `cg_rng_direction`. Integer-exact on every tier; `compute.ops.CgRng` gives the same bits in Java |
 | `text_gamma.glsl` | `text_gamma_terms`, `text_gamma_coverage` — Skia's text gamma and contrast (`SkMaskGamma`), per fragment rather than a table; what `CgTextGamma` drives in `text.shader` |
 
-> **`stroke.glsl` exists so there is exactly one copy of the cap logic.** `curve.shader` and
-> CrystalGUI's `gui_curve.shader` must differ in render state (`LEQUAL` vs `ALWAYS`) and in one
-> `_LayerOpacity` multiply, and a Pass's `RenderState` cannot vary per keyword variant — so they are
-> genuinely two materials. They are not two implementations. The cap handling was wrong three times in
-> a row and every version rendered something plausible rather than failing, which is precisely the
-> situation where a duplicated body gets fixed in one file only.
+> **`stroke.glsl` exists so there is exactly one copy of the cap logic**: `canvas/curve.shader` and CrystalGUI's
+> coverage passes all include it. The cap handling was wrong three times in a row and every version rendered something
+> plausible, which is where a duplicated body gets fixed in one file only.
 
 Use with `#include "crystalgraphics:shaders/lib/color.glsl"` etc. (`#pragma once` prevents double-expansion when multiple files include `math.glsl`.)
 
@@ -1662,6 +1659,9 @@ pass.end();
 | `histogram(pass, keys, count, bins, binCount, shift)` | bin `min(key >>> shift, binCount - 1)` counted; exact to 2^24 a bin |
 | `downsample(pass, texture, filter)`, `(pass, texture, from, to, filter)` | each mip level from the one above: `AVERAGE` (area-weighted), `MIN` or `MAX` (a depth pyramid) |
 | `blur(pass, source, target, sigma)`, `(pass, source, level, target, level, sigma)` | a separable Gaussian; in place at a small level is the cheap blur |
+| `blur(pass, source, x, y, w, h, target, tx, ty, sigmaX, sigmaY, edge)` | a region blurred into place, a sigma an axis, taps past it held (`CLAMP`) or folded back in (`MIRROR`) |
+| `shrink(pass, source, x, y, w, h, target, tx, ty, tw, th)` | a region, fractional, shrunk into a smaller rect: each target texel the average of the source area it covers (an area resample: Pillow's `BOX`, OpenCV's `INTER_AREA`). A thumbnail |
+| `blurScaled(pass, source, x, y, w, h, target, sigma, edge)` | Skia's scale-then-blur: the region box-reduced by 1, 2 or 4 (the target's size says which; `blurScale(sigma)` picks it), then blurred there |
 | `depthPyramid(recording, depthOf, constants, pyramid)` | a target's depth as eye depth, each level the farthest it covers: what a cull tests against |
 | `cull(pass, cull, instances, [first,] count, out, counts, word)` | instances of one mesh culled as `CgWorldRenderer` culls a draw (frustum, level by screen height, the pyramid's depth): each level's kept object records, and how many; from record `first` for one range of a shared buffer |
 | `cull(pass, view, sets, out, counts)` | every set of a `CgCullSets` culled at once, each as the op above with order kept: two dispatches per instance buffer and one sort, however many sets |

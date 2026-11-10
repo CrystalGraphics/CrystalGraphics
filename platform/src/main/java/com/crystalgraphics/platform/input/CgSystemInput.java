@@ -13,7 +13,7 @@ import java.awt.Toolkit;
  * <h3>Events arrive already translated</h3>
  * <p>Codes reaching {@link Mouse#consumeMouseEvent} and {@link Keyboard#consumeKeyboardEvent} must
  * already be {@link CgKeyCodes} / {@link CgMouseCodes} values. Translating from native codes is
- * {@link com.crystalgraphics.platform.service.CgInputService}'s job, and doing it at the boundary means
+ * the host's job, through {@link CgInput#key} and {@link CgInput#mouseButton}; doing it at the boundary means
  * nothing downstream ever has to ask which platform an event came from.</p>
  *
  */

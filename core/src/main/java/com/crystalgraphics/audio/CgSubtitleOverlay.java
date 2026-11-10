@@ -1,29 +1,24 @@
 package com.crystalgraphics.audio;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.Objects;
 
 import com.crystalgraphics.api.font.CgFont;
+import com.crystalgraphics.text.style.CgTextLayer;
+import com.crystalgraphics.text.style.CgTextStyle;
 import com.crystalgraphics.api.font.CgFontStyle;
 import com.crystalgraphics.api.font.CgGenericFamily;
 import com.crystalgraphics.api.font.CgSystemFontFace;
 import com.crystalgraphics.api.font.CgSystemFonts;
-import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.text.CgTextAlign;
 import com.crystalgraphics.api.text.CgTextLayout;
 import com.crystalgraphics.api.texture.CgTextures;
-import com.crystalgraphics.gl.render.CgQuadRenderer;
+import com.crystalgraphics.render.canvas.CgCanvas;
+import com.crystalgraphics.render.canvas.CgCanvasMaterials;
 import com.crystalgraphics.gl.texture.CgTexture2D;
-import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.render.CgFrameClock;
-import com.crystalgraphics.render.CgImmediate;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.settings.CgGraphicsSettings;
-import com.crystalgraphics.text.render.CgTextRenderer;
-import com.crystalgraphics.util.io.CgIO;
+
 
 import javax.annotation.Nullable;
 
@@ -48,8 +43,15 @@ final class CgSubtitleOverlay {
     private static final int FONT_PX = Math.round(10f * 96f / 72f);
     /** {@code GetSubtitleRegion}'s bottom, the safe zone's sides, {@code SUBTITLE_CHAR_HEIGHT} and the line spacing. */
     private static final float REGION_BOTTOM = 0.9f, SAFE_SIDE = 0.1f, CHAR_HEIGHT = 24f, LINE_SPACING = 1.1f;
-    private static final int TEXT = 0xFFFFFFFF, OUTLINE = 0xFF000000;
-    private static final String IMAGE = "crystalgraphics:shaders/hud_image.shader";
+    /** Unreal's canvas look: white, outlined by four 1 px passes at the diagonals beneath it. */
+    private static final CgTextStyle CANVAS_LOOK = CgTextStyle.builder("crystalgraphics:subtitle_canvas")
+            .size(FONT_PX * 72f / 96f)
+            .layer(CgTextLayer.shadow("outline_nw").offset(-1f, -1f).paint(0xFF000000))
+            .layer(CgTextLayer.shadow("outline_ne").offset(1f, -1f).paint(0xFF000000))
+            .layer(CgTextLayer.shadow("outline_sw").offset(-1f, 1f).paint(0xFF000000))
+            .layer(CgTextLayer.shadow("outline_se").offset(1f, 1f).paint(0xFF000000))
+            .layer(CgTextLayer.fill("fill"))
+            .build();
 
     /** A line as shown: what it says, by whom, in which look, and from when. */
     private static final class Shown {
@@ -80,17 +82,10 @@ final class CgSubtitleOverlay {
 
     private final CgAudioEngine engine;
     private final CgRenderStage.Registration registration;
-    private final Runnable draw = this::draw;
     private final Shown current = new Shown(), leaving = new Shown();
-    private final Laid canvas = new Laid(), line = new Laid(), name = new Laid();
-    private final Map<String, CgFont> fonts = new HashMap<>();
-    @Nullable
-    private CgTextRenderer renderer;
-    /** The band: a quad of the image material's default white. */
-    @Nullable
-    private CgQuadRenderer bands;
-    @Nullable
-    private CgQuadRenderer images;
+    private final Laid plain = new Laid(), line = new Laid(), name = new Laid();
+    /** The HUD stage's canvas this frame, in the device pixels everything is laid out in. */
+    private CgCanvas canvas;
     @Nullable
     private CgFont canvasFont;
     private double now;
@@ -106,7 +101,8 @@ final class CgSubtitleOverlay {
             if (current.text == null && leaving.text == null) return;
             width = frame.host().width();
             height = frame.host().height();
-            frame.callback("audio.subtitles", draw);
+            canvas = frame.canvas();
+            draw();
         });
     }
 
@@ -129,23 +125,13 @@ final class CgSubtitleOverlay {
 
     void close() {
         registration.close();
-        if (renderer != null && !renderer.isDeleted()) renderer.delete();
-        renderer = null;
-        if (bands != null) bands.delete();
-        if (images != null) images.delete();
-        bands = null;
-        images = null;
     }
 
     private void draw() {
         try {
-            if (renderer == null) renderer = CgTextRenderer.create();
-            // Glyphs at z = 0 on the nearest depth (+1 reversed, -1 standard), so they pass against whatever the HUD
-            // left in the host's depth; the depth row stays non-zero, or the culler's far plane culls every glyph.
-            renderer.context().projection().m22(-1.0e-4f).m32(CgGL.isDepthReversed() ? 1f : -1f);
             if (leaving.text != null) styled(leaving, leaving.style.fadeOut(), (float) (now - leaving.at));
             if (current.text != null) {
-                if (current.style == null) canvas(current.text);
+                if (current.style == null) plain(current.text);
                 else if (now >= current.at) styled(current, current.style.fadeIn(), (float) (now - current.at));
             }
             drawn++;
@@ -155,7 +141,7 @@ final class CgSubtitleOverlay {
         }
     }
 
-    private void canvas(String text) {
+    private void plain(String text) {
         if (canvasFont == null) {
             canvasFont = sansSerif(FONT_PX);
             if (canvasFont == null) {
@@ -165,51 +151,41 @@ final class CgSubtitleOverlay {
             }
         }
         float region = Math.round(width * (1f - 2f * SAFE_SIDE));
-        if (canvas.layout == null || region != canvas.width || !text.equals(canvas.text)) {
-            canvas.layout = CgTextLayout.of(text, canvasFont).maxWidth(region).align(CgTextAlign.CENTER)
+        if (plain.layout == null || region != plain.width || !text.equals(plain.text)) {
+            plain.layout = CgTextLayout.of(text, canvasFont).maxWidth(region).align(CgTextAlign.CENTER)
                     .lineHeightOverride(canvasFont.getMetrics().getLineHeight() * LINE_SPACING).build();
-            canvas.text = text;
-            canvas.width = region;
+            plain.text = text;
+            plain.width = region;
         }
         float bottom = height * REGION_BOTTOM - CHAR_HEIGHT;
-        renderer.beginBatch();
-        renderer.draw().layout(canvas.layout).font(canvasFont).at(width * SAFE_SIDE, bottom - canvas.layout.totalHeight())
-                .color(TEXT).shadowCount(4)
-                .shadow(0, -1f, -1f, 0f, 0f, OUTLINE, false).shadow(1, 1f, -1f, 0f, 0f, OUTLINE, false)
-                .shadow(2, -1f, 1f, 0f, 0f, OUTLINE, false).shadow(3, 1f, 1f, 0f, 0f, OUTLINE, false).submit();
-        renderer.endBatch();
+        canvas.text().style(CANVAS_LOOK).layout(plain.layout).font(canvasFont).contained(false)
+                .at(width * SAFE_SIDE, bottom - plain.layout.totalHeight()).submit();
     }
 
     /** {@code shown} in its style, {@code t} seconds into {@code fade}. */
     private void styled(Shown shown, CgSubtitleStyle.Fade fade, float t) {
         CgSubtitleStyle style = shown.style;
         float k = style.scale(height);
-        CgImmediate.constants().view.identity();
-        CgImmediate.constants().projection.set(renderer.context().projection());
         CgSubtitleStyle.Band band = style.band();
         if (band != null) {
             float alpha = fade.band(t) * (band.colour() >>> 24) / 255f;
             float centre = band.anchorY() * height + band.offsetY() * k, half = band.height() * k / 2f;
-            if (bands == null) bands = CgQuadRenderer.create().useMaterial(CgMaterial.load(IMAGE));
-            bands.begin();
-            bands.quad().at(0f, centre - half).size(width, 2f * half).uv(0f, 0f, 1f, 1f)
+            canvas.quad(CgCanvasMaterials.SCREEN.image()).at(0f, centre - half).size(width, 2f * half).uv(0f, 0f, 1f, 1f)
                     .color(argb(alpha, encode(band.colour()))).submit();
-            bands.flush();
-            bands.end();
         }
         float alpha = fade.text(t), slide = fade.slide(t) * k;
-        renderer.beginBatch();
         text(style.line(), shown.text, line, k, alpha, slide);
         CgSubtitleStyle.Text named = style.name();
         if (named != null && shown.speaker != null) text(named, shown.speaker, name, k, alpha, slide);
-        renderer.endBatch();
         if (named != null && shown.speaker != null && named.underline() != null) underline(named, k, alpha, slide);
     }
 
     /** One Slate text block: placed by its slot's anchor, offset and alignment of its laid-out size, then {@code slide} px along x. */
     private void text(CgSubtitleStyle.Text block, String text, Laid laid, float k, float alpha, float slide) {
-        int px = Math.max(1, Math.round(block.size() * 96f / 72f * k));
-        CgFont font = font(block.font(), px);
+        CgTextStyle look = block.style().loaded();
+        if (look == null) return;   // requested as the kit registered; drawn once it has loaded
+        int px = Math.max(1, Math.round(look.px() * k));
+        CgFont font = look.font(px);
         float wrap = block.wrap() > 0f ? block.wrap() * k : width;
         if (laid.layout == null || laid.font != font || laid.width != wrap || !text.equals(laid.text)) {
             CgTextAlign align = switch (block.justify()) {
@@ -232,39 +208,18 @@ final class CgSubtitleOverlay {
         };
         float x = block.anchorX() * width + block.offsetX() * k - block.alignmentX() * layout.totalWidth() - inset + slide;
         float y = block.anchorY() * height + block.offsetY() * k - block.alignmentY() * layout.totalHeight();
-        CgTextRenderer.Draw draw = renderer.draw().layout(layout).font(font).at(x, y).color(argb(alpha, block.colour()));
-        float outline = Math.round(block.outlineSize() * k);
-        if (outline > 0f) draw.shadowCount(1).shadow(0, 0f, 0f, 0f, outline, argb(alpha, block.outlineColour()), false);
-        draw.submit();
+        // At k times the style's size, so its outline is k times its width; placed by the laid-out box alone.
+        canvas.text().style(look).layout(layout).font(font).contained(false).at(x, y).color(argb(alpha, 0xFFFFFFFF))
+                .submit();
     }
 
     private void underline(CgSubtitleStyle.Text named, float k, float alpha, float slide) {
         CgSubtitleStyle.Underline u = named.underline();
         CgTexture2D image = CgTextures.of(u.image());
-        if (images == null) images = CgQuadRenderer.create().useMaterial(CgMaterial.load(IMAGE));
-        images.bindTexture(0, image);
-        images.begin();
         // Centred on its offset, as the widget's image slot centres it.
         float w = u.width() * k, h = u.height() * k;
-        images.quad().at(named.anchorX() * width + u.offsetX() * k - w / 2f + slide, named.anchorY() * height + u.offsetY() * k - h / 2f)
+        canvas.quad(CgCanvasMaterials.SCREEN.image()).texture(0, image).at(named.anchorX() * width + u.offsetX() * k - w / 2f + slide, named.anchorY() * height + u.offsetY() * k - h / 2f)
                 .size(w, h).uv(0f, 0f, 1f, 1f).color(argb(alpha, 0xFFFFFFFF)).submit();
-        images.flush();
-        images.end();
-    }
-
-    /** {@code path}'s font at {@code px}: a kit's file, read once. */
-    private CgFont font(String path, int px) {
-        String key = path + '@' + px;
-        CgFont font = fonts.get(key);
-        if (font != null) return font;
-        try (InputStream in = CgIO.openStream(path)) {
-            if (in == null) throw new IllegalStateException("no font file " + path);
-            font = CgFont.load(in.readAllBytes(), path, CgFontStyle.REGULAR, px);
-        } catch (IOException e) {
-            throw new IllegalStateException("font " + path + ": " + e.getMessage(), e);
-        }
-        fonts.put(key, font);
-        return font;
     }
 
     /** {@code argb} with its alpha times {@code alpha}. */

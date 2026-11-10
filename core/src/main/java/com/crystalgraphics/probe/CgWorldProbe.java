@@ -365,8 +365,7 @@ public final class CgWorldProbe {
     }
 
     private static void startAudio(double px, double py, double pz) {
-        audio = CgWorld.client().subsystem(CgAudioEngine.class);
-        if (audio == null) audio = CgWorld.client().add(new CgAudioEngine());
+        audio = CgAudioEngine.of(CgWorld.client());
         if (!audio.active()) {
             skip("audio.plays", "no audio output on this host");
             audio = null;

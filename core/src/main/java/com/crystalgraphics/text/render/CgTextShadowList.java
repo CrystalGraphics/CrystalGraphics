@@ -3,8 +3,8 @@ package com.crystalgraphics.text.render;
 import java.util.Arrays;
 
 /**
- * One draw's text-shadow list, first shadow on top, as {@link CgTextRenderer.Draw} collects it: local
- * pixels, a Gaussian standard deviation, straight ARGB.
+ * One draw's shadow layers, as {@link CgTextBatch} gathers them from its style, bottom first: local pixels, a Gaussian
+ * standard deviation, straight ARGB, and whether each casts the style's outline.
  *
  * <p>Grow-only, so a draw that sets its shadows every frame allocates nothing. What each glyph paints in
  * each shadow is {@link CgTextShadowPlan}'s to decide.</p>
@@ -18,6 +18,7 @@ final class CgTextShadowList {
     private float[] spread = new float[0];
     private int[] argb = new int[0];
     private boolean[] inset = new boolean[0];
+    private boolean[] outlined = new boolean[0];
     /** Per shadow: the glyph scope it applies to, or -1 for every glyph. */
     private int[] scope = new int[0];
     /** Per glyph of the layout: its scope, or null when no shadow is scoped. Held, not copied. */
@@ -43,13 +44,15 @@ final class CgTextShadowList {
             spread = Arrays.copyOf(spread, capacity);
             argb = Arrays.copyOf(argb, capacity);
             inset = Arrays.copyOf(inset, capacity);
+            outlined = Arrays.copyOf(outlined, capacity);
             scope = Arrays.copyOf(scope, capacity);
         }
         this.count = count;
     }
 
     /** Sets shadow {@code index} for every glyph; a negative sigma or spread reads as 0. */
-    void set(int index, float offsetX, float offsetY, float sigma, float spread, int argb, boolean inset) {
+    void set(int index, float offsetX, float offsetY, float sigma, float spread, int argb, boolean inset,
+             boolean outlined) {
         checkIndex(index);
         this.x[index] = offsetX;
         this.y[index] = offsetY;
@@ -57,6 +60,7 @@ final class CgTextShadowList {
         this.spread[index] = Math.max(0f, spread);
         this.argb[index] = argb;
         this.inset[index] = inset;
+        this.outlined[index] = outlined;
         this.scope[index] = -1;
     }
 
@@ -93,6 +97,11 @@ final class CgTextShadowList {
         return inset[index];
     }
 
+    /** Whether shadow {@code index} casts the style's first outline's shape. */
+    boolean outlined(int index) {
+        return outlined[index];
+    }
+
     /** Whether shadow {@code index} paints anything at all. */
     boolean casts(int index) {
         return (argb[index] >>> 24) != 0;
@@ -119,57 +128,6 @@ final class CgTextShadowList {
         if (wanted < 0) return true;
         return glyphScopes != null && glyph < glyphScopes.length && glyphScopes[glyph] == wanted;
     }
-
-    /**
-     * How far these shadows paint past the layout, in local pixels: offset, three sigma, spread. The same
-     * {@code ceil(3 * sigma)} outset Blink's {@code ShadowData::RectOutsets} uses.
-     */
-    float reach() {
-        float reach = 0f;
-        for (int i = 0; i < count; i++) {
-            if (!casts(i)) continue;
-            float offset = Math.max(Math.abs(x[i]), Math.abs(y[i]));
-            reach = Math.max(reach, offset + (float) Math.ceil(3f * sigma[i]) + spread[i]);
-        }
-        return reach;
-    }
-
-    /** Whether {@code o} casts the same shadows, glyph scopes compared by content. */
-    boolean sameAs(CgTextShadowList o) {
-        if (count != o.count) return false;
-        for (int i = 0; i < count; i++) {
-            if (x[i] != o.x[i] || y[i] != o.y[i] || sigma[i] != o.sigma[i] || spread[i] != o.spread[i]
-                    || argb[i] != o.argb[i] || inset[i] != o.inset[i] || scope[i] != o.scope[i]) {
-                return false;
-            }
-        }
-        if (glyphScopes == null || o.glyphScopes == null) return glyphScopes == o.glyphScopes;
-        return Arrays.equals(glyphScopes, o.glyphScopes);
-    }
-
-    /** Becomes a copy of {@code o}, its glyph scopes copied too: a copy outlives the array its source holds. */
-    void set(CgTextShadowList o) {
-        count(o.count);
-        for (int i = 0; i < o.count; i++) {
-            x[i] = o.x[i];
-            y[i] = o.y[i];
-            sigma[i] = o.sigma[i];
-            spread[i] = o.spread[i];
-            argb[i] = o.argb[i];
-            inset[i] = o.inset[i];
-            scope[i] = o.scope[i];
-        }
-        if (o.glyphScopes == null) {
-            glyphScopes = null;
-        } else {
-            if (ownScopes == null || ownScopes.length != o.glyphScopes.length) ownScopes = new int[o.glyphScopes.length];
-            System.arraycopy(o.glyphScopes, 0, ownScopes, 0, ownScopes.length);
-            glyphScopes = ownScopes;
-        }
-    }
-
-    /** {@link #set}'s copy of glyph scopes, reused. */
-    private int[] ownScopes;
 
     private void checkIndex(int index) {
         if (index < 0 || index >= count) {

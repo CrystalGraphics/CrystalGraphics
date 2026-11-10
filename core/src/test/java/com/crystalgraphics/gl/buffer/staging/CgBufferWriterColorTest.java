@@ -77,7 +77,7 @@ public class CgBufferWriterColorTest {
     }
 
     /**
-     * Must be bit-identical to the hand-rolled unpacking this replaced in {@code CgQuadRenderer},
+     * Must be bit-identical to the hand-rolled unpacking this replaced in {@code CgQuadBatch},
      * which is the path every glyph in the engine draws through. A reciprocal multiply would be
      * within an ULP and still a change to already-shipped output.
      */

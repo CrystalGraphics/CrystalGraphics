@@ -19,11 +19,13 @@ import com.crystalgraphics.render.graph.CgFrameGraph;
 import com.crystalgraphics.render.graph.CgFrameScope;
 import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.render.graph.CgLoad;
+import com.crystalgraphics.render.canvas.CgCanvas;
 import com.crystalgraphics.render.graph.CgRasterPass;
 import com.crystalgraphics.render.graph.CgRecording;
 import com.crystalgraphics.render.graph.CgRequest;
 import com.crystalgraphics.render.graph.CgTextureDesc;
 import org.joml.Matrix4f;
+import org.joml.Vector2f;
 
 import javax.annotation.Nullable;
 
@@ -45,6 +47,9 @@ import javax.annotation.Nullable;
  *
  * <ul>
  *   <li>Render thread, and only inside {@link CgStageRenderer#render}: the recording is executed and reset after.</li>
+ *   <li>During a renderer's turn, {@link #canvas()} -- quads, curves and text -- draws
+ *       into this firing, on {@link #target()} under {@link #constants()}: the world's camera at a world stage, the
+ *       GUI's pixels at a GUI stage. What a turn drew lands when it ends, in a pass of its own.</li>
  *   <li>The stage parks the host's sampler objects and turns its scissor off around execution: what the host leaves
  *       there overrides a texture's own filtering, and clips every draw to its box.</li>
  *   <li>{@link #callback} draws immediately at its place in the stage, with GL state restored after — for work that
@@ -76,6 +81,21 @@ public final class CgStageFrame {
     private static final int PYRAMIDS = CgTrace.name("stage.pyramids-built"), PYRAMID_ASKS = CgTrace.name("stage.pyramid-asks");
     @Nullable
     private CgGraphTexture target;
+    /** {@link #canvas()}: opened at its first draw in a turn, so a turn that draws nothing records nothing. */
+    private final CgCanvas canvas = new CgCanvas();
+    private final CgCanvas.Source canvasOpener = new CgCanvas.Source() {
+        @Override
+        public void open(CgCanvas canvas) {
+            openCanvas(canvas);
+        }
+
+        @Override
+        public CgPassConstants constants() {
+            return canvasCamera();
+        }
+    };
+    /** Whether this turn's canvas draws GUI-scaled ({@link #guiScaledCanvas}) rather than in the window's pixels. */
+    private boolean guiPixels;
 
     /** Firings a host frame remembered for the next: the n-th is compared with last frame's n-th. */
     private static final int ORDINALS = 4;
@@ -224,6 +244,107 @@ public final class CgStageFrame {
         CgGpuOps.depthPyramid(recording, target(), constants(), pyramid);
         CgTrace.add(CgChannels.GL, PYRAMIDS, 1);
         return pyramid;
+    }
+
+    /**
+     * What a renderer draws quads, curves and text into during its turn (Unreal's canvas): on {@link #target()} under
+     * {@link #constants()} -- at a world stage the camera's space, camera-relative, its origin the camera's absolute
+     * position; at a GUI stage the window's pixels. What a turn draws lands when the turn ends, in a pass of its own.
+     *
+     * <pre>{@code
+     * CgRenderStage.HUD.register(CgRenderStage.WORLD_WIDGETS, frame ->
+     *         frame.canvas().quad(DIGIT).texture(0, DIGITS).at(x, y).size(w, h).color(argb).submit());
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Inside {@link CgStageRenderer#render} only: a {@link #callback}'s body runs at execution, outside any turn.</li>
+     *   <li>The same canvas as {@link #guiScaledCanvas()}: asking for one after the other switches what later items
+     *       draw under, earlier ones kept as drawn and in order.</li>
+     * </ul>
+     */
+    public CgCanvas canvas() {
+        return canvasIn(false);
+    }
+
+    /**
+     * {@link #canvas()} in the host GUI's pixels: everything drawn on it is scaled by {@link CgHostFrame#guiScale()},
+     * so it sits at the size of Minecraft's own interface and follows its GUI Scale setting. Text still rasters at the
+     * window's pixels, so it stays sharp.
+     *
+     * <pre>{@code
+     * CgRenderStage.HUD.register(CgRenderStage.VIEWPORT_WIDGETS, frame -> {
+     *     CgCanvas gui = frame.guiScaledCanvas();             // once a turn: every item after is GUI-scaled
+     *     gui.quad(ICON).at(4, 4).size(16, 16).submit();       // 16 GUI pixels: 64 on the window at scale 4
+     *     gui.text().text("Ready").font(font).at(24, 6).submit();
+     * });
+     * }</pre>
+     *
+     * <ul>
+     *   <li>A GUI stage's only: at a world stage it throws.</li>
+     *   <li>Taking {@link #canvas()} later in the same turn goes back to window pixels for what follows.</li>
+     * </ul>
+     */
+    public CgCanvas guiScaledCanvas() {
+        if (host.view().projection().m23() != 0f) {
+            throw new IllegalStateException(stage.id() + " is not a GUI stage: it has no GUI pixels");
+        }
+        return canvasIn(true);
+    }
+
+    /**
+     * Where the absolute world point ({@code x}, {@code y}, {@code z}) is on this GUI stage's canvas, into {@code out}:
+     * seen by the world's camera ({@code WORLD_OPAQUE}'s), in the canvas's pixels, the GUI's after
+     * {@link #guiScaledCanvas()}. False behind the camera. What a {@link CgRenderStage#WORLD_WIDGETS} renderer follows.
+     *
+     * <pre>{@code
+     * CgRenderStage.HUD.register(CgRenderStage.WORLD_WIDGETS, frame -> {
+     *     if (frame.projectWorld(x, y + 2, z, at)) frame.canvas().quad(MARKER).at(at.x - 8, at.y - 8).size(16, 16).submit();
+     * });
+     * }</pre>
+     *
+     * A GUI stage's only: at a world stage it throws.
+     */
+    public boolean projectWorld(double x, double y, double z, Vector2f out) {
+        if (host.view().projection().m23() != 0f) {
+            throw new IllegalStateException(stage.id() + " is not a GUI stage: project with its view instead");
+        }
+        float s = guiPixels ? host.guiScale() : 1f;
+        return CgRenderStage.WORLD_OPAQUE.host().view().project(x, y, z, host.width() / s, host.height() / s, out);
+    }
+
+    private CgCanvas canvasIn(boolean gui) {
+        if (gui != guiPixels) {
+            guiPixels = gui;
+            if (canvas.recording()) canvas.constants(canvasCamera());   // lands what was drawn under the other camera
+        }
+        return canvas;
+    }
+
+    /** The canvas's camera: {@link #constants()}, scaled to the host GUI's pixels for a {@link #guiScaledCanvas()}. */
+    private CgPassConstants canvasCamera() {
+        CgPassConstants camera = constants();
+        if (guiPixels) {
+            float s = host.guiScale();
+            camera.projection.scale(s, s, 1f);
+        }
+        return camera;
+    }
+
+    private void openCanvas(CgCanvas canvas) {
+        canvas.recordInto(recording, target(), CgLoad.load(), canvasCamera());
+        CgHostView view = host.view();
+        canvas.origin(view.x(), view.y(), view.z());
+    }
+
+    /** A renderer's turn starts: what it draws on the canvas records into this firing, in window pixels. */
+    void turnBegins() {
+        guiPixels = false;
+        canvas.arm(canvasOpener);
+    }
+
+    /** A renderer's turn ends: what it drew on the canvas lands, in a pass of its own. */
+    void turnEnds() {
+        canvas.stop();
     }
 
     /** Runs {@code body} at this point in the stage, on the host's target, with GL state restored after. */

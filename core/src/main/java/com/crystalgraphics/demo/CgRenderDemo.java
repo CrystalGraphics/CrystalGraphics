@@ -3,6 +3,8 @@ package com.crystalgraphics.demo;
 import com.crystalgraphics.api.font.CgFont;
 import com.crystalgraphics.api.font.CgDefaultFont;
 import com.crystalgraphics.api.text.CgTextLayout;
+import com.crystalgraphics.text.style.CgTextLayer;
+import com.crystalgraphics.text.style.CgTextStyle;
 import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.collision.CgCollisionWorld;
 import com.crystalgraphics.demo.collision.CgCollisionDemo;
@@ -16,10 +18,8 @@ import com.crystalgraphics.loading.task.CgLoadPlan;
 import com.crystalgraphics.loading.watchdog.CgLoadWatchdog;
 import com.crystalgraphics.platform.service.CgProcessExit;
 import com.crystalgraphics.loading.task.CgLoadTask;
-import com.crystalgraphics.platform.CgPlatform;
-import com.crystalgraphics.lifecycle.CgGraphicsLifecycle;
 import com.crystalgraphics.platform.input.CgKeyCodes;
-import com.crystalgraphics.platform.service.CgInputService;
+import com.crystalgraphics.platform.input.CgInput;
 import com.crystalgraphics.render.CgFrameClock;
 import com.crystalgraphics.render.post.CgPostStack;
 import com.crystalgraphics.render.post.bloom.CgBloom;
@@ -28,7 +28,10 @@ import com.crystalgraphics.render.stage.CgHostFrame;
 import com.crystalgraphics.render.stage.CgHostView;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.world.CgWorldRenderer;
-import com.crystalgraphics.text.render.CgTextRenderer;
+import com.crystalgraphics.render.canvas.CgCanvas;
+import com.crystalgraphics.render.draw.CgPassConstants;
+import com.crystalgraphics.render.graph.CgLoad;
+import com.crystalgraphics.render.stage.CgStageFrame;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.trace.CgTraceReport;
 import com.crystalgraphics.trace.CgTraceRun;
@@ -112,7 +115,7 @@ public final class CgRenderDemo {
     private static final Logger LOGGER = LogManager.getLogger("CgRenderDemo");
 
     private static final String MODE = CgVar.text("crystalgraphics.demo", "", CgVar.DEV | CgVar.RESTART,
-            "false draws no world demo; a scene's name (blasts, beams, modules, fluid, blast, collision, lights, shadows) starts on it;"
+            "false draws no world demo; a scene's name (blasts, beams, modules, fluid, blast, collision, lights, shadows, glass) starts on it;"
                     + " empty on"
                     + " blasts.").get();
     private static final boolean ENABLED = !"false".equals(MODE);
@@ -184,6 +187,7 @@ public final class CgRenderDemo {
             new Kind("collision", 24, this::collision),
             new Kind("lights", 30, this::lights),
             new Kind("shadows", 22, this::shadows),
+            new Kind("glass", 22, this::glass),
     };
 
     private boolean installed;
@@ -211,8 +215,13 @@ public final class CgRenderDemo {
     private final Runnable capture = () -> capture(captured.mainFramebuffer(), captured.width(), captured.height());
 
     // The HUD: HUDRenderer's lines and look, 14 px where the window's shorter side is 600 pixels, in proportion above.
-    private static final int HUD_COLOR = 0xFFFF4F5E, HUD_OUTLINE = 0xFF000000, HUD_PX = 14;
-    private static final float HUD_SIDE = 600f, HUD_OUTLINE_EM = 0.12f;
+    private static final int HUD_PX = 14;
+    private static final float HUD_SIDE = 600f;
+    /** Red, outlined 0.12 em in black: at 75 pt, 100 px, a width of 12. */
+    private static final CgTextStyle HUD_LOOK = CgTextStyle.builder("crystalgraphics:demo_hud").size(75f)
+            .layer(CgTextLayer.outline("outline").width(12f).paint(0xFF000000))
+            .layer(CgTextLayer.fill("fill").paint(0xFFFF4F5E))
+            .build();
     private static final long SAMPLE_WINDOW_NANOS = 500_000_000L;
     /** The demo's keys, then the scenes' own. */
     private static final int[] KEYS = keys(new int[]{CgKeyCodes.KEY_H, CgKeyCodes.KEY_N, CgKeyCodes.KEY_C,
@@ -226,7 +235,9 @@ public final class CgRenderDemo {
 
     /** After every other static: the constructor reads {@code MODE} and {@code KEYS}. */
     public static final CgRenderDemo INSTANCE = new CgRenderDemo();
-    private CgTextRenderer hud;
+    /** The HUD's canvas, recorded into the stage's target under a screen camera of the target's pixels. */
+    private final CgCanvas hud = new CgCanvas();
+    private final CgPassConstants hudCamera = new CgPassConstants();
     private CgFont hudFont, labelFont;
     private int hudPx, hudSide;
     private boolean hudFailed, hudDirty = true;
@@ -235,7 +246,6 @@ public final class CgRenderDemo {
     private int particleSampleCount, particles, frames;
     private long windowStart;
     private double fps;
-    private final Runnable drawHud = this::drawHud;
 
     private CgRenderDemo() {
         for (int i = 0; i < kinds.length; i++) {
@@ -259,7 +269,7 @@ public final class CgRenderDemo {
             hudSide = CgLoadingScreen.shown() && CgLoadingScreen.windowHeight() > 0
                     ? Math.min(CgLoadingScreen.windowWidth(), CgLoadingScreen.windowHeight())
                     : Math.min(frame.host().width(), frame.host().height());
-            frame.callback("demo.hud", drawHud);
+            drawHud(frame);
         });
         if (!CAPTURE.isEmpty()) {
             // After the composite: with the HDR scene on, the host's target holds the world only from then.
@@ -298,8 +308,6 @@ public final class CgRenderDemo {
         current = -1;
         prewarming = -1;
         allWarm = false;
-        if (hud != null && !hud.isDeleted()) hud.delete();
-        hud = null;
     }
 
     // ── scenes ────────────────────────────────────────────────────────────────
@@ -573,6 +581,37 @@ public final class CgRenderDemo {
         };
     }
 
+    private Scene glass() {
+        if (labelFont == null) labelFont = CgDefaultFont.regular(48);
+        CgGlassDemo glass = new CgGlassDemo(labelFont);
+        return new Scene() {
+            @Override
+            public void submit(CgWorldRenderer world, CgHostView view, double x, double y, double z, double seconds) {
+                glass.submit(world, view, x, y, z, seconds);
+            }
+
+            @Override
+            public void precache() {
+                glass.precache();
+            }
+
+            @Override
+            public boolean ready() {
+                return glass.ready();
+            }
+
+            @Override
+            public void clear() {
+                glass.clear();
+            }
+
+            @Override
+            public void delete() {
+                glass.delete();
+            }
+        };
+    }
+
     // ── frame ─────────────────────────────────────────────────────────────────
 
     private void frame(CgHostView view) {
@@ -802,11 +841,10 @@ public final class CgRenderDemo {
 
     /** Acts on each key as it goes down, unless a screen has the keys or Ctrl is held. */
     private void keys(boolean screenOpen) {
-        CgInputService input = CgPlatform.input();
-        boolean ctrl = input.isKeyDown(CgKeyCodes.KEY_LCONTROL) || input.isKeyDown(CgKeyCodes.KEY_RCONTROL);
-        boolean shift = input.isKeyDown(CgKeyCodes.KEY_LSHIFT) || input.isKeyDown(CgKeyCodes.KEY_RSHIFT);
+        boolean ctrl = CgInput.isKeyDown(CgKeyCodes.KEY_LCONTROL) || CgInput.isKeyDown(CgKeyCodes.KEY_RCONTROL);
+        boolean shift = CgInput.isKeyDown(CgKeyCodes.KEY_LSHIFT) || CgInput.isKeyDown(CgKeyCodes.KEY_RSHIFT);
         for (int i = 0; i < KEYS.length; i++) {
-            boolean down = input.isKeyDown(KEYS[i]);
+            boolean down = CgInput.isKeyDown(KEYS[i]);
             if (down && !held[i] && !screenOpen && !ctrl) press(KEYS[i], shift);
             held[i] = down;
         }
@@ -863,7 +901,7 @@ public final class CgRenderDemo {
      * Samples this frame for the FPS and the particles drawn (the median over the latest half second), and draws the
      * HUD; its text is laid out again only when a line changed.
      */
-    private void drawHud() {
+    private void drawHud(CgStageFrame frame) {
         if (hudFailed) return;
         long now = System.nanoTime();
         frames++;
@@ -896,15 +934,16 @@ public final class CgRenderDemo {
                 hudLayout = CgTextLayout.of(hudText(), hudFont).build();
                 hudDirty = false;
             }
-            if (hud == null) hud = CgTextRenderer.create();
-            // Drawn in a world pass with the host's depth bound: its z = 0 glyphs put on the nearest depth (+1 reversed,
-            // -1 standard) pass the test against every pixel, the showcase's sky seal included. The depth row stays
-            // non-zero, or the culler's far plane is all zeros and culls every glyph. Again each frame, since a resize
-            // rebuilds the ortho.
-            hud.context().projection().m22(-1.0e-4f).m32(CgGraphicsLifecycle.hostDepthReversed() ? 1f : -1f);
-            hud.beginBatch();
-            hud.draw().layout(hudLayout).font(hudFont).at(4f, 4f).color(HUD_COLOR).stroke(HUD_OUTLINE_EM, HUD_OUTLINE).submit();
-            hud.endBatch();
+            int w = Math.max(1, frame.host().width()), h = Math.max(1, frame.host().height());
+            hudCamera.view.identity();
+            hudCamera.projection.setOrtho(0f, w, h, 0f, -1f, 1f);
+            hudCamera.resolution(w, h);
+            hud.recordInto(frame.recording(), frame.target(), CgLoad.load(), hudCamera);
+            try {
+                hud.text().style(HUD_LOOK).layout(hudLayout).font(hudFont).at(4f, 4f).submit();
+            } finally {
+                hud.stop();
+            }
         } catch (RuntimeException e) {
             hudFailed = true;
             LOGGER.error("[CgRenderDemo] the HUD failed; it stays off", e);

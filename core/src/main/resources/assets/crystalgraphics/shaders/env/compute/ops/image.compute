@@ -1,20 +1,37 @@
-// CgGpuOps' image ops: a mip level from the level above it, and one axis of a Gaussian blur. An image
-// is declared in one format, so each op is a kernel per format; a dispatch is the target level's size.
+// CgGpuOps' image ops: a mip level from the level above it, a region reduced by 2 or 4, a region shrunk to any smaller
+// size, and one axis of a Gaussian blur over a region. An image is declared in one format, so each op is a kernel per
+// format; the blur, the reduce and the shrink read their source through _Src.
 #pragma kernel DownsampleRgba8 8 8 image
 #pragma kernel DownsampleRgba16f 8 8 image
 #pragma kernel DownsampleR16f 8 8 image
 #pragma kernel DownsampleR32f 8 8 image
-#pragma kernel BlurRgba8 8 8 image
-#pragma kernel BlurRgba16f 8 8 image
-#pragma kernel BlurR16f 8 8 image
-#pragma kernel BlurR32f 8 8 image
+#pragma kernel BlurRgba8 8 8 general
+#pragma kernel BlurRgba16f 8 8 general
+#pragma kernel BlurR16f 8 8 general
+#pragma kernel BlurR32f 8 8 general
+#pragma kernel ReduceRgba8 8 8 general
+#pragma kernel ReduceRgba16f 8 8 general
+#pragma kernel ReduceR16f 8 8 general
+#pragma kernel ReduceR32f 8 8 general
+#pragma kernel ShrinkRgba8 8 8 general
+#pragma kernel ShrinkRgba16f 8 8 general
+#pragma kernel ShrinkR16f 8 8 general
+#pragma kernel ShrinkR32f 8 8 general
 #pragma cg_feature MIN
 #pragma cg_feature MAX
 #pragma cg_feature VERTICAL
+#pragma cg_feature LINEAR
 
 Properties {
     _Radius ("Blur taps each side",        int)   = 0
     _Sigma  ("Blur sigma, in texels",      float) = 1
+    _Region ("Texels read, x0 y0 x1 y1",  vec4) = (0, 0, 0, 0)
+    _Target ("Where the region's corner is written, x y", vec4) = (0, 0, 0, 0)
+    _Source ("A reduce's or a shrink's source texels, x0 y0 x1 y1", vec4) = (0, 0, 0, 0)
+    _Mirror ("Blur taps past the region fold back in", int) = 0
+    _Scale  ("Source texels a reduced texel averages, each axis", int) = 1
+    _Level  ("The level a blur samples", int) = 0
+    _Src    ("The source of a blur, a reduce or a shrink", sampler2D) = "black"
 }
 
 Images {
@@ -53,15 +70,6 @@ vec4 first(vec4 v, float w) {
     return v;
 #else
     return v * w;
-#endif
-}
-
-// Tap k texels from t along the blur's axis, clamped to the edge.
-ivec2 tap(ivec2 t, int k, ivec2 n) {
-#ifdef VERTICAL
-    return ivec2(t.x, clamp(t.y + k, 0, n.y - 1));
-#else
-    return ivec2(clamp(t.x + k, 0, n.x - 1), t.y);
 #endif
 }
 
@@ -113,51 +121,194 @@ void DownsampleR32f() {
     DST_R32F_WRITE(acc);
 }
 
-// One axis: the taps within _Radius of the texel, weighted by the Gaussian and normalised.
-void BlurRgba8() {
-    ivec2 t = CG_TEXEL.xy, n = SRC_RGBA8_SIZE();
-    vec4 sum = SRC_RGBA8_LOAD(t);
-    float total = 1.0;
-    for (int k = 1; k <= min(_Radius, 64); k++) {   // CgGpuOps.blur's 3 sigma, sigma at most 21
+// A position along an axis, in texels, kept to the region [lo, hi)'s texel centres: held, or with _Mirror folded back
+// in about its edges first. Folded, a bilinear pair straddling an edge lands on the edge texel, as a discrete mirror does.
+float keep(float p, float lo, float hi) {
+    if (_Mirror != 0) {
+        float n = hi - lo;
+        float q = mod(p - lo, 2.0 * n);
+        p = lo + (q < n ? q : 2.0 * n - q);
+    }
+    return clamp(p, lo + 0.5, hi - 0.5);
+}
+
+// Texel p along the blur's axis kept inside the region [lo, hi): held, or with _Mirror folded back in (the edge texel
+// repeated, period twice the span).
+int keepTexel(int p, int lo, int hi) {
+    if (_Mirror == 0) return clamp(p, lo, hi - 1);
+    int n = hi - lo;
+    int d = p - lo;
+    if (d < 0) d = -1 - d;   // the reflection about the edge: GLSL's % is undefined on a negative operand
+    int q = d % (2 * n);
+    return lo + (q < n ? q : 2 * n - 1 - q);
+}
+
+// Tap k texels from t along the blur's axis, exact: no filtering.
+vec4 blurTexel(ivec2 t, int k) {
+    ivec4 r = ivec4(_Region);
+#ifdef VERTICAL
+    ivec2 p = ivec2(t.x, keepTexel(t.y + k, r.y, r.w));
+#else
+    ivec2 p = ivec2(keepTexel(t.x + k, r.x, r.z), t.y);
+#endif
+    return texelFetch(_Src, p, _Level);
+}
+
+// The source at texel-space point p, bilinear, kept inside the region along the blur's axis.
+vec4 blurTap(vec2 p, vec2 size) {
+    vec4 r = _Region;
+#ifdef VERTICAL
+    p.y = keep(p.y, r.y, r.w);
+#else
+    p.x = keep(p.x, r.x, r.z);
+#endif
+    return textureLod(_Src, p / size, float(_Level));
+}
+
+// One axis of the Gaussian, normalised over the taps used. LINEAR: Skia's linear-sampled kernel
+// (SkShaderBlurAlgorithm::Compute1DBlurLinearKernel), taps k and k + 1 as one bilinear fetch between them, r + 1 fetches
+// for a radius of r, within the filter's weight precision (about 1/256). Without it, a fetch a texel and exact.
+vec4 blurAt(ivec2 t) {
+    int radius = min(_Radius, 64);   // CgGpuOps.blur's 3 sigma, sigma at most 21
+#ifndef LINEAR
+    vec4 exact = blurTexel(t, 0);
+    float weights = 1.0;
+    for (int k = 1; k <= radius; k++) {
         float w = gaussian(k);
-        sum += (SRC_RGBA8_LOAD(tap(t, -k, n)) + SRC_RGBA8_LOAD(tap(t, k, n))) * w;
+        exact += (blurTexel(t, -k) + blurTexel(t, k)) * w;
+        weights += 2.0 * w;
+    }
+    return exact / weights;
+#else
+    vec2 size = vec2(textureSize(_Src, _Level));
+    vec2 centre = vec2(t) + 0.5;
+#ifdef VERTICAL
+    vec2 axis = vec2(0.0, 1.0);
+#else
+    vec2 axis = vec2(1.0, 0.0);
+#endif
+    vec4 sum = blurTap(centre, size);
+    float total = 1.0;
+    for (int k = 1; k <= radius; k += 2) {
+        float w0 = gaussian(k);
+        float w1 = k + 1 <= radius ? gaussian(k + 1) : 0.0;
+        float w = w0 + w1;
+        float offset = (float(k) * w0 + float(k + 1) * w1) / w;
+        sum += (blurTap(centre - offset * axis, size) + blurTap(centre + offset * axis, size)) * w;
         total += 2.0 * w;
     }
-    DST_RGBA8_WRITE(sum / total);
+    return sum / total;
+#endif
+}
+
+// Target texel t of a region reduced by _Scale (2 or 4): the box over the source block it covers, held inside _Source,
+// as one bilinear fetch at a 2x2 block's corner, or four at a 4x4's.
+vec4 reduceAt(ivec2 t) {
+    vec2 size = vec2(textureSize(_Src, 0));
+    vec4 src = _Source;
+    float scale = float(_Scale);
+    vec2 centre = (vec2(t) + 0.5) * scale;
+    if (_Scale == 2) {
+        vec2 p = vec2(clamp(centre.x, src.x + 0.5, src.z - 0.5), clamp(centre.y, src.y + 0.5, src.w - 0.5));
+        return textureLod(_Src, p / size, 0.0);
+    }
+    vec4 sum = vec4(0.0);
+    for (int j = 0; j < 2; j++) for (int i = 0; i < 2; i++) {
+        vec2 p = centre + vec2(float(i) * 2.0 - 1.0, float(j) * 2.0 - 1.0);
+        p = vec2(clamp(p.x, src.x + 0.5, src.z - 0.5), clamp(p.y, src.y + 0.5, src.w - 0.5));
+        sum += textureLod(_Src, p / size, 0.0);
+    }
+    return sum * 0.25;
+}
+
+// Source texels a shrink's target texel spans per axis, at most: CgGpuOps.MAX_SHRINK, plus the two a fractional edge cuts.
+#define MAX_SHRINK_SPAN 34
+
+// Target texel t (from the target rect's corner) of a shrink: the source box _Source over the target rect _Region,
+// each target texel the average of the source area it covers, a texel cut by its edge weighted by the part inside
+// (Pillow's BOX filter, OpenCV's INTER_AREA).
+vec4 shrinkAt(ivec2 t) {
+    vec4 s = _Source;
+    vec2 scale = (s.zw - s.xy) / (_Region.zw - _Region.xy);
+    vec2 lo = s.xy + vec2(t) * scale, hi = min(lo + scale, s.zw);
+    ivec2 a = ivec2(floor(lo)), b = min(ivec2(ceil(hi)), ivec2(ceil(s.zw)));
+    vec4 sum = vec4(0.0);
+    float total = 0.0;
+    for (int j = 0; j < MAX_SHRINK_SPAN; j++) {
+        int y = a.y + j;
+        if (y >= b.y) break;
+        float wy = min(hi.y, float(y + 1)) - max(lo.y, float(y));
+        for (int i = 0; i < MAX_SHRINK_SPAN; i++) {
+            int x = a.x + i;
+            if (x >= b.x) break;
+            float w = (min(hi.x, float(x + 1)) - max(lo.x, float(x))) * wy;
+            sum += texelFetch(_Src, ivec2(x, y), 0) * w;
+            total += w;
+        }
+    }
+    return sum / total;
+}
+
+void BlurRgba8() {
+    if (!CG_IN_RANGE) return;   // general, for STORE where the region lands: no barriers
+    DST_RGBA8_STORE(CG_TEXEL.xy + ivec2(_Target.xy), blurAt(CG_TEXEL.xy + ivec2(_Region.xy)));
 }
 
 void BlurRgba16f() {
-    ivec2 t = CG_TEXEL.xy, n = SRC_RGBA16F_SIZE();
-    vec4 sum = SRC_RGBA16F_LOAD(t);
-    float total = 1.0;
-    for (int k = 1; k <= min(_Radius, 64); k++) {   // CgGpuOps.blur's 3 sigma, sigma at most 21
-        float w = gaussian(k);
-        sum += (SRC_RGBA16F_LOAD(tap(t, -k, n)) + SRC_RGBA16F_LOAD(tap(t, k, n))) * w;
-        total += 2.0 * w;
-    }
-    DST_RGBA16F_WRITE(sum / total);
+    if (!CG_IN_RANGE) return;   // general, for STORE where the region lands: no barriers
+    DST_RGBA16F_STORE(CG_TEXEL.xy + ivec2(_Target.xy), blurAt(CG_TEXEL.xy + ivec2(_Region.xy)));
 }
 
 void BlurR16f() {
-    ivec2 t = CG_TEXEL.xy, n = SRC_R16F_SIZE();
-    vec4 sum = SRC_R16F_LOAD(t);
-    float total = 1.0;
-    for (int k = 1; k <= min(_Radius, 64); k++) {   // CgGpuOps.blur's 3 sigma, sigma at most 21
-        float w = gaussian(k);
-        sum += (SRC_R16F_LOAD(tap(t, -k, n)) + SRC_R16F_LOAD(tap(t, k, n))) * w;
-        total += 2.0 * w;
-    }
-    DST_R16F_WRITE(sum / total);
+    if (!CG_IN_RANGE) return;   // general, for STORE where the region lands: no barriers
+    DST_R16F_STORE(CG_TEXEL.xy + ivec2(_Target.xy), blurAt(CG_TEXEL.xy + ivec2(_Region.xy)));
 }
 
 void BlurR32f() {
-    ivec2 t = CG_TEXEL.xy, n = SRC_R32F_SIZE();
-    vec4 sum = SRC_R32F_LOAD(t);
-    float total = 1.0;
-    for (int k = 1; k <= min(_Radius, 64); k++) {   // CgGpuOps.blur's 3 sigma, sigma at most 21
-        float w = gaussian(k);
-        sum += (SRC_R32F_LOAD(tap(t, -k, n)) + SRC_R32F_LOAD(tap(t, k, n))) * w;
-        total += 2.0 * w;
-    }
-    DST_R32F_WRITE(sum / total);
+    if (!CG_IN_RANGE) return;   // general, for STORE where the region lands: no barriers
+    DST_R32F_STORE(CG_TEXEL.xy + ivec2(_Target.xy), blurAt(CG_TEXEL.xy + ivec2(_Region.xy)));
+}
+
+void ReduceRgba8() {
+    if (!CG_IN_RANGE) return;   // general, for STORE where the region lands: no barriers
+    ivec2 t = CG_TEXEL.xy + ivec2(_Region.xy);
+    DST_RGBA8_STORE(t, reduceAt(t));
+}
+
+void ReduceRgba16f() {
+    if (!CG_IN_RANGE) return;   // general, for STORE where the region lands: no barriers
+    ivec2 t = CG_TEXEL.xy + ivec2(_Region.xy);
+    DST_RGBA16F_STORE(t, reduceAt(t));
+}
+
+void ReduceR16f() {
+    if (!CG_IN_RANGE) return;   // general, for STORE where the region lands: no barriers
+    ivec2 t = CG_TEXEL.xy + ivec2(_Region.xy);
+    DST_R16F_STORE(t, reduceAt(t));
+}
+
+void ReduceR32f() {
+    if (!CG_IN_RANGE) return;   // general, for STORE where the region lands: no barriers
+    ivec2 t = CG_TEXEL.xy + ivec2(_Region.xy);
+    DST_R32F_STORE(t, reduceAt(t));
+}
+
+void ShrinkRgba8() {
+    if (!CG_IN_RANGE) return;   // general, for STORE where the region lands: no barriers
+    DST_RGBA8_STORE(CG_TEXEL.xy + ivec2(_Region.xy), shrinkAt(CG_TEXEL.xy));
+}
+
+void ShrinkRgba16f() {
+    if (!CG_IN_RANGE) return;   // general, for STORE where the region lands: no barriers
+    DST_RGBA16F_STORE(CG_TEXEL.xy + ivec2(_Region.xy), shrinkAt(CG_TEXEL.xy));
+}
+
+void ShrinkR16f() {
+    if (!CG_IN_RANGE) return;   // general, for STORE where the region lands: no barriers
+    DST_R16F_STORE(CG_TEXEL.xy + ivec2(_Region.xy), shrinkAt(CG_TEXEL.xy));
+}
+
+void ShrinkR32f() {
+    if (!CG_IN_RANGE) return;   // general, for STORE where the region lands: no barriers
+    DST_R32F_STORE(CG_TEXEL.xy + ivec2(_Region.xy), shrinkAt(CG_TEXEL.xy));
 }

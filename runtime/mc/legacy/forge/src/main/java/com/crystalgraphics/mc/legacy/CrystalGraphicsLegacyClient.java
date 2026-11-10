@@ -1,6 +1,6 @@
 package com.crystalgraphics.mc.legacy;
 
-import com.crystalgraphics.mc.legacy.platform.service.ReloadService;
+import com.crystalgraphics.mc.legacy.platform.service.HostResourcesLegacy;
 import com.crystalgraphics.mc.shared.FmlEvents;
 import com.crystalgraphics.mc.shared.VariantEntry;
 
@@ -9,6 +9,6 @@ public final class CrystalGraphicsLegacyClient implements VariantEntry {
 
     @Override
     public void start(Object context) {
-        ((FmlEvents) context).on("FMLInitializationEvent", event -> ReloadService.attachToResourceManager());
+        ((FmlEvents) context).on("FMLInitializationEvent", event -> HostResourcesLegacy.listenForReloads());
     }
 }

@@ -89,7 +89,8 @@ public final class CgRenderStage {
 
     /**
      * Over the in-game HUD, once it has drawn: under any screen. A GUI stage: its frame's camera is orthographic over
-     * the GUI's logical pixels, origin top left ({@link #fireOverlay}). Not fired while the HUD is hidden (F1).
+     * the window's device pixels, origin top left; {@code frame.guiScaledCanvas()} draws GUI-scaled instead
+     * ({@link #fireOverlay}). Not fired while the HUD is hidden (F1).
      *
      * <pre>{@code
      * CgRenderStage.HUD.register(0, frame -> frame.callback("mymod:badge", this::drawBadge));
@@ -99,6 +100,29 @@ public final class CgRenderStage {
 
     /** Over a screen, once it has drawn: an inventory, a menu, another mod's. A GUI stage, as {@link #HUD}. */
     public static final CgRenderStage SCREEN = define("crystalgraphics:screen");
+
+    /**
+     * The order on a GUI stage for what follows a point in the world (a damage number, a name plate, a marker): under
+     * the {@link #VIEWPORT_WIDGETS}, so a menu or a window covers it. Unreal's screen-space widget components, in their
+     * shared layer at {@code LayerZOrder} -100 under the viewport's widgets ({@code UWidgetComponent},
+     * {@code SGameLayerManager::AddLayerForPlayer}).
+     *
+     * <pre>{@code
+     * CgRenderStage.HUD.register(CgRenderStage.WORLD_WIDGETS, frame -> drawDamageNumbers(frame));
+     * CgRenderStage.HUD.register(CgRenderStage.WORLD_WIDGETS + 1, frame -> drawNamePlates(frame));   // over the numbers
+     * }</pre>
+     */
+    public static final int WORLD_WIDGETS = -100;
+
+    /**
+     * The order on a GUI stage of the game's own interface: windows, menus, the HUD's panels, as Unreal adds a widget
+     * to the viewport at ZOrder 0. Lower draws under them, higher over them.
+     *
+     * <pre>{@code
+     * CgRenderStage.HUD.register(CgRenderStage.VIEWPORT_WIDGETS + 1, frame -> drawCursorTrail(frame));   // over every window
+     * }</pre>
+     */
+    public static final int VIEWPORT_WIDGETS = 0;
 
     /** The GUI stages' projection, refilled each firing. Render thread. */
     private static final Matrix4f OVERLAY_PROJECTION = new Matrix4f();
@@ -297,17 +321,18 @@ public final class CgRenderStage {
 
     /**
      * Fills this stage's frame as a GUI's and fires it: the world's partial tick, the host's {@code mainFramebuffer} of
-     * {@code width x height} device pixels, and a camera orthographic over {@code width / scale x height / scale}
-     * logical pixels, origin top left. What a host's GUI hook calls for {@link #HUD} and {@link #SCREEN}.
+     * {@code width x height} device pixels, a camera orthographic over those pixels, origin top left, and {@code scale},
+     * the host GUI's, as {@link CgHostFrame#guiScale()}. What a host's GUI hook calls for {@link #HUD} and
+     * {@link #SCREEN}. The camera is the window's, as Unreal's canvas is; a renderer wanting the GUI's takes
+     * {@code frame.guiScaledCanvas()}.
      *
      * <pre>{@code
      * CgRenderStage.HUD.fireOverlay(window.getWidth(), window.getHeight(), (float) window.getGuiScale(), mainFbo);
      * }</pre>
      */
     public void fireOverlay(int width, int height, float scale, int mainFramebuffer) {
-        float logical = Math.max(1e-3f, scale);
-        host.set(WORLD_OPAQUE.host.partialTick(), width, height, mainFramebuffer).view().set(0d, 0d, 0d,
-                OVERLAY_VIEW.identity(), OVERLAY_PROJECTION.setOrtho(0f, width / logical, height / logical, 0f, -1f, 1f));
+        host.set(WORLD_OPAQUE.host.partialTick(), width, height, mainFramebuffer).guiScale(scale).view().set(0d, 0d, 0d,
+                OVERLAY_VIEW.identity(), OVERLAY_PROJECTION.setOrtho(0f, width, height, 0f, -1f, 1f));
         fire();
     }
 
@@ -383,7 +408,12 @@ public final class CgRenderStage {
                 entry.lastFrame = hostFrame;
             }
             try (CgTrace.Zone z = CgTrace.zone(CgChannels.WORLD, entry.zone)) {
-                entry.renderer.render(frame);
+                frame.turnBegins();
+                try {
+                    entry.renderer.render(frame);
+                } finally {
+                    frame.turnEnds();
+                }
             }
         }
     }

@@ -547,6 +547,17 @@ public final class CgSequencePlayer {
         return new CgSequencePlacement(parent(binding, path), definition, new float[3], null);
     }
 
+    /**
+     * {@link #attachment} that answers false while {@code binding} resolves nothing (a role left empty, a spawnable not
+     * spawned or gone), where the attachment stands at the origin: what rides a point and must know it is gone, as a
+     * sound's {@code attach} key is detached.
+     */
+    public CgAttachment pointOf(CgSequenceBinding binding, String path) {
+        CgSequencePlacement.Parent parent = parent(binding, path);
+        CgSequencePlacement at = new CgSequencePlacement(parent, definition, new float[3], null);
+        return (point, turn) -> parent.get() != null && at.place(point, turn);
+    }
+
     /** What a binding places under, resolved each frame; a role socket it cannot place fails here, naming it. */
     private CgSequencePlacement.Parent parent(CgSequenceBinding b, String path) {
         switch (b.subject()) {

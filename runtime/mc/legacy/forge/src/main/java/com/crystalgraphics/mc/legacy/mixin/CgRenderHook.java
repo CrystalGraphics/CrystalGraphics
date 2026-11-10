@@ -9,7 +9,7 @@ import com.crystalgraphics.mc.legacy.platform.world.TexturesLegacy;
 import com.crystalgraphics.mc.legacy.platform.world.WorldEventsLegacy;
 import com.crystalgraphics.render.stage.CgHostFrame;
 import com.crystalgraphics.lifecycle.CgEngineLifecycle;
-import com.crystalgraphics.platform.CgPlatform;
+import com.crystalgraphics.lifecycle.CgGraphicsLifecycle;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.EntityRenderer;
 import org.spongepowered.asm.mixin.Mixin;
@@ -67,7 +67,7 @@ public abstract class CgRenderHook {
         Minecraft mc = Minecraft.getMinecraft();
         CgEngineLifecycle.advanceGraphicsContext(mc.displayWidth, mc.displayHeight);
         LoadingScreenLegacy.draw(mc);
-        CgPlatform.lifecycle().onFrameRendered();
+        CgGraphicsLifecycle.tickFrame();
         CgLoadingScreen.runHeld();
     }
 }

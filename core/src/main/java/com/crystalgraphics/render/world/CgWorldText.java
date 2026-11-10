@@ -3,21 +3,21 @@ package com.crystalgraphics.render.world;
 import com.crystalgraphics.api.font.CgFont;
 import com.crystalgraphics.api.font.CgFontFamily;
 import com.crystalgraphics.api.text.CgTextLayout;
-import com.crystalgraphics.gl.render.CgQuadRenderer;
+import com.crystalgraphics.render.canvas.CgQuadRecord;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
 import com.crystalgraphics.render.draw.CgPrimitiveTable;
 import com.crystalgraphics.render.graph.CgBufferDesc;
 import com.crystalgraphics.render.graph.CgBufferUsage;
 import com.crystalgraphics.render.graph.CgGraphBuffer;
 import com.crystalgraphics.render.graph.CgLoad;
-import com.crystalgraphics.render.graph.CgPassRecorder;
+import com.crystalgraphics.render.canvas.CgCanvas;
 import com.crystalgraphics.render.graph.CgRecording;
 import com.crystalgraphics.render.stage.CgHostView;
 import com.crystalgraphics.render.stage.CgStageFrame;
 import com.crystalgraphics.text.atlas.CgGlyphAtlas;
 import com.crystalgraphics.text.render.CgTextCapture;
-import com.crystalgraphics.text.render.CgTextRenderer;
-import com.crystalgraphics.text.render.context.CgTextRenderContext;
+import com.crystalgraphics.text.render.CgTextBatch;
+import com.crystalgraphics.text.render.CgTextDraw;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 import org.joml.Matrix4f;
@@ -35,9 +35,9 @@ import java.util.function.Consumer;
  * Text in the world: labels {@link CgWorldRenderer#text} queues for the frame, drawn into each transparent world stage
  * depth-tested against the scene, as Minecraft's name tags: their text's depth before the stage's transparent draws and
  * glows, which hides a glow behind it from bloom too, and their colour after every transparent draw.
- * Each label is a queued {@link CgTextRenderer.Draw} of one renderer, drawn at every firing under that firing's camera.
+ * Each label is a queued {@link CgTextDraw}, drawn at every firing under that firing's camera.
  *
- * <p>Labels are retained: a label's glyphs are captured once ({@link CgTextRenderer#capture}) into a buffer per batch
+ * <p>Labels are retained: a label's glyphs are captured once ({@link CgTextBatch#capture}) into a buffer per batch
  * shared by every label, and drawn from there by {@code text.shader}'s {@code WORLD_LABEL} variant, each placed by its
  * label's matrix. A frame whose labels changed nothing but where they stand writes one matrix a label.</p>
  */
@@ -46,8 +46,8 @@ public final class CgWorldText {
     /** Where a label's point sits on it: the middle of the block, its top or its bottom. */
     private static final float CENTRE = 0.5f;
 
-    private static final int RECORD = CgQuadRenderer.Record.FLOATS;
-    private static final int NODE = CgQuadRenderer.Record.NODE;
+    private static final int RECORD = CgQuadRecord.FLOATS;
+    private static final int NODE = CgQuadRecord.NODE;
     private static final int OBJECT = CgPrimitiveTable.FLOATS;
     /** The ranks a label's depth pass draws, from 0: the lines under the text, its outline, its fill, the lines over it. */
     private static final int TEXT_RANKS = 3;
@@ -58,13 +58,14 @@ public final class CgWorldText {
 
     private final List<Label> labels = new ArrayList<>();
     private int count;
-    private final Consumer<CgTextRenderer.Draw> queue = this::submitted;
-    private final CgPassRecorder recorder = new CgPassRecorder();
-    private final Matrix4f projection = new Matrix4f();
+    private final Consumer<CgTextDraw> queue = this::submitted;
+    private final CgCanvas recorder = new CgCanvas();
+    private static final Matrix4f NO_VIEW = new Matrix4f();
     private final Matrix4f place = new Matrix4f();
     private final Vector3f eye = new Vector3f();
     private final Quaternionf facing = new Quaternionf();
-    private CgTextRenderer renderer;
+    /** Captures the labels' glyphs, under the firing's projection: a label's tier is fixed, its pose its own. */
+    private CgTextBatch text;
 
     // Retained: what each label drew last, the batches its records are in, and every label's matrix.
     private final List<Kept> kept = new ArrayList<>();
@@ -82,16 +83,13 @@ public final class CgWorldText {
 
     /** The next label to fill: one of the frame's, reused frame to frame. */
     Label next() {
-        if (renderer == null) {
-            renderer = CgTextRenderer.createManualSized();
-            renderer.context(CgTextRenderContext.world(projection, 1, 1));
-        }
-        if (count == labels.size()) labels.add(new Label(renderer.queuedDraw(queue)));
+        if (text == null) text = new CgTextBatch(null);
+        if (count == labels.size()) labels.add(new Label(CgTextDraw.queued(queue)));
         return labels.get(count).reset();
     }
 
     /** A label's draw submitted: kept if it is the one {@link #next} handed out, else ignored. */
-    private void submitted(CgTextRenderer.Draw draw) {
+    private void submitted(CgTextDraw draw) {
         if (count < labels.size() && labels.get(count).draw == draw) count++;
     }
 
@@ -131,9 +129,7 @@ public final class CgWorldText {
     }
 
     private void begin(CgStageFrame stage, CgHostView view) {
-        int w = Math.max(1, stage.host().width()), h = Math.max(1, stage.host().height());
-        projection.set(view.projection());
-        renderer.context().updateProjection(projection, w, h);
+        text.camera(view.projection(), NO_VIEW, stage.host().width(), stage.host().height());
     }
 
     /** Into {@code m}: view, the label's offset from the eye, its turn or the view's undone, its size and anchor. */
@@ -162,7 +158,7 @@ public final class CgWorldText {
             for (int i = 0; i < count; i++) {
                 Label label = labels.get(i);
                 if (i == keptCount) {
-                    if (keptCount == kept.size()) kept.add(new Kept(renderer.retainedDraw()));
+                    if (keptCount == kept.size()) kept.add(new Kept(CgTextDraw.detached()));
                     keptCount++;
                 }
                 Kept k = kept.get(i);
@@ -177,7 +173,7 @@ public final class CgWorldText {
                 k.hidden = 0;
                 k.drawn.set(label.draw);
                 try (CgTrace.Zone capture = CgTrace.zone(CgChannels.WORLD, "world.text.capture")) {
-                    k.whole = renderer.capture(label.draw, k.capture);
+                    k.whole = text.capture(label.draw, k.capture);
                 }
                 place(i, k);
                 captured++;
@@ -249,9 +245,9 @@ public final class CgWorldText {
                 Batch batch = batches.get(b);
                 if (batch.used <= batch.holes) continue;
                 if (!depth) {
-                    renderer.drawCaptured(chunks, batch.key, batch.gpu, batch.used, matrixBuffer);
+                    CgTextBatch.drawCaptured(chunks, batch.key, batch.gpu, batch.used, matrixBuffer);
                 } else if (batch.rank >= 0 && batch.rank <= TEXT_RANKS) {
-                    renderer.drawCapturedDepth(chunks, batch.key, batch.gpu, batch.used, matrixBuffer);
+                    CgTextBatch.drawCapturedDepth(chunks, batch.key, batch.gpu, batch.used, matrixBuffer);
                 }
             }
             recorder.add(chunks.end());
@@ -336,7 +332,7 @@ public final class CgWorldText {
         batch.dirty(0, at);
     }
 
-    /** Drops the frame's labels, the renderer and the retained buffers: at context teardown, which frees their storage. */
+    /** Drops the frame's labels and the retained buffers: at context teardown, which frees their storage. */
     void release() {
         clear();
         labels.clear();
@@ -345,12 +341,12 @@ public final class CgWorldText {
         batches.clear();
         matrixBuffer = null;
         matrixCapacity = 0;
-        renderer = null;
+        text = null;
     }
 
     /** One label as last captured, and where its records are. */
     private static final class Kept {
-        final CgTextRenderer.Draw drawn;
+        final CgTextDraw drawn;
         final CgTextCapture capture = new CgTextCapture();
         boolean whole;
         /** Frames it has been gone from the frame, 0 while drawn. */
@@ -361,7 +357,7 @@ public final class CgWorldText {
         int[] capacity = new int[4];
         boolean[] taken = new boolean[4];
 
-        Kept(CgTextRenderer.Draw drawn) {
+        Kept(CgTextDraw drawn) {
             this.drawn = drawn;
         }
 
@@ -461,16 +457,16 @@ public final class CgWorldText {
 
     /**
      * One label's place in the world: a point, a height, which point of the text stands there, and a turn. How it
-     * draws is its {@link CgTextRenderer.Draw}, from {@link #font}, {@link #family} or {@link #draw()}, submitted to
+     * draws is its {@link CgTextDraw}, from {@link #font}, {@link #family} or {@link #draw()}, submitted to
      * queue it. Build it from {@link CgWorldRenderer#text}.
      */
     public static final class Label {
-        private final CgTextRenderer.Draw draw;
+        private final CgTextDraw draw;
         double x, y, z;
         float height = 0.25f, anchorX = CENTRE, anchorY = CENTRE;
         Quaternionfc rotation;
 
-        Label(CgTextRenderer.Draw draw) {
+        Label(CgTextDraw draw) {
             this.draw = draw;
         }
 
@@ -513,18 +509,18 @@ public final class CgWorldText {
             return this;
         }
 
-        /** Its draw, in {@code font}: every field a {@link CgTextRenderer.Draw} has. Its {@code submit()} queues it. */
-        public CgTextRenderer.Draw font(CgFont font) {
+        /** Its draw, in {@code font}: every field a {@link CgTextDraw} has. Its {@code submit()} queues it. */
+        public CgTextDraw font(CgFont font) {
             return draw.font(font);
         }
 
         /** Its draw, in {@code family}, falling back across its faces; size it with {@code targetPx}. */
-        public CgTextRenderer.Draw family(CgFontFamily family) {
+        public CgTextDraw family(CgFontFamily family) {
             return draw.family(family);
         }
 
         /** Its draw as it stands: for a layout, whose fonts are its own. */
-        public CgTextRenderer.Draw draw() {
+        public CgTextDraw draw() {
             return draw;
         }
     }

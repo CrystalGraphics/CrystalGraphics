@@ -1,4 +1,4 @@
-// CgQuadRenderer's shader environment.
+// CgQuadBatch's shader environment.
 //
 // INJECTED BY `#pragma cg_use quad`, immediately after the instance buffer's own
 // declaration -- see CgEngineBufferRegistry, which holds the path, and
@@ -11,11 +11,11 @@
 // `#ifdef CG_FRAGMENT_STAGE`, which raw .vert/.frag get none of.
 #pragma once
 
-// -- CgQuadRenderer convenience macros ---------------------------------------
-// CgQuadRenderer (gl/render/CgQuadRenderer.java) is a general SSBO-backed instanced
+// -- CgQuadBatch convenience macros ---------------------------------------
+// CgQuadBatch (render/canvas/CgQuadBatch.java) is a general SSBO-backed instanced
 // quad renderer with a fixed per-instance schema: vec3 origin/right/up (world-space quad
 // origin + two edge vectors, CPU-baked per instance via Quad.pose(...); three vectors rather than a mat4), vec2 uv0/uv1, vec4 color. These
-// macros hardcode both the attach() macro name (QUAD_DATA, = CgQuadRenderer.MACRO_NAME --
+// macros hardcode both the attach() macro name (QUAD_DATA, = CgQuadBatch.MACRO_NAME --
 // fixed, not caller-chosen) and CG_INSTANCE_ID, so no `QuadInstance inst = QUAD_DATA(...)`
 // declaration is needed in the shader at all. Zero-argument, so QUAD_DATA(CG_INSTANCE_ID)
 // is textually repeated per use; this is the same repeated-texelFetch-on-the-same-index

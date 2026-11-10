@@ -6,27 +6,15 @@ com/crystalgraphics/platform/CgPlatform
   method public,static ensureCreated ()V
   method public,static get (Lcom/crystalgraphics/platform/CgService;)Ljava/lang/Object;
   method public,static gl ()Lcom/crystalgraphics/platform/gl/CgGLBackend;
-  method public,static input ()Lcom/crystalgraphics/platform/service/CgInputService;
   method public,static isProvided (Lcom/crystalgraphics/platform/CgService;)Z
-  method public,static lifecycle ()Lcom/crystalgraphics/platform/service/CgLifecycleService;
   method public,static provide (Lcom/crystalgraphics/platform/CgService;Ljava/lang/Object;)V
   method public,static register (Lcom/crystalgraphics/platform/CgPlatformService;)V
-  method public,static reload ()Lcom/crystalgraphics/platform/service/CgReloadService;
-  method public,static rendering ()Lcom/crystalgraphics/platform/service/CgRenderingService;
-  method public,static resources ()Lcom/crystalgraphics/platform/service/CgResourceService;
   method public,static services ()Ljava/util/List;
-  method public,static sound ()Lcom/crystalgraphics/platform/service/CgSoundService;
 com/crystalgraphics/platform/CgPlatformService
   access public,abstract,interface
   extends java/lang/Object
   method public,abstract capabilities ()Lcom/crystalgraphics/platform/gl/CgGLContext;
   method public,abstract gl ()Lcom/crystalgraphics/platform/gl/CgGLBackend;
-  method public,abstract input ()Lcom/crystalgraphics/platform/service/CgInputService;
-  method public,abstract lifecycle ()Lcom/crystalgraphics/platform/service/CgLifecycleService;
-  method public,abstract reload ()Lcom/crystalgraphics/platform/service/CgReloadService;
-  method public,abstract rendering ()Lcom/crystalgraphics/platform/service/CgRenderingService;
-  method public,abstract resources ()Lcom/crystalgraphics/platform/service/CgResourceService;
-  method public,abstract sound ()Lcom/crystalgraphics/platform/service/CgSoundService;
 com/crystalgraphics/platform/CgService
   access public,final
   extends java/lang/Object
@@ -3168,6 +3156,18 @@ com/crystalgraphics/platform/gl/tracked/tracker/CgTrackerStats
   field public uploadBreaks J
   method public <init> ()V
   method public toString ()Ljava/lang/String;
+com/crystalgraphics/platform/input/CgClipboard
+  access public,final
+  extends java/lang/Object
+  field public,static,final HOST Lcom/crystalgraphics/platform/CgService;
+  method public,static get ()Ljava/lang/String;
+  method public,static set (Ljava/lang/String;)V
+com/crystalgraphics/platform/input/CgClipboard$Host
+  access public,abstract,interface
+  extends java/lang/Object
+  field public,static,final NONE Lcom/crystalgraphics/platform/input/CgClipboard$Host;
+  method public,abstract get ()Ljava/lang/String;
+  method public,abstract set (Ljava/lang/String;)V
 com/crystalgraphics/platform/input/CgGlfwKeyCodes
   access public,final
   extends java/lang/Object
@@ -3175,6 +3175,28 @@ com/crystalgraphics/platform/input/CgGlfwKeyCodes
   field public,static,final UNMAPPED_CG [I
   method public,static toCg (I)I
   method public,static toGlfw (I)I
+com/crystalgraphics/platform/input/CgInput
+  access public,final
+  extends java/lang/Object
+  field public,static,final HOST Lcom/crystalgraphics/platform/CgService;
+  method public,static isKeyDown (I)Z
+  method public,static isMouseDown (I)Z
+  method public,static key (I)I
+  method public,static modifiers ()I
+  method public,static mouseButton (I)I
+  method public,static mouseButtons ()I
+  method public,static pointerGrabbed ()Z
+com/crystalgraphics/platform/input/CgInput$Host
+  access public,abstract,interface
+  extends java/lang/Object
+  field public,static,final NONE Lcom/crystalgraphics/platform/input/CgInput$Host;
+  method public,abstract isKeyDown (I)Z
+  method public,abstract isMouseDown (I)Z
+  method public,abstract key (I)I
+  method public,abstract modifiers ()I
+  method public,abstract mouseButton (I)I
+  method public,abstract mouseButtons ()I
+  method public,abstract pointerGrabbed ()Z
 com/crystalgraphics/platform/input/CgInputListener
   access public,abstract,interface
   extends java/lang/Object
@@ -3188,7 +3210,6 @@ com/crystalgraphics/platform/input/CgInputListener
 com/crystalgraphics/platform/input/CgInputStage
   access public,final
   extends java/lang/Object
-  field public,static,final HOST Lcom/crystalgraphics/platform/CgService;
   field public,static,final SCREEN Lcom/crystalgraphics/platform/input/CgInputStage;
   method public character (Lcom/crystalgraphics/platform/input/CgSystemInput$Keyboard$Event;)Z
   method public composition (Ljava/lang/String;I)Z
@@ -3201,12 +3222,6 @@ com/crystalgraphics/platform/input/CgInputStage
   method public scrolled (Lcom/crystalgraphics/platform/input/CgSystemInput$Mouse$Event;)Z
   method public wanted ()Z
   method public,static define (Ljava/lang/String;)Lcom/crystalgraphics/platform/input/CgInputStage;
-  method public,static pointerGrabbed ()Z
-com/crystalgraphics/platform/input/CgInputStage$Host
-  access public,abstract,interface
-  extends java/lang/Object
-  field public,static,final NONE Lcom/crystalgraphics/platform/input/CgInputStage$Host;
-  method public,abstract pointerGrabbed ()Z
 com/crystalgraphics/platform/input/CgInputStage$Registration
   access public,abstract,interface
   extends java/lang/Object
@@ -4733,6 +4748,21 @@ com/crystalgraphics/platform/service/CgHostPaint$Host
   field public,static,final NONE Lcom/crystalgraphics/platform/service/CgHostPaint$Host;
   method public,abstract enter ()V
   method public,abstract leave ()V
+com/crystalgraphics/platform/service/CgHostResources
+  access public,final
+  extends java/lang/Object
+  field public,static,final HOST Lcom/crystalgraphics/platform/CgService;
+  method public,static host ()Lcom/crystalgraphics/platform/service/CgHostResources$Host;
+  method public,static namespaces ()Ljava/util/Set;
+  method public,static open (Ljava/lang/String;Ljava/lang/String;)Ljava/io/InputStream;
+  method public,static openStack (Ljava/lang/String;Ljava/lang/String;)Ljava/util/List;
+com/crystalgraphics/platform/service/CgHostResources$Host
+  access public,abstract,interface
+  extends java/lang/Object
+  field public,static,final NONE Lcom/crystalgraphics/platform/service/CgHostResources$Host;
+  method public,abstract namespaces ()Ljava/util/Set;
+  method public,abstract open (Ljava/lang/String;Ljava/lang/String;)Ljava/io/InputStream;
+  method public,abstract openStack (Ljava/lang/String;Ljava/lang/String;)Ljava/util/List;
 com/crystalgraphics/platform/service/CgHostWindow
   access public,final
   extends java/lang/Object
@@ -4759,23 +4789,6 @@ com/crystalgraphics/platform/service/CgI18n$Host
   field public,static,final NONE Lcom/crystalgraphics/platform/service/CgI18n$Host;
   method public language ()Ljava/lang/String;
   method public,abstract translate (Ljava/lang/String;)Ljava/lang/String;
-com/crystalgraphics/platform/service/CgInputService
-  access public,abstract,interface
-  extends java/lang/Object
-  method public,abstract getClipboard ()Ljava/lang/String;
-  method public,abstract getCurrentModifiers ()I
-  method public,abstract howManyMouseButtons ()I
-  method public,abstract isKeyDown (I)Z
-  method public,abstract isMouseDown (I)Z
-  method public,abstract setClipboard (Ljava/lang/String;)V
-  method public,abstract translateKeyboardCodes (I)I
-  method public,abstract translateMouseCodes (I)I
-com/crystalgraphics/platform/service/CgLifecycleService
-  access public,abstract,interface
-  extends java/lang/Object
-  method public,abstract onContextDestroy ()V
-  method public,abstract onFrameRendered ()V
-  method public,abstract onResize (II)V
 com/crystalgraphics/platform/service/CgModLoader
   access public,final
   extends java/lang/Object
@@ -4828,21 +4841,6 @@ com/crystalgraphics/platform/service/CgProcessExit$Host
   extends java/lang/Object
   field public,static,final NONE Lcom/crystalgraphics/platform/service/CgProcessExit$Host;
   method public,abstract halt (I)V
-com/crystalgraphics/platform/service/CgReloadService
-  access public,abstract,interface
-  extends java/lang/Object
-  method public,abstract onReload ()V
-com/crystalgraphics/platform/service/CgRenderingService
-  access public,abstract,interface
-  extends java/lang/Object
-  method public,abstract getDisplayHeight ()I
-  method public,abstract getDisplayWidth ()I
-com/crystalgraphics/platform/service/CgResourceService
-  access public,abstract,interface
-  extends java/lang/Object
-  method public,abstract namespaces ()Ljava/util/Set;
-  method public,abstract openStack (Ljava/lang/String;Ljava/lang/String;)Ljava/util/List;
-  method public,abstract openStream (Ljava/lang/String;Ljava/lang/String;)Ljava/io/InputStream;
 com/crystalgraphics/platform/service/CgServers
   access public,final
   extends java/lang/Object
@@ -4876,10 +4874,6 @@ com/crystalgraphics/platform/service/CgShaderPacks$Host
   method public,abstract mod ()Ljava/lang/String;
   method public,abstract packInUse ()Z
   method public,abstract renderingShadowPass ()Z
-com/crystalgraphics/platform/service/CgSoundService
-  access public,abstract,interface
-  extends java/lang/Object
-  method public,abstract play (Ljava/lang/String;)V
 com/crystalgraphics/platform/service/CgStorageLayout
   access public,final
   extends java/lang/Object

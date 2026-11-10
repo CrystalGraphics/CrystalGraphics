@@ -174,8 +174,8 @@ public final class CgBufferWriter {
      * helpers — which is where a silent red/blue swap or a dropped alpha lives. One implementation,
      * one channel order.</p>
      *
-     * <p><b>Alpha is the top byte</b> ({@code 0xAARRGGBB}), matching {@code CgQuadRenderer.Quad#color}
-     * and {@code CgVectorRenderer.Curve#color}. The GLSL side receives {@code (r, g, b, a)} — the
+     * <p><b>Alpha is the top byte</b> ({@code 0xAARRGGBB}), matching {@code CgQuadBatch.Quad#color}
+     * and {@code CgCurveBatch.Curve#color}. The GLSL side receives {@code (r, g, b, a)} — the
      * packing order and the vector order deliberately differ, which is exactly why this is worth
      * writing once.</p>
      *
@@ -187,7 +187,7 @@ public final class CgBufferWriter {
     public CgBufferWriter color(String fieldName, int argb) {
         int base = resolveField(fieldName, CgGpuType.VEC4);
         // Division rather than a reciprocal multiply, deliberately: this replaced hand-rolled
-        // "/ 255f" unpacking in CgQuadRenderer, which is the path every glyph in the engine draws
+        // "/ 255f" unpacking in CgQuadBatch, which is the path every glyph in the engine draws
         // through. 1f/255f is not exactly representable, so a reciprocal multiply would shift some
         // channels by an ULP — a real, if invisible, change to already-shipped text output.
         staging.setFloatAt(base + 0, ((argb >>> 16) & 0xFF) / 255f);
@@ -452,7 +452,7 @@ public final class CgBufferWriter {
      *
      * <p>Every named write costs a {@code getField(String)} lookup plus a type check. That is the right
      * default — it is checked, self-describing, and costs nothing against a handful of records. It stops
-     * being the right default in an instance loop: {@code CgVectorRenderer} writes nine fields per
+     * being the right default in an instance loop: {@code CgCurveBatch} writes nine fields per
      * triangle, so a 25,576-triangle frame paid <b>230,000 string-keyed lookups</b>, which measured as the
      * bulk of its per-instance cost.</p>
      *
