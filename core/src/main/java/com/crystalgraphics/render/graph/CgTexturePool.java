@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.graph;
 
+import com.crystalgraphics.platform.rhi.CgRHI;
 import java.util.function.ToLongFunction;
 import java.util.function.Consumer;
 
@@ -7,7 +8,6 @@ import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.gl.buffer.CgReadback;
 import com.crystalgraphics.gl.framebuffer.CgFrameBuffer;
-import com.crystalgraphics.platform.gl.CgGLImports;
 import com.crystalgraphics.variable.CgVar;
 
 import java.util.ArrayList;
@@ -89,7 +89,7 @@ final class CgTexturePool {
     static CgFrameBuffer create(String name, CgTextureDesc desc) {
         if (desc.isArray()) return CgFrameBuffer.createArray(name, desc.width(), desc.height(), desc.layers(), desc.format());
         return desc.isVolume() ? CgFrameBuffer.createVolume(name, desc.width(), desc.height(), desc.depth(), desc.format())
-                : CgGLImports.installed() ? CgFrameBuffer.createOnDevice(name, desc.width(), desc.height(), desc.format(),
+                : CgRHI.installed() ? CgFrameBuffer.createOnDevice(name, desc.width(), desc.height(), desc.format(),
                 desc.levels()) : CgFrameBuffer.createOwned(name, desc.width(), desc.height(), desc.format(), desc.levels());
     }
 

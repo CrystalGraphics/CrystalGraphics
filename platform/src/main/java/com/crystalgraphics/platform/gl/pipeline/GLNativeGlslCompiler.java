@@ -40,7 +40,7 @@ import static com.crystalgraphics.platform.gl.driver.GLC.GL_UNIFORM_BLOCK;
  * <pre>{@code
  * GLNativeTranslator translator = new GLNativeTranslator();
  * CgGLDevice device = new CgGLDevice(driver, translator, w, h, false, GLHostState.byQuery(driver));
- * device.installBesideCgGL(new GLNativeGlslCompiler(device.driver()));
+ * device.install(new GLNativeGlslCompiler(device.driver()));
  * // ... once the toolchain lands:
  * translator.spirv(toolchain.translator());
  * CgGlslCompiler.install(toolchain.compiler(CgCacheDirectory.of("spirv")));
@@ -54,7 +54,6 @@ import static com.crystalgraphics.platform.gl.driver.GLC.GL_UNIFORM_BLOCK;
  *   <li>Refused, naming the line: a binding it cannot class, a non-literal kernel binding (checked mode), a
  *       {@code push_constant} other than the kernel's, a vertex input {@code attribLocations} does not place. The
  *       bindless heap (set 3) is never declared: {@code CG_BINDLESS} is not defined.</li>
- *   <li>{@link #compile} and {@link #compileCompute}, GL's rules for the tracked backend, are not answered.</li>
  * </ul>
  */
 public final class GLNativeGlslCompiler implements CgGlslCompiler {

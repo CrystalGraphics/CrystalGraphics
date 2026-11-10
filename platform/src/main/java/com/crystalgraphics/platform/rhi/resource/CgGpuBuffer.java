@@ -62,7 +62,7 @@ public interface CgGpuBuffer extends CgRHIResource {
 
     /**
      * The whole buffer's memory, host-visible buffers only. Writes land at once, so a region the GPU may still
-     * read must not be written: the tracked backend writes only regions no unretired frame used.
+     * read must not be written: write only regions no unretired frame used.
      *
      * @throws IllegalStateException for a device-local buffer
      */

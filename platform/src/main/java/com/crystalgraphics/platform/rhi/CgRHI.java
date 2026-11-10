@@ -223,8 +223,16 @@ public interface CgRHI {
     boolean ownsSubmission();
 
     /**
+     * Whether every transition must be stated, layouts and attachments included (Vulkan). False where the device orders
+     * all but what a kernel's writes need itself (GL), so a frame graph states only those.
+     */
+    default boolean takesTransitions() {
+        return false;
+    }
+
+    /**
      * Whether binding layouts, shader modules and compute pipelines may be created on a thread other than the owner's,
-     * as Vulkan allows: the tracked backend then builds a kernel's on its compile worker, off the frame. False unless
+     * as Vulkan allows: a kernel's pipeline is then built on a compile worker, off the frame. False unless
      * the device says so.
      */
     default boolean createsOnAnyThread() {
@@ -279,9 +287,16 @@ public interface CgRHI {
                    boolean multiDrawIndirect, boolean indirectCount, boolean indirectFirstInstance,
                    boolean asyncCompute, boolean drawParameters, boolean independentBlend, boolean bindless) {
 
+        /**
+         * @param maxDynamicUniformBuffers dynamic uniform slots a pipeline's sets may hold together (Vulkan's
+         *                                 {@code maxDescriptorSetUniformBuffersDynamic}, at least 8)
+         * @param maxDynamicStorageBuffers the same of storage slots ({@code maxDescriptorSetStorageBuffersDynamic}, at
+         *                                 least 4)
+         */
         public record Limits(int maxTextureSize, int max3DTextureSize, int maxArrayLayers, int maxColorAttachments,
                              int maxSamples, int maxVertexAttributes, int maxTextureUnits, int maxUniformBlockSize,
-                             int maxUniformBufferBindings, int maxStorageBufferBindings, int maxTexelBufferElements,
+                             int maxUniformBufferBindings, int maxDynamicUniformBuffers, int maxStorageBufferBindings,
+                             int maxDynamicStorageBuffers, int maxTexelBufferElements,
                              int uniformOffsetAlignment, int storageOffsetAlignment, int texelOffsetAlignment,
                              int maxViewportSize, float maxAnisotropy, Compute compute) {}
 

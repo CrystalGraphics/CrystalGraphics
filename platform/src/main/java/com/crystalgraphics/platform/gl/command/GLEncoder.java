@@ -62,6 +62,10 @@ public final class GLEncoder implements CgCommandList {
 
     // the bindings a draw or dispatch commits
     private final GLBindingSet[] sets = new GLBindingSet[4];
+    /** Each set's dynamic offsets as last bound, and how many. */
+    private final int[][] setOffsets = new int[4][MAX_DYNAMIC];
+    private final int[] setOffsetCounts = new int[4];
+    private static final int MAX_DYNAMIC = 16;
     private final CgBindings pushed = new CgBindings();
     private boolean pushedSet;
     private boolean bindingsDirty;
@@ -115,8 +119,14 @@ public final class GLEncoder implements CgCommandList {
         pushDirty = true;
     }
 
-    private void setBindingSet(int set, CgBindingSet bindings) {
-        sets[set] = (GLBindingSet) bindings;
+    private void setBindingSet(int set, CgBindingSet bindings, int[] dynamicOffsets, int count) {
+        GLBindingSet s = (GLBindingSet) bindings;
+        if (count != s.dynamicCount || count > MAX_DYNAMIC) {
+            throw new IllegalArgumentException(s.label() + " takes " + s.dynamicCount + " dynamic offsets; " + count + " given");
+        }
+        sets[set] = s;
+        System.arraycopy(dynamicOffsets, 0, setOffsets[set], 0, count);
+        setOffsetCounts[set] = count;
         bindingsDirty = true;
     }
 
@@ -143,7 +153,7 @@ public final class GLEncoder implements CgCommandList {
             int pushSet = layout.pushSet();
             for (int s = 0; s < layout.sets().size(); s++) {
                 if (s == pushSet) {
-                    if (pushedSet) bind(s, pushed, points);
+                    if (pushedSet) bind(s, pushed, points, null, null);
                 } else if (sets[s] != null) {
                     GLBindingSet set = sets[s];
                     if (set.layout() instanceof GLBindingLayout l && l.heap) {
@@ -151,7 +161,7 @@ public final class GLEncoder implements CgCommandList {
                         gl.glBindBufferRange(GL_SHADER_STORAGE_BUFFER, points.point(s, 0, GLBindingPoints.STORAGE), heap.name,
                                 0, heap.size());
                     } else {
-                        bind(s, set.contents, points);
+                        bind(s, set.contents, points, set.dynamicIndex, setOffsets[s]);
                     }
                 }
             }
@@ -173,16 +183,17 @@ public final class GLEncoder implements CgCommandList {
         }
     }
 
-    private void bind(int set, CgBindings b, GLBindingPoints points) {
+    /** {@code b}'s entries at {@code set}'s points; a dynamic one ({@code dynamicIndex}) at its bound offset. */
+    private void bind(int set, CgBindings b, GLBindingPoints points, int[] dynamicIndex, int[] offsets) {
         for (int i = 0; i < b.count(); i++) {
             CgBindingLayout.Type type = b.type(i);
             int point = points.find(set, b.binding(i), GLBindingPoints.classOf(type));
             if (point < 0) continue;
             switch (type) {
                 case UNIFORM_BUFFER -> gl.glBindBufferRange(GL_UNIFORM_BUFFER, point, ((GLBuffer) b.buffer(i)).name,
-                        b.offset(i), b.size(i));
+                        dynamicIndex != null && dynamicIndex[i] >= 0 ? offsets[dynamicIndex[i]] : b.offset(i), b.size(i));
                 case STORAGE_BUFFER -> gl.glBindBufferRange(GL_SHADER_STORAGE_BUFFER, point, ((GLBuffer) b.buffer(i)).name,
-                        b.offset(i), b.size(i));
+                        dynamicIndex != null && dynamicIndex[i] >= 0 ? offsets[dynamicIndex[i]] : b.offset(i), b.size(i));
                 case TEXEL_BUFFER -> {
                     gl.glBindTextureUnit(point, ((GLBuffer) b.buffer(i)).texel(gl, b.offset(i), b.size(i), b.texelFormat(i)));
                     gl.glBindSampler(point, 0);
@@ -548,7 +559,10 @@ public final class GLEncoder implements CgCommandList {
 
         @Override public void pushBindings(CgBindings bindings) { GLEncoder.this.pushBindings(bindings); }
 
-        @Override public void setBindingSet(int set, CgBindingSet bindings) { GLEncoder.this.setBindingSet(set, bindings); }
+        @Override
+        public void setBindingSet(int set, CgBindingSet bindings, int[] dynamicOffsets, int count) {
+            GLEncoder.this.setBindingSet(set, bindings, dynamicOffsets, count);
+        }
 
         @Override public void pushConstants(int offset, int value) { pushConstant(offset, value); }
 
@@ -858,7 +872,10 @@ public final class GLEncoder implements CgCommandList {
 
         @Override public void pushBindings(CgBindings bindings) { GLEncoder.this.pushBindings(bindings); }
 
-        @Override public void setBindingSet(int set, CgBindingSet bindings) { GLEncoder.this.setBindingSet(set, bindings); }
+        @Override
+        public void setBindingSet(int set, CgBindingSet bindings, int[] dynamicOffsets, int count) {
+            GLEncoder.this.setBindingSet(set, bindings, dynamicOffsets, count);
+        }
 
         @Override public void pushConstants(int offset, int value) { pushConstant(offset, value); }
 

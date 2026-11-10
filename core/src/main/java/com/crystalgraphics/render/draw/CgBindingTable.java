@@ -1,11 +1,11 @@
 package com.crystalgraphics.render.draw;
 
+import com.crystalgraphics.platform.rhi.CgDeviceNames;
 import com.crystalgraphics.api.texture.CgSampler;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.gl.buffer.CgStreamBuffer;
 import com.crystalgraphics.gl.buffer.shader.CgShaderBuffer;
-import com.crystalgraphics.platform.gl.CgGLImports;
 import com.crystalgraphics.platform.rhi.CgDeviceSection;
 import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.rhi.command.CgCommandList;
@@ -793,7 +793,7 @@ public final class CgBindingTable {
                     CgDeviceSection.end();
                 }
                 // Destroyed once the frames that drew from it retire
-                if (CgGLImports.installed()) CgGLImports.get().forget(a.buffer);
+                CgDeviceNames.forget(a.buffer);
                 CgRHI.get().release(a.buffer);
                 CgTrace.add(CgChannels.GL, ARENA_GROWS, 1);
             }

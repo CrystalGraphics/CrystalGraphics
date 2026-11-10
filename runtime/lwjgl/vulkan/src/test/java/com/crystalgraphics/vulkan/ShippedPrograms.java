@@ -21,7 +21,7 @@ import java.util.Set;
 import java.util.stream.Stream;
 
 /**
- * Every program the shipped materials make, linked through whatever {@code CgGL} backend is installed: each pass, its
+ * Every program the shipped materials make, built on whatever device is installed: each pass, its
  * keyword variants, the generated depth pass and the world renderer's volume forms. For the tests that prove every one
  * compiles on a device.
  */

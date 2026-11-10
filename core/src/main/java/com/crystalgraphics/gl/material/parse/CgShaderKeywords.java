@@ -1,7 +1,7 @@
 package com.crystalgraphics.gl.material.parse;
 
 
-import com.crystalgraphics.platform.gl.CgGL;
+import com.crystalgraphics.platform.gl.driver.GLC;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.Locale;
@@ -16,37 +16,37 @@ public final class CgShaderKeywords {
     
     /** Depth / stencil compare functions. Also reused for alpha-test func. */
     static final TokenSet<Integer> COMPARE_FUNCS = TokenSet.<Integer>builder()
-            .put("LESS",      CgGL.GL_LESS)
-            .put("LEQUAL",    CgGL.GL_LEQUAL)
-            .put("EQUAL",     CgGL.GL_EQUAL)
-            .put("GEQUAL",    CgGL.GL_GEQUAL)
-            .put("GREATER",   CgGL.GL_GREATER)
-            .put("NOT_EQUAL", CgGL.GL_NOTEQUAL)
-            .put("ALWAYS",    CgGL.GL_ALWAYS)
-            .put("NEVER",     CgGL.GL_NEVER)
+            .put("LESS",      GLC.GL_LESS)
+            .put("LEQUAL",    GLC.GL_LEQUAL)
+            .put("EQUAL",     GLC.GL_EQUAL)
+            .put("GEQUAL",    GLC.GL_GEQUAL)
+            .put("GREATER",   GLC.GL_GREATER)
+            .put("NOT_EQUAL", GLC.GL_NOTEQUAL)
+            .put("ALWAYS",    GLC.GL_ALWAYS)
+            .put("NEVER",     GLC.GL_NEVER)
             .build();
 
     /** Blend source/destination factors. All use UPPER_SNAKE_CASE. */
     static final TokenSet<Integer> BLEND_FACTORS = TokenSet.<Integer>builder()
-            .put("ONE",                   CgGL.GL_ONE)
-            .put("ZERO",                  CgGL.GL_ZERO)
-            .put("SRC_COLOR",             CgGL.GL_SRC_COLOR)
-            .put("SRC_ALPHA",             CgGL.GL_SRC_ALPHA)
-            .put("DST_COLOR",             CgGL.GL_DST_COLOR)
-            .put("DST_ALPHA",             CgGL.GL_DST_ALPHA)
-            .put("ONE_MINUS_SRC_COLOR",   CgGL.GL_ONE_MINUS_SRC_COLOR)
-            .put("ONE_MINUS_SRC_ALPHA",   CgGL.GL_ONE_MINUS_SRC_ALPHA)
-            .put("ONE_MINUS_DST_COLOR",   CgGL.GL_ONE_MINUS_DST_COLOR)
-            .put("ONE_MINUS_DST_ALPHA",   CgGL.GL_ONE_MINUS_DST_ALPHA)
-            .put("SRC_ALPHA_SATURATE",    CgGL.GL_SRC_ALPHA_SATURATE)
+            .put("ONE",                   GLC.GL_ONE)
+            .put("ZERO",                  GLC.GL_ZERO)
+            .put("SRC_COLOR",             GLC.GL_SRC_COLOR)
+            .put("SRC_ALPHA",             GLC.GL_SRC_ALPHA)
+            .put("DST_COLOR",             GLC.GL_DST_COLOR)
+            .put("DST_ALPHA",             GLC.GL_DST_ALPHA)
+            .put("ONE_MINUS_SRC_COLOR",   GLC.GL_ONE_MINUS_SRC_COLOR)
+            .put("ONE_MINUS_SRC_ALPHA",   GLC.GL_ONE_MINUS_SRC_ALPHA)
+            .put("ONE_MINUS_DST_COLOR",   GLC.GL_ONE_MINUS_DST_COLOR)
+            .put("ONE_MINUS_DST_ALPHA",   GLC.GL_ONE_MINUS_DST_ALPHA)
+            .put("SRC_ALPHA_SATURATE",    GLC.GL_SRC_ALPHA_SATURATE)
             .build();
 
     /** Blend equations. Renamed from BlendOp. */    static final TokenSet<Integer> BLEND_EQUATIONS = TokenSet.<Integer>builder()
-            .put("ADD",     CgGL.GL_FUNC_ADD)
-            .put("SUB",     CgGL.GL_FUNC_SUBTRACT)
-            .put("REV_SUB", CgGL.GL_FUNC_REVERSE_SUBTRACT)
-            .put("MIN",     CgGL.GL_MIN)
-            .put("MAX",     CgGL.GL_MAX)
+            .put("ADD",     GLC.GL_FUNC_ADD)
+            .put("SUB",     GLC.GL_FUNC_SUBTRACT)
+            .put("REV_SUB", GLC.GL_FUNC_REVERSE_SUBTRACT)
+            .put("MIN",     GLC.GL_MIN)
+            .put("MAX",     GLC.GL_MAX)
             .build();
 
     /**
@@ -54,8 +54,8 @@ public final class CgShaderKeywords {
      * A value of {@code 0} means culling disabled; any other value is a GL face constant.
      */
     static final TokenSet<Integer> CULL_MODES = TokenSet.<Integer>builder()
-            .put("BACK",  CgGL.GL_BACK)
-            .put("FRONT", CgGL.GL_FRONT)
+            .put("BACK",  GLC.GL_BACK)
+            .put("FRONT", GLC.GL_FRONT)
             .put("OFF",   0)
             .build();
 
@@ -67,14 +67,14 @@ public final class CgShaderKeywords {
 
     /** Stencil per-fragment operations. */
     static final TokenSet<Integer> STENCIL_OPS = TokenSet.<Integer>builder()
-            .put("KEEP",      CgGL.GL_KEEP)
-            .put("ZERO",      CgGL.GL_ZERO)
-            .put("REPLACE",   CgGL.GL_REPLACE)
-            .put("INCR_SAT",  CgGL.GL_INCR)
-            .put("DECR_SAT",  CgGL.GL_DECR)
-            .put("INVERT",    CgGL.GL_INVERT)
-            .put("INCR_WRAP", CgGL.GL_INCR_WRAP)
-            .put("DECR_WRAP", CgGL.GL_DECR_WRAP)
+            .put("KEEP",      GLC.GL_KEEP)
+            .put("ZERO",      GLC.GL_ZERO)
+            .put("REPLACE",   GLC.GL_REPLACE)
+            .put("INCR_SAT",  GLC.GL_INCR)
+            .put("DECR_SAT",  GLC.GL_DECR)
+            .put("INVERT",    GLC.GL_INVERT)
+            .put("INCR_WRAP", GLC.GL_INCR_WRAP)
+            .put("DECR_WRAP", GLC.GL_DECR_WRAP)
             .build();
     
     static final Keyword DEPTH_TEST      = new Keyword("DepthTest",      "LESS | LEQUAL | EQUAL | GEQUAL | GREATER | NOT_EQUAL | ALWAYS | NEVER");

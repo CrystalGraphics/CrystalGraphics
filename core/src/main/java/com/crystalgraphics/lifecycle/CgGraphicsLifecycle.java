@@ -18,7 +18,6 @@ import com.crystalgraphics.demo.CgRenderDemo;
 import com.crystalgraphics.gpu.CgUploads;
 import com.crystalgraphics.probe.CgWorldProbe;
 import com.crystalgraphics.platform.gl.CgCapabilities;
-import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.service.CgCacheDirectory;
 import com.crystalgraphics.job.CgJob;
@@ -199,25 +198,18 @@ public final class CgGraphicsLifecycle {
             // What the start needs that touches no GL, on a worker beside the render thread's own steps below: begun at
             // the host's client start where it said so (CgEngineLifecycle.clientStarting), else now
             startAhead();
-            CgPlatform.gl().initContext();
-            CgStartSteps.step("context");
             // A GL-era host's device, before the probe below (capabilities are the device's) and before anything
             // compiles: its first programs are the driver's own. Inside a section, which the device joins as it installs
             CgDeviceSection.begin();
             try {
+                CgPlatform.startDevice();
                 CgToolchainDevice.startAll();
             } finally {
                 CgDeviceSection.end();
             }
             CgStartSteps.step("device");
-            // Probe capabilities here, on the render thread with a live context, so CgGL.CORE is set
-            // before anything can paint. Its guards read the field rather than calling detect() per GL
-            // call, and a fixed-function call that beat the first probe would see false and reach a
-            // backend that refuses it. Cached, so this costs one probe.
+            // The device's, probed once before anything asks for it
             CgCapabilities.detect();
-            // Before the first link: without it NVIDIA links on its driver thread, and the next query of any program
-            // waits for the whole link (cold vfx-modules 113 s -> 58 s).
-            if (CgCapabilities.detect().isParallelShaderCompile()) CgGL.glMaxShaderCompilerThreads(0xFFFFFFFF);
             CgStartSteps.step("capabilities");
             // While the loading screen shows: a check's glGet waits for the driver's queue, deepest then
             GLCheckedHostState.deferChecksWhile(CgLoadingScreen::hostDraws);

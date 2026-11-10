@@ -1,7 +1,6 @@
 package com.crystalgraphics.mc.modern.platform;
 
 import com.crystalgraphics.lifecycle.CgEngineLifecycle;
-import com.crystalgraphics.mc.modern.platform.gl.Blaze3dGLBackend;
 import com.crystalgraphics.mc.modern.platform.gl.GLDeviceModern;
 // 26.3 ships SDL3 and no GLFW, so a 26.3 node cannot even load the GLFW pair.
 //? if >=26.3 {
@@ -15,7 +14,6 @@ import com.crystalgraphics.lwjgl3.InputGlfw;
 //?}
 import com.crystalgraphics.lwjgl3.Lwjgl3AudioOutput;
 import com.crystalgraphics.lwjgl3.StbVorbisDecoder;
-import com.crystalgraphics.lwjgl3.Lwjgl3GLContext;
 
 import com.crystalgraphics.mc.modern.platform.service.GameClassesModern;
 import com.crystalgraphics.mc.modern.platform.service.HostResourcesModern;
@@ -38,9 +36,6 @@ import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.CgPlatformService;
 import com.crystalgraphics.collision.mirror.CgMirrorHost;
 import com.crystalgraphics.serialization.format.nbt.CgHostFormats;
-import com.crystalgraphics.platform.gl.CgGLBackend;
-import com.crystalgraphics.platform.gl.CgGLContext;
-import com.crystalgraphics.platform.gl.tracked.CgTrackedGLContext;
 import com.crystalgraphics.platform.service.CgCursorService;
 import com.crystalgraphics.platform.service.CgGameClasses;
 import com.crystalgraphics.platform.service.CgGameDirectory;
@@ -83,9 +78,9 @@ import java.nio.file.Paths;
  * <p>An assembler: each slot is this era's own class or a tier-1 one ({@code runtime/lwjgl/3}, {@code sdl}) handed
  * the one Minecraft fact it needs, {@link #windowHandle()}, as a supplier.</p>
  *
- * <p>{@link #gl()} is the exception worth naming: the backend it builds <em>is</em> tier 2, because
- * telling Minecraft what state we changed is the one thing tier 1 must not know how to do. See
- * {@code Blaze3dGLBackend}.</p>
+ * <p>{@link #startDevice()} is the exception worth naming: the device's host state is tier 2
+ * ({@code HostStateModern}), because telling Minecraft what state we changed is the one thing tier 1 must not know
+ * how to do.</p>
  */
 public final class PlatformServiceModern implements CgPlatformService {
 
@@ -171,37 +166,24 @@ public final class PlatformServiceModern implements CgPlatformService {
         CgEngineLifecycle.clientStarting();
     }
 
-    // Built on demand and typed as the SPI: Lwjgl3GLContext holds an org.lwjgl field, which a dedicated server cannot
-    // load, and the constructor runs on both sides. `serverSmoke` asserts no client-only class was loaded.
-    private CgGLBackend        glBackend;
-    private CgGLContext        glContext;
-
-    @Override public CgGLBackend gl() {
-        if (glBackend == null) {
-            // Asked for at the first host section or capability probe, on the render thread, and never by
-            // registration, so naming Blaze3D cannot reach a server -- and Minecraft's device exists by then,
-            // which is what says which API this session renders through.
-            if (GraphicsApi.vulkan()) {
-                glBackend = vulkanBackend();
-            } else {
-                HostStateVerifier.announceIfEnabled();
-                glBackend = new Blaze3dGLBackend();
-                CgEngineLifecycle.addListener(new GLDeviceModern());
-            }
+    // On the render thread at the graphics start, never at registration, so naming Blaze3D cannot reach a server; and
+    // Minecraft's device exists by then, which is what says which API this session renders through.
+    @Override
+    public void startDevice() {
+        if (GraphicsApi.vulkan()) {
+            startVulkan();
+        } else {
+            HostStateVerifier.announceIfEnabled();
+            CgEngineLifecycle.addListener(new GLDeviceModern());
         }
-        return glBackend;
     }
 
-    @Override public CgGLContext capabilities() {
-        if (glContext == null) glContext = GraphicsApi.vulkan() ? new CgTrackedGLContext() : new Lwjgl3GLContext();
-        return glContext;
-    }
-
-    // GL's semantics over Minecraft's own Vulkan device, which hosts ours: 26.2 and later.
-    private static CgGLBackend vulkanBackend() {
+    // Ours over Minecraft's own Vulkan device, which hosts it: 26.2 and later.
+    private static void startVulkan() {
         //? if >=26.2 {
-        /*Minecraft mc = Minecraft.getInstance();
-        return Blaze3dVulkanHost.start(Windows.of(mc).getWidth(), Windows.of(mc).getHeight());
+        /*if (Blaze3dVulkanHost.current() != null) return;
+        Minecraft mc = Minecraft.getInstance();
+        Blaze3dVulkanHost.start(Windows.of(mc).getWidth(), Windows.of(mc).getHeight());
         *///?} else {
         throw new IllegalStateException("Minecraft renders through Vulkan only from 26.2");
         //?}

@@ -20,8 +20,7 @@ import org.apache.logging.log4j.Logger;
  * when originally loaded — most importantly its Mixins.</p>
  *
  * <p><strong>Runs the whole chain, and no longer has a CrystalGraphics-only mode.</strong> That mode existed
- * to re-apply the GL redirect coremod, which is deleted — its state mirror was superseded by
- * {@code AngelicaStateProvider}, which reads Angelica's far more complete mirror. With no transformer of our
+ * to re-apply the GL redirect coremod, which is deleted. With no transformer of our
  * own left there is nothing a "CrystalGraphics-only" pass could apply, so the flag that selected it
  * ({@code -Dcrystalgraphics.hotswap.fullChain}) is gone and full-chain is unconditional.</p>
  */

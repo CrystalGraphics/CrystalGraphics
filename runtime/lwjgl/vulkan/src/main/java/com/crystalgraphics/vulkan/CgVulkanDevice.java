@@ -1,10 +1,11 @@
 package com.crystalgraphics.vulkan;
 
+import com.crystalgraphics.platform.rhi.shader.CgGlslCompiler;
+import com.crystalgraphics.platform.rhi.CgHostImports;
 import org.lwjgl.vulkan.VkMemoryRequirements;
 import com.crystalgraphics.vulkan.resource.VulkanHeap;
 import com.crystalgraphics.platform.rhi.resource.CgGpuHeap;
 import com.crystalgraphics.platform.rhi.memory.CgTransientMemory;
-import com.crystalgraphics.platform.gl.tracked.CgImplicitLayouts;
 import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.service.CgCacheDirectory;
 import com.crystalgraphics.platform.rhi.resource.CgRHIResource;
@@ -125,16 +126,14 @@ import static org.lwjgl.vulkan.VK11.VK_FORMAT_FEATURE_TRANSFER_SRC_BIT;
 import static org.lwjgl.vulkan.VK11.vkGetPhysicalDeviceProperties2;
 
 /**
- * {@code CgRHI} over Vulkan 1.2 with dynamic rendering and push descriptors — what the tracked backend draws
- * through when {@code CgGL} runs on Vulkan (plan/device-vulkan.md). Everything from outside comes through its
- * {@link CgVulkanHost}.
+ * {@code CgRHI} over Vulkan 1.2 with dynamic rendering and push descriptors (plan/device-vulkan.md). Everything from
+ * outside comes through its {@link CgVulkanHost}.
  *
  * <pre>{@code
  * CgVulkanDevice device = new CgVulkanDevice(host, width, height);
- * CgTrackedGLBackend gl = new CgTrackedGLBackend(device, new ShadercGlslCompiler(), debug);
- * CgGL.init(gl);
- * ... the engine draws through CgGL ...
- * gl.endFrame();                  // the host submits and presents
+ * device.install(new ShadercGlslCompiler(CgCacheDirectory.of("spirv")));   // the process's device
+ * ... the engine draws ...
+ * device.endFrame();              // the host submits and presents
  * device.resize(w, h);            // the window's framebuffer changed
  * device.close();                 // before the host closes
  * }</pre>
@@ -147,7 +146,7 @@ import static org.lwjgl.vulkan.VK11.vkGetPhysicalDeviceProperties2;
  * <p>The default framebuffer is an image of the device's own, RGBA8 with depth-stencil, which the host presents;
  * its row 0 is GL's bottom. Owner thread only.</p>
  */
-public final class CgVulkanDevice implements CgRHI, CgImplicitLayouts, AutoCloseable {
+public final class CgVulkanDevice implements CgRHI, AutoCloseable {
 
     /** {@link CgRHI#onClose}'s tasks: run first as it closes. */
     private final List<Runnable> closing = new ArrayList<>();
@@ -273,8 +272,8 @@ public final class CgVulkanDevice implements CgRHI, CgImplicitLayouts, AutoClose
         CgRHI.Globals.Limits limits = new CgRHI.Globals.Limits(l.maxImageDimension2D(), l.maxImageDimension3D(),
                 l.maxImageArrayLayers(), l.maxColorAttachments(), samples, Math.min(16, l.maxVertexInputAttributes()),
                 Math.min(32, l.maxPerStageDescriptorSamplers()), l.maxUniformBufferRange(),
-                Math.min(24, l.maxPerStageDescriptorUniformBuffers()), 32,
-                l.maxTexelBufferElements(), (int) l.minUniformBufferOffsetAlignment(),
+                Math.min(24, l.maxPerStageDescriptorUniformBuffers()), l.maxDescriptorSetUniformBuffersDynamic(), 32,
+                l.maxDescriptorSetStorageBuffersDynamic(), l.maxTexelBufferElements(), (int) l.minUniformBufferOffsetAlignment(),
                 (int) l.minStorageBufferOffsetAlignment(), (int) l.minTexelBufferOffsetAlignment(),
                 l.maxViewportDimensions(0), l.maxSamplerAnisotropy(), new CgRHI.Globals.Compute(
                         l.maxComputeSharedMemorySize(), l.maxComputeWorkGroupInvocations(),
@@ -538,7 +537,7 @@ public final class CgVulkanDevice implements CgRHI, CgImplicitLayouts, AutoClose
      * CgGpuTexture main = device.wrap(vkImage, VK_FORMAT_R8G8B8A8_UNORM, new CgGpuTexture.Desc("main",
      *         CgGpuTexture.Kind.D2, CgFormat.RGBA8_UNORM, width, height, 1, 1, 1, CgGpuTexture.Usage.ALL),
      *         VK_IMAGE_LAYOUT_GENERAL);
-     * int name = CgGL.importHostTexture(main);   // a GL name a framebuffer can attach
+     * int fbo = device.hostImports().framebuffer(main, depth);   // the target a hook draws into
      * ...
      * device.release(main);                      // when the host replaces the image: its views go
      * }</pre>
@@ -602,10 +601,14 @@ public final class CgVulkanDevice implements CgRHI, CgImplicitLayouts, AutoClose
         if (pushed && slots.size() > maxPushDescriptors)
             throw new UnsupportedOperationException(label + " has " + slots.size() + " bindings; a push-descriptor set "
                     + "holds " + maxPushDescriptors);
+        // A push-descriptor set has no dynamic descriptors: its offsets are pushed with it
+        for (int i = 0; pushed && i < slots.size(); i++) {
+            if (slots.get(i).dynamic()) throw new IllegalArgumentException(label + ": a pushed set with a dynamic slot");
+        }
         try (MemoryStack stack = stackPush()) {
             VkDescriptorSetLayoutBinding.Buffer bindings = VkDescriptorSetLayoutBinding.calloc(slots.size(), stack);
             for (int i = 0; i < slots.size(); i++) {
-                bindings.get(i).binding(slots.get(i).binding()).descriptorType(descriptorType(slots.get(i).type()))
+                bindings.get(i).binding(slots.get(i).binding()).descriptorType(descriptorType(slots.get(i)))
                         .descriptorCount(1).stageFlags(VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT
                                 | VK_SHADER_STAGE_COMPUTE_BIT);
             }
@@ -629,8 +632,9 @@ public final class CgVulkanDevice implements CgRHI, CgImplicitLayouts, AutoClose
             VkWriteDescriptorSet.Buffer writes = VkWriteDescriptorSet.calloc(n, stack);
             for (int i = 0; i < n; i++) {
                 CgBindingLayout.Type type = contents.type(i);
+                boolean dynamic = CgBindingLayout.dynamicIndex(layout.slots(), contents.binding(i)) >= 0;
                 VkWriteDescriptorSet w = writes.get(i).sType$Default().dstSet(made[1]).dstBinding(contents.binding(i))
-                        .descriptorCount(1).descriptorType(descriptorType(type));
+                        .descriptorCount(1).descriptorType(descriptorType(type, dynamic));
                 if (type == CgBindingLayout.Type.SAMPLED_TEXTURE || type == CgBindingLayout.Type.STORAGE_IMAGE) {
                     boolean sampled = type == CgBindingLayout.Type.SAMPLED_TEXTURE;
                     VulkanTexture t = (VulkanTexture) contents.view(i).texture();
@@ -643,8 +647,10 @@ public final class CgVulkanDevice implements CgRHI, CgImplicitLayouts, AutoClose
                     w.pTexelBufferView(stack.longs(texelView((VulkanBuffer) contents.buffer(i), contents.offset(i),
                             contents.size(i), contents.texelFormat(i))));
                 } else {
+                    // A dynamic slot's offset is the bind's, added to this base
                     w.pBufferInfo(VkDescriptorBufferInfo.calloc(1, stack).buffer(((VulkanBuffer) contents.buffer(i)).buffer)
-                            .offset(contents.offset(i)).range(contents.size(i) > 0 ? contents.size(i) : VK_WHOLE_SIZE));
+                            .offset(dynamic ? 0 : contents.offset(i))
+                            .range(contents.size(i) > 0 ? contents.size(i) : VK_WHOLE_SIZE));
                 }
             }
             vkUpdateDescriptorSets(device, writes, null);
@@ -681,6 +687,17 @@ public final class CgVulkanDevice implements CgRHI, CgImplicitLayouts, AutoClose
     /** Every stage a pipeline here has: push constants are visible to all of them. */
     public static final int PUSH_CONSTANT_STAGES = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT
             | VK_SHADER_STAGE_COMPUTE_BIT;
+
+    /** {@code slot}'s descriptor type: a dynamic buffer's own. */
+    public static int descriptorType(CgBindingLayout.Slot slot) {
+        return descriptorType(slot.type(), slot.dynamic());
+    }
+
+    private static int descriptorType(CgBindingLayout.Type type, boolean dynamic) {
+        if (!dynamic) return descriptorType(type);
+        return type == CgBindingLayout.Type.UNIFORM_BUFFER ? VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC
+                : VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC;
+    }
 
     public static int descriptorType(CgBindingLayout.Type type) {
         switch (type) {
@@ -903,13 +920,28 @@ public final class CgVulkanDevice implements CgRHI, CgImplicitLayouts, AutoClose
     /** The events split transitions set and wait on. */
     public VulkanEvents events() { return events; }
 
-    @Override
-    public void implicitLayouts(boolean on) {
-        encoder.implicitLayouts(on);
+    /**
+     * Makes this the process's device, whole (Unreal's {@code RHIInit}, one place): as {@link CgRHI}, {@code compiler},
+     * and its {@link CgHostImports} (framebuffer 0 the surface).
+     */
+    public CgVulkanDevice install(CgGlslCompiler compiler) {
+        CgRHI.install(this);
+        CgGlslCompiler.install(compiler);
+        CgHostImports.install(hostImports);
+        return this;
+    }
+
+    private final VulkanHostImports hostImports = new VulkanHostImports(this);
+
+    /** The host's images as this device's resources: the surface, and a host's own target named over its images. */
+    public VulkanHostImports hostImports() {
+        return hostImports;
     }
     @Override public long retiredFrame() { return host.retiredFrame(); }
     @Override public void whenRetired(long frame, Runnable action) { host.whenFrameRetired(frame, action); }
     @Override public boolean ownsSubmission() { return host.ownsSubmission(); }
+
+    @Override public boolean takesTransitions() { return true; }
     @Override public void fromHost() { host.fromHost(); }
     @Override
     public void toHost() {

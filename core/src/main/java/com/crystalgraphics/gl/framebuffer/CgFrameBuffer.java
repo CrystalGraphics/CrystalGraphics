@@ -1,5 +1,7 @@
 package com.crystalgraphics.gl.framebuffer;
 
+import com.crystalgraphics.platform.rhi.CgHostImports;
+import com.crystalgraphics.platform.gl.driver.GLC;
 import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.texture.CgTextureType;
@@ -8,8 +10,6 @@ import com.crystalgraphics.gl.texture.CgTexture2DArray;
 import com.crystalgraphics.gl.texture.CgTexture3D;
 import com.crystalgraphics.lifecycle.CgGraphicsLifecycle;
 import com.crystalgraphics.platform.gl.CgCapabilities;
-import com.crystalgraphics.platform.gl.CgGL;
-import com.crystalgraphics.platform.gl.CgGLImports;
 import com.crystalgraphics.platform.gl.format.GLFormats;
 import com.crystalgraphics.platform.rhi.CgDeviceSection;
 import com.crystalgraphics.platform.rhi.CgRHI;
@@ -64,7 +64,8 @@ public class CgFrameBuffer {
     private static final int FIRST_NAME = 0x40000000;
     private static int nextName = FIRST_NAME;
     /** Owned framebuffers by name, until deleted. */
-    private static final Map<Integer, CgFrameBuffer> OWNED = new HashMap<>();
+    /** Owned framebuffers by {@code id - FIRST_NAME}; null once deleted. Looked up per pass, so never boxed. */
+    private static final ArrayList<CgFrameBuffer> OWNED = new ArrayList<>();
 
     /** Human-readable instance name (e.g. "gbuffer_main", "shadow:directional"). */
     protected final String name;
@@ -129,7 +130,7 @@ public class CgFrameBuffer {
         this.height = height;
         this.owned = true;
         this.id = nextName++;
-        OWNED.put(id, this);
+        OWNED.add(this);
     }
 
     /** A host's framebuffer {@code fbo}. */
@@ -371,7 +372,8 @@ public class CgFrameBuffer {
     /** The owned framebuffer known as {@code id}; null for a host's name or a deleted one. */
     @Nullable
     public static CgFrameBuffer owned(int id) {
-        return id >= FIRST_NAME ? OWNED.get(id) : null;
+        int at = id - FIRST_NAME;
+        return id >= FIRST_NAME && at < OWNED.size() ? OWNED.get(at) : null;
     }
 
     /**
@@ -385,7 +387,7 @@ public class CgFrameBuffer {
             CgGpuTexture t = depth ? ours.rhiDepth() : ours.rhiColor(0);
             return t == null ? null : CgTextureView.attachment(t, 0, 0);
         }
-        return CgGLImports.get().attachment(fbo, depth, width, height);
+        return CgHostImports.get().attachment(fbo, depth, width, height);
     }
 
     /**
@@ -641,8 +643,8 @@ public class CgFrameBuffer {
      */
     public void clear(int mask, float r, float g, float b, float a, double depthValue, int stencilValue) {
         requireTarget("clear");
-        boolean color = (mask & CgGL.GL_COLOR_BUFFER_BIT) != 0, depth = (mask & CgGL.GL_DEPTH_BUFFER_BIT) != 0,
-                stencil = (mask & CgGL.GL_STENCIL_BUFFER_BIT) != 0;
+        boolean color = (mask & GLC.GL_COLOR_BUFFER_BIT) != 0, depth = (mask & GLC.GL_DEPTH_BUFFER_BIT) != 0,
+                stencil = (mask & GLC.GL_STENCIL_BUFFER_BIT) != 0;
         float clearDepth = (float) (CgGraphicsLifecycle.hostDepthReversed() ? 1.0 - depthValue : depthValue);
         CgDeviceSection.begin();
         try {
@@ -676,42 +678,42 @@ public class CgFrameBuffer {
 
     /** Clears only the colour buffer to the given RGBA colour. */
     public void clearColor(float r, float g, float b, float a) {
-        clear(CgGL.GL_COLOR_BUFFER_BIT, r, g, b, a, 1.0, 0);
+        clear(GLC.GL_COLOR_BUFFER_BIT, r, g, b, a, 1.0, 0);
     }
 
     /** Clears only the depth buffer to 1.0 (far plane). */
     public void clearDepth() {
-        clear(CgGL.GL_DEPTH_BUFFER_BIT, 0, 0, 0, 0, 1.0, 0);
+        clear(GLC.GL_DEPTH_BUFFER_BIT, 0, 0, 0, 0, 1.0, 0);
     }
 
     /** Clears only the depth buffer to {@code value}. */
     public void clearDepth(double value) {
-        clear(CgGL.GL_DEPTH_BUFFER_BIT, 0, 0, 0, 0, value, 0);
+        clear(GLC.GL_DEPTH_BUFFER_BIT, 0, 0, 0, 0, value, 0);
     }
 
     /** Clears only the stencil buffer to 0. */
     public void clearStencil() {
-        clear(CgGL.GL_STENCIL_BUFFER_BIT, 0, 0, 0, 0, 1.0, 0);
+        clear(GLC.GL_STENCIL_BUFFER_BIT, 0, 0, 0, 0, 1.0, 0);
     }
 
     /** Clears only the stencil buffer to {@code value}. */
     public void clearStencil(int value) {
-        clear(CgGL.GL_STENCIL_BUFFER_BIT, 0, 0, 0, 0, 1.0, value);
+        clear(GLC.GL_STENCIL_BUFFER_BIT, 0, 0, 0, 0, 1.0, value);
     }
 
     /** Clears depth and stencil buffers. */
     public void clearDepthStencil() {
-        clear(CgGL.GL_DEPTH_BUFFER_BIT | CgGL.GL_STENCIL_BUFFER_BIT, 0, 0, 0, 0, 1.0, 0);
+        clear(GLC.GL_DEPTH_BUFFER_BIT | GLC.GL_STENCIL_BUFFER_BIT, 0, 0, 0, 0, 1.0, 0);
     }
 
     /** Clears depth and stencil buffers. */
     public void clearDepthStencil(double depthValue, int stencilValue) {
-        clear(CgGL.GL_DEPTH_BUFFER_BIT | CgGL.GL_STENCIL_BUFFER_BIT, 0, 0, 0, 0, depthValue, stencilValue);
+        clear(GLC.GL_DEPTH_BUFFER_BIT | GLC.GL_STENCIL_BUFFER_BIT, 0, 0, 0, 0, depthValue, stencilValue);
     }
 
     /** Clears colour, depth, and stencil in one call. Depth resets to 1.0, stencil to 0. */
     public void clearAll(float r, float g, float b, float a) {
-        clear(CgGL.GL_COLOR_BUFFER_BIT | CgGL.GL_DEPTH_BUFFER_BIT | CgGL.GL_STENCIL_BUFFER_BIT, r, g, b, a, 1.0, 0);
+        clear(GLC.GL_COLOR_BUFFER_BIT | GLC.GL_DEPTH_BUFFER_BIT | GLC.GL_STENCIL_BUFFER_BIT, r, g, b, a, 1.0, 0);
     }
 
     // ── Lifecycle ──────────────────────────────────────────────────────────────
@@ -734,7 +736,7 @@ public class CgFrameBuffer {
     public void delete() {
         if (!owned || deleted) return;
         freeAttachments();
-        OWNED.remove(id);
+        OWNED.set(id - FIRST_NAME, null);
         deleted = true;
     }
 

@@ -1,9 +1,9 @@
 package com.crystalgraphics.vfx.look;
 
+import com.crystalgraphics.platform.gl.driver.GLC;
 import com.crystalgraphics.api.texture.CgTextureSpec;
 import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.gl.texture.CgTexture2D;
-import com.crystalgraphics.platform.gl.CgGL;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -53,7 +53,7 @@ public final class CgVfxFlipbook {
     static final int TABLE_ROW = 1024;
 
     private static final CgTextureSpec TABLE_SPEC = CgTextureSpec.builder().type(CgTextureType.RGBA32F)
-            .minFilter(CgGL.GL_NEAREST).magFilter(CgGL.GL_NEAREST).build();
+            .minFilter(GLC.GL_NEAREST).magFilter(GLC.GL_NEAREST).build();
 
     private final int columns, rows;
     private final Table table;

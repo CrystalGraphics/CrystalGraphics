@@ -4,7 +4,6 @@ import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.lwjgl2.JOrbisDecoder;
 import com.crystalgraphics.lwjgl2.Lwjgl2AudioOutput;
 import com.crystalgraphics.lwjgl2.Lwjgl2CursorService;
-import com.crystalgraphics.lwjgl2.Lwjgl2GLContext;
 import com.crystalgraphics.lwjgl2.ClipboardLwjgl2;
 import com.crystalgraphics.lwjgl2.InputLwjgl2;
 import com.crystalgraphics.mc.legacy.platform.service.HostResourcesLegacy;
@@ -41,8 +40,6 @@ import com.crystalgraphics.platform.world.CgPlayers;
 import com.crystalgraphics.collision.mirror.CgMirrorHost;
 import com.crystalgraphics.serialization.format.nbt.CgHostFormats;
 import com.crystalgraphics.platform.CgPlatformService;
-import com.crystalgraphics.platform.gl.CgGLBackend;
-import com.crystalgraphics.platform.gl.CgGLContext;
 import com.crystalgraphics.platform.service.CgCursorService;
 import com.crystalgraphics.platform.service.CgGameDirectory;
 import com.crystalgraphics.platform.world.CgHostCamera;
@@ -59,25 +56,22 @@ import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.fml.common.FMLCommonHandler;
 
 /**
- * The Forge 1.8–1.12.2 platform bundle: tier 1's LWJGL2 services, the {@link GlStateManagerGLBackend}, and
- * this era's Minecraft-facing services.
+ * The Forge 1.8–1.12.2 platform bundle: tier 1's LWJGL2 services, the GL device, and this era's Minecraft-facing
+ * services.
  *
  * <pre>
  * PlatformServiceLegacy.install(client);    // preInit, both sides
  * </pre>
  *
  * <ul>
- *   <li>The GL backend and context are built on first use and held as their SPI types: they name LWJGL, which
- *       a dedicated server does not have, and a field of such a type fails at class load.</li>
+ *   <li>The GL device is made at the graphics start ({@link #startDevice}): it names LWJGL, which a dedicated server
+ *       does not have.</li>
  *   <li>Input, the clipboard, the resources and the rest are filled on a client only, for the same reason.</li>
  * </ul>
  */
 public final class PlatformServiceLegacy implements CgPlatformService {
 
     private static PlatformServiceLegacy instance;
-
-    private CgGLBackend        glBackend;
-    private CgGLContext        glContext;
 
     public static synchronized PlatformServiceLegacy getInstance() {
         if (instance == null) instance = new PlatformServiceLegacy();
@@ -144,17 +138,9 @@ public final class PlatformServiceLegacy implements CgPlatformService {
         CgEngineLifecycle.clientStarting();
     }
 
-    @Override public CgGLBackend gl() {
-        if (glBackend == null) {
-            glBackend = new GlStateManagerGLBackend();
-            CgEngineLifecycle.addListener(new GLDeviceLegacy());
-        }
-        return glBackend;
-    }
-
-    @Override public CgGLContext capabilities() {
-        if (glContext == null) glContext = new Lwjgl2GLContext();
-        return glContext;
+    @Override
+    public void startDevice() {
+        CgEngineLifecycle.addListener(new GLDeviceLegacy());
     }
 
 }

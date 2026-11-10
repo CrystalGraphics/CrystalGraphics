@@ -453,6 +453,7 @@ public final class GLStateFilter implements CgGLDriver {
 
     @Override public String glGetString(int name) { return raw.glGetString(name); }
     @Override public int glGetInteger(int name) { return raw.glGetInteger(name); }
+    @Override public void glMaxShaderCompilerThreads(int count) { raw.glMaxShaderCompilerThreads(count); }
     @Override public float glGetFloat(int name) { return raw.glGetFloat(name); }
     @Override public boolean hasExtension(String name) { return raw.hasExtension(name); }
     @Override public CgGLWorkerContext createIsolatedContext() { return raw.createIsolatedContext(); }

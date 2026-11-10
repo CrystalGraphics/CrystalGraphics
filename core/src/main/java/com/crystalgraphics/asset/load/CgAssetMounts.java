@@ -243,7 +243,15 @@ public final class CgAssetMounts {
         long start = System.nanoTime();
         CgAssetKinds.register();
         Set<String> kindFolders = kindFolders();
-        Set<String> seen = new HashSet<>(registry.namespaces());
+        // Mounted already where a file put it there: the engine's code-registered modules share its namespace's name
+        Set<String> seen = new HashSet<>();
+        for (String ns : registry.namespaces()) {
+            for (CgAssetEntry e : registry.entries(ns)) {
+                if (e.source() == CgAssetSource.CODE) continue;
+                seen.add(ns);
+                break;
+            }
+        }
         List<String> mounted = new ArrayList<>();
         int opened = 0, before = registry.size();
         for (Path root : dev) mountRoot(registry, root, CgAssetSource.DEV, seen, kindFolders, mounted);
@@ -272,8 +280,11 @@ public final class CgAssetMounts {
         Path assets = root.resolve("assets");
         if (!Files.isDirectory(assets)) return;
         try (DirectoryStream<Path> spaces = Files.newDirectoryStream(assets, Files::isDirectory)) {
-            for (Path ns : spaces) {
-                String name = ns.getFileName().toString().replace("/", "");
+            for (Path listed : spaces) {
+                String name = listed.getFileName().toString().replace("/", "");
+                // Resolved again: Java 8's zip file system lists a folder with its trailing slash, which every path the
+                // scan relativizes against it then starts "../"
+                Path ns = assets.resolve(name);
                 if (seen.contains(name) || !holdsContent(ns, kindFolders)) continue;
                 seen.add(name);
                 registry.scan(name, ns, source);

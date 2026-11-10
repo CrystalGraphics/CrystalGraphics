@@ -11,7 +11,6 @@ import com.crystalgraphics.mc.v1710.platform.world.WorldEvents1710;
 import com.crystalgraphics.render.stage.CgHostFrame;
 import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.lifecycle.CgGraphicsLifecycle;
-import com.crystalgraphics.platform.gl.CgGL;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.EntityRenderer;
 import org.spongepowered.asm.mixin.Mixin;

@@ -334,26 +334,14 @@ void fragment(in v2f i, out vec4 fragColor) {
 }
 ```
 
-### 8.3 Non-Instanced Single Object Draw
+### 8.3 Drawing it
+
+A material is drawn by recording it: into the world through `CgWorldRenderer`, anywhere else through `CgImmediate`.
+The object block is the executor's, filled from each instance.
 
 ```java
-// Java usage for a non-instanced draw:
-objectBuffer.writeSingle(modelMatrix);          // writes slot 0
-material.bind(frame, frameUniformBuffer, objectBuffer, 1);
-CgGL.glDrawArrays(CgGL.GL_TRIANGLES, 0, vertexCount);   // geometry the caller bound
-```
-
-### 8.4 Instanced Multi-Object Draw (same material, same shader file)
-
-```java
-// Java usage for an instanced draw:
-objectBuffer.beginWrite(count);
-for (Matrix4f m : modelMatrices) {
-    objectBuffer.putMatrix(m);
-}
-objectBuffer.endWrite();
-material.bind(frame, frameUniformBuffer, objectBuffer, count);
-CgGL.glDrawArraysInstanced(CgGL.GL_TRIANGLES, 0, vertexCount, count);
+CgWorldRenderer.get().draw(mesh, material).at(x, y, z).submit();          // one object
+for (Matrix4f m : modelMatrices) CgWorldRenderer.get().draw(mesh, material).transform(m).submit();   // instanced by the batcher
 ```
 
 ---

@@ -94,9 +94,8 @@ val freetypeJar     = project(":freetype-msdfgen-harfbuzz-bindings").tasks.named
 // from additionalRuntimeClasspath instead, which is why this was fabric's alone.
 val mcSharedJar     = project(":runtime:mc:shared").tasks.named<Jar>("jar").flatMap { it.archiveFile }
 // TIER 1 FOR LWJGL3, which PlatformServiceModern assembles over. Same J9 move and the same hole as
-// mc-shared above: the backend left runtime/mc/modern/common -- which IS bundled -- for a module that
-// was bundled nowhere. CrystalGraphicsFabricCommon names Lwjgl3GLBackend at class-definition time, so
-// its absence is a NoClassDefFoundError out of defineClass rather than a late one at first use.
+// mc-shared above: the GL driver and the GLFW services live in a module bundled nowhere else, and
+// their absence is a NoClassDefFoundError at the device's start.
 val lwjgl3Jar       = project(":runtime:lwjgl:3").tasks.named<AbstractArchiveTask>("downgradedJar").flatMap { it.archiveFile }
 // TIER 1 FOR VULKAN, bundled the same way and for the same reason: from 26.2 the device Blaze3dVulkanHost builds
 // under Minecraft's Vulkan backend; on a GL client the shader toolchain GLDeviceModern loads.

@@ -59,6 +59,15 @@ public class CgAssetMountsTest {
     }
 
     @Test
+    public void aNamespaceCodeRegisteredIntoStillMountsItsFiles() throws IOException {
+        Path jar = jar("rpgcore.jar", "assets/rpgcore/cameras/shakes/ground_break.yaml");
+        CgAssetRegistry r = new CgAssetRegistry();
+        r.registerCode("rpgcore:built_in", CgCameraKinds.SHAKE);   // as the engine's modules share its namespace
+        assertEquals(List.of("rpgcore"), CgAssetMounts.mount(r, List.of(), List.of(jar)).mounted());
+        assertEquals(CgAssetSource.JAR, r.entry(CgCameraKinds.SHAKE, "rpgcore:ground_break").source());
+    }
+
+    @Test
     public void aMinecraftNamespaceOfTexturesAndModelsIsNotMounted() throws IOException {
         Path mod = tmp.newFolder("blocks").toPath();
         write(mod, "assets/blocks/textures/block/stone.png", "png");

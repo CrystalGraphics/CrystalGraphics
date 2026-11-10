@@ -89,34 +89,34 @@ property the guard cannot see; `serverSmoke` catches it.
 This is the load-bearing architectural law. Read it before writing code that touches GL or a host.
 
 ```
-platform/        ← the SPI: CgGLBackend, CgGLContext, the services, CgService slots;
-                   and CgTrackedGLBackend, GL's semantics over a CgRHI
+platform/        ← the SPI: CgRHI and its devices (CgGLDevice, CgNullRHI), the services, CgService slots
     ↑
-core/            ← rendering logic — calls CgGL and the slots' owners (CgHostResources, CgInput, ...)
+core/            ← rendering logic — records for the installed CgRHI, calls the slots' owners (CgHostResources, CgInput, ...)
     ↑
-runtime/lwjgl/*  ← tier 1: the GL backend, context, input devices and clipboard per toolkit; CgVulkanDevice
+runtime/lwjgl/*  ← tier 1: the GL drivers, input devices and clipboard per toolkit; CgVulkanDevice
     ↑
 runtime/mc/*     ← a host: registers a bundle over tier 1, adds what names Minecraft
 ```
 
-**`CgGLBackend` is the seam, and `CgGL`'s 132 methods keep GL's semantics on every backend.** A GL backend
-calls the driver; `CgTrackedGLBackend` answers the same calls on a `CgRHI` — `CgVulkanDevice` in the
-harness's `--rhi=vulkan`, a recording device in tests. Three additions live inside a host on either:
-`importHostTexture`, `fromHost`/`toHost` (the bracket around every host entry — nothing on GL), and
-`ownedByCurrentThread`. The platform guide has each, and the tracked backend's rules.
+**`CgRHI` is the seam** (Unreal's RHI): `CgGLDevice` on every GL-era host, `CgVulkanDevice` on Minecraft 26.2+'s
+Vulkan and the harness's `--rhi=vulkan`, `CgNullRHI` in tests. A host starts its device in
+`CgPlatformService.startDevice()`; `CgDeviceSection` brackets every host entry, and `CgHostImports` names what the
+host owns. The platform guide has each.
 
 ```java
-// In core/ — never a raw GL call, never an LWJGL import:
-CgGL.glBindFramebuffer(target, id);
+// In core/ — never a raw GL call, never an LWJGL import: record a pass, and the device draws it
+try (CgImmediate draw = CgImmediate.begin(constants)) {
+    draw.chunks().draw(material.pipeline(CgInstanceKind.QUAD), material.captureBindings(draw.bindings()));
+}
 InputStream in = CgHostResources.open("mymod", "textures/icon.png");   // a slot, through its owner
 
 // A host, once, from an entry point that runs on both sides: the bundle and every platform slot
 PlatformServiceModern.install(ModLoaderForge.INSTANCE);     // or PlatformService1710.install(client), PlatformServiceLegacy.install(client)
 ```
 
-**Registration builds no graphics**: a dedicated server has none. `CgGL` takes the bundle's backend at the
-first host section or capability probe, on a client's render thread; each bundle builds its services lazily,
-and a client-only service (the cursor) is filled only on a client.
+**Registration builds no graphics**: a dedicated server has none. The graphics start calls `startDevice()` on a
+client's render thread; each bundle builds its services lazily, and a client-only service (the cursor) is filled only
+on a client.
 
 **If you find yourself calling raw GL inside `core/` or importing a loader type, you are in the wrong
 module.**
@@ -127,12 +127,12 @@ module.**
 
 **A new platform capability:**
 
-1. Declare it in `platform/`: a `CgGLBackend` method, a service method, or — when its absence is a
-   legitimate configuration, as for a cursor — a `CgService` slot with an absent-value.
+1. Declare it in `platform/`: a `CgRHI` method (every device implements it), a service method, or — when its
+   absence is a legitimate configuration, as for a cursor — a `CgService` slot with an absent-value.
 2. Implement it in tier 1 (`runtime/lwjgl/2`, `runtime/lwjgl/3`) when it is toolkit-level.
 3. The compiler then names every bundle that must answer: `PlatformService1710`, `PlatformServiceLegacy`,
    `PlatformServiceModern`, the harness's `PlatformServiceHarness`, core's `TestPlatformService`.
-4. Call it through `CgPlatform` / `CgGL` from `core/`.
+4. Call it through `CgPlatform` / `CgRHI` from `core/`.
 
 **A new render or lifecycle hook:**
 
@@ -163,7 +163,6 @@ Fabric's dev mod is `tasks.jar` bundling each module's `downgradedJar` —
 | Create a framebuffer, texture, mesh or shader buffer | [`docs/ENGINE_API.md`](docs/ENGINE_API.md) | `api/framebuffer`, `api/texture`, `api/mesh`, `gl/buffer/shader` |
 | Upload, compute or read back off the render thread or beside the frame | [`docs/ENGINE_API.md`](docs/ENGINE_API.md) § *Async* | `gpu/`, `gl/texture`, `render/graph` |
 | Know who sets GPU state, on GL and Vulkan, and what crosses to the host | **[`docs/RENDER_STATE.md`](docs/RENDER_STATE.md)** | `platform/gl/state` |
-| Save and restore GL state across a pass (`CgGL` callers, until H7) | [`docs/ENGINE_API.md`](docs/ENGINE_API.md) § *GL State Save/Restore* | `gl/state/CLAUDE.md` |
 | Render text on screen | `docs/font/README.md` | `text/CLAUDE.md` |
 | Build a HUD element, a widget over a point in the world (damage numbers, name plates, markers) or a subtitle's look | **[`docs/WIDGETS.md`](docs/WIDGETS.md)** | `widget/CLAUDE.md` |
 | Draw 2D quads, curves or text, in the world or on the screen, below widgets | **[`docs/CANVAS.md`](docs/CANVAS.md)** | `render/canvas/CLAUDE.md` |
@@ -206,7 +205,7 @@ the list is refreshed. Refresh it before a release (`docs/PRECACHE.md` § *The s
 
 **Public API first** — always use the highest abstraction layer available. `CgMaterial.load()` not raw GLSL; `CgMeshLoader.load()` not `GL15.glGenBuffers()`. Check package guides to find what already exists before writing raw GL.
 
-**GL-thread rule** — all GL object creation, upload, and deletion must happen on the GL thread within an active context. This includes: `CgFrameBuffer.create()`, shader compilation. Violations produce silent garbage or driver crashes. **Meshes are data**, built and edited on any thread, and the mesh store places them on the render thread. **Textures are the exception, through `CgDeferral`** (`gpu/`): an object owns one, all its device work goes through it, and where the device may not be driven the work waits for the render thread, before the next frame executes. A new GPU object that must work off the render thread does the same rather than branching on `CgGL.mayIssueGl()` itself.
+**GL-thread rule** — all GL object creation, upload, and deletion must happen on the GL thread within an active context. This includes: `CgFrameBuffer.create()`, shader compilation. Violations produce silent garbage or driver crashes. **Meshes are data**, built and edited on any thread, and the mesh store places them on the render thread. **Textures are the exception, through `CgDeferral`** (`gpu/`): an object owns one, all its device work goes through it, and where the device may not be driven the work waits for the render thread, before the next frame executes. A new GPU object that must work off the render thread does the same rather than branching on `CgRHI.onDeviceThread()` itself.
 
 **Vertex data via `CgVertexWriter`** — never write vertex bytes via raw `ByteBuffer.putFloat()`. All vertex packing goes through `CgVertexWriter.forBuffer()`. Index buffer `putShort()`/`putInt()` is the only exception.
 

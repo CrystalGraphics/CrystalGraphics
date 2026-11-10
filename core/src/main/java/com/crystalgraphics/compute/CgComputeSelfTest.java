@@ -5,7 +5,6 @@ import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.gl.framebuffer.CgFrameBuffer;
 import com.crystalgraphics.platform.gl.CgCapabilities;
-import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.render.CgImmediate;
 import com.crystalgraphics.render.graph.CgComputePass;
 import com.crystalgraphics.render.graph.CgGraphBuffer;

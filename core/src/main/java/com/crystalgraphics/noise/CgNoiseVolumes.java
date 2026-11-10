@@ -1,11 +1,11 @@
 package com.crystalgraphics.noise;
 
+import com.crystalgraphics.platform.gl.driver.GLC;
 import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.api.texture.CgTextureSpec;
 import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.gl.texture.CgEngineTextures;
 import com.crystalgraphics.gl.texture.CgTexture3D;
-import com.crystalgraphics.platform.gl.CgGL;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -51,8 +51,8 @@ public final class CgNoiseVolumes {
 
     private static final String[] NAMES = {GRADIENT, VALUE, VORONOI, CURL, VORONOI_NEAREST, VALUE_GRADIENT};
     private static final CgTextureSpec SPEC = CgTextureSpec.builder().type(CgTextureType.RGBA16F)
-            .minFilter(CgGL.GL_LINEAR).magFilter(CgGL.GL_LINEAR)
-            .wrapS(CgGL.GL_REPEAT).wrapT(CgGL.GL_REPEAT).wrapR(CgGL.GL_REPEAT).build();
+            .minFilter(GLC.GL_LINEAR).magFilter(GLC.GL_LINEAR)
+            .wrapS(GLC.GL_REPEAT).wrapT(GLC.GL_REPEAT).wrapR(GLC.GL_REPEAT).build();
 
     private static final CgTexture3D[] VOLUMES = new CgTexture3D[NAMES.length];
     /** One zero texel, answering every name until the bake lands, so no sampler3D is left unbound. */
@@ -79,7 +79,7 @@ public final class CgNoiseVolumes {
         if (pending == null) {
             pending = CgTexture3D.createEmpty(1, 1, 1, SPEC, 1);
             pending.uploadRegion(0, 0, 0, 0, 1, 1, 1, ByteBuffer.allocateDirect(8).order(ByteOrder.nativeOrder()),
-                    CgGL.GL_RGBA, CgGL.GL_HALF_FLOAT);
+                    GLC.GL_RGBA, GLC.GL_HALF_FLOAT);
         }
         if (baked != null) {
             upload(baked);
@@ -149,8 +149,8 @@ public final class CgNoiseVolumes {
         for (int i = 0; i < NAMES.length; i++) {
             CgTexture3D volume = CgTexture3D.createEmpty(SIZE, SIZE, SIZE, SPEC, levels[i].length);
             for (int l = 0, size = SIZE; l < levels[i].length; l++, size /= 2) {
-                volume.uploadRegion(l, 0, 0, 0, size, size, size, levels[i][l].duplicate(), CgGL.GL_RGBA,
-                        CgGL.GL_HALF_FLOAT);
+                volume.uploadRegion(l, 0, 0, 0, size, size, size, levels[i][l].duplicate(), GLC.GL_RGBA,
+                        GLC.GL_HALF_FLOAT);
             }
             VOLUMES[i] = volume;
         }

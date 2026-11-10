@@ -5,10 +5,6 @@ import com.crystalgraphics.gl.texture.CgFallbackTextures;
 import com.crystalgraphics.lwjgl3.Lwjgl3GLDriver;
 import com.crystalgraphics.platform.gl.pipeline.GLNativeGlslCompiler;
 import com.crystalgraphics.platform.gl.pipeline.GLNativeTranslator;
-import com.crystalgraphics.platform.gl.state.CgGlState;
-import com.crystalgraphics.platform.gl.tracked.CgTrackedGLBackend;
-import com.crystalgraphics.platform.gl.tracked.CgTrackedGLContext;
-import com.crystalgraphics.platform.gl.tracked.CgTrackedStateProvider;
 import com.crystalgraphics.platform.rhi.binding.CgBindingLayout;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
 import com.crystalgraphics.platform.rhi.nulldrv.CgNullRHI;
@@ -41,17 +37,32 @@ public class NativeGlslLayoutTest {
 
     private record Recorded(String label, String vertex, String fragment) {}
 
-    /** The tracked backend's compiler, recording each material program's source. */
+    /** The device's compiler, recording each material program's source. */
     private record Recording(CgGlslCompiler linker, Consumer<Recorded> out) implements CgGlslCompiler {
         @Override
         public Program compile(String vertex, String fragment, Map<String, Integer> attribs, String label) {
-            if (vertex.contains("CG_BIND(")) out.accept(new Recorded(label, vertex, fragment));
             return linker.compile(vertex, fragment, attribs, label);
+        }
+
+        @Override
+        public Explicit compileExplicit(String vertex, String fragment, Map<String, Integer> attribs, String label) {
+            if (vertex.contains("CG_BIND(")) out.accept(new Recorded(label, vertex, fragment));
+            return linker.compileExplicit(vertex, fragment, attribs, label);
         }
 
         @Override
         public ComputeProgram compileCompute(String glsl, String label) {
             return linker.compileCompute(glsl, label);
+        }
+
+        @Override
+        public ExplicitCompute compileExplicitCompute(String glsl, String label) {
+            return linker.compileExplicitCompute(glsl, label);
+        }
+
+        @Override
+        public boolean compilesOnAnyThread() {
+            return linker.compilesOnAnyThread();
         }
     }
 
@@ -59,12 +70,8 @@ public class NativeGlslLayoutTest {
     public void nativeLayoutsMatchShadercsAndBuild() throws Exception {
         List<Recorded> recorded = Collections.synchronizedList(new ArrayList<>());
         try (ShadercGlslCompiler linker = new ShadercGlslCompiler()) {
-            CgTrackedGLBackend tracked = new CgTrackedGLBackend(new CgNullRHI(64, 64), new Recording(linker, recorded::add), true);
-            CgGL.init(tracked);
-            CgCapabilities.init(new CgTrackedGLContext());
+            new CgNullRHI(64, 64).install(new Recording(linker, recorded::add));
             CgCapabilities.clearCache();
-            CgGlState.reset();
-            CgGlState.setProvider(new CgTrackedStateProvider(tracked));
             CgBindingPoints.init(CgCapabilities.detect());
             CgFallbackTextures.init();
             Class.forName("com.crystalgraphics.text.render.CgTextMaterials");
@@ -72,7 +79,6 @@ public class NativeGlslLayoutTest {
             ShippedPrograms.linkEveryVariant(walkFailures);
             assertTrue(String.join("\n", walkFailures), walkFailures.isEmpty());
         } finally {
-            CgGlState.reset();
         }
         assertTrue("no program was recorded: the test proves nothing", recorded.size() > 10);
 

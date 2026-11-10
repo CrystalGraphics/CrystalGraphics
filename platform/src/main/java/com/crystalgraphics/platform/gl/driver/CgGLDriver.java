@@ -26,6 +26,12 @@ public interface CgGLDriver {
 
     int glGetInteger(int name);
 
+    /**
+     * {@code glMaxShaderCompilerThreadsKHR} (or ARB's): {@code 0xFFFFFFFF} lets the driver link on as many threads as it
+     * likes. A no-op where the binding has neither.
+     */
+    default void glMaxShaderCompilerThreads(int count) {}
+
     float glGetFloat(int name);
 
     boolean hasExtension(String name);

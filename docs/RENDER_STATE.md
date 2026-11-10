@@ -4,8 +4,7 @@
 the engine sets it on the device for each draw and hands the context back to the host at a section's edge. Nothing a
 mod, Minecraft or another pass left bound can change how a draw of ours looks, and nothing we draw leaks into theirs.
 
-This is how the engine is built on `CgRHI`. What still predates it, `CgGL` and its scopes, is listed at the end and goes
-in `rhi` H7 (`plan/crystalgraphics/rhi/steps/H7.md`).
+This is how the engine is built on `CgRHI`.
 
 ## What a consumer writes
 
@@ -149,10 +148,3 @@ the foreign code's state. Two rules keep that from happening:
   field unknown, so the next call of each reaches GL. A render stage's callback (`CgStageFrame.callback`,
   `CgRenderStage`'s hook) runs engine work, never GL: what it executes takes the callback's target as its current
   target (`CgExecutor.into`).
-
-## What predates this, and goes in H7
-
-`CgGL`'s state shadow (`CgGlState`, `CgGlSlot`, `CgGlStateShadow`, its providers, `CgGlStateManager`) and `CgGlScope`
-(`ENGINE_API.md` § *GL State Save/Restore*) are the old shape: a cache every caller read and wrote, which anything could
-put out of step, and scopes callers wrapped round their work to cope. No host section reads it any more; what is left
-of it serves `CgGL`'s own calls until H7's last step deletes both.

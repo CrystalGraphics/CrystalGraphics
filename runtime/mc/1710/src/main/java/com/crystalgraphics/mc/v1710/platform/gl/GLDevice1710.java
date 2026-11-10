@@ -17,11 +17,11 @@ import com.crystalgraphics.vulkan.toolchain.CgShaderToolchain;
 import net.minecraft.client.Minecraft;
 
 /**
- * The GL device on Minecraft 1.7.10: a {@link CgGLDevice} beside {@code CgGL} in Minecraft's context, on
+ * The GL device on Minecraft 1.7.10: a {@link CgGLDevice} in Minecraft's context, on
  * {@link Lwjgl2GLDriver}, from the graphics start, the shader toolchain taking over its compiles once fetched.
  *
  * <pre>{@code
- * CgEngineLifecycle.addListener(new GLDevice1710());   // once, where the GL backend is made
+ * CgEngineLifecycle.addListener(new GLDevice1710());   // once, from the platform's startDevice
  * }</pre>
  */
 public final class GLDevice1710 extends CgToolchainDevice {
@@ -32,18 +32,14 @@ public final class GLDevice1710 extends CgToolchainDevice {
     private CgGLDevice device;
 
     @Override
-    protected String ineligible() {
-        return null;
-    }
-
-    @Override
     protected void start() {
         Minecraft mc = Minecraft.getMinecraft();
         // No state cache to read (Angelica answers glGet from its own mirror where it runs)
         Lwjgl2GLDriver driver = new Lwjgl2GLDriver();
         device = new CgGLDevice(driver, translator, mc.displayWidth, mc.displayHeight, false, GLHostState.byQuery(driver));
-        device.installBesideCgGL(new GLNativeGlslCompiler(device.driver()));
-        LOGGER.info("[device] the GL device draws beside CgGL: {}, {}", device.globals().vendor(), device.globals().driver());
+        device.install(new GLNativeGlslCompiler(device.driver()));
+        LOGGER.info("[device] the GL device draws in Minecraft's context: {}, {}", device.globals().vendor(),
+                device.globals().driver());
     }
 
     @Override

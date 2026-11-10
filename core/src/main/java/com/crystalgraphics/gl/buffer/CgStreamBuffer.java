@@ -1,8 +1,8 @@
 package com.crystalgraphics.gl.buffer;
 
+import com.crystalgraphics.platform.rhi.CgDeviceNames;
 import com.crystalgraphics.api.buffer.CgObjectBuffer;
 import com.crystalgraphics.gpu.CgUploadLease;
-import com.crystalgraphics.platform.gl.CgGLImports;
 import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.rhi.resource.CgGpuBuffer;
 import com.crystalgraphics.trace.CgTrace;
@@ -174,14 +174,23 @@ public abstract class CgStreamBuffer implements CgObjectBuffer {
         map(count).put(src, from, count);
     }
 
+    /**
+     * The range a binding of the latest upload covers from {@link #getWriteOffset()}: at least its bytes. The frame ring
+     * rounds a storage upload's up to a power of two inside its region, so a set bound at a dynamic offset keeps its
+     * range while the upload's size stays under it.
+     */
+    public int bindingBytes() {
+        return committedBytes;
+    }
+
     /** Whether each upload lands at a new offset, so a binding must say where. True on the frame ring. */
     public boolean offsetMovesPerUpload() {
         return false;
     }
 
-    /** {@code CgGL}'s name for the storage now, for what still reaches it through {@code CgGL}. */
+    /** The device name ({@code CgDeviceNames}) of the storage now. */
     public int getGlBuffer() {
-        return CgGLImports.get().name(gpu);
+        return CgDeviceNames.name(gpu);
     }
 
     @Override
@@ -212,7 +221,7 @@ public abstract class CgStreamBuffer implements CgObjectBuffer {
 
     /** Gives {@code buffer} back, destroyed once the frames in flight that may read it have retired. */
     protected static void release(CgGpuBuffer buffer) {
-        if (CgGLImports.installed()) CgGLImports.get().forget(buffer);
+        CgDeviceNames.forget(buffer);
         CgRHI.get().release(buffer);
     }
 

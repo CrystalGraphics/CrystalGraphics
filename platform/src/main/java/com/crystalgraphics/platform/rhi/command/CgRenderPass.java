@@ -44,8 +44,23 @@ public interface CgRenderPass {
     /** Fills the pipeline's pushed set, replacing what was pushed. */
     void pushBindings(CgBindings bindings);
 
-    /** Binds {@code bindings} at {@code set}; it stays bound across pipelines until replaced. */
-    void setBindingSet(int set, CgBindingSet bindings);
+    /** Binds {@code bindings} at {@code set}, a set with no dynamic slot; it stays bound across pipelines until replaced. */
+    default void setBindingSet(int set, CgBindingSet bindings) {
+        setBindingSet(set, bindings, CgBindingSet.NO_OFFSETS, 0);
+    }
+
+    /**
+     * Binds {@code bindings} at {@code set} with its layout's dynamic offsets: the first {@code count} of
+     * {@code dynamicOffsets}, in binding order, copied. A set bound again at other offsets reads its blocks there.
+     *
+     * <pre>{@code
+     * offsets[0] = (int) viewBlockOffset;              // this frame's place in the ring
+     * pass.setBindingSet(0, view, offsets, 1);
+     * }</pre>
+     *
+     * @throws IllegalArgumentException where {@code count} is not the layout's {@code dynamicCount()}
+     */
+    void setBindingSet(int set, CgBindingSet bindings, int[] dynamicOffsets, int count);
 
     /** {@code value} at byte {@code offset} of the pipeline's push constants. */
     void pushConstants(int offset, int value);

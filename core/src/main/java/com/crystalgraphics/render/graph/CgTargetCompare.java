@@ -1,7 +1,6 @@
 package com.crystalgraphics.render.graph;
 
 import com.crystalgraphics.gl.framebuffer.CgFrameBuffer;
-import com.crystalgraphics.platform.gl.CgGL;
 
 import javax.annotation.Nullable;
 import java.nio.ByteBuffer;

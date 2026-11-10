@@ -58,8 +58,7 @@ import static org.lwjgl.vulkan.VK12.vkResetQueryPool;
 /**
  * The frame's commands outside a pass. Where the device infers, every transfer is fenced by a global barrier on each
  * side and leaves each texture it touched back in its resting layout: coarse, and correct (plan/device-vulkan.md §5).
- * Explicit ({@link #EXPLICIT}), it records the transitions it is told and no other, but while a client asks it to
- * infer ({@link #implicitLayouts}): the tracked backend, for the GL streams outside a graph. Copies into textures
+ * Explicit ({@link #EXPLICIT}), it records the transitions it is told and no other. Copies into textures
  * one after another share one fence, and one call where they share a source and a texture, until anything else is
  * recorded ({@link #endCopies}).
  *
@@ -73,8 +72,8 @@ public final class VulkanEncoder implements CgCommandList {
 
     /** The device moves no layout and fences no transfer it was not told to (rhi-milestones G1). */
     public static final CgVar.Bool EXPLICIT = CgVar.bool("crystalgraphics.vulkan.explicit", false, CgVar.DEV | CgVar.RESTART,
-            "The Vulkan device records only the transitions it is told: a graph's, and the tracked backend's for GL streams"
-                    + " outside one. False, it also lays attachments, storage images and copies itself.");
+            "The Vulkan device records only the transitions it is told: a graph's. False, it also lays attachments,"
+                    + " storage images and copies itself.");
     /** Where a texture back at rest may be used next: any shader, as an attachment, or copied. */
     private static final int RESTED_STAGES = VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT
             | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
@@ -84,8 +83,6 @@ public final class VulkanEncoder implements CgCommandList {
             | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | VK_ACCESS_TRANSFER_READ_BIT;
 
     private final boolean explicit = EXPLICIT.get();
-    /** While explicit: whether a client asked the device to infer, as for every GL stream outside a graph. */
-    private boolean implicit = true;
     private final VulkanBarriers.Batch moves = new VulkanBarriers.Batch();
     /** Split transitions begun as events and not yet ended, each with its event. */
     private CgTransition[] splitOf = new CgTransition[8];
@@ -144,14 +141,8 @@ public final class VulkanEncoder implements CgCommandList {
 
     public VulkanPass openPass() { return open; }
 
-    /** Whether the device moves layouts and fences transfers itself now: not explicit, or a client asked it to. */
-    boolean infers() { return !explicit || implicit; }
-
-    /** While explicit, whether the device infers for what follows: on for GL streams, off while a graph states. */
-    public void implicitLayouts(boolean on) {
-        if (on != implicit) endCopies();   // an open copy run rests what it wrote under the mode it began in
-        implicit = on;
-    }
+    /** Whether the device moves layouts and fences transfers itself: not explicit. */
+    boolean infers() { return !explicit; }
 
     /** Whether a pass is open: what a host checks before taking its command stream back. */
     public boolean passOpen() { return open != null; }

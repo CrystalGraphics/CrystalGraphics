@@ -1,5 +1,7 @@
 package com.crystalgraphics.render.graph;
 
+import java.util.ArrayList;
+import com.crystalgraphics.platform.gl.driver.GLC;
 import com.crystalgraphics.platform.rhi.CgDeviceSection;
 import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.rhi.resource.CgGpuSampler;
@@ -10,7 +12,6 @@ import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.gl.framebuffer.CgFrameBuffer;
-import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 
@@ -137,7 +138,7 @@ final class CgTargetCopy {
         if ((colorMask | depthMask) == 0 || width <= 0 || height <= 0) return 0L;
         if (!fits(desc, width, height, format)) {
             release(pool);
-            desc = new CgTextureDesc(width, height, format);
+            desc = descOf(width, height, format);
         }
         if (storage == null) storage = pool.acquire(desc);
         int x0 = 0, y0 = 0, x1 = width, y1 = height;
@@ -181,7 +182,7 @@ final class CgTargetCopy {
         depthLender = null;
         if (!fits(desc, width, height, format)) {
             release(pool);
-            desc = new CgTextureDesc(width, height, format);
+            desc = descOf(width, height, format);
         }
         if (storage == null) storage = pool.acquire(desc);
         CgTextureView to = storage.getDepthTexture().rhiView();
@@ -191,7 +192,7 @@ final class CgTargetCopy {
             CgExecutor.blitting(source, storage.getId());
             CgDeviceSection.begin();
             try {
-                CgRHI.get().encoder().blit(CgTextureView.attachment(from, 0, 0), 0, 0, width, height,
+                CgRHI.get().encoder().blit(levelZero(from), 0, 0, width, height,
                         to, 0, 0, width, height, CgGpuSampler.Filter.NEAREST);
             } finally {
                 CgDeviceSection.end();
@@ -242,6 +243,19 @@ final class CgTargetCopy {
         }
     }
 
+    /** {@code texture}'s level 0, layer 0, as a blit names it: one of the few a frame copies between, kept. */
+    private static CgTextureView levelZero(CgGpuTexture texture) {
+        for (CgTextureView v : LEVEL_ZERO) if (v != null && v.texture() == texture) return v;
+        CgTextureView made = CgTextureView.attachment(texture, 0, 0);
+        LEVEL_ZERO[nextLevelZero] = made;
+        nextLevelZero = (nextLevelZero + 1) % LEVEL_ZERO.length;
+        return made;
+    }
+
+    /** The views {@link #levelZero} made last, the oldest replaced first. */
+    private static final CgTextureView[] LEVEL_ZERO = new CgTextureView[8];
+    private static int nextLevelZero;
+
     private static Sources sources() {
         if (sources == null) throw new IllegalStateException("a target copy outside the executor's run");
         return sources;
@@ -257,12 +271,12 @@ final class CgTargetCopy {
         CgDeviceSection.begin();
         try {
             if (color != null) {
-                CgRHI.get().encoder().blit(CgTextureView.attachment(color, 0, 0), x0, y0, x1, y1,
-                        CgTextureView.attachment(storage.rhiColor(0), 0, 0), x0, y0, x1, y1, CgGpuSampler.Filter.NEAREST);
+                CgRHI.get().encoder().blit(levelZero(color), x0, y0, x1, y1, levelZero(storage.rhiColor(0)), x0, y0, x1, y1,
+                        CgGpuSampler.Filter.NEAREST);
             }
             if (depth != null) {
-                CgRHI.get().encoder().blit(CgTextureView.attachment(depth, 0, 0), x0, y0, x1, y1,
-                        CgTextureView.attachment(storage.rhiDepth(), 0, 0), x0, y0, x1, y1, CgGpuSampler.Filter.NEAREST);
+                CgRHI.get().encoder().blit(levelZero(depth), x0, y0, x1, y1, levelZero(storage.rhiDepth()), x0, y0, x1, y1,
+                        CgGpuSampler.Filter.NEAREST);
             }
         } finally {
             CgDeviceSection.end();
@@ -273,6 +287,17 @@ final class CgTargetCopy {
             BOTH_ZONE = CgTrace.name("graph.copy.colorDepth");
 
     /** Gives the copy's framebuffer back to the pool. When the pass ends. */
+    /** The description of a copy {@code width} x {@code height} of {@code format}, one kept per shape: copies alternate. */
+    private static CgTextureDesc descOf(int width, int height, CgFrameBufferFormat format) {
+        for (int i = 0; i < DESCS.size(); i++) if (fits(DESCS.get(i), width, height, format)) return DESCS.get(i);
+        CgTextureDesc d = new CgTextureDesc(width, height, format);
+        if (DESCS.size() == 32) DESCS.remove(0);
+        DESCS.add(d);
+        return d;
+    }
+
+    private static final ArrayList<CgTextureDesc> DESCS = new ArrayList<>();
+
     private static boolean fits(@Nullable CgTextureDesc d, int width, int height, CgFrameBufferFormat format) {
         return d != null && d.width() == width && d.height() == height && d.format().equals(format);
     }
@@ -346,7 +371,7 @@ final class CgTargetCopy {
         @Override
         public int getTarget() {
             CgTexture texture = texture();
-            return texture == null ? CgGL.GL_TEXTURE_2D : texture.getTarget();
+            return texture == null ? GLC.GL_TEXTURE_2D : texture.getTarget();
         }
 
         @Override

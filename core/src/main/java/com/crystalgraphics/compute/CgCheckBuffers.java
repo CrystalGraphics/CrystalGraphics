@@ -1,6 +1,6 @@
 package com.crystalgraphics.compute;
 
-import com.crystalgraphics.platform.gl.CgGLImports;
+import com.crystalgraphics.platform.rhi.CgDeviceNames;
 import com.crystalgraphics.platform.rhi.CgDeviceSection;
 import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.rhi.resource.CgGpuBuffer;
@@ -48,7 +48,7 @@ public final class CgCheckBuffers {
                 CgDeviceSection.end();
             }
         }
-        int name = CgGLImports.get().name(buffer);
+        int name = CgDeviceNames.name(buffer);
         MADE.put(name, buffer);
         return name;
     }
@@ -57,7 +57,7 @@ public final class CgCheckBuffers {
     public static void release(int name) {
         CgGpuBuffer buffer = MADE.remove(name);
         if (buffer == null) return;
-        CgGLImports.get().forget(buffer);
+        CgDeviceNames.forget(buffer);
         CgRHI.get().release(buffer);
     }
 }

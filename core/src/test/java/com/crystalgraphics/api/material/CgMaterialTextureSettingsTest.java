@@ -1,12 +1,12 @@
 package com.crystalgraphics.api.material;
 
+import com.crystalgraphics.platform.gl.driver.GLC;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.texture.CgTextureSpec;
 import com.crystalgraphics.asset.kind.CgAssetKinds;
 import com.crystalgraphics.asset.tree.CgAssetException;
 import com.crystalgraphics.gl.texture.CgTexture2D;
 import com.crystalgraphics.gl.texture.CgTextureCubemap;
-import com.crystalgraphics.platform.gl.CgGL;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
@@ -51,15 +51,15 @@ public class CgMaterialTextureSettingsTest {
     @Test
     public void itsSamplerIsTheTexturesOwnFilterAndWrap() {
         CgTextureSpec own = CgMaterialRegistry.textureSpec(DIR + "clamped.png");
-        assertEquals(CgGL.GL_NEAREST, own.getMinFilter());
-        assertEquals(CgGL.GL_NEAREST, own.getMagFilter());
-        assertEquals(CgGL.GL_REPEAT, own.getWrapS());
-        assertEquals(CgGL.GL_MIRRORED_REPEAT, own.getWrapT());
+        assertEquals(GLC.GL_NEAREST, own.getMinFilter());
+        assertEquals(GLC.GL_NEAREST, own.getMagFilter());
+        assertEquals(GLC.GL_REPEAT, own.getWrapS());
+        assertEquals(GLC.GL_MIRRORED_REPEAT, own.getWrapT());
         assertFalse(own.getMipmaps().isEnabled());
         CgTextureSpec none = CgMaterialRegistry.textureSpec(DIR + "ramp.hdr");
-        assertEquals("trilinear with mips", CgGL.GL_LINEAR_MIPMAP_LINEAR, none.getMipmaps().getMinFilter());
-        assertEquals("repeated, Unreal's TA_Wrap", CgGL.GL_REPEAT, none.getWrapS());
-        assertEquals(CgGL.GL_REPEAT, none.getWrapT());
+        assertEquals("trilinear with mips", GLC.GL_LINEAR_MIPMAP_LINEAR, none.getMipmaps().getMinFilter());
+        assertEquals("repeated, Unreal's TA_Wrap", GLC.GL_REPEAT, none.getWrapS());
+        assertEquals(GLC.GL_REPEAT, none.getWrapT());
     }
 
     @Test

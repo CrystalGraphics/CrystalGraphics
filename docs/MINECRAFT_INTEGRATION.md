@@ -19,8 +19,8 @@ The layer that wires CrystalGraphics into each Minecraft. Read it when debugging
 reload, or GL state shared with Minecraft and other mods. Each host's classes: its own `CLAUDE.md`.
 
 **Every hook below is a host section's bracket**: `CgGraphicsLifecycle`'s entries open one with
-`CgGL.fromHost()` and close it with `toHost()`, and a host's own bracket around them nests.
-Nothing on GL; the platform guide's *Host sections* has the rules.
+`CgDeviceSection.begin()` and close it with `end()`, and a host's own bracket around them nests. The platform guide's
+*Host sections* has the rules.
 
 ### Connections — `CgNetwork`
 
@@ -221,7 +221,7 @@ SRG-named mixins that MixinBooter applies. `singlejar-logic/README.md` § *Forge
 ### Modern — `runtime/mc/modern` (Forge 1.13.2+, NeoForge 1.20.2+, Fabric 1.14.4+)
 
 The `common` branch holds everything a loader does not decide: `PlatformServiceModern` (over tier 1),
-`Blaze3dGLBackend` (tier 1; what Minecraft's `GlStateManager` caches is set back as each host section closes),
+`GLDeviceModern` and `HostStateModern` (what Minecraft's `GlStateManager` caches is set back as each host section closes),
 `HostStateVerifier`, and `LifecycleModern` — the one class a loader talks to. Each loader node is
 registration only, reached through one bootstrapper per loader (`ForgeBootstrap`, `NeoForgeBootstrap`,
 `FabricBootstrap`) that picks the node by the running version.
@@ -256,7 +256,7 @@ each; from 26.1 they are noted at the hook and fired at the frame end, since 26.
 | Forge 1.19–1.20.4 | `RenderGuiEvent.Post` | `ScreenEvent.Render.Post` |
 | Forge 1.20.6–1.21.5 · 1.21.6–1.21.7 · 1.21.8+ | a layer, `AddGuiOverlayLayersEvent` · node mixin `HudHook` (`Gui.render` TAIL) · a layer | `ScreenEvent.Render.Post` |
 | NeoForge | `RenderGuiEvent.Post` | `ScreenEvent.Render.Post` |
-| Fabric 1.14.4 · 1.15.2 · 1.16.5+ · 26.1+ | node mixin `HudHook` · `HudRenderCallback` · the same · `HudElementRegistry` | none · none · `ScreenEvents.afterRender` · `afterExtract` |
+| Fabric 1.14.4 · 1.15.2 · 1.16.5+ · 26.1+ | node mixin `HudHook` · `HudRenderCallback` · the same · `HudElementRegistry` | `FrameEndHook`, while a screen is open · the same · `ScreenEvents.afterRender` · `afterExtract` |
 | Legacy Forge, 1.7.10 | `RenderGameOverlayEvent.Post`, `ALL` (`OverlayStagesLegacy`, `OverlayStages1710`) | `GuiScreenEvent.DrawScreenEvent.Post` |
 
 The exact version splits are in each loader branch's `AGENTS.md`. **The frame ends after the GUI**, from
@@ -319,45 +319,17 @@ world frame it fires while no world draws builds the world's own Vulkan pipeline
 does not stop the next:
 
 1. `CgTextureManager.get().reloadAll()` — re-uploads every texture
-2. `CgShaderManager.reloadAll()` — marks every raw `CgShader` dirty (recompiled on next `bind()`)
-3. `CgMaterialRegistry.get().reloadAll()` + `CgMaterialShaderRegistry.get().reloadAll()` — marks every material dirty
+2. `CgShaderPreprocessor.clearCache()` — an edited include is read again
+3. `CgMaterialRegistry.get().reloadAll()` + `CgMaterialShaderRegistry.get().reloadAll()` — marks every material dirty;
+   `CgCompute.reloadAll()` every kernel
 
-### GL state — `CgGlStateManager`
+### GL state shared with Minecraft
 
-> **Superseded 2026-07-30, finished 2026-07-31.** `GLStateMirror`, `CgGlStates` and the entire ASM coremod
-> (`mc/coremod/` — coremod, transformer, redirects, coverage matrix) are **deleted**. Earlier revisions
-> of this file described the mirror as what made `CgGlState.save/restore` reliable — it never could be.
-
-**Why the mirror was abandoned.** It depended on an ASM transformer rewriting GL call sites process-wide.
-That cannot be made reliable: our redirector is modelled on Angelica's, targets the same call sites, and has
-been observed with **Angelica redirecting ours into its own**. Two transformers competing for the same
-bytecode cannot both be authoritative, and any third mod doing raw GL ends the guarantee regardless. It was
-also only ever fed on 1.7.10 — on the other three targets it was inert.
-
-**What replaced it.** `gl/state/CgGlStateManager` keeps a CPU-side shadow, eliminates redundant GL calls,
-and takes truth from a `CgGlStateProvider` at declared boundaries rather than by observing other code.
-`CgGlState` / `CgGlScope` / `CgGlSlot` kept their signatures, so no call site changed.
-
-Measured on the `text-3d` harness scene: `doBind.stateSave` went from **1,599 ms over 838 frames** to
-**0.00 ms**, and the worst single frame from **346.8 ms** to a whole-`doBind` max of **2.16 ms**.
-
-Package guide: `core/src/main/java/com/crystalgraphics/gl/state/CLAUDE.md`.
-Design record and eight implementation corrections: `plan/gl-state-manager.md`.
-
-**Four rules worth knowing before touching rendering code:**
-
-1. **Raw `CgGL` is fine.** Tracking lives *inside* `CgGL`'s setters, so there is no way to write GL state
-   without the shadow seeing it. The typed records (`CgBlendState`, `CgDepthState`, …) are a convenience,
-   not a safety requirement — the `cgStateWriteGuard` task that used to police this was deleted along with
-   the problem it policed.
-2. Any code that resets GL state wholesale **with raw GL that bypasses `CgGL`** — a foreign mod — must
-   call `CgGlState.invalidateAllIfPresent()`. Only what goes around `CgGL` is invisible.
-3. **Only genuinely global state may be deduplicated.** Anything an object binding implicitly swaps must be
-   invalidated when that object changes — `GL_ELEMENT_ARRAY_BUFFER` is per-VAO state, and treating it as
-   global elided a required bind and killed every indexed draw through the affected VAO.
-4. A wrong decision here produces a **missing GL call** — wrong rendering, no exception. Diagnose with
-   `-Dcrystalgraphics.state.verify=true`, which names the offending domain, or
-   `-Dcrystalgraphics.state.noDedup=true` to rule the manager out entirely.
+The GL device keeps its own state (`GLContextState`) and drops a call setting what the context already has
+(`GLStateFilter`). What Minecraft caches is read as each host section opens and set back as it closes
+(`GLHostState`: `HostStateModern` from `GlStateManager`'s fields, `HostStateLegacy` likewise, 1.7.10 by query).
+A domain the host caches that the reader does not cover is a **missing GL call** on the host's next draw, not an
+exception: `-Dcrystalgraphics.host.verify=true` names it. [`RENDER_STATE.md`](RENDER_STATE.md) has the whole account.
 
 ---
 

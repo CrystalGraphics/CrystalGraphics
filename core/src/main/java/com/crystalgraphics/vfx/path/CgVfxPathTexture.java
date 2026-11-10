@@ -1,11 +1,11 @@
 package com.crystalgraphics.vfx.path;
 
+import com.crystalgraphics.platform.gl.driver.GLC;
 import com.crystalgraphics.api.texture.CgTextureSpec;
 import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.gl.texture.CgTexture2D;
 import com.crystalgraphics.gpu.CgUploadLease;
 import com.crystalgraphics.gpu.CgUploads;
-import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.util.CgBufferUtils;
 
 import java.nio.ByteBuffer;
@@ -34,7 +34,7 @@ public final class CgVfxPathTexture {
     public static final int WIDTH = 1 + 3 * CgVfxPath.MAX_RINGS;
     private static final CgTextureSpec SPEC = CgTextureSpec.builder()
             .type(CgTextureType.RGBA32F)
-            .minFilter(CgGL.GL_NEAREST).magFilter(CgGL.GL_NEAREST)
+            .minFilter(GLC.GL_NEAREST).magFilter(GLC.GL_NEAREST)
             .build();
     private static final int ROW_BYTES = WIDTH * 4 * Float.BYTES;
 
@@ -74,7 +74,7 @@ public final class CgVfxPathTexture {
         pixels.position(0).limit(rows * ROW_BYTES);
         CgUploadLease lease = CgUploads.lease(rows * ROW_BYTES).put(pixels);
         pixels.clear();
-        texture.uploadRegion(0, 0, 0, WIDTH, rows, lease, CgGL.GL_RGBA, CgGL.GL_FLOAT);
+        texture.uploadRegion(0, 0, 0, WIDTH, rows, lease, GLC.GL_RGBA, GLC.GL_FLOAT);
     }
 
     /** The texture tube materials sample; null before the first upload. */

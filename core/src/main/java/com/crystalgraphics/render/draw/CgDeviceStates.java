@@ -142,6 +142,13 @@ public final class CgDeviceStates {
             layoutsOf = rhi;
         }
         List<CgBindingLayout> sets = new ArrayList<>(declared.size());
+        // Every uniform and storage buffer dynamic while the device allows, in set order (Unreal's
+        // r.Vulkan.DynamicGlobalUBs 2, and WebGPU's dynamic storage): a set holding a buffer the frame ring moves each
+        // frame is then made once
+        CgRHI.Globals.Limits limits = rhi.globals().limits();
+        int dynamicLeft = CgDeviceSets.MAX_DYNAMIC;
+        int uniformsLeft = limits.maxDynamicUniformBuffers();
+        int storageLeft = limits.maxDynamicStorageBuffers();
         for (int s = 0; s < declared.size(); s++) {
             if (readsHeap && s == CgRHI.BINDLESS_SET) {
                 CgBindingLayout heap = rhi.bindlessLayout();
@@ -149,8 +156,18 @@ public final class CgDeviceStates {
                 sets.add(heap);
                 continue;
             }
-            List<CgBindingLayout.Slot> slots = declared.get(s);
-            sets.add(LAYOUTS.computeIfAbsent(slots, k -> rhi.createBindingLayout("set " + k, k, false)));
+            List<CgBindingLayout.Slot> slots = new ArrayList<>(declared.get(s));
+            for (int i = 0; i < slots.size() && dynamicLeft > 0; i++) {
+                CgBindingLayout.Slot slot = slots.get(i);
+                boolean uniform = slot.type() == CgBindingLayout.Type.UNIFORM_BUFFER;
+                if (!uniform && slot.type() != CgBindingLayout.Type.STORAGE_BUFFER) continue;
+                if ((uniform ? uniformsLeft : storageLeft) == 0) continue;
+                slots.set(i, new CgBindingLayout.Slot(slot.binding(), slot.type(), true));
+                dynamicLeft--;
+                if (uniform) uniformsLeft--;
+                else storageLeft--;
+            }
+            sets.add(LAYOUTS.computeIfAbsent(List.copyOf(slots), k -> rhi.createBindingLayout("set " + k, k, false)));
         }
         return new CgPipelineLayout(sets, pushConstantBytes);
     }

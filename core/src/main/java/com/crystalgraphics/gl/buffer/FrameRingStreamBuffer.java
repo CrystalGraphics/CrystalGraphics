@@ -46,6 +46,8 @@ final class FrameRingStreamBuffer extends CgStreamBuffer {
     private int regionBase;
     private int cursor;
     private int mappedAt;
+    /** The latest upload's {@link #window}. */
+    private int bindingBytes;
 
     FrameRingStreamBuffer(Use use, int capacityBytes) {
         super(use, capacityBytes);
@@ -101,7 +103,7 @@ final class FrameRingStreamBuffer extends CgStreamBuffer {
             regionBytes = alignUp(Math.max(need, Math.min(regionBytes * 2, MAX_REGION_BYTES)));
             overflowed();
             allocate();
-        } else if (cursor + need > regionBytes) {
+        } else if (cursor + window(sizeBytes) > regionBytes) {
             // Doubled now, not only at the next frame: a block uploaded per draw from a small start would otherwise take
             // a new buffer at every upload that overflows, all frame long.
             regionBytes = alignUp(Math.min(regionBytes * 2, Math.max(regionBytes, MAX_REGION_BYTES)));
@@ -119,6 +121,20 @@ final class FrameRingStreamBuffer extends CgStreamBuffer {
         }
     }
 
+    /**
+     * What a binding of an upload of {@code bytes} may read: a storage upload's rounded up to a power of two, which
+     * {@link #reserve} keeps inside the region, as a dynamic offset's fixed range must fit the buffer.
+     */
+    private int window(int bytes) {
+        int need = alignUp(Math.max(bytes, 1));
+        return use == Use.STORAGE ? Math.min(Integer.highestOneBit(need - 1) << 1, regionBytes) : need;
+    }
+
+    @Override
+    public int bindingBytes() {
+        return bindingBytes;
+    }
+
     @Override
     public int mappedOffset() {
         return mappedAt;
@@ -129,6 +145,7 @@ final class FrameRingStreamBuffer extends CgStreamBuffer {
     public int commit(int usedBytes) {
         cursor += alignUp(usedBytes);
         writeOffset = mappedAt;
+        bindingBytes = window(usedBytes);
         return mappedAt;
     }
 

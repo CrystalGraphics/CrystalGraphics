@@ -276,8 +276,9 @@ public final class CgRenderStage {
             // The engine starts on the first stage a host fires if the host never announced its context.
             CgEngineLifecycle.ensureGraphicsContext(host.width(), host.height());
             if (renderers.isEmpty() || !CgGraphicsLifecycle.isInitialized()) return;
-            // The host's target, where the engine named none (fireInto, a rehearsal)
+            // The host's target, where the engine named none (fireInto, a rehearsal); a GUI stage its colour alone
             try (CgExecutor.Into ignored = CgExecutor.hasCurrentTarget() ? null
+                    : this == HUD || this == SCREEN ? CgExecutor.intoColor(host.mainFramebuffer(), host.width(), host.height())
                     : CgExecutor.into(host.mainFramebuffer(), host.width(), host.height())) {
                 CgGpuTrace.begin(gpuName, CgGpuTrace.WATCH);   // timed always: a slow firing is logged by name
                 firing++;

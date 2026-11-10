@@ -1,9 +1,10 @@
 package com.crystalgraphics.render.stage;
 
+import com.crystalgraphics.platform.rhi.CgHostImports;
+import com.crystalgraphics.platform.rhi.CgDeviceNames;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.gl.texture.CgFallbackTextures;
 import com.crystalgraphics.gl.texture.CgTexture2D;
-import com.crystalgraphics.platform.gl.CgGL;
 
 import java.util.Objects;
 
@@ -22,7 +23,7 @@ import java.util.Objects;
  *
  * <ul>
  *   <li>Borrowed: nothing of ours deletes them. A name is 0 where the host gives none (the harness, no level).</li>
- *   <li>Imported once per host texture object ({@link CgGL#importHostTexture}): again only when the host hands a
+ *   <li>Imported once per host texture object ({@link CgHostImports#texture}, named by {@link CgDeviceNames}): again only when the host hands a
  *       different one, by {@code equals} (a resource reload, the lightmap remade). On the Vulkan host an import is a
  *       wrap, so never per frame.</li>
  *   <li>{@link #version} changes with every import, for a holder that wraps a name in a {@code CgTexture2D}.</li>
@@ -80,11 +81,11 @@ public final class CgHostTextures {
         return version;
     }
 
-    /** Host side: this frame's lightmap, the handle {@link CgGL#importHostTexture} takes on this host; null for none. */
+    /** Host side: this frame's lightmap, the handle {@link CgHostImports#texture} takes on this host; null for none. */
     public CgHostTextures lightmap(Object hostHandle, int width, int height) {
         if (!Objects.equals(hostHandle, lightmapHandle)) {
             lightmapHandle = hostHandle;
-            lightmap = hostHandle == null ? 0 : CgGL.importHostTexture(hostHandle);
+            lightmap = hostHandle == null ? 0 : CgDeviceNames.name(CgHostImports.get().texture(hostHandle));
             version++;
         }
         lightmapWidth = width;
@@ -96,7 +97,7 @@ public final class CgHostTextures {
     public CgHostTextures blockAtlas(Object hostHandle, int width, int height) {
         if (!Objects.equals(hostHandle, atlasHandle)) {
             atlasHandle = hostHandle;
-            atlas = hostHandle == null ? 0 : CgGL.importHostTexture(hostHandle);
+            atlas = hostHandle == null ? 0 : CgDeviceNames.name(CgHostImports.get().texture(hostHandle));
             version++;
         }
         atlasWidth = width;
@@ -106,7 +107,7 @@ public final class CgHostTextures {
 
     /**
      * Host side: this frame's lightmap as a name the host already imported, for a host with its own cached import (the
-     * Vulkan host's {@code importTexture}, which wraps its image in what the tracked backend takes); 0 for none.
+     * Vulkan host's {@code importTexture}, which wraps its image as a device texture); 0 for none.
      */
     public CgHostTextures importedLightmap(int name, int width, int height) {
         if (name != lightmap || lightmapHandle != null) {

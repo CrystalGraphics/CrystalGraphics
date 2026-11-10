@@ -1,6 +1,7 @@
 package com.crystalgraphics.api.texture;
 
-import com.crystalgraphics.platform.gl.CgGL;
+import com.crystalgraphics.platform.gl.driver.GLC;
+
 
 /**
  * Immutable specification of mipmap configuration for textures.
@@ -41,15 +42,15 @@ public final class CgMipmapConfig {
 
     /** Mipmapping disabled (default). */
     public static final CgMipmapConfig NONE =
-            new CgMipmapConfig(false, CgGL.GL_LINEAR, CgGL.GL_LINEAR);
+            new CgMipmapConfig(false, GLC.GL_LINEAR, GLC.GL_LINEAR);
 
     /** Trilinear filtering — best quality, standard choice for diffuse textures. */
     public static final CgMipmapConfig TRILINEAR =
-            new CgMipmapConfig(true, CgGL.GL_LINEAR_MIPMAP_LINEAR, CgGL.GL_LINEAR);
+            new CgMipmapConfig(true, GLC.GL_LINEAR_MIPMAP_LINEAR, GLC.GL_LINEAR);
 
     /** Nearest-mip-nearest — sharp pixelated look, low cost. */
     public static final CgMipmapConfig NEAREST =
-            new CgMipmapConfig(true, CgGL.GL_NEAREST_MIPMAP_NEAREST, CgGL.GL_NEAREST);
+            new CgMipmapConfig(true, GLC.GL_NEAREST_MIPMAP_NEAREST, GLC.GL_NEAREST);
 
     // ── Instance fields ────────────────────────────────────────────────────────
 
@@ -83,9 +84,9 @@ public final class CgMipmapConfig {
      * Prefer {@link #TRILINEAR} or {@link #NEAREST} for the common cases.
      *
      * @param minFilter the minification filter constant
-     *                  (e.g., {@code CgGL.GL_LINEAR_MIPMAP_LINEAR})
+     *                  (e.g., {@code GLC.GL_LINEAR_MIPMAP_LINEAR})
      * @param magFilter the magnification filter constant
-     *                  (e.g., {@code CgGL.GL_LINEAR})
+     *                  (e.g., {@code GLC.GL_LINEAR})
      * @return an enabled {@code CgMipmapConfig}
      */
     public static CgMipmapConfig enabled(int minFilter, int magFilter) {
@@ -119,7 +120,7 @@ public final class CgMipmapConfig {
      *
      * <p>Only meaningful if {@link #isEnabled()} returns {@code true}.</p>
      *
-     * @return the minification filter (e.g., {@code CgGL.GL_LINEAR_MIPMAP_LINEAR})
+     * @return the minification filter (e.g., {@code GLC.GL_LINEAR_MIPMAP_LINEAR})
      */
     public int getMinFilter() {
         return minFilter;
@@ -130,7 +131,7 @@ public final class CgMipmapConfig {
      *
      * <p>Only meaningful if {@link #isEnabled()} returns {@code true}.</p>
      *
-     * @return the magnification filter (e.g., {@code CgGL.GL_LINEAR})
+     * @return the magnification filter (e.g., {@code GLC.GL_LINEAR})
      */
     public int getMagFilter() {
         return magFilter;

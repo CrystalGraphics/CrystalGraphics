@@ -1,7 +1,7 @@
 package com.crystalgraphics.mc.modern.platform.gl;
 
 //? if <1.15 {
-/*// 1.14's GlStateManager under the `_` names 1.15 gave it, for Blaze3dGLBackend and HostStateModern, which import none
+/*// 1.14's GlStateManager under the `_` names 1.15 gave it, for HostStateModern, which imports none
 // below 1.15.
 final class GlStateManager {
 

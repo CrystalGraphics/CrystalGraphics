@@ -1,7 +1,7 @@
 package com.crystalgraphics.render.mesh;
 
+import com.crystalgraphics.platform.rhi.CgDeviceNames;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
-import com.crystalgraphics.platform.gl.CgGLImports;
 import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.rhi.resource.CgGpuBuffer;
 
@@ -127,7 +127,7 @@ final class CgMeshPool {
 
     /** Gives {@code buffer} back, destroyed once the frames that may read it have retired. */
     static void release(CgGpuBuffer buffer) {
-        if (CgGLImports.installed()) CgGLImports.get().forget(buffer);
+        CgDeviceNames.forget(buffer);
         CgRHI.get().release(buffer);
     }
 

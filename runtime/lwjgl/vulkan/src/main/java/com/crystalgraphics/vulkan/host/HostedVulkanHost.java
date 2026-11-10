@@ -1,10 +1,9 @@
 package com.crystalgraphics.vulkan.host;
 
+import com.crystalgraphics.platform.rhi.CgDeviceNames;
 import com.crystalgraphics.platform.rhi.CgDeviceSection;
 import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
-import com.crystalgraphics.platform.gl.CgGL;
-import com.crystalgraphics.platform.gl.tracked.CgTrackedGLBackend;
 import com.crystalgraphics.platform.service.CgCacheDirectory;
 import com.crystalgraphics.vulkan.CgVulkanDevice;
 import com.crystalgraphics.vulkan.command.VulkanComputeCommandBuffer;
@@ -80,8 +79,8 @@ import static org.lwjgl.vulkan.VK12.vkSignalSemaphore;
  *     // ... and CgVulkanHost's device facts: instance(), device(), queue(), apiVersion(), framesInFlight(), ...
  * }
  *
- * CgGLBackend gl = host.openBackend(width, height);   // a device over the host, and GL's semantics over that
- * int color = host.importTexture(gameColorTexture);   // a name CgGL can attach
+ * CgVulkanDevice device = host.openDevice(width, height);   // the device over the host, installed
+ * int color = host.importTexture(gameColorTexture);         // a name the engine knows the host's image by
  * host.endHostFrame();                                // once per host frame, before the host submits it
  * host.closeAfterLastSubmit();                        // at the host's shutdown signal
  * }</pre>
@@ -94,8 +93,8 @@ import static org.lwjgl.vulkan.VK12.vkSignalSemaphore;
  *       then, so that action must run only once the submit carrying the frame has completed.</li>
  *   <li>A wrapped image rests in the layout {@link #wrap} gives it, and every pass and transfer of ours returns
  *       it there. {@link #isClosed} lets the name go once the host has deleted the texture.</li>
- *   <li>{@code CgGL} used outside a host section is recorded for the next hand-over and warned about once. It
- *       still has to reach the host before its next submit, so bracket it.</li>
+ *   <li>Device work outside a host section is recorded for the next hand-over and warned about once. It still has to
+ *       reach the host before its next submit, so bracket it.</li>
  *   <li>{@code verify} checks every hand-over: no pass of ours open, every wrapped image back where it rests.</li>
  *   <li>{@link #submitAndWait()} and {@link #waitRetired} throw: the host submits, so a wait would deadlock.
  *       The host's render thread only.</li>
@@ -118,7 +117,6 @@ public abstract class HostedVulkanHost<T> implements CgVulkanHost {
     private final String hostName;
     private final boolean verify;
     private CgVulkanDevice device;
-    private CgTrackedGLBackend gl;
     private boolean closing;
 
     // This hand-over's commands, begun when first asked for.
@@ -257,9 +255,9 @@ public abstract class HostedVulkanHost<T> implements CgVulkanHost {
 
     // ── Use ──────────────────────────────────────────────────────────────────────────────────────
 
-    /** Builds the device over this host and GL's semantics over that, and installs them as the device front. Once. */
-    public final CgTrackedGLBackend openBackend(int width, int height) {
-        if (device != null) throw new IllegalStateException("openBackend already ran on this host");
+    /** Builds the device over this host and installs it as the process's device. Once. */
+    public final CgVulkanDevice openDevice(int width, int height) {
+        if (device != null) throw new IllegalStateException("openDevice already ran on this host");
         // Opt-in: the host's once-a-frame submit is the only signal async work can wait on, so it starts after the
         // whole frame and the next submit waits for it -- serial, and in Minecraft 5 ms a frame slower than in order.
         if ("true".equals(CgRHI.ASYNC_COMPUTE.get())) {
@@ -282,10 +280,9 @@ public abstract class HostedVulkanHost<T> implements CgVulkanHost {
             transferTimeline = timeline();
             LOG.info("[cg] copies into new images run on {}'s transfer queue, family {}", hostName, transferQueueFamily);
         }
-        device = new CgVulkanDevice(this, width, height, CgCacheDirectory.of("vulkan"));
-        gl = new CgTrackedGLBackend(device, new ShadercGlslCompiler(CgCacheDirectory.of("spirv")), verify)
-                .compileInBackground().install();
-        return gl;
+        device = new CgVulkanDevice(this, width, height, CgCacheDirectory.of("vulkan"))
+                .install(new ShadercGlslCompiler(CgCacheDirectory.of("spirv")));
+        return device;
     }
 
     /** Whether {@code family} copies any region of an image: a granularity of one texel. */
@@ -305,17 +302,17 @@ public abstract class HostedVulkanHost<T> implements CgVulkanHost {
         }
     }
 
-    /** The device {@link #openBackend} built, or null before it. */
+    /** The device {@link #openDevice} built, or null before it. */
     protected final CgVulkanDevice cgDevice() {
         return device;
     }
 
     /** Ends our frame inside the host's: after everything we draw in it, before the host submits it. */
     public final void endHostFrame() {
-        if (gl == null || closing) return;
+        if (device == null || closing) return;
         CgDeviceSection.begin();
         try {
-            gl.endFrame();
+            device.endFrame();
         } finally {
             CgDeviceSection.end();
         }
@@ -334,15 +331,32 @@ public abstract class HostedVulkanHost<T> implements CgVulkanHost {
         });
     }
 
-    /** The host's texture as a GL name the engine can attach, the same name for as long as the texture lives. */
+    /** The host's texture by the name the engine knows it by, the same name for as long as the texture lives. */
     public final int importTexture(T texture) {
+        return imported(texture).name();
+    }
+
+    /**
+     * A name for the host's target over {@code color} and {@code depth} (null for none), which a hook draws into as any
+     * host framebuffer: a new one each call, so ask again only when the host remakes either.
+     */
+    public final int framebuffer(T color, T depth) {
+        return device.hostImports().framebuffer(imported(color).wrapped(), depth == null ? null : imported(depth).wrapped());
+    }
+
+    /** {@link #framebuffer}'s name answers nothing from now on: the host remade its images. */
+    public final void forgetFramebuffer(int fbo) {
+        device.hostImports().forgetFramebuffer(fbo);
+    }
+
+    private Imported imported(T texture) {
         forgetClosed();
         Imported known = imported.get(texture);
-        if (known != null) return known.name();
+        if (known != null) return known;
         CgGpuTexture wrapped = wrap(texture);
-        int name = CgGL.importHostTexture(wrapped);
-        imported.put(texture, new Imported(wrapped, name));
-        return name;
+        Imported made = new Imported(wrapped, CgDeviceNames.name(wrapped));
+        imported.put(texture, made);
+        return made;
     }
 
     /** The default framebuffer at the host's target size, as GL's is the window's. */
@@ -356,7 +370,7 @@ public abstract class HostedVulkanHost<T> implements CgVulkanHost {
         while (it.hasNext()) {
             Map.Entry<T, Imported> e = it.next();
             if (!isClosed(e.getKey())) continue;
-            CgGL.glDeleteTextures(e.getValue().name());
+            CgDeviceNames.forget(e.getValue().wrapped());
             device.release(e.getValue().wrapped());
             it.remove();
         }
@@ -386,10 +400,10 @@ public abstract class HostedVulkanHost<T> implements CgVulkanHost {
         return setup;
     }
 
-    // Not while openBackend() builds the device: its first images are recorded before any section, and the first
+    // Not while openDevice() builds the device: its first images are recorded before any section, and the first
     // hand-over of that same frame carries them.
     private void noteOutsideSection() {
-        if (inSection || warnedOutside || gl == null) return;
+        if (inSection || warnedOutside || device == null) return;
         warnedOutside = true;
         LOG.warn("[cg] the device used outside a host section on " + hostName + "'s Vulkan device: it reaches " + hostName
                 + " at the next hand-over. Bracket it with CgDeviceSection.begin() and end().", new Throwable("here"));

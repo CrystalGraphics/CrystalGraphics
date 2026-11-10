@@ -1,8 +1,8 @@
 package com.crystalgraphics.gpu;
 
+import com.crystalgraphics.platform.rhi.CgDeviceNames;
 import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
-import com.crystalgraphics.platform.gl.CgGLImports;
 import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.rhi.resource.CgGpuBuffer;
 import com.crystalgraphics.trace.CgTrace;
@@ -308,7 +308,7 @@ public final class CgUploads {
     }
 
     private static void release(CgGpuBuffer buffer) {
-        if (CgGLImports.installed()) CgGLImports.get().forget(buffer);
+        CgDeviceNames.forget(buffer);
         CgRHI.get().release(buffer);
     }
 

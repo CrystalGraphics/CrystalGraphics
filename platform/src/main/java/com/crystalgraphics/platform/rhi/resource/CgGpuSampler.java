@@ -3,7 +3,7 @@ package com.crystalgraphics.platform.rhi.resource;
 import com.crystalgraphics.platform.rhi.format.CgCompare;
 
 /**
- * How a texture is sampled. Cheap to ask for twice: the tracked backend caches one per distinct {@link Desc}.
+ * How a texture is sampled. Cheap to ask for twice: a device caches one per distinct {@link Desc}.
  */
 public interface CgGpuSampler extends CgRHIResource {
 

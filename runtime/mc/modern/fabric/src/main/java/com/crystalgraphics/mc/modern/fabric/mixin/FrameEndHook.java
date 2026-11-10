@@ -1,6 +1,9 @@
 package com.crystalgraphics.mc.modern.fabric.mixin;
 
 import com.crystalgraphics.mc.modern.platform.LifecycleModern;
+//? if <1.16 {
+/*import net.minecraft.client.Minecraft;
+*///?}
 import net.minecraft.client.renderer.GameRenderer;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
@@ -9,7 +12,8 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 // The frame end on Fabric, which has no frame event: GameRenderer.render's TAIL, after the level AND the
 // GUI -- once a frame, a title screen included, where Forge's RenderTickEvent END fires. No refmap, so
-// the method is named in both namespaces, descriptor and all: 1.14.4 also has a render(FJ)V.
+// the method is named in both namespaces, descriptor and all: 1.14.4 also has a render(FJ)V. Below 1.16, whose
+// Fabric API has no ScreenEvents, the screen stage too: a screen open here has drawn this frame.
 // @see com.crystalgraphics.mc.shared.CrystalGraphicsFabricMixins
 @Mixin(value = GameRenderer.class, remap = false)
 public abstract class FrameEndHook {
@@ -26,6 +30,9 @@ public abstract class FrameEndHook {
     @Inject(method = {"render(FJZ)V", "method_3192(FJZ)V"}, at = @At("TAIL"), require = 1)
     //?}
     private void crystalgraphics$frameEnd(CallbackInfo ci) {
+        //? if <1.16 {
+        /*if (Minecraft.getInstance().screen != null) LifecycleModern.screen();
+        *///?}
         LifecycleModern.frameEnd();
     }
 }

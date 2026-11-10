@@ -4,11 +4,6 @@ import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.gl.texture.CgFallbackTextures;
 import com.crystalgraphics.platform.rhi.nulldrv.CgNullRHI;
 import com.crystalgraphics.platform.gl.CgCapabilities;
-import com.crystalgraphics.platform.gl.CgGL;
-import com.crystalgraphics.platform.gl.state.CgGlState;
-import com.crystalgraphics.platform.gl.tracked.CgTrackedGLBackend;
-import com.crystalgraphics.platform.gl.tracked.CgTrackedGLContext;
-import com.crystalgraphics.platform.gl.tracked.CgTrackedStateProvider;
 import com.crystalgraphics.vulkan.shader.ShadercGlslCompiler;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
@@ -18,7 +13,7 @@ import static org.junit.Assert.*;
 
 /**
  * The stage firing's blackboard lives one firing: two firings of one stage in one frame (1.7.10's anaglyph) never see
- * each other's values. On the tracked backend, so a firing executes for real.
+ * each other's values. On the null device, so a firing executes for real.
  */
 public class CgFrameResourcesTest {
 
@@ -30,19 +25,14 @@ public class CgFrameResourcesTest {
     @BeforeClass
     public static void install() {
         compiler = new ShadercGlslCompiler();
-        CgTrackedGLBackend gl = new CgTrackedGLBackend(new CgNullRHI(64, 64), compiler, true);
-        CgGL.init(gl);
-        CgCapabilities.init(new CgTrackedGLContext());
+        new CgNullRHI(64, 64).install(compiler);
         CgCapabilities.clearCache();
-        CgGlState.reset();
-        CgGlState.setProvider(new CgTrackedStateProvider(gl));
         CgBindingPoints.init(CgCapabilities.detect());
         CgFallbackTextures.init();
     }
 
     @AfterClass
     public static void uninstall() {
-        CgGlState.reset();
         compiler.close();
     }
 

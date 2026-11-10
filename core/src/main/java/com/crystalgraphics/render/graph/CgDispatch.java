@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.graph;
 
+import com.crystalgraphics.platform.gl.driver.GLC;
 import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.material.CgMaterialValues;
 import com.crystalgraphics.api.texture.CgSampler;
@@ -17,7 +18,6 @@ import com.crystalgraphics.compute.source.CgKernelDecl;
 import com.crystalgraphics.platform.rhi.command.CgAccess;
 
 import com.crystalgraphics.platform.gl.CgCapabilities;
-import com.crystalgraphics.platform.gl.CgGL;
 
 import javax.annotation.Nullable;
 import java.util.Arrays;
@@ -342,7 +342,7 @@ public final class CgDispatch {
         if (graph != null && graph.isArray()) {
             throw new IllegalArgumentException("'" + name + "' binds " + texture + ", an array: materials sample arrays, kernels do not");
         }
-        boolean volume = graph != null ? graph.isVolume() : texture.getTarget() == CgGL.GL_TEXTURE_3D;
+        boolean volume = graph != null ? graph.isVolume() : texture.getTarget() == GLC.GL_TEXTURE_3D;
         if (volume != kernel.compute().properties().isVolume(name)) {
             throw new IllegalArgumentException("'" + name + "' samples " + (volume ? "2D, and " + texture + " is a volume"
                     : "a sampler3D, and " + texture + " is no 3D texture"));

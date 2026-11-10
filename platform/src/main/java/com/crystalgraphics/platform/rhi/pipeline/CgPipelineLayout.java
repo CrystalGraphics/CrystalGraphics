@@ -34,6 +34,21 @@ public record CgPipelineLayout(List<CgBindingLayout> sets, int pushConstantBytes
         if (pushed > 1) throw new IllegalArgumentException(pushed + " pushed sets: a pipeline pushes at most one");
     }
 
+    /** Its sets compared by index: a record's {@code List.equals} walks an iterator, and pipelines compare per bind. */
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof CgPipelineLayout l) || l.pushConstantBytes != pushConstantBytes || l.sets.size() != sets.size())
+            return false;
+        for (int i = 0; i < sets.size(); i++) if (!sets.get(i).equals(l.sets.get(i))) return false;
+        return true;
+    }
+
+    @Override
+    public int hashCode() {
+        return sets.hashCode() * 31 + pushConstantBytes;
+    }
+
     /** {@code sets} in order, no push constants. */
     public static CgPipelineLayout of(CgBindingLayout... sets) {
         return new CgPipelineLayout(List.of(sets), 0);

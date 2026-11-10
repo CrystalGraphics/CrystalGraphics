@@ -1,5 +1,7 @@
 package com.crystalgraphics.gl.texture;
 
+import com.crystalgraphics.platform.rhi.CgDeviceNames;
+import com.crystalgraphics.platform.gl.driver.GLC;
 import com.crystalgraphics.render.draw.CgBoundResources;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.texture.CgTextureSpec;
@@ -7,7 +9,6 @@ import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.gpu.CgUploadLease;
 import com.crystalgraphics.gpu.CgUploads;
 import com.crystalgraphics.platform.gl.CgCapabilities;
-import com.crystalgraphics.platform.gl.CgGLImports;
 import com.crystalgraphics.platform.gl.format.GLFormats;
 import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
@@ -24,7 +25,6 @@ import com.crystalgraphics.util.io.CgTextureIO.CgImageData;
 import lombok.Getter;
 
 import javax.annotation.Nullable;
-import com.crystalgraphics.platform.gl.CgGL;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -180,11 +180,12 @@ public final class CgTexture2D extends CgTextureAbstract {
     }
 
     /**
-     * Adopts a texture someone else owns, so the engine can sample it: a host's, through
-     * {@link CgGL#importHostTexture}.
+     * Adopts a texture someone else owns, so the engine can sample it: a host's, imported by
+     * {@code CgHostImports} and named by {@link CgDeviceNames}.
      *
      * <pre>{@code
-     * CgTexture2D scene = CgTexture2D.wrap(CgGL.importHostTexture(hostTextureId), width, height);
+     * int name = CgDeviceNames.name(CgHostImports.get().texture(hostHandle));
+     * CgTexture2D scene = CgTexture2D.wrap(name, width, height);
      * scene.bind(unit);
      * scene.delete();   // forgets it; the host's texture is untouched
      * }</pre>
@@ -196,12 +197,11 @@ public final class CgTexture2D extends CgTextureAbstract {
     }
 
     /**
-     * An empty texture made on the installed device ({@code CgRHI}), reached through {@code CgGL} by the name
-     * {@link CgGLImports} gives it: what the frame graph makes its attachments as, so the executor names them as RHI
-     * textures. Render thread.
+     * An empty texture made on the installed device ({@code CgRHI}), known by the name {@link CgDeviceNames} gives
+     * it: what the frame graph makes its attachments as. Render thread.
      *
      * <pre>{@code
-     * if (CgGLImports.installed()) colour = CgTexture2D.onDevice("bloom", w, h, CgTextureSpec.RGBA16F_LINEAR, levels);
+     * colour = CgTexture2D.onDevice("bloom", w, h, CgTextureSpec.RGBA16F_LINEAR, levels);
      * }</pre>
      *
      * <ul>
@@ -239,7 +239,7 @@ public final class CgTexture2D extends CgTextureAbstract {
     public static CgTexture2D onDevice(CgGpuTexture image, CgTextureSpec spec) {
         CgGpuTexture.Desc desc = image.desc();
         int width = desc.width(), height = desc.height(), levels = desc.mips();
-        CgTexture2D tex = new CgTexture2D(CgGLImports.get().name(image), width, height, spec, false);
+        CgTexture2D tex = new CgTexture2D(CgDeviceNames.name(image), width, height, spec, false);
         tex.levels = levels;
         tex.image = image;
         return tex;
@@ -452,7 +452,7 @@ public final class CgTexture2D extends CgTextureAbstract {
             return false;
         }
         cooked = false;
-        upload(image.width(), image.height(), image.halves(), GL_RGBA, CgGL.GL_HALF_FLOAT);
+        upload(image.width(), image.height(), image.halves(), GL_RGBA, GLC.GL_HALF_FLOAT);
         return true;
     }
 
@@ -470,7 +470,7 @@ public final class CgTexture2D extends CgTextureAbstract {
             return false;
         }
         cooked = false;
-        upload(image.width(), image.height(), CgHalfFloat.halves(image.rgba()), GL_RGBA, CgGL.GL_HALF_FLOAT);
+        upload(image.width(), image.height(), CgHalfFloat.halves(image.rgba()), GL_RGBA, GLC.GL_HALF_FLOAT);
         return true;
     }
 

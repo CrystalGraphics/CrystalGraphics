@@ -11,15 +11,15 @@ The build view (Java levels, toolchains, what a consumer build includes) is `doc
 
 | Module | Java | Role |
 |---|---|---|
-| `platform/` | 25 + 8 copy | The SPI only: `CgPlatform`, `CgPlatformService`, `CgService`, `CgGLBackend`, `CgGL`, the services (`service`), the world's (`world`: levels, entities, players), each read in core through one facade (`platform/CLAUDE.md` § *The wiring standard*). No implementation — [its guide](../platform/src/main/java/com/crystalgraphics/platform/CLAUDE.md) |
-| `core/` | 25 + 8 copy | All rendering: materials, meshes, the pipeline, fonts, text, atlases. Calls `CgPlatform`/`CgGL` for every GL or lifecycle operation; never imports Minecraft, a loader or LWJGL |
+| `platform/` | 25 + 8 copy | The SPI only: `CgPlatform`, `CgPlatformService`, `CgService`, `CgRHI` and its GL and null devices, the services (`service`), the world's (`world`: levels, entities, players), each read in core through one facade (`platform/CLAUDE.md` § *The wiring standard*). No implementation — [its guide](../platform/src/main/java/com/crystalgraphics/platform/CLAUDE.md) |
+| `core/` | 25 + 8 copy | All rendering: materials, meshes, the pipeline, fonts, text, atlases. Records for the installed `CgRHI`, and calls `CgPlatform` for every lifecycle operation; never imports Minecraft, a loader or LWJGL |
 | `freetype-msdfgen-harfbuzz-bindings/` | 8 | JNI text shaping, with its natives |
 | `runtime/lwjgl/2`, `runtime/lwjgl/3` | 25 + 8 copy | **Tier 1**: GL backend, context, input and cursor per LWJGL (`Lwjgl2*`, `Lwjgl3*`, `Glfw*`). **Name no Minecraft class** (import guard), so one copy serves every host of that LWJGL and the harness. LWJGL3 is pinned to 3.2.2, the oldest in range, so a symbol a 1.16 client lacks is a compile error |
 | `runtime/lwjgl/sdl` | 25 + 8 copy | **Tier 1 for a host windowed by SDL3** (Minecraft 26.3+, which ships no GLFW): `InputSdl` (keys by scancode, modifiers, mouse buttons), `ClipboardSdl` and `SdlCursorService`, beside `platform`'s `CgSdlKeyCodes`. A 26.3 node's `PlatformServiceModern` registers these where an older one registers the `Glfw*` pair. Pinned to LWJGL 3.4.3, the oldest with SDL3 |
-| `runtime/lwjgl/vulkan` | 25 + 8 copy | **Tier 1 for Vulkan** (`plan/device-vulkan.md`): `CgVulkanDevice`, a `CgRHI` over a `host.CgVulkanHost` — `host.OwnedVulkanHost` when nothing else owns the device, `host.HostedVulkanHost` when a game does and submits it; `shader.ShadercGlslCompiler`, the tracked backend's GLSL to SPIR-V over shaderc and SPIRV-Cross, as Minecraft 26.2 compiles its own; and the device's parts in `resource`, `binding`, `command`, `memory` and `format`. Pinned to LWJGL 3.4.1, the oldest a 26.2+ client ships. Its tests run core on the tracked backend (`EngineOnTrackedBackendTest`), since core's own tests carry LWJGL 2, and the RHI's command contract on a real device (`VulkanCommandListTest`) |
+| `runtime/lwjgl/vulkan` | 25 + 8 copy | **Tier 1 for Vulkan** (`plan/device-vulkan.md`): `CgVulkanDevice`, a `CgRHI` over a `host.CgVulkanHost` — `host.OwnedVulkanHost` when nothing else owns the device, `host.HostedVulkanHost` when a game does and submits it; `shader.ShadercGlslCompiler`, GLSL to SPIR-V over shaderc and SPIRV-Cross, as Minecraft 26.2 compiles its own; and the device's parts in `resource`, `binding`, `command`, `memory` and `format`. Pinned to LWJGL 3.4.1, the oldest a 26.2+ client ships. Its tests run core on the devices (`EngineOnGLDeviceTest`, `DevicePipelinesTest`), since core's own tests carry LWJGL 2, and the RHI's command contract on a real device (`VulkanCommandListTest`) |
 | `runtime/mc/1710/` | 25 → 8 | Forge 1.7.10 on RetroFuturaGradle: `PlatformService1710`, the `CgRenderHook`/`MixinMinecraft` mixins, Angelica's state provider |
 | `runtime/mc/legacy/` | 8 | Forge 1.8–1.12.2, a Stonecutter tree (nodes 1.8.9, 1.10.2, 1.12.2) on Unimined: `PlatformServiceLegacy`, `GlStateManagerGLBackend`, SRG-named mixins MixinBooter applies |
-| `runtime/mc/modern/` | each node's | Forge 1.13.2+, NeoForge 1.20.2+, Fabric 1.14.4+, a Stonecutter tree — branches `common` (**tier 2**: `PlatformServiceModern`, `Blaze3dGLBackend`, `HostStateVerifier`, `LifecycleModern`) and one per loader, which is registration only |
+| `runtime/mc/modern/` | each node's | Forge 1.13.2+, NeoForge 1.20.2+, Fabric 1.14.4+, a Stonecutter tree — branches `common` (**tier 2**: `PlatformServiceModern`, `GLDeviceModern`, `HostStateModern`, `HostStateVerifier`, `LifecycleModern`) and one per loader, which is registration only |
 | `runtime/mc/shared/` | 8 | **The variant selector** every mod built from these repositories reads (`com.crystalgraphics:mc-shared`): `Variants`, `VariantEntry`, `VariantBootstrap`, `LoaderProbe`, `CrashVariant`. Java 8 because FML 1.7.10 refuses any class above major 52 |
 | `runtime/mc/forge-bootstrap/`, `forge-stubs/` | 8 | The one `@Mod` class for every Forge from 1.8, compiled against a union annotation |
 | `singlejar-logic/` | — | The shared build logic (merge, tree, stubs, catalog) and `stubs.zip`; CrystalGUI uses it too |
@@ -145,8 +145,7 @@ Every package guide (`CLAUDE.md`) under `src/main/java/com/crystalgraphics/`. Re
 ### GL State
 | Path | What it covers |
 |---|---|
-| `api/state/CLAUDE.md` | `CgRenderState`, `CgDepthState`, `CgBlendState`, `CgCullState`, `CgStencilState` (`CgGlSlot` moved to `platform.gl.state`) |
-| `gl/state/CLAUDE.md` | Nothing — the package is empty. Kept as a signpost to the state framework in `platform.gl` / `platform.gl.state`, and a record of what was removed |
+| `api/state/CLAUDE.md` | `CgRenderState`, `CgDepthState`, `CgBlendState`, `CgCullState`, `CgStencilState`, as pipeline descriptions |
 
 ### The canvas
 | Path | What it covers |
@@ -188,8 +187,8 @@ Every package guide (`CLAUDE.md`) under `src/main/java/com/crystalgraphics/`. Re
 ### Platform SPI and hosts (outside `core/`)
 | Path | What it covers |
 |---|---|
-| `platform/src/main/java/com/crystalgraphics/platform/CLAUDE.md` | `CgPlatform`, `CgPlatformService`, `CgService`, `CgGLBackend`/`CgGL`, the services — the contract between `core/` and every host |
+| `platform/src/main/java/com/crystalgraphics/platform/CLAUDE.md` | `CgPlatform`, `CgPlatformService`, `CgService`, the device (`CgRHI`, host sections, host imports), the services — the contract between `core/` and every host |
 | `runtime/mc/1710/src/main/java/com/crystalgraphics/mc/v1710/platform/CLAUDE.md` | The 1.7.10 bundle and its registration |
-| `runtime/mc/modern/common/CLAUDE.md`, `…/common/src/main/java/com/crystalgraphics/mc/modern/platform/CLAUDE.md` | The modern tier 2: `PlatformServiceModern`, `Blaze3dGLBackend`, `LifecycleModern`, and the open GUI-frame tick |
+| `runtime/mc/modern/common/CLAUDE.md`, `…/common/src/main/java/com/crystalgraphics/mc/modern/platform/CLAUDE.md` | The modern tier 2: `PlatformServiceModern`, `GLDeviceModern`, `HostStateModern`, `LifecycleModern`, and the open GUI-frame tick |
 | `runtime/mc/modern/{forge,neoforge,fabric}/AGENTS.md` | Each loader's versions, entry classes and render hooks |
 | `freetype-msdfgen-harfbuzz-bindings/AGENTS.md` | The JNI bindings and the Zig native build |

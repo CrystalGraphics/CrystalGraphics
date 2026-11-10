@@ -98,7 +98,7 @@ final class SpirvModule {
     }
 
     /**
-     * Sets a decoration's value in the binary; a resource's set to 0, where the tracked backend binds everything, as
+     * Sets a decoration's value in the binary; a resource's set to 0, where everything is bound, as
      * the source's explicit sets ({@code CgBindingModel}) are bound by name.
      */
     void set(Resource r, int value) {

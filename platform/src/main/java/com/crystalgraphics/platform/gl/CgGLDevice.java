@@ -1,5 +1,6 @@
 package com.crystalgraphics.platform.gl;
 
+import com.crystalgraphics.platform.rhi.CgHostImports;
 import com.crystalgraphics.platform.rhi.shader.CgGlslCompiler;
 import com.crystalgraphics.platform.gl.binding.GLBindingLayout;
 import com.crystalgraphics.platform.gl.binding.GLBindingSet;
@@ -140,9 +141,9 @@ public final class CgGLDevice implements CgRHI {
 
     private record HeapKey(CgTextureView view, GLSampler sampler) {}
 
-    /** What the device calls past GL 3.3, by the extension that brought each into 4.x core. */
-    private static final List<String> PAST_33 = List.of(
-            "GL_ARB_direct_state_access", "GL_ARB_clip_control", "GL_ARB_compute_shader",
+    /** What the device calls past GL 3.2, by the extension that brought each into 3.3 or 4.x core. */
+    private static final List<String> PAST_32 = List.of(
+            "GL_ARB_sampler_objects", "GL_ARB_timer_query", "GL_ARB_texture_rgb10_a2ui", "GL_ARB_direct_state_access", "GL_ARB_clip_control", "GL_ARB_compute_shader",
             "GL_ARB_shader_storage_buffer_object", "GL_ARB_shader_image_load_store", "GL_ARB_base_instance",
             "GL_ARB_draw_indirect", "GL_ARB_multi_draw_indirect", "GL_ARB_buffer_storage", "GL_ARB_texture_storage",
             "GL_ARB_texture_storage_multisample", "GL_ARB_copy_image", "GL_ARB_clear_buffer_object",
@@ -167,6 +168,13 @@ public final class CgGLDevice implements CgRHI {
         this(driver, translator, width, height, presents, null);
     }
 
+    private static boolean parallelCompile(CgGLDriver gl) {
+        for (String name : new String[]{"GL_KHR_parallel_shader_compile", "GL_ARB_parallel_shader_compile"}) {
+            if (gl.hasExtension(name) && !CgDisabledExtensions.has(name)) return true;
+        }
+        return false;
+    }
+
     /** @param host what a host sharing the context believes it has; null when nothing else draws in it */
     public CgGLDevice(CgGLDriver driver, GLShaderTranslator translator, int width, int height, boolean presents,
                       GLHostState host) {
@@ -176,15 +184,19 @@ public final class CgGLDevice implements CgRHI {
         CgGLDriver gl = this.gl;
         this.translator = translator;
         this.presents = presents;
+        // Before the first link: without it NVIDIA links on its driver thread, and the next query of any program waits
+        // for the whole link (cold vfx-modules 113 s -> 58 s)
+        if (parallelCompile(gl)) driver.glMaxShaderCompilerThreads(0xFFFFFFFF);
         String version = gl.glGetString(GL_VERSION);
         int at = gl.glGetInteger(GL_MAJOR_VERSION) * 10 + gl.glGetInteger(GL_MINOR_VERSION);
         if (at < 45) {
-            // A context named older may still do 4.5's work: NVIDIA answers a 3.2 core request with 3.3 and every
-            // later ARB extension. What the device calls past 3.3, extension by extension, then GLSL 4.60 compiled.
+            // A context named older may still do 4.5's work: Minecraft 1.17-1.21.4 asks for 3.2 core, which NVIDIA
+            // answers as 3.2 with every later ARB extension. What the device calls past 3.2, extension by extension,
+            // then GLSL 4.60 compiled.
             List<String> missing = new ArrayList<>();
-            for (String extension : PAST_33) if (!gl.hasExtension(extension)) missing.add(extension);
-            if (at < 33 || !missing.isEmpty() || !compiles(gl, 460)) {
-                throw new IllegalStateException("CgGLDevice needs GL 4.5, or 3.3 with the extensions 4.5 absorbed and "
+            for (String extension : PAST_32) if (!gl.hasExtension(extension)) missing.add(extension);
+            if (at < 32 || !missing.isEmpty() || !compiles(gl, 460)) {
+                throw new IllegalStateException("CgGLDevice needs GL 4.5, or 3.2 with the extensions 4.5 absorbed and "
                         + "GLSL 4.60, not " + version + (missing.isEmpty() ? "" : "; missing " + missing));
             }
         }
@@ -194,6 +206,9 @@ public final class CgGLDevice implements CgRHI {
                 gl.glGetInteger(GL_MAX_COLOR_ATTACHMENTS), gl.glGetInteger(GL_MAX_SAMPLES),
                 gl.glGetInteger(GL_MAX_VERTEX_ATTRIBS), gl.glGetInteger(GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS),
                 gl.glGetInteger(GL_MAX_UNIFORM_BLOCK_SIZE), gl.glGetInteger(GL_MAX_UNIFORM_BUFFER_BINDINGS),
+                // A dynamic offset is the bind's glBindBufferRange offset: as many as there are points of its kind
+                gl.glGetInteger(GL_MAX_UNIFORM_BUFFER_BINDINGS),
+                gl.glGetInteger(GL_MAX_SHADER_STORAGE_BUFFER_BINDINGS),
                 gl.glGetInteger(GL_MAX_SHADER_STORAGE_BUFFER_BINDINGS), gl.glGetInteger(GL_MAX_TEXTURE_BUFFER_SIZE),
                 gl.glGetInteger(GL_UNIFORM_BUFFER_OFFSET_ALIGNMENT),
                 gl.glGetInteger(GL_SHADER_STORAGE_BUFFER_OFFSET_ALIGNMENT),
@@ -250,7 +265,6 @@ public final class CgGLDevice implements CgRHI {
         encoder.invalidate();
         conventions();
         host.entered(gl);
-        CgGLAudit.deviceSection(true);
         CgTrace.zoneDone(GL_CHANNEL, FROM_HOST, t);
     }
 
@@ -259,7 +273,6 @@ public final class CgGLDevice implements CgRHI {
     public void toHost() {
         if (host == null) return;
         if (encoder.inPass()) throw new IllegalStateException("toHost with a pass open");
-        CgGLAudit.deviceSection(false);
         long t = CgTrace.stamp(GL_CHANNEL);
         gl.restore(entry);
         host.conventions(gl);
@@ -297,26 +310,25 @@ public final class CgGLDevice implements CgRHI {
         return true;
     }
 
-    /** The device's {@link CgGLImports}: {@code CgGL}'s names as its resources and its resources by name. */
+    /** The device's {@link CgHostImports}: the host's textures and framebuffers as its resources. */
     public GLImports imports() {
         if (imports == null) imports = new GLImports(gl, framebuffers);
         return imports;
     }
 
     /**
-     * Makes this the process's device in a host's context, whole (Unreal's {@code RHIInit}, one place): as
-     * {@link CgRHI}, whose host sections ({@code CgDeviceSection}) are {@link #fromHost}/{@link #toHost}, {@code compiler},
-     * and its {@link #imports()}.
+     * Makes this the process's device, whole (Unreal's {@code RHIInit}, one place): as {@link CgRHI}, whose host sections
+     * ({@code CgDeviceSection}) are {@link #fromHost}/{@link #toHost}, {@code compiler}, and its {@link #imports()}.
      *
      * <pre>{@code
      * CgGLDevice device = new CgGLDevice(driver, translator, w, h, false, GLHostState.byQuery(driver));
-     * device.installBesideCgGL(new ShadercGlslCompiler(CgCacheDirectory.of("spirv")));
+     * device.install(new ShadercGlslCompiler(CgCacheDirectory.of("spirv")));
      * }</pre>
      */
-    public CgGLDevice installBesideCgGL(CgGlslCompiler compiler) {
+    public CgGLDevice install(CgGlslCompiler compiler) {
         CgRHI.install(this);
         CgGlslCompiler.install(compiler);
-        CgGLImports.install(imports());
+        CgHostImports.install(imports());
         return this;
     }
 
@@ -395,14 +407,11 @@ public final class CgGLDevice implements CgRHI {
     }
 
     private void delete(Object o) {
-        // A freed name is GL's to hand out again, to CgGL at another size: what the imports adopted under it goes with it.
         if (o instanceof GLBuffer b) {
-            if (b.owned() && imports != null) imports.bufferDeleted(b.name);
             b.delete(gl);
         } else if (o instanceof GLTexture t) {
             framebuffers.forget(t);
             dropHeapEntries(t);
-            if (t.owned() && imports != null) imports.textureDeleted(t.name);
             t.delete(gl);
         } else if (o instanceof GLSampler s) gl.glDeleteSamplers(s.name);
         else if (o instanceof GLGraphicsPipeline p) p.delete(gl);

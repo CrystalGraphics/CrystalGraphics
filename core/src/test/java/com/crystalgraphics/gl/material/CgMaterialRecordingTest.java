@@ -1,9 +1,9 @@
 package com.crystalgraphics.gl.material;
 
+import com.crystalgraphics.platform.gl.driver.GLC;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.gl.texture.CgTextureAbstract;
-import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.render.draw.CgBindingTable;
 import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.render.draw.CgPipeline;
@@ -130,7 +130,7 @@ public class CgMaterialRecordingTest {
 
         @Override
         public int getTarget() {
-            return CgGL.GL_TEXTURE_2D;
+            return GLC.GL_TEXTURE_2D;
         }
 
         @Override

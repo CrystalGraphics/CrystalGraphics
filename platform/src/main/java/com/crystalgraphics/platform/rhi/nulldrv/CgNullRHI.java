@@ -1,5 +1,7 @@
 package com.crystalgraphics.platform.rhi.nulldrv;
 
+import com.crystalgraphics.platform.rhi.shader.CgGlslCompiler;
+import com.crystalgraphics.platform.rhi.CgHostImports;
 import com.crystalgraphics.platform.rhi.resource.CgGpuHeap;
 import com.crystalgraphics.platform.rhi.memory.CgTransientMemory;
 import com.crystalgraphics.platform.rhi.CgRHI;
@@ -40,11 +42,11 @@ import java.util.function.BiConsumer;
 
 /**
  * A {@link CgRHI} with no GPU: it keeps buffer contents, logs every command, and refuses what a Vulkan
- * device's validation would. What the tracked backend's tests and headless replays run on.
+ * device's validation would. What the engine's headless tests run on.
  *
  * <pre>{@code
  * CgNullRHI device = new CgNullRHI(64, 64);
- * // ... drive the tracked backend ...
+ * // ... the engine records and executes ...
  * assertEquals(List.of("beginPass fbo colors=[#1:CLEAR]", "setPipeline #4", "draw 6 1 0 0", "endPass"),
  *         device.logSince(mark));
  * }</pre>
@@ -76,7 +78,7 @@ public final class CgNullRHI implements CgRHI {
     }
 
     private static final CgRHI.Globals INFO = new CgRHI.Globals("recording", "CrystalGraphics", "0",
-            new CgRHI.Globals.Limits(16384, 2048, 2048, 8, 8, 16, 32, 65536, 24, 16, 1 << 26,
+            new CgRHI.Globals.Limits(16384, 2048, 2048, 8, 8, 16, 32, 65536, 24, 8, 16, 4, 1 << 26,
                     256, 256, 16, 16384, 16f, CgRHI.Globals.Compute.MINIMUM), true, true, true, true, true, true, true, true, true,
             true);
     private CgRHI.Globals info = INFO;
@@ -147,7 +149,8 @@ public final class CgNullRHI implements CgRHI {
         CgRHI.Globals.Limits l = INFO.limits();
         info = new CgRHI.Globals(INFO.name(), INFO.vendor(), INFO.driver(), new CgRHI.Globals.Limits(l.maxTextureSize(),
                 l.max3DTextureSize(), l.maxArrayLayers(), l.maxColorAttachments(), l.maxSamples(), l.maxVertexAttributes(),
-                l.maxTextureUnits(), l.maxUniformBlockSize(), l.maxUniformBufferBindings(), l.maxStorageBufferBindings(),
+                l.maxTextureUnits(), l.maxUniformBlockSize(), l.maxUniformBufferBindings(), l.maxDynamicUniformBuffers(),
+                l.maxStorageBufferBindings(), l.maxDynamicStorageBuffers(),
                 l.maxTexelBufferElements(), l.uniformOffsetAlignment(), l.storageOffsetAlignment(), l.texelOffsetAlignment(),
                 l.maxViewportSize(), l.maxAnisotropy(), compute), INFO.timestamps(), INFO.anisotropy(), INFO.nonSolidFill(),
                 INFO.multiDrawIndirect(), INFO.indirectCount(), INFO.indirectFirstInstance(), INFO.asyncCompute(),
@@ -157,7 +160,7 @@ public final class CgNullRHI implements CgRHI {
 
     /**
      * Stops keeping the log and the pass list, for a long run: every command is still validated. A harness
-     * scene on the tracked backend makes thousands a frame.
+     * scene on it makes thousands a frame.
      */
     public CgNullRHI withoutLog() {
         logging = false;
@@ -168,6 +171,21 @@ public final class CgNullRHI implements CgRHI {
 
     private void record(String line) {
         if (logging) log.add(line);
+    }
+
+    /**
+     * Makes this the process's device, as a test's: as {@link CgRHI}, {@code compiler}, and host imports of its surface
+     * alone.
+     *
+     * <pre>{@code
+     * CgNullRHI device = new CgNullRHI(64, 64).install(new ShadercGlslCompiler());
+     * }</pre>
+     */
+    public CgNullRHI install(CgGlslCompiler compiler) {
+        CgRHI.install(this);
+        CgGlslCompiler.install(compiler);
+        CgHostImports.install(CgHostImports.surface(this));
+        return this;
     }
 
     /** Objects created and not yet destroyed. */
@@ -491,11 +509,19 @@ public final class CgNullRHI implements CgRHI {
                     + bytes + " pushed at " + offset);
     }
 
-    private void bindSet(CgBindingSet[] sets, int index, CgBindingSet set) {
+    private void bindSet(CgBindingSet[] sets, int index, CgBindingSet set, int[] offsets, int count) {
         use(set);
         if (index < 0 || index >= sets.length) throw new IllegalArgumentException("set " + index + ": sets are 0-" + (sets.length - 1));
+        int dynamic = set.layout().dynamicCount();
+        if (count != dynamic) throw new IllegalArgumentException(set.label() + " takes " + dynamic + " dynamic offsets; " + count + " given");
+        // The stricter alignment of the two kinds a dynamic slot may be
+        int align = Math.max(info.limits().uniformOffsetAlignment(), info.limits().storageOffsetAlignment());
+        for (int i = 0; i < count; i++) {
+            if (offsets[i] < 0 || offsets[i] % align != 0)
+                throw new IllegalArgumentException(set.label() + ": dynamic offset " + offsets[i] + " is not a multiple of " + align);
+        }
         sets[index] = set;
-        if (logging) record("setBindingSet " + index + " " + ref(set));
+        if (logging) record("setBindingSet " + index + " " + ref(set) + (count == 0 ? "" : " at " + Arrays.toString(Arrays.copyOf(offsets, count))));
     }
 
     /** What {@code t} holds, hashed, to tell a batch ended as begun from one changed between. */
@@ -932,9 +958,9 @@ public final class CgNullRHI implements CgRHI {
         }
 
         @Override
-        public void setBindingSet(int set, CgBindingSet bindings) {
+        public void setBindingSet(int set, CgBindingSet bindings, int[] dynamicOffsets, int count) {
             live();
-            bindSet(sets, set, bindings);
+            bindSet(sets, set, bindings, dynamicOffsets, count);
         }
 
         @Override
@@ -1144,7 +1170,7 @@ public final class CgNullRHI implements CgRHI {
         @Override
         public void discard(CgGpuTexture texture) {
             use(texture);
-            record("discard #" + ((Obj) texture).id);
+            if (logging) record("discard #" + ((Obj) texture).id);
         }
     }
 
@@ -1311,9 +1337,9 @@ public final class CgNullRHI implements CgRHI {
         }
 
         @Override
-        public void setBindingSet(int set, CgBindingSet bindings) {
+        public void setBindingSet(int set, CgBindingSet bindings, int[] dynamicOffsets, int count) {
             live();
-            bindSet(sets, set, bindings);
+            bindSet(sets, set, bindings, dynamicOffsets, count);
         }
 
         @Override

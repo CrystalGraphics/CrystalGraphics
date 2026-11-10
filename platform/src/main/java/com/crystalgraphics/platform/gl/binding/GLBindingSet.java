@@ -10,11 +10,19 @@ public final class GLBindingSet implements CgBindingSet {
     private final String label;
     private final CgBindingLayout layout;
     public final CgBindings contents;
+    /** Each entry's place among a bind's dynamic offsets, or -1; and how many a bind gives. */
+    public final int[] dynamicIndex;
+    public final int dynamicCount;
 
     public GLBindingSet(String label, CgBindingLayout layout, CgBindings contents) {
         this.label = label;
         this.layout = layout;
         this.contents = copy(contents, new CgBindings());
+        dynamicIndex = new int[this.contents.count()];
+        for (int i = 0; i < dynamicIndex.length; i++) {
+            dynamicIndex[i] = CgBindingLayout.dynamicIndex(layout.slots(), this.contents.binding(i));
+        }
+        dynamicCount = layout.dynamicCount();
     }
 
     /** {@code from}'s entries appended to {@code to}, cleared first. */

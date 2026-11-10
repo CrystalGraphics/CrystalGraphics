@@ -44,8 +44,6 @@ dependencies {
     consumerApi("com.mojang:brigadier:1.0.14")
     testImplementation("com.mojang:brigadier:1.3.11")
 
-    // The state manager's deduplication decisions are pure logic — no GL context, no backend — so they are
-    // unit-testable here. Whether CgGL calls them from the right places still needs a live context.
     testImplementation("junit:junit:${rootProject.properties["dep.junit"]}")
     testFixturesImplementation("junit:junit:${rootProject.properties["dep.junit"]}")
 
@@ -64,7 +62,7 @@ dependencies {
     // which fails its whole runtime graph. Every host supplies its own log4j; the harness declares
     // 2.26.1 explicitly.
     compileOnly("org.apache.logging.log4j:log4j-api:$log4jVer")
-    // The tests' provider, as :core's: CgGL's audit logs from its class initializer.
+    // The tests' log4j provider, as :core's.
     testImplementation("org.apache.logging.log4j:log4j-core:2.26.1")
 }
 

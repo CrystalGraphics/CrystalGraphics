@@ -1,9 +1,10 @@
 package com.crystalgraphics.render.graph;
 
+import com.crystalgraphics.platform.rhi.CgHostImports;
+import com.crystalgraphics.platform.rhi.CgDeviceNames;
 import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.gl.framebuffer.CgFrameBuffer;
 import com.crystalgraphics.platform.rhi.command.CgAccess;
-import com.crystalgraphics.platform.gl.CgGLImports;
 import com.crystalgraphics.platform.rhi.CgDeviceSection;
 import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.rhi.command.CgCommandList;
@@ -28,9 +29,8 @@ import java.util.Arrays;
  * <ul>
  *   <li>Batches nest; the outermost end records. A barrier outside any batch is a batch of its own.</li>
  *   <li>On a device it records inside the open compute pass where there is one, else in a device section of its own:
- *       never later, since {@code CgGL} work between two passes may depend on it.</li>
+ *       never later, since work between two passes may depend on it.</li>
  *   <li>A framebuffer the device cannot name images for (GL's) is a memory barrier of its accesses.</li>
- *   <li>A host with no device states them through {@code CgGL} instead: the executor's own.</li>
  *   <li>Render thread.</li>
  * </ul>
  */
@@ -51,7 +51,7 @@ final class CgGraphBarriers {
     void buffer(int name, int from, int to) {
         boolean alone = depth == 0;
         if (alone) begin();
-        batch.buffer(CgGLImports.get().buffer(name), from, to);
+        batch.buffer(CgDeviceNames.buffer(name), from, to);
         if (alone) end(false);
     }
 
@@ -70,7 +70,7 @@ final class CgGraphBarriers {
         CgFrameBuffer ours = CgFrameBuffer.owned(fbo);
         if (ours != null) {
             ownedMoves(ours, from, to);
-        } else if (!CgGLImports.get().framebufferBarrier(fbo, from, to, batch)) {
+        } else if (!CgHostImports.get().framebufferBarrier(fbo, from, to, batch)) {
             memoryFrom |= from;
             memoryTo |= to;
         }

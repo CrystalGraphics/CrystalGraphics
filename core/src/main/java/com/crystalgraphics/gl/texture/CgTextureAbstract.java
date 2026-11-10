@@ -1,5 +1,6 @@
 package com.crystalgraphics.gl.texture;
 
+import com.crystalgraphics.platform.rhi.CgDeviceNames;
 import com.crystalgraphics.render.draw.CgBoundResources;
 import com.crystalgraphics.platform.rhi.resource.CgTextureView;
 import java.util.Set;
@@ -9,7 +10,6 @@ import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.texture.CgTextureSpec;
 import com.crystalgraphics.gpu.CgDeferral;
 import com.crystalgraphics.mc.CgReloadable;
-import com.crystalgraphics.platform.gl.CgGLImports;
 import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
 import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
@@ -79,13 +79,13 @@ public abstract class CgTextureAbstract implements CgTexture, CgReloadable {
 
     /**
      * The RHI texture behind it on the installed device: its own where it was made on the device, else its name imported
-     * through {@link CgGLImports} (RDG's external texture). Null while it has no storage. Render thread.
+     * through {@link CgDeviceNames} (RDG's external texture). Null while it has no storage. Render thread.
      */
     @Nullable
     public CgGpuTexture rhiTexture() {
         if (image != null) return image;
-        if (textureId == 0 || !CgGLImports.installed()) return null;
-        return CgGLImports.get().texture(textureId, rhiDesc());
+        if (textureId == 0) return null;
+        return CgDeviceNames.texture(textureId);
     }
 
     /** {@link #rhiView}'s answer, for the device texture it was made over. */
@@ -253,7 +253,7 @@ public abstract class CgTextureAbstract implements CgTexture, CgReloadable {
         gpu.clear();
         gpu.run(() -> {
             if (image != null) {
-                CgGLImports.get().forget(image);
+                CgDeviceNames.forget(image);
                 CgRHI.get().release(image);
                 image = null;
             }
@@ -265,7 +265,7 @@ public abstract class CgTextureAbstract implements CgTexture, CgReloadable {
 
     /**
      * Render thread: storage on the device of {@code kind} and {@code format}, {@code width x height x depthOrLayers},
-     * {@code chain} levels, made where it has none of that shape, its {@code CgGL} name taken with it. Answers the storage
+     * {@code chain} levels, made where it has none of that shape, its device name taken with it. Answers the storage
      * it replaced, which the caller releases (once it has copied out of it) through {@link CgDeviceTextures#release}; null
      * where nothing changed or it had none.
      */
@@ -275,7 +275,7 @@ public abstract class CgTextureAbstract implements CgTexture, CgReloadable {
         if (CgDeviceTextures.fits(image, format, width, height, depthOrLayers, chain)) return null;
         CgGpuTexture old = image;
         image = CgDeviceTextures.create(source(), kind, format, width, height, depthOrLayers, chain);
-        textureId = CgGLImports.get().name(image);
+        textureId = CgDeviceNames.name(image);
         return old;
     }
 

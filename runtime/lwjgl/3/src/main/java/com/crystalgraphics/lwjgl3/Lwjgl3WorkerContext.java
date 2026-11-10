@@ -6,9 +6,9 @@ import org.lwjgl.opengl.GL;
 import org.lwjgl.opengl.GLCapabilities;
 
 /**
- * A hidden 1x1 GLFW window whose context shares the render thread's objects: Dolphin's shared-context shader
- * compiler, on GLFW. Made by {@link #create()} on the render thread, which is GLFW's main thread on every host that
- * runs this backend.
+ * A hidden 1x1 GLFW window with a context of its own, at the render thread's version and sharing none of its objects:
+ * the GL device's link worker's. Made by {@link #isolated()} on the render thread, which is GLFW's main thread on every
+ * host windowed by GLFW.
  */
 final class Lwjgl3WorkerContext implements CgGLWorkerContext {
 
@@ -18,13 +18,8 @@ final class Lwjgl3WorkerContext implements CgGLWorkerContext {
         this.window = window;
     }
 
-    /** One sharing the current context, at its version and profile; null where there is none or GLFW refuses. */
-    static Lwjgl3WorkerContext create() {
-        return create(true);
-    }
-
-    /** As {@link #create()}; {@code share} false makes one that shares nothing, at the same version and profile. */
-    static Lwjgl3WorkerContext create(boolean share) {
+    /** One at the current context's version and profile, sharing nothing; null where there is none or GLFW refuses. */
+    static Lwjgl3WorkerContext isolated() {
         long main = GLFW.glfwGetCurrentContext();
         if (main == 0L) return null;
         // Hints are global: set from the main window's own, and put back to GLFW's defaults after.
@@ -38,7 +33,7 @@ final class Lwjgl3WorkerContext implements CgGLWorkerContext {
         GLFW.glfwWindowHint(GLFW.GLFW_OPENGL_FORWARD_COMPAT, GLFW.glfwGetWindowAttrib(main, GLFW.GLFW_OPENGL_FORWARD_COMPAT));
         long window;
         try {
-            window = GLFW.glfwCreateWindow(1, 1, "crystalgraphics-link", 0L, share ? main : 0L);
+            window = GLFW.glfwCreateWindow(1, 1, "crystalgraphics-link", 0L, 0L);
         } finally {
             GLFW.glfwDefaultWindowHints();
         }

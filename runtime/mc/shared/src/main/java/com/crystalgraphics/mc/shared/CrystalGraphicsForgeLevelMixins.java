@@ -1,15 +1,15 @@
 package com.crystalgraphics.mc.shared;
 
 /**
- * {@link CrystalGraphicsForgeMixins} on Forge 1.21.6–1.21.11, plus the level view: there Minecraft hands the level's
+ * {@link CrystalGraphicsForgeMixins} on Forge 1.21.8–1.21.11, plus the level view: there Minecraft hands the level's
  * projection over on the CPU only as {@code renderLevel}'s argument, so a mixin takes it.
  *
- * <p>Pinned as {@code variant.mixinPlugin} by those Forge nodes.</p>
+ * <p>Pinned as {@code variant.mixinPlugin} by those Forge nodes; 1.21.6's is {@link CrystalGraphicsForgeHudMixins}.</p>
  */
 public final class CrystalGraphicsForgeLevelMixins extends VariantMixins {
 
     public CrystalGraphicsForgeLevelMixins() {
-        super("crystalgraphics", new String[]{"ChunkWriteHook"}, "OpaquePassHook", "TransparentPassHook", "LevelViewHook", "ExplosionHook", "LevelEventHook", "CameraHook", "SoundVolumeHook", "HudHook",
+        super("crystalgraphics", new String[]{"ChunkWriteHook"}, "OpaquePassHook", "TransparentPassHook", "LevelViewHook", "ExplosionHook", "LevelEventHook", "CameraHook", "SoundVolumeHook",
                 "FirstScreenHook");
     }
 }

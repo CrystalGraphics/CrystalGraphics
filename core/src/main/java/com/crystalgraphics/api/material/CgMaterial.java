@@ -88,14 +88,14 @@ import javax.annotation.Nullable;
  * Each distinct (variant, keyword-set) combination is compiled lazily and cached.</p>
  * <pre>{@code
  * material.enableKeyword("SHADOWS_ON");
- * material.bind(); // compiles STANDARD + {"SHADOWS_ON"} variant on first call
+ * CgPipeline p = material.pipeline(CgInstanceKind.OBJECT);   // {"SHADOWS_ON"}'s program, built at its first draw
  * }</pre>
  *
  * <h3>Hot-reload</h3>
  * <p>Hot-reload is asset-level: {@link CgMaterialShader#markDirty()} is set on the shared asset,
  * which increments its {@link CgMaterialShader#getRevisionNumber()} on the next successful
- * compile. {@code CgMaterial.bind()} detects the revision change and calls
- * {@link #onShaderRecompiled()} to rebuild per-instance state.</p>
+ * compile. The next capture ({@link #captureBindings}) sees the new parse and rebuilds the properties, keeping each
+ * value whose property kept its name and type.</p>
  *
  * <h3>Ownership</h3>
  * <p>The material owns its per-instance property UBO only. The backing GL programs are owned
@@ -219,8 +219,7 @@ public final class CgMaterial {
 
     /**
      * Property-apply consumers buffered before {@code propStore} was first initialised.
-     * This happens when {@link #applyProperties} is called before the first {@link #bind()}
-     * and the shader hasn't compiled yet.
+     * This happens when {@link #applyProperties} is called before the shader has parsed.
      * Drained into {@code propStore} inside {@link #onShaderRecompiled()} after the first
      * successful compile. Lazily allocated — null until first buffered call.
      */
@@ -230,8 +229,7 @@ public final class CgMaterial {
      * Optional chained material for multi-draw decorative effects (outline, additive glow,
      * stencil fill, etc.).
      *
-     * <p>When {@link #drawChain(Runnable)} or {@link #drawChain(CgRenderPassVariant, Runnable)}
-     * is called, this material's draw executes first; then the chained material's draw executes
+     * <p>Where a world pass draws this material, its draw executes first; then the chained material's draw executes
      * immediately after with the same mesh and the same draw command. Ordering is deterministic
      * and immediate — not deferred through a sort queue.</p>
      *
@@ -613,10 +611,10 @@ public final class CgMaterial {
 
     /**
      * Enables a feature-flag keyword declared via {@code #pragma cg_feature NAME} in the shader.
-     * Subsequent {@link #bind()} calls will compile and use a variant with
+     * Pipelines asked afterwards ({@link #pipeline(CgInstanceKind)}) use a variant with
      * {@code #define NAME 1} injected into both vertex and fragment sources.
      *
-     * <p>Safe to call before the first {@link #bind()}: the shader is parsed, not compiled, to validate the name.</p>
+     * <p>Safe to call before any compile: the shader is parsed, not compiled, to validate the name.</p>
      *
      * @param name keyword name to enable; must be declared in the shader's {@code #pragma cg_feature} list
      * @throws IllegalArgumentException if {@code name} is not declared as a feature in this shader
@@ -774,8 +772,8 @@ public final class CgMaterial {
                     + " threads; false compiles at the first bind: for a driver that misreports completion.").get();
 
     /**
-     * Starts this material's compile without waiting for it, and says whether {@link #bind} would now return
-     * without waiting on the driver. What a caller that must never stall a frame polls instead of binding.
+     * Starts this material's compile without waiting for it, and says whether its Forward pipeline's program would
+     * now build without waiting on the driver. What a caller that must never stall a frame polls instead of drawing.
      *
      * <pre>{@code
      * CgMaterial next = CgMaterial.fromSource(source);
@@ -784,16 +782,16 @@ public final class CgMaterial {
      *     current.delete();
      *     current = next;
      * }
-     * current.bind();              // the old picture until the new one is ready
+     * draw(current.pipeline(kind));  // the old picture until the new one is ready
      * }</pre>
      *
      * <p>False on the frame it starts a compile, always: where the driver cannot report progress, that frame is
      * the head start its own compile threads get. False too while the frame's {@link CgWarmBudget} is spent, so
-     * many materials precached at once spread over frames. Binding before it answers true waits for the compile, as
+     * many materials precached at once spread over frames. Drawing before it answers true waits for the compile, as
      * a material that was never precached does.</p>
      *
-     * <p>It compiles what {@link #bind} needs, the Forward pass. A shadow or depth program the shader does not
-     * author is generated the first time {@link #bindForPass} or {@link #hasCompiledDepthPass} asks for it.</p>
+     * <p>It compiles the Forward pass. A depth program the shader does not author is generated the first time a Depth
+     * pipeline or {@link #hasCompiledDepthPass} asks for it.</p>
      */
     public boolean precache() {
         checkNotDeleted();
@@ -1009,7 +1007,7 @@ public final class CgMaterial {
      *
      * <ul>
      *   <li>Captured as a texture is: a draw recorded before the call reads what was bound then.</li>
-     *   <li>Recorded draws read it ({@link #captureBindings}); {@link #bind()} binds none of these.</li>
+     *   <li>Recorded draws read it ({@link #captureBindings}).</li>
      *   <li>Every declared buffer is bound before the first capture, which throws naming one that is not.</li>
      * </ul>
      *
@@ -1054,8 +1052,12 @@ public final class CgMaterial {
     private CgMaterialArena arena() {
         CgParsedShader parsed = cgMaterialShader == null ? null : cgMaterialShader.ensureParsed();
         if (parsed == null || !parsed.valuesInArena() || propStore == null || !propStore.hasUboProps()) return null;
-        return cgMaterialShader.arena(propStore.buildUboFormat().getFloatCount());
+        if (arenaFloats < 0) arenaFloats = propStore.buildUboFormat().getFloatCount();
+        return cgMaterialShader.arena(arenaFloats);
     }
+
+    /** The properties block's float count, for {@link #arena}; -1 until asked after a parse rebuilt the properties. */
+    private int arenaFloats = -1;
 
     /** The properties block packed as it is now, repacked only after a value moved. */
     private CgBufferWriter capturePacker() {
@@ -1081,8 +1083,6 @@ public final class CgMaterial {
      * material.overrideBlock(sharedBlock, mine);
      * mine.reset().beginRecord().mat4("u_Projection", projection);   // what this instance's next capture keeps
      * }</pre>
-     *
-     * <p>Captures only: a {@link #bind()} still reads the block itself.</p>
      */
     public CgMaterial overrideBlock(CgUniformBuffer block, CgBufferWriter contents) {
         changes++;
@@ -1167,8 +1167,8 @@ public final class CgMaterial {
 
     /**
      * Returns {@code true} when this material has an explicitly authored Depth pass in the
-     * last successful parse. Based on parse-time pass presence — use to gate calls to
-     * {@link #bindForPass(CgRenderPassVariant) bindForPass(DEPTH)}.
+     * last successful parse. Based on parse-time pass presence — use to gate a Depth pipeline
+     * ({@link #pipeline(CgRenderPassVariant, CgInstanceKind)}).
      *
      * <p>This is a parse-state check (explicit authored {@code [Depth]} block only).
      * To also detect auto-generated depth variants produced by {@code recompile()},
@@ -1410,8 +1410,7 @@ public final class CgMaterial {
     // ── Lifecycle ─────────────────────────────────────────────────────────────
 
     /**
-     * Marks the backing shader asset dirty so it will be recompiled on the next
-     * {@link #bind()} call. Called by {@link CgMaterialRegistry#reloadAll()} during
+     * Marks the backing shader asset dirty so it recompiles at its next use. Called by {@link CgMaterialRegistry#reloadAll()} during
      * hot-reload (F3+T), but now delegates through to the shared asset.
      *
      * <p>If the material has already been deleted or has no shader asset (forTest), this is a no-op.</p>
@@ -1423,9 +1422,8 @@ public final class CgMaterial {
     /**
      * Triggers a recompile of the backing shader asset, then rebuilds per-instance state.
      *
-     * <p>Serves as the public API for explicit recompilation. In normal usage, recompilation
-     * happens lazily on {@link #bind()}. For the forTest path (no cgMaterialShader), this
-     * clears the test program cache so the next bind triggers the factory again.</p>
+     * <p>Explicit recompilation; otherwise a dirty shader recompiles at its next use. No-op without a shader
+     * asset.</p>
      */
     public void recompile() {
         if (cgMaterialShader == null) return;
@@ -1458,9 +1456,7 @@ public final class CgMaterial {
 
     /**
      * Rebuilds per-instance state (propStore, matPropsUbo) after the shared shader asset
-     * has been successfully recompiled. Called from {@link #bind()} whenever
-     * the asset's {@link CgMaterialShader#getRevisionNumber()} diverges from
-     * {@link #lastKnownRevision}.
+     * has been successfully recompiled. Called from {@link #recompile()}.
      *
      * <p>No-op if the shader's parse result is null (compile failed — keep old state).</p>
      */
@@ -1521,6 +1517,7 @@ public final class CgMaterial {
             propStore.rebuild(clones);
         }
         capturePacker = null;
+        arenaFloats = -1;
         materialPropsDirty = true;
         capturePropsDirty = true;
 
@@ -1565,7 +1562,7 @@ public final class CgMaterial {
     /**
      * Chains another material to this one for multi-draw decorative effects.
      *
-     * <p>When {@link #drawChain} is called, this material draws first, then {@code next}
+     * <p>Where a world pass draws this material, it draws first, then {@code next}
      * draws immediately after with the same mesh. The chain is traversed in-order with
      * deterministic, immediate execution — not via a sort queue.</p>
      *

@@ -201,8 +201,8 @@ table.endWrite();                 // a lease now, the buffer's before the next f
 - `bind()` and `getGlBufferId()` land what is queued first, so they must run on the render thread outside a recording;
   `bind()` on a buffer whose storage is not made yet throws.
 - Inside a deferred task or a hot path, read `dataBuffer.getGlBuffer()`, never `getGlBufferId()`, which flushes.
-- A lease never comes from an unpack buffer: the tracked backend copies between host-visible buffers on the CPU, and
-  unpack memory is slow to read (`CgUploadLease.bufferSubData` throws on one).
+- A lease never comes from an unpack buffer: unpack memory is slow to read (`CgUploadLease.bufferSubData` throws on
+  one).
 
 ## Key Design Rules
 

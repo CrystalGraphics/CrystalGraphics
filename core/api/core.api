@@ -1614,17 +1614,6 @@ com/crystalgraphics/api/shader/CgShaderStages$Stage
   field public,static,final VERTEX Lcom/crystalgraphics/api/shader/CgShaderStages$Stage;
   method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/api/shader/CgShaderStages$Stage;
   method public,static values ()[Lcom/crystalgraphics/api/shader/CgShaderStages$Stage;
-com/crystalgraphics/api/state/CgAlphaState
-  access public,final,record
-  extends java/lang/Record
-  field public,static,final DISABLED Lcom/crystalgraphics/api/state/CgAlphaState;
-  method public <init> (ZIF)V
-  method public cutoff ()F
-  method public enabled ()Z
-  method public func ()I
-  method public,final equals (Ljava/lang/Object;)Z
-  method public,final hashCode ()I
-  method public,final toString ()Ljava/lang/String;
 com/crystalgraphics/api/state/CgBlendState
   access public,final,record
   extends java/lang/Record
@@ -1699,14 +1688,12 @@ com/crystalgraphics/api/state/CgRenderState
   access public,final
   extends java/lang/Object
   field public,static,final DEFAULT Lcom/crystalgraphics/api/state/CgRenderState;
-  method public getAlpha ()Lcom/crystalgraphics/api/state/CgAlphaState;
   method public getBlend ()Lcom/crystalgraphics/api/state/CgBlendState;
   method public getColorMasks ()Ljava/util/List;
   method public getCull ()Lcom/crystalgraphics/api/state/CgCullState;
   method public getDepth ()Lcom/crystalgraphics/api/state/CgDepthState;
   method public getSecondBlend ()Lcom/crystalgraphics/api/state/CgBlendState;
   method public getStencil ()Lcom/crystalgraphics/api/state/CgStencilState;
-  method public setAlpha (Lcom/crystalgraphics/api/state/CgAlphaState;)V
   method public setBlend (Lcom/crystalgraphics/api/state/CgBlendState;)V
   method public setColorMasks (Ljava/util/List;)V
   method public setCull (Lcom/crystalgraphics/api/state/CgCullState;)V
@@ -1724,7 +1711,6 @@ com/crystalgraphics/api/state/CgRenderState
 com/crystalgraphics/api/state/CgRenderState$Builder
   access public,final
   extends java/lang/Object
-  method public alpha (Lcom/crystalgraphics/api/state/CgAlphaState;)Lcom/crystalgraphics/api/state/CgRenderState$Builder;
   method public blend (Lcom/crystalgraphics/api/state/CgBlendState;)Lcom/crystalgraphics/api/state/CgRenderState$Builder;
   method public build ()Lcom/crystalgraphics/api/state/CgRenderState;
   method public colorMask (Lcom/crystalgraphics/api/state/CgColorMask;)Lcom/crystalgraphics/api/state/CgRenderState$Builder;
@@ -5717,6 +5703,7 @@ com/crystalgraphics/gl/buffer/CgStreamBuffer
   method protected <init> (Lcom/crystalgraphics/gl/buffer/CgStreamBuffer$Use;I)V
   method protected,final make (JZ)Lcom/crystalgraphics/platform/rhi/resource/CgGpuBuffer;
   method protected,static release (Lcom/crystalgraphics/platform/rhi/resource/CgGpuBuffer;)V
+  method public bindingBytes ()I
   method public delete ()V
   method public getCapacityBytes ()I
   method public getCommittedBytes ()I
@@ -9026,10 +9013,13 @@ com/crystalgraphics/render/draw/CgDeviceSamplers
 com/crystalgraphics/render/draw/CgDeviceSets
   access public,final
   extends java/lang/Object
+  field public,static,final MAX_DYNAMIC I
   method public <init> ()V
   method public defaulted ()J
   method public lastDefaulted ()Ljava/lang/String;
   method public made ()J
+  method public offsetCount ()I
+  method public offsets ()[I
   method public prepare (Lcom/crystalgraphics/render/draw/CgBindingTable;)V
   method public release ()V
   method public reused ()J
@@ -9090,6 +9080,7 @@ com/crystalgraphics/render/draw/CgDrawStateCache
   method public pipeline (Lcom/crystalgraphics/platform/rhi/command/CgRenderPass;Lcom/crystalgraphics/platform/rhi/pipeline/CgGraphicsPipeline;)V
   method public reset ()V
   method public set (Lcom/crystalgraphics/platform/rhi/command/CgRenderPass;ILcom/crystalgraphics/platform/rhi/binding/CgBindingSet;)V
+  method public set (Lcom/crystalgraphics/platform/rhi/command/CgRenderPass;ILcom/crystalgraphics/platform/rhi/binding/CgBindingSet;[II)V
   method public skipped ()J
   method public stencilReference (Lcom/crystalgraphics/platform/rhi/command/CgRenderPass;I)V
   method public vertexBuffer (Lcom/crystalgraphics/platform/rhi/command/CgRenderPass;Lcom/crystalgraphics/platform/rhi/resource/CgGpuBuffer;J)V
@@ -9337,6 +9328,7 @@ com/crystalgraphics/render/graph/CgExecutor
   method public,static hasCurrentTarget ()Z
   method public,static into (III)Lcom/crystalgraphics/render/graph/CgExecutor$Into;
   method public,static into (Lcom/crystalgraphics/gl/framebuffer/CgFrameBuffer;)Lcom/crystalgraphics/render/graph/CgExecutor$Into;
+  method public,static intoColor (III)Lcom/crystalgraphics/render/graph/CgExecutor$Into;
   method public,static makeStorage (Lcom/crystalgraphics/render/graph/CgGraphBuffer;)V
 com/crystalgraphics/render/graph/CgExecutor$Into
   access public,final
@@ -10478,7 +10470,6 @@ com/crystalgraphics/render/shader/CgToolchainDevice
   implements com/crystalgraphics/lifecycle/CgLifecycleListener
   method protected <init> ()V
   method protected,abstract close ()V
-  method protected,abstract ineligible ()Ljava/lang/String;
   method protected,abstract resize ()V
   method protected,abstract start ()V
   method protected,abstract toolchain (Ljava/util/List;)V

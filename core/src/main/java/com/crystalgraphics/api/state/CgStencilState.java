@@ -1,7 +1,7 @@
 package com.crystalgraphics.api.state;
 
+import com.crystalgraphics.platform.gl.driver.GLC;
 import com.github.bsideup.jabel.Desugar;
-import com.crystalgraphics.platform.gl.CgGL;
 
 /**
  * Immutable stencil-test state slot for {@link CgRenderState}.
@@ -40,7 +40,7 @@ public record CgStencilState(
      */
     public static final CgStencilState DISABLED = new CgStencilState(
             false, 0, 0xFF, 0xFF,
-            CgGL.GL_ALWAYS, CgGL.GL_KEEP, CgGL.GL_KEEP, CgGL.GL_KEEP);
+            GLC.GL_ALWAYS, GLC.GL_KEEP, GLC.GL_KEEP, GLC.GL_KEEP);
 
     /**
      * Passes where the stencil's {@code readMask} bits equal {@code ref}'s, and writes nothing: a draw kept to the pixels
@@ -51,7 +51,7 @@ public record CgStencilState(
      * }</pre>
      */
     public static CgStencilState equal(int ref, int readMask) {
-        return new CgStencilState(true, ref, readMask, 0, CgGL.GL_EQUAL, CgGL.GL_KEEP, CgGL.GL_KEEP, CgGL.GL_KEEP);
+        return new CgStencilState(true, ref, readMask, 0, GLC.GL_EQUAL, GLC.GL_KEEP, GLC.GL_KEEP, GLC.GL_KEEP);
     }
 
     /**
@@ -63,7 +63,7 @@ public record CgStencilState(
      * }</pre>
      */
     public static CgStencilState write(int value, int writeMask, boolean depthFailWrites) {
-        return new CgStencilState(true, value, 0xFF, writeMask, CgGL.GL_ALWAYS, CgGL.GL_REPLACE, CgGL.GL_KEEP,
-                depthFailWrites ? CgGL.GL_REPLACE : CgGL.GL_KEEP);
+        return new CgStencilState(true, value, 0xFF, writeMask, GLC.GL_ALWAYS, GLC.GL_REPLACE, GLC.GL_KEEP,
+                depthFailWrites ? GLC.GL_REPLACE : GLC.GL_KEEP);
     }
 }

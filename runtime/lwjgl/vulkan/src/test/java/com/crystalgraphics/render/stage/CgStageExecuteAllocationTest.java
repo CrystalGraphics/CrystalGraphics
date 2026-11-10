@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.stage;
 
+import com.crystalgraphics.render.graph.CgExecutor;
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
@@ -7,11 +8,6 @@ import com.crystalgraphics.gl.buffer.CgReadback;
 import com.crystalgraphics.gl.texture.CgFallbackTextures;
 import com.crystalgraphics.platform.rhi.nulldrv.CgNullRHI;
 import com.crystalgraphics.platform.gl.CgCapabilities;
-import com.crystalgraphics.platform.gl.CgGL;
-import com.crystalgraphics.platform.gl.state.CgGlState;
-import com.crystalgraphics.platform.gl.tracked.CgTrackedGLBackend;
-import com.crystalgraphics.platform.gl.tracked.CgTrackedGLContext;
-import com.crystalgraphics.platform.gl.tracked.CgTrackedStateProvider;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
 import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.render.draw.CgOrder;
@@ -34,7 +30,7 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assume.assumeTrue;
 
 /**
- * T5: a stage firing recorded, built and executed on the tracked backend over the recording device, measured in bytes a
+ * T5: a stage firing recorded, built and executed on the null device, measured in bytes a
  * frame on the render thread after warm-up. What a GPU-less run can prove of the executor's share.
  */
 public class CgStageExecuteAllocationTest {
@@ -57,12 +53,8 @@ public class CgStageExecuteAllocationTest {
     @BeforeClass
     public static void install() {
         compiler = new ShadercGlslCompiler();
-        CgTrackedGLBackend gl = new CgTrackedGLBackend(new CgNullRHI(64, 64).withoutLog(), compiler, true);
-        CgGL.init(gl);
-        CgCapabilities.init(new CgTrackedGLContext());
+        new CgNullRHI(64, 64).withoutLog().install(compiler);
         CgCapabilities.clearCache();
-        CgGlState.reset();
-        CgGlState.setProvider(new CgTrackedStateProvider(gl));
         CgBindingPoints.init(CgCapabilities.detect());
         CgFallbackTextures.init();
     }
@@ -70,7 +62,6 @@ public class CgStageExecuteAllocationTest {
     @AfterClass
     public static void uninstall() {
         CgFrameRing.reset();   // its fences are this backend's: the next class installs another
-        CgGlState.reset();
         compiler.close();
     }
 
@@ -78,7 +69,7 @@ public class CgStageExecuteAllocationTest {
      * 11.8 KB a firing, by JFR's TLAB samples, most first: {@code CgChunkBuilder.end}'s copies (float[], int[], the
      * chunk); {@code CgRecording.block}'s float[] and a {@code CgRasterPass} with its list and int[] per raster;
      * {@code FrameRingStreamBuffer.map}'s DirectByteBuffer from {@code CgBindingTable.upload}; a
-     * {@code CgMaterialShaderMap.ProgramKey} per program lookup; {@code CgTrackedGLBackend.glFenceSync}'s boxed Long; and
+     * {@code CgMaterialShaderMap.ProgramKey} per program lookup; and
      * the recording device's own byte[] at retirement (a test device's, never a player's).
      */
     @Test
@@ -104,7 +95,9 @@ public class CgStageExecuteAllocationTest {
                 pass.add(chunk.end());
             }
             pass.end();
-            frame.execute();
+            try (CgExecutor.Into ignored = CgExecutor.into(0, 64, 64)) {   // the null device's surface
+                frame.execute();
+            }
             CgFrameRing.endFrame();
         };
         for (int i = 0; i < 2_000; i++) firing.run();

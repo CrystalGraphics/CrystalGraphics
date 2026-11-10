@@ -1,7 +1,7 @@
 package com.crystalgraphics.api.material;
 
+import com.crystalgraphics.platform.gl.driver.GLC;
 import com.crystalgraphics.api.state.CgBlendState;
-import com.crystalgraphics.platform.gl.CgGL;
 
 /**
  * How a material's colour lands on what is behind it: Unreal's material blend modes, set per material through
@@ -24,21 +24,21 @@ public enum CgBlendMode {
     /** No blend: {@code Blend OFF}. Unreal's Opaque. */
     OPAQUE(CgBlendState.DISABLED),
     /** {@code Blend SRC_ALPHA ONE_MINUS_SRC_ALPHA}. Unreal's Translucent. */
-    ALPHA(blend(CgGL.GL_SRC_ALPHA, CgGL.GL_ONE_MINUS_SRC_ALPHA, CgGL.GL_FUNC_ADD)),
+    ALPHA(blend(GLC.GL_SRC_ALPHA, GLC.GL_ONE_MINUS_SRC_ALPHA, GLC.GL_FUNC_ADD)),
     /** {@code Blend ONE ONE_MINUS_SRC_ALPHA}. Unreal's AlphaComposite. */
-    PREMULTIPLIED(blend(CgGL.GL_ONE, CgGL.GL_ONE_MINUS_SRC_ALPHA, CgGL.GL_FUNC_ADD)),
+    PREMULTIPLIED(blend(GLC.GL_ONE, GLC.GL_ONE_MINUS_SRC_ALPHA, GLC.GL_FUNC_ADD)),
     /** {@code Blend ONE ONE}. Unreal's Additive. */
-    ADDITIVE(blend(CgGL.GL_ONE, CgGL.GL_ONE, CgGL.GL_FUNC_ADD)),
+    ADDITIVE(blend(GLC.GL_ONE, GLC.GL_ONE, GLC.GL_FUNC_ADD)),
     /**
      * {@code Blend DST_COLOR ZERO}: what is behind times the colour. Unreal's Modulate; fogged toward
      * white, as a fogged multiplier is.
      */
-    MODULATE(blend(CgGL.GL_DST_COLOR, CgGL.GL_ZERO, CgGL.GL_FUNC_ADD)),
+    MODULATE(blend(GLC.GL_DST_COLOR, GLC.GL_ZERO, GLC.GL_FUNC_ADD)),
     /**
      * {@code Blend ONE ONE} with {@code BlendEquation REV_SUB}: what is behind, less the colour. No Unreal mode; CC2's
      * kits author it. Fogged and decoded as {@link #ADDITIVE} is.
      */
-    SUBTRACT(blend(CgGL.GL_ONE, CgGL.GL_ONE, CgGL.GL_FUNC_REVERSE_SUBTRACT));
+    SUBTRACT(blend(GLC.GL_ONE, GLC.GL_ONE, GLC.GL_FUNC_REVERSE_SUBTRACT));
 
     private final CgBlendState state;
 

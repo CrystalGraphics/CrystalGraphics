@@ -35,8 +35,8 @@ are not public. `stopped()` writes the trace run's exit files (`trace.CgTraceRun
   whole it held 1.7.10 0.6 s and 1.20.1 0.3 s. `ensureGraphicsContext` runs what is left at once, for a caller that
   draws next (the harness, CrystalGUI's desktop). A new step goes in a stage of its own if it costs tens of ms. Its GL-free work runs ahead on a worker (`CgEngineLifecycle.clientStarting`, which a
   client host calls at its install; else at the start itself), joined before the first install that may reach the same
-  classes, since two threads initializing classes that name each other deadlock. Never a texture ahead: until the
-  render thread's first GL call claims the context, `CgGL.mayIssueGl` passes on any thread. The engine's programs build
+  classes, since two threads initializing classes that name each other deadlock. A texture made ahead defers its device work
+  (`CgDeferral`) to the render thread: `CgRHI.onDeviceThread()` is false everywhere until the device starts. The engine's programs build
   behind the screen as the task `crystalgraphics:programs` (`CgWorldRenderer.beginBoot`/`bootStep`), and the screen
   fires no world stage until they have.
 - `CgGraphicsLifecycle` holds no listeners: it signals each context moment to `CgEngineLifecycle` (package-private

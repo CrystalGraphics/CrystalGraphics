@@ -154,4 +154,13 @@ public final class GLC {
             GL_ACTIVE_RESOURCES = 0x92F5, GL_TYPE = 0x92FA, GL_BLOCK_INDEX = 0x92FD, GL_BUFFER_BINDING = 0x9302,
             GL_REFERENCED_BY_VERTEX_SHADER = 0x9306, GL_REFERENCED_BY_FRAGMENT_SHADER = 0x930A,
             GL_REFERENCED_BY_COMPUTE_SHADER = 0x930B, GL_LOCATION = 0x930E;
+
+    // The engine's GL vocabulary above the device (texture formats, blend factors, buffer usages), as the engine names it
+    public static final int GL_COMPARE_R_TO_TEXTURE = 0x884E;
+    public static final int GL_RGB16F = 0x881B;
+    public static final int GL_RGB32F = 0x8815;
+    public static final int GL_RGB_INTEGER = 0x8D98;
+    public static final int GL_SYNC_GPU_COMMANDS_COMPLETE = 0x9117;
+    public static final int GL_TEXTURE_CUBE_MAP_NEGATIVE_Z = 0x851A;
+    public static final int GL_TEXTURE_CUBE_MAP_POSITIVE_X = 0x8515;
 }

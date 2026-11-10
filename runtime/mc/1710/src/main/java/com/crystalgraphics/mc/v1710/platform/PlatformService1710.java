@@ -5,20 +5,16 @@ import net.minecraftforge.client.ClientCommandHandler;
 import com.crystalgraphics.lwjgl2.JOrbisDecoder;
 import com.crystalgraphics.lwjgl2.Lwjgl2AudioOutput;
 import com.crystalgraphics.lwjgl2.Lwjgl2CursorService;
-import com.crystalgraphics.lwjgl2.Lwjgl2GLContext;
 import com.crystalgraphics.lwjgl2.ClipboardLwjgl2;
 import com.crystalgraphics.lwjgl2.InputLwjgl2;
 import com.crystalgraphics.platform.input.CgClipboard;
 import com.crystalgraphics.platform.input.CgInput;
 import com.crystalgraphics.mc.v1710.CrystalGraphicsVersion;
-import com.crystalgraphics.mc.v1710.platform.gl.GLBackend1710;
 import com.crystalgraphics.mc.v1710.platform.gl.GLDevice1710;
 import com.crystalgraphics.mc.v1710.platform.service.*;
 import net.minecraftforge.common.MinecraftForge;
 import cpw.mods.fml.common.FMLCommonHandler;
 
-import com.crystalgraphics.mc.v1710.platform.state.AngelicaStateProvider;
-import com.crystalgraphics.mc.v1710.platform.state.RawDriverProvider1710;
 import com.crystalgraphics.mc.v1710.platform.world.Client1710;
 import com.crystalgraphics.mc.v1710.platform.world.HostCamera1710;
 import com.crystalgraphics.mc.v1710.platform.world.HostDebug1710;
@@ -48,8 +44,6 @@ import com.crystalgraphics.platform.service.CgModLoader;
 import com.crystalgraphics.platform.CgPlatformService;
 import com.crystalgraphics.platform.CgService;
 import com.crystalgraphics.platform.gl.*;
-import com.crystalgraphics.platform.gl.state.CgGlSlot;
-import com.crystalgraphics.platform.gl.state.CgGlState;
 import com.crystalgraphics.platform.service.*;
 import com.crystalgraphics.platform.world.CgHostCamera;
 import com.crystalgraphics.platform.world.CgHostDebug;
@@ -76,20 +70,10 @@ public final class PlatformService1710 implements CgPlatformService {
     public static PlatformService1710 getInstance() { if (INSTANCE == null) init(); return INSTANCE;}
     
     // Built on demand and typed as the SPI: both name LWJGL, which a dedicated server lacks.
-    private CgGLBackend        glDispatchImpl;
-    private CgGLContext        glContextImpl;
 
-    @Override public CgGLBackend gl() {
-        if (glDispatchImpl == null) {
-            glDispatchImpl = new GLBackend1710();
-            CgEngineLifecycle.addListener(new GLDevice1710());
-        }
-        return glDispatchImpl;
-    }
-
-    @Override public CgGLContext capabilities() {
-        if (glContextImpl == null) glContextImpl = new Lwjgl2GLContext();
-        return glContextImpl;
+    @Override
+    public void startDevice() {
+        CgEngineLifecycle.addListener(new GLDevice1710());
     }
 
     // ── Lifecycle ─────────────────────────────────────────────────────────────
@@ -166,26 +150,6 @@ public final class PlatformService1710 implements CgPlatformService {
             CgEngineLifecycle.clientStarting();
         }
 
-        // Prefer Angelica's mirror over the driver for GL state reads.
-        //
-        // Angelica redirects ~200 GL call sites process-wide, so its mirror observes writes from Minecraft
-        // and every other mod — coverage we could not obtain ourselves, and the reason our own redirector
-        // was scrapped rather than extended. Reading it costs plain field access instead of a glGet, and a
-        // glGet is a driver synchronisation point.
-        //
-        // Registered before any GL context exists, which is fine: the provider is only consulted when a
-        // scope adopts. If Angelica is absent, or a future version renames something, every read falls back
-        // to the glGet base — so this can cost performance, never correctness.
-        if (AngelicaStateProvider.isAvailable()) {
-            CgGlState.setProvider(new AngelicaStateProvider());
-            // Angelica also answers glGet, so only a reader past it can check its cache against the driver.
-            // It binds programs of its own behind glUseProgram(0) (fixed-function emulation, shader packs),
-            // so the driver's program is not expected to match.
-            if (CgGlStateManager.ROUND_TRIP.get()) {
-                RawDriverProvider1710 raw = RawDriverProvider1710.create();
-                if (raw != null) CgGlState.setDriverReader(raw, CgGlSlot.PROGRAM);
-            }
-        }
     }
 
     /**
