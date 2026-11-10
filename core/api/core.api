@@ -8694,11 +8694,13 @@ com/crystalgraphics/render/canvas/CgCanvasRetainer
   access public,final
   extends java/lang/Object
   method public <init> (Ljava/lang/String;)V
+  method public blur (Lcom/crystalgraphics/render/graph/CgRecording;FFFFF)I
   method public delete ()V
   method public end ()V
   method public paint (Lcom/crystalgraphics/render/graph/CgRecording;FFF)Lcom/crystalgraphics/render/canvas/CgCanvas;
   method public quad (Lcom/crystalgraphics/render/canvas/CgCanvas;Lcom/crystalgraphics/api/material/CgMaterial;FFFF)Lcom/crystalgraphics/render/canvas/CgQuadBatch$Quad;
   method public quad (Lcom/crystalgraphics/render/canvas/CgCanvas;Lcom/crystalgraphics/api/material/CgMaterial;IFFFF)Lcom/crystalgraphics/render/canvas/CgQuadBatch$Quad;
+  method public quad (Lcom/crystalgraphics/render/canvas/CgCanvas;Lcom/crystalgraphics/api/material/CgMaterial;IFFFFI)Lcom/crystalgraphics/render/canvas/CgQuadBatch$Quad;
   method public release (Lcom/crystalgraphics/render/graph/CgRecording;)V
 com/crystalgraphics/render/canvas/CgClipTable
   access public,final
@@ -14435,6 +14437,7 @@ com/crystalgraphics/text/style/CgTextStyle
   method public layers ()Ljava/util/List;
   method public letterSpacing ()I
   method public px ()F
+  method public reach ()F
   method public size ()F
   method public skew ()F
   method public toString ()Ljava/lang/String;
@@ -19977,7 +19980,7 @@ com/crystalgraphics/widget/CgCanvasWidgetPainter
   implements com/crystalgraphics/widget/CgWidgetPainter
   method public <init> (Ljava/lang/String;Lcom/crystalgraphics/render/canvas/CgCanvasMaterials;)V
   method public begin (Lcom/crystalgraphics/render/canvas/CgCanvas;Lcom/crystalgraphics/render/graph/CgRecording;F)Lcom/crystalgraphics/widget/CgCanvasWidgetPainter;
-  method public beginRetained (FF)I
+  method public beginRetained (FFFF)I
   method public endRetained ()V
   method public image (Lcom/crystalgraphics/widget/CgWidgetBrush;Lorg/joml/Matrix4f;FFFFFFLorg/joml/Vector4fc;)V
   method public layout (Lcom/crystalgraphics/text/style/CgTextStyle;Ljava/lang/String;FLcom/crystalgraphics/widget/CgWidget$Justification;Lorg/joml/Vector2f;)Ljava/lang/Object;
@@ -20004,6 +20007,27 @@ com/crystalgraphics/widget/CgLinearColour
   method public,static argb (I)Lcom/crystalgraphics/widget/CgLinearColour;
   method public,static linear (F)F
   method public,static srgb (F)F
+com/crystalgraphics/widget/CgScreenWidgetLayer
+  access public,final
+  extends java/lang/Object
+  implements java/lang/AutoCloseable
+  method public add (Lcom/crystalgraphics/widget/CgUserWidget;I)Lcom/crystalgraphics/widget/CgScreenWidgetLayer;
+  method public clear ()V
+  method public close ()V
+  method public contains (Lcom/crystalgraphics/widget/CgUserWidget;)Z
+  method public id ()Ljava/lang/String;
+  method public remove (Lcom/crystalgraphics/widget/CgUserWidget;)Z
+  method public size ()I
+  method public,static builder (Ljava/lang/String;)Lcom/crystalgraphics/widget/CgScreenWidgetLayer$Builder;
+com/crystalgraphics/widget/CgScreenWidgetLayer$Builder
+  access public,final
+  extends java/lang/Object
+  method public build ()Lcom/crystalgraphics/widget/CgScreenWidgetLayer;
+  method public kit (Ljava/lang/String;)Lcom/crystalgraphics/widget/CgScreenWidgetLayer$Builder;
+  method public order (I)Lcom/crystalgraphics/widget/CgScreenWidgetLayer$Builder;
+  method public retainedScale (F)Lcom/crystalgraphics/widget/CgScreenWidgetLayer$Builder;
+  method public retaining (FFF)Lcom/crystalgraphics/widget/CgScreenWidgetLayer$Builder;
+  method public world (Lcom/crystalgraphics/frame/CgWorld;)Lcom/crystalgraphics/widget/CgScreenWidgetLayer$Builder;
 com/crystalgraphics/widget/CgUiScale
   access public,final,record
   extends java/lang/Record
@@ -20036,6 +20060,7 @@ com/crystalgraphics/widget/CgUserWidget
   implements com/crystalgraphics/sequence/CgSequenceTarget
   method public allot (FF)Lcom/crystalgraphics/widget/CgUserWidget;
   method public animationCurrentTime (Lcom/crystalgraphics/sequence/definition/CgSequenceDefinition;)D
+  method public blur (Ljava/lang/String;F)Lcom/crystalgraphics/widget/CgUserWidget;
   method public box (I[F)[F
   method public brush (ILcom/crystalgraphics/widget/CgWidgetBrush;)Lcom/crystalgraphics/widget/CgUserWidget;
   method public brush (Ljava/lang/String;Lcom/crystalgraphics/widget/CgWidgetBrush;)Lcom/crystalgraphics/widget/CgUserWidget;
@@ -20079,30 +20104,10 @@ com/crystalgraphics/widget/CgUserWidgetPool
   method public release (Lcom/crystalgraphics/widget/CgUserWidget;)V
   method public releaseAll ()V
   method public reset ()V
-com/crystalgraphics/widget/CgScreenWidgetLayer
-  access public,final
-  extends java/lang/Object
-  implements java/lang/AutoCloseable
-  method public add (Lcom/crystalgraphics/widget/CgUserWidget;I)Lcom/crystalgraphics/widget/CgScreenWidgetLayer;
-  method public clear ()V
-  method public close ()V
-  method public contains (Lcom/crystalgraphics/widget/CgUserWidget;)Z
-  method public id ()Ljava/lang/String;
-  method public remove (Lcom/crystalgraphics/widget/CgUserWidget;)Z
-  method public size ()I
-  method public,static builder (Ljava/lang/String;)Lcom/crystalgraphics/widget/CgScreenWidgetLayer$Builder;
-com/crystalgraphics/widget/CgScreenWidgetLayer$Builder
-  access public,final
-  extends java/lang/Object
-  method public build ()Lcom/crystalgraphics/widget/CgScreenWidgetLayer;
-  method public kit (Ljava/lang/String;)Lcom/crystalgraphics/widget/CgScreenWidgetLayer$Builder;
-  method public order (I)Lcom/crystalgraphics/widget/CgScreenWidgetLayer$Builder;
-  method public retainedScale (F)Lcom/crystalgraphics/widget/CgScreenWidgetLayer$Builder;
-  method public retaining (FFF)Lcom/crystalgraphics/widget/CgScreenWidgetLayer$Builder;
-  method public world (Lcom/crystalgraphics/frame/CgWorld;)Lcom/crystalgraphics/widget/CgScreenWidgetLayer$Builder;
 com/crystalgraphics/widget/CgWidget
   access public,final
   extends java/lang/Object
+  method public blur ()F
   method public brush ()Lcom/crystalgraphics/widget/CgWidgetBrush;
   method public brushColour ()Lcom/crystalgraphics/widget/CgLinearColour;
   method public children ()Ljava/util/List;
@@ -20139,6 +20144,7 @@ com/crystalgraphics/widget/CgWidget$Builder
   access public,final
   extends java/lang/Object
   method public angle (F)Lcom/crystalgraphics/widget/CgWidget$Builder;
+  method public blur (F)Lcom/crystalgraphics/widget/CgWidget$Builder;
   method public brush (Lcom/crystalgraphics/widget/CgWidgetBrush;)Lcom/crystalgraphics/widget/CgWidget$Builder;
   method public brushColour (Lcom/crystalgraphics/widget/CgLinearColour;)Lcom/crystalgraphics/widget/CgWidget$Builder;
   method public build ()Lcom/crystalgraphics/widget/CgWidget;
@@ -20241,7 +20247,7 @@ com/crystalgraphics/widget/CgWidgetComponent$State
 com/crystalgraphics/widget/CgWidgetPainter
   access public,abstract,interface
   extends java/lang/Object
-  method public,abstract beginRetained (FF)I
+  method public,abstract beginRetained (FFFF)I
   method public,abstract endRetained ()V
   method public,abstract image (Lcom/crystalgraphics/widget/CgWidgetBrush;Lorg/joml/Matrix4f;FFFFFFLorg/joml/Vector4fc;)V
   method public,abstract layout (Lcom/crystalgraphics/text/style/CgTextStyle;Ljava/lang/String;FLcom/crystalgraphics/widget/CgWidget$Justification;Lorg/joml/Vector2f;)Ljava/lang/Object;

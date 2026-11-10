@@ -1,7 +1,9 @@
 package com.crystalgraphics.widget;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
@@ -48,9 +50,10 @@ import com.crystalgraphics.text.style.CgTextStyle;
  *       kept. A widget asset's UI materials and its styles' faces are built before it is READY
  *       ({@link CgWidgetPreparer}); a tree built in Java is built by {@link #prepare}, else at its first draw.</li>
  *   <li>Every retainer box is retained before anything paints onto the frame's canvas: the retained image's pass is
- *       recorded first. A region opened after a draw onto the canvas fails.</li>
- *   <li>The retained image only grows; a frame's regions past its size fail, naming the size to give
- *       {@link #retaining}.</li>
+ *       recorded first. A region opened after a draw onto the canvas fails. The canvas's open pass is broken once the
+ *       image and its blurs are recorded, so a pass another renderer opened earlier never reads them.</li>
+ *   <li>The retained image is pages of {@link #retaining}'s size: a frame whose regions fill one opens the next, as a
+ *       glyph atlas does, kept for later frames. Only a region larger than a page fails, naming the size to give.</li>
  *   <li>A brush with no texture or material draws a box of its tint, as Slate's.</li>
  * </ul>
  */
@@ -60,8 +63,10 @@ public final class CgCanvasWidgetPainter implements CgWidgetPainter {
     private record Laid(CgTextLayout layout, CgFont font, float wrap) {
     }
 
+    private final String name;
     private final CgCanvasMaterials materials;
-    private final CgCanvasRetainer retainer;
+    /** The retained image's pages, made as a frame first needs each, kept. */
+    private final List<CgCanvasRetainer> pages = new ArrayList<>();
     /** Measures text: a canvas of its own, recording nothing, as a draw is measured under its canvas's camera. */
     private final CgCanvas measuring = new CgCanvas();
     private final Map<String, CgTexture2D> textures = new HashMap<>();
@@ -76,9 +81,20 @@ public final class CgCanvasWidgetPainter implements CgWidgetPainter {
     private float texelsPerUnit = 1f;
     @Nullable
     private CgCanvas retainedCanvas;
+    /** The page regions are packed into now. */
+    private int page;
     private boolean retainedClosed;
     private int target = -1;
     private float[] regions = new float[16 * 4];
+    /**
+     * Per region: its padding (the margin, its content's reach and three of its blur), its blur sigma, and the
+     * reduction it was blurred at.
+     */
+    private float[] pads = new float[16];
+    private float[] blurs = new float[16];
+    private int[] reduces = new int[16];
+    /** Per region: the page it is on. */
+    private int[] pageOf = new int[16];
     private int count;
     private float shelfX;
     private float shelfY;
@@ -89,13 +105,14 @@ public final class CgCanvasWidgetPainter implements CgWidgetPainter {
      * {@code name} names its retained image in a trace.
      */
     public CgCanvasWidgetPainter(String name, CgCanvasMaterials materials) {
+        this.name = Objects.requireNonNull(name, "name");
         this.materials = Objects.requireNonNull(materials, "materials");
-        this.retainer = new CgCanvasRetainer(name);
     }
 
     /**
-     * Its retained image: {@code width} x {@code height} units, each region given {@code margin} units of room on every
-     * side for what draws past its box (an outline, a slant). 512 x 512 and 8 unless set.
+     * Its retained image's pages: {@code width} x {@code height} units each, a frame opening another when one is full,
+     * each region given {@code margin} units of room on every side for antialiasing past its box (its text's reach and
+     * its blur are added). 512 x 512 and 8 unless set.
      */
     public CgCanvasWidgetPainter retaining(float width, float height, float margin) {
         this.retainedWidth = width;
@@ -124,6 +141,7 @@ public final class CgCanvasWidgetPainter implements CgWidgetPainter {
         this.recording = Objects.requireNonNull(recording, "recording");
         this.texelsPerUnit = texelsPerUnit;
         retainedCanvas = null;
+        page = 0;
         retainedClosed = false;
         target = -1;
         count = 0;
@@ -131,9 +149,15 @@ public final class CgCanvasWidgetPainter implements CgWidgetPainter {
         return this;
     }
 
-    /** Releases the retained image into {@code recording}: when the HUD is done with it. */
+    /** Releases the retained image's pages into {@code recording}: when the HUD is done with it. */
     public void release(CgRecording recording) {
-        retainer.release(recording);
+        for (CgCanvasRetainer p : pages) p.release(recording);
+    }
+
+    /** Page {@code at}, made the first time a frame needs it. */
+    private CgCanvasRetainer page(int at) {
+        while (pages.size() <= at) pages.add(new CgCanvasRetainer(name + "." + pages.size()));
+        return pages.get(at);
     }
 
     @Nullable
@@ -201,24 +225,42 @@ public final class CgCanvasWidgetPainter implements CgWidgetPainter {
     }
 
     @Override
-    public int beginRetained(float width, float height) {
+    public int beginRetained(float width, float height, float reach, float blur) {
         if (retainedClosed) {
             throw new IllegalStateException("a retainer box was retained after a draw onto the canvas: retain every "
                     + "widget before painting any");
         }
         if (target >= 0) throw new IllegalStateException("a retainer box inside another is not drawn");
-        if (retainedCanvas == null) retainedCanvas = retainer.paint(recording, retainedWidth, retainedHeight, texelsPerUnit);
-        float w = width + 2f * margin, h = height + 2f * margin;
+        float pad = margin + Math.max(0f, reach) + 3f * Math.max(0f, blur);
+        float w = width + 2f * pad, h = height + 2f * pad;
+        if (w > retainedWidth || h > retainedHeight) {
+            throw new IllegalStateException("a retainer box needs " + w + " x " + h + " units with its reach and blur, "
+                    + "past a page's " + retainedWidth + " x " + retainedHeight + ": raise retaining(...)");
+        }
+        if (retainedCanvas == null) retainedCanvas = page(page).paint(recording, retainedWidth, retainedHeight, texelsPerUnit);
         if (shelfX + w > retainedWidth) {
             shelfX = 0f;
             shelfY += shelfHigh;
             shelfHigh = 0f;
         }
-        if (w > retainedWidth || shelfY + h > retainedHeight) {
-            throw new IllegalStateException("this frame's retainer boxes need more than " + retainedWidth + " x "
-                    + retainedHeight + " units: raise retaining(...)");
+        if (shelfY + h > retainedHeight) {
+            // This page is full: land it and pack the rest into the next, as a glyph atlas opens a page.
+            pages.get(page).end();
+            page++;
+            retainedCanvas = page(page).paint(recording, retainedWidth, retainedHeight, texelsPerUnit);
+            shelfX = shelfY = shelfHigh = 0f;
         }
-        if (count * 4 + 4 > regions.length) regions = Arrays.copyOf(regions, regions.length * 2);
+        if (count * 4 + 4 > regions.length) {
+            regions = Arrays.copyOf(regions, regions.length * 2);
+            pads = Arrays.copyOf(pads, pads.length * 2);
+            blurs = Arrays.copyOf(blurs, blurs.length * 2);
+            reduces = Arrays.copyOf(reduces, reduces.length * 2);
+            pageOf = Arrays.copyOf(pageOf, pageOf.length * 2);
+        }
+        pageOf[count] = page;
+        pads[count] = pad;
+        blurs[count] = Math.max(0f, blur);
+        reduces[count] = 0;
         regions[count * 4] = shelfX;
         regions[count * 4 + 1] = shelfY;
         regions[count * 4 + 2] = w;
@@ -241,16 +283,19 @@ public final class CgCanvasWidgetPainter implements CgWidgetPainter {
         if (a <= 0f) return;
         float x = regions[region * 4], y = regions[region * 4 + 1];
         float w = regions[region * 4 + 2], h = regions[region * 4 + 3];
+        float pad = pads[region];
+        int reduce = reduces[region];
+        CgCanvasRetainer retainer = pages.get(pageOf[region]);
         if (effect == null) {
             // SRetainerWidget: one premultiplied box; the colour is straight, the material premultiplies it.
-            retainer.quad(canvas, materials.image(CgBlendMode.PREMULTIPLIED), x, y, w, h).at(-margin, -margin).pose(pose)
-                    .color(CgLinearColour.argb(r, g, b, a)).submit();
+            retainer.quad(canvas, materials.image(CgBlendMode.PREMULTIPLIED), 0, x, y, w, h, reduce).at(-pad, -pad)
+                    .pose(pose).color(CgLinearColour.argb(r, g, b, a)).submit();
             return;
         }
         CgMaterial m = material(effect);
         int unit = m.samplerUnit(textureParameter);
         if (unit < 0) throw new IllegalStateException(effect.id() + " has no sampler " + textureParameter);
-        retainer.quad(canvas, m, unit, x, y, w, h).at(-margin, -margin).pose(pose).color(linear(r, g, b, a)).submit();
+        retainer.quad(canvas, m, unit, x, y, w, h, reduce).at(-pad, -pad).pose(pose).color(linear(r, g, b, a)).submit();
     }
 
     /** Where draws go: a retained region while one is open, else the canvas, closing the retained image first. */
@@ -261,14 +306,26 @@ public final class CgCanvasWidgetPainter implements CgWidgetPainter {
     }
 
     private void closeRetained() {
-        if (retainedCanvas != null && !retainedClosed) retainer.end();
+        if (retainedCanvas != null && !retainedClosed) {
+            pages.get(page).end();
+            // CSS's filter: blur() on each region that asks: recorded before the canvas samples the image.
+            for (int i = 0; i < count; i++) {
+                if (blurs[i] <= 0f) continue;
+                reduces[i] = pages.get(pageOf[i]).blur(recording, regions[i * 4], regions[i * 4 + 1],
+                        regions[i * 4 + 2], regions[i * 4 + 3], blurs[i]);
+            }
+            // Another renderer may have opened the canvas's pass earlier in the firing (damage numbers at
+            // WORLD_WIDGETS), before the image's passes: a quad there would read last frame's. A new pass reads this one's.
+            canvas.breakPass();
+        }
         retainedClosed = true;
     }
 
-    /** {@code pose} into the open region, its box {@link #margin} in from the region's corner. */
+    /** {@code pose} into the open region, its box its padding in from the region's corner. */
     private Matrix4f pose(Matrix4f pose) {
         if (target < 0) return pose;
-        return inRegion.translation(regions[target * 4] + margin, regions[target * 4 + 1] + margin, 0f).mul(pose);
+        float pad = pads[target];
+        return inRegion.translation(regions[target * 4] + pad, regions[target * 4 + 1] + pad, 0f).mul(pose);
     }
 
     /** The shared material, which {@link CgWidgetPreparer} names to the precache: a draw never builds it. */

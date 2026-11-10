@@ -15,8 +15,8 @@ It comes in layers. Take the first that does what you need:
 | Layer | For | Section |
 |---|---|---|
 | **`CgWorldWidgetLayer`** | a widget over a point in the world, following it: a damage number, a name plate, a marker | [7](#7-over-a-point-in-the-world-a-world-widget-layer) |
-| **`CgScreenWidgetLayer`** | a widget on the screen: a HUD panel, a combo counter | [8](#8-on-the-screen-a-viewport-widget-layer) |
-| **`CgUserWidget`** with a `CgCanvasWidgetPainter` | an instance you place and paint yourself | [8](#8-on-the-screen-a-viewport-widget-layer) |
+| **`CgScreenWidgetLayer`** | a widget on the screen: a HUD panel, a combo counter | [8](#8-on-the-screen-a-screen-widget-layer) |
+| **`CgUserWidget`** with a `CgCanvasWidgetPainter` | an instance you place and paint yourself | [8](#8-on-the-screen-a-screen-widget-layer) |
 
 ---
 
@@ -202,6 +202,8 @@ fragColor = vec4(i.color.rgb * i.color.a * texture(Texture, i.uv).a, 0.0);
 ```
 
 - A retainer box has no colour of its own: what fades it is above it, a border's content colour or a render opacity.
+- Its image is padded by how far its text draws past its box (`CgTextStyle.reach()`: the widest outline, the shadows'
+  offset, spread and three of their blur, the slant), so a heavy outline or a wide glow is never cut at its edge.
 - A UI material takes its tint in linear, as Slate's material shaders read the vertex colour.
 - **Its parameters per instance** are four numbers its shader reads as `CG_QUAD_CUSTOM0`: an image's or a border's
   `material_parameters`, zero until `materialParameters(name, x, y, z, w)` sets them or an animation keys them. UMG
@@ -214,8 +216,38 @@ fragColor = vec4(i.color.rgb * i.color.a * texture(Texture, i.uv).a, 0.0);
   ```
 - Every instance a frame draws retains before any paints: the retained image is drawn before anything on the canvas
   reads it. A layer does this for you; by hand, `retain` every instance, then `paint` every instance.
-- The retained image is sized in widget units (`retaining(width, height, margin)`), `margin` round each region for
-  what draws past its box. A frame needing more fails, naming the size to give.
+- The retained image is pages sized in widget units (`retaining(width, height, margin)`), `margin` round each region
+  besides its text's reach and its blur. A frame that fills a page opens another, kept for later frames, as a glyph
+  atlas does; only a single box larger than a page fails, naming the size to give.
+
+---
+
+### Blurring what it holds
+
+A retainer box's `blur` blurs what it holds by a Gaussian of that sigma, in units, as CSS's `filter: blur()`: the
+retained image's region is blurred on the GPU (`CgGpuOps.blurScaled`, Skia's scale-then-blur) before the box draws
+it, its effect included. A count that lands blurred and sharpens, a word dissolving away:
+
+```yaml
+Number: { kind: retainer_box, content: NumberText, blur: 0 }     # sharp as designed; an animation keys it
+```
+
+```yaml
+# the count lands at a sigma of 4 and sharpens in 0.18 s
+- { id: sharpen, kind: property, binding: { role: counter, node: Number }, property: blur,
+    sections: [ { id: sharpens, range: [0, 10800], value: { x: { keys: [[0, 4.0, quad_out], [10800, 0.0, linear]] } } } ] }
+```
+
+```java
+counter.blur("Number", 4f);                  // from Java; 0 for sharp
+CgWidget.retainerBox("Number").blur(4f)      // as built
+```
+
+- Only a retainer box blurs: what it holds is one image already. `blur` on any other widget fails, by name.
+- Its region is padded by three sigma, so the blur spreads past the box unclipped; nothing outside the region is read.
+- It runs a compute pass: GL 4.3 and up, or Vulkan. A widget asset with a retainer box precaches the blur's kernels.
+- UMG's Retainer Box has no blur of its own; its Background Blur widget blurs what is behind it, as
+  `CgCanvasBackdrop` does for glass.
 
 ---
 
@@ -279,6 +311,7 @@ pop.playAnimationTo(RAMP.loaded(), from, 0.8, (float) Math.max(1, (0.8 - from) /
 | `colour_and_opacity` | r, g, b, a, linear | an image's, a text block's or a user widget's `ColorAndOpacity` |
 | `content_colour_and_opacity` | r, g, b, a, linear | a border's `ContentColorAndOpacity` |
 | `material_parameters` | x, y, z, w | its brush's UI material's parameters, read as `CG_QUAD_CUSTOM0`: a widget material track on a dynamic material instance |
+| `blur` | x | a retainer box's blur, a Gaussian sigma in units, as CSS's `filter: blur()` |
 
 - **The role binds the instance**, and `node: <name>` finds a widget in its tree, as `FindRuntimeObject` does. A
   `user_widget` is reached whole: a track on it writes that instance's own transform and colour, never a widget inside
@@ -336,7 +369,7 @@ plate.remove();                             // it plays nothing, so it stays unt
 
 ---
 
-## 8. On the screen: a viewport widget layer
+## 8. On the screen: a screen widget layer
 
 A widget on the screen goes on a `CgScreenWidgetLayer`, UMG's viewport: `AddToViewport` puts a widget in a
 full-screen canvas at a z-order, `RemoveFromParent` takes it off. It fills the screen in **UI units**: the screen's

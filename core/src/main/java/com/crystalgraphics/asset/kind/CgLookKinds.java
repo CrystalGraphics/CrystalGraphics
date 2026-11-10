@@ -281,6 +281,7 @@ public final class CgLookKinds {
             .property("content", WIDGET_NAME)
             .property("effect", hard("material"))
             .property("texture_parameter", STRING).defaultValue("Texture")
+            .property("blur", FLOAT).forms(CgValueForm.CONSTANT).range(0, null)
             .register();
     static final CgType WIDGET_IMAGE = widget("image")
             .property("brush", CgValueType.struct(WIDGET_BRUSH))

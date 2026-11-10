@@ -51,15 +51,22 @@ public interface CgWidgetPainter {
     void text(CgTextStyle style, String text, @Nullable Object laidOut, CgWidget.Justification justification,
               Matrix4f pose, float width, float r, float g, float b, float a);
 
-    /** Opens a region of the retained image {@code width} x {@code height} units for a retainer box's content; its handle. */
-    int beginRetained(float width, float height);
+    /**
+     * Opens a region of the retained image {@code width} x {@code height} units for a retainer box's content; its
+     * handle. {@code reach} is how far its content draws past that box (its text's outlines, shadows and slant,
+     * {@code CgTextStyle.reach}); {@code blur}, a Gaussian sigma in units, blurs it where {@link #retained} draws it,
+     * as CSS's {@code filter: blur()}, 0 for none. The region is padded by both, three sigma of the blur, so nothing
+     * is cut.
+     */
+    int beginRetained(float width, float height, float reach, float blur);
 
     /** Closes the region {@link #beginRetained} opened: draws go where they went before it. */
     void endRetained();
 
     /**
      * The region {@code region} drawn as one quad over (0, 0) to ({@code width}, {@code height}) under {@code pose},
-     * premultiplied and tinted; or through {@code effect}, its {@code textureParameter} sampler taking the region.
+     * premultiplied and tinted; or through {@code effect}, its {@code textureParameter} sampler taking the region;
+     * blurred where its {@link #beginRetained} asked.
      */
     void retained(int region, @Nullable CgMaterialDefinition effect, String textureParameter, Matrix4f pose, float width,
                   float height, float r, float g, float b, float a);

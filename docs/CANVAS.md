@@ -573,6 +573,10 @@ CgRenderStage.HUD.register(CgRenderStage.WORLD_WIDGETS, frame -> {
   that samples it has come out empty on NVIDIA, and painting each frame follows a window's resize.
 - **Several things share one**: a region each, all painted in one pass, then one quad per region.
 - **`scale` is texels a unit**: the largest a region is drawn at, so it is never magnified.
+- **Blurred, as CSS's `filter: blur()`**: after `end()`, `blur(recording, x, y, w, h, sigma)` blurs a region by a
+  sigma in units (`CgGpuOps.blurScaled`, a compute pass) and returns the reduction to draw it with:
+  `RETAINED.quad(canvas, image, 0, 0, 0, 300, 100, reduce)`. Paint the region three sigma larger than what it holds,
+  or the blur is cut at its edge.
 - **What it holds is premultiplied**: the `PREMULTIPLIED` image, never `ALPHA`, which darkens its edges. The quad's
   colour is straight; the material premultiplies it.
 - It grows to fit and never shrinks. `release(recording)` when done with it, `delete()` at a context's teardown.

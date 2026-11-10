@@ -133,6 +133,7 @@ public final class CgWidgetCodec {
                     String param = m.get("texture_parameter") instanceof String p ? p : "Texture";
                     b.effect(uiMaterial(effect, at + ".effect", deps), param);
                 }
+                if (m.get("blur") instanceof Number blur) b.blur(blur.floatValue());
                 if (m.get("content") instanceof String c) b.child(widget(id, c, widgets, reached, deps));
             }
             case BORDER -> {
@@ -265,6 +266,7 @@ public final class CgWidgetCodec {
                     m.put("effect", w.effect().id());
                     if (!w.textureParameter().equals("Texture")) m.put("texture_parameter", w.textureParameter());
                 }
+                if (w.blur() > 0f) m.put("blur", (double) w.blur());
             }
             case BORDER -> {
                 if (!w.children().isEmpty()) m.put("content", w.children().get(0).name());

@@ -142,6 +142,7 @@ public final class CgWidget {
     @Nullable final CgMaterialDefinition effect;
     final String textureParameter;
     final float userScale;
+    final float blur;
     final List<CgWidget> children;
 
     private CgWidget(Builder b) {
@@ -165,6 +166,7 @@ public final class CgWidget {
         effect = b.effect;
         textureParameter = b.textureParameter;
         userScale = b.userScale;
+        blur = b.blur;
         children = Collections.unmodifiableList(new ArrayList<>(b.children));
     }
 
@@ -307,6 +309,11 @@ public final class CgWidget {
         return textureParameter;
     }
 
+    /** A retainer box's blur: a Gaussian sigma in units over what it holds, as CSS's {@code filter: blur()}; 0 for none. */
+    public float blur() {
+        return blur;
+    }
+
     /** A scale box's scale: its child's size and drawing multiplied by it. 1 for the rest. */
     public float userScale() {
         return userScale;
@@ -325,7 +332,7 @@ public final class CgWidget {
                 && brush.equals(w.brush) && Objects.equals(style, w.style) && text.equals(w.text)
                 && justification == w.justification && wrap == w.wrap && Objects.equals(widget, w.widget)
                 && Objects.equals(effect, w.effect) && textureParameter.equals(w.textureParameter)
-                && userScale == w.userScale && children.equals(w.children);
+                && userScale == w.userScale && blur == w.blur && children.equals(w.children);
     }
 
     @Override
@@ -360,6 +367,7 @@ public final class CgWidget {
         private CgMaterialDefinition effect;
         private String textureParameter = "Texture";
         private float userScale = 1f;
+        private float blur;
         private final List<CgWidget> children = new ArrayList<>();
 
         private Builder(Kind kind, String name) {
@@ -474,6 +482,15 @@ public final class CgWidget {
             return this;
         }
 
+        /**
+         * A retainer box's blur: a Gaussian sigma in units over what it holds, as CSS's {@code filter: blur()}, which
+         * an animation keys as {@code blur}. 0, none, unless set. Blurring runs a compute pass.
+         */
+        public Builder blur(float sigma) {
+            this.blur = sigma;
+            return this;
+        }
+
         /** Adds a child after those added: later children of a box sit after, of a canvas draw over. */
         public Builder child(CgWidget child) {
             if (!kind.panel()) throw new IllegalArgumentException(name + ": a " + kind.id() + " holds no children");
@@ -501,6 +518,10 @@ public final class CgWidget {
                 throw new IllegalArgumentException(name + ": shear is -89 to 89 degrees");
             }
             if (wrap < 0f) throw new IllegalArgumentException(name + ": wrap " + wrap + " is below 0");
+            if (blur < 0f) throw new IllegalArgumentException(name + ": blur " + blur + " is below 0");
+            if (blur > 0f && kind != Kind.RETAINER_BOX) {
+                throw new IllegalArgumentException(name + ": only a retainer box blurs what it holds");
+            }
             return new CgWidget(this);
         }
     }

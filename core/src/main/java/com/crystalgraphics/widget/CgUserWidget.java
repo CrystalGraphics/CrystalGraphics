@@ -69,7 +69,8 @@ public final class CgUserWidget implements CgSequenceTarget {
     private static final int COLOUR = 5;
     private static final int CONTENT_COLOUR = 6;
     private static final int MATERIAL_PARAMETERS = 7;
-    private static final int SLOTS = 8;
+    private static final int BLUR = 8;
+    private static final int SLOTS = 9;
     private static final String TEXT_ID = ":text/";
 
     private final CgWidgetTree tree;
@@ -155,6 +156,7 @@ public final class CgUserWidget implements CgSequenceTarget {
         state[at + RENDER_OPACITY * 4] = w != null ? w.renderOpacity : 1f;
         putColour(at + COLOUR * 4, w != null ? w.colour : CgLinearColour.WHITE);
         putColour(at + CONTENT_COLOUR * 4, w != null ? w.contentColour : CgLinearColour.WHITE);
+        state[at + BLUR * 4] = w != null ? w.blur : 0f;
     }
 
     private void restore() {
@@ -400,6 +402,25 @@ public final class CgUserWidget implements CgSequenceTarget {
         return this;
     }
 
+    /**
+     * Retainer box {@code name}'s blur: a Gaussian sigma in units over what it holds, as CSS's {@code filter: blur()};
+     * 0 for none. An animation keys it as {@code blur} and starts from this. Never relays out.
+     *
+     * <pre>{@code
+     * counter.blur("NumberBlur", 4f);   // the count, soft
+     * }</pre>
+     *
+     * Blurring runs a compute pass: GL 4.3 and up, or a device.
+     */
+    public CgUserWidget blur(String name, float sigma) {
+        int i = require(name);
+        if (tree.widget(i).kind != CgWidget.Kind.RETAINER_BOX) {
+            throw new IllegalArgumentException(name + " is no retainer box: only one blurs what it holds");
+        }
+        state[i * SLOTS * 4 + BLUR * 4] = sigma;
+        return this;
+    }
+
     /** Widget {@code index}'s render translation, in units: UMG's {@code SetRenderTranslation}. Never relays out. */
     public CgUserWidget translation(int index, float x, float y) {
         int at = index * SLOTS * 4 + TRANSLATION * 4;
@@ -503,7 +524,9 @@ public final class CgUserWidget implements CgSequenceTarget {
             return;
         }
         if (w.kind == CgWidget.Kind.RETAINER_BOX) {
-            region[i] = painter.beginRetained(size[i * 2], size[i * 2 + 1]);
+            float reach = 0f;
+            for (int c : tree.children(i)) reach = Math.max(reach, reach(c, 1f));
+            region[i] = painter.beginRetained(size[i * 2], size[i * 2 + 1], reach, state[i * SLOTS * 4 + BLUR * 4]);
             try {
                 for (int c : tree.children(i)) {
                     if (contains(c, CgWidget.Kind.RETAINER_BOX)) {
@@ -517,6 +540,15 @@ public final class CgUserWidget implements CgSequenceTarget {
             return;
         }
         for (int c : tree.children(i)) retain(painter, c);
+    }
+
+    /** How far widget {@code i}'s text draws past its boxes, its styles' reach under {@code scale}: a scale box's. */
+    private float reach(int i, float scale) {
+        CgWidget w = tree.widget(i);
+        float reach = w.kind == CgWidget.Kind.TEXT_BLOCK && style[i] != null ? style[i].reach() * scale : 0f;
+        float inner = w.kind == CgWidget.Kind.SCALE_BOX ? scale * w.userScale : scale;
+        for (int c : tree.children(i)) reach = Math.max(reach, reach(c, inner));
+        return reach;
     }
 
     private boolean contains(int i, CgWidget.Kind kind) {
@@ -862,6 +894,7 @@ public final class CgUserWidget implements CgSequenceTarget {
             case "colour_and_opacity" -> COLOUR;
             case "content_colour_and_opacity" -> CONTENT_COLOUR;
             case "material_parameters" -> MATERIAL_PARAMETERS;
+            case "blur" -> BLUR;
             default -> -1;
         };
     }

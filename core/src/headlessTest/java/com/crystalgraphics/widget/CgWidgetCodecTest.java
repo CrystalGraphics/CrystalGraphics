@@ -104,7 +104,7 @@ public class CgWidgetCodecTest {
         }
 
         @Override
-        public int beginRetained(float width, float height) {
+        public int beginRetained(float width, float height, float reach, float blur) {
             return 0;
         }
 
@@ -169,7 +169,8 @@ public class CgWidgetCodecTest {
                                 .colour(new CgLinearColour(1f, 1f, 1f, 0f))
                                 .slot(CgWidgetSlot.builder().size(CgWidgetSlot.Size.FILL, 2f).build()))
                         .child(CgWidget.userWidget("Digit", digit))
-                        .child(CgWidget.scaleBox("Small", 0.418f).child(CgWidget.text("Hits").style(GOLD).text("HITS"))))
+                        .child(CgWidget.scaleBox("Small", 0.418f).child(CgWidget.text("Hits").style(GOLD).text("HITS")))
+                        .child(CgWidget.retainerBox("Soft").blur(2.5f).child(CgWidget.text("Ghost").style(GOLD).text("9"))))
                 .build());
         String yaml = CgAssetYaml.write(CgWidgetCodec.toTree(built), CgLookKinds.WIDGET);
         CgAssetCompiler.Dependencies deps = (kind, id) -> kind == CgLookKinds.TEXT_STYLE ? GOLD

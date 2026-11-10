@@ -25,6 +25,7 @@ import com.crystalgraphics.sequence.CgSequenceTarget;
 import com.crystalgraphics.sequence.CgSequencer;
 import com.crystalgraphics.sequence.definition.CgSequenceBinding;
 import com.crystalgraphics.sequence.definition.CgSequenceDefinition;
+import com.crystalgraphics.text.style.CgTextLayer;
 import com.crystalgraphics.text.style.CgTextStyle;
 import com.crystalgraphics.widget.CgWidgetSlot.Align;
 
@@ -104,10 +105,14 @@ public class CgUserWidgetTest {
 
         int regions;
         int open = -1;
+        final List<Float> blurs = new ArrayList<>();
+        final List<Float> reaches = new ArrayList<>();
 
         @Override
-        public int beginRetained(float width, float height) {
+        public int beginRetained(float width, float height, float reach, float blur) {
             draws.add("region " + regions);
+            blurs.add(blur);
+            reaches.add(reach);
             centres.add(new Vector3f(width, height, 0f));
             colours.add(0);
             return open = regions++;
@@ -358,6 +363,64 @@ public class CgUserWidgetTest {
         assertEquals("A's cell centre", 15f, r.centres.get(0).x, 1e-4f);
         assertEquals("B sits after A, moved down 5", 45f, r.centres.get(1).x, 1e-4f);
         assertEquals(25f, r.centres.get(1).y, 1e-4f);
+    }
+
+    /**
+     * A retainer box asks its painter to blur what it holds by its blur, the designer's, set from Java or keyed by a
+     * sequence as {@code blur}, as CSS's filter: blur(); only a retainer box blurs.
+     */
+    @Test
+    public void aRetainerBoxBlursWhatItHolds() {
+        CgWidgetTree tree = CgWidgetTree.of(CgWidget.retainerBox("Ret").blur(2f).child(CgWidget.image("Cell")).build());
+        CgUserWidget w = tree.newInstance();
+        Recorder r = new Recorder();
+        w.retain(r);
+        assertEquals("the designer's", 2f, r.blurs.get(0), 0f);
+        w.blur("Ret", 5f);
+        w.retain(r);
+        assertEquals("set from Java", 5f, r.blurs.get(1), 0f);
+
+        CgWorld world = new CgWorld();
+        CgSequencer sequencer = world.add(new CgSequencer());
+        sequencer.play(sequence("""
+                _v: 1
+                tick_resolution: 1000
+                display_rate: 50
+                range: [0, 1000]
+                roles:
+                  - { id: r1, name: number, kind: caster }
+                tracks:
+                  - { id: t1, kind: property, binding: { role: number, node: Ret }, property: blur,
+                      sections: [ { id: s1, range: [0, 1000], value: { x: { keys: [[0, 8.0, linear], [1000, 0.0, linear]] } } } ] }
+                """), Map.of("number", w));
+        sequencer.evaluate(0f);
+        sequencer.evaluate(0.5f);
+        w.retain(r);
+        assertEquals("keyed: half way", 4f, r.blurs.get(2), 1e-4f);
+        world.close();
+
+        assertThrows(IllegalArgumentException.class, () -> CgWidget.image("Img").blur(1f).build());
+        assertThrows(IllegalArgumentException.class, () -> CgWidgetTree.of(CgWidget.canvas("Root")
+                .child(CgWidget.image("Img")).build()).newInstance().blur("Img", 1f));
+    }
+
+    /**
+     * A retainer box pads its image by how far its text draws past its box: the widest outline, the shadows' offset,
+     * spread and three of their blur, the slant over the size, under any scale box between.
+     */
+    @Test
+    public void aRetainerBoxPadsByItsTextsReach() {
+        CgTextStyle style = CgTextStyle.builder("s").font("mymod:fonts/x.ttf").size(100f).skew(0.1f)
+                .layer(CgTextLayer.shadow("drop").offset(4f, 12f).blur(2f).outlined(true))
+                .layer(CgTextLayer.outline("outline").width(10f))
+                .layer(CgTextLayer.fill("fill")).build();
+        assertEquals("12 + 10 + 3 x 2, then 0.1 x 100", 38f, style.reach(), 1e-4f);
+        CgUserWidget w = CgWidgetTree.of(CgWidget.retainerBox("Ret")
+                .child(CgWidget.scaleBox("Small", 0.5f).child(CgWidget.text("Num").style(style).text("7"))).build())
+                .newInstance();
+        Recorder r = new Recorder();
+        w.retain(r);
+        assertEquals("halved by the scale box", 19f, r.reaches.get(0), 1e-4f);
     }
 
     /** A retainer box paints from what was retained this frame: painting it unretained fails. */

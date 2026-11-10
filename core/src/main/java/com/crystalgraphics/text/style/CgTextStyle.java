@@ -100,6 +100,7 @@ public final class CgTextStyle {
     private final float skew;
     private final Transform transform;
     private final List<CgTextLayer> layers;
+    private final float reach;
     private final Map<Integer, CgFont> fonts = new HashMap<>();
 
     private CgTextStyle(@Nullable String id, @Nullable String font, boolean bold, float size, int letterSpacing,
@@ -112,6 +113,33 @@ public final class CgTextStyle {
         this.skew = skew;
         this.transform = transform;
         this.layers = layers.isEmpty() ? DEFAULT_LAYERS : Collections.unmodifiableList(new ArrayList<>(layers));
+        this.reach = reachOf(this.layers, size, skew);
+    }
+
+    private static float reachOf(List<CgTextLayer> layers, float size, float skew) {
+        float outline = 0f;
+        for (CgTextLayer l : layers) if (l.kind() == CgTextLayer.Kind.OUTLINE) outline = Math.max(outline, grows(l));
+        float reach = 0f;
+        for (CgTextLayer l : layers) {
+            float r = switch (l.kind()) {
+                case FILL -> 0f;
+                case OUTLINE -> grows(l);
+                // A Gaussian is drawn to three sigma; an inset shadow stays inside the glyph.
+                case SHADOW -> l.inset() ? 0f : Math.max(Math.abs(l.offsetX()), Math.abs(l.offsetY())) + l.spread()
+                        + (l.outlined() ? outline : 0f) + 3f * l.blur();
+            };
+            reach = Math.max(reach, r);
+        }
+        // A slant moves a glyph's top past its advance one way and its descent the other.
+        return reach + Math.abs(skew) * size;
+    }
+
+    private static float grows(CgTextLayer outline) {
+        return switch (outline.align()) {
+            case OUTSIDE -> outline.width();
+            case CENTRE -> outline.width() / 2f;
+            case INSIDE -> 0f;
+        };
     }
 
     /** Registers {@link #COMPILER} as the text style kind's. */
@@ -248,6 +276,19 @@ public final class CgTextStyle {
     /** Its layers, bottom to top; one white fill when it lists none. */
     public List<CgTextLayer> layers() {
         return layers;
+    }
+
+    /**
+     * How far its ink can reach past the box its text lays out in, on any side, in units at its size: its widest
+     * outline, its shadows' offset, spread and three of their blur, and its slant over its size. What a retainer box
+     * pads its image by, as a browser grows a layer by its content's ink overflow, so nothing is cut.
+     *
+     * <pre>{@code
+     * float pad = style.reach();   // a 10-unit outline under a 4.5-blur drop shadow offset 12: 25.5, plus the slant
+     * }</pre>
+     */
+    public float reach() {
+        return reach;
     }
 
     /** {@code text} in its case: the same instance when nothing changes. */

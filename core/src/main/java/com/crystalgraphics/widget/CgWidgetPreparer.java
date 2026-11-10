@@ -2,13 +2,16 @@ package com.crystalgraphics.widget;
 
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgMaterialDefinition;
+import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.asset.load.CgAssetPreparer;
+import com.crystalgraphics.compute.ops.CgGpuOps;
 import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.render.world.CgPipelineList;
 
 /**
  * A widget asset's UI materials built before it is READY, as Unreal precaches a widget's materials with it: every
- * image's material brush and every retainer box's effect, nested trees' too, drawn as canvas quads. Its text blocks'
+ * image's material brush and every retainer box's effect, nested trees' too, drawn as canvas quads; and, where it has a
+ * retainer box, the blur's kernels, which an animation may key though the box is sharp as designed. Its text blocks'
  * styles are hard references, prepared as text styles are.
  *
  * <pre>{@code
@@ -24,15 +27,24 @@ public final class CgWidgetPreparer implements CgAssetPreparer {
 
     @Override
     public void plan(Object definition, Plan plan) {
-        if (!(definition instanceof CgWidgetTree tree) || !drawsMaterial(tree)) return;
-        plan.pipelines(pipelines -> add(tree, pipelines));
+        if (!(definition instanceof CgWidgetTree tree)) return;
+        boolean materials = holds(tree, false), retains = holds(tree, true);
+        if (!materials && !retains) return;
+        plan.pipelines(pipelines -> {
+            add(tree, pipelines);
+            // A retained image is RGBA8 (CgCanvasRetainer): its blur's kernels on that format.
+            if (retains) pipelines.kernels(() -> CgGpuOps.precacheBlur(CgTextureType.RGBA8));
+        });
     }
 
-    private static boolean drawsMaterial(CgWidgetTree tree) {
+    /** Whether {@code tree} or a tree it nests has a retainer box ({@code retainer}), else a UI material. */
+    private static boolean holds(CgWidgetTree tree, boolean retainer) {
         for (int i = 0; i < tree.size(); i++) {
             CgWidget w = tree.widget(i);
-            if (w.brush().material() != null || w.effect() != null) return true;
-            if (w.widget() != null && drawsMaterial(w.widget())) return true;
+            if (retainer ? w.kind() == CgWidget.Kind.RETAINER_BOX : w.brush().material() != null || w.effect() != null) {
+                return true;
+            }
+            if (w.widget() != null && holds(w.widget(), retainer)) return true;
         }
         return false;
     }
