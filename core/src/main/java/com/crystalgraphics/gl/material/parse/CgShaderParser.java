@@ -476,6 +476,9 @@ public final class CgShaderParser {
 
             // 7g. Extract global declarations for this pass
             String globalDecls = CgStructureParser.parsePassGlobalDecls(passBody, resourcePath);
+            // Helpers written between the two stage functions are declarations too, emitted ahead of both.
+            String between = CgStructureParser.declsBetweenStages(passBody, resourcePath);
+            if (!between.isEmpty()) globalDecls = globalDecls.isEmpty() ? between : globalDecls + "\n" + between;
             // Prepend top-level preamble #-directives (e.g. #extension lines before first Pass)
             if (!preamble.isEmpty()) {
                 globalDecls = preamble + (globalDecls.isEmpty() ? "" : "\n" + globalDecls);

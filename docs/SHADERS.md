@@ -55,6 +55,7 @@ Pass {
         DepthWrite ON
         Cull BACK
     }
+    float helper(float x) { ... }     // helpers: before vertex() or between the two, emitted ahead of both stages
     void vertex(out v2f o) { ... }
     void fragment(in v2f i, out vec4 fragColor) { ... }
 }

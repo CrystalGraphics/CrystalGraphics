@@ -51,6 +51,16 @@ public class CgStructureParserTest {
     }
 
     @Test
+    public void helpersBetweenTheStagesAreDeclarations() {
+        String src = minimalShader("",
+                "    float glow(float x) { return x * 2.0; }\n"
+                + "    void fragment(in v2f i, out vec4 fragColor) { fragColor = vec4(glow(i.uv.x)); }\n");
+        String decls = pass0(CgShaderParser.parse(src, "test")).globalDecls();
+        assertTrue("a helper after vertex() reaches the fragment stage: " + decls,
+                decls.contains("float glow(float x) { return x * 2.0; }"));
+    }
+
+    @Test
     public void parse_wave1Shader_singleOutputDefaults_correctFields() {
         String src = minimalShader("",
                 "    void fragment(in v2f i, out vec4 fragColor) { fragColor = vec4(1.0); }\n");

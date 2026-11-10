@@ -87,6 +87,7 @@ CgShaderParser.parse(source, path)
         ├── CgRenderStateParser.parse(passBody)
         ├── CgStructureParser.parsePassV2fBody()    (per-pass or shared fallback)
         ├── CgStructureParser.parsePassGlobalDecls()
+        ├── CgStructureParser.declsBetweenStages()  (helpers between vertex() and fragment(), appended)
         ├── CgStructureParser.extractBlock() ×2    (vertex, fragment)
         ├── CgStructureParser.validateNoMainFunction() ×2
         ├── CgFragOutputParser.parse(passBody)

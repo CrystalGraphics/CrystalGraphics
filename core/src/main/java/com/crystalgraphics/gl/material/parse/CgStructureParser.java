@@ -326,6 +326,22 @@ final class CgStructureParser {
         return passBody.substring(regionStart, vertexStart).trim();
     }
 
+    /**
+     * The declarations between a pass's two stage functions: helpers written after {@code vertex()} for
+     * {@code fragment()} to call. Emitted with the rest of the pass's declarations, ahead of both stages; empty where
+     * the pass lacks either function.
+     */
+    static String declsBetweenStages(String passBody, String resourcePath) {
+        int vertex = passBody.indexOf("void vertex(");
+        int fragment = passBody.indexOf("void fragment(");
+        if (vertex < 0 || fragment < 0) return "";
+        int first = Math.min(vertex, fragment), second = Math.max(vertex, fragment);
+        int open = passBody.indexOf('{', first);
+        if (open < 0 || open > second) return "";
+        int close = matchBrace(passBody, open);
+        return close < second ? passBody.substring(close + 1, second).trim() : "";
+    }
+
     private static int endOfNamedBlock(String text, String blockName) {
         int search = 0;
         while (search <= text.length() - blockName.length()) {
