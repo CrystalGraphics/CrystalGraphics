@@ -34,7 +34,7 @@ import com.crystalgraphics.text.style.CgTextStyle;
  * static final CgCanvasWidgetPainter PAINTER = new CgCanvasWidgetPainter("mymod.hud", CgCanvasMaterials.SCREEN)
  *         .retaining(1024f, 1024f, 8f);                            // a retained image of 1024 x 1024 units
  *
- * PAINTER.prepare(POP.loaded());                                   // in a load task: its UI materials built
+ * PAINTER.prepare(POP.loaded());                                   // a tree loaded as an asset is precached already
  *
  * // each frame, at a GUI stage
  * PAINTER.begin(frame.canvas(), frame.recording(), scale * 1.5f); // texels a unit: the most it is drawn at
@@ -44,7 +44,8 @@ import com.crystalgraphics.text.style.CgTextStyle;
  *
  * <ul>
  *   <li>Client, the render thread: textures load at their first draw, fonts at a text block's first layout, both
- *       kept; UI materials are built by {@link #prepare}, else at their first draw.</li>
+ *       kept. A widget asset's UI materials and its styles' faces are built before it is READY
+ *       ({@link CgWidgetPreparer}); a tree built in Java is built by {@link #prepare}, else at its first draw.</li>
  *   <li>Every retainer box is retained before anything paints onto the frame's canvas: the retained image's pass is
  *       recorded first. A region opened after a draw onto the canvas fails.</li>
  *   <li>The retained image only grows; a frame's regions past its size fail, naming the size to give
@@ -267,10 +268,11 @@ public final class CgCanvasWidgetPainter implements CgWidgetPainter {
         return inRegion.translation(regions[target * 4] + margin, regions[target * 4 + 1] + margin, 0f).mul(pose);
     }
 
+    /** The shared material, which {@link CgWidgetPreparer} names to the precache: a draw never builds it. */
     private CgMaterial material(CgMaterialDefinition definition) {
         CgMaterial m = ui.get(definition);
         if (m == null) {
-            m = CgMaterial.newInstance(definition, null);
+            m = CgMaterial.of(definition);
             m.precache();
             ui.put(definition, m);
         }

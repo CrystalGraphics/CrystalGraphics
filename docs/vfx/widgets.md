@@ -19,26 +19,17 @@ static final CgWidgetTree POP = CgWidgetTree.of("mymod:hud/pop", CgWidget.canvas
                 .colour(new CgLinearColour(1f, 1f, 1f, 0f)))                // hidden until its animation fades it in
         .build());
 
-static final CgCanvasWidgetPainter PAINTER = new CgCanvasWidgetPainter("mymod.hud", CgCanvasMaterials.SCREEN);
+// once: where it draws, over a point in the world
+static final CgWorldWidgetLayer POPS = CgWorldWidgetLayer.builder("mymod:pops").kit("mymod").build();
 
-// once per pooled slot: an instance holds what changes
-CgUserWidget pop = POP.newInstance();
-
-// a hit
-pop.text("Number", "1,250");
-CgSequencer.widgets(CgWorld.client()).play(POP_ANIMATION.loaded(), Map.of("number", pop));
-
-// each frame, at a GUI stage: centred on the target's screen point
-CgRenderStage.HUD.register(CgRenderStage.WORLD_WIDGETS, frame -> {
-    if (!frame.projectWorld(x, y, z, at)) return;                           // behind the camera
-    float scale = CgUiScale.of("mymod").scale(frame.host().width(), frame.host().height());
-    PAINTER.begin(frame.canvas(), frame.recording(), scale);
-    Vector2f size = pop.layout(PAINTER, new Vector2f());                    // its own size, in UI units
-    pop.retain(PAINTER);                                                    // every instance, before any paints
-    pop.paint(PAINTER, placement.translation(at.x, at.y, 0f).scale(scale, scale, 1f)
-                                .translate(-size.x / 2f, -size.y / 2f, 0f));
-});
+// a hit: over the target's middle, released to the layer's pool when its animation ends
+CgWidgetComponent pop = POPS.add(POP, CgEntityAttachments.of(targetId));
+pop.widget().text("Number", "1,250");
+pop.play(POP_ANIMATION.loaded(), "number");
 ```
+
+The layer places, orders, scales and draws it every frame ([below](#over-a-point-in-the-world-a-world-widget-layer));
+a widget that fills the screen instead is drawn by hand ([On the screen](#on-the-screen)).
 
 ## The same widget, as data
 
@@ -203,6 +194,43 @@ tracks:
 - Find the widget sequencer by `CgSequencer.widgets(world)`, never `world.subsystem(CgSequencer.class)`, which returns
   whichever was added first. A dedicated server's world takes none: adding one throws.
 
+## Over a point in the world: a world widget layer
+
+A damage number, a name plate, a marker: a widget that follows something in the world is a component on a
+`CgWorldWidgetLayer`, Unreal's screen-space `UWidgetComponent` on its world widget layer. Each frame the layer puts
+each component's pivot on its attachment's point as the camera sees it, at its draw size or its desired size, the
+nearer over the farther, in the kit's UI scale; it skips one behind the camera, and one whose attachment is gone stays
+where it was last seen.
+
+```java
+static final CgWorldWidgetLayer NUMBERS = CgWorldWidgetLayer.builder("mymod:damage_numbers")
+        .kit("mymod")                       // its ui.yaml scales it
+        .retaining(1024f, 1024f, 20f)       // its retainer boxes' image, in widget units
+        .retainedScale(1.5f)                // its animations scale it up to 1.5: retained at that, never magnified
+        .most(8, 16)                        // eight at once, sixteen more waiting, the newest started first
+        .build();
+
+CgWidgetComponent pop = NUMBERS.add(POP.loaded(), CgEntityAttachments.of(targetId));
+pop.widget().text("Number", "1,250").style("Number", critical ? ORANGE : GOLD);
+pop.play(CRITICAL.loaded(), "number");      // released when it ends
+```
+
+```java
+// a name plate: its bottom middle on the head, until the mob goes
+CgWidgetComponent plate = PLATES.add(PLATE.loaded(), CgEntityAttachments.of(mobId, CgEntityAttachments.HEAD))
+        .pivot(0.5f, 1f).drawSize(160f, 24f);
+plate.widget().text("Name", name);
+plate.remove();                             // it plays nothing, so it stays until removed
+```
+
+- **It starts at the layer's next tick**, before the frame's widget animations evaluate, so it never shows its
+  designer's values for a frame, as Unreal evaluates a widget animation's first frame when it plays.
+- **Its widget is pooled** (`CgUserWidgetPool`, Unreal's `FUserWidgetPool`): set it up as you add it, and never keep it
+  past `remove()` or its animation's end.
+- **A level change releases every component**: their attachments were the old level's.
+- **Load the tree as an asset**: its UI materials and its text styles' faces are built before it is READY, so no
+  first draw compiles or reads one.
+
 ## On the screen
 
 A widget on the screen fills it in **UI units**: the screen's pixels over the kit's UI scale, as `AddToViewport` sizes
@@ -218,16 +246,23 @@ application_scale: 1
 ```
 
 ```java
-float scale = CgUiScale.of("mymod").scale(width, height);   // 2560 x 1440: 1.333
-hud.allot(width / scale, height / scale);                   // the whole screen, in UI units
-hud.paint(PAINTER, placement.scaling(scale));
+static final CgCanvasWidgetPainter PAINTER = new CgCanvasWidgetPainter("mymod.hud", CgCanvasMaterials.SCREEN);
+
+CgRenderStage.HUD.register(CgRenderStage.VIEWPORT_WIDGETS, frame -> {
+    float scale = CgUiScale.of("mymod").scale(frame.host().width(), frame.host().height());   // 2560 x 1440: 1.333
+    PAINTER.begin(frame.canvas(), frame.recording(), scale);
+    hud.allot(frame.host().width() / scale, frame.host().height() / scale);   // the whole screen, in UI units
+    hud.retain(PAINTER);                                                     // every instance, before any paints
+    hud.paint(PAINTER, placement.scaling(scale));
+});
 ```
 
 ## Things to know
 
 - **One painter per HUD, kept**: `CgCanvasWidgetPainter` loads a brush's texture at its first draw and keeps it.
 - **A brush's or an effect's material must be of the UI domain**: another fails at load, naming the widget.
-- **`painter.prepare(tree)`** in a load task builds its UI materials, so no first draw compiles one.
+- **A widget asset is READY with its UI materials built and its text styles' faces read.** A tree built in Java
+  isn't: `painter.prepare(tree)` in a load task builds its UI materials.
 - **A string id** (`<ns>:text/<id>`) is read in the player's language when the tree lays out; a missing string shows
   its id, as Unreal shows a missing string's key.
 - **`reset()`** puts an instance back to its designer's values, nested widgets too: call it before a pooled instance's

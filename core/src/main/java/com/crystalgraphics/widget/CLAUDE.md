@@ -13,7 +13,10 @@ parts animated by name on the widget sequencer. **Using it**: `docs/vfx/widgets.
 | `CgUserWidget` | an instance (`UUserWidget`): the live state, Slate's layout on change, `retain` (each retainer box's content into the painter's retained image) then `paint`; a sequence target whose parts are its widgets by name, a nested user widget reached whole |
 | `CgWidgetPainter`, `CgCanvasWidgetPainter` | where leaves go; the canvas one draws images as quads (a UI material's where the brush has one), text through `canvas.text()`, and retainer boxes through a `CgCanvasRetainer` it owns, its regions packed in rows each frame |
 | `CgWidgetCodec` | the kind's compiler and writer |
+| `CgWidgetPreparer` | a widget asset's UI materials named to the precache before it is READY (its styles' faces are `text.style.CgTextStylePreparer`'s) |
 | `CgUiScale` | a kit's `ui.yaml`, `UUserInterfaceSettings`' DPI curve |
+| `CgWorldWidgetLayer`, `CgWidgetComponent` | widgets following points in the world (`SWorldWidgetScreenLayer`, a screen-space `UWidgetComponent`): queued, started at the layer's `PLAYS` tick, placed by pivot and draw size at the projected point, nearer last, retained then painted at `HUD`'s `WORLD_WIDGETS`; released when their sequence ends or the level changes |
+| `CgUserWidgetPool` | `FUserWidgetPool`: instances by tree, handed back reset |
 
 ## Rules
 
@@ -26,7 +29,11 @@ parts animated by name on the widget sequencer. **Using it**: `docs/vfx/widgets.
   writes is render-only. Paint allocates nothing.
 - **Retain, then paint**: every instance a frame draws runs `retain` before any runs `paint`, since the retained
   image's pass must be recorded before the canvas reads it; the painter refuses a region opened after a canvas draw.
+- **Nothing is drawn before its animation's first frame** (`UMGSequencePlayer::PlayInternal`): a component starts in
+  its layer's `PLAYS` tick, before `SEQUENCES`, and is drawn only once started. Evaluating one player alone at its
+  start is not possible: the blender's apply restores every channel another player left.
+- **A painter draws a UI material through `CgMaterial.of`**, the shared instance the preparer precaches.
 - **A kind is added only where a game's widget needs it** (the census in the format's widget section); one the engine
   cannot draw fails at load, by name, never draws as something else.
 - Headless: layout and the codec need no GL and no fonts (a test answers `CgWidgetPainter.layout`); only
-  `CgCanvasWidgetPainter` draws. Gates: `CgUserWidgetTest`, `CgWidgetCodecTest`.
+  `CgCanvasWidgetPainter` draws. Gates: `CgUserWidgetTest`, `CgWidgetCodecTest`, `CgWorldWidgetLayerTest`.

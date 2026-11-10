@@ -27,6 +27,8 @@ import com.crystalgraphics.vfx.system.CgVfxSequencer;
 import com.crystalgraphics.vfx.system.CgVfxSystemAssets;
 import com.crystalgraphics.vfx.system.CgVfxSystemPreparer;
 import com.crystalgraphics.api.material.CgMaterialPreparer;
+import com.crystalgraphics.text.style.CgTextStylePreparer;
+import com.crystalgraphics.widget.CgWidgetPreparer;
 import com.crystalgraphics.asset.kind.CgBodyKinds;
 import com.crystalgraphics.asset.kind.CgLookKinds;
 import com.crystalgraphics.asset.kind.CgSequenceKinds;
@@ -123,7 +125,8 @@ public final class CgVfx {
     /**
      * Registers on {@code assets} what makes a client's assets READY with nothing left for a play to build: systems and
      * prefabs warmed on {@code vfx}, sequences' sounds decoded into the client world's audio and their post materials'
-     * textures and programs made ready, stages' post materials and fog likewise, and material assets' textures decoded. {@link #install} does it
+     * textures and programs made ready, stages' post materials and fog likewise, material assets' textures decoded, text
+     * styles' faces read and widgets' UI materials built. {@link #install} does it
      * for the process's assets; an assets instance of a tool's or a scene's own does it too.
      *
      * <pre>{@code
@@ -139,6 +142,8 @@ public final class CgVfx {
         assets.preparer(CgSequenceKinds.SEQUENCE, new CgPostVolumePreparer());
         assets.preparer(CgStageKinds.STAGE, new CgStagePreparer());
         assets.preparer(CgLookKinds.MATERIAL, new CgMaterialPreparer());
+        assets.preparer(CgLookKinds.TEXT_STYLE, new CgTextStylePreparer());
+        assets.preparer(CgLookKinds.WIDGET, new CgWidgetPreparer());
     }
 
     /** Every kernel the world's system dispatches whatever plays: Range and Place, the grids' and the fluids'. */
