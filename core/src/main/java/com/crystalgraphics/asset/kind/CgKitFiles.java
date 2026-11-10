@@ -5,7 +5,6 @@ import com.crystalgraphics.object.CgType;
 import com.crystalgraphics.object.CgTypes;
 import com.crystalgraphics.object.CgValueType;
 
-import static com.crystalgraphics.object.CgValueType.COLOUR;
 import static com.crystalgraphics.object.CgValueType.FLOAT;
 import static com.crystalgraphics.object.CgValueType.INT;
 import static com.crystalgraphics.object.CgValueType.TREE;
@@ -13,7 +12,7 @@ import static com.crystalgraphics.object.CgValueType.VEC2;
 
 /**
  * The files a kit keeps at its root that are not assets: one per game, read once as the kit registers:
- * {@code subtitle_style.yaml} and {@code look.yaml}.
+ * {@code subtitle_style.yaml}, {@code look.yaml} and {@code ui.yaml}.
  *
  * <pre>{@code
  * CgValidation v = CgAssetData.validate(file.toString(), CgKitFiles.SUBTITLE_STYLE, tree, CgValidation.Usecase.LOAD);
@@ -24,56 +23,23 @@ public final class CgKitFiles {
     private CgKitFiles() {
     }
 
-    static final CgType UNDERLINE = CgTypes.struct("crystalgraphics:subtitle_style.underline")
-            .property("image", CgValueType.NAMESPACED_ID).required()
-            .property("size", VEC2).required()
-            .property("offset", VEC2)
-            .register();
+    private static final CgValueType WIDGET_NAME = CgValueType.string("^[A-Za-z0-9_]+$");
 
     /**
-     * A run of text placed as a Slate text block in a canvas slot: the line, or the speaker's name. Its look is a
-     * {@code text_style}.
+     * {@code subtitle_style.yaml}: the game's subtitle widget, the text blocks a line and its speaker are set into, and
+     * the widget's own animations that show and hide a line.
      */
-    static final CgType TEXT = CgTypes.struct("crystalgraphics:subtitle_style.text")
-            .property("style", CgValueType.NAMESPACED_ID).required()
-            .property("line_height", FLOAT).defaultValue(1.0)
-            .property("wrap", FLOAT)
-            .property("justify", CgValueType.enumOf("left", "centre", "right"))
-            .property("anchor", VEC2)
-            .property("alignment", VEC2)
-            .property("offset", VEC2)
-            .property("underline", CgValueType.struct(UNDERLINE))
-            .register();
-
-    static final CgType BAND = CgTypes.struct("crystalgraphics:subtitle_style.band")
-            .property("colour", COLOUR).required()
-            .property("anchor", VEC2)
-            .property("height", FLOAT).required()
-            .property("offset", VEC2)
-            .register();
-
-    /**
-     * A widget animation over seconds: the band's alpha, the text's alpha and its slide along x in UI units, keyed and
-     * eased as {@code interp} says (UMG's tracks: {@code cubic} is a rich curve's auto tangents).
-     */
-    static final CgType FADE = CgTypes.struct("crystalgraphics:subtitle_style.fade")
-            .property("band", CgValueType.listOf(VEC2))
-            .property("text", CgValueType.listOf(VEC2))
-            .property("slide", CgValueType.listOf(VEC2))
-            .property("interp", CgValueType.enumOf("linear", "cubic"))
-            .register();
-
-    /** {@code subtitle_style.yaml}: how a game draws its subtitles, in its UI units. */
     public static final CgType SUBTITLE_STYLE = CgTypes.struct("crystalgraphics:subtitle_style")
             .property(CgType.VERSION, INT).required()
-            .property("reference_height", FLOAT).required()
-            .property("ui_scale", FLOAT).defaultValue(1.0)
+            .property("widget", CgCommonStructs.hard("widget")).required()
+            .property("line", WIDGET_NAME).required()
+            .property("name", WIDGET_NAME)
+            .property("with_name", CgValueType.listOf(WIDGET_NAME))
             .property("lines", INT).defaultValue(1)
-            .property("line", CgValueType.struct(TEXT)).required()
-            .property("name", CgValueType.struct(TEXT))
-            .property("band", CgValueType.struct(BAND))
-            .property("fade_in", CgValueType.struct(FADE))
-            .property("fade_out", CgValueType.struct(FADE))
+            .property("show", CgCommonStructs.hard("sequence"))
+            .property("hide", CgCommonStructs.hard("sequence"))
+            .property(CgType.UNSUPPORTED, TREE)
+            .property(CgType.EDITOR, TREE).flags(CgPropertyFlag.EDITOR_ONLY)
             .register();
 
     /** {@code look.yaml}: the post a game's effects are graded by, and the exposure of its own draws. */
@@ -81,6 +47,17 @@ public final class CgKitFiles {
             .property(CgType.VERSION, INT).required()
             .property("post", CgValueType.struct(CgCameraKinds.POST)).required()
             .property("effect_exposure", FLOAT).defaultValue(1.0)
+            .property(CgType.UNSUPPORTED, TREE)
+            .property(CgType.EDITOR, TREE).flags(CgPropertyFlag.EDITOR_ONLY)
+            .register();
+
+    /** {@code ui.yaml}: the game's {@code UUserInterfaceSettings}, how many screen pixels a UI unit is. */
+    public static final CgType UI = CgTypes.struct("crystalgraphics:ui")
+            .property(CgType.VERSION, INT).required()
+            .property("rule", CgValueType.enumOf("shortest_side", "longest_side", "horizontal", "vertical"))
+            .defaultValue("shortest_side")
+            .property("curve", CgValueType.listOf(VEC2))
+            .property("application_scale", FLOAT).defaultValue(1.0)
             .property(CgType.UNSUPPORTED, TREE)
             .property(CgType.EDITOR, TREE).flags(CgPropertyFlag.EDITOR_ONLY)
             .register();

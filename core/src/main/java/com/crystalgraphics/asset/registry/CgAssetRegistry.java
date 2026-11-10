@@ -36,6 +36,7 @@ import javax.annotation.Nullable;
 import com.crystalgraphics.audio.CgKitSounds;
 import com.crystalgraphics.audio.CgSubtitleStyle;
 import com.crystalgraphics.vfx.look.CgVfxKitLook;
+import com.crystalgraphics.widget.CgUiScale;
 import com.crystalgraphics.i18n.CgKitStrings;
 import com.crystalgraphics.asset.codec.CgAssetYaml;
 import com.crystalgraphics.asset.kind.CgAssetKinds;
@@ -313,6 +314,7 @@ public final class CgAssetRegistry {
         Path index = root.resolve("content.yaml"), unitsFile = root.resolve("units.yaml");
         CgUnits kitUnits = Files.isRegularFile(unitsFile) ? readUnits(unitsFile) : null;
         CgVfxKitLook.registerKit(namespace, root);
+        CgUiScale.registerKit(namespace, root);
         return new Gathered(namespace, root, found, keys, links, Files.isRegularFile(index) ? readIndex(index) : null,
                 kitUnits);
     }

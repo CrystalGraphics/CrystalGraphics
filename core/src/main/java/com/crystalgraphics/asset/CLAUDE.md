@@ -1,7 +1,7 @@
 # asset — the format's files, trees and kinds
 
 An asset is one YAML file (`docs/vfx/assets.md`), read into a plain tree, resolved over its parent into a `CgAssetData`,
-edited there with undo, validated, and written back by one writer. The 22 kinds are `kind/`, with its own guide.
+edited there with undo, validated, and written back by one writer. The 23 kinds are `kind/`, with its own guide.
 
 | Package | Owns |
 |---|---|
@@ -9,7 +9,7 @@ edited there with undo, validated, and written back by one writer. The 22 kinds 
 | `tree` | `CgAssetData` (a file resolved over its parent: maps merge by key, id lists by `id`, `after`/`before`, `remove`; its `delta()` is the file; `apply(CgEdit)` edits it and answers the inverse; `validate(usecase)` checks it), `CgEdit`, `CgChange`, `CgAssetChanged`, `CgAssetNode`, `CgOrigin` (where a value comes from), `CgShape` (what a declaration says of a value: its key order, its children's types, whether it is an id list), `CgBinaryAsset` (a texture or mesh made in code, which a tree built in Java holds where a file holds its path: valid as a binary reference, refused by the writer), `CgAssetException`; `CgAssetValidation`, the declared checks behind `validate` |
 | `registry` | `CgAssetRegistry` (every asset by kind and id from folders and builders, each file's redirect and references, referencers, the content index, a namespace's hash; Unreal's `IAssetRegistry` and its gatherer), `CgAssetEntry`, `CgAssetSource`, `CgAssetRegistryEvent`; `CgAssetRegistryCache`, what a scan read, by modification time (the process's registry keeps it in `crystalgraphics/cache/assets/asset-registry.bin`; read on a background worker, a scan waiting for it only after its walk; a save replaces the records of the folders it scanned and keeps other folders' while their files exist, and is skipped when no scanned file changed; bump its `VERSION` when what a scan reads changes); `scanAsync`, a scan read on the workers and registered at the caller's next tick |
 | `load` | `CgAssetPipeline` (assets to `COMPILED` on workers on its own `CgJobLoop`, published at `drain`: read, merge, validate, compile after hard dependencies; Unreal's `FStreamableManager`), `CgAssetLoad`, `CgAssetState`, `CgAssetCompiler` (a kind's compiler; the resolved asset until it has one); `CgVfxAssets` (the process's assets: refs, bundle loads to `READY`, prepare in budget, `edit`, saved files, `publish`), `CgAssetRef` (an asset by kind and id holding its published definition and generation; `get` sync-loads, counted), `CgLoadHandle` and `CgLoadPriority` (a bundle's load, its readiness and progress by bytes), `CgAssetPreparer` (a kind's GPU work, as plan steps: `upload`, `preload` (a `CgPreload` request), `pipelines` (a `CgPipelinePrecache` request), `warm` for anything else), `CgPreload` (textures, meshes and other files read on a worker ahead of first use, Unreal's `RequestAsyncLoad` for what is not an asset; a code-built scene's too), `CgPrepareBudget` (a frame's upload bytes and staging chunk), `CgPreparePlan` (one asset's steps), `CgAssetFollower` (a playing instance's definition: adopt a `VALUE` swap or restart on a `STRUCTURAL` one), `CgAssetFileDiff` (a saved file as the edits an editor makes) |
-| `kind` | the 22 kinds, their structs and families, and the value forms' shapes (`CgCommonStructs.VALUE_FORMS`, `CURVE`) |
+| `kind` | the 23 kinds, their structs and families, and the value forms' shapes (`CgCommonStructs.VALUE_FORMS`, `CURVE`) |
 
 ## Rules
 

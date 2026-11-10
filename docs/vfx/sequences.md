@@ -207,69 +207,9 @@ tracks:
 
 ### Interface animation: the widget sequencer
 
-A world holds a second sequencer for what animates your interface: a damage number popping over a target, a banner
-sliding in. It is Unreal's widget animation: UMG plays its animations on a linker of their own, ticked from the
-interface's frame. So it runs on real time, a hit-stop or slow motion never slows it, and it keeps playing behind the
-pause menu.
-
-```java
-CgSequencer gameplay = CgSequencer.of(CgWorld.client());        // moves, cues, cameras: dilated, paused with the game
-CgSequencer ui = CgSequencer.widgets(CgWorld.client());          // added on first ask; client only
-
-// The widget and its parts, at their designer values: CgSequenceWidget takes UMG's properties
-CgSequenceWidget digits = new CgSequenceWidget();
-CgSequenceWidget banner = new CgSequenceWidget().scale(1.5f, 1f).angle(2f);
-CgSequenceWidget number = new CgSequenceWidget().child("digits", digits).child("banner", banner);
-
-// Each widget keeps its player and replays it, as a widget keeps one state per animation:
-CgSequencePlayer pop = ui.play(POP, Map.of("number", number));   // once, when the number is made
-pop.jumpTo(0);                                                   // each hit: from the start, nothing allocated
-if (pop.finished()) hide(number);
-```
-
-You draw it, at a GUI stage, from its values each frame. `pose` is its render transform about a pivot, in Slate's
-order (scale, shear, rotation, translation), and `projectWorld` puts a world point on the canvas:
-
-```java
-Vector2f at = new Vector2f();                                                    // kept: reused every frame
-Matrix4f pose = new Matrix4f();
-CgRenderStage.HUD.register(CgRenderStage.WORLD_WIDGETS, frame -> {
-    if (!frame.projectWorld(targetX, targetY + 1, targetZ, at)) return;            // behind the camera
-    float unit = frame.host().height() / 1080f;                                  // laid out for 1080 high
-    banner.pose(at.x, at.y, unit, pose);
-    frame.canvas().quad(IMAGE).texture(0, BANNER).at(-112, -28).size(224, 56).pose(pose).color(banner.argb()).submit();
-});
-```
-
-| Property | Slot of `CgSequenceWidget` | Unreal |
-|---|---|---|
-| `translation`, `scale`, `shear` (degrees), `angle` (degrees) | x, y | `FWidgetTransform` |
-| `render_opacity` | x | `UWidget::RenderOpacity`, multiplied into both colours |
-| `colour_and_opacity` | r, g, b, a | an image's `ColorAndOpacity` |
-| `content_colour_and_opacity` | r, g, b, a | a border's `ContentColorAndOpacity` |
-
-```yaml
-# assets/mymod/sequences/hud/pop.yaml, the sequence mymod:hud/pop: a widget's tracks are property tracks on the widget and its parts
-roles:
-  - { id: b1, name: number, kind: caster }
-tracks:
-  - id: t1
-    kind: property
-    binding: { role: number, node: digits }
-    property: render_opacity
-    sections:
-      - { id: s1, range: [0, 400], value: { keys: [[0, 0.2, linear], [67, 1, linear], [267, 1, linear], [400, 0, linear]] } }
-```
-
-- **Find either by its own lookup**, never `world.subsystem(CgSequencer.class)`, which returns whichever was added
-  first.
-- **A replay lands on its first frame at the next evaluation** and plays on from there (`jumpTo`, Unreal's
-  `JumpToFrame`).
-- **A part a section binds** (`node: digits`) is what the target's `part` returns for it, a `CgSequenceWidget`'s child
-  of that name; a slot or a part the target lacks fails the play, naming both.
-- **A widget's children are found by name, never laid out**: a parent's opacity does not reach its children, and you
-  place and stack each yourself.
-- A dedicated server's world takes no widget sequencer: adding one throws.
+A world holds a second sequencer for what animates your interface, Unreal's widget animation: on real time, never
+slowed by a hit-stop, playing on behind the pause menu. A widget's animations bind its parts by name. Both are
+[widgets](widgets.md) § *Animating it*.
 
 ### Subsequences
 

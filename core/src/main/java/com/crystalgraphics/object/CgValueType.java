@@ -188,8 +188,14 @@ public final class CgValueType {
 
     /** A map from text keys, merged by key under inheritance. */
     public static CgValueType mapOf(CgValueType value) {
+        return mapOf(STRING, value);
+    }
+
+    /** A map from keys of {@code key}'s form ({@link #string(String)}, a pattern), merged by key under inheritance. */
+    public static CgValueType mapOf(CgValueType key, CgValueType value) {
+        if (key.kind != Kind.STRING) throw new IllegalArgumentException("a map's keys are text");
         return new CgValueType(Kind.MAP, Collections.<String>emptyList(), null, null, null,
-                Objects.requireNonNull(value), STRING);
+                Objects.requireNonNull(value), key);
     }
 
     /**
@@ -237,6 +243,11 @@ public final class CgValueType {
     }
 
     /** A list's or a map's element type; null otherwise. */
+    /** A map's key form: text, or text matching a pattern. */
+    public CgValueType key() {
+        return key;
+    }
+
     public CgValueType element() {
         return element;
     }

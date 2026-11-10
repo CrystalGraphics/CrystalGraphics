@@ -12,6 +12,7 @@ import java.util.regex.Pattern;
  * Tags { "Domain" = "Decal" }        // in the archetype: projected through the froxel bins
  * Tags { "Domain" = "Post" }         // drawn by the post stack at a point
  * Tags { "Domain" = "Text" }         // a text style's paint: a colour over a glyph's coverage
+ * Tags { "Domain" = "UI" }           // a widget's brush or a retainer box's effect, drawn on a canvas
  * // no tag: SURFACE, drawn through the world renderer
  * }</pre>
  */
@@ -26,7 +27,13 @@ public enum CgMaterialDomain {
      * Paints a text style's layer (Unreal's UI domain, as a Slate font material): its program includes
      * {@code env/buffer/text.glsl} and returns a colour, which the glyph's coverage multiplies afterwards.
      */
-    TEXT;
+    TEXT,
+    /**
+     * Draws a widget's brush or a retainer box's effect on a canvas (Unreal's {@code MD_UI}): a quad, its UVs 0 to 1,
+     * its tint the vertex colour in linear, blended by the material's own state. A retainer's effect samples the
+     * retained image at its texture parameter.
+     */
+    UI;
 
     private static final Pattern TAG = Pattern.compile("\"Domain\"\\s*=\\s*\"(\\w+)\"");
 
@@ -41,7 +48,7 @@ public enum CgMaterialDomain {
         try {
             return valueOf(m.group(1).toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException e) {
-            throw new IllegalArgumentException("\"Domain\" = \"" + m.group(1) + "\" is no domain: Surface, Post, Decal or Text");
+            throw new IllegalArgumentException("\"Domain\" = \"" + m.group(1) + "\" is no domain: Surface, Post, Decal, Text or UI");
         }
     }
 }

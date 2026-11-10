@@ -206,6 +206,98 @@ public final class CgLookKinds {
             .property("layers", CgValueType.idList(TEXT_LAYER))
             .register();
 
+    // ── Widget ───────────────────────────────────────────────────────────────────────────
+
+    private static final CgValueType WIDGET_NAME = CgValueType.string("^[A-Za-z0-9_]+$");
+    private static final CgValueType PAIR = CgValueType.VEC2;
+
+    /** {@code FSlateBrush}: a texture or a material, its image size, tint and draw type. */
+    static final CgType WIDGET_BRUSH = CgTypes.struct("crystalgraphics:widget.brush")
+            .property("texture", CgValueType.binaryRef("textures"))
+            .property("material", hard("material"))
+            .property("image_size", PAIR).forms(CgValueForm.CONSTANT)
+            .property("tint", VEC4).forms(CgValueForm.CONSTANT)
+            .property("draw_as", CgValueType.enumOf("image", "none"))
+            .register();
+
+    static final CgType WIDGET_FILL = CgTypes.struct("crystalgraphics:widget.fill")
+            .property("fill", FLOAT).forms(CgValueForm.CONSTANT).range(0, null).required()
+            .register();
+
+    /** A panel slot: a canvas's fields and a box's or a border's, each read by its parent's kind. */
+    static final CgType WIDGET_SLOT = CgTypes.struct("crystalgraphics:widget.slot")
+            .property("anchors", CgValueType.oneOf(PAIR, CgValueType.listOf(PAIR)))
+            .property("offsets", VEC4).forms(CgValueForm.CONSTANT)
+            .property("alignment", PAIR).forms(CgValueForm.CONSTANT)
+            .property("auto_size", BOOL)
+            .property("z_order", INT).forms(CgValueForm.CONSTANT)
+            .property("padding", CgValueType.oneOf(FLOAT, VEC4))
+            .property("size", CgValueType.oneOf(CgValueType.enumOf("auto"), CgValueType.struct(WIDGET_FILL)))
+            .property("horizontal_alignment", CgValueType.enumOf("fill", "left", "centre", "right"))
+            .property("vertical_alignment", CgValueType.enumOf("fill", "top", "centre", "bottom"))
+            .register();
+
+    /** {@code FWidgetTransform}. */
+    static final CgType WIDGET_TRANSFORM = CgTypes.struct("crystalgraphics:widget.transform")
+            .property("translation", PAIR).forms(CgValueForm.CONSTANT)
+            .property("scale", PAIR).forms(CgValueForm.CONSTANT)
+            .property("shear", PAIR).forms(CgValueForm.CONSTANT)
+            .property("angle", FLOAT).forms(CgValueForm.CONSTANT)
+            .register();
+
+    /** Widgets by {@code kind}: UMG's classes the engine draws. */
+    public static final CgType WIDGETS = CgTypes.dispatch("crystalgraphics:widget.widget", "kind").register();
+
+    /** A widget kind with {@code UWidget}'s common properties. */
+    private static CgType.Builder widget(String kind) {
+        return CgTypes.struct("crystalgraphics:widget." + kind).onRegister(t -> WIDGETS.member(kind, t))
+                .property("slot", CgValueType.struct(WIDGET_SLOT))
+                .property("transform", CgValueType.struct(WIDGET_TRANSFORM))
+                .property("pivot", PAIR).forms(CgValueForm.CONSTANT)
+                .property("render_opacity", FLOAT).forms(CgValueForm.CONSTANT).range(0, 1)
+                .property("visibility", CgValueType.enumOf("visible", "hidden", "collapsed", "hit_test_invisible",
+                        "self_hit_test_invisible"));
+    }
+
+    static final CgType WIDGET_CANVAS = widget("canvas")
+            .property("children", CgValueType.listOf(WIDGET_NAME))
+            .register();
+    static final CgType WIDGET_HORIZONTAL_BOX = widget("horizontal_box")
+            .property("children", CgValueType.listOf(WIDGET_NAME))
+            .register();
+    static final CgType WIDGET_BORDER = widget("border")
+            .property("content", WIDGET_NAME)
+            .property("background", CgValueType.struct(WIDGET_BRUSH))
+            .property("brush_colour", VEC4).forms(CgValueForm.CONSTANT)
+            .property("content_colour_and_opacity", VEC4).forms(CgValueForm.CONSTANT)
+            .register();
+    static final CgType WIDGET_RETAINER_BOX = widget("retainer_box")
+            .property("content", WIDGET_NAME)
+            .property("effect", hard("material"))
+            .property("texture_parameter", STRING).defaultValue("Texture")
+            .register();
+    static final CgType WIDGET_IMAGE = widget("image")
+            .property("brush", CgValueType.struct(WIDGET_BRUSH))
+            .property("colour_and_opacity", VEC4).forms(CgValueForm.CONSTANT)
+            .register();
+    static final CgType WIDGET_TEXT_BLOCK = widget("text_block")
+            .property("text", STRING)
+            .property("style", hard("text_style"))
+            .property("colour_and_opacity", VEC4).forms(CgValueForm.CONSTANT)
+            .property("justification", CgValueType.enumOf("left", "centre", "right"))
+            .property("wrap", FLOAT).forms(CgValueForm.CONSTANT).range(0, null)
+            .register();
+    static final CgType WIDGET_USER_WIDGET = widget("user_widget")
+            .property("widget", hard("widget"))
+            .property("colour_and_opacity", VEC4).forms(CgValueForm.CONSTANT)
+            .register();
+
+    /** {@code widgets/}: a widget blueprint's tree, its widgets by name ({@code UWidgetTree}). */
+    public static final CgType WIDGET = CgTypes.kind("crystalgraphics:widget").folder("widgets").version(1)
+            .property("root", WIDGET_NAME)
+            .property("widgets", CgValueType.mapOf(WIDGET_NAME, CgValueType.dispatch(WIDGETS)))
+            .register();
+
     static void register() {
     }
 }

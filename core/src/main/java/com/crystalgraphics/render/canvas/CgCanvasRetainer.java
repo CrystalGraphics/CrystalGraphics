@@ -104,11 +104,21 @@ public final class CgCanvasRetainer {
      * painted, under {@code material}: its texture, UVs and size set. Place, pose, colour and submit it.
      */
     public CgQuadBatch.Quad quad(CgCanvas target, CgMaterial material, float x, float y, float width, float height) {
+        return quad(target, material, 0, x, y, width, height);
+    }
+
+    /**
+     * As {@link #quad(CgCanvas, CgMaterial, float, float, float, float)}, its texture at {@code unit}: a material's
+     * sampler other than its first, as a retainer box's effect names its texture parameter
+     * ({@code material.samplerUnit(name)}).
+     */
+    public CgQuadBatch.Quad quad(CgCanvas target, CgMaterial material, int unit, float x, float y, float width,
+                                 float height) {
         if (texture == null) throw new IllegalStateException(name + " was never painted");
         float u0 = x * scale / texelsWide, u1 = (x + width) * scale / texelsWide;
         // A target's first row is its bottom: the painted top is v = 1.
         float v0 = 1f - y * scale / texelsHigh, v1 = 1f - (y + height) * scale / texelsHigh;
-        return target.quad(material).texture(0, texture).uv(u0, v0, u1, v1).size(width, height);
+        return target.quad(material).texture(unit, texture).uv(u0, v0, u1, v1).size(width, height);
     }
 
     /** Releases its texture into {@code recording}: it goes once the frame executes. */

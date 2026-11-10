@@ -1024,6 +1024,7 @@ com/crystalgraphics/api/material/CgMaterialDomain
   field public,static,final POST Lcom/crystalgraphics/api/material/CgMaterialDomain;
   field public,static,final SURFACE Lcom/crystalgraphics/api/material/CgMaterialDomain;
   field public,static,final TEXT Lcom/crystalgraphics/api/material/CgMaterialDomain;
+  field public,static,final UI Lcom/crystalgraphics/api/material/CgMaterialDomain;
   method public,static ofSource (Ljava/lang/String;)Lcom/crystalgraphics/api/material/CgMaterialDomain;
   method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/api/material/CgMaterialDomain;
   method public,static values ()[Lcom/crystalgraphics/api/material/CgMaterialDomain;
@@ -2499,6 +2500,7 @@ com/crystalgraphics/asset/kind/CgKitFiles
   extends java/lang/Object
   field public,static,final LOOK Lcom/crystalgraphics/object/CgType;
   field public,static,final SUBTITLE_STYLE Lcom/crystalgraphics/object/CgType;
+  field public,static,final UI Lcom/crystalgraphics/object/CgType;
 com/crystalgraphics/asset/kind/CgLookKinds
   access public,final
   extends java/lang/Object
@@ -2508,6 +2510,8 @@ com/crystalgraphics/asset/kind/CgLookKinds
   field public,static,final PARAMETERS Lcom/crystalgraphics/object/CgType;
   field public,static,final TEXTURE Lcom/crystalgraphics/object/CgType;
   field public,static,final TEXT_STYLE Lcom/crystalgraphics/object/CgType;
+  field public,static,final WIDGET Lcom/crystalgraphics/object/CgType;
+  field public,static,final WIDGETS Lcom/crystalgraphics/object/CgType;
 com/crystalgraphics/asset/kind/CgModuleTypes
   access public,final
   extends java/lang/Object
@@ -3442,78 +3446,22 @@ com/crystalgraphics/audio/CgSubmixEffect
 com/crystalgraphics/audio/CgSubtitleStyle
   access public,final,record
   extends java/lang/Record
-  method public <init> (FFILcom/crystalgraphics/audio/CgSubtitleStyle$Text;Lcom/crystalgraphics/audio/CgSubtitleStyle$Text;Lcom/crystalgraphics/audio/CgSubtitleStyle$Band;Lcom/crystalgraphics/audio/CgSubtitleStyle$Fade;Lcom/crystalgraphics/audio/CgSubtitleStyle$Fade;)V
-  method public band ()Lcom/crystalgraphics/audio/CgSubtitleStyle$Band;
-  method public fadeIn ()Lcom/crystalgraphics/audio/CgSubtitleStyle$Fade;
-  method public fadeOut ()Lcom/crystalgraphics/audio/CgSubtitleStyle$Fade;
-  method public line ()Lcom/crystalgraphics/audio/CgSubtitleStyle$Text;
+  field public,static,final ROLE Ljava/lang/String;
+  method public <init> (Ljava/lang/String;Lcom/crystalgraphics/asset/load/CgAssetRef;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;ILcom/crystalgraphics/asset/load/CgAssetRef;Lcom/crystalgraphics/asset/load/CgAssetRef;)V
+  method public hide ()Lcom/crystalgraphics/asset/load/CgAssetRef;
+  method public line ()Ljava/lang/String;
   method public lines ()I
-  method public name ()Lcom/crystalgraphics/audio/CgSubtitleStyle$Text;
-  method public referenceHeight ()F
-  method public scale (F)F
-  method public uiScale ()F
+  method public name ()Ljava/lang/String;
+  method public namespace ()Ljava/lang/String;
+  method public show ()Lcom/crystalgraphics/asset/load/CgAssetRef;
+  method public widget ()Lcom/crystalgraphics/asset/load/CgAssetRef;
+  method public withName ()Ljava/util/List;
   method public,final equals (Ljava/lang/Object;)Z
   method public,final hashCode ()I
   method public,final toString ()Ljava/lang/String;
   method public,static of (Ljava/lang/String;)Lcom/crystalgraphics/audio/CgSubtitleStyle;
-  method public,static read (Ljava/nio/file/Path;)Lcom/crystalgraphics/audio/CgSubtitleStyle;
+  method public,static read (Ljava/lang/String;Ljava/nio/file/Path;)Lcom/crystalgraphics/audio/CgSubtitleStyle;
   method public,static registerKit (Ljava/lang/String;Ljava/nio/file/Path;)V
-com/crystalgraphics/audio/CgSubtitleStyle$Band
-  access public,final,record
-  extends java/lang/Record
-  method public <init> (IFFF)V
-  method public anchorY ()F
-  method public colour ()I
-  method public height ()F
-  method public offsetY ()F
-  method public,final equals (Ljava/lang/Object;)Z
-  method public,final hashCode ()I
-  method public,final toString ()Ljava/lang/String;
-com/crystalgraphics/audio/CgSubtitleStyle$Fade
-  access public,final,record
-  extends java/lang/Record
-  method public <init> ([F[F[FZ)V
-  method public band ()[F
-  method public band (F)F
-  method public cubic ()Z
-  method public seconds ()F
-  method public slide ()[F
-  method public slide (F)F
-  method public text ()[F
-  method public text (F)F
-  method public,final equals (Ljava/lang/Object;)Z
-  method public,final hashCode ()I
-  method public,final toString ()Ljava/lang/String;
-com/crystalgraphics/audio/CgSubtitleStyle$Text
-  access public,final,record
-  extends java/lang/Record
-  method public <init> (Lcom/crystalgraphics/asset/load/CgAssetRef;FFLjava/lang/String;FFFFFFLcom/crystalgraphics/audio/CgSubtitleStyle$Underline;)V
-  method public alignmentX ()F
-  method public alignmentY ()F
-  method public anchorX ()F
-  method public anchorY ()F
-  method public justify ()Ljava/lang/String;
-  method public lineHeight ()F
-  method public offsetX ()F
-  method public offsetY ()F
-  method public style ()Lcom/crystalgraphics/asset/load/CgAssetRef;
-  method public underline ()Lcom/crystalgraphics/audio/CgSubtitleStyle$Underline;
-  method public wrap ()F
-  method public,final equals (Ljava/lang/Object;)Z
-  method public,final hashCode ()I
-  method public,final toString ()Ljava/lang/String;
-com/crystalgraphics/audio/CgSubtitleStyle$Underline
-  access public,final,record
-  extends java/lang/Record
-  method public <init> (Ljava/lang/String;FFFF)V
-  method public height ()F
-  method public image ()Ljava/lang/String;
-  method public offsetX ()F
-  method public offsetY ()F
-  method public width ()F
-  method public,final equals (Ljava/lang/Object;)Z
-  method public,final hashCode ()I
-  method public,final toString ()Ljava/lang/String;
 com/crystalgraphics/audio/CgSubtitles
   access public,final
   extends java/lang/Object
@@ -8075,6 +8023,7 @@ com/crystalgraphics/object/CgValueType
   method public enumValues ()Ljava/util/List;
   method public equals (Ljava/lang/Object;)Z
   method public hashCode ()I
+  method public key ()Lcom/crystalgraphics/object/CgValueType;
   method public kind ()Lcom/crystalgraphics/object/CgValueType$Kind;
   method public pattern ()Ljava/lang/String;
   method public refKind ()Ljava/lang/String;
@@ -8089,6 +8038,7 @@ com/crystalgraphics/object/CgValueType
   method public,static idList (Lcom/crystalgraphics/object/CgType;)Lcom/crystalgraphics/object/CgValueType;
   method public,static listOf (Lcom/crystalgraphics/object/CgValueType;)Lcom/crystalgraphics/object/CgValueType;
   method public,static mapOf (Lcom/crystalgraphics/object/CgValueType;)Lcom/crystalgraphics/object/CgValueType;
+  method public,static mapOf (Lcom/crystalgraphics/object/CgValueType;Lcom/crystalgraphics/object/CgValueType;)Lcom/crystalgraphics/object/CgValueType;
   method public,static oneOf (Lcom/crystalgraphics/object/CgValueType;[Lcom/crystalgraphics/object/CgValueType;)Lcom/crystalgraphics/object/CgValueType;
   method public,static ref (Ljava/lang/String;Lcom/crystalgraphics/object/CgValueType$Strength;)Lcom/crystalgraphics/object/CgValueType;
   method public,static string (Ljava/lang/String;)Lcom/crystalgraphics/object/CgValueType;
@@ -8736,6 +8686,7 @@ com/crystalgraphics/render/canvas/CgCanvasRetainer
   method public end ()V
   method public paint (Lcom/crystalgraphics/render/graph/CgRecording;FFF)Lcom/crystalgraphics/render/canvas/CgCanvas;
   method public quad (Lcom/crystalgraphics/render/canvas/CgCanvas;Lcom/crystalgraphics/api/material/CgMaterial;FFFF)Lcom/crystalgraphics/render/canvas/CgQuadBatch$Quad;
+  method public quad (Lcom/crystalgraphics/render/canvas/CgCanvas;Lcom/crystalgraphics/api/material/CgMaterial;IFFFF)Lcom/crystalgraphics/render/canvas/CgQuadBatch$Quad;
   method public release (Lcom/crystalgraphics/render/graph/CgRecording;)V
 com/crystalgraphics/render/canvas/CgClipTable
   access public,final
@@ -11233,34 +11184,6 @@ com/crystalgraphics/sequence/binding/CgSequenceRole
   method public node (Ljava/lang/String;)Lcom/crystalgraphics/world/CgAttachment;
   method public variants ()Ljava/util/Collection;
   method public,abstract attachment (Ljava/lang/String;)Lcom/crystalgraphics/world/CgAttachment;
-com/crystalgraphics/sequence/binding/CgSequenceWidget
-  access public,final
-  extends java/lang/Object
-  implements com/crystalgraphics/sequence/CgSequenceTarget
-  method public <init> ()V
-  method public angle ()F
-  method public angle (F)Lcom/crystalgraphics/sequence/binding/CgSequenceWidget;
-  method public argb ()I
-  method public child (Ljava/lang/String;Lcom/crystalgraphics/sequence/binding/CgSequenceWidget;)Lcom/crystalgraphics/sequence/binding/CgSequenceWidget;
-  method public colour (I)Lcom/crystalgraphics/sequence/binding/CgSequenceWidget;
-  method public contentArgb ()I
-  method public contentColour (I)Lcom/crystalgraphics/sequence/binding/CgSequenceWidget;
-  method public get (I[F)V
-  method public part (Lcom/crystalgraphics/sequence/definition/CgSequenceBinding$Part;Ljava/lang/String;)Lcom/crystalgraphics/sequence/CgSequenceTarget;
-  method public pose (FFFLorg/joml/Matrix4f;)Lorg/joml/Matrix4f;
-  method public renderOpacity ()F
-  method public renderOpacity (F)Lcom/crystalgraphics/sequence/binding/CgSequenceWidget;
-  method public scale (FF)Lcom/crystalgraphics/sequence/binding/CgSequenceWidget;
-  method public scaleX ()F
-  method public scaleY ()F
-  method public set (I[FI)V
-  method public shear (FF)Lcom/crystalgraphics/sequence/binding/CgSequenceWidget;
-  method public shearX ()F
-  method public shearY ()F
-  method public slot (Ljava/lang/String;)I
-  method public translation (FF)Lcom/crystalgraphics/sequence/binding/CgSequenceWidget;
-  method public translationX ()F
-  method public translationY ()F
 com/crystalgraphics/sequence/camera/CgCameraAnimationEvaluator
   access public,final
   extends java/lang/Object
@@ -20027,6 +19950,284 @@ com/crystalgraphics/vfx/system/CgVfxSystemSpawner
   method public group (Lcom/crystalgraphics/sequence/CgSequencePlayer;)Lcom/crystalgraphics/vfx/render/CgVfxSortGroup;
   method public spawn (Lcom/crystalgraphics/sequence/CgSequencePlayer;Lcom/crystalgraphics/sequence/definition/CgSequenceDefinition$Spawnable;Lcom/crystalgraphics/world/CgAttachment;)Lcom/crystalgraphics/sequence/spawn/CgSequenceSpawned;
   method public,static install (Lcom/crystalgraphics/sequence/CgSequencer;)V
+com/crystalgraphics/widget/CgCanvasWidgetPainter
+  access public,final
+  extends java/lang/Object
+  implements com/crystalgraphics/widget/CgWidgetPainter
+  method public <init> (Ljava/lang/String;Lcom/crystalgraphics/render/canvas/CgCanvasMaterials;)V
+  method public begin (Lcom/crystalgraphics/render/canvas/CgCanvas;Lcom/crystalgraphics/render/graph/CgRecording;F)Lcom/crystalgraphics/widget/CgCanvasWidgetPainter;
+  method public beginRetained (FF)I
+  method public endRetained ()V
+  method public image (Lcom/crystalgraphics/widget/CgWidgetBrush;Lorg/joml/Matrix4f;FFFFFF)V
+  method public layout (Lcom/crystalgraphics/text/style/CgTextStyle;Ljava/lang/String;FLcom/crystalgraphics/widget/CgWidget$Justification;Lorg/joml/Vector2f;)Ljava/lang/Object;
+  method public prepare (Lcom/crystalgraphics/widget/CgWidgetTree;)Lcom/crystalgraphics/widget/CgCanvasWidgetPainter;
+  method public release (Lcom/crystalgraphics/render/graph/CgRecording;)V
+  method public retained (ILcom/crystalgraphics/api/material/CgMaterialDefinition;Ljava/lang/String;Lorg/joml/Matrix4f;FFFFFF)V
+  method public retaining (FFF)Lcom/crystalgraphics/widget/CgCanvasWidgetPainter;
+  method public text (Lcom/crystalgraphics/text/style/CgTextStyle;Ljava/lang/String;Ljava/lang/Object;Lcom/crystalgraphics/widget/CgWidget$Justification;Lorg/joml/Matrix4f;FFFFF)V
+com/crystalgraphics/widget/CgLinearColour
+  access public,final,record
+  extends java/lang/Record
+  field public,static,final WHITE Lcom/crystalgraphics/widget/CgLinearColour;
+  method public <init> (FFFF)V
+  method public a ()F
+  method public b ()F
+  method public g ()F
+  method public r ()F
+  method public toArgb ()I
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
+  method public,static argb (FFFF)I
+  method public,static argb (I)Lcom/crystalgraphics/widget/CgLinearColour;
+  method public,static linear (F)F
+  method public,static srgb (F)F
+com/crystalgraphics/widget/CgUiScale
+  access public,final,record
+  extends java/lang/Record
+  field public,static,final DEFAULT Lcom/crystalgraphics/widget/CgUiScale;
+  field public,static,final FILE Ljava/lang/String;
+  method public <init> (Lcom/crystalgraphics/widget/CgUiScale$Rule;[F[FF)V
+  method public applicationScale ()F
+  method public rule ()Lcom/crystalgraphics/widget/CgUiScale$Rule;
+  method public scale (FF)F
+  method public scales ()[F
+  method public sides ()[F
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
+  method public,static of (Ljava/lang/String;)Lcom/crystalgraphics/widget/CgUiScale;
+  method public,static read (Ljava/nio/file/Path;)Lcom/crystalgraphics/widget/CgUiScale;
+  method public,static registerKit (Ljava/lang/String;Ljava/nio/file/Path;)V
+com/crystalgraphics/widget/CgUiScale$Rule
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final HORIZONTAL Lcom/crystalgraphics/widget/CgUiScale$Rule;
+  field public,static,final LONGEST_SIDE Lcom/crystalgraphics/widget/CgUiScale$Rule;
+  field public,static,final SHORTEST_SIDE Lcom/crystalgraphics/widget/CgUiScale$Rule;
+  field public,static,final VERTICAL Lcom/crystalgraphics/widget/CgUiScale$Rule;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/widget/CgUiScale$Rule;
+  method public,static values ()[Lcom/crystalgraphics/widget/CgUiScale$Rule;
+com/crystalgraphics/widget/CgUserWidget
+  access public,final
+  extends java/lang/Object
+  implements com/crystalgraphics/sequence/CgSequenceTarget
+  method public allot (FF)Lcom/crystalgraphics/widget/CgUserWidget;
+  method public box (I[F)[F
+  method public brush (ILcom/crystalgraphics/widget/CgWidgetBrush;)Lcom/crystalgraphics/widget/CgUserWidget;
+  method public brush (Ljava/lang/String;Lcom/crystalgraphics/widget/CgWidgetBrush;)Lcom/crystalgraphics/widget/CgUserWidget;
+  method public colour (I)Lcom/crystalgraphics/widget/CgLinearColour;
+  method public get (I[F)V
+  method public layout (Lcom/crystalgraphics/widget/CgWidgetPainter;Lorg/joml/Vector2f;)Lorg/joml/Vector2f;
+  method public nested (Ljava/lang/String;)Lcom/crystalgraphics/widget/CgUserWidget;
+  method public paint (Lcom/crystalgraphics/widget/CgWidgetPainter;Lorg/joml/Matrix4f;)V
+  method public part (Lcom/crystalgraphics/sequence/definition/CgSequenceBinding$Part;Ljava/lang/String;)Lcom/crystalgraphics/sequence/CgSequenceTarget;
+  method public reset ()V
+  method public retain (Lcom/crystalgraphics/widget/CgWidgetPainter;)V
+  method public set (I[FI)V
+  method public slot (Ljava/lang/String;)I
+  method public style (ILcom/crystalgraphics/text/style/CgTextStyle;)Lcom/crystalgraphics/widget/CgUserWidget;
+  method public style (Ljava/lang/String;Lcom/crystalgraphics/text/style/CgTextStyle;)Lcom/crystalgraphics/widget/CgUserWidget;
+  method public text (I)Ljava/lang/String;
+  method public text (ILjava/lang/String;)Lcom/crystalgraphics/widget/CgUserWidget;
+  method public text (Ljava/lang/String;Ljava/lang/String;)Lcom/crystalgraphics/widget/CgUserWidget;
+  method public toString ()Ljava/lang/String;
+  method public transform (I[F)[F
+  method public translation (IFF)Lcom/crystalgraphics/widget/CgUserWidget;
+  method public tree ()Lcom/crystalgraphics/widget/CgWidgetTree;
+  method public visibility (I)Lcom/crystalgraphics/widget/CgWidget$Visibility;
+  method public visibility (ILcom/crystalgraphics/widget/CgWidget$Visibility;)Lcom/crystalgraphics/widget/CgUserWidget;
+  method public visibility (Ljava/lang/String;Lcom/crystalgraphics/widget/CgWidget$Visibility;)Lcom/crystalgraphics/widget/CgUserWidget;
+com/crystalgraphics/widget/CgWidget
+  access public,final
+  extends java/lang/Object
+  method public brush ()Lcom/crystalgraphics/widget/CgWidgetBrush;
+  method public brushColour ()Lcom/crystalgraphics/widget/CgLinearColour;
+  method public children ()Ljava/util/List;
+  method public colour ()Lcom/crystalgraphics/widget/CgLinearColour;
+  method public contentColour ()Lcom/crystalgraphics/widget/CgLinearColour;
+  method public effect ()Lcom/crystalgraphics/api/material/CgMaterialDefinition;
+  method public equals (Ljava/lang/Object;)Z
+  method public hashCode ()I
+  method public justification ()Lcom/crystalgraphics/widget/CgWidget$Justification;
+  method public kind ()Lcom/crystalgraphics/widget/CgWidget$Kind;
+  method public name ()Ljava/lang/String;
+  method public pivotX ()F
+  method public pivotY ()F
+  method public renderOpacity ()F
+  method public slot ()Lcom/crystalgraphics/widget/CgWidgetSlot;
+  method public style ()Lcom/crystalgraphics/text/style/CgTextStyle;
+  method public text ()Ljava/lang/String;
+  method public textureParameter ()Ljava/lang/String;
+  method public toString ()Ljava/lang/String;
+  method public transform ()[F
+  method public visibility ()Lcom/crystalgraphics/widget/CgWidget$Visibility;
+  method public widget ()Lcom/crystalgraphics/widget/CgWidgetTree;
+  method public wrap ()F
+  method public,static border (Ljava/lang/String;)Lcom/crystalgraphics/widget/CgWidget$Builder;
+  method public,static canvas (Ljava/lang/String;)Lcom/crystalgraphics/widget/CgWidget$Builder;
+  method public,static horizontalBox (Ljava/lang/String;)Lcom/crystalgraphics/widget/CgWidget$Builder;
+  method public,static image (Ljava/lang/String;)Lcom/crystalgraphics/widget/CgWidget$Builder;
+  method public,static retainerBox (Ljava/lang/String;)Lcom/crystalgraphics/widget/CgWidget$Builder;
+  method public,static text (Ljava/lang/String;)Lcom/crystalgraphics/widget/CgWidget$Builder;
+  method public,static userWidget (Ljava/lang/String;Lcom/crystalgraphics/widget/CgWidgetTree;)Lcom/crystalgraphics/widget/CgWidget$Builder;
+com/crystalgraphics/widget/CgWidget$Builder
+  access public,final
+  extends java/lang/Object
+  method public angle (F)Lcom/crystalgraphics/widget/CgWidget$Builder;
+  method public brush (Lcom/crystalgraphics/widget/CgWidgetBrush;)Lcom/crystalgraphics/widget/CgWidget$Builder;
+  method public brushColour (Lcom/crystalgraphics/widget/CgLinearColour;)Lcom/crystalgraphics/widget/CgWidget$Builder;
+  method public build ()Lcom/crystalgraphics/widget/CgWidget;
+  method public child (Lcom/crystalgraphics/widget/CgWidget$Builder;)Lcom/crystalgraphics/widget/CgWidget$Builder;
+  method public child (Lcom/crystalgraphics/widget/CgWidget;)Lcom/crystalgraphics/widget/CgWidget$Builder;
+  method public colour (Lcom/crystalgraphics/widget/CgLinearColour;)Lcom/crystalgraphics/widget/CgWidget$Builder;
+  method public contentColour (Lcom/crystalgraphics/widget/CgLinearColour;)Lcom/crystalgraphics/widget/CgWidget$Builder;
+  method public effect (Lcom/crystalgraphics/api/material/CgMaterialDefinition;Ljava/lang/String;)Lcom/crystalgraphics/widget/CgWidget$Builder;
+  method public justification (Lcom/crystalgraphics/widget/CgWidget$Justification;)Lcom/crystalgraphics/widget/CgWidget$Builder;
+  method public pivot (FF)Lcom/crystalgraphics/widget/CgWidget$Builder;
+  method public renderOpacity (F)Lcom/crystalgraphics/widget/CgWidget$Builder;
+  method public scale (FF)Lcom/crystalgraphics/widget/CgWidget$Builder;
+  method public shear (FF)Lcom/crystalgraphics/widget/CgWidget$Builder;
+  method public slot (Lcom/crystalgraphics/widget/CgWidgetSlot;)Lcom/crystalgraphics/widget/CgWidget$Builder;
+  method public style (Lcom/crystalgraphics/text/style/CgTextStyle;)Lcom/crystalgraphics/widget/CgWidget$Builder;
+  method public text (Ljava/lang/String;)Lcom/crystalgraphics/widget/CgWidget$Builder;
+  method public translation (FF)Lcom/crystalgraphics/widget/CgWidget$Builder;
+  method public visibility (Lcom/crystalgraphics/widget/CgWidget$Visibility;)Lcom/crystalgraphics/widget/CgWidget$Builder;
+  method public wrap (F)Lcom/crystalgraphics/widget/CgWidget$Builder;
+com/crystalgraphics/widget/CgWidget$Justification
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final CENTRE Lcom/crystalgraphics/widget/CgWidget$Justification;
+  field public,static,final LEFT Lcom/crystalgraphics/widget/CgWidget$Justification;
+  field public,static,final RIGHT Lcom/crystalgraphics/widget/CgWidget$Justification;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/widget/CgWidget$Justification;
+  method public,static values ()[Lcom/crystalgraphics/widget/CgWidget$Justification;
+com/crystalgraphics/widget/CgWidget$Kind
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final BORDER Lcom/crystalgraphics/widget/CgWidget$Kind;
+  field public,static,final CANVAS Lcom/crystalgraphics/widget/CgWidget$Kind;
+  field public,static,final HORIZONTAL_BOX Lcom/crystalgraphics/widget/CgWidget$Kind;
+  field public,static,final IMAGE Lcom/crystalgraphics/widget/CgWidget$Kind;
+  field public,static,final RETAINER_BOX Lcom/crystalgraphics/widget/CgWidget$Kind;
+  field public,static,final TEXT_BLOCK Lcom/crystalgraphics/widget/CgWidget$Kind;
+  field public,static,final USER_WIDGET Lcom/crystalgraphics/widget/CgWidget$Kind;
+  method public id ()Ljava/lang/String;
+  method public panel ()Z
+  method public,static of (Ljava/lang/String;)Lcom/crystalgraphics/widget/CgWidget$Kind;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/widget/CgWidget$Kind;
+  method public,static values ()[Lcom/crystalgraphics/widget/CgWidget$Kind;
+com/crystalgraphics/widget/CgWidget$Visibility
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final COLLAPSED Lcom/crystalgraphics/widget/CgWidget$Visibility;
+  field public,static,final HIDDEN Lcom/crystalgraphics/widget/CgWidget$Visibility;
+  field public,static,final HIT_TEST_INVISIBLE Lcom/crystalgraphics/widget/CgWidget$Visibility;
+  field public,static,final SELF_HIT_TEST_INVISIBLE Lcom/crystalgraphics/widget/CgWidget$Visibility;
+  field public,static,final VISIBLE Lcom/crystalgraphics/widget/CgWidget$Visibility;
+  method public draws ()Z
+  method public id ()Ljava/lang/String;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/widget/CgWidget$Visibility;
+  method public,static values ()[Lcom/crystalgraphics/widget/CgWidget$Visibility;
+com/crystalgraphics/widget/CgWidgetBrush
+  access public,final,record
+  extends java/lang/Record
+  field public,static,final NONE Lcom/crystalgraphics/widget/CgWidgetBrush;
+  field public,static,final WHITE Lcom/crystalgraphics/widget/CgWidgetBrush;
+  method public <init> (Ljava/lang/String;Lcom/crystalgraphics/api/material/CgMaterialDefinition;FFLcom/crystalgraphics/widget/CgLinearColour;Z)V
+  method public draws ()Z
+  method public height ()F
+  method public material ()Lcom/crystalgraphics/api/material/CgMaterialDefinition;
+  method public size (FF)Lcom/crystalgraphics/widget/CgWidgetBrush;
+  method public texture ()Ljava/lang/String;
+  method public tint ()Lcom/crystalgraphics/widget/CgLinearColour;
+  method public tint (Lcom/crystalgraphics/widget/CgLinearColour;)Lcom/crystalgraphics/widget/CgWidgetBrush;
+  method public width ()F
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
+  method public,static material (Lcom/crystalgraphics/api/material/CgMaterialDefinition;FF)Lcom/crystalgraphics/widget/CgWidgetBrush;
+  method public,static texture (Ljava/lang/String;FF)Lcom/crystalgraphics/widget/CgWidgetBrush;
+com/crystalgraphics/widget/CgWidgetCodec
+  access public,final
+  extends java/lang/Object
+  field public,static,final COMPILER Lcom/crystalgraphics/asset/load/CgAssetCompiler;
+  method public,static compile (Lcom/crystalgraphics/asset/tree/CgAssetData;Lcom/crystalgraphics/asset/load/CgAssetCompiler$Dependencies;)Lcom/crystalgraphics/widget/CgWidgetTree;
+  method public,static register ()V
+  method public,static toTree (Lcom/crystalgraphics/widget/CgWidgetTree;)Ljava/util/Map;
+com/crystalgraphics/widget/CgWidgetPainter
+  access public,abstract,interface
+  extends java/lang/Object
+  method public,abstract beginRetained (FF)I
+  method public,abstract endRetained ()V
+  method public,abstract image (Lcom/crystalgraphics/widget/CgWidgetBrush;Lorg/joml/Matrix4f;FFFFFF)V
+  method public,abstract layout (Lcom/crystalgraphics/text/style/CgTextStyle;Ljava/lang/String;FLcom/crystalgraphics/widget/CgWidget$Justification;Lorg/joml/Vector2f;)Ljava/lang/Object;
+  method public,abstract retained (ILcom/crystalgraphics/api/material/CgMaterialDefinition;Ljava/lang/String;Lorg/joml/Matrix4f;FFFFFF)V
+  method public,abstract text (Lcom/crystalgraphics/text/style/CgTextStyle;Ljava/lang/String;Ljava/lang/Object;Lcom/crystalgraphics/widget/CgWidget$Justification;Lorg/joml/Matrix4f;FFFFF)V
+com/crystalgraphics/widget/CgWidgetSlot
+  access public,final
+  extends java/lang/Object
+  field public,static,final DEFAULT Lcom/crystalgraphics/widget/CgWidgetSlot;
+  method public alignment ()[F
+  method public anchors ()[F
+  method public autoSize ()Ljava/lang/Boolean;
+  method public equals (Ljava/lang/Object;)Z
+  method public fill ()F
+  method public hashCode ()I
+  method public horizontal ()Lcom/crystalgraphics/widget/CgWidgetSlot$Align;
+  method public offsets ()[F
+  method public padding ()[F
+  method public size ()Lcom/crystalgraphics/widget/CgWidgetSlot$Size;
+  method public vertical ()Lcom/crystalgraphics/widget/CgWidgetSlot$Align;
+  method public zOrder ()I
+  method public,static builder ()Lcom/crystalgraphics/widget/CgWidgetSlot$Builder;
+com/crystalgraphics/widget/CgWidgetSlot$Align
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final BOTTOM Lcom/crystalgraphics/widget/CgWidgetSlot$Align;
+  field public,static,final CENTRE Lcom/crystalgraphics/widget/CgWidgetSlot$Align;
+  field public,static,final FILL Lcom/crystalgraphics/widget/CgWidgetSlot$Align;
+  field public,static,final LEFT Lcom/crystalgraphics/widget/CgWidgetSlot$Align;
+  field public,static,final RIGHT Lcom/crystalgraphics/widget/CgWidgetSlot$Align;
+  field public,static,final TOP Lcom/crystalgraphics/widget/CgWidgetSlot$Align;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/widget/CgWidgetSlot$Align;
+  method public,static values ()[Lcom/crystalgraphics/widget/CgWidgetSlot$Align;
+com/crystalgraphics/widget/CgWidgetSlot$Builder
+  access public,final
+  extends java/lang/Object
+  method public alignment (FF)Lcom/crystalgraphics/widget/CgWidgetSlot$Builder;
+  method public anchors (FF)Lcom/crystalgraphics/widget/CgWidgetSlot$Builder;
+  method public anchors (FFFF)Lcom/crystalgraphics/widget/CgWidgetSlot$Builder;
+  method public autoSize (Z)Lcom/crystalgraphics/widget/CgWidgetSlot$Builder;
+  method public build ()Lcom/crystalgraphics/widget/CgWidgetSlot;
+  method public horizontal (Lcom/crystalgraphics/widget/CgWidgetSlot$Align;)Lcom/crystalgraphics/widget/CgWidgetSlot$Builder;
+  method public offsets (FFFF)Lcom/crystalgraphics/widget/CgWidgetSlot$Builder;
+  method public padding (FFFF)Lcom/crystalgraphics/widget/CgWidgetSlot$Builder;
+  method public size (Lcom/crystalgraphics/widget/CgWidgetSlot$Size;F)Lcom/crystalgraphics/widget/CgWidgetSlot$Builder;
+  method public vertical (Lcom/crystalgraphics/widget/CgWidgetSlot$Align;)Lcom/crystalgraphics/widget/CgWidgetSlot$Builder;
+  method public zOrder (I)Lcom/crystalgraphics/widget/CgWidgetSlot$Builder;
+com/crystalgraphics/widget/CgWidgetSlot$Size
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final AUTO Lcom/crystalgraphics/widget/CgWidgetSlot$Size;
+  field public,static,final FILL Lcom/crystalgraphics/widget/CgWidgetSlot$Size;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/widget/CgWidgetSlot$Size;
+  method public,static values ()[Lcom/crystalgraphics/widget/CgWidgetSlot$Size;
+com/crystalgraphics/widget/CgWidgetTree
+  access public,final
+  extends java/lang/Object
+  method public equals (Ljava/lang/Object;)Z
+  method public hashCode ()I
+  method public id ()Ljava/lang/String;
+  method public index (Ljava/lang/String;)I
+  method public newInstance ()Lcom/crystalgraphics/widget/CgUserWidget;
+  method public parent (I)I
+  method public root ()Lcom/crystalgraphics/widget/CgWidget;
+  method public size ()I
+  method public toString ()Ljava/lang/String;
+  method public widget (I)Lcom/crystalgraphics/widget/CgWidget;
+  method public,static of (Lcom/crystalgraphics/widget/CgWidget;)Lcom/crystalgraphics/widget/CgWidgetTree;
+  method public,static of (Ljava/lang/String;Lcom/crystalgraphics/widget/CgWidget;)Lcom/crystalgraphics/widget/CgWidgetTree;
 com/crystalgraphics/world/CgAttachment
   access public,abstract,interface
   extends java/lang/Object

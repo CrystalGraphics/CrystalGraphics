@@ -111,7 +111,9 @@ public final class CgAssetNode {
         switch (kind) {
             case MAP: {
                 Map<Object, Object> out = new LinkedHashMap<>();
-                for (Map.Entry<Object, CgAssetNode> e : fields.entrySet()) out.put(e.getKey(), e.getValue().toPlain());
+                for (Map.Entry<Object, CgAssetNode> e : fields.entrySet()) {
+                    if (e.getValue().origin != CgOrigin.REMOVED) out.put(e.getKey(), e.getValue().toPlain());
+                }
                 return out;
             }
             case ID_LIST: {

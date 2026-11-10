@@ -105,13 +105,27 @@ public final class CgSchemaWriter {
         return out;
     }
 
+    private static final String MAP_KEY_PATTERN = "^[A-Za-z0-9_]+$";
+
+    /** Whether the kind holds a map of named family members (a widget tree's widgets), which {@code remove:} drops by name. */
+    private static boolean keyedMaps(CgType owner) {
+        if (owner.kind() != CgTypeKind.KIND) return false;
+        for (CgProperty q : owner.properties()) {
+            if (q.type().kind() == CgValueType.Kind.MAP && q.type().element().kind() == CgValueType.Kind.DISPATCH) return true;
+        }
+        return false;
+    }
+
     private static Object property(CgType owner, CgProperty p) {
         String n = p.name();
         // A file's root: a kind, or a kit file declaring its version
         if (owner.kind() == CgTypeKind.KIND || owner.property(CgType.VERSION) != null) {
             if (n.equals(CgType.UNSUPPORTED)) return ref("unsupported");
             if (n.equals(CgType.EDITOR)) return ref("editor");
-            if (n.equals(CgType.REMOVE)) return map("type", "array", "items", string(CgValueType.LOCAL_ID_PATTERN));
+            if (n.equals(CgType.REMOVE)) {
+                // An element's id, or a key of one of the kind's own maps: a widget's UMG name.
+                return map("type", "array", "items", string(keyedMaps(owner) ? MAP_KEY_PATTERN : CgValueType.LOCAL_ID_PATTERN));
+            }
             if (n.equals(CgType.CHILDREN) && owner.kind() == CgTypeKind.KIND) {
                 return map("type", "object", "propertyNames", string(CgAssetChildren.NAME_PATTERN),
                         "additionalProperties", map("$ref", "#/$defs/child"));
@@ -155,6 +169,10 @@ public final class CgSchemaWriter {
             case ID_LIST:
                 return map("type", "array", "items", element(t.type()));
             case MAP:
+                if (t.key() != null && t.key().pattern() != null) {
+                    return map("type", "object", "propertyNames", string(t.key().pattern()),
+                            "additionalProperties", value(t.element(), null));
+                }
                 return map("type", "object", "additionalProperties", value(t.element(), null));
             case DISPATCH:
                 return family(t.type());

@@ -64,8 +64,8 @@ public class CgSequenceSubtitleTest {
                 """.getBytes(StandardCharsets.UTF_8));
         Files.write(kit.resolve("subtitle_style.yaml"), """
                 _v: 1
-                reference_height: 1080
-                line: { font: subsub:fonts/line.otf, size: 20 }
+                widget: subsub:hud/subtitles
+                line: Txt_Line
                 """.getBytes(StandardCharsets.UTF_8));
         CgAssetKinds.register();
         CgKitSounds.registerKit(kit);

@@ -46,12 +46,13 @@ public final class CgAssetKinds {
         all = Collections.unmodifiableList(Arrays.asList(
                 CgParticleKinds.SYSTEM, CgParticleKinds.EMITTER, CgParticleKinds.MODULE, CgParticleKinds.EFFECT_TYPE,
                 CgParticleKinds.ENDING, CgFieldKinds.FIELD, CgLookKinds.MATERIAL, CgLookKinds.TEXTURE, CgLookKinds.MESH,
-                CgLookKinds.PARAMETERS, CgLookKinds.CURVE_KIND, CgLookKinds.TEXT_STYLE, CgBodyKinds.PREFAB, CgBodyKinds.SKELETON,
+                CgLookKinds.PARAMETERS, CgLookKinds.CURVE_KIND, CgLookKinds.TEXT_STYLE, CgLookKinds.WIDGET, CgBodyKinds.PREFAB,
+                CgBodyKinds.SKELETON,
                 CgBodyKinds.SPRINGS, CgBodyKinds.RIG, CgBodyKinds.RETARGETER, CgSequenceKinds.SEQUENCE,
                 CgCameraKinds.CAMERA_RIG, CgCameraKinds.SHAKE, CgGameplayKinds.CUE, CgStageKinds.STAGE));
     }
 
-    /** The 22 kinds, particles first. */
+    /** The 23 kinds, particles first. */
     public static List<CgType> all() {
         register();
         return all;

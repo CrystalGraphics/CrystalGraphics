@@ -390,37 +390,28 @@ strings:
 
 ### A game's look
 
-A kit's `subtitle_style.yaml` draws its lines as the game does: its own fonts, an outline, an optional band, and its
-widget's animations in and out. Positions are in UI units, scaled from `reference_height` with the screen. A kit
-without one draws in Unreal's canvas look: 13 px, white, a 1 px black outline, centred near the bottom.
+A kit's `subtitle_style.yaml` draws its lines in the game's own subtitle widget ([widgets](vfx/widgets.md)): the line
+and its speaker are set into the widget's text blocks, and the widget's own animations bring a line in and take it out.
+Where everything sits, its fonts and outlines, and how it scales with the screen are the widget's tree, its text styles
+and the kit's `ui.yaml`. A kit without one draws in Unreal's canvas look: 13 px, white, a 1 px black outline, centred
+near the bottom.
 
 ```yaml
 # subtitle_style.yaml
 _v: 1
-reference_height: 1080
-line: { font: mykit:fonts/Line.otf, size: 20, outline: { size: 3, colour: 0xFF000000 },
-        anchor: [0.5, 0.5], alignment: [0.5, 0], offset: [0, 328] }
-name: { font: mykit:fonts/Name.otf, size: 22, colour: 0xFF000000, outline: { size: 3, colour: 0xFFFFFFFF },
-        anchor: [0.5, 0.5], offset: [-425, 273] }
-fade_in: { text: [[0, 0], [0.2, 1]], slide: [[0, 100], [0.2, 0]], interp: cubic }     # in from the right
-fade_out: { text: [[0, 1], [0.2, 0]], slide: [[0, 0], [0.2, -100]], interp: cubic }   # out to the left
+widget: mykit:hud/subtitles          # a widget asset
+line: Txt_Line                       # the text block a line is set into
+name: Txt_Name                       # optional: the speaker's name
+with_name: [Img_Underline]           # optional: shown only while a line has a speaker
+show: mykit:hud/subtitles/in         # sequences of the widget's role, `widget`
+hide: mykit:hud/subtitles/out
 ```
 
-A widget with a bar behind its text adds a `band`, and animates its alpha as the text's:
-
-```yaml
-band: { colour: 0x80030305, anchor: [0.5, 0.5], height: 200, offset: [0, 330] }
-fade_in: { band: [[0, 0], [0.067, 1]], text: [[0.167, 0], [0.3, 1]] }
-```
-
-- **Units.** A size is in points at 96 DPI (Slate's); everything else is in UI units. A text block sits at `anchor` on
-  the screen (0 to 1), moved by `offset`, less `alignment` of its own size.
-- **Animation keys** are `[seconds, value]`:
-  - `text` and `band` are an alpha; `slide` is a move along x in UI units.
-  - They are linear by default. `interp: cubic` eases them as Unreal's curves with automatic tangents, so two keys
-    are a smoothstep.
-- **One line at a time:** a new one waits for the last to animate out.
-- **A file that does not validate** fails the kit's registration, naming each issue.
+- **One line at a time:** a new one plays the last one's `hide`, then its own `show`.
+- **`show` and `hide`** are sequences whose role, `widget` (`kind: caster`), is the widget; their tracks bind its
+  parts by name, as any widget animation.
+- **A file that does not validate** fails the kit's registration, naming each issue; a name the widget lacks fails
+  the first line drawn.
 
 ---
 

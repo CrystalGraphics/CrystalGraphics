@@ -72,7 +72,11 @@ final class CgAssetValidation {
                     return;
                 }
                 for (Map.Entry<?, ?> e : ((Map<?, ?>) v).entrySet()) {
-                    value(t.element(), null, e.getValue(), at.key(String.valueOf(e.getKey())), ids);
+                    String key = String.valueOf(e.getKey());
+                    if (t.key() != null && t.key().pattern() != null && !matches(t.key(), key)) {
+                        shape(at.key(key), "a key matching " + t.key().pattern(), key);
+                    }
+                    value(t.element(), null, e.getValue(), at.key(key), ids);
                 }
                 return;
             case ONE_OF:

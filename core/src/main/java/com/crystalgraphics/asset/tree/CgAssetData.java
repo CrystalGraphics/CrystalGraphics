@@ -11,6 +11,7 @@ import java.util.function.Consumer;
 
 import javax.annotation.Nullable;
 
+import com.crystalgraphics.object.CgProperty;
 import com.crystalgraphics.object.CgType;
 import com.crystalgraphics.object.CgValueType;
 import com.crystalgraphics.object.validate.CgValidation;
@@ -29,7 +30,8 @@ import com.crystalgraphics.object.validate.CgValidation;
  *
  * <ul>
  *   <li>Maps merge by key; id lists by {@code id}, a new id placed by {@code after:} or {@code before:}, else
- *       appended; {@code remove:} drops inherited elements; plain lists and value forms replace whole.</li>
+ *       appended; {@code remove:} drops inherited elements, or an entry of the kind's own maps by its key; plain
+ *       lists and value forms replace whole.</li>
  *   <li>A child's {@code units} are its parent's: declaring others throws.</li>
  *   <li>The parent must be resolved first, and of the same kind.</li>
  * </ul>
@@ -91,7 +93,7 @@ public final class CgAssetData {
         Object remove = file.get(CgType.REMOVE);
         if (remove instanceof List) {
             for (Object r : (List<?>) remove) {
-                if (!(r instanceof String) || !removeElement(merged, (String) r)) {
+                if (!(r instanceof String) || !removeElement(merged, (String) r) && !removeKey(merged, (String) r)) {
                     throw new CgAssetException(id + " removes " + r + ", which " + parent.id + " does not hold");
                 }
             }
@@ -343,6 +345,21 @@ public final class CgAssetData {
         }
         for (CgAssetNode e : n.elements) {
             if (removeElement(e, target)) return true;
+        }
+        return false;
+    }
+
+    /** Drops the inherited entry {@code target} of one of the kind's own maps ({@code mapOf}): a widget by its name. */
+    private boolean removeKey(CgAssetNode root, String target) {
+        for (CgProperty p : kind.properties()) {
+            if (p.type().kind() != CgValueType.Kind.MAP) continue;
+            CgAssetNode map = root.get(p.name());
+            CgAssetNode entry = map == null ? null : map.fields.get(target);
+            if (entry != null && entry.origin != CgOrigin.ADDED) {
+                entry.origin = CgOrigin.REMOVED;
+                entry.from = id;
+                return true;
+            }
         }
         return false;
     }

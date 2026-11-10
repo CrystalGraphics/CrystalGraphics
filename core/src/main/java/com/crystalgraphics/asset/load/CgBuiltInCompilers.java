@@ -10,6 +10,7 @@ import com.crystalgraphics.cue.CgCueDefinition;
 import com.crystalgraphics.render.post.stage.CgStageDefinition;
 import com.crystalgraphics.sequence.definition.CgSequenceDefinition;
 import com.crystalgraphics.text.style.CgTextStyle;
+import com.crystalgraphics.widget.CgWidgetCodec;
 
 /**
  * Registers the engine's own kind compilers: materials, parameter collections, curves, camera rigs and shakes, sequences, skeletons, cues, stages and text styles. Runs on both sides,
@@ -42,5 +43,6 @@ public final class CgBuiltInCompilers {
         CgCueDefinition.register();
         CgStageDefinition.register();
         CgTextStyle.register();
+        CgWidgetCodec.register();
     }
 }
