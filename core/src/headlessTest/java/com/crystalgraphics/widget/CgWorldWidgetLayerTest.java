@@ -3,6 +3,7 @@ package com.crystalgraphics.widget;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertSame;
+import static org.junit.Assert.assertTrue;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -18,6 +19,7 @@ import com.crystalgraphics.asset.codec.CgAssetYaml;
 import com.crystalgraphics.asset.kind.CgSequenceKinds;
 import com.crystalgraphics.asset.tree.CgAssetData;
 import com.crystalgraphics.frame.CgWorld;
+import com.crystalgraphics.sequence.CgSequencePlayer;
 import com.crystalgraphics.sequence.CgSequencer;
 import com.crystalgraphics.sequence.definition.CgSequenceDefinition;
 import com.crystalgraphics.text.style.CgTextStyle;
@@ -49,6 +51,12 @@ public class CgWorldWidgetLayerTest {
     private static CgSequenceDefinition fade() {
         return CgSequenceDefinition.compile(
                 CgAssetData.of("mymod:fade", CgSequenceKinds.SEQUENCE, (Map<?, ?>) CgAssetYaml.read(FADE), null));
+    }
+
+    /** The image fades out by 0.4 s; its section runs to the sequence's end at 0.5 s. */
+    private static CgSequenceDefinition fadeOut() {
+        return CgSequenceDefinition.compile(CgAssetData.of("mymod:fade_out", CgSequenceKinds.SEQUENCE, (Map<?, ?>) CgAssetYaml.read(
+                FADE.replace("[[0, 0.0, linear], [500, 1.0, linear]]", "[[0, 1.0, linear], [400, 0.0, linear]]")), null));
     }
 
     private static CgAttachment at(double x, double y, double z) {
@@ -154,6 +162,18 @@ public class CgWorldWidgetLayerTest {
         assertEquals(0, layer.live());
         assertEquals(1, layer.pool().inactive());
         assertSame("the next one reuses its instance", widget, layer.add(TREE, at(0, 0, 1)).widget());
+    }
+
+    @Test
+    public void aFinishedAnimationHoldsItsLastFrame() {
+        CgSequencer sequencer = CgSequencer.widgets(new CgWorld());
+        CgUserWidget widget = TREE.newInstance();
+        CgSequencePlayer player = sequencer.play(fadeOut(), Map.of("number", widget));
+        sequencer.evaluate(0f);
+        sequencer.evaluate(1f);
+        assertTrue(player.finished());
+        // UMG's last valid frame: the fade's sections still in force, never the designer's opacity of 1 put back.
+        assertEquals(0f, widget.colour(TREE.index("Img")).a(), 1e-4f);
     }
 
     @Test

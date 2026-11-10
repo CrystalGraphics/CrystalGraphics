@@ -17,6 +17,7 @@ import com.crystalgraphics.net.object.CgPredictionKey;
 import com.crystalgraphics.asset.tree.CgAssetException;
 import com.crystalgraphics.object.value.CgQuantity;
 import com.crystalgraphics.object.value.CgUnits;
+import com.crystalgraphics.sequence.time.CgFrameRate;
 import com.crystalgraphics.sequence.time.CgFrameTime;
 import com.crystalgraphics.sequence.time.CgSequenceEvaluationRange;
 import com.crystalgraphics.sequence.time.CgSequencePlaybackPosition;
@@ -1062,7 +1063,8 @@ public final class CgSequencePlayer {
             }
         }
         seconds = target;
-        if (seconds >= length) {
+        boolean ends = seconds >= length;
+        if (ends) {
             seconds = length;
             finished = true;
         } else if (seconds < 0) {
@@ -1070,6 +1072,13 @@ public final class CgSequencePlayer {
         }
         passEnd = seconds;
         passRemaining = Math.max(0, target - seconds);
+        if (ends && sequencer.role() == CgSequencer.Role.WIDGETS) {
+            // UMG holds a finished widget animation on its last valid frame (UMGSequencePlayer.cpp:80-86): its sections
+            // stay in force and nothing is restored until it is stopped. At the end itself they would have ended.
+            long last = CgFrameRate.convert(CgFrameTime.of(definition.end() - 1, 0.99999994f), definition.tickResolution(),
+                    definition.displayRate());
+            return position.playTo(last, CgSequenceEvaluationRange.Direction.FORWARDS);
+        }
         return position.playToSeconds(seconds);
     }
 
