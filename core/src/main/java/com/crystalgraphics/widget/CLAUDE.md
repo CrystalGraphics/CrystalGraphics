@@ -17,7 +17,7 @@ parts animated by name on the widget sequencer. **Using it**: `docs/WIDGETS.md`.
 | `CgUiScale` | a kit's `ui.yaml`, `UUserInterfaceSettings`' DPI curve |
 | `CgWorldWidgetLayer`, `CgWidgetComponent` | widgets following points in the world (`SWorldWidgetScreenLayer`, a screen-space `UWidgetComponent`): queued, started at the layer's `PLAYS` tick, placed by pivot and draw size at the projected point, nearer last, retained then painted at `HUD`'s `WORLD_WIDGETS`; released when their sequence ends or the level changes |
 | `CgUserWidgetPool` | `FUserWidgetPool`: instances by tree, handed back reset |
-| `CgViewportWidgetLayer` | widgets on the screen (`AddToViewport`): each laid out at the whole screen in its kit's UI units, painted by z-order, all retained before any paints, taken off at a level change; drawn on `HUD` at `VIEWPORT_WIDGETS` |
+| `CgScreenWidgetLayer` | widgets on the screen (`AddToViewport`): each laid out at the whole screen in its kit's UI units, painted by z-order, all retained before any paints, taken off at a level change; drawn on `HUD` at `VIEWPORT_WIDGETS` |
 
 ## Rules
 
@@ -39,4 +39,4 @@ parts animated by name on the widget sequencer. **Using it**: `docs/WIDGETS.md`.
 - **A kind is added only where a game's widget needs it** (the census in the format's widget section); one the engine
   cannot draw fails at load, by name, never draws as something else.
 - Headless: layout and the codec need no GL and no fonts (a test answers `CgWidgetPainter.layout`); only
-  `CgCanvasWidgetPainter` draws. Gates: `CgUserWidgetTest`, `CgWidgetCodecTest`, `CgWorldWidgetLayerTest`, `CgViewportWidgetLayerTest`.
+  `CgCanvasWidgetPainter` draws. Gates: `CgUserWidgetTest`, `CgWidgetCodecTest`, `CgWorldWidgetLayerTest`, `CgScreenWidgetLayerTest`.

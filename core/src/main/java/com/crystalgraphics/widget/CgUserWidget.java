@@ -189,7 +189,7 @@ public final class CgUserWidget implements CgSequenceTarget {
      * <ul>
      *   <li>A finished animation keeps what it wrote and retires, as UMG's does: another on the same properties then
      *       writes them alone.</li>
-     *   <li>Its world is its layer's ({@link CgViewportWidgetLayer}, {@link CgWorldWidgetLayer}), else the client's.</li>
+     *   <li>Its world is its layer's ({@link CgScreenWidgetLayer}, {@link CgWorldWidgetLayer}), else the client's.</li>
      *   <li>Several animations play at once on different properties; two writing one property blend as the sequencer
      *       blends them.</li>
      * </ul>

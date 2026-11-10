@@ -25,7 +25,7 @@ import com.crystalgraphics.sequence.definition.CgSequenceDefinition;
 import com.crystalgraphics.text.style.CgTextStyle;
 
 /** Screen widgets by z-order, off at a level change; a widget's own animations: one player each, heard at each end. */
-public class CgViewportWidgetLayerTest {
+public class CgScreenWidgetLayerTest {
 
     /** One image of {@code width}, so a painted widget is known by its width. */
     private static CgWidgetTree tree(float width) {
@@ -94,11 +94,11 @@ public class CgViewportWidgetLayerTest {
         }
     }
 
-    private static CgViewportWidgetLayer layer(CgWorld world) {
-        return CgViewportWidgetLayer.builder("mymod:hud").world(world).detached();
+    private static CgScreenWidgetLayer layer(CgWorld world) {
+        return CgScreenWidgetLayer.builder("mymod:hud").world(world).detached();
     }
 
-    private static List<Float> painted(CgViewportWidgetLayer layer) {
+    private static List<Float> painted(CgScreenWidgetLayer layer) {
         Widths widths = new Widths();
         layer.paint(widths, 1920f, 1080f, 1f);
         return widths.widths;
@@ -106,7 +106,7 @@ public class CgViewportWidgetLayerTest {
 
     @Test
     public void higherZOrdersPaintOverLowerAndEqualOnesInTheOrderAdded() {
-        CgViewportWidgetLayer layer = layer(new CgWorld());
+        CgScreenWidgetLayer layer = layer(new CgWorld());
         layer.add(tree(30f).newInstance(), 5);
         layer.add(tree(10f).newInstance(), 0);
         layer.add(tree(20f).newInstance(), 0);
@@ -115,7 +115,7 @@ public class CgViewportWidgetLayerTest {
 
     @Test
     public void addedAgainItMovesAndRemovedItIsGone() {
-        CgViewportWidgetLayer layer = layer(new CgWorld());
+        CgScreenWidgetLayer layer = layer(new CgWorld());
         CgUserWidget low = tree(10f).newInstance(), high = tree(20f).newInstance();
         layer.add(low, 0).add(high, 1);
         layer.add(low, 2);
@@ -128,7 +128,7 @@ public class CgViewportWidgetLayerTest {
 
     @Test
     public void aLevelChangeTakesEveryWidgetOff() {
-        CgViewportWidgetLayer layer = layer(new CgWorld());
+        CgScreenWidgetLayer layer = layer(new CgWorld());
         layer.level(4);
         layer.add(tree(10f).newInstance(), 0);
         layer.level(4);

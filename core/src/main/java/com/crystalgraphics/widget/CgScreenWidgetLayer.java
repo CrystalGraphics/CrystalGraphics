@@ -21,7 +21,7 @@ import com.crystalgraphics.world.CgWorldQueries;
  *
  * <pre>{@code
  * // once, client side: a HUD of your own
- * static final CgViewportWidgetLayer HUD = CgViewportWidgetLayer.builder("mymod:hud").kit("mymod").build();
+ * static final CgScreenWidgetLayer HUD = CgScreenWidgetLayer.builder("mymod:hud").kit("mymod").build();
  *
  * // made once, shown and hidden as often as needed
  * CgUserWidget counter = COUNTER.loaded().newInstance();
@@ -48,7 +48,7 @@ import com.crystalgraphics.world.CgWorldQueries;
  *   <li>Client, the render thread; it draws on {@link CgRenderStage#HUD} at {@link Builder#order}.</li>
  * </ul>
  */
-public final class CgViewportWidgetLayer implements AutoCloseable {
+public final class CgScreenWidgetLayer implements AutoCloseable {
 
     private final String id;
     @Nullable
@@ -70,7 +70,7 @@ public final class CgViewportWidgetLayer implements AutoCloseable {
     private final Matrix4f placement = new Matrix4f();
     private int epoch = Integer.MIN_VALUE;
 
-    private CgViewportWidgetLayer(Builder b, boolean onHud) {
+    private CgScreenWidgetLayer(Builder b, boolean onHud) {
         this.id = b.id;
         this.kit = b.kit;
         this.retainedScale = b.retainedScale;
@@ -95,7 +95,7 @@ public final class CgViewportWidgetLayer implements AutoCloseable {
      * Puts {@code widget} on the screen at {@code zOrder}, over every lower one and every equal one already there: UMG's
      * {@code AddToViewport}. Already on it, it moves to {@code zOrder}.
      */
-    public CgViewportWidgetLayer add(CgUserWidget widget, int zOrder) {
+    public CgScreenWidgetLayer add(CgUserWidget widget, int zOrder) {
         Objects.requireNonNull(widget, "widget");
         remove(widget);
         widget.world(world());
@@ -225,13 +225,13 @@ public final class CgViewportWidgetLayer implements AutoCloseable {
         }
 
         /** The layer, drawing on the HUD from now. */
-        public CgViewportWidgetLayer build() {
-            return new CgViewportWidgetLayer(this, true);
+        public CgScreenWidgetLayer build() {
+            return new CgScreenWidgetLayer(this, true);
         }
 
         /** The layer drawing nowhere: driven by a test through {@code level} and {@code paint}. */
-        CgViewportWidgetLayer detached() {
-            return new CgViewportWidgetLayer(this, false);
+        CgScreenWidgetLayer detached() {
+            return new CgScreenWidgetLayer(this, false);
         }
     }
 }

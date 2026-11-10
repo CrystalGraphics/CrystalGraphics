@@ -20079,27 +20079,27 @@ com/crystalgraphics/widget/CgUserWidgetPool
   method public release (Lcom/crystalgraphics/widget/CgUserWidget;)V
   method public releaseAll ()V
   method public reset ()V
-com/crystalgraphics/widget/CgViewportWidgetLayer
+com/crystalgraphics/widget/CgScreenWidgetLayer
   access public,final
   extends java/lang/Object
   implements java/lang/AutoCloseable
-  method public add (Lcom/crystalgraphics/widget/CgUserWidget;I)Lcom/crystalgraphics/widget/CgViewportWidgetLayer;
+  method public add (Lcom/crystalgraphics/widget/CgUserWidget;I)Lcom/crystalgraphics/widget/CgScreenWidgetLayer;
   method public clear ()V
   method public close ()V
   method public contains (Lcom/crystalgraphics/widget/CgUserWidget;)Z
   method public id ()Ljava/lang/String;
   method public remove (Lcom/crystalgraphics/widget/CgUserWidget;)Z
   method public size ()I
-  method public,static builder (Ljava/lang/String;)Lcom/crystalgraphics/widget/CgViewportWidgetLayer$Builder;
-com/crystalgraphics/widget/CgViewportWidgetLayer$Builder
+  method public,static builder (Ljava/lang/String;)Lcom/crystalgraphics/widget/CgScreenWidgetLayer$Builder;
+com/crystalgraphics/widget/CgScreenWidgetLayer$Builder
   access public,final
   extends java/lang/Object
-  method public build ()Lcom/crystalgraphics/widget/CgViewportWidgetLayer;
-  method public kit (Ljava/lang/String;)Lcom/crystalgraphics/widget/CgViewportWidgetLayer$Builder;
-  method public order (I)Lcom/crystalgraphics/widget/CgViewportWidgetLayer$Builder;
-  method public retainedScale (F)Lcom/crystalgraphics/widget/CgViewportWidgetLayer$Builder;
-  method public retaining (FFF)Lcom/crystalgraphics/widget/CgViewportWidgetLayer$Builder;
-  method public world (Lcom/crystalgraphics/frame/CgWorld;)Lcom/crystalgraphics/widget/CgViewportWidgetLayer$Builder;
+  method public build ()Lcom/crystalgraphics/widget/CgScreenWidgetLayer;
+  method public kit (Ljava/lang/String;)Lcom/crystalgraphics/widget/CgScreenWidgetLayer$Builder;
+  method public order (I)Lcom/crystalgraphics/widget/CgScreenWidgetLayer$Builder;
+  method public retainedScale (F)Lcom/crystalgraphics/widget/CgScreenWidgetLayer$Builder;
+  method public retaining (FFF)Lcom/crystalgraphics/widget/CgScreenWidgetLayer$Builder;
+  method public world (Lcom/crystalgraphics/frame/CgWorld;)Lcom/crystalgraphics/widget/CgScreenWidgetLayer$Builder;
 com/crystalgraphics/widget/CgWidget
   access public,final
   extends java/lang/Object

@@ -15,7 +15,7 @@ It comes in layers. Take the first that does what you need:
 | Layer | For | Section |
 |---|---|---|
 | **`CgWorldWidgetLayer`** | a widget over a point in the world, following it: a damage number, a name plate, a marker | [7](#7-over-a-point-in-the-world-a-world-widget-layer) |
-| **`CgViewportWidgetLayer`** | a widget on the screen: a HUD panel, a combo counter | [8](#8-on-the-screen-a-viewport-widget-layer) |
+| **`CgScreenWidgetLayer`** | a widget on the screen: a HUD panel, a combo counter | [8](#8-on-the-screen-a-viewport-widget-layer) |
 | **`CgUserWidget`** with a `CgCanvasWidgetPainter` | an instance you place and paint yourself | [8](#8-on-the-screen-a-viewport-widget-layer) |
 
 ---
@@ -338,7 +338,7 @@ plate.remove();                             // it plays nothing, so it stays unt
 
 ## 8. On the screen: a viewport widget layer
 
-A widget on the screen goes on a `CgViewportWidgetLayer`, UMG's viewport: `AddToViewport` puts a widget in a
+A widget on the screen goes on a `CgScreenWidgetLayer`, UMG's viewport: `AddToViewport` puts a widget in a
 full-screen canvas at a z-order, `RemoveFromParent` takes it off. It fills the screen in **UI units**: the screen's
 pixels over the kit's UI scale, as `AddToViewport` sizes a user widget over its DPI scale, so its root canvas's
 anchors are fractions of the screen and hold at any window size. A kit sets the scale in `ui.yaml`; without one it is
@@ -353,7 +353,7 @@ application_scale: 1
 ```
 
 ```java
-static final CgViewportWidgetLayer HUD = CgViewportWidgetLayer.builder("mymod:hud").kit("mymod").build();
+static final CgScreenWidgetLayer HUD = CgScreenWidgetLayer.builder("mymod:hud").kit("mymod").build();
 
 CgUserWidget counter = COUNTER.loaded().newInstance();   // made once, shown and hidden as often as needed
 HUD.add(counter, 0);                                     // drawn from this frame, over lower z-orders
@@ -409,11 +409,11 @@ banner.playAnimation(OUT.loaded());
 |---|---|
 | `widget.CgWidgetTree`, `CgWidget`, `CgWidgetSlot`, `CgWidgetBrush`, `CgLinearColour` | the tree as designed, its builders |
 | `widget.CgUserWidget` | an instance: live state, Slate's layout, retain and paint, a sequence target, its own animations |
-| `widget.CgViewportWidgetLayer` | widgets on the screen, by z-order |
+| `widget.CgScreenWidgetLayer` | widgets on the screen, by z-order |
 | `widget.CgWorldWidgetLayer`, `CgWidgetComponent`, `CgUserWidgetPool` | widgets over points in the world, and the pool |
 | `widget.CgWidgetPainter`, `CgCanvasWidgetPainter` | where leaves go: the canvas, retained images, UI materials |
 | `widget.CgUiScale` | a kit's `ui.yaml`, Unreal's DPI curve |
 | `widget.CgWidgetCodec`, `CgWidgetPreparer`; `text.style.CgTextStylePreparer` | the asset's compiler; what makes it READY |
 | `sequence.CgSequencer` (`widgets(world)`) | the widget sequencer |
 
-Package guide: `widget/CLAUDE.md`. Gates: `CgUserWidgetTest`, `CgWidgetCodecTest`, `CgWorldWidgetLayerTest`, `CgViewportWidgetLayerTest`.
+Package guide: `widget/CLAUDE.md`. Gates: `CgUserWidgetTest`, `CgWidgetCodecTest`, `CgWorldWidgetLayerTest`, `CgScreenWidgetLayerTest`.
