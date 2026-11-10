@@ -552,7 +552,7 @@ public final class CgTextBatch {
         // An outline the tier cannot draw resolves to none here, so a style may always have one.
         float outlineTexels = outline != null && wantMsdf ? outline.width() * unit * texelsPerLocal : 0f;
         float outlineAlign = outline != null ? alignOf(outline) : CgTextDraw.ALIGN_OUTSET;
-        gatherLayers(draw, unit);
+        gatherLayers(draw, unit, wantMsdf ? CgTextLayer.MAX_FIELD_WIDTH_EM * fontKey.getTargetPx() : Float.MAX_VALUE);
 
         if (shadowList.count() > 0 && glyphCount > 0) {
             try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT_DETAIL, "draw.planShadows")) {
@@ -611,8 +611,12 @@ public final class CgTextBatch {
     /**
      * This draw's layers as the quad loop reads them: each shadow layer into {@link #shadowList}, in the style's local
      * pixels; each gradient's ramp row; each outline's ring or grown glyph. Indexed loops: nothing allocated.
+     *
+     * @param fieldReach the widest outline, in local pixels, every glyph's field carries: a grown-glyph outline wider
+     *                   than it joins the shadows, as a spread with no offset or blur, so each glyph draws it from its
+     *                   field where it fits and from a true-distance cell where it does not, never clamped
      */
-    private void gatherLayers(CgTextDraw draw, float unit) {
+    private void gatherLayers(CgTextDraw draw, float unit, float fieldReach) {
         List<CgTextLayer> layers = draw.style.layers();
         int n = layers.size();
         if (layerShadow.length < n) {
@@ -621,7 +625,10 @@ public final class CgTextBatch {
             layerRing = new boolean[n * 2];
         }
         int shadows = 0;
-        for (int i = 0; i < n; i++) if (layers.get(i).kind() == CgTextLayer.Kind.SHADOW) shadows++;
+        for (int i = 0; i < n; i++) {
+            layerRing[i] = ring(layers, i);
+            if (layers.get(i).kind() == CgTextLayer.Kind.SHADOW || grownPastField(layers.get(i), layerRing[i], unit, fieldReach)) shadows++;
+        }
         shadowList.clear();
         shadowList.count(shadows);
         int s = 0;
@@ -629,15 +636,30 @@ public final class CgTextBatch {
             CgTextLayer l = layers.get(i);
             layerShadow[i] = -1;
             layerRow[i] = l.paint().kind() == CgTextPaint.Kind.GRADIENT ? CgTextGradients.row(l.paint()) : 0f;
-            layerRing[i] = ring(layers, i);
-            if (l.kind() != CgTextLayer.Kind.SHADOW) continue;
-            shadowList.set(s, l.offsetX() * unit, l.offsetY() * unit, l.blur() * unit, l.spread() * unit,
-                    layerArgb(draw.rgba, l), l.inset(), l.outlined());
+            if (l.kind() == CgTextLayer.Kind.SHADOW) {
+                shadowList.set(s, l.offsetX() * unit, l.offsetY() * unit, l.blur() * unit, l.spread() * unit,
+                        layerArgb(draw.rgba, l), l.inset(), l.outlined());
+            } else if (grownPastField(l, layerRing[i], unit, fieldReach)) {
+                shadowList.set(s, 0f, 0f, 0f, l.width() * unit, layerArgb(draw.rgba, l), false, false);
+            } else {
+                continue;
+            }
             int scope = draw.scopeOf(i);
             if (scope >= 0) shadowList.scope(s, scope);
             layerShadow[i] = s++;
         }
         if (draw.glyphScopes != null) shadowList.glyphScopes(draw.glyphScopes);
+    }
+
+    /**
+     * Whether {@code l} is an outline under a fill wider than every glyph's field carries, which a shadow's spread draws
+     * the same: the glyph grown by the true distance, as Slate's round-joined stroke. A ring, a mitre, a gradient or
+     * material, or an additive outline has no shadow form and stays at the field's width.
+     */
+    private static boolean grownPastField(CgTextLayer l, boolean ring, float unit, float fieldReach) {
+        return l.kind() == CgTextLayer.Kind.OUTLINE && !ring && l.join() == CgTextLayer.Join.ROUND
+                && l.align() == CgTextLayer.Align.OUTSIDE && l.blend() == CgTextLayer.Blend.ALPHA
+                && l.paint().kind() == CgTextPaint.Kind.COLOUR && l.width() * unit > fieldReach;
     }
 
     /**
@@ -729,7 +751,7 @@ public final class CgTextBatch {
                         continue;
                     }
                     CgTextLayer l = layers.get(step);
-                    if (l.kind() == CgTextLayer.Kind.SHADOW) {
+                    if (layerShadow[step] >= 0) {
                         int shadow = layerShadow[step];
                         if (!shadowList.casts(shadow)) continue;
                         for (int i = 0; i < glyphCount; i++) {
@@ -785,7 +807,7 @@ public final class CgTextBatch {
                 int paint = window + CgTextSortKey.stageOf(key);
                 int step = steps[paint];
                 CgTextLayer layer = step >= 0 ? layers.get(step) : null;
-                int shadow = layer != null && layer.kind() == CgTextLayer.Kind.SHADOW ? layerShadow[step] : -1;
+                int shadow = layer != null ? layerShadow[step] : -1;
 
                 CgGlyphPlacement p;
                 boolean isDistanceField;

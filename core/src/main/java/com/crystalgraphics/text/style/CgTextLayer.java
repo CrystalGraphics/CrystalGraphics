@@ -38,8 +38,11 @@ public final class CgTextLayer {
      * applies.
      *
      * <ul>
-     *   <li>An outline reads the stored field, which saturates past its range; the shader clamps a wider one to what
-     *       the field holds, a pixel short of saturation, rather than filling the glyph's cell.</li>
+     *   <li>A wider outline under a fill (round, outside, a colour) is drawn at its full width as a shadow's spread: from
+     *       the field where the glyph's band reaches, from a true-distance cell where it does not. A Japanese face's
+     *       Latin draws a 3 px outline at 22 px this way.</li>
+     *   <li>Any other outline reads the stored field, which saturates past its range: the shader clamps one wider than
+     *       its band to what the field holds, a pixel short of saturation, rather than filling the glyph's cell.</li>
      *   <li>Path stroking is not the way past it: FreeType's stroker self-intersects in tight concavities. Widening
      *       the stored range is. @see CgStrokeFieldRangeTest</li>
      *   <li>An outline pulls its draw onto the distance-field tier down to the size the field can antialias
