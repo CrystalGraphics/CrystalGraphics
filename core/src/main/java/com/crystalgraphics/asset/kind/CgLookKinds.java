@@ -271,6 +271,12 @@ public final class CgLookKinds {
             .property("brush_colour", VEC4).forms(CgValueForm.CONSTANT)
             .property("content_colour_and_opacity", VEC4).forms(CgValueForm.CONSTANT)
             .register();
+    /** {@code UScaleBox}: only its {@code UserSpecified} stretch is drawn, so a file names it. */
+    static final CgType WIDGET_SCALE_BOX = widget("scale_box")
+            .property("content", WIDGET_NAME)
+            .property("stretch", CgValueType.enumOf("user_specified")).required()
+            .property("user_specified_scale", FLOAT).forms(CgValueForm.CONSTANT).range(0, null).defaultValue(1.0)
+            .register();
     static final CgType WIDGET_RETAINER_BOX = widget("retainer_box")
             .property("content", WIDGET_NAME)
             .property("effect", hard("material"))

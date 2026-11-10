@@ -144,8 +144,10 @@ public final class CgWidgetTree {
         alignment[i * 2] = or(s.alignment[0], 0f);
         alignment[i * 2 + 1] = or(s.alignment[1], 0f);
         autoSize[i] = Boolean.TRUE.equals(s.autoSize);
-        horizontal[i] = s.horizontal != null ? s.horizontal : CgWidgetSlot.Align.FILL;
-        vertical[i] = s.vertical != null ? s.vertical : CgWidgetSlot.Align.FILL;
+        // UScaleBoxSlot centres its child; the other slots fill.
+        CgWidgetSlot.Align align = parentKind == CgWidget.Kind.SCALE_BOX ? CgWidgetSlot.Align.CENTRE : CgWidgetSlot.Align.FILL;
+        horizontal[i] = s.horizontal != null ? s.horizontal : align;
+        vertical[i] = s.vertical != null ? s.vertical : align;
         fills[i] = s.size == CgWidgetSlot.Size.FILL;
         fill[i] = s.fill;
     }

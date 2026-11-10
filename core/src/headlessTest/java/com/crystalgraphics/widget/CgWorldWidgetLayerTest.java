@@ -12,6 +12,7 @@ import java.util.Map;
 import org.joml.Matrix4f;
 import org.joml.Vector2f;
 import org.joml.Vector3f;
+import org.joml.Vector4fc;
 import org.junit.Test;
 
 import com.crystalgraphics.api.material.CgMaterialDefinition;
@@ -88,7 +89,7 @@ public class CgWorldWidgetLayerTest {
 
         @Override
         public void image(CgWidgetBrush brush, Matrix4f pose, float width, float height, float r, float g, float b,
-                          float a) {
+                          float a, Vector4fc parameters) {
             centres.add(pose.transformPosition(new Vector3f(width / 2f, height / 2f, 0f)));
         }
 
@@ -130,16 +131,16 @@ public class CgWorldWidgetLayerTest {
         assertEquals(2, layer.pool().active().size());
         assertEquals(1, layer.pool().inactive());
 
-        layer.tick(0, CgSequencer.widgets(world));
+        layer.tick(0);
         assertEquals(2, layer.live());
         assertEquals(State.LIVE, c[3].state());
         assertEquals(State.LIVE, c[4].state());
 
         CgWidgetComponent sixth = layer.add(TREE, at(0, 0, 1));
-        layer.tick(0, CgSequencer.widgets(world));
+        layer.tick(0);
         assertEquals("no place: it waits", State.QUEUED, sixth.state());
         c[4].remove();
-        layer.tick(0, CgSequencer.widgets(world));
+        layer.tick(0);
         assertEquals(State.LIVE, sixth.state());
     }
 
@@ -148,16 +149,16 @@ public class CgWorldWidgetLayerTest {
         CgWorld world = new CgWorld();
         CgSequencer sequencer = CgSequencer.widgets(world);
         CgWorldWidgetLayer layer = layer(world, 8, 8);
-        CgWidgetComponent pop = layer.add(TREE, at(0, 0, 1)).play(fade(), "number");
+        CgWidgetComponent pop = layer.add(TREE, at(0, 0, 1)).play(fade());
         CgUserWidget widget = pop.widget();
-        layer.tick(0, sequencer);
+        layer.tick(0);
         assertNotNull("its sequence started with it", pop.player());
         sequencer.evaluate(0f);
-        layer.tick(0, sequencer);
+        layer.tick(0);
         assertEquals(State.LIVE, pop.state());
 
         sequencer.evaluate(1f);
-        layer.tick(0, sequencer);
+        layer.tick(0);
         assertEquals(State.RELEASED, pop.state());
         assertEquals(0, layer.live());
         assertEquals(1, layer.pool().inactive());
@@ -182,7 +183,7 @@ public class CgWorldWidgetLayerTest {
         CgWorldWidgetLayer layer = layer(world, 8, 8);
         layer.add(TREE, at(1, 0, 10)).drawSize(100f, 40f);
         layer.add(TREE, at(2, 0, 5)).drawSize(100f, 40f).pivot(0f, 0f);
-        layer.tick(0, CgSequencer.widgets(world));
+        layer.tick(0);
 
         assertEquals(2, layer.gather(CgWorldWidgetLayerTest::project, 0, 0, 0));
         Centres painter = new Centres();
@@ -207,7 +208,7 @@ public class CgWorldWidgetLayerTest {
             point[2] = 4;
             return true;
         }).drawSize(100f, 40f);
-        layer.tick(0, CgSequencer.widgets(world));
+        layer.tick(0);
         assertEquals(1, layer.gather(CgWorldWidgetLayerTest::project, 0, 0, 0));
         layer.paint(new Centres(), 1f);
         gone[0] = true;
@@ -222,9 +223,9 @@ public class CgWorldWidgetLayerTest {
         CgWorld world = new CgWorld();
         CgWorldWidgetLayer layer = layer(world, 8, 8);
         layer.add(TREE, at(0, 0, 1));
-        layer.tick(4, CgSequencer.widgets(world));
+        layer.tick(4);
         CgWidgetComponent waiting = layer.add(TREE, at(0, 0, 1));
-        layer.tick(5, CgSequencer.widgets(world));
+        layer.tick(5);
         assertEquals(0, layer.live());
         assertEquals(State.RELEASED, waiting.state());
         assertEquals(0, layer.pool().active().size());

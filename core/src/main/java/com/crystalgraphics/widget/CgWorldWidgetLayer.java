@@ -17,7 +17,6 @@ import com.crystalgraphics.render.canvas.CgCanvasMaterials;
 import com.crystalgraphics.render.stage.CgHostView;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.stage.CgStageFrame;
-import com.crystalgraphics.sequence.CgSequencer;
 import com.crystalgraphics.world.CgAttachment;
 import com.crystalgraphics.world.CgWorldQueries;
 
@@ -39,7 +38,7 @@ import com.crystalgraphics.world.CgWorldQueries;
  * // a hit: added, set up, and released when its sequence ends
  * CgWidgetComponent pop = NUMBERS.add(POP.loaded(), CgEntityAttachments.of(targetId));
  * pop.widget().text(NUMBER, "1,250");
- * pop.play(NORMAL_TEXT.loaded(), "number");
+ * pop.play(NORMAL_TEXT.loaded());
  * }</pre>
  *
  * <pre>{@code
@@ -130,7 +129,9 @@ public final class CgWorldWidgetLayer implements AutoCloseable {
         if (tick == null) {
             tick = world().schedule().add(CgTickGroup.PLAYS, id, dt -> tick()).whilePaused(true);
         }
-        CgWidgetComponent component = new CgWidgetComponent(this, pool.obtain(tree), attachment);
+        CgUserWidget widget = pool.obtain(tree);
+        widget.world(world());
+        CgWidgetComponent component = new CgWidgetComponent(this, widget, attachment);
         queued.add(component);
         if (queued.size() > mostWaiting) release(queued.get(0));
         return component;
@@ -180,10 +181,10 @@ public final class CgWorldWidgetLayer implements AutoCloseable {
 
     /** Its tick: releases what played out, then starts what waits, newest first. */
     private void tick() {
-        tick(CgWorldQueries.client().levelEpoch(), CgSequencer.widgets(world()));
+        tick(CgWorldQueries.client().levelEpoch());
     }
 
-    void tick(int levelEpoch, CgSequencer sequencer) {
+    void tick(int levelEpoch) {
         if (levelEpoch != epoch) {
             boolean first = epoch == Integer.MIN_VALUE;
             epoch = levelEpoch;
@@ -195,7 +196,7 @@ public final class CgWorldWidgetLayer implements AutoCloseable {
         while (live.size() < mostLive && !queued.isEmpty()) {
             CgWidgetComponent next = queued.remove(queued.size() - 1);
             live.add(next);
-            next.start(sequencer);
+            next.start();
         }
     }
 

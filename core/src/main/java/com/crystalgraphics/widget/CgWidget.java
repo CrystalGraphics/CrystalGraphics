@@ -15,7 +15,8 @@ import com.crystalgraphics.text.style.CgTextStyle;
 
 /**
  * One named widget of a {@link CgWidgetTree}, as designed: UMG's {@code UWidget}. Panels lay out their children (a
- * canvas by anchors, a horizontal box in a row, a border around one, a retainer box painting one as a single image);
+ * canvas by anchors, a horizontal box in a row, a border around one, a scale box scaling one, a retainer box painting
+ * one as a single image);
  * leaves draw (an image, a text block) or nest another tree (a user widget). Every widget has UMG's common properties: a render transform about a pivot, a render
  * opacity and a visibility.
  *
@@ -39,8 +40,9 @@ import com.crystalgraphics.text.style.CgTextStyle;
  *
  * <ul>
  *   <li>Names are unique in a tree: a sequence finds a widget by its name.</li>
- *   <li>A border and a retainer box hold one child; {@link Builder#child} a second time fails. Its padding, (4, 2) unless set, and
- *       alignment are its child's {@link CgWidgetSlot}, as UMG's {@code UBorderSlot}.</li>
+ *   <li>A border, a scale box and a retainer box hold one child; {@link Builder#child} a second time fails. Its
+ *       padding and alignment are its child's {@link CgWidgetSlot}: a border's pads (4, 2) unless set, as UMG's
+ *       {@code UBorderSlot}; a scale box's centres it, as {@code UScaleBoxSlot}.</li>
  *   <li>The pivot defaults to the middle (0.5, 0.5), UMG's, not Slate's corner.</li>
  *   <li>The angle is in degrees, clockwise on the y-down screen. Colours are linear ({@link CgLinearColour}).</li>
  * </ul>
@@ -55,6 +57,11 @@ public final class CgWidget {
         HORIZONTAL_BOX("horizontal_box", true),
         /** {@code UBorder}: a background brush around one child, padded, whose colour tints its content. */
         BORDER("border", true),
+        /**
+         * {@code UScaleBox} at {@code EStretch::UserSpecified}: one child, laid out and drawn at its scale, its own
+         * size the child's times that, so a row places it at the size it shows.
+         */
+        SCALE_BOX("scale_box", true),
         /**
          * {@code URetainerBox}: one child, filling it, painted at full opacity into an image of its own and drawn as
          * one quad, so what fades above it fades one picture; through its effect material where it has one.
@@ -134,6 +141,7 @@ public final class CgWidget {
     @Nullable final CgWidgetTree widget;
     @Nullable final CgMaterialDefinition effect;
     final String textureParameter;
+    final float userScale;
     final List<CgWidget> children;
 
     private CgWidget(Builder b) {
@@ -156,6 +164,7 @@ public final class CgWidget {
         widget = b.widget;
         effect = b.effect;
         textureParameter = b.textureParameter;
+        userScale = b.userScale;
         children = Collections.unmodifiableList(new ArrayList<>(b.children));
     }
 
@@ -179,6 +188,22 @@ public final class CgWidget {
     /** A retainer box: its one child painted as one image, drawn plain or through {@link Builder#effect}. */
     public static Builder retainerBox(String name) {
         return new Builder(Kind.RETAINER_BOX, name);
+    }
+
+    /**
+     * A scale box: its one child laid out and drawn at {@code scale}, taking that much of the room. UMG's
+     * {@code UScaleBox} with its stretch {@code UserSpecified}.
+     *
+     * <pre>{@code
+     * // HITS in the number's own style, at 46/110 of its size, sitting on the number's row at that size
+     * CgWidget.scaleBox("LabelBox", 46f / 110f).child(CgWidget.text("Label").style(NUMBER).text("HITS"))
+     * }</pre>
+     */
+    public static Builder scaleBox(String name, float scale) {
+        if (!(scale > 0f)) throw new IllegalArgumentException(name + ": a scale box's scale " + scale + " is not above 0");
+        Builder b = new Builder(Kind.SCALE_BOX, name);
+        b.userScale = scale;
+        return b;
     }
 
     /** A text block; it needs a {@link Builder#style}. */
@@ -282,6 +307,11 @@ public final class CgWidget {
         return textureParameter;
     }
 
+    /** A scale box's scale: its child's size and drawing multiplied by it. 1 for the rest. */
+    public float userScale() {
+        return userScale;
+    }
+
     public List<CgWidget> children() {
         return children;
     }
@@ -295,7 +325,7 @@ public final class CgWidget {
                 && brush.equals(w.brush) && Objects.equals(style, w.style) && text.equals(w.text)
                 && justification == w.justification && wrap == w.wrap && Objects.equals(widget, w.widget)
                 && Objects.equals(effect, w.effect) && textureParameter.equals(w.textureParameter)
-                && children.equals(w.children);
+                && userScale == w.userScale && children.equals(w.children);
     }
 
     @Override
@@ -329,6 +359,7 @@ public final class CgWidget {
         private CgWidgetTree widget;
         private CgMaterialDefinition effect;
         private String textureParameter = "Texture";
+        private float userScale = 1f;
         private final List<CgWidget> children = new ArrayList<>();
 
         private Builder(Kind kind, String name) {
@@ -446,7 +477,7 @@ public final class CgWidget {
         /** Adds a child after those added: later children of a box sit after, of a canvas draw over. */
         public Builder child(CgWidget child) {
             if (!kind.panel()) throw new IllegalArgumentException(name + ": a " + kind.id() + " holds no children");
-            if ((kind == Kind.BORDER || kind == Kind.RETAINER_BOX) && !children.isEmpty()) {
+            if ((kind == Kind.BORDER || kind == Kind.SCALE_BOX || kind == Kind.RETAINER_BOX) && !children.isEmpty()) {
                 throw new IllegalArgumentException(name + ": a " + kind.id() + " holds one child");
             }
             children.add(Objects.requireNonNull(child, "child"));

@@ -1,12 +1,10 @@
 package com.crystalgraphics.widget;
 
-import java.util.Map;
 import java.util.Objects;
 
 import javax.annotation.Nullable;
 
 import com.crystalgraphics.sequence.CgSequencePlayer;
-import com.crystalgraphics.sequence.CgSequencer;
 import com.crystalgraphics.sequence.definition.CgSequenceDefinition;
 import com.crystalgraphics.world.CgAttachment;
 
@@ -17,7 +15,7 @@ import com.crystalgraphics.world.CgAttachment;
  * <pre>{@code
  * CgWidgetComponent pop = NUMBERS.add(POP.loaded(), CgEntityAttachments.of(targetId));
  * pop.widget().text(NUMBER, "1,250").style(NUMBER, gold);   // set up before it shows
- * pop.play(NORMAL_TEXT.loaded(), "number");                  // starts with it; it is released when this ends
+ * pop.play(NORMAL_TEXT.loaded());                            // starts with it; it is released when this ends
  * }</pre>
  *
  * <pre>{@code
@@ -59,8 +57,6 @@ public final class CgWidgetComponent {
     float pivotY = 0.5f;
     @Nullable
     private CgSequenceDefinition sequence;
-    @Nullable
-    private String role;
     @Nullable
     private CgSequencePlayer player;
     State state = State.QUEUED;
@@ -104,15 +100,14 @@ public final class CgWidgetComponent {
     }
 
     /**
-     * Plays {@code definition} on it when it starts, its widget bound as {@code role}; when the sequence ends, the
+     * Plays {@code definition} on its widget when it starts ({@link CgUserWidget#playAnimation}); when it ends, the
      * component is released. Before it starts only.
      *
      * @throws IllegalStateException once it has started
      */
-    public CgWidgetComponent play(CgSequenceDefinition definition, String role) {
+    public CgWidgetComponent play(CgSequenceDefinition definition) {
         if (state != State.QUEUED) throw new IllegalStateException("a component's sequence is set before it starts");
         this.sequence = Objects.requireNonNull(definition, "definition");
-        this.role = Objects.requireNonNull(role, "role");
         return this;
     }
 
@@ -131,10 +126,10 @@ public final class CgWidgetComponent {
         layer.release(this);
     }
 
-    /** Starts it on {@code sequencer}: its layer's tick. */
-    void start(CgSequencer sequencer) {
+    /** Starts it: its layer's tick. */
+    void start() {
         state = State.LIVE;
-        if (sequence != null) player = sequencer.play(sequence, Map.of(role, widget));
+        if (sequence != null) player = widget.playAnimation(sequence);
     }
 
     /** Whether its sequence has played out: never for one that plays none. */
@@ -142,12 +137,9 @@ public final class CgWidgetComponent {
         return player != null && (player.finished() || player.stopped());
     }
 
-    /** Stops its player, which puts back what it wrote: as it is released. */
+    /** As it is released: its pool's reset stops what its widget plays, putting back what that wrote. */
     void stop() {
         state = State.RELEASED;
-        if (player != null) {
-            player.stop();
-            player = null;
-        }
+        player = null;
     }
 }

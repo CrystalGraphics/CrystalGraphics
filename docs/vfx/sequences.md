@@ -297,7 +297,7 @@ outline = new CgRoleOutline(goku.instance(), battleOutline, 1, "OutlineColorType
 @Override public int slot(String name) { return outline.slot(name); }   // set and get the same
 ```
 - **At its end a player holds its last frame** (`finished()`) until stopped; what its ended sections restored stays
-  restored.
+  restored. A widget animation instead retires there, keeping what it wrote (`retiring()`), as UMG's does.
 - **A kind of your own** is a `CgSequenceEvaluator`, registered on the sequencer: it binds each section once, then
   evaluates its kind's active sections across every player each frame.
 

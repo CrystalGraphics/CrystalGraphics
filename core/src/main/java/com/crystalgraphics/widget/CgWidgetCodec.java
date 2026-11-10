@@ -88,6 +88,13 @@ public final class CgWidgetCodec {
             case CANVAS -> CgWidget.canvas(name);
             case HORIZONTAL_BOX -> CgWidget.horizontalBox(name);
             case BORDER -> CgWidget.border(name);
+            case SCALE_BOX -> {
+                // UScaleBox's other stretches size by the room it is given; only a user scale is drawn.
+                if (!"user_specified".equals(m.get("stretch"))) {
+                    throw new CgAssetException(at + ".stretch: " + m.get("stretch") + " is not drawn; user_specified is");
+                }
+                yield CgWidget.scaleBox(name, num(m.get("user_specified_scale"), 1f));
+            }
             case RETAINER_BOX -> CgWidget.retainerBox(name);
             case IMAGE -> CgWidget.image(name);
             case TEXT_BLOCK -> CgWidget.text(name);
@@ -117,6 +124,9 @@ public final class CgWidgetCodec {
                 if (m.get("children") instanceof List<?> children) {
                     for (Object c : children) b.child(widget(id, String.valueOf(c), widgets, reached, deps));
                 }
+            }
+            case SCALE_BOX -> {
+                if (m.get("content") instanceof String c) b.child(widget(id, c, widgets, reached, deps));
             }
             case RETAINER_BOX -> {
                 if (m.get("effect") instanceof String effect) {
@@ -243,6 +253,11 @@ public final class CgWidgetCodec {
                 List<Object> children = new ArrayList<>();
                 for (CgWidget c : w.children()) children.add(c.name());
                 if (!children.isEmpty()) m.put("children", children);
+            }
+            case SCALE_BOX -> {
+                m.put("stretch", "user_specified");
+                m.put("user_specified_scale", (double) w.userScale());
+                if (!w.children().isEmpty()) m.put("content", w.children().get(0).name());
             }
             case RETAINER_BOX -> {
                 if (!w.children().isEmpty()) m.put("content", w.children().get(0).name());

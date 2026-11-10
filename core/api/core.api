@@ -2619,6 +2619,7 @@ com/crystalgraphics/asset/load/CgAssetLoad
 com/crystalgraphics/asset/load/CgAssetMounts
   access public,final
   extends java/lang/Object
+  method public,static file (Ljava/lang/String;)Ljava/nio/file/Path;
   method public,static loadAhead ()V
   method public,static mount ()V
   method public,static mount (Lcom/crystalgraphics/asset/registry/CgAssetRegistry;Ljava/util/List;Ljava/util/List;)Lcom/crystalgraphics/asset/load/CgAssetMounts$Result;
@@ -2676,6 +2677,7 @@ com/crystalgraphics/asset/load/CgAssetRef
   method public request (Lcom/crystalgraphics/asset/load/CgLoadPriority;)Lcom/crystalgraphics/asset/load/CgLoadHandle;
   method public state ()Lcom/crystalgraphics/asset/load/CgAssetState;
   method public toString ()Ljava/lang/String;
+  method public,static codec (Lcom/crystalgraphics/object/CgType;)Lcom/crystalgraphics/serialization/CgCodec;
 com/crystalgraphics/asset/load/CgAssetState
   access public,final,enum
   extends java/lang/Enum
@@ -3230,11 +3232,12 @@ com/crystalgraphics/audio/CgKitSounds
 com/crystalgraphics/audio/CgKitSounds$Cue
   access public,final,record
   extends java/lang/Record
-  method public <init> (Ljava/lang/String;Ljava/nio/file/Path;FFZ)V
+  method public <init> (Ljava/lang/String;Ljava/nio/file/Path;FFZLcom/crystalgraphics/audio/CgSoundSubtitles;)V
   method public file ()Ljava/nio/file/Path;
   method public id ()Ljava/lang/String;
   method public pitch ()F
   method public stream ()Z
+  method public subtitles ()Lcom/crystalgraphics/audio/CgSoundSubtitles;
   method public volume ()F
   method public,final equals (Ljava/lang/Object;)Z
   method public,final hashCode ()I
@@ -3372,6 +3375,7 @@ com/crystalgraphics/audio/CgSoundRef
   method public pick (J)Lcom/crystalgraphics/audio/CgSoundRef;
   method public pitch ()F
   method public stream ()Z
+  method public subtitles ()Lcom/crystalgraphics/audio/CgSoundSubtitles;
   method public toString ()Ljava/lang/String;
   method public volume ()F
   method public,static of (Ljava/lang/Object;Ljava/lang/String;)Lcom/crystalgraphics/audio/CgSoundRef;
@@ -3393,6 +3397,17 @@ com/crystalgraphics/audio/CgSoundStream
   method public played ()D
   method public render ([FIIIIF)Z
   method public starved ()I
+com/crystalgraphics/audio/CgSoundSubtitles
+  access public,final,record
+  extends java/lang/Record
+  field public,static,final NONE Lcom/crystalgraphics/audio/CgSoundSubtitles;
+  method public <init> (Ljava/util/List;F)V
+  method public any ()Z
+  method public cues ()Ljava/util/List;
+  method public priority ()F
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
 com/crystalgraphics/audio/CgSoundVoice
   access public,final
   extends java/lang/Object
@@ -11011,6 +11026,7 @@ com/crystalgraphics/sequence/CgSequencePlayer
   method public data (Lcom/crystalgraphics/sequence/definition/CgSequenceTrack;Lcom/crystalgraphics/sequence/definition/CgSequenceSection;Ljava/lang/Object;)V
   method public definition ()Lcom/crystalgraphics/sequence/definition/CgSequenceDefinition;
   method public drive (DZ)Lcom/crystalgraphics/sequence/CgSequencePlayer;
+  method public endAt (D)Lcom/crystalgraphics/sequence/CgSequencePlayer;
   method public event (Ljava/lang/String;)Z
   method public failure ()Ljava/lang/RuntimeException;
   method public finished ()Z
@@ -11023,6 +11039,7 @@ com/crystalgraphics/sequence/CgSequencePlayer
   method public locatorPlacement (I)Lcom/crystalgraphics/world/CgAttachment;
   method public next (Ljava/lang/String;)Ljava/lang/String;
   method public nextSection (Ljava/lang/String;Ljava/lang/String;)Lcom/crystalgraphics/sequence/CgSequencePlayer;
+  method public onFinished (Ljava/lang/Runnable;)Lcom/crystalgraphics/sequence/CgSequencePlayer;
   method public oneShotFrom ()I
   method public origin ()Lcom/crystalgraphics/world/CgAttachment;
   method public passEndSeconds ()D
@@ -11035,6 +11052,7 @@ com/crystalgraphics/sequence/CgSequencePlayer
   method public rate ()F
   method public rate (F)Lcom/crystalgraphics/sequence/CgSequencePlayer;
   method public releasesOnStop ()Z
+  method public retiring ()Z
   method public revision ()I
   method public seconds ()D
   method public section ()Ljava/lang/String;
@@ -19961,7 +19979,7 @@ com/crystalgraphics/widget/CgCanvasWidgetPainter
   method public begin (Lcom/crystalgraphics/render/canvas/CgCanvas;Lcom/crystalgraphics/render/graph/CgRecording;F)Lcom/crystalgraphics/widget/CgCanvasWidgetPainter;
   method public beginRetained (FF)I
   method public endRetained ()V
-  method public image (Lcom/crystalgraphics/widget/CgWidgetBrush;Lorg/joml/Matrix4f;FFFFFF)V
+  method public image (Lcom/crystalgraphics/widget/CgWidgetBrush;Lorg/joml/Matrix4f;FFFFFFLorg/joml/Vector4fc;)V
   method public layout (Lcom/crystalgraphics/text/style/CgTextStyle;Ljava/lang/String;FLcom/crystalgraphics/widget/CgWidget$Justification;Lorg/joml/Vector2f;)Ljava/lang/Object;
   method public prepare (Lcom/crystalgraphics/widget/CgWidgetTree;)Lcom/crystalgraphics/widget/CgCanvasWidgetPainter;
   method public release (Lcom/crystalgraphics/render/graph/CgRecording;)V
@@ -19971,6 +19989,7 @@ com/crystalgraphics/widget/CgCanvasWidgetPainter
 com/crystalgraphics/widget/CgLinearColour
   access public,final,record
   extends java/lang/Record
+  field public,static,final ARGB Lcom/crystalgraphics/serialization/CgCodec;
   field public,static,final WHITE Lcom/crystalgraphics/widget/CgLinearColour;
   method public <init> (FFFF)V
   method public a ()F
@@ -20016,19 +20035,28 @@ com/crystalgraphics/widget/CgUserWidget
   extends java/lang/Object
   implements com/crystalgraphics/sequence/CgSequenceTarget
   method public allot (FF)Lcom/crystalgraphics/widget/CgUserWidget;
+  method public animationCurrentTime (Lcom/crystalgraphics/sequence/definition/CgSequenceDefinition;)D
   method public box (I[F)[F
   method public brush (ILcom/crystalgraphics/widget/CgWidgetBrush;)Lcom/crystalgraphics/widget/CgUserWidget;
   method public brush (Ljava/lang/String;Lcom/crystalgraphics/widget/CgWidgetBrush;)Lcom/crystalgraphics/widget/CgUserWidget;
   method public colour (I)Lcom/crystalgraphics/widget/CgLinearColour;
+  method public colourAndOpacity (Ljava/lang/String;Lcom/crystalgraphics/widget/CgLinearColour;)Lcom/crystalgraphics/widget/CgUserWidget;
   method public get (I[F)V
+  method public isAnimationPlaying (Lcom/crystalgraphics/sequence/definition/CgSequenceDefinition;)Z
   method public layout (Lcom/crystalgraphics/widget/CgWidgetPainter;Lorg/joml/Vector2f;)Lorg/joml/Vector2f;
+  method public materialParameters (Ljava/lang/String;FFFF)Lcom/crystalgraphics/widget/CgUserWidget;
   method public nested (Ljava/lang/String;)Lcom/crystalgraphics/widget/CgUserWidget;
+  method public onAnimationFinished (Lcom/crystalgraphics/sequence/definition/CgSequenceDefinition;Ljava/lang/Runnable;)Lcom/crystalgraphics/widget/CgUserWidget;
   method public paint (Lcom/crystalgraphics/widget/CgWidgetPainter;Lorg/joml/Matrix4f;)V
   method public part (Lcom/crystalgraphics/sequence/definition/CgSequenceBinding$Part;Ljava/lang/String;)Lcom/crystalgraphics/sequence/CgSequenceTarget;
+  method public playAnimation (Lcom/crystalgraphics/sequence/definition/CgSequenceDefinition;)Lcom/crystalgraphics/sequence/CgSequencePlayer;
+  method public playAnimationTo (Lcom/crystalgraphics/sequence/definition/CgSequenceDefinition;DDF)Lcom/crystalgraphics/sequence/CgSequencePlayer;
   method public reset ()V
   method public retain (Lcom/crystalgraphics/widget/CgWidgetPainter;)V
   method public set (I[FI)V
   method public slot (Ljava/lang/String;)I
+  method public stopAllAnimations ()V
+  method public stopAnimation (Lcom/crystalgraphics/sequence/definition/CgSequenceDefinition;)V
   method public style (ILcom/crystalgraphics/text/style/CgTextStyle;)Lcom/crystalgraphics/widget/CgUserWidget;
   method public style (Ljava/lang/String;Lcom/crystalgraphics/text/style/CgTextStyle;)Lcom/crystalgraphics/widget/CgUserWidget;
   method public text (I)Ljava/lang/String;
@@ -20051,6 +20079,27 @@ com/crystalgraphics/widget/CgUserWidgetPool
   method public release (Lcom/crystalgraphics/widget/CgUserWidget;)V
   method public releaseAll ()V
   method public reset ()V
+com/crystalgraphics/widget/CgViewportWidgetLayer
+  access public,final
+  extends java/lang/Object
+  implements java/lang/AutoCloseable
+  method public add (Lcom/crystalgraphics/widget/CgUserWidget;I)Lcom/crystalgraphics/widget/CgViewportWidgetLayer;
+  method public clear ()V
+  method public close ()V
+  method public contains (Lcom/crystalgraphics/widget/CgUserWidget;)Z
+  method public id ()Ljava/lang/String;
+  method public remove (Lcom/crystalgraphics/widget/CgUserWidget;)Z
+  method public size ()I
+  method public,static builder (Ljava/lang/String;)Lcom/crystalgraphics/widget/CgViewportWidgetLayer$Builder;
+com/crystalgraphics/widget/CgViewportWidgetLayer$Builder
+  access public,final
+  extends java/lang/Object
+  method public build ()Lcom/crystalgraphics/widget/CgViewportWidgetLayer;
+  method public kit (Ljava/lang/String;)Lcom/crystalgraphics/widget/CgViewportWidgetLayer$Builder;
+  method public order (I)Lcom/crystalgraphics/widget/CgViewportWidgetLayer$Builder;
+  method public retainedScale (F)Lcom/crystalgraphics/widget/CgViewportWidgetLayer$Builder;
+  method public retaining (FFF)Lcom/crystalgraphics/widget/CgViewportWidgetLayer$Builder;
+  method public world (Lcom/crystalgraphics/frame/CgWorld;)Lcom/crystalgraphics/widget/CgViewportWidgetLayer$Builder;
 com/crystalgraphics/widget/CgWidget
   access public,final
   extends java/lang/Object
@@ -20074,6 +20123,7 @@ com/crystalgraphics/widget/CgWidget
   method public textureParameter ()Ljava/lang/String;
   method public toString ()Ljava/lang/String;
   method public transform ()[F
+  method public userScale ()F
   method public visibility ()Lcom/crystalgraphics/widget/CgWidget$Visibility;
   method public widget ()Lcom/crystalgraphics/widget/CgWidgetTree;
   method public wrap ()F
@@ -20082,6 +20132,7 @@ com/crystalgraphics/widget/CgWidget
   method public,static horizontalBox (Ljava/lang/String;)Lcom/crystalgraphics/widget/CgWidget$Builder;
   method public,static image (Ljava/lang/String;)Lcom/crystalgraphics/widget/CgWidget$Builder;
   method public,static retainerBox (Ljava/lang/String;)Lcom/crystalgraphics/widget/CgWidget$Builder;
+  method public,static scaleBox (Ljava/lang/String;F)Lcom/crystalgraphics/widget/CgWidget$Builder;
   method public,static text (Ljava/lang/String;)Lcom/crystalgraphics/widget/CgWidget$Builder;
   method public,static userWidget (Ljava/lang/String;Lcom/crystalgraphics/widget/CgWidgetTree;)Lcom/crystalgraphics/widget/CgWidget$Builder;
 com/crystalgraphics/widget/CgWidget$Builder
@@ -20123,6 +20174,7 @@ com/crystalgraphics/widget/CgWidget$Kind
   field public,static,final HORIZONTAL_BOX Lcom/crystalgraphics/widget/CgWidget$Kind;
   field public,static,final IMAGE Lcom/crystalgraphics/widget/CgWidget$Kind;
   field public,static,final RETAINER_BOX Lcom/crystalgraphics/widget/CgWidget$Kind;
+  field public,static,final SCALE_BOX Lcom/crystalgraphics/widget/CgWidget$Kind;
   field public,static,final TEXT_BLOCK Lcom/crystalgraphics/widget/CgWidget$Kind;
   field public,static,final USER_WIDGET Lcom/crystalgraphics/widget/CgWidget$Kind;
   method public id ()Ljava/lang/String;
@@ -20173,7 +20225,7 @@ com/crystalgraphics/widget/CgWidgetComponent
   extends java/lang/Object
   method public drawSize (FF)Lcom/crystalgraphics/widget/CgWidgetComponent;
   method public pivot (FF)Lcom/crystalgraphics/widget/CgWidgetComponent;
-  method public play (Lcom/crystalgraphics/sequence/definition/CgSequenceDefinition;Ljava/lang/String;)Lcom/crystalgraphics/widget/CgWidgetComponent;
+  method public play (Lcom/crystalgraphics/sequence/definition/CgSequenceDefinition;)Lcom/crystalgraphics/widget/CgWidgetComponent;
   method public player ()Lcom/crystalgraphics/sequence/CgSequencePlayer;
   method public remove ()V
   method public state ()Lcom/crystalgraphics/widget/CgWidgetComponent$State;
@@ -20191,7 +20243,7 @@ com/crystalgraphics/widget/CgWidgetPainter
   extends java/lang/Object
   method public,abstract beginRetained (FF)I
   method public,abstract endRetained ()V
-  method public,abstract image (Lcom/crystalgraphics/widget/CgWidgetBrush;Lorg/joml/Matrix4f;FFFFFF)V
+  method public,abstract image (Lcom/crystalgraphics/widget/CgWidgetBrush;Lorg/joml/Matrix4f;FFFFFFLorg/joml/Vector4fc;)V
   method public,abstract layout (Lcom/crystalgraphics/text/style/CgTextStyle;Ljava/lang/String;FLcom/crystalgraphics/widget/CgWidget$Justification;Lorg/joml/Vector2f;)Ljava/lang/Object;
   method public,abstract retained (ILcom/crystalgraphics/api/material/CgMaterialDefinition;Ljava/lang/String;Lorg/joml/Matrix4f;FFFFFF)V
   method public,abstract text (Lcom/crystalgraphics/text/style/CgTextStyle;Ljava/lang/String;Ljava/lang/Object;Lcom/crystalgraphics/widget/CgWidget$Justification;Lorg/joml/Matrix4f;FFFFF)V

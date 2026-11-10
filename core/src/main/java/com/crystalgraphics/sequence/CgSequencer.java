@@ -104,6 +104,8 @@ public final class CgSequencer extends CgWorldSubsystem {
 
     private final Role role;
     private final List<CgSequencePlayer> players = new ArrayList<>();
+    /** The plays telling their finish this frame: scratch for {@link #tellFinished}. */
+    private final List<CgSequencePlayer> finishing = new ArrayList<>();
     private final List<CgSequenceEvaluator> evaluators = new ArrayList<>();
     /** Each evaluator's trace zone, {@code sequence.tracks/<kind>}, named at its first evaluation. */
     private int[] evaluatorZones = new int[0];
@@ -478,7 +480,32 @@ public final class CgSequencer extends CgWorldSubsystem {
             try (CgTrace.Zone spawned = CgTrace.zone(CgChannels.WORLD, SPAWNED_ZONE)) {
                 for (int i = 0; i < players.size(); i++) players.get(i).updateSpawned();
             }
+            tellFinished();
         }
+    }
+
+    /**
+     * Each play that reached its end this frame tells its {@code onFinished} listeners, once its last frame is applied:
+     * UMG's {@code OnAnimationFinished} after its final flush. Gathered first, since a listener may start or stop plays.
+     * Then a widget animation still at its end retires ({@link CgSequencePlayer#retiring()}), unless a listener played
+     * it again.
+     */
+    private void tellFinished() {
+        finishing.clear();
+        for (int i = 0; i < players.size(); i++) if (players.get(i).takeFinish()) finishing.add(players.get(i));
+        for (int f = 0; f < finishing.size(); f++) {
+            CgSequencePlayer p = finishing.get(f);
+            List<Runnable> listeners = p.finishedListeners();
+            for (int i = 0; i < listeners.size(); i++) {
+                try {
+                    listeners.get(i).run();
+                } catch (RuntimeException e) {
+                    LOGGER.error("{}: a finished listener threw", p.definition().id(), e);
+                }
+            }
+        }
+        finishing.clear();
+        for (int i = 0; i < players.size(); i++) if (players.get(i).retiring()) players.get(i).stop();
     }
 
     /**

@@ -9,6 +9,7 @@ import java.util.Map;
 
 import org.joml.Matrix4f;
 import org.joml.Vector2f;
+import org.joml.Vector4fc;
 import org.junit.Test;
 
 import com.crystalgraphics.api.material.CgMaterialDefinition;
@@ -94,7 +95,7 @@ public class CgWidgetCodecTest {
 
         @Override
         public void image(CgWidgetBrush brush, Matrix4f pose, float width, float height, float r, float g, float b,
-                          float a) {
+                          float a, Vector4fc parameters) {
         }
 
         @Override
@@ -167,7 +168,8 @@ public class CgWidgetCodecTest {
                                         .tint(new CgLinearColour(1f, 0.5f, 0.25f, 1f)))
                                 .colour(new CgLinearColour(1f, 1f, 1f, 0f))
                                 .slot(CgWidgetSlot.builder().size(CgWidgetSlot.Size.FILL, 2f).build()))
-                        .child(CgWidget.userWidget("Digit", digit)))
+                        .child(CgWidget.userWidget("Digit", digit))
+                        .child(CgWidget.scaleBox("Small", 0.418f).child(CgWidget.text("Hits").style(GOLD).text("HITS"))))
                 .build());
         String yaml = CgAssetYaml.write(CgWidgetCodec.toTree(built), CgLookKinds.WIDGET);
         CgAssetCompiler.Dependencies deps = (kind, id) -> kind == CgLookKinds.TEXT_STYLE ? GOLD
@@ -207,6 +209,12 @@ public class CgWidgetCodecTest {
                 root: A
                 widgets:
                   A: { kind: vertical_box }
+                """);
+        assertFails("A.stretch", """
+                _v: 1
+                root: A
+                widgets:
+                  A: { kind: scale_box, user_specified_scale: 0.5 }
                 """);
     }
 

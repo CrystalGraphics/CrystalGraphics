@@ -130,18 +130,32 @@ public class CgSequencerTest {
 
     @Test
     public void aFinishedPlayerReplaysFromTheStartWithItsBindings() {
+        // A gameplay sequence holds at its end; a widget animation retires there instead, and replays as a new play.
+        CgSequencer sequencer = sequencer();
+        Role number = new Role("fov");
+        CgSequencePlayer pop = sequencer.play(compile(RAMP, Map.of()), Map.of("caster", number));
+        while (!pop.finished()) sequencer.evaluate(0.1f);
+        int players = sequencer.players().size();
+
+        pop.jumpTo(0);
+        sequencer.evaluate(0.1f);                        // a jump's frame lands on its point, as JumpToFrame
+        assertEquals(0f, number.get("fov"), 1e-4f);
+        sequencer.evaluate(0.3f);
+        assertEquals(3f, number.get("fov"), 1e-4f);
+        assertEquals(players, sequencer.players().size());
+    }
+
+    @Test
+    public void aFinishedWidgetAnimationRetiresKeepingItsLastFrame() {
         CgSequencer widgets = CgSequencer.widgets(new CgWorld());
         Role number = new Role("fov");
         CgSequencePlayer pop = widgets.play(compile(RAMP, Map.of()), Map.of("caster", number));
         while (!pop.finished()) widgets.evaluate(0.1f);
-        int players = widgets.players().size();
-
-        pop.jumpTo(0);
-        widgets.evaluate(0.1f);                          // a jump's frame lands on its point, as JumpToFrame
-        assertEquals(0f, number.get("fov"), 1e-4f);
-        widgets.evaluate(0.3f);
-        assertEquals(3f, number.get("fov"), 1e-4f);
-        assertEquals(players, widgets.players().size());
+        float last = number.get("fov");
+        widgets.evaluate(0.1f);
+        assertTrue("UMG's finished player stops evaluating", pop.stopped());
+        assertTrue(widgets.players().isEmpty());
+        assertEquals("and nothing is restored", last, number.get("fov"), 0f);
     }
 
     @Test

@@ -3,7 +3,6 @@ package com.crystalgraphics.widget;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertSame;
-import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.assertThrows;
 
 import java.util.ArrayList;
@@ -13,6 +12,8 @@ import java.util.Map;
 import org.joml.Matrix4f;
 import org.joml.Vector2f;
 import org.joml.Vector3f;
+import org.joml.Vector4f;
+import org.joml.Vector4fc;
 import org.junit.Test;
 
 import com.crystalgraphics.api.material.CgMaterialDefinition;
@@ -75,6 +76,7 @@ public class CgUserWidgetTest {
         final List<String> draws = new ArrayList<>();
         final List<Vector3f> centres = new ArrayList<>();
         final List<Integer> colours = new ArrayList<>();
+        final List<Vector4f> parameters = new ArrayList<>();
 
         @Override
         public Object layout(CgTextStyle style, String text, float wrap, CgWidget.Justification justification,
@@ -85,10 +87,11 @@ public class CgUserWidgetTest {
 
         @Override
         public void image(CgWidgetBrush brush, Matrix4f pose, float width, float height, float r, float g, float b,
-                          float a) {
+                          float a, Vector4fc parameters) {
             draws.add(brush.texture());
             centres.add(pose.transformPosition(new Vector3f(width / 2f, height / 2f, 0f)));
             colours.add(CgLinearColour.argb(r, g, b, a));
+            this.parameters.add(new Vector4f(parameters));
         }
 
         @Override
@@ -221,6 +224,26 @@ public class CgUserWidgetTest {
         assertEquals(120f, row.box(tree.index("C"), box)[2], 1e-4f);
     }
 
+    /**
+     * A scale box takes its content's size times its scale, so a row places it at that size, and draws its content
+     * scaled about its own corner, centred in it: SScaleBox at a user scale.
+     */
+    @Test
+    public void aScaleBoxTakesAndDrawsItsScaledSize() {
+        CgWidgetTree tree = CgWidgetTree.of(CgWidget.horizontalBox("Row")
+                .child(CgWidget.image("A").brush(CgWidgetBrush.texture("a", 40f, 10f)))
+                .child(CgWidget.scaleBox("Box", 0.5f).child(CgWidget.image("B").brush(CgWidgetBrush.texture("b", 40f, 20f))))
+                .child(CgWidget.image("C").brush(CgWidgetBrush.texture("c", 10f, 10f)))
+                .build());
+        CgUserWidget row = tree.newInstance();
+        assertEquals("40 + 40 x 0.5 + 10", 70f, row.layout(new Recorder(), new Vector2f()).x, 1e-4f);
+        Recorder r = new Recorder();
+        row.paint(r, new Matrix4f());
+        assertEquals("B's centre: 40 on, plus its half-scaled middle", 50f, r.centreOf("b").x, 1e-4f);
+        assertEquals(5f, r.centreOf("b").y, 1e-4f);
+        assertEquals("C after the scaled size", 65f, r.centreOf("c").x, 1e-4f);
+    }
+
     /** A text block measures its text; changing the text relays out. */
     @Test
     public void textRelaysOut() {
@@ -266,6 +289,34 @@ public class CgUserWidgetTest {
         assertEquals(-3.25f, pop.transform(banner, new float[7])[6], 1e-4f);
         assertEquals("half faded in", 0.5f, pop.colour(banner).a(), 1e-4f);
         assertEquals("unkeyed: the designer's", 1.5f, pop.transform(banner, new float[7])[2], 0f);
+        world.close();
+    }
+
+    @Test
+    public void materialParametersReachTheBrush() {
+        CgWidgetTree tree = battleDmg();
+        CgUserWidget pop = fourDigits(tree);
+        pop.materialParameters("Img_Base_Critical", 0f, 2f, 0f, 0f);
+        CgWorld world = new CgWorld();
+        CgSequencer sequencer = world.add(new CgSequencer());
+        sequencer.play(sequence("""
+                _v: 1
+                tick_resolution: 1000
+                display_rate: 50
+                range: [0, 1000]
+                roles:
+                  - { id: r1, name: number, kind: caster }
+                tracks:
+                  - { id: t1, kind: property, binding: { role: number, node: Img_Base_Critical }, property: material_parameters,
+                      sections: [ { id: s1, range: [0, 1000], value: { x: { keys: [[0, 0.0, linear], [1000, 1.0, linear]] } } } ] }
+                """), Map.of("number", pop));
+        sequencer.evaluate(0f);
+        sequencer.evaluate(0.5f);
+        Recorder painter = new Recorder();
+        pop.paint(painter, new Matrix4f());
+        Vector4f drawn = painter.parameters.get(painter.draws.indexOf(BANNER));
+        assertEquals("keyed: half way", 0.5f, drawn.x, 1e-4f);
+        assertEquals("unkeyed: as set", 2f, drawn.y, 0f);
         world.close();
     }
 

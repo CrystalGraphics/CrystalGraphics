@@ -9,6 +9,7 @@ import javax.annotation.Nullable;
 
 import org.joml.Matrix4f;
 import org.joml.Vector2f;
+import org.joml.Vector4fc;
 
 import com.crystalgraphics.api.font.CgFont;
 import com.crystalgraphics.api.material.CgBlendMode;
@@ -159,13 +160,15 @@ public final class CgCanvasWidgetPainter implements CgWidgetPainter {
 
     @Override
     public void image(CgWidgetBrush brush, Matrix4f pose, float width, float height, float r, float g, float b,
-                      float a) {
+                      float a, Vector4fc parameters) {
         if (a <= 0f) return;
         CgCanvas on = canvas();
         Matrix4f at = pose(pose);
         if (brush.material() != null) {
-            // A UI material takes its tint in linear, as Slate's material shaders read the vertex colour.
-            on.quad(material(brush.material())).at(0f, 0f).size(width, height).pose(at).color(linear(r, g, b, a)).submit();
+            // A UI material takes its tint in linear, as Slate's material shaders read the vertex colour; its
+            // parameters ride the quad, so they never break the batch as a material instance would.
+            on.quad(material(brush.material())).at(0f, 0f).size(width, height).pose(at).color(linear(r, g, b, a))
+              .custom0(parameters.x(), parameters.y(), parameters.z(), parameters.w()).submit();
             return;
         }
         var quad = on.quad(materials.image()).at(0f, 0f).size(width, height).pose(at)

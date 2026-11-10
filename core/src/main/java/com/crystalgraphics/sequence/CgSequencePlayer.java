@@ -53,7 +53,8 @@ import com.crystalgraphics.sequence.spawn.CgSequenceSpawned;
  *   <li>A role {@link #play} is not given fails it, unless the role is {@code absent: skip}; then its tracks are
  *       skipped.</li>
  *   <li>A spawnable's tracks wait for {@link #spawnable} to say what it is.</li>
- *   <li>At its range's end it holds its last frame ({@link #finished()}) until stopped.</li>
+ *   <li>At its range's end it holds its last frame ({@link #finished()}) until stopped; a widget animation instead
+ *       retires there, what it wrote kept ({@link #retiring()}).</li>
  *   <li>Its time is its own: the seconds the sequencer has advanced it, on its world's dilated time
  *       ({@code CgWorld.timeDilation}), times its rate, never dilated by what it keys.</li>
  *   <li>An {@code animation} section naming its clip's {@code notifies} plays that sequence while it plays, on the
@@ -105,11 +106,16 @@ public final class CgSequencePlayer {
     /** The first tick a jump's one-shots fire from: past its point for a jump, the window before it for a seek. */
     private int oneShotFrom = Integer.MAX_VALUE;
     private double seconds;
+    /** Where play ends before the sequence's own end, in seconds; NaN for its end. */
+    private double endAt = Double.NaN;
     private float rate = 1f;
     private int revision;
     private long seed;
     private CgSequencePlaybackSettings playbackSettings = CgSequencePlaybackSettings.DEFAULT;
     private boolean finished, stopped, killed, jump, seek;
+    /** Whether this finish has been told to {@link #finishedListeners}. */
+    private boolean finishHeard;
+    private final List<Runnable> finishedListeners = new ArrayList<>(1);
     @Nullable
     private RuntimeException failure;
     /** Per child of the definition: an animation section's notifies playing now, else null; and its unwrapped clip time. */
@@ -341,6 +347,51 @@ public final class CgSequencePlayer {
     }
 
     /**
+     * Whether this frame is a widget animation's last: applied, then the play retires with what it wrote kept, never
+     * restored, as UMG's finished player stops evaluating and leaves its widget as it was
+     * ({@code UMGSequencePlayer.cpp}, 4.21, {@code Tick}; {@code UserWidget.cpp}, {@code OnAnimationFinishedPlaying}).
+     */
+    public boolean retiring() {
+        return finished && !stopped && sequencer.role() == CgSequencer.Role.WIDGETS;
+    }
+
+    /**
+     * Runs {@code listener} each time play reaches its range's end: once that frame is evaluated and applied, at the end
+     * of its sequencer's evaluation, as UMG's {@code OnAnimationFinished} after its final flush
+     * ({@code WidgetAnimationState.cpp}, {@code OnStopped}).
+     *
+     * <pre>{@code
+     * player.onFinished(() -> widget.removeFromViewport());   // gone once its fade has played
+     * }</pre>
+     *
+     * <ul>
+     *   <li>A {@link #jumpTo} back from the end arms it again: a replayed animation tells each end.</li>
+     *   <li>A stopped play never finishes: stopping is not reaching the end.</li>
+     *   <li>The listener may stop this play or start others; one that throws is logged, and the rest still run.</li>
+     * </ul>
+     */
+    public CgSequencePlayer onFinished(Runnable listener) {
+        finishedListeners.add(Objects.requireNonNull(listener, "listener"));
+        return this;
+    }
+
+    /** Whether play reached its end since this was last asked: true once a finish, for the sequencer. */
+    boolean takeFinish() {
+        if (!finished || stopped) {
+            finishHeard = false;
+            return false;
+        }
+        if (finishHeard) return false;
+        finishHeard = true;
+        return !finishedListeners.isEmpty();
+    }
+
+    /** The {@link #onFinished} listeners, for the sequencer to run. */
+    List<Runnable> finishedListeners() {
+        return finishedListeners;
+    }
+
+    /**
      * Jumps to {@code seconds} at the next evaluation: Unreal's {@code JumpToFrame}. What it lands on is evaluated, what
      * it skips over fires nothing, and sections it left end, restoring what they set.
      */
@@ -351,6 +402,25 @@ public final class CgSequencePlayer {
         this.seek = false;
         this.finished = false;
         this.resumes = false;
+        return this;
+    }
+
+    /**
+     * Ends play at {@code seconds} rather than at the sequence's end: it finishes there, holding that frame, as
+     * {@link #finished()} at the end would. UMG's {@code PlayTo} end time ({@code UMGSequencePlayer.cpp}'s
+     * {@code bCrossedEndTime}). NaN, or a time at or past the end, plays to the end.
+     *
+     * <pre>{@code
+     * player.jumpTo(0.4).endAt(0.8);    // plays 0.4 s to 0.8 s, then holds 0.8 s
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Forward play only: a jump past it plays on to the sequence's end, as UMG's does.</li>
+     *   <li>It stays until set again; {@code endAt(Double.NaN)} plays the next run to the end.</li>
+     * </ul>
+     */
+    public CgSequencePlayer endAt(double seconds) {
+        endAt = seconds;
         return this;
     }
 
@@ -1062,7 +1132,16 @@ public final class CgSequencePlayer {
                 return r;
             }
         }
+        double before = seconds;
         seconds = target;
+        // UMGSequencePlayer::Tick's bCrossedEndTime: play crossing its end time stops there, evaluated at it.
+        if (endAt < length && before < endAt && endAt <= target) {
+            seconds = endAt;
+            finished = true;
+            passEnd = seconds;
+            passRemaining = target - seconds;
+            return position.playToSeconds(seconds);
+        }
         boolean ends = seconds >= length;
         if (ends) {
             seconds = length;
@@ -1073,8 +1152,8 @@ public final class CgSequencePlayer {
         passEnd = seconds;
         passRemaining = Math.max(0, target - seconds);
         if (ends && sequencer.role() == CgSequencer.Role.WIDGETS) {
-            // UMG holds a finished widget animation on its last valid frame (UMGSequencePlayer.cpp:80-86): its sections
-            // stay in force and nothing is restored until it is stopped. At the end itself they would have ended.
+            // UMG evaluates a finished widget animation once at its last valid frame (UMGSequencePlayer.cpp:80-86),
+            // then retires it with what it wrote kept: see retiring(). At the end itself its sections would have ended.
             long last = CgFrameRate.convert(CgFrameTime.of(definition.end() - 1, 0.99999994f), definition.tickResolution(),
                     definition.displayRate());
             return position.playTo(last, CgSequenceEvaluationRange.Direction.FORWARDS);

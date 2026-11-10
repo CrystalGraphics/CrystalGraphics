@@ -1,5 +1,8 @@
 package com.crystalgraphics.widget;
 
+import com.crystalgraphics.serialization.CgCodec;
+import com.crystalgraphics.serialization.CgCodecs;
+
 /**
  * A colour in linear light, Unreal's {@code FLinearColor}: what a widget's tints are, multiplied down its tree in linear
  * and encoded to sRGB only where it is drawn, as Slate packs a vertex colour.
@@ -12,11 +15,25 @@ package com.crystalgraphics.widget;
  * <ul>
  *   <li>Alpha is never encoded: 0.5 is half coverage either way.</li>
  *   <li>{@link #argb(int)} decodes; {@link #toArgb()} encodes. A linear 0.5 is about sRGB 0xBC, not 0x80.</li>
+ *   <li>A file of your own writes one as sRGB {@code 0xAARRGGBB}, read by {@link #ARGB}.</li>
  * </ul>
  */
 public record CgLinearColour(float r, float g, float b, float a) {
 
     public static final CgLinearColour WHITE = new CgLinearColour(1f, 1f, 1f, 1f);
+
+    /**
+     * A colour written as sRGB {@code 0xAARRGGBB}, decoded to linear; written back encoded. For a mod's own data files:
+     *
+     * <pre>{@code
+     * // grades.yaml: - { grade: Z, glow: 0xFFD80A16 }
+     * CgCodecs.field("glow", CgLinearColour.ARGB, Grade::glow)
+     * }</pre>
+     *
+     * Written back it is the 8-bit colour nearest, so a colour not picked as one moves by up to half a step.
+     */
+    public static final CgCodec<CgLinearColour> ARGB = CgCodecs.xmap(CgCodecs.LONG, v -> argb((int) (long) v),
+            c -> c.toArgb() & 0xFFFFFFFFL);
 
     /** {@code argb}, sRGB as picked, decoded to linear. */
     public static CgLinearColour argb(int argb) {

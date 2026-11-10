@@ -15,8 +15,8 @@ It comes in layers. Take the first that does what you need:
 | Layer | For | Section |
 |---|---|---|
 | **`CgWorldWidgetLayer`** | a widget over a point in the world, following it: a damage number, a name plate, a marker | [7](#7-over-a-point-in-the-world-a-world-widget-layer) |
-| **`CgCanvasWidgetPainter`** | a widget on the screen: a HUD panel, a subtitle | [8](#8-on-the-screen) |
-| **`CgUserWidget`** | an instance you place and paint yourself | [8](#8-on-the-screen) |
+| **`CgViewportWidgetLayer`** | a widget on the screen: a HUD panel, a combo counter | [8](#8-on-the-screen-a-viewport-widget-layer) |
+| **`CgUserWidget`** with a `CgCanvasWidgetPainter` | an instance you place and paint yourself | [8](#8-on-the-screen-a-viewport-widget-layer) |
 
 ---
 
@@ -43,7 +43,7 @@ static final CgWorldWidgetLayer POPS = CgWorldWidgetLayer.builder("mymod:pops").
 // a hit: over the target's middle, released when its animation ends
 CgWidgetComponent pop = POPS.add(POP.loaded(), CgEntityAttachments.of(targetId));
 pop.widget().text("Number", "1,250");
-pop.play(POP_IN.loaded(), "number");
+pop.play(POP_IN.loaded());
 ```
 
 That is a whole damage number. The asset loads with your kit behind the loading screen; the layer places it on the
@@ -101,6 +101,7 @@ static final CgWidgetTree POP = CgWidgetTree.of("mymod:hud/pop", CgWidget.canvas
 | `canvas` | `UCanvasPanel` | `children`, each placed by its slot's anchors and offsets, painted in `z_order`, then list order | the largest child's reach |
 | `horizontal_box` | `UHorizontalBox` | `children` in a row, left to right | its children's widths and paddings added |
 | `border` | `UBorder` | `content`, one widget, padded; a `background` brush, its `brush_colour`; `content_colour_and_opacity` tints everything inside | its content's and its padding |
+| `scale_box` | `UScaleBox`, stretch `UserSpecified` | `content`, one widget, laid out and drawn at `user_specified_scale`; `stretch: user_specified` is required, the room-fitting stretches are not drawn | its content's and its padding, times the scale |
 | `retainer_box` | `URetainerBox` | `content`, one widget filling it, painted into an image of its own and drawn as one quad; `effect`, a UI material that draws that image ([5](#5-fading-as-one-image-the-retainer-box)) | its content's |
 | `image` | `UImage` | a `brush`; `colour_and_opacity` | its brush's `image_size` |
 | `text_block` | `UTextBlock` | `text`, a string id or the literal text; its `style`; `colour_and_opacity`; `justification`; `wrap` | its text's, in its style |
@@ -131,7 +132,15 @@ slot: { size: { fill: 1 } }                                                     
 ```
 
 An unset field takes its slot class's default, as UMG's: a canvas child is `[0, 0, 100, 30]` at the top left; a border
-pads its content by `[4, 2, 4, 2]`; a box child fills its row's height.
+pads its content by `[4, 2, 4, 2]`; a box child fills its row's height; a scale box centres its content.
+
+A scale box puts a smaller copy of a look into a row at the size it shows, where a `transform` scale would leave its
+neighbours spaced for the full size:
+
+```yaml
+LabelBox: { kind: scale_box, stretch: user_specified, user_specified_scale: 0.418, content: Label }   # 46 / 110
+Label: { kind: text_block, style: mymod:hud/counter, text: mymod:text/combo.hits }                     # the number's style
+```
 
 ### Brushes and colours
 
@@ -140,8 +149,9 @@ pads its content by `[4, 2, 4, 2]`; a box child fills its row's height.
   of its tint, as Slate's does: a border's background is that until set, so `background: { draw_as: none }` hides it.
 - **Colours are linear**, `[r, g, b, a]`, as Unreal's `FLinearColor`: they multiply down the tree in linear and are
   encoded to sRGB where drawn. In Java, `CgLinearColour.argb(0xFFFFC040)` decodes a colour picked by eye.
-- **A string id** (`<ns>:text/<id>`) is read in the player's language when the tree lays out; a missing string shows
-  its id, as Unreal shows a missing string's key.
+- **A string id** (`<ns>:text/<id>`) is read in the player's language when the tree lays out: a game kit's own table,
+  else your mod's translations, `mymod:text/combo.nice` reading `"mymod.combo.nice"` from `lang/en_us.json`
+  (`i18n.CgKitStrings`). A missing string shows its id, as Unreal shows a missing string's key.
 
 ---
 
@@ -193,6 +203,15 @@ fragColor = vec4(i.color.rgb * i.color.a * texture(Texture, i.uv).a, 0.0);
 
 - A retainer box has no colour of its own: what fades it is above it, a border's content colour or a render opacity.
 - A UI material takes its tint in linear, as Slate's material shaders read the vertex colour.
+- **Its parameters per instance** are four numbers its shader reads as `CG_QUAD_CUSTOM0`: an image's or a border's
+  `material_parameters`, zero until `materialParameters(name, x, y, z, w)` sets them or an animation keys them. UMG
+  animates a brush's parameters on a dynamic material instance; here they ride the quad, so instances still batch.
+
+  ```yaml
+  # an animation growing a streak's energy, its shader reading CG_QUAD_CUSTOM0.x
+  - { id: energy, kind: property, binding: { role: counter, node: Streak }, property: material_parameters,
+      sections: [ { id: grows, range: [0, 24000], value: { x: { keys: [[0, 0.4, quad_out], [24000, 0.6, linear]] } } } ] }
+  ```
 - Every instance a frame draws retains before any paints: the retained image is drawn before anything on the canvas
   reads it. A layer does this for you; by hand, `retain` every instance, then `paint` every instance.
 - The retained image is sized in widget units (`retaining(width, height, margin)`), `margin` round each region for
@@ -224,10 +243,34 @@ tracks:
       - { id: s1, range: [0, 400], value: { a: { keys: [[0, 0, linear], [400, 1, linear]] } } }
 ```
 
+A widget plays its own animations, UMG's `PlayAnimation`: one player per animation, every role the sequence names
+bound to that widget, on its layer's world.
+
 ```java
-CgSequencer ui = CgSequencer.widgets(CgWorld.client());           // added on first ask; client only
-CgSequencePlayer player = ui.play(POP_IN.loaded(), Map.of("number", pop));
+pop.playAnimation(POP_IN.loaded());                    // played again while it plays: restarts, never stacks
+pop.playAnimation(SHAKE.loaded());                     // several at once, each on its own properties
+pop.onAnimationFinished(FADE.loaded(), () -> HUD.remove(pop));   // bound once, heard at each end
+pop.stopAnimation(SHAKE.loaded());                     // mid-play: what it wrote is put back
+
+// one animation keyed through several states, played only between two: from where it is, else the last state's time
+double from = pop.isAnimationPlaying(RAMP.loaded()) ? pop.animationCurrentTime(RAMP.loaded()) : 0.4;
+pop.playAnimationTo(RAMP.loaded(), from, 0.8, 1f);     // holds 0.8 s once there
+// behind by more than a step: faster, so it still arrives in one step's time
+pop.playAnimationTo(RAMP.loaded(), from, 0.8, (float) Math.max(1, (0.8 - from) / 0.4));
 ```
+
+| Call | Unreal | Does |
+|---|---|---|
+| `playAnimation(animation)` | `PlayAnimation` | plays it, or restarts it from its start where it already plays |
+| `playAnimationTo(animation, start, end, speed)` | `PlayAnimationTo` (`PlayAnimationTimeRange`) | plays forward from `start` at `speed`, finishing and holding at `end` |
+| `animationCurrentTime(animation)` | `GetAnimationCurrentTime` | its seconds while it plays; 0 once finished or stopped |
+| `stopAnimation(animation)`, `stopAllAnimations()` | `StopAnimation`, `StopAllAnimations` | stops one still playing, putting back what it wrote; nothing for one finished |
+| `isAnimationPlaying(animation)` | `IsAnimationPlaying` | playing and not yet at its end |
+| `onAnimationFinished(animation, listener)` | `BindToAnimationFinished` | each time it reaches its end, its last frame applied |
+
+- `reset()` stops its animations too, and keeps what `onAnimationFinished` bound.
+- A sequence can still be played on the widget sequencer by hand, its roles bound in a map:
+  `CgSequencer.widgets(world).play(POP_IN.loaded(), Map.of("number", pop))`.
 
 | Property | Channels | Unreal |
 |---|---|---|
@@ -235,12 +278,15 @@ CgSequencePlayer player = ui.play(POP_IN.loaded(), Map.of("number", pop));
 | `render_opacity` | x | `UWidget::RenderOpacity`, multiplied into everything under it |
 | `colour_and_opacity` | r, g, b, a, linear | an image's, a text block's or a user widget's `ColorAndOpacity` |
 | `content_colour_and_opacity` | r, g, b, a, linear | a border's `ContentColorAndOpacity` |
+| `material_parameters` | x, y, z, w | its brush's UI material's parameters, read as `CG_QUAD_CUSTOM0`: a widget material track on a dynamic material instance |
 
 - **The role binds the instance**, and `node: <name>` finds a widget in its tree, as `FindRuntimeObject` does. A
   `user_widget` is reached whole: a track on it writes that instance's own transform and colour, never a widget inside
   it, which its own animations play on.
-- **Its first frame is in force before it is drawn**, and **a finished animation holds its last frame** until it is
-  stopped, as UMG's player holds its last valid frame: a fade-out stays faded. Stopping puts back what it wrote.
+- **Its first frame is in force before it is drawn**, and **a finished animation keeps what it wrote and retires**:
+  its last frame is applied, its finish heard, and it stops taking part, as UMG's player evaluates its last valid frame
+  once and leaves the widget as it was. A fade-out stays faded, and another animation on the same properties then
+  writes them alone rather than blending with it. Stopping one mid-play puts back what it wrote.
 - What an animation writes is render-only and never lays the tree out again; text, visibility and brushes do.
 - A name the tree lacks fails the play, naming it.
 
@@ -263,7 +309,7 @@ static final CgWorldWidgetLayer NUMBERS = CgWorldWidgetLayer.builder("mymod:dama
 
 CgWidgetComponent pop = NUMBERS.add(POP.loaded(), CgEntityAttachments.of(targetId));
 pop.widget().text("Number", "1,250").style("Number", critical ? ORANGE : GOLD);
-pop.play(critical ? CRITICAL.loaded() : NORMAL.loaded(), "number");   // released when it ends
+pop.play(critical ? CRITICAL.loaded() : NORMAL.loaded());   // released when it ends
 ```
 
 ```java
@@ -279,7 +325,7 @@ plate.remove();                             // it plays nothing, so it stays unt
 | `builder(id)...build()` | `SharedLayerName` | a layer on `HUD` at `WORLD_WIDGETS`, under the game's interface; `order(n)` elsewhere, `world(w)` a world of your own |
 | `add(tree, attachment)` | a screen-space `UWidgetComponent` | a component following anything a `CgAttachment` is: an entity's point, a socket, a sequence's locator |
 | `drawSize(w, h)`, `pivot(x, y)` | `DrawSize`, `Pivot` | its box, its desired size by default; the point of it on the attachment, the middle by default |
-| `play(sequence, role)` | `PlayAnimation`, then removed on `OnAnimationFinished` | what it plays as it starts, its widget bound as `role`; released when it ends |
+| `play(sequence)` | `PlayAnimation`, then removed on `OnAnimationFinished` | what its widget plays as it starts; released when it ends |
 | `remove()` | `DestroyComponent` | released now, queued or drawn |
 
 - **It starts at the layer's next tick**, before the frame's widget animations evaluate, so its first draw is its
@@ -290,11 +336,13 @@ plate.remove();                             // it plays nothing, so it stays unt
 
 ---
 
-## 8. On the screen
+## 8. On the screen: a viewport widget layer
 
-A widget on the screen fills it in **UI units**: the screen's pixels over the kit's UI scale, as `AddToViewport` sizes
-a user widget over its DPI scale. A kit sets the scale in `ui.yaml`; without one it is Unreal's default, 1 at 1080
-pixels on the shortest side.
+A widget on the screen goes on a `CgViewportWidgetLayer`, UMG's viewport: `AddToViewport` puts a widget in a
+full-screen canvas at a z-order, `RemoveFromParent` takes it off. It fills the screen in **UI units**: the screen's
+pixels over the kit's UI scale, as `AddToViewport` sizes a user widget over its DPI scale, so its root canvas's
+anchors are fractions of the screen and hold at any window size. A kit sets the scale in `ui.yaml`; without one it is
+Unreal's default, 1 at 1080 pixels on the shortest side.
 
 ```yaml
 # assets/mymod/ui.yaml
@@ -305,20 +353,31 @@ application_scale: 1
 ```
 
 ```java
-static final CgCanvasWidgetPainter PAINTER = new CgCanvasWidgetPainter("mymod.hud", CgCanvasMaterials.SCREEN);
-static final Matrix4f PLACEMENT = new Matrix4f();
+static final CgViewportWidgetLayer HUD = CgViewportWidgetLayer.builder("mymod:hud").kit("mymod").build();
 
-CgRenderStage.HUD.register(CgRenderStage.VIEWPORT_WIDGETS, frame -> {
-    float scale = CgUiScale.of("mymod").scale(frame.host().width(), frame.host().height());   // 2560 x 1440: 1.333
-    PAINTER.begin(frame.canvas(), frame.recording(), scale);
-    hud.allot(frame.host().width() / scale, frame.host().height() / scale);   // the whole screen, in UI units
-    hud.retain(PAINTER);                                                     // every instance, before any paints
-    hud.paint(PAINTER, PLACEMENT.scaling(scale));
-});
+CgUserWidget counter = COUNTER.loaded().newInstance();   // made once, shown and hidden as often as needed
+HUD.add(counter, 0);                                     // drawn from this frame, over lower z-orders
+counter.text("Number", "12");
+counter.playAnimation(POP.loaded());
+HUD.remove(counter);
 ```
 
-- **One painter per HUD, kept**: it loads a brush's texture at its first draw and keeps it.
-- A widget's size is its root's desired size unless `allot` gives one; `layout(painter, out)` answers it.
+```java
+// one that takes itself off when its last animation ends
+banner.onAnimationFinished(OUT.loaded(), () -> HUD.remove(banner));
+banner.playAnimation(OUT.loaded());
+```
+
+| Call | Unreal | Does |
+|---|---|---|
+| `builder(id)...build()` | the game viewport | a layer on `HUD` at `VIEWPORT_WIDGETS`; `kit(ns)` its UI scale, `retaining(...)` and `retainedScale(s)` its retainer boxes' image, `order(n)`, `world(w)` |
+| `add(widget, zOrder)` | `AddToViewport(ZOrder)` | on the screen over lower z-orders, over equal ones already there; added again, it moves |
+| `remove(widget)` | `RemoveFromParent` | off the screen, its animations left as they are |
+| `contains(widget)` | `IsInViewport` | whether it is on it |
+
+- **A level change takes every widget off**, as Unreal's `OnLevelRemovedFromWorld`: add it again in the new one.
+- **Every widget is retained before any paints**, so a retainer box anywhere on the layer works.
+- **The widget is yours**, never pooled: keep it, set it up, add and remove it as often as it shows.
 
 ---
 
@@ -349,11 +408,12 @@ CgRenderStage.HUD.register(CgRenderStage.VIEWPORT_WIDGETS, frame -> {
 | Package / type | Role |
 |---|---|
 | `widget.CgWidgetTree`, `CgWidget`, `CgWidgetSlot`, `CgWidgetBrush`, `CgLinearColour` | the tree as designed, its builders |
-| `widget.CgUserWidget` | an instance: live state, Slate's layout, retain and paint, a sequence target |
+| `widget.CgUserWidget` | an instance: live state, Slate's layout, retain and paint, a sequence target, its own animations |
+| `widget.CgViewportWidgetLayer` | widgets on the screen, by z-order |
 | `widget.CgWorldWidgetLayer`, `CgWidgetComponent`, `CgUserWidgetPool` | widgets over points in the world, and the pool |
 | `widget.CgWidgetPainter`, `CgCanvasWidgetPainter` | where leaves go: the canvas, retained images, UI materials |
 | `widget.CgUiScale` | a kit's `ui.yaml`, Unreal's DPI curve |
 | `widget.CgWidgetCodec`, `CgWidgetPreparer`; `text.style.CgTextStylePreparer` | the asset's compiler; what makes it READY |
 | `sequence.CgSequencer` (`widgets(world)`) | the widget sequencer |
 
-Package guide: `widget/CLAUDE.md`. Gates: `CgUserWidgetTest`, `CgWidgetCodecTest`, `CgWorldWidgetLayerTest`.
+Package guide: `widget/CLAUDE.md`. Gates: `CgUserWidgetTest`, `CgWidgetCodecTest`, `CgWorldWidgetLayerTest`, `CgViewportWidgetLayerTest`.

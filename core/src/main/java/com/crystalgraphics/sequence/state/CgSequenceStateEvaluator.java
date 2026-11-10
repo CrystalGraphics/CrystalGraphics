@@ -137,6 +137,8 @@ public final class CgSequenceStateEvaluator implements CgSequenceEvaluator {
     @Override
     public void evaluate(CgSequencePlayer player, CgSequenceTrack track, @Nullable CgSequenceSection section, float tick) {
         if (!(player.data(track, section) instanceof Bound b)) return;
+        // A retiring widget animation's last frame is kept: it leaves nothing to restore.
+        boolean restores = b.restores && !player.retiring();
         if (viewerSpace(track) && !player.involved()) return;
         List<CgSequenceChannel> channels = section.channels();
         float weight = section.weight(tick);
@@ -146,7 +148,7 @@ public final class CgSequenceStateEvaluator implements CgSequenceEvaluator {
             // No keys and no default: nothing to write, as Unreal's Evaluate returns false.
             if (b.channels[c] < 0 || !ch.hasValue()) continue;
             if (b.channels[c] != channel) {
-                if (mask != 0) blender.add(channel, values, mask, section.blend(), weight, base, b.restores);
+                if (mask != 0) blender.add(channel, values, mask, section.blend(), weight, base, restores);
                 channel = b.channels[c];
                 mask = 0;
             }
@@ -154,6 +156,6 @@ public final class CgSequenceStateEvaluator implements CgSequenceEvaluator {
             base[b.components[c]] = b.bases[c];
             mask |= 1 << b.components[c];
         }
-        if (mask != 0) blender.add(channel, values, mask, section.blend(), weight, base, b.restores);
+        if (mask != 0) blender.add(channel, values, mask, section.blend(), weight, base, restores);
     }
 }

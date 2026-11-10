@@ -4,6 +4,7 @@ import javax.annotation.Nullable;
 
 import org.joml.Matrix4f;
 import org.joml.Vector2f;
+import org.joml.Vector4fc;
 
 import com.crystalgraphics.api.material.CgMaterialDefinition;
 import com.crystalgraphics.text.style.CgTextStyle;
@@ -36,8 +37,12 @@ public interface CgWidgetPainter {
     @Nullable
     Object layout(CgTextStyle style, String text, float wrap, CgWidget.Justification justification, Vector2f out);
 
-    /** {@code brush} stretched over (0, 0) to ({@code width}, {@code height}) under {@code pose}, tinted. */
-    void image(CgWidgetBrush brush, Matrix4f pose, float width, float height, float r, float g, float b, float a);
+    /**
+     * {@code brush} stretched over (0, 0) to ({@code width}, {@code height}) under {@code pose}, tinted; a UI
+     * material's {@code parameters} reach its shader as {@code CG_QUAD_CUSTOM0}.
+     */
+    void image(CgWidgetBrush brush, Matrix4f pose, float width, float height, float r, float g, float b, float a,
+               Vector4fc parameters);
 
     /**
      * The text {@link #layout} laid out as {@code laidOut}, justified across a box {@code width} units wide at (0, 0)

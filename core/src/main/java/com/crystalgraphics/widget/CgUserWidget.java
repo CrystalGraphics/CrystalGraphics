@@ -1,15 +1,25 @@
 package com.crystalgraphics.widget;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 
 import javax.annotation.Nullable;
 
 import org.joml.Matrix4f;
 import org.joml.Vector2f;
+import org.joml.Vector4f;
 
+import com.crystalgraphics.frame.CgWorld;
 import com.crystalgraphics.i18n.CgKitStrings;
+import com.crystalgraphics.sequence.CgSequencePlayer;
 import com.crystalgraphics.sequence.CgSequenceTarget;
+import com.crystalgraphics.sequence.CgSequencer;
 import com.crystalgraphics.sequence.definition.CgSequenceBinding;
+import com.crystalgraphics.sequence.definition.CgSequenceDefinition;
 import com.crystalgraphics.text.style.CgTextStyle;
 
 /**
@@ -40,8 +50,8 @@ import com.crystalgraphics.text.style.CgTextStyle;
  *
  * <ul>
  *   <li>A name the tree lacks fails, by name: a setter here, a track binding it at play.</li>
- *   <li>What a sequence writes is render-only (transform, opacity, colours) and never relays out; text, visibility
- *       and brushes do.</li>
+ *   <li>What a sequence writes is render-only (transform, opacity, colours, material parameters) and never relays
+ *       out; text, visibility and brushes do.</li>
  *   <li>A nested user widget is reached by its name as a whole: a track on it writes that instance's own transform,
  *       opacity and colour, as its own sequences do; never a widget inside it.</li>
  *   <li>Its size is its root's desired size unless {@link #allot} gives one.</li>
@@ -58,7 +68,8 @@ public final class CgUserWidget implements CgSequenceTarget {
     private static final int RENDER_OPACITY = 4;
     private static final int COLOUR = 5;
     private static final int CONTENT_COLOUR = 6;
-    private static final int SLOTS = 7;
+    private static final int MATERIAL_PARAMETERS = 7;
+    private static final int SLOTS = 8;
     private static final String TEXT_ID = ":text/";
 
     private final CgWidgetTree tree;
@@ -84,9 +95,14 @@ public final class CgUserWidget implements CgSequenceTarget {
     private final Matrix4f origin = new Matrix4f();
     private final int[] region;
     private final Vector2f measured = new Vector2f();
+    private final Vector4f parameters = new Vector4f();
     private float allottedWidth = Float.NaN;
     private float allottedHeight = Float.NaN;
     private boolean dirty = true;
+    /** Its animations, one entry each however often played. @see #playAnimation */
+    private final List<Animation> animations = new ArrayList<>(2);
+    @Nullable
+    private CgWorld world;
 
     CgUserWidget(CgWidgetTree tree, @Nullable CgWidget as) {
         this.tree = tree;
@@ -157,8 +173,152 @@ public final class CgUserWidget implements CgSequenceTarget {
         return tree;
     }
 
-    /** Puts every widget back to the designer's values, nested ones too: for a pool, before the next use. */
+    // ── Animations: UUserWidget::PlayAnimation and its kin ─────────────────────────────────────────────────────────
+
+    /**
+     * Plays {@code animation} on this widget, every role it names bound to this instance, on its world's widget
+     * sequencer: UMG's {@code PlayAnimation}. Played again while it plays, it restarts from its start on the same
+     * player, as UMG's {@code GetOrAddPlayer} reuses one per animation ({@code UserWidget.cpp:609-670}).
+     *
+     * <pre>{@code
+     * widget.playAnimation(POP.loaded());                           // every hit: restarts, never stacks
+     * widget.onAnimationFinished(FADE.loaded(), layer::remove...);  // once, before or after it plays
+     * widget.playAnimation(FADE.loaded());
+     * }</pre>
+     *
+     * <ul>
+     *   <li>A finished animation keeps what it wrote and retires, as UMG's does: another on the same properties then
+     *       writes them alone.</li>
+     *   <li>Its world is its layer's ({@link CgViewportWidgetLayer}, {@link CgWorldWidgetLayer}), else the client's.</li>
+     *   <li>Several animations play at once on different properties; two writing one property blend as the sequencer
+     *       blends them.</li>
+     * </ul>
+     */
+    public CgSequencePlayer playAnimation(CgSequenceDefinition animation) {
+        return playAnimationTo(animation, 0, Double.NaN, 1f);
+    }
+
+    /**
+     * Plays {@code animation} from {@code start} seconds, ending and holding at {@code end}, at {@code speed} times its
+     * own: UMG's {@code PlayAnimationTo} ({@code UserWidget.cpp:674}, {@code PlayAnimationTimeRange} in later
+     * versions). One animation keyed through several states then plays only the stretch between two of them.
+     *
+     * <pre>{@code
+     * // a ramp keyed at each grade's point: play from wherever it is to the new grade's
+     * double from = widget.isAnimationPlaying(RAMP) ? widget.animationCurrentTime(RAMP) : previous.at();
+     * widget.playAnimationTo(RAMP, from, grade.at(), 1f);
+     *
+     * // the same, catching up: however far behind it is, it arrives in one step's time
+     * widget.playAnimationTo(RAMP, from, grade.at(), (float) Math.max(1, (grade.at() - from) / STEP));
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Each call sets the speed, as UMG's {@code PlayInternal} does: a replay at 1 is never left at an older speed.</li>
+     *   <li>Plays forward: an {@code end} before {@code start} plays on to the animation's end, as UMG's does.</li>
+     *   <li>NaN, or an {@code end} at or past the animation's end, plays to its end: {@link #playAnimation}.</li>
+     *   <li>Reaching {@code end} is its finish: {@link #onAnimationFinished} runs, and it retires keeping that frame.</li>
+     * </ul>
+     */
+    public CgSequencePlayer playAnimationTo(CgSequenceDefinition animation, double start, double end, float speed) {
+        Animation a = animation(animation);
+        if (a.player != null && !a.player.stopped()) return a.player.jumpTo(start).endAt(end).rate(speed);
+        Map<String, CgSequenceTarget> roles = new HashMap<>();
+        for (CgSequenceDefinition.Role role : animation.roles()) roles.put(role.name(), this);
+        a.player = CgSequencer.widgets(world != null ? world : CgWorld.client()).play(animation, roles);
+        a.player.onFinished(a::finished);
+        if (start != 0) a.player.jumpTo(start);
+        return a.player.endAt(end).rate(speed);
+    }
+
+    /**
+     * Where {@code animation} is, in seconds, while it plays; 0 when it is not playing or has finished. UMG's
+     * {@code GetAnimationCurrentTime} ({@code UserWidget.cpp:740}), which asks only its active players.
+     */
+    public double animationCurrentTime(CgSequenceDefinition animation) {
+        for (int i = 0; i < animations.size(); i++) {
+            Animation a = animations.get(i);
+            if (a.definition == animation) return a.player != null && !a.player.stopped() ? a.player.seconds() : 0;
+        }
+        return 0;
+    }
+
+    /**
+     * Stops {@code animation} mid-play, putting back what it wrote. Nothing for one not playing or finished. UMG's
+     * {@code StopAnimation}.
+     */
+    public void stopAnimation(CgSequenceDefinition animation) {
+        for (int i = 0; i < animations.size(); i++) {
+            Animation a = animations.get(i);
+            if (a.definition == animation && a.player != null) {
+                a.player.stop();
+                a.player = null;
+            }
+        }
+    }
+
+    /** Stops every animation playing on it: UMG's {@code StopAllAnimations}. */
+    public void stopAllAnimations() {
+        for (int i = 0; i < animations.size(); i++) {
+            Animation a = animations.get(i);
+            if (a.player != null) {
+                a.player.stop();
+                a.player = null;
+            }
+        }
+    }
+
+    /** Whether {@code animation} is playing and has not reached its end: UMG's {@code IsAnimationPlaying}. */
+    public boolean isAnimationPlaying(CgSequenceDefinition animation) {
+        for (int i = 0; i < animations.size(); i++) {
+            Animation a = animations.get(i);
+            if (a.definition == animation) return a.player != null && !a.player.stopped() && !a.player.finished();
+        }
+        return false;
+    }
+
+    /**
+     * Runs {@code listener} each time {@code animation} reaches its end on this widget, its last frame applied: UMG's
+     * {@code BindToAnimationFinished}. Bound once; it holds for every later play, and through {@link #reset()}.
+     */
+    public CgUserWidget onAnimationFinished(CgSequenceDefinition animation, Runnable listener) {
+        animation(animation).listeners.add(Objects.requireNonNull(listener, "listener"));
+        return this;
+    }
+
+    /** The world its animations play on: its layer's. */
+    void world(@Nullable CgWorld world) {
+        this.world = world;
+    }
+
+    private Animation animation(CgSequenceDefinition definition) {
+        for (int i = 0; i < animations.size(); i++) if (animations.get(i).definition == definition) return animations.get(i);
+        Animation a = new Animation(Objects.requireNonNull(definition, "animation"));
+        animations.add(a);
+        return a;
+    }
+
+    /** One animation of this widget: its player while it plays, and who hears it finish. */
+    private static final class Animation {
+        final CgSequenceDefinition definition;
+        final List<Runnable> listeners = new ArrayList<>(1);
+        @Nullable
+        CgSequencePlayer player;
+
+        Animation(CgSequenceDefinition definition) {
+            this.definition = definition;
+        }
+
+        void finished() {
+            for (int i = 0; i < listeners.size(); i++) listeners.get(i).run();
+        }
+    }
+
+    /**
+     * Puts every widget back to the designer's values, nested ones too, and stops its animations: for a pool, before
+     * the next use. What it bound with {@link #onAnimationFinished} stays bound.
+     */
     public void reset() {
+        stopAllAnimations();
         System.arraycopy(designer, 0, state, 0, state.length);
         restore();
         for (CgUserWidget w : nested) if (w != null) w.reset();
@@ -206,6 +366,37 @@ public final class CgUserWidget implements CgSequenceTarget {
             style[index] = value;
             dirty = true;
         }
+        return this;
+    }
+
+    /**
+     * Widget {@code name}'s colour and opacity, multiplied into what it draws: UMG's {@code SetColorAndOpacity} on an
+     * image, a text block or a user widget. Never relays out; an animation keying it starts from this.
+     *
+     * <pre>{@code
+     * counter.colourAndOpacity("Banner", CgLinearColour.argb(0xFFFF8410));   // the banner dyed the grade's orange
+     * }</pre>
+     */
+    public CgUserWidget colourAndOpacity(String name, CgLinearColour colour) {
+        putColour(tree.index(name) * SLOTS * 4 + COLOUR * 4, Objects.requireNonNull(colour, "colour"));
+        return this;
+    }
+
+    /**
+     * Widget {@code name}'s material parameters: four values its brush's UI material reads as {@code CG_QUAD_CUSTOM0},
+     * per instance, as a dynamic material instance's parameters are in UMG. Zero until set; an animation keys them as
+     * {@code material_parameters} and starts from these. Never relays out.
+     *
+     * <pre>{@code
+     * counter.materialParameters("Streak", 0.5f, 1.2f, 0f, 0f);   // its shader: float energy = CG_QUAD_CUSTOM0.x;
+     * }</pre>
+     */
+    public CgUserWidget materialParameters(String name, float x, float y, float z, float w) {
+        int at = require(name) * SLOTS * 4 + MATERIAL_PARAMETERS * 4;
+        state[at] = x;
+        state[at + 1] = y;
+        state[at + 2] = z;
+        state[at + 3] = w;
         return this;
     }
 
@@ -375,7 +566,7 @@ public final class CgUserWidget implements CgSequenceTarget {
                     // SImage: style tint x colour and opacity x brush tint.
                     CgLinearColour t = br.tint();
                     painter.image(br, pose, width, height, r * state[c] * t.r(), g * state[c + 1] * t.g(),
-                            b * state[c + 2] * t.b(), a * state[c + 3] * t.a());
+                            b * state[c + 2] * t.b(), a * state[c + 3] * t.a(), parameters(at));
                 }
             }
             case TEXT_BLOCK -> painter.text(style[i], shown[i], laid[i], w.justification, pose, width,
@@ -386,11 +577,16 @@ public final class CgUserWidget implements CgSequenceTarget {
                     // SBorder: brush tint x style tint x brush colour.
                     CgLinearColour t = br.tint(), bc = w.brushColour;
                     painter.image(br, pose, width, height, r * t.r() * bc.r(), g * t.g() * bc.g(), b * t.b() * bc.b(),
-                            a * t.a() * bc.a());
+                            a * t.a() * bc.a(), parameters(at));
                 }
                 // SCompoundWidget: its content colour into its content's style.
                 int cc = at + CONTENT_COLOUR * 4;
                 paintChildren(painter, i, pose, r * state[cc], g * state[cc + 1], b * state[cc + 2], a * state[cc + 3]);
+            }
+            case SCALE_BOX -> {
+                // FGeometry::MakeChild's layout scale: everything inside is laid out and drawn in its scaled space.
+                pose.scale(w.userScale, w.userScale, 1f);
+                paintChildren(painter, i, pose, r, g, b, a);
             }
             case RETAINER_BOX -> {
                 // SRetainerWidget: the retained image as one quad, tinted by everything above it.
@@ -483,6 +679,15 @@ public final class CgUserWidget implements CgSequenceTarget {
                         dy = desired[c * 2 + 1] + tree.padding[c * 4 + 1] + tree.padding[c * 4 + 3];
                     }
                 }
+                case SCALE_BOX -> {
+                    // SScaleBox::ComputeDesiredSize at a user scale: SCompoundWidget's, times it.
+                    float s = w.userScale;
+                    for (int c : tree.children(i)) {
+                        if (visibility[c] == CgWidget.Visibility.COLLAPSED) continue;
+                        dx = (desired[c * 2] + tree.padding[c * 4] + tree.padding[c * 4 + 2]) * s;
+                        dy = (desired[c * 2 + 1] + tree.padding[c * 4 + 1] + tree.padding[c * 4 + 3]) * s;
+                    }
+                }
                 case HORIZONTAL_BOX -> {
                     // SBoxPanel's ComputeDesiredSizeForBox.
                     for (int c : tree.children(i)) {
@@ -539,6 +744,22 @@ public final class CgUserWidget implements CgSequenceTarget {
                     align(c, 0, width, desired[c * 2], tree.horizontal[c], tree.padding[c * 4], tree.padding[c * 4 + 2]);
                     align(c, 1, height, desired[c * 2 + 1], tree.vertical[c], tree.padding[c * 4 + 1],
                             tree.padding[c * 4 + 3]);
+                }
+            }
+            case SCALE_BOX -> {
+                // SScaleBox::OnArrangeChildren: aligned at its scaled size, then placed in the scaled space the
+                // paint applies (the offset over the scale), at its own desired size, or the area's over the scale
+                // along an axis it fills.
+                float s = w.userScale;
+                for (int c : tree.children(i)) {
+                    float pl = tree.padding[c * 4], pt = tree.padding[c * 4 + 1];
+                    float pr = tree.padding[c * 4 + 2], pb = tree.padding[c * 4 + 3];
+                    align(c, 0, width, desired[c * 2] * s, tree.horizontal[c], pl, pr);
+                    align(c, 1, height, desired[c * 2 + 1] * s, tree.vertical[c], pt, pb);
+                    position[c * 2] /= s;
+                    position[c * 2 + 1] /= s;
+                    size[c * 2] = tree.horizontal[c] == CgWidgetSlot.Align.FILL ? width / s : desired[c * 2];
+                    size[c * 2 + 1] = tree.vertical[c] == CgWidgetSlot.Align.FILL ? height / s : desired[c * 2 + 1];
                 }
             }
             case USER_WIDGET -> nested[i].allot(width, height).layoutIfDirty(painter);
@@ -640,6 +861,7 @@ public final class CgUserWidget implements CgSequenceTarget {
             case "render_opacity" -> RENDER_OPACITY;
             case "colour_and_opacity" -> COLOUR;
             case "content_colour_and_opacity" -> CONTENT_COLOUR;
+            case "material_parameters" -> MATERIAL_PARAMETERS;
             default -> -1;
         };
     }
@@ -679,6 +901,12 @@ public final class CgUserWidget implements CgSequenceTarget {
         int i = tree.index(name);
         if (i < 0) throw new IllegalArgumentException("no widget " + name + " in " + tree);
         return i;
+    }
+
+    /** The material parameters at widget state {@code at}, in a vector reused for each draw. */
+    private Vector4f parameters(int at) {
+        int p = at + MATERIAL_PARAMETERS * 4;
+        return parameters.set(state[p], state[p + 1], state[p + 2], state[p + 3]);
     }
 
     private void putColour(int at, CgLinearColour c) {
