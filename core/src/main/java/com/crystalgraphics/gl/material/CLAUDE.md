@@ -37,7 +37,7 @@ See [`parse/CLAUDE.md`](parse/CLAUDE.md) for the full class map. Key external-fa
 | `CgParsedShader` | `@Desugar record` result of `CgShaderParser.parse()`. Fields: `shaderType`, `properties`, `featureNames`, `renderQueue`, `renderType`, `passes`, `buffers`, `bufferStructs`. `getPassByName(String)` / `getPassByLightMode(String)` convenience accessors. Per-pass data lives on `CgParsedPass`. |
 | `CgParsedPass` | `@Desugar record` per-pass parse result. Fields: `lightMode`, `name`, `renderState`, `v2fStructBody`, `globalDecls`, `vertexBody`, `fragmentBody`, `fragOutput`. |
 | `CgMaterialShaderCompiler` | Static compiler. Canonical: `compile(CgParsedShader, CgParsedPass, List<CgAttachedBuffer>, CgUniformBuffer, CompileConfig)` → `CompiledSource`. `compileDepthAutoGen(shader, forwardPass, ...)` → depth-prepass `CompiledSource` (3 cases: simple-vertex/complex-vertex/alpha-clip). |
-| `CgMaterialShaderCompiler.CompiledSource` | `@Desugar record`: `vertexSource`, `fragmentSource`, `vertexFormat` — complete sources ready for `CgShaderPreprocessor` then `CgShaderFactory`. `vertexFormat` passed to `CgShaderFactory.fromSource()` for attribute binding. |
+| `CgMaterialShaderCompiler.CompiledSource` | `@Desugar record`: `vertexSource`, `fragmentSource`, `vertexFormat` — complete sources ready for `CgShaderPreprocessor` then `CgShader`. `vertexFormat` places the attributes, each at its index. |
 
 ## Compiler Output Format
 
@@ -49,7 +49,7 @@ See [`parse/CLAUDE.md`](parse/CLAUDE.md) for the full class map. Key external-fa
 4. `#define CG_OBJECT_BUFFER_BINDING <CgBindingPoints.OBJECT_DATA>` + `#define CG_FRAME_BLOCK_BINDING <CgBindingPoints.FRAME_DATA>`
 5. `#include "crystalgraphics:shaders/env/cg_env.glsl"`
 5a. **Vertex pulling** — `CgGlslEmitter.emitVertexDeclarations(vertexFormat)` declares the store's words (`CgVertexWords` at `CgBindingModel.VERTICES`) and a global per attribute of the resolved `CgVertexFormat` (from `shader.shaderType()` via `CgVertexFormat.forShaderType()`); `emitVertexFetch` writes `cg_FetchVertex()`, which `main` calls first. The skinned variant fetches after `bones.glsl`, either width by `CG_BONES_WIDE`. Not present in fragment source.
-6. `CgMaterialBlock` UBO block (emitted via `CgGlslEmitter.emitUbo()` when non-sampler properties exist; no `binding=` qualifier — wired post-link by `wireShader()` at slot `CgBindingPoints.MATERIAL_PROPERTIES_UBO`)
+6. `CgMaterialBlock` UBO block (emitted via `CgGlslEmitter.emitUbo()` when non-sampler properties exist; declared at `CgBindingPoints.MATERIAL_PROPERTIES_UBO`'s binding)
 7. Sampler property uniform declarations (`uniform sampler2D/sampler2DArray/sampler3D/samplerCube <name>;` — one per sampler property)
 8. User-attached SSBO buffers (emitted by `CgGlslEmitter`)
 8. User-attached UBO blocks (emitted by `CgGlslEmitter`) — path-independent
@@ -149,7 +149,7 @@ populate `featureNames` for validation.
 |---------|-------------|
 | `api/material/` | `CgMaterial` delegates compilation to `CgMaterialShader`; `CgMaterialRegistry` delegates reload/delete to `CgMaterialShaderRegistry` |
 | `api/shader/` | `CgShaderPreprocessor` processes compiler output before GL compilation |
-| `gl/shader/` | `CgShaderFactory.fromSource()` receives the preprocessed output |
+| `gl/shader/` | `CgShader` compiles the preprocessed output |
 | `api/CgCapabilities` | `ShaderBufferPath` drives `#version` selection; `isGpuShaderInt64()` gates INT64/UINT64 |
 | `api/buffer/CgGpuType` | `requiredExtension()` returns required GLSL extension per field type |
 

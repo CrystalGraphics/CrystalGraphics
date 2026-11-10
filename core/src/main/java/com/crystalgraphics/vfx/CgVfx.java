@@ -1,5 +1,6 @@
 package com.crystalgraphics.vfx;
 
+import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.frame.CgTickFunction;
 import com.crystalgraphics.frame.CgTickGroup;
 import com.crystalgraphics.frame.CgWorld;
@@ -7,7 +8,6 @@ import com.crystalgraphics.lifecycle.CgGraphicsLifecycle;
 import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.lifecycle.CgLifecycleListener;
 import com.crystalgraphics.net.object.CgCharacterClockNet;
-import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.world.CgWorldQuery;
 import com.crystalgraphics.render.CgFrameClock;
 import com.crystalgraphics.compute.CgKernel;
@@ -194,7 +194,7 @@ public final class CgVfx {
 
     /** Whether a precache may run here and now: the engine installed, on the thread that drives the device. */
     static boolean mayPrecache() {
-        return installed && CgGL.mayIssueGl();
+        return installed && CgRHI.onDeviceThread();
     }
 
     /**

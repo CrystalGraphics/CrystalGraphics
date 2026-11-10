@@ -337,13 +337,13 @@ public final class CgFrameBufferFormat {
         /**
          * Requests multisampling at the DRIVER'S maximum supported sample count instead of a specific
          * one — {@code true} means "as much MSAA as this machine actually has, or none at all if it has
-         * none," resolved once a live GL context exists to ask ({@code CgGL.maxSamples()}), rather than a
+         * none," resolved once a device exists to ask, rather than a
          * count the caller has to pick and clamp themselves. {@code false} is equivalent to {@link
          * #samples(int) samples(1)} — no multisampling.
          *
          * <p>The point of this overload: a caller that just wants "the best antialiasing this hardware
          * offers, or a plain single-sampled attachment where it offers none" should not need its own
-         * {@code CgCapabilities}/{@code CgGL.maxSamples()} probe and its own zero-or-one-sample special
+         * {@code CgCapabilities} probe and its own zero-or-one-sample special
          * case — that logic already has to exist once, here, for every format that wants it.</p>
          */
         public Builder maxSamples() {

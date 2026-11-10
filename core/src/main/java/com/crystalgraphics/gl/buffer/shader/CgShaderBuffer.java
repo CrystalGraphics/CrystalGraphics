@@ -3,11 +3,9 @@ package com.crystalgraphics.gl.buffer.shader;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.platform.gl.CgCapabilities;
-import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.api.buffer.CgBufferFormat;
 import com.crystalgraphics.api.buffer.CgBufferLifetime;
 import com.crystalgraphics.api.buffer.CgObjectBuffer;
-import com.crystalgraphics.gl.shader.CgShader;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.gl.buffer.CgStreamBuffer;
 import com.crystalgraphics.gl.buffer.staging.CgBufferWriter;
@@ -15,6 +13,7 @@ import com.crystalgraphics.gl.buffer.staging.CgStagingBuffer;
 import com.crystalgraphics.gpu.CgDeferral;
 import com.crystalgraphics.gpu.CgUploadLease;
 import com.crystalgraphics.gpu.CgUploads;
+import com.crystalgraphics.platform.rhi.resource.CgGpuBuffer;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 import lombok.Getter;
@@ -37,14 +36,13 @@ import java.util.function.Consumer;
  *       (SSBO, fixed stride per record) or flat-mode (UBO, arbitrary float sequence).</li>
  *   <li>A write-session API ({@link #beginWrite}/{@link #endRecord}/{@link #endWrite})
  *       that validates object count and drives GPU upload via {@link #endWrite()}.</li>
- *   <li>A {@link #delete()} template method that deletes the stream buffer then calls the
- *       {@link #deleteGlResources()} hook for subclass-owned GL objects.</li>
+ *   <li>A {@link #delete()} that releases the storage, destroyed once the frames reading it retire.</li>
  * </ul>
  *
  * <h3>Concrete subclasses</h3>
  * <ul>
  *   <li>{@link CgShaderStorageBuffer} — SSBO (GL 4.3 core or {@code ARB_shader_storage_buffer_object})</li>
- *   <li>{@link CgUniformBuffer} — UBO (flat-mode child; overrides {@link #bind()}/{@link #unbind()})</li>
+ *   <li>{@link CgUniformBuffer} — UBO (flat-mode child)</li>
  * </ul>
  *
  * <h3>Threads</h3>
@@ -70,15 +68,9 @@ import java.util.function.Consumer;
  * is 0-based; {@link CgBindingPoints} is added internally. Use
  * {@link #createInternal(String, CgBufferFormat, int)} for engine-reserved binding points.</p>
  *
- * <h3>Shader wiring</h3>
- * <p>Call {@link #bind(CgShader)} after {@code shader.bind()} to both bind the buffer
- * and wire it to the active program in one call. Each subclass implements
- * {@link #wireShader(CgShader)} for its specific wiring strategy:</p>
- * <ul>
- *   <li>SSBO — calls {@code glShaderStorageBlockBinding} to associate the named block with
- *       {@link #bindingLocation}. Post-link wiring; idempotent.</li>
- *   <li>UBO — calls {@code glUniformBlockBinding} to associate block index with slot.</li>
- * </ul>
+ * <h3>Shader binding</h3>
+ * <p>The material compiler declares its block, named {@link #getName()}, at {@link #bindingLocation}'s binding: a
+ * device pass's sets read it there.</p>
  *
  * <h3>SSBO write lifecycle</h3>
  * <pre>{@code
@@ -91,11 +83,7 @@ import java.util.function.Consumer;
  *     buffer.endRecord();
  * }
  * buffer.endWrite();
- * shader.bind();
- * buffer.bind(shader);   // glShaderStorageBlockBinding
- * // draw N instances
- * buffer.unbind();
- * shader.unbind();
+ * buffer.bind();         // what a device pass's sets read: noted, never a GL bind
  * }</pre>
  */
 public abstract class CgShaderBuffer implements CgObjectBuffer {
@@ -108,16 +96,16 @@ public abstract class CgShaderBuffer implements CgObjectBuffer {
      * Debug/sampler/block name for this buffer.
      * <ul>
      *   <li>SSBO — debug label, appears in error messages and registry keys.</li>
-     *   <li>UBO — block name used in {@code glGetUniformBlockIndex} during {@link #bind(CgShader)}.</li>
+     *   <li>UBO — the GLSL block name it is declared as.</li>
      * </ul>
      */
     @Getter
     private final String name;
 
     protected final CgBufferWriter writer;
-    /** The GL storage: made at once for a {@link CgBufferLifetime#FRAME} buffer, through {@link #gpu} otherwise. */
+    /** The storage: made at once for a {@link CgBufferLifetime#FRAME} buffer, through {@link #gpu} otherwise. */
     protected CgStreamBuffer dataBuffer;
-    /** This buffer's GL work, in order: what lets a {@link CgBufferLifetime#RETAINED} one be used from any thread. */
+    /** This buffer's device work, in order: what lets a {@link CgBufferLifetime#RETAINED} one be used from any thread. */
     protected final CgDeferral gpu = new CgDeferral();
     private final Consumer<CgUploadLease> landing = this::land;
 
@@ -175,15 +163,15 @@ public abstract class CgShaderBuffer implements CgObjectBuffer {
      *
      * @param name            debug/sampler/block name (must be non-null)
      * @param format          typed format descriptor (mandatory)
-     * @param glTarget        GL buffer target
-     * @param bindingLocation GL binding point; immutable after construction
+     * @param use             what the storage is read as
+     * @param bindingLocation binding point; immutable after construction
      */
-    protected CgShaderBuffer(String name, CgBufferFormat format, int glTarget, int bindingLocation) {
-        this(name, format, glTarget, bindingLocation, CgBufferLifetime.RETAINED);
+    protected CgShaderBuffer(String name, CgBufferFormat format, CgStreamBuffer.Use use, int bindingLocation) {
+        this(name, format, use, bindingLocation, CgBufferLifetime.RETAINED);
     }
 
     /** @param lifetime {@link CgBufferLifetime#FRAME} takes the frame ring ({@link CgStreamBuffer#createFrameLocal}) */
-    protected CgShaderBuffer(String name, CgBufferFormat format, int glTarget, int bindingLocation,
+    protected CgShaderBuffer(String name, CgBufferFormat format, CgStreamBuffer.Use use, int bindingLocation,
                              CgBufferLifetime lifetime) {
         Objects.requireNonNull(name,   "name is required");
         Objects.requireNonNull(format, "CgBufferFormat is required");
@@ -197,9 +185,9 @@ public abstract class CgShaderBuffer implements CgObjectBuffer {
         this.writer           = new CgBufferWriter(new CgStagingBuffer(floatPerRecord), format);
         this.lastWrittenCount = 0;
         if (lifetime == CgBufferLifetime.FRAME) {
-            this.dataBuffer = CgStreamBuffer.createFrameLocal(glTarget, capacityBytes);
+            this.dataBuffer = CgStreamBuffer.createFrameLocal(use, capacityBytes);
         } else {
-            gpu.run(() -> dataBuffer = CgStreamBuffer.createForShaderBuffer(glTarget, capacityBytes));
+            gpu.run(() -> dataBuffer = CgStreamBuffer.createForShaderBuffer(use, capacityBytes));
         }
     }
 
@@ -265,16 +253,6 @@ public abstract class CgShaderBuffer implements CgObjectBuffer {
                     + "this context's path is " + path);
         }
         return new CgShaderStorageBuffer(name, format, path, bindingPoint, lifetime);
-    }
-
-    /**
-     * Wires {@code shader}'s storage block named {@code name} to {@code binding}, with no buffer object of its own: for
-     * a block whose buffer is bound per draw by someone else, as the executor binds the object records. The shader is
-     * bound.
-     */
-    public static void wireBlock(CgShader shader, String name, CgBindingPoints.Binding binding) {
-        int index = CgGL.glGetProgramResourceIndex(shader.getProgram().getId(), CgGL.GL_SHADER_STORAGE_BLOCK, name);
-        if (index != CgGL.GL_INVALID_INDEX) CgGL.glShaderStorageBlockBinding(shader.getProgram().getId(), index, binding.ssbo());
     }
 
     /**
@@ -394,57 +372,25 @@ public abstract class CgShaderBuffer implements CgObjectBuffer {
     // ── Bind / unbind ─────────────────────────────────────────────────────────
 
     /**
-     * Binds this buffer to its GL binding point.
+     * Notes this buffer at its binding point ({@code CgBoundResources}), what a device pass's sets read: its latest
+     * upload's range on the frame ring, else the whole storage. Lands what other threads uploaded first.
      *
-     * @throws IllegalStateException if this buffer has been deleted
+     * @throws IllegalStateException if this buffer has been deleted, or is not made yet
      */
-    @Override public void bind() {
+    public void bind() {
         if (deleted) throw new IllegalStateException("CgShaderBuffer has been deleted");
         gpu.flush();
         if (dataBuffer == null) throw new IllegalStateException(name + " is not made yet: bind it on the render thread, outside a recording");
-        bindInternal();
+        noteInternal();
     }
 
-    /**
-     * Binds this buffer AND wires it to {@code shader}.
-     *
-     * <p><strong>Precondition:</strong> {@code shader.bind()} must have been called before this
-     * method. GL uniform/block-index queries require the program to be currently active.</p>
-     *
-     * <p>Behavior by type:</p>
-     * <ul>
-     *   <li><strong>SSBO</strong> — calls {@code glShaderStorageBlockBinding} to associate the
-     *       named block with {@link #bindingLocation}. Post-link, per-program; idempotent.</li>
-     *   <li><strong>UBO</strong> — {@code glBindBufferBase(GL_UNIFORM_BUFFER, …)} then
-     *       {@code glUniformBlockBinding(programId, blockIndex, bindingLocation)}.
-     *       Replaces the deleted {@code bindBlock()} methods.</li>
-     * </ul>
-     *
-     * @param shader the currently-bound shader program to wire; must not be null.
-     *               If this buffer is attached to a {@link CgMaterial},
-     *               the material calls {@link #wireShader(CgShader)} automatically on each compile —
-     *               prefer the no-arg {@link #bind()} in that case; {@code bind(CgShader)} is for
-     *               standalone (non-material) usage only, where the caller manages the active program.
-     * @throws IllegalStateException if this buffer has been deleted
-     */
-    public void bind(CgShader shader) {
-        bind();
-        wireShader(shader);
-    }
-
-    /**
-     * Notes what {@link #bind()} would bind ({@code CgBoundResources}) without binding it: a pass drawing on the device
-     * states its buffers. Its data must be on the GPU already, as a {@link #bind()} before the pass leaves it.
-     */
+    /** {@link #bind()} inside a pass, with nothing to land: a no-op before the storage is made. */
     public void noteBound() {
         if (dataBuffer != null) noteInternal();
     }
 
-    /** What {@link #noteBound} notes: the range {@link #bindInternal} binds. */
-    protected void noteInternal() {}
-
-    /** Unbinds this buffer from its GL binding point. */
-    @Override public void unbind() { unbindInternal(); }
+    /** Notes the range {@link #bind()} names. */
+    protected abstract void noteInternal();
 
     @Override public boolean isDeleted() { return deleted; }
 
@@ -462,19 +408,19 @@ public abstract class CgShaderBuffer implements CgObjectBuffer {
         return dataBuffer != null && dataBuffer.offsetMovesPerUpload();
     }
 
-    /**
-     * Returns the GL buffer object ID of the underlying stream buffer.
-     */
+    @Override
+    public CgGpuBuffer gpuBuffer() {
+        gpu.flush();
+        return dataBuffer == null ? null : dataBuffer.gpuBuffer();
+    }
+
     @Override
     public int getGlBufferId() {
         gpu.flush();
         return dataBuffer == null ? 0 : dataBuffer.getGlBuffer();
     }
 
-    /**
-     * Deletes the underlying GL stream buffer and calls {@link #deleteGlResources()} for
-     * any additional GL objects owned by the subclass. Idempotent — subsequent calls are no-ops.
-     */
+    /** Releases the storage, destroyed once the frames reading it retire. Idempotent. */
     @Override
     public void delete() {
         if (deleted) return;
@@ -483,16 +429,8 @@ public abstract class CgShaderBuffer implements CgObjectBuffer {
         gpu.run(() -> {
             if (dataBuffer != null) dataBuffer.delete();
             dataBuffer = null;
-            deleteGlResources();
         });
     }
-
-    /**
-     * Extension hook called by {@link #delete()} after the stream buffer has been deleted.
-     * Override to release additional GL resources owned by a subclass (e.g. a texture ID).
-     * Default implementation is a no-op.
-     */
-    protected void deleteGlResources() {}
 
     /**
      * Uploads {@code floatCount} floats from {@code data} to the GPU via the stream buffer -- the one door every
@@ -524,7 +462,7 @@ public abstract class CgShaderBuffer implements CgObjectBuffer {
         boolean small = floatCount <= COMPARE_LIMIT_FLOATS;
         if (small && sameAsUploaded(data, floatCount) && (!ring || uploadedFrame == frame)) {
             CgTrace.add(CgChannels.GL, UPLOAD_SKIPPED, 1);
-            if (ring) bindInternal();
+            if (ring) noteInternal();
             return;
         }
         CgTrace.add(CgChannels.GL, UPLOAD_SENT, 1);
@@ -537,14 +475,13 @@ public abstract class CgShaderBuffer implements CgObjectBuffer {
         } else {
             uploadedCount = -1;   // a later small upload compares against nothing stale
         }
-        if (ring) bindInternal();
+        if (ring) noteInternal();
     }
 
     /** Off the render thread: the floats copied into a lease here, landed before the next frame executes. */
     private void uploadLater(float[] data, int floatCount) {
         if (floatCount == 0) return;
-        // Direct memory: a buffer lands by glBufferSubData, which reads it.
-        CgUploadLease lease = CgUploads.lease(floatCount * Float.BYTES, true).put(data, 0, floatCount);
+        CgUploadLease lease = CgUploads.lease(floatCount * Float.BYTES).put(data, 0, floatCount);
         gpu.run(lease.into(landing, 0, 0, 0, 0, floatCount, 1, 1, 0, 0));
     }
 
@@ -581,35 +518,4 @@ public abstract class CgShaderBuffer implements CgObjectBuffer {
 
 
     // ── Abstract backend contract ─────────────────────────────────────────────
-
-    /**
-     * Performs the concrete GL bind operation. Called by {@link #bind()} after validations.
-     */
-    protected abstract void bindInternal();
-
-    /**
-     * Performs the concrete GL unbind operation. Called by {@link #unbind()}.
-     */
-    protected abstract void unbindInternal();
-
-    /**
-     * Wires this buffer to the given shader program WITHOUT establishing the
-     * per-context GL binding. Calls only {@link #wireShader(CgShader)}.
-     *
-     * <p>Use this after each program link to set per-program block/sampler
-     * associations. The per-context binding ({@code glBindBufferBase} /
-     * {@code glActiveTexture+glBindTexture}) is handled separately in
-     * {@link #bind()}, and for a {@link CgBufferLifetime#FRAME} buffer by every upload.</p>
-     *
-     * <p>{@code shader} must not be null and must be the currently-bound program —
-     * the GL program must be active via {@code shader.bind()} before this call,
-     * as GL uniform/block-index queries require the program to be active.</p>
-     *
-     * <p>If this buffer is attached to a {@link CgMaterial},
-     * {@code wireShader} is called automatically on each material compile — do not call
-     * this manually in that case.</p>
-     *
-     * @param shader the currently-bound shader program; must not be null
-     */
-    public abstract void wireShader(CgShader shader);
 }

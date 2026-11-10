@@ -1,9 +1,7 @@
 package com.crystalgraphics.platform.gl;
 
-import com.crystalgraphics.lwjgl3.Lwjgl3GLBackend;
-import com.crystalgraphics.lwjgl3.Lwjgl3GLContext;
+import com.crystalgraphics.platform.gl.state.GLCheckedHostState;
 import com.crystalgraphics.lwjgl3.Lwjgl3GLDriver;
-import com.crystalgraphics.platform.gl.state.CgGlState;
 import com.crystalgraphics.platform.gl.driver.CgGLDriver;
 import com.crystalgraphics.platform.gl.state.GLContextState;
 import com.crystalgraphics.platform.gl.state.GLHostState;
@@ -46,22 +44,17 @@ public class GLHostSectionTest {
             + "layout(push_constant) uniform P { float k; } p;\n"
             + "void main() { o = u.c * texture(t, vec2(0.5)) * p.k; }\n";
 
-    /** {@code CgGL} draws under GL's defaults: a section shared with it leaves none of the device's conventions on. */
+    /** A host whose cache declares none of the device's conventions draws under GL's defaults: they are set back. */
     @Test
-    public void aSectionSharedWithCgGLLeavesGLsDefaults() {
+    public void aCachedHostsSectionLeavesGLsDefaults() {
         try (GLTestWindow window = new GLTestWindow()) {
-            // Shared with CgGL: CgGL on this context, which the section reads the host's framebuffers from
-            CgGL.init(new Lwjgl3GLBackend());
-            // The section saves the host's alpha test, which asks the capabilities whether the profile has one
-            CgCapabilities.init(new Lwjgl3GLContext());
-            CgCapabilities.clearCache();
-            CgGlState.reset();
-            CgGLDevice device = new CgGLDevice(new Lwjgl3GLDriver(), new SpvcGlslTranslator(), 64, 64, false,
-                    GLHostState.sharedWithCgGL());
+            CgGLDriver driver = new Lwjgl3GLDriver();
+            CgGLDevice device = new CgGLDevice(driver, new SpvcGlslTranslator(), 64, 64, false,
+                    new GLCheckedHostState("test", driver, (domain, s) -> false, false));
             device.fromHost();
             assertTrue("the device writes sRGB inside the section", glIsEnabled(GL_FRAMEBUFFER_SRGB));
             device.toHost();
-            assertFalse("sRGB writes left on: CgGL's UI encoded twice", glIsEnabled(GL_FRAMEBUFFER_SRGB));
+            assertFalse("sRGB writes left on: the host's UI encoded twice", glIsEnabled(GL_FRAMEBUFFER_SRGB));
             assertFalse(glIsEnabled(GL_TEXTURE_CUBE_MAP_SEAMLESS));
             assertFalse(glIsEnabled(GL_PROGRAM_POINT_SIZE));
             assertEquals(GL_NEGATIVE_ONE_TO_ONE, glGetInteger(GL_CLIP_DEPTH_MODE));
@@ -70,11 +63,6 @@ public class GLHostSectionTest {
             assertEquals(4, glGetInteger(GL_PACK_ALIGNMENT));
             device.close();
             assertTrue("GL errors: " + window.errors, window.errors.isEmpty());
-        } finally {
-            CgGlState.reset();
-            CgCapabilities.clearCache();
-            CgCapabilities.init(null);
-            CgGL.init(null);
         }
     }
 

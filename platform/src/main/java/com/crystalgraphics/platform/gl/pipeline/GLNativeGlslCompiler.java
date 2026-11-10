@@ -39,7 +39,7 @@ import static com.crystalgraphics.platform.gl.driver.GLC.GL_UNIFORM_BLOCK;
  *
  * <pre>{@code
  * GLNativeTranslator translator = new GLNativeTranslator();
- * CgGLDevice device = new CgGLDevice(driver, translator, w, h, false, GLHostState.sharedWithCgGL());
+ * CgGLDevice device = new CgGLDevice(driver, translator, w, h, false, GLHostState.byQuery(driver));
  * device.installBesideCgGL(new GLNativeGlslCompiler(device.driver()));
  * // ... once the toolchain lands:
  * translator.spirv(toolchain.translator());

@@ -1,58 +1,64 @@
 package com.crystalgraphics.platform.rhi;
 
 /**
- * Hands the installed device's command list to code drawing through {@link CgRHI} and back, while another front (the
- * GL compatibility layer) shares the device: the host knows how its fronts share it. Nothing where no host installed one.
+ * A host section: the host hands its frame to the installed device and gets it back. On a host sharing the device's
+ * context or device (Minecraft), the outermost section is where the device reads what the host left
+ * ({@link CgRHI#fromHost}) and where it sets that back and hands over what it recorded ({@link CgRHI#toHost}). Nothing
+ * where the device owns its context.
  *
  * <pre>{@code
- * CgDeviceSection.begin();          // the other front's open pass ends; nothing of it records until end()
+ * CgDeviceSection.begin();          // a render event, a screen or the HUD hands us the frame
  * try {
  *     CgRenderPass pass = CgRHI.get().encoder().beginPass(desc);
  *     ...
  * } finally {
- *     CgDeviceSection.end();
+ *     CgDeviceSection.end();        // and gets it back
  * }
  * }</pre>
  *
  * <ul>
- *   <li>Nothing goes through the other front between {@link #begin} and {@link #end}: its uploads and binds come
- *       before.</li>
  *   <li>Sections nest: only the outermost hands the device over and back, so work that may land inside one (a texture's
- *       upload) opens its own.</li>
+ *       upload, a graph's execution) opens its own, and a host's hook opens one round all of it, so the hand-over is
+ *       once a hook.</li>
+ *   <li>The host draws nothing between {@link #begin} and {@link #end}.</li>
  *   <li>Render thread.</li>
  * </ul>
  */
 public final class CgDeviceSection {
 
-    /** What a host does at each end of a section. */
-    public interface Host {
-        void begin();
-
-        void end();
-    }
-
-    private static volatile Host host;
     private static int depth;
+    /** The device the open section handed the frame to. */
+    private static CgRHI entered;
 
     private CgDeviceSection() {}
 
-    /** Installs {@code h}; null when its device goes. */
-    public static void install(Host h) {
-        host = h;
-        depth = 0;
-    }
-
     public static void begin() {
         if (depth++ > 0) return;
-        Host h = host;
-        if (h != null) h.begin();
+        entered = CgRHI.installed() ? CgRHI.get() : null;
+        if (entered != null) entered.fromHost();
     }
 
     public static void end() {
         if (depth == 0) throw new IllegalStateException("a device section ended that was not begun");
         if (--depth > 0) return;
-        Host h = host;
-        if (h != null) h.end();
+        CgRHI device = entered;
+        entered = null;
+        if (device != null) device.toHost();
+    }
+
+    /**
+     * {@link CgRHI#install}: a device installed inside an open section takes the frame for the rest of it; one
+     * uninstalled there was handed back by whoever closed it.
+     */
+    static void installed(CgRHI rhi) {
+        if (depth == 0) return;
+        if (rhi == null) {
+            entered = null;
+            return;
+        }
+        if (entered != null) return;
+        entered = rhi;
+        rhi.fromHost();
     }
 
     /** Whether a section is open now. */

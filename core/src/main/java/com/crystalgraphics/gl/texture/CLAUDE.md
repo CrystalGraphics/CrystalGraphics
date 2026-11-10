@@ -15,11 +15,10 @@ via the singleton `CgTextureManager`.
 |------|------|
 | `CgTextureManager.java` | Singleton cache + reload + fallback. See below. |
 | `CgTextureAbstract.java` | Shared base: id/spec/dimensions, bind, delete, `checkUsable`, and the load at first use (below). |
-| `CgTexture2D.java` | Single 2D texture (`GL_TEXTURE_2D`). `create(path[, spec])` (cached, loaded at first use), `createDirect(path, spec)`, `missing()` (the checkerboard), `createEmpty(w, h, spec[, levels])` (storage for that many mip levels, written by a kernel or a pass rather than generated), `createFromPixels(...)`. Two `upload()` overloads, and `uploadRegion` for a region of one level (what `CgRecording.update` writes a graph texture with). `bindLevel(unit, level)` samples one level alone until the next whole `bind`. A path ending in `.hdr` is a Radiance image (`util/io/CgRadianceHdr`), uploaded as half floats under an `RGBA16F` spec; another spec throws at first use. A path ending in `.cgtex` is a cooked texture (`util/io/CgCookedTexture`): its levels land from one lease, as BC7 blocks where `CgCapabilities.bc7()` holds, else decoded by `CgBc7` to RGBA8 on the loading thread; the file decides format and levels, the spec only filter and wrap. |
-| `CgTexture2DArray.java` | 2D-array texture (`GL_TEXTURE_2D_ARRAY`). `create(spec, paths...)` (cached, loaded at first use, images of different sizes centred), `createDirect(spec, paths...)`; `allocateEmpty` for incremental uploads, and a frame-graph array's storage (`CgFrameBuffer.createArray`). |
-| `CgTextureAbstract.java` | The shared base. Owns the texture's `CgDeferral` (`gpu/`): all its device work goes through it, so `CgTexture2D`, `CgTexture2DArray`, `CgTexture3D` and `CgTextureCubemap` are made, filled, grown and deleted from any thread, their work waiting for the render thread where the device may not be driven. `getId`/`bind` run what is queued first; an id is 0 until then off the render thread. Pixels for waiting work are copied once into a `CgUploadLease` by the thread that passed them (`gpu/CgUploads`), and land with no copy on the render thread; `CgTexture2D.uploadRegion` and `CgTexture3D.uploadRegion` also take a lease its producer wrote. `CgTexture2DArray` takes none: its CPU mirror needs a source it can read. |
+| `CgTexture2D.java` | Single 2D texture (`GL_TEXTURE_2D`). `create(path[, spec])` (cached, loaded at first use), `createDirect(path, spec)`, `missing()` (the checkerboard), `createEmpty(w, h, spec[, levels])` (storage for that many mip levels, written by a kernel or a pass rather than generated), `createFromPixels(...)`. Two `upload()` overloads, and `uploadRegion` for a region of one level (what `CgRecording.update` writes a graph texture with). `bindLevel(unit, level)` binds a view of one level. A path ending in `.hdr` is a Radiance image (`util/io/CgRadianceHdr`), uploaded as half floats under an `RGBA16F` spec; another spec throws at first use. A path ending in `.cgtex` is a cooked texture (`util/io/CgCookedTexture`): its levels land from one lease, as BC7 blocks where `CgCapabilities.bc7()` holds, else decoded by `CgBc7` to RGBA8 on the loading thread; the file decides format and levels, the spec only filter and wrap. |
+| `CgTexture2DArray.java` | 2D-array texture (`GL_TEXTURE_2D_ARRAY`). `create(spec, paths...)` (cached, loaded at first use, images of different sizes centred), `createDirect(spec, paths...)`; `allocateEmpty` for incremental uploads, `growLayers` (new storage, the old layers copied on the GPU), and a frame-graph array's storage (`CgFrameBuffer.createArray`). |
+| `CgTextureAbstract.java` | The shared base. Owns the texture's `CgDeferral` (`gpu/`): all its device work goes through it, so `CgTexture2D`, `CgTexture2DArray`, `CgTexture3D` and `CgTextureCubemap` are made, filled, grown and deleted from any thread, their work waiting for the render thread where the device may not be driven. `getId`/`bind` run what is queued first; an id is 0 until then off the render thread. Pixels for waiting work are copied once into a `CgUploadLease` by the thread that passed them (`gpu/CgUploads`), and land with no copy on the render thread; `CgTexture2D.uploadRegion` and `CgTexture3D.uploadRegion` also take a lease its producer wrote. |
 | `CgTexture3D.java` | 3D texture (`GL_TEXTURE_3D`). `create(spec, paths...)` (cached, loaded at first use), `createDirect(spec, paths...)`; `createEmpty(w, h, d, spec[, levels])` through its `CgDeferral`, any thread, `uploadRegion` for a box of one level and `generateMipmaps()` from level 0: a volume a kernel, a bake or an upload fills, and a frame-graph volume's storage. |
-| `CgSamplers.java` | The GL sampler objects behind `CgSampler`s, one per sampler and mip-or-not, kept for the session (`releaseAll` at teardown), and which is bound on each unit: `bind(unit, sampler, texture)` (null unbinds), `forget()` and `unbindOwn()` at each execution's start and end, so a sampler never reaches the host's textures. A sampler first bound inside a `CgGlRecording` throws: it makes a GL object |
 | `CgTextureCubemap.java` | Cubemap (`GL_TEXTURE_CUBE_MAP`). `create(spec, posX...negZ)`, `createDirect(spec, posX...negZ)`, `createStacked(path, spec)` (one image, faces stacked top to bottom in Unreal's slice order, each face i unchanged; `w x 6w` or it throws at first use), `createEmpty(size, spec)`, any thread through its `CgDeferral` (faces decoded on the calling thread); `uploadFace(face, level, x, y, w, h, ...)` from a buffer or a lease, the face carried in the lease's `z`. |
 
 ## Where an upload runs
@@ -41,13 +40,8 @@ texture.uploadRegion(0, 0, 0, w, h, pixels, GL_RGBA, GL_UNSIGNED_BYTE);
 
 | Backend | The GPU half |
 |---|---|
-| GL, persistent mapping (every desktop driver) | DMA from the lease's unpack buffer: 72 MB lands with no GPU hitch on NVIDIA, 1.5-3 ms of render thread |
-| GL without it (macOS 4.1, a 3.3 context), or a converting upload | from direct memory at the call: the landing frame pays the copy on the GPU, 17-22 ms per 72 MB |
+| GL device | `copyBufferToTexture` from the lease's buffer, as an unpack-buffer upload: DMA, 72 MB with no GPU hitch on NVIDIA, 1.5-3 ms of render thread. A converting upload is converted on the CPU first |
 | Vulkan device | a device copy from the lease's buffer; into a texture nothing else has touched yet, on the transfer queue, which the frame's queue waits for at its next pass (`platform/CLAUDE.md`). `-Dcrystalgraphics.vulkan.transfer=false` keeps it on the frame's queue |
-
-`CgTexture2DArray.uploadLayerRegion` lands through a lease on the render thread too: NVIDIA's GL converts the whole
-array at the first client-memory upload after a grow's GPU copy into it (about 1.4 ms per 4 MB layer, paid at the next
-fence), and an upload from an unpack buffer does not convert it.
 
 A second GL context for uploads was measured and declined (`render-async-uploads` §4f); the harness keeps it as
 `upload-stress -Dcrystalgraphics.harness.upload.shared=true`.
@@ -77,7 +71,7 @@ createDirect(...)       the same object, load() at once, not cached
   `cubemap`. A new way to make a texture from files goes on both.
 - **No decode on a server**: naming a texture builds an object and a cache entry. Nothing reads a file until something
   asks for its size or binds it.
-- **Every GL call goes through `gpu`**, in `load()` too: the first use may be a worker's.
+- **Every device call goes through `gpu`**, in `load()` too: the first use may be a worker's.
 
 ## CgTextureManager
 
@@ -96,41 +90,16 @@ void freeAll();                                                                 
   place, and only it.
 - The fallback is never cached under a key, and is freed with the cache.
 
-## GL Targets
+## Storage and sampling
 
-- `GL_TEXTURE_2D = 0x0DE1`
-- `GL_TEXTURE_2D_ARRAY = 0x8C1A` (requires GL30 for `glTexImage3D` route)
-- `GL_TEXTURE_3D = 0x806F` (GL12)
-- `GL_TEXTURE_CUBE_MAP = 0x8513` (bind target); face targets `GL_TEXTURE_CUBE_MAP_POSITIVE_X..NEGATIVE_Z` = `0x8515..0x851A` (upload targets)
+Every texture's storage is a device texture (`CgDeviceTextures`, `CgTextureAbstract.storeOnDevice`): made with the
+shape its first whole upload or `createEmpty` gives it, written by `writeTexture` or a lease's GPU copy, its chain by
+`generateMipmaps`. `CgGL` reaches it by the name `CgGLImports` gives it, and that name changes when the storage is
+remade (a grow, a resize): read `getId()` at each use.
 
-## Failure-Atomic Allocation
-
-Every `doCreate()` follows:
-
-1. Load + validate data. Throw `IllegalArgumentException` on bad input.
-2. `glGenTextures` → `id`.
-3. Construct object (id in hand, not yet uploaded).
-4. `tex.upload(data)` inside `try { ... } catch (RuntimeException) { glDeleteTextures(id); throw; }`.
-
-This guarantees no GL ids are leaked on partial failure (e.g. OOM during `glTexImage3D`).
-
-## Mipmap Policy
-
-`CgTextureSpec.generateMipmaps` checks `GLContext.getCapabilities().OpenGL30`.
-If unavailable, it logs a one-time warning and no-ops. The fallback is
-intentional: on a hardware tier without GL30, `CgTextureSpec.mipmaps` is
-best-effort and the user gets `GL_LINEAR` filtering at level 0.
-
-## Spec Param Application
-
-`CgTextureSpec.applyTo(target)` writes:
-- `GL_TEXTURE_MIN_FILTER` / `GL_TEXTURE_MAG_FILTER`
-- `GL_TEXTURE_WRAP_S` / `GL_TEXTURE_WRAP_T`
-- `GL_TEXTURE_WRAP_R` (only for `GL_TEXTURE_3D` and `GL_TEXTURE_2D_ARRAY`)
-- Shadow compare params (`GL_TEXTURE_COMPARE_MODE` / `GL_TEXTURE_COMPARE_FUNC`) when `compareMode != GL_NONE`
-
-Called inside `upload()` after `glTexImage*` so params are always applied
-to a fully-allocated texture object.
+A texture has no sampling state of its own. Its spec's filter, wrap and compare are the sampler a binding reads where
+it names no `CgSampler` (`render/draw/CgDeviceSamplers`). `bind(unit)` notes it for the pass being recorded, and
+`CgTexture2D.bindLevel(unit, level)` notes a view of one level; neither issues a GL call.
 
 ## CgTextureSpec Format API (Phase 1 change)
 
@@ -154,9 +123,8 @@ format is now a `CgTextureType` enum constant.
 
 ## Design Rules
 
-- All GL constants live in `private static final int` at the top of each class. No raw hex in method bodies.
-- `load()` is the single decode path per type and `upload()` the single GL upload; factories and `reload()` call them.
-- `reload()` is always in-place: same GL id, same Java object. No id stealing, no cache replacement.
+- `load()` is the single decode path per type and `upload()` the single whole upload; factories and `reload()` call them.
+- `reload()` is always in place: the same Java object. Its id is the storage's and may change; read it at each use.
 - `create(...)` is cached and tracked, so a change to its files reloads it; `createDirect(...)` is neither.
 - Never call `glGet*` here; the spec is the source of truth.
 - `delete()` is idempotent (second call is silent no-op).

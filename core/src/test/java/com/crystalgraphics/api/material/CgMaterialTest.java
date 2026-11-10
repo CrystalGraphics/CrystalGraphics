@@ -6,7 +6,6 @@ import com.crystalgraphics.gl.material.CgMaterialProperty;
 import org.junit.Test;
 
 import java.util.Collections;
-import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.Assert.*;
 
@@ -72,38 +71,6 @@ public class CgMaterialTest {
         CgMaterial b = mat();
         a.setNextPass(b);
         assertSame(b, a.getNextPass());
-    }
-
-    // ── drawChain ─────────────────────────────────────────────────────────────
-
-    @Test
-    public void drawChain_singlePass_callsOnce() {
-        CgMaterial a = mat();
-        AtomicInteger count = new AtomicInteger(0);
-        a.drawChain(count::incrementAndGet);
-        assertEquals(1, count.get());
-    }
-
-    @Test
-    public void drawChain_twoPass_callsTwice() {
-        CgMaterial a = mat();
-        CgMaterial b = mat();
-        a.setNextPass(b);
-        AtomicInteger count = new AtomicInteger(0);
-        a.drawChain(count::incrementAndGet);
-        assertEquals(2, count.get());
-    }
-
-    @Test
-    public void drawChain_threePass_callsThrice() {
-        CgMaterial a = mat();
-        CgMaterial b = mat();
-        CgMaterial c = mat();
-        a.setNextPass(b);
-        b.setNextPass(c);
-        AtomicInteger count = new AtomicInteger(0);
-        a.drawChain(count::incrementAndGet);
-        assertEquals(3, count.get());
     }
 
     // ── getRenderQueue ────────────────────────────────────────────────────────

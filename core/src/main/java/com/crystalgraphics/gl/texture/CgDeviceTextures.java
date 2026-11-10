@@ -8,6 +8,7 @@ import com.crystalgraphics.platform.gl.format.GLPixels;
 import com.crystalgraphics.platform.rhi.CgDeviceSection;
 import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
+import com.crystalgraphics.platform.rhi.resource.CgGpuBuffer;
 import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
 import com.crystalgraphics.platform.rhi.resource.CgTextureRegion;
 
@@ -37,7 +38,7 @@ import java.util.Set;
  */
 public final class CgDeviceTextures {
 
-    /** Uploads arrive tightly packed ({@code CgTightUnpack}'s rule): rows padded to nothing. */
+    /** Uploads arrive tightly packed: rows padded to nothing. */
     private static final GLPixels.Store TIGHT = new GLPixels.Store();
 
     static {
@@ -102,14 +103,12 @@ public final class CgDeviceTextures {
      * on the GPU from its unpack buffer where it has one and needs no conversion, else written from its memory.
      */
     public static void write(CgGpuTexture image, CgTextureRegion region, CgUploadLease lease, int from, int length) {
-        int buffer = lease.unpackBuffer();
+        CgGpuBuffer buffer = lease.unpackBuffer();
         CgFormat f = image.desc().format();
-        if (buffer != 0 && !f.compressed() && GLPixels.sameLayout(lease.format(), lease.type(), f)) {
-            CgGLImports imports = CgGLImports.get();
+        if (buffer != null && !f.compressed() && GLPixels.sameLayout(lease.format(), lease.type(), f)) {
             CgDeviceSection.begin();
             try {
-                CgRHI.get().encoder().copyBufferToTexture(imports.buffer(buffer),
-                        imports.bufferOffset(buffer) + lease.unpackOffset() + from, image, region);
+                CgRHI.get().encoder().copyBufferToTexture(buffer, lease.unpackOffset() + from, image, region);
             } finally {
                 CgDeviceSection.end();
             }

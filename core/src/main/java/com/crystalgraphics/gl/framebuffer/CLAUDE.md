@@ -1,143 +1,60 @@
-# gl/framebuffer — Framebuffer Abstraction Layer
+# gl/framebuffer — targets as device textures
 
 > Root guide: [`CrystalGraphics/AGENTS.md`](../../../../../../../../../AGENTS.md)
 
-Provides the FBO (Framebuffer Object) API over core GL 3.0 framebuffers — the GL 3.3 floor has no ARB or
-EXT fallback, so `CgFrameBuffer` makes its own GL objects through `CgGL`, and a private subclass wraps foreign FBOs.
+A `CgFrameBuffer` is a set of device textures a pass draws into: colour slots and a depth, as a
+`CgFrameBufferFormat` lays them out. There is no GL framebuffer object behind an owned one. Nothing binds it: an
+execution takes it as its current target through `CgExecutor.into(target)`, and a graph pass attaches its textures.
 
-## Delegation Pattern
+## Names
 
-`CgFrameBuffer.create(name, w, h, format)` → `CgFrameBufferRegistry.get().getOrCreate(...)` → `CgFrameBuffer.createInternal(...)` (on cache miss).
+Every framebuffer has an `int` name (`getId()`), what the frame graph, readbacks and a host frame's
+`mainFramebuffer` key by:
 
-This mirrors `CgMaterial.load` → `CgMaterialRegistry.getOrCreate` → `CgMaterial.create` exactly.
+- **Owned**: a name the engine gives it, from `0x40000000` up, above any a GL driver hands out.
+  `CgFrameBuffer.owned(id)` finds it until deleted.
+- **Wrapped** (`wrap(name, fbo, w, h)`): a host's framebuffer, its attachments imported (`CgGLImports`);
+  framebuffer 0 is the window's. Owns nothing; `delete()` does nothing.
 
----
+`CgFrameBuffer.attachment(fbo, depth, w, h)` answers a texture view for either kind: an owned one's own, else the
+import. Use it, never `CgGLImports.attachment`, wherever a name may be ours.
 
-## Architecture: Parent + Dispatch Pattern
+## What it does
 
-Everything lives in `CgFrameBuffer`, its GL dispatch (`doGenFramebuffer`, `doBindFbo`, ...) one `CgGL` call each.
+| Concern | |
+|---|---|
+| `create` (registry, by name and format), `createOwned`, `createOnDevice` (with `Images` placing each slot: the graph's transients), `createVolume` (a `CgTexture3D`, nothing draws into it), `createArray` (a `CgTexture2DArray`) | factories |
+| `rhiColor(slot)`, `rhiDepth()` — the device textures a pass attaches | attachments |
+| `getColorTexture(slot)`, `getDepthTexture()` — the sampleable textures; null for an attach-only slot | attachments |
+| A renderbuffer or multisampled slot is an attach-only device texture: a pass attaches it, nothing samples it | attachments |
+| `clear*` — a render pass of its own with clear loads; depth in GL's convention, mirrored for a reversed host | device |
+| `readColor` (RGBA8), `readTexture`/`readTextureFloats` (static, any texture as RGBA8 / RGBA32F) — read now, waiting for the GPU, rows bottom first | device |
+| `copyColorTo(fbo)`, `copyColorAndDepthTo(fbo)` — a blit into another framebuffer at the same size: a main target into the window | device |
+| `depthTypeOf(fbo, w, h)` — a framebuffer's depth type, from its attachment's format | names |
+| `resize`, `delete` — remake or release its textures; the name stays until deleted | lifecycle |
 
-```
-CgFrameBuffer (gl/framebuffer/)  → an owned FBO, through CgGL (core GL 3.0)
-    └── WrappedFrameBuffer       → a foreign FBO, not owned: the dispatch overridden with no-ops
-
-CgFrameBufferRegistry       → single source of truth for all owned FBOs;
-                              framebuffers LinkedHashMap; screen-sized auto-resize
-```
-
----
-
-## What CgFrameBuffer Owns
-
-| Concern | Location |
-|---------|----------|
-| Instance fields (`fboId`, `width`, `height`, `name`, `format`, `owned`, `deleted`, `screenSized`) | `CgFrameBuffer` |
-| `colorAttachments` (TreeMap<Integer, Attachment>) + `depthAttachment` | `CgFrameBuffer` |
-| `initGl(w, h, format)` — allocates textures/renderbuffers, checks completeness once per attachment layout per driver (`CgFrameBufferLayouts`, kept in `crystalgraphics/cache/framebuffer/<driver>.txt`: each `glCheckFramebufferStatus` waits for a threaded driver's queue) | `CgFrameBuffer` |
-| `bind/bindDraw/bindRead/unbind` — route through `CrossApiTransition` | `CgFrameBuffer` |
-| `drawBuffers(int... slotIds)` — slot indices 0,1,2 → GL_COLOR_ATTACHMENT0+n | `CgFrameBuffer` |
-| `reattachColor/reattachColorRaw/reattachDepth` | `CgFrameBuffer` |
-| `bindLevel(level)`, `levelWidth/levelHeight` — draws into one mip level of every colour texture, no depth above 0; a framebuffer per level, made at first use | `CgFrameBuffer` |
-| `getColorTexture/getDepthTexture/getColorAttachment/getDepthAttachment` | `CgFrameBuffer` |
-| `isScreenSized()` — true if created via `CgFrameBufferRegistry.acquireScreenSized` | `CgFrameBuffer` |
-| `delete()` — frees GL resources; sets `deleted = true`; does NOT touch registry | `CgFrameBuffer` |
-| `wrap(name, fboId, w, h, family)` — non-owned wrapper via `WrappedFrameBuffer` inner class | `CgFrameBuffer` |
-| `createScreenSized(name, format)` — delegates to `CgFrameBufferRegistry.acquireScreenSized` | `CgFrameBuffer` |
-| `createVolume(name, w, h, d, format)` — a frame-graph volume's storage: slot 0 as a `CgTexture3D`, no framebuffer object; binding it, blits, clears, reattachment and resizes throw | `CgFrameBuffer` |
-| `createArray(name, w, h, layers, format)`, `bindLayer`/`layerId` — a frame-graph array's storage: slot 0 as a `CgTexture2DArray`, a framebuffer per layer made with it; `bind()` draws layer 0 | `CgFrameBuffer` |
-
-## Factory Split
-
-| Method | Visibility | Role |
-|--------|-----------|------|
-| `CgFrameBuffer.create(name, w, h, format)` | `public static` | Thin delegator → `CgFrameBufferRegistry.get().getOrCreate(...)` |
-| `CgFrameBuffer.createInternal(name, w, h, format)` | `package-private static` | Real work — `initGl`, validation; called only by registry |
-
-## Attachment Model
-
-`CgFrameBuffer.Attachment` is a public static inner class with two paths:
-
-- **Texture path**: `texture != null`, `renderbufferId == 0` — sampleable via `getTexture()`
-- **Renderbuffer path**: `texture == null`, `renderbufferId != 0` — non-sampleable, faster
-
-`Attachment.delete()` calls `parent.deleteRenderbuffer(id)` — routes through the
-framebuffer's own dispatch. Never calls `GL30.glDeleteRenderbuffers` directly.
-
----
-
-## drawBuffers API
+## Registry
 
 ```java
-fbo.bind();
-fbo.drawBuffers(0, 1, 2);  // slot INDICES, not GL_COLOR_ATTACHMENT0+n constants
-```
-
-`drawBuffers(int... slotIds)` converts internally to `GL_COLOR_ATTACHMENT0 + n`.
-
-A format with more than one colour slot draws into every slot from creation, its level framebuffers too
-(`drawEveryColorSlot`): GL's default is attachment 0 alone, which dropped every other output of a graph pass.
-`drawBuffers` narrows it for a caller that wants fewer.
-
----
-
-## Depth-Only FBOs
-
-When `CgFrameBufferFormat.isDepthOnly()` is true (no color slots),
-`GL_DRAW_BUFFER` and `GL_READ_BUFFER` are automatically set to `GL_NONE`
-during `initGl`. No manual call needed.
-
----
-
-## Ownership & Lifecycle
-
-`CgFrameBufferRegistry.framebuffers` (`LinkedHashMap<FrameBufferKey, CgFrameBuffer>`) is the
-single source of truth for all owned FBOs, keyed by `(name, format)`.
-
-- **Owned** (`owned == true`): created via `createInternal`; stored in `framebuffers` by registry.
-  `delete()` frees GL resources and sets `deleted = true` — does NOT remove from `framebuffers`.
-- **Wrapped** (`owned == false`): never in `framebuffers`. `delete()` is a no-op.
-  Created via `CgFrameBuffer.wrap(...)`.
-- **Screen-sized** (`screenSized == true`): owned FBOs created via `acquireScreenSized`.
-  On resize, `fbo.resize(w, h)` is called in-place — the Java reference stays valid.
-
----
-
-## CgFrameBufferRegistry
-
-```java
-// Fixed-size FBO (cached by name+format):
-CgFrameBuffer fbo = CgFrameBuffer.create("shadow_map", 1024, 1024, SHADOW_FORMAT);
-
-// Screen-sized FBO — reference is stable across window resizes:
-CgFrameBuffer fbo = CgFrameBuffer.createScreenSized("hdr_buffer", HDR_FORMAT);
-
-// In your window-resize handler:
+CgFrameBuffer fbo = CgFrameBuffer.create("shadow_map", 1024, 1024, SHADOW_FORMAT);   // cached by name and format
+CgFrameBuffer hdr = CgFrameBuffer.createScreenSized("hdr_buffer", HDR_FORMAT);       // resized in place
 CgGraphicsLifecycle.onResize(newWidth, newHeight);
 ```
 
-- `getOrCreate(name, w, h, format)` — returns cached FBO or creates at given dimensions on miss.
-- `acquireScreenSized(name, format)` — like `getOrCreate` but sets `fbo.screenSized = true`. The returned reference is stable.
-- `onResize(w, h)` — calls `fbo.resize(w, h)` in-place on all screen-sized FBOs. Java references remain valid.
-- `deleteAll()` — deletes all owned FBOs and clears `framebuffers`. Called by `CgEngineLifecycle.shutdown()`.
-
-**Do not cache screen-sized FBOs across frames** — re-query each frame; the registry
-replaces the internal FBO on every resize.
-
----
+`CgFrameBufferRegistry` holds what `create` and `createScreenSized` made; `deleteAll()` at shutdown. A
+`createOwned` framebuffer is the caller's to resize and delete.
 
 ## Reading a framebuffer back without a stall — `CgPixelReadback`
 
 ```java
 CgPixelReadback readback = new CgPixelReadback(3);
-readback.request(fbo.getId(), fbo.getWidth(), fbo.getHeight(), 256, tag);   // shrink, queue the read
+readback.request(fbo.getId(), fbo.getWidth(), fbo.getHeight(), 256, tag);   // shrink on the device, queue the read
 readback.poll(pixels -> use(pixels.tag(), pixels.rgb()));                     // every frame; never waits
 ```
 
-A synchronous `glReadPixels` waits for the GPU to finish everything before it. This shrinks the source and
-reads it back through `CgReadback` (`gl/buffer`), which lands it a frame or two later. Copy the landed bytes
-out in ONE bulk `get`: a get per byte from the mapped buffer measured 2-3 ms for a 256x144 picture.
-
----
+`readColor` waits for the GPU to finish everything before it. This halves the source with linear blits, then reads it
+back through `CgReadback` (`gl/buffer`), landing a frame or two later. Copy the landed bytes out in ONE bulk `get`: a
+get per byte from the mapped buffer measured 2-3 ms for a 256x144 picture.
 
 ---
 

@@ -1,279 +1,172 @@
 package com.crystalgraphics.gl.framebuffer;
 
-
-import java.util.List;
-import java.util.ArrayList;
-import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
-import com.crystalgraphics.platform.rhi.resource.CgTextureView;
-import com.crystalgraphics.platform.rhi.CgRHI;
-import com.crystalgraphics.platform.gl.CgGLImports;
-import com.crystalgraphics.gl.CgGlNames;
-import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.texture.CgTextureType;
-import com.crystalgraphics.lifecycle.CgGraphicsLifecycle;
-import com.crystalgraphics.platform.gl.state.CgGlScope;
-import com.crystalgraphics.platform.gl.state.CgGlSlot;
-import com.crystalgraphics.platform.gl.state.CgGlState;
 import com.crystalgraphics.gl.texture.CgTexture2D;
 import com.crystalgraphics.gl.texture.CgTexture2DArray;
 import com.crystalgraphics.gl.texture.CgTexture3D;
+import com.crystalgraphics.lifecycle.CgGraphicsLifecycle;
+import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.platform.gl.CgGL;
+import com.crystalgraphics.platform.gl.CgGLImports;
+import com.crystalgraphics.platform.gl.format.GLFormats;
+import com.crystalgraphics.platform.rhi.CgDeviceSection;
+import com.crystalgraphics.platform.rhi.CgRHI;
+import com.crystalgraphics.platform.rhi.command.CgAccess;
+import com.crystalgraphics.platform.rhi.command.CgCommandList;
+import com.crystalgraphics.platform.rhi.command.CgPassDesc;
+import com.crystalgraphics.platform.rhi.format.CgFormat;
+import com.crystalgraphics.platform.rhi.resource.CgGpuSampler;
+import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
+import com.crystalgraphics.platform.rhi.resource.CgTextureRegion;
+import com.crystalgraphics.platform.rhi.resource.CgTextureView;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.CgBufferUtils;
 import com.crystalgraphics.util.trace.CgChannels;
-import java.nio.ByteBuffer;
-import java.nio.IntBuffer;
-import java.util.Arrays;
-import java.util.TreeMap;
-import javax.annotation.Nullable;
 import lombok.Getter;
 
-import static com.crystalgraphics.platform.gl.state.CgGlSlot.COLOR_MASK;
-import static com.crystalgraphics.platform.gl.state.CgGlSlot.DEPTH;
-import static com.crystalgraphics.platform.gl.state.CgGlSlot.FBO;
-import static com.crystalgraphics.platform.gl.state.CgGlSlot.SCISSOR;
-import static com.crystalgraphics.platform.gl.state.CgGlSlot.STENCIL;
+import javax.annotation.Nullable;
+import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.EnumSet;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 
 /**
- * Abstract base for all CrystalGraphics framebuffer implementations.
+ * A set of device textures a pass draws into: colour slots and a depth, as a {@link CgFrameBufferFormat} lays them out.
+ * An owned one is the engine's: its textures, known by a name ({@link #getId()}) the engine gives it, never a GL
+ * framebuffer. A wrapped one is a host's framebuffer ({@link #wrap}), its attachments imported.
  *
- * <p>Every {@code CgFrameBuffer} has a {@link #name} (first argument to all
- * factory methods), a {@link CgFrameBufferFormat} descriptor, and a
- * {@link TreeMap} of {@link Attachment} objects sparse-keyed by color slot
- * index. An owned one makes its GL objects through {@link CgGL}; a wrapped one (an id the engine did not make)
- * overrides that dispatch with no-ops.</p>
+ * <pre>{@code
+ * CgFrameBuffer target = CgFrameBuffer.createOwned("preview", w, h, format);
+ * target.clearAll(0f, 0f, 0f, 1f);
+ * try (CgExecutor.Into ignored = CgExecutor.into(target)) {   // what executions draw into, nothing bound
+ *     stage.fire();
+ * }
+ * ByteBuffer rgba = target.readColor(0, 0, w, h);            // rows bottom first
+ * target.delete();
+ * }</pre>
  *
- * <h3>Factories</h3>
  * <ul>
- *   <li>{@link #create(String, int, int, CgFrameBufferFormat)} — public entry point;
- *       delegates to {@link CgFrameBufferRegistry#getOrCreate} which caches the result.</li>
- *   <li>{@link #createInternal(String, int, int, CgFrameBufferFormat)} — package-private;
- *       does the actual GL allocation; called only by the registry.</li>
- *   <li>{@link #createScreenSized(String, CgFrameBufferFormat)} — delegates to
- *       {@link CgFrameBufferRegistry}, which auto-resizes on
- *       {@link CgGraphicsLifecycle#onResize}.
- *       <strong>Do not cache the returned instance across frames</strong> — re-query
- *       each frame; the registry replaces the internal FBO on resize.</li>
- *   <li>{@link #wrap(String, int, int, int)} — wraps an
- *       externally-created FBO ID.  {@link #delete()} is a no-op on wrapped
- *       instances.</li>
+ *   <li>{@link #create} caches by name ({@link CgFrameBufferRegistry}); {@link #createOwned} is the caller's to resize
+ *       and delete.</li>
+ *   <li>A multisampled or renderbuffer slot is a device texture a pass attaches and never samples.</li>
+ *   <li>Render thread.</li>
  * </ul>
- *
- * <h3>Attachments</h3>
- * <p>Each occupied slot holds an {@link Attachment}.  Color slots are stored in
- * a {@code TreeMap<Integer, Attachment>} (sparse — only populated slots
- * appear).  The depth slot is stored in {@link #depthAttachment} (or
- * {@code null}).  Convenience accessors {@link #getColorTexture(int)} and
- * {@link #getDepthTexture()} return {@code null} for renderbuffer slots.</p>
- *
- * <h3>Depth-only FBOs</h3>
- * <p>When the format has no color attachments ({@link CgFrameBufferFormat#isDepthOnly()}
- * is true), {@link GL11#glDrawBuffer} and {@link GL11#glReadBuffer} are set to
- * {@link GL11#GL_NONE} automatically during creation.</p>
- *
- * <h3>Thread Safety</h3>
- * <p>Instances are not thread-safe.  All methods must be called on the GL
- * context thread.</p>
- *
- * @see CgFrameBufferFormat
- * @see CgFrameBufferRegistry
  */
 public class CgFrameBuffer {
 
-    /** What a blit or a bind saves round itself: one array, not one a call. */
-    private static final CgGlSlot[] FBO_ONLY = {FBO};
-   
-    // ── Instance fields ────────────────────────────────────────────────────────
+    /** The first name an owned framebuffer is given: above any a GL driver hands out for the host's. */
+    private static final int FIRST_NAME = 0x40000000;
+    private static int nextName = FIRST_NAME;
+    /** Owned framebuffers by name, until deleted. */
+    private static final Map<Integer, CgFrameBuffer> OWNED = new HashMap<>();
 
     /** Human-readable instance name (e.g. "gbuffer_main", "shadow:directional"). */
     protected final String name;
 
-    /** The format descriptor used to create this FBO. */
+    /** The format descriptor used to create it; null for a wrapped one. */
+    @Nullable
     protected final CgFrameBufferFormat format;
 
-    /** GL FBO id. */
-    protected int fboId;
+    /** The name it is known by: the engine's for an owned one, the host's framebuffer for a wrapped one. */
+    protected final int id;
 
-    /** FBO width in pixels. 
-     * -- GETTER --
-     * Returns the FBO width in pixels. 
-     */
     @Getter
     protected int width;
 
-    /** FBO height in pixels. 
-     * -- GETTER --
-     * Returns the FBO height in pixels. 
-     */
     @Getter
     protected int height;
 
-    /** {@code true} if CrystalGraphics created this FBO and may delete it. 
-     * -- GETTER --
-     * Returns 
-     *  if CrystalGraphics owns and may delete this FBO. 
-     */
+    /** Whether the engine made it and may delete it. */
     @Getter
     protected final boolean owned;
 
-    /** {@code true} after {@link #delete()} has been called successfully. 
-     * -- GETTER --
-     * Returns 
-     *  if 
-     *  has been called. 
-     */
     @Getter
     protected boolean deleted;
 
-    /**
-     * {@code true} if this FBO was created via
-     * {@link CgFrameBufferRegistry#acquireScreenSized} and is managed by the registry.
-     * Set by the registry immediately after creation; defaults to {@code false}.
-     * -- GETTER --
-     * Returns 
-     *  if this FBO is managed as a screen-sized FBO by the registry. 
-
-     */
+    /** Whether {@link CgFrameBufferRegistry#acquireScreenSized} made it; set by the registry. */
     @Getter
     boolean screenSized = false;
 
-    /**
-     * Sparse map of color attachments, sorted by slot index.
-     * Only populated slots are present.
-     */
+    /** Colour attachments by slot, only those populated. */
     protected final TreeMap<Integer, Attachment> colorAttachments = new TreeMap<>();
 
     /** Depth/stencil attachment, or {@code null} if the format has no depth. */
+    @Nullable
     protected Attachment depthAttachment;
 
     /** Mip levels of each colour texture, at most its full chain at the current size. */
     @Getter
     private int colorLevels = 1;
-    /** What makes its texture slots on the installed device ({@link #createOnDevice}); null for {@code CgGL}'s. */
-    @Nullable private Images images;
+    /** What makes its texture slots ({@link #createOnDevice}); null for the device's own textures. */
+    @Nullable
+    private Images images;
 
-    /** Framebuffers drawing into level {@code l} of every colour texture, at {@code l - 1}; made at first use. */
-    private int[] levelFbos = new int[0];
-
-    /** Whether it is a volume's storage ({@link #createVolume}): a 3D colour texture and no framebuffer object. */
+    /** Whether it is a volume's storage ({@link #createVolume}): a 3D colour texture nothing draws into. */
     @Getter
     private boolean volume;
 
     /** An array's layers ({@link #createArray}); 0 for any other framebuffer. */
     private int arrayLayers;
 
-    /** Framebuffers drawing into layer {@code l} of an array, at {@code l - 1}; made with it. */
-    private int[] layerFbos = new int[0];
-    
-     // ── Lazily cached GPU limit ────────────────────────────────────────────────
+    private static Integer maxColorAttachments;
 
-    private static Integer maxColorAttachments = null;
-
-    /**
-     * Returns the maximum number of color attachments supported by the current
-     * GL context.  Lazily probed from {@link CgCapabilities} on first call.
-     */
     static int getMaxColorAttachments() {
-        if (maxColorAttachments == null) {
-            maxColorAttachments = CgCapabilities.detect().getMaxDrawBuffers();
-        }
+        if (maxColorAttachments == null) maxColorAttachments = CgCapabilities.detect().getMaxDrawBuffers();
         return maxColorAttachments;
     }
 
-    // ── Constructors ───────────────────────────────────────────────────────────
-
-    /**
-     * Constructor for owned FBOs created by {@link #createInternal}.
-     * GL resources are allocated separately via {@link #initGl}.
-     */
+    /** An owned framebuffer, given its name now. */
     CgFrameBuffer(String name, CgFrameBufferFormat format, int width, int height) {
-        this.name    = name;
-        this.format  = format;
-        this.width   = width;
-        this.height  = height;
-        this.owned   = true;
-        this.deleted = false;
+        this.name = name;
+        this.format = format;
+        this.width = width;
+        this.height = height;
+        this.owned = true;
+        this.id = nextName++;
+        OWNED.put(id, this);
     }
 
-    /**
-     * Constructor for wrapped (non-owned) FBOs created by {@link #wrap}.
-     */
-    CgFrameBuffer(String name, int fboId, int width, int height) {
-        this.name    = name;
-        this.format  = null; // wrapped FBOs have no format descriptor
-        this.fboId   = fboId;
-        this.width   = width;
-        this.height  = height;
-        this.owned   = false;
-        this.deleted = false;
+    /** A host's framebuffer {@code fbo}. */
+    private CgFrameBuffer(String name, int fbo, int width, int height) {
+        this.name = name;
+        this.format = null;
+        this.id = fbo;
+        this.width = width;
+        this.height = height;
+        this.owned = false;
     }
 
-    // ── Static factories ───────────────────────────────────────────────────────
+    // ── Factories ──────────────────────────────────────────────────────────────
 
-    /**
-     * Returns (or lazily creates) a framebuffer for the given name, dimensions, and format.
-     * Delegates to {@link CgFrameBufferRegistry#getOrCreate(String, int, int, CgFrameBufferFormat)}.
-     *
-     * @param name   human-readable instance name (registry cache key)
-     * @param width  width in pixels (must be &gt; 0)
-     * @param height height in pixels (must be &gt; 0)
-     * @param format attachment layout descriptor
-     * @return the owned {@code CgFrameBuffer} for this name/format pair
-     */
-    public static CgFrameBuffer create(String name, int width, int height,
-                                        CgFrameBufferFormat format) {
+    /** Returns (or lazily creates) a framebuffer for the given name, dimensions, and format ({@link CgFrameBufferRegistry}). */
+    public static CgFrameBuffer create(String name, int width, int height, CgFrameBufferFormat format) {
         return CgFrameBufferRegistry.get().getOrCreate(name, width, height, format);
     }
 
-    /**
-     * Allocates a new owned framebuffer.
-     * Called only by {@link CgFrameBufferRegistry}; external callers use {@link #create}.
-     *
-     * <p>Texture vs renderbuffer per slot is determined by the format's per-slot
-     * flags.  Hardware attachment count is validated against
-     * {@link #getMaxColorAttachments()}.  The framebuffer is checked for
-     * completeness via {@code glCheckFramebufferStatus}; an
-     * {@link IllegalStateException} is thrown if the status is not
-     * {@code GL_FRAMEBUFFER_COMPLETE}.</p>
-     *
-     * <p>Depth-only formats ({@link CgFrameBufferFormat#isDepthOnly()}) automatically
-     * invoke {@code GL_NONE} draw/read buffer configuration.</p>
-     *
-     * @param name   human-readable instance name
-     * @param width  width in pixels (must be &gt; 0)
-     * @param height height in pixels (must be &gt; 0)
-     * @param format attachment layout descriptor
-     * @return a new owned {@code CgFrameBuffer}
-     * @throws IllegalArgumentException      if dimensions are not positive
-     * @throws IllegalStateException         if the FBO is not complete
-     * @throws UnsupportedOperationException if the format asks for more colour slots than the GPU has
-     */
+    /** A new owned framebuffer: the registry's maker. */
     static CgFrameBuffer createInternal(String name, int width, int height, CgFrameBufferFormat format) {
-        return createInternal(name, width, height, format, 1);
-    }
-
-    private static CgFrameBuffer createInternal(String name, int width, int height, CgFrameBufferFormat format,
-                                                int colorLevels) {
-        return createInternal(name, width, height, format, colorLevels, null);
+        return createInternal(name, width, height, format, 1, null);
     }
 
     private static CgFrameBuffer createInternal(String name, int width, int height, CgFrameBufferFormat format,
                                                 int colorLevels, @Nullable Images images) {
-        if (width <= 0 || height <= 0) 
+        if (width <= 0 || height <= 0) {
             throw new IllegalArgumentException("Framebuffer dimensions must be positive: " + width + "x" + height);
-        if (format == null) 
-            throw new IllegalArgumentException("Format must not be null");
-        
-
-        // Validate color slot count against GPU limit
+        }
+        if (format == null) throw new IllegalArgumentException("Format must not be null");
         int maxSlots = getMaxColorAttachments();
-        for (int slot : format.getActiveColorSlotIds()) 
-            if (slot >= maxSlots) 
-                throw new UnsupportedOperationException("CgFrameBuffer '" + name + "': color slot " + slot + " exceeds GPU max draw buffers (" + maxSlots + ")");
-            
-
+        for (int slot : format.getActiveColorSlotIds()) {
+            if (slot >= maxSlots) {
+                throw new UnsupportedOperationException("CgFrameBuffer '" + name + "': color slot " + slot
+                        + " exceeds GPU max draw buffers (" + maxSlots + ")");
+            }
+        }
         if (colorLevels < 1) throw new IllegalArgumentException("a colour texture of " + colorLevels + " levels");
         if (colorLevels > 1 && format.isMultisampled()) {
             throw new IllegalArgumentException("CgFrameBuffer '" + name + "': a multisampled colour slot has no mip levels");
@@ -281,62 +174,38 @@ public class CgFrameBuffer {
         CgFrameBuffer fbo = new CgFrameBuffer(name, format, width, height);
         fbo.colorLevels = colorLevels;
         fbo.images = images;
-        fbo.initGl(width, height, format);
+        fbo.makeAttachments(width, height, format);
         return fbo;
     }
 
     /**
-     * Allocates a new, independently-owned framebuffer that bypasses
-     * {@link CgFrameBufferRegistry}'s name-keyed cache entirely.
+     * A new framebuffer the caller owns outright, outside the registry's name cache: it resizes and deletes it.
      *
-     * <p>Use this for framebuffers whose count and size are caller-managed and don't fit the
-     * registry's "small set of well-known named buffers" or "exactly screen-sized" models — e.g.
-     * one small offscreen target per UI element that needs isolated compositing. The registry's
-     * {@link #create} silently returns the existing FBO on a name hit regardless of size
-     * mismatch; callers of this method own their instance outright and must call {@link #resize}
-     * themselves when their target size changes, and {@link #delete()} when done.</p>
-     *
-     * @param name   human-readable instance name (for debugging only — not a cache key)
-     * @param width  width in pixels (must be &gt; 0)
-     * @param height height in pixels (must be &gt; 0)
-     * @param format attachment layout descriptor
-     * @return a new, independently-owned {@code CgFrameBuffer}
+     * <pre>{@code
+     * CgFrameBuffer layer = CgFrameBuffer.createOwned("ui.layer", w, h, format);
+     * }</pre>
      */
     public static CgFrameBuffer createOwned(String name, int width, int height, CgFrameBufferFormat format) {
-        return createInternal(name, width, height, format, 1);
+        return createInternal(name, width, height, format, 1, null);
     }
 
     /**
      * {@link #createOwned(String, int, int, CgFrameBufferFormat)} with {@code colorLevels} mip levels in every colour
-     * texture. Draws and blits address level 0; a kernel or a pass attached to another level fills it.
+     * texture; a pass or a kernel attached to a level fills it.
      *
      * <pre>{@code
      * CgFrameBuffer bloom = CgFrameBuffer.createOwned("bloom", w, h, format, CgTexture.fullChain(w, h));
      * }</pre>
-     *
-     * <p>A resize keeps the count, cut to the new size's full chain. A colour renderbuffer has one level; depth has one.</p>
      */
     public static CgFrameBuffer createOwned(String name, int width, int height, CgFrameBufferFormat format,
                                             int colorLevels) {
-        return createInternal(name, width, height, format, colorLevels);
+        return createInternal(name, width, height, format, colorLevels, null);
     }
 
-    /**
-     * {@link #createOwned(String, int, int, CgFrameBufferFormat, int)} with its colour and depth textures made on the
-     * installed device ({@link CgTexture2D#onDevice}): the frame graph's attachments, which the executor names as RHI
-     * textures. Renderbuffer slots stay {@code CgGL}'s.
-     *
-     * <pre>{@code
-     * CgFrameBuffer target = CgGLImports.installed() ? CgFrameBuffer.createOnDevice(name, w, h, format, levels)
-     *         : CgFrameBuffer.createOwned(name, w, h, format, levels);
-     * }</pre>
-     *
-     * <p>A {@link #resize} makes new textures on the device; the old ones go once the frames reading them retire.</p>
-     */
+    /** {@link #createOwned(String, int, int, CgFrameBufferFormat, int)}: the frame graph's name for it. */
     public static CgFrameBuffer createOnDevice(String name, int width, int height, CgFrameBufferFormat format,
                                                int colorLevels) {
-        CgRHI rhi = CgRHI.get();
-        return createInternal(name, width, height, format, colorLevels, rhi::createTexture);
+        return createInternal(name, width, height, format, colorLevels, null);
     }
 
     /**
@@ -350,7 +219,7 @@ public class CgFrameBuffer {
      *
      * <ul>
      *   <li>A {@link #resize} asks {@code images} again, for the new size.</li>
-     *   <li>Renderbuffer slots stay {@code CgGL}'s ({@link #allOnDevice}).</li>
+     *   <li>Renderbuffer slots are made by the device itself ({@link #allOnDevice}).</li>
      * </ul>
      */
     public static CgFrameBuffer createOnDevice(String name, int width, int height, CgFrameBufferFormat format,
@@ -383,7 +252,7 @@ public class CgFrameBuffer {
         return descs;
     }
 
-    /** Whether {@link #createOnDevice} makes every attachment of {@code format} a device texture: no renderbuffer. */
+    /** Whether {@link #createOnDevice}'s {@code images} makes every attachment of {@code format}: no renderbuffer. */
     public static boolean allOnDevice(CgFrameBufferFormat format) {
         if (format.isMultisampled() || format.hasDepth() && format.isDepthRenderbuffer()) return false;
         for (int slot : format.getActiveColorSlotIds()) if (format.isColorRenderbuffer(slot)) return false;
@@ -399,9 +268,8 @@ public class CgFrameBuffer {
     }
 
     /**
-     * Storage for a 3D texture: {@code format}'s slot 0 as a {@link CgTexture3D} of {@code depth} slices, and no
-     * framebuffer object, since nothing draws into a volume: a kernel writes it as a {@code 3d} image and a draw samples
-     * it. What the frame graph keeps a volume in ({@code CgTextureDesc.volume}); any caller owns it outright.
+     * Storage for a 3D texture: {@code format}'s slot 0 as a {@link CgTexture3D} of {@code depth} slices, which nothing
+     * draws into: a kernel writes it as a {@code 3d} image and a draw samples it.
      *
      * <pre>{@code
      * CgFrameBuffer field = CgFrameBuffer.createVolume("wind", 32, 32, 32, rgba16f);
@@ -409,8 +277,7 @@ public class CgFrameBuffer {
      * }</pre>
      *
      * <ul>
-     *   <li>Binding it, a blit, a clear, a reattachment or a resize throws; {@link #getId()} is 0.</li>
-     *   <li>Sampled through the format type's spec: linear, or nearest for an integer type, clamped.</li>
+     *   <li>A clear, a copy or a resize throws.</li>
      * </ul>
      */
     public static CgFrameBuffer createVolume(String name, int width, int height, int depth, CgFrameBufferFormat format) {
@@ -425,25 +292,23 @@ public class CgFrameBuffer {
         }
         CgFrameBuffer fbo = new CgFrameBuffer(name, format, width, height);
         fbo.volume = true;
-        Attachment a = new Attachment(0, type, false, fbo);
-        a.setTexture(CgTexture3D.createEmpty(width, height, depth, type.toTextureSpec()));
+        Attachment a = new Attachment(0, type, false);
+        a.texture = CgTexture3D.createEmpty(width, height, depth, type.toTextureSpec());
         fbo.colorAttachments.put(0, a);
         return fbo;
     }
 
     /**
-     * Storage for a 2D array: {@code format}'s slot 0 as a {@link CgTexture2DArray} of {@code layers} layers. Its
-     * framebuffer draws into layer 0, and {@link #bindLayer} into any other. What the frame graph keeps an array in
-     * ({@code CgTextureDesc.array}); any caller owns it outright.
+     * Storage for a 2D array: {@code format}'s slot 0 as a {@link CgTexture2DArray} of {@code layers} layers; a pass
+     * attached to a layer draws into it.
      *
      * <pre>{@code
      * CgFrameBuffer field = CgFrameBuffer.createArray("field", w, h, 5, rgba16f);
-     * field.bindLayer(3);                                             // draws into layer 3
      * CgGraphTexture fields = CgGraphTexture.imported("field", field); // a material's sampler2DArray
      * }</pre>
      *
      * <ul>
-     *   <li>A blit, a clear or a reattachment addresses layer 0; a resize keeps the layer count.</li>
+     *   <li>A clear addresses every layer; a resize keeps the layer count.</li>
      *   <li>One level, one colour attachment, no depth.</li>
      * </ul>
      */
@@ -459,7 +324,7 @@ public class CgFrameBuffer {
         }
         CgFrameBuffer fbo = new CgFrameBuffer(name, format, width, height);
         fbo.arrayLayers = layers;
-        fbo.initGl(width, height, format);
+        fbo.makeAttachments(width, height, format);
         return fbo;
     }
 
@@ -478,280 +343,138 @@ public class CgFrameBuffer {
         return volume && getColorTexture(0) instanceof CgTexture3D texture ? texture.getDepth() : 1;
     }
 
-    private void requireFramebuffer(String what) {
-        if (volume) throw new IllegalStateException("FBO '" + name + "' is a volume, with no framebuffer to " + what);
+    private void requireTarget(String what) {
+        if (volume) throw new IllegalStateException("FBO '" + name + "' is a volume, with nothing to " + what);
     }
 
     /**
-     * Returns (or lazily creates) a screen-sized FBO managed by
-     * {@link CgFrameBufferRegistry}.
-     *
-     * <p>The returned instance is resized in-place on every window resize —
-     * the Java reference stays valid and can be cached safely.</p>
-     *
-     * @param name   human-readable instance name (registry cache key)
-     * @param format attachment layout descriptor
-     * @return the screen-sized FBO (never null)
+     * Returns (or lazily creates) a screen-sized framebuffer managed by {@link CgFrameBufferRegistry}, resized in place
+     * at every window resize ({@link CgGraphicsLifecycle#onResize}).
      */
     public static CgFrameBuffer createScreenSized(String name, CgFrameBufferFormat format) {
         return CgFrameBufferRegistry.get().acquireScreenSized(name, format);
     }
 
     /**
-     * Wraps an externally-created FBO ID as a non-owned {@code CgFrameBuffer}.
+     * A host's framebuffer {@code fbo}, its attachments imported: framebuffer 0 is the window's. Owns nothing;
+     * {@link #delete()} does nothing.
      *
-     * <p>The returned instance can be bound and queried but {@link #delete()} is
-     * a no-op — the underlying GL object is owned by the caller.</p>
-     *
-     * @param name   human-readable name for debugging
-     * @param fboId  external GL framebuffer object ID
-     * @param width  known width in pixels (informational)
-     * @param height known height in pixels (informational)
-     * @return a non-owned wrapped framebuffer
+     * <pre>{@code
+     * CgFrameBuffer window = CgFrameBuffer.wrap("window", 0, w, h);
+     * offscreen.copyColorTo(0);   // or window.readColor(0, 0, w, h)
+     * }</pre>
      */
-    public static CgFrameBuffer wrap(String name, int fboId, int width, int height) {
-        return new WrappedFrameBuffer(name, fboId, width, height);
+    public static CgFrameBuffer wrap(String name, int fbo, int width, int height) {
+        return new CgFrameBuffer(name, fbo, width, height);
     }
 
-    // ── GL initialisation (called once by createInternal()) ───────────────────
+    /** The owned framebuffer known as {@code id}; null for a host's name or a deleted one. */
+    @Nullable
+    public static CgFrameBuffer owned(int id) {
+        return id >= FIRST_NAME ? OWNED.get(id) : null;
+    }
 
     /**
-     * Allocates all GL resources for this FBO.  Called once from
-     * {@link #create} immediately after the backend constructor.
-     *
+     * The colour attachment 0 (or the depth) of the framebuffer named {@code fbo} as a device texture view: an owned
+     * one's own, else the host's imported at {@code width} x {@code height}. Null where it has none.
      */
+    @Nullable
+    public static CgTextureView attachment(int fbo, boolean depth, int width, int height) {
+        CgFrameBuffer ours = owned(fbo);
+        if (ours != null) {
+            CgGpuTexture t = depth ? ours.rhiDepth() : ours.rhiColor(0);
+            return t == null ? null : CgTextureView.attachment(t, 0, 0);
+        }
+        return CgGLImports.get().attachment(fbo, depth, width, height);
+    }
+
     /**
-     * Builds the attachments, leaving the framebuffer binding exactly as it was found.
+     * The depth type a framebuffer's depth attachment has: what a copy of it holds, since a depth blit refuses formats
+     * that differ.
      *
-     * <p>It used to end bound to 0. Building a target mid-frame then redirected everything drawn after
-     * it to the default framebuffer, so the caller's own target came out empty -- on screen, the whole
-     * surface missing for the one frame a target was first created on.</p>
+     * <pre>{@code
+     * CgTextureType type = CgFrameBuffer.depthTypeOf(mainTarget, w, h);   // DEPTH32F on 26.2, DEPTH24 before
+     * }</pre>
+     *
+     * @return {@code null} when the framebuffer has no depth attachment
      */
-    private void initGl(int w, int h, CgFrameBufferFormat fmt) {
-        try (CgTrace.Zone zone = CgTrace.zone(CgChannels.GL, "framebuffer.create");
-             CgGlScope ignored = CgGlState.save(FBO_ONLY)) {
-            initGlAttachments(w, h, fmt);
+    @Nullable
+    public static CgTextureType depthTypeOf(int fbo, int width, int height) {
+        CgTextureView depth = attachment(fbo, true, width, height);
+        if (depth == null) return null;
+        switch (depth.texture().desc().format()) {
+            case DEPTH16_UNORM: return CgTextureType.DEPTH16;
+            case DEPTH24_PLUS: return CgTextureType.DEPTH24;
+            case DEPTH32_FLOAT: return CgTextureType.DEPTH32F;
+            case DEPTH24_PLUS_STENCIL8: return CgTextureType.DEPTH24_STENCIL8;
+            case DEPTH32_FLOAT_STENCIL8: return CgTextureType.DEPTH32F_STENCIL8;
+            default: return null;
         }
     }
 
-    private void initGlAttachments(int w, int h, CgFrameBufferFormat fmt) {
-        if(fboId == 0) fboId = doGenFramebuffer();
-        doBindFbo(CgGL.GL_FRAMEBUFFER, fboId);
+    // ── Attachments ────────────────────────────────────────────────────────────
 
-        try {
+    private void makeAttachments(int w, int h, CgFrameBufferFormat fmt) {
+        try (CgTrace.Zone zone = CgTrace.zone(CgChannels.GL, "framebuffer.create")) {
             if (arrayLayers > 0) {
                 CgTextureType type = fmt.getColorSlot(0);
-                Attachment a = new Attachment(0, type, false, this);
-                CgTexture2DArray tex = CgTexture2DArray.allocateEmpty(w, h, arrayLayers, type.toTextureSpec());
-                a.setTexture(tex);
+                Attachment a = new Attachment(0, type, false);
+                a.texture = CgTexture2DArray.allocateEmpty(w, h, arrayLayers, type.toTextureSpec());
                 colorAttachments.put(0, a);
-                // Every layer's framebuffer now, not at first use: a fixed few, and none made in the middle of a frame.
-                layerFbos = new int[arrayLayers - 1];
-                for (int layer = 0; layer < arrayLayers; layer++) {
-                    if (layer > 0) doBindFbo(CgGL.GL_FRAMEBUFFER, layerFbos[layer - 1] = doGenFramebuffer());
-                    doFramebufferTextureLayer(type.glAttachmentPoint(0), tex.getId(), layer);
-                    requireComplete(fmt, LAYER, " layer " + layer);
-                }
                 return;
             }
-
-            // ── Color attachments ──────────────────────────────────────────────
             for (int slot : fmt.getActiveColorSlotIds()) {
-                CgTextureType type     = fmt.getColorSlot(slot);
-                boolean       isRbo    = fmt.isColorRenderbuffer(slot);
-                int           glAttach = type.glAttachmentPoint(slot);
-
-                Attachment a = new Attachment(slot, type, isRbo, this);
-                if (isRbo) {
-                    int rboId = doGenRenderbuffer();
-                    doBindRenderbuffer(rboId);
-                    if (fmt.isMultisampled()) {
-                        doRenderbufferStorageMultisample(fmt.getSamples(), type.glInternalFormat, w, h);
-                    } else {
-                        doRenderbufferStorage(type.glInternalFormat, w, h);
-                    }
-                    doFramebufferRenderbuffer(CgGL.GL_FRAMEBUFFER, glAttach, rboId);
-                    a.setRenderbufferId(rboId);
-                } else if (fmt.isMultisampled()) {
-                    // A multisampled COLOR slot backed by a texture would need GL_TEXTURE_2D_MULTISAMPLE
-                    // and a sampler2DMS to read it — a different type from CgTexture2D. Refused loudly
-                    // rather than silently built single-sampled, because "my MSAA does nothing" is the
-                    // hardest kind of graphics bug to find.
-                    throw new IllegalArgumentException(
-                            "CgFrameBufferFormat '" + fmt + "': colour slot " + slot + " is multisampled "
-                            + "but declared as a sampleable texture. Use colorRenderbuffer(...) and "
-                            + "resolve with blitFrom(...), which is what a sampler2D can read.");
-                } else {
-                    int levels = Math.min(colorLevels, CgTexture.fullChain(w, h));
-                    CgTexture2D tex = images != null ? CgTexture2D.onDevice(images.make(CgTexture2D.deviceDesc(
-                            colourLabel(name, slot), w, h, type.toTextureSpec(), levels)), type.toTextureSpec())
-                            : CgTexture2D.createEmpty(w, h, type.toTextureSpec(), levels);
-                    doFramebufferTexture2D(CgGL.GL_FRAMEBUFFER, glAttach, CgGL.GL_TEXTURE_2D, tex.getId(), 0);
-                    a.setTexture(tex);
+                CgTextureType type = fmt.getColorSlot(slot);
+                boolean attachOnly = fmt.isColorRenderbuffer(slot);
+                if (!attachOnly && fmt.isMultisampled()) {
+                    // A multisampled slot sampled as a texture needs a sampler2DMS: refused rather than built single-sampled.
+                    throw new IllegalArgumentException("CgFrameBufferFormat '" + fmt + "': colour slot " + slot
+                            + " is multisampled but declared as a sampleable texture. Use colorRenderbuffer(...).");
                 }
+                Attachment a = new Attachment(slot, type, attachOnly);
+                if (attachOnly) a.image = attachOnly(colourLabel(name, slot), type, w, h, fmt.getSamples());
+                else a.texture = texture(colourLabel(name, slot), type, w, h, Math.min(colorLevels, CgTexture.fullChain(w, h)));
                 colorAttachments.put(slot, a);
             }
-
-            // ── Depth attachment ───────────────────────────────────────────────
             if (fmt.hasDepth()) {
-                CgTextureType depthType = fmt.getDepthType();
-                boolean       isRbo     = fmt.isDepthRenderbuffer();
-                int           glAttach  = depthType.glAttachmentPoint(0); // slot ignored for depth
-
-                Attachment a = new Attachment(-1, depthType, isRbo, this);
-                if (isRbo) {
-                    int rboId = doGenRenderbuffer();
-                    doBindRenderbuffer(rboId);
-                    // Depth MUST match the colour attachments' sample count or the framebuffer is
-                    // incomplete — GL has no notion of mixing them.
-                    if (fmt.isMultisampled()) {
-                        doRenderbufferStorageMultisample(fmt.getSamples(), depthType.glInternalFormat, w, h);
-                    } else {
-                        doRenderbufferStorage(depthType.glInternalFormat, w, h);
-                    }
-                    doFramebufferRenderbuffer(CgGL.GL_FRAMEBUFFER, glAttach, rboId);
-                    a.setRenderbufferId(rboId);
-                } else if (fmt.isMultisampled()) {
-                    throw new IllegalArgumentException(
-                            "CgFrameBufferFormat '" + fmt + "': depth is multisampled but declared as a "
-                            + "sampleable texture. Use depthRenderbuffer(...).");
-                } else {
-                    CgTexture2D tex = images != null ? CgTexture2D.onDevice(images.make(CgTexture2D.deviceDesc(
-                            depthLabel(name), w, h, depthType.toTextureSpec(), 1)), depthType.toTextureSpec())
-                            : CgTexture2D.createEmpty(w, h, depthType.toTextureSpec());
-                    doFramebufferTexture2D(CgGL.GL_FRAMEBUFFER, glAttach, CgGL.GL_TEXTURE_2D, tex.getId(), 0);
-                    a.setTexture(tex);
+                CgTextureType type = fmt.getDepthType();
+                boolean attachOnly = fmt.isDepthRenderbuffer();
+                if (!attachOnly && fmt.isMultisampled()) {
+                    throw new IllegalArgumentException("CgFrameBufferFormat '" + fmt + "': depth is multisampled but "
+                            + "declared as a sampleable texture. Use depthRenderbuffer(...).");
                 }
+                Attachment a = new Attachment(-1, type, attachOnly);
+                if (attachOnly) a.image = attachOnly(depthLabel(name), type, w, h, fmt.getSamples());
+                else a.texture = texture(depthLabel(name), type, w, h, 1);
                 depthAttachment = a;
             }
-
-            // ── Depth-only: suppress draw/read ─────────────────────────────────
-            if (fmt.isDepthOnly()) {
-                CgGL.glDrawBuffer(CgGL.GL_NONE);
-                CgGL.glReadBuffer(CgGL.GL_NONE);
-            }
-            drawEveryColorSlot();
-
-            requireComplete(fmt, BASE, "");
-
         } catch (RuntimeException e) {
-            // Cleanup on failure. The binding is the enclosing scope's to restore, not ours to zero.
-            freeGlResources();
+            freeAttachments();
             throw e;
         }
     }
 
-    // ── Core API ───────────────────────────────────────────────────────────────
-
-    /**
-     * Binds this FBO as both draw and read framebuffer ({@code GL_FRAMEBUFFER}).
-     * Routes through {@link CrossApiTransition} to handle cross-API transitions.
-     */
-    public void bind() {
-        requireFramebuffer("bind");
-        CgGL.glBindFramebuffer(CgGL.GL_FRAMEBUFFER, fboId);
+    private CgTexture2D texture(String label, CgTextureType type, int w, int h, int levels) {
+        return images != null ? CgTexture2D.onDevice(images.make(CgTexture2D.deviceDesc(label, w, h, type.toTextureSpec(),
+                levels)), type.toTextureSpec()) : CgTexture2D.createEmpty(w, h, type.toTextureSpec(), levels);
     }
 
-    /**
-     * Binds it drawing into mip level {@code level} of its colour textures: one pass of a chain drawn level by level.
-     * Level 0 is {@link #bind()}; another is {@link #levelWidth} by {@link #levelHeight} and has no depth.
-     *
-     * <pre>{@code
-     * chain.bindLevel(3);
-     * CgGL.glViewport(0, 0, chain.levelWidth(3), chain.levelHeight(3));
-     * }</pre>
-     */
-    public void bindLevel(int level) {
-        if (level == 0) bind();
-        else CgGL.glBindFramebuffer(CgGL.GL_FRAMEBUFFER, levelId(level));
+    /** A slot a pass attaches and never samples: what a renderbuffer was, multisampled where the format is. */
+    private static CgGpuTexture attachOnly(String label, CgTextureType type, int w, int h, int samples) {
+        return CgRHI.get().createTexture(new CgGpuTexture.Desc(label, CgGpuTexture.Kind.D2,
+                GLFormats.of(type.glInternalFormat), w, h, 1, 1, Math.max(1, samples),
+                EnumSet.of(CgGpuTexture.Usage.ATTACHMENT, CgGpuTexture.Usage.COPY_SRC)));
     }
 
-    /**
-     * Binds an array drawing into layer {@code layer}; layer 0 is {@link #bind()}.
-     *
-     * <pre>{@code
-     * field.bindLayer(2);
-     * CgGL.glViewport(0, 0, field.getWidth(), field.getHeight());
-     * }</pre>
-     */
-    public void bindLayer(int layer) {
-        if (layer == 0) bind();
-        else CgGL.glBindFramebuffer(CgGL.GL_FRAMEBUFFER, layerId(layer));
-    }
-
-    /** The framebuffer {@link #bindLayer} binds for {@code layer}: {@link #getId()} for layer 0. */
-    public int layerId(int layer) {
-        requireFramebuffer("bind");
-        if (layer == 0) return fboId;
-        if (layer < 0 || layer >= arrayLayers) {
-            throw new IllegalArgumentException("FBO '" + name + "' has " + getLayers() + " layers, not layer " + layer);
-        }
-        return layerFbos[layer - 1];
-    }
-
-    /**
-     * The framebuffer {@link #bindLevel} binds for {@code level}, made at first use with the binding left as it was:
-     * {@link #getId()} for level 0, colour only above it.
-     */
-    public int levelId(int level) {
-        requireFramebuffer("bind");
-        if (level == 0) return fboId;
-        CgTexture first = colorAttachments.isEmpty() ? null : colorAttachments.firstEntry().getValue().getTexture();
-        int levels = first == null ? 1 : first.getLevels();
-        if (level < 0 || level >= levels) {
-            throw new IllegalArgumentException("FBO '" + name + "' has " + levels + " colour levels, not level " + level);
-        }
-        if (levelFbos.length < levels - 1) levelFbos = Arrays.copyOf(levelFbos, levels - 1);
-        if (levelFbos[level - 1] != 0) return levelFbos[level - 1];
-        int id = doGenFramebuffer();
-        levelFbos[level - 1] = id;
-        try (CgGlScope ignored = CgGlState.save(FBO_ONLY)) {
-            doBindFbo(CgGL.GL_FRAMEBUFFER, id);
-            for (Attachment a : colorAttachments.values()) {
-                if (a.getTexture() != null) doFramebufferTexture2D(CgGL.GL_FRAMEBUFFER, a.getType().glAttachmentPoint(a.getSlot()),
-                        CgGL.GL_TEXTURE_2D, a.getTexture().getId(), level);
-            }
-            drawEveryColorSlot();
-            requireComplete(format, LEVEL, " level " + level);
-        }
+    /** The name it is known by: an owned one's, given at creation; a wrapped one's host framebuffer. */
+    public int getId() {
         return id;
     }
 
-    /** Which framebuffer of a format a completeness check was for: the base, a mip level's, an array layer's. */
-    private static final int BASE = 0, LEVEL = 1, LAYER = 2;
-
-    /**
-     * Throws unless the bound framebuffer is complete, checked once per driver for a format's attachments (and once each
-     * for its levels and layers, {@link CgFrameBufferLayouts}): completeness rests on the attachments' formats alone,
-     * and on a threaded driver each {@code glCheckFramebufferStatus} drains its queue.
-     */
-    private void requireComplete(CgFrameBufferFormat fmt, int kind, String which) {
-        String key = kind + "|" + fmt.attachmentKey();
-        if (CgFrameBufferLayouts.complete(key)) return;
-        int status = doCheckFramebufferStatus();
-        if (status != CgGL.GL_FRAMEBUFFER_COMPLETE) {
-            throw new IllegalStateException("FBO '" + name + "'" + which + " incomplete: 0x" + Integer.toHexString(status));
-        }
-        CgFrameBufferLayouts.found(key);
-    }
-
-    /**
-     * On the bound framebuffer, made with more than one colour slot: draws into every one. A framebuffer draws into
-     * attachment 0 alone until told otherwise, so a fragment's other outputs would be dropped. The state is the
-     * framebuffer object's, set once.
-     */
-    private void drawEveryColorSlot() {
-        if (colorAttachments.size() < 2) return;
-        // Output location i writes draw buffer i: slots 0 and 2 would send RT2 nowhere and RT1 to slot 2. The right
-        // array has GL_NONE in the gap, which the tracked backend refuses.
-        if (colorAttachments.lastKey() != colorAttachments.size() - 1) {
-            throw new IllegalArgumentException("FBO '" + name + "' has colour slots " + colorAttachments.keySet()
-                    + ": a format with more than one must number them from 0 with no gap");
-        }
-        IntBuffer buf = CgBufferUtils.createIntBuffer(colorAttachments.size());
-        for (int slot : colorAttachments.keySet()) buf.put(CgGL.GL_COLOR_ATTACHMENT0 + slot);
-        buf.flip();
-        CgGL.glDrawBuffers(buf);
+    /** The format descriptor used to create it (null for a wrapped one). */
+    @Nullable
+    public CgFrameBufferFormat getFormat() {
+        return format;
     }
 
     /** Level {@code level}'s width: {@code max(1, width >> level)}. */
@@ -764,113 +487,22 @@ public class CgFrameBuffer {
         return Math.max(1, height >> level);
     }
 
-    /**
-     * Binds this FBO as the draw framebuffer only ({@code GL_DRAW_FRAMEBUFFER}).
-     */
-    public void bindDraw() {
-        requireFramebuffer("bind");
-        CgGL.glBindFramebuffer(CgGL.GL_DRAW_FRAMEBUFFER, fboId);
-    }
-
-    /**
-     * Binds this FBO as the read framebuffer only ({@code GL_READ_FRAMEBUFFER}).
-     */
-    public void bindRead() {
-        requireFramebuffer("bind");
-        CgGL.glBindFramebuffer(CgGL.GL_READ_FRAMEBUFFER, fboId);
-    }
-
-    /**
-     * Binds the default framebuffer (ID 0), which is never what was bound before inside a host: Minecraft draws into its
-     * main target. To put back what was bound, draw into it instead:
-     *
-     * <pre>{@code
-     * try (CgFrameBuffer.Drawing ignored = target.drawInto()) {
-     *     draw();
-     * }   // the host's framebuffer and viewport back
-     * }</pre>
-     */
-    public void unbind() {
-        CgGL.glBindFramebuffer(CgGL.GL_FRAMEBUFFER, 0);
-    }
-
-    /** Returns the GL FBO object ID. */
-    public int getId() { return fboId; }
-
-    /** Returns the format descriptor used to create this FBO (null for wrapped FBOs). */
-    @Nullable
-    public CgFrameBufferFormat getFormat() { return format; }
-
-    /**
-     * Returns {@code true} if this FBO has more than one colour slot.
-     */
-    public boolean supportsMrt() {
-        return format != null && format.colorSlotCount() > 1;
-    }
-
-    /**
-     * Sets the active draw color buffers by slot index.
-     * Each element is a color slot index (0, 1, 2, …); internally converted to
-     * {@code GL_COLOR_ATTACHMENT0 + n}.
-
-     *
-     * @param slotIds color slot indices to activate as draw buffers
-     * @throws IllegalArgumentException if {@code slotIds} is empty
-     */
-    public void drawBuffers(int... slotIds) {
-        if (slotIds == null || slotIds.length == 0) 
-            throw new IllegalArgumentException("At least one draw buffer slot must be specified");
-        requireFramebuffer("draw into");
-        IntBuffer buf = CgBufferUtils.createIntBuffer(slotIds.length);
-        for (int slot : slotIds) 
-            buf.put(CgGL.GL_COLOR_ATTACHMENT0 + slot);
-        
-        buf.flip();
-        CgGL.glDrawBuffers(buf);
-    }
-
-    // ── Attachment access ──────────────────────────────────────────────────────
-
-    /**
-     * Returns the {@link Attachment} for the given color slot, or {@code null}
-     * if the slot is unused.
-     */
-    @Nullable
-    public Attachment getColorAttachment(int slot) {
-        return colorAttachments.get(slot);
-    }
-
-    /**
-     * Returns the depth/stencil {@link Attachment}, or {@code null} if the
-     * format has no depth attachment.
-     */
-    @Nullable
-    public Attachment getDepthAttachment() {
-        return depthAttachment;
-    }
-
-    /**
-     * Returns the {@link CgTexture} at the given color slot, or {@code null}
-     * if the slot is unused or backed by a renderbuffer.
-     */
+    /** The texture at colour slot {@code slot}; null where the slot is unused or attach-only. */
     @Nullable
     public CgTexture getColorTexture(int slot) {
         Attachment a = colorAttachments.get(slot);
-        return a != null ? a.getTexture() : null;
+        return a != null ? a.texture : null;
     }
 
-    /**
-     * Returns the depth {@link CgTexture}, or {@code null} if there is no depth
-     * attachment or the depth attachment is backed by a renderbuffer.
-     */
+    /** The depth texture; null with no depth or an attach-only one. */
     @Nullable
     public CgTexture getDepthTexture() {
-        return depthAttachment != null ? depthAttachment.getTexture() : null;
+        return depthAttachment != null ? depthAttachment.texture : null;
     }
 
     /**
-     * The device texture at colour slot {@code slot}, a renderbuffer's too (attach-only): what a render pass on the
-     * device draws into. Null where the slot is unused or no device is installed.
+     * The device texture at colour slot {@code slot}, an attach-only one's too: what a render pass draws into. A
+     * wrapped framebuffer's slot 0 is the host's, imported. Null where the slot is unused.
      *
      * <pre>{@code
      * CgTextureView view = CgTextureView.attachment(fbo.rhiColor(0), 0, 0);
@@ -878,6 +510,7 @@ public class CgFrameBuffer {
      */
     @Nullable
     public CgGpuTexture rhiColor(int slot) {
+        if (!owned) return slot == 0 ? imported(false) : null;
         Attachment a = colorAttachments.get(slot);
         return a != null ? a.rhiTexture() : null;
     }
@@ -885,150 +518,18 @@ public class CgFrameBuffer {
     /** As {@link #rhiColor}, for the depth/stencil attachment. */
     @Nullable
     public CgGpuTexture rhiDepth() {
+        if (!owned) return imported(true);
         return depthAttachment != null ? depthAttachment.rhiTexture() : null;
     }
 
-    // ── Blit ───────────────────────────────────────────────────────────────────
-
-    /** Blits from {@code source} into this FBO. Extracts GL id and dimensions from the source. */
-    public void blitFrom(CgFrameBuffer source, int mask, int filter) {
-        source.requireFramebuffer("blit from");
-        blitFrom(source.getId(), source.getWidth(), source.getHeight(), mask, filter);
-    }
-
-    /** Blits from {@code sourceFboId} into this FBO assuming equal dimensions; uses {@code GL_NEAREST}. */
-    public void blitFrom(int sourceFboId, int mask) {
-        blitFrom(sourceFboId, width, height, mask, CgGL.GL_NEAREST);
-    }
-
-    /** Blits from {@code sourceFboId} into this FBO with explicit source dimensions and filter. */
-    public void blitFrom(int sourceFboId, int sourceWidth, int sourceHeight, int mask, int filter) {
-        requireFramebuffer("blit into");
-        blitFrom(sourceFboId, fboId, 0, 0, width, height, 0, 0, sourceWidth, sourceHeight, mask, filter);
-    }
-
-    /**
-     * Raw blit between two arbitrary FBO ids with full source and destination rect control. Leaves the FBO binding as
-     * it found it: by name where the context can ({@link CgGL#blitsByName}), else bound and restored.
-     */
-    public static void blitFrom(int src, int dst, int srcX0, int srcY0, int srcX1, int srcY1,
-                                int dstX0, int dstY0, int dstX1, int dstY1,
-                                int mask, int filter) {
-        if (CgGL.blitsByName()) {
-            CgGL.cgBlitNamedFramebuffer(src, dst, srcX0, srcY0, srcX1, srcY1, dstX0, dstY0, dstX1, dstY1, mask, filter);
-            return;
-        }
-        try (CgGlScope scope = CgGlState.save(FBO_ONLY)) {
-            CgGL.glBindFramebuffer(CgGL.GL_READ_FRAMEBUFFER, src);
-            CgGL.glBindFramebuffer(CgGL.GL_DRAW_FRAMEBUFFER, dst);
-            CgGL.glBlitFramebuffer(srcX0, srcY0, srcX1, srcY1, dstX0, dstY0, dstX1, dstY1, mask, filter);
-        }
-    }
-
-    /**
-     * Probes the source FBO to determine the optimal GL blit mask for a depth snapshot copy.
-     *
-     * <p>Blitting a {@code DEPTH24_STENCIL8} attachment with only {@code GL_DEPTH_BUFFER_BIT}
-     * forces the driver to unpack the packed 32-bit word, copy only the depth channel, and
-     * repack — a slow path. Passing {@code GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT}
-     * copies the entire packed word as a single memcpy-equivalent operation.</p>
-     *
-     * <p>However, blitting stencil from a depth-only source is a GL error. This method queries
-     * {@code GL_STENCIL_ATTACHMENT} on the source FBO exactly once and returns the appropriate
-     * mask. The result should be cached by the caller.</p>
-     *
-     * @param sourceFboId the GL framebuffer id to probe (bound as read framebuffer temporarily)
-     * @return {@code GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT} when the source has a stencil
-     *         attachment, otherwise {@code GL_DEPTH_BUFFER_BIT}
-     */
-    public static int optimalDepthBlitMask(int sourceFboId) {
-        try (CgGlScope scope = CgGlState.save(FBO_ONLY)) {
-            CgGL.glBindFramebuffer(CgGL.GL_READ_FRAMEBUFFER, sourceFboId);
-            int stencilToken = (sourceFboId == 0) ? CgGL.GL_STENCIL : CgGL.GL_STENCIL_ATTACHMENT;
-            int objType = CgGL.glGetFramebufferAttachmentParameteriv(
-                    CgGL.GL_READ_FRAMEBUFFER,
-                    stencilToken,
-                    CgGL.GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE);
-            boolean hasStencil = (objType != CgGL.GL_NONE);
-            return hasStencil
-                    ? CgGL.GL_DEPTH_BUFFER_BIT | CgGL.GL_STENCIL_BUFFER_BIT
-                    : CgGL.GL_DEPTH_BUFFER_BIT;
-        }
-    }
-
-    /**
-     * The depth format a framebuffer's depth attachment has, as the one type a depth blit from it may
-     * land in: {@code glBlitFramebuffer} refuses depth formats that differ.
-     *
-     * <pre>{@code
-     * CgTextureType type = CgFrameBuffer.depthTypeOf(mainTargetFbo);   // DEPTH32F on 26.2, DEPTH24 before
-     * }</pre>
-     *
-     * @return {@code null} when the framebuffer has no depth attachment
-     */
+    /** A wrapped framebuffer's attachment: the host's imported, or an owned one's where it names one of ours. */
     @Nullable
-    public static CgTextureType depthTypeOf(int sourceFboId) {
-        try (CgGlScope scope = CgGlState.save(FBO_ONLY)) {
-            CgGL.glBindFramebuffer(CgGL.GL_READ_FRAMEBUFFER, sourceFboId);
-            int depth = sourceFboId == 0 ? CgGL.GL_DEPTH : CgGL.GL_DEPTH_ATTACHMENT;
-            int stencil = sourceFboId == 0 ? CgGL.GL_STENCIL : CgGL.GL_STENCIL_ATTACHMENT;
-            // Any parameter but the object type is an error on an empty attachment, so that is asked first.
-            if (attachmentParameter(depth, CgGL.GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE) == CgGL.GL_NONE) return null;
-            boolean hasStencil = attachmentParameter(stencil, CgGL.GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE) != CgGL.GL_NONE;
-            if (attachmentParameter(depth, CgGL.GL_FRAMEBUFFER_ATTACHMENT_COMPONENT_TYPE) == CgGL.GL_FLOAT) {
-                return hasStencil ? CgTextureType.DEPTH32F_STENCIL8 : CgTextureType.DEPTH32F;
-            }
-            if (hasStencil) return CgTextureType.DEPTH24_STENCIL8;
-            return attachmentParameter(depth, CgGL.GL_FRAMEBUFFER_ATTACHMENT_DEPTH_SIZE) <= 16
-                    ? CgTextureType.DEPTH16 : CgTextureType.DEPTH24;
-        }
+    private CgGpuTexture imported(boolean depth) {
+        CgTextureView view = attachment(id, depth, width, height);
+        return view == null ? null : view.texture();
     }
 
-    private static int attachmentParameter(int attachment, int parameter) {
-        return CgGL.glGetFramebufferAttachmentParameteriv(CgGL.GL_READ_FRAMEBUFFER, attachment, parameter);
-    }
-
-    // ── A host drawing into it ─────────────────────────────────────────────────
-
-    /**
-     * Binds it with its whole viewport for what a host draws next, until {@link Drawing#close()} puts back the
-     * framebuffer and viewport bound before: a host's offscreen target, its stages fired into it. Render thread.
-     *
-     * <pre>{@code
-     * try (CgFrameBuffer.Drawing ignored = target.drawInto()) {
-     *     stage.host().set(0f, target.getWidth(), target.getHeight(), target.getId());
-     *     stage.fire();
-     * }
-     * }</pre>
-     *
-     * <ul>
-     *   <li>Drawings nest; close them in reverse.</li>
-     *   <li>Inside a host section where there is one: what the host caches is set back at the section's close.</li>
-     * </ul>
-     */
-    public Drawing drawInto() {
-        requireFramebuffer("draw into");
-        Drawing drawing = new Drawing(CgGlState.save(FBO, CgGlSlot.VIEWPORT));
-        bind();
-        CgGL.glViewport(0, 0, width, height);
-        return drawing;
-    }
-
-    /** What {@link #drawInto()} bound; closing it puts back what was bound before. */
-    public static final class Drawing implements AutoCloseable {
-        private CgGlScope saved;
-
-        private Drawing(CgGlScope saved) {
-            this.saved = saved;
-        }
-
-        @Override
-        public void close() {
-            if (saved == null) return;
-            saved.close();
-            saved = null;
-        }
-    }
+    // ── Reading and copying ─────────────────────────────────────────────────────
 
     /**
      * Its colour slot 0's pixels over {@code (x, y, w, h)}, read now, waiting for the GPU: RGBA8, rows bottom first.
@@ -1040,13 +541,15 @@ public class CgFrameBuffer {
      * }</pre>
      */
     public ByteBuffer readColor(int x, int y, int w, int h) {
-        return readPixels(fboId, x, y, w, h, CgGL.GL_UNSIGNED_BYTE, CgBufferUtils.createByteBuffer(w * h * 4));
+        return readColor(x, y, w, h, CgBufferUtils.createByteBuffer(w * h * 4));
     }
 
-    /** {@link #readColor(int, int, int, int)} into {@code into}, which holds at least {@code w * h * 4} bytes: read each frame. */
+    /** {@link #readColor(int, int, int, int)} into {@code into}, which holds at least {@code w * h * 4} bytes. */
     public ByteBuffer readColor(int x, int y, int w, int h, ByteBuffer into) {
+        CgGpuTexture color = rhiColor(0);
+        if (color == null) throw new IllegalStateException("FBO '" + name + "' has no colour attachment 0 to read");
         into.clear();
-        return readPixels(fboId, x, y, w, h, CgGL.GL_UNSIGNED_BYTE, into);
+        return read(color, new CgTextureRegion(0, x, y, 0, w, h, 1), false, into);
     }
 
     /**
@@ -1058,7 +561,7 @@ public class CgFrameBuffer {
      * }</pre>
      */
     public static ByteBuffer readTexture(CgTexture texture, int layer) {
-        return readAttached(texture, layer, 0, CgGL.GL_UNSIGNED_BYTE, 4);
+        return readTexture(texture, layer, 0, false);
     }
 
     /**
@@ -1070,82 +573,104 @@ public class CgFrameBuffer {
      * }</pre>
      */
     public static ByteBuffer readTextureFloats(CgTexture texture, int level) {
-        return readAttached(texture, 0, level, CgGL.GL_FLOAT, 16);
+        return readTexture(texture, 0, level, true);
     }
 
-    private static ByteBuffer readAttached(CgTexture texture, int layer, int level, int type, int texelBytes) {
-        int fbo = CgGL.glGenFramebuffers();
-        try (CgGlScope ignored = CgGlState.save(FBO_ONLY)) {
-            CgGL.glBindFramebuffer(CgGL.GL_FRAMEBUFFER, fbo);
-            if (texture.getTarget() == CgGL.GL_TEXTURE_2D_ARRAY) {
-                CgGL.glFramebufferTextureLayer(CgGL.GL_FRAMEBUFFER, CgGL.GL_COLOR_ATTACHMENT0, texture.getId(), level, layer);
-            } else {
-                CgGL.glFramebufferTexture2D(CgGL.GL_FRAMEBUFFER, CgGL.GL_COLOR_ATTACHMENT0, texture.getTarget(),
-                        texture.getId(), level);
-            }
-            int status = CgGL.glCheckFramebufferStatus(CgGL.GL_FRAMEBUFFER);
-            if (status != CgGL.GL_FRAMEBUFFER_COMPLETE) {
-                throw new IllegalStateException(texture + " cannot be read: framebuffer status 0x" + Integer.toHexString(status));
-            }
-            int w = Math.max(1, texture.getWidth() >> level), h = Math.max(1, texture.getHeight() >> level);
-            return readPixels(fbo, 0, 0, w, h, type, CgBufferUtils.createByteBuffer(w * h * texelBytes));
+    private static ByteBuffer readTexture(CgTexture texture, int layer, int level, boolean floats) {
+        CgTextureView view = texture.rhiView();
+        if (view == null) throw new IllegalStateException(texture + " has no device texture to read");
+        int w = Math.max(1, texture.getWidth() >> level), h = Math.max(1, texture.getHeight() >> level);
+        return read(view.texture(), new CgTextureRegion(level, 0, 0, layer, w, h, 1), floats,
+                CgBufferUtils.createByteBuffer(w * h * (floats ? 16 : 4)));
+    }
+
+    private static ByteBuffer read(CgGpuTexture texture, CgTextureRegion region, boolean floats, ByteBuffer out) {
+        CgFormat format = texture.desc().format();
+        int texels = region.width() * region.height();
+        ByteBuffer raw = CgBufferUtils.createByteBuffer((int) format.bytes(region.width(), region.height(), 1));
+        CgDeviceSection.begin();
+        try {
+            CgRHI.get().encoder().readTexture(texture, region, raw);
         } finally {
-            CgGL.glDeleteFramebuffers(fbo);
+            CgDeviceSection.end();
         }
-    }
-
-    private static ByteBuffer readPixels(int framebuffer, int x, int y, int w, int h, int type, ByteBuffer pixels) {
-        try (CgGlScope ignored = CgGlState.save(FBO_ONLY)) {
-            CgGL.glBindFramebuffer(CgGL.GL_READ_FRAMEBUFFER, framebuffer);
-            CgGL.glPixelStorei(CgGL.GL_PACK_ALIGNMENT, 1);
-            CgGL.glReadPixels(x, y, w, h, CgGL.GL_RGBA, type, pixels);
-        }
-        return pixels;
+        if (floats) CgTexelConvert.toRgba32f(raw, format, texels, out);
+        else CgTexelConvert.toRgba8(raw, format, texels, out);
+        return out;
     }
 
     /**
-     * Copies its colour slot 0 into {@code framebuffer} at the same size, unfiltered: a host's main target into the
-     * window ({@code 0}) at the frame's end. The binding is left as it was.
+     * Copies its colour slot 0 into framebuffer {@code fbo} at the same size, unfiltered: a host's main target into the
+     * window ({@code 0}) at the frame's end.
      */
-    public void copyColorTo(int framebuffer) {
-        requireFramebuffer("copy from");
-        blitFrom(fboId, framebuffer, 0, 0, width, height, 0, 0, width, height, CgGL.GL_COLOR_BUFFER_BIT, CgGL.GL_NEAREST);
+    public void copyColorTo(int fbo) {
+        copyTo(fbo, false);
     }
 
     /** {@link #copyColorTo} with its depth too: both framebuffers' depth formats must match. */
-    public void copyColorAndDepthTo(int framebuffer) {
-        requireFramebuffer("copy from");
-        blitFrom(fboId, framebuffer, 0, 0, width, height, 0, 0, width, height,
-                CgGL.GL_COLOR_BUFFER_BIT | CgGL.GL_DEPTH_BUFFER_BIT, CgGL.GL_NEAREST);
+    public void copyColorAndDepthTo(int fbo) {
+        copyTo(fbo, true);
+    }
+
+    private void copyTo(int fbo, boolean depth) {
+        requireTarget("copy from");
+        CgTextureView to = attachment(fbo, false, width, height);
+        CgTextureView toDepth = depth ? attachment(fbo, true, width, height) : null;
+        if (to == null || depth && toDepth == null) {
+            throw new IllegalStateException("framebuffer " + fbo + " has nothing to copy FBO '" + name + "' into");
+        }
+        CgDeviceSection.begin();
+        try {
+            CgRHI.get().encoder().blit(CgTextureView.attachment(rhiColor(0), 0, 0), 0, 0, width, height,
+                    to, 0, 0, width, height, CgGpuSampler.Filter.NEAREST);
+            if (depth) {
+                CgRHI.get().encoder().blit(CgTextureView.attachment(rhiDepth(), 0, 0), 0, 0, width, height,
+                        toDepth, 0, 0, width, height, CgGpuSampler.Filter.NEAREST);
+            }
+        } finally {
+            CgDeviceSection.end();
+        }
     }
 
     // ── Clear ──────────────────────────────────────────────────────────────────
 
     /**
-     * Full-parameter clear. Sets each clear value only when the corresponding bit
-     * is present in {@code mask}, then issues {@code glClear}.
-     * Clears the whole framebuffer whatever write masks and scissor the last pass left, and restores them, and the
-     * previously bound framebuffer, on exit.
+     * Clears what {@code mask} names ({@code GL_COLOR_BUFFER_BIT}, {@code GL_DEPTH_BUFFER_BIT},
+     * {@code GL_STENCIL_BUFFER_BIT}) to the values given, whole: every colour slot, an array's every layer. A pass on the
+     * device of its own. Depth is GL's convention, far at 1, mirrored for a host whose depth runs far to near.
      */
     public void clear(int mask, float r, float g, float b, float a, double depthValue, int stencilValue) {
-        requireFramebuffer("clear");
-        try (CgGlScope scope = CgGlState.save(FBO, COLOR_MASK, DEPTH, STENCIL, SCISSOR)) {
-            bind();
-            // A clear obeys the masks and the scissor: after a UI pass, depth writes off made a depth clear a no-op.
-            CgGL.glDisable(CgGL.GL_SCISSOR_TEST);
-            if ((mask & CgGL.GL_COLOR_BUFFER_BIT) != 0) {
-                CgGL.glColorMask(true, true, true, true);
-                CgGL.glClearColor(r, g, b, a);
+        requireTarget("clear");
+        boolean color = (mask & CgGL.GL_COLOR_BUFFER_BIT) != 0, depth = (mask & CgGL.GL_DEPTH_BUFFER_BIT) != 0,
+                stencil = (mask & CgGL.GL_STENCIL_BUFFER_BIT) != 0;
+        float clearDepth = (float) (CgGraphicsLifecycle.hostDepthReversed() ? 1.0 - depthValue : depthValue);
+        CgDeviceSection.begin();
+        try {
+            for (int layer = 0; layer < getLayers(); layer++) {
+                List<CgPassDesc.Color> colors = new ArrayList<>();
+                if (color) {
+                    for (int slot : owned ? colorAttachments.keySet() : Collections.singleton(0)) {
+                        CgGpuTexture t = rhiColor(slot);
+                        if (t != null) colors.add(new CgPassDesc.Color(CgTextureView.attachment(t, 0, layer),
+                                CgPassDesc.LoadOp.CLEAR, r, g, b, a, CgPassDesc.StoreOp.STORE));
+                    }
+                }
+                CgGpuTexture d = depth || stencil ? rhiDepth() : null;
+                CgPassDesc.Depth depthDesc = d == null ? null : new CgPassDesc.Depth(CgTextureView.attachment(d, 0, 0),
+                        depth ? CgPassDesc.LoadOp.CLEAR : CgPassDesc.LoadOp.LOAD, clearDepth,
+                        stencil ? CgPassDesc.LoadOp.CLEAR : CgPassDesc.LoadOp.LOAD, stencilValue,
+                        CgPassDesc.StoreOp.STORE, false);
+                if (colors.isEmpty() && depthDesc == null) return;
+                // From rest and back, as every use outside a graph leaves a texture (CgAccess.RESTING)
+                CgCommandList list = CgRHI.get().encoder();
+                for (CgPassDesc.Color c : colors) list.imageBarrier(c.view().texture(), CgAccess.RESTING, CgAccess.COLOR_WRITE);
+                if (d != null) list.imageBarrier(d, CgAccess.RESTING, CgAccess.DEPTH_WRITE);
+                list.beginPass(new CgPassDesc("clear " + name, colors, depthDesc, width, height)).end();
+                for (CgPassDesc.Color c : colors) list.imageBarrier(c.view().texture(), CgAccess.COLOR_WRITE, CgAccess.RESTING);
+                if (d != null) list.imageBarrier(d, CgAccess.DEPTH_WRITE, CgAccess.RESTING);
             }
-            if ((mask & CgGL.GL_DEPTH_BUFFER_BIT) != 0) {
-                CgGL.glDepthMask(true);
-                CgGL.glClearDepth(depthValue);
-            }
-            if ((mask & CgGL.GL_STENCIL_BUFFER_BIT) != 0) {
-                CgGL.glStencilMask(0xFF);
-                CgGL.glClearStencil(stencilValue);
-            }
-            CgGL.glClear(mask);
+        } finally {
+            CgDeviceSection.end();
         }
     }
 
@@ -1186,369 +711,85 @@ public class CgFrameBuffer {
 
     /** Clears colour, depth, and stencil in one call. Depth resets to 1.0, stencil to 0. */
     public void clearAll(float r, float g, float b, float a) {
-        clear(CgGL.GL_COLOR_BUFFER_BIT | CgGL.GL_DEPTH_BUFFER_BIT | CgGL.GL_STENCIL_BUFFER_BIT,
-                r, g, b, a, 1.0, 0);
-    }
-    
-    // ── Dynamic re-attachment ──────────────────────────────────────────────────
-
-    /**
-     * Reattaches a {@link CgTexture} to a color slot.  Does NOT transfer
-     * ownership — the caller is responsible for the texture's lifecycle.
-     *
-     * @param slot    the color slot index
-     * @param texture the texture to attach
-     */
-    public void reattachColor(int slot, CgTexture texture) {
-        if (texture == null) throw new IllegalArgumentException("texture must not be null");
-        requireFramebuffer("attach to");
-        int glAttach = CgGL.GL_COLOR_ATTACHMENT0 + slot;
-        doBindFbo(CgGL.GL_FRAMEBUFFER, fboId);
-        doFramebufferTexture2D(CgGL.GL_FRAMEBUFFER, glAttach, CgGL.GL_TEXTURE_2D, texture.getId(), 0);
-        doBindFbo(CgGL.GL_FRAMEBUFFER, 0);
-        Attachment a = colorAttachments.get(slot);
-        if (a != null) a.setTexture(texture instanceof CgTexture2D ? texture : null);
-    }
-
-    /**
-     * Raw GL re-attachment for cube map face rendering.
-     * Pass {@code GL_TEXTURE_CUBE_MAP_POSITIVE_X + face} as {@code glTarget}.
-     *
-     * @param slot        color slot index
-     * @param glTextureId raw GL texture object ID
-     * @param glTarget    GL texture target (e.g. {@code GL_TEXTURE_CUBE_MAP_POSITIVE_X + face})
-     */
-    public void reattachColorRaw(int slot, int glTextureId, int glTarget) {
-        requireFramebuffer("attach to");
-        int glAttach = CgGL.GL_COLOR_ATTACHMENT0 + slot;
-        doBindFbo(CgGL.GL_FRAMEBUFFER, fboId);
-        doFramebufferTexture2D(CgGL.GL_FRAMEBUFFER, glAttach, glTarget, glTextureId, 0);
-        doBindFbo(CgGL.GL_FRAMEBUFFER, 0);
-    }
-
-    /**
-     * Reattaches a different texture to the depth slot.  Does NOT transfer
-     * ownership — the caller is responsible for the texture's lifecycle.
-     *
-     * @param texture the depth texture to attach
-     */
-    public void reattachDepth(CgTexture texture) {
-        if (depthAttachment == null) throw new IllegalStateException("FBO '" + name + "' has no depth attachment");
-
-        int glAttach = depthAttachment.getType().glAttachmentPoint(0);
-        doBindFbo(CgGL.GL_FRAMEBUFFER, fboId);
-        doFramebufferTexture2D(CgGL.GL_FRAMEBUFFER, glAttach, CgGL.GL_TEXTURE_2D, texture.getId(), 0);
-        doBindFbo(CgGL.GL_FRAMEBUFFER, 0);
+        clear(CgGL.GL_COLOR_BUFFER_BIT | CgGL.GL_DEPTH_BUFFER_BIT | CgGL.GL_STENCIL_BUFFER_BIT, r, g, b, a, 1.0, 0);
     }
 
     // ── Lifecycle ──────────────────────────────────────────────────────────────
 
-    /**
-     * Resizes this FBO in-place. All GL resources are freed and reallocated at
-     * the new dimensions. The Java object reference is stable — callers do not
-     * need to re-query after a window resize.
-     *
-     * @param newWidth  new width in pixels (must be &gt; 0)
-     * @param newHeight new height in pixels (must be &gt; 0)
-     */
+    /** Remakes its attachments at the new size; the object and its name stay. */
     public void resize(int newWidth, int newHeight) {
-        requireFramebuffer("resize");
-        freeGlResources();
-        this.width  = newWidth;
+        requireTarget("resize");
+        if (!owned) {
+            width = newWidth;
+            height = newHeight;
+            return;
+        }
+        freeAttachments();
+        this.width = newWidth;
         this.height = newHeight;
-        initGl(newWidth, newHeight, this.format);
+        makeAttachments(newWidth, newHeight, format);
     }
 
-    /**
-     * Deletes this framebuffer and all associated GL resources.
-     *
-     * <p>For wrapped (non-owned) FBOs this is a no-op.  Subsequent calls after
-     * the first successful deletion are also no-ops.</p>
-     */
+    /** Releases its textures; a wrapped one owns nothing. Later calls do nothing. */
     public void delete() {
         if (!owned || deleted) return;
-        freeGlResources();
+        freeAttachments();
+        OWNED.remove(id);
         deleted = true;
     }
 
-    /**
-     * Releases all GL resources held by this FBO (attachments + FBO id).
-     */
-    private void freeGlResources() {
-        for (Attachment a : colorAttachments.values()) 
-            a.delete();
-        
+    private void freeAttachments() {
+        for (Attachment a : colorAttachments.values()) a.delete();
         colorAttachments.clear();
         if (depthAttachment != null) {
             depthAttachment.delete();
             depthAttachment = null;
         }
-        if (fboId != 0) {
-            deleteFramebuffer(fboId);
-            fboId = 0;
-        }
-        for (int l = 0; l < levelFbos.length; l++) {
-            if (levelFbos[l] != 0) deleteFramebuffer(levelFbos[l]);
-            levelFbos[l] = 0;
-        }
-        for (int l = 0; l < layerFbos.length; l++) {
-            if (layerFbos[l] != 0) deleteFramebuffer(layerFbos[l]);
-            layerFbos[l] = 0;
-        }
     }
 
-    // ── GL dispatch (a wrapped framebuffer overrides it with no-ops) ───────────
-
-    /**
-     * Generates a new GL framebuffer object and returns its ID.
-     * Called once from {@link #initGl}.
-     */
-    protected int doGenFramebuffer() {
-        return CgGlNames.framebuffer();
-    }
-
-    /**
-     * Deletes the framebuffer object with the given ID.
-     * Called by {@link #freeGlResources}.
-     */
-    protected void deleteFramebuffer(int id) {
-        CgGL.glDeleteFramebuffers(id);
-    }
-
-    /**
-     * Deletes the renderbuffer with the given ID.
-     * Called by {@link Attachment#delete()}.
-     */
-    protected void deleteRenderbuffer(int id) {
-        CgGL.glDeleteRenderbuffers(id);
-    }
-
-    /**
-     * Binds a framebuffer to the given target ({@code GL_FRAMEBUFFER}, etc.).
-     * Used internally for FBO setup and reattach operations — not for public
-     * bind (which goes through {@link CrossApiTransition}).
-     *
-     * @param target GL target (e.g. {@code GL_FRAMEBUFFER = 0x8D40})
-     * @param fboId  FBO ID, or 0 to unbind
-     */
-    protected void doBindFbo(int target, int fboId) {
-        CgGL.glBindFramebuffer(target, fboId);
-    }
-
-    /**
-     * Attaches a 2D texture to the currently bound framebuffer.
-     *
-     * @param target          framebuffer target (e.g. {@code GL_FRAMEBUFFER})
-     * @param attachmentPoint GL attachment point (e.g. {@code GL_COLOR_ATTACHMENT0})
-     * @param glTextureTarget texture target (e.g. {@code GL_TEXTURE_2D}, cube face)
-     * @param texId           GL texture ID, or 0 to detach
-     */
-    protected void doFramebufferTexture2D(int target, int attachmentPoint, int glTextureTarget, int texId, int level) {
-        CgGL.glFramebufferTexture2D(target, attachmentPoint, glTextureTarget, texId, level);
-    }
-
-    /** Attaches layer {@code layer} of a 2D-array texture's level 0 to the bound framebuffer. */
-    protected void doFramebufferTextureLayer(int attachmentPoint, int texId, int layer) {
-        CgGL.glFramebufferTextureLayer(CgGL.GL_FRAMEBUFFER, attachmentPoint, texId, 0, layer);
-    }
-
-    /**
-     * Attaches a renderbuffer to the currently bound framebuffer.
-     *
-     * @param target          framebuffer target
-     * @param attachmentPoint GL attachment point
-     * @param rboId           GL renderbuffer ID, or 0 to detach
-     */
-    protected void doFramebufferRenderbuffer(int target, int attachmentPoint, int rboId) {
-        CgGL.glFramebufferRenderbuffer(target, attachmentPoint, CgGL.GL_RENDERBUFFER, rboId);
-    }
-
-    /**
-     * Generates a new GL renderbuffer object and returns its ID.
-     * The renderbuffer is left bound after this call.
-     */
-    protected int doGenRenderbuffer() {
-        return CgGlNames.renderbuffer();
-    }
-
-    /**
-     * Allocates storage for the currently bound renderbuffer.
-     *
-     * @param internalFormat GL internal format (e.g. {@code GL_DEPTH24_STENCIL8})
-     * @param w              width in pixels
-     * @param h              height in pixels
-     */
-    protected void doRenderbufferStorage(int internalFormat, int w, int h) {
-        CgGL.glRenderbufferStorage(CgGL.GL_RENDERBUFFER, internalFormat, w, h);
-    }
-
-    /** Multisampled renderbuffer storage. */
-    protected void doRenderbufferStorageMultisample(int samples, int internalFormat, int w, int h) {
-        CgGL.glRenderbufferStorageMultisample(CgGL.GL_RENDERBUFFER, samples, internalFormat, w, h);
-    }
-
-    /**
-     * Binds a renderbuffer so storage can be allocated into it.
-     *
-     * <p><b>{@code glRenderbufferStorage} operates on the BOUND renderbuffer, not on an id</b> — and
-     * generating one does not bind it. Without this the allocation lands on whatever was bound
-     * previously (or on nothing), and the attachment ends up with no storage.</p>
-     */
-    protected void doBindRenderbuffer(int rboId) {
-        CgGL.glBindRenderbuffer(CgGL.GL_RENDERBUFFER, rboId);
-    }
-
-    /**
-     * Checks the completeness status of the currently bound framebuffer.
-     *
-     * @return GL framebuffer status constant
-     *         (e.g. {@code GL_FRAMEBUFFER_COMPLETE = 0x8CD5})
-     */
-    protected int doCheckFramebufferStatus() {
-        return CgGL.glCheckFramebufferStatus(CgGL.GL_FRAMEBUFFER);
-    }
-
-    // ── Attachment inner class ─────────────────────────────────────────────────
-
-    /**
-     * One GL attachment slot — either a sampleable {@link CgTexture2D} or a
-     * non-sampleable renderbuffer.
-     *
-     * <p>Created only by {@link CgFrameBuffer#initGl} and owned entirely by
-     * its parent FBO.  {@link #delete()} is called by the parent during
-     * {@link CgFrameBuffer#delete()}.</p>
-     *
-     * <h3>Paths</h3>
-     * <ul>
-     *   <li>Texture path: {@code texture != null}, {@code renderbufferId == 0}</li>
-     *   <li>Renderbuffer path: {@code texture == null}, {@code renderbufferId != 0}</li>
-     * </ul>
-     */
+    /** One attachment slot: a texture a pass may sample, or an attach-only device image. */
     public static final class Attachment {
 
-        /** Color index (0..N-1), or -1 for the depth attachment. 
-         * -- GETTER --
-         * Returns the slot index (color index, or -1 for depth). 
-         */
+        /** Colour index (0..N-1), or -1 for the depth attachment. */
         @Getter
         private final int slot;
 
-        /** Format of this attachment. 
-         * -- GETTER --
-         * Returns the format of this attachment. 
-         */
         @Getter
         private final CgTextureType type;
 
-        /** {@code true} if this attachment is a renderbuffer (non-sampleable). 
-         * -- GETTER --
-         * Returns 
-         *  if this attachment is a renderbuffer (not sampleable). 
-         */
+        /** Whether it is attach-only, never sampled: what a renderbuffer was. */
         @Getter
         private final boolean renderbuffer;
 
-        /** Sampleable texture, or {@code null} for renderbuffer path. */
         @Nullable
         private CgTexture texture;
+        @Nullable
+        private CgGpuTexture image;
 
-        /** GL renderbuffer ID, or 0 for texture path. */
-        private int renderbufferId;
-
-        /**
-         * Reference to the owning {@code CgFrameBuffer} for backend-correct
-         * renderbuffer deletion.
-         */
-        private final CgFrameBuffer parent;
-
-        Attachment(int slot, CgTextureType type, boolean renderbuffer, CgFrameBuffer parent) {
-            this.slot         = slot;
-            this.type         = type;
+        Attachment(int slot, CgTextureType type, boolean renderbuffer) {
+            this.slot = slot;
+            this.type = type;
             this.renderbuffer = renderbuffer;
-            this.parent       = parent;
-            this.texture      = null;
-            this.renderbufferId = 0;
         }
 
-        /** Returns {@code true} if this attachment is a sampleable texture. */
-        public boolean hasTexture() { return texture != null; }
-
-        /**
-         * Returns the texture, or {@code null} if this is a renderbuffer slot.
-         * Check {@link #hasTexture()} or {@link #isRenderbuffer()} first.
-         */
+        /** The texture, or {@code null} for an attach-only slot. */
         @Nullable
-        public CgTexture getTexture() { return texture; }
+        public CgTexture getTexture() {
+            return texture;
+        }
 
-        // ── Package-private setters (called by CgFrameBuffer during creation) ──
-
-        void setTexture(CgTexture t)     { this.texture         = t; }
-        void setRenderbufferId(int id)   { this.renderbufferId  = id; renderbufferDesc = null; }
-        int  getRenderbufferId()         { return renderbufferId; }
-
-        /** The renderbuffer as the device describes it, read once: its storage is fixed for its life. */
-        @Nullable
-        private CgGpuTexture.Desc renderbufferDesc;
-
-        /** The device texture behind it: the texture's, or the renderbuffer imported attach-only; null with no device. */
         @Nullable
         CgGpuTexture rhiTexture() {
-            if (texture != null) {
-                CgTextureView view = texture.rhiView();
-                return view == null ? null : view.texture();
-            }
-            if (renderbufferId == 0 || !CgGLImports.installed()) return null;
-            CgGLImports imports = CgGLImports.get();
-            if (renderbufferDesc == null) renderbufferDesc = imports.describeRenderbuffer(renderbufferId);
-            return imports.renderbuffer(renderbufferId, renderbufferDesc);
+            if (image != null) return image;
+            CgTextureView view = texture == null ? null : texture.rhiView();
+            return view == null ? null : view.texture();
         }
 
-        /**
-         * Releases the GL resource held by this attachment.
-         * Routes renderbuffer deletion through the parent's backend hook.
-         */
         void delete() {
-            if (texture != null) {
-                texture.delete();
-                texture = null;
-            }
-            if (renderbufferId != 0) {
-                parent.deleteRenderbuffer(renderbufferId);
-                renderbufferId = 0;
-            }
+            if (texture != null) texture.delete();
+            texture = null;
+            if (image != null) CgRHI.get().release(image);
+            image = null;
         }
-    }
-
-    // ── WrappedFrameBuffer inner class ─────────────────────────────────────────
-
-    /**
-     * Minimal wrapper for externally-created FBO IDs.
-     *
-     * <p>Supports bind/unbind only.  All GL dispatch stubs are no-ops because
-     * this object never creates or modifies GL resources.</p>
-     */
-    private static final class WrappedFrameBuffer extends CgFrameBuffer {
-
-        WrappedFrameBuffer(String name, int fboId, int width, int height) {
-            super(name, fboId, width, height);
-        }
-
-        // ── delete is no-op for wrapped FBOs ──────────────────────────────────
-        @Override
-        public void delete() { /* non-owned — caller is responsible */ }
-
-        // ── GL dispatch stubs (wrapped FBOs own nothing) ─────────────────────
-        @Override protected int  doGenFramebuffer()                                    { return 0; }
-        @Override protected void deleteFramebuffer(int id)                             { /* no-op */ }
-        @Override protected void deleteRenderbuffer(int id)                            { /* no-op */ }
-        @Override protected void doBindFbo(int target, int fboId)                     { /* no-op */ }
-        @Override protected void doFramebufferTexture2D(int t, int ap, int gt, int id, int level){ /* no-op */ }
-        @Override protected void doFramebufferTextureLayer(int ap, int id, int layer)  { /* no-op */ }
-        @Override protected void doFramebufferRenderbuffer(int t, int ap, int rbo)    { /* no-op */ }
-        @Override protected int  doGenRenderbuffer()                                   { return 0; }
-        @Override protected void doRenderbufferStorage(int fmt, int w, int h)         { /* no-op */ }
-        @Override protected void doBindRenderbuffer(int rboId)                        { /* no-op */ }
-        @Override protected void doRenderbufferStorageMultisample(int s, int f, int w, int h) { /* no-op */ }
-        @Override protected int  doCheckFramebufferStatus()                            { return CgGL.GL_FRAMEBUFFER_COMPLETE; }
     }
 }

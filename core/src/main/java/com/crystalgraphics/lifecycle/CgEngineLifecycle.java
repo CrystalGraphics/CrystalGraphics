@@ -1,5 +1,6 @@
 package com.crystalgraphics.lifecycle;
 
+import com.crystalgraphics.platform.rhi.CgRHI;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Locale;
@@ -18,7 +19,6 @@ import com.crystalgraphics.mc.CgReloadListener;
 import com.crystalgraphics.net.CgNetwork;
 import com.crystalgraphics.platform.service.CgNetworkChannel;
 import com.crystalgraphics.render.CgFrameClock;
-import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.trace.CgTraceRun;
 import com.crystalgraphics.util.trace.CgChannels;
@@ -204,7 +204,7 @@ public final class CgEngineLifecycle {
      * </ul>
      */
     public static void shutdown() {
-        if (CgGL.mayIssueGl()) CgGraphicsLifecycle.destroyContext();
+        if (CgRHI.onDeviceThread()) CgGraphicsLifecycle.destroyContext();
         CgGraphicsLifecycle.shutdown();
     }
 

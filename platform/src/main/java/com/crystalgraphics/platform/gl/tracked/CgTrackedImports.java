@@ -10,6 +10,7 @@ import com.crystalgraphics.platform.rhi.command.CgTransition;
 import com.crystalgraphics.platform.rhi.memory.CgAllocation;
 import com.crystalgraphics.platform.rhi.resource.CgGpuBuffer;
 import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
+import com.crystalgraphics.platform.rhi.resource.CgTextureView;
 
 import java.util.IdentityHashMap;
 import java.util.Map;
@@ -69,6 +70,11 @@ public final class CgTrackedImports implements CgGLImports {
     @Override public CgGpuTexture defaultColor(int width, int height) { return device.surfaceColor(); }
 
     @Override public CgGpuTexture defaultDepth(int width, int height) { return device.surfaceDepth(); }
+
+    @Override
+    public CgTextureView attachment(int fbo, boolean depth, int width, int height) {
+        return framebuffers.attachmentView(fbo, depth);
+    }
 
     private CgAllocation storage(int name) {
         TrackedBuffers.GlBuffer b = buffers.get(name);

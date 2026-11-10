@@ -124,39 +124,6 @@ public record CgBlendState(boolean enabled, int srcRgb, int dstRgb, int srcAlpha
                 CgGL.GL_FUNC_ADD, CgGL.GL_FUNC_ADD);
     }
 
-    /**
-     * Applies this blend state to the current GL context.
-     *
-     * <p>If blending is disabled, calls {@code glDisable(GL_BLEND)}.
-     * Otherwise calls {@code glEnable(GL_BLEND)}, sets the blend function
-     * via {@code glBlendFuncSeparate}, and sets the blend equations via
-     * {@code glBlendEquationSeparate}.</p>
-     */
-    /**
-     * Makes this state current.
-     *
-     * <p>Calls {@code CgGL} directly; {@code CgGL} decides whether each call reaches the driver, so a
-     * repeated apply of the same value costs nothing.</p>
-     */
-    public void apply() {
-        if (!enabled) {
-            CgGL.glDisable(CgGL.GL_BLEND);
-            return;
-        }
-        CgGL.glEnable(CgGL.GL_BLEND);
-        CgGL.glBlendFuncSeparate(srcRgb, dstRgb, srcAlpha, dstAlpha);
-        CgGL.glBlendEquationSeparate(blendEquationRgb, blendEquationAlpha);
-    }
-
-    /**
-     * Restores blend defaults: disables blending and resets both blend equations to
-     * {@code GL_FUNC_ADD}. For use in {@code CgRenderState.clear()}.
-     */
-    public static void clearToDefault() {
-        CgGL.glDisable(CgGL.GL_BLEND);
-        CgGL.glBlendEquationSeparate(CgGL.GL_FUNC_ADD, CgGL.GL_FUNC_ADD);
-    }
-
     @Override
     public String toString() {
         if (!enabled) return "CgBlendState{DISABLED}";

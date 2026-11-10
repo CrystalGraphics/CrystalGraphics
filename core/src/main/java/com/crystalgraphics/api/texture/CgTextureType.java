@@ -91,7 +91,7 @@ public enum CgTextureType {
     // ── Stencil-only ───────────────────────────────────────────────────────────
     STENCIL8(CgGL.GL_STENCIL_INDEX8, CgGL.GL_STENCIL_INDEX, CgGL.GL_UNSIGNED_BYTE, false, true),
 
-    // ── Block-compressed: sampled only, uploaded as blocks (CgGL.glCompressedTexImage2D) ──────────────────────
+    // ── Block-compressed: sampled only, uploaded as blocks ────────────────────────────────────────────────────
     BC7     (CgGL.GL_COMPRESSED_RGBA_BPTC_UNORM,       CgGL.GL_RGBA, CgGL.GL_UNSIGNED_BYTE, false, false),
     BC7_SRGB(CgGL.GL_COMPRESSED_SRGB_ALPHA_BPTC_UNORM, CgGL.GL_RGBA, CgGL.GL_UNSIGNED_BYTE, false, false);
 

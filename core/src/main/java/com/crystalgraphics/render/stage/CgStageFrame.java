@@ -1,12 +1,9 @@
 package com.crystalgraphics.render.stage;
 
+import com.crystalgraphics.lifecycle.CgGraphicsLifecycle;
 import com.crystalgraphics.compute.ops.CgGpuOps;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.gl.framebuffer.CgFrameBuffer;
-import com.crystalgraphics.platform.gl.CgGL;
-import com.crystalgraphics.platform.gl.state.CgGlScope;
-import com.crystalgraphics.platform.gl.state.CgGlSlot;
-import com.crystalgraphics.platform.gl.state.CgGlState;
 import com.crystalgraphics.render.CgFrameClock;
 import com.crystalgraphics.render.draw.CgOrder;
 import com.crystalgraphics.render.draw.CgPassConstants;
@@ -171,7 +168,7 @@ public final class CgStageFrame {
     public CgPassConstants defaults(CgPassConstants constants) {
         constants.time(CgFrameClock.seconds())
                 .resolution(host.width(), host.height())
-                .depth(CgGL.isDepthReversed(), CgGL.isDepthZeroToOne())
+                .depth(CgGraphicsLifecycle.hostDepthReversed(), CgGraphicsLifecycle.hostDepthZeroToOne())
                 .linearScene(target != null);
         return CgWorldAtmosphere.apply(host.environment(), constants);
     }
@@ -419,29 +416,19 @@ public final class CgStageFrame {
         return n > 0f ? (ax * bx + ay * by + az * bz) / n : 0f;
     }
 
-    /** The slot an execution saves, as an array once: varargs make one a call. */
-    private static final CgGlSlot[] SCISSOR = {CgGlSlot.SCISSOR};
-
-    /** As {@link #execute()}, with {@code target} bound as the host's: a rehearsal's firing. */
+    /** As {@link #execute()}, with {@code target} the current target in place of the host's: a rehearsal's firing. */
     void executeInto(CgFrameBuffer target) {
-        try (CgGlScope ignored = CgGlState.save(FRAMEBUFFER)) {
-            target.bind();
-            // The executor takes the bound viewport as the current target's size
-            CgGL.glViewport(0, 0, target.getWidth(), target.getHeight());
+        try (CgExecutor.Into ignored = CgExecutor.into(target)) {
             execute();
         }
     }
-
-    /** The slot {@link #executeInto} restores. */
-    private static final CgGlSlot[] FRAMEBUFFER = {CgGlSlot.FBO, CgGlSlot.VIEWPORT};
 
     /** Builds and executes what was recorded, then resets for the next firing. */
     void execute() {
         try {
             graph.add(recording.seal());
             CgFrame frame = builder.build(graph);
-            try (CgGlScope ignored = CgGlState.save(SCISSOR)) {
-                CgGL.glDisable(CgGL.GL_SCISSOR_TEST);
+            try {
                 CgExecutor.execute(frame);
             } finally {
                 builder.recycle(frame);

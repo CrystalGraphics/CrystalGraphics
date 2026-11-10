@@ -1,12 +1,11 @@
 package com.crystalgraphics.gl.material;
 
 import com.crystalgraphics.api.buffer.CgBufferFormat;
-import com.crystalgraphics.gl.shader.CgShader;
 import com.crystalgraphics.api.material.CgMaterialValues;
 import com.crystalgraphics.api.texture.CgSampler;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.gl.texture.CgFallbackTextures;
-import com.crystalgraphics.gl.texture.CgSamplers;
+import com.crystalgraphics.render.draw.CgBoundResources;
 import com.crystalgraphics.gl.buffer.staging.CgBufferWriter;
 import com.crystalgraphics.render.draw.CgBindingTable;
 import org.apache.logging.log4j.LogManager;
@@ -116,11 +115,6 @@ public final class CgMaterialProperties implements CgMaterialValues {
         for (int i = 0; i < uboProps.size(); i++) uboProps.get(i).writeToUbo(w);
     }
 
-    /** Wires each sampler's texture-unit uniform assignment into {@code shader}. Shader must be bound. */
-    public void wireSamplerUnits(CgShader shader) {
-        for (CgMaterialProperty p : samplerProps) p.wireSamplerUnit(shader);
-    }
-
     /**
      * Adds each sampler's texture to a snapshot, at the unit its program reads it from: its index among the declared
      * samplers. A sampler with no texture set takes the engine texture its default names, else white of its kind (a
@@ -152,7 +146,7 @@ public final class CgMaterialProperties implements CgMaterialValues {
                 int unit = p.getSamplerUnit() >= 0 ? p.getSamplerUnit() : i;
                 if (named != null) {
                     named.bind(unit);
-                    CgSamplers.bind(unit, p.getSampler(), named);
+                    CgBoundResources.sampler(unit, p.getSampler());
                 }
             }
         }

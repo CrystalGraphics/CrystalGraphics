@@ -2,9 +2,9 @@ package com.crystalgraphics.gpu;
 
 import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
-import com.crystalgraphics.platform.gl.CgCapabilities;
-import com.crystalgraphics.gl.CgGlNames;
-import com.crystalgraphics.platform.gl.CgGL;
+import com.crystalgraphics.platform.gl.CgGLImports;
+import com.crystalgraphics.platform.rhi.CgRHI;
+import com.crystalgraphics.platform.rhi.resource.CgGpuBuffer;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.CgBufferUtils;
 import com.crystalgraphics.util.trace.CgChannels;
@@ -14,6 +14,7 @@ import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.EnumSet;
 
 /**
  * Where uploads are staged: {@link CgUploadLease}s, leased on any thread and landed by a texture on the render thread.
@@ -27,12 +28,12 @@ import java.util.ArrayList;
  *
  * <p>Two tiers, chosen once a context:</p>
  * <ul>
- *   <li>{@link Tier#UNPACK}, where the context has persistent mapping: blocks of a persistently mapped
- *       {@code GL_PIXEL_UNPACK_BUFFER}. GL copies from it by DMA, and the tracked backend records a device copy from it.
+ *   <li>{@link Tier#UNPACK}, where a device is installed: blocks of a persistently mapped device buffer, which a
+ *       texture or buffer copies from on the GPU.
  *       A block is made on the render thread only, so a lease off it that finds no room takes direct memory (a miss),
  *       and the next frame grows the pool by what missed, up to {@code -Dcrystalgraphics.uploads.cap} bytes (128 MB).
  *       A block is reused once nothing is leased from it and the last frame that read it has retired.</li>
- *   <li>{@link Tier#DIRECT}: pooled direct memory, made on any thread. The driver copies it at the call.
+ *   <li>{@link Tier#DIRECT}: pooled direct memory, made on any thread, written by the device at the call.
  *       {@code -Dcrystalgraphics.uploads.tier=direct} forces it.</li>
  * </ul>
  *
@@ -57,10 +58,8 @@ public final class CgUploads {
     private static final long AHEAD = CgVar.integer("crystalgraphics.uploads.ahead", 32 << 20, 0, Integer.MAX_VALUE,
             CgVar.DEV | CgVar.RESTART, "Bytes of upload blocks made at the first frame, before a load needs them.").get();
     private static final boolean FORCE_DIRECT = CgVar.choice("crystalgraphics.uploads.tier", Tier.UNPACK,
-            CgVar.DEV | CgVar.RESTART, "unpack: leases from a persistently mapped unpack buffer where the context has"
-                    + " persistent mapping. direct: from direct memory, the driver copying at the call, as a context without"
-                    + " it does (macOS 4.1, 3.3).").get() == Tier.DIRECT;
-    private static final int FLAGS = CgGL.GL_MAP_WRITE_BIT | CgGL.GL_MAP_PERSISTENT_BIT | CgGL.GL_MAP_COHERENT_BIT;
+            CgVar.DEV | CgVar.RESTART, "unpack: leases from persistently mapped device buffers, copied on the GPU."
+                    + " direct: from direct memory, which the device writes at the call.").get() == Tier.DIRECT;
 
     private static final int LEASES = CgTrace.name("upload.leases");
     private static final int LEASE_BYTES = CgTrace.name("upload.lease-bytes");
@@ -73,15 +72,15 @@ public final class CgUploads {
 
     /** A run of staging memory leases are bumped out of. */
     static final class Block {
-        /** The unpack buffer; 0 for direct memory. */
-        final int buffer;
+        /** The device buffer; null for direct memory. */
+        final CgGpuBuffer buffer;
         final ByteBuffer memory;
         final int capacity, generation;
         int cursor, outstanding;
         /** The newest frame an upload read it in; -1 if none since it was last reused. */
         long lastUse = -1;
 
-        Block(int buffer, ByteBuffer memory, int capacity, int generation) {
+        Block(CgGpuBuffer buffer, ByteBuffer memory, int capacity, int generation) {
             this.buffer = buffer;
             this.memory = memory;
             this.capacity = capacity;
@@ -113,7 +112,7 @@ public final class CgUploads {
     public static CgUploadLease lease(int bytes, boolean converts) {
         if (bytes <= 0) throw new IllegalArgumentException("a lease of " + bytes + " bytes");
         int need = align(bytes);
-        boolean renderThread = CgGL.mayIssueGl();
+        boolean renderThread = CgRHI.onDeviceThread();
         CgUploadLease lease;
         boolean missed = false;
         synchronized (LOCK) {
@@ -190,7 +189,7 @@ public final class CgUploads {
             int out = 0;
             for (Block b : all()) {
                 out += b.outstanding;
-                if (b.buffer != 0) CgGL.glDeleteBuffers(b.buffer);
+                if (b.buffer != null) release(b.buffer);
             }
             if (out > 0) System.err.println("[crystalgraphics] " + out + " upload leases outstanding at teardown");
             free.clear();
@@ -219,7 +218,7 @@ public final class CgUploads {
         synchronized (LOCK) {
             Block b = lease.block;
             if (b.generation == generation) {
-                if (b.buffer != 0) b.lastUse = CgFrameRing.frame();
+                if (b.buffer != null) b.lastUse = CgFrameRing.frame();
                 b.outstanding--;
             }
             giveBack(lease);
@@ -237,7 +236,7 @@ public final class CgUploads {
     // ── internals, under LOCK ─────────────────────────────────────────────────────────────────────────────
 
     private static Tier chooseTier() {
-        return !FORCE_DIRECT && CgCapabilities.detect().isBufferStorageSupported() ? Tier.UNPACK : Tier.DIRECT;
+        return !FORCE_DIRECT && CgRHI.installed() ? Tier.UNPACK : Tier.DIRECT;
     }
 
     /**
@@ -265,7 +264,7 @@ public final class CgUploads {
         int best = -1;
         for (int i = 0; i < free.size(); i++) {
             Block b = free.get(i);
-            if ((b.buffer != 0) == unpack && b.capacity >= need && (best < 0 || b.capacity < free.get(best).capacity)) best = i;
+            if ((b.buffer != null) == unpack && b.capacity >= need && (best < 0 || b.capacity < free.get(best).capacity)) best = i;
         }
         return best < 0 ? null : free.remove(best);
     }
@@ -275,24 +274,13 @@ public final class CgUploads {
         int capacity = Math.max(BLOCK, align(need));
         if (!unpack) {
             directBytes += capacity;
-            return new Block(0, CgBufferUtils.createByteBuffer(capacity), capacity, generation);
+            return new Block(null, CgBufferUtils.createByteBuffer(capacity), capacity, generation);
         }
         if (unpackBytes + capacity > CAP) return null;
-        int buffer = CgGlNames.buffer();
-        ByteBuffer mapped;
-        CgGL.glBindBuffer(CgGL.GL_PIXEL_UNPACK_BUFFER, buffer);
-        try {
-            CgGL.glBufferStorage(CgGL.GL_PIXEL_UNPACK_BUFFER, capacity, FLAGS);
-            mapped = CgGL.glMapBufferRange(CgGL.GL_PIXEL_UNPACK_BUFFER, 0, capacity, FLAGS, null);
-        } finally {
-            CgGL.glBindBuffer(CgGL.GL_PIXEL_UNPACK_BUFFER, 0);
-        }
-        if (mapped == null) {
-            CgGL.glDeleteBuffers(buffer);
-            return null;
-        }
+        CgGpuBuffer buffer = CgRHI.get().createBuffer(new CgGpuBuffer.Desc("cg_uploads", capacity,
+                EnumSet.of(CgGpuBuffer.Usage.COPY_SRC), true, false, true));
         unpackBytes += capacity;
-        return new Block(buffer, mapped.order(ByteOrder.nativeOrder()), capacity, generation);
+        return new Block(buffer, buffer.mapped().duplicate().order(ByteOrder.nativeOrder()), capacity, generation);
     }
 
     /** Blocks covering what missed, each as big as the largest miss; the first frame makes {@link #AHEAD}. */
@@ -312,11 +300,16 @@ public final class CgUploads {
     private static void reuse(Block b) {
         b.cursor = 0;
         b.lastUse = -1;
-        if (b.buffer == 0 && directBytes > CAP) {
+        if (b.buffer == null && directBytes > CAP) {
             directBytes -= b.capacity;   // over the cap: left to the collector
             return;
         }
         free.add(b);
+    }
+
+    private static void release(CgGpuBuffer buffer) {
+        if (CgGLImports.installed()) CgGLImports.get().forget(buffer);
+        CgRHI.get().release(buffer);
     }
 
     private static void giveBack(CgUploadLease lease) {

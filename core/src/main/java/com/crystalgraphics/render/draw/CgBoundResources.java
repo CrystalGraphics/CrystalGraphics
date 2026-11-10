@@ -2,6 +2,8 @@ package com.crystalgraphics.render.draw;
 
 import com.crystalgraphics.api.texture.CgSampler;
 import com.crystalgraphics.api.texture.CgTexture;
+import com.crystalgraphics.platform.gl.CgGLImports;
+import com.crystalgraphics.platform.rhi.resource.CgGpuBuffer;
 import com.crystalgraphics.render.shader.CgBindingModel;
 
 import javax.annotation.Nullable;
@@ -14,7 +16,7 @@ import javax.annotation.Nullable;
  *
  * <pre>{@code
  * CgBoundResources.recording = true;                       // device sets on
- * CgBoundResources.storage(point, name, offset, bytes);  // beside each storage bind; 0 bytes for the whole buffer
+ * CgBoundResources.storage(point, buffer, offset, bytes); // beside each storage bind; 0 bytes for the rest of it
  * CgBoundResources.texture(unit, texture, -1);            // beside each texture bind; a level for one level alone
  * int v = CgBoundResources.version(CgBindingModel.PASS);   // moves when anything of that set's changes
  * }</pre>
@@ -26,14 +28,8 @@ public final class CgBoundResources {
     /** Whether binds are recorded. */
     public static boolean recording;
 
-    /**
-     * While true a bind records and issues nothing through {@code CgGL}: inside a pass the device draws or dispatches,
-     * whose sets are made from what is recorded. Off for anything still drawn through {@code CgGL}.
-     */
-    public static boolean notesOnly;
-
     private static final int SETS = 3, BINDINGS = 64;
-    private static final int[] NAME = new int[SETS * BINDINGS];
+    private static final CgGpuBuffer[] BUFFER = new CgGpuBuffer[SETS * BINDINGS];
     private static final long[] OFFSET = new long[SETS * BINDINGS], SIZE = new long[SETS * BINDINGS];
 
     private static final CgTexture[] TEXTURE = new CgTexture[SETS * BINDINGS];
@@ -93,36 +89,51 @@ public final class CgBoundResources {
         return SAMPLER[index(packed)];
     }
 
-    /** A storage buffer bound at engine point {@code point}: {@code name}'s {@code bytes} from {@code offset}, 0 for all. */
+    /**
+     * A storage buffer bound at engine point {@code point}: {@code buffer}'s {@code bytes} from {@code offset}, 0 for the
+     * rest of it; null for none.
+     */
+    public static void storage(int point, @Nullable CgGpuBuffer buffer, long offset, long bytes) {
+        if (recording) put(CgBindingModel.ofStorage(point), buffer, offset, bytes);
+    }
+
+    /** {@link #storage(int, CgGpuBuffer, long, long)} for a buffer known by its {@code CgGL} name, 0 for none. */
     public static void storage(int point, int name, long offset, long bytes) {
-        if (recording) put(CgBindingModel.ofStorage(point), name, offset, bytes);
+        if (!recording) return;
+        if (name == 0) {
+            put(CgBindingModel.ofStorage(point), null, 0, 0);
+            return;
+        }
+        CgGLImports imports = CgGLImports.get();
+        put(CgBindingModel.ofStorage(point), imports.buffer(name), imports.bufferOffset(name) + offset, bytes);
     }
 
     /** A uniform buffer bound at engine point {@code point}. */
-    public static void block(int point, int name, long offset, long bytes) {
-        if (recording) put(CgBindingModel.ofBlock(point), name, offset, bytes);
+    public static void block(int point, @Nullable CgGpuBuffer buffer, long offset, long bytes) {
+        if (recording) put(CgBindingModel.ofBlock(point), buffer, offset, bytes);
     }
 
-    private static void put(int packed, int name, long offset, long bytes) {
+    private static void put(int packed, @Nullable CgGpuBuffer buffer, long offset, long bytes) {
         int i = index(packed);
-        if (i < 0 || NAME[i] == name && OFFSET[i] == offset && SIZE[i] == bytes) return;
-        NAME[i] = name;
+        if (i < 0 || BUFFER[i] == buffer && OFFSET[i] == offset && SIZE[i] == bytes) return;
+        BUFFER[i] = buffer;
         OFFSET[i] = offset;
         SIZE[i] = bytes;
         VERSION[i / BINDINGS]++;
     }
 
-    /** The buffer name bound for {@code packed}; 0 for none. */
-    static int name(int packed) {
+    /** The buffer bound for {@code packed}; null for none. */
+    @Nullable
+    static CgGpuBuffer buffer(int packed) {
         int i = index(packed);
-        return i < 0 ? 0 : NAME[i];
+        return i < 0 ? null : BUFFER[i];
     }
 
     static long offset(int packed) {
         return OFFSET[index(packed)];
     }
 
-    /** Its bytes; 0 for the whole buffer from {@link #offset}. */
+    /** Its bytes; 0 for the rest of the buffer from {@link #offset}. */
     static long size(int packed) {
         return SIZE[index(packed)];
     }

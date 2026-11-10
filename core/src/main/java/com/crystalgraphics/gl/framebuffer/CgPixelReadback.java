@@ -3,18 +3,16 @@ package com.crystalgraphics.gl.framebuffer;
 import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.gl.buffer.CgReadback;
-import com.crystalgraphics.platform.gl.CgGL;
-import com.crystalgraphics.platform.gl.state.CgGlScope;
-import com.crystalgraphics.platform.gl.state.CgGlState;
+import com.crystalgraphics.platform.rhi.CgDeviceSection;
+import com.crystalgraphics.platform.rhi.CgRHI;
+import com.crystalgraphics.platform.rhi.resource.CgGpuSampler;
+import com.crystalgraphics.platform.rhi.resource.CgTextureView;
 
 import java.nio.ByteBuffer;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
-
-import static com.crystalgraphics.platform.gl.state.CgGlSlot.FBO;
-import static com.crystalgraphics.platform.gl.state.CgGlSlot.SCISSOR;
 
 /**
  * A small copy of a framebuffer, read back without stalling: shrunk on the GPU, read back through {@link CgReadback},
@@ -26,7 +24,7 @@ import static com.crystalgraphics.platform.gl.state.CgGlSlot.SCISSOR;
  * // when a picture is wanted, after the source is drawn:
  * readback.request(frameFbo.getId(), frameFbo.getWidth(), frameFbo.getHeight(), 256, frameIndex);
  *
- * // every frame, anywhere on the GL thread:
+ * // every frame, on the render thread:
  * readback.poll(pixels -> store(pixels.tag(), pixels.width(), pixels.height(), pixels.rgb()));
  *
  * readback.delete();   // with the context still current
@@ -38,7 +36,7 @@ import static com.crystalgraphics.platform.gl.state.CgGlSlot.SCISSOR;
  *
  * <h3>Easy to get wrong</h3>
  * <ul>
- *   <li>GL thread only, and {@link #request} after the source is complete: it copies what is there now.</li>
+ *   <li>Render thread only, and {@link #request} after the source is complete: it copies what is there now.</li>
  *   <li>{@link #request} returns false when as many copies as it was made with are still on their way — the GPU is
  *       behind — and copies nothing. It never waits.</li>
  *   <li>The pixels arrive top row first, RGB, three bytes a pixel.</li>
@@ -81,25 +79,25 @@ public final class CgPixelReadback {
         int w = Math.min(width, sourceWidth);
         int h = Math.max(1, Math.round((float) sourceHeight * w / sourceWidth));
 
-        try (CgGlScope ignored = CgGlState.save(FBO, SCISSOR)) {
-            // A BLIT IS SCISSORED: a clip left on by whoever drew last would copy a corner.
-            CgGL.glDisable(CgGL.GL_SCISSOR_TEST);
-            int from = sourceFbo;
-            int fromW = sourceWidth;
-            int fromH = sourceHeight;
-            prepareChain(sourceWidth, sourceHeight, w);
+        CgTextureView from = CgFrameBuffer.attachment(sourceFbo, false, sourceWidth, sourceHeight);
+        if (from == null) return false;
+        prepareChain(sourceWidth, sourceHeight, w);
+        if (target == null) {
+            target = CgFrameBuffer.createOwned("cg_readback", w, h, FORMAT);
+        } else if (target.getWidth() != w || target.getHeight() != h) {
+            target.resize(w, h);
+        }
+        CgDeviceSection.begin();
+        try {
+            int fromW = sourceWidth, fromH = sourceHeight;
             for (CgFrameBuffer step : chain) {
-                blit(from, fromW, fromH, step.getId(), step.getWidth(), step.getHeight());
-                from = step.getId();
+                from = blit(from, fromW, fromH, step);
                 fromW = step.getWidth();
                 fromH = step.getHeight();
             }
-            if (target == null) {
-                target = CgFrameBuffer.createOwned("cg_readback", w, h, FORMAT);
-            } else if (target.getWidth() != w || target.getHeight() != h) {
-                target.resize(w, h);
-            }
-            blit(from, fromW, fromH, target.getId(), w, h);
+            blit(from, fromW, fromH, target);
+        } finally {
+            CgDeviceSection.end();
         }
         inFlight++;
         CgReadback.pixels(target.getId(), 0, 0, w, h, CgTextureType.RGBA8, new CgReadback.Sink() {
@@ -127,7 +125,7 @@ public final class CgPixelReadback {
         return inFlight > 0 || !landed.isEmpty();
     }
 
-    /** Releases its framebuffers. GL thread, with the context current; a copy still on its way is dropped. */
+    /** Releases its framebuffers. Render thread; a copy still on its way is dropped. */
     public void delete() {
         if (target != null) target.delete();
         target = null;
@@ -156,13 +154,15 @@ public final class CgPixelReadback {
         chainTarget = width;
     }
 
-    private static void blit(int from, int fromW, int fromH, int to, int toW, int toH) {
-        CgGL.glBindFramebuffer(CgGL.GL_READ_FRAMEBUFFER, from);
-        CgGL.glBindFramebuffer(CgGL.GL_DRAW_FRAMEBUFFER, to);
-        CgGL.glBlitFramebuffer(0, 0, fromW, fromH, 0, 0, toW, toH, CgGL.GL_COLOR_BUFFER_BIT, CgGL.GL_LINEAR);
+    /** {@code from} filtered into {@code to}'s colour whole; answers {@code to}'s colour, the next step's source. */
+    private static CgTextureView blit(CgTextureView from, int fromW, int fromH, CgFrameBuffer to) {
+        CgTextureView into = CgTextureView.attachment(to.rhiColor(0), 0, 0);
+        CgRHI.get().encoder().blit(from, 0, 0, fromW, fromH, into, 0, 0, to.getWidth(), to.getHeight(),
+                CgGpuSampler.Filter.LINEAR);
+        return into;
     }
 
-    /** RGBA rows bottom-up, as GL reads them, into RGB rows top-down. */
+    /** RGBA rows bottom-up, as a readback reads them, into RGB rows top-down. */
     private byte[] rgb(ByteBuffer data, int w, int h) {
         byte[] rgb = new byte[w * h * 3];
         int bytes = w * h * 4;

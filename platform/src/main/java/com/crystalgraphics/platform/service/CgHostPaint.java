@@ -4,8 +4,9 @@ import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.CgService;
 
 /**
- * The GL hand-over around anything that paints with CrystalGraphics inside the host's frame, outside a world pass: a
- * screen, a HUD layer. The host knows which state it caches and what it assumes next, so it does the repair.
+ * The hand-over around anything that paints with CrystalGraphics inside the host's frame, outside a world pass: a
+ * screen, a HUD layer. The host knows where it draws and what it assumes next: it opens a device section, names its
+ * target as the current one, and sets back what its own renderer assumes.
  *
  * <pre>{@code
  * CgHostPaint.enter();
@@ -25,10 +26,10 @@ public final class CgHostPaint {
     /** What a host answers. One class per era, {@code HostPaint<Era>}. */
     public interface Host {
 
-        /** Takes the context from the host: drops what our state shadow trusts. */
+        /** Takes the frame from the host: a device section open, the host's target the current one. */
         void enter();
 
-        /** Hands the context back with the state the host's own renderer assumes. */
+        /** Hands the frame back with the state the host's own renderer assumes. */
         void leave();
 
         Host NONE = new Host() {

@@ -482,19 +482,6 @@ public final class CgPipeline {
     }
 
     /**
-     * Applies the declared render state and binds the program; false, binding nothing, when there is no program.
-     * The pass's own state goes first. A program not built is built here, classified and counted ({@link #misses()}); a
-     * world draw is held instead until its pipelines are ({@code CgWorldRenderer.skipUnready}).
-     */
-    public boolean bind() {
-        CgShader bound = program();
-        if (bound == null) return false;
-        state.apply();
-        bound.bind();
-        return true;
-    }
-
-    /**
      * This pipeline as {@code CgRHI.get()}'s graphics pipeline into targets of these formats: its program as written, no
      * vertex input (its vertex stage pulls the mesh, {@code CgMeshStore}), its render state over {@code passState}, the
      * outputs it does not write ({@link #slotWrites()}) masked off. Built once per description; null when the program
@@ -540,9 +527,9 @@ public final class CgPipeline {
             CgGraphicsPipelineDesc.Blend own = i == 1 && s.getSecondBlend() != null ? CgDeviceStates.blend(s.getSecondBlend()) : blend;
             targets.add(new CgGraphicsPipelineDesc.ColorTarget(colors.get(i), own, mask));
         }
-        CgGraphicsPipelineDesc desc = new CgGraphicsPipelineDesc(label, CgDeviceStates.layout(rhi, linked.explicit(label)),
-                linked.deviceModule(rhi, CgShaderModule.Stage.VERTEX, glDepth, label),
-                linked.deviceModule(rhi, CgShaderModule.Stage.FRAGMENT, glDepth, label),
+        CgGraphicsPipelineDesc desc = new CgGraphicsPipelineDesc(label, CgDeviceStates.layout(rhi, linked.explicit()),
+                linked.deviceModule(rhi, CgShaderModule.Stage.VERTEX, glDepth),
+                linked.deviceModule(rhi, CgShaderModule.Stage.FRAGMENT, glDepth),
                 List.of(), topology,
                 CgDeviceStates.raster(s.getCull()), CgDeviceStates.depthStencil(s.getDepth(), s.getStencil(), reversed), targets,
                 depth, samples);
@@ -580,9 +567,9 @@ public final class CgPipeline {
         String label = toString();
         CgPipelineCache cache = deviceCache(rhi);
         cache.adopt(cache.startRecorded(linked.deviceKey(), recipe -> recipe.desc(label,
-                CgDeviceStates.layout(rhi, linked.explicit(label)),
-                linked.deviceModule(rhi, CgShaderModule.Stage.VERTEX, !recipe.zeroToOne(), label),
-                linked.deviceModule(rhi, CgShaderModule.Stage.FRAGMENT, false, label))));
+                CgDeviceStates.layout(rhi, linked.explicit()),
+                linked.deviceModule(rhi, CgShaderModule.Stage.VERTEX, !recipe.zeroToOne()),
+                linked.deviceModule(rhi, CgShaderModule.Stage.FRAGMENT, false))));
     }
 
     @Override

@@ -132,7 +132,7 @@ final class CgSceneTarget {
         kept = false;
         int fb = stage.host().mainFramebuffer(), w = Math.max(1, stage.host().width()), h = Math.max(1, stage.host().height());
         boolean beside = CgGraphTexture.takesCurrentDepth(fb);
-        CgTextureType depth = beside ? null : depthOf(fb);
+        CgTextureType depth = beside ? null : depthOf(fb, w, h);
         // The kept scene of another size or form is a stale one: decoded as though none were kept
         keeping &= opaque != null && opaqueWidth == w && opaqueHeight == h && opaqueBeside == beside && opaqueDepth == depth;
         Pass pass = keeping ? keep : in;
@@ -160,7 +160,7 @@ final class CgSceneTarget {
     boolean recordOpaqueIn(CgStageFrame stage) {
         int fb = stage.host().mainFramebuffer(), w = Math.max(1, stage.host().width()), h = Math.max(1, stage.host().height());
         boolean beside = CgGraphTexture.takesCurrentDepth(fb);
-        CgTextureType depth = beside ? null : depthOf(fb);
+        CgTextureType depth = beside ? null : depthOf(fb, w, h);
         CgPipeline decode = in.pipeline(depth != null), encode = out.pipeline(depth != null);
         // Both or neither: a scene drawn into and never encoded back would lose the opaque draws
         if (decode == null || encode == null || keep.pipeline(depth != null) == null) return false;
@@ -197,9 +197,9 @@ final class CgSceneTarget {
     }
 
     @Nullable
-    private CgTextureType depthOf(int fb) {
+    private CgTextureType depthOf(int fb, int w, int h) {
         if (fb != probed) {
-            probedDepth = CgFrameBuffer.depthTypeOf(fb);
+            probedDepth = CgFrameBuffer.depthTypeOf(fb, w, h);
             probed = fb;
         }
         return probedDepth;

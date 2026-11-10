@@ -23,7 +23,7 @@ Pick the first row that fits.
 
 | What you know | When it loads | Where | API |
 |---|---|---|---|
-| A pipeline every session draws (your material, kernel, pass) | registered at mod load, built at the graphics start | the link worker / shaderc workers | `CgPipelinePrecache.register` in pre-init or init ([`PRECACHE.md`](PRECACHE.md)) |
+| A pipeline every session draws (your material, kernel, pass) | registered at mod load, built at the graphics start | the shader compile workers | `CgPipelinePrecache.register` in pre-init or init ([`PRECACHE.md`](PRECACHE.md)) |
 | A VFX look your mod plays | named at mod load, built and rehearsed at the graphics start | as above | `VFX.precache(LOOK)` (a `CgVfxOwner`), or a cue / `CgVfxRegistry`: automatic |
 | Assets of the format your gameplay plays: cues, moves (sequences), a kit's effects | behind the loading screen, with all they reach | the asset workers, GPU work in the warm budget | **automatic: every mounted namespace loads whole.** A namespace of thousands of assets played in part (a game's full asset export) opts out with `all: false` in `assets/<ns>/preload.yaml` and names what it plays ([`vfx/assets.md`](vfx/assets.md) § *Shipping them in your mod*); an ordinary mod needs nothing |
 | Files every session needs: an atlas, an index, a model set | behind the loading screen | job workers, GL in budgeted slices | a task in `onLoad(CgLoadPlan)` (§3) |
@@ -44,7 +44,7 @@ mod loading          clientStarting: GL-free work starts on a worker (the engine
                      natives, CrystalGUI's styles and themes as `crystalgui:start`)
 pre-init / init      assets mounted, network installed, CgPipelinePrecache collectors registered
 graphics start       a stage a frame, the host's frames going on between:
-                       context + link worker -> targets -> loading view -> world renderer -> post -> VFX -> the rest
+                       context -> targets -> loading view -> world renderer -> post -> VFX -> the rest
                      onContextInit(w, h)
 post-init            the engine's own, on a client right after the graphics start: what was mounted loads
                      onLoad(plan)                      <- you name your tasks here
@@ -149,7 +149,7 @@ a frame held past `crystalgraphics.loading.stallMs` (100 ms) is sampled and clas
 | work inside a lifecycle callback (`onContextInit`, `onLoad`, `onPostInit`...): each is timed, and one over 50 ms is logged by name | name a task; create objects in `onContextInit`, fill them in a task |
 | read files (`CgIO`, `Files.read*`, a resource stream) | `work` on a worker |
 | parse many `.shader` / `.compute` files in a collector | `CgPipelinePrecache.parseAhead(...)` from `onContextInit`; `CgKernel.ahead(MyOps::precache)` for kernels |
-| compile a shader at its draw | precache it: on GL the link worker compiles in a context of its own and hands the program over as a binary, in milliseconds |
+| compile a shader at its draw | precache it: the compile runs on a worker (`CgShaderCompile`) and its pipelines are built ahead |
 | upload a big texture in one call | make and fill it on a worker (it lands through `CgDeferral`, at most 4 ms and 4 MB a frame), or upload a slice per `render` step |
 | query a program you just linked (`glGetUniformLocation`, `glGetProgramResourceIndex`) | let the material resolve uniforms; a query forces the link to finish now |
 | read GL state (`glGet*`): on 1.7.10, which keeps no state cache, every read waits for the driver | track your own state; save and restore through a `CgGlState` scope |
@@ -166,11 +166,9 @@ a frame held past `crystalgraphics.loading.stallMs` (100 ms) is sampled and clas
   classes (the engine's `clientStarting` work is joined before the first install that may reach it).
 - **Keep listener classes cheap to load**: they load as the engine starts, before most of the game.
 
-**Shaders.** On GL the link worker compiles in a context that shares nothing with the render thread's, where the
-driver offers program binaries, and moves each program over with `glProgramBinary`. A compile on a shared context made
-NVIDIA hold every GL call the render thread issued. macOS offers no binary format, so it compiles on the shared
-context. On Vulkan shaderc compiles on workers and pipelines come from the recorded list ([`PRECACHE.md`](PRECACHE.md)
-§ *The shipped pipeline list*). Either way: **what is not precached compiles in front of the player.**
+**Shaders.** shaderc compiles on job workers (`CgShaderCompile`) and pipelines come from the recorded list
+([`PRECACHE.md`](PRECACHE.md) § *The shipped pipeline list*); before the toolchain lands, a GL-era host's native compiler
+compiles on the render thread. Either way: **what is not precached compiles in front of the player.**
 
 **Frame rate.** The screen draws in the host's frame, at the host's rate. 1.7.10 keeps vanilla's 30 fps menu cap while
 loading: above it the driver's waits on `glGet` grew (the longest hold 142 ms at 30 fps, 322 ms at 60, 435 ms
@@ -318,7 +316,7 @@ carry the counter `loading.shown` and the markers `loading.show` / `loading.hide
 | `lifecycle.CgEngineLifecycle`, `CgGraphicsLifecycle`, `CgStartSteps`, `CgListenerDiscovery` | the start and its stages, listeners |
 | `render.world.CgPipelinePrecache`, `render.CgWarmBudget` | pipelines ahead, and the frame's share for building them |
 | `asset.load.CgPreload` | textures, meshes and fonts read ahead (`font(...)` opens one and queues its ASCII glyphs) |
-| `gl.shader.CgLinkWorker`, `CgProgramBinaryCache` | GL compiles off the render thread, binaries across launches |
+| `gl.shader.CgShaderCompile` | Shader compiles off the render thread |
 | `gpu.CgDeferral`, `CgUploads` | textures and buffers from any thread, landed under a budget |
 | `job.CgJob` | work beside the game |
 

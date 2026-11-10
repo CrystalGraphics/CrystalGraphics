@@ -84,6 +84,11 @@ public interface CgGlslCompiler {
     record ExplicitCompute(ByteBuffer spirv, int[] localSize, List<List<CgBindingLayout.Slot>> sets, boolean heap,
                            int pushConstantBytes) {}
 
+    /** Whether its compiles may run on any thread; false for one that needs the device's context (the native one). */
+    default boolean compilesOnAnyThread() {
+        return false;
+    }
+
     /** The compiler installed now, for code making device pipelines; throws until a host installs one. */
     static CgGlslCompiler get() {
         CgGlslCompiler c = Slot.installed;

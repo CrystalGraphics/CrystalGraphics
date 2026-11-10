@@ -5,8 +5,7 @@ import com.crystalgraphics.render.draw.CgBoundResources;
 import com.crystalgraphics.api.buffer.CgBufferFormat;
 import com.crystalgraphics.api.buffer.CgBufferLifetime;
 import com.crystalgraphics.platform.gl.CgCapabilities;
-import com.crystalgraphics.gl.shader.CgShader;
-import com.crystalgraphics.platform.gl.CgGL;
+import com.crystalgraphics.gl.buffer.CgStreamBuffer;
 
 /**
  * SSBO-backed {@link CgShaderBuffer} implementation.
@@ -22,9 +21,8 @@ import com.crystalgraphics.platform.gl.CgGL;
  * {@code SSBO_ARB}) is recorded at construction time and exposed via {@link #getPath()}.
  * The bind/unbind logic is identical for both paths.</p>
  *
- * <p>GPU buffer management (stream buffer creation, upload, resize, delete) is handled
- * entirely by the parent {@link CgShaderBuffer}. This class only owns its path tag and
- * the bind/unbind GL calls.</p>
+ * <p>Storage (creation, upload, resize, delete) is the parent {@link CgShaderBuffer}'s. This class owns its path
+ * tag and what it notes for a pass's sets.</p>
  *
  * <p>Shader wiring calls {@code glShaderStorageBlockBinding} via {@code ARBProgramInterfaceQuery}
  * (block index lookup) and {@code ARBShaderStorageBufferObject} (binding assignment) to
@@ -41,53 +39,18 @@ public final class CgShaderStorageBuffer extends CgShaderBuffer {
      */
     CgShaderStorageBuffer(String name, CgBufferFormat format,
                           CgCapabilities.ShaderBufferPath path, int bindingLocation, CgBufferLifetime lifetime) {
-        super(name, format, CgGL.GL_SHADER_STORAGE_BUFFER, bindingLocation, lifetime);
+        super(name, format, CgStreamBuffer.Use.STORAGE, bindingLocation, lifetime);
         this.path = path;
     }
 
-    /** On the frame ring, by range at the latest upload -- and by the storage's CURRENT name, which growth replaces. */
-    @Override
-    protected void bindInternal() {
-        if (CgBoundResources.notesOnly) {
-            noteInternal();
-            return;
-        }
-        int bytes = dataBuffer.getCommittedBytes();
-        if (dataBuffer.offsetMovesPerUpload() && bytes > 0) {
-            CgGL.glBindBufferRange(CgGL.GL_SHADER_STORAGE_BUFFER, bindingLocation, dataBuffer.getGlBuffer(),
-                    dataBuffer.getWriteOffset(), bytes);
-        } else {
-            CgGL.glBindBufferBase(CgGL.GL_SHADER_STORAGE_BUFFER, bindingLocation, dataBuffer.getGlBuffer());
-        }
-        noteInternal();
-    }
-
+    /** On the frame ring, by range at the latest upload, in the storage growth may have replaced. */
     @Override
     protected void noteInternal() {
         int bytes = dataBuffer.getCommittedBytes();
         if (dataBuffer.offsetMovesPerUpload() && bytes > 0) {
-            CgBoundResources.storage(bindingLocation, dataBuffer.getGlBuffer(), dataBuffer.getWriteOffset(), bytes);
+            CgBoundResources.storage(bindingLocation, dataBuffer.gpuBuffer(), dataBuffer.getWriteOffset(), bytes);
         } else {
-            CgBoundResources.storage(bindingLocation, dataBuffer.getGlBuffer(), 0, 0);
-        }
-    }
-
-    @Override
-    protected void unbindInternal() {
-        CgGL.glBindBufferBase(CgGL.GL_SHADER_STORAGE_BUFFER, bindingLocation, 0);
-    }
-
-    /**
-     * Wires the SSBO block {@link #getName()} to {@link #bindingLocation} via
-     * {@code glShaderStorageBlockBinding}. Called once per program link.
-     * If the block is absent (optimised out or not declared), silently skips.
-     */
-    @Override
-    public void wireShader(CgShader shader) {
-        int programId = shader.getProgram().getId();
-        int idx = CgGL.glGetProgramResourceIndex(programId, CgGL.GL_SHADER_STORAGE_BLOCK, getName());
-        if (idx != CgGL.GL_INVALID_INDEX) {
-            CgGL.glShaderStorageBlockBinding(programId, idx, bindingLocation);
+            CgBoundResources.storage(bindingLocation, dataBuffer.gpuBuffer(), 0, 0);
         }
     }
 }

@@ -1,8 +1,8 @@
 package com.crystalgraphics.mc.legacy.platform;
 
+import com.crystalgraphics.platform.rhi.CgDeviceSection;
 import com.crystalgraphics.lifecycle.CgGraphicsLifecycle;
 import com.crystalgraphics.loading.CgLoadingScreen;
-import com.crystalgraphics.platform.gl.CgGL;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiMainMenu;
 import net.minecraft.client.gui.GuiScreen;
@@ -52,12 +52,12 @@ public final class LoadingScreenLegacy {
     /** Draws the screen over the frame, if a held menu waits on it: the frame's tail, before the frame tick. */
     public static void draw(Minecraft mc) {
         if (!CgLoadingScreen.hostDraws() || !CgGraphicsLifecycle.isInitialized()) return;
-        CgGL.fromHost();
+        CgDeviceSection.begin();
         try {
             int fbo = OpenGlHelper.isFramebufferEnabled() ? mc.getFramebuffer().framebufferObject : 0;
             CgLoadingScreen.draw(fbo, mc.displayWidth, mc.displayHeight);
         } finally {
-            CgGL.toHost();
+            CgDeviceSection.end();
         }
     }
 

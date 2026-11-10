@@ -80,7 +80,7 @@ The record is filled three ways:
 | When | From | Cost |
 |---|---|---|
 | Inside a section | the filter's own writes | nothing |
-| `fromHost`, a host with a state cache (Minecraft) | the host's belief, read from its cache (`GLHostState`; until H7, `sharedWithCgGL` exports `CgGL`'s shadow) | a Java read |
+| `fromHost`, a host with a state cache (Minecraft) | the host's belief, read from its cache (`GLCheckedHostState`) | a Java read |
 | `fromHost`, a host with none (`GLHostState.byQuery`) | every field by `glGet*` | one stall a section, never a draw |
 
 A field no source can say stays `UNKNOWN`, so its first call reaches GL and the filter knows it from then on.
@@ -88,14 +88,22 @@ A field no source can say stays `UNKNOWN`, so its first call reaches GL and the 
 ## The host boundary: a device section
 
 A Minecraft host shares the context (GL) or the queue (Vulkan 26.2+) with the game. Our work runs inside a **device
-section**, opened and closed by the engine round every host entry (a render stage's firing, the frame's tick, the
-loading screen), and the state is handed over at its two edges, nowhere else:
+section** (`CgDeviceSection`), opened round every host entry (a render stage's firing, the frame's tick, a paint, the
+loading screen), and the state is handed over at the outermost section's two edges, nowhere else:
 
 ```java
-device.fromHost();   // the host's belief read, the filter's view of it adopted, the device's conventions set
-... the engine's passes ...
-device.toHost();     // what the section changed set back to what the host believes
+CgDeviceSection.begin();   // CgRHI.fromHost: the host's belief read, the filter's view of it adopted, conventions set
+try (CgExecutor.Into ignored = CgExecutor.into(hostFramebuffer, width, height)) {
+    ... the engine's passes ...
+}
+CgDeviceSection.end();     // CgRHI.toHost: what the section changed set back to what the host believes
 ```
+
+- **Once a hook.** Sections nest, so a graph's execution or an upload inside a hook opens no hand-over of its own; one
+  outside any hook is its own section. A device installed inside an open section takes the frame at once.
+- **The host's target is named, never bound.** A hook says what it draws into (`CgExecutor.into`): a stage takes
+  `CgHostFrame.mainFramebuffer`, a paint the target its host's `CgHostPaint.Host.enter` names. An execution drawing into
+  the current target with none named throws.
 
 - **A diff, not a save.** `toHost` is `GLStateFilter.restore(entry)` with the belief read at `fromHost`, its calls
   through the filter, so only what the section's passes changed reaches GL: nothing is kept for it but that one
@@ -109,6 +117,28 @@ device.toHost();     // what the section changed set back to what the host belie
 - **On Vulkan** the hand-over is the command buffer and the images' layouts: each section's commands spliced into
   Minecraft's submit, its images back in the layout Minecraft expects (`Blaze3dVulkanHost`).
 
+## Each host's state
+
+| Host | `GLHostState` | `glGet` per section |
+|---|---|---|
+| Minecraft 1.13–26.2 on GL | `HostStateModern`: `GlStateManager` through `GLHostCache`, plus the program (0 below 1.21.5; its encoder's from 1.21.5), the framebuffers (the main target below 1.21.5; `GlStateManager`'s pair from 1.21.5) and the vertex array (none; `BufferUploader`'s record 1.17–1.19.1). Every texture unit by `glGet` while an Iris/Oculus pack runs, since a pack samples above Blaze3D's table. The first section turns Minecraft's `GL_DEBUG_OUTPUT` off; 1.19.2–1.21.4 forget `BufferUploader`'s vertex array as each closes; 26.2's 0..1 clip range is put back | none, past the checks |
+| Forge 1.8.9–1.12.2 | `HostStateLegacy`: the same cache; blend by `glGet` (`blendFunc` sets the alpha pair it does not record); program 0, no vertex array, the main framebuffer and the display's viewport, as at every hook | blend |
+| 1.7.10, 26.3 | `GLHostState.byQuery`: no cache to read (on 1.7.10 Angelica answers it from its mirror) | every field |
+| the harness | none: the device owns its context | — |
+
+**Over `GlStateManager`** (`GLHostCache`): its fields by shape, as SRG, intermediary and MCP rename them
+(`-Dcrystalgraphics.host.stateCache.byShape=true` skips Mojang's names in a dev run), and what Minecraft holds at every
+hook for what it does not cache: blend equation, front face, polygon mode, stencil, and the scissor test off where it
+keeps none (to 1.16.3). `GLCheckedHostState` checks each domain's first 600 reads against `glGet`; a domain that
+disagrees, or that the cache does not answer, reads `glGet` from then on, with a line in the log. The checks wait while
+the loading screen draws (`GLCheckedHostState.deferChecksWhile`): a check's `glGet` waits for the driver's queue, deepest
+then. A guess the driver may not share (the vertex array from 1.19.2) is set back as guessed and `excuse`d from the
+checks. What no domain holds (samplers, pixel store, the pack and unpack buffers, the device's conventions) goes back to
+GL's defaults as the section closes. `-Dcrystalgraphics.host.stateCache=false` reads every domain with `glGet`.
+
+A compatibility context's alpha test, which every fragment the device writes would pass through, is off for the section
+where the host has it on, and back on as it closes.
+
 ## Foreign GL inside our frame
 
 Code that writes GL outside the device leaves the filter wrong: it skips a call it believes redundant and draws with
@@ -117,16 +147,12 @@ the foreign code's state. Two rules keep that from happening:
 - **Between sections, anything may run.** At the next `fromHost` the filter's view is the host's belief again.
 - **Inside a section, nothing else writes GL** unless the filter is told: `GLStateFilter.invalidate()` makes every
   field unknown, so the next call of each reaches GL. A render stage's callback (`CgStageFrame.callback`,
-  `CgRenderStage`'s hook), a GL body by contract, becomes a section break of its own in H7: the device's pass ends,
-  the body runs with the context as the host expects, and the device resumes with its view invalidated. The consumer
-  writing the callback manages no state either.
+  `CgRenderStage`'s hook) runs engine work, never GL: what it executes takes the callback's target as its current
+  target (`CgExecutor.into`).
 
 ## What predates this, and goes in H7
 
 `CgGL`'s state shadow (`CgGlState`, `CgGlSlot`, `CgGlStateShadow`, its providers, `CgGlStateManager`) and `CgGlScope`
 (`ENGINE_API.md` § *GL State Save/Restore*) are the old shape: a cache every caller read and wrote, which anything could
-put out of step, and scopes callers wrapped round their work to cope. They are still used by code not yet on the RHI
-(H7's census: 176 files naming `CgGL`), and on a host before the device is installed; a Minecraft host's entry is read
-from that shadow (`GLHostState.sharedWithCgGL`). H7 ports those callers and deletes them, gives each era a
-`GLHostState` reading `GlStateManager`'s cache itself, with the native shader path that lets the device draw the loading screen before the shader toolchain
-lands.
+put out of step, and scopes callers wrapped round their work to cope. No host section reads it any more; what is left
+of it serves `CgGL`'s own calls until H7's last step deletes both.

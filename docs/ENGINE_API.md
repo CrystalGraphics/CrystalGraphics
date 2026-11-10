@@ -490,9 +490,10 @@ CgFrameBufferFormat fmt = CgFrameBufferFormat.builder("my_fbo")
         .depthRbo(CgTextureType.DEPTH24_STENCIL8)  // (or: depth → renderbuffer)
         .build();
 CgFrameBuffer fbo = CgFrameBuffer.create("my_fbo", width, height, fmt); // or CgFrameBuffer.createScreenSized("my_fbo", fmt);
-fbo.bind();     // ... render ...
-fbo.unbind();
-fbo.delete();   // only valid on owned FBOs; CgFrameBuffer.wrap() creates non-owned
+try (CgExecutor.Into ignored = CgExecutor.into(fbo)) {   // the current target of what executes, nothing bound
+    stage.fire();
+}
+fbo.delete();   // only valid on owned FBOs; CgFrameBuffer.wrap() names a host's
 ```
 
 `CgFrameBufferRegistry` — cache for screen-sized FBOs that auto-resize on window resize.
@@ -845,7 +846,7 @@ CgPixelReadback thumbnails = new CgPixelReadback(3);                            
 | Copies into a texture the frame's queue already uses (a glyph page filling) | at most 0.01 ms a frame, and a transfer copy would need two cross-queue waits |
 | Readback copies, on the frame's queue | at most 0.3 ms a frame, for a debug view |
 | `FRAME` shader buffers | written by the frame that reads them, by definition |
-| A shader variant's compile, at its first draw: 7-110 ms on GL | `render-shader-compile`, proposed. Meanwhile `CgMaterial.precache()` and `CgKernel.precache()` start one early, and a program linked once loads from its kept binary in later launches where the driver gives binaries (`CgProgramBinaryCache`; not macOS, which lists none) |
+| A shader variant's compile, at its first draw: 7-110 ms on GL | `render-shader-compile`, proposed. Meanwhile `CgMaterial.precache()` and `CgKernel.precache()` start one early |
 | Framebuffers and programs: made on the render thread | — |
 
 Measured by: `deferral.apply`, the workers' `upload.lease-copy`, and the GPU zones `upload.deferred` and `upload.meshes`
@@ -866,9 +867,7 @@ Wrap any block of GL work in a `CgGlScope` to guarantee state restoration on exi
 ```java
 // Save specific slots:
 try (CgGlScope scope = CgGlState.save(CgGlSlot.FBO, CgGlSlot.PROGRAM)) {
-    fbo.bind();
-    shader.bind();
-    // draw
+    // GL calls changing the framebuffer and program
 }  // FBO and PROGRAM restored automatically on close
 
 // Convenience shorthands:

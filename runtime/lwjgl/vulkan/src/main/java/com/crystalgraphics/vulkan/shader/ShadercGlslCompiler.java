@@ -103,6 +103,11 @@ public final class ShadercGlslCompiler implements CgGlslCompiler, AutoCloseable 
     }
 
     @Override
+    public boolean compilesOnAnyThread() {
+        return true;
+    }
+
+    @Override
     public synchronized Explicit compileExplicit(String vertexGlsl, String fragmentGlsl, Map<String, Integer> attribLocations,
                                                  String label) {
         String vertexSource = withDefines(vertexGlsl, label, EXPLICIT);

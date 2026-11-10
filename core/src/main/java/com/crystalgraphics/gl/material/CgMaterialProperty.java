@@ -1,10 +1,9 @@
 package com.crystalgraphics.gl.material;
 
 import com.crystalgraphics.api.buffer.CgBufferFormat;
-import com.crystalgraphics.gl.shader.CgShader;
 import com.crystalgraphics.api.texture.CgSampler;
 import com.crystalgraphics.api.texture.CgTexture;
-import com.crystalgraphics.gl.texture.CgSamplers;
+import com.crystalgraphics.render.draw.CgBoundResources;
 import com.crystalgraphics.gl.buffer.staging.CgBufferWriter;
 import com.crystalgraphics.gl.material.parse.CgParsedShader;
 import com.crystalgraphics.gl.texture.CgEngineTextures;
@@ -431,22 +430,6 @@ public final class CgMaterialProperty {
     // ── Sampler bind ──────────────────────────────────────────────────────────
 
     /**
-     * Wires this sampler property's texture-unit assignment into the given shader via a direct
-     * {@code glUniform1i} call. The shader program must already be bound by the caller.
-     *
-     * <p>Called once per linked program per material instance from
-     * {@link CgMaterialProperties#wireSamplerUnits}, inside {@code CgMaterial.wirePerInstance}.
-     * No-op when the unit has not been assigned yet ({@code samplerUnit < 0}).</p>
-     *
-     * @param shader the compiled program to wire — must be currently bound
-     */
-    public void wireSamplerUnit(CgShader shader) {
-        if (!type.isSampler() || samplerUnit < 0) return;
-        int loc = shader.getUniformLocation(name);
-        if (loc >= 0) shader.getProgram().setUniform1i(loc, samplerUnit);
-    }
-
-    /**
      * Binds this property's current texture to its assigned texture unit.
      * No-op when either the unit or the texture has not been set.
      *
@@ -459,7 +442,7 @@ public final class CgMaterialProperty {
 
         if (samplerUnit >= 0 && samplerTexture != null) {
             samplerTexture.bind(samplerUnit);
-            CgSamplers.bind(samplerUnit, sampler, samplerTexture);
+            CgBoundResources.sampler(samplerUnit, sampler);
         }
     }
 

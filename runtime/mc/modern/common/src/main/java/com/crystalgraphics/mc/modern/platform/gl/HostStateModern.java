@@ -1,24 +1,34 @@
 package com.crystalgraphics.mc.modern.platform.gl;
 
+import com.crystalgraphics.platform.gl.driver.CgGLDriver;
+import com.crystalgraphics.platform.gl.state.GLHostState;
 //? if <26.3 {
 import com.crystalgraphics.platform.service.CgShaderPacks;
 import com.crystalgraphics.mc.modern.platform.Blaze3dTextureUnits;
-import com.crystalgraphics.platform.gl.state.CgCheckedProvider;
-import com.crystalgraphics.platform.gl.state.CgGlSlot;
-import com.crystalgraphics.platform.gl.state.CgGlStateShadow;
-import com.crystalgraphics.platform.gl.state.CgHostStateCache;
+import com.crystalgraphics.platform.gl.CgGLBackend;
+import com.crystalgraphics.platform.gl.state.GLCheckedHostState;
+import com.crystalgraphics.platform.gl.state.GLContextState;
+import com.crystalgraphics.platform.gl.state.GLHostCache;
 import net.minecraft.client.Minecraft;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL13;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 //?}
+//? if <1.21.5 {
+import java.util.Arrays;
+//?}
 //? if >=1.17 <1.19.2 {
-/*import com.mojang.blaze3d.vertex.BufferUploader;
-
-import java.util.ArrayList;
+/*import java.util.ArrayList;
 import java.util.List;
+*///?}
+//? if >=1.19.2 <1.21.5 {
+import com.mojang.blaze3d.vertex.BufferUploader;
+//?} elif >=1.17 <1.19.2 {
+/*import com.mojang.blaze3d.vertex.BufferUploader;
 *///?}
 //? if >=26.1 <26.3 {
 /*import com.mojang.blaze3d.opengl.GlProgram;
@@ -35,169 +45,107 @@ import com.mojang.blaze3d.platform.GlStateManager;
 //?}
 
 /**
- * The state shadow's provider on Minecraft's OpenGL, 1.13 to 26.2: a scope that opens at a host entry takes the
- * host's state from Blaze3D's {@code GlStateManager} ({@link CgHostStateCache}) instead of {@code glGet}, checked
- * against the driver as {@link CgCheckedProvider} does.
+ * What Minecraft believes its GL context holds, 1.13 to 26.2, for the GL device's host sections: Blaze3D's
+ * {@code GlStateManager} ({@link GLHostCache}), each domain checked against the driver at first
+ * ({@link GLCheckedHostState}). {@code glGet} where the cache is not found, and on 26.3.
  *
  * <pre>{@code
- * glBackend = new Blaze3dGLBackend();
- * HostStateModern.install();   // on the render thread, once the backend is in
+ * CgGLDriver driver = new Lwjgl3GLDriver();
+ * CgGLDevice device = new CgGLDevice(driver, translator, width, height, false, HostStateModern.create(driver));
  * }</pre>
  *
  * <ul>
  *   <li>What this adds to the cache: the program (0 below 1.21.5, where each draw unbinds or none is used; from
- *       1.21.5 its encoder's, which rebinds only when its own changes), the framebuffer (the main target below
- *       1.21.5; from 1.21.5 {@code GlStateManager}'s, found by name only) and the vertex input (none below 1.17,
- *       {@code BufferUploader}'s record to 1.19.1, and from 1.19.2 Minecraft's own before each draw).</li>
- *   <li>Nothing on 26.3 or under Vulkan.</li>
+ *       1.21.5 its encoder's, which rebinds only when its own changes), the framebuffers (the main target below
+ *       1.21.5; from 1.21.5 {@code GlStateManager}'s, found by name only) and the vertex array (none below 1.17,
+ *       {@code BufferUploader}'s record to 1.19.1, and from 1.19.2 none, Minecraft binding its own before each draw).</li>
+ *   <li>Every texture unit with {@code glGet} while an Iris or Oculus pack runs: it binds units above Blaze3D's table
+ *       itself.</li>
+ *   <li>The first section turns off the {@code GL_DEBUG_OUTPUT} Minecraft enables; 1.19.2 to 1.21.4 forget
+ *       {@code BufferUploader}'s vertex array as each closes.</li>
  * </ul>
  */
 //? if <26.3 {
-public final class HostStateModern extends CgCheckedProvider {
+public final class HostStateModern extends GLCheckedHostState {
 
-    private final CgHostStateCache cache;
-    //? if >=1.21.5 {
-    /*private final Object encoder;
-    private final Field lastProgram, readFbo, writeFbo;
-    *///?} elif >=1.17 <1.19.2 {
-    /*private final Field[] uploaderBindings;   // BufferUploader's record of the array and buffers: restored as it stands
-    *///?}
+    private static final Logger LOGGER = LogManager.getLogger("CrystalGraphics");
+    /** {@code GL_DEBUG_OUTPUT}, from KHR_debug. */
+    private static final int DEBUG_OUTPUT = 0x92E0;
+    // gl.debugStacks and gl.debugPerf turn it on for themselves.
+    private static final boolean KEEP_DEBUG_OUTPUT = CgGLBackend.KEEP_HOST_DEBUG_OUTPUT.get()
+            || CgGLBackend.DEBUG_STACKS.get() || CgGLBackend.DEBUG_PERF.get();
 
-    private HostStateModern(CgHostStateCache cache, Era extra) {
-        super("Blaze3D", cache.missing() | extra.slots, cache.held() | ELIDED);
-        this.cache = cache;
-        //? if >=1.21.5 {
-        /*encoder = extra.encoder;
-        lastProgram = extra.lastProgram;
-        readFbo = extra.readFbo;
-        writeFbo = extra.writeFbo;
-        *///?} elif >=1.17 <1.19.2 {
-        /*uploaderBindings = extra.uploaderBindings;
-        *///?}
+    private boolean debugOutputChecked;
+
+    private HostStateModern(CgGLDriver gl, Answers answers, boolean clipZeroToOne) {
+        super("Blaze3D", gl, answers, clipZeroToOne);
     }
 
-    /**
-     * What Minecraft's next draw relies on finding as it left it, beyond {@code GlStateManager}'s state objects, which a
-     * host section sets back: stencil from 1.14 to 1.21.4 (its {@code StencilState}); the program, unbound after each
-     * draw below 1.21.5 and its encoder's last from 1.21.5; the framebuffers from 1.21.5 ({@code GlStateManager}'s bound
-     * pair); the vertex input below 1.19.2 (none bound before 1.17, {@code BufferUploader}'s record to 1.19.1).
-     */
-    //? if >=1.21.5 {
-    /*private static final int ELIDED = bit(CgGlSlot.PROGRAM) | bit(CgGlSlot.FBO);
-    *///?} elif >=1.19.2 {
-    private static final int ELIDED = bit(CgGlSlot.STENCIL) | bit(CgGlSlot.PROGRAM);
-    //?} elif >=1.14 {
-    /*private static final int ELIDED = bit(CgGlSlot.STENCIL) | bit(CgGlSlot.PROGRAM) | bit(CgGlSlot.VERTEX_INPUT);
-    *///?} else {
-    /*private static final int ELIDED = bit(CgGlSlot.PROGRAM) | bit(CgGlSlot.VERTEX_INPUT);
-    *///?}
-
-    /** Makes this the shadow's provider, or leaves {@code glGet} where Blaze3D's cache cannot be found. */
-    public static void install() {
-        install("Blaze3D", () -> {
+    /** Minecraft's host state over {@code gl}, or {@code glGet}'s where Blaze3D's cache cannot be found. Render thread. */
+    public static GLHostState create(CgGLDriver gl) {
+        try {
             //? if <1.15 {
             /*Class<?> gsm = GlStateManager.HOST;   // the same-package shim stands in for 1.14's names
             *///?} else {
             Class<?> gsm = GlStateManager.class;
             //?}
-            CgHostStateCache cache = new CgHostStateCache(gsm, Blaze3dTextureUnits.count(), GlStateManager::_activeTexture,
-                    () -> GL11.glGetInteger(GL13.GL_ACTIVE_TEXTURE));   // before CgGL has its backend
-            return new HostStateModern(cache, new Era(cache));
-        });
-    }
-
-    @Override
-    protected void answer(CgGlSlot slot, CgGlStateShadow t) {
-        if (cache.answer(slot, t)) return;
-        switch (slot) {
-            case PROGRAM:
-                //? if >=1.21.5 {
-                /*Object program = get(lastProgram, encoder);
-                t.programId = program == null ? 0 : ((GlProgram) program).getProgramId();
-                *///?} else {
-                t.programId = 0;
-                //?}
-                return;
-            case FBO:
-                //? if >=1.21.5 {
-                /*t.drawFbo = (Integer) get(writeFbo, null);
-                t.readFbo = (Integer) get(readFbo, null);
-                *///?} else {
-                t.drawFbo = t.readFbo = Minecraft.getInstance().getMainRenderTarget().frameBufferId;
-                //?}
-                return;
-            case VERTEX_INPUT:
-                //? if <1.17 {
-                /*// Fixed-function: Minecraft binds no vertex array, and unbinds its buffers after each draw.
-                t.vertexArray = 0;
-                t.arrayBuffer = 0;
-                t.elementArrayBuffer = 0;
-                *///?} elif <1.19.2 {
-                /*t.vertexArray = (Integer) get(uploaderBindings[0], null);
-                t.arrayBuffer = (Integer) get(uploaderBindings[1], null);
-                t.elementArrayBuffer = (Integer) get(uploaderBindings[2], null);
-                *///?} else {
-                // Minecraft binds its own before each draw; Blaze3dGLBackend.toHost resets its record.
-                t.vertexArray = 0;
-                t.arrayBuffer = 0;
-                t.elementArrayBuffer = CgGlStateShadow.UNKNOWN_BINDING;
-                //?}
-                return;
-            default:
-                throw new IllegalStateException("no Blaze3D answer for " + slot);
+            GLHostCache cache = new GLHostCache(gsm, Blaze3dTextureUnits.count(), GlStateManager::_activeTexture,
+                    () -> GL11.glGetInteger(GL13.GL_ACTIVE_TEXTURE));
+            // Forge's early loading window binds its font on unit 6 with GL before GlStateManager exists (SimpleFont):
+            // each unit back to the cache's belief, once, so the first check compares what Minecraft bound
+            GLContextState held = new GLContextState();
+            if (cache.read(Domain.TEXTURES, held)) {
+                for (int unit = 0; unit < Blaze3dTextureUnits.count(); unit++) gl.glBindTextureUnit(unit, held.unitTexture[unit]);
+            }
+            //? if >=26.2 {
+            /*boolean clipZeroToOne = RenderSystem.getDevice().getDeviceInfo().isZZeroToOne();
+            *///?} else {
+            boolean clipZeroToOne = false;
+            //?}
+            return new HostStateModern(gl, new Blaze3d(cache), clipZeroToOne);
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError refused) {
+            LOGGER.info("[cg] Blaze3D's state cache not found ({}): host sections read glGet", refused.toString());
+            return GLHostState.byQuery(gl);
         }
     }
 
-    private static Object get(Field f, Object holder) {
-        try {
-            return f.get(holder);
-        } catch (IllegalAccessException e) {
-            throw new IllegalStateException(e);
+    // Minecraft turns GL_DEBUG_OUTPUT on at its default glDebugVerbosity of 1; on NVIDIA that made every GL call
+    // several times dearer (the blasts scene 15.4 -> 9.6 ms a frame). Off for the context, once: switching it per
+    // section cost the driver 1.1 ms a switch.
+    @Override
+    public void entered(CgGLDriver gl) {
+        super.entered(gl);
+        if (debugOutputChecked) return;
+        debugOutputChecked = true;
+        if (!KEEP_DEBUG_OUTPUT && gl.hasExtension("GL_KHR_debug") && gl.glIsEnabled(DEBUG_OUTPUT)) {
+            gl.glDisable(DEBUG_OUTPUT);
+            LOGGER.info("[cg] Minecraft's GL debug output is off: on some drivers it slows every GL call "
+                    + "(-Dcrystalgraphics.gl.keepHostDebugOutput=true keeps it)");
         }
     }
 
+    // Minecraft binds its own vertex array before each draw, but remembers its immediate buffer's: that record goes
+    // when the frame goes back.
+    //? if >=1.19.2 <1.21.5 {
     @Override
-    protected void answerTextures(CgGlStateShadow t, int units) {
-        cache.textures(t, units);
+    public void left() {
+        BufferUploader.reset();
     }
+    //?}
 
-    @Override
-    protected int unitsMask() {
-        return cache.unitsMask();
-    }
-
-    /** Every unit while an Iris or Oculus pack runs: it binds units above Blaze3D's table itself. */
-    @Override
-    public int hostUnits() {
-        return CgShaderPacks.packInUse() ? -1 : super.hostUnits();
-    }
-
-    @Override
-    public void excuse(CgGlSlot slot, CgGlStateShadow answer, CgGlStateShadow truth) {
-        cache.excuse(slot, answer, truth);
-        //? if >=1.19.2 {
-        if (slot == CgGlSlot.VERTEX_INPUT) {
-            answer.vertexArray = truth.vertexArray;
-            answer.arrayBuffer = truth.arrayBuffer;
-            answer.elementArrayBuffer = truth.elementArrayBuffer;
-        }
-        //?}
+    /** The cache's answers and this era's additions to them. */
+    private static final class Blaze3d implements Answers {
+        private final GLHostCache cache;
         //? if >=1.21.5 {
-        /*if (slot == CgGlSlot.PROGRAM && answer.programId == 0) answer.programId = truth.programId;   // none of its own yet
-        *///?}
-    }
-
-    /** What this era adds to the cache, found once, and the domains it could not find. */
-    private static final class Era {
-        int slots;
-        //? if >=1.21.5 {
-        /*Object encoder;
-        Field lastProgram, readFbo, writeFbo;
+        /*private Object encoder;
+        private Field lastProgram;
+        private final Field readFbo, writeFbo;
         *///?} elif >=1.17 <1.19.2 {
-        /*Field[] uploaderBindings;
+        /*private Field[] uploaderBindings;   // BufferUploader's record of the array and buffers
         *///?}
 
-        Era(CgHostStateCache cache) throws IllegalAccessException {
+        Blaze3d(GLHostCache cache) throws IllegalAccessException {
+            this.cache = cache;
             //? if >=1.21.5 {
             /*try {
                 //? if >=26.1 {
@@ -208,12 +156,11 @@ public final class HostStateModern extends CgCheckedProvider {
                 ^///?}
                 lastProgram = fieldOfType(encoder.getClass(), GlProgram.class);
             } catch (ReflectiveOperationException | RuntimeException e) {
-                slots |= bit(CgGlSlot.PROGRAM);
+                lastProgram = null;   // glGet
             }
+            // Renamed (Fabric's intermediary): glGet, seldom asked since a stage entry names the main target itself.
             readFbo = cache.field("readFbo");
             writeFbo = cache.field("writeFbo");
-            // Renamed (Fabric's intermediary): the driver's, seldom asked since a stage entry binds the main target itself.
-            if (readFbo == null || writeFbo == null) slots |= bit(CgGlSlot.FBO);
             *///?} elif >=1.17 <1.19.2 {
             /*List<Field> ints = new ArrayList<>();
             for (Field f : BufferUploader.class.getDeclaredFields()) {
@@ -222,8 +169,74 @@ public final class HostStateModern extends CgCheckedProvider {
                 ints.add(f);
             }
             if (ints.size() >= 3) uploaderBindings = new Field[] {ints.get(0), ints.get(1), ints.get(2)};
-            else slots |= bit(CgGlSlot.VERTEX_INPUT);
             *///?}
+        }
+
+        @Override
+        public boolean answer(Domain domain, GLContextState s) {
+            if (domain == Domain.TEXTURES && CgShaderPacks.packInUse()) return false;
+            if (cache.read(domain, s)) return true;
+            switch (domain) {
+                case PROGRAM:
+                    //? if >=1.21.5 {
+                    /*if (lastProgram == null) return false;
+                    Object program = get(lastProgram, encoder);
+                    s.program = program == null ? 0 : ((GlProgram) program).getProgramId();
+                    *///?} else {
+                    s.program = 0;
+                    //?}
+                    return true;
+                case FRAMEBUFFERS:
+                    //? if >=1.21.5 {
+                    /*if (readFbo == null || writeFbo == null) return false;
+                    s.drawFramebuffer = (Integer) get(writeFbo, null);
+                    s.readFramebuffer = (Integer) get(readFbo, null);
+                    *///?} else {
+                    s.drawFramebuffer = s.readFramebuffer = Minecraft.getInstance().getMainRenderTarget().frameBufferId;
+                    //?}
+                    return true;
+                case VERTEX_ARRAY:
+                    //? if >=1.17 <1.19.2 {
+                    /*if (uploaderBindings == null) return false;
+                    s.vertexArray = (Integer) get(uploaderBindings[0], null);
+                    *///?} else {
+                    // None bound at a hook below 1.17; from 1.19.2 Minecraft binds its own before each draw
+                    s.vertexArray = 0;
+                    //?}
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        @Override
+        public void excuse(Domain domain, GLContextState answer) {
+            //? if <1.21.5 {
+            // _blendFunc caches the RGB pair alone, and glBlendFunc sets the alpha pair too
+            if (domain == Domain.BLEND) {
+                Arrays.fill(answer.blendSrcAlpha, GLContextState.UNKNOWN);
+                Arrays.fill(answer.blendDstAlpha, GLContextState.UNKNOWN);
+            }
+            //?}
+            //? if >=1.19.2 {
+            if (domain == Domain.VERTEX_ARRAY) answer.vertexArray = GLContextState.UNKNOWN;   // whatever its last draw left
+            //?}
+            //? if >=1.21.5 {
+            /*if (domain == Domain.PROGRAM && answer.program == 0) answer.program = GLContextState.UNKNOWN;   // none of its own yet
+            *///?}
+        }
+
+        @Override
+        public int alphaTest() {
+            return cache.alphaTest();
+        }
+    }
+
+    private static Object get(Field f, Object holder) {
+        try {
+            return f.get(holder);
+        } catch (IllegalAccessException e) {
+            throw new IllegalStateException(e);
         }
     }
 
@@ -261,7 +274,9 @@ public final class HostStateModern extends CgCheckedProvider {
 
     private HostStateModern() {}
 
-    /^* Nothing to install: {@code glGet} answers on 26.3. ^/
-    public static void install() {}
+    /^* {@code glGet}: 26.3 keeps no state cache to read. ^/
+    public static GLHostState create(CgGLDriver gl) {
+        return GLHostState.byQuery(gl);
+    }
 }
 *///?}

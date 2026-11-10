@@ -171,9 +171,8 @@ Internal `CgMaterial.create(resourcePath)` steps (package-private, only called b
 3. `CgCapabilities.detect().preferredShaderBufferPath()` — detect SSBO/NONE
 4. `CgMaterialShaderCompiler.compile(parsed, path)` — generate GLSL vert + frag strings
 5. `new CgShaderPreprocessor().process(...)` — resolve `#include "cg_env.glsl"` (once)
-6. `CgShaderFactory.fromSource(vert, frag, CgVertexFormat.SPATIAL)` — compile + link
+6. `CgShader.compile(vert, frag, CgVertexFormat.SPATIAL, label)` — the device compile
 7. `mat.setResourcePath(resourcePath)` — store path for hot-reload
-8. `wireShaderBuffers` — wire `CgViewBlock`, `CgEnvironmentBlock` and `CgObjectDataBuffer` to their reserved slots by name
 9. Apply property defaults from `Properties` block
 
 Throws `IllegalStateException` if compile/link fails — never returns a broken material.
@@ -287,14 +286,13 @@ engine tokens it names with `#pragma cg_use <token>` (`CgEngineBufferRegistry`; 
 source (rhi SH6, Unreal's shader parameters). A renderer giving each of its materials its own contents for an engine
 uniform block uses `overrideBlock(block, contents)`, which a capture keeps by value.
 
-The engine's own blocks (`CgViewBlock`, `CgEnvironmentBlock`, `CgObjectDataBuffer`) are declared in `cg_env.glsl` and
-wired automatically: never declare them again.
+The engine's own blocks (`CgViewBlock`, `CgEnvironmentBlock`, `CgObjectDataBuffer`) are declared in `cg_env.glsl` at
+their bindings: never declare them again.
 
 ## Guardrails (NOT in this package)
 
 - No render-state management (blend, depth, cull)
 - No render-pass system (depth/shadow passes are out of scope)
-- No `CgRenderState.apply()` calls
 
 ## Related Packages
 
@@ -303,7 +301,7 @@ wired automatically: never declare them again.
 | `gl/material/` | Provides `CgShaderParser` (parse) and `CgMaterialShaderCompiler` (generate GLSL) |
 | `gl/buffer/shader/` | `CgUniformBuffer` (UBO frame data), `CgShaderBuffer` (SSBO per-object data) |
 | `api/shader/` | `CgShaderPreprocessor`, the source pipeline every shader goes through |
-| `gl/shader/` | `CgShaderFactory.fromSource()` used by `CgMaterial.create()` |
+| `gl/shader/` | `CgShader`, what each pass and keyword set compiles into |
 | `api/vertex/` | `CgVertexFormat.SPATIAL` — canonical spatial format for this pipeline; also `CgVertexSemantic`, `CgAttribType` |
 | `render/world/`, `render/graph/` | `CgWorldRenderer` and the graph draw a `CgMesh` under a material, through the mesh store |
 

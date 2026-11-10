@@ -30,7 +30,7 @@ The engine's own kernels are `.compute` files under `shaders/env/compute/`, besi
 
 ```
 text --CgComputeParser--> CgComputeSource --CgKernelEmitter(target)--> GLSL with #includes
-     --CgShaderPreprocessor--> CgProgram.compileCompute --> CgKernelProgram (wired)
+     --CgShaderPreprocessor--> CgGlslCompiler.compileExplicitCompute --> CgKernelProgram
 ```
 
 **The parser sees through includes; the emitter keeps them.** Analysis runs on the expanded text, so a helper in

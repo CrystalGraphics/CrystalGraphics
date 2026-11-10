@@ -1,5 +1,6 @@
 package com.crystalgraphics.vulkan.host;
 
+import com.crystalgraphics.platform.rhi.CgDeviceSection;
 import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
 import com.crystalgraphics.platform.gl.CgGL;
@@ -55,7 +56,7 @@ import static org.lwjgl.vulkan.VK12.vkSignalSemaphore;
  * <pre>{@code
  * final class GameVulkanHost extends HostedVulkanHost<GameTexture> {
  *     GameVulkanHost(GameDevice game) {
- *         super("the game", CgHostStateCache.VERIFY.get());
+ *         super("the game", GLCheckedHostState.VERIFY.get());
  *         this.game = game;
  *     }
  *
@@ -86,7 +87,7 @@ import static org.lwjgl.vulkan.VK12.vkSignalSemaphore;
  * }</pre>
  *
  * <ul>
- *   <li>Each host section ({@code CgGL.fromHost()} to {@code toHost()}) records into command buffers of its own
+ *   <li>Each host section ({@code CgDeviceSection}) records into command buffers of its own
  *       from {@link #beginCommandBuffer()}, and {@code toHost()} hands them to {@link #execute}, the setup buffer
  *       first. Nothing records into the command buffer the host records into.</li>
  *   <li>A frame is one {@link #endHostFrame()}. It retires when {@link #afterSubmit} runs the action given it
@@ -312,11 +313,11 @@ public abstract class HostedVulkanHost<T> implements CgVulkanHost {
     /** Ends our frame inside the host's: after everything we draw in it, before the host submits it. */
     public final void endHostFrame() {
         if (gl == null || closing) return;
-        CgGL.fromHost();
+        CgDeviceSection.begin();
         try {
             gl.endFrame();
         } finally {
-            CgGL.toHost();
+            CgDeviceSection.end();
         }
     }
 
@@ -390,8 +391,8 @@ public abstract class HostedVulkanHost<T> implements CgVulkanHost {
     private void noteOutsideSection() {
         if (inSection || warnedOutside || gl == null) return;
         warnedOutside = true;
-        LOG.warn("[cg] CgGL used outside a host section on " + hostName + "'s Vulkan device: it reaches " + hostName
-                + " at the next hand-over. Bracket it with CgGL.fromHost() and CgGL.toHost().", new Throwable("here"));
+        LOG.warn("[cg] the device used outside a host section on " + hostName + "'s Vulkan device: it reaches " + hostName
+                + " at the next hand-over. Bracket it with CgDeviceSection.begin() and end().", new Throwable("here"));
     }
 
     @Override public final long frameIndex() { return frame; }

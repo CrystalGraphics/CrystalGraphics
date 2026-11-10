@@ -2,23 +2,25 @@ package com.crystalgraphics.render.draw;
 
 import com.crystalgraphics.api.texture.CgSampler;
 import com.crystalgraphics.api.texture.CgTexture;
-import com.crystalgraphics.gl.texture.CgSamplers;
-import com.crystalgraphics.gl.CgGlNames;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.gl.buffer.CgStreamBuffer;
 import com.crystalgraphics.gl.buffer.shader.CgShaderBuffer;
-import com.crystalgraphics.platform.gl.CgGL;
+import com.crystalgraphics.platform.gl.CgGLImports;
+import com.crystalgraphics.platform.rhi.CgDeviceSection;
+import com.crystalgraphics.platform.rhi.CgRHI;
+import com.crystalgraphics.platform.rhi.command.CgCommandList;
+import com.crystalgraphics.platform.rhi.resource.CgGpuBuffer;
 import com.crystalgraphics.render.mesh.CgOffsetAllocator;
 import com.crystalgraphics.trace.CgTrace;
-import com.crystalgraphics.util.CgBufferUtils;
 import com.crystalgraphics.util.trace.CgChannels;
 
 import javax.annotation.Nullable;
-import java.nio.ByteBuffer;
 import java.nio.FloatBuffer;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Arrays;
+import java.util.EnumSet;
+import java.util.Set;
 import java.util.Objects;
 
 /**
@@ -52,7 +54,7 @@ import java.util.Objects;
  *   <li>At most {@value #MAX_TEXTURES} textures, {@value #MAX_BLOCKS} blocks, {@value #MAX_BUFFERS} buffers,
  *       and {@value #MAX_STORAGE} storage handles per snapshot.</li>
  *   <li>One thread at a time: the recorder fills it, and the render thread uploads and binds it once the
- *       recording is handed over. {@link #upload} and {@link #bind} touch GL; the table owns no GL object.</li>
+ *       recording is handed over. {@link #upload} copies on the device; the table owns no device object.</li>
  *   <li>A block in a {@link CgMaterialArena} binds as the arena: its snapshot's draws carry its {@link #slotOf slot} in
  *       their ids, and snapshots equal but for which version of one arena they hold have one {@link #share}.</li>
  * </ul>
@@ -106,7 +108,8 @@ public final class CgBindingTable {
     /** Where each entry's blocks landed in the ring, after {@link #upload}. */
     private int[] ringOffsets = new int[MAX_BLOCKS * 64];
     /** The buffer they landed in: a ring that grows later in the frame moves to a new one. */
-    private int uploadedBuffer;
+    @Nullable
+    private CgGpuBuffer uploadedBuffer;
     private boolean uploaded;
     /** The ring frame it was uploaded in: a later frame's region is somewhere else. */
     private long uploadedFrame = -1;
@@ -404,8 +407,9 @@ public final class CgBindingTable {
         return ringOffsets[id * MAX_BLOCKS + k];
     }
 
-    /** The ring buffer's name its blocks landed in at the last {@link #upload}; 0 before one wrote any. */
-    int uploadedBuffer() {
+    /** The ring buffer its blocks landed in at the last {@link #upload}; null before one wrote any. */
+    @Nullable
+    CgGpuBuffer uploadedBuffer() {
         return uploadedBuffer;
     }
 
@@ -538,45 +542,33 @@ public final class CgBindingTable {
             view.put(writing[w].floats);
         }
         int base = ring.commit(bytes);
-        uploadedBuffer = ring.getGlBufferId();
+        uploadedBuffer = ring.gpuBuffer();
         for (int i = 0; i < count * MAX_BLOCKS; i++) ringOffsets[i] += base;
         if (writes == 0) return;
         // Each new version copied from the ring into its page or its arena slot, as CgMeshStore writes its pools: outside
         // any pass.
-        CgGL.cgBeginTransfer();
+        CgDeviceSection.begin();
+        CgCommandList list = CgRHI.get().encoder();
+        list.beginTransfer();
         try {
-            CgGL.glBindBuffer(CgGL.GL_COPY_READ_BUFFER, uploadedBuffer);
             for (int w = 0; w < writes; w++) {
                 CgBlockVersion v = writing[w];
                 CgMaterialArena arena = v.arena;
-                CgGL.glBindBuffer(CgGL.GL_COPY_WRITE_BUFFER, arena != null ? arena.buffer : v.buffer);
-                CgGL.glCopyBufferSubData(CgGL.GL_COPY_READ_BUFFER, CgGL.GL_COPY_WRITE_BUFFER, base + writingAt[w],
+                list.copyBuffer(uploadedBuffer, base + writingAt[w], arena != null ? arena.buffer : v.buffer,
                         arena != null ? (long) v.slot * arena.stride() : v.offset, v.floats.length * 4L);
                 writing[w] = null;
             }
         } finally {
-            CgGL.cgEndTransfer();
+            list.endTransfer();
+            CgDeviceSection.end();
         }
     }
 
     /**
-     * Writes {@code version}, a block in an arena, into its slot now and binds that slot alone at storage point
-     * {@code point}: a draw bound by {@code CgMaterial.bind()}, outside any recording. Render thread.
+     * Notes snapshot {@code id}'s textures and buffers ({@code CgBoundResources}), what a pass's sets read beside the
+     * snapshot itself. {@link #upload} first.
      */
-    public static void bindAlone(CgBlockVersion version, int point) {
-        BlockStore.STORE.bindAlone(version, point);
-    }
-
-    /** Binds snapshot {@code id}'s textures, blocks and buffers, an arena block as its whole arena. {@link #upload} first. */
     public void bind(int id) {
-        bind(id, true);
-    }
-
-    /**
-     * {@link #bind(int)}, an arena block as the whole arena where {@code whole}, for draws whose ids carry its slot, else
-     * as its slot's range alone.
-     */
-    public void bind(int id, boolean whole) {
         if (!uploaded) throw new IllegalStateException("bind() before upload()");
         int e = id * ENTRY_INTS;
         int r = id * ENTRY_REFS;
@@ -584,30 +576,9 @@ public final class CgBindingTable {
             CgTexture texture = (CgTexture) refs[r + t];
             int unit = entries[e + HEADER + t];
             texture.bind(unit);
-            CgSamplers.bind(unit, (CgSampler) refs[r + SAMPLER_REFS + t], texture);
-        }
-        if (entries[e] > 0) CgTexture.active(0);
-        for (int b = 0; b < entries[e + 1]; b++) {
-            int block = e + BLOCKS_AT + b * BLOCK_INTS;
-            int size = Math.max(16, (entries[block + 2] * 4 + 15) & ~15);
-            CgBlockVersion version = (CgBlockVersion) refs[r + BLOCK_REFS + b];
-            if (version != null && version.arena != null) {
-                CgMaterialArena a = version.arena;
-                CgGL.glBindBufferRange(CgGL.GL_SHADER_STORAGE_BUFFER, entries[block], a.buffer,
-                        whole ? 0 : (long) version.slot * a.stride(), whole ? (long) a.capacity * a.stride() : a.stride());
-            } else if (version != null) {
-                version.lastUse = CgFrameRing.frame();
-                CgGL.glBindBufferRange(CgGL.GL_UNIFORM_BUFFER, entries[block], version.buffer, version.offset, size);
-            } else {
-                CgGL.glBindBufferRange(CgGL.GL_UNIFORM_BUFFER, entries[block], uploadedBuffer,
-                        ringOffsets[id * MAX_BLOCKS + b], size);
-            }
+            CgBoundResources.sampler(unit, (CgSampler) refs[r + SAMPLER_REFS + t]);
         }
         for (int b = 0; b < entries[e + 2]; b++) ((CgShaderBuffer) refs[r + MAX_TEXTURES + b]).bind();
-        for (int b = 0; b < entries[e + 3]; b++) {
-            CgGL.glBindBufferBase(CgGL.GL_SHADER_STORAGE_BUFFER, entries[e + STORAGE_AT + b],
-                    ((CgBufferHandle) refs[r + STORAGE_REFS + b]).bufferId());
-        }
     }
 
     /**
@@ -784,76 +755,52 @@ public final class CgBindingTable {
         private static final int WRITTEN = CgTrace.name("blocks.persistent-written"), LIVE = CgTrace.name("blocks.persistent-live"),
                 ARENA_SLOTS = CgTrace.name("material.arena-slots"), ARENA_GROWS = CgTrace.name("material.arena-grows");
 
+        private static final Set<CgGpuBuffer.Usage> PAGE_USAGE = EnumSet.of(CgGpuBuffer.Usage.UNIFORM,
+                CgGpuBuffer.Usage.COPY_DST);
+        private static final Set<CgGpuBuffer.Usage> ARENA_USAGE = EnumSet.of(CgGpuBuffer.Usage.STORAGE,
+                CgGpuBuffer.Usage.COPY_SRC, CgGpuBuffer.Usage.COPY_DST);
+
         static final class Page {
-            final int buffer;
+            final CgGpuBuffer buffer;
             final CgOffsetAllocator ranges;
 
             Page(int units) {
-                buffer = CgGlNames.buffer();
-                CgGL.glBindBuffer(CgGL.GL_COPY_WRITE_BUFFER, buffer);
-                CgGL.glBufferData(CgGL.GL_COPY_WRITE_BUFFER, (long) units * ALIGNMENT, CgGL.GL_STATIC_DRAW);
+                buffer = CgRHI.get().createBuffer(new CgGpuBuffer.Desc("cg_blocks", (long) units * ALIGNMENT, PAGE_USAGE, false));
                 ranges = new CgOffsetAllocator(units);
             }
         }
 
         private final List<Page> pages = new ArrayList<>();
         private final List<CgBlockVersion> live = new ArrayList<>();
-        /** Every arena a version was written into; the buffers arenas outgrew, deleted once their frames retire. */
+        /** Every arena a version was written into. */
         private final List<CgMaterialArena> arenas = new ArrayList<>();
-        private int[] outgrown = new int[4];
-        private long[] outgrownFrames = new long[4];
-        private int outgrownCount;
-        /** {@link #bindAlone}'s staging, a slot's bytes. */
-        private ByteBuffer alone;
 
         /** Makes {@code a}'s buffer hold every slot given, copying what it held; outside any pass. */
         void fit(CgMaterialArena a) {
             int need = a.reach();
             if (need <= a.capacity) return;
             int slots = Math.max(CgMaterialArena.FIRST_SLOTS, Integer.highestOneBit(need - 1) << 1);
-            int grown = CgGlNames.buffer();
-            CgGL.glBindBuffer(CgGL.GL_COPY_WRITE_BUFFER, grown);
-            CgGL.glBufferData(CgGL.GL_COPY_WRITE_BUFFER, (long) slots * a.stride(), CgGL.GL_STATIC_DRAW);
-            if (a.buffer != 0) {
-                CgGL.cgBeginTransfer();
+            CgGpuBuffer grown = CgRHI.get().createBuffer(new CgGpuBuffer.Desc("cg_material_arena",
+                    (long) slots * a.stride(), ARENA_USAGE, false));
+            if (a.buffer != null) {
+                CgDeviceSection.begin();
+                CgCommandList list = CgRHI.get().encoder();
+                list.beginTransfer();
                 try {
-                    CgGL.glBindBuffer(CgGL.GL_COPY_READ_BUFFER, a.buffer);
-                    CgGL.glBindBuffer(CgGL.GL_COPY_WRITE_BUFFER, grown);
-                    CgGL.glCopyBufferSubData(CgGL.GL_COPY_READ_BUFFER, CgGL.GL_COPY_WRITE_BUFFER, 0, 0, (long) a.capacity * a.stride());
+                    list.copyBuffer(a.buffer, 0, grown, 0, (long) a.capacity * a.stride());
                 } finally {
-                    CgGL.cgEndTransfer();
+                    list.endTransfer();
+                    CgDeviceSection.end();
                 }
-                if (outgrownCount == outgrown.length) {
-                    outgrown = Arrays.copyOf(outgrown, outgrownCount * 2);
-                    outgrownFrames = Arrays.copyOf(outgrownFrames, outgrownCount * 2);
-                }
-                outgrown[outgrownCount] = a.buffer;
-                outgrownFrames[outgrownCount++] = CgFrameRing.frame();
+                // Destroyed once the frames that drew from it retire
+                if (CgGLImports.installed()) CgGLImports.get().forget(a.buffer);
+                CgRHI.get().release(a.buffer);
                 CgTrace.add(CgChannels.GL, ARENA_GROWS, 1);
             }
             a.buffer = grown;
             a.capacity = slots;
         }
 
-        /** {@link CgBindingTable#bindAlone}. */
-        void bindAlone(CgBlockVersion v, int point) {
-            CgMaterialArena a = v.arena;
-            a.slotOf(v);
-            a.unpin(v);
-            fit(a);
-            if (!v.written) {
-                if (alone == null || alone.capacity() < v.floats.length * 4) alone = CgBufferUtils.createByteBuffer(a.stride());
-                alone.clear();
-                alone.asFloatBuffer().put(v.floats);
-                alone.limit(v.floats.length * 4);
-                CgGL.glBindBuffer(CgGL.GL_COPY_WRITE_BUFFER, a.buffer);
-                CgGL.glBufferSubData(CgGL.GL_COPY_WRITE_BUFFER, (long) v.slot * a.stride(), alone);
-                v.written = true;
-                track(v);
-            }
-            v.lastUse = CgFrameRing.frame();
-            CgGL.glBindBufferRange(CgGL.GL_SHADER_STORAGE_BUFFER, point, a.buffer, (long) v.slot * a.stride(), a.stride());
-        }
         private long retiredScan = -1;
 
         /** The bytes {@code v} takes, aligned: what a write stages for it. */
@@ -863,7 +810,7 @@ public final class CgBindingTable {
 
         /** Gives {@code v} its range if it has none, answering whether it must be written now. */
         boolean place(CgBlockVersion v) {
-            if (v.buffer != 0) return false;
+            if (v.buffer != null) return false;
             int units = bytes(v) / ALIGNMENT;
             for (int i = 0; i < pages.size(); i++) {
                 if (take(pages.get(i), v, units)) return true;
@@ -915,19 +862,11 @@ public final class CgBindingTable {
                 // Unwritten again: a recording executed again places and writes it anew.
                 v.page = null;
                 v.node = -1;
-                v.buffer = 0;
+                v.buffer = null;
                 live.set(i, live.get(live.size() - 1));
                 live.remove(live.size() - 1);
             }
             CgTrace.counter(CgChannels.GL, LIVE, live.size());
-            for (int i = outgrownCount - 1; i >= 0; i--) {
-                if (outgrownFrames[i] > safe) continue;
-                CgFrameRing.awaitRetired(outgrownFrames[i]);
-                CgGL.glDeleteBuffers(outgrown[i]);
-                outgrownCount--;
-                outgrown[i] = outgrown[outgrownCount];
-                outgrownFrames[i] = outgrownFrames[outgrownCount];
-            }
             int slots = 0;
             for (int a = 0; a < arenas.size(); a++) slots += arenas.get(a).live();
             CgTrace.counter(CgChannels.GL, ARENA_SLOTS, slots);

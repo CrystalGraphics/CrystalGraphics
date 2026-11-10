@@ -1,8 +1,12 @@
 package com.crystalgraphics.render.mesh;
 
 import com.crystalgraphics.api.vertex.CgVertexFormat;
-import com.crystalgraphics.gl.CgGlNames;
-import com.crystalgraphics.platform.gl.CgGL;
+import com.crystalgraphics.platform.gl.CgGLImports;
+import com.crystalgraphics.platform.rhi.CgRHI;
+import com.crystalgraphics.platform.rhi.resource.CgGpuBuffer;
+
+import java.util.EnumSet;
+import java.util.Set;
 
 /**
  * The GPU storage of one vertex format: one vertex buffer and one 32-bit index buffer, each with an allocator over the
@@ -20,7 +24,8 @@ import com.crystalgraphics.platform.gl.CgGL;
  * }</pre>
  *
  * <ul>
- *   <li>A buffer a growth replaced is handed back to be deleted once the frames that drew from it have retired.</li>
+ *   <li>A buffer a growth replaced is released once its copy is recorded: the device destroys it when the frames that
+ *       drew from it have retired.</li>
  *   <li>A format past its ceiling (1 GiB of vertices or of indices) is refused: a second buffer would split its joins.</li>
  * </ul>
  */
@@ -35,8 +40,9 @@ final class CgMeshPool {
     /** Its place in the store's list of pools, by which a recorded copy names it. */
     final int index;
     final CgOffsetAllocator vertices, indices;
-    /** The buffers' names, 0 before the first upload that needs one, and how many vertices and indices each holds. */
-    int vertexBuffer, indexBuffer, vertexCapacity, indexCapacity;
+    /** The buffers, null before the first upload that needs one, and how many vertices and indices each holds. */
+    CgGpuBuffer vertexBuffer, indexBuffer;
+    int vertexCapacity, indexCapacity;
     /** The highest vertex and index any placement reaches: what the buffers must hold after the next upload. */
     private int vertexEnd, indexEnd;
 
@@ -70,29 +76,31 @@ final class CgMeshPool {
 
     /**
      * Makes each buffer large enough for every range placed, adding to {@code grown} the copy of each old buffer into its
-     * successor, and answering the old names to retire as {@code {vertex, index}}, 0 for one not replaced.
+     * successor; the old one is the store's to release once that copy is recorded.
      */
-    int[] grow(GrowthCopies grown) {
+    void grow(GrowthCopies grown) {
         int stride = format.getStride();
-        int oldVertex = 0, oldIndex = 0;
         if (stride > 0 && vertexEnd > vertexCapacity) {
             int capacity = capacity(vertexCapacity, vertexEnd, FIRST_VERTICES, vertices.size());
-            oldVertex = vertexBuffer;
-            vertexBuffer = buffer((long) capacity * stride);
-            if (oldVertex != 0) grown.add(oldVertex, vertexBuffer, (long) vertexCapacity * stride);
+            CgGpuBuffer old = vertexBuffer;
+            vertexBuffer = buffer("cg_mesh_vertices", (long) capacity * stride, VERTEX_USAGE);
+            if (old != null) grown.add(old, vertexBuffer, (long) vertexCapacity * stride);
             vertexCapacity = capacity;
         }
         if (indexEnd > indexCapacity) {
             int capacity = capacity(indexCapacity, indexEnd, FIRST_INDICES, indices.size());
-            oldIndex = indexBuffer;
-            indexBuffer = buffer((long) capacity * 4);
-            if (oldIndex != 0) grown.add(oldIndex, indexBuffer, (long) indexCapacity * 4);
+            CgGpuBuffer old = indexBuffer;
+            indexBuffer = buffer("cg_mesh_indices", (long) capacity * 4, INDEX_USAGE);
+            if (old != null) grown.add(old, indexBuffer, (long) indexCapacity * 4);
             indexCapacity = capacity;
         }
-        return oldVertex == 0 && oldIndex == 0 ? NONE_RETIRED : new int[] {oldVertex, oldIndex};
     }
 
-    private static final int[] NONE_RETIRED = {0, 0};
+    /** Vertices are pulled as words by the vertex stage; both are written only by copies. */
+    static final Set<CgGpuBuffer.Usage> VERTEX_USAGE = EnumSet.of(CgGpuBuffer.Usage.STORAGE,
+            CgGpuBuffer.Usage.COPY_SRC, CgGpuBuffer.Usage.COPY_DST);
+    static final Set<CgGpuBuffer.Usage> INDEX_USAGE = EnumSet.of(CgGpuBuffer.Usage.INDEX,
+            CgGpuBuffer.Usage.COPY_SRC, CgGpuBuffer.Usage.COPY_DST);
 
     /** The power of two at or past {@code end}, at least {@code first} and double {@code had}, within {@code ceiling}. */
     private static int capacity(int had, int end, int first, int ceiling) {
@@ -106,21 +114,25 @@ final class CgMeshPool {
     }
 
     void delete() {
-        if (vertexBuffer != 0) CgGL.glDeleteBuffers(vertexBuffer);
-        if (indexBuffer != 0) CgGL.glDeleteBuffers(indexBuffer);
-        vertexBuffer = indexBuffer = vertexCapacity = indexCapacity = 0;
+        if (vertexBuffer != null) release(vertexBuffer);
+        if (indexBuffer != null) release(indexBuffer);
+        vertexBuffer = indexBuffer = null;
+        vertexCapacity = indexCapacity = 0;
     }
 
-    /** A buffer of {@code bytes}, its contents undefined; never through the element binding, which a vertex array owns. */
-    private static int buffer(long bytes) {
-        int name = CgGlNames.buffer();
-        CgGL.glBindBuffer(CgGL.GL_COPY_WRITE_BUFFER, name);
-        CgGL.glBufferData(CgGL.GL_COPY_WRITE_BUFFER, bytes, CgGL.GL_STATIC_DRAW);
-        return name;
+    /** A device-local buffer of {@code bytes}, its contents undefined. */
+    static CgGpuBuffer buffer(String label, long bytes, Set<CgGpuBuffer.Usage> usage) {
+        return CgRHI.get().createBuffer(new CgGpuBuffer.Desc(label, bytes, usage, false));
+    }
+
+    /** Gives {@code buffer} back, destroyed once the frames that may read it have retired. */
+    static void release(CgGpuBuffer buffer) {
+        if (CgGLImports.installed()) CgGLImports.get().forget(buffer);
+        CgRHI.get().release(buffer);
     }
 
     /** Where {@link #grow} records its copies: the store's list, which it copies before anything else. */
     interface GrowthCopies {
-        void add(int from, int to, long bytes);
+        void add(CgGpuBuffer from, CgGpuBuffer to, long bytes);
     }
 }

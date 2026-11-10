@@ -613,7 +613,7 @@ public final class CgRasterPass extends CgPass {
 
     /** Whether framebuffer {@code framebuffer} refused a second attachment this context ({@link #attachmentIfTaken}). */
     public static boolean refusesAttachment(int framebuffer) {
-        return CgComposedTargets.refused(framebuffer);
+        return CgExecutor.refusedHost(framebuffer);
     }
 
     /** Its second colour attachment ({@link #attachment}), or null. */

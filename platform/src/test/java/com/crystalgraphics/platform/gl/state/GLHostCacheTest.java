@@ -1,16 +1,17 @@
 package com.crystalgraphics.platform.gl.state;
 
-import com.crystalgraphics.platform.gl.CgGL;
+import com.crystalgraphics.platform.gl.state.GLHostState.Domain;
 import org.junit.Test;
 
-import static com.crystalgraphics.platform.gl.state.CgCheckedProvider.bit;
+import static com.crystalgraphics.platform.gl.driver.GLC.GL_FUNC_ADD;
+import static com.crystalgraphics.platform.gl.driver.GLC.GL_TEXTURE0;
 import static org.junit.Assert.*;
 
 /**
- * {@link CgHostStateCache} against classes shaped like each era's {@code GlStateManager}, their fields renamed as SRG
- * and intermediary rename them, so only shape finds them; and against 26.2's, found by Mojang's names.
+ * {@link GLHostCache} against classes shaped like each era's {@code GlStateManager}, their fields renamed as SRG and
+ * intermediary rename them, so only shape finds them; and against 26.2's, found by Mojang's names.
  */
-public class CgHostStateCacheTest {
+public class GLHostCacheTest {
 
     /** Legacy Forge to 1.16.5: a light table of BooleanStates beside the texture table, an alpha test, no scissor. */
     @SuppressWarnings("unused")
@@ -103,33 +104,37 @@ public class CgHostStateCacheTest {
         private static int activeTexture;
     }
 
+    private static int bit(Domain d) {
+        return 1 << d.ordinal();
+    }
+
     @Test
     public void aLegacyCacheIsFoundByShapeBesideItsLightTable() throws Exception {
         Legacy.a8[2].name = 77;
-        CgHostStateCache cache = new CgHostStateCache(Legacy.class, 8,
-                unit -> Legacy.a7 = unit - CgGL.GL_TEXTURE0, () -> CgGL.GL_TEXTURE0 + 2);
+        Legacy.a1.test.on = true;
+        GLHostCache cache = new GLHostCache(Legacy.class, 8, unit -> Legacy.a7 = unit - GL_TEXTURE0, () -> GL_TEXTURE0 + 2);
 
-        assertEquals("legacy keeps no viewport", bit(CgGlSlot.VIEWPORT), cache.missing());
-        CgGlStateShadow t = new CgGlStateShadow();
-        for (CgGlSlot slot : new CgGlSlot[] {CgGlSlot.BLEND, CgGlSlot.DEPTH, CgGlSlot.CULL, CgGlSlot.ALPHA_TEST,
-                CgGlSlot.POLYGON_OFFSET, CgGlSlot.COLOR_MASK, CgGlSlot.SCISSOR}) {
-            assertTrue(slot.name(), cache.answer(slot, t));
+        assertEquals("the probe put the driver's unit back", 2, Legacy.a7);
+        assertEquals("legacy keeps no viewport", bit(Domain.VIEWPORT), cache.missing());
+        GLContextState s = new GLContextState();
+        for (Domain d : new Domain[] {Domain.BLEND, Domain.DEPTH, Domain.CULL, Domain.POLYGON, Domain.COLOR_MASK,
+                Domain.SCISSOR, Domain.STENCIL, Domain.TEXTURES}) {
+            assertTrue(d.name(), cache.read(d, s));
         }
-        assertEquals(770, t.blendSrcRgb);
-        assertEquals(771, t.blendDstRgb);
-        assertEquals(CgGL.GL_FUNC_ADD, t.blendEqRgb);
-        assertEquals(515, t.depthFunc);
-        assertEquals(1028, t.cullFace);
-        assertEquals(516, t.alphaFunc);
-        assertEquals(0.1f, t.alphaRef, 0f);
-        assertEquals(2f, t.polygonOffsetUnits, 0f);
-        assertEquals("red, green and alpha in every draw buffer", 0xBBBBBBBB, t.colorMaskPacked);
-        assertFalse("no scissor kept: off, as at every hook", t.scissorTest);
-
-        cache.textures(t, cache.unitsMask());
-        assertEquals("the probe found the unit and put the driver's back", 2, t.activeTextureUnit);
-        assertEquals(77, t.boundTexture2D[2]);
-        assertFalse("PROGRAM is the host's to answer", cache.answer(CgGlSlot.PROGRAM, t));
+        assertEquals(770, s.blendSrcRgb[0]);
+        assertEquals("glBlendFunc sets every draw buffer", 771, s.blendDstRgb[7]);
+        assertEquals(GL_FUNC_ADD, s.blendEqRgb[0]);
+        assertEquals(515, s.depthFunc);
+        assertEquals(1028, s.cullFace);
+        assertEquals(2f, s.offsetUnits, 0f);
+        assertEquals("red, green and alpha in every draw buffer", 0xB, s.colorMask[5]);
+        assertEquals("no scissor kept: off, as at every hook", 0, s.caps[GLContextState.cap(0x0C11)]);
+        assertEquals(GLContextState.UNKNOWN, s.scissorW);
+        assertEquals(77, s.unitTexture[2]);
+        assertEquals("only the units it models", GLContextState.UNKNOWN, s.unitTexture[8]);
+        assertEquals(1, cache.alphaTest());
+        assertFalse("PROGRAM is the host's to answer", cache.read(Domain.PROGRAM, s));
+        assertFalse("and the viewport, which it keeps none of", cache.read(Domain.VIEWPORT, s));
     }
 
     @Test
@@ -137,36 +142,44 @@ public class CgHostStateCacheTest {
         Core117.b7[5].binding = 41;
         Core117.Box.ONLY.w = 854;
         Core117.Box.ONLY.h = 480;
-        CgHostStateCache cache = new CgHostStateCache(Core117.class, 12,
-                unit -> Core117.b6 = unit - CgGL.GL_TEXTURE0, () -> CgGL.GL_TEXTURE0 + 5);
+        GLHostCache cache = new GLHostCache(Core117.class, 12, unit -> Core117.b6 = unit - GL_TEXTURE0, () -> GL_TEXTURE0 + 5);
 
-        assertEquals("from 1.17 there is no alpha test", bit(CgGlSlot.ALPHA_TEST), cache.missing());
-        CgGlStateShadow t = new CgGlStateShadow();
-        assertTrue(cache.answer(CgGlSlot.VIEWPORT, t));
-        assertEquals(854, t.viewportW);
-        assertEquals(480, t.viewportH);
-        cache.textures(t, 1 << 5);
-        assertEquals(5, t.activeTextureUnit);
-        assertEquals(41, t.boundTexture2D[5]);
+        assertEquals("every domain found", 0, cache.missing());
+        assertEquals("from 1.17 there is no alpha test", GLContextState.UNKNOWN, cache.alphaTest());
+        GLContextState s = new GLContextState();
+        assertTrue(cache.read(Domain.VIEWPORT, s));
+        assertEquals(854f, s.viewportW, 0f);
+        assertEquals(480f, s.viewportH, 0f);
+        assertTrue(cache.read(Domain.TEXTURES, s));
+        assertEquals(41, s.unitTexture[5]);
     }
 
     @Test
     public void aMojangNamedCacheReadsItsFirstDrawBuffer() throws Exception {
-        Mojang262.activeTexture = 3;
         Mojang262.TEXTURES[3].binding = 9;
-        CgHostStateCache cache = new CgHostStateCache(Mojang262.class, 12,
+        GLHostCache cache = new GLHostCache(Mojang262.class, 12,
                 unit -> { throw new AssertionError("found by name: no probe"); }, () -> 0);
 
-        assertEquals(bit(CgGlSlot.ALPHA_TEST) | bit(CgGlSlot.VIEWPORT), cache.missing());
-        CgGlStateShadow t = new CgGlStateShadow();
-        assertTrue(cache.answer(CgGlSlot.BLEND, t));
-        assertEquals(32774, t.blendEqRgb);
-        assertEquals(32776, t.blendEqAlpha);
-        assertEquals(1, t.blendSrcAlpha);
-        assertTrue(cache.answer(CgGlSlot.COLOR_MASK, t));
-        assertEquals(0xFFFFFFFF, t.colorMaskPacked);
-        cache.textures(t, 1 << 3);
-        assertEquals(3, t.activeTextureUnit);
-        assertEquals(9, t.boundTexture2D[3]);
+        assertEquals(bit(Domain.VIEWPORT), cache.missing());
+        GLContextState s = new GLContextState();
+        assertTrue(cache.read(Domain.BLEND, s));
+        assertEquals(32774, s.blendEqRgb[0]);
+        assertEquals(32776, s.blendEqAlpha[0]);
+        assertEquals(1, s.blendSrcAlpha[0]);
+        assertTrue(cache.read(Domain.COLOR_MASK, s));
+        assertEquals(0xF, s.colorMask[0]);
+        assertTrue(cache.read(Domain.TEXTURES, s));
+        assertEquals(9, s.unitTexture[3]);
+    }
+
+    @Test
+    public void aStateComparesOnlyWhatItHolds() {
+        GLContextState answer = new GLContextState(), truth = new GLContextState();
+        truth.depthFunc = 515;
+        truth.program = 4;
+        answer.depthFunc = 515;
+        assertNull("the program unknown in the answer is skipped", answer.differences(truth));
+        answer.depthFunc = 513;
+        assertEquals("depthFunc 513 vs 515", answer.differences(truth));
     }
 }

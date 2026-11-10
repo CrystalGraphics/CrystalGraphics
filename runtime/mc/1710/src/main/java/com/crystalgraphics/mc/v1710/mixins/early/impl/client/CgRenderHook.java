@@ -1,5 +1,6 @@
 package com.crystalgraphics.mc.v1710.mixins.early.impl.client;
 
+import com.crystalgraphics.platform.rhi.CgDeviceSection;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.loading.CgLoadingScreen;
 import com.crystalgraphics.mc.v1710.platform.HostView1710;
@@ -122,12 +123,12 @@ public class CgRenderHook {
         // One host section for both: each section reads the host's state back with glGet, which waits for the
         // driver's queue (1.7.10 has no state cache), and a loading frame's queue is deep
         boolean section = CgGraphicsLifecycle.isInitialized();
-        if (section) CgGL.fromHost();
+        if (section) CgDeviceSection.begin();
         try {
             LoadingScreen1710.draw(mc);
             CgGraphicsLifecycle.tickFrame();
         } finally {
-            if (section) CgGL.toHost();
+            if (section) CgDeviceSection.end();
         }
         CgLoadingScreen.runHeld();
     }

@@ -14,10 +14,7 @@ import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.loading.CgLoadingScreen;
 import com.crystalgraphics.mc.CgAssetReloader;
 import com.crystalgraphics.platform.CgPlatform;
-import com.crystalgraphics.platform.gl.CgGL;
-import com.crystalgraphics.platform.gl.state.CgGlScope;
-import com.crystalgraphics.platform.gl.state.CgGlSlot;
-import com.crystalgraphics.platform.gl.state.CgGlState;
+import com.crystalgraphics.platform.rhi.CgDeviceSection;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.entity.Entity;
@@ -31,8 +28,8 @@ import org.lwjgl.glfw.GLFW;
 import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.textures.GpuTexture;
-import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL30;
+import org.lwjgl.opengl.GL45C;
 *///?} elif >=1.21.5 {
 /*import com.mojang.blaze3d.opengl.GlDevice;
 import com.mojang.blaze3d.opengl.GlTexture;
@@ -45,6 +42,8 @@ import java.util.function.UnaryOperator;
 *///?}
 //? if >=26.2 {
 /*import com.crystalgraphics.mc.modern.platform.vulkan.Blaze3dVulkanHost;
+import com.crystalgraphics.platform.gl.CgGL;
+import org.lwjgl.opengl.GL11;
 *///?}
 
 /**
@@ -84,11 +83,9 @@ public final class LifecycleModern {
     public static void opaquePass(float partialTick) {
         if (!canRender()) return;
         Minecraft mc = Minecraft.getInstance();
-        // The target and depth convention below are ours to set, so the bracket opens before them.
-        CgGL.fromHost();
+        CgDeviceSection.begin();
         try {
-            // THE MAIN TARGET, RE-BOUND. Fabulous graphics leaves one of its OIT targets bound, and the
-            // engine's passes would draw into whichever that was.
+            // Named, not bound: Fabulous graphics leaves one of its OIT targets bound
             int mainFbo = bindMainTarget(mc);
             worldDepth(true);
             try {
@@ -103,7 +100,7 @@ public final class LifecycleModern {
                 worldDepth(false);
             }
         } finally {
-            CgGL.toHost();
+            CgDeviceSection.end();
         }
         // Off unless -Dcrystalgraphics.host.verify=true. @see HostStateVerifier
         HostStateVerifier.verify("opaque");
@@ -122,7 +119,7 @@ public final class LifecycleModern {
      */
     public static void transparentPass() {
         if (!canRender()) return;
-        CgGL.fromHost();
+        CgDeviceSection.begin();
         try {
             Minecraft mc = Minecraft.getInstance();
             int mainFbo = bindMainTarget(mc);
@@ -140,7 +137,7 @@ public final class LifecycleModern {
                 worldDepth(false);
             }
         } finally {
-            CgGL.toHost();
+            CgDeviceSection.end();
         }
         HostStateVerifier.verify("transparent");
     }
@@ -187,13 +184,13 @@ public final class LifecycleModern {
         //? if >=1.15 <1.21.6 {
         mc.renderBuffers().bufferSource().endBatch();
         //?}
-        CgGL.fromHost();
+        CgDeviceSection.begin();
         try {
             int mainFbo = bindMainTarget(mc);
             stage.fireOverlay(Windows.of(mc).getWidth(), Windows.of(mc).getHeight(),
                     (float) Windows.of(mc).getGuiScale(), mainFbo);
         } finally {
-            CgGL.toHost();
+            CgDeviceSection.end();
         }
     }
 
@@ -208,11 +205,11 @@ public final class LifecycleModern {
     /**
      * Draws into Minecraft's world depth as that world does: 26.2 renders reversed-Z, nearer greater and
      * cleared to 0, on OpenGL as on Vulkan. Earlier versions are standard, and this does nothing there.
-     * @see CgGL#setDepthReversed
+     * @see CgGraphicsLifecycle#hostDepth
      */
     private static void worldDepth(boolean inWorld) {
         //? if >=26.2 {
-        /*CgGL.setDepthReversed(inWorld, RenderSystem.getDevice().getDeviceInfo().isZZeroToOne());
+        /*CgGraphicsLifecycle.hostDepth(inWorld, RenderSystem.getDevice().getDeviceInfo().isZZeroToOne());
         *///?}
     }
 
@@ -256,11 +253,11 @@ public final class LifecycleModern {
         /*CgLoadingScreen.hostWorld(CgTextureType.DEPTH32F, true,
                 RenderSystem.getDevice().getDeviceInfo().isZZeroToOne());
         *///?}
-        CgGL.fromHost();
+        CgDeviceSection.begin();
         try {
             CgLoadingScreen.draw(bindMainTarget(mc), Windows.of(mc).getWidth(), Windows.of(mc).getHeight());
         } finally {
-            CgGL.toHost();
+            CgDeviceSection.end();
         }
     }
 
@@ -326,38 +323,24 @@ public final class LifecycleModern {
     }
 
     /**
-     * Binds Minecraft's main target for drawing and answers its GL framebuffer.
+     * Minecraft's main target's GL framebuffer, which a stage or a paint names as its current target. Below 1.21.5 it
+     * is bound too, through Minecraft, so its cache and the driver agree.
      *
      * <pre>{@code
      * int fbo = LifecycleModern.bindMainTarget(Minecraft.getInstance());
      * }</pre>
      *
-     * <p>Call it before drawing outside a world pass from 1.21.5, where Minecraft binds a target only
-     * inside its own render passes and leaves whichever the last one used. A target there has no
+     * <p>From 1.21.5 Minecraft binds a target only inside its own render passes, and a target there has no
      * framebuffer of its own: its colour texture keeps one per depth attachment.</p>
      */
     public static int bindMainTarget(Minecraft mc) {
         //? if >=26.1 {
-        /*RenderTarget main = CgMinecraftClient.mainTarget(mc);
-        // Meant to stay bound, for our passes and for Minecraft's next draw: handed over, not restored.
-        try (CgGlScope ignored = CgGlState.handOver(CgGlSlot.FBO, CgGlSlot.VIEWPORT)) {
-            int fbo = mainFbo(main);
-            CgGL.glBindFramebuffer(GL30.GL_FRAMEBUFFER, fbo);
-            CgGL.glViewport(0, 0, main.width, main.height);
-            return fbo;
-        }
+        /*return mainFbo(CgMinecraftClient.mainTarget(mc));
         *///?} elif >=1.21.5 {
         /*RenderTarget main = mc.getMainRenderTarget();
-        int fbo = ((GlTexture) hostTexture.apply(main.getColorTexture()))
+        return ((GlTexture) hostTexture.apply(main.getColorTexture()))
                 .getFbo(((GlDevice) hostDevice.apply(RenderSystem.getDevice())).directStateAccess(),
                         hostTexture.apply(main.getDepthTexture()));
-        // Handed over as 26.1's is, and through CgGL so the stage that follows knows both without asking the driver.
-        try (CgGlScope ignored = CgGlState.handOver(CgGlSlot.FBO, CgGlSlot.VIEWPORT)) {
-            CgGL.glBindFramebuffer(GL30.GL_FRAMEBUFFER, fbo);
-            // The viewport is the last pass's too -- the lightmap's 16x16, as often as not.
-            CgGL.glViewport(0, 0, main.width, main.height);
-            return fbo;
-        }
         *///?} else {
         mc.getMainRenderTarget().bindWrite(false);
         return mc.getMainRenderTarget().frameBufferId;
@@ -423,7 +406,7 @@ public final class LifecycleModern {
     // OUR framebuffer over the main target's two textures: from 26.1 Minecraft's own is kept on a
     // package-private device (GlDevice). Attached as Minecraft's FrameBufferCache attaches them -- depth
     // alone, or depth and stencil when the texture has both (NeoForge's stencilled target), which is what
-    // the depth snapshot reads its format and blit mask from. Through CgGL, so the shadow sees it.
+    // the depth snapshot reads its format and blit mask from. Made with DSA: nothing bound.
     //
     // Keyed on the TEXTURE OBJECTS, not their GL names: a resize deletes both while this framebuffer is
     // bound, which detaches them, and the driver can hand the new ones the same names -- keyed on names,
@@ -431,11 +414,24 @@ public final class LifecycleModern {
     private static int mainFbo(GpuTexture color, GpuTexture depth, boolean stencil) {
         if (mainFbo != -1 && mainColor == color && mainDepth == depth) return mainFbo;
         deleteMainFbo();
-        mainFbo = CgGL.glGenFramebuffers();
-        CgGL.glBindFramebuffer(GL30.GL_FRAMEBUFFER, mainFbo);
-        CgGL.glFramebufferTexture2D(GL30.GL_FRAMEBUFFER, GL30.GL_COLOR_ATTACHMENT0, GL11.GL_TEXTURE_2D, name(color), 0);
-        CgGL.glFramebufferTexture2D(GL30.GL_FRAMEBUFFER,
-                stencil ? GL30.GL_DEPTH_STENCIL_ATTACHMENT : GL30.GL_DEPTH_ATTACHMENT, GL11.GL_TEXTURE_2D, name(depth), 0);
+        int depthAttachment = stencil ? GL30.GL_DEPTH_STENCIL_ATTACHMENT : GL30.GL_DEPTH_ATTACHMENT;
+        //? if >=26.2 {
+        if (GraphicsApi.vulkan()) {
+            // Under the tracked backend's names for Minecraft's images
+            mainFbo = CgGL.glGenFramebuffers();
+            CgGL.glBindFramebuffer(GL30.GL_FRAMEBUFFER, mainFbo);
+            CgGL.glFramebufferTexture2D(GL30.GL_FRAMEBUFFER, GL30.GL_COLOR_ATTACHMENT0, GL11.GL_TEXTURE_2D, name(color), 0);
+            CgGL.glFramebufferTexture2D(GL30.GL_FRAMEBUFFER, depthAttachment, GL11.GL_TEXTURE_2D, name(depth), 0);
+        } else {
+            mainFbo = GL45C.glCreateFramebuffers();
+            GL45C.glNamedFramebufferTexture(mainFbo, GL30.GL_COLOR_ATTACHMENT0, name(color), 0);
+            GL45C.glNamedFramebufferTexture(mainFbo, depthAttachment, name(depth), 0);
+        }
+        //?} else {
+        /^mainFbo = GL45C.glCreateFramebuffers();
+        GL45C.glNamedFramebufferTexture(mainFbo, GL30.GL_COLOR_ATTACHMENT0, name(color), 0);
+        GL45C.glNamedFramebufferTexture(mainFbo, depthAttachment, name(depth), 0);
+        ^///?}
         mainColor = color;
         mainDepth = depth;
         CgEngineLifecycle.addListener(MAIN_FBO_OWNER);
@@ -443,7 +439,12 @@ public final class LifecycleModern {
     }
 
     private static void deleteMainFbo() {
-        if (mainFbo != -1) CgGL.glDeleteFramebuffers(mainFbo);
+        //? if >=26.2 {
+        if (mainFbo != -1 && GraphicsApi.vulkan()) CgGL.glDeleteFramebuffers(mainFbo);
+        else if (mainFbo != -1) GL30.glDeleteFramebuffers(mainFbo);
+        //?} else {
+        /^if (mainFbo != -1) GL30.glDeleteFramebuffers(mainFbo);
+        ^///?}
         mainFbo = -1;
     }
 
@@ -459,7 +460,7 @@ public final class LifecycleModern {
     private static Boolean canRender;
 
     /**
-     * Whether this session can render through {@code CgGL}: Minecraft's GL context, or from 26.2 its Vulkan
+     * Whether this session can render: Minecraft's GL context, or from 26.2 its Vulkan
      * device, which then hosts ours. Decided once, on the render thread. A {@code false} stands the engine down
      * for the session ({@link CgGraphicsLifecycle#standDown}) and says why.
      *

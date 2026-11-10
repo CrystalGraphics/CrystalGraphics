@@ -9,12 +9,10 @@ import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.texture.CgTextureSpec;
 import com.crystalgraphics.gpu.CgDeferral;
 import com.crystalgraphics.mc.CgReloadable;
-import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.CgGLImports;
 import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
 import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
-import com.crystalgraphics.platform.gl.state.CgGlSlot;
 import com.crystalgraphics.trace.CgTrace;
 import javax.annotation.Nullable;
 import com.crystalgraphics.util.trace.CgChannels;
@@ -62,7 +60,7 @@ public abstract class CgTextureAbstract implements CgTexture, CgReloadable {
      * This texture's GL work, in order, each piece handing back the binding it moved. Spread over frames: {@code bind} and
      * {@code getId} land it first, so a burst of decoded textures lands within a frame's budget unless one is used.
      */
-    protected final CgDeferral gpu = new CgDeferral(CgGlSlot.TEXTURES).spreadOverFrames();
+    protected final CgDeferral gpu = new CgDeferral().spreadOverFrames();
     /** Width of the texture at mip level 0, in pixels; 0 until a texture from files loads. */
     protected int width;
     /** Height of the texture at mip level 0, in pixels; 0 until a texture from files loads. */
@@ -137,29 +135,11 @@ public abstract class CgTextureAbstract implements CgTexture, CgReloadable {
     // ── CgTexture — binding ─────────────────────────────────────────
 
     @Override
-    public void bind() {
-        checkUsable();
-        gpu.flush();
-        CgTexture.bind(getTarget(),textureId);
-    }
-
-    @Override
     public void bind(int unit) {
         checkUsable();
         gpu.flush();
         CgBoundResources.texture(unit, this, -1);
-        if (CgBoundResources.notesOnly) return;
-        if (SKIP_HELD) {
-            CgGL.cgBindTexture(unit, getTarget(), textureId);
-            return;
-        }
-        CgTexture.active(unit);
-        CgTexture.bind(getTarget(),textureId);
     }
-
-    /** A bind to a unit already holding the texture issues nothing, its unit switch included (T11 A). */
-    private static final boolean SKIP_HELD = CgVar.bool("crystalgraphics.texture.skipHeld", true,
-            CgVar.DEV | CgVar.RESTART, "Binding a texture to a unit that holds it switches no unit; off, as before.").get();
 
     // ── CgTexture — accessors ───────────────────────────────────────
 
@@ -276,8 +256,6 @@ public abstract class CgTextureAbstract implements CgTexture, CgReloadable {
                 CgGLImports.get().forget(image);
                 CgRHI.get().release(image);
                 image = null;
-            } else if (owned && textureId != 0) {
-                CgGL.glDeleteTextures(textureId);
             }
             textureId = 0;
         });
@@ -287,31 +265,27 @@ public abstract class CgTextureAbstract implements CgTexture, CgReloadable {
 
     /**
      * Render thread: storage on the device of {@code kind} and {@code format}, {@code width x height x depthOrLayers},
-     * {@code chain} levels, made where it has none of that shape: its {@code CgGL} name taken with it, {@code sampling}'s
-     * parameters set there, through all {@code chain} levels. Answers the storage it replaced, which the caller releases
-     * (once it has copied out of it) through {@link CgDeviceTextures#release}; null where nothing changed or it had none.
+     * {@code chain} levels, made where it has none of that shape, its {@code CgGL} name taken with it. Answers the storage
+     * it replaced, which the caller releases (once it has copied out of it) through {@link CgDeviceTextures#release}; null
+     * where nothing changed or it had none.
      */
     @Nullable
     protected final CgGpuTexture storeOnDevice(CgGpuTexture.Kind kind, CgFormat format, int width, int height,
-                                               int depthOrLayers, int chain, CgTextureSpec sampling) {
+                                               int depthOrLayers, int chain) {
         if (CgDeviceTextures.fits(image, format, width, height, depthOrLayers, chain)) return null;
         CgGpuTexture old = image;
-        if (old == null && textureId != 0 && owned) CgGL.glDeleteTextures(textureId);   // made through CgGL before the device
         image = CgDeviceTextures.create(source(), kind, format, width, height, depthOrLayers, chain);
         textureId = CgGLImports.get().name(image);
-        int target = getTarget();
-        CgGL.glBindTexture(target, textureId);
-        try {
-            sampling.applySampling(target);
-            CgGL.glTexParameteri(target, CgGL.GL_TEXTURE_MAX_LEVEL, chain - 1);
-            if (chain > 1) {
-                CgGL.glTexParameteri(target, CgGL.GL_TEXTURE_MIN_FILTER, sampling.getMinFilter() == CgGL.GL_NEAREST
-                        ? CgGL.GL_NEAREST_MIPMAP_NEAREST : CgGL.GL_LINEAR_MIPMAP_LINEAR);
-            }
-        } finally {
-            CgGL.glBindTexture(target, 0);
-        }
         return old;
+    }
+
+    /** Render thread: its device storage, for a write into part of it. */
+    protected final CgGpuTexture storage() {
+        if (image == null) {
+            throw new IllegalStateException(owned ? source() + " has no storage yet: upload it whole first"
+                    : "A wrapped " + getClass().getSimpleName() + " belongs to its host");
+        }
+        return image;
     }
 
     // ── Internal ────────────────────────────────────────────────────

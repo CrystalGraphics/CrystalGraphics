@@ -261,7 +261,7 @@ program a draw alone runs.
 
 #### Vertex Attribute Aliases
 
-Available in the vertex stage only. Locations are bound by `CgShaderFactory` before link — no `layout(location=N)` needed in shader code:
+Available in the vertex stage only. Locations are placed by the vertex format at compile — no `layout(location=N)` needed in shader code:
 
 | Alias | Type | Location |
 |---|---|---|
@@ -1063,73 +1063,16 @@ float a = CG_DEPTH_FADE(texture(_Mask, uv).r, _FadeDistance, gl_FragCoord.xy / C
 
 **Package guides for this layer**: `api/material/CLAUDE.md` · `render/CLAUDE.md` · `render/world/CLAUDE.md` · `render/stage` (its classes' javadoc) · `gl/material/CLAUDE.md` · `gl/material/parse/CLAUDE.md`
 
-### Raw Shaders
+### No raw shaders
 
-**Use `CgMaterial.load()` for all shader authoring work.** Raw `CgShader` is for infrastructure-level GL work only — fullscreen blits, post-processing passes, debug utilities, or standalone procedural draws that do not fit the `.shader` material model.
-
-```java
-CgShader shader = CgShaderFactory.load(
-        "mymod:shaders/blit.vert",
-        "mymod:shaders/blit.frag");
-```
-
-#### cg_env.glsl is NOT auto-included
-
-Unlike `.shader` materials, raw shader files do **not** get `cg_env.glsl` automatically. If you need the frame UBO, per-instance macros, or vertex attribute aliases, include it explicitly at the top of your `.vert` / `.frag`:
-
-```glsl
-#version 330 core
-#include "crystalgraphics:shaders/env/cg_env.glsl"
-// Now CG_MATRIX_MVP, cg_Time, CG_OBJECT_TO_WORLD, etc. are available
-```
-
-#### Binding uniforms
-
-`CgShader` has two binding containers with different lifetimes:
-
-| Method | Lifetime | Typical use |
-|---|---|---|
-| `shader.applyBindings(b -> { … })` | **Ephemeral** — flushed once on next `bind()`, then auto-cleared | Per-frame values (time, matrices, texture slots) |
-| `shader.bindings().set1f(…)` etc. | **Persistent** — survives across frames until explicitly overwritten | Static material parameters |
-
-```java
-// Ephemeral (cleared after each bind):
-shader.applyBindings(b -> {
-    b.set1f("u_time", elapsedSeconds);
-    b.sampler2D("u_tex", 0, myTexture);
-    b.mat4("u_mvp", mvpMatrix);
-});
-
-// Persistent (stays set):
-shader.bindings().set1f("u_exposure", 1.0f);
-```
-
-> `applyBindings` (raw `CgShader` uniform setters) is a different API from `applyProperties` (`CgMaterial` property block values). Do not confuse them.
-
-#### Scoped bind
-
-`bindScoped()` is a try-with-resources helper that restores the previously bound GL program on exit:
-
-```java
-try (CgShaderScope scope = shader.bindScoped()) {
-    shader.applyBindings(b -> {
-        b.set1f("u_time", elapsed);
-        b.sampler2D("u_tex", 0, myTexture);
-    });
-    CgGL.glDrawArrays(CgGL.GL_TRIANGLES, 0, 3);   // a fullscreen triangle
-}  // prior program restored automatically
-```
-
-#### GLSL library files
-
-Raw shaders can use the same standard library as `.shader` materials. Include any lib file explicitly:
+There is no API that compiles GLSL text: a full-screen pass is a post material (`CgPostMaterial`) or a raster pass
+drawing a material, and GPU work that is not drawing is a kernel. Both get `cg_env.glsl`, and either may include the
+standard library, each file guarded by `#pragma once`:
 
 ```glsl
 #include "crystalgraphics:shaders/lib/color.glsl"
 #include "crystalgraphics:shaders/lib/noise.glsl"
 ```
-
-`#pragma once` in each lib file prevents double-expansion regardless of include order.
 
 **Package guides**: `api/shader/CLAUDE.md` · `gl/shader/CLAUDE.md` · `mc/shader/CLAUDE.md`
 
@@ -1490,18 +1433,12 @@ particles.kernel("Simulate").precache();                 // each kernel and keyw
 particles.kernel("Simulate").withKeywords("WIND").precache();
 ```
 
-- Where the driver links on its own threads (`KHR_parallel_shader_compile`), the link runs while frames go on; the
-  dispatch that takes the program waits for what is left (`compute.compileWait`, counted by `compute.compile-waits`).
-- Once the driver has linked it, a frame boundary makes it ready and binds it once (`compute.finishPrecached`, about
-  1 ms a frame at most), **only while the link worker has no link with the driver** (`CgLinkWorker.linking()`): during
-  one, NVIDIA makes the render thread's program calls wait for it, up to half a second. `kernel.isReady()` answers
-  true only once that is done, so a precached kernel a pool waits for never finishes at its dispatch. A material's
-  commit and its variants keep the same rule.
-- **The worker compiles in a context sharing nothing with the render thread's** where the driver gives program
-  binaries (`CgLinkWorker.isolated()`, `-Dcrystalgraphics.shader.isolatedCompile`): each program linked there is moved
-  to the shared context as a binary (`glProgramBinary`, milliseconds). Compiled on a shared context, NVIDIA held the
-  render thread's GL calls while it compiled, whatever the call: a cold 1.7.10 launch's loading screen held 7.6 s in
-  all, 1.2 s compiled apart. macOS lists no binary format, so it compiles shared.
+- The compile runs on a job worker (`CgShaderCompile`) while frames go on; the dispatch that takes the program waits
+  for what is left (`compute.compileWait`, counted by `compute.compile-waits`). Before the toolchain lands, a GL-era
+  host's native compiler compiles at that first ask, on the render thread.
+- Once compiled, a frame boundary makes it ready (`compute.finishPrecached`, about 1 ms a frame at most).
+  `kernel.isReady()` answers true only once that is done, so a precached kernel a pool waits for never finishes at its
+  dispatch. A material's commit and its variants keep the same rule.
 - On a Vulkan device a host keeps shaderc's output and the pipeline cache across launches
   (`CgCacheDirectory`, `crystalgraphics/cache/` under the game directory): a second launch compiles roughly half as
   long.

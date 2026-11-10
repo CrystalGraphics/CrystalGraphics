@@ -1,5 +1,8 @@
 package com.crystalgraphics.lifecycle;
 
+import com.crystalgraphics.platform.rhi.CgRHI;
+import com.crystalgraphics.platform.rhi.CgDeviceSection;
+import com.crystalgraphics.platform.gl.state.GLCheckedHostState;
 import com.crystalgraphics.collision.debug.CgCollisionDebug;
 import com.crystalgraphics.mc.CgHotReload;
 import com.crystalgraphics.compute.CgCompute;
@@ -17,10 +20,6 @@ import com.crystalgraphics.probe.CgWorldProbe;
 import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.CgPlatform;
-import com.crystalgraphics.platform.gl.state.CgCheckedProvider;
-import com.crystalgraphics.platform.gl.state.CgGlCensus;
-import com.crystalgraphics.platform.gl.state.CgGlScope;
-import com.crystalgraphics.platform.gl.state.CgGlState;
 import com.crystalgraphics.platform.service.CgCacheDirectory;
 import com.crystalgraphics.job.CgJob;
 import com.crystalgraphics.job.CgJobLane;
@@ -39,20 +38,15 @@ import com.crystalgraphics.render.world.CgPipelinePrecache;
 import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.vfx.CgVfx;
 import com.crystalgraphics.api.CgBindingPoints;
-import com.crystalgraphics.gl.CgGlNames;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
-import com.crystalgraphics.gl.buffer.CgQuadIndexBuffer;
 import com.crystalgraphics.gl.buffer.CgStreamBuffer;
 import com.crystalgraphics.gl.buffer.CgReadback;
 import com.crystalgraphics.render.CgGpuBudget;
 import com.crystalgraphics.gl.buffer.shader.CgShaderBufferRegistry;
 import com.crystalgraphics.gl.material.CgMaterialShader;
-import com.crystalgraphics.gl.shader.CgLinkWorker;
 import com.crystalgraphics.gl.framebuffer.CgFrameBufferRegistry;
 import com.crystalgraphics.gl.material.CgMaterialShaderRegistry;
 import com.crystalgraphics.render.mesh.CgMeshStore;
-import com.crystalgraphics.gl.texture.CgSamplers;
-import com.crystalgraphics.gl.texture.CgTextureCopy;
 import com.crystalgraphics.gl.texture.CgFallbackTextures;
 import com.crystalgraphics.noise.CgNoiseVolumes;
 import com.crystalgraphics.noise.CgWaveletNoise;
@@ -84,7 +78,6 @@ import com.crystalgraphics.shadergraph.CgPreviewPool;
  * <h3>Teardown order, geometry first</h3>
  * <ol>
  *   <li>{@link CgMeshStore#releaseAll()} — its pools' buffers and its one VAO</li>
- *   <li>{@link CgQuadIndexBuffer#freeAll()} — shared quad IBO</li>
  * </ol>
  *
  * <p>After all GL objects are freed, backend-capability caches are reset so that
@@ -208,6 +201,15 @@ public final class CgGraphicsLifecycle {
             startAhead();
             CgPlatform.gl().initContext();
             CgStartSteps.step("context");
+            // A GL-era host's device, before the probe below (capabilities are the device's) and before anything
+            // compiles: its first programs are the driver's own. Inside a section, which the device joins as it installs
+            CgDeviceSection.begin();
+            try {
+                CgToolchainDevice.startAll();
+            } finally {
+                CgDeviceSection.end();
+            }
+            CgStartSteps.step("device");
             // Probe capabilities here, on the render thread with a live context, so CgGL.CORE is set
             // before anything can paint. Its guards read the field rather than calling detect() per GL
             // call, and a fixed-function call that beat the first probe would see false and reach a
@@ -217,25 +219,17 @@ public final class CgGraphicsLifecycle {
             // waits for the whole link (cold vfx-modules 113 s -> 58 s).
             if (CgCapabilities.detect().isParallelShaderCompile()) CgGL.glMaxShaderCompilerThreads(0xFFFFFFFF);
             CgStartSteps.step("capabilities");
-            // Links on a shared context of their own: under a threaded driver, every status query on this one waits for
-            // the compiles queued before it.
-            CgLinkWorker.start();
-            // While links run or the loading screen shows: a check's glGet waits for the driver's queue, deepest then
-            CgCheckedProvider.deferChecksWhile(() -> CgLinkWorker.linking() || CgLoadingScreen.hostDraws());
-            CgStartSteps.step("link worker");
-            // Before anything queues: a name generated later waits for the driver's queue, deepest while loading
-            CgGlNames.fill();
-            CgStartSteps.step("names");
+            // While the loading screen shows: a check's glGet waits for the driver's queue, deepest then
+            GLCheckedHostState.deferChecksWhile(CgLoadingScreen::hostDraws);
             CgStartSteps.pause();
             return;
         }
         CgStartSteps.resume();
-        CgGL.fromHost();
+        CgDeviceSection.begin();
         try {
-            if (at == 1) CgGlState.manager().adoptCapturedPoints();   // the queue is short here; a first compute pass mid-frame is not
             inOwnDepthConvention(() -> startStage(at, width, height));
         } finally {
-            CgGL.toHost();
+            CgDeviceSection.end();
         }
         if (!initialized) CgStartSteps.pause();
     }
@@ -243,23 +237,15 @@ public final class CgGraphicsLifecycle {
     private static void startStage(int at, int width, int height) {
         switch (at) {
             case 1 -> {
-                // One scope for everything built below: pipeline targets, fallback textures, the text
-                // material's first bind. It runs inside the host's world pass, and left its bindings and
-                // render state behind.
-                try (CgGlScope ignored = CgGlState.saveAll()) {
-                    // A GL-era host's device, before anything compiles: its first programs are the driver's own
-                    CgToolchainDevice.startAll();
-                    CgStartSteps.step("device");
-                    resizeTargets(width, height);
-                    CgBindingPoints.init(CgCapabilities.detect());
-                    CgFallbackTextures.init();
-                    // A frame's execution and the immediate draws nested in its callbacks (a HUD's text)
-                    CgExecutor.ahead(2);
-                    CgStartSteps.step("targets and fallbacks");
-                    CgNoiseVolumes.install();
-                    CgWaveletNoise.install();
-                    CgStartSteps.step("noise");
-                }
+                resizeTargets(width, height);
+                CgBindingPoints.init(CgCapabilities.detect());
+                CgFallbackTextures.init();
+                // A frame's execution and the immediate draws nested in its callbacks (a HUD's text)
+                CgExecutor.ahead(2);
+                CgStartSteps.step("targets and fallbacks");
+                CgNoiseVolumes.install();
+                CgWaveletNoise.install();
+                CgStartSteps.step("noise");
             }
             case 2 -> {
                 // Before the first install that may reach what the worker initializes: two threads initializing classes
@@ -330,26 +316,47 @@ public final class CgGraphicsLifecycle {
      * @see CgPassConstants#hostDepth()
      */
     public static boolean hostDepthReversed() {
-        return CgGL.isDepthReversed();
+        return depthReversed;
     }
 
     /** Whether the host's reversed depth runs {@code 0..1} in clip space; false where it is not reversed. */
     public static boolean hostDepthZeroToOne() {
-        return CgGL.isDepthZeroToOne();
+        return depthZeroToOne;
+    }
+
+    private static boolean depthReversed, depthZeroToOne;
+
+    /**
+     * The host draws into a reversed depth buffer from here (Minecraft 26.2's world: nearer greater, cleared to 0), or
+     * no longer: every pass after it into the host's depth mirrors its depth tests and clears, and a projection built
+     * for the pass is built reversed. Render thread, around the host's world passes.
+     *
+     * <pre>{@code
+     * CgGraphicsLifecycle.hostDepth(true, zeroToOne);   // zeroToOne: the host's clip-space depth runs 0..1
+     * try {
+     *     CgRenderStage.WORLD_OPAQUE.fire();
+     * } finally {
+     *     CgGraphicsLifecycle.hostDepth(false, false);
+     * }
+     * }</pre>
+     */
+    public static void hostDepth(boolean reversed, boolean zeroToOne) {
+        depthReversed = reversed;
+        depthZeroToOne = reversed && zeroToOne;
     }
 
     /**
      * Runs {@code body} with depth unmirrored, for work on our own targets: init and resize usually arrive
      * inside a world pass, which on 26.2 mirrors every depth function and clear for Minecraft's reversed-Z
-     * world. @see CgGL#setDepthReversed
+     * world. @see #hostDepth
      */
     private static void inOwnDepthConvention(Runnable body) {
-        boolean reversed = CgGL.isDepthReversed(), zeroToOne = CgGL.isDepthZeroToOne();
-        CgGL.setDepthReversed(false);
+        boolean reversed = depthReversed, zeroToOne = depthZeroToOne;
+        hostDepth(false, false);
         try {
             body.run();
         } finally {
-            CgGL.setDepthReversed(reversed, zeroToOne);
+            hostDepth(reversed, zeroToOne);
         }
     }
 
@@ -357,7 +364,7 @@ public final class CgGraphicsLifecycle {
      * The start's work that touches no GL, on a worker, begun once: the text library's natives (about 130 ms charged to
      * whichever thread first touched a font), the built-in effects' classes (their static definitions: materials, kits,
      * YAML read from the jar, which a dedicated server initializes too, so they hold no GL). Never a texture: until the
-     * render thread's first GL call claims the context, any thread passes {@code CgGL.mayIssueGl}, and a worker loading
+     * render thread's first GL call claims the context, any thread passes {@code CgRHI.onDeviceThread}, and a worker loading
      * one would issue GL with no context. The text material is not warmed here: the world renderer's collector builds
      * {@code text.shader} with the engine's programs. A failure is logged and its work happens at first use instead.
      */
@@ -424,18 +431,13 @@ public final class CgGraphicsLifecycle {
         // Returning WITHOUT recording the size is what makes this a deferral: a stage's `ensureGraphicsContext` compares
         // the frame's dimensions against `currentWidth`/`currentHeight` and calls back here on the
         // owning thread, so the next real frame applies it.
-        if (!CgGlState.manager().ownedByCurrentThread()) return;
+        if (!CgRHI.onDeviceThread()) return;
 
-        // Rebuilds screen-sized targets, binding textures and framebuffers as it goes; the host's come back.
-        CgGL.fromHost();
+        CgDeviceSection.begin();
         try {
-            inOwnDepthConvention(() -> {
-                try (CgGlScope ignored = CgGlState.saveAll()) {
-                    resizeTargets(width, height);
-                }
-            });
+            inOwnDepthConvention(() -> resizeTargets(width, height));
         } finally {
-            CgGL.toHost();
+            CgDeviceSection.end();
         }
     }
 
@@ -499,13 +501,8 @@ public final class CgGraphicsLifecycle {
         CgWarmBudget.nextFrame();   // first: the finishers below charge this frame's budget
         if (initialized) CgLoadingScreen.frame();   // sets that budget
 
-        CgGlCensus.at("frame");
-        CgGL.fromHost();
+        CgDeviceSection.begin();
         try {
-            // Frame boundary: trust nothing about GL state. Control was outside CrystalGraphics between
-            // frames, so anything could have written state through an API we cannot observe.
-            CgGlState.invalidateAllIfPresent();
-
             CgFontRegistry.get().tickFrame(CgFrameClock.frameIndex());
             try (CgTrace.Zone z = CgTrace.zone(CgChannels.MISC, SETTINGS)) {
                 CgSettings.tickFrame();
@@ -520,7 +517,6 @@ public final class CgGraphicsLifecycle {
                 try (CgTrace.Zone z = CgTrace.zone(CgChannels.MISC, UPLOADS)) {
                     CgUploads.tick();
                 }
-                CgGlNames.refill();   // between frames, where a threaded driver's queue is short
                 try (CgTrace.Zone z = CgTrace.zone(CgChannels.MISC, BUDGET)) {
                     CgGpuBudget.tick();
                 }
@@ -547,11 +543,6 @@ public final class CgGraphicsLifecycle {
                 }
             }
 
-            // And again AFTER dispatch. Listeners are third-party code that may render, and anything they
-            // wrote lands after the invalidation above — leaving the shadow stale for the rest of the frame.
-            // Two integer writes per frame is not a cost worth reasoning about; a silently elided GL call is.
-            CgGlState.invalidateAllIfPresent();
-
             // Last: listeners may have streamed geometry, and it belongs to this frame's fence.
             if (initialized) {
                 try (CgTrace.Zone z = CgTrace.zone(CgChannels.MISC, RING)) {
@@ -559,7 +550,7 @@ public final class CgGraphicsLifecycle {
                 }
             }
         } finally {
-            CgGL.toHost();
+            CgDeviceSection.end();
         }
         // A host frame nothing else framed for the trace (no UI document open) is framed here, so a world with no
         // screen still records; one a document or the harness framed is left to them.
@@ -601,7 +592,7 @@ public final class CgGraphicsLifecycle {
     static void destroyContext() {
         // Freed once: the engine stops right after, and a second shutdown finds it stopped. Nothing was ever built
         // where the host stood down or no backend was installed (a client quitting before its first frame).
-        if (destroyed || stoodDown || !CgGL.isInstalled()) return;
+        if (destroyed || stoodDown || !CgRHI.installed()) return;
 
         // Step 0: External listeners, BEFORE the engine frees anything.
         //
@@ -610,18 +601,11 @@ public final class CgGraphicsLifecycle {
         // buffers — and can only release them while the context is still whole. Run this after any
         // of the sweeps below and those handles already refer to deleted objects, and any cache the
         // listener holds of engine-owned resources (fonts, textures, materials) is silently stale.
-        // Scoped: a listener releasing its renderers unbinds their materials behind the host.
-        try (CgGlScope ignored = CgGlState.saveAll()) {
-            CgEngineLifecycle.contextDestroying();
-        }
-        // Every link in flight lands before the sweeps below delete its program.
-        CgLinkWorker.stop();
-
+        CgEngineLifecycle.contextDestroying();
         // Step 1: Meshes: the store's pools and its VAO. Meshes keep their data.
         CgMeshStore.get().releaseAll();
 
         // Step 2: Shared quad IBO.
-        CgQuadIndexBuffer.freeAll();
 
         // Step 5: Free all cached textures.
         CgTextureManager.get().freeAll();
@@ -640,7 +624,6 @@ public final class CgGraphicsLifecycle {
         CgCompute.releaseAll();
         CgStreamBuffer.releaseShared();   // the staging every retained shader buffer copies through
         CgReadback.releaseAll();
-        CgSamplers.releaseAll();   // the sampler objects bindings named
 
         // Step 7b: User-created SSBO/UBO resources managed by CgShaderBufferRegistry.
         //   Must be freed before the GL context is lost.
@@ -681,15 +664,8 @@ public final class CgGraphicsLifecycle {
         // Step 9: All owned framebuffers — must be first.
         CgFrameBufferRegistry.get().deleteAll();
 
-        // Scratch framebuffers used by the GPU-side texture copy path (lazily created —
-        // no-op if no texture ever grew). Safe to reuse after this; they are recreated on demand.
-        CgTextureCopy.dispose();
-
         // Upload staging, once every texture above has given back its queued leases.
         CgUploads.releaseAll();
-
-        // Names generated ahead and unused.
-        CgGlNames.release();
 
         // Its fences name the dying context.
         CgFrameRing.reset();

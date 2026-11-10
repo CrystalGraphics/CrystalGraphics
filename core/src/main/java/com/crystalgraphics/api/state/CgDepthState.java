@@ -14,9 +14,6 @@ import com.crystalgraphics.platform.gl.CgGL;
  *   <li>{@link #TEST_WRITE_EQUAL} — test + write with {@code GL_EQUAL} (secondary passes)</li>
  *   <li>{@link #TEST_WRITE_ALWAYS} — test + write that always passes (overwrites depth)</li>
  * </ul>
- *
- * <p>{@link #clear()} fully restores GL depth defaults: test disabled, write enabled,
- * compare function reset to {@code GL_LESS}.</p>
  */
 @Desugar
 public record CgDepthState(boolean test, boolean write, int compareFunc) {
@@ -47,36 +44,4 @@ public record CgDepthState(boolean test, boolean write, int compareFunc) {
 
     /** Depth test and write enabled with {@code GL_ALWAYS}. Always overwrites depth. */
     public static final CgDepthState TEST_WRITE_ALWAYS = new CgDepthState(true, true, CgGL.GL_ALWAYS);
-
-    /**
-     * Applies this depth state to the current GL context.
-     *
-     * <p>Enables or disables the depth test, sets the depth write mask, and
-     * when the test is enabled also sets the depth comparison function via
-     * {@code glDepthFunc}.</p>
-     */
-    /**
-     * Makes this state current.
-     *
-     * <p>Calls {@code CgGL} directly; {@code CgGL} decides whether each call reaches the driver, so a
-     * repeated apply of the same value costs nothing.</p>
-     */
-    public void apply() {
-        if (test) {
-            CgGL.glEnable(CgGL.GL_DEPTH_TEST);
-            CgGL.glDepthFunc(compareFunc);
-        } else {
-            CgGL.glDisable(CgGL.GL_DEPTH_TEST);
-        }
-        CgGL.glDepthMask(write);
-    }
-
-    /**
-     * Restores GL depth defaults: test disabled, write enabled, compare function {@code GL_LESS}.
-     */
-    public void clear() {
-        CgGL.glDisable(CgGL.GL_DEPTH_TEST);
-        CgGL.glDepthMask(true);
-        CgGL.glDepthFunc(CgGL.GL_LESS);
-    }
 }

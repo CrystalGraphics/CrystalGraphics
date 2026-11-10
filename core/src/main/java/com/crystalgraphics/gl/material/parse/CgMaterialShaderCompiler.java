@@ -6,7 +6,6 @@ import com.crystalgraphics.gl.buffer.shader.CgEngineBufferRegistry;
 import com.crystalgraphics.api.shader.CgShaderPreprocessor;
 import com.crystalgraphics.api.vertex.CgVertexAttribute;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
-import com.crystalgraphics.gl.shader.CgShaderFactory;
 import com.github.bsideup.jabel.Desugar;
 import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.api.material.CgAttachedBuffer;
@@ -33,7 +32,7 @@ import java.util.regex.Pattern;
  * and a specific {@link CgParsedPass}.
  *
  * <p>This is the bridge between the structural parser ({@link CgShaderParser}) and the
- * GLSL compilation backend ({@link CgShaderFactory}).
+ * compile ({@code CgShader}).
  * It injects the {@code #version} directive (one target, {@link #VERSION}), the {@code CG_VERTEX_STAGE}
  * define, the {@code cg_env.glsl} include, property uniform declarations, the v2f struct
  * and its flat-packed varying declarations, global declarations, the user-authored functions,
@@ -53,9 +52,8 @@ import java.util.regex.Pattern;
  *
  * <h3>Attribute binding</h3>
  * <p>No explicit {@code layout(location=N)} attributes are emitted — attribute locations
- * are bound before link by passing the resolved {@link CgVertexFormat} (from
- * {@link CgVertexFormat#forShaderType(String)}) to
- * {@code CgShaderFactory.fromSource(vert, frag, format)}.
+ * are placed at compile by the resolved {@link CgVertexFormat} (from
+ * {@link CgVertexFormat#forShaderType(String)}), each attribute at its index in it.
  * The format is carried in {@link CompiledSource#vertexFormat()} for the caller's use.</p>
  *
  * <h3>v2f varying naming</h3>
@@ -75,8 +73,7 @@ public final class CgMaterialShaderCompiler {
      declarations, and the {@code main()} wrapper.
      * @param vertexFormat
      The resolved {@link CgVertexFormat} for this compiled source, derived from
-     {@code shader.shaderType()} at compile time. Used by {@code CgMaterialShader} to
-     pass the correct format to {@code CgShaderFactory.fromSource()} for attribute binding.*/
+     {@code shader.shaderType()} at compile time: where {@code CgShader} places each attribute.*/
     @Desugar
     public record CompiledSource(String vertexSource, String fragmentSource, CgVertexFormat vertexFormat) {
     }

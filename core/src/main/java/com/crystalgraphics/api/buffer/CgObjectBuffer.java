@@ -1,31 +1,26 @@
 package com.crystalgraphics.api.buffer;
 
-import com.crystalgraphics.gl.shader.CgProgram;
+import com.crystalgraphics.platform.rhi.resource.CgGpuBuffer;
 
 /**
- * Base contract for GPU-resident data blocks accessible from shader programs.
+ * A device buffer an engine type owns: the storage a shader reads, and its delete.
  *
- * <p>All VBO, EBO, SSBO and UBO-backed buffer types in CrystalGraphics implement this
- * interface. It mirrors the ownership and lifecycle model of {@link CgProgram}:
- * bind, unbind, get the underlying GL object ID, and idempotent delete.</p>
- *
- * <p>Implementations must document their designated GL binding point and the
- * specific GL call family (GL43 / ARB / UBO) used for binding.</p>
+ * <pre>{@code
+ * CgGpuBuffer storage = block.gpuBuffer();   // read when binding: growth replaces it
+ * block.delete();                            // idempotent; destroyed once the frames reading it retire
+ * }</pre>
  */
 public interface CgObjectBuffer {
 
-    /** Binds this buffer to its designated GL binding point for use in draw calls. */
-    void bind();
+    /** The device buffer holding its storage now; null before it is made. */
+    CgGpuBuffer gpuBuffer();
 
-    /** Unbinds this buffer from its GL binding point. */
-    void unbind();
-
-    /** Returns the raw GL buffer object ID. */
+    /** {@code CgGL}'s name for {@link #gpuBuffer()}, for what still reaches it through {@code CgGL}; 0 before it is made. */
     int getGlBufferId();
 
-    /** Frees all GPU resources owned by this buffer. Idempotent. */
+    /** Frees its storage. Idempotent. */
     void delete();
 
-    /** Returns true if {@link #delete()} has been called. */
+    /** Whether {@link #delete()} has been called. */
     boolean isDeleted();
 }

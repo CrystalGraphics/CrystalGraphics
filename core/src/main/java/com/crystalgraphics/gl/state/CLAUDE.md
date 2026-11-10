@@ -225,8 +225,7 @@ whole read cost become the handful the engine uses (`glState.adopt.units` counts
 every unit, since its reads cost nothing.
 
 A provider's `hostUnits()` is the units its host samples through; a unit outside it is never read, saved or restored,
-since nothing of the host's lives there. Every unit by default; a `CgCheckedProvider` answers its cache's table
-(`HostStateModern` every unit again while an Iris/Oculus pack is active, since a pack samples above the table).
+since nothing of the host's lives there. Every unit by default.
 
 ## Diagnostics — reach for these before reasoning
 
@@ -245,22 +244,10 @@ the right one in a single run.
 | 1.7.10 + Angelica | `AngelicaStateProvider` (1.7.10), reads Angelica's mirror by reflection | near zero |
 | 1.7.10 vanilla | `CgGlGetProvider` | full sweep |
 | harness on `gl` | `PlatformServiceHarness.KeptShadow`: `CgGlGetProvider` with `hostKeepsShadow()`, since every draw there is `CgGL`'s; stage entries forget nothing (`-Dcrystalgraphics.harness.keepShadow=false` turns it off) | what the shadow never learned: about one a frame |
-| Modern 1.13–26.2 on OpenGL | `HostStateModern`, over `GlStateManager` (below). Adds the program (0 below 1.21.5; from 1.21.5 its encoder's), the framebuffer (the main target below 1.21.5; from 1.21.5 `GlStateManager`'s, `glGet` where Fabric renames it) and the vertex input (none below 1.17, `BufferUploader`'s to 1.19.1, Minecraft's own before each draw from 1.19.2). From 1.21.5 the viewport, which only render passes set, reads `glGet` — never at a stage entry, where `bindMainTarget` has just set it through `CgGL` | none, past the checks |
-| Forge 1.8.9–1.12.2 | `HostStateLegacy`, over `GlStateManager` (below). Adds program 0, no vertex array, and the main framebuffer with the viewport covering it, as at every hook; a shader pack (OptiFine) switched on after the checks binds its own unseen | none, past the checks |
 | 26.3 | `CgGlGetProvider` | full sweep |
 
-**Over `GlStateManager`** (`CgCheckedProvider` + `CgHostStateCache`, `platform.gl.state`): its fields by shape, as
-SRG, intermediary and MCP rename them (`-Dcrystalgraphics.host.stateCache.byShape=true` skips Mojang's names in a dev
-run), and what Minecraft holds at every hook for what it does not cache: blend equation, front face, polygon mode,
-stencil, and the scissor test off where it keeps none (to 1.16.3); the alpha test is cached to 1.16.5. The first 600
-reads of each domain are checked against `glGet`; a domain that disagrees reads `glGet` from then on, with a warning.
-The checks wait while the link worker has links or the loading screen draws (`CgCheckedProvider.deferChecksWhile`): a
-check's `glGet` waits for the driver's queue, deepest then, 100-400 ms each.
-A guessed field (the scissor box; vertex input from 1.19.2) is restored as guessed, and the provider's `excuse` keeps
-it out of both the checks and `state.roundTrip`. `-Dcrystalgraphics.host.stateCache=false`
-turns it off. What keeps *Minecraft's* cache true is the host section's own scope over the provider's section slots
-(`CgGlStateProvider.sectionSlots`), closed at `CgGL.toHost`; on modern nodes `-Dcrystalgraphics.host.verify=true`
-checks it.
+A Minecraft host's section no longer reads this shadow: the GL device reads each era's `GlStateManager` itself
+(`GLHostState`, `docs/RENDER_STATE.md` § *Each host's state*).
 
 > **Trap, found by reading Angelica's source rather than assuming:** its `DepthState.enabled` is the depth
 > **write mask**, not the depth test — `glDepthMask` stores into it, and the test is a separate `depthTest`

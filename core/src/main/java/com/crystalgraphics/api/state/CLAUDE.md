@@ -32,10 +32,9 @@ Framework documentation: `platform/src/main/java/com/crystalgraphics/platform/gl
 |------------------|------|
 | `CgRenderState`  | Immutable composite over **six** slots: blend, depth, cull, stencil, alpha and a list of `CgColorMask`. A null slot means *undeclared* — `apply()` leaves it alone rather than forcing a default. One instance per render layer or material pass. `DEFAULT` = blend disabled, depth TEST_WRITE, cull BACK, stencil DISABLED. |
 | `CgDepthState`   | Depth test + depth write + compare function. Pre-defined: `NONE`, `TEST_ONLY`, `TEST_WRITE`, `TEST_WRITE_EQUAL`, `TEST_WRITE_ALWAYS`, and `GL_DEFAULT` (the GL initial value — test off, write on, `GL_LESS` — used by `clear()`). |
-| `CgBlendState`   | Blend policy + blend equations. Pre-defined: `DISABLED`, `ALPHA`, `PREMULTIPLIED_ALPHA`, `ADDITIVE`, `MULTIPLY`. `clearToDefault()` exists but **is no longer called by `CgRenderState.clear()`**, which applies `DISABLED` instead; same for `CgColorMask.clearToDefault()`. Both are unreferenced public API today. |
+| `CgBlendState`   | Blend policy + blend equations. Pre-defined: `DISABLED`, `ALPHA`, `PREMULTIPLIED_ALPHA`, `ADDITIVE`, `MULTIPLY`. |
 | `CgCullState`    | Face culling: enabled + face + **winding** (`frontFace`). Three components, not two — the 2-arg constructor is a convenience defaulting to `GL_CCW`. Pre-defined: `NONE`, `BACK`, `FRONT`. `NONE` carries `GL_BACK` rather than `0`, so disabling culling never writes a bogus face mode. |
 | `CgStencilState` | Stencil test policy. Pre-defined: `DISABLED`. `apply()` dispatches `glStencilFunc/Mask/Op`; `clear()` disables stencil and resets write mask. |
-| `CgTextureState` | Texture-bind policy with three modes: `none()`, `fixed(target, id, unit, sampler)` / `fixed(CgTexture, unit, sampler)`, `dynamic(target, unit, sampler)`. Not part of `CgRenderState` — caller's responsibility. |
 
 ## `CgRenderState` holds no shader or texture
 

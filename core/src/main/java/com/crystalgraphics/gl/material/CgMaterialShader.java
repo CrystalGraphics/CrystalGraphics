@@ -1,9 +1,7 @@
 package com.crystalgraphics.gl.material;
 
 import com.crystalgraphics.variable.CgVar;
-import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.render.draw.CgMaterialArena;
-import com.crystalgraphics.render.draw.CgPassConstants;
 import com.crystalgraphics.render.CgWarmBudget;
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.platform.gl.CgCapabilities;
@@ -18,27 +16,18 @@ import com.crystalgraphics.api.shader.CgPreprocessorException;
 import com.crystalgraphics.gl.shader.CgShader;
 import com.crystalgraphics.api.shader.CgShaderPreprocessor;
 import com.crystalgraphics.api.state.CgRenderState;
-import com.crystalgraphics.compute.source.CgBufferDecl;
-import com.crystalgraphics.gl.buffer.shader.CgBonePalettes;
-import com.crystalgraphics.gl.buffer.shader.CgShaderBuffer;
-import com.crystalgraphics.gl.buffer.shader.CgUniformBuffer;
 import com.crystalgraphics.gl.material.CgMaterialShaderMap.ProgramKey;
 import com.crystalgraphics.gl.material.CgMaterialShaderMap.Sources;
-import com.crystalgraphics.gl.material.parse.CgBufferReaders;
-import com.crystalgraphics.gl.material.parse.CgGlslEmitter;
 import com.crystalgraphics.gl.material.parse.CgMaterialShaderCompiler;
 import com.crystalgraphics.gl.material.parse.CgParsedPass;
 import com.crystalgraphics.gl.material.parse.CgParsedShader;
 import com.crystalgraphics.gl.material.parse.CgShaderParseException;
 import com.crystalgraphics.gl.material.parse.CgShaderParser;
-import com.crystalgraphics.gl.shader.CgLinkWorker;
 import com.crystalgraphics.job.CgJob;
 import com.crystalgraphics.job.CgJobLane;
 import com.crystalgraphics.mc.CgAssetReloader;
 import com.crystalgraphics.mc.CgReloadable;
-import com.crystalgraphics.platform.gl.CgGL;
-import com.crystalgraphics.platform.gl.state.CgGlScope;
-import com.crystalgraphics.platform.gl.state.CgGlState;
+import com.crystalgraphics.platform.rhi.shader.CgGlslSources;
 import com.crystalgraphics.util.io.CgIO;
 
 import javax.annotation.Nullable;
@@ -83,7 +72,7 @@ public final class CgMaterialShader implements CgReloadable {
             "Log every material pass's generated vertex and fragment GLSL as it compiles.");
     private static final CgVar.Bool SOURCES_AHEAD = CgVar.bool("crystalgraphics.material.sourcesAhead", true, CgVar.DEV,
             "A submitted recompile reads, parses and generates its GLSL on a worker first, so the frame that submits "
-                    + "only hands it to the driver; false does all of it on that frame.");
+                    + "only starts its compile; false does all of it on that frame.");
     private static final int COMPILE_WAITS = CgTrace.name("material.compile-waits");
     private static final CgVar.Bool LOG_COMPILE_WAITS = CgVar.bool("crystalgraphics.material.logCompileWaits", false,
             CgVar.DEV, "Log each program a draw had to wait for (material.compile-waits), by shader and pass.");
@@ -91,7 +80,7 @@ public final class CgMaterialShader implements CgReloadable {
 
     /**
      * How many times this session a program was asked for before it was built, so its thread compiled it on the spot
-     * or waited for the driver: what a material's first draw costs unless something precached it. A precached material's
+     * or waited for its compile: what a material's first draw costs unless something precached it. A precached material's
      * draws add none. Also the trace counter {@code material.compile-waits}.
      *
      * <pre>{@code
@@ -550,7 +539,7 @@ public final class CgMaterialShader implements CgReloadable {
                 String err = program.getLastCompileError();
                 program.delete();
                 next.delete();
-                // The driver's own text: its line number maps back through lineOwners to the node that emitted it.
+                // The compiler's own text: its line number maps back through lineOwners to the node that emitted it.
                 failed((isFirst ? "Compile failed for '" : "Reload failed for '") + resourcePath
                         + "' pass '" + pass.name() + "': " + err);
                 return;
@@ -579,10 +568,9 @@ public final class CgMaterialShader implements CgReloadable {
     /** Set for the length of a forward-only {@link #submitRecompile}. */
     private boolean forwardOnly;
 
-    /** Steps 7 and 8: the new map's programs are wired and replace the old map. */
+    /** Step 7: the new map's programs replace the old map. */
     private void commit(CgMaterialShaderMap next, String expanded, boolean isFirst, boolean skippedAutoGen) {
         next.autoGenSkipped = skippedAutoGen;
-        for (CgShader program : next.programs.values()) wire(program, next);
         if (map != null) map.delete();
         map = next;
         // lastParsed / renderQueue / renderType were committed in Step 2a — they are parse products,
@@ -596,7 +584,7 @@ public final class CgMaterialShader implements CgReloadable {
     }
 
     /**
-     * {@link #recompile}, returning before the driver has compiled anything: every program is submitted, and
+     * {@link #recompile}, returning before anything is compiled: every program is submitted, and
      * {@link #pollPending} commits them once all are done. What was compiled before keeps serving until then.
      *
      * <pre>{@code
@@ -636,7 +624,7 @@ public final class CgMaterialShader implements CgReloadable {
     }
 
     /**
-     * Commits a {@link #submitRecompile} once the driver has finished every program in it.
+     * Commits a {@link #submitRecompile} once every program in it has compiled.
      *
      * @return {@code true} when nothing is pending any more: committed, failed, or never submitted
      */
@@ -646,8 +634,6 @@ public final class CgMaterialShader implements CgReloadable {
         for (CgShader shader : pending.map().programs.values()) {
             if (!shader.isReady()) return false;
         }
-        // Committed between links: during one, NVIDIA makes the commit's program calls wait for it (material.commit).
-        if (CgLinkWorker.linking()) return false;
         pendingCommit = null;
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "material.commit")) {
             finish(pending);
@@ -660,7 +646,7 @@ public final class CgMaterialShader implements CgReloadable {
         return pendingCommit != null;
     }
 
-    /** Commits whatever {@link #submitRecompile} left pending, waiting for the driver if it must. */
+    /** Commits whatever {@link #submitRecompile} left pending, waiting for its compiles if it must. */
     public void awaitPending() {
         PendingCommit pending = pendingCommit;
         if (pending == null) return;
@@ -1133,9 +1119,9 @@ public final class CgMaterialShader implements CgReloadable {
     // ── What it reads of the scene ──────────────────────────────────────────────
 
     /**
-     * Whether {@code program}, one of this shader's, samples {@code cg_DepthBuffer}: read from the linked program itself
-     * (the driver's active uniforms on GL, SPIR-V reflection on the tracked backend), so a keyword variant answers for
-     * itself. {@link #readsSceneDepth()} for a program this shader did not link.
+     * Whether {@code program}, one of this shader's, samples {@code cg_DepthBuffer}: read from the compiled program's
+     * layout ({@link CgShader#sceneReads}), so a keyword variant answers for itself. {@link #readsSceneDepth()} for a
+     * program that did not compile.
      *
      * <pre>{@code
      * CgShader program = shader.getOrCompile("Pass0", keywords);
@@ -1143,16 +1129,12 @@ public final class CgMaterialShader implements CgReloadable {
      * }</pre>
      */
     public boolean readsSceneDepth(CgShader program) {
-        CgMaterialShaderMap current = map;
-        int reads = current == null ? -1 : current.reads(program);
-        return reads < 0 ? readsSceneDepth() : (reads & CgMaterialShaderMap.READS_DEPTH) != 0;
+        return program.isCompiled() ? (program.sceneReads() & CgShader.READS_DEPTH) != 0 : readsSceneDepth();
     }
 
     /** As {@link #readsSceneDepth(CgShader)}, for {@code cg_SceneColor}. */
     public boolean readsSceneColor(CgShader program) {
-        CgMaterialShaderMap current = map;
-        int reads = current == null ? -1 : current.reads(program);
-        return reads < 0 ? readsSceneColor() : (reads & CgMaterialShaderMap.READS_COLOR) != 0;
+        return program.isCompiled() ? (program.sceneReads() & CgShader.READS_COLOR) != 0 : readsSceneColor();
     }
 
     /**
@@ -1225,78 +1207,12 @@ public final class CgMaterialShader implements CgReloadable {
         return new CgShaderPreprocessor().mentions(source, resourcePath, "discard", "cg_Clip");
     }
 
-    // ── GL program wiring, and the source a GL driver takes (until GL3) ────────────
+    // ── The source a compiler takes ────────────────────────────────────────────────
 
-    /**
-     * A pass's generated GLSL preprocessed, and checked here so {@code glShaderSource} has no scan left for the frame
-     * that submits. Any thread.
-     */
+    /** A pass's generated GLSL preprocessed, as a compiler takes it. Any thread. */
     static Sources prepare(CgMaterialShaderCompiler.CompiledSource compiled, String path) {
         return new Sources(compiled,
-                CgGL.checkSource(new CgShaderPreprocessor().process(compiled.vertexSource(), path)).toString(),
-                CgGL.checkSource(new CgShaderPreprocessor().process(compiled.fragmentSource(), path)).toString());
-    }
-
-    /** Points a program's blocks and samplers at the engine's binding points and at its map's. */
-    static void wire(CgShader shader, CgMaterialShaderMap map) {
-        // Links finish while a stage records, outside any scope: the host's program goes back, since Minecraft from
-        // 1.21.5 rebinds its own only when its pipeline changes.
-        try (CgGlScope ignored = CgGlState.saveProgram()) {
-            shader.bind();
-            CgUniformBuffer.wireBlock(shader, CgPassConstants.VIEW_BLOCK, CgBindingPoints.VIEW_UBO);
-            CgUniformBuffer.wireBlock(shader, CgPassConstants.ENVIRONMENT_BLOCK, CgBindingPoints.ENVIRONMENT_UBO);
-            CgShaderBuffer.wireBlock(shader, CgInstanceKind.OBJECT_BLOCK_NAME, CgBindingPoints.OBJECT_DATA);
-            CgShaderBuffer.wireBlock(shader, CgInstanceKind.OBJECT_ID_BLOCK_NAME, CgBindingPoints.OBJECT_IDS);
-            CgShaderBuffer.wireBlock(shader, CgGlslEmitter.VERTEX_BLOCK, CgBindingPoints.VERTICES);
-            CgShaderBuffer.wireBlock(shader, CgGlslEmitter.ARENA_BLOCK, CgBindingPoints.MATERIAL_ARENA);
-            if (map.block != null) map.block.wireShader(shader);
-            for (CgAttachedBuffer ab : map.buffers) ab.getBuffer().wireShader(shader);
-            // Only a skinned program declares the palettes; any other leaves the block absent, which this skips.
-            CgShaderBuffer.wireBlock(shader, CgBonePalettes.BLOCK_NAME, CgBindingPoints.BONE_PALETTES);
-            map.reflected(shader, wireSamplers(shader, map.parsed));
-            wireMaterialBuffers(shader, map.parsed.buffers());
-        }
-    }
-
-    /**
-     * The scene snapshots' and the lightmap's units, and each sampler property's: its index among the declared samplers.
-     * Answers which snapshots the program samples, as {@link CgMaterialShaderMap#READS_DEPTH} bits: a location is the
-     * program's own reflection, -1 for a sampler it never uses.
-     */
-    private static int wireSamplers(CgShader shader, CgParsedShader parsed) {
-        int reads = 0;
-        int loc = shader.getUniformLocation(CgBindingPoints.DEPTH_TEXTURE_UNIFORM);
-        if (loc >= 0) {
-            shader.getProgram().setUniform1i(loc, CgBindingPoints.DEPTH_TEXTURE_UNIT);
-            reads |= CgMaterialShaderMap.READS_DEPTH;
-        }
-        loc = shader.getUniformLocation(CgBindingPoints.SCENE_COLOR_TEXTURE_UNIFORM);
-        if (loc >= 0) {
-            shader.getProgram().setUniform1i(loc, CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT);
-            reads |= CgMaterialShaderMap.READS_COLOR;
-        }
-        loc = shader.getUniformLocation(CgBindingPoints.LIGHTMAP_TEXTURE_UNIFORM);
-        if (loc >= 0) shader.getProgram().setUniform1i(loc, CgBindingPoints.LIGHTMAP_TEXTURE_UNIT);
-        loc = shader.getUniformLocation(CgBindingPoints.MEDIA_TEXTURE_UNIFORM);
-        if (loc >= 0) shader.getProgram().setUniform1i(loc, CgBindingPoints.MEDIA_TEXTURE_UNIT);
-        loc = shader.getUniformLocation(CgBindingPoints.LOCAL_LIGHTS_TEXTURE_UNIFORM);
-        if (loc >= 0) shader.getProgram().setUniform1i(loc, CgBindingPoints.LOCAL_LIGHTS_TEXTURE_UNIT);
-        int unit = 0;
-        for (CgMaterialProperty property : parsed.properties()) {
-            if (!property.getType().isSampler()) continue;
-            int at = shader.getUniformLocation(property.getName());
-            if (at >= 0) shader.getProgram().setUniform1i(at, unit);
-            unit++;
-        }
-        return reads;
-    }
-
-    /** Each {@code Buffers { }} entry: a storage block at its reserved point. */
-    private static void wireMaterialBuffers(CgShader shader, List<CgBufferDecl> buffers) {
-        int program = shader.getProgram().getId();
-        for (int i = 0; i < buffers.size(); i++) {
-            int index = CgGL.glGetProgramResourceIndex(program, CgGL.GL_SHADER_STORAGE_BLOCK, CgBufferReaders.readerBlock(buffers.get(i)));
-            if (index != CgGL.GL_INVALID_INDEX) CgGL.glShaderStorageBlockBinding(program, index, CgBindingPoints.MATERIAL_BUFFERS_SSBO + i);
-        }
+                CgGlslSources.ascii(new CgShaderPreprocessor().process(compiled.vertexSource(), path)),
+                CgGlslSources.ascii(new CgShaderPreprocessor().process(compiled.fragmentSource(), path)));
     }
 }

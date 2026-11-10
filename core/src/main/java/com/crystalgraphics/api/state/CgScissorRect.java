@@ -1,7 +1,6 @@
 package com.crystalgraphics.api.state;
 
 import lombok.Getter;
-import com.crystalgraphics.platform.gl.CgGL;
 
 /**
  * Reusable mutable clip rectangle for scissor operations.
@@ -9,8 +8,7 @@ import com.crystalgraphics.platform.gl.CgGL;
  * <p>Designed for pooled usage in scissor stacks and draw-list command recording.
  * Instances should be preallocated and reused — never heap-allocated per frame.</p>
  *
- * <p>Public consumers may read fields via the getters, mutate via {@link #set(int, int, int, int)},
- * and apply the scissor to GL via {@link #applyGl()}.</p>
+ * <p>Public consumers may read fields via the getters and mutate via {@link #set(int, int, int, int)}.</p>
  *
  * <h3>Merge rule</h3>
  * <p>Draw-list merge detection compares scissor rects by <strong>field equality</strong>,
@@ -48,14 +46,6 @@ public final class CgScissorRect {
      */
     public boolean isEnabled() {
         return width > 0 && height > 0;
-    }
-
-    /**
-     * Applies this scissor rect to the current GL context via {@code glScissor}.
-     * Does NOT enable/disable {@code GL_SCISSOR_TEST} — the caller manages that.
-     */
-    public void applyGl() {
-        CgGL.glScissor(x, y, width, height);
     }
 
     /**

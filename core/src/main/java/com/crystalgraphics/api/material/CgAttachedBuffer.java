@@ -26,11 +26,8 @@ import lombok.Getter;
  * doing so produces duplicate GLSL declarations that fail to compile.</p>
  *
  * <h3>Naming contract</h3>
- * <p>{@code buffer.getName()} is used directly as the GLSL block interface name (SSBO) or UBO
- * block name. This is required for the existing
- * {@link CgShaderBuffer#wireShader} implementations to locate the block/sampler in the linked
- * program via {@code glGetProgramResourceIndex} / {@code glGetUniformLocation}. Any mismatch
- * will cause silent GL wiring failure at runtime.</p>
+ * <p>{@code buffer.getName()} is the GLSL block interface name (SSBO) or UBO block name the material
+ * compiler declares at the buffer's binding.</p>
  */
 public final class CgAttachedBuffer {
 

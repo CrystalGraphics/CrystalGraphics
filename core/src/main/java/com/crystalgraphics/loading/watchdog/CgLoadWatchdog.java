@@ -224,8 +224,9 @@ public final class CgLoadWatchdog {
     private static final String COMPILE = "a pipeline built at its draw, ";
 
     /**
-     * The pipeline build or program link the stack's top frames sit in, or null: a driver call, or a wait on a worker's
-     * build, that is still a compile the frame asked for (Unreal's PSO hitch), never the driver catching up.
+     * The pipeline build or shader compile the stack's top frames sit in, or null: a driver call, or a wait on a
+     * worker's build or compile, that is still a compile the frame asked for (Unreal's PSO hitch), never the driver
+     * catching up.
      */
     @Nullable
     private static String compileIn(StackTraceElement[] stack) {
@@ -233,7 +234,7 @@ public final class CgLoadWatchdog {
             String m = stack[i].getMethodName(), c = stack[i].getClassName();
             if (m.contains("CreateGraphicsPipelines") || m.contains("CreateComputePipelines") || m.contains("LinkProgram")
                     || m.contains("CompileShader") || m.equals("takeAhead")
-                    || m.equals("await") && c.endsWith("CgLinkWorker$Job")) {
+                    || m.equals("get") && c.endsWith(".CgShaderCompile")) {
                 return COMPILE + "in " + c.substring(c.lastIndexOf('.') + 1) + "." + m;
             }
         }

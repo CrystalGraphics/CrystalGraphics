@@ -111,6 +111,10 @@ legacyForge?.apply {
             sourceSet(devRunSourceSet(project(":core")))
             sourceSet(project.commonNode.extensions.getByType<SourceSetContainer>()["main"])
             sourceSet(project(":freetype-msdfgen-harfbuzz-bindings").extensions.getByType<SourceSetContainer>()["main"])
+            // The LWJGL tiers the common node is built on (api there), bundled as Fabric's dev jar bundles them
+            sourceSet(devRunSourceSet(project(":runtime:lwjgl:3")))
+            sourceSet(devRunSourceSet(project(":runtime:lwjgl:vulkan")))
+            sourceSet(devRunSourceSet(project(":runtime:lwjgl:sdl")))
             // The @Mod itself: one class for every Forge, compiled apart from any node.
             sourceSet(project(":runtime:mc:forge-bootstrap").extensions.getByType<SourceSetContainer>()["main"])
         }

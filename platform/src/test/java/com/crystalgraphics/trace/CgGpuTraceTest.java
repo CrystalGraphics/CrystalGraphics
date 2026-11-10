@@ -1,11 +1,13 @@
 package com.crystalgraphics.trace;
 
-import com.crystalgraphics.platform.gl.RecordingGlBackend;
-import com.crystalgraphics.platform.gl.state.CgGlState;
+import com.crystalgraphics.platform.rhi.CgRHI;
+import com.crystalgraphics.platform.rhi.command.CgCommandList;
+import com.crystalgraphics.platform.rhi.sync.CgTimerQuery;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
+import java.lang.reflect.Proxy;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -14,16 +16,17 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
-/** Where a timer query's answer lands, on a backend whose queries the test answers. */
+/** Where a timer query's answer lands, on a device whose timers the test answers. */
 public class CgGpuTraceTest {
 
     private static final long MS = 1_000_000L;
 
-    private RecordingGlBackend gl;
+    private Timers device;
 
     @Before
     public void setUp() {
-        gl = RecordingGlBackend.install();
+        device = new Timers();
+        CgRHI.install(device.rhi);
         CgTrace.resetForTesting();
         CgGpuTrace.dispose();
         CgGpuTrace.assumeSupport(CgGpuTrace.Support.SUPPORTED);
@@ -34,6 +37,7 @@ public class CgGpuTraceTest {
     public void tearDown() {
         CgGpuTrace.dispose();
         CgTrace.resetForTesting();
+        CgRHI.install(null);
     }
 
     @Test
@@ -43,8 +47,8 @@ public class CgGpuTraceTest {
         CgTrace.frameBegin();
         assertFalse("absent until the GPU answers", frame(0).hasGpu());
 
-        gl.queriesReady = true;
-        gl.queryNanos = 2 * MS;
+        device.ready = true;
+        device.nanos = 2 * MS;
         CgTrace.frameBegin();
         assertEquals(2 * MS, frame(0).gpuNanos());
         assertEquals(Long.valueOf(2 * MS), counters(0).get("gpu:ui"));
@@ -52,8 +56,8 @@ public class CgGpuTraceTest {
 
     @Test
     public void anOpenFrameWaitsForItsBoundaryEvenWhenItsQueriesAreBack() {
-        gl.queriesReady = true;
-        gl.queryNanos = MS;
+        device.ready = true;
+        device.nanos = MS;
         CgTrace.frameBegin();
         zone("ui");
         CgGpuTrace.collect();
@@ -68,7 +72,7 @@ public class CgGpuTraceTest {
 
     @Test
     public void aFrameWithNoGpuZoneHasNoGpuFigure() {
-        gl.queriesReady = true;
+        device.ready = true;
         CgTrace.frameBegin();
         CgTrace.frameBegin();
         CgTrace.frameBegin();
@@ -77,15 +81,15 @@ public class CgGpuTraceTest {
 
     @Test
     public void aNestedZonePausesItsParentAndTheTotalCountsEachPieceOnce() {
-        gl.queriesReady = true;
-        gl.queryNanos = MS;
+        device.ready = true;
+        device.nanos = MS;
         CgTrace.frameBegin();
         CgGpuTrace.begin("outer");
         CgGpuTrace.begin("inner");
         CgGpuTrace.end();
         CgGpuTrace.end();
-        assertEquals(3, gl.countOf("glBeginTimeElapsedQuery"));
-        assertEquals(3, gl.countOf("glEndTimeElapsedQuery"));
+        assertEquals(3, device.count("beginTimer"));
+        assertEquals(3, device.count("endTimer"));
         CgTrace.frameBegin();
 
         assertEquals(3 * MS, frame(0).gpuNanos());
@@ -103,7 +107,7 @@ public class CgGpuTraceTest {
         zone("ui");
         CgTrace.frameBegin();
         CgTrace.frameBegin();
-        assertFalse(gl.sawCall("glBeginTimeElapsedQuery"));
+        assertFalse(device.count("beginTimer") > 0);
         assertFalse(frame(0).hasGpu());
     }
 
@@ -112,17 +116,17 @@ public class CgGpuTraceTest {
         CgTrace.frameBegin();
         CgGpuTrace.begin("ui");
         CgTrace.frameBegin();
-        assertEquals(1, gl.countOf("glEndTimeElapsedQuery"));
+        assertEquals(1, device.count("endTimer"));
         assertEquals(Long.valueOf(1), counters(0).get("gpu.leakedAcrossFrame"));
     }
 
     @Test
     public void aQueryIssuedBeforeAClearNeverLandsOnTheFramesAfterIt() {
-        gl.queryNanos = 5 * MS;
+        device.nanos = 5 * MS;
         CgTrace.frameBegin();
         zone("ui");
         CgTrace.clear();
-        gl.queriesReady = true;
+        device.ready = true;
         CgTrace.frameBegin();
         CgTrace.frameBegin();
         CgTrace.frameBegin();
@@ -131,8 +135,8 @@ public class CgGpuTraceTest {
 
     @Test
     public void totalsKeepEveryResultByName() {
-        gl.queriesReady = true;
-        gl.queryNanos = MS;
+        device.ready = true;
+        device.nanos = MS;
         zone("draw");
         zone("draw");
         CgGpuTrace.collect();
@@ -144,21 +148,21 @@ public class CgGpuTraceTest {
 
     @Test
     public void marksChargeEachRunToItsLabelAndLeaveTheFrameTotalToTheZone() {
-        gl.queriesReady = true;
-        gl.queryNanos = 10 * MS;
+        device.ready = true;
+        device.nanos = 10 * MS;
         int opaque = CgGpuTrace.label("opaque"), glass = CgGpuTrace.label("glass");
         CgTrace.frameBegin();
         CgGpuTrace.begin("world");
         CgGpuTrace.mark(opaque);
-        gl.clock = 3 * MS;
+        device.clock = 3 * MS;
         CgGpuTrace.mark(opaque);       // the same run
-        gl.clock = 4 * MS;
+        device.clock = 4 * MS;
         CgGpuTrace.mark(glass);
-        gl.clock = 10 * MS;
+        device.clock = 10 * MS;
         CgGpuTrace.end();
         CgTrace.frameBegin();
 
-        assertEquals(3, gl.countOf("glQueryTimestamp"));
+        assertEquals(3, device.count("timestamp"));
         assertEquals(10 * MS, frame(0).gpuNanos());
         Map<String, Long> counters = counters(0);
         assertEquals(Long.valueOf(4 * MS), counters.get("gpu:world/opaque"));
@@ -167,18 +171,18 @@ public class CgGpuTraceTest {
 
     @Test
     public void markEndLeavesWhatFollowsUncharged() {
-        gl.queriesReady = true;
+        device.ready = true;
         int a = CgGpuTrace.label("a");
         CgTrace.frameBegin();
         CgGpuTrace.begin("pass");
         CgGpuTrace.mark(a);
-        gl.clock = 2 * MS;
+        device.clock = 2 * MS;
         CgGpuTrace.markEnd();
-        gl.clock = 9 * MS;
+        device.clock = 9 * MS;
         CgGpuTrace.end();
         CgTrace.frameBegin();
 
-        assertEquals(2, gl.countOf("glQueryTimestamp"));
+        assertEquals(2, device.count("timestamp"));
         assertEquals(Long.valueOf(2 * MS), counters(0).get("gpu:pass/a"));
     }
 
@@ -189,21 +193,21 @@ public class CgGpuTraceTest {
         CgGpuTrace.begin("pass");
         CgGpuTrace.mark(CgGpuTrace.label("a"));
         CgGpuTrace.end();
-        assertFalse(gl.sawCall("glQueryTimestamp"));
+        assertFalse(device.count("timestamp") > 0);
     }
 
     @Test
     public void aBudgetZoneIsTimedWithTheChannelOff_andAFrameCountsOnceItsSuccessorAnswers() {
         CgTrace.resetForTesting();
         int slot = CgGpuTrace.budgetSlot();
-        gl.queriesReady = true;
-        gl.queryNanos = MS;
+        device.ready = true;
+        device.nanos = MS;
         long first = CgGpuTrace.budgetFrame();
         budgetZone(slot);
         budgetZone(slot);
         zone("ui");
         CgGpuTrace.collect();
-        assertEquals(2, gl.countOf("glBeginTimeElapsedQuery"));
+        assertEquals(2, device.count("beginTimer"));
         assertEquals("its frame may still issue more", 0L, CgGpuTrace.budgetNanos(slot));
         assertTrue("nothing reaches the trace with the channel off", CgGpuTrace.totals().isEmpty());
 
@@ -218,8 +222,8 @@ public class CgGpuTraceTest {
     @Test
     public void aZoneInsideABudgetZoneIsChargedToItsBudget_andThePausedZoneResumes() {
         int slot = CgGpuTrace.budgetSlot();
-        gl.queriesReady = true;
-        gl.queryNanos = MS;
+        device.ready = true;
+        device.nanos = MS;
         CgTrace.frameBegin();
         CgGpuTrace.begin(CgGpuTrace.name("sparks"), slot);
         CgGpuTrace.begin("sparks.step");
@@ -230,7 +234,7 @@ public class CgGpuTraceTest {
         budgetZone(slot);
         CgGpuTrace.collect();
         assertEquals("sparks, then sparks.step, then sparks resumed", 3 * MS, CgGpuTrace.budgetNanos(slot));
-        assertEquals(5, gl.countOf("glBeginTimeElapsedQuery"));
+        assertEquals(5, device.count("beginTimer"));
     }
 
     @Test
@@ -243,8 +247,8 @@ public class CgGpuTraceTest {
         CgGpuTrace.end();
         CgGpuTrace.end();
         CgGpuTrace.end();
-        assertEquals("sparks, inner, sparks resumed", 3, gl.countOf("glBeginTimeElapsedQuery"));
-        assertEquals(3, gl.countOf("glEndTimeElapsedQuery"));
+        assertEquals("sparks, inner, sparks resumed", 3, device.count("beginTimer"));
+        assertEquals(3, device.count("endTimer"));
     }
 
     private static void budgetZone(int slot) {
@@ -272,4 +276,45 @@ public class CgGpuTraceTest {
         }
         return out;
     }
+
+    /**
+     * A device of timers alone: an elapsed timer answers {@link #nanos}, a timestamp the {@link #clock} it was written at,
+     * each once {@link #ready}; every command-list call counted by name.
+     */
+    private static final class Timers {
+        boolean ready;
+        long nanos, clock;
+        private final Map<String, Integer> calls = new HashMap<>();
+        final CgCommandList list = (CgCommandList) Proxy.newProxyInstance(CgCommandList.class.getClassLoader(),
+                new Class<?>[] {CgCommandList.class}, (proxy, method, args) -> {
+                    calls.merge(method.getName(), 1, Integer::sum);
+                    if (method.getName().equals("timestamp")) ((Timer) args[0]).stamped = clock;
+                    return null;
+                });
+        final CgRHI rhi = (CgRHI) Proxy.newProxyInstance(CgRHI.class.getClassLoader(), new Class<?>[] {CgRHI.class},
+                (proxy, method, args) -> switch (method.getName()) {
+                    case "createTimerQuery" -> new Timer(this);
+                    case "encoder" -> list;
+                    default -> null;
+                });
+
+        int count(String call) {
+            return calls.getOrDefault(call, 0);
+        }
+    }
+
+    private static final class Timer implements CgTimerQuery {
+        private final Timers device;
+        /** The clock it was written at as a timestamp; -1 for an elapsed timer. */
+        long stamped = -1;
+
+        Timer(Timers device) {
+            this.device = device;
+        }
+
+        @Override public long resultNanos() { return !device.ready ? -1 : stamped >= 0 ? stamped : device.nanos; }
+
+        @Override public String label() { return "test timer"; }
+    }
+
 }

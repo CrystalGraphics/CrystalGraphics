@@ -1,9 +1,9 @@
 package com.crystalgraphics.mc.modern.platform.vulkan;
 
-import com.crystalgraphics.platform.gl.state.CgHostStateCache;
 
 //? if >=26.2 {
 /*import com.crystalgraphics.platform.rhi.format.CgFormat;
+import com.crystalgraphics.platform.gl.state.GLCheckedHostState;
 import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
 import com.crystalgraphics.platform.gl.tracked.CgTrackedGLBackend;
 import com.crystalgraphics.vulkan.host.HostedVulkanHost;
@@ -65,7 +65,7 @@ public final class Blaze3dVulkanHost
     private final VulkanCommandEncoder encoder;
 
     private Blaze3dVulkanHost(VulkanDevice minecraft) {
-        super("Minecraft", CgHostStateCache.VERIFY.get());
+        super("Minecraft", GLCheckedHostState.VERIFY.get());
         this.minecraft = minecraft;
         this.encoder = minecraft.createCommandEncoder();
     }

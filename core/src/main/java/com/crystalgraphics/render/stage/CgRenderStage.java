@@ -1,16 +1,13 @@
 package com.crystalgraphics.render.stage;
 
+import com.crystalgraphics.platform.rhi.CgDeviceSection;
 import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.gl.framebuffer.CgFrameBuffer;
 import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.lifecycle.CgGraphicsLifecycle;
 import com.crystalgraphics.lifecycle.CgEngineLifecycle;
-import com.crystalgraphics.platform.gl.CgGL;
-import com.crystalgraphics.platform.gl.state.CgGlCensus;
-import com.crystalgraphics.platform.gl.state.CgGlScope;
-import com.crystalgraphics.platform.gl.state.CgGlSlot;
-import com.crystalgraphics.platform.gl.state.CgGlState;
+import com.crystalgraphics.render.graph.CgExecutor;
 import com.crystalgraphics.trace.CgGpuTrace;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
@@ -274,34 +271,32 @@ public final class CgRenderStage {
         // GameShuttisngDownEvent, and by then every registry is deleted: a stage reaching CgMaterial.load threw
         // "CgMaterialRegistry has been deleted" out of a render event, which surfaced as a crash on quitting.
         if (CgGraphicsLifecycle.isContextDestroyed() || CgGraphicsLifecycle.isStoodDown()) return;
-        // Stage entry: the host and every mod hooking the same point drew just before this, through APIs the state
-        // manager cannot see. Inside a section already open, only our own code ran since it did: what it set (the
-        // main target and its viewport) stands.
-        if (!CgGL.inHostSection()) CgGlState.invalidateAllIfPresent();
-        // What the host handed us, off unless -Dcrystalgraphics.host.census.
-        CgGlCensus.at(path);
-        CgGL.fromHost();
+        CgDeviceSection.begin();
         try {
             // The engine starts on the first stage a host fires if the host never announced its context.
             CgEngineLifecycle.ensureGraphicsContext(host.width(), host.height());
             if (renderers.isEmpty() || !CgGraphicsLifecycle.isInitialized()) return;
-            CgGpuTrace.begin(gpuName, CgGpuTrace.WATCH);   // timed always: a slow firing is logged by name
-            firing++;
-            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, path)) {
-                recordAndExecute();
-            } finally {
-                firing--;
-                CgGpuTrace.end();
+            // The host's target, where the engine named none (fireInto, a rehearsal)
+            try (CgExecutor.Into ignored = CgExecutor.hasCurrentTarget() ? null
+                    : CgExecutor.into(host.mainFramebuffer(), host.width(), host.height())) {
+                CgGpuTrace.begin(gpuName, CgGpuTrace.WATCH);   // timed always: a slow firing is logged by name
+                firing++;
+                try (CgTrace.Zone ignored2 = CgTrace.zone(CgChannels.WORLD, path)) {
+                    recordAndExecute();
+                } finally {
+                    firing--;
+                    CgGpuTrace.end();
+                }
             }
         } finally {
-            CgGL.toHost();
+            CgDeviceSection.end();
         }
     }
 
     /**
      * {@link #fire} into {@code target} rather than the host's bound target: a view of the world of its own, as an
-     * editor's viewport draws one. The target is bound with its viewport for the firing and the host's binding put back
-     * after. Fill {@link #host()} for the target first, its size and id included, and put the host's frame back after.
+     * editor's viewport draws one. It is the firing's current target, and nothing is bound. Fill {@link #host()} for the
+     * target first, its size and id included, and put the host's frame back after.
      *
      * <pre>{@code
      * stage.host().set(0f, target.getWidth(), target.getHeight(), target.getId()).view().set(x, y, z, view, projection);
@@ -309,13 +304,8 @@ public final class CgRenderStage {
      * }</pre>
      */
     public void fireInto(CgFrameBuffer target) {
-        CgGL.fromHost();
-        try (CgGlScope ignored = CgGlState.save(CgGlSlot.FBO, CgGlSlot.VIEWPORT)) {
-            target.bind();
-            CgGL.glViewport(0, 0, target.getWidth(), target.getHeight());
+        try (CgExecutor.Into ignored = CgExecutor.into(target)) {
             fire();
-        } finally {
-            CgGL.toHost();
         }
     }
 
@@ -361,7 +351,7 @@ public final class CgRenderStage {
             if (rehearsalTarget != null && !rehearsalTarget.isDeleted()) rehearsalTarget.delete();
             // The host's depth type and size: copies of the current target are cached by both and taken at the host's
             // viewport, so the cast reuses the rehearsal's and a copy never reads past the target.
-            CgTextureType depth = CgFrameBuffer.depthTypeOf(hostTarget);
+            CgTextureType depth = CgFrameBuffer.depthTypeOf(hostTarget, host.width(), host.height());
             rehearsalTarget = CgFrameBuffer.createOwned("cg_rehearsal", host.width(), host.height(),
                     CgFrameBufferFormat.builder("cg_rehearsal").color(0, CgTextureType.RGBA8)
                             .depth(depth != null ? depth : CgTextureType.DEPTH24_STENCIL8).build());

@@ -95,6 +95,13 @@ public interface CgRHI {
     /** Makes {@code rhi} the one {@link #get()} returns; the host that made it calls this, null when it goes. */
     static void install(CgRHI rhi) {
         Current.rhi = rhi;
+        CgDeviceSection.installed(rhi);
+    }
+
+    /** Whether a device is installed and the calling thread drives it: where resources are made and work recorded. */
+    static boolean onDeviceThread() {
+        CgRHI rhi = Current.rhi;
+        return rhi != null && rhi.ownedByCurrentThread();
     }
 
     /** What the device is and what it can do. */
@@ -235,8 +242,8 @@ public interface CgRHI {
     void onClose(Runnable task);
 
     /**
-     * The host hands us its frame, as a host section opens. Nothing to do for a device that owns
-     * its frames.
+     * The host hands us its frame, as a host section opens ({@link CgDeviceSection}). Nothing to do for a device that
+     * owns its frames.
      */
     default void fromHost() {}
 

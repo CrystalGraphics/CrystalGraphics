@@ -4,13 +4,10 @@ package com.crystalgraphics.gl.texture;
 import com.crystalgraphics.platform.rhi.resource.CgTextureRegion;
 import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
 import com.crystalgraphics.platform.gl.format.GLFormats;
-import com.crystalgraphics.gl.CgGlNames;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.texture.CgTextureSpec;
 import com.crystalgraphics.gpu.CgUploadLease;
 import com.crystalgraphics.gpu.CgUploads;
-import com.crystalgraphics.platform.gl.CgGL;
-import com.crystalgraphics.platform.gl.state.CgGlScope;
 import com.crystalgraphics.util.io.CgTextureIO.CgImageData;
 import com.crystalgraphics.util.io.CgTextureIO;
 import java.nio.ByteBuffer;
@@ -140,46 +137,13 @@ public final class CgTexture3D extends CgTextureAbstract {
         }
         CgTexture3D tex = new CgTexture3D(0, width, height, depth, spec, null);
         tex.levels = levels;
-        tex.gpu.run(() -> {
-            if (CgDeviceTextures.installed()) {
-                tex.store3D();
-                return;
-            }
-            int id = CgGlNames.texture();
-            tex.textureId = id;
-            try {
-                tex.allocate();
-            } catch (RuntimeException e) {
-                CgGL.glDeleteTextures(id);
-                tex.textureId = 0;
-                throw e;
-            }
-        });
+        tex.gpu.run(tex::store3D);
         return tex;
     }
 
     /** Levels in a full mip chain of a {@code width} x {@code height} x {@code depth} texture, down to 1x1x1. */
     public static int fullChain(int width, int height, int depth) {
         return CgTexture.fullChain(Math.max(width, depth), height);
-    }
-
-    private void allocate() {
-        CgGL.glBindTexture(GL_TEXTURE_3D, textureId);
-        try {
-            for (int l = 0; l < levels; l++) {
-                CgGL.glTexImage3D(GL_TEXTURE_3D, l, spec.getGlInternalFormat(), Math.max(1, width >> l),
-                        Math.max(1, height >> l), Math.max(1, depth >> l), 0, spec.getGlBaseFormat(), spec.getGlType(),
-                        (ByteBuffer) null);
-            }
-            spec.applyTo(GL_TEXTURE_3D);
-            CgGL.glTexParameteri(GL_TEXTURE_3D, CgGL.GL_TEXTURE_MAX_LEVEL, levels - 1);
-            if (levels > 1) {
-                CgGL.glTexParameteri(GL_TEXTURE_3D, CgGL.GL_TEXTURE_MIN_FILTER, spec.getMinFilter() == CgGL.GL_NEAREST
-                        ? CgGL.GL_NEAREST_MIPMAP_NEAREST : CgGL.GL_LINEAR_MIPMAP_LINEAR);
-            }
-        } finally {
-            CgGL.glBindTexture(GL_TEXTURE_3D, 0);
-        }
     }
 
     /**
@@ -209,19 +173,8 @@ public final class CgTexture3D extends CgTextureAbstract {
                     pixelFormat, pixelType);
             return;
         }
-        if (image != null) {
-            CgDeviceTextures.write(image, new CgTextureRegion(level, x, y, z, width, height, depth), pixels, pixelFormat,
-                    pixelType);
-            return;
-        }
-        try (CgGlScope restore = gpu.restoring()) {
-            CgGL.glBindTexture(GL_TEXTURE_3D, textureId);
-            try (CgTightUnpack ignored = CgTightUnpack.begin()) {
-                CgGL.glTexSubImage3D(GL_TEXTURE_3D, level, x, y, z, width, height, depth, pixelFormat, pixelType, pixels);
-            } finally {
-                CgGL.glBindTexture(GL_TEXTURE_3D, 0);
-            }
-        }
+        CgDeviceTextures.write(storage(), new CgTextureRegion(level, x, y, z, width, height, depth), pixels, pixelFormat,
+                pixelType);
     }
 
     /** {@link #uploadRegion(int, int, int, int, int, int, int, ByteBuffer, int, int)} from a lease. Takes it; any thread. */
@@ -232,34 +185,14 @@ public final class CgTexture3D extends CgTextureAbstract {
     }
 
     private void land(CgUploadLease lease) {
-        if (image != null) {
-            CgDeviceTextures.write(image, new CgTextureRegion(lease.level(), lease.x(), lease.y(), lease.z(), lease.width(),
-                    lease.height(), lease.depth()), lease, 0, lease.size());
-            return;
-        }
-        CgGL.glBindTexture(GL_TEXTURE_3D, textureId);
-        try (CgTightUnpack ignored = CgTightUnpack.begin()) {
-            lease.texSubImage3D(GL_TEXTURE_3D);
-        } finally {
-            CgGL.glBindTexture(GL_TEXTURE_3D, 0);
-        }
+        CgDeviceTextures.write(storage(), new CgTextureRegion(lease.level(), lease.x(), lease.y(), lease.z(), lease.width(),
+                lease.height(), lease.depth()), lease, 0, lease.size());
     }
 
-    /** Fills every level below 0 from level 0, box-filtered by the driver. Any thread, after level 0 is written. */
+    /** Fills every level below 0 from level 0, box-filtered by the device. Any thread, after level 0 is written. */
     public void generateMipmaps() {
         checkUsable();
-        gpu.run(() -> {
-            if (image != null) {
-                CgDeviceTextures.mipmaps(image);
-                return;
-            }
-            CgGL.glBindTexture(GL_TEXTURE_3D, textureId);
-            try {
-                CgGL.glGenerateMipmap(GL_TEXTURE_3D);
-            } finally {
-                CgGL.glBindTexture(GL_TEXTURE_3D, 0);
-            }
-        });
+        gpu.run(() -> CgDeviceTextures.mipmaps(storage()));
     }
 
     @Override
@@ -285,13 +218,8 @@ public final class CgTexture3D extends CgTextureAbstract {
                 missing = true;
                 width = height = depth = 1;
                 gpu.run(() -> {
-                    if (CgDeviceTextures.installed()) {
-                        store3D();
-                        if (spec.getMipmaps().isEnabled()) CgDeviceTextures.mipmaps(image);
-                        return;
-                    }
-                    make();
-                    applySpec();
+                    store3D();
+                    if (spec.getMipmaps().isEnabled()) CgDeviceTextures.mipmaps(image);
                 });
                 return;
             }
@@ -302,54 +230,19 @@ public final class CgTexture3D extends CgTextureAbstract {
         height = h;
         depth = images.length;
         gpu.run(() -> {
-            if (CgDeviceTextures.installed()) {
-                store3D();
-                for (int i = 0; i < images.length; i++) {
-                    CgDeviceTextures.write(image, new CgTextureRegion(0, 0, 0, i, w, h, 1), images[i].pixels(), format,
-                            GL_UNSIGNED_BYTE);
-                }
-                if (spec.getMipmaps().isEnabled()) CgDeviceTextures.mipmaps(image);
-                return;
+            store3D();
+            for (int i = 0; i < images.length; i++) {
+                CgDeviceTextures.write(image, new CgTextureRegion(0, 0, 0, i, w, h, 1), images[i].pixels(), format,
+                        GL_UNSIGNED_BYTE);
             }
-            make();
-            CgGL.glBindTexture(GL_TEXTURE_3D, textureId);
-            try (CgTightUnpack ignored = CgTightUnpack.begin()) {
-                for (int i = 0; i < images.length; i++) {
-                    CgGL.glTexSubImage3D(GL_TEXTURE_3D, 0, 0, 0, i, w, h, 1, format, GL_UNSIGNED_BYTE, images[i].pixels());
-                }
-            } finally {
-                CgGL.glBindTexture(GL_TEXTURE_3D, 0);
-            }
-            applySpec();
+            if (spec.getMipmaps().isEnabled()) CgDeviceTextures.mipmaps(image);
         });
     }
 
-    /** Level 0 at its size, the texture made first if it has no id yet. */
     /** Its storage on the device at its size and levels, what it replaced released. */
     private void store3D() {
         CgDeviceTextures.release(storeOnDevice(CgGpuTexture.Kind.D3, GLFormats.of(spec.getGlInternalFormat()), width,
-                height, depth, getLevels(), spec));
-    }
-
-    private void make() {
-        if (textureId == 0) textureId = CgGlNames.texture();
-        CgGL.glBindTexture(GL_TEXTURE_3D, textureId);
-        try {
-            CgGL.glTexImage3D(GL_TEXTURE_3D, 0, spec.getGlInternalFormat(), width, height, depth, 0, spec.getGlBaseFormat(),
-                    spec.getGlType(), (ByteBuffer) null);
-        } finally {
-            CgGL.glBindTexture(GL_TEXTURE_3D, 0);
-        }
-    }
-
-    /** The spec's filters and wrap, and its mipmaps from what level 0 holds now. */
-    private void applySpec() {
-        CgGL.glBindTexture(GL_TEXTURE_3D, textureId);
-        try {
-            spec.applyTo(GL_TEXTURE_3D);
-        } finally {
-            CgGL.glBindTexture(GL_TEXTURE_3D, 0);
-        }
+                height, depth, getLevels()));
     }
 
     @Override

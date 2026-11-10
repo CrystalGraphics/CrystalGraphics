@@ -220,7 +220,7 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
 
     /** Whether framebuffer {@code framebuffer} lends its depth to a {@link #besideCurrentDepth} texture. */
     public static boolean takesCurrentDepth(int framebuffer) {
-        return framebuffer != 0 && !CgComposedTargets.refused(framebuffer);
+        return framebuffer != 0 && !CgExecutor.refusedHost(framebuffer);
     }
 
     /** Whether its depth is the current target's ({@link #besideCurrentDepth}). */
@@ -329,11 +329,6 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
         return texture instanceof Attachment view ? view.texture : null;
     }
 
-    /** Render thread: samples every level again, if a {@link #level} view pinned one. */
-    void unpinLevels() {
-        if (color() instanceof CgTexture2D color) color.unpinLevels();
-    }
-
     @Override
     boolean isTransient() {
         return kind == Kind.TRANSIENT;
@@ -360,12 +355,6 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
     private CgTexture color() {
         CgFrameBuffer storage = framebuffer();
         return storage == null ? null : storage.getColorTexture(0);
-    }
-
-    @Override
-    public void bind() {
-        CgTexture color = color();
-        if (color != null) color.bind();
     }
 
     @Override
@@ -472,13 +461,6 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
         }
 
         @Override
-        public void bind() {
-            CgTexture color = texture.color();
-            if (color instanceof CgTexture2D flat) flat.bindLevel(level);
-            else if (color != null) color.bind();   // a volume: one level, the whole texture
-        }
-
-        @Override
         public void bind(int unit) {
             CgTexture color = texture.color();
             if (color instanceof CgTexture2D flat) flat.bindLevel(unit, level);
@@ -581,12 +563,6 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
         }
 
         @Override
-        public void bind() {
-            CgTexture color = bound();
-            if (color != null) color.bind();
-        }
-
-        @Override
         public void bind(int unit) {
             CgTexture color = bound();
             if (color != null) color.bind(unit);
@@ -666,11 +642,6 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
 
         public CgGraphTexture texture() {
             return texture;
-        }
-
-        @Override
-        public void bind() {
-            bind(0);
         }
 
         @Override

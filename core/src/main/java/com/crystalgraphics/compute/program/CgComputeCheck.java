@@ -10,8 +10,10 @@ import com.crystalgraphics.compute.source.CgImageDimension;
 import com.crystalgraphics.gl.buffer.CgReadback;
 import com.crystalgraphics.platform.rhi.command.CgAccess;
 import com.crystalgraphics.platform.gl.CgCapabilities;
-import com.crystalgraphics.gl.CgGlNames;
-import com.crystalgraphics.platform.gl.CgGL;
+import com.crystalgraphics.platform.rhi.CgDeviceSection;
+import com.crystalgraphics.platform.rhi.CgRHI;
+import com.crystalgraphics.platform.rhi.command.CgCommandList;
+import com.crystalgraphics.platform.rhi.resource.CgGpuBuffer;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -54,7 +56,8 @@ public final class CgComputeCheck {
     private static final CgKernelProgram[] PROGRAMS = new CgKernelProgram[SLOTS];
     private static final Set<String> SEEN = new HashSet<>();
     private static final List<String> REPORTED = new CopyOnWriteArrayList<>();
-    private static int buffer, stride, used;
+    private static CgGpuBuffer buffer;
+    private static int stride, used;
     private static boolean overflowWarned;
 
     private CgComputeCheck() {}
@@ -69,12 +72,7 @@ public final class CgComputeCheck {
      * inside async work it runs on the compute queue, where the frame's queue writing its own slots never waits for it.
      */
     public static void prepare() {
-        if (buffer == 0) create();
-    }
-
-    /** Binds the next slot at {@code point} for a dispatch of {@code program}. Render thread. */
-    static void bind(int point, CgKernelProgram program) {
-        CgGL.glBindBufferRange(CgGL.GL_SHADER_STORAGE_BUFFER, point, buffer, claim(program), SLOT_BYTES);
+        if (buffer == null) create();
     }
 
     /** A slot's bytes: what binds at a checked kernel's report point. */
@@ -85,7 +83,7 @@ public final class CgComputeCheck {
      * {@link #prepare}.
      */
     public static long claim(CgKernelProgram program) {
-        if (buffer == 0) create();
+        if (buffer == null) create();
         int slot;
         if (used < SLOTS) {
             slot = used++;
@@ -101,8 +99,8 @@ public final class CgComputeCheck {
         return (long) slot * stride;
     }
 
-    /** The GL buffer the report slots are in; 0 before {@link #prepare}. */
-    public static int buffer() {
+    /** The buffer the report slots are in; null before {@link #prepare}. */
+    public static CgGpuBuffer buffer() {
         return buffer;
     }
 
@@ -114,17 +112,33 @@ public final class CgComputeCheck {
         CgKernelProgram[] by = Arrays.copyOf(PROGRAMS, n);
         Arrays.fill(PROGRAMS, 0, n, null);
         long bytes = (long) n * stride;
-        CgGL.cgBufferBarrier(buffer, CgAccess.COMPUTE_WRITE, CgAccess.COPY_READ);
+        CgDeviceSection.begin();
+        try {
+            CgRHI.get().encoder().bufferBarrier(buffer, CgAccess.COMPUTE_WRITE, CgAccess.COPY_READ);
+        } finally {
+            CgDeviceSection.end();
+        }
         CgReadback.buffer(buffer, 0, bytes, data -> read(data, by));
-        CgGL.cgBufferBarrier(buffer, CgAccess.COPY_READ, CgAccess.COPY_WRITE);
-        CgGL.cgFillBuffer(buffer, 0, bytes, 0);
-        CgGL.cgBufferBarrier(buffer, CgAccess.COPY_WRITE, CgAccess.COMPUTE_READ | CgAccess.COMPUTE_WRITE);
+        zero(bytes, CgAccess.COPY_READ);
     }
 
-    /** At context teardown. */
+    /** Zeroes the first {@code bytes}, last used as {@code from}, for kernels to write. */
+    private static void zero(long bytes, int from) {
+        CgDeviceSection.begin();
+        try {
+            CgCommandList list = CgRHI.get().encoder();
+            list.bufferBarrier(buffer, from, CgAccess.COPY_WRITE);
+            list.fillBuffer(buffer, 0, bytes, 0);
+            list.bufferBarrier(buffer, CgAccess.COPY_WRITE, CgAccess.COMPUTE_READ | CgAccess.COMPUTE_WRITE);
+        } finally {
+            CgDeviceSection.end();
+        }
+    }
+
+    /** At the device's teardown. */
     public static void release() {
-        if (buffer != 0) CgGL.glDeleteBuffers(buffer);
-        buffer = 0;
+        if (buffer != null) CgRHI.get().release(buffer);
+        buffer = null;
         used = 0;
         Arrays.fill(PROGRAMS, null);
     }
@@ -133,13 +147,8 @@ public final class CgComputeCheck {
         int align = Math.max(4, CgCapabilities.detect().storageOffsetAlignment());
         stride = (WORDS * 4 + align - 1) / align * align;
         long bytes = (long) SLOTS * stride;
-        buffer = CgGlNames.buffer();
-        CgGL.glBindBuffer(CgGL.GL_COPY_WRITE_BUFFER, buffer);
-        if (CgCapabilities.detect().isBufferStorageSupported()) CgGL.glBufferStorage(CgGL.GL_COPY_WRITE_BUFFER, bytes, 0);
-        else CgGL.glBufferData(CgGL.GL_COPY_WRITE_BUFFER, bytes, CgGL.GL_DYNAMIC_COPY);
-        CgGL.glBindBuffer(CgGL.GL_COPY_WRITE_BUFFER, 0);
-        CgGL.cgFillBuffer(buffer, 0, bytes, 0);
-        CgGL.cgBufferBarrier(buffer, CgAccess.COPY_WRITE, CgAccess.COMPUTE_READ | CgAccess.COMPUTE_WRITE);
+        buffer = CgRHI.get().createBuffer(new CgGpuBuffer.Desc("cg_compute_check", bytes, CgGpuBuffer.Usage.ALL, false));
+        zero(bytes, CgAccess.COPY_WRITE);
     }
 
     private static void read(ByteBuffer data, CgKernelProgram[] by) {

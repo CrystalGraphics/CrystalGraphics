@@ -74,7 +74,7 @@ public class DevicePipelinesTest {
                                 failures.add(what + ": did not link");
                                 return;
                             }
-                            int outputs = Math.max(1, linked.explicit(what).colorOutputs());
+                            int outputs = Math.max(1, linked.explicit().colorOutputs());
                             if (p.device(CgRenderState.DEFAULT, CgGraphicsPipelineDesc.Topology.TRIANGLES, true, false,
                                     Collections.nCopies(outputs, CgFormat.RGBA16_FLOAT),
                                     CgFormat.DEPTH32_FLOAT, 1) != null) built[at]++;

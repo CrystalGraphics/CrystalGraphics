@@ -2,7 +2,6 @@ package com.crystalgraphics.render.mesh;
 
 import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.gl.buffer.CgStreamBuffer;
-import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 
@@ -51,7 +50,7 @@ final class CgMeshRing {
 
         Page(int bytes) {
             this.bytes = bytes;
-            this.buffer = CgStreamBuffer.create(CgGL.GL_ARRAY_BUFFER, bytes);
+            this.buffer = CgStreamBuffer.create(CgStreamBuffer.Use.MESH, bytes);
         }
     }
 
@@ -111,12 +110,11 @@ final class CgMeshRing {
         return i;
     }
 
-    /** Ends this frame's writes: what a mapped tier holds is flushed and unmapped. Before any draw reads a page. */
+    /** Ends this frame's writes. Before any draw reads a page. */
     void commit() {
         for (int i = 0; i < pages.size(); i++) {
             Page p = pages.get(i);
             if (p.openFrame != frame || p.committedFrame == frame) continue;
-            p.buffer.bind();   // another stream may have bound its own since the map
             p.buffer.commit(p.used);
             p.committedFrame = frame;
             p.out = null;
@@ -136,7 +134,7 @@ final class CgMeshRing {
     }
 
     private void beginFrame(long now) {
-        commit();   // a frame that ended without its upload still unmaps
+        commit();   // a frame that ended without its upload still closes its pages
         frame = now;
         frameNanos = System.nanoTime();
         while (!pages.isEmpty()) {

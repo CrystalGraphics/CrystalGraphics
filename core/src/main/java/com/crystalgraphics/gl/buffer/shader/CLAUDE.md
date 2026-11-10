@@ -33,8 +33,7 @@ without casts.
 │  CgShaderBuffer (abstract base)                              │
 │  Owns: String name, CgStreamBuffer dataBuffer,               │
 │        CgBufferWriter writer, write-session API,             │
-│        bind(CgShader), wireToShader(CgShader),               │
-│        wireShader() hook, delete template                    │
+│        bind(), delete template                               │
 ├──────────────────────────────────────────────────────────────┤
 │  CgStreamBuffer (transport)                                  │
 │  Default createForShaderBuffer: staged, copied in at offset  │
@@ -55,9 +54,9 @@ without casts.
 
 | Type | Role |
 |------|------|
-| `CgShaderBuffer` | Abstract base + factories. Owns `String name`, `CgStreamBuffer dataBuffer`, `CgBufferWriter writer`, write-session API, `bind(CgShader)`, `wireToShader(CgShader)` (wiring only, no context bind), abstract `wireShader(CgShader)` hook, `delete()` template, `getGlBufferId()`. Two factory variants: `create(String name, CgBufferFormat format, int userIndex)` (user-facing — adds per-type USER_START internally) and `createInternal(String name, CgBufferFormat format, int bindingPoint)` (engine-internal, raw binding). **`CgBufferFormat` and `name` are mandatory**. Every upload passes `uploadData`, which skips one of at most 4 KB (`COMPARE_LIMIT_FLOATS`) equal to the last — except a `FRAME` buffer's first upload of a frame — and re-binds a `FRAME` buffer either way; counters `shaderBuffer.upload` / `shaderBuffer.uploadSkipped`. |
-| `CgShaderStorageBuffer` | SSBO backend. GL 4.3 core or `ARB_shader_storage_buffer_object`. `wireShader` calls `glGetProgramResourceIndex`+`glShaderStorageBlockBinding` to wire the named block to `bindingLocation`. Not a no-op. |
-| `CgUniformBuffer` | UBO for a uniform block, with a `CgBufferLifetime`: `FRAME` for every engine block — material properties (`CgMaterial` uploads at every bind), the text block (`getOrCreateUboInternal`) — or `RETAINED`, the default for `getOrCreateUbo(format, name, index)`. `upload()` passes `CgShaderBuffer.uploadData`'s skip. Constructors `(name, format, bindingLocation[, lifetime])`. `getName()` is the GLSL block name. `wireShader` calls `glUniformBlockBinding(programId, blockIndex, bindingLocation)`. Uses unified `endRecord()` from parent. |
+| `CgShaderBuffer` | Abstract base + factories. Owns `String name`, `CgStreamBuffer dataBuffer`, `CgBufferWriter writer`, write-session API, `bind()` (noted for a device pass's sets), `delete()` template, `getGlBufferId()`. Two factory variants: `create(String name, CgBufferFormat format, int userIndex)` (user-facing — adds per-type USER_START internally) and `createInternal(String name, CgBufferFormat format, int bindingPoint)` (engine-internal, raw binding). **`CgBufferFormat` and `name` are mandatory**. Every upload passes `uploadData`, which skips one of at most 4 KB (`COMPARE_LIMIT_FLOATS`) equal to the last — except a `FRAME` buffer's first upload of a frame — and re-binds a `FRAME` buffer either way; counters `shaderBuffer.upload` / `shaderBuffer.uploadSkipped`. |
+| `CgShaderStorageBuffer` | SSBO backend. GL 4.3 core or `ARB_shader_storage_buffer_object`. |
+| `CgUniformBuffer` | UBO for a uniform block, with a `CgBufferLifetime`: `FRAME` for every engine block — material properties (`CgMaterial` uploads at every bind), the text block (`getOrCreateUboInternal`) — or `RETAINED`, the default for `getOrCreateUbo(format, name, index)`. `upload()` passes `CgShaderBuffer.uploadData`'s skip. Constructors `(name, format, bindingLocation[, lifetime])`. `getName()` is the GLSL block name. Uses unified `endRecord()` from parent. |
 | `CgParameterCollectionBuffer` | The `globals` engine buffer: every `CgParameterCollection`'s values, a vec4 each (`GLOBAL_DATA`), FRAME lifetime, at `CgBindingPoints.GLOBALS`. Uploaded once a frame by `CgParameterCollection.upload()`, which the world renderer calls |
 | `CgBonePalettes` | Every skinned draw's bones for a ring frame: `write(skinning, count)` answers a draw's base (three vec4 rows a bone, a 3×4 transform), and the world renderer `record`s the frame's palettes once, into a persistent graph buffer each skinned draw binds at `CgBindingPoints.BONE_PALETTES` (`Draw.bones(base)` puts the base in `CG_OBJECT_SPARE.x`). Its registered `CgShaderBuffer`, one identity bone, is only the skinned program's declaration and what the binding holds between skinned draws |
 | `CgShaderBufferRegistry` | Singleton registry for user-created SSBO/UBO buffers. Two caches: `ShaderBufferKey(name, format, bindingPoint)` (every SSBO) and `UboKey(name, format, bindingPoint)`. `getOrCreate(String name, CgBufferFormat format, int userIndex)` and `getOrCreateUbo(CgBufferFormat format, String name, int userIndex)` take 0-based `userIndex`; per-type USER_START is added internally. `deleteAll()` called by `CgEngineLifecycle.shutdown()`. Engine-internal pipeline buffers bypass this registry. |
@@ -87,7 +86,6 @@ any engine buffer is constructed.
 
 Each engine buffer uses two separate GL operations:
 
-- **Wire** (`wireToShader(shader)`) — per-program, called once after each link via `CgMaterial.recompile()`. Associates block/sampler name with slot. Idempotent.
 - **Bind** (`bind()`) — per-context. Establishes the actual GL binding: `glBindBufferBase` for a `RETAINED` buffer, which stays bound; `glBindBufferRange` at the latest upload for a `CgBufferLifetime.FRAME` one, which every upload re-binds (`CgShaderBuffer.uploadData`); `glActiveTexture+glBindTexture` for a TBO. The executor binds the engine pair per pass: the frame block from the pass's constants, the object buffer it owns.
 
 User buffers may still use `bind(shader)` which does both in one call (requires shader to be active).
@@ -166,11 +164,8 @@ for (int i = 0; i < N; i++) {
 }
 myBuf.endWrite();
 
-shader.bind();
-myBuf.bind(shader);   // glBindBufferBase + wireShader (glShaderStorageBlockBinding)
+myBuf.bind();         // noted: what a device pass's sets read at its binding
 // draw N instances
-myBuf.unbind();
-shader.unbind();
 ```
 
 **UBO — format-aware mode** (the frame block, `CgBufferLifetime.FRAME`)
@@ -184,16 +179,10 @@ w.reset()
  .vec2("cg_Resolution", width, height);
 frameUbo.endRecord();  // finalize the record (sets lastWrittenCount = 1)
 frameUbo.upload();     // skipped if the bytes match and this frame already has them
-frameUbo.bind();       // glBindBufferRange(GL_UNIFORM_BUFFER, FRAME_DATA_UBO, buffer, offset, size)
+frameUbo.bind();       // noted by range at this upload's offset
 ```
 
-**After program link** (engine — via `CgMaterial.recompile()`):
-```java
-shader.bind();
-CgUniformBuffer.wireBlock(shader, CgPassConstants.BLOCK_NAME, CgBindingPoints.FRAME_DATA_UBO);
-CgShaderBuffer.wireBlock(shader, CgInstanceKind.OBJECT_BLOCK_NAME, CgBindingPoints.OBJECT_DATA);  // the SSBO block
-shader.unbind();
-```
+Nothing is wired after a compile: the material compiler declares each block at its binding (`CG_BIND`).
 
 ## Threads
 
@@ -218,11 +207,7 @@ table.endWrite();                 // a lease now, the buffer's before the next f
 ## Key Design Rules
 
 - **`name` is first constructor param** for all subclasses. Never null.
-- **`wireToShader` vs `bind(CgShader)`**: prefer `wireToShader` after link (engine); use `bind(shader)` for user buffers (does both bind + wire in one call, requires program already active).
-- **`bind(CgShader)` requires shader to be already bound AND shader must not be null** — GL uniform queries need the program active. If buffer is attached to a `CgMaterial`, prefer argless `bind()` — material handles `wireShader()` automatically on each compile.
-- **SSBO `wireShader` is NOT a no-op** — calls `glShaderStorageBlockBinding` post-link.
 - **`validateBindingPoint()` was removed** — `create()` adds per-type USER_START internally.
-- **`CgUniformBuffer.bindBlock()` methods were removed** — use `buffer.bind(shader)` or `wireToShader`.
 - **`CgUniformBuffer.blockName` field was removed** — use `getName()` from parent.
 - **The TBO path is unhooked** (rhi X2): `CgTextureBuffer`, `USER_START_TBO` and the texel binding are gone; `docs/TBO_PATH.md` reconnects them.
 - **Engine blocks bypass the registry** — the frame block and object buffer use high-end binding slots resolved at runtime; the executor owns the object buffer and binds the frame block from each pass's constants.

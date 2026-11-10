@@ -30,10 +30,9 @@ its bytes when recorded; its `float[]` form reads the caller's array when the fr
 every frame, so that array must not change until then.
 `resize(buffer, desc)` is copies of each version into a new handle and a release of the old: a pool outgrowing its
 capacity. A persistent or history buffer's storage is made at its first use, unless `CgExecutor.makeStorage(buffer)`
-made it ahead (a precache, so the frame that first uses it allocates nothing). Every GL name the engine makes
-(buffers, textures, framebuffers, vertex arrays, renderbuffers) comes from `gl.CgGlNames`, refilled between frames,
-since each `glGen*` waits for a threaded driver to drain its queue. The executors of the first two nesting depths are
-made at the engine's start (`CgExecutor.ahead`): each maps a ring, and a map waits the same way.
+made it ahead (a precache, so the frame that first uses it allocates nothing). The executors of the first two
+nesting depths are made at the engine's start (`CgExecutor.ahead`): each maps a ring, and a map waits for a threaded
+driver to drain its queue.
 
 ```java
 CgGraphBuffer state = CgGraphBuffer.history("particles", CgBufferDesc.elements(n, 32, CgBufferUsage.STORAGE));
@@ -130,10 +129,8 @@ int reads = rec.bindings().withTexture(material.captureBindings(rec.bindings()),
 - `sceneColor` copies slot 0; hazards and the pool key on the texture as a whole.
 
 **A second attachment beside a target** (`CgRasterPass.attachment(texture)`): the pass draws into `texture` as slot 1
-beside a target it may not own, the current one included, keeping what it holds. Beside the current target the executor
-binds a framebuffer of ours with the host's colour and depth attached (`CgComposedTargets`): what differs attached at
-each bind, everything detached at the execution's end, so the host's own framebuffer is never changed and a target the
-host remade under the same names (between executions, never within one) is never drawn through stale. The world's normal target is the user (`render/world/CLAUDE.md`).
+beside a target it may not own, the current one included, keeping what it holds. Beside the current target the device's
+pass attaches the host's colour and depth as imported textures, so the host's own framebuffer is never changed. The world's normal target is the user (`render/world/CLAUDE.md`).
 
 ```java
 recording.raster(normals, CgLoad.clear(0, 0, 0, 0), constants, null, CgOrder.SORTED).end();   // cleared first
@@ -149,8 +146,7 @@ chunks.draw(material.pipeline(CgInstanceKind.OBJECT).as(CgPipelineForm.NORMALS),
 
 **A target beside the current depth** (`CgGraphTexture.besideCurrentDepth`): a transient colour texture whose depth
 and stencil are the current target's, which is what the world's HDR scene is (`render/world/CLAUDE.md`). A pass into it
-draws through a framebuffer of ours holding it at slot 0 and the host's depth (`CgComposedTargets` without the host's
-colour), so it tests and writes the host's depth; `sceneDepth` on it, its own or from it, copies the host's. A pass
+attaches it at slot 0 and the host's depth, imported, so it tests and writes the host's depth; `sceneDepth` on it, its own or from it, copies the host's. A pass
 into it reads and writes the current target for ordering, and may not clear depth.
 
 ```java
@@ -164,7 +160,7 @@ recording.raster(scene, CgLoad.load(), constants, null, CgOrder.SORTED)
 - `requestedBesideCurrentDepth` is the same, kept until released: drawn in one firing, read in a later one (the
   world's opaque scene).
 - A pass into one may take a second attachment (`attachment(texture)`): ours at slot 1 beside ours at 0 and the host's
-  depth, the host's colour left out (`CgComposedTargets` without host colour, two draw buffers).
+  depth, the host's colour left out.
 - `sceneColor(unit, from)` is `sceneDepth(unit, from)`'s twin: another target's colour, copied whole when the pass
   begins, RGBA8 for the current target.
 
