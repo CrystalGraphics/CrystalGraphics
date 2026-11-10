@@ -374,8 +374,10 @@ plate.remove();                             // it plays nothing, so it stays unt
 A widget on the screen goes on a `CgScreenWidgetLayer`, UMG's viewport: `AddToViewport` puts a widget in a
 full-screen canvas at a z-order, `RemoveFromParent` takes it off. It fills the screen in **UI units**: the screen's
 pixels over the kit's UI scale, as `AddToViewport` sizes a user widget over its DPI scale, so its root canvas's
-anchors are fractions of the screen and hold at any window size. A kit sets the scale in `ui.yaml`; without one it is
-Unreal's default, 1 at 1080 pixels on the shortest side.
+anchors are fractions of the screen and hold at any window size, and its size follows the window. A kit sets the scale
+in `ui.yaml`; without one, or without a `curve`, it is Unreal's default: the shortest side over 1080 (0.666 at 720,
+1.333 at 1440), held at 0.444 below 480. A kit tuned at another size keeps that look with `application_scale` alone:
+0.75 makes 1440 pixels 1.
 
 ```yaml
 # assets/mymod/ui.yaml

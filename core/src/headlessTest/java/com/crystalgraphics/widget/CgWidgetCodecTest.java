@@ -238,6 +238,9 @@ public class CgWidgetCodecTest {
         assertEquals("between 1080 and 8640", 1f + 360f * 7f / 7560f, ui.scale(2560f, 1440f), 1e-4f);
         assertEquals("held below its first key", 0.444f, ui.scale(400f, 300f), 1e-4f);
         assertEquals(1f, CgUiScale.DEFAULT.scale(3000f, 1080f), 1e-4f);
+        assertEquals("Unreal's default shrinks with the window", 0.666f, CgUiScale.DEFAULT.scale(1280f, 720f), 1e-4f);
+        CgUiScale kept = CgUiScale.of((Map<?, ?>) CgAssetYaml.read("_v: 1\napplication_scale: 0.75\n"));
+        assertEquals("no curve: Unreal's, under its application scale", 1f, kept.scale(2560f, 1440f), 1e-4f);
         assertFalse("a default with no file", CgUiScale.of("no_such_kit") != CgUiScale.DEFAULT);
     }
 }

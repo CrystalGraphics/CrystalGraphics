@@ -47,8 +47,12 @@ public record CgUiScale(Rule rule, float[] sides, float[] scales, float applicat
     /** The file at a kit's root. */
     public static final String FILE = "ui.yaml";
 
-    /** Unreal's default: the shortest side, 1 at 1080, application scale 1. */
-    public static final CgUiScale DEFAULT = new CgUiScale(Rule.SHORTEST_SIDE, new float[]{1080f}, new float[]{1f}, 1f);
+    /**
+     * Unreal's default ({@code BaseEngine.ini}'s {@code UIScaleCurve}): the shortest side over 1080, held below 480,
+     * application scale 1. A kit that keeps its look at another size sets {@code application_scale} rather than a curve.
+     */
+    public static final CgUiScale DEFAULT = new CgUiScale(Rule.SHORTEST_SIDE,
+            new float[]{480f, 720f, 1080f, 8640f}, new float[]{0.444f, 0.666f, 1f, 8f}, 1f);
 
     private static final Map<String, CgUiScale> BY_KIT = new ConcurrentHashMap<>();
 
