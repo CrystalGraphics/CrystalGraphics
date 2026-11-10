@@ -1796,10 +1796,6 @@ com/crystalgraphics/api/text/CgFontFeature
   method public,final hashCode ()I
   method public,final toString ()Ljava/lang/String;
   method public,static enable (Ljava/lang/String;)Lcom/crystalgraphics/api/text/CgFontFeature;
-com/crystalgraphics/api/text/CgNumberFormat
-  access public,final
-  extends java/lang/Object
-  method public,static compact (J)Ljava/lang/String;
 com/crystalgraphics/api/text/CgParagraphKnobs
   access public,final,record
   extends java/lang/Record

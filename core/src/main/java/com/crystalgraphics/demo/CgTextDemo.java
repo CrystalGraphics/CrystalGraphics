@@ -4,7 +4,6 @@ import com.crystalgraphics.api.font.CgDefaultFont;
 import com.crystalgraphics.api.font.CgFont;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgMaterialDefinition;
-import com.crystalgraphics.api.text.CgNumberFormat;
 import com.crystalgraphics.api.text.CgTextLayout;
 import com.crystalgraphics.asset.kind.CgLookKinds;
 import com.crystalgraphics.asset.load.CgAssetRef;
@@ -279,7 +278,7 @@ public final class CgTextDemo {
         long damage = POWERS[order] + (long) (unit(hit) * 9.0 * POWERS[order]);
         if (damage != shownDamage) {
             shownDamage = damage;
-            words[0] = CgNumberFormat.compact(damage);
+            words[0] = Long.toString(damage);
         }
         active = true;
     }
