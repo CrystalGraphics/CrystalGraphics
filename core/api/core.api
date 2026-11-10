@@ -4162,6 +4162,27 @@ com/crystalgraphics/collision/mirror/CgMirrorVersion
   method public entities ()Lcom/crystalgraphics/platform/world/CgEntityQuery;
   method public epoch ()J
   method public frozen ()Ljava/lang/Object;
+com/crystalgraphics/command/CgCoreActions
+  access public,final
+  extends java/lang/Object
+  field public,static,final CHANGE_LEVEL I
+  method public,static get (Lcom/crystalgraphics/platform/command/CgCommandSource;Ljava/lang/String;)I
+  method public,static info (Lcom/crystalgraphics/platform/command/CgCommandSource;)I
+  method public,static list (Lcom/crystalgraphics/platform/command/CgCommandSource;Ljava/lang/String;)I
+  method public,static reload (Lcom/crystalgraphics/platform/command/CgCommandSource;)I
+  method public,static reset (Lcom/crystalgraphics/platform/command/CgCommandSource;Ljava/lang/String;)I
+  method public,static set (Lcom/crystalgraphics/platform/command/CgCommandSource;Ljava/lang/String;Ljava/lang/String;)I
+com/crystalgraphics/command/CgCoreCommands
+  access public,final
+  extends java/lang/Object
+  implements com/crystalgraphics/platform/command/CgCommands$Contribution
+  method public <init> (Ljava/lang/String;)V
+  method public build (Lcom/mojang/brigadier/CommandDispatcher;Ljava/util/function/Function;)V
+com/crystalgraphics/command/CgPlainCommands
+  access public,final
+  extends java/lang/Object
+  method public,static complete (Lcom/crystalgraphics/platform/command/CgCommandSource;[Ljava/lang/String;)Ljava/util/List;
+  method public,static run (Lcom/crystalgraphics/platform/command/CgCommandSource;[Ljava/lang/String;)I
 com/crystalgraphics/compute/CgCheckBuffers
   access public,final
   extends java/lang/Object

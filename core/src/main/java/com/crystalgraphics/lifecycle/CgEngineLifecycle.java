@@ -1,5 +1,8 @@
 package com.crystalgraphics.lifecycle;
 
+import com.crystalgraphics.command.CgCoreCommands;
+import com.crystalgraphics.platform.command.CgBrigadier;
+import com.crystalgraphics.platform.command.CgCommands;
 import com.crystalgraphics.platform.rhi.CgRHI;
 import java.util.EnumSet;
 import java.util.List;
@@ -105,7 +108,25 @@ public final class CgEngineLifecycle {
         if (init) return;
         init = true;
         CgNetwork.install(channel, CgPlayers::idOf);
+        registerCommands();
         listeners.dispatch("onInit", CgLifecycleListener::onInit);
+    }
+
+    /**
+     * {@code /cg} on the server and {@code /cgc} on the client. A host without Brigadier loads none of it (it has
+     * {@code CgPlainCommands}); whether the client's hook exists is the host's registration to answer, which comes after.
+     */
+    private static void registerCommands() {
+        if (CgBrigadier.present()) BrigadierCommands.register();
+    }
+
+    /** Apart so that nothing here is loaded without Brigadier. */
+    private static final class BrigadierCommands {
+        static void register() {
+            if (!CgCommands.supports(CgCommands.Side.SERVER)) return;
+            CgCommands.server(new CgCoreCommands("cg"));
+            CgCommands.client(new CgCoreCommands("cgc"));
+        }
     }
 
     /** Every mod initialised: what was mounted starts loading. The engine runs it at its first client or server start. */

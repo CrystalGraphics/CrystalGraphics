@@ -61,6 +61,10 @@ tasks.withType<JavaCompile>().configureEach {
 // 3. REPOSITORIES
 repositories {
     maven {
+        name = "Minecraft Libraries"
+        url = uri("https://libraries.minecraft.net/")
+    }
+    maven {
         name = "GTNH Maven"
         url = uri("https://nexus.gtnewhorizons.com/repository/public/")
     }
@@ -83,6 +87,9 @@ dependencies {
 
     consumerApi(project(":freetype-msdfgen-harfbuzz-bindings"))
     compileOnly("com.google.code.findbugs:jsr305:3.0.2")
+    // The command model, as in :platform (consumerApi, never bundled); the tests run on the newest.
+    consumerApi("com.mojang:brigadier:1.0.14")
+    testImplementation("com.mojang:brigadier:1.3.11")
     compileOnly("de.javagl:obj:0.4.0")
     compileOnly("de.javagl:jgltf-model:2.0.4")
     compileOnly("commons-io:commons-io:2.4")
