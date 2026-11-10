@@ -346,8 +346,31 @@ audio.subtitles().queue(id, CgSubtitles.DEFAULT_PRIORITY, line.seconds(),
         List.of(new CgSubtitles.Cue("Kame...", 0f), new CgSubtitles.Cue("...hameha!", 1.4f)));
 ```
 
-Nothing is captioned for you, Minecraft's own sounds included: a line shows only when you queue it. A Minecraft event's
-own caption, in the player's language, is a key away (packs name one in `sounds.json` from 1.9):
+### A sound that captions itself
+
+A sound can carry its own lines, as Unreal's sound wave carries its subtitles: written on the sound, they queue
+every time it plays, whoever plays it. On a kit's cue in `sounds.yaml`, or on a sound map anywhere a sound is named:
+
+```yaml
+# sounds.yaml
+V_PL_SKL_01: { path: mykit:sounds/V_PL_SKL_01.ogg, subtitles: [ { text: mykit:text/V_PL_SKL_01 } ] }
+
+# a cue's sound or a sequence's sound section: two lines, over other sounds' lines
+sound: { path: mymod:sounds/kame.ogg, subtitle_priority: 20000,
+         subtitles: [ { text: mymod:text/kame_charge }, { text: mymod:text/kame_fire, time: 1.4 } ] }
+```
+
+- **`text`** is a string id or the literal line. An id reads the kit's `strings/<locale>.yaml`, else your mod's
+  `lang/<locale>.json` (`mymod:text/kame_charge` is the key `mymod.kame_charge`), in the player's language as the
+  sound starts (`i18n.CgKitStrings`).
+- **`time`** is seconds into the sound, 0 unless written; the cues climb, or the sound fails where it loads, named.
+- **`subtitle_priority`** is `CgSubtitles.DEFAULT_PRIORITY` unless written.
+- `audio.CgSoundSubtitles` is what they read into.
+
+### Minecraft's own sounds
+
+Minecraft's events are not captioned for you: a line shows only when you queue it. An event's own caption, in the
+player's language, is a key away (packs name one in `sounds.json` from 1.9):
 
 ```java
 long id = audio.playEvent("entity.generic.explode", x, y, z, 1f, 1f);

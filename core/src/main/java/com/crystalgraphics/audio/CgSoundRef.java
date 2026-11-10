@@ -29,6 +29,8 @@ import javax.annotation.Nullable;
  *   <li>A voice line names its speaker, {@code { cue: kakarot:sound/V_PL_SKL_01, speaker: Goku }}: the speaker's
  *       voice sheet in the kit's cast makes it {@code V_C001A/V_PL_SKL_01} in the table.</li>
  *   <li>A {@code pick} is rolled from the play's seed, so every client picks the same.</li>
+ *   <li>A file's map and a kit's cue carry their own {@code subtitles}, queued as it plays ({@link CgSoundSubtitles});
+ *       a host event's are its {@code sounds.json}'s.</li>
  *   <li>A host event is resolved when it plays, the host's {@code sounds.json} being read then.</li>
  * </ul>
  */
@@ -45,9 +47,11 @@ public final class CgSoundRef {
     @Nullable
     private final Path file;
     private final CgSoundRef[] picks;
+    private final CgSoundSubtitles subtitles;
 
     private CgSoundRef(Kind kind, String id, float volume, float pitch, boolean stream,
-            @Nullable CgSoundAttenuation attenuation, @Nullable Path file, CgSoundRef[] picks) {
+            @Nullable CgSoundAttenuation attenuation, @Nullable Path file, CgSoundRef[] picks,
+            CgSoundSubtitles subtitles) {
         this.kind = kind;
         this.id = id;
         this.volume = volume;
@@ -56,6 +60,7 @@ public final class CgSoundRef {
         this.attenuation = attenuation;
         this.file = file;
         this.picks = picks;
+        this.subtitles = subtitles;
     }
 
     /** {@code written}, a sound as the spec writes it, compiled; {@code where} names it in a failure. */
@@ -66,7 +71,7 @@ public final class CgSoundRef {
             if (list.isEmpty()) throw new IllegalArgumentException(where + ".pick is empty");
             CgSoundRef[] picks = new CgSoundRef[list.size()];
             for (int i = 0; i < picks.length; i++) picks[i] = of(list.get(i), where + ".pick[" + i + "]");
-            return new CgSoundRef(Kind.PICK, where, 1f, 1f, false, null, null, picks);
+            return new CgSoundRef(Kind.PICK, where, 1f, 1f, false, null, null, picks, CgSoundSubtitles.NONE);
         }
         if (m.get("speaker") instanceof String speaker && m.get("cue") instanceof String line) {
             CgKitSounds.Cue cue;
@@ -75,24 +80,30 @@ public final class CgSoundRef {
             } catch (IllegalArgumentException e) {
                 throw new IllegalArgumentException(where + ": " + e.getMessage(), e);
             }
-            return new CgSoundRef(Kind.CUE, cue.id(), cue.volume(), cue.pitch(), cue.stream(), null, cue.file(), new CgSoundRef[0]);
+            return cue(cue);
         }
         if (m.get("cue") instanceof String cue) return ofString(cue, where);
         if (!(m.get("path") instanceof String path)) throw new IllegalArgumentException(where + ": a sound map needs path, cue or pick");
         CgSoundAttenuation a = m.get("attenuation") instanceof Map<?, ?> am ? attenuation(am, where + ".attenuation") : null;
         return new CgSoundRef(Kind.FILE, path, number(m.get("volume"), 1f), number(m.get("pitch"), 1f),
-                Boolean.TRUE.equals(m.get("stream")), a, null, new CgSoundRef[0]);
+                Boolean.TRUE.equals(m.get("stream")), a, null, new CgSoundRef[0], CgSoundSubtitles.read(m, where));
+    }
+
+    private static CgSoundRef cue(CgKitSounds.Cue cue) {
+        return new CgSoundRef(Kind.CUE, cue.id(), cue.volume(), cue.pitch(), cue.stream(), null, cue.file(),
+                new CgSoundRef[0], cue.subtitles());
     }
 
     private static CgSoundRef ofString(String s, String where) {
         if (CgKitSounds.isCue(s)) {
-            CgKitSounds.Cue cue = resolve(s, where);
-            return new CgSoundRef(Kind.CUE, cue.id(), cue.volume(), cue.pitch(), cue.stream(), null, cue.file(), new CgSoundRef[0]);
+            return cue(resolve(s, where));
         }
         if (s.contains(":sound/")) resolve(s, where);  // a game's cue with no table: fails naming it
-        if (s.endsWith(".ogg")) return new CgSoundRef(Kind.FILE, s, 1f, 1f, false, null, null, new CgSoundRef[0]);
+        if (s.endsWith(".ogg")) {
+            return new CgSoundRef(Kind.FILE, s, 1f, 1f, false, null, null, new CgSoundRef[0], CgSoundSubtitles.NONE);
+        }
         if (s.indexOf(':') < 0) throw new IllegalArgumentException(where + ": sound " + s + " has no namespace");
-        return new CgSoundRef(Kind.EVENT, s, 1f, 1f, false, null, null, new CgSoundRef[0]);
+        return new CgSoundRef(Kind.EVENT, s, 1f, 1f, false, null, null, new CgSoundRef[0], CgSoundSubtitles.NONE);
     }
 
     private static CgKitSounds.Cue resolve(String s, String where) {
@@ -150,6 +161,11 @@ public final class CgSoundRef {
         return attenuation;
     }
 
+    /** Its own subtitles, queued as it plays; {@link CgSoundSubtitles#NONE} for a host event or a pick. */
+    public CgSoundSubtitles subtitles() {
+        return subtitles;
+    }
+
     /** A game cue's file on disk; null for any other kind. */
     @Nullable
     public Path file() {
@@ -182,7 +198,8 @@ public final class CgSoundRef {
         if (this == o) return true;
         if (!(o instanceof CgSoundRef r)) return false;
         return kind == r.kind && id.equals(r.id) && volume == r.volume && pitch == r.pitch && stream == r.stream
-                && Objects.equals(attenuation, r.attenuation) && Objects.equals(file, r.file) && Arrays.equals(picks, r.picks);
+                && Objects.equals(attenuation, r.attenuation) && Objects.equals(file, r.file) && Arrays.equals(picks, r.picks)
+                && subtitles.equals(r.subtitles);
     }
 
     @Override

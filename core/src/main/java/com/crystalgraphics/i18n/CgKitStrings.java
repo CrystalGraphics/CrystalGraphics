@@ -16,9 +16,16 @@ import javax.annotation.Nullable;
 import com.crystalgraphics.asset.codec.CgAssetYaml;
 
 /**
- * A game's text by string id, per language: a kit's {@code strings/<locale>.yaml}, what a sequence's {@code subtitle}
- * section names as {@code <ns>:text/<id>}. Read in the player's language ({@link CgI18n#language()}), {@code en_us}
- * where that language has no text.
+ * Text by string id, {@code <ns>:text/<id>}, in the player's language: what a widget's text block and a sequence's
+ * {@code subtitle} section name. A game's kit carries its own tables ({@code strings/<locale>.yaml}); anything else
+ * is a mod's translations, read through the host's language files ({@link CgI18n}), so a mod writes its text once,
+ * in its {@code lang/<locale>.json}.
+ *
+ * <pre>{@code
+ * // a mod's own text: assets/mymod/lang/en_us.json has "mymod.combo.nice": "Nice!"
+ * CgKitStrings.text("mymod:text/combo.nice");                       // "Nice!": the key <ns>.<id>
+ * CgKitStrings.text("minecraft:text/subtitles.entity.generic.explode");   // "Explosion": else the key <id> as written
+ * }</pre>
  *
  * <pre>{@code
  * # assets/kakarot_kit/strings/en_us.yaml
@@ -36,10 +43,13 @@ import com.crystalgraphics.asset.codec.CgAssetYaml;
  * }</pre>
  *
  * <ul>
- *   <li>The namespace is the game's: a strings file's own {@code namespace}, else its kit's {@code sounds.yaml}'s, else
- *       the kit's.</li>
- *   <li>A language is a file's name, a locale in lower case: {@code en_us}, {@code ja_jp}, {@code fr_fr}.</li>
- *   <li>Null where neither the player's language nor {@code en_us} has the id.</li>
+ *   <li>Looked up in order: the namespace's kit table, in the player's language then {@code en_us}; then the host's key
+ *       {@code <ns>.<id>}, as a mod prefixes its keys; then the key {@code <id>} as written.</li>
+ *   <li>A kit table's namespace is the game's: a strings file's own {@code namespace}, else its kit's
+ *       {@code sounds.yaml}'s, else the kit's.</li>
+ *   <li>A kit table's language is its file's name, a locale in lower case: {@code en_us}, {@code ja_jp},
+ *       {@code fr_fr}.</li>
+ *   <li>Null where none has it. The host's files are read on the render thread only, as the host's language is.</li>
  * </ul>
  */
 public final class CgKitStrings {
@@ -113,19 +123,28 @@ public final class CgKitStrings {
         return table;
     }
 
-    /** The string {@code ref}, a {@code <ns>:text/<id>}, in the player's language or {@code en_us}; null where neither has it. */
+    /**
+     * The string {@code ref}, a {@code <ns>:text/<id>}, in the player's language: its kit table's, else the host's
+     * translation; null where none has it.
+     */
     @Nullable
     public static Entry entry(String ref) {
         int at = ref.indexOf(TEXT);
         if (at <= 0) return null;
-        Map<String, Map<String, Entry>> languages = BY_GAME.get(ref.substring(0, at));
-        if (languages == null) return null;
+        String namespace = ref.substring(0, at);
         String id = ref.substring(at + TEXT.length());
-        Map<String, Entry> own = languages.get(CgI18n.language());
-        Entry entry = own != null ? own.get(id) : null;
-        if (entry != null) return entry;
-        Map<String, Entry> fallback = languages.get(FALLBACK);
-        return fallback != null ? fallback.get(id) : null;
+        Map<String, Map<String, Entry>> languages = BY_GAME.get(namespace);
+        if (languages != null) {
+            Map<String, Entry> own = languages.get(CgI18n.language());
+            Entry entry = own != null ? own.get(id) : null;
+            if (entry != null) return entry;
+            Map<String, Entry> fallback = languages.get(FALLBACK);
+            entry = fallback != null ? fallback.get(id) : null;
+            if (entry != null) return entry;
+        }
+        String text = CgI18n.translate(namespace + "." + id);
+        if (text == null) text = CgI18n.translate(id);
+        return text != null ? new Entry(text, null) : null;
     }
 
     /** The kit holding {@code ref}'s strings, a {@code <ns>:text/<id>}; null where none registered its game. */

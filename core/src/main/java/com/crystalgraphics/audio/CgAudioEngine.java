@@ -323,6 +323,8 @@ public final class CgAudioEngine extends CgWorldSubsystem {
             id = activeSounds.play(sound, soundClass, gain * volume, pitch * p, loop, at);
         }
         if (!Double.isNaN(x)) activeSounds.at(id, x, y, z).attenuation(id, attenuation);
+        // Its own lines, as USoundWave::HandleStart queues a wave's subtitles.
+        r.subtitles().queue(subtitles, id, sound.seconds());
         return id;
     }
 
@@ -360,8 +362,9 @@ public final class CgAudioEngine extends CgWorldSubsystem {
     }
 
     /**
-     * The sounds' subtitles: queue one for a sound you play, and the engine shows the highest priority at the bottom of
-     * the screen while {@code CgGraphicsSettings.SUBTITLES} is on. Nothing is queued for you, Minecraft's events included.
+     * The sounds' subtitles: a sound that carries its own ({@link CgSoundSubtitles}) queues them as it plays; queue one
+     * for any other you play. The engine shows the highest priority at the bottom of the screen while
+     * {@code CgGraphicsSettings.SUBTITLES} is on. Minecraft's events queue nothing.
      *
      * <pre>{@code
      * long id = audio.play(line, CgSoundClass.VOICE, 1f);

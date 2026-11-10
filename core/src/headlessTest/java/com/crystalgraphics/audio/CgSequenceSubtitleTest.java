@@ -3,13 +3,17 @@ package com.crystalgraphics.audio;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertSame;
+import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.junit.After;
 import org.junit.BeforeClass;
@@ -49,6 +53,8 @@ public class CgSequenceSubtitleTest {
                 namespace: subtest
                 sounds:
                   S_voice: { path: subsub:sounds/voice.ogg }
+                  S_shout: { path: subsub:sounds/voice.ogg, subtitle_priority: 20000,
+                             subtitles: [ { text: subtest:text/Line_02 }, { text: mymod:text/combo.nice, time: 1.5 } ] }
                 """.getBytes(StandardCharsets.UTF_8));
         Files.write(kit.resolve("strings/en_us.yaml"), """
                 _v: 1
@@ -78,13 +84,52 @@ public class CgSequenceSubtitleTest {
         static final Language INSTANCE = new Language();
         static { CgPlatform.provide(CgI18n.HOST, INSTANCE); }
         volatile String code = "en_us";
-        @Override public String translate(String key) { return null; }
+        final Map<String, String> keys = new ConcurrentHashMap<>();
+        @Override public String translate(String key) { return keys.get(key); }
         @Override public String language() { return code; }
     }
 
     @After
     public void english() {
         Language.INSTANCE.code = "en_us";
+        Language.INSTANCE.keys.clear();
+    }
+
+    @Test
+    public void anIdNoKitHoldsIsAModsTranslation() {
+        Language.INSTANCE.keys.put("mymod.combo.nice", "Nice!");
+        Language.INSTANCE.keys.put("subtitles.entity.generic.explode", "Explosion");
+        Language.INSTANCE.keys.put("subtest.Line_02", "not the kit's");
+        assertEquals("the key <ns>.<id>", "Nice!", CgKitStrings.text("mymod:text/combo.nice"));
+        assertEquals("else <id> as written", "Explosion",
+                CgKitStrings.text("minecraft:text/subtitles.entity.generic.explode"));
+        assertEquals("a kit's own table first", "HAAAA!", CgKitStrings.text("subtest:text/Line_02"));
+        assertNull(CgKitStrings.text("mymod:text/combo.missing"));
+    }
+
+    @Test
+    public void aSoundsOwnSubtitlesQueueAsItPlaysInThePlayersLanguage() {
+        play();
+        Language.INSTANCE.keys.put("mymod.combo.nice", "Nice!");
+        long id = audio.play(CgSoundRef.of("subtest:sound/S_shout", "test"), CgSoundClass.VOICE, Double.NaN, 0, 0, 1f, 1f,
+                false, Double.NaN, 0L);
+        double[] at = {0.2};
+        audio.subtitles().update(sound -> sound == id ? at[0] : Double.NaN);
+        assertEquals("its first cue, the kit's string", "HAAAA!", audio.subtitles().text());
+        at[0] = 1.6;
+        audio.subtitles().update(sound -> sound == id ? at[0] : Double.NaN);
+        assertEquals("its second, the mod's lang key", "Nice!", audio.subtitles().text());
+        audio.subtitles().update(sound -> Double.NaN);
+        assertNull("gone with its sound", audio.subtitles().text());
+        world.close();
+    }
+
+    @Test
+    public void cuesOutOfOrderFailWhereTheSoundIsRead() {
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> CgSoundRef.of(Map.of(
+                "path", "mymod:sounds/kame.ogg",
+                "subtitles", List.of(Map.of("text", "a", "time", 1.0), Map.of("text", "b", "time", 0.5))), "mymod:kame"));
+        assertTrue(e.getMessage(), e.getMessage().contains("mymod:kame.subtitles[1]"));
     }
 
     /** The test's "files": a rate, seconds and hertz, decoded as a sine. */

@@ -29,8 +29,9 @@ import javax.annotation.Nullable;
  * }</pre>
  *
  * <ul>
- *   <li>Nothing is queued for you: a sound shows a line only when its author queues one, Minecraft's own events
- *       included ({@code CgHostSoundEvents.subtitle(event)} is the caption key the host's pack gives it).</li>
+ *   <li>A sound carrying its own lines queues them as it plays ({@link CgSoundSubtitles}, written on a kit's cue or a
+ *       sound map); any other shows a line only when its author queues one, Minecraft's own events included
+ *       ({@code CgHostSoundEvents.subtitle(event)} is the caption key the host's pack gives it).</li>
  *   <li>Shown only while {@code CgGraphicsSettings.SUBTITLES} is on; queued either way.</li>
  *   <li>A cue follows its sound's own playback, so a hitch, a pause or a sound joined late reads the cue it is at.</li>
  *   <li>A second queue for one id replaces the first. Priority 0, no cues or no duration queue nothing.</li>

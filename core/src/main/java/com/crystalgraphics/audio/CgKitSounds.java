@@ -21,6 +21,7 @@ import com.crystalgraphics.asset.codec.CgAssetYaml;
  * //   namespace: kakarot
  * //   sounds:
  * //     S_battle_punch_sw: { path: kakarot_kit:sounds/Sound/Se/battle/S_battle_punch_sw.ogg }
+ * //     V_PL_SKL_01: { path: kakarot_kit:sounds/V_PL_SKL_01.ogg, subtitles: [ { text: kakarot:text/V_PL_SKL_01 } ] }
  * CgKitSounds.registerKit(Paths.get("assets/kakarot_kit"));
  * CgKitSounds.Cue punch = CgKitSounds.resolve("kakarot:sound/S_battle_punch_sw");
  * }</pre>
@@ -30,12 +31,13 @@ import com.crystalgraphics.asset.codec.CgAssetYaml;
  *   <li>A cue its game's table does not hold fails at {@link #resolve}, naming it: at load, never as silence.</li>
  *   <li>The table's {@code namespace} is the game's, what its sequences write before {@code :sound/}; a path's
  *       namespace is the kit's own folder.</li>
+ *   <li>A cue's {@code subtitles} are its own lines, shown whenever it plays: see {@link CgSoundSubtitles}.</li>
  * </ul>
  */
 public final class CgKitSounds {
 
-    /** A cue's sound: its id as a path, the file it is, and its settings. */
-    public record Cue(String id, Path file, float volume, float pitch, boolean stream) {
+    /** A cue's sound: its id as a path, the file it is, its settings and its subtitles. */
+    public record Cue(String id, Path file, float volume, float pitch, boolean stream, CgSoundSubtitles subtitles) {
     }
 
     private static final String SOUND = ":sound/";
@@ -70,7 +72,7 @@ public final class CgKitSounds {
             if (colon < 0) throw new IllegalArgumentException(file + ": sounds." + cue + ".path " + path + " has no namespace");
             Path on = folder.resolve(path.substring(colon + 1));
             table.put(cue, new Cue(path, on, number(s.get("volume"), 1f), number(s.get("pitch"), 1f),
-                    Boolean.TRUE.equals(s.get("stream"))));
+                    Boolean.TRUE.equals(s.get("stream")), CgSoundSubtitles.read(s, file + ": sounds." + cue)));
         }
         BY_GAME.merge(game, table, (a, b) -> {
             a.putAll(b);
