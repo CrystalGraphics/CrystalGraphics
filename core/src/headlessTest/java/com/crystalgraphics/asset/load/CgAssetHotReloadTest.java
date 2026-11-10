@@ -114,4 +114,29 @@ public class CgAssetHotReloadTest {
         assertEquals(2, charge.generation());
         assertEquals(0.75, charge.loaded().resolved().get("delay"));
     }
+
+    @Test
+    public void aFileAddedWhilePlayingIsRegisteredAndWhatFailedForWantOfItLoads() throws IOException, InterruptedException {
+        // A system naming an emitter no file holds yet: it fails
+        CgVfxAssetsTest.write(ns, "vfx/systems/kamehameha/beam.yaml",
+                "_v: 1\nemitters:\n  - { id: h1, name: late, emitter: mymod:kamehameha/late }\n");
+        assets.saved("mymod:vfx/systems/kamehameha/beam.yaml");
+        CgAssetRef<CgAssetData> beam = assets.declare(CgParticleKinds.SYSTEM, "mymod:kamehameha/beam");
+        beam.request(CgLoadPriority.MOVE);
+        for (int i = 0; i < 2000 && beam.state() != CgAssetState.FAILED; i++) {
+            assets.drain();
+            Thread.sleep(1);
+        }
+        assertEquals(CgAssetState.FAILED, beam.state());
+
+        // The emitter written and saved: registered, and the system starts again and loads
+        CgVfxAssetsTest.write(ns, "vfx/emitters/kamehameha/late.yaml", "_v: 1\nproperties: { capacity: 10 }\n");
+        assets.saved("mymod:vfx/emitters/kamehameha/late.yaml");
+        for (int i = 0; i < 2000 && !beam.ready(); i++) {
+            assets.drain();
+            assets.publish();
+            Thread.sleep(1);
+        }
+        assertTrue(beam.failure() == null ? "not ready" : beam.failure(), beam.ready());
+    }
 }

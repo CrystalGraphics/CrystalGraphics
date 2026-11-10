@@ -2686,6 +2686,7 @@ com/crystalgraphics/asset/load/CgAssetPipeline
   method public <init> (Lcom/crystalgraphics/asset/registry/CgAssetRegistry;)V
   method public <init> (Lcom/crystalgraphics/asset/registry/CgAssetRegistry;Lcom/crystalgraphics/job/CgJobLoop;)V
   method public drain ()V
+  method public forgetFailed ()I
   method public idle ()Z
   method public load (Lcom/crystalgraphics/object/CgType;Ljava/lang/String;)Lcom/crystalgraphics/asset/load/CgAssetLoad;
   method public loads ()Ljava/util/Collection;
@@ -2876,6 +2877,7 @@ com/crystalgraphics/asset/registry/CgAssetRegistry
   access public,final
   extends java/lang/Object
   method public <init> ()V
+  method public added (Ljava/lang/String;Ljava/nio/file/Path;Ljava/nio/file/Path;Lcom/crystalgraphics/asset/registry/CgAssetSource;)Z
   method public binary (Ljava/lang/String;)Lcom/crystalgraphics/asset/registry/CgAssetEntry;
   method public binaryByHash (Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
   method public cache (Ljava/nio/file/Path;)V

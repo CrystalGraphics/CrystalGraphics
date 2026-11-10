@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -80,6 +81,21 @@ public final class CgAssetPipeline {
     }
 
     /** {@code kind}'s {@code id}, loading toward {@link CgAssetState#COMPILED}. */
+    /**
+     * Forgets every failed load, so the next request of each starts again: a file added since may answer what it
+     * lacked. Answers how many. Its loop's thread.
+     */
+    public int forgetFailed() {
+        int n = 0;
+        for (Iterator<CgAssetLoad> it = loads.values().iterator(); it.hasNext(); ) {
+            if (it.next().state() == CgAssetState.FAILED) {
+                it.remove();
+                n++;
+            }
+        }
+        return n;
+    }
+
     public CgAssetLoad request(CgType kind, String id) {
         endInit();
         String key = key(kind, id);

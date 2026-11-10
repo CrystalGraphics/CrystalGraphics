@@ -153,6 +153,9 @@ public final class CgAssetReferences {
 
     /** Whether {@code v} is written in {@code alt}'s shape: a string for a reference, a map for a struct, a list. */
     private static boolean fits(CgValueType alt, Object v) {
+        // A map picks as the shape does, by the required keys it holds: else every map fits the first struct, and a
+        // text layer's { material: ... } paint walks as a gradient and its material never loads.
+        if (v instanceof Map) return CgShape.fits(alt, v);
         switch (alt.kind()) {
             case REF: case STRING: case ENUM: case BINARY_REF: case ELEMENT_REF:
                 return v instanceof String;

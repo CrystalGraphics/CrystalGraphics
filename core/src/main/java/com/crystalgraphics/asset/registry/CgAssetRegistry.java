@@ -489,6 +489,40 @@ public final class CgAssetRegistry {
     }
 
     /**
+     * Registers {@code file}, an asset saved under {@code root} (its namespace's {@code assets/<namespace>/} folder) since
+     * that folder was scanned, as the scan would have, and announces it: hot reload's new file. Answers whether it
+     * registered one; a file that is no asset, or one already registered, registers nothing.
+     *
+     * @throws CgAssetException if the file declares an id or a unique value another file holds
+     */
+    public synchronized boolean added(String namespace, Path root, Path file, CgAssetSource source) {
+        String rel = root.relativize(file).toString().replace('\\', '/');
+        CgType kind = rel.endsWith(".yaml") ? kindOf(rel) : null;
+        if (kind == null) return false;
+        String id = namespace + ":" + rel.substring(kind.folder().length() + 1, rel.length() - ".yaml".length());
+        if (entries.containsKey(key(kind, id))) return false;
+        long modified;
+        try {
+            modified = Files.getLastModifiedTime(file).toMillis();
+        } catch (IOException missing) {
+            throw new UncheckedIOException(missing);
+        }
+        List<CgAssetEntry> now = gather(new Listed(id, kind, file, modified), source, cache());
+        for (CgAssetEntry n : now) {
+            CgAssetEntry other = entries.get(key(kind, n.id()));
+            if (other != null) throw new CgAssetException(key(kind, n.id()) + " is registered twice: " + where(other) + " and " + where(n));
+        }
+        unique(now, entries.values());
+        declareTags(now, CgTagRegistry.global());
+        for (CgAssetEntry n : now) {
+            entries.put(key(kind, n.id()), n);
+            link(n, true);
+            fire(new CgAssetRegistryEvent(CgAssetRegistryEvent.Type.ADDED, n.namespace(), n, null));
+        }
+        return true;
+    }
+
+    /**
      * Refuses a {@link CgPropertyFlag#UNIQUE} value {@code adding} shares with itself or with {@code registered}: a cue
      * tag two cues declare. Names both.
      */

@@ -472,6 +472,10 @@ public final class CgVfxAssets {
                 if (e != null && e.file() != null && e.file().toString().replace('\\', '/').endsWith(tail)) hit.add(r);
             }
         }
+        if (hit.isEmpty()) {
+            registered(saved);
+            return;
+        }
         for (CgAssetRef<?> r : hit) {
             CgAssetEntry entry = registry.entry(r.kind(), r.id());
             Path file = entry.file();
@@ -487,6 +491,55 @@ public final class CgVfxAssets {
         }
     }
 
+    /**
+     * A save no loaded asset reads ({@code <ns>:<folder>/<path>.yaml}): a new file registered under the folder its
+     * namespace was scanned from, a known one read again for its references; then every failed load starts again, as
+     * one may have failed for want of it (a style naming a material not yet written).
+     */
+    private void registered(String saved) {
+        int colon = saved.indexOf(':');
+        if (colon <= 0 || !saved.endsWith(".yaml")) return;
+        String namespace = saved.substring(0, colon), rest = saved.substring(colon + 1);
+        for (CgAssetEntry e : registry.entries(namespace)) {
+            if (e.file() == null || e.kind() == null || e.inlineIn() != null) continue;
+            String own = e.kind().folder() + "/" + e.id().substring(colon + 1) + ".yaml";
+            if (!e.file().toString().replace('\\', '/').endsWith("/" + own)) continue;
+            Path root = e.file();
+            for (int i = own.split("/").length; i > 0; i--) root = root.getParent();
+            Path file = root.resolve(rest);
+            if (!Files.isRegularFile(file)) return;
+            try {
+                if (!registry.added(namespace, root, file, e.source())) {
+                    CgAssetEntry known = registry.entries(namespace).stream().filter(k -> file.equals(k.file())).findFirst().orElse(null);
+                    if (known != null) registry.changed(known.kind(), known.id());
+                }
+            } catch (CgAssetException x) {
+                LOGGER.error("[hot reload] {}: not registered: {}", saved, x.getMessage());
+                return;
+            }
+            int retried = retryFailed();
+            if (retried > 0) LOGGER.info("[hot reload] {}: {} failed load(s) started again", saved, retried);
+            return;
+        }
+    }
+
+    /** Starts every failed load again, at the priority it was asked at; answers how many. Its loop's thread. */
+    private int retryFailed() {
+        pipeline.forgetFailed();
+        int n = 0;
+        synchronized (this) {
+            for (CgAssetRef<?> r : refs.values()) {
+                if (r.load == null || r.load.state() != CgAssetState.FAILED) continue;
+                CgLoadPriority priority = r.priority != null ? r.priority : CgLoadPriority.PLAYING;
+                r.load = null;
+                r.priority = null;
+                start(r, priority);
+                n++;
+            }
+        }
+        return n;
+    }
+
     /** {@code ref}'s file replaced by {@code file}: its diff as edits, or the whole file where edits cannot say it. */
     void reload(CgAssetRef<?> ref, Map<?, ?> file) {
         CgAssetData live = tree(ref);
@@ -495,6 +548,7 @@ public final class CgVfxAssets {
         if (edits != null) {
             try {
                 edit(ref, edits);
+                LOGGER.info("[hot reload] {} {}: {} edit(s) from its file", ref.kind().id(), ref.id(), edits.size());
                 return;
             } catch (CgAssetException e) {
                 LOGGER.warn("[hot reload] {}: its diff did not apply ({}); reloading it whole", ref.id(), e.getMessage());
@@ -509,6 +563,7 @@ public final class CgVfxAssets {
         }
         ref.load.asset = whole;
         recompile(ref, CgChange.STRUCTURAL);
+        LOGGER.info("[hot reload] {} {}: reloaded whole from its file", ref.kind().id(), ref.id());
     }
 
     /** {@code ref}'s editable tree: the asset its load resolved. */

@@ -147,7 +147,7 @@ public final class CgShape {
     }
 
     /** Whether {@code value} is written in alternative {@code alt}'s shape: a map holding its required keys. */
-    private static boolean fits(CgValueType alt, @Nullable Object value) {
+    static boolean fits(CgValueType alt, @Nullable Object value) {
         if (value instanceof Map) {
             Map<?, ?> m = (Map<?, ?>) value;
             switch (alt.kind()) {
