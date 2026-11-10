@@ -136,8 +136,11 @@ public final class GLImports implements CgGLImports {
             t = CgTextureView.attachment(renderbuffer(name, describeRenderbuffer(name)), 0, 0);
         } else if (type == GL_ATTACHED_TEXTURE) {
             int name = gl.glGetNamedFramebufferAttachmentParameteri(fbo, glPoint, GL_ATTACHMENT_NAME);
+            // A host remaking its target (a resize) is often handed the same names back: described again, and no
+            // framebuffer of ours kept over the deleted storage, which GL leaves attached to it
             GLTexture known = textures.get(name);
-            t = CgTextureView.attachment(known != null ? known : texture(name, describe(name)),
+            if (known != null) framebuffers.forget(known);
+            t = CgTextureView.attachment(texture(name, describe(name)),
                     gl.glGetNamedFramebufferAttachmentParameteri(fbo, glPoint, GL_ATTACHMENT_LEVEL),
                     Math.max(0, gl.glGetNamedFramebufferAttachmentParameteri(fbo, glPoint, GL_ATTACHMENT_LAYER)));
         }
