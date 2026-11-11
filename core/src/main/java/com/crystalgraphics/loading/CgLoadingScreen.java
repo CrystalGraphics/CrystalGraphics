@@ -156,9 +156,8 @@ public final class CgLoadingScreen {
     private static final Matrix4f WARM_VIEW = new Matrix4f(),
             WARM_PROJECTION = new Matrix4f().perspective(WARM_FOV, 1f, WARM_NEAR, WARM_FAR);
     private static CgFrameBuffer warmTarget;
-    /** The host's world, as {@link #hostWorld} described it: the world frame draws as it does. */
+    /** The host world's depth format, as {@link #hostWorld} described it; its convention is the lifecycle's. */
     private static CgTextureType worldDepth = CgTextureType.DEPTH24_STENCIL8;
-    private static boolean worldReversed, worldZeroToOne;
 
     private CgLoadingScreen() {
     }
@@ -499,14 +498,14 @@ public final class CgLoadingScreen {
             warmTarget = CgFrameBuffer.create("cg_loading_world", WARM_SIZE, WARM_SIZE, CgFrameBufferFormat
                     .builder("cg_loading_world").color(0, CgTextureType.RGBA8).depth(worldDepth).build());
         }
-        if (worldReversed) CgGraphicsLifecycle.hostDepth(true, worldZeroToOne);
         try (CgExecutor.Into ignored = CgExecutor.into(warmTarget)) {
-            for (CgRenderStage stage : WORLD) {
-                stage.host().set(0f, WARM_SIZE, WARM_SIZE, warmTarget.getId()).view().set(0, 0, 0, WARM_VIEW, WARM_PROJECTION);
-                stage.fire();
-            }
-        } finally {
-            if (worldReversed) CgGraphicsLifecycle.hostDepth(false, false);
+            CgGraphicsLifecycle.inWorldDepth(() -> {
+                for (CgRenderStage stage : WORLD) {
+                    stage.host().set(0f, WARM_SIZE, WARM_SIZE, warmTarget.getId()).view().set(0, 0, 0, WARM_VIEW, WARM_PROJECTION);
+                    stage.fire();
+                }
+                return true;
+            });
         }
         worldFired = false;
     }
@@ -522,10 +521,11 @@ public final class CgLoadingScreen {
      * }</pre>
      */
     public static void hostWorld(CgTextureType depth, boolean reversed, boolean zeroToOne) {
-        if (depth == worldDepth && reversed == worldReversed && zeroToOne == worldZeroToOne) return;
+        if (depth == worldDepth && reversed == CgGraphicsLifecycle.worldDepthReversed()
+                && (reversed && zeroToOne) == CgGraphicsLifecycle.worldDepthZeroToOne()) return;
         worldDepth = depth;
-        worldReversed = reversed;
-        worldZeroToOne = zeroToOne;
+        // Its warm frame and every precache polled outside a world pass build what the world's draws take
+        CgGraphicsLifecycle.worldDepth(reversed, zeroToOne);
         // A projection built for the pass is built reversed under a reversed convention (CgGraphicsLifecycle.hostDepth)
         if (reversed) WARM_PROJECTION.setPerspective(WARM_FOV, 1f, WARM_FAR, WARM_NEAR, zeroToOne);
         else WARM_PROJECTION.setPerspective(WARM_FOV, 1f, WARM_NEAR, WARM_FAR, zeroToOne);

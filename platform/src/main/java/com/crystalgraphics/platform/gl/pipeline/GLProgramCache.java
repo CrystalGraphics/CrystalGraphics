@@ -26,7 +26,8 @@ import java.util.Map;
  * }</pre>
  *
  * <ul>
- *   <li>Render thread only.</li>
+ *   <li>Render thread only. The device calls {@link #endFrame} once a frame.</li>
+ *   <li>A precache finishes one costly program a frame ({@link #prepare}); a draw finishes its own whatever it costs.</li>
  *   <li>A program prepared and never acquired is kept until a module of it is {@link #forget forgotten} or the device
  *       closes: a precache names what will draw.</li>
  *   <li>A program whose link failed throws its compile error from {@link Program#name}, at the draw, as a link there
@@ -41,6 +42,10 @@ public final class GLProgramCache {
     private final GLLinkWorker worker;
     private final boolean parallel;
     private final Map<Key, Program> programs = new HashMap<>();
+    /** A finish past this is the driver compiling, not a binary loading or a status read. */
+    private static final long COSTLY_FINISH_NANOS = 2_000_000L;
+    /** Whether {@link #prepare} finished a program at a cost this frame. */
+    private boolean finishedCostly;
 
     /**
      * @param binaries kept binaries, or null
@@ -116,16 +121,28 @@ public final class GLProgramCache {
     /**
      * Starts the program's link if nothing has; whether it is built and loaded. Its binary is loaded here, once the worker
      * has it, so the precache polling this pays the driver's load inside its warm budget and the first draw nothing.
+     * At most one program a frame is finished here at a cost ({@link #endFrame}): the rest answer false until a later one.
      */
     public boolean prepare(String label, CgPipelineLayout layout, GLShaderModule... modules) {
         Program p = program(label, layout, modules);
         if (!p.ready()) return false;
+        if (p.build == null) return true;
+        // NVIDIA compiles a program's back end at its first status read, on this thread, 0.1-0.5 s each, and every
+        // context in the process waits on it: finishing every program that reported done in one frame held it 2.6 s
+        if (finishedCostly) return false;
+        long start = System.nanoTime();
         try {
             p.name(gl);
         } catch (RuntimeException e) {
             // Thrown again at its draw, as a link there would
         }
+        if (System.nanoTime() - start > COSTLY_FINISH_NANOS) finishedCostly = true;
         return true;
+    }
+
+    /** A new frame: {@link #prepare} may finish another program at a cost. */
+    public void endFrame() {
+        finishedCostly = false;
     }
 
     /** A pipeline's program let go: deleted once no pipeline holds it. */

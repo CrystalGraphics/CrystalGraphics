@@ -7004,12 +7004,16 @@ com/crystalgraphics/lifecycle/CgGraphicsLifecycle
   method public,static hostDepth (ZZ)V
   method public,static hostDepthReversed ()Z
   method public,static hostDepthZeroToOne ()Z
+  method public,static inWorldDepth (Ljava/util/function/BooleanSupplier;)Z
   method public,static isContextDestroyed ()Z
   method public,static isInitialized ()Z
   method public,static isStoodDown ()Z
   method public,static onResize (II)V
   method public,static standDown (Ljava/lang/String;)V
   method public,static tickFrame ()V
+  method public,static worldDepth (ZZ)V
+  method public,static worldDepthReversed ()Z
+  method public,static worldDepthZeroToOne ()Z
 com/crystalgraphics/lifecycle/CgLifecycleListener
   access public,abstract,interface
   extends java/lang/Object

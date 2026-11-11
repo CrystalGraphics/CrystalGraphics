@@ -567,6 +567,7 @@ public final class CgGLDevice implements CgRHI {
         gl.glFlush();
         CgTrace.zoneDone(GL_CHANNEL, FRAME_FLUSH, t);
         frame++;
+        if (programs != null) programs.endFrame();
         t = CgTrace.stamp(GL_CHANNEL);
         encoder.endFrame(frame);
         CgTrace.zoneDone(GL_CHANNEL, FRAME_ENCODER, t);

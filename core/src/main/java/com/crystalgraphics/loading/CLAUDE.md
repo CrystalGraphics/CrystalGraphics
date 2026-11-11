@@ -70,7 +70,9 @@ parallel mod loading with its `enqueueWork`, Unreal's slow-task progress and its
 - **The world frame the screen fires draws as the host's world does** (`hostWorld(depth, reversed, zeroToOne)`, from
   the host before its first draw): on a Vulkan device a pipeline is built for its target's formats and depth test, and
   one built for a target the world never uses is a compile wasted on the render thread. Minecraft 26.2+ passes
-  `DEPTH32F`, reversed, zero to one.
+  `DEPTH32F`, reversed, zero to one. The convention is kept as the lifecycle's (`CgGraphicsLifecycle.worldDepth`), and
+  a precache request polled outside a world pass (`CgPipelineList.ready`) builds under it: on GL a zero-to-one world
+  draws another vertex variant, and polling under the screen's built the wrong one, so each compiled twice.
 - Every change of reason is logged (`[loading] ...`); `crystalgraphics.loading.logProgress` logs the bar and the running
   tasks once a second. Its frames carry the counter `loading.shown` and the markers `loading.show`/`loading.hide`, so a
   profile tells loading from steady state.
