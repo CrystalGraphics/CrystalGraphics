@@ -282,6 +282,8 @@ public final class CgGraphicsLifecycle {
             boolean done = CgWorldRenderer.get().bootStep();
             int total = CgPipelinePrecache.total();
             if (total > 0) task.progress(1f - CgPipelinePrecache.remaining() / (float) total);
+            // A step settles what the frame's warm budget allows: a second call this frame would only poll
+            if (!done) task.nextFrame();
             return done;
         }).start();
         // After the boot used this session's binaries, so the prune keeps them; a worker's, beside the frames.

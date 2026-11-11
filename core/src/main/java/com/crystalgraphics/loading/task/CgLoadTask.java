@@ -100,6 +100,25 @@ public final class CgLoadTask {
         progress = fraction;
     }
 
+    /**
+     * From its render part: nothing more to do this frame (it waits on a worker, a compile, a frame), so the plan calls
+     * it again next frame rather than spending the frame's budget calling it. Render thread.
+     *
+     * <pre>{@code
+     * .render(task -> {
+     *     if (!kernel.isReady()) { task.nextFrame(); return false; }   // waiting: one call a frame
+     *     dispatch();
+     *     return true;
+     * })
+     * }</pre>
+     */
+    public void nextFrame() {
+        restingFrame = true;
+    }
+
+    /** Set by {@link #nextFrame}; the plan clears it at each frame's start. Render thread. */
+    boolean restingFrame;
+
     /** What it is on now ("Goku's mesh"), shown beside its name; from any thread. */
     public void detail(@Nullable String now) {
         detail = now;

@@ -33,6 +33,7 @@ import com.crystalgraphics.render.draw.CgPassConstants;
 import com.crystalgraphics.render.graph.CgLoad;
 import com.crystalgraphics.render.stage.CgStageFrame;
 import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.util.trace.CgChannels;
 import com.crystalgraphics.trace.CgTraceReport;
 import com.crystalgraphics.trace.CgTraceRun;
 import com.crystalgraphics.variable.CgVar;
@@ -294,7 +295,14 @@ public final class CgRenderDemo {
         CgEngineLifecycle.addListener(new CgLifecycleListener() {
             @Override
             public void onLoad(CgLoadPlan plan) {
-                plan.task("crystalgraphics:demo").render(task -> warmAhead(task)).start();
+                plan.task("crystalgraphics:demo").render(task -> {
+                    try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.MISC, WARM_AHEAD_ZONE)) {
+                        // Each wait is on a warm-up or a rehearsal frame: polled once a frame
+                        if (warmAhead(task)) return true;
+                        task.nextFrame();
+                        return false;
+                    }
+                }).start();
             }
         });
     }
@@ -816,6 +824,8 @@ public final class CgRenderDemo {
         if (shownFrames >= REHEARSE_MOST) return true;
         return shownFrames >= REHEARSE_MIN && quietFrames >= REHEARSE_QUIET;
     }
+
+    private static final int WARM_AHEAD_ZONE = CgTrace.name("demo.warmAhead");
 
     /** Frames a scene is shown behind the loading screen at least: its meshes placed and labels captured. */
     private static final int REHEARSE_MIN = 8;

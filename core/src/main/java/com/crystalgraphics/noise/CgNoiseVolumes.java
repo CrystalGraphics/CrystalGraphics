@@ -8,6 +8,7 @@ import com.crystalgraphics.gl.framebuffer.CgFrameBuffer;
 import com.crystalgraphics.gl.texture.CgEngineTextures;
 import com.crystalgraphics.gl.texture.CgTexture3D;
 import com.crystalgraphics.loading.task.CgLoadPlan;
+import com.crystalgraphics.loading.task.CgLoadTask;
 import com.crystalgraphics.platform.gl.driver.GLC;
 import com.crystalgraphics.render.CgImmediate;
 import com.crystalgraphics.render.graph.CgBufferDesc;
@@ -114,7 +115,7 @@ public final class CgNoiseVolumes {
         STORAGE[WAVELET_AT] = CgFrameBuffer.createVolume(WAVELET,
                 CgTexture3D.createEmpty(WAVELET_TILE, WAVELET_TILE, WAVELET_TILE, WAVELET_SPEC, 1));
         int expected = generation;
-        CgLoadPlan.get().task("crystalgraphics:noise").render(task -> generation != expected || bake()).start();
+        CgLoadPlan.get().task("crystalgraphics:noise").render(task -> generation != expected || bake(task)).start();
     }
 
     /** Frees the volumes. Render thread, with the context current. */
@@ -131,13 +132,16 @@ public final class CgNoiseVolumes {
     }
 
     /** The task's step: the kernels precached at its first, every volume dispatched in one pass once they are built. */
-    private static boolean bake() {
+    private static boolean bake(CgLoadTask task) {
         if (kernels == null) {
             kernels = new ArrayList<>(KERNEL_NAMES.length);
             for (String name : KERNEL_NAMES) kernels.add(kernel(name).precache());
         }
         for (CgKernel k : kernels) {
-            if (!k.isReady()) return false;
+            if (!k.isReady()) {
+                task.nextFrame();
+                return false;
+            }
         }
         CgGraphTexture[] volumes = new CgGraphTexture[NAMES.length];
         for (int i = 0; i < NAMES.length; i++) volumes[i] = CgGraphTexture.imported(NAMES[i], STORAGE[i]);

@@ -7060,6 +7060,7 @@ com/crystalgraphics/loading/task/CgLoadTask
   method public elapsedMillis (J)J
   method public endedAt ()J
   method public id ()Ljava/lang/String;
+  method public nextFrame ()V
   method public owner ()Ljava/lang/String;
   method public progress (F)V
   method public reported ()F

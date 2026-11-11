@@ -76,6 +76,24 @@ public class CgLoadPlanTest {
     }
 
     @Test
+    public void aRenderPartWaitingForTheNextFrameRunsOnceAFrameBesideOneThatWorks() {
+        int[] waits = {0}, works = {0};
+        CgLoadTask waiting = CgLoadPlan.get().task("mod:waiting").render(task -> {
+            waits[0]++;
+            task.nextFrame();
+            return waits[0] == 3;
+        }).start();
+        CgLoadTask working = CgLoadPlan.get().task("mod:working").render(task -> ++works[0] == 5).start();
+        CgLoadPlan.get().frame();
+        assertEquals("the waiting part is called once in the frame", 1, waits[0]);
+        assertEquals("the working part takes its slices in the same frame", CgLoadTask.State.DONE, working.state());
+        CgLoadPlan.get().frame();
+        CgLoadPlan.get().frame();
+        assertEquals(3, waits[0]);
+        assertEquals(CgLoadTask.State.DONE, waiting.state());
+    }
+
+    @Test
     public void aFailureFailsWhatComesAfterIt() {
         CgLoadTask broken = CgLoadPlan.get().task("mod:broken").render(task -> {
             throw new IllegalStateException("no atlas");

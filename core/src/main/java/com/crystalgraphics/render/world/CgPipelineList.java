@@ -21,6 +21,8 @@ import com.crystalgraphics.gl.material.parse.CgPermutationDomain;
 import com.crystalgraphics.render.CgWarmBudget;
 import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.render.draw.CgPipeline;
+import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.util.trace.CgChannels;
 import com.github.bsideup.jabel.Desugar;
 
 /**
@@ -246,6 +248,9 @@ public final class CgPipelineList {
         for (CgKernel k : CgKernel.collect(precache)) add(k);
     }
 
+    private static final int COLLECT_ZONE = CgTrace.name("pipeline.collect"), READY_ZONE = CgTrace.name("pipeline.ready"),
+            POLL_ZONE = CgTrace.name("pipeline.poll");
+
     /** Requests with steps still to collect, in the order they started. */
     private final List<CgPipelinePrecache.Request> collecting = new ArrayList<>();
 
@@ -267,7 +272,7 @@ public final class CgPipelineList {
         while (!request.steps.isEmpty() && CgWarmBudget.allows()) {
             CgPipelinePrecache.Collector step = request.steps.poll();
             long start = System.nanoTime();
-            try {
+            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, COLLECT_ZONE)) {
                 collect(step, request);
             } catch (RuntimeException e) {
                 CgPipelinePrecache.LOGGER.error("precache {}: a step failed and is skipped", request.name, e);
@@ -302,6 +307,13 @@ public final class CgPipelineList {
             if (!advance(request)) return false;
             collecting.remove(request);
         }
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, READY_ZONE)) {
+            return polled(request);
+        }
+    }
+
+    /** {@link #ready}'s poll of what {@code request} named, once collected. */
+    private boolean polled(CgPipelinePrecache.Request request) {
         Settings settings = warmedFor != null ? warmedFor : requested.get();
         boolean ready = true;
         for (int i = 0; i < request.materials.size(); i++) {
@@ -330,6 +342,12 @@ public final class CgPipelineList {
      * program costs up to 11 ms on NVIDIA, and a boot finds dozens linked at once. Whether all are built.
      */
     private boolean pollKernels() {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, POLL_ZONE)) {
+            return pollUnbuilt();
+        }
+    }
+
+    private boolean pollUnbuilt() {
         for (Iterator<CgKernel> it = unbuilt.iterator(); it.hasNext() && CgWarmBudget.allows(); ) {
             long start = System.nanoTime();
             if (it.next().isReady()) it.remove();

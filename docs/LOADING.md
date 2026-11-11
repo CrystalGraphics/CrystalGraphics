@@ -102,7 +102,9 @@ public final class MyClient implements CgLifecycleListener {
   fill textures (they queue through `CgDeferral` and land before the next frame).
 - **`render`** is a `CgLoadStep`: one slice of render-thread work a call, `true` once all done. The plan runs slices
   while `crystalgraphics.loading.renderBudget` (6 ms) lasts, and always one. **Keep one slice at 1-3 ms**: one upload,
-  one object, one batch. A slice cannot be cut once it starts.
+  one object, one batch. A slice cannot be cut once it starts. **A slice that only waits** (a worker, a compile, the
+  next frame) calls `task.nextFrame()` before returning false, so it is called once a frame rather than spinning out
+  the budget.
 - **`after`** orders tasks, of any owner. Tasks with no `after` run in parallel. A failed task fails every task after it.
 - **`track`** adopts a `CgReply` already started (a scan, a download, a `CgJob`). **`begin`** is work started and ended
   in code, closed with try-with-resources:

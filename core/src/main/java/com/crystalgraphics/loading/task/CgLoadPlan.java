@@ -133,11 +133,15 @@ public final class CgLoadPlan {
             }
         }
         long budget = (long) (RENDER_BUDGET.get() * 1_000_000L), start = System.nanoTime();
-        boolean first = true;
-        while (!rendering.isEmpty() && (first || System.nanoTime() - start < budget)) {
+        for (int i = 0; i < rendering.size(); i++) rendering.get(i).task.restingFrame = false;
+        boolean first = true, working = true;
+        while (working && (first || System.nanoTime() - start < budget)) {
             first = false;
+            working = false;
             for (int i = 0; i < rendering.size() && (i == 0 || System.nanoTime() - start < budget); i++) {
                 Entry e = rendering.get(i);
+                if (e.task.restingFrame) continue;
+                working = true;
                 boolean finished;
                 try {
                     finished = e.render.step(e.task);

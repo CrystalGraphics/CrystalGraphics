@@ -18,6 +18,8 @@ package com.crystalgraphics.loading.task;
  * <ul>
  *   <li>Keep each call short (a texture, a buffer, a program started): the frame's budget is spent between calls, never
  *       inside one.</li>
+ *   <li>A call that only waits (on a worker, a compile, the next frame) says so with {@link CgLoadTask#nextFrame()}:
+ *       otherwise it is called again and again until the budget is spent, polling.</li>
  *   <li>A step that throws fails its task, and every task after it.</li>
  * </ul>
  */
