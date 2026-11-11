@@ -4,6 +4,7 @@ import javax.inject.Inject
 import org.gradle.api.Project
 import org.gradle.api.artifacts.Configuration
 import org.gradle.api.artifacts.Dependency
+import org.gradle.api.artifacts.ExternalModuleDependency
 import org.gradle.api.artifacts.dsl.DependencyHandler
 import org.gradle.api.attributes.Attribute
 import org.gradle.api.attributes.Bundling
@@ -41,6 +42,14 @@ const val CONSUMER_CHECKOUT = "cgConsumerCheckout"
 
 /** Declares [notation] in [CONSUMER_API]; `import cgbuildlogic.consumerApi`, as for any build-logic function. */
 fun DependencyHandler.consumerApi(notation: Any): Dependency? = add(CONSUMER_API, notation)
+
+/**
+ * A library Minecraft supplies, named by the oldest version any target ships, as a *preference*: where a consumer's
+ * graph prefers or requires another it wins, whichever is higher. A plain [consumerApi] version is a requirement, so
+ * against a Minecraft that only prefers (NeoForge's Brigadier) it would pull the consumer's compile down to ours.
+ */
+fun DependencyHandler.consumerApiPreferring(module: String, version: String): Dependency? =
+    add(CONSUMER_API, create(module).also { (it as ExternalModuleDependency).version { prefer(version) } })
 
 /** A licence as a POM states it. */
 data class Licence(val name: String, val url: String) {

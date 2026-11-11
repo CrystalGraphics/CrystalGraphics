@@ -30,6 +30,13 @@ plugins {
 val compilerJdk = providers.gradleProperty("dep.jdk.compiler").get().toInt()
 subprojects {
     if (path == ":runtime:mc:1710") return@subprojects
+    // Brigadier arrives on every module that sees platform or core (their metadata names it; it is bundled nowhere).
+    repositories {
+        maven("https://libraries.minecraft.net/") {
+            name = "MinecraftLibraries"
+            content { includeGroup("com.mojang") }
+        }
+    }
     plugins.withType<JavaBasePlugin> {
         val toolchains = extensions.getByType<JavaToolchainService>()
         tasks.withType<JavaCompile>().configureEach {

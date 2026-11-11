@@ -1,5 +1,6 @@
 import cgbuildlogic.abstractModule
 import cgbuildlogic.consumerApi
+import cgbuildlogic.consumerApiPreferring
 import cgbuildlogic.publishedModule
 import java.io.File as JFile
 
@@ -41,7 +42,7 @@ dependencies {
     // resolves it from the metadata and the jar bundles none, as for JOML. The oldest a node ships (1.13.2's 1.0.14): the
     // calls made here exist through 1.3.11, so a Minecraft host runs on its own. 1.7.10 and Forge 1.8.9-1.12.2 have
     // none and never load it (CgBrigadier). The tests run on the newest.
-    consumerApi("com.mojang:brigadier:1.0.14")
+    consumerApiPreferring("com.mojang:brigadier", "1.0.14")
     testImplementation("com.mojang:brigadier:1.3.11")
 
     testImplementation("junit:junit:${rootProject.properties["dep.junit"]}")
