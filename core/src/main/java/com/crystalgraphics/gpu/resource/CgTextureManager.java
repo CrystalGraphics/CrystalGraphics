@@ -1,6 +1,5 @@
 package com.crystalgraphics.gpu.resource;
 
-import com.crystalgraphics.api.texture.CgTextureSpec;
 import com.crystalgraphics.mc.CgAssetReloader;
 import com.crystalgraphics.mc.CgReloadable;
 
@@ -11,14 +10,17 @@ import java.util.Objects;
 import java.util.function.Supplier;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import com.crystalgraphics.api.texture.CgSampler;
 
 /**
- * Every texture made from files, cached by the files and the spec it samples them with: what each type's
- * {@code create(...)} answers from. One image sampled two ways is two textures.
+ * Every texture made from files, shared by the files and the settings it loads them with: what each type's
+ * {@code create(...)} answers from. A texture it hands out is shared, so its sampling is its settings' alone.
  *
  * <pre>{@code
- * CgTexture2D icon = CgTexture2D.create("mymod:textures/gui/icon.png", CgTextureSpec.RGBA8_NEAREST);   // through here
- * CgTexture2D same = CgTextureManager.get().getOrCreate("mymod:textures/gui/icon.png", CgTextureSpec.RGBA8_NEAREST);
+ * CgTexture2D icon = CgTexture2D.create("mymod:textures/gui/icon.png");                // through here
+ * CgTexture2D same = CgTextureManager.get().getOrCreate("mymod:textures/gui/icon.png");
+ * CgTexture2D sharp = CgTextureManager.get().getOrCreate("mymod:textures/gui/icon.png",
+ *         CgTextureSettings.PLAIN.withSampler(CgSampler.NEAREST_CLAMP));             // another texture
  * }</pre>
  *
  * <ul>
@@ -39,7 +41,7 @@ public final class CgTextureManager {
     static final String PATH_SEPARATOR = "\0";
 
     /** By key, then by spec. */
-    private final Map<String, Map<CgTextureSpec, CgTextureAbstract>> cache = new HashMap<>();
+    private final Map<String, Map<Texels, CgTextureAbstract>> cache = new HashMap<>();
 
     /** The shared stand-in: never in {@link #cache}. */
     private CgTexture2D fallback;
@@ -51,8 +53,8 @@ public final class CgTextureManager {
     }
 
     /** The texture cached for {@code key} and {@code spec}, or null if there is none or it was deleted. */
-    public synchronized CgTextureAbstract get(String key, CgTextureSpec spec) {
-        Map<CgTextureSpec, CgTextureAbstract> bySpec = cache.get(key);
+    synchronized CgTextureAbstract get(String key, Texels spec) {
+        Map<Texels, CgTextureAbstract> bySpec = cache.get(key);
         CgTextureAbstract t = bySpec != null ? bySpec.get(spec) : null;
         return t != null && !t.isDeleted() ? t : null;
     }
@@ -61,7 +63,7 @@ public final class CgTextureManager {
      * The texture cached for {@code key} and {@code spec}, made by {@code maker} the first time: once, and kept. A
      * maker returning null or throwing is logged and answers the {@link #getFallback() fallback}, uncached.
      */
-    public synchronized CgTextureAbstract getOrCreate(String key, CgTextureSpec spec, Supplier<CgTextureAbstract> maker) {
+    synchronized CgTextureAbstract getOrCreate(String key, Texels spec, Supplier<CgTextureAbstract> maker) {
         CgTextureAbstract cached = get(key, spec);
         if (cached != null) return cached;
         CgTextureAbstract texture;
@@ -75,6 +77,7 @@ public final class CgTextureManager {
             LOGGER.log(Level.WARNING, "[CgTextureManager] Maker returned null for: {0}", key);
             return getFallback();
         }
+        texture.share();
         cache.computeIfAbsent(key, k -> new HashMap<>()).put(Objects.requireNonNull(spec, "spec"), texture);
         if (texture instanceof CgReloadable) {
             CgAssetReloader.track((CgReloadable) texture, Arrays.asList(key.split(PATH_SEPARATOR)));
@@ -82,9 +85,16 @@ public final class CgTextureManager {
         return texture;
     }
 
-    /** {@code path} sampled as {@code spec}, loaded at its first use; the {@link #getFallback() fallback} for no path. */
-    public CgTexture2D getOrCreate(String path, CgTextureSpec spec) {
+    /** {@code path} as its settings file says, loaded at its first use; the {@link #getFallback() fallback} for no path. */
+    public CgTexture2D getOrCreate(String path) {
         if (path == null || path.isEmpty()) return getFallback();
+        return getOrCreate(path, CgTextureSettings.of(path));
+    }
+
+    /** {@code path} as {@code settings} say, shared by the two. */
+    public CgTexture2D getOrCreate(String path, CgTextureSettings settings) {
+        if (path == null || path.isEmpty()) return getFallback();
+        Texels spec = Texels.file(path, settings);
         CgTextureAbstract result = getOrCreate(path, spec, () -> CgTexture2D.unloaded(path, spec));
         return result instanceof CgTexture2D ? (CgTexture2D) result : getFallback();
     }
@@ -97,14 +107,14 @@ public final class CgTextureManager {
 
     /** Reloads every cached texture in place: a resource reload. Each keeps what it had where a file will not load. */
     public synchronized void reloadAll() {
-        for (Map<CgTextureSpec, CgTextureAbstract> bySpec : cache.values()) {
+        for (Map<Texels, CgTextureAbstract> bySpec : cache.values()) {
             for (CgTextureAbstract texture : bySpec.values()) texture.reload();
         }
     }
 
     /** Deletes every cached texture and the fallback: the context's teardown. */
     public synchronized void freeAll() {
-        for (Map<CgTextureSpec, CgTextureAbstract> bySpec : cache.values()) {
+        for (Map<Texels, CgTextureAbstract> bySpec : cache.values()) {
             for (CgTextureAbstract texture : bySpec.values()) {
                 if (texture instanceof CgReloadable) CgAssetReloader.untrack((CgReloadable) texture);
                 texture.delete();

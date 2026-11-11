@@ -1,12 +1,11 @@
 package com.crystalgraphics.vfx.look;
 
-import com.crystalgraphics.platform.gl.driver.GLC;
-import com.crystalgraphics.api.texture.CgTextureSpec;
-import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.gpu.resource.CgTexture2D;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import com.crystalgraphics.api.texture.CgSampler;
+import com.crystalgraphics.platform.rhi.format.CgFormat;
 
 /**
  * Which frame of a sheet a sprite particle shows: Niagara's Sub UV Animation over its sprite renderer's sub-images. The
@@ -52,8 +51,7 @@ public final class CgVfxFlipbook {
     /** A rect table's texels to a row: {@code FX_SUBIMAGE_ROW}. */
     static final int TABLE_ROW = 1024;
 
-    private static final CgTextureSpec TABLE_SPEC = CgTextureSpec.builder().type(CgTextureType.RGBA32F)
-            .minFilter(GLC.GL_NEAREST).magFilter(GLC.GL_NEAREST).build();
+
 
     private final int columns, rows;
     private final Table table;
@@ -192,7 +190,8 @@ public final class CgVfxFlipbook {
             for (float f : rects) texels.putFloat(f);
             while (texels.hasRemaining()) texels.putFloat(0f);
             texels.flip();
-            texture = CgTexture2D.createFromPixels(width, height, texels, TABLE_SPEC);
+            texture = CgTexture2D.createFromPixels(width, height, texels, CgFormat.RGBA32_FLOAT)
+                    .sampler(CgSampler.NEAREST_CLAMP);
             return texture;
         }
     }

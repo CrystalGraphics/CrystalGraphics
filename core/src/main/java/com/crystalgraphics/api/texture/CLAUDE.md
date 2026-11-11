@@ -4,172 +4,74 @@
 
 ## What This Package Is
 
-Public, backend-agnostic API for owned GL texture objects and format descriptors.
-This package contains four types:
-- `CgTexture` — the unified texture interface
-- `CgTextureType` — typed format enum (single source of truth for GL format triples)
-- `CgTextureSpec` — immutable sampler specification built from `CgTextureType`
-- `CgMipmapConfig` — mipmap policy
-
-The concrete 2D / 2D-array / 3D / cubemap classes live in `gpu/resource/` and `implements CgTexture`
-directly.
+Public, backend-agnostic API for textures: the interface, the one-call front door, how a binding samples, and the
+format enum frame buffers still describe slots with. The concrete 2D / 2D-array / 3D / cubemap classes live in
+`gpu/resource/` and implement `CgTexture` directly; a file's settings are `gpu/resource/CgTextureSettings`.
 
 ## Type Map
 
 | Type | Role |
 |------|------|
-| `CgTexture` | The single common interface: `bind(unit)` (noted for the pass being recorded), `getId()`, `getTarget()`, `getWidth()/getHeight()`, `delete()`, `isDeleted()`, `isMissing()` (its files would not load). A texture from files loads at its first use: `gpu/resource/CLAUDE.md`. |
-| `CgTextures` | The shorthand for textures from files: `of(path[, spec])` 2D, `frames(pattern, count)` and `array(spec, paths...)` 2D array, `volume(pattern, count)` and `volume(spec, paths...)` 3D, `cubemap(spec, six paths)`, `stackedCube(path, spec)` one image of six faces stacked (`w x 6w`). A `.hdr` path is a Radiance image, loaded as RGBA16F half floats (`util/io/CgRadianceHdr`). |
-| `CgTextureType` | Typed enum of ~42 GL format constants. Single source of truth for the (internalFormat, baseFormat, type) triple. Used by `CgTextureSpec` and `CgFrameBufferFormat`. |
-| `CgTextureSpec` | Immutable Lombok `@Builder` describing format (`CgTextureType`), mipmap policy (`CgMipmapConfig`), filter, wrap, and optional shadow comparison. Pre-built constants: `RGBA8_LINEAR`, `RGBA8_NEAREST`, `RGBA16F_LINEAR`, `DEPTH24_SHADOW`, and more. |
-| `CgMipmapConfig` | Mipmap policy: whether to generate mipmaps and which filters to use. Named constants: `NONE`, `TRILINEAR`, `NEAREST`. |
-| `CgSampler` | A binding's sampling in place of the texture's own (Unreal's shared sampler source): `Filter` (`NEAREST`, `BILINEAR`, `TRILINEAR`), `Address` per axis (`WRAP`, `CLAMP`, `MIRROR`), `anisotropy(n)`. A value; `builder()`, presets (`BILINEAR_CLAMP`, `TRILINEAR_WRAP`, ...). Bound through `CgShaderBindings.sampler(name, unit, texture, sampler)`; the device's sampler objects are `render/draw/CgDeviceSamplers`'. |
+| `CgTexture` | The single common interface: `getWidth()/getHeight()`, `sampler()` (its own sampling, where a binding names none), `delete()`, `isDeleted()`, `isMissing()` (its files would not load). A texture from files loads at its first use: `gpu/resource/CLAUDE.md`. |
+| `CgTextures` | The front door. From files: `of(path)` 2D, `frames(pattern, count)` / `frames(paths...)` 2D array, `volume(pattern, count)` / `volume(paths...)` 3D, `cube(path)` six faces stacked `w x 6w`, `cube(six paths)`. Made: `create(name, CgTextureDesc)`. A `.hdr`/`.exr` path loads as RGBA16F. |
+| `CgSampler` | How a texture is sampled: `Filter` (`NEAREST`, `BILINEAR`, `TRILINEAR`), `Address` per axis (`WRAP`, `CLAMP`, `MIRROR`, `BORDER`), `compare` (`CgCompare`, a shadow map's), `anisotropy(n)`. A value; `builder()`, presets (`BILINEAR_CLAMP`, `TRILINEAR_WRAP`, `NEAREST_BORDER`, `SHADOW`, ...). The device's sampler objects are `render/draw/CgDeviceSamplers`'. |
+| `CgTextureType` | Typed enum of GL format constants, the (internalFormat, baseFormat, type) triple; `format()` is its `CgFormat`. Left for `CgFrameBufferFormat`'s slots until frame buffers go (R2e). New code names a `CgFormat`. |
 
-## CgTextureType
+## Sampling: three places, one winner
 
-Single source of truth for all GL format descriptions. Used for regular textures
-(`CgTextureSpec.builder().type(CgTextureType.RGBA8)`) and FBO attachments
-(`CgFrameBufferFormat.builder(name).color(0, CgTextureType.RGBA8)`).
+A texture is sampled by, first to last:
 
-### Constant Groups
-
-| Group | Constants |
-|-------|-----------|
-| 8-bit color | `R8`, `R8_SNORM`, `R8I`, `R8UI`, `RG8`, `RG8I`, `RG8UI`, `RGBA8`, `RGBA8_SNORM`, `RGBA8I`, `RGBA8UI`, `SRGB8_ALPHA8` |
-| 16-bit color | `R16F`, `R16I`, `R16UI`, `RG16F`, `RG16I`, `RG16UI`, `RGBA16F`, `RGBA16I`, `RGBA16UI` |
-| 32-bit color | `R32F`, `R32I`, `R32UI`, `RG32F`, `RG32I`, `RG32UI`, `RGBA32F`, `RGBA32I`, `RGBA32UI` |
-| Packed / special | `RGB10_A2`, `RGB10_A2UI`, `R11F_G11F_B10F`, `RGBA4`, `RGB5_A1` |
-| Depth | `DEPTH16`, `DEPTH24`, `DEPTH32F` |
-| Depth + stencil | `DEPTH24_STENCIL8`, `DEPTH32F_STENCIL8` |
-| Stencil-only | `STENCIL8` |
-| Block-compressed | `BC7`, `BC7_SRGB`: a cooked texture's (`.cgtex`), uploaded as blocks, never a framebuffer's. `isCompressed()`; `decoded()` is the RGBA8 type it becomes where the context has no BPTC |
-
-### Public Fields
+1. **The binding's sampler**, where it names one: `b.sampler("_Mask", 0, MASK, CgSampler.NEAREST_CLAMP)` in
+   `applyProperties`, a definition builder's `texture(property, texture, filter, address)`, a material file's
+   `sampler:` block.
+2. **The texture's own** (`sampler()`):
+   - **a file's**: its settings file's (`noise.png`'s `noise.yaml`, `CgTextureSettings`), else plain — bilinear and
+     clamped, one level. Shared by every caller of the path, so it is never set in code;
+   - **a made one's**: by its format and levels — nearest for an integer format, trilinear across several levels,
+     else bilinear; clamped. Its maker may change it: `.sampler(CgSampler)`, which returns the texture to chain.
 
 ```java
-public final int     glInternalFormat;  // e.g. GL_RGBA8
-public final int     glBaseFormat;      // e.g. GL_RGBA
-public final int     glType;            // e.g. GL_UNSIGNED_BYTE
-public final boolean isDepth;
-public final boolean isStencil;
+// A file: its settings file says how it samples
+static final CgTexture2D NOISE = CgTextures.of("mymod:textures/fx/noise.png");
+// mymod/textures/fx/noise.yaml:   sampler: { filter: bilinear, wrap: repeat }
+
+// A made texture: the default, or its own
+CgTexture2D lut = CgTextures.create("mymod.lut", CgTextureDesc.of(256, 256, CgFormat.RGBA8_UNORM));
+CgTexture2D tiles = CgTexture2D.createEmpty(64, 64, CgFormat.RGBA8_UNORM).sampler(CgSampler.NEAREST_CLAMP);
+
+// Anything, sampled another way at one binding
+material.applyProperties(b -> b.sampler("_Noise", 0, NOISE, CgSampler.NEAREST_CLAMP));
 ```
 
-### Key Methods
-
-- `isColor()` — `!isDepth && !isStencil`
-- `glAttachmentPoint(int colorIndex)` — returns `GL_DEPTH_STENCIL_ATTACHMENT`, `GL_DEPTH_ATTACHMENT`, `GL_STENCIL_ATTACHMENT`, or `GL_COLOR_ATTACHMENT0 + colorIndex`
-- `toTextureSpec()` — builds a neutral `CgTextureSpec` with clamp-to-edge, correct default filter (NEAREST for integer formats, LINEAR otherwise), **no shadow compare mode**
-
-### Usage
-
-```java
-CgTexture2D hdr    = CgTexture2D.createEmpty(512, 512, CgTextureType.RGBA16F.toTextureSpec());
-CgTexture2D shadow = CgTexture2D.createEmpty(512, 512, CgTextureSpec.DEPTH24_SHADOW);
-```
-
-## CgTextureSpec
-
-Immutable Lombok `@Builder(toBuilder = true)` class. Zero hex literals — all GL values
-come from LWJGL imports.
-
-### Key Fields
-
-| Field | Type | Default |
-|-------|------|---------|
-| `type` | `CgTextureType` | **required** — no `@Builder.Default` |
-| `mipmaps` | `CgMipmapConfig` | `CgMipmapConfig.NONE` |
-| `minFilter` | `int` | `GL11.GL_LINEAR` |
-| `magFilter` | `int` | `GL11.GL_LINEAR` |
-| `wrapS/T/R` | `int` | `GL12.GL_CLAMP_TO_EDGE` |
-| `compareMode` | `int` | `GL11.GL_NONE` (disabled) |
-| `compareFunc` | `int` | `GL11.GL_LEQUAL` |
-
-### Convenience Delegates
-
-These are explicit methods (not Lombok-generated fields):
-```java
-public int getGlInternalFormat() { return type.glInternalFormat; }
-public int getGlBaseFormat()     { return type.glBaseFormat; }
-public int getGlType()           { return type.glType; }
-```
-These exist so gpu/resource/ call sites (`spec.getGlInternalFormat()`) remain stable.
-
-### Pre-built Constants
-
-```java
-RGBA8_LINEAR, RGBA8_NEAREST
-RGBA8_LINEAR_CLAMP_BORDER, RGBA8_NEAREST_CLAMP_BORDER
-RGBA8_LINEAR_REPEAT, RGBA8_NEAREST_REPEAT
-RGBA8_LINEAR_MIRRORED, RGBA8_NEAREST_MIRRORED
-R8_LINEAR_REPEAT, R8_NEAREST_REPEAT
-RGBA16F_LINEAR
-DEPTH24_SHADOW   // ONLY constant with compareMode = GL_COMPARE_R_TO_TEXTURE
-```
-
-`DEPTH24_SHADOW` is the **only** preset with compare mode enabled. `CgTextureType.toTextureSpec()` always returns a neutral spec (no compare mode):
-
-```java
-CgTextureSpec.DEPTH24_SHADOW              // PCF shadow sampling
-CgTextureType.DEPTH24.toTextureSpec()     // neutral depth spec (no compare)
-```
-
-## CgMipmapConfig
-
-Controls mipmap generation for textures.
-
-**`levels` field removed** — `glGenerateMipmap` builds a full chain automatically.
-
-### Named Constants
-
-| Constant | Enabled | minFilter | magFilter |
-|----------|---------|-----------|-----------|
-| `NONE` | false | LINEAR | LINEAR |
-| `TRILINEAR` | true | `GL_LINEAR_MIPMAP_LINEAR` | `GL_LINEAR` |
-| `NEAREST` | true | `GL_NEAREST_MIPMAP_NEAREST` | `GL_NEAREST` |
-
-### Factory
-
-- `enabled(int minFilter, int magFilter)` — custom filter combination
-- `disabled()` — `@Deprecated` alias returning `NONE` (migration only)
-
-### Usage
-
-```java
-CgTextureSpec spec = CgTextureSpec.builder()
-    .type(CgTextureType.RGBA8)
-    .mipmaps(CgMipmapConfig.TRILINEAR)
-    .build();
-```
+- `.sampler(...)` on a file's texture throws: say it in the settings file, or at the binding.
+- Code that loads a file its own way passes settings: `CgTexture2D.create(path, CgTextureSettings.PLAIN.withMips(true)
+  .withSampler(CgSampler.TRILINEAR_CLAMP))` — cached by the path and those settings.
+- A file's chain of levels comes from its settings (`mips`), never from its sampler.
 
 ## Concrete Impls (live in `gpu/resource/`)
 
 | Class | Role |
 |-------|------|
-| `gpu.resource.CgTexture2D` | Single 2D image (`GL_TEXTURE_2D`). Static factories `create(path)`, `create(path, spec)`, `createEmpty(w, h, spec)`. Supports `upload(w, h, pixels)` re-upload. |
-| `gpu.resource.CgTexture2DArray` | A stack of 2D images (`GL_TEXTURE_2D_ARRAY`), smaller ones centred. `create(spec, paths...)`. |
-| `gpu.resource.CgTexture3D` | Volumetric (`GL_TEXTURE_3D`). `create(spec, paths...)`, `createEmpty(w, h, d, spec)`. |
-| `gpu.resource.CgTextureCubemap` | Cubemap (`GL_TEXTURE_CUBE_MAP`). `create(spec, posX...negZ)`, `createStacked(path, spec)`, `createEmpty(size, spec)`. |
+| `CgTexture2D` | One 2D image. `create(path[, settings])`, `createDirect(path)` (not cached), `create(name, w, h, format, levels)` (what `CgTextures.create` calls), `createEmpty(w, h, format[, levels])`, `createFromPixels(w, h, pixels, format)`; `write(...)` regions, `release()`. |
+| `CgTexture2DArray` | A stack of 2D images, smaller ones centred. `create(paths...)`, `createDirect(paths...)`, `allocateEmpty(w, h, layers, format)`. |
+| `CgTexture3D` | A volume. `create(paths...)`, `createDirect(paths...)`, `createEmpty(w, h, d, format[, levels])`. |
+| `CgTextureCubemap` | A cube. `create(six paths)`, `createStacked(path[, settings])`, `createDirect(six paths)`, `createEmpty(size, format)`. |
 
-## Ownership Model
-
-- A `CgTexture` instance owns exactly one GL texture id.
-- `delete()` releases it. After deletion the texture is unusable.
-- Failure during creation never leaks GL ids — impls wrap allocation in try/catch and delete on rethrow.
+Each has a covariant `sampler(CgSampler)`.
 
 ## Relationship to Other Packages
 
-- **gpu/resource** holds the concrete impls. They `implements CgTexture` directly.
-- **api/framebuffer/CgFrameBufferFormat** uses `CgTextureType` as slot descriptors.
-- **api/material/CgMaterialValues** has `sampler(String, int, CgTexture[, CgSampler])` for a material's textures.
+- **gpu/resource** holds the concrete impls, the cache (`CgTextureManager`) and `CgTextureSettings`.
+- **api/material** binds them: `CgMaterialValues.sampler(String, int, CgTexture[, CgSampler])`; a material
+  definition's texture loads through `CgMaterialRegistry.texture(path)`, which takes a texture asset's defaults
+  (sRGB, mips, trilinear, repeated) where a file has no settings.
 
 ## Design Rules
 
-- Public API surface: one interface (`CgTexture`) + one format enum (`CgTextureType`) + one spec (`CgTextureSpec`) + one mipmap policy (`CgMipmapConfig`).
-- All concrete texture creation goes through static factories on impl classes in `gpu/resource/`.
-- Never call `glGet*`; spec params are recorded at upload time and never queried back.
-- A spec's filter, wrap and compare are the device sampler a binding reads where it names no `CgSampler`.
-- `CgTextureType` constants: zero hex, all GL values from LWJGL imports.
-- `CgTextureSpec` constants: zero hex, all built via `CgTextureType.X.toTextureSpec()` or `builder().type(...)`.
+- No texture factory takes a sampler: a file's is its settings', a made one's its default or its `.sampler(...)`, and
+  anything else is the binding's.
+- All concrete texture creation goes through `CgTextures` or the static factories in `gpu/resource/`.
+- `CgTexture.sampler()` returns the same object each call: `CgDeviceSamplers` caches device samplers by identity.
 
 ---
 

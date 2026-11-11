@@ -245,10 +245,10 @@ public class CgFrameBuffer {
         for (int slot : format.getActiveColorSlotIds()) {
             if (format.isColorRenderbuffer(slot)) continue;
             descs.add(CgTexture2D.deviceDesc(colourLabel(name, slot), width, height,
-                    format.getColorSlot(slot).toTextureSpec(), Math.min(colorLevels, CgTexture.fullChain(width, height))));
+                    Texels.target(format.getColorSlot(slot)), Math.min(colorLevels, CgTexture.fullChain(width, height))));
         }
         if (format.hasDepth() && !format.isDepthRenderbuffer()) {
-            descs.add(CgTexture2D.deviceDesc(depthLabel(name), width, height, format.getDepthType().toTextureSpec(), 1));
+            descs.add(CgTexture2D.deviceDesc(depthLabel(name), width, height, Texels.target(format.getDepthType()), 1));
         }
         return descs;
     }
@@ -291,7 +291,7 @@ public class CgFrameBuffer {
             throw new IllegalArgumentException("CgFrameBuffer '" + name + "': a volume is one single-sampled colour "
                     + "texture at slot 0, not " + format);
         }
-        return adopt(name, format, CgTexture3D.createEmpty(width, height, depth, type.toTextureSpec()));
+        return adopt(name, format, CgTexture3D.createEmpty(width, height, depth, type.format()));
     }
 
     /**
@@ -442,7 +442,7 @@ public class CgFrameBuffer {
             if (arrayLayers > 0) {
                 CgTextureType type = fmt.getColorSlot(0);
                 Attachment a = new Attachment(0, type, false);
-                a.texture = CgTexture2DArray.allocateEmpty(w, h, arrayLayers, type.toTextureSpec());
+                a.texture = CgTexture2DArray.allocateEmpty(w, h, arrayLayers, type.format());
                 colorAttachments.put(0, a);
                 return;
             }
@@ -478,8 +478,8 @@ public class CgFrameBuffer {
     }
 
     private CgTexture2D texture(String label, CgTextureType type, int w, int h, int levels) {
-        return images != null ? CgTexture2D.onDevice(images.make(CgTexture2D.deviceDesc(label, w, h, type.toTextureSpec(),
-                levels)), type.toTextureSpec()) : CgTexture2D.createEmpty(w, h, type.toTextureSpec(), levels);
+        return images != null ? CgTexture2D.onDevice(images.make(CgTexture2D.deviceDesc(label, w, h, Texels.target(type),
+                levels)), Texels.target(type)) : CgTexture2D.createEmpty(w, h, Texels.target(type), levels);
     }
 
     /** A slot a pass attaches and never samples: what a renderbuffer was, multisampled where the format is. */

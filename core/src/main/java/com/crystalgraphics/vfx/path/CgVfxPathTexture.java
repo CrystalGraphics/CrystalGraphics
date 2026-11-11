@@ -1,14 +1,14 @@
 package com.crystalgraphics.vfx.path;
 
 import com.crystalgraphics.platform.gl.driver.GLC;
-import com.crystalgraphics.api.texture.CgTextureSpec;
-import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.gpu.resource.CgTexture2D;
 import com.crystalgraphics.gpu.CgUploadLease;
 import com.crystalgraphics.gpu.CgUploads;
 import com.crystalgraphics.util.CgBufferUtils;
 
 import java.nio.ByteBuffer;
+import com.crystalgraphics.api.texture.CgSampler;
+import com.crystalgraphics.platform.rhi.format.CgFormat;
 
 /**
  * This frame's {@link CgVfxPath}s, one per row of an RGBA32F texture that tube shaders read with {@code texelFetch}
@@ -32,10 +32,6 @@ public final class CgVfxPathTexture {
 
     /** Texels per row: the header and three per ring. */
     public static final int WIDTH = 1 + 3 * CgVfxPath.MAX_RINGS;
-    private static final CgTextureSpec SPEC = CgTextureSpec.builder()
-            .type(CgTextureType.RGBA32F)
-            .minFilter(GLC.GL_NEAREST).magFilter(GLC.GL_NEAREST)
-            .build();
     private static final int ROW_BYTES = WIDTH * 4 * Float.BYTES;
 
     private CgTexture2D texture;
@@ -67,7 +63,7 @@ public final class CgVfxPathTexture {
         if (texture == null || textureRows < capacity) {
             // A new texture when it must grow: re-specifying one frames in flight still sample blocks the render thread.
             if (texture != null) texture.delete();
-            texture = CgTexture2D.createEmpty(WIDTH, capacity, SPEC);
+            texture = CgTexture2D.createEmpty(WIDTH, capacity, CgFormat.RGBA32_FLOAT).sampler(CgSampler.NEAREST_CLAMP);
             textureRows = capacity;
         }
         // This frame's rows only, from an upload lease: copied on the GPU's timeline, behind the draws that read them.

@@ -7,7 +7,6 @@ import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
 import com.crystalgraphics.platform.rhi.resource.CgTextureRegion;
 import com.crystalgraphics.platform.gl.format.GLFormats;
 import com.crystalgraphics.api.texture.CgTexture;
-import com.crystalgraphics.api.texture.CgTextureSpec;
 import com.crystalgraphics.gpu.CgUploadLease;
 import com.crystalgraphics.gpu.CgUploads;
 import com.crystalgraphics.trace.CgTrace;
@@ -22,19 +21,21 @@ import javax.annotation.Nullable;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import lombok.Getter;
+import com.crystalgraphics.api.texture.CgSampler;
+import com.crystalgraphics.platform.rhi.format.CgFormat;
 
 /**
  * A 2D-array texture: layers of one size, format and sampling, on the device. Built from files, or allocated empty and
  * filled layer region by layer region, growing as it fills.
  *
  * <h3>From files</h3>
- * <p>{@link #create(CgTextureSpec, String...)} is a layer an image, cached by the paths and the spec and loaded at its
+ * <p>{@link #create(Texels, String...)} is a layer an image, cached by the paths and the spec and loaded at its
  * first use, as a {@link CgTexture2D} from a file is: a flipbook, or a set of paintings to pick from past a material's
  * sampler limit.</p>
  *
  * <pre>{@code
  * static final CgTexture2DArray FLAMES = CgTextures.frames("mymod:textures/vfx/flame_%d.png", 3);   // numbered files
- * static final CgTexture2DArray PAINTINGS = CgTexture2DArray.create(CgTextureSpec.RGBA8_LINEAR,
+ * static final CgTexture2DArray PAINTINGS = CgTexture2DArray.create(
  *         "mymod:textures/vfx/dash_wide.png", "mymod:textures/vfx/dash_thin.png");
  * }</pre>
  *
@@ -46,7 +47,7 @@ import lombok.Getter;
  *
  * <h3>Filled over time</h3>
  * <pre>{@code
- * CgTexture2DArray atlas = CgTexture2DArray.allocateEmpty(1024, 1024, 4, CgTextureSpec.R8_LINEAR);
+ * CgTexture2DArray atlas = CgTexture2DArray.allocateEmpty(1024, 1024, 4, CgFormat.R8_UNORM);
  * atlas.uploadLayerRegion(2, x, y, w, h, GL_RED, GL_UNSIGNED_BYTE, glyph);
  * atlas.growLayers(8);   // layers 0-3 kept, copied on the GPU; read getId() at each use
  * }</pre>
@@ -74,7 +75,7 @@ public final class CgTexture2DArray extends CgTextureAbstract {
 
     private final Consumer<CgUploadLease> landing = this::land;
 
-    private CgTexture2DArray(int width, int height, int depth, CgTextureSpec spec, String[] sourcePaths) {
+    private CgTexture2DArray(int width, int height, int depth, Texels spec, String[] sourcePaths) {
         super(0, width, height, spec);
         this.depth = depth;
         this.sourcePaths = sourcePaths;
@@ -83,11 +84,12 @@ public final class CgTexture2DArray extends CgTextureAbstract {
     // ── Factories ────────────────────────────────────────────────────
 
     /**
-     * A layer for each of {@code paths}, in order, sampled as {@code spec}: cached by the two, loaded at its first use.
-     * Any thread.
+     * A layer for each of {@code paths}, in order, as the first one's settings file says: shared, loaded at its first
+     * use. Any thread.
      */
-    public static CgTexture2DArray create(CgTextureSpec spec, String... paths) {
+    public static CgTexture2DArray create(String... paths) {
         String[] own = checkPaths(paths);
+        Texels spec = Texels.file(own[0]);
         CgTexture result = CgTextureManager.get().getOrCreate(String.join(CgTextureManager.PATH_SEPARATOR, own), spec, () -> {
             CgTexture2DArray tex = new CgTexture2DArray(0, 0, own.length, spec, own);
             tex.loadOnFirstUse();
@@ -97,11 +99,26 @@ public final class CgTexture2DArray extends CgTextureAbstract {
     }
 
     /** {@link #create} decoded here, not cached: the caller owns it, and no change to a file finds it. Any thread. */
-    public static CgTexture2DArray createDirect(CgTextureSpec spec, String... paths) {
+    public static CgTexture2DArray createDirect(String... paths) {
         String[] own = checkPaths(paths);
+        Texels spec = Texels.file(own[0]);
         CgTexture2DArray tex = new CgTexture2DArray(0, 0, own.length, spec, own);
         tex.load();
         return tex;
+    }
+
+    /**
+     * Samples it by {@code sampler} where a binding names none: a texture you made. Returns it, to chain.
+     *
+     * <pre>{@code
+     * CgTexture2DArray atlas = CgTexture2DArray.allocateEmpty(256, 256, 4, CgFormat.R8_UNORM).sampler(CgSampler.NEAREST_CLAMP);
+     * }</pre>
+     *
+     * @throws IllegalStateException for a texture from a file, shared by every caller of its path
+     */
+    public CgTexture2DArray sampler(CgSampler sampler) {
+        setSampler(sampler);
+        return this;
     }
 
     private static String[] checkPaths(String[] paths) {
@@ -117,7 +134,8 @@ public final class CgTexture2DArray extends CgTextureAbstract {
      * <p>Any thread, as are its uploads and growth: off the render thread the work waits for it, before the next frame
      * executes, and {@link #getId} is 0 until then.</p>
      */
-    public static CgTexture2DArray allocateEmpty(int width, int height, int layers, CgTextureSpec spec) {
+    public static CgTexture2DArray allocateEmpty(int width, int height, int layers, CgFormat format) {
+        Texels spec = Texels.made(format, 1);
         if (width <= 0 || height <= 0)
             throw new IllegalArgumentException("width/height must be positive, got: " + width + "x" + height);
         if (layers <= 0)

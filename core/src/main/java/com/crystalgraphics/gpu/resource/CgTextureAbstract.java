@@ -8,7 +8,6 @@ import java.util.EnumSet;
 import com.crystalgraphics.platform.gl.format.GLFormats;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.asset.tree.CgBinaryAsset;
-import com.crystalgraphics.api.texture.CgTextureSpec;
 import com.crystalgraphics.gpu.CgDeferral;
 import com.crystalgraphics.mc.CgReloadable;
 import com.crystalgraphics.platform.rhi.CgRHI;
@@ -68,10 +67,12 @@ public abstract class CgTextureAbstract implements CgTexture, CgBinaryAsset, CgR
     /** Height of the texture at mip level 0, in pixels; 0 until a texture from files loads. */
     protected int height;
     /** Immutable spec: format, filter, wrap, and mipmap policy. */
-    protected final CgTextureSpec spec;
-    /** How it samples where a binding names no sampler: its spec's, made once; null for the defaults. */
+    protected final Texels spec;
+    /** How it samples where a binding names no sampler; null for the device's defaults. */
     @Nullable
-    private final CgSampler sampler;
+    private CgSampler sampler;
+    /** Whether the texture cache hands it to every caller of its path: its sampling is then its settings file's alone. */
+    private boolean shared;
     /** False for a texture adopted from its owner: {@link #delete()} forgets it without deleting it. */
     private final boolean owned;
     /** Made on the installed device ({@code CgTexture2D.onDevice}): released through it. */
@@ -111,6 +112,30 @@ public abstract class CgTextureAbstract implements CgTexture, CgBinaryAsset, CgR
         return sampler;
     }
 
+    /**
+     * Samples it by {@code sampler} where a binding names none: a texture you made. Any thread; the next draw reads it.
+     *
+     * <pre>{@code
+     * CgTexture2D sheet = CgTextures.create("mymod.sheet", CgTextureDesc.of(64, 64, CgFormat.RGBA8_UNORM))
+     *         .sampler(CgSampler.NEAREST_CLAMP);
+     * }</pre>
+     *
+     * @throws IllegalStateException for a texture from a file, which every caller of its path shares: its settings file
+     *                               says how it samples, and a binding may name another
+     */
+    protected void setSampler(CgSampler sampler) {
+        if (shared) {
+            throw new IllegalStateException(source() + " is shared by every caller of its path: say its sampling in its "
+                    + "settings file, or name a sampler where you bind it");
+        }
+        this.sampler = java.util.Objects.requireNonNull(sampler, "sampler");
+    }
+
+    /** Marks it the cache's: shared, its sampling its settings file's. */
+    final void share() {
+        shared = true;
+    }
+
     /** How the device sees it, for {@link #rhiTexture}'s import: a 2D texture unless a kind says otherwise. */
     protected CgGpuTexture.Desc rhiDesc() {
         return new CgGpuTexture.Desc(source(), CgGpuTexture.Kind.D2, GLFormats.of(spec.getGlInternalFormat()), width, height,
@@ -119,21 +144,21 @@ public abstract class CgTextureAbstract implements CgTexture, CgBinaryAsset, CgR
 
     /** Its mip count where nothing records one: the full chain under a mipmapped spec. */
     protected int mips() {
-        return spec.getMipmaps().isEnabled() ? CgTexture.fullChain(width, height) : 1;
+        return spec.mipmapped() ? CgTexture.fullChain(width, height) : 1;
     }
 
     protected static final Set<CgGpuTexture.Usage> SAMPLED_ONLY = EnumSet.of(CgGpuTexture.Usage.SAMPLED);
 
-    protected CgTextureAbstract(int textureId, int width, int height, CgTextureSpec spec) {
+    protected CgTextureAbstract(int textureId, int width, int height, Texels spec) {
         this(textureId, width, height, spec, true);
     }
 
-    protected CgTextureAbstract(int textureId, int width, int height, CgTextureSpec spec, boolean owned) {
+    protected CgTextureAbstract(int textureId, int width, int height, Texels spec, boolean owned) {
         this.textureId = textureId;
         this.width = width;
         this.height = height;
         this.spec = spec;
-        this.sampler = spec == null ? null : spec.toSampler();
+        this.sampler = spec == null ? null : spec.sampler();
         this.owned = owned;
     }
 

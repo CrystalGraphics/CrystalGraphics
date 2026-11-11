@@ -7,9 +7,9 @@ import java.util.Map;
 
 import javax.annotation.Nullable;
 
-import com.crystalgraphics.api.texture.CgTextureSpec;
 import com.crystalgraphics.gpu.resource.CgTexture2D;
 import com.crystalgraphics.text.style.CgTextPaint;
+import com.crystalgraphics.platform.rhi.format.CgFormat;
 
 /**
  * Every text gradient drawn, a row each of one ramp texture that every text material samples as {@code _Gradients}:
@@ -36,7 +36,7 @@ final class CgTextGradients {
 
     /** The ramp texture, made at the first ask. */
     static synchronized CgTexture2D texture() {
-        if (texture == null) texture = CgTexture2D.createEmpty(WIDTH, ROWS, CgTextureSpec.RGBA8_LINEAR);
+        if (texture == null) texture = CgTexture2D.createEmpty(WIDTH, ROWS, CgFormat.RGBA8_UNORM);
         return texture;
     }
 

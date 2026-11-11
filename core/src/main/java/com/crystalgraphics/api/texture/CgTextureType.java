@@ -12,8 +12,7 @@ import javax.annotation.Nullable;
  * Typed enum of all supported GL texture formats.
  *
  * <p>Single source of truth for the (internalFormat, baseFormat, type) triple
- * for both regular textures and FBO attachments. Used by {@link CgTextureSpec}
- * ({@code CgTextureSpec.builder().type(CgTextureType.RGBA8)}) and by
+ * for both regular textures and FBO attachments. Used by the texture classes and by
  * {@code CgFrameBufferFormat} ({@code .color(0, CgTextureType.RGBA8)}) in Phase 2.</p>
  *
  * <p>Zero hex literals — all GL values come from LWJGL imports.</p>
@@ -203,28 +202,4 @@ public enum CgTextureType {
         return GLC.GL_COLOR_ATTACHMENT0 + colorIndex;
     }
 
-    /**
-     * Builds a {@link CgTextureSpec} for this format using safe defaults:
-     * clamp-to-edge wrapping, no mipmaps, and filter appropriate for the format.
-     *
-     * <p><strong>Filter selection</strong>: integer formats ({@code GL_RED_INTEGER},
-     * {@code GL_RG_INTEGER}, {@code GL_RGBA_INTEGER}) use {@code GL_NEAREST} since
-     * linear filtering is invalid on integer textures. All other formats use
-     * {@code GL_LINEAR}.</p>
-     *
-     * <p><strong>Neutral depth spec</strong>: depth formats do NOT auto-enable shadow
-     * comparison. Use {@link CgTextureSpec#DEPTH24_SHADOW} for PCF shadow sampling.</p>
-     */
-    public CgTextureSpec toTextureSpec() {
-        // Integer formats cannot use linear filtering — GL_INVALID_OPERATION otherwise.
-        boolean intFmt = glBaseFormat == GLC.GL_RED_INTEGER
-                      || glBaseFormat == GLC.GL_RG_INTEGER
-                      || glBaseFormat == GLC.GL_RGBA_INTEGER;
-        int filter = intFmt ? GLC.GL_NEAREST : GLC.GL_LINEAR;
-        return CgTextureSpec.builder()
-                .type(this)
-                .minFilter(filter)
-                .magFilter(filter)
-                .build();
-    }
 }

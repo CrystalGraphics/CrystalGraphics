@@ -14,12 +14,12 @@ via the singleton `CgTextureManager`.
 | File | Role |
 |------|------|
 | `CgTextureManager.java` | Singleton cache + reload + fallback. See below. |
-| `CgTextureAbstract.java` | Shared base: id/spec/dimensions, bind, delete, `checkUsable`, and the load at first use (below). |
-| `CgTexture2D.java` | Single 2D texture (`GL_TEXTURE_2D`). `create(path[, spec])` (cached, loaded at first use), `createDirect(path, spec)`, `missing()` (the checkerboard), `createEmpty(w, h, spec[, levels])` (storage for that many mip levels, written by a kernel or a pass rather than generated), `createFromPixels(...)`. Two `upload()` overloads, and `uploadRegion` for a region of one level (what `CgRecording.update` writes a graph texture with). `bindLevel(unit, level)` binds a view of one level. A path ending in `.hdr` is a Radiance image (`util/io/CgRadianceHdr`), uploaded as half floats under an `RGBA16F` spec; another spec throws at first use. A path ending in `.cgtex` is a cooked texture (`util/io/CgCookedTexture`): its levels land from one lease, as BC7 blocks where `CgCapabilities.bc7()` holds, else decoded by `CgBc7` to RGBA8 on the loading thread; the file decides format and levels, the spec only filter and wrap. |
-| `CgTexture2DArray.java` | 2D-array texture (`GL_TEXTURE_2D_ARRAY`). `create(spec, paths...)` (cached, loaded at first use, images of different sizes centred), `createDirect(spec, paths...)`; `allocateEmpty` for incremental uploads, `growLayers` (new storage, the old layers copied on the GPU). |
+| `CgTextureAbstract.java` | Shared base: id, `Texels`, dimensions, its own `sampler()` and `setSampler` (refused once shared), bind, delete, `checkUsable`, and the load at first use (below). |
+| `CgTexture2D.java` | Single 2D texture (`GL_TEXTURE_2D`). `create(path[, settings])` (cached, loaded at first use), `createDirect(path)`, `missing()` (the checkerboard), `createEmpty(w, h, format[, levels])` (storage for that many mip levels, written by a kernel or a pass rather than generated), `createFromPixels(...)`. Two `upload()` overloads, and `uploadRegion` for a region of one level (what `CgRecording.update` writes a graph texture with). `bindLevel(unit, level)` binds a view of one level. A path ending in `.hdr` is a Radiance image (`util/io/CgRadianceHdr`), uploaded as half floats. A path ending in `.cgtex` is a cooked texture (`util/io/CgCookedTexture`): its levels land from one lease, as BC7 blocks where `CgCapabilities.bc7()` holds, else decoded by `CgBc7` to RGBA8 on the loading thread; the file decides format and levels, its settings the sampling. |
+| `CgTexture2DArray.java` | 2D-array texture (`GL_TEXTURE_2D_ARRAY`). `create(paths...)` (cached, loaded at first use, images of different sizes centred), `createDirect(paths...)`; `allocateEmpty(w, h, layers, format)` for incremental uploads, `growLayers` (new storage, the old layers copied on the GPU). |
 | `CgTextureAbstract.java` | The shared base. Owns the texture's `CgDeferral` (`gpu/`): all its device work goes through it, so `CgTexture2D`, `CgTexture2DArray`, `CgTexture3D` and `CgTextureCubemap` are made, filled, grown and deleted from any thread, their work waiting for the render thread where the device may not be driven. `getId`/`bind` run what is queued first; an id is 0 until then off the render thread. Pixels for waiting work are copied once into a `CgUploadLease` by the thread that passed them (`gpu/CgUploads`), and land with no copy on the render thread; `CgTexture2D.uploadRegion` and `CgTexture3D.uploadRegion` also take a lease its producer wrote. |
-| `CgTexture3D.java` | 3D texture (`GL_TEXTURE_3D`). `create(spec, paths...)` (cached, loaded at first use), `createDirect(spec, paths...)`; `createEmpty(w, h, d, spec[, levels])` through its `CgDeferral`, any thread, `uploadRegion` for a box of one level and `generateMipmaps()` from level 0: a volume a kernel, a bake or an upload fills, and a frame-graph volume's storage. |
-| `CgTextureCubemap.java` | Cubemap (`GL_TEXTURE_CUBE_MAP`). `create(spec, posX...negZ)`, `createDirect(spec, posX...negZ)`, `createStacked(path, spec)` (one image, faces stacked top to bottom in Unreal's slice order, each face i unchanged; `w x 6w` or it throws at first use), `createEmpty(size, spec)`, any thread through its `CgDeferral` (faces decoded on the calling thread); `uploadFace(face, level, x, y, w, h, ...)` from a buffer or a lease, the face carried in the lease's `z`. |
+| `CgTexture3D.java` | 3D texture (`GL_TEXTURE_3D`). `create(paths...)` (cached, loaded at first use), `createDirect(paths...)`; `createEmpty(w, h, d, format[, levels])` through its `CgDeferral`, any thread, `uploadRegion` for a box of one level and `generateMipmaps()` from level 0: a volume a kernel, a bake or an upload fills, and a frame-graph volume's storage. |
+| `CgTextureCubemap.java` | Cubemap (`GL_TEXTURE_CUBE_MAP`). `create(posX...negZ)`, `createDirect(posX...negZ)`, `createStacked(path[, settings])` (one image, faces stacked top to bottom in Unreal's slice order, each face i unchanged; `w x 6w` or it throws at first use), `createEmpty(size, format)`, any thread through its `CgDeferral` (faces decoded on the calling thread); `uploadFace(face, level, x, y, w, h, ...)` from a buffer or a lease, the face carried in the lease's `z`. |
 
 ## Where an upload runs
 
@@ -52,7 +52,7 @@ Every `create(...)` from paths goes through `CgTextureManager` and answers an ob
 `CgTextureAbstract` holds the hook:
 
 ```
-create(spec, paths)     manager.getOrCreate(key, spec, () -> unloaded texture)   // no decode, no GL
+create(paths)           manager.getOrCreate(key, Texels.file(path), () -> unloaded texture)   // no decode, no GL
 first use               getWidth/getHeight/getId/getLevels/isMissing/bind/any write
   -> ensureLoaded()     once, synchronized, on the thread that asks
   -> load()             decode the files, queue the upload through gpu (CgDeferral)
@@ -67,8 +67,11 @@ createDirect(...)       the same object, load() at once, not cached
   a 3D or cubemap.
 - **An array centres images of different sizes** on a layer the largest one's size (`CgTexture2DArray.centred`);
   `CgTextures.frames(pattern, count)` names numbered files.
-- **`CgTextures` (`api/texture`) is the shorthand** over each type's `create`: `of`, `frames`, `array`, `volume`,
-  `cubemap`. A new way to make a texture from files goes on both.
+- **`CgTextures` (`api/texture`) is the shorthand** over each type's `create`: `of`, `frames`, `volume`, `cube`,
+  `create`. A new way to make a texture from files goes on both.
+- **A file loads as its settings file says** (`CgTextureSettings`, `noise.png`'s `noise.yaml`), or plain without one;
+  `Texels.file` turns settings into the texel type, the chain and the sampler. A made texture's are
+  `Texels.made(format, levels)`. No factory takes a sampler: `api/texture/CLAUDE.md` § *Sampling*.
 - **No decode on a server**: naming a texture builds an object and a cache entry. Nothing reads a file until something
   asks for its size or binds it.
 - **Every device call goes through `gpu`**, in `load()` too: the first use may be a worker's.
@@ -76,16 +79,17 @@ createDirect(...)       the same object, load() at once, not cached
 ## CgTextureManager
 
 ```java
-CgTexture get(String key, CgTextureSpec spec);                                   // null if absent or deleted
-CgTexture getOrCreate(String key, CgTextureSpec spec, Supplier<CgTexture> maker); // what each type's create uses
-CgTexture2D getOrCreate(String path, CgTextureSpec spec);                       // CgTexture2D.create; fallback for no path
+CgTexture2D getOrCreate(String path);                                            // CgTexture2D.create; fallback for no path
+CgTexture2D getOrCreate(String path, CgTextureSettings settings);                 // as those settings say
+CgTexture getOrCreate(String key, Texels spec, Supplier<CgTexture> maker);        // package: what each type's create uses
 CgTexture2D getFallback();                                                       // the shared CgTexture2D.missing()
 void reloadAll();                                                                // a resource reload
 void freeAll();                                                                  // CgEngineLifecycle.shutdown()
 ```
 
-- **Keyed by the paths and the spec**: the paths joined by `\0`, then `CgTextureSpec` by value. One image sampled two
-  ways is two textures; the first caller's spec never wins over a second's.
+- **Keyed by the paths and the `Texels`**: the paths joined by `\0`, then the texel type, chain and sampler by value.
+  One image loaded with two settings is two textures; the first caller's never wins over a second's.
+- **A texture it hands out is shared** (`share()`): its `sampler(...)` throws, since every caller of the path has it.
 - Each cached texture is tracked by its key's paths (`CgAssetReloader`), so saving one of its files reloads it in
   place, and only it.
 - The fallback is never cached under a key, and is freed with the cache.
@@ -97,36 +101,16 @@ shape its first whole upload or `createEmpty` gives it, written by `writeTexture
 `generateMipmaps`. The engine knows it by the name `CgDeviceNames` gives it, and that name changes when the storage
 is remade (a grow, a resize): read `getId()` at each use.
 
-A texture has no sampling state of its own. Its spec's filter, wrap and compare are the sampler a binding reads where
-it names no `CgSampler` (`render/draw/CgDeviceSamplers`). `bind(unit)` notes it for the pass being recorded, and
+A texture's own sampling is a `CgSampler` value (`sampler()`), the one a binding reads where it names none
+(`render/draw/CgDeviceSamplers`, cached by identity: keep the same object). `bind(unit)` notes it for the pass being recorded, and
 `CgTexture2D.bindLevel(unit, level)` notes a view of one level; neither issues a GL call.
-
-## CgTextureSpec Format API (Phase 1 change)
-
-After Phase 1, the format triple is accessed via convenience delegates on `CgTextureSpec`
-rather than through `spec.getFormat().*`:
-
-```java
-// OLD (Phase 0, removed):
-spec.getFormat().getInternalFormat()
-spec.getFormat().getPixelFormat()
-spec.getFormat().getPixelType()
-
-// NEW (Phase 1+):
-spec.getGlInternalFormat()
-spec.getGlBaseFormat()
-spec.getGlType()
-```
-
-These delegate to `spec.getType().glInternalFormat` etc. `CgTextureFormatSpec` is gone;
-format is now a `CgTextureType` enum constant.
 
 ## Design Rules
 
 - `load()` is the single decode path per type and `upload()` the single whole upload; factories and `reload()` call them.
 - `reload()` is always in place: the same Java object. Its id is the storage's and may change; read it at each use.
 - `create(...)` is cached and tracked, so a change to its files reloads it; `createDirect(...)` is neither.
-- Never call `glGet*` here; the spec is the source of truth.
+- Never call `glGet*` here; the `Texels` is the source of truth.
 - `delete()` is idempotent (second call is silent no-op).
 
 ## TODO — Animatable Textures

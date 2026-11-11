@@ -1,12 +1,10 @@
 package com.crystalgraphics.vfx.fluid;
 
-import com.crystalgraphics.platform.gl.driver.GLC;
-import com.crystalgraphics.api.texture.CgTextureSpec;
-import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.gpu.resource.CgTexture2D;
 import com.crystalgraphics.util.CgHalfFloat;
 
 import java.util.Arrays;
+import com.crystalgraphics.platform.rhi.format.CgFormat;
 
 /**
  * What a fluid looks like at each temperature: a colour and an opacity, NVIDIA Flow's colour map (BSD-3-Clause,
@@ -36,9 +34,7 @@ public final class CgVfxColormap {
 
     /** Flow's {@code NvFlowRayMarchColormapParams_default_xPoints}. */
     private static final float[] FLOW_X = {0f, 0.05f, 0.15f, 0.6f, 0.85f, 1f};
-    private static final CgTextureSpec SPEC = CgTextureSpec.builder().type(CgTextureType.RGBA16F)
-            .minFilter(GLC.GL_LINEAR).magFilter(GLC.GL_LINEAR)
-            .wrapS(GLC.GL_CLAMP_TO_EDGE).wrapT(GLC.GL_CLAMP_TO_EDGE).build();
+
 
     /**
      * Flow's {@code rgbaPoints_smoke} at colour scale 1: grey smoke scattering 0.9 of its light, its opacity rising off
@@ -108,7 +104,7 @@ public final class CgVfxColormap {
             sample((i + 0.5f) / resolution, texel);
             System.arraycopy(texel, 0, texels, i * 4, 4);
         }
-        texture = CgTexture2D.createFromPixels(resolution, 1, CgHalfFloat.halves(texels), SPEC);
+        texture = CgTexture2D.createFromPixels(resolution, 1, CgHalfFloat.halves(texels), CgFormat.RGBA16_FLOAT);
         return texture;
     }
 

@@ -5,7 +5,6 @@ import com.crystalgraphics.platform.rhi.resource.CgTextureRegion;
 import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
 import com.crystalgraphics.platform.gl.format.GLFormats;
 import com.crystalgraphics.api.texture.CgTexture;
-import com.crystalgraphics.api.texture.CgTextureSpec;
 import com.crystalgraphics.gpu.CgUploadLease;
 import com.crystalgraphics.gpu.CgUploads;
 import com.crystalgraphics.util.io.CgTextureIO.CgImageData;
@@ -15,6 +14,8 @@ import java.util.function.Consumer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import lombok.Getter;
+import com.crystalgraphics.api.texture.CgSampler;
+import com.crystalgraphics.platform.rhi.format.CgFormat;
 
 /**
  * 3D GL texture (target {@code GL_TEXTURE_3D = 0x806F}). Single concrete impl
@@ -26,17 +27,17 @@ import lombok.Getter;
  *
  * <h3>Factories</h3>
  * <ul>
- *   <li>{@link #create(CgTextureSpec, String...)} — a slice an image, cached by the paths and the spec, loaded at its
+ *   <li>{@link #create(Texels, String...)} — a slice an image, cached by the paths and the spec, loaded at its
  *       first use as a {@link CgTexture2D} from a file is. Slices of another size than the first, or that will not
  *       load, are logged and leave a clear 1x1x1 volume: {@link #isMissing()}.</li>
- *   <li>{@link #createDirect(CgTextureSpec, String...)} — the same decoded here, not cached.</li>
- *   <li>{@link #createEmpty(int, int, int, CgTextureSpec, int)} — storage a kernel, a bake or an upload fills; any
+ *   <li>{@link #createDirect(Texels, String...)} — the same decoded here, not cached.</li>
+ *   <li>{@link #createEmpty(int, int, int, Texels, int)} — storage a kernel, a bake or an upload fills; any
  *       thread, its GL work waiting for the render thread as a {@link CgTexture2D}'s does.</li>
  * </ul>
  *
  * <pre>{@code
  * // a tiling noise volume baked on a worker: level 0 uploaded, the rest generated
- * CgTextureSpec repeat = CgTextureSpec.builder().type(CgTextureType.RGBA8).minFilter(GL_LINEAR).magFilter(GL_LINEAR)
+ * Texels repeat = Texels.builder().type(CgTextureType.RGBA8).minFilter(GL_LINEAR).magFilter(GL_LINEAR)
  *         .wrapS(GL_REPEAT).wrapT(GL_REPEAT).wrapR(GL_REPEAT).build();
  * CgTexture3D noise = CgTexture3D.createEmpty(128, 128, 128, repeat, CgTexture3D.fullChain(128, 128, 128));
  * noise.uploadRegion(0, 0, 0, 0, 128, 128, 128, texels, GL_RGBA, GL_UNSIGNED_BYTE);
@@ -72,7 +73,7 @@ public final class CgTexture3D extends CgTextureAbstract {
     /** Source paths for reload; {@code null} for createDirect (no reload support). */
     @Getter private final String[] sourcePaths;
 
-    private CgTexture3D(int textureId, int width, int height, int depth, CgTextureSpec spec, String[] sourcePaths) {
+    private CgTexture3D(int textureId, int width, int height, int depth, Texels spec, String[] sourcePaths) {
         super(textureId, width, height, spec);
         this.depth = depth;
         this.sourcePaths = sourcePaths;
@@ -80,9 +81,10 @@ public final class CgTexture3D extends CgTextureAbstract {
 
     // ── Factories ────────────────────────────────────────────────────
 
-    /** A slice for each of {@code paths}, in order, sampled as {@code spec}: cached, loaded at its first use. */
-    public static CgTexture3D create(CgTextureSpec spec, String... paths) {
+    /** A slice for each of {@code paths}, in order, as the first one's settings file says: shared, loaded at its first use. */
+    public static CgTexture3D create(String... paths) {
         String[] own = checkPaths(paths);
+        Texels spec = Texels.file(own[0]);
         CgTexture result = CgTextureManager.get().getOrCreate(String.join(CgTextureManager.PATH_SEPARATOR, own), spec, () -> {
             CgTexture3D tex = new CgTexture3D(0, 0, 0, own.length, spec, own);
             tex.loadOnFirstUse();
@@ -92,8 +94,9 @@ public final class CgTexture3D extends CgTextureAbstract {
     }
 
     /** {@link #create} decoded here, not cached: the caller owns it. */
-    public static CgTexture3D createDirect(CgTextureSpec spec, String... paths) {
-        CgTexture3D tex = new CgTexture3D(0, 0, 0, paths.length, spec, checkPaths(paths));
+    public static CgTexture3D createDirect(String... paths) {
+        String[] own = checkPaths(paths);
+        CgTexture3D tex = new CgTexture3D(0, 0, 0, own.length, Texels.file(own[0]), own);
         tex.load();
         return tex;
     }
@@ -108,32 +111,43 @@ public final class CgTexture3D extends CgTextureAbstract {
         return depth;
     }
 
-    /** An empty texture of one level. Not cached; caller owns the lifecycle. */
-    public static CgTexture3D createEmpty(int width, int height, int depth, CgTextureSpec spec) {
-        return createEmpty(width, height, depth, spec, 1);
+    /** An empty texture of one level, sampled bilinear (nearest for an integer format). Not cached; caller owns it. */
+    public static CgTexture3D createEmpty(int width, int height, int depth, CgFormat format) {
+        return createEmpty(width, height, depth, format, 1);
     }
+
+    /**
+     * Samples it by {@code sampler} where a binding names none: a texture you made. Returns it, to chain.
+     *
+     * <pre>{@code
+     * CgTexture3D noise = CgTexture3D.createEmpty(32, 32, 32, CgFormat.R8_UNORM).sampler(CgSampler.TRILINEAR_WRAP);
+     * }</pre>
+     *
+     * @throws IllegalStateException for a texture from a file, shared by every caller of its path
+     */
+    public CgTexture3D sampler(CgSampler sampler) {
+        setSampler(sampler);
+        return this;
+    }
+
 
     /**
      * An empty texture of {@code levels} mip levels, sampled through all of them. Any thread. Not cached; caller owns the
      * lifecycle.
      *
      * <ul>
-     *   <li>Its minification filter becomes the spec's, mipmapped: trilinear from {@code GL_LINEAR}.</li>
-     *   <li>A spec that generates its mipmaps ({@code CgMipmapConfig}) is refused: fill level 0, then
-     *       {@link #generateMipmaps()}.</li>
+     *   <li>Sampled trilinear across several levels: {@link #sampler(CgSampler)} for another.</li>
+     *   <li>It never makes its own chain: fill level 0, then {@link #generateMipmaps()}.</li>
      * </ul>
      */
-    public static CgTexture3D createEmpty(int width, int height, int depth, CgTextureSpec spec, int levels) {
+    public static CgTexture3D createEmpty(int width, int height, int depth, CgFormat format, int levels) {
+        Texels spec = Texels.made(format, levels);
         if (width <= 0 || height <= 0 || depth <= 0) {
             throw new IllegalArgumentException("a 3D texture of " + width + "x" + height + "x" + depth);
         }
         if (levels < 1 || levels > fullChain(width, height, depth)) {
             throw new IllegalArgumentException(levels + " levels for a " + width + "x" + height + "x" + depth
                     + " texture: it holds 1 to " + fullChain(width, height, depth));
-        }
-        if (spec.getMipmaps().isEnabled()) {
-            throw new IllegalArgumentException("a spec that generates mipmaps would generate them from nothing: "
-                    + "give levels, fill level 0, then generateMipmaps()");
         }
         CgTexture3D tex = new CgTexture3D(0, width, height, depth, spec, null);
         tex.levels = levels;
@@ -198,7 +212,7 @@ public final class CgTexture3D extends CgTextureAbstract {
     @Override
     public int getLevels() {
         ensureLoaded();
-        return spec.getMipmaps().isEnabled() ? fullChain(width, height, depth) : levels;
+        return spec.mipmapped() ? fullChain(width, height, depth) : levels;
     }
 
     // ── Files ─────────────────────────────────────────────────────────
@@ -219,7 +233,7 @@ public final class CgTexture3D extends CgTextureAbstract {
                 width = height = depth = 1;
                 gpu.run(() -> {
                     store3D();
-                    if (spec.getMipmaps().isEnabled()) CgDeviceTextures.mipmaps(image);
+                    if (spec.mipmapped()) CgDeviceTextures.mipmaps(image);
                 });
                 return;
             }
@@ -235,7 +249,7 @@ public final class CgTexture3D extends CgTextureAbstract {
                 CgDeviceTextures.write(image, new CgTextureRegion(0, 0, 0, i, w, h, 1), images[i].pixels(), format,
                         GL_UNSIGNED_BYTE);
             }
-            if (spec.getMipmaps().isEnabled()) CgDeviceTextures.mipmaps(image);
+            if (spec.mipmapped()) CgDeviceTextures.mipmaps(image);
         });
     }
 

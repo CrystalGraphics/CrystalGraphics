@@ -1,16 +1,17 @@
 package com.crystalgraphics.api.material;
 
-import com.crystalgraphics.platform.gl.driver.GLC;
 import com.crystalgraphics.api.texture.CgTexture;
-import com.crystalgraphics.api.texture.CgTextureSpec;
+import com.crystalgraphics.gpu.resource.CgTextureSettings;
 import com.crystalgraphics.asset.kind.CgAssetKinds;
 import com.crystalgraphics.asset.tree.CgAssetException;
 import com.crystalgraphics.gpu.resource.CgTexture2D;
 import com.crystalgraphics.gpu.resource.CgTextureCubemap;
+import com.crystalgraphics.platform.rhi.format.CgFormat;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
 import static org.junit.Assert.*;
+import com.crystalgraphics.api.texture.CgSampler;
 
 /** A material's textures are made as their texture assets say (looks.md § Texture), and refused where the file is wrong. */
 public class CgMaterialTextureSettingsTest {
@@ -50,25 +51,22 @@ public class CgMaterialTextureSettingsTest {
 
     @Test
     public void itsSamplerIsTheTexturesOwnFilterAndWrap() {
-        CgTextureSpec own = CgMaterialRegistry.textureSpec(DIR + "clamped.png");
-        assertEquals(GLC.GL_NEAREST, own.getMinFilter());
-        assertEquals(GLC.GL_NEAREST, own.getMagFilter());
-        assertEquals(GLC.GL_REPEAT, own.getWrapS());
-        assertEquals(GLC.GL_MIRRORED_REPEAT, own.getWrapT());
-        assertFalse(own.getMipmaps().isEnabled());
-        CgTextureSpec none = CgMaterialRegistry.textureSpec(DIR + "ramp.hdr");
-        assertEquals("trilinear with mips", GLC.GL_LINEAR_MIPMAP_LINEAR, none.getMipmaps().getMinFilter());
-        assertEquals("repeated, Unreal's TA_Wrap", GLC.GL_REPEAT, none.getWrapS());
-        assertEquals(GLC.GL_REPEAT, none.getWrapT());
+        CgTextureSettings own = CgMaterialRegistry.textureSettings(DIR + "clamped.png");
+        assertEquals(CgSampler.Filter.NEAREST, own.defaultSampler().filter());
+        assertEquals(CgSampler.Address.WRAP, own.defaultSampler().u());
+        assertEquals(CgSampler.Address.MIRROR, own.defaultSampler().v());
+        assertFalse(own.mips());
+        CgTextureSettings none = CgMaterialRegistry.textureSettings(DIR + "ramp.hdr");
+        assertEquals("trilinear with mips", CgSampler.TRILINEAR_WRAP, none.defaultSampler());
+        assertTrue(none.mips());
+        assertEquals("float colour", CgFormat.RGBA16_FLOAT, none.format(DIR + "ramp.hdr"));
     }
 
     @Test
     public void aCubeIsSixStackedFacesOrRefusedAtItsFirstUse() {
-        assertEquals(4, CgTextureCubemap.createStacked(DIR + "stacked.png",
-                CgTextureSpec.RGBA8_LINEAR).getWidth());
+        assertEquals(4, CgTextureCubemap.createStacked(DIR + "stacked.png").getWidth());
         IllegalStateException e = assertThrows(IllegalStateException.class,
-                () -> CgTextureCubemap.createStacked(DIR + "tall.png",
-                        CgTextureSpec.RGBA8_LINEAR).getWidth());
+                () -> CgTextureCubemap.createStacked(DIR + "tall.png").getWidth());
         assertTrue(e.getMessage(), e.getMessage().contains("4 x 8"));
     }
 

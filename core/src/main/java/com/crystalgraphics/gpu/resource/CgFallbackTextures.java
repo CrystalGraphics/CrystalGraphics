@@ -1,10 +1,9 @@
 package com.crystalgraphics.gpu.resource;
 
 import com.crystalgraphics.platform.gl.driver.GLC;
-import com.crystalgraphics.api.texture.CgTextureSpec;
-import com.crystalgraphics.api.texture.CgTextureType;
 
 import java.nio.ByteBuffer;
+import com.crystalgraphics.platform.rhi.format.CgFormat;
 
 /**
  * Engine-managed 1×1 fallback textures covering the four most common "unset sampler" cases.
@@ -57,14 +56,13 @@ public final class CgFallbackTextures {
         TRANSPARENT = createPixel(0, 0, 0, 0);
         ByteBuffer zeroByte = ByteBuffer.allocateDirect(1);
         zeroByte.put((byte) 0).flip();
-        ZERO_UINT = CgTexture2D.createFromPixels(1, 1, zeroByte, CgTextureSpec.builder().type(CgTextureType.R8UI)
-                .minFilter(GLC.GL_NEAREST).magFilter(GLC.GL_NEAREST).build());
-        CgTexture3D volume = CgTexture3D.createEmpty(1, 1, 1, CgTextureSpec.RGBA8_LINEAR);
+        ZERO_UINT = CgTexture2D.createFromPixels(1, 1, zeroByte, CgFormat.R8_UINT);
+        CgTexture3D volume = CgTexture3D.createEmpty(1, 1, 1, CgFormat.RGBA8_UNORM);
         ByteBuffer white = ByteBuffer.allocateDirect(4);
         white.put((byte) 255).put((byte) 255).put((byte) 255).put((byte) 255).flip();
         volume.uploadRegion(0, 0, 0, 0, 1, 1, 1, white, GLC.GL_RGBA, GLC.GL_UNSIGNED_BYTE);
         WHITE_VOLUME = volume;
-        CgTexture3D black = CgTexture3D.createEmpty(1, 1, 1, CgTextureSpec.RGBA8_LINEAR);
+        CgTexture3D black = CgTexture3D.createEmpty(1, 1, 1, CgFormat.RGBA8_UNORM);
         ByteBuffer zero = ByteBuffer.allocateDirect(4);
         zero.put((byte) 0).put((byte) 0).put((byte) 0).put((byte) 0).flip();
         black.uploadRegion(0, 0, 0, 0, 1, 1, 1, zero, GLC.GL_RGBA, GLC.GL_UNSIGNED_BYTE);
@@ -96,7 +94,7 @@ public final class CgFallbackTextures {
         ByteBuffer buf = ByteBuffer.allocateDirect(4);
         buf.put((byte) r).put((byte) g).put((byte) b).put((byte) a);
         buf.flip();
-        return CgTexture2D.createFromPixels(1, 1, buf, CgTextureSpec.RGBA8_LINEAR);
+        return CgTexture2D.createFromPixels(1, 1, buf, CgFormat.RGBA8_UNORM);
     }
 
     private static void deleteAndNull(CgTextureAbstract tex) {

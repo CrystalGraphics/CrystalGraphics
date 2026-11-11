@@ -60,11 +60,16 @@ public final class CgSampler {
 
     public static final CgSampler NEAREST_WRAP = builder().filter(Filter.NEAREST).address(Address.WRAP).build();
     public static final CgSampler NEAREST_CLAMP = builder().filter(Filter.NEAREST).address(Address.CLAMP).build();
+    public static final CgSampler NEAREST_BORDER = builder().filter(Filter.NEAREST).address(Address.BORDER).build();
+    public static final CgSampler NEAREST_MIRROR = builder().filter(Filter.NEAREST).address(Address.MIRROR).build();
     public static final CgSampler BILINEAR_WRAP = builder().filter(Filter.BILINEAR).address(Address.WRAP).build();
     public static final CgSampler BILINEAR_CLAMP = builder().filter(Filter.BILINEAR).address(Address.CLAMP).build();
+    public static final CgSampler BILINEAR_BORDER = builder().filter(Filter.BILINEAR).address(Address.BORDER).build();
+    public static final CgSampler BILINEAR_MIRROR = builder().filter(Filter.BILINEAR).address(Address.MIRROR).build();
     public static final CgSampler TRILINEAR_WRAP = builder().filter(Filter.TRILINEAR).address(Address.WRAP).build();
     public static final CgSampler TRILINEAR_CLAMP = builder().filter(Filter.TRILINEAR).address(Address.CLAMP).build();
-    public static final CgSampler BILINEAR_MIRROR = builder().filter(Filter.BILINEAR).address(Address.MIRROR).build();
+    /** A shadow map's: bilinear, clamped, each texel compared less-or-equal (a {@code sampler2DShadow}). */
+    public static final CgSampler SHADOW = builder().filter(Filter.BILINEAR).compare(CgCompare.LESS_EQUAL).build();
 
     private final Filter filter;
     private final Address u, v, w;

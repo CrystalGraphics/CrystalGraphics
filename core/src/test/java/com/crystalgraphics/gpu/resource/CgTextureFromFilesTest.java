@@ -1,7 +1,8 @@
 package com.crystalgraphics.gpu.resource;
 
-import com.crystalgraphics.api.texture.CgTextureSpec;
+import com.crystalgraphics.api.texture.CgSampler;
 import com.crystalgraphics.api.texture.CgTextures;
+import com.crystalgraphics.platform.rhi.format.CgFormat;
 import com.crystalgraphics.util.io.CgTextureIO.CgImageData;
 import org.junit.After;
 import org.junit.Test;
@@ -19,6 +20,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotSame;
 import static org.junit.Assert.assertSame;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 
 /** Textures from files: loaded at first use, cached per spec, a stand-in for what will not load. No GL: uploads queue. */
@@ -44,7 +46,7 @@ public class CgTextureFromFilesTest {
     @Test
     public void aFileIsReadAtFirstUseNotAtCreate() throws IOException {
         String path = dir.resolve("later.png").toFile().getAbsolutePath();
-        CgTexture2D texture = CgTexture2D.create(path, CgTextureSpec.RGBA8_LINEAR);
+        CgTexture2D texture = CgTexture2D.create(path);
         png("later.png", 6, 3);
         assertEquals(6, texture.getWidth());
         assertEquals(3, texture.getHeight());
@@ -52,17 +54,29 @@ public class CgTextureFromFilesTest {
     }
 
     @Test
-    public void oneFileIsOneTexturePerSpec() throws IOException {
+    public void oneFileIsOneTexturePerSettings() throws IOException {
         String path = png("icon.png", 4, 4);
-        CgTexture2D linear = CgTexture2D.create(path, CgTextureSpec.RGBA8_LINEAR);
-        assertSame(linear, CgTexture2D.create(path, CgTextureSpec.RGBA8_LINEAR));
-        assertSame(linear, CgTexture2D.create(path, CgTextureSpec.RGBA8_LINEAR.toBuilder().build()));
-        assertNotSame(linear, CgTexture2D.create(path, CgTextureSpec.RGBA8_NEAREST));
+        CgTexture2D plain = CgTexture2D.create(path);
+        assertSame(plain, CgTexture2D.create(path));
+        assertSame(plain, CgTexture2D.create(path, CgTextureSettings.PLAIN));
+        assertNotSame(plain, CgTexture2D.create(path, CgTextureSettings.ASSET));
+        assertEquals(CgSampler.BILINEAR_CLAMP, plain.sampler());
+        assertThrows(IllegalStateException.class, () -> plain.sampler(CgSampler.NEAREST_CLAMP));
+    }
+
+    @Test
+    public void aMadeTextureTakesItsOwnSampler() {
+        CgTexture2D made = CgTexture2D.createEmpty(4, 4, CgFormat.RGBA8_UNORM);
+        assertEquals(CgSampler.BILINEAR_CLAMP, made.sampler());
+        assertSame(made, made.sampler(CgSampler.NEAREST_CLAMP));
+        assertEquals(CgSampler.NEAREST_CLAMP, made.sampler());
+        assertEquals(CgSampler.NEAREST_CLAMP, CgTexture2D.createEmpty(4, 4, CgFormat.R8_UINT).sampler());
+        made.release();
     }
 
     @Test
     public void aFileThatWillNotLoadIsTheCheckerboard() {
-        CgTexture2D texture = CgTexture2D.create(dir.resolve("absent.png").toString(), CgTextureSpec.RGBA8_LINEAR);
+        CgTexture2D texture = CgTexture2D.create(dir.resolve("absent.png").toString());
         assertTrue(texture.isMissing());
         assertEquals(8, texture.getWidth());
         assertTrue(CgTextureManager.get().getFallback().isMissing());

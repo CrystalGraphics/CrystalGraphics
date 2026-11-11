@@ -119,7 +119,7 @@ public interface CgVfxGpuModule {
      * inputs and the lanes.
      *
      * <pre>{@code
-     * private final CgTexture[] field = {CgTexture3D.create(CgTextureType.RGBA32F.toTextureSpec(), "mymod:fields/swirl.png")};
+     * private final CgTexture[] field = {CgTexture3D.create("mymod:fields/swirl.png")};
      * public CgTexture[] textures() { return field; }
      * // void fx_mymod_field(inout FxParticle p, inout FxForces f, FxStep s, vec4 m, sampler3D field)
      * //     { f.accel += texture(field, (p.position - m.xyz) * m.w).xyz; }

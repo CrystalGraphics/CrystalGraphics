@@ -517,12 +517,11 @@ fbo.delete();   // only valid on owned FBOs; CgFrameBuffer.wrap() names a host's
 ### Textures
 
 ```java
-CgTexture2D tex    = CgTextures.of("mymod:textures/foo.png", CgTextureSpec.RGBA8_NEAREST);   // cached, lazy
-CgTexture2DArray f = CgTextures.frames("mymod:textures/fx/f_%d.png", 4);                    // f_0 to f_3, a layer each
-CgTexture2D hdr    = CgTexture2D.createEmpty(512, 512, CgTextureSpec.RGBA16F_LINEAR);
-CgTexture2D shadow = CgTexture2D.createEmpty(512, 512, CgTextureSpec.DEPTH24_SHADOW);  // PCF
-tex.bind(0);   // bind to texture unit 0
-hdr.delete();
+CgTexture2D tex    = CgTextures.of("mymod:textures/foo.png");                  // shared, lazy; foo.yaml says how it loads
+CgTexture2DArray f = CgTextures.frames("mymod:textures/fx/f_%d.png", 4);       // f_0 to f_3, a layer each
+CgTexture2D hdr    = CgTextures.create("mymod.hdr", CgTextureDesc.of(512, 512, CgFormat.RGBA16_FLOAT));
+CgTexture2D tiles  = CgTexture2D.createEmpty(64, 64, CgFormat.RGBA8_UNORM).sampler(CgSampler.NEAREST_CLAMP);
+hdr.release();
 ```
 
 Every texture type is made, filled and deleted from any thread, and takes its bytes from an upload lease a worker
@@ -530,22 +529,26 @@ wrote (§ *Async*).
 
 - **A texture from files loads at its first use**: its size, its id, a bind or a write decode it on the thread that
   asks, and a bind uploads it. So a constant in common code costs a dedicated server nothing.
-- **`CgTextures` is the shorthand for every texture from files**: `of` (2D), `frames` and `array` (2D array),
-  `volume` (3D), `cubemap` and `stackedCube` (six faces stacked in one `w x 6w` image, +X at the top). Each type's
-  own `create` is what it calls.
-- **A `.hdr` is float colour** (Radiance RGBE, linear past 1, `util/io/CgRadianceHdr`), uploaded as half floats: give
-  it `CgTextureSpec.RGBA16F_LINEAR`.
+- **`CgTextures` is the shorthand for every texture**: `of` (2D), `frames` (2D array), `volume` (3D), `cube` (six
+  faces, stacked in one `w x 6w` image with +X at the top, or six files), and `create(name, desc)` for one of your
+  own. Each type's own `create` is what it calls.
+- **A file loads as its settings file says** (`gpu/resource/CgTextureSettings`: `noise.png`'s `noise.yaml` —
+  `colour`, `mips`, `sampler`, `cube`), and plain without one: linear 8-bit colour, one level, bilinear and clamped.
+  Code that loads a file its own way passes settings: `CgTexture2D.create(path, CgTextureSettings.PLAIN.withMips(true))`.
+- **No factory takes a sampler.** A file's texture is shared by every caller of its path, so its sampling is its
+  settings'; a made one samples bilinear (trilinear across levels, nearest for an integer format) unless its maker
+  says `.sampler(...)`. Anything else is the binding's (below).
+- **A `.hdr` is float colour** (Radiance RGBE, linear past 1, `util/io/CgRadianceHdr`), uploaded as half floats.
 - **An `.exr` is half floats kept bit for bit** (uncompressed single-part scanline OpenEXR, `util/io/CgOpenExr`):
-  signed values and alpha survive, which a vertex animation texture's offsets need. Give it
-  `CgTextureSpec.RGBA16F_LINEAR`; a compressed, tiled or non-HALF image fails at load naming the file and the reason.
+  signed values and alpha survive, which a vertex animation texture's offsets need. A compressed, tiled or non-HALF
+  image fails at load naming the file and the reason.
 - **A material's textures are made as their `texture` asset says** (`CgMaterialRegistry.texture`, `looks.md`
   § Texture): sRGB unless `colour: linear`, mips unless `mips: false`, `cube: true` stacked faces, and
   `sampler: { filter: bilinear, wrap: clamp }` its own filter and wrap (Unreal's `Filter`, `AddressX`/`AddressY`;
   trilinear and repeated without one or without its `wrap`, as Unreal's `TA_Wrap`), which a binding's `sampler` replaces. `compression` picks no format yet: every
   image loads uncompressed.
-- **`create` is cached by the paths and the spec**, and the spec's filter and wrap are the texture's own sampling. To
-  sample one image two ways, load it once and give a binding a `CgSampler` (below). `createDirect` decodes
-  at once and is the caller's.
+- **`create` is cached by the paths and the settings.** To sample one image two ways, load it once and give a
+  binding a `CgSampler` (below). `createDirect` decodes at once and is the caller's.
 - **A file that will not load** is logged and drawn as the 8x8 checkerboard (`CgTexture2D.missing()`), a missing
   array layer as clear; `isMissing()` says so. An array's images of different sizes are each centred on a layer the
   largest one's size.
@@ -562,7 +565,7 @@ CgSampler strip = CgSampler.builder().filter(CgSampler.Filter.TRILINEAR)
         .address(CgSampler.Address.WRAP, CgSampler.Address.CLAMP).anisotropy(8).build();
 ```
 
-- A binding with none samples as the texture's spec says. On a texture with no mips a filter samples its base level.
+- A binding with none samples as the texture's own `sampler()` says. On a texture with no mips a filter samples its base level.
 - Anisotropy is clamped to the device's most. A raw `CgShader`'s bindings take no sampler: a material's do.
 - Each execution unbinds what it bound, so a sampler never reaches the host's textures. `--mode=sampler-binding`
   is the gate.
@@ -571,7 +574,7 @@ CgSampler strip = CgSampler.builder().filter(CgSampler.Filter.TRILINEAR)
 blocks and encodes nothing (Unreal's compression settings). A path ending in `.cgtex` loads through the same calls.
 
 ```java
-static final CgTexture2D SMOKE = CgTextures.of("mymod:cooked/fx/smoke.cgtex", CgTextureSpec.RGBA8_LINEAR_REPEAT);
+static final CgTexture2D SMOKE = CgTextures.of("mymod:cooked/fx/smoke.cgtex");
 ```
 
 ```bash
@@ -579,8 +582,8 @@ static final CgTexture2D SMOKE = CgTextures.of("mymod:cooked/fx/smoke.cgtex", Cg
 ./gradlew cookTextures -Pcook.from=<mod>/src/main/resources/assets/mymod/textures -Pcook.to=<...>/assets/mymod/cooked
 ```
 
-- The file decides the format and the levels; the spec, the filter and the wrap. A spec's mipmaps are not generated
-  over the cooked chain.
+- The file decides the format and the levels; its settings, the sampling. Settings' mips are never generated over
+  the cooked chain.
 - `CgCapabilities.bc7()` (GL 4.2, `ARB_texture_compression_bptc`, or a Vulkan device created with
   `textureCompressionBC`) uploads the blocks as they are; without it (macOS's 4.1) they are decoded to RGBA8 as the
   texture loads, on the loading thread. `-Dcrystalgraphics.texture.bc7=false` forces the decode.
@@ -591,7 +594,7 @@ static final CgTexture2D SMOKE = CgTextures.of("mymod:cooked/fx/smoke.cgtex", Cg
   apart, as GL's and Unreal's.
 - `--mode=cooked-texture` is the gate: blocks on `gl` and `vulkan`, the decode on `mac41`.
 
-`CgTextureType` — typed enum of ~42 GL format constants; single source of truth for (internalFormat, baseFormat, type). `CgTextureSpec` — immutable `@Builder` describing format + filter + wrap + optional shadow compare. `CgMipmapConfig` — `NONE` / `TRILINEAR` / `NEAREST`. Concrete impls: `CgTexture2D`, `CgTexture2DArray`, `CgTexture3D`, `CgTextureCubemap`.
+`CgSampler` — how a texture is sampled: filter, address per axis, compare, anisotropy. `CgTextureSettings` — a file's settings. `CgTextureType` — the GL format enum frame buffers' slots still use; new code names a `CgFormat`. Concrete impls: `CgTexture2D`, `CgTexture2DArray`, `CgTexture3D`, `CgTextureCubemap`.
 
 **Package guides**: `api/texture/CLAUDE.md` · `gpu/resource/CLAUDE.md`
 
@@ -724,7 +727,7 @@ frame executes (`CgDeferral.applyAll`).
 
 ```java
 // On a worker: made, filled and handed over; drawn by the next frame that executes
-CgTexture2D noise = CgTexture2D.createEmpty(256, 256, CgTextureSpec.RGBA8_LINEAR);
+CgTexture2D noise = CgTexture2D.createEmpty(256, 256, CgFormat.RGBA8_UNORM);
 noise.uploadRegion(0, 0, 0, 256, 256, pixels, GL_RGBA, GL_UNSIGNED_BYTE);   // pixels copied into a lease here
 
 CgShaderBuffer table = CgShaderBuffer.create("Heights", HEIGHT_FORMAT, 0);   // RETAINED

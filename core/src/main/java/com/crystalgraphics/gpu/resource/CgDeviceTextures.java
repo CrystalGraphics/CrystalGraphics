@@ -1,7 +1,6 @@
 package com.crystalgraphics.gpu.resource;
 
 import com.crystalgraphics.platform.rhi.CgDeviceNames;
-import com.crystalgraphics.api.texture.CgTextureSpec;
 import com.crystalgraphics.gpu.CgUploadLease;
 import com.crystalgraphics.platform.gl.format.GLFormats;
 import com.crystalgraphics.platform.gl.format.GLPixels;
@@ -57,12 +56,12 @@ public final class CgDeviceTextures {
      * storage image where the device makes it one. {@code depthOrLayers}: a 3D texture's depth, an array's layers, a
      * cube's 6, else 1.
      */
-    public static CgGpuTexture create(String label, CgGpuTexture.Kind kind, CgTextureSpec spec, int width, int height,
+    static CgGpuTexture create(String label, CgGpuTexture.Kind kind, Texels spec, int width, int height,
                                       int depthOrLayers, int levels) {
         return create(label, kind, GLFormats.of(spec.getGlInternalFormat()), width, height, depthOrLayers, levels);
     }
 
-    /** {@link #create(String, CgGpuTexture.Kind, CgTextureSpec, int, int, int, int)} of a format a file decides. */
+    /** {@link #create(String, CgGpuTexture.Kind, Texels, int, int, int, int)} of a format a file decides. */
     public static CgGpuTexture create(String label, CgGpuTexture.Kind kind, CgFormat format, int width, int height,
                                       int depthOrLayers, int levels) {
         return CgRHI.get().createTexture(new CgGpuTexture.Desc(label, kind, format, width, height, depthOrLayers, levels,

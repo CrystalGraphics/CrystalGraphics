@@ -2,7 +2,6 @@ package com.crystalgraphics.text.atlas;
 
 import com.crystalgraphics.api.font.CgGlyphKey;
 import com.crystalgraphics.api.font.CgGlyphPlacement;
-import com.crystalgraphics.api.texture.CgTextureSpec;
 import com.crystalgraphics.gpu.resource.CgTexture2DArray;
 import com.crystalgraphics.text.atlas.packing.MaxRectsPacker;
 import com.crystalgraphics.text.atlas.packing.CgPackingStrategy;
@@ -18,6 +17,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.logging.Logger;
+import com.crystalgraphics.api.texture.CgSampler;
+import com.crystalgraphics.platform.rhi.format.CgFormat;
 
 /**
  * Multi-page atlas manager for glyph storage — owns one {@link CgTexture2DArray}
@@ -333,7 +334,8 @@ public class CgGlyphAtlas {
             // Made, grown and filled wherever text is recorded; where no GL may run, its GL runs on the render thread
             // before the frame that reads it. MSDF and MTSDF both allocate RGBA8 — see class javadoc "Format".
             this.arrayTexture = CgTexture2DArray.allocateEmpty(pageWidth, pageHeight, capacity,
-                    type == Type.BITMAP ? CgTextureSpec.R8_NEAREST : CgTextureSpec.RGBA8_LINEAR);
+                    type == Type.BITMAP ? CgFormat.R8_UNORM : CgFormat.RGBA8_UNORM);
+            if (type == Type.BITMAP) arrayTexture.sampler(CgSampler.NEAREST_CLAMP);
             TEXTURES.put(id, arrayTexture);
         }
     }

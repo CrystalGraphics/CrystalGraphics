@@ -2,11 +2,11 @@ package com.crystalgraphics.vfx.particle;
 
 import com.crystalgraphics.platform.gl.driver.GLC;
 import com.crystalgraphics.api.texture.CgTexture;
-import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.gpu.resource.CgTexture3D;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import com.crystalgraphics.platform.rhi.format.CgFormat;
 
 /**
  * A 3D grid of vectors a {@link CgVfxModule.VectorField} pushes particles by, stretched over its box: Godot's vector
@@ -145,7 +145,7 @@ public final class CgVfxField {
     /** Its texture, an RGBA32F volume, made at the first ask: the array {@link CgVfxModule.VectorField#textures()} answers. */
     CgTexture[] textures() {
         if (texture == null) {
-            CgTexture3D made = CgTexture3D.createEmpty(width, height, depth, CgTextureType.RGBA32F.toTextureSpec());
+            CgTexture3D made = CgTexture3D.createEmpty(width, height, depth, CgFormat.RGBA32_FLOAT);
             ByteBuffer texels = ByteBuffer.allocateDirect(width * height * depth * 16).order(ByteOrder.nativeOrder());
             for (int i = 0; i < vectors.length; i += 3) texels.putFloat(vectors[i]).putFloat(vectors[i + 1]).putFloat(vectors[i + 2]).putFloat(0f);
             made.uploadRegion(0, 0, 0, 0, width, height, depth, texels.flip(), GLC.GL_RGBA, GLC.GL_FLOAT);

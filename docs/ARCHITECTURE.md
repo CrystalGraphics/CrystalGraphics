@@ -120,7 +120,7 @@ Every package guide (`CLAUDE.md`) under `src/main/java/com/crystalgraphics/`. Re
 ### Textures
 | Path | What it covers |
 |---|---|
-| `api/texture/CLAUDE.md` | `CgTexture` interface, `CgTextureType` (~42 format constants), `CgTextureSpec` (builder + presets), `CgMipmapConfig` |
+| `api/texture/CLAUDE.md` | `CgTexture` interface, `CgTextures`, `CgSampler` and where a texture's sampling comes from, `CgTextureType` |
 | `gpu/resource/CLAUDE.md` | `CgTexture2D`, `CgTexture2DArray`, `CgTexture3D`, `CgTextureCubemap` concrete implementations |
 
 ### Mesh

@@ -19,7 +19,6 @@ import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgMaterialDefinition;
 import com.crystalgraphics.api.text.CgTextAlign;
 import com.crystalgraphics.api.text.CgTextLayout;
-import com.crystalgraphics.api.texture.CgTextureSpec;
 import com.crystalgraphics.api.texture.CgTextures;
 import com.crystalgraphics.gpu.resource.CgTexture2D;
 import com.crystalgraphics.render.canvas.CgCanvas;
@@ -353,7 +352,7 @@ public final class CgCanvasWidgetPainter implements CgWidgetPainter {
     private CgTexture2D texture(String path) {
         CgTexture2D t = textures.get(path);
         if (t == null) {
-            t = CgTextures.of(path, CgTextureSpec.RGBA8_LINEAR);
+            t = CgTextures.of(path);
             textures.put(path, t);
         }
         return t;

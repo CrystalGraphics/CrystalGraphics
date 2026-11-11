@@ -5,7 +5,6 @@ import com.crystalgraphics.platform.rhi.resource.CgTextureRegion;
 import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
 import com.crystalgraphics.platform.gl.format.GLFormats;
 import com.crystalgraphics.api.texture.CgTexture;
-import com.crystalgraphics.api.texture.CgTextureSpec;
 import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.gpu.CgUploadLease;
 import com.crystalgraphics.gpu.CgUploads;
@@ -22,6 +21,8 @@ import java.nio.ByteBuffer;
 import java.util.function.Consumer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import com.crystalgraphics.api.texture.CgSampler;
+import com.crystalgraphics.platform.rhi.format.CgFormat;
 
 /**
  * Cubemap GL texture (target {@code GLC.GL_TEXTURE_CUBE_MAP = 0x8513}). Single
@@ -35,21 +36,21 @@ import java.util.logging.Logger;
  *
  * <h3>Factories</h3>
  * <ul>
- *   <li>{@link #create(CgTextureSpec, String, String, String, String, String, String)} — cached by the paths and the
+ *   <li>{@link #create(Texels, String, String, String, String, String, String)} — cached by the paths and the
  *       spec, loaded at its first use as a {@link CgTexture2D} from a file is. Faces that will not load, or are not
  *       one square size, are logged and leave a clear 1x1 cube: {@link #isMissing()}.</li>
- *   <li>{@link #createDirect(CgTextureSpec, String, String, String, String, String, String)} — the same decoded here,
+ *   <li>{@link #createDirect(Texels, String, String, String, String, String, String)} — the same decoded here,
  *       not cached.</li>
- *   <li>{@link #createStacked(String, CgTextureSpec)} — one image of its six faces stacked top to bottom, {@code w x 6w},
+ *   <li>{@link #createStacked(String, Texels)} — one image of its six faces stacked top to bottom, {@code w x 6w},
  *       as a {@code texture} asset with {@code cube: true} holds them: cached, loaded at its first use. A {@code .hdr}
  *       wants an {@code RGBA16F} spec, as a {@link CgTexture2D} of one does.</li>
- *   <li>{@link #createEmpty(int, CgTextureSpec)} — empty faces; caller owns lifecycle.</li>
+ *   <li>{@link #createEmpty(int, Texels)} — empty faces; caller owns lifecycle.</li>
  * </ul>
  *
  * <pre>{@code
  * // 128 x 768: six 128 x 128 faces, +X at the top
  * static final CgTextureCubemap BIKE = CgTextureCubemap.createStacked(
- *         "kakarot_kit:textures/MasterMaterials/AT_Materials/Texture/gim_s04a_bike01_cubemap.png", CgTextureSpec.RGBA8_LINEAR);
+ *         "kakarot_kit:textures/MasterMaterials/AT_Materials/Texture/gim_s04a_bike01_cubemap.png");
  * }</pre>
  *
  * <p>Made, filled and deleted from any thread, as a {@link CgTexture2D} is: off the render thread its GL work waits
@@ -57,7 +58,7 @@ import java.util.logging.Logger;
  *
  * <pre>{@code
  * // a sky baked on a worker: each face written straight into staging
- * CgTextureCubemap sky = CgTextureCubemap.createEmpty(512, CgTextureSpec.RGBA8_LINEAR);
+ * CgTextureCubemap sky = CgTextureCubemap.createEmpty(512, CgFormat.RGBA8_UNORM);
  * for (int face = 0; face < 6; face++) {
  *     CgUploadLease lease = CgUploads.lease(4 * 512 * 512);
  *     bakeFace(face, lease.bytes());
@@ -89,11 +90,11 @@ public final class CgTextureCubemap extends CgTextureAbstract {
                 height, 6, mips(), 1, SAMPLED_ONLY);
     }
 
-    private CgTextureCubemap(int textureId, int size, CgTextureSpec spec, String[] sourcePaths) {
+    private CgTextureCubemap(int textureId, int size, Texels spec, String[] sourcePaths) {
         this(textureId, size, spec, sourcePaths, null);
     }
 
-    private CgTextureCubemap(int textureId, int size, CgTextureSpec spec, String[] sourcePaths, @Nullable String stacked) {
+    private CgTextureCubemap(int textureId, int size, Texels spec, String[] sourcePaths, @Nullable String stacked) {
         super(textureId, size, size, spec);
         this.sourcePaths = sourcePaths;
         this.stacked = stacked;
@@ -101,11 +102,11 @@ public final class CgTextureCubemap extends CgTextureAbstract {
 
     // ── Factories ────────────────────────────────────────────────────
 
-    /** Six faces, +X, -X, +Y, -Y, +Z, -Z, sampled as {@code spec}: cached, loaded at its first use. */
-    public static CgTextureCubemap create(CgTextureSpec spec,
-                                          String posX, String negX,
+    /** Six faces, +X, -X, +Y, -Y, +Z, -Z, as the first one's settings file says: shared, loaded at its first use. */
+    public static CgTextureCubemap create(String posX, String negX,
                                           String posY, String negY,
                                           String posZ, String negZ) {
+        Texels spec = Texels.file(posX);
         String[] paths = { posX, negX, posY, negY, posZ, negZ };
         CgTexture result = CgTextureManager.get().getOrCreate(String.join(CgTextureManager.PATH_SEPARATOR, paths), spec, () -> {
             CgTextureCubemap tex = new CgTextureCubemap(0, 0, spec, paths);
@@ -117,13 +118,21 @@ public final class CgTextureCubemap extends CgTextureAbstract {
 
     /**
      * Six faces stacked top to bottom in one image, +X, -X, +Y, -Y, +Z, -Z (Unreal's slice order, which GL's and
-     * Vulkan's face order is), sampled as {@code spec}: cached by the path and spec, loaded at its first use. Face i
-     * goes to face i unchanged, as Unreal's GL backend uploads slice i.
+     * Vulkan's face order is), as its settings file says: shared, loaded at its first use. Face i goes to face i
+     * unchanged, as Unreal's GL backend uploads slice i.
      *
-     * @throws IllegalStateException at its first use, for an image not {@code w x 6w}, or a {@code .hdr} under a spec
-     *                               that is not RGBA16F
+     * @throws IllegalStateException at its first use, for an image not {@code w x 6w}
      */
-    public static CgTextureCubemap createStacked(String path, CgTextureSpec spec) {
+    public static CgTextureCubemap createStacked(String path) {
+        return createStacked(path, CgTextureSettings.of(path));
+    }
+
+    /** {@link #createStacked(String)} as {@code settings} say rather than its own file. */
+    public static CgTextureCubemap createStacked(String path, CgTextureSettings settings) {
+        return stacked(path, Texels.file(path, settings));
+    }
+
+    private static CgTextureCubemap stacked(String path, Texels spec) {
         return (CgTextureCubemap) CgTextureManager.get().getOrCreate(path, spec, () -> {
             CgTextureCubemap tex = new CgTextureCubemap(0, 0, spec, null, path);
             tex.loadOnFirstUse();
@@ -132,17 +141,32 @@ public final class CgTextureCubemap extends CgTextureAbstract {
     }
 
     /** {@link #create} decoded here, not cached: the caller owns it. */
-    public static CgTextureCubemap createDirect(CgTextureSpec spec,
-                                                String posX, String negX,
+    public static CgTextureCubemap createDirect(String posX, String negX,
                                                 String posY, String negY,
                                                 String posZ, String negZ) {
+        Texels spec = Texels.file(posX);
         CgTextureCubemap tex = new CgTextureCubemap(0, 0, spec, new String[] { posX, negX, posY, negY, posZ, negZ });
         tex.load();
         return tex;
     }
 
-    /** Creates an empty cubemap with no image data. Any thread. Not cached; caller owns the lifecycle. */
-    public static CgTextureCubemap createEmpty(int size, CgTextureSpec spec) {
+    /**
+     * Samples it by {@code sampler} where a binding names none: a texture you made. Returns it, to chain.
+     *
+     * <pre>{@code
+     * CgTextureCubemap sky = CgTextureCubemap.createEmpty(512, CgFormat.RGBA16_FLOAT).sampler(CgSampler.TRILINEAR_CLAMP);
+     * }</pre>
+     *
+     * @throws IllegalStateException for a texture from a file, shared by every caller of its path
+     */
+    public CgTextureCubemap sampler(CgSampler sampler) {
+        setSampler(sampler);
+        return this;
+    }
+
+    /** An empty cubemap of one level, sampled bilinear (nearest for an integer format). Any thread. Caller owns it. */
+    public static CgTextureCubemap createEmpty(int size, CgFormat format) {
+        Texels spec = Texels.made(format, 1);
         if (size <= 0) throw new IllegalArgumentException("Cubemap size must be positive, got: " + size);
         CgTextureCubemap tex = new CgTextureCubemap(0, size, spec, null);
         tex.gpu.run(() -> {
@@ -215,14 +239,14 @@ public final class CgTextureCubemap extends CgTextureAbstract {
 
     /** Every face at {@code size}, with the spec's chain. */
     private void storage(int size) {
-        int chain = spec.getMipmaps().isEnabled() ? CgTexture.fullChain(size, size) : 1;
+        int chain = spec.mipmapped() ? CgTexture.fullChain(size, size) : 1;
         CgDeviceTextures.release(storeOnDevice(CgGpuTexture.Kind.CUBE, GLFormats.of(spec.getGlInternalFormat()), size,
                 size, 6, chain));
     }
 
     /** The spec's mipmaps from what the faces hold now. */
     private void applySpec() {
-        if (spec.getMipmaps().isEnabled()) CgDeviceTextures.mipmaps(storage());
+        if (spec.mipmapped()) CgDeviceTextures.mipmaps(storage());
     }
 
     private static void checkFace(int face) {

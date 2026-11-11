@@ -17,15 +17,13 @@ import com.crystalgraphics.job.reply.CgReply;
 import com.crystalgraphics.loading.task.CgLoadTask;
 import com.crystalgraphics.loading.task.CgLoadTracker;
 import com.crystalgraphics.variable.CgVar;
-import com.crystalgraphics.api.texture.CgMipmapConfig;
-import com.crystalgraphics.api.texture.CgTextureSpec;
-import com.crystalgraphics.api.texture.CgTextureType;
-import com.crystalgraphics.api.texture.CgTextures;
 import com.crystalgraphics.render.canvas.CgCanvas;
 import com.crystalgraphics.render.canvas.CgQuadBatch;
 import com.crystalgraphics.gpu.resource.CgTexture2D;
 import com.crystalgraphics.render.CgImmediate;
 import com.crystalgraphics.render.draw.CgInstanceKind;
+import com.crystalgraphics.api.texture.CgSampler;
+import com.crystalgraphics.gpu.resource.CgTextureSettings;
 
 /**
  * The engine's loading screen: its lockup (the logo and "Crystal Graphics") over a view up at the ocean's surface from
@@ -55,8 +53,7 @@ public final class CgLogoLoadingView implements CgLoadingView {
     // A light halo lifts the lockup off the bright water behind it
     private static final int HALO = 0xFFDDF2FF;
     // Drawn at about a quarter of its size: without mips its strokes alias
-    private static final CgTextureSpec MIPMAPPED = CgTextureSpec.builder().type(CgTextureType.RGBA8)
-            .mipmaps(CgMipmapConfig.TRILINEAR).build();
+    private static final CgTextureSettings MIPMAPPED = CgTextureSettings.PLAIN.withMips(true).withSampler(CgSampler.TRILINEAR_CLAMP);
 
     private final String lockupPath;
     private final long started = System.nanoTime();
@@ -235,7 +232,7 @@ public final class CgLogoLoadingView implements CgLoadingView {
     }
 
     private CgTexture2D texture() {
-        if (lockup == null) lockup = CgTextures.of(lockupPath, MIPMAPPED);
+        if (lockup == null) lockup = CgTexture2D.create(lockupPath, MIPMAPPED);
         return lockup;
     }
     /**

@@ -1,19 +1,12 @@
 package com.crystalgraphics.api.material;
 
-import com.crystalgraphics.platform.gl.driver.GLC;
 import com.crystalgraphics.api.texture.CgSampler;
 import com.crystalgraphics.api.texture.CgTexture;
-import com.crystalgraphics.api.texture.CgMipmapConfig;
 import com.crystalgraphics.asset.tree.CgAssetException;
 import com.crystalgraphics.gpu.resource.CgTexture2DArray;
 import com.crystalgraphics.gpu.resource.CgTexture3D;
 import com.crystalgraphics.gpu.resource.CgTextureCubemap;
-import com.crystalgraphics.util.io.CgOpenExr;
-import com.crystalgraphics.util.io.CgRadianceHdr;
-import com.crystalgraphics.api.texture.CgTextureSpec;
-import com.crystalgraphics.api.texture.CgTextureType;
-import com.crystalgraphics.api.texture.CgTextures;
-import com.crystalgraphics.asset.codec.CgAssetYaml;
+import com.crystalgraphics.gpu.resource.CgTextureSettings;
 import com.crystalgraphics.util.io.CgIO;
 import com.crystalgraphics.material.CgMaterialProperty;
 import com.crystalgraphics.material.CgMaterialShaderRegistry;
@@ -21,15 +14,12 @@ import com.crystalgraphics.material.CgMaterialShaderRegistry;
 import javax.annotation.Nullable;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.UncheckedIOException;
-import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import com.crystalgraphics.gpu.resource.CgTexture2D;
 
 /**
  * Singleton load/reload/delete lifecycle manager for {@link CgMaterial} instances.
@@ -150,18 +140,9 @@ public final class CgMaterialRegistry {
         return TEXTURES.computeIfAbsent(path, CgMaterialRegistry::fromFile);
     }
 
-    /**
-     * A texture asset's settings, Unreal's {@code UTexture} properties a load reads. {@code compression} picks no format
-     * yet: every image loads uncompressed, a {@code .hdr} as RGBA16F, which {@code hdr_compressed}'s BC6H falls back to
-     * where a device has none ({@code Texture.cpp:1102-1104}); a cooked {@code .cgtex} carries its own blocks.
-     */
-    private record Settings(@Nullable String colour, boolean mips, @Nullable String compression, boolean cube,
-                            @Nullable CgSampler sampler) {
-    }
-
     private static CgTexture fromFile(String path) {
-        Settings s = settings(path);
-        boolean hdr = isFloat(path);
+        CgTextureSettings s = textureSettings(path);
+        boolean hdr = CgTextureSettings.isFloat(path);
         int dot = path.lastIndexOf('.');
         if (hdr || path.endsWith(".png")) {
             for (String ext : new String[] {".png", ".hdr", ".exr"}) {
@@ -177,47 +158,13 @@ public final class CgMaterialRegistry {
         if (!hdr && ("hdr".equals(s.compression()) || "hdr_compressed".equals(s.compression()))) {
             throw new CgAssetException(path + " says compression: " + s.compression() + ", which is a float image's, not an 8-bit one's");
         }
-        CgTextureSpec spec = spec(path, s);
-        return s.cube() ? CgTextureCubemap.createStacked(path, spec) : CgTextures.of(path, spec);
+        return s.cube() ? CgTextureCubemap.createStacked(path, s) : CgTexture2D.create(path, s);
     }
 
-    /** What {@link #texture} makes {@code path} with, as its settings say. */
-    static CgTextureSpec textureSpec(String path) {
-        return spec(path, settings(path));
-    }
-
-    /** A .hdr and a .exr are float data, linear: an .exr's signed halves (a vertex animation's offsets) as they are. */
-    private static boolean isFloat(String path) {
-        return CgRadianceHdr.is(path) || CgOpenExr.is(path);
-    }
-
-    private static CgTextureSpec spec(String path, Settings s) {
-        boolean hdr = isFloat(path), srgb = !hdr && !"linear".equals(s.colour());
-        var b = (hdr ? CgTextureType.RGBA16F : srgb ? CgTextureType.SRGB8_ALPHA8 : CgTextureType.RGBA8).toTextureSpec().toBuilder();
-        CgSampler sampler = s.sampler();
-        if (sampler == null) {
-            return b.mipmaps(s.mips() ? CgMipmapConfig.TRILINEAR : CgMipmapConfig.NONE)
-                    .wrapS(GLC.GL_REPEAT).wrapT(GLC.GL_REPEAT).wrapR(GLC.GL_REPEAT).build();
-        }
-        boolean nearest = sampler.filter() == CgSampler.Filter.NEAREST;
-        int mag = nearest ? GLC.GL_NEAREST : GLC.GL_LINEAR;
-        if (s.mips()) {
-            int min = nearest ? GLC.GL_NEAREST_MIPMAP_NEAREST : sampler.filter() == CgSampler.Filter.BILINEAR
-                    ? GLC.GL_LINEAR_MIPMAP_NEAREST : GLC.GL_LINEAR_MIPMAP_LINEAR;
-            b.mipmaps(CgMipmapConfig.enabled(min, mag));
-        } else {
-            b.mipmaps(CgMipmapConfig.NONE).minFilter(mag);
-        }
-        return b.magFilter(mag).wrapS(wrap(sampler.u())).wrapT(wrap(sampler.v())).wrapR(wrap(sampler.w())).build();
-    }
-
-    private static int wrap(CgSampler.Address address) {
-        return switch (address) {
-            case WRAP -> GLC.GL_REPEAT;
-            case MIRROR -> GLC.GL_MIRRORED_REPEAT;
-            case CLAMP -> GLC.GL_CLAMP_TO_EDGE;
-            case BORDER -> GLC.GL_CLAMP_TO_BORDER;
-        };
+    /** What {@link #texture} makes {@code path} with: its settings file's, or a texture asset's defaults where it has none. */
+    static CgTextureSettings textureSettings(String path) {
+        CgTextureSettings s = CgTextureSettings.of(path);
+        return s.asset() ? s : CgTextureSettings.ASSET;
     }
 
     private static boolean exists(String path) {
@@ -225,30 +172,6 @@ public final class CgMaterialRegistry {
             return in != null;
         } catch (IOException e) {
             return true;
-        }
-    }
-
-    /** {@code image}'s settings file, or every default where it has none. */
-    private static Settings settings(String image) {
-        int dot = image.lastIndexOf('.');
-        if (dot < 0) return new Settings(null, true, null, false, null);
-        try (InputStream in = CgIO.openStream(image.substring(0, dot) + ".yaml")) {
-            if (in == null) return new Settings(null, true, null, false, null);
-            Object tree = CgAssetYaml.read(new String(in.readAllBytes(), StandardCharsets.UTF_8));
-            Map<?, ?> m = tree instanceof Map<?, ?> map ? map : Map.of();
-            Object colour = m.get("colour"), compression = m.get("compression"), block = m.get("sampler");
-            if (block != null && !(block instanceof Map)) {
-                throw new CgAssetException(image + "'s sampler is " + block + ", not a block: { filter: ..., wrap: ... }");
-            }
-            @SuppressWarnings("unchecked")
-            CgSampler sampler = sampler((Map<Object, Object>) block);
-            if (sampler != null && sampler.anisotropy() > 1) {
-                throw new CgAssetException(image + "'s sampler names anisotropy, which only a binding's sampler carries");
-            }
-            return new Settings(colour == null ? null : colour.toString(), !Boolean.FALSE.equals(m.get("mips")),
-                    compression == null ? null : compression.toString(), Boolean.TRUE.equals(m.get("cube")), sampler);
-        } catch (IOException e) {
-            throw new UncheckedIOException(image + "'s settings do not read", e);
         }
     }
 
@@ -296,39 +219,13 @@ public final class CgMaterialRegistry {
             }
             int unit = 0;
             for (Map.Entry<String, CgMaterialDefinition.Texture> t : d.textures().entrySet()) {
-                CgSampler sampler = sampler(t.getValue().sampler());
+                CgSampler sampler = CgTextureSettings.sampler(t.getValue().sampler());
                 CgTexture texture = t.getValue().resolve();
                 if (sampler == null) b.sampler(t.getKey(), unit++, texture);
                 else b.sampler(t.getKey(), unit++, texture, sampler);
             }
         });
         return m;
-    }
-
-    /** A binding's {@code sampler} block; null for none, the texture's own. */
-    @Nullable
-    private static CgSampler sampler(@Nullable Map<Object, Object> block) {
-        if (block == null) return null;
-        CgSampler.Builder b = CgSampler.builder();
-        Object filter = block.get("filter");
-        b.filter(filter == null ? CgSampler.Filter.TRILINEAR
-                : CgSampler.Filter.valueOf(String.valueOf(filter).toUpperCase(Locale.ROOT)));
-        Object wrap = block.get("wrap");
-        if (wrap instanceof List) {
-            List<?> axes = (List<?>) wrap;
-            CgSampler.Address u = address(axes.get(0)), v = axes.size() > 1 ? address(axes.get(1)) : u;
-            if (axes.size() > 2) b.address(u, v, address(axes.get(2)));
-            else b.address(u, v);
-        } else {
-            b.address(wrap == null ? CgSampler.Address.WRAP : address(wrap));   // Unreal's TA_Wrap when unsaid
-        }
-        if (block.get("anisotropy") instanceof Number) b.anisotropy(((Number) block.get("anisotropy")).intValue());
-        return b.build();
-    }
-
-    private static CgSampler.Address address(Object wrap) {
-        String w = String.valueOf(wrap);
-        return w.equals("repeat") ? CgSampler.Address.WRAP : CgSampler.Address.valueOf(w.toUpperCase(Locale.ROOT));
     }
 
     /**
