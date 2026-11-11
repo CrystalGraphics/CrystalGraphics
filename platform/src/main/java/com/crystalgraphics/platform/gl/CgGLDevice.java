@@ -23,6 +23,7 @@ import com.crystalgraphics.platform.gl.state.GLHostState;
 import com.crystalgraphics.platform.gl.state.GLStateFilter;
 import com.crystalgraphics.platform.gl.sync.GLTimerQuery;
 import com.crystalgraphics.platform.rhi.CgRHI;
+import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.platform.rhi.binding.CgBindingLayout;
 import com.crystalgraphics.platform.rhi.binding.CgBindingSet;
 import com.crystalgraphics.platform.rhi.binding.CgBindings;
@@ -103,6 +104,12 @@ public final class CgGLDevice implements CgRHI {
 
     private static final int HEAP_CAPACITY = 1 << 16;
 
+    // On by default: on a cold NVIDIA launch the worker's context stalled the render thread's GL calls while it compiled
+    // (12 fps, 99 holds), where the driver's threads kept the loading screen near 35 fps
+    private static final CgVar.Bool PARALLEL_LINKS = CgVar.bool("crystalgraphics.gl.parallelLinks", true, CgVar.DEV,
+            "Build programs on the driver's own compiler threads where it has KHR_parallel_shader_compile, polled "
+                    + "from the render thread; false, or a driver without it, links them on the link worker's context.");
+
     private final GLStateFilter gl;
     private final GLHostState host;
     private final GLContextState entry = new GLContextState();
@@ -114,6 +121,8 @@ public final class CgGLDevice implements CgRHI {
     private CgGLWorkerContext workerContext;
     private final CgGLDriver raw;
     private final boolean presents;
+    /** Whether the driver builds programs on its own threads (KHR or ARB parallel_shader_compile). */
+    private final boolean parallel;
     private final Thread owner = Thread.currentThread();
     private final Globals globals;
     private final GLFramebuffers framebuffers;
@@ -188,7 +197,8 @@ public final class CgGLDevice implements CgRHI {
         this.presents = presents;
         // Before the first link: without it NVIDIA links on its driver thread, and the next query of any program waits
         // for the whole link (cold vfx-modules 113 s -> 58 s)
-        if (parallelCompile(gl)) driver.glMaxShaderCompilerThreads(0xFFFFFFFF);
+        this.parallel = parallelCompile(gl);
+        if (parallel) driver.glMaxShaderCompilerThreads(0xFFFFFFFF);
         String version = gl.glGetString(GL_VERSION);
         int at = gl.glGetInteger(GL_MAJOR_VERSION) * 10 + gl.glGetInteger(GL_MINOR_VERSION);
         if (at < 45) {
@@ -301,10 +311,12 @@ public final class CgGLDevice implements CgRHI {
 
     /**
      * Links programs on a worker thread in a context of its own, handed over as binaries ({@link GLLinkWorker}): before
-     * the first pipeline. Answers whether it runs: not where the driver gives no binaries or no context.
+     * the first pipeline. Answers whether it runs: not where the driver's own threads build them ({@link #parallelLinks}),
+     * gives no binaries or no context.
      */
     public boolean linkWorker() {
         if (worker != null) return true;
+        if (parallelLinks()) return false;   // the driver's own threads build them
         if (gl.glGetInteger(GL_NUM_PROGRAM_BINARY_FORMATS) <= 0) return false;
         workerContext = raw.createIsolatedContext();
         if (workerContext == null) return false;
@@ -408,8 +420,13 @@ public final class CgGLDevice implements CgRHI {
 
     /** Made at the first program, after {@link #programCache} and {@link #linkWorker}, which come before it. */
     private GLProgramCache programs() {
-        if (programs == null) programs = new GLProgramCache(gl, translator, binaries, worker);
+        if (programs == null) programs = new GLProgramCache(gl, translator, binaries, worker, parallelLinks());
         return programs;
+    }
+
+    /** Whether programs are built on the driver's own threads, polled rather than waited for. */
+    public boolean parallelLinks() {
+        return parallel && PARALLEL_LINKS.get();
     }
 
     @Override

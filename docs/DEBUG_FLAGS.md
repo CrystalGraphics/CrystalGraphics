@@ -109,6 +109,7 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 | `crystalgraphics.gl.disableExtensions` | text | empty | Extensions treated as absent, by name, separated by commas or spaces: a driver whose implementation misbehaves, and the harness's downlevel contexts. A feature core in the context's version stays; force a tier for that. Read at launch. |
 | `crystalgraphics.gl.dsa` | true, false | `true` | Blits between framebuffers by name where the context has direct state access, binding neither; false binds them. |
 | `crystalgraphics.gl.keepHostDebugOutput` | true, false | `false` | Keep the GL debug output Minecraft enables at its default glDebugVerbosity; modern GL nodes turn it off at the first host section (on NVIDIA it slowed every call several times). debugStacks and debugPerf keep it too. Read at launch. |
+| `crystalgraphics.gl.parallelLinks` | true, false | `true` | Build programs on the driver's own compiler threads where it has KHR_parallel_shader_compile, polled from the render thread; false, or a driver without it, links them on the link worker's context. |
 
 ## `crystalgraphics.gpu`
 

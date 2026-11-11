@@ -290,6 +290,7 @@ com/crystalgraphics/platform/gl/CgGLDevice
   method public onClose (Ljava/lang/Runnable;)V
   method public ownedByCurrentThread ()Z
   method public ownsSubmission ()Z
+  method public parallelLinks ()Z
   method public prepareProgram (Lcom/crystalgraphics/platform/rhi/pipeline/CgPipelineLayout;[Lcom/crystalgraphics/platform/rhi/shader/CgShaderModule;)Z
   method public programCache (Ljava/nio/file/Path;Ljava/util/concurrent/Executor;)V
   method public release (Lcom/crystalgraphics/platform/rhi/resource/CgRHIResource;)V
@@ -593,6 +594,7 @@ com/crystalgraphics/platform/gl/driver/GLC
   field public,static,final GL_COMPARE_REF_TO_TEXTURE I
   field public,static,final GL_COMPARE_R_TO_TEXTURE I
   field public,static,final GL_COMPILE_STATUS I
+  field public,static,final GL_COMPLETION_STATUS I
   field public,static,final GL_COMPRESSED_RGBA_BPTC_UNORM I
   field public,static,final GL_COMPRESSED_SRGB_ALPHA_BPTC_UNORM I
   field public,static,final GL_COMPUTE_SHADER I
@@ -996,6 +998,14 @@ com/crystalgraphics/platform/gl/pipeline/GLNativeTranslator
   method public spirv (Lcom/crystalgraphics/platform/gl/pipeline/GLShaderTranslator;)V
   method public version ()Ljava/lang/String;
   method public,static isNative (Ljava/nio/ByteBuffer;)Z
+com/crystalgraphics/platform/gl/pipeline/GLParallelBuild
+  access public,final
+  extends java/lang/Object
+  implements com/crystalgraphics/platform/gl/pipeline/GLProgramCache$Build
+  method public cancel (Lcom/crystalgraphics/platform/gl/driver/CgGLDriver;)V
+  method public program (Lcom/crystalgraphics/platform/gl/driver/CgGLDriver;)I
+  method public ready (Lcom/crystalgraphics/platform/gl/driver/CgGLDriver;)Z
+  method public,static start (Lcom/crystalgraphics/platform/gl/driver/CgGLDriver;Lcom/crystalgraphics/platform/gl/pipeline/GLShaderTranslator;Lcom/crystalgraphics/platform/gl/pipeline/GLProgramBinaries;Lcom/crystalgraphics/platform/gl/binding/GLBindingPoints;Ljava/lang/String;[Lcom/crystalgraphics/platform/gl/pipeline/GLShaderModule;)Lcom/crystalgraphics/platform/gl/pipeline/GLParallelBuild;
 com/crystalgraphics/platform/gl/pipeline/GLProgramBinaries
   access public,final
   extends java/lang/Object
@@ -1010,18 +1020,26 @@ com/crystalgraphics/platform/gl/pipeline/GLProgramBinaries
 com/crystalgraphics/platform/gl/pipeline/GLProgramBuild
   access public,final
   extends java/lang/Object
+  implements com/crystalgraphics/platform/gl/pipeline/GLProgramCache$Build
   method public <init> (Lcom/crystalgraphics/platform/gl/pipeline/GLShaderTranslator;Lcom/crystalgraphics/platform/gl/pipeline/GLProgramBinaries;Lcom/crystalgraphics/platform/gl/binding/GLBindingPoints;Ljava/lang/String;[Lcom/crystalgraphics/platform/gl/pipeline/GLShaderModule;)V
+  method public cancel (Lcom/crystalgraphics/platform/gl/driver/CgGLDriver;)V
   method public program (Lcom/crystalgraphics/platform/gl/driver/CgGLDriver;)I
-  method public ready ()Z
+  method public ready (Lcom/crystalgraphics/platform/gl/driver/CgGLDriver;)Z
 com/crystalgraphics/platform/gl/pipeline/GLProgramCache
   access public,final
   extends java/lang/Object
-  method public <init> (Lcom/crystalgraphics/platform/gl/driver/CgGLDriver;Lcom/crystalgraphics/platform/gl/pipeline/GLShaderTranslator;Lcom/crystalgraphics/platform/gl/pipeline/GLProgramBinaries;Lcom/crystalgraphics/platform/gl/pipeline/GLLinkWorker;)V
+  method public <init> (Lcom/crystalgraphics/platform/gl/driver/CgGLDriver;Lcom/crystalgraphics/platform/gl/pipeline/GLShaderTranslator;Lcom/crystalgraphics/platform/gl/pipeline/GLProgramBinaries;Lcom/crystalgraphics/platform/gl/pipeline/GLLinkWorker;Z)V
   method public acquire (Ljava/lang/String;Lcom/crystalgraphics/platform/rhi/pipeline/CgPipelineLayout;[Lcom/crystalgraphics/platform/gl/pipeline/GLShaderModule;)Lcom/crystalgraphics/platform/gl/pipeline/GLProgramCache$Program;
   method public deleteAll ()V
   method public forget (Lcom/crystalgraphics/platform/gl/pipeline/GLShaderModule;)V
   method public prepare (Ljava/lang/String;Lcom/crystalgraphics/platform/rhi/pipeline/CgPipelineLayout;[Lcom/crystalgraphics/platform/gl/pipeline/GLShaderModule;)Z
   method public release (Lcom/crystalgraphics/platform/gl/driver/CgGLDriver;Lcom/crystalgraphics/platform/gl/pipeline/GLProgramCache$Program;)V
+com/crystalgraphics/platform/gl/pipeline/GLProgramCache$Build
+  access public,abstract,interface
+  extends java/lang/Object
+  method public,abstract cancel (Lcom/crystalgraphics/platform/gl/driver/CgGLDriver;)V
+  method public,abstract program (Lcom/crystalgraphics/platform/gl/driver/CgGLDriver;)I
+  method public,abstract ready (Lcom/crystalgraphics/platform/gl/driver/CgGLDriver;)Z
 com/crystalgraphics/platform/gl/pipeline/GLProgramCache$Program
   access public,final
   extends java/lang/Object

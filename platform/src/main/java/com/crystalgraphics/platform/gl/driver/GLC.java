@@ -109,7 +109,8 @@ public final class GLC {
     // programs
     public static final int GL_VERTEX_SHADER = 0x8B31, GL_FRAGMENT_SHADER = 0x8B30, GL_COMPUTE_SHADER = 0x91B9,
             GL_COMPILE_STATUS = 0x8B81, GL_LINK_STATUS = 0x8B82, GL_NUM_PROGRAM_BINARY_FORMATS = 0x87FE,
-            GL_PROGRAM_BINARY_RETRIEVABLE_HINT = 0x8257, GL_PROGRAM_BINARY_LENGTH = 0x8741;
+            GL_PROGRAM_BINARY_RETRIEVABLE_HINT = 0x8257, GL_PROGRAM_BINARY_LENGTH = 0x8741,
+            GL_COMPLETION_STATUS = 0x91B1;   // KHR_parallel_shader_compile (ARB's has the same value)
 
     // state
     public static final int GL_CULL_FACE = 0x0B44, GL_DEPTH_TEST = 0x0B71, GL_STENCIL_TEST = 0x0B90,

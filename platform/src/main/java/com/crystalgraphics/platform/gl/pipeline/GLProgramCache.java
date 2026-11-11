@@ -14,7 +14,9 @@ import java.util.Map;
 /**
  * The GL device's linked programs, one per set of modules under one layout, shared by every pipeline of them whatever
  * state it adds: Unreal's linked program cache (`FOpenGLLinkedProgram`, `OpenGLShaders.cpp`), a program linked once
- * however many blends, culls and targets draw it. Linked on the {@link GLLinkWorker} where there is one, else at once.
+ * however many blends, culls and targets draw it. Built by the driver's own compiler threads where it has
+ * {@code KHR_parallel_shader_compile} and {@code parallel} asks it ({@link GLParallelBuild}), else on the
+ * {@link GLLinkWorker} where there is one, else at once.
  *
  * <pre>{@code
  * GLProgramCache.Program p = programs.acquire(label, layout, vs, fs);   // a pipeline's: starts the link if none has
@@ -37,40 +39,61 @@ public final class GLProgramCache {
     private final GLShaderTranslator translator;
     private final GLProgramBinaries binaries;
     private final GLLinkWorker worker;
+    private final boolean parallel;
     private final Map<Key, Program> programs = new HashMap<>();
 
-    /** @param binaries kept binaries, or null; @param worker links off the render thread, or null */
-    public GLProgramCache(CgGLDriver gl, GLShaderTranslator translator, GLProgramBinaries binaries, GLLinkWorker worker) {
+    /**
+     * @param binaries kept binaries, or null
+     * @param worker links off the render thread, or null
+     * @param parallel whether the driver's own compiler threads build them ({@link GLParallelBuild})
+     */
+    public GLProgramCache(CgGLDriver gl, GLShaderTranslator translator, GLProgramBinaries binaries, GLLinkWorker worker,
+                          boolean parallel) {
         this.gl = gl;
         this.translator = translator;
         this.binaries = binaries;
         this.worker = worker;
+        this.parallel = parallel;
+    }
+
+    /** A program being built off the render thread's time: on the link worker, or by the driver's own threads. */
+    public interface Build {
+        /** Whether {@link #program} answers without waiting. Never waits. */
+        boolean ready(CgGLDriver gl);
+
+        /** The program, waiting for it if it is not built. */
+        int program(CgGLDriver gl);
+
+        /** Its program deleted before it was asked for. */
+        void cancel(CgGLDriver gl);
     }
 
     /** One linked program and the binding points it was translated under. */
     public static final class Program {
         private final Key key;
+        private final CgGLDriver gl;
         public final GLBindingPoints points;
-        private GLProgramBuild build;
+        private Build build;
         private int name;
         private int refs;
         /** Its link's failure, thrown at every ask. */
         private RuntimeException failed;
 
-        private Program(Key key, GLBindingPoints points) {
+        private Program(Key key, CgGLDriver gl, GLBindingPoints points) {
             this.key = key;
+            this.gl = gl;
             this.points = points;
         }
 
-        /** Whether {@link #name} answers without waiting for the worker. */
+        /** Whether {@link #name} answers without waiting for its build. */
         public boolean ready() {
-            return build == null || build.ready();
+            return build == null || build.ready(gl);
         }
 
-        /** The program, waiting for the worker if its link has not landed, then loading its binary. */
+        /** The program, waiting for its build if it has not landed. */
         public int name(CgGLDriver gl) {
             if (build != null) {
-                GLProgramBuild b = build;
+                Build b = build;
                 build = null;
                 try {
                     name = b.program(gl);
@@ -133,16 +156,24 @@ public final class GLProgramCache {
         Key key = new Key(layout, modules);
         Program p = programs.get(key);
         if (p != null) return p;
-        p = new Program(key, new GLBindingPoints(layout));
-        if (worker != null) worker.submit(p.build = new GLProgramBuild(translator, binaries, p.points, label, modules));
-        else p.name = GLPrograms.link(gl, translator, binaries, p.points, label, modules);
+        p = new Program(key, gl, new GLBindingPoints(layout));
+        if (parallel) {
+            p.build = GLParallelBuild.start(gl, translator, binaries, p.points, label, modules);
+        } else if (worker != null) {
+            GLProgramBuild b = new GLProgramBuild(translator, binaries, p.points, label, modules);
+            p.build = b;
+            worker.submit(b);
+        } else {
+            p.name = GLPrograms.link(gl, translator, binaries, p.points, label, modules);
+        }
         programs.put(key, p);
         return p;
     }
 
     private static void delete(CgGLDriver gl, Program p) {
         // A build still on the worker lands unread; one landed and never asked has no name yet
-        if (p.build == null && p.name != 0) gl.glDeleteProgram(p.name);
+        if (p.build != null) p.build.cancel(gl);
+        else if (p.name != 0) gl.glDeleteProgram(p.name);
     }
 
     /** A layout and its modules, each module by identity. */

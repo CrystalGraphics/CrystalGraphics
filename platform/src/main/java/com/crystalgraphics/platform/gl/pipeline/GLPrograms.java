@@ -73,7 +73,7 @@ public final class GLPrograms {
         return program;
     }
 
-    private static void release(CgGLDriver gl, int program, int[] shaders) {
+    static void release(CgGLDriver gl, int program, int[] shaders) {
         for (int shader : shaders) {
             if (shader == 0) continue;
             gl.glDetachShader(program, shader);
@@ -81,7 +81,7 @@ public final class GLPrograms {
         }
     }
 
-    private static int type(CgShaderModule.Stage stage) {
+    static int type(CgShaderModule.Stage stage) {
         return switch (stage) {
             case VERTEX -> GL_VERTEX_SHADER;
             case FRAGMENT -> GL_FRAGMENT_SHADER;

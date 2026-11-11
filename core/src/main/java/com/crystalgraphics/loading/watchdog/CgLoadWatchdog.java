@@ -243,7 +243,8 @@ public final class CgLoadWatchdog {
                     || m.equals("get") && c.endsWith(".CgShaderCompile")
                     // The GL device's link (its status read waits for it), a draw waiting on the link worker, and the
                     // shader toolchain: native, so read as the driver without these
-                    || c.endsWith(".GLPrograms") || m.equals("program") && c.endsWith(".GLProgramBuild")
+                    || c.endsWith(".GLPrograms")
+                    || m.equals("program") && (c.endsWith(".GLProgramBuild") || c.endsWith(".GLParallelBuild"))
                     || c.equals("org.lwjgl.util.shaderc.Shaderc") || c.equals("org.lwjgl.util.spvc.Spvc")) {
                 return COMPILE + "in " + c.substring(c.lastIndexOf('.') + 1) + "." + m;
             }

@@ -115,7 +115,8 @@ public abstract class CgToolchainDevice implements CgLifecycleListener {
         Path cache = CgCacheDirectory.of(PROGRAMS);
         if (cache != null) device.programCache(cache, CgJob.executor(CgJobLane.BACKGROUND));
         boolean worker = device.linkWorker();
-        LOGGER.info("[device] programs link {}, {}", worker ? "on a worker" : "on the render thread",
+        LOGGER.info("[device] programs link {}, {}", device.parallelLinks() ? "on the driver's compiler threads"
+                        : worker ? "on a worker" : "on the render thread",
                 cache != null ? "kept in " + cache : "kept nowhere");
     }
 

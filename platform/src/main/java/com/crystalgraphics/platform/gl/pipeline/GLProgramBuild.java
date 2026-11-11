@@ -4,14 +4,17 @@ import com.crystalgraphics.platform.gl.binding.GLBindingPoints;
 import com.crystalgraphics.platform.gl.driver.CgGLDriver;
 
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static com.crystalgraphics.platform.gl.driver.GLC.*;
 
 /**
  * One program's build on the {@link GLLinkWorker}: its kept binary where there is one, else translated, compiled and
- * linked on the worker's context, its binary kept; then loaded on the render thread at the first ask.
+ * linked on the worker's context, its binary kept; then loaded on the render thread at the first ask. A draw asking
+ * for one the worker has not started links it itself, so it waits for its own link and not the queue before it
+ * (Unreal's on-demand compile ahead of the background precompile).
  */
-public final class GLProgramBuild {
+public final class GLProgramBuild implements GLProgramCache.Build {
 
     private final GLShaderTranslator translator;
     private final GLProgramBinaries binaries;
@@ -19,6 +22,8 @@ public final class GLProgramBuild {
     private final String label;
     private final GLShaderModule[] modules;
     private final CountDownLatch done = new CountDownLatch(1);
+    /** Taken by whichever runs it: the worker, or a draw that asked first. */
+    private final AtomicBoolean claimed = new AtomicBoolean();
     private volatile byte[] binary;
     private volatile RuntimeException error;
 
@@ -33,6 +38,7 @@ public final class GLProgramBuild {
 
     /** On the worker, its context current. */
     void run(CgGLDriver gl) {
+        if (!claimed.compareAndSet(false, true)) return;
         try {
             String key = binaries != null && binaries.on() ? GLProgramBinaries.key(translator, points, modules) : null;
             byte[] kept = key == null ? null : binaries.read(key);
@@ -60,8 +66,14 @@ public final class GLProgramBuild {
     }
 
     /** Whether the worker has finished, so {@link #program} will not wait. */
-    public boolean ready() {
+    @Override
+    public boolean ready(CgGLDriver gl) {
         return done.getCount() == 0;
+    }
+
+    /** Nothing of it is in the render thread's context until {@link #program}: a landed binary is simply dropped. */
+    @Override
+    public void cancel(CgGLDriver gl) {
     }
 
     /**
@@ -70,7 +82,12 @@ public final class GLProgramBuild {
      *
      * @throws com.crystalgraphics.platform.rhi.shader.CgShaderModule.CompileException as the worker's link failed
      */
+    @Override
     public int program(CgGLDriver gl) {
+        if (claimed.compareAndSet(false, true)) {
+            done.countDown();
+            return GLPrograms.link(gl, translator, binaries, points, label, modules);
+        }
         try {
             done.await();
         } catch (InterruptedException e) {
