@@ -2009,6 +2009,7 @@ com/crystalgraphics/api/texture/CgSampler
   field public,static,final TRILINEAR_CLAMP Lcom/crystalgraphics/api/texture/CgSampler;
   field public,static,final TRILINEAR_WRAP Lcom/crystalgraphics/api/texture/CgSampler;
   method public anisotropy ()I
+  method public compare ()Lcom/crystalgraphics/platform/rhi/format/CgCompare;
   method public derive ()Lcom/crystalgraphics/api/texture/CgSampler$Builder;
   method public equals (Ljava/lang/Object;)Z
   method public filter ()Lcom/crystalgraphics/api/texture/CgSampler$Filter;
@@ -2021,6 +2022,7 @@ com/crystalgraphics/api/texture/CgSampler
 com/crystalgraphics/api/texture/CgSampler$Address
   access public,final,enum
   extends java/lang/Enum
+  field public,static,final BORDER Lcom/crystalgraphics/api/texture/CgSampler$Address;
   field public,static,final CLAMP Lcom/crystalgraphics/api/texture/CgSampler$Address;
   field public,static,final MIRROR Lcom/crystalgraphics/api/texture/CgSampler$Address;
   field public,static,final WRAP Lcom/crystalgraphics/api/texture/CgSampler$Address;
@@ -2034,6 +2036,7 @@ com/crystalgraphics/api/texture/CgSampler$Builder
   method public address (Lcom/crystalgraphics/api/texture/CgSampler$Address;Lcom/crystalgraphics/api/texture/CgSampler$Address;Lcom/crystalgraphics/api/texture/CgSampler$Address;)Lcom/crystalgraphics/api/texture/CgSampler$Builder;
   method public anisotropy (I)Lcom/crystalgraphics/api/texture/CgSampler$Builder;
   method public build ()Lcom/crystalgraphics/api/texture/CgSampler;
+  method public compare (Lcom/crystalgraphics/platform/rhi/format/CgCompare;)Lcom/crystalgraphics/api/texture/CgSampler$Builder;
   method public filter (Lcom/crystalgraphics/api/texture/CgSampler$Filter;)Lcom/crystalgraphics/api/texture/CgSampler$Builder;
 com/crystalgraphics/api/texture/CgSampler$Filter
   access public,final,enum
@@ -2047,7 +2050,7 @@ com/crystalgraphics/api/texture/CgTexture
   access public,abstract,interface
   extends java/lang/Object
   method public getLevels ()I
-  method public spec ()Lcom/crystalgraphics/api/texture/CgTextureSpec;
+  method public sampler ()Lcom/crystalgraphics/api/texture/CgSampler;
   method public,abstract getHeight ()I
   method public,abstract getWidth ()I
   method public,abstract rhiView ()Lcom/crystalgraphics/platform/rhi/resource/CgTextureView;
@@ -2083,6 +2086,7 @@ com/crystalgraphics/api/texture/CgTextureSpec
   method public getWrapT ()I
   method public hashCode ()I
   method public toBuilder ()Lcom/crystalgraphics/api/texture/CgTextureSpec$CgTextureSpecBuilder;
+  method public toSampler ()Lcom/crystalgraphics/api/texture/CgSampler;
   method public,static builder ()Lcom/crystalgraphics/api/texture/CgTextureSpec$CgTextureSpecBuilder;
 com/crystalgraphics/api/texture/CgTextureSpec$CgTextureSpecBuilder
   access public
@@ -6171,7 +6175,7 @@ com/crystalgraphics/gpu/resource/CgTextureAbstract
   method public refresh ()V
   method public rhiTexture ()Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture;
   method public rhiView ()Lcom/crystalgraphics/platform/rhi/resource/CgTextureView;
-  method public spec ()Lcom/crystalgraphics/api/texture/CgTextureSpec;
+  method public sampler ()Lcom/crystalgraphics/api/texture/CgSampler;
   method public,abstract getTarget ()I
   method public,final reload ()V
   method public,static loads ()J
@@ -9486,7 +9490,7 @@ com/crystalgraphics/render/graph/CgGraphTexture
   method public level (I)Lcom/crystalgraphics/render/graph/CgGraphTexture$Level;
   method public previous ()Lcom/crystalgraphics/render/graph/CgGraphTexture;
   method public rhiView ()Lcom/crystalgraphics/platform/rhi/resource/CgTextureView;
-  method public spec ()Lcom/crystalgraphics/api/texture/CgTextureSpec;
+  method public sampler ()Lcom/crystalgraphics/api/texture/CgSampler;
   method public stencil ()Lcom/crystalgraphics/render/graph/CgGraphTexture$Stencil;
   method public storage ()Lcom/crystalgraphics/render/graph/CgGraphStorage;
   method public target ()Lcom/crystalgraphics/platform/rhi/CgExternalTarget;
@@ -9515,7 +9519,7 @@ com/crystalgraphics/render/graph/CgGraphTexture$Level
   method public getWidth ()I
   method public level ()I
   method public rhiView ()Lcom/crystalgraphics/platform/rhi/resource/CgTextureView;
-  method public spec ()Lcom/crystalgraphics/api/texture/CgTextureSpec;
+  method public sampler ()Lcom/crystalgraphics/api/texture/CgSampler;
   method public texture ()Lcom/crystalgraphics/render/graph/CgGraphTexture;
   method public toString ()Ljava/lang/String;
 com/crystalgraphics/render/graph/CgGraphTexture$Stencil
@@ -9525,7 +9529,7 @@ com/crystalgraphics/render/graph/CgGraphTexture$Stencil
   method public getHeight ()I
   method public getWidth ()I
   method public rhiView ()Lcom/crystalgraphics/platform/rhi/resource/CgTextureView;
-  method public spec ()Lcom/crystalgraphics/api/texture/CgTextureSpec;
+  method public sampler ()Lcom/crystalgraphics/api/texture/CgSampler;
   method public texture ()Lcom/crystalgraphics/render/graph/CgGraphTexture;
   method public toString ()Ljava/lang/String;
 com/crystalgraphics/render/graph/CgLoad

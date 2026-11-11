@@ -28,11 +28,11 @@ public interface CgTexture {
     CgTextureView rhiView();
 
     /**
-     * How it is sampled where a binding names no sampler: its spec's filters and wraps. Null for the defaults, which
-     * repeat.
+     * How it is sampled where a binding names no sampler. The same object each call; null for the device's defaults,
+     * which repeat: an imported texture's, sampled as its owner left it.
      */
     @Nullable
-    default CgTextureSpec spec() {
+    default CgSampler sampler() {
         return null;
     }
 

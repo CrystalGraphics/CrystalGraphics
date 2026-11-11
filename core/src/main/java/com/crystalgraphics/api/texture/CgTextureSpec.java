@@ -2,6 +2,7 @@ package com.crystalgraphics.api.texture;
 
 
 import com.crystalgraphics.platform.gl.driver.GLC;
+import com.crystalgraphics.platform.rhi.format.CgCompare;
 import lombok.Builder;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
@@ -66,6 +67,26 @@ public final class CgTextureSpec {
     public int getGlBaseFormat()     { return type.glBaseFormat; }
     /** Returns {@code type.glType} (e.g. {@code GL_UNSIGNED_BYTE}). */
     public int getGlType()           { return type.glType; }
+
+    /**
+     * The sampler it describes: a texture made with it samples so where a binding names none. Linear filtering
+     * samples across a chain of levels a pass made too, as it always has. A new one each call: ask once, keep it.
+     */
+    public CgSampler toSampler() {
+        int min = mipmaps.isEnabled() ? mipmaps.getMinFilter() : minFilter;
+        CgSampler.Filter filter = min == GLC.GL_NEAREST || min == GLC.GL_NEAREST_MIPMAP_NEAREST
+                || min == GLC.GL_NEAREST_MIPMAP_LINEAR ? CgSampler.Filter.NEAREST
+                : min == GLC.GL_LINEAR_MIPMAP_NEAREST ? CgSampler.Filter.BILINEAR : CgSampler.Filter.TRILINEAR;
+        CgSampler.Builder b = CgSampler.builder().filter(filter).address(address(wrapS), address(wrapT), address(wrapR));
+        // GL's comparison functions run NEVER to ALWAYS in CgCompare's order
+        if (compareMode != GLC.GL_NONE) b.compare(CgCompare.values()[compareFunc - GLC.GL_NEVER]);
+        return b.build();
+    }
+
+    private static CgSampler.Address address(int wrap) {
+        return wrap == GLC.GL_REPEAT ? CgSampler.Address.WRAP : wrap == GLC.GL_MIRRORED_REPEAT ? CgSampler.Address.MIRROR
+                : wrap == GLC.GL_CLAMP_TO_BORDER ? CgSampler.Address.BORDER : CgSampler.Address.CLAMP;
+    }
 
     // ── Mipmap ──────────────────────────────────────────────────────────────────
 

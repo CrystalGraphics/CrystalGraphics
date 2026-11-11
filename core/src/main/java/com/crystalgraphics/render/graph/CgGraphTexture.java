@@ -1,8 +1,6 @@
 package com.crystalgraphics.render.graph;
 
 import com.crystalgraphics.api.texture.CgTexture;
-import com.crystalgraphics.api.texture.CgTextureSpec;
-import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.platform.rhi.CgExternalTarget;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
 import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
@@ -10,6 +8,7 @@ import com.crystalgraphics.platform.rhi.resource.CgTextureView;
 
 import javax.annotation.Nullable;
 import java.util.Arrays;
+import com.crystalgraphics.api.texture.CgSampler;
 
 /**
  * A texture a frame graph orders work on: a pass writes it, a draw or a copy reads it. A handle at once, on any
@@ -350,9 +349,9 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
 
     @Override
     @Nullable
-    public CgTextureSpec spec() {
+    public CgSampler sampler() {
         CgGraphStorage now = storage();
-        return now == null || now.color(0) == null ? null : now.sampled(0).spec();
+        return now == null || now.color(0) == null ? null : now.sampled(0).sampler();
     }
 
     @Override
@@ -450,8 +449,8 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
 
         @Override
         @Nullable
-        public CgTextureSpec spec() {
-            return texture.spec();
+        public CgSampler sampler() {
+            return texture.sampler();
         }
 
         @Override
@@ -473,10 +472,6 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
     /** The stencil of a graph texture, sampled: {@link CgGraphTexture#stencil}. */
     public static final class Stencil implements CgTexture {
 
-        /** Integers are never filtered: a linear filter over one leaves the texture incomplete. */
-        private static final int GL_NEAREST = 0x2600;
-        private static final CgTextureSpec SPEC = CgTextureSpec.builder().type(CgTextureType.STENCIL8)
-                .minFilter(GL_NEAREST).magFilter(GL_NEAREST).build();
 
         private final CgGraphTexture texture;
         @Nullable
@@ -500,9 +495,10 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
             return view;
         }
 
+        /** Integers are never filtered: a linear filter over one leaves the texture incomplete. */
         @Override
-        public CgTextureSpec spec() {
-            return SPEC;
+        public CgSampler sampler() {
+            return CgSampler.NEAREST_CLAMP;
         }
 
         @Override

@@ -216,6 +216,7 @@ public final class CgMaterialRegistry {
             case WRAP -> GLC.GL_REPEAT;
             case MIRROR -> GLC.GL_MIRRORED_REPEAT;
             case CLAMP -> GLC.GL_CLAMP_TO_EDGE;
+            case BORDER -> GLC.GL_CLAMP_TO_BORDER;
         };
     }
 

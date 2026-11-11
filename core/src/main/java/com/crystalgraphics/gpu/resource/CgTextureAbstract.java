@@ -20,6 +20,7 @@ import com.crystalgraphics.util.trace.CgChannels;
 import com.crystalgraphics.variable.CgVar;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import com.crystalgraphics.api.texture.CgSampler;
 
 /**
  * Shared base for all owned GL texture implementations.
@@ -68,6 +69,9 @@ public abstract class CgTextureAbstract implements CgTexture, CgBinaryAsset, CgR
     protected int height;
     /** Immutable spec: format, filter, wrap, and mipmap policy. */
     protected final CgTextureSpec spec;
+    /** How it samples where a binding names no sampler: its spec's, made once; null for the defaults. */
+    @Nullable
+    private final CgSampler sampler;
     /** False for a texture adopted from its owner: {@link #delete()} forgets it without deleting it. */
     private final boolean owned;
     /** Made on the installed device ({@code CgTexture2D.onDevice}): released through it. */
@@ -102,10 +106,9 @@ public abstract class CgTextureAbstract implements CgTexture, CgBinaryAsset, CgR
         return rhiView;
     }
 
-    /** The spec it was made with: its own sampling, unless something set it since. */
     @Override
-    public CgTextureSpec spec() {
-        return spec;
+    public CgSampler sampler() {
+        return sampler;
     }
 
     /** How the device sees it, for {@link #rhiTexture}'s import: a 2D texture unless a kind says otherwise. */
@@ -130,6 +133,7 @@ public abstract class CgTextureAbstract implements CgTexture, CgBinaryAsset, CgR
         this.width = width;
         this.height = height;
         this.spec = spec;
+        this.sampler = spec == null ? null : spec.toSampler();
         this.owned = owned;
     }
 

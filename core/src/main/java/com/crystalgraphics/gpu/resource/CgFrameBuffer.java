@@ -306,7 +306,7 @@ public class CgFrameBuffer {
      * }</pre>
      */
     public static CgFrameBuffer createVolume(String name, CgTexture3D volume) {
-        CgTextureType type = volume.spec().getType();
+        CgTextureType type = volume.spec.getType();
         return adopt(name, CgFrameBufferFormat.builder(name).color(0, type).build(), volume);
     }
 

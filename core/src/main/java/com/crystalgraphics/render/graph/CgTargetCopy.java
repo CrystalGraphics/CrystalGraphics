@@ -1,7 +1,6 @@
 package com.crystalgraphics.render.graph;
 
 import com.crystalgraphics.api.texture.CgTexture;
-import com.crystalgraphics.api.texture.CgTextureSpec;
 import com.crystalgraphics.platform.rhi.CgDeviceSection;
 import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
@@ -13,6 +12,7 @@ import com.crystalgraphics.util.trace.CgChannels;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
+import com.crystalgraphics.api.texture.CgSampler;
 
 /**
  * One raster pass's copy of its own target, for its draws reading {@code cg_SceneColor} or {@code cg_DepthBuffer}
@@ -204,9 +204,9 @@ final class CgTargetCopy {
 
         @Override
         @Nullable
-        public CgTextureSpec spec() {
+        public CgSampler sampler() {
             CgTexture sampled = sampled();
-            return sampled == null ? null : sampled.spec();
+            return sampled == null ? null : sampled.sampler();
         }
 
         @Override

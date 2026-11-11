@@ -1,8 +1,6 @@
 package com.crystalgraphics.render.graph;
 
 import com.crystalgraphics.api.texture.CgTexture;
-import com.crystalgraphics.api.texture.CgTextureSpec;
-import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.gpu.resource.CgTexelConvert;
 import com.crystalgraphics.platform.rhi.CgDeviceNames;
 import com.crystalgraphics.platform.rhi.CgDeviceSection;
@@ -24,6 +22,7 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
+import com.crystalgraphics.api.texture.CgSampler;
 
 /**
  * A graph texture's storage on the device while it is resolved (Unreal's pooled render target behind an
@@ -428,17 +427,19 @@ public final class CgGraphStorage {
         return "CgGraphStorage(" + name + " " + width + "x" + height + ")";
     }
 
-    /** One of its textures, sampled whole: with its type's own filtering, or an imported one's defaults. */
+    /**
+     * One of its textures, sampled whole: an integer format nearest, any other trilinear across whatever levels it
+     * has; an imported one with the defaults, as a host's always has, its filtering its owner's to say.
+     */
     private final class Sampled implements CgTexture {
         private final CgTextureView view;
         @Nullable
-        private final CgTextureSpec spec;
+        private final CgSampler sampler;
 
         Sampled(CgGpuTexture texture) {
-            CgTextureType type = CgTextureType.of(texture.desc().format());
             this.view = CgTextureView.whole(texture);
-            // An imported image samples with the defaults, as a host's always has: its filtering is its owner's to say
-            this.spec = external != null || type == null ? null : type.toTextureSpec();
+            this.sampler = external != null ? null
+                    : texture.desc().format().numeric() == CgFormat.Numeric.INT ? CgSampler.NEAREST_CLAMP : CgSampler.TRILINEAR_CLAMP;
         }
 
         @Override
@@ -448,8 +449,8 @@ public final class CgGraphStorage {
 
         @Override
         @Nullable
-        public CgTextureSpec spec() {
-            return spec;
+        public CgSampler sampler() {
+            return sampler;
         }
 
         @Override

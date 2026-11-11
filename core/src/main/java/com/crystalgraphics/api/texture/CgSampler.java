@@ -1,5 +1,8 @@
 package com.crystalgraphics.api.texture;
 
+import com.crystalgraphics.platform.rhi.format.CgCompare;
+
+import javax.annotation.Nullable;
 import java.util.Objects;
 
 /**
@@ -13,16 +16,17 @@ import java.util.Objects;
  * material.applyProperties(b -> b.sampler("_Scroll", 1, NOISE, CgSampler.BILINEAR_WRAP));   // the same image, tiled
  * }</pre>
  *
- * <p>Your own, axis by axis:</p>
+ * <p>Your own, axis by axis, and a shadow map's comparison:</p>
  *
  * <pre>{@code
  * CgSampler strip = CgSampler.builder().filter(CgSampler.Filter.TRILINEAR)
  *         .address(CgSampler.Address.WRAP, CgSampler.Address.CLAMP)   // tiled along u, clamped across v
  *         .anisotropy(8).build();
+ * CgSampler shadow = CgSampler.builder().compare(CgCompare.LESS_EQUAL).build();   // a sampler2DShadow's
  * }</pre>
  *
  * <ul>
- *   <li>A binding with no sampler samples as the texture's {@link CgTextureSpec} says, as before: Unreal's "from the
+ *   <li>A binding with no sampler samples as the texture's own does ({@code CgTexture.sampler()}): Unreal's "from the
  *       texture asset".</li>
  *   <li>On a texture with no mips, {@link Filter#BILINEAR} and {@link Filter#TRILINEAR} sample its base level: a
  *       sampler never makes a texture incomplete.</li>
@@ -49,7 +53,9 @@ public final class CgSampler {
         /** The edge texel stretches on. */
         CLAMP,
         /** The texture repeats, every other copy flipped. */
-        MIRROR
+        MIRROR,
+        /** Transparent black: nothing outside the texture. */
+        BORDER
     }
 
     public static final CgSampler NEAREST_WRAP = builder().filter(Filter.NEAREST).address(Address.WRAP).build();
@@ -63,13 +69,16 @@ public final class CgSampler {
     private final Filter filter;
     private final Address u, v, w;
     private final int anisotropy;
+    @Nullable
+    private final CgCompare compare;
 
-    private CgSampler(Filter filter, Address u, Address v, Address w, int anisotropy) {
+    private CgSampler(Filter filter, Address u, Address v, Address w, int anisotropy, @Nullable CgCompare compare) {
         this.filter = filter;
         this.u = u;
         this.v = v;
         this.w = w;
         this.anisotropy = anisotropy;
+        this.compare = compare;
     }
 
     public static Builder builder() {
@@ -100,9 +109,15 @@ public final class CgSampler {
         return anisotropy;
     }
 
+    /** A depth texture's comparison, a shadow map's; null for an ordinary sampler. */
+    @Nullable
+    public CgCompare compare() {
+        return compare;
+    }
+
     /** A copy to change: another address, more anisotropy. */
     public Builder derive() {
-        return builder().filter(filter).address(u, v, w).anisotropy(anisotropy);
+        return builder().filter(filter).address(u, v, w).anisotropy(anisotropy).compare(compare);
     }
 
     @Override
@@ -110,17 +125,18 @@ public final class CgSampler {
         if (this == o) return true;
         if (!(o instanceof CgSampler)) return false;
         CgSampler s = (CgSampler) o;
-        return filter == s.filter && u == s.u && v == s.v && w == s.w && anisotropy == s.anisotropy;
+        return filter == s.filter && u == s.u && v == s.v && w == s.w && anisotropy == s.anisotropy && compare == s.compare;
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(filter, u, v, w, anisotropy);
+        return Objects.hash(filter, u, v, w, anisotropy, compare);
     }
 
     @Override
     public String toString() {
-        return "CgSampler{" + filter + " " + u + "/" + v + "/" + w + (anisotropy > 1 ? " x" + anisotropy : "") + "}";
+        return "CgSampler{" + filter + " " + u + "/" + v + "/" + w + (anisotropy > 1 ? " x" + anisotropy : "")
+                + (compare != null ? " " + compare : "") + "}";
     }
 
     /** Builds a {@link CgSampler}: bilinear and clamped on every axis unless set. */
@@ -128,6 +144,8 @@ public final class CgSampler {
         private Filter filter = Filter.BILINEAR;
         private Address u = Address.CLAMP, v = Address.CLAMP, w = Address.CLAMP;
         private int anisotropy = 1;
+        @Nullable
+        private CgCompare compare;
 
         private Builder() {}
 
@@ -160,8 +178,14 @@ public final class CgSampler {
             return this;
         }
 
+        /** Compares against a depth texture's texels, a shadow map's; null for none. */
+        public Builder compare(@Nullable CgCompare compare) {
+            this.compare = compare;
+            return this;
+        }
+
         public CgSampler build() {
-            return new CgSampler(filter, u, v, w, anisotropy);
+            return new CgSampler(filter, u, v, w, anisotropy, compare);
         }
     }
 }
