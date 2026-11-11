@@ -20,14 +20,18 @@ package com.crystalgraphics.mc.shared;
  * - On legacy FML the lifecycle events reach the {@code @Mod} instance alone; the bootstrapper forwards
  *   them to the {@link FmlEvents} this returns, which is its variant's context. On modern Forge it
  *   returns null and the variant gets {@code FMLJavaModLoadingContext}, as before.
+ * - On FML 1.7.10, which a class also carrying {@code cpw.mods.fml.common.Mod} is constructed by, it does nothing and
+ *   returns null: FML builds that mod itself and checks its version against {@code acceptedMinecraftVersions}. Such a
+ *   class declares no {@code @Mod.EventHandler}, since 1.7.10 lists its methods and the legacy event types are absent.
  */
 public final class ForgeStart {
 
     private ForgeStart() {
     }
 
-    /** Selects and constructs {@code modId}'s variant; the legacy event sink, or null on modern Forge. */
+    /** Selects and constructs {@code modId}'s variant; the legacy event sink, or null on modern Forge and FML 1.7.10. */
     public static FmlEvents start(Class<?> owner, String modId) {
+        if (LoaderProbe.FML1710.equals(LoaderProbe.current())) return null;
         ClassLoader loader = owner.getClassLoader();
         try {
             if (LoaderProbe.FML1122.equals(LoaderProbe.current())) {

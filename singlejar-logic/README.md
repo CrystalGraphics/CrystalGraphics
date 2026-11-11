@@ -262,7 +262,7 @@ which tier it has. Where the host needs to run something the other jar provides 
 it publishes a seam and the other jar registers into it:
 
 ```java
-CgUiAutoTest.onFrame(5, MyProbe::runOnce);   // from the optional mod's entry, at init
+AutoTest.onFrame(5, MyProbe::runOnce);   // from the optional mod's entry, at init
 ```
 
 **Cross-jar `ServiceLoader` works on all four loaders** — measured, not assumed. One `LaunchClassLoader`
@@ -327,7 +327,7 @@ documentation — and a POM. A shipped jar publishes the jar and a POM with no d
   stand in for the published modules, so they offer `consumerApi` like the published metadata does
   (`CONSUMER_CHECKOUT`) — without it a consumer's test would find `core` and not the renderer under it.
 - **A bootstrapper compiles against `com.crystalgraphics:mc-shared`** — `VariantBootstrap`, `ForgeStart`,
-  `VariantEntry` — and runs against the copy in CrystalGraphics' jar, which every mod shipped this way
+  `NeoForgeStart`, `VariantEntry` — and runs against the copy in CrystalGraphics' jar, which every mod shipped this way
   shares. A node declares it with `nodeLibrary("com.crystalgraphics:mc-shared:<version>")`, which marks a
   Maven library as the node's own rather than the toolchain's, so the stub check keeps it.
   `publishedModule(…, artifactId = "mc-shared")` is how a module's artifact differs from its name.
@@ -457,7 +457,9 @@ own at source names, since a dev run loads the classes unrelocated. `shippedEntr
 would be a second mod of one id. It compiles against `runtime/mc/forge-stubs`, a union of the two
 annotations and legacy FML's lifecycle events that never ships, and is merged once. `ForgeStart` picks the
 era with `LoaderProbe`; legacy FML delivers its lifecycle to the `@Mod.EventHandler` methods of that one
-instance, which forward it to the variant through `FmlEvents`.
+instance, which forward it to the variant through `FmlEvents`. A NeoForge bootstrapper can be compiled once the same
+way: `forge-stubs` also stands in for NeoForge's `@Mod` and `IEventBus`, and `NeoForgeStart` reads the version and side
+reflectively.
 
 ```java
 @Mod(value = ForgeBootstrap.MODID, modid = ForgeBootstrap.MODID)

@@ -134,7 +134,7 @@ yourself — CrystalGraphics' own are the pattern ([`singlejar-logic/README.md`]
 
 | Rule | Why |
 |---|---|
-| Each loader has one **bootstrapper** at a fixed name, naming no Minecraft class | The loader constructs it whatever version runs; `VariantBootstrap` / `ForgeStart` pick the variant |
+| Each loader has one **bootstrapper** at a fixed name, naming no Minecraft class | The loader constructs it whatever version runs; `VariantBootstrap` / `ForgeStart` / `NeoForgeStart` pick the variant |
 | Variant entries implement `VariantEntry` and carry no `@Mod` | Two annotated variants are two mods of one id |
 | Each node's classes are relocated into its own package (`nodePackage`), the bootstrapper excepted | Several nodes share one jar |
 | The thin jar excludes `DEV_DESCRIPTORS` | The merge writes the descriptors once |
