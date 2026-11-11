@@ -69,6 +69,8 @@ public final class CgEngineLifecycle {
     private static boolean preInit, init, postInit;
 
     private CgEngineLifecycle() {
+    /** Pre-init is under way: its listeners are being registered, not yet told. */
+    private static boolean preInitStarted;
     }
 
     /**
@@ -94,13 +96,15 @@ public final class CgEngineLifecycle {
      * {@code common} listeners every mod declares registered.
      */
     public static synchronized void preInit() {
-        if (preInit) return;
-        preInit = true;
+        if (preInit || preInitStarted) return;
+        preInitStarted = true;
         CgTraceRun.open();
         CgAssetMounts.mount();
         addDiscovered(CgListenerDiscovery.Side.COMMON);
         listeners.dispatch("onPreInit", CgLifecycleListener::onPreInit);
     }
+        // Raised only now: set before, every listener just added was caught up on pre-init, then dispatched it again.
+        preInit = true;
 
     /** The host's channel registered and its world slots provided: the network installed over {@code channel}. */
     public static synchronized void init(CgNetworkChannel channel) {
