@@ -20,7 +20,7 @@ import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
  * </ul>
  */
 public abstract sealed class CgPass permits CgRasterPass, CgComputePass, CgPass.Copy, CgPass.Upload, CgPass.Callback,
-        CgPass.Compile, CgPass.Release, CgPass.Fill, CgPass.Update, CgPass.BufferCopy, CgPass.BufferRelease, CgPass.Readback {
+        CgPass.Include, CgPass.Compile, CgPass.Release, CgPass.Fill, CgPass.Update, CgPass.BufferCopy, CgPass.BufferRelease, CgPass.Readback {
 
     /** Not final for a raster pass, which its recording reuses after a reset. */
     String name;
@@ -124,6 +124,64 @@ public abstract sealed class CgPass permits CgRasterPass, CgComputePass, CgPass.
         Callback(String name, @Nullable CgGraphTexture target, Runnable body, CgRequest request) {
             super(name, target, request);
             this.body = body;
+        }
+    }
+
+    /**
+     * A frame recorded and built elsewhere, executed at this step of the frame that holds it ({@link CgRecording#include}):
+     * on the next nesting depth's executor, so the outer frame's uploads and bindings stand when it returns, with
+     * nothing built or executed again around it. Reused by its recording after a reset.
+     *
+     * <pre>{@code
+     * recording.include(ui).timed(GPU_UI).then(FRAME_END);   // a held runnable: none is made a frame
+     * }</pre>
+     */
+    public static final class Include extends CgPass {
+        @Nullable
+        CgFrame frame;
+        boolean again, keepRequested;
+        @Nullable
+        Runnable then;
+
+        Include() {
+            super("include", null, null);
+        }
+
+        Include reuse(CgFrame frame, boolean again, boolean keepRequested) {
+            this.frame = frame;
+            this.again = again;
+            this.keepRequested = keepRequested;
+            gpuZone = -1;
+            then = null;
+            return this;
+        }
+
+        /** Times its execution as {@code gpu:<zone>}, a name made once with {@code CgGpuTrace.name}. */
+        public Include timed(int zone) {
+            gpuZone = zone;
+            return this;
+        }
+
+        /** Runs {@code after} on the render thread once it has executed, or failed. */
+        public Include then(Runnable after) {
+            then = after;
+            return this;
+        }
+
+        /** Executes the frame at the executor's next depth, then {@link #then}. */
+        void execute() {
+            try {
+                if (again) CgExecutor.executeAgain(frame, keepRequested);
+                else CgExecutor.execute(frame);
+            } finally {
+                if (then != null) then.run();
+            }
+        }
+
+        @Override
+        void clearReferences() {
+            frame = null;
+            then = null;
         }
     }
 

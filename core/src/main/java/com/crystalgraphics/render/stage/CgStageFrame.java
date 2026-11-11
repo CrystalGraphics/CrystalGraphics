@@ -16,6 +16,7 @@ import com.crystalgraphics.render.graph.CgFrameGraph;
 import com.crystalgraphics.render.graph.CgFrameScope;
 import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.render.graph.CgLoad;
+import com.crystalgraphics.render.graph.CgPass;
 import com.crystalgraphics.render.canvas.CgCanvas;
 import com.crystalgraphics.render.graph.CgRasterPass;
 import com.crystalgraphics.render.graph.CgRecording;
@@ -347,6 +348,50 @@ public final class CgStageFrame {
     /** Runs {@code body} at this point in the stage, on the host's target, with GL state restored after. */
     public CgRequest callback(String name, Runnable body) {
         return recording.callback(name, target(), body);
+    }
+
+    /**
+     * Executes {@code frame}, recorded and built elsewhere, at this point in the firing: after everything recorded into
+     * the firing before, and before everything after, on the firing's target as {@code CgGraphTexture.current()}. What a
+     * UI that records on its own thread draws its frame with. The firing is still built and executed once: the frame is
+     * a step of it ({@link CgRecording#include}), executed at its place and never built again. The caller keeps the frame:
+     * recycle it with its builder once the firing has executed.
+     *
+     * <pre>{@code
+     * CgRenderStage.SCREEN.register(CgRenderStage.VIEWPORT_WIDGETS, frame -> {
+     *     frame.include(ui.built()).timed(GPU_UI).then(UI_EXECUTED);              // the UI's own passes, then
+     *     frame.canvas().quad(COMPOSITE).texture(0, ui.picture()).at(0, 0).size(w, h).submit();   // what reads them
+     * });
+     * }</pre>
+     *
+     * <ul>
+     *   <li>What the turn drew on the canvas so far lands before it; what it draws after, after.</li>
+     *   <li>It is ordered by what the frame touches that outlives it (the target, requested and imported textures), so a
+     *       transient of the firing's never passes into it, nor one of its out.</li>
+     *   <li>A built frame executes once with this; again with {@link #includeAgain}.</li>
+     * </ul>
+     *
+     * @return the step, to time or follow: valid until the firing executes
+     */
+    public CgPass.Include include(CgFrame frame) {
+        canvas.endPass();
+        return recording.include(frame);
+    }
+
+    /**
+     * As {@link #include}, for a frame already executed: executed again with what its passes read as it stands now
+     * ({@link CgExecutor#executeAgain}). A compositor's move of what a frame drew, with nothing recorded or built.
+     *
+     * <pre>{@code
+     * values.translate(window, dx, dy);
+     * frame.includeAgain(last, true).timed(GPU_UI);   // requested textures (a window's surface) left as they were
+     * }</pre>
+     *
+     * @param keepRequested skip every pass writing a requested texture, leaving it as the last execution did
+     */
+    public CgPass.Include includeAgain(CgFrame frame, boolean keepRequested) {
+        canvas.endPass();
+        return recording.includeAgain(frame, keepRequested);
     }
 
     void begin(CgHostFrame host) {

@@ -69,6 +69,19 @@ CgHostView world = CgRenderStage.WORLD_OPAQUE.host().view();
 - An id is defined once (`define` throws on a second); renderers record in ascending order, ties in
   registration order; any thread may register.
 - `frame.callback(name, body)` draws immediately at its place in the stage, for work not yet recorded.
+- **`frame.include(built)` executes a `CgFrame` recorded and built elsewhere** (a UI recording on its own thread) at
+  its place in the firing: a step of the firing's one frame (`CgRecording.include`, `CgPass.Include`), ordered by
+  what the built frame touches that outlives it (the target, requested and imported textures), and executed there on
+  the executor's next depth, so the firing is still built and executed once and the included frame is never built
+  again. `includeAgain(built, keepRequested)` executes one again under its values now (a compositor's move). The
+  caller keeps the frame and recycles it once the firing has executed.
+
+```java
+CgRenderStage.SCREEN.register(CgRenderStage.VIEWPORT_WIDGETS, frame -> {
+    frame.include(ui.built()).timed(GPU_UI).then(ui::executed);        // its passes, timed as gpu:ui
+    frame.canvas().quad(COMPOSITE).texture(0, ui.picture()).at(0, 0).size(w, h).submit();   // then what reads them
+});
+```
 - **`frame.resources()` is the firing's blackboard**: a renderer publishes a resource under a static `CgFrameKey`
   and one recording later in the same firing reads it, as Filament's blackboard does. It empties when the firing
   executes, so a hand-off across firings (opaque to transparent, 1.7.10's second anaglyph firing) needs a resource

@@ -246,6 +246,7 @@ public final class CgExecutor {
             BARRIER = CgTrace.name("graph.barrier"),
             STEP_READBACK = CgTrace.name("graph.readback"), STEP_COPY = CgTrace.name("graph.copy"),
             STEP_UPLOAD = CgTrace.name("graph.upload"), STEP_CALLBACK = CgTrace.name("graph.callback"),
+            STEP_INCLUDE = CgTrace.name("graph.include"),
             STEP_COMPILE = CgTrace.name("graph.compile"), STEP_RELEASE = CgTrace.name("graph.release"),
             STALE = CgTrace.name("graph.stale"), GIVE_BACK = CgTrace.name("graph.giveBack"),
             FINISH = CgTrace.name("graph.finish");
@@ -660,7 +661,8 @@ public final class CgExecutor {
                     }
                 }
                 if (takes && !again && s > runEnd) merge(frame, s);
-                if (splitCount > 0) endSplits(runEnd);
+                // An included frame takes its storage from where it rests: no transition of ours left half done
+                if (splitCount > 0) endSplits(pass instanceof CgPass.Include ? Integer.MAX_VALUE : runEnd);
                 if (!skipped) step(frame, s);
                 if (splits && !skipped && s >= runEnd) beginSplits(frame, s);
                 // A window moved by its node executes no surface: what a re-execution drew into a kept texture.
@@ -899,7 +901,8 @@ public final class CgExecutor {
                 storage(drawn);
                 drawn.advance();
             }
-            if (!(pass instanceof CgComputePass)) {
+            // An included frame states its own transitions, from where each storage rests
+            if (!(pass instanceof CgComputePass) && !(pass instanceof CgPass.Include)) {
                 try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, BARRIER)) {
                     barriers(frame, s);
                 }
@@ -946,6 +949,11 @@ public final class CgExecutor {
                     upload.writer.upload(storage(upload.target));
                 }
                 upload.request.complete();
+            } else if (pass instanceof CgPass.Include include) {
+                sharedDepthSource = -1;   // what it executes may write any depth
+                try (CgTrace.Zone zone = CgTrace.zone(CgChannels.GL, STEP_INCLUDE)) {
+                    include.execute();
+                }
             } else if (pass instanceof CgPass.Callback callback) {
                 sharedDepthSource = -1;   // what it executes may draw anything
                 try (CgTrace.Zone zone = CgTrace.zone(CgChannels.GL, STEP_CALLBACK);
@@ -1322,7 +1330,7 @@ public final class CgExecutor {
      */
     private void awaitAsync(CgFrame frame, int s) {
         long point = 0;
-        if (frame.steps[s] instanceof CgPass.Callback) {
+        if (frame.steps[s] instanceof CgPass.Callback || frame.steps[s] instanceof CgPass.Include) {
             point = asyncLatest;
         } else {
             for (int i = frame.accessFrom[s]; i < frame.accessFrom[s + 1]; i++) {

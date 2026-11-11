@@ -111,6 +111,8 @@ public final class CgRecording {
     private int fetchesUsed;
     private final List<CgPass.Update> updates = new ArrayList<>();
     private int updatesUsed;
+    private final List<CgPass.Include> includes = new ArrayList<>();
+    private int includesUsed;
     /** {@link #compute(String)}'s frame block: identity, its time set per call. */
     private final CgPassConstants identity = new CgPassConstants();
 
@@ -342,6 +344,60 @@ public final class CgRecording {
         add(copy);
         read(copy, from, CgAccess.COPY_READ);
         write(copy, to, CgAccess.COPY_WRITE);
+    }
+
+    /**
+     * Executes {@code frame}, recorded and built elsewhere, at this point of the recording: a step of the frame this
+     * recording builds into, after what it touches was written and before what reads it after. What a UI recording on
+     * its own thread draws with inside a stage's firing: the firing is built and executed once, and the included frame
+     * executes at its step on the executor's next depth, never built again.
+     *
+     * <pre>{@code
+     * UiFrame ui = sequence.poll();                                     // built on the UI's thread
+     * recording.include(ui.frame()).timed(GPU_UI);                      // its passes, here
+     * canvas.quad(COMPOSITE).texture(0, ui.picture()).submit();          // after them: it reads what they wrote
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Ordered by what {@code frame} touches that outlives it -- the current target, requested, imported,
+     *       persistent and history resources -- as a pass reading and writing them would be. Its transients are its own.</li>
+     *   <li>The caller keeps {@code frame}, and recycles it once this recording's frame has executed.</li>
+     * </ul>
+     *
+     * @return the step, to time or follow: valid until this recording resets
+     */
+    public CgPass.Include include(CgFrame frame) {
+        return addInclude(frame, false, false);
+    }
+
+    /**
+     * {@link #include} of a frame already executed, executed again with what its passes read as it stands now
+     * ({@link CgExecutor#executeAgain}): a compositor's move of what a frame drew, with nothing recorded or built.
+     * Render thread, which knows whether {@code frame} has executed.
+     *
+     * @param keepRequested skip every pass writing a requested texture, leaving it as the last execution did
+     */
+    public CgPass.Include includeAgain(CgFrame frame, boolean keepRequested) {
+        if (frame.executions == 0) throw new IllegalStateException("includeAgain of a frame that has not executed");
+        return addInclude(frame, true, keepRequested);
+    }
+
+    private CgPass.Include addInclude(CgFrame frame, boolean again, boolean keepRequested) {
+        requireOpen();
+        CgPass.Include include;
+        if (includesUsed < includes.size()) include = includes.get(includesUsed);
+        else includes.add(include = new CgPass.Include());
+        includesUsed++;
+        include.reuse(frame, again, keepRequested);
+        add(include);
+        for (int i = 0; i < frame.accessCount; i++) {
+            CgGraphResource view = frame.accessView[i];
+            if (view.isTransient()) continue;
+            int bits = frame.accessBits[i];
+            if ((bits & ~CgResourceStates.WRITES) != 0) read(include, view, bits & ~CgResourceStates.WRITES);
+            if ((bits & CgResourceStates.WRITES) != 0) write(include, view, bits & CgResourceStates.WRITES);
+        }
+        return include;
     }
 
     /** Sets all of {@code buffer} to {@code value} in every 32-bit word. */
@@ -765,6 +821,8 @@ public final class CgRecording {
         fetchesUsed = 0;
         recycle(updates, updatesUsed);
         updatesUsed = 0;
+        recycle(includes, includesUsed);
+        includesUsed = 0;
         chunks.reset();
         chunks.recycle();
         primitives.reset();

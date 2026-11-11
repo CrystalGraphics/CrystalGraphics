@@ -322,6 +322,35 @@ public class CgFrameBuilderTest {
         assertSame(after, frame.steps[2]);
     }
 
+    /** A stage's firing including a UI's built frame: one build, its step between what it reads and what reads it. */
+    @Test
+    public void anIncludedFrameIsAStepOrderedByWhatItTouches() {
+        CgGraphTexture picture = CgGraphTexture.requested("picture", DESC);
+        CgRecording ui = new CgRecording();
+        CgRasterPass painted = raster(ui, picture);
+        painted.add(quads(ui, 1, 1, 0));
+        painted.end();
+        CgFrame built = new CgFrameBuilder().build(new CgFrameGraph().add(ui.seal()));
+
+        CgGraphTexture target = CgGraphTexture.requested("target", DESC);
+        CgRecording firing = new CgRecording();
+        CgRasterPass under = raster(firing, target);
+        under.add(quads(firing, 2, 1, 0));
+        under.end();
+        CgPass.Include include = firing.include(built).timed(7);
+        CgRasterPass composite = raster(firing, target);
+        composite.add(sampling(firing, picture));
+        composite.end();
+
+        CgFrame frame = builder.build(new CgFrameGraph().add(firing.seal()));
+        assertEquals(3, frame.passes());
+        assertSame(under, frame.steps[0]);
+        assertSame(include, frame.steps[1]);
+        assertSame(composite, frame.steps[2]);
+        assertSame(built, include.frame);
+        assertEquals(7, include.gpuZone);
+    }
+
     @Test
     public void workNobodyReadsIsCulled() {
         CgRecording rec = new CgRecording();

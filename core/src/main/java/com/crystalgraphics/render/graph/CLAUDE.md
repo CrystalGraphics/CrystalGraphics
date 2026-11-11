@@ -364,6 +364,17 @@ anything outliving the frame is not taken twice — a frame shown again must not
 `again()`; one writing only transients runs again. A skipped pass whose transient a pass run again reads throws,
 naming both.
 
+**A built frame as a step** (`CgRecording.include(frame)`, `includeAgain(frame, keepRequested)`): a frame recorded and
+built elsewhere -- a UI recorded on its own thread -- executes at its place in another recording's frame, which is
+built once with it. The step (`CgPass.Include`) is ordered as a pass touching what the built frame touches beyond its
+own transients, and executes the frame on the next depth's executor (the callback's re-entrancy, without its GL scope),
+after every split transition of the outer frame has ended, so it takes its storage from where it rests. A stage's
+firing is the user (`CgStageFrame.include`); the caller recycles the frame after the outer one executes.
+
+```java
+CgPass.Include step = firing.include(ui).timed(GPU_UI).then(UI_EXECUTED);   // a held runnable
+```
+
 `CgImmediate` (one package up) is the same three stages in one `try` block, for a caller with no graph — and
 `CgImmediate.flush(chunk, order)` is what `CgQuadBatch`/`CgCurveBatch.flush()` call, under the frame block
 the caller prepared (`render-graph` G2).

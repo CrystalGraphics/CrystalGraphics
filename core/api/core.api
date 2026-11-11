@@ -8746,6 +8746,7 @@ com/crystalgraphics/render/canvas/CgCurveBatch$Cell
   method public gradient (IIFFFF)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Cell;
   method public material (Lcom/crystalgraphics/api/material/CgMaterial;)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Cell;
   method public node (II)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Cell;
+  method public opacity (F)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Cell;
   method public points (FFFFFFFF)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Cell;
   method public pose (Lorg/joml/Matrix4f;)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Cell;
   method public softEdges (I)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Cell;
@@ -8766,6 +8767,7 @@ com/crystalgraphics/render/canvas/CgCurveBatch$Curve
   method public line (FFFF)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Curve;
   method public material (Lcom/crystalgraphics/api/material/CgMaterial;)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Curve;
   method public node (II)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Curve;
+  method public opacity (F)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Curve;
   method public pose (Lorg/joml/Matrix4f;)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Curve;
   method public state (Lcom/crystalgraphics/api/state/CgRenderState;)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Curve;
   method public submit ()Lcom/crystalgraphics/render/canvas/CgCanvas;
@@ -8785,6 +8787,7 @@ com/crystalgraphics/render/canvas/CgCurveBatch$Triangle
   method public gradient (IIFFFF)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Triangle;
   method public material (Lcom/crystalgraphics/api/material/CgMaterial;)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Triangle;
   method public node (II)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Triangle;
+  method public opacity (F)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Triangle;
   method public p0 (FF)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Triangle;
   method public p0 (FFF)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Triangle;
   method public p1 (FF)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Triangle;
@@ -8816,11 +8819,13 @@ com/crystalgraphics/render/canvas/CgQuadBatch$Quad
   method public custom2 (F)Lcom/crystalgraphics/render/canvas/CgQuadBatch$Quad;
   method public material (Lcom/crystalgraphics/api/material/CgMaterial;)Lcom/crystalgraphics/render/canvas/CgQuadBatch$Quad;
   method public node (II)Lcom/crystalgraphics/render/canvas/CgQuadBatch$Quad;
+  method public opacity (F)Lcom/crystalgraphics/render/canvas/CgQuadBatch$Quad;
   method public pose (Lorg/joml/Matrix4f;)Lcom/crystalgraphics/render/canvas/CgQuadBatch$Quad;
   method public size (FF)Lcom/crystalgraphics/render/canvas/CgQuadBatch$Quad;
   method public state (Lcom/crystalgraphics/api/state/CgRenderState;)Lcom/crystalgraphics/render/canvas/CgQuadBatch$Quad;
   method public submit ()Lcom/crystalgraphics/render/canvas/CgCanvas;
   method public texture (ILcom/crystalgraphics/api/texture/CgTexture;)Lcom/crystalgraphics/render/canvas/CgQuadBatch$Quad;
+  method public texture (ILcom/crystalgraphics/api/texture/CgTexture;Lcom/crystalgraphics/api/texture/CgSampler;)Lcom/crystalgraphics/render/canvas/CgQuadBatch$Quad;
   method public uv (FFFF)Lcom/crystalgraphics/render/canvas/CgQuadBatch$Quad;
   method public world (DDD)Lcom/crystalgraphics/render/canvas/CgQuadBatch$Quad;
 com/crystalgraphics/render/canvas/CgQuadRecord
@@ -8941,6 +8946,7 @@ com/crystalgraphics/render/draw/CgBindingTable
   method public textures (I)I
   method public upload (Lcom/crystalgraphics/gl/buffer/CgStreamBuffer;)V
   method public withTexture (IILcom/crystalgraphics/api/texture/CgTexture;)I
+  method public withTexture (IILcom/crystalgraphics/api/texture/CgTexture;Lcom/crystalgraphics/api/texture/CgSampler;)I
 com/crystalgraphics/render/draw/CgBlockVersion
   access public,final
   extends java/lang/Object
@@ -9506,6 +9512,11 @@ com/crystalgraphics/render/graph/CgPass
   method public name ()Ljava/lang/String;
   method public target ()Lcom/crystalgraphics/render/graph/CgGraphTexture;
   method public toString ()Ljava/lang/String;
+com/crystalgraphics/render/graph/CgPass$Include
+  access public,final
+  extends com/crystalgraphics/render/graph/CgPass
+  method public then (Ljava/lang/Runnable;)Lcom/crystalgraphics/render/graph/CgPass$Include;
+  method public timed (I)Lcom/crystalgraphics/render/graph/CgPass$Include;
 com/crystalgraphics/render/graph/CgRasterPass
   access public,final
   extends com/crystalgraphics/render/graph/CgPass
@@ -9551,6 +9562,8 @@ com/crystalgraphics/render/graph/CgRecording
   method public fetch (Lcom/crystalgraphics/render/graph/CgGraphBuffer;JJLcom/crystalgraphics/gl/buffer/CgReadback$Sink;)V
   method public fill (Lcom/crystalgraphics/render/graph/CgGraphBuffer;I)V
   method public fill (Lcom/crystalgraphics/render/graph/CgGraphBuffer;JJI)V
+  method public include (Lcom/crystalgraphics/render/graph/CgFrame;)Lcom/crystalgraphics/render/graph/CgPass$Include;
+  method public includeAgain (Lcom/crystalgraphics/render/graph/CgFrame;Z)Lcom/crystalgraphics/render/graph/CgPass$Include;
   method public isSealed ()Z
   method public operations ()I
   method public pass (I)Lcom/crystalgraphics/render/graph/CgPass;
@@ -10680,6 +10693,8 @@ com/crystalgraphics/render/stage/CgStageFrame
   method public guiScaledCanvas ()Lcom/crystalgraphics/render/canvas/CgCanvas;
   method public historyValid ()Z
   method public host ()Lcom/crystalgraphics/render/stage/CgHostFrame;
+  method public include (Lcom/crystalgraphics/render/graph/CgFrame;)Lcom/crystalgraphics/render/graph/CgPass$Include;
+  method public includeAgain (Lcom/crystalgraphics/render/graph/CgFrame;Z)Lcom/crystalgraphics/render/graph/CgPass$Include;
   method public ordinal ()I
   method public pass (Lcom/crystalgraphics/render/draw/CgPassConstants;Lcom/crystalgraphics/render/draw/CgOrder;)Lcom/crystalgraphics/render/graph/CgRasterPass;
   method public projectWorld (DDDLorg/joml/Vector2f;)Z

@@ -3,6 +3,8 @@ package com.crystalgraphics.mc.legacy.platform;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.ScaledResolution;
+import net.minecraft.client.renderer.GlStateManager;
+import net.minecraft.client.renderer.OpenGlHelper;
 import net.minecraftforge.client.event.GuiScreenEvent;
 import net.minecraftforge.client.event.RenderGameOverlayEvent;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
@@ -31,7 +33,15 @@ public final class OverlayStagesLegacy {
 
     private static void fire(CgRenderStage stage) {
         Minecraft mc = Minecraft.getMinecraft();
-        stage.fireOverlay(mc.displayWidth, mc.displayHeight, new ScaledResolution(mc).getScaleFactor(),
-                mc.getFramebuffer().framebufferObject);
+        try {
+            stage.fireOverlay(mc.displayWidth, mc.displayHeight, new ScaledResolution(mc).getScaleFactor(),
+                    OpenGlHelper.isFramebufferEnabled() ? mc.getFramebuffer().framebufferObject : 0);
+        } finally {
+            // What Minecraft's fixed-function present assumes, through GlStateManager so its cache agrees: the section's
+            // close set back what it caches, not the unit, program and texturing the present draws its quad with.
+            GlStateManager.setActiveTexture(OpenGlHelper.defaultTexUnit);
+            OpenGlHelper.glUseProgram(0);
+            GlStateManager.enableTexture2D();
+        }
     }
 }
