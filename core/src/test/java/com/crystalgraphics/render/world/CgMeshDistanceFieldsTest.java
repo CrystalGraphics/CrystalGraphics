@@ -1,9 +1,17 @@
 package com.crystalgraphics.render.world;
 
 import com.crystalgraphics.api.mesh.CgMeshShapes;
+import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.TemporaryFolder;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Arrays;
+
+import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 public class CgMeshDistanceFieldsTest {
@@ -24,6 +32,27 @@ public class CgMeshDistanceFieldsTest {
         assertEquals((float) Math.sqrt(2 * 0.0625 * 0.0625), at(f, 0.5625f, 0.5625f, 0f), 1e-3f);
         assertEquals(0f, at(f, 0.5f, 0.1875f, -0.25f), 1e-3f);
     }
+
+    @Test
+    public void aKeptFieldReadsBackAsMadeAndADamagedOneIsAMiss() throws Exception {
+        CgMeshDistanceFields.Field made = CgMeshDistanceFields.generate(CgMeshShapes.cube());
+        Path file = folder.newFile("cube.field").toPath();
+        CgMeshDistanceFields.write(file, made);
+        CgMeshDistanceFields.Field kept = CgMeshDistanceFields.read(file);
+        assertEquals(made.nx(), kept.nx());
+        assertEquals(made.ny(), kept.ny());
+        assertEquals(made.nz(), kept.nz());
+        assertEquals(made.ox(), kept.ox(), 0f);
+        assertEquals(made.voxel(), kept.voxel(), 0f);
+        assertArrayEquals(made.distances(), kept.distances(), 0f);
+
+        byte[] bytes = Files.readAllBytes(file);
+        Files.write(file, Arrays.copyOf(bytes, bytes.length - 4));
+        assertNull("a short file is compiled again", CgMeshDistanceFields.read(file));
+    }
+
+    @Rule
+    public TemporaryFolder folder = new TemporaryFolder();
 
     @Test
     public void sphereIsSignedAndNearItsRadius() {

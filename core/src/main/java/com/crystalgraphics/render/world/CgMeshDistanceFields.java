@@ -15,10 +15,17 @@ import com.crystalgraphics.render.graph.CgRecording;
 import com.crystalgraphics.render.mesh.CgOffsetAllocator;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
+import com.crystalgraphics.platform.io.CgAtomicFile;
+import com.crystalgraphics.platform.service.CgCacheDirectory;
 import com.crystalgraphics.variable.CgVar;
 
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.IdentityHashMap;
@@ -35,7 +42,9 @@ import java.util.Map;
  * still has an inside. A field is made once a mesh (and index range) on a worker from its CPU copy and kept for the
  * session in one R32F atlas {@link #ROW} floats wide, whole rows a field, float i of a field at (i % ROW, i / ROW) from
  * its first; none for a mesh with no CPU copy, no triangles, or rewritten every frame. A texture rather than a buffer:
- * a material reads at most four buffers, and the lights' passes use them.</p>
+ * a material reads at most four buffers, and the lights' passes use them. Made fields are kept across launches in the
+ * cache's {@code meshfield} folder by their triangles ({@link #keptOrGenerated}), so a launch after the first builds
+ * none it built before.</p>
  *
  * <pre>{@code
  * CgMeshDistanceFields.Entry field = fields.field(mesh, submesh, first, count);   // render thread; null until ready
@@ -144,7 +153,7 @@ final class CgMeshDistanceFields {
         }
         CgJob.lane(CgJobLane.BACKGROUND).run(() -> {
             try {
-                e.made = generate(positions, triangles);
+                e.made = keptOrGenerated(positions, triangles);
             } catch (RuntimeException ex) {
                 e.failed = true;
             }
@@ -251,6 +260,79 @@ final class CgMeshDistanceFields {
         mesh.readIndices(s[0] + first, out.length, out, 0);
         for (int i = 0; i < out.length; i++) out[i] += s[2];
         return out;
+    }
+
+    /**
+     * The field a launch before made for these triangles, else {@link #generate}d here and kept: Unreal builds a mesh's
+     * distance field once and keeps it in its derived data cache, never at runtime. Keyed by the positions, the triangles
+     * and every constant the build reads, so a changed mesh or build is a miss. Any thread.
+     */
+    static Field keptOrGenerated(float[] positions, int[] triangles) {
+        Path dir = CgCacheDirectory.of(CACHE);
+        Path file = dir == null ? null : dir.resolve(key(positions, triangles));
+        Field kept = file == null ? null : read(file);
+        if (kept != null) return kept;
+        Field made = generate(positions, triangles);
+        if (file != null) write(file, made);
+        return made;
+    }
+
+    /** {@link CgCacheDirectory}'s folder for kept fields, bounded by its prune. */
+    private static final String CACHE = "meshfield";
+    /** A kept field's first word and its build: bump {@code BUILD} when {@link #generate} changes what it makes. */
+    private static final int MAGIC = 0x434d4446, BUILD = 1;
+
+    private static String key(float[] positions, int[] triangles) {
+        MessageDigest sha;
+        try {
+            sha = MessageDigest.getInstance("SHA-256");
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
+        ByteBuffer head = ByteBuffer.allocate(24).putInt(BUILD).putInt(DENSITY).putInt(MOST).putInt(BAND).putInt(CELL)
+                .putInt(DIRECTIONS.length);
+        sha.update(head.array());
+        ByteBuffer words = ByteBuffer.allocate(Math.max(positions.length, triangles.length) * 4);
+        words.asFloatBuffer().put(positions);
+        sha.update(words.array(), 0, positions.length * 4);
+        words.clear();
+        words.asIntBuffer().put(triangles);
+        sha.update(words.array(), 0, triangles.length * 4);
+        StringBuilder hex = new StringBuilder(68);
+        for (byte b : sha.digest()) hex.append(Character.forDigit(b >> 4 & 15, 16)).append(Character.forDigit(b & 15, 16));
+        return hex.append(".field").toString();
+    }
+
+    /** The field kept in {@code file}, or null where there is none or it does not read back whole. */
+    static Field read(Path file) {
+        byte[] bytes;
+        try {
+            bytes = Files.readAllBytes(file);
+        } catch (IOException missing) {
+            return null;
+        }
+        ByteBuffer in = ByteBuffer.wrap(bytes);
+        if (bytes.length < 36 || in.getInt() != MAGIC || in.getInt() != BUILD) return null;
+        int nx = in.getInt(), ny = in.getInt(), nz = in.getInt();
+        float ox = in.getFloat(), oy = in.getFloat(), oz = in.getFloat(), voxel = in.getFloat();
+        long count = (long) nx * ny * nz;
+        if (nx < 0 || ny < 0 || nz < 0 || in.remaining() != count * 4) return null;
+        float[] distances = new float[(int) count];
+        in.asFloatBuffer().get(distances);
+        CgCacheDirectory.used(file);
+        return new Field(nx, ny, nz, ox, oy, oz, voxel, distances);
+    }
+
+    static void write(Path file, Field f) {
+        ByteBuffer out = ByteBuffer.allocate(36 + f.distances().length * 4);
+        out.putInt(MAGIC).putInt(BUILD).putInt(f.nx()).putInt(f.ny()).putInt(f.nz())
+                .putFloat(f.ox()).putFloat(f.oy()).putFloat(f.oz()).putFloat(f.voxel());
+        out.asFloatBuffer().put(f.distances());
+        try {
+            CgAtomicFile.write(file, out.array());
+        } catch (IOException e) {
+            // Unkept: made again next launch
+        }
     }
 
     /** A field for all of {@code mesh}'s triangles, made here: what a test checks. */

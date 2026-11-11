@@ -75,7 +75,7 @@ public final class CgCacheDirectory {
      * The kinds keyed by what made their entries, which {@link #prune} bounds: every source change is a new key, and the
      * old entry is never read again. A kind of one file a driver ({@code vulkan}, {@code pipelines}) needs none.
      */
-    public static final String[] PRUNED = {"glprogram", "spirv"};
+    public static final String[] PRUNED = {"glprogram", "spirv", "meshfield"};
 
     private static final Set<String> PRUNED_ALREADY = ConcurrentHashMap.newKeySet();
 
