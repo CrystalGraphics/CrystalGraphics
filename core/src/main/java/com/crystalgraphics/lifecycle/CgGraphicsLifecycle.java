@@ -1,5 +1,6 @@
 package com.crystalgraphics.lifecycle;
 
+import com.crystalgraphics.platform.CgFrameThread;
 import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.rhi.CgDeviceSection;
 import com.crystalgraphics.platform.gl.state.GLCheckedHostState;
@@ -528,6 +529,9 @@ public final class CgGraphicsLifecycle {
         if (destroyed || stoodDown) return;
 
         CgFrameClock.advance();
+        // What other threads asked of the frame thread's services (the clipboard, sounds, the cursor): before anything
+        // this frame draws, and before the device section, since none of it is device work.
+        CgFrameThread.drain();
         CgWarmBudget.nextFrame();   // first: the finishers below charge this frame's budget
         if (initialized) CgLoadingScreen.frame();   // sets that budget
 
