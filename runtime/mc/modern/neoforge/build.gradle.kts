@@ -53,9 +53,11 @@ if (!stubMode) configure<NeoForgeExtension> {
         mappingsVersion = property("parchment.version").toString()
     }
 
+    // Per NODE, as Forge's and Fabric's: `project.file` resolves under versions/<version>/.
     if (!fromParts) runs {
         create("client") {
             client()
+            gameDirectory = project.file("runs/client")
             // Forward every -Dcrystalgraphics.* from the Gradle invocation into the game's JVM, the
             // way the debug harness does. Without it the diagnostic flags this project ships --
             // host.verify, state.verify, state.noDedup -- are unreachable from a dev run, which is

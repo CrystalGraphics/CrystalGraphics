@@ -139,6 +139,8 @@ abstract class SingleJarSettings @Inject constructor(private val settings: Setti
                     if (!hasProperty(key)) extensions.extraProperties.set(key, value)
                 }
                 excludeNodeOutputs()
+                // After the node's loader plugin: applied before it, ModDevGradle asked a Java 21 toolchain of 26.2
+                if (path in pins) afterEvaluate { excludeRuns() }
             }
         }
     }
@@ -186,9 +188,9 @@ class Targets {
 
 /**
  * Nodes the build does not include are plain folders to IntelliJ, inside whichever project's module is nearest, and
- * their `build` and `.gradle` would be indexed with its sources. That project excludes them: every `versions/<node>/`
- * below it, to a depth that reaches a tree's branches (`runtime/mc/modern/<branch>/versions`). The outermost project
- * claims a folder.
+ * their `build`, `.gradle` and dev clients' folders would be indexed with its sources. That project excludes them: every
+ * `versions/<node>/` below it, to a depth that reaches a tree's branches (`runtime/mc/modern/<branch>/versions`). The
+ * outermost project claims a folder. A node the build includes is a module of its own, which `excludeRuns` covers.
  */
 private fun Project.excludeNodeOutputs() {
     val claimed = rootProject.extensions.extraProperties.let {
@@ -199,12 +201,21 @@ private fun Project.excludeNodeOutputs() {
         .onEnter { it.name != "build" && it.name != ".gradle" && it.name != ".git" }
         .filter { it.isDirectory && it.name == "versions" && it.parentFile.name != "build" }
         .flatMap { it.listFiles(File::isDirectory).orEmpty().asSequence() }
-        .flatMap { sequenceOf(File(it, "build"), File(it, ".gradle")) }
+        .flatMap { node -> (listOf("build", ".gradle") + RUN_DIRS).asSequence().map { File(node, it) } }
         .filter { claimed.add(it) }
         .toList()
     if (outputs.isEmpty()) return
     pluginManager.apply("idea")
     extensions.configure(IdeaModel::class.java) { module.excludeDirs.addAll(outputs) }
 }
+
+/** An included node's dev clients' game folders, excluded from its module: worlds, logs and engine caches. */
+private fun Project.excludeRuns() {
+    pluginManager.apply("idea")
+    extensions.configure(IdeaModel::class.java) { module.excludeDirs.addAll(RUN_DIRS.map { file(it) }) }
+}
+
+/** Where a node's dev clients run: `runs/<side>` on the modern trees, `run` on legacy Forge's. */
+private val RUN_DIRS = listOf("runs", "run")
 
 private const val EXCLUDED_NODES = "singlejar.excludedNodeOutputs"
