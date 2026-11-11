@@ -197,7 +197,7 @@ public final class CgRenderDemo {
     /** When each scene was built, in nanoseconds; -1 once warmed. Polled many times a frame, so timed, not counted. */
     private final long[] warmFrom = new long[kinds.length];
     private int current = -1, wanted;
-    /** The scene {@link #prewarm} built and is waiting on, or -1; {@code allWarm} once every scene is warmed. */
+    /** The scene {@link #prewarmRest} built and is waiting on, or -1; {@code allWarm} once every scene is warmed. */
     private int prewarming = -1;
     private boolean allWarm;
     private boolean anchored, grounded;
@@ -289,8 +289,8 @@ public final class CgRenderDemo {
                 frame.callback("demo.capture", capture);
             });
         }
-        // The shown scene alone: building all three cost the first world frame a quarter second (26.2, Vulkan). The rest
-        // are prewarmed behind the loading screen, one a slice of a tracked task.
+        // The shown scene alone: building all three cost the first world frame a quarter second (26.2, Vulkan). It warms
+        // and rehearses behind the loading screen as a tracked task; the rest warm after the screen hides.
         build(wanted);
         CgEngineLifecycle.addListener(new CgLifecycleListener() {
             @Override
@@ -324,7 +324,7 @@ public final class CgRenderDemo {
         }
         current = -1;
         prewarming = -1;
-        allWarm = false;
+        allWarm = shownReady = false;
     }
 
     // ── scenes ────────────────────────────────────────────────────────────────
@@ -680,6 +680,7 @@ public final class CgRenderDemo {
         }
         if (!grounded) ground();
         if (PROFILE > 0 && grounded) profile();
+        prewarmRest();
         lastX = view.x();
         lastY = view.y();
         lastZ = view.z();
@@ -769,51 +770,41 @@ public final class CgRenderDemo {
     }
 
     /**
-     * The load task's render part: warms the scene to show, then builds the others one at a time, each after the last
-     * has warmed, so a first switch to one waits on nothing and no slice builds more than one. True once all are warm.
+     * The load task's render part: the scene to show warmed, then shown behind the loading screen until its first plays'
+     * one-time work is done (its meshes placed, its effects' renderers and materials made, its labels captured). True
+     * once it has; the other scenes warm after the screen hides ({@link #prewarmRest}).
      */
     private boolean warmAhead(CgLoadTask task) {
-        if (allWarm) return true;
+        if (shownReady) return true;
         if (scenes[wanted] == null) return false;
         // Inside the frame's host section (CgLoadPlan), whose close sets back what a compile commit bound
         if (!warm(wanted)) return false;
+        task.progress(0.5f + 0.5f * Math.min(1f, shownFrames / (float) REHEARSE_MIN));
+        if (current != wanted || !settled()) return false;
+        LOGGER.info("[CgRenderDemo] {} rehearsed", kinds[current].name());
+        return shownReady = true;
+    }
+
+    /**
+     * Once the shown scene is ready and the loading screen has hidden: the others built one at a time, each after the last
+     * has warmed, in the frame's warm budget, so a first switch to one finds it warm and no frame builds more than one. A
+     * switch to one not warm yet draws it once it is. Their first plays' one-time work lands in their first frames shown.
+     */
+    private void prewarmRest() {
+        // After the hide: warming pipelines and effects keep a showing screen up, but never raise a hidden one
+        if (!shownReady || allWarm || CgLoadingScreen.shown()) return;
         if (prewarming >= 0) {
-            if (!warm(prewarming)) return false;
+            if (!warm(prewarming)) return;
             prewarming = -1;
         }
-        int built = 0;
-        for (Scene s : scenes) if (s != null) built++;
-        task.progress((built + Math.max(rehearsal, 0)) / (2f * kinds.length));
         for (int i = 0; i < kinds.length; i++) {
             if (scenes[i] != null) continue;
             build(i);
             prewarming = i;
-            return false;
+            return;
         }
-        return allWarm = rehearsed();
-    }
-
-    /**
-     * Every scene shown behind the loading screen, which it draws into its world frame, until its first plays' one-time
-     * work is done: each scene's meshes placed, its effects' renderers and materials made, its labels captured, all of
-     * which a first switch in the world otherwise did at once (modules: 250 ms). Then the scene it started on again.
-     * True once done; polled by the load task, advanced by {@link #frame}'s frames.
-     */
-    private boolean rehearsed() {
-        if (rehearsal >= kinds.length) return true;
-        if (rehearsal < 0) {
-            home = wanted;
-            rehearsal = 0;
-        } else if (current != rehearsal || !settled()) {
-            return false;
-        } else if (++rehearsal >= kinds.length) {
-            wanted = home;
-            LOGGER.info("[CgRenderDemo] every scene rehearsed");
-            return true;
-        }
-        wanted = rehearsal;
-        shownFrames = quietFrames = 0;
-        return false;
+        allWarm = true;
+        LOGGER.info("[CgRenderDemo] every scene warmed");
     }
 
     /**
@@ -833,8 +824,8 @@ public final class CgRenderDemo {
     private static final int REHEARSE_QUIET = 4;
     /** Frames a scene is shown at most, its first-use work done or not. */
     private static final int REHEARSE_MOST = 40;
-    /** The scene being rehearsed, -1 before, {@code kinds.length} once done; the scene to go back to after. */
-    private int rehearsal = -1, home;
+    /** Whether the scene shown first has warmed and rehearsed: the load task's end, and the other scenes' start. */
+    private boolean shownReady;
     /** Frames the scene showing has submitted since it was switched to, and of them the last in a row with no first-use work. */
     private int shownFrames, quietFrames;
     /** {@link CgLoadingScreen#firstUseWork} at the last frame shown. */
