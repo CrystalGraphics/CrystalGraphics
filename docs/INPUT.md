@@ -441,4 +441,4 @@ event before gameplay sees it. Key bindings follow Minecraft's own `KeyMapping`,
 `com.crystalgraphics.platform.input` (`CgInputStage`, `CgInputListener`, `CgKeyBindings`, `CgInput`, `CgClipboard`, the
 code tables); each toolkit's devices and clipboard under `runtime/lwjgl/` (`InputGlfw`, `ClipboardGlfw`, ...); each era's
 host under `runtime/mc/` (`ScreenInput*`, `InputHost*`, `KeyBindings*`). CrystalGUI's desktop is one listener,
-`HostInputListener`.
+`CgUiScreenInput`.

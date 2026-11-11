@@ -52,7 +52,6 @@ import com.crystalgraphics.platform.world.CgPlayers;
 import com.crystalgraphics.platform.service.CgGameThreads;
 import com.crystalgraphics.platform.input.CgKeyBindings;
 import com.crystalgraphics.platform.service.CgScreens;
-import com.crystalgraphics.platform.service.CgHostWindow;
 import com.crystalgraphics.platform.service.CgServers;
 import com.crystalgraphics.platform.world.CgModelSpace;
 import com.crystalgraphics.platform.world.CgWorldEvents;
@@ -66,8 +65,6 @@ import com.crystalgraphics.platform.world.CgWorldStimulus;
 
 import net.minecraft.client.Minecraft;
 
-import java.nio.file.Path;
-import java.nio.file.Paths;
 //? if >=26.2 {
 /*import com.crystalgraphics.mc.modern.platform.vulkan.Blaze3dVulkanHost;
 *///?}
@@ -134,7 +131,6 @@ public final class PlatformServiceModern implements CgPlatformService {
         CgPlatform.provide(CgWorldStimulus.SERVICE, new WorldStimulusModern());
         CgPlatform.provide(CgGameDirectory.HOST, new GameDirectoryModern());
         CgPlatform.provide(CgGameThreads.HOST, new GameThreadsModern());
-        CgPlatform.provide(CgHostWindow.HOST, new HostWindowModern());
         CgPlatform.provide(CgScreens.HOST, ScreensModern.INSTANCE);
         CgPlatform.provide(CgGameSession.HOST, GameSessionModern.INSTANCE);
         CgPlatform.provide(CgKeyBindings.HOST, KeyBindingsModern.INSTANCE);

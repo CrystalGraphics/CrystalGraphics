@@ -51,7 +51,6 @@ seams are here too — see [UI-facing services](#ui-facing-services).
 | `service/CgGameClasses` | Static owner + `Host` slot | The game's own classes as they run: `minecraftVersion()`, a class's `bytes` after every transformer and mixin, and `runtimeName` (Notch to SRG on LaunchWrapper, else itself). Both sides; `GameClassesModern`, `GameClassesLegacy`, `GameClasses1710`. What CrystalGUI's language mod reads the game through |
 | `service/CgServers` | Static owner + `Host` slot | The server this process runs: `running`, `dedicated`, its `directory`, `version`, `halt`. Both sides; `ServersModern`, `ServersLegacy`, `Servers1710` |
 | `service/CgGameThreads` | Static owner + `Host` slot | The game's client and server threads as a `Binding` (`execute`, `isCurrent`, `isAvailable`), what core's `job.CgHostThread` runs work on. Client slot from the client install, server from either; `GameThreadsModern`, `GameThreadsLegacy`, `GameThreads1710` |
-| `service/CgHostWindow` | Static owner + `Host` slot | The surface's `width()` and `height()` in device pixels. Client only; `HostWindowModern`, `HostWindowLegacy`, `HostWindow1710` |
 | `service/CgGameSession` | Static owner + `Host` slot | The client's game session for an unattended run (`gauntlet`, `docs/GAUNTLET.md`): `ready`, `inWorld`, `enterWorld(save)` (the save, else the first, else, where the era can, a new flat one: `saveToEnter` decides which for every host), `quit` through the game's own shutdown. Client only; `GameSessionModern`, `GameSessionLegacy`, `GameSession1710` |
 | `service/CgScreens` | Static owner + `Host` slot | A screen of the engine's in front of the game, for a UI drawn at `CgRenderStage.SCREEN`: `open(owner)`, `close(owner)` (at the next tick), `isOpen`, `anyOpen` (any screen, the host's own too), `giveBack(key)` for a key a `SCREEN` input listener left, and the host's own screens for an unattended run: `closeFront()`, `openChat()`. The host treats it as its own screen (cursor free, player still, Escape the owner's) and it draws nothing. Client only; `ScreensModern`, `ScreensLegacy`, `Screens1710` |
 | `service/CgStorageLayout` | Final class | A product's `<base>/<product>/` tree stated once: `configIn` (`config`, durable) and `cacheIn` (`cache`, disposable). `CgStorageLayout.of("crystalgraphics")` is CrystalGraphics' own, which `CgCacheDirectory` roots under; a consumer makes its own and adds its folders. The config stores, cache files and downloads that use it are core's `storage` package |
@@ -267,7 +266,8 @@ anything there. All on the GL thread:
 
 **`tickFrame()` is the only sanctioned per-frame tick** for engine singletons (`CgFontRegistry.tickFrame()`);
 feature code never calls it. The hosts fire the world's render stages from their own hooks
-(`CgRenderStage.WORLD_OPAQUE`, `WORLD_TRANSPARENT`); the window's size is `CgHostWindow`'s.
+(`CgRenderStage.WORLD_OPAQUE`, `WORLD_TRANSPARENT`); the window's size is what they pass `tickFrame`'s context, read back
+with `CgGraphicsLifecycle.getCurrentWidth()`/`getCurrentHeight()`.
 
 ---
 
