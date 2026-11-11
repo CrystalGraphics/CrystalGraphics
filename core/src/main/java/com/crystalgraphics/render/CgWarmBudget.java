@@ -71,7 +71,18 @@ public final class CgWarmBudget {
     public static void spend(long nanos) {
         long n = Math.max(nanos, 1L);
         spent += n;
+        if (n > estimate && LOG.get() && n > 2_000_000L) {
+            LOGGER.info("[warm] a start took {} us, the estimate now: {}", n / 1000, caller());
+        }
         estimate = Math.max(n, estimate);
+    }
+
+    /** The first frame outside this class: who charged a start. */
+    private static String caller() {
+        for (StackTraceElement e : new Throwable().getStackTrace()) {
+            if (!e.getClassName().equals(CgWarmBudget.class.getName())) return e.toString();
+        }
+        return "unknown";
     }
 
     /**
@@ -106,7 +117,8 @@ public final class CgWarmBudget {
     /** A frame's start, before anything warms in it: its whole budget. The lifecycle's. */
     public static void nextFrame() {
         if (LOG.get() && (spent > 0 || refused > 0)) {
-            LOGGER.info("[warm] spent {} us of {} ms, {} starts refused", spent / 1000, millis(), refused);
+            LOGGER.info("[warm] spent {} us of {} ms, {} starts refused, a start estimated at {} us", spent / 1000,
+                    millis(), refused, estimate / 1000);
         }
         CgTrace.counter(CgChannels.MISC, SPENT, spent / 1000);
         CgTrace.counter(CgChannels.MISC, REFUSED, refused);
