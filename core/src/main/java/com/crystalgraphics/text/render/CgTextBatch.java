@@ -384,6 +384,9 @@ public final class CgTextBatch {
             // The size-derived decision, not the forced ones below: the hysteresis damps size changes only.
             if (previous == null || previous.effectiveTargetPx() != effectiveTargetPx || previous.wasMsdf() != sizeWantsMsdf) {
                 history.put(fontKey, new RasterHistory(effectiveTargetPx, sizeWantsMsdf));
+                if (CgTrace.isEnabled(CgChannels.TEXT)) {
+                    CgTrace.marker(CgChannels.TEXT, "text.rasterPx", "base=" + basePx + " px=" + effectiveTargetPx + (sizeWantsMsdf ? " msdf" : " bitmap"));
+                }
             }
         }
 

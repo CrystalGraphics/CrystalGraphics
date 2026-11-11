@@ -12,6 +12,8 @@ import com.crystalgraphics.frame.CgWorld;
 import com.crystalgraphics.render.canvas.CgCanvasMaterials;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.stage.CgStageFrame;
+import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.trace.CgTraceChannel;
 import com.crystalgraphics.world.CgWorldQueries;
 
 /**
@@ -49,6 +51,8 @@ import com.crystalgraphics.world.CgWorldQueries;
  * </ul>
  */
 public final class CgScreenWidgetLayer implements AutoCloseable {
+
+    private static final CgTraceChannel TRACE = CgTrace.channel("crystalgraphics.widget");
 
     private final String id;
     @Nullable
@@ -166,13 +170,17 @@ public final class CgScreenWidgetLayer implements AutoCloseable {
      * first, {@code scale} canvas pixels a widget unit.
      */
     void paint(CgWidgetPainter painter, float width, float height, float scale) {
-        for (int i = 0; i < widgets.size(); i++) {
-            CgUserWidget w = widgets.get(i);
-            w.allot(width, height);
-            w.retain(painter);
+        try (CgTrace.Zone ignored = CgTrace.zone(TRACE, "widget.screen.retain")) {
+            for (int i = 0; i < widgets.size(); i++) {
+                CgUserWidget w = widgets.get(i);
+                w.allot(width, height);
+                w.retain(painter);
+            }
         }
         placement.scaling(scale);
-        for (int i = 0; i < widgets.size(); i++) widgets.get(i).paint(painter, placement);
+        try (CgTrace.Zone ignored = CgTrace.zone(TRACE, "widget.screen.paint")) {
+            for (int i = 0; i < widgets.size(); i++) widgets.get(i).paint(painter, placement);
+        }
     }
 
     /** What a layer is: its kit, its retained image, where it draws. */

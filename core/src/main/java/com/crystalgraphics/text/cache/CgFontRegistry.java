@@ -545,6 +545,9 @@ public class CgFontRegistry {
                 rasterFontKey, effectiveTargetPx);
         if (!glyphGenerationExecutor.hasFailed(job) && glyphGenerationExecutor.submit(job, true)) {
             CgTrace.add(CgChannels.TEXT, "glyph.shadowCell.deferredToWorker", 1);
+            if (CgTrace.isEnabled(CgChannels.TEXT)) {
+                CgTrace.marker(CgChannels.TEXT, "shadowCell.miss", "px=" + effectiveTargetPx + " " + cell);
+            }
         } else {
             CgTrace.add(CgChannels.TEXT, "glyph.shadowCell.refused", 1);
         }
