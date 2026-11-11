@@ -287,7 +287,7 @@ child project would be one a loader could forget, leaving a working device besid
 
 | Reached via | Provides |
 |---|---|
-| `CgInput` | what is held now, and a toolkit's codes in the engine's: CrystalGUI reads it through `PlatformPort` |
+| `CgInput` | what is held now, and a toolkit's codes in the engine's: CrystalGUI's `Input` reads it for a document on the client thread |
 | `CgClipboard` | the clipboard's text |
 | `CgPlatform.get(CgCursorService.SERVICE)` | presenting a cursor picture; CrystalGUI decides which |
 | `CgWorldQueries.client()`, `CgEntityQueries.client()` (core) | the client level's blocks and entities, over `CgLevels`; `NONE` with no level, on a server and in the harness |
