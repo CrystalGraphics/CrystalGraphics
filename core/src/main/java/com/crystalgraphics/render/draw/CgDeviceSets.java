@@ -1,11 +1,11 @@
 package com.crystalgraphics.render.draw;
 
-import com.crystalgraphics.gl.texture.CgTextureAbstract;
+import com.crystalgraphics.gpu.resource.CgTextureAbstract;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.platform.rhi.CgDeviceNames;
 import com.crystalgraphics.api.texture.CgSampler;
-import com.crystalgraphics.gl.buffer.CgFrameRing;
-import com.crystalgraphics.gl.texture.CgFallbackTextures;
+import com.crystalgraphics.gpu.resource.CgFrameRing;
+import com.crystalgraphics.gpu.resource.CgFallbackTextures;
 import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.rhi.binding.CgBindingLayout;
 import com.crystalgraphics.platform.rhi.binding.CgBindingSet;

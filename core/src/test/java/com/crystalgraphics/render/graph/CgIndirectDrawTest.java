@@ -5,7 +5,7 @@ import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgMeshTopology;
 import com.crystalgraphics.compute.CgCompute;
 import com.crystalgraphics.compute.CgKernel;
-import com.crystalgraphics.gl.material.CgMaterialTestSupport;
+import com.crystalgraphics.material.CgMaterialTestSupport;
 import com.crystalgraphics.platform.rhi.command.CgAccess;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
 import com.crystalgraphics.render.draw.CgIndirect;

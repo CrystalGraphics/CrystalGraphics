@@ -15,8 +15,8 @@ import org.apache.logging.log4j.Logger;
 
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.compute.CgKernel;
-import com.crystalgraphics.gl.material.CgMaterialShader;
-import com.crystalgraphics.gl.material.CgMaterialShaderRegistry;
+import com.crystalgraphics.material.CgMaterialShader;
+import com.crystalgraphics.material.CgMaterialShaderRegistry;
 import com.crystalgraphics.job.CgJob;
 import com.crystalgraphics.job.CgJobLane;
 import com.crystalgraphics.render.CgWarmBudget;

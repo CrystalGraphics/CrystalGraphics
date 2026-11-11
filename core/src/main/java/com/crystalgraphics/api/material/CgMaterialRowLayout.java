@@ -6,7 +6,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-import com.crystalgraphics.gl.material.CgMaterialProperty;
+import com.crystalgraphics.material.CgMaterialProperty;
 import com.github.bsideup.jabel.Desugar;
 
 /**

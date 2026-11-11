@@ -3,8 +3,8 @@ package com.crystalgraphics.render.graph;
 import com.crystalgraphics.compute.source.CgBufferAccess;
 import com.crystalgraphics.compute.source.CgBufferDecl;
 import com.crystalgraphics.compute.source.CgElementField;
-import com.crystalgraphics.gl.buffer.CgFrameRing;
-import com.crystalgraphics.gl.buffer.CgReadback;
+import com.crystalgraphics.gpu.resource.CgFrameRing;
+import com.crystalgraphics.gpu.resource.CgReadback;
 import com.crystalgraphics.platform.rhi.command.CgAccess;
 
 import java.nio.ByteBuffer;

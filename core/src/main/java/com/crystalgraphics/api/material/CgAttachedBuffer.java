@@ -1,8 +1,8 @@
 package com.crystalgraphics.api.material;
 
 import com.crystalgraphics.api.buffer.CgBufferFormat;
-import com.crystalgraphics.gl.buffer.shader.CgShaderBuffer;
-import com.crystalgraphics.gl.buffer.shader.CgUniformBuffer;
+import com.crystalgraphics.gpu.resource.CgShaderBuffer;
+import com.crystalgraphics.gpu.resource.CgUniformBuffer;
 import lombok.Getter;
 
 /**

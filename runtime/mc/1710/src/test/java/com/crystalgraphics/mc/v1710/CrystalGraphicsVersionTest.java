@@ -1,6 +1,5 @@
 package com.crystalgraphics.mc.v1710;
 
-import com.crystalgraphics.mc.v1710.CrystalGraphicsVersion;
 import org.junit.Test;
 
 import static org.junit.Assert.*;

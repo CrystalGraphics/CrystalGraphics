@@ -1,8 +1,8 @@
 package com.crystalgraphics.api.material;
 
 import com.crystalgraphics.api.CgBindingPoints;
-import com.crystalgraphics.gl.buffer.shader.CgEngineBufferRegistry;
-import com.crystalgraphics.gl.buffer.shader.CgParameterCollectionBuffer;
+import com.crystalgraphics.gpu.resource.CgEngineBufferRegistry;
+import com.crystalgraphics.material.CgParameterCollectionBuffer;
 import com.crystalgraphics.mc.CgAssetReloader;
 
 import javax.annotation.Nullable;

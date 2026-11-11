@@ -3,8 +3,8 @@ package com.crystalgraphics.api.material;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-import com.crystalgraphics.gl.material.parse.CgParsedShader;
-import com.crystalgraphics.gl.material.parse.CgShaderParser;
+import com.crystalgraphics.material.parse.CgParsedShader;
+import com.crystalgraphics.material.parse.CgShaderParser;
 import com.crystalgraphics.util.io.CgIO;
 
 /**

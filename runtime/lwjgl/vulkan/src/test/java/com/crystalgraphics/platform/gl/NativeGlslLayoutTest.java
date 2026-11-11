@@ -1,7 +1,7 @@
 package com.crystalgraphics.platform.gl;
 
 import com.crystalgraphics.api.CgBindingPoints;
-import com.crystalgraphics.gl.texture.CgFallbackTextures;
+import com.crystalgraphics.gpu.resource.CgFallbackTextures;
 import com.crystalgraphics.lwjgl3.Lwjgl3GLDriver;
 import com.crystalgraphics.platform.gl.pipeline.GLNativeGlslCompiler;
 import com.crystalgraphics.platform.gl.pipeline.GLNativeTranslator;

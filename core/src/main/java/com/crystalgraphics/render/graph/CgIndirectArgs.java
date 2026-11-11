@@ -3,7 +3,7 @@ package com.crystalgraphics.render.graph;
 import com.crystalgraphics.compute.CgCompute;
 import com.crystalgraphics.compute.CgKernel;
 import com.crystalgraphics.compute.program.CgKernelProgram;
-import com.crystalgraphics.gl.buffer.CgStreamBuffer;
+import com.crystalgraphics.gpu.resource.CgStreamBuffer;
 import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.render.draw.CgIndirect;
 import com.crystalgraphics.trace.CgTrace;

@@ -1,6 +1,6 @@
 package com.crystalgraphics.world;
 
-import com.crystalgraphics.gl.buffer.CgFrameRing;
+import com.crystalgraphics.gpu.resource.CgFrameRing;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.world.CgEntityQuery;
 import com.crystalgraphics.platform.world.CgModelSpace;

@@ -317,7 +317,7 @@ carry the counter `loading.shown` and the markers `loading.show` / `loading.hide
 | `lifecycle.CgEngineLifecycle`, `CgGraphicsLifecycle`, `CgStartSteps`, `CgListenerDiscovery` | the start and its stages, listeners |
 | `render.world.CgPipelinePrecache`, `render.CgWarmBudget` | pipelines ahead, and the frame's share for building them |
 | `asset.load.CgPreload` | textures, meshes and fonts read ahead (`font(...)` opens one and queues its ASCII glyphs) |
-| `gl.shader.CgShaderCompile` | Shader compiles off the render thread |
+| `material.CgShaderCompile` | Shader compiles off the render thread |
 | `gpu.CgDeferral`, `CgUploads` | textures and buffers from any thread, landed under a budget |
 | `job.CgJob` | work beside the game |
 

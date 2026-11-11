@@ -16,7 +16,7 @@ import javax.imageio.ImageIO;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import com.crystalgraphics.gl.buffer.CgReadback;
+import com.crystalgraphics.gpu.resource.CgReadback;
 import com.crystalgraphics.platform.io.CgAtomicFile;
 import com.crystalgraphics.render.stage.CgHostFrame;
 import com.crystalgraphics.render.stage.CgRenderStage;

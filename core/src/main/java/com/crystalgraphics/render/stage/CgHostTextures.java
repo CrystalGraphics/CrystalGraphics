@@ -3,8 +3,8 @@ package com.crystalgraphics.render.stage;
 import com.crystalgraphics.platform.rhi.CgHostImports;
 import com.crystalgraphics.platform.rhi.CgDeviceNames;
 import com.crystalgraphics.api.texture.CgTexture;
-import com.crystalgraphics.gl.texture.CgFallbackTextures;
-import com.crystalgraphics.gl.texture.CgTexture2D;
+import com.crystalgraphics.gpu.resource.CgFallbackTextures;
+import com.crystalgraphics.gpu.resource.CgTexture2D;
 
 import java.util.Objects;
 

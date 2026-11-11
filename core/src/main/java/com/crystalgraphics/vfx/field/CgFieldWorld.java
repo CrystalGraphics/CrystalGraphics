@@ -12,7 +12,7 @@ import org.joml.Quaternionf;
 import org.joml.Quaternionfc;
 import org.joml.Vector3f;
 
-import com.crystalgraphics.gl.buffer.CgFrameRing;
+import com.crystalgraphics.gpu.resource.CgFrameRing;
 import com.crystalgraphics.render.graph.CgBufferDesc;
 import com.crystalgraphics.render.graph.CgBufferUsage;
 import com.crystalgraphics.render.graph.CgDispatch;

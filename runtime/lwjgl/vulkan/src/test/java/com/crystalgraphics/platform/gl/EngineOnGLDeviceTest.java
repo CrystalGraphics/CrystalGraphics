@@ -2,7 +2,7 @@ package com.crystalgraphics.platform.gl;
 
 import org.lwjgl.system.MemoryUtil;
 import com.crystalgraphics.api.CgBindingPoints;
-import com.crystalgraphics.gl.texture.CgFallbackTextures;
+import com.crystalgraphics.gpu.resource.CgFallbackTextures;
 import com.crystalgraphics.lwjgl3.Lwjgl3GLDriver;
 import com.crystalgraphics.platform.gl.binding.GLBindingLayout;
 import com.crystalgraphics.platform.gl.binding.GLBindingPoints;

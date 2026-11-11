@@ -174,7 +174,7 @@ val checkThinJar = tasks.register("checkThinJar") {
     doLast {
         val file = thin.get().asFile
         val forbidden = listOf(
-            "com/crystalgraphics/core/", "com/crystalgraphics/api/", "com/crystalgraphics/gl/",
+            "com/crystalgraphics/core/", "com/crystalgraphics/api/", "com/crystalgraphics/gpu/", "com/crystalgraphics/material/",
             "com/crystalgraphics/text/", "com/crystalgraphics/util/", "org/joml/", "com/fasterxml/",
             "de/javagl/", "natives/")
         val banned = mutableListOf<String>()

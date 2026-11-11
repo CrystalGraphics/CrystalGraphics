@@ -1,7 +1,7 @@
 package com.crystalgraphics.api.buffer;
 
 import com.crystalgraphics.api.vertex.CgAttribType;
-import com.crystalgraphics.gl.buffer.staging.CgBufferWriter;
+import com.crystalgraphics.gpu.staging.CgBufferWriter;
 
 /**
  * Enumerates the GLSL compound field types available for UBO and SSBO buffer fields.

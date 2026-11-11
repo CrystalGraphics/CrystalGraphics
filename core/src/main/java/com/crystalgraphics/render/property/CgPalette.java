@@ -3,10 +3,10 @@ package com.crystalgraphics.render.property;
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.buffer.CgBufferFormat;
 import com.crystalgraphics.api.buffer.CgBufferLifetime;
-import com.crystalgraphics.gl.buffer.CgFrameRing;
-import com.crystalgraphics.gl.buffer.shader.CgShaderBuffer;
-import com.crystalgraphics.gl.buffer.shader.CgShaderBufferRegistry;
-import com.crystalgraphics.gl.buffer.staging.CgBufferWriter;
+import com.crystalgraphics.gpu.resource.CgFrameRing;
+import com.crystalgraphics.gpu.resource.CgShaderBuffer;
+import com.crystalgraphics.gpu.resource.CgShaderBufferRegistry;
+import com.crystalgraphics.gpu.staging.CgBufferWriter;
 
 import javax.annotation.Nullable;
 

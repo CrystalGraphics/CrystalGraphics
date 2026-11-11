@@ -23,7 +23,7 @@ import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.api.texture.CgTextures;
 import com.crystalgraphics.render.canvas.CgCanvas;
 import com.crystalgraphics.render.canvas.CgQuadBatch;
-import com.crystalgraphics.gl.texture.CgTexture2D;
+import com.crystalgraphics.gpu.resource.CgTexture2D;
 import com.crystalgraphics.render.CgImmediate;
 import com.crystalgraphics.render.draw.CgInstanceKind;
 

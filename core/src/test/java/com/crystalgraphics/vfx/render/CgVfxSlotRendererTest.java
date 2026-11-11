@@ -9,7 +9,7 @@ import com.crystalgraphics.asset.kind.CgLookKinds;
 import com.crystalgraphics.asset.kind.CgParticleKinds;
 import com.crystalgraphics.asset.load.CgAssetCompiler;
 import com.crystalgraphics.asset.tree.CgAssetData;
-import com.crystalgraphics.gl.material.parse.CgParsedShader;
+import com.crystalgraphics.material.parse.CgParsedShader;
 import com.crystalgraphics.render.world.CgWorldLights;
 import com.crystalgraphics.vfx.effect.beam.CgBeamBody;
 import com.crystalgraphics.vfx.look.CgVfxKit;

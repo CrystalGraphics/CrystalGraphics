@@ -1,0 +1,294 @@
+package com.crystalgraphics.gpu.resource;
+
+import com.crystalgraphics.api.material.CgParameterCollection;
+import com.crystalgraphics.render.canvas.CgClipTable;
+import com.crystalgraphics.render.canvas.CgShapeTable;
+import com.crystalgraphics.render.canvas.CgQuadBatch;
+import com.crystalgraphics.render.canvas.CgCurveBatch;
+import com.crystalgraphics.render.property.CgPalette;
+import com.crystalgraphics.render.stage.CgDirectionalLights;
+import com.crystalgraphics.text.render.CgTextMaterials;
+
+import java.util.Arrays;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.function.Supplier;
+import com.crystalgraphics.material.CgParameterCollectionBuffer;
+import com.crystalgraphics.vfx.particle.gpu.CgParticleBeamBuffer;
+import com.crystalgraphics.vfx.particle.gpu.CgParticleBuffer;
+import com.crystalgraphics.vfx.particle.gpu.CgParticleOrderBuffer;
+import com.crystalgraphics.material.CgPropertyRows;
+
+/**
+ * Engine-provided shader buffers a {@code .shader} can opt into with {@code #pragma cg_use <token>}.
+ *
+ * <h3>Why an opt-in registry rather than {@code cg_env.glsl}</h3>
+ * <p>{@code CgViewBlock} and {@code CgObjectDataBuffer} are declared unconditionally in
+ * {@code cg_env.glsl} because effectively every shader wants them. A quad-instance buffer is not in
+ * that class — only a small minority of shaders draw through {@code CgQuadBatch} — so declaring it
+ * everywhere would bind it for shaders that never read it.</p>
+ *
+ * <p>The alternative that was in use before this registry — every caller remembering to call
+ * {@code CgQuadBatch.attachTo(material)} in Java — put the requirement arbitrarily far from the
+ * shader that actually creates it, and failed in a way that pointed at the wrong thing entirely: the
+ * buffer is only attached on a material's first draw, so anything that compiled the
+ * shader earlier (notably {@code CgMaterial.enableKeyword}, which recompiles on the spot when the
+ * shader has not been parsed yet) produced GLSL with {@code QUAD_DATA} undeclared. The resulting
+ * compile failure left the parsed feature list empty, and surfaced as
+ * {@code "Keyword 'X' is not declared as #pragma cg_feature in this shader"} — naming a pragma that
+ * was present and correct. Declaring the dependency in the shader removes the ordering question
+ * altogether: the buffer is attached as part of parsing, before anything can compile.</p>
+ *
+ * <h3>Built-ins are seeded here, by method reference</h3>
+ * <p>Providers hold a {@link Supplier}, not a buffer, and the built-in {@code quad} entry below is
+ * seeded with {@code CgQuadBatch::instanceBuffer}. A method reference does <em>not</em> trigger
+ * that class's static initialization, and {@code MACRO_NAME} is a compile-time constant that gets
+ * inlined — so seeding the token costs nothing and, crucially, does not allocate
+ * {@code CgQuadBatch}'s shared buffer, which is only valid once {@code CgEngineLifecycle.ensureGraphicsContext}
+ * has run. The supplier is invoked at attach time, when a GL context exists.</p>
+ *
+ * <p>That laziness is why the table lives here rather than each provider registering from its own
+ * static initializer. Self-registration only takes effect once something has touched the provider
+ * class, which nothing guarantees before a shader naming the token is parsed — {@code CgGraphicsLifecycle.init}
+ * itself compiles {@code text.shader}, which declares {@code cg_use quad}. Fixing that needs an
+ * explicit "initialize this class now" call at exactly the right point in startup, i.e. correctness
+ * coupled to init order. Seeding here has no ordering requirement at all: this class initializes on
+ * the parser's first lookup, which is precisely when a token is needed.</p>
+ */
+public final class CgEngineBufferRegistry {
+
+    /** Insertion-ordered so error messages list tokens in a stable, predictable order. */
+    private static final Map<String, Provider> PROVIDERS = new LinkedHashMap<>();
+
+    static {
+        register("palette", CgPalette::buffer, CgPalette.MACRO_NAME,
+                "crystalgraphics:shaders/env/buffer/palette.glsl");
+        // A quad or curve is positioned through its spatial node, so either brings the palette with it.
+        register("quad", CgQuadBatch::instanceBuffer, CgQuadBatch.MACRO_NAME,
+                "crystalgraphics:shaders/env/buffer/quad.glsl", "palette");
+        register("curve", CgCurveBatch::instanceBuffer, CgCurveBatch.MACRO_NAME,
+                "crystalgraphics:shaders/env/buffer/curve.glsl", "palette");
+        register("clip", CgClipTable::buffer, CgClipTable.MACRO_NAME,
+                "crystalgraphics:shaders/env/buffer/clip.glsl", "palette");
+        register("shape", CgShapeTable::buffer, CgShapeTable.MACRO_NAME,
+                "crystalgraphics:shaders/env/buffer/shape.glsl");
+        // A particle is read through the culled, sorted order Range writes, so the order comes with it.
+        register("particle_order", CgParticleOrderBuffer::buffer, CgParticleOrderBuffer.MACRO_NAME, null);
+        // A beam draw's noise points, for the strip factory a particle program gets beside its own.
+        register("particle_beams", CgParticleBeamBuffer::buffer, CgParticleBeamBuffer.MACRO_NAME, null);
+        // Bound by each draw: a device draw reads none an upload left bound. _cg_Exposure is what the
+        // generated main scales linear light by, written per effect.
+        put(new Provider("rows", CgPropertyRows::buffer, CgPropertyRows.MACRO_NAME,
+                "crystalgraphics:shaders/env/buffer/rows.glsl", List.of(), null, true, """
+                    _cg_Exposure ("Its effect's exposure: a Linear colour and every glow times this; written per effect", float) = 1
+                    """));
+        // The sprite factory's settings, the renderer's to set per draw: a port never declares them, and the rows that
+        // carry them per draw come with the particle.
+        registerWithProperties("particle", CgParticleBuffer::buffer, CgParticleBuffer.MACRO_NAME,
+                "crystalgraphics:shaders/env/buffer/particle.glsl", """
+                    _cg_Facing ("FX_FACE_* + 8 * FX_ALIGN_*: Niagara's facing and alignment", float) = 0
+                    _cg_FacingVector ("The CUSTOM facing's vector, Niagara's Particles.SpriteFacing", vec4) = (1, 0, 0, 0)
+                    _cg_AlignmentVector ("The CUSTOM alignment's vector, Niagara's Particles.SpriteAlignment", vec4) = (1, 0, 0, 0)
+                    _cg_Stretch ("ALIGNED facing: how much longer per block a second; 0 unstretched, as Niagara", float) = 0
+                    _cg_MaxStretch ("ALIGNED facing: longest, in widths", float) = 4.0
+                    _cg_Size ("The drawn extent, a sprite's or a strip's width, times this; never the simulated size", float) = 1
+                    _cg_CameraOffset ("Drawn this many blocks toward the eye, Niagara's Particles.CameraOffset", float) = 0
+                    _cg_KeepSize ("1: the camera offset shrinks it by (d - offset) / d, so it looks the size it would where it is", float) = 0
+                    _cg_RotationBias ("Radians added to each sprite's rotation: Cascade's axis lock bias", float) = 0
+                    _cg_Pivot ("Niagara's pivot in UV space: the point of the quad on the particle, and turned about", vec4) = (0.5, 0.5, 0, 0)
+                    _cg_Drawn ("Drawn slots its pool writes: dynamic parameters 0-3 a bit each, 32 sub-image, 64 camera offset, 128 every index reads the first, 256 Cascade's GPU sprites reading 0, 512 pivot", float) = 0
+                    _cg_Bounds ("Its system's fixed bounds: absolute centre, sphere radius; written per effect", vec4) = (0, 0, 0, 0)
+                    _cg_MacroUVSystem ("Its system's macro UV centre, absolute, and radius; written per effect", vec4) = (0, 0, 0, 0)
+                    _cg_MacroUVOverride ("Its renderer's macro UV override: a turned vector and radius, w -1 for none", vec4) = (0, 0, 0, -1)
+                    _cg_SystemTurn ("Its system's turn as a quaternion (x, y, z, w); written per effect", vec4) = (0, 0, 0, 1)
+                    _cg_SubImage ("CgVfxFlipbook: columns (a table's frames), rows (0: a table), blends, random start", vec4) = (1, 1, 1, 0)
+                    _cg_SubUV ("CgVfxFlipbook: mode, first frame, last frame (-1: the last), rate", vec4) = (0, 0, -1, 0)
+                    _cg_SubImages ("CgVfxFlipbook: a rect table, a rect a texel", sampler2D) = "white"
+                    """, "particle_order", "particle_beams", "rows");
+        registerGenerated("globals", CgParameterCollectionBuffer::buffer, CgParameterCollectionBuffer.MACRO_NAME,
+                "crystalgraphics:shaders/env/buffer/globals.glsl", () -> {
+                    // The engine's own collections, declared before any material reads its globals.
+                    CgDirectionalLights.declare();
+                    return CgParameterCollection.glsl();
+                });
+        // The text renderer's own block (projection, gamma, cut), a uniform block filled per renderer. Last, so the
+        // tokens before it keep their bindings. Its env file is the text layer, which reads quad's and clip's slots.
+        register("text", CgTextMaterials::textData, "TEXT_DATA", "crystalgraphics:shaders/env/buffer/text.glsl",
+                "quad", "clip");
+    }
+
+    private CgEngineBufferRegistry() {}
+
+    /**
+     * Registers an engine buffer under {@code token}, usable as {@code #pragma cg_use <token>}.
+     *
+     * <p>Intended for engine subsystems; a mod adding its own shared buffer can use it too, as long
+     * as it registers before any shader referencing the token is parsed.</p>
+     *
+     * @param token     the name shaders will write in the pragma
+     * @param buffer    resolved lazily, at attach time — pass a method reference so registration
+     *                  does not force the owning class to initialize
+     * @param macroName the {@code attach()} macro the shader's GLSL refers to (e.g. {@code QUAD_DATA})
+     * @throws IllegalStateException if {@code token} is already registered
+     */
+    public static synchronized void register(String token, Supplier<CgShaderBuffer> buffer, String macroName) {
+        register(token, buffer, macroName, null);
+    }
+
+    /**
+     * As {@link #register(String, Supplier, String)}, with a GLSL file of macros written against the
+     * buffer — what {@code CG_QUAD_*} is to {@code QUAD_DATA}.
+     *
+     * <p>The compiler emits an {@code #include} of it immediately after the buffer's own declaration,
+     * so the macros always have the struct to read and a shader that never declares the token never
+     * pays for either. Convention is {@code shaders/env/buffer/<token>.glsl}; a mod's own buffer gets
+     * the same treatment by passing its own path.</p>
+     *
+     * @param envPath a {@code CgIO} resource path, or null for a buffer whose declaration is all there
+     *                is to say
+     */
+    public static synchronized void register(String token, Supplier<CgShaderBuffer> buffer, String macroName,
+                                             String envPath, String... requires) {
+        put(new Provider(token, buffer, macroName, envPath, List.of(requires), null, false, null));
+    }
+
+    /**
+     * As {@link #register(String, Supplier, String, String, String...)}, with properties every shader declaring the
+     * token takes as its own: a {@code Properties { }} body, each name with the reserved {@code _cg_} prefix. Under
+     * {@code cg_use rows} they are row properties like any other, so whoever draws sets them per draw.
+     *
+     * <pre>{@code
+     * CgEngineBufferRegistry.registerWithProperties("myfactory", MyBuffer::buffer, "MY_DATA",
+     *         "mymod:shaders/env/myfactory.glsl", "_cg_Spin (\"Turns a second\", float) = 0");
+     * }</pre>
+     */
+    public static synchronized void registerWithProperties(String token, Supplier<CgShaderBuffer> buffer,
+                                                           String macroName, String envPath, String properties,
+                                                           String... requires) {
+        put(new Provider(token, buffer, macroName, envPath, List.of(requires), null, false, properties));
+    }
+
+    /**
+     * As {@link #register(String, Supplier, String, String, String...)}, with GLSL made from what is registered when a
+     * shader compiles, appended after the env file: {@code globals}' place for each parameter. A shader reading it is
+     * tracked by {@link Provider#generatedPath()}, so {@code CgAssetReloader.changed} on that path recompiles it. No
+     * executor owns its binding, so each draw's snapshot binds it ({@link Provider#perDraw()}).
+     */
+    public static synchronized void registerGenerated(String token, Supplier<CgShaderBuffer> buffer, String macroName,
+                                                      String envPath, Supplier<String> generated) {
+        put(new Provider(token, buffer, macroName, envPath, List.of(), generated, true, null));
+    }
+
+    private static void put(Provider provider) {
+        for (String required : provider.requires()) {
+            if (!PROVIDERS.containsKey(required)) {
+                throw new IllegalStateException("cg_use token '" + provider.token() + "' requires unregistered '"
+                        + required + "'");
+            }
+        }
+        if (PROVIDERS.putIfAbsent(provider.token(), provider) != null) {
+            throw new IllegalStateException("cg_use token '" + provider.token() + "' is already registered");
+        }
+    }
+
+    /**
+     * {@code declared} with every token a declared one requires, each placed before the first that needs it, so its
+     * declaration and macros come first. Unknown tokens pass through for the parser to report.
+     */
+    public static synchronized List<String> withRequirements(List<String> declared) {
+        List<String> out = new ArrayList<>(declared.size() + 1);
+        for (String token : declared) addWithRequirements(token, out);
+        return out;
+    }
+
+    private static void addWithRequirements(String token, List<String> out) {
+        if (out.contains(token)) return;
+        Provider provider = PROVIDERS.get(token);
+        if (provider != null) for (String required : provider.requires()) addWithRequirements(required, out);
+        out.add(token);
+    }
+
+    /** The provider for {@code token}, or {@code null} if none is registered. */
+    public static Provider get(String token) {
+        return PROVIDERS.get(token);
+    }
+
+    /**
+     * The place of the token whose buffer has {@code macroName} in registration order, or -1: what
+     * {@code CgBindingModel} binds the buffer at.
+     */
+    public static synchronized int indexOfMacro(String macroName) {
+        int i = 0;
+        for (Provider p : PROVIDERS.values()) {
+            if (p.macroName().equals(macroName)) return i;
+            i++;
+        }
+        return -1;
+    }
+
+    /** {@link #indexOfPoint}'s answers by storage point, for the registry as it was at {@link #pointsAt} tokens. */
+    private static volatile int[] tokenOfPoint = new int[0];
+    private static volatile int pointsAt = -1;
+
+    /**
+     * The place of the token whose buffer binds at storage point {@code point}, or -1: what {@code CgBindingModel}
+     * places a buffer recorded by its point at. Resolves each provider's buffer the first time it is asked after a
+     * registration; render thread.
+     */
+    public static int indexOfPoint(int point) {
+        int[] table = tokenOfPoint;
+        if (pointsAt != PROVIDERS.size()) table = rebuildPoints();
+        return point >= 0 && point < table.length ? table[point] : -1;
+    }
+
+    private static synchronized int[] rebuildPoints() {
+        if (pointsAt != PROVIDERS.size()) {
+            int max = -1;
+            int[] points = new int[PROVIDERS.size()];
+            int i = 0;
+            for (Provider p : PROVIDERS.values()) {
+                CgShaderBuffer b = p.buffer().get();
+                points[i] = b == null ? -1 : b.getBindingLocation();
+                max = Math.max(max, points[i++]);
+            }
+            tokenOfPoint = new int[max + 1];
+            Arrays.fill(tokenOfPoint, -1);
+            for (int t = points.length - 1; t >= 0; t--) if (points[t] >= 0) tokenOfPoint[points[t]] = t;
+            pointsAt = PROVIDERS.size();
+        }
+        return tokenOfPoint;
+    }
+
+    /** Every registered token, for error messages. */
+    public static Set<String> tokens() {
+        return Collections.unmodifiableSet(PROVIDERS.keySet());
+    }
+
+    /**
+     * One engine buffer a shader can request.
+     *
+     * @param token     the name used in {@code #pragma cg_use <token>}
+     * @param buffer    resolved lazily — see the class doc for why this is not the buffer itself
+     * @param macroName the {@code attach()} macro the shader's GLSL refers to (e.g. {@code QUAD_DATA})
+     */
+    /**
+     * @param envPath   GLSL macros written against this buffer, included right after its declaration,
+     *                  or null when the declaration is all there is
+     * @param generated GLSL made at each compile, after the env file, or null
+     * @param perDraw   bound by each draw's binding snapshot, as a material's own attached buffer is, rather than left to
+     *                  an executor: a texture-buffer unit does not survive from the upload to the draw
+     * @param properties a {@code Properties { }} body every declaring shader takes, names {@code _cg_}-prefixed, or null
+     */
+    public record Provider(String token, Supplier<CgShaderBuffer> buffer, String macroName, String envPath,
+                           List<String> requires, Supplier<String> generated, boolean perDraw, String properties) {
+
+        /** What a shader reading {@link #generated} is tracked by: no file, a name for {@code CgAssetReloader}. */
+        public String generatedPath() {
+            return "crystalgraphics:shaders/env/buffer/" + token + ".generated";
+        }
+    }
+}

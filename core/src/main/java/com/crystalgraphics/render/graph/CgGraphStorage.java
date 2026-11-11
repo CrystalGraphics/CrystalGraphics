@@ -4,7 +4,7 @@ import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.texture.CgTextureSpec;
 import com.crystalgraphics.api.texture.CgTextureType;
-import com.crystalgraphics.gl.framebuffer.CgTexelConvert;
+import com.crystalgraphics.gpu.resource.CgTexelConvert;
 import com.crystalgraphics.platform.rhi.CgDeviceNames;
 import com.crystalgraphics.platform.rhi.CgDeviceSection;
 import com.crystalgraphics.platform.rhi.CgExternalTarget;

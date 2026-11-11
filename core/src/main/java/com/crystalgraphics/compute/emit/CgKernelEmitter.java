@@ -11,12 +11,12 @@ import com.crystalgraphics.compute.source.CgImageDimension;
 import com.crystalgraphics.compute.source.CgImageFormat;
 import com.crystalgraphics.compute.source.CgKernelDecl;
 import com.crystalgraphics.compute.source.CgSourcePart;
-import com.crystalgraphics.gl.buffer.shader.CgEngineBufferRegistry;
-import com.crystalgraphics.gl.buffer.shader.CgShaderBuffer;
-import com.crystalgraphics.gl.material.CgMaterialProperties;
-import com.crystalgraphics.gl.material.CgMaterialProperty;
-import com.crystalgraphics.gl.material.parse.CgGlslEmitter;
-import com.crystalgraphics.gl.material.parse.CgShaderParseException;
+import com.crystalgraphics.gpu.resource.CgEngineBufferRegistry;
+import com.crystalgraphics.gpu.resource.CgShaderBuffer;
+import com.crystalgraphics.material.CgMaterialProperties;
+import com.crystalgraphics.material.CgMaterialProperty;
+import com.crystalgraphics.material.parse.CgGlslEmitter;
+import com.crystalgraphics.material.parse.CgShaderParseException;
 import com.crystalgraphics.render.shader.CgBindingModel;
 
 import java.util.Set;

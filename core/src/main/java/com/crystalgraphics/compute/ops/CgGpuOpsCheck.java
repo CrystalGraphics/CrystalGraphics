@@ -1,7 +1,7 @@
 package com.crystalgraphics.compute.ops;
 
 import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
-import com.crystalgraphics.gl.framebuffer.CgTexelConvert;
+import com.crystalgraphics.gpu.resource.CgTexelConvert;
 import com.crystalgraphics.platform.rhi.CgDeviceSection;
 import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.rhi.resource.CgTextureRegion;
@@ -17,7 +17,7 @@ import com.crystalgraphics.compute.ops.CgGpuOps.Filter;
 import com.crystalgraphics.compute.ops.CgGpuOps.Fold;
 import com.crystalgraphics.compute.ops.CgGpuOps.Order;
 import com.crystalgraphics.compute.ops.CgGpuOps.Scan;
-import com.crystalgraphics.gl.framebuffer.CgFrameBuffer;
+import com.crystalgraphics.gpu.resource.CgFrameBuffer;
 import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.compute.CgCheckBuffers;
 import com.crystalgraphics.render.CgImmediate;

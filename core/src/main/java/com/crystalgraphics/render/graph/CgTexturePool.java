@@ -5,7 +5,7 @@ import java.util.function.Consumer;
 
 import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.texture.CgTextureType;
-import com.crystalgraphics.gl.buffer.CgReadback;
+import com.crystalgraphics.gpu.resource.CgReadback;
 import com.crystalgraphics.variable.CgVar;
 
 import java.util.ArrayList;

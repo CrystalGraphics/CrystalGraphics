@@ -1,12 +1,12 @@
 package com.crystalgraphics.render.draw;
 
 import com.crystalgraphics.api.material.CgRenderPassVariant;
-import com.crystalgraphics.gl.shader.CgShader;
+import com.crystalgraphics.material.CgShader;
 import com.crystalgraphics.api.state.CgRenderState;
-import com.crystalgraphics.gl.material.CgMaterialShader;
-import com.crystalgraphics.gl.material.parse.CgParsedPass;
-import com.crystalgraphics.gl.material.parse.CgParsedShader;
-import com.crystalgraphics.gl.material.parse.CgPermutationDomain;
+import com.crystalgraphics.material.CgMaterialShader;
+import com.crystalgraphics.material.parse.CgParsedPass;
+import com.crystalgraphics.material.parse.CgParsedShader;
+import com.crystalgraphics.material.parse.CgPermutationDomain;
 import com.crystalgraphics.lifecycle.CgGraphicsLifecycle;
 import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.rhi.format.CgFormat;

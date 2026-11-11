@@ -2,11 +2,11 @@ package com.crystalgraphics.vulkan;
 
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgRenderPassVariant;
-import com.crystalgraphics.gl.material.CgMaterialShader;
-import com.crystalgraphics.gl.material.CgMaterialShaderRegistry;
-import com.crystalgraphics.gl.material.parse.CgMaterialShaderCompiler;
-import com.crystalgraphics.gl.material.parse.CgParsedPass;
-import com.crystalgraphics.gl.material.parse.CgParsedShader;
+import com.crystalgraphics.material.CgMaterialShader;
+import com.crystalgraphics.material.CgMaterialShaderRegistry;
+import com.crystalgraphics.material.parse.CgMaterialShaderCompiler;
+import com.crystalgraphics.material.parse.CgParsedPass;
+import com.crystalgraphics.material.parse.CgParsedShader;
 
 import java.net.URI;
 import java.nio.file.FileSystem;

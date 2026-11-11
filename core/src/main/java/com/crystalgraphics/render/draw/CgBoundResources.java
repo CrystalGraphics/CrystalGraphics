@@ -1,6 +1,6 @@
 package com.crystalgraphics.render.draw;
 
-import com.crystalgraphics.gl.texture.CgTextureAbstract;
+import com.crystalgraphics.gpu.resource.CgTextureAbstract;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.platform.rhi.CgDeviceNames;
 import com.crystalgraphics.api.texture.CgSampler;

@@ -1,6 +1,6 @@
 package com.crystalgraphics.shadergraph;
 
-import com.crystalgraphics.gl.material.CgMaterialProperty;
+import com.crystalgraphics.material.CgMaterialProperty;
 import org.junit.Test;
 
 import static org.junit.Assert.*;

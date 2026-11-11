@@ -1,7 +1,7 @@
 package com.crystalgraphics.render.graph;
 
 import com.crystalgraphics.api.material.CgMaterial;
-import com.crystalgraphics.gl.material.CgMaterialTestSupport;
+import com.crystalgraphics.material.CgMaterialTestSupport;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
 import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.render.draw.CgOrder;

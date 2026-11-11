@@ -512,7 +512,7 @@ fbo.delete();   // only valid on owned FBOs; CgFrameBuffer.wrap() names a host's
 
 `CgFrameBufferRegistry` — cache for screen-sized FBOs that auto-resize on window resize.
 
-**Package guides**: `api/framebuffer/CLAUDE.md` · `gl/framebuffer/CLAUDE.md`
+**Package guides**: `api/framebuffer/CLAUDE.md` · `gpu/resource/CLAUDE.md`
 
 ### Textures
 
@@ -593,7 +593,7 @@ static final CgTexture2D SMOKE = CgTextures.of("mymod:cooked/fx/smoke.cgtex", Cg
 
 `CgTextureType` — typed enum of ~42 GL format constants; single source of truth for (internalFormat, baseFormat, type). `CgTextureSpec` — immutable `@Builder` describing format + filter + wrap + optional shadow compare. `CgMipmapConfig` — `NONE` / `TRILINEAR` / `NEAREST`. Concrete impls: `CgTexture2D`, `CgTexture2DArray`, `CgTexture3D`, `CgTextureCubemap`.
 
-**Package guides**: `api/texture/CLAUDE.md` · `gl/texture/CLAUDE.md`
+**Package guides**: `api/texture/CLAUDE.md` · `gpu/resource/CLAUDE.md`
 
 ### Meshes
 
@@ -682,11 +682,11 @@ until the next upload however many frames later — its own storage at offset 0,
 copied in on the GPU. A `FRAME` buffer read in a frame
 that did not upload it reads another frame's bytes, with no error. Every buffer the engine owns is `FRAME`: the
 quad and curve instances, the object buffer, the material blocks (uploaded at every bind), the frame block
-(copied in at a frame's first material bind) and the text block. `gl/buffer/CLAUDE.md` has the tiers. A `RETAINED` buffer is made, written and deleted from any thread (§ *Async*).
+(copied in at a frame's first material bind) and the text block. `gpu/resource/CLAUDE.md` has the tiers. A `RETAINED` buffer is made, written and deleted from any thread (§ *Async*).
 
 The engine's own blocks (`CgViewBlock`, `CgEnvironmentBlock`, `CgObjectDataBuffer`) are declared in `cg_env.glsl` and wired automatically: never declare them again.
 
-**Package guides**: `api/buffer/CLAUDE.md` · `gl/buffer/shader/CLAUDE.md`
+**Package guides**: `api/buffer/CLAUDE.md` · `gpu/resource/CLAUDE.md`
 
 ## Async: off the render thread, and beside the frame
 
@@ -868,7 +868,7 @@ Measured by: `deferral.apply`, the workers' `upload.lease-copy`, and the GPU zon
 
 ### Capabilities
 
-`CgCapabilities.detect()` — the installed device's, cached until a new one: materials compile to one target, GLSL 4.50 (`CgMaterialShaderCompiler.VERSION`). It answers `shaderBufferPath()` (GL 4.3 or ARB storage blocks, forceable with `-Dcrystalgraphics.shaderBuffer.tier=<path>`; the TBO path is detected and unhooked, `docs/TBO_PATH.md`), `vertexStreamTier()` (persistent or mapped ring, see `gl/buffer/CLAUDE.md`), `isCopyImageSubDataSupported()`, the limits (`getMaxDrawBuffers()`, `getMaxTextureUnits()`, …). For compute and GPU-driven draws it answers what a consumer needs — `compute()`, `storageImages()`, `subgroups()`, `floatAtomics()`, `drawIndirect()`, `multiDrawIndirect()`, `indirectCount()`, `feedbackCount()`, `asyncCompute()`, `bindless()`, `multiDraw()` (whether the mesh store joins draws; `-Dcrystalgraphics.mesh.multiDraw=false` turns it off) — each joined from a core version, its ARB extension and, on Vulkan, the device; and `computeTier()` (`V` · `G43` · `G40` · `G33` · `CPU`), forceable with `-Dcrystalgraphics.compute.tier=<tier>`, which throws naming what a context lacks.
+`CgCapabilities.detect()` — the installed device's, cached until a new one: materials compile to one target, GLSL 4.50 (`CgMaterialShaderCompiler.VERSION`). It answers `shaderBufferPath()` (GL 4.3 or ARB storage blocks, forceable with `-Dcrystalgraphics.shaderBuffer.tier=<path>`; the TBO path is detected and unhooked, `docs/TBO_PATH.md`), `vertexStreamTier()` (persistent or mapped ring, see `gpu/resource/CLAUDE.md`), `isCopyImageSubDataSupported()`, the limits (`getMaxDrawBuffers()`, `getMaxTextureUnits()`, …). For compute and GPU-driven draws it answers what a consumer needs — `compute()`, `storageImages()`, `subgroups()`, `floatAtomics()`, `drawIndirect()`, `multiDrawIndirect()`, `indirectCount()`, `feedbackCount()`, `asyncCompute()`, `bindless()`, `multiDraw()` (whether the mesh store joins draws; `-Dcrystalgraphics.mesh.multiDraw=false` turns it off) — each joined from a core version, its ARB extension and, on Vulkan, the device; and `computeTier()` (`V` · `G43` · `G40` · `G33` · `CPU`), forceable with `-Dcrystalgraphics.compute.tier=<tier>`, which throws naming what a context lacks.
 
 **`CgGpuReport`** is the full answer, for diagnosis rather than decisions: every feature a compute or draw tier is chosen
 from (`core`, the extension that gives it, or `no`) and the limits that bound it, from the driver on GL and from

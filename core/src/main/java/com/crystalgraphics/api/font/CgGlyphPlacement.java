@@ -1,6 +1,6 @@
 package com.crystalgraphics.api.font;
 
-import com.crystalgraphics.gl.texture.CgTexture2DArray;
+import com.crystalgraphics.gpu.resource.CgTexture2DArray;
 import com.crystalgraphics.text.atlas.CgGlyphAtlas;
 
 /**

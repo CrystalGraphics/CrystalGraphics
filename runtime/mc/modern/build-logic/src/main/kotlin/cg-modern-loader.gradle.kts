@@ -153,7 +153,7 @@ tasks.register<cgbuildlogic.CheckThinJar>("checkThinJar") {
     maxClassMajor.set(nodeJava + 44)
     // What CrystalGraphics merges at the ROOT, and so must not be here.
     forbiddenPrefixes.set(listOf(
-        "com/crystalgraphics/core/", "com/crystalgraphics/api/", "com/crystalgraphics/gl/",
+        "com/crystalgraphics/core/", "com/crystalgraphics/api/", "com/crystalgraphics/gpu/", "com/crystalgraphics/material/",
         "com/crystalgraphics/text/", "com/crystalgraphics/platform/", "org/joml/",
         "com/fasterxml/", "de/javagl/", "natives/",
     ))

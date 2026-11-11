@@ -1,7 +1,7 @@
 package com.crystalgraphics.render.mesh;
 
-import com.crystalgraphics.gl.buffer.CgFrameRing;
-import com.crystalgraphics.gl.buffer.CgStreamBuffer;
+import com.crystalgraphics.gpu.resource.CgFrameRing;
+import com.crystalgraphics.gpu.resource.CgStreamBuffer;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 

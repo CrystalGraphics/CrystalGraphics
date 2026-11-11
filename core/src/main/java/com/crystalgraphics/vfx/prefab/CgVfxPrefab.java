@@ -7,7 +7,7 @@ import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgMeshLoader;
 import com.crystalgraphics.api.mesh.CgMeshLods;
 import com.crystalgraphics.asset.tree.CgAssetException;
-import com.crystalgraphics.gl.material.CgMaterialProperty;
+import com.crystalgraphics.material.CgMaterialProperty;
 import com.crystalgraphics.vfx.look.CgVfxKit;
 import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.look.CgVfxParam;

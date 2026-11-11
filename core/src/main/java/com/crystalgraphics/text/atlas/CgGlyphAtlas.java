@@ -3,7 +3,7 @@ package com.crystalgraphics.text.atlas;
 import com.crystalgraphics.api.font.CgGlyphKey;
 import com.crystalgraphics.api.font.CgGlyphPlacement;
 import com.crystalgraphics.api.texture.CgTextureSpec;
-import com.crystalgraphics.gl.texture.CgTexture2DArray;
+import com.crystalgraphics.gpu.resource.CgTexture2DArray;
 import com.crystalgraphics.text.atlas.packing.MaxRectsPacker;
 import com.crystalgraphics.text.atlas.packing.CgPackingStrategy;
 import com.crystalgraphics.trace.CgTrace;

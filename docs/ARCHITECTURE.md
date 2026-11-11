@@ -101,27 +101,27 @@ Every package guide (`CLAUDE.md`) under `src/main/java/com/crystalgraphics/`. Re
 | `render/post/CLAUDE.md` | `CgPostStack`, `CgPostEffect`, `CgPostPoint`, the composite and the built-in bloom — what runs after the world |
 | `render/draw/CLAUDE.md` | `CgPipeline` (a CPU key), `CgBindingTable` (snapshots with handles), `CgInstanceKind`, `CgPassConstants`, `CgDrawChunk`, `CgBatcher` — what a recorded draw is made of; recording touches no GL (`render-graph`) |
 | `render/graph/CLAUDE.md` | `CgRecording`, `CgFrameGraph`, `CgFrameBuilder` (order, cull, batch, pack — off the render thread), `CgExecutor`, `CgImmediate` — the frame graph |
-| `gl/material/CLAUDE.md` | `CgMaterialShader`, `CgMaterialShaderRegistry`, `CgMaterialProperties` |
-| `gl/material/parse/CLAUDE.md` | `CgShaderParser` facade, `CgParsedShader`, `CgMaterialShaderCompiler`, sub-parsers |
+| `material/CLAUDE.md` | `CgMaterialShader`, `CgMaterialShaderRegistry`, `CgMaterialProperties` |
+| `material/parse/CLAUDE.md` | `CgShaderParser` facade, `CgParsedShader`, `CgMaterialShaderCompiler`, sub-parsers |
 | `compute/CLAUDE.md` | `CgCompute`, `CgKernel`, `.compute` parsing and emission, `CgKernelProgram` — kernels |
 
 ### Shaders
 | Path | What it covers |
 |---|---|
 | `api/shader/CLAUDE.md` | `CgShaderPreprocessor` (#include/pragma-once/cycle detection), the GLSL library |
-| `gl/shader/CLAUDE.md` | `CgShader`, `CgShaderCompile` |
+| `material/CLAUDE.md` | `CgShader`, `CgShaderCompile` |
 
 ### Framebuffers
 | Path | What it covers |
 |---|---|
 | `api/framebuffer/CLAUDE.md` | `CgFrameBufferFormat` builder API, validation rules, equality |
-| `gl/framebuffer/CLAUDE.md` | `CgFrameBuffer` dispatch architecture, `CgFrameBufferRegistry`, ownership model |
+| `gpu/resource/CLAUDE.md` | `CgFrameBuffer` dispatch architecture, `CgFrameBufferRegistry`, ownership model |
 
 ### Textures
 | Path | What it covers |
 |---|---|
 | `api/texture/CLAUDE.md` | `CgTexture` interface, `CgTextureType` (~42 format constants), `CgTextureSpec` (builder + presets), `CgMipmapConfig` |
-| `gl/texture/CLAUDE.md` | `CgTexture2D`, `CgTexture2DArray`, `CgTexture3D`, `CgTextureCubemap` concrete implementations |
+| `gpu/resource/CLAUDE.md` | `CgTexture2D`, `CgTexture2DArray`, `CgTexture3D`, `CgTextureCubemap` concrete implementations |
 
 ### Mesh
 | Path | What it covers |
@@ -139,9 +139,9 @@ Every package guide (`CLAUDE.md`) under `src/main/java/com/crystalgraphics/`. Re
 | Path | What it covers |
 |---|---|
 | `api/buffer/CLAUDE.md` | `CgGpuType`, `CgBufferField`, `CgBufferFormat` builder, std140/std430 alignment rules |
-| `gl/buffer/CLAUDE.md` | `CgStreamBuffer` tiers (persistent ring → mapped ring), retained storage staged through the ring, the frame clock `CgFrameRing`, `CgQuadIndexBuffer` |
-| `gl/buffer/shader/CLAUDE.md` | `CgShaderBuffer` (SSBO), `CgUniformBuffer` (UBO), `CgShaderBufferRegistry`, binding point rules |
-| `gl/buffer/staging/CLAUDE.md` | `CgStagingBuffer`, `CgVertexWriter` (all vertex packing goes here), `CgBufferWriter` |
+| `gpu/resource/CLAUDE.md` | `CgStreamBuffer` tiers (persistent ring → mapped ring), retained storage staged through the ring, the frame clock `CgFrameRing`, `CgQuadIndexBuffer` |
+| `gpu/resource/CLAUDE.md` | `CgShaderBuffer` (SSBO), `CgUniformBuffer` (UBO), `CgShaderBufferRegistry`, binding point rules |
+| `gpu/staging/CLAUDE.md` | `CgStagingBuffer`, `CgVertexWriter` (all vertex packing goes here), `CgBufferWriter` |
 
 ### GL State
 | Path | What it covers |

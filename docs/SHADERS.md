@@ -1,6 +1,6 @@
 # Shaders and kernels — `.shader`, `cg_env.glsl`, engine buffers, `.compute`
 
-Moved from [`AGENTS.md`](../AGENTS.md), which keeps the rules every session needs. Loads itself, imported by the `CLAUDE.md` of the packages it describes: `api/material`, `api/shader`, `gl/material`, `gl/shader`, `mc/shader` and `compute`. Nothing under `resources/` loads it, since all of it ships: read it before touching a `.shader`, `.compute` or `.glsl` file.
+Moved from [`AGENTS.md`](../AGENTS.md), which keeps the rules every session needs. Loads itself, imported by the `CLAUDE.md` of the packages it describes: `api/material`, `api/shader`, `material`, `material`, `mc/shader` and `compute`. Nothing under `resources/` loads it, since all of it ships: read it before touching a `.shader`, `.compute` or `.glsl` file.
 
 > **A shader you draw must be precached.** Name every material, keyword set, pass and kernel you add to
 > `CgPipelinePrecache`, or its first draw shows late and counts `pipeline.missed`. VFX looks, kits and cues, skinned
@@ -1046,7 +1046,7 @@ float a = CG_DEPTH_FADE(texture(_Mask, uv).r, _FadeDistance, gl_FragCoord.xy / C
 - `CG_DEPTH_FADE` and `CG_PARTICLE_SUB_UV` are macros: a material's `#include`s are placed before the engine's declarations, so a function reading those would not compile.
 - RotateAboutAxis takes radians; Unreal's node takes periods, so a port multiplies by `2pi / Period` first.
 
-**Package guides for this layer**: `api/material/CLAUDE.md` · `render/CLAUDE.md` · `render/world/CLAUDE.md` · `render/stage` (its classes' javadoc) · `gl/material/CLAUDE.md` · `gl/material/parse/CLAUDE.md`
+**Package guides for this layer**: `api/material/CLAUDE.md` · `render/CLAUDE.md` · `render/world/CLAUDE.md` · `render/stage` (its classes' javadoc) · `material/CLAUDE.md` · `material/parse/CLAUDE.md`
 
 ### No raw shaders
 
@@ -1059,7 +1059,7 @@ standard library, each file guarded by `#pragma once`:
 #include "crystalgraphics:shaders/lib/noise.glsl"
 ```
 
-**Package guides**: `api/shader/CLAUDE.md` · `gl/shader/CLAUDE.md` · `mc/shader/CLAUDE.md`
+**Package guides**: `api/shader/CLAUDE.md` · `material/CLAUDE.md` · `mc/shader/CLAUDE.md`
 
 ## Compute — `.compute` kernels
 

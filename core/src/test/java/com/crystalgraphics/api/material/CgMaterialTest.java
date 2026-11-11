@@ -1,8 +1,8 @@
 package com.crystalgraphics.api.material;
 
 import com.crystalgraphics.api.state.CgRenderState;
-import com.crystalgraphics.gl.material.CgMaterialProperties;
-import com.crystalgraphics.gl.material.CgMaterialProperty;
+import com.crystalgraphics.material.CgMaterialProperties;
+import com.crystalgraphics.material.CgMaterialProperty;
 import org.junit.Test;
 
 import java.util.Collections;

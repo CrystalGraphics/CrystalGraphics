@@ -2,7 +2,7 @@ package com.crystalgraphics.api.material;
 
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.asset.kind.CgAssetKinds;
-import com.crystalgraphics.gl.texture.CgTextureCubemap;
+import com.crystalgraphics.gpu.resource.CgTextureCubemap;
 import org.junit.Assume;
 import org.junit.BeforeClass;
 import org.junit.Test;

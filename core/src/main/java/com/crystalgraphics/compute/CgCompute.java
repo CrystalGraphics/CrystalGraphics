@@ -7,7 +7,7 @@ import com.crystalgraphics.compute.program.CgComputeCheck;
 import com.crystalgraphics.compute.program.CgKernelProgram;
 import com.crystalgraphics.compute.source.CgComputeSource;
 import com.crystalgraphics.compute.source.CgKernelDecl;
-import com.crystalgraphics.gl.buffer.CgBufferReadback;
+import com.crystalgraphics.gpu.resource.CgBufferReadback;
 import com.crystalgraphics.mc.CgAssetReloader;
 import com.crystalgraphics.mc.CgReloadable;
 import com.crystalgraphics.render.CgWarmBudget;

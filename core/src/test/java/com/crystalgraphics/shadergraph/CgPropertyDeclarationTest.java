@@ -1,6 +1,6 @@
 package com.crystalgraphics.shadergraph;
 
-import com.crystalgraphics.gl.material.parse.CgShaderParser;
+import com.crystalgraphics.material.parse.CgShaderParser;
 import org.junit.Test;
 
 import static org.junit.Assert.*;

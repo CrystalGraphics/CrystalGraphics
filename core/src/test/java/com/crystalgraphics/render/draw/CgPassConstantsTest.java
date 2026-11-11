@@ -1,7 +1,7 @@
 package com.crystalgraphics.render.draw;
 
-import com.crystalgraphics.gl.buffer.staging.CgBufferWriter;
-import com.crystalgraphics.gl.buffer.staging.CgStagingBuffer;
+import com.crystalgraphics.gpu.staging.CgBufferWriter;
+import com.crystalgraphics.gpu.staging.CgStagingBuffer;
 import org.joml.Matrix4f;
 import org.junit.Test;
 

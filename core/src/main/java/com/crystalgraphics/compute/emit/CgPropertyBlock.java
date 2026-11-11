@@ -2,10 +2,10 @@ package com.crystalgraphics.compute.emit;
 
 import com.crystalgraphics.api.buffer.CgBufferField;
 import com.crystalgraphics.api.buffer.CgBufferFormat;
-import com.crystalgraphics.gl.buffer.staging.CgBufferWriter;
-import com.crystalgraphics.gl.buffer.staging.CgStagingBuffer;
-import com.crystalgraphics.gl.material.CgMaterialProperties;
-import com.crystalgraphics.gl.material.CgMaterialProperty;
+import com.crystalgraphics.gpu.staging.CgBufferWriter;
+import com.crystalgraphics.gpu.staging.CgStagingBuffer;
+import com.crystalgraphics.material.CgMaterialProperties;
+import com.crystalgraphics.material.CgMaterialProperty;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;

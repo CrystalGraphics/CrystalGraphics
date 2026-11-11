@@ -3,7 +3,7 @@ package com.crystalgraphics.render.stage;
 import com.crystalgraphics.platform.rhi.CgExternalTarget;
 import com.crystalgraphics.lifecycle.CgGraphicsLifecycle;
 import com.crystalgraphics.compute.ops.CgGpuOps;
-import com.crystalgraphics.gl.buffer.CgFrameRing;
+import com.crystalgraphics.gpu.resource.CgFrameRing;
 import com.crystalgraphics.render.CgFrameClock;
 import com.crystalgraphics.render.draw.CgOrder;
 import com.crystalgraphics.render.draw.CgPassConstants;

@@ -14,7 +14,7 @@ import org.joml.Vector4f;
 import com.crystalgraphics.api.material.CgMaterialValues;
 import com.crystalgraphics.asset.tree.CgAssetException;
 import com.crystalgraphics.camera.CgCameraSystem;
-import com.crystalgraphics.gl.material.CgMaterialProperty;
+import com.crystalgraphics.material.CgMaterialProperty;
 import com.crystalgraphics.object.value.CgQuantity;
 import com.crystalgraphics.object.value.CgUnits;
 import com.crystalgraphics.render.post.CgPostMaterial;

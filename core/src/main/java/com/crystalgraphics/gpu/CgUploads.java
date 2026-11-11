@@ -2,7 +2,7 @@ package com.crystalgraphics.gpu;
 
 import com.crystalgraphics.platform.rhi.CgDeviceNames;
 import com.crystalgraphics.variable.CgVar;
-import com.crystalgraphics.gl.buffer.CgFrameRing;
+import com.crystalgraphics.gpu.resource.CgFrameRing;
 import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.rhi.resource.CgGpuBuffer;
 import com.crystalgraphics.trace.CgTrace;

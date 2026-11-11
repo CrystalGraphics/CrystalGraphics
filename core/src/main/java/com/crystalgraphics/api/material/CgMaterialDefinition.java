@@ -19,7 +19,7 @@ import com.crystalgraphics.asset.kind.CgLookKinds;
 import com.crystalgraphics.asset.tree.CgAssetData;
 import com.crystalgraphics.asset.tree.CgBinaryAsset;
 import com.crystalgraphics.asset.tree.CgAssetException;
-import com.crystalgraphics.gl.material.parse.CgParsedShader;
+import com.crystalgraphics.material.parse.CgParsedShader;
 import com.crystalgraphics.object.CgType;
 import com.crystalgraphics.object.validate.CgValidation;
 import com.github.bsideup.jabel.Desugar;

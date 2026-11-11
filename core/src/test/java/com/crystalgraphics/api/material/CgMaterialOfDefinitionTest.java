@@ -3,7 +3,7 @@ package com.crystalgraphics.api.material;
 import com.crystalgraphics.api.texture.CgSampler;
 import com.crystalgraphics.asset.kind.CgAssetKinds;
 import com.crystalgraphics.asset.tree.CgAssetException;
-import com.crystalgraphics.gl.material.CgMaterialProperty;
+import com.crystalgraphics.material.CgMaterialProperty;
 import org.junit.BeforeClass;
 import org.junit.Test;
 

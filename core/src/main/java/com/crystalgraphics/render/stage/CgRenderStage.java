@@ -8,7 +8,7 @@ import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.rhi.CgExternalTarget;
 import com.crystalgraphics.platform.rhi.CgDeviceSection;
 import com.crystalgraphics.api.texture.CgTextureType;
-import com.crystalgraphics.gl.buffer.CgFrameRing;
+import com.crystalgraphics.gpu.resource.CgFrameRing;
 import com.crystalgraphics.lifecycle.CgGraphicsLifecycle;
 import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.render.graph.CgExecutor;

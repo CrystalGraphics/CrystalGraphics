@@ -8,7 +8,7 @@ import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.texture.CgTextureType;
-import com.crystalgraphics.gl.framebuffer.CgFrameBuffer;
+import com.crystalgraphics.gpu.resource.CgFrameBuffer;
 import net.minecraft.client.renderer.OpenGlHelper;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -112,11 +112,10 @@ public class CrystalGraphicsIntegrationTest {
             if (colorTex == null) {
                 throw new AssertionError("Color texture at slot 0 is null");
             }
-            if (colorTex.getId() <= 0) {
-                throw new AssertionError("Color texture ID is not positive: " + colorTex.getId());
+            if (colorTex.rhiView() == null) {
+                throw new AssertionError("Color texture at slot 0 has no device view");
             }
-            System.out.println("[CrystalGraphics]     Single FBO ok: id=" + fbo.getId()
-                    + ", colorTex=" + colorTex.getId());
+            System.out.println("[CrystalGraphics]     Single FBO ok: id=" + fbo.getId());
         } finally {
             fbo.delete();
         }
@@ -132,14 +131,13 @@ public class CrystalGraphicsIntegrationTest {
         try {
             CgTexture t0 = fbo.getColorTexture(0);
             CgTexture t1 = fbo.getColorTexture(1);
-            if (t0 == null || t0.getId() <= 0) {
+            if (t0 == null || t0.rhiView() == null) {
                 throw new AssertionError("Color slot 0 invalid");
             }
-            if (t1 == null || t1.getId() <= 0) {
+            if (t1 == null || t1.rhiView() == null) {
                 throw new AssertionError("Color slot 1 invalid");
             }
-            System.out.println("[CrystalGraphics]     MRT FBO ok: id=" + fbo.getId()
-                    + ", slot0=" + t0.getId() + ", slot1=" + t1.getId());
+            System.out.println("[CrystalGraphics]     MRT FBO ok: id=" + fbo.getId());
         } finally {
             fbo.delete();
         }
@@ -169,8 +167,7 @@ public class CrystalGraphicsIntegrationTest {
             if (depthTex == null) {
                 throw new AssertionError("Depth texture is null");
             }
-            System.out.println("[CrystalGraphics]     Depth-only FBO ok: id=" + fbo.getId()
-                    + ", depthTex=" + depthTex.getId());
+            System.out.println("[CrystalGraphics]     Depth-only FBO ok: id=" + fbo.getId());
         } finally {
             fbo.delete();
         }

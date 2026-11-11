@@ -1,6 +1,6 @@
 package com.crystalgraphics.vfx.particle.gpu.sim;
 
-import com.crystalgraphics.gl.texture.CgTexture3D;
+import com.crystalgraphics.gpu.resource.CgTexture3D;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.vfx.particle.CgVfxModule;
 import com.crystalgraphics.vfx.particle.CgVfxModuleTypes;

@@ -149,9 +149,9 @@ registerSingleJarPipeline(SingleJarSpec(
     configureCheck = {
         forbiddenPrefixes.set(
             listOf("META-INF/versions/", "org/joml/", "de/javagl/", "com/fasterxml/", "org/yaml/", "com/mojang/brigadier/"))
-        // The `:core` MODULE's packages, which are not called `core`: api is the public surface, gl
-        // the implementation, text the font stack.
-        expectSingle.set(listOf("com/crystalgraphics/api/", "com/crystalgraphics/gl/",
+        // The `:core` MODULE's packages, which are not called `core`: api is the public surface, gpu and
+        // material the implementation, text the font stack.
+        expectSingle.set(listOf("com/crystalgraphics/api/", "com/crystalgraphics/gpu/", "com/crystalgraphics/material/",
                                 "com/crystalgraphics/text/"))
         relocatedClasses.set(mapOf("com/crystalgraphics/mc/modern/platform/LifecycleModern.class" to modernCopies))
         requiredEntries.set(listOf(

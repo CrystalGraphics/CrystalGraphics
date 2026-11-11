@@ -2,8 +2,8 @@ package com.crystalgraphics.render.shader;
 
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.material.CgAttachedBuffer;
-import com.crystalgraphics.gl.buffer.shader.CgBonePalettes;
-import com.crystalgraphics.gl.buffer.shader.CgEngineBufferRegistry;
+import com.crystalgraphics.animation.CgBonePalettes;
+import com.crystalgraphics.gpu.resource.CgEngineBufferRegistry;
 import com.github.bsideup.jabel.Desugar;
 
 /**

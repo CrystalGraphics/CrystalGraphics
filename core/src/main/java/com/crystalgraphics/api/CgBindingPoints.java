@@ -1,6 +1,6 @@
 package com.crystalgraphics.api;
 
-import com.crystalgraphics.gl.buffer.shader.CgShaderBufferRegistry;
+import com.crystalgraphics.gpu.resource.CgShaderBufferRegistry;
 import com.crystalgraphics.platform.gl.CgCapabilities;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;

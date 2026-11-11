@@ -9,7 +9,7 @@ import com.crystalgraphics.api.texture.CgSampler;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.asset.kind.CgLookKinds;
 import com.crystalgraphics.asset.load.CgAssetCompiler;
-import com.crystalgraphics.gl.material.parse.CgParsedShader;
+import com.crystalgraphics.material.parse.CgParsedShader;
 import com.crystalgraphics.render.world.CgWorldLights;
 import com.crystalgraphics.settings.CgQuality;
 import com.crystalgraphics.vfx.look.CgVfxLook;

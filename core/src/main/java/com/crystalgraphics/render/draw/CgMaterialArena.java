@@ -1,6 +1,6 @@
 package com.crystalgraphics.render.draw;
 
-import com.crystalgraphics.gl.buffer.CgFrameRing;
+import com.crystalgraphics.gpu.resource.CgFrameRing;
 import com.crystalgraphics.platform.rhi.resource.CgGpuBuffer;
 
 import java.util.Arrays;

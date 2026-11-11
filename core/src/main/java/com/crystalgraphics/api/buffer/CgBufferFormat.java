@@ -1,6 +1,6 @@
 package com.crystalgraphics.api.buffer;
 
-import com.crystalgraphics.gl.buffer.staging.CgBufferWriter;
+import com.crystalgraphics.gpu.staging.CgBufferWriter;
 import lombok.Getter;
 
 import java.util.ArrayList;

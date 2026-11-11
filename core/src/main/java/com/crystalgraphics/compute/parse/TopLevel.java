@@ -1,6 +1,6 @@
 package com.crystalgraphics.compute.parse;
 
-import com.crystalgraphics.gl.material.parse.CgShaderParseException;
+import com.crystalgraphics.material.parse.CgShaderParseException;
 
 import java.util.ArrayList;
 import java.util.List;

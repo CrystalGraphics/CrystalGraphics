@@ -2,7 +2,7 @@
 
 What every shader's source goes through, and the GLSL library it may include. No program handle lives here: a shader is
 reached through a material (`CgMaterial`, its values through `CgMaterialValues`) or a kernel (`CgKernel`); the linked
-programs are internal (`gl/shader`). The raw-program API (`CgShader`, `CgShaderProgram`, `CgShaderBindings`, the
+programs are internal (`material`). The raw-program API (`CgShader`, `CgShaderProgram`, `CgShaderBindings`, the
 shader manager, global uniform injectors) was deleted in rhi SH9.
 
 ---

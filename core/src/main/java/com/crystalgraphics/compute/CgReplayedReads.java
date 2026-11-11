@@ -2,8 +2,8 @@ package com.crystalgraphics.compute;
 
 import com.crystalgraphics.platform.gl.driver.GLC;
 import com.crystalgraphics.api.texture.CgTextureType;
-import com.crystalgraphics.gl.buffer.CgBufferReadback;
-import com.crystalgraphics.gl.buffer.CgReadback;
+import com.crystalgraphics.gpu.resource.CgBufferReadback;
+import com.crystalgraphics.gpu.resource.CgReadback;
 import com.crystalgraphics.platform.rhi.CgDeviceSection;
 import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.rhi.resource.CgTextureRegion;

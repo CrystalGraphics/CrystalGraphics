@@ -18,8 +18,8 @@
  * }</pre>
  *
  * <h3>Caller-owned lifecycle</h3>
- * <p>{@code CgMaterial}, {@link com.crystalgraphics.gl.buffer.shader.CgUniformBuffer},
- * and {@link com.crystalgraphics.gl.buffer.shader.CgShaderBuffer} are
+ * <p>{@code CgMaterial}, {@link com.crystalgraphics.gpu.resource.CgUniformBuffer},
+ * and {@link com.crystalgraphics.gpu.resource.CgShaderBuffer} are
  * caller-owned objects. The caller must call {@code delete()} on each before
  * {@code CgEngineLifecycle.shutdown()}.</p>
  */

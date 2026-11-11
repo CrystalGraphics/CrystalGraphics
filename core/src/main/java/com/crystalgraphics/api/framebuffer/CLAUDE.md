@@ -9,7 +9,7 @@ This package contains exactly one type:
 
 - `CgFrameBufferFormat` — immutable descriptor of every attachment in a framebuffer.
 
-The concrete framebuffer implementation lives in `gl/framebuffer/CgFrameBuffer`.
+The concrete framebuffer implementation lives in `gpu/resource/CgFrameBuffer`.
 
 ## CgFrameBufferFormat
 
@@ -56,7 +56,7 @@ configuration, and renderbuffer flags are equal. Safe as a `Map` key.
 
 ## Relationship to Other Packages
 
-- **gl/framebuffer/CgFrameBuffer** — consumes `CgFrameBufferFormat` at construction time.
+- **gpu/resource/CgFrameBuffer** — consumes `CgFrameBufferFormat` at construction time.
 - **api/texture/CgTextureType** — provides the format constants used as slot descriptors.
 
 ---

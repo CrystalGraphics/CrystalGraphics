@@ -2,7 +2,7 @@ package com.crystalgraphics.compute.ops;
 
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgMeshLods;
-import com.crystalgraphics.gl.texture.CgFallbackTextures;
+import com.crystalgraphics.gpu.resource.CgFallbackTextures;
 import com.crystalgraphics.render.graph.CgDispatch;
 import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.shape.bounds.CgAABB;

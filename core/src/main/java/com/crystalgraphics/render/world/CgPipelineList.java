@@ -17,7 +17,7 @@ import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgMaterialManifest;
 import com.crystalgraphics.api.material.CgMaterialPermutation;
 import com.crystalgraphics.compute.CgKernel;
-import com.crystalgraphics.gl.material.parse.CgPermutationDomain;
+import com.crystalgraphics.material.parse.CgPermutationDomain;
 import com.crystalgraphics.lifecycle.CgGraphicsLifecycle;
 import com.crystalgraphics.render.CgWarmBudget;
 import com.crystalgraphics.render.draw.CgInstanceKind;

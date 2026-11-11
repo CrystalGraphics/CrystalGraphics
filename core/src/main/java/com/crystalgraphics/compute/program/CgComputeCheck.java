@@ -7,7 +7,7 @@ import com.crystalgraphics.compute.source.CgComputeSource;
 import com.crystalgraphics.compute.source.CgImageAccessor;
 import com.crystalgraphics.compute.source.CgImageDecl;
 import com.crystalgraphics.compute.source.CgImageDimension;
-import com.crystalgraphics.gl.buffer.CgReadback;
+import com.crystalgraphics.gpu.resource.CgReadback;
 import com.crystalgraphics.platform.rhi.command.CgAccess;
 import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.platform.rhi.CgDeviceSection;

@@ -14,9 +14,9 @@
  * </ul>
  *
  * <p>These types have no GL dependencies. They are pure data structures used by
- * {@link com.crystalgraphics.gl.buffer.staging.CgBufferWriter} to drive
+ * {@link com.crystalgraphics.gpu.staging.CgBufferWriter} to drive
  * named field writes and by
- * {@link com.crystalgraphics.gl.buffer.shader.CgShaderBuffer} to carry
+ * {@link com.crystalgraphics.gpu.resource.CgShaderBuffer} to carry
  * format metadata through the buffer lifecycle.</p>
  */
 package com.crystalgraphics.api.buffer;

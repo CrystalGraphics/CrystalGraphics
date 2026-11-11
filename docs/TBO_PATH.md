@@ -23,15 +23,15 @@ The seams were left in place so reconnecting is restoring code, not redesigning:
 
 | Piece | Where |
 |---|---|
-| A shader buffer as a buffer texture: `glTexBuffer` over its storage, bound to a texture unit, the shader's `samplerBuffer` set to it | `gl/buffer/shader/CgTextureBuffer`, made by `CgShaderBuffer.createInternal` when the path was TBO |
-| One buffer texture per unit, pointed at whatever buffer a draw reads there | `gl/buffer/CgBufferTextures` (released in `CgGraphicsLifecycle`) |
+| A shader buffer as a buffer texture: `glTexBuffer` over its storage, bound to a texture unit, the shader's `samplerBuffer` set to it | `gpu/resource/CgTextureBuffer`, made by `CgShaderBuffer.createInternal` when the path was TBO |
+| One buffer texture per unit, pointed at whatever buffer a draw reads there | `gpu/resource/CgBufferTextures` (released in `CgGraphicsLifecycle`) |
 | Attached buffers' GLSL: a `samplerBuffer` and a getter fetching each field from 16-byte texels (float-family fields only, stride a multiple of 16) | `CgGlslEmitter.emitTbo`, `appendTboFieldFetch`, `componentSwizzle`; chosen in `CgMaterialShaderCompiler.appendAttachedBuffers` |
 | The object records: `uniform samplerBuffer CgObjectDataBuffer`, 12 RGBA32F texels a record, `cg_FetchObjectData(int)` | `env/cg_env.glsl`'s `#else` branches; bound by `CgExecutor.bindRecords` at `OBJECT_DATA.tbo()` |
 | A material's `Buffers { }`: a `usamplerBuffer _cg_tbo_NAME` read through `_cg_load_NAME`, its texels R32UI/RG32UI/RGBA32UI by element width, a struct a texel per field | `CgBufferReaders.reader(sb, b, false)`, `tbo`, `texelWords`, `texelFormat`; bound by `CgBindingTable.texelBuffer` on `CgBindingPoints.materialBufferUnit(samplers, i)`; wired by `CgMaterialShader.wireMaterialBuffers`; `CgMaterial.checkTexels` refused a buffer past `GL_MAX_TEXTURE_BUFFER_SIZE` |
 | A snapshot's texel buffers | `CgBindingTable`: a fifth header count, `(unit, format)` pairs and refs, bound through `CgBufferTextures` |
 | The graph's view of them | `CgRasterPass` declared object records and buffers `SAMPLED_READ`, and each texel buffer |
 | The type gate | `CgGpuType.isTboCompatible()` (float-family only) and the per-type TBO notes on `CgGpuType`/`CgBufferFormat`; `CgAttachedBuffer.tboGetterName` (`"_cg_get" + structName`, the getter's name) |
-| Program interface | `CgShaderBuffer.wireBlock` set the sampler uniform; `CgShaderProgram`'s `storage` skipped block lookups (now `gl.shader.CgProgram`) |
+| Program interface | `CgShaderBuffer.wireBlock` set the sampler uniform; `CgShaderProgram`'s `storage` skipped block lookups (now `material.CgProgram`) |
 | User buffers | `CgBindingPoints.USER_START_TBO` (unit 5, above Minecraft's 0–4) in `CgShaderBuffer.create` and `CgShaderBufferRegistry.getOrCreate` |
 | The compiler's version | `glslVersion` answered 330 off the SSBO path; `appendMaterialBuffers` refused more samplers plus buffers than the units below the reserved ones |
 | Rules kept for it | `CgCurveBatch`'s curve record stays float-typed at a 16-byte stride, so it would read through texels unchanged |

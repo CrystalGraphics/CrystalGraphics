@@ -8,7 +8,7 @@ import java.util.Map;
 import javax.annotation.Nullable;
 
 import com.crystalgraphics.api.texture.CgTextureSpec;
-import com.crystalgraphics.gl.texture.CgTexture2D;
+import com.crystalgraphics.gpu.resource.CgTexture2D;
 import com.crystalgraphics.text.style.CgTextPaint;
 
 /**

@@ -160,8 +160,8 @@ Fabric's dev mod is `tasks.jar` bundling each module's `downgradedJar` —
 | Work on the VFX rewrite toward Unreal parity (`vfx-aaa`) | `plan/crystalgraphics/vfx-aaa/aaa-rules.md` first: binding | `vfx/CLAUDE.md` § *AAA parity* |
 | Build a GPU-driven pipeline: kernels writing what draws, indirect and multi-draw draws, GPU culling | **[`docs/GPU_DRIVEN_RENDERING.md`](docs/GPU_DRIVEN_RENDERING.md)** | `compute/CLAUDE.md`, `render/graph/CLAUDE.md` |
 | Draw at a host's render stage, or meshes into the world | [`docs/ENGINE_API.md`](docs/ENGINE_API.md) § *Render stages*, § *CgWorldRenderer* | `render/world/CLAUDE.md` |
-| Create a framebuffer, texture, mesh or shader buffer | [`docs/ENGINE_API.md`](docs/ENGINE_API.md) | `api/framebuffer`, `api/texture`, `api/mesh`, `gl/buffer/shader` |
-| Upload, compute or read back off the render thread or beside the frame | [`docs/ENGINE_API.md`](docs/ENGINE_API.md) § *Async* | `gpu/`, `gl/texture`, `render/graph` |
+| Create a framebuffer, texture, mesh or shader buffer | [`docs/ENGINE_API.md`](docs/ENGINE_API.md) | `api/framebuffer`, `api/texture`, `api/mesh`, `gpu/resource` |
+| Upload, compute or read back off the render thread or beside the frame | [`docs/ENGINE_API.md`](docs/ENGINE_API.md) § *Async* | `gpu/`, `gpu/resource`, `render/graph` |
 | Know who sets GPU state, on GL and Vulkan, and what crosses to the host | **[`docs/RENDER_STATE.md`](docs/RENDER_STATE.md)** | `platform/gl/state` |
 | Render text on screen | `docs/font/README.md` | `text/CLAUDE.md` |
 | Build a HUD element, a widget over a point in the world (damage numbers, name plates, markers) or a subtitle's look | **[`docs/WIDGETS.md`](docs/WIDGETS.md)** | `widget/CLAUDE.md` |

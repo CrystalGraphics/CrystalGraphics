@@ -31,7 +31,7 @@ This is the top of the CrystalShader material stack.
 | `CgRenderQueue` | Final utility class (not an enum). Static `int` constants: `BACKGROUND` (1000), `GEOMETRY` (2000), `ALPHA_TEST` (2450), `TRANSPARENT` (3000), `AFTER_DISTORTION` (3500: transparent, drawn after the distortion apply), `OVERLAY` (4000). Threshold constants: `ALPHA_TEST_THRESHOLD` (2450), `TRANSPARENT_THRESHOLD` (2500), `AFTER_DISTORTION_THRESHOLD` (3500), `OVERLAY_THRESHOLD` (4000). `fromName(String)` maps PascalCase or SCREAMING_SNAKE names to int value; throws for unknown names. |
 | `package-info.java` | Package-level Javadoc describing the material API and lifecycle contract. |
 
-**Shader compilation**: all compile pipeline logic lives in `gl/material/CgMaterialShader` + `CgMaterialShaderRegistry`. See [`gl/material/CLAUDE.md`](../../gl/material/CLAUDE.md).
+**Shader compilation**: all compile pipeline logic lives in `material/CgMaterialShader` + `CgMaterialShaderRegistry`. See [`material/CLAUDE.md`](../../material/CLAUDE.md).
 
 ## Key API
 
@@ -265,10 +265,10 @@ their bindings: never declare them again.
 
 | Package | Relationship |
 |---------|-------------|
-| `gl/material/` | Provides `CgShaderParser` (parse) and `CgMaterialShaderCompiler` (generate GLSL) |
-| `gl/buffer/shader/` | `CgUniformBuffer` (UBO frame data), `CgShaderBuffer` (SSBO per-object data) |
+| `material/` | Provides `CgShaderParser` (parse) and `CgMaterialShaderCompiler` (generate GLSL) |
+| `gpu/resource/` | `CgUniformBuffer` (UBO frame data), `CgShaderBuffer` (SSBO per-object data) |
 | `api/shader/` | `CgShaderPreprocessor`, the source pipeline every shader goes through |
-| `gl/shader/` | `CgShader`, what each pass and keyword set compiles into |
+| `material/` | `CgShader`, what each pass and keyword set compiles into |
 | `api/vertex/` | `CgVertexFormat.SPATIAL` — canonical spatial format for this pipeline; also `CgVertexSemantic`, `CgAttribType` |
 | `render/world/`, `render/graph/` | `CgWorldRenderer` and the graph draw a `CgMesh` under a material, through the mesh store |
 

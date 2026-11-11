@@ -1,6 +1,6 @@
 package com.crystalgraphics.render.graph;
 
-import com.crystalgraphics.gl.buffer.CgFrameRing;
+import com.crystalgraphics.gpu.resource.CgFrameRing;
 
 import java.util.IdentityHashMap;
 import java.util.Map;

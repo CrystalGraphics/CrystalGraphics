@@ -8,7 +8,7 @@ import com.crystalgraphics.compute.ops.CgGpuCount;
 import com.crystalgraphics.compute.ops.CgGpuOps;
 import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.lifecycle.CgLifecycleListener;
-import com.crystalgraphics.gl.texture.CgEngineTextures;
+import com.crystalgraphics.gpu.resource.CgEngineTextures;
 import com.crystalgraphics.noise.CgNoiseVolumes;
 import com.crystalgraphics.platform.world.CgEntityQuery;
 import com.crystalgraphics.render.CgFrameClock;

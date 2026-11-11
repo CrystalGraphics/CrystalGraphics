@@ -4,7 +4,7 @@ import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.compute.CgCompute;
 import com.crystalgraphics.compute.CgKernel;
-import com.crystalgraphics.gl.buffer.CgReadback;
+import com.crystalgraphics.gpu.resource.CgReadback;
 import com.crystalgraphics.render.draw.CgPrimitiveTable;
 import com.crystalgraphics.render.draw.CgPassConstants;
 import com.crystalgraphics.render.graph.CgBufferUsage;

@@ -9,7 +9,7 @@ import com.crystalgraphics.vfx.particle.renderer.CgVfxRendererProperties;
 import com.crystalgraphics.vfx.render.CgVfxSlotRenderer;
 import com.crystalgraphics.api.material.CgMaterialDefinition;
 import com.crystalgraphics.api.mesh.CgMeshLods;
-import com.crystalgraphics.gl.material.parse.CgParsedShader;
+import com.crystalgraphics.material.parse.CgParsedShader;
 import com.crystalgraphics.settings.CgQuality;
 
 import java.util.ArrayList;

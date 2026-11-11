@@ -10,7 +10,7 @@ import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgSkeletalMesh;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
 import com.crystalgraphics.asset.kind.CgAssetKinds;
-import com.crystalgraphics.gl.material.CgMaterialProperty;
+import com.crystalgraphics.material.CgMaterialProperty;
 import org.joml.Matrix4f;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;

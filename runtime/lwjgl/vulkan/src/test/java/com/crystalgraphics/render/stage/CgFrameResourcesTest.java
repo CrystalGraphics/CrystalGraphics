@@ -1,7 +1,7 @@
 package com.crystalgraphics.render.stage;
 
 import com.crystalgraphics.api.CgBindingPoints;
-import com.crystalgraphics.gl.texture.CgFallbackTextures;
+import com.crystalgraphics.gpu.resource.CgFallbackTextures;
 import com.crystalgraphics.platform.rhi.nulldrv.CgNullRHI;
 import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.vulkan.shader.ShadercGlslCompiler;

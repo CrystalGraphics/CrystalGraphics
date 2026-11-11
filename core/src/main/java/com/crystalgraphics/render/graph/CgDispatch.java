@@ -1,6 +1,6 @@
 package com.crystalgraphics.render.graph;
 
-import com.crystalgraphics.gl.texture.CgTexture3D;
+import com.crystalgraphics.gpu.resource.CgTexture3D;
 import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.material.CgMaterialValues;
 import com.crystalgraphics.api.texture.CgSampler;

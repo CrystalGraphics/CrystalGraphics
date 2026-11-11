@@ -2,7 +2,7 @@ package com.crystalgraphics.render.graph;
 
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.texture.CgTexture;
-import com.crystalgraphics.gl.material.CgMaterialTestSupport;
+import com.crystalgraphics.material.CgMaterialTestSupport;
 import com.crystalgraphics.render.canvas.CgCanvas;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
 import com.crystalgraphics.render.draw.CgDrawChunk;

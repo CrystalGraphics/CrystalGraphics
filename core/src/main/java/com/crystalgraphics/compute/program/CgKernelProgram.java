@@ -2,14 +2,14 @@ package com.crystalgraphics.compute.program;
 
 import com.crystalgraphics.api.material.CgMaterialValues;
 import com.crystalgraphics.api.shader.CgShaderPreprocessor;
-import com.crystalgraphics.gl.shader.CgShaderCompile;
+import com.crystalgraphics.material.CgShaderCompile;
 import com.crystalgraphics.compute.emit.CgKernelEmitter;
 import com.crystalgraphics.compute.emit.CgKernelTarget;
 import com.crystalgraphics.compute.source.CgBufferDecl;
 import com.crystalgraphics.compute.source.CgComputeSource;
 import com.crystalgraphics.compute.source.CgKernelDecl;
-import com.crystalgraphics.gl.material.CgMaterialProperties;
-import com.crystalgraphics.gl.material.CgMaterialProperty;
+import com.crystalgraphics.material.CgMaterialProperties;
+import com.crystalgraphics.material.CgMaterialProperty;
 import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.rhi.command.CgComputePass;

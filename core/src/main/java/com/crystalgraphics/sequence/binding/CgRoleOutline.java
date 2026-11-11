@@ -5,7 +5,7 @@ import java.util.function.Consumer;
 import com.crystalgraphics.animation.CgAnimInstance;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgMaterialValues;
-import com.crystalgraphics.gl.material.CgMaterialProperty;
+import com.crystalgraphics.material.CgMaterialProperty;
 import com.crystalgraphics.render.post.CgPostMaterial;
 import com.crystalgraphics.sequence.CgSequenceTarget;
 

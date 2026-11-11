@@ -21,7 +21,7 @@ import com.crystalgraphics.frame.CgTickGroup;
 import com.crystalgraphics.frame.CgWorld;
 import com.crystalgraphics.gauntlet.CgGauntletController;
 import com.crystalgraphics.gauntlet.CgGauntletState;
-import com.crystalgraphics.gl.buffer.CgFrameRing;
+import com.crystalgraphics.gpu.resource.CgFrameRing;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.audio.CgHostDuck;
 import com.crystalgraphics.platform.audio.CgHostVolume;

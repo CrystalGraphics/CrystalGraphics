@@ -11,14 +11,14 @@ This package contains four types:
 - `CgTextureSpec` — immutable sampler specification built from `CgTextureType`
 - `CgMipmapConfig` — mipmap policy
 
-The concrete 2D / 2D-array / 3D / cubemap classes live in `gl/texture/` and `implements CgTexture`
+The concrete 2D / 2D-array / 3D / cubemap classes live in `gpu/resource/` and `implements CgTexture`
 directly.
 
 ## Type Map
 
 | Type | Role |
 |------|------|
-| `CgTexture` | The single common interface: `bind(unit)` (noted for the pass being recorded), `getId()`, `getTarget()`, `getWidth()/getHeight()`, `delete()`, `isDeleted()`, `isMissing()` (its files would not load). A texture from files loads at its first use: `gl/texture/CLAUDE.md`. |
+| `CgTexture` | The single common interface: `bind(unit)` (noted for the pass being recorded), `getId()`, `getTarget()`, `getWidth()/getHeight()`, `delete()`, `isDeleted()`, `isMissing()` (its files would not load). A texture from files loads at its first use: `gpu/resource/CLAUDE.md`. |
 | `CgTextures` | The shorthand for textures from files: `of(path[, spec])` 2D, `frames(pattern, count)` and `array(spec, paths...)` 2D array, `volume(pattern, count)` and `volume(spec, paths...)` 3D, `cubemap(spec, six paths)`, `stackedCube(path, spec)` one image of six faces stacked (`w x 6w`). A `.hdr` path is a Radiance image, loaded as RGBA16F half floats (`util/io/CgRadianceHdr`). |
 | `CgTextureType` | Typed enum of ~42 GL format constants. Single source of truth for the (internalFormat, baseFormat, type) triple. Used by `CgTextureSpec` and `CgFrameBufferFormat`. |
 | `CgTextureSpec` | Immutable Lombok `@Builder` describing format (`CgTextureType`), mipmap policy (`CgMipmapConfig`), filter, wrap, and optional shadow comparison. Pre-built constants: `RGBA8_LINEAR`, `RGBA8_NEAREST`, `RGBA16F_LINEAR`, `DEPTH24_SHADOW`, and more. |
@@ -92,7 +92,7 @@ public int getGlInternalFormat() { return type.glInternalFormat; }
 public int getGlBaseFormat()     { return type.glBaseFormat; }
 public int getGlType()           { return type.glType; }
 ```
-These exist so gl/texture/ call sites (`spec.getGlInternalFormat()`) remain stable.
+These exist so gpu/resource/ call sites (`spec.getGlInternalFormat()`) remain stable.
 
 ### Pre-built Constants
 
@@ -141,14 +141,14 @@ CgTextureSpec spec = CgTextureSpec.builder()
     .build();
 ```
 
-## Concrete Impls (live in `gl/texture/`)
+## Concrete Impls (live in `gpu/resource/`)
 
 | Class | Role |
 |-------|------|
-| `gl.texture.CgTexture2D` | Single 2D image (`GL_TEXTURE_2D`). Static factories `create(path)`, `create(path, spec)`, `createEmpty(w, h, spec)`. Supports `upload(w, h, pixels)` re-upload. |
-| `gl.texture.CgTexture2DArray` | A stack of 2D images (`GL_TEXTURE_2D_ARRAY`), smaller ones centred. `create(spec, paths...)`. |
-| `gl.texture.CgTexture3D` | Volumetric (`GL_TEXTURE_3D`). `create(spec, paths...)`, `createEmpty(w, h, d, spec)`. |
-| `gl.texture.CgTextureCubemap` | Cubemap (`GL_TEXTURE_CUBE_MAP`). `create(spec, posX...negZ)`, `createStacked(path, spec)`, `createEmpty(size, spec)`. |
+| `gpu.resource.CgTexture2D` | Single 2D image (`GL_TEXTURE_2D`). Static factories `create(path)`, `create(path, spec)`, `createEmpty(w, h, spec)`. Supports `upload(w, h, pixels)` re-upload. |
+| `gpu.resource.CgTexture2DArray` | A stack of 2D images (`GL_TEXTURE_2D_ARRAY`), smaller ones centred. `create(spec, paths...)`. |
+| `gpu.resource.CgTexture3D` | Volumetric (`GL_TEXTURE_3D`). `create(spec, paths...)`, `createEmpty(w, h, d, spec)`. |
+| `gpu.resource.CgTextureCubemap` | Cubemap (`GL_TEXTURE_CUBE_MAP`). `create(spec, posX...negZ)`, `createStacked(path, spec)`, `createEmpty(size, spec)`. |
 
 ## Ownership Model
 
@@ -158,14 +158,14 @@ CgTextureSpec spec = CgTextureSpec.builder()
 
 ## Relationship to Other Packages
 
-- **gl/texture** holds the concrete impls. They `implements CgTexture` directly.
+- **gpu/resource** holds the concrete impls. They `implements CgTexture` directly.
 - **api/framebuffer/CgFrameBufferFormat** uses `CgTextureType` as slot descriptors.
 - **api/material/CgMaterialValues** has `sampler(String, int, CgTexture[, CgSampler])` for a material's textures.
 
 ## Design Rules
 
 - Public API surface: one interface (`CgTexture`) + one format enum (`CgTextureType`) + one spec (`CgTextureSpec`) + one mipmap policy (`CgMipmapConfig`).
-- All concrete texture creation goes through static factories on impl classes in `gl/texture/`.
+- All concrete texture creation goes through static factories on impl classes in `gpu/resource/`.
 - Never call `glGet*`; spec params are recorded at upload time and never queried back.
 - A spec's filter, wrap and compare are the device sampler a binding reads where it names no `CgSampler`.
 - `CgTextureType` constants: zero hex, all GL values from LWJGL imports.

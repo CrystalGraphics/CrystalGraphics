@@ -8,7 +8,7 @@ import com.crystalgraphics.compute.source.CgImageFormat;
 import com.crystalgraphics.compute.source.CgKernelDecl;
 import com.crystalgraphics.compute.source.CgKernelShape;
 import com.crystalgraphics.compute.source.CgSourcePart;
-import com.crystalgraphics.gl.material.parse.CgShaderParseException;
+import com.crystalgraphics.material.parse.CgShaderParseException;
 import com.crystalgraphics.util.io.CgIO;
 import org.junit.Test;
 

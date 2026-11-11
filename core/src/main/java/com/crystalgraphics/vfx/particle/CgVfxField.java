@@ -3,7 +3,7 @@ package com.crystalgraphics.vfx.particle;
 import com.crystalgraphics.platform.gl.driver.GLC;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.texture.CgTextureType;
-import com.crystalgraphics.gl.texture.CgTexture3D;
+import com.crystalgraphics.gpu.resource.CgTexture3D;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;

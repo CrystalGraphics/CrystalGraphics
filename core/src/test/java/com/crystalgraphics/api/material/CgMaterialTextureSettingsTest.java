@@ -5,8 +5,8 @@ import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.texture.CgTextureSpec;
 import com.crystalgraphics.asset.kind.CgAssetKinds;
 import com.crystalgraphics.asset.tree.CgAssetException;
-import com.crystalgraphics.gl.texture.CgTexture2D;
-import com.crystalgraphics.gl.texture.CgTextureCubemap;
+import com.crystalgraphics.gpu.resource.CgTexture2D;
+import com.crystalgraphics.gpu.resource.CgTextureCubemap;
 import org.junit.BeforeClass;
 import org.junit.Test;
 

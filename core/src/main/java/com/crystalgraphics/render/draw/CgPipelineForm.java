@@ -4,8 +4,8 @@ import com.crystalgraphics.api.state.CgBlendState;
 import com.crystalgraphics.api.state.CgColorMask;
 import com.crystalgraphics.api.state.CgDepthState;
 import com.crystalgraphics.api.state.CgRenderState;
-import com.crystalgraphics.gl.material.parse.CgMaterialShaderCompiler;
-import com.crystalgraphics.gl.material.parse.CgParsedShader;
+import com.crystalgraphics.material.parse.CgMaterialShaderCompiler;
+import com.crystalgraphics.material.parse.CgParsedShader;
 
 /**
  * A way a pipeline draws its pass other than plainly: how its vertices are placed ({@link #SKINNED}) or what its

@@ -10,7 +10,7 @@ import org.junit.Test;
 import com.crystalgraphics.asset.kind.CgAssetKinds;
 import com.crystalgraphics.asset.kind.CgLookKinds;
 import com.crystalgraphics.asset.tree.CgAssetData;
-import com.crystalgraphics.gl.material.parse.CgParsedShader;
+import com.crystalgraphics.material.parse.CgParsedShader;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;

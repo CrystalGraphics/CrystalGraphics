@@ -2,8 +2,8 @@
 
 > **Version**: MVP (Waves 1–4)  
 > **Minimum GLSL**: `#version 330 core`  
-> **Parser**: `CgShaderParser` (`gl/material/`)  
-> **Compiler**: `CgMaterialShaderCompiler` (`gl/material/`)
+> **Parser**: `CgShaderParser` (`material/`)  
+> **Compiler**: `CgMaterialShaderCompiler` (`material/`)
 
 ---
 

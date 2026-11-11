@@ -66,7 +66,7 @@ tasks.register<cgbuildlogic.CheckThinJar>("checkThinJar") {
     allowedPrefixes.set(listOf("com/crystalgraphics/mc/"))
     maxClassMajor.set(nodeJava + 44)
     forbiddenPrefixes.set(listOf(
-        "com/crystalgraphics/core/", "com/crystalgraphics/api/", "com/crystalgraphics/gl/",
+        "com/crystalgraphics/core/", "com/crystalgraphics/api/", "com/crystalgraphics/gpu/", "com/crystalgraphics/material/",
         "com/crystalgraphics/text/", "com/crystalgraphics/platform/", "org/joml/",
         "com/fasterxml/", "de/javagl/", "natives/",
     ))

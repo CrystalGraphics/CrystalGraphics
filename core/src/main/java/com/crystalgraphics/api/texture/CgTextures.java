@@ -1,9 +1,9 @@
 package com.crystalgraphics.api.texture;
 
-import com.crystalgraphics.gl.texture.CgTexture2D;
-import com.crystalgraphics.gl.texture.CgTexture2DArray;
-import com.crystalgraphics.gl.texture.CgTexture3D;
-import com.crystalgraphics.gl.texture.CgTextureCubemap;
+import com.crystalgraphics.gpu.resource.CgTexture2D;
+import com.crystalgraphics.gpu.resource.CgTexture2DArray;
+import com.crystalgraphics.gpu.resource.CgTexture3D;
+import com.crystalgraphics.gpu.resource.CgTextureCubemap;
 
 import java.util.Locale;
 
