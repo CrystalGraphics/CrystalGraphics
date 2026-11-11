@@ -1416,9 +1416,10 @@ particles.kernel("Simulate").withKeywords("WIND").precache();
 - Once compiled, a frame boundary makes it ready (`compute.finishPrecached`, about 1 ms a frame at most).
   `kernel.isReady()` answers true only once that is done, so a precached kernel a pool waits for never finishes at its
   dispatch. A material's commit and its variants keep the same rule.
-- On a Vulkan device a host keeps shaderc's output and the pipeline cache across launches
-  (`CgCacheDirectory`, `crystalgraphics/cache/` under the game directory): a second launch compiles roughly half as
-  long.
+- Every host keeps shaderc's output across launches (`CgCacheDirectory`, `crystalgraphics/cache/spirv` under the game
+  directory), and with it the Vulkan pipeline cache or the GL device's linked programs (`glprogram`): a second launch
+  compiles roughly half as long on Vulkan; on GL (Minecraft 1.20.1's dev run) it took the loading screen from about 25 s
+  to 12.
 
 ### Drawing what a kernel wrote
 

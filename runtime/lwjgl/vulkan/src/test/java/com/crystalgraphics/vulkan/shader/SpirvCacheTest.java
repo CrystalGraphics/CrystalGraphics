@@ -24,6 +24,13 @@ public class SpirvCacheTest {
             "layout(std430) buffer Out { uint words[]; };",
             "void main() { words[gl_GlobalInvocationID.x] = gl_GlobalInvocationID.x; }",
             "");
+    /** As {@link #KERNEL}, bound as written: what {@code compileExplicitCompute} takes. */
+    private static final String EXPLICIT_KERNEL = String.join("\n",
+            "#version 450 core",
+            "layout(local_size_x = 64) in;",
+            "layout(std430, set = 0, binding = 0) buffer Out { uint words[]; };",
+            "void main() { words[gl_GlobalInvocationID.x] = gl_GlobalInvocationID.x; }",
+            "");
 
     @Rule
     public TemporaryFolder folder = new TemporaryFolder();
@@ -43,6 +50,23 @@ public class SpirvCacheTest {
 
         try (ShadercGlslCompiler compiler = new ShadercGlslCompiler(dir)) {
             assertEquals(generator ^ 1, word(compiler.compileCompute(KERNEL, "kernel").spirv(), 2));
+        }
+    }
+
+    @Test
+    public void aKernelCompiledAsWrittenIsKeptToo() throws IOException {
+        Path dir = folder.getRoot().toPath();
+        int generator;
+        try (ShadercGlslCompiler compiler = new ShadercGlslCompiler(dir)) {
+            generator = word(compiler.compileExplicitCompute(EXPLICIT_KERNEL, "kernel").spirv(), 2);
+        }
+        Path kept = only(dir);
+        ByteBuffer bytes = ByteBuffer.wrap(Files.readAllBytes(kept)).order(ByteOrder.nativeOrder());
+        bytes.putInt(8, generator ^ 1);
+        Files.write(kept, bytes.array());
+
+        try (ShadercGlslCompiler compiler = new ShadercGlslCompiler(dir)) {
+            assertEquals(generator ^ 1, word(compiler.compileExplicitCompute(EXPLICIT_KERNEL, "kernel").spirv(), 2));
         }
     }
 

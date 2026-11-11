@@ -66,6 +66,10 @@ public final class ShadercGlslCompiler implements CgGlslCompiler, AutoCloseable 
     /** Vulkan's own rules, nothing bound for the source: {@link #compileExplicit}'s. */
     private final long explicitOptions = shaderc_compile_options_initialize();
     private final SpirvCache cache;
+    /** {@link #explicitOptions}' modules, kept apart from {@link #cache}'s by their options. */
+    private final SpirvCache explicitCache;
+    /** Every option {@link #explicitOptions} sets, for its cache's key. */
+    private static final String EXPLICIT_OPTIONS = "vulkan 1.2, auto-mapped locations, Vulkan rules, nothing auto-bound";
 
     /** A compiler that keeps nothing. */
     public ShadercGlslCompiler() {
@@ -100,6 +104,7 @@ public final class ShadercGlslCompiler implements CgGlslCompiler, AutoCloseable 
         shaderc_compile_options_set_auto_map_locations(options, true);
         cache = cacheDir == null ? null : new SpirvCache(cacheDir, OPTIONS + (relaxed ? ", relaxed rules" : "")
                 + (autoBind ? ", auto-bound uniforms" : ""));
+        explicitCache = cacheDir == null ? null : new SpirvCache(cacheDir, EXPLICIT_OPTIONS);
     }
 
     @Override
@@ -111,11 +116,11 @@ public final class ShadercGlslCompiler implements CgGlslCompiler, AutoCloseable 
     public synchronized Explicit compileExplicit(String vertexGlsl, String fragmentGlsl, Map<String, Integer> attribLocations,
                                                  String label) {
         String vertexSource = withDefines(vertexGlsl, label, EXPLICIT);
-        SpirvModule vertex = new SpirvModule(compile(vertexSource, shaderc_glsl_vertex_shader, label, explicitOptions), label);
-        SpirvModule glDepth = new SpirvModule(compile(wrapMain(vertexSource, label), shaderc_glsl_vertex_shader, label,
-                explicitOptions), label);
-        SpirvModule fragment = new SpirvModule(compile(withDefines(fragmentGlsl, label, EXPLICIT),
-                shaderc_glsl_fragment_shader, label, explicitOptions), label);
+        SpirvModule vertex = new SpirvModule(explicitSpirv(vertexSource, shaderc_glsl_vertex_shader, label), label);
+        SpirvModule glDepth = new SpirvModule(explicitSpirv(wrapMain(vertexSource, label), shaderc_glsl_vertex_shader, label),
+                label);
+        SpirvModule fragment = new SpirvModule(explicitSpirv(withDefines(fragmentGlsl, label, EXPLICIT),
+                shaderc_glsl_fragment_shader, label), label);
         vertexInputs(glDepth, vertex, attribLocations);
         Layout layout = layout(vertex, fragment);
         int outputs = 0;
@@ -127,8 +132,8 @@ public final class ShadercGlslCompiler implements CgGlslCompiler, AutoCloseable 
 
     @Override
     public synchronized ExplicitCompute compileExplicitCompute(String glsl, String label) {
-        SpirvModule m = new SpirvModule(compile(withDefines(glsl, label, EXPLICIT), shaderc_glsl_compute_shader, label,
-                explicitOptions), label);
+        SpirvModule m = new SpirvModule(explicitSpirv(withDefines(glsl, label, EXPLICIT), shaderc_glsl_compute_shader, label),
+                label);
         Layout layout = layout(m);
         return new ExplicitCompute(m.spirv, m.localSize.clone(), layout.sets, layout.heap, (m.pushConstantBytes + 3) / 4 * 4);
     }
@@ -356,6 +361,15 @@ public final class ShadercGlslCompiler implements CgGlslCompiler, AutoCloseable 
         if (kept != null) return kept;
         ByteBuffer words = compile(source, kind, label);
         if (cache != null) cache.put(kind, source, words);
+        return words;
+    }
+
+    /** As {@link #spirv}, compiled as written ({@link #compileExplicit}'s rules), kept apart by those options. */
+    private ByteBuffer explicitSpirv(String source, int kind, String label) {
+        ByteBuffer kept = explicitCache == null ? null : explicitCache.get(kind, source);
+        if (kept != null) return kept;
+        ByteBuffer words = compile(source, kind, label, explicitOptions);
+        if (explicitCache != null) explicitCache.put(kind, source, words);
         return words;
     }
 
