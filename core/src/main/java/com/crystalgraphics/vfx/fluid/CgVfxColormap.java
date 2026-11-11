@@ -4,7 +4,7 @@ import com.crystalgraphics.platform.gl.driver.GLC;
 import com.crystalgraphics.api.texture.CgTextureSpec;
 import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.gl.texture.CgTexture2D;
-import com.crystalgraphics.noise.CgNoiseBake;
+import com.crystalgraphics.util.CgHalfFloat;
 
 import java.util.Arrays;
 
@@ -108,7 +108,7 @@ public final class CgVfxColormap {
             sample((i + 0.5f) / resolution, texel);
             System.arraycopy(texel, 0, texels, i * 4, 4);
         }
-        texture = CgTexture2D.createFromPixels(resolution, 1, CgNoiseBake.toHalf(texels), SPEC);
+        texture = CgTexture2D.createFromPixels(resolution, 1, CgHalfFloat.halves(texels), SPEC);
         return texture;
     }
 

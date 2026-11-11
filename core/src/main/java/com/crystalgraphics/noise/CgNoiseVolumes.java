@@ -1,21 +1,30 @@
 package com.crystalgraphics.noise;
 
-import com.crystalgraphics.platform.gl.driver.GLC;
-import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.api.texture.CgTextureSpec;
 import com.crystalgraphics.api.texture.CgTextureType;
+import com.crystalgraphics.compute.CgCompute;
+import com.crystalgraphics.compute.CgKernel;
+import com.crystalgraphics.gl.framebuffer.CgFrameBuffer;
 import com.crystalgraphics.gl.texture.CgEngineTextures;
 import com.crystalgraphics.gl.texture.CgTexture3D;
+import com.crystalgraphics.loading.task.CgLoadPlan;
+import com.crystalgraphics.platform.gl.driver.GLC;
+import com.crystalgraphics.render.CgImmediate;
+import com.crystalgraphics.render.graph.CgBufferDesc;
+import com.crystalgraphics.render.graph.CgBufferUsage;
+import com.crystalgraphics.render.graph.CgGraphBuffer;
+import com.crystalgraphics.render.graph.CgGraphTexture;
+import com.crystalgraphics.variable.CgVar;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.util.logging.Level;
-import java.util.logging.Logger;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
- * The engine's noise volumes: tiling RGBA16F cubes of gradient noise, value noise, cellular noise and a curl flow,
- * baked once ({@link CgNoiseBake}) and sampled by any shader or kernel through a sampler property whose default names
- * one, so a shader reads a texel where it hashed eight corners.
+ * The engine's noise volumes, baked once by kernels ({@code noise_bake.compute}) and sampled by any shader or kernel
+ * through a sampler property whose default names one, so a shader reads a texel where it hashed eight corners:
+ * tiling RGBA16F cubes of gradient noise, value noise, cellular noise and a curl flow, and wavelet noise's tile.
  *
  * <pre>{@code
  * Properties {
@@ -23,136 +32,178 @@ import java.util.logging.Logger;
  *     _Voronoi ("Voronoi", sampler3D) = "cg_voronoi"       // F1, F2, the cell's hash
  *     _VoronoiNearest ("Cells", sampler3D) = "cg_voronoi_nearest"   // F1's gradient, F1: a normal from cells
  *     _ValueGradient ("Value slope", sampler3D) = "cg_value_gradient"   // value noise's gradient and value: a normal
+ *     _Wavelet ("Wavelet noise", sampler3D) = "cg_wavelet_noise"
  * }
  * float n = cg_noise3(_Noise, p);                           // lib/noise_volume.glsl
+ * float w = fx_wavelet(_Wavelet, p);                        // lib/vfx/fx_wavelet.glsl: p in lattice units
  * }</pre>
  *
  * <ul>
- *   <li>{@link #PERIOD} lattice cells across every volume: sample at {@code p / PERIOD}, repeating.
+ *   <li>{@link #PERIOD} lattice cells across every RGBA volume: sample at {@code p / PERIOD}, repeating.
  *       {@code lib/noise_volume.glsl} does it.</li>
- *   <li>Baked on a worker at the first {@link #install()}, mip chain included, about half a second at 64; until it
- *       lands every name reads zero.</li>
- *   <li>{@code -Dcrystalgraphics.noise.size=64|128}: texels a side, 64 by default (2 MB a volume).</li>
+ *   <li>Each RGBA channel is the same noise with its own seed, so one fetch gives four independent values. At texel
+ *       centres a volume holds {@code fx_common.glsl}'s functions at lattice coordinate {@code (x + 0.5) * PERIOD / SIZE},
+ *       the lattice wrapped.</li>
+ *   <li>Wavelet noise (Cook and DeRose, 2005) is band-limited, all of its detail within one octave, so octaves of it
+ *       stack without the blur and aliasing Perlin noise brings. Its tile is baked as Mantaflow bakes it (Apache-2.0,
+ *       {@code source/noisefield.cpp}, {@code WaveletNoiseField::generateTile}, tile 0), {@link #WAVELET_TILE} lattice
+ *       units a side, R16F, repeating; {@code fx_wavelet.glsl} reads it as Mantaflow's {@code WNoise} does. Mantaflow
+ *       fills its tile from its Mersenne Twister and the kernels from PCG, so the values differ; the spectrum is the
+ *       same.</li>
+ *   <li>Baked behind the loading screen, mip chains included, as the task {@code crystalgraphics:noise}, once its
+ *       kernels are built. Until then every name reads zero.</li>
+ *   <li>{@code -Dcrystalgraphics.noise.size=64|128}: texels a side of the RGBA volumes, 64 by default (2 MB a volume).</li>
  * </ul>
  */
 public final class CgNoiseVolumes {
 
-    private static final Logger LOGGER = Logger.getLogger(CgNoiseVolumes.class.getName());
-
     /** The engine texture names, in {@link CgEngineTextures}. */
     public static final String GRADIENT = "cg_noise", VALUE = "cg_value_noise", VORONOI = "cg_voronoi", CURL = "cg_curl",
-            VORONOI_NEAREST = "cg_voronoi_nearest", VALUE_GRADIENT = "cg_value_gradient";
+            VORONOI_NEAREST = "cg_voronoi_nearest", VALUE_GRADIENT = "cg_value_gradient", WAVELET = "cg_wavelet_noise";
 
-    /** Lattice cells across a volume; {@code CG_NOISE_PERIOD} in {@code lib/noise_volume.glsl}. */
+    /** Lattice cells across an RGBA volume; {@code CG_NOISE_PERIOD} in {@code lib/noise_volume.glsl}. */
     public static final int PERIOD = 16;
+    /** The wavelet tile's lattice units a side: Mantaflow's {@code NOISE_TILE_SIZE}. */
+    public static final int WAVELET_TILE = 128;
 
     public static final int SIZE = CgVar.integer("crystalgraphics.noise.size", 64, 16, 256, CgVar.DEV | CgVar.RESTART,
             "Texels a side of each engine noise volume: 64 (2 MB a volume) or 128.").get();
 
-    private static final String[] NAMES = {GRADIENT, VALUE, VORONOI, CURL, VORONOI_NEAREST, VALUE_GRADIENT};
-    private static final CgTextureSpec SPEC = CgTextureSpec.builder().type(CgTextureType.RGBA16F)
-            .minFilter(GLC.GL_LINEAR).magFilter(GLC.GL_LINEAR)
-            .wrapS(GLC.GL_REPEAT).wrapT(GLC.GL_REPEAT).wrapR(GLC.GL_REPEAT).build();
+    private static final String KERNELS = "crystalgraphics:shaders/env/compute/noise_bake.compute";
+    /** Each volume's name, then the kernel writing its level 0; the curl's reads the gradient's. The wavelet tile last. */
+    private static final String[] NAMES = {GRADIENT, VALUE, VORONOI, CURL, VORONOI_NEAREST, VALUE_GRADIENT, WAVELET};
+    private static final String[] LEVEL0 = {"Gradient", "Value", "Voronoi", "Curl", "VoronoiNearest", "ValueGradient"};
+    private static final String[] KERNEL_NAMES = {"Gradient", "Value", "ValueGradient", "Voronoi", "VoronoiNearest",
+            "Curl", "Halve", "WaveletSeed", "WaveletDown", "WaveletUp", "WaveletBand", "WaveletTile"};
+    private static final int RGBA = LEVEL0.length, WAVELET_AT = RGBA;
+    private static final int WAVELET_SEED = 0x5EED;
 
+    private static final CgTextureSpec SPEC = repeating(CgTextureType.RGBA16F);
+    private static final CgTextureSpec WAVELET_SPEC = repeating(CgTextureType.R16F);
+
+    /** Each volume's storage, owning it: what a kernel binds. */
+    private static final CgFrameBuffer[] STORAGE = new CgFrameBuffer[NAMES.length];
+    /** Each volume once baked; until then its name answers {@link #pending} or {@link #pendingWavelet}. */
     private static final CgTexture3D[] VOLUMES = new CgTexture3D[NAMES.length];
-    /** One zero texel, answering every name until the bake lands, so no sampler3D is left unbound. */
-    private static CgTexture3D pending;
-    /** Kept for the next context: baked once a process. Per volume, its levels from 0. */
-    private static ByteBuffer[][] baked;
-    private static boolean baking;
-    /** Bumped by {@link #release()}, so a bake landing after it uploads nothing. */
+    /** One zero texel each, answering a name until the bake lands, so no sampler3D is left unbound. */
+    private static CgTexture3D pending, pendingWavelet;
+    private static List<CgKernel> kernels;
+    /** Bumped by {@link #release()}, so a bake task started before it records nothing. */
     private static int generation;
 
     static {
         for (int i = 0; i < NAMES.length; i++) {
             int at = i;
-            CgEngineTextures.register(NAMES[i], () -> VOLUMES[at] != null ? VOLUMES[at] : pending);
+            CgEngineTextures.register(NAMES[i], () -> VOLUMES[at] != null ? VOLUMES[at]
+                    : at == WAVELET_AT ? pendingWavelet : pending);
         }
     }
 
     private CgNoiseVolumes() {
     }
 
-    /** Makes the volumes for the current context, baking them first if this process has not. Render thread. */
-    public static synchronized void install() {
-        if (VOLUMES[0] != null) return;
-        if (pending == null) {
-            pending = CgTexture3D.createEmpty(1, 1, 1, SPEC, 1);
-            pending.uploadRegion(0, 0, 0, 0, 1, 1, 1, ByteBuffer.allocateDirect(8).order(ByteOrder.nativeOrder()),
-                    GLC.GL_RGBA, GLC.GL_HALF_FLOAT);
+    /** Makes the volumes for the current context and starts their bake. Render thread. */
+    public static void install() {
+        if (STORAGE[0] != null) return;
+        pending = zero(SPEC, 8, GLC.GL_RGBA);
+        pendingWavelet = zero(WAVELET_SPEC, 2, GLC.GL_RED);
+        int levels = CgTexture3D.fullChain(SIZE, SIZE, SIZE);
+        for (int i = 0; i < RGBA; i++) {
+            STORAGE[i] = CgFrameBuffer.createVolume(NAMES[i], CgTexture3D.createEmpty(SIZE, SIZE, SIZE, SPEC, levels));
         }
-        if (baked != null) {
-            upload(baked);
-            return;
-        }
-        if (baking) return;
-        baking = true;
+        STORAGE[WAVELET_AT] = CgFrameBuffer.createVolume(WAVELET,
+                CgTexture3D.createEmpty(WAVELET_TILE, WAVELET_TILE, WAVELET_TILE, WAVELET_SPEC, 1));
         int expected = generation;
-        Thread worker = new Thread(() -> {
-            ByteBuffer[][] done;
-            try {
-                long start = System.nanoTime();
-                done = bake();
-                LOGGER.fine(() -> "[crystalgraphics] noise volumes baked, " + SIZE + "^3, in "
-                        + (System.nanoTime() - start) / 1_000_000 + " ms");
-            } catch (RuntimeException e) {
-                LOGGER.log(Level.WARNING, "[crystalgraphics] noise volumes failed to bake", e);
-                synchronized (CgNoiseVolumes.class) {
-                    baking = false;
-                }
-                return;
-            }
-            synchronized (CgNoiseVolumes.class) {
-                baking = false;
-                baked = done;
-                if (generation == expected) upload(done);
-            }
-        }, "CrystalGraphics noise bake");
-        worker.setDaemon(true);
-        worker.start();
+        CgLoadPlan.get().task("crystalgraphics:noise").render(task -> generation != expected || bake()).start();
     }
 
-    /** Frees the volumes; the baked bytes stay for the next {@link #install()}. Render thread, with the context current. */
-    public static synchronized void release() {
+    /** Frees the volumes. Render thread, with the context current. */
+    public static void release() {
         generation++;
-        for (int i = 0; i < VOLUMES.length; i++) {
-            if (VOLUMES[i] != null) VOLUMES[i].delete();
+        for (int i = 0; i < NAMES.length; i++) {
+            if (STORAGE[i] != null) STORAGE[i].delete();
+            STORAGE[i] = null;
             VOLUMES[i] = null;
         }
         if (pending != null) pending.delete();
-        pending = null;
+        if (pendingWavelet != null) pendingWavelet.delete();
+        pending = pendingWavelet = null;
     }
 
-    private static ByteBuffer[][] bake() {
-        float[] gradient = CgNoiseBake.gradient(SIZE, PERIOD);
-        return new ByteBuffer[][]{chain(gradient), chain(CgNoiseBake.value(SIZE, PERIOD)),
-                chain(CgNoiseBake.voronoi(SIZE, PERIOD)), chain(CgNoiseBake.curl(gradient, SIZE, PERIOD)),
-                chain(CgNoiseBake.voronoiNearest(SIZE, PERIOD)), chain(CgNoiseBake.valueGradient(SIZE, PERIOD))};
+    /** The task's step: the kernels precached at its first, every volume dispatched in one pass once they are built. */
+    private static boolean bake() {
+        if (kernels == null) {
+            kernels = new ArrayList<>(KERNEL_NAMES.length);
+            for (String name : KERNEL_NAMES) kernels.add(kernel(name).precache());
+        }
+        for (CgKernel k : kernels) {
+            if (!k.isReady()) return false;
+        }
+        CgGraphTexture[] volumes = new CgGraphTexture[NAMES.length];
+        for (int i = 0; i < NAMES.length; i++) volumes[i] = CgGraphTexture.imported(NAMES[i], STORAGE[i]);
+        try (CgImmediate.Compute run = CgImmediate.compute("crystalgraphics.noiseBake")) {
+            rgba(run, volumes);
+            wavelet(run, volumes[WAVELET_AT]);
+        }
+        for (int i = 0; i < NAMES.length; i++) VOLUMES[i] = (CgTexture3D) STORAGE[i].getColorTexture(0);
+        return true;
+    }
+
+    /** Each RGBA volume's level 0 by its kernel, then each level the box average of the eight texels above it. */
+    private static void rgba(CgImmediate.Compute run, CgGraphTexture[] volumes) {
+        for (int i = 0; i < RGBA; i++) {
+            var level0 = run.dispatch(kernel(LEVEL0[i]), SIZE, SIZE, SIZE).image("OUT", volumes[i], 0, -1)
+                    .set("_Period", PERIOD);
+            if (NAMES[i].equals(CURL)) level0.image("POTENTIAL", volumes[0], 0, -1);
+        }
+        int levels = CgTexture3D.fullChain(SIZE, SIZE, SIZE);
+        for (int i = 0; i < RGBA; i++) {
+            for (int l = 0, size = SIZE / 2; l + 1 < levels; l++, size /= 2) {
+                run.dispatch(kernel("Halve"), size, size, size).image("SRC", volumes[i], l, -1)
+                        .image("DST", volumes[i], l + 1, -1);
+            }
+        }
     }
 
     /**
-     * Every level of a volume as RGBA16F, averaged on the bake's thread. Left to the driver, NVIDIA's GL stalled the
-     * render thread 6-24 ms a volume generating a 3D float chain.
+     * The wavelet tile: a normal value a cell, each axis downsampled and upsampled in turn, which leaves the coarse half
+     * of the spectrum; that subtracted; then a copy offset by an odd number of cells added, which evens the variance
+     * between even and odd cells.
      */
-    private static ByteBuffer[] chain(float[] level0) {
-        ByteBuffer[] levels = new ByteBuffer[CgTexture3D.fullChain(SIZE, SIZE, SIZE)];
-        float[] level = level0;
-        for (int l = 0, size = SIZE; l < levels.length; l++, size /= 2) {
-            levels[l] = CgNoiseBake.toHalf(level);
-            if (l + 1 < levels.length) level = CgNoiseBake.halve(level, size);
+    private static void wavelet(CgImmediate.Compute run, CgGraphTexture tile) {
+        int n = WAVELET_TILE, cells = n * n * n;
+        CgBufferDesc desc = CgBufferDesc.elements(cells, 4, CgBufferUsage.STORAGE);
+        CgGraphBuffer seed = CgGraphBuffer.transientBuffer("wavelet.seed", desc);
+        CgGraphBuffer half = CgGraphBuffer.transientBuffer("wavelet.half", desc);
+        CgGraphBuffer coarse = CgGraphBuffer.transientBuffer("wavelet.coarse", desc);
+        run.dispatch(kernel("WaveletSeed"), cells).bind("TO", seed).set("_Seed", WAVELET_SEED);
+        // Each axis's stride, then the strides of the two it runs across: Mantaflow's three passes
+        int[][] axes = {{1, n, n * n}, {n, 1, n * n}, {n * n, 1, n}};
+        CgGraphBuffer from = seed;
+        for (int[] axis : axes) {
+            run.dispatch(kernel("WaveletDown"), cells / 2).bind("FROM", from).bind("TO", half)
+                    .set("_Tile", n).set("_Along", axis[0]).set("_Across", axis[1], axis[2]);
+            run.dispatch(kernel("WaveletUp"), cells).bind("FROM", half).bind("TO", coarse)
+                    .set("_Tile", n).set("_Along", axis[0]).set("_Across", axis[1], axis[2]);
+            from = coarse;
         }
-        return levels;
+        run.dispatch(kernel("WaveletBand"), cells).bind("FROM", seed).bind("BAND", coarse).bind("TO", half);
+        run.dispatch(kernel("WaveletTile"), n, n, n).bind("BAND", half).image("TILE", tile).set("_Tile", n);
     }
 
-    /** Any thread: the texture's work waits for the render thread. A name resolves once its upload is queued. */
-    private static void upload(ByteBuffer[][] levels) {
-        for (int i = 0; i < NAMES.length; i++) {
-            CgTexture3D volume = CgTexture3D.createEmpty(SIZE, SIZE, SIZE, SPEC, levels[i].length);
-            for (int l = 0, size = SIZE; l < levels[i].length; l++, size /= 2) {
-                volume.uploadRegion(l, 0, 0, 0, size, size, size, levels[i][l].duplicate(), GLC.GL_RGBA,
-                        GLC.GL_HALF_FLOAT);
-            }
-            VOLUMES[i] = volume;
-        }
+    private static CgKernel kernel(String name) {
+        return CgCompute.load(KERNELS).kernel(name);
+    }
+
+    private static CgTextureSpec repeating(CgTextureType type) {
+        return CgTextureSpec.builder().type(type).minFilter(GLC.GL_LINEAR).magFilter(GLC.GL_LINEAR)
+                .wrapS(GLC.GL_REPEAT).wrapT(GLC.GL_REPEAT).wrapR(GLC.GL_REPEAT).build();
+    }
+
+    private static CgTexture3D zero(CgTextureSpec spec, int bytes, int format) {
+        CgTexture3D texel = CgTexture3D.createEmpty(1, 1, 1, spec, 1);
+        texel.uploadRegion(0, 0, 0, 0, 1, 1, 1, ByteBuffer.allocateDirect(bytes).order(ByteOrder.nativeOrder()), format,
+                GLC.GL_HALF_FLOAT);
+        return texel;
     }
 }

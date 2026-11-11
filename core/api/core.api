@@ -6014,6 +6014,7 @@ com/crystalgraphics/gl/framebuffer/CgFrameBuffer
   method public,static createOwned (Ljava/lang/String;IILcom/crystalgraphics/api/framebuffer/CgFrameBufferFormat;I)Lcom/crystalgraphics/gl/framebuffer/CgFrameBuffer;
   method public,static createScreenSized (Ljava/lang/String;Lcom/crystalgraphics/api/framebuffer/CgFrameBufferFormat;)Lcom/crystalgraphics/gl/framebuffer/CgFrameBuffer;
   method public,static createVolume (Ljava/lang/String;IIILcom/crystalgraphics/api/framebuffer/CgFrameBufferFormat;)Lcom/crystalgraphics/gl/framebuffer/CgFrameBuffer;
+  method public,static createVolume (Ljava/lang/String;Lcom/crystalgraphics/gl/texture/CgTexture3D;)Lcom/crystalgraphics/gl/framebuffer/CgFrameBuffer;
   method public,static depthTypeOf (III)Lcom/crystalgraphics/api/texture/CgTextureType;
   method public,static deviceDescs (Ljava/lang/String;IILcom/crystalgraphics/api/framebuffer/CgFrameBufferFormat;I)Ljava/util/List;
   method public,static owned (I)Lcom/crystalgraphics/gl/framebuffer/CgFrameBuffer;
@@ -7776,17 +7777,6 @@ com/crystalgraphics/net/wire/CgWireTransport
   method public send (Ljava/lang/Object;)V
   method public sendNotification (Ljava/lang/String;[BI)Z
   method public setReceiver (Ljava/util/function/Consumer;)V
-com/crystalgraphics/noise/CgNoiseBake
-  access public,final
-  extends java/lang/Object
-  method public,static curl ([FII)[F
-  method public,static gradient (II)[F
-  method public,static halve ([FI)[F
-  method public,static toHalf ([F)Ljava/nio/ByteBuffer;
-  method public,static value (II)[F
-  method public,static valueGradient (II)[F
-  method public,static voronoi (II)[F
-  method public,static voronoiNearest (II)[F
 com/crystalgraphics/noise/CgNoiseVolumes
   access public,final
   extends java/lang/Object
@@ -7798,16 +7788,10 @@ com/crystalgraphics/noise/CgNoiseVolumes
   field public,static,final VALUE_GRADIENT Ljava/lang/String;
   field public,static,final VORONOI Ljava/lang/String;
   field public,static,final VORONOI_NEAREST Ljava/lang/String;
+  field public,static,final WAVELET Ljava/lang/String;
+  field public,static,final WAVELET_TILE I
   method public,static install ()V
   method public,static release ()V
-com/crystalgraphics/noise/CgWaveletNoise
-  access public,final
-  extends java/lang/Object
-  field public,static,final NAME Ljava/lang/String;
-  field public,static,final TILE I
-  method public,static install ()V
-  method public,static release ()V
-  method public,static tile ()[F
 com/crystalgraphics/object/CgProperty
   access public,final
   extends java/lang/Object

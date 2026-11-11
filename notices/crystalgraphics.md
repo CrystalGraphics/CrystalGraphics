@@ -33,7 +33,7 @@ JOML is **not** in this jar. It ships in `crystalgraphics-joml-<version>.jar`, w
 | **GeckoLib** models, animations and easings | `com/crystalgraphics/api/mesh/geckolib/`, `com/crystalgraphics/asset/curve/CgRichCurve` | MIT — © 2026 GeckoLib | Ported source, modified. Licence below |
 | **NVIDIA Flow** grid fluid | `com/crystalgraphics/vfx/fluid/`, `assets/crystalgraphics/shaders/env/compute/vfx/fluid.compute`, `assets/crystalgraphics/shaders/vfx/fluid/fluid.shader` | BSD-3-Clause — © 2014-2025 NVIDIA CORPORATION & AFFILIATES | Ported source, modified. Licence below |
 | **bcdec** BC7 decoder | `com/crystalgraphics/util/io/CgBc7` | MIT (of MIT or the Unlicense) — © 2022 Sergii Kudlai | Ported source, modified. Licence below |
-| **Mantaflow** wavelet noise, inflow and UV grids | `com/crystalgraphics/noise/CgWaveletNoise`, `assets/crystalgraphics/shaders/lib/vfx/fx_wavelet.glsl`, `com/crystalgraphics/vfx/fluid/` | Apache 2.0 — © 2011 Tobias Pfaff, Nils Thuerey | Ported source, modified. Licence text: `META-INF/LICENSE` |
+| **Mantaflow** wavelet noise, inflow and UV grids | `com/crystalgraphics/noise/CgNoiseVolumes`, `assets/crystalgraphics/shaders/env/compute/noise_bake.compute`, `assets/crystalgraphics/shaders/lib/vfx/fx_wavelet.glsl`, `com/crystalgraphics/vfx/fluid/` | Apache 2.0 — © 2011 Tobias Pfaff, Nils Thuerey | Ported source, modified. Licence text: `META-INF/LICENSE` |
 
 ## FreeType
 

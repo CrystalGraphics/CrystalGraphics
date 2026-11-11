@@ -23,7 +23,7 @@ import. Use it, never `CgHostImports.attachment`, wherever a name may be ours.
 
 | Concern | |
 |---|---|
-| `create` (registry, by name and format), `createOwned`, `createOnDevice` (with `Images` placing each slot: the graph's transients), `createVolume` (a `CgTexture3D`, nothing draws into it), `createArray` (a `CgTexture2DArray`) | factories |
+| `create` (registry, by name and format), `createOwned`, `createOnDevice` (with `Images` placing each slot: the graph's transients), `createVolume` (a `CgTexture3D`, nothing draws into it; or around one the caller made, its sampling and levels kept), `createArray` (a `CgTexture2DArray`) | factories |
 | `rhiColor(slot)`, `rhiDepth()` — the device textures a pass attaches | attachments |
 | `getColorTexture(slot)`, `getDepthTexture()` — the sampleable textures; null for an attach-only slot | attachments |
 | A renderbuffer or multisampled slot is an attach-only device texture: a pass attaches it, nothing samples it | attachments |

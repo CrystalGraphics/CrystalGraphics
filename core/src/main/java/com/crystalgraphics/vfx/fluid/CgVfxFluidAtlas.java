@@ -9,7 +9,7 @@ import com.crystalgraphics.compute.ops.CgGpuOps;
 import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.lifecycle.CgLifecycleListener;
 import com.crystalgraphics.gl.texture.CgEngineTextures;
-import com.crystalgraphics.noise.CgWaveletNoise;
+import com.crystalgraphics.noise.CgNoiseVolumes;
 import com.crystalgraphics.platform.world.CgEntityQuery;
 import com.crystalgraphics.render.CgFrameClock;
 import com.crystalgraphics.render.CgGpuBudget;
@@ -486,7 +486,7 @@ public final class CgVfxFluidAtlas {
                 .texture("_Predict", predict).image("DENSITY_OUT", density[1 - den]);
         den = 1 - den;
         dispatch(pass, emitDensity, rowBase, fresh).texture("_Density", density[den]).texture("_Fill", fills)
-                .texture("_Wavelet", CgEngineTextures.resolve(CgWaveletNoise.NAME)).bind("EMITTERS", emitterBuffer)
+                .texture("_Wavelet", CgEngineTextures.resolve(CgNoiseVolumes.WAVELET)).bind("EMITTERS", emitterBuffer)
                 .set("_Emitters", emitterCount).bind("CARVES", carveBuffer).set("_Carves", carveCount)
                 .bind("DEPOSIT_GRID", depositGrid).set("_Deposit", fresh).image("DENSITY_OUT", density[1 - den]);
         den = 1 - den;

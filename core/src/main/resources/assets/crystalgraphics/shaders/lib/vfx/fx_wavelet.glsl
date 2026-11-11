@@ -1,5 +1,5 @@
 // Wavelet noise (Cook and DeRose 2005) as Mantaflow evaluates it (Apache-2.0, source/noisefield.h, WNoise): its tile
-// (CgWaveletNoise, "cg_wavelet_noise") read under a quadratic B-spline. Mantaflow sums 27 lattice values; here the
+// (CgNoiseVolumes.WAVELET, "cg_wavelet_noise") read under a quadratic B-spline. Mantaflow sums 27 lattice values; here the
 // spline's three taps an axis are two filtered reads (the first two folded into one, as Sigg and Hadwiger fold a cubic),
 // eight in all, the same sum. Band-limited: an octave holds detail at about two lattice units, none finer or coarser.
 //

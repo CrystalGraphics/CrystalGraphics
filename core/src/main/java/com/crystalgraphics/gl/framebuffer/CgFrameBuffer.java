@@ -291,10 +291,31 @@ public class CgFrameBuffer {
             throw new IllegalArgumentException("CgFrameBuffer '" + name + "': a volume is one single-sampled colour "
                     + "texture at slot 0, not " + format);
         }
-        CgFrameBuffer fbo = new CgFrameBuffer(name, format, width, height);
+        return adopt(name, format, CgTexture3D.createEmpty(width, height, depth, type.toTextureSpec()));
+    }
+
+    /**
+     * Storage around a volume made by the caller, with its own sampling and mip levels: a kernel writes each level as a
+     * {@code 3d} image and a draw samples it as made. The framebuffer owns it from here.
+     *
+     * <pre>{@code
+     * CgTexture3D made = CgTexture3D.createEmpty(64, 64, 64, repeatingRgba16f, CgTexture3D.fullChain(64, 64, 64));
+     * CgFrameBuffer noise = CgFrameBuffer.createVolume("noise", made);
+     * pass.dispatch(fill, 64, 64, 64).image("OUT", CgGraphTexture.imported("noise", noise), 0, -1);
+     * noise.delete();   // deletes made
+     * }</pre>
+     */
+    public static CgFrameBuffer createVolume(String name, CgTexture3D volume) {
+        CgTextureType type = volume.spec().getType();
+        return adopt(name, CgFrameBufferFormat.builder(name).color(0, type).build(), volume);
+    }
+
+    private static CgFrameBuffer adopt(String name, CgFrameBufferFormat format, CgTexture3D volume) {
+        CgFrameBuffer fbo = new CgFrameBuffer(name, format, volume.getWidth(), volume.getHeight());
         fbo.volume = true;
-        Attachment a = new Attachment(0, type, false);
-        a.texture = CgTexture3D.createEmpty(width, height, depth, type.toTextureSpec());
+        fbo.colorLevels = volume.getLevels();
+        Attachment a = new Attachment(0, format.getColorSlot(0), false);
+        a.texture = volume;
         fbo.colorAttachments.put(0, a);
         return fbo;
     }

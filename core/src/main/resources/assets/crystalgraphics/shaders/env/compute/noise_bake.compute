@@ -1,0 +1,255 @@
+// The engine's noise volumes, baked once: CgNoiseVolumes' (fx_common.glsl's noise, one thread a texel, on a lattice
+// wrapping every _Period cells, sampled at texel centres) and the wavelet tile.
+#pragma kernel Gradient 4 4 4 image
+#pragma kernel Value 4 4 4 image
+#pragma kernel ValueGradient 4 4 4 image
+#pragma kernel Voronoi 4 4 4 image
+#pragma kernel VoronoiNearest 4 4 4 image
+#pragma kernel Curl 4 4 4 image
+#pragma kernel Halve 4 4 4 image
+#pragma kernel WaveletSeed map
+#pragma kernel WaveletDown scatter
+#pragma kernel WaveletUp scatter
+#pragma kernel WaveletBand map
+#pragma kernel WaveletTile 4 4 4 image
+
+#include "crystalgraphics:shaders/lib/rng.glsl"
+
+Properties {
+    _Period ("Lattice cells across the volume", int) = 16
+    _Tile   ("The wavelet tile's cells a side", int) = 128
+    _Along  ("Stride of the axis a wavelet filter runs along", int) = 1
+    _Across ("Strides of the other two axes, x then y", vec2) = (128, 16384)
+    _Seed   ("The wavelet tile's seed", int) = 24301
+}
+
+Buffers {
+    FROM ("What a wavelet pass reads",  float, readonly)
+    TO   ("What it writes",             float, writeonly)
+    BAND ("The tile less its coarse half", float, readonly)
+}
+
+Images {
+    OUT      ("The volume's level 0",                  rgba16f, writeonly, 3d)
+    POTENTIAL ("Gradient's level 0, the curl's potential", rgba16f, readonly, 3d)
+    SRC      ("The level a halve reads",                rgba16f, readonly, 3d)
+    DST      ("The level below it",                     rgba16f, writeonly, 3d)
+    TILE     ("The wavelet tile",                       r16f,    writeonly, 3d)
+}
+
+// Mantaflow's _aCoeffs and _pCoeffs (Apache-2.0, source/noisefield.cpp): the down- and upsampling filters.
+const float A[32] = float[32](0.000334, -0.001528, 0.000410, 0.003545, -0.000938, -0.008233, 0.002172, 0.019120,
+        -0.005040, -0.044412, 0.011655, 0.103311, -0.025936, -0.243780, 0.033979, 0.655340,
+        0.655340, 0.033979, -0.243780, -0.025936, 0.103311, 0.011655, -0.044412, -0.005040,
+        0.019120, 0.002172, -0.008233, -0.000938, 0.003546, 0.000410, -0.001528, 0.000334);
+const float P[4] = float[4](0.25, 0.75, 0.75, 0.25);
+
+// Per channel, added to the wrapped cell before hashing: four decorrelated fields from one hash.
+const vec3 SEEDS[4] = vec3[4](vec3(0.0), vec3(131.7, 47.3, 19.1), vec3(29.3, 173.9, 61.7), vec3(83.1, 11.9, 157.3));
+
+float hash31(vec3 p) {
+    p = fract(p * 0.1031);
+    p += dot(p, p.zyx + 31.32);
+    return fract((p.x + p.y) * p.z);
+}
+
+vec3 hash33(vec3 p) {
+    p = fract(p * vec3(0.1031, 0.1030, 0.0973));
+    p += dot(p, p.yxz + 33.33);
+    return fract((p.xxy + p.yxx) * p.zyx);
+}
+
+vec3 wrap(vec3 cell) {
+    ivec3 c = ivec3(cell), p = ivec3(_Period);
+    return vec3((c % p + p) % p);
+}
+
+vec3 quintic(vec3 f) {
+    return f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
+}
+
+vec3 quintic_slope(vec3 f) {
+    return 30.0 * f * f * (f * (f - 2.0) + 1.0);
+}
+
+// The lattice point this thread's texel centre is.
+vec3 lattice() {
+    return (vec3(CG_TEXEL) + 0.5) * float(_Period) / vec3(OUT_SIZE());
+}
+
+float corner(vec3 i, vec3 f, vec3 c, vec3 seed) {
+    vec3 g = hash33(wrap(i + c) + seed) * 2.0 - 1.0;
+    return dot(g, f - c);
+}
+
+float gradient(vec3 p, vec3 seed) {
+    vec3 i = floor(p), f = p - i, u = quintic(f);
+    return 1.6 * mix(mix(mix(corner(i, f, vec3(0, 0, 0), seed), corner(i, f, vec3(1, 0, 0), seed), u.x),
+                         mix(corner(i, f, vec3(0, 1, 0), seed), corner(i, f, vec3(1, 1, 0), seed), u.x), u.y),
+                     mix(mix(corner(i, f, vec3(0, 0, 1), seed), corner(i, f, vec3(1, 0, 1), seed), u.x),
+                         mix(corner(i, f, vec3(0, 1, 1), seed), corner(i, f, vec3(1, 1, 1), seed), u.x), u.y), u.z);
+}
+
+// The eight corners' hashes of value noise around p, x fastest.
+void value_corners(vec3 p, vec3 seed, out float v[8], out vec3 f) {
+    vec3 i = floor(p);
+    f = p - i;
+    vec3 lo = wrap(i) + seed, hi = wrap(i + 1.0) + seed;
+    v[0] = hash31(vec3(lo.x, lo.y, lo.z));
+    v[1] = hash31(vec3(hi.x, lo.y, lo.z));
+    v[2] = hash31(vec3(lo.x, hi.y, lo.z));
+    v[3] = hash31(vec3(hi.x, hi.y, lo.z));
+    v[4] = hash31(vec3(lo.x, lo.y, hi.z));
+    v[5] = hash31(vec3(hi.x, lo.y, hi.z));
+    v[6] = hash31(vec3(lo.x, hi.y, hi.z));
+    v[7] = hash31(vec3(hi.x, hi.y, hi.z));
+}
+
+float value(vec3 p, vec3 seed) {
+    float v[8];
+    vec3 f;
+    value_corners(p, seed, v, f);
+    vec3 u = quintic(f);
+    return mix(mix(mix(v[0], v[1], u.x), mix(v[2], v[3], u.x), u.y), mix(mix(v[4], v[5], u.x), mix(v[6], v[7], u.x), u.y), u.z);
+}
+
+// F1, F2, the nearest cell's hash, and the offset from p to the nearest feature point.
+void voronoi(vec3 p, out vec3 cell, out vec3 nearest) {
+    vec3 c = floor(p), f = p - c;
+    float f1 = 8.0, f2 = 8.0, id = 0.0;
+    nearest = vec3(0.0);
+    for (int z = -1; z <= 1; z++) {
+        for (int y = -1; y <= 1; y++) {
+            for (int x = -1; x <= 1; x++) {
+                vec3 o = vec3(x, y, z), w = wrap(c + o);
+                vec3 d = o + hash33(w) - f;
+                float l = length(d);
+                if (l < f1) {
+                    f2 = f1;
+                    f1 = l;
+                    id = hash31(w);
+                    nearest = d;
+                } else if (l < f2) {
+                    f2 = l;
+                }
+            }
+        }
+    }
+    cell = vec3(f1, f2, id);
+}
+
+void Gradient() {
+    vec3 p = lattice();
+    OUT_WRITE(vec4(gradient(p, SEEDS[0]), gradient(p, SEEDS[1]), gradient(p, SEEDS[2]), gradient(p, SEEDS[3])));
+}
+
+void Value() {
+    vec3 p = lattice();
+    OUT_WRITE(vec4(value(p, SEEDS[0]), value(p, SEEDS[1]), value(p, SEEDS[2]), value(p, SEEDS[3])));
+}
+
+// Value noise's gradient in lattice units and its value: the trilinear blend's derivative through the quintic
+// (Quilez, "value noise derivatives").
+void ValueGradient() {
+    float v[8];
+    vec3 f;
+    value_corners(lattice(), SEEDS[0], v, f);
+    vec3 u = quintic(f), s = quintic_slope(f);
+    float a = v[0], b = v[1], c = v[2], d = v[3], e = v[4], g = v[6], h = v[7], ff = v[5];
+    float k1 = b - a, k2 = c - a, k3 = e - a, k4 = a - b - c + d, k5 = a - c - e + g, k6 = a - b - e + ff;
+    float k7 = -a + b + c - d + e - ff - g + h;
+    OUT_WRITE(vec4(s.x * (k1 + k4 * u.y + k6 * u.z + k7 * u.y * u.z),
+                   s.y * (k2 + k4 * u.x + k5 * u.z + k7 * u.x * u.z),
+                   s.z * (k3 + k6 * u.x + k5 * u.y + k7 * u.x * u.y),
+                   a + k1 * u.x + k2 * u.y + k3 * u.z + k4 * u.x * u.y + k5 * u.y * u.z + k6 * u.x * u.z
+                       + k7 * u.x * u.y * u.z));
+}
+
+void Voronoi() {
+    vec3 cell, nearest;
+    voronoi(lattice(), cell, nearest);
+    OUT_WRITE(vec4(cell, 0.0));
+}
+
+// The unit direction from the nearest feature point, the distance's gradient, and the distance.
+void VoronoiNearest() {
+    vec3 cell, nearest;
+    voronoi(lattice(), cell, nearest);
+    OUT_WRITE(vec4(cell.x > 1e-6 ? -nearest / cell.x : vec3(0.0), cell.x));
+}
+
+// The curl of POTENTIAL's rgb taken as a vector potential (Bridson's curl noise), by central differences across
+// texels, wrapped.
+void Curl() {
+    ivec3 t = CG_TEXEL, n = POTENTIAL_SIZE();
+    float twoH = 2.0 * float(_Period) / float(n.x);
+    vec3 px = POTENTIAL_LOAD((t + ivec3(1, 0, 0)) % n).xyz, nx = POTENTIAL_LOAD((t + n - ivec3(1, 0, 0)) % n).xyz;
+    vec3 py = POTENTIAL_LOAD((t + ivec3(0, 1, 0)) % n).xyz, ny = POTENTIAL_LOAD((t + n - ivec3(0, 1, 0)) % n).xyz;
+    vec3 pz = POTENTIAL_LOAD((t + ivec3(0, 0, 1)) % n).xyz, nz = POTENTIAL_LOAD((t + n - ivec3(0, 0, 1)) % n).xyz;
+    vec3 dx = (px - nx) / twoH, dy = (py - ny) / twoH, dz = (pz - nz) / twoH;
+    OUT_WRITE(vec4(dy.z - dz.y, dz.x - dx.z, dx.y - dy.x, 0.0));
+}
+
+// The next level: each texel the average of the eight it covers, as glGenerateMipmap's box filter.
+void Halve() {
+    ivec3 t = 2 * CG_TEXEL;
+    vec4 sum = vec4(0.0);
+    for (int z = 0; z < 2; z++) {
+        for (int y = 0; y < 2; y++) {
+            for (int x = 0; x < 2; x++) sum += SRC_LOAD(t + ivec3(x, y, z));
+        }
+    }
+    DST_WRITE(sum * 0.125);
+}
+
+// ── The wavelet tile: Mantaflow's generateTile, a line of one axis per filter pass ────────────────────────────────────
+
+// A normal value per cell, by Box-Muller over two counter-based draws.
+void WaveletSeed() {
+    vec4 u = cg_rng_unit4(cg_rng4(uint(_Seed), uint(CG_ELEMENT), 0u, 0u));
+    TO_WRITE(sqrt(-2.0 * log(max(u.x, 1e-7))) * cos(6.28318530718 * u.y));
+}
+
+// The cell a line's element sits at: element e is coordinate e % m along the axis on line e / m of the other two.
+int cell(int e, int m) {
+    int line = e / m, n = _Tile;
+    return int(_Across.x) * (line % n) + int(_Across.y) * (line / n) + _Along * (e % m);
+}
+
+int wrap_tile(int k, int n) {
+    return (k % n + n) % n;
+}
+
+// Dispatched over n/2 elements a line: the half-length line, filtered by A.
+void WaveletDown() {
+    int n = _Tile, i = CG_ELEMENT % (n / 2), base = cell(CG_ELEMENT, n / 2) - _Along * i;
+    float sum = 0.0;
+    for (int k = 2 * i - 16; k < 2 * i + 16; k++) {   // LOOP-BOUND: A's 32 taps
+        sum += A[16 + k - 2 * i] * FROM(base + wrap_tile(k, n) * _Along);
+    }
+    TO_STORE(base + i * _Along, sum);
+}
+
+// Dispatched over n elements a line: the half-length line back to full length, filtered by P.
+void WaveletUp() {
+    int n = _Tile, i = CG_ELEMENT % n, base = cell(CG_ELEMENT, n) - _Along * i;
+    float sum = 0.0;
+    for (int k = i / 2 - 1; k < i / 2 + 3; k++) {   // LOOP-BOUND: P's 4 taps
+        sum += 0.5 * P[1 + k - i / 2] * FROM(base + wrap_tile(k, n / 2) * _Along);
+    }
+    TO_STORE(base + i * _Along, sum);
+}
+
+// The seed less its coarse half: FROM the seed, BAND what the three axes' filters left.
+void WaveletBand() {
+    TO_WRITE(FROM(CG_ELEMENT) - BAND(CG_ELEMENT));
+}
+
+// The band plus a copy of it offset by an odd number of cells and, as Mantaflow's, transposed x for z.
+void WaveletTile() {
+    ivec3 t = CG_TEXEL;
+    int n = _Tile, off = n / 2;
+    if (off % 2 == 0) off++;
+    ivec3 o = (t.zyx + off) % n;
+    TILE_WRITE(vec4(BAND(t.x + n * (t.y + n * t.z)) + BAND(o.x + n * (o.y + n * o.z)), 0.0, 0.0, 1.0));
+}

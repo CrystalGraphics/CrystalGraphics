@@ -1378,7 +1378,9 @@ recording.update(voxels, 0, 0, 0, 32, 128, 96, 16, slab);   // 16 new slices fro
 int reads = rec.bindings().withTexture(material.captureBindings(rec.bindings()), 0, voxels);   // a material's sampler3D
 ```
 
-- One level and one colour attachment; nothing draws into a volume, so a raster pass into it throws.
+- One level and one colour attachment; nothing draws into a volume, so a raster pass into it throws. A volume of your
+  own, with its sampling and mip levels, is imported through `CgFrameBuffer.createVolume(name, texture3d)`, a kernel
+  writing each level as `image(name, volume, level, -1)`.
 - Its format's type is its filter: linear, nearest for an integer type, clamped at every face.
 - Below compute an `image` kernel writes a volume in one draw, an instance a slice placed by a geometry stage's
   `gl_Layer`, and one loading the volume it writes is refused.

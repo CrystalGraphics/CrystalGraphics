@@ -48,7 +48,6 @@ import com.crystalgraphics.gl.material.CgMaterialShaderRegistry;
 import com.crystalgraphics.render.mesh.CgMeshStore;
 import com.crystalgraphics.gl.texture.CgFallbackTextures;
 import com.crystalgraphics.noise.CgNoiseVolumes;
-import com.crystalgraphics.noise.CgWaveletNoise;
 import com.crystalgraphics.gl.texture.CgTextureManager;
 import com.crystalgraphics.settings.CgSettings;
 import com.crystalgraphics.text.cache.CgFontRegistry;
@@ -236,7 +235,6 @@ public final class CgGraphicsLifecycle {
                 CgExecutor.ahead(2);
                 CgStartSteps.step("targets and fallbacks");
                 CgNoiseVolumes.install();
-                CgWaveletNoise.install();
                 CgStartSteps.step("noise");
             }
             case 2 -> {
@@ -602,10 +600,9 @@ public final class CgGraphicsLifecycle {
         // Step 5: Free all cached textures.
         CgTextureManager.get().freeAll();
 
-        // Step 5b: Free engine fallback textures and the noise volumes (their baked bytes stay for the next context).
+        // Step 5b: Free engine fallback textures and the noise volumes.
         CgFallbackTextures.destroy();
         CgNoiseVolumes.release();
-        CgWaveletNoise.release();
 
 
         // Step 7a: Material instances (property UBOs) + their backing shader assets (GL programs).
