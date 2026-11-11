@@ -204,6 +204,26 @@ public enum CgHostThread {
         return FRAMES;
     }
 
+    /**
+     * The host thread the caller is on, as somewhere to post work back to: a game thread that is current, else the
+     * frame thread when the caller is it (before any host frame has run, the caller is the only candidate). Null on
+     * any other thread: a worker, a UI pool thread outside its sequence.
+     *
+     * <pre>{@code
+     * Binding back = CgHostThread.here();               // where an event for this subscriber goes
+     * if (back == null) throw new IllegalStateException("subscribe from a game thread or a sequence");
+     * back.execute(() -> listener.accept(event));
+     * }</pre>
+     */
+    @Nullable
+    public static Binding here() {
+        for (CgHostThread thread : GAME_THREADS) {
+            Binding bound = thread.bound();
+            if (bound != null && bound.isAvailable() && bound.isCurrent()) return bound;
+        }
+        return FRAMES.owner == null || FRAMES.isCurrent() ? FRAMES : null;
+    }
+
     private void reportUnavailable() {
         if (unavailableReported) return;
         unavailableReported = true;
