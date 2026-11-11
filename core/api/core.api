@@ -8482,6 +8482,7 @@ com/crystalgraphics/render/CgWarmBudget
   extends java/lang/Object
   method public,static allows ()Z
   method public,static loading (Z)V
+  method public,static logging ()Z
   method public,static nextFrame ()V
   method public,static remaining ()J
   method public,static spend (J)V

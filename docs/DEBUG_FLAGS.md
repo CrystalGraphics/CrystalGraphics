@@ -349,6 +349,7 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 |---|---|---|---|
 | `crystalgraphics.warmBudget` | 0.0 to 1000.0 | `4.0` | Milliseconds a frame may spend starting programs, kernels and meshes ahead of their first use; 0 for no limit. |
 | `crystalgraphics.warmBudget.loading` | 0.0 to 1000.0 | `12.0` | The warm budget while the loading screen shows, as Unity's High background priority; 0 for no limit. |
+| `crystalgraphics.warmBudget.log` | true, false | `false` | Log each frame the warm budget spent and refused, and what each warm-up still waits on. |
 
 ## `crystalgraphics.world`
 

@@ -371,11 +371,23 @@ public final class CgPipelineList {
         return list.size() + kernels.size() + passes.size();
     }
 
+    /** What the list still waits on, for {@code crystalgraphics.warmBudget.log}: each request collecting, its steps left. */
+    private void logPending() {
+        StringBuilder line = new StringBuilder("[warm] pipelines: ").append(pending.size()).append(" materials, ")
+                .append(unbuilt.size()).append(" kernels, ").append(passesUnbuilt.size()).append(" passes; collecting");
+        for (CgPipelinePrecache.Request r : collecting) {
+            line.append(' ').append(r.name).append(" (").append(r.steps.size()).append(" steps")
+                    .append(r.ahead != null && !r.ahead.isDone() ? ", worker" : "").append(')');
+        }
+        CgPipelinePrecache.LOGGER.info(line.toString());
+    }
+
     /**
      * Once a frame: polls what is pending under {@code requested}, re-warming the whole list when it differs from what
      * was warmed for. Answers whether {@code requested} may apply: the list is built under it, or the wait is spent.
      */
     boolean frame(Settings requested, Settings applied) {
+        if (CgWarmBudget.logging()) logPending();
         CgPipelinePrecache.collect(this);
         if (!collecting.isEmpty()) advanceAll();
         if ((!unbuilt.isEmpty() || !passesUnbuilt.isEmpty()) && CgWarmBudget.allows()) pollKernels();

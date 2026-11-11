@@ -15,6 +15,7 @@ import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.gl.texture.CgTexture2D;
 import com.crystalgraphics.job.CgJob;
 import com.crystalgraphics.gl.material.CgMaterialShader;
+import com.crystalgraphics.render.CgFrameClock;
 import com.crystalgraphics.render.CgWarmBudget;
 import com.crystalgraphics.frame.CgWorld;
 import com.crystalgraphics.render.graph.CgRehearsal;
@@ -1521,7 +1522,17 @@ public final class CgVfxSystem {
      * Polls each look's request and read, its steps collected while the frame's {@link CgWarmBudget} lasts; then, once
      * every look's emitters have expected, their pools' storage under the same budget.
      */
+    /** The frame {@link #pollWarming} last logged, under {@code crystalgraphics.warmBudget.log}. */
+    private long loggedFrame = -1;
+
     private void pollWarming() {
+        if (CgWarmBudget.logging() && loggedFrame != CgFrameClock.frameIndex()) {
+            loggedFrame = CgFrameClock.frameIndex();
+            int uncollected = 0;
+            for (CgPipelinePrecache.Request r : lookRequests) if (!r.collected()) uncollected++;
+            LOGGER.info("[warm] vfx: {} look requests ({} collecting), {} preloads, {} pools to allocate", lookRequests.size(),
+                    uncollected, preloads.size(), expected.size());
+        }
         try (CgTrace.Zone ignored = CgTrace.zone(CgVfxTrace.CHANNEL, POLL_ZONE)) {
             for (int i = lookRequests.size() - 1; i >= 0; i--) {
                 if (lookRequests.get(i).ready()) lookRequests.remove(i);

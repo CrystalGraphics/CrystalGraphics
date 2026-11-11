@@ -3,6 +3,8 @@ package com.crystalgraphics.render;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 import com.crystalgraphics.variable.CgVar;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 /**
  * A frame's CPU time for warming: starting programs, kernels and meshes ahead of their first use. A warm-up list
@@ -22,6 +24,8 @@ import com.crystalgraphics.variable.CgVar;
  *       {@code CgVfxOwner.precache} spread by themselves.</li>
  *   <li>Unlimited until {@code CgEngineLifecycle.ensureGraphicsContext} starts it: a process with no context (a test) warms at
  *       once.</li>
+ *   <li>{@code -Dcrystalgraphics.warmBudget.log=true} logs each frame what it spent and refused, and each warm-up what it
+ *       still waits on ({@link #logging()}): where a warm-up's frames go.</li>
  *   <li>Render thread.</li>
  * </ul>
  */
@@ -32,6 +36,10 @@ public final class CgWarmBudget {
     // 12 holds the screen near 60 fps: at 50 it warmed only a little faster, at 20 fps
     private static final CgVar.Num LOADING_MILLIS = CgVar.number("crystalgraphics.warmBudget.loading", 12f, 0f, 1000f,
             CgVar.DEV, "The warm budget while the loading screen shows, as Unity's High background priority; 0 for no limit.");
+
+    private static final CgVar.Bool LOG = CgVar.bool("crystalgraphics.warmBudget.log", false, CgVar.DEV,
+            "Log each frame the warm budget spent and refused, and what each warm-up still waits on.");
+    private static final Logger LOGGER = LogManager.getLogger("CgWarmBudget");
 
     private static final int SPENT = CgTrace.name("warm.spent-us"), REFUSED = CgTrace.name("warm.refused");
 
@@ -90,8 +98,16 @@ public final class CgWarmBudget {
         spent = 0;
     }
 
+    /** Whether warm-ups log each frame what they wait on: {@code crystalgraphics.warmBudget.log}. */
+    public static boolean logging() {
+        return LOG.get();
+    }
+
     /** A frame's start, before anything warms in it: its whole budget. The lifecycle's. */
     public static void nextFrame() {
+        if (LOG.get() && (spent > 0 || refused > 0)) {
+            LOGGER.info("[warm] spent {} us of {} ms, {} starts refused", spent / 1000, millis(), refused);
+        }
         CgTrace.counter(CgChannels.MISC, SPENT, spent / 1000);
         CgTrace.counter(CgChannels.MISC, REFUSED, refused);
         spent = 0;
