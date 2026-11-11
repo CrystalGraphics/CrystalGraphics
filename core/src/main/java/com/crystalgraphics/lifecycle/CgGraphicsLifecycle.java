@@ -588,7 +588,7 @@ public final class CgGraphicsLifecycle {
 
         // Step 0: External listeners, BEFORE the engine frees anything.
         //
-        // This ordering is the whole contract. A listener (CrystalGUI's CgUiLifecycle, a mod's
+        // This ordering is the whole contract. A listener (CrystalGUI's CgUiClientLifecycle, a mod's
         // renderer) owns GL objects the engine has no handle on — its own framebuffers, renderers,
         // buffers — and can only release them while the context is still whole. Run this after any
         // of the sweeps below and those handles already refer to deleted objects, and any cache the
