@@ -9,11 +9,17 @@ import com.crystalgraphics.api.mesh.CgMeshLoader;
 import com.crystalgraphics.api.mesh.CgMeshLods;
 import com.crystalgraphics.api.mesh.CgMeshShapes;
 import com.crystalgraphics.api.mesh.CgProceduralMesh;
+import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.texture.CgTexture;
-import com.crystalgraphics.api.texture.CgTextureSpec;
+import com.crystalgraphics.api.texture.CgTextureType;
+import com.crystalgraphics.compute.CgCompute;
+import com.crystalgraphics.compute.CgKernel;
+import com.crystalgraphics.gl.framebuffer.CgFrameBuffer;
 import com.crystalgraphics.easing.CgEasings;
 import com.crystalgraphics.easing.CgKeyframes;
 import com.crystalgraphics.gl.texture.CgTexture2D;
+import com.crystalgraphics.render.CgImmediate;
+import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.render.world.CgPipelinePrecache;
 import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.settings.CgQuality;
@@ -25,7 +31,6 @@ import com.crystalgraphics.shape.primitive.CgPlane;
 import com.crystalgraphics.shape.primitive.CgRing;
 import com.crystalgraphics.shape.primitive.CgShell;
 import com.crystalgraphics.shape.primitive.CgSphere;
-import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.vfx.field.CgFieldDefinition;
 import com.crystalgraphics.vfx.field.CgFieldPlacement;
@@ -35,7 +40,6 @@ import com.crystalgraphics.vfx.CgVfxFrame;
 import com.crystalgraphics.vfx.CgVfx;
 import com.crystalgraphics.vfx.CgVfxOwner;
 import com.crystalgraphics.vfx.CgVfxSystem;
-import com.crystalgraphics.vfx.CgVfxTrace;
 import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.look.CgVfxParam;
 import com.crystalgraphics.vfx.look.CgVfxSchema;
@@ -58,8 +62,6 @@ import org.apache.logging.log4j.Logger;
 import org.joml.Matrix4f;
 import org.joml.Quaternionf;
 
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -83,7 +85,7 @@ import java.util.function.Supplier;
  *
  * <pre>{@code
  * CgVfxModules modules = new CgVfxModules(font);    // on the render thread: its textures and materials; the
- *                                                   // flipbook sheets fill from a worker a moment later
+ *                                                   // flipbook sheets filled by kernels at a submit once built
  * CgWorld.client().schedule().add(CgTickGroup.SUBMIT, "mymod:modules", dt -> modules.submit(world, x, y, z, CgFrameClock.seconds()));
  * modules.delete();
  * }</pre>
@@ -107,7 +109,9 @@ public final class CgVfxModules {
     private static final Map<String, Object> GRID_8 = Map.of("size", List.of(8, 8));
     /** How deep behind the scene's depth a particle still counts as hitting it: under half a block, so one passing behind a mob is not snapped onto it. */
     private static final float DEPTH_THICKNESS = 0.4f;
-    private static final int SHEETS_ZONE = CgTrace.name("demo.modules.sheets");
+    private static final String SHEET_KERNELS = "crystalgraphics:shaders/demo/vfx_modules_sheets.compute";
+    private static final CgFrameBufferFormat SHEET_FORMAT =
+            CgFrameBufferFormat.builder("vfx-modules sheet").color(0, CgTextureType.RGBA8).build();
     /** The station grid: columns along x, rows along z, toward the camera. */
     private static final float[] COLUMNS = {-21f, -7f, 7f, 21f}, ROWS = {-14f, 0f, 14f, 28f, 45f, 63f, 81f};
 
@@ -198,10 +202,8 @@ public final class CgVfxModules {
     /** A system of its own, updated and drawn by {@link #submit}; false on the world's. */
     private final boolean drives;
     private final List<Station> stations = new ArrayList<>();
-    private final List<CgTexture> sheets = new ArrayList<>();
-    /** Each sheet's texels, waiting for {@link #fillSheets()}'s worker; and whether {@link #delete()} has run. */
-    private final List<Runnable> fills = new ArrayList<>();
-    private volatile boolean deleted;
+    /** Every sheet, baked or not; and those {@link #bakeSheets()} has still to fill. */
+    private final List<Sheet> sheets = new ArrayList<>(), unbaked = new ArrayList<>();
     private final Matrix4f transform = new Matrix4f();
     private double nextPlay;
     private CgMesh sphere, cube;
@@ -321,15 +323,14 @@ public final class CgVfxModules {
         cube = CgMeshShapes.cube();
         mercury = CgMaterial.load("crystalgraphics:shaders/demo/vfx_mercury.shader");
         copper = CgMaterial.load("crystalgraphics:shaders/demo/vfx_copper.shader");
-        CgTexture2D smokeSheet = sheet(8, 8, 128, CgVfxModules::smokeFrame);
-        CgTexture2D fireSheet = sheet(4, 4, 128, CgVfxModules::fireFrame);
-        CgTexture2D dot = sheet(1, 1, 64, (f, u, v, out) -> dot(u, v, out));
-        CgTexture2D wispSheet = sheet(4, 4, 128, CgVfxModules::wispFrame);
-        CgTexture2D star = sheet(1, 1, 128, (f, u, v, out) -> star(u, v, out));
-        CgTexture2D rune = sheet(1, 1, 128, (f, u, v, out) -> rune(u, v, out));
-        CgTexture2D ring = sheet(1, 1, 128, (f, u, v, out) -> ring(u, v, out));
-        CgTexture2D shard = sheet(1, 1, 64, (f, u, v, out) -> shard(u, v, out));
-        fillSheets();
+        CgTexture2D smokeSheet = sheet("Smoke", 8, 8, 128);
+        CgTexture2D fireSheet = sheet("Fire", 4, 4, 128);
+        CgTexture2D dot = sheet("Dot", 1, 1, 64);
+        CgTexture2D wispSheet = sheet("Wisp", 4, 4, 128);
+        CgTexture2D star = sheet("Star", 1, 1, 128);
+        CgTexture2D rune = sheet("Rune", 1, 1, 128);
+        CgTexture2D ring = sheet("Ring", 1, 1, 128);
+        CgTexture2D shard = sheet("Shard", 1, 1, 64);
 
         pending.add(() -> gather(COLUMNS[0], ROWS[0]));
         pending.add(() -> tornado(COLUMNS[1], ROWS[0], smokeSheet));
@@ -2589,188 +2590,42 @@ public final class CgVfxModules {
         stations.add(new Station(name, x, z, look.draw(draw).build(), emitters, sources, props));
     }
 
-    /** Fills one texel of a flipbook frame: {@code (u, v)} 0..1 across the frame, v up; straight-alpha RGBA. */
-    private interface Texel {
-        void at(int frame, float u, float v, float[] out);
+    /** A flipbook sheet or stamp, and the kernel of {@code vfx_modules_sheets.compute} that fills it. */
+    private record Sheet(CgFrameBuffer storage, CgKernel kernel, int columns, int cell) {
     }
 
     /**
      * A {@code columns} x {@code rows} sheet of {@code cell}-texel frames, frame 0 at the top left: made empty here, its
-     * texels computed by {@link #fillSheets()}.
+     * texels written by {@code kernel} at the first {@link #submit} once it is built. Its program starts compiling here.
      */
-    private CgTexture2D sheet(int columns, int rows, int cell, Texel texel) {
-        int w = columns * cell, h = rows * cell;
-        CgTexture2D texture = CgTexture2D.createEmpty(w, h, CgTextureSpec.RGBA8_LINEAR);
-        sheets.add(texture);
-        fills.add(() -> {
-            ByteBuffer pixels = ByteBuffer.allocateDirect(w * h * 4).order(ByteOrder.nativeOrder());
-            float[] out = new float[4];
-            for (int y = 0; y < h; y++) {
-                int row = y / cell;                  // the image's top row first, as the flipbook reads it
-                for (int x = 0; x < w; x++) {
-                    int frame = row * columns + x / cell;
-                    texel.at(frame, (x % cell + 0.5f) / cell, 1f - (y % cell + 0.5f) / cell, out);   // v up the cell
-                    for (int c = 0; c < 4; c++) pixels.put((byte) Math.round(Math.max(0f, Math.min(1f, out[c])) * 255f));
-                }
-            }
-            pixels.flip();
-            synchronized (sheets) {
-                if (!deleted) texture.uploadRegion(0, 0, 0, w, h, pixels);
-            }
-        });
-        return texture;
+    private CgTexture2D sheet(String kernel, int columns, int rows, int cell) {
+        CgFrameBuffer storage = CgFrameBuffer.createOwned("vfx-modules " + kernel, columns * cell, rows * cell, SHEET_FORMAT);
+        Sheet sheet = new Sheet(storage, CgCompute.load(SHEET_KERNELS).kernel(kernel).precache(), columns, cell);
+        sheets.add(sheet);
+        unbaked.add(sheet);
+        return (CgTexture2D) storage.getColorTexture(0);
     }
 
-    /**
-     * Computes every sheet's texels on a worker, each uploaded as it finishes (a texture lands what a worker queued before
-     * the next frame): on the render thread they cost the first frame 1.6 s in Minecraft. A sheet draws empty until then.
-     */
-    private void fillSheets() {
-        List<Runnable> work = new ArrayList<>(fills);
-        fills.clear();
-        Thread worker = new Thread(() -> {
-            try (CgTrace.Zone ignored = CgTrace.zone(CgVfxTrace.CHANNEL, SHEETS_ZONE)) {
-                for (Runnable fill : work) {
-                    if (deleted) return;
-                    fill.run();
-                }
-            } catch (RuntimeException e) {
-                LOG.warn("[vfx-modules] flipbook sheets failed", e);
-            }
-        }, "CrystalGraphics vfx-modules sheets");
-        worker.setDaemon(true);
-        worker.start();
-    }
-
-    /**
-     * A smoke puff over 64 frames: a lumpy, domain-warped billow swelling out of a tight core, churning as it goes and
-     * thinning to wisps, lit from above by how much of itself lies between each point and the light.
-     */
-    private static void smokeFrame(int frame, float u, float v, float[] out) {
-        float t = frame / 63f;
-        float grow = 0.5f + 0.5f * (1f - (1f - t) * (1f - t));
-        float px = (u - 0.5f) / grow, py = (v - 0.5f) / grow;
-        float density = smokeDensity(px, py, t);
-        // Self-shadowing: the density a short step toward the light (up and a little left) dims what is under it.
-        float shadow = smokeDensity(px - 0.05f, py + 0.12f, t) + 0.5f * smokeDensity(px - 0.1f, py + 0.24f, t);
-        float shade = 0.38f + 0.62f * (float) Math.exp(-1.8f * shadow);
-        out[0] = shade;
-        out[1] = shade;
-        out[2] = shade * 1.03f;
-        out[3] = density * (1f - 0.8f * t * t);
-    }
-
-    /** The puff's density at {@code (x, y)} in its own units (radius about 0.5) at {@code t}, 0..1. */
-    private static float smokeDensity(float x, float y, float t) {
-        float wx = fbm(x * 2.2f + 3.1f, y * 2.2f - t * 0.6f, 3) - 0.5f;
-        float wy = fbm(x * 2.2f - 1.7f + t * 0.4f, y * 2.2f + 5.3f, 3) - 0.5f;
-        float d = fbm(x * 3f + wx * 1.6f, y * 3f + wy * 1.6f - t * 0.8f, 5);
-        float r = (float) Math.sqrt(x * x + y * y) * 2f;
-        // Billows: dense in the middle, a ragged edge that grows wispier as the puff spreads.
-        float body = 1f - smooth(0.3f - 0.1f * t, 1.05f, r + (d - 0.5f) * (0.8f + 0.6f * t));
-        return clamp01(body * (0.5f + 1.1f * (d - 0.3f)));
-    }
-
-    /**
-     * A flame over 16 frames that loop: a teardrop wide at its base, its tongues torn upward by rising noise, coloured
-     * by temperature: white-yellow at the root through orange to a dark red edge.
-     */
-    private static void fireFrame(int frame, float u, float v, float[] out) {
-        float t = frame / 16f;
-        // Two scrolls a loop apart, crossfaded, so frame 16 is frame 0.
-        float a = flameNoise(u, v, t), b = flameNoise(u, v, t - 1f);
-        float n = a + (b - a) * t;
-        float dx = u - 0.5f + (n - 0.5f) * 0.3f * v;
-        float width = 0.34f * (float) Math.pow(1f - v, 0.6f) + 0.02f;
-        // Soft sides, so overlapping flames blend rather than showing each one's outline.
-        float shape = 1f - smooth(0.15f, 1f, Math.abs(dx) / width);
-        float heat = clamp01((shape * (1.05f - v * 1.1f) + (n - 0.5f) * 0.8f * v) * smooth(0f, 0.08f, v));
-        flameColour(heat, out);
-        out[3] = smooth(0.03f, 0.6f, heat) * (0.55f + 0.45f * shape);
-    }
-
-    /** Fine flame noise rising {@code t} loops: 4 lattice cells a loop, stretched upward. */
-    private static float flameNoise(float u, float v, float t) {
-        return fbm(u * 5f + 7.3f, v * 3f - t * 4f, 4);
-    }
-
-    /** A blackbody-like ramp, by heat: dark red, orange, yellow, pale yellow. Each stop is a heat, then RGB. */
-    private static final float[][] FLAME_STOPS = {{0f, 0.25f, 0.02f, 0f}, {0.3f, 0.85f, 0.18f, 0.02f},
-            {0.55f, 1f, 0.45f, 0.05f}, {0.8f, 1f, 0.75f, 0.25f}, {1f, 1f, 0.92f, 0.6f}};
-
-    private static void flameColour(float heat, float[] out) {
-        float[][] s = FLAME_STOPS;
-        int i = 1;
-        while (i < s.length - 1 && heat > s[i][0]) i++;
-        float k = clamp01((heat - s[i - 1][0]) / (s[i][0] - s[i - 1][0]));
-        for (int c = 0; c < 3; c++) out[c] = s[i - 1][c + 1] + (s[i][c + 1] - s[i - 1][c + 1]) * k;
-    }
-
-    private static void dot(float u, float v, float[] out) {
-        float dx = u - 0.5f, dy = v - 0.5f, r = (float) Math.sqrt(dx * dx + dy * dy) * 2f;
-        out[0] = out[1] = out[2] = 1f;
-        out[3] = (float) Math.exp(-r * r * 5f) * smooth(1f, 0.85f, r);
-    }
-
-    /** A four-pointed glint: thin rays along u and v, fainter diagonals, round a bright core. */
-    private static void star(float u, float v, float[] out) {
-        float dx = Math.abs(u - 0.5f) * 2f, dy = Math.abs(v - 0.5f) * 2f, r2 = dx * dx + dy * dy;
-        float cross = (float) (Math.exp(-dx * 30f) * Math.max(0f, 1f - dy) + Math.exp(-dy * 30f) * Math.max(0f, 1f - dx));
-        float ex = (dx + dy) * 0.7071f, ey = Math.abs(dx - dy) * 0.7071f;
-        float diagonal = 0.4f * (float) Math.exp(-ey * 40f) * Math.max(0f, 1f - ex * 1.6f);
-        out[0] = out[1] = out[2] = 1f;
-        out[3] = clamp01(cross + diagonal + (float) Math.exp(-r2 * 25f));
-    }
-
-    /** A rune circle: two rings, ticks between them, and a triangle inside. */
-    private static void rune(float u, float v, float[] out) {
-        float x = (u - 0.5f) * 2f, y = (v - 0.5f) * 2f, r = (float) Math.sqrt(x * x + y * y);
-        float ink = Math.max(line(Math.abs(r - 0.9f), 0.035f), line(Math.abs(r - 0.66f), 0.02f));
-        double angle = Math.atan2(y, x);
-        float tick = (float) Math.abs(Math.IEEEremainder(angle, Math.PI / 8)) * r;
-        if (r > 0.7f && r < 0.86f) ink = Math.max(ink, line(tick, 0.018f));
-        for (int k = 0; k < 3; k++) {
-            double a0 = Math.PI / 2 + k * 2 * Math.PI / 3, a1 = a0 + 2 * Math.PI / 3;
-            ink = Math.max(ink, line(segment(x, y, 0.62f * (float) Math.cos(a0), 0.62f * (float) Math.sin(a0),
-                    0.62f * (float) Math.cos(a1), 0.62f * (float) Math.sin(a1)), 0.022f));
+    /** Whether every sheet's kernel is built: then {@link #bakeSheets} waits on nothing. */
+    private boolean sheetsReady() {
+        for (Sheet sheet : unbaked) {
+            if (!sheet.kernel().isReady()) return false;
         }
-        out[0] = out[1] = out[2] = 1f;
-        out[3] = Math.max(ink, 0.12f * (1f - smooth(0.6f, 0.95f, r)));
+        return true;
     }
 
-    /** An ice shard: a long diamond, one facet lit and one in shade, a bright ridge between and a bright rim. */
-    private static void shard(float u, float v, float[] out) {
-        float dx = (u - 0.5f) / 0.22f, dy = (v - 0.5f) / 0.47f, d = Math.abs(dx) + Math.abs(dy);
-        float shade = dx > 0f ? 1f : 0.55f, ridge = (float) Math.exp(-dx * dx * 60f), rim = smooth(0.7f, 0.95f, d);
-        out[0] = out[1] = out[2] = clamp01(shade * (0.6f + 0.4f * rim) + ridge * 0.5f);
-        out[3] = (1f - smooth(0.9f, 1f, d)) * (0.55f + 0.45f * Math.max(rim, ridge));
-    }
-
-    /** A shockwave: a bright thin edge trailing a soft glow inward. */
-    private static void ring(float u, float v, float[] out) {
-        float dx = u - 0.5f, dy = v - 0.5f, r = (float) Math.sqrt(dx * dx + dy * dy) * 2f;
-        float edge = (r - 0.88f) / 0.04f, trail = (r - 0.72f) / 0.16f;
-        out[0] = out[1] = out[2] = 1f;
-        out[3] = clamp01((float) (Math.exp(-edge * edge) + 0.35f * Math.exp(-trail * trail)) * (r < 0.98f ? 1f : 0f));
-    }
-
-    /** {@link #fireFrame} in grey, brightest where hottest, for a layer's colours to tint. */
-    private static void wispFrame(int frame, float u, float v, float[] out) {
-        fireFrame(frame, u, v, out);
-        out[0] = out[1] = out[2] = clamp01(0.2f + (out[0] + out[1] + out[2]) / 2.5f);
-    }
-
-    /** Ink of a stroke {@code half} wide at {@code distance} from its middle, antialiased over a texel or so. */
-    private static float line(float distance, float half) {
-        return 1f - smooth(half - 0.012f, half + 0.012f, distance);
-    }
-
-    /** The distance from {@code (x, y)} to the segment from {@code (ax, ay)} to {@code (bx, by)}. */
-    private static float segment(float x, float y, float ax, float ay, float bx, float by) {
-        float ex = bx - ax, ey = by - ay;
-        float t = clamp01(((x - ax) * ex + (y - ay) * ey) / (ex * ex + ey * ey));
-        float px = x - ax - ex * t, py = y - ay - ey * t;
-        return (float) Math.sqrt(px * px + py * py);
+    /** Every sheet's texels in one compute pass, once their kernels are built; until then a sheet draws empty. */
+    private void bakeSheets() {
+        if (unbaked.isEmpty() || !sheetsReady()) return;
+        try (CgImmediate.Compute run = CgImmediate.compute("demo.modules.sheets")) {
+            for (Sheet sheet : unbaked) {
+                CgFrameBuffer storage = sheet.storage();
+                run.dispatch(sheet.kernel(), storage.getWidth(), storage.getHeight(), 1)
+                        .image("SHEET", CgGraphTexture.imported("vfx-modules sheet", storage))
+                        .set("_Columns", sheet.columns()).set("_Cell", sheet.cell());
+            }
+        }
+        unbaked.clear();
     }
 
     private static float smooth(float e0, float e1, float x) {
@@ -2778,34 +2633,7 @@ public final class CgVfxModules {
         return t * t * (3f - 2f * t);
     }
 
-    private static float clamp01(float v) {
-        return Math.max(0f, Math.min(1f, v));
-    }
-
-    /** {@link #noise}'s fractal, 0..1: octaves doubling in frequency, halving in weight, turned so they never line up. */
-    private static float fbm(float x, float y, int octaves) {
-        float sum = 0f, amplitude = 0.5f, norm = 0f;
-        for (int k = 0; k < octaves; k++) {
-            sum += amplitude * noise(x, y);
-            norm += amplitude;
-            float rx = 0.8f * x - 0.6f * y, ry = 0.6f * x + 0.8f * y;
-            x = rx * 2.03f + 1.7f;
-            y = ry * 2.03f - 0.9f;
-            amplitude *= 0.5f;
-        }
-        return sum / norm;
-    }
-
-    /** Smooth value noise, 0..1. */
-    private static float noise(float x, float y) {
-        int ix = (int) Math.floor(x), iy = (int) Math.floor(y);
-        float fx = x - ix, fy = y - iy;
-        fx = fx * fx * (3f - 2f * fx);
-        fy = fy * fy * (3f - 2f * fy);
-        float a = hash(ix, iy), b = hash(ix + 1, iy), c = hash(ix, iy + 1), d = hash(ix + 1, iy + 1);
-        return a + (b - a) * fx + (c - a) * fy + (a - b - c + d) * fx * fy;
-    }
-
+    /** 0..1 from two integers. */
     private static float hash(int x, int y) {
         int h = x * 374761393 + y * 668265263;
         h = (h ^ (h >>> 13)) * 1274126177;
@@ -2844,6 +2672,7 @@ public final class CgVfxModules {
      */
     public void submit(CgWorldRenderer world, double x, double y, double z, double seconds) {
         this.world = world;
+        bakeSheets();
         if (seconds >= nextPlay) {
             for (int i = 0; i < stations.size(); i++) {
                 Station s = stations.get(i);
@@ -2894,7 +2723,7 @@ public final class CgVfxModules {
 
     /** Whether everything {@link #precache} started compiling is built. */
     public boolean ready() {
-        return vfx.ready() & stagePipelines != null && stagePipelines.ready();
+        return vfx.ready() & stagePipelines != null && stagePipelines.ready() && sheetsReady();
     }
 
     /** Ends every station's play at once; the next {@link #submit} plays them all again. */
@@ -2924,10 +2753,8 @@ public final class CgVfxModules {
         } else {
             vfx.clear();
         }
-        synchronized (sheets) {
-            deleted = true;
-            for (CgTexture sheet : sheets) sheet.delete();
-            sheets.clear();
-        }
+        for (Sheet sheet : sheets) sheet.storage().delete();
+        sheets.clear();
+        unbaked.clear();
     }
 }
