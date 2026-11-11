@@ -46,10 +46,12 @@ public interface CgWidgetPainter {
 
     /**
      * The text {@link #layout} laid out as {@code laidOut}, justified across a box {@code width} units wide at (0, 0)
-     * under {@code pose}, tinted.
+     * under {@code pose}, tinted. {@code layoutPose} is the same placement with no render transform in it (what a
+     * sequence animates): the glyphs are made at the size it gives, and {@code pose} only stretches them, as Slate's
+     * render transform does.
      */
     void text(CgTextStyle style, String text, @Nullable Object laidOut, CgWidget.Justification justification,
-              Matrix4f pose, float width, float r, float g, float b, float a);
+              Matrix4f pose, Matrix4f layoutPose, float width, float r, float g, float b, float a);
 
     /**
      * Opens a region of the retained image {@code width} x {@code height} units for a retainer box's content; its

@@ -93,7 +93,9 @@ public final class CgUserWidget implements CgSequenceTarget {
     private final float[] position;
     private final float[] size;
     private final Matrix4f[] poses;
-    private final Matrix4f origin = new Matrix4f();
+    /** Each widget's pose with no render transform in it: where layout puts it, which text rasters at. */
+    private final Matrix4f[] layoutPoses;
+    private final Matrix4f origin = new Matrix4f(), layoutOrigin = new Matrix4f();
     private final int[] region;
     private final Vector2f measured = new Vector2f();
     private final Vector4f parameters = new Vector4f();
@@ -138,6 +140,8 @@ public final class CgUserWidget implements CgSequenceTarget {
         size = new float[n * 2];
         poses = new Matrix4f[n + 1];
         for (int i = 0; i <= n; i++) poses[i] = new Matrix4f();
+        layoutPoses = new Matrix4f[n + 1];
+        for (int i = 0; i <= n; i++) layoutPoses[i] = new Matrix4f();
         region = new int[n];
         Arrays.fill(region, -1);
     }
@@ -535,7 +539,7 @@ public final class CgUserWidget implements CgSequenceTarget {
                     if (contains(c, CgWidget.Kind.RETAINER_BOX)) {
                         throw new IllegalStateException(w.name + ": a retainer box inside another is not drawn");
                     }
-                    paint(painter, c, origin.identity(), 1f, 1f, 1f, 1f);
+                    paint(painter, c, origin.identity(), layoutOrigin.identity(), 1f, 1f, 1f, 1f);
                 }
             } finally {
                 painter.endRetained();
@@ -565,29 +569,32 @@ public final class CgUserWidget implements CgSequenceTarget {
      * of its box to canvas pixels). {@link #retain} first where it holds a retainer box.
      */
     public void paint(CgWidgetPainter painter, Matrix4f placement) {
-        paintAt(painter, placement, 1f, 1f, 1f, 1f);
+        paintAt(painter, placement, placement, 1f, 1f, 1f, 1f);
     }
 
     /** Paints it with its box at {@code pose}'s origin, under a parent's tint (linear). */
-    private void paintAt(CgWidgetPainter painter, Matrix4f pose, float r, float g, float b, float a) {
+    private void paintAt(CgWidgetPainter painter, Matrix4f pose, Matrix4f layout, float r, float g, float b, float a) {
         layoutIfDirty(painter);
         int self = n * SLOTS * 4;
         Matrix4f own = poses[n].set(pose);
         renderTransform(own, self, selfPivotX * rootWidth(), selfPivotY * rootHeight());
+        Matrix4f ownLayout = layoutPoses[n].set(layout);
         // SObjectWidget is a compound widget: the user widget's colour and opacity tints its content.
         a *= state[self + RENDER_OPACITY * 4];
         int c = self + COLOUR * 4;
-        if (n > 0) paint(painter, 0, own, r * state[c], g * state[c + 1], b * state[c + 2], a * state[c + 3]);
+        if (n > 0) paint(painter, 0, own, ownLayout, r * state[c], g * state[c + 1], b * state[c + 2], a * state[c + 3]);
     }
 
-    private void paint(CgWidgetPainter painter, int i, Matrix4f parentPose, float r, float g, float b, float a) {
+    private void paint(CgWidgetPainter painter, int i, Matrix4f parentPose, Matrix4f parentLayout, float r, float g,
+                       float b, float a) {
         if (!visibility[i].draws()) return;
         CgWidget w = tree.widget(i);
         int at = i * SLOTS * 4;
         float width = size[i * 2], height = size[i * 2 + 1];
         Matrix4f pose = poses[i].set(parentPose).translate(position[i * 2], position[i * 2 + 1], 0f);
+        Matrix4f layout = layoutPoses[i].set(parentLayout).translate(position[i * 2], position[i * 2 + 1], 0f);
         if (w.kind == CgWidget.Kind.USER_WIDGET) {
-            nested[i].paintAt(painter, pose, r, g, b, a);
+            nested[i].paintAt(painter, pose, layout, r, g, b, a);
             return;
         }
         renderTransform(pose, at, w.pivotX * width, w.pivotY * height);
@@ -604,7 +611,7 @@ public final class CgUserWidget implements CgSequenceTarget {
                             b * state[c + 2] * t.b(), a * state[c + 3] * t.a(), parameters(at));
                 }
             }
-            case TEXT_BLOCK -> painter.text(style[i], shown[i], laid[i], w.justification, pose, width,
+            case TEXT_BLOCK -> painter.text(style[i], shown[i], laid[i], w.justification, pose, layout, width,
                     r * state[c], g * state[c + 1], b * state[c + 2], a * state[c + 3]);
             case BORDER -> {
                 CgWidgetBrush br = brush[i];
@@ -616,12 +623,13 @@ public final class CgUserWidget implements CgSequenceTarget {
                 }
                 // SCompoundWidget: its content colour into its content's style.
                 int cc = at + CONTENT_COLOUR * 4;
-                paintChildren(painter, i, pose, r * state[cc], g * state[cc + 1], b * state[cc + 2], a * state[cc + 3]);
+                paintChildren(painter, i, pose, layout, r * state[cc], g * state[cc + 1], b * state[cc + 2], a * state[cc + 3]);
             }
             case SCALE_BOX -> {
                 // FGeometry::MakeChild's layout scale: everything inside is laid out and drawn in its scaled space.
                 pose.scale(w.userScale, w.userScale, 1f);
-                paintChildren(painter, i, pose, r, g, b, a);
+                layout.scale(w.userScale, w.userScale, 1f);
+                paintChildren(painter, i, pose, layout, r, g, b, a);
             }
             case RETAINER_BOX -> {
                 // SRetainerWidget: the retained image as one quad, tinted by everything above it.
@@ -629,12 +637,13 @@ public final class CgUserWidget implements CgSequenceTarget {
                 painter.retained(region[i], w.effect, w.textureParameter, pose, width, height, r, g, b, a);
                 region[i] = -1;
             }
-            default -> paintChildren(painter, i, pose, r, g, b, a);
+            default -> paintChildren(painter, i, pose, layout, r, g, b, a);
         }
     }
 
-    private void paintChildren(CgWidgetPainter painter, int i, Matrix4f pose, float r, float g, float b, float a) {
-        for (int c : tree.paintOrder(i)) paint(painter, c, pose, r, g, b, a);
+    private void paintChildren(CgWidgetPainter painter, int i, Matrix4f pose, Matrix4f layout, float r, float g,
+                               float b, float a) {
+        for (int c : tree.paintOrder(i)) paint(painter, c, pose, layout, r, g, b, a);
     }
 
     /** Slate's render transform about the pivot ({@code px}, {@code py}), appended to {@code pose}: {@code Geometry.h}'s order. */

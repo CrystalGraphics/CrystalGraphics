@@ -69,6 +69,8 @@ public final class CgTextDraw {
     PoseStack poseStack;
     @Nullable
     Matrix4f poseMatrix;
+    @Nullable
+    Matrix4f layoutPoseMatrix;
     CgTextStyle style = CgTextStyle.PLAIN;
     /** Per glyph of the layout, its scope; null when no layer is scoped. Held, not copied. */
     @Nullable
@@ -114,6 +116,7 @@ public final class CgTextDraw {
         rgba = 0xFFFFFFFF;
         poseStack = null;
         poseMatrix = null;
+        layoutPoseMatrix = null;
         style = CgTextStyle.PLAIN;
         glyphScopes = null;
         scopedLayers = 0;
@@ -230,6 +233,24 @@ public final class CgTextDraw {
     public CgTextDraw pose(@Nullable Matrix4f pose) {
         this.poseMatrix = pose;
         this.poseStack = null;
+        return this;
+    }
+
+    /**
+     * The pose with nothing animating in it, which the raster size follows in place of {@link #pose}: the glyphs are
+     * made at the size the text settles at, and the pose's animated scale only stretches them. Unreal's layout
+     * transform against its render transform: a widget scaling from 0.8 to 1.5 draws one set of glyphs, where
+     * following the pose would make one per pixel size on the way. Read at submit, and like the pose not a part of
+     * {@link #sameAs}; unset, the raster follows the pose.
+     *
+     * <pre>{@code
+     * canvas.text().style(POP).text("Perfect!").pose(animated).layoutPose(settled).submit();
+     * }</pre>
+     *
+     * <p>A bitmap stretched past its size blurs: use {@link CgTextStyle.Raster#MSDF} for text that grows.</p>
+     */
+    public CgTextDraw layoutPose(@Nullable Matrix4f layoutPose) {
+        this.layoutPoseMatrix = layoutPose;
         return this;
     }
 

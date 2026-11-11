@@ -95,7 +95,7 @@ public class CgWorldWidgetLayerTest {
 
         @Override
         public void text(CgTextStyle style, String text, Object laidOut, CgWidget.Justification justification,
-                         Matrix4f pose, float width, float r, float g, float b, float a) {
+                         Matrix4f pose, Matrix4f layoutPose, float width, float r, float g, float b, float a) {
         }
 
         @Override

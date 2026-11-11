@@ -130,6 +130,10 @@ public final class CgTextBatch {
      * size and snaps: glyphs rasterise in device pixels whatever units the camera is in.
      */
     private final Matrix4f camera = new Matrix4f(), viewPose = new Matrix4f(), pixelPose = new Matrix4f();
+    /** The pixel scale {@link #useCamera} applied, and the view, for a {@link CgTextDraw#layoutPose} to follow. */
+    private final Matrix4f rasterPose = new Matrix4f();
+    private final Matrix4f cameraView = new Matrix4f();
+    private float pixelsX = 1f, pixelsY = 1f;
     private static final Matrix4f IDENTITY = new Matrix4f();
 
     private long degradedDraws;
@@ -222,10 +226,14 @@ public final class CgTextBatch {
         world = projection.m23() != 0f;
         camera.set(projection).mul(view);
         viewPose.set(view).mul(pose);
+        cameraView.set(view);
         if (!world && w > 1f && h > 1f) {
             // An orthographic projection's units to the target's pixels, per axis.
-            pixelPose.scaling(Math.abs(projection.m00()) * w * 0.5f, Math.abs(projection.m11()) * h * 0.5f, 1f).mul(viewPose);
+            pixelsX = Math.abs(projection.m00()) * w * 0.5f;
+            pixelsY = Math.abs(projection.m11()) * h * 0.5f;
+            pixelPose.scaling(pixelsX, pixelsY, 1f).mul(viewPose);
         } else {
+            pixelsX = pixelsY = 1f;
             pixelPose.set(viewPose);
         }
     }
@@ -378,7 +386,7 @@ public final class CgTextBatch {
         } else {
             RasterHistory previous = history.get(fontKey);
             int previousPx = previous != null ? previous.effectiveTargetPx() : -1;
-            effectiveTargetPx = CgTextRaster.screenPx(basePx, CgTextRaster.maxScale(pixelPose), previousPx);
+            effectiveTargetPx = CgTextRaster.screenPx(basePx, rasterScale(draw), previousPx);
             boolean previousMsdf = previous != null ? previous.wasMsdf() : effectiveTargetPx >= 32;
             sizeWantsMsdf = CgTextRaster.msdf(effectiveTargetPx, previousMsdf);
             // The size-derived decision, not the forced ones below: the hysteresis damps size changes only.
@@ -420,6 +428,14 @@ public final class CgTextBatch {
             }
         }
         return new ResolvedDraw(fontKey, effectiveTargetPx, wantMsdf, layout);
+    }
+
+    /** The scale a screen draw's raster size follows: its layout pose's in pixels where it names one, else its pose's. */
+    private float rasterScale(CgTextDraw draw) {
+        Matrix4f layoutPose = draw.layoutPoseMatrix;
+        if (layoutPose == null) return CgTextRaster.maxScale(pixelPose);
+        rasterPose.scaling(pixelsX, pixelsY, 1f).mul(cameraView).mul(layoutPose);
+        return CgTextRaster.maxScale(rasterPose);
     }
 
     /** {@code value / scale}, unbounded staying unbounded and a scale of about 1 skipped. */

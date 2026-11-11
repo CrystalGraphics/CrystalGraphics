@@ -34,6 +34,9 @@ drawing (`CgCanvasLabels`' labels); `detached()` belongs to no canvas.
 
 - Priorities, not exclusions: `layout` > `paragraph` > `text`, `family` > `font`.
 - `pose(PoseStack)` or `pose(Matrix4f)` is read at `submit()`, so a caller may keep pushing its stack.
+- `layoutPose(Matrix4f)` is the pose with nothing animating in it: the raster size follows it, and `pose` only stretches
+  the glyphs (Slate's layout transform against its render transform). Text whose scale animates sets it, or every
+  pixel size on the way is its own glyph and shadow cell.
 - `style` is compared by identity in `sameAs`: a caller rebuilding its style each frame defeats the replay. Hold one.
 - `clip`, `node`, `gamma` carry what a paint context sets per draw; a new field joins `sameAs`, `set` and `reset`.
 - `submit()` returns whether the draw was whole: false while a glyph or shadow cell is still building.
@@ -131,8 +134,8 @@ materials at teardown.
 
 ### `CgTextRaster`
 
-Pure functions and the thresholds: a screen draw's raster size (its pixel pose's scale, with hysteresis against the
-font's last size), a world draw's (twice the font's, fixed: distance-field atlases are keyed at one scale, so a
+Pure functions and the thresholds: a screen draw's raster size (its layout pose's scale where the draw sets one, else
+its pixel pose's, with hysteresis against the font's last size), a world draw's (twice the font's, fixed: distance-field atlases are keyed at one scale, so a
 camera-driven size only minted bitmap families), bitmap or distance field, and the axis test that sends a rotated or
 sheared draw to the distance field. The batch keeps each font's last screen size and tier (`RasterHistory`).
 

@@ -204,13 +204,13 @@ public final class CgCanvasWidgetPainter implements CgWidgetPainter {
 
     @Override
     public void text(CgTextStyle style, String text, @Nullable Object laidOut, CgWidget.Justification justification,
-                     Matrix4f pose, float width, float r, float g, float b, float a) {
+                     Matrix4f pose, Matrix4f layoutPose, float width, float r, float g, float b, float a) {
         if (a <= 0f || text.isEmpty()) return;
         CgCanvas on = canvas();
         Matrix4f at = pose(pose);
         int argb = CgLinearColour.argb(r, g, b, a);
         if (!(laidOut instanceof Laid laid)) {
-            on.text().style(style).text(text).at(0f, 0f).pose(at).color(argb).submit();
+            on.text().style(style).text(text).at(0f, 0f).pose(at).layoutPose(layoutPose).color(argb).submit();
             return;
         }
         CgTextLayout layout = laid.layout();
@@ -222,7 +222,8 @@ public final class CgCanvasWidgetPainter implements CgWidgetPainter {
         // The layout justifies its lines across the wrap width; place the widest line's box in the widget's.
         float inset = laid.wrap() > 0f ? (laid.wrap() - layout.totalWidth()) * f : 0f;
         float x = (width - layout.totalWidth()) * f - inset;
-        on.text().style(style).layout(layout).font(laid.font()).contained(false).at(x, 0f).pose(at).color(argb).submit();
+        on.text().style(style).layout(layout).font(laid.font()).contained(false).at(x, 0f).pose(at)
+          .layoutPose(layoutPose).color(argb).submit();
     }
 
     @Override
