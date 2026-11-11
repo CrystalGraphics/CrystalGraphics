@@ -55,6 +55,17 @@ public class CgTextStyleTest {
     }
 
     @Test
+    public void aRasterRequestRoundTripsAndAutoIsTheDefault() {
+        CgTextStyle msdf = CgTextStyle.builder("t").font(FONT).raster(CgTextStyle.Raster.MSDF).build();
+        String yaml = CgAssetYaml.write(msdf.toTree(), CgLookKinds.TEXT_STYLE);
+        CgAssetData read = data("t", (Map<?, ?>) CgAssetYaml.read(yaml), null);
+        assertTrue(yaml, read.validate(CgValidation.Usecase.LOAD).valid());
+        assertEquals(CgTextStyle.Raster.MSDF, compile(read).raster());
+        assertEquals(CgTextStyle.Raster.AUTO, CgTextStyle.builder("t").font(FONT).build().raster());
+        assertTrue("auto is not written", !CgTextStyle.builder("t").font(FONT).build().toTree().containsKey("raster"));
+    }
+
+    @Test
     public void aChildChangesOneLayerByIdAndKeepsTheRest() {
         CgTextStyle gold = gold();
         CgAssetData parent = data(gold.id(), gold.toTree(), null);

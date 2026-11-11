@@ -203,6 +203,7 @@ public final class CgLookKinds {
             .property("letter_spacing", INT).forms(CgValueForm.CONSTANT)
             .property("skew", FLOAT).forms(CgValueForm.CONSTANT).range(-5, 5)
             .property("transform", CgValueType.enumOf("none", "upper", "lower"))
+            .property("raster", CgValueType.enumOf("auto", "msdf", "bitmap"))
             .property("layers", CgValueType.idList(TEXT_LAYER))
             .register();
 

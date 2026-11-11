@@ -37,12 +37,16 @@ read [`architecture.md`](architecture.md).
 ## Raster size and tier
 
 The **effective size** is the font's pixel size times the pose's larger axis scale, rounded, clamped to
-1–256 px, and held within 0.75 px of the previous frame's so an animating scale does not thrash.
+1–256 px, and held within 0.75 px of the previous frame's so an animating scale does not thrash. A draw that sets
+`layoutPose` takes the scale from that pose instead, and its `pose` only stretches the glyphs: text whose scale
+animates makes one raster size, not one per pixel size on the way (widgets do this for every text block).
 
 The **tier** is bitmap or distance field:
 
 | Draw | Tier |
 |---|---|
+| Its style's `raster: msdf` | distance field |
+| Its style's `raster: bitmap` | bitmap, unless a row below needs the field |
 | Effective size 33 px or more | distance field |
 | 31 px or less | bitmap |
 | Exactly 32 px | whichever this font had last frame |

@@ -80,6 +80,17 @@ public final class CgTextStyle {
     /** A string's case as drawn: Slate's {@code ETextTransformPolicy}. */
     public enum Transform { NONE, UPPER, LOWER }
 
+    /**
+     * What a draw's glyphs are made of. {@code AUTO} takes a bitmap rastered at the draw's size below
+     * {@link com.crystalgraphics.text.render.CgTextRaster#MSDF_ENTER} px and the distance field from there; {@code MSDF}
+     * and {@code BITMAP} fix it. A distance field is one resolution-independent glyph, so it suits text whose size
+     * animates; a bitmap is sharpest at its own size.
+     *
+     * <p>A bitmap is a request, not a promise: an outline, a skew or a rotated or sheared pose still take the distance
+     * field, which is all that can draw them.</p>
+     */
+    public enum Raster { AUTO, MSDF, BITMAP }
+
     /** The text style kind's compiler. */
     public static final CgAssetCompiler<CgTextStyle> COMPILER = CgTextStyle::compile;
 
@@ -88,7 +99,7 @@ public final class CgTextStyle {
     private static final List<CgTextLayer> DEFAULT_LAYERS = List.of(CgTextLayer.fill("fill").build());
 
     /** No font, one white fill: what a draw is in until it names a style. */
-    public static final CgTextStyle PLAIN = new CgTextStyle(null, null, false, 24f, 0, 0f, Transform.NONE, List.of());
+    public static final CgTextStyle PLAIN = new CgTextStyle(null, null, false, 24f, 0, 0f, Transform.NONE, Raster.AUTO, List.of());
 
     @Nullable
     private final String id;
@@ -99,12 +110,13 @@ public final class CgTextStyle {
     private final int letterSpacing;
     private final float skew;
     private final Transform transform;
+    private final Raster raster;
     private final List<CgTextLayer> layers;
     private final float reach;
     private final Map<Integer, CgFont> fonts = new HashMap<>();
 
     private CgTextStyle(@Nullable String id, @Nullable String font, boolean bold, float size, int letterSpacing,
-                        float skew, Transform transform, List<CgTextLayer> layers) {
+                        float skew, Transform transform, Raster raster, List<CgTextLayer> layers) {
         this.id = id;
         this.font = font;
         this.bold = bold;
@@ -112,6 +124,7 @@ public final class CgTextStyle {
         this.letterSpacing = letterSpacing;
         this.skew = skew;
         this.transform = transform;
+        this.raster = raster;
         this.layers = layers.isEmpty() ? DEFAULT_LAYERS : Collections.unmodifiableList(new ArrayList<>(layers));
         this.reach = reachOf(this.layers, size, skew);
     }
@@ -168,6 +181,7 @@ public final class CgTextStyle {
         if (tree.get("letter_spacing") instanceof Number n) b.letterSpacing(n.intValue());
         if (tree.get("skew") instanceof Number n) b.skew(n.floatValue());
         if (tree.get("transform") instanceof String t) b.transform(Transform.valueOf(t.toUpperCase(Locale.ROOT)));
+        if (tree.get("raster") instanceof String r) b.raster(Raster.valueOf(r.toUpperCase(Locale.ROOT)));
         if (tree.get("layers") instanceof List<?> list) {
             for (Object o : list) {
                 Map<?, ?> m = (Map<?, ?>) o;
@@ -273,6 +287,11 @@ public final class CgTextStyle {
         return transform;
     }
 
+    /** Whether its glyphs are a distance field, a bitmap at the draw's size, or whichever the size picks. */
+    public Raster raster() {
+        return raster;
+    }
+
     /** Its layers, bottom to top; one white fill when it lists none. */
     public List<CgTextLayer> layers() {
         return layers;
@@ -348,6 +367,7 @@ public final class CgTextStyle {
         if (letterSpacing != 0) m.put("letter_spacing", (long) letterSpacing);
         if (skew != 0f) m.put("skew", (double) skew);
         if (transform != Transform.NONE) m.put("transform", transform.name().toLowerCase(Locale.ROOT));
+        if (raster != Raster.AUTO) m.put("raster", raster.name().toLowerCase(Locale.ROOT));
         List<Object> list = new ArrayList<>();
         for (CgTextLayer l : layers) list.add(l.toTree());
         m.put("layers", list);
@@ -358,12 +378,12 @@ public final class CgTextStyle {
     public boolean equals(Object o) {
         return o instanceof CgTextStyle s && Objects.equals(id, s.id) && Objects.equals(font, s.font) && bold == s.bold
                 && size == s.size && letterSpacing == s.letterSpacing && skew == s.skew && transform == s.transform
-                && layers.equals(s.layers);
+                && raster == s.raster && layers.equals(s.layers);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(id, font, bold, size, letterSpacing, skew, transform, layers);
+        return Objects.hash(id, font, bold, size, letterSpacing, skew, transform, raster, layers);
     }
 
     @Override
@@ -381,6 +401,7 @@ public final class CgTextStyle {
         private int letterSpacing;
         private float skew;
         private Transform transform = Transform.NONE;
+        private Raster raster = Raster.AUTO;
         private final List<CgTextLayer> layers = new ArrayList<>();
 
         private Builder(@Nullable String id) {
@@ -425,6 +446,12 @@ public final class CgTextStyle {
             return this;
         }
 
+        /** {@link Raster}: {@code AUTO} unless set. {@code MSDF} for text whose size animates. */
+        public Builder raster(Raster raster) {
+            this.raster = Objects.requireNonNull(raster, "raster");
+            return this;
+        }
+
         /** Adds a layer on top of those added. */
         public Builder layer(CgTextLayer layer) {
             for (CgTextLayer l : layers) {
@@ -447,7 +474,7 @@ public final class CgTextStyle {
         public CgTextStyle build() {
             if (!(size > 0f)) throw new IllegalArgumentException("size " + size + " is not above 0");
             if (!(skew >= -5f && skew <= 5f)) throw new IllegalArgumentException("skew " + skew + " is not -5 to 5");
-            return new CgTextStyle(id, font, bold, size, letterSpacing, skew, transform, layers);
+            return new CgTextStyle(id, font, bold, size, letterSpacing, skew, transform, raster, layers);
         }
     }
 }

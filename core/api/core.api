@@ -14453,6 +14453,7 @@ com/crystalgraphics/text/style/CgTextStyle
   method public layers ()Ljava/util/List;
   method public letterSpacing ()I
   method public px ()F
+  method public raster ()Lcom/crystalgraphics/text/style/CgTextStyle$Raster;
   method public reach ()F
   method public size ()F
   method public skew ()F
@@ -14472,9 +14473,18 @@ com/crystalgraphics/text/style/CgTextStyle$Builder
   method public layer (Lcom/crystalgraphics/text/style/CgTextLayer$Builder;)Lcom/crystalgraphics/text/style/CgTextStyle$Builder;
   method public layer (Lcom/crystalgraphics/text/style/CgTextLayer;)Lcom/crystalgraphics/text/style/CgTextStyle$Builder;
   method public letterSpacing (I)Lcom/crystalgraphics/text/style/CgTextStyle$Builder;
+  method public raster (Lcom/crystalgraphics/text/style/CgTextStyle$Raster;)Lcom/crystalgraphics/text/style/CgTextStyle$Builder;
   method public size (F)Lcom/crystalgraphics/text/style/CgTextStyle$Builder;
   method public skew (F)Lcom/crystalgraphics/text/style/CgTextStyle$Builder;
   method public transform (Lcom/crystalgraphics/text/style/CgTextStyle$Transform;)Lcom/crystalgraphics/text/style/CgTextStyle$Builder;
+com/crystalgraphics/text/style/CgTextStyle$Raster
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final AUTO Lcom/crystalgraphics/text/style/CgTextStyle$Raster;
+  field public,static,final BITMAP Lcom/crystalgraphics/text/style/CgTextStyle$Raster;
+  field public,static,final MSDF Lcom/crystalgraphics/text/style/CgTextStyle$Raster;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/text/style/CgTextStyle$Raster;
+  method public,static values ()[Lcom/crystalgraphics/text/style/CgTextStyle$Raster;
 com/crystalgraphics/text/style/CgTextStyle$Transform
   access public,final,enum
   extends java/lang/Enum

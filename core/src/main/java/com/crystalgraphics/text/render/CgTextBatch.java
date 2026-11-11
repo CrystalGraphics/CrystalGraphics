@@ -398,7 +398,12 @@ public final class CgTextBatch {
             }
         }
 
-        boolean wantMsdf = sizeWantsMsdf;
+        // The style's request over the size's pick; world text is always a field.
+        boolean wantMsdf = world || switch (draw.style.raster()) {
+            case MSDF -> true;
+            case BITMAP -> false;
+            case AUTO -> sizeWantsMsdf;
+        };
         if (!wantMsdf && !CgTextRaster.isAxisAligned(pixelPose)) {
             wantMsdf = true;
             CgTrace.add(CgChannels.TEXT, "text.msdfForcedByTransform", 1);

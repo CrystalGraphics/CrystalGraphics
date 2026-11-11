@@ -75,6 +75,8 @@ submit order**: a later label covers an earlier one, shadow and all.
   edge pixel draw about 90% filled, a stair-stepped edge on all world text. The HUD keeps its gamma.
 - **The draw's colour tints every layer**; a span's colour replaces its fill's colour (0 in the batch: no span colour).
 - **Lengths are in the style's pixels**, times `CgTextDraw.unit()`: the draw's size over the style's.
+- **A style's `raster` picks the glyphs**: `auto` (a bitmap below `MSDF_ENTER`, the field from there), `msdf` or
+  `bitmap`. A bitmap is a request: an outline, a skew or a rotated pose still take the field, which alone can draw them.
 - **Skew shears each quad about its baseline** in the bake, so it costs no vertex of its own.
 - `contained`: `true`, as `FSlateTextRun` measures a run: the text moves in by the outline's reach and any shadow
   offset up or left, and `measureSize` counts both. CrystalGUI's CSS (`CssTextStyle`) overflows instead.
