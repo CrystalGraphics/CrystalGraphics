@@ -33,7 +33,6 @@ import com.crystalgraphics.platform.world.CgHostShapes;
 import com.crystalgraphics.platform.world.CgLevels;
 import com.crystalgraphics.platform.service.CgGameThreads;
 import com.crystalgraphics.platform.input.CgKeyBindings;
-import com.crystalgraphics.platform.service.CgHostPaint;
 import com.crystalgraphics.platform.service.CgScreens;
 import com.crystalgraphics.platform.service.CgHostWindow;
 import com.crystalgraphics.platform.service.CgServers;
@@ -116,7 +115,6 @@ public final class PlatformServiceLegacy implements CgPlatformService {
         CgPlatform.provide(CgGameDirectory.HOST, new GameDirectoryService());
         CgPlatform.provide(CgGameThreads.HOST, new GameThreadsLegacy());
         CgPlatform.provide(CgHostWindow.HOST, new HostWindowLegacy());
-        CgPlatform.provide(CgHostPaint.HOST, new HostPaintLegacy());
         CgPlatform.provide(CgScreens.HOST, ScreensLegacy.INSTANCE);
         CgPlatform.provide(CgKeyBindings.HOST, KeyBindingsLegacy.INSTANCE);
         CgKeyBindings.hostProvided();

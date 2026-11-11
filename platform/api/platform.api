@@ -3008,18 +3008,6 @@ com/crystalgraphics/platform/service/CgGameThreads$Host
   field public,static,final NONE Lcom/crystalgraphics/platform/service/CgGameThreads$Host;
   method public,abstract client ()Lcom/crystalgraphics/platform/service/CgGameThreads$Binding;
   method public,abstract server ()Lcom/crystalgraphics/platform/service/CgGameThreads$Binding;
-com/crystalgraphics/platform/service/CgHostPaint
-  access public,final
-  extends java/lang/Object
-  field public,static,final HOST Lcom/crystalgraphics/platform/CgService;
-  method public,static enter ()V
-  method public,static leave ()V
-com/crystalgraphics/platform/service/CgHostPaint$Host
-  access public,abstract,interface
-  extends java/lang/Object
-  field public,static,final NONE Lcom/crystalgraphics/platform/service/CgHostPaint$Host;
-  method public,abstract enter ()V
-  method public,abstract leave ()V
 com/crystalgraphics/platform/service/CgHostResources
   access public,final
   extends java/lang/Object
@@ -3101,6 +3089,18 @@ com/crystalgraphics/platform/service/CgNetworkChannel
   method public,abstract isAvailable ()Z
   method public,abstract maxFrameBytes ()I
   method public,abstract sendToPlayer (Ljava/lang/Object;[B)V
+  method public,abstract sendToServer ([B)V
+  method public,abstract setInboundHandler (Ljava/util/function/BiConsumer;)V
+com/crystalgraphics/platform/service/CgProcessExit
+  access public,final
+  extends java/lang/Object
+  field public,static,final HOST Lcom/crystalgraphics/platform/CgService;
+  method public,static halt (I)V
+com/crystalgraphics/platform/service/CgProcessExit$Host
+  access public,abstract,interface
+  extends java/lang/Object
+  field public,static,final NONE Lcom/crystalgraphics/platform/service/CgProcessExit$Host;
+  method public,abstract halt (I)V
 com/crystalgraphics/platform/service/CgScreens
   access public,final
   extends java/lang/Object
@@ -3127,18 +3127,6 @@ com/crystalgraphics/platform/service/CgScreens$Owner
   method public hidesHud ()Z
   method public shown ()V
   method public textInputArea ([F)Z
-  method public,abstract sendToServer ([B)V
-  method public,abstract setInboundHandler (Ljava/util/function/BiConsumer;)V
-com/crystalgraphics/platform/service/CgProcessExit
-  access public,final
-  extends java/lang/Object
-  field public,static,final HOST Lcom/crystalgraphics/platform/CgService;
-  method public,static halt (I)V
-com/crystalgraphics/platform/service/CgProcessExit$Host
-  access public,abstract,interface
-  extends java/lang/Object
-  field public,static,final NONE Lcom/crystalgraphics/platform/service/CgProcessExit$Host;
-  method public,abstract halt (I)V
 com/crystalgraphics/platform/service/CgServers
   access public,final
   extends java/lang/Object

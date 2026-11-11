@@ -101,7 +101,7 @@ CgDeviceSection.end();     // CgRHI.toHost: what the section changed set back to
 - **Once a hook.** Sections nest, so a graph's execution or an upload inside a hook opens no hand-over of its own; one
   outside any hook is its own section. A device installed inside an open section takes the frame at once.
 - **The host's target is named, never bound.** A hook says what it draws into (`CgExecutor.into`): a stage takes
-  `CgHostFrame.mainFramebuffer`, a paint the target its host's `CgHostPaint.Host.enter` names. An execution drawing into
+  `CgHostFrame.mainFramebuffer`. An execution drawing into
   the current target with none named throws.
 
 - **A diff, not a save.** `toHost` is `GLStateFilter.restore(entry)` with the belief read at `fromHost`, its calls

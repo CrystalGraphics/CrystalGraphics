@@ -259,6 +259,10 @@ each; from 26.1 they are noted at the hook and fired at the frame end, since 26.
 | Fabric 1.14.4 · 1.15.2 · 1.16.5+ · 26.1+ | node mixin `HudHook` · `HudRenderCallback` · the same · `HudElementRegistry` | `FrameEndHook`, while a screen is open · the same · `ScreenEvents.afterRender` · `afterExtract` |
 | Legacy Forge, 1.7.10 | `RenderGameOverlayEvent.Post`, `ALL` (`OverlayStagesLegacy`, `OverlayStages1710`) | `GuiScreenEvent.DrawScreenEvent.Post` |
 
+**A UI drawn there that takes the player's attention** puts up the engine's screen, `CgScreens`: one class per era
+(`ScreensModern`, `ScreensLegacy`, `Screens1710`), a screen of Minecraft's that draws nothing, frees the cursor,
+stops the player and gives Escape to its owner.
+
 The exact version splits are in each loader branch's `AGENTS.md`. **The frame ends after the GUI**, from
 a loader frame event or, on Fabric, a mixin — `runtime/mc/modern/common/CLAUDE.md` § *The frame end*,
 which also covers 26.1's own main-target framebuffer and 26.2 under Vulkan.

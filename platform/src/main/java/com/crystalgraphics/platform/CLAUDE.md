@@ -52,7 +52,7 @@ seams are here too — see [UI-facing services](#ui-facing-services).
 | `service/CgServers` | Static owner + `Host` slot | The server this process runs: `running`, `dedicated`, its `directory`, `version`, `halt`. Both sides; `ServersModern`, `ServersLegacy`, `Servers1710` |
 | `service/CgGameThreads` | Static owner + `Host` slot | The game's client and server threads as a `Binding` (`execute`, `isCurrent`, `isAvailable`), what core's `job.CgHostThread` runs work on. Client slot from the client install, server from either; `GameThreadsModern`, `GameThreadsLegacy`, `GameThreads1710` |
 | `service/CgHostWindow` | Static owner + `Host` slot | The surface's `width()` and `height()` in device pixels. Client only; `HostWindowModern`, `HostWindowLegacy`, `HostWindow1710` |
-| `service/CgHostPaint` | Static owner + `Host` slot | `enter()` and `leave()` around a paint inside the host's frame outside a world pass (a screen, a HUD layer): a device section, which hands back the state the host's renderer assumes. Client only; `HostPaint<Era>` |
+| `service/CgScreens` | Static owner + `Host` slot | A screen of the engine's in front of the game, for a UI drawn at `CgRenderStage.SCREEN`: `open(owner)`, `close(owner)` (at the next tick), `isOpen`, `anyOpen`, and `giveBack(key)` for a key a `SCREEN` input listener left. The host treats it as its own screen (cursor free, player still, Escape the owner's) and it draws nothing. Client only; `ScreensModern`, `ScreensLegacy`, `Screens1710` |
 | `service/CgStorageLayout` | Final class | A product's `<base>/<product>/` tree stated once: `configIn` (`config`, durable) and `cacheIn` (`cache`, disposable). `CgStorageLayout.of("crystalgraphics")` is CrystalGraphics' own, which `CgCacheDirectory` roots under; a consumer makes its own and adds its folders. The config stores, cache files and downloads that use it are core's `storage` package |
 | `io/CgAtomicFile` | Final class | `write(file, bytes)`: replaces a file whole (a unique temp beside it, moved over), making its folders. Every kept file goes through it: `CgFiles.writeAtomic`, the config stores, and the GL, SPIR-V and asset-registry caches |
 | `service/CgCacheDirectory` | Final class | `of(name)`: a folder under `<game>/crystalgraphics/cache/` for what can be rebuilt — the SPIR-V (`spirv`) and pipeline (`vulkan`) caches a host passes its compiler and device, and the GL device's program binaries (`CgGLDevice.programCache`). Null where `-Dcrystalgraphics.cache=false` or it cannot be made; `-Dcrystalgraphics.cache.dir` moves it |
@@ -193,8 +193,8 @@ try {
 ```
 
 - **Every host entry brackets itself**: `CgGraphicsLifecycle`'s stages, `onResize` and `tickFrame`, and
-  `CgRenderStage.fire`; the modern tree's world passes in `LifecycleModern`; and CrystalGUI's
-  `HostSession.PaintHost.enter`/`leave` on every loader. Brackets nest; only the outermost pair reaches the device.
+  `CgRenderStage.fire`, which the GUI stages go through; and the modern tree's world passes in `LifecycleModern`.
+  Brackets nest; only the outermost pair reaches the device.
 - **On GL, a host's cache is kept true at the section's edge, not per call.** `GLHostState` reads what the host
   believes at `fromHost` (Minecraft's `GlStateManager` cache, by each era's reader) and sets it back at `toHost`.
   **A domain it does not cover is a missing GL call, not an exception**: `-Dcrystalgraphics.host.verify=true` names it.
