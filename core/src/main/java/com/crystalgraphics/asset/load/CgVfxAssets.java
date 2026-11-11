@@ -608,9 +608,22 @@ public final class CgVfxAssets {
             ref.definition = l.definition();
             ref.generation = 1;
         }
-        plan(ref, l);
+        try {
+            plan(ref, l);
+        } catch (RuntimeException e) {
+            // A preparer refusing one asset fails that asset, by name; it must not stall the loop behind it.
+            fail(ref, e.getMessage() == null ? e.toString() : e.getMessage());
+            return true;
+        }
         preparing.add(ref);
         return true;
+    }
+
+    /** Marks {@code ref}'s load failed with {@code reason} and logs it, naming the asset. */
+    private void fail(CgAssetRef<?> ref, String reason) {
+        ref.load.failure = reason;
+        ref.load.state = CgAssetState.FAILED;
+        LOGGER.error("{} {} failed to prepare: {}", ref.kind().id(), ref.id(), reason);
     }
 
     /** Lists {@code ref}'s GPU work and its hard dependencies, which it waits on. */
@@ -635,7 +648,14 @@ public final class CgVfxAssets {
 
     /** Runs {@code ref}'s prepare under the frame's budget; answers whether it is READY. */
     private boolean prepare(CgAssetRef<?> ref) {
-        for (int i = 0, n = ref.hard.size(); i < n; i++) if (!ref.hard.get(i).ready) return false;
+        for (int i = 0, n = ref.hard.size(); i < n; i++) {
+            CgAssetRef<?> d = ref.hard.get(i);
+            if (d.load != null && d.load.state() == CgAssetState.FAILED) {
+                fail(ref, "its hard dependency " + d.kind().id() + " " + d.id() + " failed");
+                return true;
+            }
+            if (!d.ready) return false;
+        }
         if (!ref.plan.advance(budget)) return false;
         ref.ready = true;
         return true;
