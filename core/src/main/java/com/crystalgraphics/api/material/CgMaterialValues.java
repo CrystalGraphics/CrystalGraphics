@@ -22,8 +22,8 @@ import org.joml.Vector4f;
  * <p>A writer kept in a field allocates nothing a frame:
  *
  * <pre>{@code
- * private final Consumer<CgMaterialValues> writeOpacity = v -> v.set1f("_LayerOpacity", opacity);
- * material.applyProperties(writeOpacity);
+ * private final Consumer<CgMaterialValues> writeAlpha = v -> v.set1f("_Alpha", alpha);
+ * material.applyProperties(writeAlpha);
  * }</pre>
  *
  * <ul>

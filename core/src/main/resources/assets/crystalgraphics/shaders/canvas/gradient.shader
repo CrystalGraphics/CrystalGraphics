@@ -46,7 +46,6 @@ Properties {
     _CornerRadiusX ("Corner Radii X (TL,TR,BR,BL)", vec4) = (0.0, 0.0, 0.0, 0.0)
     _CornerRadiusY ("Corner Radii Y (TL,TR,BR,BL)", vec4) = (0.0, 0.0, 0.0, 0.0)
     _BoxSize      ("Box Size (px)",                vec2)  = (0.0, 0.0)
-    _LayerOpacity ("Layer Opacity",                float) = 1.0
 }
 
 struct v2f {
@@ -113,7 +112,7 @@ Pass {
         shape *= CG_QUAD_EDGE_COVERAGE(i.param);
 #endif
 
-        c *= shape * _LayerOpacity * CG_QUAD_OPACITY;
+        c *= shape * CG_QUAD_OPACITY;
 
         // Last, and scaled by the shape: dither outside a rounded corner would stipple the corner back in.
         c += vec4((hash12(gl_FragCoord.xy) - 0.5) / 255.0) * shape;

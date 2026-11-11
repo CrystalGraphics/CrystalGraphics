@@ -52,10 +52,10 @@ Pass {
         vec4 texel = CG_QUAD_EDGE_ROTATED
                 ? cg_texel_aa_sample(_MainTex, uv, CG_QUAD_UV_RECT, CG_QUAD_EDGE_FILTER)
                 : texture(_MainTex, uv);
-        vec4 colour = vec4(i.color.rgb, i.color.a * CG_QUAD_EDGE_COVERAGE(i.param));
+        vec4 colour = vec4(i.color.rgb, i.color.a * CG_QUAD_EDGE_COVERAGE(i.param) * CG_QUAD_OPACITY);
 #else
         vec4 texel = texture(_MainTex, i.uv);
-        vec4 colour = i.color;
+        vec4 colour = vec4(i.color.rgb, i.color.a * CG_QUAD_OPACITY);
 #endif
 #ifdef MASK
         fragColor = cg_canvas_colour(texel, colour, true);

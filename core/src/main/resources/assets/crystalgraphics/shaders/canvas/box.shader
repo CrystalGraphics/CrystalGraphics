@@ -1,7 +1,7 @@
 // The canvas's box: a quad whose custom2 names its shape in the recording's CgShapeTable, so every box is one pipeline.
 // One rounded-box SDF cuts the outline, the border's inner edge and the fill alike; radii are elliptical, TL TR BR BL.
 // Off-axis, textured fills take the texel filter (lib/texel.glsl) and a nine-slice supersamples its seams.
-// Premultiplied out. _LayerOpacity fades a whole draw.
+// Premultiplied out. CG_QUAD_OPACITY fades a whole item, border and fill.
 
 #type none
 #pragma cg_use quad
@@ -17,7 +17,6 @@ Queue = "Transparent"
 
 Properties {
     _MainTex ("Main Texture", sampler2D) = "white"
-    _LayerOpacity ("Layer Opacity", float) = 1.0
 }
 
 struct v2f {
@@ -129,7 +128,7 @@ Pass {
                     ? cg_texel_aa_sample(_MainTex, uv, CG_QUAD_UV_RECT, CG_QUAD_EDGE_FILTER)
                     : texture(_MainTex, uv);
             vec4 plain = texel * i.color;
-            float a = plain.a * (_LayerOpacity * CG_QUAD_EDGE_COVERAGE(i.param) * boxClip) * CG_QUAD_OPACITY;
+            float a = plain.a * (CG_QUAD_EDGE_COVERAGE(i.param) * boxClip) * CG_QUAD_OPACITY;
             fragColor = cg_premultiply(plain.rgb, a);
             return;
         }
@@ -137,7 +136,7 @@ Pass {
             // A layer is at screen resolution: no texel filter.
             fragColor = texture(_MainTex, uv) * i.color;
             fragColor *= CG_QUAD_EDGE_COVERAGE(i.param);
-            fragColor *= _LayerOpacity * CG_QUAD_OPACITY * boxClip;
+            fragColor *= CG_QUAD_OPACITY * boxClip;
             return;
         }
 
@@ -216,7 +215,7 @@ Pass {
             color = mix(edgeColor, fillColor, innerCoverage);
         }
 
-        color.a *= coverage * _LayerOpacity;
+        color.a *= coverage;
         fragColor = cg_premultiply(color.rgb, color.a * boxClip * CG_QUAD_OPACITY);
     }
 }

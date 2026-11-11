@@ -1,6 +1,6 @@
 // The canvas's curve: CgCurveBatch's strokes, triangles and cells, one instance each, its unit quad grown to the
 // control hull's bounds. Drawn through CgCanvasMaterials, whose state gives the blend and the depth test.
-// SCREEN: a 2D camera, each fragment's point from gl_FragCoord (below). _LayerOpacity fades a whole draw.
+// SCREEN: a 2D camera, each fragment's point from gl_FragCoord (below). CG_CURVE_OPACITY fades a whole item.
 
 #type none
 #pragma cg_use curve
@@ -17,7 +17,6 @@ Tags {
 Queue = "Transparent"
 
 Properties {
-    _LayerOpacity ("Layer Opacity", float) = 1.0
 }
 
 struct v2f {
@@ -64,7 +63,7 @@ Pass {
                                               int(CG_CURVE_FLAGS + 0.5), CG_CURVE_GRADIENT, t);
 
         vec4 color = mix(CG_CURVE_COLOR0, CG_CURVE_COLOR1, t);
-        alpha *= color.a * _LayerOpacity;
+        alpha *= color.a * CG_CURVE_OPACITY;
 
         if (alpha <= (1.0 / 255.0)) discard;
 

@@ -6,6 +6,7 @@ import com.crystalgraphics.api.buffer.CgBufferLifetime;
 import com.crystalgraphics.api.buffer.CgGpuType;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.state.CgRenderState;
+import com.crystalgraphics.api.texture.CgSampler;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.gl.buffer.shader.CgShaderBuffer;
 import com.crystalgraphics.gl.buffer.shader.CgShaderBufferRegistry;
@@ -71,7 +72,7 @@ public final class CgQuadBatch {
     private final CgInstanceRun run;
     private final Quad scratch = new Quad();
     /** Field offsets into the record, resolved once: a named write per field per glyph was the text path's cost. */
-    private final int offOrigin, offRight, offUp, offUv0, offUv1, offColor, offAtlasLayer;
+    private final int offOrigin, offFade, offRight, offUp, offUv0, offUv1, offColor, offAtlasLayer;
     private final int offCustom0, offCustom1, offCustom2, offClip, offNode;
 
     CgQuadBatch(CgCanvas canvas) {
@@ -80,6 +81,7 @@ public final class CgQuadBatch {
         this.writer = new CgBufferWriter(staging, INSTANCE_FORMAT);
         this.run = new CgInstanceRun(CgInstanceKind.QUAD, canvas, staging);
         this.offOrigin = writer.offsetOf("origin", CgGpuType.VEC3);
+        this.offFade = writer.offsetOf("fade", CgGpuType.FLOAT);
         this.offRight = writer.offsetOf("right", CgGpuType.VEC3);
         this.offUp = writer.offsetOf("up", CgGpuType.VEC3);
         this.offUv0 = writer.offsetOf("uv0", CgGpuType.VEC2);
@@ -122,7 +124,7 @@ public final class CgQuadBatch {
             y1 = Math.max(y1, oy + Math.max(0f, ry) + Math.max(0f, uy) + 1f);
         }
         if (texture != null) recordTexture[0] = texture;
-        run.item(material, state, texture != null ? recordTexture : NO_TEXTURES, texture != null ? 1 : 0);
+        run.item(material, state, texture != null ? recordTexture : NO_TEXTURES, NO_SAMPLERS, texture != null ? 1 : 0);
         run.spatial(spatial);
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "canvas.quadRecords")) {
             CgTrace.add(CgChannels.GL, "canvas.quads", count);
@@ -131,6 +133,7 @@ public final class CgQuadBatch {
     }
 
     private static final CgTexture[] NO_TEXTURES = new CgTexture[0];
+    private static final CgSampler[] NO_SAMPLERS = new CgSampler[CgBindingTable.MAX_TEXTURES];
     /** Unit 0 of a run of baked records. */
     private final CgTexture[] recordTexture = new CgTexture[1];
 
@@ -153,12 +156,14 @@ public final class CgQuadBatch {
         @Nullable
         private CgRenderState state;
         private final CgTexture[] textures = new CgTexture[CgBindingTable.MAX_TEXTURES];
+        private final CgSampler[] samplers = new CgSampler[CgBindingTable.MAX_TEXTURES];
         private int textureUnits;
         private float x, y, z;
         private float width, height;
         private boolean sizeSet;
         private float u0, v0, u1, v1;
         private int argb;
+        private float fade;
         private float atlasLayer;
         private float c0x, c0y, c0z, c0w;
         private float c1x, c1y, c1z, c1w;
@@ -183,7 +188,10 @@ public final class CgQuadBatch {
         Quad reset() {
             material = null;
             state = null;
-            for (int i = 0; i < textureUnits; i++) textures[i] = null;
+            for (int i = 0; i < textureUnits; i++) {
+                textures[i] = null;
+                samplers[i] = null;
+            }
             textureUnits = 0;
             x = y = z = 0f;
             width = height = 0f;
@@ -191,6 +199,7 @@ public final class CgQuadBatch {
             u0 = v0 = 0f;
             u1 = v1 = 1f;
             argb = 0xFFFFFFFF;
+            fade = 0f;
             atlasLayer = 0f;
             c0x = c0y = c0z = c0w = 0f;
             c1x = c1y = c1z = c1w = 0f;
@@ -215,9 +224,22 @@ public final class CgQuadBatch {
             return this;
         }
 
-        /** {@code texture} at {@code unit}, in place of the material's own there. */
+        /** {@code texture} at {@code unit}, in place of the material's own there, sampled as its spec says. */
         public Quad texture(int unit, CgTexture texture) {
+            return texture(unit, texture, null);
+        }
+
+        /**
+         * {@code texture} at {@code unit}, sampled through {@code sampler} in place of its spec's filter and wrap; null
+         * samples as the spec says. Quads differing only in sampler are different draws.
+         *
+         * <pre>{@code
+         * canvas.quad(image).texture(0, layer, CgSampler.BILINEAR_CLAMP).at(x, y).size(w, h).pose(turn).submit();
+         * }</pre>
+         */
+        public Quad texture(int unit, CgTexture texture, @Nullable CgSampler sampler) {
             textures[unit] = texture;
+            samplers[unit] = sampler;
             textureUnits = Math.max(textureUnits, unit + 1);
             return this;
         }
@@ -255,6 +277,23 @@ public final class CgQuadBatch {
         /** Its colour, ARGB. */
         public Quad color(int argb) {
             this.argb = argb;
+            return this;
+        }
+
+        /**
+         * Fades the whole item, 1 by default: what {@code CG_QUAD_OPACITY} multiplies in, with its effect node's
+         * opacity. Unlike the colour's alpha it reaches everything the material draws, a box's border as well as its
+         * fill, and quads of different opacity still batch.
+         *
+         * <pre>{@code
+         * canvas.quad(box).custom2(shape).at(x, y).size(w, h).opacity(0.5f).submit();   // border and fill at half
+         * }</pre>
+         *
+         * A material that does not read {@code CG_QUAD_OPACITY} ignores it; every material {@link CgCanvasMaterials}
+         * ships reads it but the coverage rasters.
+         */
+        public Quad opacity(float opacity) {
+            this.fade = 1f - Math.max(0f, Math.min(1f, opacity));
             return this;
         }
 
@@ -385,13 +424,14 @@ public final class CgQuadBatch {
             float rx = p[3], ry = p[4], rz = p[5];
             float ux = p[6], uy = p[7], uz = p[8];
 
-            run.item(material, state, textures, textureUnits);
+            run.item(material, state, textures, samplers, textureUnits);
             run.spatial(spatial);
             // A pixel past the corners: an edge antialiased off the grid reaches half of one.
             run.bounds(ox + Math.min(0f, rx) + Math.min(0f, ux) - 1f, oy + Math.min(0f, ry) + Math.min(0f, uy) - 1f,
                     ox + Math.max(0f, rx) + Math.max(0f, ux) + 1f, oy + Math.max(0f, ry) + Math.max(0f, uy) + 1f);
             writer.beginRecord()
                     .vec3At(offOrigin, ox, oy, oz)
+                    .floatAt(offFade, fade)
                     .vec3At(offRight, rx, ry, rz)
                     .vec3At(offUp, ux, uy, uz)
                     .vec2At(offUv0, u0, v0)

@@ -56,6 +56,24 @@ public class CgBufferFormatTest {
     }
 
     @Test
+    public void build_scalarAfterVec3TakesItsTail_asGlslPlacesIt() {
+        CgBufferFormat f = CgBufferFormat.builder("Corner", CgBufferFormat.MemoryLayout.STD430)
+                .vec3("origin").float_("fade").vec3("right").vec2("uv").vec4("color").build();
+        assertEquals(12, f.getField("fade").getByteOffset());
+        assertEquals(16, f.getField("right").getByteOffset());
+        assertEquals(32, f.getField("uv").getByteOffset());   // a vec2 after a vec3 still starts at the next 16
+        assertEquals(48, f.getField("color").getByteOffset());
+        assertEquals(64, f.getStride());
+    }
+
+    @Test
+    public void build_mat3ColumnsStayPadded() {
+        CgBufferFormat f = CgBufferFormat.builder("M", CgBufferFormat.MemoryLayout.STD430)
+                .add("m", CgGpuType.MAT3).float_("after").build();
+        assertEquals(48, f.getField("after").getByteOffset());
+    }
+
+    @Test
     public void build_strideIsAlwaysAMultipleOf16_forArbitraryFieldCombinations() {
         // A handful of field-count parities that could plausibly land off a 16-byte
         // boundary if the rounding were ever removed again.

@@ -51,6 +51,7 @@ canvas.quad(image).texture(0, atlas).uv(u0, v0, u1, v1).at(x, y).size(w, h).subm
 canvas.quad(CgCanvasMaterials.SCREEN.imageArray(CgBlendMode.ALPHA)).texture(0, sheet)
         .atlasLayer(3).at(x, y).size(w, h).submit();                                  // a layer of a 2D array
 canvas.quad(image).at(-8, -8).size(16, 16).pose(rotation).submit();                   // rotated about its pose's origin
+canvas.quad(image).texture(0, icon).at(x, y).size(32, 32).opacity(0.5f).submit();    // half faded
 canvas.quad(BAR).at(x, y).size(w * fill, h).custom0(fill, 0f, 0f, 0f).submit();       // a material of your own
 ```
 
@@ -60,7 +61,8 @@ canvas.quad(BAR).at(x, y).size(w * fill, h).custom0(fill, 0f, 0f, 0f).submit(); 
 | `at(x, y[, z])` | `(0, 0, 0)` | Its corner. `z` translates, it does not tilt |
 | `uv(u0, v0, u1, v1)` | the whole texture | Top-left, then bottom-right |
 | `color(argb)` | opaque white | `0xAARRGGBB` |
-| `texture(unit, texture)` | the material's own | Overrides one sampler unit for this quad |
+| `opacity(f)` | 1 | Fades the whole item: a box's border with its fill, which the colour's alpha does not reach. Per item, so it batches |
+| `texture(unit, texture[, sampler])` | the material's own | Overrides one sampler unit for this quad; a `CgSampler` samples it in place of its spec's filter and wrap |
 | `state(renderState)` | the material's | A blend or depth the shader cannot decide |
 | `custom0/custom1(x, y, z, w)`, `custom2(v)` | 0 | Free per-quad values: `CG_QUAD_CUSTOM0..2`. Also `custom0(argb)` |
 | `pose(matrix)` | none | Baked on the CPU: rotation, scale and skew act as on the four corners |
@@ -101,8 +103,8 @@ frame.canvas().quad(CgCanvasMaterials.WORLD.image()).world(x, y, z).pose(facing)
 - **Every screen material antialiases its own edges** when a quad is rotated or sheared, and an image or box filters
   its texels, with no MSAA; axis-aligned items are untouched. The width is one unit of the canvas's space: a window
   pixel on `frame.canvas()`, softer by the scale on `guiScaledCanvas()`. In the world the scene's own antialiasing does.
-- A material of your own with the same look, for a property you set (a texture you keep, `_LayerOpacity` to fade a
-  group): `newBox()`, `newCurve()`.
+- A material of your own with the same look, for a property you set (a texture you keep): `newBox()`, `newCurve()`.
+  Never a property to fade with: that is the item's `opacity`.
 
 ### Boxes
 
@@ -420,6 +422,7 @@ canvas.cell(FILL).points(x0, y0, x1, y1, x2, y2, x3, y3)
 
 - **Widths are half-widths**, in the same units as the points. A `pose(...)` scales them with the points.
 - **Caps**: `CAP_BUTT` (default), `CAP_ROUND`, `CAP_SQUARE`, `CAP_ARROW`, set per end.
+- **`opacity(f)`** fades the whole item, as a quad's does.
 - **Feather**: the default is antialiasing, a pixel and a half whatever the scale. `feather(4f)` is a deliberate
   soft edge (a glow), and that one scales with the pose.
 - **Gradients** on triangles and cells: `gradient(start, end, originX, originY, dirX, dirY)`, per pixel.

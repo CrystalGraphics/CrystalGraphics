@@ -297,6 +297,11 @@ public final class CgBindingTable {
 
     /** Snapshot {@code id} with {@code texture} at {@code unit}, in place of whatever it bound there. */
     public int withTexture(int id, int unit, CgTexture texture) {
+        return withTexture(id, unit, texture, null);
+    }
+
+    /** {@link #withTexture(int, int, CgTexture)} sampled through {@code sampler}; null samples as its spec says. */
+    public int withTexture(int id, int unit, CgTexture texture, @Nullable CgSampler sampler) {
         begin();
         int e = id * ENTRY_INTS;
         int r = id * ENTRY_REFS;
@@ -305,7 +310,7 @@ public final class CgBindingTable {
                 texture(entries[e + HEADER + t], (CgTexture) refs[r + t], (CgSampler) refs[r + SAMPLER_REFS + t]);
             }
         }
-        texture(unit, texture);
+        texture(unit, texture, sampler);
         for (int b = 0; b < entries[e + 1]; b++) {
             int block = e + BLOCKS_AT + b * BLOCK_INTS;
             CgBlockVersion version = (CgBlockVersion) refs[r + BLOCK_REFS + b];

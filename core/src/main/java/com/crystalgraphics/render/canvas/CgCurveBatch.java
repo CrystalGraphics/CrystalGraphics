@@ -5,6 +5,7 @@ import com.crystalgraphics.api.buffer.CgBufferFormat;
 import com.crystalgraphics.api.buffer.CgBufferLifetime;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.state.CgRenderState;
+import com.crystalgraphics.api.texture.CgSampler;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.gl.buffer.shader.CgShaderBuffer;
 import com.crystalgraphics.gl.buffer.shader.CgShaderBufferRegistry;
@@ -146,7 +147,7 @@ public final class CgCurveBatch {
     private final CgInstanceRun run;
 
     /** Field offsets into the record, resolved once. */
-    private final int offP0, offP1, offP2, offColor0, offColor1, offWidths, offFeather, offFlags,
+    private final int offP0, offFade, offP1, offP2, offColor0, offColor1, offWidths, offFeather, offFlags,
             offGradient, offClip, offNode;
 
     /**
@@ -167,6 +168,7 @@ public final class CgCurveBatch {
 
     private final CgCanvas canvas;
     private static final CgTexture[] NO_TEXTURES = new CgTexture[0];
+    private static final CgSampler[] NO_SAMPLERS = new CgSampler[0];
 
     CgCurveBatch(CgCanvas canvas) {
         this.canvas = canvas;
@@ -174,6 +176,7 @@ public final class CgCurveBatch {
         this.accumWriter = new CgBufferWriter(accumStaging, INSTANCE_FORMAT);
         this.run = new CgInstanceRun(CgInstanceKind.CURVE, canvas, accumStaging);
         this.offP0 = accumWriter.offsetOf("p0", CgGpuType.VEC3);
+        this.offFade = accumWriter.offsetOf("fade", CgGpuType.FLOAT);
         this.offP1 = accumWriter.offsetOf("p1", CgGpuType.VEC3);
         this.offP2 = accumWriter.offsetOf("p2", CgGpuType.VEC3);
         this.offColor0 = accumWriter.offsetOf("color0", CgGpuType.VEC4);
@@ -225,6 +228,7 @@ public final class CgCurveBatch {
         private int capStart, capEnd;
         private Matrix4f pose;
         private int clip;
+        private float fade;
         private float node;
         private int spatial;
 
@@ -272,6 +276,7 @@ public final class CgCurveBatch {
             capEnd = CAP_BUTT;
             pose = null;
             clip = 0;
+            fade = 0f;
             node = 0f;
             spatial = 0;
             cubicSegments = 0;
@@ -395,6 +400,15 @@ public final class CgCurveBatch {
             return this;
         }
 
+        /**
+         * Fades the whole item, 1 by default: what {@code CG_CURVE_OPACITY} multiplies in, with its effect node's
+         * opacity. Items of different opacity still batch.
+         */
+        public Curve opacity(float opacity) {
+            this.fade = 1f - Math.max(0f, Math.min(1f, opacity));
+            return this;
+        }
+
         /** Its spatial and effect nodes; 0 and 0 are the pass's own space at full opacity. @see CgPalette */
         public Curve node(int spatial, int effect) {
             this.node = CgPalette.pack(spatial, effect);
@@ -479,12 +493,13 @@ public final class CgCurveBatch {
 
             // A square cap reaches a half-width past the end along the tangent and across it: 1.41 half-widths.
             float reach = Math.max(wStart, wEnd) * 1.5f + feath + 1f;
-            run.item(material, state, NO_TEXTURES, 0);
+            run.item(material, state, NO_TEXTURES, NO_SAMPLERS, 0);
             run.spatial(spatial);
             run.bounds(min3(ax, bx, cx) - reach, min3(ay, by, cy) - reach, max3(ax, bx, cx) + reach,
                     max3(ay, by, cy) + reach);
             accumWriter.beginRecord()
                     .vec3At(offP0, ax, ay, az)
+                    .floatAt(offFade, fade)
                     .vec3At(offP1, bx, by, bz)
                     .vec3At(offP2, cx, cy, cz)
                     .colorAt(offColor0, colorStart)
@@ -527,6 +542,7 @@ public final class CgCurveBatch {
         private float feather;
         private Matrix4f pose;
         private int clip;
+        private float fade;
         private float node;
         private int spatial;
 
@@ -570,6 +586,7 @@ public final class CgCurveBatch {
             feather = FEATHER_ANTIALIAS;
             pose = null;
             clip = 0;
+            fade = 0f;
             node = 0f;
             spatial = 0;
             return this;
@@ -670,6 +687,15 @@ public final class CgCurveBatch {
             return this;
         }
 
+        /**
+         * Fades the whole item, 1 by default: what {@code CG_CURVE_OPACITY} multiplies in, with its effect node's
+         * opacity. Items of different opacity still batch.
+         */
+        public Triangle opacity(float opacity) {
+            this.fade = 1f - Math.max(0f, Math.min(1f, opacity));
+            return this;
+        }
+
         /** Its spatial and effect nodes; 0 and 0 are the pass's own space at full opacity. @see CgPalette */
         public Triangle node(int spatial, int effect) {
             this.node = CgPalette.pack(spatial, effect);
@@ -714,12 +740,13 @@ public final class CgCurveBatch {
             }
 
             float reach = radius + feath + 1f;
-            run.item(material, state, NO_TEXTURES, 0);
+            run.item(material, state, NO_TEXTURES, NO_SAMPLERS, 0);
             run.spatial(spatial);
             run.bounds(min3(ax, bx, cx) - reach, min3(ay, by, cy) - reach, max3(ax, bx, cx) + reach,
                     max3(ay, by, cy) + reach);
             accumWriter.beginRecord()
                     .vec3At(offP0, ax, ay, az)
+                    .floatAt(offFade, fade)
                     .vec3At(offP1, bx, by, bz)
                     .vec3At(offP2, cx, cy, cz)
                     .colorAt(offColor0, argb)
@@ -772,6 +799,7 @@ public final class CgCurveBatch {
         private int softEdges;
         private Matrix4f pose;
         private int clip;
+        private float fade;
         private float node;
         private int spatial;
 
@@ -809,6 +837,7 @@ public final class CgCurveBatch {
             softEdges = 0;
             pose = null;
             clip = 0;
+            fade = 0f;
             node = 0f;
             spatial = 0;
             return this;
@@ -865,6 +894,15 @@ public final class CgCurveBatch {
             return this;
         }
 
+        /**
+         * Fades the whole item, 1 by default: what {@code CG_CURVE_OPACITY} multiplies in, with its effect node's
+         * opacity. Items of different opacity still batch.
+         */
+        public Cell opacity(float opacity) {
+            this.fade = 1f - Math.max(0f, Math.min(1f, opacity));
+            return this;
+        }
+
         /** Its spatial and effect nodes; 0 and 0 are the pass's own space at full opacity. @see CgPalette */
         public Cell node(int spatial, int effect) {
             this.node = CgPalette.pack(spatial, effect);
@@ -895,12 +933,13 @@ public final class CgCurveBatch {
                 ox = axis[0]; oy = axis[1]; dxg = axis[2]; dyg = axis[3];
             }
 
-            run.item(material, state, NO_TEXTURES, 0);
+            run.item(material, state, NO_TEXTURES, NO_SAMPLERS, 0);
             run.spatial(spatial);
             run.bounds(Math.min(min3(ax, bx, cx), dx) - 1f, Math.min(min3(ay, by, cy), dy) - 1f,
                     Math.max(max3(ax, bx, cx), dx) + 1f, Math.max(max3(ay, by, cy), dy) + 1f);
             accumWriter.beginRecord()
                     .vec3At(offP0, ax, ay, z)
+                    .floatAt(offFade, fade)
                     .vec3At(offP1, bx, by, z)
                     .vec3At(offP2, cx, cy, z)
                     .colorAt(offColor0, argb)

@@ -54,7 +54,6 @@ Properties {
     _Chromatic  ("Chromatic aberration",            float) = 0.20
     _Noise      ("Grain amount",           float) = 0.0
     _LightDir   ("Light direction",        vec2)  = (-0.55, -0.83)
-    _LayerOpacity ("Layer Opacity",        float) = 1.0
 }
 
 struct v2f {
@@ -230,7 +229,7 @@ Pass {
         // Held to 0..1, as the screen's 8-bit target holds it: saturation above 1 and the highlight pass white, which the
         // HDR scene keeps and the post stack rolls toward white and blooms.
         if (linearScene) c.rgb = srgb_to_linear(clamp(c.rgb, 0.0, 1.0));
-        c.a = coverage * _LayerOpacity * CG_QUAD_OPACITY * i.color.a;
+        c.a = coverage * CG_QUAD_OPACITY * i.color.a;
         fragColor = vec4(c.rgb, c.a * boxClip);
     }
 }

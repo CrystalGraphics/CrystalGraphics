@@ -64,9 +64,9 @@
 #define CG_QUAD_UV (mix(QUAD_DATA(CG_INSTANCE_ID).uv0, QUAD_DATA(CG_INSTANCE_ID).uv1, CG_VERTEX_CORNER))
 #define CG_QUAD_COLOR (QUAD_DATA(CG_INSTANCE_ID).color)
 #define CG_QUAD_NORMAL (normalize(cross(CG_QUAD_RIGHT, CG_QUAD_UP)))
-// The record's effect-group opacity: a material that honours groups multiplies its alpha by it (its whole colour when
-// it writes premultiplied). One that does not draws at full opacity.
-#define CG_QUAD_OPACITY cg_effect_opacity(CG_QUAD_NODE)
+// The record's opacity: its own (Quad.opacity, stored as 1 - opacity in origin's tail) times its effect group's. A
+// material multiplies its alpha by it (its whole colour when it writes premultiplied); one that does not draws opaque.
+#define CG_QUAD_OPACITY ((1.0 - QUAD_DATA(CG_INSTANCE_ID).fade) * cg_effect_opacity(CG_QUAD_NODE))
 #define CG_QUAD_ATLAS_LAYER (QUAD_DATA(CG_INSTANCE_ID).atlasLayer)
 
 // -- CG_QUAD_CUSTOM0 / CG_QUAD_CUSTOM1 -- whatever the material needs, per instance ------------------

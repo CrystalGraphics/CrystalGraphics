@@ -29,7 +29,6 @@ Properties {
     // WITH_MASK only: CSS order, one vec4 per axis.
     _CornerRadiusX ("Corner radii X (TL,TR,BR,BL)", vec4)  = (0.0, 0.0, 0.0, 0.0)
     _CornerRadiusY ("Corner radii Y (TL,TR,BR,BL)", vec4)  = (0.0, 0.0, 0.0, 0.0)
-    _LayerOpacity  ("Layer opacity",                float) = 1.0
 }
 
 struct v2f {
@@ -107,6 +106,6 @@ Pass {
         shape *= CG_QUAD_EDGE_COVERAGE(i.param);
 #endif
 
-        fragColor = c * shape * _LayerOpacity * CG_QUAD_OPACITY * boxClip;
+        fragColor = c * shape * CG_QUAD_OPACITY * boxClip;
     }
 }

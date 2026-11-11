@@ -45,8 +45,9 @@ import java.util.List;
  *   <li>A box is premultiplied out, under {@code PREMULTIPLIED}; its quad names its shape with {@code custom2}, in the
  *       canvas's own table, so it draws only into a recording (a stage's canvas). With no shape it is
  *       {@link CgShapeTable#PLAIN}: the texture times the colour.</li>
- *   <li>Each is one shared instance: never set a property on it. A caller that does (a texture it keeps, a group's
- *       {@code _LayerOpacity}) makes its own with {@link #newBox()} or {@link #newCurve()}.</li>
+ *   <li>Each is one shared instance: never set a property on it. A caller that does (a texture it keeps) makes its
+ *       own with {@link #newBox()} or {@link #newCurve()}. A fade is per item, never a property: {@code opacity(f)}
+ *       on the quad or curve, which every material here but the coverage rasters reads.</li>
  *   <li>On the screen every item antialiases its own edges when rotated, and an image filters its texels; in the
  *       world the scene's own antialiasing does. A screen curve takes each fragment's point from the window position,
  *       exact for a 2D camera, so a fill tessellated into cells partitions its pixels.</li>
@@ -167,12 +168,12 @@ public final class CgCanvasMaterials {
         return box;
     }
 
-    /** A {@link #box()} of the caller's own, for properties it sets: {@code _MainTex}, {@code _LayerOpacity}. */
+    /** A {@link #box()} of the caller's own, for properties it sets: {@code _MainTex}. */
     public CgMaterial newBox() {
         return CgMaterial.newInstance(BOX_SHADER, state(CgBlendMode.PREMULTIPLIED));
     }
 
-    /** A {@link #curve()} of the caller's own, for properties it sets: {@code _LayerOpacity}. */
+    /** A {@link #curve()} of the caller's own, for a keyword or a state it sets. */
     public CgMaterial newCurve() {
         CgMaterial m = CgMaterial.newInstance(CURVE_SHADER, state(CgBlendMode.ALPHA));
         m.toggleKeyword("SCREEN", screen);

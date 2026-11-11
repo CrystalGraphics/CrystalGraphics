@@ -77,7 +77,9 @@ public enum CgInstanceKind {
     private static CgBufferFormat quadFormat() {
         return CgBufferFormat
                 .builder("QuadInstance", CgBufferFormat.MemoryLayout.STD430)
-                .vec3("origin").vec3("right").vec3("up")
+                // fade: 1 - the item's opacity, in origin's tail. Stored inverted so a record written without it is
+                // opaque. CG_QUAD_OPACITY reads it.
+                .vec3("origin").float_("fade").vec3("right").vec3("up")
                 .vec2("uv0").vec2("uv1")
                 .vec4("color")
                 .float_("atlasLayer")
@@ -114,7 +116,8 @@ public enum CgInstanceKind {
     private static CgBufferFormat curveFormat() {
         return CgBufferFormat
                 .builder("CurveInstance", CgBufferFormat.MemoryLayout.STD430)
-                .vec3("p0").vec3("p1").vec3("p2")
+                // fade: 1 - the item's opacity, in p0's tail, as the quad record's. CG_CURVE_OPACITY reads it.
+                .vec3("p0").float_("fade").vec3("p1").vec3("p2")
                 .vec4("color0").vec4("color1")
                 .vec2("widths")
                 .float_("feather")

@@ -2,6 +2,7 @@ package com.crystalgraphics.render.canvas;
 
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.state.CgRenderState;
+import com.crystalgraphics.api.texture.CgSampler;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.gl.buffer.staging.CgStagingBuffer;
@@ -53,6 +54,8 @@ final class CgInstanceRun implements CgCanvas.Drawing {
     private int binding = -1;
     /** The textures laid over the material's own at each unit: the items', winning the unit. */
     private final CgTexture[] textures = new CgTexture[CgBindingTable.MAX_TEXTURES];
+    /** Each laid-over texture's sampler, null for its spec's. */
+    private final CgSampler[] samplers = new CgSampler[CgBindingTable.MAX_TEXTURES];
 
     /** The binding and pipeline of the open draw {@link #records} may still append to; -1 once anything comes between. */
     private int appendBinding = -1;
@@ -71,11 +74,11 @@ final class CgInstanceRun implements CgCanvas.Drawing {
     }
 
     /**
-     * Before an item is queued: draws under {@code next}, {@code override} and {@code units} from here. The run of
-     * records before ends where any differs, or the material changed since the run began; the canvas seals what
-     * another batcher drew first.
+     * Before an item is queued: draws under {@code next}, {@code override}, {@code units} and their {@code sampled}
+     * from here. The run of records before ends where any differs, or the material changed since the run began; the
+     * canvas seals what another batcher drew first.
      */
-    void item(CgMaterial next, @Nullable CgRenderState override, CgTexture[] units, int unitCount) {
+    void item(CgMaterial next, @Nullable CgRenderState override, CgTexture[] units, CgSampler[] sampled, int unitCount) {
         canvas.claim(this);
         if (!canvas.recording()) {
             // Once a frame, not per draw: a chunk a deferral holds still names this table's snapshots.
@@ -85,8 +88,8 @@ final class CgInstanceRun implements CgCanvas.Drawing {
                 ownFrame = frame;
             }
         }
-        if (next == material && next.changes() == materialChanges && override == state && sameTextures(units, unitCount)
-                && !stale()) {
+        if (next == material && next.changes() == materialChanges && override == state
+                && sameTextures(units, sampled, unitCount) && !stale()) {
             return;
         }
         close();
@@ -94,13 +97,18 @@ final class CgInstanceRun implements CgCanvas.Drawing {
         materialChanges = next.changes();
         state = override;
         Arrays.fill(textures, null);
+        Arrays.fill(samplers, null);
         System.arraycopy(units, 0, textures, 0, unitCount);
+        System.arraycopy(sampled, 0, samplers, 0, unitCount);
         capture();
     }
 
-    private boolean sameTextures(CgTexture[] units, int unitCount) {
+    private boolean sameTextures(CgTexture[] units, CgSampler[] sampled, int unitCount) {
         for (int unit = 0; unit < textures.length; unit++) {
-            if (textures[unit] != (unit < unitCount ? units[unit] : null)) return false;
+            boolean set = unit < unitCount;
+            if (textures[unit] != (set ? units[unit] : null) || samplers[unit] != (set ? sampled[unit] : null)) {
+                return false;
+            }
         }
         return true;
     }
@@ -113,7 +121,7 @@ final class CgInstanceRun implements CgCanvas.Drawing {
         capturedResets = captured.resets();
         int snapshot = material.captureBindings(captured);
         for (int unit = 0; unit < textures.length; unit++) {
-            if (textures[unit] != null) snapshot = captured.withTexture(snapshot, unit, textures[unit]);
+            if (textures[unit] != null) snapshot = captured.withTexture(snapshot, unit, textures[unit], samplers[unit]);
         }
         binding = snapshot;
     }

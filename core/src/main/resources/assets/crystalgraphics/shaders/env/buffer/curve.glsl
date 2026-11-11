@@ -83,8 +83,8 @@
 #define CG_CURVE_COLOR0 (CURVE_DATA(CG_INSTANCE_ID).color0)
 #define CG_CURVE_COLOR1 (CURVE_DATA(CG_INSTANCE_ID).color1)
 #define CG_CURVE_WIDTHS cg_curve_widths(CG_CURVE_NODE, CURVE_DATA(CG_INSTANCE_ID).widths, CURVE_DATA(CG_INSTANCE_ID).flags)
-// The record's effect-group opacity, as CG_QUAD_OPACITY.
-#define CG_CURVE_OPACITY cg_effect_opacity(CG_CURVE_NODE)
+// The record's opacity, its own times its effect group's, as CG_QUAD_OPACITY.
+#define CG_CURVE_OPACITY ((1.0 - CURVE_DATA(CG_INSTANCE_ID).fade) * cg_effect_opacity(CG_CURVE_NODE))
 #define CG_CURVE_FEATHER (CURVE_DATA(CG_INSTANCE_ID).feather)
 #define CG_CURVE_FLAGS (CURVE_DATA(CG_INSTANCE_ID).flags)
 // (originX, originY, dirX, dirY) of a linear gradient, in the same space as p0/p1/p2 and scaled so

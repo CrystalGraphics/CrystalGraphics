@@ -19,7 +19,12 @@ import java.util.Map;
  * <p>The builder auto-computes field byte offsets by applying the alignment rules of the
  * chosen {@link MemoryLayout}. For the field types in v1, std140 and std430 produce
  * identical offsets and strides (the only meaningful difference — scalar arrays — is
- * deferred to v2).</p>
+ * deferred to v2). A scalar after a {@code vec3} sits in its last four bytes, as GLSL places it:</p>
+ *
+ * <pre>{@code
+ * CgBufferFormat.builder("Corner", STD430).vec3("origin").float_("fade").vec4("color").build();
+ * // origin at 0, fade at 12, color at 16: stride 32
+ * }</pre>
  *
  * <h3>Usage</h3>
  * <pre>{@code
@@ -193,8 +198,9 @@ public final class CgBufferFormat {
             cursor += padding;
             // 2. Record field at aligned offset
             fields.add(new CgBufferField(name, type, cursor));
-            // 3. Advance cursor by field's aligned size
-            cursor += type.getAlignedBytes();
+            // 3. Advance past it. A 3-vector is 16-aligned but 12 long, so a scalar after it takes its last four bytes,
+            // as GLSL lays out both std140 and std430 (spec 7.6.2.2); a matrix's columns stay padded.
+            cursor += type.getDataBytes() == 12 && type.getAlignment() == 16 ? 12 : type.getAlignedBytes();
             return this;
         }
 
