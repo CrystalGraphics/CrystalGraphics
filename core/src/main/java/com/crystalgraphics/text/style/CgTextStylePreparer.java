@@ -7,8 +7,9 @@ import com.crystalgraphics.job.CgJob;
 import com.crystalgraphics.job.reply.CgReplyError;
 
 /**
- * A text style's face read before it is READY, on a worker, at the size a draw in it asks for: the first text drawn
- * in the style never reads a font file on the render thread.
+ * A text style's face read before it is READY, on a worker, at the size a draw in it asks for, and its ASCII glyphs
+ * queued to the glyph workers: the first text drawn in the style never reads a font file, and its digits and letters
+ * are generated ahead on the render thread's behalf.
  *
  * <pre>{@code
  * assets.preparer(CgLookKinds.TEXT_STYLE, new CgTextStylePreparer());   // CgVfx.preparers registers it
@@ -16,6 +17,8 @@ import com.crystalgraphics.job.reply.CgReplyError;
  *
  * <ul>
  *   <li>A face that will not load fails the style's load, naming the style and the file.</li>
+ *   <li>The glyphs land over the next frames in which nothing on screen waits for one; a glyph this never reaches
+ *       (beyond printable ASCII) is generated when first drawn.</li>
  *   <li>A style with no font of its own (a draw names one) prepares nothing.</li>
  *   <li>A dedicated server registers none: it draws no text.</li>
  * </ul>
@@ -28,6 +31,8 @@ public final class CgTextStylePreparer implements CgAssetPreparer {
         // The size CgTextDraw asks a style's font at: its px, rounded, at least one.
         int px = Math.max(1, Math.round(style.px()));
         plan.warm("face of " + style.id() + " at " + px + " px", new FaceRead(style, px));
+        // The distance field alone: it scales to any size a pose draws at, so no size is named.
+        plan.preload(l -> l.font(() -> style.font(px)));
     }
 
     /** Starts the read on a worker once, then answers whether it has finished. */
