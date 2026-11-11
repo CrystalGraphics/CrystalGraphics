@@ -683,6 +683,9 @@ public final class CgRenderDemo {
         CgWorld.client().timeDilation(CgVfxDemoControls.get().speed());
         scenes[current].submit(CgWorldRenderer.get(), view, anchorX + 0.5, anchorY, anchorZ + 0.5, seconds);
         shownFrames++;
+        long work = CgLoadingScreen.firstUseWork();
+        quietFrames = work == lastWork ? quietFrames + 1 : 0;
+        lastWork = work;
     }
 
     /**
@@ -783,17 +786,17 @@ public final class CgRenderDemo {
     }
 
     /**
-     * Every scene shown behind the loading screen for {@link #REHEARSE_FRAMES} frames, which it draws into its world
-     * frame: each scene's meshes placed, its effects' renderers and materials made, its labels captured and its Java
-     * through the JIT, all of which a first switch in the world otherwise did at once (modules: 250 ms). Then the scene
-     * it started on again. True once done; polled by the load task, advanced by {@link #frame}'s frames.
+     * Every scene shown behind the loading screen, which it draws into its world frame, until its first plays' one-time
+     * work is done: each scene's meshes placed, its effects' renderers and materials made, its labels captured, all of
+     * which a first switch in the world otherwise did at once (modules: 250 ms). Then the scene it started on again.
+     * True once done; polled by the load task, advanced by {@link #frame}'s frames.
      */
     private boolean rehearsed() {
         if (rehearsal >= kinds.length) return true;
         if (rehearsal < 0) {
             home = wanted;
             rehearsal = 0;
-        } else if (current != rehearsal || shownFrames < REHEARSE_FRAMES) {
+        } else if (current != rehearsal || !settled()) {
             return false;
         } else if (++rehearsal >= kinds.length) {
             wanted = home;
@@ -801,16 +804,31 @@ public final class CgRenderDemo {
             return true;
         }
         wanted = rehearsal;
-        shownFrames = 0;
+        shownFrames = quietFrames = 0;
         return false;
     }
 
-    /** Frames a scene is shown behind the loading screen before the next: enough for its first plays' one-time work. */
-    private static final int REHEARSE_FRAMES = 40;
+    /**
+     * Whether the scene showing has had its first plays' one-time work: shown {@link #REHEARSE_MIN} frames, the last
+     * {@link #REHEARSE_QUIET} doing no first-use work ({@link CgLoadingScreen#firstUseWork}), or {@link #REHEARSE_MOST}.
+     */
+    private boolean settled() {
+        if (shownFrames >= REHEARSE_MOST) return true;
+        return shownFrames >= REHEARSE_MIN && quietFrames >= REHEARSE_QUIET;
+    }
+
+    /** Frames a scene is shown behind the loading screen at least: its meshes placed and labels captured. */
+    private static final int REHEARSE_MIN = 8;
+    /** Frames in a row with no first-use work that end a scene's rehearsal. */
+    private static final int REHEARSE_QUIET = 4;
+    /** Frames a scene is shown at most, its first-use work done or not. */
+    private static final int REHEARSE_MOST = 40;
     /** The scene being rehearsed, -1 before, {@code kinds.length} once done; the scene to go back to after. */
     private int rehearsal = -1, home;
-    /** Frames the scene showing has submitted since it was switched to. */
-    private int shownFrames;
+    /** Frames the scene showing has submitted since it was switched to, and of them the last in a row with no first-use work. */
+    private int shownFrames, quietFrames;
+    /** {@link CgLoadingScreen#firstUseWork} at the last frame shown. */
+    private long lastWork = -1;
 
     /** Counts the frames since the scene stood on the ground, and writes the profile once its frames are in. */
     private void profile() {
