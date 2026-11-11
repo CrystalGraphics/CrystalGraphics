@@ -139,6 +139,19 @@ public interface CgRHI {
 
     CgComputePipeline createComputePipeline(String label, CgShaderModule module, CgPipelineLayout layout);
 
+    /**
+     * Starts building what every pipeline of {@code modules} under {@code layout} shares whatever state it adds (GL's
+     * linked program), and answers whether it is built: a precache polls it until true, so no draw waits for it. True
+     * where a pipeline carries its whole build, as on Vulkan. Owner's thread.
+     *
+     * <pre>{@code
+     * boolean built = rhi.prepareProgram(layout, vertex, fragment);   // each frame until true
+     * }</pre>
+     */
+    default boolean prepareProgram(CgPipelineLayout layout, CgShaderModule... modules) {
+        return true;
+    }
+
     CgTimerQuery createTimerQuery(String label);
 
     /** Destroys {@code object} once the frame current now has retired. */

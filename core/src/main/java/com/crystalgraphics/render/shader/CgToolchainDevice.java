@@ -14,6 +14,7 @@ import com.crystalgraphics.job.CgJob;
 import com.crystalgraphics.job.CgJobLane;
 import com.crystalgraphics.job.progress.CgProgress;
 import com.crystalgraphics.lifecycle.CgLifecycleListener;
+import com.crystalgraphics.platform.gl.CgGLDevice;
 import com.crystalgraphics.platform.rhi.CgDeviceSection;
 import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.service.CgCacheDirectory;
@@ -50,6 +51,9 @@ import com.crystalgraphics.variable.CgVar;
  *   <li>Where {@link #start} throws, the graphics start fails with its cause: the device is how the host draws.
  *       Where the toolchain cannot be had (no natives pinned, offline, {@link #toolchain} throwing) the device keeps
  *       the driver's compiler for the session.</li>
+ *   <li>A {@code CgGLDevice} it started links programs on its worker and keeps their binaries in the cache's
+ *       {@code glprogram} folder, so a launch after the first loads them rather than compiling: nothing for a host to
+ *       call. LWJGL 2 gives no worker context, so 1.7.10 and legacy Forge link on the render thread and keep binaries.</li>
  *   <li>{@code crystalgraphics.shader.native=true} never fetches the toolchain.</li>
  *   <li>{@link #resize} each frame and {@link #close} with the context run only once {@link #start} returned.</li>
  * </ul>
@@ -60,6 +64,8 @@ public abstract class CgToolchainDevice implements CgLifecycleListener {
             "Keep a GL-era host's device on the driver's own GLSL compiler: the shader toolchain is never fetched.");
     private static final Logger LOGGER = LogManager.getLogger(CgToolchainDevice.class);
     private static final List<CgToolchainDevice> MADE = new CopyOnWriteArrayList<>();
+    /** {@link CgCacheDirectory}'s folder for the GL device's program binaries. */
+    private static final String PROGRAMS = "glprogram";
 
     /** The fetch's jars, empty when it failed; null until it ends. Written by the worker. */
     private volatile @Nullable List<Path> fetched;
@@ -100,7 +106,17 @@ public abstract class CgToolchainDevice implements CgLifecycleListener {
             throw new IllegalStateException("the device did not start, and this host draws through nothing else", e);
         }
         started = true;
+        if (CgRHI.get() instanceof CgGLDevice gl) keepPrograms(gl);
         if (!NATIVE.get()) fetch();
+    }
+
+    /** Programs linked off the render thread and kept across launches: before the device's first pipeline. */
+    private static void keepPrograms(CgGLDevice device) {
+        Path cache = CgCacheDirectory.of(PROGRAMS);
+        if (cache != null) device.programCache(cache, CgJob.executor(CgJobLane.BACKGROUND));
+        boolean worker = device.linkWorker();
+        LOGGER.info("[device] programs link {}, {}", worker ? "on a worker" : "on the render thread",
+                cache != null ? "kept in " + cache : "kept nowhere");
     }
 
     private void fetch() {

@@ -230,14 +230,16 @@ public final class CgCompute implements CgReloadable {
     synchronized boolean isReady(CgKernel kernel) {
         String key = kernel.programKey;
         CgKernelProgram program = programs.get(key);
-        if (program != null && !program.isDeleted()) return true;
+        if (program != null && !program.isDeleted()) return program.deviceReady();
         if (!precaching.containsKey(key)) precache(kernel);
         CgKernelProgram.Pending pending = precaching.get(key);
         if (pending == null) return true;
         if (!pending.isDone()) return false;
         precaching.remove(key);
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, FINISH)) {
-            programs.put(key, pending.finish());
+            program = pending.finish();
+            programs.put(key, program);
+            return program.deviceReady();
         } catch (IllegalStateException e) {
             // Its dispatch builds it again, and throws there with the log.
             LOGGER.warn("[{}] a precached kernel failed: {}", path, e.getMessage());
@@ -397,7 +399,9 @@ public final class CgCompute implements CgReloadable {
             if (!entry.getValue().isDone()) continue;
             it.remove();
             try {
-                programs.put(entry.getKey(), entry.getValue().finish());
+                CgKernelProgram program = entry.getValue().finish();
+                programs.put(entry.getKey(), program);
+                program.deviceReady();   // its device's link started, so its first dispatch waits on none
             } catch (IllegalStateException e) {
                 // Its first dispatch builds it again, and throws there with the log.
                 LOGGER.warn("[{}] a precached kernel failed: {}", path, e.getMessage());

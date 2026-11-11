@@ -202,16 +202,31 @@ public final class CgKernelProgram {
 
     /** Its pipeline on {@code rhi}, made once a device; {@link #deviceLayout} is its layout. */
     public CgComputePipeline devicePipeline(CgRHI rhi) {
-        if (pipelineOf != rhi) {
-            releaseDevice();
-            CgGlslCompiler.ExplicitCompute k = explicit();
-            deviceLayout = CgDeviceStates.layout(rhi, k);
-            deviceModule = rhi.createShaderModule(CgShaderModule.Stage.COMPUTE, k.spirv(), label());
-            devicePipeline = rhi.createComputePipeline(label(), deviceModule, deviceLayout);
-            if (push == null) push = ByteBuffer.allocateDirect(CgKernelEmitter.PUSH_BYTES).order(ByteOrder.nativeOrder());
-            pipelineOf = rhi;
-        }
+        deviceParts(rhi);
+        if (devicePipeline == null) devicePipeline = rhi.createComputePipeline(label(), deviceModule, deviceLayout);
         return devicePipeline;
+    }
+
+    /**
+     * Whether the installed device has built what its pipeline needs, starting it if nothing has (GL's program, on the
+     * link worker): what a precache waits for, so its first dispatch waits on no link. Render thread.
+     */
+    public boolean deviceReady() {
+        if (!CgRHI.installed()) return true;
+        CgRHI rhi = CgRHI.get();
+        deviceParts(rhi);
+        return rhi.prepareProgram(deviceLayout, deviceModule);
+    }
+
+    /** Its module and layout on {@code rhi}, made once a device: what its pipeline is made of. */
+    private void deviceParts(CgRHI rhi) {
+        if (pipelineOf == rhi) return;
+        releaseDevice();
+        CgGlslCompiler.ExplicitCompute k = explicit();
+        deviceLayout = CgDeviceStates.layout(rhi, k);
+        deviceModule = rhi.createShaderModule(CgShaderModule.Stage.COMPUTE, k.spirv(), label());
+        if (push == null) push = ByteBuffer.allocateDirect(CgKernelEmitter.PUSH_BYTES).order(ByteOrder.nativeOrder());
+        pipelineOf = rhi;
     }
 
     /** {@link #devicePipeline}'s layout: the sets a dispatch binds. */
@@ -274,7 +289,7 @@ public final class CgKernelProgram {
 
     private void releaseDevice() {
         if (pipelineOf == null) return;
-        pipelineOf.release(devicePipeline);
+        if (devicePipeline != null) pipelineOf.release(devicePipeline);
         pipelineOf.release(deviceModule);
         pipelineOf = null;
         devicePipeline = null;

@@ -11,6 +11,7 @@ import com.crystalgraphics.platform.gl.pipeline.GLComputePipeline;
 import com.crystalgraphics.platform.gl.pipeline.GLGraphicsPipeline;
 import com.crystalgraphics.platform.gl.pipeline.GLLinkWorker;
 import com.crystalgraphics.platform.gl.pipeline.GLProgramBinaries;
+import com.crystalgraphics.platform.gl.pipeline.GLProgramCache;
 import com.crystalgraphics.platform.gl.pipeline.GLShaderModule;
 import com.crystalgraphics.platform.gl.pipeline.GLShaderTranslator;
 import com.crystalgraphics.platform.gl.resource.GLBuffer;
@@ -108,6 +109,7 @@ public final class CgGLDevice implements CgRHI {
     private final GLShaderTranslator translator;
     private GLProgramBinaries binaries;
     private GLLinkWorker worker;
+    private GLProgramCache programs;
     private GLImports imports;
     private CgGLWorkerContext workerContext;
     private final CgGLDriver raw;
@@ -388,12 +390,26 @@ public final class CgGLDevice implements CgRHI {
 
     @Override
     public CgGraphicsPipeline createPipeline(CgGraphicsPipelineDesc desc) {
-        return new GLGraphicsPipeline(gl, translator, binaries, worker, desc);
+        return new GLGraphicsPipeline(gl, programs(), desc);
     }
 
     @Override
     public CgComputePipeline createComputePipeline(String label, CgShaderModule module, CgPipelineLayout layout) {
-        return new GLComputePipeline(gl, translator, binaries, worker, label, module, layout);
+        return new GLComputePipeline(programs(), label, module, layout);
+    }
+
+    /** The program every pipeline of {@code modules} under {@code layout} links, started on the worker if none has. */
+    @Override
+    public boolean prepareProgram(CgPipelineLayout layout, CgShaderModule... modules) {
+        GLShaderModule[] gl = new GLShaderModule[modules.length];
+        for (int i = 0; i < modules.length; i++) gl[i] = (GLShaderModule) modules[i];
+        return programs().prepare(gl[0].label(), layout, gl);
+    }
+
+    /** Made at the first program, after {@link #programCache} and {@link #linkWorker}, which come before it. */
+    private GLProgramCache programs() {
+        if (programs == null) programs = new GLProgramCache(gl, translator, binaries, worker);
+        return programs;
     }
 
     @Override
@@ -414,8 +430,9 @@ public final class CgGLDevice implements CgRHI {
             dropHeapEntries(t);
             t.delete(gl);
         } else if (o instanceof GLSampler s) gl.glDeleteSamplers(s.name);
-        else if (o instanceof GLGraphicsPipeline p) p.delete(gl);
-        else if (o instanceof GLComputePipeline p) p.delete(gl);
+        else if (o instanceof GLGraphicsPipeline p) p.delete(gl, programs);
+        else if (o instanceof GLComputePipeline p) p.delete(gl, programs);
+        else if (o instanceof GLShaderModule m && programs != null) programs.forget(m);
         else if (o instanceof GLTimerQuery q) q.delete();
     }
 
@@ -631,6 +648,7 @@ public final class CgGLDevice implements CgRHI {
         waitRetired(frame - 1);
         encoder.delete();
         if (heap != null) heap.delete(gl);
+        if (programs != null) programs.deleteAll();
         if (worker != null) {
             worker.stop();
             workerContext.destroy();

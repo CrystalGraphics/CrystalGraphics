@@ -7,6 +7,7 @@ import com.crystalgraphics.gl.material.CgMaterialShader;
 import com.crystalgraphics.gl.material.parse.CgParsedPass;
 import com.crystalgraphics.gl.material.parse.CgParsedShader;
 import com.crystalgraphics.gl.material.parse.CgPermutationDomain;
+import com.crystalgraphics.lifecycle.CgGraphicsLifecycle;
 import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
 import com.crystalgraphics.platform.rhi.pipeline.CgGraphicsPipeline;
@@ -400,9 +401,25 @@ public final class CgPipeline {
             if (!shader.pollPending()) return false;
         }
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, VARIANT_ZONE)) {
-            return shader.precacheVariant(passName != null ? passName : pass == CgRenderPassVariant.FORWARD ? null
-                    : pass.lightModeName(), compiled);
+            if (!shader.precacheVariant(passName != null ? passName : pass == CgRenderPassVariant.FORWARD ? null
+                    : pass.lightModeName(), compiled)) return false;
         }
+        return devicePrepared();
+    }
+
+    /**
+     * Whether the device has built what every pipeline of this program shares (GL's linked program, started on its link
+     * worker here), for the vertex stage its draws take: so a precached draw never waits on a link.
+     */
+    private boolean devicePrepared() {
+        if (!CgRHI.installed()) return true;
+        CgShader linked = program();
+        if (linked == null || !linked.isCompiled()) return true;   // its draw reports the failure
+        CgRHI rhi = CgRHI.get();
+        boolean glDepth = !CgGraphicsLifecycle.hostDepthZeroToOne();
+        return rhi.prepareProgram(CgDeviceStates.layout(rhi, linked.explicit()),
+                linked.deviceModule(rhi, CgShaderModule.Stage.VERTEX, glDepth),
+                linked.deviceModule(rhi, CgShaderModule.Stage.FRAGMENT, glDepth));
     }
 
     /**

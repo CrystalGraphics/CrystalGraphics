@@ -25,7 +25,10 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assume.assumeTrue;
 
-/** The GL device's programs linked on its worker, kept as binaries, and loaded from them by the next device. */
+/**
+ * The GL device's programs linked on its worker, kept as binaries, loaded from them by the next device, and shared by
+ * every pipeline of the same modules.
+ */
 public class GLProgramCacheTest {
 
     private static final String VERTEX = "#version 450\nvoid main() {\n"
@@ -60,6 +63,47 @@ public class GLProgramCacheTest {
             second.close();
             assertTrue("GL errors: " + window.errors, window.errors.isEmpty());
         }
+    }
+
+    @Test
+    public void aPreparedProgramIsLinkedOnceForEveryPipelineOfItsModules() throws Exception {
+        AtomicInteger translated = new AtomicInteger();
+        SpvcGlslTranslator spvc = new SpvcGlslTranslator();
+        GLShaderTranslator counting = (spirv, stage, points, label) -> {
+            translated.incrementAndGet();
+            return spvc.glsl(spirv, stage, points, label);
+        };
+        try (GLTestWindow window = new GLTestWindow()) {
+            CgGLDevice device = new CgGLDevice(new Lwjgl3GLDriver(), counting, 64, 64, true);
+            assumeTrue("no worker context here", device.linkWorker());
+            CgShaderModule vs = window.spirv(CgShaderModule.Stage.VERTEX, VERTEX,
+                    b -> device.createShaderModule(CgShaderModule.Stage.VERTEX, b, "v"));
+            CgShaderModule fs = window.spirv(CgShaderModule.Stage.FRAGMENT, WHITE,
+                    b -> device.createShaderModule(CgShaderModule.Stage.FRAGMENT, b, "f"));
+            device.prepareProgram(CgPipelineLayout.of(), vs, fs);
+            long until = System.nanoTime() + 10_000_000_000L;
+            while (!device.prepareProgram(CgPipelineLayout.of(), vs, fs)) {
+                assertTrue("the worker never linked it", System.nanoTime() < until);
+                Thread.sleep(1);
+            }
+            GLGraphicsPipeline opaque = pipeline(device, vs, fs, null);
+            GLGraphicsPipeline blended = pipeline(device, vs, fs, CgGraphicsPipelineDesc.Blend.ALPHA);
+            assertTrue("prepared, so its pipelines wait on nothing", opaque.ready() && blended.ready());
+            assertEquals("one program for both", opaque.program(device.driver()), blended.program(device.driver()));
+            assertEquals("translated once: both stages", 2, translated.get());
+            draw(device, opaque);
+            draw(device, blended);
+            device.close();
+            assertTrue("GL errors: " + window.errors, window.errors.isEmpty());
+        }
+    }
+
+    private static GLGraphicsPipeline pipeline(CgGLDevice device, CgShaderModule vs, CgShaderModule fs,
+                                               CgGraphicsPipelineDesc.Blend blend) {
+        return (GLGraphicsPipeline) device.createPipeline(new CgGraphicsPipelineDesc("shared", CgPipelineLayout.of(), vs, fs,
+                List.of(), CgGraphicsPipelineDesc.Topology.TRIANGLES, CgGraphicsPipelineDesc.Raster.DEFAULT,
+                CgGraphicsPipelineDesc.DepthStencil.OFF, List.of(new CgGraphicsPipelineDesc.ColorTarget(CgFormat.RGBA8_UNORM,
+                blend, 0xF)), null, 1));
     }
 
     private static GLGraphicsPipeline pipeline(GLTestWindow window, CgGLDevice device) {

@@ -4497,6 +4497,7 @@ com/crystalgraphics/compute/program/CgKernelProgram
   method public delete ()V
   method public deviceLayout ()Lcom/crystalgraphics/platform/rhi/pipeline/CgPipelineLayout;
   method public devicePipeline (Lcom/crystalgraphics/platform/rhi/CgRHI;)Lcom/crystalgraphics/platform/rhi/pipeline/CgComputePipeline;
+  method public deviceReady ()Z
   method public dispatchIndirectOn (Lcom/crystalgraphics/platform/rhi/command/CgComputePass;Lcom/crystalgraphics/platform/rhi/resource/CgGpuBuffer;J)V
   method public dispatchOn (Lcom/crystalgraphics/platform/rhi/command/CgComputePass;III)V
   method public explicit ()Lcom/crystalgraphics/platform/rhi/shader/CgGlslCompiler$ExplicitCompute;

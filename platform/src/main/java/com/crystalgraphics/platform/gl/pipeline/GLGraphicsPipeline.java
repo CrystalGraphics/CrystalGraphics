@@ -11,26 +11,24 @@ import com.crystalgraphics.platform.rhi.pipeline.CgGraphicsPipelineDesc.VertexBu
 import static com.crystalgraphics.platform.gl.driver.GLC.*;
 
 /**
- * A graphics pipeline on GL: its linked program, a vertex array holding its vertex format, and its binding points. Its
- * fixed-function state is applied by the pass before a draw (Unreal's PSO fallback), never at creation.
+ * A graphics pipeline on GL: its linked program (shared through {@link GLProgramCache}), a vertex array holding its vertex
+ * format, and its binding points. Its fixed-function state is applied by the pass before a draw (Unreal's PSO
+ * fallback), never at creation.
  */
 public final class GLGraphicsPipeline implements CgGraphicsPipeline {
 
     private final CgGraphicsPipelineDesc desc;
-    private int program;
-    private GLProgramBuild build;
+    private final GLProgramCache.Program program;
     public final int vao;
     public final int mode;
     public final GLBindingPoints points;
 
-    /** @param worker links the program off this thread; null links it here */
-    public GLGraphicsPipeline(CgGLDriver gl, GLShaderTranslator translator, GLProgramBinaries binaries,
-                              GLLinkWorker worker, CgGraphicsPipelineDesc desc) {
+    /** @param programs where its program is linked, shared with every pipeline of the same modules */
+    public GLGraphicsPipeline(CgGLDriver gl, GLProgramCache programs, CgGraphicsPipelineDesc desc) {
         this.desc = desc;
-        this.points = new GLBindingPoints(desc.layout());
-        GLShaderModule vs = (GLShaderModule) desc.vertex(), fs = (GLShaderModule) desc.fragment();
-        if (worker != null) worker.submit(build = new GLProgramBuild(translator, binaries, points, desc.label(), vs, fs));
-        else program = GLPrograms.link(gl, translator, binaries, points, desc.label(), vs, fs);
+        this.program = programs.acquire(desc.label(), desc.layout(), (GLShaderModule) desc.vertex(),
+                (GLShaderModule) desc.fragment());
+        this.points = program.points;
         this.mode = mode(desc.topology());
         this.vao = gl.glCreateVertexArrays();
         for (VertexBuffer vb : desc.vertexBuffers()) {
@@ -68,21 +66,16 @@ public final class GLGraphicsPipeline implements CgGraphicsPipeline {
 
     /** The linked program, waiting for the link worker if it has not landed. */
     public int program(CgGLDriver gl) {
-        if (build != null) {
-            GLProgramBuild b = build;
-            build = null;
-            program = b.program(gl);
-        }
-        return program;
+        return program.name(gl);
     }
 
     /** Whether {@link #program} answers without waiting. */
     public boolean ready() {
-        return build == null || build.ready();
+        return program.ready();
     }
 
-    public void delete(CgGLDriver gl) {
-        if (program != 0) gl.glDeleteProgram(program);
+    public void delete(CgGLDriver gl, GLProgramCache programs) {
+        programs.release(gl, program);
         gl.glDeleteVertexArrays(vao);
     }
 }
