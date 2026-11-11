@@ -54,6 +54,8 @@ public final class GLProgramCache {
         private GLProgramBuild build;
         private int name;
         private int refs;
+        /** Its link's failure, thrown at every ask. */
+        private RuntimeException failed;
 
         private Program(Key key, GLBindingPoints points) {
             this.key = key;
@@ -65,13 +67,18 @@ public final class GLProgramCache {
             return build == null || build.ready();
         }
 
-        /** The program, waiting for the worker if its link has not landed. */
+        /** The program, waiting for the worker if its link has not landed, then loading its binary. */
         public int name(CgGLDriver gl) {
             if (build != null) {
                 GLProgramBuild b = build;
                 build = null;
-                name = b.program(gl);
+                try {
+                    name = b.program(gl);
+                } catch (RuntimeException e) {
+                    failed = e;
+                }
             }
+            if (failed != null) throw failed;
             return name;
         }
     }
@@ -83,9 +90,19 @@ public final class GLProgramCache {
         return p;
     }
 
-    /** Starts the program's link if nothing has; whether it is built. */
+    /**
+     * Starts the program's link if nothing has; whether it is built and loaded. Its binary is loaded here, once the worker
+     * has it, so the precache polling this pays the driver's load inside its warm budget and the first draw nothing.
+     */
     public boolean prepare(String label, CgPipelineLayout layout, GLShaderModule... modules) {
-        return program(label, layout, modules).ready();
+        Program p = program(label, layout, modules);
+        if (!p.ready()) return false;
+        try {
+            p.name(gl);
+        } catch (RuntimeException e) {
+            // Thrown again at its draw, as a link there would
+        }
+        return true;
     }
 
     /** A pipeline's program let go: deleted once no pipeline holds it. */
