@@ -74,6 +74,20 @@ public final class InputSdl implements CgInput.Host {
     }
 
     @Override
+    public void grabPointer() {
+        if (!videoUp()) return;
+        long window = SDLMouse.SDL_GetMouseFocus();
+        if (window != MemoryUtil.NULL) SDLMouse.SDL_SetWindowRelativeMouseMode(window, true);
+    }
+
+    @Override
+    public void movePointer(int x, int y) {
+        if (!videoUp()) return;
+        long window = SDLMouse.SDL_GetMouseFocus();
+        if (window != MemoryUtil.NULL) SDLMouse.SDL_WarpMouseInWindow(window, x, y);
+    }
+
+    @Override
     public int mouseButtons() {
         return MOUSE_BUTTONS;
     }

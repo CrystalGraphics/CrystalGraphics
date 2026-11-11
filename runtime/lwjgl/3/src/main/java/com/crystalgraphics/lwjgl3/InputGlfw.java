@@ -68,6 +68,18 @@ public final class InputGlfw implements CgInput.Host {
     }
 
     @Override
+    public void grabPointer() {
+        long window = window();
+        if (window != 0L) GLFW.glfwSetInputMode(window, GLFW.GLFW_CURSOR, GLFW.GLFW_CURSOR_DISABLED);
+    }
+
+    @Override
+    public void movePointer(int x, int y) {
+        long window = window();
+        if (window != 0L) GLFW.glfwSetCursorPos(window, x, y);
+    }
+
+    @Override
     public int mouseButtons() {
         return MOUSE_BUTTONS;
     }

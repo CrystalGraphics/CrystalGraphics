@@ -6,6 +6,7 @@ import com.crystalgraphics.platform.input.CgSystemInput;
 import com.crystalgraphics.platform.service.CgScreens;
 
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.ChatScreen;
 import net.minecraft.client.gui.screens.Screen;
 //? if >=26.1 {
 /*import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -254,5 +255,22 @@ public final class ScreensModern implements CgScreens.Host {
             minecraft.textInputManager().setTextInputArea(left, top, right, bottom);
         }
         *///?}
+    }
+
+    @Override
+    public void closeFront() {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc != null) CgMinecraftClient.setScreen(mc, null);
+    }
+
+    @Override
+    public void openChat() {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc == null) return;
+        //? if >=1.21.9 {
+        /*CgMinecraftClient.setScreen(mc, new ChatScreen("", false));
+        *///?} else {
+        CgMinecraftClient.setScreen(mc, new ChatScreen(""));
+        //?}
     }
 }

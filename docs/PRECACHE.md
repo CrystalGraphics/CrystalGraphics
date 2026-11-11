@@ -126,8 +126,8 @@ release**:
    CrystalGUI's root, once a scene, letting each play for a minute:
 
    ```bash
-   ./gradlew :runtime:mc:modern:neoforge:26.2:runClient -PcgAcceptEula -Dcrystalgui.autotest=true \
-       "-Dcrystalgui.autotest.world=*" -Dcrystalgui.autotest.desktop=false \
+   ./gradlew :runtime:mc:modern:neoforge:26.2:runClient -PcgAcceptEula -Dcrystalgraphics.gauntlet=crystalgraphics:play \
+       -Dcrystalgraphics.gauntlet.play.seconds=60 \
        -Dcrystalgraphics.demo=<scene> -Dcrystalgraphics.cache.dir=<one empty folder>
    ```
 2. Copy `<that folder>/pipelines/recorded.txt` over `core/src/main/resources/assets/crystalgraphics/pipelines/recorded.txt`.

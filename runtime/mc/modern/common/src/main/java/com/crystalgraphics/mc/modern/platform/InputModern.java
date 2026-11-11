@@ -27,4 +27,12 @@ final class InputModern implements CgInput.Host {
     @Override public int mouseButtons() { return toolkit.mouseButtons(); }
     @Override public int key(int toolkitKey) { return toolkit.key(toolkitKey); }
     @Override public int mouseButton(int toolkitButton) { return toolkit.mouseButton(toolkitButton); }
+    @Override public void movePointer(int x, int y) { toolkit.movePointer(x, y); }
+
+    /** Minecraft's own grab, so the game knows the pointer is its camera. */
+    @Override
+    public void grabPointer() {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc != null && mc.mouseHandler != null) mc.mouseHandler.grabMouse();
+    }
 }

@@ -5,11 +5,12 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Random;
 import java.util.UUID;
-import java.util.concurrent.atomic.AtomicInteger;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import com.crystalgraphics.gauntlet.CgGauntletController;
+import com.crystalgraphics.gauntlet.CgGauntletState;
 import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.collision.CgCollisionWorld;
 import com.crystalgraphics.collision.hit.CgHit;
@@ -21,7 +22,6 @@ import com.crystalgraphics.platform.world.CgWorldStimulus;
 import com.crystalgraphics.shape.bounds.CgAABB;
 import com.crystalgraphics.shape.primitive.CgRing;
 import com.crystalgraphics.shape.primitive.CgSphere;
-import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.world.CgEntityQueries;
 import com.crystalgraphics.platform.world.CgPlayers;
 import com.crystalgraphics.world.CgWorldQueries;
@@ -34,26 +34,20 @@ import com.crystalgraphics.world.CgWorldQueries;
  * after.
  *
  * <pre>{@code
- * -Dcrystalgraphics.collisionprobe=true      // a dev client's autotest, or prodSmoke -PcgSmokeProps=...
- * // what it logs, and what prodSmoke reads:
- * collision probe ring.hits: true (stands 412 then 413, once each)
- * collision probe dragon.head server: true (part 431 of dragon 430)
- * collision probe batch.gain is 1000 overlaps over 100 stands: live 4.1 ms, batched 2.9 ms
- * collision probe: true (11 passed, 0 failed)
+ * -Dcrystalgraphics.gauntlet=crystalgraphics:collision      // the gauntlet's test; it enters a world itself
+ * // what it logs, and writes in the run's report:
+ * crystalgraphics:collision ring.hits: true (stands 412 then 413, once each)
+ * crystalgraphics:collision dragon.head server: true (part 431 of dragon 430)
+ * crystalgraphics:collision batch.gain is 1000 overlaps over 100 stands: live 4.1 ms, batched 2.9 ms
  * }</pre>
  *
  * <ul>
  *   <li>It changes the world: two targets and a hundred stands beside the player, a stone and a painting in front, a
  *       dragon high above, then every entity but players within 48 blocks removed.</li>
  *   <li>Skipped, with the reason, where there is no single-player server.</li>
- *   <li>{@link #running()} lets an autotest wait for it before quitting.</li>
  * </ul>
  */
 public final class CgCollisionProbe {
-
-    public static final boolean ENABLED = CgVar.bool("crystalgraphics.collisionprobe", false, CgVar.DEV | CgVar.RESTART,
-            "Prove in a running game that collision finds and hits real entities -- a ring on stands, a dragon's parts,"
-                    + " a painting -- logging a verdict per check for prodSmoke and a dev client's autotest.").get();
 
     private static final Logger LOGGER = LogManager.getLogger("CgCollisionProbe");
 
@@ -68,28 +62,62 @@ public final class CgCollisionProbe {
     /** The block the player stood on when it summoned; everything is placed from it. */
     private static volatile int bx, by, bz;
     private static volatile int dragon = -1, head = -1, painting = -1;
-    private static final AtomicInteger passed = new AtomicInteger(), failed = new AtomicInteger();
     private static int clientTicks, serverTicks;
     private static final List<Integer> ringHits = new ArrayList<>();
     private static int standNear = -1, standFar = -1;
     private static CgHitbox ring;
     private static boolean installed;
+    /** The test playing it; null outside a run's turn. */
+    private static volatile Test active;
 
     private CgCollisionProbe() {
     }
 
-    /** Both halves; each runs only where its side does. Once, from {@code CgNetwork.install}. */
-    public static synchronized void install() {
+    /** The gauntlet's {@code crystalgraphics:collision}. */
+    public static CgGauntletController test() {
+        return new Test();
+    }
+
+    private static final class Test extends CgGauntletController {
+        @Override
+        protected void onInit() {
+            active = this;
+            install();
+        }
+
+        @Override
+        protected void onStateChange(CgGauntletState from, CgGauntletState to) {
+            if (to.equals(CgGauntletState.TITLE)) enterWorld();
+        }
+
+        @Override
+        protected void onEnd() {
+            active = null;
+        }
+
+        void stated(String name, boolean ok, String detail) {
+            check(name, ok, detail);
+        }
+
+        void skipped(String name, String reason) {
+            skip(name, reason);
+        }
+
+        void noted(String name, String detail) {
+            info(name, detail);
+        }
+
+        void done() {
+            endTest();
+        }
+    }
+
+    /** Both halves, each running only where its side does; ticks registered once and idle outside a run's turn. */
+    private static synchronized void install() {
         if (installed) return;
         installed = true;
         CgEngineLifecycle.onClientTick(CgCollisionProbe::clientTick);
         CgEngineLifecycle.onServerTick(CgCollisionProbe::serverTick);
-        LOGGER.info("collision probe: armed");
-    }
-
-    /** True from the first world tick to the verdict: an autotest that quits now loses it. */
-    public static boolean running() {
-        return ENABLED && phase != Phase.WAITING && phase != Phase.DONE;
     }
 
     // ── The client: summons, then its own half of the checks ─────────────────────────────────────
@@ -384,22 +412,23 @@ public final class CgCollisionProbe {
     }
 
     private static void finish() {
-        int bad = failed.get();
-        LOGGER.info("collision probe: {} ({} passed, {} failed)", bad == 0, passed.get(), bad);
         phase = Phase.DONE;
+        Test test = active;
+        if (test != null) test.done();
     }
 
     private static void check(String name, boolean ok, String detail) {
-        (ok ? passed : failed).incrementAndGet();
-        LOGGER.info("collision probe {}: {} ({})", name, ok, detail);
+        Test test = active;
+        if (test != null) test.stated(name, ok, detail);
     }
 
     private static void skip(String name, String reason) {
-        LOGGER.info("collision probe {}: skipped ({})", name, reason);
+        Test test = active;
+        if (test != null) test.skipped(name, reason);
     }
 
-    // "is", never ": ": a reader takes "name: false" for a failed check.
     private static void info(String name, String detail) {
-        LOGGER.info("collision probe {} is {}", name, detail);
+        Test test = active;
+        if (test != null) test.noted(name, detail);
     }
 }

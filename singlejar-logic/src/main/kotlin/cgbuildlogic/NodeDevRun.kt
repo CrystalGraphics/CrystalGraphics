@@ -27,7 +27,7 @@ val DEV_DESCRIPTORS = listOf("META-INF/mods.toml", "META-INF/neoforge.mods.toml"
  * ```
  * ```bash
  * ./gradlew :runtime:mc:modern:fabric:1.20.1:runClient
- * ./gradlew :runtime:mc:modern:forge:1.20.1:runClient -Dcrystalgui.autotest=true   # forwarded to the game
+ * ./gradlew :runtime:mc:modern:forge:1.20.1:runClient -Dcrystalgraphics.gauntlet=crystalgraphics:boot   # forwarded to the game
  * ```
  *
  * - ModDevGradle (NeoForge; Forge to 1.20.1) and Loom (Fabric). A node built from parts (Forge from

@@ -19,6 +19,7 @@ import com.crystalgraphics.tag.CgTagNet;
 import com.crystalgraphics.trace.CgThreadAllocation;
 import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.net.object.CgNetObjects;
+import com.crystalgraphics.gauntlet.CgGauntlet;
 import com.crystalgraphics.net.object.CgNetProbe;
 import com.crystalgraphics.net.object.CgNetStress;
 import com.crystalgraphics.net.protocol.CgConnections;
@@ -26,7 +27,6 @@ import com.crystalgraphics.net.protocol.CgProtocolConnection;
 import com.crystalgraphics.net.protocol.CgProtocols;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.service.CgNetworkChannel;
-import com.crystalgraphics.probe.CgCollisionProbe;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -151,8 +151,8 @@ public final class CgNetwork {
         }
         LOGGER.info("[cg-net] connections installed; contributors: {}", CgProtocols.contributors());
         if (Boolean.getBoolean(CgNetStress.PROPERTY)) CgNetStress.install();
-        if (CgNetProbe.ENABLED) CgNetProbe.install();
-        if (CgCollisionProbe.ENABLED) CgCollisionProbe.install();
+        // Declared here or nowhere: its types go into every connection's hello.
+        if (CgGauntlet.plays("crystalgraphics:net")) CgNetProbe.install();
         CgCollisionShow.install();
         CgTagNet.install();
         CgCueNet.install();

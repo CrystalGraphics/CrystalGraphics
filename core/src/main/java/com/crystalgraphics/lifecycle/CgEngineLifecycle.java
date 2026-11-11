@@ -4,6 +4,7 @@ import com.crystalgraphics.command.CgCoreCommands;
 import com.crystalgraphics.platform.command.CgBrigadier;
 import com.crystalgraphics.platform.command.CgCommands;
 import com.crystalgraphics.platform.rhi.CgRHI;
+import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Locale;
@@ -17,6 +18,7 @@ import org.apache.logging.log4j.Logger;
 
 import com.crystalgraphics.asset.load.CgAssetMounts;
 import com.crystalgraphics.loading.task.CgLoadPlan;
+import com.crystalgraphics.gauntlet.CgGauntlet;
 import com.crystalgraphics.mc.CgAssetReloader;
 import com.crystalgraphics.mc.CgReloadListener;
 import com.crystalgraphics.net.CgNetwork;
@@ -67,10 +69,10 @@ public final class CgEngineLifecycle {
     private static final Logger LOGGER = LogManager.getLogger("CrystalGraphics");
     private static final CgLifecycleListener.Registry listeners = new CgLifecycleListener.Registry();
     private static boolean preInit, init, postInit;
-
-    private CgEngineLifecycle() {
     /** Pre-init is under way: its listeners are being registered, not yet told. */
     private static boolean preInitStarted;
+
+    private CgEngineLifecycle() {
     }
 
     /**
@@ -101,10 +103,12 @@ public final class CgEngineLifecycle {
         CgTraceRun.open();
         CgAssetMounts.mount();
         addDiscovered(CgListenerDiscovery.Side.COMMON);
-        listeners.dispatch("onPreInit", CgLifecycleListener::onPreInit);
-    }
         // Raised only now: set before, every listener just added was caught up on pre-init, then dispatched it again.
         preInit = true;
+        listeners.dispatch("onPreInit", CgLifecycleListener::onPreInit);
+        // After the listeners' pre-init, where mods register their tests; the tests are made at the run's first tick.
+        CgGauntlet.start();
+    }
 
     /** The host's channel registered and its world slots provided: the network installed over {@code channel}. */
     public static synchronized void init(CgNetworkChannel channel) {
@@ -252,6 +256,19 @@ public final class CgEngineLifecycle {
             LOGGER.info("[crystalgraphics] listeners: {} {} (from {})", side.name().toLowerCase(Locale.ROOT),
                     entry.className(), entry.from());
         }
+    }
+
+    /**
+     * Every class a mod declares on a {@code client} line of its listeners file, by name and never loaded: what a
+     * dedicated server must not load ({@code CgServerSmoke}).
+     */
+    public static synchronized List<String> clientListenerClasses() {
+        if (discovered == null) discovered = CgListenerDiscovery.find();
+        List<String> names = new ArrayList<>();
+        for (CgListenerDiscovery.Entry entry : discovered) {
+            if (entry.side() == CgListenerDiscovery.Side.CLIENT) names.add(entry.className());
+        }
+        return names;
     }
     
     // -- The game's ticks, and its server's start and stop ---------------------------------------------------------

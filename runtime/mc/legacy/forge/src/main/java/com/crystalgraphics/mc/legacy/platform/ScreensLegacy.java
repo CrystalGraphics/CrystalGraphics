@@ -6,6 +6,7 @@ import com.crystalgraphics.platform.service.CgScreens;
 import com.crystalgraphics.platform.world.CgPlayers;
 import com.crystalgraphics.world.CgWorldQueries;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiChat;
 import net.minecraft.client.gui.GuiScreen;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -145,5 +146,15 @@ public final class ScreensLegacy implements CgScreens.Host {
         public boolean doesGuiPauseGame() {
             return false;
         }
+    }
+
+    @Override
+    public void closeFront() {
+        Minecraft.getMinecraft().displayGuiScreen(null);
+    }
+
+    @Override
+    public void openChat() {
+        Minecraft.getMinecraft().displayGuiScreen(new GuiChat());
     }
 }

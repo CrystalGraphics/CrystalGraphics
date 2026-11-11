@@ -5,6 +5,7 @@ import com.crystalgraphics.platform.input.CgModifiers;
 
 import org.lwjgl.input.Keyboard;
 import org.lwjgl.input.Mouse;
+import org.lwjgl.opengl.Display;
 
 /**
  * {@link CgInput} over LWJGL 2, the whole of it on 1.7.10 and legacy Forge: the game holds the pointer while LWJGL's
@@ -43,6 +44,17 @@ public final class InputLwjgl2 implements CgInput.Host {
     @Override
     public boolean pointerGrabbed() {
         return Mouse.isGrabbed();
+    }
+
+    @Override
+    public void grabPointer() {
+        Mouse.setGrabbed(true);
+    }
+
+    /** LWJGL 2's pointer origin is the bottom left. */
+    @Override
+    public void movePointer(int x, int y) {
+        Mouse.setCursorPosition(x, Display.getHeight() - y);
     }
 
     @Override

@@ -71,6 +71,7 @@ The build view (Java levels, toolchains, what a consumer build includes) is `doc
 | **[`docs/LOADING.md`](LOADING.md)** | **Before loading anything** (files, textures, meshes, shaders, kits): when each loads, the load plan behind the loading screen, keeping the screen's frames and gameplay frames smooth, the watchdog and checking a load |
 | **[`docs/PRECACHE.md`](PRECACHE.md)** | **Before drawing anything new**: what the engine precaches for you (VFX looks, kits, cues, its own passes), what you precache with `CgPipelinePrecache`, checking for misses, and refreshing the shipped Vulkan pipeline list |
 | **[`docs/PROFILING.md`](PROFILING.md)** | **Measuring anything**: the trace engine, the one-run rule, the harness and game runs, reading a report, what is instrumented. CrystalGUI adds `docs/CGUI_PROFILING.md`; the `profiling` skill is the checklist |
+| [`docs/GAUNTLET.md`](GAUNTLET.md) | Running the game unattended: the tests a run plays (boot, play, world, collision, net, server), its report, writing a test, and `CgGameSession` |
 | [`docs/DEBUG_FLAGS.md`](DEBUG_FLAGS.md) | Every engine switch, generated from the variable registry (`CgVar`, platform's `com.crystalgraphics.variable`): its sources, declaring a new one, and the table |
 | [`docs/NATIVE_BUILD_PROCESS.md`](NATIVE_BUILD_PROCESS.md) | Rebuilding the FreeType/HarfBuzz/msdfgen natives |
 | [`docs/HOTSWAP_SETUP.md`](HOTSWAP_SETUP.md) | Hotswapping into a running 1.7.10 client |

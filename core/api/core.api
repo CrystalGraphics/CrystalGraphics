@@ -5658,6 +5658,63 @@ com/crystalgraphics/frame/CgWorldSubsystem
   method protected,abstract initialize ()V
   method protected,final world ()Lcom/crystalgraphics/frame/CgWorld;
   method public <init> ()V
+com/crystalgraphics/gauntlet/CgGauntlet
+  access public,final
+  extends java/lang/Object
+  method public,static broadcastStateChange (Lcom/crystalgraphics/gauntlet/CgGauntletState;)V
+  method public,static enterWorld ()Z
+  method public,static markHeartbeatActive (Ljava/lang/String;)V
+  method public,static out ()Ljava/nio/file/Path;
+  method public,static plays (Ljava/lang/String;)Z
+  method public,static register (Ljava/lang/String;Ljava/util/function/Supplier;)V
+  method public,static running ()Z
+  method public,static start ()V
+  method public,static state ()Lcom/crystalgraphics/gauntlet/CgGauntletState;
+  method public,static timeInState ()D
+com/crystalgraphics/gauntlet/CgGauntletCapture
+  access public,final
+  extends java/lang/Object
+  method public,static pending ()I
+  method public,static request (Ljava/nio/file/Path;)Lcom/crystalgraphics/gauntlet/CgGauntletCapture$Shot;
+com/crystalgraphics/gauntlet/CgGauntletCapture$Shot
+  access public,final
+  extends java/lang/Object
+  method public done ()Z
+  method public failure ()Ljava/lang/String;
+  method public file ()Ljava/nio/file/Path;
+  method public written ()Z
+com/crystalgraphics/gauntlet/CgGauntletController
+  access public,abstract
+  extends java/lang/Object
+  method protected onEnd ()V
+  method protected onInit ()V
+  method protected onStateChange (Lcom/crystalgraphics/gauntlet/CgGauntletState;Lcom/crystalgraphics/gauntlet/CgGauntletState;)V
+  method protected onTick (F)V
+  method protected,final capture (Ljava/lang/String;)Lcom/crystalgraphics/gauntlet/CgGauntletCapture$Shot;
+  method protected,final check (Ljava/lang/String;ZLjava/lang/String;)V
+  method protected,final endTest ()V
+  method protected,final enterWorld ()Z
+  method protected,final fail (Ljava/lang/String;Ljava/lang/String;)V
+  method protected,final info (Ljava/lang/String;Ljava/lang/String;)V
+  method protected,final markHeartbeatActive (Ljava/lang/String;)V
+  method protected,final skip (Ljava/lang/String;Ljava/lang/String;)V
+  method protected,final state ()Lcom/crystalgraphics/gauntlet/CgGauntletState;
+  method protected,final timeInState ()D
+  method public <init> ()V
+  method public,final id ()Ljava/lang/String;
+com/crystalgraphics/gauntlet/CgGauntletState
+  access public,final,record
+  extends java/lang/Record
+  field public,static,final INITIALIZED Lcom/crystalgraphics/gauntlet/CgGauntletState;
+  field public,static,final IN_WORLD Lcom/crystalgraphics/gauntlet/CgGauntletState;
+  field public,static,final LOADING Lcom/crystalgraphics/gauntlet/CgGauntletState;
+  field public,static,final SERVER Lcom/crystalgraphics/gauntlet/CgGauntletState;
+  field public,static,final TITLE Lcom/crystalgraphics/gauntlet/CgGauntletState;
+  method public <init> (Ljava/lang/String;)V
+  method public name ()Ljava/lang/String;
+  method public toString ()Ljava/lang/String;
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
 com/crystalgraphics/gl/buffer/CgBufferReadback
   access public,final
   extends java/lang/Object
@@ -6923,6 +6980,7 @@ com/crystalgraphics/lifecycle/CgEngineLifecycle
   extends java/lang/Object
   method public,static addListener (Lcom/crystalgraphics/lifecycle/CgLifecycleListener;)V
   method public,static advanceGraphicsContext (II)V
+  method public,static clientListenerClasses ()Ljava/util/List;
   method public,static clientStarting ()V
   method public,static clientTick ()V
   method public,static ensureGraphicsContext (II)V
@@ -7422,9 +7480,8 @@ com/crystalgraphics/net/object/CgNetObjects
 com/crystalgraphics/net/object/CgNetProbe
   access public,final
   extends java/lang/Object
-  field public,static,final ENABLED Z
   method public,static install ()V
-  method public,static running ()Z
+  method public,static test ()Lcom/crystalgraphics/gauntlet/CgGauntletController;
 com/crystalgraphics/net/object/CgNetStress
   access public,final
   extends java/lang/Object
@@ -8408,15 +8465,16 @@ com/crystalgraphics/object/value/CgValueForm
 com/crystalgraphics/probe/CgCollisionProbe
   access public,final
   extends java/lang/Object
-  field public,static,final ENABLED Z
-  method public,static install ()V
-  method public,static running ()Z
+  method public,static test ()Lcom/crystalgraphics/gauntlet/CgGauntletController;
+com/crystalgraphics/probe/CgServerSmoke
+  access public,final
+  extends com/crystalgraphics/gauntlet/CgGauntletController
+  method public <init> ()V
+  method public,static clientOnly ([Ljava/lang/String;)V
 com/crystalgraphics/probe/CgWorldProbe
   access public,final
   extends java/lang/Object
-  field public,static,final ENABLED Z
-  method public,static installIfEnabled ()V
-  method public,static running ()Z
+  method public,static test ()Lcom/crystalgraphics/gauntlet/CgGauntletController;
 com/crystalgraphics/render/CgCpuMeter
   access public,final
   extends java/lang/Object

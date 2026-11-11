@@ -9,5 +9,5 @@ screen in place of the first menu.
 # from this folder: the jar into CrystalGUI's Forge 1.20.1 dev run, client and server
 jar --create --file <CrystalGUI>/runtime/mc/modern/forge/versions/1.20.1/runs/client/mods/cgprobe.jar -C . META-INF assets pack.mcmeta
 cp <CrystalGUI>/runtime/mc/modern/forge/versions/1.20.1/runs/client/mods/cgprobe.jar <CrystalGUI>/runtime/mc/modern/forge/versions/1.20.1/runs/server/mods/
-# then a dev client with -Dcrystalgraphics.worldprobe=true "-Dcrystalgraphics.worldprobe.cue=cgprobe:shake|cgprobe:cue.shake"
+# then a dev client with -Dcrystalgraphics.gauntlet=crystalgraphics:world "-Dcrystalgraphics.worldprobe.cue=cgprobe:shake|cgprobe:cue.shake"
 ```

@@ -16,7 +16,6 @@ import com.crystalgraphics.loading.task.CgLoadPlan;
 import com.crystalgraphics.render.CgWarmBudget;
 import com.crystalgraphics.demo.CgRenderDemo;
 import com.crystalgraphics.gpu.CgUploads;
-import com.crystalgraphics.probe.CgWorldProbe;
 import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.service.CgCacheDirectory;
@@ -272,7 +271,6 @@ public final class CgGraphicsLifecycle {
 
     private static void finishStart(int width, int height) {
         CgCollisionDebug.install();
-        CgWorldProbe.installIfEnabled();
         // The engine's own passes, built together behind the loading screen rather than each at its first draw;
         // no world stage fires until they are
         CgWorldRenderer.get().beginBoot();

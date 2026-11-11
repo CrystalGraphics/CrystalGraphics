@@ -63,6 +63,12 @@ public final class CgInput {
         /** The toolkit's button {@code toolkitButton} as a {@link CgMouseCodes} code. */
         int mouseButton(int toolkitButton);
 
+        /** Takes the pointer into the game, as clicking into the world does. */
+        void grabPointer();
+
+        /** Puts the pointer at {@code (x, y)}, the window's pixels from its top left. */
+        void movePointer(int x, int y);
+
         Host NONE = new Host() {
             @Override public boolean isKeyDown(int key) { return false; }
             @Override public boolean isMouseDown(int button) { return false; }
@@ -71,6 +77,8 @@ public final class CgInput {
             @Override public boolean pointerGrabbed() { return false; }
             @Override public int key(int toolkitKey) { return CgKeyCodes.KEY_NONE; }
             @Override public int mouseButton(int toolkitButton) { return CgMouseCodes.NONE; }
+            @Override public void grabPointer() { }
+            @Override public void movePointer(int x, int y) { }
         };
     }
 
@@ -117,5 +125,15 @@ public final class CgInput {
     /** The toolkit's mouse button as a {@link CgMouseCodes} code. */
     public static int mouseButton(int toolkitButton) {
         return host().mouseButton(toolkitButton);
+    }
+
+    /** Takes the pointer into the game, as clicking into the world does. */
+    public static void grabPointer() {
+        host().grabPointer();
+    }
+
+    /** Puts the pointer at the window's {@code (x, y)}, from its top left: an unattended run clicking somewhere. */
+    public static void movePointer(int x, int y) {
+        host().movePointer(x, y);
     }
 }

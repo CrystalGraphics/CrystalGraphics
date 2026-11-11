@@ -39,6 +39,7 @@ import com.crystalgraphics.serialization.format.nbt.CgHostFormats;
 import com.crystalgraphics.platform.service.CgCursorService;
 import com.crystalgraphics.platform.service.CgGameClasses;
 import com.crystalgraphics.platform.service.CgGameDirectory;
+import com.crystalgraphics.platform.service.CgGameSession;
 import com.crystalgraphics.platform.service.CgModLoader;
 import com.crystalgraphics.platform.command.CgCommands;
 import com.crystalgraphics.mc.modern.platform.command.CommandsModern;
@@ -135,6 +136,7 @@ public final class PlatformServiceModern implements CgPlatformService {
         CgPlatform.provide(CgGameThreads.HOST, new GameThreadsModern());
         CgPlatform.provide(CgHostWindow.HOST, new HostWindowModern());
         CgPlatform.provide(CgScreens.HOST, ScreensModern.INSTANCE);
+        CgPlatform.provide(CgGameSession.HOST, GameSessionModern.INSTANCE);
         CgPlatform.provide(CgKeyBindings.HOST, KeyBindingsModern.INSTANCE);
         CgKeyBindings.hostProvided();
         CgEngineLifecycle.onClientTick(KeyBindingsModern.INSTANCE::tick);

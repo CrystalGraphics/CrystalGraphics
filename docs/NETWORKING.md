@@ -992,14 +992,15 @@ late a change reaches each client (a median within 50 ms when the host sends at 
 than that is 50 ms more).
 
 ```bash
-# single player: a dev client's autotest, or prodSmoke -PcgSmokeProps=crystalgraphics.netprobe=true
-./gradlew :runtime:mc:modern:forge:1.20.1:runClient -Dcrystalgui.autotest=true "-Dcrystalgui.autotest.world=*" -Dcrystalgraphics.netprobe=true
-# a server and two clients: every process with the flag, the server also with how many and whom
--Dcrystalgraphics.netprobe=true -Dcrystalgraphics.netprobe.players=2 -Dcrystalgraphics.netprobe.victim=Alice
+# single player: the gauntlet's test, which enters a world itself (GAUNTLET.md)
+./gradlew :runtime:mc:modern:forge:1.20.1:runClient -Dcrystalgraphics.gauntlet=crystalgraphics:net
+# a server and two clients: every process with the test, the server also with how many and whom
+-Dcrystalgraphics.gauntlet=crystalgraphics:net -Dcrystalgraphics.netprobe.players=2 -Dcrystalgraphics.netprobe.victim=Alice
 ```
 
 In single player it kills and respawns the player itself; on a dedicated server it logs `net probe: kill Alice now`
-and waits a minute for the console or RCON to do it. The verdict is `net probe: true` in the server's log.
+and waits a minute for the console or RCON to do it. The verdict is the server's run report; a client's test ends
+once it hears the verdict is out.
 
 ### What it is doing
 

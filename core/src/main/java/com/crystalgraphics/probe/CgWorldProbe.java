@@ -16,8 +16,11 @@ import com.crystalgraphics.camera.CgCameraModifier;
 import com.crystalgraphics.camera.CgCameraSystem;
 import com.crystalgraphics.collision.CgCollisionWorld;
 import com.crystalgraphics.collision.hit.CgHit;
+import com.crystalgraphics.frame.CgTickFunction;
 import com.crystalgraphics.frame.CgTickGroup;
 import com.crystalgraphics.frame.CgWorld;
+import com.crystalgraphics.gauntlet.CgGauntletController;
+import com.crystalgraphics.gauntlet.CgGauntletState;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.audio.CgHostDuck;
@@ -62,22 +65,19 @@ import java.nio.file.Path;
  * Proves, in a running game, that the host answers every world seam and that the answers agree with each other: the
  * entity query against the host's camera, the ground under the player against a raycast, the sky light against the
  * heightmap, the sun against the day time, a camera offset against the projection it changes, and the world events
- * against events the probe causes on the single-player server ({@link CgWorldStimulus}). For an unattended run, which
- * {@code prodSmoke} and a dev client's autotest both are.
+ * against events the probe causes on the single-player server ({@link CgWorldStimulus}). The gauntlet's test
+ * {@code crystalgraphics:world}: it enters a world itself.
  *
  * <pre>{@code
- * // a JVM flag; CgGraphicsLifecycle installs it with the engine
- * -Dcrystalgraphics.worldprobe=true
- * // what it logs, and what prodSmoke reads:
- * world probe: started
- * world probe entity.camera: true (eye at the view position)
- * world probe events.explosion: skipped (not reported on this version)
- * world probe: true (31 passed, 0 failed, 4 skipped)
+ * -Dcrystalgraphics.gauntlet=crystalgraphics:world
+ * // what it logs, and writes in the run's report:
+ * crystalgraphics:world entity.camera: true (eye at the view position)
+ * crystalgraphics:world events.explosion: skipped (not reported on this version)
  * }</pre>
  *
  * <ul>
  *   <li>Starts {@value #SETTLE_SECONDS} seconds after the first world frame with a local player, and finishes within
- *       {@value #EVENT_SECONDS} seconds more. {@link #running()} lets an autotest wait for it before quitting.</li>
+ *       {@value #EVENT_SECONDS} seconds more.</li>
  *   <li>A part a host does not answer on its version is skipped, never failed: {@code CgHostCamera.capabilities()} and
  *       {@code CgWorldEvents.declared()} say what each answers.</li>
  *   <li>It changes the world a little: a stone set and broken, and a TNT in the air beside the player, only where the
@@ -88,11 +88,9 @@ import java.nio.file.Path;
  */
 public final class CgWorldProbe {
 
-    public static final boolean ENABLED = CgVar.bool("crystalgraphics.worldprobe", false, CgVar.DEV | CgVar.RESTART,
-            "Prove in a running game that the host answers every world seam and that the answers agree, logging a verdict"
-                    + " per check for prodSmoke and a dev client's autotest.").get();
-
     private static final Logger LOGGER = LogManager.getLogger("CgWorldProbe");
+    private static final CgVar.Text KIT_CUE = CgVar.text("crystalgraphics.worldprobe.kitCue", "", CgVar.DEV | CgVar.RESTART,
+            "A game's sound crystalgraphics:world plays by its cue name: <kit folder>|<cue>; empty for none.");
     private static final int SETTLE_SECONDS = 3, MIN_EVENT_SECONDS = 4, EVENT_SECONDS = 12, PAUSED_SECONDS = 15;
     private static final float FOV_SCALE = 1.25f, YAW = 10f, ROLL = 10f, RISE = 0.5f;
     private static final int CAMERA_FRAMES = 4;
@@ -103,10 +101,11 @@ public final class CgWorldProbe {
 
     private enum Phase { WAITING, SETTLING, CAMERA, HOLD, EVENTS, DONE }
 
-    private static boolean installed;
+    /** The test playing it; null outside a run's turn. */
+    private static Test active;
     private static Phase phase = Phase.WAITING;
     private static long phaseNanos, settleNanos;
-    private static int passed, failed, skipped, cameraFrames;
+    private static int cameraFrames;
     private static int cameraBits, cameraStep;
     /** The same-frame check: armed for the next SHAKE, then the ring frame it turned the camera in. */
     private static volatile boolean sameFrameArmed;
@@ -170,19 +169,51 @@ public final class CgWorldProbe {
     private CgWorldProbe() {
     }
 
-    /** Called once with the engine; registers on the opaque world stage when {@link #ENABLED}. */
-    public static void installIfEnabled() {
-        if (!ENABLED || installed) return;
-        installed = true;
-        CgRenderStage.WORLD_OPAQUE.register(Integer.MAX_VALUE, CgWorldProbe::frame);
-        // Where a shake is summed: an offset set here must turn the camera of this same frame.
-        CgWorld.client().schedule().add(CgTickGroup.SHAKE, "crystalgraphics:world-probe", dt -> turnInShake()).whilePaused(true);
-        LOGGER.info("world probe: armed");
+    /** The gauntlet's {@code crystalgraphics:world}. */
+    public static CgGauntletController test() {
+        return new Test();
     }
 
-    /** True from the start of its checks to its result: an autotest that quits now loses the result. */
-    public static boolean running() {
-        return phase != Phase.WAITING && phase != Phase.DONE;
+    private static final class Test extends CgGauntletController {
+        private CgRenderStage.Registration frame;
+        private CgTickFunction shake;
+
+        @Override
+        protected void onInit() {
+            active = this;
+            frame = CgRenderStage.WORLD_OPAQUE.register(Integer.MAX_VALUE, CgWorldProbe::frame);
+            // Where a shake is summed: an offset set here must turn the camera of this same frame.
+            shake = CgWorld.client().schedule().add(CgTickGroup.SHAKE, "crystalgraphics:world-probe", dt -> turnInShake())
+                    .whilePaused(true);
+        }
+
+        @Override
+        protected void onStateChange(CgGauntletState from, CgGauntletState to) {
+            if (to.equals(CgGauntletState.TITLE)) enterWorld();
+        }
+
+        @Override
+        protected void onEnd() {
+            frame.close();
+            shake.close();
+            active = null;
+        }
+
+        void stated(String name, boolean ok, String detail) {
+            check(name, ok, detail);
+        }
+
+        void skipped(String name, String reason) {
+            skip(name, reason);
+        }
+
+        void noted(String name, String detail) {
+            info(name, detail);
+        }
+
+        void done() {
+            endTest();
+        }
     }
 
     private static void frame(CgStageFrame stage) {
@@ -424,8 +455,8 @@ public final class CgWorldProbe {
      * {@code <kit folder>|<cue>}: the table read, the cue resolved to its file, decoded and played.
      */
     private static void kitCue(double px, double py, double pz) {
-        String spec = System.getProperty("crystalgraphics.worldprobe.kitCue");
-        if (spec == null || spec.indexOf('|') < 0) {
+        String spec = KIT_CUE.get();
+        if (spec.indexOf('|') < 0) {
             skip("audio.kit-cue", "no -Dcrystalgraphics.worldprobe.kitCue=<kit folder>|<cue>");
             return;
         }
@@ -898,9 +929,8 @@ public final class CgWorldProbe {
         }
         audioChecks();
         CgCueProbe.report();
-        boolean ok = failed == 0;
-        LOGGER.info("world probe: {} ({} passed, {} failed, {} skipped)", ok, passed, failed, skipped);
         phase = Phase.DONE;
+        if (active != null) active.done();
     }
 
     /** What the probe hears from {@link CgWorldEvents}, against what it caused. */
@@ -1048,19 +1078,15 @@ public final class CgWorldProbe {
     // ── Reporting ────────────────────────────────────────────────────────────────
 
     static void check(String name, boolean ok, String detail) {
-        if (ok) passed++;
-        else failed++;
-        LOGGER.info("world probe {}: {} ({})", name, ok, detail);
+        if (active != null) active.stated(name, ok, detail);
     }
 
     static void skip(String name, String reason) {
-        skipped++;
-        LOGGER.info("world probe {}: skipped ({})", name, reason);
+        if (active != null) active.skipped(name, reason);
     }
 
-    // "is", never ": ": a reader takes "name: false" for a failed check.
     private static void info(String name, String detail) {
-        LOGGER.info("world probe {} is {}", name, detail);
+        if (active != null) active.noted(name, detail);
     }
 
     private static void next(Phase to, long now) {

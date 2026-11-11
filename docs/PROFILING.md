@@ -151,7 +151,7 @@ A run that comes back partial is a second run. Check each of these first:
 | **A rare hitch is kept** | `CgTrace.stopAfterHitch(ns, framesAfter)`: stops recording N frames after a slow one, so the ring does not roll past it |
 | **The workload repeats** | a scene or script that does the same thing every run, a fixed delta where the harness offers one, warm-up excluded (the harness drops 30 frames) |
 | **The frame is not capped** when the question is headroom | `-Dcrystalgraphics.harness.fps=0` — under the 120 cap every fast frame's wall time is the cap |
-| **The run ends by itself** | `-Dcrystalgraphics.harness.profile=<frames>` stops the harness; a scene's own exit flag; a game's autotest |
+| **The run ends by itself** | `-Dcrystalgraphics.harness.profile=<frames>` stops the harness; a scene's own exit flag; a game's gauntlet run ([`GAUNTLET.md`](GAUNTLET.md)) |
 | **GPU numbers are possible** | `CgGpuTrace.support()` — a context without timer queries records nothing and says so |
 
 ---
@@ -259,11 +259,11 @@ harness: the world passes only exist there.
 
 Unattended, a demo scene in a world (`CgRenderDemo`): `-Dcrystalgraphics.demo.profile=<frames>` warms up
 (`.profile.warmup`, 600 frames on the ground) then writes `<game>/crystalgraphics/profile-<scene>-<n>f/report.txt`
-and `report-full.txt`. CrystalGUI's autotest loads the world without its desktop:
+and `report-full.txt`. The gauntlet's `crystalgraphics:play` enters the world and plays it until closed:
 
 ```bash
 ./gradlew :runtime:mc:modern:neoforge:26.2:runClient -PcgAcceptEula \
-    -Dcrystalgui.autotest=true "-Dcrystalgui.autotest.world=*" -Dcrystalgui.autotest.desktop=false \
+    -Dcrystalgraphics.gauntlet=crystalgraphics:play -Dcrystalgraphics.gauntlet.play.seconds=0 \
     -Dcrystalgraphics.demo.profile=300 -Dcrystalgraphics.trace.channels=crystalgraphics,gpu \
     -Dcrystalgraphics.trace.zones=4194304 -Dcrystalgraphics.trace.frames=400
 ```

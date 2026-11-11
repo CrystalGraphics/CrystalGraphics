@@ -179,6 +179,7 @@ Fabric's dev mod is `tasks.jar` bundling each module's `downgradedJar` —
 | Keep a product's files, a cache, or download something verified and resumable | [`docs/STORAGE.md`](docs/STORAGE.md) | `storage/CLAUDE.md` |
 | Wire anything into Minecraft | [`docs/MINECRAFT_INTEGRATION.md`](docs/MINECRAFT_INTEGRATION.md) | each host's `CLAUDE.md` |
 | Diagnose with a JVM flag | [`docs/DEBUG_FLAGS.md`](docs/DEBUG_FLAGS.md) | — |
+| Run the game unattended, or write a test it plays: a smoke run, a probe, a capture | [`docs/GAUNTLET.md`](docs/GAUNTLET.md) | `gauntlet/` |
 | Build, ship, or add a Minecraft version | [Build and run](#build-and-run) | `docs/BUILD.md` |
 
 **Guides load themselves.** A package's guide is its `CLAUDE.md` (every one is listed in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) § *Package guide index*), so the guide — and the

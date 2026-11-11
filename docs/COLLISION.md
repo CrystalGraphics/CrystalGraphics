@@ -1509,12 +1509,14 @@ and a grid of a hundred stands beside the player, then checks them on both sides
 
 It also logs how long 1000 overlaps take live and batched. When it is done it clears what it summoned.
 
+It is the gauntlet's test `crystalgraphics:collision` ([`GAUNTLET.md`](GAUNTLET.md)): it enters a world itself.
+
 ```bash
-# a dev client's autotest, or prodSmoke -PcgSmokeProps=crystalgraphics.collisionprobe=true
-./gradlew :runtime:mc:modern:forge:1.20.1:runClient -Dcrystalgui.autotest=true "-Dcrystalgui.autotest.world=*" -Dcrystalgraphics.collisionprobe=true
+./gradlew :runtime:mc:modern:forge:1.20.1:runClient -Dcrystalgraphics.gauntlet=crystalgraphics:collision
+# or every installed client on the shipped jar: CrystalGUI's prodSmoke -PcgSmokeTests=crystalgraphics:collision
 ```
 
-The verdict is `collision probe: true (10 passed, 0 failed)` in the client's log.
+The verdict is the run's `report.txt`, a line a check.
 
 ---
 

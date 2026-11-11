@@ -17,13 +17,14 @@ import com.crystalgraphics.net.CgNetwork;
 import com.crystalgraphics.net.CgPeer;
 import com.crystalgraphics.net.protocol.CgProtocolConnection;
 import com.crystalgraphics.platform.CgPlatform;
-import com.crystalgraphics.platform.service.CgProcessExit;
 import com.crystalgraphics.platform.world.CgEntityQuery;
 import com.crystalgraphics.platform.world.CgWorldStimulus;
 import com.crystalgraphics.serialization.CgCodecs;
 import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.world.CgEntityQueries;
 import com.crystalgraphics.platform.world.CgPlayers;
+import com.crystalgraphics.gauntlet.CgGauntletController;
+import com.crystalgraphics.gauntlet.CgGauntletState;
 
 /**
  * Proves, in a running game, what networked objects do across a player's death: a player's mana kept, a buff without
@@ -31,36 +32,31 @@ import com.crystalgraphics.platform.world.CgPlayers;
  * seeing the same. It also times how late a change reaches each client, which shows where the host pumps the frame.
  *
  * <pre>{@code
- * // single player (a dev client's autotest, prodSmoke): the probe kills and respawns the player itself
- * -Dcrystalgraphics.netprobe=true
- * // a dedicated server and two clients, every process with the flag; the server waits for both, then names its victim
- * -Dcrystalgraphics.netprobe=true -Dcrystalgraphics.netprobe.players=2 -Dcrystalgraphics.netprobe.victim=Alice
+ * // single player: the gauntlet's test, which enters a world, kills and respawns the player itself
+ * -Dcrystalgraphics.gauntlet=crystalgraphics:net
+ * // a dedicated server and two clients, every process with the test; the server waits for both, then names its victim
+ * -Dcrystalgraphics.gauntlet=crystalgraphics:net -Dcrystalgraphics.netprobe.players=2 -Dcrystalgraphics.netprobe.victim=Alice
  * // and something must kill them there (the console, RCON): the server logs when
  * net probe: kill Alice now
- * // what it logs, the server's side, and what prodSmoke reads:
- * net probe pool.kept: true (Alice's mana 1000 on the same object)
- * net probe seen.pool Bob: true (sees 1000)
- * net probe: true (14 passed, 0 failed)
+ * // what it logs, the server's side, and writes in the run's report:
+ * crystalgraphics:net pool.kept: true (Alice's mana 1000 on the same object)
+ * crystalgraphics:net seen.pool Bob: true (sees 1000)
  * }</pre>
  *
  * <ul>
  *   <li>The clients respawn themselves ({@link CgWorldStimulus#respawn}); a dedicated server cannot kill, so the victim
  *       waits up to a minute for {@code kill <name>}.</li>
- *   <li>{@link #running()} is a client's: an autotest waits for it before quitting.</li>
- *   <li>{@code .exit=true} ends every process once the verdict is out.</li>
+ *   <li>The server's process holds the checks; a client's test ends once it hears the verdict is out.</li>
+ *   <li>Its message and object types are declared when the network installs, in a process whose run names it
+ *       ({@link #install}), since they go into every connection's hello.</li>
  * </ul>
  */
 public final class CgNetProbe {
 
-    public static final boolean ENABLED = CgVar.bool("crystalgraphics.netprobe", false, CgVar.DEV | CgVar.RESTART,
-            "Prove in a running game what networked objects do across a player's death, and how late a change arrives,"
-                    + " logging a verdict per check for prodSmoke and a live server.").get();
     private static final int PLAYERS = CgVar.integer("crystalgraphics.netprobe.players", 1, 1, 16, CgVar.DEV | CgVar.RESTART,
             "How many players the net probe waits for before it starts.").get();
     private static final String VICTIM = CgVar.text("crystalgraphics.netprobe.victim", "", CgVar.DEV | CgVar.RESTART,
             "The player the net probe kills, by name; the first to join unless said.").get();
-    private static final boolean EXIT = CgVar.bool("crystalgraphics.netprobe.exit", false, CgVar.DEV | CgVar.RESTART,
-            "End every process once the net probe's verdict is out.").get();
 
     private static final Logger LOGGER = LogManager.getLogger("CgNetProbe");
 
@@ -85,11 +81,43 @@ public final class CgNetProbe {
 
     private static boolean installed;
     private static final Client client = new Client();
+    /** The test playing it; null outside a run's turn. */
+    private static volatile Test active;
 
     private CgNetProbe() {
     }
 
-    /** Both halves; each runs only where its side does. Once, from {@code CgNetwork.install}. */
+    /** The gauntlet's {@code crystalgraphics:net}. */
+    public static CgGauntletController test() {
+        return new Test();
+    }
+
+    private static final class Test extends CgGauntletController {
+        @Override
+        protected void onInit() {
+            active = this;
+        }
+
+        @Override
+        protected void onStateChange(CgGauntletState from, CgGauntletState to) {
+            if (to.equals(CgGauntletState.TITLE)) enterWorld();
+        }
+
+        @Override
+        protected void onEnd() {
+            active = null;
+        }
+
+        void stated(String name, boolean ok, String detail) {
+            check(name, ok, detail);
+        }
+
+        void done() {
+            endTest();
+        }
+    }
+
+    /** Both halves; each runs only where its side does. Once, from {@code CgNetwork.install} where the run names it. */
     public static synchronized void install() {
         if (installed) return;
         installed = true;
@@ -100,28 +128,13 @@ public final class CgNetProbe {
         LOGGER.info("net probe: armed, waiting for {} player(s)", PLAYERS);
     }
 
-    /** True on a client from its connection to the verdict, two minutes at most: an autotest that quits now loses it. */
-    public static boolean running() {
-        return ENABLED && client.running();
-    }
-
     private static long now() {
         return System.currentTimeMillis();
     }
 
-    private static void exitLater(String why) {
-        if (!EXIT) return;
-        LOGGER.info("net probe: exiting, {}", why);
-        Thread exit = new Thread(() -> {
-            try {
-                Thread.sleep(3000);
-            } catch (InterruptedException ignored) {
-                Thread.currentThread().interrupt();
-            }
-            CgProcessExit.halt(0);
-        }, "net probe exit");
-        exit.setDaemon(true);
-        exit.start();
+    private static void verdictOut() {
+        Test test = active;
+        if (test != null) test.done();
     }
 
     private enum Phase { WAIT, BEFORE, DYING, AFTER, DONE }
@@ -277,7 +290,7 @@ public final class CgNetProbe {
             if (clock != null) clock.kill();
             clock = null;
             enter(Phase.DONE);
-            exitLater("the verdict is out");
+            verdictOut();
         }
 
         boolean allBack() {
@@ -312,7 +325,9 @@ public final class CgNetProbe {
         void check(String name, boolean ok, String detail) {
             if (ok) passed++;
             else failed++;
-            LOGGER.info("net probe {}: {} ({})", name, ok, detail);
+            Test test = active;
+            if (test != null) test.stated(name, ok, detail);
+            else LOGGER.info("net probe {}: {} ({})", name, ok, detail);
         }
 
         static String field(String report, String key) {
@@ -329,11 +344,10 @@ public final class CgNetProbe {
     // ── A client ────────────────────────────────────────────────────────────────────────────────
 
     private static final class Client {
-        static final int REPORT_EVERY = 10, KILL_AFTER = 20, RESPAWN_AFTER = 20, LIMIT_MILLIS = 120_000;
+        static final int REPORT_EVERY = 10, KILL_AFTER = 20, RESPAWN_AFTER = 20;
 
         final long[] lag = new long[4096];
         volatile boolean armed, timing, done;
-        volatile long connectedAt;
         int lagCount, stalled, ticks, killAt = -1, deadTicks;
         long lastTick;
 
@@ -370,12 +384,6 @@ public final class CgNetProbe {
             }
         }
 
-        boolean running() {
-            if (done) return false;
-            if (connectedAt == 0) return false;
-            return now() - connectedAt < LIMIT_MILLIS;
-        }
-
         void step(String step) {
             switch (step) {
                 case "armed":
@@ -395,7 +403,7 @@ public final class CgNetProbe {
                     armed = false;
                     timing = false;
                     LOGGER.info("net probe: done on this client");
-                    exitLater("the verdict is out");
+                    verdictOut();
                     break;
                 default:
                     break;
@@ -403,7 +411,6 @@ public final class CgNetProbe {
         }
 
         void tick() {
-            if (connectedAt == 0 && CgNetwork.client() != null) connectedAt = now();
             lastTick = now();
             ticks++;
             CgWorldStimulus stimulus = CgPlatform.get(CgWorldStimulus.SERVICE);

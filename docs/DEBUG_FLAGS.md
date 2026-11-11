@@ -52,12 +52,6 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 |---|---|---|---|
 | `crystalgraphics.collision.show` | true, false | `false` | Draws every live hitbox, see-through, and every world query, as lines, as Minecraft's F3+B also does: the client's and the server's. |
 
-## `crystalgraphics.collisionprobe`
-
-| Variable | Takes | Default | |
-|---|---|---|---|
-| `crystalgraphics.collisionprobe` | true, false | `false` | Prove in a running game that collision finds and hits real entities -- a ring on stands, a dragon's parts, a painting -- logging a verdict per check for prodSmoke and a dev client's autotest. Read at launch. |
-
 ## `crystalgraphics.compute`
 
 | Variable | Takes | Default | |
@@ -98,6 +92,18 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 | Variable | Takes | Default | |
 |---|---|---|---|
 | `crystalgraphics.fixedSeed` | true, false | `false` | Seed the engine's random stream from a constant, not the clock (Unreal's -FixedSeed): a capture repeats run to run. Read at launch. |
+
+## `crystalgraphics.gauntlet`
+
+| Variable | Takes | Default | |
+|---|---|---|---|
+| `crystalgraphics.gauntlet` | text | empty | The tests an unattended run plays, by id and in order, separated by commas or by + where a launcher splits commas (crystalgraphics:boot,crystalgraphics:world); empty for no run. Read at launch. |
+| `crystalgraphics.gauntlet.classlog` | text | empty | The JVM's -Xlog:class+load file, which crystalgraphics:server reads what loaded from; empty asks the loaders. Read at launch. |
+| `crystalgraphics.gauntlet.heartbeat` | 0 to 3600 | `0` | Seconds between a run's heartbeat lines; 0 for none. Read at launch. |
+| `crystalgraphics.gauntlet.out` | text | empty | Where a run writes its report and captures; empty for <game>/crystalgraphics/gauntlet. Read at launch. |
+| `crystalgraphics.gauntlet.play.seconds` | 0 to 86400 | `60` | Seconds crystalgraphics:play plays in its world before it ends; 0 never ends. Read at launch. |
+| `crystalgraphics.gauntlet.timeout` | 1 to 86400 | `300` | Seconds a run's test has to end before it fails. Read at launch. |
+| `crystalgraphics.gauntlet.world` | text | empty | The save a run's tests enter; empty for the first on disk, or one the host makes. Read at launch. |
 
 ## `crystalgraphics.gl`
 
@@ -204,8 +210,6 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 
 | Variable | Takes | Default | |
 |---|---|---|---|
-| `crystalgraphics.netprobe` | true, false | `false` | Prove in a running game what networked objects do across a player's death, and how late a change arrives, logging a verdict per check for prodSmoke and a live server. Read at launch. |
-| `crystalgraphics.netprobe.exit` | true, false | `false` | End every process once the net probe's verdict is out. Read at launch. |
 | `crystalgraphics.netprobe.players` | 1 to 16 | `1` | How many players the net probe waits for before it starts. Read at launch. |
 | `crystalgraphics.netprobe.victim` | text | empty | The player the net probe kills, by name; the first to join unless said. Read at launch. |
 
@@ -247,6 +251,12 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 |---|---|---|---|
 | `crystalgraphics.resourceOverrideDirs` | text | empty | Source roots searched before the classpath, separated by the platform's path separator and tried in order ahead of the ones a dev run finds itself, so an edited asset is read from its source tree; set, the shader preprocessor caches nothing unless hot reload watches. Read at launch. |
 | `crystalgraphics.resourceOverrideDirs.auto` | true, false | `true` | A dev run's own source resource folders as override roots, found from what its launcher passed (CgDevResourceRoots); a production client has none. Read at launch. |
+
+## `crystalgraphics.serverSmoke`
+
+| Variable | Takes | Default | |
+|---|---|---|---|
+| `crystalgraphics.serverSmoke.cue` | text | empty | A mod jar's cue crystalgraphics:server checks is mounted and compiles headless; empty for none. Read at launch. |
 
 ## `crystalgraphics.shader`
 
@@ -401,4 +411,5 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 
 | Variable | Takes | Default | |
 |---|---|---|---|
-| `crystalgraphics.worldprobe` | true, false | `false` | Prove in a running game that the host answers every world seam and that the answers agree, logging a verdict per check for prodSmoke and a dev client's autotest. Read at launch. |
+| `crystalgraphics.worldprobe.cue` | text | empty | The cue crystalgraphics:world plays on the server and feels on the client: <cue id>\|<tag>; empty for none. Read at launch. |
+| `crystalgraphics.worldprobe.kitCue` | text | empty | A game's sound crystalgraphics:world plays by its cue name: <kit folder>\|<cue>; empty for none. Read at launch. |

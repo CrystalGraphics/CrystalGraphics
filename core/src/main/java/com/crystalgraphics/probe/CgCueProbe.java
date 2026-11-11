@@ -1,6 +1,7 @@
 package com.crystalgraphics.probe;
 
 import com.crystalgraphics.lifecycle.CgEngineLifecycle;
+import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.asset.camera.CgCameraShakeDefinition;
 import com.crystalgraphics.asset.kind.CgGameplayKinds;
 import com.crystalgraphics.asset.load.CgAssetRef;
@@ -30,7 +31,8 @@ import org.joml.Vector3f;
  */
 final class CgCueProbe {
 
-    private static final String SPEC = System.getProperty("crystalgraphics.worldprobe.cue");
+    private static final String SPEC = CgVar.text("crystalgraphics.worldprobe.cue", "", CgVar.DEV | CgVar.RESTART,
+            "The cue crystalgraphics:world plays on the server and feels on the client: <cue id>|<tag>; empty for none.").get();
     private static volatile boolean armed, executed;
     private static volatile String serverFailure, serverCounts = "";
     private static volatile int serverTicksAfter;
@@ -55,7 +57,7 @@ final class CgCueProbe {
 
     /** At the probe's static checks: whether the cue's namespace was mounted, and the server's play armed at the player. */
     static void start(double px, double py, double pz) {
-        if (SPEC == null || SPEC.indexOf('|') < 0) {
+        if (SPEC.indexOf('|') < 0) {
             CgWorldProbe.skip("cue.mounted", "no -Dcrystalgraphics.worldprobe.cue=<cue id>|<tag>");
             return;
         }

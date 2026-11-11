@@ -1031,6 +1031,7 @@ com/crystalgraphics/platform/gl/pipeline/GLProgramCache
   method public <init> (Lcom/crystalgraphics/platform/gl/driver/CgGLDriver;Lcom/crystalgraphics/platform/gl/pipeline/GLShaderTranslator;Lcom/crystalgraphics/platform/gl/pipeline/GLProgramBinaries;Lcom/crystalgraphics/platform/gl/pipeline/GLLinkWorker;Z)V
   method public acquire (Ljava/lang/String;Lcom/crystalgraphics/platform/rhi/pipeline/CgPipelineLayout;[Lcom/crystalgraphics/platform/gl/pipeline/GLShaderModule;)Lcom/crystalgraphics/platform/gl/pipeline/GLProgramCache$Program;
   method public deleteAll ()V
+  method public endFrame ()V
   method public forget (Lcom/crystalgraphics/platform/gl/pipeline/GLShaderModule;)V
   method public prepare (Ljava/lang/String;Lcom/crystalgraphics/platform/rhi/pipeline/CgPipelineLayout;[Lcom/crystalgraphics/platform/gl/pipeline/GLShaderModule;)Z
   method public release (Lcom/crystalgraphics/platform/gl/driver/CgGLDriver;Lcom/crystalgraphics/platform/gl/pipeline/GLProgramCache$Program;)V
@@ -1418,23 +1419,27 @@ com/crystalgraphics/platform/input/CgInput
   access public,final
   extends java/lang/Object
   field public,static,final HOST Lcom/crystalgraphics/platform/CgService;
+  method public,static grabPointer ()V
   method public,static isKeyDown (I)Z
   method public,static isMouseDown (I)Z
   method public,static key (I)I
   method public,static modifiers ()I
   method public,static mouseButton (I)I
   method public,static mouseButtons ()I
+  method public,static movePointer (II)V
   method public,static pointerGrabbed ()Z
 com/crystalgraphics/platform/input/CgInput$Host
   access public,abstract,interface
   extends java/lang/Object
   field public,static,final NONE Lcom/crystalgraphics/platform/input/CgInput$Host;
+  method public,abstract grabPointer ()V
   method public,abstract isKeyDown (I)Z
   method public,abstract isMouseDown (I)Z
   method public,abstract key (I)I
   method public,abstract modifiers ()I
   method public,abstract mouseButton (I)I
   method public,abstract mouseButtons ()I
+  method public,abstract movePointer (II)V
   method public,abstract pointerGrabbed ()Z
 com/crystalgraphics/platform/input/CgInputListener
   access public,abstract,interface
@@ -2990,6 +2995,24 @@ com/crystalgraphics/platform/service/CgGameDirectory$Host
   field public,static,final NONE Lcom/crystalgraphics/platform/service/CgGameDirectory$Host;
   method public,abstract game ()Ljava/nio/file/Path;
   method public,abstract world ()Ljava/nio/file/Path;
+com/crystalgraphics/platform/service/CgGameSession
+  access public,final
+  extends java/lang/Object
+  field public,static,final HOST Lcom/crystalgraphics/platform/CgService;
+  field public,static,final MADE_SAVE Ljava/lang/String;
+  method public,static enterWorld (Ljava/lang/String;)Z
+  method public,static inWorld ()Z
+  method public,static quit ()V
+  method public,static ready ()Z
+  method public,static saveToEnter (Ljava/nio/file/Path;Ljava/lang/String;)Ljava/lang/String;
+com/crystalgraphics/platform/service/CgGameSession$Host
+  access public,abstract,interface
+  extends java/lang/Object
+  field public,static,final NONE Lcom/crystalgraphics/platform/service/CgGameSession$Host;
+  method public,abstract enterWorld (Ljava/lang/String;)Z
+  method public,abstract inWorld ()Z
+  method public,abstract quit ()V
+  method public,abstract ready ()Z
 com/crystalgraphics/platform/service/CgGameThreads
   access public,final
   extends java/lang/Object
@@ -3107,18 +3130,22 @@ com/crystalgraphics/platform/service/CgScreens
   field public,static,final HOST Lcom/crystalgraphics/platform/CgService;
   method public,static anyOpen ()Z
   method public,static close (Lcom/crystalgraphics/platform/service/CgScreens$Owner;)V
+  method public,static closeFront ()V
   method public,static giveBack (Lcom/crystalgraphics/platform/input/CgSystemInput$Keyboard$Event;)V
   method public,static isOpen (Lcom/crystalgraphics/platform/service/CgScreens$Owner;)Z
   method public,static open (Lcom/crystalgraphics/platform/service/CgScreens$Owner;)V
+  method public,static openChat ()V
 com/crystalgraphics/platform/service/CgScreens$Host
   access public,abstract,interface
   extends java/lang/Object
   field public,static,final NONE Lcom/crystalgraphics/platform/service/CgScreens$Host;
   method public,abstract anyFront ()Z
   method public,abstract close (Lcom/crystalgraphics/platform/service/CgScreens$Owner;)V
+  method public,abstract closeFront ()V
   method public,abstract front ()Lcom/crystalgraphics/platform/service/CgScreens$Owner;
   method public,abstract giveBack (Lcom/crystalgraphics/platform/input/CgSystemInput$Keyboard$Event;)V
   method public,abstract open (Lcom/crystalgraphics/platform/service/CgScreens$Owner;)V
+  method public,abstract openChat ()V
 com/crystalgraphics/platform/service/CgScreens$Owner
   access public,abstract,interface
   extends java/lang/Object
