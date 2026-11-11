@@ -42,6 +42,9 @@ import com.crystalgraphics.variable.CgVar;
  *       Else it is <b>work</b>, a read from disk included, and so is a pipeline built or linked at its draw (a
  *       driver call or a wait on a worker's build), reported as one to precache. {@link #stalls()} counts the work;
  *       {@link #waits()} the rest.</li>
+ *   <li>A class defined at its first use is named by the code that used it ({@code loading classes for ...}), its
+ *       stack printed from there: the loader's frames (ModLauncher's, Knot's, a band's) say nothing about the fix,
+ *       which is touching the class first on a worker.</li>
  *   <li>{@code crystalgraphics.loading.strict} fails the run at the hide when work stalled: for gates and dev runs
  *       that must not regress.</li>
  *   <li>The lifecycle marks its callbacks with {@link #enter} / {@link #exit}, allocating nothing.</li>
@@ -214,7 +217,10 @@ public final class CgLoadWatchdog {
                 s.append("\n    ").append(100 * ranked.get(i).getValue() / samples).append("% ").append(ranked.get(i).getKey());
             }
             StackTraceElement[] stack = stacks.get(named);
-            for (int i = 0; i < Math.min(STACK_LINES, stack.length); i++) s.append("\n    at ").append(stack[i]);
+            // From the code that touched the class, past the loader's frames
+            for (int i = classLoading(stack), n = 0; i < stack.length && n < STACK_LINES; i++, n++) {
+                s.append("\n    at ").append(stack[i]);
+            }
             // Counted always (the hide's summary); named only for developers
             if (CgModLoader.development() || LOG_HOLDS.get()) LOGGER.warn(s.toString());
         }
@@ -280,15 +286,43 @@ public final class CgLoadWatchdog {
         return false;
     }
 
-    /** The first frame of the stack outside the JDK and the engine's own plumbing: whose code it is in. */
+    /**
+     * The first frame of the stack outside the JDK, class loading and the engine's own plumbing: whose code it is in. A
+     * class defined at its first use is named by the code that used it, never by the loader.
+     */
     private static String culprit(StackTraceElement[] stack) {
-        for (StackTraceElement e : stack) {
+        int loads = classLoading(stack);
+        for (int i = loads; i < stack.length; i++) {
+            StackTraceElement e = stack[i];
             String c = e.getClassName();
             if (c.startsWith("java.") || c.startsWith("jdk.") || c.startsWith("sun.") || c.startsWith("org.lwjgl.")
                     || c.startsWith("com.crystalgraphics.platform.gl.") || c.startsWith("com.crystalgraphics.loading.")
                     || c.startsWith("com.crystalgraphics.lifecycle.")) continue;
-            return e.getClassName() + "." + e.getMethodName() + "(" + e.getFileName() + ":" + e.getLineNumber() + ")";
+            return (loads > 0 ? "loading classes for " : "") + e.getClassName() + "." + e.getMethodName()
+                    + "(" + e.getFileName() + ":" + e.getLineNumber() + ")";
         }
         return stack.length > 0 ? stack[0].toString() : "unknown";
+    }
+
+    /**
+     * How many of the stack's top frames are a class being found, read, transformed and defined: the JDK's loaders and
+     * a host's (ModLauncher's, Fabric's Knot, LaunchWrapper, Mixin, a band's own loader). 0 when it is not loading. Only
+     * the run at the top: a static initializer that class loading ran is named itself.
+     */
+    private static int classLoading(StackTraceElement[] stack) {
+        int last = -1;
+        for (int i = 0; i < stack.length; i++) {
+            String c = stack[i].getClassName(), m = stack[i].getMethodName();
+            if (c.endsWith("ClassLoader") || c.startsWith("cpw.mods.") || c.startsWith("net.minecraftforge.securemodules.")
+                    || c.startsWith("net.minecraftforge.accesstransformer.") || c.startsWith("net.fabricmc.loader.")
+                    || c.startsWith("net.minecraft.launchwrapper.") || c.startsWith("org.spongepowered.asm.")
+                    || m.equals("loadClass") || m.equals("findClass") || m.equals("defineClass")
+                    || c.endsWith("LambdaMetafactory")) {
+                last = i;
+            } else if (!c.startsWith("java.") && !c.startsWith("jdk.") && !c.startsWith("sun.")) {
+                break;
+            }
+        }
+        return last + 1;
     }
 }
