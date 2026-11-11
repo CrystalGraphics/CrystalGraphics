@@ -144,7 +144,7 @@ public final class CgNoiseVolumes {
             }
         }
         CgGraphTexture[] volumes = new CgGraphTexture[NAMES.length];
-        for (int i = 0; i < NAMES.length; i++) volumes[i] = CgGraphTexture.imported(NAMES[i], STORAGE[i]);
+        for (int i = 0; i < NAMES.length; i++) volumes[i] = CgGraphTexture.imported(NAMES[i], STORAGE[i].external());
         try (CgImmediate.Compute run = CgImmediate.compute("crystalgraphics.noiseBake")) {
             rgba(run, volumes);
             wavelet(run, volumes[WAVELET_AT]);

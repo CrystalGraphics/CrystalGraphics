@@ -1721,11 +1721,25 @@ com/crystalgraphics/platform/rhi/CgDeviceSection
   method public,static begin ()V
   method public,static end ()V
   method public,static open ()Z
+com/crystalgraphics/platform/rhi/CgExternalTarget
+  access public,final
+  extends java/lang/Object
+  method public color ()Lcom/crystalgraphics/platform/rhi/resource/CgTextureView;
+  method public colorOnly ()Lcom/crystalgraphics/platform/rhi/CgExternalTarget;
+  method public depth ()Lcom/crystalgraphics/platform/rhi/resource/CgTextureView;
+  method public height ()I
+  method public label ()Ljava/lang/String;
+  method public lendsAttachments ()Z
+  method public toString ()Ljava/lang/String;
+  method public width ()I
+  method public,static forgetHost (I)V
+  method public,static forgetHosts ()V
+  method public,static host (III)Lcom/crystalgraphics/platform/rhi/CgExternalTarget;
+  method public,static of (Ljava/lang/String;Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture;Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture;)Lcom/crystalgraphics/platform/rhi/CgExternalTarget;
 com/crystalgraphics/platform/rhi/CgHostImports
   access public,abstract,interface
   extends java/lang/Object
   method public forgetAttachments ()V
-  method public framebufferBarrier (IIILcom/crystalgraphics/platform/rhi/command/CgTransition;)Z
   method public,abstract attachment (IZII)Lcom/crystalgraphics/platform/rhi/resource/CgTextureView;
   method public,abstract defaultColor (II)Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture;
   method public,abstract defaultDepth (II)Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture;

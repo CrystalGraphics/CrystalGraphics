@@ -1,8 +1,8 @@
 package com.crystalgraphics.render.draw;
 
+import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.platform.rhi.CgDeviceNames;
 import com.crystalgraphics.api.texture.CgSampler;
-import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.gl.buffer.CgStreamBuffer;
 import com.crystalgraphics.gl.buffer.shader.CgShaderBuffer;
@@ -580,7 +580,7 @@ public final class CgBindingTable {
         for (int t = 0; t < entries[e]; t++) {
             CgTexture texture = (CgTexture) refs[r + t];
             int unit = entries[e + HEADER + t];
-            texture.bind(unit);
+            CgBoundResources.bind(unit, texture);
             CgBoundResources.sampler(unit, (CgSampler) refs[r + SAMPLER_REFS + t]);
         }
         for (int b = 0; b < entries[e + 2]; b++) ((CgShaderBuffer) refs[r + MAX_TEXTURES + b]).bind();

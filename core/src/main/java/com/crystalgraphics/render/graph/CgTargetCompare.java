@@ -1,7 +1,5 @@
 package com.crystalgraphics.render.graph;
 
-import com.crystalgraphics.gl.framebuffer.CgFrameBuffer;
-
 import javax.annotation.Nullable;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -35,10 +33,10 @@ public final class CgTargetCompare {
      */
     @Nullable
     public static Difference compare(CgGraphTexture a, CgGraphTexture b, int x, int y, int width, int height) {
-        CgFrameBuffer fa = a.framebuffer(), fb = b.framebuffer();
+        CgGraphStorage fa = a.storage(), fb = b.storage();
         if (fa == null || fb == null) return null;
-        width = Math.min(width, Math.min(fa.getWidth(), fb.getWidth()) - x);
-        height = Math.min(height, Math.min(fa.getHeight(), fb.getHeight()) - y);
+        width = Math.min(width, Math.min(fa.width(), fb.width()) - x);
+        height = Math.min(height, Math.min(fa.height(), fb.height()) - y);
         if (width <= 0 || height <= 0) return null;
         int bytes = width * height * 4;
         if (first == null || first.capacity() < bytes) {
@@ -62,7 +60,7 @@ public final class CgTargetCompare {
         return count == 0 ? null : new Difference(count, worst, x0, y0, x1, y1);
     }
 
-    private static void read(CgFrameBuffer target, int x, int y, int width, int height, ByteBuffer into) {
+    private static void read(CgGraphStorage target, int x, int y, int width, int height, ByteBuffer into) {
         target.readColor(x, y, width, height, into);
     }
 }

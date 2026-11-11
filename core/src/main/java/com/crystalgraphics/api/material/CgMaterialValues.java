@@ -1,7 +1,7 @@
 package com.crystalgraphics.api.material;
 
-import com.crystalgraphics.api.texture.CgSampler;
 import com.crystalgraphics.api.texture.CgTexture;
+import com.crystalgraphics.api.texture.CgSampler;
 import org.joml.Vector2f;
 import org.joml.Vector3f;
 import org.joml.Vector4f;

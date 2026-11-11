@@ -1,8 +1,8 @@
 package com.crystalgraphics.gl.material;
 
+import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.buffer.CgBufferFormat;
 import com.crystalgraphics.api.texture.CgSampler;
-import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.render.draw.CgBoundResources;
 import com.crystalgraphics.gl.buffer.staging.CgBufferWriter;
 import com.crystalgraphics.gl.material.parse.CgParsedShader;
@@ -441,7 +441,7 @@ public final class CgMaterialProperty {
         if (!type.isSampler()) throw new IllegalStateException("bindSamplerTexture() called on non-sampler property: " + name);
 
         if (samplerUnit >= 0 && samplerTexture != null) {
-            samplerTexture.bind(samplerUnit);
+            CgBoundResources.bind(samplerUnit, samplerTexture);
             CgBoundResources.sampler(samplerUnit, sampler);
         }
     }

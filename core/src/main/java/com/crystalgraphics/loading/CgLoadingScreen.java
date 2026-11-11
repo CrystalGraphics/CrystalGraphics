@@ -1,5 +1,6 @@
 package com.crystalgraphics.loading;
 
+import com.crystalgraphics.platform.rhi.CgExternalTarget;
 import com.crystalgraphics.lifecycle.CgGraphicsLifecycle;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -450,6 +451,15 @@ public final class CgLoadingScreen {
      * {@code bindWrite}) is unseen by the state shadow, and the warm frame's firing binds a target of its own.</p>
      */
     public static void draw(int framebuffer, int width, int height) {
+        draw(framebuffer, null, width, height);
+    }
+
+    /** {@link #draw(int, int, int)} over a target given whole: a framebuffer of ours, as its {@code external()}. */
+    public static void draw(CgExternalTarget target, int width, int height) {
+        draw(-1, target, width, height);
+    }
+
+    private static void draw(int framebuffer, @Nullable CgExternalTarget target, int width, int height) {
         long now = System.nanoTime();
         float step = lastDrawn == 0L ? 0f : Math.min(FADE_STEP, (now - lastDrawn) / 1e9f);
         lastDrawn = now;
@@ -473,8 +483,8 @@ public final class CgLoadingScreen {
         if (warm) warmFrame();
         // Never wait for the view's build here: it held the frame 220 ms cold
         if (!viewReady) return;
-        // The host's framebuffer (or one of ours it names) as the current target, nothing bound
-        try (CgExecutor.Into into = CgExecutor.into(framebuffer, width, height)) {
+        // The host's framebuffer, or the target given, as the current target, nothing bound
+        try (CgExecutor.Into into = CgExecutor.into(target != null ? target : CgExternalTarget.host(framebuffer, width, height))) {
             view.draw(width, height, shownProgress, Math.min(1f, appeared / FADE_IN),
                     shown() ? 0f : Math.min(1f, left / FADE_OUT), shown() ? reason : null);
         }
@@ -498,10 +508,10 @@ public final class CgLoadingScreen {
             warmTarget = CgFrameBuffer.create("cg_loading_world", WARM_SIZE, WARM_SIZE, CgFrameBufferFormat
                     .builder("cg_loading_world").color(0, CgTextureType.RGBA8).depth(worldDepth).build());
         }
-        try (CgExecutor.Into ignored = CgExecutor.into(warmTarget)) {
+        try (CgExecutor.Into ignored = CgExecutor.into(warmTarget.external())) {
             CgGraphicsLifecycle.inWorldDepth(() -> {
                 for (CgRenderStage stage : WORLD) {
-                    stage.host().set(0f, WARM_SIZE, WARM_SIZE, warmTarget.getId()).view().set(0, 0, 0, WARM_VIEW, WARM_PROJECTION);
+                    stage.host().set(0f, WARM_SIZE, WARM_SIZE, warmTarget.external()).view().set(0, 0, 0, WARM_VIEW, WARM_PROJECTION);
                     stage.fire();
                 }
                 return true;

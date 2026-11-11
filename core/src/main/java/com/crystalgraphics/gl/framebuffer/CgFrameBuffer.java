@@ -1,5 +1,7 @@
 package com.crystalgraphics.gl.framebuffer;
 
+import com.crystalgraphics.gl.texture.CgTextureAbstract;
+import com.crystalgraphics.platform.rhi.CgExternalTarget;
 import com.crystalgraphics.platform.rhi.CgHostImports;
 import com.crystalgraphics.platform.gl.driver.GLC;
 import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
@@ -31,9 +33,7 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumSet;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.TreeMap;
 
 /**
@@ -107,6 +107,10 @@ public class CgFrameBuffer {
     /** What makes its texture slots ({@link #createOnDevice}); null for the device's own textures. */
     @Nullable
     private Images images;
+
+    /** It as a target the frame graph imports ({@link #external}), made at first ask; null again at a resize or delete. */
+    @Nullable
+    private CgExternalTarget external;
 
     /** Whether it is a volume's storage ({@link #createVolume}): a 3D colour texture nothing draws into. */
     @Getter
@@ -489,6 +493,22 @@ public class CgFrameBuffer {
                 EnumSet.of(CgGpuTexture.Usage.ATTACHMENT, CgGpuTexture.Usage.COPY_SRC)));
     }
 
+    /**
+     * It as a target the frame graph draws into and samples, imported as it is: the same object until it is resized or
+     * deleted.
+     *
+     * <pre>{@code
+     * CgGraphTexture field = CgGraphTexture.imported("field", framebuffer.external());
+     * try (CgExecutor.Into ignored = CgExecutor.into(framebuffer.external())) { stage.fire(); }
+     * }</pre>
+     */
+    public CgExternalTarget external() {
+        if (external == null) {
+            external = owned ? CgExternalTarget.of(name, rhiColor(0), rhiDepth()) : CgExternalTarget.host(id, width, height);
+        }
+        return external;
+    }
+
     /** The name it is known by: an owned one's, given at creation; a wrapped one's host framebuffer. */
     public int getId() {
         return id;
@@ -512,14 +532,14 @@ public class CgFrameBuffer {
 
     /** The texture at colour slot {@code slot}; null where the slot is unused or attach-only. */
     @Nullable
-    public CgTexture getColorTexture(int slot) {
+    public CgTextureAbstract getColorTexture(int slot) {
         Attachment a = colorAttachments.get(slot);
         return a != null ? a.texture : null;
     }
 
     /** The depth texture; null with no depth or an attach-only one. */
     @Nullable
-    public CgTexture getDepthTexture() {
+    public CgTextureAbstract getDepthTexture() {
         return depthAttachment != null ? depthAttachment.texture : null;
     }
 
@@ -583,7 +603,7 @@ public class CgFrameBuffer {
      * ByteBuffer page = CgFrameBuffer.readTexture(atlas, 2);   // layer 2 of an array
      * }</pre>
      */
-    public static ByteBuffer readTexture(CgTexture texture, int layer) {
+    public static ByteBuffer readTexture(CgTextureAbstract texture, int layer) {
         return readTexture(texture, layer, 0, false);
     }
 
@@ -595,11 +615,11 @@ public class CgFrameBuffer {
      * FloatBuffer texels = CgFrameBuffer.readTextureFloats(chain.getColorTexture(0), 2).asFloatBuffer();
      * }</pre>
      */
-    public static ByteBuffer readTextureFloats(CgTexture texture, int level) {
+    public static ByteBuffer readTextureFloats(CgTextureAbstract texture, int level) {
         return readTexture(texture, 0, level, true);
     }
 
-    private static ByteBuffer readTexture(CgTexture texture, int layer, int level, boolean floats) {
+    private static ByteBuffer readTexture(CgTextureAbstract texture, int layer, int level, boolean floats) {
         CgTextureView view = texture.rhiView();
         if (view == null) throw new IllegalStateException(texture + " has no device texture to read");
         int w = Math.max(1, texture.getWidth() >> level), h = Math.max(1, texture.getHeight() >> level);
@@ -745,6 +765,7 @@ public class CgFrameBuffer {
         if (!owned) {
             width = newWidth;
             height = newHeight;
+            external = null;
             return;
         }
         freeAttachments();
@@ -762,6 +783,7 @@ public class CgFrameBuffer {
     }
 
     private void freeAttachments() {
+        external = null;
         for (Attachment a : colorAttachments.values()) a.delete();
         colorAttachments.clear();
         if (depthAttachment != null) {
@@ -785,7 +807,7 @@ public class CgFrameBuffer {
         private final boolean renderbuffer;
 
         @Nullable
-        private CgTexture texture;
+        private CgTextureAbstract texture;
         @Nullable
         private CgGpuTexture image;
 
@@ -797,7 +819,7 @@ public class CgFrameBuffer {
 
         /** The texture, or {@code null} for an attach-only slot. */
         @Nullable
-        public CgTexture getTexture() {
+        public CgTextureAbstract getTexture() {
             return texture;
         }
 

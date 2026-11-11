@@ -1,6 +1,6 @@
 package com.crystalgraphics.render.world;
 
-import com.crystalgraphics.platform.gl.driver.GLC;
+import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.material.CgMaterial;
@@ -8,7 +8,6 @@ import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.state.CgBlendState;
 import com.crystalgraphics.api.state.CgDepthState;
 import com.crystalgraphics.api.state.CgRenderState;
-import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
 import com.crystalgraphics.render.draw.CgInstanceKind;
@@ -81,8 +80,7 @@ final class CgWorldDistortion {
     static final String APPLY_SHADER = "crystalgraphics:shaders/world_distortion_apply.shader";
     /** Offsets add, ONE ONE, hidden by the scene's copied depth rather than a depth test. */
     private static final CgRenderState BEND_STATE = CgRenderState.builder()
-            .depth(CgDepthState.NONE).blend(new CgBlendState(true, GLC.GL_ONE, GLC.GL_ONE, GLC.GL_ONE, GLC.GL_ONE,
-                    GLC.GL_FUNC_ADD, GLC.GL_FUNC_ADD)).build();
+            .depth(CgDepthState.NONE).blend(CgBlendState.SUM).build();
     /** What an apply draws: one quad over its hazes' rect. */
     private static final CgMesh QUAD = CgMesh.quads(1);
     private static final int GPU_BEND = CgGpuTrace.name("world.distortion"),

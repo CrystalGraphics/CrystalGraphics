@@ -3,9 +3,7 @@ package com.crystalgraphics.demo;
 import com.crystalgraphics.api.font.CgFont;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgMaterialDefinition;
-import com.crystalgraphics.api.material.CgMaterialRegistry;
 import com.crystalgraphics.api.mesh.CgMesh;
-import com.crystalgraphics.api.mesh.CgMeshLoader;
 import com.crystalgraphics.api.mesh.CgMeshLods;
 import com.crystalgraphics.api.mesh.CgMeshShapes;
 import com.crystalgraphics.api.mesh.CgProceduralMesh;
@@ -2621,7 +2619,7 @@ public final class CgVfxModules {
             for (Sheet sheet : unbaked) {
                 CgFrameBuffer storage = sheet.storage();
                 run.dispatch(sheet.kernel(), storage.getWidth(), storage.getHeight(), 1)
-                        .image("SHEET", CgGraphTexture.imported("vfx-modules sheet", storage))
+                        .image("SHEET", CgGraphTexture.imported("vfx-modules sheet", storage.external()))
                         .set("_Columns", sheet.columns()).set("_Cell", sheet.cell());
             }
         }

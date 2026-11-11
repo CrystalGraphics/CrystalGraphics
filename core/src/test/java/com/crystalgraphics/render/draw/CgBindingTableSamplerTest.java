@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.draw;
 
+import com.crystalgraphics.platform.rhi.resource.CgTextureView;
 import com.crystalgraphics.api.texture.CgSampler;
 import com.crystalgraphics.api.texture.CgTexture;
 import org.junit.Test;
@@ -13,13 +14,9 @@ import static org.junit.Assert.assertSame;
 public class CgBindingTableSamplerTest {
 
     private static final CgTexture IMAGE = new CgTexture() {
-        @Override public void bind(int unit) {}
-        @Override public int getId() { return 1; }
+        @Override public CgTextureView rhiView() { return null; }
         @Override public int getWidth() { return 4; }
         @Override public int getHeight() { return 4; }
-        @Override public int getTarget() { return 0x0DE1; }
-        @Override public boolean isDeleted() { return false; }
-        @Override public void delete() {}
     };
 
     @Test

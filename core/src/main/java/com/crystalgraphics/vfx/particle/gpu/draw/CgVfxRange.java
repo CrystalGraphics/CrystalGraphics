@@ -1,5 +1,6 @@
 package com.crystalgraphics.vfx.particle.gpu.draw;
 
+import com.crystalgraphics.platform.rhi.CgExternalTarget;
 import com.crystalgraphics.compute.CgCompute;
 import com.crystalgraphics.compute.CgKernel;
 import com.crystalgraphics.compute.ops.CgGpuCount;
@@ -153,12 +154,15 @@ public final class CgVfxRange {
      * land, and a target's is its own views'.
      */
     private static final long[] COUNT_FRAMES = new long[64];
-    private static final int[] COUNT_TARGETS = new int[64];
-    private static int countHead, countTail, countedTarget;
+    private static final Object[] COUNT_TARGETS = new Object[64];
+    private static int countHead, countTail;
+    @Nullable
+    private static Object countedTarget;
     private static long countFrame = -1;
     private static int countMax;
     /** Each target's count: its framebuffer, the frame being summed, that frame's largest so far, the last whole one. */
-    private static final int[] TARGETS = new int[8], TARGET_MAX = new int[8], TARGET_COUNT = new int[8];
+    private static final Object[] TARGETS = new Object[8];
+    private static final int[] TARGET_MAX = new int[8], TARGET_COUNT = new int[8];
     private static final long[] TARGET_FRAME = {-1, -1, -1, -1, -1, -1, -1, -1};
     /** Sums every slot's visible count read back; the hidden bin past them is not read. */
     private static final CgReadback.Sink COUNT = new CgReadback.Sink() {
@@ -195,7 +199,7 @@ public final class CgVfxRange {
     private static long nextCountFrame() {
         synchronized (COUNT_FRAMES) {
             if (countHead == countTail) {
-                countedTarget = -1;
+                countedTarget = null;
                 return -1;
             }
             int at = countHead++ & (COUNT_FRAMES.length - 1);
@@ -205,7 +209,7 @@ public final class CgVfxRange {
     }
 
     /** {@code target}'s row, or -1; claiming takes a free row or the one summed longest ago. */
-    private static int targetSlot(int target, boolean claim) {
+    private static int targetSlot(@Nullable Object target, boolean claim) {
         int oldest = 0;
         for (int i = 0; i < TARGETS.length; i++) {
             if (TARGET_FRAME[i] >= 0 && TARGETS[i] == target) return i;
@@ -472,16 +476,16 @@ public final class CgVfxRange {
     }
 
     /**
-     * As {@link #visibleCount()}, for the views drawn into {@code framebuffer} alone: a second viewport's own count, not
+     * As {@link #visibleCount()}, for the views drawn into {@code target} alone: a second viewport's own count, not
      * the world's. 0 for a target nothing has drawn into lately. Render thread.
      *
      * <pre>{@code
-     * stats.setText(CgVfxRange.visibleCount(viewport.getId()) + " particles");
+     * stats.setText(CgVfxRange.visibleCount(viewport.external()) + " particles");
      * }</pre>
      */
-    public static int visibleCount(int framebuffer) {
+    public static int visibleCount(CgExternalTarget target) {
         counting = true;
-        int t = targetSlot(framebuffer, false);
+        int t = targetSlot(target, false);
         return t < 0 ? 0 : TARGET_COUNT[t];
     }
 
@@ -781,7 +785,7 @@ public final class CgVfxRange {
                 if (countTail - countHead == COUNT_FRAMES.length) countHead++;
                 int at = countTail++ & (COUNT_FRAMES.length - 1);
                 COUNT_FRAMES[at] = CgFrameRing.frame();
-                COUNT_TARGETS[at] = CgRenderStage.WORLD_OPAQUE.host().mainFramebuffer();
+                COUNT_TARGETS[at] = CgRenderStage.WORLD_OPAQUE.host().target();
             }
             recording.readback(visible, 0, allSlots * 4L, COUNT);
         }

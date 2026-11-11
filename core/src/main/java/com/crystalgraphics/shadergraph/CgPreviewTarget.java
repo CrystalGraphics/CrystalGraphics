@@ -2,7 +2,7 @@ package com.crystalgraphics.shadergraph;
 
 import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.texture.CgTextureType;
-import com.crystalgraphics.gl.framebuffer.CgFrameBuffer;
+import com.crystalgraphics.render.graph.CgExecutor;
 import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.render.draw.CgOrder;
 import com.crystalgraphics.render.draw.CgPassConstants;
@@ -104,7 +104,6 @@ public final class CgPreviewTarget {
     }
 
     private static void deleteStorage(CgGraphTexture texture) {
-        CgFrameBuffer storage = texture.framebuffer();
-        if (storage != null) storage.delete();
+        CgExecutor.freeStorage(texture);
     }
 }

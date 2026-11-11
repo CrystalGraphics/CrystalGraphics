@@ -15,7 +15,7 @@ public final class CgTexelConvert {
     }
 
     /** {@code texels} of {@code format} from {@code src} as RGBA8 into {@code out}. */
-    static void toRgba8(ByteBuffer src, CgFormat format, int texels, ByteBuffer out) {
+    public static void toRgba8(ByteBuffer src, CgFormat format, int texels, ByteBuffer out) {
         float[] px = new float[4];
         for (int i = 0; i < texels; i++) {
             read(src, format, i, px);
@@ -25,7 +25,7 @@ public final class CgTexelConvert {
     }
 
     /** {@code texels} of {@code format} from {@code src} as RGBA32F, native order, into {@code out}. */
-    static void toRgba32f(ByteBuffer src, CgFormat format, int texels, ByteBuffer out) {
+    public static void toRgba32f(ByteBuffer src, CgFormat format, int texels, ByteBuffer out) {
         float[] px = new float[4];
         out.order(ByteOrder.nativeOrder());
         for (int i = 0; i < texels; i++) {

@@ -1,10 +1,10 @@
 package com.crystalgraphics.render.post.debug;
 
+import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgMeshTopology;
-import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
 import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.render.draw.CgOrder;

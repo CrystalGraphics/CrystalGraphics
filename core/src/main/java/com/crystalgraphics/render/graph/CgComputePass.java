@@ -219,16 +219,14 @@ public final class CgComputePass extends CgPass {
      * }</pre>
      *
      * <ul>
-     *   <li>Throws where {@code from}'s format has no depth, and at execution where the current target has none.</li>
+     *   <li>Throws where {@code from}'s format has no depth, and at execution where an external target has none.</li>
      *   <li>Give the pass the host's depth convention ({@code CgStageFrame.constants}), or eye depths disagree.</li>
      * </ul>
      */
     public CgComputePass sceneDepth(CgGraphTexture from) {
         requireOpen();
-        CgFrameBufferFormat format = from.desc() != null ? from.desc().format()
-                : from.framebuffer() != null ? from.framebuffer().getFormat() : null;
-        if (from.kind() != CgGraphTexture.Kind.CURRENT && !from.drawsBesideCurrentDepth()
-                && (format == null || !format.hasDepth())) {
+        CgFrameBufferFormat format = from.desc() != null ? from.desc().format() : null;
+        if (from.depthOf() == null && format != null && !format.hasDepth()) {
             throw new IllegalArgumentException(this + " reads the depth of " + from + ", which has none");
         }
         depthFrom = from;

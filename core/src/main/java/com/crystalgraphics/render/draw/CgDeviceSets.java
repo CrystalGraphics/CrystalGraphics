@@ -1,8 +1,9 @@
 package com.crystalgraphics.render.draw;
 
+import com.crystalgraphics.gl.texture.CgTextureAbstract;
+import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.platform.rhi.CgDeviceNames;
 import com.crystalgraphics.api.texture.CgSampler;
-import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.gl.texture.CgFallbackTextures;
 import com.crystalgraphics.platform.rhi.CgRHI;
@@ -170,7 +171,9 @@ public final class CgDeviceSets {
      */
     public void prepare(CgBindingTable table) {
         for (int id = 0; id < table.size(); id++) {
-            for (int t = 0; t < table.textures(id); t++) table.texture(id, t).getId();
+            for (int t = 0; t < table.textures(id); t++) {
+                if (table.texture(id, t) instanceof CgTextureAbstract engine) engine.getId();
+            }
         }
     }
 
@@ -280,7 +283,7 @@ public final class CgDeviceSets {
     /** The texture bound for {@code packed} ({@link CgBoundResources}): over the snapshot's, as a GL program samples. */
     private boolean boundTexture(CgRHI rhi, CgBindingLayout.Slot slot, int packed) {
         CgTexture texture = CgBoundResources.texture(packed);
-        if (texture == null || texture.isDeleted()) return false;
+        if (texture == null || texture instanceof CgTextureAbstract engine && engine.isDeleted()) return false;
         CgTextureView view = texture.rhiView();
         if (view == null) return false;
         int level = CgBoundResources.level(packed);

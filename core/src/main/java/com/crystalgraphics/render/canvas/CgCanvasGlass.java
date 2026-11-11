@@ -1,8 +1,8 @@
 package com.crystalgraphics.render.canvas;
 
+import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgMaterialValues;
-import com.crystalgraphics.api.texture.CgTexture;
 
 import java.util.function.Consumer;
 

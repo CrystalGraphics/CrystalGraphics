@@ -1,6 +1,6 @@
 package com.crystalgraphics.render.graph;
 
-import com.crystalgraphics.platform.gl.driver.GLC;
+import com.crystalgraphics.gl.texture.CgTexture3D;
 import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.material.CgMaterialValues;
 import com.crystalgraphics.api.texture.CgSampler;
@@ -293,7 +293,7 @@ public final class CgDispatch {
         pass.requireOpen();
         CgImageDecl image = source.image(name);
         if (image == null) throw new IllegalArgumentException(source.path() + " declares no image '" + name + "'");
-        if (texture.kind() == CgGraphTexture.Kind.CURRENT) {
+        if (texture.isCurrent()) {
             throw new IllegalArgumentException("a kernel binds named storage; the current target has none");
         }
         if (level < 0 || level >= texture.getLevels()) {
@@ -304,8 +304,7 @@ public final class CgDispatch {
             throw new IllegalArgumentException(name + " is " + image.dimension().token + ": it binds every layer");
         }
         if (texture.isArray()) throw new IllegalArgumentException(name + " binds " + texture + ", an array: raster passes draw arrays");
-        CgFrameBufferFormat format = texture.desc() != null ? texture.desc().format()
-                : texture.framebuffer() != null ? texture.framebuffer().getFormat() : null;
+        CgFrameBufferFormat format = texture.desc() != null ? texture.desc().format() : null;
         if (format != null && format.colorSlotCount() > 1) {
             // Every backend binds the first attachment alone, so a kernel would write slot 0 whichever it meant.
             throw new IllegalArgumentException(name + " binds " + texture + ", which has " + format.colorSlotCount()
@@ -342,7 +341,7 @@ public final class CgDispatch {
         if (graph != null && graph.isArray()) {
             throw new IllegalArgumentException("'" + name + "' binds " + texture + ", an array: materials sample arrays, kernels do not");
         }
-        boolean volume = graph != null ? graph.isVolume() : texture.getTarget() == GLC.GL_TEXTURE_3D;
+        boolean volume = graph != null ? graph.isVolume() : texture instanceof CgTexture3D;
         if (volume != kernel.compute().properties().isVolume(name)) {
             throw new IllegalArgumentException("'" + name + "' samples " + (volume ? "2D, and " + texture + " is a volume"
                     : "a sampler3D, and " + texture + " is no 3D texture"));

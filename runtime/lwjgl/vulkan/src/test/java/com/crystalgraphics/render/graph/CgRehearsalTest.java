@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.graph;
 
+import com.crystalgraphics.platform.rhi.CgExternalTarget;
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
@@ -81,19 +82,20 @@ public class CgRehearsalTest {
             pass.end();
         };
 
-        int mark = device.mark();
-        CgRehearsal rehearsal = CgRehearsal.of(cast).minPasses(64).window(32).maxPasses(50_000)
-                .runAll();
-        assertTrue("its passes reached the device", device.mark() > mark);
-        CgFrameRing.endFrame();
-        assertTrue(rehearsal.done());
-        assertTrue("ran at least its least passes", rehearsal.passes() >= 64);
+        try (CgExecutor.Into ignored = CgExecutor.into(CgExternalTarget.host(0, 64, 64))) {   // the device's surface
+            int mark = device.mark();
+            CgRehearsal rehearsal = CgRehearsal.of(cast).minPasses(64).window(32).maxPasses(50_000).runAll();
+            assertTrue("its passes reached the device", device.mark() > mark);
+            CgFrameRing.endFrame();
+            assertTrue(rehearsal.done());
+            assertTrue("ran at least its least passes", rehearsal.passes() >= 64);
 
-        long loaded = ManagementFactory.getClassLoadingMXBean().getTotalLoadedClassCount();
-        CgRehearsal cue = CgRehearsal.of(cast).minPasses(1).window(1).maxPasses(1).runAll();
-        assertEquals(1, cue.passes());
-        assertEquals("the rehearsed path loads no class once rehearsed", loaded,
-                ManagementFactory.getClassLoadingMXBean().getTotalLoadedClassCount());
+            long loaded = ManagementFactory.getClassLoadingMXBean().getTotalLoadedClassCount();
+            CgRehearsal cue = CgRehearsal.of(cast).minPasses(1).window(1).maxPasses(1).runAll();
+            assertEquals(1, cue.passes());
+            assertEquals("the rehearsed path loads no class once rehearsed", loaded,
+                    ManagementFactory.getClassLoadingMXBean().getTotalLoadedClassCount());
+        }
     }
 
     @Test

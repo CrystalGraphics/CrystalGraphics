@@ -13,7 +13,7 @@ import java.util.Arrays;
  *
  * <pre>{@code
  * int from = states.access(CgResourceStates.buffer(id), CgAccess.COMPUTE_READ);   // what its read waits for, or 0
- * int[] subs = states.image(CgResourceStates.framebuffer(fbo), 1);               // each subresource's access
+ * int[] subs = states.image(storage.key(), 1);                                   // each subresource's access
  * }</pre>
  *
  * <p>Buffer accesses may overlap: consecutive accesses through one overlap set, a compute pass's {@code skipBarrier}
@@ -38,19 +38,19 @@ final class CgResourceStates {
     private boolean[] used = new boolean[64];
     private int size;
 
-    /** A buffer's key: its GL name. */
-    static long buffer(int glBuffer) {
-        return glBuffer & 0xFFFFFFFFL;
+    /** A buffer's key: its device name ({@code CgDeviceNames}). */
+    static long buffer(int name) {
+        return name & 0xFFFFFFFFL;
     }
 
-    /** A texture's key, moved by range: its GL name, apart from a buffer's. */
-    static long texture(int glTexture) {
-        return (1L << 32) | (glTexture & 0xFFFFFFFFL);
+    /** A texture's key, moved by range: its device name, apart from a buffer's. */
+    static long texture(int name) {
+        return (1L << 32) | (name & 0xFFFFFFFFL);
     }
 
-    /** A framebuffer's key, its attachments moved as one: its GL name, 0 the window's. */
-    static long framebuffer(int glFramebuffer) {
-        return (2L << 32) | (glFramebuffer & 0xFFFFFFFFL);
+    /** A graph storage's key, its textures moved as one: the storage's own id ({@link CgGraphStorage}). */
+    static long storage(int id) {
+        return (2L << 32) | (id & 0xFFFFFFFFL);
     }
 
     /**

@@ -559,7 +559,7 @@ public class CgComputeGraphTest {
             int from;
             if (resource instanceof CgGraphTexture) {
                 if (frame.pass(s) instanceof CgRasterPass && (bits & CgAccess.COLOR_WRITE) != 0) bits = CgAccess.COLOR_WRITE;
-                int[] subs = states.image(CgResourceStates.framebuffer(id), 1);
+                int[] subs = states.image(CgResourceStates.storage(id), 1);
                 boolean moves = CgResourceStates.moves(subs[0], bits);
                 from = !moves ? 0 : subs[0] == 0 ? CgAccess.RESTING : subs[0];
                 subs[0] = moves ? bits : subs[0] | bits;

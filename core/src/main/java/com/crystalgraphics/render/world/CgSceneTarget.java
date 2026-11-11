@@ -7,7 +7,6 @@ import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgMeshTopology;
 import com.crystalgraphics.api.state.CgDepthState;
 import com.crystalgraphics.api.texture.CgTextureType;
-import com.crystalgraphics.gl.framebuffer.CgFrameBuffer;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
 import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.render.draw.CgOrder;
@@ -36,10 +35,9 @@ import javax.annotation.Nullable;
  * white reaches bloom.</p>
  *
  * <ul>
- *   <li>A host that lends no depth (framebuffer 0, multisampled) gets a scene with a depth of its own, the host's
+ *   <li>A host that lends no depth (the window's, a multisampled one) gets a scene with a depth of its own, the host's
  *       copied in by the same pass; draws then write depth into the copy, which the opaque firing's way out writes
  *       back.</li>
- *   <li>Render thread: the depth probe is a {@code glGet}, once per framebuffer.</li>
  * </ul>
  */
 final class CgSceneTarget {
@@ -122,17 +120,12 @@ final class CgSceneTarget {
     /** Whether the opaque firing drew into {@link #opaque} since the last transparent firing's way in. */
     private boolean kept;
 
-    /** The last framebuffer whose depth was probed, and its depth. */
-    private int probed = -1;
-    @Nullable
-    private CgTextureType probedDepth;
-
     void record(CgStageFrame stage) {
         boolean keeping = kept;
         kept = false;
-        int fb = stage.host().mainFramebuffer(), w = Math.max(1, stage.host().width()), h = Math.max(1, stage.host().height());
-        boolean beside = CgGraphTexture.takesCurrentDepth(fb);
-        CgTextureType depth = beside ? null : depthOf(fb, w, h);
+        int w = Math.max(1, stage.host().width()), h = Math.max(1, stage.host().height());
+        boolean beside = stage.host().target().lendsAttachments();
+        CgTextureType depth = beside ? null : stage.host().depthType();
         // The kept scene of another size or form is a stale one: decoded as though none were kept
         keeping &= opaque != null && opaqueWidth == w && opaqueHeight == h && opaqueBeside == beside && opaqueDepth == depth;
         Pass pass = keeping ? keep : in;
@@ -158,9 +151,9 @@ final class CgSceneTarget {
      * are built; then the firing draws onto the host's target as before.
      */
     boolean recordOpaqueIn(CgStageFrame stage) {
-        int fb = stage.host().mainFramebuffer(), w = Math.max(1, stage.host().width()), h = Math.max(1, stage.host().height());
-        boolean beside = CgGraphTexture.takesCurrentDepth(fb);
-        CgTextureType depth = beside ? null : depthOf(fb, w, h);
+        int w = Math.max(1, stage.host().width()), h = Math.max(1, stage.host().height());
+        boolean beside = stage.host().target().lendsAttachments();
+        CgTextureType depth = beside ? null : stage.host().depthType();
         CgPipeline decode = in.pipeline(depth != null), encode = out.pipeline(depth != null);
         // Both or neither: a scene drawn into and never encoded back would lose the opaque draws
         if (decode == null || encode == null || keep.pipeline(depth != null) == null) return false;
@@ -196,19 +189,10 @@ final class CgSceneTarget {
         raster.end();
     }
 
-    @Nullable
-    private CgTextureType depthOf(int fb, int w, int h) {
-        if (fb != probed) {
-            probedDepth = CgFrameBuffer.depthTypeOf(fb, w, h);
-            probed = fb;
-        }
-        return probedDepth;
-    }
-
     private CgGraphTexture scene(int w, int h, boolean beside, @Nullable CgTextureType depth) {
         if (scene != null && width == w && height == h && sceneBeside == beside && sceneDepth == depth) return scene;
         if (beside) {
-            scene = CgGraphTexture.besideCurrentDepth("cg_scene", new CgTextureDesc(w, h, SCENE));
+            scene = CgGraphTexture.transientTexture("cg_scene", new CgTextureDesc(w, h, SCENE), CgGraphTexture.current());
         } else {
             scene = CgGraphTexture.transientTexture("cg_scene", new CgTextureDesc(w, h, ownDepth("cg_scene_depth", depth)));
         }
@@ -224,7 +208,7 @@ final class CgSceneTarget {
             return opaque;
         }
         if (opaque != null) recording.release(opaque);
-        opaque = beside ? CgGraphTexture.requestedBesideCurrentDepth("cg_opaque_scene", new CgTextureDesc(w, h, SCENE))
+        opaque = beside ? CgGraphTexture.requested("cg_opaque_scene", new CgTextureDesc(w, h, SCENE), CgGraphTexture.current())
                 : CgGraphTexture.requested("cg_opaque_scene", new CgTextureDesc(w, h, ownDepth("cg_opaque_scene_depth", depth)));
         opaqueWidth = w;
         opaqueHeight = h;
@@ -247,6 +231,5 @@ final class CgSceneTarget {
         scene = null;
         opaque = null;
         kept = false;
-        probed = -1;
     }
 }

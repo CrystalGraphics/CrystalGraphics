@@ -1,7 +1,6 @@
 package com.crystalgraphics.gl.texture;
 
 import com.crystalgraphics.platform.gl.driver.GLC;
-import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.texture.CgTextureSpec;
 import com.crystalgraphics.api.texture.CgTextureType;
 
@@ -19,31 +18,31 @@ import java.nio.ByteBuffer;
 public final class CgFallbackTextures {
 
     /** 1×1 fully opaque white ({@code RGBA = 255, 255, 255, 255}). */
-    public static CgTexture WHITE_1x1;
+    public static CgTextureAbstract WHITE_1x1;
 
     /** 1×1 fully opaque black ({@code RGBA = 0, 0, 0, 255}). */
-    public static CgTexture BLACK_1x1;
+    public static CgTextureAbstract BLACK_1x1;
 
     /**
      * 1×1 flat (neutral) normal map ({@code RGBA = 128, 128, 255, 255}).
      * Encodes the unit normal {@code (0, 0, 1)} in tangent space.
      */
-    public static CgTexture FLAT_NORMAL;
+    public static CgTextureAbstract FLAT_NORMAL;
 
     /** 1×1 fully transparent black ({@code RGBA = 0, 0, 0, 0}). */
-    public static CgTexture TRANSPARENT;
+    public static CgTextureAbstract TRANSPARENT;
 
     /**
      * 1×1 unsigned integer 0 (R8UI): what an unset {@code usampler2D} reads, as a stencil no draw wrote. A float
      * texture under an integer sampler is undefined (a validation error on Vulkan).
      */
-    public static CgTexture ZERO_UINT;
+    public static CgTextureAbstract ZERO_UINT;
 
     /** A 1×1×1 opaque white volume: what a pass with no world media reads through {@code cg_Media}, everything let through. */
-    public static CgTexture WHITE_VOLUME;
+    public static CgTextureAbstract WHITE_VOLUME;
 
     /** A 1×1×1 black volume: what a pass with no world lights on transparent surfaces reads through {@code cg_LocalLights}. */
-    public static CgTexture BLACK_VOLUME;
+    public static CgTextureAbstract BLACK_VOLUME;
 
     private CgFallbackTextures() {}
 
@@ -93,14 +92,14 @@ public final class CgFallbackTextures {
         BLACK_VOLUME = null;
     }
 
-    private static CgTexture createPixel(int r, int g, int b, int a) {
+    private static CgTextureAbstract createPixel(int r, int g, int b, int a) {
         ByteBuffer buf = ByteBuffer.allocateDirect(4);
         buf.put((byte) r).put((byte) g).put((byte) b).put((byte) a);
         buf.flip();
         return CgTexture2D.createFromPixels(1, 1, buf, CgTextureSpec.RGBA8_LINEAR);
     }
 
-    private static void deleteAndNull(CgTexture tex) {
+    private static void deleteAndNull(CgTextureAbstract tex) {
         if (tex != null) tex.delete();
     }
 }

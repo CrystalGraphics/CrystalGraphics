@@ -1,5 +1,11 @@
 package com.crystalgraphics.render.stage;
 
+import com.crystalgraphics.api.texture.CgTextureType;
+import com.crystalgraphics.platform.rhi.CgExternalTarget;
+import com.crystalgraphics.platform.rhi.resource.CgTextureView;
+
+import javax.annotation.Nullable;
+
 /**
  * What a host knows about a stage's frame: its timing, its target, where it is seen from and the world's sky. Each
  * {@link CgRenderStage} owns one, which the host refills before every {@link CgRenderStage#fire}, so firing allocates
@@ -7,7 +13,7 @@ package com.crystalgraphics.render.stage;
  *
  * <pre>{@code
  * // the host
- * CgRenderStage.WORLD_OPAQUE.host().set(partialTick, width, height, mainFramebufferId)
+ * CgRenderStage.WORLD_OPAQUE.host().set(partialTick, width, height, mainFramebufferId)   // the host's GL name
  *         .view().set(camera.x, camera.y, camera.z, viewRotation, projection);
  * CgRenderStage.WORLD_OPAQUE.fire();
  *
@@ -32,7 +38,10 @@ public final class CgHostFrame {
     private float partialTick;
     private int width;
     private int height;
-    private int mainFramebuffer;
+    /** The host's name for its target, -1 where {@link #target} was given whole. */
+    private int framebuffer = -1;
+    @Nullable
+    private CgExternalTarget target;
     private float guiScale = 1f;
 
     /** The frame's interpolation between game ticks, 0 to 1. */
@@ -49,9 +58,38 @@ public final class CgHostFrame {
         return height;
     }
 
-    /** The GL framebuffer the host draws its world into, which holds the scene's depth. */
-    public int mainFramebuffer() {
-        return mainFramebuffer;
+    /**
+     * The host's main target, imported: what a world stage draws into and what holds the scene's depth. The same
+     * object while the host's target and size are the same. Render thread.
+     *
+     * <pre>{@code
+     * if (frame.host().target().lendsAttachments()) { ... }   // a scene of ours may draw beside its depth
+     * }</pre>
+     */
+    public CgExternalTarget target() {
+        if (target == null) target = CgExternalTarget.host(Math.max(framebuffer, 0), width, height);
+        return target;
+    }
+
+    /**
+     * The type of the host target's depth, null where it has none: what a scene of ours copies that depth into where the
+     * target lends none ({@code target().lendsAttachments()}), since a depth blit refuses formats that differ.
+     */
+    @Nullable
+    public CgTextureType depthType() {
+        CgTextureView depth = target().depth();
+        return depth == null ? null : CgTextureType.of(depth.texture().desc().format());
+    }
+
+    /** The host's name for its target, -1 where it was given whole: what a rehearsal hands back unchanged. */
+    int framebuffer() {
+        return framebuffer;
+    }
+
+    /** Host side: this frame's interpolation alone, its size and target kept. */
+    public CgHostFrame partialTick(float partialTick) {
+        this.partialTick = partialTick;
+        return this;
     }
 
     /**
@@ -88,12 +126,26 @@ public final class CgHostFrame {
         return textures;
     }
 
-    /** Host side: this frame's timing and target. */
+    /** Host side: this frame's timing and target, by the host's own name for it (a GL framebuffer, 0 the window's). */
     public CgHostFrame set(float partialTick, int width, int height, int mainFramebuffer) {
+        if (mainFramebuffer != framebuffer || width != this.width || height != this.height) target = null;
         this.partialTick = partialTick;
         this.width = width;
         this.height = height;
-        this.mainFramebuffer = mainFramebuffer;
+        this.framebuffer = mainFramebuffer;
+        return this;
+    }
+
+    /**
+     * Host side: this frame's timing and a target given whole: a framebuffer of ours a viewport fires a stage into
+     * ({@code framebuffer.external()}).
+     */
+    public CgHostFrame set(float partialTick, int width, int height, CgExternalTarget target) {
+        this.partialTick = partialTick;
+        this.width = width;
+        this.height = height;
+        this.framebuffer = -1;
+        this.target = target;
         return this;
     }
 }

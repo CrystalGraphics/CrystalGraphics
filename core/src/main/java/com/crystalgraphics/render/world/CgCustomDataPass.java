@@ -8,7 +8,6 @@ import com.crystalgraphics.api.state.CgBlendState;
 import com.crystalgraphics.api.state.CgDepthState;
 import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.api.texture.CgTextureType;
-import com.crystalgraphics.gl.framebuffer.CgFrameBuffer;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
 import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.render.draw.CgOrder;
@@ -24,7 +23,6 @@ import com.crystalgraphics.render.stage.CgHostView;
 import com.crystalgraphics.render.stage.CgStageFrame;
 import com.crystalgraphics.trace.CgGpuTrace;
 import java.util.IdentityHashMap;
-import javax.annotation.Nullable;
 
 /**
  * The custom data pass: each draw's custom data and shading model written where it is nearest, beside the host's depth,
@@ -55,11 +53,6 @@ final class CgCustomDataPass {
 
     static final CgLoad HOST_LIT_DEPTH_CLEAR = CgLoad.clear(256f, 0f, 0f, 0f).andDepth(1.0).andStencil(0);
 
-    /** The depth of the framebuffer last probed ({@link #customDataProbed}), for a host lending none. */
-    @Nullable
-    CgTextureType customDataDepth;
-
-    int customDataProbed = -1;
 
     /** A custom-data pipeline's state tested against the host's depth and writing none ({@link #recordCustomData}). */
     final IdentityHashMap<CgRenderState, CgRenderState> customDataStates = new IdentityHashMap<>();
@@ -79,26 +72,19 @@ final class CgCustomDataPass {
      * opaque draw in view whose material writes them ({@link CgMaterial#writesCustomData}) drawn again through
      * {@link CgPipeline#customDataTarget()} into an RG32F texture beside the host's depth, tested against it and writing
      * none, so only what shows lands. Published as {@link CgFrameKeys#CUSTOM_DATA}; only in a firing asked for it.
-     * A host lending no depth (framebuffer 0) gets a target with a depth of its own, the host's copied in first.
+     * A host lending no depth (the window's) gets a target with a depth of its own, the host's copied in first.
      */
     void recordCustomData(CgStageFrame stage, CgRecording recording, CgHostView view) {
         int w = Math.max(1, (int) world.targetWidth), h = Math.max(1, (int) world.targetHeight);
-        int fb = stage.host().mainFramebuffer();
-        CgTextureType depth = null;
-        if (!CgGraphTexture.takesCurrentDepth(fb)) {
-            if (fb != customDataProbed) {
-                customDataDepth = CgFrameBuffer.depthTypeOf(fb, w, h);
-                customDataProbed = fb;
-            }
-            depth = customDataDepth;
-        }
+        CgTextureType depth = stage.host().target().lendsAttachments() ? null : stage.host().depthType();
         boolean ownDepth = depth != null;
         if (customDataTarget == null || customDataTarget.getWidth() != w || customDataTarget.getHeight() != h
-                || customDataTarget.drawsBesideCurrentDepth() == ownDepth) {
+                || (customDataTarget.depthOf() != null) == ownDepth) {
             customDataTarget = ownDepth
                     ? CgGraphTexture.transientTexture("cg_custom_data", new CgTextureDesc(w, h, CgFrameBufferFormat
                             .builder("cg_custom_data_depth").color(0, CgTextureType.RG32F).depth(depth).build()))
-                    : CgGraphTexture.besideCurrentDepth("cg_custom_data", new CgTextureDesc(w, h, CUSTOM_DATA_FORMAT));
+                    : CgGraphTexture.transientTexture("cg_custom_data", new CgTextureDesc(w, h, CUSTOM_DATA_FORMAT),
+                            CgGraphTexture.current());
         }
         CgRasterPass pass = recording.raster(customDataTarget, ownDepth ? HOST_LIT_DEPTH_CLEAR : HOST_LIT_CLEAR, stage.constants(), null,
                 CgOrder.SORTED).timed(GPU_CUSTOM_DATA);

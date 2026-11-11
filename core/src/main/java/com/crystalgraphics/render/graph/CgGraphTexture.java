@@ -1,35 +1,33 @@
 package com.crystalgraphics.render.graph;
 
-import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
-import com.crystalgraphics.platform.rhi.resource.CgTextureView;
 import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.texture.CgTextureSpec;
 import com.crystalgraphics.api.texture.CgTextureType;
-import com.crystalgraphics.gl.framebuffer.CgFrameBuffer;
-import com.crystalgraphics.gl.texture.CgFallbackTextures;
-import com.crystalgraphics.render.draw.CgBoundResources;
-import org.apache.logging.log4j.LogManager;
-import com.crystalgraphics.gl.texture.CgTexture2D;
+import com.crystalgraphics.platform.rhi.CgExternalTarget;
+import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
+import com.crystalgraphics.platform.rhi.resource.CgTextureView;
 
 import javax.annotation.Nullable;
 import java.util.Arrays;
 
 /**
  * A texture a frame graph orders work on: a pass writes it, a draw or a copy reads it. A handle at once, on any
- * thread; its storage is the executor's to resolve on the render thread. It is a {@link CgTexture}, so a binding
- * snapshot takes it like any other.
+ * thread, and no texture: its storage ({@link CgGraphStorage}) exists only while the passes using it execute, which
+ * resolve it on the render thread (Unreal's {@code FRDGTexture}). A binding takes it as any {@link CgTexture}.
  *
  * <pre>{@code
- * CgGraphTexture main  = CgGraphTexture.imported("mc_main", mainTarget);          // the host's, as it is
+ * CgGraphTexture main  = CgGraphTexture.imported("mc_main", CgExternalTarget.host(fbo, w, h));   // someone else's
  * CgGraphTexture layer = CgGraphTexture.transientTexture("layer", new CgTextureDesc(w, h, CgTextureDesc.RGBA8));
  * CgGraphTexture view  = CgGraphTexture.requested("preview", desc);               // kept across frames
- * CgGraphTexture here  = CgGraphTexture.current();                                // what is bound when execution begins
+ * CgGraphTexture here  = CgGraphTexture.current();                                // the target the execution opened
  * CgGraphTexture grid  = CgGraphTexture.requested("grid", CgTextureDesc.volume(64, 64, 64, r16f));   // 3D
  * CgGraphTexture taa   = CgGraphTexture.history("taa", desc);                    // this frame's and the last
  * }</pre>
  *
  * <ul>
+ *   <li><b>External</b>: a target someone else owns, used as it is: {@link #imported}'s, or {@link #current()}, the one
+ *       {@code CgExecutor.into} opened round the execution.</li>
  *   <li><b>Transient</b>: storage from a pool for the passes between its first and last use in one frame; its
  *       contents do not survive the frame. Two that never live at once may share storage.</li>
  *   <li><b>Requested</b>: storage made on first use and kept until {@code recording.release(texture)}.</li>
@@ -37,25 +35,29 @@ import java.util.Arrays;
  *       ({@link #history}).</li>
  *   <li>A kernel binds one as a storage image (a {@code CgDispatch}'s {@code image}) where its format is the image's:
  *       a volume as a {@code 3d} image, any other as a {@code 2d} one. A draw samples a volume as a {@code sampler3D}.</li>
- *   <li>Binding one outside the passes that resolve it binds nothing. {@link #delete()} refuses: the graph owns it.</li>
+ *   <li>Sampled outside the passes that resolve it, it binds nothing.</li>
  * </ul>
  */
 public final class CgGraphTexture extends CgGraphResource implements CgTexture {
 
     /** Where its storage comes from. */
-    public enum Kind { IMPORTED, CURRENT, TRANSIENT, REQUESTED, HISTORY }
+    public enum Kind { EXTERNAL, TRANSIENT, REQUESTED, HISTORY }
 
-    private static final CgGraphTexture CURRENT = new CgGraphTexture(Kind.CURRENT, "current", null, null, null);
+    private static final CgGraphTexture CURRENT = new CgGraphTexture(Kind.EXTERNAL, "current", null, null, null, null);
 
     private final Kind kind;
     @Nullable
     private final CgTextureDesc desc;
-    /** Whether its depth is the current target's ({@link #besideCurrentDepth}). */
-    private boolean currentDepth;
+    /** An imported texture's target; null for {@link #current()}, which the execution names. */
+    @Nullable
+    private final CgExternalTarget target;
+    /** The texture whose depth every pass into this one draws with ({@link #transientTexture(String, CgTextureDesc, CgGraphTexture)}). */
+    @Nullable
+    private final CgGraphTexture depthOf;
 
     /** Render thread only: the storage while resolved. */
     @Nullable
-    private CgFrameBuffer framebuffer;
+    private CgGraphStorage storage;
     /** For {@link #previous()}'s view: the history it reads, else null. */
     @Nullable
     private final CgGraphTexture of;
@@ -63,7 +65,7 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
     private CgGraphTexture previous;
     /** Render thread only: a history's two storages, made at its first use, and which is the newest. */
     @Nullable
-    private final CgFrameBuffer[] versions;
+    private final CgGraphStorage[] versions;
     private int newest;
 
     /** Its {@link #level} and {@link #attachment} views, made at first ask. */
@@ -72,34 +74,88 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
     @Nullable
     private Stencil stencilView;
 
-    private CgGraphTexture(Kind kind, String name, @Nullable CgTextureDesc desc, @Nullable CgFrameBuffer framebuffer,
-                           @Nullable CgGraphTexture of) {
+    private CgGraphTexture(Kind kind, String name, @Nullable CgTextureDesc desc, @Nullable CgExternalTarget target,
+                           @Nullable CgGraphTexture depthOf, @Nullable CgGraphTexture of) {
         super(name);
         this.kind = kind;
         this.desc = desc;
-        this.framebuffer = framebuffer;
+        this.target = target;
+        this.depthOf = depthOf;
         this.of = of;
-        this.versions = kind == Kind.HISTORY && of == null ? new CgFrameBuffer[2] : null;
+        this.versions = kind == Kind.HISTORY && of == null ? new CgGraphStorage[2] : null;
     }
 
-    /** A framebuffer someone else owns, used as it is: the host's main target, a retained surface. */
-    public static CgGraphTexture imported(String name, CgFrameBuffer framebuffer) {
-        return new CgGraphTexture(Kind.IMPORTED, name, null, framebuffer, null);
+    /** A target someone else owns, used as it is: a made render target, a retained surface, a host's framebuffer. */
+    public static CgGraphTexture imported(String name, CgExternalTarget target) {
+        CgGraphTexture texture = new CgGraphTexture(Kind.EXTERNAL, name, null, target, null, null);
+        texture.storage = CgGraphStorage.imported(target);
+        return texture;
     }
 
-    /** The framebuffer and viewport bound when the frame's execution began, kept across passes into other targets. */
+    /**
+     * The target the execution draws into: the one {@code CgExecutor.into} opened round it, imported once per
+     * execution. A pass's default target, and what a stage's draws land in unless it is retargeted.
+     */
     public static CgGraphTexture current() {
         return CURRENT;
     }
 
+    /** Whether it is {@link #current()}. */
+    public boolean isCurrent() {
+        return this == CURRENT;
+    }
+
     /** Storage for this frame only, from the pool. */
     public static CgGraphTexture transientTexture(String name, CgTextureDesc desc) {
-        return new CgGraphTexture(Kind.TRANSIENT, name, desc, null, null);
+        return new CgGraphTexture(Kind.TRANSIENT, name, desc, null, null, null);
+    }
+
+    /**
+     * Storage for this frame only, colour alone, every pass into it drawing with {@code depthOf}'s depth: a linear
+     * scene drawn in place of the host's colour, tested against and writing the host's depth
+     * ({@code depthOf} {@link #current()}).
+     *
+     * <pre>{@code
+     * if (stage.host().target().lendsAttachments()) {
+     *     scene = CgGraphTexture.transientTexture("scene", new CgTextureDesc(w, h, rgba16f), CgGraphTexture.current());
+     * }
+     * }</pre>
+     *
+     * <ul>
+     *   <li>{@code desc} is one level of colour alone, {@code depthOf}'s size.</li>
+     *   <li>A target that lends no attachments (the window's, a multisampled one) draws it without depth, once, and logs
+     *       why: ask {@code lendsAttachments()} first and give the scene a depth of its own there.</li>
+     *   <li>A pass into it is ordered as a write of {@code depthOf} too, and may not clear depth.</li>
+     * </ul>
+     */
+    public static CgGraphTexture transientTexture(String name, CgTextureDesc desc, CgGraphTexture depthOf) {
+        return new CgGraphTexture(Kind.TRANSIENT, name, colourAlone(name, desc), null, depthOf, null);
     }
 
     /** Storage made on first use and kept until released. */
     public static CgGraphTexture requested(String name, CgTextureDesc desc) {
-        return new CgGraphTexture(Kind.REQUESTED, name, desc, null, null);
+        return new CgGraphTexture(Kind.REQUESTED, name, desc, null, null, null);
+    }
+
+    /**
+     * As {@link #transientTexture(String, CgTextureDesc, CgGraphTexture)}, its storage kept until released: a scene
+     * drawn in one stage's firing and read in a later one.
+     *
+     * <pre>{@code
+     * CgGraphTexture opaque = CgGraphTexture.requested("scene", new CgTextureDesc(w, h, rgba16f), CgGraphTexture.current());
+     * recording.release(opaque);   // at a resize, before a new one is made
+     * }</pre>
+     */
+    public static CgGraphTexture requested(String name, CgTextureDesc desc, CgGraphTexture depthOf) {
+        return new CgGraphTexture(Kind.REQUESTED, name, colourAlone(name, desc), null, depthOf, null);
+    }
+
+    private static CgTextureDesc colourAlone(String name, CgTextureDesc desc) {
+        if (desc.format().hasDepth() || desc.format().colorSlotCount() != 1 || desc.levels() != 1 || desc.isArray()
+                || desc.isVolume()) {
+            throw new IllegalArgumentException(name + ": a texture drawn with another's depth is one level of colour alone");
+        }
+        return desc;
     }
 
     /**
@@ -124,7 +180,7 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
      *   <li>Both versions start cleared to 0. Whether the previous one holds a frame of yours is yours to keep: blend by
      *       a validity false at its first frame and after a cut, and select rather than multiply by it, since a frame of
      *       another view is no zero.</li>
-     *   <li>Raster passes write it, level 0 and layer 0: never a kernel's image, an upload or a copy.</li>
+     *   <li>Raster passes write it, level 0 and layer 0: never a kernel's image or a copy.</li>
      *   <li>A frame executed again draws into it once: its passes are taken once, as a simulation's are.</li>
      *   <li>Never transient, never aliased, never culled; its storage is made at its first use, a read included.</li>
      *   <li>A history of one view a firing: a second firing of another camera drawing into it blends the two.</li>
@@ -134,13 +190,13 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
         if (desc.levels() != 1 || desc.isArray() || desc.isVolume()) {
             throw new IllegalArgumentException(name + ": a history is one level of a 2D texture");
         }
-        return new CgGraphTexture(Kind.HISTORY, name, desc, null, null);
+        return new CgGraphTexture(Kind.HISTORY, name, desc, null, null, null);
     }
 
     /** A history's version before its newest: what this frame blends over. Sampled only. */
     public CgGraphTexture previous() {
         if (kind != Kind.HISTORY || of != null) throw new IllegalStateException("only a history has a previous version: " + this);
-        if (previous == null) previous = new CgGraphTexture(Kind.HISTORY, name + ".previous", desc, null, this);
+        if (previous == null) previous = new CgGraphTexture(Kind.HISTORY, name + ".previous", desc, null, null, this);
         return previous;
     }
 
@@ -156,7 +212,7 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
 
     /** Render thread: a history's storages, made by the executor at its first use; null for any other. */
     @Nullable
-    CgFrameBuffer[] versions() {
+    CgGraphStorage[] versions() {
         return of != null ? of.versions : versions;
     }
 
@@ -165,74 +221,34 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
         newest = 1 - newest;
     }
 
-    /**
-     * A transient colour target whose depth and stencil are the current target's: a linear scene drawn in place of the
-     * host's colour, depth-tested against and writing into the host's depth. Every raster pass into it draws through a
-     * framebuffer of ours holding it beside the host's depth; a read of its depth reads the host's.
-     *
-     * <pre>{@code
-     * CgGraphTexture scene = CgGraphTexture.besideCurrentDepth("scene", new CgTextureDesc(w, h, rgba16f));
-     * CgRasterPass pass = recording.raster(scene, CgLoad.load(), constants, null, CgOrder.SORTED)
-     *         .sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT);    // the host's depth, as the pass sees it
-     * }</pre>
-     *
-     * <ul>
-     *   <li>{@code desc} is one level of colour alone, the current viewport's size.</li>
-     *   <li>Framebuffer 0 and a multisampled host lend no depth: check {@link #takesCurrentDepth} first, and give the
-     *       scene a depth of its own there. A pass refused at execution draws without depth, once, and logs why.</li>
-     *   <li>A pass into it is ordered as a write of the current target too, and may not clear depth.</li>
-     * </ul>
-     */
-    public static CgGraphTexture besideCurrentDepth(String name, CgTextureDesc desc) {
-        if (desc.format().hasDepth() || desc.format().colorSlotCount() != 1 || desc.levels() != 1 || desc.isArray()
-                || desc.isVolume()) {
-            throw new IllegalArgumentException(name + ": a texture beside the current depth is one level of colour alone");
-        }
-        CgGraphTexture texture = new CgGraphTexture(Kind.TRANSIENT, name, desc, null, null);
-        texture.currentDepth = true;
-        return texture;
-    }
-
-    /**
-     * As {@link #besideCurrentDepth}, its storage kept until released as a {@link #requested} texture's is: a scene drawn
-     * in one stage's firing and read in a later one.
-     *
-     * <pre>{@code
-     * CgGraphTexture opaque = CgGraphTexture.requestedBesideCurrentDepth("scene", new CgTextureDesc(w, h, rgba16f));
-     * // opaque firing: drawn into, beside the host's depth; transparent firing: sampled
-     * recording.release(opaque);   // at a resize, before a new one is made
-     * }</pre>
-     *
-     * <ul>
-     *   <li>A pass into it may take a second attachment ({@link CgRasterPass#attachment}): ours, at slot 1, with the
-     *       host's colour left out.</li>
-     * </ul>
-     */
-    public static CgGraphTexture requestedBesideCurrentDepth(String name, CgTextureDesc desc) {
-        if (desc.format().hasDepth() || desc.format().colorSlotCount() != 1 || desc.levels() != 1 || desc.isArray()
-                || desc.isVolume()) {
-            throw new IllegalArgumentException(name + ": a texture beside the current depth is one level of colour alone");
-        }
-        CgGraphTexture texture = new CgGraphTexture(Kind.REQUESTED, name, desc, null, null);
-        texture.currentDepth = true;
-        return texture;
-    }
-
-    /** Whether framebuffer {@code framebuffer} lends its depth to a {@link #besideCurrentDepth} texture. */
-    public static boolean takesCurrentDepth(int framebuffer) {
-        return framebuffer != 0 && !CgExecutor.refusedHost(framebuffer);
-    }
-
-    /** Whether its depth is the current target's ({@link #besideCurrentDepth}). */
-    public boolean drawsBesideCurrentDepth() {
-        return currentDepth;
+    /** The texture whose depth passes into this one draw with; null where they draw with its own. */
+    @Nullable
+    public CgGraphTexture depthOf() {
+        return depthOf;
     }
 
     public Kind kind() {
         return kind;
     }
 
-    /** What the graph allocates for it; null for an imported or current texture. */
+    /** An imported texture's target; null for any other, and for {@link #current()}. */
+    @Nullable
+    public CgExternalTarget target() {
+        return target;
+    }
+
+    /**
+     * Its attachments' layout: its description's, or an imported target's as read from its images; null for
+     * {@link #current()} outside an execution.
+     */
+    @Nullable
+    public CgFrameBufferFormat format() {
+        if (desc != null) return desc.format();
+        CgGraphStorage now = storage();
+        return now == null ? null : now.format();
+    }
+
+    /** What the graph allocates for it; null for an external one. */
     @Nullable
     public CgTextureDesc desc() {
         return desc;
@@ -256,7 +272,6 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
      *
      * <ul>
      *   <li>Read as the whole texture for ordering: a pass sampling a level runs after every pass writing the texture.</li>
-     *   <li>The pin lasts until the texture is next bound whole, and the executor unpins it after the pass.</li>
      * </ul>
      */
     public Level level(int level) {
@@ -285,7 +300,7 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
      * </ul>
      */
     public Attachment attachment(int slot) {
-        CgFrameBufferFormat format = desc != null ? desc.format() : framebuffer != null ? framebuffer.getFormat() : null;
+        CgFrameBufferFormat format = desc != null ? desc.format() : null;
         if (slot < 0 || format != null && (format.getColorSlot(slot) == null || format.isColorRenderbuffer(slot))) {
             throw new IllegalArgumentException(this + " has no sampleable colour attachment " + slot);
         }
@@ -308,11 +323,10 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
      * <ul>
      *   <li>Read as the whole texture for ordering: a pass sampling it runs after every pass writing the texture.</li>
      *   <li>Throws for a texture whose format has no stencil, here where the format is known.</li>
-     *   <li>Without a device the graph's storage takes no stencil view: it reads 0 there, logged once.</li>
      * </ul>
      */
     public Stencil stencil() {
-        CgFrameBufferFormat format = desc != null ? desc.format() : framebuffer != null ? framebuffer.getFormat() : null;
+        CgFrameBufferFormat format = desc != null ? desc.format() : null;
         if (format != null && (format.getDepthType() == null || !format.getDepthType().isStencil)) {
             throw new IllegalArgumentException(this + " has no stencil");
         }
@@ -339,106 +353,95 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
         return kind != Kind.TRANSIENT;
     }
 
-    /** Render thread: its storage now, or null outside the passes that resolve it: a history's newest, or its previous. */
+    /**
+     * Render thread: its storage now, or null outside the passes that resolve it: a history's newest, or its previous.
+     *
+     * <pre>{@code
+     * recording.callback("check", null, () -> pixels = picture.storage().readColor(0, 0, w, h), picture);
+     * }</pre>
+     */
     @Nullable
-    public CgFrameBuffer framebuffer() {
+    public CgGraphStorage storage() {
         if (of != null) return of.versions[1 - of.newest];
         if (versions != null) return versions[newest];
-        return framebuffer;
+        return storage;
     }
 
-    void resolve(@Nullable CgFrameBuffer storage) {
-        this.framebuffer = storage;
-    }
-
-    @Nullable
-    private CgTexture color() {
-        CgFrameBuffer storage = framebuffer();
-        return storage == null ? null : storage.getColorTexture(0);
-    }
-
-    @Override
-    public void bind(int unit) {
-        CgTexture color = color();
-        if (color != null) color.bind(unit);
+    void resolve(@Nullable CgGraphStorage storage) {
+        this.storage = storage;
     }
 
     @Override
     @Nullable
     public CgTextureView rhiView() {
-        CgTexture color = color();
-        return color == null ? null : color.rhiView();
+        CgGraphStorage now = storage();
+        return now == null || now.color(0) == null ? null : now.sampled(0).rhiView();
     }
 
     @Override
     @Nullable
     public CgTextureSpec spec() {
-        CgTexture color = color();
-        return color == null ? null : color.spec();
-    }
-
-    @Override
-    public int getId() {
-        CgTexture color = color();
-        return color == null ? 0 : color.getId();
+        CgGraphStorage now = storage();
+        return now == null || now.color(0) == null ? null : now.sampled(0).spec();
     }
 
     @Override
     public int getWidth() {
-        return framebuffer != null ? framebuffer.getWidth() : desc != null ? desc.width() : 0;
+        CgGraphStorage now = storage();
+        return now != null ? now.width() : desc != null ? desc.width() : target != null ? target.width() : 0;
     }
 
     @Override
     public int getHeight() {
-        return framebuffer != null ? framebuffer.getHeight() : desc != null ? desc.height() : 0;
+        CgGraphStorage now = storage();
+        return now != null ? now.height() : desc != null ? desc.height() : target != null ? target.height() : 0;
     }
 
-    /** Whether it is a 3D texture: its description says so, or an imported framebuffer is a volume's storage. */
+    /** Whether it is a 3D texture: its description says so, or an imported target's images are one. */
     public boolean isVolume() {
-        return desc != null ? desc.isVolume() : framebuffer != null && framebuffer.isVolume();
+        if (desc != null) return desc.isVolume();
+        CgGpuTexture.Desc image = imageDesc();
+        return image != null && image.kind() == CgGpuTexture.Kind.D3;
     }
 
     /** A volume's slices; 1 for a 2D texture. */
     public int getDepth() {
-        return desc != null ? desc.depth() : framebuffer != null ? framebuffer.getDepth() : 1;
+        if (desc != null) return desc.depth();
+        CgGpuTexture.Desc image = imageDesc();
+        return image != null && image.kind() == CgGpuTexture.Kind.D3 ? image.depthOrLayers() : 1;
     }
 
-    /** Whether it is a 2D array: its description says so, or an imported framebuffer is an array's storage. */
+    /** Whether it is a 2D array: its description says so, or an imported target's images are one. */
     public boolean isArray() {
-        return desc != null ? desc.isArray() : framebuffer != null && framebuffer.isArray();
+        return getLayers() > 1;
     }
 
     /** An array's layers; 1 for any other texture. */
     public int getLayers() {
-        return desc != null ? desc.layers() : framebuffer != null ? framebuffer.getLayers() : 1;
+        if (desc != null) return desc.layers();
+        CgGpuTexture.Desc image = imageDesc();
+        return image != null && image.kind() == CgGpuTexture.Kind.D2_ARRAY ? image.depthOrLayers() : 1;
     }
 
-    /** Its colour's mip levels: the description's, or an imported framebuffer's. */
+    /** Its colour's mip levels: the description's, or an imported target's colour's. */
     @Override
     public int getLevels() {
-        return desc != null ? desc.levels() : framebuffer != null ? framebuffer.getColorLevels() : 1;
+        if (desc != null) return desc.levels();
+        CgGpuTexture.Desc image = imageDesc();
+        return image != null ? image.mips() : 1;
     }
 
-    @Override
-    public int getTarget() {
-        CgTexture color = color();
-        return color == null ? 0 : color.getTarget();
-    }
-
-    @Override
-    public boolean isDeleted() {
-        return false;
-    }
-
-    /** Refused: a graph texture is the graph's. A requested one is released through its recording. */
-    @Override
-    public void delete() {
-        throw new UnsupportedOperationException("'" + name + "' belongs to the frame graph: release it through a recording");
+    /** An imported target's colour image, else its depth; null for any other. */
+    @Nullable
+    private CgGpuTexture.Desc imageDesc() {
+        if (target == null) return null;
+        CgTextureView view = target.color() != null ? target.color() : target.depth();
+        return view == null ? null : view.texture().desc();
     }
 
     @Override
     public String toString() {
-        return "CgGraphTexture(" + kind + " " + name + ")";
+        return "CgGraphTexture(" + (isCurrent() ? "current" : kind + " " + name) + ")";
     }
 
     /** One level of a graph texture, sampled alone: {@link CgGraphTexture#level}. */
@@ -446,6 +449,9 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
 
         private final CgGraphTexture texture;
         private final int level;
+        /** Its level alone, kept while the storage's texture is the same. */
+        @Nullable
+        private CgTextureView view;
 
         private Level(CgGraphTexture texture, int level) {
             this.texture = texture;
@@ -461,30 +467,11 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
         }
 
         @Override
-        public void bind(int unit) {
-            CgTexture color = texture.color();
-            if (color instanceof CgTexture2D flat) flat.bindLevel(unit, level);
-            else if (color != null) color.bind(unit);
-        }
-
-        @Override
-        @Nullable
-        public CgTextureSpec spec() {
-            CgTexture color = texture.color();
-            return color == null ? null : color.spec();
-        }
-
-        /** Its level alone, as {@link #bind} samples it. */
-        @Nullable
-        private CgTextureView view;
-
-        @Override
         @Nullable
         public CgTextureView rhiView() {
-            CgTexture color = texture.color();
-            CgTextureView whole = color == null ? null : color.rhiView();
+            CgTextureView whole = texture.rhiView();
             if (whole == null) return null;
-            if (!(color instanceof CgTexture2D)) return whole;
+            if (whole.texture().desc().kind() != CgGpuTexture.Kind.D2) return whole;
             if (view == null || view.texture() != whole.texture()) {
                 view = new CgTextureView(whole.texture(), level, 1, 0, whole.layers());
             }
@@ -492,8 +479,9 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
         }
 
         @Override
-        public int getId() {
-            return texture.getId();
+        @Nullable
+        public CgTextureSpec spec() {
+            return texture.spec();
         }
 
         @Override
@@ -504,22 +492,6 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
         @Override
         public int getHeight() {
             return Math.max(1, texture.getHeight() >> level);
-        }
-
-        @Override
-        public int getTarget() {
-            return texture.getTarget();
-        }
-
-        @Override
-        public boolean isDeleted() {
-            return false;
-        }
-
-        /** Refused, as for its texture. */
-        @Override
-        public void delete() {
-            texture.delete();
         }
 
         @Override
@@ -547,74 +519,40 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
             return slot;
         }
 
+        /** Its storage's slot, sampled; null outside its passes. Throws where the storage has no such slot. */
         @Nullable
-        private CgTexture color() {
-            CgFrameBuffer framebuffer = texture.framebuffer();
-            return framebuffer == null ? null : framebuffer.getColorTexture(slot);
-        }
-
-        /** Its texture to bind; throws where the storage has none, rather than leave the unit as it was. */
-        @Nullable
-        private CgTexture bound() {
-            if (texture.framebuffer() == null) return null;
-            CgTexture color = color();
-            if (color == null) throw new IllegalStateException(this + ": its storage has no colour texture in that slot");
-            return color;
-        }
-
-        @Override
-        public void bind(int unit) {
-            CgTexture color = bound();
-            if (color != null) color.bind(unit);
+        private CgTexture sampled() {
+            CgGraphStorage storage = texture.storage();
+            return storage == null ? null : storage.sampled(slot);
         }
 
         @Override
         @Nullable
         public CgTextureView rhiView() {
-            CgTexture color = color();
-            return color == null ? null : color.rhiView();
+            CgTexture sampled = sampled();
+            return sampled == null ? null : sampled.rhiView();
         }
 
         @Override
         @Nullable
         public CgTextureSpec spec() {
-            CgTexture color = color();
-            return color == null ? null : color.spec();
-        }
-
-        @Override
-        public int getId() {
-            CgTexture color = color();
-            return color == null ? 0 : color.getId();
+            CgTexture sampled = sampled();
+            return sampled == null ? null : sampled.spec();
         }
 
         @Override
         public int getWidth() {
-            CgTexture color = color();
-            return color == null ? texture.getWidth() : color.getWidth();
+            return texture.getWidth();
         }
 
         @Override
         public int getHeight() {
-            CgTexture color = color();
-            return color == null ? texture.getHeight() : color.getHeight();
+            return texture.getHeight();
         }
 
         @Override
-        public int getTarget() {
-            CgTexture color = color();
-            return color == null ? 0 : color.getTarget();
-        }
-
-        @Override
-        public boolean isDeleted() {
-            return false;
-        }
-
-        /** Refused, as for its texture. */
-        @Override
-        public void delete() {
-            texture.delete();
+        public int getLevels() {
+            return texture.getLevels();
         }
 
         @Override
@@ -626,11 +564,10 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
     /** The stencil of a graph texture, sampled: {@link CgGraphTexture#stencil}. */
     public static final class Stencil implements CgTexture {
 
-        /** Integers are never filtered: GL takes a linear filter over one as an incomplete texture. */
+        /** Integers are never filtered: a linear filter over one leaves the texture incomplete. */
         private static final int GL_NEAREST = 0x2600;
         private static final CgTextureSpec SPEC = CgTextureSpec.builder().type(CgTextureType.STENCIL8)
                 .minFilter(GL_NEAREST).magFilter(GL_NEAREST).build();
-        private static boolean loggedNoDevice;
 
         private final CgGraphTexture texture;
         @Nullable
@@ -645,21 +582,10 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
         }
 
         @Override
-        public void bind(int unit) {
-            CgBoundResources.texture(unit, this, -1);
-            if (rhiView() != null) return;   // the device samples the view itself
-            if (!loggedNoDevice) {
-                loggedNoDevice = true;
-                LogManager.getLogger("CgGraphTexture").warn("{}: no device, so no stencil view: it reads 0 until one is installed", texture);
-            }
-            if (CgFallbackTextures.ZERO_UINT != null) CgFallbackTextures.ZERO_UINT.bind(unit);
-        }
-
-        @Override
         @Nullable
         public CgTextureView rhiView() {
-            CgFrameBuffer storage = texture.framebuffer();
-            CgGpuTexture depth = storage == null ? null : storage.rhiDepth();
+            CgGraphStorage storage = texture.storage();
+            CgGpuTexture depth = storage == null ? null : storage.depth();
             if (depth == null) return null;
             if (view == null || view.texture() != depth) view = CgTextureView.stencil(depth);
             return view;
@@ -671,18 +597,6 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
         }
 
         @Override
-        public int getId() {
-            CgTexture depth = depth();
-            return depth == null ? 0 : depth.getId();
-        }
-
-        @Nullable
-        private CgTexture depth() {
-            CgFrameBuffer storage = texture.framebuffer();
-            return storage == null ? null : storage.getDepthTexture();
-        }
-
-        @Override
         public int getWidth() {
             return texture.getWidth();
         }
@@ -690,23 +604,6 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
         @Override
         public int getHeight() {
             return texture.getHeight();
-        }
-
-        @Override
-        public int getTarget() {
-            CgTexture depth = depth();
-            return depth == null ? 0 : depth.getTarget();
-        }
-
-        @Override
-        public boolean isDeleted() {
-            return false;
-        }
-
-        /** Refused, as for its texture. */
-        @Override
-        public void delete() {
-            texture.delete();
         }
 
         @Override

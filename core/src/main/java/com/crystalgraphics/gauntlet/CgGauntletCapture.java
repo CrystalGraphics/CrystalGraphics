@@ -1,5 +1,7 @@
 package com.crystalgraphics.gauntlet;
 
+import com.crystalgraphics.platform.rhi.resource.CgTextureView;
+import com.crystalgraphics.platform.rhi.CgExternalTarget;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -14,7 +16,6 @@ import javax.imageio.ImageIO;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.gl.buffer.CgReadback;
 import com.crystalgraphics.platform.io.CgAtomicFile;
 import com.crystalgraphics.render.stage.CgHostFrame;
@@ -49,7 +50,9 @@ public final class CgGauntletCapture {
     private static final AtomicInteger PENDING = new AtomicInteger();
     private static boolean installed;
     /** This frame's picture, as its stages last saw the host: render thread. */
-    private static int framebuffer, width, height;
+    private static int width, height;
+    /** The target the stages noted last: what a shot reads. */
+    private static CgExternalTarget target;
     private static boolean seen, gui;
 
     private CgGauntletCapture() {
@@ -118,7 +121,7 @@ public final class CgGauntletCapture {
     }
 
     private static void note(CgHostFrame host, boolean withGui) {
-        framebuffer = Math.max(host.mainFramebuffer(), 0);
+        target = host.target();
         width = host.width();
         height = host.height();
         gui |= withGui;
@@ -134,7 +137,9 @@ public final class CgGauntletCapture {
         if (!drawn || WANTED.isEmpty()) return;
         int w = width, h = height;
         for (Shot shot; (shot = WANTED.poll()) != null; ) {
-            CgReadback.pixels(framebuffer, 0, 0, w, h, CgTextureType.RGBA8, writer(shot, w, h, withGui));
+            CgTextureView color = target.color();
+            if (color == null) return;
+            CgReadback.texture(color.texture(), CgReadback.region(color, 0, 0, w, h), writer(shot, w, h, withGui));
         }
     }
 

@@ -6,8 +6,6 @@ import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.gl.buffer.CgReadback;
 import com.crystalgraphics.render.canvas.CgClipTable;
 import com.crystalgraphics.render.canvas.CgShapeTable;
-import com.crystalgraphics.gl.texture.CgTexture2D;
-import com.crystalgraphics.gl.texture.CgTexture3D;
 import com.crystalgraphics.platform.rhi.command.CgAccess;
 import com.crystalgraphics.render.CgFrameClock;
 import com.crystalgraphics.render.draw.CgBindingTable;
@@ -19,7 +17,6 @@ import com.crystalgraphics.render.draw.CgPrimitiveTable;
 import com.crystalgraphics.render.property.CgEffectTree;
 import com.crystalgraphics.render.property.CgSpatialTree;
 import com.crystalgraphics.util.CgBoxedInts;
-import com.crystalgraphics.util.CgBufferUtils;
 
 import javax.annotation.Nullable;
 import java.nio.ByteBuffer;
@@ -323,7 +320,7 @@ public final class CgRecording {
     public void copy(CgGraphTexture from, int x, int y, int w, int h, CgGraphTexture to, int tx, int ty, int tw, int th,
                      boolean linear) {
         requireOpen();
-        if (to.kind() == CgGraphTexture.Kind.CURRENT) {
+        if (to.isCurrent()) {
             throw new IllegalArgumentException("a copy into the current target: draw into it instead");
         }
         if (from.isVolume() || to.isVolume() || from.isArray() || to.isArray()) {
@@ -561,7 +558,7 @@ public final class CgRecording {
     public CgRequest readback(CgGraphTexture texture, int level, int x, int y, int z, int w, int h, int d,
                               CgReadback.Sink sink) {
         requireOpen();
-        if (texture.kind() == CgGraphTexture.Kind.CURRENT) {
+        if (texture.isCurrent()) {
             throw new IllegalArgumentException("the current target is no texture; read it with CgReadback.pixels");
         }
         region(texture, level, x, y, z, w, h, d, "a readback");
@@ -584,7 +581,7 @@ public final class CgRecording {
      *
      * <ul>
      *   <li>{@code data} holds {@code w * h * CgReadback.pixelBytes(type)} bytes, or it throws.</li>
-     *   <li>Written once when a frame executes again, as an {@link #upload} is.</li>
+     *   <li>Written once when a frame executes again.</li>
      * </ul>
      */
     public CgRequest update(CgGraphTexture texture, int level, int x, int y, int w, int h, ByteBuffer data) {
@@ -615,38 +612,22 @@ public final class CgRecording {
         }
         byte[] bytes = new byte[data.remaining()];
         data.duplicate().get(bytes);
-        int pixelFormat = type.glBaseFormat, pixelType = type.glType;
-        return upload(texture, target -> {
-            if (target.getColorTexture(0) instanceof CgTexture2D colour) {
-                colour.uploadRegion(level, x, y, w, h, texels(bytes), pixelFormat, pixelType);
-            } else if (target.getColorTexture(0) instanceof CgTexture3D volume) {
-                volume.uploadRegion(level, x, y, z, w, h, d, texels(bytes), pixelFormat, pixelType);
-            } else {
-                throw new IllegalStateException(texture + "'s attachment 0 is no texture the engine owns");
-            }
-        });
-    }
-
-    /** An update's bytes on the render thread, where every upload runs: one buffer serves them all. */
-    private static ByteBuffer texels;
-
-    private static ByteBuffer texels(byte[] bytes) {
-        if (texels == null || texels.capacity() < bytes.length) texels = CgBufferUtils.createByteBuffer(Math.max(bytes.length, 4096));
-        texels.clear();
-        texels.put(bytes).flip();
-        return texels;
+        CgRequest request = new CgRequest("update " + texture.name());
+        CgPass.Upload pass = new CgPass.Upload(texture, level, x, y, z, w, h, d, bytes, request);
+        add(pass);
+        write(pass, texture, CgAccess.COPY_WRITE);
+        return request;
     }
 
     /** The format of {@code texture}, null where unknown, after checking the box lies in level {@code level}. */
     @Nullable
     private static CgFrameBufferFormat region(CgGraphTexture texture, int level, int x, int y, int z, int w, int h, int d,
                                               String what) {
-        if (texture.kind() == CgGraphTexture.Kind.CURRENT) throw new IllegalArgumentException("the current target is no texture");
+        if (texture.isCurrent()) throw new IllegalArgumentException("the current target is no texture");
         if (level < 0 || level >= texture.getLevels()) {
             throw new IllegalArgumentException(texture + " has " + texture.getLevels() + " levels, not level " + level);
         }
-        CgFrameBufferFormat format = texture.desc() != null ? texture.desc().format()
-                : texture.framebuffer() != null ? texture.framebuffer().getFormat() : null;
+        CgFrameBufferFormat format = texture.desc() != null ? texture.desc().format() : null;
         if (format != null && (format.getColorSlot(0) == null || format.isColorRenderbuffer(0))) {
             throw new IllegalArgumentException(texture + " has no colour texture at attachment 0");
         }
@@ -657,16 +638,6 @@ public final class CgRecording {
                     + " in level " + level + " of " + texture + ", " + lw + "x" + lh + "x" + ld);
         }
         return format;
-    }
-
-    /** Writes into {@code target} on the render thread, before any later reader. */
-    public CgRequest upload(CgGraphTexture target, CgUpload upload) {
-        requireOpen();
-        CgRequest request = new CgRequest("upload " + target.name());
-        CgPass.Upload pass = new CgPass.Upload(target, upload, request);
-        add(pass);
-        write(pass, target, CgAccess.COPY_WRITE);
-        return request;
     }
 
     /**
@@ -681,9 +652,9 @@ public final class CgRecording {
         CgPass.Callback pass = new CgPass.Callback(name, target, body, request);
         add(pass);
         for (CgGraphTexture read : reads) read(pass, read, CgAccess.SAMPLED_READ);
-        if (target != null && target.drawsBesideCurrentDepth()) {
-            read(pass, CgGraphTexture.current(), CgAccess.SAMPLED_READ);
-            write(pass, CgGraphTexture.current(), CgAccess.COLOR_WRITE);
+        if (target != null && target.depthOf() != null) {
+            read(pass, target.depthOf(), CgAccess.SAMPLED_READ);
+            write(pass, target.depthOf(), CgAccess.COLOR_WRITE);
         }
         if (target != null) write(pass, target, CgAccess.COLOR_WRITE);
         return request;

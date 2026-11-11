@@ -1,5 +1,6 @@
 package com.crystalgraphics.vfx;
 
+import com.crystalgraphics.platform.rhi.CgExternalTarget;
 import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgMaterialDefinition;
@@ -959,11 +960,11 @@ public final class CgVfxSystem {
     }
 
     /**
-     * The GPU pools' particles drawn into {@code framebuffer} in the latest frame: a viewport's own, not the world's. For a
+     * The GPU pools' particles drawn into {@code target} in the latest frame: a viewport's own, not the world's. For a
      * readout, never a decision; a frame or two late, as {@link #particlesDrawn()}. Render thread.
      */
-    public static int particlesDrawn(int framebuffer) {
-        return CgVfxRange.visibleCount(framebuffer);
+    public static int particlesDrawn(CgExternalTarget target) {
+        return CgVfxRange.visibleCount(target);
     }
 
     /** Draws every playing effect into {@code world}, interpolated between the last two ticks. Render thread. */

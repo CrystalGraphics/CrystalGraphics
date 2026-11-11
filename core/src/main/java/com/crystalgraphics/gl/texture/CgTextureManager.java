@@ -1,6 +1,5 @@
 package com.crystalgraphics.gl.texture;
 
-import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.texture.CgTextureSpec;
 import com.crystalgraphics.mc.CgAssetReloader;
 import com.crystalgraphics.mc.CgReloadable;
@@ -26,7 +25,7 @@ import java.util.logging.Logger;
  *   <li>A key is the paths joined by {@code \0}. Each cached texture is found again by those paths when one of them
  *       changes ({@link CgAssetReloader}), and reloaded in place: references stay valid.</li>
  *   <li>A texture it makes loads at its first use, so naming one on a server costs nothing; one whose files will not
- *       load samples a stand-in ({@link CgTexture#isMissing()}).</li>
+ *       load samples a stand-in ({@link CgTextureAbstract#isMissing()}).</li>
  *   <li>{@link #freeAll()} is the context's teardown; {@link #reloadAll()} a resource reload.</li>
  * </ul>
  */
@@ -40,7 +39,7 @@ public final class CgTextureManager {
     static final String PATH_SEPARATOR = "\0";
 
     /** By key, then by spec. */
-    private final Map<String, Map<CgTextureSpec, CgTexture>> cache = new HashMap<>();
+    private final Map<String, Map<CgTextureSpec, CgTextureAbstract>> cache = new HashMap<>();
 
     /** The shared stand-in: never in {@link #cache}. */
     private CgTexture2D fallback;
@@ -52,9 +51,9 @@ public final class CgTextureManager {
     }
 
     /** The texture cached for {@code key} and {@code spec}, or null if there is none or it was deleted. */
-    public synchronized CgTexture get(String key, CgTextureSpec spec) {
-        Map<CgTextureSpec, CgTexture> bySpec = cache.get(key);
-        CgTexture t = bySpec != null ? bySpec.get(spec) : null;
+    public synchronized CgTextureAbstract get(String key, CgTextureSpec spec) {
+        Map<CgTextureSpec, CgTextureAbstract> bySpec = cache.get(key);
+        CgTextureAbstract t = bySpec != null ? bySpec.get(spec) : null;
         return t != null && !t.isDeleted() ? t : null;
     }
 
@@ -62,10 +61,10 @@ public final class CgTextureManager {
      * The texture cached for {@code key} and {@code spec}, made by {@code maker} the first time: once, and kept. A
      * maker returning null or throwing is logged and answers the {@link #getFallback() fallback}, uncached.
      */
-    public synchronized CgTexture getOrCreate(String key, CgTextureSpec spec, Supplier<CgTexture> maker) {
-        CgTexture cached = get(key, spec);
+    public synchronized CgTextureAbstract getOrCreate(String key, CgTextureSpec spec, Supplier<CgTextureAbstract> maker) {
+        CgTextureAbstract cached = get(key, spec);
         if (cached != null) return cached;
-        CgTexture texture;
+        CgTextureAbstract texture;
         try {
             texture = maker.get();
         } catch (RuntimeException e) {
@@ -86,7 +85,7 @@ public final class CgTextureManager {
     /** {@code path} sampled as {@code spec}, loaded at its first use; the {@link #getFallback() fallback} for no path. */
     public CgTexture2D getOrCreate(String path, CgTextureSpec spec) {
         if (path == null || path.isEmpty()) return getFallback();
-        CgTexture result = getOrCreate(path, spec, () -> CgTexture2D.unloaded(path, spec));
+        CgTextureAbstract result = getOrCreate(path, spec, () -> CgTexture2D.unloaded(path, spec));
         return result instanceof CgTexture2D ? (CgTexture2D) result : getFallback();
     }
 
@@ -98,15 +97,15 @@ public final class CgTextureManager {
 
     /** Reloads every cached texture in place: a resource reload. Each keeps what it had where a file will not load. */
     public synchronized void reloadAll() {
-        for (Map<CgTextureSpec, CgTexture> bySpec : cache.values()) {
-            for (CgTexture texture : bySpec.values()) texture.reload();
+        for (Map<CgTextureSpec, CgTextureAbstract> bySpec : cache.values()) {
+            for (CgTextureAbstract texture : bySpec.values()) texture.reload();
         }
     }
 
     /** Deletes every cached texture and the fallback: the context's teardown. */
     public synchronized void freeAll() {
-        for (Map<CgTextureSpec, CgTexture> bySpec : cache.values()) {
-            for (CgTexture texture : bySpec.values()) {
+        for (Map<CgTextureSpec, CgTextureAbstract> bySpec : cache.values()) {
+            for (CgTextureAbstract texture : bySpec.values()) {
                 if (texture instanceof CgReloadable) CgAssetReloader.untrack((CgReloadable) texture);
                 texture.delete();
             }

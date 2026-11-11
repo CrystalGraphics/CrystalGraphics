@@ -1,9 +1,9 @@
 package com.crystalgraphics.render.stage;
 
+import com.crystalgraphics.platform.rhi.CgExternalTarget;
 import com.crystalgraphics.lifecycle.CgGraphicsLifecycle;
 import com.crystalgraphics.compute.ops.CgGpuOps;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
-import com.crystalgraphics.gl.framebuffer.CgFrameBuffer;
 import com.crystalgraphics.render.CgFrameClock;
 import com.crystalgraphics.render.draw.CgOrder;
 import com.crystalgraphics.render.draw.CgPassConstants;
@@ -74,7 +74,7 @@ public final class CgStageFrame {
     private boolean rehearsing;
     /** The frame's pyramid and the host whose target it was built from (L1: one a frame, every firing's). */
     private static final CgFrameScope.Key<CgGraphTexture> PYRAMID = new CgFrameScope.Key<>("stage.pyramid");
-    private static final CgFrameScope.Key<Integer> PYRAMID_HOST = new CgFrameScope.Key<>("stage.pyramid.host");
+    private static final CgFrameScope.Key<CgExternalTarget> PYRAMID_HOST = new CgFrameScope.Key<>("stage.pyramid.host");
     /** Pyramids built, and firings asking for one: what each built before the frame shared one. */
     private static final int PYRAMIDS = CgTrace.name("stage.pyramids-built"), PYRAMID_ASKS = CgTrace.name("stage.pyramid-asks");
     @Nullable
@@ -103,7 +103,8 @@ public final class CgStageFrame {
     private final Matrix4f[] lastViewProjection = new Matrix4f[ORDINALS];
     private final double[] lastOrigin = new double[ORDINALS * 3];
     private final float[] lastLens = new float[ORDINALS * 3];
-    private final int[] lastFramebuffer = new int[ORDINALS], lastWidth = new int[ORDINALS], lastHeight = new int[ORDINALS];
+    private final CgExternalTarget[] lastTarget = new CgExternalTarget[ORDINALS];
+    private final int[] lastWidth = new int[ORDINALS], lastHeight = new int[ORDINALS];
     private final long[] lastFrame = new long[ORDINALS];
     private long firingFrame = Long.MIN_VALUE;
     private int ordinal;
@@ -231,13 +232,13 @@ public final class CgStageFrame {
             if (pyramid == null || !desc.equals(pyramid.desc())) pyramid = CgGraphTexture.transientTexture("stage.pyramid", desc);
         } else {
             CgGraphTexture shared = CgFrameScope.get(PYRAMID);
-            Integer from = CgFrameScope.get(PYRAMID_HOST);   // the host's target it was built from: its framebuffer
-            if (shared != null && from != null && from == host.mainFramebuffer() && desc.equals(shared.desc())) {
+            CgExternalTarget from = CgFrameScope.get(PYRAMID_HOST);   // the host's target it was built from
+            if (shared != null && from != null && from == host.target() && desc.equals(shared.desc())) {
                 return pyramid = shared;   // built by an earlier firing of this frame
             }
             pyramid = CgFrameScope.texture(PYRAMID, desc, recording);
             CgFrameScope.put(PYRAMID, pyramid);
-            CgFrameScope.put(PYRAMID_HOST, host.mainFramebuffer());
+            CgFrameScope.put(PYRAMID_HOST, host.target());
         }
         CgGpuOps.depthPyramid(recording, target(), constants(), pyramid);
         CgTrace.add(CgChannels.GL, PYRAMIDS, 1);
@@ -425,7 +426,7 @@ public final class CgStageFrame {
         int at = ordinal;
         double dx = view.x() - lastOrigin[at * 3], dy = view.y() - lastOrigin[at * 3 + 1], dz = view.z() - lastOrigin[at * 3 + 2];
         Matrix4f last = lastViewProjection[at];
-        if (lastFrame[at] == firingFrame - 1 && lastFramebuffer[at] == host.mainFramebuffer()
+        if (lastFrame[at] == firingFrame - 1 && lastTarget[at] == host.target()
                 && lastWidth[at] == host.width() && lastHeight[at] == host.height()
                 && dx * dx + dy * dy + dz * dz < TELEPORT * TELEPORT && sameLens(at, view)) {
             // Last frame's view-projection of this frame's camera-relative points: moved by the camera's step.
@@ -439,7 +440,7 @@ public final class CgStageFrame {
         lastOrigin[at * 3] = view.x();
         lastOrigin[at * 3 + 1] = view.y();
         lastOrigin[at * 3 + 2] = view.z();
-        lastFramebuffer[at] = host.mainFramebuffer();
+        lastTarget[at] = host.target();
         lastWidth[at] = host.width();
         lastHeight[at] = host.height();
         lastFrame[at] = firingFrame;
@@ -462,7 +463,7 @@ public final class CgStageFrame {
     }
 
     /** As {@link #execute()}, with {@code target} the current target in place of the host's: a rehearsal's firing. */
-    void executeInto(CgFrameBuffer target) {
+    void executeInto(CgExternalTarget target) {
         try (CgExecutor.Into ignored = CgExecutor.into(target)) {
             execute();
         }

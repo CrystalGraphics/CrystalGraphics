@@ -23,8 +23,9 @@ CgRenderStage.HUD.register(0, frame -> frame.callback("mymod:badge", () -> drawB
 - `fireOverlay(width, height, scale, mainFramebuffer)` is what a host calls: it fills the camera and fires. The
   camera is the window's device pixels, as Unreal's canvas is; `frame.guiScaledCanvas()` draws in the host GUI's pixels
   instead (`CANVAS.md` § 6), and `frame.host().guiScale()` is the scale itself.
-- `fireInto(target)` fires into a framebuffer of the caller's rather than the host's bound target, with the host
-  frame filled for it first: a second view of the world, as an editor's viewport draws one.
+- `fireInto(target)` fires into a target of the caller's rather than the host's (a framebuffer's `external()`), with
+  the host frame filled for it first (`host().set(tick, w, h, target)`): a second view of the world, as an editor's
+  viewport draws one.
 
 ```java
 // Drawing at a stage

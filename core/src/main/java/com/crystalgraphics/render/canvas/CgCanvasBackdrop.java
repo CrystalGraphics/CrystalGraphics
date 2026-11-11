@@ -1,6 +1,5 @@
 package com.crystalgraphics.render.canvas;
 
-import com.crystalgraphics.gl.framebuffer.CgFrameBuffer;
 import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.compute.ops.CgGpuOps;
@@ -251,9 +250,7 @@ public final class CgCanvasBackdrop {
 
     /** A target's colour format: the current target's is RGBA8. */
     private static CgTextureType formatOf(CgGraphTexture texture) {
-        CgTextureDesc desc = texture.desc();
-        CgFrameBuffer framebuffer = desc == null ? texture.framebuffer() : null;
-        CgFrameBufferFormat format = desc != null ? desc.format() : framebuffer != null ? framebuffer.getFormat() : null;
+        CgFrameBufferFormat format = texture.format();
         CgTextureType type = format == null ? null : format.getColorSlot(0);
         return type == null ? CgTextureType.RGBA8 : type;
     }

@@ -107,13 +107,21 @@ public abstract sealed class CgPass permits CgRasterPass, CgComputePass, CgPass.
         }
     }
 
-    /** Bytes into a texture. */
+    /** Bytes into a box of a texture's colour 0, in its type's layout ({@link CgRecording#update}). */
     static final class Upload extends CgPass {
-        final CgUpload writer;
+        final int level, x, y, z, w, h, d;
+        final byte[] bytes;
 
-        Upload(CgGraphTexture target, CgUpload writer, CgRequest request) {
-            super("upload " + target.name(), target, request);
-            this.writer = writer;
+        Upload(CgGraphTexture target, int level, int x, int y, int z, int w, int h, int d, byte[] bytes, CgRequest request) {
+            super("update " + target.name(), target, request);
+            this.level = level;
+            this.x = x;
+            this.y = y;
+            this.z = z;
+            this.w = w;
+            this.h = h;
+            this.d = d;
+            this.bytes = bytes;
         }
     }
 

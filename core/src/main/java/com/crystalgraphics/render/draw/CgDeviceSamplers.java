@@ -1,8 +1,8 @@
 package com.crystalgraphics.render.draw;
 
+import com.crystalgraphics.api.texture.CgTexture;
 import java.util.IdentityHashMap;
 import com.crystalgraphics.api.texture.CgSampler;
-import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.texture.CgTextureSpec;
 import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.rhi.format.CgCompare;

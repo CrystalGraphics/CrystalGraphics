@@ -133,8 +133,7 @@ final class CgGradeLayerPass {
         }
         for (int k = 0; k < CgGradeLayers.MAX; k++) gradeLayers.looks[k] = null;
         if (!any) return;
-        int fb = stage.host().mainFramebuffer();
-        if (!CgGraphTexture.takesCurrentDepth(fb)) {
+        if (!stage.host().target().lendsAttachments()) {
             // A layer is tested against the scene's depth: a host lending none keeps one look
             if (!gradeDepthWarned) CgWorldRenderer.LOGGER.warn("The host's framebuffer lends no depth to share: graded draws keep the frame's look");
             gradeDepthWarned = true;
@@ -147,13 +146,15 @@ final class CgGradeLayerPass {
         for (int k = 0; k < CgGradeLayers.MAX; k++) {
             if (!gradeSeen[k]) continue;
             if (gradeTargets[k] == null || gradeSizes[k * 2] != w || gradeSizes[k * 2 + 1] != h) {
-                gradeTargets[k] = CgGraphTexture.besideCurrentDepth("cg_grade_layer" + k, new CgTextureDesc(w, h, GRADE_FORMAT));
-                gradeApart[k] = CgGraphTexture.besideCurrentDepth("cg_grade_apart" + k, new CgTextureDesc(w, h, GRADE_FORMAT));
+                gradeTargets[k] = CgGraphTexture.transientTexture("cg_grade_layer" + k, new CgTextureDesc(w, h, GRADE_FORMAT),
+                        CgGraphTexture.current());
+                gradeApart[k] = CgGraphTexture.transientTexture("cg_grade_apart" + k, new CgTextureDesc(w, h, GRADE_FORMAT),
+                        CgGraphTexture.current());
                 gradeSizes[k * 2] = w;
                 gradeSizes[k * 2 + 1] = h;
             }
         }
-        if (!CgExecutor.drawsOnDevice() || CgRasterPass.refusesAttachment(fb)) return;
+        if (!CgExecutor.drawsOnDevice()) return;
         // The slot whose transparent draws the passes can carry most of
         int best = 0;
         for (int k = 0; k < CgGradeLayers.MAX; k++) {
@@ -321,7 +322,7 @@ final class CgGradeLayerPass {
      * whose blend multiplies has no form of light and coverage and stays in the scene, warned once.
      */
     int separateDraws(CgStageFrame stage) {
-        if (!stage.resources().has(CgFrameKeys.SCENE) || !CgGraphTexture.takesCurrentDepth(stage.host().mainFramebuffer())) return 0;
+        if (!stage.resources().has(CgFrameKeys.SCENE) || !stage.host().target().lendsAttachments()) return 0;
         int moved = 0;
         for (int i = 0; i < draws.count; i++) {
             if (draws.phase[i] != CgWorldDraws.AFTER || !draws.materials[i].state().separateTranslucency()) continue;
@@ -351,7 +352,8 @@ final class CgGradeLayerPass {
     void recordSeparate(CgStageFrame stage, CgRecording recording, CgHostView view, CgPassConstants constants) {
         int w = Math.max(1, Math.round(world.targetWidth)), h = Math.max(1, Math.round(world.targetHeight));
         if (separateTarget == null || separateWidth != w || separateHeight != h) {
-            separateTarget = CgGraphTexture.besideCurrentDepth("cg_separate_translucency", new CgTextureDesc(w, h, GRADE_FORMAT));
+            separateTarget = CgGraphTexture.transientTexture("cg_separate_translucency", new CgTextureDesc(w, h, GRADE_FORMAT),
+                    CgGraphTexture.current());
             separateWidth = w;
             separateHeight = h;
         }

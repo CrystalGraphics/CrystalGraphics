@@ -1,6 +1,5 @@
 package com.crystalgraphics.render.graph;
 
-import com.crystalgraphics.platform.gl.driver.GLC;
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.state.CgRenderState;
@@ -129,8 +128,8 @@ public final class CgRasterPass extends CgPass {
     /** Makes this pass a new one into {@code target}: its recording's, after a reset, so a steady frame allocates none. */
     void reuse(String name, CgGraphTexture target, int level, int layer, CgLoad load, CgPassConstants constants,
                @Nullable CgRenderState state, CgOrder order) {
-        if (target.drawsBesideCurrentDepth() && (load.mask() & GLC.GL_DEPTH_BUFFER_BIT) != 0) {
-            throw new IllegalArgumentException(name + " would clear the host's depth: " + target + " draws beside it");
+        if (target.depthOf() != null && (load.clearsDepth() || load.clearsStencil())) {
+            throw new IllegalArgumentException(name + " would clear " + target.depthOf() + "'s depth: " + target + " draws with it");
         }
         this.name = name;
         this.target = target;
@@ -140,7 +139,7 @@ public final class CgRasterPass extends CgPass {
         this.load = load;
         constants.write(this.constants, 0);
         // CG_ENCODED_TARGET: the host's own colour is sRGB-encoded, every texture of ours holds what is written
-        this.constants[CgPassConstants.ENCODED_TARGET] = target.kind() == CgGraphTexture.Kind.CURRENT ? 1f : 0f;
+        this.constants[CgPassConstants.ENCODED_TARGET] = target.isCurrent() ? 1f : 0f;
         this.state = state;
         this.order = order;
         gpuZone = -1;
@@ -464,18 +463,17 @@ public final class CgRasterPass extends CgPass {
      * }</pre>
      *
      * <ul>
-     *   <li>{@link CgGraphTexture#current()} is the framebuffer and viewport bound when the execution began.</li>
-     *   <li>Throws here where {@code from}'s format has no depth, and at execution where the current target has none.</li>
+     *   <li>{@link CgGraphTexture#current()} is the target the execution was opened into.</li>
+     *   <li>A texture drawn with another's depth ({@link CgGraphTexture#depthOf()}) reads that depth.</li>
+     *   <li>Throws here where {@code from}'s format has no depth, and at execution where an external target has none.</li>
      *   <li>Give the pass the host's depth convention ({@code CgStageFrame.defaults}), or eye depths disagree.</li>
      * </ul>
      */
     public CgRasterPass sceneDepth(int unit, CgGraphTexture from) {
         if (ended) throw new IllegalStateException(this + " has ended");
         if (from == target) return sceneDepth(unit);
-        CgFrameBufferFormat format = from.desc() != null ? from.desc().format()
-                : from.framebuffer() != null ? from.framebuffer().getFormat() : null;
-        if (from.kind() != CgGraphTexture.Kind.CURRENT && !from.drawsBesideCurrentDepth()
-                && (format == null || !format.hasDepth())) {
+        CgFrameBufferFormat format = from.desc() != null ? from.desc().format() : null;
+        if (from.depthOf() == null && format != null && !format.hasDepth()) {
             throw new IllegalArgumentException(this + " reads the depth of " + from + ", which has none");
         }
         depthFrom = from;
@@ -495,7 +493,7 @@ public final class CgRasterPass extends CgPass {
      * }</pre>
      *
      * <ul>
-     *   <li>The copy has {@code from}'s colour format: RGBA8 for the current target.</li>
+     *   <li>The copy has {@code from}'s colour format.</li>
      *   <li>Not {@code target} itself: that is {@link #sceneColor(int)}.</li>
      * </ul>
      */
@@ -576,8 +574,8 @@ public final class CgRasterPass extends CgPass {
      *
      * <ul>
      *   <li>{@code texture} has the target's size, one colour slot and no depth; the target is level 0 and layer 0.</li>
-     *   <li>Beside the current target the executor makes a framebuffer of the host's colour and depth and
-     *       {@code texture}, so the host's own framebuffer is never changed. Framebuffer 0 takes none: it throws.</li>
+     *   <li>Beside an external target, the target must lend its attachments
+     *       ({@code CgExternalTarget.lendsAttachments()}): the window's lends none, and throws.</li>
      *   <li>One blend serves both slots below GL 4.0: what a pipeline writes at location 1 must suit the pass's.</li>
      * </ul>
      */
@@ -593,12 +591,11 @@ public final class CgRasterPass extends CgPass {
 
     /**
      * As {@link #attachment}, for an optimisation with a fallback of its own: where the target takes no second
-     * attachment (framebuffer 0, multisampled, of another size, a colour attachment that is no 2D texture or
-     * renderbuffer), the pass draws into the target alone, what its draws write at location 1 is lost, it says why
-     * once in the log, and {@link #refusesAttachment} answers true for that framebuffer from then on.
+     * attachment (an external one lending none, or one of another size), the pass draws into the target alone, what its
+     * draws write at location 1 is lost, and it says why once in the log.
      *
      * <pre>{@code
-     * if (!CgRasterPass.refusesAttachment(stage.host().mainFramebuffer())) pass.attachmentIfTaken(emission);
+     * if (stage.host().target().lendsAttachments()) pass.attachmentIfTaken(emission);
      * }</pre>
      */
     public CgRasterPass attachmentIfTaken(CgGraphTexture texture) {
@@ -609,11 +606,6 @@ public final class CgRasterPass extends CgPass {
 
     boolean attachmentOptional() {
         return attachmentOptional;
-    }
-
-    /** Whether framebuffer {@code framebuffer} refused a second attachment this context ({@link #attachmentIfTaken}). */
-    public static boolean refusesAttachment(int framebuffer) {
-        return CgExecutor.refusedHost(framebuffer);
     }
 
     /** Its second colour attachment ({@link #attachment}), or null. */
@@ -633,10 +625,10 @@ public final class CgRasterPass extends CgPass {
         if (ended) throw new IllegalStateException(this + " has already ended");
         recording.requireOpen();
         ended = true;
-        if (target.drawsBesideCurrentDepth()) {
-            // It tests and writes the host's depth: ordered after what wrote it, before what reads it.
-            recording.read(this, CgGraphTexture.current(), CgAccess.SAMPLED_READ);
-            recording.write(this, CgGraphTexture.current(), CgAccess.COLOR_WRITE);
+        if (target.depthOf() != null) {
+            // It tests and writes another's depth: ordered after what wrote it, before what reads it.
+            recording.read(this, target.depthOf(), CgAccess.SAMPLED_READ);
+            recording.write(this, target.depthOf(), CgAccess.COLOR_WRITE);
         }
         recording.write(this, target, CgAccess.COLOR_WRITE);
         if (attachment != null) recording.write(this, attachment, CgAccess.COLOR_WRITE);

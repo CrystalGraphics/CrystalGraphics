@@ -1,12 +1,13 @@
 package com.crystalgraphics.demo;
 
+import com.crystalgraphics.platform.rhi.resource.CgTextureView;
+import com.crystalgraphics.platform.rhi.CgExternalTarget;
 import com.crystalgraphics.loading.CgLoadingScreen;
 import com.crystalgraphics.api.font.CgFont;
 import com.crystalgraphics.api.font.CgDefaultFont;
 import com.crystalgraphics.api.text.CgTextLayout;
 import com.crystalgraphics.text.style.CgTextLayer;
 import com.crystalgraphics.text.style.CgTextStyle;
-import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.collision.CgCollisionWorld;
 import com.crystalgraphics.demo.collision.CgCollisionDemo;
 import com.crystalgraphics.frame.CgTickGroup;
@@ -214,7 +215,7 @@ public final class CgRenderDemo {
 
     /** The transparent stage's frame, for the capture callback, which runs inside that firing. */
     private CgHostFrame captured;
-    private final Runnable capture = () -> capture(captured.mainFramebuffer(), captured.width(), captured.height());
+    private final Runnable capture = () -> capture(captured.target(), captured.width(), captured.height());
 
     // The HUD: HUDRenderer's lines and look, 14 px where the window's shorter side is 600 pixels, in proportion above.
     private static final int HUD_PX = 14;
@@ -1033,8 +1034,10 @@ public final class CgRenderDemo {
      * The host's target as it stands after the transparent stage, written once the GPU has copied it, frames later: a
      * hosted Vulkan device refuses a read that waits.
      */
-    private static void capture(int framebuffer, int w, int h) {
-        CgReadback.pixels(Math.max(framebuffer, 0), 0, 0, w, h, CgTextureType.RGBA8, pixels -> write(pixels, w, h));
+    private static void capture(CgExternalTarget target, int w, int h) {
+        CgTextureView color = target.color();
+        if (color == null) return;
+        CgReadback.texture(color.texture(), CgReadback.region(color, 0, 0, w, h), pixels -> write(pixels, w, h));
     }
 
     private static void write(ByteBuffer pixels, int w, int h) {

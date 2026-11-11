@@ -1,9 +1,7 @@
 package com.crystalgraphics.vfx.particle.gpu.sim;
 
-import com.crystalgraphics.platform.gl.driver.GLC;
+import com.crystalgraphics.gl.texture.CgTexture3D;
 import com.crystalgraphics.api.texture.CgTexture;
-import com.crystalgraphics.render.graph.CgGraphTexture;
-import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.CgVfxModule;
 import com.crystalgraphics.vfx.particle.CgVfxModuleTypes;
 import com.crystalgraphics.vfx.particle.CgVfxLifeBind;
@@ -35,7 +33,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.WeakHashMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 
@@ -256,7 +253,7 @@ public final class CgVfxShape {
             for (int t = 0; t < given.length; t++) {
                 CgTexture texture = given[t];
                 if (texture == null) throw new IllegalArgumentException(emitter.name() + ": fx_" + kind + "'s texture " + t + " is null");
-                volumes[i][t] = texture instanceof CgGraphTexture graph ? graph.isVolume() : texture.getTarget() == GLC.GL_TEXTURE_3D;
+                volumes[i][t] = texture instanceof CgTexture3D;
                 key.append(t == 0 ? '#' : ',').append(volumes[i][t] ? "3d" : "2d");
             }
         }

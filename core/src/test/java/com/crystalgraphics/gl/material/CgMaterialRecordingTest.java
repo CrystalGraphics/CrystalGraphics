@@ -116,7 +116,7 @@ public class CgMaterialRecordingTest {
         int id = material.captureBindings(table);
         assertEquals(1, table.textures(id));
         assertEquals("the unit is the declaration index, whatever the caller passed", 1, table.textureUnit(id, 0));
-        assertEquals(7, table.texture(id, 0).getId());
+        assertEquals(7, ((CgTextureAbstract) table.texture(id, 0)).getId());
 
         material.applyProperties(p -> p.sampler("_SharpTex", 1, other));
         assertNotEquals(id, material.captureBindings(table));

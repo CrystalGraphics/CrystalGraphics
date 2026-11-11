@@ -1,9 +1,11 @@
 package com.crystalgraphics.render.draw;
 
+import com.crystalgraphics.gl.texture.CgTextureAbstract;
+import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.platform.rhi.CgDeviceNames;
 import com.crystalgraphics.api.texture.CgSampler;
-import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.platform.rhi.resource.CgGpuBuffer;
+import com.crystalgraphics.platform.rhi.resource.CgTextureView;
 import com.crystalgraphics.render.shader.CgBindingModel;
 
 import javax.annotation.Nullable;
@@ -34,18 +36,35 @@ public final class CgBoundResources {
 
     private static final CgTexture[] TEXTURE = new CgTexture[SETS * BINDINGS];
     private static final int[] LEVEL = new int[SETS * BINDINGS];
+    /** The view each texture resolved to when bound: a graph texture or a copy is one object over storage that moves. */
+    private static final CgTextureView[] VIEW = new CgTextureView[SETS * BINDINGS];
     private static final CgSampler[] SAMPLER = new CgSampler[SETS * BINDINGS];
     private static final int[] VERSION = new int[SETS];
 
     private CgBoundResources() {}
 
-    /** {@code texture} bound at engine unit {@code unit}: level {@code level} alone, or every level for -1. */
+    /**
+     * Binds {@code texture} at {@code unit}: an engine texture as it binds itself (loading it first), any other (a graph
+     * texture's, a target copy's) as its storage stands now.
+     */
+    public static void bind(int unit, CgTexture texture) {
+        if (texture instanceof CgTextureAbstract engine) engine.bind(unit);
+        else texture(unit, texture, -1);
+    }
+
+    /**
+     * {@code texture} bound at engine unit {@code unit}: level {@code level} alone, or every level for -1. The same object
+     * resolving to another view since (a graph texture given new storage) is a new binding.
+     */
     public static void texture(int unit, CgTexture texture, int level) {
         if (!recording) return;
         int i = index(CgBindingModel.ofTexture(unit));
-        if (i < 0 || TEXTURE[i] == texture && LEVEL[i] == level) return;
+        if (i < 0) return;
+        CgTextureView view = texture == null ? null : texture.rhiView();
+        if (TEXTURE[i] == texture && LEVEL[i] == level && VIEW[i] == view) return;
         TEXTURE[i] = texture;
         LEVEL[i] = level;
+        VIEW[i] = view;
         VERSION[i / BINDINGS]++;
     }
 
@@ -63,6 +82,7 @@ public final class CgBoundResources {
         if (set >= SETS) return;
         for (int b = 0; b < BINDINGS; b++) {
             TEXTURE[set * BINDINGS + b] = null;
+            VIEW[set * BINDINGS + b] = null;
             SAMPLER[set * BINDINGS + b] = null;
         }
         VERSION[set]++;

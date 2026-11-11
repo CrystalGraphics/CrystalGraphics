@@ -1,9 +1,6 @@
 package com.crystalgraphics.render.graph;
 
-import com.crystalgraphics.platform.rhi.CgHostImports;
 import com.crystalgraphics.platform.rhi.CgDeviceNames;
-import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
-import com.crystalgraphics.gl.framebuffer.CgFrameBuffer;
 import com.crystalgraphics.platform.rhi.command.CgAccess;
 import com.crystalgraphics.platform.rhi.CgDeviceSection;
 import com.crystalgraphics.platform.rhi.CgRHI;
@@ -22,7 +19,7 @@ import java.util.Arrays;
  * barriers.begin();
  * barriers.buffer(name, from, to);
  * barriers.texture(name, image, level, 1, layer, 1, from, to);
- * barriers.framebuffer(fbo, from, to);
+ * barriers.storage(storage, from, to);   // its textures, whole
  * barriers.end(compute);            // or int split = barriers.endSplit(compute), then barriers.split(split, compute)
  * }</pre>
  *
@@ -30,14 +27,13 @@ import java.util.Arrays;
  *   <li>Batches nest; the outermost end records. A barrier outside any batch is a batch of its own.</li>
  *   <li>On a device it records inside the open compute pass where there is one, else in a device section of its own:
  *       never later, since work between two passes may depend on it.</li>
- *   <li>A framebuffer the device cannot name images for (GL's) is a memory barrier of its accesses.</li>
  *   <li>Render thread.</li>
  * </ul>
  */
 final class CgGraphBarriers {
 
     private CgTransition batch = new CgTransition();
-    private int depth, memoryFrom, memoryTo;
+    private int depth;
     private CgTransition[] splits = new CgTransition[8];
     private final ArrayDeque<CgTransition> spare = new ArrayDeque<>();
 
@@ -45,7 +41,6 @@ final class CgGraphBarriers {
     void begin() {
         if (depth++ > 0) return;
         batch.clear();
-        memoryFrom = memoryTo = 0;
     }
 
     void buffer(int name, int from, int to) {
@@ -63,32 +58,20 @@ final class CgGraphBarriers {
         if (alone) end(false);
     }
 
-    /** Framebuffer {@code fbo}'s attachments, 0 the window's: an owned one's textures, else the host's through the imports. */
-    void framebuffer(int fbo, int from, int to) {
+    /**
+     * Every texture of {@code storage}, drawn to or not: colour at the access less a read-only depth's, depth at its
+     * depth form. An attach-only image stays in its attachment layout for any read but a copy.
+     */
+    void storage(CgGraphStorage storage, int from, int to) {
         boolean alone = depth == 0;
         if (alone) begin();
-        CgFrameBuffer ours = CgFrameBuffer.owned(fbo);
-        if (ours != null) {
-            ownedMoves(ours, from, to);
-        } else if (!CgHostImports.get().framebufferBarrier(fbo, from, to, batch)) {
-            memoryFrom |= from;
-            memoryTo |= to;
-        }
-        if (alone) end(false);
-    }
-
-    /**
-     * Every attachment of {@code fbo}, drawn to or not: colour at the access less a read-only depth's, depth at its depth
-     * form. An attach-only image stays in its attachment layout for any read but a copy.
-     */
-    private void ownedMoves(CgFrameBuffer fbo, int from, int to) {
-        CgFrameBufferFormat format = fbo.getFormat();
-        for (int slot : format.getActiveColorSlotIds()) {
-            CgGpuTexture t = fbo.rhiColor(slot);
+        for (int slot = 0; slot < storage.colorSlots(); slot++) {
+            CgGpuTexture t = storage.color(slot);
             if (t != null) whole(t, colorAccess(t, from), colorAccess(t, to));
         }
-        CgGpuTexture d = fbo.rhiDepth();
+        CgGpuTexture d = storage.depth();
         if (d != null) whole(d, depthAccess(d, from), depthAccess(d, to));
+        if (alone) end(false);
     }
 
     private void whole(CgGpuTexture t, int from, int to) {
@@ -115,12 +98,10 @@ final class CgGraphBarriers {
     /** Closes a batch, recorded whole at the outermost; {@code compute} the open compute pass, if any. */
     void end(boolean compute) {
         if (--depth > 0) return;
-        if (batch.count() == 0 && memoryFrom == 0) return;
+        if (batch.count() == 0) return;
         boolean section = enter(compute);
         try {
-            CgCommandList list = CgRHI.get().encoder();
-            if (memoryFrom != 0) list.memoryBarrier(memoryFrom, memoryTo);
-            if (batch.count() > 0) list.transition(batch);
+            CgRHI.get().encoder().transition(batch);
         } finally {
             leave(section);
         }
@@ -129,17 +110,15 @@ final class CgGraphBarriers {
 
     /**
      * Closes the outermost batch as the first half of a split transition; answers its id for {@link #split}, 0 when it
-     * held nothing. A memory barrier has no halves: recorded whole here.
+     * held nothing.
      */
     int endSplit(boolean compute) {
         if (--depth > 0) return 0;
-        if (batch.count() == 0 && memoryFrom == 0) return 0;
+        if (batch.count() == 0) return 0;
         int id = 0;
         boolean section = enter(compute);
         try {
             CgCommandList list = CgRHI.get().encoder();
-            if (memoryFrom != 0) list.memoryBarrier(memoryFrom, memoryTo);
-            if (batch.count() == 0) return 0;
             while (id < splits.length && splits[id] != null) id++;
             if (id == splits.length) splits = Arrays.copyOf(splits, id * 2);
             splits[id] = batch;

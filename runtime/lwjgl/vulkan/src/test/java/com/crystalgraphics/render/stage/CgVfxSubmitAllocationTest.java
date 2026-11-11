@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.stage;
 
+import com.crystalgraphics.platform.rhi.CgExternalTarget;
 import com.crystalgraphics.render.world.CgPipelinePrecache;
 import com.crystalgraphics.render.graph.CgExecutor;
 import com.crystalgraphics.api.CgBindingPoints;
@@ -130,7 +131,7 @@ public class CgVfxSubmitAllocationTest {
             clock[0] += 1.0 / 60.0;
             vfx.update(clock[0]);
             vfx.submit(world);
-            try (CgExecutor.Into ignored = CgExecutor.into(0, 64, 64)) {   // the null device's surface
+            try (CgExecutor.Into ignored = CgExecutor.into(CgExternalTarget.host(0, 64, 64))) {   // the null device's surface
                 for (CgRenderStage stage : WORLD) {
                     stage.host().set(0f, 64, 64, 0).view().set(0, 0, 0, view, projection);
                     stage.recordAndExecute();   // fire() less the host section and the lifecycle, which want a platform
@@ -191,7 +192,7 @@ public class CgVfxSubmitAllocationTest {
             clock[0] += 1.0 / 60.0;
             vfx.update(clock[0]);
             vfx.submit(world);
-            try (CgExecutor.Into ignored = CgExecutor.into(0, 64, 64)) {
+            try (CgExecutor.Into ignored = CgExecutor.into(CgExternalTarget.host(0, 64, 64))) {
                 for (CgRenderStage stage : WORLD) {
                     stage.host().set(0f, 64, 64, 0).view().set(0, 0, 0, view, projection);
                     stage.recordAndExecute();

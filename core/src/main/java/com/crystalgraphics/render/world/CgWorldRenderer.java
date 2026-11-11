@@ -1,6 +1,7 @@
 package com.crystalgraphics.render.world;
 
-import com.crystalgraphics.platform.gl.driver.GLC;
+import com.crystalgraphics.api.texture.CgTexture;
+import com.crystalgraphics.platform.rhi.CgExternalTarget;
 import com.crystalgraphics.render.post.debug.CgPostDebug;
 import com.crystalgraphics.render.post.volume.CgPostSettings;
 import com.crystalgraphics.shape.CgShape;
@@ -18,7 +19,6 @@ import com.crystalgraphics.api.state.CgDepthState;
 import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.api.text.CgShapedParagraph;
 import com.crystalgraphics.api.text.CgTextLayout;
-import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.compute.CgKernel;
 import com.crystalgraphics.compute.ops.CgCull;
@@ -357,7 +357,7 @@ public final class CgWorldRenderer {
         // Minecraft runs its camera hook for a frame or two after the engine has shut down.
         if (CgGraphicsLifecycle.isContextDestroyed() || CgGraphicsLifecycle.isStoodDown()) return;
         CgHostFrame host = CgRenderStage.WORLD_OPAQUE.host();
-        host.set(partialTick, host.width(), host.height(), host.mainFramebuffer());
+        host.partialTick(partialTick);
         CgWorld.client().begin(host.view(), CgFrameRing.frame());
     }
 
@@ -440,7 +440,6 @@ public final class CgWorldRenderer {
         customDataPass.customDataStates.clear();
         customDataPass.depthIn = null;
         customDataPass.customDataTarget = null;
-        customDataPass.customDataProbed = -1;
         halfPass.upsample = null;
         halfPass.upsampleBound = null;
         volumePass.resolve = null;
@@ -1861,15 +1860,15 @@ public final class CgWorldRenderer {
      */
     @Nullable
     private CgGraphTexture normalsFor(CgStageFrame stage, CgRecording recording) {
-        int fb = stage.host().mainFramebuffer();
         boolean asked = pointLights.wantsNormals() || stage.resources().has(CgFrameKeys.WORLD_NORMALS_READ);
         if (!asked) return null;
-        if (fb <= 0 || CgRasterPass.refusesAttachment(fb)) {
+        CgExternalTarget host = stage.host().target();
+        if (!host.lendsAttachments()) {
             if (!normalsRefusedNoted) {
                 normalsRefusedNoted = true;
-                LOGGER.warn("Framebuffer {} takes no normal target: the world lights rebuild our surfaces' normals from depth,"
+                LOGGER.warn("{} takes no normal target: the world lights rebuild our surfaces' normals from depth,"
                         + " snapped to world axes as blocks', so a curved mesh shades in facets. Draw the world into a"
-                        + " framebuffer of the host's own", fb);
+                        + " framebuffer of the host's own", host);
             }
             return null;
         }
@@ -1892,8 +1891,8 @@ public final class CgWorldRenderer {
     private static boolean covers(CgMaterial material) {
         CgPipeline forward = material.pipeline(CgInstanceKind.OBJECT);
         CgBlendState blend = forward == null ? null : forward.state().getBlend();
-        return blend != null && blend.enabled() && blend.srcRgb() == GLC.GL_ONE
-                && blend.dstRgb() == GLC.GL_ONE_MINUS_SRC_ALPHA;
+        return blend != null && blend.enabled() && blend.srcRgb() == CgBlendState.PREMULTIPLIED_ALPHA.srcRgb()
+                && blend.dstRgb() == CgBlendState.PREMULTIPLIED_ALPHA.dstRgb();
     }
 
     /** Whether every Emissive pass of draw {@code i}'s chain folds into its Forward draw under the scene. */

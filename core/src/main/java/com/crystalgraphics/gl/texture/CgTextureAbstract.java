@@ -7,6 +7,7 @@ import java.util.Set;
 import java.util.EnumSet;
 import com.crystalgraphics.platform.gl.format.GLFormats;
 import com.crystalgraphics.api.texture.CgTexture;
+import com.crystalgraphics.asset.tree.CgBinaryAsset;
 import com.crystalgraphics.api.texture.CgTextureSpec;
 import com.crystalgraphics.gpu.CgDeferral;
 import com.crystalgraphics.mc.CgReloadable;
@@ -45,7 +46,7 @@ import org.apache.logging.log4j.Logger;
  * <p>Not part of the public API surface; lives in {@code gl/texture/} alongside
  * the concrete implementations.</p>
  */
-public abstract class CgTextureAbstract implements CgTexture, CgReloadable {
+public abstract class CgTextureAbstract implements CgTexture, CgBinaryAsset, CgReloadable {
 
     // ── Upload-format GL constants (shared by all subclass factories) ─
     private static final int GL_RED = 0x1903;
@@ -134,7 +135,6 @@ public abstract class CgTextureAbstract implements CgTexture, CgReloadable {
 
     // ── CgTexture — binding ─────────────────────────────────────────
 
-    @Override
     public void bind(int unit) {
         checkUsable();
         gpu.flush();
@@ -143,7 +143,6 @@ public abstract class CgTextureAbstract implements CgTexture, CgReloadable {
 
     // ── CgTexture — accessors ───────────────────────────────────────
 
-    @Override
     public int getId() {
         ensureLoaded();
         gpu.flush();
@@ -162,17 +161,17 @@ public abstract class CgTextureAbstract implements CgTexture, CgReloadable {
         return height;
     }
 
-    @Override
+    /** The GL texture target it binds as: {@code GL_TEXTURE_2D}, {@code GL_TEXTURE_3D}, {@code GL_TEXTURE_2D_ARRAY}. */
+    public abstract int getTarget();
+
     public boolean isDeleted() {return deleted;}
 
-    @Override
     public boolean isMissing() {
         ensureLoaded();
         return missing;
     }
 
     /** Decodes its files again and uploads them in place; nothing before its first use, or for a texture of none. */
-    @Override
     public final void reload() {
         if (deleted || unloaded) return;
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "texture.load")) {
@@ -245,7 +244,6 @@ public abstract class CgTextureAbstract implements CgTexture, CgReloadable {
     // ── CgTexture — lifecycle ───────────────────────────────────────
 
     /** Any thread. What was queued is dropped: a texture about to go needs none of it. */
-    @Override
     public void delete() {
         if (deleted) return;
         deleted = true;

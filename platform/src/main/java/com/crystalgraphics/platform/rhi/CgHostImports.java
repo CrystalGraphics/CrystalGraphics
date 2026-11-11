@@ -1,6 +1,5 @@
 package com.crystalgraphics.platform.rhi;
 
-import com.crystalgraphics.platform.rhi.command.CgTransition;
 import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
 import com.crystalgraphics.platform.rhi.resource.CgTextureView;
 
@@ -46,14 +45,6 @@ public interface CgHostImports {
 
     /** What {@link #attachment} learned of framebuffers is stale: a host's targets may be remade, as at a resize. */
     default void forgetAttachments() {}
-
-    /**
-     * Framebuffer {@code fbo}'s attachments (0 the window's) moved from {@code from} to {@code to}, added to
-     * {@code into}. False where the device names no image for it (GL, whose framebuffer barrier is a memory barrier).
-     */
-    default boolean framebufferBarrier(int fbo, int from, int to, CgTransition into) {
-        return false;
-    }
 
     /**
      * The imports of a device with nothing of a host's but its surface (a test's null device, an owned window's):

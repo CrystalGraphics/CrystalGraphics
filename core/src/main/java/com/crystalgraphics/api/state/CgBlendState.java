@@ -80,17 +80,6 @@ public record CgBlendState(boolean enabled, int srcRgb, int dstRgb, int srcAlpha
             GLC.GL_ZERO, GLC.GL_SRC_ALPHA,
             GLC.GL_FUNC_ADD, GLC.GL_FUNC_ADD);
 
-    /**
-     * Creates a blend state with separate RGB and alpha factors and default
-     * {@code GL_FUNC_ADD} equations for both channels.
-     *
-     * @param enabled  whether blending is enabled
-     * @param srcRgb   source RGB factor (e.g. {@code GL_SRC_ALPHA})
-     * @param dstRgb   destination RGB factor (e.g. {@code GL_ONE_MINUS_SRC_ALPHA})
-     * @param srcAlpha source alpha factor
-     * @param dstAlpha destination alpha factor
-     * @return a new {@code CgBlendState} with {@code GL_FUNC_ADD} for both blend equations
-     */
     /** Source and destination summed, alpha too: a count, as the overdraw view keeps. */
     public static final CgBlendState SUM = new CgBlendState(true,
             GLC.GL_ONE, GLC.GL_ONE,

@@ -29,7 +29,6 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -460,21 +459,21 @@ public final class CgGpuOpsCheck {
 
         void record(CgComputePass pass) {
             for (Filter filter : Filter.values()) {
-                CgGpuOps.downsample(pass, CgGraphTexture.imported("chain", chains[filter.ordinal()]), filter);
+                CgGpuOps.downsample(pass, CgGraphTexture.imported("chain", chains[filter.ordinal()].external()), filter);
             }
-            CgGpuOps.blur(pass, CgGraphTexture.imported("blur source", blurSource),
-                    CgGraphTexture.imported("blur target", blurTarget), SIGMA);
-            CgGraphTexture level = CgGraphTexture.imported("level blur", levelBlur);
+            CgGpuOps.blur(pass, CgGraphTexture.imported("blur source", blurSource.external()),
+                    CgGraphTexture.imported("blur target", blurTarget.external()), SIGMA);
+            CgGraphTexture level = CgGraphTexture.imported("level blur", levelBlur.external());
             CgGpuOps.downsample(pass, level, 0, 1, Filter.AVERAGE);
             CgGpuOps.blur(pass, level, 1, level, 1, LEVEL_SIGMA);
-            CgGraphTexture source = CgGraphTexture.imported("blur source", blurSource);
-            CgGpuOps.blur(pass, source, rx, ry, rw, rh, CgGraphTexture.imported("region target", regionTarget), tx, ty,
+            CgGraphTexture source = CgGraphTexture.imported("blur source", blurSource.external());
+            CgGpuOps.blur(pass, source, rx, ry, rw, rh, CgGraphTexture.imported("region target", regionTarget.external()), tx, ty,
                     SIGMA, LEVEL_SIGMA, CgGpuOps.Edge.MIRROR);
-            CgGpuOps.blurScaled(pass, source, rx, ry, rw, rh, CgGraphTexture.imported("scaled target", scaledTarget),
+            CgGpuOps.blurScaled(pass, source, rx, ry, rw, rh, CgGraphTexture.imported("scaled target", scaledTarget.external()),
                     SCALED_SIGMA, CgGpuOps.Edge.MIRROR);
-            CgGpuOps.shrink(pass, source, shx, shy, shw, shh, CgGraphTexture.imported("shrink target", shrinkTarget),
+            CgGpuOps.shrink(pass, source, shx, shy, shw, shh, CgGraphTexture.imported("shrink target", shrinkTarget.external()),
                     1, 1, stw, sth);
-            CgGpuOps.shrink(pass, source, 0, 0, w, h, CgGraphTexture.imported("mean target", meanTarget), 0, 0, 1, 1);
+            CgGpuOps.shrink(pass, source, 0, 0, w, h, CgGraphTexture.imported("mean target", meanTarget.external()), 0, 0, 1, 1);
         }
 
         void expect(List<String> failures, CgReplayedReads reads) {

@@ -1,8 +1,8 @@
 package com.crystalgraphics.render.canvas;
 
+import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.state.CgRenderState;
-import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.render.CgImmediate;
 import com.crystalgraphics.render.CgViewFrustum;
 import com.crystalgraphics.render.draw.CgBindingTable;
@@ -382,7 +382,7 @@ public final class CgCanvas {
         this.load = load;
         constants.write(pendingBlock, 0);
         takeCamera(constants);
-        if (load.mask() != 0) openPass();
+        if (load.clears()) openPass();
     }
 
     /** The constants later chunks draw under; a change ends the open pass, since one pass is one block. */

@@ -14,7 +14,6 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -173,8 +172,8 @@ public final class CgComputeSelfTest {
                 CgGraphBuffer gDoubled = CgGraphBuffer.imported("doubled", doubled, COUNTED * 4L);
                 CgGraphBuffer gAfter = CgGraphBuffer.imported("after", after, COUNTED * 4L);
                 CgGraphBuffer gBits = CgGraphBuffer.imported("bits", bits, N * BIT_WORDS * 4L);
-                CgGraphTexture gPicture = CgGraphTexture.imported("picture", picture);
-                CgGraphTexture gAccum = CgGraphTexture.imported("accum", accum);
+                CgGraphTexture gPicture = CgGraphTexture.imported("picture", picture.external());
+                CgGraphTexture gAccum = CgGraphTexture.imported("accum", accum.external());
 
                 CgRecording rec = new CgRecording();
                 rec.fill(gSpawnCount, 0);

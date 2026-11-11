@@ -1,6 +1,10 @@
 package com.crystalgraphics.api.texture;
 
 import com.crystalgraphics.platform.gl.driver.GLC;
+import com.crystalgraphics.platform.gl.format.GLFormats;
+import com.crystalgraphics.platform.rhi.format.CgFormat;
+
+import javax.annotation.Nullable;
 
 
 
@@ -144,6 +148,40 @@ public enum CgTextureType {
     /** What its blocks decode to where the context cannot sample them: {@link #RGBA8} or {@link #SRGB8_ALPHA8}. */
     public CgTextureType decoded() {
         return this == BC7 ? RGBA8 : this == BC7_SRGB ? SRGB8_ALPHA8 : this;
+    }
+
+    /** Every type, kept: {@code values()} copies its array each call. */
+    private static final CgTextureType[] TYPES = values();
+    /** Each type's device format, by ordinal: the RHI's names for the same texels. */
+    private static final CgFormat[] FORMATS = new CgFormat[TYPES.length];
+
+    static {
+        for (CgTextureType type : TYPES) FORMATS[type.ordinal()] = GLFormats.of(type.glInternalFormat);
+    }
+
+    /**
+     * The device's format for it: what a texture of it is made as on {@code CgRHI}.
+     *
+     * <pre>{@code
+     * CgTextureType.RGBA16F.format();   // CgFormat.RGBA16_FLOAT
+     * }</pre>
+     */
+    public CgFormat format() {
+        return FORMATS[ordinal()];
+    }
+
+    /**
+     * The type holding texels of device format {@code format}, the first in declaration order: a host's imported depth
+     * as the type a copy of it is made as, since a depth blit between formats fails. Null for a format no type names.
+     *
+     * <pre>{@code
+     * CgTextureType copy = CgTextureType.of(hostDepth.desc().format());   // DEPTH32F on 26.2, DEPTH24 before
+     * }</pre>
+     */
+    @Nullable
+    public static CgTextureType of(CgFormat format) {
+        for (CgTextureType type : TYPES) if (FORMATS[type.ordinal()] == format) return type;
+        return null;
     }
 
     /**

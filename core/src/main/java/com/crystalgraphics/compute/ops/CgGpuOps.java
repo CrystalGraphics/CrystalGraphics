@@ -5,7 +5,6 @@ import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.compute.CgCompute;
 import com.crystalgraphics.compute.CgKernel;
 import com.crystalgraphics.gl.buffer.CgReadback;
-import com.crystalgraphics.gl.framebuffer.CgFrameBuffer;
 import com.crystalgraphics.render.draw.CgPrimitiveTable;
 import com.crystalgraphics.render.draw.CgPassConstants;
 import com.crystalgraphics.render.graph.CgBufferUsage;
@@ -1020,9 +1019,7 @@ public final class CgGpuOps {
 
     /** Its colour format's index in {@link #IMAGE_TYPES}. */
     private static int imageType(CgGraphTexture texture) {
-        CgTextureDesc desc = texture.desc();
-        CgFrameBuffer framebuffer = texture.framebuffer();
-        CgFrameBufferFormat format = desc != null ? desc.format() : framebuffer != null ? framebuffer.getFormat() : null;
+        CgFrameBufferFormat format = texture.format();
         CgTextureType type = format == null ? null : format.getColorSlot(0);
         int f = IMAGE_TYPES.indexOf(type);
         if (f < 0) throw new IllegalArgumentException(texture + " is " + type + ": the image ops take " + IMAGE_TYPES);

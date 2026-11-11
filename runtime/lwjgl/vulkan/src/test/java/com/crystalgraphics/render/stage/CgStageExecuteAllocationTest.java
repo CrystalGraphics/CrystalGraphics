@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.stage;
 
+import com.crystalgraphics.platform.rhi.CgExternalTarget;
 import com.crystalgraphics.render.graph.CgExecutor;
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.material.CgMaterial;
@@ -95,7 +96,7 @@ public class CgStageExecuteAllocationTest {
                 pass.add(chunk.end());
             }
             pass.end();
-            try (CgExecutor.Into ignored = CgExecutor.into(0, 64, 64)) {   // the null device's surface
+            try (CgExecutor.Into ignored = CgExecutor.into(CgExternalTarget.host(0, 64, 64))) {   // the null device's surface
                 frame.execute();
             }
             CgFrameRing.endFrame();

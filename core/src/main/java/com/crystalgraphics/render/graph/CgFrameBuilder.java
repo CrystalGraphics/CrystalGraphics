@@ -1,6 +1,5 @@
 package com.crystalgraphics.render.graph;
 
-import com.crystalgraphics.platform.gl.driver.GLC;
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.state.CgColorMask;
@@ -406,7 +405,7 @@ public final class CgFrameBuilder {
         packed.constants = map[constants];
         CgGraphTexture depthFrom = pass.depthFrom();
         if (depthFrom != null) {
-            frame.readsCurrentDepth |= depthFrom.kind() == CgGraphTexture.Kind.CURRENT || depthFrom.drawsBesideCurrentDepth();
+            frame.readsCurrentDepth |= usesCurrent(depthFrom);
         }
         for (int d = 0; d < dispatches.size(); d++) {
             int local = dispatches.get(d).bindings;
@@ -526,7 +525,7 @@ public final class CgFrameBuilder {
         Arrays.fill(refChunk, 0, refs, null);
         part.close();
         part = CgTrace.zone(CgChannels.GL_DETAIL, PACK_COPIES);
-        boolean writesDepth = (pass.load.mask() & GLC.GL_DEPTH_BUFFER_BIT) != 0;
+        boolean writesDepth = pass.load.clearsDepth();
         for (int b = 0; b < packed.count && !writesDepth; b++) {
             writesDepth = (writesOf(CgPipeline.byId(packed.pipeline[b]), pass.state) & CgTargetCopy.DEPTH) != 0;
         }
@@ -562,16 +561,17 @@ public final class CgFrameBuilder {
         if (pass.sceneDepthUnit() >= 0) constants.texture(pass.sceneDepthUnit(), pass.targetCopy().depth);
         if (pass.depthFrom() != null) {
             constants.texture(pass.depthFromUnit(), pass.depthFromCopy().depth);
-            frame.readsCurrentDepth |= pass.depthFrom().kind() == CgGraphTexture.Kind.CURRENT
-                    || pass.depthFrom().drawsBesideCurrentDepth();
+            frame.readsCurrentDepth |= usesCurrent(pass.depthFrom());
         }
         if (pass.colorFrom() != null) {
             constants.texture(pass.colorFromUnit(), pass.colorFromCopy().color);
-            frame.readsCurrentDepth |= pass.colorFrom().kind() == CgGraphTexture.Kind.CURRENT;
+            frame.readsCurrentDepth |= pass.colorFrom().isCurrent();
         }
-        // Drawn beside the current target's depth: the executor needs that framebuffer, noted before any pass binds.
-        if (pass.target != null && pass.target.drawsBesideCurrentDepth()) frame.readsCurrentDepth = true;
-        if (pass.target == null || pass.target.kind() == CgGraphTexture.Kind.CURRENT) frame.rastersCurrent = true;
+        // Drawn with the current target's depth: the execution needs that target opened, noted before any pass binds.
+        if (pass.target != null && pass.target.depthOf() != null && pass.target.depthOf().isCurrent()) {
+            frame.readsCurrentDepth = true;
+        }
+        if (pass.target == null || pass.target.isCurrent()) frame.rastersCurrent = true;
         else frame.rastersOther = true;
         packed.constants = constants.end();
         part.close();
@@ -598,7 +598,7 @@ public final class CgFrameBuilder {
         // A pass into part of a layer is not in its target's pixels: its copies are whole.
         boolean regions = width > 0f && height > 0f && pass.viewOwner() == 0 && pass.viewX() == 0f && pass.viewY() == 0f;
         int depthUnseen = sampled & CgTargetCopy.DEPTH;
-        boolean depthWritten = (pass.load.mask() & GLC.GL_DEPTH_BUFFER_BIT) != 0;
+        boolean depthWritten = pass.load.clearsDepth();
         int run = -1;   // the batch holding the copy the current readers share
         boolean copied = false;
         clear(dirty);
@@ -817,4 +817,9 @@ public final class CgFrameBuilder {
     }
 
     private static final int OBJECT = CgInstanceKind.OBJECT.ordinal();
+
+    /** Whether {@code texture} is the current target, or drawn with its depth. */
+    private static boolean usesCurrent(CgGraphTexture texture) {
+        return texture.isCurrent() || texture.depthOf() != null && texture.depthOf().isCurrent();
+    }
 }

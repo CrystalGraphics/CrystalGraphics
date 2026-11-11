@@ -1,10 +1,14 @@
 package com.crystalgraphics.render.stage;
 
+import java.util.Set;
+import java.util.EnumSet;
+import com.crystalgraphics.platform.rhi.format.CgFormat;
+import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
+import com.crystalgraphics.platform.rhi.CgRHI;
+import com.crystalgraphics.platform.rhi.CgExternalTarget;
 import com.crystalgraphics.platform.rhi.CgDeviceSection;
 import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
-import com.crystalgraphics.gl.framebuffer.CgFrameBuffer;
-import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.lifecycle.CgGraphicsLifecycle;
 import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.render.graph.CgExecutor;
@@ -278,8 +282,8 @@ public final class CgRenderStage {
             if (renderers.isEmpty() || !CgGraphicsLifecycle.isInitialized()) return;
             // The host's target, where the engine named none (fireInto, a rehearsal); a GUI stage its colour alone
             try (CgExecutor.Into ignored = CgExecutor.hasCurrentTarget() ? null
-                    : this == HUD || this == SCREEN ? CgExecutor.intoColor(host.mainFramebuffer(), host.width(), host.height())
-                    : CgExecutor.into(host.mainFramebuffer(), host.width(), host.height())) {
+                    : this == HUD || this == SCREEN ? CgExecutor.into(host.target().colorOnly())
+                    : CgExecutor.into(host.target())) {
                 CgGpuTrace.begin(gpuName, CgGpuTrace.WATCH);   // timed always: a slow firing is logged by name
                 firing++;
                 try (CgTrace.Zone ignored2 = CgTrace.zone(CgChannels.WORLD, path)) {
@@ -295,16 +299,17 @@ public final class CgRenderStage {
     }
 
     /**
-     * {@link #fire} into {@code target} rather than the host's bound target: a view of the world of its own, as an
-     * editor's viewport draws one. It is the firing's current target, and nothing is bound. Fill {@link #host()} for the
-     * target first, its size and id included, and put the host's frame back after.
+     * {@link #fire} into {@code target} rather than the host's: a view of the world of its own, as an editor's viewport
+     * draws one. It is the firing's current target, and nothing is bound. Fill {@link #host()} for the target first, its
+     * size and the target itself, and put the host's frame back after.
      *
      * <pre>{@code
-     * stage.host().set(0f, target.getWidth(), target.getHeight(), target.getId()).view().set(x, y, z, view, projection);
-     * stage.fireInto(target);
+     * CgExternalTarget into = viewport.external();
+     * stage.host().set(0f, into.width(), into.height(), into).view().set(x, y, z, view, projection);
+     * stage.fireInto(into);
      * }</pre>
      */
-    public void fireInto(CgFrameBuffer target) {
+    public void fireInto(CgExternalTarget target) {
         try (CgExecutor.Into ignored = CgExecutor.into(target)) {
             fire();
         }
@@ -322,8 +327,19 @@ public final class CgRenderStage {
      * }</pre>
      */
     public void fireOverlay(int width, int height, float scale, int mainFramebuffer) {
-        host.set(WORLD_OPAQUE.host.partialTick(), width, height, mainFramebuffer).guiScale(scale).view().set(0d, 0d, 0d,
-                OVERLAY_VIEW.identity(), OVERLAY_PROJECTION.setOrtho(0f, width, height, 0f, -1f, 1f));
+        host.set(WORLD_OPAQUE.host.partialTick(), width, height, mainFramebuffer);
+        overlay(width, height, scale);
+    }
+
+    /** {@link #fireOverlay(int, int, float, int)} over a target given whole: a framebuffer of ours, as its {@code external()}. */
+    public void fireOverlay(int width, int height, float scale, CgExternalTarget target) {
+        host.set(WORLD_OPAQUE.host.partialTick(), width, height, target);
+        overlay(width, height, scale);
+    }
+
+    private void overlay(int width, int height, float scale) {
+        host.guiScale(scale).view().set(0d, 0d, 0d, OVERLAY_VIEW.identity(),
+                OVERLAY_PROJECTION.setOrtho(0f, width, height, 0f, -1f, 1f));
         fire();
     }
 
@@ -343,20 +359,30 @@ public final class CgRenderStage {
             // next real firing replaces.
             int w = CgGraphicsLifecycle.getCurrentWidth(), h = CgGraphicsLifecycle.getCurrentHeight();
             if (w <= 0 || h <= 0) return;
-            host.set(0f, w, h, host.mainFramebuffer()).view().set(0d, 0d, 0d, REHEARSAL_VIEW,
+            host.set(0f, w, h, host.framebuffer()).view().set(0d, 0d, 0d, REHEARSAL_VIEW,
                     REHEARSAL_PROJECTION.setPerspective((float) Math.toRadians(70.0), (float) w / h, 0.05f, 512f));
         }
-        int hostTarget = host.mainFramebuffer();
-        if (rehearsalTarget == null || rehearsalTarget.isDeleted() || hostTarget != rehearsedHost
-                || rehearsalTarget.getWidth() != host.width() || rehearsalTarget.getHeight() != host.height()) {
-            if (rehearsalTarget != null && !rehearsalTarget.isDeleted()) rehearsalTarget.delete();
-            // The host's depth type and size: copies of the current target are cached by both and taken at the host's
-            // viewport, so the cast reuses the rehearsal's and a copy never reads past the target.
-            CgTextureType depth = CgFrameBuffer.depthTypeOf(hostTarget, host.width(), host.height());
-            rehearsalTarget = CgFrameBuffer.createOwned("cg_rehearsal", host.width(), host.height(),
-                    CgFrameBufferFormat.builder("cg_rehearsal").color(0, CgTextureType.RGBA8)
-                            .depth(depth != null ? depth : CgTextureType.DEPTH24_STENCIL8).build());
+        CgExternalTarget hostTarget = host.target();
+        CgRHI rhi = CgRHI.get();
+        if (rehearsalTarget == null || hostTarget != rehearsedHost || rhi != rehearsedOn
+                || rehearsalTarget.width() != host.width() || rehearsalTarget.height() != host.height()) {
+            if (rehearsalTarget != null && rhi == rehearsedOn) {
+                rhi.release(rehearsalTarget.color().texture());
+                rhi.release(rehearsalTarget.depth().texture());
+            }
+            // The host's depth type and size: copies of the current target are taken in both, so the cast reuses the
+            // rehearsal's and a copy never reads past the target.
+            CgTextureType depth = host.depthType();
+            Set<CgGpuTexture.Usage> usage = EnumSet.of(CgGpuTexture.Usage.ATTACHMENT, CgGpuTexture.Usage.SAMPLED,
+                    CgGpuTexture.Usage.COPY_SRC, CgGpuTexture.Usage.COPY_DST);
+            rehearsalTarget = CgExternalTarget.of("cg_rehearsal",
+                    rhi.createTexture(new CgGpuTexture.Desc("cg_rehearsal colour", CgGpuTexture.Kind.D2,
+                            CgFormat.RGBA8_UNORM, host.width(), host.height(), 1, 1, 1, usage)),
+                    rhi.createTexture(new CgGpuTexture.Desc("cg_rehearsal depth", CgGpuTexture.Kind.D2,
+                            (depth != null ? depth : CgTextureType.DEPTH24_STENCIL8).format(), host.width(), host.height(),
+                            1, 1, 1, usage)));
             rehearsedHost = hostTarget;
+            rehearsedOn = rhi;
         }
         firing++;
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, REHEARSE)) {
@@ -373,8 +399,12 @@ public final class CgRenderStage {
     private static final Matrix4f REHEARSAL_VIEW = new Matrix4f(), REHEARSAL_PROJECTION = new Matrix4f();
     /** What a rehearsal draws into: the host target's colour and depth, hidden; and the host target it is shaped by. */
     @Nullable
-    private static CgFrameBuffer rehearsalTarget;
-    private static int rehearsedHost = -1;
+    private static CgExternalTarget rehearsalTarget;
+    /** The device that made {@link #rehearsalTarget}: another's textures are gone with it. */
+    @Nullable
+    private static CgRHI rehearsedOn;
+    @Nullable
+    private static CgExternalTarget rehearsedHost;
 
     /** One firing's work once the engine runs: the renderers record into the stage's frame, which executes. */
     void recordAndExecute() {
