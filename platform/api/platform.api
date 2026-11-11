@@ -3101,6 +3101,32 @@ com/crystalgraphics/platform/service/CgNetworkChannel
   method public,abstract isAvailable ()Z
   method public,abstract maxFrameBytes ()I
   method public,abstract sendToPlayer (Ljava/lang/Object;[B)V
+com/crystalgraphics/platform/service/CgScreens
+  access public,final
+  extends java/lang/Object
+  field public,static,final HOST Lcom/crystalgraphics/platform/CgService;
+  method public,static anyOpen ()Z
+  method public,static close (Lcom/crystalgraphics/platform/service/CgScreens$Owner;)V
+  method public,static giveBack (Lcom/crystalgraphics/platform/input/CgSystemInput$Keyboard$Event;)V
+  method public,static isOpen (Lcom/crystalgraphics/platform/service/CgScreens$Owner;)Z
+  method public,static open (Lcom/crystalgraphics/platform/service/CgScreens$Owner;)V
+com/crystalgraphics/platform/service/CgScreens$Host
+  access public,abstract,interface
+  extends java/lang/Object
+  field public,static,final NONE Lcom/crystalgraphics/platform/service/CgScreens$Host;
+  method public,abstract anyFront ()Z
+  method public,abstract close (Lcom/crystalgraphics/platform/service/CgScreens$Owner;)V
+  method public,abstract front ()Lcom/crystalgraphics/platform/service/CgScreens$Owner;
+  method public,abstract giveBack (Lcom/crystalgraphics/platform/input/CgSystemInput$Keyboard$Event;)V
+  method public,abstract open (Lcom/crystalgraphics/platform/service/CgScreens$Owner;)V
+com/crystalgraphics/platform/service/CgScreens$Owner
+  access public,abstract,interface
+  extends java/lang/Object
+  method public escape ()V
+  method public hidden ()V
+  method public hidesHud ()Z
+  method public shown ()V
+  method public textInputArea ([F)Z
   method public,abstract sendToServer ([B)V
   method public,abstract setInboundHandler (Ljava/util/function/BiConsumer;)V
 com/crystalgraphics/platform/service/CgProcessExit
