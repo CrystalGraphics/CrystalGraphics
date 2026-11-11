@@ -118,8 +118,8 @@ public enum CgHostThread {
     }
 
     /**
-     * Runs the work queued for the frame thread. Called once a host frame, first, on the thread that frames documents
-     * -- whether or not one is framed that frame, since an answer to UI code may be waiting there.
+     * Runs the work queued for the frame thread, where the host names no client thread. {@code CgGraphicsLifecycle.tickFrame}
+     * calls it once a host frame; nothing else should, but a test standing in for the host's frame.
      */
     public static void drainFrames() {
         FRAMES.drain();

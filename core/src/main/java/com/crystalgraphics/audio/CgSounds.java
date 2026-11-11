@@ -1,6 +1,6 @@
 package com.crystalgraphics.audio;
 
-import com.crystalgraphics.platform.CgFrameThread;
+import com.crystalgraphics.job.CgHostThread;
 import com.crystalgraphics.frame.CgWorld;
 import com.crystalgraphics.world.CgAttachment;
 import org.apache.logging.log4j.LogManager;
@@ -45,7 +45,7 @@ import java.util.Set;
  *   <li>Where the host has no audio output (a dedicated server, the harness, a test) nothing plays, {@link #load}
  *       answers null, and no engine is made.</li>
  *   <li>Callable from any thread. A play, stop or mix runs at once on the frame thread; from any other it is queued
- *       for the next frame ({@code CgFrameThread}) and a play answers 0, its id not known yet. {@link #load} is the
+ *       for the client thread ({@link CgHostThread#CLIENT}) and a play answers 0, its id not known yet. {@link #load} is the
  *       frame thread's; {@link #preload} is a worker's.</li>
  * </ul>
  */
@@ -295,10 +295,10 @@ public final class CgSounds {
         }
     }
 
-    /** Off the frame thread: queues {@code call} for the next frame and answers true; on it, false. */
+    /** Off the client thread: sends {@code call} there and answers true; on it, false. */
     private static boolean later(Runnable call) {
-        if (CgFrameThread.isCurrent()) return false;
-        CgFrameThread.run(call);
+        if (CgHostThread.CLIENT.isCurrent()) return false;
+        CgHostThread.CLIENT.run(call);
         return true;
     }
 }

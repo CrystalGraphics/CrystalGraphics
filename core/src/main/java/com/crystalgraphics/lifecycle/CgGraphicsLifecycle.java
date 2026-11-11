@@ -1,6 +1,5 @@
 package com.crystalgraphics.lifecycle;
 
-import com.crystalgraphics.platform.CgFrameThread;
 import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.rhi.CgDeviceSection;
 import com.crystalgraphics.platform.gl.state.GLCheckedHostState;
@@ -20,6 +19,7 @@ import com.crystalgraphics.gpu.CgUploads;
 import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.service.CgCacheDirectory;
+import com.crystalgraphics.job.CgHostThread;
 import com.crystalgraphics.job.CgJob;
 import com.crystalgraphics.job.CgJobLane;
 import com.crystalgraphics.vfx.CgVfxRegistry;
@@ -529,9 +529,9 @@ public final class CgGraphicsLifecycle {
         if (destroyed || stoodDown) return;
 
         CgFrameClock.advance();
-        // What other threads asked of the frame thread's services (the clipboard, sounds, the cursor): before anything
-        // this frame draws, and before the device section, since none of it is device work.
-        CgFrameThread.drain();
+        // Work other threads sent the frame thread where the host names no client thread (the harness): drained here
+        // too, so it runs whether or not a CrystalGUI document is framed this frame.
+        CgHostThread.drainFrames();
         CgWarmBudget.nextFrame();   // first: the finishers below charge this frame's budget
         if (initialized) CgLoadingScreen.frame();   // sets that budget
 
