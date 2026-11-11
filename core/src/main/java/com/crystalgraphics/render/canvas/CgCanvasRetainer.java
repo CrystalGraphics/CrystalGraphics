@@ -146,10 +146,15 @@ public final class CgCanvasRetainer {
      * </ul>
      */
     public int blur(CgRecording recording, float x, float y, float width, float height, float sigma) {
+        return blur(recording, x, y, width, height, sigma, sigma);
+    }
+
+    /** As {@link #blur(CgRecording, float, float, float, float, float)}, a sigma per axis: 0 on one leaves it sharp. */
+    public int blur(CgRecording recording, float x, float y, float width, float height, float sigmaX, float sigmaY) {
         if (painting) throw new IllegalStateException(name + ": end() before blur");
         if (texture == null) throw new IllegalStateException(name + " was never painted");
-        float texels = sigma * scale;
-        int reduce = CgGpuOps.blurScale(texels);
+        float texelsX = sigmaX * scale, texelsY = sigmaY * scale;
+        int reduce = CgGpuOps.blurScale(Math.max(texelsX, texelsY));
         int at = Integer.numberOfTrailingZeros(reduce);
         CgGraphTexture target = blurred[at];
         if (target == null || target.getWidth() != texelsWide / reduce || target.getHeight() != texelsHigh / reduce) {
@@ -164,7 +169,7 @@ public final class CgCanvasRetainer {
         int y0 = Math.max(0, texelsHigh - (int) Math.ceil((y + height) * scale));
         int y1 = Math.min(texelsHigh, texelsHigh - (int) Math.floor(y * scale));
         CgComputePass pass = recording.compute(name + ".blur").timed(GPU_BLUR);
-        CgGpuOps.blurScaled(pass, texture, x0, y0, x1 - x0, y1 - y0, target, texels, CgGpuOps.Edge.CLAMP);
+        CgGpuOps.blurScaled(pass, texture, x0, y0, x1 - x0, y1 - y0, target, texelsX, texelsY, CgGpuOps.Edge.CLAMP);
         pass.end();
         return reduce;
     }

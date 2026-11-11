@@ -99,7 +99,7 @@ public class CgWorldWidgetLayerTest {
         }
 
         @Override
-        public int beginRetained(float width, float height, float reach, float blur) {
+        public int beginRetained(float width, float height, float reach, float blurX, float blurY) {
             return 0;
         }
 

@@ -244,6 +244,8 @@ CgWidget.retainerBox("Number").blur(4f)      // as built
 ```
 
 - Only a retainer box blurs: what it holds is one image already. `blur` on any other widget fails, by name.
+- `blur_axis: vertical` (or `horizontal`; `both` unless set) spreads it along one axis only, as a motion blur, in one pass:
+  `CgWidget.retainerBox("Number").blur(4f).blurAxis(CgWidget.BlurAxis.VERTICAL)`.
 - Its region is padded by three sigma, so the blur spreads past the box unclipped; nothing outside the region is read.
 - It runs a compute pass: GL 4.3 and up, or Vulkan. A widget asset with a retainer box precaches the blur's kernels.
 - UMG's Retainer Box has no blur of its own; its Background Blur widget blurs what is behind it, as

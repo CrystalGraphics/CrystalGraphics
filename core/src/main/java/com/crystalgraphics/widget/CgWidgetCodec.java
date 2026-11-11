@@ -134,6 +134,9 @@ public final class CgWidgetCodec {
                     b.effect(uiMaterial(effect, at + ".effect", deps), param);
                 }
                 if (m.get("blur") instanceof Number blur) b.blur(blur.floatValue());
+                if (m.get("blur_axis") instanceof String axis) {
+                    b.blurAxis(CgWidget.BlurAxis.valueOf(axis.toUpperCase(Locale.ROOT)));
+                }
                 if (m.get("content") instanceof String c) b.child(widget(id, c, widgets, reached, deps));
             }
             case BORDER -> {
@@ -267,6 +270,9 @@ public final class CgWidgetCodec {
                     if (!w.textureParameter().equals("Texture")) m.put("texture_parameter", w.textureParameter());
                 }
                 if (w.blur() > 0f) m.put("blur", (double) w.blur());
+                if (w.blurAxis() != CgWidget.BlurAxis.BOTH) {
+                    m.put("blur_axis", w.blurAxis().name().toLowerCase(Locale.ROOT));
+                }
             }
             case BORDER -> {
                 if (!w.children().isEmpty()) m.put("content", w.children().get(0).name());

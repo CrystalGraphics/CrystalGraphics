@@ -92,6 +92,7 @@ public final class CgCanvasWidgetPainter implements CgWidgetPainter {
      */
     private float[] pads = new float[16];
     private float[] blurs = new float[16];
+    private float[] blursY = new float[16];
     private int[] reduces = new int[16];
     /** Per region: the page it is on. */
     private int[] pageOf = new int[16];
@@ -225,13 +226,13 @@ public final class CgCanvasWidgetPainter implements CgWidgetPainter {
     }
 
     @Override
-    public int beginRetained(float width, float height, float reach, float blur) {
+    public int beginRetained(float width, float height, float reach, float blurX, float blurY) {
         if (retainedClosed) {
             throw new IllegalStateException("a retainer box was retained after a draw onto the canvas: retain every "
                     + "widget before painting any");
         }
         if (target >= 0) throw new IllegalStateException("a retainer box inside another is not drawn");
-        float pad = margin + Math.max(0f, reach) + 3f * Math.max(0f, blur);
+        float pad = margin + Math.max(0f, reach) + 3f * Math.max(0f, Math.max(blurX, blurY));
         float w = width + 2f * pad, h = height + 2f * pad;
         if (w > retainedWidth || h > retainedHeight) {
             throw new IllegalStateException("a retainer box needs " + w + " x " + h + " units with its reach and blur, "
@@ -254,12 +255,14 @@ public final class CgCanvasWidgetPainter implements CgWidgetPainter {
             regions = Arrays.copyOf(regions, regions.length * 2);
             pads = Arrays.copyOf(pads, pads.length * 2);
             blurs = Arrays.copyOf(blurs, blurs.length * 2);
+            blursY = Arrays.copyOf(blursY, blursY.length * 2);
             reduces = Arrays.copyOf(reduces, reduces.length * 2);
             pageOf = Arrays.copyOf(pageOf, pageOf.length * 2);
         }
         pageOf[count] = page;
         pads[count] = pad;
-        blurs[count] = Math.max(0f, blur);
+        blurs[count] = Math.max(0f, blurX);
+        blursY[count] = Math.max(0f, blurY);
         reduces[count] = 0;
         regions[count * 4] = shelfX;
         regions[count * 4 + 1] = shelfY;
@@ -310,9 +313,9 @@ public final class CgCanvasWidgetPainter implements CgWidgetPainter {
             pages.get(page).end();
             // CSS's filter: blur() on each region that asks: recorded before the canvas samples the image.
             for (int i = 0; i < count; i++) {
-                if (blurs[i] <= 0f) continue;
+                if (blurs[i] <= 0f && blursY[i] <= 0f) continue;
                 reduces[i] = pages.get(pageOf[i]).blur(recording, regions[i * 4], regions[i * 4 + 1],
-                        regions[i * 4 + 2], regions[i * 4 + 3], blurs[i]);
+                        regions[i * 4 + 2], regions[i * 4 + 3], blurs[i], blursY[i]);
             }
             // Another renderer may have opened the canvas's pass earlier in the firing (damage numbers at
             // WORLD_WIDGETS), before the image's passes: a quad there would read last frame's. A new pass reads this one's.

@@ -54,11 +54,11 @@ public interface CgWidgetPainter {
     /**
      * Opens a region of the retained image {@code width} x {@code height} units for a retainer box's content; its
      * handle. {@code reach} is how far its content draws past that box (its text's outlines, shadows and slant,
-     * {@code CgTextStyle.reach}); {@code blur}, a Gaussian sigma in units, blurs it where {@link #retained} draws it,
-     * as CSS's {@code filter: blur()}, 0 for none. The region is padded by both, three sigma of the blur, so nothing
-     * is cut.
+     * {@code CgTextStyle.reach}); {@code blurX} and {@code blurY}, Gaussian sigmas in units across and down, blur it
+     * where {@link #retained} draws it, as CSS's {@code filter: blur()}, 0 for none on that axis. The region is padded
+     * by both, three sigma of the blur, so nothing is cut.
      */
-    int beginRetained(float width, float height, float reach, float blur);
+    int beginRetained(float width, float height, float reach, float blurX, float blurY);
 
     /** Closes the region {@link #beginRetained} opened: draws go where they went before it. */
     void endRetained();

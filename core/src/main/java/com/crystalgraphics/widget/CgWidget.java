@@ -122,6 +122,9 @@ public final class CgWidget {
     /** A text block's lines across its box: Slate's {@code ETextJustify}. */
     public enum Justification { LEFT, CENTRE, RIGHT }
 
+    /** The directions a retainer box's {@link #blur()} spreads: both, as CSS's {@code blur()}, or along one axis. */
+    public enum BlurAxis { BOTH, HORIZONTAL, VERTICAL }
+
     final Kind kind;
     final String name;
     final CgWidgetSlot slot;
@@ -143,6 +146,7 @@ public final class CgWidget {
     final String textureParameter;
     final float userScale;
     final float blur;
+    final BlurAxis blurAxis;
     final List<CgWidget> children;
 
     private CgWidget(Builder b) {
@@ -167,6 +171,7 @@ public final class CgWidget {
         textureParameter = b.textureParameter;
         userScale = b.userScale;
         blur = b.blur;
+        blurAxis = b.blurAxis;
         children = Collections.unmodifiableList(new ArrayList<>(b.children));
     }
 
@@ -314,6 +319,11 @@ public final class CgWidget {
         return blur;
     }
 
+    /** The directions {@link #blur()} spreads in; {@link BlurAxis#BOTH} unless set. */
+    public BlurAxis blurAxis() {
+        return blurAxis;
+    }
+
     /** A scale box's scale: its child's size and drawing multiplied by it. 1 for the rest. */
     public float userScale() {
         return userScale;
@@ -332,7 +342,7 @@ public final class CgWidget {
                 && brush.equals(w.brush) && Objects.equals(style, w.style) && text.equals(w.text)
                 && justification == w.justification && wrap == w.wrap && Objects.equals(widget, w.widget)
                 && Objects.equals(effect, w.effect) && textureParameter.equals(w.textureParameter)
-                && userScale == w.userScale && blur == w.blur && children.equals(w.children);
+                && userScale == w.userScale && blur == w.blur && blurAxis == w.blurAxis && children.equals(w.children);
     }
 
     @Override
@@ -368,6 +378,7 @@ public final class CgWidget {
         private String textureParameter = "Texture";
         private float userScale = 1f;
         private float blur;
+        private BlurAxis blurAxis = BlurAxis.BOTH;
         private final List<CgWidget> children = new ArrayList<>();
 
         private Builder(Kind kind, String name) {
@@ -488,6 +499,19 @@ public final class CgWidget {
          */
         public Builder blur(float sigma) {
             this.blur = sigma;
+            return this;
+        }
+
+        /**
+         * Which directions the blur spreads in: {@link BlurAxis#VERTICAL} smears the content up and down only, as a
+         * motion blur, one compute pass. {@link BlurAxis#BOTH} unless set.
+         *
+         * <pre>{@code
+         * CgWidget.retainerBox("Count").blur(6f).blurAxis(CgWidget.BlurAxis.VERTICAL).child(number)
+         * }</pre>
+         */
+        public Builder blurAxis(BlurAxis axis) {
+            this.blurAxis = axis;
             return this;
         }
 

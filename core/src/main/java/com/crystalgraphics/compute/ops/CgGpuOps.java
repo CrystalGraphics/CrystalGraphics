@@ -883,6 +883,23 @@ public final class CgGpuOps {
      */
     public static void blurScaled(CgComputePass pass, CgGraphTexture source, int x, int y, int w, int h,
                                   CgGraphTexture target, float sigma, Edge edge) {
+        blurScaled(pass, source, x, y, w, h, target, sigma, sigma, edge);
+    }
+
+    /**
+     * As {@link #blurScaled(CgComputePass, CgGraphTexture, int, int, int, int, CgGraphTexture, float, Edge)}, with a
+     * sigma per axis; 0 on one leaves that axis sharp, so a blur along one direction costs one pass.
+     *
+     * <pre>{@code
+     * CgGpuOps.blurScaled(pass, capture, 0, top, w, band, blurred, 0f, 6f, CgGpuOps.Edge.CLAMP);   // vertical only
+     * }</pre>
+     */
+    public static void blurScaled(CgComputePass pass, CgGraphTexture source, int x, int y, int w, int h,
+                                  CgGraphTexture target, float sigmaX, float sigmaY, Edge edge) {
+        float sigma = Math.max(sigmaX, sigmaY);
+        if (!(sigma > 0f) || Float.isInfinite(sigma) || sigmaX < 0f || sigmaY < 0f) {
+            throw new IllegalArgumentException("a sigma of " + sigmaX + " by " + sigmaY);
+        }
         int sw = source.getWidth(), sh = source.getHeight();
         int scale = 0;
         for (int s = 1; s <= MAX_SCALE && scale == 0; s *= 2) {
@@ -890,14 +907,12 @@ public final class CgGpuOps {
         }
         if (scale == 0) throw new IllegalArgumentException(target + " is not " + source + " divided by 1, 2 or 4");
         if (scale == 1) {
-            if (!(sigma > 0f) || Float.isInfinite(sigma)) throw new IllegalArgumentException("a sigma of " + sigma);
             int f = imageType(source);
             if (imageType(target) != f) throw new IllegalArgumentException(source + " and " + target + " differ in format");
             requireRegion(source, x, y, w, h);
-            dispatchBlur(pass, f, source, 0, x, y, w, h, target, 0, x, y, sigma, sigma, edge, true);
+            dispatchBlur(pass, f, source, 0, x, y, w, h, target, 0, x, y, sigmaX, sigmaY, edge, true);
             return;
         }
-        if (!(sigma > 0f) || Float.isInfinite(sigma)) throw new IllegalArgumentException("a sigma of " + sigma);
         int f = imageType(source);
         if (imageType(target) != f) throw new IllegalArgumentException(source + " and " + target + " differ in format");
         requireRegion(source, x, y, w, h);
@@ -905,8 +920,8 @@ public final class CgGpuOps {
         int tw = (x + w + scale - 1) / scale - tx0, th = (y + h + scale - 1) / scale - ty0;
         pass.dispatch(reduceKernel(f), tw, th, 1).texture("_Src", source).image(TARGETS[f], target)
                 .set("_Region", tx0, ty0, tx0 + tw, ty0 + th).set("_Source", x, y, x + w, y + h).set("_Scale", scale);
-        float reduced = Math.min(sigma / scale, MAX_WORKING_SIGMA);
-        dispatchBlur(pass, f, target, 0, tx0, ty0, tw, th, target, 0, tx0, ty0, reduced, reduced, edge, true);
+        dispatchBlur(pass, f, target, 0, tx0, ty0, tw, th, target, 0, tx0, ty0,
+                Math.min(sigmaX / scale, MAX_WORKING_SIGMA), Math.min(sigmaY / scale, MAX_WORKING_SIGMA), edge, true);
     }
 
     /** The reduction {@link #blurScaled} wants for {@code sigma}: 1, 2 or 4, keeping the reduced sigma at most 4. */

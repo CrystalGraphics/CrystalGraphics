@@ -106,12 +106,14 @@ public class CgUserWidgetTest {
         int regions;
         int open = -1;
         final List<Float> blurs = new ArrayList<>();
+        final List<Float> blursY = new ArrayList<>();
         final List<Float> reaches = new ArrayList<>();
 
         @Override
-        public int beginRetained(float width, float height, float reach, float blur) {
+        public int beginRetained(float width, float height, float reach, float blurX, float blurY) {
             draws.add("region " + regions);
-            blurs.add(blur);
+            blurs.add(blurX);
+            blursY.add(blurY);
             reaches.add(reach);
             centres.add(new Vector3f(width, height, 0f));
             colours.add(0);
@@ -363,6 +365,17 @@ public class CgUserWidgetTest {
         assertEquals("A's cell centre", 15f, r.centres.get(0).x, 1e-4f);
         assertEquals("B sits after A, moved down 5", 45f, r.centres.get(1).x, 1e-4f);
         assertEquals(25f, r.centres.get(1).y, 1e-4f);
+    }
+
+    /** A retainer box's blur axis picks which sigma its painter is given: none across for a vertical blur. */
+    @Test
+    public void aRetainerBoxBlursAlongItsAxis() {
+        CgWidgetTree tree = CgWidgetTree.of(CgWidget.retainerBox("Ret").blur(3f).blurAxis(CgWidget.BlurAxis.VERTICAL)
+                .child(CgWidget.image("Cell")).build());
+        Recorder r = new Recorder();
+        tree.newInstance().retain(r);
+        assertEquals("across", 0f, r.blurs.get(0), 0f);
+        assertEquals("down", 3f, r.blursY.get(0), 0f);
     }
 
     /**

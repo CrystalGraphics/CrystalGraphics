@@ -4361,6 +4361,7 @@ com/crystalgraphics/compute/ops/CgGpuOps
   method public,static blur (Lcom/crystalgraphics/render/graph/CgComputePass;Lcom/crystalgraphics/render/graph/CgGraphTexture;ILcom/crystalgraphics/render/graph/CgGraphTexture;IF)V
   method public,static blur (Lcom/crystalgraphics/render/graph/CgComputePass;Lcom/crystalgraphics/render/graph/CgGraphTexture;Lcom/crystalgraphics/render/graph/CgGraphTexture;F)V
   method public,static blurScale (F)I
+  method public,static blurScaled (Lcom/crystalgraphics/render/graph/CgComputePass;Lcom/crystalgraphics/render/graph/CgGraphTexture;IIIILcom/crystalgraphics/render/graph/CgGraphTexture;FFLcom/crystalgraphics/compute/ops/CgGpuOps$Edge;)V
   method public,static blurScaled (Lcom/crystalgraphics/render/graph/CgComputePass;Lcom/crystalgraphics/render/graph/CgGraphTexture;IIIILcom/crystalgraphics/render/graph/CgGraphTexture;FLcom/crystalgraphics/compute/ops/CgGpuOps$Edge;)V
   method public,static bounds (Lcom/crystalgraphics/render/graph/CgComputePass;Lcom/crystalgraphics/render/graph/CgGraphBuffer;IILcom/crystalgraphics/compute/ops/CgGpuCount;Lcom/crystalgraphics/render/graph/CgGraphBuffer;I)V
   method public,static compact (Lcom/crystalgraphics/render/graph/CgComputePass;Lcom/crystalgraphics/render/graph/CgGraphBuffer;Lcom/crystalgraphics/render/graph/CgGraphBuffer;Lcom/crystalgraphics/compute/ops/CgGpuCount;Lcom/crystalgraphics/render/graph/CgGraphBuffer;Lcom/crystalgraphics/render/graph/CgGraphBuffer;I)V
@@ -8703,6 +8704,7 @@ com/crystalgraphics/render/canvas/CgCanvasRetainer
   extends java/lang/Object
   method public <init> (Ljava/lang/String;)V
   method public blur (Lcom/crystalgraphics/render/graph/CgRecording;FFFFF)I
+  method public blur (Lcom/crystalgraphics/render/graph/CgRecording;FFFFFF)I
   method public delete ()V
   method public end ()V
   method public paint (Lcom/crystalgraphics/render/graph/CgRecording;FFF)Lcom/crystalgraphics/render/canvas/CgCanvas;
@@ -19992,7 +19994,7 @@ com/crystalgraphics/widget/CgCanvasWidgetPainter
   implements com/crystalgraphics/widget/CgWidgetPainter
   method public <init> (Ljava/lang/String;Lcom/crystalgraphics/render/canvas/CgCanvasMaterials;)V
   method public begin (Lcom/crystalgraphics/render/canvas/CgCanvas;Lcom/crystalgraphics/render/graph/CgRecording;F)Lcom/crystalgraphics/widget/CgCanvasWidgetPainter;
-  method public beginRetained (FFFF)I
+  method public beginRetained (FFFFF)I
   method public endRetained ()V
   method public image (Lcom/crystalgraphics/widget/CgWidgetBrush;Lorg/joml/Matrix4f;FFFFFFLorg/joml/Vector4fc;)V
   method public layout (Lcom/crystalgraphics/text/style/CgTextStyle;Ljava/lang/String;FLcom/crystalgraphics/widget/CgWidget$Justification;Lorg/joml/Vector2f;)Ljava/lang/Object;
@@ -20120,6 +20122,7 @@ com/crystalgraphics/widget/CgWidget
   access public,final
   extends java/lang/Object
   method public blur ()F
+  method public blurAxis ()Lcom/crystalgraphics/widget/CgWidget$BlurAxis;
   method public brush ()Lcom/crystalgraphics/widget/CgWidgetBrush;
   method public brushColour ()Lcom/crystalgraphics/widget/CgLinearColour;
   method public children ()Ljava/util/List;
@@ -20152,11 +20155,20 @@ com/crystalgraphics/widget/CgWidget
   method public,static scaleBox (Ljava/lang/String;F)Lcom/crystalgraphics/widget/CgWidget$Builder;
   method public,static text (Ljava/lang/String;)Lcom/crystalgraphics/widget/CgWidget$Builder;
   method public,static userWidget (Ljava/lang/String;Lcom/crystalgraphics/widget/CgWidgetTree;)Lcom/crystalgraphics/widget/CgWidget$Builder;
+com/crystalgraphics/widget/CgWidget$BlurAxis
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final BOTH Lcom/crystalgraphics/widget/CgWidget$BlurAxis;
+  field public,static,final HORIZONTAL Lcom/crystalgraphics/widget/CgWidget$BlurAxis;
+  field public,static,final VERTICAL Lcom/crystalgraphics/widget/CgWidget$BlurAxis;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/widget/CgWidget$BlurAxis;
+  method public,static values ()[Lcom/crystalgraphics/widget/CgWidget$BlurAxis;
 com/crystalgraphics/widget/CgWidget$Builder
   access public,final
   extends java/lang/Object
   method public angle (F)Lcom/crystalgraphics/widget/CgWidget$Builder;
   method public blur (F)Lcom/crystalgraphics/widget/CgWidget$Builder;
+  method public blurAxis (Lcom/crystalgraphics/widget/CgWidget$BlurAxis;)Lcom/crystalgraphics/widget/CgWidget$Builder;
   method public brush (Lcom/crystalgraphics/widget/CgWidgetBrush;)Lcom/crystalgraphics/widget/CgWidget$Builder;
   method public brushColour (Lcom/crystalgraphics/widget/CgLinearColour;)Lcom/crystalgraphics/widget/CgWidget$Builder;
   method public build ()Lcom/crystalgraphics/widget/CgWidget;
@@ -20259,7 +20271,7 @@ com/crystalgraphics/widget/CgWidgetComponent$State
 com/crystalgraphics/widget/CgWidgetPainter
   access public,abstract,interface
   extends java/lang/Object
-  method public,abstract beginRetained (FFFF)I
+  method public,abstract beginRetained (FFFFF)I
   method public,abstract endRetained ()V
   method public,abstract image (Lcom/crystalgraphics/widget/CgWidgetBrush;Lorg/joml/Matrix4f;FFFFFFLorg/joml/Vector4fc;)V
   method public,abstract layout (Lcom/crystalgraphics/text/style/CgTextStyle;Ljava/lang/String;FLcom/crystalgraphics/widget/CgWidget$Justification;Lorg/joml/Vector2f;)Ljava/lang/Object;

@@ -526,7 +526,10 @@ public final class CgUserWidget implements CgSequenceTarget {
         if (w.kind == CgWidget.Kind.RETAINER_BOX) {
             float reach = 0f;
             for (int c : tree.children(i)) reach = Math.max(reach, reach(c, 1f));
-            region[i] = painter.beginRetained(size[i * 2], size[i * 2 + 1], reach, state[i * SLOTS * 4 + BLUR * 4]);
+            float blur = state[i * SLOTS * 4 + BLUR * 4];
+            CgWidget.BlurAxis axis = w.blurAxis;
+            region[i] = painter.beginRetained(size[i * 2], size[i * 2 + 1], reach,
+                    axis == CgWidget.BlurAxis.VERTICAL ? 0f : blur, axis == CgWidget.BlurAxis.HORIZONTAL ? 0f : blur);
             try {
                 for (int c : tree.children(i)) {
                     if (contains(c, CgWidget.Kind.RETAINER_BOX)) {
