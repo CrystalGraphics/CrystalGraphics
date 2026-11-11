@@ -18,6 +18,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 import static org.lwjgl.system.MemoryStack.stackPush;
 import static org.lwjgl.system.MemoryUtil.memFree;
@@ -49,8 +50,10 @@ import static org.lwjgl.util.shaderc.Shaderc.*;
  * <p>Two edits to the source, both checked by the compiler that follows: 26.2's own defines of
  * {@code gl_VertexID}/{@code gl_InstanceID} to their Vulkan names (every draw starts at instance 0, so they agree),
  * and, for the GL-depth vertex stage, {@code main} wrapped to map clip z from GL's range. glslang's relaxed Vulkan
- * rules take loose uniforms into one block per stage. Compiles are serialized, so a backend compiling in the
- * background shares it with its owner thread.</p>
+ * rules take loose uniforms into one block per stage. Compiles run in parallel from any threads: shaderc's compile
+ * takes its compiler and options as {@code const} and "may be safely called from multiple threads without explicit
+ * synchronization" ({@code shaderc.h}), and each reflection has a SPIRV-Cross context of its own. {@link #close} waits
+ * for compiles under way.</p>
  */
 public final class ShadercGlslCompiler implements CgGlslCompiler, AutoCloseable {
 
@@ -68,6 +71,10 @@ public final class ShadercGlslCompiler implements CgGlslCompiler, AutoCloseable 
     private final SpirvCache cache;
     /** {@link #explicitOptions}' modules, kept apart from {@link #cache}'s by their options. */
     private final SpirvCache explicitCache;
+    /** Compiles share it, each reading the native handles; {@link #close} alone takes it whole, to free them. */
+    private final ReentrantReadWriteLock handles = new ReentrantReadWriteLock();
+    /** Written under {@link #handles}' write lock. */
+    private boolean closed;
     /** Every option {@link #explicitOptions} sets, for its cache's key. */
     private static final String EXPLICIT_OPTIONS = "vulkan 1.2, auto-mapped locations, Vulkan rules, nothing auto-bound";
 
@@ -113,7 +120,7 @@ public final class ShadercGlslCompiler implements CgGlslCompiler, AutoCloseable 
     }
 
     @Override
-    public synchronized Explicit compileExplicit(String vertexGlsl, String fragmentGlsl, Map<String, Integer> attribLocations,
+    public Explicit compileExplicit(String vertexGlsl, String fragmentGlsl, Map<String, Integer> attribLocations,
                                                  String label) {
         String vertexSource = withDefines(vertexGlsl, label, EXPLICIT);
         SpirvModule vertex = new SpirvModule(explicitSpirv(vertexSource, shaderc_glsl_vertex_shader, label), label);
@@ -131,7 +138,7 @@ public final class ShadercGlslCompiler implements CgGlslCompiler, AutoCloseable 
     }
 
     @Override
-    public synchronized ExplicitCompute compileExplicitCompute(String glsl, String label) {
+    public ExplicitCompute compileExplicitCompute(String glsl, String label) {
         SpirvModule m = new SpirvModule(explicitSpirv(withDefines(glsl, label, EXPLICIT), shaderc_glsl_compute_shader, label),
                 label);
         Layout layout = layout(m);
@@ -173,7 +180,7 @@ public final class ShadercGlslCompiler implements CgGlslCompiler, AutoCloseable 
     }
 
     @Override
-    public synchronized Program compile(String vertexGlsl, String fragmentGlsl, Map<String, Integer> attribLocations,
+    public Program compile(String vertexGlsl, String fragmentGlsl, Map<String, Integer> attribLocations,
                                         String label) {
         String vertex = withDefines(vertexGlsl, label, "");
         SpirvModule glDepth = new SpirvModule(spirv(wrapMain(vertex, label), shaderc_glsl_vertex_shader, label), label);
@@ -255,7 +262,7 @@ public final class ShadercGlslCompiler implements CgGlslCompiler, AutoCloseable 
     }
 
     @Override
-    public synchronized ComputeProgram compileCompute(String glsl, String label) {
+    public ComputeProgram compileCompute(String glsl, String label) {
         SpirvModule m = new SpirvModule(spirv(glsl, shaderc_glsl_compute_shader, label), label);
         int next = 0;
         int loose = has(m.uniformBuffers, SpirvModule.DEFAULT_BLOCK) ? next++ : -1;
@@ -381,9 +388,12 @@ public final class ShadercGlslCompiler implements CgGlslCompiler, AutoCloseable 
         // The source on the native heap: an expanded material outgrows MemoryStack, which the String overload uses.
         ByteBuffer text = memUTF8(source, false);
         long result;
+        handles.readLock().lock();
         try (MemoryStack stack = stackPush()) {
+            if (closed) throw new IllegalStateException(label + ": the shader compiler is closed");
             result = shaderc_compile_into_spv(compiler, text, kind, stack.UTF8(label), stack.UTF8("main"), options);
         } finally {
+            handles.readLock().unlock();
             memFree(text);
         }
         try {
@@ -414,8 +424,15 @@ public final class ShadercGlslCompiler implements CgGlslCompiler, AutoCloseable 
 
     @Override
     public void close() {
-        shaderc_compile_options_release(options);
-        shaderc_compile_options_release(explicitOptions);
-        shaderc_compiler_release(compiler);
+        handles.writeLock().lock();
+        try {
+            if (closed) return;
+            closed = true;
+            shaderc_compile_options_release(options);
+            shaderc_compile_options_release(explicitOptions);
+            shaderc_compiler_release(compiler);
+        } finally {
+            handles.writeLock().unlock();
+        }
     }
 }

@@ -29,6 +29,7 @@ import java.security.NoSuchAlgorithmException;
  *   <li>Bounded by the engine's prune, once a launch ({@code CgCacheDirectory.prune}); a read marks its file used.</li>
  *   <li>A file that is not SPIR-V is a miss, and the compile after it writes it again.</li>
  *   <li>Any I/O failure is a miss or an unkept module, logged once: never an error.</li>
+ *   <li>Any thread, many at once: two compiling one module both write it, each file moved into place whole.</li>
  * </ul>
  */
 final class SpirvCache {
@@ -38,19 +39,12 @@ final class SpirvCache {
 
     private final Path dir;
     private final String salt;
-    private final MessageDigest sha;
-    private boolean warned;
-    int hits, misses;
+    private volatile boolean warned;
 
     /** @param options what else decides the output: the compiler's settings; the LWJGL version is added */
     SpirvCache(Path dir, String options) {
         this.dir = dir;
         this.salt = options + "|lwjgl " + Version.getVersion() + "|";
-        try {
-            this.sha = MessageDigest.getInstance("SHA-256");
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException(e);
-        }
     }
 
     /** The module compiled from {@code source} as {@code kind} by a launch before, or null. */
@@ -58,24 +52,16 @@ final class SpirvCache {
         Path file = dir.resolve(key(kind, source));
         byte[] bytes;
         try {
-            if (!Files.isRegularFile(file)) {
-                misses++;
-                return null;
-            }
+            if (!Files.isRegularFile(file)) return null;
             bytes = Files.readAllBytes(file);
             CgCacheDirectory.used(file);
         } catch (IOException e) {
             warn("read", e);
-            misses++;
             return null;
         }
         ByteBuffer words = ByteBuffer.allocateDirect(bytes.length).order(ByteOrder.nativeOrder());
         words.put(bytes).flip();
-        if (bytes.length < 20 || bytes.length % 4 != 0 || words.getInt(0) != MAGIC) {
-            misses++;
-            return null;
-        }
-        hits++;
+        if (bytes.length < 20 || bytes.length % 4 != 0 || words.getInt(0) != MAGIC) return null;
         return words;
     }
 
@@ -91,13 +77,22 @@ final class SpirvCache {
         }
     }
 
+    /** A digest of its own each call: compiles run on many threads at once. */
     private String key(int kind, String source) {
-        sha.reset();
+        MessageDigest sha = sha256();
         sha.update((salt + kind + "|").getBytes(StandardCharsets.UTF_8));
         byte[] digest = sha.digest(source.getBytes(StandardCharsets.UTF_8));
         StringBuilder hex = new StringBuilder(digest.length * 2 + 4);
         for (byte b : digest) hex.append(Character.forDigit(b >> 4 & 15, 16)).append(Character.forDigit(b & 15, 16));
         return hex.append(".spv").toString();
+    }
+
+    private static MessageDigest sha256() {
+        try {
+            return MessageDigest.getInstance("SHA-256");
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     private void warn(String what, IOException e) {
