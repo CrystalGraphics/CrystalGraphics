@@ -1,6 +1,5 @@
 package com.crystalgraphics.render.graph;
 
-import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.texture.CgTextureSpec;
 import com.crystalgraphics.api.texture.CgTextureType;
@@ -27,9 +26,9 @@ import java.util.EnumSet;
 import java.util.List;
 
 /**
- * A graph texture's storage on the device while it is resolved: its colour textures by slot and its depth (Unreal's
- * pooled render target behind an {@code FRDGTexture}). The graph makes it from a {@link CgTextureDesc}, or imports an
- * {@link CgExternalTarget}'s images as it is.
+ * A graph texture's storage on the device while it is resolved (Unreal's pooled render target behind an
+ * {@code FRDGTexture}): the one texture the graph makes from a {@link CgTextureDesc}, at colour slot 0 or as its depth by
+ * its format, or an {@link CgExternalTarget}'s colour and depth imported as they are.
  *
  * <pre>{@code
  * CgGraphStorage storage = texture.storage();          // render thread, inside an execution that resolves it
@@ -46,7 +45,6 @@ import java.util.List;
 public final class CgGraphStorage {
 
     private final String name;
-    private final CgFrameBufferFormat format;
     private final int width, height, depthSlices, levels, layers;
     /** Colour textures by slot, an attach-only one's too; null where a slot is unused. */
     private final CgGpuTexture[] colors;
@@ -67,11 +65,10 @@ public final class CgGraphStorage {
     @Nullable
     private CgExternalTarget asTarget;
 
-    private CgGraphStorage(String name, CgFrameBufferFormat format, int width, int height, int depthSlices, int levels,
+    private CgGraphStorage(String name, int width, int height, int depthSlices, int levels,
                            int layers, CgGpuTexture[] colors, @Nullable CgGpuTexture depth, int colorLevel, int colorLayer,
                            int depthLayer, @Nullable CgExternalTarget external, boolean owned, boolean volume) {
         this.name = name;
-        this.format = format;
         this.width = width;
         this.height = height;
         this.depthSlices = depthSlices;
@@ -96,87 +93,41 @@ public final class CgGraphStorage {
         CgGpuTexture make(CgGpuTexture.Desc desc);
     }
 
-    /** Storage for {@code desc}, every texture made by the device. */
+    /** Storage for {@code desc}, its texture made by the device. */
     static CgGraphStorage make(String name, CgTextureDesc desc) {
         CgRHI rhi = CgRHI.get();
         return make(name, desc, rhi::createTexture);
     }
 
-    /**
-     * Storage for {@code desc}, each texture {@link #deviceDescs} lists made by {@code images} in that order, any
-     * attach-only one by the device.
-     */
+    /** Storage for {@code desc}, its texture ({@link #deviceDesc}) made by {@code images}. */
     static CgGraphStorage make(String name, CgTextureDesc desc, Images images) {
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "graph.storage.create")) {
-            CgFrameBufferFormat format = desc.format();
-            int slots = 0;
-            for (int slot : format.getActiveColorSlotIds()) slots = Math.max(slots, slot + 1);
-            CgGpuTexture[] colors = new CgGpuTexture[slots];
-            CgGpuTexture depth = null;
-            try {
-                for (int slot : format.getActiveColorSlotIds()) {
-                    CgTextureType type = format.getColorSlot(slot);
-                    if (format.isColorRenderbuffer(slot)) {
-                        colors[slot] = attachOnly(colourLabel(name, slot), type, desc.width(), desc.height(), format.getSamples());
-                    } else {
-                        if (format.isMultisampled()) {
-                            throw new IllegalArgumentException(format + ": colour slot " + slot + " is multisampled and "
-                                    + "sampleable: use colorRenderbuffer(...)");
-                        }
-                        colors[slot] = images.make(colorDesc(colourLabel(name, slot), desc, type));
-                    }
-                }
-                if (format.hasDepth()) {
-                    CgTextureType type = format.getDepthType();
-                    if (format.isDepthRenderbuffer()) {
-                        depth = attachOnly(depthLabel(name), type, desc.width(), desc.height(), format.getSamples());
-                    } else {
-                        if (format.isMultisampled()) {
-                            throw new IllegalArgumentException(format + ": depth is multisampled and sampleable: use "
-                                    + "depthRenderbuffer(...)");
-                        }
-                        depth = images.make(depthDesc(depthLabel(name), desc.width(), desc.height(), type));
-                    }
-                }
-            } catch (RuntimeException e) {
-                for (CgGpuTexture made : colors) if (made != null) CgRHI.get().release(made);
-                if (depth != null) CgRHI.get().release(depth);
-                throw e;
-            }
-            return new CgGraphStorage(name, format, desc.width(), desc.height(), desc.depth(), desc.levels(),
-                    desc.layers(), colors, depth, 0, 0, 0, null, true, desc.isVolume());
+            CgGpuTexture made = images.make(deviceDesc(name, desc));
+            boolean depth = desc.isDepth();
+            return new CgGraphStorage(name, desc.width(), desc.height(), desc.depth(), desc.levels(), desc.layers(),
+                    depth ? new CgGpuTexture[0] : new CgGpuTexture[]{made}, depth ? made : null, 0, 0, 0, null, true,
+                    desc.isVolume());
         }
     }
 
-    /**
-     * The device textures {@link #make(String, CgTextureDesc, Images)} asks {@code images} for, in order: each sampled
-     * colour slot, then a sampled depth. A multisampled format asks for none.
-     */
-    static List<CgGpuTexture.Desc> deviceDescs(String name, CgTextureDesc desc) {
-        CgFrameBufferFormat format = desc.format();
-        List<CgGpuTexture.Desc> descs = new ArrayList<>();
-        if (format.isMultisampled()) return descs;
-        for (int slot : format.getActiveColorSlotIds()) {
-            if (!format.isColorRenderbuffer(slot)) descs.add(colorDesc(colourLabel(name, slot), desc, format.getColorSlot(slot)));
+    /** The device texture {@link #make(String, CgTextureDesc, Images)} asks {@code images} for. */
+    static CgGpuTexture.Desc deviceDesc(String name, CgTextureDesc desc) {
+        CgFormat format = desc.format();
+        if (desc.isMultisampled()) {
+            // Drawn into and resolved from: nothing samples it
+            return new CgGpuTexture.Desc(desc.isDepth() ? depthLabel(name) : colourLabel(name, 0), CgGpuTexture.Kind.D2,
+                    format, desc.width(), desc.height(), 1, 1, desc.samples(),
+                    EnumSet.of(CgGpuTexture.Usage.ATTACHMENT, CgGpuTexture.Usage.COPY_SRC));
         }
-        if (format.hasDepth() && !format.isDepthRenderbuffer()) {
-            descs.add(depthDesc(depthLabel(name), desc.width(), desc.height(), format.getDepthType()));
+        if (desc.isDepth()) {
+            return new CgGpuTexture.Desc(depthLabel(name), CgGpuTexture.Kind.D2, format, desc.width(), desc.height(), 1, 1, 1,
+                    EnumSet.of(CgGpuTexture.Usage.ATTACHMENT, CgGpuTexture.Usage.SAMPLED, CgGpuTexture.Usage.COPY_SRC,
+                            CgGpuTexture.Usage.COPY_DST));
         }
-        return descs;
-    }
-
-    /** Whether every texture of {@code format} is one {@link #deviceDescs} lists: no attach-only slot. */
-    static boolean allSampled(CgFrameBufferFormat format) {
-        if (format.isMultisampled() || format.hasDepth() && format.isDepthRenderbuffer()) return false;
-        for (int slot : format.getActiveColorSlotIds()) if (format.isColorRenderbuffer(slot)) return false;
-        return true;
-    }
-
-    private static CgGpuTexture.Desc colorDesc(String label, CgTextureDesc desc, CgTextureType type) {
-        CgFormat format = type.format();
         CgRHI rhi = CgRHI.get();
         EnumSet<CgGpuTexture.Usage> usage = rhi.supports(format, CgGpuTexture.Usage.STORAGE)
                 ? EnumSet.allOf(CgGpuTexture.Usage.class) : EnumSet.complementOf(EnumSet.of(CgGpuTexture.Usage.STORAGE));
+        String label = colourLabel(name, 0);
         if (desc.isVolume()) {
             usage.remove(CgGpuTexture.Usage.ATTACHMENT);
             return new CgGpuTexture.Desc(label, CgGpuTexture.Kind.D3, format, desc.width(), desc.height(), desc.depth(),
@@ -190,18 +141,6 @@ public final class CgGraphStorage {
                 Math.min(desc.levels(), CgTexture.fullChain(desc.width(), desc.height())), 1, usage);
     }
 
-    private static CgGpuTexture.Desc depthDesc(String label, int width, int height, CgTextureType type) {
-        return new CgGpuTexture.Desc(label, CgGpuTexture.Kind.D2, type.format(), width, height, 1, 1, 1,
-                EnumSet.of(CgGpuTexture.Usage.ATTACHMENT, CgGpuTexture.Usage.SAMPLED, CgGpuTexture.Usage.COPY_SRC,
-                        CgGpuTexture.Usage.COPY_DST));
-    }
-
-    /** A slot a pass attaches and never samples, multisampled where the format is. */
-    private static CgGpuTexture attachOnly(String label, CgTextureType type, int w, int h, int samples) {
-        return CgRHI.get().createTexture(new CgGpuTexture.Desc(label, CgGpuTexture.Kind.D2, type.format(), w, h, 1, 1,
-                Math.max(1, samples), EnumSet.of(CgGpuTexture.Usage.ATTACHMENT, CgGpuTexture.Usage.COPY_SRC)));
-    }
-
     private static String colourLabel(String name, int slot) {
         return name + " colour " + slot;
     }
@@ -213,29 +152,19 @@ public final class CgGraphStorage {
     // ── Imported ───────────────────────────────────────────────────────────────
 
     /**
-     * {@code target}'s images as storage the graph draws into and samples, owning nothing. Its format is read from the
-     * images: colour at slot 0 (RGBA8 where the device's format names no type), and its depth.
+     * {@code target}'s images as storage the graph draws into and samples, owning nothing: its colour at slot 0 and its
+     * depth.
      */
     static CgGraphStorage imported(CgExternalTarget target) {
         CgTextureView color = target.color(), depth = target.depth();
         CgGpuTexture.Desc of = (color != null ? color : depth).texture().desc();
-        CgFrameBufferFormat.Builder format = CgFrameBufferFormat.builder(target.label());
-        if (color != null) {
-            CgTextureType type = CgTextureType.of(color.texture().desc().format());
-            format.color(0, type != null ? type : CgTextureType.RGBA8);
-        }
-        if (depth != null) {
-            CgTextureType type = CgTextureType.of(depth.texture().desc().format());
-            if (type == null) throw new IllegalArgumentException(target + ": its depth's format " + depth.texture().desc().format() + " has no type");
-            format.depth(type);
-        }
         boolean volume = of.kind() == CgGpuTexture.Kind.D3;
         int layers = of.kind() == CgGpuTexture.Kind.D2_ARRAY ? of.depthOrLayers() : 1;
         // An attachment at a level above 0 draws that level alone: the storage is its size, one level
         boolean whole = color == null || color.baseMip() == 0 && color.baseLayer() == 0;
-        return new CgGraphStorage(target.label(), format.build(), target.width(), target.height(),
+        return new CgGraphStorage(target.label(), target.width(), target.height(),
                 volume ? of.depthOrLayers() : 1, whole ? of.mips() : 1, whole ? layers : 1,
-                new CgGpuTexture[]{color == null ? null : color.texture()}, depth == null ? null : depth.texture(),
+                color == null ? new CgGpuTexture[0] : new CgGpuTexture[]{color.texture()}, depth == null ? null : depth.texture(),
                 color == null ? 0 : color.baseMip(), color == null ? 0 : color.baseLayer(),
                 depth == null ? 0 : depth.baseLayer(), target, false, volume);
     }
@@ -246,9 +175,17 @@ public final class CgGraphStorage {
         return name;
     }
 
-    /** Its attachments' layout: a made one's description's, an imported one's as read from its images. */
-    public CgFrameBufferFormat format() {
-        return format;
+    /** The format of colour slot {@code slot}; null where it has none. */
+    @Nullable
+    public CgFormat colorFormat(int slot) {
+        CgGpuTexture t = color(slot);
+        return t == null ? null : t.desc().format();
+    }
+
+    /** Its depth's format; null where it has none. */
+    @Nullable
+    public CgFormat depthFormat() {
+        return depth == null ? null : depth.desc().format();
     }
 
     public int width() {
@@ -406,7 +343,7 @@ public final class CgGraphStorage {
             throw new IllegalStateException(this + " has no sampled colour " + slot);
         }
         Sampled s = sampled[slot];
-        if (s == null) sampled[slot] = s = new Sampled(t, format.getColorSlot(slot));
+        if (s == null) sampled[slot] = s = new Sampled(t);
         return s;
     }
 
@@ -414,7 +351,7 @@ public final class CgGraphStorage {
     @Nullable
     public CgTexture sampledDepth() {
         if (depth == null || !depth.desc().usage().contains(CgGpuTexture.Usage.SAMPLED)) return null;
-        if (sampledDepth == null) sampledDepth = new Sampled(depth, format.getDepthType());
+        if (sampledDepth == null) sampledDepth = new Sampled(depth);
         return sampledDepth;
     }
 
@@ -497,10 +434,11 @@ public final class CgGraphStorage {
         @Nullable
         private final CgTextureSpec spec;
 
-        Sampled(CgGpuTexture texture, CgTextureType type) {
+        Sampled(CgGpuTexture texture) {
+            CgTextureType type = CgTextureType.of(texture.desc().format());
             this.view = CgTextureView.whole(texture);
             // An imported image samples with the defaults, as a host's always has: its filtering is its owner's to say
-            this.spec = external != null ? null : type.toTextureSpec();
+            this.spec = external != null || type == null ? null : type.toTextureSpec();
         }
 
         @Override

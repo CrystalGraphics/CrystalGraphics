@@ -2212,6 +2212,7 @@ com/crystalgraphics/platform/rhi/format/CgFormat
   method public compressed ()Z
   method public hasDepth ()Z
   method public hasStencil ()Z
+  method public isFloat ()Z
   method public numeric ()Lcom/crystalgraphics/platform/rhi/format/CgFormat$Numeric;
   method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/platform/rhi/format/CgFormat;
   method public,static values ()[Lcom/crystalgraphics/platform/rhi/format/CgFormat;

@@ -2,7 +2,6 @@ package com.crystalgraphics.render.graph;
 
 import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.state.CgRenderState;
-import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.gpu.resource.CgReadback;
 import com.crystalgraphics.render.canvas.CgClipTable;
 import com.crystalgraphics.render.canvas.CgShapeTable;
@@ -25,6 +24,7 @@ import java.util.Collections;
 import java.util.Arrays;
 import java.util.IdentityHashMap;
 import java.util.List;
+import com.crystalgraphics.platform.rhi.format.CgFormat;
 
 /**
  * What one recorder produces for a frame: passes, the chunks drawn in them, the snapshots they bind, and the
@@ -188,12 +188,12 @@ public final class CgRecording {
      * CgGraphTexture across = recording.scratch("blur.across", w, h, format);   // distinct from every other this frame
      * }</pre>
      */
-    public CgGraphTexture scratch(String name, int width, int height, CgFrameBufferFormat format) {
+    public CgGraphTexture scratch(String name, int width, int height, CgFormat format) {
         requireOpen();
         if (scratchUsed < scratch.size() && scratch.get(scratchUsed) instanceof CgGraphTexture kept) {
             CgTextureDesc d = kept.desc();
             if (kept.name().equals(name) && d.width() == width && d.height() == height && d.levels() == 1
-                    && d.format().equals(format)) {
+                    && d.format() == format) {
                 scratchUsed++;
                 return kept;
             }
@@ -600,14 +600,13 @@ public final class CgRecording {
     public CgRequest update(CgGraphTexture texture, int level, int x, int y, int z, int w, int h, int d, ByteBuffer data) {
         requireOpen();
         if (texture.isArray()) throw new IllegalArgumentException(texture + " is an array: draw its layers");
-        CgFrameBufferFormat format = region(texture, level, x, y, z, w, h, d, "an update");
-        if (format == null || format.isMultisampled()) {
-            throw new IllegalArgumentException(texture + " has no single-sampled colour texture of a known type to update");
+        CgFormat format = region(texture, level, x, y, z, w, h, d, "an update");
+        if (format == null || texture.desc().isMultisampled()) {
+            throw new IllegalArgumentException(texture + " has no single-sampled colour texture of a known format to update");
         }
-        CgTextureType type = format.getColorSlot(0);
-        long want = (long) w * h * d * CgReadback.pixelBytes(type);
+        long want = format.bytes(w, h, d);
         if (data.remaining() != want) {
-            throw new IllegalArgumentException(w + "x" + h + "x" + d + " of " + type + " is " + want + " bytes, not "
+            throw new IllegalArgumentException(w + "x" + h + "x" + d + " of " + format + " is " + want + " bytes, not "
                     + data.remaining());
         }
         byte[] bytes = new byte[data.remaining()];
@@ -621,15 +620,15 @@ public final class CgRecording {
 
     /** The format of {@code texture}, null where unknown, after checking the box lies in level {@code level}. */
     @Nullable
-    private static CgFrameBufferFormat region(CgGraphTexture texture, int level, int x, int y, int z, int w, int h, int d,
-                                              String what) {
+    private static CgFormat region(CgGraphTexture texture, int level, int x, int y, int z, int w, int h, int d,
+                                   String what) {
         if (texture.isCurrent()) throw new IllegalArgumentException("the current target is no texture");
         if (level < 0 || level >= texture.getLevels()) {
             throw new IllegalArgumentException(texture + " has " + texture.getLevels() + " levels, not level " + level);
         }
-        CgFrameBufferFormat format = texture.desc() != null ? texture.desc().format() : null;
-        if (format != null && (format.getColorSlot(0) == null || format.isColorRenderbuffer(0))) {
-            throw new IllegalArgumentException(texture + " has no colour texture at attachment 0");
+        CgFormat format = texture.desc() != null ? texture.desc().format() : null;
+        if (format != null && (format.hasDepth() || format.hasStencil())) {
+            throw new IllegalArgumentException(texture + " is a " + format + " texture, not a colour one");
         }
         int lw = Math.max(1, texture.getWidth() >> level), lh = Math.max(1, texture.getHeight() >> level);
         int ld = texture.isArray() ? texture.getLayers() : texture.getDepth();
@@ -855,6 +854,15 @@ public final class CgRecording {
             readBits[slot] = access;
         }
         log(READ, p, slot, access, view);
+    }
+
+    /**
+     * The depth texture {@code from} draws with, read by {@code pass} reading {@code from}'s depth: a texture of the
+     * graph's, which it resolves and orders like any read. An external target's depth is its owner's, never declared.
+     */
+    void readDepthOf(CgPass pass, CgGraphTexture from) {
+        CgGraphTexture depth = from.depthOf();
+        if (depth != null && depth.kind() != CgGraphTexture.Kind.EXTERNAL) read(pass, depth, CgAccess.SAMPLED_READ);
     }
 
     void write(CgPass pass, CgGraphResource view, int access) {

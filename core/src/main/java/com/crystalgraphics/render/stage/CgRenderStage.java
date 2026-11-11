@@ -7,7 +7,6 @@ import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
 import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.rhi.CgExternalTarget;
 import com.crystalgraphics.platform.rhi.CgDeviceSection;
-import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.gpu.resource.CgFrameRing;
 import com.crystalgraphics.lifecycle.CgGraphicsLifecycle;
 import com.crystalgraphics.lifecycle.CgEngineLifecycle;
@@ -372,14 +371,14 @@ public final class CgRenderStage {
             }
             // The host's depth type and size: copies of the current target are taken in both, so the cast reuses the
             // rehearsal's and a copy never reads past the target.
-            CgTextureType depth = host.depthType();
+            CgFormat depth = host.depthFormat();
             Set<CgGpuTexture.Usage> usage = EnumSet.of(CgGpuTexture.Usage.ATTACHMENT, CgGpuTexture.Usage.SAMPLED,
                     CgGpuTexture.Usage.COPY_SRC, CgGpuTexture.Usage.COPY_DST);
             rehearsalTarget = CgExternalTarget.of("cg_rehearsal",
                     rhi.createTexture(new CgGpuTexture.Desc("cg_rehearsal colour", CgGpuTexture.Kind.D2,
                             CgFormat.RGBA8_UNORM, host.width(), host.height(), 1, 1, 1, usage)),
                     rhi.createTexture(new CgGpuTexture.Desc("cg_rehearsal depth", CgGpuTexture.Kind.D2,
-                            (depth != null ? depth : CgTextureType.DEPTH24_STENCIL8).format(), host.width(), host.height(),
+                            depth != null ? depth : CgFormat.DEPTH24_PLUS_STENCIL8, host.width(), host.height(),
                             1, 1, 1, usage)));
             rehearsedHost = hostTarget;
             rehearsedOn = rhi;

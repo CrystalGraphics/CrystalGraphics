@@ -5,7 +5,6 @@ import com.crystalgraphics.compute.CgKernel;
 import com.crystalgraphics.render.CgCpuMeter;
 import com.crystalgraphics.render.CgGpuBudget;
 import com.crystalgraphics.render.draw.CgBindingTable;
-import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.platform.rhi.command.CgAccess;
 import com.crystalgraphics.render.draw.CgPassConstants;
 
@@ -225,13 +224,13 @@ public final class CgComputePass extends CgPass {
      */
     public CgComputePass sceneDepth(CgGraphTexture from) {
         requireOpen();
-        CgFrameBufferFormat format = from.desc() != null ? from.desc().format() : null;
-        if (from.depthOf() == null && format != null && !format.hasDepth()) {
+        if (from.depthOf() == null && from.desc() != null && !from.desc().format().hasDepth()) {
             throw new IllegalArgumentException(this + " reads the depth of " + from + ", which has none");
         }
         depthFrom = from;
         if (depthFromCopy == null) depthFromCopy = keptDepthFrom != null ? keptDepthFrom : (keptDepthFrom = new CgTargetCopy());
         recording.read(this, from, CgAccess.SAMPLED_READ);
+        recording.readDepthOf(this, from);
         return this;
     }
 

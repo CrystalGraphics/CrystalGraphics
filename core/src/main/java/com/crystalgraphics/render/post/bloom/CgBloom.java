@@ -2,8 +2,6 @@ package com.crystalgraphics.render.post.bloom;
 
 import java.util.Arrays;
 
-import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
-import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.compute.CgCompute;
 import com.crystalgraphics.compute.CgKernel;
 import com.crystalgraphics.render.graph.CgBufferDesc;
@@ -24,6 +22,7 @@ import com.crystalgraphics.render.world.CgGradeLayers;
 import com.crystalgraphics.trace.CgGpuTrace;
 
 import javax.annotation.Nullable;
+import com.crystalgraphics.platform.rhi.format.CgFormat;
 
 /**
  * The post stack's bloom, Unreal's Gaussian layers ({@code BloomMethod} Standard): the HDR scene's ({@link CgFrameKeys#SCENE})
@@ -98,8 +97,7 @@ public final class CgBloom implements CgPostEffect {
 
     private static final String KERNELS = "crystalgraphics:shaders/env/compute/post/bloom.compute";
     /** Unreal's bloom format; written from kernels as the media's R16F is. */
-    private static final CgFrameBufferFormat FORMAT = CgFrameBufferFormat.builder("cg_bloom")
-            .color(0, CgTextureType.R11F_G11F_B10F).build();
+    private static final CgFormat FORMAT = CgFormat.RG11B10_UFLOAT;
     private static final int GPU_BLOOM = CgGpuTrace.name("post.bloom");
 
     private final Chain chain = new Chain();

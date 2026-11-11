@@ -2,13 +2,11 @@ package com.crystalgraphics.render.world;
 
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.CgBindingPoints;
-import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.state.CgBlendState;
 import com.crystalgraphics.api.state.CgDepthState;
 import com.crystalgraphics.api.state.CgRenderState;
-import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
 import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.render.draw.CgOrder;
@@ -27,6 +25,7 @@ import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 
 import java.util.Arrays;
+import com.crystalgraphics.platform.rhi.format.CgFormat;
 
 /**
  * The world renderer's distortion: where each haze's Distortion pass is applied, the array layers they add into, and
@@ -75,8 +74,7 @@ final class CgWorldDistortion {
     private static final CgLoad CLEAR = CgLoad.clear(0f, 0f, 0f, 0f);
     /** Pixels an apply's offsets spread past its rect when read bilinearly from a half-size target, and then some. */
     private static final float SPREAD = 4f;
-    private static final CgFrameBufferFormat FORMAT = CgFrameBufferFormat.builder("cg_world_distortion")
-            .color(0, CgTextureType.RGBA16F).build();
+    private static final CgFormat FORMAT = CgFormat.RGBA16_FLOAT;
     static final String APPLY_SHADER = "crystalgraphics:shaders/world_distortion_apply.shader";
     /** Offsets add, ONE ONE, hidden by the scene's copied depth rather than a depth test. */
     private static final CgRenderState BEND_STATE = CgRenderState.builder()

@@ -1,7 +1,5 @@
 package com.crystalgraphics.vfx.sparse;
 
-import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
-import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.gpu.resource.CgReadback;
 import com.crystalgraphics.render.graph.CgBufferDesc;
 import com.crystalgraphics.render.graph.CgBufferUsage;
@@ -18,6 +16,7 @@ import javax.annotation.Nullable;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Arrays;
+import com.crystalgraphics.platform.rhi.format.CgFormat;
 
 /**
  * A sparse volume's tiles: a pool of {@link #TILE}-cell tiles shared by up to {@code owners} volumes, each a grid of
@@ -69,8 +68,7 @@ public final class CgVfxTiles {
     public static final int FREE_AFTER = 500;
 
     private static final Logger LOG = LogManager.getLogger("CgVfxTiles");
-    private static final CgFrameBufferFormat R32F = CgFrameBufferFormat.builder("vfx.tiles.r32f")
-            .color(0, CgTextureType.R32F).build();
+    private static final CgFormat R32F = CgFormat.R32_FLOAT;
 
     private final String name;
     private final int owners;

@@ -1,7 +1,5 @@
 package com.crystalgraphics.vfx.grid;
 
-import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
-import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.compute.CgCompute;
 import com.crystalgraphics.compute.CgKernel;
 import com.crystalgraphics.compute.ops.CgGpuCount;
@@ -40,6 +38,7 @@ import java.nio.ByteOrder;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import com.crystalgraphics.platform.rhi.format.CgFormat;
 
 /**
  * Every grid's cells on the GPU ({@link CgVfxGrid3D}), sparse: each grid {@link #SPAN} cells a side about its middle,
@@ -124,10 +123,8 @@ public final class CgVfxGridAtlas {
     private static final int GPU_ZONE = CgGpuTrace.name("vfx.grid");
     private static final int TILE = CgVfxTiles.TILE, LAYER = CgVfxTiles.LAYER, APRON_TILE = CgVfxTiles.APRON_TILE,
             PAGE_TABLE = CgVfxTiles.PAGES * CgVfxTiles.PAGES * CgVfxTiles.PAGES;
-    private static final CgFrameBufferFormat RGBA16F = CgFrameBufferFormat.builder("vfx.grid.rgba16f")
-            .color(0, CgTextureType.RGBA16F).build();
-    private static final CgFrameBufferFormat R32F = CgFrameBufferFormat.builder("vfx.grid.r32f")
-            .color(0, CgTextureType.R32F).build();
+    private static final CgFormat RGBA16F = CgFormat.RGBA16_FLOAT;
+    private static final CgFormat R32F = CgFormat.R32_FLOAT;
     private static final Logger LOG = LogManager.getLogger("CgVfxGridAtlas");
     private static final CgVfxGridAtlas INSTANCE = new CgVfxGridAtlas();
 

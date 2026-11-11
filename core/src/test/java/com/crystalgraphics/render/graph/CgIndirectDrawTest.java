@@ -21,6 +21,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.Assert.*;
+import com.crystalgraphics.platform.rhi.format.CgFormat;
 
 /**
  * gpu-compute C4, GL-free: an indirect draw orders its pass after the kernel that writes its count, reads the count as
@@ -59,7 +60,7 @@ public class CgIndirectDrawTest {
     }
 
     private static CgRasterPass raster(CgRecording rec) {
-        return rec.raster(CgGraphTexture.requested("target", new CgTextureDesc(8, 8, CgTextureDesc.RGBA8)),
+        return rec.raster(CgGraphTexture.requested("target", CgTextureDesc.of(8, 8, CgFormat.RGBA8_UNORM)),
                 CgLoad.load(), new CgPassConstants(), null, CgOrder.LOOKBACK);
     }
 

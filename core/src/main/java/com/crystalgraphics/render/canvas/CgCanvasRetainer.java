@@ -12,6 +12,7 @@ import com.crystalgraphics.render.graph.CgTextureDesc;
 import com.crystalgraphics.trace.CgGpuTrace;
 
 import javax.annotation.Nullable;
+import com.crystalgraphics.platform.rhi.format.CgFormat;
 
 /**
  * Canvas items drawn into a texture of their own, then drawn as images: what fades, tints or glows as one picture.
@@ -160,7 +161,7 @@ public final class CgCanvasRetainer {
         if (target == null || target.getWidth() != texelsWide / reduce || target.getHeight() != texelsHigh / reduce) {
             if (target != null) recording.release(target);
             target = CgGraphTexture.requested(name + ".blur" + reduce,
-                    new CgTextureDesc(texelsWide / reduce, texelsHigh / reduce, CgTextureDesc.RGBA8));
+                    CgTextureDesc.of(texelsWide / reduce, texelsHigh / reduce, CgFormat.RGBA8_UNORM));
             blurred[at] = target;
         }
         // Its rows run up from the bottom, as quad's uv: the painted top is the last row.
@@ -216,7 +217,7 @@ public final class CgCanvasRetainer {
         if (texture != null) recording.release(texture);
         texelsWide = w;
         texelsHigh = h;
-        texture = CgGraphTexture.requested(name, new CgTextureDesc(w, h, CgTextureDesc.RGBA8));
+        texture = CgGraphTexture.requested(name, CgTextureDesc.of(w, h, CgFormat.RGBA8_UNORM));
     }
 
     private static int grain(int texels) {

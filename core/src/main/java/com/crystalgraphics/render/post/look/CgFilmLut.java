@@ -2,8 +2,6 @@ package com.crystalgraphics.render.post.look;
 
 import java.util.Arrays;
 
-import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
-import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.compute.CgCompute;
 import com.crystalgraphics.compute.CgKernel;
 import com.crystalgraphics.render.graph.CgBufferDesc;
@@ -16,6 +14,7 @@ import com.crystalgraphics.render.graph.CgTextureDesc;
 import com.crystalgraphics.render.post.volume.CgPostSettings;
 import com.crystalgraphics.trace.CgGpuTrace;
 import com.crystalgraphics.variable.CgVar;
+import com.crystalgraphics.platform.rhi.format.CgFormat;
 
 /**
  * The tonemapper's colour table: Unreal's combined LUT (its {@code PostProcessCombineLUTs}), 4.21's with the legacy
@@ -87,8 +86,7 @@ public final class CgFilmLut {
     static final int ROW_MODE = 23, ROW_LEGACY = 24, ROW_FILMIC = 27, ROW_AP1_TO_AP0 = 30, ROW_AP0_TO_AP1 = 33,
             ROW_BLUE = 36, ROW_BLUE_INV = 39, ROW_EXPAND = 42, ROWS = 45;
     private static final String KERNELS = "crystalgraphics:shaders/env/compute/post/film_lut.compute";
-    private static final CgFrameBufferFormat TABLE_FORMAT = CgFrameBufferFormat.builder("cg_film_lut")
-            .color(0, CgTextureType.RGBA32F).build();
+    private static final CgFormat TABLE_FORMAT = CgFormat.RGBA32_FLOAT;
     static final int GPU_FILM_LUT = CgGpuTrace.name("post.filmLut");
     /** Unreal's {@code r.LUT.UpdateEveryFrame}: the table built every frame, settings moved or not, to time it. */
     private static final boolean EVERY_FRAME = CgVar.bool("crystalgraphics.post.lutEveryFrame", false, CgVar.DEV,

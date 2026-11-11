@@ -1,7 +1,6 @@
 package com.crystalgraphics.render.graph;
 
 import com.crystalgraphics.api.CgBindingPoints;
-import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.platform.rhi.command.CgAccess;
@@ -128,8 +127,10 @@ public final class CgRasterPass extends CgPass {
     /** Makes this pass a new one into {@code target}: its recording's, after a reset, so a steady frame allocates none. */
     void reuse(String name, CgGraphTexture target, int level, int layer, CgLoad load, CgPassConstants constants,
                @Nullable CgRenderState state, CgOrder order) {
-        if (target.depthOf() != null && (load.clearsDepth() || load.clearsStencil())) {
-            throw new IllegalArgumentException(name + " would clear " + target.depthOf() + "'s depth: " + target + " draws with it");
+        if (target.depthOf() != null && target.depthOf().kind() == CgGraphTexture.Kind.EXTERNAL
+                && (load.clearsDepth() || load.clearsStencil())) {
+            throw new IllegalArgumentException(name + " would clear " + target.depthOf() + "'s depth, someone else's: "
+                    + target + " draws with it");
         }
         this.name = name;
         this.target = target;
@@ -472,14 +473,14 @@ public final class CgRasterPass extends CgPass {
     public CgRasterPass sceneDepth(int unit, CgGraphTexture from) {
         if (ended) throw new IllegalStateException(this + " has ended");
         if (from == target) return sceneDepth(unit);
-        CgFrameBufferFormat format = from.desc() != null ? from.desc().format() : null;
-        if (from.depthOf() == null && format != null && !format.hasDepth()) {
+        if (from.depthOf() == null && from.desc() != null && !from.desc().format().hasDepth()) {
             throw new IllegalArgumentException(this + " reads the depth of " + from + ", which has none");
         }
         depthFrom = from;
         depthFromUnit = unit;
         if (depthFromCopy == null) depthFromCopy = keptDepthFrom != null ? keptDepthFrom : (keptDepthFrom = new CgTargetCopy());
         recording.read(this, from, CgAccess.SAMPLED_READ);
+        recording.readDepthOf(this, from);
         return this;
     }
 

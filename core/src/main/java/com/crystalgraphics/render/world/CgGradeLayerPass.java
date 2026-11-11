@@ -1,7 +1,6 @@
 package com.crystalgraphics.render.world;
 
 import com.crystalgraphics.api.CgBindingPoints;
-import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgRenderPassVariant;
 import com.crystalgraphics.api.material.CgRenderQueue;
@@ -9,7 +8,6 @@ import com.crystalgraphics.api.state.CgBlendState;
 import com.crystalgraphics.api.state.CgColorMask;
 import com.crystalgraphics.api.state.CgDepthState;
 import com.crystalgraphics.api.state.CgRenderState;
-import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
 import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.render.draw.CgOrder;
@@ -31,6 +29,7 @@ import com.crystalgraphics.util.trace.CgChannels;
 import java.util.Arrays;
 import java.util.IdentityHashMap;
 import javax.annotation.Nullable;
+import com.crystalgraphics.platform.rhi.format.CgFormat;
 
 /**
  * The layer passes: each graded draw drawn again into its look's layer, which its post look grades and composites
@@ -50,8 +49,7 @@ final class CgGradeLayerPass {
     private final CgWorldDraws draws;
     private final CgMeshDrawCommands commands;
 
-    static final CgFrameBufferFormat GRADE_FORMAT = CgFrameBufferFormat.builder("cg_grade_layer")
-            .color(0, CgTextureType.RGBA16F).build();
+    static final CgFormat GRADE_FORMAT = CgFormat.RGBA16_FLOAT;
 
     final CgGraphTexture[] gradeApart = new CgGraphTexture[CgGradeLayers.MAX];
 

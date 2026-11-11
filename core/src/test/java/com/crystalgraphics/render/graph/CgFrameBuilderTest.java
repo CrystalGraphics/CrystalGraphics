@@ -20,6 +20,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 import static org.junit.Assert.*;
+import com.crystalgraphics.platform.rhi.format.CgFormat;
 
 /**
  * render-graph G1: what the frame builder decides with no GL — order from reads and writes, culling, transient
@@ -38,7 +39,7 @@ public class CgFrameBuilderTest {
             }
             """;
 
-    private static final CgTextureDesc DESC = new CgTextureDesc(64, 64, CgTextureDesc.RGBA8);
+    private static final CgTextureDesc DESC = CgTextureDesc.of(64, 64, CgFormat.RGBA8_UNORM);
     private final CgPassConstants constants = new CgPassConstants().resolution(64, 64);
     private final CgFrameBuilder builder = new CgFrameBuilder();
     private CgMaterial material;

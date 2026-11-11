@@ -2227,7 +2227,7 @@ public final class CgExecutor {
         deviceFormats.clear();
         // A second attachment is colour 1, after the target's colour 0.
         CgGpuTexture second = deviceSecond(pass, storage, w, h);
-        int colors = second != null ? 1 : storage.format().colorSlotCount();
+        int colors = storage.color(0) != null ? 1 : 0;
         for (int i = 0; i < colors + (second != null ? 1 : 0); i++) {
             CgGpuTexture texture = i == colors ? second : deviceTexture(storage, i);
             // The pass's level and layer of the target, from where an imported one is attached; a second attachment's 0
@@ -2585,14 +2585,15 @@ public final class CgExecutor {
 
     /** Copies the depth of the target a pass reads besides its own, whole, and binds it. */
     private void copyDepthFrom(CgPass pass, CgGraphTexture from, CgTargetCopy copy, int unit) {
-        if (takes && from.kind() != CgGraphTexture.Kind.EXTERNAL && from.depthOf() == null
-                && storage(from).sampledDepth() != null) {
+        CgGraphTexture depth = from.depthOf() != null ? from.depthOf() : from;
+        if (takes && depth.kind() != CgGraphTexture.Kind.EXTERNAL && storage(depth).sampledDepth() != null
+                && !(pass instanceof CgRasterPass raster && depthTexture(raster) == depth)) {
             // Not attached here, and moved to SAMPLED_READ with the step: sampled where it is, as Unreal samples SceneDepth.
-            CgBoundResources.texture(unit, storage(from).sampledDepth(), -1);
+            CgBoundResources.texture(unit, storage(depth).sampledDepth(), -1);
             CgTrace.add(CgChannels.GL, DEPTH_SAMPLED, 1);
             return;
         }
-        copy.borrowDepth(sharedDepth(storage(from.depthOf() != null ? from.depthOf() : from), pass));
+        copy.borrowDepth(sharedDepth(storage(depth), pass));
         CgBoundResources.texture(unit, copy.depth, -1);
     }
 

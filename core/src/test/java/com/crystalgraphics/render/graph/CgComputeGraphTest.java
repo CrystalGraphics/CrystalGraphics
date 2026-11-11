@@ -1,8 +1,6 @@
 package com.crystalgraphics.render.graph;
 
-import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.material.CgMaterial;
-import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.compute.CgCompute;
 import com.crystalgraphics.compute.CgKernel;
 import com.crystalgraphics.material.CgMaterialTestSupport;
@@ -20,6 +18,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.Assert.*;
+import com.crystalgraphics.platform.rhi.format.CgFormat;
 
 /**
  * gpu-compute C3, GL-free: what the frame builder decides for compute passes and graph buffers — order from what
@@ -130,7 +129,7 @@ public class CgComputeGraphTest {
 
     /** A raster pass into a requested texture of its own, touching nothing else. */
     private void draw(CgRecording rec, String target) {
-        CgRasterPass pass = rec.raster(CgGraphTexture.requested(target, new CgTextureDesc(8, 8, CgTextureDesc.RGBA8)),
+        CgRasterPass pass = rec.raster(CgGraphTexture.requested(target, CgTextureDesc.of(8, 8, CgFormat.RGBA8_UNORM)),
                 CgLoad.load(), new CgPassConstants(), null, CgOrder.LOOKBACK);
         CgChunkBuilder c = rec.chunks().begin();
         c.draw(material.pipeline(CgInstanceKind.QUAD), material.captureBindings(rec.bindings()));
@@ -159,7 +158,7 @@ public class CgComputeGraphTest {
         CgComputePass write = rec.compute("write");
         write.dispatch(produce, 64).bind("DST", cells);
         write.end();
-        CgRasterPass draw = rec.raster(CgGraphTexture.requested("target", new CgTextureDesc(8, 8, CgTextureDesc.RGBA8)),
+        CgRasterPass draw = rec.raster(CgGraphTexture.requested("target", CgTextureDesc.of(8, 8, CgFormat.RGBA8_UNORM)),
                 CgLoad.load(), new CgPassConstants(), null, CgOrder.LOOKBACK);
         int bindings = rec.bindings().begin().storage(3, cells).end();
         CgChunkBuilder c = rec.chunks().begin();
@@ -341,7 +340,7 @@ public class CgComputeGraphTest {
         add.dispatch(consume, 64).bind("SRC", counts).bind("DST", copy);
         add.end();
         rec.copy(copy, 0, counts, 0, DESC.bytes());
-        CgRasterPass draw = rec.raster(CgGraphTexture.requested("target", new CgTextureDesc(8, 8, CgTextureDesc.RGBA8)),
+        CgRasterPass draw = rec.raster(CgGraphTexture.requested("target", CgTextureDesc.of(8, 8, CgFormat.RGBA8_UNORM)),
                 CgLoad.load(), new CgPassConstants(), null, CgOrder.LOOKBACK);
         int bindings = rec.bindings().begin().storage(3, counts).end();
         CgChunkBuilder c = rec.chunks().begin();
@@ -468,7 +467,7 @@ public class CgComputeGraphTest {
 
     @Test
     public void aRecordingReusedEachFrameHandsOutTheSameScratch_inTheOrderAskedFor() {
-        CgFrameBufferFormat rgba8 = CgFrameBufferFormat.builder("scratch").color(0, CgTextureType.RGBA8).build();
+        CgFormat rgba8 = CgFormat.RGBA8_UNORM;
         CgRecording rec = new CgRecording();
         CgGraphTexture across = rec.scratch("blur", 64, 32, rgba8);
         CgGraphBuffer a = rec.scratch("a", 256, CgBufferUsage.STORAGE), b = rec.scratch("b", 256, CgBufferUsage.STORAGE);
@@ -520,7 +519,7 @@ public class CgComputeGraphTest {
                 void Flat() { FLAT_WRITE(vec4(0.0)); }
                 void Deep() { DEEP_WRITE(textureLod(_Grid, vec3(0.5), 0.0)); }
                 """);
-        CgFrameBufferFormat r32f = CgFrameBufferFormat.builder("volumes").color(0, CgTextureType.R32F).build();
+        CgFormat r32f = CgFormat.R32_FLOAT;
         CgGraphTexture volume = CgGraphTexture.transientTexture("volume", CgTextureDesc.volume(8, 8, 8, r32f));
         CgGraphTexture grid = CgGraphTexture.transientTexture("grid", CgTextureDesc.volume(4, 4, 4, r32f));
         CgGraphTexture flat = CgGraphTexture.transientTexture("flat", new CgTextureDesc(8, 8, r32f));
@@ -533,15 +532,13 @@ public class CgComputeGraphTest {
         assertThrows(IllegalArgumentException.class,
                 () -> new CgRecording().raster(volume, CgLoad.load(), new CgPassConstants(), null, CgOrder.LOOKBACK));
         assertThrows(IllegalArgumentException.class, () -> CgTextureDesc.volume(8, 8, 1, r32f));
-        assertThrows(IllegalArgumentException.class, () -> new CgTextureDesc(8, 8, 8, r32f, 2));
+        assertThrows(IllegalArgumentException.class, () -> new CgTextureDesc(8, 8, 8, r32f, 2, 1));
 
-        // An image is one texture: a target of several attachments would bind its first whichever was meant.
-        CgFrameBufferFormat mrt = CgFrameBufferFormat.builder("history").color(0, CgTextureType.R32F)
-                .color(1, CgTextureType.R32F).build();
-        CgGraphTexture history = CgGraphTexture.transientTexture("history", new CgTextureDesc(8, 8, mrt));
+        // An image is a colour texture: a depth one binds as nothing a kernel writes.
+        CgGraphTexture depth = CgGraphTexture.transientTexture("depth", CgTextureDesc.of(8, 8, CgFormat.DEPTH32_FLOAT));
         IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
-                () -> pass.dispatch(images.kernel("Flat"), 8, 8, 1).image("FLAT", history));
-        assertTrue(e.getMessage(), e.getMessage().contains("2 colour attachments"));
+                () -> pass.dispatch(images.kernel("Flat"), 8, 8, 1).image("FLAT", depth));
+        assertTrue(e.getMessage(), e.getMessage().contains("a colour one"));
     }
 
     // ── The executor's walk, GL-free ──────────────────────────────────────────

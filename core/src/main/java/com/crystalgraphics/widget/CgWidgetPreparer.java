@@ -2,11 +2,11 @@ package com.crystalgraphics.widget;
 
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgMaterialDefinition;
-import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.asset.load.CgAssetPreparer;
 import com.crystalgraphics.compute.ops.CgGpuOps;
 import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.render.world.CgPipelineList;
+import com.crystalgraphics.platform.rhi.format.CgFormat;
 
 /**
  * A widget asset's UI materials built before it is READY, as Unreal precaches a widget's materials with it: every
@@ -33,7 +33,7 @@ public final class CgWidgetPreparer implements CgAssetPreparer {
         plan.pipelines(pipelines -> {
             add(tree, pipelines);
             // A retained image is RGBA8 (CgCanvasRetainer): its blur's kernels on that format.
-            if (retains) pipelines.kernels(() -> CgGpuOps.precacheBlur(CgTextureType.RGBA8));
+            if (retains) pipelines.kernels(() -> CgGpuOps.precacheBlur(CgFormat.RGBA8_UNORM));
         });
     }
 

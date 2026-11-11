@@ -1,7 +1,5 @@
 package com.crystalgraphics.vfx.fluid;
 
-import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
-import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.compute.CgCompute;
 import com.crystalgraphics.compute.CgKernel;
 import com.crystalgraphics.compute.ops.CgGpuCount;
@@ -40,6 +38,7 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Arrays;
 import java.util.function.IntConsumer;
+import com.crystalgraphics.platform.rhi.format.CgFormat;
 
 /**
  * Every fluid's simulation: NVIDIA Flow's grid step (BSD-3-Clause, {@code flow/source/nvflowext/Grid.cpp}
@@ -129,8 +128,7 @@ public final class CgVfxFluidAtlas {
         CgCompute.load(MEDIA_KERNELS).kernel("Gas").precache();
     }
     private static final int GPU_ZONE = CgGpuTrace.name("vfx.fluid");
-    private static final CgFrameBufferFormat RGBA16F = format("vfx.fluid.rgba16f", CgTextureType.RGBA16F),
-            RG16F = format("vfx.fluid.rg16f", CgTextureType.RG16F), R8 = format("vfx.fluid.r8", CgTextureType.R8);
+    private static final CgFormat RGBA16F = CgFormat.RGBA16_FLOAT, RG16F = CgFormat.RG16_FLOAT, R8 = CgFormat.R8_UNORM;
     private static final CgVfxFluidAtlas INSTANCE = new CgVfxFluidAtlas();
 
     private final CgVfxFluid[] tenants = new CgVfxFluid[CAPACITY];
@@ -205,10 +203,6 @@ public final class CgVfxFluidAtlas {
 
     public static CgVfxFluidAtlas get() {
         return INSTANCE;
-    }
-
-    private static CgFrameBufferFormat format(String name, CgTextureType type) {
-        return CgFrameBufferFormat.builder(name).color(0, type).build();
     }
 
     /** Tiles in the pool at {@code quality}: 1024 at Ultra, 512 at High, 256 at Medium, 128 at Low. */

@@ -2,9 +2,7 @@ package com.crystalgraphics.render.world;
 
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.CgBindingPoints;
-import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.material.CgMaterial;
-import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
 import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.render.draw.CgOrder;
@@ -17,6 +15,7 @@ import com.crystalgraphics.render.graph.CgTextureDesc;
 import com.crystalgraphics.render.stage.CgHostView;
 import com.crystalgraphics.render.stage.CgStageFrame;
 import com.crystalgraphics.trace.CgGpuTrace;
+import com.crystalgraphics.platform.rhi.format.CgFormat;
 
 /**
  * Half-resolution translucency: transparent draws marked {@code halfResolution()} drawn at half the target's size, then
@@ -34,8 +33,7 @@ final class CgHalfPass {
 
     static final int GPU_HALF = CgGpuTrace.name("world.half"), GPU_HALF_ADD = CgGpuTrace.name("world.halfAdd");
 
-    static final CgFrameBufferFormat HALF_FORMAT = CgFrameBufferFormat.builder("cg_world_half")
-            .color(0, CgTextureType.R11F_G11F_B10F).build();
+    static final CgFormat HALF_FORMAT = CgFormat.RG11B10_UFLOAT;
 
     CgGraphTexture halfTarget;
 

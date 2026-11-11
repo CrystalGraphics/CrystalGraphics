@@ -3,11 +3,9 @@ package com.crystalgraphics.render.world;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 import com.crystalgraphics.api.CgBindingPoints;
-import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgMeshTopology;
-import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.compute.CgCompute;
 import com.crystalgraphics.compute.CgKernel;
 import com.crystalgraphics.gpu.resource.CgFallbackTextures;
@@ -35,6 +33,7 @@ import org.joml.Vector4f;
 import javax.annotation.Nullable;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
+import com.crystalgraphics.platform.rhi.format.CgFormat;
 
 /**
  * Smoke and gas in the air as a froxel grid over the view, Frostbite's and Unreal's volumetric fog: what each injector
@@ -122,11 +121,9 @@ public final class CgWorldMedia {
     private static final int GPU_INJECT = CgGpuTrace.name("world.mediaInject"), GPU_SCATTER = CgGpuTrace.name("world.mediaScatter"),
             GPU_INTEGRATE = CgGpuTrace.name("world.mediaIntegrate");
     private static final int ZONE_RECORD = CgTrace.name("world.media.record");
-    private static final CgFrameBufferFormat R16F = CgFrameBufferFormat.builder("cg_world_media.r16f")
-            .color(0, CgTextureType.R16F).build();
+    private static final CgFormat R16F = CgFormat.R16_FLOAT;
     /** What reaches the eye: the light scattered toward it, then what gets through. */
-    private static final CgFrameBufferFormat TRANSMIT = CgFrameBufferFormat.builder("cg_world_media.transmit")
-            .color(0, CgTextureType.RGBA16F).build();
+    private static final CgFormat TRANSMIT = CgFormat.RGBA16_FLOAT;
     /** Its integration kernel, for the world's collector: compiled at the first smoke otherwise. */
     static void precacheKernels() {
         CgCompute.load(KERNELS).kernel("IntegrateColumns").precache();

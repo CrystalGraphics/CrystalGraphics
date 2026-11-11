@@ -2,7 +2,6 @@ package com.crystalgraphics.render.post;
 
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.CgBindingPoints;
-import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgMeshTopology;
@@ -10,7 +9,6 @@ import com.crystalgraphics.api.material.CgMaterialValues;
 import com.crystalgraphics.api.state.CgBlendState;
 import com.crystalgraphics.api.state.CgDepthState;
 import com.crystalgraphics.api.state.CgRenderState;
-import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.material.parse.CgParsedShader;
 import com.crystalgraphics.gpu.resource.CgFallbackTextures;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
@@ -30,6 +28,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.Consumer;
+import com.crystalgraphics.platform.rhi.format.CgFormat;
 
 /**
  * A post effect that is only a material: its {@code .shader} drawn over the whole screen at a point, at a weight it
@@ -93,8 +92,7 @@ import java.util.function.Consumer;
 public final class CgPostMaterial implements CgPostEffect {
 
     private static final CgMesh FULLSCREEN = CgMesh.vertices(3, CgMeshTopology.TRIANGLES);
-    private static final CgFrameBufferFormat TARGET = CgFrameBufferFormat.builder("cg_post_pass")
-            .color(0, CgTextureType.RGBA16F).build();
+    private static final CgFormat TARGET = CgFormat.RGBA16_FLOAT;
 
     private final CgMaterial material;
     private final CgPostPoint point;

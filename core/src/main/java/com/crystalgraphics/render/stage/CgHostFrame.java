@@ -1,6 +1,6 @@
 package com.crystalgraphics.render.stage;
 
-import com.crystalgraphics.api.texture.CgTextureType;
+import com.crystalgraphics.platform.rhi.format.CgFormat;
 import com.crystalgraphics.platform.rhi.CgExternalTarget;
 import com.crystalgraphics.platform.rhi.resource.CgTextureView;
 
@@ -72,13 +72,13 @@ public final class CgHostFrame {
     }
 
     /**
-     * The type of the host target's depth, null where it has none: what a scene of ours copies that depth into where the
-     * target lends none ({@code target().lendsAttachments()}), since a depth blit refuses formats that differ.
+     * The format of the host target's depth, null where it has none: what a scene of ours copies that depth into where
+     * the target lends none ({@code target().lendsAttachments()}), since a depth blit refuses formats that differ.
      */
     @Nullable
-    public CgTextureType depthType() {
+    public CgFormat depthFormat() {
         CgTextureView depth = target().depth();
-        return depth == null ? null : CgTextureType.of(depth.texture().desc().format());
+        return depth == null ? null : depth.texture().desc().format();
     }
 
     /** The host's name for its target, -1 where it was given whole: what a rehearsal hands back unchanged. */

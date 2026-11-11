@@ -83,4 +83,10 @@ public enum CgFormat {
     public boolean hasDepth() { return aspect == Aspect.DEPTH || aspect == Aspect.DEPTH_STENCIL; }
 
     public boolean hasStencil() { return aspect == Aspect.STENCIL || aspect == Aspect.DEPTH_STENCIL; }
+
+    /**
+     * Whether its texels are floats, half, full or packed: a colour target that stores light linearly, so a blend into it
+     * mixes light, not encoded values.
+     */
+    public boolean isFloat() { return name().contains("FLOAT"); }
 }

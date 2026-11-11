@@ -1,10 +1,8 @@
 package com.crystalgraphics.render.world;
 
 import com.crystalgraphics.api.CgBindingPoints;
-import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgRenderPassVariant;
-import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.gpu.resource.CgReadback;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
 import com.crystalgraphics.render.draw.CgInstanceKind;
@@ -22,6 +20,7 @@ import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
+import com.crystalgraphics.platform.rhi.format.CgFormat;
 
 /**
  * The overdraw view's pass: every transparent draw counted again into a target of its own, one per fragment, and the
@@ -37,8 +36,7 @@ final class CgOverdrawPass {
     private final CgWorldDraws draws;
     private final CgMeshDrawCommands commands;
 
-    static final CgFrameBufferFormat OVERDRAW_FORMAT = CgFrameBufferFormat.builder("cg_world_overdraw")
-            .color(0, CgTextureType.R16F).build();
+    static final CgFormat OVERDRAW_FORMAT = CgFormat.R16_FLOAT;
 
     CgGraphTexture overdrawTarget;
 

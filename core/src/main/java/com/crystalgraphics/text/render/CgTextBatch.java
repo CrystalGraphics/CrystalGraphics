@@ -13,7 +13,6 @@ import com.crystalgraphics.api.state.CgDepthState;
 import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.api.text.CgTextDecorationRect;
 import com.crystalgraphics.api.text.CgTextLayout;
-import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.render.CgFrameClock;
 import com.crystalgraphics.render.canvas.CgCanvas;
 import com.crystalgraphics.render.canvas.CgQuadRecord;
@@ -535,8 +534,7 @@ public final class CgTextBatch {
     public static boolean blendsLinearly(@Nullable CgGraphTexture target) {
         CgTextureDesc desc = target != null ? target.desc() : null;
         if (desc == null) return false;
-        CgTextureType colour = desc.format().getColorSlot(0);
-        return colour != null && colour.isFloat();
+        return desc.format().isFloat();
     }
 
     /** The draw's glyphs resolved and its quads recorded into {@link #records}, past the cull and a replay. */

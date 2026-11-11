@@ -74,9 +74,8 @@ level reads another of the same texture with no feedback loop. `CgGpuOps.downsam
 imported target's texture carries its own count.
 
 ```java
-CgGraphTexture bloom = CgGraphTexture.transientTexture("bloom", new CgTextureDesc(w, h, HDR).withMips());
-CgFrameBufferFormat r32f = CgFrameBufferFormat.builder("hi-z").color(0, CgTextureType.R32F).build();
-CgGraphTexture hiZ = CgGraphTexture.requested("hi-z", new CgTextureDesc(w, h, r32f, 6));   // six levels
+CgGraphTexture bloom = CgGraphTexture.transientTexture("bloom", CgTextureDesc.of(w, h, CgFormat.RGBA16_FLOAT).withMips());
+CgGraphTexture hiZ = CgGraphTexture.requested("hi-z", new CgTextureDesc(w, h, CgFormat.R32_FLOAT, 6));   // six levels
 
 CgRasterPass down = rec.raster(bloom, 3, CgLoad.load(), constants, null, CgOrder.LOOKBACK);   // into level 3
 int reads = rec.bindings().withTexture(material.captureBindings(rec.bindings()), 0, bloom.level(2));
@@ -95,14 +94,13 @@ own, so its load clears or keeps that layer alone, and on Vulkan passes into dif
 is one array texture, each pass attaching its layer.
 
 ```java
-CgFrameBufferFormat rgba16f = CgFrameBufferFormat.builder("field").color(0, CgTextureType.RGBA16F).build();
-CgGraphTexture field = CgGraphTexture.transientTexture("field", CgTextureDesc.array(w, h, 5, rgba16f));
+CgGraphTexture field = CgGraphTexture.transientTexture("field", CgTextureDesc.array(w, h, 5, CgFormat.RGBA16_FLOAT));
 CgRasterPass slot = rec.raster(field, 0, k, CgLoad.clear(0, 0, 0, 0), constants, additive, CgOrder.SORTED);
 material.applyProperties(b -> b.sampler("_Fields", 0, field).set1i("_Count", used));   // texture(_Fields, vec3(uv, k))
 rec.readback(field, 0, 0, 0, k, w, h, 1, data -> check(data));                         // layer k
 ```
 
-- One level, one colour attachment, no depth. Keep the layer count fixed from frame to frame so the pool hands back
+- One colour level. Keep the layer count fixed from frame to frame so the pool hands back
   the same storage, and read only the layers drawn this frame: the rest hold whatever the storage last held.
 - A pass sampling the array it draws into throws, whichever layer it draws: sampled, the array is read whole.
 - For ordering the array is one resource, as a level view is: each layer's pass runs after the one before it.
@@ -114,8 +112,7 @@ rec.readback(field, 0, 0, 0, k, w, h, 1, data -> check(data));                  
 a 3D texture made without attachment use, since nothing draws into it.
 
 ```java
-CgFrameBufferFormat r8ui = CgFrameBufferFormat.builder("voxels").color(0, CgTextureType.R8UI).build();
-CgGraphTexture voxels = CgGraphTexture.requested("voxels", CgTextureDesc.volume(128, 96, 128, r8ui));
+CgGraphTexture voxels = CgGraphTexture.requested("voxels", CgTextureDesc.volume(128, 96, 128, CgFormat.R8_UINT));
 pass.dispatch(fill, 128, 96, 128).image("VOXELS", voxels);                 // Images { VOXELS (..., r8ui, writeonly, 3d) }
 step.dispatch(collide, n).texture("_Voxels", voxels);                       // Properties { _Voxels (..., sampler3D) }
 rec.update(voxels, 0, 0, 0, 32, 128, 96, 16, slab);                         // 16 new slices from z 32
@@ -124,7 +121,7 @@ rec.readback(voxels, 0, 0, 0, 40, 128, 96, 2, data -> check(data));         // s
 
 - A `3d` image takes a volume and a `2d` one anything else, and a `sampler3D` property a volume, or the dispatch throws;
   a raster pass into a volume and a copy of one throw.
-- One level, one colour attachment. Its format's type decides the filter: linear, nearest for an integer type, clamped.
+- One colour level. Its format decides the filter: linear, nearest for an integer format, clamped.
   A volume of the caller's own, with its sampling and mip levels, is imported: `CgGraphTexture.imported(name,
   CgFrameBuffer.createVolume(name, texture3d).external())`, each level a kernel's `image(name, volume, level, -1)`
   (`CgNoiseVolumes` bakes its chains so).
@@ -135,26 +132,10 @@ rec.readback(voxels, 0, 0, 0, 40, 128, 96, 2, data -> check(data));         // s
 - `--mode=volumes` is the gate: two volumes filled, spread across slices and sampled, a third updated by boxes, every
   texel read back and checked, on `gl` at every tier, on both downlevel contexts and on `vulkan`.
 
-**More than one colour attachment.** A graph texture whose format has `color(1, ...)` and up is drawn into whole by a
-raster pass: the pass attaches every slot, so a fragment's `: RT1` output lands
-in slot 1. `texture.attachment(k)` samples slot k, ordered like the texture itself.
-
-```java
-CgFrameBufferFormat both = CgFrameBufferFormat.builder("scene+glow")
-        .color(0, CgTextureType.RGBA8).color(1, CgTextureType.R11F_G11F_B10F).depth(CgTextureType.DEPTH24_STENCIL8).build();
-int reads = rec.bindings().withTexture(material.captureBindings(rec.bindings()), 0, target.attachment(1));
-```
-
-- A slot above 0 that a pipeline's program does not write is masked off for its draws (`CgPipeline.slotWrites`;
-  on a device, the pipeline's per-attachment write mask), so an unwritten output never lands. Not on a device without
-  `independentBlend` (`CgCapabilities.independentBlend()`), where one mask serves every slot: there
-  a shader drawn into such a target writes every slot.
-- One blend serves every slot below GL 4.0 (`glBlendFunci` is 4.0): what a pipeline writes into slot 1 must suit the
-  pass's blend. The executor never assumes a blend per attachment.
-- `sceneColor` copies slot 0; hazards and the pool key on the texture as a whole.
-
 **A second attachment beside a target** (`CgRasterPass.attachment(texture)`): the pass draws into `texture` as slot 1
-beside a target it may not own, the current one included, keeping what it holds. Beside the current target the device's
+beside a target it may not own, the current one included, so a fragment's `: RT1` output lands there. A description is
+one texture, so this is how a pass draws two colours. The pass's load applies to both; where it loads, `texture` keeps
+what it holds. Beside the current target the device's
 pass attaches the host's colour and depth as imported textures, so the host's own framebuffer is never changed. The world's normal target is the user (`render/world/CLAUDE.md`).
 
 ```java
@@ -167,18 +148,32 @@ chunks.draw(material.pipeline(CgInstanceKind.OBJECT).as(CgPipelineForm.NORMALS),
 - `texture` is the target's size (GL would draw into the intersection, quietly): the executor throws otherwise.
 - A target lending no attachments (the window's, a multisampled one) takes none: it throws.
   `attachmentIfTaken(texture)` draws on the target alone there instead and logs once; ask `lendsAttachments()` first.
-- Draws that leave slot 1 masked need `CgCapabilities.independentBlend()`; a recorder checks it before asking.
+- A pipeline whose program does not write slot 1 has it masked off for its draws (`CgPipeline.slotWrites`; on a
+  device, the pipeline's per-attachment write mask), which needs `CgCapabilities.independentBlend()`: a recorder checks
+  it before asking.
+- One blend serves both slots below GL 4.0 (`glBlendFunci` is 4.0): what a pipeline writes into slot 1 must suit the
+  pass's blend.
 
 **A texture drawn with another's depth** (`CgGraphTexture.transientTexture(name, desc, depthOf)`, and `requested`'s
-twin): colour of its own, every pass into it testing and writing `depthOf`'s depth, which is what the world's HDR scene
-is over the host's (`render/world/CLAUDE.md`). A pass into it attaches it at slot 0 and that depth; `sceneDepth` on it,
-its own or from it, copies that depth. It is ordered as a read and write of `depthOf` too, and may not clear depth.
+twin): colour of its own, every pass into it testing and writing `depthOf`'s depth: the current target's, which is what
+the world's HDR scene is over the host's (`render/world/CLAUDE.md`), or a depth texture of the graph's, which is how a
+colour gets a depth at all now that a description is one texture. A pass into it attaches it at slot 0 and that depth;
+`sceneDepth` on it, its own or from it, reads that depth. It is ordered as a read and write of `depthOf` too.
 
 ```java
-CgGraphTexture scene = CgGraphTexture.transientTexture("scene", new CgTextureDesc(w, h, rgba16f), CgGraphTexture.current());
+CgGraphTexture scene = CgGraphTexture.transientTexture("scene", CgTextureDesc.of(w, h, CgFormat.RGBA16_FLOAT),
+        CgGraphTexture.current());
 recording.raster(scene, CgLoad.load(), constants, null, CgOrder.SORTED)
         .sceneColor(CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT, CgGraphTexture.current());   // the host's colour, copied whole
+
+CgGraphTexture depth = CgGraphTexture.transientTexture("map_depth", CgTextureDesc.of(s, s, CgFormat.DEPTH32_FLOAT));
+CgGraphTexture map = CgGraphTexture.transientTexture("map", CgTextureDesc.of(s, s, CgFormat.R32_FLOAT), depth);
+recording.raster(map, CgLoad.clear(1e30f, 0, 0, 0).andDepth(1.0), constants, null, CgOrder.SORTED);   // clears both
 ```
+
+- Only a depth of the graph's may be cleared by a pass into it: an external target's is its owner's, and the pass throws.
+- A pass reading its depth (`sceneDepth(unit, map)`) reads `depth` too, ordered and resolved like any read, and samples
+  it in place unless that pass draws with it.
 
 - A target lending no attachments lends no depth: the recorder asks `lendsAttachments()` and gives its texture a depth
   of its own there. One drawn anyway draws without depth, logged once.

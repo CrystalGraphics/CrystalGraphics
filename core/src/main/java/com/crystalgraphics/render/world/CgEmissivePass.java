@@ -1,14 +1,12 @@
 package com.crystalgraphics.render.world;
 
 import com.crystalgraphics.api.CgBindingPoints;
-import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgRenderPassVariant;
 import com.crystalgraphics.api.material.CgRenderQueue;
 import com.crystalgraphics.api.state.CgBlendState;
 import com.crystalgraphics.api.state.CgDepthState;
 import com.crystalgraphics.api.state.CgRenderState;
-import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
 import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.render.draw.CgOrder;
@@ -26,6 +24,7 @@ import com.crystalgraphics.render.stage.CgStageFrame;
 import com.crystalgraphics.trace.CgGpuTrace;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
+import com.crystalgraphics.platform.rhi.format.CgFormat;
 
 /**
  * The emissive passes ({@code "LightMode" = "Emissive"}): a draw's glow, light added into a target of its own that
@@ -43,8 +42,7 @@ final class CgEmissivePass {
     private final CgWorldDraws draws;
     private final CgMeshDrawCommands commands;
 
-    static final CgFrameBufferFormat EMISSION_FORMAT = CgFrameBufferFormat.builder("cg_emission")
-            .color(0, CgTextureType.R11F_G11F_B10F).build();
+    static final CgFormat EMISSION_FORMAT = CgFormat.RG11B10_UFLOAT;
 
     /**
      * Emissive passes add into the scene, or a glow target of their own (an impact frame's subject), which has no depth:

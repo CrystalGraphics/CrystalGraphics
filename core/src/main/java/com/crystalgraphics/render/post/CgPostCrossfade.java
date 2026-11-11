@@ -1,11 +1,9 @@
 package com.crystalgraphics.render.post;
 
 import com.crystalgraphics.api.CgBindingPoints;
-import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgMeshTopology;
-import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.render.CgFrameClock;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
 import com.crystalgraphics.render.draw.CgInstanceKind;
@@ -16,6 +14,7 @@ import com.crystalgraphics.render.graph.CgLoad;
 import com.crystalgraphics.render.graph.CgRasterPass;
 import com.crystalgraphics.render.graph.CgRecording;
 import com.crystalgraphics.render.graph.CgTextureDesc;
+import com.crystalgraphics.platform.rhi.format.CgFormat;
 
 /**
  * A cut's crossfade ({@link CgPostStack#crossfade}): the firing it is asked in holds its final picture, and the frames
@@ -26,8 +25,7 @@ final class CgPostCrossfade implements CgPostEffect {
 
     private static final String HOLD = "crystalgraphics:shaders/post/hold.shader";
     private static final String FADE = "crystalgraphics:shaders/post/crossfade.shader";
-    private static final CgFrameBufferFormat RGBA8 = CgFrameBufferFormat.builder("cg_post_held")
-            .color(0, CgTextureType.RGBA8).build();
+    private static final CgFormat RGBA8 = CgFormat.RGBA8_UNORM;
     private static final CgMesh FULLSCREEN = CgMesh.vertices(3, CgMeshTopology.TRIANGLES);
 
     private CgMaterial hold, fade;

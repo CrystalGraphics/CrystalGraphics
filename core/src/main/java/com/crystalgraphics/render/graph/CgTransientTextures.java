@@ -44,9 +44,9 @@ final class CgTransientTextures {
         this.heaps = new CgTransientAllocator(rhi, memory);
     }
 
-    /** Whether {@code desc} is placed: a 2D storage's, every attachment a texture the device makes. */
+    /** Whether {@code desc} is placed: a 2D single-sampled texture's. */
     static boolean places(CgTextureDesc desc) {
-        return !desc.isArray() && !desc.isVolume() && CgGraphStorage.allSampled(desc.format());
+        return !desc.isArray() && !desc.isVolume() && !desc.isMultisampled();
     }
 
     /**
@@ -163,7 +163,7 @@ final class CgTransientTextures {
         Shape(CgTextureDesc desc, String name) {
             this.desc = desc;
             this.name = name;
-            this.descs = CgGraphStorage.deviceDescs(name, desc);
+            this.descs = List.of(CgGraphStorage.deviceDesc(name, desc));
             this.needs = new CgTransientMemory.Requirements[descs.size()];
             long sum = 0;
             for (int i = 0; i < needs.length; i++) sum += (needs[i] = memory.requirements(descs.get(i))).size();

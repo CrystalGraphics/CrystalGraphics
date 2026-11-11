@@ -1,8 +1,6 @@
 package com.crystalgraphics.vfx.particle.gpu.sim;
 
-import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.texture.CgTexture;
-import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.render.graph.CgTextureDesc;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxDrawLayout;
@@ -32,6 +30,7 @@ import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
+import com.crystalgraphics.platform.rhi.format.CgFormat;
 
 public class CgVfxParticlePoolTest {
 
@@ -239,7 +238,7 @@ public class CgVfxParticlePoolTest {
 
     @Test
     public void emittersDifferingOnlyInTheirTextureShareAPoolOncePrecached() {
-        CgFrameBufferFormat r32f = CgFrameBufferFormat.builder("fields").color(0, CgTextureType.R32F).build();
+        CgFormat r32f = CgFormat.R32_FLOAT;
         CgTexture[] fields = new CgTexture[CgVfxParticlePool.TEXTURE_ENTRIES + 1];
         for (int i = 0; i < fields.length; i++) fields[i] = CgGraphTexture.transientTexture("field" + i, new CgTextureDesc(8, 8, r32f));
         Def a = new Def("a", CgVfxDrawLayout.QUADS, new Sampled(fields[0]));

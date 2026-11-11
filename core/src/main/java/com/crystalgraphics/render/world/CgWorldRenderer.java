@@ -9,7 +9,6 @@ import com.crystalgraphics.shape.bounds.CgAABB;
 import com.crystalgraphics.shape.bounds.CgAABBc;
 import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.api.CgBindingPoints;
-import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgParameterCollection;
 import com.crystalgraphics.api.material.CgRenderPassVariant;
@@ -19,7 +18,6 @@ import com.crystalgraphics.api.state.CgDepthState;
 import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.api.text.CgShapedParagraph;
 import com.crystalgraphics.api.text.CgTextLayout;
-import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.compute.CgKernel;
 import com.crystalgraphics.compute.ops.CgCull;
 import com.crystalgraphics.compute.ops.CgCullSets;
@@ -79,6 +77,7 @@ import org.joml.Vector3f;
 
 import java.util.Arrays;
 import java.util.Objects;
+import com.crystalgraphics.platform.rhi.format.CgFormat;
 
 /**
  * Draws meshes into a host's world at its two world stages, under the host's own camera: submitted at absolute
@@ -208,8 +207,7 @@ public final class CgWorldRenderer {
      * ({@link CgFrameKeys#WORLD_NORMALS_READ}); this firing's, or null; and the opaque firing's, for the transparent one.
      */
     CgGraphTexture normalTarget, normalsInto, normalsWritten;
-    private static final CgFrameBufferFormat NORMAL_FORMAT = CgFrameBufferFormat.builder("cg_world.normals")
-            .color(0, CgTextureType.RGBA16F).build();
+    private static final CgFormat NORMAL_FORMAT = CgFormat.RGBA16_FLOAT;
 
     /** Whether a foldable glow is drawn in its colour's draw: {@link #mergeEmission(boolean)}, once warm. */
     boolean mergeEmission = MERGE_EMISSION.get();

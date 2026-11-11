@@ -1,13 +1,11 @@
 package com.crystalgraphics.render.world;
 
 import com.crystalgraphics.api.CgBindingPoints;
-import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgMeshTopology;
 import com.crystalgraphics.api.material.CgMaterialValues;
 import com.crystalgraphics.api.texture.CgTexture;
-import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.compute.CgCompute;
 import com.crystalgraphics.compute.CgKernel;
 import com.crystalgraphics.gpu.resource.CgFrameRing;
@@ -54,6 +52,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
+import com.crystalgraphics.platform.rhi.format.CgFormat;
 
 /**
  * The lights in the world this frame, Unreal's local lights: points, spots and tubes, each a position, a radius, a
@@ -187,8 +186,7 @@ public final class CgWorldLights {
     private static final CgVar.Int VOLUME_CELLS = CgVar.integer("crystalgraphics.world.lightsVolumeCells", 64, 8, 64,
             CgVar.DEV, "Cells a side of each of the translucency lighting volume's two cascades: Unreal's "
                     + "r.TranslucencyLightingVolume.Dim.");
-    private static final CgFrameBufferFormat VOLUME_FORMAT = CgFrameBufferFormat.builder("cg_world_lights.volume")
-            .color(0, CgTextureType.RGBA16F).build();
+    private static final CgFormat VOLUME_FORMAT = CgFormat.RGBA16_FLOAT;
     private static final CgVar.Bool VOLUME = CgVar.bool("crystalgraphics.world.lightsVolume", true, CgVar.DEV,
             "Transparent surfaces and particles lit by the world's lights, through Unreal's translucency lighting volume.");
     private static final CgVar.Num VOLUME_INNER = CgVar.number("crystalgraphics.world.lightsVolumeInner", 15f, 1f, 128f,
@@ -222,8 +220,7 @@ public final class CgWorldLights {
      * floats, so it is the normal each pass rebuilt from depth, to a thousandth.
      */
     static final String GBUFFER_KERNELS = "crystalgraphics:shaders/env/compute/lights/gbuffer.compute";
-    private static final CgFrameBufferFormat GBUFFER_FORMAT = CgFrameBufferFormat.builder("cg_world_lights.gbuffer")
-            .color(0, CgTextureType.RGBA16F).build();
+    private static final CgFormat GBUFFER_FORMAT = CgFormat.RGBA16_FLOAT;
     private static final int GPU_GBUFFER = CgGpuTrace.name("world.lightsGBuffer");
     private static final CgMesh FULLSCREEN = CgMesh.vertices(3, CgMeshTopology.TRIANGLES);
     private static final int GPU_APPLY = CgGpuTrace.name("world.lightsApply");
@@ -240,25 +237,21 @@ public final class CgWorldLights {
             GPU_TILE_DEPTH = CgGpuTrace.name("world.lightsTileDepth");
     /** Unreal's capsule shadow tiles: a tile's entities, a bit each, 16 a channel. */
     private static final int ENTITY_TILE = 16;
-    private static final CgFrameBufferFormat TILES_FORMAT = CgFrameBufferFormat.builder("cg_world_lights.tiles")
-            .color(0, CgTextureType.RGBA32F).build();
+    private static final CgFormat TILES_FORMAT = CgFormat.RGBA32_FLOAT;
     /** Each 4x4 pixels' least and most window depth, the tiles' first step. */
-    private static final CgFrameBufferFormat RANGES_FORMAT = CgFrameBufferFormat.builder("cg_world_lights.tile-ranges")
-            .color(0, CgTextureType.RG32F).build();
+    private static final CgFormat RANGES_FORMAT = CgFormat.RG32_FLOAT;
     private static final CgVar.Bool ENTITY_TILES = CgVar.bool("crystalgraphics.world.lightsEntityTiles", true, CgVar.DEV,
             "A shadow ray tests only the entities its 16x16 tile can meet; off, every tile keeps every entity.");
     /** How far a kernel's light may reach, unknown here: what a tile keeps entities within while any appends. */
     private static final float KERNEL_REACH = 64f;
     /** A sample's light index, exact as a float to 2^24, its weight, and the sun's visibility. */
-    private static final CgFrameBufferFormat SAMPLES_FORMAT = CgFrameBufferFormat.builder("cg_world_lights.samples")
-            .color(0, CgTextureType.RGBA32F).build();
+    private static final CgFormat SAMPLES_FORMAT = CgFormat.RGBA32_FLOAT;
     /**
      * Each output of the shade, temporal and denoise kernels, a texture each (an image is one texture): the lighting,
      * alpha where valid; the sun's visibility; the accumulated lighting and its frames; its luminance's moments, eye
      * depth and confidence; the sun's and block light's visibility and their squares.
      */
-    private static final CgFrameBufferFormat LIGHTING_FORMAT = CgFrameBufferFormat.builder("cg_world_lights.lighting")
-            .color(0, CgTextureType.RGBA16F).build();
+    private static final CgFormat LIGHTING_FORMAT = CgFormat.RGBA16_FLOAT;
     /**
      * The sun's cascaded shadow map, Unreal's for a movable directional light (DirectionalLightComponent.cpp:1043-1057):
      * 4 cascades, each 3 times the depth of the last, overlapping by a tenth of each for the blend into the next.
@@ -272,9 +265,8 @@ public final class CgWorldLights {
     private static final float SUN_RAY = 96f;
     static final String SUN_SHADOW_SHADER = "crystalgraphics:shaders/world_sun_shadow.shader";
     private static final int GPU_SUN = CgGpuTrace.name("world.sunShadow");
-    /** The cascades' atlas, a quadrant each: the casters' depth from the light in blocks, and the depth test's. */
-    private static final CgFrameBufferFormat SUN_MAP_FORMAT = CgFrameBufferFormat.builder("cg_world_lights.sun")
-            .color(0, CgTextureType.R32F).depth(CgTextureType.DEPTH32F).build();
+    /** The cascades' atlas, a quadrant each: the casters' depth from the light in blocks, drawn with a depth test's. */
+    private static final CgFormat SUN_MAP_FORMAT = CgFormat.R32_FLOAT, SUN_DEPTH_FORMAT = CgFormat.DEPTH32_FLOAT;
     /** Nothing cast: a depth past any receiver's. */
     private static final CgLoad SUN_CLEAR = CgLoad.clear(1.0e30f, 0f, 0f, 0f).andDepth(1.0);
     private static final CgVar.Num SUN_DISTANCE = CgVar.number("crystalgraphics.world.sunShadowDistance", 96f, 8f, 512f,
@@ -1441,7 +1433,10 @@ public final class CgWorldLights {
             int res = SUN_RESOLUTION.get();
             casterTexture();
             if (sunMap == null || sunMap.getWidth() != 2 * res) {
-                sunMap = CgGraphTexture.transientTexture("cg_world_lights.sun", new CgTextureDesc(2 * res, 2 * res, SUN_MAP_FORMAT));
+                CgGraphTexture depth = CgGraphTexture.transientTexture("cg_world_lights.sun_depth",
+                        CgTextureDesc.of(2 * res, 2 * res, SUN_DEPTH_FORMAT));
+                sunMap = CgGraphTexture.transientTexture("cg_world_lights.sun", CgTextureDesc.of(2 * res, 2 * res, SUN_MAP_FORMAT),
+                        depth);
             }
             // The pass places each vertex itself, from its cascade's rows: only its depth convention matters.
             stage.defaults(sunConstants).resolution(2 * res, 2 * res);
@@ -1557,7 +1552,7 @@ public final class CgWorldLights {
     private void casterTexture() {
         if (casters != null) return;
         casters = CgGraphTexture.requested("cg_world_lights.casters", new CgTextureDesc(SUN_ROWS_AT + CASCADES * 4, 1,
-                CgFrameBufferFormat.builder("cg_world_lights.casters").color(0, CgTextureType.RGBA32F).build()));
+                CgFormat.RGBA32_FLOAT));
         casterStaging = ByteBuffer.allocateDirect(MOST_CASTERS * CASTER_FLOATS * 4).order(ByteOrder.nativeOrder());
         sunRowStaging = ByteBuffer.allocateDirect(CASCADES * 16 * 4).order(ByteOrder.nativeOrder());
     }

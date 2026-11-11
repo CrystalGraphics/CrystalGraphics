@@ -1,7 +1,5 @@
 package com.crystalgraphics.compute.ops;
 
-import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
-import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.compute.CgCompute;
 import com.crystalgraphics.compute.CgKernel;
 import com.crystalgraphics.gpu.resource.CgReadback;
@@ -21,6 +19,7 @@ import javax.annotation.Nullable;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
+import com.crystalgraphics.platform.rhi.format.CgFormat;
 
 /**
  * What every GPU-driven consumer otherwise writes for itself: fills, sequences, copies, reductions,
@@ -92,12 +91,12 @@ public final class CgGpuOps {
     }
 
     /** The colour formats the image ops take. */
-    public static final List<CgTextureType> IMAGE_TYPES =
-            List.of(CgTextureType.RGBA8, CgTextureType.RGBA16F, CgTextureType.R16F, CgTextureType.R32F);
+    public static final List<CgFormat> IMAGE_TYPES =
+            List.of(CgFormat.RGBA8_UNORM, CgFormat.RGBA16_FLOAT, CgFormat.R16_FLOAT, CgFormat.R32_FLOAT);
 
     /** A depth pyramid's: one float a texel, the eye depth. */
-    public static final CgFrameBufferFormat PYRAMID_FORMAT =
-            CgFrameBufferFormat.builder("cg_depth_pyramid").color(0, CgTextureType.R32F).build();
+    public static final CgFormat PYRAMID_FORMAT =
+            CgFormat.R32_FLOAT;
 
     /** What one element of a level folds of the level below it. */
     static final int BLOCK = 16;
@@ -146,7 +145,6 @@ public final class CgGpuOps {
             SOURCES = {"SRC_RGBA8", "SRC_RGBA16F", "SRC_R16F", "SRC_R32F"},
             TARGETS = {"DST_RGBA8", "DST_RGBA16F", "DST_R16F", "DST_R32F"};
     /** A blur's scratch, per image type. */
-    private static final CgFrameBufferFormat[] SCRATCH = new CgFrameBufferFormat[IMAGE_TYPES.size()];
     private static final CgKernel[][] DOWNSAMPLE_VARIANTS = new CgKernel[IMAGE_TYPES.size()][Filter.values().length];
     /** Per image type: across, down, and each linear-sampled. */
     private static final CgKernel[][] BLUR_VARIANTS = new CgKernel[IMAGE_TYPES.size()][4];
@@ -160,13 +158,6 @@ public final class CgGpuOps {
     private static final int MAX_SCALE = 4;
     /** Source texels a shrink averages per target texel and axis in one pass (image.compute's MAX_SHRINK_SPAN less 2). */
     private static final int MAX_SHRINK = 32;
-
-    static {
-        for (int f = 0; f < SCRATCH.length; f++) {
-            CgTextureType type = IMAGE_TYPES.get(f);
-            SCRATCH[f] = CgFrameBufferFormat.builder("cg_ops_" + type.name().toLowerCase()).color(0, type).build();
-        }
-    }
 
     private CgGpuOps() {}
 
@@ -469,7 +460,7 @@ public final class CgGpuOps {
     }
 
     /** {@link #precacheSort}, for {@link #blur} and {@link #blurScaled} over images of {@code type}. */
-    public static void precacheBlur(CgTextureType type) {
+    public static void precacheBlur(CgFormat type) {
         int f = IMAGE_TYPES.indexOf(type);
         if (f < 0) throw new IllegalArgumentException(type + ": the image ops take " + IMAGE_TYPES);
         for (int at = 0; at < 4; at++) precache(blurKernel(f, (at & 1) != 0, (at & 2) != 0));
@@ -477,7 +468,7 @@ public final class CgGpuOps {
     }
 
     /** {@link #precacheSort}, for {@link #shrink} over images of {@code type}. */
-    public static void precacheShrink(CgTextureType type) {
+    public static void precacheShrink(CgFormat type) {
         int f = IMAGE_TYPES.indexOf(type);
         if (f < 0) throw new IllegalArgumentException(type + ": the image ops take " + IMAGE_TYPES);
         precache(shrinkKernel(f));
@@ -964,7 +955,7 @@ public final class CgGpuOps {
         }
         if (w > (float) tw * MAX_SHRINK || h > (float) th * MAX_SHRINK) {
             int mw = Math.max(tw, (int) Math.ceil(w / MAX_SHRINK)), mh = Math.max(th, (int) Math.ceil(h / MAX_SHRINK));
-            CgGraphTexture mid = pass.recording().scratch("ops.shrink", scratchSize(mw), scratchSize(mh), SCRATCH[f]);
+            CgGraphTexture mid = pass.recording().scratch("ops.shrink", scratchSize(mw), scratchSize(mh), IMAGE_TYPES.get(f));
             dispatchShrink(pass, f, source, x, y, w, h, mid, 0, 0, mw, mh);
             source = mid;
             x = 0f;
@@ -992,7 +983,7 @@ public final class CgGpuOps {
                                      int x, int y, int w, int h, CgGraphTexture target, int targetLevel,
                                      int tx, int ty, float sigmaX, float sigmaY, Edge edge, boolean linear) {
         int mirror = edge == Edge.MIRROR ? 1 : 0;
-        CgGraphTexture across = pass.recording().scratch("ops.blur", scratchSize(w), scratchSize(h), SCRATCH[f]);
+        CgGraphTexture across = pass.recording().scratch("ops.blur", scratchSize(w), scratchSize(h), IMAGE_TYPES.get(f));
         pass.dispatch(blurKernel(f, false, linear), w, h, 1).texture("_Src", source).set("_Level", sourceLevel)
                 .image(TARGETS[f], across).set("_Radius", (int) Math.ceil(3 * sigmaX)).set("_Sigma", sigmaX)
                 .set("_Region", x, y, x + w, y + h).set("_Target", 0, 0, 0, 0).set("_Mirror", mirror);
@@ -1019,8 +1010,7 @@ public final class CgGpuOps {
 
     /** Its colour format's index in {@link #IMAGE_TYPES}. */
     private static int imageType(CgGraphTexture texture) {
-        CgFrameBufferFormat format = texture.format();
-        CgTextureType type = format == null ? null : format.getColorSlot(0);
+        CgFormat type = texture.format();
         int f = IMAGE_TYPES.indexOf(type);
         if (f < 0) throw new IllegalArgumentException(texture + " is " + type + ": the image ops take " + IMAGE_TYPES);
         return f;

@@ -10,6 +10,7 @@ import com.crystalgraphics.render.draw.CgPipeline;
 import com.crystalgraphics.trace.CgAllocationProof;
 import org.junit.Before;
 import org.junit.Test;
+import com.crystalgraphics.platform.rhi.format.CgFormat;
 
 /**
  * T5: a stage firing's recording and the frame builder allocate nothing per frame once warm: chunks of draws in two
@@ -39,7 +40,7 @@ public class CgFrameGraphAllocationTest {
                 void fragment(in v2f i, out vec4 fragColor) { fragColor = vec4(_Gain); }
             }
             """;
-    private static final CgTextureDesc DESC = new CgTextureDesc(256, 256, CgTextureDesc.RGBA8);
+    private static final CgTextureDesc DESC = CgTextureDesc.of(256, 256, CgFormat.RGBA8_UNORM);
 
     private final CgPassConstants constants = new CgPassConstants().resolution(256, 256);
     private final CgFrameBuilder builder = new CgFrameBuilder();

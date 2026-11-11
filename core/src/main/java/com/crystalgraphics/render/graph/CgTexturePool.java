@@ -3,9 +3,6 @@ package com.crystalgraphics.render.graph;
 import java.util.function.ToLongFunction;
 import java.util.function.Consumer;
 
-import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
-import com.crystalgraphics.api.texture.CgTextureType;
-import com.crystalgraphics.gpu.resource.CgReadback;
 import com.crystalgraphics.variable.CgVar;
 
 import java.util.ArrayList;
@@ -70,15 +67,9 @@ final class CgTexturePool {
         return footprintBytes;
     }
 
-    /** What storage of {@code desc} holds on the device, about: every slot's texels, levels a third more. */
+    /** What storage of {@code desc} holds on the device, about: its texels, levels a third more. */
     static long footprint(CgTextureDesc desc) {
-        CgFrameBufferFormat format = desc.format();
-        long texel = 0;
-        for (int slot = 0; slot < 8; slot++) {
-            CgTextureType type = format.getColorSlot(slot);
-            if (type != null) texel += CgReadback.pixelBytes(type);
-        }
-        if (format.hasDepth()) texel += CgReadback.pixelBytes(format.getDepthType());
+        long texel = desc.format().bytes();
         long texels = (long) desc.width() * desc.height() * Math.max(1, desc.depth()) * Math.max(1, desc.layers());
         return desc.levels() > 1 ? texels * texel * 4 / 3 : texels * texel;
     }

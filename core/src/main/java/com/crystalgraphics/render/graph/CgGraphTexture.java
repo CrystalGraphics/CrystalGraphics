@@ -1,10 +1,10 @@
 package com.crystalgraphics.render.graph;
 
-import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.texture.CgTextureSpec;
 import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.platform.rhi.CgExternalTarget;
+import com.crystalgraphics.platform.rhi.format.CgFormat;
 import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
 import com.crystalgraphics.platform.rhi.resource.CgTextureView;
 
@@ -18,7 +18,7 @@ import java.util.Arrays;
  *
  * <pre>{@code
  * CgGraphTexture main  = CgGraphTexture.imported("mc_main", CgExternalTarget.host(fbo, w, h));   // someone else's
- * CgGraphTexture layer = CgGraphTexture.transientTexture("layer", new CgTextureDesc(w, h, CgTextureDesc.RGBA8));
+ * CgGraphTexture layer = CgGraphTexture.transientTexture("layer", CgTextureDesc.of(w, h, CgFormat.RGBA8_UNORM));
  * CgGraphTexture view  = CgGraphTexture.requested("preview", desc);               // kept across frames
  * CgGraphTexture here  = CgGraphTexture.current();                                // the target the execution opened
  * CgGraphTexture grid  = CgGraphTexture.requested("grid", CgTextureDesc.volume(64, 64, 64, r16f));   // 3D
@@ -70,7 +70,6 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
 
     /** Its {@link #level} and {@link #attachment} views, made at first ask. */
     private Level[] levelViews = new Level[0];
-    private Attachment[] attachmentViews = new Attachment[0];
     @Nullable
     private Stencil stencilView;
 
@@ -125,7 +124,8 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
      *   <li>{@code desc} is one level of colour alone, {@code depthOf}'s size.</li>
      *   <li>A target that lends no attachments (the window's, a multisampled one) draws it without depth, once, and logs
      *       why: ask {@code lendsAttachments()} first and give the scene a depth of its own there.</li>
-     *   <li>A pass into it is ordered as a write of {@code depthOf} too, and may not clear depth.</li>
+     *   <li>A pass into it is ordered as a write of {@code depthOf} too, and may clear that depth only where it is a
+     *       texture of the graph's: an external target's is its owner's.</li>
      * </ul>
      */
     public static CgGraphTexture transientTexture(String name, CgTextureDesc desc, CgGraphTexture depthOf) {
@@ -151,8 +151,7 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
     }
 
     private static CgTextureDesc colourAlone(String name, CgTextureDesc desc) {
-        if (desc.format().hasDepth() || desc.format().colorSlotCount() != 1 || desc.levels() != 1 || desc.isArray()
-                || desc.isVolume()) {
+        if (desc.isDepth() || desc.levels() != 1 || desc.isArray() || desc.isVolume()) {
             throw new IllegalArgumentException(name + ": a texture drawn with another's depth is one level of colour alone");
         }
         return desc;
@@ -238,14 +237,15 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
     }
 
     /**
-     * Its attachments' layout: its description's, or an imported target's as read from its images; null for
+     * Its texture's format: its description's, or an imported target's colour (its depth where it has none); null for
      * {@link #current()} outside an execution.
      */
     @Nullable
-    public CgFrameBufferFormat format() {
+    public CgFormat format() {
         if (desc != null) return desc.format();
         CgGraphStorage now = storage();
-        return now == null ? null : now.format();
+        if (now == null) return null;
+        return now.color(0) != null ? now.colorFormat(0) : now.depthFormat();
     }
 
     /** What the graph allocates for it; null for an external one. */
@@ -283,34 +283,6 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
     }
 
     /**
-     * Its colour attachment {@code slot}, as a texture a draw samples: what a pass that drew into every attachment of
-     * a multi-target format ({@code CgFrameBufferFormat.color(1, ...)}) hands a later reader. Slot 0 is the texture
-     * itself.
-     *
-     * <pre>{@code
-     * CgRasterPass both = rec.raster(gbuffer, CgLoad.clear(0, 0, 0, 0), constants, null, CgOrder.SORTED);   // writes RT0 and RT1
-     * int reads = rec.bindings().withTexture(material.captureBindings(rec.bindings()), 0, gbuffer.attachment(1));
-     * }</pre>
-     *
-     * <ul>
-     *   <li>Read as the whole texture for ordering: a pass sampling it runs after every pass writing the texture.</li>
-     *   <li>Throws for a slot its format lacks or holds as a renderbuffer, here where the format is known, else at bind.</li>
-     *   <li>Samples the attachment's every level: {@link #level} pins slot 0 alone.</li>
-     *   <li>Never a kernel's storage image: the graph orders a texture by slot 0.</li>
-     * </ul>
-     */
-    public Attachment attachment(int slot) {
-        CgFrameBufferFormat format = desc != null ? desc.format() : null;
-        if (slot < 0 || format != null && (format.getColorSlot(slot) == null || format.isColorRenderbuffer(slot))) {
-            throw new IllegalArgumentException(this + " has no sampleable colour attachment " + slot);
-        }
-        if (attachmentViews.length <= slot) attachmentViews = Arrays.copyOf(attachmentViews, slot + 1);
-        Attachment view = attachmentViews[slot];
-        if (view == null) attachmentViews[slot] = view = new Attachment(this, slot);
-        return view;
-    }
-
-    /**
      * Its stencil, as a texture a draw samples: Unreal's CustomStencil, an SRV of the depth-stencil itself. Read as an
      * unsigned integer through a {@code usampler2D}, nearest.
      *
@@ -326,8 +298,7 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
      * </ul>
      */
     public Stencil stencil() {
-        CgFrameBufferFormat format = desc != null ? desc.format() : null;
-        if (format != null && (format.getDepthType() == null || !format.getDepthType().isStencil)) {
+        if (desc != null && !desc.format().hasStencil()) {
             throw new IllegalArgumentException(this + " has no stencil");
         }
         if (stencilView == null) stencilView = new Stencil(this);
@@ -339,8 +310,7 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
     static CgGraphTexture sampled(@Nullable CgTexture texture) {
         if (texture instanceof CgGraphTexture graph) return graph;
         if (texture instanceof Level view) return view.texture;
-        if (texture instanceof Stencil view) return view.texture;
-        return texture instanceof Attachment view ? view.texture : null;
+        return texture instanceof Stencil view ? view.texture : null;
     }
 
     @Override
@@ -497,67 +467,6 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
         @Override
         public String toString() {
             return texture + " level " + level;
-        }
-    }
-
-    /** One colour attachment of a graph texture, sampled: {@link CgGraphTexture#attachment}. */
-    public static final class Attachment implements CgTexture {
-
-        private final CgGraphTexture texture;
-        private final int slot;
-
-        private Attachment(CgGraphTexture texture, int slot) {
-            this.texture = texture;
-            this.slot = slot;
-        }
-
-        public CgGraphTexture texture() {
-            return texture;
-        }
-
-        public int slot() {
-            return slot;
-        }
-
-        /** Its storage's slot, sampled; null outside its passes. Throws where the storage has no such slot. */
-        @Nullable
-        private CgTexture sampled() {
-            CgGraphStorage storage = texture.storage();
-            return storage == null ? null : storage.sampled(slot);
-        }
-
-        @Override
-        @Nullable
-        public CgTextureView rhiView() {
-            CgTexture sampled = sampled();
-            return sampled == null ? null : sampled.rhiView();
-        }
-
-        @Override
-        @Nullable
-        public CgTextureSpec spec() {
-            CgTexture sampled = sampled();
-            return sampled == null ? null : sampled.spec();
-        }
-
-        @Override
-        public int getWidth() {
-            return texture.getWidth();
-        }
-
-        @Override
-        public int getHeight() {
-            return texture.getHeight();
-        }
-
-        @Override
-        public int getLevels() {
-            return texture.getLevels();
-        }
-
-        @Override
-        public String toString() {
-            return texture + " attachment " + slot;
         }
     }
 

@@ -4361,7 +4361,7 @@ com/crystalgraphics/compute/ops/CgGpuOps
   extends java/lang/Object
   field public,static,final IMAGE_TYPES Ljava/util/List;
   field public,static,final MAX_BLUR_SIGMA F
-  field public,static,final PYRAMID_FORMAT Lcom/crystalgraphics/api/framebuffer/CgFrameBufferFormat;
+  field public,static,final PYRAMID_FORMAT Lcom/crystalgraphics/platform/rhi/format/CgFormat;
   method public,static blur (Lcom/crystalgraphics/render/graph/CgComputePass;Lcom/crystalgraphics/render/graph/CgGraphTexture;IIIILcom/crystalgraphics/render/graph/CgGraphTexture;IIFFLcom/crystalgraphics/compute/ops/CgGpuOps$Edge;)V
   method public,static blur (Lcom/crystalgraphics/render/graph/CgComputePass;Lcom/crystalgraphics/render/graph/CgGraphTexture;ILcom/crystalgraphics/render/graph/CgGraphTexture;IF)V
   method public,static blur (Lcom/crystalgraphics/render/graph/CgComputePass;Lcom/crystalgraphics/render/graph/CgGraphTexture;Lcom/crystalgraphics/render/graph/CgGraphTexture;F)V
@@ -4386,14 +4386,14 @@ com/crystalgraphics/compute/ops/CgGpuOps
   method public,static fill (Lcom/crystalgraphics/render/graph/CgComputePass;Lcom/crystalgraphics/render/graph/CgGraphBuffer;ILcom/crystalgraphics/compute/ops/CgGpuCount;)V
   method public,static histogram (Lcom/crystalgraphics/render/graph/CgComputePass;Lcom/crystalgraphics/render/graph/CgGraphBuffer;Lcom/crystalgraphics/compute/ops/CgGpuCount;Lcom/crystalgraphics/render/graph/CgGraphBuffer;II)V
   method public,static iota (Lcom/crystalgraphics/render/graph/CgComputePass;Lcom/crystalgraphics/render/graph/CgGraphBuffer;IILcom/crystalgraphics/compute/ops/CgGpuCount;)V
-  method public,static precacheBlur (Lcom/crystalgraphics/api/texture/CgTextureType;)V
+  method public,static precacheBlur (Lcom/crystalgraphics/platform/rhi/format/CgFormat;)V
   method public,static precacheCull (Z)V
   method public,static precacheDepthPyramid ()V
   method public,static precacheFill ()V
   method public,static precacheHistogram ()V
   method public,static precacheIndirect ()V
   method public,static precacheScan (Lcom/crystalgraphics/compute/ops/CgGpuOps$Scan;Lcom/crystalgraphics/compute/ops/CgGpuOps$Fold;Lcom/crystalgraphics/compute/ops/CgGpuOps$Element;)V
-  method public,static precacheShrink (Lcom/crystalgraphics/api/texture/CgTextureType;)V
+  method public,static precacheShrink (Lcom/crystalgraphics/platform/rhi/format/CgFormat;)V
   method public,static precacheSort (Lcom/crystalgraphics/compute/ops/CgGpuOps$Element;Lcom/crystalgraphics/compute/ops/CgGpuOps$Order;)V
   method public,static readRows (Lcom/crystalgraphics/render/graph/CgRecording;Lcom/crystalgraphics/render/graph/CgGraphBuffer;JILcom/crystalgraphics/compute/ops/CgGpuCount;Lcom/crystalgraphics/compute/ops/CgGpuOps$Rows;)Lcom/crystalgraphics/render/graph/CgRequest;
   method public,static reduce (Lcom/crystalgraphics/render/graph/CgComputePass;Lcom/crystalgraphics/compute/ops/CgGpuOps$Fold;Lcom/crystalgraphics/compute/ops/CgGpuOps$Element;Lcom/crystalgraphics/render/graph/CgGraphBuffer;Lcom/crystalgraphics/compute/ops/CgGpuCount;Lcom/crystalgraphics/render/graph/CgGraphBuffer;I)V
@@ -8590,7 +8590,7 @@ com/crystalgraphics/render/canvas/CgCanvasBackdrop
   method public blur (Lcom/crystalgraphics/render/graph/CgRecording;F)Lcom/crystalgraphics/render/graph/CgGraphTexture;
   method public blurred ()Lcom/crystalgraphics/render/graph/CgGraphTexture;
   method public capture (Lcom/crystalgraphics/render/canvas/CgCanvas;Lcom/crystalgraphics/render/canvas/CgQuadBatch$Quad;FF)Lcom/crystalgraphics/render/canvas/CgCanvasBackdrop;
-  method public capture (Lcom/crystalgraphics/render/graph/CgRecording;Lcom/crystalgraphics/render/graph/CgGraphTexture;IILcom/crystalgraphics/api/texture/CgTextureType;IIII)Lcom/crystalgraphics/render/graph/CgGraphTexture;
+  method public capture (Lcom/crystalgraphics/render/graph/CgRecording;Lcom/crystalgraphics/render/graph/CgGraphTexture;IILcom/crystalgraphics/platform/rhi/format/CgFormat;IIII)Lcom/crystalgraphics/render/graph/CgGraphTexture;
   method public delete ()V
   method public gridHeight ()I
   method public gridWidth ()I
@@ -9445,10 +9445,11 @@ com/crystalgraphics/render/graph/CgGraphStorage
   access public,final
   extends java/lang/Object
   method public color (I)Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture;
+  method public colorFormat (I)Lcom/crystalgraphics/platform/rhi/format/CgFormat;
   method public colorSlots ()I
   method public depth ()Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture;
+  method public depthFormat ()Lcom/crystalgraphics/platform/rhi/format/CgFormat;
   method public depthSlices ()I
-  method public format ()Lcom/crystalgraphics/api/framebuffer/CgFrameBufferFormat;
   method public height ()I
   method public isArray ()Z
   method public isVolume ()Z
@@ -9469,10 +9470,9 @@ com/crystalgraphics/render/graph/CgGraphTexture
   access public,final
   extends com/crystalgraphics/render/graph/CgGraphResource
   implements com/crystalgraphics/api/texture/CgTexture
-  method public attachment (I)Lcom/crystalgraphics/render/graph/CgGraphTexture$Attachment;
   method public depthOf ()Lcom/crystalgraphics/render/graph/CgGraphTexture;
   method public desc ()Lcom/crystalgraphics/render/graph/CgTextureDesc;
-  method public format ()Lcom/crystalgraphics/api/framebuffer/CgFrameBufferFormat;
+  method public format ()Lcom/crystalgraphics/platform/rhi/format/CgFormat;
   method public getDepth ()I
   method public getHeight ()I
   method public getLayers ()I
@@ -9498,18 +9498,6 @@ com/crystalgraphics/render/graph/CgGraphTexture
   method public,static requested (Ljava/lang/String;Lcom/crystalgraphics/render/graph/CgTextureDesc;Lcom/crystalgraphics/render/graph/CgGraphTexture;)Lcom/crystalgraphics/render/graph/CgGraphTexture;
   method public,static transientTexture (Ljava/lang/String;Lcom/crystalgraphics/render/graph/CgTextureDesc;)Lcom/crystalgraphics/render/graph/CgGraphTexture;
   method public,static transientTexture (Ljava/lang/String;Lcom/crystalgraphics/render/graph/CgTextureDesc;Lcom/crystalgraphics/render/graph/CgGraphTexture;)Lcom/crystalgraphics/render/graph/CgGraphTexture;
-com/crystalgraphics/render/graph/CgGraphTexture$Attachment
-  access public,final
-  extends java/lang/Object
-  implements com/crystalgraphics/api/texture/CgTexture
-  method public getHeight ()I
-  method public getLevels ()I
-  method public getWidth ()I
-  method public rhiView ()Lcom/crystalgraphics/platform/rhi/resource/CgTextureView;
-  method public slot ()I
-  method public spec ()Lcom/crystalgraphics/api/texture/CgTextureSpec;
-  method public texture ()Lcom/crystalgraphics/render/graph/CgGraphTexture;
-  method public toString ()Ljava/lang/String;
 com/crystalgraphics/render/graph/CgGraphTexture$Kind
   access public,final,enum
   extends java/lang/Enum
@@ -9631,7 +9619,7 @@ com/crystalgraphics/render/graph/CgRecording
   method public release (Lcom/crystalgraphics/render/graph/CgGraphTexture;)V
   method public reset ()V
   method public resize (Lcom/crystalgraphics/render/graph/CgGraphBuffer;Lcom/crystalgraphics/render/graph/CgBufferDesc;)Lcom/crystalgraphics/render/graph/CgGraphBuffer;
-  method public scratch (Ljava/lang/String;IILcom/crystalgraphics/api/framebuffer/CgFrameBufferFormat;)Lcom/crystalgraphics/render/graph/CgGraphTexture;
+  method public scratch (Ljava/lang/String;IILcom/crystalgraphics/platform/rhi/format/CgFormat;)Lcom/crystalgraphics/render/graph/CgGraphTexture;
   method public scratch (Ljava/lang/String;JLcom/crystalgraphics/render/graph/CgBufferUsage;)Lcom/crystalgraphics/render/graph/CgGraphBuffer;
   method public seal ()Lcom/crystalgraphics/render/graph/CgRecording;
   method public shapes ()Lcom/crystalgraphics/render/canvas/CgShapeTable;
@@ -9724,25 +9712,29 @@ com/crystalgraphics/render/graph/CgTargetCompare$Difference
 com/crystalgraphics/render/graph/CgTextureDesc
   access public,final,record
   extends java/lang/Record
-  field public,static,final RGBA8 Lcom/crystalgraphics/api/framebuffer/CgFrameBufferFormat;
-  method public <init> (IIILcom/crystalgraphics/api/framebuffer/CgFrameBufferFormat;I)V
-  method public <init> (IIILcom/crystalgraphics/api/framebuffer/CgFrameBufferFormat;II)V
-  method public <init> (IILcom/crystalgraphics/api/framebuffer/CgFrameBufferFormat;)V
-  method public <init> (IILcom/crystalgraphics/api/framebuffer/CgFrameBufferFormat;I)V
+  method public <init> (IIILcom/crystalgraphics/platform/rhi/format/CgFormat;II)V
+  method public <init> (IIILcom/crystalgraphics/platform/rhi/format/CgFormat;III)V
+  method public <init> (IILcom/crystalgraphics/platform/rhi/format/CgFormat;)V
+  method public <init> (IILcom/crystalgraphics/platform/rhi/format/CgFormat;I)V
   method public depth ()I
-  method public format ()Lcom/crystalgraphics/api/framebuffer/CgFrameBufferFormat;
+  method public format ()Lcom/crystalgraphics/platform/rhi/format/CgFormat;
   method public hashCode ()I
   method public height ()I
   method public isArray ()Z
+  method public isDepth ()Z
+  method public isMultisampled ()Z
   method public isVolume ()Z
   method public layers ()I
   method public levels ()I
+  method public samples ()I
   method public width ()I
   method public withMips ()Lcom/crystalgraphics/render/graph/CgTextureDesc;
+  method public withSamples (I)Lcom/crystalgraphics/render/graph/CgTextureDesc;
   method public,final equals (Ljava/lang/Object;)Z
   method public,final toString ()Ljava/lang/String;
-  method public,static array (IIILcom/crystalgraphics/api/framebuffer/CgFrameBufferFormat;)Lcom/crystalgraphics/render/graph/CgTextureDesc;
-  method public,static volume (IIILcom/crystalgraphics/api/framebuffer/CgFrameBufferFormat;)Lcom/crystalgraphics/render/graph/CgTextureDesc;
+  method public,static array (IIILcom/crystalgraphics/platform/rhi/format/CgFormat;)Lcom/crystalgraphics/render/graph/CgTextureDesc;
+  method public,static of (IILcom/crystalgraphics/platform/rhi/format/CgFormat;)Lcom/crystalgraphics/render/graph/CgTextureDesc;
+  method public,static volume (IIILcom/crystalgraphics/platform/rhi/format/CgFormat;)Lcom/crystalgraphics/render/graph/CgTextureDesc;
 com/crystalgraphics/render/mesh/CgMeshStore
   access public,final
   extends java/lang/Object
@@ -10661,7 +10653,7 @@ com/crystalgraphics/render/stage/CgHostFrame
   access public,final
   extends java/lang/Object
   method public <init> ()V
-  method public depthType ()Lcom/crystalgraphics/api/texture/CgTextureType;
+  method public depthFormat ()Lcom/crystalgraphics/platform/rhi/format/CgFormat;
   method public environment ()Lcom/crystalgraphics/render/stage/CgHostEnvironment;
   method public guiScale ()F
   method public guiScale (F)Lcom/crystalgraphics/render/stage/CgHostFrame;

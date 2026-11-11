@@ -1,8 +1,6 @@
 package com.crystalgraphics.render.world;
 
-import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.material.CgMaterialValues;
-import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.compute.CgCompute;
 import com.crystalgraphics.compute.CgKernel;
 import com.crystalgraphics.lifecycle.CgEngineLifecycle;
@@ -25,6 +23,7 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Arrays;
 import java.util.concurrent.TimeUnit;
+import com.crystalgraphics.platform.rhi.format.CgFormat;
 
 /**
  * The host world around the camera as volumes the GPU reads (vfx-gpu §4.8): per block, which octants are solid, its
@@ -115,18 +114,18 @@ public final class CgWorldVoxelWindow {
             """;
 
     private final CgGraphTexture volume = CgGraphTexture.requested("world.voxels",
-            CgTextureDesc.volume(WIDTH, HEIGHT, DEPTH, CgFrameBufferFormat.builder("world.voxels").color(0, CgTextureType.RGBA8).build()));
+            CgTextureDesc.volume(WIDTH, HEIGHT, DEPTH, CgFormat.RGBA8_UNORM));
     private final CgGraphTexture sections = CgGraphTexture.requested("world.voxels.sections",
             CgTextureDesc.volume(SECTIONS_X, SECTIONS_Y, SECTIONS_Z,
-                    CgFrameBufferFormat.builder("world.voxels.sections").color(0, CgTextureType.R8).build()));
+                    CgFormat.R8_UNORM));
     /** What {@link #bind} gives a kernel with no level: the smallest volumes, never read. */
     private final CgGraphTexture noVolume = CgGraphTexture.requested("world.voxels.none",
-            CgTextureDesc.volume(1, 1, 2, CgFrameBufferFormat.builder("world.voxels").color(0, CgTextureType.RGBA8).build()));
+            CgTextureDesc.volume(1, 1, 2, CgFormat.RGBA8_UNORM));
     private final CgGraphTexture noSections = CgGraphTexture.requested("world.voxels.sections.none",
-            CgTextureDesc.volume(1, 1, 2, CgFrameBufferFormat.builder("world.voxels.sections").color(0, CgTextureType.R8).build()));
+            CgTextureDesc.volume(1, 1, 2, CgFormat.R8_UNORM));
     /** The distance field and the one before it: a flood writes the other, keeping what it did not flood. */
     private final CgGraphTexture[] distances = {distanceVolume("world.voxels.distance"), distanceVolume("world.voxels.distance.next")};
-    private final CgFrameBufferFormat seedFormat = CgFrameBufferFormat.builder("world.voxels.seeds").color(0, CgTextureType.R32UI).build();
+    private final CgFormat seedFormat = CgFormat.R32_UINT;
     /** Per slot: a hash of its section's solid octants, so a refill that changes none floods nothing. */
     private final long[] solids = new long[SLOTS];
     /** The sections whose solid octants changed since the last flood, absolute, from and to, inclusive. */
@@ -386,7 +385,7 @@ public final class CgWorldVoxelWindow {
 
     private static CgGraphTexture distanceVolume(String name) {
         return CgGraphTexture.requested(name, CgTextureDesc.volume(WIDTH, HEIGHT, DEPTH,
-                CgFrameBufferFormat.builder(name).color(0, CgTextureType.R8).build()));
+                CgFormat.R8_UNORM));
     }
 
     /** Centres the window on the camera's section, and gives each slot the section it now stands for. */

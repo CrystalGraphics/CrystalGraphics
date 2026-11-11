@@ -1,7 +1,5 @@
 package com.crystalgraphics.shadergraph;
 
-import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
-import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.render.graph.CgExecutor;
 import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.render.draw.CgOrder;
@@ -14,6 +12,7 @@ import com.crystalgraphics.render.graph.CgRecording;
 import com.crystalgraphics.render.graph.CgTextureDesc;
 
 import javax.annotation.Nullable;
+import com.crystalgraphics.platform.rhi.format.CgFormat;
 
 /**
  * One preview's render target: a multisampled texture to draw into, and a plain one to read from. Both are requested
@@ -40,13 +39,11 @@ import javax.annotation.Nullable;
  */
 public final class CgPreviewTarget {
 
-    private static final CgFrameBufferFormat RESOLVED = CgFrameBufferFormat.builder("cg_node_preview")
-            .color(0, CgTextureType.RGBA8)
-            .build();
+    private static final CgFormat RESOLVED = CgFormat.RGBA8_UNORM;
 
     private final int size;
     @Nullable
-    private final CgGraphTexture multisampled;
+    private final CgGraphTexture multisampled, multisampledDepth;
     private final CgGraphTexture resolved;
     private boolean deleted;
 
@@ -58,20 +55,19 @@ public final class CgPreviewTarget {
         this.size = size;
         // Clamped against the context, so a machine offering 2x is not quietly assumed to be giving 4x.
         int wanted = Math.max(1, Math.min(samples, CgCapabilities.detect().getMaxSamples()));
-        this.resolved = CgGraphTexture.requested(name, new CgTextureDesc(size, size, RESOLVED));
+        this.resolved = CgGraphTexture.requested(name, CgTextureDesc.of(size, size, RESOLVED));
         if (wanted <= 1) {
             // Drawn straight into the readable target: correct, just not antialiased.
             this.multisampled = null;
+            this.multisampledDepth = null;
             return;
         }
-        // Renderbuffers: nothing samples this one. Depth carries the same sample count or the framebuffer is
-        // incomplete. WHAT WAS ASKED, not the hardware's most: up to 32x on a desktop card, resolved per preview.
-        CgFrameBufferFormat format = CgFrameBufferFormat.builder("cg_node_preview_ms")
-                .colorRenderbuffer(0, CgTextureType.RGBA8)
-                .depthRenderbuffer(CgTextureType.DEPTH24_STENCIL8)
-                .samples(wanted)
-                .build();
-        this.multisampled = CgGraphTexture.requested(name + "_ms", new CgTextureDesc(size, size, format));
+        // Nothing samples these, and the depth carries the colour's sample count. WHAT WAS ASKED, not the hardware's
+        // most: up to 32x on a desktop card, resolved per preview.
+        this.multisampledDepth = CgGraphTexture.requested(name + "_ms_depth",
+                CgTextureDesc.of(size, size, CgFormat.DEPTH24_PLUS_STENCIL8).withSamples(wanted));
+        this.multisampled = CgGraphTexture.requested(name + "_ms",
+                CgTextureDesc.of(size, size, RESOLVED).withSamples(wanted), multisampledDepth);
     }
 
     /**
@@ -100,7 +96,10 @@ public final class CgPreviewTarget {
         if (deleted) return;
         deleted = true;
         deleteStorage(resolved);
-        if (multisampled != null) deleteStorage(multisampled);
+        if (multisampled != null) {
+            deleteStorage(multisampled);
+            deleteStorage(multisampledDepth);
+        }
     }
 
     private static void deleteStorage(CgGraphTexture texture) {

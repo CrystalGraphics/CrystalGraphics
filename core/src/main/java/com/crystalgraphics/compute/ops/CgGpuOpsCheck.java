@@ -35,6 +35,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.function.IntBinaryOperator;
 import java.util.function.Supplier;
+import com.crystalgraphics.platform.rhi.format.CgFormat;
 
 /**
  * Runs every {@link CgGpuOps} op on this context, at counts from none to tens of thousands, fixed and read from the
@@ -135,7 +136,9 @@ public final class CgGpuOpsCheck {
         }
         cases.add(new Case("gpu clamped", 300, 300, 350));
         List<ImageCase> images = new ArrayList<>();
-        for (CgTextureType type : CgGpuOps.IMAGE_TYPES) for (int[] size : IMAGE_SIZES) images.add(new ImageCase(type, size[0], size[1]));
+        for (CgFormat format : CgGpuOps.IMAGE_TYPES) {
+            for (int[] size : IMAGE_SIZES) images.add(new ImageCase(CgTextureType.of(format), size[0], size[1]));
+        }
         CgCompute check = CgCompute.load(PATH);
         int drawn = buffer(DRAWN * 4);
         try {

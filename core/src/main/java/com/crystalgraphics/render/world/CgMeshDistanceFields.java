@@ -7,8 +7,6 @@ import com.crystalgraphics.api.vertex.CgVertexFormat;
 import com.crystalgraphics.gpu.resource.CgFrameRing;
 import com.crystalgraphics.job.CgJob;
 import com.crystalgraphics.job.CgJobLane;
-import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
-import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.render.graph.CgTextureDesc;
 import com.crystalgraphics.render.graph.CgRecording;
@@ -31,6 +29,7 @@ import java.util.Arrays;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
+import com.crystalgraphics.platform.rhi.format.CgFormat;
 
 /**
  * Our meshes' signed distance fields, Unreal's mesh distance fields (MeshDistanceFieldUtilities.cpp): what the world
@@ -187,7 +186,7 @@ final class CgMeshDistanceFields {
             if (atlas == null) {
                 alloc = new CgOffsetAllocator(ROWS);
                 atlas = CgGraphTexture.requested("cg_world_lights.mesh-fields", new CgTextureDesc(ROW, ROWS,
-                        CgFrameBufferFormat.builder("cg_world_lights.mesh-fields").color(0, CgTextureType.R32F).build()));
+                        CgFormat.R32_FLOAT));
             }
             int rows = (f.distances.length + ROW - 1) / ROW;
             int node = alloc.allocate(rows);
