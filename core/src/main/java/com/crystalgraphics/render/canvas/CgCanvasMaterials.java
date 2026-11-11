@@ -233,7 +233,7 @@ public final class CgCanvasMaterials {
         for (CgMaterial glass : WORLD.glassProbes()) list.addPass(glass, CgInstanceKind.QUAD);
     }
 
-    /** Every gradient and grid variant a screen draws, mask or none, linear or radial, and its two of glass. */
+    /** Every gradient and grid variant a screen draws, mask or none, linear or radial, and every set of glass. */
     private synchronized List<CgMaterial> probes() {
         if (probes.isEmpty()) {
             for (int v = 0; v < 4; v++) {
@@ -252,15 +252,18 @@ public final class CgCanvasMaterials {
         return probes;
     }
 
-    /** Glass frosted, and with every layer on: CgCanvasGlass's defaults. */
+    /**
+     * Glass in every set of its layers, its shader's permutation domain: a pane's set follows its look (frost with noise
+     * alone is CrystalGUI's desktop), so each is drawn somewhere. Made on the glass material, whose blend is a program of
+     * its own.
+     */
     private synchronized List<CgMaterial> glassProbes() {
         if (glassProbes.isEmpty()) {
-            for (int v = 0; v < 2; v++) {
+            String[] layers = {CgCanvasGlass.WITH_REFRACTION, CgCanvasGlass.WITH_CHROMATIC, CgCanvasGlass.WITH_SPECULAR,
+                    CgCanvasGlass.WITH_NOISE};
+            for (int set = 0; set < 1 << layers.length; set++) {
                 CgMaterial glass = newGlass();
-                for (String layer : new String[] {CgCanvasGlass.WITH_REFRACTION, CgCanvasGlass.WITH_CHROMATIC,
-                        CgCanvasGlass.WITH_SPECULAR, CgCanvasGlass.WITH_NOISE}) {
-                    glass.toggleKeyword(layer, v != 0);
-                }
+                for (int k = 0; k < layers.length; k++) glass.toggleKeyword(layers[k], (set & 1 << k) != 0);
                 glassProbes.add(glass);
             }
         }

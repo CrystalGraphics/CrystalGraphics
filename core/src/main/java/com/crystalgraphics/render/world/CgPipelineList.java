@@ -371,13 +371,29 @@ public final class CgPipelineList {
         return list.size() + kernels.size() + passes.size();
     }
 
-    /** What the list still waits on, for {@code crystalgraphics.warmBudget.log}: each request collecting, its steps left. */
+    /** Pending passes and materials the warm log names a frame, by their pipelines. */
+    private static final int LOGGED_NAMES = 4;
+
+    /**
+     * What the list still waits on, for {@code crystalgraphics.warmBudget.log}: each request collecting, its steps left,
+     * and the first pending passes and materials.
+     */
     private void logPending() {
         StringBuilder line = new StringBuilder("[warm] pipelines: ").append(pending.size()).append(" materials, ")
                 .append(unbuilt.size()).append(" kernels, ").append(passesUnbuilt.size()).append(" passes; collecting");
         for (CgPipelinePrecache.Request r : collecting) {
             line.append(' ').append(r.name).append(" (").append(r.steps.size()).append(" steps")
                     .append(r.ahead != null && !r.ahead.isDone() ? ", worker" : "").append(')');
+        }
+        int named = 0;
+        for (CgMaterial m : passesUnbuilt) {
+            if (named++ == LOGGED_NAMES) break;
+            line.append(named == 1 ? "; passes " : ", ").append(m.pipeline(passes.get(m)));
+        }
+        named = 0;
+        for (CgMaterial m : pending.keySet()) {
+            if (named++ == LOGGED_NAMES) break;
+            line.append(named == 1 ? "; materials " : ", ").append(m.pipeline(CgInstanceKind.OBJECT));
         }
         CgPipelinePrecache.LOGGER.info(line.toString());
     }
