@@ -37,9 +37,9 @@ read [`architecture.md`](architecture.md).
 ## Raster size and tier
 
 The **effective size** is the font's pixel size times the pose's larger axis scale, rounded, clamped to
-1–256 px, and held within 0.75 px of the previous frame's so an animating scale does not thrash. A draw that sets
-`layoutPose` takes the scale from that pose instead, and its `pose` only stretches the glyphs: text whose scale
-animates makes one raster size, not one per pixel size on the way (widgets do this for every text block).
+1–256 px, and held within 0.75 px of the previous frame's so an animating scale does not thrash. A draw whose size
+changes on two frames within 8 of each other is on a 1.2x size ladder until it has held 15 frames, so an animated
+scale makes a few raster sizes and shadow cells, not one per pixel size; a still label stays exact.
 
 The **tier** is bitmap or distance field:
 

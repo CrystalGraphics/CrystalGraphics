@@ -78,8 +78,6 @@ public class CgUserWidgetTest {
         final List<Vector3f> centres = new ArrayList<>();
         final List<Integer> colours = new ArrayList<>();
         final List<Vector4f> parameters = new ArrayList<>();
-        final List<Float> textScales = new ArrayList<>();
-        final List<Float> layoutScales = new ArrayList<>();
 
         @Override
         public Object layout(CgTextStyle style, String text, float wrap, CgWidget.Justification justification,
@@ -99,10 +97,8 @@ public class CgUserWidgetTest {
 
         @Override
         public void text(CgTextStyle style, String text, Object laidOut, CgWidget.Justification justification,
-                         Matrix4f pose, Matrix4f layoutPose, float width, float r, float g, float b, float a) {
+                         Matrix4f pose, float width, float r, float g, float b, float a) {
             draws.add(text);
-            textScales.add(pose.getScale(new Vector3f()).x);
-            layoutScales.add(layoutPose.getScale(new Vector3f()).x);
             centres.add(pose.transformPosition(new Vector3f()));
             colours.add(CgLinearColour.argb(r, g, b, a));
         }
@@ -253,21 +249,6 @@ public class CgUserWidgetTest {
         assertEquals("B's centre: 40 on, plus its half-scaled middle", 50f, r.centreOf("b").x, 1e-4f);
         assertEquals(5f, r.centreOf("b").y, 1e-4f);
         assertEquals("C after the scaled size", 65f, r.centreOf("c").x, 1e-4f);
-    }
-
-    /**
-     * Text rasters at the scale its layout gives, never at what a sequence animates: a render scale reaches the pose
-     * alone, a scale box both.
-     */
-    @Test
-    public void aRenderScaleReachesThePoseAndNotTheLayoutPose() {
-        CgTextStyle style = CgTextStyle.builder("t").font("mymod:fonts/x.ttf").build();
-        CgWidgetTree tree = CgWidgetTree.of(CgWidget.scaleBox("Box", 0.5f)
-                .child(CgWidget.text("Num").style(style).text("7").scale(2f, 2f)).build());
-        Recorder r = new Recorder();
-        tree.newInstance().paint(r, new Matrix4f());
-        assertEquals("drawn at the designer's 2 under the box's half", 1f, r.textScales.get(0), 1e-4f);
-        assertEquals("rastered under the box alone", 0.5f, r.layoutScales.get(0), 1e-4f);
     }
 
     /** A text block measures its text; changing the text relays out. */

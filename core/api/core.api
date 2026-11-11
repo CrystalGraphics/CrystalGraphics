@@ -14165,7 +14165,6 @@ com/crystalgraphics/text/render/CgTextDraw
   method public gamma (Lcom/crystalgraphics/text/render/CgTextGamma;)Lcom/crystalgraphics/text/render/CgTextDraw;
   method public layerScope (II)Lcom/crystalgraphics/text/render/CgTextDraw;
   method public layout (Lcom/crystalgraphics/api/text/CgTextLayout;)Lcom/crystalgraphics/text/render/CgTextDraw;
-  method public layoutPose (Lorg/joml/Matrix4f;)Lcom/crystalgraphics/text/render/CgTextDraw;
   method public measure ()Lcom/crystalgraphics/api/text/CgTextLayout;
   method public measureSize (Lorg/joml/Vector2f;)Lorg/joml/Vector2f;
   method public node (II)Lcom/crystalgraphics/text/render/CgTextDraw;
@@ -20014,7 +20013,7 @@ com/crystalgraphics/widget/CgCanvasWidgetPainter
   method public release (Lcom/crystalgraphics/render/graph/CgRecording;)V
   method public retained (ILcom/crystalgraphics/api/material/CgMaterialDefinition;Ljava/lang/String;Lorg/joml/Matrix4f;FFFFFF)V
   method public retaining (FFF)Lcom/crystalgraphics/widget/CgCanvasWidgetPainter;
-  method public text (Lcom/crystalgraphics/text/style/CgTextStyle;Ljava/lang/String;Ljava/lang/Object;Lcom/crystalgraphics/widget/CgWidget$Justification;Lorg/joml/Matrix4f;Lorg/joml/Matrix4f;FFFFF)V
+  method public text (Lcom/crystalgraphics/text/style/CgTextStyle;Ljava/lang/String;Ljava/lang/Object;Lcom/crystalgraphics/widget/CgWidget$Justification;Lorg/joml/Matrix4f;FFFFF)V
 com/crystalgraphics/widget/CgLinearColour
   access public,final,record
   extends java/lang/Record
@@ -20288,7 +20287,7 @@ com/crystalgraphics/widget/CgWidgetPainter
   method public,abstract image (Lcom/crystalgraphics/widget/CgWidgetBrush;Lorg/joml/Matrix4f;FFFFFFLorg/joml/Vector4fc;)V
   method public,abstract layout (Lcom/crystalgraphics/text/style/CgTextStyle;Ljava/lang/String;FLcom/crystalgraphics/widget/CgWidget$Justification;Lorg/joml/Vector2f;)Ljava/lang/Object;
   method public,abstract retained (ILcom/crystalgraphics/api/material/CgMaterialDefinition;Ljava/lang/String;Lorg/joml/Matrix4f;FFFFFF)V
-  method public,abstract text (Lcom/crystalgraphics/text/style/CgTextStyle;Ljava/lang/String;Ljava/lang/Object;Lcom/crystalgraphics/widget/CgWidget$Justification;Lorg/joml/Matrix4f;Lorg/joml/Matrix4f;FFFFF)V
+  method public,abstract text (Lcom/crystalgraphics/text/style/CgTextStyle;Ljava/lang/String;Ljava/lang/Object;Lcom/crystalgraphics/widget/CgWidget$Justification;Lorg/joml/Matrix4f;FFFFF)V
 com/crystalgraphics/widget/CgWidgetPreparer
   access public,final
   extends java/lang/Object

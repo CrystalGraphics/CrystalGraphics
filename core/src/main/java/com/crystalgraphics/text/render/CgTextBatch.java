@@ -40,7 +40,6 @@ import org.joml.Vector3f;
 
 import javax.annotation.Nullable;
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
@@ -81,6 +80,7 @@ public final class CgTextBatch {
     /** {@code -Dcrystalgraphics.text.replay=false} records every draw, for comparison. */
     private static final boolean REPLAYS = !"false".equals(System.getProperty("crystalgraphics.text.replay"));
     private static final int REPLAY_FRAMES = 30, MAX_REPLAYS = 1024;
+    private static final int MOTION_IDLE_FRAMES = 120, MAX_MOTIONS = 1024;
 
     /** text.shader's instance kinds, carried as a negative custom0.w. @see text.shader Properties */
     private static final float KIND_FIELD_OUTER = -1f, KIND_FIELD_INSET = -2f, KIND_CELL = -3f,
@@ -114,12 +114,9 @@ public final class CgTextBatch {
     private int stepCount;
 
     /** Each font's last screen raster size and tier, which {@link CgTextRaster}'s hysteresis damps against. */
-    private final Map<CgFontKey, RasterHistory> history = new HashMap<>();
+    private final Map<CgTextLayout, CgTextRasterMotion> motions = new IdentityHashMap<>();
     /** Whether this draw is under a perspective camera: world text. */
     private boolean world;
-
-    private record RasterHistory(int effectiveTargetPx, boolean wasMsdf) {
-    }
 
     /** A canvas-less batch's camera, from {@link #camera}. */
     private final Matrix4f ownProjection = new Matrix4f(), ownView = new Matrix4f();
@@ -130,10 +127,6 @@ public final class CgTextBatch {
      * size and snaps: glyphs rasterise in device pixels whatever units the camera is in.
      */
     private final Matrix4f camera = new Matrix4f(), viewPose = new Matrix4f(), pixelPose = new Matrix4f();
-    /** The pixel scale {@link #useCamera} applied, and the view, for a {@link CgTextDraw#layoutPose} to follow. */
-    private final Matrix4f rasterPose = new Matrix4f();
-    private final Matrix4f cameraView = new Matrix4f();
-    private float pixelsX = 1f, pixelsY = 1f;
     private static final Matrix4f IDENTITY = new Matrix4f();
 
     private long degradedDraws;
@@ -226,14 +219,10 @@ public final class CgTextBatch {
         world = projection.m23() != 0f;
         camera.set(projection).mul(view);
         viewPose.set(view).mul(pose);
-        cameraView.set(view);
         if (!world && w > 1f && h > 1f) {
             // An orthographic projection's units to the target's pixels, per axis.
-            pixelsX = Math.abs(projection.m00()) * w * 0.5f;
-            pixelsY = Math.abs(projection.m11()) * h * 0.5f;
-            pixelPose.scaling(pixelsX, pixelsY, 1f).mul(viewPose);
+            pixelPose.scaling(Math.abs(projection.m00()) * w * 0.5f, Math.abs(projection.m11()) * h * 0.5f, 1f).mul(viewPose);
         } else {
-            pixelsX = pixelsY = 1f;
             pixelPose.set(viewPose);
         }
     }
@@ -378,23 +367,45 @@ public final class CgTextBatch {
             fontKey = bakedKeys[0];
         }
 
-        int basePx = fontKey.getTargetPx(), effectiveTargetPx;
+        int basePx = fontKey.getTargetPx();
+
+        CgTextLayout layout;
+        if (draw.layout != null) {
+            layout = draw.layout;
+        } else {
+            // Constraints are screen pixels: divided by the pose's own scale, not effective/base px, which is clamped
+            // at CgTextRaster.MAX_PX. Never for world text, which must not reflow with the camera.
+            float scale = world ? 1f : CgTextRaster.maxScale(viewPose);
+            float maxWidth = scaleConstraint(draw.maxWidth, scale), maxHeight = scaleConstraint(draw.maxHeight, scale);
+            // Slate's LetterSpacing: thousandths of an em, at the text's own size.
+            float spacing = draw.style.letterSpacing() * basePx / 1000f;
+            if (draw.paragraph != null) layout = draw.paragraph.layout(maxWidth, maxHeight);
+            else if (resolvedFamily != null && draw.family != null) {
+                layout = layout(draw.transformedText(), resolvedFamily, maxWidth, maxHeight, spacing);
+            } else {
+                layout = layout(draw.transformedText(), resolvedFont, maxWidth, maxHeight, spacing);
+            }
+        }
+
+        int effectiveTargetPx;
         boolean sizeWantsMsdf;
         if (world) {
             effectiveTargetPx = CgTextRaster.worldPx(basePx);
             sizeWantsMsdf = true;
         } else {
-            RasterHistory previous = history.get(fontKey);
-            int previousPx = previous != null ? previous.effectiveTargetPx() : -1;
-            effectiveTargetPx = CgTextRaster.screenPx(basePx, rasterScale(draw), previousPx);
-            boolean previousMsdf = previous != null ? previous.wasMsdf() : effectiveTargetPx >= 32;
+            // Per draw (its layout), not per font: two draws of one face are not one animation.
+            long frame = CgFrameClock.frameIndex();
+            CgTextRasterMotion motion = motion(layout, frame);
+            int exact = CgTextRaster.screenPx(basePx, CgTextRaster.maxScale(pixelPose), motion != null ? motion.exactPx() : -1);
+            int before = motion != null ? motion.lastPx() : -1;
+            effectiveTargetPx = motion != null ? motion.resolve(exact, frame) : exact;
+            boolean previousMsdf = motion != null && before > 0 ? motion.wasMsdf : effectiveTargetPx >= 32;
             sizeWantsMsdf = CgTextRaster.msdf(effectiveTargetPx, previousMsdf);
             // The size-derived decision, not the forced ones below: the hysteresis damps size changes only.
-            if (previous == null || previous.effectiveTargetPx() != effectiveTargetPx || previous.wasMsdf() != sizeWantsMsdf) {
-                history.put(fontKey, new RasterHistory(effectiveTargetPx, sizeWantsMsdf));
-                if (CgTrace.isEnabled(CgChannels.TEXT)) {
-                    CgTrace.marker(CgChannels.TEXT, "text.rasterPx", "base=" + basePx + " px=" + effectiveTargetPx + (sizeWantsMsdf ? " msdf" : " bitmap"));
-                }
+            if (motion != null) motion.wasMsdf = sizeWantsMsdf;
+            if (before != effectiveTargetPx && CgTrace.isEnabled(CgChannels.TEXT)) {
+                CgTrace.marker(CgChannels.TEXT, "text.rasterPx", "base=" + basePx + " px=" + effectiveTargetPx
+                        + (sizeWantsMsdf ? " msdf" : " bitmap") + (motion != null && motion.moving(frame) ? " moving" : ""));
             }
         }
 
@@ -415,32 +426,19 @@ public final class CgTextBatch {
             CgTrace.add(CgChannels.TEXT, "text.msdfForcedByStroke", 1);
         }
 
-        CgTextLayout layout;
-        if (draw.layout != null) {
-            layout = draw.layout;
-        } else {
-            // Constraints are screen pixels: divided by the pose's own scale, not effective/base px, which is clamped
-            // at CgTextRaster.MAX_PX. Never for world text, which must not reflow with the camera.
-            float scale = world ? 1f : CgTextRaster.maxScale(viewPose);
-            float maxWidth = scaleConstraint(draw.maxWidth, scale), maxHeight = scaleConstraint(draw.maxHeight, scale);
-            // Slate's LetterSpacing: thousandths of an em, at the text's own size.
-            float spacing = draw.style.letterSpacing() * basePx / 1000f;
-            if (draw.paragraph != null) layout = draw.paragraph.layout(maxWidth, maxHeight);
-            else if (resolvedFamily != null && draw.family != null) {
-                layout = layout(draw.transformedText(), resolvedFamily, maxWidth, maxHeight, spacing);
-            } else {
-                layout = layout(draw.transformedText(), resolvedFont, maxWidth, maxHeight, spacing);
-            }
-        }
         return new ResolvedDraw(fontKey, effectiveTargetPx, wantMsdf, layout);
     }
 
-    /** The scale a screen draw's raster size follows: its layout pose's in pixels where it names one, else its pose's. */
-    private float rasterScale(CgTextDraw draw) {
-        Matrix4f layoutPose = draw.layoutPoseMatrix;
-        if (layoutPose == null) return CgTextRaster.maxScale(pixelPose);
-        rasterPose.scaling(pixelsX, pixelsY, 1f).mul(cameraView).mul(layoutPose);
-        return CgTextRaster.maxScale(rasterPose);
+    /** {@code layout}'s raster motion, made the first time it draws; null for a layout with no state to keep. */
+    private CgTextRasterMotion motion(CgTextLayout layout, long frame) {
+        if (layout == null) return null;
+        CgTextRasterMotion m = motions.get(layout);
+        if (m != null) return m;
+        if (motions.size() >= MAX_MOTIONS) motions.values().removeIf(x -> frame - x.lastUsed >= MOTION_IDLE_FRAMES);
+        if (motions.size() >= MAX_MOTIONS) return null;
+        m = new CgTextRasterMotion();
+        motions.put(layout, m);
+        return m;
     }
 
     /** {@code value / scale}, unbounded staying unbounded and a scale of about 1 skipped. */

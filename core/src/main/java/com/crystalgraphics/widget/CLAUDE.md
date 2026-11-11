@@ -26,9 +26,6 @@ parts animated by name on the widget sequencer. **Using it**: `docs/WIDGETS.md`.
   `WidgetTransform.h`). A behaviour Slate has is ported, never approximated.
 - **Tints are linear** and multiply down the tree in linear; they are sRGB-encoded once, at the painter, as Slate's
   `PackVertexColor`.
-- **Text rasters at its layout scale, never its animated one**: a text block's painter gets the pose and the layout
-  pose (translations and scale boxes, no render transform, as Slate's layout transform apart from its render
-  transform), and an animated scale only stretches glyphs made at the settled size. Paint it as MSDF if it grows.
 - **Layout runs on change only** (text, visibility, a brush, an allotted size, a nested widget's); what a sequence
   writes is render-only. Paint allocates nothing.
 - **Retain, then paint**: every instance a frame draws runs `retain` before any runs `paint`, since the retained
