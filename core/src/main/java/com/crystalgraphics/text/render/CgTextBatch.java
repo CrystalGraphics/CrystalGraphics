@@ -336,7 +336,8 @@ public final class CgTextBatch {
     // ══════════════════════════════════════════════════════════════════════════════════════════
 
     /** What a draw and its measure share, so a measure never drifts from the draw. */
-    private record ResolvedDraw(CgFontKey fontKey, int effectiveTargetPx, boolean wantMsdf, CgTextLayout layout) {
+    private record ResolvedDraw(CgFontKey fontKey, int effectiveTargetPx, boolean wantMsdf, CgTextLayout layout,
+                                boolean moving) {
     }
 
     /** Font, raster tier and layout for {@code draw}, wrapped for the pose; {@link #useCamera} first. */
@@ -389,6 +390,7 @@ public final class CgTextBatch {
 
         int effectiveTargetPx;
         boolean sizeWantsMsdf;
+        boolean moving = false;
         if (world) {
             effectiveTargetPx = CgTextRaster.worldPx(basePx);
             sizeWantsMsdf = true;
@@ -399,6 +401,7 @@ public final class CgTextBatch {
             int exact = CgTextRaster.screenPx(basePx, CgTextRaster.maxScale(pixelPose), motion != null ? motion.exactPx() : -1);
             int before = motion != null ? motion.lastPx() : -1;
             effectiveTargetPx = motion != null ? motion.resolve(exact, frame) : exact;
+            moving = motion != null && motion.moving(frame);
             boolean previousMsdf = motion != null && before > 0 ? motion.wasMsdf : effectiveTargetPx >= 32;
             sizeWantsMsdf = CgTextRaster.msdf(effectiveTargetPx, previousMsdf);
             // The size-derived decision, not the forced ones below: the hysteresis damps size changes only.
@@ -426,7 +429,7 @@ public final class CgTextBatch {
             CgTrace.add(CgChannels.TEXT, "text.msdfForcedByStroke", 1);
         }
 
-        return new ResolvedDraw(fontKey, effectiveTargetPx, wantMsdf, layout);
+        return new ResolvedDraw(fontKey, effectiveTargetPx, wantMsdf, layout, moving);
     }
 
     /** {@code layout}'s raster motion, made the first time it draws; null for a layout with no state to keep. */
@@ -582,7 +585,7 @@ public final class CgTextBatch {
                 synchronized (registry) {
                     degraded = shadowPlan.plan(shadowList, resolvedGlyphs.placements, resolvedGlyphs.cached,
                             layout.baked(), glyphCount, fontKey, effectiveTargetPx, outlineTexels, outlineAlign, world,
-                            frame);
+                            resolved.moving(), frame);
                 }
                 if (degraded) degradedDraws++;
             }

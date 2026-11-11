@@ -75,4 +75,16 @@ public class CgTextRasterMotionTest {
         }
         assertTrue("about 14 rungs over 17..256, not 240: " + rungs.size(), rungs.size() <= 16);
     }
+
+    @Test
+    public void shadowCellsMoveOnAGridCoarserThanTheGlyphs() {
+        assertEquals(12, CgTextRasterMotion.shadowRung(12));
+        Set<Integer> glyphRungs = new HashSet<>(), shadowRungs = new HashSet<>();
+        for (int px = 33; px <= 69; px++) {
+            glyphRungs.add(CgTextRasterMotion.ladder(px));
+            shadowRungs.add(CgTextRasterMotion.shadowRung(px));
+        }
+        assertTrue("three shadow sizes over 33..69: " + shadowRungs, shadowRungs.size() <= 3);
+        assertTrue(shadowRungs.size() < glyphRungs.size());
+    }
 }

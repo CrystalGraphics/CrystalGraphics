@@ -39,7 +39,7 @@ read [`architecture.md`](architecture.md).
 The **effective size** is the font's pixel size times the pose's larger axis scale, rounded, clamped to
 1–256 px, and held within 0.75 px of the previous frame's so an animating scale does not thrash. A draw whose size
 changes on two frames within 8 of each other is on a 1.2x size ladder until it has held 15 frames, so an animated
-scale makes a few raster sizes and shadow cells, not one per pixel size; a still label stays exact.
+scale makes a few raster sizes and shadow cells, not one per pixel size; a still label stays exact. While moving, shadow cells are built on a coarser 1.5x grid and stretched.
 
 The **tier** is bitmap or distance field:
 

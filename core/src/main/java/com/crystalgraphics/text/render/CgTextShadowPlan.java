@@ -134,11 +134,14 @@ final class CgTextShadowPlan {
      * @param strokeWidthTexels the stroke the draw paints, 0 for none; a shadow's shape includes it
      * @param strokeAlign       the stroke's align code, as the renderer passes it to text.shader
      * @param worldText         a perspective draw, whose cells are stretched by however close the camera is
+     * @param moving            the draw's scale is animating: its cells are built on a coarse size grid and stretched
+     *                          to the glyphs, so the animation makes a few cells and not one set per pixel size
      * @return whether a cell was asked for and not built yet, so the draw is provisional
      */
     boolean plan(CgTextShadowList shadows, CgGlyphPlacement[] glyphs, boolean stable, CgBakedGlyphs baked,
                  int glyphCount, CgFontKey fontKey, int effectiveTargetPx, float strokeWidthTexels, float strokeAlign,
-                 boolean worldText, long frame) {
+                 boolean worldText, boolean moving, long frame) {
+        if (moving && !worldText) effectiveTargetPx = CgTextRasterMotion.shadowRung(effectiveTargetPx);
         Kept k = null;
         long evictions = 0L;
         if (stable) {

@@ -27,7 +27,7 @@ final class CgTextRasterMotion {
     /** Under this size every pixel is its own rung: too few sizes to matter. */
     private static final int LADDER_FROM = 16;
     private static final double LADDER_STEP = 1.2;
-    private static final double LOG_STEP = Math.log(LADDER_STEP);
+    private static final double SHADOW_STEP = 1.5;
 
     private int exactPx = -1;
     private int lastPx = -1;
@@ -69,9 +69,21 @@ final class CgTextRasterMotion {
 
     /** The rung nearest {@code px}: sizes of {@code 16 * 1.2^k}, and every size under 16. */
     static int ladder(int px) {
+        return rung(px, LADDER_STEP);
+    }
+
+    /**
+     * The size a moving draw's shadow cells are built at: a coarser grid than its glyphs', since a blur hides what a
+     * stretch of up to half again would show on a glyph.
+     */
+    static int shadowRung(int px) {
+        return rung(px, SHADOW_STEP);
+    }
+
+    private static int rung(int px, double step) {
         if (px <= LADDER_FROM) return px;
-        long k = Math.round(Math.log(px / (double) LADDER_FROM) / LOG_STEP);
-        int rung = (int) Math.round(LADDER_FROM * Math.pow(LADDER_STEP, k));
+        long k = Math.round(Math.log(px / (double) LADDER_FROM) / Math.log(step));
+        int rung = (int) Math.round(LADDER_FROM * Math.pow(step, k));
         return Math.max(CgTextRaster.MIN_PX, Math.min(CgTextRaster.MAX_PX, rung));
     }
 }

@@ -36,6 +36,8 @@ drawing (`CgCanvasLabels`' labels); `detached()` belongs to no canvas.
 - `pose(PoseStack)` or `pose(Matrix4f)` is read at `submit()`, so a caller may keep pushing its stack.
 - A draw whose pose scale animates is put on a coarse size ladder (`CgTextRasterMotion`), so it makes a few sizes,
   not one per pixel. A bitmap stretched past its size blurs: `raster: msdf` for text that grows.
+  While it moves its shadow cells are built on a coarser 1.5x grid (`shadowRung`) and stretched, a blur hiding what
+  a stretch would show on a glyph; a cell still building draws the glyph's last one.
 - `style` is compared by identity in `sameAs`: a caller rebuilding its style each frame defeats the replay. Hold one.
 - `clip`, `node`, `gamma` carry what a paint context sets per draw; a new field joins `sameAs`, `set` and `reset`.
 - `submit()` returns whether the draw was whole: false while a glyph or shadow cell is still building.
