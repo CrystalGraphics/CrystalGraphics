@@ -194,6 +194,7 @@ public final class CgVfxLook {
     private final List<Placed> placed;
     private final Placed[][] bySlot;
     private final List<CgVfxEmitter> emitters;
+    private final List<CgVfxPostLooks> postLooks;
     /** Each emitter's renderers as placed. */
     private final Map<CgVfxEmitter, Placed[]> byEmitter = new IdentityHashMap<>();
     private final List<Placed> rendered;
@@ -215,6 +216,9 @@ public final class CgVfxLook {
         for (Entry e : b.entries) if (e.part instanceof CgVfxSlotRenderer) candidates.add(new Placed((CgVfxSlotRenderer) e.part, 0));
         List<CgVfxEmitter> emitted = new ArrayList<>();
         for (Entry e : b.entries) if (e.part instanceof CgVfxEmitter) emitted.add((CgVfxEmitter) e.part);
+        List<CgVfxPostLooks> posts = new ArrayList<>();
+        for (Entry e : b.entries) if (e.part instanceof CgVfxPostLooks) posts.add((CgVfxPostLooks) e.part);
+        this.postLooks = Collections.unmodifiableList(posts);
         for (CgVfxEmitter e : emitted) {
             for (CgVfxRendererProperties r : e.renderers()) if (r.common().enabled()) candidates.add(new Placed(e, r, 0));
         }
@@ -310,6 +314,11 @@ public final class CgVfxLook {
     /** The emitters its effect plays. */
     public List<CgVfxEmitter> emitters() {
         return emitters;
+    }
+
+    /** The post looks its kits' effects open as volumes ({@link CgVfxPostLooks}), which its precache builds ahead. */
+    public List<CgVfxPostLooks> postLooks() {
+        return postLooks;
     }
 
     /** When its effects are culled, lowered or put to sleep: {@link CgVfxScalability#DEFAULT} unless it names another. */

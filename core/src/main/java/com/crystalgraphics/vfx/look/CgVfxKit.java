@@ -38,7 +38,7 @@ import java.util.Objects;
 public final class CgVfxKit {
 
     private final String name;
-    /** In order: each a {@link CgVfxSlotRenderer}, a {@link CgVfxEmitter} or a {@link CgVfxKit}. */
+    /** In order: each a {@link CgVfxSlotRenderer}, a {@link CgVfxEmitter}, a {@link CgVfxPostLooks} or a {@link CgVfxKit}. */
     final List<Object> parts;
     final List<CgVfxSchema> schemas;
     private final CgVfxParam.Scalar scalesWith;
@@ -140,6 +140,19 @@ public final class CgVfxKit {
         /** An emitter its effect plays, drawn by its own renderers. */
         public Builder emitter(CgVfxEmitter emitter) {
             parts.add(Objects.requireNonNull(emitter, "emitter"));
+            return this;
+        }
+
+        /**
+         * The post looks its effect opens as volumes while it plays, so a look's precache builds their composite passes
+         * ahead ({@link CgVfxPostLooks}); dropped with the kit.
+         *
+         * <pre>{@code
+         * .postLooks((look, out) -> out.accept(new CgPostSettings().flash(look.get(FLASH_STOPS))))
+         * }</pre>
+         */
+        public Builder postLooks(CgVfxPostLooks looks) {
+            parts.add(Objects.requireNonNull(looks, "looks"));
             return this;
         }
 

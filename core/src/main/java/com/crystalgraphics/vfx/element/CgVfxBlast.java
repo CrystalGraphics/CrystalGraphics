@@ -180,7 +180,25 @@ public final class CgVfxBlast extends CgVfxElement {
     public static final CgVfxKit KIT = CgVfxKit.of("crystalgraphics:blast").params(SCHEMA)
             .scalesWith(RADIUS, 9.6f)
             .kit(EXPLOSION.kit()).kit(FIREBALL).kit(HEART).kit(SHOCKWAVE)
+            .postLooks((look, out) -> {
+                out.accept(flashLook(look.get(FLASH_STOPS), look.get(FLASH_CHROMATIC), look.get(FLASH_BLOOM)));
+                if (look.get(IMPACT) <= 0f) return;
+                out.accept(impactLook());
+                // Both open at the ignition, so the composite draws with their looks together too
+                out.accept(flashLook(look.get(FLASH_STOPS), look.get(FLASH_CHROMATIC), look.get(FLASH_BLOOM))
+                        .impact(CgImpact.SUBJECT, 1f));
+            })
             .build();
+
+    /** The flash's look, at its ignition and in its kit's precache alike. */
+    private static CgPostSettings flashLook(float stops, float chromatic, float bloom) {
+        return new CgPostSettings().flash(stops).chromatic(chromatic).bloom(bloom);
+    }
+
+    /** The impact frame's look, its subject named by the effect that opens it. */
+    private static CgPostSettings impactLook() {
+        return new CgPostSettings().impact(CgImpact.SUBJECT, 1f);
+    }
 
     /** The trace marker each blast leaves as it bursts: where a profile splits a frame's beams from its blasts. */
     public static final String MARKER = "vfx.blast";
@@ -228,11 +246,11 @@ public final class CgVfxBlast extends CgVfxElement {
         this.ny = ny;
         this.nz = nz;
         float radius = get(RADIUS), reach = radius * get(FLASH_REACH);
-        flash = openVolume(FLASH_PRIORITY, new CgPostSettings().flash(get(FLASH_STOPS)).chromatic(get(FLASH_CHROMATIC))
-                .bloom(get(FLASH_BLOOM)), x, y, z).radius(reach).blend(2f * reach);
+        flash = openVolume(FLASH_PRIORITY, flashLook(get(FLASH_STOPS), get(FLASH_CHROMATIC), get(FLASH_BLOOM)), x, y, z)
+                .radius(reach).blend(2f * reach);
         if (get(IMPACT) > 0f) {
             // A hard edge: an impact frame is whole or absent, since part of one is a muddy grey.
-            impactLook = new CgPostSettings().impact(CgImpact.SUBJECT, 1f).subject(subject());
+            impactLook = impactLook().subject(subject());
             impact = openVolume(IMPACT_PRIORITY, impactLook, x, y, z).radius(radius * get(IMPACT_REACH));
         }
         // The flash and the impact frame are the viewer's: they play on through the caster's hitstop, which holds this

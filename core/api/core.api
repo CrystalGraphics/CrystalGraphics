@@ -15900,6 +15900,7 @@ com/crystalgraphics/vfx/look/CgVfxKit$Builder
   method public emitter (Lcom/crystalgraphics/vfx/particle/CgVfxEmitter;)Lcom/crystalgraphics/vfx/look/CgVfxKit$Builder;
   method public kit (Lcom/crystalgraphics/vfx/look/CgVfxKit;)Lcom/crystalgraphics/vfx/look/CgVfxKit$Builder;
   method public params ([Lcom/crystalgraphics/vfx/look/CgVfxSchema;)Lcom/crystalgraphics/vfx/look/CgVfxKit$Builder;
+  method public postLooks (Lcom/crystalgraphics/vfx/look/CgVfxPostLooks;)Lcom/crystalgraphics/vfx/look/CgVfxKit$Builder;
   method public scalesWith (Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;F)Lcom/crystalgraphics/vfx/look/CgVfxKit$Builder;
   method public slot (Lcom/crystalgraphics/vfx/render/CgVfxSlotRenderer$Builder;)Lcom/crystalgraphics/vfx/look/CgVfxKit$Builder;
   method public slot (Lcom/crystalgraphics/vfx/render/CgVfxSlotRenderer;)Lcom/crystalgraphics/vfx/look/CgVfxKit$Builder;
@@ -15955,6 +15956,7 @@ com/crystalgraphics/vfx/look/CgVfxLook
   method public layout ()Lcom/crystalgraphics/vfx/look/CgVfxLayout;
   method public on (Lcom/crystalgraphics/vfx/look/CgVfxSlot;)[Lcom/crystalgraphics/vfx/look/CgVfxLook$Placed;
   method public placed ()Ljava/util/List;
+  method public postLooks ()Ljava/util/List;
   method public rendered ()Ljava/util/List;
   method public renderers (Lcom/crystalgraphics/vfx/particle/CgVfxEmitter;)[Lcom/crystalgraphics/vfx/look/CgVfxLook$Placed;
   method public scalability ()Lcom/crystalgraphics/vfx/scalability/CgVfxScalability;
@@ -16044,6 +16046,10 @@ com/crystalgraphics/vfx/look/CgVfxParam$Vector
   access public,final
   extends com/crystalgraphics/vfx/look/CgVfxParam
   method public floats ()I
+com/crystalgraphics/vfx/look/CgVfxPostLooks
+  access public,abstract,interface
+  extends java/lang/Object
+  method public,abstract looks (Lcom/crystalgraphics/vfx/look/CgVfxLook;Ljava/util/function/Consumer;)V
 com/crystalgraphics/vfx/look/CgVfxSchema
   access public,final
   extends java/lang/Object
