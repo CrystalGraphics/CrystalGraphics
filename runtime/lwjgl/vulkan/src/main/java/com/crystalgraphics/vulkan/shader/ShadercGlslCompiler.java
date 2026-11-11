@@ -71,6 +71,8 @@ public final class ShadercGlslCompiler implements CgGlslCompiler, AutoCloseable 
     private final SpirvCache cache;
     /** {@link #explicitOptions}' modules, kept apart from {@link #cache}'s by their options. */
     private final SpirvCache explicitCache;
+    /** The explicit compiles' whole results, reflection included: a hit runs neither shaderc nor SPIRV-Cross. */
+    private final ExplicitCache results;
     /** Compiles share it, each reading the native handles; {@link #close} alone takes it whole, to free them. */
     private final ReentrantReadWriteLock handles = new ReentrantReadWriteLock();
     /** Written under {@link #handles}' write lock. */
@@ -112,6 +114,7 @@ public final class ShadercGlslCompiler implements CgGlslCompiler, AutoCloseable 
         cache = cacheDir == null ? null : new SpirvCache(cacheDir, OPTIONS + (relaxed ? ", relaxed rules" : "")
                 + (autoBind ? ", auto-bound uniforms" : ""));
         explicitCache = cacheDir == null ? null : new SpirvCache(cacheDir, EXPLICIT_OPTIONS);
+        results = cacheDir == null ? null : new ExplicitCache(cacheDir, EXPLICIT_OPTIONS);
     }
 
     @Override
@@ -122,6 +125,8 @@ public final class ShadercGlslCompiler implements CgGlslCompiler, AutoCloseable 
     @Override
     public Explicit compileExplicit(String vertexGlsl, String fragmentGlsl, Map<String, Integer> attribLocations,
                                                  String label) {
+        Explicit kept = results == null ? null : results.program(vertexGlsl, fragmentGlsl, attribLocations, label);
+        if (kept != null) return kept;
         String vertexSource = withDefines(vertexGlsl, label, EXPLICIT);
         SpirvModule vertex = new SpirvModule(explicitSpirv(vertexSource, shaderc_glsl_vertex_shader, label), label);
         SpirvModule glDepth = new SpirvModule(explicitSpirv(wrapMain(vertexSource, label), shaderc_glsl_vertex_shader, label),
@@ -133,16 +138,23 @@ public final class ShadercGlslCompiler implements CgGlslCompiler, AutoCloseable 
         int outputs = 0;
         for (SpirvModule.Resource r : fragment.outputs) outputs = Math.max(outputs, r.value() + r.locations());
         int push = Math.max(vertex.pushConstantBytes, fragment.pushConstantBytes);
-        return new Explicit(vertex.spirv, glDepth.spirv, fragment.spirv, layout.sets, layout.heap, (push + 3) / 4 * 4,
-                outputs);
+        Explicit made = new Explicit(vertex.spirv, glDepth.spirv, fragment.spirv, layout.sets, layout.heap,
+                (push + 3) / 4 * 4, outputs);
+        if (results != null) results.put(vertexGlsl, fragmentGlsl, attribLocations, label, made);
+        return made;
     }
 
     @Override
     public ExplicitCompute compileExplicitCompute(String glsl, String label) {
+        ExplicitCompute kept = results == null ? null : results.kernel(glsl, label);
+        if (kept != null) return kept;
         SpirvModule m = new SpirvModule(explicitSpirv(withDefines(glsl, label, EXPLICIT), shaderc_glsl_compute_shader, label),
                 label);
         Layout layout = layout(m);
-        return new ExplicitCompute(m.spirv, m.localSize.clone(), layout.sets, layout.heap, (m.pushConstantBytes + 3) / 4 * 4);
+        ExplicitCompute made = new ExplicitCompute(m.spirv, m.localSize.clone(), layout.sets, layout.heap,
+                (m.pushConstantBytes + 3) / 4 * 4);
+        if (results != null) results.put(glsl, label, made);
+        return made;
     }
 
     /** The sets the stages declare, each's slots by binding in set order, and whether they read the bindless heap. */
