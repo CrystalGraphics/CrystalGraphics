@@ -71,6 +71,9 @@ final class ModLoaderForge implements CgModLoader.Host {
     /** Where the file's {@code assets/} sits, inside the file system its mod file holds open. */
     private static List<Path> root(ModFileInfo file) {
         Path assets = file.getFile().findResource("assets");
-        return assets == null || assets.getParent() == null ? Collections.emptyList() : Collections.singletonList(assets.getParent());
+        if (assets == null) return Collections.emptyList();
+        // Forge 25-36 hand back a jar's path relative ("assets"), whose parent is null: every root was lost below 1.17.
+        Path root = assets.toAbsolutePath().getParent();
+        return root == null ? Collections.emptyList() : Collections.singletonList(root);
     }
 }
