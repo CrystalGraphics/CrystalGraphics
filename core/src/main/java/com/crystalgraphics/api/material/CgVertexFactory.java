@@ -14,6 +14,9 @@ import java.util.Map;
  * material names one ({@code Material { VertexFactory Sprites }}, {@code Mesh} by default); the engine compiles its
  * program against that factory's vertex format and fills the {@code CgVertex} its {@code vertex()} receives.
  *
+ * <p>The guide, with what each factory hands a material and a file of your own: {@code docs/MATERIAL_FORMAT.md}
+ * § 5.</p>
+ *
  * <p>A factory is a file, found by its name the first time a material names it: {@code Sprites} is
  * {@code crystalgraphics:shaders/factories/Sprites.factory}, {@code mymod:Ribbons} is
  * {@code mymod:shaders/factories/Ribbons.factory} (its shape: {@code CgFormatTemplates}). The engine's are files:

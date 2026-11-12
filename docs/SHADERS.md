@@ -13,8 +13,12 @@ The primary authoring surface of this repo. Most feature work touches these syst
 
 ### The material format: `#domain` files
 
-A file whose first line is `#domain surface` or `#domain global` is in the material format, which replaces the one
-below as every shader is converted. You say what the surface is, not how to draw it: the engine writes the passes.
+> **Writing one? Read [`MATERIAL_FORMAT.md`](MATERIAL_FORMAT.md)**: the guide, every domain, output, factory and
+> primitive with examples. This section is the summary.
+
+A file whose first line is `#domain` (`surface`, `post`, `ui` or `global`) is in the material format, which replaces
+the one below as every shader is converted. You say what the surface is, not how to draw it: the engine writes the
+passes.
 
 ```glsl
 #domain surface
@@ -80,8 +84,8 @@ Step over {                                                  // the last draws o
   `Text`); clip, opacity, the antialiased edge and premultiplying are the engine's, so its canvas state is
   `PREMULTIPLIED`. `s.color` is straight alpha unless `s.premultiplied`; `s.coverage` replaces the edge.
 
-The whole format, every property and output: plan `renderer/shader-format.md`. The rest of this document is the old
-format, which every shader still in it parses as before.
+The whole format, every property and output: [`MATERIAL_FORMAT.md`](MATERIAL_FORMAT.md). The rest of this document
+is the old format, which every shader still in it parses as before.
 
 ### The `.shader` File Format
 

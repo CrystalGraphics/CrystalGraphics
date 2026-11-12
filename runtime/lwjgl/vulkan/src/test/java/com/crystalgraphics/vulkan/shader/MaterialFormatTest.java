@@ -138,7 +138,9 @@ public class MaterialFormatTest {
     public void everyPassAndVariantBuildsOnTheDevice() {
         List<String> failures = new ArrayList<>();
         int programs = 0;
-        List<String> shapes = new ArrayList<>(List.of("puff", "wobble"));
+        // and docs/MATERIAL_FORMAT.md's examples, so the guide compiles as written
+        List<String> shapes = new ArrayList<>(List.of("puff", "wobble", "guide/glass", "guide/moss", "guide/haze",
+                "guide/sparks", "guide/shell", "guide/desaturate", "guide/soft_glow", "guide/pill", "guide/shimmer"));
         for (String[] pair : PAIRS) shapes.add(pair[0]);
         for (String shape : shapes) {
             String path = path(shape);

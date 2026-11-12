@@ -154,7 +154,7 @@ Fabric's dev mod is `tasks.jar` bundling each module's `downgradedJar` —
 
 | I need to… | Read | Primary package guide |
 |---|---|---|
-| Write or load a `.shader` material | [`docs/SHADERS.md`](docs/SHADERS.md), then **[`docs/PRECACHE.md`](docs/PRECACHE.md)** | `api/material/CLAUDE.md` |
+| Write or load a `.shader` material, a vertex factory or a ui primitive | **[`docs/MATERIAL_FORMAT.md`](docs/MATERIAL_FORMAT.md)** (the `#domain` format), [`docs/SHADERS.md`](docs/SHADERS.md) for the engine side and the older `Pass { }` format, then **[`docs/PRECACHE.md`](docs/PRECACHE.md)** | `api/material/CLAUDE.md` |
 | Write or run a kernel (`.compute`) | [`docs/SHADERS.md`](docs/SHADERS.md) § *Compute*, then **[`docs/PRECACHE.md`](docs/PRECACHE.md)** | `compute/CLAUDE.md` |
 | Draw anything new: a material, a keyword set, a renderer pass, a kernel, a look | **[`docs/PRECACHE.md`](docs/PRECACHE.md)**: what is precached for you, and what you must precache | `render/world/CLAUDE.md` |
 | Write an effect, a particle emitter or a particle module | [`docs/VFX.md`](docs/VFX.md) | `vfx/CLAUDE.md` |
