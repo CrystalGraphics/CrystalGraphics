@@ -8,8 +8,9 @@ import java.util.Arrays;
 
 /**
  * What an execution of a frame decides before its first step, so the step loop decides nothing (Unreal RDG's
- * {@code Compile}): which raster steps share a render pass, and which sample their depth read-only. Written into the
- * frame's per-step arrays; the executor replays them.
+ * {@code Compile}): which raster steps share a render pass and which sample their depth read-only; which compute steps
+ * run on the compute queue; each step's prologue of transitions and the split transitions it begins. Written into the
+ * frame's per-step arrays; the executor replays them, issuing each transition from the state it tracks.
  *
  * <ul>
  *   <li>Run at an execution's start, not at build: a decision about an external target needs what it lends, known once
@@ -93,6 +94,92 @@ final class CgFrameCompiler {
             return image != null && image.desc().usage().contains(CgGpuTexture.Usage.SAMPLED);
         }
         return texture.desc() != null && texture.desc().isDepth() && !texture.desc().isMultisampled();
+    }
+
+    /**
+     * Each step's async placement, its prologue (Unreal's {@code CompilePassBarriers}: what it reads and writes moved to
+     * its access, a run's by its first step) and the split transitions it begins (a later read two or more steps on,
+     * from its producer's end). After {@link #renderPasses}.
+     *
+     * @param asyncCompute whether the device has a compute queue this execution uses; {@code asyncAll} runs every
+     *                     compute step there
+     * @param splitting    whether this execution splits transitions (a first execution on a device that takes them)
+     */
+    static void transitions(CgFrame frame, boolean asyncCompute, boolean asyncAll, boolean splitting) {
+        int n = frame.stepCount;
+        for (int s = 0; s < n; s++) {
+            frame.async[s] = asyncCompute && frame.steps[s] instanceof CgComputePass compute && (compute.isAsync() || asyncAll);
+        }
+        int runStart = -1, runEnd = -1;
+        for (int s = 0; s < n; s++) {
+            frame.prologueFrom[s] = frame.prologueCount;
+            if (s > runEnd) {
+                runStart = s;
+                runEnd = frame.runEnd[s];
+            }
+            CgPass pass = frame.steps[s];
+            frame.prologued[s] = !(s > runStart && s <= runEnd) && !(pass instanceof CgComputePass) && !(pass instanceof CgPass.Include);
+            if (!frame.prologued[s]) continue;
+            CgGraphTexture runAttachment = runEnd > s ? frame.runAttachment[s] : null;
+            if (runEnd > s && runAttachment != null && ((CgRasterPass) pass).attachment() == null) {
+                frame.prologue(runAttachment, 0, 0, 0);   // a later pass's attachment, bound from the run's start
+            }
+            for (int j = s; j <= Math.max(s, runEnd); j++) {
+                CgPass step = frame.steps[j];
+                for (int i = frame.accessFrom[j]; i < frame.accessFrom[j + 1]; i++) {
+                    int bits = frame.accessBits[i];
+                    if (bits == 0) continue;
+                    if (frame.accessView[i] instanceof CgGraphBuffer buffer) {
+                        frame.prologue(buffer, bits, -1, -1);
+                    } else if (step instanceof CgRasterPass raster && (bits & CgAccess.COLOR_WRITE) != 0) {
+                        if (j > s) continue;   // the run's attachments, moved with its first step
+                        CgGraphTexture texture = (CgGraphTexture) frame.accessView[i];
+                        boolean target = texture == raster.target;
+                        if (texture == raster.depthTexture() && frame.readOnlyDepth[j]) {
+                            frame.prologue(texture, CgAccess.COLOR_WRITE | CgAccess.DEPTH_READ, -1, -1);   // sampled in place
+                            continue;
+                        }
+                        frame.prologue(texture, bits & ~CgAccess.COLOR_WRITE, target ? raster.level : 0, target ? raster.layer : 0);
+                    } else {
+                        frame.prologue(frame.accessView[i], bits, -1, -1);
+                    }
+                }
+            }
+        }
+        frame.prologueFrom[n] = frame.prologueCount;
+
+        runEnd = -1;
+        for (int s = 0; s < n; s++) {
+            frame.splitFrom[s] = frame.splitCount;
+            if (s > runEnd) runEnd = frame.runEnd[s];
+            frame.splits[s] = splitting && s >= runEnd && splittable(frame, s);
+            frame.splitEnd[s] = Integer.MAX_VALUE;
+            if (!frame.splits[s]) continue;
+            for (int i = frame.accessFrom[s]; i < frame.accessFrom[s + 1]; i++) {
+                int next = frame.nextAccess[i];
+                if (next < 0) continue;
+                int c = frame.accessStep[next], bits = frame.accessBits[next];
+                if (c <= s + 1 || bits == 0 || (bits & CgResourceStates.WRITES) != 0 || !splittable(frame, c)
+                        || frame.steps[c] instanceof CgRasterPass && frame.accessView[next] instanceof CgGraphTexture
+                        && (bits & CgAccess.COLOR_WRITE) != 0) {
+                    continue;
+                }
+                if (frame.accessView[next] instanceof CgGraphBuffer buffer && buffer.resource().kind() == CgGraphBuffer.Kind.HISTORY) {
+                    continue;
+                }
+                frame.split(next);
+                frame.splitEnd[s] = Math.min(frame.splitEnd[s], c);
+            }
+        }
+        frame.splitFrom[n] = frame.splitCount;
+    }
+
+    /** Whether step {@code s} may begin or end a split: a raster, compute or buffer step on the frame's queue. */
+    private static boolean splittable(CgFrame frame, int s) {
+        CgPass pass = frame.steps[s];
+        if (pass instanceof CgComputePass) return !frame.async[s];
+        return pass instanceof CgRasterPass || pass instanceof CgPass.BufferFill || pass instanceof CgPass.BufferUpdate
+                || pass instanceof CgPass.BufferCopy;
     }
 
     private static boolean unmergeable(CgFrame frame, CgRasterPass pass) {

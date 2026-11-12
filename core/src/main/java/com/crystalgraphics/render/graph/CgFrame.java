@@ -83,6 +83,27 @@ public final class CgFrame {
     int[] runEnd = new int[8];
     CgGraphTexture[] runAttachment = new CgGraphTexture[8];
     boolean[] readOnlyDepth = new boolean[8];
+    /** Per step, whether it runs on the compute queue. */
+    boolean[] async = new boolean[8];
+    /**
+     * Per step, its prologue's transitions, from {@code prologueFrom[s]} to {@code prologueFrom[s + 1]}: each a texture
+     * moved to an access ({@link #prologueLevel}, {@link #prologueLayer}; -1 for every one) or a buffer's barrier. A step
+     * inside a render pass run has none, its first step stating the run's ({@link #prologued} false).
+     */
+    int[] prologueFrom = new int[9];
+    boolean[] prologued = new boolean[8];
+    CgGraphResource[] prologueView = new CgGraphResource[16];
+    int[] prologueBits = new int[16], prologueLevel = new int[16], prologueLayer = new int[16];
+    int prologueCount;
+    /**
+     * Per step that may begin split transitions ({@link #splits}), the accesses it begins, from {@code splitFrom[s]} to
+     * {@code splitFrom[s + 1]} (indices into the access list), and the step by which they end.
+     */
+    boolean[] splits = new boolean[8];
+    int[] splitFrom = new int[9];
+    int[] splitAccess = new int[16];
+    int[] splitEnd = new int[8];
+    int splitCount;
     /** What its recordings released, and the step after which each is freed: -1 before the first. */
     final List<CgGraphResource> released = new ArrayList<>();
     int[] releasedAfter = new int[4];
@@ -120,7 +141,37 @@ public final class CgFrame {
             runEnd = new int[size];
             runAttachment = new CgGraphTexture[size];
             readOnlyDepth = new boolean[size];
+            async = new boolean[size];
+            prologued = new boolean[size];
+            splits = new boolean[size];
+            splitEnd = new int[size];
+            prologueFrom = new int[size + 1];
+            splitFrom = new int[size + 1];
         }
+        Arrays.fill(prologueView, 0, prologueCount, null);
+        prologueCount = 0;
+        splitCount = 0;
+    }
+
+    /** Adds a transition to the prologue being compiled. */
+    void prologue(CgGraphResource view, int bits, int level, int layer) {
+        if (prologueCount == prologueView.length) {
+            int size = prologueCount * 2;
+            prologueView = Arrays.copyOf(prologueView, size);
+            prologueBits = Arrays.copyOf(prologueBits, size);
+            prologueLevel = Arrays.copyOf(prologueLevel, size);
+            prologueLayer = Arrays.copyOf(prologueLayer, size);
+        }
+        prologueView[prologueCount] = view;
+        prologueBits[prologueCount] = bits;
+        prologueLevel[prologueCount] = level;
+        prologueLayer[prologueCount++] = layer;
+    }
+
+    /** Adds an access a split begins. */
+    void split(int access) {
+        if (splitCount == splitAccess.length) splitAccess = Arrays.copyOf(splitAccess, splitCount * 2);
+        splitAccess[splitCount++] = access;
     }
 
     /** Frees {@code resource} after step {@code step}, -1 before the first. */
