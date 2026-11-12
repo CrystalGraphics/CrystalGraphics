@@ -5,7 +5,7 @@ import java.util.Objects;
 /**
  * The host's camera setup reached for a frame: where core runs the world's frame up to its shakes ({@code WORLD_BEGIN}),
  * so a shake started this frame moves this frame's camera, terrain included. A host calls {@link #fire} at the head of
- * each camera hook it has, before it applies {@link CgHostCamera}'s offset; core listens.
+ * each camera hook it has, before it applies {@link CgCameraManager}'s offset; core listens.
  *
  * <pre>{@code
  * // a host's camera hook, before it applies the offset

@@ -21,7 +21,7 @@ import net.minecraft.util.Vec3;
 
 /**
  * Minecraft 1.8.9 to 1.12.2's world facts at the world stages, into the stage's {@link CgHostEnvironment}. Render
- * thread, beside {@code HostViewLegacy}'s camera; allocates nothing of its own (the sky colour is a vector Minecraft
+ * thread, beside {@code HostCameraLegacy}'s camera; allocates nothing of its own (the sky colour is a vector Minecraft
  * makes).
  *
  * <ul>

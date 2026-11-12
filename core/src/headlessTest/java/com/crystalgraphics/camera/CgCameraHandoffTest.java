@@ -18,16 +18,15 @@ import com.crystalgraphics.asset.kind.CgCameraKinds;
 import com.crystalgraphics.asset.tree.CgAssetData;
 import com.crystalgraphics.object.value.CgUnits;
 import com.crystalgraphics.platform.CgPlatform;
-import com.crystalgraphics.platform.world.CgHostCamera;
+import com.crystalgraphics.platform.world.CgCameraManager;
 import com.crystalgraphics.render.stage.CgHostEnvironment;
 import com.crystalgraphics.render.stage.CgRenderStage;
-import com.crystalgraphics.world.CgCameraControl;
 
 /** The composed pose reaching the host: held while a rig has the camera, released once, and a rig's {@code on_missing}. */
 public class CgCameraHandoffTest {
 
     /** A host that records what it was handed. */
-    private static final class Recorder implements CgHostCamera {
+    private static final class Recorder implements CgCameraManager.Host {
         final int capabilities;
         int holds, releases, flags;
         double x;
@@ -61,8 +60,8 @@ public class CgCameraHandoffTest {
         }
     }
 
-    private static final int ALL = CgHostCamera.ROTATION | CgHostCamera.ROLL | CgHostCamera.FOV | CgHostCamera.POSITION
-            | CgHostCamera.LOCK;
+    private static final int ALL = CgCameraManager.ROTATION | CgCameraManager.ROLL | CgCameraManager.FOV | CgCameraManager.POSITION
+            | CgCameraManager.LOCK;
 
     @BeforeClass
     public static void kinds() {
@@ -71,13 +70,13 @@ public class CgCameraHandoffTest {
 
     @After
     public void none() {
-        CgCameraControl.release();
-        CgPlatform.provide(CgHostCamera.SERVICE, CgHostCamera.NONE);
+        CgCameraManager.release();
+        CgPlatform.provide(CgCameraManager.HOST, CgCameraManager.Host.NONE);
     }
 
     private static Recorder host(int capabilities) {
         Recorder r = new Recorder(capabilities);
-        CgPlatform.provide(CgHostCamera.SERVICE, r);
+        CgPlatform.provide(CgCameraManager.HOST, r);
         return r;
     }
 
@@ -114,13 +113,13 @@ public class CgCameraHandoffTest {
         assertEquals(2, host.holds);
         assertEquals(10, host.x, 1e-6);
         assertEquals(40, host.fov, 1e-4);
-        assertTrue(CgCameraControl.held());
+        assertTrue(CgCameraManager.held());
 
         cameras.remove(move);
         cameras.update(0.1f);
         cameras.update(0.1f);
         assertEquals("released once, however many frames follow", 1, host.releases);
-        assertFalse(CgCameraControl.held());
+        assertFalse(CgCameraManager.held());
     }
 
     /** A play's switches reach the host while it holds; overlapping plays ask together, released when none does. */
@@ -128,33 +127,33 @@ public class CgCameraHandoffTest {
     public void thePlaysSwitchesReachTheHost() {
         Recorder host = host(ALL);
         CgCameraSystem cameras = cameras();
-        CgCameraContext cut = move(rig("")).flags(CgHostCamera.HIDE_HUD);
-        CgCameraContext move = move(rig("")).flags(CgHostCamera.HIDE_PLAYER);
+        CgCameraContext cut = move(rig("")).flags(CgCameraManager.HIDE_HUD);
+        CgCameraContext move = move(rig("")).flags(CgCameraManager.HIDE_PLAYER);
         cameras.push(move);
         cameras.update(0.1f);
-        assertEquals("a battle move keeps the HUD", CgHostCamera.HIDE_PLAYER, host.flags);
+        assertEquals("a battle move keeps the HUD", CgCameraManager.HIDE_PLAYER, host.flags);
         cameras.push(cut);
         cameras.update(0.1f);
-        assertEquals(CgHostCamera.HIDE_HUD | CgHostCamera.HIDE_PLAYER, host.flags);
+        assertEquals(CgCameraManager.HIDE_HUD | CgCameraManager.HIDE_PLAYER, host.flags);
         cameras.remove(cut);
         cameras.update(0.1f);
-        assertEquals(CgHostCamera.HIDE_PLAYER, host.flags);
+        assertEquals(CgCameraManager.HIDE_PLAYER, host.flags);
     }
 
     @Test
     public void refuseLeavesTheHostItsCamera() {
-        Recorder host = host(ALL & ~CgHostCamera.ROLL);
+        Recorder host = host(ALL & ~CgCameraManager.ROLL);
         CgCameraSystem cameras = cameras();
         cameras.push(move(rig("requires: [roll]\non_missing: refuse\n")));
         cameras.update(0.1f);
         cameras.update(0.1f);
         assertEquals(0, host.holds);
-        assertFalse(CgCameraControl.held());
+        assertFalse(CgCameraManager.held());
     }
 
     @Test
     public void dropRollPlaysItLevel() {
-        Recorder host = host(ALL & ~CgHostCamera.ROLL);
+        Recorder host = host(ALL & ~CgCameraManager.ROLL);
         CgCameraSystem cameras = cameras();
         cameras.push(move(rig("requires: [roll]\non_missing: drop_roll\n")));
         cameras.update(0.1f);
@@ -168,7 +167,7 @@ public class CgCameraHandoffTest {
 
     @Test
     public void offsetOnlyKeepsTheHostsPosition() {
-        Recorder host = host(ALL & ~CgHostCamera.POSITION);
+        Recorder host = host(ALL & ~CgCameraManager.POSITION);
         CgCameraSystem cameras = cameras();
         cameras.push(move(rig("requires: [position]\non_missing: offset_only\n")));
         cameras.update(0.1f);
@@ -202,19 +201,19 @@ public class CgCameraHandoffTest {
     @Test
     public void aTurnBecomesMinecraftsAngles() {
         float[] a = new float[3];
-        CgCameraControl.angles(new Quaternionf(), a);
+        CgCameraPose.angles(new Quaternionf(), a);
         assertEquals("forward +x", -90, a[0], 1e-4);
         assertEquals(0, a[1], 1e-4);
         assertEquals(0, a[2], 1e-4);
 
-        CgCameraControl.angles(new Quaternionf().rotateY((float) Math.toRadians(-90)), a);
+        CgCameraPose.angles(new Quaternionf().rotateY((float) Math.toRadians(-90)), a);
         assertEquals("forward +z", 0, a[0], 1e-4);
 
-        CgCameraControl.angles(new Quaternionf().rotateZ((float) Math.toRadians(-30)), a);
+        CgCameraPose.angles(new Quaternionf().rotateZ((float) Math.toRadians(-30)), a);
         assertEquals("nose down", 30, a[1], 1e-3);
         assertEquals(0, a[2], 1e-3);
 
-        CgCameraControl.angles(new Quaternionf().rotateX((float) Math.toRadians(20)), a);
+        CgCameraPose.angles(new Quaternionf().rotateX((float) Math.toRadians(20)), a);
         assertEquals(-90, a[0], 1e-3);
         assertEquals("a roll about forward alone", 20, Math.abs(a[2]), 1e-3);
     }

@@ -44,7 +44,7 @@ import com.crystalgraphics.platform.service.CgModLoader;
 import com.crystalgraphics.platform.command.CgCommands;
 import com.crystalgraphics.mc.modern.platform.command.CommandsModern;
 import com.crystalgraphics.platform.service.CgShaderPacks;
-import com.crystalgraphics.platform.world.CgHostCamera;
+import com.crystalgraphics.platform.world.CgCameraManager;
 import com.crystalgraphics.platform.world.CgHostDebug;
 import com.crystalgraphics.platform.world.CgHostShapes;
 import com.crystalgraphics.platform.world.CgLevels;
@@ -120,9 +120,9 @@ public final class PlatformServiceModern implements CgPlatformService {
      */
     public static void installClient() {
         ClientModern.install();
-        CgPlatform.provide(CgHostCamera.SERVICE, new HostCameraModern());
+        CgPlatform.provide(CgCameraManager.HOST, new HostCameraModern());
         CgPlatform.provide(CgHostDebug.SERVICE, new HostDebugModern());
-        CgPlatform.provide(CgModelSpace.SERVICE, HostViewModern::modelSpace);
+        CgPlatform.provide(CgModelSpace.SERVICE, HostCameraModern::modelSpace);
         CgPlatform.provide(CgAudioOutput.SERVICE, new Lwjgl3AudioOutput(HostVolumeModern::device));
         CgPlatform.provide(CgHostVolume.SERVICE, new HostVolumeModern());
         CgPlatform.provide(CgHostDuck.SERVICE, new HostDuckModern());

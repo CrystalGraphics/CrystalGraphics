@@ -158,7 +158,7 @@ Things to know:
 - A `single_instance` shake that is already playing restarts where it is asked again, rather than playing twice.
 - The player's screen-effects setting scales every shake.
 - A shake moves the camera's position (`location`) and turns it (`rotation`) on every version and loader, the held
-  camera of a rig included. A host that cannot move the position (`CgCameraControl.capabilities()` lacks `TRANSLATION`) plays
+  camera of a rig included. A host that cannot move the position (`CgCameraManager.capabilities()` lacks `TRANSLATION`) plays
   only the turn and the field of view, and the log says so once.
 - `sequence` patterns and the `user_defined` space fail at load: they are not played yet.
 
@@ -198,11 +198,11 @@ if (cut.playbackSettings().hideHud()) myHud.hide();                            /
 A context or modifier of your own asks the same with flags:
 
 ```java
-cameras.push(new CgCameraContext("mymod:intro").director(director).flags(CgHostCamera.HIDE_HUD));
+cameras.push(new CgCameraContext("mymod:intro").director(director).flags(CgCameraManager.HIDE_HUD));
 ```
 
 - `hide_hud` hides the game's HUD alone. Your mod's HUD is yours to hide, from the same flag.
-- `hide_player` needs a host that can hide the player (`CgCameraControl.capabilities()` has `HIDES_PLAYER`); elsewhere the
+- `hide_player` needs a host that can hide the player (`CgCameraManager.capabilities()` has `HIDES_PLAYER`); elsewhere the
   log says so once and the player stays drawn.
 - A rig's `requires` names what it cannot play without (`rotation`, `roll`, `fov`, `position`, `lock`), and its
   `on_missing` what a host without them gets: `refuse` (the host keeps its camera), `drop_roll` (played level),

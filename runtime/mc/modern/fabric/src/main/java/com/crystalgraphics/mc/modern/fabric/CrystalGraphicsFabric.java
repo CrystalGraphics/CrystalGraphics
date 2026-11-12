@@ -12,7 +12,7 @@ import com.crystalgraphics.mc.modern.platform.ResourceIds;
 import com.crystalgraphics.mc.modern.platform.net.NetworkModern;
 import com.crystalgraphics.mc.modern.platform.world.HostCameraModern;
 import com.crystalgraphics.mc.shared.VariantEntry;
-import com.crystalgraphics.platform.world.CgHostCamera;
+import com.crystalgraphics.platform.world.CgCameraManager;
 import com.crystalgraphics.platform.world.CgWorldEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientEntityEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
@@ -61,11 +61,11 @@ public final class CrystalGraphicsFabric implements VariantEntry {
         // changes nothing seen) with roll from 1.21.11, FovHook on every version, ExplosionHook on every version,
         // LevelEventHook from 1.15.
         //? if >=1.21.11 {
-        /*HostCameraModern.declare(CgHostCamera.ROTATION | CgHostCamera.ROLL);
+        /*HostCameraModern.declare(CgCameraManager.ROTATION | CgCameraManager.ROLL);
         *///?} elif >=1.15 {
-        HostCameraModern.declare(CgHostCamera.ROTATION);
+        HostCameraModern.declare(CgCameraManager.ROTATION);
         //?}
-        HostCameraModern.declare(CgHostCamera.FOV);
+        HostCameraModern.declare(CgCameraManager.FOV);
         CgWorldEvents.declare(CgWorldEvents.EXPLOSION);
         //? if >=1.15 {
         CgWorldEvents.declare(CgWorldEvents.BLOCK_BROKEN);

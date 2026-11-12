@@ -40,7 +40,7 @@ import net.minecraft.world.phys.Vec3;
 
 /**
  * Minecraft's world facts at the world stages, read where each version keeps them, into the stage's
- * {@link CgHostEnvironment}. Render thread, beside {@code HostViewModern}'s camera; it allocates nothing of its own (a
+ * {@link CgHostEnvironment}. Render thread, beside {@code HostCameraModern}'s camera; it allocates nothing of its own (a
  * sky colour is a {@code Vec3} Minecraft makes, before 1.21.3).
  *
  * <ul>

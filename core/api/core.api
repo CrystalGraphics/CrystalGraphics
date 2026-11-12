@@ -3477,6 +3477,7 @@ com/crystalgraphics/camera/CgCameraPose
   method public rotation ()Lorg/joml/Quaternionf;
   method public set (Lcom/crystalgraphics/camera/CgCameraPose;)Lcom/crystalgraphics/camera/CgCameraPose;
   method public toString ()Ljava/lang/String;
+  method public,static angles (Lorg/joml/Quaternionfc;[F)[F
   method public,static normalizeAxis (D)D
   method public,static rotator (Lorg/joml/Quaternionf;[D)[D
 com/crystalgraphics/camera/CgCameraRig
@@ -20370,17 +20371,6 @@ com/crystalgraphics/world/CgAttachment
   method public point (Ljava/lang/String;[DLorg/joml/Quaternionf;)Z
   method public scale (Ljava/lang/String;Lorg/joml/Vector3f;)Lorg/joml/Vector3f;
   method public,abstract place ([DLorg/joml/Quaternionf;)Z
-com/crystalgraphics/world/CgCameraControl
-  access public,final
-  extends java/lang/Object
-  method public,static angles (Lorg/joml/Quaternionfc;[F)[F
-  method public,static applied ()I
-  method public,static capabilities ()I
-  method public,static held ()Z
-  method public,static hold (DDDLorg/joml/Quaternionfc;FZI)V
-  method public,static offset (FFFFFFF)V
-  method public,static release ()V
-  method public,static writes ()I
 com/crystalgraphics/world/CgCharacterClock
   access public,final
   extends java/lang/Object

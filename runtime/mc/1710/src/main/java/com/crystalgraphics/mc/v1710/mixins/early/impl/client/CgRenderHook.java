@@ -1,9 +1,9 @@
 package com.crystalgraphics.mc.v1710.mixins.early.impl.client;
 
+import com.crystalgraphics.mc.v1710.platform.world.HostCamera1710;
 import com.crystalgraphics.platform.rhi.CgDeviceSection;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.loading.CgLoadingScreen;
-import com.crystalgraphics.mc.v1710.platform.HostView1710;
 import com.crystalgraphics.mc.v1710.platform.LoadingScreen1710;
 import com.crystalgraphics.mc.v1710.platform.world.Environment1710;
 import com.crystalgraphics.mc.v1710.platform.world.Textures1710;
@@ -101,7 +101,7 @@ public class CgRenderHook {
     private static void crystalgraphics$fire(CgRenderStage stage, Minecraft mc, float partialTicks) {
         CgHostFrame frame = stage.host()
                 .set(partialTicks, mc.displayWidth, mc.displayHeight, mc.getFramebuffer().framebufferObject);
-        HostView1710.capture(mc, partialTicks, frame.camera());
+        HostCamera1710.capture(mc, partialTicks, frame.camera());
         if (stage == CgRenderStage.WORLD_OPAQUE) {
             Environment1710.capture(mc, partialTicks, frame.camera(), frame.environment());
             Textures1710.capture(mc, frame.textures());

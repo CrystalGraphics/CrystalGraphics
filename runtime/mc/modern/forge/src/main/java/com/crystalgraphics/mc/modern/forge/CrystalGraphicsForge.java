@@ -12,7 +12,7 @@ import com.crystalgraphics.mc.modern.platform.world.HostCameraModern;
 import com.crystalgraphics.mc.shared.CrashVariant;
 import com.crystalgraphics.mc.shared.VariantEntry;
 import com.crystalgraphics.platform.service.CgNetworkChannel;
-import com.crystalgraphics.platform.world.CgHostCamera;
+import com.crystalgraphics.platform.world.CgCameraManager;
 import com.crystalgraphics.platform.world.CgWorldEvents;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.server.level.ServerPlayer;
@@ -310,11 +310,11 @@ public final class CrystalGraphicsForge implements VariantEntry {
             // A held play's player hidden: the entity render event carries the entity to 1.21.1.
             //? if <1.21.3 {
             MinecraftForge.EVENT_BUS.addListener(Events::onRenderLiving);
-            HostCameraModern.declare(CgHostCamera.HIDES_PLAYER);
+            HostCameraModern.declare(CgCameraManager.HIDES_PLAYER);
             //?}
             // Forge 26.1.1 to 26.2 post the camera-angle event after renderLevel has taken the view: their angles
             // come from the CameraHook node mixin instead.
-            HostCameraModern.declare(CgHostCamera.ROTATION | CgHostCamera.ROLL | CgHostCamera.FOV);
+            HostCameraModern.declare(CgCameraManager.ROTATION | CgCameraManager.ROLL | CgCameraManager.FOV);
             // ExplosionHook and LevelEventHook, the node mixins that report them.
             //? if >=1.21.3 {
             /*CgWorldEvents.declare(CgWorldEvents.EXPLOSION | CgWorldEvents.BLOCK_BROKEN);

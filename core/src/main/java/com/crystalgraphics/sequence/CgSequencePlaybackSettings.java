@@ -1,6 +1,6 @@
 package com.crystalgraphics.sequence;
 
-import com.crystalgraphics.platform.world.CgHostCamera;
+import com.crystalgraphics.platform.world.CgCameraManager;
 
 /**
  * How a play takes over the viewer while its camera holds the view: Unreal's {@code FMovieSceneSequencePlaybackSettings}
@@ -26,8 +26,8 @@ public record CgSequencePlaybackSettings(boolean hideHud, boolean hidePlayer) {
     /** Both off: Unreal's defaults. */
     public static final CgSequencePlaybackSettings DEFAULT = new CgSequencePlaybackSettings(false, false);
 
-    /** As {@link CgHostCamera#HIDE_HUD} and {@link CgHostCamera#HIDE_PLAYER} bits. */
+    /** As {@link CgCameraManager#HIDE_HUD} and {@link CgCameraManager#HIDE_PLAYER} bits. */
     public int flags() {
-        return (hideHud ? CgHostCamera.HIDE_HUD : 0) | (hidePlayer ? CgHostCamera.HIDE_PLAYER : 0);
+        return (hideHud ? CgCameraManager.HIDE_HUD : 0) | (hidePlayer ? CgCameraManager.HIDE_PLAYER : 0);
     }
 }

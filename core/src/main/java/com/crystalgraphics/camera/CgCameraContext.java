@@ -1,5 +1,6 @@
 package com.crystalgraphics.camera;
 
+import com.crystalgraphics.platform.world.CgCameraManager;
 import java.util.Objects;
 import java.util.function.Function;
 
@@ -76,7 +77,7 @@ public class CgCameraContext {
         return owner;
     }
 
-    /** What it asks of the viewer while it holds the view: {@code CgHostCamera.HIDE_HUD}, {@code HIDE_PLAYER}; 0. */
+    /** What it asks of the viewer while it holds the view: {@code CgCameraManager.HIDE_HUD}, {@code HIDE_PLAYER}; 0. */
     public CgCameraContext flags(int flags) {
         this.flags = flags;
         return this;

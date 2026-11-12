@@ -1,7 +1,7 @@
 package com.crystalgraphics.platform.world;
 
 /**
- * A host's held camera: the last pose {@link CgHostCamera#hold} gave and when, so each era's host keeps one state and
+ * A host's held camera: the last pose {@link CgCameraManager#hold} gave and when, so each era's host keeps one state and
  * one watchdog. A host forwards {@code hold} and {@code release} here and asks {@link #live()} at its camera hook, once
  * it has fired {@link CgWorldBegin}: true while held, and false once a hold has gone unrefreshed, which is when the host
  * gives the camera back.
@@ -85,10 +85,10 @@ public final class CgHeldCamera {
     }
 
     public boolean hidesHud() {
-        return (flags & CgHostCamera.HIDE_HUD) != 0;
+        return (flags & CgCameraManager.HIDE_HUD) != 0;
     }
 
     public boolean hidesPlayer() {
-        return (flags & CgHostCamera.HIDE_PLAYER) != 0;
+        return (flags & CgCameraManager.HIDE_PLAYER) != 0;
     }
 }

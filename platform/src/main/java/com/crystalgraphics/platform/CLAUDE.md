@@ -37,7 +37,7 @@ seams are here too — see [UI-facing services](#ui-facing-services).
 | `world/CgHostShapes` | Static owner + `Host` slot | The host's boxes and block shapes converted, both sides: what `CgAABB.of`/`set(Object)`/`toHost()` and `CgShape.of(Object)` reach. `HostShapesModern`, `HostShapesLegacy`, `HostShapes1710`; without a host every conversion throws |
 | `world/CgBoxSink` | Interface | Where a host writes a box, so it fills the caller's own `CgAABB` with nothing between |
 | `world/CgModelSpace` | Interface + slot | The camera and the rotation the world's entity pose stack starts from, read live during the level render: what turns a model's pose matrix into a world point (`CgEntityAttachments.mark`). Modern hosts from 1.15; absent before and elsewhere |
-| `world/CgHostCamera` | Interface + slot | The offset and FOV scale the host adds to its camera each frame; core sums every shake into it (`CgCameraShake`) |
+| `world/CgCameraManager` | Interface + slot | The offset and FOV scale the host adds to its camera each frame; core sums every shake into it (`CgCameraShake`) |
 | `world/CgHostDebug` | Interface + slot | The host's own debug views: whether Minecraft's F3+B hitboxes are on, which `crystalgraphics.collision.show` follows |
 | `audio/CgAudioOutput`, `CgAudioStream` | Interface + slot | Where the engine's mixed sound goes: a stream the audio thread opens and alone writes (`Lwjgl3AudioOutput`, a context of its own; `Lwjgl2AudioOutput`, a source in the host's). Client only; `NONE` opens nothing |
 | `audio/CgAudioDecoder` | Interface + slot | Ogg Vorbis from memory with the host's own decoder: `StbVorbisDecoder` (LWJGL 3), `JOrbisDecoder` (LWJGL 2 hosts' JOrbis), never bundled. Client only; `NONE` throws |
@@ -78,7 +78,7 @@ host adds only what names Minecraft.
 How a platform service is declared, provided and read. **`CgModLoader` (`platform.service`) is the shape every new
 `CgService` SPI takes** (the user, 2026-10-31): a final class named for the concern is its static owner; its nested `Host` interface is what a host implements, with a `NONE`; its slot is `HOST`; records
 it answers are nested too (`CgModLoader.Mod`). Callers use the owner's static calls and never the slot. The older
-slots (the audio ones, `CgModelSpace`, `CgHostCamera`, ...) are the previous shape, a bare interface with `SERVICE`,
+slots (the audio ones, `CgModelSpace`, `CgCameraManager`, ...) are the previous shape, a bare interface with `SERVICE`,
 and are to be rewritten to this one. Core may build on an owner where it adds logic of its own (`CgWorldQueries` and
 `CgEntityQueries` over `CgLevels`).
 
@@ -115,7 +115,7 @@ The rules, for both shapes.
 1. **One SPI per concern**, in `platform.<area>` (`platform.world`, ...), named for what it answers, with a `NONE`
    that answers nothing and one slot. A concern never has two slots.
 2. **One static owner per SPI, and only it reads the slot**: the SPI's own outer class in the new shape; in the older
-   one a facade in core (`CgCameraControl`), an SPI with a single reader in core read by that class alone.
+   one a facade in core (`CgCameraManager`), an SPI with a single reader in core read by that class alone.
    `WorldServiceReadersTest` holds it.
 3. **Per-level answers are bound views** (`of(level)`, `client()`), held while the level lives; hot paths hold the view.
 4. **Host objects cross as `Object` and ids**; a caller wanting the host's object asks a `<V> V` getter and casts at its
@@ -291,7 +291,7 @@ child project would be one a loader could forget, leaving a working device besid
 | `CgClipboard` | the clipboard's text |
 | `CgPlatform.get(CgCursorService.SERVICE)` | presenting a cursor picture; CrystalGUI decides which |
 | `CgWorldQueries.client()`, `CgEntityQueries.client()` (core) | the client level's blocks and entities, over `CgLevels`; `NONE` with no level, on a server and in the harness |
-| `CgCameraControl` (core) | a write a host opts into: a camera offset; `NONE` ignores it |
+| `CgCameraManager` (core) | a write a host opts into: a camera offset; `NONE` ignores it |
 
 **A sound by name is not a platform service** but the engine's own: `audio.CgSounds.play2D(name)` (unplaced, the
 `UI` class) or `playAt`, a host event read from the packs' `sounds.json` through `CgHostResources`. Minecraft's sound engine is never

@@ -15,7 +15,7 @@ import net.minecraft.world.WorldProvider;
 
 /**
  * Minecraft 1.7.10's world facts at the world stages, into the stage's {@link CgHostEnvironment}. Render thread,
- * beside {@code HostView1710}'s camera; allocates nothing of its own (the sky colour is a vector Minecraft makes).
+ * beside {@code HostCamera1710}'s camera; allocates nothing of its own (the sky colour is a vector Minecraft makes).
  *
  * <ul>
  *   <li>Fog is GL state here, never held on the CPU: absent. So are the screen and FOV effect scales.</li>

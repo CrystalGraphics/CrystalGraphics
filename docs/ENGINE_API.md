@@ -57,7 +57,8 @@ CgCamera world = CgRenderStage.WORLD_OPAQUE.host().camera();
   frame's view too; `frame.guiCamera()` is a GUI stage's in GUI-scaled pixels. A `CgCamera` of your own is for a picture
   of your own (a preview, a thumbnail), outside the stages.
 - Every host captures Minecraft's camera where that version computes it; the per-era sources are
-  `HostView1710`, `HostViewLegacy` and `HostViewModern`.
+  `HostCamera1710`, `HostCameraLegacy` and `HostCameraModern`: each era's one camera class, reading the
+  camera Minecraft drew with (`capture`) and applying `CgCameraManager`'s offsets and holds.
 - Beside the camera each frame carries the world's facts: `CgHostEnvironment` (`frame.environment()`) — the sun,
   moon, stars and daylight, weather and lightning, the dimension's sky, fog where the host keeps it on the CPU (1.17.1 to
   1.21.1), the fluid the camera is in, perspective, FOV and render distance, whether a screen is up, the player's sight effects, their particles,
@@ -67,7 +68,7 @@ CgCamera world = CgRenderStage.WORLD_OPAQUE.host().camera();
   `CgWorldQuery` slot's, composed into ground scans by `com.crystalgraphics.world.CgWorldQueries` and into rays, casts and hitboxes by `collision.CgCollisionWorld`. A GUI stage carries the GUI's projection in its own frame,
   so the world's camera stays readable while the host draws its GUI.
 - Every era answers the environment, the host textures and the world slots (`CgWorldQuery`, `CgEntityQuery`,
-  `CgHostCamera`, `CgWorldEvents`), each in its host's `platform.world` package: `*1710`, `*Legacy` and
+  `CgCameraManager`, `CgWorldEvents`), each in its host's `platform.world` package: `*1710`, `*Legacy` and
   `*Modern`. What a version cannot answer stays absent, and each class's javadoc says what.
 - `fire` is the whole entry: it opens the host section, starts the engine if nothing has, times the stage
   (trace zone and GPU timer, named by the id's path) and does nothing after a teardown.

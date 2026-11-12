@@ -1,5 +1,6 @@
 package com.crystalgraphics.world;
 
+import com.crystalgraphics.platform.world.CgCameraManager;
 import org.junit.Test;
 
 import java.io.IOException;
@@ -39,7 +40,7 @@ public class WorldServiceReadersTest {
         READERS.put("CgHostFormats", Arrays.asList("serialization/format/nbt/CgHostFormats.java",
                 "serialization/format/nbt/CgTestTags.java"));
         // The older shape: one facade in core
-        READERS.put("CgHostCamera", Arrays.asList("world/CgCameraControl.java"));
+        READERS.put("CgCameraManager", Arrays.asList("world/CgCameraManager.java"));
         READERS.put("CgModelSpace", Arrays.asList("world/CgEntityAttachments.java"));
         READERS.put("CgHostDebug", Arrays.asList("collision/debug/CgCollisionShow.java"));
         READERS.put("CgWorldStimulus", Arrays.asList("probe/CgWorldProbe.java", "probe/CgCollisionProbe.java",

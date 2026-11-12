@@ -3213,6 +3213,35 @@ com/crystalgraphics/platform/world/CgBoxSink
   access public,abstract,interface
   extends java/lang/Object
   method public,abstract set (DDDDDD)Lcom/crystalgraphics/platform/world/CgBoxSink;
+com/crystalgraphics/platform/world/CgCameraManager
+  access public,final
+  extends java/lang/Object
+  field public,static,final FOV I
+  field public,static,final HIDES_PLAYER I
+  field public,static,final HIDE_HUD I
+  field public,static,final HIDE_PLAYER I
+  field public,static,final HOST Lcom/crystalgraphics/platform/CgService;
+  field public,static,final LOCK I
+  field public,static,final POSITION I
+  field public,static,final ROLL I
+  field public,static,final ROTATION I
+  field public,static,final TRANSLATION I
+  method public,static applied ()I
+  method public,static capabilities ()I
+  method public,static held ()Z
+  method public,static hold (DDDFFFFI)V
+  method public,static offset (FFFFFFF)V
+  method public,static release ()V
+  method public,static writes ()I
+com/crystalgraphics/platform/world/CgCameraManager$Host
+  access public,abstract,interface
+  extends java/lang/Object
+  field public,static,final NONE Lcom/crystalgraphics/platform/world/CgCameraManager$Host;
+  method public applied ()I
+  method public capabilities ()I
+  method public hold (DDDFFFFI)V
+  method public release ()V
+  method public,abstract offset (FFFFFFF)V
 com/crystalgraphics/platform/world/CgEntityQuery
   access public,abstract,interface
   extends java/lang/Object
@@ -3296,25 +3325,6 @@ com/crystalgraphics/platform/world/CgHeldCamera
   method public hold (DDDFFFFI)Z
   method public live ()Z
   method public release ()Z
-com/crystalgraphics/platform/world/CgHostCamera
-  access public,abstract,interface
-  extends java/lang/Object
-  field public,static,final FOV I
-  field public,static,final HIDES_PLAYER I
-  field public,static,final HIDE_HUD I
-  field public,static,final HIDE_PLAYER I
-  field public,static,final LOCK I
-  field public,static,final NONE Lcom/crystalgraphics/platform/world/CgHostCamera;
-  field public,static,final POSITION I
-  field public,static,final ROLL I
-  field public,static,final ROTATION I
-  field public,static,final SERVICE Lcom/crystalgraphics/platform/CgService;
-  field public,static,final TRANSLATION I
-  method public applied ()I
-  method public capabilities ()I
-  method public hold (DDDFFFFI)V
-  method public release ()V
-  method public,abstract offset (FFFFFFF)V
 com/crystalgraphics/platform/world/CgHostDebug
   access public,abstract,interface
   extends java/lang/Object

@@ -1,8 +1,8 @@
 package com.crystalgraphics.mc.legacy.mixin;
 
+import com.crystalgraphics.mc.legacy.platform.world.HostCameraLegacy;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.loading.CgLoadingScreen;
-import com.crystalgraphics.mc.legacy.platform.HostViewLegacy;
 import com.crystalgraphics.mc.legacy.platform.LoadingScreenLegacy;
 import com.crystalgraphics.mc.legacy.platform.world.EnvironmentLegacy;
 import com.crystalgraphics.mc.legacy.platform.world.TexturesLegacy;
@@ -48,7 +48,7 @@ public abstract class CgRenderHook {
     private static void crystalgraphics$fire(CgRenderStage stage, Minecraft mc, float partialTicks) {
         CgHostFrame frame = stage.host()
                 .set(partialTicks, mc.displayWidth, mc.displayHeight, mc.getFramebuffer().framebufferObject);
-        HostViewLegacy.capture(mc, partialTicks, frame.camera());
+        HostCameraLegacy.capture(mc, partialTicks, frame.camera());
         if (stage == CgRenderStage.WORLD_OPAQUE) {
             EnvironmentLegacy.capture(mc, partialTicks, frame.camera(), frame.environment());
             TexturesLegacy.capture(mc, frame.textures());

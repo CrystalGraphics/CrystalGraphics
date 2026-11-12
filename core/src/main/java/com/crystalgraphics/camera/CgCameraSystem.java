@@ -16,9 +16,8 @@ import com.crystalgraphics.frame.CgTickFunction;
 import com.crystalgraphics.frame.CgTickGroup;
 import com.crystalgraphics.frame.CgWorldSubsystem;
 import com.crystalgraphics.platform.world.CgEntityQuery;
-import com.crystalgraphics.platform.world.CgHostCamera;
+import com.crystalgraphics.platform.world.CgCameraManager;
 import com.crystalgraphics.render.stage.CgRenderStage;
-import com.crystalgraphics.world.CgCameraControl;
 import com.crystalgraphics.world.CgEntityQueries;
 
 /**
@@ -38,7 +37,7 @@ import com.crystalgraphics.world.CgEntityQueries;
  *
  * <ul>
  *   <li>Its rigs run in {@code CAMERA} and its modifiers in {@code SHAKE}, on the viewer's clock, never a character's.</li>
- *   <li>While {@link #controls()}, the pose is handed to the host each frame after {@code SHAKE} ({@link CgCameraControl#hold}),
+ *   <li>While {@link #controls()}, the pose is handed to the host each frame after {@code SHAKE} ({@link CgCameraManager#hold}),
  *       which locks the player's look and movement out; the frame it stops, the camera is released.</li>
  *   <li>A rig whose {@code requires} the host cannot apply plays by its {@code on_missing}: {@code refuse} leaves the
  *       host its own camera (and says so once), {@code drop_roll} plays it level, {@code offset_only} keeps the host's
@@ -49,6 +48,9 @@ import com.crystalgraphics.world.CgEntityQueries;
  * </ul>
  */
 public final class CgCameraSystem extends CgWorldSubsystem {
+
+    /** A held pose's turn as Minecraft's angles, each frame. */
+    private final float[] turn = new float[3];
 
     /** The host's own camera this frame, into {@code out}. */
     @FunctionalInterface
@@ -84,7 +86,7 @@ public final class CgCameraSystem extends CgWorldSubsystem {
 
     /** Blocks inside the render distance a held pose keeps: one chunk, which the client may not have yet. */
     private static final double REACH_MARGIN = 16;
-    private static final Logger LOGGER = LogManager.getLogger("CgCameraControl");
+    private static final Logger LOGGER = LogManager.getLogger("CgCameraManager");
 
     public CgCameraSystem() {
         contexts.add(host);
@@ -103,7 +105,7 @@ public final class CgCameraSystem extends CgWorldSubsystem {
     protected void deinitialize() {
         if (camera != null) camera.close();
         if (shake != null) shake.close();
-        CgCameraControl.release();
+        CgCameraManager.release();
     }
 
     /** Where the host's own camera is read from each frame. */
@@ -245,22 +247,22 @@ public final class CgCameraSystem extends CgWorldSubsystem {
     /** Hands the pose to the host while this system controls the camera, and gives it back once it does not. */
     private void present() {
         if (!controls()) {
-            CgCameraControl.release();
+            CgCameraManager.release();
             return;
         }
         CgCameraRigDefinition d = rig == null ? null : rig.definition();
-        int missing = d == null ? 0 : parts(d) & ~CgCameraControl.capabilities();
+        int missing = d == null ? 0 : parts(d) & ~CgCameraManager.capabilities();
         String on = d == null ? "" : d.onMissing();
         if (missing != 0 && "refuse".equals(on)) {
             if (refused != d) {
                 refused = d;
                 LOGGER.warn("Camera rig {} needs {} this host cannot apply; the host keeps its camera", d.id(), d.requires());
             }
-            CgCameraControl.release();
+            CgCameraManager.release();
             return;
         }
         int flags = flags();
-        if ((flags & CgHostCamera.HIDE_PLAYER) != 0 && (CgCameraControl.capabilities() & CgHostCamera.HIDES_PLAYER) == 0 && !warnedHide) {
+        if ((flags & CgCameraManager.HIDE_PLAYER) != 0 && (CgCameraManager.capabilities() & CgCameraManager.HIDES_PLAYER) == 0 && !warnedHide) {
             warnedHide = true;
             LOGGER.warn("A play asks its viewer's player hidden; this host cannot hide it, so the player stays drawn");
         }
@@ -286,7 +288,9 @@ public final class CgCameraSystem extends CgWorldSubsystem {
                         d == null ? "(none)" : d.id(), (int) Math.sqrt(d2), (int) reach);
             }
         }
-        CgCameraControl.hold(x, at.location().y, z, pose.rotation(), pose.fov(), (missing & CgHostCamera.ROLL) == 0, flags);
+        CgCameraPose.angles(pose.rotation(), turn);
+        CgCameraManager.hold(x, at.location().y, z, turn[0], turn[1], (missing & CgCameraManager.ROLL) == 0 ? turn[2] : 0f,
+                pose.fov(), flags);
     }
 
     /**
@@ -300,16 +304,16 @@ public final class CgCameraSystem extends CgWorldSubsystem {
         return f;
     }
 
-    /** {@code d}'s {@code requires} as {@link CgHostCamera} capability bits. */
+    /** {@code d}'s {@code requires} as {@link CgCameraManager} capability bits. */
     static int parts(CgCameraRigDefinition d) {
         int bits = 0;
         for (int i = 0; i < d.requires().size(); i++) {
             switch (d.requires().get(i)) {
-                case "rotation": bits |= CgHostCamera.ROTATION; break;
-                case "roll": bits |= CgHostCamera.ROLL; break;
-                case "fov": bits |= CgHostCamera.FOV; break;
-                case "position": bits |= CgHostCamera.POSITION; break;
-                case "lock": bits |= CgHostCamera.LOCK; break;
+                case "rotation": bits |= CgCameraManager.ROTATION; break;
+                case "roll": bits |= CgCameraManager.ROLL; break;
+                case "fov": bits |= CgCameraManager.FOV; break;
+                case "position": bits |= CgCameraManager.POSITION; break;
+                case "lock": bits |= CgCameraManager.LOCK; break;
                 default: throw new IllegalStateException("Camera rig " + d.id() + ": unknown requires " + d.requires().get(i));
             }
         }

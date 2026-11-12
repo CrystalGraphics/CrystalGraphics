@@ -89,7 +89,7 @@ public final class LifecycleModern {
             try {
                 CgHostFrame frame = CgRenderStage.WORLD_OPAQUE.host()
                         .set(partialTick, Windows.of(mc).getWidth(), Windows.of(mc).getHeight(), mainFbo);
-                HostViewModern.capture(mc, partialTick, frame.camera());
+                HostCameraModern.capture(mc, partialTick, frame.camera());
                 EnvironmentModern.capture(mc, partialTick, frame.camera(), frame.environment());
                 TexturesModern.capture(mc, frame.textures());
                 WorldEventsModern.poll(mc);
@@ -197,7 +197,7 @@ public final class LifecycleModern {
      * 1.21.6–1.21.11: the only place Minecraft hands the projection over on the CPU there.
      */
     public static void levelMatrices(Matrix4fc view, Matrix4fc projection) {
-        HostViewModern.levelMatrices(view, projection);
+        HostCameraModern.levelMatrices(view, projection);
     }
 
     /**

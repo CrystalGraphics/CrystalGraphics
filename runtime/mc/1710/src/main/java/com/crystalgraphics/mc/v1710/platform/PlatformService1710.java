@@ -45,7 +45,7 @@ import com.crystalgraphics.platform.CgPlatformService;
 import com.crystalgraphics.platform.CgService;
 import com.crystalgraphics.platform.gl.*;
 import com.crystalgraphics.platform.service.*;
-import com.crystalgraphics.platform.world.CgHostCamera;
+import com.crystalgraphics.platform.world.CgCameraManager;
 import com.crystalgraphics.platform.world.CgHostDebug;
 import com.crystalgraphics.platform.world.CgWorldEvents;
 import com.crystalgraphics.platform.audio.CgAudioDecoder;
@@ -121,7 +121,7 @@ public final class PlatformService1710 implements CgPlatformService {
             CgPlatform.provide(CgShaderPacks.HOST, CgShaderPacks.irisApi());   // Angelica
             // The client's levels and player, client only for the same reason.
             Client1710.install();
-            CgPlatform.provide(CgHostCamera.SERVICE, new HostCamera1710());
+            CgPlatform.provide(CgCameraManager.HOST, new HostCamera1710());
             CgPlatform.provide(CgHostDebug.SERVICE, new HostDebug1710());
             CgPlatform.provide(CgAudioOutput.SERVICE, new Lwjgl2AudioOutput());
             CgPlatform.provide(CgHostVolume.SERVICE, new HostVolume1710());

@@ -1,7 +1,16 @@
 package com.crystalgraphics.mc.legacy.platform.world;
 
+import static com.crystalgraphics.platform.world.CgCameraManager.ROTATION;
+import static com.crystalgraphics.platform.world.CgCameraManager.ROLL;
+import static com.crystalgraphics.platform.world.CgCameraManager.FOV;
+import static com.crystalgraphics.platform.world.CgCameraManager.POSITION;
+import static com.crystalgraphics.platform.world.CgCameraManager.LOCK;
+import static com.crystalgraphics.platform.world.CgCameraManager.HIDES_PLAYER;
+import static com.crystalgraphics.platform.world.CgCameraManager.TRANSLATION;
+import com.crystalgraphics.camera.CgCamera;
+import com.crystalgraphics.mc.legacy.mixin.ActiveRenderInfoAccessor;
 import com.crystalgraphics.platform.world.CgHeldCamera;
-import com.crystalgraphics.platform.world.CgHostCamera;
+import com.crystalgraphics.platform.world.CgCameraManager;
 import com.crystalgraphics.platform.world.CgWorldBegin;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.GlStateManager;
@@ -21,7 +30,7 @@ import org.lwjgl.input.Mouse;
 *///?}
 
 /**
- * {@link CgHostCamera} on Forge 1.8.9 to 1.12.2: holds the last offset core gave and adds it in Forge's camera-setup
+ * {@link CgCameraManager} on Forge 1.8.9 to 1.12.2: holds the last offset core gave and adds it in Forge's camera-setup
  * and field-of-view events. A held pose is ours alone: an armour stand of ours, never in the world, is the render view
  * entity, so the frustum and the chunk order follow it, and the events, at the lowest priority, write its angles and
  * field of view after every other mod's. Client only: provided by {@code PlatformServiceLegacy.install}, which also
@@ -36,7 +45,7 @@ import org.lwjgl.input.Mouse;
  *   <li>Render thread only, like the events that read it.</li>
  * </ul>
  */
-public final class HostCameraLegacy implements CgHostCamera {
+public final class HostCameraLegacy implements CgCameraManager.Host {
 
     private float yaw, pitch, roll, fovScale = 1f;
     /** The offset's translation, world blocks: static, for the mixin at the tail of {@code orientCamera}. */
@@ -229,5 +238,19 @@ public final class HostCameraLegacy implements CgHostCamera {
         //?} else {
         /*return (float) event.renderPartialTicks;
         *///?}
+    }
+
+    /**
+     * Minecraft 1.8–1.12's camera at its world hooks: the matrices its render info read back this pass, and the view
+     * entity's interpolated position — what {@code RenderGlobal.renderEntities} hands the render manager, computed here
+     * because that method skips its first two frames. The modelview carries the eye height and a third-person offset,
+     * paired with that position at the entity's feet.
+     */
+    public static void capture(Minecraft mc, float partialTicks, CgCamera out) {
+        Entity entity = mc.getRenderViewEntity();
+        out.set(entity.lastTickPosX + (entity.posX - entity.lastTickPosX) * partialTicks,
+                entity.lastTickPosY + (entity.posY - entity.lastTickPosY) * partialTicks,
+                entity.lastTickPosZ + (entity.posZ - entity.lastTickPosZ) * partialTicks,
+                ActiveRenderInfoAccessor.crystalgraphics$modelview(), ActiveRenderInfoAccessor.crystalgraphics$projection());
     }
 }

@@ -33,7 +33,7 @@ dependencies {
     "compileOnly"(project(":runtime:lwjgl:2"))
     // The shader toolchain's loader, which GLDeviceLegacy makes its GL device with.
     "compileOnly"(project(":runtime:lwjgl:vulkan"))
-    // HostViewLegacy hands the world stages JOML matrices; the companion jar supplies JOML at run time.
+    // HostCameraLegacy hands the world stages JOML matrices; the companion jar supplies JOML at run time.
     "compileOnly"("org.joml:joml:${rootProject.property("dep.joml")}")
     // @Nullable: Minecraft ships jsr305 at run time; a real node's compile classpath does not, and a stub's does.
     "compileOnly"("com.google.code.findbugs:jsr305:3.0.2")

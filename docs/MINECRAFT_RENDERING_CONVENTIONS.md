@@ -147,7 +147,7 @@ fires on every loader, Forge's new `executeOit` hooks included.
 
 ### The camera a hold takes (every version, 2026-10-29)
 
-What a held camera (`CgHostCamera.hold`) has to work around, found holding one on every era:
+What a held camera (`CgCameraManager.hold`) has to work around, found holding one on every era:
 
 - **The first-person hands are the local player's whatever the camera entity**: every version draws them from
   `player`, never the view entity. A hold cancels them: Forge's and NeoForge's `RenderHandEvent`, Fabric's `HandHook`

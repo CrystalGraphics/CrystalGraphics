@@ -8,8 +8,7 @@ import com.crystalgraphics.render.stage.CgHostFrame;
 import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.settings.CgGraphicsSettings;
-import com.crystalgraphics.platform.world.CgHostCamera;
-import com.crystalgraphics.world.CgCameraControl;
+import com.crystalgraphics.platform.world.CgCameraManager;
 import java.util.Arrays;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -232,12 +231,12 @@ final class CgShakeRuntime {
         }
         float tx = px + SHIFT * s * bands(now, 3), ty = py + SHIFT * s * bands(now, 4), tz = pz + SHIFT * s * bands(now, 5);
         if (!warnedTranslation && (tx != 0f || ty != 0f || tz != 0f)
-                && (CgCameraControl.capabilities() & CgHostCamera.TRANSLATION) == 0) {
+                && (CgCameraManager.capabilities() & CgCameraManager.TRANSLATION) == 0) {
             warnedTranslation = true;
             LOGGER.warn("[cg] a camera shake moves the camera's position, which this host cannot apply: only its rotation"
                     + " and field of view play here");
         }
-        CgCameraControl.offset(
+        CgCameraManager.offset(
                 tx, ty, tz,
                 pYaw + YAW * s * bands(now, 0), pPitch + PITCH * s * bands(now, 1), pRoll + ROLL * s * bands(now * 0.7, 2),
                 (1f + fov * fovEffects) * fovScale);

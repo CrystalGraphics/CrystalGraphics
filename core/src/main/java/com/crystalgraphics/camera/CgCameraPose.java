@@ -1,6 +1,8 @@
 package com.crystalgraphics.camera;
 
 import org.joml.Quaternionf;
+import org.joml.Quaternionfc;
+import org.joml.Vector3f;
 import org.joml.Vector3d;
 
 import com.crystalgraphics.object.value.CgUnits;
@@ -121,4 +123,29 @@ public final class CgCameraPose {
     public String toString() {
         return String.format("CgCameraPose[%.3f %.3f %.3f, %s, fov %.2f]", location.x, location.y, location.z, rotation, fov);
     }
+
+    private static final Vector3f FORWARD = new Vector3f(), UP = new Vector3f(), LEVEL = new Vector3f(), RIGHT = new Vector3f();
+
+    /**
+     * {@code turn} as Minecraft's yaw (0 facing +z, growing to the west), pitch (positive looking down) and roll in
+     * degrees, into {@code out}: what {@code CgCameraManager.hold} takes. A turn's forward is +x and its up +y. Render
+     * thread: it reuses its scratch vectors.
+     */
+    public static float[] angles(Quaternionfc turn, float[] out) {
+        turn.transform(FORWARD.set(1f, 0f, 0f));
+        turn.transform(UP.set(0f, 1f, 0f));
+        out[0] = (float) Math.toDegrees(Math.atan2(-FORWARD.x, FORWARD.z));
+        out[1] = (float) Math.toDegrees(Math.asin(Math.max(-1f, Math.min(1f, -FORWARD.y))));
+        // Roll: how far its up has turned about its forward from the up a level camera facing there would have.
+        LEVEL.set(0f, 1f, 0f).fma(-FORWARD.y, FORWARD);
+        if (LEVEL.lengthSquared() < 1e-12f) {
+            out[2] = 0f;
+            return out;
+        }
+        LEVEL.normalize();
+        FORWARD.cross(LEVEL, RIGHT);
+        out[2] = (float) Math.toDegrees(Math.atan2(UP.dot(RIGHT), UP.dot(LEVEL)));
+        return out;
+    }
+
 }

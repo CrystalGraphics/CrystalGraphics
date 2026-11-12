@@ -49,7 +49,7 @@ dependencies {
     // Minecraft's own Vulkan device; on a GL client GLDeviceModern loads its shader toolchain beside the host's LWJGL.
     // Its LWJGL is compileOnly, so nothing of 3.4 reaches an older node's classpath.
     "api"(project(":runtime:lwjgl:vulkan"))
-    // HostViewModern hands the world stages JOML matrices. Minecraft ships JOML from 1.19.3; below it the
+    // HostCameraModern hands the world stages JOML matrices. Minecraft ships JOML from 1.19.3; below it the
     // companion jar supplies it at run time, and the build's own projects never see core's published copy.
     if (MinecraftVersionOrder.compare(property("mc.version").toString(), "1.19.3") < 0) {
         "compileOnly"("org.joml:joml:${rootProject.property("dep.joml")}")

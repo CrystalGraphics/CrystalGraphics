@@ -42,7 +42,7 @@ import com.crystalgraphics.serialization.format.nbt.CgHostFormats;
 import com.crystalgraphics.platform.CgPlatformService;
 import com.crystalgraphics.platform.service.CgCursorService;
 import com.crystalgraphics.platform.service.CgGameDirectory;
-import com.crystalgraphics.platform.world.CgHostCamera;
+import com.crystalgraphics.platform.world.CgCameraManager;
 import com.crystalgraphics.platform.world.CgHostDebug;
 import com.crystalgraphics.platform.world.CgWorldEvents;
 import com.crystalgraphics.platform.audio.CgAudioDecoder;
@@ -123,7 +123,7 @@ public final class PlatformServiceLegacy implements CgPlatformService {
         CgWorldEvents.declare(CgWorldEvents.EXPLOSION | CgWorldEvents.BLOCK_BROKEN | CgWorldEvents.ENTITY_HURT
                 | CgWorldEvents.ENTITY_DIED | CgWorldEvents.LIGHTNING);
         HostCameraLegacy camera = new HostCameraLegacy();
-        CgPlatform.provide(CgHostCamera.SERVICE, camera);
+        CgPlatform.provide(CgCameraManager.HOST, camera);
         CgPlatform.provide(CgHostDebug.SERVICE, new HostDebugLegacy());
         MinecraftForge.EVENT_BUS.register(camera);
         FMLCommonHandler.instance().bus().register(new WorldEventsLegacy.Ticks());

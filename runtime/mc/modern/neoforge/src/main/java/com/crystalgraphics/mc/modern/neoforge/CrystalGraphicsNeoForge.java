@@ -11,7 +11,7 @@ import com.crystalgraphics.mc.modern.platform.net.NetworkModern;
 import com.crystalgraphics.mc.modern.platform.world.HostCameraModern;
 import com.crystalgraphics.mc.shared.CrashVariant;
 import com.crystalgraphics.platform.service.CgNetworkChannel;
-import com.crystalgraphics.platform.world.CgHostCamera;
+import com.crystalgraphics.platform.world.CgCameraManager;
 import com.crystalgraphics.platform.world.CgWorldEvents;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceLocation;
@@ -199,7 +199,7 @@ public final class CrystalGraphicsNeoForge implements VariantEntry {
                 NeoForge.EVENT_BUS.addListener(EventPriority.LOWEST, ModBus::onFov);
                 // The first-person hands, which Minecraft draws from the local player whatever its camera entity.
                 NeoForge.EVENT_BUS.addListener(ModBus::onRenderHand);
-                HostCameraModern.declare(CgHostCamera.ROTATION | CgHostCamera.ROLL | CgHostCamera.FOV);
+                HostCameraModern.declare(CgCameraManager.ROTATION | CgCameraManager.ROLL | CgCameraManager.FOV);
                 // The world events, once a client tick and as entities join and leave the client level.
                 NeoForge.EVENT_BUS.addListener(ModBus::onClientTick);
                 //? if >=1.20.6 {

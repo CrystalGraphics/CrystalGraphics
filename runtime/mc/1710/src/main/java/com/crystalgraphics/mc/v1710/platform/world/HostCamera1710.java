@@ -1,7 +1,16 @@
 package com.crystalgraphics.mc.v1710.platform.world;
 
+import static com.crystalgraphics.platform.world.CgCameraManager.ROTATION;
+import static com.crystalgraphics.platform.world.CgCameraManager.ROLL;
+import static com.crystalgraphics.platform.world.CgCameraManager.FOV;
+import static com.crystalgraphics.platform.world.CgCameraManager.POSITION;
+import static com.crystalgraphics.platform.world.CgCameraManager.LOCK;
+import static com.crystalgraphics.platform.world.CgCameraManager.HIDES_PLAYER;
+import static com.crystalgraphics.platform.world.CgCameraManager.TRANSLATION;
+import com.crystalgraphics.camera.CgCamera;
+import com.crystalgraphics.mc.v1710.mixins.early.impl.client.ActiveRenderInfoAccessor;
 import com.crystalgraphics.platform.world.CgHeldCamera;
-import com.crystalgraphics.platform.world.CgHostCamera;
+import com.crystalgraphics.platform.world.CgCameraManager;
 import com.crystalgraphics.platform.world.CgWorldBegin;
 import cpw.mods.fml.common.eventhandler.SubscribeEvent;
 import cpw.mods.fml.common.gameevent.TickEvent;
@@ -15,7 +24,7 @@ import org.lwjgl.input.Mouse;
 import org.lwjgl.opengl.GL11;
 
 /**
- * {@link CgHostCamera} on Minecraft 1.7.10: holds the last offset core gave, and {@code CameraHook} adds it where the
+ * {@link CgCameraManager} on Minecraft 1.7.10: holds the last offset core gave, and {@code CameraHook} adds it where the
  * entity renderer orients its camera and computes its field of view. 1.7.10's Forge has no camera-angle event, and its
  * FOV event is the player's smoothed modifier, so both are mixins here. A held pose is ours alone: a living entity of
  * ours, never in the world, is the render view entity, so the camera, the frustum and the chunk order follow it. Client
@@ -33,7 +42,7 @@ import org.lwjgl.opengl.GL11;
  *       Render thread only.</li>
  * </ul>
  */
-public final class HostCamera1710 implements CgHostCamera {
+public final class HostCamera1710 implements CgCameraManager.Host {
 
     private static float yaw, pitch, roll, fovScale = 1f;
     /** The offset's translation, world blocks. */
@@ -196,5 +205,19 @@ public final class HostCamera1710 implements CgHostCamera {
             int code = key.getKeyCode();
             if (code != 0) KeyBinding.setKeyBindState(code, code < 0 ? Mouse.isButtonDown(code + 100) : Keyboard.isKeyDown(code));
         }
+    }
+
+    /**
+     * Minecraft 1.7.10's camera at its world hooks: the matrices its render info read back this frame, and the view
+     * entity's interpolated position — what {@code RenderGlobal.renderEntities} puts in {@code RenderManager.renderPosX},
+     * computed here because that method skips its first two frames. The modelview carries the eye height and a
+     * third-person offset, paired with that position at the entity's feet.
+     */
+    public static void capture(Minecraft mc, float partialTicks, CgCamera out) {
+        EntityLivingBase entity = mc.renderViewEntity;
+        out.set(entity.lastTickPosX + (entity.posX - entity.lastTickPosX) * partialTicks,
+                entity.lastTickPosY + (entity.posY - entity.lastTickPosY) * partialTicks,
+                entity.lastTickPosZ + (entity.posZ - entity.lastTickPosZ) * partialTicks,
+                ActiveRenderInfoAccessor.crystalgraphics$modelview(), ActiveRenderInfoAccessor.crystalgraphics$projection());
     }
 }

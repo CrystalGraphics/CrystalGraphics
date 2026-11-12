@@ -1,5 +1,6 @@
 package com.crystalgraphics.camera;
 
+import com.crystalgraphics.platform.world.CgCameraManager;
 import javax.annotation.Nullable;
 
 /**
@@ -41,7 +42,7 @@ public interface CgCameraModifier {
         return 1f;
     }
 
-    /** What it asks of the viewer while it moves the view: {@code CgHostCamera.HIDE_HUD}, {@code HIDE_PLAYER}; 0. */
+    /** What it asks of the viewer while it moves the view: {@code CgCameraManager.HIDE_HUD}, {@code HIDE_PLAYER}; 0. */
     default int flags() {
         return 0;
     }
