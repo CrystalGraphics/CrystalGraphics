@@ -891,7 +891,8 @@ public final class CgMaterialProxy {
      *
      * @throws IllegalStateException if its shader reads a buffer nothing is bound to
      */
-    public CgMaterialBindings bindings() {
+    // Synchronized: documents on their own threads draw one shared material, and the kept builder is filled in place.
+    public synchronized CgMaterialBindings bindings() {
         checkNotDeleted();
         syncPropsToParse();
         boolean engine = engineBlocksMoved();
