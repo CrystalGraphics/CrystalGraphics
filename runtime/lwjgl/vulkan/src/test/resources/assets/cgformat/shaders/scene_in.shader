@@ -3,8 +3,8 @@
 #include "crystalgraphics:shaders/lib/post/composite.glsl"
 Material { SceneColorMargin 0.001 }
 Keywords {
-    DEPTH ("Writes the host's depth into the scene's own")
-    KEEP ("Keeps the opaque firing's scene where the host drew nothing since")
+    DEPTH ("Writes the host's depth into the scene's own", switched)
+    KEEP ("Keeps the opaque firing's scene where the host drew nothing since", switched)
 }
 RenderState { Blend OFF  DepthTest ALWAYS  DepthWrite OFF  Cull OFF }
 Properties { _Kept ("The opaque firing's scene", sampler2D) = "black" }

@@ -1239,6 +1239,8 @@ com/crystalgraphics/api/material/CgVertexFactory$Builder
   method public buffers ([Ljava/lang/String;)Lcom/crystalgraphics/api/material/CgVertexFactory$Builder;
   method public build ()Lcom/crystalgraphics/api/material/CgVertexFactory$Factory;
   method public declarations (Ljava/lang/String;)Lcom/crystalgraphics/api/material/CgVertexFactory$Builder;
+  method public defaults (Ljava/lang/String;)Lcom/crystalgraphics/api/material/CgVertexFactory$Builder;
+  method public fade (Ljava/lang/String;)Lcom/crystalgraphics/api/material/CgVertexFactory$Builder;
   method public fill (Ljava/lang/String;)Lcom/crystalgraphics/api/material/CgVertexFactory$Builder;
   method public parameters (Ljava/lang/String;Ljava/util/Map;)Lcom/crystalgraphics/api/material/CgVertexFactory$Builder;
   method public placesNothing ()Lcom/crystalgraphics/api/material/CgVertexFactory$Builder;
@@ -1248,9 +1250,11 @@ com/crystalgraphics/api/material/CgVertexFactory$Builder
 com/crystalgraphics/api/material/CgVertexFactory$Factory
   access public,final,record
   extends java/lang/Record
-  method public <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZLjava/util/List;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/lang/String;Ljava/util/Map;)V
+  method public <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZLjava/util/List;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/lang/String;Ljava/util/Map;Ljava/lang/String;Ljava/lang/String;)V
   method public declarations ()Ljava/lang/String;
+  method public defaults ()Ljava/lang/String;
   method public engineBuffers ()Ljava/util/List;
+  method public fade ()Ljava/lang/String;
   method public fill ()Ljava/lang/String;
   method public name ()Ljava/lang/String;
   method public parameterFields ()Ljava/util/Map;

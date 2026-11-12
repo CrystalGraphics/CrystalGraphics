@@ -1145,7 +1145,8 @@ public final class CgMaterialShader implements CgReloadable {
     }
 
     private boolean sceneDepthIn(String source) {
-        return new CgShaderPreprocessor().mentions(source, resourcePath, "cg_DepthBuffer", "CG_SCENE_EYE_DEPTH");
+        return new CgShaderPreprocessor().mentions(source, resourcePath, "cg_DepthBuffer", "CG_SCENE_EYE_DEPTH",
+                "cg_DepthFade");
     }
 
     /** As {@link #readsSceneDepth()}, for {@code cg_SceneColor} or {@code CG_SCENE_COLOR}. */

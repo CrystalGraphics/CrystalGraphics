@@ -76,11 +76,16 @@ public final class CgVertexFactory {
      * @param tags            material-level tags its renderer reads (a tube's {@code "Tube"})
      * @param parameters      the variable a material reads its parameters from ({@code cg_Particle}); null for none
      * @param parameterFields each field of it a fragment may read, dotted for a nested one, to its v2f type
+     * @param defaults        GLSL statements on {@code CgSurface s} in the fragment, before the material's
+     *                        {@code surface()}: what it starts from under this factory (a particle's light)
+     * @param fade            an expression fading all the material adds, applied after {@code surface()} by its blend
+     *                        mode ({@code cg_Vfx.presence}); null for none
      */
     @Desugar
     public record Factory(String name, String vertexType, String fill, boolean placesNothing,
                           List<String> engineBuffers, String declarations, String properties, Map<String, String> tags,
-                          @Nullable String parameters, Map<String, String> parameterFields) {
+                          @Nullable String parameters, Map<String, String> parameterFields, String defaults,
+                          @Nullable String fade) {
         public Factory {
             engineBuffers = Collections.unmodifiableList(new ArrayList<>(engineBuffers));
             tags = Collections.unmodifiableMap(new LinkedHashMap<>(tags));
@@ -91,7 +96,7 @@ public final class CgVertexFactory {
     /** Builds a {@link Factory}: {@code vertexType} and {@code fill} are required. */
     public static final class Builder {
         private final String name;
-        private String vertexType, fill, declarations = "", properties = "", parameters;
+        private String vertexType, fill, declarations = "", properties = "", parameters, defaults = "", fade;
         private boolean placesNothing;
         private final List<String> buffers = new ArrayList<>();
         private final Map<String, String> tags = new LinkedHashMap<>(), fields = new LinkedHashMap<>();
@@ -149,10 +154,22 @@ public final class CgVertexFactory {
             return this;
         }
 
+        /** GLSL statements on {@code CgSurface s}, before the material's {@code surface()}. */
+        public Builder defaults(String glsl) {
+            this.defaults = glsl;
+            return this;
+        }
+
+        /** An expression fading all the material adds, by its blend mode, after {@code surface()}. */
+        public Builder fade(String expression) {
+            this.fade = expression;
+            return this;
+        }
+
         public Factory build() {
             if (vertexType == null || fill == null) throw new IllegalStateException(name + ": vertexType and fill are required");
             return new Factory(name, vertexType, fill, placesNothing, buffers, declarations, properties, tags, parameters,
-                    fields);
+                    fields, defaults, fade);
         }
     }
 

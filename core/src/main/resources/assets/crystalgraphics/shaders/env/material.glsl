@@ -31,6 +31,7 @@ struct CgSurface {
     uvec2 shadingModelId;    // (1, 0): a model and type a post material reads
     vec2 light;              // the draw's (block, sky) light
     float volumeDepth;       // 0: a volume's eye distance, for the volume pass
+    float depth;             // the fragment's own: the eye depth it stands at (cg_EyeDepth(point) for a traced point)
 };
 
 // What a #domain post material's surface() takes: the pixel of the screen it writes.

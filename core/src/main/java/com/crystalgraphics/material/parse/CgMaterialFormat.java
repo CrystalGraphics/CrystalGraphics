@@ -66,10 +66,11 @@ final class CgMaterialFormat {
     }
 
     @Desugar
-    private record Keyword(String name, List<String> values) {
+    private record Keyword(String name, List<String> values, boolean switched) {
     }
 
-    private static final Set<String> BLOCKS = Set.of("Material", "Keywords", "Properties", "Buffers", "RenderState");
+    private static final Set<String> BLOCKS = Set.of("Material", "Keywords", "Properties", "Buffers", "RenderState",
+            "EngineBuffers");
     private static final Set<String> OLD = Set.of("Pass", "Tags", "Queue", "SubShader");
     private static final Pattern STRUCT = Pattern.compile("^struct\\s+([A-Za-z_]\\w*)");
     private static final Pattern FUNCTION = Pattern.compile("^(?:[\\w\\[\\]]+\\s+)+?([A-Za-z_]\\w*)\\s*\\(");
@@ -77,7 +78,8 @@ final class CgMaterialFormat {
     private static final Pattern NUMBER = Pattern.compile("[0-9]*\\.?[0-9]+(?:[eE][-+]?[0-9]+)?");
     private static final Pattern KEYWORD = Pattern.compile("[A-Z][A-Z0-9_]*");
     private static final Pattern KEYWORD_ENTRY = Pattern.compile(
-            "([A-Za-z_]\\w*)\\s*(?:\\(\\s*\"[^\"]*\"\\s*\\))?\\s*(?:=\\s*([A-Za-z_]\\w*(?:\\s*\\|\\s*[A-Za-z_]\\w*)*))?");
+            "([A-Za-z_]\\w*)\\s*(?:\\(\\s*\"[^\"]*\"\\s*(,\\s*switched\\s*)?\\))?\\s*"
+                    + "(?:=\\s*([A-Za-z_]\\w*(?:\\s*\\|\\s*[A-Za-z_]\\w*)*))?");
     private static final Pattern BUFFER_ELEMENT = Pattern.compile("\\(\\s*\"[^\"]*\"\\s*,\\s*([A-Za-z_]\\w*)");
     private static final Pattern V2F_FIELD = Pattern.compile("^(?:(flat|noperspective|smooth)\\s+)?(\\w+)\\s+(\\w+)\\s*;$");
     private static final Pattern SURFACE_SIGNATURE = Pattern.compile(
@@ -123,7 +125,7 @@ final class CgMaterialFormat {
     /** A surface's outputs. */
     private static final Set<String> OUTPUTS = Set.of("baseColor", "opacity", "opacityMask", "emissive", "normal",
             "refraction", "refractionSplit", "refractionDepth", "pixelDepthOffset", "customData", "shadingModelId",
-            "light", "volumeDepth");
+            "light", "volumeDepth", "depth");
 
     private static final List<String> SURFACE_PROPERTIES = List.of("BlendMode", "ShadingModel", "TranslucencyLighting",
             "Faces", "TranslucencyPass", "DepthTest", "DepthWrite", "DepthPrepass", "ClipDepth", "MaskClip", "Fog", "Media",
@@ -146,6 +148,7 @@ final class CgMaterialFormat {
                 s.shadingModelId = uvec2(1u, 0u);
                 s.light = cg_Light;
                 s.volumeDepth = 0.0;
+                s.depth = cg_LinearEyeDepth(gl_FragCoord.z);
                 return s;
             }
             #endif
@@ -176,6 +179,10 @@ final class CgMaterialFormat {
         List<Item> items = scan(t, source, eol, path, BLOCKS);
         if (domain != CgMaterialDomain.POST) {
             for (Item i : items) if (i.kind() == Kind.STEP) throw fail(path, "'Step' is a #domain post material's");
+        }
+        if (domain != CgMaterialDomain.GLOBAL && block(items, "EngineBuffers") != null) {
+            throw fail(path, "'EngineBuffers' is a #domain global's: a material reaches engine buffers through what draws"
+                    + " it (VertexFactory, PerDrawValues On, a ui Primitive)");
         }
         return switch (domain) {
             case SURFACE -> lowerSurface(items, path);
@@ -246,6 +253,15 @@ final class CgMaterialFormat {
         if (factory == null) {
             throw fail(path, "'VertexFactory " + factoryName + "' is no factory: none registered, and no "
                     + CgFormatTemplates.location(factoryName, "factories", "factory"));
+        }
+        // What the factory's defaults write is written: its hooks run (a particle's light)
+        Set<String> started = new LinkedHashSet<>();
+        names(factory.defaults(), "s", started);
+        started.retainAll(OUTPUTS);
+        named.addAll(started);
+        if (named.contains("depth") && named.contains("pixelDepthOffset")) {
+            throw fail(path, "'s.depth' and 's.pixelDepthOffset' both set the depth: s.depth is where it stands, the offset"
+                    + " a push from its own");
         }
         String maskClip = m.get("MaskClip");
         if (maskClip != null && !NUMBER.matcher(maskClip).matches() && !maskClip.matches("_[A-Za-z]\\w*")) {
@@ -323,7 +339,7 @@ final class CgMaterialFormat {
         StringBuilder out = new StringBuilder();
         out.append("#type ").append(factory.vertexType()).append('\n')
            .append(CgFormatTemplates.pragmas(factory.declarations(), true));
-        keywordPragmas(out, keywords(block(items, "Keywords"), path), false);
+        keywordPragmas(out, keywords(block(items, "Keywords"), path));
         Set<String> uses = new LinkedHashSet<>(factory.engineBuffers());
         if (rows) uses.add(CgShaderParser.ROWS);
         if (namesGlobals(code)) uses.add("globals");
@@ -380,10 +396,13 @@ final class CgMaterialFormat {
         if (vertex != null) out.append("        ").append(MATERIAL_VERTEX).append("(v, o);\n");
         out.append(autoFill).append(passOut);
         out.append("        gl_Position = cg_ProjMatrix * cg_ViewMatrix * vec4(v.world, 1.0);\n    }\n");
-        out.append("    void fragment(in v2f i, out vec4 fragColor) {\n").append(passIn)
-           .append("        CgSurface s = cg_SurfaceDefaults();\n")
-           .append("        ").append(MATERIAL_SURFACE).append("(i, s);\n");
+        // What the factory starts the surface from, and how it fades what the material adds
+        StringBuilder start = new StringBuilder("        CgSurface s = cg_SurfaceDefaults();\n");
+        for (String l : factory.defaults().strip().split("\n")) if (!l.isBlank()) start.append("        ").append(l.strip()).append('\n');
+        String run = "        " + MATERIAL_SURFACE + "(i, s);\n" + fade(factory.fade(), blendMode);
+        out.append("    void fragment(in v2f i, out vec4 fragColor) {\n").append(passIn).append(start).append(run);
         if (named.contains("pixelDepthOffset")) out.append("        CG_PIXEL_DEPTH_OFFSET(s.pixelDepthOffset);\n");
+        if (named.contains("depth")) out.append("        gl_FragDepth = cg_WindowDepth(s.depth);\n");
         if (clips && named.contains("opacityMask")) out.append("        cg_Clip(s.opacityMask);\n");
         if (named.contains("light")) out.append("        cg_Light = s.light;\n");
         if (named.contains("emissive")) out.append("        CG_GLOW(s.emissive);\n");
@@ -407,13 +426,30 @@ final class CgMaterialFormat {
             out.append("Pass {\n    Tags { \"LightMode\" = \"Distortion\" }\n    RenderState {\n");
             if (depthTest.equals("Off")) out.append("        DepthTest ALWAYS\n");
             out.append("        Cull ").append(cull).append("\n    }\n")
-               .append("    void fragment(in v2f i, out vec4 offset) {\n").append(passIn)
-               .append("        CgSurface s = cg_SurfaceDefaults();\n")
-               .append("        ").append(MATERIAL_SURFACE).append("(i, s);\n")
+               .append("    void fragment(in v2f i, out vec4 offset) {\n").append(passIn).append(start).append(run)
                .append("        offset = CG_DISTORTION(s.refraction, s.refractionSplit, s.refractionDepth);\n    }\n}\n");
         }
         return new Lowered(out.toString(),
                 new CgParsedShader.Format(CgMaterialDomain.SURFACE, maskClip, pass.equals("Separate"), null));
+    }
+
+    /**
+     * A factory's fade of all the material adds, by its blend mode: what a straight-alpha blend weighs is its opacity, a
+     * premultiplied one its colour and opacity, an added one its colour; a multiplied one fades toward white. The glow
+     * and the bend always.
+     */
+    private static String fade(@Nullable String expression, String blendMode) {
+        if (expression == null) return "";
+        StringBuilder out = new StringBuilder("        float _cg_fade = ").append(expression).append(";\n")
+                .append("        s.emissive *= _cg_fade;\n        s.refraction *= _cg_fade;\n");
+        switch (blendMode) {
+            case "Translucent" -> out.append("        s.opacity *= _cg_fade;\n");
+            case "AlphaComposite" -> out.append("        s.baseColor *= _cg_fade;\n        s.opacity *= _cg_fade;\n");
+            case "Additive", "Subtract" -> out.append("        s.baseColor *= _cg_fade;\n");
+            case "Modulate" -> out.append("        s.baseColor = mix(vec3(1.0), s.baseColor, _cg_fade);\n");
+            default -> { }
+        }
+        return out.toString();
     }
 
     // ── global ──────────────────────────────────────────────────────────────────
@@ -436,8 +472,15 @@ final class CgMaterialFormat {
 
         StringBuilder out = new StringBuilder();
         out.append("#type ").append(mesh ? "spatial" : "none").append('\n');
-        keywordPragmas(out, keywords(block(items, "Keywords"), path), true);
-        Set<String> uses = namesGlobals(code) ? Set.of("globals") : Set.of();
+        keywordPragmas(out, keywords(block(items, "Keywords"), path));
+        // The engine's own passes name the engine buffers they read: no factory or primitive draws them
+        Set<String> uses = new LinkedHashSet<>();
+        Item engine = block(items, "EngineBuffers");
+        if (engine != null && !engine.body().isBlank()) uses.addAll(List.of(engine.body().trim().split("\\s+")));
+        if (namesGlobals(code)) uses.add("globals");
+        for (String u : uses) {
+            if (CgEngineBufferRegistry.get(u) == null) throw fail(path, "'" + u + "' is no engine buffer: " + CgEngineBufferRegistry.tokens());
+        }
         refuseNamedBuffers(code, uses, path);
         for (String u : uses) out.append("#pragma cg_use ").append(u).append('\n');
         out.append("Tags { \"RenderType\" = \"Opaque\" \"Lighting\" = \"Unlit\" \"Fog\" = \"Off\" \"Media\" = \"Off\"")
@@ -520,7 +563,7 @@ final class CgMaterialFormat {
         }
 
         StringBuilder out = new StringBuilder("#type none\n");
-        keywordPragmas(out, keywords(block(items, "Keywords"), path), false);
+        keywordPragmas(out, keywords(block(items, "Keywords"), path));
         List<Item> all = new ArrayList<>(code);
         stepCode.forEach(all::addAll);
         Set<String> uses = namesGlobals(all) ? Set.of("globals") : Set.of();
@@ -626,7 +669,7 @@ final class CgMaterialFormat {
         }
 
         StringBuilder out = new StringBuilder("#type none\n").append(primitive.pragmas());
-        keywordPragmas(out, keywords(block(items, "Keywords"), path), false);
+        keywordPragmas(out, keywords(block(items, "Keywords"), path));
         Set<String> uses = new LinkedHashSet<>(primitive.buffers());
         if (namesGlobals(code)) uses.add("globals");
         refuseNamedBuffers(code, uses, path);
@@ -863,13 +906,16 @@ final class CgMaterialFormat {
         Set<String> chains = new LinkedHashSet<>();
         Pattern chain = Pattern.compile("\\b" + Pattern.quote(variable) + "\\b((?:\\s*\\.\\s*\\w+)*)");
         boolean whole = false;   // passed whole, as to cg_dynamic_parameter(cg_Particle, ...)
-        for (String name : reach(functions, surface)) {
-            for (Item f : functions.get(name)) {
-                Matcher m = chain.matcher(f.body());
-                while (m.find()) {
-                    if (m.group(1).isEmpty()) whole = true;
-                    else chains.add(m.group(1).replaceAll("\\s", "").substring(1));
-                }
+        List<String> read = new ArrayList<>();
+        for (String name : reach(functions, surface)) for (Item f : functions.get(name)) read.add(f.body());
+        // The factory's own defaults and fade read them in the fragment too
+        read.add(factory.defaults());
+        if (factory.fade() != null) read.add(factory.fade());
+        for (String body : read) {
+            Matcher m = chain.matcher(body);
+            while (m.find()) {
+                if (m.group(1).isEmpty()) whole = true;
+                else chains.add(m.group(1).replaceAll("\\s", "").substring(1));
             }
         }
         for (Map.Entry<String, String> field : factory.parameterFields().entrySet()) {
@@ -960,7 +1006,10 @@ final class CgMaterialFormat {
         return choice(m, key, fallback ? "On" : "Off", path, "On", "Off").equals("On");
     }
 
-    /** {@code Keywords { }}: {@code NAME ("label")} is on or off, {@code NAME ("label") = A | B} one of its values. */
+    /**
+     * {@code Keywords { }}: {@code NAME ("label")} is on or off, {@code NAME ("label") = A | B} one of its values;
+     * {@code NAME ("label", switched)} the renderer's to switch at each draw.
+     */
     private static List<Keyword> keywords(@Nullable Item block, String path) {
         List<Keyword> out = new ArrayList<>();
         if (block == null) return out;
@@ -970,15 +1019,15 @@ final class CgMaterialFormat {
         while (at < body.length()) {
             if (!m.find(at) || m.start() != at) {
                 throw fail(path, "'" + body.substring(at, eol(body, at)).trim() + "' is no keyword:"
-                        + " NAME (\"label\") or NAME (\"label\") = A | B");
+                        + " NAME (\"label\"), NAME (\"label\", switched) or NAME (\"label\") = A | B");
             }
             List<String> values = new ArrayList<>();
-            if (m.group(2) != null) for (String v : m.group(2).split("\\|")) values.add(v.trim());
+            if (m.group(3) != null) for (String v : m.group(3).split("\\|")) values.add(v.trim());
             for (String name : withValues(m.group(1), values)) {
                 if (!KEYWORD.matcher(name).matches()) throw fail(path, "'" + name + "' is no keyword: [A-Z][A-Z0-9_]*");
             }
             if (values.size() == 1) throw fail(path, "'" + m.group(1) + "' is a one-of of one value: make it on or off");
-            out.add(new Keyword(m.group(1), values));
+            out.add(new Keyword(m.group(1), values, m.group(2) != null));
             at = skipWs(body, m.end());
         }
         return out;
@@ -992,16 +1041,15 @@ final class CgMaterialFormat {
     }
 
     /**
-     * Each keyword a {@code cg_feature}; a one-of also a permutation dimension, so two of its values are refused and a
-     * precache builds each. {@code switched}: every keyword is the renderer's to switch (a global's), so a precache
-     * builds every combination.
+     * Each keyword a {@code cg_feature}; a one-of, and a keyword marked {@code switched}, also a permutation dimension,
+     * so a precache builds each value (and two of a one-of's are refused).
      */
-    private static void keywordPragmas(StringBuilder out, List<Keyword> keywords, boolean switched) {
+    private static void keywordPragmas(StringBuilder out, List<Keyword> keywords) {
         for (Keyword k : keywords) {
             for (String f : withValues(k.name(), k.values())) out.append("#pragma cg_feature ").append(f).append('\n');
         }
         for (Keyword k : keywords) {
-            if (k.values().isEmpty() && !switched) continue;
+            if (k.values().isEmpty() && !k.switched()) continue;
             out.append("#pragma cg_permutation ").append(String.join("|", withValues(k.name(), k.values()))).append('\n');
         }
     }

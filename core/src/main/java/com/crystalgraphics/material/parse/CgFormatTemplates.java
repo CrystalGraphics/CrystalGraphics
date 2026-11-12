@@ -35,7 +35,11 @@ import java.util.regex.Pattern;
  * Declarations { #include "mymod:shaders/ribbon.glsl"  RibbonPoint cg_Ribbon; }
  * Parameters { float width;  flat int segment;  vec3 frame.normal; }   // what a fragment may read of cg_Ribbon
  * void fill(inout CgVertex v) { cg_Ribbon = ribbon_point(CG_VERTEX_ID); ... v.world = cg_Ribbon.world; }
+ * void defaults(inout CgSurface s) { s.light = cg_Ribbon.light; }   // what the material starts from (optional)
  * }</pre>
+ *
+ * <p>{@code Factory { Fade cg_Vfx.presence }} fades all the material adds by that expression after {@code surface()},
+ * by its blend mode, so no material applies it itself.</p>
  *
  * <p>A primitive file: {@code Primitive { Queue Transparent }}, {@code EngineBuffers}, {@code Declarations},
  * {@code Properties}, a {@code RenderState}, {@code struct v2f}, {@code vertex(out v2f o)} and
@@ -66,6 +70,7 @@ public final class CgFormatTemplates {
     private static final Set<String> PRIMITIVE_BLOCKS = Set.of("Primitive", "EngineBuffers", "Properties",
             "Declarations", "RenderState");
     private static final Pattern FILL = Pattern.compile("^void\\s+fill\\s*\\(\\s*inout\\s+CgVertex\\s+v\\s*\\)");
+    private static final Pattern DEFAULTS = Pattern.compile("^void\\s+defaults\\s*\\(\\s*inout\\s+CgSurface\\s+s\\s*\\)");
     private static final Pattern TAG = Pattern.compile("\"(\\w+)\"\\s*=\\s*\"([^\"]*)\"");
     private static final Pattern FIELD = Pattern.compile(
             "^((?:flat\\s+|noperspective\\s+)?[A-Za-z_]\\w*)\\s+([A-Za-z_][\\w.]*)\\s*(?:\\[\\s*(\\d+)\\s*])?$");
@@ -122,16 +127,20 @@ public final class CgFormatTemplates {
     private static CgVertexFactory.Factory parseFactory(String name, String source, String path) {
         List<CgMaterialFormat.Item> items = CgMaterialFormat.scan(CgMaterialFormat.blankComments(source), source, 0, path,
                 FACTORY_BLOCKS);
-        Map<String, String> settings = settings(items, "Factory", List.of("VertexType", "PlacesNothing", "Parameters"), path);
+        Map<String, String> settings = settings(items, "Factory", List.of("VertexType", "PlacesNothing", "Parameters", "Fade"),
+                path);
         String type = settings.get("VertexType");
         if (type == null) throw CgMaterialFormat.fail(path, "'Factory { VertexType ... }' is missing: spatial, none, ...");
-        CgMaterialFormat.Item fill = null;
+        CgMaterialFormat.Item fill = null, defaults = null;
         for (CgMaterialFormat.Item i : items) {
             if (i.kind() == CgMaterialFormat.Kind.FUNCTION && i.name().equals("fill") && FILL.matcher(i.text()).find()) {
                 fill = i;
+            } else if (i.kind() == CgMaterialFormat.Kind.FUNCTION && i.name().equals("defaults")
+                    && DEFAULTS.matcher(i.text()).find()) {
+                defaults = i;
             } else if (i.kind() != CgMaterialFormat.Kind.BLOCK) {
-                throw CgMaterialFormat.fail(path, "a factory file holds its blocks and 'void fill(inout CgVertex v)': '"
-                        + i.text().lines().findFirst().orElse("").trim() + "'");
+                throw CgMaterialFormat.fail(path, "a factory file holds its blocks, 'void fill(inout CgVertex v)' and"
+                        + " 'void defaults(inout CgSurface s)': '" + i.text().lines().findFirst().orElse("").trim() + "'");
             }
         }
         if (fill == null) throw CgMaterialFormat.fail(path, "'void fill(inout CgVertex v)' is missing");
@@ -139,6 +148,8 @@ public final class CgFormatTemplates {
                 .buffers(tokens(items, "EngineBuffers").toArray(new String[0]))
                 .declarations(body(items, "Declarations")).properties(body(items, "Properties"));
         if ("On".equals(settings.get("PlacesNothing"))) b.placesNothing();
+        if (defaults != null) b.defaults(defaults.body());
+        if (settings.containsKey("Fade")) b.fade(settings.get("Fade"));
         Matcher tag = TAG.matcher(body(items, "Tags"));
         while (tag.find()) b.tag(tag.group(1), tag.group(2));
         String variable = settings.get("Parameters");

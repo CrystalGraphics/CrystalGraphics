@@ -430,6 +430,35 @@ void cg_PixelDepthOffset(float blocks) {
 }
 #define CG_PIXEL_DEPTH_OFFSET(blocks) cg_PixelDepthOffset(blocks)
 
+// Unreal's Camera Position: the eye in the space shaders work in (camera-relative world, not always the origin: a host
+// may fold a translation into the view). Either stage.
+#define CG_CAMERA_POSITION (-(transpose(mat3(cg_ViewMatrix)) * cg_ViewMatrix[3].xyz))
+
+// The eye depth of point p, camera-relative world: what a material's s.depth takes for a point it traced to.
+float cg_EyeDepth(vec3 p) {
+    return -(cg_ViewMatrix * vec4(p, 1.0)).z;
+}
+
+#if !defined(CG_VERTEX_STAGE) && !defined(CG_COMPUTE_STAGE)
+// Unreal's Camera Vector, reversed: the unit view ray from the eye through this pixel's centre, from its window position
+// alone, so bit for bit the same in every fragment of the pixel, as one from an interpolated position is not.
+vec3 cg_PixelRay() {
+    vec2 ndc = gl_FragCoord.xy / cg_Resolution * 2.0 - 1.0;
+    return normalize(transpose(mat3(cg_ViewMatrix)) * vec3((ndc.x + cg_ProjMatrix[2][0]) / cg_ProjMatrix[0][0],
+            (ndc.y + cg_ProjMatrix[2][1]) / cg_ProjMatrix[1][1], -1.0));
+}
+
+// Unreal's DepthFade (soft particles): 0 where this fragment meets what is behind it, rising to 1 distance blocks in
+// front, so a sprite crossing a surface fades into it rather than being cut; 1 for a distance of 0. A macro, so only a
+// material calling it reads the scene's depth.
+//
+//     s.opacity *= cg_DepthFade(_SoftDistance);
+float cg_DepthFadeOf(float sceneEye, float distance) {
+    return distance > 0.0 ? clamp((sceneEye - cg_LinearEyeDepth(gl_FragCoord.z)) / distance, 0.0, 1.0) : 1.0;
+}
+#define cg_DepthFade(distance) cg_DepthFadeOf(CG_SCENE_EYE_DEPTH(gl_FragCoord.xy / cg_Resolution), (distance))
+#endif
+
 // What a lit material's colour becomes: times the lightmap at cg_Light, and lit by the world's lights as the opaque
 // scene is (world_lights.shader adds scene x light): in a transparent firing, at this fragment. In the linear scene the
 // colour is decoded after, so the gain is taken to the decode's inverse power.

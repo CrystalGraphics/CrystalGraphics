@@ -5,11 +5,6 @@ import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgMaterialState;
 import com.crystalgraphics.api.material.CgMaterialDomain;
 import com.crystalgraphics.api.material.CgRenderPassVariant;
-import com.crystalgraphics.api.state.CgBlendState;
-import com.crystalgraphics.api.state.CgCullState;
-import com.crystalgraphics.api.state.CgDepthState;
-import com.crystalgraphics.api.state.CgRenderState;
-import com.crystalgraphics.api.state.CgStencilState;
 import com.crystalgraphics.gpu.resource.CgFallbackTextures;
 import com.crystalgraphics.material.CgMaterialProperty;
 import com.crystalgraphics.material.CgMaterialProxy;
@@ -31,7 +26,6 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.TreeSet;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -89,49 +83,18 @@ public class MaterialFormatTest {
                 now = now.withState(state(pair[3]), pair[0]);
                 sameBlend = pair[2].equals(pair[3]);
             }
-            boolean ui = now.domain() == CgMaterialDomain.UI, post = now.domain() == CgMaterialDomain.POST;
-            assertNotNull(what + "not in the format", now.domain());
-            assertEquals(what + "vertex type", was.shaderType(), now.shaderType());
-            assertEquals(what + "queue", was.renderQueue(), now.renderQueue());
-            assertEquals(what + "render type", was.renderType(), now.renderType());
-            assertEquals(what + "lit", was.lit(), now.lit());
-            assertEquals(what + "surface lit", was.surfaceLit(), now.surfaceLit());
-            assertEquals(what + "fogged", was.fogged(), now.fogged());
-            assertEquals(what + "mediated", was.mediated(), now.mediated());
-            assertEquals(what + "linear colour", was.linearColor(), now.linearColor());
-            assertEquals(what + "linear light", was.linearLight(), now.linearLight());
-            assertEquals(what + "depth mode", was.depthMode(), now.depthMode());
-            assertEquals(what + "scene colour margin", was.sceneColorMargin(), now.sceneColorMargin(), 0f);
-            assertEquals(what + "keywords", was.featureNames(), now.featureNames());
-            assertEquals(what + "permutations", was.permutations().dimensions(), now.permutations().dimensions());
-            assertEquals(what + "engine buffers", was.engineBuffers(), now.engineBuffers());
-            assertEquals(what + "buffers", was.buffers().size(), now.buffers().size());
-            assertEquals(what + "properties", new TreeSet<>(names(was.properties())), new TreeSet<>(names(now.properties())));
-            assertEquals(what + "tube", was.tube(), now.tube());
-            assertEquals(what + "post targets", was.postTargets(), now.postTargets());
-            assertEquals(what + "pass count", was.passes().size(), now.passes().size());
-            for (int p = 0; p < was.passes().size(); p++) {
-                CgParsedPass a = was.passes().get(p), b = now.passes().get(p);
-                assertEquals(what + "pass " + p, a.lightMode(), b.lightMode());
-                CgRenderState ra = a.renderState(), rb = b.renderState();
-                if (sameBlend) {
-                    assertEquals(what + a.lightMode() + " blend", slot(ra.getBlend(), CgBlendState.DISABLED), slot(rb.getBlend(), CgBlendState.DISABLED));
-                } else {
-                    assertEquals(what + "premultiplied", CgBlendMode.PREMULTIPLIED.state(), rb.getBlend());
-                }
-                // CgPostMaterial draws every pass depthless, its one full-screen triangle facing the camera
-                if (!post) {
-                    assertEquals(what + a.lightMode() + " depth", slot(ra.getDepth(), CgDepthState.TEST_WRITE), slot(rb.getDepth(), CgDepthState.TEST_WRITE));
-                    assertEquals(what + a.lightMode() + " cull", slot(ra.getCull(), CgCullState.BACK), slot(rb.getCull(), CgCullState.BACK));
-                }
-                assertEquals(what + a.lightMode() + " stencil", slot(ra.getStencil(), CgStencilState.DISABLED), slot(rb.getStencil(), CgStencilState.DISABLED));
-                assertEquals(what + a.lightMode() + " writes nothing", ra.writesNothing(), rb.writesNothing());
-                // A ui material's v2f is its primitive's, never authored
-                if (!ui) assertEquals(what + a.lightMode() + " v2f", CgShaderParser.parseV2fFields(a), authored(b));
-            }
-            assertEquals(what + "glow merge", CgMaterialShaderCompiler.emissionMerge(was),
-                    CgMaterialShaderCompiler.emissionMerge(now));
+            assertEquals(what + "differs", List.of(), FormatEquivalence.differences(was, now, sameBlend));
         }
+    }
+
+    @Test
+    public void aFactoryFadesWhatTheMaterialAddsAndStartsItsSurface() {
+        CgParsedPass forward = parse(path("faded")).passes().get(0);
+        String body = forward.fragmentBody();
+        assertTrue(body, body.contains("s.light = vec2(15.0, 15.0);"));                     // its defaults
+        assertTrue(body, body.contains("s.baseColor *= _cg_fade;") && body.contains("s.opacity *= _cg_fade;"));
+        assertTrue(body, body.contains("cg_Light = s.light;"));                              // the defaults' hook runs
+        assertTrue(body, body.contains("gl_FragDepth = cg_WindowDepth(s.depth);"));
     }
 
     @Test
@@ -139,7 +102,7 @@ public class MaterialFormatTest {
         List<String> failures = new ArrayList<>();
         int programs = 0;
         // and docs/MATERIAL_FORMAT.md's examples, so the guide compiles as written
-        List<String> shapes = new ArrayList<>(List.of("puff", "wobble", "guide/glass", "guide/moss", "guide/haze",
+        List<String> shapes = new ArrayList<>(List.of("puff", "wobble", "faded","guide/glass", "guide/moss", "guide/haze",
                 "guide/sparks", "guide/shell", "guide/desaturate", "guide/soft_glow", "guide/pill", "guide/shimmer"));
         for (String[] pair : PAIRS) shapes.add(pair[0]);
         for (String shape : shapes) {
@@ -243,13 +206,6 @@ public class MaterialFormatTest {
         return CgMaterialState.builder().blend(CgBlendMode.valueOf(blend)).build();
     }
 
-    /** The v2f a material authored: its own fields, not the factory parameters the lowering passes. */
-    private static List<CgShaderParser.V2fField> authored(CgParsedPass pass) {
-        List<CgShaderParser.V2fField> out = new ArrayList<>();
-        for (CgShaderParser.V2fField f : CgShaderParser.parseV2fFields(pass)) if (!f.name().startsWith("_cg_")) out.add(f);
-        return out;
-    }
-
     private static List<String> fieldNames(CgParsedPass pass) {
         List<String> out = new ArrayList<>();
         for (CgShaderParser.V2fField f : CgShaderParser.parseV2fFields(pass)) out.add(f.name());
@@ -264,17 +220,6 @@ public class MaterialFormatTest {
 
     private static String path(String name) {
         return (name.contains(":") ? name : "cgformat:shaders/" + name) + ".shader";
-    }
-
-    /** A render state's slot as drawn: one a pass leaves undeclared takes the default. */
-    private static <T> T slot(T declared, T fallback) {
-        return declared != null ? declared : fallback;
-    }
-
-    private static List<String> names(List<CgMaterialProperty> props) {
-        List<String> out = new ArrayList<>();
-        for (CgMaterialProperty p : props) out.add(p.getName() + ":" + p.getType());
-        return out;
     }
 
     private static List<Set<String>> subsets(List<String> names) {

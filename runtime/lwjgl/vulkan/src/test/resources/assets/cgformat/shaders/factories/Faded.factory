@@ -1,0 +1,21 @@
+// A mesh whose draws fade it by their header, and light it at full: a factory's pixel side.
+Factory { VertexType spatial  Fade cg_Vfx.presence }
+
+Declarations {
+    #include "crystalgraphics:shaders/lib/vfx/fx_draw.glsl"
+}
+
+void fill(inout CgVertex v) {
+    v.position = cg_Position;
+    v.normal = normalize(CG_NORMAL_MATRIX * cg_Normal);
+    v.color = cg_Color;
+    v.uv0 = cg_TexCoord0;
+    v.uv1 = cg_TexCoord1;
+    v.uv2 = cg_TexCoord2;
+    v.uv3 = cg_TexCoord3;
+    v.world = (CG_OBJECT_TO_WORLD * vec4(cg_Position, 1.0)).xyz;
+}
+
+void defaults(inout CgSurface s) {
+    s.light = vec2(15.0, 15.0);
+}

@@ -101,6 +101,7 @@ passes it draws in (§ 4.4), so writing nothing you do not need is also what kee
 | `shadingModelId` | `uvec2` | `(1, 0)` | A model and type a post material reads |
 | `light` | `vec2` | the draw's | The `(block, sky)` light it is lit by: for a particle, its own |
 | `volumeDepth` | `float` | `0` | A volume's eye distance, so what draws after it knows where smoke starts |
+| `depth` | `float` | the fragment's own | The eye depth it stands at: a volume traced inside its hull writes where the ray enters (`cg_EyeDepth(point)`), nearer or farther |
 
 ```glsl
 // A glass pane that tints, bends a little, and glows where it is cracked
@@ -113,9 +114,20 @@ void surface(in v2f i, inout CgSurface s) {
 }
 ```
 
-Screen-space values come from the engine's helpers: `gl_FragCoord.xy / CG_RESOLUTION` (the pixel's screen UV),
-`cg_LinearEyeDepth(gl_FragCoord.z)`, `CG_SCENE_COLOR(uv)`, `CG_SCENE_EYE_DEPTH(uv)`. Naming one is enough: the engine
-copies the scene for you. A surface reading `CG_SCENE_COLOR` says how far past itself it reads, `Material {
+What the engine hands every material, by name:
+
+| Name | Is | Unreal |
+|---|---|---|
+| `CG_CAMERA_POSITION` | the eye, in the space positions are in (camera-relative world) | Camera Position |
+| `cg_PixelRay()` | the unit view ray from the eye through this pixel (`surface()` only) | Camera Vector, reversed |
+| `cg_EyeDepth(point)` | a point's eye depth: what `s.depth` takes | |
+| `cg_DepthFade(distance)` | 0 where this pixel meets what is behind it, 1 `distance` blocks in front: soft particles | DepthFade |
+| `cg_LinearEyeDepth(gl_FragCoord.z)` | this pixel's eye depth | Pixel Depth |
+| `gl_FragCoord.xy / CG_RESOLUTION` | this pixel's screen UV | Screen Position |
+| `CG_SCENE_COLOR(uv)`, `CG_SCENE_EYE_DEPTH(uv)` | the scene's colour and depth behind it | Scene Color, Scene Depth |
+| `CG_TIME` | seconds | Time |
+
+Naming a scene read is enough: the engine copies the scene for you. A surface reading `CG_SCENE_COLOR` says how far past itself it reads, `Material {
 SceneColorMargin 0.05 }`, so the copy covers it.
 
 ### 4.2 `v2f`: what reaches the pixel
@@ -218,7 +230,9 @@ CgMaterial cone = stone.keyword("SHAPE_CONE", true);
 ```
 
 Each combination is its own program, compiled once: use a keyword for a choice made per material, a property for a
-value that changes.
+value that changes. A keyword the renderer flips at each draw, rather than a material choosing it once, is marked
+`switched` (`DEPTH ("Writes depth", switched)`): every combination of the switched ones is built ahead, so no draw waits
+on a compile. A one-of is always built ahead.
 
 ### 4.7 `Properties { }` and `Buffers { }`: what it reads
 
@@ -374,6 +388,11 @@ void fill(inout CgVertex v) {                               // fills every field
 | `Declarations { }` | GLSL at file scope in both stages: includes, the parameters' variable; a `#pragma` here goes to the program's head |
 | `Parameters { }` | each field a fragment may read: `type name;`, arrays as `vec4 d[4];` |
 | `fill(inout CgVertex v)` | runs in the vertex stage with the vertex format's attributes (`cg_Position`, …) in scope |
+| `defaults(inout CgSurface s)` | optional, runs in the pixel stage before the material's `surface()`: what it starts from (a particle's own light) |
+| `Factory { Fade <expression> }` | optional: fades all the material adds by that value after `surface()`, by its blend mode (an ending's fade: `cg_Vfx.presence`), so no material applies it |
+
+A factory has a pixel side as Unreal's does: `defaults` and `Fade` are where a draw kind's convention lives once, rather
+than in every material drawn by it.
 
 **A factory describes what is drawn; something must still draw it.** The file says what the material reads; a renderer
 of yours (Java) records the draws that bind those buffers and properties. A factory with no renderer behind it
@@ -647,7 +666,8 @@ Java. A primitive over the canvas's own quads, like this ring, needs none: `canv
 ## 9. `global`: the engine's own
 
 For the renderer's own passes and a consumer's own mesh pass: a raw vertex and fragment pair, no outputs, nothing
-applied for you. The one domain that writes `gl_Position` and a `RenderState`.
+applied for you. The one domain that writes `gl_Position` and a `RenderState`, and names the engine buffers it reads
+(`EngineBuffers { curve clip }`), since nothing else draws it.
 
 ```glsl
 #domain global

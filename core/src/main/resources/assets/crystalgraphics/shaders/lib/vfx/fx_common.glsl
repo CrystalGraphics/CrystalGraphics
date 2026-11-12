@@ -6,15 +6,9 @@
 //   fx_value_noise / _fbm / _ridged             value noise, 0..1: blotchier; surfaces and patterns
 #pragma once
 
-// The eye, in the space shaders work in: not always the origin, since a host may fold a translation into the view. A
-// macro, since a material's own #includes come before cg_env.glsl declares the frame block: it may only be expanded
-// inside vertex() or fragment().
-#define FX_CAMERA (-(transpose(mat3(cg_ViewMatrix)) * cg_ViewMatrix[3].xyz))
-#if !defined(CG_VERTEX_STAGE) && !defined(CG_COMPUTE_STAGE)
-// fragment() only: the view ray through this pixel's centre, from its window position alone, so bit for bit the same
-// in every fragment of the pixel, as one from an interpolated position is not.
-#define FX_PIXEL_RAY normalize(transpose(mat3(cg_ViewMatrix)) * vec3((gl_FragCoord.x / CG_RESOLUTION.x * 2.0 - 1.0 + cg_ProjMatrix[2][0]) / cg_ProjMatrix[0][0], (gl_FragCoord.y / CG_RESOLUTION.y * 2.0 - 1.0 + cg_ProjMatrix[2][1]) / cg_ProjMatrix[1][1], -1.0))
-#endif
+// The eye and the pixel's view ray are the engine's (cg_env.glsl): these names go with their last callers (P2.5 F5).
+#define FX_CAMERA CG_CAMERA_POSITION
+#define FX_PIXEL_RAY cg_PixelRay()
 // The window depth of point p in the pass's convention, reversed or not: what gl_FragDepth takes.
 #define FX_WINDOW_DEPTH(p) fx_window_depth(cg_ProjMatrix * (cg_ViewMatrix * vec4((p), 1.0)))
 
