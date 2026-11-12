@@ -1,0 +1,65 @@
+// Text: CgTextBatch's glyph layers on bitmap, MSDF and MTSDF glyphs. surface() changes the paint (a colour, or the
+// gradient a quad's custom0.w names); cg_text_layer (env/buffer/text.glsl) covers and premultiplies it. MSDF_MODE and
+// WORLD_LABEL are CgTextMaterials' four fixed instances, never toggled.
+Primitive { Queue Overlay }
+EngineBuffers { quad clip text }
+
+Declarations {
+    #pragma cg_feature MSDF_MODE
+    #pragma cg_feature WORLD_LABEL
+    #pragma cg_permutation MSDF_MODE WORLD_LABEL
+}
+
+Properties {
+    _MainTex ("Atlas Texture", sampler2DArray) = "white"
+    _Gradients ("Gradient ramps", sampler2D) = "white"
+}
+
+// Tested, never written: a draw's layers are coplanar and would depth-fight (TextMeshPro's ZWrite Off)
+RenderState {
+    Blend ONE ONE_MINUS_SRC_ALPHA
+    Cull OFF
+    DepthTest LEQUAL
+    DepthWrite OFF
+}
+
+// gammaSmall, gammaLarge: text_gamma_terms of the glyph's colour under each CgTextGamma level, constant across the quad
+struct v2f { vec2 _cg_in_uv; vec4 _cg_in_color; float _cg_in_layer; vec2 _cg_in_param; vec4 _cg_in_gammaSmall; vec4 _cg_in_gammaLarge; };
+
+// A retained world label's records are in its label's own space, its node the label's object record
+void vertex(out v2f o) {
+#ifdef WORLD_LABEL
+    int label = int(QUAD_DATA(CG_INSTANCE_ID).node);
+    vec3 local = QUAD_DATA(CG_INSTANCE_ID).origin + CG_VERTEX_CORNER.x * QUAD_DATA(CG_INSTANCE_ID).right
+            + CG_VERTEX_CORNER.y * QUAD_DATA(CG_INSTANCE_ID).up;
+    gl_Position = cg_ProjMatrix * (cg_Objects[label].modelMatrix * vec4(local, 1.0));
+#else
+    gl_Position = cg_ProjMatrix * cg_ViewMatrix * vec4(CG_QUAD_WORLD_POS, 1.0);
+#endif
+    o._cg_in_uv = CG_QUAD_UV;
+    o._cg_in_color = CG_QUAD_COLOR;
+    o._cg_in_layer = CG_QUAD_ATLAS_LAYER;
+    o._cg_in_param = CG_VERTEX_CORNER;
+    o._cg_in_gammaSmall = text_gamma_terms(CG_QUAD_COLOR.rgb, u_TextGammaSmall);
+    o._cg_in_gammaLarge = text_gamma_terms(CG_QUAD_COLOR.rgb, u_TextGammaLarge);
+}
+
+void fragment(in v2f i, out vec4 fragColor) {
+    CgUiInput _cg_ui;
+    _cg_ui.param = i._cg_in_param;
+    _cg_ui.uv = i._cg_in_uv;
+    _cg_ui.size = vec2(length(QUAD_DATA(CG_INSTANCE_ID).right), length(QUAD_DATA(CG_INSTANCE_ID).up));
+    _cg_ui.local = _cg_ui.param * _cg_ui.size;
+    _cg_ui.color = i._cg_in_color;
+    _cg_ui.custom0 = CG_QUAD_CUSTOM0;
+    _cg_ui.custom1 = CG_QUAD_CUSTOM1;
+    CgUiSurface s;
+    s.color = _cg_ui.color;
+    // A runtime branch, not a keyword: a variant would break the batch
+    if (CG_QUAD_CUSTOM0.w > 0.0) s.color *= texture(_Gradients, vec2(cg_text_gradient_t(_cg_ui.param), CG_QUAD_CUSTOM0.w));
+    s.coverage = 1.0;
+    s.premultiplied = false;
+    CG_SURFACE(_cg_ui, s);
+    fragColor = cg_text_layer(_MainTex, _cg_ui.uv, i._cg_in_layer, _cg_ui.param, s.color, i._cg_in_gammaSmall,
+            i._cg_in_gammaLarge) * s.coverage;
+}

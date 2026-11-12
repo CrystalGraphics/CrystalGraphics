@@ -1,0 +1,40 @@
+// Sprites: a particle renderer's camera-facing quads (CgVfxQuads), each corner placed, faced and flipbooked by the
+// renderer: Unreal's sprite vertex factory, through particle_factory.glsl. A beam or a ribbon draws the same material
+// as strips. v.position is the corner's offset from its particle's centre; uv0 and uv1 frame a's and b's, uv2 and uv3
+// both unflipped. cg_Particle is the particle (CgMaterialParticle); cg_Particle.record reads the rest (CG_PARTICLE_*).
+Factory { VertexType none  Parameters cg_Particle }
+EngineBuffers { particle }
+
+Declarations {
+    CgMaterialParticle cg_Particle;
+}
+
+// What a fragment may read, each passed only where surface() names it
+Parameters {
+    vec4 color;
+    float relativeTime;
+    float random;
+    vec4 velocity;
+    vec4 positionAndSize;
+    vec2 size;
+    float spriteRotation;
+    vec2 subUVCoords0;
+    vec2 subUVCoords1;
+    float subUVLerp;
+    flat int record;
+    vec4 dynamicParameters[4];
+    flat int dynamics;
+}
+
+void fill(inout CgVertex v) {
+    CgMaterialVertex placed = cg_material_vertex();
+    cg_Particle = cg_material_particle();
+    v.position = placed.worldPosition - cg_Particle.positionAndSize.xyz;
+    v.normal = placed.tangentToWorld[2];
+    v.color = placed.vertexColor;
+    v.uv0 = placed.texCoords[0];
+    v.uv1 = placed.texCoords[1];
+    v.uv2 = placed.texCoords[2];
+    v.uv3 = placed.texCoords[3];
+    v.world = placed.worldPosition;
+}

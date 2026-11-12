@@ -1,6 +1,5 @@
 package com.crystalgraphics.api.material;
 
-import com.crystalgraphics.vfx.render.CgVfxVertexFactories;
 import com.github.bsideup.jabel.Desugar;
 
 import javax.annotation.Nullable;
@@ -15,8 +14,14 @@ import java.util.Map;
  * material names one ({@code Material { VertexFactory Sprites }}, {@code Mesh} by default); the engine compiles its
  * program against that factory's vertex format and fills the {@code CgVertex} its {@code vertex()} receives.
  *
+ * <p>A factory is a file, found by its name the first time a material names it: {@code Sprites} is
+ * {@code crystalgraphics:shaders/factories/Sprites.factory}, {@code mymod:Ribbons} is
+ * {@code mymod:shaders/factories/Ribbons.factory} (its shape: {@code CgFormatTemplates}). The engine's are files:
+ * {@code Mesh}, {@code Procedural}, {@code Sprites}, {@code MeshParticles}, {@code Tube}, {@code TubeClosed},
+ * {@code TubeVolume}. This class registers one made in Java, which a file of the same name never replaces:</p>
+ *
  * <pre>{@code
- * // A factory of a mod's own, registered before any material naming it is parsed:
+ * // A factory built at run time, registered before any material naming it is parsed:
  * CgVertexFactory.register(CgVertexFactory.builder("Ribbons")
  *         .vertexType("none")
  *         .buffers("myribbons")                                    // engine buffer tokens its draws bind
@@ -40,8 +45,8 @@ import java.util.Map;
  * }</pre>
  *
  * <ul>
- *   <li>The engine registers {@code Mesh} and {@code Procedural}; the VFX engine its particle and tube factories
- *       ({@link CgVfxVertexFactories}).</li>
+ *   <li>Something must draw it: a factory's file or registration says what it reads (buffers, properties, tags); the
+ *       renderer that binds them is Java (the particle and tube factories' are the VFX engine's).</li>
  *   <li>{@code fill} runs in the vertex stage with {@code CgVertex v} declared; it sets every field, {@code world}
  *       last, and the parameters struct. The vertex format's attributes ({@code cg_Position}, ...), the engine's tokens'
  *       macros and the declarations are in scope.</li>
@@ -154,35 +159,7 @@ public final class CgVertexFactory {
     /** No mesh: a draw of a vertex count, each vertex placed by the material's {@code vertex()}. */
     public static final String PROCEDURAL = "Procedural";
 
-    /** The {@code Mesh} factory's fill: a mesh's vertex, placed by its draw's transform. */
-    public static final String MESH_FILL = """
-            v.position = cg_Position;
-            v.normal = normalize(CG_NORMAL_MATRIX * cg_Normal);
-            v.color = cg_Color;
-            v.uv0 = cg_TexCoord0;
-            v.uv1 = cg_TexCoord1;
-            v.uv2 = cg_TexCoord2;
-            v.uv3 = cg_TexCoord3;
-            v.world = (CG_OBJECT_TO_WORLD * vec4(cg_Position, 1.0)).xyz;
-            """;
-
     private static final Map<String, Factory> FACTORIES = new LinkedHashMap<>();
-
-    static {
-        register(builder(MESH).vertexType("spatial").fill(MESH_FILL).build());
-        register(builder(PROCEDURAL).vertexType("none").placesNothing().fill("""
-                v.position = vec3(0.0);
-                v.normal = vec3(0.0, 1.0, 0.0);
-                v.color = vec4(1.0);
-                v.uv0 = vec2(0.0);
-                v.uv1 = vec2(0.0);
-                v.uv2 = vec2(0.0);
-                v.uv3 = vec2(0.0);
-                v.world = vec3(0.0);
-                """).build());
-        // The VFX engine's, as CgEngineBufferRegistry registers the particle buffers: present wherever a material parses
-        for (Factory f : CgVfxVertexFactories.all()) register(f);
-    }
 
     private CgVertexFactory() {}
 
@@ -198,14 +175,10 @@ public final class CgVertexFactory {
         }
     }
 
-    /** The factory of that name, or null. */
+    /** The factory registered under that name, or null: a file's is found by the parse, not here. */
+    @Nullable
     public static synchronized Factory get(String name) {
         return FACTORIES.get(name);
-    }
-
-    /** Every registered factory's name, in registration order. */
-    public static synchronized List<String> names() {
-        return List.copyOf(FACTORIES.keySet());
     }
 
     /** Every registered factory, in registration order. */

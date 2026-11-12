@@ -47,7 +47,7 @@ struct FxTubeVertex {
     vec4 header;
 };
 
-// cg_Tube: where on its path a #domain surface material's vertex is, under the tube factories (CgVfxVertexFactories).
+// cg_Tube: where on its path a #domain surface material's vertex is, under the tube factories (shaders/factories/Tube*).
 // A volume's ring is its chunk's first, its angle and cap 0.
 struct CgTube {
     FxRing ring;     // the vertex's ring, relative to origin

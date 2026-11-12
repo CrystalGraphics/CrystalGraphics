@@ -18,6 +18,7 @@ import com.crystalgraphics.material.CgMaterialShaderRegistry;
 import com.crystalgraphics.material.parse.CgMaterialShaderCompiler;
 import com.crystalgraphics.material.parse.CgParsedPass;
 import com.crystalgraphics.material.parse.CgParsedShader;
+import com.crystalgraphics.material.parse.CgShaderParseException;
 import com.crystalgraphics.material.parse.CgShaderParser;
 import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.platform.rhi.nulldrv.CgNullRHI;
@@ -137,7 +138,7 @@ public class MaterialFormatTest {
     public void everyPassAndVariantBuildsOnTheDevice() {
         List<String> failures = new ArrayList<>();
         int programs = 0;
-        List<String> shapes = new ArrayList<>(List.of("puff"));
+        List<String> shapes = new ArrayList<>(List.of("puff", "wobble"));
         for (String[] pair : PAIRS) shapes.add(pair[0]);
         for (String shape : shapes) {
             String path = path(shape);
@@ -216,6 +217,18 @@ public class MaterialFormatTest {
         assertTrue(fields.toString(), fields.containsAll(List.of("_cg_in_Tube_ring_position", "_cg_in_Tube_ring_radius",
                 "_cg_in_Tube_ring_intensity", "_cg_in_Tube_origin")));
         assertFalse(fields.toString(), fields.contains("_cg_in_Tube_row"));
+    }
+
+    @Test
+    public void aModsFactoryIsReadFromItsFile() {
+        assertEquals(List.of("uv0", "_cg_in_Wobble_phase"), fieldNames(parse(path("wobble")).passes().get(0)));
+        try {
+            CgShaderParser.parse("#domain surface\nMaterial { VertexFactory cgformat:Nowhere }\n"
+                    + "void surface(in v2f i, inout CgSurface s) { s.baseColor = vec3(1.0); }\n", "test:nowhere");
+            fail("no factory file");
+        } catch (CgShaderParseException expected) {
+            assertTrue(expected.getMessage(), expected.getMessage().contains("cgformat:shaders/factories/Nowhere.factory"));
+        }
     }
 
     @Test

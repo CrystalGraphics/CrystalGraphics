@@ -1,0 +1,44 @@
+// Quad: CgQuadBatch's quads (the box, images, gradients), grown half a pixel when rotated so the edge ramp fits
+// (CG_QUAD_EDGE_*). A #domain ui material's surface() runs at CG_SURFACE; around it the clip, the item's opacity and
+// premultiplying, clamped as a blend unit clamps. A layer at screen resolution is premultiplied already.
+Primitive { Queue Transparent }
+EngineBuffers { quad clip shape }
+
+RenderState {
+    Blend ONE ONE_MINUS_SRC_ALPHA
+    Cull OFF
+    DepthTest LEQUAL
+    DepthWrite OFF
+}
+
+struct v2f { vec2 _cg_in_param; };
+
+void vertex(out v2f o) {
+    o._cg_in_param = CG_QUAD_EDGE_PARAM;
+    gl_Position = cg_ProjMatrix * cg_ViewMatrix * vec4(CG_QUAD_EDGE_WORLD_POS(o._cg_in_param), 1.0);
+}
+
+void fragment(in v2f i, out vec4 fragColor) {
+    // Before any branch of surface(): it takes derivatives
+    float _cg_clip = CG_CLIP_QUAD_COVERAGE;
+    CgUiInput _cg_ui;
+    _cg_ui.param = i._cg_in_param;
+    _cg_ui.uv = CG_QUAD_EDGE_UV(_cg_ui.param);
+    _cg_ui.size = vec2(length(CG_QUAD_RIGHT), length(CG_QUAD_UP));
+    _cg_ui.local = _cg_ui.param * _cg_ui.size;
+    _cg_ui.color = CG_QUAD_COLOR;
+    _cg_ui.custom0 = CG_QUAD_CUSTOM0;
+    _cg_ui.custom1 = CG_QUAD_CUSTOM1;
+    CgUiSurface s;
+    s.color = _cg_ui.color;
+    s.coverage = CG_QUAD_EDGE_COVERAGE(_cg_ui.param);
+    s.premultiplied = false;
+    CG_SURFACE(_cg_ui, s);
+    float _cg_k = s.coverage * _cg_clip * CG_QUAD_OPACITY;
+    if (s.premultiplied) {
+        fragColor = s.color * _cg_k;
+    } else {
+        float _cg_a = clamp(s.color.a * _cg_k, 0.0, 1.0);
+        fragColor = vec4(clamp(s.color.rgb, 0.0, 1.0) * _cg_a, _cg_a);
+    }
+}

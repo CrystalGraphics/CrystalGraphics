@@ -1,0 +1,50 @@
+// TubeVolume: a VFX tube slot's chunks each drawn on a sphere round their rings and as far again as their light
+// reaches, for a shader summing its own chunk's light. cg_Tube's ring is the chunk's first, its angle and cap 0.
+Factory { VertexType spatial  Parameters cg_Tube }
+Tags { "Tube" = "Volume" }
+
+Properties {
+    _FxPath ("Path rings", sampler2D) = "black"
+}
+
+Declarations {
+    #include "crystalgraphics:shaders/lib/vfx/fx_tube.glsl"
+    CgTube cg_Tube;
+}
+
+Parameters {
+    vec3 ring.position;
+    float ring.radius;
+    vec3 ring.tangent;
+    float ring.arc;
+    vec3 ring.normal;
+    float ring.intensity;
+    float angle;
+    float cap;
+    vec4 header;
+    flat int row;
+    flat int first;
+    flat int owned;
+    float size;
+    vec3 origin;
+}
+
+void fill(inout CgVertex v) {
+    cg_Tube.row = int(CG_OBJECT_CUSTOM0.x + 0.5);
+    cg_Tube.first = int(CG_OBJECT_CUSTOM0.y + 0.5);
+    cg_Tube.owned = int(CG_OBJECT_CUSTOM1.w + 0.5);
+    cg_Tube.size = CG_OBJECT_CUSTOM0.z;
+    cg_Tube.origin = CG_OBJECT_TO_WORLD[3].xyz - CG_OBJECT_CUSTOM1.xyz;
+    cg_Tube.header = fx_path_header(_FxPath, cg_Tube.row);
+    cg_Tube.ring = fx_ring(_FxPath, cg_Tube.row, cg_Tube.first);
+    cg_Tube.angle = 0.0;
+    cg_Tube.cap = 0.0;
+    v.position = cg_Position;
+    v.normal = normalize(CG_NORMAL_MATRIX * cg_Normal);
+    v.color = cg_Color;
+    v.uv0 = cg_TexCoord0;
+    v.uv1 = cg_TexCoord1;
+    v.uv2 = cg_TexCoord2;
+    v.uv3 = cg_TexCoord3;
+    v.world = (CG_OBJECT_TO_WORLD * vec4(cg_Position, 1.0)).xyz;
+}

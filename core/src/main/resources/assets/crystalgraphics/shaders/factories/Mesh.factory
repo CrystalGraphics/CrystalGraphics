@@ -1,0 +1,14 @@
+// Mesh: a mesh component's vertices, static, instanced or skinned (the skinned program is the engine's variant),
+// placed by its draw's transform. The default VertexFactory.
+Factory { VertexType spatial }
+
+void fill(inout CgVertex v) {
+    v.position = cg_Position;
+    v.normal = normalize(CG_NORMAL_MATRIX * cg_Normal);
+    v.color = cg_Color;
+    v.uv0 = cg_TexCoord0;
+    v.uv1 = cg_TexCoord1;
+    v.uv2 = cg_TexCoord2;
+    v.uv3 = cg_TexCoord3;
+    v.world = (CG_OBJECT_TO_WORLD * vec4(cg_Position, 1.0)).xyz;
+}

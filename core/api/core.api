@@ -1228,12 +1228,10 @@ com/crystalgraphics/api/material/CgVertexFactory
   access public,final
   extends java/lang/Object
   field public,static,final MESH Ljava/lang/String;
-  field public,static,final MESH_FILL Ljava/lang/String;
   field public,static,final PROCEDURAL Ljava/lang/String;
   method public,static all ()Ljava/util/List;
   method public,static builder (Ljava/lang/String;)Lcom/crystalgraphics/api/material/CgVertexFactory$Builder;
   method public,static get (Ljava/lang/String;)Lcom/crystalgraphics/api/material/CgVertexFactory$Factory;
-  method public,static names ()Ljava/util/List;
   method public,static register (Lcom/crystalgraphics/api/material/CgVertexFactory$Factory;)V
 com/crystalgraphics/api/material/CgVertexFactory$Builder
   access public,final
@@ -6961,6 +6959,10 @@ com/crystalgraphics/material/parse/CgBufferReaders
   extends java/lang/Object
   method public,static reader (Ljava/lang/StringBuilder;Lcom/crystalgraphics/compute/source/CgBufferDecl;I)V
   method public,static readerBlock (Lcom/crystalgraphics/compute/source/CgBufferDecl;)Ljava/lang/String;
+com/crystalgraphics/material/parse/CgFormatTemplates
+  access public,final
+  extends java/lang/Object
+  method public,static forget ()V
 com/crystalgraphics/material/parse/CgGlslEmitter
   access public,final
   extends java/lang/Object
@@ -19698,15 +19700,6 @@ com/crystalgraphics/vfx/render/CgVfxTube
   method public <init> ()V
   method public submit (Lcom/crystalgraphics/render/world/CgWorldRenderer;Lcom/crystalgraphics/api/mesh/CgMesh;Lcom/crystalgraphics/api/material/CgMaterialInterface;Lcom/crystalgraphics/vfx/look/CgVfxLook$Placed;Lcom/crystalgraphics/vfx/path/CgVfxPath;ILcom/crystalgraphics/vfx/CgVfxEffect;FIFFF)V
   method public,static mesh (Z)Lcom/crystalgraphics/api/mesh/CgMesh;
-com/crystalgraphics/vfx/render/CgVfxVertexFactories
-  access public,final
-  extends java/lang/Object
-  field public,static,final MESH_PARTICLES Ljava/lang/String;
-  field public,static,final SPRITES Ljava/lang/String;
-  field public,static,final TUBE Ljava/lang/String;
-  field public,static,final TUBE_CLOSED Ljava/lang/String;
-  field public,static,final TUBE_VOLUME Ljava/lang/String;
-  method public,static all ()Ljava/util/List;
 com/crystalgraphics/vfx/scalability/CgVfxBudget
   access public,final
   extends java/lang/Object

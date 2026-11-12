@@ -1,0 +1,62 @@
+// Curve: CgCurveBatch's strokes, triangles and cells, one instance each, its unit quad grown to the control hull's
+// bounds. SCREEN: a 2D camera, each fragment's point from gl_FragCoord, so a tessellated fill's cells agree. The colour
+// runs along the stroke (t); premultiplied out, as every ui material.
+Primitive { Queue Transparent }
+EngineBuffers { curve clip }
+
+Declarations {
+    #pragma cg_feature SCREEN
+    #include "crystalgraphics:shaders/lib/stroke.glsl"
+}
+
+RenderState {
+    Blend ONE ONE_MINUS_SRC_ALPHA
+    Cull OFF
+    DepthTest LEQUAL
+    DepthWrite OFF
+}
+
+// In the control points' space: after the pose, before the projection
+struct v2f { vec2 _cg_in_posXy; };
+
+void vertex(out v2f o) {
+    vec3 world = CG_CURVE_WORLD_POS;
+    o._cg_in_posXy = world.xy;
+    gl_Position = cg_ProjMatrix * cg_ViewMatrix * vec4(world, 1.0);
+}
+
+void fragment(in v2f i, out vec4 fragColor) {
+    // Before any discard: it takes derivatives
+    float _cg_clip = CG_CLIP_CURVE_COVERAGE;
+#ifdef SCREEN
+    mat4 _cg_camera = cg_ProjMatrix * cg_ViewMatrix;
+    vec2 _cg_ndc = gl_FragCoord.xy / cg_Resolution * 2.0 - 1.0;
+    vec2 _cg_p = inverse(mat2(_cg_camera[0].xy, _cg_camera[1].xy)) * (_cg_ndc - _cg_camera[3].xy);
+#else
+    vec2 _cg_p = i._cg_in_posXy;
+#endif
+    float _cg_t;
+    float _cg_cover = curve_instance_coverage(_cg_p, CG_CURVE_P0.xy, CG_CURVE_P1.xy, CG_CURVE_P2.xy,
+            CG_CURVE_WIDTHS, CG_CURVE_FEATHER, int(CG_CURVE_FLAGS + 0.5), CG_CURVE_GRADIENT, _cg_t);
+    CgUiInput _cg_ui;
+    _cg_ui.param = vec2(_cg_t, 0.0);
+    _cg_ui.uv = _cg_ui.param;
+    _cg_ui.local = _cg_p;
+    _cg_ui.size = vec2(0.0);
+    _cg_ui.color = mix(CG_CURVE_COLOR0, CG_CURVE_COLOR1, _cg_t);
+    _cg_ui.custom0 = vec4(0.0);
+    _cg_ui.custom1 = vec4(0.0);
+    CgUiSurface s;
+    s.color = _cg_ui.color;
+    s.coverage = _cg_cover;
+    s.premultiplied = false;
+    CG_SURFACE(_cg_ui, s);
+    if ((s.premultiplied ? s.color.a : s.color.a * s.coverage * CG_CURVE_OPACITY) <= (1.0 / 255.0)) discard;
+    float _cg_k = s.coverage * _cg_clip * CG_CURVE_OPACITY;
+    if (s.premultiplied) {
+        fragColor = s.color * _cg_k;
+    } else {
+        float _cg_a = clamp(s.color.a * _cg_k, 0.0, 1.0);
+        fragColor = vec4(clamp(s.color.rgb, 0.0, 1.0) * _cg_a, _cg_a);
+    }
+}

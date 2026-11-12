@@ -37,10 +37,13 @@ void surface(in v2f i, inout CgSurface s) {
 - **`vertex(inout CgVertex v, out v2f o)`** moves `v.world` (camera-relative); the engine projects it. Never
   `gl_Position`. `v.normal` is world-space. `Material { VertexFactory Procedural }` draws no mesh: `vertex()` assigns
   `v.world`.
-- **`VertexFactory` is what draws it** (`CgVertexFactory`): `Mesh` (default), `Procedural`, and the VFX engine's
-  `Sprites`, `MeshParticles` (a particle renderer: `cg_Particle`, Unreal's particle parameters) and `Tube`,
-  `TubeClosed`, `TubeVolume` (a tube slot: `cg_Tube`, where on its path the vertex is, and `_FxPath` bound for you).
-  A factory's parameters read in `surface()` reach the fragment field by field, only those named:
+- **`VertexFactory` is what draws it**: `Mesh` (default), `Procedural`, and the VFX engine's `Sprites`,
+  `MeshParticles` (a particle renderer: `cg_Particle`, Unreal's particle parameters) and `Tube`, `TubeClosed`,
+  `TubeVolume` (a tube slot: `cg_Tube`, where on its path the vertex is, and `_FxPath` bound for you). Each is a file,
+  `shaders/factories/<Name>.factory`; `VertexFactory mymod:Ribbons` reads `mymod:shaders/factories/Ribbons.factory`
+  (its shape: `CgFormatTemplates`), and `CgVertexFactory.register` adds one built in Java. A ui `Primitive` is
+  `shaders/primitives/<Name>.primitive` the same way. A factory's parameters read in `surface()` reach the fragment
+  field by field, only those named:
 
 ```glsl
 Material { BlendMode Translucent  VertexFactory Sprites }

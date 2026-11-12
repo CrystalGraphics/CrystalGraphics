@@ -2,6 +2,7 @@ package com.crystalgraphics.material;
 
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgMaterialState;
+import com.crystalgraphics.material.parse.CgFormatTemplates;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.CgContentHash;
 import com.crystalgraphics.util.trace.CgChannels;
@@ -137,6 +138,8 @@ public final class CgMaterialShaderRegistry {
      * Invalidation for these flows from the graph, never from the resource manager.</p>
      */
     public void reloadAll() {
+        // The vertex factories and ui primitives a format file names are files too: read again at the next parse
+        CgFormatTemplates.forget();
         for (CgMaterialShader asset : cache.values())
             if (!asset.isGenerated()) asset.markDirty();
     }

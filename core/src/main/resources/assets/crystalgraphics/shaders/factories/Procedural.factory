@@ -1,0 +1,14 @@
+// Procedural: a draw of a vertex count and no mesh. The material's vertex() places each vertex, assigning v.world,
+// usually from a Buffers { } entry and CG_VERTEX_ID.
+Factory { VertexType none  PlacesNothing On }
+
+void fill(inout CgVertex v) {
+    v.position = vec3(0.0);
+    v.normal = vec3(0.0, 1.0, 0.0);
+    v.color = vec4(1.0);
+    v.uv0 = vec2(0.0);
+    v.uv1 = vec2(0.0);
+    v.uv2 = vec2(0.0);
+    v.uv3 = vec2(0.0);
+    v.world = vec3(0.0);
+}

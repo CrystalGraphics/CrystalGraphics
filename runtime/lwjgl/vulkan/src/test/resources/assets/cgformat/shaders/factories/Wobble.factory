@@ -1,0 +1,25 @@
+// A mod's own factory: a mesh whose vertices carry a phase up their height.
+Factory { VertexType spatial  Parameters cg_Wobble }
+
+Declarations {
+    struct WobbleState { float phase; float height; };
+    WobbleState cg_Wobble;
+}
+
+Parameters {
+    float phase;
+    float height;
+}
+
+void fill(inout CgVertex v) {
+    cg_Wobble.phase = cg_Position.y * 4.0;
+    cg_Wobble.height = cg_Position.y;
+    v.position = cg_Position;
+    v.normal = normalize(CG_NORMAL_MATRIX * cg_Normal);
+    v.color = cg_Color;
+    v.uv0 = cg_TexCoord0;
+    v.uv1 = cg_TexCoord1;
+    v.uv2 = cg_TexCoord2;
+    v.uv3 = cg_TexCoord3;
+    v.world = (CG_OBJECT_TO_WORLD * vec4(cg_Position, 1.0)).xyz;
+}

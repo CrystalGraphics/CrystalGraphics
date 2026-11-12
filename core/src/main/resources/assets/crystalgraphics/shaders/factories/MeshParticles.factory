@@ -1,0 +1,38 @@
+// MeshParticles: a mesh renderer's particles, a mesh an instance a particle, placed, turned and sized by it: Unreal's
+// mesh particle vertex factory, through particle_factory.glsl. Its vertex colour and UVs are the mesh's, its colour the
+// particle's (cg_Particle.color). A sprite or a strip renderer draws the same material as Sprites does.
+Factory { VertexType spatial  Parameters cg_Particle }
+EngineBuffers { particle }
+
+Declarations {
+    CgMaterialParticle cg_Particle;
+}
+
+Parameters {
+    vec4 color;
+    float relativeTime;
+    float random;
+    vec4 velocity;
+    vec4 positionAndSize;
+    vec2 size;
+    float spriteRotation;
+    vec2 subUVCoords0;
+    vec2 subUVCoords1;
+    float subUVLerp;
+    flat int record;
+    vec4 dynamicParameters[4];
+    flat int dynamics;
+}
+
+void fill(inout CgVertex v) {
+    CgMaterialVertex placed = cg_material_vertex();
+    cg_Particle = cg_material_particle();
+    v.position = placed.worldPosition - cg_Particle.positionAndSize.xyz;
+    v.normal = placed.tangentToWorld[2];
+    v.color = placed.vertexColor;
+    v.uv0 = placed.texCoords[0];
+    v.uv1 = placed.texCoords[1];
+    v.uv2 = placed.texCoords[2];
+    v.uv3 = placed.texCoords[3];
+    v.world = placed.worldPosition;
+}

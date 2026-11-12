@@ -1,0 +1,52 @@
+// TubeClosed: as Tube, each chunk capped and the path's end rings pushed out a radius along it, so a shader tracing
+// the view ray through the rings has a closed hull; an end centre's angle is -1.
+Factory { VertexType spatial  Parameters cg_Tube }
+Tags { "Tube" = "Closed" }
+
+Properties {
+    _FxPath ("Path rings", sampler2D) = "black"
+}
+
+Declarations {
+    #include "crystalgraphics:shaders/lib/vfx/fx_tube.glsl"
+    CgTube cg_Tube;
+}
+
+Parameters {
+    vec3 ring.position;
+    float ring.radius;
+    vec3 ring.tangent;
+    float ring.arc;
+    vec3 ring.normal;
+    float ring.intensity;
+    float angle;
+    float cap;
+    vec4 header;
+    flat int row;
+    flat int first;
+    flat int owned;
+    float size;
+    vec3 origin;
+}
+
+void fill(inout CgVertex v) {
+    cg_Tube.row = int(CG_OBJECT_CUSTOM0.x + 0.5);
+    cg_Tube.first = int(CG_OBJECT_CUSTOM0.y + 0.5);
+    cg_Tube.owned = int(CG_OBJECT_CUSTOM1.w + 0.5);
+    cg_Tube.size = CG_OBJECT_CUSTOM0.z;
+    cg_Tube.origin = CG_OBJECT_TO_WORLD[3].xyz - CG_OBJECT_CUSTOM1.xyz;
+    FxTubeVertex skinned = fx_tube_vertex(_FxPath, cg_Tube.row, cg_Tube.first, cg_TexCoord0, cg_Tube.size, 1.0);
+    cg_Tube.ring = skinned.ring;
+    cg_Tube.angle = skinned.angle;
+    cg_Tube.cap = skinned.cap;
+    cg_Tube.header = skinned.header;
+    vec3 out_ = skinned.position - skinned.ring.position;
+    v.position = skinned.position;
+    v.normal = dot(out_, out_) > 1.0e-12 ? normalize(out_) : skinned.ring.tangent * skinned.cap;
+    v.color = vec4(1.0);
+    v.uv0 = vec2(skinned.ring.arc, skinned.angle);
+    v.uv1 = v.uv0;
+    v.uv2 = v.uv0;
+    v.uv3 = v.uv0;
+    v.world = cg_Tube.origin + v.position;
+}
