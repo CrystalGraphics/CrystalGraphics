@@ -173,6 +173,7 @@ Fabric's dev mod is `tasks.jar` bundling each module's `downgradedJar` —
 | Add a command, or complete one, on every version | [`docs/COMMANDS.md`](docs/COMMANDS.md) | `platform/.../command` |
 | Write a codec, save to a file (binary, JSON, TOML, YAML) or NBT, or decode into a live object | [`docs/SERIALIZATION.md`](docs/SERIALIZATION.md) | `serialization/CLAUDE.md` |
 | Ask what a shape hits, give something a hitbox, test shapes against each other | [`docs/COLLISION.md`](docs/COLLISION.md) | `collision/CLAUDE.md`, `shape/CLAUDE.md` |
+| Load, make, sample, draw into or read back a texture; a texture's settings file | [`docs/TEXTURES.md`](docs/TEXTURES.md) | `api/texture/CLAUDE.md`, `gpu/resource/CLAUDE.md` |
 | Load anything (files, textures, meshes, shaders, a kit), behind the loading screen or during play | **[`docs/LOADING.md`](docs/LOADING.md)** | `loading/CLAUDE.md`, `lifecycle/CLAUDE.md` |
 | Run work off the game's thread, or split it across cores | [`docs/JOBS.md`](docs/JOBS.md) | `job/CLAUDE.md` |
 | Play a sound: by name, in the world, riding an entity, music, subtitles, a mix | [`docs/AUDIO.md`](docs/AUDIO.md) | `audio/CLAUDE.md` |

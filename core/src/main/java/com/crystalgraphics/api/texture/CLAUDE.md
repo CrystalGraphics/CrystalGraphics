@@ -13,7 +13,7 @@ a `CgFormat`; the GL triple behind one (`CgTextureType`) is `gpu/resource`'s. Th
 | Type | Role |
 |------|------|
 | `CgTexture` | The single common interface: `getWidth()/getHeight()`, `sampler()` (its own sampling, where a binding names none), `delete()`, `isDeleted()`, `isMissing()` (its files would not load). A texture from files loads at its first use: `gpu/resource/CLAUDE.md`. |
-| `CgTextures` | The front door. From files: `of(path)` 2D, `frames(pattern, count)` / `frames(paths...)` 2D array, `volume(pattern, count)` / `volume(paths...)` 3D, `cube(path)` six faces stacked `w x 6w`, `cube(six paths)`. Made: `create(name, CgTextureDesc)`. A `.hdr`/`.exr` path loads as RGBA16F. |
+| `CgTextures` | The front door. From files: `of(path)` 2D, `frames(pattern, count)` / `frames(paths...)` 2D array, `volume(pattern, count)` / `volume(paths...)` 3D, `cube(path)` six faces stacked `w x 6w`, `cube(six paths)`. Made: the same four with `(name, CgTextureDesc)`; `target(name, colour, depth)`. A `.hdr`/`.exr` path loads as RGBA16F. Consumer guide: `docs/TEXTURES.md`. |
 | `CgSampler` | How a texture is sampled: `Filter` (`NEAREST`, `BILINEAR`, `TRILINEAR`), `Address` per axis (`WRAP`, `CLAMP`, `MIRROR`, `BORDER`), `compare` (`CgCompare`, a shadow map's), `anisotropy(n)`. A value; `builder()`, presets (`BILINEAR_CLAMP`, `TRILINEAR_WRAP`, `NEAREST_BORDER`, `SHADOW`, ...). The device's sampler objects are `render/draw/CgDeviceSamplers`'. |
 
 ## Sampling: three places, one winner

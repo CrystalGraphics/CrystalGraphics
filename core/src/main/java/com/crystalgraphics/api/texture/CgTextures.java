@@ -28,7 +28,7 @@ import java.util.Locale;
  * }</pre>
  *
  * <p>A file loads as the settings file beside it says ({@link CgTextureSettings}): {@code strip.png}'s
- * {@code strip.yaml}.</p>
+ * {@code strip.yaml}. The whole API, for a reader new to it: {@code docs/TEXTURES.md}.</p>
  *
  * <pre>{@code
  * # mymod/textures/vfx/strip.yaml
@@ -65,7 +65,7 @@ public final class CgTextures {
      * <pre>{@code
      * static final CgTexture2D ICON = CgTextures.of("mymod:textures/gui/icon.png");
      *
-     * material.texture("_Icon", ICON);   // sampler2D: texture(_Icon, uv)
+     * CgMaterialDefinition.of("mymod:icon", "mymod:shaders/icon.shader").texture("_Icon", ICON);   // sampler2D: texture(_Icon, uv)
      * }</pre>
      *
      * <p>The file decides what it is; nothing is passed for it:</p>
@@ -126,7 +126,7 @@ public final class CgTextures {
      * // flame_0.png, flame_1.png, flame_2.png -> layers 0, 1, 2 of one sampler2DArray
      * static final CgTexture2DArray FLAMES = CgTextures.frames("mymod:textures/vfx/flame_%d.png", 3);
      *
-     * material.texture("_Flames", FLAMES);   // a shader picks one: texture(_Flames, vec3(uv, frame))
+     * builder.texture("_Flames", FLAMES);   // a shader picks one: texture(_Flames, vec3(uv, frame))
      * }</pre>
      *
      * <p>{@code pattern} is a {@link String#format} pattern taking one int: {@code %02d} names {@code flame_00.png}.</p>
@@ -143,7 +143,7 @@ public final class CgTextures {
      * static final CgTexture2DArray DASHES = CgTextures.frames(
      *         "mymod:textures/vfx/dash_wide.png", "mymod:textures/vfx/dash_thin.png", "mymod:textures/vfx/dash_curl.png");
      *
-     * material.texture("_Dashes", DASHES);   // sampler2DArray: texture(_Dashes, vec3(uv, 2.0)) reads dash_curl
+     * builder.texture("_Dashes", DASHES);   // sampler2DArray: texture(_Dashes, vec3(uv, 2.0)) reads dash_curl
      * }</pre>
      */
     public static CgTexture2DArray frames(String... paths) {
@@ -173,7 +173,7 @@ public final class CgTextures {
      * // lut_0.png .. lut_15.png -> slices 0 to 15, bottom to top
      * static final CgTexture3D LUT = CgTextures.volume("mymod:textures/lut/lut_%d.png", 16);
      *
-     * material.texture("_Lut", LUT);   // sampler3D: texture(_Lut, colour.rgb), w blended between slices
+     * builder.texture("_Lut", LUT);   // sampler3D: texture(_Lut, colour.rgb), w blended between slices
      * }</pre>
      *
      * <p>A slice of another size, or one that will not load, leaves a clear 1x1x1 volume: {@code isMissing()}.</p>
@@ -210,7 +210,7 @@ public final class CgTextures {
      * <pre>{@code
      * static final CgTextureCubemap SKY = CgTextures.cube("mymod:textures/sky.png");
      *
-     * material.texture("_Sky", SKY);   // samplerCube: texture(_Sky, direction)
+     * builder.texture("_Sky", SKY);   // samplerCube: texture(_Sky, direction)
      * }</pre>
      *
      * <p>An image of another shape throws at its first use.</p>
