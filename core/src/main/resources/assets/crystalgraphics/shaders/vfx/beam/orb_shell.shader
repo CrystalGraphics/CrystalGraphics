@@ -1,15 +1,11 @@
 // An energy orb's skin (a wave's head, its charge ball): violently churning, its folds rolling back along -z, its trailing
 // half torn into comet tongues flung backward, eroded into crisp streaks with white-hot filaments, brightest where it
-// leads, flickering. Drawn on CgVfxFrame.mesh's sphere, +z forward. Premultiplied: the skin covers part of what is
-// behind it (_Cover), so it shows its colour over a bright scene. Its back fades out by _Back; CG_OBJECT_CUSTOM1.z is an
-// intensity. _Shell is the skin, its alpha a strength; _ShellHot its hottest streaks. CgEnergyWave.
-#type spatial
-#pragma cg_use rows
+// leads, flickering. Drawn on its sphere, +z forward. Premultiplied: the skin covers part of what is behind it
+// (_Cover), so it shows its colour over a bright scene. Its back fades out by _Back; cg_VfxMesh.values.z is an
+// intensity. _Shell is the skin, its alpha a strength; _ShellHot its hottest streaks. Its filaments bloom. CgEnergyWave.
+#domain surface
 #include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
-#include "crystalgraphics:shaders/lib/vfx/fx_draw.glsl"
-
-Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" }
-Queue = "Transparent"
+Material { BlendMode AlphaComposite  ShadingModel Unlit  Faces Both  VertexFactory VfxMesh  PerDrawValues On }
 
 Properties {
     _Shell    ("The skin; its alpha a strength", color) = (0.15, 0.55, 1.6, 1)
@@ -24,68 +20,46 @@ Properties {
     _Noise ("Noise", sampler3D) = "cg_noise"
 }
 
-struct v2f { vec3 world; vec3 local; vec3 centre; };
+struct v2f { vec3 world; vec3 local; };
 
-Pass {
-    Tags { "LightMode" = "Forward" }
-    RenderState {
-        Blend ONE ONE_MINUS_SRC_ALPHA
-        DepthTest LEQUAL
-        DepthWrite OFF
-        Cull OFF
-    }
-
-    void vertex(out v2f o) {
-        vec3 p = cg_Position;
-        float age = CG_OBJECT_CUSTOM0.z, seed = CG_OBJECT_CUSTOM0.w;
-        float churn = fx_fbm(vec3(p.xy * 1.7, p.z * 1.7 + age * _Flow * 0.25) + seed * 17.0, 3);
-        p *= 1.0 + _Displace * (0.6 + 0.4 * p.z) * churn;
-        // Crests from the shoulder back flung along -z, streaming like a comet's.
-        // Smooth lobes, as body_shell's: the vertices sample a ridged crease as spikes.
-        float lobe = fx_noise(vec3(p.xy * 2.4, p.z * 1.2 + age * _Flow * 0.4) + seed * 5.0);
-        float back = smoothstep(0.55, -0.2, cg_Position.z);
-        p.z -= _Tongue * back * smoothstep(-0.1, 0.7, lobe);
-        vec4 world = CG_OBJECT_TO_WORLD * vec4(p, 1.0);
-        o.world = world.xyz;
-        o.local = cg_Position;
-        o.centre = CG_OBJECT_TO_WORLD[3].xyz;
-        gl_Position = cg_ProjMatrix * cg_ViewMatrix * world;
-    }
-
-    void fragment(in v2f i, out vec4 fragColor) {
-        vec3 eye = FX_CAMERA;
-        vec3 ray = normalize(i.world - eye);
-        vec3 n = normalize(transpose(inverse(mat3(CG_OBJECT_TO_WORLD))) * i.local);
-        float rim = 1.0 - abs(dot(n, ray));
-        float age = CG_OBJECT_CUSTOM0.z, seed = CG_OBJECT_CUSTOM0.w;
-        vec3 lp = i.local;
-        vec3 q = vec3(lp.xy * 2.2, lp.z * 1.3 + age * _Flow * 0.3) + seed * 11.0;
-        float filament = pow(fx_ridged(vec3(lp.xy * 3.6, lp.z * 2.0 + age * _Flow * 0.6) + seed * 3.0, 3), 8.0);
-        float e = (0.5 + 0.5 * fx_warped(q, 1.5)) * 0.8 + filament * 0.35;
-        float threshold = mix(_Erosion, _Erosion - 0.25, rim);
-        float aa = fwidth(e) + 0.002;
-        float alpha = smoothstep(threshold - aa, threshold + aa, e);
-        float hot = smoothstep(threshold, threshold + 0.2, e);
-        float lead = 0.55 + 0.45 * smoothstep(-0.2, 0.9, lp.z);
-        float fade = mix(1.0, smoothstep(-0.95, -0.25, lp.z), _Back);
-        // The skin covers in its colour, so folds piled up settle on it rather than past white; filaments add light.
-        vec3 skin = mix(_Shell.rgb, _ShellHot.rgb, hot) * (0.6 + 0.5 * rim) * lead * _Cover;
-        vec3 glow = _ShellHot.rgb * filament * 2.0;
-        // Faded by the sphere's normal, as body_shell's: gl_FrontFacing stripes the edge-on, displaced skin with teeth.
-        float far = smoothstep(-0.3, 0.3, dot(n, ray));
-        float strength = alpha * fade * _Shell.a * CG_OBJECT_CUSTOM1.z * FX_PRESENCE * mix(1.0, 0.55, far);
-        fragColor = vec4((skin + glow) * fx_flicker(age, seed) * strength, _Cover * strength);
-        CG_GLOW(glow * fx_flicker(age, seed) * strength * _GlowGain);
-    }
+void vertex(inout CgVertex v, out v2f o) {
+    vec3 p = v.position;
+    float age = cg_Vfx.age, seed = cg_Vfx.seed;
+    float churn = fx_fbm(vec3(p.xy * 1.7, p.z * 1.7 + age * _Flow * 0.25) + seed * 17.0, 3);
+    p *= 1.0 + _Displace * (0.6 + 0.4 * p.z) * churn;
+    // Crests from the shoulder back flung along -z, streaming like a comet's.
+    // Smooth lobes, as body_shell's: the vertices sample a ridged crease as spikes.
+    float lobe = fx_noise(vec3(p.xy * 2.4, p.z * 1.2 + age * _Flow * 0.4) + seed * 5.0);
+    float back = smoothstep(0.55, -0.2, v.position.z);
+    p.z -= _Tongue * back * smoothstep(-0.1, 0.7, lobe);
+    v.world = (CG_OBJECT_TO_WORLD * vec4(p, 1.0)).xyz;
+    o.world = v.world;
+    o.local = v.position;
 }
 
-// Its glow (CG_GLOW) into the world's bloom: added, since covering would darken the glows behind.
-Pass {
-    Tags { "LightMode" = "Emissive" }
-    RenderState {
-        Blend ONE ONE
-        DepthTest LEQUAL
-        DepthWrite OFF
-        Cull OFF
-    }
+void surface(in v2f i, inout CgSurface s) {
+    vec3 ray = normalize(i.world - CG_CAMERA_POSITION);
+    vec3 n = normalize(transpose(inverse(mat3(CG_OBJECT_TO_WORLD))) * i.local);
+    float rim = 1.0 - abs(dot(n, ray));
+    float age = cg_Vfx.age, seed = cg_Vfx.seed;
+    vec3 lp = i.local;
+    vec3 q = vec3(lp.xy * 2.2, lp.z * 1.3 + age * _Flow * 0.3) + seed * 11.0;
+    float filament = pow(fx_ridged(vec3(lp.xy * 3.6, lp.z * 2.0 + age * _Flow * 0.6) + seed * 3.0, 3), 8.0);
+    float e = (0.5 + 0.5 * fx_warped(q, 1.5)) * 0.8 + filament * 0.35;
+    float threshold = mix(_Erosion, _Erosion - 0.25, rim);
+    float aa = fwidth(e) + 0.002;
+    float alpha = smoothstep(threshold - aa, threshold + aa, e);
+    float hot = smoothstep(threshold, threshold + 0.2, e);
+    float lead = 0.55 + 0.45 * smoothstep(-0.2, 0.9, lp.z);
+    float fade = mix(1.0, smoothstep(-0.95, -0.25, lp.z), _Back);
+    // The skin covers in its colour, so folds piled up settle on it rather than past white; filaments add light.
+    vec3 skin = mix(_Shell.rgb, _ShellHot.rgb, hot) * (0.6 + 0.5 * rim) * lead * _Cover;
+    vec3 glow = _ShellHot.rgb * filament * 2.0;
+    // Faded by the sphere's normal, as body_shell's: gl_FrontFacing stripes the edge-on, displaced skin with teeth.
+    float far = smoothstep(-0.3, 0.3, dot(n, ray));
+    float strength = alpha * fade * _Shell.a * cg_VfxMesh.values.z * mix(1.0, 0.55, far);
+    float flicker = fx_flicker(age, seed);
+    s.baseColor = (skin + glow) * flicker * strength;   // premultiplied
+    s.opacity = _Cover * strength;
+    s.emissive = glow * flicker * strength * _GlowGain;
 }

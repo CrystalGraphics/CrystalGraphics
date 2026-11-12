@@ -1,0 +1,22 @@
+// VfxMesh: a VFX mesh slot (CgVfxFrame.mesh): a unit sphere, or the layer's own mesh, placed by the slot's transform and
+// scaled by the layer's size; +z the effect's forward where it has one. cg_VfxMesh.size is the layer's size,
+// cg_VfxMesh.values the four values the effect documents for the slot; both read in either stage. cg_Vfx is the draw's
+// header; an ending's fade (cg_Vfx.presence) is applied for the material.
+Factory { VertexType spatial  Fade cg_Vfx.presence  Usage FX_ON_MESH }
+
+Declarations {
+    #include "crystalgraphics:shaders/lib/vfx/fx_draw.glsl"
+    struct CgVfxMesh { float size; vec4 values; };
+    #define cg_VfxMesh CgVfxMesh(CG_OBJECT_CUSTOM0.x, CG_OBJECT_CUSTOM1)
+}
+
+void fill(inout CgVertex v) {
+    v.position = cg_Position;
+    v.normal = normalize(CG_NORMAL_MATRIX * cg_Normal);
+    v.color = cg_Color;
+    v.uv0 = cg_TexCoord0;
+    v.uv1 = cg_TexCoord1;
+    v.uv2 = cg_TexCoord2;
+    v.uv3 = cg_TexCoord3;
+    v.world = (CG_OBJECT_TO_WORLD * vec4(cg_Position, 1.0)).xyz;
+}

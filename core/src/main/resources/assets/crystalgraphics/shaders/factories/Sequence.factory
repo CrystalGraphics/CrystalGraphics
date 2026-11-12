@@ -1,0 +1,24 @@
+// Sequence: a prefab part a clip plays on a SEQUENCE particle (CgVfxSlot.Kind.SEQUENCE, under the mesh particles
+// usage): the part's mesh placed by its particle, then by its node at the particle's age (fx_sequence.glsl). The
+// material declares the baked clips, Buffers { FX_CLIPS ("Baked clips", vec4, readonly) }, and reads its node's opacity
+// (FX_SEQUENCE_OPACITY) and the clip's material scalars (FX_SEQ_SCALAR). Usually listed after VfxMesh, so the part
+// also draws as a prefab instance places it. cg_Vfx is the draw's header; an ending's fade is applied for the material.
+Factory { VertexType spatial  Fade cg_Vfx.presence  Usage FX_ON_SEQUENCE }
+
+Declarations {
+    #pragma cg_feature FX_ON_MESH_PARTICLES
+    #include "crystalgraphics:shaders/lib/vfx/fx_draw.glsl"
+    #include "crystalgraphics:shaders/lib/vfx/fx_sequence.glsl"
+}
+
+void fill(inout CgVertex v) {
+    mat4 model = FX_SEQUENCE_TO_WORLD;
+    v.position = cg_Position;
+    v.normal = normalize(transpose(inverse(mat3(model))) * cg_Normal);
+    v.color = cg_Color;
+    v.uv0 = cg_TexCoord0;
+    v.uv1 = cg_TexCoord1;
+    v.uv2 = cg_TexCoord2;
+    v.uv3 = cg_TexCoord3;
+    v.world = (model * vec4(cg_Position, 1.0)).xyz;
+}

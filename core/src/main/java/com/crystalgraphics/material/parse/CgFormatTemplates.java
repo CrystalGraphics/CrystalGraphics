@@ -8,9 +8,11 @@ import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -39,7 +41,8 @@ import java.util.regex.Pattern;
  * }</pre>
  *
  * <p>{@code Factory { Fade cg_Vfx.presence }} fades all the material adds by that expression after {@code surface()},
- * by its blend mode, so no material applies it itself.</p>
+ * by its blend mode, so no material applies it itself. {@code Factory { Usage FX_ON_TUBE }} is the keyword its draws
+ * compile a material under, declared for it: what a material listing several factories branches on.</p>
  *
  * <p>A primitive file: {@code Primitive { Queue Transparent }}, {@code EngineBuffers}, {@code Declarations},
  * {@code Properties}, a {@code RenderState}, {@code struct v2f}, {@code vertex(out v2f o)} and
@@ -106,6 +109,67 @@ public final class CgFormatTemplates {
         return out;
     }
 
+    /**
+     * The factories a material lists as one ({@code VertexFactory Mesh, Tube}): the first the base, each other's fill,
+     * defaults and fade under its usage keyword. They share a vertex type; at most one has parameters.
+     */
+    static CgVertexFactory.Factory combine(List<CgVertexFactory.Factory> factories, String path) {
+        if (factories.size() == 1) return factories.get(0);
+        CgVertexFactory.Factory base = factories.get(0);
+        List<String> names = new ArrayList<>();
+        StringBuilder declarations = new StringBuilder(), properties = new StringBuilder();
+        CgVertexFactory.Factory parameters = null;
+        for (CgVertexFactory.Factory f : factories) {
+            names.add(f.name());
+            if (!f.vertexType().equals(base.vertexType()) || f.placesNothing() != base.placesNothing()) {
+                throw CgMaterialFormat.fail(path, "'VertexFactory " + base.name() + ", " + f.name()
+                        + "': factories listed together share a vertex type and whether they place anything");
+            }
+            if (f != base && f.usage() == null) {
+                throw CgMaterialFormat.fail(path, "'VertexFactory " + f.name() + "' has no 'Usage' keyword to compile under"
+                        + " beside " + base.name());
+            }
+            if (f.parameters() != null) {
+                if (parameters != null) {
+                    throw CgMaterialFormat.fail(path, "'VertexFactory " + parameters.name() + ", " + f.name()
+                            + "': at most one factory listed together has parameters");
+                }
+                parameters = f;
+            }
+            if (f.usage() != null) declarations.append("#pragma cg_feature ").append(f.usage()).append('\n');
+            declarations.append(f.declarations()).append('\n');
+            properties.append(f.properties()).append('\n');
+        }
+        // The fade as a macro, so each factory's expression is chosen where the material's code names none
+        boolean fades = false;
+        for (CgVertexFactory.Factory f : factories) fades |= f.fade() != null;
+        if (fades) declarations.append(branches(factories, f -> "#define _CG_FACTORY_FADE (" + (f.fade() == null ? "1.0" : f.fade()) + ")"));
+        CgVertexFactory.Builder b = CgVertexFactory.builder(String.join(", ", names)).vertexType(base.vertexType())
+                .fill(branches(factories, CgVertexFactory.Factory::fill))
+                .defaults(branches(factories, CgVertexFactory.Factory::defaults))
+                .declarations(declarations.toString()).properties(properties.toString());
+        if (base.placesNothing()) b.placesNothing();
+        if (fades) b.fade("_CG_FACTORY_FADE");
+        Set<String> buffers = new LinkedHashSet<>();
+        for (CgVertexFactory.Factory f : factories) {
+            buffers.addAll(f.engineBuffers());
+            f.tags().forEach(b::tag);
+        }
+        b.buffers(buffers.toArray(new String[0]));
+        if (parameters != null) b.parameters(parameters.parameters(), parameters.parameterFields());
+        return b.build();
+    }
+
+    /** {@code part} of each factory, the base's under none of the others' usage keywords. */
+    private static String branches(List<CgVertexFactory.Factory> factories, Function<CgVertexFactory.Factory, String> part) {
+        StringBuilder out = new StringBuilder();
+        for (int i = 1; i < factories.size(); i++) {
+            out.append(i == 1 ? "#if" : "#elif").append(" defined(").append(factories.get(i).usage()).append(")\n")
+               .append(part.apply(factories.get(i)).strip()).append('\n');
+        }
+        return out.append("#else\n").append(part.apply(factories.get(0)).strip()).append("\n#endif\n").toString();
+    }
+
     /** The primitive {@code name} names, from its file; null where there is none. */
     @Nullable
     static synchronized Primitive primitive(String name) {
@@ -127,7 +191,7 @@ public final class CgFormatTemplates {
     private static CgVertexFactory.Factory parseFactory(String name, String source, String path) {
         List<CgMaterialFormat.Item> items = CgMaterialFormat.scan(CgMaterialFormat.blankComments(source), source, 0, path,
                 FACTORY_BLOCKS);
-        Map<String, String> settings = settings(items, "Factory", List.of("VertexType", "PlacesNothing", "Parameters", "Fade"),
+        Map<String, String> settings = settings(items, "Factory", List.of("VertexType", "PlacesNothing", "Parameters", "Fade", "Usage"),
                 path);
         String type = settings.get("VertexType");
         if (type == null) throw CgMaterialFormat.fail(path, "'Factory { VertexType ... }' is missing: spatial, none, ...");
@@ -150,6 +214,7 @@ public final class CgFormatTemplates {
         if ("On".equals(settings.get("PlacesNothing"))) b.placesNothing();
         if (defaults != null) b.defaults(defaults.body());
         if (settings.containsKey("Fade")) b.fade(settings.get("Fade"));
+        if (settings.containsKey("Usage")) b.usage(settings.get("Usage"));
         Matcher tag = TAG.matcher(body(items, "Tags"));
         while (tag.find()) b.tag(tag.group(1), tag.group(2));
         String variable = settings.get("Parameters");

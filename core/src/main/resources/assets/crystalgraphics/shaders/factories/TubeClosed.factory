@@ -1,6 +1,6 @@
 // TubeClosed: as Tube, each chunk capped and the path's end rings pushed out a radius along it, so a shader tracing
 // the view ray through the rings has a closed hull; an end centre's angle is -1.
-Factory { VertexType spatial  Parameters cg_Tube }
+Factory { VertexType spatial  Parameters cg_Tube  Usage FX_ON_TUBE }
 Tags { "Tube" = "Closed" }
 
 Properties {

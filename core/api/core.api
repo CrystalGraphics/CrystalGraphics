@@ -1246,11 +1246,12 @@ com/crystalgraphics/api/material/CgVertexFactory$Builder
   method public placesNothing ()Lcom/crystalgraphics/api/material/CgVertexFactory$Builder;
   method public properties (Ljava/lang/String;)Lcom/crystalgraphics/api/material/CgVertexFactory$Builder;
   method public tag (Ljava/lang/String;Ljava/lang/String;)Lcom/crystalgraphics/api/material/CgVertexFactory$Builder;
+  method public usage (Ljava/lang/String;)Lcom/crystalgraphics/api/material/CgVertexFactory$Builder;
   method public vertexType (Ljava/lang/String;)Lcom/crystalgraphics/api/material/CgVertexFactory$Builder;
 com/crystalgraphics/api/material/CgVertexFactory$Factory
   access public,final,record
   extends java/lang/Record
-  method public <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZLjava/util/List;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/lang/String;Ljava/util/Map;Ljava/lang/String;Ljava/lang/String;)V
+  method public <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZLjava/util/List;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/lang/String;Ljava/util/Map;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
   method public declarations ()Ljava/lang/String;
   method public defaults ()Ljava/lang/String;
   method public engineBuffers ()Ljava/util/List;
@@ -1262,6 +1263,7 @@ com/crystalgraphics/api/material/CgVertexFactory$Factory
   method public placesNothing ()Z
   method public properties ()Ljava/lang/String;
   method public tags ()Ljava/util/Map;
+  method public usage ()Ljava/lang/String;
   method public vertexType ()Ljava/lang/String;
   method public,final equals (Ljava/lang/Object;)Z
   method public,final hashCode ()I

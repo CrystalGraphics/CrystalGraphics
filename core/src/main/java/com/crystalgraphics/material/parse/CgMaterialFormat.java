@@ -248,12 +248,17 @@ final class CgMaterialFormat {
         boolean linear = choice(m, "ColorSpace", "sRGB", path, "sRGB", "Linear").equals("Linear");
         boolean sky = onOff(m, "Sky", false, path);
         boolean rows = onOff(m, "PerDrawValues", false, path);
-        String factoryName = m.getOrDefault("VertexFactory", CgVertexFactory.MESH);
-        CgVertexFactory.Factory factory = CgFormatTemplates.factory(factoryName);
-        if (factory == null) {
-            throw fail(path, "'VertexFactory " + factoryName + "' is no factory: none registered, and no "
-                    + CgFormatTemplates.location(factoryName, "factories", "factory"));
+        List<CgVertexFactory.Factory> listed = new ArrayList<>();
+        for (String name : m.getOrDefault("VertexFactory", CgVertexFactory.MESH).split(",")) {
+            CgVertexFactory.Factory f = CgFormatTemplates.factory(name);
+            if (f == null) {
+                throw fail(path, "'VertexFactory " + name + "' is no factory: none registered, and no "
+                        + CgFormatTemplates.location(name, "factories", "factory"));
+            }
+            listed.add(f);
         }
+        CgVertexFactory.Factory factory = CgFormatTemplates.combine(listed, path);
+        String factoryName = factory.name();
         // What the factory's defaults write is written: its hooks run (a particle's light)
         Set<String> started = new LinkedHashSet<>();
         names(factory.defaults(), "s", started);
@@ -988,7 +993,8 @@ final class CgMaterialFormat {
     /** {@code body}'s {@code Name Value} pairs, each name one of {@code allowed}; {@code what} names the block. */
     static Map<String, String> pairs(String body, List<String> allowed, String what, String path) {
         Map<String, String> out = new LinkedHashMap<>();
-        String[] tokens = body.trim().split("\\s+");
+        // A list is one value: VertexFactory Mesh, Tube
+        String[] tokens = body.trim().replaceAll("\\s*,\\s*", ",").split("\\s+");
         if (tokens.length == 1 && tokens[0].isEmpty()) return out;
         if (tokens.length % 2 != 0) throw fail(path, "'" + what + "' holds Name Value pairs: '" + body.trim() + "'");
         for (int i = 0; i < tokens.length; i += 2) {

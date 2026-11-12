@@ -290,7 +290,10 @@ Material { BlendMode Translucent  VertexFactory Sprites }
 | `Mesh` (default) | A mesh: `pass.draw(mesh, material)`, static, instanced or skinned | the mesh's vertices |
 | `Procedural` | A draw of a vertex count, no mesh | nothing: your `vertex()` assigns `v.world`, usually from `Buffers { }` and `CG_VERTEX_ID` |
 | `Sprites` | A particle renderer's camera-facing quads (`CgVfxRenderers.sprite`); a beam's or ribbon's strips | each corner placed, faced and flipbooked; `cg_Particle` |
-| `MeshParticles` | A particle renderer's meshes (`CgVfxRenderers.mesh`) | the mesh's vertices placed by the particle; `cg_Particle` |
+| `MeshParticles` | A particle renderer's meshes (`CgVfxRenderers.mesh`) | the mesh's vertices placed by the particle (`v.position` the mesh's own); `cg_Particle` |
+| `VfxMesh` | A VFX mesh slot (`CgVfxFrame.mesh`): a unit sphere or the layer's mesh, placed by the slot | the mesh's vertices; `cg_VfxMesh` |
+| `Billboard` | A VFX billboard slot (`CgVfxFrame.billboard`): one camera-facing quad, a lone particle | the quad's corner (`v.position` -1..1); `cg_Billboard` |
+| `Sequence` | A prefab part a clip plays on a sequence particle (`fx_sequence.glsl`); listed after `VfxMesh` | the part's vertices placed by its node; the material declares `FX_CLIPS` |
 | `Tube` | A VFX tube slot: a path drawn as chunks of rings, ends open | the tube's vertices; `cg_Tube`; `uv0` = (blocks along, 0..1 around) |
 | `TubeClosed` | A tube slot, its chunks capped | as `Tube`; an end cap's centre has angle -1 |
 | `TubeVolume` | A tube slot, each chunk on a sphere round it | the sphere's vertices; `cg_Tube` |
@@ -315,7 +318,12 @@ side is its right, so a trail that widens pushes `v.world` along `cg_SpriteAxes[
 
 **`cg_Vfx`** is the effect drawing it, readable in both functions under any VFX factory: `cg_Vfx.age` (seconds),
 `cg_Vfx.seed` (fixed for the effect), `cg_Vfx.row`, and `cg_Vfx.presence`. You never apply `presence`, the
-fade of an ending: `Sprites` and `MeshParticles` apply it to all the material adds.
+fade of an ending: the VFX factories apply it to all the material adds.
+
+**`cg_VfxMesh`** and **`cg_Billboard`** are the slot's own values, readable in both functions: `.size` (the layer's
+size; a billboard's half size in blocks) and `.values`, the four the effect documents for the slot (an intensity, a
+progress, a particle's life and seed). `cg_Billboard.right` and `.up` are the camera's axes, for a `vertex()` turning
+the quad.
 
 ```glsl
 // A puff that fades as it ages
@@ -399,6 +407,7 @@ void fill(inout CgVertex v) {                               // fills every field
 | `fill(inout CgVertex v)` | runs in the vertex stage with the vertex format's attributes (`cg_Position`, …) in scope |
 | `defaults(inout CgSurface s)` | optional, runs in the pixel stage before the material's `surface()`: what it starts from (a particle's own light) |
 | `Factory { Fade <expression> }` | optional: fades all the material adds by that value after `surface()`, by its blend mode (an ending's fade: `cg_Vfx.presence`), so no material applies it |
+| `Factory { Usage <KEYWORD> }` | optional: the keyword its draws compile a material under (`FX_ON_TUBE`), what a material listing it beside another branches on |
 
 A factory has a pixel side as Unreal's does: `defaults` and `Fade` are where a draw kind's convention lives once, rather
 than in every material drawn by it.
@@ -406,6 +415,23 @@ than in every material drawn by it.
 **A factory describes what is drawn; something must still draw it.** The file says what the material reads; a renderer
 of yours (Java) records the draws that bind those buffers and properties. A factory with no renderer behind it
 compiles, and nothing ever draws it.
+
+**One material, several factories.** A material drawn by more than one lists them, the first the base; it is compiled
+for each, and its code tells them apart by the others' `Usage` keywords, as Unreal compiles a material once per vertex
+factory it is used with:
+
+```glsl
+Material { BlendMode AlphaComposite  VertexFactory VfxMesh, Sequence }
+void vertex(inout CgVertex v, out v2f o) {
+#ifdef FX_ON_SEQUENCE
+    o.opacity = FX_SEQUENCE_OPACITY;   // only a sequence's node has one
+#else
+    o.opacity = 1.0;
+#endif
+}
+```
+
+Factories listed together share a vertex type, and at most one has parameters: read them only under its keyword.
 
 A factory built at run time can be registered instead of written as a file
 (`CgVertexFactory.register(CgVertexFactory.builder("Ribbons")...build())`); a registration is found before a file.

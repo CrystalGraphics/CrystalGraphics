@@ -21,7 +21,7 @@ import java.util.Map;
  * {@code crystalgraphics:shaders/factories/Sprites.factory}, {@code mymod:Ribbons} is
  * {@code mymod:shaders/factories/Ribbons.factory} (its shape: {@code CgFormatTemplates}). The engine's are files:
  * {@code Mesh}, {@code Procedural}, {@code Sprites}, {@code MeshParticles}, {@code Tube}, {@code TubeClosed},
- * {@code TubeVolume}. This class registers one made in Java, which a file of the same name never replaces:</p>
+ * {@code TubeVolume}, {@code VfxMesh}, {@code Billboard}, {@code Sequence}. This class registers one made in Java, which a file of the same name never replaces:</p>
  *
  * <pre>{@code
  * // A factory built at run time, registered before any material naming it is parsed:
@@ -47,6 +47,20 @@ import java.util.Map;
  * void surface(in v2f i, inout CgSurface s) { s.baseColor = vec3(cg_Ribbon.width); }
  * }</pre>
  *
+ * <p>A material drawn by several factories lists them, the first the base; each other is compiled under its usage
+ * keyword, which the material's {@code vertex()} and {@code surface()} branch on:</p>
+ *
+ * <pre>{@code
+ * Material { VertexFactory Mesh, Tube }            // Tube's file: Factory { ... Usage FX_ON_TUBE }
+ * void vertex(inout CgVertex v, out v2f o) {
+ * #ifdef FX_ON_TUBE
+ *     o.along = cg_Tube.ring.arc;
+ * #else
+ *     o.along = v.uv0.x;
+ * #endif
+ * }
+ * }</pre>
+ *
  * <ul>
  *   <li>Something must draw it: a factory's file or registration says what it reads (buffers, properties, tags); the
  *       renderer that binds them is Java (the particle and tube factories' are the VFX engine's).</li>
@@ -56,6 +70,7 @@ import java.util.Map;
  *   <li>{@code v.normal} is world-space, {@code v.world} camera-relative.</li>
  *   <li>A parameter field typed {@code vec4[4]} passes as four interpolators; an integer field must be {@code flat}.</li>
  *   <li>A name registered twice throws.</li>
+ *   <li>Factories listed together share a vertex type; at most one has parameters.</li>
  * </ul>
  */
 public final class CgVertexFactory {
@@ -80,12 +95,14 @@ public final class CgVertexFactory {
      *                        {@code surface()}: what it starts from under this factory (a particle's light)
      * @param fade            an expression fading all the material adds, applied after {@code surface()} by its blend
      *                        mode ({@code cg_Vfx.presence}); null for none
+     * @param usage           the keyword its draws compile the material under ({@code FX_ON_TUBE}): what a material on
+     *                        several factories branches on with {@code #ifdef}; null for none
      */
     @Desugar
     public record Factory(String name, String vertexType, String fill, boolean placesNothing,
                           List<String> engineBuffers, String declarations, String properties, Map<String, String> tags,
                           @Nullable String parameters, Map<String, String> parameterFields, String defaults,
-                          @Nullable String fade) {
+                          @Nullable String fade, @Nullable String usage) {
         public Factory {
             engineBuffers = Collections.unmodifiableList(new ArrayList<>(engineBuffers));
             tags = Collections.unmodifiableMap(new LinkedHashMap<>(tags));
@@ -96,7 +113,7 @@ public final class CgVertexFactory {
     /** Builds a {@link Factory}: {@code vertexType} and {@code fill} are required. */
     public static final class Builder {
         private final String name;
-        private String vertexType, fill, declarations = "", properties = "", parameters, defaults = "", fade;
+        private String vertexType, fill, declarations = "", properties = "", parameters, defaults = "", fade, usage;
         private boolean placesNothing;
         private final List<String> buffers = new ArrayList<>();
         private final Map<String, String> tags = new LinkedHashMap<>(), fields = new LinkedHashMap<>();
@@ -166,10 +183,16 @@ public final class CgVertexFactory {
             return this;
         }
 
+        /** The keyword its draws compile the material under: {@code FX_ON_TUBE}. */
+        public Builder usage(String keyword) {
+            this.usage = keyword;
+            return this;
+        }
+
         public Factory build() {
             if (vertexType == null || fill == null) throw new IllegalStateException(name + ": vertexType and fill are required");
             return new Factory(name, vertexType, fill, placesNothing, buffers, declarations, properties, tags, parameters,
-                    fields, defaults, fade);
+                    fields, defaults, fade, usage);
         }
     }
 

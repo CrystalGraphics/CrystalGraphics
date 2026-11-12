@@ -1,18 +1,13 @@
 // A shock front in the air: a sphere shell, invisible face-on, bending the scene behind it in a thin band just inside
 // its silhouette, where the front is seen edge-on. Racing out from a blast ahead of its dust, it reads as the air
-// itself rippling. Drawn on CgVfxFrame.mesh's sphere's far wall, the shell the eye sees found analytically: its near
-// side from outside, its far side from inside, so a front sweeping past the camera ripples the whole view as it goes.
-// A Distortion pass (Role.DISTORTION), so it bends smoke and glow but never a bright body. CG_OBJECT_CUSTOM1.z is an
-// intensity. Reads depth.
-#type spatial
-#pragma cg_use rows
+// itself rippling. Drawn on its sphere's far wall, the shell the eye sees found analytically: its near side from
+// outside, its far side from inside, so a front sweeping past the camera ripples the whole view as it goes. Draws
+// nothing, only bends what is behind it (s.refraction), so it bends smoke and glow but never a bright body.
+// cg_VfxMesh.values.z is an intensity. The bend reaches _Strength times the intensity, at most about 0.08 of the height.
+#domain surface
 #include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_depth.glsl"
-#include "crystalgraphics:shaders/lib/vfx/fx_draw.glsl"
-
-// The bend reaches _Strength times the intensity, at most about 0.08 of the height.
-Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" "Fog" = "Off" }
-Queue = "Transparent"
+Material { BlendMode Translucent  ShadingModel Unlit  Faces Back  DepthTest Off  Fog Off  VertexFactory VfxMesh  PerDrawValues On }
 
 Properties {
     _Strength ("Bend at full intensity, share of the screen's height", float) = 0.065
@@ -22,59 +17,27 @@ Properties {
 
 struct v2f { vec3 world; };
 
-Pass {
-    Tags { "LightMode" = "Forward" }
-    // Writes nothing, so the world renderer skips it: the Distortion pass is the haze.
-    RenderState {
-        ColorMask 0
-        Blend OFF
-        DepthTest ALWAYS
-        DepthWrite OFF
-        Cull FRONT
-    }
-
-    void vertex(out v2f o) {
-        vec4 world = CG_OBJECT_TO_WORLD * vec4(cg_Position, 1.0);
-        o.world = world.xyz;
-        gl_Position = cg_ProjMatrix * cg_ViewMatrix * world;
-    }
-
-    void fragment(in v2f i, out vec4 fragColor) {
-        fragColor = vec4(0.0);
-    }
-}
-
-Pass {
-    Tags { "LightMode" = "Distortion" }
-    // Its own depth fade, from the scene's distance.
-    RenderState {
-        DepthTest ALWAYS
-        DepthWrite OFF
-        Cull FRONT
-    }
-
-    void fragment(in v2f i, out vec4 distortion) {
-        vec3 eye = FX_CAMERA;
-        vec3 ray = normalize(i.world - eye);
-        vec3 centre = CG_OBJECT_TO_WORLD[3].xyz;
-        float radius = length(CG_OBJECT_TO_WORLD[0].xyz);
-        float along = dot(centre - eye, ray);
-        vec3 line = eye + ray * along - centre;
-        float chord = sqrt(max(radius * radius - dot(line, line), 0.0));
-        // The shell the eye sees: the near side from outside, the far side from inside; hidden behind the scene.
-        float hit = along - chord > 0.0 ? along - chord : along + chord;
-        if (hit > FX_SCENE_DISTANCE(ray)) discard;
-        vec3 n = normalize(eye + ray * hit - centre);
-        float face = abs(dot(n, ray));
-        float band = (1.0 - smoothstep(_Band * 0.4, _Band, face)) * smoothstep(0.0, 0.08, face);
-        float strength = band * CG_OBJECT_CUSTOM1.z * FX_PRESENCE;
-        if (strength < 0.002) discard;
-        // Outward on screen, along the normal as the eye sees it.
-        vec2 dir = normalize((mat3(cg_ViewMatrix) * n).xy + 1.0e-5);
-        // Perspective: a far front moves the scene behind it as little as it covers.
-        float far = min(1.0, _Reference / max(hit, 1.0e-3));
-        vec2 offset = dir * _Strength * far * strength * vec2(CG_RESOLUTION.y / CG_RESOLUTION.x, 1.0);
-        float fade = smoothstep(0.0, 0.15, strength);
-        distortion = CG_DISTORTION(offset * fade, 0.0, FX_EYE_DEPTH(ray, hit));
-    }
+void surface(in v2f i, inout CgSurface s) {
+    vec3 eye = CG_CAMERA_POSITION;
+    vec3 ray = normalize(i.world - eye);
+    vec3 centre = CG_OBJECT_TO_WORLD[3].xyz;
+    float radius = length(CG_OBJECT_TO_WORLD[0].xyz);
+    float along = dot(centre - eye, ray);
+    vec3 line = eye + ray * along - centre;
+    float chord = sqrt(max(radius * radius - dot(line, line), 0.0));
+    // The shell the eye sees: the near side from outside, the far side from inside; hidden behind the scene.
+    float hit = along - chord > 0.0 ? along - chord : along + chord;
+    if (hit > FX_SCENE_DISTANCE(ray)) discard;
+    vec3 n = normalize(eye + ray * hit - centre);
+    float face = abs(dot(n, ray));
+    float band = (1.0 - smoothstep(_Band * 0.4, _Band, face)) * smoothstep(0.0, 0.08, face);
+    float strength = band * cg_VfxMesh.values.z;
+    if (strength < 0.002) discard;
+    // Outward on screen, along the normal as the eye sees it.
+    vec2 dir = normalize((mat3(cg_ViewMatrix) * n).xy + 1.0e-5);
+    // Perspective: a far front moves the scene behind it as little as it covers.
+    float far = min(1.0, _Reference / max(hit, 1.0e-3));
+    vec2 offset = dir * _Strength * far * strength * vec2(CG_RESOLUTION.y / CG_RESOLUTION.x, 1.0);
+    s.refraction = offset * smoothstep(0.0, 0.15, strength);
+    s.refractionDepth = FX_EYE_DEPTH(ray, hit);
 }
