@@ -773,7 +773,7 @@ public final class CgRecording {
         return passes.size() + releases.size() + compiles.size();
     }
 
-    /** The pass or request made {@code index}-th, counting as {@link #operations} does. */
+    /** The pass made {@code index}-th, {@code 0} to {@link #passCount()}. */
     public CgPass pass(int index) {
         return passes.get(index);
     }
@@ -842,7 +842,8 @@ public final class CgRecording {
 
     // ── package: what the frame builder reads ────────────────────────────────
 
-    int passCount() {
+    /** How many passes it holds: {@link #pass}'s indices. Releases and compiles are not passes ({@link #operations}). */
+    public int passCount() {
         return passes.size();
     }
 
