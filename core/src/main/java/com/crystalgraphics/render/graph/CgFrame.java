@@ -85,6 +85,10 @@ public final class CgFrame {
     boolean[] readOnlyDepth = new boolean[8];
     /** Per step, whether it runs on the compute queue. */
     boolean[] async = new boolean[8];
+    /** Per step, whether this execution, a frame's again, skips it: what it did once stands. */
+    boolean[] skipped = new boolean[8];
+    /** Per step reading another texture's depth, whether it samples that depth in place rather than copying it. */
+    boolean[] depthFromInPlace = new boolean[8];
     /**
      * Per step, its prologue's transitions, from {@code prologueFrom[s]} to {@code prologueFrom[s + 1]}: each a texture
      * moved to an access ({@link #prologueLevel}, {@link #prologueLayer}; -1 for every one) or a buffer's barrier. A step
@@ -142,6 +146,8 @@ public final class CgFrame {
             runAttachment = new CgGraphTexture[size];
             readOnlyDepth = new boolean[size];
             async = new boolean[size];
+            skipped = new boolean[size];
+            depthFromInPlace = new boolean[size];
             prologued = new boolean[size];
             splits = new boolean[size];
             splitEnd = new int[size];

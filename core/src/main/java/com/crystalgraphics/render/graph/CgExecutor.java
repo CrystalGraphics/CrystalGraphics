@@ -627,6 +627,7 @@ public final class CgExecutor {
         CgFrameCompiler.renderPasses(frame, takes, takes && !again, gpuCounts);
         CgFrameCompiler.transitions(frame, asyncCompute, ASYNC_ALL, splits);
         CgFrameCompiler.multiDraws(frame, multiDraw);
+        CgFrameCompiler.steps(frame, takes, again);
         int resolved = 0;
         try {
             if (!again) {
@@ -641,7 +642,7 @@ public final class CgExecutor {
                     }
                 }
                 CgPass pass = frame.steps[s];
-                boolean skipped = again && doneOnce(frame, s, frame.keepRequested);
+                boolean skipped = frame.skipped[s];
                 if (again) {
                     try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, STALE)) {
                         staleTransients(frame, s, skipped);
@@ -818,21 +819,6 @@ public final class CgExecutor {
         }
         if (unitQuad) store.place(UNIT_QUAD);
         store.upload();
-    }
-
-    /**
-     * Whether a frame executing again skips step {@code s}: a step of a simulation — anything writing what outlives the
-     * frame — is taken once.
-     */
-    private static boolean doneOnce(CgFrame frame, int s, boolean keepRequested) {
-        CgPass pass = frame.steps[s];
-        if (pass instanceof CgPass.TextureUpload || pass instanceof CgPass.Readback) return true;
-        if (pass instanceof CgPass.BufferFill || pass instanceof CgPass.BufferUpdate || pass instanceof CgPass.BufferCopy) {
-            return frame.outlives[s];
-        }
-        if (pass instanceof CgComputePass compute) return frame.outlives[s] && !compute.runsAgain();
-        if (pass.target != null && pass.target.kind() == CgGraphTexture.Kind.HISTORY) return true;   // one version a frame
-        return keepRequested && pass.target != null && pass.target.kind() == CgGraphTexture.Kind.REQUESTED;
     }
 
     private void step(CgFrame frame, int s) {
@@ -1127,7 +1113,9 @@ public final class CgExecutor {
         CgBoundResources.forgetTextures(CgBindingModel.PASS);
         CgBoundResources.forgetTextures(CgBindingModel.MATERIAL);
         // Before the compute pass, after the constants, as a raster pass's copy: the bind is what the view set reads
-        if (pass.depthFrom() != null) copyDepthFrom(pass, pass.depthFrom(), pass.depthFromCopy(), CgBindingPoints.DEPTH_TEXTURE_UNIT);
+        if (pass.depthFrom() != null) {
+            copyDepthFrom(pass, pass.depthFrom(), pass.depthFromCopy(), CgBindingPoints.DEPTH_TEXTURE_UNIT, frame.depthFromInPlace[currentStep]);
+        }
         deviceSets.prepare(frame.bindings);
         if (CgKernelTarget.CHECKED) CgComputeCheck.prepare();
         for (int i = 0; i < dispatches.size(); i++) {
@@ -2078,7 +2066,9 @@ public final class CgExecutor {
             CgBoundResources.forgetTextures(CgBindingModel.MATERIAL);
             // Before the render pass, as a copy runs outside one: the copies' binds are what the pass set reads
             depthInPlace = frame.readOnlyDepth[currentStep];
-            if (pass.depthFrom() != null) copyDepthFrom(pass, pass.depthFrom(), pass.depthFromCopy(), pass.depthFromUnit());
+            if (pass.depthFrom() != null) {
+                copyDepthFrom(pass, pass.depthFrom(), pass.depthFromCopy(), pass.depthFromUnit(), frame.depthFromInPlace[currentStep]);
+            }
             if (pass.colorFrom() != null) copyColorFrom(pass);
             if ((packed.copyBefore[0] & (CgTargetCopy.COLOR | CgTargetCopy.DEPTH)) != 0) {
                 copyTarget(pass, packed.copyBefore[0], packed.copyRect, 0);
@@ -2458,11 +2448,9 @@ public final class CgExecutor {
         if (owner != null) owner.noteBound();
     }
 
-    /** Copies the depth of the target a pass reads besides its own, whole, and binds it. */
-    private void copyDepthFrom(CgPass pass, CgGraphTexture from, CgTargetCopy copy, int unit) {
-        CgGraphTexture depth = from;
-        if (takes && depth.kind() != CgGraphTexture.Kind.EXTERNAL && storage(depth).sampledDepth() != null
-                && !(pass instanceof CgRasterPass raster && depthTexture(raster) == depth)) {
+    /** Binds the depth of the texture a pass reads besides its own: sampled in place where compiled so, else copied whole. */
+    private void copyDepthFrom(CgPass pass, CgGraphTexture depth, CgTargetCopy copy, int unit, boolean inPlace) {
+        if (inPlace) {
             // Not attached here, and moved to SAMPLED_READ with the step: sampled where it is, as Unreal samples SceneDepth.
             CgBoundResources.texture(unit, storage(depth).sampledDepth(), -1);
             CgTrace.add(CgChannels.GL, DEPTH_SAMPLED, 1);

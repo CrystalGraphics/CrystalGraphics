@@ -249,6 +249,33 @@ final class CgFrameCompiler {
         return true;
     }
 
+    /**
+     * Each step's reads of another texture's depth, sampled in place where the device takes transitions and the depth is
+     * the graph's and not the step's own ({@link CgFrame#depthFromInPlace}), and, executing again, the steps skipped
+     * ({@link CgFrame#skipped}): a step of a simulation, anything writing what outlives the frame, taken once.
+     */
+    static void steps(CgFrame frame, boolean takes, boolean again) {
+        for (int s = 0; s < frame.stepCount; s++) {
+            CgPass pass = frame.steps[s];
+            frame.skipped[s] = again && doneOnce(frame, s, frame.keepRequested);
+            CgGraphTexture from = pass instanceof CgRasterPass raster ? raster.depthFrom()
+                    : pass instanceof CgComputePass compute ? compute.depthFrom() : null;
+            frame.depthFromInPlace[s] = from != null && takes && from.kind() != CgGraphTexture.Kind.EXTERNAL && samplesDepth(from)
+                    && !(pass instanceof CgRasterPass raster && raster.depthTexture() == from);
+        }
+    }
+
+    private static boolean doneOnce(CgFrame frame, int s, boolean keepRequested) {
+        CgPass pass = frame.steps[s];
+        if (pass instanceof CgPass.TextureUpload || pass instanceof CgPass.Readback) return true;
+        if (pass instanceof CgPass.BufferFill || pass instanceof CgPass.BufferUpdate || pass instanceof CgPass.BufferCopy) {
+            return frame.outlives[s];
+        }
+        if (pass instanceof CgComputePass compute) return frame.outlives[s] && !compute.runsAgain();
+        if (pass.target != null && pass.target.kind() == CgGraphTexture.Kind.HISTORY) return true;   // one version a frame
+        return keepRequested && pass.target != null && pass.target.kind() == CgGraphTexture.Kind.REQUESTED;
+    }
+
     /** Whether step {@code s} may begin or end a split: a raster, compute or buffer step on the frame's queue. */
     private static boolean splittable(CgFrame frame, int s) {
         CgPass pass = frame.steps[s];

@@ -30,6 +30,15 @@ declare it before the draw that reads it, and a pass held open while another rec
 parent) declares it after that pass. A draw names its own reads as it is added (`renderer.md` § 4.2): the graph
 textures its bindings sample, the graph buffers it binds as storage, its objects and indirect count.
 
+**The compile** (`CgFrameCompiler`, Unreal RDG's `Compile`): at an execution's start, before its first step, every
+decision the step loop used to make is written into the frame's per-step arrays, and the loop replays them. Which raster
+steps share a render pass and their second colour (`runEnd`, `runAttachment`), read-only depth, each step's prologue of
+transitions (a run's by its first step) and the split transitions it begins, async placement, multi-draw runs
+(`Raster.joinEnd`), a re-execution's skips, a depth read sampled in place. It runs at execution, not at build, because
+what an external target lends is known once the execution opens it. What stays in the loop is tracked state: a
+transition issued from the state `CgResourceStates` holds, an async fence waited on where a step's storage is pending
+on one, the shared depth copy, a history's version, transient storage taken at the step the build scheduled.
+
 **Six pass kinds** (`CgPass`, as Unreal's render graph): raster, compute, copy (a texture region, a buffer range),
 upload (bytes into a texture or a buffer, a buffer filled), readback, and external (a callback, an included frame).
 A release and a compile are not passes: the recording carries them, and the frame frees a released resource after the

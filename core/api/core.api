@@ -9512,6 +9512,7 @@ com/crystalgraphics/render/graph/CgRecording
   method public isSealed ()Z
   method public operations ()I
   method public pass (I)Lcom/crystalgraphics/render/graph/CgPass;
+  method public passCount ()I
   method public primitives ()Lcom/crystalgraphics/render/draw/CgPrimitiveTable;
   method public raster (Ljava/lang/String;)Lcom/crystalgraphics/render/graph/CgRasterPass;
   method public readback (Lcom/crystalgraphics/render/graph/CgGraphBuffer;JJLcom/crystalgraphics/gpu/resource/CgReadback$Sink;)Lcom/crystalgraphics/render/graph/CgRequest;
