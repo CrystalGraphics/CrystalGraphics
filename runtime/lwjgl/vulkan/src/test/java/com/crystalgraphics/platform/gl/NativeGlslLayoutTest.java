@@ -111,7 +111,7 @@ public class NativeGlslLayoutTest {
                     continue;
                 }
                 try {
-                    CgShaderModule vs = device.createShaderModule(CgShaderModule.Stage.VERTEX, actual.vertexGlDepth(), r.label());
+                    CgShaderModule vs = device.createShaderModule(CgShaderModule.Stage.VERTEX, actual.vertex(), r.label());
                     CgShaderModule fs = device.createShaderModule(CgShaderModule.Stage.FRAGMENT, actual.fragment(), r.label());
                     List<CgGraphicsPipelineDesc.ColorTarget> targets = new ArrayList<>();
                     for (int i = 0; i < actual.colorOutputs(); i++) {

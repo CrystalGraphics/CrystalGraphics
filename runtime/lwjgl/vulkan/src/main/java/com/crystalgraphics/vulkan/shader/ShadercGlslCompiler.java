@@ -129,16 +129,14 @@ public final class ShadercGlslCompiler implements CgGlslCompiler, AutoCloseable 
         if (kept != null) return kept;
         String vertexSource = withDefines(vertexGlsl, label, EXPLICIT);
         SpirvModule vertex = new SpirvModule(explicitSpirv(vertexSource, shaderc_glsl_vertex_shader, label), label);
-        SpirvModule glDepth = new SpirvModule(explicitSpirv(wrapMain(vertexSource, label), shaderc_glsl_vertex_shader, label),
-                label);
         SpirvModule fragment = new SpirvModule(explicitSpirv(withDefines(fragmentGlsl, label, EXPLICIT),
                 shaderc_glsl_fragment_shader, label), label);
-        vertexInputs(glDepth, vertex, attribLocations);
+        vertexInputs(vertex, attribLocations);
         Layout layout = layout(vertex, fragment);
         int outputs = 0;
         for (SpirvModule.Resource r : fragment.outputs) outputs = Math.max(outputs, r.value() + r.locations());
         int push = Math.max(vertex.pushConstantBytes, fragment.pushConstantBytes);
-        Explicit made = new Explicit(vertex.spirv, glDepth.spirv, fragment.spirv, layout.sets, layout.heap,
+        Explicit made = new Explicit(vertex.spirv, fragment.spirv, layout.sets, layout.heap,
                 (push + 3) / 4 * 4, outputs);
         if (results != null) results.put(vertexGlsl, fragmentGlsl, attribLocations, label, made);
         return made;
@@ -194,33 +192,32 @@ public final class ShadercGlslCompiler implements CgGlslCompiler, AutoCloseable 
     @Override
     public Program compile(String vertexGlsl, String fragmentGlsl, Map<String, Integer> attribLocations,
                                         String label) {
-        String vertex = withDefines(vertexGlsl, label, "");
-        SpirvModule glDepth = new SpirvModule(spirv(wrapMain(vertex, label), shaderc_glsl_vertex_shader, label), label);
-        SpirvModule zeroToOne = new SpirvModule(spirv(vertex, shaderc_glsl_vertex_shader, label), label);
+        SpirvModule vertex = new SpirvModule(spirv(withDefines(vertexGlsl, label, ""), shaderc_glsl_vertex_shader, label),
+                label);
         SpirvModule fragment = new SpirvModule(spirv(withDefines(fragmentGlsl, label, ""), shaderc_glsl_fragment_shader,
                 label), label);
 
         int next = 0;
-        int vLoose = has(glDepth.uniformBuffers, SpirvModule.DEFAULT_BLOCK) ? next++ : -1;
+        int vLoose = has(vertex.uniformBuffers, SpirvModule.DEFAULT_BLOCK) ? next++ : -1;
         int fLoose = has(fragment.uniformBuffers, SpirvModule.DEFAULT_BLOCK) ? next++ : -1;
         Map<String, Integer> uniformBlocks = new LinkedHashMap<>(), storageBlocks = new LinkedHashMap<>();
         Map<String, SpirvModule.Resource> samplers = new LinkedHashMap<>();
         Map<String, Integer> samplerBindings = new HashMap<>();
         Map<String, Integer> declared = new HashMap<>();
-        for (SpirvModule m : new SpirvModule[] {glDepth, fragment}) {
+        for (SpirvModule m : new SpirvModule[] {vertex, fragment}) {
             for (SpirvModule.Resource r : m.uniformBuffers) declared.putIfAbsent(r.name(), declared(r));
             for (SpirvModule.Resource r : m.storageBuffers) declared.putIfAbsent(r.name(), declared(r));
             for (SpirvModule.Resource r : m.samplers) declared.putIfAbsent(r.name(), declared(r));
         }
-        for (SpirvModule m : new SpirvModule[] {glDepth, fragment}) {
+        for (SpirvModule m : new SpirvModule[] {vertex, fragment}) {
             for (SpirvModule.Resource r : m.uniformBuffers) {
                 if (!r.name().equals(SpirvModule.DEFAULT_BLOCK) && !uniformBlocks.containsKey(r.name())) uniformBlocks.put(r.name(), next++);
             }
         }
-        for (SpirvModule m : new SpirvModule[] {glDepth, fragment}) {
+        for (SpirvModule m : new SpirvModule[] {vertex, fragment}) {
             for (SpirvModule.Resource r : m.storageBuffers) if (!storageBlocks.containsKey(r.name())) storageBlocks.put(r.name(), next++);
         }
-        for (SpirvModule m : new SpirvModule[] {glDepth, fragment}) {
+        for (SpirvModule m : new SpirvModule[] {vertex, fragment}) {
             for (SpirvModule.Resource r : m.samplers) {
                 if (!samplers.containsKey(r.name())) {
                     samplers.put(r.name(), r);
@@ -229,7 +226,7 @@ public final class ShadercGlslCompiler implements CgGlslCompiler, AutoCloseable 
             }
         }
 
-        for (SpirvModule m : new SpirvModule[] {glDepth, zeroToOne, fragment}) {
+        for (SpirvModule m : new SpirvModule[] {vertex, fragment}) {
             int loose = m == fragment ? fLoose : vLoose;
             for (SpirvModule.Resource r : m.uniformBuffers) {
                 m.set(r, r.name().equals(SpirvModule.DEFAULT_BLOCK) ? loose : uniformBlocks.get(r.name()));
@@ -238,9 +235,9 @@ public final class ShadercGlslCompiler implements CgGlslCompiler, AutoCloseable 
             for (SpirvModule.Resource r : m.samplers) m.set(r, samplerBindings.get(r.name()));
         }
 
-        List<Attribute> attributes = vertexInputs(glDepth, zeroToOne, attribLocations);
+        List<Attribute> attributes = vertexInputs(vertex, attribLocations);
         Map<String, Integer> outputs = new HashMap<>();
-        for (SpirvModule.Resource r : glDepth.outputs) outputs.put(r.name(), r.value());
+        for (SpirvModule.Resource r : vertex.outputs) outputs.put(r.name(), r.value());
         for (SpirvModule.Resource r : fragment.inputs) {
             Integer loc = outputs.get(r.name());
             if (loc == null) throw new CgShaderModule.CompileException(label + ": the fragment stage reads '" + r.name()
@@ -268,8 +265,8 @@ public final class ShadercGlslCompiler implements CgGlslCompiler, AutoCloseable 
         });
         slots.sort(Comparator.comparingInt(CgBindingLayout.Slot::binding));
 
-        return new Program(glDepth.spirv, zeroToOne.spirv, fragment.spirv, attributes, ub, sb, smp,
-                merge(glDepth.uniforms, fragment.uniforms), vLoose, glDepth.defaultBlockSize, fLoose,
+        return new Program(vertex.spirv, fragment.spirv, attributes, ub, sb, smp,
+                merge(vertex.uniforms, fragment.uniforms), vLoose, vertex.defaultBlockSize, fLoose,
                 fragment.defaultBlockSize, slots);
     }
 
@@ -326,30 +323,29 @@ public final class ShadercGlslCompiler implements CgGlslCompiler, AutoCloseable 
      * {@code layout(location)}, else declaration order, as GL drivers commonly do — unless a binding holds that
      * location, when it takes the lowest one left free.
      */
-    private static List<Attribute> vertexInputs(SpirvModule glDepth, SpirvModule zeroToOne, Map<String, Integer> bound) {
+    private static List<Attribute> vertexInputs(SpirvModule vertex, Map<String, Integer> bound) {
         BitSet used = new BitSet();
-        for (SpirvModule.Resource r : glDepth.inputs) {
+        for (SpirvModule.Resource r : vertex.inputs) {
             Integer loc = bound.get(r.name());
             if (loc != null) used.set(loc, loc + r.locations());
         }
-        Integer[] placed = new Integer[glDepth.inputs.size()];
+        Integer[] placed = new Integer[vertex.inputs.size()];
         for (int i = 0; i < placed.length; i++) {
-            SpirvModule.Resource r = glDepth.inputs.get(i);
+            SpirvModule.Resource r = vertex.inputs.get(i);
             if (bound.containsKey(r.name()) || !used.get(r.value(), r.value() + r.locations()).isEmpty()) continue;
             placed[i] = r.value();
             used.set(r.value(), r.value() + r.locations());
         }
         List<Attribute> out = new ArrayList<>();
-        for (int i = 0; i < glDepth.inputs.size(); i++) {
-            SpirvModule.Resource r = glDepth.inputs.get(i);
+        for (int i = 0; i < vertex.inputs.size(); i++) {
+            SpirvModule.Resource r = vertex.inputs.get(i);
             Integer loc = bound.containsKey(r.name()) ? bound.get(r.name()) : placed[i];
             if (loc == null) {
                 loc = 0;
                 while (!used.get(loc, loc + r.locations()).isEmpty()) loc++;
                 used.set(loc, loc + r.locations());
             }
-            glDepth.set(r, loc);
-            zeroToOne.set(zeroToOne.inputs.get(i), loc);
+            vertex.set(r, loc);
             out.add(new Attribute(r.name(), loc, r.glType()));
         }
         out.sort(Comparator.comparingInt(Attribute::location));
@@ -430,9 +426,6 @@ public final class ShadercGlslCompiler implements CgGlslCompiler, AutoCloseable 
         return CgGlslSources.withDefines(source, label, DEFINES + more);
     }
 
-    private static String wrapMain(String source, String label) {
-        return CgGlslSources.wrapMain(source, label);
-    }
 
     @Override
     public void close() {

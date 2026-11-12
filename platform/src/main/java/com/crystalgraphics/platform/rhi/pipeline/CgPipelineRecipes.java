@@ -48,7 +48,7 @@ import com.github.bsideup.jabel.Desugar;
  * <pre>{@code
  * CgPipelineRecipes recipes = CgPipelineRecipes.load(CgCacheDirectory.of("pipelines"), executor);
  * for (CgPipelineRecipes.Recipe r : recipes.of(key)) build(r.desc(label, layout, vertex, fragment));   // as a program links
- * recipes.record(program.key(), CgPipelineRecipes.Recipe.of(desc, zeroToOne));          // a pipeline built at a draw
+ * recipes.record(program.key(), CgPipelineRecipes.Recipe.of(desc));          // a pipeline built at a draw
  * }</pre>
  *
  * <ul>
@@ -175,19 +175,16 @@ public final class CgPipelineRecipes {
 
     /** A pipeline's description less its program, which a program of the recorded key fills in. */
     @Desugar
-    public record Recipe(boolean zeroToOne, List<VertexBuffer> vertexBuffers, CgGraphicsPipelineDesc.Topology topology,
+    public record Recipe(List<VertexBuffer> vertexBuffers, CgGraphicsPipelineDesc.Topology topology,
                          Raster raster, DepthStencil depthStencil, List<ColorTarget> colorTargets, CgFormat depthFormat,
                          int samples) {
 
-        public static Recipe of(CgGraphicsPipelineDesc d, boolean zeroToOne) {
-            return new Recipe(zeroToOne, d.vertexBuffers(), d.topology(), d.raster(), d.depthStencil(), d.colorTargets(),
+        public static Recipe of(CgGraphicsPipelineDesc d) {
+            return new Recipe(d.vertexBuffers(), d.topology(), d.raster(), d.depthStencil(), d.colorTargets(),
                     d.depthFormat(), d.samples());
         }
 
-        /**
-         * The description for a program of the recorded key: its {@code vertex} stage the one of the recorded clip
-         * convention ({@link #zeroToOne}).
-         */
+        /** The description for a program of the recorded key. */
         public CgGraphicsPipelineDesc desc(String label, CgPipelineLayout layout, CgShaderModule vertex,
                                            CgShaderModule fragment) {
             return new CgGraphicsPipelineDesc(label, layout, vertex, fragment, vertexBuffers, topology, raster,
@@ -196,7 +193,7 @@ public final class CgPipelineRecipes {
 
         String encode() {
             StringBuilder s = new StringBuilder();
-            s.append(zeroToOne ? 'z' : 'g').append(' ').append(topology).append(' ')
+            s.append(topology).append(' ')
                     .append(raster.cull()).append(',').append(raster.frontFace()).append(',')
                     .append(raster.polygonMode()).append(',').append(raster.depthBias() ? 1 : 0).append(' ');
             DepthStencil d = depthStencil;
@@ -226,21 +223,21 @@ public final class CgPipelineRecipes {
 
         static Recipe decode(String line) {
             String[] f = line.split(" ");
-            String[] r = f[2].split(","), d = f[3].split(",");
+            String[] r = f[1].split(","), d = f[2].split(",");
             Raster raster = new Raster(CgGraphicsPipelineDesc.CullMode.valueOf(r[0]), CgGraphicsPipelineDesc.FrontFace.valueOf(r[1]),
                     CgGraphicsPipelineDesc.PolygonMode.valueOf(r[2]), r[3].equals("1"));
             DepthStencil ds = new DepthStencil(d[0].equals("1"), d[1].equals("1"), CgCompare.valueOf(d[2]),
                     d[3].equals("1"), face(d[4]), face(d[5]), Integer.parseInt(d[6]), Integer.parseInt(d[7]));
             List<ColorTarget> targets = new ArrayList<>();
-            if (!f[4].equals("_")) {
-                for (String t : f[4].split(",")) {
+            if (!f[3].equals("_")) {
+                for (String t : f[3].split(",")) {
                     String[] p = t.split("/");
                     targets.add(new ColorTarget(CgFormat.valueOf(p[0]), blend(p[1]), Integer.parseInt(p[2])));
                 }
             }
             List<VertexBuffer> buffers = new ArrayList<>();
-            if (!f[7].equals("_")) {
-                for (String b : f[7].split(",")) {
+            if (!f[6].equals("_")) {
+                for (String b : f[6].split(",")) {
                     String[] p = b.split("/", -1);
                     List<VertexAttrib> attribs = new ArrayList<>();
                     if (!p[3].isEmpty()) {
@@ -253,8 +250,8 @@ public final class CgPipelineRecipes {
                             List.copyOf(attribs)));
                 }
             }
-            return new Recipe(f[0].equals("z"), List.copyOf(buffers), CgGraphicsPipelineDesc.Topology.valueOf(f[1]), raster, ds,
-                    List.copyOf(targets), f[5].equals("-") ? null : CgFormat.valueOf(f[5]), Integer.parseInt(f[6]));
+            return new Recipe(List.copyOf(buffers), CgGraphicsPipelineDesc.Topology.valueOf(f[0]), raster, ds,
+                    List.copyOf(targets), f[4].equals("-") ? null : CgFormat.valueOf(f[4]), Integer.parseInt(f[5]));
         }
 
         private static String face(StencilFace f) {

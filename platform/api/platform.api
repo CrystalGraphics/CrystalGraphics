@@ -2546,7 +2546,7 @@ com/crystalgraphics/platform/rhi/pipeline/CgPipelineCache
   method public close ()V
   method public endFrame ()V
   method public forget (Ljava/util/function/Predicate;)V
-  method public get (Lcom/crystalgraphics/platform/rhi/pipeline/CgGraphicsPipelineDesc;JZ)Lcom/crystalgraphics/platform/rhi/pipeline/CgGraphicsPipeline;
+  method public get (Lcom/crystalgraphics/platform/rhi/pipeline/CgGraphicsPipelineDesc;J)Lcom/crystalgraphics/platform/rhi/pipeline/CgGraphicsPipeline;
   method public misses ()J
   method public orphan (Ljava/util/Collection;)V
   method public startRecorded (JLjava/util/function/Function;)Ljava/util/Map;
@@ -2574,7 +2574,7 @@ com/crystalgraphics/platform/rhi/pipeline/CgPipelineRecipes
 com/crystalgraphics/platform/rhi/pipeline/CgPipelineRecipes$Recipe
   access public,final,record
   extends java/lang/Record
-  method public <init> (ZLjava/util/List;Lcom/crystalgraphics/platform/rhi/pipeline/CgGraphicsPipelineDesc$Topology;Lcom/crystalgraphics/platform/rhi/pipeline/CgGraphicsPipelineDesc$Raster;Lcom/crystalgraphics/platform/rhi/pipeline/CgGraphicsPipelineDesc$DepthStencil;Ljava/util/List;Lcom/crystalgraphics/platform/rhi/format/CgFormat;I)V
+  method public <init> (Ljava/util/List;Lcom/crystalgraphics/platform/rhi/pipeline/CgGraphicsPipelineDesc$Topology;Lcom/crystalgraphics/platform/rhi/pipeline/CgGraphicsPipelineDesc$Raster;Lcom/crystalgraphics/platform/rhi/pipeline/CgGraphicsPipelineDesc$DepthStencil;Ljava/util/List;Lcom/crystalgraphics/platform/rhi/format/CgFormat;I)V
   method public colorTargets ()Ljava/util/List;
   method public depthFormat ()Lcom/crystalgraphics/platform/rhi/format/CgFormat;
   method public depthStencil ()Lcom/crystalgraphics/platform/rhi/pipeline/CgGraphicsPipelineDesc$DepthStencil;
@@ -2583,11 +2583,10 @@ com/crystalgraphics/platform/rhi/pipeline/CgPipelineRecipes$Recipe
   method public samples ()I
   method public topology ()Lcom/crystalgraphics/platform/rhi/pipeline/CgGraphicsPipelineDesc$Topology;
   method public vertexBuffers ()Ljava/util/List;
-  method public zeroToOne ()Z
   method public,final equals (Ljava/lang/Object;)Z
   method public,final hashCode ()I
   method public,final toString ()Ljava/lang/String;
-  method public,static of (Lcom/crystalgraphics/platform/rhi/pipeline/CgGraphicsPipelineDesc;Z)Lcom/crystalgraphics/platform/rhi/pipeline/CgPipelineRecipes$Recipe;
+  method public,static of (Lcom/crystalgraphics/platform/rhi/pipeline/CgGraphicsPipelineDesc;)Lcom/crystalgraphics/platform/rhi/pipeline/CgPipelineRecipes$Recipe;
 com/crystalgraphics/platform/rhi/resource/CgGpuBuffer
   access public,abstract,interface
   extends java/lang/Object
@@ -2814,14 +2813,13 @@ com/crystalgraphics/platform/rhi/shader/CgGlslCompiler$ComputeProgram
 com/crystalgraphics/platform/rhi/shader/CgGlslCompiler$Explicit
   access public,final,record
   extends java/lang/Record
-  method public <init> (Ljava/nio/ByteBuffer;Ljava/nio/ByteBuffer;Ljava/nio/ByteBuffer;Ljava/util/List;ZII)V
+  method public <init> (Ljava/nio/ByteBuffer;Ljava/nio/ByteBuffer;Ljava/util/List;ZII)V
   method public colorOutputs ()I
   method public fragment ()Ljava/nio/ByteBuffer;
   method public heap ()Z
   method public pushConstantBytes ()I
   method public sets ()Ljava/util/List;
   method public vertex ()Ljava/nio/ByteBuffer;
-  method public vertexGlDepth ()Ljava/nio/ByteBuffer;
   method public,final equals (Ljava/lang/Object;)Z
   method public,final hashCode ()I
   method public,final toString ()Ljava/lang/String;
@@ -2853,7 +2851,7 @@ com/crystalgraphics/platform/rhi/shader/CgGlslCompiler$Program
   access public,final,record
   extends java/lang/Record
   implements com/crystalgraphics/platform/rhi/shader/CgGlslCompiler$Reflection
-  method public <init> (Ljava/nio/ByteBuffer;Ljava/nio/ByteBuffer;Ljava/nio/ByteBuffer;Ljava/util/List;Ljava/util/List;Ljava/util/List;Ljava/util/List;Ljava/util/List;IIIILjava/util/List;)V
+  method public <init> (Ljava/nio/ByteBuffer;Ljava/nio/ByteBuffer;Ljava/util/List;Ljava/util/List;Ljava/util/List;Ljava/util/List;Ljava/util/List;IIIILjava/util/List;)V
   method public attributes ()Ljava/util/List;
   method public fragment ()Ljava/nio/ByteBuffer;
   method public fragmentUniformBinding ()I
@@ -2863,10 +2861,9 @@ com/crystalgraphics/platform/rhi/shader/CgGlslCompiler$Program
   method public storageBlocks ()Ljava/util/List;
   method public uniformBlocks ()Ljava/util/List;
   method public uniforms ()Ljava/util/List;
-  method public vertexGlDepth ()Ljava/nio/ByteBuffer;
+  method public vertex ()Ljava/nio/ByteBuffer;
   method public vertexUniformBinding ()I
   method public vertexUniformSize ()I
-  method public vertexZeroToOne ()Ljava/nio/ByteBuffer;
   method public,final equals (Ljava/lang/Object;)Z
   method public,final hashCode ()I
   method public,final toString ()Ljava/lang/String;
@@ -2917,7 +2914,6 @@ com/crystalgraphics/platform/rhi/shader/CgGlslSources
   method public,static lineAt (Ljava/lang/String;I)I
   method public,static withDefines (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
   method public,static withoutComments (Ljava/lang/String;)Ljava/lang/String;
-  method public,static wrapMain (Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
 com/crystalgraphics/platform/rhi/shader/CgShaderModule
   access public,abstract,interface
   extends java/lang/Object

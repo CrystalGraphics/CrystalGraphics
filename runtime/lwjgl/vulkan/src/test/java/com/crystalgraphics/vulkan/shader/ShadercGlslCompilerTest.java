@@ -59,15 +59,14 @@ public class ShadercGlslCompilerTest {
         assertEquals(List.of(new CgGlslCompiler.Attribute("cg_Position", 0, 0x8B51),
                 new CgGlslCompiler.Attribute("cg_TexCoord0", 1, 0x8B50)), p.attributes());
         assertEquals(List.of(new CgGlslCompiler.Block("CgFrameBlock", 0)), p.uniformBlocks());
-        assertEquals(List.of(new CgGlslCompiler.Block("CgObjectDataBuffer", 1)), p.storageBlocks());
+        // No layout(binding) in the source: declared is the binding glslang gave it, auto-bound
+        assertEquals(List.of(new CgGlslCompiler.Block("CgObjectDataBuffer", 1, 1)), p.storageBlocks());
         assertEquals("one binding for a sampler both stages declare",
                 List.of(new CgGlslCompiler.Sampler("_MainTex", 2, 0x8B5E, false)), p.samplers());
         assertEquals(List.of(new CgBindingLayout.Slot(0, CgBindingLayout.Type.UNIFORM_BUFFER),
                 new CgBindingLayout.Slot(1, CgBindingLayout.Type.STORAGE_BUFFER),
                 new CgBindingLayout.Slot(2, CgBindingLayout.Type.SAMPLED_TEXTURE)), p.slots());
         assertEquals(-1, p.vertexUniformBinding());
-        assertNotEquals("the GL-depth stage has the wrapper; the other does not",
-                p.vertexGlDepth().remaining(), p.vertexZeroToOne().remaining());
     }
 
     @Test
@@ -76,7 +75,7 @@ public class ShadercGlslCompilerTest {
                 + "void main() { a = vec4(1.0); b = p; gl_Position = vec4(p, 0.0, 1.0); }";
         String fragment = "#version 330 core\nin vec2 b;\nin vec4 a;\nout vec4 color;\n"
                 + "void main() { color = a + vec4(b, 0.0, 0.0); }";
-        SpirvModule v = new SpirvModule(COMPILER.compile(vertex, fragment, Map.of("p", 0), "order").vertexGlDepth(), "v");
+        SpirvModule v = new SpirvModule(COMPILER.compile(vertex, fragment, Map.of("p", 0), "order").vertex(), "v");
         SpirvModule f = new SpirvModule(COMPILER.compile(vertex, fragment, Map.of("p", 0), "order").fragment(), "f");
         for (SpirvModule.Resource in : f.inputs) {
             SpirvModule.Resource out = v.outputs.stream().filter(o -> o.name().equals(in.name())).findFirst().orElseThrow();

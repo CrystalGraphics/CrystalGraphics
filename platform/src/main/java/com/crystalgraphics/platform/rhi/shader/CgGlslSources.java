@@ -4,23 +4,21 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * The source edits every {@link CgGlslCompiler} makes before compiling: defines after {@code #version}, and the vertex
- * stage's GL-depth form.
+ * The source edits every {@link CgGlslCompiler} makes before compiling: defines after {@code #version}.
  *
  * <pre>{@code
  * String vertex = CgGlslSources.withDefines(glsl, "stone", "#define CG_EXPLICIT 1\n");
- * String glDepth = CgGlslSources.wrapMain(vertex, "stone");   // clip z from [-w, w] to [0, w]
  * }</pre>
  *
  * <ul>
- *   <li>A source with no {@code #version}, or a vertex stage with no {@code main()}, is refused naming {@code label}.</li>
+ *   <li>A source with no {@code #version} is refused naming {@code label}.</li>
  *   <li>Errors keep the source's line numbers: {@code withDefines} adds a {@code #line} after what it inserts.</li>
  * </ul>
  */
 public final class CgGlslSources {
 
     private static final Pattern VERSION = Pattern.compile("(?m)^[ \\t]*#[ \\t]*version\\b.*$");
-    private static final Pattern MAIN = Pattern.compile("\\bvoid\\s+main\\s*\\(\\s*(?:void)?\\s*\\)");
+
 
     private CgGlslSources() {
     }
@@ -33,13 +31,6 @@ public final class CgGlslSources {
         return source.substring(0, m.end()) + "\n" + defines + "#line " + line + source.substring(m.end());
     }
 
-    /** {@code main} renamed, and a {@code main} after it that calls it and maps clip z from [-w, w] to [0, w]. */
-    public static String wrapMain(String source, String label) {
-        Matcher m = MAIN.matcher(withoutComments(source));
-        if (!m.find()) throw new CgShaderModule.CompileException(label + ": the vertex stage has no main()");
-        return source.substring(0, m.start()) + "void cg_main_user()" + source.substring(m.end())
-                + "\nvoid main() {\n    cg_main_user();\n    gl_Position.z = (gl_Position.z + gl_Position.w) * 0.5;\n}\n";
-    }
 
     /** Comments as spaces, newlines kept, so a match's offsets and lines are the source's. */
     public static String withoutComments(String s) {

@@ -416,8 +416,8 @@ public final class CgPipeline {
         if (linked == null || !linked.isCompiled()) return true;   // its draw reports the failure
         CgRHI rhi = CgRHI.get();
         return rhi.prepareProgram(CgDeviceStates.layout(rhi, linked.explicit()),
-                linked.deviceModule(rhi, CgShaderModule.Stage.VERTEX, false),
-                linked.deviceModule(rhi, CgShaderModule.Stage.FRAGMENT, false));
+                linked.deviceModule(rhi, CgShaderModule.Stage.VERTEX),
+                linked.deviceModule(rhi, CgShaderModule.Stage.FRAGMENT));
     }
 
     /**
@@ -541,12 +541,12 @@ public final class CgPipeline {
             targets.add(new CgGraphicsPipelineDesc.ColorTarget(colors.get(i), own, mask));
         }
         CgGraphicsPipelineDesc desc = new CgGraphicsPipelineDesc(label, CgDeviceStates.layout(rhi, linked.explicit()),
-                linked.deviceModule(rhi, CgShaderModule.Stage.VERTEX, false),
-                linked.deviceModule(rhi, CgShaderModule.Stage.FRAGMENT, false),
+                linked.deviceModule(rhi, CgShaderModule.Stage.VERTEX),
+                linked.deviceModule(rhi, CgShaderModule.Stage.FRAGMENT),
                 List.of(), topology,
                 CgDeviceStates.raster(s.getCull()), CgDeviceStates.depthStencil(s.getDepth(), s.getStencil(), reversed), targets,
                 depth, samples);
-        deviceLast = deviceCache(rhi).get(desc, linked.deviceKey(), true);
+        deviceLast = deviceCache(rhi).get(desc, linked.deviceKey());
         deviceLastOf = rhi;
         deviceLastProgram = linked;
         deviceLastPass = passState;
@@ -580,8 +580,8 @@ public final class CgPipeline {
         CgPipelineCache cache = deviceCache(rhi);
         cache.adopt(cache.startRecorded(linked.deviceKey(), recipe -> recipe.desc(label,
                 CgDeviceStates.layout(rhi, linked.explicit()),
-                linked.deviceModule(rhi, CgShaderModule.Stage.VERTEX, !recipe.zeroToOne()),
-                linked.deviceModule(rhi, CgShaderModule.Stage.FRAGMENT, false))));
+                linked.deviceModule(rhi, CgShaderModule.Stage.VERTEX),
+                linked.deviceModule(rhi, CgShaderModule.Stage.FRAGMENT))));
     }
 
     @Override

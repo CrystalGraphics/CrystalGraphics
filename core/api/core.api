@@ -6868,7 +6868,7 @@ com/crystalgraphics/material/CgShader
   field public,static,final READS_DEPTH I
   method public delete ()V
   method public deviceKey ()J
-  method public deviceModule (Lcom/crystalgraphics/platform/rhi/CgRHI;Lcom/crystalgraphics/platform/rhi/shader/CgShaderModule$Stage;Z)Lcom/crystalgraphics/platform/rhi/shader/CgShaderModule;
+  method public deviceModule (Lcom/crystalgraphics/platform/rhi/CgRHI;Lcom/crystalgraphics/platform/rhi/shader/CgShaderModule$Stage;)Lcom/crystalgraphics/platform/rhi/shader/CgShaderModule;
   method public explicit ()Lcom/crystalgraphics/platform/rhi/shader/CgGlslCompiler$Explicit;
   method public format ()Lcom/crystalgraphics/api/vertex/CgVertexFormat;
   method public getLastCompileError ()Ljava/lang/String;

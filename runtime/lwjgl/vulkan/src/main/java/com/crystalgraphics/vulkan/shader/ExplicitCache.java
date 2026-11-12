@@ -49,7 +49,7 @@ final class ExplicitCache {
 
     private static final Logger LOG = LogManager.getLogger("CrystalGraphics");
     /** "CGX" and the format's version: a file of another version is a miss. */
-    private static final int MAGIC = 0x43475801;
+    private static final int MAGIC = 0x43475802;
     private static final byte PROGRAM = 0, KERNEL = 1;
     private static final CgBindingLayout.Type[] TYPES = CgBindingLayout.Type.values();
 
@@ -67,9 +67,9 @@ final class ExplicitCache {
     CgGlslCompiler.Explicit program(String vertex, String fragment, Map<String, Integer> attribs, String label) {
         try (DataInputStream in = read(key(PROGRAM, label, attribs, vertex, fragment))) {
             if (in == null || in.readByte() != PROGRAM) return null;
-            ByteBuffer vs = module(in), vsGl = module(in), fs = module(in);
+            ByteBuffer vs = module(in), fs = module(in);
             List<List<CgBindingLayout.Slot>> sets = sets(in);
-            return new CgGlslCompiler.Explicit(vs, vsGl, fs, sets, in.readBoolean(), in.readInt(), in.readInt());
+            return new CgGlslCompiler.Explicit(vs, fs, sets, in.readBoolean(), in.readInt(), in.readInt());
         } catch (IOException | RuntimeException e) {
             return null;   // short, damaged or another format: compiled again, and written over
         }
@@ -82,7 +82,6 @@ final class ExplicitCache {
             out.writeInt(MAGIC);
             out.writeByte(PROGRAM);
             module(out, made.vertex());
-            module(out, made.vertexGlDepth());
             module(out, made.fragment());
             sets(out, made.sets());
             out.writeBoolean(made.heap());

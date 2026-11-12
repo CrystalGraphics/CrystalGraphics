@@ -16,7 +16,7 @@ public class CgPipelineRecipesTest {
     public void aRecipeReadsBackAsWritten() {
         CgGraphicsPipelineDesc.StencilFace face = new CgGraphicsPipelineDesc.StencilFace(CgCompare.EQUAL, CgGraphicsPipelineDesc.StencilOp.KEEP,
                 CgGraphicsPipelineDesc.StencilOp.ZERO, CgGraphicsPipelineDesc.StencilOp.REPLACE);
-        CgPipelineRecipes.Recipe full = new CgPipelineRecipes.Recipe(true,
+        CgPipelineRecipes.Recipe full = new CgPipelineRecipes.Recipe(
                 List.of(new CgGraphicsPipelineDesc.VertexBuffer(0, 24, false, List.of(
                         new CgGraphicsPipelineDesc.VertexAttrib(0, CgAttribFormat.FLOAT32X2, 0),
                         new CgGraphicsPipelineDesc.VertexAttrib(1, CgAttribFormat.FLOAT32X4, 8)))),
@@ -28,7 +28,7 @@ public class CgPipelineRecipesTest {
                 CgFormat.values()[2], 4);
         assertEquals(full, CgPipelineRecipes.Recipe.decode(full.encode()));
 
-        CgPipelineRecipes.Recipe bare = new CgPipelineRecipes.Recipe(false, List.of(), CgGraphicsPipelineDesc.Topology.POINTS,
+        CgPipelineRecipes.Recipe bare = new CgPipelineRecipes.Recipe(List.of(), CgGraphicsPipelineDesc.Topology.POINTS,
                 CgGraphicsPipelineDesc.Raster.DEFAULT, CgGraphicsPipelineDesc.DepthStencil.OFF, List.of(), null, 1);
         assertEquals(bare, CgPipelineRecipes.Recipe.decode(bare.encode()));
     }

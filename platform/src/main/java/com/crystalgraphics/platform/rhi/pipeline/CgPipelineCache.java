@@ -29,9 +29,9 @@ import java.util.function.Predicate;
  * CgPipelineCache cache = new CgPipelineCache(device);
  * // as a program links, on its compile worker: its recorded pipelines start building
  * Map<CgGraphicsPipelineDesc, Future<CgGraphicsPipeline>> started =
- *         cache.startRecorded(program.key(), recipe -> recipe.desc(label, layout, vertex(recipe.zeroToOne()), fragment));
+ *         cache.startRecorded(program.key(), recipe -> recipe.desc(label, layout, vertex, fragment));
  * cache.adopt(started);                                  // owner thread, once the link is installed
- * CgGraphicsPipeline p = cache.get(desc, program.key(), zeroToOne);   // at the draw: built, taken ahead, or built now
+ * CgGraphicsPipeline p = cache.get(desc, program.key());   // at the draw: built, taken ahead, or built now
  * cache.endFrame();                                      // releases what was built for links that never installed
  * }</pre>
  *
@@ -114,7 +114,7 @@ public final class CgPipelineCache {
      * The pipeline for {@code desc}: kept, taken from a build started ahead (waiting if it is still building), or built
      * now and counted a miss, then recorded under {@code programKey} (0 records nothing) for the next start.
      */
-    public CgGraphicsPipeline get(CgGraphicsPipelineDesc desc, long programKey, boolean zeroToOne) {
+    public CgGraphicsPipeline get(CgGraphicsPipelineDesc desc, long programKey) {
         CgGraphicsPipeline p = pipelines.get(desc);
         if (p != null) return p;
         p = takeAhead(desc);
@@ -126,7 +126,7 @@ public final class CgPipelineCache {
             CgTrace.add(CHANNEL, BUILT, 1);
             if (LOG.get()) LOGGER.info("pipeline built at its draw: {} on {} colour targets", desc.label(), desc.colorTargets().size());
             if (programKey != 0 && device.createsOnAnyThread()) {
-                recipes().record(programKey, CgPipelineRecipes.Recipe.of(desc, zeroToOne));
+                recipes().record(programKey, CgPipelineRecipes.Recipe.of(desc));
             }
         }
         pipelines.put(desc, p);

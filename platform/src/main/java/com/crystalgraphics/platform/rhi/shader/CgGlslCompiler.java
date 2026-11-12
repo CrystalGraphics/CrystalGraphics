@@ -14,7 +14,7 @@ import java.util.Map;
  *
  * <pre>{@code
  * CgGlslCompiler.Program p = compiler.compile(vertexGlsl, fragmentGlsl, Map.of("cg_Position", 0), "text");
- * CgShaderModule vs = device.createShaderModule(CgShaderModule.Stage.VERTEX, p.vertexGlDepth(), "text");
+ * CgShaderModule vs = device.createShaderModule(CgShaderModule.Stage.VERTEX, p.vertex(), "text");
  * CgBindingLayout layout = device.createBindingLayout("text", p.slots());
  * }</pre>
  *
@@ -55,11 +55,10 @@ public interface CgGlslCompiler {
     /**
      * A program as written: each stage's SPIR-V, each set's slots by binding in set order (empty for a set it skips),
      * whether it reads the bindless heap at set 3 (then that set's slot list is empty), its push-constant bytes, and the
-     * colour outputs its fragment stage writes. Two vertex stages: {@code vertex} as written, for a projection already in
-     * a device's zero-to-one depth; {@code vertexGlDepth} with its clip depth mapped from GL's {@code [-w, w]} to
-     * {@code [0, w]}, for the engine's usual projections.
+     * colour outputs its fragment stage writes. The vertex stage's clip depth is the device's, 0 to 1, as every
+     * projection the engine passes is.
      */
-    record Explicit(ByteBuffer vertex, ByteBuffer vertexGlDepth, ByteBuffer fragment, List<List<CgBindingLayout.Slot>> sets,
+    record Explicit(ByteBuffer vertex, ByteBuffer fragment, List<List<CgBindingLayout.Slot>> sets,
                     boolean heap, int pushConstantBytes, int colorOutputs) {}
 
     /**
@@ -155,11 +154,9 @@ public interface CgGlslCompiler {
                    int fragmentOffset, int columns, int rows, boolean integer) {}
 
     /**
-     * @param vertexGlDepth   the vertex stage for our own passes: clip depth remapped from GL's range
-     * @param vertexZeroToOne the vertex stage for a pass into a host's zero-to-one depth
      * @param vertexUniformBinding the vertex stage's loose-uniform block, or -1 without one
      */
-    record Program(ByteBuffer vertexGlDepth, ByteBuffer vertexZeroToOne, ByteBuffer fragment,
+    record Program(ByteBuffer vertex, ByteBuffer fragment,
                    List<Attribute> attributes, List<Block> uniformBlocks, List<Block> storageBlocks,
                    List<Sampler> samplers, List<Uniform> uniforms,
                    int vertexUniformBinding, int vertexUniformSize,

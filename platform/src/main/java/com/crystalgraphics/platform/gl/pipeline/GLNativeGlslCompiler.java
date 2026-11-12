@@ -95,8 +95,7 @@ public final class GLNativeGlslCompiler implements CgGlslCompiler {
         refusePushConstants(vertex, label);
         refusePushConstants(fragment, label);
         active(slots, label, GL_VERTEX_SHADER, vertex, GL_FRAGMENT_SHADER, fragment);
-        return new Explicit(module(vertex, slots), module(CgGlslSources.wrapMain(vertex, label), slots),
-                module(fragment, slots), sets(slots), false, 0, outputs(fragment));
+        return new Explicit(module(vertex, slots), module(fragment, slots), sets(slots), false, 0, outputs(fragment));
     }
 
     @Override
